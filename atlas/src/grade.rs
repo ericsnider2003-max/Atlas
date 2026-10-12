@@ -61,7 +61,9 @@ impl Default for GradeConfig {
 /// a misspelled preset that silently becomes the default is a setting that
 /// does nothing while looking like it worked.
 pub fn preset_named(name: &str) -> Option<Preset> {
-    presets().into_iter().find(|p| p.name.eq_ignore_ascii_case(name.trim()))
+    presets()
+        .into_iter()
+        .find(|p| p.name.eq_ignore_ascii_case(name.trim()))
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -121,11 +123,16 @@ pub fn check_audio(a: &Audio, cfg: &GradeConfig) -> Vec<Note> {
     let off = target - a.lufs;
     if off.abs() > 1.5 {
         out.push(Note {
-            what: if off > 0.0 { "it's quiet".into() } else { "it's too loud".into() },
+            what: if off > 0.0 {
+                "it's quiet".into()
+            } else {
+                "it's too loud".into()
+            },
             because: format!(
                 "{:.1} LUFS against the {target} the platforms normalise to — everything \
                  around you gets raised {:.0}dB and you don't",
-                a.lufs, off.abs()
+                a.lufs,
+                off.abs()
             ),
             fix: format!("loudnorm to {target} LUFS, true peak {ceiling}dB"),
             fixable_now: true,
@@ -136,7 +143,10 @@ pub fn check_audio(a: &Audio, cfg: &GradeConfig) -> Vec<Note> {
     if a.true_peak_db > ceiling {
         out.push(Note {
             what: "it'll clip after their re-encode".into(),
-            because: format!("true peak is {:.1}dB, and encoding pushes it higher", a.true_peak_db),
+            because: format!(
+                "true peak is {:.1}dB, and encoding pushes it higher",
+                a.true_peak_db
+            ),
             fix: "limit to -1dBTP before export".into(),
             fixable_now: true,
             matters: 0.8,
@@ -185,7 +195,11 @@ pub fn check_audio(a: &Audio, cfg: &GradeConfig) -> Vec<Note> {
         });
     }
 
-    out.sort_by(|a, b| b.matters.partial_cmp(&a.matters).unwrap_or(std::cmp::Ordering::Equal));
+    out.sort_by(|a, b| {
+        b.matters
+            .partial_cmp(&a.matters)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     out
 }
 
@@ -207,7 +221,9 @@ pub fn check_picture(p: &Picture) -> Vec<Note> {
         out.push(Note {
             what: "the highlights are blown".into(),
             because: format!("{:.0}% of the frame is pure white", p.clipped_white * 100.0),
-            fix: "pull the highlights down — but if it's a window behind you, that needs re-shooting".into(),
+            fix:
+                "pull the highlights down — but if it's a window behind you, that needs re-shooting"
+                    .into(),
             fixable_now: p.clipped_white < 0.06,
             matters: 0.75,
         });
@@ -215,7 +231,10 @@ pub fn check_picture(p: &Picture) -> Vec<Note> {
     if p.brightness < 0.3 {
         out.push(Note {
             what: "it's underexposed".into(),
-            because: format!("average brightness {:.0}%, and phones dim in bright rooms", p.brightness * 100.0),
+            because: format!(
+                "average brightness {:.0}%, and phones dim in bright rooms",
+                p.brightness * 100.0
+            ),
             fix: "lift exposure — and add a light in front of you, not behind".into(),
             fixable_now: true,
             matters: 0.8,
@@ -227,7 +246,11 @@ pub fn check_picture(p: &Picture) -> Vec<Note> {
         if !(4800..=6200).contains(&k) {
             let warm = k < 4800;
             out.push(Note {
-                what: if warm { "the skin looks orange".into() } else { "the skin looks blue".into() },
+                what: if warm {
+                    "the skin looks orange".into()
+                } else {
+                    "the skin looks blue".into()
+                },
                 because: format!("white balance around {k}K"),
                 fix: format!(
                     "shift white balance {} until skin sits naturally",
@@ -243,7 +266,8 @@ pub fn check_picture(p: &Picture) -> Vec<Note> {
         out.push(Note {
             what: "the colour is overcooked".into(),
             because: format!("saturation at {:.1}x", p.saturation),
-            fix: "back it off to about 1.1. Saturation reads as amateur faster than anything else".into(),
+            fix: "back it off to about 1.1. Saturation reads as amateur faster than anything else"
+                .into(),
             fixable_now: true,
             matters: 0.65,
         });
@@ -268,7 +292,11 @@ pub fn check_picture(p: &Picture) -> Vec<Note> {
         });
     }
 
-    out.sort_by(|a, b| b.matters.partial_cmp(&a.matters).unwrap_or(std::cmp::Ordering::Equal));
+    out.sort_by(|a, b| {
+        b.matters
+            .partial_cmp(&a.matters)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     out
 }
 
@@ -288,7 +316,12 @@ impl SafeArea {
     /// Roughly what the apps cover. Conservative on purpose — being 3% clear
     /// costs nothing and being 3% under costs the whole caption.
     pub fn typical() -> SafeArea {
-        SafeArea { top_pct: 12.0, bottom_pct: 22.0, right_pct: 16.0, left_pct: 4.0 }
+        SafeArea {
+            top_pct: 12.0,
+            bottom_pct: 22.0,
+            right_pct: 16.0,
+            left_pct: 4.0,
+        }
     }
 
     /// Is this text position safe?
@@ -301,7 +334,10 @@ impl SafeArea {
 
     /// Where captions should sit.
     pub fn caption_band(&self) -> (f32, f32) {
-        (100.0 - self.bottom_pct - 18.0, 100.0 - self.bottom_pct - 4.0)
+        (
+            100.0 - self.bottom_pct - 18.0,
+            100.0 - self.bottom_pct - 4.0,
+        )
     }
 }
 
@@ -328,25 +364,41 @@ pub fn presets() -> Vec<Preset> {
             name: "clean",
             what_it_is: "neutral, slightly lifted, true colour",
             for_what: "talking to camera, anything you want to age well",
-            lift: 0.03, contrast: 1.05, saturation: 1.05, warmth: 0, vignette: 0.0,
+            lift: 0.03,
+            contrast: 1.05,
+            saturation: 1.05,
+            warmth: 0,
+            vignette: 0.0,
         },
         Preset {
             name: "warm room",
             what_it_is: "a touch warm, soft shadows",
             for_what: "indoors, evening, anything conversational",
-            lift: 0.05, contrast: 1.02, saturation: 1.08, warmth: 180, vignette: 0.08,
+            lift: 0.05,
+            contrast: 1.02,
+            saturation: 1.08,
+            warmth: 180,
+            vignette: 0.08,
         },
         Preset {
             name: "hard light",
             what_it_is: "more contrast, cooler, colour held back",
             for_what: "screens, product, anything technical",
-            lift: 0.01, contrast: 1.18, saturation: 0.95, warmth: -120, vignette: 0.05,
+            lift: 0.01,
+            contrast: 1.18,
+            saturation: 0.95,
+            warmth: -120,
+            vignette: 0.05,
         },
         Preset {
             name: "film",
             what_it_is: "lifted blacks, gentle roll-off, muted",
             for_what: "story, slower pieces",
-            lift: 0.07, contrast: 0.96, saturation: 0.9, warmth: 90, vignette: 0.12,
+            lift: 0.07,
+            contrast: 0.96,
+            saturation: 0.9,
+            warmth: 90,
+            vignette: 0.12,
         },
     ]
 }
@@ -379,14 +431,20 @@ pub fn audio_chain(a: &Audio) -> Vec<String> {
         chain.push("acompressor=threshold=-18dB:ratio=3:attack=5:release=120".to_string());
     }
     // Always last: anything after it changes the loudness you just set.
-    chain.push(format!("loudnorm=I={TARGET_LUFS}:TP={MAX_TRUE_PEAK_DB}:LRA=9"));
+    chain.push(format!(
+        "loudnorm=I={TARGET_LUFS}:TP={MAX_TRUE_PEAK_DB}:LRA=9"
+    ));
     chain
 }
 
 /// What Atlas says. The thing a viewer would notice first.
 pub fn spoken(audio: &[Note], picture: &[Note]) -> String {
     let mut all: Vec<&Note> = audio.iter().chain(picture.iter()).collect();
-    all.sort_by(|a, b| b.matters.partial_cmp(&a.matters).unwrap_or(std::cmp::Ordering::Equal));
+    all.sort_by(|a, b| {
+        b.matters
+            .partial_cmp(&a.matters)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     match all.split_first() {
         None => "Sounds and looks fine. Nothing worth changing.".into(),
@@ -394,7 +452,11 @@ pub fn spoken(audio: &[Note], picture: &[Note]) -> String {
             let mut s = format!("{} — {}. {}", first.what, first.because, first.fix);
             let unfixable = rest.iter().filter(|n| !n.fixable_now).count();
             if !rest.is_empty() {
-                s.push_str(&format!(" {} other thing{}.", rest.len(), if rest.len() == 1 { "" } else { "s" }));
+                s.push_str(&format!(
+                    " {} other thing{}.",
+                    rest.len(),
+                    if rest.len() == 1 { "" } else { "s" }
+                ));
             }
             if unfixable > 0 || !first.fixable_now {
                 s.push_str(" Some of that needs the next recording, not this one.");

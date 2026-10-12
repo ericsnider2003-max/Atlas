@@ -65,19 +65,28 @@ fn asking_whether_it_can_do_something_gets_a_useful_no() {
     // go and get.
     let (no, why) = can("dictate").unwrap();
     assert!(!no);
-    assert!(why.contains("whisper"), "a blocked capability must name what it waits on: {why}");
+    assert!(
+        why.contains("whisper"),
+        "a blocked capability must name what it waits on: {why}"
+    );
 
     // `mesh` is the standing example of genuinely not built, now that
     // `plainchange` is wired. It is on CAPABILITY_UNWIRED with a reason, which
     // is what `Planned` requires.
     let (_, why) = can("mesh").unwrap();
-    assert!(why.contains("not built yet"), "unreachable, so it says so: {why}");
+    assert!(
+        why.contains("not built yet"),
+        "unreachable, so it says so: {why}"
+    );
 
     // "overlay" used to be the never-run-for-real example, but it's
     // unreachable too, so it now honestly reports as not built. "layout" is
     // the real example of code that compiles and has never touched Windows.
     let (_, why) = can("layout").unwrap();
-    assert!(why.contains("never run on a real machine"), "and it doesn't pretend: {why}");
+    assert!(
+        why.contains("never run on a real machine"),
+        "and it doesn't pretend: {why}"
+    );
 }
 
 #[test]
@@ -104,13 +113,22 @@ fn the_full_list_is_grouped_by_area_and_marks_the_state() {
 fn what_is_new_is_answerable() {
     let recent = since(18);
     assert!(!recent.is_empty());
-    assert!(recent[0].added >= recent[recent.len() - 1].added, "newest first");
+    assert!(
+        recent[0].added >= recent[recent.len() - 1].added,
+        "newest first"
+    );
     assert!(recent.iter().any(|c| c.id == "interrupt"));
 }
 
 #[test]
 fn every_area_has_something_in_it() {
-    for area in [Area::Hearing, Area::Speaking, Area::Files, Area::Thinking, Area::Itself] {
+    for area in [
+        Area::Hearing,
+        Area::Speaking,
+        Area::Files,
+        Area::Thinking,
+        Area::Itself,
+    ] {
         assert!(!in_area(area).is_empty(), "{area:?} is empty");
     }
 }
@@ -134,7 +152,10 @@ fn the_blocked_list_names_the_thing_and_the_reason_together() {
 // ================= learning what you do the same way every time =================
 
 fn cfg() -> RoutineConfig {
-    RoutineConfig { enabled: true, ..Default::default() }
+    RoutineConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 /// Monday morning, three weeks running.
@@ -198,7 +219,9 @@ fn a_long_gap_ends_a_sequence_rather_than_joining_two() {
     // Two hours later is a different thing you did.
     w.did("write the report", 7200, 10, 0);
     let seqs = w.find(&cfg());
-    assert!(seqs.iter().all(|r| !r.steps.contains(&"write the report".to_string())));
+    assert!(seqs
+        .iter()
+        .all(|r| !r.steps.contains(&"write the report".to_string())));
 }
 
 #[test]
@@ -221,8 +244,14 @@ fn atlas_asks_rather_than_deciding_your_monday_for_you() {
 #[test]
 fn a_routine_that_sends_something_is_flagged_before_you_agree_to_it() {
     // Not after it has posted something wrong.
-    assert!(sends_something(&["draft the update".into(), "post it to LinkedIn".into()]));
-    assert!(!sends_something(&["open the dashboard".into(), "check fills".into()]));
+    assert!(sends_something(&[
+        "draft the update".into(),
+        "post it to LinkedIn".into()
+    ]));
+    assert!(!sends_something(&[
+        "open the dashboard".into(),
+        "check fills".into()
+    ]));
 
     let mut w = Watcher::default();
     for week in 0..3u64 {

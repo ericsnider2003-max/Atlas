@@ -118,14 +118,22 @@ pub fn all() -> Vec<Credential> {
 /// Things Atlas deliberately does not hold, and won't.
 pub fn never_held() -> Vec<(&'static str, &'static str)> {
     vec![
-        ("your account passwords",
-         "Atlas has no code that signs into anything. It uses sessions you created"),
-        ("your banking credentials",
-         "financial sites are read-only by construction — it can't submit a form on one"),
-        ("your master password",
-         "for a password manager, which is the right place for passwords and isn't this"),
-        ("recovery codes",
-         "it tracks how many you have left, never the codes themselves"),
+        (
+            "your account passwords",
+            "Atlas has no code that signs into anything. It uses sessions you created",
+        ),
+        (
+            "your banking credentials",
+            "financial sites are read-only by construction — it can't submit a form on one",
+        ),
+        (
+            "your master password",
+            "for a password manager, which is the right place for passwords and isn't this",
+        ),
+        (
+            "recovery codes",
+            "it tracks how many you have left, never the codes themselves",
+        ),
     ]
 }
 
@@ -147,13 +155,18 @@ pub fn misplaced() -> Vec<&'static Credential> {
 pub fn needs_you_awake() -> Vec<Credential> {
     // Owned, not `&'static`: the old version leaked a fresh copy of the whole
     // list every time it was asked.
-    all().into_iter().filter(|c| c.needed_overnight && c.kept == Kept::Vault).collect()
+    all()
+        .into_iter()
+        .filter(|c| c.needed_overnight && c.kept == Kept::Vault)
+        .collect()
 }
 
 /// What Atlas says when you ask what it's holding.
 pub fn spoken() -> String {
-    let held: Vec<Credential> =
-        all().into_iter().filter(|c| c.kept != Kept::NotHeld).collect();
+    let held: Vec<Credential> = all()
+        .into_iter()
+        .filter(|c| c.kept != Kept::NotHeld)
+        .collect();
     let vault = held.iter().filter(|c| c.kept == Kept::Vault).count();
     format!(
         "{} things: {} in the locked vault, and your browser session, which you made by signing \

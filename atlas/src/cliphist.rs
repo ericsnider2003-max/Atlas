@@ -50,7 +50,13 @@ impl Default for HistoryConfig {
             keep_hours: 24,
             max_items: 200,
             max_chars: 20_000,
-            never_from: vec!["KeePass".into(), "KeePassXC".into(), "1Password".into(), "Bitwarden".into(), "LastPass".into()],
+            never_from: vec![
+                "KeePass".into(),
+                "KeePassXC".into(),
+                "1Password".into(),
+                "Bitwarden".into(),
+                "LastPass".into(),
+            ],
         }
     }
 }
@@ -104,14 +110,24 @@ impl History {
     }
 
     /// Keep one copy, if it may be kept. `from` is the app in front.
-    pub fn keep(&mut self, cfg: &HistoryConfig, copy: &crate::platform::ClipCopy, from: &str, now: u64) -> Result<(), Skipped> {
+    pub fn keep(
+        &mut self,
+        cfg: &HistoryConfig,
+        copy: &crate::platform::ClipCopy,
+        from: &str,
+        now: u64,
+    ) -> Result<(), Skipped> {
         let text = match copy {
             crate::platform::ClipCopy::Private => return self.skip(Skipped::Private),
             crate::platform::ClipCopy::NotText => return self.skip(Skipped::NotText),
             crate::platform::ClipCopy::Text(t) => t,
         };
         let low_from = from.to_lowercase();
-        if cfg.never_from.iter().any(|n| !n.is_empty() && low_from.contains(&n.to_lowercase())) {
+        if cfg
+            .never_from
+            .iter()
+            .any(|n| !n.is_empty() && low_from.contains(&n.to_lowercase()))
+        {
             return self.skip(Skipped::NeverFrom);
         }
         if text.trim().is_empty() {
@@ -127,7 +143,11 @@ impl History {
         // The same text copied again moves to the front rather than
         // appearing twice.
         self.clips.retain(|c| c.text != text);
-        self.clips.push(Clip { text, at: now, from: from.to_string() });
+        self.clips.push(Clip {
+            text,
+            at: now,
+            from: from.to_string(),
+        });
         self.forget(cfg, now);
         Ok(())
     }
@@ -158,7 +178,12 @@ impl History {
     pub fn find(&self, query: &str) -> Vec<&Clip> {
         let q = query.trim().to_lowercase();
         if let Some(n) = position_in(&q) {
-            return self.recent(n).into_iter().skip(n.saturating_sub(1)).take(1).collect();
+            return self
+                .recent(n)
+                .into_iter()
+                .skip(n.saturating_sub(1))
+                .take(1)
+                .collect();
         }
         let words: Vec<&str> = q.split_whitespace().filter(|w| !STOP.contains(w)).collect();
         if words.is_empty() {
@@ -170,10 +195,16 @@ impl History {
             .enumerate()
             .filter(|(_, c)| {
                 let hay = c.text.to_lowercase();
-                let tokens: Vec<&str> = hay.split(|ch: char| !ch.is_alphanumeric()).filter(|t| !t.is_empty()).collect();
+                let tokens: Vec<&str> = hay
+                    .split(|ch: char| !ch.is_alphanumeric())
+                    .filter(|t| !t.is_empty())
+                    .collect();
                 words.iter().all(|w| {
                     hay.contains(w)
-                        || tokens.iter().any(|t| crate::typos::osa(t, w, crate::typos::allowance(w.chars().count())).is_some())
+                        || tokens.iter().any(|t| {
+                            crate::typos::osa(t, w, crate::typos::allowance(w.chars().count()))
+                                .is_some()
+                        })
                 })
             })
             .collect();
@@ -190,7 +221,11 @@ impl History {
                 .into();
         }
         let n = self.clips.len();
-        let mut out = format!("{n} thing{} copied in the last {} hours.", if n == 1 { "" } else { "s" }, cfg.keep_hours);
+        let mut out = format!(
+            "{n} thing{} copied in the last {} hours.",
+            if n == 1 { "" } else { "s" },
+            cfg.keep_hours
+        );
         if self.skipped > 0 {
             out.push_str(&format!(" {} copies weren't kept (private, secret-looking, or from an app on the never list).", self.skipped));
         }
@@ -198,11 +233,22 @@ impl History {
     }
 }
 
-const STOP: &[&str] = &["the", "one", "about", "with", "that", "i", "copied", "thing", "a", "an", "from", "paste", "copy", "back"];
+const STOP: &[&str] = &[
+    "the", "one", "about", "with", "that", "i", "copied", "thing", "a", "an", "from", "paste",
+    "copy", "back",
+];
 
 /// "the 3rd", "2", "second", "last": a position, newest first.
 fn position_in(q: &str) -> Option<usize> {
-    const WORDS: &[(&str, usize)] = &[("last", 1), ("latest", 1), ("first", 1), ("second", 2), ("third", 3), ("fourth", 4), ("fifth", 5)];
+    const WORDS: &[(&str, usize)] = &[
+        ("last", 1),
+        ("latest", 1),
+        ("first", 1),
+        ("second", 2),
+        ("third", 3),
+        ("fourth", 4),
+        ("fifth", 5),
+    ];
     let words: Vec<&str> = q.split_whitespace().filter(|w| !STOP.contains(w)).collect();
     if words.len() != 1 {
         return None;
@@ -213,16 +259,29 @@ fn position_in(q: &str) -> Option<usize> {
     }
     let digits: String = w.chars().take_while(|c| c.is_ascii_digit()).collect();
     let rest = &w[digits.len()..];
-    (!digits.is_empty() && matches!(rest, "" | "st" | "nd" | "rd" | "th")).then(|| digits.parse().ok()).flatten().filter(|n| *n >= 1)
+    (!digits.is_empty() && matches!(rest, "" | "st" | "nd" | "rd" | "th"))
+        .then(|| digits.parse().ok())
+        .flatten()
+        .filter(|n| *n >= 1)
 }
 
 /// One clip as a line, shortened: "“the quarterly numbers …” (from EXCEL, 3 min ago)".
 pub fn line(c: &Clip, now: u64) -> String {
     let flat: String = c.text.split_whitespace().collect::<Vec<_>>().join(" ");
     let short: String = flat.chars().take(60).collect();
-    let more = if flat.chars().count() > 60 { " …" } else { "" };
+    let more = if flat.chars().count() > 60 {
+        " …"
+    } else {
+        ""
+    };
     let ago = now.saturating_sub(c.at) / 60;
-    let when = if ago == 0 { "just now".to_string() } else if ago < 60 { format!("{ago} min ago") } else { format!("{} h ago", ago / 60) };
+    let when = if ago == 0 {
+        "just now".to_string()
+    } else if ago < 60 {
+        format!("{ago} min ago")
+    } else {
+        format!("{} h ago", ago / 60)
+    };
     let from = c.from.trim_end_matches(".exe").trim_end_matches(".EXE");
     if from.is_empty() {
         format!("\u{201c}{short}{more}\u{201d} ({when})")

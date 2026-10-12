@@ -27,16 +27,18 @@ impl<'a> Daemon<'a> {
     /// made by a bare "yes" (a one-off, as `grants` reads it) is kept for
     /// good: the question asked was whether Atlas may look whenever you ask.
     pub(super) fn camera_allowed(&mut self, t: u64) -> bool {
-        let facts = crate::grants::AppFacts { known: false, confirm_each_time: false };
+        let facts = crate::grants::AppFacts {
+            known: false,
+            confirm_each_time: false,
+        };
         let ok = self.permissions.check(CAMERA, LOOK, &facts).allowed();
-        let one_off = self
-            .permissions
-            .grants
-            .iter()
-            .any(|g| g.app.eq_ignore_ascii_case(CAMERA) && g.span == crate::grants::Span::Once && !g.used);
+        let one_off = self.permissions.grants.iter().any(|g| {
+            g.app.eq_ignore_ascii_case(CAMERA) && g.span == crate::grants::Span::Once && !g.used
+        });
         if ok && one_off {
             self.permissions.revoke(CAMERA);
-            self.permissions.grant(CAMERA, Some(LOOK), crate::grants::Span::Always, t);
+            self.permissions
+                .grant(CAMERA, Some(LOOK), crate::grants::Span::Always, t);
             let _ = self.store.save("permissions", &self.permissions);
         }
         ok
@@ -52,13 +54,15 @@ impl<'a> Daemon<'a> {
         let t = crate::store::now();
         let said = self.last_said.clone();
         if crate::camera_ask::names_the_camera(&said) && !self.camera_allowed(t) {
-            self.permissions.grant(CAMERA, Some(LOOK), crate::grants::Span::Always, t);
+            self.permissions
+                .grant(CAMERA, Some(LOOK), crate::grants::Span::Always, t);
             let _ = self.store.save("permissions", &self.permissions);
         }
         if self.camera_allowed(t) {
             return None;
         }
-        self.session.await_approval(Intent::CaptureWebcam, crate::camera_ask::ALLOW);
+        self.session
+            .await_approval(Intent::CaptureWebcam, crate::camera_ask::ALLOW);
         Some(crate::camera_ask::ALLOW.into())
     }
 
@@ -73,8 +77,14 @@ impl<'a> Daemon<'a> {
         }
         let root = self.store.install_root();
         // The talking model's own eyes count as a picture reader (item 79).
-        let eyes = tools.picture_talk.enabled && crate::models::talking_model_sees() && self.helpers.is_running("model-server");
-        let reader = if eyes { Ok(()) } else { crate::picture_talk::ready(&tools.picture_talk, &root) };
+        let eyes = tools.picture_talk.enabled
+            && crate::models::talking_model_sees()
+            && self.helpers.is_running("model-server");
+        let reader = if eyes {
+            Ok(())
+        } else {
+            crate::picture_talk::ready(&tools.picture_talk, &root)
+        };
         match reader {
             // The picture reader: a frame, a question, and the answer when
             // it's ready (a crew errand, so Atlas keeps listening).
@@ -93,7 +103,12 @@ impl<'a> Daemon<'a> {
         cfg.enabled = true;
         let (frame, w, h) = match self.one_frame() {
             Ok(f) => f,
-            Err(why) => return format!("{}, but I couldn't get a picture: {why}.", crate::camera_ask::LOOKING),
+            Err(why) => {
+                return format!(
+                    "{}, but I couldn't get a picture: {why}.",
+                    crate::camera_ask::LOOKING
+                )
+            }
         };
         let album = self.album.clone();
         let sight = self.start_looking().look(&frame, w, h, &cfg, &album);
@@ -133,10 +148,19 @@ impl<'a> Daemon<'a> {
                     let left = w.left_secs(t);
                     format!("Yes -- for about {} more, then I stop by myself. Say \"stop watching\" to end it now.", if left >= 120 { format!("{} minutes", left / 60) } else { format!("{left} seconds") })
                 }
-                None => "No, I'm not watching. Say \"watch me for five minutes\" and I will.".into(),
+                None => {
+                    "No, I'm not watching. Say \"watch me for five minutes\" and I will.".into()
+                }
             },
-            crate::camwatch::Ask::Start { secs, until_stopped } => {
-                let secs = secs.unwrap_or(if until_stopped { crate::camwatch::MOST_SECS } else { crate::camwatch::DEFAULT_SECS });
+            crate::camwatch::Ask::Start {
+                secs,
+                until_stopped,
+            } => {
+                let secs = secs.unwrap_or(if until_stopped {
+                    crate::camwatch::MOST_SECS
+                } else {
+                    crate::camwatch::DEFAULT_SECS
+                });
                 self.start_watching(secs, until_stopped, t)
             }
         })
@@ -158,11 +182,16 @@ impl<'a> Daemon<'a> {
         };
         self.let_go_of_the_camera("watching takes the camera");
         let feed = crate::frames::Feed {
-            open_with: crate::frames::from_capture_args(&super::resolved(&capture.args, &tools.vars)),
+            open_with: crate::frames::from_capture_args(&super::resolved(
+                &capture.args,
+                &tools.vars,
+            )),
             ..crate::frames::Feed::default()
         };
-        let eyes_url = (tools.picture_talk.enabled && crate::models::talking_model_sees() && self.helpers.is_running("model-server"))
-            .then(|| crate::models::talking_chat_url(&tools.models));
+        let eyes_url = (tools.picture_talk.enabled
+            && crate::models::talking_model_sees()
+            && self.helpers.is_running("model-server"))
+        .then(|| crate::models::talking_chat_url(&tools.models));
         let setup = crate::camwatch::Setup {
             feed,
             models_dir: std::path::PathBuf::from(&tools.models.dir),
@@ -173,7 +202,8 @@ impl<'a> Daemon<'a> {
         match crate::camwatch::Watcher::start(setup, secs, until_stopped, t) {
             Ok(w) => {
                 self.cam_watch = Some(w);
-                self.log.info(&format!("camera: watching for {secs}s (asked)"));
+                self.log
+                    .info(&format!("camera: watching for {secs}s (asked)"));
                 crate::camwatch::started(secs, until_stopped)
             }
             Err(why) => format!("I couldn't start watching: {why}."),
@@ -182,7 +212,9 @@ impl<'a> Daemon<'a> {
 
     /// Once per tick: what the watch saw worth saying, and its end.
     pub(super) fn watch_tick(&mut self, t: u64) -> Vec<String> {
-        let Some(w) = self.cam_watch.as_mut() else { return Vec::new() };
+        let Some(w) = self.cam_watch.as_mut() else {
+            return Vec::new();
+        };
         let mut out = Vec::new();
         let mut over = None;
         for n in w.drain() {
@@ -221,7 +253,8 @@ impl<'a> Daemon<'a> {
         Some(match ask {
             crate::callmute::Ask::ShowOff => {
                 crate::callmute::show(t);
-                self.log.info("call: showing Atlas off (no muting for two hours)");
+                self.log
+                    .info("call: showing Atlas off (no muting for two hours)");
                 let app = crate::callwatch::call_now();
                 format!(
                     "Showing off it is -- I won't mute your call while you talk to me, so everyone hears us both. {} \
@@ -231,7 +264,8 @@ impl<'a> Daemon<'a> {
             }
             crate::callmute::Ask::StopShowing => {
                 crate::callmute::stop_showing();
-                "Done showing off. On a call, I'll mute you there again while you talk to me.".into()
+                "Done showing off. On a call, I'll mute you there again while you talk to me."
+                    .into()
             }
             crate::callmute::Ask::MuteOff => {
                 crate::callmute::set_on(false);

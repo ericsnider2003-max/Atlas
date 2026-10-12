@@ -61,9 +61,13 @@ fn variant_names() -> BTreeMap<String, String> {
     let end = body.find("\n}\n").unwrap_or(body.len());
     let mut out = BTreeMap::new();
     for line in body[..end].lines() {
-        let Some(rest) = line.split("Intent::").nth(1) else { continue };
+        let Some(rest) = line.split("Intent::").nth(1) else {
+            continue;
+        };
         let variant: String = rest.chars().take_while(|c| c.is_alphanumeric()).collect();
-        let Some(q) = line.split("=> \"").nth(1) else { continue };
+        let Some(q) = line.split("=> \"").nth(1) else {
+            continue;
+        };
         let name: String = q.chars().take_while(|c| *c != '"').collect();
         if !variant.is_empty() && !name.is_empty() {
             out.insert(variant, name);
@@ -281,7 +285,11 @@ fn the_gap_is_named_rather_than_forgotten() {
          branch that reaches it is not, and that is where the decision lives. \
          Write a test in `tests/the_branches_that_do_damage.rs`, or add it to \
          NO_DAEMON_TEST with why a wrong branch there would be noticed.",
-        unexplained.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        unexplained
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 
     let fixed: Vec<&String> = listed.difference(&missing).collect();
@@ -289,7 +297,11 @@ fn the_gap_is_named_rather_than_forgotten() {
         fixed.is_empty(),
         "these are listed as having no daemon-level test and now have one:\n  \
          {}\n\nGood -- delete those lines, so the list keeps meaning something.",
-        fixed.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        fixed
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
 

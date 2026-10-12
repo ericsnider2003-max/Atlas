@@ -27,7 +27,10 @@ fn model() -> Option<PathBuf> {
 #[test]
 fn the_phone_thinks_with_its_own_model_or_says_how_to_get_one() {
     // Before any model: a plain answer saying what to do, not a hang.
-    let said = PhoneLlm.complete("You are Atlas.", "hello").unwrap_err().to_string();
+    let said = PhoneLlm
+        .complete("You are Atlas.", "hello")
+        .unwrap_err()
+        .to_string();
     assert!(said.contains("get your own model"), "{said}");
 
     let Some(path) = model() else {
@@ -42,24 +45,49 @@ fn the_phone_thinks_with_its_own_model_or_says_how_to_get_one() {
     std::fs::copy(&path, &here).unwrap();
     let started = std::time::Instant::now();
     attach(&here).unwrap();
-    println!("LIVE loaded {} in {:.2}s", here.display(), started.elapsed().as_secs_f64());
+    println!(
+        "LIVE loaded {} in {:.2}s",
+        here.display(),
+        started.elapsed().as_secs_f64()
+    );
     assert!(attached().is_some());
 
     let t = std::time::Instant::now();
-    let out = PhoneLlm.complete("", "Once upon a time, there was a little cat").unwrap();
+    let out = PhoneLlm
+        .complete("", "Once upon a time, there was a little cat")
+        .unwrap();
     println!("LIVE [{:.2}s] {out}", t.elapsed().as_secs_f64());
-    assert!(out.split_whitespace().count() >= 5, "the model said almost nothing: {out:?}");
+    assert!(
+        out.split_whitespace().count() >= 5,
+        "the model said almost nothing: {out:?}"
+    );
 
     // Through the daemon, the way the phone core wires it (`mobile::phone_llm`).
     let c = Config::load(Path::new("config")).unwrap();
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 390, height: 844, primary: true }]);
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 390,
+        height: 844,
+        primary: true,
+    }]);
     let llm: std::sync::Arc<dyn Llm> = std::sync::Arc::new(PhoneLlm);
-    let mut d = Daemon::new(&c, &p, Some(llm), Store::new(dir.join("state")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(llm),
+        Store::new(dir.join("state")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let t = std::time::Instant::now();
     let reply = d.turn("tell me a story about a cat", 1_700_000_000);
     println!("LIVE [daemon {:.1}s] {reply}", t.elapsed().as_secs_f64());
     let t = std::time::Instant::now();
     let other = d.turn("what's a good name for a grey cat?", 1_700_000_100);
     println!("LIVE [daemon {:.1}s] {other}", t.elapsed().as_secs_f64());
-    assert!(!reply.trim().is_empty() && !reply.contains("get your own model"), "{reply}");
+    assert!(
+        !reply.trim().is_empty() && !reply.contains("get your own model"),
+        "{reply}"
+    );
 }

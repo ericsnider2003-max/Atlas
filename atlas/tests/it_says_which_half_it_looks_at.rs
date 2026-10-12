@@ -27,7 +27,11 @@
 use atlas::opsec::{check, frame_unchecked, spoken, OpsecConfig, NOT_ITS_BUSINESS};
 
 fn cfg() -> OpsecConfig {
-    OpsecConfig { enabled: true, applies_until: String::new(), ..Default::default() }
+    OpsecConfig {
+        enabled: true,
+        applies_until: String::new(),
+        ..Default::default()
+    }
 }
 
 const TODAY: &str = "2026-09-18";
@@ -112,7 +116,10 @@ fn a_finding_says_what_was_not_looked_at() {
     // A warning about a word, on its own, reads as "I looked and this is what
     // I found". The picture is the half the module is named for.
     let found = check("wheels up on the fifteenth", &[], &cfg(), TODAY);
-    assert!(!found.is_empty(), "the transcript scan found nothing, so this proves nothing");
+    assert!(
+        !found.is_empty(),
+        "the transcript scan found nothing, so this proves nothing"
+    );
 
     let said = spoken(&found, &cfg(), TODAY);
     assert!(
@@ -140,7 +147,11 @@ fn nothing_is_said_at_all_once_the_date_has_passed() {
     // The control. `still_applies` gates the whole module, and the caveat
     // must not become a way past that — a person out from under the rules
     // should hear nothing, including notes about what was not checked.
-    let expired = OpsecConfig { enabled: true, applies_until: "2020-01-01".into(), ..Default::default() };
+    let expired = OpsecConfig {
+        enabled: true,
+        applies_until: "2020-01-01".into(),
+        ..Default::default()
+    };
     let found = check("wheels up on the fifteenth", &[], &expired, TODAY);
     assert!(found.is_empty());
     assert_eq!(spoken(&found, &expired, TODAY), "");
@@ -153,7 +164,11 @@ fn the_frame_half_still_works_when_something_hands_it_one() {
     // would feed.
     use atlas::opsec::Risk;
     let seen = vec![
-        (Risk::Insignia, 12.0f32, "a unit patch on the left shoulder".to_string()),
+        (
+            Risk::Insignia,
+            12.0f32,
+            "a unit patch on the left shoulder".to_string(),
+        ),
         (Risk::Location, 40.0f32, "a gate sign".to_string()),
     ];
     let found = check("nothing incriminating here", &seen, &cfg(), TODAY);

@@ -52,37 +52,61 @@ pub struct Export {
 pub fn export_for(p: Platform) -> Export {
     match p {
         Platform::TikTok => Export {
-            width: 1080, height: 1920, fps: 30, bitrate: 10, audio_kbps: 192,
+            width: 1080,
+            height: 1920,
+            fps: 30,
+            bitrate: 10,
+            audio_kbps: 192,
             sweet_spot_secs: (21, 34),
             max_secs: 600,
             note: "upload from the phone if you can — the desktop uploader compresses harder",
         },
         Platform::Reels => Export {
-            width: 1080, height: 1920, fps: 30, bitrate: 12, audio_kbps: 192,
+            width: 1080,
+            height: 1920,
+            fps: 30,
+            bitrate: 12,
+            audio_kbps: 192,
             sweet_spot_secs: (15, 30),
             max_secs: 90,
             note: "keep text out of the bottom 25% — the caption box sits higher than TikTok's",
         },
         Platform::Shorts => Export {
-            width: 1080, height: 1920, fps: 30, bitrate: 12, audio_kbps: 192,
+            width: 1080,
+            height: 1920,
+            fps: 30,
+            bitrate: 12,
+            audio_kbps: 192,
             sweet_spot_secs: (25, 50),
             max_secs: 180,
             note: "titles matter here in a way they don't on TikTok — it's still a search engine",
         },
         Platform::YouTube => Export {
-            width: 1920, height: 1080, fps: 30, bitrate: 16, audio_kbps: 320,
+            width: 1920,
+            height: 1080,
+            fps: 30,
+            bitrate: 16,
+            audio_kbps: 320,
             sweet_spot_secs: (480, 900),
             max_secs: 43_200,
             note: "the thumbnail does more work than the first minute",
         },
         Platform::XTwitter => Export {
-            width: 1080, height: 1920, fps: 30, bitrate: 8, audio_kbps: 128,
+            width: 1080,
+            height: 1920,
+            fps: 30,
+            bitrate: 8,
+            audio_kbps: 128,
             sweet_spot_secs: (10, 45),
             max_secs: 140,
             note: "it plays muted and often without captions on — burn them in",
         },
         Platform::LinkedIn => Export {
-            width: 1080, height: 1350, fps: 30, bitrate: 10, audio_kbps: 192,
+            width: 1080,
+            height: 1350,
+            fps: 30,
+            bitrate: 10,
+            audio_kbps: 192,
             sweet_spot_secs: (30, 90),
             max_secs: 600,
             note: "4:5 rather than 9:16, and it autoplays muted",
@@ -106,23 +130,36 @@ pub fn export_for(p: Platform) -> Export {
 /// own fix for exactly that reason.
 pub fn export_args(e: &Export, input: &str, output: &str, strip_metadata: bool) -> Vec<String> {
     let mut args: Vec<String> = vec![
-        "-i".into(), input.into(),
-        "-c:v".into(), "libx264".into(),
-        "-preset".into(), "slow".into(),
-        "-b:v".into(), format!("{}M", e.bitrate),
-        "-maxrate".into(), format!("{}M", e.bitrate + 2),
-        "-bufsize".into(), format!("{}M", e.bitrate * 2),
+        "-i".into(),
+        input.into(),
+        "-c:v".into(),
+        "libx264".into(),
+        "-preset".into(),
+        "slow".into(),
+        "-b:v".into(),
+        format!("{}M", e.bitrate),
+        "-maxrate".into(),
+        format!("{}M", e.bitrate + 2),
+        "-bufsize".into(),
+        format!("{}M", e.bitrate * 2),
         // Everything expects this, and getting it wrong makes it unplayable
         // on some phones for no visible benefit.
-        "-pix_fmt".into(), "yuv420p".into(),
-        "-profile:v".into(), "high".into(),
-        "-r".into(), e.fps.to_string(),
-        "-vf".into(), format!("scale={}:{}", e.width, e.height),
-        "-c:a".into(), "aac".into(),
-        "-b:a".into(), format!("{}k", e.audio_kbps),
+        "-pix_fmt".into(),
+        "yuv420p".into(),
+        "-profile:v".into(),
+        "high".into(),
+        "-r".into(),
+        e.fps.to_string(),
+        "-vf".into(),
+        format!("scale={}:{}", e.width, e.height),
+        "-c:a".into(),
+        "aac".into(),
+        "-b:a".into(),
+        format!("{}k", e.audio_kbps),
         // Puts the index at the front so it starts playing before it's fully
         // downloaded.
-        "-movflags".into(), "+faststart".into(),
+        "-movflags".into(),
+        "+faststart".into(),
     ];
     if strip_metadata {
         args.push("-map_metadata".into());
@@ -202,7 +239,12 @@ impl Format {
 }
 
 /// Work out what you've made.
-pub fn format_of(seconds: f32, mostly_face: bool, has_screen: bool, mentions_product: bool) -> Format {
+pub fn format_of(
+    seconds: f32,
+    mostly_face: bool,
+    has_screen: bool,
+    mentions_product: bool,
+) -> Format {
     if has_screen {
         return Format::ScreenRecording;
     }
@@ -254,8 +296,10 @@ impl MusicSource {
     pub fn safe(&self, business_account: bool) -> bool {
         match self {
             MusicSource::InApp => !business_account,
-            MusicSource::CommercialLibrary | MusicSource::PublicDomain
-            | MusicSource::CreativeCommons | MusicSource::Licensed => true,
+            MusicSource::CommercialLibrary
+            | MusicSource::PublicDomain
+            | MusicSource::CreativeCommons
+            | MusicSource::Licensed => true,
             MusicSource::Commercial => false,
         }
     }
@@ -280,15 +324,31 @@ impl MusicSource {
 /// Where to get music that won't cost you the video.
 pub fn where_to_get_music() -> Vec<(&'static str, MusicSource, &'static str)> {
     vec![
-        ("the app's own library", MusicSource::InApp,
-         "best reach — the platform favours its own sounds. Personal accounts only"),
-        ("the app's commercial library", MusicSource::CommercialLibrary,
-         "what to use if the account is a business one"),
-        ("YouTube Audio Library", MusicSource::PublicDomain,
-         "free, downloadable, usable anywhere including outside YouTube"),
-        ("Free Music Archive", MusicSource::CreativeCommons,
-         "free, but read the licence — some need crediting"),
-        ("Pixabay Music", MusicSource::PublicDomain, "free, no attribution needed"),
+        (
+            "the app's own library",
+            MusicSource::InApp,
+            "best reach — the platform favours its own sounds. Personal accounts only",
+        ),
+        (
+            "the app's commercial library",
+            MusicSource::CommercialLibrary,
+            "what to use if the account is a business one",
+        ),
+        (
+            "YouTube Audio Library",
+            MusicSource::PublicDomain,
+            "free, downloadable, usable anywhere including outside YouTube",
+        ),
+        (
+            "Free Music Archive",
+            MusicSource::CreativeCommons,
+            "free, but read the licence — some need crediting",
+        ),
+        (
+            "Pixabay Music",
+            MusicSource::PublicDomain,
+            "free, no attribution needed",
+        ),
     ]
 }
 
@@ -345,7 +405,13 @@ pub fn tags(topic: &str, p: Platform) -> Vec<String> {
 pub fn ready_to_post(p: Platform, seconds: f32, f: Format) -> String {
     let e = export_for(p);
     let (lo, hi) = f.length();
-    let mut s = format!("For {}: {}x{}, {}Mbps.", p.name(), e.width, e.height, e.bitrate);
+    let mut s = format!(
+        "For {}: {}x{}, {}Mbps.",
+        p.name(),
+        e.width,
+        e.height,
+        e.bitrate
+    );
 
     if seconds as u32 > e.max_secs {
         s.push_str(&format!(" It's over their {}s limit.", e.max_secs));
@@ -356,7 +422,10 @@ pub fn ready_to_post(p: Platform, seconds: f32, f: Format) -> String {
         ));
     }
     if (seconds as u32) > hi {
-        s.push_str(&format!(" For a {:?} it's long; {lo} to {hi} is the range.", f));
+        s.push_str(&format!(
+            " For a {:?} it's long; {lo} to {hi} is the range.",
+            f
+        ));
     }
     s.push_str(&format!(" {}.", e.note));
     s

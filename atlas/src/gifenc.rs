@@ -16,7 +16,10 @@
 //! document and have it move everywhere. Each frame after the first stores
 //! only the rectangle that changed, so a ball crossing a still background costs
 //! the ball, not the background.
-#![allow(clippy::needless_range_loop, reason = "numeric kernels step through several arrays by one index; the index loop is the clear form")]
+#![allow(
+    clippy::needless_range_loop,
+    reason = "numeric kernels step through several arrays by one index; the index loop is the clear form"
+)]
 
 use crate::pngcodec::Rgba;
 
@@ -40,7 +43,14 @@ struct Cell {
 /// colour is the exact mean of the pixels in its box — a picture with 256
 /// colours or fewer comes back exactly.
 pub fn palette_for(frames: &[&Rgba]) -> Vec<[u8; 3]> {
-    let mut hist = vec![Cell { n: 0, at: [0; 3], sum: [0; 3] }; 1 << 15];
+    let mut hist = vec![
+        Cell {
+            n: 0,
+            at: [0; 3],
+            sum: [0; 3]
+        };
+        1 << 15
+    ];
     for img in frames {
         let n = (img.width * img.height) as usize;
         // Sample large frames rather than walk every pixel of every one.
@@ -98,7 +108,9 @@ pub fn palette_for(frames: &[&Rgba]) -> Vec<[u8; 3]> {
         .iter()
         .map(|b| {
             let w: u64 = b.iter().map(|c| c.n).sum::<u64>().max(1);
-            let mean = |ch: usize| -> u8 { ((b.iter().map(|c| c.sum[ch]).sum::<u64>() + w / 2) / w) as u8 };
+            let mean = |ch: usize| -> u8 {
+                ((b.iter().map(|c| c.sum[ch]).sum::<u64>() + w / 2) / w) as u8
+            };
             [mean(0), mean(1), mean(2)]
         })
         .collect()
@@ -128,7 +140,10 @@ struct Nearest<'a> {
 
 impl<'a> Nearest<'a> {
     fn new(palette: &'a [[u8; 3]]) -> Self {
-        Nearest { palette, memo: vec![u16::MAX; 1 << 18] }
+        Nearest {
+            palette,
+            memo: vec![u16::MAX; 1 << 18],
+        }
     }
 
     fn index(&mut self, r: u8, g: u8, b: u8) -> u8 {
@@ -197,7 +212,10 @@ fn encode(frames: &[Frame], dither: bool) -> Result<Vec<u8>, String> {
     if w == 0 || h == 0 || w > 65535 || h > 65535 {
         return Err(format!("a GIF can't be {w}×{h}"));
     }
-    if frames.iter().any(|f| f.image.width != w || f.image.height != h) {
+    if frames
+        .iter()
+        .any(|f| f.image.width != w || f.image.height != h)
+    {
         return Err("the frames aren't all the same size".into());
     }
     let images: Vec<&Rgba> = frames.iter().map(|f| f.image).collect();
@@ -276,7 +294,10 @@ fn encode(frames: &[Frame], dither: bool) -> Result<Vec<u8>, String> {
 /// Rewrite the delay in the last Graphic Control Extension written.
 fn extend_last_delay(out: &mut [u8], delay: u32) {
     let d = delay.min(u16::MAX as u32) as u16;
-    if let Some(at) = (0..out.len().saturating_sub(7)).rev().find(|&i| out[i] == 0x21 && out[i + 1] == 0xF9 && out[i + 2] == 0x04) {
+    if let Some(at) = (0..out.len().saturating_sub(7))
+        .rev()
+        .find(|&i| out[i] == 0x21 && out[i + 1] == 0xF9 && out[i + 2] == 0x04)
+    {
         out[at + 4..at + 6].copy_from_slice(&d.to_le_bytes());
     }
 }
@@ -349,11 +370,22 @@ mod tests {
         let mut img = Rgba::new(8, 8);
         for y in 0..8 {
             for x in 0..8 {
-                img.put(x, y, if x < 4 { [255, 0, 0, 255] } else { [0, 0, 255, 255] });
+                img.put(
+                    x,
+                    y,
+                    if x < 4 {
+                        [255, 0, 0, 255]
+                    } else {
+                        [0, 0, 255, 255]
+                    },
+                );
             }
         }
         let pal = palette_for(&[&img]);
-        assert!(pal.contains(&[255, 0, 0]) && pal.contains(&[0, 0, 255]), "{pal:?}");
+        assert!(
+            pal.contains(&[255, 0, 0]) && pal.contains(&[0, 0, 255]),
+            "{pal:?}"
+        );
     }
 
     #[test]

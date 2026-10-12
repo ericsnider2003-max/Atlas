@@ -140,7 +140,11 @@ impl Phrasebook {
         if key.is_empty() {
             return false;
         }
-        if let Some(old) = self.phrases.iter_mut().find(|o| phrase_key(&o.wording) == key) {
+        if let Some(old) = self
+            .phrases
+            .iter_mut()
+            .find(|o| phrase_key(&o.wording) == key)
+        {
             if old.tool == p.tool && old.arg == p.arg && old.meant == p.meant {
                 let was_sure = old.sure;
                 old.sure = old.sure || p.sure;
@@ -191,7 +195,11 @@ impl Phrasebook {
                         let c = crate::router::cosine(v, &p.meaning);
                         // Scaled so SAME_MEANING lands on ROUTE_AT: a cosine
                         // under it can still be a hint, never a route.
-                        if c >= SAME_MEANING { ROUTE_AT + (c - SAME_MEANING) } else { c * (ROUTE_AT / SAME_MEANING) - 0.1 }
+                        if c >= SAME_MEANING {
+                            ROUTE_AT + (c - SAME_MEANING)
+                        } else {
+                            c * (ROUTE_AT / SAME_MEANING) - 0.1
+                        }
                     }
                     _ => 0.0,
                 };
@@ -202,7 +210,11 @@ impl Phrasebook {
                 }
             };
             if score >= HINT_AT && best.as_ref().is_none_or(|b| score > b.score) {
-                best = Some(Found { phrase: p.clone(), score, how });
+                best = Some(Found {
+                    phrase: p.clone(),
+                    score,
+                    how,
+                });
             }
         }
         best
@@ -211,20 +223,30 @@ impl Phrasebook {
     /// Drop the wording that reads as `wording`. What was dropped.
     pub fn forget_wording(&mut self, wording: &str) -> Option<Phrase> {
         let key = phrase_key(wording);
-        let i = self.phrases.iter().position(|p| phrase_key(&p.wording) == key)?;
+        let i = self
+            .phrases
+            .iter()
+            .position(|p| phrase_key(&p.wording) == key)?;
         Some(self.phrases.remove(i))
     }
 
     /// The wording used or learned most recently: what "forget that phrase"
     /// means.
     pub fn latest_wording(&self) -> Option<String> {
-        self.phrases.iter().max_by_key(|p| p.last_used.max(p.learned_at)).map(|p| p.wording.clone())
+        self.phrases
+            .iter()
+            .max_by_key(|p| p.last_used.max(p.learned_at))
+            .map(|p| p.wording.clone())
     }
 
     /// A wording was used to route a sentence.
     pub fn used_now(&mut self, wording: &str, t: u64) {
         let key = phrase_key(wording);
-        if let Some(p) = self.phrases.iter_mut().find(|p| phrase_key(&p.wording) == key) {
+        if let Some(p) = self
+            .phrases
+            .iter_mut()
+            .find(|p| phrase_key(&p.wording) == key)
+        {
             p.used = p.used.saturating_add(1);
             p.last_used = t;
         }
@@ -233,7 +255,11 @@ impl Phrasebook {
     /// A route that wasn't undone or corrected: a rephrase becomes sure.
     pub fn stood_up(&mut self, wording: &str) {
         let key = phrase_key(wording);
-        if let Some(p) = self.phrases.iter_mut().find(|p| phrase_key(&p.wording) == key) {
+        if let Some(p) = self
+            .phrases
+            .iter_mut()
+            .find(|p| phrase_key(&p.wording) == key)
+        {
             p.sure = true;
         }
     }
@@ -282,7 +308,15 @@ impl Phrasebook {
 pub fn phrase_key(said: &str) -> String {
     let n = crate::intent::normalize(said);
     let mut t = crate::intent::without_fillers(&n);
-    for lead in ["can you ", "could you ", "would you ", "will you ", "i want you to ", "i need you to ", "go ahead and "] {
+    for lead in [
+        "can you ",
+        "could you ",
+        "would you ",
+        "will you ",
+        "i want you to ",
+        "i need you to ",
+        "go ahead and ",
+    ] {
         if let Some(r) = t.strip_prefix(lead) {
             t = crate::intent::without_fillers(r);
         }
@@ -294,9 +328,10 @@ pub fn phrase_key(said: &str) -> String {
 /// `router`'s conversational list: that drops "make", "keep" and "go", which
 /// do decide a command.
 const NOT_DECIDING: &[&str] = &[
-    "a", "an", "the", "my", "me", "i", "you", "your", "it", "this", "that", "some", "any", "please", "for", "to",
-    "of", "on", "in", "up", "just", "can", "could", "would", "will", "atlas", "now", "hey", "ok", "okay", "yeah",
-    "so", "and", "thanks", "real", "quick", "quickly", "bit", "little", "from", "with", "by", "at", "about",
+    "a", "an", "the", "my", "me", "i", "you", "your", "it", "this", "that", "some", "any",
+    "please", "for", "to", "of", "on", "in", "up", "just", "can", "could", "would", "will",
+    "atlas", "now", "hey", "ok", "okay", "yeah", "so", "and", "thanks", "real", "quick", "quickly",
+    "bit", "little", "from", "with", "by", "at", "about",
 ];
 
 /// How much two wordings share of the words that decide them, 0 to 1
@@ -371,7 +406,9 @@ pub fn intent_as_tool(intent: &Intent, meant: &str) -> Option<(String, String)> 
 /// then it can only be a hint.
 pub fn phrase_route(p: &Phrase, parser: &Parser) -> Option<Intent> {
     if !p.tool.is_empty() {
-        if let Some(i) = crate::intent::from_tool(&p.tool, &serde_json::Value::String(p.arg.clone()), &p.meant) {
+        if let Some(i) =
+            crate::intent::from_tool(&p.tool, &serde_json::Value::String(p.arg.clone()), &p.meant)
+        {
             return learnable_action(&i).then_some(i);
         }
     }
@@ -427,10 +464,23 @@ pub fn asked_about_phrasebook(said: &str) -> Option<Asked> {
     if ALL.contains(&t.as_str()) {
         return Some(Asked::ForgetAll);
     }
-    if matches!(t.as_str(), "forget that phrase" | "forget that wording" | "unlearn that" | "dont learn that" | "forget what that meant") {
+    if matches!(
+        t.as_str(),
+        "forget that phrase"
+            | "forget that wording"
+            | "unlearn that"
+            | "dont learn that"
+            | "forget what that meant"
+    ) {
         return Some(Asked::ForgetLatest);
     }
-    for lead in ["forget the phrase ", "forget the wording ", "unlearn the phrase ", "forget what i mean by ", "forget what i meant by "] {
+    for lead in [
+        "forget the phrase ",
+        "forget the wording ",
+        "unlearn the phrase ",
+        "forget what i mean by ",
+        "forget what i meant by ",
+    ] {
         if let Some(rest) = t.strip_prefix(lead) {
             let rest = rest.trim();
             if !rest.is_empty() {
@@ -452,7 +502,9 @@ pub fn meant_instead(said: &str) -> Option<String> {
     let low = t.to_ascii_lowercase();
     // "Atlas," and a "no" in front are the same correction.
     let mut at = 0;
-    for lead in ["atlas,", "atlas", "no no,", "no no", "no,", "no", "nope,", "nope", "sorry,", "sorry"] {
+    for lead in [
+        "atlas,", "atlas", "no no,", "no no", "no,", "no", "nope,", "nope", "sorry,", "sorry",
+    ] {
         if low[at..].starts_with(lead) && low[at + lead.len()..].starts_with([' ', ',']) {
             at += lead.len();
             at += low[at..].len() - low[at..].trim_start_matches([' ', ',']).len();
@@ -474,10 +526,21 @@ pub fn meant_instead(said: &str) -> Option<String> {
         if let Some(r) = rest_low.strip_prefix(lead) {
             // Your own casing when lower-casing kept every byte where it was;
             // otherwise the lower-cased words, which mean the same.
-            let words = if low.len() == t.len() { &t[t.len() - r.len()..] } else { r };
-            let words = words.trim().trim_matches(['"', '\'']).trim_end_matches(['.', '!']).trim();
+            let words = if low.len() == t.len() {
+                &t[t.len() - r.len()..]
+            } else {
+                r
+            };
+            let words = words
+                .trim()
+                .trim_matches(['"', '\''])
+                .trim_end_matches(['.', '!'])
+                .trim();
             // At least something to do: "I meant it" is not a correction.
-            if words.split_whitespace().count() >= 2 || (words.len() >= 4 && !matches!(words.to_lowercase().as_str(), "that" | "this" | "it")) {
+            if words.split_whitespace().count() >= 2
+                || (words.len() >= 4
+                    && !matches!(words.to_lowercase().as_str(), "that" | "this" | "it"))
+            {
                 return Some(words.to_string());
             }
         }
@@ -491,7 +554,10 @@ mod tests {
 
     #[test]
     fn the_polite_words_do_not_change_the_key() {
-        assert_eq!(phrase_key("Atlas, can you play some tunes please?"), phrase_key("play some tunes"));
+        assert_eq!(
+            phrase_key("Atlas, can you play some tunes please?"),
+            phrase_key("play some tunes")
+        );
     }
 
     #[test]
@@ -503,8 +569,14 @@ mod tests {
 
     #[test]
     fn a_correction_gives_the_words_meant() {
-        assert_eq!(meant_instead("No, I meant open Spotify").as_deref(), Some("open Spotify"));
-        assert_eq!(meant_instead("i said check my calendar.").as_deref(), Some("check my calendar"));
+        assert_eq!(
+            meant_instead("No, I meant open Spotify").as_deref(),
+            Some("open Spotify")
+        );
+        assert_eq!(
+            meant_instead("i said check my calendar.").as_deref(),
+            Some("check my calendar")
+        );
         assert_eq!(meant_instead("no I meant it"), None);
         assert_eq!(meant_instead("what does it mean"), None);
     }

@@ -107,7 +107,13 @@ const HOUR: u64 = 3600;
 
 impl Gate {
     /// The single question everything goes through.
-    pub fn consider(&mut self, t: &Thing, doing: Doing, cfg: &InterruptConfig, now: u64) -> Decision {
+    pub fn consider(
+        &mut self,
+        t: &Thing,
+        doing: Doing,
+        cfg: &InterruptConfig,
+        now: u64,
+    ) -> Decision {
         // You said you don't care.
         if cfg.muted.iter().any(|m| t.about.contains(m.as_str())) {
             return Decision::Drop("you muted this".into());
@@ -202,7 +208,11 @@ impl Gate {
         Some(if rest == 0 {
             first.say.clone()
         } else {
-            format!("{} And {rest} other thing{}.", first.say, if rest == 1 { "" } else { "s" })
+            format!(
+                "{} And {rest} other thing{}.",
+                first.say,
+                if rest == 1 { "" } else { "s" }
+            )
         })
     }
 
@@ -215,7 +225,8 @@ impl Gate {
     /// stalled job isn't worth saying when you sit back down.
     pub fn forget_stale(&mut self, now: u64, older_than_secs: u64) -> usize {
         let before = self.held.len();
-        self.held.retain(|h| now.saturating_sub(h.at) < older_than_secs);
+        self.held
+            .retain(|h| now.saturating_sub(h.at) < older_than_secs);
         before - self.held.len()
     }
 }
@@ -302,8 +313,15 @@ impl Muted {
 
 pub fn mute_from(said: &str) -> Option<String> {
     let t = said.to_lowercase();
-    for lead in ["stop telling me about", "don't tell me about", "dont tell me about",
-                 "stop mentioning", "i don't care about", "i dont care about", "mute"] {
+    for lead in [
+        "stop telling me about",
+        "don't tell me about",
+        "dont tell me about",
+        "stop mentioning",
+        "i don't care about",
+        "i dont care about",
+        "mute",
+    ] {
         if let Some(i) = t.find(lead) {
             let rest = t[i + lead.len()..].trim().trim_end_matches(['.', '!']);
             if !rest.is_empty() {

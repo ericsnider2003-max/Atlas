@@ -10,10 +10,22 @@ use atlas::decide::*;
 /// production called it, so it moved here, the only place that asks.
 fn names_a_winner(text: &str) -> bool {
     const RECOMMENDS: &[&str] = &[
-        "i'd go with", "i would go with", "i recommend", "my recommendation",
-        "the best option", "the right choice", "you should pick", "you should choose",
-        "go with the", "the winner", "clearly better", "obviously better",
-        "i'd pick", "i would pick", "the answer is", "definitely the",
+        "i'd go with",
+        "i would go with",
+        "i recommend",
+        "my recommendation",
+        "the best option",
+        "the right choice",
+        "you should pick",
+        "you should choose",
+        "go with the",
+        "the winner",
+        "clearly better",
+        "obviously better",
+        "i'd pick",
+        "i would pick",
+        "the answer is",
+        "definitely the",
     ];
     let lower = text.to_lowercase();
     RECOMMENDS.iter().any(|r| lower.contains(r))
@@ -31,7 +43,10 @@ fn opt(what: &str, costs: &str, rests: &[&str]) -> Option_ {
 fn worked() -> Decision {
     let mut d = Decision::new("which broker", Weight::WorthWorking);
     d.real_question = Some("what am I actually optimising for".into());
-    d.boring = Some(("stay where I am".into(), "fees would have to differ by more than the switch costs".into()));
+    d.boring = Some((
+        "stay where I am".into(),
+        "fees would have to differ by more than the switch costs".into(),
+    ));
     d.options = vec![
         opt("stay", "nothing changes", &["current fees hold"]),
         opt("move", "a week of setup", &["the quoted fees are real"]),
@@ -57,9 +72,14 @@ fn laying_out_the_field_still_names_no_winner() {
 
 #[test]
 fn a_worked_decision_will_recommend() {
-    let l = worked().lean().expect("a fully worked decision should lean");
+    let l = worked()
+        .lean()
+        .expect("a fully worked decision should lean");
     assert!(!l.option.is_empty());
-    assert!(!l.because.is_empty(), "an unexplained lean is the thing being avoided");
+    assert!(
+        !l.because.is_empty(),
+        "an unexplained lean is the thing being avoided"
+    );
     assert!(!l.would_change_it.is_empty());
 }
 
@@ -76,7 +96,10 @@ fn it_will_not_lean_with_nothing_argued_against_it() {
     // A lean nobody attacked is a preference wearing evidence.
     let mut d = worked();
     d.against.clear();
-    assert!(matches!(d.lean(), Err(CannotLean::StillWorking(Move::Reversal))));
+    assert!(matches!(
+        d.lean(),
+        Err(CannotLean::StillWorking(Move::Reversal))
+    ));
 }
 
 #[test]
@@ -92,7 +115,10 @@ fn it_asks_rather_than_guessing_what_you_want() {
     // Contrast: nothing missing means it doesn't ask anything at all.
     let complete = worked();
     assert!(complete.needs_from_you.is_empty());
-    assert!(complete.lean().is_ok(), "nothing to ask about should just lean");
+    assert!(
+        complete.lean().is_ok(),
+        "nothing to ask about should just lean"
+    );
 }
 
 #[test]
@@ -264,7 +290,10 @@ fn the_recommendation_is_said_plainly_on_its_own() {
     let l = worked().lean().unwrap();
     let said = l.spoken();
     assert!(said.len() < 60, "too long to say: {said}");
-    assert!(!said.contains("rests on"), "the reasoning leaked into the answer: {said}");
+    assert!(
+        !said.contains("rests on"),
+        "the reasoning leaked into the answer: {said}"
+    );
     assert!(!said.contains('\n'), "more than one line: {said}");
 }
 
@@ -273,7 +302,10 @@ fn the_reasoning_is_there_when_you_ask_for_it() {
     let l = worked().lean().unwrap();
     assert!(l.can_explain());
     let w = l.written();
-    assert!(w.starts_with(&l.spoken()), "the answer should still come first");
+    assert!(
+        w.starts_with(&l.spoken()),
+        "the answer should still come first"
+    );
     assert!(w.contains("rests on"));
     assert!(w.contains("What would change it"));
 }

@@ -90,7 +90,11 @@ pub fn installed(models: &Path) -> Option<(Matter, PathBuf)> {
 /// Said when neither model is here. Plain words: what it's for, what it
 /// costs, and what to say to get it.
 pub fn missing() -> String {
-    let mb = crate::getpieces::photos().iter().map(|p| p.bytes).sum::<u64>().div_ceil(1_000_000);
+    let mb = crate::getpieces::photos()
+        .iter()
+        .map(|p| p.bytes)
+        .sum::<u64>()
+        .div_ceil(1_000_000);
     format!(
         "Blurring or removing a background needs the cut-out models, and they aren't on this machine yet. \
          They're free and about {mb} MB -- say \"get the photo models\" and I'll fetch them."
@@ -157,7 +161,9 @@ fn finish(by: Matter, raw: &[f32]) -> Vec<u8> {
         }
     };
     let span = (hi - lo).max(1e-6);
-    raw.iter().map(|v| (((v - lo) / span).clamp(0.0, 1.0) * 255.0).round() as u8).collect()
+    raw.iter()
+        .map(|v| (((v - lo) / span).clamp(0.0, 1.0) * 255.0).round() as u8)
+        .collect()
 }
 
 /// Make a matte for a picture already sized for `by` (`input_size`), as
@@ -180,16 +186,30 @@ pub fn matte(by: Matter, model: &Path, rgb: &[u8], w: u32, h: u32) -> Result<Mat
     let input: Tensor = tract_ndarray::Array4::from_shape_vec((1, 3, h, w), prepare(by, rgb))
         .map_err(|e| e.to_string())?
         .into();
-    let out = plan.run(tvec!(input.into())).map_err(|e| format!("{} failed: {e}", by.plain()))?;
-    let first = out.first().ok_or_else(|| format!("{} gave nothing back", by.plain()))?;
+    let out = plan
+        .run(tvec!(input.into()))
+        .map_err(|e| format!("{} failed: {e}", by.plain()))?;
+    let first = out
+        .first()
+        .ok_or_else(|| format!("{} gave nothing back", by.plain()))?;
     let first = first.cast_to::<f32>().map_err(|e| e.to_string())?;
     let tensor: &Tensor = &first;
     let view = tensor.view();
     let view = view.as_slice::<f32>().map_err(|e| e.to_string())?;
     if view.len() != w * h {
-        return Err(format!("{} gave back a matte of the wrong size ({} values for {w}x{h})", by.plain(), view.len()));
+        return Err(format!(
+            "{} gave back a matte of the wrong size ({} values for {w}x{h})",
+            by.plain(),
+            view.len()
+        ));
     }
-    Ok(Matte { width: w as u32, height: h as u32, alpha: finish(by, view), by, ms: began.elapsed().as_millis() })
+    Ok(Matte {
+        width: w as u32,
+        height: h as u32,
+        alpha: finish(by, view),
+        by,
+        ms: began.elapsed().as_millis(),
+    })
 }
 
 /// This build has no in-process models (a phone build): said, not failed.

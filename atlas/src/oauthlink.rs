@@ -32,7 +32,8 @@
 use crate::social::apis::Net;
 
 /// Atlas's registration with Google (a "Desktop app" client).
-pub const GOOGLE_CLIENT_ID: &str = "372645916141-182rrs5j6r9f7o9uhuumm2qivdukvlnb.apps.googleusercontent.com";
+pub const GOOGLE_CLIENT_ID: &str =
+    "372645916141-182rrs5j6r9f7o9uhuumm2qivdukvlnb.apps.googleusercontent.com";
 
 /// Atlas's registration with Microsoft (a public client, any Microsoft
 /// account: personal and work or school).
@@ -96,7 +97,8 @@ impl Provider {
 const GOOGLE_SCOPE: &str = "openid email https://www.googleapis.com/auth/calendar.readonly";
 /// Consent for everything at once (mail and calendar are two Microsoft
 /// resources, so the token endpoint is asked for one resource at a time).
-const MS_CONSENT: &str = "openid email offline_access https://outlook.office.com/IMAP.AccessAsUser.All \
+const MS_CONSENT: &str =
+    "openid email offline_access https://outlook.office.com/IMAP.AccessAsUser.All \
 https://outlook.office.com/SMTP.Send https://graph.microsoft.com/Calendars.Read";
 /// The mail resource's scopes: what the code is redeemed for, and what
 /// `msoauth::refresh` asks for before each mail check.
@@ -135,7 +137,11 @@ pub fn consent_url(p: Provider, redirect: &str, state: &str, challenge: &str) ->
 pub fn challenge(verifier: &str) -> String {
     use sha2::Digest;
     let d = sha2::Sha256::digest(verifier.as_bytes());
-    crate::b64::encode(&d).replace('+', "-").replace('/', "_").trim_end_matches('=').to_string()
+    crate::b64::encode(&d)
+        .replace('+', "-")
+        .replace('/', "_")
+        .trim_end_matches('=')
+        .to_string()
 }
 
 /// The code from the request the provider's redirect makes to this
@@ -158,13 +164,20 @@ pub fn code_from(p: Provider, request_line: &str, state: &str) -> Result<String,
     if let Some(e) = error {
         return Err(match e.as_str() {
             "access_denied" => "you didn't allow it, so nothing was connected".into(),
-            _ => format!("{} said no ({e}{})", p.name(), detail.map(|d| format!(": {d}")).unwrap_or_default()),
+            _ => format!(
+                "{} said no ({e}{})",
+                p.name(),
+                detail.map(|d| format!(": {d}")).unwrap_or_default()
+            ),
         });
     }
     if got_state.as_deref() != Some(state) {
-        return Err("that answer wasn't for this sign-in (its state didn't match), so I ignored it".into());
+        return Err(
+            "that answer wasn't for this sign-in (its state didn't match), so I ignored it".into(),
+        );
     }
-    code.filter(|c| !c.is_empty()).ok_or_else(|| format!("{} came back without a code", p.name()))
+    code.filter(|c| !c.is_empty())
+        .ok_or_else(|| format!("{} came back without a code", p.name()))
 }
 
 /// What a finished sign-in gives: whose account, and the refresh token.
@@ -176,7 +189,13 @@ pub struct SignedIn {
 }
 
 /// The form that redeems the code.
-pub fn exchange_form(p: Provider, code: &str, redirect: &str, verifier: &str, secret: Option<&str>) -> String {
+pub fn exchange_form(
+    p: Provider,
+    code: &str,
+    redirect: &str,
+    verifier: &str,
+    secret: Option<&str>,
+) -> String {
     match p {
         Provider::Google => format!(
             "grant_type=authorization_code&code={}&client_id={}&client_secret={}&redirect_uri={}&code_verifier={}",
@@ -205,9 +224,14 @@ fn token_endpoint(p: Provider) -> (&'static str, &'static str) {
 }
 
 fn json(body: &str, who: &str) -> Result<serde_json::Value, String> {
-    let v: serde_json::Value = serde_json::from_str(body).map_err(|_| format!("{who} answered with something that isn't JSON"))?;
+    let v: serde_json::Value = serde_json::from_str(body)
+        .map_err(|_| format!("{who} answered with something that isn't JSON"))?;
     if let Some(e) = v.get("error") {
-        let code = e.as_str().map(str::to_string).or_else(|| e.get("code").and_then(|c| c.as_str()).map(str::to_string)).unwrap_or_default();
+        let code = e
+            .as_str()
+            .map(str::to_string)
+            .or_else(|| e.get("code").and_then(|c| c.as_str()).map(str::to_string))
+            .unwrap_or_default();
         let said = v
             .get("error_description")
             .and_then(|d| d.as_str())
@@ -236,15 +260,22 @@ fn email_in_id_token(id_token: &str) -> Option<String> {
     }
     let raw = crate::b64::decode(&b).ok()?;
     let v: serde_json::Value = serde_json::from_slice(&raw).ok()?;
-    ["email", "preferred_username", "upn"]
-        .iter()
-        .find_map(|k| v.get(*k).and_then(|e| e.as_str()).filter(|e| e.contains('@')).map(|e| e.trim().to_lowercase()))
+    ["email", "preferred_username", "upn"].iter().find_map(|k| {
+        v.get(*k)
+            .and_then(|e| e.as_str())
+            .filter(|e| e.contains('@'))
+            .map(|e| e.trim().to_lowercase())
+    })
 }
 
 /// Read the token endpoint's answer to a code.
 pub fn signed_in_from(p: Provider, body: &str) -> Result<SignedIn, String> {
     let v = json(body, p.name())?;
-    let refresh = v.get("refresh_token").and_then(|t| t.as_str()).unwrap_or("").to_string();
+    let refresh = v
+        .get("refresh_token")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string();
     if refresh.is_empty() {
         return Err(format!(
             "{} gave no lasting sign-in, so nothing was connected. Remove Atlas from your account's connected apps and try again.",
@@ -255,22 +286,42 @@ pub fn signed_in_from(p: Provider, body: &str) -> Result<SignedIn, String> {
         .get("id_token")
         .and_then(|t| t.as_str())
         .and_then(email_in_id_token)
-        .ok_or_else(|| format!("{} didn't say which account this is, so nothing was connected", p.name()))?;
-    Ok(SignedIn { provider: p, email, refresh_token: refresh })
+        .ok_or_else(|| {
+            format!(
+                "{} didn't say which account this is, so nothing was connected",
+                p.name()
+            )
+        })?;
+    Ok(SignedIn {
+        provider: p,
+        email,
+        refresh_token: refresh,
+    })
 }
 
 /// Swap the code for the sign-in.
-pub fn exchange(net: &dyn Net, p: Provider, code: &str, redirect: &str, verifier: &str) -> Result<SignedIn, String> {
+pub fn exchange(
+    net: &dyn Net,
+    p: Provider,
+    code: &str,
+    redirect: &str,
+    verifier: &str,
+) -> Result<SignedIn, String> {
     let secret = google_secret();
     if p == Provider::Google && secret.is_none() {
         return Err(NO_GOOGLE_SECRET.into());
     }
     let (host, path) = token_endpoint(p);
-    let r = net.post_form(host, path, &exchange_form(p, code, redirect, verifier, secret.as_deref()))?;
+    let r = net.post_form(
+        host,
+        path,
+        &exchange_form(p, code, redirect, verifier, secret.as_deref()),
+    )?;
     signed_in_from(p, &r.body)
 }
 
-pub const NO_GOOGLE_SECRET: &str = "This copy of Atlas was built without Google's sign-in key, so Google can't be connected \
+pub const NO_GOOGLE_SECRET: &str =
+    "This copy of Atlas was built without Google's sign-in key, so Google can't be connected \
 from it. Connect the calendar by its private link instead.";
 
 /// A fresh access token for reading calendars.
@@ -279,10 +330,16 @@ from it. Connect the calendar by its private link instead.";
 /// at a time (`connect::access_once`, N5).
 fn calendar_access(net: &dyn Net, p: Provider, refresh_token: &str) -> Result<String, String> {
     let key = format!("calendar {} {refresh_token}", p.key());
-    crate::connect::access_once(&key, crate::store::now(), || fetch_calendar_access(net, p, refresh_token))
+    crate::connect::access_once(&key, crate::store::now(), || {
+        fetch_calendar_access(net, p, refresh_token)
+    })
 }
 
-fn fetch_calendar_access(net: &dyn Net, p: Provider, refresh_token: &str) -> Result<(String, u64), String> {
+fn fetch_calendar_access(
+    net: &dyn Net,
+    p: Provider,
+    refresh_token: &str,
+) -> Result<(String, u64), String> {
     let form = match p {
         Provider::Google => format!(
             "grant_type=refresh_token&refresh_token={}&client_id={}&client_secret={}",
@@ -303,8 +360,15 @@ fn fetch_calendar_access(net: &dyn Net, p: Provider, refresh_token: &str) -> Res
     if let Some(newer) = v.get("refresh_token").and_then(|t| t.as_str()) {
         crate::msoauth::rotated(refresh_token, newer);
     }
-    let token = v.get("access_token").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| format!("{} gave no access token", p.name()))?;
-    Ok((token, v.get("expires_in").and_then(|e| e.as_u64()).unwrap_or(3600)))
+    let token = v
+        .get("access_token")
+        .and_then(|t| t.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| format!("{} gave no access token", p.name()))?;
+    Ok((
+        token,
+        v.get("expires_in").and_then(|e| e.as_u64()).unwrap_or(3600),
+    ))
 }
 
 /// Take back a Google sign-in at Google itself, not only out of the vault:
@@ -315,11 +379,23 @@ fn fetch_calendar_access(net: &dyn Net, p: Provider, refresh_token: &str) -> Res
 /// Google account -- so a caller only does this when nothing else Atlas
 /// keeps rides the same grant (`connecting`, the YouTube sign-in).
 pub fn revoke_google(net: &dyn Net, refresh_token: &str) -> Result<(), String> {
-    let r = net.post_form("oauth2.googleapis.com", "/revoke", &format!("token={}", enc(refresh_token)))?;
+    let r = net.post_form(
+        "oauth2.googleapis.com",
+        "/revoke",
+        &format!("token={}", enc(refresh_token)),
+    )?;
     // 400 invalid_token: already gone, which is what was wanted.
-    let already_gone = r.status == 400 && serde_json::from_str::<serde_json::Value>(&r.body).ok().is_some_and(|body| body.get("error").and_then(|error| error.as_str()) == Some("invalid_token"));
+    let already_gone = r.status == 400
+        && serde_json::from_str::<serde_json::Value>(&r.body)
+            .ok()
+            .is_some_and(|body| {
+                body.get("error").and_then(|error| error.as_str()) == Some("invalid_token")
+            });
     if (200..300).contains(&r.status) || already_gone {
-        crate::connect::forget_access(&format!("calendar {} {refresh_token}", Provider::Google.key()));
+        crate::connect::forget_access(&format!(
+            "calendar {} {refresh_token}",
+            Provider::Google.key()
+        ));
         return Ok(());
     }
     Err(format!("Google answered {}", r.status))
@@ -340,7 +416,12 @@ pub fn utc_stamp(t: u64) -> String {
     let days = (t / 86_400) as i64;
     let s = t % 86_400;
     let (y, m, d) = crate::civil::civil_from_days(days);
-    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", s / 3600, s / 60 % 60, s % 60)
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        s / 3600,
+        s / 60 % 60,
+        s % 60
+    )
 }
 
 /// An RFC 3339 time (`2026-10-05T09:00:00-07:00`, `...Z`, fractions
@@ -350,7 +431,11 @@ pub fn epoch_of(s: &str) -> Option<i64> {
     let s = s.trim();
     let (date, rest) = s.split_once('T')?;
     let mut dp = date.split('-');
-    let (y, m, d): (i64, u32, u32) = (dp.next()?.parse().ok()?, dp.next()?.parse().ok()?, dp.next()?.parse().ok()?);
+    let (y, m, d): (i64, u32, u32) = (
+        dp.next()?.parse().ok()?,
+        dp.next()?.parse().ok()?,
+        dp.next()?.parse().ok()?,
+    );
     let (clock, offset) = match rest.find(['Z', 'z', '+']).or_else(|| rest.rfind('-')) {
         Some(i) => (&rest[..i], &rest[i..]),
         None => (rest, ""),
@@ -358,7 +443,12 @@ pub fn epoch_of(s: &str) -> Option<i64> {
     let mut cp = clock.split(':');
     let h: i64 = cp.next()?.parse().ok()?;
     let mi: i64 = cp.next()?.parse().ok()?;
-    let sec: i64 = cp.next().map(|x| x.split('.').next().unwrap_or("0")).unwrap_or("0").parse().ok()?;
+    let sec: i64 = cp
+        .next()
+        .map(|x| x.split('.').next().unwrap_or("0"))
+        .unwrap_or("0")
+        .parse()
+        .ok()?;
     let off = match offset {
         "" | "Z" | "z" => 0,
         o => {
@@ -377,7 +467,10 @@ fn ics_utc(t: i64) -> String {
 }
 
 fn ics_text(s: &str) -> String {
-    s.replace('\\', "\\\\").replace(';', "\\;").replace(',', "\\,").replace(['\r', '\n'], " ")
+    s.replace('\\', "\\\\")
+        .replace(';', "\\;")
+        .replace(',', "\\,")
+        .replace(['\r', '\n'], " ")
 }
 
 /// One event, as the iCalendar text the calendar import reads.
@@ -391,11 +484,19 @@ struct Ev {
 }
 
 fn vcalendar(events: &[Ev]) -> String {
-    let mut out = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Atlas//oauthlink//EN\r\n");
+    let mut out =
+        String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Atlas//oauthlink//EN\r\n");
     for e in events {
         out.push_str("BEGIN:VEVENT\r\n");
         out.push_str(&format!("UID:{}\r\n", ics_text(&e.uid)));
-        out.push_str(&format!("SUMMARY:{}\r\n", ics_text(if e.summary.is_empty() { "(no title)" } else { &e.summary })));
+        out.push_str(&format!(
+            "SUMMARY:{}\r\n",
+            ics_text(if e.summary.is_empty() {
+                "(no title)"
+            } else {
+                &e.summary
+            })
+        ));
         if !e.location.is_empty() {
             out.push_str(&format!("LOCATION:{}\r\n", ics_text(&e.location)));
         }
@@ -420,24 +521,47 @@ fn day_of(s: &str) -> Option<String> {
 /// are left out.
 pub fn ics_from_google(body: &str) -> Result<String, String> {
     let v = json(body, "Google Calendar")?;
-    let items = v.get("items").and_then(|i| i.as_array()).cloned().unwrap_or_default();
+    let items = v
+        .get("items")
+        .and_then(|i| i.as_array())
+        .cloned()
+        .unwrap_or_default();
     let when = |x: Option<&serde_json::Value>| -> Option<Result<i64, String>> {
         let x = x?;
         if let Some(t) = x.get("dateTime").and_then(|t| t.as_str()) {
             return epoch_of(t).map(Ok);
         }
-        x.get("date").and_then(|d| d.as_str()).and_then(day_of).map(Err)
+        x.get("date")
+            .and_then(|d| d.as_str())
+            .and_then(day_of)
+            .map(Err)
     };
     let mut evs = Vec::new();
     for it in &items {
         if it.get("status").and_then(|s| s.as_str()) == Some("cancelled") {
             continue;
         }
-        let (Some(start), Some(end)) = (when(it.get("start")), when(it.get("end"))) else { return Err("Google calendar event has invalid times; cached events kept".into()) };
+        let (Some(start), Some(end)) = (when(it.get("start")), when(it.get("end"))) else {
+            return Err("Google calendar event has invalid times; cached events kept".into());
+        };
         evs.push(Ev {
-            uid: format!("google-{}", it.get("iCalUID").or(it.get("id")).and_then(|u| u.as_str()).unwrap_or("")),
-            summary: it.get("summary").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-            location: it.get("location").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+            uid: format!(
+                "google-{}",
+                it.get("iCalUID")
+                    .or(it.get("id"))
+                    .and_then(|u| u.as_str())
+                    .unwrap_or("")
+            ),
+            summary: it
+                .get("summary")
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_string(),
+            location: it
+                .get("location")
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_string(),
             start,
             end,
         });
@@ -449,30 +573,64 @@ pub fn ics_from_google(body: &str) -> Result<String, String> {
 /// iCalendar. Cancelled events are left out.
 pub fn ics_from_graph(body: &str) -> Result<String, String> {
     let v = json(body, "Outlook Calendar")?;
-    let items = v.get("value").and_then(|i| i.as_array()).cloned().unwrap_or_default();
+    let items = v
+        .get("value")
+        .and_then(|i| i.as_array())
+        .cloned()
+        .unwrap_or_default();
     let mut evs = Vec::new();
     for it in &items {
         if it.get("isCancelled").and_then(|c| c.as_bool()) == Some(true) {
             continue;
         }
         let all_day = it.get("isAllDay").and_then(|c| c.as_bool()) == Some(true);
-        let at = |k: &str| it.get(k).and_then(|x| x.get("dateTime")).and_then(|t| t.as_str()).map(str::to_string);
-        let (Some(s), Some(e)) = (at("start"), at("end")) else { return Err("Outlook calendar event has missing times; cached events kept".into()) };
+        let at = |k: &str| {
+            it.get(k)
+                .and_then(|x| x.get("dateTime"))
+                .and_then(|t| t.as_str())
+                .map(str::to_string)
+        };
+        let (Some(s), Some(e)) = (at("start"), at("end")) else {
+            return Err("Outlook calendar event has missing times; cached events kept".into());
+        };
         let (start, end) = if all_day {
             match (day_of(&s), day_of(&e)) {
                 (Some(a), Some(b)) => (Err(a), Err(b)),
-                _ => return Err("Outlook calendar event has invalid dates; cached events kept".into()),
+                _ => {
+                    return Err(
+                        "Outlook calendar event has invalid dates; cached events kept".into(),
+                    )
+                }
             }
         } else {
             match (epoch_of(&s), epoch_of(&e)) {
                 (Some(a), Some(b)) => (Ok(a), Ok(b)),
-                _ => return Err("Outlook calendar event has invalid times; cached events kept".into()),
+                _ => {
+                    return Err(
+                        "Outlook calendar event has invalid times; cached events kept".into(),
+                    )
+                }
             }
         };
         evs.push(Ev {
-            uid: format!("outlook-{}", it.get("iCalUId").or(it.get("id")).and_then(|u| u.as_str()).unwrap_or("")),
-            summary: it.get("subject").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-            location: it.get("location").and_then(|l| l.get("displayName")).and_then(|s| s.as_str()).unwrap_or("").to_string(),
+            uid: format!(
+                "outlook-{}",
+                it.get("iCalUId")
+                    .or(it.get("id"))
+                    .and_then(|u| u.as_str())
+                    .unwrap_or("")
+            ),
+            summary: it
+                .get("subject")
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_string(),
+            location: it
+                .get("location")
+                .and_then(|l| l.get("displayName"))
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_string(),
             start,
             end,
         });
@@ -482,17 +640,40 @@ pub fn ics_from_graph(body: &str) -> Result<String, String> {
 
 /// Read explicitly selected calendars; empty selection retains the default
 /// calendar. Every page must succeed before a snapshot can replace the cache.
-pub fn calendar_ics_selected(net: &dyn Net, p: Provider, refresh_token: &str, now: u64, selected: &[String]) -> Result<String, String> {
+pub fn calendar_ics_selected(
+    net: &dyn Net,
+    p: Provider,
+    refresh_token: &str,
+    now: u64,
+    selected: &[String],
+) -> Result<String, String> {
     let token = calendar_access(net, p, refresh_token)?;
     calendar_snapshot_with_access(net, p, &token, now, selected)
 }
 
 /// Snapshot seam: supplied access token, no account setup or environment lookup.
-pub fn calendar_snapshot_with_access(net: &dyn Net, p: Provider, token: &str, now: u64, selected: &[String]) -> Result<String, String> {
+pub fn calendar_snapshot_with_access(
+    net: &dyn Net,
+    p: Provider,
+    token: &str,
+    now: u64,
+    selected: &[String],
+) -> Result<String, String> {
     let auth = format!("Bearer {token}");
-    let (from, to) = (utc_stamp(now.saturating_sub(BACK_SECS)), utc_stamp(now + AHEAD_SECS));
-    let defaults = vec![if p == Provider::Google { "primary".to_string() } else { String::new() }];
-    let calendars = if selected.is_empty() { &defaults } else { selected };
+    let (from, to) = (
+        utc_stamp(now.saturating_sub(BACK_SECS)),
+        utc_stamp(now + AHEAD_SECS),
+    );
+    let defaults = vec![if p == Provider::Google {
+        "primary".to_string()
+    } else {
+        String::new()
+    }];
+    let calendars = if selected.is_empty() {
+        &defaults
+    } else {
+        selected
+    };
     let mut all = Vec::new();
     for calendar in calendars {
         let (host, field, base) = match p {
@@ -502,18 +683,49 @@ pub fn calendar_snapshot_with_access(net: &dyn Net, p: Provider, token: &str, no
         let mut path = base.clone();
         let mut seen = std::collections::BTreeSet::new();
         loop {
-            if seen.len() >= 1000 || !seen.insert(path.clone()) { return Err("calendar pagination did not finish; cached events kept".into()); }
-            let reply = net.get(host, &path, &[("Authorization", &auth), ("Prefer", "outlook.timezone=\"UTC\"")])?;
-            if !(200..300).contains(&reply.status) { return Err(format!("calendar answered {}; cached events kept", reply.status)); }
+            if seen.len() >= 1000 || !seen.insert(path.clone()) {
+                return Err("calendar pagination did not finish; cached events kept".into());
+            }
+            let reply = net.get(
+                host,
+                &path,
+                &[
+                    ("Authorization", &auth),
+                    ("Prefer", "outlook.timezone=\"UTC\""),
+                ],
+            )?;
+            if !(200..300).contains(&reply.status) {
+                return Err(format!(
+                    "calendar answered {}; cached events kept",
+                    reply.status
+                ));
+            }
             let page = json(&reply.body, "Calendar")?;
-            let items = page.get(field).and_then(|v| v.as_array()).ok_or("calendar reply has no event list; cached events kept")?;
+            let items = page
+                .get(field)
+                .and_then(|v| v.as_array())
+                .ok_or("calendar reply has no event list; cached events kept")?;
             for item in items {
                 let mut item = item.clone();
                 // Expanded recurring occurrences must not overwrite one another.
-                let identity = item.get("id").or(item.get("iCalUID")).or(item.get("iCalUId")).and_then(|v| v.as_str()).unwrap_or("");
-                if identity.is_empty() { return Err("calendar event has no identity; cached events kept".into()); }
-                let identity = format!("{}:{identity}", crate::digest::sha256_hex(calendar.as_bytes()));
-                item[if p == Provider::Google { "iCalUID" } else { "iCalUId" }] = serde_json::Value::String(identity);
+                let identity = item
+                    .get("id")
+                    .or(item.get("iCalUID"))
+                    .or(item.get("iCalUId"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if identity.is_empty() {
+                    return Err("calendar event has no identity; cached events kept".into());
+                }
+                let identity = format!(
+                    "{}:{identity}",
+                    crate::digest::sha256_hex(calendar.as_bytes())
+                );
+                item[if p == Provider::Google {
+                    "iCalUID"
+                } else {
+                    "iCalUId"
+                }] = serde_json::Value::String(identity);
                 all.push(item);
             }
             let next = match p {
@@ -523,35 +735,100 @@ pub fn calendar_snapshot_with_access(net: &dyn Net, p: Provider, token: &str, no
                     None => None,
                 },
             };
-            match next { Some(next) => path = next, None => break }
+            match next {
+                Some(next) => path = next,
+                None => break,
+            }
         }
     }
-    let combined = serde_json::json!({ (if p == Provider::Google { "items" } else { "value" }): all }).to_string();
-    if p == Provider::Google { ics_from_google(&combined) } else { ics_from_graph(&combined) }
+    let combined =
+        serde_json::json!({ (if p == Provider::Google { "items" } else { "value" }): all })
+            .to_string();
+    if p == Provider::Google {
+        ics_from_google(&combined)
+    } else {
+        ics_from_graph(&combined)
+    }
 }
 
-pub fn snapshot_window(now: u64) -> (u64, u64) { (now.saturating_sub(BACK_SECS), now.saturating_add(AHEAD_SECS)) }
+pub fn snapshot_window(now: u64) -> (u64, u64) {
+    (
+        now.saturating_sub(BACK_SECS),
+        now.saturating_add(AHEAD_SECS),
+    )
+}
 
 /// Calendar names for the user's picker. Continuation URLs never carry the
 /// access token outside the provider's host.
-pub fn available_calendars(net: &dyn Net, provider: Provider, refresh_token: &str) -> Result<Vec<(String, String)>, String> {
+pub fn available_calendars(
+    net: &dyn Net,
+    provider: Provider,
+    refresh_token: &str,
+) -> Result<Vec<(String, String)>, String> {
     let auth = format!("Bearer {}", calendar_access(net, provider, refresh_token)?);
-    let (host, field, base) = if provider == Provider::Google { ("www.googleapis.com", "items", "/calendar/v3/users/me/calendarList?maxResults=250") } else { ("graph.microsoft.com", "value", "/v1.0/me/calendars?$top=100&$select=id,name") };
-    let mut path = base.to_string(); let mut seen = std::collections::BTreeSet::new(); let mut out = Vec::new();
+    let (host, field, base) = if provider == Provider::Google {
+        (
+            "www.googleapis.com",
+            "items",
+            "/calendar/v3/users/me/calendarList?maxResults=250",
+        )
+    } else {
+        (
+            "graph.microsoft.com",
+            "value",
+            "/v1.0/me/calendars?$top=100&$select=id,name",
+        )
+    };
+    let mut path = base.to_string();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut out = Vec::new();
     loop {
-        if seen.len() >= 1000 || !seen.insert(path.clone()) { return Err("calendar list did not finish".into()); }
+        if seen.len() >= 1000 || !seen.insert(path.clone()) {
+            return Err("calendar list did not finish".into());
+        }
         let reply = net.get(host, &path, &[("Authorization", &auth)])?;
-        if !(200..300).contains(&reply.status) { return Err(format!("calendar list answered {}", reply.status)); }
+        if !(200..300).contains(&reply.status) {
+            return Err(format!("calendar list answered {}", reply.status));
+        }
         let page = json(&reply.body, "Calendar list")?;
-        for entry in page.get(field).and_then(|v| v.as_array()).ok_or("calendar list missing")? {
-            let id = entry.get("id").and_then(|v| v.as_str()).ok_or("calendar identity missing")?;
-            let name = entry.get(if provider == Provider::Google { "summary" } else { "name" }).and_then(|v| v.as_str()).unwrap_or("Untitled calendar");
+        for entry in page
+            .get(field)
+            .and_then(|v| v.as_array())
+            .ok_or("calendar list missing")?
+        {
+            let id = entry
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or("calendar identity missing")?;
+            let name = entry
+                .get(if provider == Provider::Google {
+                    "summary"
+                } else {
+                    "name"
+                })
+                .and_then(|v| v.as_str())
+                .unwrap_or("Untitled calendar");
             out.push((id.into(), name.into()));
         }
-        let next = if provider == Provider::Google { page.get("nextPageToken").and_then(|v| v.as_str()).map(|token| format!("{base}&pageToken={}", enc(token))) } else {
-            match page.get("@odata.nextLink").and_then(|v| v.as_str()) { Some(link) => Some(link.strip_prefix("https://graph.microsoft.com").filter(|s| s.starts_with("/v1.0/")).ok_or("calendar list continuation left Microsoft")?.into()), None => None }
+        let next = if provider == Provider::Google {
+            page.get("nextPageToken")
+                .and_then(|v| v.as_str())
+                .map(|token| format!("{base}&pageToken={}", enc(token)))
+        } else {
+            match page.get("@odata.nextLink").and_then(|v| v.as_str()) {
+                Some(link) => Some(
+                    link.strip_prefix("https://graph.microsoft.com")
+                        .filter(|s| s.starts_with("/v1.0/"))
+                        .ok_or("calendar list continuation left Microsoft")?
+                        .into(),
+                ),
+                None => None,
+            }
         };
-        match next { Some(next) => path = next, None => break }
+        match next {
+            Some(next) => path = next,
+            None => break,
+        }
     }
     Ok(out)
 }
@@ -588,4 +865,3 @@ pub fn outlook_account(email: &str) -> crate::mail::Account {
         ..Default::default()
     }
 }
-

@@ -48,7 +48,11 @@ pub enum Value {
 
 impl Value {
     fn string_value(&self) -> Option<&str> {
-        if let Value::Str(s) = self { Some(s) } else { None }
+        if let Value::Str(s) = self {
+            Some(s)
+        } else {
+            None
+        }
     }
 }
 
@@ -67,9 +71,17 @@ pub fn bplist(b: &[u8]) -> Option<Value> {
         return None;
     }
     let offsets: Vec<usize> = (0..count)
-        .map(|i| b.get(table + i * off_size..table + (i + 1) * off_size).map(|s| be(s) as usize))
+        .map(|i| {
+            b.get(table + i * off_size..table + (i + 1) * off_size)
+                .map(|s| be(s) as usize)
+        })
         .collect::<Option<_>>()?;
-    let mut r = Reader { b, offsets, ref_size, depth: 0 };
+    let mut r = Reader {
+        b,
+        offsets,
+        ref_size,
+        depth: 0,
+    };
     r.object(top)
 }
 
@@ -99,7 +111,13 @@ impl Reader<'_> {
     }
 
     fn refs(&self, from: usize, n: usize) -> Option<Vec<usize>> {
-        (0..n).map(|i| self.b.get(from + i * self.ref_size..from + (i + 1) * self.ref_size).map(|s| be(s) as usize)).collect()
+        (0..n)
+            .map(|i| {
+                self.b
+                    .get(from + i * self.ref_size..from + (i + 1) * self.ref_size)
+                    .map(|s| be(s) as usize)
+            })
+            .collect()
     }
 
     fn object(&mut self, idx: usize) -> Option<Value> {
@@ -128,13 +146,20 @@ impl Reader<'_> {
             0x6 => {
                 let (n, from) = self.length(at, low)?;
                 let raw = self.b.get(from..from + 2 * n)?;
-                let units: Vec<u16> = raw.chunks(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+                let units: Vec<u16> = raw
+                    .chunks(2)
+                    .map(|c| u16::from_be_bytes([c[0], c[1]]))
+                    .collect();
                 Value::Str(String::from_utf16_lossy(&units))
             }
             0xA => {
                 let (n, from) = self.length(at, low)?;
                 let refs = self.refs(from, n)?;
-                Value::Array(refs.into_iter().map(|i| self.object(i).unwrap_or(Value::Other)).collect())
+                Value::Array(
+                    refs.into_iter()
+                        .map(|i| self.object(i).unwrap_or(Value::Other))
+                        .collect(),
+                )
             }
             0xD => {
                 let (n, from) = self.length(at, low)?;
@@ -160,7 +185,9 @@ impl Reader<'_> {
 /// plist inside a provisioning profile.
 pub fn xml_plist(text: &str) -> BTreeMap<String, Value> {
     let mut out = BTreeMap::new();
-    let Some(start) = text.find("<dict>") else { return out };
+    let Some(start) = text.find("<dict>") else {
+        return out;
+    };
     let mut rest = &text[start + 6..];
     let mut depth = 0usize;
     while let Some(k) = rest.find("<key>") {
@@ -168,16 +195,21 @@ pub fn xml_plist(text: &str) -> BTreeMap<String, Value> {
         let before = &rest[..k];
         depth += before.matches("<dict>").count();
         depth = depth.saturating_sub(before.matches("</dict>").count());
-        let Some(kend) = rest[k..].find("</key>") else { break };
+        let Some(kend) = rest[k..].find("</key>") else {
+            break;
+        };
         let key = unescape(&rest[k + 5..k + kend]);
         rest = &rest[k + kend + 6..];
         let t = rest.trim_start();
         let value = if let Some(s) = t.strip_prefix("<string>") {
             s.find("</string>").map(|e| Value::Str(unescape(&s[..e])))
         } else if let Some(s) = t.strip_prefix("<integer>") {
-            s.find("</integer>").and_then(|e| s[..e].trim().parse().ok()).map(Value::Int)
+            s.find("</integer>")
+                .and_then(|e| s[..e].trim().parse().ok())
+                .map(Value::Int)
         } else if let Some(s) = t.strip_prefix("<date>") {
-            s.find("</date>").map(|e| Value::Str(s[..e].trim().to_string()))
+            s.find("</date>")
+                .map(|e| Value::Str(s[..e].trim().to_string()))
         } else if t.starts_with("<true/>") {
             Some(Value::Bool(true))
         } else if t.starts_with("<false/>") {
@@ -277,23 +309,42 @@ impl Ipa {
                 && parts.next() == Some(file)
                 && parts.next().is_none()
         };
-        let (_, info) = crate::zipread::file_inside(ipa, |n| is_app_file(n, "Info.plist"), MAX_META)?
-            .ok_or("no Payload/<name>.app/Info.plist inside: this isn't an iPhone app")?;
+        let (_, info) =
+            crate::zipread::file_inside(ipa, |n| is_app_file(n, "Info.plist"), MAX_META)?
+                .ok_or("no Payload/<name>.app/Info.plist inside: this isn't an iPhone app")?;
         let info: BTreeMap<String, Value> = match bplist(&info) {
             Some(Value::Dict(d)) => d,
             _ => xml_plist(&String::from_utf8_lossy(&info)),
         };
-        let get = |k: &str| info.get(k).and_then(|v| v.string_value()).map(str::to_string);
-        let bundle_id = get("CFBundleIdentifier").ok_or("the app's Info.plist has no CFBundleIdentifier")?;
+        let get = |k: &str| {
+            info.get(k)
+                .and_then(|v| v.string_value())
+                .map(str::to_string)
+        };
+        let bundle_id =
+            get("CFBundleIdentifier").ok_or("the app's Info.plist has no CFBundleIdentifier")?;
         let build = get("CFBundleVersion").unwrap_or_else(|| "1".into());
         let version = get("CFBundleShortVersionString").unwrap_or_else(|| build.clone());
-        let title = get("CFBundleDisplayName").or_else(|| get("CFBundleName")).unwrap_or_else(|| "Atlas".into());
+        let title = get("CFBundleDisplayName")
+            .or_else(|| get("CFBundleName"))
+            .unwrap_or_else(|| "Atlas".into());
 
-        let (devices, expires) = match crate::zipread::file_inside(ipa, |n| is_app_file(n, "embedded.mobileprovision"), MAX_META)? {
+        let (devices, expires) = match crate::zipread::file_inside(
+            ipa,
+            |n| is_app_file(n, "embedded.mobileprovision"),
+            MAX_META,
+        )? {
             Some((_, raw)) => profile_facts(&raw),
             None => (Vec::new(), None),
         };
-        Ok(Ipa { bundle_id, build, version, title, devices, expires })
+        Ok(Ipa {
+            bundle_id,
+            build,
+            version,
+            title,
+            devices,
+            expires,
+        })
     }
 
     /// Has the profile run out? Compared as ISO 8601 text, which sorts by time.
@@ -307,13 +358,22 @@ impl Ipa {
 /// without checking the signature: the phone checks that, and this only reports.
 pub fn profile_facts(raw: &[u8]) -> (Vec<String>, Option<String>) {
     let text = String::from_utf8_lossy(raw);
-    let (Some(s), Some(e)) = (text.find("<?xml"), text.find("</plist>")) else { return (Vec::new(), None) };
+    let (Some(s), Some(e)) = (text.find("<?xml"), text.find("</plist>")) else {
+        return (Vec::new(), None);
+    };
     let p = xml_plist(&text[s..e + 8]);
     let devices = match p.get("ProvisionedDevices") {
-        Some(Value::Array(a)) => a.iter().filter_map(|v| v.string_value()).map(str::to_string).collect(),
+        Some(Value::Array(a)) => a
+            .iter()
+            .filter_map(|v| v.string_value())
+            .map(str::to_string)
+            .collect(),
         _ => Vec::new(),
     };
-    let expires = p.get("ExpirationDate").and_then(|v| v.string_value()).map(str::to_string);
+    let expires = p
+        .get("ExpirationDate")
+        .and_then(|v| v.string_value())
+        .map(str::to_string);
     (devices, expires)
 }
 
@@ -340,8 +400,14 @@ impl Apk {
             return Err("it isn't signed. Sign it on the laptop first (atlas/mobile/sign-android.sh sign …)".into());
         }
         use sha2::Digest;
-        let sha256 = sha2::Sha256::digest(apk).iter().map(|b| format!("{b:02x}")).collect();
-        Ok(Apk { bytes_len: apk.len(), sha256 })
+        let sha256 = sha2::Sha256::digest(apk)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        Ok(Apk {
+            bytes_len: apk.len(),
+            sha256,
+        })
     }
 }
 
@@ -355,7 +421,12 @@ pub enum Package {
 impl Package {
     /// Read either kind, by what the bytes are rather than the file's name.
     pub fn read(bytes: &[u8]) -> Result<Package, String> {
-        let has = |name: &str| crate::zipread::file_inside(bytes, |n| n == name, MAX_META).ok().flatten().is_some();
+        let has = |name: &str| {
+            crate::zipread::file_inside(bytes, |n| n == name, MAX_META)
+                .ok()
+                .flatten()
+                .is_some()
+        };
         if has("AndroidManifest.xml") {
             Apk::read(bytes).map(Package::Android)
         } else {
@@ -476,7 +547,9 @@ pub fn install_link(manifest_url: &str) -> String {
     let enc: String = manifest_url
         .bytes()
         .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => (b as char).to_string(),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (b as char).to_string()
+            }
             _ => format!("%{b:02X}"),
         })
         .collect();
@@ -487,7 +560,11 @@ pub fn install_link(manifest_url: &str) -> String {
 /// it doesn't. Plain HTML: no script, nothing fetched from anywhere else.
 pub fn page(ipa: &Ipa, manifest_url: &str, now_iso: &str) -> String {
     let expired = ipa.expired(now_iso);
-    let expiry = ipa.expires.as_deref().map(|e| e.get(..10).unwrap_or(e).to_string()).unwrap_or_else(|| "unknown".into());
+    let expiry = ipa
+        .expires
+        .as_deref()
+        .map(|e| e.get(..10).unwrap_or(e).to_string())
+        .unwrap_or_else(|| "unknown".into());
     let devices = match ipa.devices.len() {
         0 => "no devices listed (this build can't install on any iPhone)".to_string(),
         1 => "1 registered iPhone or iPad".to_string(),
@@ -496,10 +573,18 @@ pub fn page(ipa: &Ipa, manifest_url: &str, now_iso: &str) -> String {
     let button = if expired || ipa.devices.is_empty() {
         format!(
             r#"<p class="warn" role="alert">This build can't be installed: {}. Ask whoever sent it for a new one.</p>"#,
-            if expired { "it has expired" } else { "it lists no devices" }
+            if expired {
+                "it has expired"
+            } else {
+                "it lists no devices"
+            }
         )
     } else {
-        format!(r#"<a class="install" href="{}">Install {}</a>"#, escape(&install_link(manifest_url)), escape(&ipa.title))
+        format!(
+            r#"<a class="install" href="{}">Install {}</a>"#,
+            escape(&install_link(manifest_url)),
+            escape(&ipa.title)
+        )
     };
     format!(
         r#"<!doctype html>
@@ -577,7 +662,9 @@ pub fn route_install(method: &str, path: &str, token: &str) -> Served {
         return Served::NotFound;
     }
     let path = path.split('?').next().unwrap_or("");
-    let Some(rest) = path.strip_prefix('/').and_then(|p| p.strip_prefix(token)) else { return Served::NotFound };
+    let Some(rest) = path.strip_prefix('/').and_then(|p| p.strip_prefix(token)) else {
+        return Served::NotFound;
+    };
     match rest {
         "" | "/" => Served::Page,
         "/manifest.plist" => Served::Manifest,
@@ -596,7 +683,10 @@ pub fn fresh_token() -> String {
 
 /// Today's UTC time in ISO 8601, for comparing with the profile's expiry.
 pub fn now_iso() -> String {
-    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     crate::digest::iso_utc(secs)
 }
 
@@ -611,7 +701,8 @@ pub fn serve_install(
     minutes: u64,
     say: &mut dyn FnMut(&str),
 ) -> Result<usize, String> {
-    let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|e| format!("couldn't listen on 127.0.0.1:{port}: {e}"))?;
+    let listener = TcpListener::bind(("127.0.0.1", port))
+        .map_err(|e| format!("couldn't listen on 127.0.0.1:{port}: {e}"))?;
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     let until = Instant::now() + Duration::from_secs(minutes * 60);
     let mut downloads = 0;
@@ -621,7 +712,9 @@ pub fn serve_install(
                 if let Some(what) = answer(stream, ipa_bytes, ipa, token, base) {
                     match what {
                         Served::Page => say("A phone opened the install page."),
-                        Served::Manifest => say("The phone asked for the manifest: installing has started."),
+                        Served::Manifest => {
+                            say("The phone asked for the manifest: installing has started.")
+                        }
                         Served::App => {
                             downloads += 1;
                             say("The phone downloaded the app.");
@@ -630,7 +723,9 @@ pub fn serve_install(
                     }
                 }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(150)),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(150))
+            }
             Err(e) => return Err(e.to_string()),
         }
     }
@@ -640,7 +735,13 @@ pub fn serve_install(
 /// `base` is the HTTPS address the phone reaches this through
 /// (`https://laptop.tail1234.ts.net:8443`). Without one, the Host header the
 /// phone sent is used, as `https://<host>`.
-fn answer(mut s: TcpStream, ipa_bytes: &[u8], ipa: &Package, token: &str, base: Option<&str>) -> Option<Served> {
+fn answer(
+    mut s: TcpStream,
+    ipa_bytes: &[u8],
+    ipa: &Package,
+    token: &str,
+    base: Option<&str>,
+) -> Option<Served> {
     s.set_nonblocking(false).ok()?;
     s.set_read_timeout(Some(Duration::from_secs(10))).ok()?;
     let mut buf = Vec::new();
@@ -657,7 +758,11 @@ fn answer(mut s: TcpStream, ipa_bytes: &[u8], ipa: &Package, token: &str, base: 
     let (method, path) = (first.next().unwrap_or(""), first.next().unwrap_or(""));
     let host = head
         .lines()
-        .find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case("host")).map(|(_, v)| v.trim().to_string()))
+        .find_map(|l| {
+            l.split_once(':')
+                .filter(|(k, _)| k.trim().eq_ignore_ascii_case("host"))
+                .map(|(_, v)| v.trim().to_string())
+        })
         .unwrap_or_default();
     let what = route_install(method, path, token);
     let base = match base {
@@ -675,10 +780,20 @@ fn answer(mut s: TcpStream, ipa_bytes: &[u8], ipa: &Package, token: &str, base: 
             .into_bytes(),
         ),
         Served::Manifest => match ipa {
-            Package::Ios(i) => ("200 OK", "text/xml; charset=utf-8", manifest_plist(i, &format!("{base}/Atlas.ipa")).into_bytes()),
+            Package::Ios(i) => (
+                "200 OK",
+                "text/xml; charset=utf-8",
+                manifest_plist(i, &format!("{base}/Atlas.ipa")).into_bytes(),
+            ),
             Package::Android(_) => ("404 Not Found", "text/plain", b"Not here.".to_vec()),
         },
-        Served::App if !path.split('?').next().unwrap_or("").ends_with(ipa.file_name()) => {
+        Served::App
+            if !path
+                .split('?')
+                .next()
+                .unwrap_or("")
+                .ends_with(ipa.file_name()) =>
+        {
             ("404 Not Found", "text/plain", b"Not here.".to_vec())
         }
         Served::App => ("200 OK", ipa.mime(), ipa_bytes.to_vec()),
@@ -711,14 +826,22 @@ pub fn tailscale_args(port: u16, public: bool) -> (Vec<String>, Vec<String>) {
     let verb = if public { "funnel" } else { "serve" };
     let https = format!("--https={HTTPS_PORT}");
     (
-        vec![verb.into(), "--bg".into(), https.clone(), format!("http://127.0.0.1:{port}")],
+        vec![
+            verb.into(),
+            "--bg".into(),
+            https.clone(),
+            format!("http://127.0.0.1:{port}"),
+        ],
         vec![verb.into(), https, "off".into()],
     )
 }
 
 /// The address the phone opens.
 pub fn page_url(dns_name: &str, token: &str) -> String {
-    format!("https://{}:{HTTPS_PORT}/{token}/", dns_name.trim().trim_end_matches('.'))
+    format!(
+        "https://{}:{HTTPS_PORT}/{token}/",
+        dns_name.trim().trim_end_matches('.')
+    )
 }
 
 #[cfg(test)]
@@ -753,7 +876,10 @@ mod tests {
                     o
                 }
                 Value::Dict(d) => {
-                    let keys: Vec<usize> = d.keys().map(|k| add(&Value::Str(k.clone()), objects)).collect();
+                    let keys: Vec<usize> = d
+                        .keys()
+                        .map(|k| add(&Value::Str(k.clone()), objects))
+                        .collect();
                     let vals: Vec<usize> = d.values().map(|x| add(x, objects)).collect();
                     let mut o = header(0xD, keys.len());
                     o.extend(keys.iter().chain(vals.iter()).map(|&r| r as u8));
@@ -794,11 +920,20 @@ mod tests {
 
     fn info(extra: &[(&str, Value)]) -> Value {
         let mut d = BTreeMap::new();
-        d.insert("CFBundleIdentifier".into(), Value::Str("com.ericsnider.atlas".into()));
+        d.insert(
+            "CFBundleIdentifier".into(),
+            Value::Str("com.ericsnider.atlas".into()),
+        );
         d.insert("CFBundleVersion".into(), Value::Str("5".into()));
-        d.insert("CFBundleShortVersionString".into(), Value::Str("0.1.0".into()));
+        d.insert(
+            "CFBundleShortVersionString".into(),
+            Value::Str("0.1.0".into()),
+        );
         d.insert("CFBundleName".into(), Value::Str("Atlas".into()));
-        d.insert("UIRequiredDeviceCapabilities".into(), Value::Array(vec![Value::Str("arm64".into())]));
+        d.insert(
+            "UIRequiredDeviceCapabilities".into(),
+            Value::Array(vec![Value::Str("arm64".into())]),
+        );
         d.insert("LSRequiresIPhoneOS".into(), Value::Bool(true));
         for (k, v) in extra {
             d.insert((*k).into(), v.clone());
@@ -810,7 +945,10 @@ mod tests {
     fn a_binary_plist_reads_back() {
         let v = info(&[("Long", Value::Str("x".repeat(40)))]);
         assert_eq!(bplist(&write_bplist(&v)), Some(v));
-        assert_eq!(bplist(b"not a plist at all, long enough to have a trailer......."), None);
+        assert_eq!(
+            bplist(b"not a plist at all, long enough to have a trailer......."),
+            None
+        );
         // A damaged trailer is refused, not read wrong.
         let mut b = write_bplist(&info(&[]));
         let n = b.len();
@@ -840,12 +978,17 @@ mod tests {
         raw.extend_from_slice(PROFILE.as_bytes());
         raw.extend_from_slice(&[0xA0, 0x82, 0x0B]);
         let (devices, expires) = profile_facts(&raw);
-        assert_eq!(devices, vec!["00008101-000659911EE9A01E", "00008130-00163DA6222B803A"]);
+        assert_eq!(
+            devices,
+            vec!["00008101-000659911EE9A01E", "00008130-00163DA6222B803A"]
+        );
         assert_eq!(expires.as_deref(), Some("2027-09-27T06:57:19Z"));
         // The nested Entitlements dict is read as a dict, not flattened into the top.
         let p = xml_plist(PROFILE);
         assert!(!p.contains_key("application-identifier"));
-        assert!(matches!(p.get("Entitlements"), Some(Value::Dict(d)) if d.contains_key("com.apple.security.application-groups")));
+        assert!(
+            matches!(p.get("Entitlements"), Some(Value::Dict(d)) if d.contains_key("com.apple.security.application-groups"))
+        );
     }
 
     fn stored_zip(files: &[(&str, &[u8])]) -> Vec<u8> {
@@ -894,13 +1037,19 @@ mod tests {
         prof.extend_from_slice(PROFILE.as_bytes());
         let zip = stored_zip(&[
             ("Payload/", b""),
-            ("Payload/Atlas.app/PlugIns/AtlasShare.appex/Info.plist", b"not this one"),
+            (
+                "Payload/Atlas.app/PlugIns/AtlasShare.appex/Info.plist",
+                b"not this one",
+            ),
             ("Payload/Atlas.app/Info.plist", &plist),
             ("Payload/Atlas.app/embedded.mobileprovision", &prof),
         ]);
         let ipa = Ipa::read(&zip).unwrap();
         assert_eq!(ipa.bundle_id, "com.ericsnider.atlas");
-        assert_eq!((ipa.version.as_str(), ipa.build.as_str(), ipa.title.as_str()), ("0.1.0", "5", "Atlas"));
+        assert_eq!(
+            (ipa.version.as_str(), ipa.build.as_str(), ipa.title.as_str()),
+            ("0.1.0", "5", "Atlas")
+        );
         assert_eq!(ipa.devices.len(), 2);
         assert!(!ipa.expired("2026-09-27T12:00:00Z"));
         assert!(ipa.expired("2027-09-28T00:00:00Z"));
@@ -937,7 +1086,9 @@ mod tests {
             "itms-services://?action=download-manifest&url=https%3A%2F%2Flaptop.tail1.ts.net%2Fabc%2Fmanifest.plist"
         );
         let page_now = page(&ipa, "https://h/abc/manifest.plist", "2026-09-27T00:00:00Z");
-        assert!(page_now.contains("itms-services://") && page_now.contains("works until 2027-09-27"));
+        assert!(
+            page_now.contains("itms-services://") && page_now.contains("works until 2027-09-27")
+        );
         assert!(!page_now.contains("<script"), "the page runs no script");
         let page_late = page(&ipa, "https://h/abc/manifest.plist", "2028-01-01T00:00:00Z");
         assert!(!page_late.contains("itms-services://") && page_late.contains("it has expired"));
@@ -948,9 +1099,18 @@ mod tests {
         let t = "0123abcd";
         assert_eq!(route_install("GET", "/0123abcd/", t), Served::Page);
         assert_eq!(route_install("GET", "/0123abcd", t), Served::Page);
-        assert_eq!(route_install("GET", "/0123abcd/manifest.plist", t), Served::Manifest);
+        assert_eq!(
+            route_install("GET", "/0123abcd/manifest.plist", t),
+            Served::Manifest
+        );
         assert_eq!(route_install("HEAD", "/0123abcd/Atlas.ipa", t), Served::App);
-        for (m, p) in [("GET", "/"), ("GET", "/Atlas.ipa"), ("GET", "/0123abcdX/"), ("POST", "/0123abcd/"), ("GET", "/0123abcd/../x")] {
+        for (m, p) in [
+            ("GET", "/"),
+            ("GET", "/Atlas.ipa"),
+            ("GET", "/0123abcdX/"),
+            ("POST", "/0123abcd/"),
+            ("GET", "/0123abcd/../x"),
+        ] {
             assert_eq!(route_install(m, p, t), Served::NotFound, "{m} {p}");
         }
         assert_eq!(fresh_token().len(), 32);
@@ -962,7 +1122,10 @@ mod tests {
         let plist = write_bplist(&info(&[]));
         let mut prof = vec![0x30];
         prof.extend_from_slice(PROFILE.as_bytes());
-        let zip = stored_zip(&[("Payload/Atlas.app/Info.plist", &plist), ("Payload/Atlas.app/embedded.mobileprovision", &prof)]);
+        let zip = stored_zip(&[
+            ("Payload/Atlas.app/Info.plist", &plist),
+            ("Payload/Atlas.app/embedded.mobileprovision", &prof),
+        ]);
         let ipa = Package::read(&zip).unwrap();
         assert!(matches!(ipa, Package::Ios(_)));
         let port = {
@@ -972,13 +1135,20 @@ mod tests {
         let (z, i) = (zip.clone(), ipa.clone());
         let server = std::thread::spawn(move || {
             let mut said = Vec::new();
-            let n = serve_install(&z, &i, port, "tok", None, 1, &mut |s: &str| said.push(s.to_string())).unwrap();
+            let n = serve_install(&z, &i, port, "tok", None, 1, &mut |s: &str| {
+                said.push(s.to_string())
+            })
+            .unwrap();
             (n, said)
         });
         let get = |path: &str| -> Vec<u8> {
             for _ in 0..50 {
                 if let Ok(mut s) = TcpStream::connect(("127.0.0.1", port)) {
-                    s.write_all(format!("GET {path} HTTP/1.1\r\nHost: laptop.tail1.ts.net\r\n\r\n").as_bytes()).unwrap();
+                    s.write_all(
+                        format!("GET {path} HTTP/1.1\r\nHost: laptop.tail1.ts.net\r\n\r\n")
+                            .as_bytes(),
+                    )
+                    .unwrap();
                     let mut out = Vec::new();
                     s.read_to_end(&mut out).unwrap();
                     return out;
@@ -988,7 +1158,10 @@ mod tests {
             panic!("never connected");
         };
         let manifest = String::from_utf8(get("/tok/manifest.plist")).unwrap();
-        assert!(manifest.contains("<string>https://laptop.tail1.ts.net/tok/Atlas.ipa</string>"), "{manifest}");
+        assert!(
+            manifest.contains("<string>https://laptop.tail1.ts.net/tok/Atlas.ipa</string>"),
+            "{manifest}"
+        );
         let app = get("/tok/Atlas.ipa");
         let body = &app[app.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4..];
         assert_eq!(body, &zip[..], "the app arrives byte for byte");
@@ -1001,16 +1174,28 @@ mod tests {
     #[test]
     fn tailscale_is_asked_the_right_things() {
         let (on, off) = tailscale_args(9731, false);
-        assert_eq!(on, ["serve", "--bg", "--https=8443", "http://127.0.0.1:9731"]);
+        assert_eq!(
+            on,
+            ["serve", "--bg", "--https=8443", "http://127.0.0.1:9731"]
+        );
         assert_eq!(off, ["serve", "--https=8443", "off"]);
         assert_eq!(tailscale_args(9731, true).0[0], "funnel");
-        assert_ne!(HTTPS_PORT, 443, "443 is the hub's; the install page must not take it");
-        assert_eq!(page_url("le3o.tail5ab12.ts.net.", "abc"), "https://le3o.tail5ab12.ts.net:8443/abc/");
+        assert_ne!(
+            HTTPS_PORT, 443,
+            "443 is the hub's; the install page must not take it"
+        );
+        assert_eq!(
+            page_url("le3o.tail5ab12.ts.net.", "abc"),
+            "https://le3o.tail5ab12.ts.net:8443/abc/"
+        );
     }
 
     #[test]
     fn an_apk_must_be_signed_and_gets_its_own_page() {
-        let unsigned = stored_zip(&[("AndroidManifest.xml", b"\x03\x00binary xml"), ("classes.dex", b"dex")]);
+        let unsigned = stored_zip(&[
+            ("AndroidManifest.xml", b"\x03\x00binary xml"),
+            ("classes.dex", b"dex"),
+        ]);
         let e = Package::read(&unsigned).unwrap_err();
         assert!(e.contains("isn't signed"), "{e}");
         // The v2 signing block sits between the entries and the central directory.
@@ -1024,7 +1209,9 @@ mod tests {
         let n = signed.len();
         let at = u32::from_le_bytes(signed[n - 6..n - 2].try_into().unwrap()) + shift;
         signed[n - 6..n - 2].copy_from_slice(&at.to_le_bytes());
-        let Package::Android(apk) = Package::read(&signed).unwrap() else { panic!("read as iOS") };
+        let Package::Android(apk) = Package::read(&signed).unwrap() else {
+            panic!("read as iOS")
+        };
         assert_eq!(apk.sha256.len(), 64);
         let p = android_page(&apk, "https://h:8443/t/Atlas.apk");
         assert!(p.contains(r#"href="https://h:8443/t/Atlas.apk""#) && p.contains("Install anyway"));

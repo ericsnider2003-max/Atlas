@@ -1,6 +1,6 @@
 //! The hub from the command line: serving it, the install report, metrics,
 //! the hub's address, the phone page and the phone.
-//! 
+//!
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
@@ -13,7 +13,10 @@ pub(super) fn run_hub(cfg: &Config) {
     // The one place that ignores the switch: you have typed `atlas settings`,
     // and a command that opens a page is not the same thing as a dashboard a
     // daemon leaves listening.
-    let scfg = ServerConfig { enabled: true, ..ServerConfig::default() };
+    let scfg = ServerConfig {
+        enabled: true,
+        ..ServerConfig::default()
+    };
     // Loopback only, and a token even so — anything else on the machine can
     // reach a local port.
     // From the operating system, not the clock. If there's no entropy source
@@ -53,7 +56,10 @@ pub(super) fn run_hub(cfg: &Config) {
         "Settings are at {}",
         atlas::server::hub_url(server.port(), &token, "/hub/settings")
     );
-    println!("Access is at    {}", atlas::server::hub_url(server.port(), &token, "/hub/access"));
+    println!(
+        "Access is at    {}",
+        atlas::server::hub_url(server.port(), &token, "/hub/access")
+    );
     println!("Leave this window open. Close it when you're done.");
     println!();
     println!("This is the fallback for when Atlas itself won't start. Normally: open");
@@ -62,7 +68,8 @@ pub(super) fn run_hub(cfg: &Config) {
     let mut settings = atlas::settings::registry(&tools);
     let store = atlas::roots::store();
     let commands = cfg.commands.clone();
-    let trash = atlas::safety::Trash::new(tools.trash.clone().resolved(&atlas::roots::install_root()));
+    let trash =
+        atlas::safety::Trash::new(tools.trash.clone().resolved(&atlas::roots::install_root()));
     // The arrangement is yours and lives on disk. Read once at start rather
     // than per request, written back whenever a move actually changes it.
     let mut layout = atlas::dash::Layout::load(&store);
@@ -282,14 +289,18 @@ pub(super) fn run_hub(cfg: &Config) {
 /// is rebuilt, and a truncated download is the failure that actually happens.
 pub(super) fn report_install(cfg: &Config) {
     use atlas::install::{
-        after, before, what_to_fetch, state_of, wanted, where_it_lands, State, COSTS_NOTHING,
+        after, before, state_of, wanted, what_to_fetch, where_it_lands, State, COSTS_NOTHING,
     };
 
     // `install.tools_dir` and `.models_dir` are for the machine where the
     // models live on another drive, and nothing read either -- so this
     // reported every piece missing on exactly the machine they existed for.
     // `include_optional` is why the list is `wanted` rather than `pieces`.
-    let icfg = cfg.tools.as_ref().map(|t| t.install.clone()).unwrap_or_default();
+    let icfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.install.clone())
+        .unwrap_or_default();
     let want = wanted(&icfg);
 
     let found: Vec<(&'static str, Option<u64>)> = want
@@ -307,14 +318,21 @@ pub(super) fn report_install(cfg: &Config) {
 
     println!("{COSTS_NOTHING}\n");
     for p in &want {
-        let bytes = found.iter().find(|(n, _)| *n == p.name).and_then(|(_, b)| *b);
+        let bytes = found
+            .iter()
+            .find(|(n, _)| *n == p.name)
+            .and_then(|(_, b)| *b);
         let mark = match state_of(p, bytes) {
             State::Present => "have",
             State::Missing if p.optional => "    ",
             State::Missing => "need",
             State::HalfDownloaded => "part",
         };
-        println!("  [{mark}] {:<22} {}", p.name, if bytes.is_some() { "" } else { p.without_it });
+        println!(
+            "  [{mark}] {:<22} {}",
+            p.name,
+            if bytes.is_some() { "" } else { p.without_it }
+        );
     }
     // `what_to_fetch`, not `plan`: the list above and the number below it have to
     // be about the same pieces. `plan` walks every one, so with
@@ -343,7 +361,10 @@ pub(super) fn report_install(cfg: &Config) {
     let results: Vec<(&'static str, bool)> = want
         .iter()
         .map(|p| {
-            let bytes = found.iter().find(|(n, _)| *n == p.name).and_then(|(_, b)| *b);
+            let bytes = found
+                .iter()
+                .find(|(n, _)| *n == p.name)
+                .and_then(|(_, b)| *b);
             (p.name, state_of(p, bytes) == State::Present)
         })
         .collect();
@@ -372,10 +393,16 @@ fn unwired_from_wiring_test(root: &std::path::Path) -> Vec<String> {
     let Ok(text) = std::fs::read_to_string(root.join("tests/wiring.rs")) else {
         return Vec::new();
     };
-    let Some(start) = text.find("UNWIRED_BASELINE") else { return Vec::new() };
+    let Some(start) = text.find("UNWIRED_BASELINE") else {
+        return Vec::new();
+    };
     let rest = &text[start..];
-    let Some(open) = rest.find("= &[").map(|i| i + 3) else { return Vec::new() };
-    let Some(close) = rest.find("];") else { return Vec::new() };
+    let Some(open) = rest.find("= &[").map(|i| i + 3) else {
+        return Vec::new();
+    };
+    let Some(close) = rest.find("];") else {
+        return Vec::new();
+    };
     // Line by line, not `split(',')`.
     //
     // The comma version shipped and put its output straight into
@@ -415,7 +442,11 @@ pub(super) fn run_mobile(cfg: &Config, args: &[String]) {
                     "  [{}] {}{}",
                     a.can.plain(),
                     a.what,
-                    if a.needs_deliberate_permission { "  (needs a permission you grant in Settings)" } else { "" }
+                    if a.needs_deliberate_permission {
+                        "  (needs a permission you grant in Settings)"
+                    } else {
+                        ""
+                    }
                 );
                 println!("      {}", a.detail);
             }
@@ -480,14 +511,20 @@ pub(super) fn run_mobile(cfg: &Config, args: &[String]) {
             println!();
             println!("How the two would talk:");
             for (how, detail, works_offline) in companion::how_they_talk() {
-                println!("  {how}{} — {detail}", if works_offline { "" } else { " (needs both online)" });
+                println!(
+                    "  {how}{} — {detail}",
+                    if works_offline {
+                        ""
+                    } else {
+                        " (needs both online)"
+                    }
+                );
             }
         }
         Some("back") => {
             let store = atlas::roots::store();
             let phone: Phone = store.load("phone_mirror");
-            let pending: Vec<companion::Pending> =
-                phone.waiting().into_iter().cloned().collect();
+            let pending: Vec<companion::Pending> = phone.waiting().into_iter().cloned().collect();
             // What moved here while the phone was away, from the same record
             // the carry set keeps. Nothing is invented: with no phone paired
             // this is an empty list against an empty list, and `merge` says so.
@@ -528,13 +565,27 @@ pub(super) fn run_mobile(cfg: &Config, args: &[String]) {
                 println!("  {how} — {detail}");
             }
             println!();
-            println!("The phone is better at: {}", atlas::ios::phone_is_better_at().join(", "));
-            println!("The laptop is better at: {}", atlas::ios::laptop_is_better_at().join(", "));
+            println!(
+                "The phone is better at: {}",
+                atlas::ios::phone_is_better_at().join(", ")
+            );
+            println!(
+                "The laptop is better at: {}",
+                atlas::ios::laptop_is_better_at().join(", ")
+            );
             println!();
             println!(
                 "Offline, on the phone: transcription {}, the big model {}.",
-                if atlas::ios::works_offline("transcription") { "works" } else { "doesn't" },
-                if atlas::ios::works_offline("the big model") { "works" } else { "doesn't" }
+                if atlas::ios::works_offline("transcription") {
+                    "works"
+                } else {
+                    "doesn't"
+                },
+                if atlas::ios::works_offline("the big model") {
+                    "works"
+                } else {
+                    "doesn't"
+                }
             );
             println!();
             println!("atlas mobile android   the same list for Android");
@@ -590,7 +641,9 @@ pub(super) fn run_hub_address(args: &[String]) {
         Some("address") | Some("url") => println!("{url}"),
         None => {
             println!("On this machine: open Atlas from the Start menu or the desktop and press");
-            println!("Hub or Settings -- or say \"show me the hub\" or \"show me settings\". The hub");
+            println!(
+                "Hub or Settings -- or say \"show me the hub\" or \"show me settings\". The hub"
+            );
             println!("shows inside Atlas's own window, no browser. `atlas home hub` opens it too.");
             println!();
             println!("From your phone:  {url}");
@@ -617,20 +670,25 @@ pub(super) fn run_phone(cfg: &Config, args: &[String]) {
     let vars = atlas::tools::Vars::new();
     if args.first().map(|s| s.as_str()) == Some("off") {
         match atlas::phonelink::unpublish(&tool, &vars) {
-            Ok(()) => match atlas::roots::store().save(atlas::phonelink::LINK_KEY, &String::new()) {
-                Ok(()) => println!("Atlas is off your phone. `atlas phone` puts it back."),
-                Err(e) => println!(
+            Ok(()) => {
+                match atlas::roots::store().save(atlas::phonelink::LINK_KEY, &String::new()) {
+                    Ok(()) => println!("Atlas is off your phone. `atlas phone` puts it back."),
+                    Err(e) => println!(
                     "Atlas is off your phone, but I couldn't forget its old link ({e}), so the \
                      hub may still show it."
                 ),
-            },
+                }
+            }
             Err(e) => println!("That didn't take: {e}"),
         }
         return;
     }
     // The hub's real port, when the running Atlas's hub answers on another
     // than the configured one (`server::open_hub`).
-    let port = atlas::server::hub_port(&atlas::roots::state_dir(), cfg.tools.as_ref().map(|t| t.server.port).unwrap_or(8787));
+    let port = atlas::server::hub_port(
+        &atlas::roots::state_dir(),
+        cfg.tools.as_ref().map(|t| t.server.port).unwrap_or(8787),
+    );
     let token = match atlas::server::token_for(&atlas::roots::store()) {
         Ok(t) => t,
         Err(e) => {

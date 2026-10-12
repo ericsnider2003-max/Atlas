@@ -7,12 +7,19 @@ use atlas::reference::{
 fn the_specific_knowledge_is_the_small_part() {
     // The thing that surprises people, and the reason this beats a bigger
     // model.
-    assert!(trading_mb() < 100, "all the reference is {}MB", trading_mb());
+    assert!(
+        trading_mb() < 100,
+        "all the reference is {}MB",
+        trading_mb()
+    );
     let encyclopaedia = worth_having()
         .into_iter()
         .find(|s| s.kind == Sort::Encyclopaedia)
         .unwrap();
-    assert!(encyclopaedia.mb > trading_mb() * 40, "the general knowledge is what costs");
+    assert!(
+        encyclopaedia.mb > trading_mb() * 40,
+        "the general knowledge is what costs"
+    );
     assert!(WHAT_IT_COSTS.contains("least useful part"));
 }
 
@@ -62,13 +69,21 @@ fn numbers_never_come_from_the_model_alone_and_that_is_not_configurable() {
     let model_arm = d[shelf_arm..]
         .find("Intent::Ask(q) =>")
         .expect("the catch-all Ask arm is gone");
-    assert!(model_arm > 0, "the shelf arm has to come first or it never matches");
+    assert!(
+        model_arm > 0,
+        "the shelf arm has to come first or it never matches"
+    );
     // The arm names its handler (`execute_inner` as a table, 30 Sep 2026).
     let arm = &d[shelf_arm..shelf_arm + model_arm];
     let handler = match arm.find("self.on_") {
         Some(i) => {
-            let name: String = arm[i + 5..].chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
-            let at = d.find(&format!("fn {name}(")).expect("the shelf's handler is gone");
+            let name: String = arm[i + 5..]
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            let at = d
+                .find(&format!("fn {name}("))
+                .expect("the shelf's handler is gone");
             let end = d[at..].find("\n    }\n").map(|e| at + e).unwrap_or(d.len());
             d[at..end].to_string()
         }
@@ -82,7 +97,10 @@ fn numbers_never_come_from_the_model_alone_and_that_is_not_configurable() {
     // And an old config naming the removed key still loads.
     let parsed: ReferenceConfig =
         serde_yaml::from_str("enabled: true\nnumbers_come_from_the_shelf: false\n").unwrap();
-    assert!(parsed.enabled, "an unknown key must not stop the section parsing");
+    assert!(
+        parsed.enabled,
+        "an unknown key must not stop the section parsing"
+    );
 }
 
 #[test]
@@ -95,8 +113,14 @@ fn some_reference_material_goes_wrong_when_stale_and_some_just_gets_old() {
 
 #[test]
 fn stale_tax_material_is_flagged_differently_from_a_stale_encyclopaedia() {
-    let tax = worth_having().into_iter().find(|s| s.name.contains("tax")).unwrap();
-    let enc = worth_having().into_iter().find(|s| s.kind == Sort::Encyclopaedia).unwrap();
+    let tax = worth_having()
+        .into_iter()
+        .find(|s| s.name.contains("tax"))
+        .unwrap();
+    let enc = worth_having()
+        .into_iter()
+        .find(|s| s.kind == Sort::Encyclopaedia)
+        .unwrap();
 
     let tax_said = stale_warning(&tax, 400).unwrap();
     assert!(tax_said.contains("goes wrong rather than just old"));
@@ -108,15 +132,24 @@ fn stale_tax_material_is_flagged_differently_from_a_stale_encyclopaedia() {
 
 #[test]
 fn fresh_material_gets_no_warning() {
-    let tax = worth_having().into_iter().find(|s| s.name.contains("tax")).unwrap();
+    let tax = worth_having()
+        .into_iter()
+        .find(|s| s.name.contains("tax"))
+        .unwrap();
     assert!(!is_stale(&tax, 30));
     assert!(stale_warning(&tax, 30).is_none());
 }
 
 #[test]
 fn crypto_goes_stale_fastest_because_it_moves_fastest() {
-    let crypto = worth_having().into_iter().find(|s| s.name.contains("crypto")).unwrap();
-    let options = worth_having().into_iter().find(|s| s.name.contains("options")).unwrap();
+    let crypto = worth_having()
+        .into_iter()
+        .find(|s| s.name.contains("crypto"))
+        .unwrap();
+    let options = worth_having()
+        .into_iter()
+        .find(|s| s.name.contains("options"))
+        .unwrap();
     assert!(crypto.stale_after_days < options.stale_after_days);
 }
 
@@ -147,7 +180,10 @@ fn the_shelf_coming_up_empty_is_said_rather_than_quietly_falling_through() {
     // answer that was not grounded -- which is worse than an ungrounded one,
     // because you stop checking it.
     let said = nothing_found("the tick size on cocoa", &for_trading(), true, 0);
-    assert!(said.contains("tick"), "it names the nearest thing it would have");
+    assert!(
+        said.contains("tick"),
+        "it names the nearest thing it would have"
+    );
     assert!(said.contains("haven't got one"), "{said}");
     assert!(
         !said.contains("I could reason from that"),
@@ -160,7 +196,10 @@ fn the_shelf_coming_up_empty_is_said_rather_than_quietly_falling_through() {
     held.as_of = "2026-03-01".into();
     let about = held.covers.clone();
     let on_the_shelf = nothing_found(&about, &[held], false, 0);
-    assert!(on_the_shelf.contains("I could reason from that"), "{on_the_shelf}");
+    assert!(
+        on_the_shelf.contains("I could reason from that"),
+        "{on_the_shelf}"
+    );
 }
 
 #[test]
@@ -173,7 +212,11 @@ fn with_nothing_close_at_all_it_says_the_number_would_be_invented() {
 #[test]
 fn every_shelf_says_where_it_came_from_so_a_wrong_answer_can_be_traced() {
     for s in worth_having() {
-        assert!(!s.from.is_empty(), "{} doesn't say where it came from", s.name);
+        assert!(
+            !s.from.is_empty(),
+            "{} doesn't say where it came from",
+            s.name
+        );
         assert!(s.stale_after_days > 0);
     }
 }
@@ -211,7 +254,10 @@ fn something_that_took_four_searches_is_kept_because_the_fifth_time_would_too() 
 
 #[test]
 fn you_saying_keep_it_beats_every_other_rule() {
-    assert_eq!(worth_keeping("anything at all", 1, true), Some(Worth::YouSaidKeep));
+    assert_eq!(
+        worth_keeping("anything at all", 1, true),
+        Some(Worth::YouSaidKeep)
+    );
 }
 
 #[test]
@@ -267,10 +313,19 @@ fn a_correction_replaces_rather_than_sitting_beside_what_it_corrects() {
         used: 1,
         corrected: false,
     }];
-    correct_it(&mut kept, "the fee is 40 basis points", "the fee is 12 basis points", DAY);
+    correct_it(
+        &mut kept,
+        "the fee is 40 basis points",
+        "the fee is 12 basis points",
+        DAY,
+    );
     assert_eq!(kept.len(), 1);
     assert!(kept[0].fact.contains("12"));
-    assert_eq!(kept[0].because, Worth::YouSaidKeep, "what you said outranks what it found");
+    assert_eq!(
+        kept[0].because,
+        Worth::YouSaidKeep,
+        "what you said outranks what it found"
+    );
 }
 
 #[test]

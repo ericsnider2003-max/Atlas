@@ -84,7 +84,13 @@ fn a_plain_tick_beats() {
     // The control. If this ever fails the other three prove nothing.
     let (c, p) = (cfg(), plat());
     let dir = tmp("plain");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     d.tick(1_000_000);
     assert_eq!(
         beat_at(&dir),
@@ -100,7 +106,13 @@ fn a_paused_atlas_still_beats() {
     // existing.
     let (c, p) = (cfg(), plat());
     let dir = tmp("paused");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     d.turn("pause", 1_000_000);
     d.tick(1_000_500);
@@ -120,7 +132,13 @@ fn an_atlas_that_may_not_interrupt_still_beats() {
     // `may_interrupt(false)` false, which used to skip the beat.
     let (c, p) = (cfg(), plat());
     let dir = tmp("silent");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     // Entered through `Modes` directly rather than by saying a trigger
     // phrase, and that matters: the first version of this test said
@@ -161,7 +179,13 @@ fn a_beating_atlas_cannot_be_taken_over_however_quiet_it_is() {
     // asserted rather than the file's contents.
     let (c, p) = (cfg(), plat());
     let dir = tmp("takeover");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     d.turn("pause", 3_000_000);
 

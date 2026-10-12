@@ -25,7 +25,11 @@ pub struct Cdp {
 impl Cdp {
     /// Connect to a Chrome started with `--remote-debugging-port`.
     pub fn connect(ws_url: &str, timeout: Duration) -> Result<Cdp> {
-        Ok(Cdp { ws: WebSocket::connect(ws_url, timeout)?, next_id: 0, timeout })
+        Ok(Cdp {
+            ws: WebSocket::connect(ws_url, timeout)?,
+            next_id: 0,
+            timeout,
+        })
     }
 
     /// Raw protocol call.
@@ -67,7 +71,10 @@ impl Cdp {
             }),
         )?;
         if let Some(ex) = r.get("exceptionDetails") {
-            let text = ex.get("text").and_then(Value::as_str).unwrap_or("script error");
+            let text = ex
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or("script error");
             return Err(AtlasError::Platform(format!("page threw: {text}")));
         }
         Ok(r.pointer("/result/value").cloned().unwrap_or(Value::Null))
@@ -92,11 +99,19 @@ impl Cdp {
     }
 
     pub fn title(&mut self) -> Result<String> {
-        Ok(self.eval("document.title")?.as_str().unwrap_or_default().to_string())
+        Ok(self
+            .eval("document.title")?
+            .as_str()
+            .unwrap_or_default()
+            .to_string())
     }
 
     pub fn url(&mut self) -> Result<String> {
-        Ok(self.eval("location.href")?.as_str().unwrap_or_default().to_string())
+        Ok(self
+            .eval("location.href")?
+            .as_str()
+            .unwrap_or_default()
+            .to_string())
     }
 
     /// Click by selector. Returns an error naming the selector if it is not
@@ -106,7 +121,9 @@ impl Cdp {
         if ok.as_bool() == Some(true) {
             Ok(())
         } else {
-            Err(AtlasError::Platform(format!("nothing matches '{selector}'")))
+            Err(AtlasError::Platform(format!(
+                "nothing matches '{selector}'"
+            )))
         }
     }
 
@@ -115,7 +132,9 @@ impl Cdp {
         if ok.as_bool() == Some(true) {
             Ok(())
         } else {
-            Err(AtlasError::Platform(format!("no input matches '{selector}'")))
+            Err(AtlasError::Platform(format!(
+                "no input matches '{selector}'"
+            )))
         }
     }
 
@@ -124,11 +143,19 @@ impl Cdp {
     /// when it isn't on the page.
     pub fn set_files(&mut self, selector: &str, files: &[String]) -> Result<()> {
         let doc = self.call("DOM.getDocument", json!({ "depth": 0 }))?;
-        let root = doc.pointer("/root/nodeId").and_then(Value::as_u64).unwrap_or(0);
-        let found = self.call("DOM.querySelector", json!({ "nodeId": root, "selector": selector }))?;
+        let root = doc
+            .pointer("/root/nodeId")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        let found = self.call(
+            "DOM.querySelector",
+            json!({ "nodeId": root, "selector": selector }),
+        )?;
         let node = found.get("nodeId").and_then(Value::as_u64).unwrap_or(0);
         if node == 0 {
-            return Err(AtlasError::Platform(format!("no file input matches '{selector}'")));
+            return Err(AtlasError::Platform(format!(
+                "no file input matches '{selector}'"
+            )));
         }
         self.call("DOM.setFileInputFiles", set_files_params(node, files))?;
         Ok(())
@@ -161,7 +188,11 @@ impl Cdp {
              .map(a => a.href).filter(h => h.startsWith('http')).slice(0, 200)",
         )?;
         Ok(v.as_array()
-            .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default())
     }
 

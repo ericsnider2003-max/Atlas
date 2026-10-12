@@ -53,13 +53,27 @@ pub fn notes_name(app: &str, started: u64) -> String {
     // Your wall clock, as "2026-09-24 14-05": no colons, which Windows
     // won't put in a file name.
     let local = crate::digest::iso_utc((started as i64 + off).max(0) as u64);
-    let stamp = local.chars().take(16).collect::<String>().replace('T', " ").replace(':', "-");
-    let app: String = app.chars().filter(|c| c.is_alphanumeric() || *c == ' ').collect();
+    let stamp = local
+        .chars()
+        .take(16)
+        .collect::<String>()
+        .replace('T', " ")
+        .replace(':', "-");
+    let app: String = app
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == ' ')
+        .collect();
     format!("Call notes {} {}.md", stamp.trim(), app.trim())
 }
 
 /// The notes, as written to the file.
-pub fn notes_text(app: &str, minutes: u64, summary: Option<&str>, transcript: &str, others_recorded: bool) -> String {
+pub fn notes_text(
+    app: &str,
+    minutes: u64,
+    summary: Option<&str>,
+    transcript: &str,
+    others_recorded: bool,
+) -> String {
     let mut s = format!("# Call notes — {app}\n\n{minutes} minutes. ");
     s.push_str(if others_recorded {
         "Both sides were recorded, after everyone said yes.\n\n"
@@ -72,7 +86,11 @@ pub fn notes_text(app: &str, minutes: u64, summary: Option<&str>, transcript: &s
         s.push_str("\n\n");
     }
     s.push_str("## Transcript\n\n");
-    s.push_str(if transcript.trim().is_empty() { "(nothing was said that I could make out)" } else { transcript });
+    s.push_str(if transcript.trim().is_empty() {
+        "(nothing was said that I could make out)"
+    } else {
+        transcript
+    });
     s.push('\n');
     s
 }
@@ -111,15 +129,22 @@ fn said_on_the_call(line: &str, transcript: &str) -> bool {
         .filter(|w| w.len() > 3)
         .map(str::to_string)
         .collect();
-    !words.is_empty() && words.iter().filter(|w| t.contains(w.as_str())).count() * 3 >= words.len() * 2
+    !words.is_empty()
+        && words.iter().filter(|w| t.contains(w.as_str())).count() * 3 >= words.len() * 2
 }
 
 pub fn follow_ups(summary: &str, transcript: &str) -> FollowUps {
     let mut f = FollowUps::default();
     for line in summary.lines() {
-        let line = line.trim().trim_start_matches(['-', '*', '\u{2022}']).trim();
+        let line = line
+            .trim()
+            .trim_start_matches(['-', '*', '\u{2022}'])
+            .trim();
         let (label, rest) = match line.split_once(':') {
-            Some((l, r)) => (l.trim().to_ascii_lowercase(), r.trim().trim_end_matches('.').to_string()),
+            Some((l, r)) => (
+                l.trim().to_ascii_lowercase(),
+                r.trim().trim_end_matches('.').to_string(),
+            ),
             None => continue,
         };
         if rest.is_empty() || !said_on_the_call(&rest, transcript) {
@@ -145,7 +170,11 @@ pub fn follow_ups_said(f: &FollowUps, added: usize) -> String {
     if !f.yours.is_empty() {
         out.push(format!(
             "On your list{}: {}.",
-            if added < f.yours.len() { " (some were there already)" } else { "" },
+            if added < f.yours.len() {
+                " (some were there already)"
+            } else {
+                ""
+            },
             f.yours.join("; ")
         ));
     }
@@ -158,7 +187,9 @@ pub fn follow_ups_said(f: &FollowUps, added: usize) -> String {
 /// Recordings older than `keep_days`, to delete. The notes are elsewhere
 /// and stay.
 pub fn audio_to_delete(dir: &Path, now: u64, keep_days: u64) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
     entries
         .flatten()
         .map(|e| e.path())
@@ -222,20 +253,38 @@ pub struct Notes {
 
 impl Notes {
     pub fn new(cfg: ConsentConfig, dir: PathBuf) -> Notes {
-        Notes { cfg, dir, watch: Default::default(), call: None, starter: callrec::start, held: false }
+        Notes {
+            cfg,
+            dir,
+            watch: Default::default(),
+            call: None,
+            starter: callrec::start,
+            held: false,
+        }
     }
 
     fn file(&self, started: u64, side: Side) -> PathBuf {
-        self.dir.join(format!("call-{started}-{}.wav", if side == Side::Yours { "you" } else { "them" }))
+        self.dir.join(format!(
+            "call-{started}-{}.wav",
+            if side == Side::Yours { "you" } else { "them" }
+        ))
     }
 
     /// Carry out one of the recorder's steps.
     fn act(&mut self, step: Step, said: &mut Said) {
-        let dir_you = self.call.as_ref().map(|c| self.file(c.started, Side::Yours));
-        let dir_them = self.call.as_ref().map(|c| self.file(c.started, Side::Theirs));
+        let dir_you = self
+            .call
+            .as_ref()
+            .map(|c| self.file(c.started, Side::Yours));
+        let dir_them = self
+            .call
+            .as_ref()
+            .map(|c| self.file(c.started, Side::Theirs));
         let start = self.starter;
         let held = self.held;
-        let Some(call) = self.call.as_mut() else { return };
+        let Some(call) = self.call.as_mut() else {
+            return;
+        };
         match step {
             Step::Nothing | Step::StopAndKeep => {}
             Step::AskYou(q) => said.lines.push(q),
@@ -244,7 +293,11 @@ impl Notes {
                 // `announce_in_chat`: the chat leaves a written record that
                 // everyone was asked; saying it is less of an interruption to
                 // set up. Either way it's you who asks.
-                let how = if self.cfg.announce_in_chat { "Put this in the call's chat" } else { "Ask them" };
+                let how = if self.cfg.announce_in_chat {
+                    "Put this in the call's chat"
+                } else {
+                    "Ask them"
+                };
                 said.lines.push(format!(
                     "{how}: \u{201c}{q}\u{201d} Then tell me \"they said yes\" or \"they said no\". \
                      Until then I'm only noting your side."
@@ -252,18 +305,30 @@ impl Notes {
             }
             Step::Start(scope) => {
                 if call.yours.is_none() {
-                    match start(Side::Yours, dir_you.as_deref().unwrap_or(Path::new("call-you.wav")), held) {
+                    match start(
+                        Side::Yours,
+                        dir_you.as_deref().unwrap_or(Path::new("call-you.wav")),
+                        held,
+                    ) {
                         Ok(r) => call.yours = Some(r),
-                        Err(e) => said.lines.push(format!("I couldn't record your side: {e}.")),
+                        Err(e) => said
+                            .lines
+                            .push(format!("I couldn't record your side: {e}.")),
                     }
                 }
                 if scope == Scope::Everyone && call.theirs.is_none() {
-                    match start(Side::Theirs, dir_them.as_deref().unwrap_or(Path::new("call-them.wav")), held) {
+                    match start(
+                        Side::Theirs,
+                        dir_them.as_deref().unwrap_or(Path::new("call-them.wav")),
+                        held,
+                    ) {
                         Ok(r) => {
                             call.theirs = Some(r);
                             said.lines.push("Recording everyone now.".into());
                         }
-                        Err(e) => said.lines.push(format!("I couldn't record their side: {e}. Still noting yours.")),
+                        Err(e) => said.lines.push(format!(
+                            "I couldn't record their side: {e}. Still noting yours."
+                        )),
                     }
                 }
             }
@@ -285,14 +350,17 @@ impl Notes {
     /// your side only; this makes the recording match, and deletes what
     /// was taken of theirs.
     fn hold_the_line(&mut self, said: &mut Said) {
-        let Some(call) = self.call.as_mut() else { return };
+        let Some(call) = self.call.as_mut() else {
+            return;
+        };
         if call.theirs.is_some() && !call.recorder.capturing_others() {
             if let Some(r) = call.theirs.take() {
                 let path = r.path.clone();
                 crate::heard!(r.finish());
                 crate::heard!(crate::store::remove_owned_file(&path));
             }
-            said.lines.push("I've stopped recording their side and deleted what I had of it.".into());
+            said.lines
+                .push("I've stopped recording their side and deleted what I had of it.".into());
         }
     }
 
@@ -320,11 +388,25 @@ impl Notes {
             }
             return said;
         }
-        self.call = Some(Call { app: app.to_string(), started: now, recorder: Recorder::new(self.cfg.clone()), yours: None, theirs: None, asked: false, manual });
+        self.call = Some(Call {
+            app: app.to_string(),
+            started: now,
+            recorder: Recorder::new(self.cfg.clone()),
+            yours: None,
+            theirs: None,
+            asked: false,
+            manual,
+        });
         let scope = self.cfg.default_scope;
-        let step = self.call.as_mut().map(|c| c.recorder.call_started(scope)).unwrap_or(Step::Nothing);
+        let step = self
+            .call
+            .as_mut()
+            .map(|c| c.recorder.call_started(scope))
+            .unwrap_or(Step::Nothing);
         if matches!(step, Step::Start(Scope::YouOnly)) {
-            said.lines.push(format!("On {app}: I'm noting your side. Say \"record everyone\" if you want theirs too."));
+            said.lines.push(format!(
+                "On {app}: I'm noting your side. Say \"record everyone\" if you want theirs too."
+            ));
         }
         self.act(step, &mut said);
         said
@@ -334,7 +416,8 @@ impl Notes {
     pub fn everyone(&mut self) -> Said {
         let mut said = Said::default();
         let Some(call) = self.call.as_mut() else {
-            said.lines.push("There's no call going that I'm noting.".into());
+            said.lines
+                .push("There's no call going that I'm noting.".into());
             return said;
         };
         let step = call.recorder.you_approved();
@@ -346,22 +429,40 @@ impl Notes {
     pub fn they_agreed(&mut self) -> Said {
         let mut said = Said::default();
         let Some(call) = self.call.as_mut() else {
-            said.lines.push("There's no call going that I'm noting.".into());
+            said.lines
+                .push("There's no call going that I'm noting.".into());
             return said;
         };
         if !call.asked {
-            said.lines.push("I haven't given you anything to ask them yet — say \"record everyone\" first.".into());
+            said.lines.push(
+                "I haven't given you anything to ask them yet — say \"record everyone\" first."
+                    .into(),
+            );
             return said;
         }
         let landed = call.recorder.announcement_delivered();
         self.act(landed, &mut said);
-        let step = self.call.as_mut().map(|c| c.recorder.they_agreed()).unwrap_or(Step::Nothing);
+        let step = self
+            .call
+            .as_mut()
+            .map(|c| c.recorder.they_agreed())
+            .unwrap_or(Step::Nothing);
         self.act(step, &mut said);
         // The invariant the consent rules exist to hold, checked where it
         // could break: if their side is being recorded without their yes,
         // it stops and is deleted, whatever the reason.
-        if self.call.as_ref().map(|c| c.recorder.recorded_others_without_announcing()).unwrap_or(false) {
-            self.act(Step::StopAndDiscard("Something was off — I've stopped recording their side and deleted it.".into()), &mut said);
+        if self
+            .call
+            .as_ref()
+            .map(|c| c.recorder.recorded_others_without_announcing())
+            .unwrap_or(false)
+        {
+            self.act(
+                Step::StopAndDiscard(
+                    "Something was off — I've stopped recording their side and deleted it.".into(),
+                ),
+                &mut said,
+            );
         }
         said
     }
@@ -370,7 +471,9 @@ impl Notes {
     /// a yes: only your side.
     pub fn couldnt_ask(&mut self) -> Said {
         let mut said = Said::default();
-        let Some(call) = self.call.as_mut() else { return said };
+        let Some(call) = self.call.as_mut() else {
+            return said;
+        };
         let step = call.recorder.announcement_failed("you couldn't ask them");
         self.act(step, &mut said);
         self.keep_noting_yours(&mut said);
@@ -381,8 +484,13 @@ impl Notes {
     /// ask then record" — theirs needs a yes, yours never did), and the
     /// recorder is told so, so "are you recording?" answers truthfully.
     fn keep_noting_yours(&mut self, said: &mut Said) {
-        let Some(call) = self.call.as_mut() else { return };
-        if call.yours.is_some() && !call.recorder.capturing_others() && call.recorder.indicator().is_none() {
+        let Some(call) = self.call.as_mut() else {
+            return;
+        };
+        if call.yours.is_some()
+            && !call.recorder.capturing_others()
+            && call.recorder.indicator().is_none()
+        {
             let step = call.recorder.you_declined();
             self.act(step, said);
         }
@@ -391,17 +499,32 @@ impl Notes {
     /// "Nobody answered." Also not a yes.
     pub fn nobody_answered(&mut self) -> Said {
         let mut said = Said::default();
-        let Some(call) = self.call.as_mut() else { return said };
+        let Some(call) = self.call.as_mut() else {
+            return said;
+        };
         if call.asked {
             let landed = call.recorder.announcement_delivered();
             self.act(landed, &mut said);
         }
-        let step = self.call.as_mut().map(|c| c.recorder.no_answer()).unwrap_or(Step::Nothing);
+        let step = self
+            .call
+            .as_mut()
+            .map(|c| c.recorder.no_answer())
+            .unwrap_or(Step::Nothing);
         self.act(step, &mut said);
         // Said after a "they said yes": your latest word is that nobody
         // answered, and a yes you're no longer sure of isn't one.
-        if self.call.as_ref().map(|c| c.recorder.capturing_others()).unwrap_or(false) {
-            let step = self.call.as_mut().map(|c| c.recorder.you_declined()).unwrap_or(Step::Nothing);
+        if self
+            .call
+            .as_ref()
+            .map(|c| c.recorder.capturing_others())
+            .unwrap_or(false)
+        {
+            let step = self
+                .call
+                .as_mut()
+                .map(|c| c.recorder.you_declined())
+                .unwrap_or(Step::Nothing);
             self.act(step, &mut said);
         }
         said
@@ -410,7 +533,9 @@ impl Notes {
     /// "Just my side" — the answer when Atlas asks whether to record everyone.
     pub fn just_mine(&mut self) -> Said {
         let mut said = Said::default();
-        let Some(call) = self.call.as_mut() else { return said };
+        let Some(call) = self.call.as_mut() else {
+            return said;
+        };
         let step = call.recorder.you_declined();
         self.act(step, &mut said);
         said.lines.push("Just your side.".into());
@@ -426,7 +551,10 @@ impl Notes {
         }
         self.held = on;
         let call = self.call.as_ref()?;
-        for r in [call.yours.as_ref(), call.theirs.as_ref()].into_iter().flatten() {
+        for r in [call.yours.as_ref(), call.theirs.as_ref()]
+            .into_iter()
+            .flatten()
+        {
             r.hold(on);
         }
         Some(if on {
@@ -441,15 +569,28 @@ impl Notes {
         // Asked of the recordings themselves, not of the flag that asked
         // them to hold: what's said is what's actually happening.
         if let Some(c) = self.call.as_ref() {
-            let sides: Vec<&Recording> = [c.yours.as_ref(), c.theirs.as_ref()].into_iter().flatten().collect();
+            let sides: Vec<&Recording> = [c.yours.as_ref(), c.theirs.as_ref()]
+                .into_iter()
+                .flatten()
+                .collect();
             if !sides.is_empty() && sides.iter().all(|r| r.is_held()) {
-                return format!("On {}, but I'm paused, so nothing is being recorded until you're back.", c.app);
+                return format!(
+                    "On {}, but I'm paused, so nothing is being recorded until you're back.",
+                    c.app
+                );
             }
         }
         match self.call.as_ref() {
-            None => format!("I'm not recording anything. {}", crate::consent::explain(&self.cfg)),
+            None => format!(
+                "I'm not recording anything. {}",
+                crate::consent::explain(&self.cfg)
+            ),
             Some(c) => match c.recorder.indicator() {
-                Some(what) => format!("On {}: {what}. Told: {}.", c.app, crate::consent::who_gets_told(c.recorder.scope)),
+                Some(what) => format!(
+                    "On {}: {what}. Told: {}.",
+                    c.app,
+                    crate::consent::who_gets_told(c.recorder.scope)
+                ),
                 None => format!("On {}, but I'm not recording yet.", c.app),
             },
         }
@@ -458,7 +599,9 @@ impl Notes {
     /// "They said no."
     pub fn they_declined(&mut self) -> Said {
         let mut said = Said::default();
-        let Some(call) = self.call.as_mut() else { return said };
+        let Some(call) = self.call.as_mut() else {
+            return said;
+        };
         let step = call.recorder.someone_objected("they");
         // Their side was being recorded and has just been deleted: the
         // agreed line tells the call so (C, wording already agreed).
@@ -466,7 +609,11 @@ impl Notes {
         self.act(step, &mut said);
         if deleted {
             if let Some(line) = crate::consent::script_line(&self.cfg, "if someone objects") {
-                let how = if self.cfg.announce_in_chat { "Put this in the call's chat" } else { "Tell them" };
+                let how = if self.cfg.announce_in_chat {
+                    "Put this in the call's chat"
+                } else {
+                    "Tell them"
+                };
                 said.lines.push(format!("{how}: \u{201c}{line}\u{201d}"));
             }
         }
@@ -480,7 +627,8 @@ impl Notes {
     /// "What do I tell them it does?" — the agreed answer, for when someone
     /// on the call asks.
     pub fn what_it_does(&self) -> String {
-        let line = crate::consent::script_line(&self.cfg, "only if someone asks what it does").unwrap_or_default();
+        let line = crate::consent::script_line(&self.cfg, "only if someone asks what it does")
+            .unwrap_or_default();
         format!("If they ask: \u{201c}{line}\u{201d}")
     }
 
@@ -488,7 +636,9 @@ impl Notes {
     /// to transcribe.
     pub fn end(&mut self, now: u64) -> Said {
         let mut said = Said::default();
-        let Some(mut call) = self.call.take() else { return said };
+        let Some(mut call) = self.call.take() else {
+            return said;
+        };
         // unheard-ok: returns `Step`, not a Result
         let _ = call.recorder.call_ended();
         let close = |r: Option<Recording>| -> Option<PathBuf> {
@@ -507,8 +657,17 @@ impl Notes {
         if yours.is_none() && theirs.is_none() {
             return said;
         }
-        said.lines.push(format!("The {} call's over. I'm writing up the notes.", call.app));
-        said.to_transcribe = Some(Finished { app: call.app, started: call.started, ended: now, yours, theirs });
+        said.lines.push(format!(
+            "The {} call's over. I'm writing up the notes.",
+            call.app
+        ));
+        said.to_transcribe = Some(Finished {
+            app: call.app,
+            started: call.started,
+            ended: now,
+            yours,
+            theirs,
+        });
         said
     }
 
@@ -553,7 +712,9 @@ pub fn write_up(
     notes_dir: &Path,
 ) -> Result<WrittenUp, String> {
     let read = |wav: &Option<PathBuf>| -> Result<Vec<Spoken>, String> {
-        let Some(wav) = wav else { return Ok(Vec::new()) };
+        let Some(wav) = wav else {
+            return Ok(Vec::new());
+        };
         transcribe_side(wav, timed, vars)
     };
     let yours = read(&done.yours)?;
@@ -564,7 +725,11 @@ pub fn write_up(
 /// One side of a call, written out with timings: the speech-to-text tool
 /// with an `.srt` to read back. Shared by the notes and `atlas call check`,
 /// so the check runs exactly what a call does.
-pub fn transcribe_side(wav: &Path, timed: &crate::tools::ExternalTool, vars: &crate::tools::Vars) -> Result<Vec<Spoken>, String> {
+pub fn transcribe_side(
+    wav: &Path,
+    timed: &crate::tools::ExternalTool,
+    vars: &crate::tools::Vars,
+) -> Result<Vec<Spoken>, String> {
     {
         let stem = wav.with_extension("");
         let srt = PathBuf::from(format!("{}.srt", stem.display()));
@@ -580,7 +745,9 @@ pub fn transcribe_side(wav: &Path, timed: &crate::tools::ExternalTool, vars: &cr
         // leave notes saying nothing was said.
         let mut tool = timed.clone();
         tool.timeout_secs = tool.timeout_secs.max(transcribe_timeout_secs(wav));
-        let text = tool.run(&v, None).map_err(|e| format!("transcribing {} failed: {e}", wav.display()));
+        let text = tool
+            .run(&v, None)
+            .map_err(|e| format!("transcribing {} failed: {e}", wav.display()));
         crate::heard!(crate::store::remove_owned_file(&srt));
         Ok(crate::viewing::read_timed(&text?))
     }
@@ -610,21 +777,41 @@ fn write_up_from(
         _ => None,
     };
     let reply_chars = summary.as_ref().map(|s| s.len()).unwrap_or(0);
-    let follow = summary.as_deref().map(|s| follow_ups(s, &transcript)).unwrap_or_default();
+    let follow = summary
+        .as_deref()
+        .map(|s| follow_ups(s, &transcript))
+        .unwrap_or_default();
     let minutes = done.ended.saturating_sub(done.started).div_ceil(60);
-    let text = notes_text(&done.app, minutes, summary.as_deref(), &transcript, done.theirs.is_some());
-    std::fs::create_dir_all(notes_dir).map_err(|e| format!("couldn't make the notes folder: {e}"))?;
+    let text = notes_text(
+        &done.app,
+        minutes,
+        summary.as_deref(),
+        &transcript,
+        done.theirs.is_some(),
+    );
+    std::fs::create_dir_all(notes_dir)
+        .map_err(|e| format!("couldn't make the notes folder: {e}"))?;
     let path = free_name(notes_dir, &notes_name(&done.app, done.started));
     // A worker: a snapshot or another save may hold the state lock for a moment, so wait for it (up to ten seconds) rather than give the notes up.
-    crate::store::write_owned_file_until(&path, text.as_bytes(), &|| false).map_err(|e| format!("couldn't write the notes: {e}"))?;
-    Ok(WrittenUp { path, summary_ms, prompt_chars, reply_chars, summary: asked, follow })
+    crate::store::write_owned_file_until(&path, text.as_bytes(), &|| false)
+        .map_err(|e| format!("couldn't write the notes: {e}"))?;
+    Ok(WrittenUp {
+        path,
+        summary_ms,
+        prompt_chars,
+        reply_chars,
+        summary: asked,
+        follow,
+    })
 }
 
 /// How long whisper may take on a recording: a quarter of real time on top
 /// of two minutes, at least ten minutes. The file's size says how long it
 /// is: 16 kHz, 16-bit mono is 32,000 bytes a second.
 pub fn transcribe_timeout_secs(wav: &Path) -> u64 {
-    let secs = std::fs::metadata(wav).map(|m| m.len() / 32_000).unwrap_or(0);
+    let secs = std::fs::metadata(wav)
+        .map(|m| m.len() / 32_000)
+        .unwrap_or(0);
     (120 + secs * 2).max(600)
 }
 
@@ -637,7 +824,13 @@ pub fn free_name(dir: &Path, name: &str) -> PathBuf {
     }
     let (stem, ext) = name.rsplit_once('.').unwrap_or((name, ""));
     (2..)
-        .map(|n| dir.join(if ext.is_empty() { format!("{stem} ({n})") } else { format!("{stem} ({n}).{ext}") }))
+        .map(|n| {
+            dir.join(if ext.is_empty() {
+                format!("{stem} ({n})")
+            } else {
+                format!("{stem} ({n}).{ext}")
+            })
+        })
         .find(|p| !p.exists())
         .unwrap_or(first)
 }

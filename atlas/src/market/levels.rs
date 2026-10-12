@@ -140,7 +140,11 @@ impl Level {
             Kind::Resistance => "resistance",
             Kind::Figure => "figure",
         };
-        let fig = if self.on_figure { ", on the figure" } else { "" };
+        let fig = if self.on_figure {
+            ", on the figure"
+        } else {
+            ""
+        };
         format!("{:.5} {}{}, {} touch(es)", self.price, k, fig, self.touches)
     }
 }
@@ -256,7 +260,11 @@ pub fn levels(view: &AsOf<'_>, k: usize, span_pips: f64) -> Answer<Vec<Level>> {
         let (n, last) = view.touches(p, tol, TOUCH_SEPARATION, since);
         out.push(Level {
             price: p,
-            kind: if p > now { Kind::Resistance } else { Kind::Support },
+            kind: if p > now {
+                Kind::Resistance
+            } else {
+                Kind::Support
+            },
             touches: n,
             last_touch: last,
             on_figure: is_figure(p, pip),
@@ -270,7 +278,11 @@ pub fn levels(view: &AsOf<'_>, k: usize, span_pips: f64) -> Answer<Vec<Level>> {
         let (n, last) = view.touches(p, tol, TOUCH_SEPARATION, since);
         out.push(Level {
             price: p,
-            kind: if p < now { Kind::Support } else { Kind::Resistance },
+            kind: if p < now {
+                Kind::Support
+            } else {
+                Kind::Resistance
+            },
             touches: n,
             last_touch: last,
             on_figure: is_figure(p, pip),
@@ -319,7 +331,11 @@ fn fold(group: &[Level]) -> Level {
     let all_same = group.iter().all(|g| g.kind == group[0].kind);
     Level {
         price: anchor.price,
-        kind: if fig.is_some() || !all_same { Kind::Figure } else { group[0].kind },
+        kind: if fig.is_some() || !all_same {
+            Kind::Figure
+        } else {
+            group[0].kind
+        },
         touches: group.iter().map(|g| g.touches).max().unwrap_or(0),
         last_touch: group.iter().filter_map(|g| g.last_touch).max(),
         on_figure: fig.is_some(),
@@ -342,9 +358,7 @@ pub fn nearest(view: &AsOf<'_>, long: bool, k: usize) -> Answer<Option<Level>> {
             }
         })
         .collect();
-    candidates.sort_by(|a, b| {
-        (a.price - now).abs().total_cmp(&(b.price - now).abs())
-    });
+    candidates.sort_by(|a, b| (a.price - now).abs().total_cmp(&(b.price - now).abs()));
     Ok(candidates.into_iter().next())
 }
 
@@ -399,11 +413,15 @@ pub fn null_bounce_rate(view: &AsOf<'_>, trials: usize, seed: u64) -> Answer<f64
     view.need(25)?;
     let c = view.close();
     let g = view.gamma();
-    let (lo, hi) = c.iter().fold((f64::MAX, f64::MIN), |(a, b), &x| (a.min(x), b.max(x)));
+    let (lo, hi) = c
+        .iter()
+        .fold((f64::MAX, f64::MIN), |(a, b), &x| (a.min(x), b.max(x)));
     let mut s = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
     let (mut same, mut total) = (0usize, 0usize);
     for _ in 0..trials {
-        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let u = (((s >> 32) as u32) as f64) / (u32::MAX as f64);
         let p = lo + (hi - lo) * u;
         let (a, b) = visits(c, p, g);
@@ -428,8 +446,8 @@ pub fn bounce_rate(view: &AsOf<'_>, level: f64) -> (f64, usize) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::fixtures::{from_path, walk, walk_with};
+    use super::*;
 
     #[test]
     fn figures_are_the_hundreds_and_the_fifties() {
@@ -483,8 +501,15 @@ mod tests {
         let b = from_path(&[1.1000, 1.1100, 1.1000, 1.1100, 1.1000, 1.1080]).unwrap();
         let lv = levels(&b.latest().unwrap(), 2, 120.0).unwrap();
         assert!(!lv.is_empty());
-        let near: Vec<&Level> = lv.iter().filter(|x| (x.price - 1.1100).abs() < 0.0015).collect();
-        assert!(!near.is_empty(), "{:?}", lv.iter().map(|x| x.say()).collect::<Vec<_>>());
+        let near: Vec<&Level> = lv
+            .iter()
+            .filter(|x| (x.price - 1.1100).abs() < 0.0015)
+            .collect();
+        assert!(
+            !near.is_empty(),
+            "{:?}",
+            lv.iter().map(|x| x.say()).collect::<Vec<_>>()
+        );
         assert!(near.iter().map(|x| x.touches).max().unwrap() >= 2);
     }
 
@@ -512,13 +537,34 @@ mod tests {
     #[test]
     fn nearby_levels_merge_into_one() {
         let raw = vec![
-            Level { price: 1.10000, kind: Kind::Support, touches: 2, last_touch: Some(5), on_figure: false },
-            Level { price: 1.10002, kind: Kind::Support, touches: 1, last_touch: Some(9), on_figure: false },
-            Level { price: 1.10500, kind: Kind::Resistance, touches: 3, last_touch: Some(7), on_figure: false },
+            Level {
+                price: 1.10000,
+                kind: Kind::Support,
+                touches: 2,
+                last_touch: Some(5),
+                on_figure: false,
+            },
+            Level {
+                price: 1.10002,
+                kind: Kind::Support,
+                touches: 1,
+                last_touch: Some(9),
+                on_figure: false,
+            },
+            Level {
+                price: 1.10500,
+                kind: Kind::Resistance,
+                touches: 3,
+                last_touch: Some(7),
+                on_figure: false,
+            },
         ];
         let out = merge(raw, 0.0001);
         assert_eq!(out.len(), 2);
-        assert_eq!(out[0].touches, 2, "the merged level keeps the best evidence");
+        assert_eq!(
+            out[0].touches, 2,
+            "the merged level keeps the best evidence"
+        );
     }
 
     #[test]
@@ -526,8 +572,20 @@ mod tests {
         // The round number is the only price in the pair with order-flow
         // evidence behind it. Averaging it away moves the level off the orders.
         let raw = vec![
-            Level { price: 1.09994, kind: Kind::Support, touches: 4, last_touch: Some(5), on_figure: false },
-            Level { price: 1.10000, kind: Kind::Figure, touches: 1, last_touch: Some(9), on_figure: true },
+            Level {
+                price: 1.09994,
+                kind: Kind::Support,
+                touches: 4,
+                last_touch: Some(5),
+                on_figure: false,
+            },
+            Level {
+                price: 1.10000,
+                kind: Kind::Figure,
+                touches: 1,
+                last_touch: Some(9),
+                on_figure: true,
+            },
         ];
         let out = merge(raw, 0.0002);
         assert_eq!(out.len(), 1);
@@ -576,7 +634,10 @@ mod tests {
     fn a_real_level_is_measurable_on_the_same_definition() {
         let b = from_path(&[1.1000, 1.1100, 1.1000, 1.1100, 1.1000, 1.1080]).unwrap();
         let (rate, visits) = bounce_rate(&b.latest().unwrap(), 1.1100);
-        assert!(visits >= 1, "a level price kept returning to must record visits");
+        assert!(
+            visits >= 1,
+            "a level price kept returning to must record visits"
+        );
         assert!((0.0..=1.0).contains(&rate));
     }
 

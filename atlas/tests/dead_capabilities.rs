@@ -1009,12 +1009,11 @@ const TEST_ONLY_MAX: usize = 99;
 // stale meaning vector — so it is no longer pub-without-a-test.
 const HELPER_UNTESTED_MAX: usize = 4;
 
-
-
-
 fn sources() -> BTreeMap<String, String> {
     fn walk(dir: &std::path::Path, out: &mut BTreeMap<String, String>) {
-        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
         let mut paths: Vec<_> = entries.flatten().map(|e| e.path()).collect();
         paths.sort();
         for path in paths {
@@ -1040,7 +1039,9 @@ fn sources() -> BTreeMap<String, String> {
     walk(std::path::Path::new("src"), &mut out);
     // `src/daemon/*.rs` counts as `daemon` once daemon.rs is split (27 Sep
     // 2026); nothing is folded today.
-    common::fold_split_modules(out.into_iter().collect()).into_iter().collect()
+    common::fold_split_modules(out.into_iter().collect())
+        .into_iter()
+        .collect()
 }
 
 /// The two files that talk *about* capability names rather than calling
@@ -1061,7 +1062,11 @@ fn test_sources() -> Vec<String> {
             if path.extension().and_then(|x| x.to_str()) != Some("rs") {
                 continue;
             }
-            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             if META.contains(&name.as_str()) {
                 continue;
             }
@@ -1077,7 +1082,12 @@ fn unwired_modules() -> BTreeSet<String> {
     std::fs::read_to_string("tests/wiring.rs")
         .expect("tests/wiring.rs")
         .lines()
-        .filter_map(|l| l.trim().strip_prefix('"').and_then(|r| r.split('"').next()).map(String::from))
+        .filter_map(|l| {
+            l.trim()
+                .strip_prefix('"')
+                .and_then(|r| r.split('"').next())
+                .map(String::from)
+        })
         .collect()
 }
 
@@ -1132,8 +1142,10 @@ fn group() -> Groups {
     // Same indexing as new_capabilities_are_wired, for the same reason: this
     // guard took 60.5s of every verification run. See that file, and the
     // equivalence test in guards.rs that makes the swap safe.
-    let src_index: Vec<(String, std::collections::HashSet<String>)> =
-        prod.iter().map(|(m, b)| (m.clone(), called_names(b))).collect();
+    let src_index: Vec<(String, std::collections::HashSet<String>)> = prod
+        .iter()
+        .map(|(m, b)| (m.clone(), called_names(b)))
+        .collect();
     let test_index: std::collections::HashSet<String> = tests
         .iter()
         .chain(inline_tests.iter())
@@ -1162,12 +1174,17 @@ fn group() -> Groups {
                     None => continue,
                 },
             };
-            let name: String =
-                rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
             if name.is_empty() || name.ends_with("_for_test") {
                 continue;
             }
-            if src_index.iter().any(|(o, c)| o != module && c.contains(&name)) {
+            if src_index
+                .iter()
+                .any(|(o, c)| o != module && c.contains(&name))
+            {
                 continue;
             }
             // How the four groups are told apart: whether its own module
@@ -1214,7 +1231,11 @@ fn every_function_nothing_calls_is_named_and_accounted_for() {
          their own module, not in a test:\n  {}\n\nEach one is code that was \
          written and is reached by nothing. Wire it, delete it, or add it to \
          ORPHANS with what it is waiting on.",
-        unexplained.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        unexplained
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 
     let fixed: Vec<&String> = listed.difference(&found).collect();
@@ -1222,7 +1243,11 @@ fn every_function_nothing_calls_is_named_and_accounted_for() {
         fixed.is_empty(),
         "these are listed as having no caller and now have one:\n  {}\n\nGood \
          news — remove them from ORPHANS so the list keeps meaning something.",
-        fixed.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        fixed
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
 
@@ -1239,7 +1264,6 @@ fn every_orphan_says_what_it_is_waiting_on() {
 
 #[test]
 fn the_two_groups_that_measure_deadness_have_not_piled_up() {
-
     let g = group();
     assert!(
         g.test_only <= TEST_ONLY_MAX,
@@ -1264,7 +1288,8 @@ fn the_counts_are_exact_so_progress_cannot_hide_in_the_headroom() {
     // lowering them and the lowering is where the reason gets written down.
     let g = group();
     assert_eq!(
-        g.test_only, TEST_ONLY_MAX,
+        g.test_only,
+        TEST_ONLY_MAX,
         "test-only is {} and the ceiling says {TEST_ONLY_MAX}. If work was \
          done, lower it and say what got wired. If it rose, something was \
          built and not reached. They are:\n  {}",
@@ -1272,7 +1297,8 @@ fn the_counts_are_exact_so_progress_cannot_hide_in_the_headroom() {
         g.test_only_names.join("\n  ")
     );
     assert_eq!(
-        g.helper_untested, HELPER_UNTESTED_MAX,
+        g.helper_untested,
+        HELPER_UNTESTED_MAX,
         "helper-untested is {} against {HELPER_UNTESTED_MAX}:\n  {}",
         g.helper_untested,
         g.helper_untested_names.join("\n  ")

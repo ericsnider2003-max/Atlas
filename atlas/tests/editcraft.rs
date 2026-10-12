@@ -6,11 +6,17 @@ use atlas::editcraft::{
 #[test]
 fn grid_lines_are_for_steering_the_eye_not_just_safe_zones() {
     // The idea most editors never articulate.
-    let seamless = Cut { leaving_at: 0.62, arriving_at: 0.68 };
+    let seamless = Cut {
+        leaving_at: 0.62,
+        arriving_at: 0.68,
+    };
     assert!(seamless.seamless());
     assert!(seamless.note().is_none());
 
-    let jarring = Cut { leaving_at: 0.25, arriving_at: 0.80 };
+    let jarring = Cut {
+        leaving_at: 0.25,
+        arriving_at: 0.80,
+    };
     assert!(!jarring.seamless());
     let note = jarring.note().unwrap();
     assert!(note.contains("that's the jump you can feel"));
@@ -20,9 +26,18 @@ fn grid_lines_are_for_steering_the_eye_not_just_safe_zones() {
 #[test]
 fn a_sequence_is_checked_cut_by_cut_and_only_the_bad_ones_are_named() {
     let cuts = vec![
-        Cut { leaving_at: 0.5, arriving_at: 0.55 },
-        Cut { leaving_at: 0.2, arriving_at: 0.9 },
-        Cut { leaving_at: 0.4, arriving_at: 0.45 },
+        Cut {
+            leaving_at: 0.5,
+            arriving_at: 0.55,
+        },
+        Cut {
+            leaving_at: 0.2,
+            arriving_at: 0.9,
+        },
+        Cut {
+            leaving_at: 0.4,
+            arriving_at: 0.45,
+        },
     ];
     let found = check_cuts(&cuts);
     assert_eq!(found.len(), 1);
@@ -32,7 +47,9 @@ fn a_sequence_is_checked_cut_by_cut_and_only_the_bad_ones_are_named() {
 #[test]
 fn the_easiest_way_to_level_up_editing_is_not_editing() {
     // Transitions made with the camera cost nothing in post and don't date.
-    assert!(Transition::Directional.how().contains("turn your head the way you're going"));
+    assert!(Transition::Directional
+        .how()
+        .contains("turn your head the way you're going"));
     assert!(Transition::Directional.how().contains("Cut on the turn"));
 }
 
@@ -56,9 +73,18 @@ fn too_many_software_effects_is_named_with_what_to_do_instead() {
 
 #[test]
 fn the_four_things_brands_say_are_recognised() {
-    assert_eq!(what_they_asked("can you send over your rate card?"), BrandAsks::RateCard);
-    assert_eq!(what_they_asked("we're only a small brand, can you do it for a bit less"), BrandAsks::Cheaper);
-    assert_eq!(what_they_asked("our payment terms are net 60"), BrandAsks::LatePayment);
+    assert_eq!(
+        what_they_asked("can you send over your rate card?"),
+        BrandAsks::RateCard
+    );
+    assert_eq!(
+        what_they_asked("we're only a small brand, can you do it for a bit less"),
+        BrandAsks::Cheaper
+    );
+    assert_eq!(
+        what_they_asked("our payment terms are net 60"),
+        BrandAsks::LatePayment
+    );
     assert_eq!(
         what_they_asked("full perpetual worldwide usage across every platform"),
         BrandAsks::HugeRightsSmallBudget
@@ -83,7 +109,9 @@ fn the_answer_to_cheaper_moves_the_scope_and_not_the_rate() {
 
 #[test]
 fn late_payment_gets_a_split_rather_than_an_argument() {
-    assert!(reply_to(BrandAsks::LatePayment).unwrap().contains("50% up front"));
+    assert!(reply_to(BrandAsks::LatePayment)
+        .unwrap()
+        .contains("50% up front"));
 }
 
 #[test]
@@ -97,7 +125,10 @@ fn perpetual_rights_are_countered_with_a_term_rather_than_refused() {
     // where a request with no scripted answer declines (None) -- so it is
     // countered, not refused by omission.
     assert!(reply_to(BrandAsks::HugeRightsSmallBudget).is_some());
-    assert!(reply_to(BrandAsks::Other).is_none(), "a genuine no-counter case still returned a reply");
+    assert!(
+        reply_to(BrandAsks::Other).is_none(),
+        "a genuine no-counter case still returned a reply"
+    );
 }
 
 #[test]
@@ -118,7 +149,9 @@ fn atlas_drafts_these_and_never_sends_them() {
 fn an_affiliate_link_and_a_partnership_are_not_the_same_thing() {
     // The words get used interchangeably and the obligations are completely
     // different.
-    assert!(NOT_THE_SAME.contains("An affiliate link is you recommending something you already use"));
+    assert!(
+        NOT_THE_SAME.contains("An affiliate link is you recommending something you already use")
+    );
     assert!(NOT_THE_SAME.contains("owing someone deliverables is the bad version of both"));
 }
 
@@ -159,7 +192,10 @@ fn obligations_without_money_up_front_is_the_one_to_walk_away_from() {
         bio_placement: true,
         ..plain_affiliate()
     };
-    assert_eq!(what_it_is(&dressed), WhatItIs::PartnershipDressedAsAffiliate);
+    assert_eq!(
+        what_it_is(&dressed),
+        WhatItIs::PartnershipDressedAsAffiliate
+    );
     let said = judge_deal(&dressed);
     assert!(said.contains("is called an affiliate deal and isn't one"));
     assert!(said.contains("exclusivity"));
@@ -169,14 +205,21 @@ fn obligations_without_money_up_front_is_the_one_to_walk_away_from() {
 
 #[test]
 fn obligations_with_money_is_just_a_partnership_and_is_judged_on_the_money() {
-    let real = DealTerms { deliverables: 2, paid_up_front: true, ..plain_affiliate() };
+    let real = DealTerms {
+        deliverables: 2,
+        paid_up_front: true,
+        ..plain_affiliate()
+    };
     assert_eq!(what_it_is(&real), WhatItIs::RealPartnership);
     assert!(judge_deal(&real).contains("Judge it on the money"));
 }
 
 #[test]
 fn a_single_obligation_is_enough_to_change_what_it_is() {
-    let quota = DealTerms { posting_quota: true, ..plain_affiliate() };
+    let quota = DealTerms {
+        posting_quota: true,
+        ..plain_affiliate()
+    };
     assert_eq!(what_it_is(&quota), WhatItIs::PartnershipDressedAsAffiliate);
 }
 
@@ -195,7 +238,9 @@ fn the_rungs_are_in_the_order_that_actually_matters() {
     let l = ladder();
     assert_eq!(l[0], Rung::Photo);
     assert_eq!(l[1], Rung::NameAndNiche);
-    assert!(l.iter().position(|r| *r == Rung::NameAndNiche) < l.iter().position(|r| *r == Rung::Proof));
+    assert!(
+        l.iter().position(|r| *r == Rung::NameAndNiche) < l.iter().position(|r| *r == Rung::Proof)
+    );
 }
 
 #[test]

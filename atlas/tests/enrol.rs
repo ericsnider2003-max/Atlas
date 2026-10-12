@@ -4,11 +4,11 @@
 //! rather than trusted: a run that meets payment ends, and a run that meets a
 //! human check waits. Everything else is detail.
 
+use atlas::categories::{self, Category};
 use atlas::enrol::*;
+use atlas::finance::FinanceConfig;
 use atlas::intent::Intent;
 use atlas::policy::{self, Decision};
-use atlas::categories::{self, Category};
-use atlas::finance::FinanceConfig;
 
 fn page(text: &str) -> PageSignals {
     PageSignals {
@@ -19,7 +19,10 @@ fn page(text: &str) -> PageSignals {
 }
 
 fn on() -> EnrolConfig {
-    EnrolConfig { enabled: true, ..Default::default() }
+    EnrolConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 // --- the payment rule -------------------------------------------------------
@@ -89,7 +92,10 @@ fn every_shape_of_human_check_stops_it() {
         "Security check",
     ] {
         assert!(
-            matches!(read(&page(t), "example.com", &on()), Verdict::HandOver(Stopped::CheckingYouAreHuman)),
+            matches!(
+                read(&page(t), "example.com", &on()),
+                Verdict::HandOver(Stopped::CheckingYouAreHuman)
+            ),
             "{t:?} did not hand over"
         );
     }
@@ -121,14 +127,25 @@ fn a_human_check_is_never_final() {
 #[test]
 fn the_domain_changing_partway_stops_it() {
     let mut e = Enrolment::new("example.com", "eric", 0);
-    let p = PageSignals { domain: "example-secure.net".into(), text: "nearly done".into(), ..Default::default() };
-    assert!(matches!(e.step(&p, &on()), Verdict::Abandon(Stopped::DomainChanged { .. })));
+    let p = PageSignals {
+        domain: "example-secure.net".into(),
+        text: "nearly done".into(),
+        ..Default::default()
+    };
+    assert!(matches!(
+        e.step(&p, &on()),
+        Verdict::Abandon(Stopped::DomainChanged { .. })
+    ));
 }
 
 #[test]
 fn a_code_sent_elsewhere_waits_for_you() {
     assert!(matches!(
-        read(&page("We sent a verification code to your email"), "example.com", &on()),
+        read(
+            &page("We sent a verification code to your email"),
+            "example.com",
+            &on()
+        ),
         Verdict::HandOver(Stopped::NeedsACodeFromElsewhere(_))
     ));
 }
@@ -145,14 +162,21 @@ fn identity_documents_end_the_run_by_default() {
 fn the_never_list_holds_before_anything_is_touched() {
     let cfg = on();
     assert!(Enrolment::permitted("coinbase.com", &cfg, &FinanceConfig::default()).is_err());
-    assert!(Enrolment::permitted("interactivebrokers.com", &cfg, &FinanceConfig::default()).is_err());
+    assert!(
+        Enrolment::permitted("interactivebrokers.com", &cfg, &FinanceConfig::default()).is_err()
+    );
     assert!(Enrolment::permitted("example.com", &cfg, &FinanceConfig::default()).is_ok());
 }
 
 #[test]
 fn it_is_off_until_you_turn_it_on() {
     assert!(!EnrolConfig::default().enabled);
-    assert!(Enrolment::permitted("example.com", &EnrolConfig::default(), &FinanceConfig::default()).is_err());
+    assert!(Enrolment::permitted(
+        "example.com",
+        &EnrolConfig::default(),
+        &FinanceConfig::default()
+    )
+    .is_err());
 }
 
 #[test]
@@ -182,7 +206,10 @@ fn the_password_follows_the_stated_ruleset() {
 
 #[test]
 fn a_short_password_is_refused_rather_than_padded() {
-    let p = PasswordPolicy { length: 8, ..Default::default() };
+    let p = PasswordPolicy {
+        length: 8,
+        ..Default::default()
+    };
     assert!(p.make(&[7u8; 64]).is_err());
 }
 
@@ -196,7 +223,10 @@ fn generation_refuses_rather_than_reusing_thin_entropy() {
 #[test]
 fn both_password_styles_exist_because_you_chose_one() {
     assert_eq!(PasswordPolicy::default().style, PasswordStyle::PerSite);
-    let shared = PasswordPolicy { style: PasswordStyle::Shared, ..Default::default() };
+    let shared = PasswordPolicy {
+        style: PasswordStyle::Shared,
+        ..Default::default()
+    };
     assert_eq!(shared.style, PasswordStyle::Shared);
 }
 
@@ -207,9 +237,14 @@ fn it_says_the_username_and_never_the_password() {
     let mut e = Enrolment::new("example.com", "eric_s", 0);
     e.finish();
     let said = e.spoken_result(&on());
-    assert!(said.contains("eric_s"), "you were not told the username: {said}");
+    assert!(
+        said.contains("eric_s"),
+        "you were not told the username: {said}"
+    );
     assert!(said.contains("vault"));
-    let pw = PasswordPolicy::default().make(&(0u8..=255).collect::<Vec<u8>>()).unwrap();
+    let pw = PasswordPolicy::default()
+        .make(&(0u8..=255).collect::<Vec<u8>>())
+        .unwrap();
     assert!(!said.contains(&pw), "the password was said out loud");
 }
 
@@ -236,8 +271,14 @@ fn every_stop_is_kept_so_it_can_account_for_itself() {
 
 #[test]
 fn the_domain_survives_the_phrase_matcher() {
-    assert_eq!(domain_from("sign me up for example.com").as_deref(), Some("example.com"));
-    assert_eq!(domain_from("make an account on www.news.ycombinator.com").as_deref(), Some("news.ycombinator.com"));
+    assert_eq!(
+        domain_from("sign me up for example.com").as_deref(),
+        Some("example.com")
+    );
+    assert_eq!(
+        domain_from("make an account on www.news.ycombinator.com").as_deref(),
+        Some("news.ycombinator.com")
+    );
     assert_eq!(domain_from("sign me up"), None);
 }
 
@@ -290,10 +331,23 @@ fn money() -> FinanceConfig {
 fn no_account_is_ever_made_on_a_broker() {
     let cfg = on();
     for d in [
-        "interactivebrokers.com", "ibkr.com", "tastytrade.com", "tradestation.com",
-        "thinkorswim.com", "etrade.com", "webull.com", "robinhood.com",
-        "vanguard.com", "ninjatrader.com", "tradovate.com", "schwab.com",
-        "fidelity.com", "kraken.com", "binance.com", "gemini.com", "coinbase.com",
+        "interactivebrokers.com",
+        "ibkr.com",
+        "tastytrade.com",
+        "tradestation.com",
+        "thinkorswim.com",
+        "etrade.com",
+        "webull.com",
+        "robinhood.com",
+        "vanguard.com",
+        "ninjatrader.com",
+        "tradovate.com",
+        "schwab.com",
+        "fidelity.com",
+        "kraken.com",
+        "binance.com",
+        "gemini.com",
+        "coinbase.com",
     ] {
         assert!(
             Enrolment::permitted(d, &cfg, &money()).is_err(),
@@ -305,7 +359,13 @@ fn no_account_is_ever_made_on_a_broker() {
 #[test]
 fn no_account_is_made_on_a_bank_either() {
     let cfg = on();
-    for d in ["chase.com", "bankofamerica.com", "amex.com", "paypal.com", "venmo.com"] {
+    for d in [
+        "chase.com",
+        "bankofamerica.com",
+        "amex.com",
+        "paypal.com",
+        "venmo.com",
+    ] {
         assert!(Enrolment::permitted(d, &cfg, &money()).is_err(), "{d}");
     }
 }
@@ -361,11 +421,32 @@ fn scrolling_a_statement_is_always_allowed() {
 fn it_never_clicks_anything_that_could_move_money() {
     let m = money();
     for label in [
-        "Transfer", "Send money", "Pay now", "Wire", "Withdraw", "Deposit",
-        "Buy", "Sell", "Place order", "Review order", "Market order",
-        "Limit order", "Close position", "Liquidate", "Flatten", "Roll",
-        "Exercise", "Swap", "Stake", "Enable trading", "Fund account",
-        "Link bank", "Add payee", "Confirm", "Submit", "Authorize",
+        "Transfer",
+        "Send money",
+        "Pay now",
+        "Wire",
+        "Withdraw",
+        "Deposit",
+        "Buy",
+        "Sell",
+        "Place order",
+        "Review order",
+        "Market order",
+        "Limit order",
+        "Close position",
+        "Liquidate",
+        "Flatten",
+        "Roll",
+        "Exercise",
+        "Swap",
+        "Stake",
+        "Enable trading",
+        "Fund account",
+        "Link bank",
+        "Add payee",
+        "Confirm",
+        "Submit",
+        "Authorize",
     ] {
         let v = finance::allowed(
             "https://tastytrade.com/x",
@@ -379,13 +460,22 @@ fn it_never_clicks_anything_that_could_move_money() {
 #[test]
 fn a_refusal_says_which_button_it_refused() {
     let m = money();
-    match finance::allowed("https://schwab.com/x", &PageAction::Click("Sell All".into()), &m) {
+    match finance::allowed(
+        "https://schwab.com/x",
+        &PageAction::Click("Sell All".into()),
+        &m,
+    ) {
         FinVerdict::Refused(why) => assert!(why.contains("Sell All"), "got: {why}"),
         FinVerdict::Allowed => panic!("it would have sold"),
     }
     // Behaviour, not just wording: the named button is actually blocked.
     assert!(
-        !finance::allowed("https://schwab.com/x", &PageAction::Click("Sell All".into()), &m).ok(),
+        !finance::allowed(
+            "https://schwab.com/x",
+            &PageAction::Click("Sell All".into()),
+            &m
+        )
+        .ok(),
         "Sell All was named in the refusal but still allowed through"
     );
 }
@@ -393,7 +483,13 @@ fn a_refusal_says_which_button_it_refused() {
 #[test]
 fn ordinary_reading_clicks_still_work() {
     let m = money();
-    for label in ["Statements", "Next page", "Show more", "March 2026", "Export CSV"] {
+    for label in [
+        "Statements",
+        "Next page",
+        "Show more",
+        "March 2026",
+        "Export CSV",
+    ] {
         assert!(
             finance::allowed("https://chase.com/x", &PageAction::Click(label.into()), &m).ok(),
             "{label} should be clickable"
@@ -412,14 +508,25 @@ fn typing_fails_closed_on_a_money_site() {
     let m = money();
     assert!(finance::allowed(
         "https://schwab.com/x",
-        &PageAction::Type { field: "password".into(), text: "x".into() },
+        &PageAction::Type {
+            field: "password".into(),
+            text: "x".into()
+        },
         &m
-    ).ok());
-    assert!(!finance::allowed(
-        "https://schwab.com/x",
-        &PageAction::Type { field: "quantity".into(), text: "500".into() },
-        &m
-    ).ok(), "it would have typed an order quantity");
+    )
+    .ok());
+    assert!(
+        !finance::allowed(
+            "https://schwab.com/x",
+            &PageAction::Type {
+                field: "quantity".into(),
+                text: "500".into()
+            },
+            &m
+        )
+        .ok(),
+        "it would have typed an order quantity"
+    );
 }
 
 // ===========================================================================
@@ -451,13 +558,28 @@ fn half_a_credential_is_not_a_credential() {
 #[test]
 fn the_new_payment_keywords_all_stop_it() {
     for t in [
-        "Choose a plan", "Billed annually", "MM / YY", "Klarna", "Apple Pay",
-        "Add a payment method", "Order summary", "Promo code", "Total due",
-        "Confirm and pay", "Go premium", "Trial ends in 14 days", "SWIFT",
-        "Direct debit", "Card on file", "$12 a month",
+        "Choose a plan",
+        "Billed annually",
+        "MM / YY",
+        "Klarna",
+        "Apple Pay",
+        "Add a payment method",
+        "Order summary",
+        "Promo code",
+        "Total due",
+        "Confirm and pay",
+        "Go premium",
+        "Trial ends in 14 days",
+        "SWIFT",
+        "Direct debit",
+        "Card on file",
+        "$12 a month",
     ] {
         assert!(
-            matches!(read(&page(t), "example.com", &on()), Verdict::Abandon(Stopped::WantsPayment(_))),
+            matches!(
+                read(&page(t), "example.com", &on()),
+                Verdict::Abandon(Stopped::WantsPayment(_))
+            ),
             "{t:?} did not stop it"
         );
     }
@@ -466,13 +588,21 @@ fn the_new_payment_keywords_all_stop_it() {
 #[test]
 fn the_new_human_check_keywords_all_hand_over() {
     for t in [
-        "hCaptcha", "Cloudflare Turnstile", "Checking your browser",
-        "One more step", "Slide to verify", "Rotate the image",
-        "Type the characters you see", "Additional verification required",
+        "hCaptcha",
+        "Cloudflare Turnstile",
+        "Checking your browser",
+        "One more step",
+        "Slide to verify",
+        "Rotate the image",
+        "Type the characters you see",
+        "Additional verification required",
         "Hold to confirm",
     ] {
         assert!(
-            matches!(read(&page(t), "example.com", &on()), Verdict::HandOver(Stopped::CheckingYouAreHuman)),
+            matches!(
+                read(&page(t), "example.com", &on()),
+                Verdict::HandOver(Stopped::CheckingYouAreHuman)
+            ),
             "{t:?} did not hand over"
         );
     }
@@ -481,11 +611,18 @@ fn the_new_human_check_keywords_all_hand_over() {
 #[test]
 fn kyc_language_ends_the_run() {
     for t in [
-        "Know your customer", "Accredited investor", "Source of funds",
-        "Annual income", "Liveness check", "Upload a utility bill",
+        "Know your customer",
+        "Accredited investor",
+        "Source of funds",
+        "Annual income",
+        "Liveness check",
+        "Upload a utility bill",
     ] {
         assert!(
-            matches!(read(&page(t), "example.com", &on()), Verdict::Abandon(Stopped::WantsIdentityDocuments(_))),
+            matches!(
+                read(&page(t), "example.com", &on()),
+                Verdict::Abandon(Stopped::WantsIdentityDocuments(_))
+            ),
             "{t:?} did not stop it"
         );
     }
@@ -501,7 +638,11 @@ fn the_expanded_lists_did_not_swallow_ordinary_pages() {
         "Pick a display name",
         "What should we call you?",
     ] {
-        assert_eq!(read(&page(t), "example.com", &on()), Verdict::Carry, "{t:?} was wrongly stopped");
+        assert_eq!(
+            read(&page(t), "example.com", &on()),
+            Verdict::Carry,
+            "{t:?} was wrongly stopped"
+        );
     }
 }
 
@@ -511,6 +652,9 @@ fn a_broker_is_refused_outright_not_offered_for_approval() {
     let m = FinanceConfig::default();
     let why = never_enrols_on("tastytrade.com", &m).expect("should refuse");
     assert!(why.contains("wouldn't change that"), "got: {why}");
-    assert!(why.contains("sign you in"), "it should still offer the thing it will do: {why}");
+    assert!(
+        why.contains("sign you in"),
+        "it should still offer the thing it will do: {why}"
+    );
     assert!(never_enrols_on("example.com", &m).is_none());
 }

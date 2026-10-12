@@ -11,7 +11,11 @@ fn saying_just_listen_settles_it() {
     let r = read("I just need to vent for a minute, don't fix it");
     assert_eq!(r.wanted, Wanted::Hearing);
     assert!(r.confidence > 0.9);
-    assert!(r.because.contains("you said"), "and it says why: {}", r.because);
+    assert!(
+        r.because.contains("you said"),
+        "and it says why: {}",
+        r.because
+    );
 }
 
 #[test]
@@ -35,7 +39,10 @@ fn being_told_beats_every_other_signal() {
 
 #[test]
 fn a_short_question_wants_an_answer() {
-    assert_eq!(read("Should I move the deadline?").wanted, Wanted::Solutions);
+    assert_eq!(
+        read("Should I move the deadline?").wanted,
+        Wanted::Solutions
+    );
 }
 
 #[test]
@@ -46,7 +53,11 @@ fn a_long_stretch_with_no_question_is_someone_working_it_out() {
                 top of that, which is small but it's the principle of it more than anything.";
     let r = read(vent);
     assert_eq!(r.wanted, Wanted::Hearing);
-    assert!(r.because.contains("getting it out rather than asking"), "got: {}", r.because);
+    assert!(
+        r.because.contains("getting it out rather than asking"),
+        "got: {}",
+        r.because
+    );
 }
 
 #[test]
@@ -80,7 +91,10 @@ fn when_it_cannot_tell_it_asks_in_one_short_sentence() {
     // Asking costs one sentence. Guessing wrong costs the conversation.
     let q = ask_which();
     assert!(q.contains("think about it with you, or just listen"));
-    assert!(q.len() < 70, "a long careful question is its own imposition: {q}");
+    assert!(
+        q.len() < 70,
+        "a long careful question is its own imposition: {q}"
+    );
 }
 
 #[test]
@@ -94,7 +108,11 @@ fn your_answer_to_that_is_understood_however_you_put_it() {
 
 #[test]
 fn an_ambiguous_message_produces_the_question() {
-    let (w, q) = decide("The certification is going to take six weeks.", "homelab", &Preferences::default());
+    let (w, q) = decide(
+        "The certification is going to take six weeks.",
+        "homelab",
+        &Preferences::default(),
+    );
     assert_eq!(w, Wanted::Unclear);
     assert!(q.is_some());
 }
@@ -107,7 +125,11 @@ fn after_a_few_times_it_stops_asking_about_the_same_topic() {
     for _ in 0..3 {
         p.note("homelab", Wanted::Hearing);
     }
-    let (w, q) = decide("The certification is going to take six weeks.", "homelab", &p);
+    let (w, q) = decide(
+        "The certification is going to take six weeks.",
+        "homelab",
+        &p,
+    );
     assert_eq!(w, Wanted::Hearing);
     assert!(q.is_none(), "no need to ask again");
 }
@@ -146,17 +168,23 @@ fn a_topic_it_has_no_history_with_still_gets_asked_about() {
 fn being_heard_means_being_understood_not_sympathised_with() {
     // Accurate understanding is the thing. "That sounds hard" is what a system
     // says when it has understood nothing.
-    let said = heard("six weeks of certification puts the launch past November, and this is the \
-                      second slip");
+    let said = heard(
+        "six weeks of certification puts the launch past November, and this is the \
+                      second slip",
+    );
     assert!(said.contains("second slip"));
     assert!(!is_empty_sympathy(&said));
 }
 
 #[test]
 fn sympathy_noises_are_recognised_as_saying_nothing() {
-    assert!(is_empty_sympathy("That sounds really hard, I'm so sorry to hear that."));
+    assert!(is_empty_sympathy(
+        "That sounds really hard, I'm so sorry to hear that."
+    ));
     assert!(is_empty_sympathy("I can only imagine. You've got this!"));
-    assert!(!is_empty_sympathy("So — six weeks pushes it past November, and that's the second slip."));
+    assert!(!is_empty_sympathy(
+        "So — six weeks pushes it past November, and that's the second slip."
+    ));
 }
 
 #[test]
@@ -174,5 +202,8 @@ fn listening_is_not_agreeing_and_atlas_says_so() {
     // you need telling.
     assert!(STILL_HONEST.contains("doesn't mean agreeing"));
     assert!(STILL_HONEST.contains("I'll say so"));
-    assert!(STILL_HONEST.contains("not while you're still saying it"), "timing, not silence");
+    assert!(
+        STILL_HONEST.contains("not while you're still saying it"),
+        "timing, not silence"
+    );
 }

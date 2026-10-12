@@ -96,7 +96,9 @@ fn config_without_comments() -> String {
 
 fn sources() -> Vec<(String, String)> {
     fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
-        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
         let mut entries: Vec<_> = entries.flatten().map(|e| e.path()).collect();
         entries.sort();
         for path in entries {
@@ -134,7 +136,8 @@ fn placeholders(yaml: &str) -> HashSet<String> {
         if b[i] == '{' {
             let mut j = i + 1;
             let mut word = String::new();
-            while j < b.len() && (b[j].is_ascii_lowercase() || b[j] == '_' || b[j].is_ascii_digit()) {
+            while j < b.len() && (b[j].is_ascii_lowercase() || b[j] == '_' || b[j].is_ascii_digit())
+            {
                 word.push(b[j]);
                 j += 1;
             }
@@ -171,7 +174,9 @@ fn supplied_at_runtime(src: &[(String, String)]) -> HashSet<String> {
     for (_, text) in src {
         for part in text.split("insert(").skip(1) {
             let rest = part.trim_start();
-            let Some(body) = rest.strip_prefix('"') else { continue };
+            let Some(body) = rest.strip_prefix('"') else {
+                continue;
+            };
             if let Some(end) = body.find('"') {
                 let name = &body[..end];
                 if !name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
@@ -219,8 +224,10 @@ fn every_placeholder_in_a_command_resolves_to_something() {
     // speak, as silence, which is the hardest fault in this system to chase.
     let yaml = config_without_comments();
     let src = sources();
-    let known: HashSet<String> =
-        declared_vars(&yaml).union(&supplied_at_runtime(&src)).cloned().collect();
+    let known: HashSet<String> = declared_vars(&yaml)
+        .union(&supplied_at_runtime(&src))
+        .cloned()
+        .collect();
 
     let mut unresolved: Vec<String> = placeholders(&yaml)
         .into_iter()
@@ -340,7 +347,10 @@ fn the_applied_in_code_list_does_not_describe_settings_that_are_gone() {
             stale.push(*key);
         }
     }
-    assert!(stale.is_empty(), "these are excused but no longer exist: {stale:?}");
+    assert!(
+        stale.is_empty(),
+        "these are excused but no longer exist: {stale:?}"
+    );
 }
 
 #[test]
@@ -409,13 +419,17 @@ fn documentation_does_not_describe_a_worse_atlas_than_the_one_that_exists() {
         .lines()
         .filter_map(|l| {
             let t = l.trim();
-            t.strip_prefix('"').and_then(|r| r.split('"').next()).map(|s| s.to_string())
+            t.strip_prefix('"')
+                .and_then(|r| r.split('"').next())
+                .map(|s| s.to_string())
         })
         .collect();
     let modules: Vec<String> = sources().into_iter().map(|(n, _)| n).collect();
 
     let mut claims = Vec::new();
-    let Ok(dir) = std::fs::read_dir("docs") else { return };
+    let Ok(dir) = std::fs::read_dir("docs") else {
+        return;
+    };
     for entry in dir.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
@@ -464,12 +478,20 @@ fn documentation_does_not_describe_a_worse_atlas_than_the_one_that_exists() {
         if file == "CAPABILITIES.md" {
             continue;
         }
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
         for line in text.lines() {
             let l = line.to_lowercase();
-            let says_unbuilt = ["not built", "isn't built", "unbuilt", "waiting on", "not wired"]
-                .iter()
-                .any(|p| l.contains(p));
+            let says_unbuilt = [
+                "not built",
+                "isn't built",
+                "unbuilt",
+                "waiting on",
+                "not wired",
+            ]
+            .iter()
+            .any(|p| l.contains(p));
             if !says_unbuilt {
                 continue;
             }
@@ -478,20 +500,29 @@ fn documentation_does_not_describe_a_worse_atlas_than_the_one_that_exists() {
             // hardware" matched `hardware`-adjacent module names and "the path
             // you're waiting on" matched `path`-adjacent ones -- two false
             // findings that would have been baselined in as real.
-            if modules.iter().any(|m| m.len() > 4 && !unwired.contains(m) && names_word(&l, m)) {
+            if modules
+                .iter()
+                .any(|m| m.len() > 4 && !unwired.contains(m) && names_word(&l, m))
+            {
                 claims.push(format!("{file}: {}", line.trim()));
             }
         }
     }
     // Both directions, which is the point of a named list over a count.
-    let unexplained: Vec<&String> =
-        claims.iter().filter(|c| !STALE_DOC_BASELINE.iter().any(|b| c.contains(b))).collect();
+    let unexplained: Vec<&String> = claims
+        .iter()
+        .filter(|c| !STALE_DOC_BASELINE.iter().any(|b| c.contains(b)))
+        .collect();
     assert!(
         unexplained.is_empty(),
         "documentation has fallen further behind the code -- these claim something \
          is unbuilt that is wired:\n  {}\n\nFix the doc, or add it to \
          STALE_DOC_BASELINE with why it is still there.",
-        unexplained.iter().map(|c| c.as_str()).collect::<Vec<_>>().join("\n  ")
+        unexplained
+            .iter()
+            .map(|c| c.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
     let fixed: Vec<&&str> = STALE_DOC_BASELINE
         .iter()
@@ -517,7 +548,8 @@ fn names_word(haystack: &str, word: &str) -> bool {
         let start = from + at;
         let end = start + word.len();
         let before_ok = start == 0 || haystack[..start].chars().next_back().is_some_and(boundary);
-        let after_ok = end >= haystack.len() || haystack[end..].chars().next().is_some_and(boundary);
+        let after_ok =
+            end >= haystack.len() || haystack[end..].chars().next().is_some_and(boundary);
         if before_ok && after_ok {
             return true;
         }
@@ -781,12 +813,21 @@ fn atlas_measures_the_machine_rather_than_assuming_one() {
     // so. These are the two knobs that decide whether Atlas stays out of your
     // way.
     let m = atlas::fit::measure();
-    assert!(m.total_ram_mb > 0, "memory read as zero, so every plan is the smallest one");
+    assert!(
+        m.total_ram_mb > 0,
+        "memory read as zero, so every plan is the smallest one"
+    );
     assert!(m.cpu_cores >= 1, "no cores measured");
 
     let plan = atlas::fit::plan_for(&m);
-    assert!(plan.concurrency >= 1, "a plan that runs nothing at a time runs nothing");
-    assert!(!plan.because.trim().is_empty(), "the plan doesn't say why it chose what it chose");
+    assert!(
+        plan.concurrency >= 1,
+        "a plan that runs nothing at a time runs nothing"
+    );
+    assert!(
+        !plan.because.trim().is_empty(),
+        "the plan doesn't say why it chose what it chose"
+    );
 }
 
 #[test]
@@ -794,10 +835,23 @@ fn a_bigger_machine_is_allowed_to_do_more() {
     // The point of measuring. If every machine got the same plan, measuring
     // would be decoration.
     use atlas::fit::{plan_for, Machine};
-    let small = Machine { total_ram_mb: 4096, free_ram_mb: 2048, cpu_cores: 4, ..Default::default() };
-    let big = Machine { total_ram_mb: 65536, free_ram_mb: 48000, cpu_cores: 16, ..Default::default() };
+    let small = Machine {
+        total_ram_mb: 4096,
+        free_ram_mb: 2048,
+        cpu_cores: 4,
+        ..Default::default()
+    };
+    let big = Machine {
+        total_ram_mb: 65536,
+        free_ram_mb: 48000,
+        cpu_cores: 16,
+        ..Default::default()
+    };
     let (a, b) = (plan_for(&small), plan_for(&big));
-    assert!(b.tier >= a.tier, "a 64GB machine planned no higher than a 4GB one");
+    assert!(
+        b.tier >= a.tier,
+        "a 64GB machine planned no higher than a 4GB one"
+    );
     assert!(
         b.concurrency > a.concurrency || b.keep_model_warm,
         "the bigger machine gained nothing it could use"
@@ -809,9 +863,17 @@ fn a_machine_too_small_for_a_model_still_works() {
     // Degrade, never fail. Too little memory for a language model means the
     // rule-based paths do the work, not that Atlas stops.
     use atlas::fit::{plan_for, Machine};
-    let tiny = Machine { total_ram_mb: 2048, free_ram_mb: 512, cpu_cores: 2, ..Default::default() };
+    let tiny = Machine {
+        total_ram_mb: 2048,
+        free_ram_mb: 512,
+        cpu_cores: 2,
+        ..Default::default()
+    };
     let p = plan_for(&tiny);
-    assert!(p.concurrency >= 1, "a small machine was planned to do nothing at all");
+    assert!(
+        p.concurrency >= 1,
+        "a small machine was planned to do nothing at all"
+    );
 }
 
 #[test]
@@ -819,8 +881,17 @@ fn integrated_graphics_are_not_counted_as_spare_memory() {
     // Shared memory reported as VRAM is not extra memory. Counting it would
     // plan a model this machine cannot actually hold.
     use atlas::fit::Machine;
-    let igpu = Machine { total_ram_mb: 16384, free_ram_mb: 8000, vram_mb: 2048, ..Default::default() };
-    assert_eq!(igpu.usable_vram_mb(), 0, "shared graphics memory was counted as usable VRAM");
+    let igpu = Machine {
+        total_ram_mb: 16384,
+        free_ram_mb: 8000,
+        vram_mb: 2048,
+        ..Default::default()
+    };
+    assert_eq!(
+        igpu.usable_vram_mb(),
+        0,
+        "shared graphics memory was counted as usable VRAM"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -840,9 +911,16 @@ fn atlas_can_say_what_it_is_holding_that_nothing_uses() {
     ];
     let referenced = vec!["ggml-base.en.bin".to_string()];
     let drop = what_to_drop(&installed, &referenced);
-    assert_eq!(drop.len(), 1, "it offered to drop something in use, or missed one: {drop:?}");
+    assert_eq!(
+        drop.len(),
+        1,
+        "it offered to drop something in use, or missed one: {drop:?}"
+    );
     assert!(drop[0].what.contains("old-voice"));
-    assert!(!drop[0].costs_you.is_empty(), "it didn't say what dropping it costs");
+    assert!(
+        !drop[0].costs_you.is_empty(),
+        "it didn't say what dropping it costs"
+    );
 }
 
 #[test]
@@ -869,9 +947,22 @@ fn atlas_only_surveys_the_folders_it_owns() {
         .nth(1)
         .and_then(|s| s.split(']').next())
         .unwrap_or("");
-    assert!(surveyed.contains("models"), "it stopped surveying its own models: {surveyed}");
-    assert!(surveyed.contains("tools"), "it stopped surveying its own tools: {surveyed}");
-    for outside in ["\"C:", "Users", "Documents", "Downloads", "/home", "AppData"] {
+    assert!(
+        surveyed.contains("models"),
+        "it stopped surveying its own models: {surveyed}"
+    );
+    assert!(
+        surveyed.contains("tools"),
+        "it stopped surveying its own tools: {surveyed}"
+    );
+    for outside in [
+        "\"C:",
+        "Users",
+        "Documents",
+        "Downloads",
+        "/home",
+        "AppData",
+    ] {
         assert!(
             !surveyed.contains(outside),
             "it reaches outside the folders Atlas owns: {surveyed}"

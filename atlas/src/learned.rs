@@ -83,7 +83,10 @@ pub enum Advice {
     /// Failed before, but worth another go.
     TryAgain { because: String },
     /// Failed repeatedly for a reason that hasn't changed.
-    Dont { because: String, suggest: Option<String> },
+    Dont {
+        because: String,
+        suggest: Option<String>,
+    },
 }
 
 impl Learned {
@@ -129,7 +132,10 @@ impl Learned {
         // Once is bad luck, especially when it was the world's fault.
         if l.times == 1 && l.cause.retry_alone() {
             return Advice::TryAgain {
-                because: format!("it failed once — {} — but that may have changed", l.what_happened),
+                because: format!(
+                    "it failed once — {} — but that may have changed",
+                    l.what_happened
+                ),
             };
         }
         if l.cause == Cause::WrongIdea {
@@ -140,14 +146,13 @@ impl Learned {
         }
         if l.times >= 2 {
             return Advice::Dont {
-                because: format!(
-                    "tried {} times, most recently {}",
-                    l.times, l.what_happened
-                ),
+                because: format!("tried {} times, most recently {}", l.times, l.what_happened),
                 suggest: self.alternative(context, approach),
             };
         }
-        Advice::TryAgain { because: format!("only failed once, {}", l.what_happened) }
+        Advice::TryAgain {
+            because: format!("only failed once, {}", l.what_happened),
+        }
     }
 
     /// Something that worked in the same place, if there is one.
@@ -160,7 +165,10 @@ impl Learned {
 
     /// Everything known about one place, for "what have we tried here?"
     pub fn about(&self, context: &str, now: u64) -> Vec<&Lesson> {
-        self.lessons.iter().filter(|l| l.context == context && !l.stale(now)).collect()
+        self.lessons
+            .iter()
+            .filter(|l| l.context == context && !l.stale(now))
+            .collect()
     }
 }
 

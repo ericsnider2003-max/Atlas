@@ -85,14 +85,19 @@ fn read_frame_capped(r: &mut impl Read, cap: u32) -> std::io::Result<Vec<u8>> {
     r.read_exact(&mut len_bytes)?;
     let len = u32::from_be_bytes(len_bytes);
     if len > cap.min(MAX_FRAME) {
-        return Err(other("the other side announced a bundle too large to accept"));
+        return Err(other(
+            "the other side announced a bundle too large to accept",
+        ));
     }
     // Read what actually arrives rather than allocating what was announced:
     // a stranger announcing 64 MB and sending nothing costs nothing.
     let mut buf = Vec::new();
     r.take(len as u64).read_to_end(&mut buf)?;
     if buf.len() != len as usize {
-        return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "the bundle stopped part way"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            "the bundle stopped part way",
+        ));
     }
     Ok(buf)
 }
@@ -105,9 +110,14 @@ struct ByDeadline<'a> {
 }
 impl ByDeadline<'_> {
     fn left(&self) -> std::io::Result<Duration> {
-        let left = self.until.saturating_duration_since(std::time::Instant::now());
+        let left = self
+            .until
+            .saturating_duration_since(std::time::Instant::now());
         if left.is_zero() {
-            return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "the other side took too long"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "the other side took too long",
+            ));
         }
         Ok(left)
     }
@@ -147,10 +157,16 @@ pub fn exchange(
         .ok_or_else(|| other("couldn't resolve the peer's address"))?;
     let left = until.saturating_duration_since(std::time::Instant::now());
     if left.is_zero() {
-        return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "ran out of time resolving the peer"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "ran out of time resolving the peer",
+        ));
     }
     let mut stream = TcpStream::connect_timeout(&addr, left)?;
-    let mut io = ByDeadline { s: &mut stream, until };
+    let mut io = ByDeadline {
+        s: &mut stream,
+        until,
+    };
     write_frame(&mut io, outgoing)?;
     read_frame(&mut io)
 }
@@ -183,7 +199,13 @@ struct Arrived {
 /// peer trickling a byte every so often used to hold the read for ever.
 fn read_frame_within(stream: &mut TcpStream, total: Duration) -> std::io::Result<Vec<u8>> {
     // Capped at the pre-auth size: the key hasn't been checked yet.
-    read_frame_capped(&mut ByDeadline { s: stream, until: std::time::Instant::now() + total }, MAX_PRE_AUTH_FRAME)
+    read_frame_capped(
+        &mut ByDeadline {
+            s: stream,
+            until: std::time::Instant::now() + total,
+        },
+        MAX_PRE_AUTH_FRAME,
+    )
 }
 
 /// The receiving side: a bound listener the daemon polls once a tick.
@@ -216,18 +238,34 @@ impl Server {
         // Room for a few whole frames; past that the listener waits, and a
         // flood of peers queues in the OS, not in memory.
         let (tx, rx) = std::sync::mpsc::sync_channel::<Arrived>(4);
-        std::thread::Builder::new().name("atlas-sync-listen".into()).spawn(move || {
-            for conn in listener.incoming() {
-                let Ok(mut stream) = conn else { continue };
-                let Ok(peer) = stream.peer_addr() else { continue };
-                let _ = stream.set_write_timeout(Some(ARRIVE_WITHIN));
-                let Ok(bytes) = read_frame_within(&mut stream, ARRIVE_WITHIN) else { continue };
-                if tx.send(Arrived { peer: peer.ip(), bytes, stream }).is_err() {
-                    return; // the Server is gone
+        std::thread::Builder::new()
+            .name("atlas-sync-listen".into())
+            .spawn(move || {
+                for conn in listener.incoming() {
+                    let Ok(mut stream) = conn else { continue };
+                    let Ok(peer) = stream.peer_addr() else {
+                        continue;
+                    };
+                    let _ = stream.set_write_timeout(Some(ARRIVE_WITHIN));
+                    let Ok(bytes) = read_frame_within(&mut stream, ARRIVE_WITHIN) else {
+                        continue;
+                    };
+                    if tx
+                        .send(Arrived {
+                            peer: peer.ip(),
+                            bytes,
+                            stream,
+                        })
+                        .is_err()
+                    {
+                        return; // the Server is gone
+                    }
                 }
-            }
-        })?;
-        Ok(Server { addr, arrived: std::sync::Mutex::new(rx) })
+            })?;
+        Ok(Server {
+            addr,
+            arrived: std::sync::Mutex::new(rx),
+        })
     }
 
     pub fn local_addr(&self) -> std::io::Result<std::net::SocketAddr> {
@@ -260,9 +298,17 @@ impl Server {
         timeout: Duration,
         handle: impl FnOnce(std::net::IpAddr, Vec<u8>) -> Option<Vec<u8>>,
     ) -> std::io::Result<bool> {
-        let next = self.arrived.lock().unwrap_or_else(std::sync::PoisonError::into_inner).try_recv();
+        let next = self
+            .arrived
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .try_recv();
         match next {
-            Ok(Arrived { peer, bytes, mut stream }) => {
+            Ok(Arrived {
+                peer,
+                bytes,
+                mut stream,
+            }) => {
                 stream.set_write_timeout(Some(timeout))?;
                 if let Some(reply) = handle(peer, bytes) {
                     write_frame(&mut stream, &reply)?;
@@ -325,8 +371,15 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(got, b"laptop's bundle", "client receives the server's reply");
-        assert_eq!(rx.recv().unwrap(), b"phone's bundle", "server received the client's bundle");
+        assert_eq!(
+            got, b"laptop's bundle",
+            "client receives the server's reply"
+        );
+        assert_eq!(
+            rx.recv().unwrap(),
+            b"phone's bundle",
+            "server received the client's bundle"
+        );
         handle.join().unwrap();
     }
 
@@ -338,9 +391,21 @@ mod tests {
         use crate::sync::{make_bundle, merge, Log, What};
 
         let mut laptop = Log::new("laptop");
-        laptop.append(What::Captured { id: "l1".into(), text: "rack parts list".into() }, 100);
+        laptop.append(
+            What::Captured {
+                id: "l1".into(),
+                text: "rack parts list".into(),
+            },
+            100,
+        );
         let mut phone = Log::new("phone");
-        phone.append(What::Captured { id: "p1".into(), text: "a thought on the drive".into() }, 200);
+        phone.append(
+            What::Captured {
+                id: "p1".into(),
+                text: "a thought on the drive".into(),
+            },
+            200,
+        );
 
         // The laptop's bundle, ready to hand back to whoever connects.
         let laptop_bundle = serde_json::to_vec(&make_bundle(&laptop, "laptop", 0, 300)).unwrap();
@@ -363,7 +428,13 @@ mod tests {
 
         // The phone connects, sends its bundle, and gets the laptop's back.
         let phone_bundle = serde_json::to_vec(&make_bundle(&phone, "phone", 0, 300)).unwrap();
-        let from_laptop = exchange(&addr.ip().to_string(), addr.port(), &phone_bundle, Duration::from_secs(2)).unwrap();
+        let from_laptop = exchange(
+            &addr.ip().to_string(),
+            addr.port(),
+            &phone_bundle,
+            Duration::from_secs(2),
+        )
+        .unwrap();
         srv.join().unwrap();
 
         // The laptop takes in the phone's bundle.
@@ -371,14 +442,31 @@ mod tests {
             serde_json::from_slice(&got_rx.recv().unwrap()).unwrap();
         let m_laptop = merge(&laptop.events, &phone_side.events, 400);
         // clean counts events from both sides — the merge replays the union.
-        assert_eq!(m_laptop.clean, 2, "laptop's own event plus the phone's, none clashing");
-        assert!(phone_side.events.iter().any(|e| e.what == (What::Captured { id: "p1".into(), text: "a thought on the drive".into() })), "the phone's event actually crossed the wire");
+        assert_eq!(
+            m_laptop.clean, 2,
+            "laptop's own event plus the phone's, none clashing"
+        );
+        assert!(
+            phone_side.events.iter().any(|e| e.what
+                == (What::Captured {
+                    id: "p1".into(),
+                    text: "a thought on the drive".into()
+                })),
+            "the phone's event actually crossed the wire"
+        );
 
         // The phone takes in the laptop's bundle.
         let laptop_side: crate::sync::Bundle = serde_json::from_slice(&from_laptop).unwrap();
         let m_phone = merge(&phone.events, &laptop_side.events, 400);
-        assert_eq!(m_phone.clean, 2, "phone's own event plus the laptop's, none clashing");
-        assert!(laptop_side.events.iter().any(|e| e.what == (What::Captured { id: "l1".into(), text: "rack parts list".into() })));
+        assert_eq!(
+            m_phone.clean, 2,
+            "phone's own event plus the laptop's, none clashing"
+        );
+        assert!(laptop_side.events.iter().any(|e| e.what
+            == (What::Captured {
+                id: "l1".into(),
+                text: "rack parts list".into()
+            })));
     }
 
     #[test]
@@ -396,10 +484,17 @@ mod tests {
         });
         let started = std::time::Instant::now();
         for _ in 0..20 {
-            assert!(!server.poll(Duration::from_millis(50), |b| b).unwrap(), "a frame that never finished was served");
+            assert!(
+                !server.poll(Duration::from_millis(50), |b| b).unwrap(),
+                "a frame that never finished was served"
+            );
             std::thread::sleep(Duration::from_millis(10));
         }
-        assert!(started.elapsed() < Duration::from_secs(2), "polling waited on the slow peer: {:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "polling waited on the slow peer: {:?}",
+            started.elapsed()
+        );
         slow.join().unwrap();
     }
 
@@ -408,7 +503,9 @@ mod tests {
         let mut wire = Vec::new();
         wire.extend_from_slice(MAGIC);
         wire.extend_from_slice(&(MAX_PRE_AUTH_FRAME + 1).to_be_bytes());
-        assert!(read_frame_capped(&mut std::io::Cursor::new(wire.clone()), MAX_PRE_AUTH_FRAME).is_err());
+        assert!(
+            read_frame_capped(&mut std::io::Cursor::new(wire.clone()), MAX_PRE_AUTH_FRAME).is_err()
+        );
         // ...and the listener path applies it: nothing is queued.
         let server = Server::bind_local_ephemeral().unwrap();
         let mut s = TcpStream::connect(server.local_addr().unwrap()).unwrap();
@@ -437,7 +534,11 @@ mod tests {
         let started = std::time::Instant::now();
         let got = exchange("127.0.0.1", addr.port(), b"hi", Duration::from_millis(800));
         assert!(got.is_err());
-        assert!(started.elapsed() < Duration::from_secs(3), "exchange ran past its deadline: {:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "exchange ran past its deadline: {:?}",
+            started.elapsed()
+        );
         drop(peer);
     }
 }

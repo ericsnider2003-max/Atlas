@@ -117,7 +117,10 @@ fn every_page_is_named_in_words_a_person_would_use() {
     for (_, pages) in hub::NAV {
         for p in *pages {
             let l = p.label();
-            assert!(!l.contains('_') && !l.contains("::"), "{l} is an identifier");
+            assert!(
+                !l.contains('_') && !l.contains("::"),
+                "{l} is an identifier"
+            );
             assert!(
                 l.split_whitespace().count() <= 3,
                 "{l:?} is a sentence — that is what the note is for"
@@ -182,11 +185,18 @@ fn no_two_pages_or_cards_share_a_name() {
     // deck's Projects card opens the Projects page, its Health card shows what
     // the Health page does. Two different things sharing a name is the
     // problem; a summary and its page are one thing.
-    let summarises = [(Card::Projects, Page::Workshop), (Card::Machine, Page::Status)];
+    let summarises = [
+        (Card::Projects, Page::Workshop),
+        (Card::Machine, Page::Status),
+    ];
     names.extend(
         Card::all()
             .iter()
-            .filter(|c| !summarises.iter().any(|(k, p)| k == *c && p.label() == c.title()))
+            .filter(|c| {
+                !summarises
+                    .iter()
+                    .any(|(k, p)| k == *c && p.label() == c.title())
+            })
             .map(|c| c.title()),
     );
     let n = names.len();
@@ -237,7 +247,9 @@ const SPEAKS_TO_YOU: &[&str] = &[
 fn no_source_file_debug_formats_a_value_onto_the_screen() {
     let mut offenders: Vec<String> = Vec::new();
     for file in SPEAKS_TO_YOU {
-        let Some(src) = crate::common::read_source_path(file) else { continue };
+        let Some(src) = crate::common::read_source_path(file) else {
+            continue;
+        };
         for (i, line) in src.lines().enumerate() {
             let t = line.trim_start();
             if t.starts_with("//") || t.starts_with("///") || t.starts_with('*') {
@@ -271,13 +283,25 @@ fn no_source_file_debug_formats_a_value_onto_the_screen() {
 fn the_matcher_catches_both_spellings_and_leaves_ordinary_code_alone() {
     let caught = |line: &str| line.contains(":?}");
 
-    assert!(caught(r#"format!("{:?}", x)"#), "the old spelling must still be caught");
-    assert!(caught(r#"format!("{other:?}")"#), "the inline-capture spelling is the one it missed");
+    assert!(
+        caught(r#"format!("{:?}", x)"#),
+        "the old spelling must still be caught"
+    );
+    assert!(
+        caught(r#"format!("{other:?}")"#),
+        "the inline-capture spelling is the one it missed"
+    );
     assert!(caught(r#"println!("{stage:?} next")"#));
 
-    assert!(!caught(r#"format!("{x}")"#), "ordinary display formatting is fine");
+    assert!(
+        !caught(r#"format!("{x}")"#),
+        "ordinary display formatting is fine"
+    );
     assert!(!caught(r#"format!("{:.1}", ms)"#));
-    assert!(!caught(r#"let q = "who?"; "#), "a question mark in prose is not a debug format");
+    assert!(
+        !caught(r#"let q = "who?"; "#),
+        "a question mark in prose is not a debug format"
+    );
 }
 
 /// The `Intent` fallback that started it.
@@ -296,8 +320,14 @@ fn every_intent_has_something_to_call_it_that_is_not_its_variant_name() {
         // The tell: Rust variant names are CamelCase with no spaces.
         let first = said.split_whitespace().next().unwrap_or("");
         assert!(
-            !(first.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
-                && first.chars().any(|c| c.is_uppercase() && first.starts_with(|f: char| f.is_uppercase()) && c != first.chars().next().unwrap())),
+            !(first
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false)
+                && first.chars().any(|c| c.is_uppercase()
+                    && first.starts_with(|f: char| f.is_uppercase())
+                    && c != first.chars().next().unwrap())),
             "{said:?} still reads like a variant name"
         );
     }
@@ -321,7 +351,6 @@ fn a_list_with_nothing_in_it_says_which_list_is_empty() {
     );
     assert!(looks_like_code(&html).is_empty());
 }
-
 
 #[test]
 fn the_accounts_page_reads_as_english() {

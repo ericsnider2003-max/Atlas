@@ -56,11 +56,21 @@ pub enum Value {
 impl Value {
     pub fn as_display(&self) -> String {
         match self {
-            Value::Toggle(b) => if *b { "on".into() } else { "off".into() },
+            Value::Toggle(b) => {
+                if *b {
+                    "on".into()
+                } else {
+                    "off".into()
+                }
+            }
             Value::Number { value, .. } => format!("{value}"),
             Value::Text(s) | Value::Choice { value: s, .. } => s.clone(),
             Value::List(v) => {
-                if v.is_empty() { "none".into() } else { v.join(", ") }
+                if v.is_empty() {
+                    "none".into()
+                } else {
+                    v.join(", ")
+                }
             }
         }
     }
@@ -69,11 +79,17 @@ impl Value {
     fn set_from(&mut self, raw: &str) -> Result<(), String> {
         match self {
             Value::Toggle(b) => {
-                *b = matches!(raw.trim().to_lowercase().as_str(), "on" | "true" | "yes" | "1");
+                *b = matches!(
+                    raw.trim().to_lowercase().as_str(),
+                    "on" | "true" | "yes" | "1"
+                );
                 Ok(())
             }
             Value::Number { value, min, max } => {
-                let n: f64 = raw.trim().parse().map_err(|_| format!("{raw} isn't a number"))?;
+                let n: f64 = raw
+                    .trim()
+                    .parse()
+                    .map_err(|_| format!("{raw} isn't a number"))?;
                 if n < *min || n > *max {
                     return Err(format!("must be between {min} and {max}"));
                 }
@@ -310,7 +326,10 @@ impl Settings {
 
     /// The one-line explanation of a category, when there is one.
     pub fn group_note(group: &str) -> Option<&'static str> {
-        GROUP_ORDER.iter().find(|(g, _)| *g == group).map(|(_, n)| *n)
+        GROUP_ORDER
+            .iter()
+            .find(|(g, _)| *g == group)
+            .map(|(_, n)| *n)
     }
 
     pub fn in_group(&self, group: &str) -> Vec<&Setting> {
@@ -326,8 +345,11 @@ impl Settings {
     /// Everything that lets Atlas reach a sensor, the network, or act without
     /// asking. The page worth reading once a month.
     pub fn consequential(&self) -> Vec<&Setting> {
-        let mut v: Vec<&Setting> =
-            self.items.iter().filter(|s| s.weight.needs_confirming()).collect();
+        let mut v: Vec<&Setting> = self
+            .items
+            .iter()
+            .filter(|s| s.weight.needs_confirming())
+            .collect();
         v.sort_by_key(|b| std::cmp::Reverse(b.weight));
         v
     }
@@ -398,7 +420,10 @@ pub fn registry(t: &crate::voice::ToolsConfig) -> Settings {
     let mut live = build(t);
     let fresh = build(&crate::voice::ToolsConfig::default());
     for (item, def) in live.items.iter_mut().zip(fresh.items.iter()) {
-        debug_assert_eq!(item.key, def.key, "the two builds must produce the same list");
+        debug_assert_eq!(
+            item.key, def.key,
+            "the two builds must produce the same list"
+        );
         item.default = def.value.clone();
     }
     live
@@ -681,8 +706,10 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
     items.push(Setting {
         key: "sync.folder".into(),
         name: "Sync folder".into(),
-        what: "The folder your devices meet in — one your cloud drive keeps in step is best.".into(),
-        cost: "Whoever can read that folder can read what I leave there, unless sealing is on.".into(),
+        what: "The folder your devices meet in — one your cloud drive keeps in step is best."
+            .into(),
+        cost: "Whoever can read that folder can read what I leave there, unless sealing is on."
+            .into(),
         value: Value::Text(t.sync.folder.clone()),
         default: Value::Text(t.sync.folder.clone()),
         weight: Sensitive,
@@ -753,20 +780,56 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
     items.push(text("hunt.sources", "Opportunity sources",
         "Comma-separated: hn, grants, sam, reddit, producthunt, appstore, github, mail, feeds, search.",
         "SAM.gov needs a free key in the vault under the name below.", &t.hunt.sources));
-    items.push(text("hunt.subreddits", "Subreddits to read", "Without the r/, comma-separated.", "", &t.hunt.subreddits));
-    items.push(text("hunt.feeds", "Opportunity feeds", "Any RSS or Atom addresses to read too, comma-separated.", "", &t.hunt.feeds));
-    items.push(text("hunt.searches", "Opportunity searches", "Searches to run each day, comma-separated.",
-        "Needs a SearXNG address set above.", &t.hunt.searches));
-    items.push(text("hunt.keywords", "Grant keywords", "What Grants.gov and SAM.gov are asked for.", "", &t.hunt.keywords));
-    items.push(text("hunt.sam_key_vault", "SAM.gov key name", "The vault entry holding your SAM.gov key.",
-        "The key never leaves the vault except in the one request to SAM.gov.", &t.hunt.sam_key_vault));
+    items.push(text(
+        "hunt.subreddits",
+        "Subreddits to read",
+        "Without the r/, comma-separated.",
+        "",
+        &t.hunt.subreddits,
+    ));
+    items.push(text(
+        "hunt.feeds",
+        "Opportunity feeds",
+        "Any RSS or Atom addresses to read too, comma-separated.",
+        "",
+        &t.hunt.feeds,
+    ));
+    items.push(text(
+        "hunt.searches",
+        "Opportunity searches",
+        "Searches to run each day, comma-separated.",
+        "Needs a SearXNG address set above.",
+        &t.hunt.searches,
+    ));
+    items.push(text(
+        "hunt.keywords",
+        "Grant keywords",
+        "What Grants.gov and SAM.gov are asked for.",
+        "",
+        &t.hunt.keywords,
+    ));
+    items.push(text(
+        "hunt.sam_key_vault",
+        "SAM.gov key name",
+        "The vault entry holding your SAM.gov key.",
+        "The key never leaves the vault except in the one request to SAM.gov.",
+        &t.hunt.sam_key_vault,
+    ));
     items.push(Setting {
         key: "hunt.top_n".into(),
         name: "Opportunities per brief".into(),
         what: "How many make the morning brief.".into(),
         cost: String::new(),
-        value: Value::Number { value: t.hunt.top_n as f64, min: 1.0, max: 10.0 },
-        default: Value::Number { value: t.hunt.top_n as f64, min: 1.0, max: 10.0 },
+        value: Value::Number {
+            value: t.hunt.top_n as f64,
+            min: 1.0,
+            max: 10.0,
+        },
+        default: Value::Number {
+            value: t.hunt.top_n as f64,
+            min: 1.0,
+            max: 10.0,
+        },
         weight: Preference,
         group: "Looking for opportunities".into(),
     });
@@ -774,9 +837,20 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         key: "hunt.max_requests_per_day".into(),
         name: "Daily request limit".into(),
         what: "All sources together. A source that would go past it waits for tomorrow.".into(),
-        cost: format!("Never above {}, whatever this says.", crate::hunt::HARD_CEILING),
-        value: Value::Number { value: t.hunt.max_requests_per_day as f64, min: 1.0, max: crate::hunt::HARD_CEILING as f64 },
-        default: Value::Number { value: t.hunt.max_requests_per_day as f64, min: 1.0, max: crate::hunt::HARD_CEILING as f64 },
+        cost: format!(
+            "Never above {}, whatever this says.",
+            crate::hunt::HARD_CEILING
+        ),
+        value: Value::Number {
+            value: t.hunt.max_requests_per_day as f64,
+            min: 1.0,
+            max: crate::hunt::HARD_CEILING as f64,
+        },
+        default: Value::Number {
+            value: t.hunt.max_requests_per_day as f64,
+            min: 1.0,
+            max: crate::hunt::HARD_CEILING as f64,
+        },
         weight: Preference,
         group: "Looking for opportunities".into(),
     });
@@ -852,21 +926,29 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         // otherwise. The piper list under Kokoro offered seven voices it
         // doesn't have, and refused every one it does.
         let options: Vec<String> = if kokoro {
-            crate::kokoro::english_voices().into_iter().map(String::from).collect()
+            crate::kokoro::english_voices()
+                .into_iter()
+                .map(String::from)
+                .collect()
         } else {
             crate::tts::catalogue().into_iter().map(|v| v.id).collect()
         };
         (
-            Value::Choice { value: t.voice_settings.voice.clone(), options: options.clone() },
-            Value::Choice { value: crate::tts::VoiceSettings::default().voice, options },
+            Value::Choice {
+                value: t.voice_settings.voice.clone(),
+                options: options.clone(),
+            },
+            Value::Choice {
+                value: crate::tts::VoiceSettings::default().voice,
+                options,
+            },
         )
     };
     items.push(Setting {
         key: "voice_settings.voice".into(),
         name: "Speaking voice".into(),
         what: if cloning {
-            "Whose voice Atlas speaks in. It copies the voice in a recording you provide."
-                .into()
+            "Whose voice Atlas speaks in. It copies the voice in a recording you provide.".into()
         } else {
             "Which voice Atlas speaks in when it reads a reply out loud.".to_string()
         },
@@ -892,7 +974,8 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
     items.push(Setting {
         key: "push_to_talk.key".into(),
         name: "Push-to-talk key".into(),
-        what: "The key you hold to talk: one key, such as Tab, Caps Lock, Right Ctrl or an F-key.".into(),
+        what: "The key you hold to talk: one key, such as Tab, Caps Lock, Right Ctrl or an F-key."
+            .into(),
         cost: "Press \"Set by pressing\" and then the key, or type its name.".into(),
         value: Value::Text(t.push_to_talk.key.clone()),
         default: Value::Text(t.push_to_talk.key.clone()),
@@ -915,9 +998,17 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         name: "Speaking pace".into(),
         what: "How quickly it talks.".into(),
         cost: "Below 1 is faster. Or just say: a bit slower.".into(),
-        value: Value::Number { value: t.voice_settings.speed as f64, min: 0.6, max: 1.6 },
+        value: Value::Number {
+            value: t.voice_settings.speed as f64,
+            min: 0.6,
+            max: 1.6,
+        },
         // Placeholder; `registry` derives the real default. See `build`.
-        default: Value::Number { value: t.voice_settings.speed as f64, min: 0.6, max: 1.6 },
+        default: Value::Number {
+            value: t.voice_settings.speed as f64,
+            min: 0.6,
+            max: 1.6,
+        },
         weight: Weight::Preference,
         group: "Talking to it".into(),
     });
@@ -930,8 +1021,20 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         name: "Speak replies aloud".into(),
         what: "Always, only when you spoke to it (hands-free), or never.".into(),
         cost: "Never still shows every reply.".into(),
-        value: Value::Choice { value: t.sound.speak_replies.clone(), options: crate::sound::SPEAK_REPLIES.iter().map(|s| s.to_string()).collect() },
-        default: Value::Choice { value: "hands_free".into(), options: crate::sound::SPEAK_REPLIES.iter().map(|s| s.to_string()).collect() },
+        value: Value::Choice {
+            value: t.sound.speak_replies.clone(),
+            options: crate::sound::SPEAK_REPLIES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        },
+        default: Value::Choice {
+            value: "hands_free".into(),
+            options: crate::sound::SPEAK_REPLIES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        },
         weight: Weight::Preference,
         group: "Sound".into(),
     });
@@ -940,8 +1043,16 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         name: "Speaking volume".into(),
         what: "How loud Atlas's voice is, from 0 to 100.".into(),
         cost: "Applied to the voice itself, so the rest of your sound is untouched.".into(),
-        value: Value::Number { value: t.sound.volume as f64, min: 0.0, max: 100.0 },
-        default: Value::Number { value: 100.0, min: 0.0, max: 100.0 },
+        value: Value::Number {
+            value: t.sound.volume as f64,
+            min: 0.0,
+            max: 100.0,
+        },
+        default: Value::Number {
+            value: 100.0,
+            min: 0.0,
+            max: 100.0,
+        },
         weight: Weight::Preference,
         group: "Sound".into(),
     });
@@ -971,14 +1082,24 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         Weight::Permission,
         "Writing code",
     ));
-    items.push(toggle("sound.muted", "Mute Atlas",
+    items.push(toggle(
+        "sound.muted",
+        "Mute Atlas",
         "Nothing is said out loud. Everything still works and is shown.",
         "Replies and notes appear on screen instead.",
-        t.sound.muted, Weight::Preference, "Sound"));
-    items.push(toggle("sound.quiet_hours", "Quiet hours",
+        t.sound.muted,
+        Weight::Preference,
+        "Sound",
+    ));
+    items.push(toggle(
+        "sound.quiet_hours",
+        "Quiet hours",
         "Atlas won't speak or chime in the window below. It still works, silently.",
         "Anything it wanted to say waits in your brief.",
-        t.sound.quiet_hours, Weight::Preference, "Sound"));
+        t.sound.quiet_hours,
+        Weight::Preference,
+        "Sound",
+    ));
     items.push(Setting {
         key: "sound.quiet_from".into(),
         name: "Quiet from".into(),
@@ -1009,7 +1130,13 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         weight: Weight::Preference,
         group: "Sound".into(),
     });
-    let wake = t.wake.clone().unwrap_or(crate::voice::WakeConfig { enabled: false, phrase: "atlas".into(), clip_seconds: 3, detector: None, listen_first: false });
+    let wake = t.wake.clone().unwrap_or(crate::voice::WakeConfig {
+        enabled: false,
+        phrase: "atlas".into(),
+        clip_seconds: 3,
+        detector: None,
+        listen_first: false,
+    });
     items.push(Setting {
         key: "wake.phrase".into(),
         name: "Wake phrase".into(),
@@ -1044,7 +1171,10 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
     // How heavy hand tracking may be (2 Oct 2026: "may need a lighter model
     // for gestures" -- the laptop's fans spun while it watched his hands).
     // Automatic picks from the machine; this is the way to overrule it.
-    let weight_options: Vec<String> = crate::handweight::Weight::WORDS.iter().map(|s| s.to_string()).collect();
+    let weight_options: Vec<String> = crate::handweight::Weight::WORDS
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     items.push(Setting {
         key: "hands.weight".into(),
         name: "Hand tracking weight".into(),
@@ -1067,27 +1197,52 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         "Runs on this machine — no picture is sent anywhere. Needs a one-off download (the seeing models).",
         t.vision.enabled, Weight::Sensitive, "What it can see"));
 
-    items.push(toggle("viewing.enabled", "Watching video",
+    items.push(toggle(
+        "viewing.enabled",
+        "Watching video",
         "Read what's on screen in a video you send, not just what's said in it.",
         "Pulls a frame only where the picture changed, reads it, deletes it.",
-        t.viewing.enabled, Weight::Preference, "What it can see"));
+        t.viewing.enabled,
+        Weight::Preference,
+        "What it can see",
+    ));
 
-    items.push(toggle("persona.argues", "Pushback",
+    items.push(toggle(
+        "persona.argues",
+        "Pushback",
         "Say when it disagrees, with the reason, instead of going along with you.",
-        "", t.persona.argues, Weight::Preference, "How it talks back"));
+        "",
+        t.persona.argues,
+        Weight::Preference,
+        "How it talks back",
+    ));
 
-    items.push(toggle("persona.converses", "Open conversation",
+    items.push(toggle(
+        "persona.converses",
+        "Open conversation",
         "Hold a conversation that isn't about work.",
-        "", t.persona.converses, Weight::Preference, "How it talks back"));
+        "",
+        t.persona.converses,
+        Weight::Preference,
+        "How it talks back",
+    ));
 
     items.push(Setting {
         key: "persona.max_spoken_sentences".into(),
         name: "Reply length".into(),
         what: "Maximum sentences in a spoken reply.".into(),
         cost: "Longer replies are harder to listen to than to read.".into(),
-        value: Value::Number { value: t.persona.max_spoken_sentences as f64, min: 1.0, max: 8.0 },
+        value: Value::Number {
+            value: t.persona.max_spoken_sentences as f64,
+            min: 1.0,
+            max: 8.0,
+        },
         // Placeholder; `registry` derives the real default. See `build`.
-        default: Value::Number { value: t.persona.max_spoken_sentences as f64, min: 1.0, max: 8.0 },
+        default: Value::Number {
+            value: t.persona.max_spoken_sentences as f64,
+            min: 1.0,
+            max: 8.0,
+        },
         weight: Weight::Preference,
         group: "How it talks back".into(),
     });
@@ -1103,9 +1258,17 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         // used to start at 512, so the shipped value was outside its own
         // range — nothing could ever set it back to "measure", and a native
         // control clamping to the range would have saved 512 on first touch.
-        value: Value::Number { value: t.models.memory_budget_mb as f64, min: 0.0, max: 64000.0 },
+        value: Value::Number {
+            value: t.models.memory_budget_mb as f64,
+            min: 0.0,
+            max: 64000.0,
+        },
         // Placeholder; `registry` derives the real default. See `build`.
-        default: Value::Number { value: t.models.memory_budget_mb as f64, min: 0.0, max: 64000.0 },
+        default: Value::Number {
+            value: t.models.memory_budget_mb as f64,
+            min: 0.0,
+            max: 64000.0,
+        },
         weight: Weight::Resource,
         group: "What it may touch".into(),
     });
@@ -1164,11 +1327,21 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
     items.push(Setting {
         key: "crew.keep_free_mb".into(),
         name: "Memory kept free".into(),
-        what: "Background work that thinks waits rather than start with less memory free than this.".into(),
+        what:
+            "Background work that thinks waits rather than start with less memory free than this."
+                .into(),
         cost: "Higher keeps the laptop responsive, and background work waits more often.".into(),
-        value: Value::Number { value: t.crew.keep_free_mb as f64, min: 0.0, max: 16384.0 },
+        value: Value::Number {
+            value: t.crew.keep_free_mb as f64,
+            min: 0.0,
+            max: 16384.0,
+        },
         // Placeholder; `registry` derives the real default. See `build`.
-        default: Value::Number { value: t.crew.keep_free_mb as f64, min: 0.0, max: 16384.0 },
+        default: Value::Number {
+            value: t.crew.keep_free_mb as f64,
+            min: 0.0,
+            max: 16384.0,
+        },
         weight: Weight::Resource,
         group: "What it may touch".into(),
     });
@@ -1205,7 +1378,11 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
         .into_iter()
         .chain(crate::tz::names().into_iter().map(String::from))
         .collect();
-    let zone_now = if t.time_zone.trim().is_empty() { "Automatic".to_string() } else { t.time_zone.trim().to_string() };
+    let zone_now = if t.time_zone.trim().is_empty() {
+        "Automatic".to_string()
+    } else {
+        t.time_zone.trim().to_string()
+    };
     items.push(Setting {
         key: "time_zone".into(),
         name: "Time zone".into(),

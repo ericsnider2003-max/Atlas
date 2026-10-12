@@ -128,14 +128,21 @@ mod tests {
             Decision::AskClarification,
             Decision::RequireApproval,
         ] {
-            assert_eq!(grade(base, Understanding::Matched, &UnderstoodConfig::default()), base);
+            assert_eq!(
+                grade(base, Understanding::Matched, &UnderstoodConfig::default()),
+                base
+            );
         }
     }
 
     #[test]
     fn an_inferred_change_to_the_world_becomes_a_question() {
         assert_eq!(
-            grade(Decision::ProceedAndReport, Understanding::Inferred, &UnderstoodConfig::default()),
+            grade(
+                Decision::ProceedAndReport,
+                Understanding::Inferred,
+                &UnderstoodConfig::default()
+            ),
             Decision::AskClarification
         );
     }
@@ -145,7 +152,11 @@ mod tests {
         // The noise guard. Ordinary conversation is inferred almost every
         // time; if this escalated, Atlas would ask before every answer.
         assert_eq!(
-            grade(Decision::AutoProceed, Understanding::Inferred, &UnderstoodConfig::default()),
+            grade(
+                Decision::AutoProceed,
+                Understanding::Inferred,
+                &UnderstoodConfig::default()
+            ),
             Decision::AutoProceed
         );
     }

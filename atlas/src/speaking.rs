@@ -47,7 +47,9 @@ impl Speaking {
         if !self.levels.is_empty() {
             return self.level_at(now_ms).is_some();
         }
-        let Some(since) = now_ms.checked_sub(self.started_ms) else { return false };
+        let Some(since) = now_ms.checked_sub(self.started_ms) else {
+            return false;
+        };
         let guess = (self.text.chars().count() as u64 * 70 + 1_000).min(120_000);
         since < guess
     }
@@ -64,7 +66,10 @@ pub fn caption(text: &str) -> String {
         return t.to_string();
     }
     let cut: String = t.chars().take(CAPTION_CHARS).collect();
-    let at = cut.rfind(char::is_whitespace).filter(|i| *i > CAPTION_CHARS / 2).unwrap_or(cut.len());
+    let at = cut
+        .rfind(char::is_whitespace)
+        .filter(|i| *i > CAPTION_CHARS / 2)
+        .unwrap_or(cut.len());
     format!("{}…", cut[..at].trim_end())
 }
 
@@ -99,7 +104,8 @@ pub fn begin(data_dir: &Path, text: &str, wav: &[u8], now_ms: u64) -> std::io::R
 /// sentence whose playback begins after `listen_for_first_sound`, taken by
 /// the turn's timing line. What Eric feels is the silence from the end of
 /// his speech to this moment, not how long the model or the voice took.
-static FIRST_SOUND: std::sync::Mutex<(bool, Option<std::time::Instant>)> = std::sync::Mutex::new((false, None));
+static FIRST_SOUND: std::sync::Mutex<(bool, Option<std::time::Instant>)> =
+    std::sync::Mutex::new((false, None));
 
 /// Start watching for the turn's first sound.
 pub fn listen_for_first_sound() {
@@ -121,11 +127,15 @@ pub fn heard_now() {
 
 /// When the turn's first sound began, once; watching stops.
 pub fn take_first_sound() -> Option<std::time::Instant> {
-    FIRST_SOUND.lock().or_else(crate::crash::unpoison).ok().and_then(|mut g| {
-        let at = g.1.take();
-        g.0 = false;
-        at
-    })
+    FIRST_SOUND
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .ok()
+        .and_then(|mut g| {
+            let at = g.1.take();
+            g.0 = false;
+            at
+        })
 }
 
 /// Playback has finished (or failed): the line goes back to rest.
@@ -184,8 +194,18 @@ pub fn levels_of_wav(wav: &[u8], frame_ms: u32) -> Option<Vec<u8>> {
     // 16-bit whole numbers (piper), or 32-bit floats (some other engines);
     // `format` 0xFFFE says which in its sub-format, kept in `sub`.
     let samples: Vec<f32> = match (format, bits) {
-        (1, 16) => data.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes([b[0], b[1]]) as f32).collect(),
-        (3, 32) => data.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]) * 32767.0).collect(),
+        (1, 16) => data
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32)
+            .collect(),
+        (3, 32) => data
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]) * 32767.0)
+            .collect(),
         _ => return None,
     };
     let rms: Vec<f32> = samples
@@ -196,7 +216,11 @@ pub fn levels_of_wav(wav: &[u8], frame_ms: u32) -> Option<Vec<u8>> {
     if peak <= 0.0 {
         return Some(vec![0; rms.len()]);
     }
-    Some(rms.iter().map(|r| ((r / peak).sqrt() * 255.0).round() as u8).collect())
+    Some(
+        rms.iter()
+            .map(|r| ((r / peak).sqrt() * 255.0).round() as u8)
+            .collect(),
+    )
 }
 
 /// Milliseconds since 1970, the clock both sides of the file read.
@@ -220,16 +244,27 @@ pub struct Watch {
 
 impl Watch {
     pub fn new(data_dir: PathBuf) -> Watch {
-        Watch { data_dir, last_read: None, current: None, changed: None }
+        Watch {
+            data_dir,
+            last_read: None,
+            current: None,
+            changed: None,
+        }
     }
 
     /// What's being said now, re-read at most every 50 ms — often enough
     /// that the line starts with the first syllable, rarely enough to cost
     /// nothing.
     pub fn now(&mut self) -> Option<&Speaking> {
-        if self.last_read.map(|t| t.elapsed().as_millis() >= 50).unwrap_or(true) {
+        if self
+            .last_read
+            .map(|t| t.elapsed().as_millis() >= 50)
+            .unwrap_or(true)
+        {
             self.last_read = Some(std::time::Instant::now());
-            let changed = std::fs::metadata(path(&self.data_dir)).and_then(|m| m.modified()).ok();
+            let changed = std::fs::metadata(path(&self.data_dir))
+                .and_then(|m| m.modified())
+                .ok();
             if changed.is_none() {
                 self.current = None;
             } else if changed != self.changed || self.current.is_none() {

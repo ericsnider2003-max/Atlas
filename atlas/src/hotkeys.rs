@@ -75,7 +75,9 @@ pub fn key_code(name: &str) -> Option<u32> {
             }
             0x70 + n - 1
         }
-        c if c.len() == 1 && c.chars().all(|c| c.is_ascii_alphanumeric()) => c.to_ascii_uppercase().as_bytes()[0] as u32,
+        c if c.len() == 1 && c.chars().all(|c| c.is_ascii_alphanumeric()) => {
+            c.to_ascii_uppercase().as_bytes()[0] as u32
+        }
         _ => return None,
     };
     Some(code)
@@ -114,9 +116,14 @@ pub fn spec_of(ctrl: bool, shift: bool, alt: bool, win: bool, key: &str) -> Opti
 pub fn check_setting(which: &str, spec: &str) -> Result<(), String> {
     if which == "push_to_talk.key" {
         if spec.contains('+') {
-            return Err("push-to-talk is one key you hold — pick a single key, like capslock or rightctrl".into());
+            return Err(
+                "push-to-talk is one key you hold — pick a single key, like capslock or rightctrl"
+                    .into(),
+            );
         }
-        return key_code(spec).map(|_| ()).ok_or_else(|| format!("I don't know a key called \"{spec}\""));
+        return key_code(spec)
+            .map(|_| ())
+            .ok_or_else(|| format!("I don't know a key called \"{spec}\""));
     }
     crate::quickinput::parse_hotkey(spec).map(|_| ()).ok_or_else(|| {
         format!(
@@ -136,7 +143,10 @@ pub struct Keys {
 }
 
 impl Keys {
-    pub fn from_settings(ptt: &crate::voice::PttConfig, typing: &crate::quickinput::QuickInputConfig) -> Keys {
+    pub fn from_settings(
+        ptt: &crate::voice::PttConfig,
+        typing: &crate::quickinput::QuickInputConfig,
+    ) -> Keys {
         let mut problems = Vec::new();
         let talk = if !ptt.enabled || ptt.key.trim().is_empty() {
             None
@@ -144,7 +154,10 @@ impl Keys {
             match key_code(&ptt.key) {
                 Some(vk) => Some((vk, ptt.hold_ms.max(150))),
                 None => {
-                    problems.push(format!("I don't know the key \"{}\" for push-to-talk", ptt.key));
+                    problems.push(format!(
+                        "I don't know the key \"{}\" for push-to-talk",
+                        ptt.key
+                    ));
                     None
                 }
             }
@@ -155,16 +168,28 @@ impl Keys {
             match crate::quickinput::parse_hotkey(&typing.hotkey) {
                 Some(k) => Some(k),
                 None => {
-                    problems.push(check_setting("quick_input.hotkey", &typing.hotkey).err().unwrap_or_default());
+                    problems.push(
+                        check_setting("quick_input.hotkey", &typing.hotkey)
+                            .err()
+                            .unwrap_or_default(),
+                    );
                     None
                 }
             }
         };
-        Keys { talk, typing, problems }
+        Keys {
+            talk,
+            typing,
+            problems,
+        }
     }
 
     /// For start-up: how to reach Atlas without the wake word.
-    pub fn said(&self, ptt: &crate::voice::PttConfig, typing: &crate::quickinput::QuickInputConfig) -> Option<String> {
+    pub fn said(
+        &self,
+        ptt: &crate::voice::PttConfig,
+        typing: &crate::quickinput::QuickInputConfig,
+    ) -> Option<String> {
         let mut ways = Vec::new();
         if self.talk.is_some() {
             ways.push(format!("hold {} to talk", pretty(&ptt.key)));
@@ -234,7 +259,10 @@ pub enum Hook {
 
 impl Gate {
     pub fn new(hold_ms: u64) -> Gate {
-        Gate { hold: HoldToTalk::new("", hold_ms), down: false }
+        Gate {
+            hold: HoldToTalk::new("", hold_ms),
+            down: false,
+        }
     }
 
     /// The key went down (or repeated). Held back until it's clear.
@@ -242,7 +270,10 @@ impl Gate {
         if !self.down {
             self.down = true;
             let e = self.hold.down(now_ms);
-            return (Hook::Swallow, (e == KeyEvent::StartTalking).then_some(Pressed::TalkStart));
+            return (
+                Hook::Swallow,
+                (e == KeyEvent::StartTalking).then_some(Pressed::TalkStart),
+            );
         }
         // Auto-repeat while held.
         (Hook::Swallow, self.tick(now_ms))
@@ -298,19 +329,32 @@ impl Hotkeys {
     /// Push-to-talk is held right now. What a listen checks to know when to
     /// stop.
     pub fn held(&self) -> bool {
-        self.gate.lock().or_else(crate::crash::unpoison).map(|g| g.is_talking()).unwrap_or(false)
+        self.gate
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map(|g| g.is_talking())
+            .unwrap_or(false)
     }
 
     /// `held`, to hand to another thread (the microphone's, which records
     /// while the key is down).
     pub fn held_fn(&self) -> std::sync::Arc<dyn Fn() -> bool + Send + Sync> {
         let gate = self.gate.clone();
-        std::sync::Arc::new(move || gate.lock().or_else(crate::crash::unpoison).map(|g| g.is_talking()).unwrap_or(false))
+        std::sync::Arc::new(move || {
+            gate.lock()
+                .or_else(crate::crash::unpoison)
+                .map(|g| g.is_talking())
+                .unwrap_or(false)
+        })
     }
 
     /// For tests and for a platform that feeds keys some other way.
     pub fn from_parts(rx: Receiver<Pressed>, gate: Arc<Mutex<Gate>>) -> Hotkeys {
-        Hotkeys { rx, gate, problems: Vec::new() }
+        Hotkeys {
+            rx,
+            gate,
+            problems: Vec::new(),
+        }
     }
 }
 
@@ -346,16 +390,32 @@ pub fn try_them(
     if seen == 0 {
         "Nothing came through as a hold or a press. A quick tap of the push-to-talk key goes to your app on purpose — hold it. If you did, another program may be holding the key: pick another in Settings → Keys.".into()
     } else {
-        format!("{seen} key event{} seen. The keys work.", if seen == 1 { "" } else { "s" })
+        format!(
+            "{seen} key event{} seen. The keys work.",
+            if seen == 1 { "" } else { "s" }
+        )
     }
 }
 
 /// What a key event is, said.
-pub fn heard_as(ev: Pressed, ptt: &crate::voice::PttConfig, typing: &crate::quickinput::QuickInputConfig) -> String {
+pub fn heard_as(
+    ev: Pressed,
+    ptt: &crate::voice::PttConfig,
+    typing: &crate::quickinput::QuickInputConfig,
+) -> String {
     match ev {
-        Pressed::TalkStart => format!("{} held — Atlas would start listening now.", pretty(&ptt.key)),
-        Pressed::TalkStop => format!("{} let go — Atlas would stop and hear what you said.", pretty(&ptt.key)),
-        Pressed::TypingBox => format!("{} pressed — the typing box would open.", pretty(&typing.hotkey)),
+        Pressed::TalkStart => format!(
+            "{} held — Atlas would start listening now.",
+            pretty(&ptt.key)
+        ),
+        Pressed::TalkStop => format!(
+            "{} let go — Atlas would stop and hear what you said.",
+            pretty(&ptt.key)
+        ),
+        Pressed::TypingBox => format!(
+            "{} pressed — the typing box would open.",
+            pretty(&typing.hotkey)
+        ),
     }
 }
 
@@ -365,7 +425,9 @@ pub fn start(keys: &Keys) -> Result<Hotkeys, String> {
         return Err("no push-to-talk or typing-box key is set".into());
     }
     let (tx, rx) = std::sync::mpsc::channel();
-    let gate = Arc::new(Mutex::new(Gate::new(keys.talk.map(|(_, h)| h).unwrap_or(350))));
+    let gate = Arc::new(Mutex::new(Gate::new(
+        keys.talk.map(|(_, h)| h).unwrap_or(350),
+    )));
     let mut problems = keys.problems.clone();
     problems.extend(start_platform(keys, tx, gate.clone())?);
     let mut h = Hotkeys::from_parts(rx, gate);
@@ -374,12 +436,20 @@ pub fn start(keys: &Keys) -> Result<Hotkeys, String> {
 }
 
 #[cfg(not(windows))]
-fn start_platform(_keys: &Keys, _tx: Sender<Pressed>, _gate: Arc<Mutex<Gate>>) -> Result<Vec<String>, String> {
+fn start_platform(
+    _keys: &Keys,
+    _tx: Sender<Pressed>,
+    _gate: Arc<Mutex<Gate>>,
+) -> Result<Vec<String>, String> {
     Err("global keys are only watched on Windows".into())
 }
 
 #[cfg(windows)]
-fn start_platform(keys: &Keys, tx: Sender<Pressed>, gate: Arc<Mutex<Gate>>) -> Result<Vec<String>, String> {
+fn start_platform(
+    keys: &Keys,
+    tx: Sender<Pressed>,
+    gate: Arc<Mutex<Gate>>,
+) -> Result<Vec<String>, String> {
     win::start(keys.clone(), tx, gate)
 }
 
@@ -419,7 +489,11 @@ mod win {
                 ki: KEYBDINPUT {
                     wVk: VIRTUAL_KEY(vk as u16),
                     wScan: 0,
-                    dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) },
+                    dwFlags: if up {
+                        KEYEVENTF_KEYUP
+                    } else {
+                        KEYBD_EVENT_FLAGS(0)
+                    },
                     time: 0,
                     dwExtraInfo: ATLAS_TAP,
                 },
@@ -428,7 +502,10 @@ mod win {
         // SAFETY: the slice is two fully initialised INPUT records and the size passed is that of
         // one INPUT.
         unsafe {
-            SendInput(&[key(false), key(true)], std::mem::size_of::<INPUT>() as i32);
+            SendInput(
+                &[key(false), key(true)],
+                std::mem::size_of::<INPUT>() as i32,
+            );
         }
     }
 
@@ -474,7 +551,11 @@ mod win {
         CallNextHookEx(None, code, wparam, lparam)
     }
 
-    pub fn start(keys: Keys, tx: Sender<Pressed>, gate: Arc<Mutex<Gate>>) -> Result<Vec<String>, String> {
+    pub fn start(
+        keys: Keys,
+        tx: Sender<Pressed>,
+        gate: Arc<Mutex<Gate>>,
+    ) -> Result<Vec<String>, String> {
         let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Vec<String>>();
         let timer_gate = gate.clone();
         let timer_tx = tx.clone();
@@ -484,9 +565,16 @@ mod win {
             let mut problems = Vec::new();
             if let Some((vk, _)) = keys.talk {
                 // unheard-ok: a OnceLock already set keeps its first value, which is the one wanted
-                let _ = SHARED.set(Shared { vk, tx: tx.clone(), gate, started: std::time::Instant::now() });
+                let _ = SHARED.set(Shared {
+                    vk,
+                    tx: tx.clone(),
+                    gate,
+                    started: std::time::Instant::now(),
+                });
                 if let Err(e) = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), None, 0) {
-                    problems.push(format!("Windows wouldn't let me watch the push-to-talk key ({e})"));
+                    problems.push(format!(
+                        "Windows wouldn't let me watch the push-to-talk key ({e})"
+                    ));
                 }
             }
             const TYPING_ID: i32 = 0xA71A;
@@ -496,7 +584,10 @@ mod win {
                     // Only "already registered" (1409) means another program
                     // has the key; anything else is said as Windows said it
                     // (29 Sep 2026: every failure was blamed on another program).
-                    problems.push(crate::hotkeys::typing_key_refused(e.code().0 as u32 & 0xFFFF, &e.to_string()));
+                    problems.push(crate::hotkeys::typing_key_refused(
+                        e.code().0 as u32 & 0xFFFF,
+                        &e.to_string(),
+                    ));
                 }
             }
             let _ = ready_tx.send(problems);
@@ -515,7 +606,12 @@ mod win {
             let timer = std::thread::spawn(move || loop {
                 // Asleep while the key is up; the hook unparks it on a press.
                 // The five seconds only cover a press before TIMER was set.
-                let waiting = SHARED.get().is_some() && timer_gate.lock().or_else(crate::crash::unpoison).map(|g| g.waiting_for_hold()).unwrap_or(false);
+                let waiting = SHARED.get().is_some()
+                    && timer_gate
+                        .lock()
+                        .or_else(crate::crash::unpoison)
+                        .map(|g| g.waiting_for_hold())
+                        .unwrap_or(false);
                 if !waiting {
                     std::thread::park_timeout(std::time::Duration::from_secs(5));
                     continue;
@@ -523,7 +619,11 @@ mod win {
                 std::thread::sleep(std::time::Duration::from_millis(20));
                 let Some(s) = SHARED.get() else { continue };
                 let t = now_ms(s);
-                let ev = timer_gate.lock().or_else(crate::crash::unpoison).ok().and_then(|mut g| g.tick(t));
+                let ev = timer_gate
+                    .lock()
+                    .or_else(crate::crash::unpoison)
+                    .ok()
+                    .and_then(|mut g| g.tick(t));
                 if let Some(e) = ev {
                     if timer_tx.send(e).is_err() {
                         break;
@@ -533,7 +633,9 @@ mod win {
             // unheard-ok: a OnceLock already set keeps its first value, which is the one wanted
             let _ = TIMER.set(timer.thread().clone());
         }
-        ready_rx.recv().map_err(|_| "the key watcher didn't start".to_string())
+        ready_rx
+            .recv()
+            .map_err(|_| "the key watcher didn't start".to_string())
     }
 }
 
@@ -543,6 +645,8 @@ pub fn typing_key_refused(code: u32, message: &str) -> String {
     if code == 1409 {
         "another program already uses the typing-box key — pick another in settings".into()
     } else {
-        format!("Windows wouldn't give me the typing-box key ({message}) — pick another in settings")
+        format!(
+            "Windows wouldn't give me the typing-box key ({message}) — pick another in settings"
+        )
     }
 }

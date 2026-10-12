@@ -33,7 +33,12 @@ pub struct MotionSpec {
 
 impl MotionSpec {
     pub fn new(idea: &str) -> MotionSpec {
-        MotionSpec { idea: idea.to_string(), width: 480, height: 480, duration_secs: 0.0 }
+        MotionSpec {
+            idea: idea.to_string(),
+            width: 480,
+            height: 480,
+            duration_secs: 0.0,
+        }
     }
 
     /// Pull the numbers out of a plain request: "a bouncing ball, 600x400, for
@@ -138,7 +143,12 @@ pub fn check(svg: &str, spec: &MotionSpec) -> Vec<Finding> {
     // \"http…\"` is a namespace, not a fetch, so it's checked by the specific
     // attribute prefixes rather than a bare "http".)
     let external = [
-        "href=\"http", "href='http", "src=\"http", "src='http", "url(http", "url('http",
+        "href=\"http",
+        "href='http",
+        "src=\"http",
+        "src='http",
+        "url(http",
+        "url('http",
         "url(\"http",
     ]
     .iter()
@@ -225,12 +235,18 @@ pub fn check(svg: &str, spec: &MotionSpec) -> Vec<Finding> {
 
 /// The findings that block, in order — the fix loop's cue.
 pub fn blocking(findings: &[Finding]) -> Vec<&Finding> {
-    findings.iter().filter(|f| f.severity == Severity::Blocking).collect()
+    findings
+        .iter()
+        .filter(|f| f.severity == Severity::Blocking)
+        .collect()
 }
 
 /// One honest line: what the check does and does not establish.
 pub fn spoken(findings: &[Finding]) -> String {
-    let blocking = findings.iter().filter(|f| f.severity == Severity::Blocking).count();
+    let blocking = findings
+        .iter()
+        .filter(|f| f.severity == Severity::Blocking)
+        .count();
     let advisory = findings.len() - blocking;
     if findings.is_empty() {
         return "It's a real SVG animation and it matches what you asked for — that it renders and \
@@ -268,10 +284,18 @@ Keep everything that already worked.";
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
     /// It renders and moves to spec. Any remaining findings are advisory notes.
-    Drawn { svg: String, rounds: u32, notes: Vec<Finding> },
+    Drawn {
+        svg: String,
+        rounds: u32,
+        notes: Vec<Finding>,
+    },
     /// A blocking problem survived the fix budget. The best draft is handed back
     /// WITH the problems attached, never as if it worked.
-    Struggled { svg: String, rounds: u32, findings: Vec<Finding> },
+    Struggled {
+        svg: String,
+        rounds: u32,
+        findings: Vec<Finding>,
+    },
     /// No usable first draft — no model output, or not an SVG at all.
     NoDraft(String),
 }
@@ -301,11 +325,18 @@ pub fn draw_loop(
         let findings = check(&svg);
         let has_blocker = findings.iter().any(|f| f.severity == Severity::Blocking);
         if !has_blocker {
-            let notes = findings.into_iter().filter(|f| f.severity == Severity::Advisory).collect();
+            let notes = findings
+                .into_iter()
+                .filter(|f| f.severity == Severity::Advisory)
+                .collect();
             return Outcome::Drawn { svg, rounds, notes };
         }
         if rounds >= max_rounds {
-            return Outcome::Struggled { svg, rounds, findings };
+            return Outcome::Struggled {
+                svg,
+                rounds,
+                findings,
+            };
         }
         rounds += 1;
         let problems = findings
@@ -323,14 +354,20 @@ pub fn draw_loop(
                     rule: "fix".into(),
                     detail: format!("couldn't get a fix: {e}"),
                 });
-                return Outcome::Struggled { svg, rounds, findings };
+                return Outcome::Struggled {
+                    svg,
+                    rounds,
+                    findings,
+                };
             }
         }
     }
 }
 
 /// Shapes an animation can be moved into.
-const SHAPES: &[&str] = &["circle", "rect", "ellipse", "line", "path", "polygon", "polyline", "text", "image", "use"];
+const SHAPES: &[&str] = &[
+    "circle", "rect", "ellipse", "line", "path", "polygon", "polyline", "text", "image", "use",
+];
 
 /// An `<animate>` written straight under `<svg>`, right after the shape it
 /// was meant for, animates the `<svg>` itself -- which has no `cy` -- so
@@ -350,7 +387,9 @@ pub fn put_loose_animations_in_place(svg: &str) -> String {
     let mut i = 0;
     while let Some(off) = svg[i..].find('<') {
         let at = i + off;
-        let Some(close) = svg[at..].find('>') else { break };
+        let Some(close) = svg[at..].find('>') else {
+            break;
+        };
         let end = at + close + 1;
         let tag = &svg[at..end];
         let between_is_space = |from: usize| svg[from..at].trim().is_empty();
@@ -367,10 +406,15 @@ pub fn put_loose_animations_in_place(svg: &str) -> String {
             i = end;
             continue;
         }
-        let name: String = tag[1..].chars().take_while(|c| c.is_alphanumeric() || *c == ':' || *c == '-').collect::<String>().to_lowercase();
+        let name: String = tag[1..]
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == ':' || *c == '-')
+            .collect::<String>()
+            .to_lowercase();
         let self_closed = tag.ends_with("/>");
         let top = stack.len() == 1 && stack[0] == "svg";
-        if top && self_closed && name.starts_with("animate") && !tag.to_lowercase().contains("href") {
+        if top && self_closed && name.starts_with("animate") && !tag.to_lowercase().contains("href")
+        {
             if let Some((shape_at, shape)) = last_shape.clone() {
                 let after = chain_end.unwrap_or(shape_at + 2);
                 if between_is_space(after) {
@@ -407,7 +451,9 @@ pub fn put_loose_animations_in_place(svg: &str) -> String {
 
 /// First draft from the model. Private: the way in is `draw_loop`.
 fn draft(spec: &MotionSpec, llm: &dyn crate::brain::Llm) -> Result<String, String> {
-    let reply = llm.complete(MOTION_SYSTEM, &spec.idea).map_err(|e| e.to_string())?;
+    let reply = llm
+        .complete(MOTION_SYSTEM, &spec.idea)
+        .map_err(|e| e.to_string())?;
     let svg = crate::build_it::extract_code(&reply);
     if svg.trim().is_empty() || !svg.to_lowercase().contains("<svg") {
         return Err("the model didn't give back a usable SVG".into());
@@ -420,7 +466,9 @@ fn draft(spec: &MotionSpec, llm: &dyn crate::brain::Llm) -> Result<String, Strin
 fn fix(svg: &str, problems: &str, llm: &dyn crate::brain::Llm) -> Result<String, String> {
     let user =
         format!("The problems:\n{problems}\n\nThe SVG:\n```\n{svg}\n```\n\nReturn the complete corrected SVG.");
-    let reply = llm.complete(MOTION_FIX_SYSTEM, &user).map_err(|e| e.to_string())?;
+    let reply = llm
+        .complete(MOTION_FIX_SYSTEM, &user)
+        .map_err(|e| e.to_string())?;
     let fixed = crate::build_it::extract_code(&reply);
     if fixed.trim().is_empty() {
         return Err("no SVG came back on the fix round".into());
@@ -435,11 +483,17 @@ fn dimensions(low: &str) -> Option<(u32, u32)> {
     // Try "<n>x<n>" first.
     for sep in ["x", " by ", "×"] {
         if let Some(i) = low.find(sep) {
-            let before: String =
-                low[..i].chars().rev().take_while(|c| c.is_ascii_digit()).collect();
+            let before: String = low[..i]
+                .chars()
+                .rev()
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
             let before: String = before.chars().rev().collect();
-            let after: String =
-                low[i + sep.len()..].trim_start().chars().take_while(|c| c.is_ascii_digit()).collect();
+            let after: String = low[i + sep.len()..]
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
             if let (Ok(w), Ok(h)) = (before.parse::<u32>(), after.parse::<u32>()) {
                 if w > 0 && h > 0 {
                     return Some((w, h));
@@ -498,7 +552,10 @@ pub fn declared_size(lower: &str) -> Option<(u32, u32)> {
     }
     // viewBox="minx miny width height"
     if let Some(vb) = attr_value(lower, "viewbox") {
-        let nums: Vec<f32> = vb.split_whitespace().filter_map(|n| n.parse::<f32>().ok()).collect();
+        let nums: Vec<f32> = vb
+            .split_whitespace()
+            .filter_map(|n| n.parse::<f32>().ok())
+            .collect();
         if nums.len() == 4 {
             return Some((nums[2] as u32, nums[3] as u32));
         }
@@ -521,7 +578,11 @@ fn attr_value(lower: &str, attr: &str) -> Option<String> {
 /// percentage width isn't read as a pixel size.
 fn attr_number(lower: &str, attr: &str) -> Option<u32> {
     let v = attr_value(lower, attr)?;
-    let digits: String = v.trim().chars().take_while(|c| c.is_ascii_digit()).collect();
+    let digits: String = v
+        .trim()
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
     let trailing = v.trim()[digits.len()..].trim();
     if digits.is_empty() || (!trailing.is_empty() && trailing != "px") {
         return None;
@@ -556,7 +617,10 @@ pub(crate) fn longest_duration(lower: &str) -> Option<f32> {
         while let Some(rel) = lower[j..].find(key) {
             let at = j + rel + key.len();
             // scan the tokens up to ';' for the first time value
-            let seg: String = lower[at..].chars().take_while(|c| *c != ';' && *c != '}').collect();
+            let seg: String = lower[at..]
+                .chars()
+                .take_while(|c| *c != ';' && *c != '}')
+                .collect();
             for tok in seg.split_whitespace() {
                 if let Some(s) = parse_time(tok) {
                     consider(s);
@@ -591,10 +655,21 @@ pub struct Refined {
 
 /// Plain colour names Atlas will paint with.
 const COLOURS: &[(&str, &str)] = &[
-    ("red", "#e53935"), ("blue", "#1e88e5"), ("green", "#43a047"), ("yellow", "#fdd835"),
-    ("orange", "#fb8c00"), ("purple", "#8e24aa"), ("pink", "#ec407a"), ("teal", "#00897b"),
-    ("black", "#111111"), ("white", "#ffffff"), ("grey", "#9e9e9e"), ("gray", "#9e9e9e"),
-    ("gold", "#ffc107"), ("brown", "#6d4c41"), ("navy", "#1a237e"),
+    ("red", "#e53935"),
+    ("blue", "#1e88e5"),
+    ("green", "#43a047"),
+    ("yellow", "#fdd835"),
+    ("orange", "#fb8c00"),
+    ("purple", "#8e24aa"),
+    ("pink", "#ec407a"),
+    ("teal", "#00897b"),
+    ("black", "#111111"),
+    ("white", "#ffffff"),
+    ("grey", "#9e9e9e"),
+    ("gray", "#9e9e9e"),
+    ("gold", "#ffc107"),
+    ("brown", "#6d4c41"),
+    ("navy", "#1a237e"),
 ];
 
 /// "faster" → 0.5 of the time; "a bit slower" → 4/3; "three times as fast" → 1/3.
@@ -610,11 +685,23 @@ fn speed_factor(low: &str) -> Option<(f32, &'static str)> {
     let little = has("a bit") || has("a little") || has("slightly") || has("a touch");
     let much = has("much") || has("a lot") || has("way ");
     if has("faster") || has("speed it up") || has("quicker") || has("as fast") {
-        let k = times.unwrap_or(if little { 4.0 / 3.0 } else if much { 3.0 } else { 2.0 });
+        let k = times.unwrap_or(if little {
+            4.0 / 3.0
+        } else if much {
+            3.0
+        } else {
+            2.0
+        });
         return Some((1.0 / k, "faster"));
     }
     if has("slower") || has("slow it down") || has("half speed") || has("half as fast") {
-        let k = times.unwrap_or(if little { 4.0 / 3.0 } else if much { 3.0 } else { 2.0 });
+        let k = times.unwrap_or(if little {
+            4.0 / 3.0
+        } else if much {
+            3.0
+        } else {
+            2.0
+        });
         return Some((k, "slower"));
     }
     None
@@ -628,7 +715,18 @@ fn colour_asked(low: &str) -> Option<(&'static str, &'static str)> {
             // "red", "redder", "bluer", "greener", "reddish".
             COLOURS
                 .iter()
-                .find(|(n, _)| [n.to_string(), format!("{n}r"), format!("{n}er"), format!("{n}der"), format!("{n}dish"), format!("{n}ish")].iter().any(|f| f == w))
+                .find(|(n, _)| {
+                    [
+                        n.to_string(),
+                        format!("{n}r"),
+                        format!("{n}er"),
+                        format!("{n}der"),
+                        format!("{n}dish"),
+                        format!("{n}ish"),
+                    ]
+                    .iter()
+                    .any(|f| f == w)
+                })
                 .map(|(n, h)| (*n, *h))
         })
 }
@@ -648,8 +746,12 @@ fn size_factor(low: &str) -> Option<(f32, &'static str)> {
 fn scale_times(svg: &str, k: f32) -> String {
     fn scale_tok(tok: &str, k: f32) -> Option<String> {
         let t = tok.trim();
-        let (num, unit) = if let Some(n) = t.strip_suffix("ms") { (n, "ms") } else {
-            let n = t.strip_suffix('s')?; (n, "s") };
+        let (num, unit) = if let Some(n) = t.strip_suffix("ms") {
+            (n, "ms")
+        } else {
+            let n = t.strip_suffix('s')?;
+            (n, "s")
+        };
         let v: f32 = num.parse().ok()?;
         let out = v * k;
         Some(format!("{}{unit}", (out * 1000.0).round() / 1000.0))
@@ -658,13 +760,19 @@ fn scale_times(svg: &str, k: f32) -> String {
     let mut rest = svg;
     // Attributes: dur="…" and begin="…" (a plain time, or a list of them).
     loop {
-        let next = ["dur=\"", "begin=\""].iter().filter_map(|k| rest.find(k).map(|i| (i, k.len()))).min();
+        let next = ["dur=\"", "begin=\""]
+            .iter()
+            .filter_map(|k| rest.find(k).map(|i| (i, k.len())))
+            .min();
         let Some((i, klen)) = next else { break };
         out.push_str(&rest[..i + klen]);
         rest = &rest[i + klen..];
         let end = rest.find('"').unwrap_or(rest.len());
         let val = &rest[..end];
-        let scaled: Vec<String> = val.split(';').map(|p| scale_tok(p, k).unwrap_or_else(|| p.to_string())).collect();
+        let scaled: Vec<String> = val
+            .split(';')
+            .map(|p| scale_tok(p, k).unwrap_or_else(|| p.to_string()))
+            .collect();
         out.push_str(&scaled.join(";"));
         rest = &rest[end..];
     }
@@ -676,7 +784,10 @@ fn scale_times(svg: &str, k: f32) -> String {
         let after = &rest[i..];
         let Some(colon) = after.find(':') else { break };
         let name = &after[..colon];
-        if !matches!(name.trim(), "animation" | "animation-duration" | "animation-delay") {
+        if !matches!(
+            name.trim(),
+            "animation" | "animation-duration" | "animation-delay"
+        ) {
             css.push_str(&rest[..i + colon + 1]);
             rest = &rest[i + colon + 1..];
             continue;
@@ -684,7 +795,10 @@ fn scale_times(svg: &str, k: f32) -> String {
         css.push_str(&rest[..i + colon + 1]);
         let body = &after[colon + 1..];
         let end = body.find([';', '}', '"']).unwrap_or(body.len());
-        let scaled: Vec<String> = body[..end].split(' ').map(|w| scale_tok(w, k).unwrap_or_else(|| w.to_string())).collect();
+        let scaled: Vec<String> = body[..end]
+            .split(' ')
+            .map(|w| scale_tok(w, k).unwrap_or_else(|| w.to_string()))
+            .collect();
         css.push_str(&scaled.join(" "));
         rest = &body[end..];
     }
@@ -701,16 +815,32 @@ fn main_colour(svg: &str) -> Option<String> {
     let mut background: Vec<String> = Vec::new();
     for (idx, tag) in lower.match_indices('<') {
         let _ = tag;
-        let el_end = lower[idx..].find('>').map(|e| idx + e).unwrap_or(lower.len());
+        let el_end = lower[idx..]
+            .find('>')
+            .map(|e| idx + e)
+            .unwrap_or(lower.len());
         let el = &lower[idx..el_end];
-        let wide = el.contains("width=\"100%\"") || canvas_w.as_ref().map(|w| el.contains(&format!("width=\"{w}\""))).unwrap_or(false);
+        let wide = el.contains("width=\"100%\"")
+            || canvas_w
+                .as_ref()
+                .map(|w| el.contains(&format!("width=\"{w}\"")))
+                .unwrap_or(false);
         for key in ["fill=\"", "stroke=\"", "fill:", "stroke:"] {
             let mut from = 0;
             while let Some(r) = el[from..].find(key) {
                 let at = from + r + key.len();
-                let v: String = el[at..].trim_start().chars().take_while(|c| c.is_alphanumeric() || *c == '#').collect();
+                let v: String = el[at..]
+                    .trim_start()
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '#')
+                    .collect();
                 from = at;
-                if v.is_empty() || v == "none" || v == "transparent" || v.starts_with("url") || v == "currentcolor" {
+                if v.is_empty()
+                    || v == "none"
+                    || v == "transparent"
+                    || v.starts_with("url")
+                    || v == "currentcolor"
+                {
                     continue;
                 }
                 if wide && !el.starts_with("<svg") {
@@ -738,7 +868,9 @@ fn swap_colour(svg: &str, from: &str, to: &str) -> String {
         // Only whole values: the next character mustn't continue a hex or a name.
         let next = lower[i + from.len()..].chars().next().unwrap_or(' ');
         let prev = lower[..i].chars().last().unwrap_or(' ');
-        if next.is_ascii_alphanumeric() || !(prev == '"' || prev == ':' || prev == ' ' || prev == '\'') {
+        if next.is_ascii_alphanumeric()
+            || !(prev == '"' || prev == ':' || prev == ' ' || prev == '\'')
+        {
             continue;
         }
         out.push_str(&svg[last..i]);
@@ -754,7 +886,10 @@ fn swap_colour(svg: &str, from: &str, to: &str) -> String {
 fn scale_canvas(svg: &str, k: f32) -> Option<(String, (u32, u32))> {
     let lower = svg.to_ascii_lowercase();
     let (w, h) = declared_size(&lower)?;
-    let (nw, nh) = (((w as f32) * k).round() as u32, ((h as f32) * k).round() as u32);
+    let (nw, nh) = (
+        ((w as f32) * k).round() as u32,
+        ((h as f32) * k).round() as u32,
+    );
     let start = lower.find("<svg")?;
     let end = start + lower[start..].find('>')?;
     let mut head = svg[start..end].to_string();
@@ -773,7 +908,10 @@ fn scale_canvas(svg: &str, k: f32) -> Option<(String, (u32, u32))> {
         }
     };
     let head = set(&set(&head, "width", nw), "height", nh);
-    Some((format!("{}{}{}", &svg[..start], head, &svg[end..]), (nw, nh)))
+    Some((
+        format!("{}{}{}", &svg[..start], head, &svg[end..]),
+        (nw, nh),
+    ))
 }
 
 /// Refine an animation by what was said. `None` when the words ask for
@@ -791,7 +929,11 @@ pub fn refine(svg: &str, said: &str) -> Option<Refined> {
         let after = longest_duration(&scaled.to_lowercase());
         if scaled != out {
             let how = match (before, after) {
-                (Some(b), Some(a)) => format!("{word} ({} s → {} s)", (b * 100.0).round() / 100.0, (a * 100.0).round() / 100.0),
+                (Some(b), Some(a)) => format!(
+                    "{word} ({} s → {} s)",
+                    (b * 100.0).round() / 100.0,
+                    (a * 100.0).round() / 100.0
+                ),
                 _ => word.to_string(),
             };
             changes.push(how);
@@ -814,7 +956,12 @@ pub fn refine(svg: &str, said: &str) -> Option<Refined> {
             changes.push(format!("{word} ({} × {})", wh.0, wh.1));
         }
     }
-    (!changes.is_empty()).then_some(Refined { svg: out, changes, duration_secs, size })
+    (!changes.is_empty()).then_some(Refined {
+        svg: out,
+        changes,
+        duration_secs,
+        size,
+    })
 }
 
 fn quoted_value(rest: &str) -> Option<String> {
@@ -924,7 +1071,10 @@ pub fn verify_render(path: &std::path::Path, expect: &Expect) -> Vec<Finding> {
             return vec![Finding {
                 severity: Severity::Advisory,
                 rule: "render size".into(),
-                detail: format!("it rendered at {w}×{h}, not the {}×{} asked for", expect.width, expect.height),
+                detail: format!(
+                    "it rendered at {w}×{h}, not the {}×{} asked for",
+                    expect.width, expect.height
+                ),
             }];
         }
     }
@@ -995,8 +1145,14 @@ mod loose_animations {
     fn an_animation_beside_its_shape_goes_inside_it() {
         let svg = "<svg width=\"200\" height=\"200\">\n  <title>Ball</title>\n  <circle cx=\"100\" cy=\"100\" r=\"20\" fill=\"blue\" />\n  <animate attributeName=\"cy\" values=\"100;140;100\" dur=\"1s\" repeatCount=\"indefinite\" />\n</svg>";
         let out = fix(svg);
-        assert!(out.contains("fill=\"blue\" >\n  <animate attributeName=\"cy\""), "{out}");
-        assert!(out.contains("repeatCount=\"indefinite\" /></circle>\n</svg>"), "{out}");
+        assert!(
+            out.contains("fill=\"blue\" >\n  <animate attributeName=\"cy\""),
+            "{out}"
+        );
+        assert!(
+            out.contains("repeatCount=\"indefinite\" /></circle>\n</svg>"),
+            "{out}"
+        );
     }
 
     #[test]
@@ -1017,4 +1173,3 @@ mod loose_animations {
         }
     }
 }
-

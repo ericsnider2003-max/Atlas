@@ -26,9 +26,18 @@ use crate::hub::{esc, shell_at, Page};
 fn word_tag(kind: &str, word: &str) -> String {
     let (class, paths) = match kind {
         "done" | "ok" => ("ok", "<path d='M5 12l5 5L20 6'/>"),
-        "wait" => ("wait", "<circle cx=12 cy=12 r=9 /><path d='M12 8v4l2.5 1.5'/>"),
-        "info" => ("info", "<circle cx=12 cy=12 r=9 /><path d='M12 11v5M12 8h.01'/>"),
-        "stop" => ("stop", "<path d='M12 8v4M12 16h.01'/><circle cx=12 cy=12 r=9 />"),
+        "wait" => (
+            "wait",
+            "<circle cx=12 cy=12 r=9 /><path d='M12 8v4l2.5 1.5'/>",
+        ),
+        "info" => (
+            "info",
+            "<circle cx=12 cy=12 r=9 /><path d='M12 11v5M12 8h.01'/>",
+        ),
+        "stop" => (
+            "stop",
+            "<path d='M12 8v4M12 16h.01'/><circle cx=12 cy=12 r=9 />",
+        ),
         _ => ("", "<circle cx=12 cy=12 r=9 />"),
     };
     format!(
@@ -98,7 +107,9 @@ pub fn messages_page(v: &MessagesView) -> String {
     let mut list = String::from("<nav class=roomlist aria-label='Conversations'><ul>");
     if v.rooms.is_empty() {
         list.push_str("<li>");
-        list.push_str(&empty("No conversations yet. Start one with someone you've paired with."));
+        list.push_str(&empty(
+            "No conversations yet. Start one with someone you've paired with.",
+        ));
         list.push_str("</li>");
     }
     for r in &v.rooms {
@@ -190,7 +201,11 @@ pub fn messages_page(v: &MessagesView) -> String {
         .as_deref()
         .map(|n| format!("<p class=notice role=status>{}</p>", esc(n)))
         .unwrap_or_default();
-    shell_at(Some(Page::Messages), "Messages", &format!("{notice}<div class=msgs>{list}{convo}</div>"))
+    shell_at(
+        Some(Page::Messages),
+        "Messages",
+        &format!("{notice}<div class=msgs>{list}{convo}</div>"),
+    )
 }
 
 // ---------------------------------------------------------------- Documents
@@ -233,7 +248,14 @@ pub const PHOTO_EDITS: &[(&str, &str)] = &[
 fn photo_form(id: u64, name: &str, path: &str) -> String {
     let opts: String = PHOTO_EDITS
         .iter()
-        .map(|(said, label)| format!("<option value=\"edit this photo &quot;{}&quot; {}\">{}</option>", esc(path), esc(said), esc(label)))
+        .map(|(said, label)| {
+            format!(
+                "<option value=\"edit this photo &quot;{}&quot; {}\">{}</option>",
+                esc(path),
+                esc(said),
+                esc(label)
+            )
+        })
         .collect();
     format!(
         "<form class=inline method=post action='/hub/talk'><label class=sr for=ped{id}>Edit a copy of {name}</label>\
@@ -244,14 +266,21 @@ fn photo_form(id: u64, name: &str, path: &str) -> String {
 
 /// `people`: who a document can be sent to (paired, by name).
 pub fn documents_page(docs: &[DocRow], people: &[String], notice: Option<&str>) -> String {
-    let mut body = notice.map(|n| format!("<p class=notice role=status>{}</p>", esc(n))).unwrap_or_default();
+    let mut body = notice
+        .map(|n| format!("<p class=notice role=status>{}</p>", esc(n)))
+        .unwrap_or_default();
     body.push_str(
         "<p class=lead>Everything Atlas holds for you, on this machine. The area keeps the firewall legible; \
          the Shared column says for each one whether it's private or has gone out, and to whom.</p>",
     );
     if docs.is_empty() {
-        body.push_str(&empty("Nothing here yet. Hand Atlas a file, a link or a photo and it shows up here."));
-        body.push_str(&format!("<p><a class='btn primary' href='{}'>Give Atlas something</a></p>", Page::Give.href()));
+        body.push_str(&empty(
+            "Nothing here yet. Hand Atlas a file, a link or a photo and it shows up here.",
+        ));
+        body.push_str(&format!(
+            "<p><a class='btn primary' href='{}'>Give Atlas something</a></p>",
+            Page::Give.href()
+        ));
         return shell_at(Some(Page::Documents), "Documents", &body);
     }
     body.push_str(
@@ -263,7 +292,10 @@ pub fn documents_page(docs: &[DocRow], people: &[String], notice: Option<&str>) 
         let send = if people.is_empty() {
             "<span class=meta>Pair with someone to send</span>".to_string()
         } else {
-            let opts: String = people.iter().map(|p| format!("<option>{}</option>", esc(p))).collect();
+            let opts: String = people
+                .iter()
+                .map(|p| format!("<option>{}</option>", esc(p)))
+                .collect();
             format!(
                 "<form class=inline method=post action='/hub/documents'><input type=hidden name=what value=send>\
                  <input type=hidden name=id value={id}><label class=sr for=dto{id}>Send {name} to</label>\
@@ -273,7 +305,11 @@ pub fn documents_page(docs: &[DocRow], people: &[String], notice: Option<&str>) 
             )
         };
         // Photos can be edited from here; the copy lands beside the file.
-        let edit = d.photo.as_deref().map(|p| photo_form(d.id, &d.name, p)).unwrap_or_default();
+        let edit = d
+            .photo
+            .as_deref()
+            .map(|p| photo_form(d.id, &d.name, p))
+            .unwrap_or_default();
         body.push_str(&format!(
             "<tr><th scope=row>{}</th><td>{}</td><td><span class=area>{}</span></td><td>{}</td><td>{}</td><td>{}</td><td>{send}</td><td>{edit}</td></tr>",
             esc(&d.name),
@@ -360,7 +396,11 @@ pub fn business_page(all: &[BusinessView], chosen: Option<&str>) -> String {
             body.push_str(&format!(
                 "<li><span>{}</span>{}</li>",
                 esc(t),
-                if *late { word_tag("stop", &format!("Overdue · {due}")) } else { word_tag("", due) }
+                if *late {
+                    word_tag("stop", &format!("Overdue · {due}"))
+                } else {
+                    word_tag("", due)
+                }
             ));
         }
         body.push_str("</ul>");
@@ -460,13 +500,28 @@ fn task_done_button(t: &TaskRow) -> String {
 
 /// Shared tasks as the design's database view: Table, Board or Calendar,
 /// over the same rows. `today` is today's day index in your zone.
-pub fn shared_tasks_page(tasks: &[TaskRow], businesses: &[String], chosen: Option<&str>, view: TaskView, today: i64) -> String {
-    let biz = chosen.map(|s| s.to_string()).or_else(|| businesses.first().cloned());
+pub fn shared_tasks_page(
+    tasks: &[TaskRow],
+    businesses: &[String],
+    chosen: Option<&str>,
+    view: TaskView,
+    today: i64,
+) -> String {
+    let biz = chosen
+        .map(|s| s.to_string())
+        .or_else(|| businesses.first().cloned());
     let rows: Vec<&TaskRow> = tasks
         .iter()
-        .filter(|t| biz.as_deref().map(|b| t.business.eq_ignore_ascii_case(b)).unwrap_or(true))
+        .filter(|t| {
+            biz.as_deref()
+                .map(|b| t.business.eq_ignore_ascii_case(b))
+                .unwrap_or(true)
+        })
         .collect();
-    let q = biz.as_deref().map(|b| format!("&amp;b={}", esc(b))).unwrap_or_default();
+    let q = biz
+        .as_deref()
+        .map(|b| format!("&amp;b={}", esc(b)))
+        .unwrap_or_default();
     let mut body = String::from("<nav class=views aria-label='How to show the tasks'>");
     for v in [TaskView::Table, TaskView::Board, TaskView::Calendar] {
         let here = v == view;
@@ -485,8 +540,13 @@ pub fn shared_tasks_page(tasks: &[TaskRow], businesses: &[String], chosen: Optio
     }
     body.push_str("</nav>");
     if businesses.is_empty() {
-        body.push_str(&empty("Shared tasks belong to a business, and there isn't one yet."));
-        body.push_str(&format!("<p><a class=more href='{}'>How to add a business</a></p>", Page::Business.href()));
+        body.push_str(&empty(
+            "Shared tasks belong to a business, and there isn't one yet.",
+        ));
+        body.push_str(&format!(
+            "<p><a class=more href='{}'>How to add a business</a></p>",
+            Page::Business.href()
+        ));
         return shell_at(Some(Page::SharedTasks), "Shared tasks", &body);
     }
     match view {
@@ -515,12 +575,18 @@ pub fn shared_tasks_page(tasks: &[TaskRow], businesses: &[String], chosen: Optio
         TaskView::Board => {
             body.push_str("<div class=columns>");
             for (name, pick) in [
-                ("Overdue", Box::new(|t: &&TaskRow| !t.done && t.overdue) as Box<dyn Fn(&&TaskRow) -> bool>),
+                (
+                    "Overdue",
+                    Box::new(|t: &&TaskRow| !t.done && t.overdue) as Box<dyn Fn(&&TaskRow) -> bool>,
+                ),
                 ("To do", Box::new(|t: &&TaskRow| !t.done && !t.overdue)),
                 ("Done", Box::new(|t: &&TaskRow| t.done)),
             ] {
                 let col: Vec<&&TaskRow> = rows.iter().filter(|t| pick(t)).collect();
-                body.push_str(&format!("<section class=col aria-label='{name}'><h2>{name} <small>{}</small></h2>", col.len()));
+                body.push_str(&format!(
+                    "<section class=col aria-label='{name}'><h2>{name} <small>{}</small></h2>",
+                    col.len()
+                ));
                 if col.is_empty() {
                     body.push_str(&empty("None."));
                 }
@@ -529,7 +595,11 @@ pub fn shared_tasks_page(tasks: &[TaskRow], businesses: &[String], chosen: Optio
                         "<div class=card><span class=what>{}</span>{}{}{}</div>",
                         esc(&t.what),
                         task_status(t),
-                        if t.due.is_empty() { String::new() } else { format!("<span class=chip>{}</span>", esc(&t.due)) },
+                        if t.due.is_empty() {
+                            String::new()
+                        } else {
+                            format!("<span class=chip>{}</span>", esc(&t.due))
+                        },
                         task_done_button(t)
                     ));
                 }
@@ -552,22 +622,34 @@ pub fn shared_tasks_page(tasks: &[TaskRow], businesses: &[String], chosen: Optio
                 for d in 0..7 {
                     let day = start + w * 7 + d;
                     let (_, m, dd) = crate::hubpages::ymd(day);
-                    let here: Vec<&&TaskRow> = rows.iter().filter(|t| t.due_day == Some(day)).collect();
+                    let here: Vec<&&TaskRow> =
+                        rows.iter().filter(|t| t.due_day == Some(day)).collect();
                     body.push_str(&format!(
                         "<td{}><span class=daynum>{} {}</span>",
-                        if day == today { " class=today aria-current=date" } else { "" },
+                        if day == today {
+                            " class=today aria-current=date"
+                        } else {
+                            ""
+                        },
                         MONTHS[(m - 1) as usize],
                         dd
                     ));
                     for t in here {
-                        body.push_str(&format!("<span class=calitem>{}{}</span>", task_status(t), esc(&t.what)));
+                        body.push_str(&format!(
+                            "<span class=calitem>{}{}</span>",
+                            task_status(t),
+                            esc(&t.what)
+                        ));
                     }
                     body.push_str("</td>");
                 }
                 body.push_str("</tr>");
             }
             body.push_str("</tbody></table></div>");
-            let undated: Vec<&&TaskRow> = rows.iter().filter(|t| t.due_day.is_none() && !t.done).collect();
+            let undated: Vec<&&TaskRow> = rows
+                .iter()
+                .filter(|t| t.due_day.is_none() && !t.done)
+                .collect();
             if !undated.is_empty() {
                 body.push_str("<h2>No date</h2><ul class=plainlist>");
                 for t in undated {
@@ -589,7 +671,9 @@ pub fn shared_tasks_page(tasks: &[TaskRow], businesses: &[String], chosen: Optio
     shell_at(Some(Page::SharedTasks), "Shared tasks", &body)
 }
 
-pub const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+pub const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
 /// (year, month 1-12, day) of a day count since 1970-01-01. Howard Hinnant's
 /// civil-from-days, the arithmetic every calendar library uses.
@@ -649,7 +733,9 @@ pub fn clients_page(clients: &[ClientRow], open: Option<&str>, notice: Option<&s
         body.push_str(&empty("No clients yet."));
         body.push_str("</li>");
     }
-    let chosen = open.and_then(|a| clients.iter().find(|c| c.address.eq_ignore_ascii_case(a))).or(clients.first());
+    let chosen = open
+        .and_then(|a| clients.iter().find(|c| c.address.eq_ignore_ascii_case(a)))
+        .or(clients.first());
     for c in clients {
         let here = chosen.map(|x| x.address == c.address).unwrap_or(false);
         body.push_str(&format!(
@@ -732,11 +818,16 @@ pub fn partners_page(rows: &[(String, Vec<String>, Reach, bool)]) -> String {
                 esc(&b.join(", ")),
                 match up {
                     Reach::Online => word_tag("ok", "Online"),
-                    Reach::LastHeard(ago) => word_tag("wait", &format!("Offline · last heard {ago}")),
+                    Reach::LastHeard(ago) =>
+                        word_tag("wait", &format!("Offline · last heard {ago}")),
                     Reach::Unheard => word_tag("", "Paired · not heard from yet"),
                     Reach::NotPaired => word_tag("stop", "Not paired"),
                 },
-                if *trusted { word_tag("ok", "Trusted — no prompt") } else { word_tag("", "Asks first") }
+                if *trusted {
+                    word_tag("ok", "Trusted — no prompt")
+                } else {
+                    word_tag("", "Asks first")
+                }
             ));
         }
         body.push_str("</tbody></table></div>");
@@ -819,7 +910,10 @@ fn engine_choice(e: &EngineView) -> String {
         "<form method=post action='/hub/sound'><input type=hidden name=key value=engine>\
          <fieldset class=seg3><legend>Voice engine</legend>",
     );
-    for (val, label, on) in [("piper", "piper — small and plain", !e.kokoro_chosen), ("kokoro", "Kokoro — much more natural", e.kokoro_chosen)] {
+    for (val, label, on) in [
+        ("piper", "piper — small and plain", !e.kokoro_chosen),
+        ("kokoro", "Kokoro — much more natural", e.kokoro_chosen),
+    ] {
         out.push_str(&format!(
             "<label><input type=radio name=value value={val}{}> {label}</label>",
             if on { " checked" } else { "" }
@@ -829,7 +923,8 @@ fn engine_choice(e: &EngineView) -> String {
     let status = if !e.kokoro_here {
         "Kokoro isn't available on this kind of computer yet.".to_string()
     } else if e.kokoro_ready {
-        "Kokoro is downloaded and runs on this computer's processor; nothing is sent away.".to_string()
+        "Kokoro is downloaded and runs on this computer's processor; nothing is sent away."
+            .to_string()
     } else {
         match &e.getting {
             Some(said) if said.starts_with("Getting") => format!("<span role=status>{}</span>", esc(said)),
@@ -842,7 +937,9 @@ fn engine_choice(e: &EngineView) -> String {
             ),
         }
     };
-    out.push_str(&format!("<p class=note>{status} A change of engine is used from Atlas's next start.</p>"));
+    out.push_str(&format!(
+        "<p class=note>{status} A change of engine is used from Atlas's next start.</p>"
+    ));
     if e.kokoro_chosen && !e.kokoro_ready {
         out.push_str("<p class=note>Until Kokoro is here, Atlas speaks in piper.</p>");
     } else if let Some(why) = &e.fell_back {
@@ -885,13 +982,18 @@ pub fn sound_page(v: &SoundView, notice: Option<&str>) -> String {
             String::new()
         };
         let get = match (&r.getting, r.installed) {
-            (Some(said), _) if said.starts_with("Getting") => format!("<span role=status>{}</span>", esc(said)),
+            (Some(said), _) if said.starts_with("Getting") => {
+                format!("<span role=status>{}</span>", esc(said))
+            }
             (_, true) => String::new(),
             // Kokoro's voices come with Kokoro, not one by one.
             (_, false) if r.size.is_empty() => String::new(),
             (said, false) => format!(
                 "{why}<button form=getvoice name=value value='{id}'>Get {name} · {size}</button>",
-                why = said.as_ref().map(|s| format!("<span role=status>{}</span> ", esc(s))).unwrap_or_default(),
+                why = said
+                    .as_ref()
+                    .map(|s| format!("<span role=status>{}</span> ", esc(s)))
+                    .unwrap_or_default(),
                 id = esc(&r.id),
                 name = esc(&r.name),
                 size = esc(&r.size)
@@ -923,10 +1025,18 @@ pub fn sound_page(v: &SoundView, notice: Option<&str>) -> String {
         speed = v.speed,
         vol = v.volume,
     ));
-    for (val, label) in [("always", "Always"), ("hands_free", "Hands-free only"), ("never", "Never")] {
+    for (val, label) in [
+        ("always", "Always"),
+        ("hands_free", "Hands-free only"),
+        ("never", "Never"),
+    ] {
         body.push_str(&format!(
             "<label><input type=radio name=value value={val}{}> {label}</label>",
-            if v.speak_replies == val { " checked" } else { "" }
+            if v.speak_replies == val {
+                " checked"
+            } else {
+                ""
+            }
         ));
     }
     body.push_str("</fieldset><button>Save</button></form></section><section><h2>Listening</h2>");
@@ -947,7 +1057,9 @@ pub fn sound_page(v: &SoundView, notice: Option<&str>) -> String {
     ));
     body.push_str("<h3>Microphones</h3>");
     if v.mics.is_empty() {
-        body.push_str(&empty("No microphone found on this device. You can still type everything."));
+        body.push_str(&empty(
+            "No microphone found on this device. You can still type everything.",
+        ));
     } else {
         body.push_str("<ul class=plainlist>");
         for m in &v.mics {
@@ -982,7 +1094,9 @@ pub fn trusted_page(people: &[(String, bool)], notice: Option<&str>) -> String {
          trusted or not.</p>",
     );
     if people.is_empty() {
-        body.push_str(&empty("Nobody paired yet. Pair with someone first, then you can trust them here."));
+        body.push_str(&empty(
+            "Nobody paired yet. Pair with someone first, then you can trust them here.",
+        ));
         return shell_at(Some(Page::Trusted), "Trusted", &body);
     }
     body.push_str("<ul class=trustlist>");
@@ -1010,7 +1124,11 @@ pub fn trusted_page(people: &[(String, bool)], notice: Option<&str>) -> String {
 /// `draft`: words already in the box, for you to read and send yourself
 /// (a phone app's share or link opens the page this way; nothing is handed
 /// over until the button is pressed).
-pub fn give_page(recent: &[(String, String, String, String)], notice: Option<&str>, draft: Option<&str>) -> String {
+pub fn give_page(
+    recent: &[(String, String, String, String)],
+    notice: Option<&str>,
+    draft: Option<&str>,
+) -> String {
     let mut body = notice
         .map(|n| format!("<p class=notice role=status>{}</p>", esc(n)))
         .unwrap_or_default();
@@ -1072,7 +1190,11 @@ pub struct OfflineView {
 
 impl Default for OfflineView {
     fn default() -> Self {
-        Self { reach: crate::connectivity::Reach::Unknown, live: Vec::new(), waiting: Vec::new() }
+        Self {
+            reach: crate::connectivity::Reach::Unknown,
+            live: Vec::new(),
+            waiting: Vec::new(),
+        }
     }
 }
 
@@ -1093,12 +1215,22 @@ pub fn offline_page(v: &OfflineView) -> String {
     } else {
         wait.push_str("<ul class=plainlist>");
         for (w, dependency, since) in &v.waiting {
-            wait.push_str(&format!("<li>{}<span>{}</span><span class=meta>{} · Saved {}</span></li>", word_tag("wait", "Saved locally"), esc(w), esc(dependency), esc(since)));
+            wait.push_str(&format!(
+                "<li>{}<span>{}</span><span class=meta>{} · Saved {}</span></li>",
+                word_tag("wait", "Saved locally"),
+                esc(w),
+                esc(dependency),
+                esc(since)
+            ));
         }
         wait.push_str("</ul>");
     }
     wait.push_str("<p class=meta>Submission acceptance and recipient delivery are not confirmed by this list. Acceptance times are not recorded here.</p></section>");
-    shell_at(Some(Page::Offline), "Offline", &format!("{banner}<div class=two>{live}{wait}</div>"))
+    shell_at(
+        Some(Page::Offline),
+        "Offline",
+        &format!("{banner}<div class=two>{live}{wait}</div>"),
+    )
 }
 
 // ---------------------------------------------------------------- Talk
@@ -1116,11 +1248,17 @@ pub const TALK_WAIT_SCRIPT: &str = "<script>(function(){var seen=null,out=false;
 fetch('/hub/changed.json?p=talk',{credentials:'same-origin'}).then(function(r){out=false;return r.ok?r.json():null;}).then(function(j){\
 if(!j||j.busy===undefined)return;if(!j.busy||(seen!==null&&j.v!==seen)){clearInterval(t);location.reload();return;}seen=j.v;}).catch(function(){out=false;});},1500);})();</script>";
 
-pub fn talk_page(exchanges: &[(String, String)], pending: &[String], listening_here: bool) -> String {
+pub fn talk_page(
+    exchanges: &[(String, String)],
+    pending: &[String],
+    listening_here: bool,
+) -> String {
     let mut body = String::from("<ol class=said aria-live=polite aria-label='What we said'>");
     if exchanges.is_empty() {
         body.push_str("<li>");
-        body.push_str(&empty("Say or type anything — a whole errand in one breath is fine."));
+        body.push_str(&empty(
+            "Say or type anything — a whole errand in one breath is fine.",
+        ));
         body.push_str("</li>");
     }
     for (you, atlas) in exchanges {
@@ -1316,7 +1454,13 @@ pub enum SendBuild {
     Unusable { name: String, why: String },
     /// Ready to sign: the download, how long ago, what's in it, and the
     /// program's fingerprint (so the button signs exactly what was shown).
-    Ready { name: String, ago: String, version: String, platform: String, sha: String },
+    Ready {
+        name: String,
+        ago: String,
+        version: String,
+        platform: String,
+        sha: String,
+    },
     /// This very build already went out.
     AlreadySent { version: String, sequence: u64 },
 }
@@ -1339,8 +1483,14 @@ pub enum ReleaseKey {
 }
 
 pub fn updates_page(v: &UpdatesView, notice: Option<&str>) -> String {
-    let mut body = notice.map(|n| format!("<p class=notice role=status>{}</p>", esc(n))).unwrap_or_default();
-    body.push_str(&format!("<dl class=facts><dt>This is</dt><dd>Atlas {}</dd><dt>Heard</dt><dd>{}</dd></dl>", esc(&v.version), esc(&v.heard)));
+    let mut body = notice
+        .map(|n| format!("<p class=notice role=status>{}</p>", esc(n)))
+        .unwrap_or_default();
+    body.push_str(&format!(
+        "<dl class=facts><dt>This is</dt><dd>Atlas {}</dd><dt>Heard</dt><dd>{}</dd></dl>",
+        esc(&v.version),
+        esc(&v.heard)
+    ));
     match (&v.pending, &v.available) {
         (Some(p), _) => body.push_str(&format!(
             "<div class='banner ok' role=status>{} Atlas {} is checked and goes in at the next start. Your version now is kept.</div>",
@@ -1364,7 +1514,11 @@ pub fn updates_page(v: &UpdatesView, notice: Option<&str>) -> String {
         (None, None) => body.push_str(&empty("There's no newer Atlas waiting.")),
     }
     if let Some(t) = &v.trial {
-        body.push_str(&format!("<p>{} {}</p>", word_tag("info", "On trial"), esc(t)));
+        body.push_str(&format!(
+            "<p>{} {}</p>",
+            word_tag("info", "On trial"),
+            esc(t)
+        ));
     }
     body.push_str("<h2>Going back</h2>");
     match (&v.previous, v.confirming_undo) {
@@ -1386,7 +1540,10 @@ pub fn updates_page(v: &UpdatesView, notice: Option<&str>) -> String {
     body.push_str("<h2>How updates go in here</h2><form class=choices method=post action='/hub/updates'>\
                    <input type=hidden name=what value=mode><fieldset><legend>Installing updates</legend>");
     for (value, label) in [
-        ("default", "The usual: by itself at a quiet moment on your own devices, asking first on friends'"),
+        (
+            "default",
+            "The usual: by itself at a quiet moment on your own devices, asking first on friends'",
+        ),
         ("on", "By itself, at a quiet moment"),
         ("ask", "Ask me first, every time"),
         ("off", "Off — only tell me what's out"),
@@ -1402,7 +1559,15 @@ pub fn updates_page(v: &UpdatesView, notice: Option<&str>) -> String {
         body.push_str("<h2>Updates that failed</h2><p class=note>From your own devices, and friends who chose to tell you. \
                        A build stays yours to hold: nothing here stops a release by itself.</p><ul class=plainlist>");
         for (ver, lines, held, sha) in &v.failures {
-            body.push_str(&format!("<li><b>Atlas {}</b>{}<ul>", esc(ver), if *held { format!(" {}", word_tag("stop", "Held")) } else { String::new() }));
+            body.push_str(&format!(
+                "<li><b>Atlas {}</b>{}<ul>",
+                esc(ver),
+                if *held {
+                    format!(" {}", word_tag("stop", "Held"))
+                } else {
+                    String::new()
+                }
+            ));
             for l in lines {
                 body.push_str(&format!("<li>{}</li>", esc(l)));
             }
@@ -1422,7 +1587,11 @@ pub fn updates_page(v: &UpdatesView, notice: Option<&str>) -> String {
     if !v.history.is_empty() {
         body.push_str("<h2>What happened to updates here</h2><ul class=plainlist>");
         for (when, what) in &v.history {
-            body.push_str(&format!("<li><span class=meta>{}</span> {}</li>", esc(when), esc(what)));
+            body.push_str(&format!(
+                "<li><span class=meta>{}</span> {}</li>",
+                esc(when),
+                esc(what)
+            ));
         }
         body.push_str("</ul>");
     }
@@ -1534,7 +1703,9 @@ pub struct FeedbackView {
 }
 
 pub fn feedback_page(v: &FeedbackView, notice: Option<&str>) -> String {
-    let mut body = notice.map(|n| format!("<p class=notice role=status>{}</p>", esc(n))).unwrap_or_default();
+    let mut body = notice
+        .map(|n| format!("<p class=notice role=status>{}</p>", esc(n)))
+        .unwrap_or_default();
     body.push_str("<h2 id=tell>Something's wrong with Atlas</h2>");
     match (&v.to, &v.draft) {
         (None, _) => body.push_str(&empty(
@@ -1595,7 +1766,12 @@ pub fn feedback_page(v: &FeedbackView, notice: Option<&str>) -> String {
     if !v.sent.is_empty() {
         body.push_str("<h2 id=sent>What you've sent</h2><ul class=plainlist>");
         for (to, words, status, notes) in &v.sent {
-            body.push_str(&format!("<li>To <b>{}</b>: “{}” <span class=meta>{}</span>", esc(to), esc(words), esc(status)));
+            body.push_str(&format!(
+                "<li>To <b>{}</b>: “{}” <span class=meta>{}</span>",
+                esc(to),
+                esc(words),
+                esc(status)
+            ));
             for n in notes {
                 body.push_str(&format!("<p class=note>They said: {}</p>", esc(n)));
             }
@@ -1603,7 +1779,9 @@ pub fn feedback_page(v: &FeedbackView, notice: Option<&str>) -> String {
         }
         body.push_str("</ul>");
     }
-    body.push_str("<p class=note>You can also say “report a bug” and what's wrong, or “any feedback”.</p>");
+    body.push_str(
+        "<p class=note>You can also say “report a bug” and what's wrong, or “any feedback”.</p>",
+    );
     shell_at(Some(Page::Feedback), "Feedback", &body)
 }
 
@@ -1692,7 +1870,9 @@ fn code_block(c: &PhoneCode, kind: crate::phoneadd::Kind) -> String {
 
 pub fn phone_page(v: &PhoneView, notice: Option<&str>) -> String {
     use crate::phoneadd::Kind;
-    let mut body = notice.map(|n| format!("<p class=notice role=status>{}</p>", esc(n))).unwrap_or_default();
+    let mut body = notice
+        .map(|n| format!("<p class=notice role=status>{}</p>", esc(n)))
+        .unwrap_or_default();
     body.push_str("<p class=lead>Atlas on your phone or iPad is the same Atlas as here. Pick which you have, then scan a code with it.</p>");
     body.push_str("<nav aria-label='Which phone' class=seg3>");
     for k in [Kind::Apple, Kind::Android] {
@@ -1784,7 +1964,11 @@ pub fn phone_page(v: &PhoneView, notice: Option<&str>) -> String {
             body.push_str(&format!(
                 "<li>{}{}</li>",
                 esc(&d.name),
-                if d.from.is_empty() { String::new() } else { format!(" <span class=meta>from {}</span>", esc(&d.from)) }
+                if d.from.is_empty() {
+                    String::new()
+                } else {
+                    format!(" <span class=meta>from {}</span>", esc(&d.from))
+                }
             ));
         }
         body.push_str(&format!(

@@ -47,15 +47,34 @@ pub struct LocalHub {
 
 impl Hub for LocalHub {
     fn get(&self, path: &str) -> Result<String, String> {
-        let r = crate::http::get_with_token(&format!("127.0.0.1:{}", self.port), path, &self.token, Duration::from_secs(10))
-            .map_err(|e| format!("Atlas isn't answering on this machine ({e}) -- is it running?"))?;
-        if r.ok() { Ok(r.body) } else { Err(format!("Atlas said {} to {path}", r.status)) }
+        let r = crate::http::get_with_token(
+            &format!("127.0.0.1:{}", self.port),
+            path,
+            &self.token,
+            Duration::from_secs(10),
+        )
+        .map_err(|e| format!("Atlas isn't answering on this machine ({e}) -- is it running?"))?;
+        if r.ok() {
+            Ok(r.body)
+        } else {
+            Err(format!("Atlas said {} to {path}", r.status))
+        }
     }
     fn post_form(&self, path: &str, body: &str) -> Result<(), String> {
-        let r = crate::http::post_json_with_token(&format!("127.0.0.1:{}", self.port), path, body, &self.token, Duration::from_secs(10))
-            .map_err(|e| format!("Atlas isn't answering on this machine ({e}) -- is it running?"))?;
+        let r = crate::http::post_json_with_token(
+            &format!("127.0.0.1:{}", self.port),
+            path,
+            body,
+            &self.token,
+            Duration::from_secs(10),
+        )
+        .map_err(|e| format!("Atlas isn't answering on this machine ({e}) -- is it running?"))?;
         // The hub answers a form with a redirect back to its page.
-        if r.ok() || (300..400).contains(&r.status) { Ok(()) } else { Err(format!("Atlas said {} to {path}", r.status)) }
+        if r.ok() || (300..400).contains(&r.status) {
+            Ok(())
+        } else {
+            Err(format!("Atlas said {} to {path}", r.status))
+        }
     }
 }
 
@@ -100,12 +119,15 @@ fn text_result(text: &str, is_error: bool) -> Value {
 /// The last exchange whose words were `said`, from `/hub/talk.json`, once
 /// Atlas has finished with it: `None` while it's queued or being answered.
 fn reply_to(talk: &Value, said: &str) -> Option<String> {
-    let pending = talk["pending"].as_array().is_some_and(|p| p.iter().any(|s| s.as_str() == Some(said)));
+    let pending = talk["pending"]
+        .as_array()
+        .is_some_and(|p| p.iter().any(|s| s.as_str() == Some(said)));
     if pending || talk["thinking"].as_bool() == Some(true) {
         return None;
     }
     let last = talk["recent"].as_array()?.last()?;
-    (last["said"].as_str() == Some(said)).then(|| last["reply"].as_str().unwrap_or_default().to_string())
+    (last["said"].as_str() == Some(said))
+        .then(|| last["reply"].as_str().unwrap_or_default().to_string())
 }
 
 /// One tool call.
@@ -124,13 +146,19 @@ fn call(hub: &dyn Hub, name: &str, args: &Value, wait: Duration) -> Value {
             if text.is_empty() {
                 return text_result("Say what to ask Atlas, in `text`.", true);
             }
-            if let Err(e) = hub.post_form("/hub/talk", &format!("text={}", crate::research::urlencode(&text))) {
+            if let Err(e) = hub.post_form(
+                "/hub/talk",
+                &format!("text={}", crate::research::urlencode(&text)),
+            ) {
                 return text_result(&e, true);
             }
             let until = Instant::now() + wait;
             loop {
                 if let Ok(body) = hub.get("/hub/talk.json") {
-                    if let Some(reply) = serde_json::from_str::<Value>(&body).ok().and_then(|v| reply_to(&v, &text)) {
+                    if let Some(reply) = serde_json::from_str::<Value>(&body)
+                        .ok()
+                        .and_then(|v| reply_to(&v, &text))
+                    {
                         return text_result(&reply, false);
                     }
                 }
@@ -161,9 +189,16 @@ pub fn answer_message(msg: &Value, hub: &dyn Hub, wait: Duration) -> Option<Valu
         }),
         "ping" => json!({}),
         "tools/list" => json!({ "tools": tool_list() }),
-        "tools/call" => call(hub, msg["params"]["name"].as_str().unwrap_or(""), &msg["params"]["arguments"], wait),
+        "tools/call" => call(
+            hub,
+            msg["params"]["name"].as_str().unwrap_or(""),
+            &msg["params"]["arguments"],
+            wait,
+        ),
         _ => {
-            return Some(json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32601, "message": format!("no method {method}") } }));
+            return Some(
+                json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32601, "message": format!("no method {method}") } }),
+            );
         }
     };
     Some(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
@@ -178,10 +213,15 @@ pub fn serve(input: impl BufRead, mut output: impl Write, hub: &dyn Hub) {
         }
         let reply = match serde_json::from_str::<Value>(&line) {
             Ok(msg) => answer_message(&msg, hub, ASK_WAIT),
-            Err(e) => Some(json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": format!("not JSON: {e}") } })),
+            Err(e) => Some(
+                json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": format!("not JSON: {e}") } }),
+            ),
         };
         if let Some(r) = reply {
-            if writeln!(output, "{r}").and_then(|_| output.flush()).is_err() {
+            if writeln!(output, "{r}")
+                .and_then(|_| output.flush())
+                .is_err()
+            {
                 break;
             }
         }
@@ -195,7 +235,10 @@ mod tests {
     #[test]
     fn a_reply_is_taken_only_once_atlas_has_finished() {
         let talk = json!({ "recent": [{ "said": "what time is it", "reply": "Ten past four." }], "pending": [], "thinking": false });
-        assert_eq!(reply_to(&talk, "what time is it").as_deref(), Some("Ten past four."));
+        assert_eq!(
+            reply_to(&talk, "what time is it").as_deref(),
+            Some("Ten past four.")
+        );
         let busy = json!({ "recent": [{ "said": "what time is it", "reply": "" }], "pending": [], "thinking": true });
         assert_eq!(reply_to(&busy, "what time is it"), None);
         let queued = json!({ "recent": [], "pending": ["what time is it"], "thinking": false });

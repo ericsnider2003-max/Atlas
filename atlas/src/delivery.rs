@@ -76,12 +76,17 @@ pub fn plan(
         )));
     };
 
-    if let Some(why) = crate::browser::media_problem(profile, &post.media, |f| std::path::Path::new(f).is_file()) {
+    if let Some(why) =
+        crate::browser::media_problem(profile, &post.media, |f| std::path::Path::new(f).is_file())
+    {
         return Err(Outcome::Blocked(why));
     }
     let mut steps = post_plan(profile, &post.body, true);
     if !post.media.is_empty() {
-        let at = steps.iter().position(|s| *s == PostStep::Submit).unwrap_or(steps.len());
+        let at = steps
+            .iter()
+            .position(|s| *s == PostStep::Submit)
+            .unwrap_or(steps.len());
         steps.insert(at, PostStep::Attach(post.media.clone()));
     }
     Ok(steps)
@@ -89,7 +94,14 @@ pub fn plan(
 
 /// Carry out a post. Only ever called with an id the publisher already
 /// cleared, and it checks again anyway.
-pub fn send_unless(pub_: &mut Publisher, browser: &mut Browser, cfg: &BrowserConfig, id: u64, online: bool, stop: &dyn Fn() -> bool) -> Outcome {
+pub fn send_unless(
+    pub_: &mut Publisher,
+    browser: &mut Browser,
+    cfg: &BrowserConfig,
+    id: u64,
+    online: bool,
+    stop: &dyn Fn() -> bool,
+) -> Outcome {
     let steps = match plan(pub_, cfg, id, online) {
         Ok(s) => s,
         Err(o) => return o,
@@ -108,7 +120,9 @@ pub fn send_unless(pub_: &mut Publisher, browser: &mut Browser, cfg: &BrowserCon
         Ok(media) => media,
         Err(why) => return Outcome::Blocked(why),
     };
-    if stop() { return Outcome::Blocked("publication stopped before submission".into()); }
+    if stop() {
+        return Outcome::Blocked("publication stopped before submission".into());
+    }
 
     if let Err(e) = browser.compose(profile, &post.body) {
         return classify(e);
@@ -118,16 +132,26 @@ pub fn send_unless(pub_: &mut Publisher, browser: &mut Browser, cfg: &BrowserCon
     }
 
     // Belt and braces: the text could have changed while the page loaded.
-    if stop() { return Outcome::Blocked("publication stopped before submission".into()); }
+    if stop() {
+        return Outcome::Blocked("publication stopped before submission".into());
+    }
     match pub_.check(id, online, None) {
         SendCheck::Go => {}
         SendCheck::Hold(why) => return Outcome::Blocked(format!("stopped before posting: {why}")),
     }
 
-    pub_.mark_submission(id, false, "Submission in progress; don't repeat until checked");
+    pub_.mark_submission(
+        id,
+        false,
+        "Submission in progress; don't repeat until checked",
+    );
     match browser.publish_verified(profile) {
         Ok(Some(receipt)) => {
-            pub_.mark_sent(id, &format!("Program confirmed publication: {receipt}"), true);
+            pub_.mark_sent(
+                id,
+                &format!("Program confirmed publication: {receipt}"),
+                true,
+            );
             Outcome::Sent(format!("posted to {}: {receipt}", post.channel.name()))
         }
         Ok(None) | Err(_) => {
@@ -146,7 +170,16 @@ pub fn is_bluesky(channel: &crate::publish::Channel) -> bool {
 
 /// Carry out a Bluesky post through its API, with the same gate as a
 /// browser post: only an id the publisher cleared, checked again here.
-pub fn send_bluesky_unless(pub_: &mut Publisher, x: &dyn crate::social::posting::Xrpc, handle: &str, app_password: &str, id: u64, online: bool, now: u64, stop: &dyn Fn() -> bool) -> Outcome {
+pub fn send_bluesky_unless(
+    pub_: &mut Publisher,
+    x: &dyn crate::social::posting::Xrpc,
+    handle: &str,
+    app_password: &str,
+    id: u64,
+    online: bool,
+    now: u64,
+    stop: &dyn Fn() -> bool,
+) -> Outcome {
     let Some(post) = pub_.get(id).cloned() else {
         return Outcome::Blocked("no such post".into());
     };
@@ -156,7 +189,9 @@ pub fn send_bluesky_unless(pub_: &mut Publisher, x: &dyn crate::social::posting:
         SendCheck::Hold(why) => return Outcome::Blocked(why),
     }
     if handle.trim().is_empty() {
-        return Outcome::Blocked("no Bluesky handle -- put yours under Your accounts on the Social page".into());
+        return Outcome::Blocked(
+            "no Bluesky handle -- put yours under Your accounts on the Social page".into(),
+        );
     }
     if app_password.is_empty() {
         return Outcome::Blocked("no Bluesky app password kept -- make one in Bluesky's settings and keep it on the Social page".into());
@@ -165,9 +200,19 @@ pub fn send_bluesky_unless(pub_: &mut Publisher, x: &dyn crate::social::posting:
         Ok(media) => media,
         Err(why) => return Outcome::Blocked(why),
     };
-    if stop() { return Outcome::Blocked("publication stopped before submission".into()); }
+    if stop() {
+        return Outcome::Blocked("publication stopped before submission".into());
+    }
     pub_.mark_submission(id, false, "Bluesky submission pending");
-    match crate::social::post_with_app_password(x, handle, app_password, &post.body, &media.paths, now, &|p| std::fs::read(p)) {
+    match crate::social::post_with_app_password(
+        x,
+        handle,
+        app_password,
+        &post.body,
+        &media.paths,
+        now,
+        &|p| std::fs::read(p),
+    ) {
         Ok(uri) if uri.starts_with("at://") && uri.contains("/app.bsky.feed.post/") => {
             pub_.mark_sent(id, &format!("Program confirmed publication: {uri}"), true);
             Outcome::Sent(format!("posted to Bluesky: {uri}"))
@@ -180,16 +225,23 @@ pub fn send_bluesky_unless(pub_: &mut Publisher, x: &dyn crate::social::posting:
         Err(e) if e.starts_with("couldn't reach Bluesky") && !e.contains("(posting") => {
             // Authentication and blob upload precede createRecord. Nothing
             // was submitted, so repeating these phases cannot duplicate a post.
-            if let Some(queued) = pub_.posts.iter_mut().find(|p| p.id == id) { queued.state = post.state; queued.result = Some(e.clone()); }
+            if let Some(queued) = pub_.posts.iter_mut().find(|p| p.id == id) {
+                queued.state = post.state;
+                queued.result = Some(e.clone());
+            }
             Outcome::Retry(e)
-        },
+        }
         Err(e) if e.starts_with("couldn't reach Bluesky") => {
             pub_.mark_submission(id, true, &e);
-            Outcome::Uncertain(format!("Bluesky publication isn't confirmed ({e}); check it before another attempt."))
-        },
+            Outcome::Uncertain(format!(
+                "Bluesky publication isn't confirmed ({e}); check it before another attempt."
+            ))
+        }
         Err(e) if e.contains("(posting") => {
             pub_.mark_submission(id, true, &e);
-            Outcome::Uncertain(format!("Bluesky publication isn't confirmed ({e}); check it before another attempt."))
+            Outcome::Uncertain(format!(
+                "Bluesky publication isn't confirmed ({e}); check it before another attempt."
+            ))
         }
         Err(e) => {
             pub_.mark_sent(id, &e, false);

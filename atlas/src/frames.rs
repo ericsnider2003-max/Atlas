@@ -85,16 +85,7 @@ impl Rolling {
             _ => format!("scale={}:{}", feed.width, feed.height),
         };
         args.extend(
-            [
-                "-vf",
-                &filter,
-                "-pix_fmt",
-                "rgb24",
-                "-f",
-                "rawvideo",
-                "-",
-            ]
-            .map(str::to_string),
+            ["-vf", &filter, "-pix_fmt", "rgb24", "-f", "rawvideo", "-"].map(str::to_string),
         );
 
         let child = crate::tools::command("ffmpeg")
@@ -127,7 +118,10 @@ impl Rolling {
     /// Blocks until a whole frame has arrived. A partial frame is never handed
     /// back — half a picture would be read as a hand in the wrong place rather
     /// than as an error, which is worse than no picture at all.
-    #[allow(clippy::should_implement_trait, reason = "a blocking read of the next whole frame, borrowing the buffer; not an Iterator")]
+    #[allow(
+        clippy::should_implement_trait,
+        reason = "a blocking read of the next whole frame, borrowing the buffer; not an Iterator"
+    )]
     pub fn next(&mut self) -> Option<&[u8]> {
         let out = self.child.stdout.as_mut()?;
         match out.read_exact(&mut self.frame) {
@@ -208,7 +202,14 @@ impl Latest {
                 alive2.store(false, std::sync::atomic::Ordering::Relaxed);
             })
             .map_err(|e| AtlasError::Platform(format!("couldn't start reading the camera: {e}")))?;
-        Ok(Latest { shared, alive, width, height, opened: std::time::Instant::now(), _camera: camera })
+        Ok(Latest {
+            shared,
+            alive,
+            width,
+            height,
+            opened: std::time::Instant::now(),
+            _camera: camera,
+        })
     }
 
     pub fn size(&self) -> (usize, usize) {
@@ -223,7 +224,12 @@ impl Latest {
     /// The newest frame that arrived after `settle` from opening (a camera
     /// that has just opened is still finding its exposure) and is no older
     /// than `fresh`, waiting up to `wait` for one.
-    pub fn frame(&self, settle: std::time::Duration, fresh: std::time::Duration, wait: std::time::Duration) -> Option<Vec<u8>> {
+    pub fn frame(
+        &self,
+        settle: std::time::Duration,
+        fresh: std::time::Duration,
+        wait: std::time::Duration,
+    ) -> Option<Vec<u8>> {
         let until = std::time::Instant::now() + wait;
         loop {
             if let Ok(g) = self.shared.lock().or_else(crate::crash::unpoison) {

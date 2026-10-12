@@ -1,7 +1,7 @@
 //! Atlas working on itself: being told it got something wrong, corrections and
 //! lessons, refiling notes, and fixing its own code -- proving a fix in a copy,
 //! landing it, or parking it for you.
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
@@ -32,7 +32,12 @@ impl<'a> Daemon<'a> {
 
         // What Atlas actually did, so the correction records the thing rather
         // than a paraphrase of it.
-        let did = self.session.turns.last().map(|t| t.reply.clone()).unwrap_or_default();
+        let did = self
+            .session
+            .turns
+            .last()
+            .map(|t| t.reply.clone())
+            .unwrap_or_default();
 
         // The model call that produced it, marked before anything else --
         // whether or not this correction ever earns an edit, the call that
@@ -40,7 +45,14 @@ impl<'a> Daemon<'a> {
         // reason for existing, and it had no caller until now.
         self.trace.blame("brain", &about);
         // Kept, not just marked in memory: the grade outlives a restart.
-        if let Some(id) = self.trace.calls.iter().rev().find(|c| c.asked_by == "brain").map(|c| c.id) {
+        if let Some(id) = self
+            .trace
+            .calls
+            .iter()
+            .rev()
+            .find(|c| c.asked_by == "brain")
+            .map(|c| c.id)
+        {
             if id != 0 {
                 self.grade_call(id, false, "you corrected it");
                 // What you said, and what Atlas did with it: the example a
@@ -79,7 +91,9 @@ impl<'a> Daemon<'a> {
                 let dir = self.notes_dir();
                 crate::heard!(std::fs::create_dir_all(&dir));
                 let path = dir.join(format!("look-back-{}-{t}.md", p.id));
-                let filed = crate::store::write_whole_in_state(self.store.root(), &path, note.as_bytes()).is_ok();
+                let filed =
+                    crate::store::write_whole_in_state(self.store.root(), &path, note.as_bytes())
+                        .is_ok();
                 return format!(
                     "Sorry that didn't work. I've added it to what I know goes wrong with {}{} — no blame, just why and what changes. Why do you think it happened?",
                     p.goal,
@@ -105,7 +119,12 @@ impl<'a> Daemon<'a> {
             return "Nothing to correct.".into();
         };
         let about = crate::revise::subject_of(&original);
-        let did = self.session.turns.last().map(|t| t.reply.clone()).unwrap_or_default();
+        let did = self
+            .session
+            .turns
+            .last()
+            .map(|t| t.reply.clone())
+            .unwrap_or_default();
         if wanted.trim().len() <= 2 {
             return "Alright — I've noted it went wrong, without a rule.".into();
         }
@@ -137,7 +156,8 @@ impl<'a> Daemon<'a> {
             })
             .map(|t| (t.said.clone(), t.reply.clone()));
         if let Some((said, wrong)) = wrong_turn {
-            let mut cases: Vec<crate::regressions::Case> = self.store.load(crate::regressions::FILE);
+            let mut cases: Vec<crate::regressions::Case> =
+                self.store.load(crate::regressions::FILE);
             crate::regressions::add(
                 &mut cases,
                 crate::regressions::Case {
@@ -202,7 +222,8 @@ impl<'a> Daemon<'a> {
         // than losing it silently: Atlas would be spending their trust to
         // hide its own failure.
         if let Err(e) = self.store.save("mending", &self.mending) {
-            self.log.warn(&format!("couldn't write down a lesson for {where_}: {e}"));
+            self.log
+                .warn(&format!("couldn't write down a lesson for {where_}: {e}"));
             return format!(
                 "I'll keep to \"{becomes}\" for now, but I couldn't write it to {where_}, \
                  so it won't survive a restart — tell me again if I go back on it. ({e})"
@@ -227,7 +248,11 @@ impl<'a> Daemon<'a> {
         let mut still_ask: Vec<Kind> = Vec::new();
         for kind in Kind::all() {
             if self.earned.may_act_alone(kind) {
-                alone.push(format!("{} — {}", kind.title(), self.earned.rope(kind).plain()));
+                alone.push(format!(
+                    "{} — {}",
+                    kind.title(),
+                    self.earned.rope(kind).plain()
+                ));
             } else {
                 still_ask.push(kind);
             }
@@ -304,7 +329,11 @@ impl<'a> Daemon<'a> {
             return "There's no recent note to refile.".into();
         };
         let kind = refile_kind_from(correction);
-        let handle = if kind.is_none() { refile_handle_from(correction) } else { None };
+        let handle = if kind.is_none() {
+            refile_handle_from(correction)
+        } else {
+            None
+        };
         if kind.is_none() && handle.is_none() {
             return "Tell me how to refile it -- as a task, or under a name.".into();
         }
@@ -386,7 +415,9 @@ impl<'a> Daemon<'a> {
     /// While one is, every `WorkOnYourself` turn is an answer rather than a
     /// command — see the guards on the two arms above `work_on_myself`.
     pub(super) fn mid_self_work(&self) -> bool {
-        self.selfwork.as_ref().is_some_and(|s| s.still_needs().is_some())
+        self.selfwork
+            .as_ref()
+            .is_some_and(|s| s.still_needs().is_some())
     }
 
     pub(crate) fn work_on_myself(&mut self, what: &str) -> String {
@@ -446,7 +477,8 @@ impl<'a> Daemon<'a> {
         // Rust program. Not mid-diagnosis: a session that asked a question
         // gets its answer.
         if !self.mid_self_work() {
-            let root = crate::selfwork::source_root(&self.tools_cfg().self_work).unwrap_or_default();
+            let root =
+                crate::selfwork::source_root(&self.tools_cfg().self_work).unwrap_or_default();
             if crate::selfwork::is_a_source_checkout(&root) {
                 if let Some((agent, program)) = self.coding_agent_here() {
                     return self.repair_with_agent(agent, program, what, root);
@@ -523,7 +555,8 @@ impl<'a> Daemon<'a> {
             if let Ok(mut s) = slot.lock().or_else(crate::crash::unpoison) {
                 *s = None;
             }
-            let (n2, scfg2, root2, slot2) = (named.clone(), scfg.clone(), root.clone(), slot.clone());
+            let (n2, scfg2, root2, slot2) =
+                (named.clone(), scfg.clone(), root.clone(), slot.clone());
             let work: crate::crew::Work = Box::new(move |_c: &crate::crew::Control| {
                 let outcome = crate::selfwork::run_the_proof(&n2, &scfg2, &root2);
                 if let Ok(mut s) = slot2.lock().or_else(crate::crash::unpoison) {
@@ -531,7 +564,13 @@ impl<'a> Daemon<'a> {
                 }
                 Ok(String::new())
             });
-            if !self.hand_off("proof-check", crate::store::now(), work, Some(named.clone()), super::SpeakPolicy::ViaWatcher) {
+            if !self.hand_off(
+                "proof-check",
+                crate::store::now(),
+                work,
+                Some(named.clone()),
+                super::SpeakPolicy::ViaWatcher,
+            ) {
                 return "I'm already checking that test -- I'll tell you what it shows.".into();
             }
             let until = std::time::Instant::now() + std::time::Duration::from_secs(PROOF_WAIT_SECS);
@@ -582,7 +621,9 @@ impl<'a> Daemon<'a> {
             crate::pipeline::Next::HandOver(why) => {
                 let stuck = crate::route::stuck_on(&format!("fixing \"{}\"", session.goal), &why);
                 match session.take_it_elsewhere() {
-                    Some(_) => format!("{stuck} I'll take it into a conversation and see if something comes back."),
+                    Some(_) => format!(
+                        "{stuck} I'll take it into a conversation and see if something comes back."
+                    ),
                     None => stuck,
                 }
             }
@@ -615,7 +656,10 @@ impl<'a> Daemon<'a> {
         let Some(note) = note else {
             return self.what_the_stage_needs();
         };
-        let r = crate::pipeline::Refinement { answers: note.kind, what_changed: format!("redrafted to answer: {}", note.what) };
+        let r = crate::pipeline::Refinement {
+            answers: note.kind,
+            what_changed: format!("redrafted to answer: {}", note.what),
+        };
         if let Some(s) = self.selfwork.as_mut() {
             if let Err(why) = s.work.record_refinement(r) {
                 return format!("I can't refine that: {why}.");
@@ -662,23 +706,37 @@ impl<'a> Daemon<'a> {
         };
         let work: crate::crew::Work = Box::new(move |c: &crate::crew::Control| {
             let stop = || c.stopping();
-            let budget = crate::tools::WorkBudget::new(std::time::Duration::from_secs(2 * 3600), &stop);
+            let budget =
+                crate::tools::WorkBudget::new(std::time::Duration::from_secs(2 * 3600), &stop);
             budget.check()?;
             // Local structured recipes are tested before any model is needed.
             for (recipe, candidate) in crate::selfwork::recipe_candidates(&current) {
                 budget.check()?;
-                if let Ok(proved) = prove_in_a_copy(&thought, &candidate, &scfg, &root, Some(&budget)) {
+                if let Ok(proved) =
+                    prove_in_a_copy(&thought, &candidate, &scfg, &root, Some(&budget))
+                {
                     if let Ok(mut s) = slot.lock().or_else(crate::crash::unpoison) {
-                        *s = Some(SelfFixDone { thought, current, candidate, proved: Ok(proved) });
+                        *s = Some(SelfFixDone {
+                            thought,
+                            current,
+                            candidate,
+                            proved: Ok(proved),
+                        });
                     }
                     return Ok(format!("the local repair recipe was proven: {recipe}"));
                 }
             }
             budget.check()?;
-            let Some(llm) = llm.as_ref() else { return Err("No local recipe proved a fix, and no bounded model connection is configured. Nothing was changed in the source.".into()); };
-            let bounded_model = crate::selfwork::BoundedModel { model: llm.as_ref(), budget: &budget };
-            let candidate = crate::selfwork::draft_fix(&thought, &instruction, &current, &bounded_model)
-                .map_err(|why| format!("I couldn't draft a fix for that yet: {why}."))?;
+            let Some(llm) = llm.as_ref() else {
+                return Err("No local recipe proved a fix, and no bounded model connection is configured. Nothing was changed in the source.".into());
+            };
+            let bounded_model = crate::selfwork::BoundedModel {
+                model: llm.as_ref(),
+                budget: &budget,
+            };
+            let candidate =
+                crate::selfwork::draft_fix(&thought, &instruction, &current, &bounded_model)
+                    .map_err(|why| format!("I couldn't draft a fix for that yet: {why}."))?;
             if c.stopping() {
                 return Err("stopped before proving the fix".into());
             }
@@ -690,11 +748,27 @@ impl<'a> Daemon<'a> {
             // was a command-line tool only). Whatever it finds is proved the
             // same way: the whole suite, and the mutation check.
             if proved.is_err() && !c.stopping() && !thought.proof.trim().is_empty() {
-                let mut test: Vec<String> = scfg.test_command.split_whitespace().map(String::from).collect();
+                let mut test: Vec<String> = scfg
+                    .test_command
+                    .split_whitespace()
+                    .map(String::from)
+                    .collect();
                 test.push(thought.proof.trim().to_string());
-                let job = crate::fixloop::Job { folder: root.clone(), test, goal: thought.symptom.clone() };
+                let job = crate::fixloop::Job {
+                    folder: root.clone(),
+                    test,
+                    goal: thought.symptom.clone(),
+                };
                 let mut counsel = crate::fixloop::ModelCounsel::new(&bounded_model);
-                if let Ok(o) = crate::fixloop::run_controlled(&job, &mut counsel, &crate::roots::tmp_dir().join("fix"), &strategy, &handoff, &consult, Some(&budget)) {
+                if let Ok(o) = crate::fixloop::run_controlled(
+                    &job,
+                    &mut counsel,
+                    &crate::roots::tmp_dir().join("fix"),
+                    &strategy,
+                    &handoff,
+                    &consult,
+                    Some(&budget),
+                ) {
                     if o.solved && !o.changes.is_empty() {
                         let from_loop: Vec<crate::selfwork::Edit> = o
                             .changes
@@ -702,10 +776,14 @@ impl<'a> Daemon<'a> {
                             .map(|(path, content)| crate::selfwork::Edit {
                                 path: path.clone(),
                                 content: content.clone(),
-                                reason: format!("worked out in {} attempts by the fix loop", o.attempts),
+                                reason: format!(
+                                    "worked out in {} attempts by the fix loop",
+                                    o.attempts
+                                ),
                             })
                             .collect();
-                        let again = prove_in_a_copy(&thought, &from_loop, &scfg, &root, Some(&budget));
+                        let again =
+                            prove_in_a_copy(&thought, &from_loop, &scfg, &root, Some(&budget));
                         if again.is_ok() {
                             candidate = from_loop;
                             proved = again;
@@ -715,12 +793,27 @@ impl<'a> Daemon<'a> {
             }
             let ok = proved.is_ok();
             if let Ok(mut s) = slot.lock().or_else(crate::crash::unpoison) {
-                *s = Some(SelfFixDone { thought, current, candidate, proved });
+                *s = Some(SelfFixDone {
+                    thought,
+                    current,
+                    candidate,
+                    proved,
+                });
             }
-            if ok { Ok("the fix is proven".into()) } else { Ok("the draft didn't hold".into()) }
+            if ok {
+                Ok("the fix is proven".into())
+            } else {
+                Ok("the draft didn't hold".into())
+            }
         });
         let t = crate::store::now();
-        if self.hand_off("self-fix", t, work, Some(symptom.clone()), super::SpeakPolicy::Always) {
+        if self.hand_off(
+            "self-fix",
+            t,
+            work,
+            Some(symptom.clone()),
+            super::SpeakPolicy::Always,
+        ) {
             format!(
                 "Working on a fix for \"{symptom}\" in the background: drafting it, then proving it in a \
                  copy of my code (the whole test suite, so it takes a while). I'll tell you when it's \
@@ -768,7 +861,12 @@ impl<'a> Daemon<'a> {
         }
         let _ = self.store.save("mutation_sweep_at", &t);
         let mut files: Vec<String> = std::fs::read_dir(root.join("src"))
-            .map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.ends_with(".rs")).collect())
+            .map(|rd| {
+                rd.flatten()
+                    .map(|e| e.file_name().to_string_lossy().to_string())
+                    .filter(|n| n.ends_with(".rs"))
+                    .collect()
+            })
             .unwrap_or_default();
         files.sort();
         if files.is_empty() {
@@ -784,11 +882,21 @@ impl<'a> Daemon<'a> {
             }
             let out = crate::roots::tmp_dir().join("mutation-sweep");
             crate::heard!(std::fs::remove_dir_all(&out));
-            let args: Vec<String> = ["mutants", "-f", file.as_str(), "--no-shuffle", "--jobs", "2", "--timeout", "120", "--output"]
-                .iter()
-                .map(|s| s.to_string())
-                .chain(std::iter::once(out.display().to_string()))
-                .collect();
+            let args: Vec<String> = [
+                "mutants",
+                "-f",
+                file.as_str(),
+                "--no-shuffle",
+                "--jobs",
+                "2",
+                "--timeout",
+                "120",
+                "--output",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .chain(std::iter::once(out.display().to_string()))
+            .collect();
             // unheard-ok: returns `(bool, String)`, not a Result
             let _ = crate::sandbox::run_within("cargo", &args, &[], &root, 3 * 3600, 2000);
             let found = crate::mutation::read_survivors(&out);
@@ -796,61 +904,85 @@ impl<'a> Daemon<'a> {
             kept.retain(|s| s.file != file);
             let n = found.len();
             kept.extend(found);
-            store.save(crate::mutation::KEPT, &kept).map_err(|e| e.to_string())?;
-            Ok(format!("mutation sweep of {file}: {n} change{} no test noticed", if n == 1 { "" } else { "s" }))
+            store
+                .save(crate::mutation::KEPT, &kept)
+                .map_err(|e| e.to_string())?;
+            Ok(format!(
+                "mutation sweep of {file}: {n} change{} no test noticed",
+                if n == 1 { "" } else { "s" }
+            ))
         });
         // unheard-ok: returns `bool`, not a Result
-        let _ = self.hand_off("mutation-sweep", t, work, None, super::SpeakPolicy::ViaWatcher);
+        let _ = self.hand_off(
+            "mutation-sweep",
+            t,
+            work,
+            None,
+            super::SpeakPolicy::ViaWatcher,
+        );
     }
 
     /// The proving test's run came back: what it means for the diagnosis,
     /// said. `None` while it's still running (or already said).
     pub(super) fn finish_proof_check(&mut self) -> Option<String> {
-        let (named, outcome) = self.proof_check_done.lock().or_else(crate::crash::unpoison).ok()?.take()?;
-            let Some(session) = self.selfwork.as_mut() else {
-                return Some("Nothing to work on.".into());
-            };
-            match outcome {
-                crate::selfwork::ProofToday::PassesAlready => {
-                    // Not stored as a diagnosis, and the cause is not rewound
-                    // either: the answers are fine and the *proof* is the
-                    // wrong one.
-                    session.diagnosing.proof = None;
-                    Some(format!(
-                        "{named} passes already, so it isn't testing this — whatever the fix \
+        let (named, outcome) = self
+            .proof_check_done
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()?
+            .take()?;
+        let Some(session) = self.selfwork.as_mut() else {
+            return Some("Nothing to work on.".into());
+        };
+        match outcome {
+            crate::selfwork::ProofToday::PassesAlready => {
+                // Not stored as a diagnosis, and the cause is not rewound
+                // either: the answers are fine and the *proof* is the
+                // wrong one.
+                session.diagnosing.proof = None;
+                Some(format!(
+                    "{named} passes already, so it isn't testing this — whatever the fix \
                          turns out to be, that test would stay green through it. What would \
                          fail right now?"
-                    ))
-                }
-                crate::selfwork::ProofToday::CouldNotRun(why) => {
-                    Some(format!("I couldn't find out whether {named} fails: {why}."))
-                }
-                crate::selfwork::ProofToday::Fails
-                | crate::selfwork::ProofToday::NotWrittenYet => {
-                    let not_there =
-                        outcome == crate::selfwork::ProofToday::NotWrittenYet;
-                    if let Err(why) = session.accept_diagnosis(true) {
-                        return Some(format!("That doesn't hold up yet: {why}"));
-                    }
-                    let mut said = if not_there {
-                        format!(
-                            "{named} doesn't exist yet, so there's nothing passing — writing it \
-                             and watching it fail is the first thing I'd do. "
-                        )
-                    } else {
-                        format!("{named} fails now, so it's testing the right thing. ")
-                    };
-                    said.push_str(&self.what_the_stage_needs());
-                    Some(said)
-                }
+                ))
             }
+            crate::selfwork::ProofToday::CouldNotRun(why) => {
+                Some(format!("I couldn't find out whether {named} fails: {why}."))
+            }
+            crate::selfwork::ProofToday::Fails | crate::selfwork::ProofToday::NotWrittenYet => {
+                let not_there = outcome == crate::selfwork::ProofToday::NotWrittenYet;
+                if let Err(why) = session.accept_diagnosis(true) {
+                    return Some(format!("That doesn't hold up yet: {why}"));
+                }
+                let mut said = if not_there {
+                    format!(
+                        "{named} doesn't exist yet, so there's nothing passing — writing it \
+                             and watching it fail is the first thing I'd do. "
+                    )
+                } else {
+                    format!("{named} fails now, so it's testing the right thing. ")
+                };
+                said.push_str(&self.what_the_stage_needs());
+                Some(said)
+            }
+        }
     }
 
     /// A self-fix errand ended: take in what it found, and say it.
     pub(super) fn finish_own_fix(&mut self) -> Option<String> {
-        let done = self.self_fix_done.lock().or_else(crate::crash::unpoison).ok()?.take()?;
+        let done = self
+            .self_fix_done
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()?
+            .take()?;
         let scfg = self.tools_cfg().self_work.clone();
-        let SelfFixDone { thought, current, candidate, proved } = done;
+        let SelfFixDone {
+            thought,
+            current,
+            candidate,
+            proved,
+        } = done;
         Some(match proved {
             Ok((build, changes, mutation_note)) => {
                 let behaviour_note = mutation_note.map(|n| format!(" {n}")).unwrap_or_default();
@@ -918,9 +1050,10 @@ impl<'a> Daemon<'a> {
             return "Nothing of mine is in progress.".into();
         };
         match session.work.stage {
-            crate::pipeline::Stage::Thought => {
-                session.still_needs().unwrap_or("Still thinking that one through.").to_string()
-            }
+            crate::pipeline::Stage::Thought => session
+                .still_needs()
+                .unwrap_or("Still thinking that one through.")
+                .to_string(),
             crate::pipeline::Stage::Build | crate::pipeline::Stage::Refine => {
                 // The loop is closed now: the next step is Atlas drafting the
                 // fix, proving it in a copy, and staging it. Said as what
@@ -1048,7 +1181,10 @@ impl<'a> Daemon<'a> {
             // Said plainly rather than parked. A question Atlas cannot phrase
             // for you is one it should not be asking yet, and burying that in
             // a backlog item would hide the real problem.
-            self.log.warn(&format!("couldn't phrase a question plainly: {}", jargon.join(", ")));
+            self.log.warn(&format!(
+                "couldn't phrase a question plainly: {}",
+                jargon.join(", ")
+            ));
             return "I've hit something I can't do without you, and I can't put it in \
                     plain enough terms to ask. I've left it."
                 .into();
@@ -1076,7 +1212,14 @@ pub(crate) struct SelfFixDone {
     thought: crate::pipeline::Thought,
     current: Vec<crate::selfwork::Edit>,
     candidate: Vec<crate::selfwork::Edit>,
-    proved: std::result::Result<(crate::pipeline::Build, Vec<crate::sandbox::Change>, Option<String>), String>,
+    proved: std::result::Result<
+        (
+            crate::pipeline::Build,
+            Vec<crate::sandbox::Change>,
+            Option<String>,
+        ),
+        String,
+    >,
 }
 
 /// Write a candidate into a copy of the tree, run the proving test and the
@@ -1093,8 +1236,17 @@ fn prove_in_a_copy(
     scfg: &crate::selfwork::SelfWorkConfig,
     root: &std::path::Path,
     budget: Option<&crate::tools::WorkBudget<'_>>,
-) -> std::result::Result<(crate::pipeline::Build, Vec<crate::sandbox::Change>, Option<String>), String> {
-    if let Some(b) = budget { b.check()?; }
+) -> std::result::Result<
+    (
+        crate::pipeline::Build,
+        Vec<crate::sandbox::Change>,
+        Option<String>,
+    ),
+    String,
+> {
+    if let Some(b) = budget {
+        b.check()?;
+    }
     // Refuse anything the never-list or its own limits protect, before a
     // single byte is written anywhere.
     for e in candidate {
@@ -1131,8 +1283,14 @@ fn prove_in(
     root: &std::path::Path,
     sandbox: &mut crate::sandbox::Sandbox,
     budget: Option<&crate::tools::WorkBudget<'_>>,
-) -> std::result::Result<(crate::pipeline::Build, Vec<crate::sandbox::Change>, Option<String>), String> {
-
+) -> std::result::Result<
+    (
+        crate::pipeline::Build,
+        Vec<crate::sandbox::Change>,
+        Option<String>,
+    ),
+    String,
+> {
     // Copy the compile inputs into the sandbox. Not `target/`: cargo builds
     // into the shared cache (`roots::build_cache`), so only the first fix
     // pays for a cold build.
@@ -1141,16 +1299,23 @@ fn prove_in(
 
     // How many tests pass before the change.
     let before = crate::selfwork::run_tests_controlled(sandbox, scfg, budget);
-    if let Some(b) = budget { b.check()?; }
-    let red = crate::selfwork::run_the_proof_controlled(&thought.proof, scfg, &sandbox.root, budget);
+    if let Some(b) = budget {
+        b.check()?;
+    }
+    let red =
+        crate::selfwork::run_the_proof_controlled(&thought.proof, scfg, &sandbox.root, budget);
     if red != crate::selfwork::ProofToday::Fails {
         let explanation = match red {
             crate::selfwork::ProofToday::Fails => "the test failed".into(),
             crate::selfwork::ProofToday::PassesAlready => "the test already passes".into(),
             crate::selfwork::ProofToday::NotWrittenYet => "no test matched the named proof".into(),
-            crate::selfwork::ProofToday::CouldNotRun(why) => format!("the proving test could not run: {why}"),
+            crate::selfwork::ProofToday::CouldNotRun(why) => {
+                format!("the proving test could not run: {why}")
+            }
         };
-        return Err(format!("the named test did not demonstrate the failure before the change: {explanation}"));
+        return Err(format!(
+            "the named test did not demonstrate the failure before the change: {explanation}"
+        ));
     }
     let tests_before = before.tests_run;
 
@@ -1162,7 +1327,8 @@ fn prove_in(
     }
 
     // The proving test passes now?
-    let proof = crate::selfwork::run_the_proof_controlled(&thought.proof, scfg, &sandbox.root, budget);
+    let proof =
+        crate::selfwork::run_the_proof_controlled(&thought.proof, scfg, &sandbox.root, budget);
     let proof_passes = proof == crate::selfwork::ProofToday::PassesAlready;
 
     // And nothing else broke — the whole suite, in the copy.
@@ -1178,7 +1344,10 @@ fn prove_in(
     };
 
     if !proof_passes {
-        return Err(format!("{} still doesn't pass with the change", thought.proof));
+        return Err(format!(
+            "{} still doesn't pass with the change",
+            thought.proof
+        ));
     }
     if !nothing_else_broke {
         return Err("something else in the suite broke".into());
@@ -1203,13 +1372,19 @@ fn prove_in(
                 list.join("; ")
             ));
         }
-        crate::mutation::Checked::NotRun(why) => Some(format!("I couldn't check that the tests would catch this change breaking: {why}.")),
+        crate::mutation::Checked::NotRun(why) => Some(format!(
+            "I couldn't check that the tests would catch this change breaking: {why}."
+        )),
     };
 
-    if let Some(b) = budget { b.check()?; }
+    if let Some(b) = budget {
+        b.check()?;
+    }
     // The preview: which sandbox file maps onto which real file.
-    let mapping: Vec<(String, std::path::PathBuf)> =
-        candidate.iter().map(|e| (e.path.clone(), root.join(&e.path))).collect();
+    let mapping: Vec<(String, std::path::PathBuf)> = candidate
+        .iter()
+        .map(|e| (e.path.clone(), root.join(&e.path)))
+        .collect();
     let changes = sandbox
         .plan(&mapping)
         .map_err(|e| format!("couldn't work out what would change: {e}"))?;
@@ -1219,9 +1394,21 @@ fn prove_in(
 /// "That's wrong", "no, not that": the complaint, not the request it's about.
 fn looks_like_a_complaint(said: &str) -> bool {
     let t = said.trim().to_lowercase();
-    ["that's wrong", "thats wrong", "that was wrong", "wrong", "no,", "not that", "that's not", "that is not", "you got it wrong", "that was too", "you should have"]
-        .iter()
-        .any(|p| t.starts_with(p))
+    [
+        "that's wrong",
+        "thats wrong",
+        "that was wrong",
+        "wrong",
+        "no,",
+        "not that",
+        "that's not",
+        "that is not",
+        "you got it wrong",
+        "that was too",
+        "you should have",
+    ]
+    .iter()
+    .any(|p| t.starts_with(p))
 }
 
 /// What "the issues found" are: the self-test's to-fix table, when the ask
@@ -1229,13 +1416,24 @@ fn looks_like_a_complaint(said: &str) -> bool {
 fn self_test_findings(asked: &str) -> Option<String> {
     let low = asked.to_lowercase();
     let about_them = asked.trim().is_empty()
-        || ["issue", "problem", "self test", "self-test", "selftest", "what you found", "what it found", "failing", "broken"]
-            .iter()
-            .any(|w| low.contains(w));
+        || [
+            "issue",
+            "problem",
+            "self test",
+            "self-test",
+            "selftest",
+            "what you found",
+            "what it found",
+            "failing",
+            "broken",
+        ]
+        .iter()
+        .any(|w| low.contains(w));
     if !about_them {
         return None;
     }
-    let report = std::fs::read_to_string(crate::roots::data_sub("selftest").join("latest.md")).ok()?;
+    let report =
+        std::fs::read_to_string(crate::roots::data_sub("selftest").join("latest.md")).ok()?;
     let start = report.find("## To fix")?;
     let rest = &report[start..];
     let end = rest[3..].find("\n## ").map(|i| i + 3).unwrap_or(rest.len());
@@ -1246,7 +1444,14 @@ fn self_test_findings(asked: &str) -> Option<String> {
 fn self_repair_task(asked: &str, findings: Option<&str>, branch: &str) -> String {
     let mut t = String::new();
     t.push_str("You are working on Atlas, a Rust desktop assistant; this folder is its source (the crate is in this folder or in ./atlas).\n\n");
-    t.push_str(&format!("What to do: {}\n\n", if asked.trim().is_empty() { "fix the problems below" } else { asked.trim() }));
+    t.push_str(&format!(
+        "What to do: {}\n\n",
+        if asked.trim().is_empty() {
+            "fix the problems below"
+        } else {
+            asked.trim()
+        }
+    ));
     if let Some(f) = findings {
         t.push_str("The self-test's findings on this computer:\n");
         t.push_str(f);
@@ -1268,7 +1473,13 @@ impl<'a> Daemon<'a> {
     /// Hand a change to Atlas itself to the coding agent on this computer,
     /// on a branch of its own, and say how it went. Nothing reaches the
     /// running Atlas: a branch waits for you to look at, build and install.
-    pub(super) fn repair_with_agent(&mut self, agent: crate::coding_agent::Agent, program: String, what: &str, root: std::path::PathBuf) -> String {
+    pub(super) fn repair_with_agent(
+        &mut self,
+        agent: crate::coding_agent::Agent,
+        program: String,
+        what: &str,
+        root: std::path::PathBuf,
+    ) -> String {
         let t = crate::store::now();
         let branch = format!("atlas-self-repair-{t}");
         let findings = self_test_findings(what);
@@ -1278,25 +1489,61 @@ impl<'a> Daemon<'a> {
         let task = self_repair_task(what, findings.as_deref(), &branch);
         let (root2, branch2) = (root.clone(), branch.clone());
         let work: crate::crew::Work = Box::new(move |ctl| {
-            let ran = crate::coding_agent::run_controlled(agent, &program, &root2, &task, 60 * 60, &|| ctl.stopping());
+            let ran = crate::coding_agent::run_controlled(
+                agent,
+                &program,
+                &root2,
+                &task,
+                60 * 60,
+                &|| ctl.stopping(),
+            );
             let mut git = crate::tools::command("git");
-            git.args(["log", "--oneline", "-5", &branch2, "--not", "main"]).current_dir(&root2);
-            let (read, log) = crate::tools::run_scoped(&mut git, std::time::Duration::from_secs(10), 64 * 1024, None, Some(&|| ctl.stopping())).said(4000);
-            let log = if read { log.trim().to_string() } else { format!("Commit history could not be checked: {log}") };
+            git.args(["log", "--oneline", "-5", &branch2, "--not", "main"])
+                .current_dir(&root2);
+            let (read, log) = crate::tools::run_scoped(
+                &mut git,
+                std::time::Duration::from_secs(10),
+                64 * 1024,
+                None,
+                Some(&|| ctl.stopping()),
+            )
+            .said(4000);
+            let log = if read {
+                log.trim().to_string()
+            } else {
+                format!("Commit history could not be checked: {log}")
+            };
             let lead = if ran.finished {
                 format!("{} finished working on me.", agent.named())
             } else {
-                format!("{} didn't finish: {}", agent.named(), crate::sandbox::trim_output(&ran.said, 300))
+                format!(
+                    "{} didn't finish: {}",
+                    agent.named(),
+                    crate::sandbox::trim_output(&ran.said, 300)
+                )
             };
             let commits = if log.is_empty() {
                 "No commits were found. Uncommitted edits may still exist; review the working folder before trying again.".to_string()
             } else {
                 format!("On branch {branch2} (not installed, not pushed):\n{log}")
             };
-            Ok(format!("{lead} {commits}\n\nIt says: {}", crate::sandbox::trim_output(&ran.said, 800)))
+            Ok(format!(
+                "{lead} {commits}\n\nIt says: {}",
+                crate::sandbox::trim_output(&ran.said, 800)
+            ))
         });
-        let about = if findings.is_some() { "the self-test's findings".to_string() } else { what.trim().to_string() };
-        if self.hand_off("self-repair", t, work, Some(about.clone()), super::SpeakPolicy::Always) {
+        let about = if findings.is_some() {
+            "the self-test's findings".to_string()
+        } else {
+            what.trim().to_string()
+        };
+        if self.hand_off(
+            "self-repair",
+            t,
+            work,
+            Some(about.clone()),
+            super::SpeakPolicy::Always,
+        ) {
             format!(
                 "Handing {about} to {} in my source at {}, on a branch of its own ({branch}). It can take up to an hour; \
                  nothing changes in the running me until you look at it and install it.",
@@ -1308,4 +1555,3 @@ impl<'a> Daemon<'a> {
         }
     }
 }
-

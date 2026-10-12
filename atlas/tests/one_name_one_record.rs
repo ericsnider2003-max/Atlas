@@ -144,18 +144,26 @@ fn accesses() -> Vec<(String, String, String)> {
                 let mut from = 0;
                 while let Some(at) = line[from..].find(call) {
                     let start = from + at + call.len();
-                    let Some(end) = line[start..].find('"') else { break };
+                    let Some(end) = line[start..].find('"') else {
+                        break;
+                    };
                     let name = &line[start..start + end];
                     // A record name is a plain identifier. Anything else is
                     // some other `.load(`/`.save(` — a config loader, a
                     // model file — and not this namespace.
                     if !name.is_empty()
-                        && name.chars().all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit())
+                        && name
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit())
                     {
                         out.push((
                             name.to_string(),
                             module.clone(),
-                            if call.starts_with(".load") { "load".into() } else { "save".into() },
+                            if call.starts_with(".load") {
+                                "load".into()
+                            } else {
+                                "save".into()
+                            },
                         ));
                     }
                     from = start + end;
@@ -242,7 +250,10 @@ fn every_record_name_is_a_plain_file_name() {
             bad.push(format!("{module}: {record:?}"));
         }
     }
-    assert!(bad.is_empty(), "these record names are not plain names: {bad:?}");
+    assert!(
+        bad.is_empty(),
+        "these record names are not plain names: {bad:?}"
+    );
 }
 
 #[test]
@@ -253,7 +264,11 @@ fn the_reader_of_a_record_is_the_module_that_writes_it() {
     // nobody writes is reading a file that will never exist, which is a
     // different bug and worth seeing.
     let all = accesses();
-    let written: Vec<&String> = all.iter().filter(|(_, _, c)| c == "save").map(|(r, _, _)| r).collect();
+    let written: Vec<&String> = all
+        .iter()
+        .filter(|(_, _, c)| c == "save")
+        .map(|(r, _, _)| r)
+        .collect();
     let named: Vec<&str> = READ_ONLY_FOR_NOW.iter().map(|(r, _)| *r).collect();
     let mut orphans = Vec::new();
     for (record, module, call) in &all {

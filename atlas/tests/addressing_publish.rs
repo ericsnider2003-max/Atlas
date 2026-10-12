@@ -2,7 +2,10 @@ use atlas::addressing::{assess, respond, Directed, Kind, Response, Situation};
 use atlas::publish::{Channel, PostState, Publisher, SendCheck};
 
 fn working() -> Situation {
-    Situation { working: true, ..Default::default() }
+    Situation {
+        working: true,
+        ..Default::default()
+    }
 }
 fn idle() -> Situation {
     Situation::default()
@@ -12,7 +15,10 @@ fn idle() -> Situation {
 
 #[test]
 fn the_wake_word_settles_it_outright() {
-    let s = Situation { after_wake_word: true, ..working() };
+    let s = Situation {
+        after_wake_word: true,
+        ..working()
+    };
     let a = assess("stop", &s);
     assert_eq!(a.directed, Directed::AtAtlas);
     assert!(a.confidence > 0.95);
@@ -20,8 +26,14 @@ fn the_wake_word_settles_it_outright() {
 
 #[test]
 fn saying_its_name_settles_it_too() {
-    assert_eq!(assess("atlas stop that", &working()).directed, Directed::AtAtlas);
-    assert_eq!(assess("hold on atlas", &working()).directed, Directed::AtAtlas);
+    assert_eq!(
+        assess("atlas stop that", &working()).directed,
+        Directed::AtAtlas
+    );
+    assert_eq!(
+        assess("hold on atlas", &working()).directed,
+        Directed::AtAtlas
+    );
 }
 
 #[test]
@@ -42,7 +54,11 @@ fn half_a_phone_call_is_not_a_command() {
     ] {
         let a = assess(said, &working());
         assert_eq!(a.directed, Directed::Overheard, "{said:?} -> {a:?}");
-        assert_eq!(respond(&a, &working()), Response::Ignore, "must keep working");
+        assert_eq!(
+            respond(&a, &working()),
+            Response::Ignore,
+            "must keep working"
+        );
     }
 }
 
@@ -54,7 +70,10 @@ fn talking_about_someone_else_is_not_talking_to_atlas() {
 
 #[test]
 fn another_persons_name_pushes_it_towards_overheard() {
-    let s = Situation { other_names: vec!["Sarah".into()], ..working() };
+    let s = Situation {
+        other_names: vec!["Sarah".into()],
+        ..working()
+    };
     let a = assess("sarah can you close that window", &s);
     assert_ne!(a.directed, Directed::AtAtlas, "{a:?}");
 }
@@ -85,7 +104,10 @@ fn the_same_unclear_utterance_is_acted_on_when_nothing_is_running() {
 
 #[test]
 fn the_answer_to_atlas_own_question_is_always_for_atlas() {
-    let s = Situation { awaiting_answer: true, ..working() };
+    let s = Situation {
+        awaiting_answer: true,
+        ..working()
+    };
     let a = assess("the second one", &s);
     assert_eq!(a.directed, Directed::AtAtlas);
     assert!(a.why.contains("asked you"));
@@ -95,13 +117,19 @@ fn the_answer_to_atlas_own_question_is_always_for_atlas() {
 fn questions_and_commands_are_told_apart() {
     assert_eq!(assess("what is on my screen", &idle()).kind, Kind::Question);
     assert_eq!(assess("close chrome now", &idle()).kind, Kind::Command);
-    assert_eq!(assess("the weather is nice today", &idle()).kind, Kind::Statement);
+    assert_eq!(
+        assess("the weather is nice today", &idle()).kind,
+        Kind::Statement
+    );
 }
 
 #[test]
 fn every_assessment_explains_itself() {
     let a = assess("yeah no I told him", &working());
-    assert!(!a.why.is_empty(), "you should be able to see why it decided");
+    assert!(
+        !a.why.is_empty(),
+        "you should be able to see why it decided"
+    );
 }
 
 // ================= posting and scheduling =================
@@ -115,7 +143,10 @@ fn a_draft_is_never_sendable_on_its_own() {
     let mut p = Publisher::default();
     let id = tweet(&mut p);
     assert_eq!(p.get(id).unwrap().state, PostState::Draft);
-    assert!(p.due(u64::MAX, true).is_empty(), "drafts never go out by themselves");
+    assert!(
+        p.due(u64::MAX, true).is_empty(),
+        "drafts never go out by themselves"
+    );
 }
 
 #[test]
@@ -210,8 +241,15 @@ fn platform_limits_differ_and_are_overridable() {
     let mut p = Publisher::default();
     let id = p.draft(Channel::LinkedIn, &"x".repeat(400));
     p.approve(id);
-    assert_eq!(p.check(id, true, None), SendCheck::Go, "400 chars is fine on LinkedIn");
-    assert!(matches!(p.check(id, true, Some(100)), SendCheck::Hold(_)), "override applies");
+    assert_eq!(
+        p.check(id, true, None),
+        SendCheck::Go,
+        "400 chars is fine on LinkedIn"
+    );
+    assert!(
+        matches!(p.check(id, true, Some(100)), SendCheck::Hold(_)),
+        "override applies"
+    );
 }
 
 #[test]
@@ -223,9 +261,19 @@ fn a_platform_that_needs_an_image_will_not_post_without_one() {
         SendCheck::Hold(why) => assert!(why.contains("needs an image")),
         o => panic!("{o:?}"),
     }
-    let path = std::env::temp_dir().join(format!("atlas-instagram-media-{}-{}.png", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let path = std::env::temp_dir().join(format!(
+        "atlas-instagram-media-{}-{}.png",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
     p.attach(id, &path.display().to_string());
-    assert!(!p.approve(id), "a missing attachment must not acquire consent");
+    assert!(
+        !p.approve(id),
+        "a missing attachment must not acquire consent"
+    );
     assert!(matches!(p.check(id, true, None), SendCheck::Hold(_)));
     let image = std::fs::read("tests/fixtures/round11/ocr_invoice.png").unwrap();
     std::fs::write(&path, &image).unwrap();
@@ -235,9 +283,16 @@ fn a_platform_that_needs_an_image_will_not_post_without_one() {
     assert_ne!(std::path::Path::new(&captured.paths[0]), path.as_path());
     assert_eq!(std::fs::read(&captured.paths[0]).unwrap(), image);
     assert_eq!(p.check(id, true, None), SendCheck::Go);
-    assert_eq!(std::fs::read(&path).unwrap(), image, "approval must preserve the source image");
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        image,
+        "approval must preserve the source image"
+    );
     std::fs::remove_file(&path).unwrap();
-    assert!(p.get(id).unwrap().verified_media_copies(&|| false).is_err(), "lost media must be refused before provider access");
+    assert!(
+        p.get(id).unwrap().verified_media_copies(&|| false).is_err(),
+        "lost media must be refused before provider access"
+    );
 }
 
 #[test]
@@ -246,7 +301,11 @@ fn nothing_goes_out_while_offline_but_it_is_not_lost() {
     let id = tweet(&mut p);
     p.approve(id);
     assert!(p.due(u64::MAX, false).is_empty());
-    assert_eq!(p.get(id).unwrap().state, PostState::ReadyToSend, "still queued");
+    assert_eq!(
+        p.get(id).unwrap().state,
+        PostState::ReadyToSend,
+        "still queued"
+    );
     assert_eq!(p.due(u64::MAX, true), vec![id]);
 }
 
@@ -267,7 +326,10 @@ fn a_missing_connection_is_not_reported_as_a_problem_with_the_post() {
     let id = tweet(&mut p);
     p.schedule(id, 100);
     p.approve(id);
-    assert!(p.blocked(200, false).is_empty(), "offline is not the post's fault");
+    assert!(
+        p.blocked(200, false).is_empty(),
+        "offline is not the post's fault"
+    );
 }
 
 #[test]
@@ -288,7 +350,10 @@ fn a_post_can_be_cancelled_right_up_until_it_goes_but_not_after() {
 fn emails_are_scheduled_the_same_way_as_posts() {
     let mut p = Publisher::default();
     let id = p.draft(
-        Channel::Email { to: "sam@example.com".into(), subject: "Thursday".into() },
+        Channel::Email {
+            to: "sam@example.com".into(),
+            subject: "Thursday".into(),
+        },
         "Moving our call to 2pm, does that work?",
     );
     p.schedule(id, 5_000);
@@ -301,7 +366,10 @@ fn emails_are_scheduled_the_same_way_as_posts() {
 fn emails_have_no_character_ceiling() {
     let mut p = Publisher::default();
     let id = p.draft(
-        Channel::Email { to: "a@b.com".into(), subject: "Long".into() },
+        Channel::Email {
+            to: "a@b.com".into(),
+            subject: "Long".into(),
+        },
         &"x".repeat(50_000),
     );
     p.approve(id);
@@ -325,7 +393,10 @@ fn you_can_ask_what_is_queued_to_go_out() {
     p.approve(id);
     p.draft(Channel::LinkedIn, "waiting on you");
     let s = p.summary(0);
-    assert!(s.contains("1 scheduled") && s.contains("1 awaiting"), "got: {s}");
+    assert!(
+        s.contains("1 scheduled") && s.contains("1 awaiting"),
+        "got: {s}"
+    );
     assert!(s.contains("60 minutes"), "got: {s}");
 }
 
@@ -341,5 +412,9 @@ fn the_queue_survives_a_restart() {
     p.save(&store).unwrap();
 
     let back = Publisher::load(&store);
-    assert_eq!(back.due(9_000, true), vec![id], "approval and schedule both survived");
+    assert_eq!(
+        back.due(9_000, true),
+        vec![id],
+        "approval and schedule both survived"
+    );
 }

@@ -175,14 +175,23 @@ pub fn how_typing_is_hidden() -> (bool, &'static str) {
         match console::Quiet::start() {
             Some(q) if q.echo_is_off() => {
                 drop(q);
-                (true, "in this process: the console's echo is switched off while you type")
+                (
+                    true,
+                    "in this process: the console's echo is switched off while you type",
+                )
             }
-            _ => (true, "through PowerShell's Read-Host -AsSecureString (no console to ask directly)"),
+            _ => (
+                true,
+                "through PowerShell's Read-Host -AsSecureString (no console to ask directly)",
+            ),
         }
     }
     #[cfg(not(windows))]
     {
-        (true, "the terminal's echo is switched off (stty -echo) while you type")
+        (
+            true,
+            "the terminal's echo is switched off (stty -echo) while you type",
+        )
     }
 }
 
@@ -194,9 +203,12 @@ pub fn how_typing_is_hidden() -> (bool, &'static str) {
 mod console {
     use windows::core::w;
     use windows::Win32::Foundation::{CloseHandle, GENERIC_READ, GENERIC_WRITE, HANDLE};
-    use windows::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING};
+    use windows::Win32::Storage::FileSystem::{
+        CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    };
     use windows::Win32::System::Console::{
-        GetConsoleMode, ReadConsoleW, SetConsoleMode, CONSOLE_MODE, ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT,
+        GetConsoleMode, ReadConsoleW, SetConsoleMode, CONSOLE_MODE, ENABLE_ECHO_INPUT,
+        ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT,
     };
 
     /// The console with its echo off; the mode it had comes back on drop,
@@ -226,7 +238,9 @@ mod console {
                     let _ = CloseHandle(h);
                     return None;
                 }
-                let quiet = CONSOLE_MODE((was.0 & !ENABLE_ECHO_INPUT.0) | ENABLE_LINE_INPUT.0 | ENABLE_PROCESSED_INPUT.0);
+                let quiet = CONSOLE_MODE(
+                    (was.0 & !ENABLE_ECHO_INPUT.0) | ENABLE_LINE_INPUT.0 | ENABLE_PROCESSED_INPUT.0,
+                );
                 if SetConsoleMode(h, quiet).is_err() {
                     let _ = CloseHandle(h);
                     return None;
@@ -251,14 +265,25 @@ mod console {
                 let mut n = 0u32;
                 // SAFETY: `buf` is a live array of `buf.len()` u16 and the length passed is in
                 // characters, as ReadConsoleW requires; `n` is a live local.
-                let ok = unsafe { ReadConsoleW(self.h, buf.as_mut_ptr() as *mut _, buf.len() as u32, &mut n, None) };
+                let ok = unsafe {
+                    ReadConsoleW(
+                        self.h,
+                        buf.as_mut_ptr() as *mut _,
+                        buf.len() as u32,
+                        &mut n,
+                        None,
+                    )
+                };
                 if ok.is_err() || n == 0 {
                     buf.iter_mut().for_each(|c| *c = 0);
                     return None;
                 }
                 all.extend_from_slice(&buf[..n as usize]);
                 buf.iter_mut().for_each(|c| *c = 0);
-                if all.contains(&(b'\n' as u16)) || all.contains(&(b'\r' as u16)) || all.len() > 4096 {
+                if all.contains(&(b'\n' as u16))
+                    || all.contains(&(b'\r' as u16))
+                    || all.len() > 4096
+                {
                     break;
                 }
             }
@@ -335,7 +360,11 @@ mod tests {
     fn a_blank_line_is_nothing_typed() {
         assert_eq!(clean("\n".into()), None);
         assert_eq!(clean("".into()), None);
-        assert_eq!(clean("  \r\n".into()), Some("  ".into()), "leading space is part of it");
+        assert_eq!(
+            clean("  \r\n".into()),
+            Some("  ".into()),
+            "leading space is part of it"
+        );
         assert_eq!(clean("hunter2\r\n".into()), Some("hunter2".into()));
     }
 

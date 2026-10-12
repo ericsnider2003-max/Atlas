@@ -18,7 +18,10 @@ fn serious() -> Question {
 fn a_thumbs_up_answers_an_ordinary_question() {
     // The fallback: you're on a call, or it's misheard you twice.
     let mut q = ordinary();
-    assert_eq!(q.saw(Gesture::ThumbUp, &cfg()), Step::Settled(Answer::Yes(Channel::Gesture)));
+    assert_eq!(
+        q.saw(Gesture::ThumbUp, &cfg()),
+        Step::Settled(Answer::Yes(Channel::Gesture))
+    );
     assert!(q.answer.approved());
 }
 
@@ -26,7 +29,10 @@ fn a_thumbs_up_answers_an_ordinary_question() {
 fn a_thumbs_down_declines_anything_at_all() {
     // Saying no is always safe, whatever the stakes.
     let mut q = serious();
-    assert_eq!(q.saw(Gesture::ThumbDown, &cfg()), Step::Settled(Answer::No(Channel::Gesture)));
+    assert_eq!(
+        q.saw(Gesture::ThumbDown, &cfg()),
+        Step::Settled(Answer::No(Channel::Gesture))
+    );
 }
 
 #[test]
@@ -44,14 +50,23 @@ fn a_nod_is_not_a_signature() {
 #[test]
 fn you_can_allow_gestures_to_approve_anything_if_you_want_to() {
     let mut q = serious();
-    let loose = AnsweringConfig { gestures_may_approve_anything: true, ..cfg() };
-    assert!(matches!(q.saw(Gesture::ThumbUp, &loose), Step::Settled(Answer::Yes(_))));
+    let loose = AnsweringConfig {
+        gestures_may_approve_anything: true,
+        ..cfg()
+    };
+    assert!(matches!(
+        q.saw(Gesture::ThumbUp, &loose),
+        Step::Settled(Answer::Yes(_))
+    ));
 }
 
 #[test]
 fn gestures_can_be_switched_off_entirely() {
     let mut q = ordinary();
-    let off = AnsweringConfig { accept_gestures: false, ..cfg() };
+    let off = AnsweringConfig {
+        accept_gestures: false,
+        ..cfg()
+    };
     assert_eq!(q.saw(Gesture::ThumbUp, &off), Step::Wait);
 }
 
@@ -66,13 +81,22 @@ fn an_unrelated_gesture_is_ignored() {
 #[test]
 fn speaking_typing_or_gesturing_all_answer_the_same_question() {
     let mut a = ordinary();
-    assert!(matches!(a.heard("yes", &cfg()), Step::Settled(Answer::Yes(Channel::Voice))));
+    assert!(matches!(
+        a.heard("yes", &cfg()),
+        Step::Settled(Answer::Yes(Channel::Voice))
+    ));
 
     let mut b = ordinary();
-    assert!(matches!(b.typed("yes", &cfg()), Step::Settled(Answer::Yes(Channel::Typed))));
+    assert!(matches!(
+        b.typed("yes", &cfg()),
+        Step::Settled(Answer::Yes(Channel::Typed))
+    ));
 
     let mut c = ordinary();
-    assert!(matches!(c.saw(Gesture::ThumbUp, &cfg()), Step::Settled(Answer::Yes(Channel::Gesture))));
+    assert!(matches!(
+        c.saw(Gesture::ThumbUp, &cfg()),
+        Step::Settled(Answer::Yes(Channel::Gesture))
+    ));
 }
 
 #[test]
@@ -80,7 +104,11 @@ fn the_first_answer_wins_and_later_ones_are_ignored() {
     let mut q = ordinary();
     q.heard("no", &cfg());
     q.saw(Gesture::ThumbUp, &cfg());
-    assert!(matches!(q.answer, Answer::No(Channel::Voice)), "got {:?}", q.answer);
+    assert!(
+        matches!(q.answer, Answer::No(Channel::Voice)),
+        "got {:?}",
+        q.answer
+    );
 }
 
 #[test]

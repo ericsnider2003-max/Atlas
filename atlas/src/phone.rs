@@ -138,7 +138,10 @@ pub fn configured(cfg: &PhoneConfig) -> std::result::Result<(), NotSet> {
 
 /// Strip a scheme, so `http://box:80` and `box:80` both work.
 fn host_only(host: &str) -> &str {
-    host.trim().trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/')
+    host.trim()
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches('/')
 }
 
 /// The topic, from `path`: `/atlas` → `atlas`.
@@ -202,15 +205,27 @@ pub fn send(note: &crate::notify::Note, cfg: &PhoneConfig) -> Result<()> {
     // an iPhone. Delivered if either got it.
     // An Android phone with Atlas closed goes through its UnifiedPush
     // address (`webpush`), sealed for that phone alone.
-    let by_apple = if apple_can_reach(cfg) { Some(crate::apns::send(note, cfg)) } else { None };
-    let by_android = if android_can_reach() { Some(crate::webpush::send(note, cfg)) } else { None };
+    let by_apple = if apple_can_reach(cfg) {
+        Some(crate::apns::send(note, cfg))
+    } else {
+        None
+    };
+    let by_android = if android_can_reach() {
+        Some(crate::webpush::send(note, cfg))
+    } else {
+        None
+    };
     let direct = [by_apple, by_android];
     if direct.iter().any(|r| matches!(r, Some(Ok(())))) && cfg.host.trim().is_empty() {
         return Ok(());
     }
     if cfg.host.trim().is_empty() {
         return Err(crate::error::AtlasError::Platform(
-            direct.into_iter().flatten().find_map(|r| r.err()).unwrap_or_else(|| NotSet::NoHost.plain()),
+            direct
+                .into_iter()
+                .flatten()
+                .find_map(|r| r.err())
+                .unwrap_or_else(|| NotSet::NoHost.plain()),
         ));
     }
     match send_to_server(note, cfg) {
@@ -222,14 +237,18 @@ pub fn send(note: &crate::notify::Note, cfg: &PhoneConfig) -> Result<()> {
 
 /// Has an Android phone given Atlas its UnifiedPush address?
 fn android_can_reach() -> bool {
-    !crate::webpush::Devices::load(&crate::roots::state_dir()).devices.is_empty()
+    !crate::webpush::Devices::load(&crate::roots::state_dir())
+        .devices
+        .is_empty()
 }
 
 /// Is an iPhone reachable through Apple's push service: the key set up, and
 /// at least one phone has given its address?
 fn apple_can_reach(cfg: &PhoneConfig) -> bool {
     cfg.apns.ready(&crate::roots::install_root()).is_ok()
-        && !crate::apns::Devices::load(&crate::roots::state_dir()).devices.is_empty()
+        && !crate::apns::Devices::load(&crate::roots::state_dir())
+            .devices
+            .is_empty()
 }
 
 /// The push server (ntfy's JSON publish).
@@ -242,7 +261,9 @@ fn send_to_server(note: &crate::notify::Note, cfg: &PhoneConfig) -> Result<()> {
         crate::http::https_post_json(host_only(&cfg.host), "/", &body, token, timeout)?
     } else {
         match token {
-            Some(t) => crate::http::post_json_with_token(host_only(&cfg.host), "/", &body, t, timeout)?,
+            Some(t) => {
+                crate::http::post_json_with_token(host_only(&cfg.host), "/", &body, t, timeout)?
+            }
             None => crate::http::post_json(host_only(&cfg.host), "/", &body, timeout)?,
         }
     };
@@ -265,7 +286,11 @@ fn send_to_server(note: &crate::notify::Note, cfg: &PhoneConfig) -> Result<()> {
 /// `send`, with a link the notification opens when tapped (ntfy's
 /// `click`): the texts Atlas writes open Messages with them filled in. Only
 /// with detail on -- the link carries the words.
-pub(crate) fn send_with_click(note: &crate::notify::Note, cfg: &PhoneConfig, click: &str) -> Result<()> {
+pub(crate) fn send_with_click(
+    note: &crate::notify::Note,
+    cfg: &PhoneConfig,
+    click: &str,
+) -> Result<()> {
     if note.private || !cfg.include_detail {
         return send(note, cfg);
     }
@@ -273,19 +298,28 @@ pub(crate) fn send_with_click(note: &crate::notify::Note, cfg: &PhoneConfig, cli
         return Err(crate::error::AtlasError::Platform(e.plain()));
     }
     let body = body_for(note, cfg);
-    let body = format!("{},\"click\":\"{}\"}}", body.trim_end_matches('}'), escape(click));
+    let body = format!(
+        "{},\"click\":\"{}\"}}",
+        body.trim_end_matches('}'),
+        escape(click)
+    );
     let timeout = Duration::from_secs(cfg.timeout_secs.max(1));
     let token = cfg.token.as_deref().filter(|t| !t.trim().is_empty());
     let r = if cfg.host.trim().starts_with("https://") {
         crate::http::https_post_json(host_only(&cfg.host), "/", &body, token, timeout)?
     } else {
         match token {
-            Some(t) => crate::http::post_json_with_token(host_only(&cfg.host), "/", &body, t, timeout)?,
+            Some(t) => {
+                crate::http::post_json_with_token(host_only(&cfg.host), "/", &body, t, timeout)?
+            }
             None => crate::http::post_json(host_only(&cfg.host), "/", &body, timeout)?,
         }
     };
     if !r.ok() {
-        return Err(crate::error::AtlasError::Platform(format!("the push server answered {}", r.status)));
+        return Err(crate::error::AtlasError::Platform(format!(
+            "the push server answered {}",
+            r.status
+        )));
     }
     Ok(())
 }

@@ -58,9 +58,15 @@ impl<'a> Daemon<'a> {
     /// is mended here, before anything reads it (`misses::mended_hearing`).
     pub(super) fn watch_the_turn(&mut self, said: &str) -> (Watch, Option<String>) {
         let by_voice = self.spoken_turn.take().is_some_and(|s| s == said.trim());
-        let mended = if by_voice { crate::misses::mended_hearing(said, &self.misses) } else { None };
+        let mended = if by_voice {
+            crate::misses::mended_hearing(said, &self.misses)
+        } else {
+            None
+        };
         if let Some(m) = &mended {
-            self.log.info(&format!("heard \"{said}\", mended to \"{m}\" from mishearings you corrected before"));
+            self.log.info(&format!(
+                "heard \"{said}\", mended to \"{m}\" from mishearings you corrected before"
+            ));
         }
         self.routed_by_phrase = None;
         let watch = Watch {
@@ -79,13 +85,24 @@ impl<'a> Daemon<'a> {
     pub(super) fn turn_watched(&mut self, w: Watch, said: &str, reply: String, t: u64) -> String {
         let handed_over = self.handover().stance.handed_over();
         let did_something = self.session.recorded > w.recorded;
-        let intent = if did_something { self.session.last_intent.clone() } else { None };
-        let action = intent.as_ref().map(|i| crate::session::kind_of(i).to_string()).unwrap_or_default();
-        let asked_now = !w.asked_already && matches!(self.session.pending, Pending::Clarification(_)) && reply.trim_end().ends_with('?');
+        let intent = if did_something {
+            self.session.last_intent.clone()
+        } else {
+            None
+        };
+        let action = intent
+            .as_ref()
+            .map(|i| crate::session::kind_of(i).to_string())
+            .unwrap_or_default();
+        let asked_now = !w.asked_already
+            && matches!(self.session.pending, Pending::Clarification(_))
+            && reply.trim_end().ends_with('?');
         let missed = match action.as_str() {
             "unknown" => Some(crate::misses::Why::NotUnderstood),
             "ask" => Some(crate::misses::Why::AskedBack),
-            "" if asked_now && self.pending_correction.is_none() => Some(crate::misses::Why::AskedBack),
+            "" if asked_now && self.pending_correction.is_none() => {
+                Some(crate::misses::Why::AskedBack)
+            }
             _ => None,
         };
         let routed_by = self.routed_by_phrase.take().map(|(w, _)| w);
@@ -103,7 +120,10 @@ impl<'a> Daemon<'a> {
             self.last_outcome = None;
             return reply;
         }
-        let prev = self.last_outcome.clone().filter(|p| t.saturating_sub(p.at) <= CORRECTS_WITHIN_SECS);
+        let prev = self
+            .last_outcome
+            .clone()
+            .filter(|p| t.saturating_sub(p.at) <= CORRECTS_WITHIN_SECS);
         let mut reply = reply;
         let mut keep_prev = false;
 
@@ -115,7 +135,9 @@ impl<'a> Daemon<'a> {
                 self.last_unknown = said.trim().to_string();
             }
             let did = match why {
-                crate::misses::Why::AskedBack => format!("asked \"{}\"", clip_words(reply.trim(), 60)),
+                crate::misses::Why::AskedBack => {
+                    format!("asked \"{}\"", clip_words(reply.trim(), 60))
+                }
                 _ => format!("said \"{}\"", clip_words(reply.trim(), 60)),
             };
             self.note_a_miss(said, &did, why, w.by_voice, t);
@@ -124,7 +146,11 @@ impl<'a> Daemon<'a> {
         // "That's not what I asked" (`got_it_wrong`), about the turn before.
         if action == "got_it_wrong" {
             if let Some(p) = &prev {
-                let did = p.intent.as_ref().map(|i| format!("did {}", i.plain())).unwrap_or_else(|| format!("said \"{}\"", clip_words(&p.reply, 60)));
+                let did = p
+                    .intent
+                    .as_ref()
+                    .map(|i| format!("did {}", i.plain()))
+                    .unwrap_or_else(|| format!("said \"{}\"", clip_words(&p.reply, 60)));
                 self.note_a_miss(&p.said, &did, crate::misses::Why::Corrected, p.by_voice, t);
                 if let Some(wording) = &p.routed_by {
                     self.drop_a_wrong_lesson(wording);
@@ -140,7 +166,14 @@ impl<'a> Daemon<'a> {
         if w.correcting && self.pending_correction.is_none() {
             if let Some(p) = &prev {
                 if let Some(i) = self.parser_action(said) {
-                    if let Some(line) = self.learn_wording(&p.said, said, &i, crate::phrasebook::Taught::Answered, true, t) {
+                    if let Some(line) = self.learn_wording(
+                        &p.said,
+                        said,
+                        &i,
+                        crate::phrasebook::Taught::Answered,
+                        true,
+                        t,
+                    ) {
                         reply = format!("{} {line}", reply.trim_end());
                     }
                 }
@@ -149,8 +182,14 @@ impl<'a> Daemon<'a> {
 
         // Undone straight after: what was done was the wrong thing.
         if action == "undo" {
-            if let Some(p) = prev.as_ref().filter(|p| p.intent.is_some() && t.saturating_sub(p.at) <= crate::misses::UNDONE_WITHIN_SECS) {
-                let did = p.intent.as_ref().map(|i| format!("did {}", i.plain())).unwrap_or_default();
+            if let Some(p) = prev.as_ref().filter(|p| {
+                p.intent.is_some() && t.saturating_sub(p.at) <= crate::misses::UNDONE_WITHIN_SECS
+            }) {
+                let did = p
+                    .intent
+                    .as_ref()
+                    .map(|i| format!("did {}", i.plain()))
+                    .unwrap_or_default();
                 self.note_a_miss(&p.said, &did, crate::misses::Why::Undone, p.by_voice, t);
                 if let Some(wording) = &p.routed_by {
                     self.drop_a_wrong_lesson(wording);
@@ -183,7 +222,14 @@ impl<'a> Daemon<'a> {
         if rephrased {
             if let (Some(p), Some(i)) = (&prev, &intent) {
                 self.check_the_hearing(p, said, t);
-                if let Some(line) = self.learn_wording(&p.said, said, i, crate::phrasebook::Taught::Rephrased, false, t) {
+                if let Some(line) = self.learn_wording(
+                    &p.said,
+                    said,
+                    i,
+                    crate::phrasebook::Taught::Rephrased,
+                    false,
+                    t,
+                ) {
                     self.log.info(&line);
                 }
             }
@@ -193,7 +239,9 @@ impl<'a> Daemon<'a> {
         // rephrase lesson is sure from now on.
         if let Some(p) = &prev {
             if let Some(wording) = &p.routed_by {
-                if !matches!(action.as_str(), "undo" | "got_it_wrong") && crate::phrasebook::meant_instead(said).is_none() {
+                if !matches!(action.as_str(), "undo" | "got_it_wrong")
+                    && crate::phrasebook::meant_instead(said).is_none()
+                {
                     self.phrasebook.stood_up(wording);
                     let _ = self.phrasebook.save(&self.store);
                 }
@@ -202,7 +250,9 @@ impl<'a> Daemon<'a> {
 
         // "No, I meant ..." already left the corrected words as the turn a
         // next correction is about (`meant_this_instead`).
-        if self.last_outcome.as_ref().is_some_and(|o| crate::phrasebook::meant_instead(said).as_deref() == Some(o.said.as_str())) {
+        if self.last_outcome.as_ref().is_some_and(|o| {
+            crate::phrasebook::meant_instead(said).as_deref() == Some(o.said.as_str())
+        }) {
             keep_prev = true;
         }
         if !keep_prev {
@@ -259,11 +309,16 @@ impl<'a> Daemon<'a> {
         if self.handover().stance.handed_over() {
             return None;
         }
-        let prev = self.last_outcome.clone().filter(|p| t.saturating_sub(p.at) <= CORRECTS_WITHIN_SECS)?;
+        let prev = self
+            .last_outcome
+            .clone()
+            .filter(|p| t.saturating_sub(p.at) <= CORRECTS_WITHIN_SECS)?;
         if crate::phrasebook::phrase_key(&prev.said) == crate::phrasebook::phrase_key(meant) {
             return None;
         }
-        if matches!(self.parser.parse(meant), Intent::Unknown(_)) && crate::facts::triple(meant).is_some() {
+        if matches!(self.parser.parse(meant), Intent::Unknown(_))
+            && crate::facts::triple(meant).is_some()
+        {
             return None;
         }
         // "What should I have done instead?" -- "I meant open notepad"
@@ -274,14 +329,29 @@ impl<'a> Daemon<'a> {
         }
         let before = self.session.recorded;
         let reply = self.turn_from(meant, t, how);
-        let did = if self.session.recorded > before { self.session.last_intent.clone() } else { None };
+        let did = if self.session.recorded > before {
+            self.session.last_intent.clone()
+        } else {
+            None
+        };
         // What happened to the words you corrected.
-        let was = prev.intent.as_ref().map(|i| format!("did {}", i.plain())).unwrap_or_else(|| format!("said \"{}\"", clip_words(&prev.reply, 60)));
+        let was = prev
+            .intent
+            .as_ref()
+            .map(|i| format!("did {}", i.plain()))
+            .unwrap_or_else(|| format!("said \"{}\"", clip_words(&prev.reply, 60)));
         if prev.missed.is_some() {
-            self.misses.now_known_as(&prev.said, crate::misses::Why::Corrected);
+            self.misses
+                .now_known_as(&prev.said, crate::misses::Why::Corrected);
             let _ = self.misses.save(&self.store);
         } else {
-            self.note_a_miss(&prev.said, &was, crate::misses::Why::Corrected, prev.by_voice, t);
+            self.note_a_miss(
+                &prev.said,
+                &was,
+                crate::misses::Why::Corrected,
+                prev.by_voice,
+                t,
+            );
         }
         if let Some(wording) = &prev.routed_by {
             self.drop_a_wrong_lesson(wording);
@@ -290,9 +360,15 @@ impl<'a> Daemon<'a> {
         // are still worth keeping: heard that way again, they route.
         self.check_the_hearing(&prev, meant, t);
         let learned = match &did {
-            Some(i) if crate::phrasebook::learnable_action(i) && !worked_badly(&reply) => {
-                self.learn_wording(&prev.said, meant, i, crate::phrasebook::Taught::Corrected, true, t)
-            }
+            Some(i) if crate::phrasebook::learnable_action(i) && !worked_badly(&reply) => self
+                .learn_wording(
+                    &prev.said,
+                    meant,
+                    i,
+                    crate::phrasebook::Taught::Corrected,
+                    true,
+                    t,
+                ),
             _ => None,
         };
         // The corrected words are what the next correction is about.
@@ -322,7 +398,15 @@ impl<'a> Daemon<'a> {
 
     /// Keep `wording` as meaning `intent` (what `meant` turned out to be).
     /// The line to say when it was learned.
-    fn learn_wording(&mut self, wording: &str, meant: &str, intent: &Intent, taught: crate::phrasebook::Taught, sure: bool, t: u64) -> Option<String> {
+    fn learn_wording(
+        &mut self,
+        wording: &str,
+        meant: &str,
+        intent: &Intent,
+        taught: crate::phrasebook::Taught,
+        sure: bool,
+        t: u64,
+    ) -> Option<String> {
         if self.handover().stance.handed_over() || !crate::phrasebook::learnable_action(intent) {
             return None;
         }
@@ -330,7 +414,11 @@ impl<'a> Daemon<'a> {
         // phrases read the same way again -- or, when they don't, only as a
         // hint for the model (an empty tool and argument).
         let (tool, arg) = crate::phrasebook::intent_as_tool(intent, meant).unwrap_or_default();
-        let meaning = self.meaning_route.as_ref().and_then(|m| m.text(wording)).unwrap_or_default();
+        let meaning = self
+            .meaning_route
+            .as_ref()
+            .and_then(|m| m.text(wording))
+            .unwrap_or_default();
         let phrase = crate::phrasebook::Phrase {
             wording: wording.trim().to_string(),
             meant: meant.trim().to_string(),
@@ -349,14 +437,26 @@ impl<'a> Daemon<'a> {
             return None;
         }
         if let Err(e) = self.phrasebook.save(&self.store) {
-            self.log.warn(&format!("couldn't keep a learned wording: {e}"));
+            self.log
+                .warn(&format!("couldn't keep a learned wording: {e}"));
             return None;
         }
-        self.log.info(&format!("learned: \"{}\" means \"{}\" ({})", wording.trim(), meant.trim(), taught.plain()));
+        self.log.info(&format!(
+            "learned: \"{}\" means \"{}\" ({})",
+            wording.trim(),
+            meant.trim(),
+            taught.plain()
+        ));
         Some(if routes {
-            format!("I'll remember \"{}\" means that.", clip_words(wording.trim(), 60))
+            format!(
+                "I'll remember \"{}\" means that.",
+                clip_words(wording.trim(), 60)
+            )
         } else {
-            format!("I'll keep in mind that \"{}\" means that.", clip_words(wording.trim(), 60))
+            format!(
+                "I'll keep in mind that \"{}\" means that.",
+                clip_words(wording.trim(), 60)
+            )
         })
     }
 
@@ -364,7 +464,9 @@ impl<'a> Daemon<'a> {
     fn drop_a_wrong_lesson(&mut self, wording: &str) {
         if self.phrasebook.forget_wording(wording).is_some() {
             let _ = self.phrasebook.save(&self.store);
-            self.log.info(&format!("dropped the learned wording \"{wording}\": what it led to was undone or corrected"));
+            self.log.info(&format!(
+                "dropped the learned wording \"{wording}\": what it led to was undone or corrected"
+            ));
         }
     }
 
@@ -395,7 +497,8 @@ impl<'a> Daemon<'a> {
             return String::new();
         }
         let esc = crate::hub::esc;
-        let mut body = String::from("<section aria-labelledby=talk-h><h2 id=talk-h>How you talk</h2>");
+        let mut body =
+            String::from("<section aria-labelledby=talk-h><h2 id=talk-h>How you talk</h2>");
         if self.phrasebook.phrases.is_empty() {
             body.push_str(
                 "<p class=note>Nothing learned yet. When I get something wrong, say what you meant -- \"no, I meant open my \
@@ -425,10 +528,24 @@ impl<'a> Daemon<'a> {
     }
 
     /// Write a miss down and keep the log.
-    fn note_a_miss(&mut self, said: &str, did: &str, why: crate::misses::Why, by_voice: bool, t: u64) {
-        self.misses.note_miss(crate::misses::Miss { at: t, said: said.trim().to_string(), did: did.to_string(), why, by_voice });
+    fn note_a_miss(
+        &mut self,
+        said: &str,
+        did: &str,
+        why: crate::misses::Why,
+        by_voice: bool,
+        t: u64,
+    ) {
+        self.misses.note_miss(crate::misses::Miss {
+            at: t,
+            said: said.trim().to_string(),
+            did: did.to_string(),
+            why,
+            by_voice,
+        });
         if let Err(e) = self.misses.save(&self.store) {
-            self.log.warn(&format!("couldn't keep the list of misses: {e}"));
+            self.log
+                .warn(&format!("couldn't keep the list of misses: {e}"));
         }
     }
 
@@ -440,7 +557,9 @@ impl<'a> Daemon<'a> {
         if !prev.by_voice {
             return false;
         }
-        let Some((heard, right)) = crate::misses::sounds_misheard(&prev.said, meant) else { return false };
+        let Some((heard, right)) = crate::misses::sounds_misheard(&prev.said, meant) else {
+            return false;
+        };
         let times = self.misses.heard_as(&heard, &right, t);
         self.misses.misses.push(crate::misses::Miss {
             at: t,
@@ -466,7 +585,12 @@ impl<'a> Daemon<'a> {
         }
         // Meaning only when a kept wording has a vector to compare with:
         // otherwise there is nothing to wait the encoder's moment for.
-        let meaning = if self.phrasebook.phrases.iter().any(|p| !p.meaning.is_empty()) {
+        let meaning = if self
+            .phrasebook
+            .phrases
+            .iter()
+            .any(|p| !p.meaning.is_empty())
+        {
             self.meaning_route.as_ref().and_then(|m| m.sentence(said))
         } else {
             None
@@ -492,7 +616,9 @@ impl<'a> Daemon<'a> {
     /// Whether this turn's action came from a learned wording not yet sure:
     /// a consequential one is asked about first.
     pub(super) fn routed_unsure(&self) -> bool {
-        self.routed_by_phrase.as_ref().is_some_and(|(_, sure)| !sure)
+        self.routed_by_phrase
+            .as_ref()
+            .is_some_and(|(_, sure)| !sure)
     }
 
     /// The learned wording that routed this turn, for "why did you do that".
@@ -505,7 +631,12 @@ impl<'a> Daemon<'a> {
         let hearing = crate::hearing::Hearing::load_from(&crate::roots::store());
         let listening: crate::language::Listening = self.store.load("listening");
         let numbers = crate::misses::HearingNumbers {
-            ears: hearing.candidates.iter().filter(|c| c.good_turns + c.bad_turns > 0).map(|c| (c.name.clone(), c.good_turns, c.bad_turns)).collect(),
+            ears: hearing
+                .candidates
+                .iter()
+                .filter(|c| c.good_turns + c.bad_turns > 0)
+                .map(|c| (c.name.clone(), c.good_turns, c.bad_turns))
+                .collect(),
             typical: listening.typical(),
             struggling: listening.struggling(&self.tools_cfg().language),
         };
@@ -532,7 +663,13 @@ impl<'a> Daemon<'a> {
             .people_known()
             .by_key
             .values()
-            .filter(|c| names_in(&c.name) || c.name.split_whitespace().next().is_some_and(|first| names_in(first)))
+            .filter(|c| {
+                names_in(&c.name)
+                    || c.name
+                        .split_whitespace()
+                        .next()
+                        .is_some_and(|first| names_in(first))
+            })
             .take(2)
             .map(|c| {
                 let notes: Vec<String> = c
@@ -555,7 +692,11 @@ impl<'a> Daemon<'a> {
         }
         // The project it's about, and what they've said about it.
         let project = crate::person::project_named(said, &self.person.projects).or_else(|| {
-            self.person.projects.iter().map(|(p, _)| p.clone()).find(|p| names_in(p))
+            self.person
+                .projects
+                .iter()
+                .map(|(p, _)| p.clone())
+                .find(|p| names_in(p))
         });
         if let Some(p) = project {
             let pl = p.to_lowercase();
@@ -563,12 +704,22 @@ impl<'a> Daemon<'a> {
                 .facts
                 .of_kind(crate::facts::Kind::Project)
                 .into_iter()
-                .filter(|f| f.summary.to_lowercase().contains(&pl) || f.tags.iter().any(|x| x.to_lowercase() == pl))
+                .filter(|f| {
+                    f.summary.to_lowercase().contains(&pl)
+                        || f.tags.iter().any(|x| x.to_lowercase() == pl)
+                })
                 .take(2)
                 .map(|f| clip_words(&f.summary, 100))
                 .collect();
-            let when = self.person.projects.iter().find(|(n, _)| n.eq_ignore_ascii_case(&p)).map(|(_, at)| *at);
-            let ago = when.filter(|at| *at > 0 && *at <= t).map(|at| (t - at) / 86_400);
+            let when = self
+                .person
+                .projects
+                .iter()
+                .find(|(n, _)| n.eq_ignore_ascii_case(&p))
+                .map(|(_, at)| *at);
+            let ago = when
+                .filter(|at| *at > 0 && *at <= t)
+                .map(|at| (t - at) / 86_400);
             let mut line = format!("This is about their project {p}");
             if let Some(d) = ago {
                 line.push_str(&match d {
@@ -611,7 +762,24 @@ impl<'a> Daemon<'a> {
 fn names_something(said: &str) -> bool {
     crate::intent::normalize(said)
         .split_whitespace()
-        .filter(|w| !matches!(*w, "it" | "that" | "this" | "them" | "those" | "one" | "other" | "the" | "a" | "an" | "do" | "please" | "again" | "same"))
+        .filter(|w| {
+            !matches!(
+                *w,
+                "it" | "that"
+                    | "this"
+                    | "them"
+                    | "those"
+                    | "one"
+                    | "other"
+                    | "the"
+                    | "a"
+                    | "an"
+                    | "do"
+                    | "please"
+                    | "again"
+                    | "same"
+            )
+        })
         .count()
         >= 2
 }
@@ -625,7 +793,12 @@ fn asked_you_for_something(reply: &str) -> bool {
 
 fn worked_badly(reply: &str) -> bool {
     let l = reply.to_lowercase();
-    l.starts_with("error") || l.contains("couldn't") || l.contains("could not") || l.contains("failed") || l.contains("can't find") || l.contains("not found")
+    l.starts_with("error")
+        || l.contains("couldn't")
+        || l.contains("could not")
+        || l.contains("failed")
+        || l.contains("can't find")
+        || l.contains("not found")
 }
 
 /// Whether `said` is what the reply before told them to say ("Tell me

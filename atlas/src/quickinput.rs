@@ -185,7 +185,9 @@ impl QuickInput {
         }
         // Only idle if nothing has been typed — a half-finished thought is
         // worse to lose than an empty box is to leave open.
-        if self.buffer.is_empty() && t.saturating_sub(self.last_keystroke) >= self.cfg.idle_close_secs {
+        if self.buffer.is_empty()
+            && t.saturating_sub(self.last_keystroke) >= self.cfg.idle_close_secs
+        {
             self.close();
             return Action::Hide;
         }

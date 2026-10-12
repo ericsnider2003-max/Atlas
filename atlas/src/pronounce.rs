@@ -25,7 +25,10 @@ const NAMES: &[(&str, &str)] = &[
 ];
 
 /// Acronyms said as a word, not spelled out.
-const SAID_AS_WORDS: &[&str] = &["NASA", "ASAP", "PIN", "RAM", "SIM", "GIF", "JPEG", "SQL", "NATO", "OPEC", "FIFO", "LIFO", "AWOL", "SCUBA", "LASER", "RADAR", "CAPTCHA", "OK"];
+const SAID_AS_WORDS: &[&str] = &[
+    "NASA", "ASAP", "PIN", "RAM", "SIM", "GIF", "JPEG", "SQL", "NATO", "OPEC", "FIFO", "LIFO",
+    "AWOL", "SCUBA", "LASER", "RADAR", "CAPTCHA", "OK",
+];
 
 const CURRENCIES: &[(&str, &str)] = &[
     ("EUR", "euro"),
@@ -47,7 +50,10 @@ fn currency(c: &str) -> Option<&'static str> {
 fn word(w: &str, mine: &BTreeMap<String, String>) -> String {
     // Keep surrounding punctuation where it was.
     let start = w.find(|c: char| c.is_alphanumeric()).unwrap_or(w.len());
-    let end = w.rfind(|c: char| c.is_alphanumeric()).map(|i| i + w[i..].chars().next().map_or(1, |c| c.len_utf8())).unwrap_or(start);
+    let end = w
+        .rfind(|c: char| c.is_alphanumeric())
+        .map(|i| i + w[i..].chars().next().map_or(1, |c| c.len_utf8()))
+        .unwrap_or(start);
     if start >= end {
         return w.to_string();
     }
@@ -74,17 +80,29 @@ fn word(w: &str, mine: &BTreeMap<String, String>) -> String {
         }
     }
     // An acronym: two to five capitals (a trailing s allowed), spelled out.
-    let letters = core.strip_suffix('s').filter(|x| x.len() >= 2).unwrap_or(core);
-    if (2..=5).contains(&letters.len()) && letters.chars().all(|c| c.is_ascii_uppercase()) && !SAID_AS_WORDS.contains(&letters) {
+    let letters = core
+        .strip_suffix('s')
+        .filter(|x| x.len() >= 2)
+        .unwrap_or(core);
+    if (2..=5).contains(&letters.len())
+        && letters.chars().all(|c| c.is_ascii_uppercase())
+        && !SAID_AS_WORDS.contains(&letters)
+    {
         let spelled: Vec<String> = letters.chars().map(|c| c.to_string()).collect();
         let plural = if letters.len() < core.len() { "s" } else { "" };
         return format!("{pre}{}{plural}{post}", spelled.join(" "));
     }
     // 4k, 12k, 3M: a number with a magnitude.
-    if let Some(n) = core.strip_suffix(['k', 'K']).filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit() || c == '.')) {
+    if let Some(n) = core
+        .strip_suffix(['k', 'K'])
+        .filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit() || c == '.'))
+    {
         return format!("{pre}{n} thousand{post}");
     }
-    if let Some(n) = core.strip_suffix('M').filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit() || c == '.')) {
+    if let Some(n) = core
+        .strip_suffix('M')
+        .filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit() || c == '.'))
+    {
         return format!("{pre}{n} million{post}");
     }
     w.to_string()

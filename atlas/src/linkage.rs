@@ -75,7 +75,12 @@ pub fn jaro_winkler(a: &str, b: &str) -> f64 {
     if j <= 0.7 {
         return j;
     }
-    let prefix = a.chars().zip(b.chars()).take(4).take_while(|(x, y)| x == y).count();
+    let prefix = a
+        .chars()
+        .zip(b.chars())
+        .take(4)
+        .take_while(|(x, y)| x == y)
+        .count();
     j + prefix as f64 * 0.1 * (1.0 - j)
 }
 
@@ -91,7 +96,9 @@ const TITLES: [&str; 8] = ["mr", "mrs", "ms", "miss", "dr", "prof", "sir", "mx"]
 /// "Smith, John" → "john smith"; titles and punctuation dropped.
 pub fn norm_name(s: &str) -> String {
     let s = match s.split_once(',') {
-        Some((last, first)) if !first.trim().is_empty() => format!("{} {}", first.trim(), last.trim()),
+        Some((last, first)) if !first.trim().is_empty() => {
+            format!("{} {}", first.trim(), last.trim())
+        }
         _ => s.to_string(),
     };
     s.to_lowercase()
@@ -104,11 +111,24 @@ pub fn norm_name(s: &str) -> String {
 /// Lower-case, `+tag` removed; for gmail/googlemail the dots are removed too
 /// (Google ignores them; other providers do not, so they are left alone).
 pub fn norm_email(s: &str) -> String {
-    let s = s.trim().trim_matches(|c| c == '<' || c == '>').to_lowercase();
-    let Some((local, domain)) = s.rsplit_once('@') else { return s };
+    let s = s
+        .trim()
+        .trim_matches(|c| c == '<' || c == '>')
+        .to_lowercase();
+    let Some((local, domain)) = s.rsplit_once('@') else {
+        return s;
+    };
     let local = local.split('+').next().unwrap_or(local);
-    let domain = if domain == "googlemail.com" { "gmail.com" } else { domain };
-    let local = if domain == "gmail.com" { local.replace('.', "") } else { local.to_string() };
+    let domain = if domain == "googlemail.com" {
+        "gmail.com"
+    } else {
+        domain
+    };
+    let local = if domain == "gmail.com" {
+        local.replace('.', "")
+    } else {
+        local.to_string()
+    };
     format!("{local}@{domain}")
 }
 
@@ -219,7 +239,13 @@ impl Model {
     pub fn measured_on(list: &[Contact]) -> (Model, String) {
         let mut m = Model::default();
         if list.len() < 30 {
-            return (m, format!("{} contacts is too few to measure from; the weights are the chosen ones", list.len()));
+            return (
+                m,
+                format!(
+                    "{} contacts is too few to measure from; the weights are the chosen ones",
+                    list.len()
+                ),
+            );
         }
         let (mut name, mut email, mut phone) = ([0f64; 4], [0f64; 2], [0f64; 2]);
         // Every pair up to ~200,000; past that, a fixed stride through them.
@@ -247,7 +273,8 @@ impl Model {
                 }
             }
         }
-        let share = |c: &[f64], i: usize| (c[i] + 0.5) / (c.iter().sum::<f64>() + 0.5 * c.len() as f64);
+        let share =
+            |c: &[f64], i: usize| (c[i] + 0.5) / (c.iter().sum::<f64>() + 0.5 * c.len() as f64);
         let mut said = Vec::new();
         const ENOUGH: f64 = 400.0;
         if name.iter().sum::<f64>() >= ENOUGH {
@@ -270,7 +297,10 @@ impl Model {
         let note = if said.is_empty() {
             "not enough filled-in fields to measure from; the weights are the chosen ones".into()
         } else {
-            format!("how often names, emails and phones agree by chance was measured on your list ({})", said.join(", "))
+            format!(
+                "how often names, emails and phones agree by chance was measured on your list ({})",
+                said.join(", ")
+            )
         };
         (m, note)
     }
@@ -328,7 +358,11 @@ pub fn compare(a: &Contact, b: &Contact, m: &Model) -> Match {
     } else {
         Verdict::Different
     };
-    Match { probability, verdict, because }
+    Match {
+        probability,
+        verdict,
+        because,
+    }
 }
 
 /// Candidate pairs by blocking: only records sharing an email, a phone, or
@@ -347,8 +381,14 @@ pub fn candidate_pairs(list: &[Contact]) -> Vec<(usize, usize)> {
         }
         // Three letters, not three bytes: `&tok[..3]` cut "José" or "Zoë"
         // inside a letter and panicked (27 Sep 2026).
-        for tok in norm_name(&c.name).split(' ').filter(|t| t.chars().count() >= 3) {
-            blocks.entry(format!("n:{}", tok.chars().take(3).collect::<String>())).or_default().push(i);
+        for tok in norm_name(&c.name)
+            .split(' ')
+            .filter(|t| t.chars().count() >= 3)
+        {
+            blocks
+                .entry(format!("n:{}", tok.chars().take(3).collect::<String>()))
+                .or_default()
+                .push(i);
         }
     }
     let mut pairs = BTreeSet::new();
@@ -371,7 +411,11 @@ pub fn duplicates(list: &[Contact], m: &Model) -> Vec<(usize, usize, Match)> {
         .map(|(a, b)| (a, b, compare(&list[a], &list[b], m)))
         .filter(|(_, _, r)| r.verdict != Verdict::Different)
         .collect();
-    out.sort_by(|x, y| y.2.probability.partial_cmp(&x.2.probability).unwrap_or(std::cmp::Ordering::Equal));
+    out.sort_by(|x, y| {
+        y.2.probability
+            .partial_cmp(&x.2.probability)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     out
 }
 
@@ -380,7 +424,11 @@ mod tests {
     use super::*;
 
     fn c(n: &str, e: &str, p: &str) -> Contact {
-        Contact { name: n.into(), email: e.into(), phone: p.into() }
+        Contact {
+            name: n.into(),
+            email: e.into(),
+            phone: p.into(),
+        }
     }
 
     #[test]
@@ -397,7 +445,10 @@ mod tests {
     #[test]
     fn normalisers() {
         assert_eq!(norm_name("Smith, Dr. John"), "john smith");
-        assert_eq!(norm_email("<John.Smith+work@GoogleMail.com>"), "johnsmith@gmail.com");
+        assert_eq!(
+            norm_email("<John.Smith+work@GoogleMail.com>"),
+            "johnsmith@gmail.com"
+        );
         assert_eq!(norm_email("john.smith@acme.com"), "john.smith@acme.com");
         assert_eq!(norm_phone("+1 (555) 010-2000"), "5550102000");
     }
@@ -417,7 +468,10 @@ mod tests {
         assert!(!pairs.iter().any(|(a, b)| *a == 3 || *b == 3));
         let (_, _, top) = &d[0];
         assert_eq!(top.verdict, Verdict::Same);
-        assert!(top.because.iter().any(|b| b.contains("email") || b.contains("phone")));
+        assert!(top
+            .because
+            .iter()
+            .any(|b| b.contains("email") || b.contains("phone")));
     }
 
     #[test]

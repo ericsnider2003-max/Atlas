@@ -42,7 +42,10 @@ fn the_first_sound_is_the_first_playback_after_the_turn_began() {
 #[test]
 fn a_machine_with_room_keeps_the_model_loaded() {
     let cfg = model_stays_when_it_fits(LifecycleConfig::default(), true);
-    assert_eq!(cfg.keep_warm_secs.get("model-server"), Some(&MODEL_RESIDENT_SECS));
+    assert_eq!(
+        cfg.keep_warm_secs.get("model-server"),
+        Some(&MODEL_RESIDENT_SECS)
+    );
     let mut h = Helpers::new(cfg);
     h.want("model-server", 0, 1, || Ok(None)).unwrap();
     h.done("model-server", 1);
@@ -66,9 +69,13 @@ fn a_machine_without_room_still_gives_the_memory_back() {
 #[test]
 fn a_longer_setting_of_your_own_is_left_alone() {
     let mut cfg = LifecycleConfig::default();
-    cfg.keep_warm_secs.insert("model-server".into(), MODEL_RESIDENT_SECS * 2);
+    cfg.keep_warm_secs
+        .insert("model-server".into(), MODEL_RESIDENT_SECS * 2);
     let cfg = model_stays_when_it_fits(cfg, true);
-    assert_eq!(cfg.keep_warm_secs.get("model-server"), Some(&(MODEL_RESIDENT_SECS * 2)));
+    assert_eq!(
+        cfg.keep_warm_secs.get("model-server"),
+        Some(&(MODEL_RESIDENT_SECS * 2))
+    );
 }
 
 #[test]
@@ -110,10 +117,13 @@ fn the_lines_atlas_says_most_are_made_ahead() {
 
 #[test]
 fn friends_get_kokoro_first_with_piper_behind_it() {
-    let shipped = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/config/tools.yaml")).unwrap();
+    let shipped =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/config/tools.yaml")).unwrap();
     let v: serde_yaml::Value = serde_yaml::from_str(&shipped).unwrap();
     assert_eq!(v["tts_engine"]["engine"].as_str(), Some("kokoro"));
     // The fallback is still piper's command, and setup fetches Kokoro itself.
     assert!(v["tts"]["command"].as_str().unwrap_or("").contains("piper"));
-    assert!(atlas::getpieces::setup_pieces().iter().any(|p| format!("{p:?}").to_lowercase().contains("kokoro")));
+    assert!(atlas::getpieces::setup_pieces()
+        .iter()
+        .any(|p| format!("{p:?}").to_lowercase().contains("kokoro")));
 }

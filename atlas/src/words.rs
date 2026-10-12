@@ -247,7 +247,11 @@ pub fn reading_order(mut strips: Vec<Strip>) -> Vec<Strip> {
             // row grows downward as tall letters join it, and a comma at the
             // end of a long line overlaps the line but not its first word.
             let top = row.iter().map(|r| r.y).min().unwrap_or(s.y);
-            let bottom = row.iter().map(|r| r.y + r.height).max().unwrap_or(s.y + s.height);
+            let bottom = row
+                .iter()
+                .map(|r| r.y + r.height)
+                .max()
+                .unwrap_or(s.y + s.height);
             if shares_a_line(top, bottom, s.y, s.y + s.height) {
                 row.push(s);
                 placed = true;
@@ -278,7 +282,9 @@ pub fn shares_a_line(top_a: usize, bottom_a: usize, top_b: usize, bottom_b: usiz
         return false;
     }
     let shared = bottom - top;
-    let shorter = bottom_a.saturating_sub(top_a).min(bottom_b.saturating_sub(top_b));
+    let shorter = bottom_a
+        .saturating_sub(top_a)
+        .min(bottom_b.saturating_sub(top_b));
     shared * 2 > shorter
 }
 
@@ -293,7 +299,10 @@ pub fn find(map: &[f32], width: usize, height: usize, cfg: &WordsConfig) -> Loca
     let mut kept: Vec<Strip> = blobs(map, width, height, cfg.ink)
         .into_iter()
         .filter(|s| s.width >= cfg.smallest && s.height >= cfg.smallest)
-        .map(|s| Strip { strength: strength(map, width, &s), ..s })
+        .map(|s| Strip {
+            strength: strength(map, width, &s),
+            ..s
+        })
         .filter(|s| s.strength >= cfg.keep_above)
         .map(|s| grow(&s, cfg.grow_by, width, height))
         .collect();
@@ -303,7 +312,10 @@ pub fn find(map: &[f32], width: usize, height: usize, cfg: &WordsConfig) -> Loca
     kept.sort_by(|a, b| b.strength.total_cmp(&a.strength));
     let over_the_limit = kept.len().saturating_sub(cfg.most.max(1));
     kept.truncate(cfg.most.max(1));
-    Located { strips: reading_order(kept), over_the_limit }
+    Located {
+        strips: reading_order(kept),
+        over_the_limit,
+    }
 }
 
 /// Where the words are, and how many did not fit.
@@ -395,25 +407,24 @@ pub fn ctc(values: &[f32], steps: usize) -> Result<Letters> {
                 best = i;
             }
         }
-        if best != 0
-            && best != last {
-                // `best - 1` because class nought is the blank. Getting this
-                // off by one does not fail — it returns real words with every
-                // letter shifted, which reads as a broken model rather than as
-                // an index.
-                text.push(letters[best - 1]);
-                picked.push(if already {
-                    row[best]
+        if best != 0 && best != last {
+            // `best - 1` because class nought is the blank. Getting this
+            // off by one does not fail — it returns real words with every
+            // letter shifted, which reads as a broken model rather than as
+            // an index.
+            text.push(letters[best - 1]);
+            picked.push(if already {
+                row[best]
+            } else {
+                let top = row.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+                let total: f32 = row.iter().map(|v| (v - top).exp()).sum();
+                if total > 0.0 {
+                    (row[best] - top).exp() / total
                 } else {
-                    let top = row.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-                    let total: f32 = row.iter().map(|v| (v - top).exp()).sum();
-                    if total > 0.0 {
-                        (row[best] - top).exp() / total
-                    } else {
-                        0.0
-                    }
-                });
-            }
+                    0.0
+                }
+            });
+        }
         last = best;
     }
 
@@ -508,7 +519,11 @@ impl Screenful {
                 }
             );
         }
-        let mut said = format!("Read {} words at {:.0}%.", self.words(), self.sure() * 100.0);
+        let mut said = format!(
+            "Read {} words at {:.0}%.",
+            self.words(),
+            self.sure() * 100.0
+        );
         if self.unread > 0 {
             said.push_str(&format!(
                 " {} more were found and not read — there was more on screen than I look at in \
@@ -585,7 +600,9 @@ impl Reader {
             // copy. The letterbox is 736 wide and a line of text on a 2560
             // screen is a fraction of that — reading the shrunk copy would
             // hand the reader a strip that has already lost most of itself.
-            let Some(area) = crop_in(&at, w, h) else { continue };
+            let Some(area) = crop_in(&at, w, h) else {
+                continue;
+            };
             // One word at a time. The finder hands back whole lines, and the
             // reader takes a strip 100 wide by 32 high: a four-word line
             // squeezed into that is a quarter as wide per letter as it was
@@ -616,9 +633,17 @@ impl Reader {
             if read.is_empty() {
                 continue;
             }
-            lettering.push(Lettering { at, text: read.join(" "), sure });
+            lettering.push(Lettering {
+                at,
+                text: read.join(" "),
+                sure,
+            });
         }
-        Ok(Screenful { lettering, unsure, unread: found.over_the_limit })
+        Ok(Screenful {
+            lettering,
+            unsure,
+            unread: found.over_the_limit,
+        })
     }
 }
 
@@ -760,7 +785,11 @@ pub fn picture_size(head: &[u8]) -> Option<(usize, usize)> {
                 }
                 let h_px = u16::from_be_bytes([head[at + 3], head[at + 4]]) as usize;
                 let w_px = u16::from_be_bytes([head[at + 5], head[at + 6]]) as usize;
-                return if w_px > 0 && h_px > 0 { Some((w_px, h_px)) } else { None };
+                return if w_px > 0 && h_px > 0 {
+                    Some((w_px, h_px))
+                } else {
+                    None
+                };
             }
             if len < 2 {
                 return None;
@@ -780,7 +809,11 @@ pub fn picture_size(head: &[u8]) -> Option<(usize, usize)> {
 /// most of them. It would not fail. It would hand back a picture of the right
 /// length made mostly of the same three bytes over and over, and the finder
 /// would report a blank screen.
-pub fn pixels_from(tool: &crate::tools::ExternalTool, vars: &crate::tools::Vars, extra: &[String]) -> Result<Vec<u8>> {
+pub fn pixels_from(
+    tool: &crate::tools::ExternalTool,
+    vars: &crate::tools::Vars,
+    extra: &[String],
+) -> Result<Vec<u8>> {
     use std::io::Read;
     let (cmd, mut args) = tool.resolved(vars);
     args.extend(extra.iter().cloned());
@@ -879,7 +912,12 @@ pub fn whole_picture(got: usize, w: usize, h: usize) -> Result<()> {
 /// far enough from the line's own background, taken as its commonest
 /// brightness, so dark-on-light and light-on-dark both work. A line with no
 /// gap comes back whole.
-pub fn words_in(rgb: &[u8], w: usize, h: usize, line: (usize, usize, usize, usize)) -> Vec<(usize, usize, usize, usize)> {
+pub fn words_in(
+    rgb: &[u8],
+    w: usize,
+    h: usize,
+    line: (usize, usize, usize, usize),
+) -> Vec<(usize, usize, usize, usize)> {
     let (lx, ly, lw, lh) = line;
     if lw == 0 || lh == 0 || rgb.len() < w * h * 3 {
         return vec![line];
@@ -894,7 +932,12 @@ pub fn words_in(rgb: &[u8], w: usize, h: usize, line: (usize, usize, usize, usiz
             counts[bright(x, y) as usize] += 1;
         }
     }
-    let background = counts.iter().enumerate().max_by_key(|(_, c)| **c).map(|(v, _)| v as i32).unwrap_or(255);
+    let background = counts
+        .iter()
+        .enumerate()
+        .max_by_key(|(_, c)| **c)
+        .map(|(v, _)| v as i32)
+        .unwrap_or(255);
     let inked: Vec<bool> = (lx..(lx + lw).min(w))
         .map(|x| (ly..(ly + lh).min(h)).any(|y| (bright(x, y) as i32 - background).abs() > 60))
         .collect();

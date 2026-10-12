@@ -17,16 +17,13 @@ pub(super) fn palette_row(e: &crate::palette::Entry, first: bool) -> String {
     );
     let mark = if first { " first" } else { "" };
     match &e.does {
-        crate::palette::Does::Go(href) => format!(
-            "<a class='hit{mark}' href='{}'>{inner}</a>",
-            esc(href)
-        ),
+        crate::palette::Does::Go(href) => {
+            format!("<a class='hit{mark}' href='{}'>{inner}</a>", esc(href))
+        }
         crate::palette::Does::Run(action, fields) => {
             let hidden: String = fields
                 .iter()
-                .map(|(k, v)| {
-                    format!("<input type=hidden name='{}' value='{}'>", esc(k), esc(v))
-                })
+                .map(|(k, v)| format!("<input type=hidden name='{}' value='{}'>", esc(k), esc(v)))
                 .collect();
             format!(
                 "<form class=hitform method=post action='{}'>{hidden}\
@@ -46,7 +43,10 @@ pub(super) fn palette_row(e: &crate::palette::Entry, first: bool) -> String {
 ///
 /// The whole thing is inside a plain `<form>` pointing at a real page, so with
 /// no script at all typing and pressing enter still lands somewhere useful.
-pub fn palette_overlay(entries: &[crate::palette::Entry], recent: &crate::palette::Recent) -> String {
+pub fn palette_overlay(
+    entries: &[crate::palette::Entry],
+    recent: &crate::palette::Recent,
+) -> String {
     // On the phone app, nothing that goes to a page it hasn't got (`phonemode`).
     let kept: Vec<crate::palette::Entry> = entries
         .iter()
@@ -63,7 +63,11 @@ pub fn palette_overlay(entries: &[crate::palette::Entry], recent: &crate::palett
     } else {
         first
             .into_iter()
-            .chain(entries.iter().filter(|e| !recent.picked.iter().any(|p| p == e.id())))
+            .chain(
+                entries
+                    .iter()
+                    .filter(|e| !recent.picked.iter().any(|p| p == e.id())),
+            )
             .take(crate::palette::SHOW)
             .collect()
     };

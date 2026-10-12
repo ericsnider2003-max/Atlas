@@ -75,7 +75,10 @@ pub struct Report {
 
 impl Report {
     pub fn at_risk(&self) -> Vec<&Item> {
-        self.items.iter().filter(|i| i.fate == Fate::AtRisk).collect()
+        self.items
+            .iter()
+            .filter(|i| i.fate == Fate::AtRisk)
+            .collect()
     }
 
     pub fn kept(&self) -> Vec<&Item> {
@@ -102,10 +105,19 @@ impl Report {
                 if kept == 1 { "" } else { "s" }
             )
         } else {
-            format!("Not safe yet — {} thing{} would be overwritten.", risky.len(), if risky.len() == 1 { "" } else { "s" })
+            format!(
+                "Not safe yet — {} thing{} would be overwritten.",
+                risky.len(),
+                if risky.len() == 1 { "" } else { "s" }
+            )
         };
         for i in &self.items {
-            s.push_str(&format!("\n  {:<28} {}  — {}", i.path, i.fate.plain(), i.what));
+            s.push_str(&format!(
+                "\n  {:<28} {}  — {}",
+                i.path,
+                i.fate.plain(),
+                i.what
+            ));
         }
         s
     }
@@ -119,29 +131,56 @@ impl Report {
 /// something new needs to survive an update, it gets a line here and a
 /// sentence saying what it is.
 pub const YOURS: &[(&str, &str)] = &[
-    ("config/machine.yaml", "the app paths, displays and device names `atlas adapt` found here"),
-    ("config/settings.yaml", "every switch you changed in Settings -- tools.yaml is \
-     replaced by an update, which is exactly why your choices do not live in it"),
-    ("config/local", "your own edits to the shipped config files, moved out of them so an \
-     update cannot undo them, with the shipped text they were made against"),
-    ("data/state", "notes, the tray, the vault, peer tokens, profiles, the journal, \
-     and the model-call log that says how the local model has actually performed"),
+    (
+        "config/machine.yaml",
+        "the app paths, displays and device names `atlas adapt` found here",
+    ),
+    (
+        "config/settings.yaml",
+        "every switch you changed in Settings -- tools.yaml is \
+     replaced by an update, which is exactly why your choices do not live in it",
+    ),
+    (
+        "config/local",
+        "your own edits to the shipped config files, moved out of them so an \
+     update cannot undo them, with the shipped text they were made against",
+    ),
+    (
+        "data/state",
+        "notes, the tray, the vault, peer tokens, profiles, the journal, \
+     and the model-call log that says how the local model has actually performed",
+    ),
     ("data/notes", "what you have written"),
-    ("data/plugins", "the add-ons you or friends added -- your approval of each is in \
-     data/state, so an update keeps both the add-on and what you allowed it"),
-    ("data/index.md", "the index of what you have written -- rebuildable, but \
-     losing it costs a rebuild and hides any drift that had accumulated"),
+    (
+        "data/plugins",
+        "the add-ons you or friends added -- your approval of each is in \
+     data/state, so an update keeps both the add-on and what you allowed it",
+    ),
+    (
+        "data/index.md",
+        "the index of what you have written -- rebuildable, but \
+     losing it costs a rebuild and hides any drift that had accumulated",
+    ),
     ("data/backups", "snapshots `atlas backups` can restore from"),
     ("data/logs", "what Atlas did, and when"),
-    ("data/trash", "what Atlas removed and is holding for 30 days -- an update \
+    (
+        "data/trash",
+        "what Atlas removed and is holding for 30 days -- an update \
      that wiped this would destroy the only copy of anything you had not yet \
-     restored, which is the opposite of what the trash is for"),
+     restored, which is the opposite of what the trash is for",
+    ),
 ];
 
 /// What comes from the download and is meant to be replaced.
 pub const SHIPPED: &[(&str, &str)] = &[
-    ("config/apps.yaml", "the generic app list, with %VARS% rather than your paths"),
-    ("config/tools.yaml", "which features are on, and how external tools are called"),
+    (
+        "config/apps.yaml",
+        "the generic app list, with %VARS% rather than your paths",
+    ),
+    (
+        "config/tools.yaml",
+        "which features are on, and how external tools are called",
+    ),
     ("config/layouts.yaml", "monitor roles and window layouts"),
     ("config/commands.yaml", "the spoken command vocabulary"),
     ("config/policy.yaml", "what Atlas may do without asking"),
@@ -161,11 +200,7 @@ pub fn check(root: &Path) -> Report {
 /// holds is exactly the kind of code this project keeps finding built and
 /// unexercised, so it is made reachable rather than trusted: a test passes
 /// deliberately overlapping lists and checks it fires.
-pub fn check_with(
-    root: &Path,
-    yours: &[(&str, &str)],
-    shipped: &[(&str, &str)],
-) -> Report {
+pub fn check_with(root: &Path, yours: &[(&str, &str)], shipped: &[(&str, &str)]) -> Report {
     let mut items = Vec::new();
 
     for (rel, what) in yours {
@@ -182,7 +217,11 @@ pub fn check_with(
         } else {
             Fate::Kept
         };
-        items.push(Item { path: (*rel).to_string(), fate, what: (*what).to_string() });
+        items.push(Item {
+            path: (*rel).to_string(),
+            fate,
+            what: (*what).to_string(),
+        });
     }
 
     for (rel, what) in shipped {
@@ -246,7 +285,12 @@ pub fn sha256_of(path: &Path) -> Option<String> {
 /// The SHA-256 of the program running now, worked out once.
 fn this_build_sha() -> &'static str {
     static SHA: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    SHA.get_or_init(|| std::env::current_exe().ok().and_then(|p| sha256_of(&p)).unwrap_or_default())
+    SHA.get_or_init(|| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| sha256_of(&p))
+            .unwrap_or_default()
+    })
 }
 
 /// How many hex digits of the SHA-256 a tag carries: enough that two builds
@@ -322,7 +366,9 @@ pub const KEEP_BUILDS: usize = 2;
 /// (`.previous`, `.failed`, `.undone`). Never touches `except`. Returns how
 /// many went.
 pub fn prune_kept(root: &Path, suffix: &str, keep: usize, except: Option<&Path>) -> usize {
-    let Ok(entries) = std::fs::read_dir(root) else { return 0 };
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return 0;
+    };
     let mut found: Vec<(std::time::SystemTime, PathBuf)> = entries
         .flatten()
         .filter(|e| {
@@ -332,7 +378,11 @@ pub fn prune_kept(root: &Path, suffix: &str, keep: usize, except: Option<&Path>)
         .filter(|e| except.is_none_or(|x| e.path() != x))
         .filter_map(|e| Some((e.metadata().and_then(|m| m.modified()).ok()?, e.path())))
         .collect();
-    let keep = if except.is_some() { keep.saturating_sub(1) } else { keep };
+    let keep = if except.is_some() {
+        keep.saturating_sub(1)
+    } else {
+        keep
+    };
     found.sort();
     let extra = found.len().saturating_sub(keep);
     let mut gone = 0;
@@ -343,7 +393,6 @@ pub fn prune_kept(root: &Path, suffix: &str, keep: usize, except: Option<&Path>)
     }
     gone
 }
-
 
 // ---------------------------------------------------------------- the updates folder
 
@@ -383,16 +432,26 @@ pub fn waiting(root: &Path) -> Option<Result<(PathBuf, String), String>> {
 /// Ask the Atlas program at `path` which version it is (`--version`, with
 /// `ATLAS_UPDATE_PROBE` so it swaps nothing in while answering).
 pub fn version_of(path: &Path) -> Result<String, String> {
-    let out = crate::tools::command(path).arg("--version").env("ATLAS_UPDATE_PROBE", "1").output();
+    let out = crate::tools::command(path)
+        .arg("--version")
+        .env("ATLAS_UPDATE_PROBE", "1")
+        .output();
     match out {
         Ok(o) if o.status.success() => {
             let text = String::from_utf8_lossy(&o.stdout);
             match text.lines().next().and_then(|l| l.strip_prefix("atlas ")) {
                 Some(v) => Ok(v.trim().to_string()),
-                None => Err(format!("{} ran but didn't say it was Atlas", path.display())),
+                None => Err(format!(
+                    "{} ran but didn't say it was Atlas",
+                    path.display()
+                )),
             }
         }
-        Ok(o) => Err(format!("{} didn't run here (exit {:?})", path.display(), o.status.code())),
+        Ok(o) => Err(format!(
+            "{} didn't run here (exit {:?})",
+            path.display(),
+            o.status.code()
+        )),
         Err(e) => Err(format!("{} didn't run here: {e}", path.display())),
     }
 }
@@ -432,23 +491,36 @@ fn swap_in(root: &Path, running: &Path) -> Option<Result<SwappedIn, String>> {
     }
     if !new_sha.is_empty() && new_sha == running_sha {
         crate::heard!(std::fs::remove_file(&new));
-        return Some(Err(format!("the file in updates/ is {tag}, the very build already running; removed it")));
+        return Some(Err(format!(
+            "the file in updates/ is {tag}, the very build already running; removed it"
+        )));
     }
     let keep = keep_old_at(root, &replaced);
     Some((|| {
         crate::heard!(std::fs::remove_file(&keep));
-        std::fs::rename(running, &keep).map_err(|e| format!("couldn't keep the old one as {}: {e}", keep.display()))?;
-        if let Err(e) = std::fs::rename(&new, running).or_else(|_| std::fs::copy(&new, running).map(|_| ()).and_then(|_| std::fs::remove_file(&new))) {
+        std::fs::rename(running, &keep)
+            .map_err(|e| format!("couldn't keep the old one as {}: {e}", keep.display()))?;
+        if let Err(e) = std::fs::rename(&new, running).or_else(|_| {
+            std::fs::copy(&new, running)
+                .map(|_| ())
+                .and_then(|_| std::fs::remove_file(&new))
+        }) {
             // Put the old one back rather than leave nothing to start.
             crate::kept!(std::fs::rename(&keep, running));
-            return Err(format!("couldn't put {tag} in place ({e}); still on {replaced}"));
+            return Err(format!(
+                "couldn't put {tag} in place ({e}); still on {replaced}"
+            ));
         }
         // The one just kept, and one before it; older ones go.
         prune_kept(root, ".previous", KEEP_BUILDS, Some(&keep));
-        Ok(SwappedIn { path: running.to_path_buf(), version: v.clone(), tag: tag.clone(), replaced: replaced.clone() })
+        Ok(SwappedIn {
+            path: running.to_path_buf(),
+            version: v.clone(),
+            tag: tag.clone(),
+            replaced: replaced.clone(),
+        })
     })())
 }
-
 
 // ---------------------------------------------------------------- the trial after an update
 //
@@ -497,21 +569,30 @@ pub fn failed_at(root: &Path, tag: &str) -> PathBuf {
 }
 
 fn stamp() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// One line appended to `updates.log`. Best effort: a log that can't be
 /// written never stops an update or a rollback.
 pub(crate) fn log_update(root: &Path, line: &str) {
     use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(root.join("updates.log")) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(root.join("updates.log"))
+    {
         crate::kept!(writeln!(f, "{} {line}", stamp()));
     }
 }
 
 /// Everything `updates.log` holds, oldest first.
 pub fn update_history(root: &Path) -> Vec<String> {
-    std::fs::read_to_string(root.join("updates.log")).map(|s| s.lines().map(str::to_string).collect()).unwrap_or_default()
+    std::fs::read_to_string(root.join("updates.log"))
+        .map(|s| s.lines().map(str::to_string).collect())
+        .unwrap_or_default()
 }
 
 /// A new build on trial: which one, which one it replaced (both as tags,
@@ -526,12 +607,26 @@ pub struct Trial {
 impl Trial {
     fn load(root: &Path) -> Option<Trial> {
         let text = std::fs::read_to_string(trial_file(root)).ok()?;
-        let get = |k: &str| text.lines().find_map(|l| l.strip_prefix(k)).map(|v| v.trim().to_string());
-        Some(Trial { new: get("new=")?, previous: get("previous=")?, starts: get("starts=")?.parse().ok()? })
+        let get = |k: &str| {
+            text.lines()
+                .find_map(|l| l.strip_prefix(k))
+                .map(|v| v.trim().to_string())
+        };
+        Some(Trial {
+            new: get("new=")?,
+            previous: get("previous=")?,
+            starts: get("starts=")?.parse().ok()?,
+        })
     }
 
     fn save(&self, root: &Path) -> std::io::Result<()> {
-        std::fs::write(trial_file(root), format!("new={}\nprevious={}\nstarts={}\n", self.new, self.previous, self.starts))
+        std::fs::write(
+            trial_file(root),
+            format!(
+                "new={}\nprevious={}\nstarts={}\n",
+                self.new, self.previous, self.starts
+            ),
+        )
     }
 }
 
@@ -542,7 +637,12 @@ pub fn current_trial(root: &Path) -> Option<Trial> {
 
 /// Start the trial of `new`, which has just replaced `previous`.
 pub fn begin_trial(root: &Path, new: &str, previous: &str) {
-    crate::kept!(Trial { new: new.into(), previous: previous.into(), starts: 0 }.save(root));
+    crate::kept!(Trial {
+        new: new.into(),
+        previous: previous.into(),
+        starts: 0
+    }
+    .save(root));
     log_update(root, &format!("{new} put in place of {previous}; on trial"));
 }
 
@@ -553,7 +653,9 @@ pub fn begin_trial(root: &Path, new: &str, previous: &str) {
 /// written then (a bare version) no longer matches any tag, so those blocks
 /// are lifted rather than carried forward.
 pub fn is_known_bad(root: &Path, tag: &str) -> bool {
-    std::fs::read_to_string(known_bad_file(root)).map(|s| s.lines().any(|l| l.split_whitespace().next() == Some(tag))).unwrap_or(false)
+    std::fs::read_to_string(known_bad_file(root))
+        .map(|s| s.lines().any(|l| l.split_whitespace().next() == Some(tag)))
+        .unwrap_or(false)
 }
 
 /// Why the build `tag` failed here, as written down when it was set aside.
@@ -570,10 +672,25 @@ pub fn known_bad_reason(root: &Path, tag: &str) -> Option<String> {
 /// build, so once that's put right it may be tried again. The reason is kept
 /// in `updates.log`.
 pub fn forgive(root: &Path, tag: &str) {
-    let Ok(text) = std::fs::read_to_string(known_bad_file(root)) else { return };
-    let kept: Vec<&str> = text.lines().filter(|l| l.split_whitespace().next() != Some(tag)).collect();
-    crate::kept!(std::fs::write(known_bad_file(root), if kept.is_empty() { String::new() } else { kept.join("\n") + "\n" }));
-    log_update(root, &format!("{tag} may be tried again: what stopped it was on this machine, not in the build"));
+    let Ok(text) = std::fs::read_to_string(known_bad_file(root)) else {
+        return;
+    };
+    let kept: Vec<&str> = text
+        .lines()
+        .filter(|l| l.split_whitespace().next() != Some(tag))
+        .collect();
+    crate::kept!(std::fs::write(
+        known_bad_file(root),
+        if kept.is_empty() {
+            String::new()
+        } else {
+            kept.join("\n") + "\n"
+        }
+    ));
+    log_update(
+        root,
+        &format!("{tag} may be tried again: what stopped it was on this machine, not in the build"),
+    );
 }
 
 fn mark_known_bad(root: &Path, tag: &str, why: &str) {
@@ -581,7 +698,11 @@ fn mark_known_bad(root: &Path, tag: &str, why: &str) {
     if is_known_bad(root, tag) {
         return;
     }
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(known_bad_file(root)) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(known_bad_file(root))
+    {
         crate::kept!(writeln!(f, "{tag} {}", why.replace('\n', " ")));
     }
 }
@@ -589,8 +710,15 @@ fn mark_known_bad(root: &Path, tag: &str, why: &str) {
 /// What this build checks about itself when asked `--health-check`: the
 /// things that, broken, make everything else fail. `Ok` carries what passed,
 /// `Err` what didn't (and what passed, so the log shows how far it got).
-pub fn health_check(root: &Path, config_dir: &Path, state_dir: &Path) -> Result<Vec<String>, Vec<String>> {
-    let mut ok = vec![format!("this is atlas {}, data format {DATA_FORMAT}", version())];
+pub fn health_check(
+    root: &Path,
+    config_dir: &Path,
+    state_dir: &Path,
+) -> Result<Vec<String>, Vec<String>> {
+    let mut ok = vec![format!(
+        "this is atlas {}, data format {DATA_FORMAT}",
+        version()
+    )];
     let mut bad = Vec::new();
 
     // Its own settings, as it ships them, have to load. Written to a scratch
@@ -603,7 +731,9 @@ pub fn health_check(root: &Path, config_dir: &Path, state_dir: &Path) -> Result<
             Ok(_) => ok.push("its shipped settings load".into()),
             Err(e) => bad.push(format!("its own shipped settings don't load: {e}")),
         },
-        Err(e) => bad.push(format!("couldn't write its shipped settings to a scratch folder: {e}")),
+        Err(e) => bad.push(format!(
+            "couldn't write its shipped settings to a scratch folder: {e}"
+        )),
     }
     crate::heard!(std::fs::remove_dir_all(&scratch));
 
@@ -611,17 +741,25 @@ pub fn health_check(root: &Path, config_dir: &Path, state_dir: &Path) -> Result<
     if config_dir.exists() {
         match std::fs::read_dir(config_dir) {
             Ok(_) => ok.push("your settings folder reads".into()),
-            Err(e) => bad.push(format!("can't read your settings folder {}: {e}", config_dir.display())),
+            Err(e) => bad.push(format!(
+                "can't read your settings folder {}: {e}",
+                config_dir.display()
+            )),
         }
     }
 
     // It can keep state: a file written, read back, removed.
     let probe = state_dir.join(format!(".health-check-{}.tmp", std::process::id()));
-    let wrote = std::fs::create_dir_all(state_dir).and_then(|_| std::fs::write(&probe, b"atlas")).and_then(|_| std::fs::read(&probe));
+    let wrote = std::fs::create_dir_all(state_dir)
+        .and_then(|_| std::fs::write(&probe, b"atlas"))
+        .and_then(|_| std::fs::read(&probe));
     crate::heard!(std::fs::remove_file(&probe));
     match wrote {
         Ok(b) if b == b"atlas" => ok.push("its state folder writes and reads back".into()),
-        Ok(_) => bad.push(format!("{} gave back something other than what was written", state_dir.display())),
+        Ok(_) => bad.push(format!(
+            "{} gave back something other than what was written",
+            state_dir.display()
+        )),
         Err(e) => bad.push(format!("can't keep state in {}: {e}", state_dir.display())),
     }
 
@@ -669,19 +807,29 @@ pub fn check_new_build(new: &Path, timeout: std::time::Duration) -> Result<Strin
             Ok(None) if started.elapsed() >= timeout => {
                 let _ = child.kill();
                 crate::heard!(child.wait());
-                return Err(format!("it didn't finish its check within {} seconds", timeout.as_secs()));
+                return Err(format!(
+                    "it didn't finish its check within {} seconds",
+                    timeout.as_secs()
+                ));
             }
             Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),
             Err(e) => return Err(format!("couldn't wait for it: {e}")),
         }
     };
     let text = reader.join().unwrap_or_default();
-    let v = text.lines().find_map(|l| l.strip_prefix("healthy: atlas ")).map(|v| v.trim().to_string());
+    let v = text
+        .lines()
+        .find_map(|l| l.strip_prefix("healthy: atlas "))
+        .map(|v| v.trim().to_string());
     match (status.success(), v) {
         (true, Some(v)) => Ok(v),
         (true, None) => Err("it exited cleanly but never said it was healthy".into()),
         (false, _) => {
-            let why: Vec<&str> = text.lines().filter(|l| l.starts_with("unhealthy: ")).map(|l| &l[11..]).collect();
+            let why: Vec<&str> = text
+                .lines()
+                .filter(|l| l.starts_with("unhealthy: "))
+                .map(|l| &l[11..])
+                .collect();
             if why.is_empty() {
                 Err(format!("its check failed (exit {:?})", status.code()))
             } else {
@@ -696,26 +844,56 @@ pub fn check_new_build(new: &Path, timeout: std::time::Duration) -> Result<Strin
 /// `running`'s name, `failed` is written down as known bad, and the trial
 /// ends. If the previous one can't be put back, the failed one is left where
 /// it was rather than leaving nothing to start.
-pub fn roll_back(root: &Path, running: &Path, failed: &str, previous: &str, why: &str) -> Result<(), String> {
+pub fn roll_back(
+    root: &Path,
+    running: &Path,
+    failed: &str,
+    previous: &str,
+    why: &str,
+) -> Result<(), String> {
     let keep = keep_old_at(root, previous);
     // A previous file named before tags (bare version) still counts.
-    let keep = if keep.is_file() { keep } else { keep_old_at(root, tag_version(previous)) };
+    let keep = if keep.is_file() {
+        keep
+    } else {
+        keep_old_at(root, tag_version(previous))
+    };
     if !keep.is_file() {
-        log_update(root, &format!("{failed} failed ({why}) but {} is missing; left it in place", keep.display()));
-        return Err(format!("{failed} failed ({why}), and the previous build isn't at {} to go back to", keep.display()));
+        log_update(
+            root,
+            &format!(
+                "{failed} failed ({why}) but {} is missing; left it in place",
+                keep.display()
+            ),
+        );
+        return Err(format!(
+            "{failed} failed ({why}), and the previous build isn't at {} to go back to",
+            keep.display()
+        ));
     }
     let aside = failed_at(root, failed);
     crate::heard!(std::fs::remove_file(&aside));
     std::fs::rename(running, &aside).map_err(|e| format!("couldn't set {failed} aside: {e}"))?;
     if let Err(e) = std::fs::rename(&keep, running) {
         crate::kept!(std::fs::rename(&aside, running));
-        log_update(root, &format!("{failed} failed ({why}); couldn't put {previous} back: {e}"));
-        return Err(format!("couldn't put {previous} back ({e}); still on {failed}"));
+        log_update(
+            root,
+            &format!("{failed} failed ({why}); couldn't put {previous} back: {e}"),
+        );
+        return Err(format!(
+            "couldn't put {previous} back ({e}); still on {failed}"
+        ));
     }
     mark_known_bad(root, failed, why);
     crate::heard!(std::fs::remove_file(trial_file(root)));
     prune_kept(root, ".failed", KEEP_BUILDS, Some(&aside));
-    log_update(root, &format!("{failed} failed here ({why}); back on {previous}, {failed} kept as {}", aside.display()));
+    log_update(
+        root,
+        &format!(
+            "{failed} failed here ({why}); back on {previous}, {failed} kept as {}",
+            aside.display()
+        ),
+    );
     Ok(())
 }
 
@@ -724,16 +902,34 @@ pub fn roll_back(root: &Path, running: &Path, failed: &str, previous: &str, why:
 pub enum Swapped {
     /// The new build passed its check and is in place, on trial; start it.
     /// `tag` is the new build's, `previous` the one it replaced.
-    Started { path: PathBuf, version: String, tag: String, previous: String },
+    Started {
+        path: PathBuf,
+        version: String,
+        tag: String,
+        previous: String,
+    },
     /// The new build failed its check and the running one is back in place.
     /// Carry on as you are.
-    RolledBack { version: String, tag: String, why: String },
+    RolledBack {
+        version: String,
+        tag: String,
+        why: String,
+    },
 }
 
 /// The update on start, checked: swap the waiting build in, have it check
 /// itself, and either start its trial or put the running one straight back.
-pub fn swap_checked(root: &Path, running: &Path, timeout: std::time::Duration) -> Option<Result<Swapped, String>> {
-    let SwappedIn { path, version: v, tag, replaced } = match swap_in(root, running)? {
+pub fn swap_checked(
+    root: &Path,
+    running: &Path,
+    timeout: std::time::Duration,
+) -> Option<Result<Swapped, String>> {
+    let SwappedIn {
+        path,
+        version: v,
+        tag,
+        replaced,
+    } = match swap_in(root, running)? {
         Ok(x) => x,
         Err(why) => {
             log_update(root, &format!("not swapped in: {why}"));
@@ -743,10 +939,19 @@ pub fn swap_checked(root: &Path, running: &Path, timeout: std::time::Duration) -
     Some(match check_new_build(&path, timeout) {
         Ok(_) => {
             begin_trial(root, &tag, &replaced);
-            Ok(Swapped::Started { path, version: v, tag, previous: replaced })
+            Ok(Swapped::Started {
+                path,
+                version: v,
+                tag,
+                previous: replaced,
+            })
         }
         Err(why) => match roll_back(root, running, &tag, &replaced, &why) {
-            Ok(()) => Ok(Swapped::RolledBack { version: v, tag, why }),
+            Ok(()) => Ok(Swapped::RolledBack {
+                version: v,
+                tag,
+                why,
+            }),
             Err(e) => Err(e),
         },
     })
@@ -768,18 +973,26 @@ pub enum TrialStep {
 /// build, and after `TRIAL_STARTS` that never got through, puts the
 /// previous build back.
 pub fn trial_on_start(root: &Path, running: &Path) -> TrialStep {
-    let Some(mut t) = Trial::load(root) else { return TrialStep::Settled };
+    let Some(mut t) = Trial::load(root) else {
+        return TrialStep::Settled;
+    };
     let here = tag_of(running, version());
     if t.new != here {
         // Something else was put in place by hand since; this trial is not about us.
         crate::heard!(std::fs::remove_file(trial_file(root)));
-        log_update(root, &format!("trial of {} dropped: {here} is what's running", t.new));
+        log_update(
+            root,
+            &format!("trial of {} dropped: {here} is what's running", t.new),
+        );
         return TrialStep::Settled;
     }
     if t.starts >= TRIAL_STARTS {
         let why = format!("{} starts in a row never got through", t.starts);
         return match roll_back(root, running, &t.new, &t.previous, &why) {
-            Ok(()) => TrialStep::RolledBack { failed: t.new, previous: t.previous },
+            Ok(()) => TrialStep::RolledBack {
+                failed: t.new,
+                previous: t.previous,
+            },
             Err(_) => TrialStep::Trying(t.starts + 1),
         };
     }
@@ -805,7 +1018,13 @@ pub fn trial_passed_by(root: &Path, running: &str) -> bool {
     match Trial::load(root) {
         Some(t) if t.new == running => {
             crate::heard!(std::fs::remove_file(trial_file(root)));
-            log_update(root, &format!("{} got through start {} of its trial; kept", t.new, t.starts));
+            log_update(
+                root,
+                &format!(
+                    "{} got through start {} of its trial; kept",
+                    t.new, t.starts
+                ),
+            );
             true
         }
         _ => false,

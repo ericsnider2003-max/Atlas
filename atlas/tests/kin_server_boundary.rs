@@ -130,7 +130,14 @@ fn e2e_cfg() -> Config {
 }
 
 fn e2e_plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 #[test]
@@ -139,13 +146,23 @@ fn a_signal_reaches_the_daemon_as_an_ordinary_offer() {
 
     let c = e2e_cfg();
     let p = e2e_plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(e2e_tmp("e2e")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(e2e_tmp("e2e")),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     let mut door = Door::new(vec![Peer::new("Homelab", PEER_TOKEN)]);
-    let incoming = door.receive(PEER_TOKEN, "position closed at a loss", Urgency::Urgent, 1).unwrap();
+    let incoming = door
+        .receive(PEER_TOKEN, "position closed at a loss", Urgency::Urgent, 1)
+        .unwrap();
 
     d.receive_signal(&incoming);
-    let offer = d.pending_offer().expect("a signal should produce a pending offer");
+    let offer = d
+        .pending_offer()
+        .expect("a signal should produce a pending offer");
     assert!(offer.message.contains("Homelab"));
     assert!(offer.message.contains("position closed at a loss"));
     // Structural, not wording: it went through from_nudge like anything else
@@ -180,8 +197,15 @@ fn chat_request(token: &str, body: &str) -> Request {
 #[test]
 fn a_peer_token_can_open_the_chat_door_and_nothing_else() {
     let d = door();
-    let action = route_chat(&chat_request(PEER_TOKEN, "the roof quote came back"), &d, PEER_TOKEN);
-    assert!(matches!(action, Some(Action::Chatted(_))), "a real peer's message is a Chatted action");
+    let action = route_chat(
+        &chat_request(PEER_TOKEN, "the roof quote came back"),
+        &d,
+        PEER_TOKEN,
+    );
+    assert!(
+        matches!(action, Some(Action::Chatted(_))),
+        "a real peer's message is a Chatted action"
+    );
 
     // The same peer token aimed at /say produces nothing through the chat
     // door -- route_chat only ever matches POST /chat.
@@ -203,7 +227,9 @@ fn the_sender_of_a_chat_is_the_token_not_the_body() {
         body: r#"{"from":"the-bank","business":null,"body":"pay this now","sent_at":1000,"offset":0,"after":1,"id":"r-1000-1"}"#.into(),
     };
     match route_chat(&req, &d, PEER_TOKEN) {
-        Some(Action::Chatted(c)) => assert_eq!(c.from, "Homelab", "the body's from must be ignored"),
+        Some(Action::Chatted(c)) => {
+            assert_eq!(c.from, "Homelab", "the body's from must be ignored")
+        }
         other => panic!("expected a Chatted from the registered peer, got {other:?}"),
     }
 }
@@ -235,7 +261,10 @@ fn only_post_chat_is_recognised_get_is_refused_even_from_a_real_peer() {
 #[test]
 fn a_chat_carrying_no_body_is_refused_at_the_door() {
     let d = door();
-    assert_eq!(route_chat(&chat_request(PEER_TOKEN, ""), &d, PEER_TOKEN), None);
+    assert_eq!(
+        route_chat(&chat_request(PEER_TOKEN, ""), &d, PEER_TOKEN),
+        None
+    );
 }
 
 // A read receipt crosses the same boundary as chat: a peer token must be
@@ -259,7 +288,10 @@ fn a_peer_token_can_open_the_read_door_and_the_reader_is_the_token() {
     let d = door();
     match route_read(&read_request(PEER_TOKEN, r#"["r-1000-1"]"#), &d, PEER_TOKEN) {
         Some(Action::ReadReceipt(r)) => {
-            assert_eq!(r.from, "Homelab", "who read it comes from the token, never the body");
+            assert_eq!(
+                r.from, "Homelab",
+                "who read it comes from the token, never the body"
+            );
             assert_eq!(r.ids, vec!["r-1000-1".to_string()]);
         }
         other => panic!("expected a ReadReceipt from the registered peer, got {other:?}"),
@@ -273,7 +305,11 @@ fn a_peer_token_can_open_the_read_door_and_the_reader_is_the_token() {
 fn a_phone_token_gets_nothing_from_the_read_door() {
     let d = door();
     assert_eq!(
-        route_read(&read_request(PHONE_TOKEN, r#"["r-1000-1"]"#), &d, PHONE_TOKEN),
+        route_read(
+            &read_request(PHONE_TOKEN, r#"["r-1000-1"]"#),
+            &d,
+            PHONE_TOKEN
+        ),
         None,
         "a token nobody registered as a peer must not reach the read door"
     );
@@ -282,7 +318,10 @@ fn a_phone_token_gets_nothing_from_the_read_door() {
 #[test]
 fn a_read_receipt_with_no_ids_is_refused_at_the_door() {
     let d = door();
-    assert_eq!(route_read(&read_request(PEER_TOKEN, "[]"), &d, PEER_TOKEN), None);
+    assert_eq!(
+        route_read(&read_request(PEER_TOKEN, "[]"), &d, PEER_TOKEN),
+        None
+    );
 }
 
 #[test]
@@ -318,7 +357,10 @@ fn a_peer_token_can_open_the_leave_door_and_the_leaver_is_the_token() {
     let d = door();
     match route_left(&left_request(PEER_TOKEN, "grp-1"), &d, PEER_TOKEN) {
         Some(Action::LeftGroup(l)) => {
-            assert_eq!(l.from, "Homelab", "who left comes from the token, never the body");
+            assert_eq!(
+                l.from, "Homelab",
+                "who left comes from the token, never the body"
+            );
             assert_eq!(l.group_id, "grp-1");
         }
         other => panic!("expected a LeftGroup from the registered peer, got {other:?}"),
@@ -330,7 +372,10 @@ fn a_peer_token_can_open_the_leave_door_and_the_leaver_is_the_token() {
 #[test]
 fn a_phone_token_gets_nothing_from_the_leave_door() {
     let d = door();
-    assert_eq!(route_left(&left_request(PHONE_TOKEN, "grp-1"), &d, PHONE_TOKEN), None);
+    assert_eq!(
+        route_left(&left_request(PHONE_TOKEN, "grp-1"), &d, PHONE_TOKEN),
+        None
+    );
 }
 
 #[test]

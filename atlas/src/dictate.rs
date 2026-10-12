@@ -75,15 +75,14 @@ pub enum Reading {
 /// You do not say "a" before a full stop. If one of these comes immediately
 /// before, the word is a noun.
 const DETERMINERS: &[&str] = &[
-    "a", "an", "the", "this", "that", "these", "those", "my", "your", "his",
-    "her", "its", "our", "their", "one", "another", "each", "every", "some",
-    "no", "any", "which", "what",
+    "a", "an", "the", "this", "that", "these", "those", "my", "your", "his", "her", "its", "our",
+    "their", "one", "another", "each", "every", "some", "no", "any", "which", "what",
 ];
 
 /// Words that only ever follow a noun, never a mark.
 const AFTER_A_NOUN: &[&str] = &[
-    "drama", "piece", "key", "mark", "splice", "case", "of", "in", "was", "is",
-    "drive", "film", "series", "cut", "line", "sign", "button", "point",
+    "drama", "piece", "key", "mark", "splice", "case", "of", "in", "was", "is", "drive", "film",
+    "series", "cut", "line", "sign", "button", "point",
 ];
 
 /// Read the words either side and decide which was meant.
@@ -92,7 +91,11 @@ const AFTER_A_NOUN: &[&str] = &[
 /// determiner but a noun, and nothing precedes a mark but the end of a
 /// clause.
 pub fn read_ambiguous(before: &str, _word: &str, after: &str) -> Reading {
-    let prev = before.split_whitespace().last().unwrap_or("").to_lowercase();
+    let prev = before
+        .split_whitespace()
+        .last()
+        .unwrap_or("")
+        .to_lowercase();
     let next = after.split_whitespace().next().unwrap_or("").to_lowercase();
     let prev = prev.trim_matches(|c: char| !c.is_alphanumeric());
     let next = next.trim_matches(|c: char| !c.is_alphanumeric());
@@ -164,11 +167,31 @@ pub fn parse(said: &str, cfg: &DictateConfig) -> Vec<Piece> {
 
     // Longest phrases first, so "exclamation mark" beats "mark".
     let mut keys: Vec<&str> = vec![
-        "exclamation mark", "exclamation point", "question mark", "new paragraph",
-        "stop dictating", "stop dictation", "scratch that", "delete that", "undo that",
-        "open bracket", "close bracket", "semi colon", "open quote", "full stop",
-        "new line", "semicolon", "newline", "that's it", "thats it",
-        "period", "comma", "colon", "dash", "hyphen", "quote",
+        "exclamation mark",
+        "exclamation point",
+        "question mark",
+        "new paragraph",
+        "stop dictating",
+        "stop dictation",
+        "scratch that",
+        "delete that",
+        "undo that",
+        "open bracket",
+        "close bracket",
+        "semi colon",
+        "open quote",
+        "full stop",
+        "new line",
+        "semicolon",
+        "newline",
+        "that's it",
+        "thats it",
+        "period",
+        "comma",
+        "colon",
+        "dash",
+        "hyphen",
+        "quote",
     ];
     keys.sort_by_key(|k| std::cmp::Reverse(k.len()));
 
@@ -318,7 +341,12 @@ pub struct Dictation {
 
 impl Dictation {
     pub fn start(app: &str, t: u64) -> Dictation {
-        Dictation { state: State::On, target: app.into(), last: String::new(), last_spoke: t }
+        Dictation {
+            state: State::On,
+            target: app.into(),
+            last: String::new(),
+            last_spoke: t,
+        }
     }
 
     /// One line of speech while dictating.

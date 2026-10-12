@@ -55,7 +55,10 @@ fn tracking_the_same_site_twice_does_not_wipe_what_you_told_me() {
     let mut b = Book::default();
     b.note("github");
     b.set_second_factor("github", SecondFactor::Key);
-    assert!(!b.note("GitHub"), "already tracked, however you capitalise it");
+    assert!(
+        !b.note("GitHub"),
+        "already tracked, however you capitalise it"
+    );
     assert_eq!(
         b.get("github").unwrap().second_factor,
         SecondFactor::Key,
@@ -136,9 +139,20 @@ fn nothing_in_the_book_is_worth_stealing() {
     let written = serde_yaml::to_string(&b).unwrap();
 
     let allowed = [
-        "true", "false", "gmail", "keystone", "app", "accounts", "site",
-        "second_factor", "stakes", "reused_password", "has_recovery_codes",
-        "settings_url", "https://myaccount.google.com/security", "-",
+        "true",
+        "false",
+        "gmail",
+        "keystone",
+        "app",
+        "accounts",
+        "site",
+        "second_factor",
+        "stakes",
+        "reused_password",
+        "has_recovery_codes",
+        "settings_url",
+        "https://myaccount.google.com/security",
+        "-",
     ];
     for line in written.lines() {
         for part in line.split(':') {
@@ -211,7 +225,10 @@ fn applying_a_change_reports_whether_anything_changed() {
 fn an_empty_page_invites_you_to_start_rather_than_looking_broken() {
     let html = hub::accounts_page(&[], &[], &[], &[], false, &[]);
     assert!(html.contains("not tracking any accounts yet"));
-    assert!(html.contains("value=note"), "and offers the way to fix that");
+    assert!(
+        html.contains("value=note"),
+        "and offers the way to fix that"
+    );
 }
 
 #[test]
@@ -222,7 +239,10 @@ fn the_page_leads_with_what_to_fix_not_with_an_inventory() {
     let html = hub::accounts_page(&b.accounts, &advice, &[], &[], false, &[]);
     let fix = html.find("two-factor").expect("the advice is on the page");
     let list = html.find("<h2>Accounts</h2>").expect("the inventory too");
-    assert!(fix < list, "an inventory is a list; the advice is the answer");
+    assert!(
+        fix < list,
+        "an inventory is a list; the advice is the answer"
+    );
 }
 
 #[test]

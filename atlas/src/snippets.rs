@@ -41,7 +41,11 @@ pub enum Refused {
 pub const MAX_CHARS: usize = 4000;
 
 fn norm(trigger: &str) -> String {
-    trigger.trim().trim_start_matches("my ").trim().to_lowercase()
+    trigger
+        .trim()
+        .trim_start_matches("my ")
+        .trim()
+        .to_lowercase()
 }
 
 impl Snippets {
@@ -96,7 +100,9 @@ impl Snippets {
     /// The trigger only if the word is exactly one of yours -- what the
     /// hotkey expansion uses, so an ordinary word is never replaced.
     pub fn exact(&self, word: &str) -> Option<&str> {
-        self.by_trigger.get(&word.trim().to_lowercase()).map(|s| s.as_str())
+        self.by_trigger
+            .get(&word.trim().to_lowercase())
+            .map(|s| s.as_str())
     }
 }
 
@@ -105,11 +111,22 @@ impl Snippets {
 /// are left as written.
 pub fn fill(text: &str, local: u64) -> String {
     let c = crate::civil::Civil::from_local(local as i64);
-    let wd = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][c.weekday() as usize];
-    text.replace("{date}", &format!("{:04}-{:02}-{:02}", c.year, c.month, c.day))
-        .replace("{time}", &format!("{:02}:{:02}", c.hour, c.minute))
-        .replace("{weekday}", wd)
-        .replace("{year}", &c.year.to_string())
+    let wd = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ][c.weekday() as usize];
+    text.replace(
+        "{date}",
+        &format!("{:04}-{:02}-{:02}", c.year, c.month, c.day),
+    )
+    .replace("{time}", &format!("{:02}:{:02}", c.hour, c.minute))
+    .replace("{weekday}", wd)
+    .replace("{year}", &c.year.to_string())
 }
 
 /// "save snippet ;sig as Best, Eric" / "remember my address is 1 Main St":
@@ -118,7 +135,12 @@ pub fn read_save(said: &str) -> Option<(String, String)> {
     // ASCII lowering keeps byte positions, so the text is cut from what you
     // said, not from a copy with different lengths.
     let low = said.to_ascii_lowercase();
-    for (lead, sep) in [("save snippet ", " as "), ("add snippet ", " as "), ("snippet ", " as "), ("save my ", " as ")] {
+    for (lead, sep) in [
+        ("save snippet ", " as "),
+        ("add snippet ", " as "),
+        ("snippet ", " as "),
+        ("save my ", " as "),
+    ] {
         if let Some(rest) = low.strip_prefix(lead) {
             let at = rest.find(sep)?;
             let trigger = rest[..at].trim().to_string();

@@ -58,7 +58,10 @@ fn the_value_a_flag_takes_is_not_left_inside_the_instruction() {
 #[test]
 fn a_flag_that_takes_no_value_does_not_eat_the_next_word() {
     let a = argv(&["ask", "--urgent", "render", "the", "draft"]);
-    assert_eq!(plain_words(&a[1..], &["--to", "--secs"]), "render the draft");
+    assert_eq!(
+        plain_words(&a[1..], &["--to", "--secs"]),
+        "render the draft"
+    );
 }
 
 #[test]

@@ -81,8 +81,13 @@ fn nothing_and_far_too_much_are_both_refused_with_a_reason() {
 #[test]
 fn which_device_it_came_from_is_kept() {
     let mut t = Tray::default();
-    t.hand("https://example.com", &mine(), "my phone", 1).unwrap();
-    assert_eq!(t.open()[0].from, "my phone", "\"where did I send that from\"");
+    t.hand("https://example.com", &mine(), "my phone", 1)
+        .unwrap();
+    assert_eq!(
+        t.open()[0].from,
+        "my phone",
+        "\"where did I send that from\""
+    );
 }
 
 #[test]
@@ -100,8 +105,10 @@ fn something_handed_to_a_business_records_which_one() {
 #[test]
 fn the_oldest_thing_is_read_first() {
     let mut t = Tray::default();
-    t.hand("https://first.example", &mine(), "phone", 1).unwrap();
-    t.hand("https://second.example", &mine(), "phone", 2).unwrap();
+    t.hand("https://first.example", &mine(), "phone", 1)
+        .unwrap();
+    t.hand("https://second.example", &mine(), "phone", 2)
+        .unwrap();
     assert_eq!(
         t.next_to_read().map(|i| i.what.as_str()),
         Some("https://first.example"),
@@ -148,10 +155,17 @@ fn finishing_with_something_takes_it_off_the_list() {
 #[test]
 fn things_you_never_got_an_answer_about_are_never_dropped() {
     let mut t = Tray::default();
-    let waiting = t.hand("https://never-read.example", &mine(), "phone", 0).unwrap();
+    let waiting = t
+        .hand("https://never-read.example", &mine(), "phone", 0)
+        .unwrap();
     for i in 0..(KEEP_DONE * 3) {
         let id = t
-            .hand(&format!("https://n{i}.example"), &mine(), "phone", i as u64 + 1)
+            .hand(
+                &format!("https://n{i}.example"),
+                &mine(),
+                "phone",
+                i as u64 + 1,
+            )
             .unwrap();
         t.done(id);
     }
@@ -181,7 +195,9 @@ fn it_survives_a_restart() {
 
 #[test]
 fn an_empty_tray_says_so_plainly() {
-    assert!(Tray::default().spoken().contains("haven't handed me anything"));
+    assert!(Tray::default()
+        .spoken()
+        .contains("haven't handed me anything"));
 }
 
 #[test]
@@ -247,7 +263,11 @@ fn nothing_turns_what_was_fetched_into_something_atlas_does() {
             .collect::<Vec<_>>()
             .join("\n");
         for (i, stmt) in stripped.split(';').enumerate() {
-            let line = stmt.split_whitespace().collect::<Vec<_>>().join(" ").replace(" .", ".");
+            let line = stmt
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .replace(" .", ".");
             let line = line.as_str();
             let mentions_found = line.contains(".found") || line.contains("found)");
             let acts = line.contains("parse(")
@@ -299,7 +319,6 @@ fn the_tray_is_not_a_way_around_asking_first() {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // Files, sent as bytes
 // ---------------------------------------------------------------------------
@@ -337,7 +356,10 @@ fn an_oversized_file_is_refused_with_what_to_do_instead() {
         .hand_file("big.mov", &huge, &mine(), "phone", None, 1, &dir)
         .unwrap_err();
     assert!(err.contains("hand me the path"), "{err}");
-    assert!(t.items.is_empty(), "and nothing was written to disk on the way");
+    assert!(
+        t.items.is_empty(),
+        "and nothing was written to disk on the way"
+    );
     assert!(
         !dir.join(atlas::tray::FOLDER).exists()
             || std::fs::read_dir(dir.join(atlas::tray::FOLDER))
@@ -352,7 +374,15 @@ fn finishing_with_a_photo_deletes_the_photo() {
     let dir = tmp("forget");
     let mut t = Tray::default();
     let id = t
-        .hand_file("receipt.jpg", b"pretend jpeg", &mine(), "phone", None, 1, &dir)
+        .hand_file(
+            "receipt.jpg",
+            b"pretend jpeg",
+            &mine(),
+            "phone",
+            None,
+            1,
+            &dir,
+        )
         .unwrap();
     let path = t.items[0].stored_at.clone().unwrap();
     assert!(std::path::Path::new(&path).exists());
@@ -380,7 +410,12 @@ fn what_you_asked_for_is_kept_alongside_the_thing() {
         )
         .unwrap();
     assert_eq!(
-        t.items.iter().find(|i| i.id == id).unwrap().asked.as_deref(),
+        t.items
+            .iter()
+            .find(|i| i.id == id)
+            .unwrap()
+            .asked
+            .as_deref(),
         Some("did the payment terms change"),
         "without this Atlas reads it and reports the first four sentences, \
          which is almost never the answer to the question you had in mind"
@@ -396,13 +431,20 @@ fn base64_from_a_phone_decodes_and_rubbish_does_not() {
     assert!(atlas::tray::from_base64("").is_err());
 }
 
-
 #[test]
 fn finishing_with_a_video_deletes_the_frames_kept_from_watching_it() {
     let dir = tmp("frames");
     let mut t = Tray::default();
     let id = t
-        .hand_file("demo.mp4", b"pretend video", &mine(), "phone", None, 1, &dir)
+        .hand_file(
+            "demo.mp4",
+            b"pretend video",
+            &mine(),
+            "phone",
+            None,
+            1,
+            &dir,
+        )
         .unwrap();
     // What `watch` would have left beside it.
     let kept = dir.join(atlas::tray::FOLDER).join(format!("frames-{id}"));
@@ -439,7 +481,10 @@ fn a_large_local_file_is_taken_in_by_reference_without_the_cap() {
         .expect("a local file of any size is taken in, not refused");
 
     let item = t.items.iter().find(|i| i.id == id).unwrap();
-    assert!(!item.owned, "a referenced file is not Atlas's copy to delete");
+    assert!(
+        !item.owned,
+        "a referenced file is not Atlas's copy to delete"
+    );
     assert_eq!(
         item.stored_at.as_deref(),
         Some(big.canonicalize().unwrap().to_string_lossy().as_ref()),
@@ -459,7 +504,9 @@ fn forgetting_a_referenced_file_leaves_your_original_alone() {
     fs::write(&doc, b"pretend a large pdf").unwrap();
 
     let mut t = Tray::default();
-    let id = t.hand_local(&doc, &mine(), "this machine", None, 1).unwrap();
+    let id = t
+        .hand_local(&doc, &mine(), "this machine", None, 1)
+        .unwrap();
     assert!(t.forget(id));
     assert!(
         doc.exists(),
@@ -495,7 +542,10 @@ fn a_referenced_file_and_the_same_bytes_are_the_same_item() {
     fs::write(&f, content).unwrap();
     let by_ref = t.hand_local(&f, &mine(), "this machine", None, 2).unwrap();
 
-    assert_eq!(by_bytes, by_ref, "same bytes, one item, whichever way they arrived");
+    assert_eq!(
+        by_bytes, by_ref,
+        "same bytes, one item, whichever way they arrived"
+    );
 }
 
 #[test]
@@ -504,7 +554,9 @@ fn an_empty_local_file_is_refused() {
     let f = dir.join("empty.txt");
     fs::write(&f, b"").unwrap();
     let mut t = Tray::default();
-    let err = t.hand_local(&f, &mine(), "this machine", None, 1).unwrap_err();
+    let err = t
+        .hand_local(&f, &mine(), "this machine", None, 1)
+        .unwrap_err();
     assert!(err.contains("empty"), "{err}");
     assert!(t.items.is_empty());
 }

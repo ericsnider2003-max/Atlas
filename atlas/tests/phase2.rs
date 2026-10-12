@@ -37,7 +37,10 @@ fn it_finds_what_it_can_without_asking_you() {
         o => panic!("{o:?}"),
     }
     assert!(Step::FindApps.automatic());
-    assert!(!Step::Monitors.automatic(), "which screen you work on is not guessable");
+    assert!(
+        !Step::Monitors.automatic(),
+        "which screen you work on is not guessable"
+    );
 }
 
 #[test]
@@ -45,7 +48,10 @@ fn with_one_screen_it_does_not_ask_which_screen() {
     let mut f = FirstRun::default();
     f.record(Step::Hello, "", false);
     f.record(Step::FindApps, "found all 2", false);
-    let one = Found { monitors: 1, ..found() };
+    let one = Found {
+        monitors: 1,
+        ..found()
+    };
     match f.next(&one) {
         Move::Look { step, .. } => assert_eq!(step, Step::Microphones, "it skipped straight past"),
         o => panic!("{o:?}"),
@@ -58,7 +64,10 @@ fn with_no_microphone_it_says_we_will_type_rather_than_failing() {
     for s in [Step::Hello, Step::FindApps, Step::Monitors] {
         f.record(s, "", false);
     }
-    let deaf = Found { microphones: vec![], ..found() };
+    let deaf = Found {
+        microphones: vec![],
+        ..found()
+    };
     match f.next(&deaf) {
         Move::Say(s) => {
             assert!(s.contains("type for now"));
@@ -101,8 +110,15 @@ fn the_closing_line_says_what_worked_and_what_is_left() {
 #[test]
 fn it_reports_what_it_found_rather_than_a_count() {
     let f = found();
-    assert!(f.report_apps().contains("not claude"), "got: {}", f.report_apps());
-    let all = Found { missing_apps: vec![], ..found() };
+    assert!(
+        f.report_apps().contains("not claude"),
+        "got: {}",
+        f.report_apps()
+    );
+    let all = Found {
+        missing_apps: vec![],
+        ..found()
+    };
     assert_eq!(all.report_apps(), "found all 2");
 }
 
@@ -125,13 +141,22 @@ fn which_screen_you_meant_is_understood_in_plain_words() {
 // ================= Atlas working on Atlas =================
 
 fn cfg() -> SelfWorkConfig {
-    SelfWorkConfig { enabled: true, ..Default::default() }
+    SelfWorkConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 #[test]
 fn it_cannot_edit_the_files_that_decide_what_it_is_allowed_to_do() {
     // A system that can edit its own permissions has none.
-    for f in ["config/policy.yaml", "src/policy.rs", "src/system.rs", "src/finance.rs", "src/consent.rs"] {
+    for f in [
+        "config/policy.yaml",
+        "src/policy.rs",
+        "src/system.rs",
+        "src/finance.rs",
+        "src/consent.rs",
+    ] {
         match may_edit(f, &cfg()) {
             Verdict::Refused(why) => assert!(why.contains("what I'm allowed to do"), "{f}: {why}"),
             o => panic!("{f} should be refused, got {o:?}"),
@@ -155,15 +180,27 @@ fn it_can_edit_ordinary_source_and_tests() {
     assert_eq!(may_edit("tests/prose.rs", &cfg()), Verdict::Allowed);
     // And a test that is not known to be ordinary is treated as a guard,
     // which is the direction that costs a limit when it is wrong.
-    assert!(matches!(may_edit("tests/wiring.rs", &cfg()), Verdict::Refused(_)));
-    assert!(matches!(may_edit("config/tools.yaml", &cfg()), Verdict::Refused(_)));
+    assert!(matches!(
+        may_edit("tests/wiring.rs", &cfg()),
+        Verdict::Refused(_)
+    ));
+    assert!(matches!(
+        may_edit("config/tools.yaml", &cfg()),
+        Verdict::Refused(_)
+    ));
     assert!(matches!(may_edit("build.rs", &cfg()), Verdict::Refused(_)));
 }
 
 #[test]
 fn it_cannot_reach_outside_the_project_at_all() {
-    assert!(matches!(may_edit("../../etc/passwd", &cfg()), Verdict::Refused(_)));
-    assert!(matches!(may_edit("C:/Windows/System32/x.dll", &cfg()), Verdict::Refused(_)));
+    assert!(matches!(
+        may_edit("../../etc/passwd", &cfg()),
+        Verdict::Refused(_)
+    ));
+    assert!(matches!(
+        may_edit("C:/Windows/System32/x.dll", &cfg()),
+        Verdict::Refused(_)
+    ));
 }
 
 #[test]
@@ -184,7 +221,13 @@ fn passing_is_not_enough_if_the_tests_went_missing() {
 
 #[test]
 fn a_change_that_passes_with_the_tests_intact_is_worth_showing() {
-    let t = Tried { edits: vec![], passed: true, tests_run: 1159, problem: None, lines_changed: 12 };
+    let t = Tried {
+        edits: vec![],
+        passed: true,
+        tests_run: 1159,
+        problem: None,
+        lines_changed: 12,
+    };
     assert!(t.worth_showing(1158, &cfg()).is_ok());
 }
 
@@ -202,8 +245,17 @@ fn a_change_that_fails_is_never_offered() {
 
 #[test]
 fn a_run_where_almost_nothing_executed_does_not_count_as_passing() {
-    let t = Tried { edits: vec![], passed: true, tests_run: 0, problem: None, lines_changed: 3 };
-    assert!(t.worth_showing(0, &cfg()).unwrap_err().contains("passing means nothing"));
+    let t = Tried {
+        edits: vec![],
+        passed: true,
+        tests_run: 0,
+        problem: None,
+        lines_changed: 3,
+    };
+    assert!(t
+        .worth_showing(0, &cfg())
+        .unwrap_err()
+        .contains("passing means nothing"));
 }
 
 #[test]
@@ -227,9 +279,18 @@ fn a_failed_attempt_moves_to_a_different_approach() {
         problem: Some("still panics".into()),
         lines_changed: 6,
     };
-    match s.after(failed, "the handle is cached", &cfg(), &StrategyConfig::default()) {
+    match s.after(
+        failed,
+        "the handle is cached",
+        &cfg(),
+        &StrategyConfig::default(),
+    ) {
         WorkStep::Attempt { angle, .. } => {
-            assert_ne!(format!("{angle:?}"), "", "a different angle, not the same one again")
+            assert_ne!(
+                format!("{angle:?}"),
+                "",
+                "a different angle, not the same one again"
+            )
         }
         o => panic!("{o:?}"),
     }
@@ -258,11 +319,19 @@ fn a_working_change_is_proposed_with_what_it_touched_and_how_many_tests_ran() {
         problem: None,
         lines_changed: 8,
     };
-    match s.after(ok, "the handle was cached", &cfg(), &StrategyConfig::default()) {
+    match s.after(
+        ok,
+        "the handle was cached",
+        &cfg(),
+        &StrategyConfig::default(),
+    ) {
         WorkStep::Propose { summary } => {
             // Areas, not filenames — "how it hears and speaks" means
             // something; src/voice.rs does not.
-            assert!(summary.contains("how it hears and speaks"), "got: {summary}");
+            assert!(
+                summary.contains("how it hears and speaks"),
+                "got: {summary}"
+            );
             assert!(!summary.contains("src/"), "no paths in what you hear");
             assert!(summary.contains("1159 tests pass"));
             assert!(summary.contains("1 attempt"));
@@ -275,7 +344,11 @@ fn a_working_change_is_proposed_with_what_it_touched_and_how_many_tests_ran() {
 fn a_big_change_says_so_rather_than_slipping_past() {
     let mut s = Session::new("restructure the layout engine", 1158);
     let big = Tried {
-        edits: vec![Edit { path: "src/layout.rs".into(), content: "x".into(), reason: "y".into() }],
+        edits: vec![Edit {
+            path: "src/layout.rs".into(),
+            content: "x".into(),
+            reason: "y".into(),
+        }],
         passed: true,
         tests_run: 1160,
         problem: None,
@@ -293,7 +366,11 @@ fn a_big_change_says_so_rather_than_slipping_past() {
 fn touching_a_forbidden_file_stops_the_whole_thing() {
     let mut s = Session::new("relax the approval rules", 1158);
     let sneaky = Tried {
-        edits: vec![Edit { path: "src/policy.rs".into(), content: "x".into(), reason: "y".into() }],
+        edits: vec![Edit {
+            path: "src/policy.rs".into(),
+            content: "x".into(),
+            reason: "y".into(),
+        }],
         passed: true,
         tests_run: 1158,
         problem: None,

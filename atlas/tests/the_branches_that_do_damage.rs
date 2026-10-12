@@ -102,12 +102,25 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
     home();
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 // --- acting as you ---------------------------------------------------------
@@ -265,8 +278,15 @@ fn a_stranger_cannot_teach_atlas_that_their_face_is_yours() {
         let as_owner = d.execute(&Intent::ThisIsMe);
         d.execute(&Intent::HandOver("Sam has it".into()));
         let as_guest = d.execute(&Intent::ThisIsMe);
-        assert_eq!(as_guest, refusal("this_is_me"), "a guest reached the face album");
-        assert_ne!(as_owner, as_guest, "the handover changed nothing about the answer");
+        assert_eq!(
+            as_guest,
+            refusal("this_is_me"),
+            "a guest reached the face album"
+        );
+        assert_ne!(
+            as_owner, as_guest,
+            "the handover changed nothing about the answer"
+        );
     });
 }
 
@@ -282,8 +302,15 @@ fn a_stranger_cannot_finish_your_setup() {
         let as_owner = d.execute(&Intent::FinishSetup);
         d.execute(&Intent::HandOver("Sam has it".into()));
         let as_guest = d.execute(&Intent::FinishSetup);
-        assert_eq!(as_guest, refusal("finish_setup"), "a guest set up your machine");
-        assert_ne!(as_owner, as_guest, "the handover changed nothing about the answer");
+        assert_eq!(
+            as_guest,
+            refusal("finish_setup"),
+            "a guest set up your machine"
+        );
+        assert_ne!(
+            as_owner, as_guest,
+            "the handover changed nothing about the answer"
+        );
     });
 }
 
@@ -299,8 +326,15 @@ fn a_stranger_cannot_read_your_messages() {
         let as_owner = d.execute(&Intent::Messages);
         d.execute(&Intent::HandOver("Sam has it".into()));
         let as_guest = d.execute(&Intent::Messages);
-        assert_eq!(as_guest, refusal("messages"), "a guest was read your messages");
-        assert_ne!(as_owner, as_guest, "the handover changed nothing about the answer");
+        assert_eq!(
+            as_guest,
+            refusal("messages"),
+            "a guest was read your messages"
+        );
+        assert_ne!(
+            as_owner, as_guest,
+            "the handover changed nothing about the answer"
+        );
     });
 }
 
@@ -315,8 +349,15 @@ fn a_stranger_cannot_open_accounts_in_your_name() {
         let as_owner = d.execute(&Intent::CreateAccount("example.com".into()));
         d.execute(&Intent::HandOver("Sam has it".into()));
         let as_guest = d.execute(&Intent::CreateAccount("example.com".into()));
-        assert_eq!(as_guest, refusal("create_account"), "a guest signed up as you");
-        assert_ne!(as_owner, as_guest, "the handover changed nothing about the answer");
+        assert_eq!(
+            as_guest,
+            refusal("create_account"),
+            "a guest signed up as you"
+        );
+        assert_ne!(
+            as_owner, as_guest,
+            "the handover changed nothing about the answer"
+        );
     });
 }
 
@@ -331,8 +372,15 @@ fn a_stranger_cannot_set_atlas_to_work_on_itself() {
         let as_owner = d.execute(&Intent::WorkOnYourself(String::new()));
         d.execute(&Intent::HandOver("Sam has it".into()));
         let as_guest = d.execute(&Intent::WorkOnYourself(String::new()));
-        assert_eq!(as_guest, refusal("work_on_yourself"), "a guest set Atlas on itself");
-        assert_ne!(as_owner, as_guest, "the handover changed nothing about the answer");
+        assert_eq!(
+            as_guest,
+            refusal("work_on_yourself"),
+            "a guest set Atlas on itself"
+        );
+        assert_ne!(
+            as_owner, as_guest,
+            "the handover changed nothing about the answer"
+        );
     });
 }
 
@@ -348,8 +396,15 @@ fn a_stranger_cannot_reach_your_other_machines() {
         let as_owner = d.execute(&Intent::Sync(String::new()));
         d.execute(&Intent::HandOver("Sam has it".into()));
         let as_guest = d.execute(&Intent::Sync(String::new()));
-        assert_eq!(as_guest, refusal("sync"), "a guest reached your other machines");
-        assert_ne!(as_owner, as_guest, "the handover changed nothing about the answer");
+        assert_eq!(
+            as_guest,
+            refusal("sync"),
+            "a guest reached your other machines"
+        );
+        assert_ne!(
+            as_owner, as_guest,
+            "the handover changed nothing about the answer"
+        );
     });
 }
 // --- secrets ---------------------------------------------------------------
@@ -405,7 +460,9 @@ fn a_captured_thought_is_on_disk_before_atlas_says_it_kept_it() {
         let c = cfg();
         let p = plat();
         let mut d = daemon(&c, &p, "capture");
-        let said = d.execute(&Intent::Capture("the roof needs looking at before winter".into()));
+        let said = d.execute(&Intent::Capture(
+            "the roof needs looking at before winter".into(),
+        ));
         assert!(!said.trim().is_empty(), "it said nothing at all");
         // Whatever it chose to call the record, something on disk now mentions
         // the roof. Asserted against the store rather than against a reply,
@@ -413,7 +470,10 @@ fn a_captured_thought_is_on_disk_before_atlas_says_it_kept_it() {
         let root = std::env::temp_dir().join("atlas-damage-capture");
         let mut found = false;
         for entry in walk(&root) {
-            if std::fs::read_to_string(&entry).unwrap_or_default().contains("roof") {
+            if std::fs::read_to_string(&entry)
+                .unwrap_or_default()
+                .contains("roof")
+            {
                 found = true;
                 break;
             }
@@ -444,11 +504,19 @@ fn a_captured_thought_survives_a_restart() {
                 Store::new(dir.clone()),
                 Proactive::new(ProactiveConfig::default()),
             );
-            d.execute(&Intent::Capture("the roof needs looking at before winter".into()));
+            d.execute(&Intent::Capture(
+                "the roof needs looking at before winter".into(),
+            ));
         }
         // A second Atlas, on the same state directory. Nothing is shared but the
         // disk, which is the whole claim.
-        let d2 = Daemon::new(&c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
+        let d2 = Daemon::new(
+            &c,
+            &p,
+            None,
+            Store::new(dir),
+            Proactive::new(ProactiveConfig::default()),
+        );
         assert!(
             d2.notebook.notes.iter().any(|n| n.text.contains("roof")),
             "the thought did not survive the restart -- {} notes came back",
@@ -459,7 +527,9 @@ fn a_captured_thought_survives_a_restart() {
 
 fn walk(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let Ok(rd) = std::fs::read_dir(dir) else { return out };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return out;
+    };
     for e in rd.flatten() {
         let p = e.path();
         if p.is_dir() {
@@ -547,15 +617,34 @@ fn a_lesson_that_could_not_be_saved_is_not_promised() {
 #[test]
 fn call_notes_through_the_daemon_record_nobody_without_the_steps() {
     let cfg = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
-    let p = atlas::platform::mock::MockPlatform::new(vec![atlas::platform::Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let p = atlas::platform::mock::MockPlatform::new(vec![atlas::platform::Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     let dir = std::env::temp_dir().join(format!("atlas-callbranch-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let mut d = atlas::daemon::Daemon::new(&cfg, &p, None, atlas::store::Store::new(dir.clone()), atlas::proactive::Proactive::new(atlas::proactive::ProactiveConfig::default()));
-    let off = d.execute_timed(&atlas::intent::Intent::CallNotes("start".into()), "take notes on this call");
+    let mut d = atlas::daemon::Daemon::new(
+        &cfg,
+        &p,
+        None,
+        atlas::store::Store::new(dir.clone()),
+        atlas::proactive::Proactive::new(atlas::proactive::ProactiveConfig::default()),
+    );
+    let off = d.execute_timed(
+        &atlas::intent::Intent::CallNotes("start".into()),
+        "take notes on this call",
+    );
     // Switched off — or, where another test in this file has the machine
     // handed over, refused as the owner's. Either way: no call is noted.
-    assert!(off.starts_with("Call notes are switched off") || off.contains("call notes is the owner's"), "{off}");
+    assert!(
+        off.starts_with("Call notes are switched off") || off.contains("call notes is the owner's"),
+        "{off}"
+    );
     assert!(d.call_notes.call.is_none());
     let _ = std::fs::remove_dir_all(dir);
 }

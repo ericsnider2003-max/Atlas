@@ -1,5 +1,6 @@
 use atlas::safety::{
-    back_up, due_for_backup, list_backups, prune_backups, restore_with_notes, BackupConfig, Trash, TrashConfig,
+    back_up, due_for_backup, list_backups, prune_backups, restore_with_notes, BackupConfig, Trash,
+    TrashConfig,
 };
 use atlas::server::{
     content_length, new_token, parse_request, render, route, token_matches, Action, Reply, Server,
@@ -32,7 +33,10 @@ fn a_request_is_parsed_with_its_token() {
 #[test]
 fn a_bearer_header_works_too_because_phone_clients_use_it() {
     let head = "GET /status HTTP/1.1\r\nAuthorization: Bearer tok-999\r\n";
-    assert_eq!(parse_request(head, "").unwrap().token.as_deref(), Some("tok-999"));
+    assert_eq!(
+        parse_request(head, "").unwrap().token.as_deref(),
+        Some("tok-999")
+    );
 }
 
 #[test]
@@ -70,15 +74,24 @@ fn only_the_intended_endpoints_route() {
         body: b.into(),
     };
     assert_eq!(route(&req("GET", "/status", "")), Some(Action::Status));
-    assert_eq!(route(&req("GET", "/outstanding", "")), Some(Action::Outstanding));
+    assert_eq!(
+        route(&req("GET", "/outstanding", "")),
+        Some(Action::Outstanding)
+    );
     assert_eq!(
         route(&req("POST", "/say", r#"{"text":"boot workspace"}"#)),
         Some(Action::Say("boot workspace".into()))
     );
-    assert_eq!(route(&req("POST", "/approve", r#"{"id":7}"#)), Some(Action::Approve(7)));
+    assert_eq!(
+        route(&req("POST", "/approve", r#"{"id":7}"#)),
+        Some(Action::Approve(7))
+    );
     assert!(route(&req("GET", "/../../etc/passwd", "")).is_none());
     assert!(route(&req("POST", "/execute", "{}")).is_none());
-    assert!(route(&req("DELETE", "/status", "")).is_none(), "method matters");
+    assert!(
+        route(&req("DELETE", "/status", "")).is_none(),
+        "method matters"
+    );
 }
 
 #[test]
@@ -112,7 +125,14 @@ fn a_generated_token_is_long_and_readable_aloud() {
 
 #[test]
 fn a_short_token_is_refused_at_startup() {
-    let e = match Server::bind(&ServerConfig { port: 0, enabled: true, ..Default::default() }, "short") {
+    let e = match Server::bind(
+        &ServerConfig {
+            port: 0,
+            enabled: true,
+            ..Default::default()
+        },
+        "short",
+    ) {
         Err(e) => e.to_string(),
         Ok(_) => panic!("a five-character token must not be accepted"),
     };
@@ -124,14 +144,25 @@ fn responses_are_well_formed_and_uncacheable() {
     let out = render(&Reply::ok("{\"a\":1}"));
     assert!(out.starts_with("HTTP/1.1 200 OK\r\n"));
     assert!(out.contains("Content-Length: 7\r\n"));
-    assert!(out.contains("Cache-Control: no-store"), "a phone must not cache workspace state");
+    assert!(
+        out.contains("Cache-Control: no-store"),
+        "a phone must not cache workspace state"
+    );
     assert!(out.ends_with("{\"a\":1}"));
 }
 
 #[test]
 fn the_server_answers_a_real_request_over_a_real_socket() {
     let token = new_token().unwrap();
-    let s = Server::bind(&ServerConfig { port: 0, enabled: true, ..Default::default() }, &token).unwrap();
+    let s = Server::bind(
+        &ServerConfig {
+            port: 0,
+            enabled: true,
+            ..Default::default()
+        },
+        &token,
+    )
+    .unwrap();
     let port = s.port();
 
     let t2 = token.clone();
@@ -163,24 +194,38 @@ fn the_server_answers_a_real_request_over_a_real_socket() {
 
 #[test]
 fn a_request_with_the_wrong_token_gets_nothing_and_runs_nothing() {
-    let s = Server::bind(&ServerConfig { port: 0, enabled: true, ..Default::default() }, &new_token().unwrap()).unwrap();
+    let s = Server::bind(
+        &ServerConfig {
+            port: 0,
+            enabled: true,
+            ..Default::default()
+        },
+        &new_token().unwrap(),
+    )
+    .unwrap();
     let port = s.port();
     let client = std::thread::spawn(move || {
         let mut c = TcpStream::connect(("127.0.0.1", port)).unwrap();
-        c.write_all(b"GET /status HTTP/1.1\r\nX-Atlas-Token: wrong\r\n\r\n").unwrap();
+        c.write_all(b"GET /status HTTP/1.1\r\nX-Atlas-Token: wrong\r\n\r\n")
+            .unwrap();
         let mut out = String::new();
         let _ = c.read_to_string(&mut out);
         out
     });
 
     let mut ran = false;
-    let action = s.serve_once(&mut |_| {
-        ran = true;
-        Reply::ok("{}")
-    }).unwrap();
+    let action = s
+        .serve_once(&mut |_| {
+            ran = true;
+            Reply::ok("{}")
+        })
+        .unwrap();
 
     assert!(client.join().unwrap().starts_with("HTTP/1.1 401"));
-    assert!(!ran, "the handler must never see an unauthenticated request");
+    assert!(
+        !ran,
+        "the handler must never see an unauthenticated request"
+    );
     assert!(action.is_none());
 }
 
@@ -188,7 +233,15 @@ fn a_request_with_the_wrong_token_gets_nothing_and_runs_nothing() {
 fn the_listener_is_loopback_only() {
     // Binding to 0.0.0.0 would put a command endpoint for your workspace on
     // whatever network you're on.
-    let s = Server::bind(&ServerConfig { port: 0, enabled: true, ..Default::default() }, &new_token().unwrap()).unwrap();
+    let s = Server::bind(
+        &ServerConfig {
+            port: 0,
+            enabled: true,
+            ..Default::default()
+        },
+        &new_token().unwrap(),
+    )
+    .unwrap();
     let port = s.port();
     drop(std::thread::spawn(move || {
         let _ = TcpStream::connect(("127.0.0.1", port));
@@ -215,7 +268,12 @@ fn an_oversized_body_is_refused_before_it_is_read() {
     // This test is about the size limit, so it gets past the door first.
     let token = new_token().unwrap();
     let s = Server::bind(
-        &ServerConfig { port: 0, max_body: 10, enabled: true, ..Default::default() },
+        &ServerConfig {
+            port: 0,
+            max_body: 10,
+            enabled: true,
+            ..Default::default()
+        },
         &token,
     )
     .unwrap();
@@ -236,7 +294,11 @@ fn an_oversized_body_is_refused_before_it_is_read() {
     });
     s.serve_once(&mut |_| Reply::ok("{}")).unwrap();
     let got = client.join().unwrap();
-    assert!(got.starts_with("HTTP/1.1 413"), "got: {}", got.lines().next().unwrap_or(""));
+    assert!(
+        got.starts_with("HTTP/1.1 413"),
+        "got: {}",
+        got.lines().next().unwrap_or("")
+    );
 }
 
 #[test]
@@ -248,14 +310,20 @@ fn an_unauthenticated_oversized_body_is_refused_without_being_read() {
     // limit is either, which would be a fact about the server handed to
     // someone who has not authenticated.
     let s = Server::bind(
-        &ServerConfig { port: 0, max_body: 10, enabled: true, ..Default::default() },
+        &ServerConfig {
+            port: 0,
+            max_body: 10,
+            enabled: true,
+            ..Default::default()
+        },
         &new_token().unwrap(),
     )
     .unwrap();
     let port = s.port();
     let client = std::thread::spawn(move || {
         let mut c = TcpStream::connect(("127.0.0.1", port)).unwrap();
-        c.write_all(b"POST /say HTTP/1.1\r\nContent-Length: 999999\r\n\r\n").unwrap();
+        c.write_all(b"POST /say HTTP/1.1\r\nContent-Length: 999999\r\n\r\n")
+            .unwrap();
         let mut out = String::new();
         let _ = c.read_to_string(&mut out);
         out
@@ -267,7 +335,10 @@ fn an_unauthenticated_oversized_body_is_refused_without_being_read() {
         "an anonymous caller got past the door far enough to be told about the body: {}",
         got.lines().next().unwrap_or("")
     );
-    assert!(!got.contains("too large"), "it told an unauthenticated caller the size limit: {got}");
+    assert!(
+        !got.contains("too large"),
+        "it told an unauthenticated caller the size limit: {got}"
+    );
 }
 
 // ================= backup =================
@@ -284,9 +355,21 @@ fn state_with_files(tag: &str) -> PathBuf {
 #[test]
 fn a_backup_copies_everything_atlas_has_learned() {
     let state = state_with_files("bk");
-    let cfg = BackupConfig { dir: state.parent().unwrap().join("backups").display().to_string(), ..Default::default() };
+    let cfg = BackupConfig {
+        dir: state
+            .parent()
+            .unwrap()
+            .join("backups")
+            .display()
+            .to_string(),
+        ..Default::default()
+    };
     let b = back_up(&state, &cfg, 1000).unwrap();
-    assert_eq!(b.files, Some(2), "a completed backup must know its own file count");
+    assert_eq!(
+        b.files,
+        Some(2),
+        "a completed backup must know its own file count"
+    );
     assert!(b.path.join("memory.json").exists());
 }
 
@@ -294,23 +377,45 @@ fn a_backup_copies_everything_atlas_has_learned() {
 fn a_half_written_backup_leaves_nothing_that_looks_complete() {
     // Files land under a dot-name and are renamed into place.
     let state = state_with_files("bk2");
-    let cfg = BackupConfig { dir: state.parent().unwrap().join("backups").display().to_string(), ..Default::default() };
+    let cfg = BackupConfig {
+        dir: state
+            .parent()
+            .unwrap()
+            .join("backups")
+            .display()
+            .to_string(),
+        ..Default::default()
+    };
     let b = back_up(&state, &cfg, 1000).unwrap();
     let leftovers: Vec<String> = fs::read_dir(&b.path)
         .unwrap()
         .flatten()
         .map(|e| e.file_name().to_string_lossy().to_string())
-        .filter(|n| n.starts_with('.') && n != ".atlas-backup-manifest.json" && n != ".atlas-owned-outputs")
+        .filter(|n| {
+            n.starts_with('.') && n != ".atlas-backup-manifest.json" && n != ".atlas-owned-outputs"
+        })
         .collect();
-    assert!(leftovers.is_empty(), "temp names left behind: {leftovers:?}");
+    assert!(
+        leftovers.is_empty(),
+        "temp names left behind: {leftovers:?}"
+    );
     assert!(b.path.join(".atlas-backup-manifest.json").is_file());
 }
 
 #[test]
 fn old_backups_are_pruned_and_the_newest_are_kept() {
     let state = state_with_files("bk3");
-    let dir = state.parent().unwrap().join("backups").display().to_string();
-    let cfg = BackupConfig { dir, keep: 3, ..Default::default() };
+    let dir = state
+        .parent()
+        .unwrap()
+        .join("backups")
+        .display()
+        .to_string();
+    let cfg = BackupConfig {
+        dir,
+        keep: 3,
+        ..Default::default()
+    };
     for t in 1..=6 {
         back_up(&state, &cfg, t * 1000).unwrap();
     }
@@ -323,8 +428,17 @@ fn old_backups_are_pruned_and_the_newest_are_kept() {
 #[test]
 fn backups_are_due_on_a_schedule_and_immediately_when_there_are_none() {
     let state = state_with_files("bk4");
-    let dir = state.parent().unwrap().join("backups").display().to_string();
-    let cfg = BackupConfig { dir, every_secs: 3600, ..Default::default() };
+    let dir = state
+        .parent()
+        .unwrap()
+        .join("backups")
+        .display()
+        .to_string();
+    let cfg = BackupConfig {
+        dir,
+        every_secs: 3600,
+        ..Default::default()
+    };
     assert!(due_for_backup(&cfg, 0), "never backed up is always due");
     back_up(&state, &cfg, 1000).unwrap();
     assert!(!due_for_backup(&cfg, 2000));
@@ -336,16 +450,35 @@ fn restoring_moves_the_current_files_to_trash_first() {
     // Restoring the wrong backup must itself be undoable.
     let state = state_with_files("bk5");
     let root = state.parent().unwrap().to_path_buf();
-    let cfg = BackupConfig { dir: root.join("backups").display().to_string(), ..Default::default() };
+    let cfg = BackupConfig {
+        dir: root.join("backups").display().to_string(),
+        ..Default::default()
+    };
     let b = back_up(&state, &cfg, 1000).unwrap();
 
     fs::write(state.join("memory.json"), r#"{"schema":1,"changed":true}"#).unwrap();
-    let trash = Trash::new(TrashConfig { dir: root.join("trash").display().to_string(), keep_days: 30 });
-    let n = restore_with_notes(&b.path, &state, &trash, &atlas::household::Household::default(), &state.parent().unwrap().join("notes")).unwrap();
+    let trash = Trash::new(TrashConfig {
+        dir: root.join("trash").display().to_string(),
+        keep_days: 30,
+    });
+    let n = restore_with_notes(
+        &b.path,
+        &state,
+        &trash,
+        &atlas::household::Household::default(),
+        &state.parent().unwrap().join("notes"),
+    )
+    .unwrap();
 
     assert_eq!(n, 2);
-    assert_eq!(fs::read_to_string(state.join("memory.json")).unwrap(), r#"{"schema":1}"#);
-    assert!(!trash.ledger().is_empty(), "the replaced file is recoverable");
+    assert_eq!(
+        fs::read_to_string(state.join("memory.json")).unwrap(),
+        r#"{"schema":1}"#
+    );
+    assert!(
+        !trash.ledger().is_empty(),
+        "the replaced file is recoverable"
+    );
 }
 
 #[test]
@@ -355,22 +488,48 @@ fn restoring_a_backup_from_someone_elses_household_is_refused() {
 
     let state = state_with_files("bk-household-mismatch");
     let root = state.parent().unwrap().to_path_buf();
-    let cfg = BackupConfig { dir: root.join("backups").display().to_string(), ..Default::default() };
+    let cfg = BackupConfig {
+        dir: root.join("backups").display().to_string(),
+        ..Default::default()
+    };
     let b = back_up(&state, &cfg, 1000).unwrap();
 
     // The backup carries someone else's household, saved into it directly --
     // the shape of a backup folder found on a shared drive or synced by
     // mistake into the wrong account.
-    let their_household = Household { id: "their-id".into(), name: "Sarah".into(), made_at: 1, devices: vec![] };
+    let their_household = Household {
+        id: "their-id".into(),
+        name: "Sarah".into(),
+        made_at: 1,
+        devices: vec![],
+    };
     their_household.save(&Store::new(&b.path)).unwrap();
 
-    let mine = Household { id: "my-id".into(), name: "Eric".into(), made_at: 1, devices: vec![] };
-    let trash = Trash::new(TrashConfig { dir: root.join("trash").display().to_string(), keep_days: 30 });
-    let err = restore_with_notes(&b.path, &state, &trash, &mine, &state.parent().unwrap().join("notes")).unwrap_err();
+    let mine = Household {
+        id: "my-id".into(),
+        name: "Eric".into(),
+        made_at: 1,
+        devices: vec![],
+    };
+    let trash = Trash::new(TrashConfig {
+        dir: root.join("trash").display().to_string(),
+        keep_days: 30,
+    });
+    let err = restore_with_notes(
+        &b.path,
+        &state,
+        &trash,
+        &mine,
+        &state.parent().unwrap().join("notes"),
+    )
+    .unwrap_err();
     assert!(err.to_string().contains("someone else's"), "{err}");
 
     // And nothing was actually touched -- refusing has to mean refusing.
-    assert_eq!(fs::read_to_string(state.join("memory.json")).unwrap(), r#"{"schema":1}"#);
+    assert_eq!(
+        fs::read_to_string(state.join("memory.json")).unwrap(),
+        r#"{"schema":1}"#
+    );
 }
 
 #[test]
@@ -380,14 +539,32 @@ fn restoring_your_own_households_backup_still_works() {
 
     let state = state_with_files("bk-household-match");
     let root = state.parent().unwrap().to_path_buf();
-    let cfg = BackupConfig { dir: root.join("backups").display().to_string(), ..Default::default() };
-    let mine = Household { id: "my-id".into(), name: "Eric".into(), made_at: 1, devices: vec![] };
+    let cfg = BackupConfig {
+        dir: root.join("backups").display().to_string(),
+        ..Default::default()
+    };
+    let mine = Household {
+        id: "my-id".into(),
+        name: "Eric".into(),
+        made_at: 1,
+        devices: vec![],
+    };
     mine.save(&Store::new(&state)).unwrap();
     let b = back_up(&state, &cfg, 1000).unwrap();
 
     fs::write(state.join("memory.json"), r#"{"schema":1,"changed":true}"#).unwrap();
-    let trash = Trash::new(TrashConfig { dir: root.join("trash").display().to_string(), keep_days: 30 });
-    let n = restore_with_notes(&b.path, &state, &trash, &mine, &state.parent().unwrap().join("notes")).unwrap();
+    let trash = Trash::new(TrashConfig {
+        dir: root.join("trash").display().to_string(),
+        keep_days: 30,
+    });
+    let n = restore_with_notes(
+        &b.path,
+        &state,
+        &trash,
+        &mine,
+        &state.parent().unwrap().join("notes"),
+    )
+    .unwrap();
     assert_eq!(n, 2, "the same household's own backup restores as before");
 }
 
@@ -397,7 +574,10 @@ fn a_backup_older_than_this_check_with_no_household_file_is_not_refused() {
     // household identity existed at all must not suddenly become unusable.
     let state = state_with_files("bk-household-none");
     let root = state.parent().unwrap().to_path_buf();
-    let cfg = BackupConfig { dir: root.join("backups").display().to_string(), ..Default::default() };
+    let cfg = BackupConfig {
+        dir: root.join("backups").display().to_string(),
+        ..Default::default()
+    };
     let b = back_up(&state, &cfg, 1000).unwrap();
 
     let mine = atlas::household::Household {
@@ -406,9 +586,22 @@ fn a_backup_older_than_this_check_with_no_household_file_is_not_refused() {
         made_at: 1,
         devices: vec![],
     };
-    let trash = Trash::new(TrashConfig { dir: root.join("trash").display().to_string(), keep_days: 30 });
-    let n = restore_with_notes(&b.path, &state, &trash, &mine, &state.parent().unwrap().join("notes")).unwrap();
-    assert_eq!(n, 2, "no household file in the backup at all is let through, not refused");
+    let trash = Trash::new(TrashConfig {
+        dir: root.join("trash").display().to_string(),
+        keep_days: 30,
+    });
+    let n = restore_with_notes(
+        &b.path,
+        &state,
+        &trash,
+        &mine,
+        &state.parent().unwrap().join("notes"),
+    )
+    .unwrap();
+    assert_eq!(
+        n, 2,
+        "no household file in the backup at all is let through, not refused"
+    );
 }
 
 // ================= undo =================
@@ -416,7 +609,10 @@ fn a_backup_older_than_this_check_with_no_household_file_is_not_refused() {
 fn trash_at(tag: &str) -> (Trash, PathBuf) {
     let d = tmp(tag);
     (
-        Trash::new(TrashConfig { dir: d.join("trash").display().to_string(), keep_days: 30 }),
+        Trash::new(TrashConfig {
+            dir: d.join("trash").display().to_string(),
+            keep_days: 30,
+        }),
         d,
     )
 }
@@ -471,13 +667,21 @@ fn undo_refuses_rather_than_overwriting_something_that_came_back() {
 
     let e = trash.undo_last().unwrap_err().to_string();
     assert!(e.contains("exists again"), "got: {e}");
-    assert_eq!(fs::read_to_string(&f).unwrap(), "new work since then", "untouched");
+    assert_eq!(
+        fs::read_to_string(&f).unwrap(),
+        "new work since then",
+        "untouched"
+    );
 }
 
 #[test]
 fn undoing_with_nothing_to_undo_says_so_plainly() {
     let (trash, _) = trash_at("t5");
-    assert!(trash.undo_last().unwrap_err().to_string().contains("nothing to undo"));
+    assert!(trash
+        .undo_last()
+        .unwrap_err()
+        .to_string()
+        .contains("nothing to undo"));
 }
 
 #[test]
@@ -526,7 +730,10 @@ fn the_shipped_config_is_honest_about_the_api_and_stays_loopback_bound() {
         "with no config at all, nothing should listen"
     );
     assert!(t.server.max_body > 0 && t.server.max_body <= 1024 * 1024);
-    assert!(t.backup.enabled, "backups should be on by default — nothing else protects this");
+    assert!(
+        t.backup.enabled,
+        "backups should be on by default — nothing else protects this"
+    );
     assert!(t.backup.keep >= 3);
     assert!(t.trash.keep_days >= 7, "undo needs a real window");
 }
@@ -541,8 +748,14 @@ fn the_shipped_config_is_honest_about_the_api_and_stays_loopback_bound() {
 #[test]
 fn a_plain_query_field_comes_back_as_it_was_written() {
     use atlas::server::query_field;
-    assert_eq!(query_field("token=abc123", "token").as_deref(), Some("abc123"));
-    assert_eq!(query_field("a=1&token=abc&b=2", "token").as_deref(), Some("abc"));
+    assert_eq!(
+        query_field("token=abc123", "token").as_deref(),
+        Some("abc123")
+    );
+    assert_eq!(
+        query_field("a=1&token=abc&b=2", "token").as_deref(),
+        Some("abc")
+    );
     assert_eq!(query_field("", "token"), None);
     assert_eq!(query_field("other=1", "token"), None);
 }
@@ -552,7 +765,10 @@ fn a_key_that_merely_starts_the_same_is_not_the_key() {
     // `atoken=` and `token_id=` are different fields, and a prefix match here
     // would hand a request someone else's value.
     use atlas::server::query_field;
-    assert_eq!(query_field("atoken=wrong&token=right", "token").as_deref(), Some("right"));
+    assert_eq!(
+        query_field("atoken=wrong&token=right", "token").as_deref(),
+        Some("right")
+    );
     assert_eq!(query_field("token_id=wrong", "token"), None);
     assert_eq!(query_field("tok=wrong", "token"), None);
 }
@@ -562,7 +778,10 @@ fn the_escapes_a_browser_puts_in_come_back_out() {
     use atlas::server::query_field;
     // `+` is a space in a query string, which is the one rule that differs
     // from path decoding.
-    assert_eq!(query_field("q=two+words", "q").as_deref(), Some("two words"));
+    assert_eq!(
+        query_field("q=two+words", "q").as_deref(),
+        Some("two words")
+    );
     assert_eq!(query_field("q=%20", "q").as_deref(), Some(" "));
     assert_eq!(query_field("q=a%2Fb", "q").as_deref(), Some("a/b"));
     // Lower-case hex too — browsers emit both.
@@ -578,7 +797,10 @@ fn a_multi_byte_character_is_decoded_as_bytes_and_not_as_characters() {
     // a two-byte character, so `é` arrives as two replacement characters or a
     // panic, depending on how it is done.
     use atlas::server::query_field;
-    assert_eq!(query_field("name=caf%C3%A9", "name").as_deref(), Some("café"));
+    assert_eq!(
+        query_field("name=caf%C3%A9", "name").as_deref(),
+        Some("café")
+    );
     assert_eq!(query_field("name=%E2%9C%93", "name").as_deref(), Some("✓"));
 }
 
@@ -602,7 +824,11 @@ fn a_field_with_no_value_is_empty_rather_than_missing() {
     // this must not fold the two together.
     use atlas::server::query_field;
     assert_eq!(query_field("token=", "token").as_deref(), Some(""));
-    assert_eq!(query_field("token", "token"), None, "no `=` at all is not a field");
+    assert_eq!(
+        query_field("token", "token"),
+        None,
+        "no `=` at all is not a field"
+    );
 }
 
 /// 1 Oct 2026 security pass: the hub's cookie goes to every port on this
@@ -614,7 +840,15 @@ fn another_page_on_this_machine_cannot_press_hub_buttons() {
     use atlas::server::from_another_page;
     let ask = |extra: &str| -> (String, bool) {
         let token = new_token().unwrap();
-        let s = Server::bind(&ServerConfig { port: 0, enabled: true, ..Default::default() }, &token).unwrap();
+        let s = Server::bind(
+            &ServerConfig {
+                port: 0,
+                enabled: true,
+                ..Default::default()
+            },
+            &token,
+        )
+        .unwrap();
         let port = s.port();
         let body = r#"{"text":"boot workspace"}"#;
         let req = format!(
@@ -638,15 +872,28 @@ fn another_page_on_this_machine_cannot_press_hub_buttons() {
     let (out, ran) = ask("Sec-Fetch-Site: same-site\r\nOrigin: http://localhost:3000\r\n");
     assert!(out.starts_with("HTTP/1.1 401") && !ran, "{out}");
     let (out, ran) = ask("Origin: http://localhost:3000\r\n");
-    assert!(out.starts_with("HTTP/1.1 401") && !ran, "an older browser, judged by Origin: {out}");
+    assert!(
+        out.starts_with("HTTP/1.1 401") && !ran,
+        "an older browser, judged by Origin: {out}"
+    );
     let (out, ran) = ask("Sec-Fetch-Site: same-origin\r\n");
-    assert!(out.starts_with("HTTP/1.1 200") && ran, "the hub's own page still works: {out}");
+    assert!(
+        out.starts_with("HTTP/1.1 200") && ran,
+        "the hub's own page still works: {out}"
+    );
     let (out, ran) = ask("");
-    assert!(out.starts_with("HTTP/1.1 200") && ran, "the phone app sends neither header: {out}");
+    assert!(
+        out.starts_with("HTTP/1.1 200") && ran,
+        "the phone app sends neither header: {out}"
+    );
     assert_eq!(out.matches("frame-ancestors 'none'").count(), 1, "{out}");
 
     // Through a front (Tailscale's HTTPS) the Host differs from the Origin,
     // but it isn't this machine on another port.
-    assert!(!from_another_page("POST /say HTTP/1.1\r\nHost: 127.0.0.1:8787\r\nOrigin: https://laptop.tail1234.ts.net\r\n"));
-    assert!(from_another_page("POST /say HTTP/1.1\r\nHost: 127.0.0.1:8787\r\nOrigin: null\r\n"));
+    assert!(!from_another_page(
+        "POST /say HTTP/1.1\r\nHost: 127.0.0.1:8787\r\nOrigin: https://laptop.tail1234.ts.net\r\n"
+    ));
+    assert!(from_another_page(
+        "POST /say HTTP/1.1\r\nHost: 127.0.0.1:8787\r\nOrigin: null\r\n"
+    ));
 }

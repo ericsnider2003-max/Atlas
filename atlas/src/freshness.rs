@@ -96,7 +96,10 @@ pub enum Checkable {
 
 impl Checkable {
     pub fn can_recheck_alone(&self) -> bool {
-        matches!(self, Checkable::Page(_) | Checkable::File(_) | Checkable::Ran(_))
+        matches!(
+            self,
+            Checkable::Page(_) | Checkable::File(_) | Checkable::Ran(_)
+        )
     }
 
     pub fn plain(&self) -> String {
@@ -234,27 +237,74 @@ pub fn ago(secs: u64) -> String {
 // ---------------------------------------------------------------------------
 
 const VOLATILE_WORDS: &[&str] = &[
-    "price", "quote", "cost right now", "weather", "temperature", "is up",
-    "is down", "online", "offline", "traffic", "queue", "balance",
-    "open now", "closed now", "trending", "score",
+    "price",
+    "quote",
+    "cost right now",
+    "weather",
+    "temperature",
+    "is up",
+    "is down",
+    "online",
+    "offline",
+    "traffic",
+    "queue",
+    "balance",
+    "open now",
+    "closed now",
+    "trending",
+    "score",
 ];
 
 const QUICK_WORDS: &[&str] = &[
-    "version", "latest", "current release", "installed", "update", "patch",
-    "build", "changelog", "release notes", "deprecated", "beta", "as of today",
-    "this week", "available now",
+    "version",
+    "latest",
+    "current release",
+    "installed",
+    "update",
+    "patch",
+    "build",
+    "changelog",
+    "release notes",
+    "deprecated",
+    "beta",
+    "as of today",
+    "this week",
+    "available now",
 ];
 
 const SLOW_WORDS: &[&str] = &[
-    "ceo", "president", "prime minister", "works at", "employed", "owns",
-    "headquarters", "law", "regulation", "rate", "policy", "acquired",
-    "merged", "renamed", "discontinued",
+    "ceo",
+    "president",
+    "prime minister",
+    "works at",
+    "employed",
+    "owns",
+    "headquarters",
+    "law",
+    "regulation",
+    "rate",
+    "policy",
+    "acquired",
+    "merged",
+    "renamed",
+    "discontinued",
 ];
 
 const SETTLED_WORDS: &[&str] = &[
-    "how it works", "why", "means", "definition", "protocol", "algorithm",
-    "theorem", "born in", "invented", "founded in", "was released in",
-    "history of", "derives from", "stands for",
+    "how it works",
+    "why",
+    "means",
+    "definition",
+    "protocol",
+    "algorithm",
+    "theorem",
+    "born in",
+    "invented",
+    "founded in",
+    "was released in",
+    "history of",
+    "derives from",
+    "stands for",
 ];
 
 /// Best guess at how long a claim stays true, from its wording.

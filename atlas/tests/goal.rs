@@ -3,7 +3,12 @@
 use atlas::goal::*;
 
 fn attempt(n: u32, passed: Vec<Check>, failed: Vec<Check>, changed: &str) -> Attempt {
-    Attempt { n, passed, failed, changed: changed.into() }
+    Attempt {
+        n,
+        passed,
+        failed,
+        changed: changed.into(),
+    }
 }
 
 fn build() -> Check {
@@ -11,7 +16,10 @@ fn build() -> Check {
 }
 
 fn sources() -> Check {
-    Check::AtLeast { what: "sources".into(), n: 3 }
+    Check::AtLeast {
+        what: "sources".into(),
+        n: 3,
+    }
 }
 
 // --- it will not run without a definition of done ---------------------------
@@ -22,19 +30,25 @@ fn a_goal_with_no_check_will_not_run_unattended() {
     // overnight run becomes a pile of activity you have to read.
     let g = Goal::new("make the report better", 5);
     assert_eq!(g.runnable_unattended(), Err(NotRunnable::NoCheck));
-    assert!(g.runnable_unattended().unwrap_err().plain().contains("finished looks like"));
+    assert!(g
+        .runnable_unattended()
+        .unwrap_err()
+        .plain()
+        .contains("finished looks like"));
 }
 
 #[test]
 fn a_goal_only_you_can_judge_waits_for_you() {
     // "Make it look good" cannot be evaluated at 3am by the thing that wrote
     // it. Keeping it as a goal is fine; running it unattended is not.
-    let g = Goal::new("redesign the panel", 5)
-        .checking(Check::YouDecide("it looks right".into()));
+    let g = Goal::new("redesign the panel", 5).checking(Check::YouDecide("it looks right".into()));
     let result = g.runnable_unattended();
     // Structural, not wording: exactly one reason, and it is the refusal
     // variant rather than success or some other error shape.
-    assert!(result.is_err(), "a subjective check must not be runnable unattended");
+    assert!(
+        result.is_err(),
+        "a subjective check must not be runnable unattended"
+    );
     match result {
         Err(NotRunnable::OnlyYouCanTell(w)) => {
             assert_eq!(w.len(), 1);
@@ -77,7 +91,12 @@ fn every_refusal_says_why_in_words_you_would_use() {
 #[test]
 fn meeting_every_check_is_done() {
     let g = Goal::new("x", 5).checking(build()).checking(sources());
-    let a = vec![attempt(1, vec![build(), sources()], vec![], "wrote the tests")];
+    let a = vec![attempt(
+        1,
+        vec![build(), sources()],
+        vec![],
+        "wrote the tests",
+    )];
     assert_eq!(g.standing(&a), Standing::Done);
     assert!(g.spoken(&a).contains("checks out"));
 }
@@ -90,7 +109,10 @@ fn running_out_of_attempts_names_what_is_still_failing() {
         attempt(2, vec![], vec![build()], "tried b"),
     ];
     match g.standing(&a) {
-        Standing::GaveUp { after, still_failing } => {
+        Standing::GaveUp {
+            after,
+            still_failing,
+        } => {
             assert_eq!(after, 2);
             assert!(still_failing[0].contains("cargo test"));
         }
@@ -165,8 +187,14 @@ fn every_check_can_describe_itself() {
     for c in [
         Check::CommandPasses("cargo test".into()),
         Check::FileExists("out.md".into()),
-        Check::FileContains { path: "a".into(), text: "b".into() },
-        Check::AtLeast { what: "sources".into(), n: 3 },
+        Check::FileContains {
+            path: "a".into(),
+            text: "b".into(),
+        },
+        Check::AtLeast {
+            what: "sources".into(),
+            n: 3,
+        },
         Check::YouDecide("it reads well".into()),
     ] {
         assert!(!c.plain().is_empty());

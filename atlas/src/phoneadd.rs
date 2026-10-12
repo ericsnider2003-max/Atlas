@@ -210,7 +210,9 @@ pub enum Enrol {
 
 pub fn route_enrol(method: &str, path: &str, token: &str) -> Enrol {
     let path = path.split('?').next().unwrap_or("");
-    let Some(rest) = path.strip_prefix('/').and_then(|p| p.strip_prefix(token)) else { return Enrol::NotFound };
+    let Some(rest) = path.strip_prefix('/').and_then(|p| p.strip_prefix(token)) else {
+        return Enrol::NotFound;
+    };
     match (method, rest) {
         ("GET", "" | "/") => Enrol::Page,
         ("GET", "/atlas.mobileconfig") => Enrol::Profile,
@@ -243,7 +245,9 @@ pub fn serve_enrol(
                     got(d);
                 }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(150)),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(150))
+            }
             Err(e) => return Err(e.to_string()),
         }
     }
@@ -253,10 +257,24 @@ pub fn serve_enrol(
 /// A UUID's shape from 32 hex digits (the profile wants one).
 fn uuid_from(hex: &str) -> String {
     let h: String = hex.chars().chain(std::iter::repeat('0')).take(32).collect();
-    format!("{}-{}-{}-{}-{}", &h[0..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32]).to_uppercase()
+    format!(
+        "{}-{}-{}-{}-{}",
+        &h[0..8],
+        &h[8..12],
+        &h[12..16],
+        &h[16..20],
+        &h[20..32]
+    )
+    .to_uppercase()
 }
 
-fn answer_enrol(mut s: TcpStream, token: &str, base: &str, challenge: &str, uuid: &str) -> Option<Device> {
+fn answer_enrol(
+    mut s: TcpStream,
+    token: &str,
+    base: &str,
+    challenge: &str,
+    uuid: &str,
+) -> Option<Device> {
     s.set_nonblocking(false).ok()?;
     s.set_read_timeout(Some(Duration::from_secs(10))).ok()?;
     let mut buf = Vec::new();
@@ -366,12 +384,26 @@ pub const WIRE_PREFIX: &str = "atlas-device ";
 
 /// Send `d` to whoever sends Atlas out, so the next iPhone build includes it.
 /// On their own Atlas it's filed straight into the waiting list.
-pub fn send_to_releaser(store: &crate::store::Store, peer_dir: &std::path::Path, d: &Device, now: u64) -> Result<String, String> {
-    let words = format!("{WIRE_PREFIX}{}", serde_json::to_string(d).map_err(|e| e.to_string())?);
+pub fn send_to_releaser(
+    store: &crate::store::Store,
+    peer_dir: &std::path::Path,
+    d: &Device,
+    now: u64,
+) -> Result<String, String> {
+    let words = format!(
+        "{WIRE_PREFIX}{}",
+        serde_json::to_string(d).map_err(|e| e.to_string())?
+    );
     let f = crate::feedback::compose_feedback(&words, None, now)?;
     match crate::feedback::send_decided(store, peer_dir, f)? {
-        crate::feedback::Sending::Filed => Ok(format!("{} is on your list for the next iPhone build.", d.name)),
-        crate::feedback::Sending::Queued(to) => Ok(format!("{} goes to {to}, who adds it to the next iPhone build.", d.name)),
+        crate::feedback::Sending::Filed => Ok(format!(
+            "{} is on your list for the next iPhone build.",
+            d.name
+        )),
+        crate::feedback::Sending::Queued(to) => Ok(format!(
+            "{} goes to {to}, who adds it to the next iPhone build.",
+            d.name
+        )),
     }
 }
 
@@ -382,12 +414,30 @@ pub fn heard(store: &crate::store::Store, from: &str, words: &str, now: u64) -> 
     if !looks_like_udid(&d.udid) {
         return None;
     }
-    d.name = d.name.chars().filter(|c| !c.is_control()).take(60).collect();
-    d.product = d.product.chars().filter(|c| c.is_ascii_alphanumeric() || *c == ',').take(20).collect();
-    d.from = if from == "you" { String::new() } else { from.to_string() };
+    d.name = d
+        .name
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(60)
+        .collect();
+    d.product = d
+        .product
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == ',')
+        .take(20)
+        .collect();
+    d.from = if from == "you" {
+        String::new()
+    } else {
+        from.to_string()
+    };
     d.at = now;
     let mut list: Vec<Device> = store.load(WAITING);
-    let who = if d.from.is_empty() { "Your".to_string() } else { format!("{}'s", d.from) };
+    let who = if d.from.is_empty() {
+        "Your".to_string()
+    } else {
+        format!("{}'s", d.from)
+    };
     let name = d.name.clone();
     keep(&mut list, d);
     let _ = store.save(WAITING, &list);
@@ -417,7 +467,14 @@ pub fn reach_out(port: u16) -> Result<String, String> {
     use crate::phonelink::{read_status, say, serve_outcome, tailscale_tool, Serve};
     let tool = tailscale_tool();
     let vars = crate::tools::Vars::new();
-    let run = |a: &[String]| crate::tools::ExternalTool { args: a.to_vec(), ..tool.clone() }.run(&vars, None).map_err(|e| e.to_string());
+    let run = |a: &[String]| {
+        crate::tools::ExternalTool {
+            args: a.to_vec(),
+            ..tool.clone()
+        }
+        .run(&vars, None)
+        .map_err(|e| e.to_string())
+    };
     let net = match run(&["status".into(), "--json".into()]) {
         Err(e) => {
             return Err(say(&match serve_outcome(Err(e), "") {
@@ -433,7 +490,11 @@ pub fn reach_out(port: u16) -> Result<String, String> {
     if net.dns_name.is_empty() {
         return Err(say(&Serve::NeedsHttps));
     }
-    let base = format!("https://{}:{}", net.dns_name.trim_end_matches('.'), crate::ota::HTTPS_PORT);
+    let base = format!(
+        "https://{}:{}",
+        net.dns_name.trim_end_matches('.'),
+        crate::ota::HTTPS_PORT
+    );
     match serve_outcome(run(&crate::ota::tailscale_args(port, false).0), &base) {
         Serve::Published { url } => Ok(url),
         other => Err(say(&other)),
@@ -443,7 +504,11 @@ pub fn reach_out(port: u16) -> Result<String, String> {
 /// Take the code's address off Tailscale again.
 pub fn stop_reaching_out() {
     let tool = crate::phonelink::tailscale_tool();
-    crate::heard!(crate::tools::ExternalTool { args: crate::ota::tailscale_args(0, false).1, ..tool }.run(&crate::tools::Vars::new(), None));
+    crate::heard!(crate::tools::ExternalTool {
+        args: crate::ota::tailscale_args(0, false).1,
+        ..tool
+    }
+    .run(&crate::tools::Vars::new(), None));
 }
 
 /// Where the phone apps wait on the computer, install-relative.
@@ -456,7 +521,11 @@ pub const APPS_DIR: &str = "apps";
 /// `apps/` when it's newer than the one kept, so nobody moves files by hand
 /// (27 Sep 2026: before this, nothing ever filled `apps/`, and the page said
 /// the app would arrive by itself).
-pub fn app_file(root: &std::path::Path, kind: Kind, downloads: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
+pub fn app_file(
+    root: &std::path::Path,
+    kind: Kind,
+    downloads: &[std::path::PathBuf],
+) -> Option<std::path::PathBuf> {
     // A page asking while a backup holds the state is not "no app here": wait a moment.
     let _state = crate::store::state_transaction_briefly(root).ok()?;
     let (name, ext) = match kind {
@@ -471,7 +540,10 @@ pub fn app_file(root: &std::path::Path, kind: Kind, downloads: &[std::path::Path
         .flat_map(|e| e.flatten())
         .map(|e| e.path())
         .filter(|p| {
-            let n = p.file_name().map(|n| n.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+            let n = p
+                .file_name()
+                .map(|n| n.to_string_lossy().to_ascii_lowercase())
+                .unwrap_or_default();
             n.starts_with("atlas") && n.ends_with(ext) && p.is_file()
         })
         .filter_map(|p| when(&p).map(|t| (t, p)))
@@ -479,7 +551,8 @@ pub fn app_file(root: &std::path::Path, kind: Kind, downloads: &[std::path::Path
     if let Some((t, from)) = newest {
         if when(&kept).is_none_or(|k| k < t) {
             // A copy that fails leaves the kept one (if any) as it was.
-            crate::kept!(std::fs::create_dir_all(root.join(APPS_DIR)).and_then(|_| std::fs::copy(&from, &kept)));
+            crate::kept!(std::fs::create_dir_all(root.join(APPS_DIR))
+                .and_then(|_| std::fs::copy(&from, &kept)));
         }
     }
     kept.is_file().then_some(kept)
@@ -489,7 +562,20 @@ pub fn app_file(root: &std::path::Path, kind: Kind, downloads: &[std::path::Path
 /// per device, `udid name`, the format Apple's "register multiple devices"
 /// upload and the build's `devices.txt` both take.
 pub fn devices_card(list: &[Device]) -> String {
-    list.iter().map(|d| format!("{}\t{}", d.udid, if d.from.is_empty() { d.name.clone() } else { format!("{} ({})", d.name, d.from) })).collect::<Vec<_>>().join("\n")
+    list.iter()
+        .map(|d| {
+            format!(
+                "{}\t{}",
+                d.udid,
+                if d.from.is_empty() {
+                    d.name.clone()
+                } else {
+                    format!("{} ({})", d.name, d.from)
+                }
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]
@@ -518,8 +604,16 @@ mod tests {
     fn the_profile_asks_only_for_the_ids_and_carries_the_challenge() {
         let p = profile("https://laptop.ts.net:8443/abc/device", "ch4ll", "A-B");
         let d = crate::ota::xml_plist(&p);
-        assert_eq!(d.get("PayloadType"), Some(&crate::ota::Value::Str("Profile Service".into())));
-        for k in ["<string>UDID</string>", "<string>DEVICE_NAME</string>", "https://laptop.ts.net:8443/abc/device", "ch4ll"] {
+        assert_eq!(
+            d.get("PayloadType"),
+            Some(&crate::ota::Value::Str("Profile Service".into()))
+        );
+        for k in [
+            "<string>UDID</string>",
+            "<string>DEVICE_NAME</string>",
+            "https://laptop.ts.net:8443/abc/device",
+            "ch4ll",
+        ] {
             assert!(p.contains(k), "{k}");
         }
     }
@@ -528,7 +622,10 @@ mod tests {
     fn a_phones_reply_gives_its_udid_and_only_with_the_right_challenge() {
         let d = device_from_reply(&reply("ch4ll", UDID), "ch4ll").unwrap();
         assert_eq!((d.udid.as_str(), d.product.as_str()), (UDID, "iPhone15,2"));
-        assert!(device_from_reply(&reply("other", UDID), "ch4ll").is_none(), "a reply to someone else's profile");
+        assert!(
+            device_from_reply(&reply("other", UDID), "ch4ll").is_none(),
+            "a reply to someone else's profile"
+        );
         assert!(device_from_reply(&reply("ch4ll", "not-a-udid"), "ch4ll").is_none());
         assert!(looks_like_udid("0123456789abcdef0123456789abcdef01234567"));
     }
@@ -536,16 +633,27 @@ mod tests {
     #[test]
     fn only_the_random_path_answers() {
         assert_eq!(route_enrol("GET", "/tok/", "tok"), Enrol::Page);
-        assert_eq!(route_enrol("GET", "/tok/atlas.mobileconfig", "tok"), Enrol::Profile);
+        assert_eq!(
+            route_enrol("GET", "/tok/atlas.mobileconfig", "tok"),
+            Enrol::Profile
+        );
         assert_eq!(route_enrol("POST", "/tok/device", "tok"), Enrol::Reply);
-        assert_eq!(route_enrol("GET", "/other/atlas.mobileconfig", "tok"), Enrol::NotFound);
+        assert_eq!(
+            route_enrol("GET", "/other/atlas.mobileconfig", "tok"),
+            Enrol::NotFound
+        );
         assert_eq!(route_enrol("POST", "/tok/", "tok"), Enrol::NotFound);
     }
 
     #[test]
     fn a_phone_is_kept_once_and_the_card_lists_it() {
         let mut list = Vec::new();
-        let d = Device { name: "Sam's iPhone".into(), udid: UDID.into(), from: "Sam".into(), ..Device::default() };
+        let d = Device {
+            name: "Sam's iPhone".into(),
+            udid: UDID.into(),
+            from: "Sam".into(),
+            ..Device::default()
+        };
         assert!(keep(&mut list, d.clone()));
         assert!(!keep(&mut list, d), "the same phone twice");
         assert_eq!(devices_card(&list), format!("{UDID}\tSam's iPhone (Sam)"));
@@ -560,7 +668,11 @@ mod tests {
         let stop = std::sync::Arc::new(AtomicBool::new(false));
         let (tx, rx) = std::sync::mpsc::channel();
         let s2 = stop.clone();
-        let t = std::thread::spawn(move || serve_enrol(l, "tok", "https://laptop.ts.net:8443", 1, &s2, &move |d| tx.send(d).unwrap()));
+        let t = std::thread::spawn(move || {
+            serve_enrol(l, "tok", "https://laptop.ts.net:8443", 1, &s2, &move |d| {
+                tx.send(d).unwrap()
+            })
+        });
         let ask = |req: Vec<u8>| {
             let mut c = TcpStream::connect(addr).unwrap();
             c.write_all(&req).unwrap();
@@ -569,15 +681,34 @@ mod tests {
             got
         };
         let page = ask(b"GET /tok/ HTTP/1.1\r\nHost: x\r\n\r\n".to_vec());
-        assert!(page.contains("Add this device") && page.contains("https://laptop.ts.net:8443/tok/atlas.mobileconfig"), "{page}");
+        assert!(
+            page.contains("Add this device")
+                && page.contains("https://laptop.ts.net:8443/tok/atlas.mobileconfig"),
+            "{page}"
+        );
         let prof = ask(b"GET /tok/atlas.mobileconfig HTTP/1.1\r\nHost: x\r\n\r\n".to_vec());
         assert!(prof.contains("application/x-apple-aspen-config"));
-        let challenge = prof.split("<key>Challenge</key><string>").nth(1).unwrap().split('<').next().unwrap().to_string();
+        let challenge = prof
+            .split("<key>Challenge</key><string>")
+            .nth(1)
+            .unwrap()
+            .split('<')
+            .next()
+            .unwrap()
+            .to_string();
         let body = reply(&challenge, UDID);
-        let mut req = format!("POST /tok/device HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\n\r\n", body.len()).into_bytes();
+        let mut req = format!(
+            "POST /tok/device HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        )
+        .into_bytes();
         req.extend_from_slice(&body);
         let answered = ask(req);
-        assert!(answered.starts_with("HTTP/1.1 301") && answered.contains("Location: https://laptop.ts.net:8443/tok/done"), "{answered}");
+        assert!(
+            answered.starts_with("HTTP/1.1 301")
+                && answered.contains("Location: https://laptop.ts.net:8443/tok/done"),
+            "{answered}"
+        );
         assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap().udid, UDID);
         stop.store(true, Ordering::Relaxed);
         t.join().unwrap().unwrap();

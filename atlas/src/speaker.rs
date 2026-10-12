@@ -104,7 +104,8 @@ pub fn embed(cfg: &SpeakerConfig, vars: &Vars) -> Result<Vec<f32>> {
     let mut bg = background(&store);
     bg.add(&frames);
     let _ = store.save(BACKGROUND, &bg);
-    bg.embed(&frames).ok_or_else(|| AtlasError::Platform(still_learning(&bg)))
+    bg.embed(&frames)
+        .ok_or_else(|| AtlasError::Platform(still_learning(&bg)))
 }
 
 /// Which encoder this machine uses.
@@ -165,7 +166,8 @@ const BACKGROUND: &str = "voice_background";
 /// that is not installed counts as none — reporting it as present would be a
 /// check that cannot fail.
 pub fn available(cfg: &SpeakerConfig, vars: &Vars) -> bool {
-    matches!(which(cfg, vars), Encoder::External | Encoder::Neural) || background(&crate::roots::store()).ready()
+    matches!(which(cfg, vars), Encoder::External | Encoder::Neural)
+        || background(&crate::roots::store()).ready()
 }
 
 /// Said plainly when Atlas has no way to tell your voice from anyone else's.
@@ -235,13 +237,20 @@ impl Background {
             } else {
                 // Reservoir sampling, with a deterministic generator so the
                 // same clips always give the same model.
-                let j = (self.seen.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407) >> 17) % self.seen;
+                let j = (self
+                    .seen
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407)
+                    >> 17)
+                    % self.seen;
                 if (j as usize) < POOL {
                     self.pool[j as usize] = *f;
                 }
             }
         }
-        if self.clips >= MIN_BACKGROUND && (self.ubm.is_none() || self.clips >= self.trained_at + 10) {
+        if self.clips >= MIN_BACKGROUND
+            && (self.ubm.is_none() || self.clips >= self.trained_at + 10)
+        {
             self.ubm = crate::gmm::Gmm::fit(&self.pool, COMPONENTS, 10);
             self.trained_at = self.clips;
         }
@@ -280,9 +289,16 @@ pub const MIN_BACKGROUND: u64 = 30;
 /// the recording's own speech when not, and centred on the recording, so what
 /// is compared is how the voices differ from each other rather than how this
 /// microphone differs from the ones the background heard.
-pub fn recording_embeddings(samples: &[i16], rate: u32, machine: &Background) -> Vec<((usize, usize), Option<Vec<f32>>)> {
+pub fn recording_embeddings(
+    samples: &[i16],
+    rate: u32,
+    machine: &Background,
+) -> Vec<((usize, usize), Option<Vec<f32>>)> {
     let segs = crate::vad::segments(samples, rate);
-    let frames: Vec<Option<Vec<[f32; crate::mfcc::CEPS]>>> = segs.iter().map(|(s, e)| clip_frames(&samples[*s..*e], rate)).collect();
+    let frames: Vec<Option<Vec<[f32; crate::mfcc::CEPS]>>> = segs
+        .iter()
+        .map(|(s, e)| clip_frames(&samples[*s..*e], rate))
+        .collect();
     let own;
     let bg = if machine.ready() {
         machine
@@ -290,16 +306,26 @@ pub fn recording_embeddings(samples: &[i16], rate: u32, machine: &Background) ->
         own = Background::of(&frames.iter().flatten().cloned().collect::<Vec<_>>());
         &own
     };
-    let raw: Vec<Option<Vec<f32>>> = frames.iter().map(|f| f.as_ref().and_then(|f| bg.embed(f))).collect();
+    let raw: Vec<Option<Vec<f32>>> = frames
+        .iter()
+        .map(|f| f.as_ref().and_then(|f| bg.embed(f)))
+        .collect();
     let present: Vec<&Vec<f32>> = raw.iter().flatten().collect();
     if present.is_empty() {
         return segs.into_iter().map(|s| (s, None)).collect();
     }
     let dims = present[0].len();
-    let mean: Vec<f32> = (0..dims).map(|d| present.iter().map(|v| v[d]).sum::<f32>() / present.len() as f32).collect();
+    let mean: Vec<f32> = (0..dims)
+        .map(|d| present.iter().map(|v| v[d]).sum::<f32>() / present.len() as f32)
+        .collect();
     segs.into_iter()
         .zip(raw)
-        .map(|(s, e)| (s, e.map(|v| v.iter().zip(&mean).map(|(a, b)| a - b).collect())))
+        .map(|(s, e)| {
+            (
+                s,
+                e.map(|v| v.iter().zip(&mean).map(|(a, b)| a - b).collect()),
+            )
+        })
         .collect()
 }
 

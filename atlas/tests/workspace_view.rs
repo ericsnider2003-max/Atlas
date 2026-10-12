@@ -6,7 +6,16 @@ use atlas::workspace_view::{
 
 const DAY: u64 = 86_400;
 
-fn item(id: &str, title: &str, kind: Kind, status: Status, due: Option<u64>, project: Option<&str>, blocked_by: Option<&str>, at: u64) -> Item {
+fn item(
+    id: &str,
+    title: &str,
+    kind: Kind,
+    status: Status,
+    due: Option<u64>,
+    project: Option<&str>,
+    blocked_by: Option<&str>,
+    at: u64,
+) -> Item {
     Item {
         id: id.into(),
         title: title.into(),
@@ -19,7 +28,11 @@ fn item(id: &str, title: &str, kind: Kind, status: Status, due: Option<u64>, pro
         client: None,
         links: vec![],
         at,
-        closed_at: if status == Status::Done { Some(at) } else { None },
+        closed_at: if status == Status::Done {
+            Some(at)
+        } else {
+            None
+        },
         tags: vec![],
         thinking: vec![],
         estimate_mins: None,
@@ -30,12 +43,66 @@ fn item(id: &str, title: &str, kind: Kind, status: Status, due: Option<u64>, pro
 
 fn workspace() -> Vec<Item> {
     vec![
-        item("1", "decide on the VPS", Kind::Decision, Status::NeedsYou, None, Some("Homelab"), None, 0),
-        item("2", "chase the certification", Kind::Task, Status::Blocked, Some(5 * DAY), Some("Homelab"), Some("the broker"), 0),
-        item("3", "file the quarterly", Kind::Task, Status::Blocked, Some(2 * DAY), None, Some("the broker"), 0),
-        item("4", "cut the fee video", Kind::Draft, Status::Doing, None, Some("Content"), None, 0),
-        item("5", "what if we cached it", Kind::Idea, Status::Waiting, None, None, None, DAY),
-        item("6", "old thing", Kind::Task, Status::Done, None, None, None, 0),
+        item(
+            "1",
+            "decide on the VPS",
+            Kind::Decision,
+            Status::NeedsYou,
+            None,
+            Some("Homelab"),
+            None,
+            0,
+        ),
+        item(
+            "2",
+            "chase the certification",
+            Kind::Task,
+            Status::Blocked,
+            Some(5 * DAY),
+            Some("Homelab"),
+            Some("the broker"),
+            0,
+        ),
+        item(
+            "3",
+            "file the quarterly",
+            Kind::Task,
+            Status::Blocked,
+            Some(2 * DAY),
+            None,
+            Some("the broker"),
+            0,
+        ),
+        item(
+            "4",
+            "cut the fee video",
+            Kind::Draft,
+            Status::Doing,
+            None,
+            Some("Content"),
+            None,
+            0,
+        ),
+        item(
+            "5",
+            "what if we cached it",
+            Kind::Idea,
+            Status::Waiting,
+            None,
+            None,
+            None,
+            DAY,
+        ),
+        item(
+            "6",
+            "old thing",
+            Kind::Task,
+            Status::Done,
+            None,
+            None,
+            None,
+            0,
+        ),
     ]
 }
 
@@ -45,14 +112,20 @@ fn workspace() -> Vec<Item> {
 fn the_same_item_appears_in_every_view_it_answers() {
     // Nothing is *in* a view. That's the whole difference from folders.
     let items = workspace();
-    let live = shipped().into_iter().find(|v| v.name == "Everything live").unwrap();
+    let live = shipped()
+        .into_iter()
+        .find(|v| v.name == "Everything live")
+        .unwrap();
     let stuck = shipped().into_iter().find(|v| v.name == "Stuck").unwrap();
 
     let in_live = apply(&items, &live, 0);
     let in_stuck = apply(&items, &stuck, 0);
     let cert = "chase the certification";
     assert!(in_live.iter().any(|i| i.title == cert));
-    assert!(in_stuck.iter().any(|i| i.title == cert), "same item, two views");
+    assert!(
+        in_stuck.iter().any(|i| i.title == cert),
+        "same item, two views"
+    );
 }
 
 #[test]
@@ -75,9 +148,14 @@ fn something_waiting_on_you_outranks_a_date() {
 
 #[test]
 fn finished_and_dropped_things_are_out_of_the_live_views() {
-    let live = shipped().into_iter().find(|v| v.name == "Everything live").unwrap();
+    let live = shipped()
+        .into_iter()
+        .find(|v| v.name == "Everything live")
+        .unwrap();
     let items = workspace();
-    assert!(!apply(&items, &live, 0).iter().any(|i| i.status == Status::Done));
+    assert!(!apply(&items, &live, 0)
+        .iter()
+        .any(|i| i.status == Status::Done));
 }
 
 #[test]
@@ -109,7 +187,16 @@ fn one_thing_holding_several_others_up_is_the_most_useful_line_there_is() {
 
 #[test]
 fn one_thing_blocked_on_something_is_not_reported_as_a_pattern() {
-    let single = vec![item("1", "x", Kind::Task, Status::Blocked, None, None, Some("Priya"), 0)];
+    let single = vec![item(
+        "1",
+        "x",
+        Kind::Task,
+        Status::Blocked,
+        None,
+        None,
+        Some("Priya"),
+        0,
+    )];
     assert!(overview(&single, 0).biggest_blocker.is_none());
 }
 
@@ -136,7 +223,10 @@ fn an_empty_workspace_says_so_in_two_words() {
 
 #[test]
 fn a_board_groups_by_status_so_stuck_is_a_shape_not_a_word() {
-    let live = shipped().into_iter().find(|v| v.name == "Everything live").unwrap();
+    let live = shipped()
+        .into_iter()
+        .find(|v| v.name == "Everything live")
+        .unwrap();
     let items = workspace();
     let showing = apply(&items, &live, 0);
     let groups = grouped(&showing, Group::Status);
@@ -147,7 +237,10 @@ fn a_board_groups_by_status_so_stuck_is_a_shape_not_a_word() {
 #[test]
 fn the_page_shows_only_numbers_you_would_act_on() {
     let items = workspace();
-    let live = shipped().into_iter().find(|v| v.name == "Everything live").unwrap();
+    let live = shipped()
+        .into_iter()
+        .find(|v| v.name == "Everything live")
+        .unwrap();
     let showing = apply(&items, &live, 0);
     let groups = grouped(&showing, Group::Status);
     let names: Vec<String> = shipped().iter().map(|v| v.name.clone()).collect();
@@ -162,16 +255,27 @@ fn the_page_shows_only_numbers_you_would_act_on() {
 #[test]
 fn the_page_names_what_is_holding_things_up() {
     let items = workspace();
-    let live = shipped().into_iter().find(|v| v.name == "Everything live").unwrap();
+    let live = shipped()
+        .into_iter()
+        .find(|v| v.name == "Everything live")
+        .unwrap();
     let showing = apply(&items, &live, 0);
-    let html = workspace_page(&live, &grouped(&showing, Group::Status), &overview(&items, 0), &[]);
+    let html = workspace_page(
+        &live,
+        &grouped(&showing, Group::Status),
+        &overview(&items, 0),
+        &[],
+    );
     assert!(html.contains("waiting on the broker"));
     assert!(html.contains("worth more than anything else here"));
 }
 
 #[test]
 fn views_are_links_across_the_top_rather_than_a_tree_down_the_side() {
-    let live = shipped().into_iter().find(|v| v.name == "Everything live").unwrap();
+    let live = shipped()
+        .into_iter()
+        .find(|v| v.name == "Everything live")
+        .unwrap();
     let names: Vec<String> = shipped().iter().map(|v| v.name.clone()).collect();
     let html = workspace_page(&live, &[], &overview(&[], 0), &names);
     assert!(html.contains("nav class=views"));

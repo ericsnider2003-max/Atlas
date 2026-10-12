@@ -92,9 +92,7 @@ impl Thought {
         }
         // The commonest failure: "it's slow" / "because it's slow".
         if similar(&self.symptom, &self.cause) {
-            return Err(
-                "the cause is a restatement of the symptom. Why does it happen?".into()
-            );
+            return Err("the cause is a restatement of the symptom. Why does it happen?".into());
         }
         if self.proof.trim().is_empty() {
             return Err("nothing named that would prove it fixed".into());
@@ -326,12 +324,18 @@ pub fn review(t: &Thought, b: &Build, tests_changed: &[String]) -> Review {
     if b.touched.len() > 4 {
         notes.push(Note {
             kind: Concern::Scope,
-            what: format!("{} files for one fix — some of that is probably unrelated", b.touched.len()),
+            what: format!(
+                "{} files for one fix — some of that is probably unrelated",
+                b.touched.len()
+            ),
         });
     }
 
     if notes.is_empty() {
-        notes.push(Note { kind: Concern::Fine, what: "does what it said, where it said".into() });
+        notes.push(Note {
+            kind: Concern::Fine,
+            what: "does what it said, where it said".into(),
+        });
     }
     Review { notes }
 }
@@ -399,7 +403,10 @@ pub struct PipelineConfig {
 
 impl Default for PipelineConfig {
     fn default() -> Self {
-        PipelineConfig { enabled: false, max_rounds: 3 }
+        PipelineConfig {
+            enabled: false,
+            max_rounds: 3,
+        }
     }
 }
 
@@ -440,12 +447,8 @@ impl Work {
             },
             Stage::Build => match &self.build {
                 None => Next::Do(Stage::Build),
-                Some(b) if !b.proof_passes => {
-                    Next::Blocked("the proving test still fails".into())
-                }
-                Some(b) if !b.nothing_else_broke => {
-                    Next::Blocked("something else broke".into())
-                }
+                Some(b) if !b.proof_passes => Next::Blocked("the proving test still fails".into()),
+                Some(b) if !b.nothing_else_broke => Next::Blocked("something else broke".into()),
                 Some(_) => Next::Do(Stage::Review),
             },
             Stage::Review => match &self.review {
@@ -561,7 +564,10 @@ impl Work {
     /// have broken.
     pub fn record_build(&mut self, b: Build) -> Result<(), String> {
         if self.stage != Stage::Build && self.stage != Stage::Refine {
-            return Err(format!("nothing is waiting to be built — it's {}", self.stage.plain()));
+            return Err(format!(
+                "nothing is waiting to be built — it's {}",
+                self.stage.plain()
+            ));
         }
         if self.thought.is_none() {
             return Err("nothing said what was wrong, so there is nothing to build".into());
@@ -587,7 +593,10 @@ impl Work {
     /// number that was always zero.
     pub fn record_review(&mut self, r: Review) -> Result<(), String> {
         if self.stage != Stage::Review {
-            return Err(format!("nothing is waiting to be reviewed — it's {}", self.stage.plain()));
+            return Err(format!(
+                "nothing is waiting to be reviewed — it's {}",
+                self.stage.plain()
+            ));
         }
         let clean = r.clean();
         let first_blocker = r.blockers().first().map(|n| n.what.clone());
@@ -609,7 +618,10 @@ impl Work {
     /// launders a second fault past a first review.
     pub fn record_refinement(&mut self, r: Refinement) -> Result<(), String> {
         if self.stage != Stage::Refine {
-            return Err(format!("nothing is waiting to be refined — it's {}", self.stage.plain()));
+            return Err(format!(
+                "nothing is waiting to be refined — it's {}",
+                self.stage.plain()
+            ));
         }
         let Some(review) = self.review.as_ref() else {
             return Err("there is no review for this to be answering".into());

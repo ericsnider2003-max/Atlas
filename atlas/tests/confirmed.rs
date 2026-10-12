@@ -1,14 +1,21 @@
 use atlas::confirmed::{
-    answer, before_a_run, consequence, how_to_undo, read_back, record, Asked, Change, ConfirmConfig,
-    Run, Step,
+    answer, before_a_run, consequence, how_to_undo, read_back, record, Asked, Change,
+    ConfirmConfig, Run, Step,
 };
 
 fn cfg() -> ConfirmConfig {
-    ConfirmConfig { enabled: true, ..Default::default() }
+    ConfirmConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 fn asked(site: &str, change: Change) -> Asked {
-    Asked { site: site.into(), account: "eric".into(), change }
+    Asked {
+        site: site.into(),
+        account: "eric".into(),
+        change,
+    }
 }
 
 #[test]
@@ -31,8 +38,12 @@ fn the_read_back_carries_the_consequence_you_might_not_have_in_mind() {
         Step::ReadBack { say } => assert!(say.contains("comes off both")),
         o => panic!("{o:?}"),
     }
-    assert!(consequence("GitHub", &Change::TurnOffTwoFactor).unwrap().contains("SSH keys"));
-    assert!(consequence("Gmail", &Change::TurnOffTwoFactor).unwrap().contains("reset through"));
+    assert!(consequence("GitHub", &Change::TurnOffTwoFactor)
+        .unwrap()
+        .contains("SSH keys"));
+    assert!(consequence("Gmail", &Change::TurnOffTwoFactor)
+        .unwrap()
+        .contains("reset through"));
 }
 
 #[test]
@@ -46,7 +57,10 @@ fn strengthening_something_is_read_back_too() {
     // "Turn it on" misheard as "turn it off" is the failure this catches, and
     // it goes both ways.
     let a = asked("TikTok", Change::TurnOnTwoFactor);
-    assert!(matches!(read_back(&a, true, true, &cfg()), Step::ReadBack { .. }));
+    assert!(matches!(
+        read_back(&a, true, true, &cfg()),
+        Step::ReadBack { .. }
+    ));
     assert!(cfg().read_back_everything);
 }
 
@@ -60,7 +74,10 @@ fn nothing_happens_unless_you_are_at_the_machine() {
     // And the same request with you there is not refused, which is what
     // makes the refusal above about your presence rather than about
     // everything.
-    assert!(matches!(read_back(&a, true, true, &cfg()), Step::ReadBack { .. }));
+    assert!(matches!(
+        read_back(&a, true, true, &cfg()),
+        Step::ReadBack { .. }
+    ));
 }
 
 #[test]
@@ -84,7 +101,10 @@ fn being_present_is_not_configurable_away() {
 #[test]
 fn a_locked_vault_stops_it_because_it_would_have_to_sign_in_first() {
     let a = asked("Instagram", Change::TurnOffTwoFactor);
-    assert!(matches!(read_back(&a, true, false, &cfg()), Step::Cannot(_)));
+    assert!(matches!(
+        read_back(&a, true, false, &cfg()),
+        Step::Cannot(_)
+    ));
 }
 
 #[test]
@@ -134,9 +154,15 @@ fn you_say_yes_once_per_change_not_once_for_the_batch() {
     // several -- so a batch is not something a caller asks for and is
     // refused, it is something no caller can say.
     let mut r = Run::new(three());
-    assert_eq!(r.current().map(|a| a.site.clone()), Some("Instagram".to_string()));
+    assert_eq!(
+        r.current().map(|a| a.site.clone()),
+        Some("Instagram".to_string())
+    );
     r.record(true);
-    assert_eq!(r.current().map(|a| a.site.clone()), Some("TikTok".to_string()));
+    assert_eq!(
+        r.current().map(|a| a.site.clone()),
+        Some("TikTok".to_string())
+    );
     assert!(!r.finished(), "one yes finished a run of three");
     r.skip();
     r.record(true);
@@ -146,9 +172,8 @@ fn you_say_yes_once_per_change_not_once_for_the_batch() {
 
     // A config file that claims otherwise changes nothing, because there is
     // nothing for it to change.
-    let parsed: ConfirmConfig =
-        serde_yaml::from_str("enabled: true\none_at_a_time: false\n")
-            .expect("an unknown key must not stop the section parsing");
+    let parsed: ConfirmConfig = serde_yaml::from_str("enabled: true\none_at_a_time: false\n")
+        .expect("an unknown key must not stop the section parsing");
     assert!(parsed.enabled);
     let mut still = Run::new(three());
     still.record(true);
@@ -204,12 +229,17 @@ fn there_is_a_record_of_what_was_changed_and_what_you_said() {
 
 #[test]
 fn how_to_undo_it_is_answered_because_you_will_ask_and_will_not_remember() {
-    assert!(how_to_undo(&Change::TurnOffTwoFactor).contains("need whatever method you pick to hand"));
+    assert!(
+        how_to_undo(&Change::TurnOffTwoFactor).contains("need whatever method you pick to hand")
+    );
     assert!(how_to_undo(&Change::GenerateRecoveryCodes).contains("The old set is gone"));
 }
 
 #[test]
 fn it_is_off_until_you_turn_it_on() {
     let a = asked("Instagram", Change::TurnOffTwoFactor);
-    assert!(matches!(read_back(&a, true, true, &ConfirmConfig::default()), Step::Cannot(_)));
+    assert!(matches!(
+        read_back(&a, true, true, &ConfirmConfig::default()),
+        Step::Cannot(_)
+    ));
 }

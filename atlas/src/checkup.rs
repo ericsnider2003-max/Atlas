@@ -33,13 +33,22 @@ pub struct Check {
 
 impl Check {
     pub fn pass(name: &'static str) -> Check {
-        Check { name, outcome: Outcome::Pass }
+        Check {
+            name,
+            outcome: Outcome::Pass,
+        }
     }
     pub fn fail(name: &'static str, why: impl Into<String>) -> Check {
-        Check { name, outcome: Outcome::Fail(why.into()) }
+        Check {
+            name,
+            outcome: Outcome::Fail(why.into()),
+        }
     }
     pub fn note(name: &'static str, what: impl Into<String>) -> Check {
-        Check { name, outcome: Outcome::Note(what.into()) }
+        Check {
+            name,
+            outcome: Outcome::Note(what.into()),
+        }
     }
     pub fn failed(&self) -> bool {
         matches!(self.outcome, Outcome::Fail(_))

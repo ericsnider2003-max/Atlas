@@ -48,7 +48,10 @@ fn status_gives_the_name_without_its_trailing_dot_and_says_it_is_running() {
     let t = read_status(STATUS_RUNNING).expect("a real status reads");
     assert_eq!(
         t,
-        Tailnet { dns_name: "laptop-eric.tail1234.ts.net".into(), running: true }
+        Tailnet {
+            dns_name: "laptop-eric.tail1234.ts.net".into(),
+            running: true
+        }
     );
 }
 
@@ -77,9 +80,15 @@ fn something_that_is_not_a_status_is_not_read_as_one() {
 fn the_link_is_the_tailnet_name_and_the_token() {
     let t = read_status(STATUS_RUNNING).unwrap();
     let url = phone_url(&t.dns_name, "Zx9qR2mT7vLp4Kd8Wn3Hs6Yb");
-    assert_eq!(url, "https://laptop-eric.tail1234.ts.net/hub?t=Zx9qR2mT7vLp4Kd8Wn3Hs6Yb");
+    assert_eq!(
+        url,
+        "https://laptop-eric.tail1234.ts.net/hub?t=Zx9qR2mT7vLp4Kd8Wn3Hs6Yb"
+    );
     // Given the raw name, the dot still doesn't leak into the address.
-    assert_eq!(phone_url("laptop-eric.tail1234.ts.net.", "t"), "https://laptop-eric.tail1234.ts.net/hub?t=t");
+    assert_eq!(
+        phone_url("laptop-eric.tail1234.ts.net.", "t"),
+        "https://laptop-eric.tail1234.ts.net/hub?t=t"
+    );
 }
 
 const URL: &str = "https://laptop-eric.tail1234.ts.net/hub?t=abc";
@@ -91,7 +100,10 @@ fn a_successful_serve_is_published_with_the_link() {
               |-- proxy http://127.0.0.1:8787\n\n\
               Serve started and running in the background.\n\
               To disable the proxy, run: tailscale serve --https=443 off\n";
-    assert_eq!(serve_outcome(Ok(ok.into()), URL), Serve::Published { url: URL.into() });
+    assert_eq!(
+        serve_outcome(Ok(ok.into()), URL),
+        Serve::Published { url: URL.into() }
+    );
 }
 
 #[test]
@@ -170,7 +182,14 @@ fn each_outcome_is_said_differently_and_plainly() {
             assert_ne!(a, b);
         }
         // No jargon beyond the product's own name.
-        for word in ["tailnet", "--bg", "BackendState", "DNSName", "json", "MagicDNS suffix"] {
+        for word in [
+            "tailnet",
+            "--bg",
+            "BackendState",
+            "DNSName",
+            "json",
+            "MagicDNS suffix",
+        ] {
             assert!(!a.contains(word), "{a}");
         }
     }
@@ -186,7 +205,10 @@ fn the_qr_code_is_a_real_qr_code_with_its_quiet_zone() {
     let (w, dark) = qr_modules(URL).expect("a link encodes");
     assert_eq!(dark.len(), w * w);
     let n = w - 8;
-    assert!(n >= 21 && (n - 21) % 4 == 0, "width {w} isn't a QR version plus a quiet zone");
+    assert!(
+        n >= 21 && (n - 21) % 4 == 0,
+        "width {w} isn't a QR version plus a quiet zone"
+    );
 
     let at = |x: usize, y: usize| dark[y * w + x];
     // The quiet zone is light all the way round.
@@ -199,7 +221,12 @@ fn the_qr_code_is_a_real_qr_code_with_its_quiet_zone() {
     let q = 4;
     for (fx, fy) in [(q, q), (q + n - 7, q), (q, q + n - 7)] {
         for (dx, dy) in [(0, 0), (6, 0), (0, 6), (6, 6)] {
-            assert!(at(fx + dx, fy + dy), "finder corner at {},{}", fx + dx, fy + dy);
+            assert!(
+                at(fx + dx, fy + dy),
+                "finder corner at {},{}",
+                fx + dx,
+                fy + dy
+            );
         }
         assert!(!at(fx + 1, fy + 1), "finder ring");
         assert!(at(fx + 3, fy + 3), "finder centre");
@@ -220,7 +247,10 @@ fn the_qr_svg_is_one_crisp_path() {
     assert!(svg.ends_with("</svg>"));
     assert_eq!(svg.matches("<path").count(), 1);
     assert!(svg.contains("crispEdges"));
-    assert!(svg.contains(" d=\"M4 4h7v1h-7z"), "top-left finder's top edge is the first run");
+    assert!(
+        svg.contains(" d=\"M4 4h7v1h-7z"),
+        "top-left finder's top edge is the first run"
+    );
     let (w, _) = qr_modules(URL).unwrap();
     assert!(svg.contains(&format!("viewBox=\"0 0 {w} {w}\"")));
 }
@@ -233,6 +263,9 @@ fn the_phone_block_shows_the_code_or_says_why_not() {
     let without = atlas::hub::phone_block(None, Some(&say(&Serve::NeedsHttps)));
     assert!(!without.contains("<svg"));
     assert!(without.contains("HTTPS Certificates"));
-    assert!(!without.contains("<form"), "no button that posts to nowhere");
+    assert!(
+        !without.contains("<form"),
+        "no button that posts to nowhere"
+    );
     assert_ne!(with, without, "the code replaces the explanation");
 }

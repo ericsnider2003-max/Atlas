@@ -24,7 +24,8 @@ thread_local! {
 
 /// Is this Atlas the phone app?
 pub fn on() -> bool {
-    HERE.with(|h| h.get()).unwrap_or_else(|| ON.load(Ordering::Relaxed))
+    HERE.with(|h| h.get())
+        .unwrap_or_else(|| ON.load(Ordering::Relaxed))
 }
 
 /// The phone app, from now on, for every thread (`mobile::serve`).
@@ -65,11 +66,24 @@ pub const ASK_ONLINE: &str = "To answer that I need a language model, and this p
 /// "use online models" / "stop using online models": your answer, or `None`
 /// when that isn't what was said.
 pub fn online_answer(said: &str) -> Option<bool> {
-    let t = said.trim().trim_end_matches(['.', '!']).to_ascii_lowercase();
-    let t = t.strip_prefix("yes, ").or_else(|| t.strip_prefix("yes ")).unwrap_or(&t).to_string();
+    let t = said
+        .trim()
+        .trim_end_matches(['.', '!'])
+        .to_ascii_lowercase();
+    let t = t
+        .strip_prefix("yes, ")
+        .or_else(|| t.strip_prefix("yes "))
+        .unwrap_or(&t)
+        .to_string();
     match t.as_str() {
-        "use online models" | "use the online models" | "use free online models" | "allow online models" => Some(true),
-        "stop using online models" | "don't use online models" | "dont use online models" | "no online models" => Some(false),
+        "use online models"
+        | "use the online models"
+        | "use free online models"
+        | "allow online models" => Some(true),
+        "stop using online models"
+        | "don't use online models"
+        | "dont use online models"
+        | "no online models" => Some(false),
         _ => None,
     }
 }
@@ -88,7 +102,11 @@ pub fn as_a_phone(t: &mut crate::voice::ToolsConfig) {
 
 /// Which models this phone answers with, in a sentence, for the self-check.
 pub fn models_said() -> String {
-    let apple = if crate::applebrain::registered() { "Apple's model is here and answers first" } else { "Apple's model isn't available on this phone" };
+    let apple = if crate::applebrain::registered() {
+        "Apple's model is here and answers first"
+    } else {
+        "Apple's model isn't available on this phone"
+    };
     #[cfg(feature = "phone-llm")]
     let own = match crate::phonemodel::attached() {
         Some(name) => format!("its own model, {name}, is loaded"),
@@ -96,6 +114,10 @@ pub fn models_said() -> String {
     };
     #[cfg(not(feature = "phone-llm"))]
     let own = "this build has no model of its own".to_string();
-    let online = if online_ok() { "the free online models are allowed" } else { "nothing goes to the online models" };
+    let online = if online_ok() {
+        "the free online models are allowed"
+    } else {
+        "nothing goes to the online models"
+    };
     format!("{apple}; {own}; {online}.")
 }

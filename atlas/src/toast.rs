@@ -35,13 +35,18 @@ pub fn show(title: &str, body: &str) -> Result<(), String> {
     // real toast on the screen and wrote the app's registry entry, from the
     // test binary. Same guard as `window::open`.
     if !crate::window::running_as_atlas() {
-        return Err("I'm not running as the Atlas program, so I won't put a notification on your screen".into());
+        return Err(
+            "I'm not running as the Atlas program, so I won't put a notification on your screen"
+                .into(),
+        );
     }
     register();
     let doc = XmlDocument::new().map_err(|e| e.to_string())?;
-    doc.LoadXml(&HSTRING::from(xml(title, body))).map_err(|e| e.to_string())?;
+    doc.LoadXml(&HSTRING::from(xml(title, body)))
+        .map_err(|e| e.to_string())?;
     let toast = ToastNotification::CreateToastNotification(&doc).map_err(|e| e.to_string())?;
-    let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_ID)).map_err(|e| e.to_string())?;
+    let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_ID))
+        .map_err(|e| e.to_string())?;
     // 30 Sep 2026: with Atlas's notifications (or all of them) switched off
     // in Windows, `Show` still succeeds and nothing appears -- and the note
     // was counted as reaching you. Asked first, so it falls through to
@@ -49,11 +54,17 @@ pub fn show(title: &str, body: &str) -> Result<(), String> {
     use windows::UI::Notifications::NotificationSetting;
     match notifier.Setting() {
         Ok(NotificationSetting::Enabled) | Err(_) => {}
-        Ok(NotificationSetting::DisabledForApplication) => return Err("Atlas's notifications are switched off in Windows".into()),
-        Ok(NotificationSetting::DisabledForUser) => return Err("notifications are switched off in Windows".into()),
+        Ok(NotificationSetting::DisabledForApplication) => {
+            return Err("Atlas's notifications are switched off in Windows".into())
+        }
+        Ok(NotificationSetting::DisabledForUser) => {
+            return Err("notifications are switched off in Windows".into())
+        }
         Ok(_) => return Err("Windows isn't allowing notifications here".into()),
     }
-    notifier.Show(&toast).map_err(|e| format!("Windows didn't show it: {e}"))
+    notifier
+        .Show(&toast)
+        .map_err(|e| format!("Windows didn't show it: {e}"))
 }
 
 /// Register the app ID for this user, once. `reg` is part of Windows.
@@ -63,7 +74,17 @@ fn register() {
     ONCE.call_once(|| {
         let key = format!("HKCU\\Software\\Classes\\AppUserModelId\\{APP_ID}");
         crate::heard!(crate::tools::command("reg")
-            .args(["add", &key, "/v", "DisplayName", "/t", "REG_SZ", "/d", "Atlas", "/f"])
+            .args([
+                "add",
+                &key,
+                "/v",
+                "DisplayName",
+                "/t",
+                "REG_SZ",
+                "/d",
+                "Atlas",
+                "/f"
+            ])
             .output());
     });
 }

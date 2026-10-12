@@ -79,7 +79,10 @@ fn a_chunk_boundary_inside_a_character_does_not_crash() {
     // out. This says four bytes of a five-byte string, landing inside the é.
     let bad = "4\r\ncaf\u{00e9}\r\n0\r\n\r\n";
     let got = dechunk(bad);
-    assert!(!got.is_empty(), "it returned nothing rather than what arrived");
+    assert!(
+        !got.is_empty(),
+        "it returned nothing rather than what arrived"
+    );
 }
 
 #[test]
@@ -89,7 +92,7 @@ fn a_character_split_across_two_chunks_is_reassembled() {
     // Built from raw bytes so the split really is mid-character, then checked
     // for the whole word — decoding each chunk separately would give two
     // replacement characters instead.
-    let word = "café".as_bytes();          // c a f + two bytes of é
+    let word = "café".as_bytes(); // c a f + two bytes of é
     let (first, second) = word.split_at(4); // splits inside the é
     let mut raw = Vec::new();
     raw.extend_from_slice(b"4\r\n");

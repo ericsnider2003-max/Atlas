@@ -44,9 +44,13 @@ fn cfg() -> VaultConfig {
 /// A vault with a passphrase and a recovery key, shut again.
 fn set_up() -> (Vault, String) {
     let mut v = Vault::default();
-    v.open(PASSPHRASE, 100, &cfg()).expect("first open sets the passphrase");
-    let code = v.issue_recovery_key(100, &cfg()).expect("no recovery key was made");
-    v.put("bank", Kind::Login, "correct horse battery staple", 100).unwrap();
+    v.open(PASSPHRASE, 100, &cfg())
+        .expect("first open sets the passphrase");
+    let code = v
+        .issue_recovery_key(100, &cfg())
+        .expect("no recovery key was made");
+    v.put("bank", Kind::Login, "correct horse battery staple", 100)
+        .unwrap();
     v.lock();
     (v, code)
 }
@@ -63,9 +67,13 @@ fn a_forgotten_passphrase_is_no_longer_the_end_of_it() {
     assert_eq!(v.state(), atlas::vault::State::Sealed);
 
     // The piece of paper opens it, and everything is still in there.
-    v.open_with_recovery_key(&code, 200, &cfg()).expect("the recovery key was refused");
+    v.open_with_recovery_key(&code, 200, &cfg())
+        .expect("the recovery key was refused");
     assert_eq!(v.get("bank", 200).unwrap(), "correct horse battery staple");
-    assert!(v.proved_it(), "coming in on the recovery key proved nothing");
+    assert!(
+        v.proved_it(),
+        "coming in on the recovery key proved nothing"
+    );
     assert_eq!(v.opened_with(), Some(How::RecoveryKey));
 }
 
@@ -82,11 +90,16 @@ fn the_recovery_key_takes_a_handover_back() {
 
     // Forgotten passphrase, handed-over laptop: the old dead end.
     assert!(v.open(FORGOTTEN, 200, &cfg()).is_err());
-    assert!(h.take_back(&v, 200).is_err(), "a shut vault took the handover back");
+    assert!(
+        h.take_back(&v, 200).is_err(),
+        "a shut vault took the handover back"
+    );
     assert_eq!(h.stance, Stance::HandedOver);
 
     v.open_with_recovery_key(&code, 200, &cfg()).unwrap();
-    let said = h.take_back(&v, 200).expect("the recovery key did not take it back");
+    let said = h
+        .take_back(&v, 200)
+        .expect("the recovery key did not take it back");
     assert!(said.contains("Yours again"), "{said}");
     assert_eq!(h.stance, Stance::Yours);
 }
@@ -102,13 +115,17 @@ fn setting_a_new_passphrase_is_how_you_leave_a_recovery() {
         .expect("could not set a passphrase after recovering");
     v.lock();
 
-    v.open("a sentence I will actually remember", 300, &cfg()).expect("the new passphrase failed");
+    v.open("a sentence I will actually remember", 300, &cfg())
+        .expect("the new passphrase failed");
     assert!(v.proved_it());
     assert_eq!(v.get("bank", 300).unwrap(), "correct horse battery staple");
 
     // And the old one is dead.
     v.lock();
-    assert!(v.open(PASSPHRASE, 300, &cfg()).is_err(), "the replaced passphrase still opens it");
+    assert!(
+        v.open(PASSPHRASE, 300, &cfg()).is_err(),
+        "the replaced passphrase still opens it"
+    );
 }
 
 #[test]
@@ -120,13 +137,19 @@ fn a_passphrase_you_have_cannot_be_replaced_through_the_recovery_door() {
     // anybody can reach by typing twelve characters.
     let (mut v, _code) = set_up();
     v.open(PASSPHRASE, 200, &cfg()).unwrap();
-    let why = v.set_passphrase_from_recovery("something else entirely", 200, &cfg()).unwrap_err();
+    let why = v
+        .set_passphrase_from_recovery("something else entirely", 200, &cfg())
+        .unwrap_err();
     assert!(why.contains("recovery key"), "{why}");
 
     let mut fresh = Vault::default();
-    fresh.open("twelve characters at least", 100, &cfg()).unwrap();
+    fresh
+        .open("twelve characters at least", 100, &cfg())
+        .unwrap();
     assert!(
-        fresh.set_passphrase_from_recovery("another twelve characters", 100, &cfg()).is_err(),
+        fresh
+            .set_passphrase_from_recovery("another twelve characters", 100, &cfg())
+            .is_err(),
         "an unverified first unlock could set a passphrase through the recovery door"
     );
 }
@@ -141,8 +164,14 @@ fn the_recovery_key_is_not_written_down_by_atlas() {
     let (v, code) = set_up();
     let yaml = serde_yaml::to_string(&v).unwrap();
     let bare: String = code.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-    assert!(!yaml.contains(&code), "the recovery key was serialised verbatim");
-    assert!(!yaml.contains(&bare), "the recovery key was serialised without its dashes");
+    assert!(
+        !yaml.contains(&code),
+        "the recovery key was serialised verbatim"
+    );
+    assert!(
+        !yaml.contains(&bare),
+        "the recovery key was serialised without its dashes"
+    );
     for group in code.split('-') {
         assert!(
             !yaml.contains(group),
@@ -162,8 +191,12 @@ fn making_a_new_one_stops_the_old_one_working() {
     assert_ne!(old, new);
     v.lock();
 
-    assert!(v.open_with_recovery_key(&old, 300, &cfg()).is_err(), "the retired key still opens it");
-    v.open_with_recovery_key(&new, 300, &cfg()).expect("the new key does not open it");
+    assert!(
+        v.open_with_recovery_key(&old, 300, &cfg()).is_err(),
+        "the retired key still opens it"
+    );
+    v.open_with_recovery_key(&new, 300, &cfg())
+        .expect("the new key does not open it");
     assert_eq!(v.get("bank", 300).unwrap(), "correct horse battery staple");
 }
 
@@ -192,7 +225,9 @@ fn it_is_read_the_way_somebody_copies_it_off_paper() {
 
     // And it is not so forgiving that it opens for something else.
     v.lock();
-    assert!(v.open_with_recovery_key("not a recovery key at all", 300, &cfg()).is_err());
+    assert!(v
+        .open_with_recovery_key("not a recovery key at all", 300, &cfg())
+        .is_err());
     v.lock();
     assert!(v.open_with_recovery_key("", 300, &cfg()).is_err());
 }
@@ -205,10 +240,19 @@ fn a_key_is_long_enough_to_be_worth_writing_down() {
     let (_v, code) = set_up();
     let bare: String = code.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
     assert_eq!(bare.len(), 24, "{code}");
-    assert!(code.contains('-'), "it is printed as one unbroken run: {code}");
+    assert!(
+        code.contains('-'),
+        "it is printed as one unbroken run: {code}"
+    );
     for c in bare.chars() {
-        assert!(c.is_ascii_uppercase() || c.is_ascii_digit(), "unexpected character in {code}");
-        assert!(!"ILOU".contains(c), "{c} is one of the four that get misread: {code}");
+        assert!(
+            c.is_ascii_uppercase() || c.is_ascii_digit(),
+            "unexpected character in {code}"
+        );
+        assert!(
+            !"ILOU".contains(c),
+            "{c} is one of the four that get misread: {code}"
+        );
     }
 
     // Two in a row are not the same, which is the cheapest possible check
@@ -226,9 +270,14 @@ fn a_vault_with_no_recovery_key_says_so_rather_than_refusing_vaguely() {
     v.open(PASSPHRASE, 100, &cfg()).unwrap();
     v.lock();
     assert!(!v.has_a_recovery_key());
-    let why = v.open_with_recovery_key("ABCD-EFGH-JKMN-PQRS-TVWX-YZ23", 200, &cfg()).unwrap_err();
+    let why = v
+        .open_with_recovery_key("ABCD-EFGH-JKMN-PQRS-TVWX-YZ23", 200, &cfg())
+        .unwrap_err();
     assert!(why.contains("no recovery key"), "{why}");
-    assert!(why.contains("atlas vault recovery"), "it does not say how to get one: {why}");
+    assert!(
+        why.contains("atlas vault recovery"),
+        "it does not say how to get one: {why}"
+    );
 }
 
 // --- the vault that already exists -----------------------------------------
@@ -240,33 +289,50 @@ fn a_vault_from_before_all_this_opens_and_keeps_everything() {
     // passphrase, and no wraps at all.
     let mut old = Vault::pre_envelope_for_test(
         PASSPHRASE,
-        &[("bank", Kind::Login, "correct horse battery staple"), ("note", Kind::Note, "x")],
+        &[
+            ("bank", Kind::Login, "correct horse battery staple"),
+            ("note", Kind::Note, "x"),
+        ],
         50,
         &cfg(),
     )
     .unwrap();
     assert!(old.wraps.is_empty(), "the fixture is not in the old format");
 
-    old.open(PASSPHRASE, 100, &cfg()).expect("an existing vault stopped opening");
+    old.open(PASSPHRASE, 100, &cfg())
+        .expect("an existing vault stopped opening");
     assert!(old.proved_it());
-    assert_eq!(old.get("bank", 100).unwrap(), "correct horse battery staple");
+    assert_eq!(
+        old.get("bank", 100).unwrap(),
+        "correct horse battery staple"
+    );
     assert_eq!(old.get("note", 100).unwrap(), "x");
 
     // It came out with an envelope round it -- and, critically, without the
     // secrets having been rewritten. Re-sealing them would be the moment a
     // half-finished conversion could lose the lot.
-    assert!(!old.wraps.is_empty(), "it opened and was not converted, so this never happens");
+    assert!(
+        !old.wraps.is_empty(),
+        "it opened and was not converted, so this never happens"
+    );
     let sealed_now: Vec<Vec<u8>> = old.secrets.iter().map(|s| s.sealed.clone()).collect();
     old.lock();
-    old.open(PASSPHRASE, 200, &cfg()).expect("it did not reopen after converting");
+    old.open(PASSPHRASE, 200, &cfg())
+        .expect("it did not reopen after converting");
     let sealed_after: Vec<Vec<u8>> = old.secrets.iter().map(|s| s.sealed.clone()).collect();
-    assert_eq!(sealed_now, sealed_after, "the secrets were rewritten by the conversion");
+    assert_eq!(
+        sealed_now, sealed_after,
+        "the secrets were rewritten by the conversion"
+    );
 
     // And now it can have a recovery key like any other.
     let code = old.issue_recovery_key(200, &cfg()).unwrap();
     old.lock();
     old.open_with_recovery_key(&code, 300, &cfg()).unwrap();
-    assert_eq!(old.get("bank", 300).unwrap(), "correct horse battery staple");
+    assert_eq!(
+        old.get("bank", 300).unwrap(),
+        "correct horse battery staple"
+    );
 }
 
 #[test]
@@ -278,7 +344,10 @@ fn the_wrong_passphrase_is_still_refused_on_a_converted_vault() {
         &cfg(),
     )
     .unwrap();
-    assert!(old.open(FORGOTTEN, 100, &cfg()).is_err(), "the wrong passphrase converted it");
+    assert!(
+        old.open(FORGOTTEN, 100, &cfg()).is_err(),
+        "the wrong passphrase converted it"
+    );
     assert!(old.wraps.is_empty(), "a failed open left a wrap behind");
     assert_eq!(old.state(), atlas::vault::State::Sealed);
 }
@@ -296,14 +365,18 @@ fn changing_the_passphrase_leaves_the_secrets_and_the_recovery_key_alone() {
         .expect("the passphrase would not change");
     v.lock();
 
-    v.open("an entirely different sentence", 300, &cfg()).unwrap();
+    v.open("an entirely different sentence", 300, &cfg())
+        .unwrap();
     assert_eq!(v.get("bank", 300).unwrap(), "correct horse battery staple");
     v.lock();
     v.open_with_recovery_key(&code, 300, &cfg())
         .expect("changing the passphrase quietly retired the recovery key");
     assert_eq!(v.get("bank", 300).unwrap(), "correct horse battery staple");
     v.lock();
-    assert!(v.open(PASSPHRASE, 300, &cfg()).is_err(), "the old passphrase still works");
+    assert!(
+        v.open(PASSPHRASE, 300, &cfg()).is_err(),
+        "the old passphrase still works"
+    );
 }
 
 #[test]
@@ -311,7 +384,10 @@ fn a_used_recovery_key_can_be_thrown_away() {
     let (mut v, code) = set_up();
     v.open(PASSPHRASE, 200, &cfg()).unwrap();
     assert!(v.forget_recovery_key());
-    assert!(!v.forget_recovery_key(), "it reported throwing away a second one");
+    assert!(
+        !v.forget_recovery_key(),
+        "it reported throwing away a second one"
+    );
     v.lock();
     assert!(v.open_with_recovery_key(&code, 300, &cfg()).is_err());
     // The passphrase still works -- forgetting the spare is not locking
@@ -335,13 +411,20 @@ fn every_wrap_gets_its_own_random_salt() {
     // whenever they happen to match -- which leaks, to anyone with the file,
     // the fact that they do.
     let (a, code_a) = set_up();
-    assert_eq!(a.wraps.len(), 2, "expected a passphrase wrap and a recovery wrap");
+    assert_eq!(
+        a.wraps.len(),
+        2,
+        "expected a passphrase wrap and a recovery wrap"
+    );
 
     let salts: Vec<&Vec<u8>> = a.wraps.iter().map(|w| &w.salt).collect();
     assert_ne!(salts[0], salts[1], "two wraps in one vault share a salt");
     for s in &salts {
         assert_eq!(s.len(), 16, "a salt is not the expected length");
-        assert!(s.iter().any(|b| *b != s[0]), "that salt is a constant: {s:?}");
+        assert!(
+            s.iter().any(|b| *b != s[0]),
+            "that salt is a constant: {s:?}"
+        );
     }
 
     // And a second vault, same passphrase, different salts -- so the derived
@@ -366,8 +449,14 @@ fn a_way_in_can_be_named_out_loud() {
     assert_eq!(How::Passphrase.plain(), "the passphrase");
     assert_eq!(How::RecoveryKey.plain(), "a recovery key");
     for how in [How::Passphrase, How::RecoveryKey] {
-        assert!(!how.plain().contains('_'), "an identifier would reach the screen");
-        assert!(how.plain().chars().next().unwrap().is_lowercase(), "it is written to sit mid-sentence");
+        assert!(
+            !how.plain().contains('_'),
+            "an identifier would reach the screen"
+        );
+        assert!(
+            how.plain().chars().next().unwrap().is_lowercase(),
+            "it is written to sit mid-sentence"
+        );
     }
 }
 
@@ -380,8 +469,16 @@ fn what_was_typed_is_tidied_the_way_paper_is_misread() {
     use atlas::vault::tidy_recovery_key as tidy;
 
     assert_eq!(tidy("abcd-2345"), "ABCD2345", "case and dashes");
-    assert_eq!(tidy("  ab cd  23 45 "), "ABCD2345", "however they grouped it");
-    assert_eq!(tidy("AB.CD/23:45"), "ABCD2345", "whatever punctuation they used");
+    assert_eq!(
+        tidy("  ab cd  23 45 "),
+        "ABCD2345",
+        "however they grouped it"
+    );
+    assert_eq!(
+        tidy("AB.CD/23:45"),
+        "ABCD2345",
+        "whatever punctuation they used"
+    );
 
     // The four the alphabet leaves out, read back as what they look like.
     // None can occur in a real key, so this only ever rescues a misreading.

@@ -33,9 +33,26 @@ pub const CHAT_SENTENCES: usize = 4;
 pub fn asks_for_length(said: &str) -> bool {
     let t = format!(" {} ", said.to_lowercase());
     [
-        " story", " poem", " song", " list", " detail", " explain", " steps", " step by step", " walk me through",
-        " tell me about", " tell me more", " in depth", " everything", " ideas", " options", " examples", " compare",
-        " summar", " write ", " draft ",
+        " story",
+        " poem",
+        " song",
+        " list",
+        " detail",
+        " explain",
+        " steps",
+        " step by step",
+        " walk me through",
+        " tell me about",
+        " tell me more",
+        " in depth",
+        " everything",
+        " ideas",
+        " options",
+        " examples",
+        " compare",
+        " summar",
+        " write ",
+        " draft ",
     ]
     .iter()
     .any(|w| t.contains(w))
@@ -134,10 +151,9 @@ fn normalise(s: &str) -> String {
 }
 
 const TASK_VERBS: &[&str] = &[
-    "open", "close", "focus", "move", "boot", "start", "stop", "run", "research",
-    "find", "search", "read", "write", "draft", "send", "schedule", "post",
-    "cancel", "show", "make", "put", "type", "paste", "switch", "shut", "turn",
-    "back up", "undo", "record", "edit", "index",
+    "open", "close", "focus", "move", "boot", "start", "stop", "run", "research", "find", "search",
+    "read", "write", "draft", "send", "schedule", "post", "cancel", "show", "make", "put", "type",
+    "paste", "switch", "shut", "turn", "back up", "undo", "record", "edit", "index",
 ];
 
 fn is_a_task(t: &str) -> bool {
@@ -175,13 +191,29 @@ fn is_a_task(t: &str) -> bool {
 /// think of this draft" is a request for an opinion on something else.
 fn about_atlas(t: &str) -> bool {
     const SUBJECTS: &[&str] = &[
-        "what do you do", "what can you do", "what are you", "who are you",
-        "how do you work", "what's this thing", "whats this thing",
-        "are you recording", "are you listening", "what are you doing",
-        "why did you", "how did you", "can you explain why", "what did you just",
-        "are you an ai", "what model", "how are you built", "what happens to what i say",
-        "what happens to my data", "what happens to my recordings",
-        "where does that go", "do you store", "is that private",
+        "what do you do",
+        "what can you do",
+        "what are you",
+        "who are you",
+        "how do you work",
+        "what's this thing",
+        "whats this thing",
+        "are you recording",
+        "are you listening",
+        "what are you doing",
+        "why did you",
+        "how did you",
+        "can you explain why",
+        "what did you just",
+        "are you an ai",
+        "what model",
+        "how are you built",
+        "what happens to what i say",
+        "what happens to my data",
+        "what happens to my recordings",
+        "where does that go",
+        "do you store",
+        "is that private",
     ];
     SUBJECTS.iter().any(|s| t.contains(s))
 }
@@ -189,29 +221,73 @@ fn about_atlas(t: &str) -> bool {
 /// Asked to write, tell or explain something: the answer is prose.
 fn wants_prose(t: &str) -> bool {
     const ASKS: &[&str] = &[
-        "poem", "story", "joke", "song", "lyrics", "essay", "haiku", "limerick", "letter to",
-        "speech", "explain", "describe", "tell me about", "tell me a", "what do you think",
-        "ideas for", "brainstorm", "summarise", "summarize", "compare",
+        "poem",
+        "story",
+        "joke",
+        "song",
+        "lyrics",
+        "essay",
+        "haiku",
+        "limerick",
+        "letter to",
+        "speech",
+        "explain",
+        "describe",
+        "tell me about",
+        "tell me a",
+        "what do you think",
+        "ideas for",
+        "brainstorm",
+        "summarise",
+        "summarize",
+        "compare",
     ];
     // Not "write a script" or "draft a post": those are Atlas's own tasks.
-    const TASKS: &[&str] = &["post", "email", "script", "function", "program", "code", "reply"];
-    ASKS.iter().any(|a| t.contains(a)) && !TASKS.iter().any(|w| t.split_whitespace().any(|x| x == *w))
+    const TASKS: &[&str] = &[
+        "post", "email", "script", "function", "program", "code", "reply",
+    ];
+    ASKS.iter().any(|a| t.contains(a))
+        && !TASKS.iter().any(|w| t.split_whitespace().any(|x| x == *w))
 }
 
 fn sounds_fed_up(t: &str) -> bool {
     // "again" alone was here, so "say that again" and "tell me again" read as
     // frustration. It counts next to something having gone wrong.
     const SIGNS: &[&str] = &[
-        "that didn't work", "that didnt work", "still broken", "not working again", "wrong again", "failed again", "why isn't",
-        "why isnt", "this is broken", "forget it", "useless", "for god's sake",
-        "for gods sake", "not again", "you keep",
+        "that didn't work",
+        "that didnt work",
+        "still broken",
+        "not working again",
+        "wrong again",
+        "failed again",
+        "why isn't",
+        "why isnt",
+        "this is broken",
+        "forget it",
+        "useless",
+        "for god's sake",
+        "for gods sake",
+        "not again",
+        "you keep",
     ];
     // "Seriously" and "come on" said on their own or with a complaint are
     // fed up; "seriously, what's the best broker?" is emphasis (30 Sep 2026:
     // that got a three-sentence "no jokes" answer).
-    let alone = ["come on", "seriously", "oh come on", "seriously atlas", "come on atlas"].iter().any(|s| t.trim() == *s);
+    let alone = [
+        "come on",
+        "seriously",
+        "oh come on",
+        "seriously atlas",
+        "come on atlas",
+    ]
+    .iter()
+    .any(|s| t.trim() == *s);
     let with_complaint = (t.starts_with("come on") || t.starts_with("seriously"))
-        && ["wrong", "broken", "didn't", "didnt", "not what", "again", "stop"].iter().any(|w| t.contains(w));
+        && [
+            "wrong", "broken", "didn't", "didnt", "not what", "again", "stop",
+        ]
+        .iter()
+        .any(|w| t.contains(w));
     alone || with_complaint || SIGNS.iter().any(|s| t.contains(s))
 }
 
@@ -254,14 +330,36 @@ pub fn formality(c: &CallContext) -> Formality {
     let mut casual = 0i32;
 
     const BUSINESS_WORDS: &[&str] = &[
-        "meeting", "standup", "stand-up", "sync", "review", "interview", "client",
-        "kickoff", "kick-off", "onboarding", "1:1", "one on one", "quarterly",
-        "sprint", "retro", "demo", "proposal", "contract", "board", "vendor",
+        "meeting",
+        "standup",
+        "stand-up",
+        "sync",
+        "review",
+        "interview",
+        "client",
+        "kickoff",
+        "kick-off",
+        "onboarding",
+        "1:1",
+        "one on one",
+        "quarterly",
+        "sprint",
+        "retro",
+        "demo",
+        "proposal",
+        "contract",
+        "board",
+        "vendor",
     ];
-    const CASUAL_WORDS: &[&str] =
-        &["catch up", "catchup", "chat", "hangout", "hang out", "game", "coffee", "beers", "family"];
+    const CASUAL_WORDS: &[&str] = &[
+        "catch up", "catchup", "chat", "hangout", "hang out", "game", "coffee", "beers", "family",
+    ];
 
-    business += BUSINESS_WORDS.iter().filter(|w| title.contains(**w)).count() as i32 * 2;
+    business += BUSINESS_WORDS
+        .iter()
+        .filter(|w| title.contains(**w))
+        .count() as i32
+        * 2;
     casual += CASUAL_WORDS.iter().filter(|w| title.contains(**w)).count() as i32 * 2;
 
     // Someone outside your own domains is a strong business signal.
@@ -269,7 +367,11 @@ pub fn formality(c: &CallContext) -> Formality {
         .participants
         .iter()
         .filter(|p| p.contains('@'))
-        .filter(|p| !c.my_domains.iter().any(|d| p.to_lowercase().ends_with(&d.to_lowercase())))
+        .filter(|p| {
+            !c.my_domains
+                .iter()
+                .any(|d| p.to_lowercase().ends_with(&d.to_lowercase()))
+        })
         .count();
     if external > 0 {
         business += 2;

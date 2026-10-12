@@ -21,7 +21,11 @@
 //! passes for the wrong reason, and every test built on it quietly becomes
 //! decoration. [`walk`] is checked by its own tests for the two properties it
 //! is supposed to have: steps that go both ways, and pivots that actually form.
-#![allow(clippy::unwrap_used, clippy::expect_used, reason = "built from fixed fixture data that is known to be valid; a self-check, not a path for real input")]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "built from fixed fixture data that is known to be valid; a self-check, not a path for real input"
+)]
 
 use super::bars::{Answer, Bars};
 
@@ -95,7 +99,11 @@ pub fn box_range(n: usize, lo: f64, hi: f64, period: usize) -> Bars {
             let phase = (i % period) as f64 / period as f64;
             // A triangle wave. No trig, so no rounding difference between
             // platforms.
-            let t = if phase < 0.5 { phase * 2.0 } else { 2.0 - phase * 2.0 };
+            let t = if phase < 0.5 {
+                phase * 2.0
+            } else {
+                2.0 - phase * 2.0
+            };
             lo + (hi - lo) * t
         })
         .collect();
@@ -180,7 +188,10 @@ mod tests {
     fn a_ramp_has_no_structure_in_it() {
         let b = ramp(200, 0.0008);
         let (hi, lo) = b.latest().unwrap().swings(2);
-        assert!(hi.is_empty() && lo.is_empty(), "a straight line has no pivots");
+        assert!(
+            hi.is_empty() && lo.is_empty(),
+            "a straight line has no pivots"
+        );
     }
 
     #[test]

@@ -34,18 +34,31 @@ use crate::mfcc::fft_in_place as fft;
 
 /// (energy dB, dominant frequency Hz, spectral flatness dB) of one frame.
 fn features(frame: &[i16], rate: u32) -> (f64, f64, f64) {
-    let e: f64 = frame.iter().map(|s| (*s as f64 / 32768.0).powi(2)).sum::<f64>() / frame.len().max(1) as f64;
+    let e: f64 = frame
+        .iter()
+        .map(|s| (*s as f64 / 32768.0).powi(2))
+        .sum::<f64>()
+        / frame.len().max(1) as f64;
     let e_db = 10.0 * e.max(1e-12).log10();
     let mut re = vec![0.0; FFT];
     let mut im = vec![0.0; FFT];
     for (i, s) in frame.iter().take(FFT).enumerate() {
         // Hann window, so a frame's edges don't smear into every bin.
-        let w = 0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / (frame.len().min(FFT) as f64 - 1.0).max(1.0)).cos();
+        let w = 0.5
+            - 0.5
+                * (2.0 * std::f64::consts::PI * i as f64
+                    / (frame.len().min(FFT) as f64 - 1.0).max(1.0))
+                .cos();
         re[i] = *s as f64 / 32768.0 * w;
     }
     fft(&mut re, &mut im);
-    let mags: Vec<f64> = (1..FFT / 2).map(|k| (re[k] * re[k] + im[k] * im[k]).sqrt().max(1e-12)).collect();
-    let (kmax, _) = mags.iter().enumerate().fold((0, 0.0), |b, (i, m)| if *m > b.1 { (i, *m) } else { b });
+    let mags: Vec<f64> = (1..FFT / 2)
+        .map(|k| (re[k] * re[k] + im[k] * im[k]).sqrt().max(1e-12))
+        .collect();
+    let (kmax, _) = mags
+        .iter()
+        .enumerate()
+        .fold((0, 0.0), |b, (i, m)| if *m > b.1 { (i, *m) } else { b });
     let f = (kmax + 1) as f64 * rate as f64 / FFT as f64;
     let am = mags.iter().sum::<f64>() / mags.len() as f64;
     let gm = (mags.iter().map(|m| m.ln()).sum::<f64>() / mags.len() as f64).exp();
@@ -80,7 +93,11 @@ impl Default for VadParams {
 /// 20), which heard only a third to a half of the speech in the noisy rooms.
 /// Synthesized voices and made noise, not your room: `endpoint.vad_*` in
 /// settings is there for the day a real room disagrees.
-pub const DEFAULT_MEASURED: VadParams = VadParams { energy_db: 1.0, flatness_db: 4.0, loud_db: 12.0 };
+pub const DEFAULT_MEASURED: VadParams = VadParams {
+    energy_db: 1.0,
+    flatness_db: 4.0,
+    loud_db: 12.0,
+};
 
 #[derive(Debug, Clone)]
 pub struct Vad {
@@ -161,7 +178,8 @@ impl Vad {
         // then lifts the floor toward the voice, and the voice stops counting.
         if !speech && e < self.floor_db + 3.0 {
             self.floor_db = (self.silent as f64 * self.floor_db + e) / (self.silent as f64 + 1.0);
-            self.floor_sfm = (self.silent as f64 * self.floor_sfm + sfm) / (self.silent as f64 + 1.0);
+            self.floor_sfm =
+                (self.silent as f64 * self.floor_sfm + sfm) / (self.silent as f64 + 1.0);
             self.silent = (self.silent + 1).min(500);
         }
         Some(speech)
@@ -189,7 +207,11 @@ impl Vad {
 fn frames(samples: &[i16], rate: u32, p: VadParams) -> Vec<bool> {
     let mut v = Vad::tuned(rate, p);
     let frame = v.frame;
-    samples.chunks(frame).filter(|c| c.len() == frame).map(|c| v.frame_is_speech(c).unwrap_or(false)).collect()
+    samples
+        .chunks(frame)
+        .filter(|c| c.len() == frame)
+        .map(|c| v.frame_is_speech(c).unwrap_or(false))
+        .collect()
 }
 
 /// Where the speech is in a recording, as sample ranges: frames judged, then
@@ -217,7 +239,11 @@ pub fn segments(samples: &[i16], rate: u32) -> Vec<(usize, usize)> {
             _ => merged.push(r),
         }
     }
-    merged.into_iter().filter(|(s, e)| e - s >= 10).map(|(s, e)| (s * frame, e * frame)).collect()
+    merged
+        .into_iter()
+        .filter(|(s, e)| e - s >= 10)
+        .map(|(s, e)| (s * frame, e * frame))
+        .collect()
 }
 
 /// The level the endpointer should see for a window: the detector's verdict

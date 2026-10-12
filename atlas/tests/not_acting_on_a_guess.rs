@@ -16,9 +16,9 @@
 //! What these tests pin is the third option: not guessing, and not refusing
 //! either. Atlas says what it took you to mean and waits for an answer.
 
+use atlas::brain::Llm;
 use atlas::config::Config;
 use atlas::daemon::Daemon;
-use atlas::brain::Llm;
 use atlas::error::Result;
 use atlas::platform::mock::MockPlatform;
 use atlas::platform::Monitor;
@@ -35,11 +35,29 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
-fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, llm: Option<Arc<dyn Llm>>, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, llm, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+fn daemon<'a>(
+    c: &'a Config,
+    p: &'a MockPlatform,
+    llm: Option<Arc<dyn Llm>>,
+    tag: &str,
+) -> Daemon<'a> {
+    Daemon::new(
+        c,
+        p,
+        llm,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 /// A model that confidently reads any unrecognised sentence as "rebuild the
@@ -74,7 +92,10 @@ fn an_inferred_action_is_put_to_you_before_it_happens() {
         !reply.contains("nothing to index"),
         "ran the action on the model's reading without checking: {reply}"
     );
-    assert!(reply.contains("I took that as"), "did not put it to you: {reply}");
+    assert!(
+        reply.contains("I took that as"),
+        "did not put it to you: {reply}"
+    );
 }
 
 #[test]
@@ -109,14 +130,22 @@ fn a_matched_phrase_is_not_second_guessed() {
     let mut d = daemon(&c, &p, Some(Arc::new(ConfidentlyWrong)), "matched");
 
     std::fs::create_dir_all(d.notes_dir()).unwrap();
-    std::fs::write(d.notes_dir().join("matched-proof.md"), "Disposable matched proof").unwrap();
+    std::fs::write(
+        d.notes_dir().join("matched-proof.md"),
+        "Disposable matched proof",
+    )
+    .unwrap();
     let reply = d.turn("rebuild the index", 100);
 
     assert!(
         reply.contains("Rebuilt the index"),
         "a phrase it matched exactly did not just run: {reply}"
     );
-    assert!(d.contents.lines.iter().any(|line| line.name.contains("matched-proof")));
+    assert!(d
+        .contents
+        .lines
+        .iter()
+        .any(|line| line.name.contains("matched-proof")));
     assert!(
         !reply.contains("I took that as"),
         "asked about a phrase it matched exactly: {reply}"
@@ -133,7 +162,11 @@ fn switching_it_off_restores_the_old_behaviour_exactly() {
     let mut d = daemon(&c, &p, Some(Arc::new(ConfidentlyWrong)), "off");
 
     std::fs::create_dir_all(d.notes_dir()).unwrap();
-    std::fs::write(d.notes_dir().join("gate-off-proof.md"), "Disposable gate proof").unwrap();
+    std::fs::write(
+        d.notes_dir().join("gate-off-proof.md"),
+        "Disposable gate proof",
+    )
+    .unwrap();
 
     let reply = d.turn("mmh the thing with the files would you", 100);
 
@@ -141,8 +174,17 @@ fn switching_it_off_restores_the_old_behaviour_exactly() {
         reply.contains("Rebuilt the index"),
         "with the gate off the action should simply run: {reply}"
     );
-    assert!(d.contents.lines.iter().any(|line| line.name.contains("gate-off-proof")), "inferred rebuild did not index the seeded note");
-    assert!(!reply.contains("I took that as"), "still gating with the setting off: {reply}");
+    assert!(
+        d.contents
+            .lines
+            .iter()
+            .any(|line| line.name.contains("gate-off-proof")),
+        "inferred rebuild did not index the seeded note"
+    );
+    assert!(
+        !reply.contains("I took that as"),
+        "still gating with the setting off: {reply}"
+    );
 }
 
 // ---------- the setting is real ----------
@@ -156,7 +198,11 @@ fn the_gate_ships_on() {
     // things done unasked.
     let c = cfg();
     assert!(
-        c.tools.as_ref().expect("tools.yaml loads").understood.enabled,
+        c.tools
+            .as_ref()
+            .expect("tools.yaml loads")
+            .understood
+            .enabled,
         "the guard against acting on a guess ships disabled"
     );
 }
@@ -166,5 +212,8 @@ fn the_setting_exists_in_the_shipped_file() {
     // Not just in the struct's defaults. A setting that only exists as a Rust
     // default is one nobody can find to change.
     let raw = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    assert!(raw.contains("understood:"), "no understood block in the shipped config");
+    assert!(
+        raw.contains("understood:"),
+        "no understood block in the shipped config"
+    );
 }

@@ -90,7 +90,10 @@ pub(crate) fn effective_stamp(e: &Event) -> crate::hlc::Stamp {
     if e.hlc.is_set() {
         e.hlc
     } else {
-        crate::hlc::Stamp { wall: e.at, count: 0 }
+        crate::hlc::Stamp {
+            wall: e.at,
+            count: 0,
+        }
     }
 }
 
@@ -107,21 +110,40 @@ pub struct Version {
 impl Version {
     pub fn of(e: &Event) -> Self {
         let stamp = effective_stamp(e);
-        Self { wall: stamp.wall, count: stamp.count, device: e.device.clone(), seq: e.seq }
+        Self {
+            wall: stamp.wall,
+            count: stamp.count,
+            device: e.device.clone(),
+            seq: e.seq,
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum What {
     /// Something added. These never conflict with anything.
-    Captured { id: String, text: String },
-    Said { text: String, from_you: bool },
+    Captured {
+        id: String,
+        text: String,
+    },
+    Said {
+        text: String,
+        from_you: bool,
+    },
     /// Something finished.
-    Finished { id: String },
+    Finished {
+        id: String,
+    },
     /// Something changed — the only kind that can clash.
-    Changed { id: String, field: String, to: String },
+    Changed {
+        id: String,
+        field: String,
+        to: String,
+    },
     /// Something removed.
-    Removed { id: String },
+    Removed {
+        id: String,
+    },
 }
 
 impl What {
@@ -160,10 +182,21 @@ pub struct Log {
 
 impl Log {
     pub(crate) fn observe_version(&mut self, version: &Version, now: u64) {
-        self.clock.observe(crate::hlc::Stamp { wall: version.wall, count: version.count }, now);
+        self.clock.observe(
+            crate::hlc::Stamp {
+                wall: version.wall,
+                count: version.count,
+            },
+            now,
+        );
     }
     pub fn new(device: &str) -> Log {
-        Log { device: device.into(), events: Vec::new(), next_seq: 0, clock: crate::hlc::Clock::new() }
+        Log {
+            device: device.into(),
+            events: Vec::new(),
+            next_seq: 0,
+            clock: crate::hlc::Clock::new(),
+        }
     }
 
     /// Add a local event, stamping it with this device's clock. `at` is the
@@ -234,8 +267,11 @@ pub struct Clash {
 /// this independently must reach the same answer, or they'll drift again the
 /// moment they part.
 pub fn merge(mine: &[Event], theirs: &[Event], now: u64) -> Merged {
-    let mut all: Vec<(&Event, bool)> =
-        mine.iter().map(|e| (e, true)).chain(theirs.iter().map(|e| (e, false))).collect();
+    let mut all: Vec<(&Event, bool)> = mine
+        .iter()
+        .map(|e| (e, true))
+        .chain(theirs.iter().map(|e| (e, false)))
+        .collect();
     // Ordered by the causal stamp, then device id, then seq — a total order
     // both sides compute identically. The stamp (not raw `at`) is what makes
     // two skewed clocks agree; `effective_stamp` falls back to `at` only for
@@ -283,8 +319,16 @@ pub fn merge(mine: &[Event], theirs: &[Event], now: u64) -> Merged {
                         clashes.push(Clash {
                             subject: subject.clone(),
                             field: field.clone(),
-                            here: if *is_mine { to.clone() } else { "removed".into() },
-                            there: if *is_mine { "removed".into() } else { to.clone() },
+                            here: if *is_mine {
+                                to.clone()
+                            } else {
+                                "removed".into()
+                            },
+                            there: if *is_mine {
+                                "removed".into()
+                            } else {
+                                to.clone()
+                            },
                             later: if *is_mine { "here" } else { "there" },
                         });
                         continue;
@@ -300,8 +344,16 @@ pub fn merge(mine: &[Event], theirs: &[Event], now: u64) -> Merged {
                         clashes.push(Clash {
                             subject: subject.clone(),
                             field: field.clone(),
-                            here: if *is_mine { to.clone() } else { prev_to.clone() },
-                            there: if *is_mine { prev_to.clone() } else { to.clone() },
+                            here: if *is_mine {
+                                to.clone()
+                            } else {
+                                prev_to.clone()
+                            },
+                            there: if *is_mine {
+                                prev_to.clone()
+                            } else {
+                                to.clone()
+                            },
                             // Events are already in time order, so the one
                             // being looked at now is the later of the two —
                             // which side it came from is the answer.
@@ -327,8 +379,16 @@ pub fn merge(mine: &[Event], theirs: &[Event], now: u64) -> Merged {
                         clashes.push(Clash {
                             subject: subject.clone(),
                             field: field.clone(),
-                            here: if *is_mine { "removed".into() } else { prev_to.clone() },
-                            there: if *is_mine { prev_to.clone() } else { "removed".into() },
+                            here: if *is_mine {
+                                "removed".into()
+                            } else {
+                                prev_to.clone()
+                            },
+                            there: if *is_mine {
+                                prev_to.clone()
+                            } else {
+                                "removed".into()
+                            },
                             later: if *is_mine { "here" } else { "there" },
                         });
                     }
@@ -414,8 +474,16 @@ pub fn make_bundle(log: &Log, name: &str, since: u64, now: u64) -> Bundle {
 /// Both sides empty means both are personal, which is what every bundle
 /// written before this existed was.
 pub fn from_the_same_atlas(b: &Bundle, mine: &str) -> std::result::Result<(), String> {
-    let theirs = if b.belongs_to.trim().is_empty() { "personal" } else { b.belongs_to.trim() };
-    let mine = if mine.trim().is_empty() { "personal" } else { mine.trim() };
+    let theirs = if b.belongs_to.trim().is_empty() {
+        "personal"
+    } else {
+        b.belongs_to.trim()
+    };
+    let mine = if mine.trim().is_empty() {
+        "personal"
+    } else {
+        mine.trim()
+    };
     if theirs.eq_ignore_ascii_case(mine) {
         return Ok(());
     }
@@ -494,7 +562,9 @@ impl Carry {
     pub fn plain(&self) -> &'static str {
         match self {
             Carry::SameNetwork => "same wifi — happens by itself, nothing stored in between",
-            Carry::CloudFolder => "through your cloud folder — works when they're never on together",
+            Carry::CloudFolder => {
+                "through your cloud folder — works when they're never on together"
+            }
             Carry::Cable => "plugged in — no wifi, no service, no account",
             Carry::AirDrop => "AirDropped — one tap, phone to iPad, nothing online",
         }
@@ -514,15 +584,27 @@ pub fn how_to_carry(
         return (Carry::SameNetwork, "same wifi — nothing for you to do");
     }
     if plugged_in {
-        return (Carry::Cable, "no network, but you're plugged in — I'll use that");
+        return (
+            Carry::Cable,
+            "no network, but you're plugged in — I'll use that",
+        );
     }
     if cloud_available {
-        return (Carry::CloudFolder, "through the cloud folder — it'll land next time both are on");
+        return (
+            Carry::CloudFolder,
+            "through the cloud folder — it'll land next time both are on",
+        );
     }
     if both_apple {
-        return (Carry::AirDrop, "AirDrop it and the other side will take it in");
+        return (
+            Carry::AirDrop,
+            "AirDrop it and the other side will take it in",
+        );
     }
-    (Carry::Cable, "nothing automatic is available — plug it in when you can")
+    (
+        Carry::Cable,
+        "nothing automatic is available — plug it in when you can",
+    )
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -695,9 +777,7 @@ pub fn new_key_phrase() -> String {
 pub fn key_from_phrase(phrase: &str) -> Result<Vec<u8>, String> {
     let tidy = crate::vault::tidy_recovery_key(phrase);
     if tidy.len() < 16 {
-        return Err(
-            "that isn't a household key -- they're 24 characters in groups of four".into()
-        );
+        return Err("that isn't a household key -- they're 24 characters in groups of four".into());
     }
     crate::vault::key_from_words(&tidy, KEY_CONTEXT)
 }
@@ -739,12 +819,18 @@ impl KeptKey {
     /// Keep a phrase, sealed by the OS where that is possible.
     pub fn keeping(phrase: &str, now: u64) -> KeptKey {
         match crate::vault::seal_bytes(phrase.as_bytes(), KEY_CONTEXT) {
-            Ok(sealed) => {
-                KeptKey { blob: crate::b64::encode(&sealed), sealed_by_os: true, set_at: now }
-            }
+            Ok(sealed) => KeptKey {
+                blob: crate::b64::encode(&sealed),
+                sealed_by_os: true,
+                set_at: now,
+            },
             // No OS protection here. Kept as typed rather than not kept at
             // all, and said plainly by `at_rest_says`.
-            Err(_) => KeptKey { blob: phrase.to_string(), sealed_by_os: false, set_at: now },
+            Err(_) => KeptKey {
+                blob: phrase.to_string(),
+                sealed_by_os: false,
+                set_at: now,
+            },
         }
     }
 
@@ -980,7 +1066,8 @@ pub fn write_card(phrase: &str) -> Result<std::path::PathBuf, String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    crate::store::write_owned_file(&path, recovery_card(phrase).as_bytes()).map_err(|e| e.to_string())?;
+    crate::store::write_owned_file(&path, recovery_card(phrase).as_bytes())
+        .map_err(|e| e.to_string())?;
     Ok(path)
 }
 
@@ -1007,14 +1094,24 @@ pub fn phrase_in_card(text: &str) -> Option<String> {
 /// nothing, so it is refused here. And a device that already has a key keeps
 /// it unless `replace` says otherwise: the new phrase would make everything
 /// sealed under the old one unreadable here.
-pub fn set_key(store: &crate::store::Store, phrase: &str, replace: bool, now: u64) -> Result<String, String> {
+pub fn set_key(
+    store: &crate::store::Store,
+    phrase: &str,
+    replace: bool,
+    now: u64,
+) -> Result<String, String> {
     let typed = phrase.trim();
     if typed.is_empty() {
         return Err("Nothing typed — the key is unchanged.".into());
     }
     let kept: KeptKey = store.load(KEY_FILE);
     if kept.is_set() && !replace {
-        if kept.phrase().ok().map(|p| tidy_same(&p, typed)).unwrap_or(false) {
+        if kept
+            .phrase()
+            .ok()
+            .map(|p| tidy_same(&p, typed))
+            .unwrap_or(false)
+        {
             return Ok("That's the key this device already has.".into());
         }
         return Err(
@@ -1026,7 +1123,9 @@ pub fn set_key(store: &crate::store::Store, phrase: &str, replace: bool, now: u6
     }
     key_from_phrase(typed)?;
     let keeping = KeptKey::keeping(typed, now);
-    store.save(KEY_FILE, &keeping).map_err(|e| format!("I couldn't keep that: {e}"))?;
+    store
+        .save(KEY_FILE, &keeping)
+        .map_err(|e| format!("I couldn't keep that: {e}"))?;
     Ok(format!(
         "Household key set on this device. {} If it is the same phrase as your other machine, \
          sealed bundles from it will open here. If it isn't, they won't, and I'll say so rather \
@@ -1162,7 +1261,10 @@ pub const HANDOFF_VERSION: u32 = 1;
 fn handoff_key(code: &str, household: &str) -> Result<Vec<u8>, String> {
     // The household id is mixed in so the same code in two households cannot
     // produce the same wrapping key.
-    crate::vault::key_from_words(&format!("{}|{}", code.trim(), household.trim()), HANDOFF_CONTEXT)
+    crate::vault::key_from_words(
+        &format!("{}|{}", code.trim(), household.trim()),
+        HANDOFF_CONTEXT,
+    )
 }
 
 fn handoff_path(folder: &std::path::Path, household: &str) -> std::path::PathBuf {
@@ -1193,7 +1295,12 @@ pub fn leave_handoff(
     };
     let path = handoff_path(folder, household);
     std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
-    write_whole(&path, serde_json::to_string_pretty(&env).map_err(|e| e.to_string())?.as_bytes())?;
+    write_whole(
+        &path,
+        serde_json::to_string_pretty(&env)
+            .map_err(|e| e.to_string())?
+            .as_bytes(),
+    )?;
     Ok(path)
 }
 
@@ -1221,15 +1328,15 @@ pub fn take_handoff(
     if now.saturating_sub(env.made_at) > env.valid_secs {
         crate::heard!(std::fs::remove_file(&path));
         return Err(
-            "the key waiting in that folder has expired -- ask for a fresh pairing code".into()
+            "the key waiting in that folder has expired -- ask for a fresh pairing code".into(),
         );
     }
     let key = handoff_key(code, household)?;
     let sealed = crate::b64::decode(&env.body).map_err(|e| e.to_string())?;
     let opened = crate::vault::unseal_aead(&sealed, &key)
         .map_err(|_| "that pairing code doesn't open the key waiting in the folder".to_string())?;
-    let phrase =
-        String::from_utf8(opened).map_err(|_| "the key that came across isn't readable".to_string())?;
+    let phrase = String::from_utf8(opened)
+        .map_err(|_| "the key that came across isn't readable".to_string())?;
     crate::heard!(std::fs::remove_file(&path));
     Ok(phrase)
 }
@@ -1241,7 +1348,9 @@ pub fn take_handoff(
 /// never finished -- which is exactly the one nobody would remember to clean
 /// up.
 pub fn sweep_handoffs(folder: &std::path::Path, now: u64) -> usize {
-    let Ok(entries) = std::fs::read_dir(folder) else { return 0 };
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return 0;
+    };
     let mut gone = 0;
     for p in entries.flatten().map(|e| e.path()) {
         if p.extension().and_then(|x| x.to_str()) != Some("keyhandoff") {
@@ -1264,12 +1373,19 @@ pub fn sweep_handoffs(folder: &std::path::Path, now: u64) -> usize {
 /// route available"): a cloud folder this machine already syncs, so two
 /// devices that are never on together still meet. `None` when there's none.
 pub fn best_folder() -> Option<(std::path::PathBuf, Carry)> {
-    let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok().map(std::path::PathBuf::from);
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .ok()
+        .map(std::path::PathBuf::from);
     let onedrive = ["OneDrive", "OneDriveConsumer", "OneDriveCommercial"]
         .iter()
         .filter_map(|v| std::env::var(v).ok().map(std::path::PathBuf::from))
         .collect::<Vec<_>>();
-    best_folder_from(home.as_deref(), &onedrive, Some(std::path::Path::new("G:\\My Drive")))
+    best_folder_from(
+        home.as_deref(),
+        &onedrive,
+        Some(std::path::Path::new("G:\\My Drive")),
+    )
 }
 
 /// [`best_folder`] with the machine passed in: the home folder and whatever
@@ -1288,14 +1404,19 @@ pub fn best_folder_from(
         tries.push(h.join("iCloudDrive"));
     }
     tries.extend(google_drive_letter.map(std::path::Path::to_path_buf));
-    tries.into_iter().find(|p| p.is_dir()).map(|p| (p.join("Atlas sync"), Carry::CloudFolder))
+    tries
+        .into_iter()
+        .find(|p| p.is_dir())
+        .map(|p| (p.join("Atlas sync"), Carry::CloudFolder))
 }
 
 /// How a folder carries things: through a cloud service, or on a drive you
 /// plug in. Said, so you know whether both machines need to be on.
 pub fn route_of(folder: &std::path::Path) -> (Carry, &'static str) {
     let f = folder.display().to_string().to_lowercase();
-    let cloud = ["onedrive", "dropbox", "google drive", "my drive", "icloud"].iter().any(|c| f.contains(c));
+    let cloud = ["onedrive", "dropbox", "google drive", "my drive", "icloud"]
+        .iter()
+        .any(|c| f.contains(c));
     // A folder on a drive other than the system one is likely removable.
     let plugged = !cloud && f.len() > 2 && f.as_bytes()[1] == b':' && !f.starts_with("c:");
     how_to_carry(false, plugged, cloud, false)

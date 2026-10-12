@@ -54,11 +54,22 @@ fn dir(tag: &str) -> PathBuf {
 fn the_loudness_follows_the_speech_itself() {
     let levels = speaking::levels_of_wav(&wav(), 30).expect("16-bit PCM is read");
     assert_eq!(levels.len(), 30, "900 ms in 30 ms frames");
-    assert!(levels[..9].iter().all(|l| *l == 0), "silence stays flat: {:?}", &levels[..10]);
-    assert_eq!(*levels.iter().max().unwrap(), 255, "the loudest moment uses the full height");
+    assert!(
+        levels[..9].iter().all(|l| *l == 0),
+        "silence stays flat: {:?}",
+        &levels[..10]
+    );
+    assert_eq!(
+        *levels.iter().max().unwrap(),
+        255,
+        "the loudest moment uses the full height"
+    );
     let loud = levels[12] as i32;
     let quiet = levels[25] as i32;
-    assert!(loud > quiet && quiet > 0, "quiet speech is lower but still moves: loud {loud}, quiet {quiet}");
+    assert!(
+        loud > quiet && quiet > 0,
+        "quiet speech is lower but still moves: loud {loud}, quiet {quiet}"
+    );
 }
 
 #[test]
@@ -77,7 +88,11 @@ fn the_file_says_what_is_being_said_and_is_gone_when_it_ends() {
     assert_eq!(s.text, "Hello Eric.");
     assert_eq!(s.level_at(1_000 + 400), Some(s.levels[13] as f32 / 255.0));
     assert_eq!(s.level_at(999), None, "not before it starts");
-    assert_eq!(s.level_at(1_000 + s.levels.len() as u64 * s.frame_ms as u64), None, "a file left by a crash can't keep the line moving");
+    assert_eq!(
+        s.level_at(1_000 + s.levels.len() as u64 * s.frame_ms as u64),
+        None,
+        "a file left by a crash can't keep the line moving"
+    );
     speaking::end(&d);
     assert!(speaking::now_saying(&d).is_none());
     let _ = std::fs::remove_dir_all(&d);
@@ -100,19 +115,30 @@ fn the_watch_reads_the_voice_level_now() {
 }
 
 fn said(text: &str, started_ms: u64) -> Speaking {
-    Speaking { text: text.into(), started_ms, frame_ms: 30, levels: vec![200; 100] }
+    Speaking {
+        text: text.into(),
+        started_ms,
+        frame_ms: 30,
+        levels: vec![200; 100],
+    }
 }
 
 #[test]
 fn the_overlay_shows_a_reply_once_then_leaves_the_desktop_alone() {
     let cfg = OverlayConfig::default();
     let mut stage = Stage::default();
-    assert!(!stage.step(None, 0, &cfg), "nothing to show before anything is said");
+    assert!(
+        !stage.step(None, 0, &cfg),
+        "nothing to show before anything is said"
+    );
 
     let s = said("Your two o'clock moved to three.", 10_000);
     assert!(stage.step(Some(&s), 10_010, &cfg));
     let (first, _) = stage.frame(2560, 1440, &cfg);
-    assert!(first.iter().any(|e| matches!(e, Element::Mark { .. })), "the mark arrives first");
+    assert!(
+        first.iter().any(|e| matches!(e, Element::Mark { .. })),
+        "the mark arrives first"
+    );
 
     // Long after: typed, held, faded, gone — even though the file still
     // names the same reply, it isn't shown a second time.
@@ -122,7 +148,10 @@ fn the_overlay_shows_a_reply_once_then_leaves_the_desktop_alone() {
         assert!(t < 60_000, "never went away");
     }
     assert!(stage.frame(2560, 1440, &cfg).0.is_empty());
-    assert!(!stage.step(Some(&s), t + 1_000, &cfg), "the same reply came back");
+    assert!(
+        !stage.step(Some(&s), t + 1_000, &cfg),
+        "the same reply came back"
+    );
 
     // The next thing said is shown.
     assert!(stage.step(Some(&said("Done.", t + 2_000)), t + 2_010, &cfg));
@@ -141,16 +170,27 @@ fn the_words_type_in_over_the_desktop() {
         Element::Typed { text, .. } => Some(text.clone()),
         _ => None,
     });
-    assert!(typed.map(|t| !t.is_empty() && "Hello Eric.".starts_with(&t)).unwrap_or(false));
-    assert!(frame.iter().any(|e| matches!(e, Element::Shade { .. })), "the shade that keeps it readable over a white page");
+    assert!(typed
+        .map(|t| !t.is_empty() && "Hello Eric.".starts_with(&t))
+        .unwrap_or(false));
+    assert!(
+        frame.iter().any(|e| matches!(e, Element::Shade { .. })),
+        "the shade that keeps it readable over a white page"
+    );
     assert_eq!(opacity, 1.0);
 }
 
 #[test]
 fn switched_off_it_shows_nothing_and_fades_what_it_was_showing() {
-    let off = OverlayConfig { enabled: false, ..OverlayConfig::default() };
+    let off = OverlayConfig {
+        enabled: false,
+        ..OverlayConfig::default()
+    };
     let mut stage = Stage::default();
-    assert!(!stage.step(Some(&said("Hi.", 0)), 10, &off), "switched off, nothing appears");
+    assert!(
+        !stage.step(Some(&said("Hi.", 0)), 10, &off),
+        "switched off, nothing appears"
+    );
 
     let on = OverlayConfig::default();
     let mut stage = Stage::default();
@@ -160,7 +200,10 @@ fn switched_off_it_shows_nothing_and_fades_what_it_was_showing() {
     while stage.step(None, t, &on) {
         t += 50;
     }
-    assert!(t <= 20 + on.fade_ms + 100, "it faded instead of holding: {t}");
+    assert!(
+        t <= 20 + on.fade_ms + 100,
+        "it faded instead of holding: {t}"
+    );
 }
 
 #[test]
@@ -177,9 +220,16 @@ fn the_overlay_only_runs_while_the_background_atlas_does() {
     // The laptop slept overnight: on waking, the lock reads abandoned until
     // Atlas beats. The overlay stays for that moment...
     let morning = now + 8 * 3600;
-    assert!(atlas::overlaywin::atlas_is_up(&mut w, &d, morning), "the overlay closed itself on waking from sleep");
+    assert!(
+        atlas::overlaywin::atlas_is_up(&mut w, &d, morning),
+        "the overlay closed itself on waking from sleep"
+    );
     // ...and goes once Atlas really hasn't come back.
-    assert!(!atlas::overlaywin::atlas_is_up(&mut w, &d, morning + atlas::onlyone::WOKE_GRACE_SECS));
+    assert!(!atlas::overlaywin::atlas_is_up(
+        &mut w,
+        &d,
+        morning + atlas::onlyone::WOKE_GRACE_SECS
+    ));
     // Quit properly: gone at once.
     let mut w = atlas::onlyone::Watching::default();
     atlas::onlyone::OnlyOne::at(&d).release();

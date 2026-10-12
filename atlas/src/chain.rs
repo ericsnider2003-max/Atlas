@@ -56,20 +56,39 @@ pub struct Chain {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Next {
     /// Do this one.
-    Run { index: usize, what: String },
+    Run {
+        index: usize,
+        what: String,
+    },
     /// This one leaves the machine. Ask first, with everything that led here.
-    Confirm { index: usize, what: String, context: String },
+    Confirm {
+        index: usize,
+        what: String,
+        context: String,
+    },
     /// Something's missing or ambiguous — ask rather than guess.
-    Ask { index: usize, question: String },
+    Ask {
+        index: usize,
+        question: String,
+    },
     Finished(String),
     /// Stopped, and what was undone.
-    Stopped { why: String, undone: Vec<String> },
+    Stopped {
+        why: String,
+        undone: Vec<String>,
+    },
 }
 
 impl Chain {
     pub fn new(goal: &str, steps: Vec<Step>) -> Chain {
         let states = vec![StepState::Waiting; steps.len()];
-        Chain { goal: goal.into(), steps, states, outputs: Vec::new(), at: 0 }
+        Chain {
+            goal: goal.into(),
+            steps,
+            states,
+            outputs: Vec::new(),
+            at: 0,
+        }
     }
 
     /// Check the whole thing before starting any of it.
@@ -81,7 +100,10 @@ impl Chain {
         for s in &self.steps {
             if let Some(need) = &s.needs {
                 if !available.contains(&need.as_str()) {
-                    return Err(format!("\"{}\" needs {need}, and nothing before it makes one", s.what));
+                    return Err(format!(
+                        "\"{}\" needs {need}, and nothing before it makes one",
+                        s.what
+                    ));
                 }
             }
             if let Some(p) = &s.produces {
@@ -92,7 +114,9 @@ impl Chain {
         // this, and it's worth catching by name.
         if let Some(bad) = self.steps.iter().position(|s| s.goes_out) {
             if self.steps[bad + 1..].iter().any(|s| !s.reversible) {
-                return Err("something irreversible happens after the send, which can't be undone".into());
+                return Err(
+                    "something irreversible happens after the send, which can't be undone".into(),
+                );
             }
         }
         Ok(())
@@ -108,7 +132,10 @@ impl Chain {
             if !self.outputs.iter().any(|(k, _)| k == need) {
                 return Next::Ask {
                     index: self.at,
-                    question: format!("I need {need} for \"{}\" and haven't got one. Where from?", s.what),
+                    question: format!(
+                        "I need {need} for \"{}\" and haven't got one. Where from?",
+                        s.what
+                    ),
                 };
             }
         }
@@ -122,10 +149,17 @@ impl Chain {
                 .map(|(k, v)| format!("{k}: {v}"))
                 .collect::<Vec<_>>()
                 .join("; ");
-            return Next::Confirm { index: self.at, what: s.what.clone(), context };
+            return Next::Confirm {
+                index: self.at,
+                what: s.what.clone(),
+                context,
+            };
         }
 
-        Next::Run { index: self.at, what: s.what.clone() }
+        Next::Run {
+            index: self.at,
+            what: s.what.clone(),
+        }
     }
 
     pub fn done(&mut self, produced: Option<(String, String)>) {
@@ -150,12 +184,21 @@ impl Chain {
         for i in self.at + 1..self.steps.len() {
             self.states[i] = StepState::Skipped;
         }
-        Next::Stopped { why: format!("{} failed: {why}", self.steps[self.at].what), undone }
+        Next::Stopped {
+            why: format!("{} failed: {why}", self.steps[self.at].what),
+            undone,
+        }
     }
 
     /// How far it got, for the morning brief.
     pub fn progress(&self) -> (usize, usize) {
-        (self.states.iter().filter(|s| **s == StepState::Done).count(), self.steps.len())
+        (
+            self.states
+                .iter()
+                .filter(|s| **s == StepState::Done)
+                .count(),
+            self.steps.len(),
+        )
     }
 
     /// What Atlas says as it goes. Named steps, not percentages.

@@ -42,7 +42,10 @@ fn a_cause_that_restates_the_symptom_is_not_a_diagnosis() {
 #[test]
 fn a_proving_test_that_already_passes_is_testing_something_else() {
     // The single most valuable check in the loop.
-    let unproven = Thought { proof_fails_now: false, ..good_thought() };
+    let unproven = Thought {
+        proof_fails_now: false,
+        ..good_thought()
+    };
     let e = unproven.is_thought_through().unwrap_err();
     assert!(e.contains("passes already"));
     assert!(e.contains("fails first"));
@@ -50,8 +53,14 @@ fn a_proving_test_that_already_passes_is_testing_something_else() {
 
 #[test]
 fn nothing_named_as_proof_stops_it_before_any_code() {
-    let vague = Thought { proof: String::new(), ..good_thought() };
-    assert!(vague.is_thought_through().unwrap_err().contains("prove it fixed"));
+    let vague = Thought {
+        proof: String::new(),
+        ..good_thought()
+    };
+    assert!(vague
+        .is_thought_through()
+        .unwrap_err()
+        .contains("prove it fixed"));
 }
 
 #[test]
@@ -62,11 +71,20 @@ fn a_real_diagnosis_passes() {
 #[test]
 fn you_cannot_build_before_the_thought_holds_up() {
     let mut w = Work::new("fix capture");
-    w.thought = Some(Thought { proof_fails_now: false, ..good_thought() });
-    assert!(matches!(w.what_next(&PipelineConfig::default()), Next::Blocked(_)));
+    w.thought = Some(Thought {
+        proof_fails_now: false,
+        ..good_thought()
+    });
+    assert!(matches!(
+        w.what_next(&PipelineConfig::default()),
+        Next::Blocked(_)
+    ));
 
     w.thought = Some(good_thought());
-    assert_eq!(w.what_next(&PipelineConfig::default()), Next::Do(Stage::Build));
+    assert_eq!(
+        w.what_next(&PipelineConfig::default()),
+        Next::Do(Stage::Build)
+    );
 }
 
 // ================= did it fix the cause =================
@@ -75,7 +93,10 @@ fn you_cannot_build_before_the_thought_holds_up() {
 fn a_change_somewhere_other_than_the_cause_is_the_thing_this_catches() {
     // A fix elsewhere may still make the test pass, and that's exactly what
     // patching a symptom looks like from the inside.
-    let elsewhere = Build { touched: vec!["src/daemon.rs".into()], ..good_build() };
+    let elsewhere = Build {
+        touched: vec!["src/daemon.rs".into()],
+        ..good_build()
+    };
     let r = review(&good_thought(), &elsewhere, &[]);
     assert!(!r.clean());
     let note = &r.blockers()[0];
@@ -93,8 +114,15 @@ fn a_change_where_the_cause_was_reviews_clean() {
 #[test]
 fn editing_tests_while_losing_tests_is_caught() {
     // The oldest way to make a suite green and meaningless.
-    let weakened = Build { tests_after: 2095, ..good_build() };
-    let r = review(&good_thought(), &weakened, &["tests/voice_and_tools.rs".into()]);
+    let weakened = Build {
+        tests_after: 2095,
+        ..good_build()
+    };
+    let r = review(
+        &good_thought(),
+        &weakened,
+        &["tests/voice_and_tools.rs".into()],
+    );
     assert!(!r.clean());
     assert!(r.blockers().iter().any(|n| n.kind == Concern::TestWeakened));
 }
@@ -125,7 +153,10 @@ fn a_refinement_that_answers_nothing_is_scope_creep_wearing_a_hat() {
 
 #[test]
 fn a_refinement_answering_a_real_note_is_allowed() {
-    let elsewhere = Build { touched: vec!["src/daemon.rs".into()], ..good_build() };
+    let elsewhere = Build {
+        touched: vec!["src/daemon.rs".into()],
+        ..good_build()
+    };
     let r = review(&good_thought(), &elsewhere, &[]);
     let fix = Refinement {
         answers: Concern::NotWhereTheCauseWas,
@@ -138,7 +169,10 @@ fn a_refinement_answering_a_real_note_is_allowed() {
 fn going_round_too_many_times_means_the_thought_was_wrong_not_the_code() {
     let mut w = Work::new("fix capture");
     w.thought = Some(good_thought());
-    w.build = Some(Build { touched: vec!["src/daemon.rs".into()], ..good_build() });
+    w.build = Some(Build {
+        touched: vec!["src/daemon.rs".into()],
+        ..good_build()
+    });
     w.review = Some(review(&good_thought(), w.build.as_ref().unwrap(), &[]));
     w.stage = Stage::Review;
     w.rounds = 3;
@@ -189,7 +223,10 @@ fn nothing_lands_without_all_five_and_that_is_not_configurable() {
     // And an old config naming the removed key still loads.
     let parsed: PipelineConfig =
         serde_yaml::from_str("enabled: true\nall_stages_required: false\n").unwrap();
-    assert!(parsed.enabled, "an unknown key must not stop the section parsing");
+    assert!(
+        parsed.enabled,
+        "an unknown key must not stop the section parsing"
+    );
 }
 
 #[test]
@@ -212,7 +249,10 @@ fn an_unreviewed_change_cannot_land() {
 fn a_change_with_a_blocking_review_note_cannot_land() {
     let mut w = Work::new("fix capture");
     w.thought = Some(good_thought());
-    let elsewhere = Build { touched: vec!["src/daemon.rs".into()], ..good_build() };
+    let elsewhere = Build {
+        touched: vec!["src/daemon.rs".into()],
+        ..good_build()
+    };
     w.review = Some(review(&good_thought(), &elsewhere, &[]));
     w.build = Some(elsewhere);
     assert!(w.may_land().is_err());
@@ -231,7 +271,10 @@ fn a_complete_piece_of_work_lands() {
 fn a_build_whose_proof_still_fails_does_not_reach_review() {
     let mut w = Work::new("fix capture");
     w.thought = Some(good_thought());
-    w.build = Some(Build { proof_passes: false, ..good_build() });
+    w.build = Some(Build {
+        proof_passes: false,
+        ..good_build()
+    });
     w.stage = Stage::Build;
     match w.what_next(&PipelineConfig::default()) {
         Next::Blocked(why) => assert!(why.contains("proving test still fails")),
@@ -243,9 +286,15 @@ fn a_build_whose_proof_still_fails_does_not_reach_review() {
 fn something_that_broke_other_tests_does_not_reach_review() {
     let mut w = Work::new("fix capture");
     w.thought = Some(good_thought());
-    w.build = Some(Build { nothing_else_broke: false, ..good_build() });
+    w.build = Some(Build {
+        nothing_else_broke: false,
+        ..good_build()
+    });
     w.stage = Stage::Build;
-    assert!(matches!(w.what_next(&PipelineConfig::default()), Next::Blocked(_)));
+    assert!(matches!(
+        w.what_next(&PipelineConfig::default()),
+        Next::Blocked(_)
+    ));
 }
 
 // ================= what reaches you =================
@@ -263,7 +312,8 @@ fn what_you_are_told_is_behaviour_and_includes_what_it_left_alone() {
 
 #[test]
 fn the_reason_for_the_stages_is_written_down() {
-    assert!(WHY_THE_STAGES.contains("Green tests tell you nothing about whether you fixed the right thing"));
+    assert!(WHY_THE_STAGES
+        .contains("Green tests tell you nothing about whether you fixed the right thing"));
     assert!(WHY_THE_STAGES.contains("comes back in three weeks"));
 }
 
@@ -334,9 +384,16 @@ fn what_it_takes_with_it_is_the_diagnosis_not_the_symptom() {
     let mut s = Session::new("fix capture", 2100);
     s.work.thought = Some(good_thought());
     let c = s.take_it_elsewhere().unwrap();
-    assert!(c.problem.contains("the working folder is created by listen"), "the cause");
+    assert!(
+        c.problem
+            .contains("the working folder is created by listen"),
+        "the cause"
+    );
     assert!(c.problem.contains("src/voice.rs"), "and where");
-    assert!(c.problem.contains("capture_works_on_a_fresh_install"), "and the proof");
+    assert!(
+        c.problem.contains("capture_works_on_a_fresh_install"),
+        "and the proof"
+    );
     assert!(c.problem.contains("tried everything I know"));
     // Not just the symptom, which is what makes it worth someone reading.
     assert!(c.problem.len() > good_thought().symptom.len() * 3);

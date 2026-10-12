@@ -41,15 +41,46 @@ pub struct Parsed {
 }
 
 const MONTHS: [(&str, u32); 23] = [
-    ("january", 1), ("february", 2), ("march", 3), ("april", 4), ("may", 5), ("june", 6), ("july", 7),
-    ("august", 8), ("september", 9), ("october", 10), ("november", 11), ("december", 12),
-    ("jan", 1), ("feb", 2), ("mar", 3), ("apr", 4), ("jun", 6), ("jul", 7), ("aug", 8), ("sep", 9), ("sept", 9),
-    ("oct", 10), ("nov", 11),
+    ("january", 1),
+    ("february", 2),
+    ("march", 3),
+    ("april", 4),
+    ("may", 5),
+    ("june", 6),
+    ("july", 7),
+    ("august", 8),
+    ("september", 9),
+    ("october", 10),
+    ("november", 11),
+    ("december", 12),
+    ("jan", 1),
+    ("feb", 2),
+    ("mar", 3),
+    ("apr", 4),
+    ("jun", 6),
+    ("jul", 7),
+    ("aug", 8),
+    ("sep", 9),
+    ("sept", 9),
+    ("oct", 10),
+    ("nov", 11),
 ];
 const DEC: (&str, u32) = ("dec", 12);
 const WEEKDAYS: [(&str, u32); 14] = [
-    ("monday", 0), ("tuesday", 1), ("wednesday", 2), ("thursday", 3), ("friday", 4), ("saturday", 5), ("sunday", 6),
-    ("mon", 0), ("tue", 1), ("tues", 1), ("wed", 2), ("thu", 3), ("thurs", 3), ("fri", 4),
+    ("monday", 0),
+    ("tuesday", 1),
+    ("wednesday", 2),
+    ("thursday", 3),
+    ("friday", 4),
+    ("saturday", 5),
+    ("sunday", 6),
+    ("mon", 0),
+    ("tue", 1),
+    ("tues", 1),
+    ("wed", 2),
+    ("thu", 3),
+    ("thurs", 3),
+    ("fri", 4),
 ];
 const WEEKEND_SHORT: [(&str, u32); 2] = [("sat", 5), ("sun", 6)];
 
@@ -65,20 +96,46 @@ enum Ctx {
 }
 
 fn month_of(w: &str) -> Option<u32> {
-    MONTHS.iter().chain(std::iter::once(&DEC)).find(|(n, _)| *n == w).map(|(_, m)| *m)
+    MONTHS
+        .iter()
+        .chain(std::iter::once(&DEC))
+        .find(|(n, _)| *n == w)
+        .map(|(_, m)| *m)
 }
 
 fn weekday_of(w: &str) -> Option<u32> {
-    WEEKDAYS.iter().chain(WEEKEND_SHORT.iter()).find(|(n, _)| *n == w).map(|(_, d)| *d)
+    WEEKDAYS
+        .iter()
+        .chain(WEEKEND_SHORT.iter())
+        .find(|(n, _)| *n == w)
+        .map(|(_, d)| *d)
 }
 
 /// Small numbers in words and digits; "a"/"an" is one.
 fn number(w: &str) -> Option<f64> {
     let words = [
-        ("a", 1.0), ("an", 1.0), ("one", 1.0), ("two", 2.0), ("three", 3.0), ("four", 4.0), ("five", 5.0),
-        ("six", 6.0), ("seven", 7.0), ("eight", 8.0), ("nine", 9.0), ("ten", 10.0), ("eleven", 11.0),
-        ("twelve", 12.0), ("fifteen", 15.0), ("twenty", 20.0), ("thirty", 30.0), ("forty", 40.0),
-        ("forty-five", 45.0), ("fifty", 50.0), ("ninety", 90.0), ("couple", 2.0),
+        ("a", 1.0),
+        ("an", 1.0),
+        ("one", 1.0),
+        ("two", 2.0),
+        ("three", 3.0),
+        ("four", 4.0),
+        ("five", 5.0),
+        ("six", 6.0),
+        ("seven", 7.0),
+        ("eight", 8.0),
+        ("nine", 9.0),
+        ("ten", 10.0),
+        ("eleven", 11.0),
+        ("twelve", 12.0),
+        ("fifteen", 15.0),
+        ("twenty", 20.0),
+        ("thirty", 30.0),
+        ("forty", 40.0),
+        ("forty-five", 45.0),
+        ("fifty", 50.0),
+        ("ninety", 90.0),
+        ("couple", 2.0),
     ];
     if let Some((_, n)) = words.iter().find(|(x, _)| *x == w) {
         return Some(*n);
@@ -109,12 +166,21 @@ fn words(text: &str) -> Vec<String> {
     let kept: String = lower
         .char_indices()
         .map(|(i, c)| {
-            let decimal = c == '.' && i > 0 && b[i - 1].is_ascii_digit() && b.get(i + 1).map(|x| x.is_ascii_digit()).unwrap_or(false);
-            if matches!(c, '.' | ',' | ';' | '!' | '?' | '(' | ')' | '"') && !decimal { ' ' } else { c }
+            let decimal = c == '.'
+                && i > 0
+                && b[i - 1].is_ascii_digit()
+                && b.get(i + 1).map(|x| x.is_ascii_digit()).unwrap_or(false);
+            if matches!(c, '.' | ',' | ';' | '!' | '?' | '(' | ')' | '"') && !decimal {
+                ' '
+            } else {
+                c
+            }
         })
         .collect();
     let t = kept;
-    let t = t.replace("o'clock", " oclock ").replace("o clock", " oclock ");
+    let t = t
+        .replace("o'clock", " oclock ")
+        .replace("o clock", " oclock ");
     let mut out = Vec::new();
     let t = t.replace(['\u{2013}', '\u{2014}'], "-");
     for whole in t.split_whitespace() {
@@ -130,33 +196,57 @@ fn words(text: &str) -> Vec<String> {
             && parts.iter().any(|p| p.ends_with("am") || p.ends_with("pm"));
         let pieces: Vec<&str> = if each_a_time { parts } else { vec![whole] };
         for (k, w) in pieces.iter().enumerate() {
-        if k > 0 {
-            out.push("to".to_string());
-        }
-        let w: &str = w;
-        // "3pm", "10am", "3:30pm", "2-4pm": split the meridiem off.
-        let (core, mer) = if let Some(c) = w.strip_suffix("pm").or_else(|| w.strip_suffix("p")).filter(|c| c.chars().any(|ch| ch.is_ascii_digit()) && c.chars().last().map(|ch| ch.is_ascii_digit()).unwrap_or(false)) {
-            (c.to_string(), Some("pm"))
-        } else if let Some(c) = w.strip_suffix("am").or_else(|| w.strip_suffix("a")).filter(|c| c.chars().any(|ch| ch.is_ascii_digit()) && c.chars().last().map(|ch| ch.is_ascii_digit()).unwrap_or(false)) {
-            (c.to_string(), Some("am"))
-        } else {
-            (w.to_string(), None)
-        };
-        // "2-4" (a range) splits into "2", "to", "4"; ISO dates keep theirs.
-        if core.contains('-') && !is_iso(&core) && core.split('-').all(|p| p.chars().all(|c| c.is_ascii_digit() || c == ':') && !p.is_empty()) {
-            let parts: Vec<&str> = core.split('-').collect();
-            for (i, p) in parts.iter().enumerate() {
-                if i > 0 {
-                    out.push("to".to_string());
-                }
-                out.push(p.to_string());
+            if k > 0 {
+                out.push("to".to_string());
             }
-        } else {
-            out.push(core);
-        }
-        if let Some(m) = mer {
-            out.push(m.to_string());
-        }
+            let w: &str = w;
+            // "3pm", "10am", "3:30pm", "2-4pm": split the meridiem off.
+            let (core, mer) = if let Some(c) = w
+                .strip_suffix("pm")
+                .or_else(|| w.strip_suffix("p"))
+                .filter(|c| {
+                    c.chars().any(|ch| ch.is_ascii_digit())
+                        && c.chars()
+                            .last()
+                            .map(|ch| ch.is_ascii_digit())
+                            .unwrap_or(false)
+                }) {
+                (c.to_string(), Some("pm"))
+            } else if let Some(c) =
+                w.strip_suffix("am")
+                    .or_else(|| w.strip_suffix("a"))
+                    .filter(|c| {
+                        c.chars().any(|ch| ch.is_ascii_digit())
+                            && c.chars()
+                                .last()
+                                .map(|ch| ch.is_ascii_digit())
+                                .unwrap_or(false)
+                    })
+            {
+                (c.to_string(), Some("am"))
+            } else {
+                (w.to_string(), None)
+            };
+            // "2-4" (a range) splits into "2", "to", "4"; ISO dates keep theirs.
+            if core.contains('-')
+                && !is_iso(&core)
+                && core
+                    .split('-')
+                    .all(|p| p.chars().all(|c| c.is_ascii_digit() || c == ':') && !p.is_empty())
+            {
+                let parts: Vec<&str> = core.split('-').collect();
+                for (i, p) in parts.iter().enumerate() {
+                    if i > 0 {
+                        out.push("to".to_string());
+                    }
+                    out.push(p.to_string());
+                }
+            } else {
+                out.push(core);
+            }
+            if let Some(m) = mer {
+                out.push(m.to_string());
+            }
         }
     }
     out
@@ -164,7 +254,10 @@ fn words(text: &str) -> Vec<String> {
 
 fn is_iso(w: &str) -> bool {
     let p: Vec<&str> = w.split('-').collect();
-    p.len() == 3 && p[0].len() == 4 && p.iter().all(|x| !x.is_empty() && x.chars().all(|c| c.is_ascii_digit()))
+    p.len() == 3
+        && p[0].len() == 4
+        && p.iter()
+            .all(|x| !x.is_empty() && x.chars().all(|c| c.is_ascii_digit()))
 }
 
 /// "14th" → 14.
@@ -192,8 +285,16 @@ fn clock_at(w: &[String], i: usize, context_pm: Option<Ctx>) -> Option<(u32, usi
             // The hour's half first ("quarter to one" is 12:45, not 00:45),
             // then the quarter before or after it.
             let (hh, guessed) = meridiem(h, w.get(i + 2 + used).map(|s| s.as_str()), context_pm);
-            let at = if next == Some("past") { hh * 60 + mins } else { (hh * 60 + 24 * 60 - mins) % (24 * 60) };
-            let extra = if matches!(w.get(i + 2 + used).map(|s| s.as_str()), Some("am" | "pm")) { 1 } else { 0 };
+            let at = if next == Some("past") {
+                hh * 60 + mins
+            } else {
+                (hh * 60 + 24 * 60 - mins) % (24 * 60)
+            };
+            let extra = if matches!(w.get(i + 2 + used).map(|s| s.as_str()), Some("am" | "pm")) {
+                1
+            } else {
+                0
+            };
             return Some((at, 2 + used + extra, guessed));
         }
         _ => {}
@@ -219,10 +320,20 @@ fn clock_at(w: &[String], i: usize, context_pm: Option<Ctx>) -> Option<(u32, usi
     if had_colon && h >= 13 || h == 0 && had_colon {
         return Some((h * 60 + m, used, false));
     }
-    let after_word = w.get(i.wrapping_sub(1)).map(|p| matches!(p.as_str(), "at" | "by" | "from" | "until" | "till" | "between" | "around" | "about")).unwrap_or(false);
+    let after_word = w
+        .get(i.wrapping_sub(1))
+        .map(|p| {
+            matches!(
+                p.as_str(),
+                "at" | "by" | "from" | "until" | "till" | "between" | "around" | "about"
+            )
+        })
+        .unwrap_or(false);
     // "2-4pm": a bare number that starts a range ending in am/pm.
     let starts_range = next == Some("to")
-        && w.get(i + 2).map(|n| n.parse::<u32>().is_ok() || n.contains(':')).unwrap_or(false)
+        && w.get(i + 2)
+            .map(|n| n.parse::<u32>().is_ok() || n.contains(':'))
+            .unwrap_or(false)
         && matches!(w.get(i + 3).map(|s| s.as_str()), Some("am" | "pm"));
     if !had_colon && used == 1 && !after_word && !starts_range {
         // A bare number that isn't after "at": not a time.
@@ -284,7 +395,8 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
     let has = |x: &str| w.iter().any(|t| t == x);
     let phrase = |p: &str| {
         let pw: Vec<&str> = p.split(' ').collect();
-        w.windows(pw.len()).any(|win| win.iter().zip(&pw).all(|(a, b)| a == b))
+        w.windows(pw.len())
+            .any(|win| win.iter().zip(&pw).all(|(a, b)| a == b))
     };
 
     // Part of the day, which also decides a bare hour's am/pm.
@@ -308,7 +420,9 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
         if t == "in" || t == "within" {
             let mut j = i + 1;
             let mut n = None;
-            if w.get(j).map(|s| s == "half").unwrap_or(false) && w.get(j + 1).map(|s| s == "an" || s == "a").unwrap_or(false) {
+            if w.get(j).map(|s| s == "half").unwrap_or(false)
+                && w.get(j + 1).map(|s| s == "an" || s == "a").unwrap_or(false)
+            {
                 n = Some(0.5);
                 j += 2;
             } else if let Some(x) = w.get(j).and_then(|s| number(s)) {
@@ -321,14 +435,24 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
                 if w.get(j).map(|s| s == "of").unwrap_or(false) {
                     j += 1;
                 }
-                if w.get(j).map(|s| s == "and" || s == "&").unwrap_or(false) && w.get(j + 1).map(|s| s == "a").unwrap_or(false) && w.get(j + 2).map(|s| s == "half").unwrap_or(false) {
+                if w.get(j).map(|s| s == "and" || s == "&").unwrap_or(false)
+                    && w.get(j + 1).map(|s| s == "a").unwrap_or(false)
+                    && w.get(j + 2).map(|s| s == "half").unwrap_or(false)
+                {
                     n = n.map(|x| x + 0.5);
                     j += 3;
                 }
-            } else if w.get(j).map(|s| s == "few").unwrap_or(false) || (w.get(j).map(|s| s == "a").unwrap_or(false) && w.get(j + 1).map(|s| s == "few").unwrap_or(false)) {
+            } else if w.get(j).map(|s| s == "few").unwrap_or(false)
+                || (w.get(j).map(|s| s == "a").unwrap_or(false)
+                    && w.get(j + 1).map(|s| s == "few").unwrap_or(false))
+            {
                 j += if w[j] == "a" { 2 } else { 1 };
                 n = Some(3.0);
-                unsure(&mut sure, &mut why, "\"a few\" isn't a number — how many?".into());
+                unsure(
+                    &mut sure,
+                    &mut why,
+                    "\"a few\" isn't a number — how many?".into(),
+                );
             }
             if let (Some(mut n), Some(u)) = (n, w.get(j).and_then(|s| unit_secs(s))) {
                 // "an hour and a half"
@@ -341,7 +465,11 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
                 if u >= DAY {
                     // "in 3 days": that day; a clock time said with it ("in 3
                     // days at 5") refines it.
-                    day = Some(if u == 30 * DAY { months_on(today, n) } else { (now + secs) - (now + secs) % DAY });
+                    day = Some(if u == 30 * DAY {
+                        months_on(today, n)
+                    } else {
+                        (now + secs) - (now + secs) % DAY
+                    });
                 }
                 i = j + 1;
                 continue;
@@ -350,11 +478,17 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
         if let (Some(n), Some(u)) = (number(t), unit_secs(next)) {
             let after = w.get(i + 2).map(|s| s.as_str());
             let after2 = w.get(i + 3).map(|s| s.as_str());
-            if after == Some("from") && matches!(after2, Some("now" | "today")) || after == Some("later") {
+            if after == Some("from") && matches!(after2, Some("now" | "today"))
+                || after == Some("later")
+            {
                 let secs = (n * u as f64).round() as u64;
                 offset = Some(secs);
                 if u >= DAY {
-                    day = Some(if u == 30 * DAY { months_on(today, n) } else { (now + secs) - (now + secs) % DAY });
+                    day = Some(if u == 30 * DAY {
+                        months_on(today, n)
+                    } else {
+                        (now + secs) - (now + secs) % DAY
+                    });
                 }
                 // Past "from now"/"from today" too, so "today" isn't read again.
                 i += if after == Some("from") { 4 } else { 3 };
@@ -391,7 +525,11 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
                     if to_sat <= 1 || wd_today == 6 {
                         d += 7 * DAY;
                     }
-                    unsure(&mut sure, &mut why, "\"next weekend\" — this coming one or the one after?".into());
+                    unsure(
+                        &mut sure,
+                        &mut why,
+                        "\"next weekend\" — this coming one or the one after?".into(),
+                    );
                 }
                 day = Some(d);
             }
@@ -407,7 +545,10 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
             }
             _ => {}
         }
-        if phrase_at(&w, i, "end of day") || phrase_at(&w, i, "end of the day") || phrase_at(&w, i, "close of business") {
+        if phrase_at(&w, i, "end of day")
+            || phrase_at(&w, i, "end of the day")
+            || phrase_at(&w, i, "close of business")
+        {
             day.get_or_insert(today);
             minute.get_or_insert(17 * 60);
             guessed = true;
@@ -426,7 +567,11 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
         }
 
         // ---- weekdays
-        let short_ok = t.len() > 4 || matches!(prev, "on" | "this" | "next" | "last" | "by" | "until" | "till" | "from");
+        let short_ok = t.len() > 4
+            || matches!(
+                prev,
+                "on" | "this" | "next" | "last" | "by" | "until" | "till" | "from"
+            );
         if let Some(target) = weekday_of(t).filter(|_| short_ok) {
             // "sat"/"sun" only as a day when nothing else reads them.
             let ahead = ((target + 7 - wd_today) % 7) as u64;
@@ -439,7 +584,14 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
                 "next" => {
                     let a = if ahead == 0 { 7 } else { ahead };
                     if a <= 2 {
-                        unsure(&mut sure, &mut why, format!("\"next {t}\" — the one in {a} day{}, or the week after?", if a == 1 { "" } else { "s" }));
+                        unsure(
+                            &mut sure,
+                            &mut why,
+                            format!(
+                                "\"next {t}\" — the one in {a} day{}, or the week after?",
+                                if a == 1 { "" } else { "s" }
+                            ),
+                        );
                     }
                     today + a * DAY
                 }
@@ -454,9 +606,26 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
         // ---- dates: "14th", "the 3rd", "oct 3", "3 october", "october 3rd 2026"
         if let Some(m) = month_of(t) {
             let (dnum, year) = if let Some(d) = w.get(i + 1).and_then(|s| ordinal(s)) {
-                (Some(d), w.get(i + 2).and_then(|s| s.parse::<i64>().ok()).filter(|y| (1970..2200).contains(y)))
-            } else if let Some(d) = (if prev == "of" { w.get(i.wrapping_sub(2)) } else { Some(&w[i.saturating_sub(1)]) }).filter(|_| i > 0).and_then(|s| ordinal(s)) {
-                (Some(d), w.get(i + 1).and_then(|s| s.parse::<i64>().ok()).filter(|y| (1970..2200).contains(y)))
+                (
+                    Some(d),
+                    w.get(i + 2)
+                        .and_then(|s| s.parse::<i64>().ok())
+                        .filter(|y| (1970..2200).contains(y)),
+                )
+            } else if let Some(d) = (if prev == "of" {
+                w.get(i.wrapping_sub(2))
+            } else {
+                Some(&w[i.saturating_sub(1)])
+            })
+            .filter(|_| i > 0)
+            .and_then(|s| ordinal(s))
+            {
+                (
+                    Some(d),
+                    w.get(i + 1)
+                        .and_then(|s| s.parse::<i64>().ok())
+                        .filter(|y| (1970..2200).contains(y)),
+                )
             } else {
                 (None, None)
             };
@@ -468,10 +637,19 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
         } else if let Some(d) = ordinal(t).filter(|_| {
             // "the 14th", "on the 3rd", "14th" — but not "2 hours" or a time.
             let tail = t.chars().any(|c| c.is_alphabetic());
-            (tail || prev == "the") && !w.get(i + 1).map(|n| month_of(n).is_some() || unit_secs(n).is_some()).unwrap_or(false)
-                && !w.get(i.wrapping_sub(1)).map(|p| month_of(p).is_some() || p == "of").unwrap_or(false)
+            (tail || prev == "the")
+                && !w
+                    .get(i + 1)
+                    .map(|n| month_of(n).is_some() || unit_secs(n).is_some())
+                    .unwrap_or(false)
+                && !w
+                    .get(i.wrapping_sub(1))
+                    .map(|p| month_of(p).is_some() || p == "of")
+                    .unwrap_or(false)
         }) {
-            if !(w.get(i + 1).map(|s| s == "of").unwrap_or(false) && w.get(i + 2).map(|s| month_of(s).is_some()).unwrap_or(false)) {
+            if !(w.get(i + 1).map(|s| s == "of").unwrap_or(false)
+                && w.get(i + 2).map(|s| month_of(s).is_some()).unwrap_or(false))
+            {
                 // The day of this month, or next month's if it has passed.
                 let (mut y, mut m) = (nowc.year, nowc.month);
                 if d < nowc.day {
@@ -488,7 +666,11 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
         }
         if is_iso(t) {
             let p: Vec<u32> = t.split('-').filter_map(|x| x.parse().ok()).collect();
-            if p.len() == 3 && (1..=12).contains(&p[1]) && p[2] >= 1 && p[2] <= days_in_month(p[0] as i64, p[1]) {
+            if p.len() == 3
+                && (1..=12).contains(&p[1])
+                && p[2] >= 1
+                && p[2] <= days_in_month(p[0] as i64, p[1])
+            {
                 day = Some(days_from_civil(p[0] as i64, p[1], p[2]) as u64 * DAY);
             }
         } else if t.contains('/') {
@@ -497,12 +679,22 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
                 // US order (month/day), as this machine's owner writes it;
                 // not sure when both readings are real dates.
                 let (m, d) = (p[0], p[1]);
-                let year = p.get(2).map(|y| if *y < 100 { 2000 + *y as i64 } else { *y as i64 });
+                let year = p.get(2).map(|y| {
+                    if *y < 100 {
+                        2000 + *y as i64
+                    } else {
+                        *y as i64
+                    }
+                });
                 if (1..=12).contains(&m) && (1..=31).contains(&d) {
                     if let Some(v) = date_day(nowc.year, m, d, year, today) {
                         day = Some(v);
                         if d <= 12 && d != m {
-                            unsure(&mut sure, &mut why, format!("is {t} month/day or day/month?"));
+                            unsure(
+                                &mut sure,
+                                &mut why,
+                                format!("is {t} month/day or day/month?"),
+                            );
                         }
                     }
                 }
@@ -510,7 +702,12 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
         }
 
         // ---- clock times
-        if minute.is_none() || (w.get(i).map(|s| s == "noon" || s == "midnight").unwrap_or(false)) {
+        if minute.is_none()
+            || (w
+                .get(i)
+                .map(|s| s == "noon" || s == "midnight")
+                .unwrap_or(false))
+        {
             if let Some((mm, used, g)) = clock_at(&w, i, context_pm) {
                 // A range: "from 2 to 4pm", "2-4pm", "between 2 and 3".
                 let to = w.get(i + used).map(|s| s.as_str());
@@ -542,14 +739,21 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
 
         // ---- lengths: "for 30 minutes", "for an hour", "for 1.5 hours"
         if t == "for" {
-            if let (Some(n), Some(u)) = (w.get(i + 1).and_then(|s| number(s)), w.get(i + 2).and_then(|s| unit_secs(s))) {
+            if let (Some(n), Some(u)) = (
+                w.get(i + 1).and_then(|s| number(s)),
+                w.get(i + 2).and_then(|s| unit_secs(s)),
+            ) {
                 if u < DAY {
                     mins = Some(((n * u as f64) / 60.0).round() as u64);
                     i += 3;
                     continue;
                 }
             }
-            if w.get(i + 1).map(|s| s == "half").unwrap_or(false) && w.get(i + 3).map(|s| unit_secs(s) == Some(3600)).unwrap_or(false) {
+            if w.get(i + 1).map(|s| s == "half").unwrap_or(false)
+                && w.get(i + 3)
+                    .map(|s| unit_secs(s) == Some(3600))
+                    .unwrap_or(false)
+            {
                 mins = Some(30);
                 i += 4;
                 continue;
@@ -590,22 +794,52 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
         if day.is_none() || minute.is_none() {
             // Offsets of minutes and hours are a moment; of days, a day.
             if off < DAY {
-                return Some(Parsed { start: now + off, all_day: false, mins, sure, why, guessed, day_said: true });
+                return Some(Parsed {
+                    start: now + off,
+                    all_day: false,
+                    mins,
+                    sure,
+                    why,
+                    guessed,
+                    day_said: true,
+                });
             }
         }
     }
 
     match (day, minute) {
         (None, None) => None,
-        (Some(d), None) => Some(Parsed { start: d, all_day: true, mins, sure, why, guessed, day_said: true }),
+        (Some(d), None) => Some(Parsed {
+            start: d,
+            all_day: true,
+            mins,
+            sure,
+            why,
+            guessed,
+            day_said: true,
+        }),
         (Some(d), Some(m)) => {
             let start = d + m as u64 * 60;
             // A moment that has already gone ("today at 9am" said at 10:15)
             // is asked about, not booked -- unless the words look back.
-            if start + mins.unwrap_or(0) * 60 <= now && !(has("yesterday") || has("last") || has("ago")) {
-                unsure(&mut sure, &mut why, "that time has already passed today -- did you mean another day?".into());
+            if start + mins.unwrap_or(0) * 60 <= now
+                && !(has("yesterday") || has("last") || has("ago"))
+            {
+                unsure(
+                    &mut sure,
+                    &mut why,
+                    "that time has already passed today -- did you mean another day?".into(),
+                );
             }
-            Some(Parsed { start, all_day: false, mins, sure, why, guessed, day_said: true })
+            Some(Parsed {
+                start,
+                all_day: false,
+                mins,
+                sure,
+                why,
+                guessed,
+                day_said: true,
+            })
         }
         (None, Some(m)) => {
             // Only a time: today if it's still ahead, else tomorrow.
@@ -613,7 +847,15 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
             if s <= now {
                 s += DAY;
             }
-            Some(Parsed { start: s, all_day: false, mins, sure, why, guessed, day_said: false })
+            Some(Parsed {
+                start: s,
+                all_day: false,
+                mins,
+                sure,
+                why,
+                guessed,
+                day_said: false,
+            })
         }
     }
 }
@@ -676,7 +918,10 @@ mod tests {
 
     #[test]
     fn the_everyday_ones() {
-        assert_eq!(parse("tomorrow at 3pm", now()).unwrap().start, at(2026, 9, 24, 15, 0));
+        assert_eq!(
+            parse("tomorrow at 3pm", now()).unwrap().start,
+            at(2026, 9, 24, 15, 0)
+        );
         assert_eq!(parse("in 20 minutes", now()).unwrap().start, now() + 1200);
         let p = parse("at 3", now()).unwrap();
         assert_eq!(p.start, at(2026, 9, 23, 15, 0));

@@ -55,10 +55,15 @@ pub struct History {
 }
 
 #[derive(Debug, Clone)]
-enum HistoryDelta { Append(Did, String), Undone(Did, Option<String>) }
+enum HistoryDelta {
+    Append(Did, String),
+    Undone(Did, Option<String>),
+}
 
 impl History {
-    pub(crate) fn identity(&self, id: u64) -> Option<&str> { self.append_identities.get(&id).map(String::as_str) }
+    pub(crate) fn identity(&self, id: u64) -> Option<&str> {
+        self.append_identities.get(&id).map(String::as_str)
+    }
     pub fn note(&mut self, what: &str, area: &str, undo: Undo, you_asked: bool, now: u64) -> u64 {
         self.next_id += 1;
         let id = self.next_id;
@@ -73,7 +78,15 @@ impl History {
         };
         self.done.push(did.clone());
         static NEXT_APPEND: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let identity = format!("{}-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos(), NEXT_APPEND.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+        let identity = format!(
+            "{}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            NEXT_APPEND.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
         self.append_identities.insert(id, identity.clone());
         self.pending.push(HistoryDelta::Append(did, identity));
         if self.done.len() > 2000 {
@@ -84,7 +97,11 @@ impl History {
 
     /// Everything since a moment, newest first.
     pub fn since(&self, when: u64) -> Vec<&Did> {
-        let mut v: Vec<&Did> = self.done.iter().filter(|d| d.at >= when && !d.undone).collect();
+        let mut v: Vec<&Did> = self
+            .done
+            .iter()
+            .filter(|d| d.at >= when && !d.undone)
+            .collect();
         v.sort_by_key(|d| std::cmp::Reverse(d.at));
         v
     }
@@ -106,7 +123,10 @@ impl History {
         match self.done.iter_mut().find(|d| d.id == id) {
             Some(d) => {
                 d.undone = true;
-                self.pending.push(HistoryDelta::Undone(d.clone(), self.append_identities.get(&id).cloned()));
+                self.pending.push(HistoryDelta::Undone(
+                    d.clone(),
+                    self.append_identities.get(&id).cloned(),
+                ));
                 true
             }
             None => false,
@@ -116,9 +136,13 @@ impl History {
     /// Merge only retained local changes into a fresh durable history. A
     /// numeric collision is held for review rather than remapping recovery IDs.
     pub fn save_merged(&mut self, store: &crate::store::Store) -> crate::error::Result<()> {
-        if self.pending.is_empty() { return Ok(()); }
+        if self.pending.is_empty() {
+            return Ok(());
+        }
         let _guard = store.transaction()?;
-        let mut current = store.load_checked::<History>("undo_history")?.unwrap_or_default();
+        let mut current = store
+            .load_checked::<History>("undo_history")?
+            .unwrap_or_default();
         for delta in &self.pending {
             match delta {
                 HistoryDelta::Append(row, identity) => {
@@ -136,8 +160,15 @@ impl History {
                 HistoryDelta::Undone(row, identity) => {
                     let known = current.append_identities.get(&row.id);
                     let existing = current.done.iter_mut().find(|item| item.id == row.id).ok_or_else(|| crate::error::AtlasError::Platform("the recovery row is missing; its pending undo acknowledgment was retained".into()))?;
-                    let same = identity.as_ref().is_some_and(|key| known == Some(key)) || (identity.is_none() && existing.what == row.what && existing.area == row.area && existing.at == row.at && existing.undo == row.undo);
-                    if !same { return Err(crate::error::AtlasError::Platform("the recovery row changed identity; its pending undo acknowledgment was retained".into())); }
+                    let same = identity.as_ref().is_some_and(|key| known == Some(key))
+                        || (identity.is_none()
+                            && existing.what == row.what
+                            && existing.area == row.area
+                            && existing.at == row.at
+                            && existing.undo == row.undo);
+                    if !same {
+                        return Err(crate::error::AtlasError::Platform("the recovery row changed identity; its pending undo acknowledgment was retained".into()));
+                    }
                     existing.undone = true;
                 }
             }
@@ -150,7 +181,10 @@ impl History {
     /// Things Atlas did without being asked, which is what you'd want to
     /// review.
     pub fn on_its_own(&self, since: u64) -> Vec<&Did> {
-        self.since(since).into_iter().filter(|d| !d.you_asked).collect()
+        self.since(since)
+            .into_iter()
+            .filter(|d| !d.you_asked)
+            .collect()
     }
 }
 
@@ -174,18 +208,44 @@ pub enum Asking {
 }
 
 const ASKS_WHAT: &[&str] = &[
-    "what did you do", "what have you done", "what you been doing", "what did you just do",
-    "what changed", "what's changed", "whats changed", "what did you change",
-    "what have you changed", "show me what you did", "what did i miss",
-    "what was that", "did you do something", "what just happened",
-    "what happened", "what've you done", "whatve you done", "run me through",
-    "catch me up", "anything change",
+    "what did you do",
+    "what have you done",
+    "what you been doing",
+    "what did you just do",
+    "what changed",
+    "what's changed",
+    "whats changed",
+    "what did you change",
+    "what have you changed",
+    "show me what you did",
+    "what did i miss",
+    "what was that",
+    "did you do something",
+    "what just happened",
+    "what happened",
+    "what've you done",
+    "whatve you done",
+    "run me through",
+    "catch me up",
+    "anything change",
 ];
 
 const ASKS_UNDO: &[&str] = &[
-    "undo", "put it back", "revert", "take it back", "change it back", "reverse",
-    "unpick", "roll it back", "never mind that", "cancel that", "no go back",
-    "go back", "that was wrong", "stop that", "not that",
+    "undo",
+    "put it back",
+    "revert",
+    "take it back",
+    "change it back",
+    "reverse",
+    "unpick",
+    "roll it back",
+    "never mind that",
+    "cancel that",
+    "no go back",
+    "go back",
+    "that was wrong",
+    "stop that",
+    "not that",
 ];
 
 /// Ways of asking, specifically, for the things Atlas did *without being told*
@@ -193,20 +253,39 @@ const ASKS_UNDO: &[&str] = &[
 /// reach `understand` as the remainder after the phrase ("what did you do"
 /// leaving "on your own"), where the general list words are gone.
 const ASKS_ON_OWN: &[&str] = &[
-    "on your own", "without asking", "without me asking", "without being asked",
-    "without my say", "didn't ask", "didnt ask", "did not ask", "unprompted",
-    "off your own", "by yourself",
+    "on your own",
+    "without asking",
+    "without me asking",
+    "without being asked",
+    "without my say",
+    "didn't ask",
+    "didnt ask",
+    "did not ask",
+    "unprompted",
+    "off your own",
+    "by yourself",
 ];
 
 /// Areas, as you'd name them rather than as the code does.
 const AREAS: &[(&str, &str)] = &[
-    ("file", "files"), ("folder", "files"), ("document", "files"),
-    ("setting", "settings"), ("wallpaper", "settings"), ("desktop", "settings"),
-    ("email", "mail"), ("mail", "mail"), ("inbox", "mail"),
-    ("post", "posting"), ("posted", "posting"),
-    ("window", "windows"), ("screen", "windows"),
-    ("password", "security"), ("account", "security"), ("two factor", "security"),
-    ("code", "atlas"), ("yourself", "atlas"),
+    ("file", "files"),
+    ("folder", "files"),
+    ("document", "files"),
+    ("setting", "settings"),
+    ("wallpaper", "settings"),
+    ("desktop", "settings"),
+    ("email", "mail"),
+    ("mail", "mail"),
+    ("inbox", "mail"),
+    ("post", "posting"),
+    ("posted", "posting"),
+    ("window", "windows"),
+    ("screen", "windows"),
+    ("password", "security"),
+    ("account", "security"),
+    ("two factor", "security"),
+    ("code", "atlas"),
+    ("yourself", "atlas"),
 ];
 
 pub fn understand(said: &str) -> Asking {
@@ -230,10 +309,14 @@ pub fn understand(said: &str) -> Asking {
     // are what narrow the answer — a plain "what did you do" is the whole
     // list, this is the subset worth reviewing.
     if ASKS_ON_OWN.iter().any(|p| t.contains(p)) {
-        return Asking::WhatOnYourOwn { since_mins: since_from(&t) };
+        return Asking::WhatOnYourOwn {
+            since_mins: since_from(&t),
+        };
     }
     if wants_list {
-        return Asking::WhatDidYouDo { since_mins: since_from(&t) };
+        return Asking::WhatDidYouDo {
+            since_mins: since_from(&t),
+        };
     }
     Asking::SomethingElse
 }
@@ -288,11 +371,21 @@ pub fn tell(done: &[&Did]) -> String {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Reversal {
     /// Atlas can do it. Confirm first, since undoing can be as wrong as doing.
-    CanDo { id: u64, what: String, confirm: String },
+    CanDo {
+        id: u64,
+        what: String,
+        confirm: String,
+    },
     /// You'd have to.
-    OverToYou { what: String, where_: String },
+    OverToYou {
+        what: String,
+        where_: String,
+    },
     /// It's gone.
-    Cannot { what: String, why: String },
+    Cannot {
+        what: String,
+        why: String,
+    },
     Nothing,
 }
 
@@ -337,16 +430,36 @@ mod durable_history_deltas {
     use super::*;
     struct Area(std::path::PathBuf);
     impl Area {
-        fn new() -> Self { static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); Self(std::env::temp_dir().join(format!("atlas-history-delta-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)))) }
-        fn store(&self) -> crate::store::Store { crate::store::Store::new(self.0.join("data/state")) }
+        fn new() -> Self {
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            Self(std::env::temp_dir().join(format!(
+                "atlas-history-delta-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            )))
+        }
+        fn store(&self) -> crate::store::Store {
+            crate::store::Store::new(self.0.join("data/state"))
+        }
     }
-    impl Drop for Area { fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); } }
+    impl Drop for Area {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
 
     #[test]
     fn undo_acknowledgment_preserves_a_fresh_worker_completion() {
-        let area = Area::new(); let store = area.store();
+        let area = Area::new();
+        let store = area.store();
         let mut original = History::default();
-        let id = original.note("moving requested", "files", Undo::Atlas("put back".into()), true, 10);
+        let id = original.note(
+            "moving requested",
+            "files",
+            Undo::Atlas("put back".into()),
+            true,
+            10,
+        );
         original.save_merged(&store).unwrap();
         let mut stale = original.clone();
         let mut worker: History = store.load_checked("undo_history").unwrap().unwrap();
@@ -361,12 +474,30 @@ mod durable_history_deltas {
 
     #[test]
     fn conflicting_numeric_recovery_ids_are_retained_without_remapping() {
-        let area = Area::new(); let store = area.store();
-        let mut first = History::default(); let mut other = History::default();
-        first.note("first owner's action", "files", Undo::Atlas("first".into()), true, 10);
-        other.note("another action", "files", Undo::Atlas("other".into()), true, 11);
+        let area = Area::new();
+        let store = area.store();
+        let mut first = History::default();
+        let mut other = History::default();
+        first.note(
+            "first owner's action",
+            "files",
+            Undo::Atlas("first".into()),
+            true,
+            10,
+        );
+        other.note(
+            "another action",
+            "files",
+            Undo::Atlas("other".into()),
+            true,
+            11,
+        );
         first.save_merged(&store).unwrap();
-        assert!(other.save_merged(&store).unwrap_err().to_string().contains("conflicting"));
+        assert!(other
+            .save_merged(&store)
+            .unwrap_err()
+            .to_string()
+            .contains("conflicting"));
         assert_eq!(other.pending.len(), 1);
         let saved: History = store.load_checked("undo_history").unwrap().unwrap();
         assert_eq!(saved.done.len(), 1);
@@ -376,18 +507,30 @@ mod durable_history_deltas {
 
     #[test]
     fn backup_contention_retains_append_until_a_successful_retry() {
-        let area = Area::new(); let store = area.store();
+        let area = Area::new();
+        let store = area.store();
         store.save("test", &1).unwrap();
         let root = store.root().to_path_buf();
         let (ready_tx, ready_rx) = std::sync::mpsc::channel();
         let (release_tx, release_rx) = std::sync::mpsc::channel();
-        let worker = std::thread::spawn(move || { let _guard = crate::store::state_transaction(&root).unwrap(); ready_tx.send(()).unwrap(); release_rx.recv().unwrap(); });
+        let worker = std::thread::spawn(move || {
+            let _guard = crate::store::state_transaction(&root).unwrap();
+            ready_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        });
         ready_rx.recv().unwrap();
         let mut history = History::default();
-        history.note("owner requested action", "settings", Undo::Cannot("completed".into()), true, 10);
+        history.note(
+            "owner requested action",
+            "settings",
+            Undo::Cannot("completed".into()),
+            true,
+            10,
+        );
         assert!(history.save_merged(&store).is_err());
         assert_eq!(history.pending.len(), 1);
-        release_tx.send(()).unwrap(); worker.join().unwrap();
+        release_tx.send(()).unwrap();
+        worker.join().unwrap();
         history.save_merged(&store).unwrap();
         history.save_merged(&store).unwrap();
         assert!(history.pending.is_empty());

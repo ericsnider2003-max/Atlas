@@ -181,7 +181,10 @@ fn the_stored_token_is_the_same_one_next_time() {
         atlas::server::token_for(&store).expect("a second token")
     };
 
-    assert_eq!(first, second, "the token changed between runs, so a bookmark would break");
+    assert_eq!(
+        first, second,
+        "the token changed between runs, so a bookmark would break"
+    );
     assert!(first.len() >= 24, "the token got shorter: {first}");
     // Still random, not a constant compiled in: a different install gets a
     // different token.
@@ -210,7 +213,10 @@ fn a_built_address_is_one_the_server_would_accept() {
     // silently printing something refused.
     let token = "abcdef-ghjkmn-pqrstu-vwxyz2";
     let url = atlas::server::hub_url(8787, token, "/hub");
-    assert!(url.starts_with("http://127.0.0.1:8787/hub?t="), "unexpected shape: {url}");
+    assert!(
+        url.starts_with("http://127.0.0.1:8787/hub?t="),
+        "unexpected shape: {url}"
+    );
 
     let query = url.split_once("?t=").expect("a token in the address").1;
     assert!(
@@ -327,7 +333,10 @@ fn the_hub_pages_a_person_is_sent_to_actually_exist() {
     let hub = crate::common::source_of("hub");
     let routed: HashSet<&str> = hub
         .lines()
-        .filter_map(|l| l.split_once("\"/hub").and_then(|(_, r)| r.split('"').next()))
+        .filter_map(|l| {
+            l.split_once("\"/hub")
+                .and_then(|(_, r)| r.split('"').next())
+        })
         .map(|r| r.trim())
         .collect();
     assert!(
@@ -337,8 +346,14 @@ fn the_hub_pages_a_person_is_sent_to_actually_exist() {
 
     for line in printed_addresses(&main_rs()) {
         // The path is whatever `hub_url` was handed; pull it back out.
-        let Some(after) = line.split_once("/hub") else { continue };
-        let path: String = after.1.chars().take_while(|c| *c != '?' && *c != '"').collect();
+        let Some(after) = line.split_once("/hub") else {
+            continue;
+        };
+        let path: String = after
+            .1
+            .chars()
+            .take_while(|c| *c != '?' && *c != '"')
+            .collect();
         if path.is_empty() {
             continue; // "/hub" itself, always served
         }

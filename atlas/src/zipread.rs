@@ -30,14 +30,22 @@ fn u16le(b: &[u8], i: usize) -> Option<u16> {
     Some(u16::from_le_bytes([*b.get(i)?, *b.get(i + 1)?]))
 }
 fn u32le(b: &[u8], i: usize) -> Option<u32> {
-    Some(u32::from_le_bytes([*b.get(i)?, *b.get(i + 1)?, *b.get(i + 2)?, *b.get(i + 3)?]))
+    Some(u32::from_le_bytes([
+        *b.get(i)?,
+        *b.get(i + 1)?,
+        *b.get(i + 2)?,
+        *b.get(i + 3)?,
+    ]))
 }
 
 /// Every file in the archive, from its central directory.
 fn listing(zip: &[u8]) -> Result<Vec<Entry>, String> {
     // The end record sits in the last 22 + up to 65,535 bytes (its comment).
     let from = zip.len().saturating_sub(22 + 65_535);
-    let eocd = (from..zip.len().saturating_sub(21)).rev().find(|&i| zip[i..].starts_with(b"PK\x05\x06")).ok_or("not a zip file")?;
+    let eocd = (from..zip.len().saturating_sub(21))
+        .rev()
+        .find(|&i| zip[i..].starts_with(b"PK\x05\x06"))
+        .ok_or("not a zip file")?;
     let count = u16le(zip, eocd + 10).ok_or("a damaged zip")? as usize;
     let mut at = u32le(zip, eocd + 16).ok_or("a damaged zip")? as usize;
     let mut out = Vec::with_capacity(count);
@@ -49,7 +57,9 @@ fn listing(zip: &[u8]) -> Result<Vec<Entry>, String> {
         let name_len = u16le(zip, at + 28).ok_or("a damaged zip")? as usize;
         let extra = u16le(zip, at + 30).ok_or("a damaged zip")? as usize;
         let comment = u16le(zip, at + 32).ok_or("a damaged zip")? as usize;
-        let raw = zip.get(at + 46..at + 46 + name_len).ok_or("a damaged zip")?;
+        let raw = zip
+            .get(at + 46..at + 46 + name_len)
+            .ok_or("a damaged zip")?;
         if flags & 1 != 0 {
             return Err("it's password-protected".into());
         }
@@ -71,7 +81,11 @@ pub(crate) fn crc32(data: &[u8]) -> u32 {
     for b in data {
         c ^= *b as u32;
         for _ in 0..8 {
-            c = if c & 1 != 0 { (c >> 1) ^ 0xEDB8_8320 } else { c >> 1 };
+            c = if c & 1 != 0 {
+                (c >> 1) ^ 0xEDB8_8320
+            } else {
+                c >> 1
+            };
         }
     }
     !c
@@ -86,11 +100,18 @@ fn unpack(zip: &[u8], e: &Entry) -> Result<Vec<u8>, String> {
     let name_len = u16le(zip, at + 26).ok_or("damaged")? as usize;
     let extra = u16le(zip, at + 28).ok_or("damaged")? as usize;
     let start = at + 30 + name_len + extra;
-    let data = zip.get(start..start + e.compressed as usize).ok_or_else(|| format!("{}: cut short", e.name))?;
+    let data = zip
+        .get(start..start + e.compressed as usize)
+        .ok_or_else(|| format!("{}: cut short", e.name))?;
     let out = match e.method {
         0 => data.to_vec(),
         8 => inflate(data, e.size as usize)?,
-        m => return Err(format!("{}: compressed a way I don't read (method {m})", e.name)),
+        m => {
+            return Err(format!(
+                "{}: compressed a way I don't read (method {m})",
+                e.name
+            ))
+        }
     };
     if out.len() as u64 != e.size || crc32(&out) != e.crc {
         return Err(format!("{}: didn't come out as it went in", e.name));
@@ -107,7 +128,10 @@ struct Bits<'a> {
 
 impl Bits<'_> {
     fn bit(&mut self) -> Result<u32, String> {
-        let byte = *self.data.get(self.pos >> 3).ok_or("the compressed data is cut short")?;
+        let byte = *self
+            .data
+            .get(self.pos >> 3)
+            .ok_or("the compressed data is cut short")?;
         let b = (byte >> (self.pos & 7)) & 1;
         self.pos += 1;
         Ok(b as u32)
@@ -166,12 +190,29 @@ impl Huffman {
     }
 }
 
-const LEN_BASE: [u16; 29] = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
-const LEN_EXTRA: [u8; 29] = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
-const DIST_BASE: [u16; 30] = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
-const DIST_EXTRA: [u8; 30] = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+const LEN_BASE: [u16; 29] = [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131,
+    163, 195, 227, 258,
+];
+const LEN_EXTRA: [u8; 29] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+];
+const DIST_BASE: [u16; 30] = [
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
+    2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+];
+const DIST_EXTRA: [u8; 30] = [
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13,
+    13,
+];
 
-fn codes(b: &mut Bits, out: &mut Vec<u8>, lit: &Huffman, dist: &Huffman, limit: usize) -> Result<(), String> {
+fn codes(
+    b: &mut Bits,
+    out: &mut Vec<u8>,
+    lit: &Huffman,
+    dist: &Huffman,
+    limit: usize,
+) -> Result<(), String> {
     loop {
         let sym = lit.decode(b)?;
         match sym {
@@ -226,13 +267,21 @@ pub(crate) fn inflate(data: &[u8], limit: usize) -> Result<Vec<u8>, String> {
                 l[144..256].fill(9);
                 l[256..280].fill(7);
                 l[280..].fill(8);
-                codes(&mut b, &mut out, &Huffman::new(&l)?, &Huffman::new(&[5u8; 30])?, limit)?;
+                codes(
+                    &mut b,
+                    &mut out,
+                    &Huffman::new(&l)?,
+                    &Huffman::new(&[5u8; 30])?,
+                    limit,
+                )?;
             }
             2 => {
                 let nlen = b.bits(5)? as usize + 257;
                 let ndist = b.bits(5)? as usize + 1;
                 let ncode = b.bits(4)? as usize + 4;
-                const ORDER: [usize; 19] = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+                const ORDER: [usize; 19] = [
+                    16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+                ];
                 let mut cl = [0u8; 19];
                 for k in ORDER.iter().take(ncode) {
                     cl[*k] = b.bits(3)? as u8;
@@ -274,13 +323,20 @@ pub(crate) fn inflate(data: &[u8], limit: usize) -> Result<Vec<u8>, String> {
 /// The first file whose name `wanted` accepts, inflated and checked, if it is
 /// no bigger than `max` bytes. Used to read an app's `Info.plist` and its
 /// provisioning profile out of an `.ipa` without unpacking the whole app.
-pub fn file_inside(zip: &[u8], wanted: impl Fn(&str) -> bool, max: u64) -> Result<Option<(String, Vec<u8>)>, String> {
+pub fn file_inside(
+    zip: &[u8],
+    wanted: impl Fn(&str) -> bool,
+    max: u64,
+) -> Result<Option<(String, Vec<u8>)>, String> {
     for e in listing(zip)? {
         if e.name.ends_with('/') || !wanted(&e.name) {
             continue;
         }
         if e.size > max {
-            return Err(format!("{} is {} bytes, more than the {max} it may be", e.name, e.size));
+            return Err(format!(
+                "{} is {} bytes, more than the {max} it may be",
+                e.name, e.size
+            ));
         }
         return Ok(Some((e.name.clone(), unpack(zip, &e)?)));
     }
@@ -290,14 +346,28 @@ pub fn file_inside(zip: &[u8], wanted: impl Fn(&str) -> bool, max: u64) -> Resul
 /// Text files that can be searched, from inside an archive. The archive's
 /// claimed total goes through `files::safe_to_unpack` first — a zip bomb is
 /// listed, not inflated.
-pub fn texts_inside(zip: &[u8], cfg: &crate::files::FilesConfig, max_each: u64) -> Result<Vec<(String, String)>, String> {
+pub fn texts_inside(
+    zip: &[u8],
+    cfg: &crate::files::FilesConfig,
+    max_each: u64,
+) -> Result<Vec<(String, String)>, String> {
     let list = listing(zip)?;
     // Rounded up: 400 KB claims 1 MB, not 0, so the limit can't be slipped under.
-    let claimed_mb = list.iter().map(|e| e.size).sum::<u64>().div_ceil(1024 * 1024);
+    let claimed_mb = list
+        .iter()
+        .map(|e| e.size)
+        .sum::<u64>()
+        .div_ceil(1024 * 1024);
     crate::files::safe_to_unpack((zip.len() / (1024 * 1024)) as u64, claimed_mb, 1, cfg)?;
-    const TEXT: &[&str] = &["txt", "md", "csv", "json", "yaml", "yml", "toml", "rs", "py", "js", "ts", "html", "htm", "xml", "ini", "cfg", "log", "tex", "rst"];
+    const TEXT: &[&str] = &[
+        "txt", "md", "csv", "json", "yaml", "yml", "toml", "rs", "py", "js", "ts", "html", "htm",
+        "xml", "ini", "cfg", "log", "tex", "rst",
+    ];
     let mut out = Vec::new();
-    for e in list.iter().filter(|e| !e.name.ends_with('/') && e.size <= max_each) {
+    for e in list
+        .iter()
+        .filter(|e| !e.name.ends_with('/') && e.size <= max_each)
+    {
         let ext = e.name.rsplit('.').next().unwrap_or("").to_lowercase();
         if !TEXT.contains(&ext.as_str()) {
             continue;

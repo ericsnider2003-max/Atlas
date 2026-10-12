@@ -132,7 +132,11 @@ pub fn plan(accounts: &[Account]) -> Vec<Prepare> {
         }
     }
 
-    out.sort_by(|a, b| b.urgency.partial_cmp(&a.urgency).unwrap_or(std::cmp::Ordering::Equal));
+    out.sort_by(|a, b| {
+        b.urgency
+            .partial_cmp(&a.urgency)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     out.dedup_by(|a, b| a.site == b.site && a.what == b.what);
     out
 }
@@ -154,11 +158,7 @@ pub fn spoken(accounts: &[Account]) -> String {
     let names: Vec<&str> = stuck.iter().take(3).map(|a| a.site.as_str()).collect();
     let more = stuck.len().saturating_sub(names.len());
 
-    let mut s = format!(
-        "{} would lock you out: {}",
-        stuck.len(),
-        names.join(", ")
-    );
+    let mut s = format!("{} would lock you out: {}", stuck.len(), names.join(", "));
     if more > 0 {
         s.push_str(&format!(" and {more} more"));
     }
@@ -216,14 +216,22 @@ pub struct AwayConfig {
 
 impl Default for AwayConfig {
     fn default() -> Self {
-        AwayConfig { enabled: false, remind_days_before: 14, check_every_days: 90 }
+        AwayConfig {
+            enabled: false,
+            remind_days_before: 14,
+            check_every_days: 90,
+        }
     }
 }
 
 /// A check worth running periodically rather than only before a trip, because
 /// dates change and the preparation takes days — recovery codes have to be
 /// printed, and a hardware key has to arrive.
-pub fn periodic_nudge(accounts: &[Account], days_since_last: u32, cfg: &AwayConfig) -> Option<String> {
+pub fn periodic_nudge(
+    accounts: &[Account],
+    days_since_last: u32,
+    cfg: &AwayConfig,
+) -> Option<String> {
     if !cfg.enabled || days_since_last < cfg.check_every_days {
         return None;
     }
@@ -288,7 +296,10 @@ impl Away {
     /// waiting for a hardware key both take days, so being told the morning
     /// you leave is the same as not being told.
     pub fn time_to_get_ready(&self, cfg: &AwayConfig, now: u64) -> bool {
-        cfg.enabled && self.days_until(now).is_some_and(|d| d <= cfg.remind_days_before)
+        cfg.enabled
+            && self
+                .days_until(now)
+                .is_some_and(|d| d <= cfg.remind_days_before)
     }
 
     /// How long since Atlas last raised any of this.
@@ -309,7 +320,12 @@ impl Away {
 /// impression: "every account is reachable" is no comfort with no codes
 /// printed, and "ten codes in hand" is no comfort for the account that has
 /// none.
-pub fn the_trip_is_close(away: &Away, accounts: &[Account], cfg: &AwayConfig, now: u64) -> Option<String> {
+pub fn the_trip_is_close(
+    away: &Away,
+    accounts: &[Account],
+    cfg: &AwayConfig,
+    now: u64,
+) -> Option<String> {
     if !away.time_to_get_ready(cfg, now) {
         return None;
     }

@@ -1,6 +1,6 @@
 //! Errands and the crew: choosing and controlling errands, handing work off,
 //! keeping unfinished work and window jobs across a restart, and crew news.
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
@@ -10,8 +10,17 @@ impl<'a> Daemon<'a> {
         self.hand_off_as("signing protection", t, work, None, SpeakPolicy::ViaWatcher)
     }
     pub(crate) fn queue_google_revocation(&mut self, id: u64, token: String, at: u64) -> String {
-        let work = crate::connection_removal::google_revocation_work(self.store.clone(), self.vault_home.clone(), id, token);
-        if self.hand_off("Google grant removal", at, work, None, SpeakPolicy::Always) { "Google grant revocation queued; provider permission remains unconfirmed until its receipt returns.".into() } else { "Google revocation could not be queued; local access is removed, provider permission remains unconfirmed. No automatic retry.".into() }
+        let work = crate::connection_removal::google_revocation_work(
+            self.store.clone(),
+            self.vault_home.clone(),
+            id,
+            token,
+        );
+        if self.hand_off("Google grant removal", at, work, None, SpeakPolicy::Always) {
+            "Google grant revocation queued; provider permission remains unconfirmed until its receipt returns.".into()
+        } else {
+            "Google revocation could not be queued; local access is removed, provider permission remains unconfirmed. No automatic retry.".into()
+        }
     }
     /// Every errand in hand, as `which_errand` chooses between them.
     pub(super) fn errand_candidates(&self) -> Vec<crate::which_errand::Candidate> {
@@ -82,23 +91,44 @@ impl<'a> Daemon<'a> {
         use crate::which_errand::{Pick, Verb};
         const ANSWER_WITHIN: u64 = 120;
         let cands = self.errand_candidates();
-        let recent: Vec<String> =
-            self.thread.recent.iter().rev().take(3).map(|e| e.said.clone()).collect();
+        let recent: Vec<String> = self
+            .thread
+            .recent
+            .iter()
+            .rev()
+            .take(3)
+            .map(|e| e.said.clone())
+            .collect();
 
         // 1. The answer to "which one?"
         if let Some((verb, ids, asked)) = self.errand_question.take() {
             if t.saturating_sub(asked) <= ANSWER_WITHIN {
                 let lower = said.trim().to_lowercase();
-                if ["never mind", "nevermind", "none", "neither", "forget it", "leave them", "none of them"]
-                    .iter()
-                    .any(|p| lower.trim_matches(|c: char| !c.is_alphanumeric()) == *p)
+                if [
+                    "never mind",
+                    "nevermind",
+                    "none",
+                    "neither",
+                    "forget it",
+                    "leave them",
+                    "none of them",
+                ]
+                .iter()
+                .any(|p| lower.trim_matches(|c: char| !c.is_alphanumeric()) == *p)
                 {
                     return Some("Leaving them all as they are.".into());
                 }
-                let among: Vec<crate::which_errand::Candidate> =
-                    cands.iter().filter(|c| ids.contains(&c.id)).cloned().collect();
-                let target = crate::which_errand::verb_and_target(said).map(|(_, r)| r).unwrap_or_else(|| said.to_string());
-                if let Pick::These(chosen, why) = crate::which_errand::pick(verb, &target, &among, &[], t) {
+                let among: Vec<crate::which_errand::Candidate> = cands
+                    .iter()
+                    .filter(|c| ids.contains(&c.id))
+                    .cloned()
+                    .collect();
+                let target = crate::which_errand::verb_and_target(said)
+                    .map(|(_, r)| r)
+                    .unwrap_or_else(|| said.to_string());
+                if let Pick::These(chosen, why) =
+                    crate::which_errand::pick(verb, &target, &among, &[], t)
+                {
                     return Some(self.apply_errand_pick(verb, &chosen, why, &cands, t));
                 }
             }
@@ -108,11 +138,19 @@ impl<'a> Daemon<'a> {
         if let Some((verb, ids, at)) = self.last_errand_pick.clone() {
             // Only straight after the pick: a "no" to anything said since
             // belongs to that, not to the errands.
-            let straight_after = self.thread.recent.last().map(|e| e.at == at).unwrap_or(false);
+            let straight_after = self
+                .thread
+                .recent
+                .last()
+                .map(|e| e.at == at)
+                .unwrap_or(false);
             if verb != Verb::Cancel && straight_after && t.saturating_sub(at) <= ANSWER_WITHIN {
                 if let Some(target) = crate::which_errand::correction(said) {
-                    let others: Vec<crate::which_errand::Candidate> =
-                        cands.iter().filter(|c| !ids.contains(&c.id)).cloned().collect();
+                    let others: Vec<crate::which_errand::Candidate> = cands
+                        .iter()
+                        .filter(|c| !ids.contains(&c.id))
+                        .cloned()
+                        .collect();
                     // Undo first, so the swap leaves nothing half-done.
                     for id in &ids {
                         if *id >= WINDOW_JOB_IDS {
@@ -139,22 +177,29 @@ impl<'a> Daemon<'a> {
                         _ => format!("Sorry — {} is paused again.", undone.join(" and ")),
                     };
                     let fresh = self.errand_candidates();
-                    let pool: Vec<crate::which_errand::Candidate> =
-                        fresh.into_iter().filter(|c| others.iter().any(|o| o.id == c.id)).collect();
+                    let pool: Vec<crate::which_errand::Candidate> = fresh
+                        .into_iter()
+                        .filter(|c| others.iter().any(|o| o.id == c.id))
+                        .collect();
                     self.last_errand_pick = None;
-                    return Some(match crate::which_errand::pick(verb, &target, &pool, &[], t) {
-                        Pick::These(chosen, why) => {
-                            let cands = self.errand_candidates();
-                            format!("{back} {}", self.apply_errand_pick(verb, &chosen, why, &cands, t))
-                        }
-                        Pick::Ask(ask) => {
-                            let among: Vec<&crate::which_errand::Candidate> =
-                                pool.iter().filter(|c| ask.contains(&c.id)).collect();
-                            self.errand_question = Some((verb, ask, t));
-                            format!("{back} {}", crate::which_errand::question(verb, &among))
-                        }
-                        Pick::Nothing => back,
-                    });
+                    return Some(
+                        match crate::which_errand::pick(verb, &target, &pool, &[], t) {
+                            Pick::These(chosen, why) => {
+                                let cands = self.errand_candidates();
+                                format!(
+                                    "{back} {}",
+                                    self.apply_errand_pick(verb, &chosen, why, &cands, t)
+                                )
+                            }
+                            Pick::Ask(ask) => {
+                                let among: Vec<&crate::which_errand::Candidate> =
+                                    pool.iter().filter(|c| ask.contains(&c.id)).collect();
+                                self.errand_question = Some((verb, ask, t));
+                                format!("{back} {}", crate::which_errand::question(verb, &among))
+                            }
+                            Pick::Nothing => back,
+                        },
+                    );
                 }
             }
         }
@@ -167,9 +212,20 @@ impl<'a> Daemon<'a> {
         // A routine backup must not steal an unqualified stop from the
         // foreground conversations Eric explicitly asked Atlas to handle.
         // Named controls still search every candidate, including maintenance.
-        let foreground: Vec<_> = cands.iter().filter(|candidate| candidate.id >= WINDOW_JOB_IDS).cloned().collect();
-        let bare_stop = said.trim().trim_end_matches(['.', '!']).eq_ignore_ascii_case("stop");
-        let pool = if bare_stop && !foreground.is_empty() { &foreground } else { &cands };
+        let foreground: Vec<_> = cands
+            .iter()
+            .filter(|candidate| candidate.id >= WINDOW_JOB_IDS)
+            .cloned()
+            .collect();
+        let bare_stop = said
+            .trim()
+            .trim_end_matches(['.', '!'])
+            .eq_ignore_ascii_case("stop");
+        let pool = if bare_stop && !foreground.is_empty() {
+            &foreground
+        } else {
+            &cands
+        };
         let selection = if bare_stop && foreground.len() > 1 {
             Pick::Ask(foreground.iter().map(|candidate| candidate.id).collect())
         } else {
@@ -178,7 +234,8 @@ impl<'a> Daemon<'a> {
         match selection {
             Pick::These(chosen, why) => Some(self.apply_errand_pick(verb, &chosen, why, &cands, t)),
             Pick::Ask(ids) => {
-                let among: Vec<&crate::which_errand::Candidate> = cands.iter().filter(|c| ids.contains(&c.id)).collect();
+                let among: Vec<&crate::which_errand::Candidate> =
+                    cands.iter().filter(|c| ids.contains(&c.id)).collect();
                 let q = crate::which_errand::question(verb, &among);
                 self.errand_question = Some((verb, ids, t));
                 Some(q)
@@ -215,8 +272,10 @@ impl<'a> Daemon<'a> {
         }
         self.errand_question = None;
         self.last_errand_pick = Some((verb, chosen.to_vec(), t));
-        let picked: Vec<&crate::which_errand::Candidate> = cands.iter().filter(|c| chosen.contains(&c.id)).collect();
-        let others: Vec<&crate::which_errand::Candidate> = cands.iter().filter(|c| !chosen.contains(&c.id)).collect();
+        let picked: Vec<&crate::which_errand::Candidate> =
+            cands.iter().filter(|c| chosen.contains(&c.id)).collect();
+        let others: Vec<&crate::which_errand::Candidate> =
+            cands.iter().filter(|c| !chosen.contains(&c.id)).collect();
         crate::which_errand::answered(verb, &picked, why, &others)
     }
 
@@ -301,7 +360,8 @@ impl<'a> Daemon<'a> {
                         link.speak = SpeakPolicy::Always;
                     }
                 }
-                self.log.info(&format!("{name}: already in hand, joined that run"));
+                self.log
+                    .info(&format!("{name}: already in hand, joined that run"));
                 self.last_crew_handoff = Some(crew_id);
                 return Some(crew_id);
             }
@@ -328,7 +388,15 @@ impl<'a> Daemon<'a> {
             );
             self.keep_unfinished();
         }
-        self.crew_links.insert(crew_id, CrewLink { watch_id, label: name, topic, speak });
+        self.crew_links.insert(
+            crew_id,
+            CrewLink {
+                watch_id,
+                label: name,
+                topic,
+                speak,
+            },
+        );
         self.last_crew_handoff = Some(crew_id);
         Some(crew_id)
     }
@@ -398,7 +466,11 @@ impl<'a> Daemon<'a> {
                 self.hub_jobs.finish(job, said, false);
             }
             HubAfter::FriendAdd { job, keep } => {
-                let said = if tag.is_empty() { said } else { Ok(self.after_friend_knock(&keep, &knock_of(&tag))) };
+                let said = if tag.is_empty() {
+                    said
+                } else {
+                    Ok(self.after_friend_knock(&keep, &knock_of(&tag)))
+                };
                 self.hub_jobs.finish(job, said, true);
             }
             HubAfter::FriendRetry { keep } => {
@@ -408,11 +480,16 @@ impl<'a> Daemon<'a> {
                     let mut out = crate::friends::Outbox::load(&store);
                     out.pending.retain(|x| x.hello.invite != keep.hello.invite);
                     if let Err(e) = out.save(&store) {
-                        self.log.warn(&format!("couldn't save the friends still being reached: {e}"));
+                        self.log.warn(&format!(
+                            "couldn't save the friends still being reached: {e}"
+                        ));
                     }
                 }
                 let said = match outcome {
-                    crate::friends::Knock::Taken => format!("You and {} are friends now -- their Atlas came online.", keep.name),
+                    crate::friends::Knock::Taken => format!(
+                        "You and {} are friends now -- their Atlas came online.",
+                        keep.name
+                    ),
                     crate::friends::Knock::Refused => {
                         self.unfriend_half(&keep.name);
                         format!(
@@ -424,9 +501,13 @@ impl<'a> Daemon<'a> {
                 };
                 // Told the way `friend_upkeep`'s own news is: kept in the
                 // activity, and a routine note to you.
-                self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, t);
+                self.journal
+                    .record_at(crate::activity::Kind::Upkeep, &said, true, t);
                 // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
-                let _ = self.reach_you(crate::notify::Note::new("Friends", &said, crate::notify::Urgency::Routine, t), t);
+                let _ = self.reach_you(
+                    crate::notify::Note::new("Friends", &said, crate::notify::Urgency::Routine, t),
+                    t,
+                );
             }
             HubAfter::AddonShare { job, name, group } => {
                 self.addon_shared_in_group(&name, group.as_ref());
@@ -447,10 +528,15 @@ impl<'a> Daemon<'a> {
         slot: &std::sync::Mutex<Option<crate::phoneadd::Showing>>,
         stop: &std::sync::atomic::AtomicBool,
     ) {
-        let got = slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
+        let got = slot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         if let Some(showing) = got {
             if stop.load(std::sync::atomic::Ordering::Relaxed) {
-                showing.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                showing
+                    .stop
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
                 return;
             }
             if let Some(old) = self.phone_code.replace(showing) {
@@ -466,7 +552,9 @@ impl<'a> Daemon<'a> {
         let mut said = Vec::new();
         loop {
             said.extend(self.take_crew_news(clock()));
-            if (self.crew.active() == 0 && self.crew.queued() == 0) || started.elapsed().as_secs() > 30 {
+            if (self.crew.active() == 0 && self.crew.queued() == 0)
+                || started.elapsed().as_secs() > 30
+            {
                 return said;
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
@@ -477,12 +565,20 @@ impl<'a> Daemon<'a> {
     /// dependent requests here rather than leaving them Running forever.
     pub(crate) fn stop_linked_worker(&mut self, id: u64, now: u64) -> bool {
         self.crew.ask_to_stop(id);
-        if self.crew.in_hand(id) { return true; }
-        let outcome = crate::taskloop::Outcome::Failed("Cancelled before the worker started.".into());
+        if self.crew.in_hand(id) {
+            return true;
+        }
+        let outcome =
+            crate::taskloop::Outcome::Failed("Cancelled before the worker started.".into());
         self.finish_queued_worker(id, &outcome, now);
         self.finish_background_step(id, outcome);
         if let Some(link) = self.crew_links.remove(&id) {
-            self.long_work.update(link.watch_id, crate::watching::Outcome::Failed, "Cancelled before starting", now);
+            self.long_work.update(
+                link.watch_id,
+                crate::watching::Outcome::Failed,
+                "Cancelled before starting",
+                now,
+            );
         }
         self.unfinished.remove(&id);
         self.keep_unfinished();
@@ -498,8 +594,25 @@ impl<'a> Daemon<'a> {
 
     /// `social`'s errands (29 Sep 2026): `asked` is something you asked for
     /// and is said when it ends; otherwise a chore the watcher decides on.
-    pub(crate) fn hand_off_social(&mut self, name: &'static str, t: u64, work: crew::Work, topic: Option<String>, asked: bool) -> Option<u64> {
-        self.hand_off_as(name, t, work, topic, if asked { SpeakPolicy::Always } else { SpeakPolicy::ViaWatcher })
+    pub(crate) fn hand_off_social(
+        &mut self,
+        name: &'static str,
+        t: u64,
+        work: crew::Work,
+        topic: Option<String>,
+        asked: bool,
+    ) -> Option<u64> {
+        self.hand_off_as(
+            name,
+            t,
+            work,
+            topic,
+            if asked {
+                SpeakPolicy::Always
+            } else {
+                SpeakPolicy::ViaWatcher
+            },
+        )
     }
 
     /// Write down the work in hand (`resume::RECORD`).
@@ -534,10 +647,15 @@ impl<'a> Daemon<'a> {
     /// request just started could be read back as "I was partway through this
     /// when I stopped" -- which is what happened under load.
     pub(super) fn read_left_waiting(&mut self) {
-        if self.left_waiting_read { return; }
+        if self.left_waiting_read {
+            return;
+        }
         self.left_waiting_read = true;
         self.last_run_left = self.store.load(super::running::LEFT_WAITING);
-        let _ = self.store.save(super::running::LEFT_WAITING, &Vec::<super::running::LeftWaiting>::new());
+        let _ = self.store.save(
+            super::running::LEFT_WAITING,
+            &Vec::<super::running::LeftWaiting>::new(),
+        );
     }
 
     /// The first tick after a start: what the last run left unfinished.
@@ -550,9 +668,20 @@ impl<'a> Daemon<'a> {
         if !self.left_pickup_done {
             self.left_pickup_done = true;
             let left = std::mem::take(&mut self.last_run_left);
-            let fresh: Vec<_> = left.into_iter().filter(|l| t.saturating_sub(l.at) < 86_400).collect();
-            let asked: Vec<String> = fresh.iter().filter(|l| l.asked).map(|l| l.what.trim_end_matches(['?', '.']).to_string()).collect();
-            let doing: Vec<String> = fresh.iter().filter(|l| !l.asked).map(|l| l.what.clone()).collect();
+            let fresh: Vec<_> = left
+                .into_iter()
+                .filter(|l| t.saturating_sub(l.at) < 86_400)
+                .collect();
+            let asked: Vec<String> = fresh
+                .iter()
+                .filter(|l| l.asked)
+                .map(|l| l.what.trim_end_matches(['?', '.']).to_string())
+                .collect();
+            let doing: Vec<String> = fresh
+                .iter()
+                .filter(|l| !l.asked)
+                .map(|l| l.what.clone())
+                .collect();
             if !asked.is_empty() {
                 out.push(format!(
                     "Before I restarted, {} waiting on your answer: {}. A yes from before doesn't carry over -- ask again if you still want {}.",
@@ -562,15 +691,22 @@ impl<'a> Daemon<'a> {
                 ));
             }
             if !doing.is_empty() {
-                out.push(format!("I was partway through {} when I stopped. Ask again and I'll start it fresh.", doing.join(" and ")));
+                out.push(format!(
+                    "I was partway through {} when I stopped. Ask again and I'll start it fresh.",
+                    doing.join(" and ")
+                ));
             }
             // A workflow in hand. One waiting on your yes is put back and
             // asked again -- the step is checked afresh when you answer
             // (`approved_flow_step`); one that was running is named, not
             // carried on, since its next step may be one to ask about.
             let flow: Option<crate::flow::Run> = self.store.load(super::running::FLOW_LEFT);
-            let _ = self.store.save(super::running::FLOW_LEFT, &None::<crate::flow::Run>);
-            if let Some(run) = flow.filter(|r| t.saturating_sub(r.started) < 86_400 && !r.finished()) {
+            let _ = self
+                .store
+                .save(super::running::FLOW_LEFT, &None::<crate::flow::Run>);
+            if let Some(run) =
+                flow.filter(|r| t.saturating_sub(r.started) < 86_400 && !r.finished())
+            {
                 match run.state {
                     crate::flow::RunState::AwaitingApproval if self.current_flow.is_none() => {
                         let step = run.current().map(|s| s.command.clone()).unwrap_or_default();
@@ -597,7 +733,10 @@ impl<'a> Daemon<'a> {
         // back up if its window is still open. You set it going; a restart
         // isn't a reason to ask again.
         for saved in std::mem::take(&mut self.left_windows) {
-            let still_there = matches!(self.plat.read_window(crate::platform::WindowId(saved.win)), Ok(Some(_)));
+            let still_there = matches!(
+                self.plat.read_window(crate::platform::WindowId(saved.win)),
+                Ok(Some(_))
+            );
             let win = if still_there {
                 Some(crate::platform::WindowId(saved.win))
             } else {
@@ -638,7 +777,10 @@ impl<'a> Daemon<'a> {
         if left.is_empty() {
             return out;
         }
-        let _ = self.store.save(crate::resume::RECORD, &Vec::<crate::resume::Unfinished>::new());
+        let _ = self.store.save(
+            crate::resume::RECORD,
+            &Vec::<crate::resume::Unfinished>::new(),
+        );
         let (again, ask) = crate::resume::sort(left);
         let describe = |u: &crate::resume::Unfinished| {
             crate::which_errand::describe(&crate::which_errand::Candidate {
@@ -676,7 +818,9 @@ impl<'a> Daemon<'a> {
             .resolved(&self.store.install_root())
     }
     fn watching_cfg(&self) -> watching::WatchConfig {
-        self.tools_ref().map(|t| t.watching.clone()).unwrap_or_default()
+        self.tools_ref()
+            .map(|t| t.watching.clone())
+            .unwrap_or_default()
     }
     /// Called once a tick, right alongside `helpers.reap`. Never blocks —
     /// `crew::Crew::settle` doesn't, and neither does anything below it.
@@ -688,7 +832,9 @@ impl<'a> Daemon<'a> {
     pub(super) fn take_crew_news(&mut self, t: u64) -> Vec<String> {
         let mut out = Vec::new();
         for news in self.crew.settle(t) {
-            let Some(link) = self.crew_links.remove(&news.id) else { continue };
+            let Some(link) = self.crew_links.remove(&news.id) else {
+                continue;
+            };
             if link.label == "backup" && matches!(&news.ending, crew::Ending::Done(Ok(_))) {
                 self.last_backup = t;
             }
@@ -698,14 +844,16 @@ impl<'a> Daemon<'a> {
             // A hub button's slow part (`hubjobs`): its answer is on its page
             // already; what's left is the daemon's own follow-up.
             if let Some(after) = self.hub_after.remove(&news.id) {
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
+                self.long_work
+                    .update(link.watch_id, outcome_of(&news.ending), "", t);
                 out.extend(self.after_hub_errand(after, &news.ending, t));
                 continue;
             }
             // The proving test's run, when it outlasted the turn that asked.
             if link.label == "proof-check" {
                 if let Some(said) = self.finish_proof_check() {
-                    self.long_work.update(link.watch_id, outcome_of(&news.ending), &said, t);
+                    self.long_work
+                        .update(link.watch_id, outcome_of(&news.ending), &said, t);
                     out.push(said);
                 }
                 continue;
@@ -714,16 +862,20 @@ impl<'a> Daemon<'a> {
             if link.label == "self-fix" {
                 let said = match (self.finish_own_fix(), &news.ending) {
                     (Some(said), _) => said,
-                    (None, crew::Ending::Done(Err(e))) => format!("I couldn't work on that fix: {e}"),
+                    (None, crew::Ending::Done(Err(e))) => {
+                        format!("I couldn't work on that fix: {e}")
+                    }
                     (None, _) => "The fix I was working on stopped before it finished.".into(),
                 };
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), &said, t);
+                self.long_work
+                    .update(link.watch_id, outcome_of(&news.ending), &said, t);
                 out.push(said);
                 continue;
             }
             // The next step of a job in an app (`operate`).
             if link.label == "operate" {
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
+                self.long_work
+                    .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.operate_news(news.id, &news.ending) {
                     out.push(said);
                 }
@@ -735,9 +887,19 @@ impl<'a> Daemon<'a> {
                 if let crew::Ending::Done(Ok(json)) = &news.ending {
                     if let Ok(w) = serde_json::from_str::<crate::callnotes::WrittenUp>(json) {
                         if let Some(asked) = &w.summary {
-                            self.record_model_call("call-notes", w.summary_ms, w.prompt_chars, w.reply_chars, asked.clone().err());
+                            self.record_model_call(
+                                "call-notes",
+                                w.summary_ms,
+                                w.prompt_chars,
+                                w.reply_chars,
+                                asked.clone().err(),
+                            );
                         }
-                        let name = w.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                        let name = w
+                            .path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default();
                         // What the call left behind: your follow-ups on the later list.
                         let mut later: crate::later::Later = self.store.load(crate::later::RECORD);
                         let mut added = w.follow.yours.iter().filter(|y| later.add(y, t)).count();
@@ -746,20 +908,37 @@ impl<'a> Daemon<'a> {
                             if let Err(e) = self.store.save(crate::later::RECORD, &later) {
                                 // Don't say they were put on the later list.
                                 added = 0;
-                                not_kept = format!(" I couldn't add your follow-ups to the later list ({e}).");
+                                not_kept = format!(
+                                    " I couldn't add your follow-ups to the later list ({e})."
+                                );
                             }
                         }
-                        let after = format!("{}{not_kept}", crate::callnotes::follow_ups_said(&w.follow, added));
-                        let said = format!("Your call notes are written: {name}, in your notes folder.{}{after}", if after.is_empty() { "" } else { " " });
-                        self.long_work.update(link.watch_id, outcome_of(&news.ending), &said, t);
-                        self.journal.record_at(Act::Upkeep, &format!("call notes: {name}"), true, t);
+                        let after = format!(
+                            "{}{not_kept}",
+                            crate::callnotes::follow_ups_said(&w.follow, added)
+                        );
+                        let said = format!(
+                            "Your call notes are written: {name}, in your notes folder.{}{after}",
+                            if after.is_empty() { "" } else { " " }
+                        );
+                        self.long_work
+                            .update(link.watch_id, outcome_of(&news.ending), &said, t);
+                        self.journal.record_at(
+                            Act::Upkeep,
+                            &format!("call notes: {name}"),
+                            true,
+                            t,
+                        );
                         out.push(said);
                         continue;
                     }
                 }
                 if let crew::Ending::Done(Err(e)) = &news.ending {
-                    self.long_work.update(link.watch_id, outcome_of(&news.ending), e, t);
-                    out.push(format!("I couldn't write up the call: {e}. The audio is kept in data/calls."));
+                    self.long_work
+                        .update(link.watch_id, outcome_of(&news.ending), e, t);
+                    out.push(format!(
+                        "I couldn't write up the call: {e}. The audio is kept in data/calls."
+                    ));
                     continue;
                 }
             }
@@ -769,12 +948,19 @@ impl<'a> Daemon<'a> {
                 self.helpers.finished("picture reader");
                 if let crew::Ending::Done(Ok(json)) = &news.ending {
                     if let Ok(o) = serde_json::from_str::<PictureOutcome>(json) {
-                        self.record_model_call("pictures", o.took_ms, o.prompt_chars, o.answer.len(), o.failed.clone());
+                        self.record_model_call(
+                            "pictures",
+                            o.took_ms,
+                            o.prompt_chars,
+                            o.answer.len(),
+                            o.failed.clone(),
+                        );
                         let said = match o.failed {
                             None => o.answer,
                             Some(why) => format!("I looked, but {why}."),
                         };
-                        self.long_work.update(link.watch_id, outcome_of(&news.ending), &said, t);
+                        self.long_work
+                            .update(link.watch_id, outcome_of(&news.ending), &said, t);
                         out.push(said);
                         continue;
                     }
@@ -784,15 +970,20 @@ impl<'a> Daemon<'a> {
             if link.label == "search-check" {
                 if let crew::Ending::Done(Ok(json)) = &news.ending {
                     if let Ok(said) = serde_json::from_str::<String>(json) {
-                        self.long_work.update(link.watch_id, outcome_of(&news.ending), &said, t);
+                        self.long_work
+                            .update(link.watch_id, outcome_of(&news.ending), &said, t);
                         out.push(said);
                         continue;
                     }
                 }
             }
             // Codes, sign-ins, security changes and sign-ups.
-            if matches!(link.label, "code" | "sign-in" | "security-change" | "sign-up") {
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
+            if matches!(
+                link.label,
+                "code" | "sign-in" | "security-change" | "sign-up"
+            ) {
+                self.long_work
+                    .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.two_factor_news(link.label, &news.ending, t) {
                     out.push(said);
                 }
@@ -801,7 +992,8 @@ impl<'a> Daemon<'a> {
             // Old conversation, summarised (H12). Nothing said.
             if link.label == "fold" {
                 self.folding = false;
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
+                self.long_work
+                    .update(link.watch_id, outcome_of(&news.ending), "", t);
                 match &news.ending {
                     crew::Ending::Done(Ok(json)) => {
                         if let Ok((n, summary)) = serde_json::from_str::<(usize, String)>(json) {
@@ -822,7 +1014,8 @@ impl<'a> Daemon<'a> {
             }
             // A gesture shown to the camera (H6).
             if link.label == "teach-gesture" {
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
+                self.long_work
+                    .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.gesture_news(&news.ending) {
                     out.push(said);
                 }
@@ -830,7 +1023,8 @@ impl<'a> Daemon<'a> {
             }
             // A decision drafted by the model (H9).
             if link.label == "decide" {
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
+                self.long_work
+                    .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.decision_news(&news.ending) {
                     out.push(said);
                 }
@@ -855,11 +1049,26 @@ impl<'a> Daemon<'a> {
                     crew::Ending::Vanished => Outcome::Failed("The edit stopped without returning a result. Your original is untouched.".into()),
                 };
                 let said = completion.text().to_string();
-                let watched = if matches!(completion, Outcome::NeedsYou(_)) { crate::watching::Outcome::Finished } else { crate::watching::Outcome::Failed };
+                let watched = if matches!(completion, Outcome::NeedsYou(_)) {
+                    crate::watching::Outcome::Finished
+                } else {
+                    crate::watching::Outcome::Failed
+                };
                 self.long_work.update(link.watch_id, watched, &said, t);
                 self.finish_queued_worker(news.id, &completion, t);
-                if (matches!(completion, Outcome::NeedsYou(_)) && self.park_media_decision(news.id)) || !self.finish_background_step(news.id, completion) { out.push(said); }
-                if let Some(j) = self.long_work.jobs.iter_mut().find(|j| j.id == link.watch_id) { j.reported = true; }
+                if (matches!(completion, Outcome::NeedsYou(_)) && self.park_media_decision(news.id))
+                    || !self.finish_background_step(news.id, completion)
+                {
+                    out.push(said);
+                }
+                if let Some(j) = self
+                    .long_work
+                    .jobs
+                    .iter_mut()
+                    .find(|j| j.id == link.watch_id)
+                {
+                    j.reported = true;
+                }
                 continue;
             }
             // A file read or unpacked off the loop (`file_work_off_the_loop`).
@@ -869,29 +1078,55 @@ impl<'a> Daemon<'a> {
                     crew::Ending::Done(Ok(json)) => match serde_json::from_str::<FileDone>(json) {
                         Ok(done) => {
                             let completion = match &done {
-                                FileDone::Said { said, ok: true, .. } => Outcome::Done(said.clone()),
-                                FileDone::Said { said, ok: false, .. } => Outcome::Failed(said.clone()),
-                                FileDone::Ask { question, .. } => Outcome::NeedsYou(question.clone()),
+                                FileDone::Said { said, ok: true, .. } => {
+                                    Outcome::Done(said.clone())
+                                }
+                                FileDone::Said {
+                                    said, ok: false, ..
+                                } => Outcome::Failed(said.clone()),
+                                FileDone::Ask { question, .. } => {
+                                    Outcome::NeedsYou(question.clone())
+                                }
                             };
                             // Record logging or the pending scan question before
                             // the worker sees its result and can ask for more.
                             self.file_done(done);
                             completion
                         }
-                        Err(e) => Outcome::Failed(format!("I read it, but lost what I found on the way back ({e}). Ask me again.")),
+                        Err(e) => Outcome::Failed(format!(
+                            "I read it, but lost what I found on the way back ({e}). Ask me again."
+                        )),
                     },
-                    crew::Ending::Done(Err(e)) => Outcome::Failed(format!("I couldn't get to that file: {e}")),
-                    crew::Ending::Stopped => Outcome::Failed("Stopped -- I didn't finish with that file.".into()),
-                    crew::Ending::Vanished => Outcome::Failed("That file's reading stopped without finishing. Ask me again.".into()),
+                    crew::Ending::Done(Err(e)) => {
+                        Outcome::Failed(format!("I couldn't get to that file: {e}"))
+                    }
+                    crew::Ending::Stopped => {
+                        Outcome::Failed("Stopped -- I didn't finish with that file.".into())
+                    }
+                    crew::Ending::Vanished => Outcome::Failed(
+                        "That file's reading stopped without finishing. Ask me again.".into(),
+                    ),
                 };
-                let watched = if matches!(completion, Outcome::Done(_)) { crate::watching::Outcome::Finished } else { crate::watching::Outcome::Failed };
-                self.long_work.update(link.watch_id, watched, completion.text(), t);
+                let watched = if matches!(completion, Outcome::Done(_)) {
+                    crate::watching::Outcome::Finished
+                } else {
+                    crate::watching::Outcome::Failed
+                };
+                self.long_work
+                    .update(link.watch_id, watched, completion.text(), t);
                 let said = completion.text().to_string();
                 self.finish_queued_worker(news.id, &completion, t);
-                if (matches!(completion, Outcome::NeedsYou(_)) && self.park_scan_decision(news.id)) || !self.finish_background_step(news.id, completion) {
+                if (matches!(completion, Outcome::NeedsYou(_)) && self.park_scan_decision(news.id))
+                    || !self.finish_background_step(news.id, completion)
+                {
                     out.push(said);
                 }
-                if let Some(j) = self.long_work.jobs.iter_mut().find(|j| j.id == link.watch_id) {
+                if let Some(j) = self
+                    .long_work
+                    .jobs
+                    .iter_mut()
+                    .find(|j| j.id == link.watch_id)
+                {
                     j.reported = true;
                 }
                 continue;
@@ -910,16 +1145,31 @@ impl<'a> Daemon<'a> {
                     crew::Ending::Stopped => Outcome::Failed("Preparation stopped; review any saved partial files before retrying.".into()),
                     crew::Ending::Vanished => Outcome::Failed("Preparation ended without a confirmed outcome.".into()),
                 };
-                let watched = if matches!(completion, Outcome::NeedsYou(_)) { crate::watching::Outcome::Finished } else { crate::watching::Outcome::Failed };
-                self.long_work.update(link.watch_id, watched, completion.text(), t);
+                let watched = if matches!(completion, Outcome::NeedsYou(_)) {
+                    crate::watching::Outcome::Finished
+                } else {
+                    crate::watching::Outcome::Failed
+                };
+                self.long_work
+                    .update(link.watch_id, watched, completion.text(), t);
                 self.finish_queued_worker(news.id, &completion, t);
                 let said = completion.text().to_string();
-                if !self.finish_background_step(news.id, completion) { out.push(said); }
-                if let Some(job) = self.long_work.jobs.iter_mut().find(|job| job.id == link.watch_id) { job.reported = true; }
+                if !self.finish_background_step(news.id, completion) {
+                    out.push(said);
+                }
+                if let Some(job) = self
+                    .long_work
+                    .jobs
+                    .iter_mut()
+                    .find(|job| job.id == link.watch_id)
+                {
+                    job.reported = true;
+                }
                 continue;
             }
             if link.label == "move-files" {
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
+                self.long_work
+                    .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.moved_news(&news.ending) {
                     out.push(said);
                 }
@@ -927,8 +1177,21 @@ impl<'a> Daemon<'a> {
             }
             if link.label == "post" {
                 let confirmed = matches!(&news.ending, crew::Ending::Done(Ok(line)) if line.split('\t').nth(1) == Some("sent"));
-                let watched = if confirmed { crate::watching::Outcome::Finished } else { crate::watching::Outcome::Failed };
-                self.long_work.update(link.watch_id, watched, if confirmed { "Publication confirmed" } else { "Publication not confirmed; check its result" }, t);
+                let watched = if confirmed {
+                    crate::watching::Outcome::Finished
+                } else {
+                    crate::watching::Outcome::Failed
+                };
+                self.long_work.update(
+                    link.watch_id,
+                    watched,
+                    if confirmed {
+                        "Publication confirmed"
+                    } else {
+                        "Publication not confirmed; check its result"
+                    },
+                    t,
+                );
                 if let Some(said) = self.post_news(news.id, &news.ending, t) {
                     out.push(said);
                 }
@@ -936,14 +1199,26 @@ impl<'a> Daemon<'a> {
             }
             if link.label == "post approval" {
                 let completion = self.post_approval_news(&news.ending, t);
-                self.long_work.update(link.watch_id, if matches!(completion, crate::taskloop::Outcome::Failed(_)) { crate::watching::Outcome::Failed } else { crate::watching::Outcome::Finished }, completion.text(), t);
+                self.long_work.update(
+                    link.watch_id,
+                    if matches!(completion, crate::taskloop::Outcome::Failed(_)) {
+                        crate::watching::Outcome::Failed
+                    } else {
+                        crate::watching::Outcome::Finished
+                    },
+                    completion.text(),
+                    t,
+                );
                 self.finish_queued_worker(news.id, &completion, t);
                 let said = completion.text().to_string();
-                if !self.finish_background_step(news.id, completion) { out.push(said); }
+                if !self.finish_background_step(news.id, completion) {
+                    out.push(said);
+                }
                 continue;
             }
             if matches!(link.label, "mail-sort" | "mail-sort-apply") {
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
+                self.long_work
+                    .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.mail_sort_news(link.label, &news.ending) {
                     out.push(said);
                 }
@@ -951,7 +1226,8 @@ impl<'a> Daemon<'a> {
             }
             // Your accounts' numbers and what you watch (`social::glue`).
             if link.label.starts_with("social-") {
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
+                self.long_work
+                    .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.social_news(link.label, &news.ending, t) {
                     out.push(said);
                 }
@@ -959,14 +1235,16 @@ impl<'a> Daemon<'a> {
             }
             // "Look for space" on the Status page (`hubvault`).
             if link.label == "reclaim" {
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
+                self.long_work
+                    .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.reclaim_news(&news.ending, t) {
                     out.push(said);
                 }
                 continue;
             }
             if link.label == "conversation-reply" {
-                self.long_work.update(link.watch_id, outcome_of(&news.ending), "", t);
+                self.long_work
+                    .update(link.watch_id, outcome_of(&news.ending), "", t);
                 out.extend(self.reply_written(news.id, &news.ending));
                 continue;
             }
@@ -1037,7 +1315,8 @@ impl<'a> Daemon<'a> {
                     }
                 }
             }
-            self.long_work.update(link.watch_id, outcome_of(&news.ending), &result, t);
+            self.long_work
+                .update(link.watch_id, outcome_of(&news.ending), &result, t);
 
             // The device flow's own errand always returns `Ok` carrying
             // the refresh token on success — stored in the vault here,
@@ -1053,18 +1332,17 @@ impl<'a> Daemon<'a> {
                     Ok(o) => {
                         let now = crate::store::now();
                         if let Some(id) = self.workshop.propose(
-                            &o.project,
-                            &o.title,
-                            &o.what,
-                            o.files,
-                            o.verified,
-                            &o.note,
-                            now,
+                            &o.project, &o.title, &o.what, o.files, o.verified, &o.note, now,
                         ) {
                             self.workshop.note_bases(&o.project, id, o.bases);
                         }
                         // Filed: the phases it was built in aren't needed now.
-                        crate::phases::Phases::for_work(self.store.root(), "improve", &format!("{}\n{}", o.project, o.what)).close();
+                        crate::phases::Phases::for_work(
+                            self.store.root(),
+                            "improve",
+                            &format!("{}\n{}", o.project, o.what),
+                        )
+                        .close();
                         let _ = self.workshop.save(&self.store);
                         result = o.summary;
                     }
@@ -1078,7 +1356,11 @@ impl<'a> Daemon<'a> {
             }
 
             if link.label == "outlook-connect" && ok {
-                let (address, client_id) = match link.topic.as_deref().map(|t| t.split_once(' ').unwrap_or((t, ""))) {
+                let (address, client_id) = match link
+                    .topic
+                    .as_deref()
+                    .map(|t| t.split_once(' ').unwrap_or((t, "")))
+                {
                     Some((a, c)) => (Some(a.to_string()), c.to_string()),
                     None => (None, String::new()),
                 };
@@ -1129,7 +1411,10 @@ impl<'a> Daemon<'a> {
                 // which is coarser than the `Instant`-based timing the old
                 // synchronous call used, but consistent with how every
                 // other crew errand's duration is already recorded.
-                let took_ms = news.finished.saturating_sub(news.started).saturating_mul(1000);
+                let took_ms = news
+                    .finished
+                    .saturating_sub(news.started)
+                    .saturating_mul(1000);
                 let prompt_chars = link.topic.as_deref().map(str::len).unwrap_or(0);
                 let id = self.record_model_call(
                     "research",
@@ -1142,7 +1427,15 @@ impl<'a> Daemon<'a> {
                 // model: every figure it gave is in a page it read.
                 if ok {
                     let invented = result.contains(crate::research::UNCONFIRMED);
-                    self.grade_call(id, !invented, if invented { "stated a figure that isn't in its sources" } else { "" });
+                    self.grade_call(
+                        id,
+                        !invented,
+                        if invented {
+                            "stated a figure that isn't in its sources"
+                        } else {
+                            ""
+                        },
+                    );
                 }
                 if ok {
                     if let Some(i) = self.connections.get_mut(crate::integrations::INTERNET) {
@@ -1211,12 +1504,20 @@ impl<'a> Daemon<'a> {
                     // same kind, filtered by whether the machine is even
                     // online — `another_way` and the whole `route` module
                     // were decision-shaped and reached nothing.
-                    match (self.another_way(crate::route::Kind::Learn, "research"), &link.topic) {
-                        (Some(next), _) => result.push_str(&format!(" I could try {next} instead.")),
+                    match (
+                        self.another_way(crate::route::Kind::Learn, "research"),
+                        &link.topic,
+                    ) {
+                        (Some(next), _) => {
+                            result.push_str(&format!(" I could try {next} instead."))
+                        }
                         // Nothing else to try: said as being stuck (F7).
                         (None, Some(topic)) => {
                             result.push(' ');
-                            result.push_str(&crate::route::stuck_on(&format!("researching {topic}"), "every way in failing"));
+                            result.push_str(&crate::route::stuck_on(
+                                &format!("researching {topic}"),
+                                "every way in failing",
+                            ));
                         }
                         (None, None) => {}
                     }
@@ -1241,8 +1542,15 @@ impl<'a> Daemon<'a> {
                 // interrupting for" — that filter is for chores you never
                 // asked about in the first place.
                 SpeakPolicy::Always => {
-                    if !continued { out.push(result.clone()); }
-                    if let Some(j) = self.long_work.jobs.iter_mut().find(|j| j.id == link.watch_id) {
+                    if !continued {
+                        out.push(result.clone());
+                    }
+                    if let Some(j) = self
+                        .long_work
+                        .jobs
+                        .iter_mut()
+                        .find(|j| j.id == link.watch_id)
+                    {
                         j.reported = true;
                     }
                 }
@@ -1254,7 +1562,12 @@ impl<'a> Daemon<'a> {
                 // of one is said, through the watcher.
                 SpeakPolicy::ViaWatcher => {
                     if ok {
-                        if let Some(j) = self.long_work.jobs.iter_mut().find(|j| j.id == link.watch_id) {
+                        if let Some(j) = self
+                            .long_work
+                            .jobs
+                            .iter_mut()
+                            .find(|j| j.id == link.watch_id)
+                        {
                             j.reported = true;
                         }
                     }
@@ -1265,7 +1578,8 @@ impl<'a> Daemon<'a> {
             // housekeeping is not a fact worth a journal line every time it
             // fires; a real result (non-empty) or a failure always is.
             if !result.is_empty() || !ok {
-                self.journal.record_at(Act::Upkeep, &format!("{}: {result}", link.label), ok, t);
+                self.journal
+                    .record_at(Act::Upkeep, &format!("{}: {result}", link.label), ok, t);
             }
         }
         for (_id, name) in self.crew.still_wont_stop(t) {
@@ -1285,7 +1599,12 @@ pub const CONNECTED_ACCOUNTS: &str = "mail_accounts_connected";
 impl Daemon<'_> {
     /// Add an account that has just been connected, and use it now. Returns
     /// whether reading mail is switched on.
-    fn add_connected_account(&mut self, address: &str, client_id: &str, vault_name: &str) -> std::result::Result<bool, String> {
+    fn add_connected_account(
+        &mut self,
+        address: &str,
+        client_id: &str,
+        vault_name: &str,
+    ) -> std::result::Result<bool, String> {
         let name = address.split('@').next().unwrap_or(address).to_string();
         self.keep_connected_account(crate::mail::Account {
             name,
@@ -1300,26 +1619,43 @@ impl Daemon<'_> {
     /// Keep an account connected from the hub or by Outlook's sign-in, in
     /// place of any by the same address, and use it now. Returns whether
     /// reading mail is switched on.
-    pub(crate) fn keep_connected_account(&mut self, account: crate::mail::Account) -> std::result::Result<bool, String> {
+    pub(crate) fn keep_connected_account(
+        &mut self,
+        account: crate::mail::Account,
+    ) -> std::result::Result<bool, String> {
         let mut kept: Vec<crate::mail::Account> = self.store.load(CONNECTED_ACCOUNTS);
         kept.retain(|a| !a.address.eq_ignore_ascii_case(&account.address));
         kept.push(account);
-        self.store.save(CONNECTED_ACCOUNTS, &kept).map_err(|e| e.to_string())?;
+        self.store
+            .save(CONNECTED_ACCOUNTS, &kept)
+            .map_err(|e| e.to_string())?;
         self.tools_resolved = std::sync::Arc::new(resolve_tools(self.tools_ref(), &self.store));
         Ok(self.tools_cfg().mail.enabled)
     }
 
     /// Take a connected account off (`connecting`): `false` when it wasn't
     /// one Atlas connected (one listed in tools.yaml stays yours to edit).
-    pub(crate) fn drop_connected_account(&mut self, address: &str) -> std::result::Result<bool, String> {
-        let _guard = self.store.transaction().map_err(|error| error.to_string())?;
-        let mut kept: Vec<crate::mail::Account> = self.store.load_checked(CONNECTED_ACCOUNTS).map_err(|error| error.to_string())?.unwrap_or_default();
+    pub(crate) fn drop_connected_account(
+        &mut self,
+        address: &str,
+    ) -> std::result::Result<bool, String> {
+        let _guard = self
+            .store
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        let mut kept: Vec<crate::mail::Account> = self
+            .store
+            .load_checked(CONNECTED_ACCOUNTS)
+            .map_err(|error| error.to_string())?
+            .unwrap_or_default();
         let before = kept.len();
         kept.retain(|a| !a.address.eq_ignore_ascii_case(address));
         if kept.len() == before {
             return Ok(false);
         }
-        self.store.save(CONNECTED_ACCOUNTS, &kept).map_err(|e| e.to_string())?;
+        self.store
+            .save(CONNECTED_ACCOUNTS, &kept)
+            .map_err(|e| e.to_string())?;
         // Rebuilt from the file and what's left, so it's gone from what runs now.
         self.tools_resolved = std::sync::Arc::new(resolve_tools(self.tools_ref(), &self.store));
         Ok(true)

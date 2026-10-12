@@ -84,7 +84,9 @@ pub struct Control {
 mod fixture_control {
     use super::*;
     impl Control {
-        pub(crate) fn for_fixture() -> Self { Self::new() }
+        pub(crate) fn for_fixture() -> Self {
+            Self::new()
+        }
     }
 }
 
@@ -104,7 +106,10 @@ impl Control {
 
     /// A held worker still obeys its own deadline and cancellation.
     pub(crate) fn checkpoint_until(&self, deadline: std::time::Instant) -> bool {
-        while self.pause.load(Ordering::SeqCst) && !self.stopping() && std::time::Instant::now() < deadline {
+        while self.pause.load(Ordering::SeqCst)
+            && !self.stopping()
+            && std::time::Instant::now() < deadline
+        {
             self.holding.store(true, Ordering::SeqCst);
             let seen = crate::doorbell::rung();
             crate::doorbell::wait_after(seen, 20);
@@ -117,7 +122,10 @@ impl Control {
         self.pause.store(on, Ordering::SeqCst);
         crate::doorbell::ring();
     }
-    pub(crate) fn request_stop(&self) { self.stop.store(true, Ordering::SeqCst); crate::doorbell::ring(); }
+    pub(crate) fn request_stop(&self) {
+        self.stop.store(true, Ordering::SeqCst);
+        crate::doorbell::ring();
+    }
 
     /// A safe point. If the errand is paused, this is where it holds —
     /// parked, with everything it has built so far intact — until it is
@@ -248,7 +256,12 @@ pub struct Job {
 
 impl Job {
     pub fn new(name: &str) -> Job {
-        Job { name: name.to_string(), needs: Needs::OneCore, urgency: Urgency::Soon, key: None }
+        Job {
+            name: name.to_string(),
+            needs: Needs::OneCore,
+            urgency: Urgency::Soon,
+            key: None,
+        }
     }
     pub fn needs(mut self, n: Needs) -> Job {
         self.needs = n;
@@ -278,8 +291,13 @@ pub struct Room {
 /// them (the real platforms' `Platform::crew_room`).
 pub fn this_machine() -> Room {
     let r = crate::health::read_machine();
-    let free_mb = (r.ram_total_gb > 0.0).then(|| ((r.ram_total_gb - r.ram_used_gb).max(0.0) * 1024.0) as u64);
-    Room { free_mb, on_battery: r.on_battery, battery_percent: r.battery_percent }
+    let free_mb =
+        (r.ram_total_gb > 0.0).then(|| ((r.ram_total_gb - r.ram_used_gb).max(0.0) * 1024.0) as u64);
+    Room {
+        free_mb,
+        on_battery: r.on_battery,
+        battery_percent: r.battery_percent,
+    }
 }
 
 /// The crew's admission rules, as numbers.
@@ -305,7 +323,13 @@ pub struct Limits {
 impl Limits {
     /// Only a slot count, no other rule: how `Crew::new` has always behaved.
     pub fn slots(n: usize) -> Limits {
-        Limits { slots: n.max(1), cores: None, waiting_hands: WAITING_HANDS, keep_free_mb: 0, battery_floor_percent: 0 }
+        Limits {
+            slots: n.max(1),
+            cores: None,
+            waiting_hands: WAITING_HANDS,
+            keep_free_mb: 0,
+            battery_floor_percent: 0,
+        }
     }
 }
 
@@ -323,7 +347,10 @@ pub struct CrewConfig {
 
 impl Default for CrewConfig {
     fn default() -> Self {
-        CrewConfig { keep_free_mb: 1024, battery_floor_percent: 30 }
+        CrewConfig {
+            keep_free_mb: 1024,
+            battery_floor_percent: 30,
+        }
     }
 }
 
@@ -376,8 +403,14 @@ enum Blocker {
     /// This one needs the whole machine and something is thinking.
     WholeMachineWaitsFor(String),
     CoreKeptForYou,
-    Memory { free: u64, keep: u64 },
-    Battery { percent: u8, floor: u8 },
+    Memory {
+        free: u64,
+        keep: u64,
+    },
+    Battery {
+        percent: u8,
+        floor: u8,
+    },
 }
 
 /// A hand still on the errand.
@@ -430,7 +463,11 @@ impl Crew {
     }
 
     pub fn with_limits(limits: Limits) -> Crew {
-        let limits = Limits { slots: limits.slots.max(1), waiting_hands: limits.waiting_hands.max(1), ..limits };
+        let limits = Limits {
+            slots: limits.slots.max(1),
+            waiting_hands: limits.waiting_hands.max(1),
+            ..limits
+        };
         Crew {
             limits,
             hands: Vec::new(),
@@ -474,7 +511,9 @@ impl Crew {
     }
     /// A durable signing ACK must not publish after its worker was stopped.
     pub(crate) fn cancellation_requested(&self, id: u64) -> bool {
-        self.hands.iter().any(|h| h.id == id && h.stop_requested_at.is_some())
+        self.hands
+            .iter()
+            .any(|h| h.id == id && h.stop_requested_at.is_some())
     }
 
     /// Take on an errand as one-core work. Returns `None` only when the
@@ -491,10 +530,18 @@ impl Crew {
     pub fn hand_job(&mut self, job: Job, t: u64, work: Work) -> Result<Taken, String> {
         self.now = self.now.max(t);
         if let Some(k) = &job.key {
-            if let Some(h) = self.hands.iter().find(|h| h.key.as_deref() == Some(k) && h.stop_requested_at.is_none()) {
+            if let Some(h) = self
+                .hands
+                .iter()
+                .find(|h| h.key.as_deref() == Some(k) && h.stop_requested_at.is_none())
+            {
                 return Ok(Taken::Joined(h.id));
             }
-            if let Some(p) = self.waiting.iter_mut().find(|p| p.key.as_deref() == Some(k)) {
+            if let Some(p) = self
+                .waiting
+                .iter_mut()
+                .find(|p| p.key.as_deref() == Some(k))
+            {
                 // The more urgent ask wins: "back up now" joining a queued
                 // nightly backup makes it a backup somebody is waiting for.
                 p.urgency = p.urgency.min(job.urgency);
@@ -522,7 +569,11 @@ impl Crew {
             paused: false,
         });
         self.promote();
-        Ok(if self.hands.iter().any(|h| h.id == id) { Taken::Started(id) } else { Taken::Queued(id) })
+        Ok(if self.hands.iter().any(|h| h.id == id) {
+            Taken::Started(id)
+        } else {
+            Taken::Queued(id)
+        })
     }
 
     fn start(&mut self, p: Pending) {
@@ -640,7 +691,13 @@ impl Crew {
                         ran_ms: h.began.elapsed().as_millis() as u64,
                         finished: t,
                     });
-                    out.push(News { id: h.id, name: h.name, started: h.started, finished: t, ending: news });
+                    out.push(News {
+                        id: h.id,
+                        name: h.name,
+                        started: h.started,
+                        finished: t,
+                        ending: news,
+                    });
                 }
                 None => i += 1,
             }
@@ -657,8 +714,12 @@ impl Crew {
     fn promote(&mut self) {
         loop {
             let room = self.room_if_needed();
-            let Some(at) = self.next_to_start(room) else { break };
-            let Some(p) = self.waiting.remove(at) else { break };
+            let Some(at) = self.next_to_start(room) else {
+                break;
+            };
+            let Some(p) = self.waiting.remove(at) else {
+                break;
+            };
             self.start(p);
         }
     }
@@ -666,7 +727,11 @@ impl Crew {
     /// Free memory and power, read only when something that thinks is
     /// waiting, and trusted for `ROOM_FRESH_FOR`.
     fn room_if_needed(&mut self) -> Option<Room> {
-        if !self.waiting.iter().any(|p| !p.paused && p.needs != Needs::MostlyWaiting) {
+        if !self
+            .waiting
+            .iter()
+            .any(|p| !p.paused && p.needs != Needs::MostlyWaiting)
+        {
             return None;
         }
         match self.room_seen {
@@ -686,7 +751,9 @@ impl Crew {
 
     /// Waiting errands, best first: by aged band, then oldest.
     fn in_order(&self) -> Vec<usize> {
-        let mut order: Vec<usize> = (0..self.waiting.len()).filter(|&i| !self.waiting[i].paused).collect();
+        let mut order: Vec<usize> = (0..self.waiting.len())
+            .filter(|&i| !self.waiting[i].paused)
+            .collect();
         order.sort_by_key(|&i| (self.band(&self.waiting[i]), self.waiting[i].id));
         order
     }
@@ -708,7 +775,9 @@ impl Crew {
                     }
                     return Some(i);
                 }
-                Some(Blocker::WholeMachineWaitsFor(_)) if held_for.is_none() => held_for = Some(&p.name),
+                Some(Blocker::WholeMachineWaitsFor(_)) if held_for.is_none() => {
+                    held_for = Some(&p.name)
+                }
                 Some(_) => {}
             }
         }
@@ -718,20 +787,32 @@ impl Crew {
     /// Hands actually working. A hand parked at a safe point is not — it is
     /// waiting on a person — so it doesn't keep queued work out.
     fn working(&self) -> impl Iterator<Item = &Hand> {
-        self.hands.iter().filter(|h| !h.ctl.holding.load(Ordering::SeqCst))
+        self.hands
+            .iter()
+            .filter(|h| !h.ctl.holding.load(Ordering::SeqCst))
     }
 
     /// Why work of this kind can't start now, or `None` if it can.
     fn blocker(&self, needs: Needs, urgency: Urgency, room: Option<Room>) -> Option<Blocker> {
-        let thinking: Vec<&Hand> = self.working().filter(|h| h.needs != Needs::MostlyWaiting).collect();
+        let thinking: Vec<&Hand> = self
+            .working()
+            .filter(|h| h.needs != Needs::MostlyWaiting)
+            .collect();
         let memory = |room: Option<Room>| -> Option<Blocker> {
             let free = room.and_then(|r| r.free_mb)?;
-            (self.limits.keep_free_mb > 0 && free < self.limits.keep_free_mb)
-                .then_some(Blocker::Memory { free, keep: self.limits.keep_free_mb })
+            (self.limits.keep_free_mb > 0 && free < self.limits.keep_free_mb).then_some(
+                Blocker::Memory {
+                    free,
+                    keep: self.limits.keep_free_mb,
+                },
+            )
         };
         match needs {
             Needs::MostlyWaiting => {
-                let n = self.working().filter(|h| h.needs == Needs::MostlyWaiting).count();
+                let n = self
+                    .working()
+                    .filter(|h| h.needs == Needs::MostlyWaiting)
+                    .count();
                 (n >= self.limits.waiting_hands).then_some(Blocker::WaitingHandsFull)
             }
             Needs::OneCore => {
@@ -757,8 +838,15 @@ impl Crew {
                 }
                 let r = room?;
                 match r.battery_percent {
-                    Some(pc) if r.on_battery && urgency != Urgency::Now && pc < self.limits.battery_floor_percent => {
-                        Some(Blocker::Battery { percent: pc, floor: self.limits.battery_floor_percent })
+                    Some(pc)
+                        if r.on_battery
+                            && urgency != Urgency::Now
+                            && pc < self.limits.battery_floor_percent =>
+                    {
+                        Some(Blocker::Battery {
+                            percent: pc,
+                            floor: self.limits.battery_floor_percent,
+                        })
                     }
                     _ => None,
                 }
@@ -773,7 +861,11 @@ impl Crew {
     /// cost twenty seconds of a machine doing nothing. Work blocked behind a
     /// render is not a reason to wake: it can't start anyway.
     pub fn wants_attention(&self) -> bool {
-        if self.hands.iter().any(|h| h.thread.as_ref().map(|t| t.is_finished()).unwrap_or(true)) {
+        if self
+            .hands
+            .iter()
+            .any(|h| h.thread.as_ref().map(|t| t.is_finished()).unwrap_or(true))
+        {
             return true;
         }
         let room = self.room_seen.map(|(_, r)| r);
@@ -802,7 +894,12 @@ impl Crew {
     pub(crate) fn pause_handles(&self) -> Vec<Control> {
         self.hands.iter().map(|h| h.ctl.clone()).collect()
     }
-    pub(crate) fn control_handle(&self, id: u64) -> Option<Control> { self.hands.iter().find(|h| h.id == id).map(|h| h.ctl.clone()) }
+    pub(crate) fn control_handle(&self, id: u64) -> Option<Control> {
+        self.hands
+            .iter()
+            .find(|h| h.id == id)
+            .map(|h| h.ctl.clone())
+    }
 
     /// Let a paused errand carry on from where it held. `false` when there is
     /// no such errand or it wasn't paused.
@@ -842,7 +939,11 @@ impl Crew {
             id: p.id,
             name: p.name.clone(),
             started: p.started,
-            state: if p.paused { State::WaitingPaused } else { State::Waiting },
+            state: if p.paused {
+                State::WaitingPaused
+            } else {
+                State::Waiting
+            },
         }));
         out.sort_by_key(|e| e.id);
         out
@@ -859,7 +960,10 @@ impl Crew {
     /// number that says whether the crew is too small.
     pub fn longest_wait(&self) -> Option<(String, u64)> {
         let finished = self.recent.iter().map(|r| (r.name.clone(), r.waited_ms));
-        let still = self.waiting.iter().map(|p| (p.name.clone(), p.queued_at.elapsed().as_millis() as u64));
+        let still = self
+            .waiting
+            .iter()
+            .map(|p| (p.name.clone(), p.queued_at.elapsed().as_millis() as u64));
         finished.chain(still).max_by_key(|(_, ms)| *ms)
     }
 
@@ -886,7 +990,11 @@ impl Crew {
                 Ending::Done(r)
             });
         }
-        let finished = self.hands[i].thread.as_ref().map(|t| t.is_finished()).unwrap_or(true);
+        let finished = self.hands[i]
+            .thread
+            .as_ref()
+            .map(|t| t.is_finished())
+            .unwrap_or(true);
         if finished {
             // Check first, drain again: a result that arrived a
             // microsecond after `is_finished()` became true must not read
@@ -911,7 +1019,9 @@ impl Crew {
     pub fn still_wont_stop(&mut self, t: u64) -> Vec<(u64, String)> {
         let mut out = Vec::new();
         for h in self.hands.iter_mut() {
-            let Some(asked) = h.stop_requested_at else { continue };
+            let Some(asked) = h.stop_requested_at else {
+                continue;
+            };
             if h.wontstop_reported {
                 continue;
             }
@@ -938,9 +1048,14 @@ impl Crew {
         let ahead = order
             .iter()
             .take_while(|&&i| self.waiting[i].id != id)
-            .filter(|&&i| (self.waiting[i].needs == Needs::MostlyWaiting) == (p.needs == Needs::MostlyWaiting))
+            .filter(|&&i| {
+                (self.waiting[i].needs == Needs::MostlyWaiting) == (p.needs == Needs::MostlyWaiting)
+            })
             .count();
-        let behind = format!("behind {ahead} other errand{}", if ahead == 1 { "" } else { "s" });
+        let behind = format!(
+            "behind {ahead} other errand{}",
+            if ahead == 1 { "" } else { "s" }
+        );
         let room = self.room_seen.map(|(_, r)| r);
         let held = self.next_held_for(room);
         let why = match self.blocker(p.needs, p.urgency, room) {
@@ -1017,7 +1132,13 @@ mod tests {
     fn a_free_hand_starts_the_errand_immediately() {
         let mut c = Crew::new(2);
         let id = c.hand("test", 0, Box::new(|_| Ok("done".into()))).unwrap();
-        assert!(wait_until(|| { let n = c.settle(1); !n.is_empty() }, StdDuration::from_secs(2)));
+        assert!(wait_until(
+            || {
+                let n = c.settle(1);
+                !n.is_empty()
+            },
+            StdDuration::from_secs(2)
+        ));
         assert!(!c.in_hand(id));
     }
 
@@ -1055,15 +1176,26 @@ mod tests {
                 Ok("first".into())
             }),
         );
-        let second = c.hand("second", 0, Box::new(|_| Ok("second".into()))).unwrap();
+        let second = c
+            .hand("second", 0, Box::new(|_| Ok("second".into())))
+            .unwrap();
         assert_eq!(c.active(), 1);
         assert_eq!(c.queued(), 1);
         assert!(c.in_hand(second));
 
         // Let the first finish; settle should promote the second.
         done.store(true, Ordering::SeqCst);
-        assert!(wait_until(|| !c.settle(2).is_empty(), StdDuration::from_secs(2)));
-        assert!(wait_until(|| { let n = c.settle(2); !n.is_empty() }, StdDuration::from_secs(2)));
+        assert!(wait_until(
+            || !c.settle(2).is_empty(),
+            StdDuration::from_secs(2)
+        ));
+        assert!(wait_until(
+            || {
+                let n = c.settle(2);
+                !n.is_empty()
+            },
+            StdDuration::from_secs(2)
+        ));
     }
 
     #[test]
@@ -1077,7 +1209,11 @@ mod tests {
             }),
         );
         let news = wait_until_news(&mut c, StdDuration::from_secs(2));
-        assert!(matches!(news.ending, Ending::Vanished), "expected Vanished, got {:?}", news.ending);
+        assert!(
+            matches!(news.ending, Ending::Vanished),
+            "expected Vanished, got {:?}",
+            news.ending
+        );
     }
 
     #[test]
@@ -1103,7 +1239,11 @@ mod tests {
             .unwrap();
         c.ask_to_stop(id);
         let news = wait_until_news(&mut c, StdDuration::from_secs(2));
-        assert!(matches!(news.ending, Ending::Stopped), "expected Stopped, got {:?}", news.ending);
+        assert!(
+            matches!(news.ending, Ending::Stopped),
+            "expected Stopped, got {:?}",
+            news.ending
+        );
     }
 
     #[test]
@@ -1146,7 +1286,10 @@ mod tests {
         // instead documents the immediate-call behaviour: right after
         // asking, it must not yet be reported.
         c.settle(1);
-        assert!(c.still_wont_stop(1).is_empty(), "must not report WontStop immediately");
+        assert!(
+            c.still_wont_stop(1).is_empty(),
+            "must not report WontStop immediately"
+        );
     }
 
     #[test]
@@ -1160,7 +1303,9 @@ mod tests {
                 Ok("first".into())
             }),
         );
-        let second = c.hand("second", 0, Box::new(|_| Ok("second".into()))).unwrap();
+        let second = c
+            .hand("second", 0, Box::new(|_| Ok("second".into())))
+            .unwrap();
         let why = c.why_waiting(second);
         assert!(why.is_some());
         assert!(why.unwrap().contains("1 hand"));
@@ -1187,10 +1332,14 @@ mod tests {
             }),
         );
         for _ in 0..MAX_WAITING {
-            assert!(c.hand("filler", 0, Box::new(|_| Ok(String::new()))).is_some());
+            assert!(c
+                .hand("filler", 0, Box::new(|_| Ok(String::new())))
+                .is_some());
         }
         // The list is now exactly full; one more must be refused.
-        assert!(c.hand("one_too_many", 0, Box::new(|_| Ok(String::new()))).is_none());
+        assert!(c
+            .hand("one_too_many", 0, Box::new(|_| Ok(String::new())))
+            .is_none());
     }
 
     #[test]
@@ -1222,7 +1371,10 @@ mod tests {
         assert!(!c.in_hand(queued));
         // Let the first finish and settle repeatedly; the dropped queued
         // errand must never start.
-        assert!(wait_until(|| !c.settle(1).is_empty(), StdDuration::from_secs(2)));
+        assert!(wait_until(
+            || !c.settle(1).is_empty(),
+            StdDuration::from_secs(2)
+        ));
         std::thread::sleep(StdDuration::from_millis(50));
         c.settle(1);
         assert!(!ran.load(Ordering::SeqCst));
@@ -1231,7 +1383,11 @@ mod tests {
     #[test]
     fn a_failed_errand_that_was_not_asked_to_stop_reports_done_err() {
         let mut c = Crew::new(1);
-        c.hand("fails", 0, Box::new(|_| Err("could not reach the source".into())));
+        c.hand(
+            "fails",
+            0,
+            Box::new(|_| Err("could not reach the source".into())),
+        );
         let news = wait_until_news(&mut c, StdDuration::from_secs(2));
         match news.ending {
             Ending::Done(Err(e)) => assert_eq!(e, "could not reach the source"),

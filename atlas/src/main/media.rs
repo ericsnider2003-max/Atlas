@@ -1,6 +1,6 @@
 //! Video and content: editors, platforms, ffmpeg, the video command, hooks
 //! and the content command.
-//! 
+//!
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
@@ -24,7 +24,12 @@ use super::*;
 
 fn editor_named(s: &str) -> Option<atlas::editors::Editor> {
     use atlas::editors::Editor;
-    match s.trim().to_ascii_lowercase().replace([' ', '-', '_'], "").as_str() {
+    match s
+        .trim()
+        .to_ascii_lowercase()
+        .replace([' ', '-', '_'], "")
+        .as_str()
+    {
         "ffmpeg" => Some(Editor::Ffmpeg),
         "resolve" | "davinci" | "davinciresolve" => Some(Editor::Resolve),
         "premiere" | "premierepro" => Some(Editor::Premiere),
@@ -37,7 +42,12 @@ fn editor_named(s: &str) -> Option<atlas::editors::Editor> {
 
 fn platform_named(s: &str) -> Option<atlas::publishing::Platform> {
     use atlas::publishing::Platform;
-    match s.trim().to_ascii_lowercase().replace([' ', '-', '_'], "").as_str() {
+    match s
+        .trim()
+        .to_ascii_lowercase()
+        .replace([' ', '-', '_'], "")
+        .as_str()
+    {
         "tiktok" => Some(Platform::TikTok),
         "reels" | "instagram" | "ig" => Some(Platform::Reels),
         "shorts" => Some(Platform::Shorts),
@@ -76,7 +86,9 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
     use atlas::voiceover::{self, Beat};
 
     let Some(video) = cfg.tools.as_ref().map(|t| t.video.clone()) else {
-        println!("No tools.yaml loaded, so ffmpeg isn't configured. `atlas doctor` says what's missing.");
+        println!(
+            "No tools.yaml loaded, so ffmpeg isn't configured. `atlas doctor` says what's missing."
+        );
         return;
     };
     let flag = |f: &str| args.iter().any(|a| a == f);
@@ -119,15 +131,33 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
             // 2026 -- the numbers in the file matched the constants in
             // `grade.rs` exactly, so the advice was right and the file had
             // nothing to do with it.
-            let gcfg = cfg.tools.as_ref().map(|t| t.grade.clone()).unwrap_or_default();
-            let an = audio.as_ref().map(|a| grade::check_audio(a, &gcfg)).unwrap_or_default();
-            let pn = picture.as_ref().map(grade::check_picture).unwrap_or_default();
+            let gcfg = cfg
+                .tools
+                .as_ref()
+                .map(|t| t.grade.clone())
+                .unwrap_or_default();
+            let an = audio
+                .as_ref()
+                .map(|a| grade::check_audio(a, &gcfg))
+                .unwrap_or_default();
+            let pn = picture
+                .as_ref()
+                .map(grade::check_picture)
+                .unwrap_or_default();
 
             println!("{}", grade::spoken(&an, &pn));
             println!();
             for n in an.iter().chain(pn.iter()) {
                 println!("  {} — {}", n.what, n.because);
-                println!("      fix: {}{}", n.fix, if n.fixable_now { "" } else { "  (needs re-recording)" });
+                println!(
+                    "      fix: {}{}",
+                    n.fix,
+                    if n.fixable_now {
+                        ""
+                    } else {
+                        "  (needs re-recording)"
+                    }
+                );
             }
             if an.is_empty() && pn.is_empty() {
                 println!("  (nothing above the thresholds in grade.rs)");
@@ -150,7 +180,10 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                     p.clipped_black * 100.0, p.clipped_white * 100.0
                 );
                 let band = grade::SafeArea::typical().caption_band();
-                println!("Captions belong between {:.0}% and {:.0}% down the frame.", band.0, band.1);
+                println!(
+                    "Captions belong between {:.0}% and {:.0}% down the frame.",
+                    band.0, band.1
+                );
             }
 
             // The look you said you start from. `preset:` is the third line of
@@ -174,7 +207,8 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                 }
             }
 
-            let advice = grade::recording_advice(&an.iter().chain(pn.iter()).cloned().collect::<Vec<_>>());
+            let advice =
+                grade::recording_advice(&an.iter().chain(pn.iter()).cloned().collect::<Vec<_>>());
             if !advice.is_empty() {
                 println!();
                 println!("For the next recording rather than this one:");
@@ -210,8 +244,11 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                                 // nowhere to land until 18 Sep 2026, and this
                                 // line stated the number as a fact about the
                                 // platforms while the file claimed to set it.
-                                let gcfg =
-                                    cfg.tools.as_ref().map(|t| t.grade.clone()).unwrap_or_default();
+                                let gcfg = cfg
+                                    .tools
+                                    .as_ref()
+                                    .map(|t| t.grade.clone())
+                                    .unwrap_or_default();
                                 let measured = format!(
                                     "{:.1} LUFS against the {} platforms normalise to, range {:.1}dB",
                                     a.lufs, gcfg.target_lufs, a.range_db
@@ -224,8 +261,14 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                                 // Nothing found, or nothing written, both say
                                 // so plainly instead.
                                 if notes.is_empty() {
-                                    println!("\n{}", atlas::plainly::result(&said, &measured, false));
-                                    println!("  -af \"{}\"  (if you want it anyway)", chain.join(","));
+                                    println!(
+                                        "\n{}",
+                                        atlas::plainly::result(&said, &measured, false)
+                                    );
+                                    println!(
+                                        "  -af \"{}\"  (if you want it anyway)",
+                                        chain.join(",")
+                                    );
                                     return;
                                 }
                                 let Some(out) = value("--out") else {
@@ -235,16 +278,24 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                                     return;
                                 };
                                 let args = vec![
-                                    "-y".to_string(), "-v".into(), "error".into(),
-                                    "-i".into(), path.to_string(),
-                                    "-af".into(), chain.join(","),
-                                    "-c:v".into(), "copy".into(),
+                                    "-y".to_string(),
+                                    "-v".into(),
+                                    "error".into(),
+                                    "-i".into(),
+                                    path.to_string(),
+                                    "-af".into(),
+                                    chain.join(","),
+                                    "-c:v".into(),
+                                    "copy".into(),
                                     out.to_string(),
                                 ];
                                 match run_ffmpeg(&video.ffmpeg, args) {
                                     Err(e) => println!("\nCouldn't write it: {e}"),
                                     Ok(()) => {
-                                        println!("\n{}", atlas::plainly::result(&said, &measured, true));
+                                        println!(
+                                            "\n{}",
+                                            atlas::plainly::result(&said, &measured, true)
+                                        );
                                         println!("Written: {out}");
                                     }
                                 }
@@ -263,7 +314,8 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
             let out = value("--out").unwrap_or("cut.mp4").to_string();
             let speed: f64 = value("--speed").and_then(|s| s.parse().ok()).unwrap_or(1.0);
 
-            let spans: Vec<(f64, f64)> = all_values("--at").iter().filter_map(|s| span(s)).collect();
+            let spans: Vec<(f64, f64)> =
+                all_values("--at").iter().filter_map(|s| span(s)).collect();
             if spans.is_empty() {
                 println!("Which part? atlas video cut {path} --at 0-3 --at 8-12 --out short.mp4");
                 return;
@@ -288,7 +340,12 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                 sources: vec![path.clone()],
                 segments: spans
                     .iter()
-                    .map(|(a, b)| Segment { source: 0, start: *a, end: *b, speed })
+                    .map(|(a, b)| Segment {
+                        source: 0,
+                        start: *a,
+                        end: *b,
+                        speed,
+                    })
                     .collect(),
                 overlays,
                 music: value("--music").map(|s| s.to_string()),
@@ -298,7 +355,14 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                 fps: None,
                 intent: atlas::cli::plain_words(
                     &args[1..],
-                    &["--out", "--at", "--caption", "--speed", "--music", "--caption-at"],
+                    &[
+                        "--out",
+                        "--at",
+                        "--caption",
+                        "--speed",
+                        "--music",
+                        "--caption-at",
+                    ],
                 ),
             };
 
@@ -320,7 +384,11 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
 
             let (tool, why) = editors::best_for(Job::Trim, &installed_editors(cfg));
             println!("{} — {why}", tool.name());
-            let ecfg = cfg.tools.as_ref().map(|t| t.editors.clone()).unwrap_or_default();
+            let ecfg = cfg
+                .tools
+                .as_ref()
+                .map(|t| t.editors.clone())
+                .unwrap_or_default();
             let note = editors::used(tool, Job::Trim, &ecfg);
             if !note.is_empty() {
                 println!("{note}");
@@ -340,7 +408,9 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
 
         Some("render") => {
             let Some(plan_file) = args.get(1).filter(|p| !p.starts_with("--")) else {
-                println!("Which plan? atlas video render plan.json --source clip.mp4 --out out.mp4");
+                println!(
+                    "Which plan? atlas video render plan.json --source clip.mp4 --out out.mp4"
+                );
                 return;
             };
             let sources = all_values("--source");
@@ -379,7 +449,10 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                 println!("That plan won't do: {e}");
                 return;
             }
-            println!("{}", atlas::edit::describe(&plan, lens.first().copied().unwrap_or(0.0)));
+            println!(
+                "{}",
+                atlas::edit::describe(&plan, lens.first().copied().unwrap_or(0.0))
+            );
             if !plan.intent.trim().is_empty() {
                 println!("Intent: {}", plan.intent);
             }
@@ -400,7 +473,9 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                 return;
             };
             let Some(p) = value("--for").and_then(platform_named) else {
-                println!("Where's it going? --for tiktok | reels | shorts | youtube | x | linkedin");
+                println!(
+                    "Where's it going? --for tiktok | reels | shorts | youtube | x | linkedin"
+                );
                 return;
             };
             let e = publishing::export_for(p);
@@ -416,7 +491,12 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
 
             println!(
                 "{}: {}x{} at {}fps, {}Mbps, audio {}kbps.",
-                p.name(), e.width, e.height, e.fps, e.bitrate, e.audio_kbps
+                p.name(),
+                e.width,
+                e.height,
+                e.fps,
+                e.bitrate,
+                e.audio_kbps
             );
             println!("{}", e.note);
             println!();
@@ -454,11 +534,17 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                 .map(|t| t.opsec.always_strip_metadata)
                 .unwrap_or(true);
             if !flag("--render") {
-                println!("ffmpeg {}", publishing::export_args(&e, path, &out, strip).join(" "));
+                println!(
+                    "ffmpeg {}",
+                    publishing::export_args(&e, path, &out, strip).join(" ")
+                );
                 println!("Add --render to actually write {out}.");
                 return;
             }
-            match run_ffmpeg(&video.ffmpeg, publishing::export_args(&e, path, &out, strip)) {
+            match run_ffmpeg(
+                &video.ffmpeg,
+                publishing::export_args(&e, path, &out, strip),
+            ) {
                 Ok(()) => println!("Written: {out}"),
                 Err(err) => println!("Export failed: {err}"),
             }
@@ -476,7 +562,11 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                     return;
                 }
             };
-            let vcfg = cfg.tools.as_ref().map(|t| t.voiceover.clone()).unwrap_or_default();
+            let vcfg = cfg
+                .tools
+                .as_ref()
+                .map(|t| t.voiceover.clone())
+                .unwrap_or_default();
             let total: f32 = match value("--length").and_then(|s| s.parse().ok()) {
                 Some(t) => t,
                 None => match value("--over") {
@@ -504,7 +594,10 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                         Some(rest) => (rest, true),
                         None => (b.as_str(), false),
                     };
-                    Some(Beat { at: at.trim().parse().ok()?, strong })
+                    Some(Beat {
+                        at: at.trim().parse().ok()?,
+                        strong,
+                    })
                 })
                 .collect();
 
@@ -539,12 +632,24 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
             );
             println!();
             for job in [
-                Job::Trim, Job::CutSilences, Job::Captions, Job::Loudness,
-                Job::ColourCorrect, Job::ColourGrade, Job::Crop, Job::Thumbnail,
-                Job::MotionGraphics, Job::HandOff,
+                Job::Trim,
+                Job::CutSilences,
+                Job::Captions,
+                Job::Loudness,
+                Job::ColourCorrect,
+                Job::ColourGrade,
+                Job::Crop,
+                Job::Thumbnail,
+                Job::MotionGraphics,
+                Job::HandOff,
             ] {
                 let (e, why) = editors::best_for(job, &have);
-                println!("  {:<22} -> {} ({}) — {why}", job.plain(), e.name(), e.how());
+                println!(
+                    "  {:<22} -> {} ({}) — {why}",
+                    job.plain(),
+                    e.name(),
+                    e.how()
+                );
             }
             println!();
             println!(
@@ -567,7 +672,11 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                     "  {} — {}{}",
                     e.name(),
                     editors::where_to_look(e),
-                    if e.drivable() { "" } else { "  (Atlas prepares, you finish)" }
+                    if e.drivable() {
+                        ""
+                    } else {
+                        "  (Atlas prepares, you finish)"
+                    }
                 );
             }
         }
@@ -595,7 +704,9 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
             println!("atlas video voiceover <script.txt> --length 45 [--beat 3.2] [--beat 9!]");
             println!("atlas video tools                which editor does which job");
             println!("atlas video presets              the grading presets, as ffmpeg");
-            println!("atlas video music                where to get music you won't be taken down for");
+            println!(
+                "atlas video music                where to get music you won't be taken down for"
+            );
         }
     }
 }
@@ -638,7 +749,12 @@ fn installed_editors(cfg: &Config) -> Vec<atlas::editors::Editor> {
 
 fn hook_named(s: &str) -> atlas::content::Hook {
     use atlas::content::Hook;
-    match s.trim().to_ascii_lowercase().replace([' ', '-', '_'], "").as_str() {
+    match s
+        .trim()
+        .to_ascii_lowercase()
+        .replace([' ', '-', '_'], "")
+        .as_str()
+    {
         "called" => Hook::Called,
         "contradiction" => Hook::Contradiction,
         "unfinished" => Hook::Unfinished,
@@ -667,7 +783,11 @@ pub(super) fn run_content(cfg: &Config, args: &[String]) {
     use atlas::reach;
 
     let store = atlas::roots::store();
-    let ccfg = cfg.tools.as_ref().map(|t| t.content.clone()).unwrap_or_default();
+    let ccfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.content.clone())
+        .unwrap_or_default();
     let value = |f: &str| atlas::cli::flag_value(args, f);
     let flag = |f: &str| args.iter().any(|a| a == f);
     let posts: Vec<reach::Post> = store.load("content_posts");
@@ -675,7 +795,9 @@ pub(super) fn run_content(cfg: &Config, args: &[String]) {
     match args.first().map(|s| s.to_lowercase()).as_deref() {
         Some("review") => {
             let Some(script_file) = value("--script") else {
-                println!("atlas content review --script draft.txt --seconds 32 --value-at 6 [--lands]");
+                println!(
+                    "atlas content review --script draft.txt --seconds 32 --value-at 6 [--lands]"
+                );
                 return;
             };
             let script = match std::fs::read_to_string(script_file) {
@@ -700,11 +822,14 @@ pub(super) fn run_content(cfg: &Config, args: &[String]) {
 
             // One thing IS read off the script, with the rule stated: a piece
             // with no numeral in it anywhere is not being specific.
-            let has_specifics = flag("--specifics")
-                || script.chars().any(|c| c.is_ascii_digit());
+            let has_specifics = flag("--specifics") || script.chars().any(|c| c.is_ascii_digit());
 
             let piece = content::Piece {
-                first_line: script.lines().find(|l| !l.trim().is_empty()).unwrap_or("").to_string(),
+                first_line: script
+                    .lines()
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("")
+                    .to_string(),
                 script: script.clone(),
                 seconds,
                 value_at_secs: value_at,
@@ -713,7 +838,11 @@ pub(super) fn run_content(cfg: &Config, args: &[String]) {
             };
 
             let hook = content::hook_of(&piece.first_line);
-            println!("Opening: {} ({:.0}% hold, generally).", hook.plain(), hook.holds() * 100.0);
+            println!(
+                "Opening: {} ({:.0}% hold, generally).",
+                hook.plain(),
+                hook.holds() * 100.0
+            );
             println!("{}", content::before_posting(&piece));
             println!();
             for f in content::faults(&piece) {
@@ -723,10 +852,16 @@ pub(super) fn run_content(cfg: &Config, args: &[String]) {
             println!(
                 "Specifics: {} ({}).",
                 if has_specifics { "found" } else { "none found" },
-                if flag("--specifics") { "you said so" } else { "read off the script — a numeral anywhere counts" }
+                if flag("--specifics") {
+                    "you said so"
+                } else {
+                    "read off the script — a numeral anywhere counts"
+                }
             );
             if !ccfg.review_before_posting {
-                println!("(content.review_before_posting is off, so this only happens when you ask.)");
+                println!(
+                    "(content.review_before_posting is off, so this only happens when you ask.)"
+                );
             }
         }
 
@@ -779,8 +914,13 @@ pub(super) fn run_content(cfg: &Config, args: &[String]) {
             for p in &posts {
                 println!(
                     "  {:<14} {:>7} views  held {:>3.0}%  done {:>3.0}%  kept {:.3}  {}  {}",
-                    p.id, p.views, p.held_at_three * 100.0, p.completion * 100.0,
-                    p.kept(), p.hook, p.topic
+                    p.id,
+                    p.views,
+                    p.held_at_three * 100.0,
+                    p.completion * 100.0,
+                    p.kept(),
+                    p.hook,
+                    p.topic
                 );
             }
         }
@@ -799,7 +939,11 @@ pub(super) fn run_content(cfg: &Config, args: &[String]) {
             }
             println!();
             for (hook, held, n) in &learned.by_hook {
-                println!("  {:<32} {:>3.0}% held, across {n}", hook.plain(), held * 100.0);
+                println!(
+                    "  {:<32} {:>3.0}% held, across {n}",
+                    hook.plain(),
+                    held * 100.0
+                );
             }
             let repeatable = history.iter().filter(|p| p.worth_repeating()).count();
             println!();
@@ -812,11 +956,19 @@ pub(super) fn run_content(cfg: &Config, args: &[String]) {
         Some("reach") => {
             // `reach.min_posts_for_direction`, which had no type to parse
             // into until 18 Sep 2026 while `direction` hardcoded the same 6.
-            let rcfg = cfg.tools.as_ref().map(|t| t.reach.clone()).unwrap_or_default();
+            let rcfg = cfg
+                .tools
+                .as_ref()
+                .map(|t| t.reach.clone())
+                .unwrap_or_default();
             // How near an edge counts, and what too little behind a number
             // means. `reach` narrows the sample floor to its own domain's --
             // see `outlier` -- rather than trading's thirty.
-            let jcfg = cfg.tools.as_ref().map(|t| t.judgment.clone()).unwrap_or_default();
+            let jcfg = cfg
+                .tools
+                .as_ref()
+                .map(|t| t.judgment.clone())
+                .unwrap_or_default();
             if posts.len() < 2 {
                 println!("{}", reach::spoken(&posts, &rcfg, &jcfg));
                 return;
@@ -826,8 +978,15 @@ pub(super) fn run_content(cfg: &Config, args: &[String]) {
             for f in reach::findings(&posts, &jcfg) {
                 println!(
                     "  [{}] {} — {:.2}x, across {} posts{}",
-                    f.sure.plain(), f.what, f.lift, f.across,
-                    if f.sure.worth_acting_on() { "" } else { "  (not yet worth acting on)" }
+                    f.sure.plain(),
+                    f.what,
+                    f.lift,
+                    f.across,
+                    if f.sure.worth_acting_on() {
+                        ""
+                    } else {
+                        "  (not yet worth acting on)"
+                    }
                 );
             }
             let (dir, why) = reach::direction(&posts, &rcfg, &jcfg);
@@ -850,7 +1009,9 @@ pub(super) fn run_content(cfg: &Config, args: &[String]) {
             println!("atlas content record <posts.json>   what actually happened");
             println!("atlas content posts                 what's on file");
             println!("atlas content learn                 patterns across everything");
-            println!("atlas content reach                 signal or fluke, and which way it's going");
+            println!(
+                "atlas content reach                 signal or fluke, and which way it's going"
+            );
             println!("atlas content edits                 the tedious half Atlas will take");
         }
     }
@@ -881,7 +1042,11 @@ pub(super) fn run_budget(cfg: &Config, args: &[String]) {
     use atlas::budget::{self, Approval, Difficulty, Job, Ledger, Tier};
 
     let store = atlas::roots::store();
-    let bcfg = cfg.tools.as_ref().map(|t| t.budget.clone()).unwrap_or_default();
+    let bcfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.budget.clone())
+        .unwrap_or_default();
     let ledger: Ledger = store.load("budget_ledger");
     let now = atlas::store::now();
     let value = |f: &str| atlas::cli::flag_value(args, f);
@@ -916,8 +1081,12 @@ pub(super) fn run_budget(cfg: &Config, args: &[String]) {
             );
             if !bcfg.enabled {
                 println!();
-                println!("Hosted models are off (budget.enabled: false), so route() returns the local");
-                println!("model whatever it's asked — which is why every estimate below is $0 until");
+                println!(
+                    "Hosted models are off (budget.enabled: false), so route() returns the local"
+                );
+                println!(
+                    "model whatever it's asked — which is why every estimate below is $0 until"
+                );
                 println!("you turn them on deliberately.");
             }
             println!();
@@ -939,8 +1108,14 @@ pub(super) fn run_budget(cfg: &Config, args: &[String]) {
             println!("{what}");
             println!(
                 "  {} cached in, {} fresh in, {} out. {}",
-                job.cached_input, job.fresh_input, job.expected_output,
-                if job.can_wait { "can wait" } else { "wanted now" }
+                job.cached_input,
+                job.fresh_input,
+                job.expected_output,
+                if job.can_wait {
+                    "can wait"
+                } else {
+                    "wanted now"
+                }
             );
             let routed = budget::route(difficulty, &bcfg);
             println!("  {} routes to {}.", difficulty.plain(), routed.name());
@@ -955,10 +1130,18 @@ pub(super) fn run_budget(cfg: &Config, args: &[String]) {
             }
             println!();
             match budget::allow(&job, difficulty, &ledger, &bcfg, now) {
-                Approval::Go { tier, dollars, batched } => println!(
+                Approval::Go {
+                    tier,
+                    dollars,
+                    batched,
+                } => println!(
                     "Allowed on {} at ${dollars:.4}{}.",
                     tier.name(),
-                    if batched { ", at the overnight rate" } else { "" }
+                    if batched {
+                        ", at the overnight rate"
+                    } else {
+                        ""
+                    }
                 ),
                 Approval::Local(why) => println!("Stays here — {why}."),
                 Approval::Refused(why) => println!("Refused — {why}"),
@@ -978,7 +1161,10 @@ pub(super) fn run_budget(cfg: &Config, args: &[String]) {
             // estimate is the cache effect across a run, not a per-task
             // breakdown Atlas does not have.
             let jobs: Vec<Job> = (1..=count)
-                .map(|i| Job { can_wait: true, ..job_from_args(format!("task {i}")) })
+                .map(|i| Job {
+                    can_wait: true,
+                    ..job_from_args(format!("task {i}"))
+                })
                 .collect();
             let (total, note) = budget::overnight_estimate(&jobs, difficulty, &bcfg);
             println!("{note}");
@@ -998,7 +1184,12 @@ pub(super) fn run_budget(cfg: &Config, args: &[String]) {
             println!("Dollars per million tokens, from tools.yaml:");
             for tier in [Tier::Haiku, Tier::Sonnet, Tier::Opus] {
                 if let Some(r) = bcfg.rate(tier) {
-                    println!("  {:<8} in ${:.2}  out ${:.2}", tier.name(), r.input, r.output);
+                    println!(
+                        "  {:<8} in ${:.2}  out ${:.2}",
+                        tier.name(),
+                        r.input,
+                        r.output
+                    );
                 }
             }
             println!(
@@ -1006,7 +1197,10 @@ pub(super) fn run_budget(cfg: &Config, args: &[String]) {
                 bcfg.cache_read_fraction * 100.0,
                 bcfg.cache_write_multiplier
             );
-            println!("  the batch (overnight) rate is {:.0}% of list.", bcfg.batch_multiplier * 100.0);
+            println!(
+                "  the batch (overnight) rate is {:.0}% of list.",
+                bcfg.batch_multiplier * 100.0
+            );
         }
 
         Some(other) => println!("I don't know \"{other}\" — try status, would, night or rates."),

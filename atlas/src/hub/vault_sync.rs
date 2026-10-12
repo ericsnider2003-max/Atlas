@@ -12,7 +12,8 @@ use super::*;
 /// `current-password` where one is being proved.
 pub fn vault_section(v: &VaultView) -> String {
     let nonce = format!("<input type=hidden name=nonce value=\"{}\">", esc(&v.nonce));
-    let mut out = String::from("<section id=vault aria-labelledby=vault-h><h2 id=vault-h>Vault</h2>");
+    let mut out =
+        String::from("<section id=vault aria-labelledby=vault-h><h2 id=vault-h>Vault</h2>");
     if let Some(said) = v.said.as_deref().filter(|s| !s.is_empty()) {
         out.push_str(&format!("<p class=notice role=status>{}</p>", esc(said)));
     }
@@ -205,7 +206,11 @@ pub fn sync_page_with(
     ));
     body.push_str(&format!(
         "<div class=row><div class=name>Folder</div><div class=what>{}</div></div>",
-        if no_folder { "Not set. Nothing is being carried anywhere.".to_string() } else { esc(folder) }
+        if no_folder {
+            "Not set. Nothing is being carried anywhere.".to_string()
+        } else {
+            esc(folder)
+        }
     ));
     if let HouseView::Named { name, devices } = &view.house {
         body.push_str(&format!(
@@ -219,7 +224,8 @@ pub fn sync_page_with(
         "<div class=row><div class=name>Key</div><div class=what>{}</div></div>",
         match phrase {
             Some(p) => format!("<code>{}</code>", esc(p)),
-            None => "None on this device yet. I make one the first time I seal anything.".to_string(),
+            None =>
+                "None on this device yet. I make one the first time I seal anything.".to_string(),
         }
     ));
     if let Some(path) = card {
@@ -370,7 +376,10 @@ pub fn sorting_section() -> String {
         ("organize my PC", "Organize my PC"),
         ("organize my downloads", "Sort Downloads"),
         ("clean up my desktop", "Clean up the desktop"),
-        ("find duplicates in my downloads", "Find duplicates in Downloads"),
+        (
+            "find duplicates in my downloads",
+            "Find duplicates in Downloads",
+        ),
     ] {
         out.push_str(&format!(
             "<form class=inline method=post action=/hub/talk><input type=hidden name=text value=\"{}\">\
@@ -384,13 +393,16 @@ pub fn sorting_section() -> String {
 }
 
 pub fn space_section(v: &SpaceView) -> String {
-    let mut out = String::from("<section id=space aria-labelledby=space-h><h2 id=space-h>Free up space</h2>");
+    let mut out =
+        String::from("<section id=space aria-labelledby=space-h><h2 id=space-h>Free up space</h2>");
     if let Some(said) = v.said.as_deref().filter(|s| !s.is_empty()) {
         out.push_str(&format!("<p class=notice role=status>{}</p>", esc(said)));
     }
     if v.looking {
-        out.push_str("<p>Looking through the disk now. It takes a minute or two; this page shows what I \
-                      found once it's done.</p>");
+        out.push_str(
+            "<p>Looking through the disk now. It takes a minute or two; this page shows what I \
+                      found once it's done.</p>",
+        );
     } else {
         out.push_str(
             "<p class=what>I look through your home and temp folders and list what's using the space. \
@@ -407,8 +419,10 @@ pub fn space_section(v: &SpaceView) -> String {
             out.push_str(&nothing("Nothing worth clearing turned up."));
         }
         if !mine.is_empty() {
-            out.push_str("<h3>I can clear these — they rebuild</h3><form method=post action=/hub/reclaim>\
-                          <input type=hidden name=what value=move>");
+            out.push_str(
+                "<h3>I can clear these — they rebuild</h3><form method=post action=/hub/reclaim>\
+                          <input type=hidden name=what value=move>",
+            );
             for c in mine.iter().take(40) {
                 out.push_str(&format!(
                     "<div class=row><label><input type=checkbox name=pick value=\"{}\"> {}</label></div>",
@@ -421,7 +435,10 @@ pub fn space_section(v: &SpaceView) -> String {
         if !yours.is_empty() {
             out.push_str("<h3>Yours to judge — I won't touch these</h3>");
             for c in yours.iter().take(25) {
-                out.push_str(&format!("<div class=row><div class=what>{}</div></div>", esc(&c.line())));
+                out.push_str(&format!(
+                    "<div class=row><div class=what>{}</div></div>",
+                    esc(&c.line())
+                ));
             }
         }
     }

@@ -17,15 +17,20 @@ fn ms(n: usize) -> usize {
 }
 
 fn scaled(raw: Vec<f32>, target_db: f32) -> Vec<i16> {
-    let rms = (raw.iter().map(|x| (*x as f64).powi(2)).sum::<f64>() / raw.len().max(1) as f64).sqrt();
+    let rms =
+        (raw.iter().map(|x| (*x as f64).powi(2)).sum::<f64>() / raw.len().max(1) as f64).sqrt();
     let want = 32768.0 * 10f64.powf(target_db as f64 / 20.0);
-    raw.iter().map(|x| (*x as f64 / rms * want).round().clamp(-32768.0, 32767.0) as i16).collect()
+    raw.iter()
+        .map(|x| (*x as f64 / rms * want).round().clamp(-32768.0, 32767.0) as i16)
+        .collect()
 }
 
 fn noise(n_ms: usize, db: f32, seed: &mut u64) -> Vec<i16> {
     let raw = (0..ms(n_ms))
         .map(|_| {
-            *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            *seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((*seed >> 33) as f32 / (1u64 << 31) as f32) - 0.5
         })
         .collect();
@@ -49,7 +54,13 @@ fn voice(n_ms: usize, db: f32) -> Vec<i16> {
 
 /// Speech `bursts` (ms, dB relative) separated by `pauses` (ms) over a room,
 /// with a leading and trailing stretch of room. Returns (stream, speech span ms).
-fn utterance(speech_db: f32, room_db: f32, bursts: &[(usize, f32)], pauses: &[usize], trail_ms: usize) -> (Vec<i16>, usize) {
+fn utterance(
+    speech_db: f32,
+    room_db: f32,
+    bursts: &[(usize, f32)],
+    pauses: &[usize],
+    trail_ms: usize,
+) -> (Vec<i16>, usize) {
     let mut seed = 7u64;
     let mut s = noise(700, room_db, &mut seed);
     let mut span = 0;
@@ -92,15 +103,22 @@ fn a_whole_utterance_with_pauses_and_a_soft_ending_is_one_utterance() {
             let (s, span) = utterance(speech_db, room_db, &bursts, &pauses, 2000);
             let done = run(&s);
             if done.len() != 1 {
-                failures.push(format!("speech {speech_db} room {room_db}: {} utterances", done.len()));
+                failures.push(format!(
+                    "speech {speech_db} room {room_db}: {} utterances",
+                    done.len()
+                ));
                 continue;
             }
             let got = done[0].len() * 1000 / RATE;
             if got + 40 < span {
-                failures.push(format!("speech {speech_db} room {room_db}: captured {got} ms of {span} ms"));
+                failures.push(format!(
+                    "speech {speech_db} room {room_db}: captured {got} ms of {span} ms"
+                ));
             }
             if got > span + 480 + 96 + 300 + 100 {
-                failures.push(format!("speech {speech_db} room {room_db}: {got} ms for {span} ms of speech"));
+                failures.push(format!(
+                    "speech {speech_db} room {room_db}: {got} ms for {span} ms of speech"
+                ));
             }
         }
     }
@@ -121,9 +139,13 @@ fn the_wait_after_you_stop_is_bounded() {
                 break;
             }
         }
-        let at = at.unwrap_or_else(|| panic!("never finished at speech {speech_db} room {room_db}"));
+        let at =
+            at.unwrap_or_else(|| panic!("never finished at speech {speech_db} room {room_db}"));
         let waited = (at.saturating_sub(speech_end) * WIN_MS) as u64;
-        assert!(waited <= cfg.sentence_ms + 160, "waited {waited} ms at speech {speech_db} room {room_db}");
+        assert!(
+            waited <= cfg.sentence_ms + 160,
+            "waited {waited} ms at speech {speech_db} room {room_db}"
+        );
     }
 }
 
@@ -133,7 +155,11 @@ fn a_room_alone_is_never_an_utterance() {
     for room_db in [-60.0f32, -75.0, -90.0] {
         let s = noise(8000, room_db, &mut seed);
         assert!(run(&s).is_empty(), "room {room_db} read as speech");
-        assert_eq!(check_speech(&s, RATE as u32), SpeechCheck::Silence, "room {room_db} passed check_speech");
+        assert_eq!(
+            check_speech(&s, RATE as u32),
+            SpeechCheck::Silence,
+            "room {room_db} passed check_speech"
+        );
     }
 }
 

@@ -42,7 +42,10 @@ fn links(ls: &[&str]) -> Vec<String> {
 #[test]
 fn the_search_page_is_the_search_tools_own_url_with_the_query_filled_in() {
     let url = search_page_url(&ddg_search(), &vars_with_query("ventura+tides"));
-    assert_eq!(url.as_deref(), Some("https://html.duckduckgo.com/html/?q=ventura+tides"));
+    assert_eq!(
+        url.as_deref(),
+        Some("https://html.duckduckgo.com/html/?q=ventura+tides")
+    );
 }
 
 #[test]
@@ -80,7 +83,10 @@ fn links_are_filtered_exactly_like_a_results_page() {
         "https://site.com/style.css",
         "https://good.example.com/real-article-here",
     ]);
-    assert_eq!(urls_from_links(&ls, 10), vec!["https://good.example.com/real-article-here"]);
+    assert_eq!(
+        urls_from_links(&ls, 10),
+        vec!["https://good.example.com/real-article-here"]
+    );
     assert_eq!(urls_from_links(&ls, 10), extract_urls(&ls.join(" "), 10));
 }
 
@@ -93,7 +99,10 @@ fn duplicate_links_become_one_source() {
     ]);
     assert_eq!(
         urls_from_links(&ls, 10),
-        vec!["https://example.com/aaaaaaaa", "https://example.com/bbbbbbbb"]
+        vec![
+            "https://example.com/aaaaaaaa",
+            "https://example.com/bbbbbbbb"
+        ]
     );
 }
 
@@ -106,7 +115,10 @@ fn no_more_than_max_sources_are_taken() {
     ]);
     assert_eq!(
         urls_from_links(&ls, 2),
-        vec!["https://one.example.com/article", "https://two.example.com/article"]
+        vec![
+            "https://one.example.com/article",
+            "https://two.example.com/article"
+        ]
     );
 }
 
@@ -118,7 +130,10 @@ fn a_search_engines_click_through_redirect_is_unwrapped_to_its_target() {
         "https://duckduckgo.com/l/?uddg=https%3A%2F%2Ftides.example.org%2Fventura&rut=abc",
         "https://duckduckgo.com/about",
     ]);
-    assert_eq!(urls_from_links(&ls, 10), vec!["https://tides.example.org/ventura"]);
+    assert_eq!(
+        urls_from_links(&ls, 10),
+        vec!["https://tides.example.org/ventura"]
+    );
 }
 
 #[test]
@@ -140,9 +155,20 @@ fn browser_links_is_the_page_link_reader() {
 
 struct NeverCalled;
 impl atlas::brain::Llm for NeverCalled {
-    fn supports_bounded_chat(&self) -> bool { true }
-    fn chat_until(&self, _: &atlas::brain::ChatRequest, _: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> atlas::error::Result<atlas::brain::ChatReply> {
-        if !keep_going() { return Err(atlas::error::AtlasError::Platform("research fixture stopped".into())); }
+    fn supports_bounded_chat(&self) -> bool {
+        true
+    }
+    fn chat_until(
+        &self,
+        _: &atlas::brain::ChatRequest,
+        _: &mut dyn FnMut(&str) -> bool,
+        keep_going: &dyn Fn() -> bool,
+    ) -> atlas::error::Result<atlas::brain::ChatReply> {
+        if !keep_going() {
+            return Err(atlas::error::AtlasError::Platform(
+                "research fixture stopped".into(),
+            ));
+        }
         panic!("no sources were found, so nothing should reach the bounded model");
     }
     fn complete(&self, _s: &str, _u: &str) -> atlas::error::Result<String> {
@@ -157,11 +183,18 @@ fn research_with(browser: Option<BrowserConfig>) -> Research {
         command: if cfg!(windows) { "cmd" } else { "sh" }.into(),
         args: if cfg!(windows) {
             let mut args = vec!["/d".into(), "/c".into(), format!("echo {text}")];
-            if url { args.push("https://html.duckduckgo.com/html/?q={query}".into()); } args
+            if url {
+                args.push("https://html.duckduckgo.com/html/?q={query}".into());
+            }
+            args
         } else {
             let mut args = vec!["-c".into(), format!("echo '{text}'")];
-            if url { args.push("https://html.duckduckgo.com/html/?q={query}".into()); } args
-        }, ..Default::default()
+            if url {
+                args.push("https://html.duckduckgo.com/html/?q={query}".into());
+            }
+            args
+        },
+        ..Default::default()
     };
     let cfg = ResearchConfig {
         enabled: true,
@@ -169,18 +202,31 @@ fn research_with(browser: Option<BrowserConfig>) -> Research {
         fetch: Some(synthetic("unused", false)),
         ..ResearchConfig::default()
     };
-    Research { cfg, vars: Vars::new(), browser }
+    Research {
+        cfg,
+        vars: Vars::new(),
+        browser,
+    }
 }
 
 /// A browser that cannot be reached: nothing listens on port 1 and there is
 /// no launch command, so `Browser::start` fails at once.
 fn unreachable_browser() -> BrowserConfig {
-    BrowserConfig { port: 1, timeout_ms: 200, startup_ms: 200, launch: None, ..BrowserConfig::default() }
+    BrowserConfig {
+        port: 1,
+        timeout_ms: 200,
+        startup_ms: 200,
+        launch: None,
+        ..BrowserConfig::default()
+    }
 }
 
 #[test]
 fn without_a_browser_the_original_error_is_unchanged() {
-    let err = research_with(None).run("tides", &NeverCalled).unwrap_err().to_string();
+    let err = research_with(None)
+        .run("tides", &NeverCalled)
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("no sources found for 'tides'"), "got: {err}");
     assert!(!err.contains("headless browser"), "got: {err}");
 }
@@ -191,6 +237,12 @@ fn a_browser_that_cannot_start_falls_through_to_no_sources_and_says_it_tried() {
         .run("tides", &NeverCalled)
         .unwrap_err()
         .to_string();
-    assert!(err.contains("no sources found for 'tides'"), "the original message is kept: {err}");
-    assert!(err.contains("(the headless browser found nothing either)"), "got: {err}");
+    assert!(
+        err.contains("no sources found for 'tides'"),
+        "the original message is kept: {err}"
+    );
+    assert!(
+        err.contains("(the headless browser found nothing either)"),
+        "got: {err}"
+    );
 }

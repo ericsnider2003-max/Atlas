@@ -51,7 +51,11 @@ fn a_short_run_of_luck_is_not_a_record() {
          acting on it would be acting on nothing"
     );
     run(&mut r, Kind::Housekeeping, 1, 0);
-    assert_ne!(r.rope(Kind::Housekeeping), Rope::AskFirst, "now it is a record");
+    assert_ne!(
+        r.rope(Kind::Housekeeping),
+        Rope::AskFirst,
+        "now it is a record"
+    );
 }
 
 #[test]
@@ -116,7 +120,9 @@ fn money_and_secrets_can_never_be_earned() {
         "a perfect run must not buy the right to act alone here — that is \
          Eric's to give, not Atlas's to earn"
     );
-    assert!(r.what_would_earn_more(Kind::Sensitive).contains("yours to decide"));
+    assert!(r
+        .what_would_earn_more(Kind::Sensitive)
+        .contains("yours to decide"));
 }
 
 #[test]
@@ -151,7 +157,10 @@ fn it_says_what_would_earn_more_rather_than_only_that_it_will_not() {
         r.note(Kind::Drafting, i % 3 != 0, "mixed", i);
     }
     let mediocre = r.what_would_earn_more(Kind::Drafting);
-    assert!(mediocre.contains("10"), "it names the actual tally: {mediocre}");
+    assert!(
+        mediocre.contains("10"),
+        "it names the actual tally: {mediocre}"
+    );
     assert!(
         !mediocre.contains("wrong."),
         "a mediocre record is not a slump: {mediocre}"
@@ -159,7 +168,9 @@ fn it_says_what_would_earn_more_rather_than_only_that_it_will_not() {
 
     let mut good = Record::default();
     run(&mut good, Kind::Housekeeping, 30, 0);
-    assert!(good.what_would_earn_more(Kind::Housekeeping).contains("Nothing"));
+    assert!(good
+        .what_would_earn_more(Kind::Housekeeping)
+        .contains("Nothing"));
 }
 
 #[test]
@@ -201,7 +212,10 @@ fn taking_something_back_rewrites_it_rather_than_counting_it_twice() {
 fn taking_back_something_already_wrong_changes_nothing() {
     let mut r = Record::default();
     run(&mut r, Kind::Housekeeping, 0, 1);
-    assert!(!r.taken_back(), "no double-counting a mistake already recorded");
+    assert!(
+        !r.taken_back(),
+        "no double-counting a mistake already recorded"
+    );
 }
 
 #[test]
@@ -252,7 +266,10 @@ fn the_record_survives_a_restart() {
 
 #[test]
 fn asking_a_question_is_not_the_same_kind_of_act_as_signing_into_something() {
-    assert_eq!(kind_of(&Intent::Ask("what time is it".into())), Kind::Answering);
+    assert_eq!(
+        kind_of(&Intent::Ask("what time is it".into())),
+        Kind::Answering
+    );
     assert_eq!(kind_of(&Intent::SignIn("a site".into())), Kind::Sensitive);
     assert_eq!(kind_of(&Intent::Files("the budget".into())), Kind::Finding);
     assert_eq!(kind_of(&Intent::DraftPost("a post".into())), Kind::Drafting);
@@ -266,7 +283,10 @@ fn every_kind_has_a_distinct_key_and_a_cost() {
     keys.dedup();
     assert_eq!(n, keys.len());
 
-    let costs: Vec<u8> = Kind::all().iter().map(|k| k.cost_of_being_wrong()).collect();
+    let costs: Vec<u8> = Kind::all()
+        .iter()
+        .map(|k| k.cost_of_being_wrong())
+        .collect();
     assert!(costs.iter().all(|c| (1..=5).contains(c)));
     assert!(
         Kind::Sensitive.cost_of_being_wrong() > Kind::Answering.cost_of_being_wrong(),
@@ -279,7 +299,6 @@ fn the_standing_covers_every_kind_so_none_is_invisible() {
     let r = Record::default();
     assert_eq!(r.standing().len(), Kind::all().len());
 }
-
 
 // ---------------------------------------------------------------------------
 // Graduation: personal work first, business work after
@@ -326,7 +345,11 @@ fn the_reason_given_is_the_gate_not_the_business_record() {
 fn being_trusted_personally_opens_the_gate_but_does_not_walk_through_it() {
     let mut r = Record::default();
     run(&mut r, Kind::Drafting, WINDOW, 0);
-    assert_eq!(r.rope(Kind::Drafting), Rope::JustDo, "trusted on his own work");
+    assert_eq!(
+        r.rope(Kind::Drafting),
+        Rope::JustDo,
+        "trusted on his own work"
+    );
     assert_eq!(
         r.rope_in(&acme(), Kind::Drafting),
         Rope::AskFirst,

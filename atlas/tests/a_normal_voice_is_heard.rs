@@ -35,7 +35,10 @@ const C920: &str = "Microphone (HD Pro Webcam C920)";
 const INTEL: &str = "Microphone Array (Intel® Smart Sound Technology for Digital Microphones)";
 
 fn corpus(name: &str) -> Vec<i16> {
-    let (s, r) = atlas::diarize::read_wav(&std::fs::read(format!("tests/fixtures/speech/corpus/{name}.wav")).unwrap()).unwrap();
+    let (s, r) = atlas::diarize::read_wav(
+        &std::fs::read(format!("tests/fixtures/speech/corpus/{name}.wav")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(r, RATE);
     s
 }
@@ -50,13 +53,17 @@ fn room_n(n: usize, db: f32, seed: u64) -> Vec<f32> {
     let mut lp = 0f32;
     let raw: Vec<f32> = (0..n)
         .map(|_| {
-            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let w = ((x >> 33) as f32 / (1u64 << 31) as f32) - 1.0;
             lp = 0.8 * lp + 0.2 * w;
             lp
         })
         .collect();
-    let rms = (raw.iter().map(|v| v * v).sum::<f32>() / raw.len() as f32).sqrt().max(1e-9);
+    let rms = (raw.iter().map(|v| v * v).sum::<f32>() / raw.len() as f32)
+        .sqrt()
+        .max(1e-9);
     let want = 10f32.powf(db / 20.0) * 32767.0;
     raw.iter().map(|v| v / rms * want).collect()
 }
@@ -64,10 +71,18 @@ fn room_n(n: usize, db: f32, seed: u64) -> Vec<f32> {
 /// The voice's own level: energy mean of the frames within 30 dB of its
 /// loudest (the words, not the gaps between them).
 fn voice_db(s: &[i16]) -> f32 {
-    let levels: Vec<f32> = s.chunks(480).filter(|c| c.len() == 480).map(level_db).collect();
+    let levels: Vec<f32> = s
+        .chunks(480)
+        .filter(|c| c.len() == 480)
+        .map(level_db)
+        .collect();
     let top = levels.iter().cloned().fold(f32::MIN, f32::max);
     let voiced: Vec<f32> = levels.into_iter().filter(|l| *l > top - 30.0).collect();
-    let e = voiced.iter().map(|l| 10f64.powf(*l as f64 / 10.0)).sum::<f64>() / voiced.len() as f64;
+    let e = voiced
+        .iter()
+        .map(|l| 10f64.powf(*l as f64 / 10.0))
+        .sum::<f64>()
+        / voiced.len() as f64;
     (10.0 * e.log10()) as f32
 }
 
@@ -81,7 +96,11 @@ fn said_at(clip: &str, speech_db: f32, room_db: f32, seed: u64) -> Vec<i16> {
     let bed = room_n(total, room_db, seed);
     (0..total)
         .map(|i| {
-            let v = if i >= lead && i < lead + voice.len() { voice[i - lead] as f32 * g } else { 0.0 };
+            let v = if i >= lead && i < lead + voice.len() {
+                voice[i - lead] as f32 * g
+            } else {
+                0.0
+            };
             (v + bed[i]).clamp(-32768.0, 32767.0) as i16
         })
         .collect()
@@ -104,7 +123,10 @@ fn cut(stream: &[i16]) -> Vec<Vec<i16>> {
 
 /// The whole way from microphone to what whisper would be handed.
 fn heard(stream: &[i16], lev: &mut Leveller, mic: &str) -> Vec<Vec<i16>> {
-    cut(stream).into_iter().filter_map(|u| leveller::for_speech_to_text(&u, RATE, mic, lev)).collect()
+    cut(stream)
+        .into_iter()
+        .filter_map(|u| leveller::for_speech_to_text(&u, RATE, mic, lev))
+        .collect()
 }
 
 #[test]
@@ -112,22 +134,37 @@ fn a_normal_voice_on_a_microphone_set_low_is_heard_without_shouting() {
     // (speech level, the room under it): a microphone set low turns the
     // room down with the voice. The last two are Eric's webcam mic, whose
     // room reads -90.
-    for (speech, room_db) in [(-40.0, -68.0), (-50.0, -76.0), (-60.0, -85.0), (-68.0, -90.0)] {
+    for (speech, room_db) in [
+        (-40.0, -68.0),
+        (-50.0, -76.0),
+        (-60.0, -85.0),
+        (-68.0, -90.0),
+    ] {
         for clip in ["A_s0", "B_s3"] {
             let mut lev = Leveller::default();
             let stream = said_at(clip, speech, room_db, 7);
             let got = heard(&stream, &mut lev, C920);
-            assert_eq!(got.len(), 1, "{clip} at {speech} dB over {room_db}: {} utterances reached the speech engine", got.len());
+            assert_eq!(
+                got.len(),
+                1,
+                "{clip} at {speech} dB over {room_db}: {} utterances reached the speech engine",
+                got.len()
+            );
             let level = voice_db(&got[0]);
             // Levelled to where whisper hears it, within the room's ceiling.
-            let expect = (leveller::TARGET_SPEECH_DB).min(speech + (leveller::NOISE_CEILING_DB - room_db)).min(speech + leveller::MAX_GAIN_DB);
+            let expect = (leveller::TARGET_SPEECH_DB)
+                .min(speech + (leveller::NOISE_CEILING_DB - room_db))
+                .min(speech + leveller::MAX_GAIN_DB);
             assert!(
                 (level - expect).abs() < 4.0 && level > -35.0,
                 "{clip} at {speech} dB reached whisper at {level:.1} dB; expected about {expect:.1}"
             );
             // And the room under it is never lifted past the ceiling.
             let room_after = level_db(&got[0][..1600]);
-            assert!(room_after < leveller::NOISE_CEILING_DB + 6.0, "the room came up to {room_after:.1} dB");
+            assert!(
+                room_after < leveller::NOISE_CEILING_DB + 6.0,
+                "the room came up to {room_after:.1} dB"
+            );
         }
     }
 }
@@ -140,11 +177,22 @@ fn the_old_fixed_line_is_what_made_you_shout() {
     // -- and 20 dB louder, the same words got through.
     let quiet = said_at("A_s1", -68.0, -90.0, 3);
     let loud = said_at("A_s1", -48.0, -70.0, 3);
-    let frames_over = |s: &[i16], line: f32| s.chunks(480).filter(|c| c.len() == 480).filter(|c| level_db(c) >= line).count();
-    assert!(frames_over(&quiet, -62.0) * 30 < atlas::audio::MIN_SPEECH_MS as usize, "the fixture isn't quiet enough to show it");
+    let frames_over = |s: &[i16], line: f32| {
+        s.chunks(480)
+            .filter(|c| c.len() == 480)
+            .filter(|c| level_db(c) >= line)
+            .count()
+    };
+    assert!(
+        frames_over(&quiet, -62.0) * 30 < atlas::audio::MIN_SPEECH_MS as usize,
+        "the fixture isn't quiet enough to show it"
+    );
     assert!(frames_over(&loud, -62.0) * 30 >= atlas::audio::MIN_SPEECH_MS as usize);
     // Now: heard.
-    assert_ne!(atlas::audio::check_speech(&quiet, RATE), atlas::audio::SpeechCheck::Silence);
+    assert_ne!(
+        atlas::audio::check_speech(&quiet, RATE),
+        atlas::audio::SpeechCheck::Silence
+    );
 }
 
 #[test]
@@ -153,22 +201,44 @@ fn noise_is_not_speech_at_any_level() {
     // A steady room, loud and quiet; a hum; a room with a door knock.
     let mut streams: Vec<(String, Vec<i16>)> = Vec::new();
     for db in [-40.0, -55.0, -70.0, -88.0] {
-        streams.push((format!("room at {db}"), room(6_000, db, 11).into_iter().map(|v| v as i16).collect()));
+        streams.push((
+            format!("room at {db}"),
+            room(6_000, db, 11).into_iter().map(|v| v as i16).collect(),
+        ));
     }
-    let hum: Vec<i16> = (0..RATE as usize * 6).map(|i| ((i as f32 * 2.0 * std::f32::consts::PI * 60.0 / RATE as f32).sin() * 300.0) as i16).collect();
+    let hum: Vec<i16> = (0..RATE as usize * 6)
+        .map(|i| {
+            ((i as f32 * 2.0 * std::f32::consts::PI * 60.0 / RATE as f32).sin() * 300.0) as i16
+        })
+        .collect();
     streams.push(("mains hum".into(), hum));
-    let mut knock: Vec<i16> = room(3_000, -70.0, 5).into_iter().map(|v| v as i16).collect();
-    knock.extend((0..480).map(|i| (((i * 7919) % 2000) as i32 - 1000).clamp(-32768, 32767) as i16 * 8));
+    let mut knock: Vec<i16> = room(3_000, -70.0, 5)
+        .into_iter()
+        .map(|v| v as i16)
+        .collect();
+    knock.extend(
+        (0..480).map(|i| (((i * 7919) % 2000) as i32 - 1000).clamp(-32768, 32767) as i16 * 8),
+    );
     knock.extend(room(3_000, -70.0, 6).into_iter().map(|v| v as i16));
     streams.push(("a knock".into(), knock));
     // A dead or muted microphone: zeros with a least-significant-bit of dither.
-    let dead: Vec<i16> = (0..RATE as usize * 6).map(|i| ((i * 7919) % 3) as i16 - 1).collect();
+    let dead: Vec<i16> = (0..RATE as usize * 6)
+        .map(|i| ((i * 7919) % 3) as i16 - 1)
+        .collect();
     streams.push(("a dead microphone".into(), dead));
     for (what, s) in streams {
         let got = heard(&s, &mut lev, C920);
-        assert!(got.is_empty(), "{what}: {} clip(s) would have gone to the speech engine", got.len());
+        assert!(
+            got.is_empty(),
+            "{what}: {} clip(s) would have gone to the speech engine",
+            got.len()
+        );
     }
-    assert_eq!(lev.heard_count(C920), 0, "noise must not teach the leveller a voice level");
+    assert_eq!(
+        lev.heard_count(C920),
+        0,
+        "noise must not teach the leveller a voice level"
+    );
 }
 
 #[test]
@@ -188,14 +258,36 @@ fn the_gain_follows_your_usual_voice_not_one_loud_syllable() {
     let out = leveller::levelled(&loud, g);
     assert!(out.iter().all(|s| s.unsigned_abs() < 32767), "clipped");
     // Quiet input is noticed after a few turns, and said plainly.
-    let typical = lev.quiet_input(C920).expect("-58 dB is a microphone set too low");
-    let line = leveller::quiet_input_line("the webcam", typical, Some(atlas::miclevel::InputLevel { scalar: 0.06, muted: false }), Some(0.8));
-    assert!(line.contains("6%") && line.contains("80%") && line.contains("Sound settings"), "{line}");
-    assert!(!line.contains("atlas "), "no commands in what's said: {line}");
+    let typical = lev
+        .quiet_input(C920)
+        .expect("-58 dB is a microphone set too low");
+    let line = leveller::quiet_input_line(
+        "the webcam",
+        typical,
+        Some(atlas::miclevel::InputLevel {
+            scalar: 0.06,
+            muted: false,
+        }),
+        Some(0.8),
+    );
+    assert!(
+        line.contains("6%") && line.contains("80%") && line.contains("Sound settings"),
+        "{line}"
+    );
+    assert!(
+        !line.contains("atlas "),
+        "no commands in what's said: {line}"
+    );
     // A normal level isn't nagged about.
     let mut fine = Leveller::default();
     for i in 0..4 {
-        fine.heard(INTEL, Measured { speech_db: -30.0, noise_db: -60.0 - i as f32 });
+        fine.heard(
+            INTEL,
+            Measured {
+                speech_db: -30.0,
+                noise_db: -60.0 - i as f32,
+            },
+        );
     }
     assert_eq!(fine.quiet_input(INTEL), None);
 }
@@ -203,9 +295,18 @@ fn the_gain_follows_your_usual_voice_not_one_loud_syllable() {
 #[test]
 fn the_microphone_that_hears_your_voice_best_is_chosen_not_the_loudest_room() {
     // Eric's two microphones as his laptop measured them.
-    let devices = vec![Device::new(C920, Kind::Input), Device::new(INTEL, Kind::Input)];
+    let devices = vec![
+        Device::new(C920, Kind::Input),
+        Device::new(INTEL, Kind::Input),
+    ];
     let cfg = HearingConfig::default();
-    let w = Where { at_desk: true, presence_unknown: false, headset_connected: false, phone_active: false, audio_playing: false };
+    let w = Where {
+        at_desk: true,
+        presence_unknown: false,
+        headset_connected: false,
+        phone_active: false,
+        audio_playing: false,
+    };
     let mut h = Hearing::default();
     h.observe_devices(&devices);
     h.record_level(C920, -90.3, 100);
@@ -217,8 +318,20 @@ fn the_microphone_that_hears_your_voice_best_is_chosen_not_the_loudest_room() {
     // 9 dB on the laptop's array.
     let mut lev = Leveller::default();
     for _ in 0..3 {
-        lev.heard(C920, Measured { speech_db: -62.0, noise_db: -88.0 });
-        lev.heard(INTEL, Measured { speech_db: -51.0, noise_db: -60.0 });
+        lev.heard(
+            C920,
+            Measured {
+                speech_db: -62.0,
+                noise_db: -88.0,
+            },
+        );
+        lev.heard(
+            INTEL,
+            Measured {
+                speech_db: -51.0,
+                noise_db: -60.0,
+            },
+        );
     }
     let mut h2 = h.clone();
     h2.learn_levels(&lev);

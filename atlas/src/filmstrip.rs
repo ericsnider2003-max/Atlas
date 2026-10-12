@@ -53,7 +53,12 @@ impl Plan {
         } else {
             crate::motion::longest_duration(&svg.to_lowercase()).unwrap_or(2.0)
         };
-        Plan { width: spec.width, height: spec.height, seconds: seconds.clamp(0.1, 20.0), fps: fps.clamp(1, 30) }
+        Plan {
+            width: spec.width,
+            height: spec.height,
+            seconds: seconds.clamp(0.1, 20.0),
+            fps: fps.clamp(1, 30),
+        }
     }
 
     /// The moments to sample: one per frame, starting at 0, never reaching the
@@ -103,7 +108,14 @@ pub fn find_browser(configured: Option<&str>) -> Option<PathBuf> {
     if let Some(p) = candidates.into_iter().find(|p| p.is_file()) {
         return Some(p);
     }
-    for name in ["chromium", "chromium-browser", "google-chrome", "microsoft-edge", "msedge", "chrome"] {
+    for name in [
+        "chromium",
+        "chromium-browser",
+        "google-chrome",
+        "microsoft-edge",
+        "msedge",
+        "chrome",
+    ] {
         if let Some(p) = crate::tools::which(name) {
             return Some(PathBuf::from(p));
         }
@@ -133,7 +145,8 @@ impl Player {
     /// never your open browser windows — and attach to its page.
     fn start(browser: &Path, profile: &Path) -> Result<Player, String> {
         crate::heard!(std::fs::remove_dir_all(profile));
-        std::fs::create_dir_all(profile).map_err(|e| format!("couldn't make a browser profile: {e}"))?;
+        std::fs::create_dir_all(profile)
+            .map_err(|e| format!("couldn't make a browser profile: {e}"))?;
         let mut cmd = crate::tools::command(browser);
         cmd.arg("--headless")
             .arg("--disable-gpu")
@@ -165,22 +178,31 @@ impl Player {
             .map_err(|e| format!("couldn't start the browser ({}): {e}", browser.display()))?;
         crate::childjob::tie(&child);
         let mut child = Some(child);
-        let fail = |child: &mut Option<std::process::Child>, why: String| -> Result<Player, String> {
-            if let Some(mut c) = child.take() {
-                let _ = c.kill();
-                crate::heard!(c.wait());
-            }
-            Err(why)
-        };
+        let fail =
+            |child: &mut Option<std::process::Child>, why: String| -> Result<Player, String> {
+                if let Some(mut c) = child.take() {
+                    let _ = c.kill();
+                    crate::heard!(c.wait());
+                }
+                Err(why)
+            };
         // The browser writes the port it chose into its profile.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         let port = loop {
-            let text = std::fs::read_to_string(profile.join("DevToolsActivePort")).unwrap_or_default();
-            if let Some(p) = text.lines().next().and_then(|l| l.trim().parse::<u16>().ok()) {
+            let text =
+                std::fs::read_to_string(profile.join("DevToolsActivePort")).unwrap_or_default();
+            if let Some(p) = text
+                .lines()
+                .next()
+                .and_then(|l| l.trim().parse::<u16>().ok())
+            {
                 break p;
             }
             if std::time::Instant::now() > deadline {
-                return fail(&mut child, "the browser started but never opened its control port".into());
+                return fail(
+                    &mut child,
+                    "the browser started but never opened its control port".into(),
+                );
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
         };
@@ -199,11 +221,24 @@ impl Player {
             Ok(c) => c,
             Err(e) => return fail(&mut child, format!("couldn't attach to the browser: {e}")),
         };
-        let Some(child) = child.take() else { return fail(&mut child, "the browser went away while it was starting".into()) };
-        Ok(Player { child, cdp, profile: profile.to_path_buf() })
+        let Some(child) = child.take() else {
+            return fail(
+                &mut child,
+                "the browser went away while it was starting".into(),
+            );
+        };
+        Ok(Player {
+            child,
+            cdp,
+            profile: profile.to_path_buf(),
+        })
     }
 
-    fn call(&mut self, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    fn call(
+        &mut self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
         self.cdp.call(method, params).map_err(|e| e.to_string())
     }
 }
@@ -214,7 +249,11 @@ fn running_as_root() -> bool {
     cfg!(unix)
         && std::fs::read_to_string("/proc/self/status")
             .ok()
-            .and_then(|s| s.lines().find(|l| l.starts_with("Uid:")).map(|l| l.split_whitespace().nth(1) == Some("0")))
+            .and_then(|s| {
+                s.lines()
+                    .find(|l| l.starts_with("Uid:"))
+                    .map(|l| l.split_whitespace().nth(1) == Some("0"))
+            })
             .unwrap_or(false)
 }
 
@@ -243,19 +282,30 @@ fn seek_js(t: f32) -> String {
 /// page is loaded once; each frame seeks every animation to its moment and
 /// asks the browser for exactly that viewport. The PNGs are kept in `work`
 /// (`frame0000.png`, …) for the MP4 step.
-pub fn play_frames(svg: &str, plan: &Plan, browser: &Path, work: &Path) -> Result<Vec<Rgba>, String> {
+pub fn play_frames(
+    svg: &str,
+    plan: &Plan,
+    browser: &Path,
+    work: &Path,
+) -> Result<Vec<Rgba>, String> {
     std::fs::create_dir_all(work).map_err(|e| format!("couldn't make a work folder: {e}"))?;
     let page = work.join("page.html");
-    std::fs::write(&page, page_at(svg, 0.0, plan.width, plan.height)).map_err(|e| format!("couldn't write the page: {e}"))?;
+    std::fs::write(&page, page_at(svg, 0.0, plan.width, plan.height))
+        .map_err(|e| format!("couldn't write the page: {e}"))?;
     let mut p = Player::start(browser, &work.join("profile"))?;
     p.call(
         "Emulation.setDeviceMetricsOverride",
         serde_json::json!({ "width": plan.width, "height": plan.height, "deviceScaleFactor": 1, "mobile": false }),
     )?;
-    p.cdp.navigate(&file_url(&page)).map_err(|e| e.to_string())?;
+    p.cdp
+        .navigate(&file_url(&page))
+        .map_err(|e| e.to_string())?;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     loop {
-        let ready = p.cdp.eval("document.readyState").map_err(|e| e.to_string())?;
+        let ready = p
+            .cdp
+            .eval("document.readyState")
+            .map_err(|e| e.to_string())?;
         if ready.as_str() == Some("complete") {
             break;
         }
@@ -266,14 +316,22 @@ pub fn play_frames(svg: &str, plan: &Plan, browser: &Path, work: &Path) -> Resul
     }
     let mut frames = Vec::new();
     for (i, t) in plan.times().into_iter().enumerate() {
-        p.cdp.eval(&seek_js(t)).map_err(|e| format!("frame {i}: {e}"))?;
+        p.cdp
+            .eval(&seek_js(t))
+            .map_err(|e| format!("frame {i}: {e}"))?;
         let shot = p.call(
             "Page.captureScreenshot",
             serde_json::json!({ "format": "png", "clip": { "x": 0, "y": 0, "width": plan.width, "height": plan.height, "scale": 1 } }),
         )?;
-        let data = shot.get("data").and_then(|d| d.as_str()).ok_or(format!("frame {i}: the browser sent no picture"))?;
+        let data = shot
+            .get("data")
+            .and_then(|d| d.as_str())
+            .ok_or(format!("frame {i}: the browser sent no picture"))?;
         let bytes = crate::b64::decode(data).map_err(|e| format!("frame {i}: {e}"))?;
-        crate::kept!(std::fs::write(work.join(format!("frame{i:04}.png")), &bytes));
+        crate::kept!(std::fs::write(
+            work.join(format!("frame{i:04}.png")),
+            &bytes
+        ));
         frames.push(crate::pngcodec::read_png(&bytes).map_err(|e| format!("frame {i}: {e}"))?);
     }
     Ok(frames)
@@ -345,11 +403,19 @@ impl Made {
 
 /// Play `svg`, write `<stem>.gif` (always) and `<stem>.mp4` (when `mp4` and
 /// ffmpeg are there) into `dir`, and check both.
-pub fn film(svg: &str, plan: &Plan, browser: &Path, ffmpeg: Option<&str>, dir: &Path, stem: &str) -> Result<Made, String> {
+pub fn film(
+    svg: &str,
+    plan: &Plan,
+    browser: &Path,
+    ffmpeg: Option<&str>,
+    dir: &Path,
+    stem: &str,
+) -> Result<Made, String> {
     // Absolute, always: the browser is handed its profile folder and the page
     // as a file:// address, and both mean nothing relative. `atlas film
     // ..\\ball.svg` on the laptop failed exactly this way (24 Sep).
-    let dir = &std::path::absolute(dir).map_err(|e| format!("couldn't place {}: {e}", dir.display()))?;
+    let dir =
+        &std::path::absolute(dir).map_err(|e| format!("couldn't place {}: {e}", dir.display()))?;
     let work = dir.join(format!(".{stem}.frames"));
     crate::heard!(std::fs::remove_dir_all(&work));
     let frames = play_frames(svg, plan, browser, &work)?;
@@ -362,18 +428,30 @@ pub fn film(svg: &str, plan: &Plan, browser: &Path, ffmpeg: Option<&str>, dir: &
         notes: Vec::new(),
     };
     let delay = plan.delay_cs();
-    let gif_frames: Vec<crate::gifenc::Frame> =
-        frames.iter().map(|f| crate::gifenc::Frame { image: f, delay_cs: delay }).collect();
+    let gif_frames: Vec<crate::gifenc::Frame> = frames
+        .iter()
+        .map(|f| crate::gifenc::Frame {
+            image: f,
+            delay_cs: delay,
+        })
+        .collect();
     let gif = crate::gifenc::encode_gif(&gif_frames)?;
     let gif_path = dir.join(format!("{stem}.gif"));
     std::fs::write(&gif_path, gif).map_err(|e| format!("couldn't save the GIF: {e}"))?;
-    let expect = Expect { kind: RenderKind::Gif, width: plan.width, height: plan.height };
-    made.findings.extend(crate::motion::verify_render(&gif_path, &expect));
+    let expect = Expect {
+        kind: RenderKind::Gif,
+        width: plan.width,
+        height: plan.height,
+    };
+    made.findings
+        .extend(crate::motion::verify_render(&gif_path, &expect));
     made.gif = Some(gif_path);
 
     match ffmpeg.map(crate::tools::which) {
         None => {}
-        Some(None) => made.notes.push("no MP4: that needs ffmpeg, and it isn't installed".into()),
+        Some(None) => made
+            .notes
+            .push("no MP4: that needs ffmpeg, and it isn't installed".into()),
         Some(Some(ff)) => {
             let mp4 = dir.join(format!("{stem}.mp4"));
             crate::heard!(std::fs::remove_file(&mp4));
@@ -383,18 +461,32 @@ pub fn film(svg: &str, plan: &Plan, browser: &Path, ffmpeg: Option<&str>, dir: &
                 .arg(plan.fps.to_string())
                 .arg("-i")
                 .arg(work.join("frame%04d.png"))
-                .args(["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
+                .args([
+                    "-vf",
+                    "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-movflags",
+                    "+faststart",
+                ])
                 .arg(&mp4)
                 .stdin(std::process::Stdio::null())
                 .status();
             match status {
                 Ok(s) if s.success() => {
-                    let expect = Expect { kind: RenderKind::Mp4, width: plan.width, height: plan.height };
-                    made.findings.extend(crate::motion::verify_render(&mp4, &expect));
+                    let expect = Expect {
+                        kind: RenderKind::Mp4,
+                        width: plan.width,
+                        height: plan.height,
+                    };
+                    made.findings
+                        .extend(crate::motion::verify_render(&mp4, &expect));
                     made.mp4 = Some(mp4);
                 }
                 Ok(s) => made.notes.push(format!("no MP4: ffmpeg stopped with {s}")),
-                Err(e) => made.notes.push(format!("no MP4: couldn't run ffmpeg ({e})")),
+                Err(e) => made
+                    .notes
+                    .push(format!("no MP4: couldn't run ffmpeg ({e})")),
             }
         }
     }
@@ -408,7 +500,12 @@ mod tests {
 
     #[test]
     fn a_two_second_loop_at_ten_fps_is_twenty_frames_that_never_reach_the_end() {
-        let p = Plan { width: 10, height: 10, seconds: 2.0, fps: 10 };
+        let p = Plan {
+            width: 10,
+            height: 10,
+            seconds: 2.0,
+            fps: 10,
+        };
         let t = p.times();
         assert_eq!(t.len(), 20);
         assert_eq!(t[0], 0.0);

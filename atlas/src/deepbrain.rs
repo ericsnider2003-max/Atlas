@@ -177,7 +177,11 @@ impl Gate {
 
     /// Why the deep model can't run, when it can't.
     pub fn why_not(&self) -> String {
-        self.why_not.lock().or_else(crate::crash::unpoison).map(|w| w.clone()).unwrap_or_default()
+        self.why_not
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map(|w| w.clone())
+            .unwrap_or_default()
     }
 
     fn begin(self: &Arc<Gate>) -> Busy {
@@ -194,7 +198,9 @@ impl Gate {
     fn wait_up_until(&self, most: Duration, keep_going: &dyn Fn() -> bool) -> bool {
         let until = Instant::now() + most;
         loop {
-            if !keep_going() { return false; }
+            if !keep_going() {
+                return false;
+            }
             match self.state() {
                 State::Up => return true,
                 State::Unavailable => return false,
@@ -211,7 +217,9 @@ impl Gate {
     fn wait_quiet_until(&self, most: Duration, keep_going: &dyn Fn() -> bool) -> bool {
         let until = Instant::now() + most;
         while self.talking() && Instant::now() < until {
-            if !keep_going() { return false; }
+            if !keep_going() {
+                return false;
+            }
             std::thread::sleep(Duration::from_millis(25));
         }
         keep_going()
@@ -250,38 +258,88 @@ pub struct DeepLlm {
 
 /// Short creator preparation prefers the bounded configured primary,
 /// yielding to foreground turns without starting a cold heavy model.
-struct CreatorLlm { deep: Option<Arc<dyn Llm>>, talk: Arc<dyn Llm>, gate: Arc<Gate> }
+struct CreatorLlm {
+    deep: Option<Arc<dyn Llm>>,
+    talk: Arc<dyn Llm>,
+    gate: Arc<Gate>,
+}
 impl Llm for CreatorLlm {
-    fn complete(&self, _: &str, _: &str) -> Result<String> { Err(AtlasError::Platform("creator preparation requires bounded chat".into())) }
-    fn supports_bounded_chat(&self) -> bool { self.deep.as_ref().is_some_and(|model| model.supports_bounded_chat()) || self.talk.supports_bounded_chat() }
-    fn chat_until(&self, request: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> Result<ChatReply> {
-        if !keep() { return Err(AtlasError::Platform("model request stopped".into())); }
+    fn complete(&self, _: &str, _: &str) -> Result<String> {
+        Err(AtlasError::Platform(
+            "creator preparation requires bounded chat".into(),
+        ))
+    }
+    fn supports_bounded_chat(&self) -> bool {
+        self.deep
+            .as_ref()
+            .is_some_and(|model| model.supports_bounded_chat())
+            || self.talk.supports_bounded_chat()
+    }
+    fn chat_until(
+        &self,
+        request: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        keep: &dyn Fn() -> bool,
+    ) -> Result<ChatReply> {
+        if !keep() {
+            return Err(AtlasError::Platform("model request stopped".into()));
+        }
         if !self.talk.supports_bounded_chat() {
-            if let Some(deep) = self.deep.as_ref().filter(|_| self.gate.state() == State::Up) {
+            if let Some(deep) = self
+                .deep
+                .as_ref()
+                .filter(|_| self.gate.state() == State::Up)
+            {
                 let _busy = self.gate.begin();
-                let model = DeepLlm { deep: deep.clone(), talk: self.talk.clone(), gate: self.gate.clone(), load_wait: Duration::ZERO };
+                let model = DeepLlm {
+                    deep: deep.clone(),
+                    talk: self.talk.clone(),
+                    gate: self.gate.clone(),
+                    load_wait: Duration::ZERO,
+                };
                 return model.yielding_until(request, on_text, keep, true);
             }
             return Err(AtlasError::Platform("the configured primary model has no bounded creator interface and no bounded deep model is ready".into()));
         }
-        let model = DeepLlm { deep: self.talk.clone(), talk: self.talk.clone(), gate: self.gate.clone(), load_wait: Duration::ZERO };
-        let mut request = request.clone(); request.aside = true;
+        let model = DeepLlm {
+            deep: self.talk.clone(),
+            talk: self.talk.clone(),
+            gate: self.gate.clone(),
+            load_wait: Duration::ZERO,
+        };
+        let mut request = request.clone();
+        request.aside = true;
         // Do not begin a deep load merely to borrow its foreground-priority gate.
         model.yielding_until(&request, on_text, keep, true)
     }
 }
 
 impl DeepLlm {
-    fn by_talk(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> Result<ChatReply> {
+    fn by_talk(
+        &self,
+        req: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+    ) -> Result<ChatReply> {
         self.gate.fell_back.fetch_add(1, Ordering::SeqCst);
         let mut r = req.clone();
         r.aside = true;
         self.talk.chat(&r, on_text)
     }
 
-    fn by_talk_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> Result<ChatReply> {
-        if !keep_going() { return Err(AtlasError::Platform("model request stopped".into())); }
-        if !self.talk.supports_bounded_chat() { return Err(AtlasError::Platform("the fallback model has no bounded chat interface".into())); }
+    fn by_talk_until(
+        &self,
+        req: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        keep_going: &dyn Fn() -> bool,
+    ) -> Result<ChatReply> {
+        if !keep_going() {
+            return Err(AtlasError::Platform("model request stopped".into()));
+        }
+        if !self.talk.supports_bounded_chat() {
+            return Err(AtlasError::Platform(
+                "the fallback model has no bounded chat interface".into(),
+            ));
+        }
         self.gate.fell_back.fetch_add(1, Ordering::SeqCst);
         let mut r = req.clone();
         // Beside the conversation, never in its slot.
@@ -290,15 +348,27 @@ impl DeepLlm {
     }
 
     /// A call to the deep server that gives way to every turn.
-    fn yielding(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> Result<ChatReply> {
+    fn yielding(
+        &self,
+        req: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+    ) -> Result<ChatReply> {
         self.yielding_until(req, on_text, &|| true, false)
     }
 
-    fn yielding_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool, bounded: bool) -> Result<ChatReply> {
+    fn yielding_until(
+        &self,
+        req: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        keep_going: &dyn Fn() -> bool,
+        bounded: bool,
+    ) -> Result<ChatReply> {
         let mut cur = req.clone();
         let mut so_far = String::new();
         loop {
-            if !self.gate.wait_quiet_until(MOST_YIELD, keep_going) { return Err(AtlasError::Platform("model request stopped".into())); }
+            if !self.gate.wait_quiet_until(MOST_YIELD, keep_going) {
+                return Err(AtlasError::Platform("model request stopped".into()));
+            }
             // Waited its whole allowance and a turn is still going: this
             // round goes on regardless, so the work isn't starved.
             let may_yield = !self.gate.talking();
@@ -309,7 +379,9 @@ impl DeepLlm {
             // Asked while it reads the prompt as well, when no word comes.
             let cut = std::cell::Cell::new(false);
             let keep_round = || {
-                if !keep_going() { return false; }
+                if !keep_going() {
+                    return false;
+                }
                 let go = !(may_yield && gate.talking());
                 if !go {
                     cut.set(true);
@@ -319,7 +391,10 @@ impl DeepLlm {
             let r = self.deep.chat_until(
                 &cur,
                 &mut |piece| {
-                    if !keep_going() { stopped = true; return false; }
+                    if !keep_going() {
+                        stopped = true;
+                        return false;
+                    }
                     // A turn starting cuts in.
                     if may_yield && gate.talking() {
                         yielded = true;
@@ -334,10 +409,19 @@ impl DeepLlm {
                 },
                 &keep_round,
             );
-            if !keep_going() { return Err(AtlasError::Platform("model request stopped".into())); }
+            if !keep_going() {
+                return Err(AtlasError::Platform("model request stopped".into()));
+            }
             let yielded = yielded || cut.get();
             match r {
-                result if yielded && !stopped && result.as_ref().err().is_none_or(crate::models::chat_was_stopped) => {
+                result
+                    if yielded
+                        && !stopped
+                        && result
+                            .as_ref()
+                            .err()
+                            .is_none_or(crate::models::chat_was_stopped) =>
+                {
                     self.gate.yields.fetch_add(1, Ordering::SeqCst);
                     if req.tools.is_empty() {
                         // Carry on from the words so far.
@@ -359,7 +443,13 @@ impl DeepLlm {
                     return Ok(reply);
                 }
                 // Nothing from it yet: the talking model answers instead.
-                Err(_) if so_far.is_empty() && this_round.is_empty() => return if bounded { self.by_talk_until(req, on_text, keep_going) } else { self.by_talk(req, on_text) },
+                Err(_) if so_far.is_empty() && this_round.is_empty() => {
+                    return if bounded {
+                        self.by_talk_until(req, on_text, keep_going)
+                    } else {
+                        self.by_talk(req, on_text)
+                    }
+                }
                 Err(e) => return Err(e),
             }
         }
@@ -367,12 +457,19 @@ impl DeepLlm {
 }
 
 impl Llm for DeepLlm {
-    fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> Result<ChatReply> {
+    fn chat_until(
+        &self,
+        req: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        keep_going: &dyn Fn() -> bool,
+    ) -> Result<ChatReply> {
         let _busy = self.gate.begin();
         if !self.gate.wait_up_until(self.load_wait, keep_going) {
             return self.by_talk_until(req, on_text, keep_going);
         }
-        if !self.deep.supports_bounded_chat() { return self.by_talk_until(req, on_text, keep_going); }
+        if !self.deep.supports_bounded_chat() {
+            return self.by_talk_until(req, on_text, keep_going);
+        }
         self.yielding_until(req, on_text, keep_going, true)
     }
 
@@ -390,7 +487,9 @@ impl Llm for DeepLlm {
         };
         let reply = self.yielding(&req, &mut |_| true)?;
         if reply.text.trim().is_empty() && !reply.tool_calls.is_empty() {
-            return Err(AtlasError::Platform("the deep model answered with a tool call, not words".into()));
+            return Err(AtlasError::Platform(
+                "the deep model answered with a tool call, not words".into(),
+            ));
         }
         Ok(reply.text)
     }
@@ -398,7 +497,12 @@ impl Llm for DeepLlm {
     /// The deep model with room for a whole file (2 Oct 2026: it had
     /// `COMPLETE_TOKENS`, 1024, for everything). Whether it was cut off is
     /// read from the text by the caller (`build_it::looks_cut_off`).
-    fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<crate::brain::LongReply> {
+    fn complete_long(
+        &self,
+        system: &str,
+        user: &str,
+        max_tokens: u32,
+    ) -> Result<crate::brain::LongReply> {
         let _busy = self.gate.begin();
         if !self.gate.wait_up(self.load_wait) {
             self.gate.fell_back.fetch_add(1, Ordering::SeqCst);
@@ -412,9 +516,14 @@ impl Llm for DeepLlm {
         };
         let reply = self.yielding(&req, &mut |_| true)?;
         if reply.text.trim().is_empty() && !reply.tool_calls.is_empty() {
-            return Err(AtlasError::Platform("the deep model answered with a tool call, not words".into()));
+            return Err(AtlasError::Platform(
+                "the deep model answered with a tool call, not words".into(),
+            ));
         }
-        Ok(crate::brain::LongReply { text: reply.text, cut_off: false })
+        Ok(crate::brain::LongReply {
+            text: reply.text,
+            cut_off: false,
+        })
     }
 
     fn context_tokens(&self) -> Option<u32> {
@@ -424,7 +533,9 @@ impl Llm for DeepLlm {
     fn native_chat(&self) -> bool {
         true
     }
-    fn supports_bounded_chat(&self) -> bool { self.deep.supports_bounded_chat() || self.talk.supports_bounded_chat() }
+    fn supports_bounded_chat(&self) -> bool {
+        self.deep.supports_bounded_chat() || self.talk.supports_bounded_chat()
+    }
 
     fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> Result<ChatReply> {
         let _busy = self.gate.begin();
@@ -476,15 +587,33 @@ pub struct ServerEngine {
 }
 
 impl ServerEngine {
-    pub fn new(model: crate::models::Model, cfg: crate::models::ModelsConfig, gpu_layers: u32, vars: crate::tools::Vars) -> ServerEngine {
-        ServerEngine { model, cfg, gpu_layers, vars, log: "deep-model-server.log", child: None }
+    pub fn new(
+        model: crate::models::Model,
+        cfg: crate::models::ModelsConfig,
+        gpu_layers: u32,
+        vars: crate::tools::Vars,
+    ) -> ServerEngine {
+        ServerEngine {
+            model,
+            cfg,
+            gpu_layers,
+            vars,
+            log: "deep-model-server.log",
+            child: None,
+        }
     }
 }
 
 impl Engine for ServerEngine {
     fn start(&mut self) -> std::result::Result<(), String> {
-        let child = crate::models::launch_logging(&self.model, &self.cfg, self.gpu_layers, &self.vars, self.log)
-            .map_err(|e| e.to_string())?;
+        let child = crate::models::launch_logging(
+            &self.model,
+            &self.cfg,
+            self.gpu_layers,
+            &self.vars,
+            self.log,
+        )
+        .map_err(|e| e.to_string())?;
         self.child = Some(child);
         Ok(())
     }
@@ -601,13 +730,26 @@ impl DeepBrain {
 
     /// The model for background work: this one when set up, else `talk`.
     pub fn for_creator(&self, talk: Arc<dyn Llm>) -> Arc<dyn Llm> {
-        let deep = self.conn.as_ref().filter(|model| self.gate.state() == State::Up && model.supports_bounded_chat()).cloned();
-        Arc::new(CreatorLlm { deep, talk, gate: self.gate.clone() })
+        let deep = self
+            .conn
+            .as_ref()
+            .filter(|model| self.gate.state() == State::Up && model.supports_bounded_chat())
+            .cloned();
+        Arc::new(CreatorLlm {
+            deep,
+            talk,
+            gate: self.gate.clone(),
+        })
     }
 
     pub fn for_background(&self, talk: Arc<dyn Llm>) -> Arc<dyn Llm> {
         match &self.conn {
-            Some(deep) => Arc::new(DeepLlm { deep: deep.clone(), talk, gate: self.gate.clone(), load_wait: self.load_limit + Duration::from_secs(5) }),
+            Some(deep) => Arc::new(DeepLlm {
+                deep: deep.clone(),
+                talk,
+                gate: self.gate.clone(),
+                load_wait: self.load_limit + Duration::from_secs(5),
+            }),
             None => talk,
         }
     }
@@ -617,7 +759,9 @@ impl DeepBrain {
     /// idle. What happened, for the log. Waits at most a health check.
     pub fn keep(&mut self) -> Vec<String> {
         let mut said = Vec::new();
-        let Some(engine) = self.engine.as_mut() else { return said };
+        let Some(engine) = self.engine.as_mut() else {
+            return said;
+        };
         let busy = self.gate.in_flight() > 0;
         if busy {
             self.last_busy = Instant::now();
@@ -642,7 +786,13 @@ impl DeepBrain {
                             self.model_id, self.need_mb + HEADROOM_MB, free
                         )
                     } else {
-                        format!("the {} ({}) needs about {} MB and {} MB is free", self.label, self.model_id, self.need_mb + HEADROOM_MB, free)
+                        format!(
+                            "the {} ({}) needs about {} MB and {} MB is free",
+                            self.label,
+                            self.model_id,
+                            self.need_mb + HEADROOM_MB,
+                            free
+                        )
                     };
                     if self.gate.why_not() != why {
                         said.push(why.clone());
@@ -655,7 +805,10 @@ impl DeepBrain {
                     Ok(()) => {
                         self.started = Some(Instant::now());
                         self.gate.set(State::Starting, "");
-                        said.push(format!("starting the {} ({}) for {}", self.label, self.model_id, self.for_what));
+                        said.push(format!(
+                            "starting the {} ({}) for {}",
+                            self.label, self.model_id, self.for_what
+                        ));
                     }
                     Err(e) => {
                         let why = format!("the {} couldn't start: {e}", self.label);
@@ -687,14 +840,21 @@ impl DeepBrain {
             }
             State::Up => {
                 if !engine.running() {
-                    said.push(format!("the {} stopped; it starts again when there's work", self.label));
+                    said.push(format!(
+                        "the {} stopped; it starts again when there's work",
+                        self.label
+                    ));
                     self.gate.set(State::Off, "");
                     self.started = None;
                 } else if !busy && self.last_busy.elapsed() >= self.idle {
                     engine.stop();
                     self.gate.set(State::Off, "");
                     self.started = None;
-                    said.push(format!("stopped the {} after {}s with nothing to do", self.label, self.idle.as_secs()));
+                    said.push(format!(
+                        "stopped the {} after {}s with nothing to do",
+                        self.label,
+                        self.idle.as_secs()
+                    ));
                 }
             }
         }
@@ -712,7 +872,10 @@ impl DeepBrain {
     /// coding model: that is the moment the talking model may be asked to
     /// make room). `free_mb` is measured here, so it's never asked twice.
     pub fn short_of_room_mb(&self) -> Option<u64> {
-        if self.engine.is_none() || !self.wanted() || matches!(self.gate.state(), State::Up | State::Starting) {
+        if self.engine.is_none()
+            || !self.wanted()
+            || matches!(self.gate.state(), State::Up | State::Starting)
+        {
             return None;
         }
         let free = (self.free_mb)();
@@ -749,10 +912,17 @@ impl DeepBrain {
             first.make_ascii_uppercase();
         }
         match self.gate.state() {
-            State::Off => format!("{name} {}: not running; it starts when {} comes.", self.model_id, self.for_what),
+            State::Off => format!(
+                "{name} {}: not running; it starts when {} comes.",
+                self.model_id, self.for_what
+            ),
             State::Starting => format!("{name} {}: loading.", self.model_id),
             State::Up => format!("{name} {}: running.", self.model_id),
-            State::Unavailable => format!("{name} {}: not now -- {}.", self.model_id, self.gate.why_not()),
+            State::Unavailable => format!(
+                "{name} {}: not now -- {}.",
+                self.model_id,
+                self.gate.why_not()
+            ),
         }
     }
 }
@@ -766,20 +936,29 @@ impl Drop for DeepBrain {
 /// The deep model for these settings, when its file is in the models folder
 /// and it isn't the talking model: `models.deep`, or `DEEP_DEFAULT`; none for
 /// `off`.
-pub fn deep_model_among<'r>(registry: &'r crate::models::Registry, cfg: &crate::models::ModelsConfig) -> Option<&'r crate::models::Model> {
+pub fn deep_model_among<'r>(
+    registry: &'r crate::models::Registry,
+    cfg: &crate::models::ModelsConfig,
+) -> Option<&'r crate::models::Model> {
     let id = match cfg.deep.trim() {
         w if w.eq_ignore_ascii_case("off") || w.eq_ignore_ascii_case("none") => return None,
         "" => DEEP_DEFAULT.to_string(),
         id => id.trim_end_matches(".gguf").to_string(),
     };
     let talking = crate::models::talk_id(cfg);
-    registry.get(&id).filter(|m| talking.as_deref() != Some(m.id.as_str()) && !m.is_a_projector())
+    registry
+        .get(&id)
+        .filter(|m| talking.as_deref() != Some(m.id.as_str()) && !m.is_a_projector())
 }
 
 /// The settings the deep server is started with: its port and context.
 pub fn deep_settings(cfg: &crate::models::ModelsConfig) -> crate::models::ModelsConfig {
     let mut d = cfg.clone();
-    d.port = if cfg.deep_port == 0 { cfg.port.saturating_add(1) } else { cfg.deep_port };
+    d.port = if cfg.deep_port == 0 {
+        cfg.port.saturating_add(1)
+    } else {
+        cfg.deep_port
+    };
     d.context = cfg.deep_context;
     // No helper model: it's paired with the talking model.
     d.draft = String::new();
@@ -790,7 +969,10 @@ pub fn deep_settings(cfg: &crate::models::ModelsConfig) -> crate::models::Models
 /// at its context, a tenth more), else estimated from its size.
 fn need_mb(model: &crate::models::Model, cfg: &crate::models::ModelsConfig) -> u64 {
     let ctx = cfg.deep_context.max(1024);
-    model.memory_needed(ctx).unwrap_or_else(|_| crate::models::estimate_memory(model, ctx)) / (1024 * 1024)
+    model
+        .memory_needed(ctx)
+        .unwrap_or_else(|_| crate::models::estimate_memory(model, ctx))
+        / (1024 * 1024)
 }
 
 /// The deep brain for Atlas's own settings, when one is set up: a
@@ -801,8 +983,11 @@ pub fn for_settings(tc: &crate::voice::ToolsConfig) -> DeepBrain {
     if tc.llm.is_some() || tc.models.server.is_none() {
         return DeepBrain::none();
     }
-    let (registry, _) = crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&tc.models));
-    let Some(model) = deep_model_among(&registry, &tc.models).cloned() else { return DeepBrain::none() };
+    let (registry, _) =
+        crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&tc.models));
+    let Some(model) = deep_model_among(&registry, &tc.models).cloned() else {
+        return DeepBrain::none();
+    };
     let dcfg = deep_settings(&tc.models);
     let machine = crate::fit::measure();
     let layers = crate::models::layers_here(&model, &dcfg, &machine);
@@ -825,15 +1010,37 @@ pub fn for_settings(tc: &crate::voice::ToolsConfig) -> DeepBrain {
 /// "Use the better model" / "use the faster model", and the like: which one
 /// was asked for (`true` better, `false` faster).
 pub fn asks_for_talk_model(said: &str) -> Option<bool> {
-    let t: String = said.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == ' ' { c } else { ' ' }).collect();
+    let t: String = said
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
     let t = format!(" {} ", t.split_whitespace().collect::<Vec<_>>().join(" "));
     const BETTER: &[&str] = &[
-        " use the better model ", " switch to the better model ", " use the smarter model ", " switch to the smarter model ",
-        " better answers please ", " turn on better answers ", " give me better answers ", " use better answers ",
+        " use the better model ",
+        " switch to the better model ",
+        " use the smarter model ",
+        " switch to the smarter model ",
+        " better answers please ",
+        " turn on better answers ",
+        " give me better answers ",
+        " use better answers ",
     ];
     const FASTER: &[&str] = &[
-        " use the faster model ", " switch to the faster model ", " use the quicker model ", " switch to the quicker model ",
-        " faster answers please ", " turn off better answers ", " give me faster answers ", " use faster answers ",
+        " use the faster model ",
+        " switch to the faster model ",
+        " use the quicker model ",
+        " switch to the quicker model ",
+        " faster answers please ",
+        " turn off better answers ",
+        " give me faster answers ",
+        " use faster answers ",
     ];
     if BETTER.iter().any(|p| t.contains(p)) {
         Some(true)
@@ -849,17 +1056,33 @@ mod bounded_background_requests {
     use super::*;
     struct Counting(Arc<AtomicUsize>);
     impl Llm for Counting {
-        fn complete(&self, _: &str, _: &str) -> Result<String> { self.0.fetch_add(1, Ordering::SeqCst); Ok("should not run".into()) }
+        fn complete(&self, _: &str, _: &str) -> Result<String> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok("should not run".into())
+        }
     }
     struct Waiting(Arc<AtomicUsize>);
     impl Llm for Waiting {
-        fn complete(&self, _: &str, _: &str) -> Result<String> { panic!("bounded request must use the stoppable interface") }
-        fn native_chat(&self) -> bool { true }
-        fn supports_bounded_chat(&self) -> bool { true }
-        fn chat_until(&self, req: &ChatRequest, _: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> Result<ChatReply> {
+        fn complete(&self, _: &str, _: &str) -> Result<String> {
+            panic!("bounded request must use the stoppable interface")
+        }
+        fn native_chat(&self) -> bool {
+            true
+        }
+        fn supports_bounded_chat(&self) -> bool {
+            true
+        }
+        fn chat_until(
+            &self,
+            req: &ChatRequest,
+            _: &mut dyn FnMut(&str) -> bool,
+            keep: &dyn Fn() -> bool,
+        ) -> Result<ChatReply> {
             self.0.fetch_add(1, Ordering::SeqCst);
             assert_eq!(req.max_tokens, 1200);
-            while keep() { std::thread::sleep(Duration::from_millis(2)); }
+            while keep() {
+                std::thread::sleep(Duration::from_millis(2));
+            }
             Err(AtlasError::Platform("caller ended active inference".into()))
         }
     }
@@ -869,10 +1092,21 @@ mod bounded_background_requests {
         let talk_calls = Arc::new(AtomicUsize::new(0));
         let gate = Gate::new();
         gate.set(State::Up, "");
-        let model = DeepLlm { deep: Arc::new(Waiting(deep_calls.clone())), talk: Arc::new(Counting(talk_calls.clone())), gate: gate.clone(), load_wait: Duration::from_secs(30) };
-        let req = ChatRequest { max_tokens: 1200, ..Default::default() };
+        let model = DeepLlm {
+            deep: Arc::new(Waiting(deep_calls.clone())),
+            talk: Arc::new(Counting(talk_calls.clone())),
+            gate: gate.clone(),
+            load_wait: Duration::from_secs(30),
+        };
+        let req = ChatRequest {
+            max_tokens: 1200,
+            ..Default::default()
+        };
         let start = Instant::now();
-        assert!(model.chat_until(&req, &mut |_| true, &|| start.elapsed() < Duration::from_millis(40)).is_err());
+        assert!(model
+            .chat_until(&req, &mut |_| true, &|| start.elapsed()
+                < Duration::from_millis(40))
+            .is_err());
         assert!(start.elapsed() < Duration::from_millis(300));
         assert_eq!(deep_calls.load(Ordering::SeqCst), 1);
         assert_eq!(talk_calls.load(Ordering::SeqCst), 0);
@@ -883,96 +1117,236 @@ mod bounded_background_requests {
         for loaded in [false, true] {
             let calls = Arc::new(AtomicUsize::new(0));
             let gate = Gate::new();
-            if loaded { gate.set(State::Up, ""); }
+            if loaded {
+                gate.set(State::Up, "");
+            }
             let _talk = gate.talk();
-            let model = DeepLlm { deep: Arc::new(Counting(calls.clone())), talk: Arc::new(Counting(calls.clone())), gate: gate.clone(), load_wait: Duration::from_secs(30) };
+            let model = DeepLlm {
+                deep: Arc::new(Counting(calls.clone())),
+                talk: Arc::new(Counting(calls.clone())),
+                gate: gate.clone(),
+                load_wait: Duration::from_secs(30),
+            };
             let start = Instant::now();
-            let result = model.chat_until(&ChatRequest::default(), &mut |_| true, &|| start.elapsed() < Duration::from_millis(60));
+            let result = model.chat_until(&ChatRequest::default(), &mut |_| true, &|| {
+                start.elapsed() < Duration::from_millis(60)
+            });
             assert!(result.is_err());
             assert!(start.elapsed() < Duration::from_millis(300));
-            assert_eq!(calls.load(Ordering::SeqCst), 0, "expired request must never call either model");
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                0,
+                "expired request must never call either model"
+            );
             assert_eq!(gate.in_flight(), 0);
         }
     }
 
-    struct YieldingFault { gate: Arc<Gate>, calls: Arc<AtomicUsize>, cancelled: bool }
+    struct YieldingFault {
+        gate: Arc<Gate>,
+        calls: Arc<AtomicUsize>,
+        cancelled: bool,
+    }
     impl Llm for YieldingFault {
-        fn complete(&self, _: &str, _: &str) -> Result<String> { panic!("bounded fixture must never complete synchronously") }
-        fn supports_bounded_chat(&self) -> bool { true }
-        fn chat_until(&self, request: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> Result<ChatReply> {
+        fn complete(&self, _: &str, _: &str) -> Result<String> {
+            panic!("bounded fixture must never complete synchronously")
+        }
+        fn supports_bounded_chat(&self) -> bool {
+            true
+        }
+        fn chat_until(
+            &self,
+            request: &ChatRequest,
+            on_text: &mut dyn FnMut(&str) -> bool,
+            keep: &dyn Fn() -> bool,
+        ) -> Result<ChatReply> {
             let call = self.calls.fetch_add(1, Ordering::SeqCst);
-            if call > 0 { assert!(keep()); on_text("rest"); return Ok(ChatReply { text: "rest".into(), tool_calls: vec![] }); }
-            assert!(keep()); assert!(on_text("partial "));
-            let _turn = self.gate.talk(); assert!(!keep());
+            if call > 0 {
+                assert!(keep());
+                on_text("rest");
+                return Ok(ChatReply {
+                    text: "rest".into(),
+                    tool_calls: vec![],
+                });
+            }
+            assert!(keep());
+            assert!(on_text("partial "));
+            let _turn = self.gate.talk();
+            assert!(!keep());
             if self.cancelled {
-                Err(crate::models::chat_call_until("http://127.0.0.1:1/v1/chat/completions", request, &mut |_| true, &|| false).unwrap_err())
-            } else { Err(AtlasError::Platform("provider connection reset".into())) }
+                Err(crate::models::chat_call_until(
+                    "http://127.0.0.1:1/v1/chat/completions",
+                    request,
+                    &mut |_| true,
+                    &|| false,
+                )
+                .unwrap_err())
+            } else {
+                Err(AtlasError::Platform("provider connection reset".into()))
+            }
         }
     }
     #[test]
     fn known_gate_cancellation_resumes_partial_text_but_network_fault_does_not() {
         for cancelled in [true, false] {
-            let gate = Gate::new(); gate.set(State::Up, "");
-            let calls = Arc::new(AtomicUsize::new(0)); let fallback = Arc::new(AtomicUsize::new(0));
-            let model = DeepLlm { deep: Arc::new(YieldingFault { gate: gate.clone(), calls: calls.clone(), cancelled }), talk: Arc::new(Counting(fallback.clone())), gate: gate.clone(), load_wait: Duration::from_secs(1) };
+            let gate = Gate::new();
+            gate.set(State::Up, "");
+            let calls = Arc::new(AtomicUsize::new(0));
+            let fallback = Arc::new(AtomicUsize::new(0));
+            let model = DeepLlm {
+                deep: Arc::new(YieldingFault {
+                    gate: gate.clone(),
+                    calls: calls.clone(),
+                    cancelled,
+                }),
+                talk: Arc::new(Counting(fallback.clone())),
+                gate: gate.clone(),
+                load_wait: Duration::from_secs(1),
+            };
             let mut words = String::new();
-            let result = model.chat_until(&ChatRequest::default(), &mut |text| { words.push_str(text); true }, &|| true);
-            if cancelled { assert_eq!(result.unwrap().text, "partial rest"); assert_eq!(words, "partial rest"); assert_eq!(calls.load(Ordering::SeqCst), 2); assert_eq!(gate.yields.load(Ordering::SeqCst), 1); }
-            else { assert!(result.unwrap_err().to_string().contains("provider connection reset")); assert_eq!(calls.load(Ordering::SeqCst), 1); assert_eq!(gate.yields.load(Ordering::SeqCst), 0); }
-            assert_eq!(fallback.load(Ordering::SeqCst), 0, "a partial provider fault must not silently switch models");
+            let result = model.chat_until(
+                &ChatRequest::default(),
+                &mut |text| {
+                    words.push_str(text);
+                    true
+                },
+                &|| true,
+            );
+            if cancelled {
+                assert_eq!(result.unwrap().text, "partial rest");
+                assert_eq!(words, "partial rest");
+                assert_eq!(calls.load(Ordering::SeqCst), 2);
+                assert_eq!(gate.yields.load(Ordering::SeqCst), 1);
+            } else {
+                assert!(result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("provider connection reset"));
+                assert_eq!(calls.load(Ordering::SeqCst), 1);
+                assert_eq!(gate.yields.load(Ordering::SeqCst), 0);
+            }
+            assert_eq!(
+                fallback.load(Ordering::SeqCst),
+                0,
+                "a partial provider fault must not silently switch models"
+            );
         }
     }
 
     struct CreatorPrimary(Arc<AtomicUsize>);
     impl Llm for CreatorPrimary {
-        fn complete(&self, _: &str, _: &str) -> Result<String> { panic!("creator preparation must be bounded") }
-        fn supports_bounded_chat(&self) -> bool { true }
-        fn chat_until(&self, request: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> Result<ChatReply> {
-            assert!(request.aside); self.0.fetch_add(1, Ordering::SeqCst);
+        fn complete(&self, _: &str, _: &str) -> Result<String> {
+            panic!("creator preparation must be bounded")
+        }
+        fn supports_bounded_chat(&self) -> bool {
+            true
+        }
+        fn chat_until(
+            &self,
+            request: &ChatRequest,
+            on_text: &mut dyn FnMut(&str) -> bool,
+            keep: &dyn Fn() -> bool,
+        ) -> Result<ChatReply> {
+            assert!(request.aside);
+            self.0.fetch_add(1, Ordering::SeqCst);
             let text = r#"{"suggestions":[{"title":"Check feeding interval","action":"Film the starter before and after feeding in the same marked jar.","reason":"The marks make the observed rise visible.","reference_ids":[]}],"duration_seconds":null}"#;
-            if !keep() || !on_text(text) || !keep() { return Err(AtlasError::Platform("creator fixture stopped".into())); }
-            Ok(ChatReply { text: text.into(), tool_calls: vec![] })
+            if !keep() || !on_text(text) || !keep() {
+                return Err(AtlasError::Platform("creator fixture stopped".into()));
+            }
+            Ok(ChatReply {
+                text: text.into(),
+                tool_calls: vec![],
+            })
         }
     }
     #[test]
     fn cold_deep_creator_route_uses_bounded_primary_without_reserving_heavy_load() {
         let mut brain = DeepBrain::none();
-        let gate = brain.gate.clone(); let calls = Arc::new(AtomicUsize::new(0));
+        let gate = brain.gate.clone();
+        let calls = Arc::new(AtomicUsize::new(0));
         let initial_state = gate.state();
         let cold_calls = Arc::new(AtomicUsize::new(0));
         brain.conn = Some(Arc::new(Waiting(cold_calls.clone())));
         brain.load_limit = Duration::from_secs(120);
         let model = brain.for_creator(Arc::new(CreatorPrimary(calls.clone())));
         let book = crate::social::snapshots::Book::default();
-        let request = crate::content::creator_model_request(crate::content::CreatorAsk::Idea, "sourdough starter", &book, 0);
+        let request = crate::content::creator_model_request(
+            crate::content::CreatorAsk::Idea,
+            "sourdough starter",
+            &book,
+            0,
+        );
         let began = Instant::now();
-        let reply = model.chat_until(&request, &mut |_| true, &|| began.elapsed() < Duration::from_secs(45)).unwrap();
-        assert!(crate::content::creator_model_output(crate::content::CreatorAsk::Idea, "sourdough starter", &book, &reply.text).is_ok());
-        assert_eq!(calls.load(Ordering::SeqCst), 1); assert_eq!(gate.in_flight(), 0); assert_eq!(gate.state(), initial_state);
-        assert_eq!(cold_calls.load(Ordering::SeqCst), 0); assert!(!brain.wanted(), "creator preparation must not reserve a cold120s heavy load");
+        let reply = model
+            .chat_until(&request, &mut |_| true, &|| {
+                began.elapsed() < Duration::from_secs(45)
+            })
+            .unwrap();
+        assert!(crate::content::creator_model_output(
+            crate::content::CreatorAsk::Idea,
+            "sourdough starter",
+            &book,
+            &reply.text
+        )
+        .is_ok());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(gate.in_flight(), 0);
+        assert_eq!(gate.state(), initial_state);
+        assert_eq!(cold_calls.load(Ordering::SeqCst), 0);
+        assert!(
+            !brain.wanted(),
+            "creator preparation must not reserve a cold120s heavy load"
+        );
         assert!(began.elapsed() < Duration::from_secs(1));
     }
     #[test]
     fn ready_heavy_creator_route_still_prefers_bounded_primary_without_reservation() {
-        let mut brain = DeepBrain::none(); brain.gate.set(State::Up, "");
-        let gate = brain.gate.clone(); let initial_state = gate.state();
-        let primary_calls = Arc::new(AtomicUsize::new(0)); let deep_calls = Arc::new(AtomicUsize::new(0));
+        let mut brain = DeepBrain::none();
+        brain.gate.set(State::Up, "");
+        let gate = brain.gate.clone();
+        let initial_state = gate.state();
+        let primary_calls = Arc::new(AtomicUsize::new(0));
+        let deep_calls = Arc::new(AtomicUsize::new(0));
         brain.conn = Some(Arc::new(CreatorPrimary(deep_calls.clone())));
         let model = brain.for_creator(Arc::new(CreatorPrimary(primary_calls.clone())));
         let book = crate::social::snapshots::Book::default();
-        let request = crate::content::creator_model_request(crate::content::CreatorAsk::Idea, "sourdough starter", &book, 0);
+        let request = crate::content::creator_model_request(
+            crate::content::CreatorAsk::Idea,
+            "sourdough starter",
+            &book,
+            0,
+        );
         let reply = model.chat_until(&request, &mut |_| true, &|| true).unwrap();
-        assert!(crate::content::creator_model_output(crate::content::CreatorAsk::Idea, "sourdough starter", &book, &reply.text).is_ok());
-        assert_eq!(primary_calls.load(Ordering::SeqCst), 1); assert_eq!(deep_calls.load(Ordering::SeqCst), 0);
-        assert_eq!(gate.state(), initial_state); assert_eq!(gate.in_flight(), 0); assert!(!brain.wanted());
+        assert!(crate::content::creator_model_output(
+            crate::content::CreatorAsk::Idea,
+            "sourdough starter",
+            &book,
+            &reply.text
+        )
+        .is_ok());
+        assert_eq!(primary_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(deep_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(gate.state(), initial_state);
+        assert_eq!(gate.in_flight(), 0);
+        assert!(!brain.wanted());
     }
     #[test]
     fn creator_primary_route_yields_to_foreground_and_expires_without_inference() {
-        let gate = Gate::new(); let _turn = gate.talk(); let calls = Arc::new(AtomicUsize::new(0));
-        let model = CreatorLlm { deep: None, talk: Arc::new(CreatorPrimary(calls.clone())), gate: gate.clone() };
+        let gate = Gate::new();
+        let _turn = gate.talk();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let model = CreatorLlm {
+            deep: None,
+            talk: Arc::new(CreatorPrimary(calls.clone())),
+            gate: gate.clone(),
+        };
         let began = Instant::now();
-        assert!(model.chat_until(&ChatRequest::default(), &mut |_| true, &|| began.elapsed() < Duration::from_millis(50)).is_err());
-        assert_eq!(calls.load(Ordering::SeqCst), 0); assert_eq!(gate.in_flight(), 0);
+        assert!(model
+            .chat_until(&ChatRequest::default(), &mut |_| true, &|| began.elapsed()
+                < Duration::from_millis(50))
+            .is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert_eq!(gate.in_flight(), 0);
         assert!(began.elapsed() < Duration::from_millis(250));
     }
 
@@ -981,8 +1355,15 @@ mod bounded_background_requests {
         let calls = Arc::new(AtomicUsize::new(0));
         let gate = Gate::new();
         gate.set(State::Unavailable, "offline");
-        let model = DeepLlm { deep: Arc::new(Counting(calls.clone())), talk: Arc::new(Counting(calls.clone())), gate: gate.clone(), load_wait: Duration::from_secs(30) };
-        assert!(model.chat_until(&ChatRequest::default(), &mut |_| true, &|| false).is_err());
+        let model = DeepLlm {
+            deep: Arc::new(Counting(calls.clone())),
+            talk: Arc::new(Counting(calls.clone())),
+            gate: gate.clone(),
+            load_wait: Duration::from_secs(30),
+        };
+        assert!(model
+            .chat_until(&ChatRequest::default(), &mut |_| true, &|| false)
+            .is_err());
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         assert_eq!(gate.in_flight(), 0);
     }

@@ -86,7 +86,10 @@ impl Side {
     }
 
     fn agrees_with(self, trend: Trend) -> bool {
-        matches!((self, trend), (Side::Buy, Trend::Up) | (Side::Sell, Trend::Down))
+        matches!(
+            (self, trend),
+            (Side::Buy, Trend::Up) | (Side::Sell, Trend::Down)
+        )
     }
 }
 
@@ -377,8 +380,14 @@ pub fn how_far_it_travels(view: &AsOf<'_>, bars: usize) -> Option<f64> {
         return None;
     }
     let from = n.saturating_sub(bars);
-    let high = view.high()[from..n].iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let low = view.low()[from..n].iter().copied().fold(f64::INFINITY, f64::min);
+    let high = view.high()[from..n]
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let low = view.low()[from..n]
+        .iter()
+        .copied()
+        .fold(f64::INFINITY, f64::min);
     (high.is_finite() && low.is_finite() && high >= low).then_some(high - low)
 }
 
@@ -489,8 +498,14 @@ pub fn propose(
     // at the figure, so a target one pip past it is a target that does not get
     // filled and a stop just inside it is a stop that gets taken.
     let long = side == Side::Buy;
-    let below = sr::nearest(view, true, rules.pivot_reach).ok().flatten().map(|l| l.price);
-    let above = sr::nearest(view, false, rules.pivot_reach).ok().flatten().map(|l| l.price);
+    let below = sr::nearest(view, true, rules.pivot_reach)
+        .ok()
+        .flatten()
+        .map(|l| l.price);
+    let above = sr::nearest(view, false, rules.pivot_reach)
+        .ok()
+        .flatten()
+        .map(|l| l.price);
     let (behind, ahead) = if long { (below, above) } else { (above, below) };
     let Some(behind) = behind else {
         return Err(NoTrade::NoStructure(format!(
@@ -543,8 +558,7 @@ pub fn propose(
     let mut candidates: Vec<(f64, String)> = vec![(ahead, "the next level in the way".to_string())];
     if let Ok(found) = sr::levels(view, rules.pivot_reach, rules.level_span_pips) {
         for level in found {
-            let ahead_of_price =
-                (long && level.price > price) || (!long && level.price < price);
+            let ahead_of_price = (long && level.price > price) || (!long && level.price < price);
             if !ahead_of_price {
                 continue;
             }
@@ -632,7 +646,10 @@ pub fn propose(
         .map(|(at, why)| ((at - price).abs() / risk_distance, at, why))
         .map(|(reward, at, why)| (at, reward, why))
         .collect();
-    let Some(chosen) = scored.iter().find(|(_, reward, _)| *reward >= rules.min_reward).cloned()
+    let Some(chosen) = scored
+        .iter()
+        .find(|(_, reward, _)| *reward >= rules.min_reward)
+        .cloned()
     else {
         let best = scored
             .iter()
@@ -651,7 +668,9 @@ pub fn propose(
         .take(3)
         .collect();
     let Some(share) = cost_share(risk_distance, spread, reward) else {
-        return Err(NoTrade::CostsTooMuch("I can't work out what the spread costs".into()));
+        return Err(NoTrade::CostsTooMuch(
+            "I can't work out what the spread costs".into(),
+        ));
     };
     if share > rules.max_cost_share {
         return Err(NoTrade::CostsTooMuch(format!(

@@ -99,7 +99,9 @@ pub const NEVER: &[(&str, &str)] = &[
 /// True if this is on the permanent no-list.
 pub fn is_refused(action: &str) -> bool {
     let a = action.to_lowercase();
-    NEVER.iter().any(|(k, _)| a.contains(k) || k.contains(a.as_str()))
+    NEVER
+        .iter()
+        .any(|(k, _)| a.contains(k) || k.contains(a.as_str()))
 }
 
 /// Everything Atlas knows how to check, in rough order of what it buys you.
@@ -184,7 +186,8 @@ pub const CHECKS: &[Check] = &[
     },
     Check {
         id: "uptime",
-        what: "How long since a real shutdown — fast startup means 'shut down' usually is not one, \
+        what:
+            "How long since a real shutdown — fast startup means 'shut down' usually is not one, \
                and a machine that never truly restarts accumulates every leak",
         how: "Task Manager → Performance → Up time",
         kind: Kind::Diagnose,
@@ -300,7 +303,8 @@ pub const CHECKS: &[Check] = &[
     Check {
         id: "start-recommendations",
         what: "Removes Microsoft's promoted apps from Start and the lock screen",
-        how: "Settings → Personalization → Start → Recommendations off; Lock screen → fun facts off",
+        how:
+            "Settings → Personalization → Start → Recommendations off; Lock screen → fun facts off",
         kind: Kind::Privacy,
         undo: Undo::Reversible,
         needs_admin: false,
@@ -362,8 +366,10 @@ pub const CHECKS: &[Check] = &[
         kind: Kind::Resilience,
         undo: Undo::OneWay,
         needs_admin: true,
-        cost: Some("a version bump can break something that was working; do it when you have time \
-                    to notice"),
+        cost: Some(
+            "a version bump can break something that was working; do it when you have time \
+                    to notice",
+        ),
     },
     Check {
         id: "dism-restore",
@@ -382,8 +388,10 @@ pub const CHECKS: &[Check] = &[
         kind: Kind::Privacy,
         undo: Undo::OneWay,
         needs_admin: true,
-        cost: Some("the next lookup for every cleared domain goes back out to the network, so \
-                    the first page loads after it are slightly slower"),
+        cost: Some(
+            "the next lookup for every cleared domain goes back out to the network, so \
+                    the first page loads after it are slightly slower",
+        ),
     },
     // ---------- yours: surfaced, never done ----------
     Check {
@@ -403,8 +411,10 @@ pub const CHECKS: &[Check] = &[
         kind: Kind::Speed,
         undo: Undo::Yours,
         needs_admin: false,
-        cost: Some("moves your entire query history to whoever runs that resolver, and breaks \
-                    split-horizon DNS on networks that use it"),
+        cost: Some(
+            "moves your entire query history to whoever runs that resolver, and breaks \
+                    split-horizon DNS on networks that use it",
+        ),
     },
     Check {
         id: "memory-integrity",
@@ -413,8 +423,10 @@ pub const CHECKS: &[Check] = &[
         kind: Kind::Speed,
         undo: Undo::Yours,
         needs_admin: true,
-        cost: Some("this is a security downgrade for performance — Atlas will not make that trade \
-                    on your behalf"),
+        cost: Some(
+            "this is a security downgrade for performance — Atlas will not make that trade \
+                    on your behalf",
+        ),
     },
     Check {
         id: "xmp",
@@ -423,12 +435,15 @@ pub const CHECKS: &[Check] = &[
         kind: Kind::Speed,
         undo: Undo::Yours,
         needs_admin: false,
-        cost: Some("firmware, outside the OS entirely, and a bad profile means the machine does \
-                    not post"),
+        cost: Some(
+            "firmware, outside the OS entirely, and a bad profile means the machine does \
+                    not post",
+        ),
     },
     Check {
         id: "process-priority",
-        what: "Raising a foreground process to above-normal stops it competing with background junk",
+        what:
+            "Raising a foreground process to above-normal stops it competing with background junk",
         how: "Task Manager → Details → Set priority → Above normal",
         kind: Kind::Speed,
         undo: Undo::Yours,
@@ -448,7 +463,10 @@ pub fn read_only() -> Vec<&'static Check> {
 
 /// Everything Atlas may do and put back.
 pub fn reversible() -> Vec<&'static Check> {
-    CHECKS.iter().filter(|c| c.undo == Undo::Reversible).collect()
+    CHECKS
+        .iter()
+        .filter(|c| c.undo == Undo::Reversible)
+        .collect()
 }
 
 /// Needs your say-so before anything happens: one-way changes and judgement
@@ -469,6 +487,10 @@ pub fn first_pass() -> Vec<&'static Check> {
         out.push(c);
     }
     out.extend(read_only());
-    out.extend(reversible().into_iter().filter(|c| c.id != "system-restore"));
+    out.extend(
+        reversible()
+            .into_iter()
+            .filter(|c| c.id != "system-restore"),
+    );
     out
 }

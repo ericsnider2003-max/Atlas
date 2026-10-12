@@ -90,7 +90,12 @@ pub fn token_for(store: &crate::store::Store) -> Result<String> {
         return Ok(held.token);
     }
     let token = new_token()?;
-    store.save(FILE, &HeldToken { token: token.clone() })?;
+    store.save(
+        FILE,
+        &HeldToken {
+            token: token.clone(),
+        },
+    )?;
     Ok(token)
 }
 

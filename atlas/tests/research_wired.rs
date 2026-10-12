@@ -58,7 +58,13 @@ fn plat() -> MockPlatform {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -90,9 +96,18 @@ fn research_ships_off_but_ready_to_be_switched_on() {
     // Ships on since 27 Sep 2026 (Eric: when Atlas doesn't know, it looks it
     // up); the hub's switch turns it off.
     assert!(r.enabled, "web lookup ships on");
-    assert!(r.search.is_some(), "no search tool configured, so the switch would do nothing");
-    assert!(r.fetch.is_some(), "no fetch tool configured, so the switch would do nothing");
-    assert!(r.max_sources > 0, "a source cap of zero can never find anything");
+    assert!(
+        r.search.is_some(),
+        "no search tool configured, so the switch would do nothing"
+    );
+    assert!(
+        r.fetch.is_some(),
+        "no fetch tool configured, so the switch would do nothing"
+    );
+    assert!(
+        r.max_sources > 0,
+        "a source cap of zero can never find anything"
+    );
 }
 
 #[test]
@@ -142,7 +157,10 @@ fn research_without_a_model_says_so_rather_than_searching_pointlessly() {
     // test rather than the offline one.
     d.connectivity.set(atlas::connectivity::Reach::Online, 100);
     let reply = d.turn("research tide times at Ventura", 100);
-    assert!(reply.contains("model"), "did not name the missing model: {reply}");
+    assert!(
+        reply.contains("model"),
+        "did not name the missing model: {reply}"
+    );
 }
 
 #[test]

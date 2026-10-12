@@ -21,7 +21,10 @@ fn a_short_reply_ends_almost_immediately() {
     e.feed(LOUD, "", 200, &ecfg());
     e.feed(LOUD, "yes", 400, &ecfg());
     assert_eq!(e.feed(QUIET, "yes", 500, &ecfg()), Listening::Pausing);
-    assert_eq!(e.feed(QUIET, "yes", 950, &ecfg()), Listening::Finished(Why::YouFinished));
+    assert_eq!(
+        e.feed(QUIET, "yes", 950, &ecfg()),
+        Listening::Finished(Why::YouFinished)
+    );
 }
 
 #[test]
@@ -34,7 +37,11 @@ fn a_dangling_word_means_you_are_not_finished_however_long_the_pause() {
 
     let mut e = Endpointer::start(0);
     e.feed(LOUD, "", 200, &ecfg());
-    assert_eq!(e.feed(QUIET, "i want you to", 900, &ecfg()), Listening::Pausing, "still thinking");
+    assert_eq!(
+        e.feed(QUIET, "i want you to", 900, &ecfg()),
+        Listening::Pausing,
+        "still thinking"
+    );
     assert_eq!(
         e.feed(QUIET, "i want you to", 2100, &ecfg()),
         Listening::Finished(Why::YouFinished),
@@ -85,7 +92,10 @@ fn ending_early_is_the_whole_point_on_this_hardware() {
     e.feed(QUIET, "yes", 500, &ecfg());
     e.feed(QUIET, "yes", 950, &ecfg());
     assert!(e.finished());
-    assert!(e.clip_ms(950) < 1000, "seven seconds of audio not transcribed");
+    assert!(
+        e.clip_ms(950) < 1000,
+        "seven seconds of audio not transcribed"
+    );
 }
 
 // (per-stage turn timing moved wholly to `timing::Turn`; tested in
@@ -102,7 +112,11 @@ fn record() -> Record {
         instead_of: Some("the right screen, where Claude goes".into()),
         set_by: Some("config/layouts.yaml".into()),
     });
-    r.note("listened on the webcam mic", "it hears you at -22dB, the laptop mic at -58", 2);
+    r.note(
+        "listened on the webcam mic",
+        "it hears you at -22dB, the laptop mic at -58",
+        2,
+    );
     r
 }
 
@@ -118,7 +132,10 @@ fn asking_why_is_recognised_however_you_phrase_it() {
 fn you_get_the_reason_not_a_restatement_of_the_question() {
     let r = record();
     let said = answer(r.find("why is chrome over there"));
-    assert!(said.contains("because the left one is the widest"), "got: {said}");
+    assert!(
+        said.contains("because the left one is the widest"),
+        "got: {said}"
+    );
 }
 
 #[test]
@@ -166,7 +183,10 @@ fn something_that_finished_while_you_were_sitting_there_is_not_news() {
     let mut w = Watcher::default();
     let id = w.watch("the render", "ffmpeg.exe", 0);
     w.update(id, Outcome::Finished, "done", 20);
-    assert!(w.to_report(&wcfg(), 20).is_empty(), "twenty seconds isn't worth announcing");
+    assert!(
+        w.to_report(&wcfg(), 20).is_empty(),
+        "twenty seconds isn't worth announcing"
+    );
 }
 
 #[test]
@@ -176,7 +196,11 @@ fn something_that_took_ten_minutes_is() {
     w.update(id, Outcome::Finished, "done", 600);
     let said = w.to_report(&wcfg(), 600);
     assert_eq!(said.len(), 1);
-    assert!(said[0].contains("finished") && said[0].contains("10 minutes"), "got: {}", said[0]);
+    assert!(
+        said[0].contains("finished") && said[0].contains("10 minutes"),
+        "got: {}",
+        said[0]
+    );
 }
 
 #[test]
@@ -186,7 +210,10 @@ fn a_failure_is_always_worth_saying_however_quick() {
     w.update(id, Outcome::Failed, "error: linker not found", 5);
     let said = w.to_report(&wcfg(), 5);
     assert_eq!(said.len(), 1);
-    assert!(said[0].contains("linker not found"), "with the last line, which is the useful one");
+    assert!(
+        said[0].contains("linker not found"),
+        "with the last line, which is the useful one"
+    );
 }
 
 #[test]
@@ -217,7 +244,10 @@ fn you_can_ask_what_is_still_going() {
 // ================= dictation =================
 
 fn dcfg() -> DictateConfig {
-    DictateConfig { enabled: true, ..Default::default() }
+    DictateConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 #[test]
@@ -243,7 +273,10 @@ fn punctuation_attaches_to_the_word_rather_than_floating() {
 
 #[test]
 fn sentences_capitalise_themselves() {
-    let out = render(&parse("first one full stop second one full stop", &dcfg()), &dcfg());
+    let out = render(
+        &parse("first one full stop second one full stop", &dcfg()),
+        &dcfg(),
+    );
     assert_eq!(out, "First one. Second one.");
 }
 
@@ -309,14 +342,23 @@ use atlas::dictate::{ask_which, read_ambiguous, Reading};
 #[test]
 fn a_determiner_before_it_makes_it_a_word() {
     // You never say "a" before a full stop.
-    assert_eq!(read_ambiguous("we watched a", "period", " drama"), Reading::Literal);
-    assert_eq!(read_ambiguous("put the", "dash", " there"), Reading::Literal);
+    assert_eq!(
+        read_ambiguous("we watched a", "period", " drama"),
+        Reading::Literal
+    );
+    assert_eq!(
+        read_ambiguous("put the", "dash", " there"),
+        Reading::Literal
+    );
     assert_eq!(read_ambiguous("that's my", "quote", ""), Reading::Literal);
 }
 
 #[test]
 fn a_noun_after_it_makes_it_a_word_too() {
-    assert_eq!(read_ambiguous("classic", "period", " drama"), Reading::Literal);
+    assert_eq!(
+        read_ambiguous("classic", "period", " drama"),
+        Reading::Literal
+    );
     assert_eq!(read_ambiguous("a", "comma", " splice"), Reading::Literal);
     assert_eq!(read_ambiguous("the em", "dash", " key"), Reading::Literal);
 }
@@ -324,13 +366,22 @@ fn a_noun_after_it_makes_it_a_word_too() {
 #[test]
 fn mid_sentence_with_words_either_side_is_the_mark() {
     // "Hello comma how are you" is the normal dictation case.
-    assert_eq!(read_ambiguous("hello there", "comma", " how are you"), Reading::Mark);
-    assert_eq!(read_ambiguous("that's done", "period", " next thing"), Reading::Mark);
+    assert_eq!(
+        read_ambiguous("hello there", "comma", " how are you"),
+        Reading::Mark
+    );
+    assert_eq!(
+        read_ambiguous("that's done", "period", " next thing"),
+        Reading::Mark
+    );
 }
 
 #[test]
 fn at_the_end_of_what_you_said_it_is_the_mark() {
-    assert_eq!(read_ambiguous("that's the end", "period", ""), Reading::Mark);
+    assert_eq!(
+        read_ambiguous("that's the end", "period", ""),
+        Reading::Mark
+    );
 }
 
 #[test]
@@ -341,7 +392,10 @@ fn the_word_on_its_own_is_a_mark_you_are_inserting() {
 #[test]
 fn a_period_drama_survives_dictation_intact() {
     // The case that made me drop the word entirely, which was the wrong fix.
-    let out = render(&parse("we watched a period drama last night", &dcfg()), &dcfg());
+    let out = render(
+        &parse("we watched a period drama last night", &dcfg()),
+        &dcfg(),
+    );
     assert_eq!(out, "We watched a period drama last night");
 }
 

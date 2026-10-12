@@ -66,8 +66,19 @@ impl Unheard {
 
     /// One line for the log.
     pub fn line(&self) -> String {
-        let times = if self.times > 1 { format!(" ({} times)", self.times) } else { String::new() };
-        format!("{}:{} {} failed{}: {}", self.part(), self.line, self.doing, times, self.error)
+        let times = if self.times > 1 {
+            format!(" ({} times)", self.times)
+        } else {
+            String::new()
+        };
+        format!(
+            "{}:{} {} failed{}: {}",
+            self.part(),
+            self.line,
+            self.doing,
+            times,
+            self.error
+        )
     }
 }
 
@@ -76,7 +87,9 @@ static FAILURES: Mutex<Vec<Unheard>> = Mutex::new(Vec::new());
 
 /// Record a failure reported by this module's result adapter.
 fn record(cost: Cost, module: &'static str, line: u32, doing: &'static str, error: &str) {
-    let Ok(mut v) = FAILURES.lock().or_else(crate::crash::unpoison) else { return };
+    let Ok(mut v) = FAILURES.lock().or_else(crate::crash::unpoison) else {
+        return;
+    };
     if let Some(u) = v.iter_mut().find(|u| u.module == module && u.line == line) {
         u.times = u.times.saturating_add(1);
         u.error = error.to_string();
@@ -88,7 +101,14 @@ fn record(cost: Cost, module: &'static str, line: u32, doing: &'static str, erro
         let at = v.iter().position(|u| u.cost == Cost::Logged).unwrap_or(0);
         v.remove(at);
     }
-    v.push(Unheard { cost, module, line, doing, error: error.to_string(), times: 1 });
+    v.push(Unheard {
+        cost,
+        module,
+        line,
+        doing,
+        error: error.to_string(),
+        times: 1,
+    });
 }
 
 /// Every failure since the last time this was asked. Taken, so each is
@@ -134,7 +154,13 @@ pub fn hear<T, E: Display + 'static>(
 #[macro_export]
 macro_rules! kept {
     ($e:expr) => {
-        $crate::unheard::hear($e, $crate::unheard::Cost::NotKept, module_path!(), line!(), stringify!($e))
+        $crate::unheard::hear(
+            $e,
+            $crate::unheard::Cost::NotKept,
+            module_path!(),
+            line!(),
+            stringify!($e),
+        )
     };
 }
 
@@ -143,7 +169,13 @@ macro_rules! kept {
 #[macro_export]
 macro_rules! heard {
     ($e:expr) => {
-        $crate::unheard::hear($e, $crate::unheard::Cost::Logged, module_path!(), line!(), stringify!($e))
+        $crate::unheard::hear(
+            $e,
+            $crate::unheard::Cost::Logged,
+            module_path!(),
+            line!(),
+            stringify!($e),
+        )
     };
 }
 
@@ -163,9 +195,15 @@ mod tests {
             error: "denied".into(),
             times: 1,
         };
-        assert_eq!(u.line(), "yourchanges:42 std::fs::write(&p, b) failed: denied");
+        assert_eq!(
+            u.line(),
+            "yourchanges:42 std::fs::write(&p, b) failed: denied"
+        );
         u.times = 2;
-        assert_eq!(u.line(), "yourchanges:42 std::fs::write(&p, b) failed (2 times): denied");
+        assert_eq!(
+            u.line(),
+            "yourchanges:42 std::fs::write(&p, b) failed (2 times): denied"
+        );
     }
 
     // One test touches the shared list, so parallel tests can't race on it.
@@ -177,7 +215,8 @@ mod tests {
         assert!(take().is_empty(), "a file already gone is not a failure");
 
         for _ in 0..3 {
-            let denied: std::io::Result<()> = Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+            let denied: std::io::Result<()> =
+                Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
             assert_eq!(kept!(denied), None);
         }
         let ok: Result<u8, String> = Ok(7);
@@ -191,7 +230,9 @@ mod tests {
         assert_eq!(lost.times, 3);
         assert_eq!(lost.part(), "tests");
         assert!(lost.doing.contains("denied"));
-        assert!(got.iter().any(|u| u.cost == Cost::Logged && u.error == "no route"));
+        assert!(got
+            .iter()
+            .any(|u| u.cost == Cost::Logged && u.error == "no route"));
         assert!(take().is_empty(), "taken once");
 
         for i in 0..(MOST_KEPT as u32 + 10) {
@@ -203,6 +244,9 @@ mod tests {
         }
         let got = take();
         assert!(got.len() <= MOST_KEPT);
-        assert!(got.iter().any(|u| u.cost == Cost::NotKept), "a lost write is never pushed out by noise");
+        assert!(
+            got.iter().any(|u| u.cost == Cost::NotKept),
+            "a lost write is never pushed out by noise"
+        );
     }
 }

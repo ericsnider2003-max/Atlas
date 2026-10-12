@@ -123,9 +123,10 @@ fn a_section_shipped_on_against_a_default_of_off_is_also_a_decision() {
     // disagreement itself being used to justify one side of it. With the
     // registry deriving its defaults there is one declaration, both ship
     // off, and the entries went with the reasoning.
-    const ON_ON_PURPOSE: &[(&str, &str)] = &[(
-        "server",
-        "The local dashboard. This is not a new capability being switched on: \
+    const ON_ON_PURPOSE: &[(&str, &str)] = &[
+        (
+            "server",
+            "The local dashboard. This is not a new capability being switched on: \
          `Server::bind` never read `enabled`, and the start-up path forced it \
          true on a copy of your config, so the listener came up on every \
          install while the file said `false`. Making the switch real meant \
@@ -133,16 +134,18 @@ fn a_section_shipped_on_against_a_default_of_off_is_also_a_decision() {
          away a dashboard everyone already has. The struct default stays off, \
          so an install with no tools.yaml listens to nothing. Loopback only, \
          token on every request. See tests/a_switch_that_does_nothing.rs.",
-    ), (
-        "wake",
-        "Eric, 29 Sep 2026: talk freely, push-to-talk only as the fallback. \
+        ),
+        (
+            "wake",
+            "Eric, 29 Sep 2026: talk freely, push-to-talk only as the fallback. \
          The name is found in what you say on the running microphone stream, \
          and speech-to-text runs only while someone is talking (`utterance`), \
          not on every three seconds of silence as before. If the microphone \
          fails Atlas drops to push-to-talk and comes back by itself once it \
          works. With no tools.yaml there is no wake configuration, so the \
          code's default stays off.",
-    )];
+        ),
+    ];
 
     let mut surprises = Vec::new();
     for ((name, on_in_file), (_, on_in_code)) in file.iter().zip(code.iter()) {
@@ -174,7 +177,10 @@ fn the_default_is_actually_derived_and_not_just_a_copy_of_the_value() {
     // not notice. This is the positive half: a config that genuinely differs
     // from the code's default must be reported as differing, by name.
     let mut t = ToolsConfig::default();
-    assert!(t.research.enabled, "this test picks research because it defaults on (since 27 Sep 2026)");
+    assert!(
+        t.research.enabled,
+        "this test picks research because it defaults on (since 27 Sep 2026)"
+    );
     t.research.enabled = false;
 
     let s = atlas::settings::registry(&t);

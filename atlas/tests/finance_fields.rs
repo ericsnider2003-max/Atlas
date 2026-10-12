@@ -128,7 +128,12 @@ fn fields_are_matched_as_words_not_substrings() {
 
 #[test]
 fn separators_and_camel_case_split_the_same_way() {
-    for spelling in ["account_from", "accountFrom", "account-from", "account.from"] {
+    for spelling in [
+        "account_from",
+        "accountFrom",
+        "account-from",
+        "account.from",
+    ] {
         assert!(
             !is_safe_field(spelling),
             "{spelling} was read as a safe field"
@@ -167,7 +172,10 @@ fn typing_uses_the_same_rule_as_submitting() {
         matches!(
             allowed(
                 BANK,
-                &PageAction::Type { field: field.into(), text: "500".into() },
+                &PageAction::Type {
+                    field: field.into(),
+                    text: "500".into()
+                },
                 &c
             ),
             Verdict::Refused(_)
@@ -208,9 +216,21 @@ fn reading_a_statement_is_not_blocked_by_a_word_inside_another_word() {
 #[test]
 fn the_buttons_that_move_money_are_still_refused() {
     for label in [
-        "Sell", "Buy", "Transfer", "Pay now", "Wire", "Withdraw", "Deposit",
-        "Place order", "Review order", "Close position", "Liquidate",
-        "Confirm", "Submit", "Add payee", "Fund account",
+        "Sell",
+        "Buy",
+        "Transfer",
+        "Pay now",
+        "Wire",
+        "Withdraw",
+        "Deposit",
+        "Place order",
+        "Review order",
+        "Close position",
+        "Liquidate",
+        "Confirm",
+        "Submit",
+        "Add payee",
+        "Fund account",
     ] {
         assert!(
             atlas::finance::moves_money(label),
@@ -264,5 +284,8 @@ fn an_empty_cell_is_still_treated_as_nothing() {
     // Most rows fill one column and leave the other blank. That is genuinely
     // zero, and must keep parsing.
     let csv = "date,description,debit,credit\n2026-01-01,coffee,4.20,\n";
-    assert_eq!(atlas::finance::parse_csv(csv, atlas::finance::Source::LocalFile).len(), 1);
+    assert_eq!(
+        atlas::finance::parse_csv(csv, atlas::finance::Source::LocalFile).len(),
+        1
+    );
 }

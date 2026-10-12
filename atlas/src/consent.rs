@@ -180,9 +180,7 @@ impl Recorder {
             }
             Scope::Everyone => {
                 if self.cfg.ask_every_call {
-                    return Step::AskYou(
-                        "Record the whole call? I'll tell everyone first.".into(),
-                    );
+                    return Step::AskYou("Record the whole call? I'll tell everyone first.".into());
                 }
                 self.begin_announcement()
             }
@@ -390,7 +388,8 @@ impl Recorder {
     /// The invariant the whole module exists to hold. Anything but false here
     /// is a bug.
     pub fn recorded_others_without_announcing(&self) -> bool {
-        self.capturing_others() && (!self.announcement_landed || (self.cfg.ask_the_others && !self.agreed))
+        self.capturing_others()
+            && (!self.announcement_landed || (self.cfg.ask_the_others && !self.agreed))
     }
 }
 
@@ -439,18 +438,26 @@ pub fn script(cfg: &ConsentConfig) -> Vec<(&'static str, String)> {
 
 /// One line of `script`, by when it's used.
 pub fn script_line(cfg: &ConsentConfig, when: &str) -> Option<String> {
-    script(cfg).into_iter().find(|(w, _)| *w == when).map(|(_, s)| s)
+    script(cfg)
+        .into_iter()
+        .find(|(w, _)| *w == when)
+        .map(|(_, s)| s)
 }
 
 /// The announcement to use: `call_notes.announcement` may be one of the
 /// names in `ANNOUNCEMENTS` ("plain", "brief", "formal", "casual") or your
 /// own sentence.
 pub fn the_announcement(cfg: &ConsentConfig) -> String {
-    announcement_named(cfg.announcement.trim()).map(str::to_string).unwrap_or_else(|| cfg.announcement.clone())
+    announcement_named(cfg.announcement.trim())
+        .map(str::to_string)
+        .unwrap_or_else(|| cfg.announcement.clone())
 }
 
 pub fn announcement_named(name: &str) -> Option<&'static str> {
-    ANNOUNCEMENTS.iter().find(|(n, _)| *n == name).map(|(_, text)| *text)
+    ANNOUNCEMENTS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, text)| *text)
 }
 
 /// Who gets told what, in plain terms.
@@ -477,7 +484,9 @@ pub fn explain(cfg: &ConsentConfig) -> String {
     let base = match cfg.default_scope {
         Scope::Off => "I don't record unless you ask.",
         Scope::YouOnly => "I note your side only, which captures nobody else.",
-        Scope::Everyone if cfg.ask_the_others => "I record the whole call once everyone has said yes.",
+        Scope::Everyone if cfg.ask_the_others => {
+            "I record the whole call once everyone has said yes."
+        }
         Scope::Everyone => "I record the whole call, and I tell everyone first.",
     };
     let others = if cfg.ask_the_others {

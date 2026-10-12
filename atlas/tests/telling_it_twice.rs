@@ -43,7 +43,14 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn cfg() -> Config {
@@ -51,11 +58,23 @@ fn cfg() -> Config {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 fn an_edit(what: &str, home: Home) -> Edit {
-    Edit { about: subject_of(what), home, replacing: None, becomes: what.into(), said_times: 2 }
+    Edit {
+        about: subject_of(what),
+        home,
+        replacing: None,
+        becomes: what.into(),
+        said_times: 2,
+    }
 }
 
 // ============ the place a lesson can live at all =========================
@@ -67,7 +86,8 @@ fn what_has_been_learned_is_in_front_of_the_model_every_turn() {
     // by any caller.
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "context");
-    d.mending.applied(an_edit("keep replies to one line", Home::HowTo));
+    d.mending
+        .applied(an_edit("keep replies to one line", Home::HowTo));
 
     let ctx = d.context();
     assert!(
@@ -94,14 +114,22 @@ fn instructions_are_carried_before_preferences_when_the_cap_bites() {
     applied.push(an_edit("always check the date first", Home::HowTo));
 
     let s = standing(&applied);
-    assert!(s.contains("always check the date first"), "the instruction was dropped: {s}");
-    assert_eq!(s.lines().count() - 1, MAX_STANDING, "the cap stopped applying");
+    assert!(
+        s.contains("always check the date first"),
+        "the instruction was dropped: {s}"
+    );
+    assert_eq!(
+        s.lines().count() - 1,
+        MAX_STANDING,
+        "the cap stopped applying"
+    );
 }
 
 #[test]
 fn the_standing_list_is_bounded_so_it_cannot_crowd_out_what_you_just_said() {
-    let applied: Vec<Edit> =
-        (0..MAX_STANDING + 20).map(|i| an_edit(&format!("rule {i}"), Home::HowTo)).collect();
+    let applied: Vec<Edit> = (0..MAX_STANDING + 20)
+        .map(|i| an_edit(&format!("rule {i}"), Home::HowTo))
+        .collect();
     assert_eq!(standing(&applied).lines().count() - 1, MAX_STANDING);
 }
 
@@ -120,7 +148,10 @@ fn the_fix_is_taken_out_of_the_sentence_you_said_it_in() {
         wanted_in("you opened the wrong one, use the newest instead").as_deref(),
         Some("use the newest instead")
     );
-    assert_eq!(wanted_in("next time lead with the number").as_deref(), Some("lead with the number"));
+    assert_eq!(
+        wanted_in("next time lead with the number").as_deref(),
+        Some("lead with the number")
+    );
 }
 
 #[test]
@@ -128,7 +159,11 @@ fn a_complaint_with_no_fix_in_it_yields_no_rule() {
     // "That's wrong" is a signal to ask, not a lesson to file. Filing it
     // produces a rule that forbids one thing and teaches none.
     assert_eq!(wanted_in("that's wrong"), None);
-    assert_eq!(wanted_in("that's wrong, again"), None, "more complaint was read as a fix");
+    assert_eq!(
+        wanted_in("that's wrong, again"),
+        None,
+        "more complaint was read as a fix"
+    );
     assert_eq!(wanted_in("no"), None);
 }
 
@@ -136,7 +171,10 @@ fn a_complaint_with_no_fix_in_it_yields_no_rule() {
 fn the_same_complaint_said_two_ways_matches_itself() {
     // `slug` strips filler for exactly this reason — the whole sentence would
     // never match twice.
-    assert_eq!(subject_of("that was too long, keep it short"), subject_of("way too long, be brief"));
+    assert_eq!(
+        subject_of("that was too long, keep it short"),
+        subject_of("way too long, be brief")
+    );
 }
 
 #[test]
@@ -148,9 +186,13 @@ fn a_correction_with_no_fix_is_not_actionable() {
 
 #[test]
 fn where_a_lesson_goes_follows_what_kind_of_lesson_it_is() {
-    let how = Correction::new("order", "did it backwards", NOW, 1).wanting("always check the date first");
+    let how =
+        Correction::new("order", "did it backwards", NOW, 1).wanting("always check the date first");
     assert_eq!(home_for(&how), Home::HowTo);
-    assert!(home_for(&how).read_every_time(), "an instruction that is not read every time is a diary");
+    assert!(
+        home_for(&how).read_every_time(),
+        "an instruction that is not read every time is a diary"
+    );
 
     let you = Correction::new("tone", "too formal", NOW, 1).wanting("I prefer it plainer");
     assert_eq!(home_for(&you), Home::AboutYou);
@@ -162,8 +204,15 @@ fn where_a_lesson_goes_follows_what_kind_of_lesson_it_is() {
 fn one_correction_is_noted_and_does_not_become_a_rule() {
     let mut m = Mending::default();
     let got = m.heard(Correction::new("too-long", "said a lot", NOW, 1).wanting("one line"));
-    assert!(got.is_none(), "a rule was made from a single irritable evening");
-    assert_eq!(m.heard.len(), 1, "the note was not kept as evidence for the next one");
+    assert!(
+        got.is_none(),
+        "a rule was made from a single irritable evening"
+    );
+    assert_eq!(
+        m.heard.len(),
+        1,
+        "the note was not kept as evidence for the next one"
+    );
 }
 
 #[test]
@@ -171,7 +220,10 @@ fn saying_it_twice_in_one_sitting_is_emphasis_not_a_second_occasion() {
     let mut m = Mending::default();
     m.heard(Correction::new("too-long", "said a lot", NOW, 7).wanting("one line"));
     let again = m.heard(Correction::new("too-long", "said a lot", NOW + 30, 7).wanting("one line"));
-    assert!(again.is_none(), "restating a complaint in the same breath became a rule");
+    assert!(
+        again.is_none(),
+        "restating a complaint in the same breath became a rule"
+    );
 }
 
 #[test]
@@ -191,12 +243,18 @@ fn saying_it_on_a_second_occasion_earns_the_edit() {
 fn going_back_on_a_written_rule_is_the_number_that_matters() {
     let mut m = Mending::default();
     m.heard(Correction::new("too-long", "a lot", NOW, 1).wanting("one line"));
-    let edit = m.heard(Correction::new("too-long", "a lot", NOW + 86_400, 2).wanting("one line")).unwrap();
+    let edit = m
+        .heard(Correction::new("too-long", "a lot", NOW + 86_400, 2).wanting("one line"))
+        .unwrap();
     m.applied(edit);
     assert_eq!(m.repeat_rate(), 0.0);
 
     m.heard(Correction::new("too-long", "a lot", NOW + 172_800, 3).wanting("one line"));
-    assert_eq!(m.repeat_rate(), 1.0, "Atlas was told, wrote it down, and did it again");
+    assert_eq!(
+        m.repeat_rate(),
+        1.0,
+        "Atlas was told, wrote it down, and did it again"
+    );
 }
 
 // ============ reached from the running program ==========================
@@ -218,8 +276,14 @@ fn a_bare_complaint_is_asked_about_rather_than_filed() {
     let mut d = daemon(&c, &p, "bare");
 
     let said = d.turn("that's wrong", NOW);
-    assert!(said.contains("What should I have done instead"), "got: {said}");
-    assert!(d.mending.heard.is_empty(), "a rule with no fix in it was filed");
+    assert!(
+        said.contains("What should I have done instead"),
+        "got: {said}"
+    );
+    assert!(
+        d.mending.heard.is_empty(),
+        "a rule with no fix in it was filed"
+    );
 }
 
 #[test]
@@ -251,9 +315,18 @@ fn the_second_occasion_offers_the_edit_rather_than_writing_it() {
     d.session.started += 1;
     let said = d.turn("that was too long, keep it to one line", NOW + 86_400);
 
-    assert!(said.contains("Alright?"), "the edit was not put as a question: {said}");
-    assert!(said.contains("one line"), "the proposal did not name the change: {said}");
-    assert!(d.mending.applied.is_empty(), "it wrote the rule without asking");
+    assert!(
+        said.contains("Alright?"),
+        "the edit was not put as a question: {said}"
+    );
+    assert!(
+        said.contains("one line"),
+        "the proposal did not name the change: {said}"
+    );
+    assert!(
+        d.mending.applied.is_empty(),
+        "it wrote the rule without asking"
+    );
 }
 
 #[test]
@@ -266,7 +339,10 @@ fn the_offer_can_be_refused_and_nothing_is_written() {
     d.turn("that was too long, keep it to one line", NOW + 86_400);
     d.turn("no", NOW + 86_405);
 
-    assert!(d.mending.applied.is_empty(), "a refused edit was written anyway");
+    assert!(
+        d.mending.applied.is_empty(),
+        "a refused edit was written anyway"
+    );
 }
 
 #[test]
@@ -340,7 +416,10 @@ fn a_correction_marks_the_model_call_that_caused_it() {
     d.turn("that was too long, keep it to one line", NOW + 1);
 
     let c = d.trace.calls.last().unwrap();
-    assert!(c.correction.is_some(), "the call that caused the correction was not marked");
+    assert!(
+        c.correction.is_some(),
+        "the call that caused the correction was not marked"
+    );
     assert_eq!(c.graded, Some(false), "the call was not graded bad");
     assert_eq!(d.trace.caused_corrections().len(), 1);
 }
@@ -350,7 +429,9 @@ fn the_scoreboard_is_askable() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "score");
 
-    assert!(d.turn("how am i doing", NOW).contains("haven't had to correct me"));
+    assert!(d
+        .turn("how am i doing", NOW)
+        .contains("haven't had to correct me"));
 
     d.turn("that was too long, keep it to one line", NOW);
     d.session.started += 1;
@@ -389,7 +470,11 @@ fn what_has_been_learned_survives_a_restart() {
         Store::new(store),
         Proactive::new(ProactiveConfig::default()),
     );
-    assert_eq!(d2.mending.applied.len(), 1, "the lesson died with the process");
+    assert_eq!(
+        d2.mending.applied.len(),
+        1,
+        "the lesson died with the process"
+    );
     assert!(d2.context().contains("keep it to one line"));
 }
 

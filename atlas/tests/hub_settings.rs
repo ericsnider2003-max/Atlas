@@ -1,6 +1,9 @@
 mod common; // `common::source_of`: a module's source wherever its files live
 
-use atlas::hub::{esc, form_field, list_page_at, permissions_page, route, settings_page, status_page, urldecode, Page};
+use atlas::hub::{
+    esc, form_field, list_page_at, permissions_page, route, settings_page, status_page, urldecode,
+    Page,
+};
 use atlas::settings::{registry, Settings, Value, Weight};
 use atlas::voice::ToolsConfig;
 
@@ -31,7 +34,10 @@ fn every_toggle_i_have_added_appears_in_the_hub() {
         "backup.enabled",
         "quick_input.enabled",
     ] {
-        assert!(s.get(key).is_some(), "{key} has no way to be turned on or off");
+        assert!(
+            s.get(key).is_some(),
+            "{key} has no way to be turned on or off"
+        );
     }
 }
 
@@ -39,8 +45,16 @@ fn every_toggle_i_have_added_appears_in_the_hub() {
 fn every_setting_explains_itself_in_plain_language() {
     for item in &s().items {
         assert!(!item.what.is_empty(), "{} has no explanation", item.key);
-        assert!(!item.what.contains("bool"), "{} explains itself in code terms", item.key);
-        assert!(item.what.ends_with('.'), "{} should read as a sentence", item.key);
+        assert!(
+            !item.what.contains("bool"),
+            "{} explains itself in code terms",
+            item.key
+        );
+        assert!(
+            item.what.ends_with('.'),
+            "{} should read as a sentence",
+            item.key
+        );
     }
 }
 
@@ -49,7 +63,11 @@ fn anything_with_a_real_cost_states_it() {
     // A toggle that turns on a camera must not look like one that changes
     // sentence length.
     for item in s().items.iter().filter(|i| i.weight.needs_confirming()) {
-        assert!(!item.cost.is_empty(), "{} has a consequence but doesn't say what", item.key);
+        assert!(
+            !item.cost.is_empty(),
+            "{} has a consequence but doesn't say what",
+            item.key
+        );
     }
 }
 
@@ -57,7 +75,10 @@ fn anything_with_a_real_cost_states_it() {
 fn sensors_and_permissions_are_weighted_differently_from_taste() {
     let s = s();
     assert_eq!(s.get("presence.enabled").unwrap().weight, Weight::Sensitive);
-    assert_eq!(s.get("proactive.enabled").unwrap().weight, Weight::Permission);
+    assert_eq!(
+        s.get("proactive.enabled").unwrap().weight,
+        Weight::Permission
+    );
     assert_eq!(s.get("persona.tone").unwrap().weight, Weight::Preference);
     assert!(Weight::Sensitive.needs_confirming());
     assert!(!Weight::Preference.needs_confirming());
@@ -238,14 +259,18 @@ fn a_number_outside_its_range_is_refused_with_the_range() {
 fn a_choice_only_accepts_its_own_options() {
     let mut s = s();
     let e = s.set("persona.tone", "sarcastic").unwrap_err();
-    assert!(e.contains("dry"), "the error should list what's allowed: {e}");
+    assert!(
+        e.contains("dry"),
+        "the error should list what's allowed: {e}"
+    );
     assert!(s.set("persona.tone", "warm").is_ok());
 }
 
 #[test]
 fn a_list_is_edited_as_plain_comma_separated_text() {
     let mut s = s();
-    s.set("identity.trusted_devices", "iPhone, iPad ,, ").unwrap();
+    s.set("identity.trusted_devices", "iPhone, iPad ,, ")
+        .unwrap();
     assert_eq!(
         s.get("identity.trusted_devices").unwrap().value,
         Value::List(vec!["iPhone".into(), "iPad".into()]),
@@ -280,7 +305,10 @@ fn text_from_outside_cannot_inject_markup_into_the_page() {
     let nasty = "<script>alert(1)</script>";
     assert!(!esc(nasty).contains("<script"));
     let page = list_page_at(None, "Activity", "what happened", &[nasty.to_string()]);
-    assert!(!page.contains("<script>alert"), "escaped in the rendered page");
+    assert!(
+        !page.contains("<script>alert"),
+        "escaped in the rendered page"
+    );
     assert!(page.contains("&lt;script&gt;"));
 }
 
@@ -318,15 +346,24 @@ fn the_settings_page_renders_every_group_and_control() {
 #[test]
 fn turning_on_something_consequential_asks_you_to_confirm() {
     let page = settings_page(&s());
-    assert!(page.contains("onsubmit=\"return confirm("), "a camera toggle must confirm");
+    assert!(
+        page.contains("onsubmit=\"return confirm("),
+        "a camera toggle must confirm"
+    );
 }
 
 #[test]
 fn the_page_works_with_no_internet_and_no_javascript_framework() {
     // Atlas works offline, so the hub has to.
     let page = settings_page(&s());
-    assert!(!page.contains("http://") && !page.contains("https://"), "no external requests");
-    assert!(!page.to_lowercase().contains("<script"), "no scripts at all");
+    assert!(
+        !page.contains("http://") && !page.contains("https://"),
+        "no external requests"
+    );
+    assert!(
+        !page.to_lowercase().contains("<script"),
+        "no scripts at all"
+    );
     assert!(page.contains("<form method=post"), "plain forms");
 }
 
@@ -356,7 +393,10 @@ fn every_page_carries_the_same_navigation() {
 #[test]
 fn posted_form_values_are_decoded() {
     let body = "key=identity.trusted_devices&value=iPhone%2C+iPad";
-    assert_eq!(form_field(body, "key").as_deref(), Some("identity.trusted_devices"));
+    assert_eq!(
+        form_field(body, "key").as_deref(),
+        Some("identity.trusted_devices")
+    );
     assert_eq!(form_field(body, "value").as_deref(), Some("iPhone, iPad"));
     assert!(form_field(body, "missing").is_none());
 }
@@ -372,11 +412,23 @@ fn a_malformed_percent_escape_does_not_panic() {
 fn the_riskiest_new_capabilities_are_findable_and_explain_their_limits() {
     let s = s();
     let money = s.get("finance.enabled").expect("money must be togglable");
-    assert!(money.cost.contains("cannot submit"), "the guarantee should be visible: {}", money.cost);
-    let calls = s.get("call_notes.enabled").expect("call notes must be togglable");
+    assert!(
+        money.cost.contains("cannot submit"),
+        "the guarantee should be visible: {}",
+        money.cost
+    );
+    let calls = s
+        .get("call_notes.enabled")
+        .expect("call notes must be togglable");
     assert_eq!(calls.weight, Weight::Permission);
     // Eric, 24 Sep 2026: the others are asked and must say yes.
-    assert!(calls.cost.contains("until you ask them and tell me they said yes"), "{}", calls.cost);
+    assert!(
+        calls
+            .cost
+            .contains("until you ask them and tell me they said yes"),
+        "{}",
+        calls.cost
+    );
 }
 
 #[test]
@@ -389,7 +441,10 @@ fn a_number_you_never_touched_is_not_reported_as_changed() {
     // the voice's speed, which has the same widening.
     let s = s();
     let speed = s.get("voice_settings.speed").unwrap();
-    assert!(!speed.changed(), "a fresh config should have nothing changed");
+    assert!(
+        !speed.changed(),
+        "a fresh config should have nothing changed"
+    );
     let mut s2 = s;
     s2.set("voice_settings.speed", "1.4").unwrap();
     assert!(s2.get("voice_settings.speed").unwrap().changed());
@@ -403,7 +458,10 @@ fn the_settings_page_works_when_atlas_does_not() {
     assert!(works_without_voice(Page::Settings));
     assert!(works_without_voice(Page::Permissions));
     assert!(works_without_voice(Page::Status));
-    assert!(!works_without_voice(Page::Now), "the live view needs a running daemon");
+    assert!(
+        !works_without_voice(Page::Now),
+        "the live view needs a running daemon"
+    );
 }
 
 #[test]
@@ -435,8 +493,14 @@ fn there_is_a_way_in_that_needs_no_voice_and_no_memory() {
         "the launcher must call Atlas by full path, not rely on the working \
          directory to find it"
     );
-    assert!(bat.contains("works even when Atlas won't"), "and says why it's there");
-    assert!(bat.contains("Could not find atlas.exe"), "says so plainly when it cannot start");
+    assert!(
+        bat.contains("works even when Atlas won't"),
+        "and says why it's there"
+    );
+    assert!(
+        bat.contains("Could not find atlas.exe"),
+        "says so plainly when it cannot start"
+    );
 
     // And the files it downloads must land where Atlas will look for them:
     // `roots::install_root()` is the exe's folder or `ATLAS_HOME`, never the
@@ -454,7 +518,10 @@ fn there_really_is_a_settings_subcommand() {
     // and no such subcommand existed, so it fell through to the parser and
     // said it didn't understand. The .bat was fine; the program wasn't.
     let main = crate::common::source_of("main");
-    assert!(main.contains(r#"== Some("settings")"#), "no settings subcommand");
+    assert!(
+        main.contains(r#"== Some("settings")"#),
+        "no settings subcommand"
+    );
     assert!(main.contains("fn run_hub"), "and nothing serving the hub");
 }
 
@@ -482,11 +549,24 @@ fn the_hub_listens_where_you_said_and_nowhere_public() {
     // asserted about a string. What has not moved is the refusal.
     use atlas::server::bind_address;
 
-    assert_eq!(bind_address("").unwrap().to_string(), "127.0.0.1", "empty is this machine only");
+    assert_eq!(
+        bind_address("").unwrap().to_string(),
+        "127.0.0.1",
+        "empty is this machine only"
+    );
     assert_eq!(bind_address("  ").unwrap().to_string(), "127.0.0.1");
 
-    for private in ["10.0.0.4", "192.168.1.20", "172.20.0.9", "100.101.102.103", "127.0.0.1"] {
-        assert!(bind_address(private).is_ok(), "{private} is a private address");
+    for private in [
+        "10.0.0.4",
+        "192.168.1.20",
+        "172.20.0.9",
+        "100.101.102.103",
+        "127.0.0.1",
+    ] {
+        assert!(
+            bind_address(private).is_ok(),
+            "{private} is a private address"
+        );
     }
 
     let wide = bind_address("0.0.0.0").unwrap_err();
@@ -495,7 +575,10 @@ fn the_hub_listens_where_you_said_and_nowhere_public() {
 
     for public in ["8.8.8.8", "203.0.113.5", "172.32.0.1"] {
         let said = bind_address(public).unwrap_err();
-        assert!(said.contains("public address"), "{public} should be refused: {said}");
+        assert!(
+            said.contains("public address"),
+            "{public} should be refused: {said}"
+        );
     }
 
     let nonsense = bind_address("my-laptop").unwrap_err();
@@ -508,7 +591,9 @@ fn the_hub_listens_where_you_said_and_nowhere_public() {
     // checked below: from anywhere public it reads sealed envelopes only.
     let src = crate::common::source_of("server");
     assert!(src.contains("bind_address(&cfg.reachable_from)"));
-    let door = src.find("pub struct SignalListener").expect("the peer door");
+    let door = src
+        .find("pub struct SignalListener")
+        .expect("the peer door");
     let hub = &src[..door];
     assert!(
         !hub.contains(r#"bind(("0.0.0.0"#),
@@ -552,7 +637,10 @@ fn it_stops_rather_than_falling_back_when_there_is_no_entropy() {
     // unavailable is worse than not starting — everything downstream assumes
     // it's strong and you'd never know.
     let src = crate::common::source_of("server");
-    assert!(src.contains("fn new_token() -> Result<String>"), "it has to be able to fail");
+    assert!(
+        src.contains("fn new_token() -> Result<String>"),
+        "it has to be able to fail"
+    );
     let main = crate::common::source_of("main");
     assert!(main.contains("couldn't make a secure token"));
     assert!(main.contains("process::exit"), "and actually stop");
@@ -578,7 +666,10 @@ fn the_delay_is_capped_so_it_cannot_hold_the_one_connection_open() {
     for i in 0..500 {
         f.failed(i);
     }
-    assert!(f.delay_ms() <= 2000, "an unbounded delay is its own denial of service");
+    assert!(
+        f.delay_ms() <= 2000,
+        "an unbounded delay is its own denial of service"
+    );
 }
 
 #[test]
@@ -628,8 +719,15 @@ fn a_permission_that_is_off_can_be_turned_on_from_the_permissions_page() {
         .into_iter()
         .find(|i| matches!(i.value, atlas::settings::Value::Toggle(false)))
         .expect("the shipped settings have something consequential switched off");
-    let row = page.split("<div class=row>").find(|r| r.contains(&esc(&off.name))).expect("its row");
-    assert!(row.contains("action=/hub/set"), "no way to change {}: {row}", off.name);
+    let row = page
+        .split("<div class=row>")
+        .find(|r| r.contains(&esc(&off.name)))
+        .expect("its row");
+    assert!(
+        row.contains("action=/hub/set"),
+        "no way to change {}: {row}",
+        off.name
+    );
     assert!(row.contains("Turn on"), "{row}");
     // Turning it on still asks first.
     assert!(row.contains("onsubmit=\"return confirm("), "{row}");
@@ -638,7 +736,12 @@ fn a_permission_that_is_off_can_be_turned_on_from_the_permissions_page() {
 #[test]
 fn the_setting_badges_describe_rather_than_instruct() {
     // "changes permissions" read as "you need to change permissions".
-    for w in [Weight::Preference, Weight::Resource, Weight::Sensitive, Weight::Permission] {
+    for w in [
+        Weight::Preference,
+        Weight::Resource,
+        Weight::Sensitive,
+        Weight::Permission,
+    ] {
         let l = w.label();
         assert!(!l.contains("permission"), "{l}");
     }

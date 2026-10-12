@@ -5,21 +5,44 @@ fn cfg() -> RecallConfig {
 }
 
 fn piece(id: u64, title: &str, text: &str, at: u64) -> Piece {
-    Piece { id, source: format!("notes/{title}.md"), title: title.into(), text: text.into(), at, embedding: None }
+    Piece {
+        id,
+        source: format!("notes/{title}.md"),
+        title: title.into(),
+        text: text.into(),
+        at,
+        embedding: None,
+    }
 }
 
 fn library() -> Library {
     let mut l = Library::default();
-    l.add(piece(1, "VPS decision",
+    l.add(piece(
+        1,
+        "VPS decision",
         "Decided to keep the photo server on the Windows VPS rather than moving to Linux. \
-         The scanner vendor's kiosk library is Windows-only, which settles it.", 1_000_000));
-    l.add(piece(2, "Atlas phase one",
+         The scanner vendor's kiosk library is Windows-only, which settles it.",
+        1_000_000,
+    ));
+    l.add(piece(
+        2,
+        "Atlas phase one",
         "Dictation, then endpointing. The fixed eight second window is the biggest avoidable \
-         cost on this laptop.", 1_600_000));
-    l.add(piece(3, "Kitchen notes",
-        "The oven runs about twenty degrees hot. Everything needs less time than the recipe says.", 900_000));
-    l.add(piece(4, "Kiln call",
-        "They confirmed the kiln certification takes six weeks. Nothing can be fired before that.", 1_500_000));
+         cost on this laptop.",
+        1_600_000,
+    ));
+    l.add(piece(
+        3,
+        "Kitchen notes",
+        "The oven runs about twenty degrees hot. Everything needs less time than the recipe says.",
+        900_000,
+    ));
+    l.add(piece(
+        4,
+        "Kiln call",
+        "They confirmed the kiln certification takes six weeks. Nothing can be fired before that.",
+        1_500_000,
+    ));
     l
 }
 
@@ -46,9 +69,19 @@ fn a_word_in_everything_does_not_drown_the_search() {
     // great deal. Without that, common words win.
     let mut l = Library::default();
     for i in 0..20 {
-        l.add(piece(i, &format!("note {i}"), "the project notes about the project", i * 1000));
+        l.add(piece(
+            i,
+            &format!("note {i}"),
+            "the project notes about the project",
+            i * 1000,
+        ));
     }
-    l.add(piece(99, "special", "the project notes about kintsugi", 21_000));
+    l.add(piece(
+        99,
+        "special",
+        "the project notes about kintsugi",
+        21_000,
+    ));
     let hits = l.search("project kintsugi", None, &cfg(), 30_000);
     assert_eq!(hits[0].title, "special", "the rare word decides");
 }
@@ -56,8 +89,18 @@ fn a_word_in_everything_does_not_drown_the_search() {
 #[test]
 fn a_match_in_the_title_counts_for_more_than_one_buried_in_the_body() {
     let mut l = Library::default();
-    l.add(piece(1, "VPS decision", "some unrelated body text here entirely", 1000));
-    l.add(piece(2, "random note", "we talked about the vps once in passing", 1000));
+    l.add(piece(
+        1,
+        "VPS decision",
+        "some unrelated body text here entirely",
+        1000,
+    ));
+    l.add(piece(
+        2,
+        "random note",
+        "we talked about the vps once in passing",
+        1000,
+    ));
     let hits = l.search("vps", None, &cfg(), 2000);
     assert_eq!(hits[0].title, "VPS decision");
 }
@@ -66,7 +109,12 @@ fn a_match_in_the_title_counts_for_more_than_one_buried_in_the_body() {
 fn the_tenth_mention_of_a_word_says_little_more_than_the_third() {
     let mut l = Library::default();
     l.add(piece(1, "spam", &"kintsugi ".repeat(40), 1000));
-    l.add(piece(2, "real", "kintsugi is the art of repairing with gold, and it matters here", 1000));
+    l.add(piece(
+        2,
+        "real",
+        "kintsugi is the art of repairing with gold, and it matters here",
+        1000,
+    ));
     let hits = l.search("kintsugi repairing gold", None, &cfg(), 2000);
     assert_eq!(hits[0].title, "real", "saturation stops repetition winning");
 }
@@ -76,7 +124,11 @@ fn the_tenth_mention_of_a_word_says_little_more_than_the_third() {
 #[test]
 fn it_quotes_the_line_it_matched_so_you_need_not_open_it() {
     let hits = library().search("kiln certification", None, &cfg(), 2_000_000);
-    assert!(hits[0].quote.contains("six weeks"), "got: {}", hits[0].quote);
+    assert!(
+        hits[0].quote.contains("six weeks"),
+        "got: {}",
+        hits[0].quote
+    );
 }
 
 #[test]
@@ -88,7 +140,12 @@ fn it_says_why_each_one_came_back() {
 #[test]
 fn a_very_long_line_is_cut_rather_than_read_out_whole() {
     let mut l = Library::default();
-    l.add(piece(1, "long", &format!("kintsugi {}", "words ".repeat(200)), 1000));
+    l.add(piece(
+        1,
+        "long",
+        &format!("kintsugi {}", "words ".repeat(200)),
+        1000,
+    ));
     let hits = l.search("kintsugi", None, &cfg(), 2000);
     assert!(hits[0].quote.chars().count() <= 161);
     assert!(hits[0].quote.ends_with('…'));
@@ -105,7 +162,9 @@ fn what_atlas_says_leads_with_the_one_it_thinks_you_mean() {
 #[test]
 fn finding_nothing_says_so_plainly() {
     assert_eq!(spoken(&[]), "I can't find anything about that.");
-    assert!(library().search("submarines", None, &cfg(), 2_000_000).is_empty());
+    assert!(library()
+        .search("submarines", None, &cfg(), 2_000_000)
+        .is_empty());
 }
 
 // ================= recency nudges, it doesn't decide =================
@@ -114,7 +173,12 @@ fn finding_nothing_says_so_plainly() {
 fn something_older_that_matches_exactly_still_wins() {
     let mut l = Library::default();
     l.add(piece(1, "old exact", "kintsugi kintsugi repair", 0));
-    l.add(piece(2, "new vague", "some other topic entirely", 9_000_000));
+    l.add(piece(
+        2,
+        "new vague",
+        "some other topic entirely",
+        9_000_000,
+    ));
     let hits = l.search("kintsugi", None, &cfg(), 10_000_000);
     assert_eq!(hits[0].title, "old exact");
 }
@@ -131,7 +195,10 @@ fn between_two_equal_matches_the_recent_one_leads() {
 // ================= meaning, when a model is there =================
 
 fn with_meaning() -> RecallConfig {
-    RecallConfig { semantic: true, ..cfg() }
+    RecallConfig {
+        semantic: true,
+        ..cfg()
+    }
 }
 
 #[test]
@@ -146,7 +213,12 @@ fn meaning_finds_the_thing_when_you_remember_what_it_was_about() {
     l.add(other);
 
     let question = vec![0.88, 0.12, 0.25];
-    let hits = l.search("where does the photo thing live", Some(&question), &with_meaning(), 2000);
+    let hits = l.search(
+        "where does the photo thing live",
+        Some(&question),
+        &with_meaning(),
+        2000,
+    );
     assert_eq!(hits[0].title, "VPS decision");
     assert_eq!(hits[0].why, "about the same thing");
 }
@@ -163,7 +235,10 @@ fn words_and_meaning_are_merged_rather_than_chosen_between() {
 
     let q = vec![1.0, 0.0, 0.0];
     let hits = l.search("kintsugi", Some(&q), &with_meaning(), 2000);
-    assert_eq!(hits[0].title, "both", "matching both ways beats matching one");
+    assert_eq!(
+        hits[0].title, "both",
+        "matching both ways beats matching one"
+    );
 }
 
 #[test]
@@ -218,7 +293,12 @@ fn a_small_library_still_finds_things_it_cannot_tell_apart() {
     // It should still come back — Atlas just can't rank them by that word.
     let mut l = Library::default();
     for i in 0..4 {
-        l.add(piece(i, &format!("note {i}"), "everything mentions kintsugi", i * 1000));
+        l.add(piece(
+            i,
+            &format!("note {i}"),
+            "everything mentions kintsugi",
+            i * 1000,
+        ));
     }
     assert_eq!(l.search("kintsugi", None, &cfg(), 9000).len(), 4);
 }

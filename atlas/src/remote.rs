@@ -126,7 +126,10 @@ impl Queue {
 
     /// What the laptop should pick up when it next hears from the phone.
     pub fn for_the_laptop(&self) -> Vec<&Request> {
-        self.requests.iter().filter(|r| r.state == State::Waiting).collect()
+        self.requests
+            .iter()
+            .filter(|r| r.state == State::Waiting)
+            .collect()
     }
 
     pub fn set(&mut self, id: u64, state: State) -> bool {
@@ -153,7 +156,10 @@ impl Queue {
     }
 
     pub fn waiting_count(&self) -> usize {
-        self.requests.iter().filter(|r| r.state == State::Waiting).count()
+        self.requests
+            .iter()
+            .filter(|r| r.state == State::Waiting)
+            .count()
     }
 }
 
@@ -163,7 +169,8 @@ pub fn handing_off(what: &str, laptop_reachable: bool) -> String {
         "That needs the laptop. Sending it over — I'll tell you when it's done.".to_string()
     } else {
         "That needs the laptop and it's not reachable. I've queued it, and it'll go the \
-             moment we're back in touch.".to_string()
+             moment we're back in touch."
+            .to_string()
     }
     .replace("That needs", &format!("{what} needs"))
 }
@@ -232,8 +239,8 @@ pub enum Looks {
 /// render finished" is a reading; "render the draft and check it finished"
 /// is not, and a scan for the word anywhere would have called both readings.
 const READINGS: &[&str] = &[
-    "read", "check", "look", "show", "list", "find", "count", "what", "which",
-    "when", "where", "how", "is", "are", "does", "did", "tell me",
+    "read", "check", "look", "show", "list", "find", "count", "what", "which", "when", "where",
+    "how", "is", "are", "does", "did", "tell me",
 ];
 
 /// Does this look like it only wants to be told something?
@@ -245,15 +252,26 @@ pub fn reading_or_change(what: &str) -> Looks {
     let w = what.trim().to_lowercase();
     let first_word_is_a_reading = READINGS.iter().any(|r| {
         w.starts_with(r)
-            && w[r.len()..].chars().next().map(|c| !c.is_alphanumeric()).unwrap_or(true)
+            && w[r.len()..]
+                .chars()
+                .next()
+                .map(|c| !c.is_alphanumeric())
+                .unwrap_or(true)
     });
     if !first_word_is_a_reading {
         return Looks::Unknown;
     }
     // A reading that goes on to ask for work is not a reading. This is the
     // half that stops the opening word from being a way past the gate.
-    const THEN_DOES: &[&str] =
-        &[" and then ", " then ", " and delete", " and send", " and move", " and run", " and post"];
+    const THEN_DOES: &[&str] = &[
+        " and then ",
+        " then ",
+        " and delete",
+        " and send",
+        " and move",
+        " and run",
+        " and post",
+    ];
     if THEN_DOES.iter().any(|t| w.contains(t)) {
         return Looks::Unknown;
     }
@@ -294,10 +312,22 @@ pub fn handed_over(said: &str) -> Option<String> {
     let s = said.trim().trim_end_matches(['.', '!', '?']).trim();
     let l = s.to_ascii_lowercase();
     const LEADS: &[&str] = &[
-        "ask the laptop to ", "ask my laptop to ", "ask the computer to ", "ask my computer to ",
-        "have the laptop ", "have my laptop ", "get the laptop to ", "get my laptop to ",
-        "tell the laptop to ", "tell my laptop to ", "on the laptop, ", "on my laptop, ",
-        "on the laptop ", "on my laptop ", "on my computer, ", "on my computer ",
+        "ask the laptop to ",
+        "ask my laptop to ",
+        "ask the computer to ",
+        "ask my computer to ",
+        "have the laptop ",
+        "have my laptop ",
+        "get the laptop to ",
+        "get my laptop to ",
+        "tell the laptop to ",
+        "tell my laptop to ",
+        "on the laptop, ",
+        "on my laptop, ",
+        "on the laptop ",
+        "on my laptop ",
+        "on my computer, ",
+        "on my computer ",
     ];
     let lead = LEADS.iter().find(|p| l.starts_with(*p))?;
     let rest = s[lead.len()..].trim().trim_start_matches(',').trim();
@@ -309,13 +339,24 @@ pub fn handed_over(said: &str) -> Option<String> {
 pub fn go_ahead_on_the_laptop(said: &str) -> bool {
     let l = said.trim().trim_end_matches(['.', '!']).to_lowercase();
     matches!(
-        l.trim_start_matches("yes, ").trim_start_matches("yes ").trim(),
-        "go ahead on the laptop" | "go ahead on my laptop" | "run it on the laptop" | "run it on my laptop" | "do it on the laptop" | "do it on my laptop"
+        l.trim_start_matches("yes, ")
+            .trim_start_matches("yes ")
+            .trim(),
+        "go ahead on the laptop"
+            | "go ahead on my laptop"
+            | "run it on the laptop"
+            | "run it on my laptop"
+            | "do it on the laptop"
+            | "do it on my laptop"
     )
 }
 
 pub fn ask_to_carry(device: &str, n: u64, what: &str, at: u64) -> (String, String, String) {
-    (format!("{ASK_PREFIX}{device}:{n}"), "ask".into(), serde_json::json!({ "what": what, "at": at }).to_string())
+    (
+        format!("{ASK_PREFIX}{device}:{n}"),
+        "ask".into(),
+        serde_json::json!({ "what": what, "at": at }).to_string(),
+    )
 }
 
 /// `(device, n, what, at)` from an ask event.
@@ -326,11 +367,20 @@ pub fn read_ask(id: &str, to: &str) -> Option<(String, u64, String, u64)> {
     if device.is_empty() || what.is_empty() || what.len() > 2000 {
         return None;
     }
-    Some((device.into(), n.parse().ok()?, what.into(), v.get("at").and_then(|a| a.as_u64()).unwrap_or(0)))
+    Some((
+        device.into(),
+        n.parse().ok()?,
+        what.into(),
+        v.get("at").and_then(|a| a.as_u64()).unwrap_or(0),
+    ))
 }
 
 pub fn yes_to_carry(device: &str, n: u64) -> (String, String, String) {
-    (format!("{YES_PREFIX}{device}:{n}"), "askyes".into(), "yes".into())
+    (
+        format!("{YES_PREFIX}{device}:{n}"),
+        "askyes".into(),
+        "yes".into(),
+    )
 }
 
 pub fn read_yes(id: &str) -> Option<(String, u64)> {
@@ -338,7 +388,13 @@ pub fn read_yes(id: &str) -> Option<(String, u64)> {
     Some((device.into(), n.parse().ok()?))
 }
 
-pub fn answer_to_carry(device: &str, n: u64, what: &str, text: &str, done: bool) -> (String, String, String) {
+pub fn answer_to_carry(
+    device: &str,
+    n: u64,
+    what: &str,
+    text: &str,
+    done: bool,
+) -> (String, String, String) {
     (
         format!("{ANSWER_PREFIX}{device}:{n}"),
         "answer".into(),

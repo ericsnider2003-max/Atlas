@@ -59,7 +59,10 @@ pub fn mail_addresses(header: &str) -> Vec<String> {
     let mut out = Vec::new();
     for part in header.split(',') {
         let (_, addr) = crate::unsub::split_from(part);
-        let addr = addr.trim().trim_matches(|c| c == '"' || c == '\'').to_string();
+        let addr = addr
+            .trim()
+            .trim_matches(|c| c == '"' || c == '\'')
+            .to_string();
         if addr.contains('@') && !out.contains(&addr) {
             out.push(addr);
         }
@@ -100,7 +103,11 @@ impl Letter {
             }
         }
         Letter {
-            id: m.message_id.trim().trim_matches(|c| c == '<' || c == '>').to_string(),
+            id: m
+                .message_id
+                .trim()
+                .trim_matches(|c| c == '<' || c == '>')
+                .to_string(),
             in_reply_to: message_ids(&m.in_reply_to).into_iter().next(),
             refs: message_ids(&m.references),
             from_name,
@@ -117,7 +124,11 @@ impl Letter {
     /// The conversation it belongs to: the first message it refers back to,
     /// or its own id when it starts one.
     pub fn thread(&self) -> String {
-        self.refs.first().cloned().or_else(|| self.in_reply_to.clone()).unwrap_or_else(|| self.id.clone())
+        self.refs
+            .first()
+            .cloned()
+            .or_else(|| self.in_reply_to.clone())
+            .unwrap_or_else(|| self.id.clone())
     }
 
     /// Everyone else on it: the sender if it's theirs, the recipients if
@@ -139,7 +150,8 @@ impl MailBook {
     /// past `keep_days`. Returns how many were new.
     pub fn add(&mut self, letters: Vec<Letter>, keep_days: u64, now: u64) -> usize {
         let mut new = 0;
-        let mut held: std::collections::HashSet<String> = self.letters.iter().map(|x| x.id.clone()).collect();
+        let mut held: std::collections::HashSet<String> =
+            self.letters.iter().map(|x| x.id.clone()).collect();
         for l in letters {
             if l.id.is_empty() || !held.insert(l.id.clone()) {
                 continue;
@@ -160,7 +172,12 @@ impl MailBook {
     /// Every letter in a conversation, oldest first. A letter belongs if it
     /// shares the thread root, or names the root's id in its references.
     pub fn conversation(&self, thread: &str) -> Vec<&Letter> {
-        self.letters.iter().filter(|l| l.thread() == thread || l.id == thread || l.refs.iter().any(|r| r == thread)).collect()
+        self.letters
+            .iter()
+            .filter(|l| {
+                l.thread() == thread || l.id == thread || l.refs.iter().any(|r| r == thread)
+            })
+            .collect()
     }
 
     /// When you last heard from, or wrote to, this address.
@@ -183,7 +200,9 @@ impl MailBook {
             .iter()
             .rev()
             .filter(|l| {
-                l.from.contains(&w) || l.from_name.to_lowercase().contains(&w) || l.to.iter().any(|t| t.contains(&w))
+                l.from.contains(&w)
+                    || l.from_name.to_lowercase().contains(&w)
+                    || l.to.iter().any(|t| t.contains(&w))
             })
             .take(n)
             .collect()

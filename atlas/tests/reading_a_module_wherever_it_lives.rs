@@ -19,7 +19,11 @@ fn a_module_without_a_folder_reads_as_exactly_its_file() {
             continue; // split since: covered by the next test instead
         }
         assert_eq!(source_of(m), direct, "{m}");
-        assert_eq!(read_source_path(&format!("src/{m}.rs")).unwrap(), direct, "{m}");
+        assert_eq!(
+            read_source_path(&format!("src/{m}.rs")).unwrap(),
+            direct,
+            "{m}"
+        );
     }
 }
 
@@ -28,7 +32,9 @@ fn a_folder_module_reads_its_root_first_then_every_child() {
     // `platform` has no platform.rs: mod.rs is its root.
     let files = source_files_of("platform");
     assert_eq!(files[0], std::path::Path::new("src/platform/mod.rs"));
-    assert!(files.iter().any(|f| f.ends_with("win.rs")) && files.iter().any(|f| f.ends_with("mock.rs")));
+    assert!(
+        files.iter().any(|f| f.ends_with("win.rs")) && files.iter().any(|f| f.ends_with("mock.rs"))
+    );
     let text = source_of("platform");
     assert!(text.starts_with(&std::fs::read_to_string("src/platform/mod.rs").unwrap()));
     assert!(text.contains(&std::fs::read_to_string("src/platform/mock.rs").unwrap()));
@@ -44,11 +50,19 @@ fn text_built_in_from_assets_is_still_the_modules_text() {
     // The hub's stylesheet moved to assets/hub/hub.css on 27 Sep 2026. What
     // the tests read as "hub.rs" still carries it, in the order included.
     let assets = included_assets(std::path::Path::new("src/hub.rs"));
-    assert!(assets.iter().any(|a| a == std::path::Path::new("assets/hub/hub.css")), "{assets:?}");
+    assert!(
+        assets
+            .iter()
+            .any(|a| a == std::path::Path::new("assets/hub/hub.css")),
+        "{assets:?}"
+    );
     let hub = source_of("hub");
     let css = std::fs::read_to_string("assets/hub/hub.css").unwrap();
     assert!(hub.contains(&css));
-    assert!(hub.contains("pointerdown"), "the drag script is part of the hub's text");
+    assert!(
+        hub.contains("pointerdown"),
+        "the drag script is part of the hub's text"
+    );
     // config/ is data, not code, and is not followed.
     let guess = source_of("guessable");
     assert_eq!(guess, std::fs::read_to_string("src/guessable.rs").unwrap());
@@ -58,7 +72,10 @@ fn text_built_in_from_assets_is_still_the_modules_text() {
 fn a_missing_module_fails_loudly() {
     assert!(read_source_path("src/no_such_module_here.rs").is_none());
     let r = std::panic::catch_unwind(|| source_of("no_such_module_here"));
-    assert!(r.is_err(), "reading a module that is gone must fail, not scan nothing");
+    assert!(
+        r.is_err(),
+        "reading a module that is gone must fail, not scan nothing"
+    );
 }
 
 #[test]
@@ -100,9 +117,14 @@ fn a_split_modules_children_fold_into_it_and_nothing_else_does() {
     let tree = source_file_set();
     let children = tree
         .iter()
-        .filter(|(m, _)| crate::common::split_parent(std::path::Path::new(&format!("src/{m}.rs"))).is_some())
+        .filter(|(m, _)| {
+            crate::common::split_parent(std::path::Path::new(&format!("src/{m}.rs"))).is_some()
+        })
         .count();
-    assert!(children > 0, "daemon.rs and main.rs are split; their children should be in the tree");
+    assert!(
+        children > 0,
+        "daemon.rs and main.rs are split; their children should be in the tree"
+    );
     let folded = fold_split_modules(tree.clone());
     assert_eq!(folded.len(), tree.len() - children);
     for (m, _) in &folded {
@@ -128,7 +150,14 @@ fn every_spelling_of_a_function_definition_is_one() {
     ] {
         assert!(is_fn_definition(yes), "{yes}");
     }
-    for no in ["a(", "public_fn(", "self.fn_like(", "const A: u8 = f(1);", "let f = |x| x;", "// fn a("] {
+    for no in [
+        "a(",
+        "public_fn(",
+        "self.fn_like(",
+        "const A: u8 = f(1);",
+        "let f = |x| x;",
+        "// fn a(",
+    ] {
         assert!(!is_fn_definition(no), "{no}");
     }
 }

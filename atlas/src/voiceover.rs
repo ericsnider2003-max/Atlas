@@ -86,7 +86,12 @@ impl Default for VoiceoverConfig {
 /// Lines are placed in order, then nudged onto nearby cuts — a line that
 /// starts half a second after a cut sounds late in a way people notice
 /// without knowing why.
-pub fn lay_out(script: &[String], beats: &[Beat], total_secs: f32, cfg: &VoiceoverConfig) -> Vec<Line> {
+pub fn lay_out(
+    script: &[String],
+    beats: &[Beat],
+    total_secs: f32,
+    cfg: &VoiceoverConfig,
+) -> Vec<Line> {
     let mut out: Vec<Line> = Vec::new();
     let mut cursor = 0.0f32;
 
@@ -99,13 +104,20 @@ pub fn lay_out(script: &[String], beats: &[Beat], total_secs: f32, cfg: &Voiceov
             .iter()
             .filter(|b| (b.at - at).abs() <= cfg.snap_within_secs)
             .min_by(|a, b| {
-                (a.at - at).abs().partial_cmp(&(b.at - at).abs()).unwrap_or(std::cmp::Ordering::Equal)
+                (a.at - at)
+                    .abs()
+                    .partial_cmp(&(b.at - at).abs())
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
         {
             at = beat.at;
         }
 
-        out.push(Line { text: text.clone(), at, lasts });
+        out.push(Line {
+            text: text.clone(),
+            at,
+            lasts,
+        });
         cursor = at + lasts + cfg.gap_secs;
     }
 
@@ -116,11 +128,18 @@ pub fn lay_out(script: &[String], beats: &[Beat], total_secs: f32, cfg: &Voiceov
 /// Does the voiceover fit?
 #[derive(Debug, Clone, PartialEq)]
 pub enum Fit {
-    Fits { spare_secs: f32 },
+    Fits {
+        spare_secs: f32,
+    },
     /// Longer than the footage.
-    TooLong { over_secs: f32, cut_words: usize },
+    TooLong {
+        over_secs: f32,
+        cut_words: usize,
+    },
     /// Much shorter — the picture will sit there in silence.
-    TooShort { silence_secs: f32 },
+    TooShort {
+        silence_secs: f32,
+    },
 }
 
 pub fn fits(lines: &[Line], total_secs: f32, cfg: &VoiceoverConfig) -> Fit {
@@ -131,9 +150,14 @@ pub fn fits(lines: &[Line], total_secs: f32, cfg: &VoiceoverConfig) -> Fit {
         // Roughly how much to lose, in words rather than seconds — you cut
         // words, not seconds.
         let words = (-spare * 2.6 * cfg.pace).ceil() as usize;
-        Fit::TooLong { over_secs: -spare, cut_words: words }
+        Fit::TooLong {
+            over_secs: -spare,
+            cut_words: words,
+        }
     } else if spare > total_secs * 0.25 && spare > 3.0 {
-        Fit::TooShort { silence_secs: spare }
+        Fit::TooShort {
+            silence_secs: spare,
+        }
     } else {
         Fit::Fits { spare_secs: spare }
     }
@@ -175,7 +199,10 @@ pub fn spoken(lines: &[Line], fit: &Fit, snapped: usize) -> String {
         Fit::Fits { spare_secs } => {
             s.push_str(&format!(" Fits with {spare_secs:.1}s to spare."));
         }
-        Fit::TooLong { over_secs, cut_words } => {
+        Fit::TooLong {
+            over_secs,
+            cut_words,
+        } => {
             s.push_str(&format!(
                 " It's {over_secs:.1}s long for the footage — about {cut_words} words to lose."
             ));

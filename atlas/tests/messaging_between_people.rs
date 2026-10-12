@@ -69,21 +69,44 @@ fn a_message_can_be_written_with_everybody_else_offline() {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
 
     let (msg, left_out) = chats
-        .post(&room, "the roof quote came back high", 1_000, -300, &roster, &pairings)
+        .post(
+            &room,
+            "the roof quote came back high",
+            1_000,
+            -300,
+            &roster,
+            &pairings,
+        )
         .expect("writing a message required something of the network");
     assert!(left_out.is_empty());
     assert_eq!(msg.from, ME);
-    assert_eq!(msg.sent_at, 1_000, "the message did not carry the moment it was written");
+    assert_eq!(
+        msg.sent_at, 1_000,
+        "the message did not carry the moment it was written"
+    );
     assert_eq!(msg.to, vec![("Sam".to_string(), Delivery::Waiting)]);
-    assert!(!msg.fully_arrived(), "an unsent message claimed to have arrived");
+    assert!(
+        !msg.fully_arrived(),
+        "an unsent message claimed to have arrived"
+    );
     assert_eq!(msg.still_waiting(), vec!["Sam"]);
 
     // And it is in the outbox, visibly, rather than gone quiet.
-    assert_eq!(chats.outbox().len(), 1, "a message nobody has yet is invisible");
+    assert_eq!(
+        chats.outbox().len(),
+        1,
+        "a message nobody has yet is invisible"
+    );
 }
 
 #[test]
@@ -93,7 +116,13 @@ fn arriving_does_not_rewrite_when_it_was_written() {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
 
     let tuesday = 1_000_000;
@@ -103,7 +132,10 @@ fn arriving_does_not_rewrite_when_it_was_written() {
     chats.receive(&room, msg, &roster, &pairings).unwrap();
 
     let held = &chats.room(&room).unwrap().messages[0];
-    assert_eq!(held.sent_at, tuesday, "the timestamp was moved to when it was collected");
+    assert_eq!(
+        held.sent_at, tuesday,
+        "the timestamp was moved to when it was collected"
+    );
 }
 
 #[test]
@@ -113,11 +145,23 @@ fn a_message_carries_the_senders_own_offset_so_their_evening_is_their_evening() 
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
-    let (msg, _) = chats.post(&room, "night", 1_000, -300, &roster, &pairings).unwrap();
+    let (msg, _) = chats
+        .post(&room, "night", 1_000, -300, &roster, &pairings)
+        .unwrap();
     assert_eq!(msg.sent_offset_mins, -300);
-    assert_eq!(msg.as_they_saw_it(), 1_000 - 5 * 3600, "their local reading is wrong");
+    assert_eq!(
+        msg.as_they_saw_it(),
+        1_000 - 5 * 3600,
+        "their local reading is wrong"
+    );
 }
 
 // --- the clocks disagree ---------------------------------------------------
@@ -131,11 +175,26 @@ fn a_slow_clock_cannot_put_an_answer_above_its_question() {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
 
     let now = 2_000_000;
-    let (question, _) = chats.post(&room, "are we still on for Friday", now, 0, &roster, &pairings).unwrap();
+    let (question, _) = chats
+        .post(
+            &room,
+            "are we still on for Friday",
+            now,
+            0,
+            &roster,
+            &pairings,
+        )
+        .unwrap();
 
     // Their reply: written after seeing the question, but stamped a week ago.
     let their_clock = now - 7 * 86_400;
@@ -173,18 +232,39 @@ fn my_next_message_sorts_after_whatever_i_have_just_seen() {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
 
     // Their machine is a year ahead and has a high counter.
     chats
-        .receive(&room, from_them("Sam", "from the future", 99_999_999, 500), &roster, &pairings)
+        .receive(
+            &room,
+            from_them("Sam", "from the future", 99_999_999, 500),
+            &roster,
+            &pairings,
+        )
         .unwrap();
-    let (mine, _) = chats.post(&room, "replying now", 1_000, 0, &roster, &pairings).unwrap();
-    assert!(mine.after > 500, "the local counter ignored a higher one it had just seen");
+    let (mine, _) = chats
+        .post(&room, "replying now", 1_000, 0, &roster, &pairings)
+        .unwrap();
+    assert!(
+        mine.after > 500,
+        "the local counter ignored a higher one it had just seen"
+    );
 
-    let order: Vec<&str> =
-        chats.room(&room).unwrap().in_order().iter().map(|m| m.body.as_str()).collect();
+    let order: Vec<&str> = chats
+        .room(&room)
+        .unwrap()
+        .in_order()
+        .iter()
+        .map(|m| m.body.as_str())
+        .collect();
     assert_eq!(order, vec!["from the future", "replying now"]);
 }
 
@@ -197,11 +277,21 @@ fn two_people_typing_at_once_is_a_coincidence_not_an_ordering_question() {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
 
-    chats.receive(&room, from_them("Sam", "a", 1_000, 1), &roster, &pairings).unwrap();
-    chats.receive(&room, from_them("Sam", "b", 1_000, 1), &roster, &pairings).unwrap();
+    chats
+        .receive(&room, from_them("Sam", "a", 1_000, 1), &roster, &pairings)
+        .unwrap();
+    chats
+        .receive(&room, from_them("Sam", "b", 1_000, 1), &roster, &pairings)
+        .unwrap();
     let first: Vec<String> = chats
         .room(&room)
         .unwrap()
@@ -216,7 +306,10 @@ fn two_people_typing_at_once_is_a_coincidence_not_an_ordering_question() {
         .iter()
         .map(|m| m.body.clone())
         .collect();
-    assert_eq!(first, again, "the same conversation read back in two different orders");
+    assert_eq!(
+        first, again,
+        "the same conversation read back in two different orders"
+    );
 }
 
 // --- delivery is per person ------------------------------------------------
@@ -237,13 +330,19 @@ fn delivered_never_means_delivered_to_some_of_them() {
             &pairings,
         )
         .unwrap();
-    let (msg, _) = chats.post(&room, "starting Monday", 1_000, 0, &roster, &pairings).unwrap();
+    let (msg, _) = chats
+        .post(&room, "starting Monday", 1_000, 0, &roster, &pairings)
+        .unwrap();
 
     assert!(chats.mark_arrived(&room, &msg.id, "Sam", 1_100));
     let held = &chats.room(&room).unwrap().messages[0];
     assert!(!held.fully_arrived(), "one of two counted as everybody");
     assert_eq!(held.still_waiting(), vec!["Ali"]);
-    assert_eq!(chats.outbox().len(), 1, "it left the outbox with one person still missing it");
+    assert_eq!(
+        chats.outbox().len(),
+        1,
+        "it left the outbox with one person still missing it"
+    );
 
     assert!(chats.mark_arrived(&room, &msg.id, "Ali", 1_200));
     assert!(chats.room(&room).unwrap().messages[0].fully_arrived());
@@ -257,14 +356,25 @@ fn something_that_will_not_arrive_says_so_rather_than_waiting_forever() {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
-    let (msg, _) = chats.post(&room, "hello", 1_000, 0, &roster, &pairings).unwrap();
+    let (msg, _) = chats
+        .post(&room, "hello", 1_000, 0, &roster, &pairings)
+        .unwrap();
 
     assert!(chats.mark_stuck(&room, &msg.id, "Sam", "no route to them for six days"));
     let held = &chats.room(&room).unwrap().messages[0];
     assert!(matches!(held.to[0].1, Delivery::Stuck(_)));
-    assert!(held.to[0].1.plain().contains("six days"), "the reason was dropped");
+    assert!(
+        held.to[0].1.plain().contains("six days"),
+        "the reason was dropped"
+    );
 
     // And a late arrival still wins over having given up on it.
     assert!(chats.mark_arrived(&room, &msg.id, "Sam", 2_000));
@@ -279,12 +389,26 @@ fn the_same_message_delivered_twice_appears_once() {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
 
     let msg = from_them("Sam", "did you see this", 1_000, 1);
-    assert!(chats.receive(&room, msg.clone(), &roster, &pairings).unwrap(), "first copy refused");
-    assert!(!chats.receive(&room, msg, &roster, &pairings).unwrap(), "a duplicate was reported as new");
+    assert!(
+        chats
+            .receive(&room, msg.clone(), &roster, &pairings)
+            .unwrap(),
+        "first copy refused"
+    );
+    assert!(
+        !chats.receive(&room, msg, &roster, &pairings).unwrap(),
+        "a duplicate was reported as new"
+    );
     assert_eq!(chats.room(&room).unwrap().messages.len(), 1);
 }
 
@@ -328,13 +452,17 @@ fn somebody_removed_from_the_business_stops_receiving_without_the_room_changing(
             &pairings,
         )
         .unwrap();
-    let (before, left_out) = chats.post(&room, "before", 1_000, 0, &roster, &pairings).unwrap();
+    let (before, left_out) = chats
+        .post(&room, "before", 1_000, 0, &roster, &pairings)
+        .unwrap();
     assert_eq!(before.to.len(), 2);
     assert!(left_out.is_empty());
 
     roster.remove("Acme", "Ali");
 
-    let (after, left_out) = chats.post(&room, "after", 1_100, 0, &roster, &pairings).unwrap();
+    let (after, left_out) = chats
+        .post(&room, "after", 1_100, 0, &roster, &pairings)
+        .unwrap();
     assert_eq!(after.to.len(), 1, "a removed member was still sent to");
     assert_eq!(after.to[0].0, "Sam");
     assert_eq!(left_out, vec!["Ali"], "you were not told who was left out");
@@ -347,14 +475,28 @@ fn a_message_claiming_to_be_from_a_non_member_is_dropped_at_the_door() {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
 
     let refused = chats
-        .receive(&room, from_them("Stranger", "hello", 1_000, 1), &roster, &pairings)
+        .receive(
+            &room,
+            from_them("Stranger", "hello", 1_000, 1),
+            &roster,
+            &pairings,
+        )
         .unwrap_err();
     assert_eq!(refused, Refused::NotInThatBusiness("Stranger".into()));
-    assert!(chats.room(&room).unwrap().messages.is_empty(), "it was stored anyway");
+    assert!(
+        chats.room(&room).unwrap().messages.is_empty(),
+        "it was stored anyway"
+    );
 }
 
 #[test]
@@ -367,7 +509,9 @@ fn a_personal_room_needs_no_business_at_all() {
     let room = chats
         .open("Sam", Space::Personal, &["Sam".into()], &roster, &pairings)
         .expect("a personal conversation demanded a business");
-    assert!(chats.post(&room, "pub friday?", 1_000, 0, &roster, &pairings).is_ok());
+    assert!(chats
+        .post(&room, "pub friday?", 1_000, 0, &roster, &pairings)
+        .is_ok());
 }
 
 // --- reading it back -------------------------------------------------------
@@ -377,13 +521,31 @@ fn unread_counts_what_they_said_and_not_what_i_said() {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
 
-    chats.post(&room, "mine", 1_000, 0, &roster, &pairings).unwrap();
-    assert!(chats.room(&room).unwrap().unread().is_empty(), "my own message was unread to me");
+    chats
+        .post(&room, "mine", 1_000, 0, &roster, &pairings)
+        .unwrap();
+    assert!(
+        chats.room(&room).unwrap().unread().is_empty(),
+        "my own message was unread to me"
+    );
 
-    chats.receive(&room, from_them("Sam", "theirs", 1_100, 9), &roster, &pairings).unwrap();
+    chats
+        .receive(
+            &room,
+            from_them("Sam", "theirs", 1_100, 9),
+            &roster,
+            &pairings,
+        )
+        .unwrap();
     assert_eq!(chats.room(&room).unwrap().unread().len(), 1);
 }
 
@@ -397,9 +559,22 @@ fn what_it_says_out_loud_leads_with_what_is_waiting_on_you() {
     assert_eq!(chats.spoken(), "Nothing new.");
 
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
-    chats.receive(&room, from_them("Sam", "you there?", 1_000, 1), &roster, &pairings).unwrap();
+    chats
+        .receive(
+            &room,
+            from_them("Sam", "you there?", 1_000, 1),
+            &roster,
+            &pairings,
+        )
+        .unwrap();
     let said = chats.spoken();
     assert!(said.starts_with("1 unread"), "{said}");
     assert!(said.contains("Sam"), "it does not say who: {said}");
@@ -407,18 +582,30 @@ fn what_it_says_out_loud_leads_with_what_is_waiting_on_you() {
     // Replying marks what was already there as read -- you saw it, you
     // answered it -- so a second message has to arrive for there to be both
     // halves to put in order.
-    chats.post(&room, "here", 1_100, 0, &roster, &pairings).unwrap();
+    chats
+        .post(&room, "here", 1_100, 0, &roster, &pairings)
+        .unwrap();
     assert!(
         chats.room(&room).unwrap().unread().is_empty(),
         "answering somebody left their message unread"
     );
-    chats.receive(&room, from_them("Sam", "and another", 1_200, 40), &roster, &pairings).unwrap();
+    chats
+        .receive(
+            &room,
+            from_them("Sam", "and another", 1_200, 40),
+            &roster,
+            &pairings,
+        )
+        .unwrap();
 
     let said = chats.spoken();
     assert!(said.contains("waiting to be picked up"), "{said}");
     let unread_at = said.find("unread").expect("the unread part vanished");
     let waiting_at = said.find("waiting").expect("the waiting part vanished");
-    assert!(unread_at < waiting_at, "it led with what is waiting on somebody else: {said}");
+    assert!(
+        unread_at < waiting_at,
+        "it led with what is waiting on somebody else: {said}"
+    );
 }
 
 #[test]
@@ -426,9 +613,17 @@ fn a_conversation_survives_being_written_down_and_read_back() {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
-    chats.post(&room, "keep this", 1_000, -300, &roster, &pairings).unwrap();
+    chats
+        .post(&room, "keep this", 1_000, -300, &roster, &pairings)
+        .unwrap();
 
     let yaml = serde_yaml::to_string(&chats).unwrap();
     let back: Chats = serde_yaml::from_str(&yaml).unwrap();
@@ -436,7 +631,10 @@ fn a_conversation_survives_being_written_down_and_read_back() {
     assert_eq!(held.body, "keep this");
     assert_eq!(held.sent_at, 1_000);
     assert_eq!(held.sent_offset_mins, -300);
-    assert_eq!(back.clock, chats.clock, "the ordering counter did not survive a restart");
+    assert_eq!(
+        back.clock, chats.clock,
+        "the ordering counter did not survive a restart"
+    );
 }
 
 #[test]
@@ -447,19 +645,44 @@ fn the_pieces_the_outbox_is_built_from_answer_on_their_own() {
     // one whose behaviour nobody has actually stated.
     assert!(!Delivery::Waiting.arrived());
     assert!(Delivery::Arrived(1).arrived());
-    assert!(!Delivery::Stuck("no route".into()).arrived(), "giving up counted as arriving");
+    assert!(
+        !Delivery::Stuck("no route".into()).arrived(),
+        "giving up counted as arriving"
+    );
 
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room_id = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
-    assert!(chats.room(&room_id).unwrap().undelivered().is_empty(), "an empty room owed something");
+    assert!(
+        chats.room(&room_id).unwrap().undelivered().is_empty(),
+        "an empty room owed something"
+    );
 
-    let (mine, _) = chats.post(&room_id, "mine", 1_000, 0, &roster, &pairings).unwrap();
-    chats.receive(&room_id, from_them("Sam", "theirs", 1_100, 9), &roster, &pairings).unwrap();
+    let (mine, _) = chats
+        .post(&room_id, "mine", 1_000, 0, &roster, &pairings)
+        .unwrap();
+    chats
+        .receive(
+            &room_id,
+            from_them("Sam", "theirs", 1_100, 9),
+            &roster,
+            &pairings,
+        )
+        .unwrap();
     let owed = chats.room(&room_id).unwrap().undelivered();
-    assert_eq!(owed.len(), 1, "their message counted as something I owe them");
+    assert_eq!(
+        owed.len(),
+        1,
+        "their message counted as something I owe them"
+    );
     assert_eq!(owed[0].id, mine.id);
 
     chats.mark_arrived(&room_id, &mine.id, "Sam", 1_200);
@@ -483,15 +706,40 @@ fn a_conversation_survives_being_put_down_and_picked_up_from_disk() {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room_id = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
-    chats.post(&room_id, "written before a restart", 1_000, -300, &roster, &pairings).unwrap();
+    chats
+        .post(
+            &room_id,
+            "written before a restart",
+            1_000,
+            -300,
+            &roster,
+            &pairings,
+        )
+        .unwrap();
     chats.save(&store).unwrap();
 
     let back = Chats::load(&store);
-    assert_eq!(back.room(&room_id).unwrap().messages[0].body, "written before a restart");
-    assert_eq!(back.clock, chats.clock, "the ordering counter did not survive");
-    assert_eq!(back.outbox().len(), 1, "what was still owed was forgotten across a restart");
+    assert_eq!(
+        back.room(&room_id).unwrap().messages[0].body,
+        "written before a restart"
+    );
+    assert_eq!(
+        back.clock, chats.clock,
+        "the ordering counter did not survive"
+    );
+    assert_eq!(
+        back.outbox().len(),
+        1,
+        "what was still owed was forgotten across a restart"
+    );
 }
 
 #[test]
@@ -503,13 +751,21 @@ fn a_machines_offset_is_read_rather_than_configured() {
     use atlas::daemon::parse_offset;
     assert_eq!(parse_offset("+0000"), 0);
     assert_eq!(parse_offset("-0500"), -300, "US eastern in winter");
-    assert_eq!(parse_offset("+0530"), 330, "the half-hour offsets are real places");
+    assert_eq!(
+        parse_offset("+0530"),
+        330,
+        "the half-hour offsets are real places"
+    );
     assert_eq!(parse_offset("-0930"), -570);
 
     // Anything it cannot read is 0 rather than a panic or a guess: a message
     // shown in UTC is a smaller failure than a message that would not send.
     for junk in ["", "nonsense", "0500", "+05", "++0500"] {
-        assert_eq!(parse_offset(junk), 0, "{junk:?} was not handled as unreadable");
+        assert_eq!(
+            parse_offset(junk),
+            0,
+            "{junk:?} was not handled as unreadable"
+        );
     }
 }
 
@@ -521,9 +777,17 @@ fn an_offset_that_is_not_a_real_place_is_refused() {
     // wrong answer to no answer.
     use atlas::daemon::parse_offset;
     assert_eq!(parse_offset("+9900"), 0, "no zone is ninety-nine hours out");
-    assert_eq!(parse_offset("+0099"), 0, "ninety-nine minutes is not a zone");
+    assert_eq!(
+        parse_offset("+0099"),
+        0,
+        "ninety-nine minutes is not a zone"
+    );
     assert_eq!(parse_offset("+05x0"), 0);
-    assert_eq!(parse_offset("+1400"), 840, "Kiritimati is real and is the furthest out");
+    assert_eq!(
+        parse_offset("+1400"),
+        840,
+        "Kiritimati is real and is the furthest out"
+    );
 }
 
 // ===================== the platforms list, which was dead ===============
@@ -563,16 +827,30 @@ fn what_each_platform_permits_is_said_in_its_own_words() {
     // Called directly as well as through `what_you_asked_for`, because these
     // strings are the answer a person acts on and a test that only reads the
     // assembled paragraph cannot say which platform a sentence belonged to.
-    assert!(Platform::Telegram.what_it_permits().contains("own account rather than only for bots"));
-    assert!(Platform::GroupMe.what_it_permits().contains("free, public interface"));
-    assert!(Platform::Discord.what_it_permits().contains("Not your private messages"));
-    assert!(Platform::Slack.what_it_permits().contains("workspaces you add it to"));
+    assert!(Platform::Telegram
+        .what_it_permits()
+        .contains("own account rather than only for bots"));
+    assert!(Platform::GroupMe
+        .what_it_permits()
+        .contains("free, public interface"));
+    assert!(Platform::Discord
+        .what_it_permits()
+        .contains("Not your private messages"));
+    assert!(Platform::Slack
+        .what_it_permits()
+        .contains("workspaces you add it to"));
 
     // The two that cannot work say why, and the WhatsApp one refuses the
     // workaround by name rather than just declining.
-    assert!(Platform::WhatsApp.what_it_permits().contains("pretending to be you"));
-    assert!(Platform::WhatsApp.what_it_permits().contains("won't do that"));
-    assert!(Platform::Signal.what_it_permits().contains("that's the point of Signal"));
+    assert!(Platform::WhatsApp
+        .what_it_permits()
+        .contains("pretending to be you"));
+    assert!(Platform::WhatsApp
+        .what_it_permits()
+        .contains("won't do that"));
+    assert!(Platform::Signal
+        .what_it_permits()
+        .contains("that's the point of Signal"));
 
     // And it is not the same string for two platforms, which is the way a
     // table like this rots.
@@ -595,7 +873,10 @@ fn what_each_platform_permits_is_said_in_its_own_words() {
 fn the_ones_that_can_never_work_are_said_so_rather_than_left_out() {
     let said = what_you_asked_for(&["whatsapp".into(), "signal".into()]);
     assert!(said.contains("WhatsApp"), "{said}");
-    assert!(said.contains("no way to do this for a personal account"), "{said}");
+    assert!(
+        said.contains("no way to do this for a personal account"),
+        "{said}"
+    );
     assert!(said.contains("Signal"), "{said}");
 
     // And they are not given a "needs" line. "Needs nothing that exists"
@@ -611,21 +892,34 @@ fn what_you_can_act_on_comes_first() {
     let telegram = said.find("Telegram").expect("Telegram missing");
     let whatsapp = said.find("WhatsApp").expect("WhatsApp missing");
     assert!(telegram < whatsapp, "the dead end came first: {said}");
-    assert!(said.contains("BotFather"), "it didn't say what Telegram needs: {said}");
+    assert!(
+        said.contains("BotFather"),
+        "it didn't say what Telegram needs: {said}"
+    );
 }
 
 #[test]
 fn a_name_it_does_not_know_is_named_rather_than_dropped() {
     let said = what_you_asked_for(&["matrix".into()]);
-    assert!(said.contains("matrix"), "the unknown entry vanished: {said}");
-    assert!(said.contains("Telegram"), "it didn't say what it can do: {said}");
+    assert!(
+        said.contains("matrix"),
+        "the unknown entry vanished: {said}"
+    );
+    assert!(
+        said.contains("Telegram"),
+        "it didn't say what it can do: {said}"
+    );
 }
 
 #[test]
 fn it_still_refuses_to_count_an_inbox_it_has_not_read() {
     // The defect this replaces, kept as an assertion so it cannot come back
     // by someone reaching for `spoken` again.
-    for list in [vec!["telegram".to_string()], vec!["whatsapp".to_string()], vec![]] {
+    for list in [
+        vec!["telegram".to_string()],
+        vec!["whatsapp".to_string()],
+        vec![],
+    ] {
         let said = what_you_asked_for(&list);
         assert!(!said.contains("all group chat"), "{said}");
         assert!(!said.contains("0 messages"), "{said}");
@@ -661,9 +955,15 @@ fn the_daemon_is_what_reaches_it_rather_than_this_test() {
         .filter(|l| !l.trim_start().starts_with("//"))
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(!code.contains("messaging::spoken(&[]"), "the empty-slice count is back");
+    assert!(
+        !code.contains("messaging::spoken(&[]"),
+        "the empty-slice count is back"
+    );
     let yaml = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    assert!(yaml.contains("platforms: [telegram]"), "there is nowhere to set it");
+    assert!(
+        yaml.contains("platforms: [telegram]"),
+        "there is nowhere to set it"
+    );
     // `your_names` went the other way in the morning -- `#[serde(skip)]`, out
     // of the yaml, and named in PROMISES_ABOUT_WHAT_IS_NOT_BUILT, because
     // nothing read messages and so there was nothing for a name to be found
@@ -675,9 +975,14 @@ fn the_daemon_is_what_reaches_it_rather_than_this_test() {
     // again; a PROMISES list that only ever grows is a list of things nobody
     // intends to build. This assertion was the morning's, and the afternoon
     // made it false, which is the right direction for an assertion to break.
-    assert!(yaml.contains("your_names:"), "your_names is unsettable and there is a reader now");
     assert!(
-        atlas::messaging::MessagingConfig::default().your_names.is_empty(),
+        yaml.contains("your_names:"),
+        "your_names is unsettable and there is a reader now"
+    );
+    assert!(
+        atlas::messaging::MessagingConfig::default()
+            .your_names
+            .is_empty(),
         "it should ship empty -- Atlas is not guessing what you are called"
     );
     // And the reader is what earns it.
@@ -719,7 +1024,13 @@ fn a_message_from_a_peer_is_filed_into_your_conversation_with_them() {
 
     let mut chats = Chats::default();
     let room = chats
-        .open(&c.from, Space::Business("Acme".into()), &[c.from.clone()], &roster, &pairings)
+        .open(
+            &c.from,
+            Space::Business("Acme".into()),
+            &[c.from.clone()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
     let msg = Message {
         id: c.id.clone(),
@@ -733,8 +1044,14 @@ fn a_message_from_a_peer_is_filed_into_your_conversation_with_them() {
     assert!(chats.receive(&room, msg, &roster, &pairings).unwrap());
 
     let held = &chats.room(&room).unwrap().messages[0];
-    assert_eq!(held.from, "Sam", "filed under your name for them, from the token");
-    assert_eq!(held.sent_at, 7_000, "the sender's clock is kept, not the arrival time");
+    assert_eq!(
+        held.from, "Sam",
+        "filed under your name for them, from the token"
+    );
+    assert_eq!(
+        held.sent_at, 7_000,
+        "the sender's clock is kept, not the arrival time"
+    );
     assert_eq!(held.body, "the roof quote came back high");
 }
 
@@ -747,7 +1064,19 @@ fn a_peer_cannot_place_a_message_in_a_business_your_roster_says_they_are_not_in(
     // The wire claims Northwind. The door accepts the message (Sam is a peer),
     // but filing it is a separate decision.
     let c = door
-        .receive_chat("sam-token", Some("Northwind".into()), "let me in", 1, 0, 1, "x", None, None, Vec::new(), 2)
+        .receive_chat(
+            "sam-token",
+            Some("Northwind".into()),
+            "let me in",
+            1,
+            0,
+            1,
+            "x",
+            None,
+            None,
+            Vec::new(),
+            2,
+        )
         .unwrap();
 
     let mut chats = Chats::default();
@@ -788,7 +1117,9 @@ fn a_group_message_is_written_to_every_member() {
             &pairings,
         )
         .unwrap();
-    let (msg, left) = chats.post(&room, "standup at 9", 1_000, 0, &roster, &pairings).unwrap();
+    let (msg, left) = chats
+        .post(&room, "standup at 9", 1_000, 0, &roster, &pairings)
+        .unwrap();
     assert!(left.is_empty());
     let waiting = msg.still_waiting();
     assert_eq!(waiting.len(), 2, "a group message is owed to every member");
@@ -800,11 +1131,25 @@ fn opening_a_group_again_folds_in_members_it_did_not_know() {
     let (roster, pairings) = business_with(&["Sam", "Jordan"]);
     let mut chats = Chats::default();
     chats
-        .open_group("grp-2", "g", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open_group(
+            "grp-2",
+            "g",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
     // Later we hear Jordan is in it too — learned, not duplicated, id unchanged.
     chats
-        .open_group("grp-2", "g", Space::Business("Acme".into()), &["Jordan".into()], &roster, &pairings)
+        .open_group(
+            "grp-2",
+            "g",
+            Space::Business("Acme".into()),
+            &["Jordan".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
     let m = &chats.room("grp-2").unwrap().members;
     assert_eq!(m.len(), 2);
@@ -874,9 +1219,19 @@ fn a_group_message_from_a_peer_reconstructs_the_shared_room_with_who_you_can_rea
 
     let m = &chats.room(&room).unwrap().members;
     assert!(m.iter().any(|x| x == "Eric"), "the sender is in it");
-    assert!(m.iter().any(|x| x == "Maya"), "a member you're paired with is in it");
-    assert!(!m.iter().any(|x| x == "Jordan"), "a member you cannot reach is left off");
-    assert_eq!(chats.room(&room).unwrap().messages[0].sent_at, 7_000, "their clock is kept");
+    assert!(
+        m.iter().any(|x| x == "Maya"),
+        "a member you're paired with is in it"
+    );
+    assert!(
+        !m.iter().any(|x| x == "Jordan"),
+        "a member you cannot reach is left off"
+    );
+    assert_eq!(
+        chats.room(&room).unwrap().messages[0].sent_at,
+        7_000,
+        "their clock is kept"
+    );
 }
 
 // ================= naming a group, and finding it by name =================
@@ -896,10 +1251,19 @@ fn a_group_can_be_named_and_found_by_that_name() {
         )
         .unwrap();
 
-    assert!(chats.name_group(&room, "Roofing crew"), "a group can be renamed");
+    assert!(
+        chats.name_group(&room, "Roofing crew"),
+        "a group can be renamed"
+    );
     // Found case-insensitively by the new name, so "message the roofing crew" lands.
-    assert_eq!(chats.group_named("roofing crew").map(|r| r.id.as_str()), Some(room.as_str()));
-    assert!(chats.group_named("Sam, Jordan").is_none(), "the old name no longer matches");
+    assert_eq!(
+        chats.group_named("roofing crew").map(|r| r.id.as_str()),
+        Some(room.as_str())
+    );
+    assert!(
+        chats.group_named("Sam, Jordan").is_none(),
+        "the old name no longer matches"
+    );
 }
 
 #[test]
@@ -907,8 +1271,20 @@ fn a_one_to_one_is_not_a_group_and_cannot_be_named() {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
-    assert!(!chats.name_group(&room, "not a group"), "a 1:1 is not a group to name");
-    assert!(chats.group_named("Sam").is_none(), "a 1:1 is never found as a group");
+    assert!(
+        !chats.name_group(&room, "not a group"),
+        "a 1:1 is not a group to name"
+    );
+    assert!(
+        chats.group_named("Sam").is_none(),
+        "a 1:1 is never found as a group"
+    );
 }

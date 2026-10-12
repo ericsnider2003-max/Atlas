@@ -53,8 +53,7 @@ pub fn empty_hello(greeting: &str, knows_you: bool, offered_before: bool) -> Opt
 }
 
 /// How Atlas addresses you. Yours to choose, including "don't".
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum Address {
     /// Nothing at all — just get on with it.
     #[default]
@@ -64,7 +63,6 @@ pub enum Address {
     /// "sir", "boss", whatever you set.
     Title(String),
 }
-
 
 impl Address {
     pub fn load(store: &crate::store::Store) -> Address {
@@ -176,12 +174,7 @@ pub enum Welcome {
     Offer(String),
 }
 
-pub fn welcome(
-    gone_secs: u64,
-    happened: &[Happened],
-    hour: u32,
-    cfg: &ReturnConfig,
-) -> Welcome {
+pub fn welcome(gone_secs: u64, happened: &[Happened], hour: u32, cfg: &ReturnConfig) -> Welcome {
     if !cfg.enabled {
         return Welcome::Nothing;
     }
@@ -191,7 +184,10 @@ pub fn welcome(
         return Welcome::Nothing;
     }
 
-    let urgent: Vec<&Happened> = happened.iter().filter(|h| h.needs_you || h.failed).collect();
+    let urgent: Vec<&Happened> = happened
+        .iter()
+        .filter(|h| h.needs_you || h.failed)
+        .collect();
     let rest = happened.len() - urgent.len();
     let greeting = cfg.how_to_address().greet(hour);
 
@@ -202,7 +198,11 @@ pub fn welcome(
         let picked = crate::next_up::top(
             &urgent,
             |_| true,
-            |h| (if h.needs_you { 2.0 } else { 0.0 }) + (if h.failed { 1.0 } else { 0.0 }) + h.at as f64 / 1e12,
+            |h| {
+                (if h.needs_you { 2.0 } else { 0.0 })
+                    + (if h.failed { 1.0 } else { 0.0 })
+                    + h.at as f64 / 1e12
+            },
             cfg.name_at_most,
         );
         let named: Vec<&str> = picked.chosen.iter().map(|h| h.what.as_str()).collect();
@@ -213,8 +213,10 @@ pub fn welcome(
         }
         s.push('.');
         if rest > 0 {
-            s.push_str(&format!(" {rest} other thing{} when you want it.",
-                if rest == 1 { "" } else { "s" }));
+            s.push_str(&format!(
+                " {rest} other thing{} when you want it.",
+                if rest == 1 { "" } else { "s" }
+            ));
         }
         return Welcome::Straight(s);
     }
@@ -233,14 +235,24 @@ pub fn welcome(
     let subjects = subjects_of(happened);
     let s = if cfg.offer_first {
         match subjects.len() {
-            1 => format!("{greeting}I've got an update on {} when you're ready.", subjects[0]),
+            1 => format!(
+                "{greeting}I've got an update on {} when you're ready.",
+                subjects[0]
+            ),
             _ => format!(
                 "{greeting}Updates on {} when you want them.",
                 list(&subjects, cfg.name_at_most)
             ),
         }
     } else {
-        format!("{greeting}{}", happened.iter().map(|h| h.what.clone()).collect::<Vec<_>>().join(". "))
+        format!(
+            "{greeting}{}",
+            happened
+                .iter()
+                .map(|h| h.what.clone())
+                .collect::<Vec<_>>()
+                .join(". ")
+        )
     };
     Welcome::Offer(s)
 }
@@ -257,7 +269,10 @@ fn subjects_of(happened: &[Happened]) -> Vec<String> {
 /// Cutting at three words regardless read "Atlas — your machine" as "an
 /// update on Atlas — your when you're ready" (found in round 9).
 fn subject_of(what: &str) -> String {
-    let mut parts = what.split(['—', '–', ':', ';', ',', '.']).map(str::trim).filter(|p| !p.is_empty());
+    let mut parts = what
+        .split(['—', '–', ':', ';', ',', '.'])
+        .map(str::trim)
+        .filter(|p| !p.is_empty());
     let mut head = parts.next().unwrap_or("").to_string();
     // A note titled "Atlas — …" is about what follows the dash, not Atlas.
     if head.eq_ignore_ascii_case("atlas") {
@@ -266,7 +281,12 @@ fn subject_of(what: &str) -> String {
         }
     }
     let mut words: Vec<&str> = head.split_whitespace().take(4).collect();
-    while words.len() > 1 && matches!(words.last().map(|w| w.to_lowercase()).as_deref(), Some("your" | "the" | "a" | "an" | "to" | "for" | "of" | "on" | "and" | "in" | "at")) {
+    while words.len() > 1
+        && matches!(
+            words.last().map(|w| w.to_lowercase()).as_deref(),
+            Some("your" | "the" | "a" | "an" | "to" | "for" | "of" | "on" | "and" | "in" | "at")
+        )
+    {
         words.pop();
     }
     words.join(" ")
@@ -298,7 +318,12 @@ pub fn address_change(said: &str) -> Option<Address> {
         return Some(Address::None);
     }
 
-    for lead in ["call me ", "address me as ", "you can call me ", "refer to me as "] {
+    for lead in [
+        "call me ",
+        "address me as ",
+        "you can call me ",
+        "refer to me as ",
+    ] {
         if let Some(i) = t.find(lead) {
             let rest = t[i + lead.len()..]
                 .trim()
@@ -310,8 +335,8 @@ pub fn address_change(said: &str) -> Option<Address> {
             // "call me back later" is not a name change. Anything followed by
             // a word that only makes sense as a verb phrase isn't one either.
             const NOT_A_NAME: &[&str] = &[
-                "back", "later", "when", "if", "tomorrow", "now", "then",
-                "about", "on", "at", "in", "after", "before", "once",
+                "back", "later", "when", "if", "tomorrow", "now", "then", "about", "on", "at",
+                "in", "after", "before", "once",
             ];
             let first = rest.split_whitespace().next().unwrap_or(rest);
             if NOT_A_NAME.contains(&first) {
@@ -319,7 +344,9 @@ pub fn address_change(said: &str) -> Option<Address> {
             }
             // Titles are the handful of words people mean as titles; anything
             // else is a name, including nicknames.
-            let titles = ["sir", "ma'am", "maam", "madam", "boss", "chief", "captain", "doctor"];
+            let titles = [
+                "sir", "ma'am", "maam", "madam", "boss", "chief", "captain", "doctor",
+            ];
             let word = rest.split_whitespace().next().unwrap_or(rest);
             return Some(if titles.contains(&word) {
                 Address::Title(word.to_string())
@@ -378,7 +405,10 @@ mod subject_tests {
     fn a_subject_is_named_whole_or_not_at_all() {
         assert_eq!(subject_of("Atlas — your machine"), "your machine");
         assert_eq!(subject_of("Backup finished: 3 folders"), "Backup finished");
-        assert_eq!(subject_of("Posted the weekly update to the blog"), "Posted the weekly update");
+        assert_eq!(
+            subject_of("Posted the weekly update to the blog"),
+            "Posted the weekly update"
+        );
         assert_eq!(subject_of("Scheduled the call for"), "Scheduled the call");
     }
 }

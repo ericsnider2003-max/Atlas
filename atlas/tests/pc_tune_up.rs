@@ -21,14 +21,23 @@ use atlas::platform::Monitor;
 use atlas::proactive::{Proactive, ProactiveConfig};
 use atlas::store::Store;
 use atlas::tune::{
-    atlas_family, cpu_share, look_at_space, may_move_into, move_destination, move_files_into_controlled, parse_logon_tasks,
-    parse_reg_values, pick_startup_to_stop, pick_to_close, sample_load, startup_switched_off, startup_words, tune_ask, Load,
-    Plan, Proc, Spare, StartupEntry, StartupFrom, TuneAsk, TuneUndo,
+    atlas_family, cpu_share, look_at_space, may_move_into, move_destination,
+    move_files_into_controlled, parse_logon_tasks, parse_reg_values, pick_startup_to_stop,
+    pick_to_close, sample_load, startup_switched_off, startup_words, tune_ask, Load, Plan, Proc,
+    Spare, StartupEntry, StartupFrom, TuneAsk, TuneUndo,
 };
 use std::path::{Path, PathBuf};
 
 fn proc(pid: u32, parent: u32, name: &str, mem_mb: u64, cpu_ms: u64, windowed: bool) -> Proc {
-    Proc { pid, parent, name: name.into(), session: 1, mem_mb, cpu_ms, windowed }
+    Proc {
+        pid,
+        parent,
+        name: name.into(),
+        session: 1,
+        mem_mb,
+        cpu_ms,
+        windowed,
+    }
 }
 
 fn tmp(tag: &str) -> PathBuf {
@@ -82,16 +91,43 @@ fn a_programs_cpu_is_what_its_processes_used_between_the_two_readings() {
     assert!(chrome.windowed && chrome.alone);
     let newthing = load.iter().find(|l| l.name == "newthing").unwrap();
     assert!((newthing.cpu_pct - cpu_share(300, 2000, 4)).abs() < 0.01);
-    assert!(load.iter().all(|l| l.name != "gone"), "a process that ended is no one's load");
+    assert!(
+        load.iter().all(|l| l.name != "gone"),
+        "a process that ended is no one's load"
+    );
     assert_eq!(load[0].name, "chrome", "busiest first");
 }
 
 #[test]
 fn services_and_helpers_are_marked_as_such() {
     let after = vec![
-        Proc { pid: 4, parent: 0, name: "System".into(), session: 0, mem_mb: 5, cpu_ms: 0, windowed: false },
-        Proc { pid: 700, parent: 4, name: "services".into(), session: 0, mem_mb: 10, cpu_ms: 0, windowed: false },
-        Proc { pid: 800, parent: 700, name: "svchost".into(), session: 0, mem_mb: 60, cpu_ms: 0, windowed: false },
+        Proc {
+            pid: 4,
+            parent: 0,
+            name: "System".into(),
+            session: 0,
+            mem_mb: 5,
+            cpu_ms: 0,
+            windowed: false,
+        },
+        Proc {
+            pid: 700,
+            parent: 4,
+            name: "services".into(),
+            session: 0,
+            mem_mb: 10,
+            cpu_ms: 0,
+            windowed: false,
+        },
+        Proc {
+            pid: 800,
+            parent: 700,
+            name: "svchost".into(),
+            session: 0,
+            mem_mb: 60,
+            cpu_ms: 0,
+            windowed: false,
+        },
         // In your session, but started by a service: still Windows'.
         proc(900, 800, "SomeBroker", 400, 0, false),
         proc(1000, 1, "explorer", 100, 0, true),
@@ -114,11 +150,24 @@ fn services_and_helpers_are_marked_as_such() {
 // ---------- choosing what to close ----------
 
 fn heavy(name: &str, pid: u32, mem_mb: u64, cpu: f32, windowed: bool) -> Load {
-    Load { name: name.into(), pids: vec![pid], cpu_pct: cpu, mem_mb, windowed, system: false, alone: true }
+    Load {
+        name: name.into(),
+        pids: vec![pid],
+        cpu_pct: cpu,
+        mem_mb,
+        windowed,
+        system: false,
+        alone: true,
+    }
 }
 
 fn spare() -> Spare {
-    Spare { min_mb: 200, min_cpu: 5.0, keep: vec!["onedrive".into()], ..Default::default() }
+    Spare {
+        min_mb: 200,
+        min_cpu: 5.0,
+        keep: vec!["onedrive".into()],
+        ..Default::default()
+    }
 }
 
 #[test]
@@ -160,7 +209,10 @@ fn atlas_is_never_offered_by_name_by_process_or_by_child() {
         heavy("Spotify", 600, 400, 1.0, true),
     ];
     let picked = pick_to_close(&load, &s);
-    assert_eq!(picked.iter().map(|l| l.name.as_str()).collect::<Vec<_>>(), vec!["Spotify"]);
+    assert_eq!(
+        picked.iter().map(|l| l.name.as_str()).collect::<Vec<_>>(),
+        vec!["Spotify"]
+    );
 }
 
 #[test]
@@ -185,14 +237,29 @@ fn atlas_family_is_every_descendant_and_survives_a_loop() {
 
 #[test]
 fn the_program_in_front_of_you_is_never_offered() {
-    let load = vec![heavy("chrome", 42, 3000, 20.0, true), heavy("Teams", 43, 900, 3.0, true)];
+    let load = vec![
+        heavy("chrome", 42, 3000, 20.0, true),
+        heavy("Teams", 43, 900, 3.0, true),
+    ];
     let mut s = spare();
     s.foreground = Some("chrome.exe".into());
-    assert_eq!(pick_to_close(&load, &s).iter().map(|l| l.name.as_str()).collect::<Vec<_>>(), vec!["Teams"]);
+    assert_eq!(
+        pick_to_close(&load, &s)
+            .iter()
+            .map(|l| l.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Teams"]
+    );
     // By process number too, when the name couldn't be read.
     let mut s = spare();
     s.foreground_pid = Some(43);
-    assert_eq!(pick_to_close(&load, &s).iter().map(|l| l.name.as_str()).collect::<Vec<_>>(), vec!["chrome"]);
+    assert_eq!(
+        pick_to_close(&load, &s)
+            .iter()
+            .map(|l| l.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["chrome"]
+    );
 }
 
 #[test]
@@ -209,13 +276,22 @@ fn helpers_light_programs_and_what_you_just_used_are_left() {
     ];
     let mut s = spare();
     s.in_use = vec!["Code.exe".into(), "".into(), "x".into()];
-    let names: Vec<String> = pick_to_close(&load, &s).into_iter().map(|l| l.name).collect();
-    assert_eq!(names, vec!["Updater".to_string(), "Steam".to_string()], "heaviest first: 40 + 22*50 > 600");
+    let names: Vec<String> = pick_to_close(&load, &s)
+        .into_iter()
+        .map(|l| l.name)
+        .collect();
+    assert_eq!(
+        names,
+        vec!["Updater".to_string(), "Steam".to_string()],
+        "heaviest first: 40 + 22*50 > 600"
+    );
 }
 
 #[test]
 fn at_most_six_are_offered_at_once() {
-    let load: Vec<Load> = (0..12).map(|i| heavy(&format!("App{i}"), 100 + i, 300 + i as u64, 0.0, true)).collect();
+    let load: Vec<Load> = (0..12)
+        .map(|i| heavy(&format!("App{i}"), 100 + i, 300 + i as u64, 0.0, true))
+        .collect();
     let picked = pick_to_close(&load, &spare());
     assert_eq!(picked.len(), 6);
     assert_eq!(picked[0].name, "App11");
@@ -224,14 +300,30 @@ fn at_most_six_are_offered_at_once() {
 #[test]
 fn the_offer_names_each_with_its_numbers() {
     let plan = Plan {
-        close: vec![heavy("Discord", 1, 410, 0.2, true), heavy("Steam", 2, 2048, 12.0, false)],
+        close: vec![
+            heavy("Discord", 1, 410, 0.2, true),
+            heavy("Steam", 2, 2048, 12.0, false),
+        ],
         ..Default::default()
     };
     let o = plan.offer();
-    assert!(o.contains("close Discord (410 MB), Steam (2.0 GB, 12% CPU, in the background)"), "{o}");
+    assert!(
+        o.contains("close Discord (410 MB), Steam (2.0 GB, 12% CPU, in the background)"),
+        "{o}"
+    );
     assert!(o.ends_with("Go ahead?"));
-    let moves = Plan { moves: Some((vec![PathBuf::from("/nowhere/a.iso")], PathBuf::from("/data/archive"))), ..Default::default() };
-    assert!(moves.offer().contains("move 1 file") && moves.offer().contains("\"undo\" moves them back"), "{}", moves.offer());
+    let moves = Plan {
+        moves: Some((
+            vec![PathBuf::from("/nowhere/a.iso")],
+            PathBuf::from("/data/archive"),
+        )),
+        ..Default::default()
+    };
+    assert!(
+        moves.offer().contains("move 1 file") && moves.offer().contains("\"undo\" moves them back"),
+        "{}",
+        moves.offer()
+    );
 }
 
 // ---------- startup ----------
@@ -240,9 +332,18 @@ fn the_offer_names_each_with_its_numbers() {
 fn startup_entries_are_read_with_their_on_or_off_mark() {
     let run = "\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\r\n    Discord    REG_SZ    \"C:\\Users\\x\\Discord\\Update.exe\" --processStart Discord.exe\r\n    Steam Client    REG_SZ    C:\\Program Files (x86)\\Steam\\steam.exe -silent\r\n";
     let vals = parse_reg_values(run);
-    assert_eq!(vals[1], ("Steam Client".to_string(), "C:\\Program Files (x86)\\Steam\\steam.exe -silent".to_string()));
+    assert_eq!(
+        vals[1],
+        (
+            "Steam Client".to_string(),
+            "C:\\Program Files (x86)\\Steam\\steam.exe -silent".to_string()
+        )
+    );
     let approved = "\r\nHKEY_CURRENT_USER\\...\\StartupApproved\\Run\r\n    Discord    REG_BINARY    030000000A1B2C3D4E5F6071\r\n    Steam Client    REG_BINARY    020000000000000000000000\r\n    Old    REG_BINARY    070000000000000000000000\r\n";
-    assert_eq!(startup_switched_off(approved), vec!["Discord".to_string(), "Old".to_string()]);
+    assert_eq!(
+        startup_switched_off(approved),
+        vec!["Discord".to_string(), "Old".to_string()]
+    );
 }
 
 #[test]
@@ -257,26 +358,82 @@ fn sign_in_tasks_leave_out_windows_own() {
 }
 
 fn entry(name: &str, from: StartupFrom, command: &str, on: bool) -> StartupEntry {
-    StartupEntry { name: name.into(), from, command: command.into(), key: name.into(), on }
+    StartupEntry {
+        name: name.into(),
+        from,
+        command: command.into(),
+        key: name.into(),
+        on,
+    }
 }
 
 #[test]
 fn only_your_own_unused_entries_are_offered_and_never_atlas() {
     let entries = vec![
-        entry("Spotify", StartupFrom::YourRunKey, "\"C:\\Users\\x\\Spotify.exe\" /background", true),
-        entry("Already off", StartupFrom::YourRunKey, "C:\\x\\off.exe", false),
-        entry("Vendor Tool", StartupFrom::MachineRunKey, "C:\\Program Files\\v\\tool.exe", true),
-        entry("Shortcut", StartupFrom::MachineStartupFolder, "C:\\ProgramData\\x.lnk", true),
+        entry(
+            "Spotify",
+            StartupFrom::YourRunKey,
+            "\"C:\\Users\\x\\Spotify.exe\" /background",
+            true,
+        ),
+        entry(
+            "Already off",
+            StartupFrom::YourRunKey,
+            "C:\\x\\off.exe",
+            false,
+        ),
+        entry(
+            "Vendor Tool",
+            StartupFrom::MachineRunKey,
+            "C:\\Program Files\\v\\tool.exe",
+            true,
+        ),
+        entry(
+            "Shortcut",
+            StartupFrom::MachineStartupFolder,
+            "C:\\ProgramData\\x.lnk",
+            true,
+        ),
         // Named oddly, but runs the program you used this week.
-        entry("com.squirrel.Slack", StartupFrom::YourRunKey, "C:\\Users\\x\\AppData\\Local\\slack\\slack.exe --startup", true),
-        entry("Atlas", StartupFrom::LogonTask, "C:\\Atlas\\atlas.exe --background", true),
+        entry(
+            "com.squirrel.Slack",
+            StartupFrom::YourRunKey,
+            "C:\\Users\\x\\AppData\\Local\\slack\\slack.exe --startup",
+            true,
+        ),
+        entry(
+            "Atlas",
+            StartupFrom::LogonTask,
+            "C:\\Atlas\\atlas.exe --background",
+            true,
+        ),
         // Atlas under another name: it runs Atlas's own program.
-        entry("My Helper", StartupFrom::YourStartupFolder, "D:\\Tools\\MyHelper.exe", true),
-        entry("SecurityHealth", StartupFrom::YourRunKey, "C:\\Windows\\system32\\SecurityHealthSystray.exe", true),
-        entry("OneDrive", StartupFrom::YourRunKey, "C:\\x\\OneDrive.exe /background", true),
+        entry(
+            "My Helper",
+            StartupFrom::YourStartupFolder,
+            "D:\\Tools\\MyHelper.exe",
+            true,
+        ),
+        entry(
+            "SecurityHealth",
+            StartupFrom::YourRunKey,
+            "C:\\Windows\\system32\\SecurityHealthSystray.exe",
+            true,
+        ),
+        entry(
+            "OneDrive",
+            StartupFrom::YourRunKey,
+            "C:\\x\\OneDrive.exe /background",
+            true,
+        ),
         entry("Zoom", StartupFrom::LogonTask, "C:\\x\\Zoom.exe", true),
     ];
-    let picked = pick_startup_to_stop(&entries, &["slack".to_string()], &["onedrive".to_string()], "D:\\Tools\\MyHelper.exe");
+    let picked = pick_startup_to_stop(
+        &entries,
+        &["slack".to_string()],
+        &["onedrive".to_string()],
+        "D:\\Tools\\MyHelper.exe",
+    );
     let names: Vec<&str> = picked.iter().map(|e| e.name.as_str()).collect();
     assert_eq!(names, vec!["Spotify", "Zoom"]);
 }
@@ -290,8 +447,15 @@ fn the_startup_list_says_where_each_lives_and_who_may_change_it() {
     ];
     let w = startup_words(&entries);
     assert!(w.starts_with("2 start with Windows"), "{w}");
-    assert!(w.contains("from your startup list: Spotify") && w.contains("machine-wide startup list: Vendor"), "{w}");
-    assert!(w.contains("1 more is switched off") && w.contains("administrator"), "{w}");
+    assert!(
+        w.contains("from your startup list: Spotify")
+            && w.contains("machine-wide startup list: Vendor"),
+        "{w}"
+    );
+    assert!(
+        w.contains("1 more is switched off") && w.contains("administrator"),
+        "{w}"
+    );
 }
 
 // ---------- space, and moving files only where you say ----------
@@ -309,7 +473,10 @@ fn the_space_look_finds_big_files_and_copies() {
     other[1_000_000] ^= 0xff;
     std::fs::write(d.join("different.bin"), &other).unwrap();
     // A big file, made sparse so the test writes almost nothing.
-    std::fs::File::create(d.join("movie.mkv")).unwrap().set_len(60 * 1_048_576).unwrap();
+    std::fs::File::create(d.join("movie.mkv"))
+        .unwrap()
+        .set_len(60 * 1_048_576)
+        .unwrap();
     let look = look_at_space(&d, &temp, std::time::Duration::from_secs(10));
     assert!(look.complete);
     assert_eq!(look.biggest.len(), 1);
@@ -323,15 +490,34 @@ fn the_space_look_finds_big_files_and_copies() {
 
 #[test]
 fn a_move_needs_a_folder_named_in_full() {
-    assert_eq!(move_destination("move my big downloads to D:\\Archive"), Some(PathBuf::from("D:\\Archive")));
-    assert_eq!(move_destination("move the duplicates into \"E:/Old Stuff\"."), Some(PathBuf::from("E:/Old Stuff")));
-    assert_eq!(move_destination("move my big downloads to /mnt/big/archive"), Some(PathBuf::from("/mnt/big/archive")));
-    assert_eq!(move_destination("move my big downloads to my archive"), None, "never guessed");
+    assert_eq!(
+        move_destination("move my big downloads to D:\\Archive"),
+        Some(PathBuf::from("D:\\Archive"))
+    );
+    assert_eq!(
+        move_destination("move the duplicates into \"E:/Old Stuff\"."),
+        Some(PathBuf::from("E:/Old Stuff"))
+    );
+    assert_eq!(
+        move_destination("move my big downloads to /mnt/big/archive"),
+        Some(PathBuf::from("/mnt/big/archive"))
+    );
+    assert_eq!(
+        move_destination("move my big downloads to my archive"),
+        None,
+        "never guessed"
+    );
     assert_eq!(move_destination("move my big downloads"), None);
-    assert_eq!(tune_ask("move my big downloads to my archive"), TuneAsk::MoveWhere);
+    assert_eq!(
+        tune_ask("move my big downloads to my archive"),
+        TuneAsk::MoveWhere
+    );
     assert_eq!(
         tune_ask("move the duplicates to D:\\Dupes"),
-        TuneAsk::MoveInto { to: PathBuf::from("D:\\Dupes"), duplicates: true }
+        TuneAsk::MoveInto {
+            to: PathBuf::from("D:\\Dupes"),
+            duplicates: true
+        }
     );
 }
 
@@ -340,10 +526,21 @@ fn files_never_go_into_the_systems_folders() {
     let dl = Path::new("C:\\Users\\x\\Downloads");
     assert!(may_move_into(Path::new("D:\\Archive"), dl).is_ok());
     assert!(may_move_into(Path::new("C:\\Users\\x\\Documents\\Old"), dl).is_ok());
-    for bad in ["C:\\Windows\\Temp", "C:\\Program Files\\x", "c:\\program files (x86)", "C:\\ProgramData\\y", "C:\\Users\\x\\AppData\\Roaming", "/etc/x", "/usr/local"] {
+    for bad in [
+        "C:\\Windows\\Temp",
+        "C:\\Program Files\\x",
+        "c:\\program files (x86)",
+        "C:\\ProgramData\\y",
+        "C:\\Users\\x\\AppData\\Roaming",
+        "/etc/x",
+        "/usr/local",
+    ] {
         assert!(may_move_into(Path::new(bad), dl).is_err(), "{bad}");
     }
-    assert!(may_move_into(Path::new("C:\\Users\\x\\Downloads\\"), dl).is_err(), "where they already are");
+    assert!(
+        may_move_into(Path::new("C:\\Users\\x\\Downloads\\"), dl).is_err(),
+        "where they already are"
+    );
 }
 
 #[test]
@@ -354,9 +551,23 @@ fn moved_files_go_back_and_nothing_is_overwritten() {
     std::fs::write(from.join("b.iso"), b"second").unwrap();
     // Already a file of that name where they're going.
     std::fs::write(to.join("a.zip"), b"was here").unwrap();
-    let (moved, failed) = move_files_into_controlled(&[from.join("a.zip"), from.join("b.iso"), from.join("missing.bin")], &to, &mut |_| Ok(()), &mut |_, _| Ok(()), &|| false);
+    let (moved, failed) = move_files_into_controlled(
+        &[
+            from.join("a.zip"),
+            from.join("b.iso"),
+            from.join("missing.bin"),
+        ],
+        &to,
+        &mut |_| Ok(()),
+        &mut |_, _| Ok(()),
+        &|| false,
+    );
     assert_eq!(moved.len(), 2);
-    assert_eq!(failed.len(), 1, "the missing one is said, not skipped silently");
+    assert_eq!(
+        failed.len(),
+        1,
+        "the missing one is said, not skipped silently"
+    );
     assert_eq!(std::fs::read(to.join("a.zip")).unwrap(), b"was here");
     assert_eq!(std::fs::read(to.join("a (2).zip")).unwrap(), b"first");
     let undo = atlas::tune::TuneUndo::Moves(moved.clone());
@@ -372,7 +583,10 @@ fn moved_files_go_back_and_nothing_is_overwritten() {
 #[test]
 fn each_way_of_asking_reaches_the_right_part() {
     assert_eq!(tune_ask("close what I don't need"), TuneAsk::Close);
-    assert_eq!(tune_ask("what's slowing my computer down"), TuneAsk::Slowing);
+    assert_eq!(
+        tune_ask("what's slowing my computer down"),
+        TuneAsk::Slowing
+    );
     assert_eq!(tune_ask("what's using my cpu"), TuneAsk::Slowing);
     assert_eq!(tune_ask("what starts with Windows"), TuneAsk::Startup);
     assert_eq!(tune_ask("clean up my startup"), TuneAsk::Startup);
@@ -390,20 +604,40 @@ fn each_way_of_asking_reaches_the_right_part() {
         "move my big downloads to D:\\Archive",
         "find duplicate files",
     ] {
-        assert!(matches!(parser.parse(said), atlas::intent::Intent::PcTune(_)), "{said} -> {:?}", parser.parse(said));
+        assert!(
+            matches!(parser.parse(said), atlas::intent::Intent::PcTune(_)),
+            "{said} -> {:?}",
+            parser.parse(said)
+        );
     }
     // The whole run is still the health check, which now uses the same
     // measuring and choosing.
-    assert_eq!(parser.parse("optimize my pc"), atlas::intent::Intent::MachineHealth);
+    assert_eq!(
+        parser.parse("optimize my pc"),
+        atlas::intent::Intent::MachineHealth
+    );
 }
 
 fn daemon_at<'a>(c: &'a atlas::config::Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
     let dir = tmp(&format!("daemon-{tag}"));
-    Daemon::new(c, p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(dir),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 #[test]
@@ -428,7 +662,13 @@ fn undo_moves_the_files_back_through_the_ordinary_undo() {
     let from = tmp("undo-from");
     let to = tmp("undo-to");
     std::fs::write(from.join("big.iso"), b"disc").unwrap();
-    let (moved, _) = move_files_into_controlled(&[from.join("big.iso")], &to, &mut |_| Ok(()), &mut |_, _| Ok(()), &|| false);
+    let (moved, _) = move_files_into_controlled(
+        &[from.join("big.iso")],
+        &to,
+        &mut |_| Ok(()),
+        &mut |_, _| Ok(()),
+        &|| false,
+    );
     let t = 1_790_991_000;
     // What `carry_out_optimize` writes when it moves files.
     let id = d.history.note(
@@ -438,17 +678,35 @@ fn undo_moves_the_files_back_through_the_ordinary_undo() {
         true,
         t,
     );
-    d.store.save(atlas::tune::TUNE_UNDO_RECORD, &vec![(id, TuneUndo::Moves(moved))]).unwrap();
+    d.store
+        .save(
+            atlas::tune::TUNE_UNDO_RECORD,
+            &vec![(id, TuneUndo::Moves(moved))],
+        )
+        .unwrap();
     let asked = d.turn("undo", t + 5);
     assert!(asked.contains("moved 1 file from Downloads"), "{asked}");
     let mut done = d.turn("yes", t + 10);
-    assert!(!done.starts_with("Undone"), "worker acceptance is not completion: {done}");
+    assert!(
+        !done.starts_with("Undone"),
+        "worker acceptance is not completion: {done}"
+    );
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while std::time::Instant::now() < deadline {
-        if let Some(result) = d.tick(t + 11).into_iter().find(|line| line.starts_with("Undone")) { done = result; break; }
+        if let Some(result) = d
+            .tick(t + 11)
+            .into_iter()
+            .find(|line| line.starts_with("Undone"))
+        {
+            done = result;
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    assert!(done.starts_with("Undone") && done.contains("Moved 1 of 1 back"), "{done}");
+    assert!(
+        done.starts_with("Undone") && done.contains("Moved 1 of 1 back"),
+        "{done}"
+    );
     assert!(from.join("big.iso").exists() && !to.join("big.iso").exists());
     assert_eq!(std::fs::read(from.join("big.iso")).unwrap(), b"disc");
     let left: Vec<(u64, TuneUndo)> = d.store.load(atlas::tune::TUNE_UNDO_RECORD);
@@ -459,7 +717,12 @@ fn undo_moves_the_files_back_through_the_ordinary_undo() {
 fn the_status_page_has_the_buttons_and_they_go_through_talk() {
     let s = atlas::hub::speed_section();
     assert_eq!(s.matches("action=/hub/talk").count(), 4);
-    for said in ["close what I don", "what starts with Windows", "slowing my computer down", "taking up my space"] {
+    for said in [
+        "close what I don",
+        "what starts with Windows",
+        "slowing my computer down",
+        "taking up my space",
+    ] {
         assert!(s.contains(said), "{said}");
     }
 }

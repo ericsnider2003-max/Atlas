@@ -11,12 +11,15 @@
 //! - **Keys are read on the tick side, from the vault**, and handed to the
 //!   errand; a locked vault means the sources that need no key, said.
 
-use super::{analysis, page};
 use super::apis::{self, GoogleSignIn, Https, TikTokSignIn};
 use super::onepage;
 use super::snapshots::{Book, Platform, Record};
 use super::watchlist::{self, Seen, Target, Watch};
-use super::{SocialConfig, VAULT_BLUESKY, VAULT_FACEBOOK, VAULT_INSTAGRAM, VAULT_THREADS, VAULT_TIKTOK, VAULT_YOUTUBE_KEY, VAULT_YOUTUBE_OAUTH};
+use super::{analysis, page};
+use super::{
+    SocialConfig, VAULT_BLUESKY, VAULT_FACEBOOK, VAULT_INSTAGRAM, VAULT_THREADS, VAULT_TIKTOK,
+    VAULT_YOUTUBE_KEY, VAULT_YOUTUBE_OAUTH,
+};
 use crate::daemon::Daemon;
 use serde::{Deserialize, Serialize};
 
@@ -74,9 +77,23 @@ fn path_in(said: &str) -> Option<String> {
     let words: Vec<&str> = said.split_whitespace().collect();
     // A path can hold spaces: from the first word that starts like one to
     // the last that ends like one.
-    let start = words.iter().position(|w| w.starts_with('/') || w.starts_with('~') || w.chars().nth(1) == Some(':') || w.starts_with("\\\\"))?;
-    let end = words.iter().rposition(|w| exts.iter().any(|e| w.to_lowercase().ends_with(e))).filter(|e| *e >= start).unwrap_or(start);
-    Some(words[start..=end].join(" ").trim_end_matches(['.', ',']).to_string())
+    let start = words.iter().position(|w| {
+        w.starts_with('/')
+            || w.starts_with('~')
+            || w.chars().nth(1) == Some(':')
+            || w.starts_with("\\\\")
+    })?;
+    let end = words
+        .iter()
+        .rposition(|w| exts.iter().any(|e| w.to_lowercase().ends_with(e)))
+        .filter(|e| *e >= start)
+        .unwrap_or(start);
+    Some(
+        words[start..=end]
+            .join(" ")
+            .trim_end_matches(['.', ','])
+            .to_string(),
+    )
 }
 
 fn has(low: &str, any: &[&str]) -> bool {
@@ -88,7 +105,10 @@ impl Daemon<'_> {
     /// browser, a tab each: sign in to the ones you use, close the window.
     /// What the Social page's one button and "sign me into my socials" do.
     pub(crate) fn open_social_signins(&mut self) -> String {
-        let urls: Vec<String> = super::SIGN_IN_SITES.iter().map(|(_, d)| crate::webrun::login_url(d)).collect();
+        let urls: Vec<String> = super::SIGN_IN_SITES
+            .iter()
+            .map(|(_, d)| crate::webrun::login_url(d))
+            .collect();
         let bcfg = self.tools_cfg().browser.clone();
         let vars = self.tools_cfg().vars.clone();
         match crate::browser::open_sign_in_window(&bcfg, &vars, &urls) {
@@ -107,29 +127,43 @@ impl Daemon<'_> {
 
     fn social_book(&mut self) -> &mut Book {
         let path = self.store.root().join(super::snapshots::FILE);
-        self.workday.social.book.get_or_insert_with(|| Book::load(&path))
+        self.workday
+            .social
+            .book
+            .get_or_insert_with(|| Book::load(&path))
     }
 
     fn social_watch(&mut self) -> &mut Watch {
         let store = &self.store;
-        self.workday.social.watch.get_or_insert_with(|| store.load(watchlist::FILE))
+        self.workday
+            .social
+            .watch
+            .get_or_insert_with(|| store.load(watchlist::FILE))
     }
 
     fn social_keep_watch(&mut self) -> Result<(), String> {
         let w = self.social_watch().clone();
-        self.store.save(watchlist::FILE, &w).map_err(|e| e.to_string())
+        self.store
+            .save(watchlist::FILE, &w)
+            .map_err(|e| e.to_string())
     }
 
     fn social_add(&mut self, records: Vec<Record>) -> Result<super::snapshots::Added, String> {
         let path = self.store.root().join(super::snapshots::FILE);
-        self.social_book().add(&path, records).map_err(|e| format!("I couldn't write it down: {e}"))
+        self.social_book()
+            .add(&path, records)
+            .map_err(|e| format!("I couldn't write it down: {e}"))
     }
 
     /// A key from the vault: `Ok(None)` when it isn't there, `Err` when the
     /// vault is locked.
     /// Your Google sign-in for YouTube, when there is one that still refreshes.
     fn youtube_signin(&mut self, t: u64) -> Option<GoogleSignIn> {
-        self.social_secret(VAULT_YOUTUBE_OAUTH, t).ok().flatten().and_then(|j| serde_json::from_str::<GoogleSignIn>(&j).ok()).filter(|g| !g.refresh_token.is_empty())
+        self.social_secret(VAULT_YOUTUBE_OAUTH, t)
+            .ok()
+            .flatten()
+            .and_then(|j| serde_json::from_str::<GoogleSignIn>(&j).ok())
+            .filter(|g| !g.refresh_token.is_empty())
     }
 
     fn social_secret(&mut self, name: &str, t: u64) -> Result<Option<String>, String> {
@@ -159,58 +193,169 @@ impl Daemon<'_> {
                 None => "Import what? Give me the path of the export -- the zip, the folder, or the file -- or use the Social page.".into(),
             };
         }
-        if has(&low, &["stop watching", "unwatch", "stop keeping an eye on", "stop following"]) {
-            let what = ["stop watching", "unwatch", "stop keeping an eye on", "stop following"].iter().find_map(|p| low.find(p).map(|i| said[i + p.len()..].to_string())).unwrap_or_default();
+        if has(
+            &low,
+            &[
+                "stop watching",
+                "unwatch",
+                "stop keeping an eye on",
+                "stop following",
+            ],
+        ) {
+            let what = [
+                "stop watching",
+                "unwatch",
+                "stop keeping an eye on",
+                "stop following",
+            ]
+            .iter()
+            .find_map(|p| low.find(p).map(|i| said[i + p.len()..].to_string()))
+            .unwrap_or_default();
             let gone = self.social_watch().remove(&what);
             return if gone.is_empty() {
                 format!("I'm not watching anything matching \"{}\".", what.trim())
             } else {
                 match self.social_keep_watch() {
                     Ok(()) => format!("Stopped watching {}.", gone.join(", ")),
-                    Err(e) => format!("Stopped watching {}, but I couldn't save that: {e}", gone.join(", ")),
+                    Err(e) => format!(
+                        "Stopped watching {}, but I couldn't save that: {e}",
+                        gone.join(", ")
+                    ),
                 }
             };
         }
-        if has(&low, &["what am i watching", "my watch list", "watch list", "watchlist"]) {
+        if has(
+            &low,
+            &[
+                "what am i watching",
+                "my watch list",
+                "watch list",
+                "watchlist",
+            ],
+        ) {
             let w = self.social_watch();
             if w.list.is_empty() {
                 return "You're not watching anything yet. Say \"watch\" and a YouTube @channel, a #hashtag, r/subreddit, a Bluesky handle or a topic.".into();
             }
-            return w.list.iter().enumerate().map(|(i, x)| format!("{}. {}", i + 1, x.target.label())).collect::<Vec<_>>().join("\n");
+            return w
+                .list
+                .iter()
+                .enumerate()
+                .map(|(i, x)| format!("{}. {}", i + 1, x.target.label()))
+                .collect::<Vec<_>>()
+                .join("\n");
         }
-        if has(&low, &["what can't", "what cant", "impossible", "why can't you", "why cant you"]) {
-            return super::THE_WALLS.iter().map(|(w, why)| format!("{w}: {why}.")).collect::<Vec<_>>().join("\n");
+        if has(
+            &low,
+            &[
+                "what can't",
+                "what cant",
+                "impossible",
+                "why can't you",
+                "why cant you",
+            ],
+        ) {
+            return super::THE_WALLS
+                .iter()
+                .map(|(w, why)| format!("{w}: {why}."))
+                .collect::<Vec<_>>()
+                .join("\n");
         }
         // "follow the #rust hashtag on Mastodon" is watching too; following a
         // site's feed is `feeds`, which the parser sends there first.
-        if (has(&low, &["watch ", "keep an eye on"]) && !has(&low, &["watch time", "watched"])) || low.trim_start().starts_with("follow ") {
+        if (has(&low, &["watch ", "keep an eye on"]) && !has(&low, &["watch time", "watched"]))
+            || low.trim_start().starts_with("follow ")
+        {
             return self.social_watch_add(said, t);
         }
-        if has(&low, &["trending", "digest", "working for them", "what's working for", "whats working for", "on my watch"]) {
+        if has(
+            &low,
+            &[
+                "trending",
+                "digest",
+                "working for them",
+                "what's working for",
+                "whats working for",
+                "on my watch",
+            ],
+        ) {
             return self.social_digest_said(t);
         }
-        if has(&low, &["refresh", "update my numbers", "fetch my numbers", "pull my numbers"]) {
+        if has(
+            &low,
+            &[
+                "refresh",
+                "update my numbers",
+                "fetch my numbers",
+                "pull my numbers",
+            ],
+        ) {
             return self.social_refresh(t, true);
         }
         let book = self.social_book().clone();
         // "my last YouTube video" names the platform between "last" and
         // "video"; read without it so it still lands here (selftest, 3 Oct
         // 2026: it fell through to the overview).
-        let bare = ["youtube ", "instagram ", "tiktok ", "linkedin ", "bluesky ", "x ", "twitter "]
-            .iter()
-            .fold(low.clone(), |s, p| s.replace(&format!("last {p}"), "last ").replace(&format!("latest {p}"), "latest "));
-        if has(&bare, &["last video", "latest video", "last post", "latest post", "last reel", "last short", "last tiktok"]) {
+        let bare = [
+            "youtube ",
+            "instagram ",
+            "tiktok ",
+            "linkedin ",
+            "bluesky ",
+            "x ",
+            "twitter ",
+        ]
+        .iter()
+        .fold(low.clone(), |s, p| {
+            s.replace(&format!("last {p}"), "last ")
+                .replace(&format!("latest {p}"), "latest ")
+        });
+        if has(
+            &bare,
+            &[
+                "last video",
+                "latest video",
+                "last post",
+                "latest post",
+                "last reel",
+                "last short",
+                "last tiktok",
+            ],
+        ) {
             return analysis::last_video(&book, only, t);
         }
-        if has(&low, &["time", "when should i post", "when to post", "what day"]) {
+        if has(
+            &low,
+            &["time", "when should i post", "when to post", "what day"],
+        ) {
             return analysis::posting_times(&book, only, &self.home_zone(), 3);
         }
         if has(&low, &["follower", "subscriber", "audience"]) {
             return analysis::followers(&book, only, t);
         }
-        if has(&low, &["worked", "why", "best post", "best video", "did well", "doing well", "performing"]) {
-            let days = if low.contains("week") { 7 } else if low.contains("year") { 365 } else { 30 };
-            let min = self.tools_ref().map(|x| x.content.min_posts_for_patterns).unwrap_or(8);
+        if has(
+            &low,
+            &[
+                "worked",
+                "why",
+                "best post",
+                "best video",
+                "did well",
+                "doing well",
+                "performing",
+            ],
+        ) {
+            let days = if low.contains("week") {
+                7
+            } else if low.contains("year") {
+                365
+            } else {
+                30
+            };
+            let min = self
+                .tools_ref()
+                .map(|x| x.content.min_posts_for_patterns)
+                .unwrap_or(8);
             return analysis::what_worked(&book, only, days, t, min);
         }
         analysis::accounts_overview(&book)
@@ -222,19 +367,40 @@ impl Daemon<'_> {
             Ok(g) => g,
             Err(e) => return e,
         };
-        let (platform, what, posts, days, missing) = (got.platform, got.what, got.posts, got.account_days, got.missing.clone());
+        let (platform, what, posts, days, missing) = (
+            got.platform,
+            got.what,
+            got.posts,
+            got.account_days,
+            got.missing.clone(),
+        );
         match self.social_add(got.records) {
             Ok(a) => {
                 let mut s = format!(
                     "Read {what}: {} and {} of account figures{}.",
-                    if posts == 1 { "1 post".to_string() } else { format!("{posts} posts") },
-                    if days == 1 { "1 day".to_string() } else { format!("{days} days") },
-                    if a.unchanged > 0 { format!(" ({} already on record, unchanged)", a.unchanged) } else { String::new() }
+                    if posts == 1 {
+                        "1 post".to_string()
+                    } else {
+                        format!("{posts} posts")
+                    },
+                    if days == 1 {
+                        "1 day".to_string()
+                    } else {
+                        format!("{days} days")
+                    },
+                    if a.unchanged > 0 {
+                        format!(" ({} already on record, unchanged)", a.unchanged)
+                    } else {
+                        String::new()
+                    }
                 );
                 if !missing.is_empty() {
                     s.push_str(&format!(" Not in it: {}.", missing.join("; ")));
                 }
-                s.push_str(&format!(" Ask \"how did my last {} post do\" or \"what worked this month\".", platform.name()));
+                s.push_str(&format!(
+                    " Ask \"how did my last {} post do\" or \"what worked this month\".",
+                    platform.name()
+                ));
                 s
             }
             Err(e) => e,
@@ -247,8 +413,12 @@ impl Daemon<'_> {
             Ok(x) => x,
             Err(e) => return e,
         };
-        let has_key = matches!(self.social_secret(VAULT_YOUTUBE_KEY, t), Ok(Some(_))) || self.youtube_signin(t).is_some();
-        let search_without_key = targets.iter().any(|x| matches!(x, Target::YoutubeSearch { .. })) && !has_key;
+        let has_key = matches!(self.social_secret(VAULT_YOUTUBE_KEY, t), Ok(Some(_)))
+            || self.youtube_signin(t).is_some();
+        let search_without_key = targets
+            .iter()
+            .any(|x| matches!(x, Target::YoutubeSearch { .. }))
+            && !has_key;
         let added = match self.social_watch().add(targets, t) {
             Ok(a) => a,
             Err(e) => return e,
@@ -274,19 +444,22 @@ impl Daemon<'_> {
     fn social_refresh(&mut self, t: u64, asked: bool) -> String {
         let cfg = self.social_cfg();
         let mut missing: Vec<String> = Vec::new();
-        let secret = |d: &mut Self, name: &str, what: &str, missing: &mut Vec<String>| -> Option<String> {
-            match d.social_secret(name, t) {
-                Ok(Some(k)) => Some(k),
-                Ok(None) => {
-                    missing.push(format!("{what} (no key in the vault -- the Social page takes it)"));
-                    None
+        let secret =
+            |d: &mut Self, name: &str, what: &str, missing: &mut Vec<String>| -> Option<String> {
+                match d.social_secret(name, t) {
+                    Ok(Some(k)) => Some(k),
+                    Ok(None) => {
+                        missing.push(format!(
+                            "{what} (no key in the vault -- the Social page takes it)"
+                        ));
+                        None
+                    }
+                    Err(e) => {
+                        missing.push(format!("{what} ({e})"));
+                        None
+                    }
                 }
-                Err(e) => {
-                    missing.push(format!("{what} ({e})"));
-                    None
-                }
-            }
-        };
+            };
         // YouTube: your Google sign-in is the way in (one Connect button);
         // an API key, where one was kept before, still works.
         let google = self.youtube_signin(t);
@@ -310,13 +483,28 @@ impl Daemon<'_> {
             }
         };
         let yt_wanted = yt_key.is_some() || google.is_some();
-        let ig = if cfg.instagram { secret(self, VAULT_INSTAGRAM, "Instagram", &mut missing) } else { None };
+        let ig = if cfg.instagram {
+            secret(self, VAULT_INSTAGRAM, "Instagram", &mut missing)
+        } else {
+            None
+        };
         let ig_refresh_due = t.saturating_sub(self.social_watch().instagram_token_at) > 30 * 86_400;
-        let threads = if cfg.threads { secret(self, VAULT_THREADS, "Threads", &mut missing) } else { None };
-        let threads_refresh_due = t.saturating_sub(self.social_watch().threads_token_at) > 30 * 86_400;
-        let fb = if cfg.facebook_page { secret(self, VAULT_FACEBOOK, "Facebook Page", &mut missing) } else { None };
+        let threads = if cfg.threads {
+            secret(self, VAULT_THREADS, "Threads", &mut missing)
+        } else {
+            None
+        };
+        let threads_refresh_due =
+            t.saturating_sub(self.social_watch().threads_token_at) > 30 * 86_400;
+        let fb = if cfg.facebook_page {
+            secret(self, VAULT_FACEBOOK, "Facebook Page", &mut missing)
+        } else {
+            None
+        };
         let tiktok = if cfg.tiktok {
-            secret(self, VAULT_TIKTOK, "TikTok", &mut missing).and_then(|j| serde_json::from_str::<TikTokSignIn>(&j).ok()).filter(|s| !s.refresh_token.is_empty())
+            secret(self, VAULT_TIKTOK, "TikTok", &mut missing)
+                .and_then(|j| serde_json::from_str::<TikTokSignIn>(&j).ok())
+                .filter(|s| !s.refresh_token.is_empty())
         } else {
             None
         };
@@ -324,8 +512,18 @@ impl Daemon<'_> {
             missing.push("TikTok (the sign-in wasn't finished -- paste the address TikTok sent you to on the Social page)".into());
         }
         let bsky = cfg.bluesky_handle.trim().to_string();
-        if !yt_wanted && ig.is_none() && threads.is_none() && fb.is_none() && tiktok.is_none() && bsky.is_empty() {
-            let why = if missing.is_empty() { "nothing is set up".to_string() } else { missing.join("; ") };
+        if !yt_wanted
+            && ig.is_none()
+            && threads.is_none()
+            && fb.is_none()
+            && tiktok.is_none()
+            && bsky.is_empty()
+        {
+            let why = if missing.is_empty() {
+                "nothing is set up".to_string()
+            } else {
+                missing.join("; ")
+            };
             return format!("There's no account I can read from its API yet: {why}. Imports from the platforms' own export files work without any of this.");
         }
         let channel = cfg.youtube_channel.clone();
@@ -334,7 +532,10 @@ impl Daemon<'_> {
         crate::heard!(self.social_keep_watch());
         let work: crate::crew::Work = Box::new(move |ctl| {
             let net = Https;
-            let mut out = Refreshed { missing, ..Default::default() };
+            let mut out = Refreshed {
+                missing,
+                ..Default::default()
+            };
             // Signed in and no key: the sign-in's access token reads the channel too.
             let yt_auth = match (&yt_key, &google) {
                 (Some(k), _) => Some(k.clone()),
@@ -352,11 +553,20 @@ impl Daemon<'_> {
                     Ok(mut recs) => {
                         let n = recs.iter().filter(|r| matches!(r, Record::Post(_))).count();
                         if let Some(g) = &google {
-                            match apis::google_access(&net, g).and_then(|tok| apis::youtube_analytics(&net, &tok, super::social_day(t) - 28, super::social_day(t) - 1)) {
+                            match apis::google_access(&net, g).and_then(|tok| {
+                                apis::youtube_analytics(
+                                    &net,
+                                    &tok,
+                                    super::social_day(t) - 28,
+                                    super::social_day(t) - 1,
+                                )
+                            }) {
                                 Ok(rows) => {
                                     for r in recs.iter_mut() {
                                         if let Record::Post(p) = r {
-                                            if let Some((_, m)) = rows.iter().find(|(id, _)| *id == p.id) {
+                                            if let Some((_, m)) =
+                                                rows.iter().find(|(id, _)| *id == p.id)
+                                            {
                                                 p.m.fill_from(m);
                                             }
                                         }
@@ -381,7 +591,8 @@ impl Daemon<'_> {
             if let Some(token) = &ig {
                 match apis::instagram_own(&net, token, t) {
                     Ok(recs) => {
-                        out.done.push(format!("Instagram, {} posts", recs.len().saturating_sub(1)));
+                        out.done
+                            .push(format!("Instagram, {} posts", recs.len().saturating_sub(1)));
                         out.records.extend(recs);
                         if ig_refresh_due {
                             if let Ok(tok) = apis::instagram_refresh(&net, token) {
@@ -395,7 +606,8 @@ impl Daemon<'_> {
             if let Some(token) = &threads {
                 match apis::threads_own(&net, token, t) {
                     Ok(recs) => {
-                        out.done.push(format!("Threads, {} posts", recs.len().saturating_sub(1)));
+                        out.done
+                            .push(format!("Threads, {} posts", recs.len().saturating_sub(1)));
                         out.records.extend(recs);
                         if threads_refresh_due {
                             if let Ok(tok) = apis::threads_refresh(&net, token) {
@@ -409,7 +621,10 @@ impl Daemon<'_> {
             if let Some(token) = &fb {
                 match apis::facebook_page_own(&net, token, t) {
                     Ok(recs) => {
-                        out.done.push(format!("your Facebook Page, {} posts", recs.len().saturating_sub(1)));
+                        out.done.push(format!(
+                            "your Facebook Page, {} posts",
+                            recs.len().saturating_sub(1)
+                        ));
                         out.records.extend(recs);
                     }
                     Err(e) => out.missing.push(format!("Facebook Page ({e})")),
@@ -418,10 +633,17 @@ impl Daemon<'_> {
             if let Some(s) = &tiktok {
                 match apis::tiktok_access(&net, s) {
                     Ok((access, refresh)) => {
-                        out.new_tiktok = Some(TikTokSignIn { refresh_token: refresh, obtained: t, ..s.clone() });
+                        out.new_tiktok = Some(TikTokSignIn {
+                            refresh_token: refresh,
+                            obtained: t,
+                            ..s.clone()
+                        });
                         match apis::tiktok_own(&net, &access, t) {
                             Ok(recs) => {
-                                out.done.push(format!("TikTok, {} videos", recs.len().saturating_sub(1)));
+                                out.done.push(format!(
+                                    "TikTok, {} videos",
+                                    recs.len().saturating_sub(1)
+                                ));
                                 out.records.extend(recs);
                             }
                             Err(e) => out.missing.push(format!("TikTok ({e})")),
@@ -436,7 +658,8 @@ impl Daemon<'_> {
             if !bsky.is_empty() {
                 match apis::bluesky_own(&net, &bsky, t) {
                     Ok(recs) => {
-                        out.done.push(format!("Bluesky, {} posts", recs.len().saturating_sub(1)));
+                        out.done
+                            .push(format!("Bluesky, {} posts", recs.len().saturating_sub(1)));
                         out.records.extend(recs);
                     }
                     Err(e) => out.missing.push(format!("Bluesky ({e})")),
@@ -444,10 +667,16 @@ impl Daemon<'_> {
             }
             serde_json::to_string(&out).map_err(|e| e.to_string())
         });
-        let name = if asked { "social-refresh-asked" } else { "social-refresh" };
+        let name = if asked {
+            "social-refresh-asked"
+        } else {
+            "social-refresh"
+        };
         match self.hand_off_social(name, t, work, None, asked) {
             Some(_) => "Reading your accounts' numbers now; I'll say when it's done.".into(),
-            None => "I've too much on to read your accounts right now. Ask again in a minute.".into(),
+            None => {
+                "I've too much on to read your accounts right now. Ask again in a minute.".into()
+            }
         }
     }
 
@@ -456,13 +685,21 @@ impl Daemon<'_> {
     fn social_scan(&mut self, t: u64, asked: bool) -> Option<String> {
         let cfg = self.social_cfg();
         let yt_key = self.social_secret(VAULT_YOUTUBE_KEY, t).ok().flatten();
-        let google = if yt_key.is_none() { self.youtube_signin(t) } else { None };
+        let google = if yt_key.is_none() {
+            self.youtube_signin(t)
+        } else {
+            None
+        };
         let has_youtube = yt_key.is_some() || google.is_some();
         let every = cfg.scan_every_minutes.max(30);
         let pday = watchlist::pacific_day(t);
         let budget = cfg.youtube_searches_per_day;
         let w = self.social_watch();
-        let picks: Vec<usize> = if asked { (0..w.list.len()).take(PER_ASK).collect() } else { w.due(t).into_iter().take(PER_SCAN).collect() };
+        let picks: Vec<usize> = if asked {
+            (0..w.list.len()).take(PER_ASK).collect()
+        } else {
+            w.due(t).into_iter().take(PER_SCAN).collect()
+        };
         if picks.is_empty() {
             return asked.then(|| "You're not watching anything yet.".into());
         }
@@ -473,7 +710,11 @@ impl Daemon<'_> {
             let may = search && has_youtube && w.quota.take(pday, budget);
             // Marked later now, so a slow read isn't handed out twice.
             w.list[i].next_due = t + every * 60;
-            jobs.push((w.list[i].target.clone(), w.list[i].last_modified.clone(), may));
+            jobs.push((
+                w.list[i].target.clone(),
+                w.list[i].last_modified.clone(),
+                may,
+            ));
         }
         crate::heard!(self.social_keep_watch());
         let work: crate::crew::Work = Box::new(move |ctl| {
@@ -481,30 +722,75 @@ impl Daemon<'_> {
             let mut gap = crate::ratelimit::Gcra::new(1, HOST_SPACING_MS, 1);
             let mut out: Vec<ScanOut> = Vec::new();
             // Your Google sign-in stands in for an API key, fetched once a pass.
-            let yt_key = yt_key.or_else(|| google.as_ref().and_then(|g| apis::google_access(&net, g).ok()).map(|tok| format!("{}{tok}", apis::BEARER)));
+            let yt_key = yt_key.or_else(|| {
+                google
+                    .as_ref()
+                    .and_then(|g| apis::google_access(&net, g).ok())
+                    .map(|tok| format!("{}{tok}", apis::BEARER))
+            });
             for (target, lm, may) in jobs {
                 if ctl.checkpoint() {
                     break;
                 }
                 let host = target.key().split(':').next().unwrap_or("").to_string();
                 loop {
-                    let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+                    let now_ms = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0);
                     match gap.check(&host, now_ms) {
                         Ok(()) => break,
-                        Err(wait) => std::thread::sleep(std::time::Duration::from_millis(wait.min(HOST_SPACING_MS))),
+                        Err(wait) => std::thread::sleep(std::time::Duration::from_millis(
+                            wait.min(HOST_SPACING_MS),
+                        )),
                     }
                 }
                 let key = target.key();
-                out.push(match watchlist::read_one(&net, &target, lm.as_deref(), yt_key.as_deref(), may, t) {
-                    Ok(f) => ScanOut { key, items: f.items, last_modified: f.last_modified, unchanged: f.unchanged, resolved: f.resolved, error: None, retry_after: None },
-                    Err(e) => ScanOut { key, items: Vec::new(), last_modified: None, unchanged: false, resolved: None, error: Some(e.why), retry_after: e.retry_after },
-                });
+                out.push(
+                    match watchlist::read_one(
+                        &net,
+                        &target,
+                        lm.as_deref(),
+                        yt_key.as_deref(),
+                        may,
+                        t,
+                    ) {
+                        Ok(f) => ScanOut {
+                            key,
+                            items: f.items,
+                            last_modified: f.last_modified,
+                            unchanged: f.unchanged,
+                            resolved: f.resolved,
+                            error: None,
+                            retry_after: None,
+                        },
+                        Err(e) => ScanOut {
+                            key,
+                            items: Vec::new(),
+                            last_modified: None,
+                            unchanged: false,
+                            resolved: None,
+                            error: Some(e.why),
+                            retry_after: e.retry_after,
+                        },
+                    },
+                );
             }
             serde_json::to_string(&out).map_err(|e| e.to_string())
         });
-        let name = if asked { "social-scan-asked" } else { "social-scan" };
+        let name = if asked {
+            "social-scan-asked"
+        } else {
+            "social-scan"
+        };
         let taken = self.hand_off_social(name, t, work, None, asked).is_some();
-        asked.then(|| if taken { "Reading what you watch now; I'll tell you what stands out.".into() } else { "I've too much on to read them right now. Ask again in a minute.".into() })
+        asked.then(|| {
+            if taken {
+                "Reading what you watch now; I'll tell you what stands out.".into()
+            } else {
+                "I've too much on to read them right now. Ask again in a minute.".into()
+            }
+        })
     }
 
     /// "What's trending?": what's kept now, and a fresh read on the crew.
@@ -514,11 +800,19 @@ impl Daemon<'_> {
             return "You're not watching anything yet. Say \"watch\" and a YouTube @channel, a #hashtag, r/subreddit, a Bluesky handle or a topic.".into();
         }
         let d = analysis::watch_digest(&w, t);
-        let fresh = w.list.iter().any(|x| x.last_ok.is_some_and(|ok| t.saturating_sub(ok) < 3600));
+        let fresh = w
+            .list
+            .iter()
+            .any(|x| x.last_ok.is_some_and(|ok| t.saturating_sub(ok) < 3600));
         if d.is_empty() || !fresh {
             return self.social_scan(t, true).unwrap_or_default();
         }
-        let mut s = d.sections.iter().map(|(h, lines)| format!("{h}: {}", lines.join("; "))).collect::<Vec<_>>().join("\n");
+        let mut s = d
+            .sections
+            .iter()
+            .map(|(h, lines)| format!("{h}: {}", lines.join("; ")))
+            .collect::<Vec<_>>()
+            .join("\n");
         if self.llm.is_some() {
             if let Some(ok) = self.social_summarise(t, &d, true) {
                 s.push_str(&format!("\n{ok}"));
@@ -540,10 +834,22 @@ impl Daemon<'_> {
                 Ok(x) => (x, None),
                 Err(e) => (String::new(), Some(e.to_string())),
             };
-            serde_json::to_string(&Summary { text, prompt_chars: facts.len() + analysis::SUMMARY_SYSTEM.len(), facts, took_ms, failed }).map_err(|e| e.to_string())
+            serde_json::to_string(&Summary {
+                text,
+                prompt_chars: facts.len() + analysis::SUMMARY_SYSTEM.len(),
+                facts,
+                took_ms,
+                failed,
+            })
+            .map_err(|e| e.to_string())
         });
-        let name = if asked { "social-summary" } else { "social-summary-quiet" };
-        self.hand_off_social(name, t, work, None, asked).map(|_| "I'm asking the model to sum it up too.".to_string())
+        let name = if asked {
+            "social-summary"
+        } else {
+            "social-summary-quiet"
+        };
+        self.hand_off_social(name, t, work, None, asked)
+            .map(|_| "I'm asking the model to sum it up too.".to_string())
     }
 
     /// One TikTok, Instagram or X page, in Atlas's own browser, once.
@@ -559,7 +865,8 @@ impl Daemon<'_> {
         let vars = self.tools_cfg().vars.clone();
         let u = url.clone();
         let work: crate::crew::Work = Box::new(move |ctl| {
-            let mut b = crate::browser::Browser::start(&bcfg, &vars).map_err(|e| format!("Atlas's browser didn't start: {e}"))?;
+            let mut b = crate::browser::Browser::start(&bcfg, &vars)
+                .map_err(|e| format!("Atlas's browser didn't start: {e}"))?;
             let got = (|| -> Result<String, String> {
                 b.open(&u).map_err(|e| e.to_string())?;
                 // Read until the page stops growing (its scripts draw it),
@@ -602,11 +909,21 @@ impl Daemon<'_> {
         let redirect = format!("http://127.0.0.1:{port}");
         let verifier = crate::vault::short_code(60);
         let state = crate::vault::short_code(16);
-        let url = apis::google_consent_url(client_id, &redirect, &state, &apis::pkce_challenge(&verifier));
+        let url = apis::google_consent_url(
+            client_id,
+            &redirect,
+            &state,
+            &apis::pkce_challenge(&verifier),
+        );
         if let Err(e) = self.plat.open_path(&url) {
             return format!("I couldn't open your browser for Google's sign-in: {e}");
         }
-        let s = GoogleSignIn { client_id: client_id.trim().into(), client_secret: secret.trim().into(), refresh_token: String::new(), obtained: 0 };
+        let s = GoogleSignIn {
+            client_id: client_id.trim().into(),
+            client_secret: secret.trim().into(),
+            refresh_token: String::new(),
+            obtained: 0,
+        };
         let work: crate::crew::Work = Box::new(move |ctl| {
             use std::io::{BufRead, Write};
             let _ = listener.set_nonblocking(true);
@@ -623,15 +940,30 @@ impl Daemon<'_> {
                         let mut line = String::new();
                         crate::heard!(reader.read_line(&mut line));
                         let code = apis::code_from_redirect(&line, &state);
-                        let page = if code.is_ok() { "Signed in. You can close this tab and go back to Atlas." } else { "That didn't work -- go back to Atlas to see why." };
+                        let page = if code.is_ok() {
+                            "Signed in. You can close this tab and go back to Atlas."
+                        } else {
+                            "That didn't work -- go back to Atlas to see why."
+                        };
                         let mut w = &stream;
                         let _ = write!(w, "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{page}", page.len());
                         let code = code?;
-                        let refresh = apis::google_exchange(&Https, &s, &code, &redirect, &verifier)?;
-                        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-                        return serde_json::to_string(&GoogleSignIn { refresh_token: refresh, obtained: now, ..s }).map_err(|e| e.to_string());
+                        let refresh =
+                            apis::google_exchange(&Https, &s, &code, &redirect, &verifier)?;
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
+                        return serde_json::to_string(&GoogleSignIn {
+                            refresh_token: refresh,
+                            obtained: now,
+                            ..s
+                        })
+                        .map_err(|e| e.to_string());
                     }
-                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(std::time::Duration::from_millis(200)),
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(std::time::Duration::from_millis(200))
+                    }
                     Err(e) => return Err(format!("the sign-in's port failed: {e}")),
                 }
             }
@@ -643,33 +975,54 @@ impl Daemon<'_> {
     }
 
     /// What the crew brought back.
-    pub(crate) fn social_news(&mut self, label: &str, ending: &crate::crew::Ending, t: u64) -> Option<String> {
+    pub(crate) fn social_news(
+        &mut self,
+        label: &str,
+        ending: &crate::crew::Ending,
+        t: u64,
+    ) -> Option<String> {
         use crate::crew::Ending;
-        let asked = label.ends_with("-asked") || matches!(label, "social-read" | "social-summary" | "social-google" | "social-tiktok");
+        let asked = label.ends_with("-asked")
+            || matches!(
+                label,
+                "social-read" | "social-summary" | "social-google" | "social-tiktok"
+            );
         let body = match ending {
             Ending::Done(Ok(b)) => b.clone(),
-            Ending::Done(Err(e)) => return asked.then_some(match label {
-                "social-read" => format!("I couldn't read that page: {e}"),
-                "social-google" => format!("The Google sign-in didn't finish: {e}"),
-                "social-tiktok" => format!("The TikTok sign-in didn't finish: {e}"),
-                _ => format!("That didn't work: {e}"),
-            }),
+            Ending::Done(Err(e)) => {
+                return asked.then_some(match label {
+                    "social-read" => format!("I couldn't read that page: {e}"),
+                    "social-google" => format!("The Google sign-in didn't finish: {e}"),
+                    "social-tiktok" => format!("The TikTok sign-in didn't finish: {e}"),
+                    _ => format!("That didn't work: {e}"),
+                })
+            }
             Ending::Stopped => return asked.then(|| "Stopped.".into()),
-            Ending::Vanished => return asked.then(|| "That stopped without finishing. Ask me again.".into()),
+            Ending::Vanished => {
+                return asked.then(|| "That stopped without finishing. Ask me again.".into())
+            }
         };
         match label {
             "social-read" => Some(body),
             "social-refresh" | "social-refresh-asked" => {
                 let r: Refreshed = serde_json::from_str(&body).ok()?;
                 if let Some(tok) = &r.new_instagram_token {
-                    if self.vault.put(VAULT_INSTAGRAM, crate::vault::Kind::ApiKey, tok, t).is_ok() {
+                    if self
+                        .vault
+                        .put(VAULT_INSTAGRAM, crate::vault::Kind::ApiKey, tok, t)
+                        .is_ok()
+                    {
                         crate::kept!(self.vault.save(&self.vault_home));
                         self.social_watch().instagram_token_at = t;
                         crate::heard!(self.social_keep_watch());
                     }
                 }
                 if let Some(tok) = &r.new_threads_token {
-                    if self.vault.put(VAULT_THREADS, crate::vault::Kind::ApiKey, tok, t).is_ok() {
+                    if self
+                        .vault
+                        .put(VAULT_THREADS, crate::vault::Kind::ApiKey, tok, t)
+                        .is_ok()
+                    {
                         crate::kept!(self.vault.save(&self.vault_home));
                         self.social_watch().threads_token_at = t;
                         crate::heard!(self.social_keep_watch());
@@ -677,7 +1030,11 @@ impl Daemon<'_> {
                 }
                 if let Some(tk) = &r.new_tiktok {
                     if let Ok(j) = serde_json::to_string(tk) {
-                        if self.vault.put(VAULT_TIKTOK, crate::vault::Kind::ApiKey, &j, t).is_ok() {
+                        if self
+                            .vault
+                            .put(VAULT_TIKTOK, crate::vault::Kind::ApiKey, &j, t)
+                            .is_ok()
+                        {
                             crate::kept!(self.vault.save(&self.vault_home));
                         }
                     }
@@ -688,7 +1045,9 @@ impl Daemon<'_> {
                     return None;
                 }
                 let mut s = match kept {
-                    Ok(_) if r.done.is_empty() => "I couldn't read any of your accounts.".to_string(),
+                    Ok(_) if r.done.is_empty() => {
+                        "I couldn't read any of your accounts.".to_string()
+                    }
                     Ok(_) => format!("Read {}.", r.done.join(", ")),
                     Err(e) => e,
                 };
@@ -704,10 +1063,35 @@ impl Daemon<'_> {
                 let w = self.social_watch();
                 for o in outs {
                     match o.error {
-                        None => w.took(&o.key, watchlist::Fetched { items: o.items, last_modified: o.last_modified, unchanged: o.unchanged, resolved: o.resolved }, t, every),
+                        None => w.took(
+                            &o.key,
+                            watchlist::Fetched {
+                                items: o.items,
+                                last_modified: o.last_modified,
+                                unchanged: o.unchanged,
+                                resolved: o.resolved,
+                            },
+                            t,
+                            every,
+                        ),
                         Some(why) => {
-                            failed.push(format!("{} ({why})", w.list.iter().find(|x| x.target.key() == o.key).map(|x| x.target.label()).unwrap_or(o.key.clone())));
-                            w.failed(&o.key, &watchlist::Failed { why, retry_after: o.retry_after }, t, every);
+                            failed.push(format!(
+                                "{} ({why})",
+                                w.list
+                                    .iter()
+                                    .find(|x| x.target.key() == o.key)
+                                    .map(|x| x.target.label())
+                                    .unwrap_or(o.key.clone())
+                            ));
+                            w.failed(
+                                &o.key,
+                                &watchlist::Failed {
+                                    why,
+                                    retry_after: o.retry_after,
+                                },
+                                t,
+                                every,
+                            );
                         }
                     }
                 }
@@ -715,7 +1099,11 @@ impl Daemon<'_> {
                 if !asked {
                     // Once a day, the model sums up what the scans found, for
                     // the morning brief; checked like any other summary.
-                    let stale = self.social_watch().summary.as_ref().is_none_or(|(at, _)| t.saturating_sub(*at) >= 20 * 3600);
+                    let stale = self
+                        .social_watch()
+                        .summary
+                        .as_ref()
+                        .is_none_or(|(at, _)| t.saturating_sub(*at) >= 20 * 3600);
                     if stale && self.llm.is_some() {
                         let d = analysis::watch_digest(self.social_watch(), t);
                         if !d.is_empty() {
@@ -729,7 +1117,11 @@ impl Daemon<'_> {
                 let mut s = if d.is_empty() {
                     "Read them; nothing stands out yet.".to_string()
                 } else {
-                    d.sections.iter().map(|(h, lines)| format!("{h}: {}", lines.join("; "))).collect::<Vec<_>>().join("\n")
+                    d.sections
+                        .iter()
+                        .map(|(h, lines)| format!("{h}: {}", lines.join("; ")))
+                        .collect::<Vec<_>>()
+                        .join("\n")
                 };
                 if !failed.is_empty() {
                     s.push_str(&format!("\nCouldn't read: {}.", failed.join("; ")));
@@ -744,9 +1136,17 @@ impl Daemon<'_> {
             "social-summary" | "social-summary-quiet" => {
                 let quiet = label == "social-summary-quiet";
                 let sm: Summary = serde_json::from_str(&body).ok()?;
-                self.record_model_call("social-summary", sm.took_ms, sm.prompt_chars, sm.text.len(), sm.failed.clone());
+                self.record_model_call(
+                    "social-summary",
+                    sm.took_ms,
+                    sm.prompt_chars,
+                    sm.text.len(),
+                    sm.failed.clone(),
+                );
                 if sm.failed.is_some() || sm.text.trim().is_empty() {
-                    return (!quiet).then(|| "The model couldn't sum it up; the figures above are what there is.".into());
+                    return (!quiet).then(|| {
+                        "The model couldn't sum it up; the figures above are what there is.".into()
+                    });
                 }
                 if !analysis::grounded(&sm.text, &sm.facts) {
                     return (!quiet).then(|| "The model's summary brought a figure that isn't in what was read, so I've left it out -- the figures above are the real ones.".into());
@@ -758,40 +1158,73 @@ impl Daemon<'_> {
             "social-tiktok" => {
                 let s: TikTokSignIn = serde_json::from_str(&body).ok()?;
                 let json = serde_json::to_string(&s).ok()?;
-                Some(match self.vault.put(VAULT_TIKTOK, crate::vault::Kind::ApiKey, &json, t) {
-                    Ok(()) => {
-                        crate::kept!(self.vault.save(&self.vault_home));
-                        let on = if self.social_cfg().tiktok { "" } else { " Turn TikTok on under Your accounts on the Social page so the refresh reads it." };
-                        format!("Signed in to TikTok; your videos' numbers come with the next refresh.{on}")
-                    }
-                    Err(e) => format!("TikTok signed you in, but I couldn't keep it in the vault: {e}"),
-                })
+                Some(
+                    match self
+                        .vault
+                        .put(VAULT_TIKTOK, crate::vault::Kind::ApiKey, &json, t)
+                    {
+                        Ok(()) => {
+                            crate::kept!(self.vault.save(&self.vault_home));
+                            let on = if self.social_cfg().tiktok {
+                                ""
+                            } else {
+                                " Turn TikTok on under Your accounts on the Social page so the refresh reads it."
+                            };
+                            format!("Signed in to TikTok; your videos' numbers come with the next refresh.{on}")
+                        }
+                        Err(e) => format!(
+                            "TikTok signed you in, but I couldn't keep it in the vault: {e}"
+                        ),
+                    },
+                )
             }
             "social-google" => {
                 let store = self.store.clone();
-                let _transaction = match store.transaction() { Ok(guard) => guard, Err(error) => return Some(format!("Nothing connected; Google account storage is busy: {error}")) };
-                if let Err(error) = crate::connection_removal::google_connection_allowed(&store) { return Some(error); }
+                let _transaction = match store.transaction() {
+                    Ok(guard) => guard,
+                    Err(error) => {
+                        return Some(format!(
+                            "Nothing connected; Google account storage is busy: {error}"
+                        ))
+                    }
+                };
+                if let Err(error) = crate::connection_removal::google_connection_allowed(&store) {
+                    return Some(error);
+                }
                 let mut s: GoogleSignIn = serde_json::from_str(&body).ok()?;
                 s.obtained = s.obtained.max(1);
                 let json = serde_json::to_string(&s).ok()?;
                 let previous = self.vault.clone();
-                Some(match self.vault.put(VAULT_YOUTUBE_OAUTH, crate::vault::Kind::ApiKey, &json, t) {
-                    Ok(()) => {
-                        if let Err(error) = self.vault.save(&self.vault_home) { self.vault = previous; return Some(format!("Google signed you in, but its credential could not be saved; nothing connected: {error}")); }
-                        crate::connecting::note_google_data(self);
-                        let lapse = if self.social_cfg().google_app_in_testing {
-                            " While your Google app is in Testing, Google ends this sign-in after seven days; publishing the app (unverified is fine for your own use) stops that."
-                        } else {
-                            ""
-                        };
-                        let mut on = String::new();
-                        if !self.social_cfg().own_refresh {
-                            on = format!(" {}", self.apply_setting("workday.social.own_refresh", "on"));
+                Some(
+                    match self
+                        .vault
+                        .put(VAULT_YOUTUBE_OAUTH, crate::vault::Kind::ApiKey, &json, t)
+                    {
+                        Ok(()) => {
+                            if let Err(error) = self.vault.save(&self.vault_home) {
+                                self.vault = previous;
+                                return Some(format!("Google signed you in, but its credential could not be saved; nothing connected: {error}"));
+                            }
+                            crate::connecting::note_google_data(self);
+                            let lapse = if self.social_cfg().google_app_in_testing {
+                                " While your Google app is in Testing, Google ends this sign-in after seven days; publishing the app (unverified is fine for your own use) stops that."
+                            } else {
+                                ""
+                            };
+                            let mut on = String::new();
+                            if !self.social_cfg().own_refresh {
+                                on = format!(
+                                    " {}",
+                                    self.apply_setting("workday.social.own_refresh", "on")
+                                );
+                            }
+                            format!("YouTube is connected; your channel's numbers and retention come with the next refresh.{lapse}{on}")
                         }
-                        format!("YouTube is connected; your channel's numbers and retention come with the next refresh.{lapse}{on}")
-                    }
-                    Err(e) => format!("Google signed you in, but I couldn't keep it in the vault: {e}"),
-                })
+                        Err(e) => format!(
+                            "Google signed you in, but I couldn't keep it in the vault: {e}"
+                        ),
+                    },
+                )
             }
             _ => None,
         }
@@ -809,7 +1242,9 @@ impl Daemon<'_> {
             return;
         }
         self.workday.social.last_look = t;
-        if cfg.own_refresh && t.saturating_sub(self.social_watch().last_refresh) >= cfg.refresh_hours.max(6) * 3600 {
+        if cfg.own_refresh
+            && t.saturating_sub(self.social_watch().last_refresh) >= cfg.refresh_hours.max(6) * 3600
+        {
             // unheard-ok: returns `String`, not a Result
             let _ = self.social_refresh(t, false);
         }
@@ -821,7 +1256,6 @@ impl Daemon<'_> {
 
     // ------------------------------------------------------------ the brief
 
-
     // ------------------------------------------------------------ the hub page
 
     /// Disconnect YouTube: the sign-in out of the vault, and the permission
@@ -831,13 +1265,38 @@ impl Daemon<'_> {
         if let Err(e) = self.vault_ready(t) {
             return format!("The vault is shut, so nothing changed: {e}");
         }
-        let id = match crate::connection_removal::begin(&self.store, "YouTube", "Google", t) { Ok(id) => id, Err(error) => return format!("Removal did not start: {error}") };
-        let google_token = self.vault.get(VAULT_YOUTUBE_OAUTH, t).ok().and_then(|json| serde_json::from_str::<GoogleSignIn>(&json).ok()).map(|signin| signin.refresh_token).filter(|token| !token.is_empty());
-        if let Err(error) = crate::connection_removal::remove_credentials(&self.vault_home, &mut self.vault, &[VAULT_YOUTUBE_OAUTH.into(), VAULT_YOUTUBE_KEY.into()]) { return format!("YouTube is still connected locally: {error}"); }
+        let id = match crate::connection_removal::begin(&self.store, "YouTube", "Google", t) {
+            Ok(id) => id,
+            Err(error) => return format!("Removal did not start: {error}"),
+        };
+        let google_token = self
+            .vault
+            .get(VAULT_YOUTUBE_OAUTH, t)
+            .ok()
+            .and_then(|json| serde_json::from_str::<GoogleSignIn>(&json).ok())
+            .map(|signin| signin.refresh_token)
+            .filter(|token| !token.is_empty());
+        if let Err(error) = crate::connection_removal::remove_credentials(
+            &self.vault_home,
+            &mut self.vault,
+            &[VAULT_YOUTUBE_OAUTH.into(), VAULT_YOUTUBE_KEY.into()],
+        ) {
+            return format!("YouTube is still connected locally: {error}");
+        }
         crate::connecting::note_google_data(self);
-        let detail = format!("YouTube sign-in and API key removed from this Atlas vault. {}", crate::connection_removal::provider_check("Google"));
-        if let Err(error) = crate::connection_removal::complete(&self.store, id, &detail) { return format!("YouTube credentials removed locally, but its completion receipt was not saved: {error}. Provider permission is unconfirmed."); }
-        format!("{detail} {}", google_token.map(|token| self.queue_google_revocation(id, token, t)).unwrap_or_default())
+        let detail = format!(
+            "YouTube sign-in and API key removed from this Atlas vault. {}",
+            crate::connection_removal::provider_check("Google")
+        );
+        if let Err(error) = crate::connection_removal::complete(&self.store, id, &detail) {
+            return format!("YouTube credentials removed locally, but its completion receipt was not saved: {error}. Provider permission is unconfirmed.");
+        }
+        format!(
+            "{detail} {}",
+            google_token
+                .map(|token| self.queue_google_revocation(id, token, t))
+                .unwrap_or_default()
+        )
     }
 
     /// Disconnect an Instagram, Threads, Facebook Page or TikTok sign-in: the
@@ -858,7 +1317,9 @@ impl Daemon<'_> {
         }
         let held = self.vault.get(vault, t).ok();
         let Some(held) = held else {
-            return format!("{label} isn't connected through a kept sign-in, so there's nothing to take away.");
+            return format!(
+                "{label} isn't connected through a kept sign-in, so there's nothing to take away."
+            );
         };
         self.vault.secrets.retain(|s| s.name != vault);
         if let Err(e) = self.vault.save(&self.vault_home) {
@@ -880,7 +1341,8 @@ impl Daemon<'_> {
         match serde_json::from_str::<TikTokSignIn>(&held) {
             Ok(s) if !s.refresh_token.is_empty() => {
                 std::thread::spawn(move || {
-                    crate::heard!(apis::tiktok_access(&Https, &s).and_then(|(access, _)| apis::tiktok_revoke(&Https, &s, &access)));
+                    crate::heard!(apis::tiktok_access(&Https, &s)
+                        .and_then(|(access, _)| apis::tiktok_revoke(&Https, &s, &access)));
                 });
                 "TikTok is disconnected, its sign-in is gone from the vault, and TikTok is being asked to end Atlas's access too.".into()
             }
@@ -916,7 +1378,11 @@ impl Daemon<'_> {
     /// "Connect my YouTube": the Connect button, said.
     pub(crate) fn connect_youtube(&mut self) -> String {
         match crate::oauthlink::google_secret() {
-            Some(sec) => self.social_google(crate::oauthlink::GOOGLE_CLIENT_ID, &sec, crate::store::now()),
+            Some(sec) => self.social_google(
+                crate::oauthlink::GOOGLE_CLIENT_ID,
+                &sec,
+                crate::store::now(),
+            ),
             None => crate::oauthlink::NO_GOOGLE_SECRET.into(),
         }
     }
@@ -939,7 +1405,11 @@ impl Daemon<'_> {
                 "This copy of Atlas was built without its Google sign-in, so this waits for one that has it.".into()
             },
         });
-        let handle = cfg.bluesky_handle.trim().trim_start_matches('@').to_string();
+        let handle = cfg
+            .bluesky_handle
+            .trim()
+            .trim_start_matches('@')
+            .to_string();
         let connected_bsky = !handle.is_empty();
         out.push(page::Service {
             name: "Bluesky".into(),
@@ -972,28 +1442,69 @@ impl Daemon<'_> {
         let mut rows = Vec::new();
         for pf in book.platforms() {
             let days = book.account_days(pf);
-            let f = days.iter().rev().find_map(|a| a.followers.map(|n| format!("{} on {}", super::count_said(n), super::day_label(a.day)))).unwrap_or_default();
+            let f = days
+                .iter()
+                .rev()
+                .find_map(|a| {
+                    a.followers
+                        .map(|n| format!("{} on {}", super::count_said(n), super::day_label(a.day)))
+                })
+                .unwrap_or_default();
             let mine: Vec<_> = latest.iter().filter(|p| p.platform == pf).collect();
-            let last_day = mine.iter().map(|p| p.day).chain(days.iter().map(|a| a.day)).max();
-            let source = mine.iter().max_by_key(|p| p.day).map(|p| p.source.clone()).or_else(|| days.last().map(|a| a.source.clone())).unwrap_or_default();
-            rows.push(page::PlatformRow { name: pf.name().into(), posts: mine.len(), followers: f, latest: last_day.map(super::day_label).unwrap_or_default(), source });
+            let last_day = mine
+                .iter()
+                .map(|p| p.day)
+                .chain(days.iter().map(|a| a.day))
+                .max();
+            let source = mine
+                .iter()
+                .max_by_key(|p| p.day)
+                .map(|p| p.source.clone())
+                .or_else(|| days.last().map(|a| a.source.clone()))
+                .unwrap_or_default();
+            rows.push(page::PlatformRow {
+                name: pf.name().into(),
+                posts: mine.len(),
+                followers: f,
+                latest: last_day.map(super::day_label).unwrap_or_default(),
+                source,
+            });
         }
         let have = book.platforms();
-        let nothing_from = Platform::ALL.iter().filter(|p| !have.contains(p)).map(|p| p.name().to_string()).collect();
-        let min = self.tools_ref().map(|x| x.content.min_posts_for_patterns).unwrap_or(8);
+        let nothing_from = Platform::ALL
+            .iter()
+            .filter(|p| !have.contains(p))
+            .map(|p| p.name().to_string())
+            .collect();
+        let min = self
+            .tools_ref()
+            .map(|x| x.content.min_posts_for_patterns)
+            .unwrap_or(8);
         let w = self.social_watch().clone();
         crate::heard!(self.vault_ready(t));
         let vault_open = self.vault.state() == crate::vault::State::Open;
-        let listed: Vec<String> = self.vault.list().iter().map(|(n, _)| n.to_string()).collect();
+        let listed: Vec<String> = self
+            .vault
+            .list()
+            .iter()
+            .map(|(n, _)| n.to_string())
+            .collect();
         let kept = |n: &str| vault_open.then(|| listed.iter().any(|x| x == n));
         let lapsing = if vault_open {
-            self.vault.get(VAULT_YOUTUBE_OAUTH, t).ok().and_then(|j| serde_json::from_str::<GoogleSignIn>(&j).ok()).and_then(|g| g.lapsing(t, cfg.google_app_in_testing))
+            self.vault
+                .get(VAULT_YOUTUBE_OAUTH, t)
+                .ok()
+                .and_then(|j| serde_json::from_str::<GoogleSignIn>(&j).ok())
+                .and_then(|g| g.lapsing(t, cfg.google_app_in_testing))
         } else {
             None
         };
         let mut notice: Vec<String> = said.map(|s| vec![s.to_string()]).unwrap_or_default();
         if !self.workday.social.last_missing.is_empty() {
-            notice.push(format!("Last refresh couldn't read: {}.", self.workday.social.last_missing.join("; ")));
+            notice.push(format!(
+                "Last refresh couldn't read: {}.",
+                self.workday.social.last_missing.join("; ")
+            ));
         }
         let services = self.social_services(&cfg, &listed);
         let v = page::View {
@@ -1003,9 +1514,21 @@ impl Daemon<'_> {
             scan: cfg.scan,
             rows,
             nothing_from,
-            last_video: if book.is_empty() { String::new() } else { analysis::last_video(&book, None, t) },
-            worked: if book.is_empty() { String::new() } else { analysis::what_worked(&book, None, 30, t, min) },
-            followers: if book.is_empty() { String::new() } else { analysis::followers(&book, None, t) },
+            last_video: if book.is_empty() {
+                String::new()
+            } else {
+                analysis::last_video(&book, None, t)
+            },
+            worked: if book.is_empty() {
+                String::new()
+            } else {
+                analysis::what_worked(&book, None, 30, t, min)
+            },
+            followers: if book.is_empty() {
+                String::new()
+            } else {
+                analysis::followers(&book, None, t)
+            },
             watching: w
                 .list
                 .iter()
@@ -1024,12 +1547,18 @@ impl Daemon<'_> {
             summary: w.summary.as_ref().map(|(_, s)| s.clone()),
             keys: vec![
                 ("YouTube API key".into(), kept(VAULT_YOUTUBE_KEY)),
-                ("YouTube Analytics sign-in".into(), kept(VAULT_YOUTUBE_OAUTH)),
+                (
+                    "YouTube Analytics sign-in".into(),
+                    kept(VAULT_YOUTUBE_OAUTH),
+                ),
                 ("Instagram token".into(), kept(VAULT_INSTAGRAM)),
                 ("Threads token".into(), kept(VAULT_THREADS)),
                 ("Facebook Page token".into(), kept(VAULT_FACEBOOK)),
                 ("TikTok sign-in".into(), kept(VAULT_TIKTOK)),
-                ("Bluesky app password (for posting)".into(), kept(VAULT_BLUESKY)),
+                (
+                    "Bluesky app password (for posting)".into(),
+                    kept(VAULT_BLUESKY),
+                ),
             ],
             accounts: page::Accounts {
                 youtube_channel: cfg.youtube_channel.clone(),
@@ -1041,7 +1570,9 @@ impl Daemon<'_> {
                 youtube_analytics: cfg.youtube_analytics,
                 google_app_in_testing: cfg.google_app_in_testing,
             },
-            searches_left: w.quota.left(watchlist::pacific_day(t), cfg.youtube_searches_per_day),
+            searches_left: w
+                .quota
+                .left(watchlist::pacific_day(t), cfg.youtube_searches_per_day),
             lapsing,
         };
         page::render_social(&v)
@@ -1049,13 +1580,19 @@ impl Daemon<'_> {
 
     /// The Social page's buttons. What each did comes back on the page.
     pub(crate) fn social_post(&mut self, f: &[(String, String)], t: u64) -> String {
-        let field = |k: &str| f.iter().find(|(n, _)| n == k).map(|(_, v)| v.trim().to_string()).unwrap_or_default();
+        let field = |k: &str| {
+            f.iter()
+                .find(|(n, _)| n == k)
+                .map(|(_, v)| v.trim().to_string())
+                .unwrap_or_default()
+        };
         match field("what").as_str() {
             "import" => self.social_import(&field("path"), t),
             "watch" => self.social_watch_add(&format!("watch {}", field("target")), t),
             "browser-signin" => {
                 let site = field("site");
-                let Some((name, domain)) = super::SIGN_IN_SITES.iter().find(|(_, d)| *d == site) else {
+                let Some((name, domain)) = super::SIGN_IN_SITES.iter().find(|(_, d)| *d == site)
+                else {
                     return "That isn't one of the sites listed, so nothing was opened.".into();
                 };
                 let bcfg = self.tools_cfg().browser.clone();
@@ -1085,7 +1622,11 @@ impl Daemon<'_> {
             "unwatch" => {
                 let gone = self.social_watch().remove(&field("which"));
                 crate::heard!(self.social_keep_watch());
-                if gone.is_empty() { "Nothing matched, so nothing changed.".into() } else { format!("Stopped watching {}.", gone.join(", ")) }
+                if gone.is_empty() {
+                    "Nothing matched, so nothing changed.".into()
+                } else {
+                    format!("Stopped watching {}.", gone.join(", "))
+                }
             }
             "refresh" => self.social_refresh(t, true),
             "scan" => self.social_scan(t, true).unwrap_or_default(),
@@ -1095,7 +1636,9 @@ impl Daemon<'_> {
                 if d.is_empty() {
                     "Nothing's been read to sum up yet.".into()
                 } else {
-                    self.social_summarise(t, &d, true).unwrap_or_else(|| "There's no model set up to sum it up; the figures are below.".into())
+                    self.social_summarise(t, &d, true).unwrap_or_else(|| {
+                        "There's no model set up to sum it up; the figures are below.".into()
+                    })
                 }
             }
             "key" => {
@@ -1136,7 +1679,9 @@ impl Daemon<'_> {
                 // the sign-in doesn't lapse weekly) unless you gave your own.
                 if id.is_empty() && secret.is_empty() {
                     return match crate::oauthlink::google_secret() {
-                        Some(sec) => self.social_google(crate::oauthlink::GOOGLE_CLIENT_ID, &sec, t),
+                        Some(sec) => {
+                            self.social_google(crate::oauthlink::GOOGLE_CLIENT_ID, &sec, t)
+                        }
                         None => crate::oauthlink::NO_GOOGLE_SECRET.into(),
                     };
                 }
@@ -1148,15 +1693,27 @@ impl Daemon<'_> {
             "youtube-disconnect" => self.youtube_disconnect(t),
             "token-disconnect" => self.token_disconnect(&field("name"), t),
             "bluesky-disconnect" => self.bluesky_disconnect(t),
-            "tiktok-start" => self.social_tiktok_start(&field("key"), &field("secret"), &field("redirect"), t),
+            "tiktok-start" => {
+                self.social_tiktok_start(&field("key"), &field("secret"), &field("redirect"), t)
+            }
             "tiktok-finish" => self.social_tiktok_finish(&field("address"), t),
             "accounts" => {
                 // Each through Settings' own path, so what's kept is checked
                 // the same way and lands in your preferences file.
                 let mut said = Vec::new();
-                for (key, v) in [("youtube_channel", field("youtube_channel")), ("bluesky_handle", field("bluesky_handle").trim_start_matches('@').to_string())] {
+                for (key, v) in [
+                    ("youtube_channel", field("youtube_channel")),
+                    (
+                        "bluesky_handle",
+                        field("bluesky_handle").trim_start_matches('@').to_string(),
+                    ),
+                ] {
                     let full = format!("workday.social.{key}");
-                    let now_is = if key == "youtube_channel" { self.social_cfg().youtube_channel } else { self.social_cfg().bluesky_handle };
+                    let now_is = if key == "youtube_channel" {
+                        self.social_cfg().youtube_channel
+                    } else {
+                        self.social_cfg().bluesky_handle
+                    };
                     if v != now_is {
                         said.push(self.apply_setting(&full, &v));
                     }
@@ -1172,10 +1729,17 @@ impl Daemon<'_> {
                 ] {
                     let want = f.iter().any(|(n, v)| n == key && v == "on");
                     if want != now_on {
-                        said.push(self.apply_setting(&format!("workday.social.{key}"), if want { "on" } else { "off" }));
+                        said.push(self.apply_setting(
+                            &format!("workday.social.{key}"),
+                            if want { "on" } else { "off" },
+                        ));
                     }
                 }
-                if said.is_empty() { "Nothing changed.".into() } else { said.join(". ") }
+                if said.is_empty() {
+                    "Nothing changed.".into()
+                } else {
+                    said.join(". ")
+                }
             }
             _ => "That button isn't wired to anything, so nothing changed.".into(),
         }
@@ -1192,12 +1756,22 @@ impl Daemon<'_> {
         if let Err(e) = self.vault_ready(t) {
             return format!("Nothing was started: {e}.");
         }
-        let s = TikTokSignIn { client_key: key.into(), client_secret: secret.into(), redirect: redirect.into(), refresh_token: String::new(), state: crate::vault::short_code(16), obtained: 0 };
+        let s = TikTokSignIn {
+            client_key: key.into(),
+            client_secret: secret.into(),
+            redirect: redirect.into(),
+            refresh_token: String::new(),
+            state: crate::vault::short_code(16),
+            obtained: 0,
+        };
         let json = match serde_json::to_string(&s) {
             Ok(j) => j,
             Err(e) => return e.to_string(),
         };
-        if let Err(e) = self.vault.put(VAULT_TIKTOK, crate::vault::Kind::ApiKey, &json, t) {
+        if let Err(e) = self
+            .vault
+            .put(VAULT_TIKTOK, crate::vault::Kind::ApiKey, &json, t)
+        {
             return e;
         }
         crate::kept!(self.vault.save(&self.vault_home));
@@ -1224,8 +1798,17 @@ impl Daemon<'_> {
         };
         let work: crate::crew::Work = Box::new(move |_ctl| {
             let (_, refresh) = apis::tiktok_exchange(&Https, &s, &code)?;
-            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-            serde_json::to_string(&TikTokSignIn { refresh_token: refresh, state: String::new(), obtained: now, ..s }).map_err(|e| e.to_string())
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            serde_json::to_string(&TikTokSignIn {
+                refresh_token: refresh,
+                state: String::new(),
+                obtained: now,
+                ..s
+            })
+            .map_err(|e| e.to_string())
         });
         match self.hand_off_social("social-tiktok", t, work, None, true) {
             Some(_) => "Finishing the TikTok sign-in; I'll say when it's done.".into(),

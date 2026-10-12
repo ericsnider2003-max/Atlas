@@ -111,7 +111,8 @@ pub const SPIRAL_AFTER: u32 = 3;
 /// What the model is told once something has gone wrong `SPIRAL_AFTER`
 /// times running: the usual "be direct" line led to the same fix offered a
 /// third time.
-pub const DEBUG_SPIRAL: &str = "It has gone wrong three times running: don't offer the same fix again. \
+pub const DEBUG_SPIRAL: &str =
+    "It has gone wrong three times running: don't offer the same fix again. \
      Say which assumption might be wrong, and ask one question that would check it.";
 
 /// The debug-spiral line, when it's due.
@@ -175,9 +176,7 @@ impl Persona {
         // here is also what newly tells the model to have a view when asked
         // *about Atlas itself* -- before this only the chat arm said so.
         if register.opinions_welcome() {
-            p.push_str(
-                "\n\nWhen you have a view, offer it rather than waiting to be asked.",
-            );
+            p.push_str("\n\nWhen you have a view, offer it rather than waiting to be asked.");
         }
         if self.argues && register != R::Rough {
             p.push_str(
@@ -187,7 +186,11 @@ impl Persona {
         }
         // What humour is allowed, from the one place that decides it. `dry`
         // is word for word what this said before the setting had levels.
-        p.push_str(&crate::wit::prompt_line(self.wit, &crate::wit::Moment::new(register, "", ""), false));
+        p.push_str(&crate::wit::prompt_line(
+            self.wit,
+            &crate::wit::Moment::new(register, "", ""),
+            false,
+        ));
         if !self.converses && register == R::Chatting {
             p.push_str("\n\nKeep it short even so — the user prefers not to chat.");
         }
@@ -215,7 +218,11 @@ impl Persona {
     /// Atlas, with this and the rest at ~2,800 tokens, 17-40 s and worse
     /// answers. Every rule kept is one a real reply broke.
     fn who_and_what(&self) -> String {
-        let owner = if self.address.trim().is_empty() { "the person who owns this computer".to_string() } else { self.address.trim().to_string() };
+        let owner = if self.address.trim().is_empty() {
+            "the person who owns this computer".to_string()
+        } else {
+            self.address.trim().to_string()
+        };
         format!(
             "You are {name}, personal assistant and friend of {owner}, on their computer and phone. Your job: take things off their plate. Your tools research the web, see their screen and \
              camera, work their apps, files, notes, calendar, mail and messages, and check on yourself. You care \
@@ -270,7 +277,13 @@ impl Persona {
     /// 29 Sep 2026: this replaced `for_this_turn(register, sentences)`, which
     /// is gone rather than kept beside it, so a caller that doesn't say what
     /// was said fails to build instead of quietly skipping the fence.
-    pub fn for_this_turn_on(&self, register: crate::register::Register, sentences: usize, said: &str, in_a_flow: bool) -> String {
+    pub fn for_this_turn_on(
+        &self,
+        register: crate::register::Register,
+        sentences: usize,
+        said: &str,
+        in_a_flow: bool,
+    ) -> String {
         use crate::register::Register as R;
         let moment = match register {
             R::Working => "This is a task: confirm or answer briefly.",
@@ -291,7 +304,11 @@ impl Persona {
         } else {
             moment
         };
-        let humour = crate::wit::prompt_line(self.wit, &crate::wit::Moment::new(register, said, "").during_a_flow(in_a_flow), true);
+        let humour = crate::wit::prompt_line(
+            self.wit,
+            &crate::wit::Moment::new(register, said, "").during_a_flow(in_a_flow),
+            true,
+        );
         let length = match sentences {
             0 | 1 => "Answer in one sentence.".to_string(),
             n if n <= 3 => format!("One to {n} short sentences; more only if they asked for detail, a story or a list."),
@@ -334,7 +351,8 @@ impl Persona {
              - You are not only for work. If the conversation goes elsewhere, go with it.\n\
              - Never claim something worked when you did not verify it.\n\
              - No markdown, no lists, no headings. It will be read aloud.",
-            self.who_and_what(), self.max_spoken_sentences
+            self.who_and_what(),
+            self.max_spoken_sentences
         )
     }
 
@@ -436,7 +454,13 @@ impl Persona {
     /// failure, on an error, on anything serious, or while a security, vault
     /// or confirmation step is under way -- `in_a_flow`). The
     /// acknowledgement itself is unchanged and comes first.
-    pub fn acknowledge_in(&self, said: &str, seed: u64, register: crate::register::Register, in_a_flow: bool) -> String {
+    pub fn acknowledge_in(
+        &self,
+        said: &str,
+        seed: u64,
+        register: crate::register::Register,
+        in_a_flow: bool,
+    ) -> String {
         let plain = self.acknowledge(said, seed);
         let m = crate::wit::Moment::new(register, "", &plain).during_a_flow(in_a_flow);
         crate::wit::dress(self.wit, &plain, crate::wit::Canned::Done, &m, seed)
@@ -453,7 +477,11 @@ impl Persona {
             t if FAREWELLS.iter().any(|g| t == *g) => crate::wit::Canned::Goodbye,
             _ => crate::wit::Canned::Greeting,
         };
-        let register = if hold_back { crate::register::Register::Rough } else { crate::register::Register::Chatting };
+        let register = if hold_back {
+            crate::register::Register::Rough
+        } else {
+            crate::register::Register::Chatting
+        };
         let m = crate::wit::Moment::new(register, said, &plain);
         Some(crate::wit::dress(self.wit, &plain, kind, &m, seed))
     }
@@ -481,7 +509,8 @@ pub fn without_emphasis(text: &str) -> String {
         if *ch == '*' {
             let before = i.checked_sub(1).map(|j| c[j]);
             let after = c.get(i + 1).copied();
-            let spaced = before.is_none_or(char::is_whitespace) && after.is_none_or(char::is_whitespace);
+            let spaced =
+                before.is_none_or(char::is_whitespace) && after.is_none_or(char::is_whitespace);
             if spaced {
                 out.push('*');
             }
@@ -568,7 +597,9 @@ pub fn trim_to_sentences(text: &str, max: usize) -> String {
         i += 1;
         if matches!(c, '.' | '!' | '?') {
             let mut j = i;
-            while j < chars.len() && matches!(chars[j], '"' | '\u{201d}' | '\'' | '\u{2019}' | ')' | ']') {
+            while j < chars.len()
+                && matches!(chars[j], '"' | '\u{201d}' | '\'' | '\u{2019}' | ')' | ']')
+            {
                 j += 1;
             }
             if j < chars.len() && !chars[j].is_whitespace() {
@@ -601,14 +632,43 @@ pub fn trim_to_sentences(text: &str, max: usize) -> String {
 
 /// Greetings, thanks, and the other things people say that are not commands.
 const GREETINGS: &[&str] = &[
-    "hello", "hi", "hey", "yo", "hiya", "howdy", "good morning", "good afternoon",
-    "good evening", "morning", "afternoon", "evening", "you there", "are you there",
-    "you awake", "are you awake", "you up", "atlas",
+    "hello",
+    "hi",
+    "hey",
+    "yo",
+    "hiya",
+    "howdy",
+    "good morning",
+    "good afternoon",
+    "good evening",
+    "morning",
+    "afternoon",
+    "evening",
+    "you there",
+    "are you there",
+    "you awake",
+    "are you awake",
+    "you up",
+    "atlas",
 ];
 
-const THANKS: &[&str] = &["thanks", "thank you", "cheers", "ta", "nice one", "appreciate it"];
+const THANKS: &[&str] = &[
+    "thanks",
+    "thank you",
+    "cheers",
+    "ta",
+    "nice one",
+    "appreciate it",
+];
 
-const FAREWELLS: &[&str] = &["bye", "goodbye", "good night", "goodnight", "see you", "later"];
+const FAREWELLS: &[&str] = &[
+    "bye",
+    "goodbye",
+    "good night",
+    "goodnight",
+    "see you",
+    "later",
+];
 
 /// Strip the wake word and punctuation, so "Atlas, hello!" reads as "hello".
 fn bare(said: &str) -> String {
@@ -620,7 +680,10 @@ fn bare(said: &str) -> String {
     // The wake word can land either side of the greeting -- "atlas hello" and
     // "hey atlas" are both normal -- so it is removed wherever it appears
     // rather than only at the front.
-    t.split_whitespace().filter(|w| *w != "atlas").collect::<Vec<_>>().join(" ")
+    t.split_whitespace()
+        .filter(|w| *w != "atlas")
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A reply to something social, or `None` if this was a real instruction.
@@ -662,9 +725,30 @@ pub fn social_reply(said: &str, hour: u8) -> Option<String> {
 pub fn asks_for_more(said: &str) -> bool {
     let t = format!(" {} ", crate::repeating::words(said).join(" "));
     const MORE: &[&str] = &[
-        "story", "explain", "in detail", "detail", "tell me about", "tell me more", "more about", "list", "ideas",
-        "walk me through", "step by step", "how does", "how do", "why does", "why do", "why is", "poem", "describe",
-        "summarise", "summarize", "go on", "keep going", "keep talking", "long",
+        "story",
+        "explain",
+        "in detail",
+        "detail",
+        "tell me about",
+        "tell me more",
+        "more about",
+        "list",
+        "ideas",
+        "walk me through",
+        "step by step",
+        "how does",
+        "how do",
+        "why does",
+        "why do",
+        "why is",
+        "poem",
+        "describe",
+        "summarise",
+        "summarize",
+        "go on",
+        "keep going",
+        "keep talking",
+        "long",
     ];
     MORE.iter().any(|m| t.contains(&format!(" {m} ")))
 }
@@ -676,6 +760,8 @@ fn done_something(said: &str) -> bool {
     if said.contains('?') || said.contains(':') {
         return false;
     }
-    let no = ["n't", "nothing", "no ", "not ", "never", "none", "cannot", "unable", "sorry"];
+    let no = [
+        "n't", "nothing", "no ", "not ", "never", "none", "cannot", "unable", "sorry",
+    ];
     !no.iter().any(|w| l.contains(w)) && !l.starts_with("no")
 }

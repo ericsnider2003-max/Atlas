@@ -68,7 +68,10 @@ fn a_query_that_matches_nothing_returns_nothing() {
          can never say it hasn't got something — so you keep typing at a list \
          of wrong answers instead of learning it isn't there"
     );
-    assert!(find(&c, "open banana", &r).is_empty(), "every word has to land");
+    assert!(
+        find(&c, "open banana", &r).is_empty(),
+        "every word has to land"
+    );
 }
 
 #[test]
@@ -264,7 +267,10 @@ fn a_result_does_the_thing_rather_than_taking_you_to_the_button() {
 fn a_search_that_finds_nothing_says_so_in_a_sentence() {
     let html = atlas::hub::find_page("banana", &[], None);
     assert!(html.contains("banana"), "it repeats what you asked for");
-    assert!(!html.contains("Nothing here."), "not the generic empty page");
+    assert!(
+        !html.contains("Nothing here."),
+        "not the generic empty page"
+    );
 }
 
 #[test]
@@ -283,7 +289,10 @@ fn the_plain_page_shows_no_more_than_the_overlay_does() {
 fn the_overlay_starts_closed_and_says_how_to_work_it() {
     let c = catalogue();
     let html = atlas::hub::palette_overlay(&c, &Recent::default());
-    assert!(html.contains("id=palette hidden"), "not in the way until asked for");
+    assert!(
+        html.contains("id=palette hidden"),
+        "not in the way until asked for"
+    );
     assert!(html.contains("Escape closes"));
     assert!(
         html.contains("action='/hub/find'"),
@@ -339,7 +348,6 @@ fn the_way_in_is_visible_rather_than_only_a_shortcut() {
     assert!(links >= 12, "only {links} pages in the menu");
 }
 
-
 #[test]
 fn a_settings_category_can_be_reached_by_typing_what_is_in_it() {
     let c = catalogue();
@@ -350,7 +358,9 @@ fn a_settings_category_can_be_reached_by_typing_what_is_in_it() {
         ("interrupt", "Change when it speaks first"),
     ] {
         assert!(
-            find(&c, typed, &r).first().is_some_and(|e| e.label == expect),
+            find(&c, typed, &r)
+                .first()
+                .is_some_and(|e| e.label == expect),
             "typing {typed:?} should land in the category that holds it, not \
              at the top of a page with forty settings on it"
         );

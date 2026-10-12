@@ -27,11 +27,23 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone)]
 pub enum Trigger {
     /// Entity's value equals `to` and has for `for_secs`.
-    State { entity: String, to: String, for_secs: u64 },
+    State {
+        entity: String,
+        to: String,
+        for_secs: u64,
+    },
     /// Numeric value crosses above `limit` and stays above for `for_secs`.
-    Above { entity: String, limit: f64, for_secs: u64 },
+    Above {
+        entity: String,
+        limit: f64,
+        for_secs: u64,
+    },
     /// Numeric value crosses below `limit` and stays below for `for_secs`.
-    Below { entity: String, limit: f64, for_secs: u64 },
+    Below {
+        entity: String,
+        limit: f64,
+        for_secs: u64,
+    },
     /// Any change of value.
     Changed { entity: String },
     /// On a clock.
@@ -40,11 +52,23 @@ pub enum Trigger {
 
 #[derive(Debug, Clone)]
 pub enum Condition {
-    StateIs { entity: String, value: String },
-    Above { entity: String, limit: f64 },
-    Below { entity: String, limit: f64 },
+    StateIs {
+        entity: String,
+        value: String,
+    },
+    Above {
+        entity: String,
+        limit: f64,
+    },
+    Below {
+        entity: String,
+        limit: f64,
+    },
     /// Local minutes past midnight, `from..to`; wraps past midnight if from > to.
-    TimeBetween { from: u32, to: u32 },
+    TimeBetween {
+        from: u32,
+        to: u32,
+    },
     /// 0 = Monday.
     Weekdays(Vec<u32>),
     All(Vec<Condition>),
@@ -100,7 +124,11 @@ fn num(v: &str) -> Option<f64> {
 
 impl Engine {
     pub fn new(rules: Vec<Automation>, mem: Memory, utc_offset: i64) -> Engine {
-        Engine { rules, mem, utc_offset }
+        Engine {
+            rules,
+            mem,
+            utc_offset,
+        }
     }
 
     fn value(&self, e: &str) -> Option<&str> {
@@ -111,8 +139,12 @@ impl Engine {
         let local = now + self.utc_offset;
         match c {
             Condition::StateIs { entity, value } => self.value(entity) == Some(value.as_str()),
-            Condition::Above { entity, limit } => self.value(entity).and_then(num).is_some_and(|x| x > *limit),
-            Condition::Below { entity, limit } => self.value(entity).and_then(num).is_some_and(|x| x < *limit),
+            Condition::Above { entity, limit } => {
+                self.value(entity).and_then(num).is_some_and(|x| x > *limit)
+            }
+            Condition::Below { entity, limit } => {
+                self.value(entity).and_then(num).is_some_and(|x| x < *limit)
+            }
             Condition::TimeBetween { from, to } => {
                 let m = (local.rem_euclid(86_400) / 60) as u32;
                 if from <= to {
@@ -121,7 +153,9 @@ impl Engine {
                     m >= *from || m < *to
                 }
             }
-            Condition::Weekdays(days) => days.contains(&crate::civil::weekday(local.div_euclid(86_400))),
+            Condition::Weekdays(days) => {
+                days.contains(&crate::civil::weekday(local.div_euclid(86_400)))
+            }
             Condition::All(v) => v.iter().all(|c| self.holds(c, now)),
             Condition::Any(v) => v.iter().any(|c| self.holds(c, now)),
             Condition::Not(c) => !self.holds(c, now),
@@ -131,13 +165,27 @@ impl Engine {
     /// Is the trigger's level condition true right now (for level triggers)?
     fn level(&self, t: &Trigger) -> Option<(bool, u64)> {
         match t {
-            Trigger::State { entity, to, for_secs } => Some((self.value(entity) == Some(to.as_str()), *for_secs)),
-            Trigger::Above { entity, limit, for_secs } => {
-                Some((self.value(entity).and_then(num).is_some_and(|x| x > *limit), *for_secs))
-            }
-            Trigger::Below { entity, limit, for_secs } => {
-                Some((self.value(entity).and_then(num).is_some_and(|x| x < *limit), *for_secs))
-            }
+            Trigger::State {
+                entity,
+                to,
+                for_secs,
+            } => Some((self.value(entity) == Some(to.as_str()), *for_secs)),
+            Trigger::Above {
+                entity,
+                limit,
+                for_secs,
+            } => Some((
+                self.value(entity).and_then(num).is_some_and(|x| x > *limit),
+                *for_secs,
+            )),
+            Trigger::Below {
+                entity,
+                limit,
+                for_secs,
+            } => Some((
+                self.value(entity).and_then(num).is_some_and(|x| x < *limit),
+                *for_secs,
+            )),
             _ => None,
         }
     }
@@ -152,7 +200,12 @@ impl Engine {
         if !r.conditions.iter().all(|c| self.holds(c, now)) {
             return None;
         }
-        let f = Fired { id: r.id.clone(), action: r.action.clone(), at: now, because };
+        let f = Fired {
+            id: r.id.clone(),
+            action: r.action.clone(),
+            at: now,
+            because,
+        };
         self.mem.last_fired.insert(r.id.clone(), now);
         Some(f)
     }
@@ -161,7 +214,9 @@ impl Engine {
     pub fn observe(&mut self, entity: &str, value: &str, now: i64) -> Vec<Fired> {
         let changed = self.value(entity) != Some(value);
         if changed {
-            self.mem.values.insert(entity.to_string(), (value.to_string(), now));
+            self.mem
+                .values
+                .insert(entity.to_string(), (value.to_string(), now));
         }
         let mut out = vec![];
         for i in 0..self.rules.len() {
@@ -175,9 +230,9 @@ impl Engine {
                 continue;
             }
             let touches = match &t {
-                Trigger::State { entity: e, .. } | Trigger::Above { entity: e, .. } | Trigger::Below { entity: e, .. } => {
-                    e == entity
-                }
+                Trigger::State { entity: e, .. }
+                | Trigger::Above { entity: e, .. }
+                | Trigger::Below { entity: e, .. } => e == entity,
                 _ => false,
             };
             if touches {
@@ -202,7 +257,9 @@ impl Engine {
         let since = *self.mem.pending.entry(id.clone()).or_insert(now);
         if now - since >= for_secs as i64 {
             let because = match &self.rules[i].trigger {
-                Trigger::State { entity, to, .. } => format!("{entity} has been {to} for {}s", now - since),
+                Trigger::State { entity, to, .. } => {
+                    format!("{entity} has been {to} for {}s", now - since)
+                }
                 Trigger::Above { entity, limit, .. } => format!(
                     "{entity} has been above {limit} for {}s (now {})",
                     now - since,
@@ -233,10 +290,14 @@ impl Engine {
         for i in 0..self.rules.len() {
             match self.rules[i].trigger.clone() {
                 Trigger::Schedule(c) => {
-                    let due = c.next_after(last + self.utc_offset).map(|t| t - self.utc_offset);
+                    let due = c
+                        .next_after(last + self.utc_offset)
+                        .map(|t| t - self.utc_offset);
                     if let Some(d) = due {
                         if d <= now && now > last {
-                            if let Some(f) = self.try_fire(i, now, format!("scheduled ({})", c.describe())) {
+                            if let Some(f) =
+                                self.try_fire(i, now, format!("scheduled ({})", c.describe()))
+                            {
                                 out.push(f);
                             }
                         }
@@ -283,7 +344,9 @@ pub struct RuleSpec {
 fn duration(s: &str) -> Result<u64, String> {
     let s = s.trim();
     let (num, unit) = s.split_at(s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len()));
-    let n: u64 = num.parse().map_err(|_| format!("'{s}' is not a duration like 10m or 6h"))?;
+    let n: u64 = num
+        .parse()
+        .map_err(|_| format!("'{s}' is not a duration like 10m or 6h"))?;
     Ok(n * match unit.trim() {
         "" | "s" => 1,
         "m" => 60,
@@ -298,18 +361,27 @@ impl Automation {
     /// half-read: a watch that silently watches the wrong thing is worse
     /// than none.
     pub fn from_spec(spec: &RuleSpec) -> Result<Automation, String> {
-        let name = if spec.name.trim().is_empty() { spec.when.trim().to_string() } else { spec.name.trim().to_string() };
+        let name = if spec.name.trim().is_empty() {
+            spec.when.trim().to_string()
+        } else {
+            spec.name.trim().to_string()
+        };
         let w: Vec<&str> = spec.when.split_whitespace().collect();
         let for_secs = |rest: &[&str]| -> Result<u64, String> {
             match rest {
                 [] => Ok(0),
                 ["for", d] => duration(d),
-                other => Err(format!("expected 'for <duration>', got '{}'", other.join(" "))),
+                other => Err(format!(
+                    "expected 'for <duration>', got '{}'",
+                    other.join(" ")
+                )),
             }
         };
         let trigger = match w.as_slice() {
             ["cron", fields @ ..] => Trigger::Schedule(Cron::parse(&fields.join(" "))?),
-            [entity, "changes"] => Trigger::Changed { entity: entity.to_string() },
+            [entity, "changes"] => Trigger::Changed {
+                entity: entity.to_string(),
+            },
             [entity, "above", n, rest @ ..] => Trigger::Above {
                 entity: entity.to_string(),
                 limit: n.parse().map_err(|_| format!("'{n}' is not a number"))?,
@@ -320,7 +392,11 @@ impl Automation {
                 limit: n.parse().map_err(|_| format!("'{n}' is not a number"))?,
                 for_secs: for_secs(rest)?,
             },
-            [entity, "is", v, rest @ ..] => Trigger::State { entity: entity.to_string(), to: v.to_string(), for_secs: for_secs(rest)? },
+            [entity, "is", v, rest @ ..] => Trigger::State {
+                entity: entity.to_string(),
+                to: v.to_string(),
+                for_secs: for_secs(rest)?,
+            },
             _ => {
                 return Err(format!(
                     "'{}': write it as '<thing> above|below <n> [for 10m]', '<thing> is <value>', \
@@ -335,22 +411,47 @@ impl Automation {
                 "weekdays" => conditions.push(Condition::Weekdays(vec![0, 1, 2, 3, 4])),
                 "weekends" => conditions.push(Condition::Weekdays(vec![5, 6])),
                 window => {
-                    let (a, b) = window.split_once('-').ok_or_else(|| format!("'{window}' is not weekdays, weekends or HH:MM-HH:MM"))?;
+                    let (a, b) = window.split_once('-').ok_or_else(|| {
+                        format!("'{window}' is not weekdays, weekends or HH:MM-HH:MM")
+                    })?;
                     let hm = |x: &str| -> Result<u32, String> {
-                        let (h, m) = x.split_once(':').ok_or_else(|| format!("'{x}' is not HH:MM"))?;
-                        let (h, m): (u32, u32) = (h.parse().map_err(|_| format!("'{x}' is not HH:MM"))?, m.parse().map_err(|_| format!("'{x}' is not HH:MM"))?);
+                        let (h, m) = x
+                            .split_once(':')
+                            .ok_or_else(|| format!("'{x}' is not HH:MM"))?;
+                        let (h, m): (u32, u32) = (
+                            h.parse().map_err(|_| format!("'{x}' is not HH:MM"))?,
+                            m.parse().map_err(|_| format!("'{x}' is not HH:MM"))?,
+                        );
                         if h > 23 || m > 59 {
                             return Err(format!("'{x}' is not a time"));
                         }
                         Ok(h * 60 + m)
                     };
-                    conditions.push(Condition::TimeBetween { from: hm(a)?, to: hm(b)? });
+                    conditions.push(Condition::TimeBetween {
+                        from: hm(a)?,
+                        to: hm(b)?,
+                    });
                 }
             }
         }
-        let cooldown_secs = if spec.cooldown.trim().is_empty() { 0 } else { duration(&spec.cooldown)? };
-        let action = if spec.say.trim().is_empty() { name.clone() } else { spec.say.trim().to_string() };
-        Ok(Automation { id: name.clone(), name, trigger, conditions, action, cooldown_secs })
+        let cooldown_secs = if spec.cooldown.trim().is_empty() {
+            0
+        } else {
+            duration(&spec.cooldown)?
+        };
+        let action = if spec.say.trim().is_empty() {
+            name.clone()
+        } else {
+            spec.say.trim().to_string()
+        };
+        Ok(Automation {
+            id: name.clone(),
+            name,
+            trigger,
+            conditions,
+            action,
+            cooldown_secs,
+        })
     }
 }
 
@@ -362,7 +463,11 @@ mod tests {
         Automation {
             id: "disk".into(),
             name: "Homelab disk".into(),
-            trigger: Trigger::Above { entity: "homelab.disk_pct".into(), limit: 90.0, for_secs: 600 },
+            trigger: Trigger::Above {
+                entity: "homelab.disk_pct".into(),
+                limit: 90.0,
+                for_secs: 600,
+            },
             conditions: vec![],
             action: "tell me".into(),
             cooldown_secs: 0,
@@ -411,22 +516,40 @@ mod tests {
         let rule = Automation {
             id: "mail".into(),
             name: "Mail from Jordan in work hours".into(),
-            trigger: Trigger::Changed { entity: "mail.last_from".into() },
+            trigger: Trigger::Changed {
+                entity: "mail.last_from".into(),
+            },
             conditions: vec![
-                Condition::StateIs { entity: "mail.last_from".into(), value: "jordan@example.com".into() },
-                Condition::TimeBetween { from: 9 * 60, to: 17 * 60 },
+                Condition::StateIs {
+                    entity: "mail.last_from".into(),
+                    value: "jordan@example.com".into(),
+                },
+                Condition::TimeBetween {
+                    from: 9 * 60,
+                    to: 17 * 60,
+                },
             ],
             action: "draft a reply".into(),
             cooldown_secs: 3600,
         };
         let mut e = Engine::new(vec![rule], Memory::default(), 0);
         let ten_am = 10 * 3600;
-        assert!(e.observe("mail.last_from", "someone@else.com", ten_am).is_empty());
-        assert_eq!(e.observe("mail.last_from", "jordan@example.com", ten_am + 60).len(), 1);
+        assert!(e
+            .observe("mail.last_from", "someone@else.com", ten_am)
+            .is_empty());
+        assert_eq!(
+            e.observe("mail.last_from", "jordan@example.com", ten_am + 60)
+                .len(),
+            1
+        );
         e.observe("mail.last_from", "x@y", ten_am + 120);
-        assert!(e.observe("mail.last_from", "jordan@example.com", ten_am + 180).is_empty()); // cooldown
+        assert!(e
+            .observe("mail.last_from", "jordan@example.com", ten_am + 180)
+            .is_empty()); // cooldown
         e.observe("mail.last_from", "x@y", 20 * 3600);
-        assert!(e.observe("mail.last_from", "jordan@example.com", 20 * 3600 + 1).is_empty()); // 8pm
+        assert!(e
+            .observe("mail.last_from", "jordan@example.com", 20 * 3600 + 1)
+            .is_empty()); // 8pm
     }
 
     #[test]
@@ -450,15 +573,46 @@ mod tests {
 
     #[test]
     fn rules_read_from_words() {
-        let spec = |when: &str, only: &str| RuleSpec { name: "r".into(), when: when.into(), only: only.into(), say: "hi".into(), cooldown: "6h".into() };
-        let a = Automation::from_spec(&spec("machine.disk_used_pct above 90 for 10m", "weekdays 09:00-18:00")).unwrap();
+        let spec = |when: &str, only: &str| RuleSpec {
+            name: "r".into(),
+            when: when.into(),
+            only: only.into(),
+            say: "hi".into(),
+            cooldown: "6h".into(),
+        };
+        let a = Automation::from_spec(&spec(
+            "machine.disk_used_pct above 90 for 10m",
+            "weekdays 09:00-18:00",
+        ))
+        .unwrap();
         assert!(matches!(a.trigger, Trigger::Above { limit, for_secs: 600, .. } if limit == 90.0));
         assert_eq!(a.conditions.len(), 2);
         assert_eq!(a.cooldown_secs, 6 * 3600);
-        assert!(matches!(Automation::from_spec(&spec("cron 0 7 * * MON-FRI", "")).unwrap().trigger, Trigger::Schedule(_)));
-        assert!(matches!(Automation::from_spec(&spec("watch.vps is down for 5m", "")).unwrap().trigger, Trigger::State { for_secs: 300, .. }));
-        assert!(matches!(Automation::from_spec(&spec("mail.last_from changes", "")).unwrap().trigger, Trigger::Changed { .. }));
-        for bad in ["disk is", "disk above lots", "disk above 9 for ever", "cron 61 * * * *", "whenever"] {
+        assert!(matches!(
+            Automation::from_spec(&spec("cron 0 7 * * MON-FRI", ""))
+                .unwrap()
+                .trigger,
+            Trigger::Schedule(_)
+        ));
+        assert!(matches!(
+            Automation::from_spec(&spec("watch.vps is down for 5m", ""))
+                .unwrap()
+                .trigger,
+            Trigger::State { for_secs: 300, .. }
+        ));
+        assert!(matches!(
+            Automation::from_spec(&spec("mail.last_from changes", ""))
+                .unwrap()
+                .trigger,
+            Trigger::Changed { .. }
+        ));
+        for bad in [
+            "disk is",
+            "disk above lots",
+            "disk above 9 for ever",
+            "cron 61 * * * *",
+            "whenever",
+        ] {
             assert!(Automation::from_spec(&spec(bad, "")).is_err(), "{bad}");
         }
         assert!(Automation::from_spec(&spec("x changes", "25:00-26:00")).is_err());
@@ -469,9 +623,21 @@ mod tests {
         let mut e = Engine::new(vec![], Memory::default(), 0);
         e.observe("a", "5", 0);
         let c = Condition::All(vec![
-            Condition::Above { entity: "a".into(), limit: 1.0 },
+            Condition::Above {
+                entity: "a".into(),
+                limit: 1.0,
+            },
             Condition::Not(Box::new(Condition::Weekdays(vec![5, 6]))),
-            Condition::Any(vec![Condition::StateIs { entity: "b".into(), value: "x".into() }, Condition::Below { entity: "a".into(), limit: 9.0 }]),
+            Condition::Any(vec![
+                Condition::StateIs {
+                    entity: "b".into(),
+                    value: "x".into(),
+                },
+                Condition::Below {
+                    entity: "a".into(),
+                    limit: 9.0,
+                },
+            ]),
         ]);
         assert!(e.holds(&c, 0)); // 1970-01-01 is a Thursday
     }

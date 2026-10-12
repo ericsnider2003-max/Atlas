@@ -123,7 +123,10 @@ impl Default for PanelConfig {
 
 /// The screen you're working on.
 fn primary(monitors: &[Monitor]) -> Option<&Monitor> {
-    monitors.iter().find(|m| m.primary).or_else(|| monitors.first())
+    monitors
+        .iter()
+        .find(|m| m.primary)
+        .or_else(|| monitors.first())
 }
 
 /// Somewhere that isn't the screen you're working on.
@@ -169,7 +172,12 @@ pub fn place(panel: Panel, monitors: &[Monitor], cfg: &PanelConfig) -> Decision 
             monitor: m.id,
             // Bottom right of the second screen: visible in peripheral
             // vision, never where a window's content is.
-            rect: Rect { x: m.x + m.width - s - 28, y: m.y + m.height - s - 28, width: s, height: s },
+            rect: Rect {
+                x: m.x + m.width - s - 28,
+                y: m.y + m.height - s - 28,
+                width: s,
+                height: s,
+            },
             on_top: true,
             chromeless: true,
         });
@@ -177,7 +185,11 @@ pub fn place(panel: Panel, monitors: &[Monitor], cfg: &PanelConfig) -> Decision 
 
     // A full-height column down the right of the screen you're looking at.
     // Its own window, top to bottom — nothing to scroll a small box for.
-    let target = if cfg.prefer_second_screen { secondary(monitors) } else { primary(monitors) };
+    let target = if cfg.prefer_second_screen {
+        secondary(monitors)
+    } else {
+        primary(monitors)
+    };
 
     match target {
         Some(m) => {

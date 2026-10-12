@@ -105,7 +105,11 @@ const KEEP: usize = 500;
 
 impl Observations {
     pub fn time(&mut self, stage: &str, ms: u64, at: u64) {
-        self.timings.push(Measurement { stage: stage.into(), ms, at });
+        self.timings.push(Measurement {
+            stage: stage.into(),
+            ms,
+            at,
+        });
         if self.timings.len() > KEEP {
             let drop = self.timings.len() - KEEP;
             self.timings.drain(0..drop);
@@ -123,7 +127,12 @@ impl Observations {
         // outstanding in your setup?" (the laptop's self-test, 30 Sep 2026).
         let first = w.split_whitespace().next().unwrap_or("");
         // "Will you juggle ...?" is still a request; "what is ...?" isn't.
-        if ["what", "what's", "whats", "who", "who's", "why", "how", "when", "where", "which", "is", "are", "does", "did"].contains(&first) {
+        if [
+            "what", "what's", "whats", "who", "who's", "why", "how", "when", "where", "which",
+            "is", "are", "does", "did",
+        ]
+        .contains(&first)
+        {
             return;
         }
         if !self.unsupported_requests.contains(&w) {
@@ -133,8 +142,12 @@ impl Observations {
 
     /// Median rather than mean — one cold start shouldn't define a stage.
     pub fn typical(&self, stage: &str) -> Option<u64> {
-        let mut v: Vec<u64> =
-            self.timings.iter().filter(|m| m.stage == stage).map(|m| m.ms).collect();
+        let mut v: Vec<u64> = self
+            .timings
+            .iter()
+            .filter(|m| m.stage == stage)
+            .map(|m| m.ms)
+            .collect();
         if v.is_empty() {
             return None;
         }
@@ -197,7 +210,9 @@ pub fn recommend(obs: &Observations, m: &Machine) -> Vec<Recommendation> {
 
     // --- slow stages ---
     for stage in obs.stages() {
-        let Some(ms) = obs.typical(&stage) else { continue };
+        let Some(ms) = obs.typical(&stage) else {
+            continue;
+        };
         if ms <= slow_at(&stage) {
             continue;
         }
@@ -285,7 +300,10 @@ pub fn recommend(obs: &Observations, m: &Machine) -> Vec<Recommendation> {
         out.push(Recommendation {
             id: format!("missing-{}", req.replace(' ', "-")),
             want,
-            because: format!("you asked for \"{}\" and I couldn't do it", req.trim_end_matches(['.', '!'])),
+            because: format!(
+                "you asked for \"{}\" and I couldn't do it",
+                req.trim_end_matches(['.', '!'])
+            ),
             benefit: "a thing you wanted that I can't do yet".into(),
             cost,
             possible_here: possible,
@@ -320,13 +338,23 @@ fn classify_request(req: &str, m: &Machine) -> (String, bool, Cost) {
             Cost::Large,
         );
     }
-    if (r.contains("image") || r.contains("photo")) && (r.contains("generate") || r.contains("make")) {
-        return ("local image generation".into(), m.vram_gb >= 6.0, Cost::Free);
+    if (r.contains("image") || r.contains("photo"))
+        && (r.contains("generate") || r.contains("make"))
+    {
+        return (
+            "local image generation".into(),
+            m.vram_gb >= 6.0,
+            Cost::Free,
+        );
     }
     if r.contains("calendar") || r.contains("meeting") {
         return ("a calendar connection".into(), true, Cost::Free);
     }
-    (format!("a way to do \"{}\"", req.trim_end_matches(['.', '!'])), true, Cost::Free)
+    (
+        format!("a way to do \"{}\"", req.trim_end_matches(['.', '!'])),
+        true,
+        Cost::Free,
+    )
 }
 
 /// What Atlas says when asked what it's missing.
@@ -339,14 +367,21 @@ pub fn ask(recommendations: &[Recommendation]) -> String {
     if viable.is_empty() {
         let blocked = recommendations.len() - viable.len();
         return if blocked > 0 {
-            format!("Nothing I can usefully change. {blocked} thing(s) would need different hardware.")
+            format!(
+                "Nothing I can usefully change. {blocked} thing(s) would need different hardware."
+            )
         } else {
             "Nothing I'm missing.".into()
         };
     }
     viable.sort_by_key(|r| r.cost as u8);
     let r = viable[0];
-    format!("{}. I'd want {}, which would mean {}.", capitalise(&r.because), r.want, r.benefit)
+    format!(
+        "{}. I'd want {}, which would mean {}.",
+        capitalise(&r.because),
+        r.want,
+        r.benefit
+    )
 }
 
 fn capitalise(s: &str) -> String {

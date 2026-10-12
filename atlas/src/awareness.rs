@@ -130,9 +130,12 @@ impl Awareness {
             }
         }
         self.last_idle = input_idle_secs;
-        let at_breakpoint = t.saturating_sub(self.app_changed_at) <= BREAK_WINDOW && self.app_changed_at > 0
+        let at_breakpoint = t.saturating_sub(self.app_changed_at) <= BREAK_WINDOW
+            && self.app_changed_at > 0
             || t.saturating_sub(self.came_back_at) <= BREAK_WINDOW && self.came_back_at > 0
-            || input_idle_secs.map(|i| i >= self.pause_in(active.as_ref())).unwrap_or(false);
+            || input_idle_secs
+                .map(|i| i >= self.pause_in(active.as_ref()))
+                .unwrap_or(false);
 
         // A walk finished on its own thread: its changes are this
         // observation's, exactly as if it had been walked here.
@@ -142,8 +145,21 @@ impl Awareness {
                     self.walking = None;
                     self.scans += 1;
                     let found = index.apply(fresh);
-                    self.quiet_scans = if found.is_empty() { self.quiet_scans.saturating_add(1) } else { 0 };
-                    return self.signals(plat, active, input_idle_secs, os_quiet, at_breakpoint, in_conversation, found, t);
+                    self.quiet_scans = if found.is_empty() {
+                        self.quiet_scans.saturating_add(1)
+                    } else {
+                        0
+                    };
+                    return self.signals(
+                        plat,
+                        active,
+                        input_idle_secs,
+                        os_quiet,
+                        at_breakpoint,
+                        in_conversation,
+                        found,
+                        t,
+                    );
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => self.walking = None,
@@ -158,9 +174,11 @@ impl Awareness {
                 self.last_index_scan = t;
                 let (tx, rx) = std::sync::mpsc::channel();
                 let cfg = cfg.clone();
-                let started = std::thread::Builder::new().name("atlas-index-walk".into()).spawn(move || {
-                    let _ = tx.send(crate::index::Index::scan(&cfg));
-                });
+                let started = std::thread::Builder::new()
+                    .name("atlas-index-walk".into())
+                    .spawn(move || {
+                        let _ = tx.send(crate::index::Index::scan(&cfg));
+                    });
                 if started.is_ok() {
                     self.walking = Some(rx);
                 }
@@ -171,12 +189,25 @@ impl Awareness {
                 self.last_index_scan = t;
                 self.scans += 1;
                 let found = index.rescan(cfg);
-                self.quiet_scans = if found.is_empty() { self.quiet_scans.saturating_add(1) } else { 0 };
+                self.quiet_scans = if found.is_empty() {
+                    self.quiet_scans.saturating_add(1)
+                } else {
+                    0
+                };
                 found
             }
             _ => Changes::default(),
         };
-        self.signals(plat, active, input_idle_secs, os_quiet, at_breakpoint, in_conversation, recent_changes, t)
+        self.signals(
+            plat,
+            active,
+            input_idle_secs,
+            os_quiet,
+            at_breakpoint,
+            in_conversation,
+            recent_changes,
+            t,
+        )
     }
 
     fn signals(
@@ -197,7 +228,9 @@ impl Awareness {
             // mouse — what `lanes` has always said a gap is ("no keyboard,
             // no mouse, no speech"). Only the speech half was measured, so
             // foreground work could "find a gap" while you were typing.
-            idle_secs: t.saturating_sub(self.last_spoke).min(plat.input_idle_secs().unwrap_or(u64::MAX)),
+            idle_secs: t
+                .saturating_sub(self.last_spoke)
+                .min(plat.input_idle_secs().unwrap_or(u64::MAX)),
             recent_changes,
             in_conversation,
             input_idle_secs,
@@ -208,7 +241,9 @@ impl Awareness {
 
     /// How long a pause in this app has to be to count as a break.
     fn pause_in(&self, w: Option<&ActiveWindow>) -> u64 {
-        w.and_then(|w| self.learned_pause.get(&w.process)).copied().unwrap_or(PAUSE)
+        w.and_then(|w| self.learned_pause.get(&w.process))
+            .copied()
+            .unwrap_or(PAUSE)
     }
 
     pub fn heard_you(&mut self, t: u64) {
@@ -235,7 +270,11 @@ impl Awareness {
         let base = self.scan_every.max(1);
         let backed = base.saturating_mul(1u64 << self.quiet_scans.min(16));
         let present = self.focus_since > 0 && t.saturating_sub(self.focus_since) < AT_THE_MACHINE;
-        let ceiling = if present { SCAN_BACKOFF_PRESENT } else { SCAN_BACKOFF_MAX };
+        let ceiling = if present {
+            SCAN_BACKOFF_PRESENT
+        } else {
+            SCAN_BACKOFF_MAX
+        };
         backed.min(ceiling.max(base))
     }
 }
@@ -244,7 +283,10 @@ impl Awareness {
 pub fn describe(s: &Signals) -> String {
     match &s.active {
         Some(a) if !a.title.is_empty() => {
-            format!("You are in {} — \"{}\" (for {}s)", a.process, a.title, s.dwell_secs)
+            format!(
+                "You are in {} — \"{}\" (for {}s)",
+                a.process, a.title, s.dwell_secs
+            )
         }
         Some(a) => format!("You are in {}", a.process),
         None => "Nothing focused".into(),

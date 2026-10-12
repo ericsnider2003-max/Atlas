@@ -3,7 +3,6 @@
 //! Moved out of `daemon.rs` unchanged (audit Q6, 6 Oct 2026): one file of
 //! thousands of lines was where every chat's edits collided.
 
-
 /// The thing to be reminded of, scheduling words removed. Reminders read
 /// "… to <text>", so the text is what follows the last " to ".
 pub(super) fn reminder_text(said: &str) -> String {
@@ -40,11 +39,16 @@ pub(super) fn relative_secs(low: &str) -> Option<u64> {
 pub(super) fn first_occurrence(raw: &str, now: u64) -> std::result::Result<u64, Option<String>> {
     let p = crate::when::parse(raw, now).ok_or(None)?;
     if !p.sure {
-        return Err(p.why.or_else(|| Some("I'm not sure which time you mean.".into())));
+        return Err(p
+            .why
+            .or_else(|| Some("I'm not sure which time you mean.".into())));
     }
     if p.all_day {
         let c = crate::civil::Civil::from_local(p.start as i64);
-        return Err(Some(format!("what time on {:04}-{:02}-{:02}?", c.year, c.month, c.day)));
+        return Err(Some(format!(
+            "what time on {:04}-{:02}-{:02}?",
+            c.year, c.month, c.day
+        )));
     }
     Ok(p.start)
 }
@@ -124,7 +128,9 @@ pub(super) fn settings_fingerprint(dir: &std::path::Path) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     for name in ["tools.yaml", "settings.yaml"] {
-        std::fs::read(dir.join(name)).unwrap_or_default().hash(&mut h);
+        std::fs::read(dir.join(name))
+            .unwrap_or_default()
+            .hash(&mut h);
     }
     h.finish()
 }

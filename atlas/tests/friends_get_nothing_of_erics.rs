@@ -16,8 +16,16 @@ fn the_shipped_config_carries_no_apple_key_team_or_push() {
     assert_eq!(apns["key_file"].as_str(), Some(""), "a key file is shipped");
     assert_eq!(apns["key_id"].as_str(), Some(""), "a key id is shipped");
     assert_eq!(apns["team_id"].as_str(), Some(""), "a Team ID is shipped");
-    assert_eq!(v["phone"]["enabled"].as_bool(), Some(false), "phone pushes are on for everyone");
-    assert_eq!(v["phone"]["host"].as_str(), Some(""), "a push server is shipped");
+    assert_eq!(
+        v["phone"]["enabled"].as_bool(),
+        Some(false),
+        "phone pushes are on for everyone"
+    );
+    assert_eq!(
+        v["phone"]["host"].as_str(),
+        Some(""),
+        "a push server is shipped"
+    );
 }
 
 #[test]
@@ -31,12 +39,21 @@ fn the_shipped_config_carries_no_town() {
 fn no_key_or_team_is_written_into_the_program() {
     for (file, src) in [
         ("apns.rs", std::fs::read_to_string("src/apns.rs").unwrap()),
-        ("applewx.rs", std::fs::read_to_string("src/applewx.rs").unwrap()),
+        (
+            "applewx.rs",
+            std::fs::read_to_string("src/applewx.rs").unwrap(),
+        ),
         ("phone.rs", std::fs::read_to_string("src/phone.rs").unwrap()),
-        ("weather.rs", std::fs::read_to_string("src/weather.rs").unwrap()),
+        (
+            "weather.rs",
+            std::fs::read_to_string("src/weather.rs").unwrap(),
+        ),
     ] {
         assert!(!src.contains("BEGIN PRIVATE KEY"), "{file} carries a key");
-        assert!(!src.contains("Z6NSM9AXB7") && !src.contains("G3D89YSJD4"), "{file} carries Eric's Team or key id");
+        assert!(
+            !src.contains("Z6NSM9AXB7") && !src.contains("G3D89YSJD4"),
+            "{file} carries Eric's Team or key id"
+        );
     }
     let swift = std::fs::read_to_string("mobile/ios/Atlas/AppleWeather.swift").unwrap()
         + &std::fs::read_to_string("mobile/ios/Atlas/AtlasApp.swift").unwrap();
@@ -48,7 +65,8 @@ fn a_phones_push_address_is_only_taken_from_your_own_devices() {
     // Unsealed means not your household's key: a friend's device can't hand
     // your laptop an address, and yours never sends to theirs.
     let dir = std::env::temp_dir().join(format!("atlas-friends-{}", std::process::id()));
-    let (id, _, to) = atlas::apns::change_to_carry("a-friends-iphone", &"d".repeat(64), "production");
+    let (id, _, to) =
+        atlas::apns::change_to_carry("a-friends-iphone", &"d".repeat(64), "production");
     assert!(atlas::apns::take_synced(&dir, &id, &to, false, 1).is_none());
     assert!(atlas::apns::Devices::load(&dir).devices.is_empty());
 }

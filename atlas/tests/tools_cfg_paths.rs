@@ -23,11 +23,24 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, root: PathBuf) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(root), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(root),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -52,7 +65,9 @@ fn the_scratch_dir_lives_under_this_installs_own_root() {
     let d = daemon(&c, &p, root.clone());
 
     assert!(
-        d.tools_cfg().work_dir.starts_with(root.to_string_lossy().as_ref()),
+        d.tools_cfg()
+            .work_dir
+            .starts_with(root.to_string_lossy().as_ref()),
         "the scratch dir must live under this install's own root, got: {}",
         d.tools_cfg().work_dir
     );

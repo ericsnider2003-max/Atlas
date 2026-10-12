@@ -133,7 +133,11 @@ impl Refusals {
 
     pub fn ideas_for(&self, pair: &str) -> u32 {
         let pair = pair.to_uppercase();
-        self.proposed.iter().find(|(p, _)| *p == pair).map(|(_, n)| *n).unwrap_or(0)
+        self.proposed
+            .iter()
+            .find(|(p, _)| *p == pair)
+            .map(|(_, n)| *n)
+            .unwrap_or(0)
     }
 
     /// The cause that dominates, and its share — but only once there is enough
@@ -164,20 +168,32 @@ impl Refusals {
             return None;
         }
         let said = match label.as_str() {
-            "costs too much" => "the timeframe is too small for this spread — that is arithmetic, \
-                                 not a market condition, and waiting does not fix it",
-            "inside the noise" => "the stop rule is tighter than this market's ordinary movement, \
-                                   so every stop it works out is inside the noise",
+            "costs too much" => {
+                "the timeframe is too small for this spread — that is arithmetic, \
+                                 not a market condition, and waiting does not fix it"
+            }
+            "inside the noise" => {
+                "the stop rule is tighter than this market's ordinary movement, \
+                                   so every stop it works out is inside the noise"
+            }
             "not enough room" => "the minimum reward is set above what this market is offering",
-            "standing down" => "either the calendar is effectively always on here, or I'm only \
-                                ever being asked during release windows",
-            "thin book" => "I'm being asked at the rollover almost every time — twenty minutes \
-                            either side would change the answer",
-            "no structure" => "there isn't enough structure in what I'm being handed to hang a \
-                              stop on; that usually means too few bars",
+            "standing down" => {
+                "either the calendar is effectively always on here, or I'm only \
+                                ever being asked during release windows"
+            }
+            "thin book" => {
+                "I'm being asked at the rollover almost every time — twenty minutes \
+                            either side would change the answer"
+            }
+            "no structure" => {
+                "there isn't enough structure in what I'm being handed to hang a \
+                              stop on; that usually means too few bars"
+            }
             "unreadable" => "the bars themselves are the problem, not the market",
-            "no money" => "the balance and value-per-point I'm being given don't describe an \
-                           account",
+            "no money" => {
+                "the balance and value-per-point I'm being given don't describe an \
+                           account"
+            }
             _ => return None,
         };
         Some(format!(
@@ -194,9 +210,8 @@ impl Refusals {
         if refused == 0 && ideas == 0 {
             return format!("I haven't looked at {pair_up} yet.");
         }
-        let mut said = format!(
-            "On {pair_up} I've found {ideas} trade(s) and turned down {refused}.",
-        );
+        let mut said =
+            format!("On {pair_up} I've found {ideas} trade(s) and turned down {refused}.",);
         if let Some((_, causes)) = self.by_pair.iter().find(|(p, _)| *p == pair_up) {
             let top: Vec<String> = causes
                 .iter()

@@ -42,7 +42,13 @@ fn plat() -> MockPlatform {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -64,7 +70,10 @@ fn diagnose_names_the_cause_and_fix_through_the_daemon() {
 
     // A plain-string utterance, through the front door, so the real parser
     // routes it and the real handler answers.
-    let reply = d.turn("troubleshoot an app that launches and closes immediately", 100);
+    let reply = d.turn(
+        "troubleshoot an app that launches and closes immediately",
+        100,
+    );
 
     assert!(
         reply.contains("wait two seconds and look for the real window"),

@@ -15,7 +15,9 @@
 //! SearXNG and web server on this machine.
 
 use atlas::brain::Llm;
-use atlas::research::{page_markdown, page_text, searxng_url, urls_from_searxng, Research, ResearchConfig};
+use atlas::research::{
+    page_markdown, page_text, searxng_url, urls_from_searxng, Research, ResearchConfig,
+};
 use atlas::tools::ExternalTool;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -30,17 +32,36 @@ fn fixture(name: &str) -> String {
 #[test]
 fn a_real_page_keeps_its_headings_and_code_as_markdown() {
     let md = page_markdown(&fixture("python-classes"));
-    assert!(md.lines().any(|l| l.starts_with('#') && l.contains("Classes")), "no heading:\n{}", &md[..md.len().min(800)]);
+    assert!(
+        md.lines()
+            .any(|l| l.starts_with('#') && l.contains("Classes")),
+        "no heading:\n{}",
+        &md[..md.len().min(800)]
+    );
     // The code example is fenced, whole lines intact.
     let fence = md.find("```").expect("no code fence");
     let code = &md[fence..];
-    assert!(code.contains("valedictorian = max((student.gpa, student.name) for student in graduates)"), "{}", &code[..code.len().min(600)]);
+    assert!(
+        code.contains("valedictorian = max((student.gpa, student.name) for student in graduates)"),
+        "{}",
+        &code[..code.len().min(600)]
+    );
     // The furniture stays out, as it does from `page_text`.
-    for junk in ["Previous topic", "Report a bug", "Show source", "Python Software Foundation"] {
+    for junk in [
+        "Previous topic",
+        "Report a bug",
+        "Show source",
+        "Python Software Foundation",
+    ] {
         assert!(!md.contains(junk), "kept {junk:?}");
     }
     let go = page_markdown(&fixture("go-loopvar"));
-    assert!(go.lines().any(|l| l.starts_with("#") && l.contains("The Problem")), "{}", &go[..go.len().min(1200)]);
+    assert!(
+        go.lines()
+            .any(|l| l.starts_with("#") && l.contains("The Problem")),
+        "{}",
+        &go[..go.len().min(1200)]
+    );
     assert!(go.contains("```"), "the Go examples are code");
     assert!(!go.contains("Why Go") && !go.contains("Copyright"));
 }
@@ -64,13 +85,26 @@ fn lists_quotes_and_tables_keep_their_shape() {
     let md = &a.markdown;
     assert!(md.contains("## What you need"), "{md}");
     assert!(md.contains("- A pot one size up"), "{md}");
-    assert!(md.contains("- Fresh peat-free compost, a good brand"), "link words kept, address dropped: {md}");
-    assert!(md.contains("1. Water the day before.\n2. Ease it out, roots and all."), "{md}");
+    assert!(
+        md.contains("- Fresh peat-free compost, a good brand"),
+        "link words kept, address dropped: {md}"
+    );
+    assert!(
+        md.contains("1. Water the day before.\n2. Ease it out, roots and all."),
+        "{md}"
+    );
     assert!(md.contains("> Never bury the crown"), "{md}");
     assert!(md.contains("Pot | Compost\n12 cm | 1 litre"), "{md}");
-    assert!(!md.contains("rights reserved") && !md.contains("Home"), "{md}");
+    assert!(
+        !md.contains("rights reserved") && !md.contains("Home"),
+        "{md}"
+    );
     // The plain text is unchanged in kind: no Markdown marks in it.
-    assert!(!a.text.contains("## ") && !a.text.contains("- A pot"), "{}", a.text);
+    assert!(
+        !a.text.contains("## ") && !a.text.contains("- A pot"),
+        "{}",
+        a.text
+    );
 }
 
 #[test]
@@ -84,9 +118,19 @@ fn what_the_page_hides_is_not_read() {
       <p>The second visible paragraph carries on, again with commas, clauses, and enough words to count.</p>
     </div></body></html>"#;
     let t = page_text(html);
-    assert!(t.contains("visible article paragraph") && t.contains("second visible paragraph"), "{t}");
-    assert!(t.contains("merely contains the word hidden"), "a class is not the hidden attribute: {t}");
-    for gone in ["hidden paragraph that says", "collapsed panel", "decoration only"] {
+    assert!(
+        t.contains("visible article paragraph") && t.contains("second visible paragraph"),
+        "{t}"
+    );
+    assert!(
+        t.contains("merely contains the word hidden"),
+        "a class is not the hidden attribute: {t}"
+    );
+    for gone in [
+        "hidden paragraph that says",
+        "collapsed panel",
+        "decoration only",
+    ] {
         assert!(!t.contains(gone), "read what the page hides: {gone:?}\n{t}");
     }
 }
@@ -104,9 +148,19 @@ const SEARX_JSON: &str = r#"{"query": "ferns", "number_of_results": 4, "results"
 
 #[test]
 fn searxng_results_are_read_in_order_without_noise_or_repeats() {
-    assert_eq!(searxng_url("http://127.0.0.1:8888/", "boston ferns"), "http://127.0.0.1:8888/search?q=boston+ferns&format=json");
+    assert_eq!(
+        searxng_url("http://127.0.0.1:8888/", "boston ferns"),
+        "http://127.0.0.1:8888/search?q=boston+ferns&format=json"
+    );
     let urls = urls_from_searxng(SEARX_JSON, 5).unwrap();
-    assert_eq!(urls, ["https://www.rhs.org.uk/ferns", "https://en.wikipedia.org/wiki/Fern", "https://gardening.example.org/repot"]);
+    assert_eq!(
+        urls,
+        [
+            "https://www.rhs.org.uk/ferns",
+            "https://en.wikipedia.org/wiki/Fern",
+            "https://gardening.example.org/repot"
+        ]
+    );
     assert_eq!(urls_from_searxng(SEARX_JSON, 2).unwrap().len(), 2);
     // An instance with JSON turned off answers with a page, not results.
     assert!(urls_from_searxng("<html>Too many requests</html>", 5).is_none());
@@ -152,7 +206,11 @@ fn stand_in() -> (String, Arc<Mutex<Vec<String>>>) {
             } else {
                 article("Fern water", "Ferns like their soil damp but never soggy")
             };
-            let _ = write!(c, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            let _ = write!(
+                c,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
         }
     });
     (base, seen)
@@ -160,13 +218,37 @@ fn stand_in() -> (String, Arc<Mutex<Vec<String>>>) {
 
 struct Writer(Mutex<Vec<String>>);
 impl Llm for Writer {
-    fn supports_bounded_chat(&self) -> bool { true }
-    fn chat_until(&self, req: &atlas::brain::ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> atlas::error::Result<atlas::brain::ChatReply> {
-        if !keep_going() { return Err(atlas::error::AtlasError::Platform("research fixture stopped".into())); }
-        self.0.lock().unwrap().push(req.messages.iter().map(|m| m.content.as_str()).collect::<Vec<_>>().join("\n"));
+    fn supports_bounded_chat(&self) -> bool {
+        true
+    }
+    fn chat_until(
+        &self,
+        req: &atlas::brain::ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        keep_going: &dyn Fn() -> bool,
+    ) -> atlas::error::Result<atlas::brain::ChatReply> {
+        if !keep_going() {
+            return Err(atlas::error::AtlasError::Platform(
+                "research fixture stopped".into(),
+            ));
+        }
+        self.0.lock().unwrap().push(
+            req.messages
+                .iter()
+                .map(|m| m.content.as_str())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
         let text = "Ferns want bright, indirect light and damp soil. Both sources agree.";
-        if !on_text(text) || !keep_going() { return Err(atlas::error::AtlasError::Platform("research fixture stopped".into())); }
-        Ok(atlas::brain::ChatReply { text: text.into(), ..Default::default() })
+        if !on_text(text) || !keep_going() {
+            return Err(atlas::error::AtlasError::Platform(
+                "research fixture stopped".into(),
+            ));
+        }
+        Ok(atlas::brain::ChatReply {
+            text: text.into(),
+            ..Default::default()
+        })
     }
     fn complete(&self, _system: &str, user: &str) -> atlas::error::Result<String> {
         self.0.lock().unwrap().push(user.to_string());
@@ -175,7 +257,11 @@ impl Llm for Writer {
 }
 
 fn curl(url: &str) -> ExternalTool {
-    ExternalTool { command: "curl".into(), args: vec!["-s".into(), url.into()], ..Default::default() }
+    ExternalTool {
+        command: "curl".into(),
+        args: vec!["-s".into(), url.into()],
+        ..Default::default()
+    }
 }
 
 #[test]
@@ -190,16 +276,29 @@ fn research_searches_with_searxng_and_reads_the_pages_as_markdown() {
         pages_on_this_machine: true,
         ..Default::default()
     };
-    let r = Research { cfg, vars: Default::default(), browser: None };
+    let r = Research {
+        cfg,
+        vars: Default::default(),
+        browser: None,
+    };
     let llm = Writer(Mutex::new(Vec::new()));
     let note = r.run("how to look after ferns", &llm).unwrap();
     let got: Vec<&str> = note.sources.iter().map(|s| s.url.as_str()).collect();
     assert_eq!(got, [format!("{base}/a1"), format!("{base}/a2")]);
     let paths = seen.lock().unwrap().clone();
-    assert!(paths[0].starts_with("/search?q=how+to+look+after+ferns&format=json"), "{paths:?}");
-    assert!(!paths.iter().any(|p| p.starts_with("/html")), "the old search tool wasn't needed: {paths:?}");
+    assert!(
+        paths[0].starts_with("/search?q=how+to+look+after+ferns&format=json"),
+        "{paths:?}"
+    );
+    assert!(
+        !paths.iter().any(|p| p.starts_with("/html")),
+        "the old search tool wasn't needed: {paths:?}"
+    );
     let asked = llm.0.lock().unwrap().join("\n");
-    assert!(asked.contains("> ## Fern light") && asked.contains("> - First point about Fern water"), "Markdown, and quoted: {asked}");
+    assert!(
+        asked.contains("> ## Fern light") && asked.contains("> - First point about Fern water"),
+        "Markdown, and quoted: {asked}"
+    );
     assert!(!asked.contains("Home"), "{asked}");
 }
 
@@ -218,7 +317,11 @@ fn a_searxng_that_isnt_there_falls_back_to_the_search_tool() {
         pages_on_this_machine: true,
         ..Default::default()
     };
-    let r = Research { cfg, vars: Default::default(), browser: None };
+    let r = Research {
+        cfg,
+        vars: Default::default(),
+        browser: None,
+    };
     let note = r.run("ferns", &Writer(Mutex::new(Vec::new()))).unwrap();
     assert_eq!(note.sources.len(), 1);
     assert!(note.sources[0].url.ends_with("/a2"));
@@ -228,5 +331,9 @@ fn a_searxng_that_isnt_there_falls_back_to_the_search_tool() {
 #[test]
 fn the_shipped_setting_leaves_searxng_off() {
     let c = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
-    assert_eq!(c.tools.unwrap().research.searxng_url, "", "off unless you run one");
+    assert_eq!(
+        c.tools.unwrap().research.searxng_url,
+        "",
+        "off unless you run one"
+    );
 }

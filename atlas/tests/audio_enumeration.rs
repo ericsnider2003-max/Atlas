@@ -47,7 +47,10 @@ fn the_alsa_listing_keeps_the_name_ffmpeg_will_take_back() {
     let d = parse_alsa(ALSA_SOURCES, Kind::Input);
     let names: Vec<&str> = d.iter().map(|x| x.name.as_str()).collect();
     // The bare token, not the human label -- ffmpeg matches this literally.
-    assert_eq!(names, vec!["default", "hw:CARD=PCH,DEV=0", "hw:CARD=Headset,DEV=0"]);
+    assert_eq!(
+        names,
+        vec!["default", "hw:CARD=PCH,DEV=0", "hw:CARD=Headset,DEV=0"]
+    );
 }
 
 #[test]
@@ -56,7 +59,10 @@ fn ffmpegs_own_discard_device_is_never_offered_as_a_microphone() {
     // you a setup that looks configured and hears nothing, which is the
     // hardest failure in this whole area to diagnose.
     let d = parse_alsa(ALSA_SOURCES, Kind::Input);
-    assert!(!d.iter().any(|x| x.name == "null"), "the discard device was offered");
+    assert!(
+        !d.iter().any(|x| x.name == "null"),
+        "the discard device was offered"
+    );
 }
 
 #[test]
@@ -65,10 +71,22 @@ fn an_alsa_device_is_classified_on_its_human_label_not_its_id() {
     // getting this wrong means Atlas opens a Bluetooth mic and collapses the
     // audio you were listening to -- the thing this module exists to avoid.
     let d = parse_alsa(ALSA_SOURCES, Kind::Input);
-    let jabra = d.iter().find(|x| x.name.contains("Headset")).expect("the headset");
-    assert!(jabra.bluetooth, "a Jabra headset was not recognised as bluetooth");
-    let onboard = d.iter().find(|x| x.name.contains("PCH")).expect("the built-in");
-    assert!(onboard.builtin, "the onboard Intel audio was not recognised as built in");
+    let jabra = d
+        .iter()
+        .find(|x| x.name.contains("Headset"))
+        .expect("the headset");
+    assert!(
+        jabra.bluetooth,
+        "a Jabra headset was not recognised as bluetooth"
+    );
+    let onboard = d
+        .iter()
+        .find(|x| x.name.contains("PCH"))
+        .expect("the built-in");
+    assert!(
+        onboard.builtin,
+        "the onboard Intel audio was not recognised as built in"
+    );
     assert!(!onboard.bluetooth);
 }
 
@@ -79,7 +97,10 @@ fn a_headerless_line_is_not_mistaken_for_a_device() {
     // Behaviour, not just wording: exactly the three real devices parse, so
     // neither the flush-left heading nor the discard line slipped in.
     assert_eq!(d.len(), 3, "an extra line was parsed as a device: {d:?}");
-    assert!(!d.iter().any(|x| x.name.contains("Auto-detected")), "the heading became a device");
+    assert!(
+        !d.iter().any(|x| x.name.contains("Auto-detected")),
+        "the heading became a device"
+    );
 }
 
 #[test]
@@ -90,8 +111,18 @@ fn the_mac_listing_does_not_offer_you_a_camera_to_speak_into() {
     let d = parse_avfoundation(AVFOUNDATION);
     let names: Vec<&str> = d.iter().map(|x| x.name.as_str()).collect();
     assert_eq!(names, vec!["Built-in Microphone", "AirPods Pro"]);
-    assert!(d.iter().find(|x| x.name == "AirPods Pro").unwrap().bluetooth);
-    assert!(d.iter().find(|x| x.name == "Built-in Microphone").unwrap().builtin);
+    assert!(
+        d.iter()
+            .find(|x| x.name == "AirPods Pro")
+            .unwrap()
+            .bluetooth
+    );
+    assert!(
+        d.iter()
+            .find(|x| x.name == "Built-in Microphone")
+            .unwrap()
+            .builtin
+    );
 }
 
 #[test]
@@ -100,17 +131,32 @@ fn each_platform_is_asked_in_the_way_it_answers() {
     assert_eq!(cmd, "ffmpeg");
     let joined = args.join(" ");
     if cfg!(windows) {
-        assert!(joined.contains("dshow"), "windows was not asked with dshow: {joined}");
+        assert!(
+            joined.contains("dshow"),
+            "windows was not asked with dshow: {joined}"
+        );
     } else if cfg!(target_os = "macos") {
-        assert!(joined.contains("avfoundation"), "macos was not asked with avfoundation: {joined}");
+        assert!(
+            joined.contains("avfoundation"),
+            "macos was not asked with avfoundation: {joined}"
+        );
     } else {
-        assert!(joined.contains("-sources"), "linux was not asked with -sources: {joined}");
-        assert!(joined.contains("alsa"), "linux was not asked about alsa: {joined}");
+        assert!(
+            joined.contains("-sources"),
+            "linux was not asked with -sources: {joined}"
+        );
+        assert!(
+            joined.contains("alsa"),
+            "linux was not asked about alsa: {joined}"
+        );
     }
     // Outputs are a different question on Linux and must be asked as one.
     let (_, out_args) = listing_command(false);
     if !cfg!(windows) && !cfg!(target_os = "macos") {
-        assert!(out_args.join(" ").contains("-sinks"), "outputs were asked for as sources");
+        assert!(
+            out_args.join(" ").contains("-sinks"),
+            "outputs were asked for as sources"
+        );
     }
 }
 
@@ -125,7 +171,10 @@ fn this_platforms_parser_is_the_one_that_runs() {
     } else {
         ALSA_SOURCES
     };
-    assert!(!parse_listing(text, true).is_empty(), "this platform's own listing parsed as empty");
+    assert!(
+        !parse_listing(text, true).is_empty(),
+        "this platform's own listing parsed as empty"
+    );
 }
 
 #[test]

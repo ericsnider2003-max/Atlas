@@ -27,13 +27,22 @@ pub struct Rgba {
 
 impl Rgba {
     pub fn new(width: u32, height: u32) -> Rgba {
-        Rgba { width, height, pixels: vec![0; (width * height * 4) as usize] }
+        Rgba {
+            width,
+            height,
+            pixels: vec![0; (width * height * 4) as usize],
+        }
     }
 
     /// The pixel at (x, y) as [r, g, b, a].
     pub fn at(&self, x: u32, y: u32) -> [u8; 4] {
         let i = ((y * self.width + x) * 4) as usize;
-        [self.pixels[i], self.pixels[i + 1], self.pixels[i + 2], self.pixels[i + 3]]
+        [
+            self.pixels[i],
+            self.pixels[i + 1],
+            self.pixels[i + 2],
+            self.pixels[i + 3],
+        ]
     }
 
     pub fn put(&mut self, x: u32, y: u32, p: [u8; 4]) {
@@ -49,7 +58,8 @@ const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 const MAX_PIXELS: u64 = 64 << 20;
 
 fn be32(b: &[u8], i: usize) -> Option<u32> {
-    b.get(i..i + 4).map(|s| u32::from_be_bytes([s[0], s[1], s[2], s[3]]))
+    b.get(i..i + 4)
+        .map(|s| u32::from_be_bytes([s[0], s[1], s[2], s[3]]))
 }
 
 /// Read a PNG into RGBA.
@@ -65,10 +75,15 @@ pub fn read_png(bytes: &[u8]) -> Result<Rgba, String> {
     while at + 8 <= bytes.len() {
         let len = be32(bytes, at).ok_or("cut short")? as usize;
         let kind = &bytes[at + 4..at + 8];
-        let body = bytes.get(at + 8..at + 8 + len).ok_or("a chunk runs past the end of the file")?;
+        let body = bytes
+            .get(at + 8..at + 8 + len)
+            .ok_or("a chunk runs past the end of the file")?;
         let crc = be32(bytes, at + 8 + len).ok_or("cut short")?;
         if crate::zipread::crc32(&bytes[at + 4..at + 8 + len]) != crc {
-            return Err(format!("the {} chunk is damaged", String::from_utf8_lossy(kind)));
+            return Err(format!(
+                "the {} chunk is damaged",
+                String::from_utf8_lossy(kind)
+            ));
         }
         match kind {
             b"IHDR" => {
@@ -83,7 +98,11 @@ pub fn read_png(bytes: &[u8]) -> Result<Rgba, String> {
                 seen_header = true;
             }
             b"PLTE" => {
-                palette = body.chunks(3).filter(|c| c.len() == 3).map(|c| [c[0], c[1], c[2], 255]).collect();
+                palette = body
+                    .chunks(3)
+                    .filter(|c| c.len() == 3)
+                    .map(|c| [c[0], c[1], c[2], 255])
+                    .collect();
             }
             b"tRNS" if colour == 3 => {
                 for (i, a) in body.iter().enumerate() {
@@ -149,12 +168,20 @@ pub fn read_png(bytes: &[u8]) -> Result<Rgba, String> {
         let filter = raw[y * (stride + 1)];
         let src = &raw[y * (stride + 1) + 1..(y + 1) * (stride + 1)];
         let (done, rest) = rows.split_at_mut(y * stride);
-        let prev: &[u8] = if y == 0 { &[] } else { &done[(y - 1) * stride..] };
+        let prev: &[u8] = if y == 0 {
+            &[]
+        } else {
+            &done[(y - 1) * stride..]
+        };
         let cur = &mut rest[..stride];
         for i in 0..stride {
             let a = if i >= bpp { cur[i - bpp] as i16 } else { 0 };
             let b = if y > 0 { prev[i] as i16 } else { 0 };
-            let c = if y > 0 && i >= bpp { prev[i - bpp] as i16 } else { 0 };
+            let c = if y > 0 && i >= bpp {
+                prev[i - bpp] as i16
+            } else {
+                0
+            };
             let add = match filter {
                 0 => 0,
                 1 => a,

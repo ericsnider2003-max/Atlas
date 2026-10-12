@@ -54,7 +54,11 @@ impl Claim {
     /// two years old — measuring from first sight is how re-reading something
     /// makes Atlas less sure of it.
     pub fn as_of(&self) -> u64 {
-        self.confirmations.iter().map(|c| c.at).max().unwrap_or(self.first_at)
+        self.confirmations
+            .iter()
+            .map(|c| c.at)
+            .max()
+            .unwrap_or(self.first_at)
     }
 
     /// How many different places have said this.
@@ -62,7 +66,11 @@ impl Claim {
     /// The same source twice is one source. Two sources agreeing is the thing
     /// worth counting.
     pub fn independent_sources(&self) -> usize {
-        let mut seen: Vec<&str> = self.confirmations.iter().map(|c| c.source.as_str()).collect();
+        let mut seen: Vec<&str> = self
+            .confirmations
+            .iter()
+            .map(|c| c.source.as_str())
+            .collect();
         seen.sort();
         seen.dedup();
         seen.len()
@@ -150,19 +158,14 @@ pub fn same_claim(a: &str, b: &str) -> bool {
 }
 
 const COMMON: &[&str] = &[
-    "what", "when", "where", "which", "that", "this", "with", "from", "have",
-    "does", "about", "your", "into", "then", "than", "will", "would", "there",
+    "what", "when", "where", "which", "that", "this", "with", "from", "have", "does", "about",
+    "your", "into", "then", "than", "will", "would", "there",
 ];
 
 /// Take something learned and either merge it or add it.
 ///
 /// Returns whether it strengthened something already known.
-pub fn learn(
-    known: &mut Vec<Claim>,
-    says: &str,
-    source: &str,
-    at: u64,
-) -> bool {
+pub fn learn(known: &mut Vec<Claim>, says: &str, source: &str, at: u64) -> bool {
     if let Some(c) = known.iter_mut().find(|c| same_claim(&c.says, says)) {
         // Asking differently doesn't restart the clock or fork the fact.
         c.confirmations.push(Confirmation {
@@ -300,11 +303,7 @@ pub fn trim(known: &mut Vec<Claim>, keep_at_most: usize, now: u64) -> Vec<String
     // alone exceed it, the budget is simply exceeded — losing something that
     // can't be looked up again to satisfy a number is the wrong trade.
     let room = keep_at_most.saturating_sub(protected.len());
-    let dropped: Vec<String> = rest
-        .iter()
-        .skip(room)
-        .map(|c| c.says.clone())
-        .collect();
+    let dropped: Vec<String> = rest.iter().skip(room).map(|c| c.says.clone()).collect();
     rest.truncate(room);
 
     *known = protected;
@@ -357,17 +356,20 @@ pub enum Density {
 pub fn compact(says: &str) -> String {
     // The first sentence, or the first clause before a qualifier that starts
     // a new thought.
-    let first = says
-        .split(['.', ';'])
-        .next()
-        .unwrap_or(says)
-        .trim();
+    let first = says.split(['.', ';']).next().unwrap_or(says).trim();
 
     let mut out = first.to_string();
     // These introduce elaboration rather than the fact.
     for lead in [
-        ", which ", ", so ", ", because ", ", although ", " — ", ", meaning ",
-        ", in other words", ", for example", ", that is",
+        ", which ",
+        ", so ",
+        ", because ",
+        ", although ",
+        " — ",
+        ", meaning ",
+        ", in other words",
+        ", for example",
+        ", that is",
     ] {
         if let Some(i) = out.find(lead) {
             // Only if what's left still says something.
@@ -455,7 +457,10 @@ pub fn once_knew<'a>(stones: &'a [Tombstone], asked: &str) -> Option<&'a Tombsto
 /// shrugging.
 pub fn knew_once(t: &Tombstone) -> String {
     if t.source.is_empty() {
-        format!("I knew something about {} and let it go to save space.", t.about)
+        format!(
+            "I knew something about {} and let it go to save space.",
+            t.about
+        )
     } else {
         format!(
             "I knew something about {} and let it go to save space. It came from {} — want me to \

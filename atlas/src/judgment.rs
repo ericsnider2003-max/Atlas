@@ -143,7 +143,11 @@ pub struct JudgmentConfig {
 
 impl Default for JudgmentConfig {
     fn default() -> Self {
-        JudgmentConfig { past_the_edge: 0.5, measured_above: 0.001, min_seen: MIN_SAMPLE }
+        JudgmentConfig {
+            past_the_edge: 0.5,
+            measured_above: 0.001,
+            min_seen: MIN_SAMPLE,
+        }
     }
 }
 
@@ -180,7 +184,11 @@ pub fn add_up(signals: &[Signal]) -> f64 {
 /// in the bottom one; it is off the scale, and that is a different sentence.
 pub fn which_band(score: f64, bands: &[Band], cfg: &JudgmentConfig) -> Graded {
     let mut sorted: Vec<&Band> = bands.iter().collect();
-    sorted.sort_by(|a, b| a.from.partial_cmp(&b.from).unwrap_or(std::cmp::Ordering::Equal));
+    sorted.sort_by(|a, b| {
+        a.from
+            .partial_cmp(&b.from)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let found = sorted.iter().rev().find(|b| score >= b.from);
     let Some(b) = found else {
@@ -207,7 +215,11 @@ pub fn which_band(score: f64, bands: &[Band], cfg: &JudgmentConfig) -> Graded {
         plain: b.plain,
         score,
         past_the_edge: past,
-        clarity: if clear { Clarity::Clear } else { Clarity::Close },
+        clarity: if clear {
+            Clarity::Clear
+        } else {
+            Clarity::Close
+        },
     }
 }
 
@@ -248,7 +260,11 @@ pub fn how_strongly(for_it: &[Signal], against: &[Signal], cfg: &JudgmentConfig)
     let all = f + a;
     if all <= cfg.measured_above {
         // Nothing was weighed. Not "unlikely" -- unmeasured.
-        return Held { likely: 0.0, clarity: Clarity::Nothing, because: Vec::new() };
+        return Held {
+            likely: 0.0,
+            clarity: Clarity::Nothing,
+            because: Vec::new(),
+        };
     }
     let likely = f / all;
     let mut because: Vec<(&'static str, f64)> =
@@ -260,8 +276,16 @@ pub fn how_strongly(for_it: &[Signal], against: &[Signal], cfg: &JudgmentConfig)
     // here, so it is halved -- a caller asking for "half a signal clear"
     // should not accidentally demand near-certainty.
     let from_balanced = (likely - 0.5).abs() * 2.0;
-    let clarity = if from_balanced >= cfg.past_the_edge { Clarity::Clear } else { Clarity::Close };
-    Held { likely, clarity, because: because.into_iter().map(|(n, _)| n).collect() }
+    let clarity = if from_balanced >= cfg.past_the_edge {
+        Clarity::Clear
+    } else {
+        Clarity::Close
+    };
+    Held {
+        likely,
+        clarity,
+        because: because.into_iter().map(|(n, _)| n).collect(),
+    }
 }
 
 // ===================== numbers =====================
@@ -361,8 +385,11 @@ pub fn ordinary_for(values: &[f64]) -> Option<(f64, f64)> {
     }
     v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let mid = v.len() / 2;
-    let median =
-        if v.len().is_multiple_of(2) { (v[mid - 1] + v[mid]) / 2.0 } else { v[mid] };
+    let median = if v.len().is_multiple_of(2) {
+        (v[mid - 1] + v[mid]) / 2.0
+    } else {
+        v[mid]
+    };
     let spread = v.iter().map(|x| (x - median).abs()).sum::<f64>() / v.len() as f64;
     Some((median, spread))
 }
@@ -536,11 +563,16 @@ pub fn worth_raising(found: &[crate::hollow::Hollow], cfg: &JudgmentConfig) -> H
     let mut against = Vec::new();
 
     match worst.band {
-        "claims-it-works" => for_it.push(Signal::of("one of them claims to be fine and is not", 3.0)),
+        "claims-it-works" => {
+            for_it.push(Signal::of("one of them claims to be fine and is not", 3.0))
+        }
         "misleading" => for_it.push(Signal::of("one of them would mislead you", 1.5)),
         // Everything honest about being unfinished. That is a backlog, and a
         // backlog read out at night is how you learn to ignore the voice.
-        _ => against.push(Signal::of("all of them are honest about being unfinished", 2.0)),
+        _ => against.push(Signal::of(
+            "all of them are honest about being unfinished",
+            2.0,
+        )),
     }
     if found.len() >= 3 {
         for_it.push(Signal::of("several at once", 1.0));
@@ -570,6 +602,10 @@ pub fn worst_first(
             (h.clone(), which_band(score, HOW_BAD, cfg))
         })
         .collect();
-    graded.sort_by(|a, b| b.1.score.partial_cmp(&a.1.score).unwrap_or(std::cmp::Ordering::Equal));
+    graded.sort_by(|a, b| {
+        b.1.score
+            .partial_cmp(&a.1.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     graded
 }

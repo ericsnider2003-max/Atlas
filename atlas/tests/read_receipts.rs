@@ -63,7 +63,10 @@ fn read_is_a_stronger_fact_than_arrived() {
     let r = Delivery::Read(9);
     assert!(r.arrived(), "a read message has, necessarily, arrived");
     assert!(r.read());
-    assert!(!Delivery::Arrived(9).read(), "arrived is not the same as read");
+    assert!(
+        !Delivery::Arrived(9).read(),
+        "arrived is not the same as read"
+    );
     assert_eq!(r.plain(), "read");
 }
 
@@ -116,7 +119,10 @@ fn fully_read_and_arrived_unread_are_the_summary_and_the_detail() {
     let partly = mine(
         "g-1000-3",
         3,
-        &[("Ali", Delivery::Read(10)), ("Jordan", Delivery::Arrived(11))],
+        &[
+            ("Ali", Delivery::Read(10)),
+            ("Jordan", Delivery::Arrived(11)),
+        ],
     );
     assert!(!partly.fully_read());
     assert_eq!(partly.arrived_unread(), vec!["Jordan"]);
@@ -173,7 +179,9 @@ impl Receipts for RecordingLink {
         if self.refuse.iter().any(|r| r == peer) {
             return false;
         }
-        self.sent.borrow_mut().push((peer.to_string(), ids.to_vec()));
+        self.sent
+            .borrow_mut()
+            .push((peer.to_string(), ids.to_vec()));
         true
     }
 }
@@ -203,9 +211,15 @@ fn a_receipt_that_did_not_land_is_re_owed_not_lost() {
     let mut chats = one_to_one("Sam", vec![incoming], 4);
 
     // Sam is unreachable this pass.
-    let refusing = RecordingLink { refuse: vec!["Sam".into()], ..Default::default() };
+    let refusing = RecordingLink {
+        refuse: vec!["Sam".into()],
+        ..Default::default()
+    };
     assert_eq!(send_receipts(&mut chats, &refusing, 5_000), 0);
-    assert_eq!(chats.rooms[0].receipt_through, 0, "a failed pass does not advance the mark");
+    assert_eq!(
+        chats.rooms[0].receipt_through, 0,
+        "a failed pass does not advance the mark"
+    );
 
     // Next pass, Sam is up: the receipt is still owed and now goes.
     let ok = RecordingLink::default();
@@ -221,7 +235,10 @@ fn your_own_messages_never_owe_you_a_receipt() {
 
     let link = RecordingLink::default();
     assert_eq!(send_receipts(&mut chats, &link, 5_000), 0);
-    assert!(link.sent.borrow().is_empty(), "you don't send yourself a receipt");
+    assert!(
+        link.sent.borrow().is_empty(),
+        "you don't send yourself a receipt"
+    );
     // The mark still advances so the range is not reconsidered every pass.
     assert_eq!(chats.rooms[0].receipt_through, 4);
 }
@@ -245,13 +262,17 @@ fn an_empty_receipt_is_refused() {
     // an idle peer can use to reach you.
     let mut door = Door::new(vec![Peer::new("Sam", "sam-token")]);
     assert!(door.receive_read("sam-token", vec![], 2_000).is_err());
-    assert!(door.receive_read("sam-token", vec!["   ".into()], 2_000).is_err());
+    assert!(door
+        .receive_read("sam-token", vec!["   ".into()], 2_000)
+        .is_err());
 }
 
 #[test]
 fn a_stranger_cannot_send_a_receipt() {
     let mut door = Door::new(vec![Peer::new("Sam", "sam-token")]);
-    assert!(door.receive_read("not-a-peer", vec!["x".into()], 2_000).is_err());
+    assert!(door
+        .receive_read("not-a-peer", vec!["x".into()], 2_000)
+        .is_err());
 }
 
 // --- the glance-at view -----------------------------------------------------
@@ -270,7 +291,11 @@ fn read_state_names_who_read_and_who_hasnt_in_a_group() {
         name: "Maya".into(),
         space: Space::Personal,
         members: vec!["Maya".into()],
-        messages: vec![mine("room-maya-1000-2", 2, &[("Maya", Delivery::Read(2_000))])],
+        messages: vec![mine(
+            "room-maya-1000-2",
+            2,
+            &[("Maya", Delivery::Read(2_000))],
+        )],
         read_through: 0,
         receipt_through: 0,
     });
@@ -283,14 +308,22 @@ fn read_state_names_who_read_and_who_hasnt_in_a_group() {
         messages: vec![mine(
             "grp-1000-2",
             2,
-            &[("Ali", Delivery::Read(2_100)), ("Jordan", Delivery::Arrived(1_500))],
+            &[
+                ("Ali", Delivery::Read(2_100)),
+                ("Jordan", Delivery::Arrived(1_500)),
+            ],
         )],
         read_through: 0,
         receipt_through: 0,
     });
 
     let lines = chats.read_state(all_reachable);
-    assert!(lines.iter().any(|l| l.contains("Maya read your last message")), "{lines:?}");
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.contains("Maya read your last message")),
+        "{lines:?}"
+    );
     // The group names both sides: who read it and who hasn't.
     assert!(
         lines.iter().any(|l| l.contains("Roof crew")
@@ -314,7 +347,10 @@ fn a_member_you_cant_reach_is_no_receipt_not_unread() {
         messages: vec![mine(
             "grp-1000-2",
             2,
-            &[("Ali", Delivery::Read(2_100)), ("Jordan", Delivery::Arrived(1_500))],
+            &[
+                ("Ali", Delivery::Read(2_100)),
+                ("Jordan", Delivery::Arrived(1_500)),
+            ],
         )],
         read_through: 0,
         receipt_through: 0,
@@ -322,19 +358,29 @@ fn a_member_you_cant_reach_is_no_receipt_not_unread() {
 
     // You're paired with Ali but not Jordan.
     let lines = chats.read_state(|who| who == "Ali");
-    let line = lines.iter().find(|l| l.contains("Roof crew")).expect("a line for the group");
+    let line = lines
+        .iter()
+        .find(|l| l.contains("Roof crew"))
+        .expect("a line for the group");
     assert!(line.contains("read by Ali"), "{line}");
     assert!(
         line.contains("no receipt from Jordan") && line.contains("not paired"),
         "an unreachable member is named as such, not as 'hasn't read': {line}"
     );
-    assert!(!line.contains("not yet by Jordan"), "must not claim they haven't read it: {line}");
+    assert!(
+        !line.contains("not yet by Jordan"),
+        "must not claim they haven't read it: {line}"
+    );
 }
 
 #[test]
 fn read_state_says_nothing_about_a_message_still_in_flight() {
     // "Not read" about something that hasn't even arrived would read as a snub
     // when it is a network. Silent until it lands on at least one machine.
-    let chats = one_to_one("Sam", vec![mine("room-Sam-1000-2", 2, &[("Sam", Delivery::Waiting)])], 0);
+    let chats = one_to_one(
+        "Sam",
+        vec![mine("room-Sam-1000-2", 2, &[("Sam", Delivery::Waiting)])],
+        0,
+    );
     assert!(chats.read_state(all_reachable).is_empty());
 }

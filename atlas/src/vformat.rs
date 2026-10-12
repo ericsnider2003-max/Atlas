@@ -29,10 +29,17 @@ pub struct Prop {
 
 impl Prop {
     fn new(name: &str, value: &str) -> Prop {
-        Prop { name: name.to_ascii_uppercase(), params: vec![], value: value.to_string() }
+        Prop {
+            name: name.to_ascii_uppercase(),
+            params: vec![],
+            value: value.to_string(),
+        }
     }
     fn param(&self, k: &str) -> Option<&str> {
-        self.params.iter().find(|(n, _)| n.eq_ignore_ascii_case(k)).map(|(_, v)| v.as_str())
+        self.params
+            .iter()
+            .find(|(n, _)| n.eq_ignore_ascii_case(k))
+            .map(|(_, v)| v.as_str())
     }
 }
 
@@ -45,10 +52,15 @@ pub struct Component {
 
 impl Component {
     fn get(&self, name: &str) -> Option<&Prop> {
-        self.props.iter().find(|p| p.name.eq_ignore_ascii_case(name))
+        self.props
+            .iter()
+            .find(|p| p.name.eq_ignore_ascii_case(name))
     }
     fn all(&self, name: &str) -> Vec<&Prop> {
-        self.props.iter().filter(|p| p.name.eq_ignore_ascii_case(name)).collect()
+        self.props
+            .iter()
+            .filter(|p| p.name.eq_ignore_ascii_case(name))
+            .collect()
     }
 }
 
@@ -57,7 +69,10 @@ pub fn unfold(text: &str) -> Vec<String> {
     let mut out: Vec<String> = vec![];
     for raw in text.split('\n') {
         let line = raw.strip_suffix('\r').unwrap_or(raw);
-        if let Some(last) = out.last_mut().filter(|_| line.starts_with(' ') || line.starts_with('\t')) {
+        if let Some(last) = out
+            .last_mut()
+            .filter(|_| line.starts_with(' ') || line.starts_with('\t'))
+        {
             last.push_str(&line[1..]);
         } else if !line.is_empty() {
             out.push(line.to_string());
@@ -84,7 +99,10 @@ fn fold(line: &str) -> String {
 }
 
 fn escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace(';', "\\;").replace(',', "\\,").replace('\n', "\\n")
+    s.replace('\\', "\\\\")
+        .replace(';', "\\;")
+        .replace(',', "\\,")
+        .replace('\n', "\\n")
 }
 
 fn unescape(s: &str) -> String {
@@ -130,9 +148,16 @@ fn parse_line(line: &str) -> Result<Prop, String> {
         return Err(format!("no property name in '{line}'"));
     }
     let params = parts
-        .filter_map(|p| p.split_once('=').map(|(k, v)| (k.to_ascii_uppercase(), v.trim_matches('"').to_string())))
+        .filter_map(|p| {
+            p.split_once('=')
+                .map(|(k, v)| (k.to_ascii_uppercase(), v.trim_matches('"').to_string()))
+        })
         .collect();
-    Ok(Prop { name, params, value: value.to_string() })
+    Ok(Prop {
+        name,
+        params,
+        value: value.to_string(),
+    })
 }
 
 /// Parse every top-level component (VCARD, VCALENDAR) in a file.
@@ -142,7 +167,10 @@ pub fn parse(text: &str) -> Result<Vec<Component>, String> {
     for line in unfold(text) {
         let p = parse_line(&line)?;
         match p.name.as_str() {
-            "BEGIN" => stack.push(Component { name: p.value.to_ascii_uppercase(), ..Default::default() }),
+            "BEGIN" => stack.push(Component {
+                name: p.value.to_ascii_uppercase(),
+                ..Default::default()
+            }),
             "END" => {
                 let c = stack.pop().ok_or("END without BEGIN")?;
                 if !c.name.eq_ignore_ascii_case(&p.value) {
@@ -153,7 +181,11 @@ pub fn parse(text: &str) -> Result<Vec<Component>, String> {
                     None => out.push(c),
                 }
             }
-            _ => stack.last_mut().ok_or_else(|| format!("'{line}' is outside any BEGIN"))?.props.push(p),
+            _ => stack
+                .last_mut()
+                .ok_or_else(|| format!("'{line}' is outside any BEGIN"))?
+                .props
+                .push(p),
         }
     }
     if let Some(c) = stack.last() {
@@ -167,7 +199,11 @@ pub fn write(c: &Component) -> String {
     for p in &c.props {
         let mut head = p.name.clone();
         for (k, v) in &p.params {
-            let v = if v.contains([':', ';', ',']) { format!("\"{v}\"") } else { v.clone() };
+            let v = if v.contains([':', ';', ',']) {
+                format!("\"{v}\"")
+            } else {
+                v.clone()
+            };
             head.push_str(&format!(";{k}={v}"));
         }
         s.push_str(&fold(&format!("{head}:{}", p.value)));
@@ -202,13 +238,23 @@ impl Card {
             // N:Family;Given;Additional;Prefix;Suffix
             if let Some(n) = c.get("N") {
                 let f: Vec<&str> = n.value.split(';').collect();
-                name = format!("{} {}", f.get(1).unwrap_or(&""), f.first().unwrap_or(&"")).trim().to_string();
+                name = format!("{} {}", f.get(1).unwrap_or(&""), f.first().unwrap_or(&""))
+                    .trim()
+                    .to_string();
             }
         }
         Some(Card {
             name,
-            emails: c.all("EMAIL").iter().map(|p| p.value.trim().to_string()).collect(),
-            phones: c.all("TEL").iter().map(|p| p.value.trim_start_matches("tel:").trim().to_string()).collect(),
+            emails: c
+                .all("EMAIL")
+                .iter()
+                .map(|p| p.value.trim().to_string())
+                .collect(),
+            phones: c
+                .all("TEL")
+                .iter()
+                .map(|p| p.value.trim_start_matches("tel:").trim().to_string())
+                .collect(),
             org: text("ORG").split(';').next().unwrap_or("").to_string(),
             note: text("NOTE"),
             uid: text("UID"),
@@ -216,7 +262,10 @@ impl Card {
     }
 
     pub fn to_component(&self) -> Component {
-        let mut props = vec![Prop::new("VERSION", "4.0"), Prop::new("FN", &escape(&self.name))];
+        let mut props = vec![
+            Prop::new("VERSION", "4.0"),
+            Prop::new("FN", &escape(&self.name)),
+        ];
         if !self.uid.is_empty() {
             props.push(Prop::new("UID", &self.uid));
         }
@@ -234,7 +283,11 @@ impl Card {
         if !self.note.is_empty() {
             props.push(Prop::new("NOTE", &escape(&self.note)));
         }
-        Component { name: "VCARD".into(), props, children: vec![] }
+        Component {
+            name: "VCARD".into(),
+            props,
+            children: vec![],
+        }
     }
 }
 
@@ -271,14 +324,18 @@ impl Event {
             Ok(zones.for_tzid(p.param("TZID")).to_utc(t))
         };
         let ds = c.get("DTSTART").ok_or("VEVENT without DTSTART")?;
-        let all_day = ds.param("VALUE").map_or(ds.value.len() == 8, |v| v.eq_ignore_ascii_case("DATE"));
+        let all_day = ds
+            .param("VALUE")
+            .map_or(ds.value.len() == 8, |v| v.eq_ignore_ascii_case("DATE"));
         let start = if all_day {
             parse_ical_time(&ds.value)? - (23 * 3600 + 59 * 60 + 59) // date-only → start of day
         } else {
             timed(ds, &ds.value)?
         };
         let end = match c.get("DTEND") {
-            Some(p) if p.value.len() == 8 => Some(parse_ical_time(&p.value)? - (23 * 3600 + 59 * 60 + 59)),
+            Some(p) if p.value.len() == 8 => {
+                Some(parse_ical_time(&p.value)? - (23 * 3600 + 59 * 60 + 59))
+            }
             Some(p) => Some(timed(p, &p.value)?),
             None => None,
         };
@@ -286,7 +343,11 @@ impl Event {
         let mut exdates = vec![];
         for p in c.all("EXDATE") {
             for v in p.value.split(',') {
-                exdates.push(if v.len() == 8 { parse_ical_time(v)? - (23 * 3600 + 59 * 60 + 59) } else { timed(p, v)? });
+                exdates.push(if v.len() == 8 {
+                    parse_ical_time(v)? - (23 * 3600 + 59 * 60 + 59)
+                } else {
+                    timed(p, v)?
+                });
             }
         }
         Ok(Some(Event {
@@ -300,7 +361,11 @@ impl Event {
             rule,
             exdates,
             zone: {
-                let z = if ds.value.ends_with('Z') || all_day { None } else { Some(zones.for_tzid(ds.param("TZID"))) };
+                let z = if ds.value.ends_with('Z') || all_day {
+                    None
+                } else {
+                    Some(zones.for_tzid(ds.param("TZID")))
+                };
                 z.filter(|z| !z.is_utc()).map(|z| z.id())
             },
         }))
@@ -340,7 +405,11 @@ impl Event {
         if self.all_day {
             dt.params.push(("VALUE".into(), "DATE".into()));
         }
-        let mut props = vec![Prop::new("UID", &self.uid), Prop::new("DTSTAMP", &format!("{}Z", format_ical_time(stamp))), dt];
+        let mut props = vec![
+            Prop::new("UID", &self.uid),
+            Prop::new("DTSTAMP", &format!("{}Z", format_ical_time(stamp))),
+            dt,
+        ];
         if let Some(e) = self.end {
             let mut p = Prop::new("DTEND", &t(e));
             tag(&mut p);
@@ -364,7 +433,11 @@ impl Event {
             tag(&mut p);
             props.push(p);
         }
-        Component { name: "VEVENT".into(), props, children: vec![] }
+        Component {
+            name: "VEVENT".into(),
+            props,
+            children: vec![],
+        }
     }
 }
 
@@ -380,7 +453,9 @@ pub struct Zones {
 
 impl Zones {
     fn for_tzid(&self, tzid: Option<&str>) -> crate::tz::Zone {
-        let Some(id) = tzid else { return self.home.clone() };
+        let Some(id) = tzid else {
+            return self.home.clone();
+        };
         if let Some((_, z)) = self.own.iter().find(|(n, _)| n == id) {
             return z.clone();
         }
@@ -418,16 +493,25 @@ fn zone_from_vtimezone(c: &Component) -> Option<(String, crate::tz::Zone)> {
     let part = |name: &str| c.children.iter().find(|k| k.name == name);
     let rule_of = |k: &Component| -> Option<String> {
         let r = &k.get("RRULE")?.value;
-        let field = |f: &str| r.split(';').find_map(|kv| kv.strip_prefix(f)).map(|v| v.to_string());
+        let field = |f: &str| {
+            r.split(';')
+                .find_map(|kv| kv.strip_prefix(f))
+                .map(|v| v.to_string())
+        };
         let month: u32 = field("BYMONTH=")?.parse().ok()?;
         let byday = field("BYDAY=")?;
         // Checked: one letter underflowed, and a non-ASCII byte split a
         // character (fuzzed, 5 Oct 2026).
-        let cut = byday.len().checked_sub(2).filter(|&c| byday.is_char_boundary(c))?;
+        let cut = byday
+            .len()
+            .checked_sub(2)
+            .filter(|&c| byday.is_char_boundary(c))?;
         let (n, dd) = byday.split_at(cut);
         let week: i32 = if n.is_empty() { 1 } else { n.parse().ok()? };
         let week = if week < 0 { 5 } else { week.clamp(1, 5) };
-        let day = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"].iter().position(|d| *d == dd)?;
+        let day = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]
+            .iter()
+            .position(|d| *d == dd)?;
         let ds = &k.get("DTSTART")?.value;
         let hh: u32 = ds.get(9..11)?.parse().ok()?;
         let mm: u32 = ds.get(11..13)?.parse().ok()?;
@@ -435,7 +519,15 @@ fn zone_from_vtimezone(c: &Component) -> Option<(String, crate::tz::Zone)> {
     };
     // The abbreviation the file gives (TZNAME), else the offset as "UTC-8".
     let abbr = |k: &Component, secs: i64| -> String {
-        let named: String = k.get("TZNAME").map(|p| p.value.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '-').collect()).unwrap_or_default();
+        let named: String = k
+            .get("TZNAME")
+            .map(|p| {
+                p.value
+                    .chars()
+                    .filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '-')
+                    .collect()
+            })
+            .unwrap_or_default();
         if named.len() >= 3 {
             named
         } else if secs % 3600 == 0 {
@@ -449,7 +541,15 @@ fn zone_from_vtimezone(c: &Component) -> Option<(String, crate::tz::Zone)> {
     let spec = match part("DAYLIGHT") {
         Some(dl) => {
             let dst_off = off(&dl.get("TZOFFSETTO")?.value)?;
-            format!("<{}>{}<{}>{},{},{}", abbr(std, std_off), posix_off(std_off), abbr(dl, dst_off), posix_off(dst_off), rule_of(dl)?, rule_of(std)?)
+            format!(
+                "<{}>{}<{}>{},{},{}",
+                abbr(std, std_off),
+                posix_off(std_off),
+                abbr(dl, dst_off),
+                posix_off(dst_off),
+                rule_of(dl)?,
+                rule_of(std)?
+            )
         }
         None => format!("<{}>{}", abbr(std, std_off), posix_off(std_off)),
     };
@@ -463,8 +563,17 @@ fn zone_from_vtimezone(c: &Component) -> Option<(String, crate::tz::Zone)> {
 /// ones listed in the returned `Zones`, so the caller can say so).
 pub fn events_in(text: &str, home: &crate::tz::Zone) -> Result<(Vec<Event>, Zones), String> {
     let cals = parse(text)?;
-    let own = cals.iter().flat_map(|cal| cal.children.iter()).filter(|c| c.name == "VTIMEZONE").filter_map(zone_from_vtimezone).collect();
-    let zones = Zones { home: home.clone(), own, unknown: Default::default() };
+    let own = cals
+        .iter()
+        .flat_map(|cal| cal.children.iter())
+        .filter(|c| c.name == "VTIMEZONE")
+        .filter_map(zone_from_vtimezone)
+        .collect();
+    let zones = Zones {
+        home: home.clone(),
+        own,
+        unknown: Default::default(),
+    };
     let mut out = vec![];
     for cal in &cals {
         for c in &cal.children {
@@ -480,7 +589,10 @@ pub fn events_in(text: &str, home: &crate::tz::Zone) -> Result<(Vec<Event>, Zone
 pub fn calendar(events: &[Event], stamp: i64) -> String {
     let cal = Component {
         name: "VCALENDAR".into(),
-        props: vec![Prop::new("VERSION", "2.0"), Prop::new("PRODID", "-//Atlas//Atlas//EN")],
+        props: vec![
+            Prop::new("VERSION", "2.0"),
+            Prop::new("PRODID", "-//Atlas//Atlas//EN"),
+        ],
         children: events.iter().map(|e| e.to_component(stamp)).collect(),
     };
     write(&cal)
@@ -505,7 +617,11 @@ mod tests {
         // 10:00 Pacific Standard Time (daylight saving in September) is 17:00 UTC.
         let c = Civil::from_local(e.start);
         assert_eq!((c.month, c.day, c.hour), (9, 29, 17));
-        let occ = crate::recur::Series::new(e.start, e.rule.clone().unwrap()).between(i64::MIN, i64::MAX, 100);
+        let occ = crate::recur::Series::new(e.start, e.rule.clone().unwrap()).between(
+            i64::MIN,
+            i64::MAX,
+            100,
+        );
         assert_eq!(occ.len(), 6);
     }
 
@@ -530,7 +646,11 @@ mod tests {
     #[test]
     fn vcard_both_versions() {
         let v3 = "BEGIN:VCARD\nVERSION:3.0\nN:Smith;John;;;\nitem1.EMAIL;TYPE=INTERNET:john@acme.com\nTEL;TYPE=CELL:+1 555 010 2000\nORG:Acme Corp;Sales\nEND:VCARD\n";
-        let cards: Vec<Card> = parse(v3).unwrap().iter().filter_map(Card::from_component).collect();
+        let cards: Vec<Card> = parse(v3)
+            .unwrap()
+            .iter()
+            .filter_map(Card::from_component)
+            .collect();
         assert_eq!(cards[0].name, "John Smith");
         assert_eq!(cards[0].emails, vec!["john@acme.com"]);
         assert_eq!(cards[0].org, "Acme Corp");
@@ -544,7 +664,15 @@ mod tests {
         let e = Event {
             uid: "atlas-1".into(),
             summary: "Dentist; bring card".into(),
-            start: Civil { year: 2026, month: 10, day: 2, hour: 0, minute: 0, second: 0 }.to_local(),
+            start: Civil {
+                year: 2026,
+                month: 10,
+                day: 2,
+                hour: 0,
+                minute: 0,
+                second: 0,
+            }
+            .to_local(),
             end: None,
             all_day: true,
             location: String::new(),
@@ -563,6 +691,10 @@ mod tests {
         assert!(parse("BEGIN:VCARD\nFN:x\n").is_err());
         assert!(parse("FN:x\n").is_err());
         assert!(parse("BEGIN:VCARD\nEND:VEVENT\n").is_err());
-        assert!(events_in("BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:x\nEND:VEVENT\nEND:VCALENDAR\n", &crate::tz::Zone::utc()).is_err());
+        assert!(events_in(
+            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:x\nEND:VEVENT\nEND:VCALENDAR\n",
+            &crate::tz::Zone::utc()
+        )
+        .is_err());
     }
 }

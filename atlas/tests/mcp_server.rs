@@ -25,7 +25,9 @@ impl Hub for FakeHub {
             "/hub/talk.json" => {
                 *self.looks.borrow_mut() += 1;
                 let posted = self.posted.borrow();
-                let said = posted.last().map(|(_, b)| atlas::hub::form_field(b, "text").unwrap_or_default());
+                let said = posted
+                    .last()
+                    .map(|(_, b)| atlas::hub::form_field(b, "text").unwrap_or_default());
                 Ok(match (said, *self.looks.borrow()) {
                     (Some(s), 1) => json!({ "recent": [], "pending": [s], "thinking": false }),
                     (Some(s), _) => json!({ "recent": [{ "said": s, "reply": "It's ten past four." }], "pending": [], "thinking": false }),
@@ -53,30 +55,69 @@ fn it_introduces_itself_and_lists_three_tools_none_of_which_approve() {
     assert_eq!(init["result"]["serverInfo"]["name"], "atlas");
     assert!(init["result"]["capabilities"]["tools"].is_object());
     // A notification gets no answer.
-    assert!(answer_message(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }), &hub, Duration::ZERO).is_none());
+    assert!(answer_message(
+        &json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+        &hub,
+        Duration::ZERO
+    )
+    .is_none());
     let list = answer_message(&rpc(2, "tools/list", json!({})), &hub, Duration::ZERO).unwrap();
-    let names: Vec<&str> = list["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+    let names: Vec<&str> = list["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
     assert_eq!(names, ["atlas_now", "atlas_recent", "atlas_ask"]);
-    assert!(!names.iter().any(|n| n.contains("approve") || n.contains("deny")));
+    assert!(!names
+        .iter()
+        .any(|n| n.contains("approve") || n.contains("deny")));
 }
 
 #[test]
 fn asking_goes_through_the_talk_page_and_waits_for_the_reply() {
     let hub = FakeHub::default();
-    let r = answer_message(&rpc(3, "tools/call", json!({ "name": "atlas_ask", "arguments": { "text": "what time is it?" } })), &hub, Duration::from_secs(5)).unwrap();
+    let r = answer_message(
+        &rpc(
+            3,
+            "tools/call",
+            json!({ "name": "atlas_ask", "arguments": { "text": "what time is it?" } }),
+        ),
+        &hub,
+        Duration::from_secs(5),
+    )
+    .unwrap();
     assert_eq!(r["result"]["content"][0]["text"], "It's ten past four.");
     assert_eq!(r["result"]["isError"], false);
     let posted = hub.posted.borrow();
     assert_eq!(posted[0].0, "/hub/talk");
-    assert_eq!(atlas::hub::form_field(&posted[0].1, "text").as_deref(), Some("what time is it?"));
+    assert_eq!(
+        atlas::hub::form_field(&posted[0].1, "text").as_deref(),
+        Some("what time is it?")
+    );
 }
 
 #[test]
 fn a_closed_atlas_is_said_plainly_as_an_error() {
-    let hub = FakeHub { down: true, ..Default::default() };
-    let r = answer_message(&rpc(4, "tools/call", json!({ "name": "atlas_now", "arguments": {} })), &hub, Duration::ZERO).unwrap();
+    let hub = FakeHub {
+        down: true,
+        ..Default::default()
+    };
+    let r = answer_message(
+        &rpc(
+            4,
+            "tools/call",
+            json!({ "name": "atlas_now", "arguments": {} }),
+        ),
+        &hub,
+        Duration::ZERO,
+    )
+    .unwrap();
     assert_eq!(r["result"]["isError"], true);
-    assert!(r["result"]["content"][0]["text"].as_str().unwrap().contains("is it running"));
+    assert!(r["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("is it running"));
     let r = answer_message(&rpc(5, "nonsense", json!({})), &hub, Duration::ZERO).unwrap();
     assert_eq!(r["error"]["code"], -32601);
 }
@@ -88,18 +129,36 @@ fn over_stdio_one_line_in_is_one_line_out() {
         "{}\n{}\n\n{}\n",
         rpc(1, "initialize", json!({})),
         json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
-        rpc(2, "tools/call", json!({ "name": "atlas_now", "arguments": {} }))
+        rpc(
+            2,
+            "tools/call",
+            json!({ "name": "atlas_now", "arguments": {} })
+        )
     );
     let mut out = Vec::new();
     serve(input.as_bytes(), &mut out, &hub);
-    let lines: Vec<Value> = String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let lines: Vec<Value> = String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
     assert_eq!(lines.len(), 2);
     assert_eq!(lines[1]["id"], 2);
-    assert!(lines[1]["result"]["content"][0]["text"].as_str().unwrap().contains("\"waiting\":2"));
+    assert!(lines[1]["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("\"waiting\":2"));
 }
 
 #[test]
 fn the_talk_page_is_readable_as_data_with_the_token() {
-    let req = atlas::server::parse_request("GET /hub/talk.json HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer abc\r\n", "").unwrap();
-    assert!(matches!(atlas::server::route(&req), Some(atlas::server::Action::TalkJson)));
+    let req = atlas::server::parse_request(
+        "GET /hub/talk.json HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer abc\r\n",
+        "",
+    )
+    .unwrap();
+    assert!(matches!(
+        atlas::server::route(&req),
+        Some(atlas::server::Action::TalkJson)
+    ));
 }

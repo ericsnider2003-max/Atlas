@@ -33,7 +33,10 @@ pub enum Ask {
     /// Take an event off the calendar: what it is, or when ("my 3pm").
     CancelEvent(String),
     /// Move an event: which, and where to.
-    MoveEvent { what: String, to: String },
+    MoveEvent {
+        what: String,
+        to: String,
+    },
 }
 
 /// Snoozing with no time said.
@@ -43,26 +46,55 @@ fn words(said: &str) -> String {
     let t: String = said
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == ':' || c == '#' || c == '\'' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == ':' || c == '#' || c == '\'' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect();
     t.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 const NUMBERS: &[(&str, u64)] = &[
-    ("a", 1), ("an", 1), ("one", 1), ("two", 2), ("three", 3), ("four", 4), ("five", 5), ("six", 6),
-    ("seven", 7), ("eight", 8), ("nine", 9), ("ten", 10), ("eleven", 11), ("twelve", 12), ("fifteen", 15),
-    ("twenty", 20), ("thirty", 30), ("forty", 40), ("forty-five", 45), ("fifty", 50), ("sixty", 60), ("ninety", 90),
+    ("a", 1),
+    ("an", 1),
+    ("one", 1),
+    ("two", 2),
+    ("three", 3),
+    ("four", 4),
+    ("five", 5),
+    ("six", 6),
+    ("seven", 7),
+    ("eight", 8),
+    ("nine", 9),
+    ("ten", 10),
+    ("eleven", 11),
+    ("twelve", 12),
+    ("fifteen", 15),
+    ("twenty", 20),
+    ("thirty", 30),
+    ("forty", 40),
+    ("forty-five", 45),
+    ("fifty", 50),
+    ("sixty", 60),
+    ("ninety", 90),
 ];
 
 fn number(w: &str) -> Option<u64> {
-    w.parse().ok().or_else(|| NUMBERS.iter().find(|(n, _)| *n == w).map(|(_, v)| *v))
+    w.parse()
+        .ok()
+        .or_else(|| NUMBERS.iter().find(|(n, _)| *n == w).map(|(_, v)| *v))
 }
 
 /// A length of time in words: "10 minutes", "ten minutes", "a minute and a
 /// half" (not that), "an hour", "half an hour", "1 hour 30 minutes",
 /// "90 seconds", "25 min".
 pub fn duration_secs(text: &str) -> Option<u64> {
-    let t = words(text).replace("half an hour", "30 minutes").replace("a half hour", "30 minutes");
+    let t = words(text)
+        .replace("half an hour", "30 minutes")
+        .replace("a half hour", "30 minutes");
     let w: Vec<&str> = t.split_whitespace().collect();
     let mut total = 0u64;
     let mut found = false;
@@ -93,7 +125,9 @@ pub fn duration_secs(text: &str) -> Option<u64> {
 }
 
 fn after<'a>(t: &'a str, marks: &[&str]) -> Option<&'a str> {
-    marks.iter().find_map(|m| t.find(m).map(|i| t[i + m.len()..].trim()))
+    marks
+        .iter()
+        .find_map(|m| t.find(m).map(|i| t[i + m.len()..].trim()))
 }
 
 /// What's being asked about what's already set, if that's what this is.
@@ -105,9 +139,21 @@ pub fn read(said: &str) -> Option<Ask> {
     // Listing.
     if about_reminders
         && [
-            "what reminders", "which reminders", "my reminders", "list reminders", "list my reminders",
-            "show my reminders", "show reminders", "any reminders", "reminders do i have", "reminders have i got",
-            "my timers", "what timers", "any timers", "timers do i have", "reminders are set",
+            "what reminders",
+            "which reminders",
+            "my reminders",
+            "list reminders",
+            "list my reminders",
+            "show my reminders",
+            "show reminders",
+            "any reminders",
+            "reminders do i have",
+            "reminders have i got",
+            "my timers",
+            "what timers",
+            "any timers",
+            "timers do i have",
+            "reminders are set",
         ]
         .iter()
         .any(|p| t.contains(p))
@@ -118,10 +164,21 @@ pub fn read(said: &str) -> Option<Ask> {
         return Some(Ask::ListReminders);
     }
 
-    let cancelling = ["cancel ", "delete ", "remove ", "clear ", "forget ", "stop ", "turn off ", "get rid of ", "scrap ", "drop "]
-        .iter()
-        .find(|p| t.starts_with(**p))
-        .map(|p| t[p.len()..].trim().to_string());
+    let cancelling = [
+        "cancel ",
+        "delete ",
+        "remove ",
+        "clear ",
+        "forget ",
+        "stop ",
+        "turn off ",
+        "get rid of ",
+        "scrap ",
+        "drop ",
+    ]
+    .iter()
+    .find(|p| t.starts_with(**p))
+    .map(|p| t[p.len()..].trim().to_string());
 
     // Cancelling a reminder or timer.
     if let Some(rest) = cancelling.as_deref().filter(|_| about_reminders) {
@@ -134,7 +191,15 @@ pub fn read(said: &str) -> Option<Ask> {
         {
             return Some(Ask::CancelReminder(Which::Number(n)));
         }
-        if let Some(about) = after(rest, &["reminder to ", "reminder about ", "reminder for ", "timer for "]) {
+        if let Some(about) = after(
+            rest,
+            &[
+                "reminder to ",
+                "reminder about ",
+                "reminder for ",
+                "timer for ",
+            ],
+        ) {
             if !about.is_empty() {
                 return Some(Ask::CancelReminder(Which::About(about.to_string())));
             }
@@ -144,9 +209,15 @@ pub fn read(said: &str) -> Option<Ask> {
 
     // Timers.
     let timer = t.contains("timer")
-        && (t.starts_with("set") || t.starts_with("start") || t.starts_with("timer") || t.starts_with("put")
-            || t.starts_with("can you set") || t.starts_with("give me") || t.contains(" minute timer")
-            || t.contains(" second timer") || t.contains(" hour timer"));
+        && (t.starts_with("set")
+            || t.starts_with("start")
+            || t.starts_with("timer")
+            || t.starts_with("put")
+            || t.starts_with("can you set")
+            || t.starts_with("give me")
+            || t.contains(" minute timer")
+            || t.contains(" second timer")
+            || t.contains(" hour timer"));
     if timer {
         if let Some(secs) = duration_secs(&t) {
             return Some(Ask::Timer(secs));
@@ -154,7 +225,11 @@ pub fn read(said: &str) -> Option<Ask> {
     }
 
     // Snoozing.
-    if t.starts_with("snooze") || t.starts_with("remind me again") || t == "later" || t.starts_with("again in") {
+    if t.starts_with("snooze")
+        || t.starts_with("remind me again")
+        || t == "later"
+        || t.starts_with("again in")
+    {
         return Some(Ask::Snooze(duration_secs(&t)));
     }
 
@@ -164,8 +239,15 @@ pub fn read(said: &str) -> Option<Ask> {
             if let Some(i) = rest.rfind(" to ") {
                 let (what, to) = (rest[..i].trim(), rest[i + 4..].trim());
                 let what = strip_owner(what);
-                if !what.is_empty() && !to.is_empty() && !what.contains("reminder") && !what.contains("timer") {
-                    return Some(Ask::MoveEvent { what: what.to_string(), to: to.to_string() });
+                if !what.is_empty()
+                    && !to.is_empty()
+                    && !what.contains("reminder")
+                    && !what.contains("timer")
+                {
+                    return Some(Ask::MoveEvent {
+                        what: what.to_string(),
+                        to: to.to_string(),
+                    });
                 }
             }
         }
@@ -175,8 +257,22 @@ pub fn read(said: &str) -> Option<Ask> {
     // "the dentist", "tomorrow's meeting") -- the daemon checks there is one.
     if let Some(rest) = cancelling {
         let what = strip_owner(&rest);
-        let not_an_event = ["that", "it", "this", "the post", "post", "everything", "the download", "download", "the update"];
-        if !what.is_empty() && !not_an_event.contains(&what) && !rest.starts_with("that") && !rest.starts_with("it ") {
+        let not_an_event = [
+            "that",
+            "it",
+            "this",
+            "the post",
+            "post",
+            "everything",
+            "the download",
+            "download",
+            "the update",
+        ];
+        if !what.is_empty()
+            && !not_an_event.contains(&what)
+            && !rest.starts_with("that")
+            && !rest.starts_with("it ")
+        {
             return Some(Ask::CancelEvent(what.to_string()));
         }
     }
@@ -190,7 +286,13 @@ fn strip_owner(s: &str) -> &str {
             s = r.trim();
         }
     }
-    for tail in [" on my calendar", " from my calendar", " off my calendar", " event", " appointment"] {
+    for tail in [
+        " on my calendar",
+        " from my calendar",
+        " off my calendar",
+        " event",
+        " appointment",
+    ] {
         if let Some(r) = s.strip_suffix(tail) {
             s = r.trim();
         }
@@ -201,7 +303,10 @@ fn strip_owner(s: &str) -> &str {
 /// A clock time in these words ("3pm", "3 pm", "15:00", "3 o'clock"),
 /// as (hour 0-23, or both readings for an hour without am/pm, minute).
 pub fn clock_in(what: &str) -> Option<(Vec<u32>, u32)> {
-    let t = words(what).replace("o'clock", "").replace(" pm", "pm").replace(" am", "am");
+    let t = words(what)
+        .replace("o'clock", "")
+        .replace(" pm", "pm")
+        .replace(" am", "am");
     for w in t.split_whitespace() {
         let (body, pm, am) = if let Some(b) = w.strip_suffix("pm") {
             (b, true, false)
@@ -248,11 +353,36 @@ pub fn event_answers_to(title: &str, local_start: u64, what: &str) -> bool {
         }
     }
     let title = words(title);
-    let skip = ["my", "the", "a", "an", "on", "at", "today", "tomorrow", "todays", "tomorrows", "today's", "tomorrow's", "meeting", "event", "appointment"];
-    let wanted: Vec<&str> = what.split_whitespace().filter(|w| !skip.contains(w) && clock_in(w).is_none()).collect();
+    let skip = [
+        "my",
+        "the",
+        "a",
+        "an",
+        "on",
+        "at",
+        "today",
+        "tomorrow",
+        "todays",
+        "tomorrows",
+        "today's",
+        "tomorrow's",
+        "meeting",
+        "event",
+        "appointment",
+    ];
+    let wanted: Vec<&str> = what
+        .split_whitespace()
+        .filter(|w| !skip.contains(w) && clock_in(w).is_none())
+        .collect();
     if wanted.is_empty() {
         // "cancel my meeting" with nothing else: a title with "meeting" in it.
-        return what.split_whitespace().any(|w| w == "meeting" && title.contains("meeting"));
+        return what
+            .split_whitespace()
+            .any(|w| w == "meeting" && title.contains("meeting"));
     }
-    wanted.iter().all(|w| title.split_whitespace().any(|t| t == *w || t.starts_with(w)))
+    wanted.iter().all(|w| {
+        title
+            .split_whitespace()
+            .any(|t| t == *w || t.starts_with(w))
+    })
 }

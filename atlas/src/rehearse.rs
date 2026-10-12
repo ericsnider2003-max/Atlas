@@ -35,7 +35,10 @@ pub struct Rehearsal {
 
 impl Rehearsal {
     pub fn new(command: &str) -> Rehearsal {
-        Rehearsal { command: command.to_string(), ..Default::default() }
+        Rehearsal {
+            command: command.to_string(),
+            ..Default::default()
+        }
     }
 
     pub fn touches_anything_irreversible(&self) -> bool {
@@ -53,8 +56,11 @@ impl Rehearsal {
             if self.beats.len() == 1 { "" } else { "s" }
         );
         if !self.questions.is_empty() {
-            s.push_str(&format!(", {} thing{} I'd ask about", self.questions.len(),
-                if self.questions.len() == 1 { "" } else { "s" }));
+            s.push_str(&format!(
+                ", {} thing{} I'd ask about",
+                self.questions.len(),
+                if self.questions.len() == 1 { "" } else { "s" }
+            ));
         }
         if !self.blocked.is_empty() {
             s.push_str(&format!(", {} I couldn't do", self.blocked.len()));
@@ -110,7 +116,11 @@ pub fn from_actions(command: &str, actions: &[Action]) -> Rehearsal {
             // Waiting isn't worth a line in a walk-through.
             Action::Sleep(_) => continue,
         };
-        r.beats.push(Beat { what, consequential, gated_by: None });
+        r.beats.push(Beat {
+            what,
+            consequential,
+            gated_by: None,
+        });
     }
     r
 }

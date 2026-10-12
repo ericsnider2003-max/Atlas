@@ -45,10 +45,18 @@ pub struct Target {
     #[serde(default)]
     pub enabled: bool,
 }
-fn d_every() -> u64 { 120 }
-fn d_fails() -> u32 { 3 }
-fn d_flap_window() -> u64 { 1800 }
-fn d_flap_count() -> u32 { 4 }
+fn d_every() -> u64 {
+    120
+}
+fn d_fails() -> u32 {
+    3
+}
+fn d_flap_window() -> u64 {
+    1800
+}
+fn d_flap_count() -> u32 {
+    4
+}
 
 impl Default for Target {
     fn default() -> Self {
@@ -74,7 +82,6 @@ pub struct Status {
     pub down_since: Option<u64>,
     pub last_up: Option<u64>,
 }
-
 
 /// Something worth telling you about.
 #[derive(Debug, Clone, PartialEq)]
@@ -106,7 +113,9 @@ impl Watcher {
     }
 
     pub fn due(&self, name: &str, t: u64) -> bool {
-        let Some(target) = self.targets.iter().find(|x| x.name == name) else { return false };
+        let Some(target) = self.targets.iter().find(|x| x.name == name) else {
+            return false;
+        };
         if !target.enabled {
             return false;
         }
@@ -145,7 +154,8 @@ impl Watcher {
             return Alert::None;
         }
         s.transitions.push(t);
-        s.transitions.retain(|x| t.saturating_sub(*x) <= target.flap_window);
+        s.transitions
+            .retain(|x| t.saturating_sub(*x) <= target.flap_window);
 
         if s.transitions.len() as u32 >= target.flap_transitions {
             s.health = Health::Flapping;
@@ -169,11 +179,17 @@ impl Watcher {
     }
 
     pub fn health(&self, name: &str) -> Health {
-        self.status.get(name).map(|s| s.health).unwrap_or(Health::Unknown)
+        self.status
+            .get(name)
+            .map(|s| s.health)
+            .unwrap_or(Health::Unknown)
     }
 
     pub fn down_for(&self, name: &str, t: u64) -> Option<u64> {
-        self.status.get(name)?.down_since.map(|at| t.saturating_sub(at))
+        self.status
+            .get(name)?
+            .down_since
+            .map(|at| t.saturating_sub(at))
     }
 
     pub fn summary(&self) -> String {

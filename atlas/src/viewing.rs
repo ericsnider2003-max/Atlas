@@ -308,7 +308,6 @@ pub fn where_to_look(scenes: &[f32], duration: f32, cfg: &ViewConfig) -> Vec<f32
         .collect()
 }
 
-
 /// Every frame time ffmpeg reported, in order, with no thinning.
 ///
 /// `scene_times` collapses near-duplicates and applies a cap, which is right
@@ -342,10 +341,7 @@ pub fn one_per_moment(
     frames: Vec<std::path::PathBuf>,
     got: &[f32],
     asked_for: &[f32],
-) -> (
-    Vec<std::path::PathBuf>,
-    (Vec<f32>, Vec<std::path::PathBuf>),
-) {
+) -> (Vec<std::path::PathBuf>, (Vec<f32>, Vec<std::path::PathBuf>)) {
     let mut keep_frames = Vec::new();
     let mut keep_times = Vec::new();
     let mut drop_frames = Vec::new();
@@ -381,7 +377,10 @@ pub fn one_per_moment(
 pub fn same_screen(a: &str, b: &str) -> bool {
     let words = |s: &str| -> Vec<String> {
         s.split_whitespace()
-            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+            .map(|w| {
+                w.trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_lowercase()
+            })
             .filter(|w| w.len() > 2)
             .collect()
     };

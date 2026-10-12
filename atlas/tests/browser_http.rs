@@ -12,7 +12,10 @@ fn a_get_request_is_well_formed_and_closes_the_connection() {
     let r = build_request("GET", "127.0.0.1:9222", "/json/list", None);
     assert!(r.starts_with("GET /json/list HTTP/1.1\r\n"));
     assert!(r.contains("Host: 127.0.0.1:9222\r\n"));
-    assert!(r.contains("Connection: close\r\n"), "we read to EOF, so must not keep-alive");
+    assert!(
+        r.contains("Connection: close\r\n"),
+        "we read to EOF, so must not keep-alive"
+    );
     assert!(r.ends_with("\r\n\r\n"));
 }
 
@@ -76,12 +79,16 @@ fn every_profile_offers_more_than_one_selector_for_its_controls() {
     for p in default_sites() {
         assert!(
             p.compose_box.len() >= 1 && !p.compose_box[0].is_empty(),
-            "{} has no compose selector", p.name
+            "{} has no compose selector",
+            p.name
         );
         assert!(!p.submit.is_empty(), "{} has no submit selector", p.name);
         assert!(!p.ready.is_empty(), "{} has no readiness check", p.name);
     }
-    assert!(x().compose_box.len() >= 2, "the busiest site should have fallbacks");
+    assert!(
+        x().compose_box.len() >= 2,
+        "the busiest site should have fallbacks"
+    );
 }
 
 #[test]
@@ -96,7 +103,10 @@ fn profiles_check_for_a_signed_in_session() {
 #[test]
 fn drafting_never_includes_the_submit_step() {
     let steps = post_plan(&x(), "hello world", false);
-    assert!(!steps.contains(&PostStep::Submit), "nothing goes out as a side effect of drafting");
+    assert!(
+        !steps.contains(&PostStep::Submit),
+        "nothing goes out as a side effect of drafting"
+    );
     assert_eq!(steps.last(), Some(&PostStep::Fill("hello world".into())));
 }
 
@@ -109,11 +119,23 @@ fn submitting_only_appears_once_approval_is_in_hand() {
 #[test]
 fn the_sequence_checks_readiness_and_sign_in_before_typing() {
     let steps = post_plan(&x(), "hi", true);
-    let fill_at = steps.iter().position(|s| matches!(s, PostStep::Fill(_))).unwrap();
-    let ready_at = steps.iter().position(|s| *s == PostStep::WaitReady).unwrap();
-    let signed_at = steps.iter().position(|s| *s == PostStep::CheckSignedIn).unwrap();
+    let fill_at = steps
+        .iter()
+        .position(|s| matches!(s, PostStep::Fill(_)))
+        .unwrap();
+    let ready_at = steps
+        .iter()
+        .position(|s| *s == PostStep::WaitReady)
+        .unwrap();
+    let signed_at = steps
+        .iter()
+        .position(|s| *s == PostStep::CheckSignedIn)
+        .unwrap();
     assert!(ready_at < fill_at, "must wait for the page");
-    assert!(signed_at < fill_at, "must confirm the session before typing");
+    assert!(
+        signed_at < fill_at,
+        "must confirm the session before typing"
+    );
 }
 
 #[test]
@@ -128,7 +150,10 @@ fn the_sequence_starts_by_opening_the_right_page() {
 fn the_default_browser_config_is_loopback_only() {
     let cfg = BrowserConfig::default();
     assert_eq!(cfg.port, 9222);
-    assert!(cfg.startup_ms > cfg.timeout_ms / 2, "give Chrome time to start");
+    assert!(
+        cfg.startup_ms > cfg.timeout_ms / 2,
+        "give Chrome time to start"
+    );
 }
 
 #[test]

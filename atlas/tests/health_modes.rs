@@ -30,41 +30,70 @@ fn a_healthy_machine_produces_nothing_to_say() {
 
 #[test]
 fn a_nearly_full_disk_is_urgent_and_a_tight_one_is_a_notice() {
-    let tight = Readings { disk_free_gb: 15.0, ..healthy() };
+    let tight = Readings {
+        disk_free_gb: 15.0,
+        ..healthy()
+    };
     assert_eq!(assess(&tight, &cfg())[0].severity, Severity::Notice);
 
-    let full = Readings { disk_free_gb: 3.0, ..healthy() };
+    let full = Readings {
+        disk_free_gb: 3.0,
+        ..healthy()
+    };
     assert_eq!(assess(&full, &cfg())[0].severity, Severity::Urgent);
 }
 
 #[test]
 fn memory_pressure_is_noticed() {
     // 12.8 of 15.7 is roughly where your machine sits today.
-    let tight = Readings { ram_used_gb: 14.5, ..healthy() };
+    let tight = Readings {
+        ram_used_gb: 14.5,
+        ..healthy()
+    };
     let f = assess(&tight, &cfg());
     assert!(f.iter().any(|x| x.id == "ram"), "got {f:?}");
 }
 
 #[test]
 fn battery_only_matters_when_you_are_actually_on_battery() {
-    let low_plugged = Readings { battery_percent: Some(10), on_battery: false, ..healthy() };
-    assert!(!assess(&low_plugged, &cfg()).iter().any(|f| f.id == "battery"));
+    let low_plugged = Readings {
+        battery_percent: Some(10),
+        on_battery: false,
+        ..healthy()
+    };
+    assert!(!assess(&low_plugged, &cfg())
+        .iter()
+        .any(|f| f.id == "battery"));
 
-    let low_unplugged = Readings { battery_percent: Some(10), on_battery: true, ..healthy() };
-    assert!(assess(&low_unplugged, &cfg()).iter().any(|f| f.id == "battery"));
+    let low_unplugged = Readings {
+        battery_percent: Some(10),
+        on_battery: true,
+        ..healthy()
+    };
+    assert!(assess(&low_unplugged, &cfg())
+        .iter()
+        .any(|f| f.id == "battery"));
 }
 
 #[test]
 fn a_battery_that_has_lost_capacity_is_flagged_separately() {
-    let worn = Readings { battery_health_percent: Some(62), ..healthy() };
-    assert!(assess(&worn, &cfg()).iter().any(|f| f.id == "battery_health"));
+    let worn = Readings {
+        battery_health_percent: Some(62),
+        ..healthy()
+    };
+    assert!(assess(&worn, &cfg())
+        .iter()
+        .any(|f| f.id == "battery_health"));
 }
 
 #[test]
 fn never_having_backed_up_is_flagged_not_overlooked() {
     // The easy one to miss: no backup at all reads as "no data" rather than
     // as the worst case.
-    let never = Readings { days_since_backup: None, ..healthy() };
+    let never = Readings {
+        days_since_backup: None,
+        ..healthy()
+    };
     let f = assess(&never, &cfg());
     assert!(f.iter().any(|x| x.id == "backup"), "got {f:?}");
     assert!(f.iter().any(|x| x.say.contains("never been backed up")));
@@ -85,13 +114,31 @@ fn urgent_findings_are_sorted_ahead_of_notices() {
 #[test]
 fn a_notice_waits_for_a_quiet_moment_but_urgent_does_not() {
     let mut r = Reporter::default();
-    let notice = assess(&Readings { disk_free_gb: 15.0, ..healthy() }, &cfg());
-    assert!(r.next(&notice, false, &cfg(), 100).is_none(), "not while you're working");
+    let notice = assess(
+        &Readings {
+            disk_free_gb: 15.0,
+            ..healthy()
+        },
+        &cfg(),
+    );
+    assert!(
+        r.next(&notice, false, &cfg(), 100).is_none(),
+        "not while you're working"
+    );
     assert!(r.next(&notice, true, &cfg(), 200).is_some());
 
     let mut r2 = Reporter::default();
-    let urgent = assess(&Readings { disk_free_gb: 2.0, ..healthy() }, &cfg());
-    assert!(r2.next(&urgent, false, &cfg(), 100).is_some(), "urgent interrupts");
+    let urgent = assess(
+        &Readings {
+            disk_free_gb: 2.0,
+            ..healthy()
+        },
+        &cfg(),
+    );
+    assert!(
+        r2.next(&urgent, false, &cfg(), 100).is_some(),
+        "urgent interrupts"
+    );
 }
 
 #[test]
@@ -99,7 +146,13 @@ fn the_same_problem_is_not_repeated_for_a_week() {
     // A monitor that mentions a full disk hourly gets ignored, and then the
     // genuinely urgent one is ignored too.
     let mut r = Reporter::default();
-    let f = assess(&Readings { disk_free_gb: 2.0, ..healthy() }, &cfg());
+    let f = assess(
+        &Readings {
+            disk_free_gb: 2.0,
+            ..healthy()
+        },
+        &cfg(),
+    );
     assert!(r.next(&f, true, &cfg(), 100).is_some());
     assert!(r.next(&f, true, &cfg(), 100_000).is_none());
     assert!(r.next(&f, true, &cfg(), 100 + 8 * 86_400).is_some());
@@ -109,7 +162,12 @@ fn the_same_problem_is_not_repeated_for_a_week() {
 fn only_one_thing_is_said_at_a_time() {
     let mut r = Reporter::default();
     let many = assess(
-        &Readings { disk_free_gb: 2.0, ram_used_gb: 15.3, uptime_days: 40, ..healthy() },
+        &Readings {
+            disk_free_gb: 2.0,
+            ram_used_gb: 15.3,
+            uptime_days: 40,
+            ..healthy()
+        },
         &cfg(),
     );
     assert!(many.len() >= 3);
@@ -121,19 +179,36 @@ fn only_one_thing_is_said_at_a_time() {
 #[test]
 fn fixing_a_problem_lets_it_be_reported_again_later() {
     let mut r = Reporter::default();
-    let f = assess(&Readings { disk_free_gb: 2.0, ..healthy() }, &cfg());
+    let f = assess(
+        &Readings {
+            disk_free_gb: 2.0,
+            ..healthy()
+        },
+        &cfg(),
+    );
     r.next(&f, true, &cfg(), 100);
     // Disk freed up, and stayed freed for long enough to count as fixed.
     r.reconcile_at(&[], 200);
     r.reconcile_at(&[], 200 + atlas::health::FIXED_AFTER_SECS);
-    assert!(r.next(&f, true, &cfg(), 201 + atlas::health::FIXED_AFTER_SECS).is_some(), "a recurrence is worth saying again");
+    assert!(
+        r.next(&f, true, &cfg(), 201 + atlas::health::FIXED_AFTER_SECS)
+            .is_some(),
+        "a recurrence is worth saying again"
+    );
 }
 
 #[test]
 fn a_reading_that_wobbles_across_its_line_is_said_once() {
     // 5 Oct 2026: memory at 89-92% said "Memory is at 90 percent" 18 times.
     let mut r = Reporter::default();
-    let high = assess(&Readings { ram_used_gb: 14.5, ram_total_gb: 16.0, ..healthy() }, &cfg());
+    let high = assess(
+        &Readings {
+            ram_used_gb: 14.5,
+            ram_total_gb: 16.0,
+            ..healthy()
+        },
+        &cfg(),
+    );
     assert!(high.iter().any(|f| f.id == "ram"));
     let mut said = 0;
     for i in 0..60u64 {
@@ -148,7 +223,14 @@ fn a_reading_that_wobbles_across_its_line_is_said_once() {
     // Gone for over an hour, then back: worth saying again.
     r.reconcile_at(&[], 10_000);
     r.reconcile_at(&[], 10_000 + atlas::health::FIXED_AFTER_SECS);
-    assert!(r.next(&high, true, &cfg(), 10_000 + atlas::health::FIXED_AFTER_SECS + 1).is_some());
+    assert!(r
+        .next(
+            &high,
+            true,
+            &cfg(),
+            10_000 + atlas::health::FIXED_AFTER_SECS + 1
+        )
+        .is_some());
 }
 
 // ================= watching the other machine =================
@@ -196,7 +278,11 @@ fn coming_back_is_reported_once() {
         Alert::CameBack { .. } => {}
         o => panic!("{o:?}"),
     }
-    assert_eq!(w.observe("homelab", true, 620), Alert::None, "not every check");
+    assert_eq!(
+        w.observe("homelab", true, 620),
+        Alert::None,
+        "not every check"
+    );
 }
 
 #[test]
@@ -221,7 +307,12 @@ fn something_flapping_is_called_out_as_flapping() {
 #[test]
 fn a_disabled_target_is_never_probed() {
     let mut w = Watcher::default();
-    w.add(Target { name: "off".into(), address: "x:1".into(), enabled: false, ..Default::default() });
+    w.add(Target {
+        name: "off".into(),
+        address: "x:1".into(),
+        enabled: false,
+        ..Default::default()
+    });
     assert!(!w.due("off", 999_999));
 }
 
@@ -293,7 +384,10 @@ fn leaving_restores_what_was_open_before() {
     m.enter("research", &["discord".to_string(), "claude".to_string()]);
     let out = m.leave().unwrap();
     assert!(out.close.contains(&"chrome".to_string()));
-    assert!(out.open.contains(&"discord".to_string()), "put back what was there");
+    assert!(
+        out.open.contains(&"discord".to_string()),
+        "put back what was there"
+    );
     assert!(m.active().is_none());
 }
 
@@ -331,7 +425,10 @@ fn a_custom_mode_can_be_added() {
         verbosity: 1,
         triggers: vec!["trading mode".into()],
     });
-    assert_eq!(m.match_trigger("switch to trading mode").unwrap().name, "trading");
+    assert_eq!(
+        m.match_trigger("switch to trading mode").unwrap().name,
+        "trading"
+    );
 }
 
 // ================= how much to say =================

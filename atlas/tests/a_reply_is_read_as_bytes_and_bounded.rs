@@ -56,7 +56,11 @@ fn a_chunked_reply_with_an_undecodable_byte_still_yields_the_rest() {
          conversion runs before the offsets are used: {:?}",
         r.body
     );
-    assert!(r.body.starts_with("ab"), "the good bytes of the first chunk are gone: {:?}", r.body);
+    assert!(
+        r.body.starts_with("ab"),
+        "the good bytes of the first chunk are gone: {:?}",
+        r.body
+    );
     assert!(
         r.body.contains('\u{FFFD}'),
         "the undecodable byte vanished rather than being marked: {:?}",
@@ -74,8 +78,7 @@ fn converting_first_is_what_broke_it() {
     // The old shape, reproduced by hand: decode the whole response, then
     // parse the text. There is no longer a `&str` entry point to do it by
     // accident — that is the point — so the test does it deliberately.
-    let the_old_way =
-        parse_response(String::from_utf8_lossy(&raw).as_bytes()).expect("parse");
+    let the_old_way = parse_response(String::from_utf8_lossy(&raw).as_bytes()).expect("parse");
     let now = parse_response(&raw).expect("parse");
     assert_ne!(
         the_old_way.body, now.body,
@@ -96,7 +99,8 @@ fn an_ordinary_reply_is_unchanged() {
     assert_eq!(r.status, 200);
     assert_eq!(r.body, "{\"ok\":true}");
 
-    let chunked = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nabcd\r\n3\r\nefg\r\n0\r\n\r\n";
+    let chunked =
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nabcd\r\n3\r\nefg\r\n0\r\n\r\n";
     assert_eq!(parse_response(chunked).expect("parse").body, "abcdefg");
 }
 
@@ -138,7 +142,10 @@ fn there_is_exactly_one_way_in() {
 #[test]
 fn a_malformed_reply_is_refused_rather_than_guessed_at() {
     assert!(parse_response(b"not http at all").is_err());
-    assert!(parse_response(b"HTTP/1.1\r\n\r\nbody").is_err(), "no status code");
+    assert!(
+        parse_response(b"HTTP/1.1\r\n\r\nbody").is_err(),
+        "no status code"
+    );
 }
 
 #[test]
@@ -170,7 +177,10 @@ fn a_caught_panic_says_whether_there_is_actually_a_note() {
     // is written, and the sentence has to say so.
     let err = atlas::crash::caught("testing the note", || panic!("deliberate"))
         .expect_err("a panic came back as success");
-    assert!(err.contains("testing the note"), "it did not say what it was doing: {err}");
+    assert!(
+        err.contains("testing the note"),
+        "it did not say what it was doing: {err}"
+    );
     assert!(
         err.contains("no crash note") || err.contains("written down what happened"),
         "it said neither that there is a note nor that there isn't: {err}"

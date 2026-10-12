@@ -81,7 +81,10 @@ impl Size {
     pub fn need_mb(self, context: u64) -> u64 {
         let (bytes, per) = match self {
             Size::Seven => (crate::getpieces::coder_model().bytes, CACHE_PER_TOKEN_7B),
-            Size::OneAndAHalf => (crate::getpieces::small_coder_model().bytes, CACHE_PER_TOKEN_1_5B),
+            Size::OneAndAHalf => (
+                crate::getpieces::small_coder_model().bytes,
+                CACHE_PER_TOKEN_1_5B,
+            ),
         };
         (bytes + per * context.max(1024)) * 11 / 10 / (1024 * 1024)
     }
@@ -102,16 +105,30 @@ fn room_mb(total_ram_mb: u64, usable_vram_mb: u64, budget_set_mb: u64) -> u64 {
 /// Which coding model this device should have: the 7B when it fits the
 /// room, else the 1.5B, else none -- a coding model that pages the machine
 /// writes nothing faster than the talking model would.
-pub fn size_for(total_ram_mb: u64, usable_vram_mb: u64, budget_set_mb: u64, context: u64) -> Option<Size> {
+pub fn size_for(
+    total_ram_mb: u64,
+    usable_vram_mb: u64,
+    budget_set_mb: u64,
+    context: u64,
+) -> Option<Size> {
     let room = room_mb(total_ram_mb, usable_vram_mb, budget_set_mb);
-    [Size::Seven, Size::OneAndAHalf].into_iter().find(|s| s.need_mb(context) <= room)
+    [Size::Seven, Size::OneAndAHalf]
+        .into_iter()
+        .find(|s| s.need_mb(context) <= room)
 }
 
 /// The coding model to fetch on this machine, measured now.
 pub fn pieces_for_here() -> Vec<crate::getpieces::Piece> {
     let m = crate::fit::measure();
     let cfg = crate::models::ModelsConfig::default();
-    size_for(m.total_ram_mb, m.usable_vram_mb(), cfg.memory_budget_mb, coder_context(&cfg)).map(|s| vec![s.piece()]).unwrap_or_default()
+    size_for(
+        m.total_ram_mb,
+        m.usable_vram_mb(),
+        cfg.memory_budget_mb,
+        coder_context(&cfg),
+    )
+    .map(|s| vec![s.piece()])
+    .unwrap_or_default()
 }
 
 /// Is this model a coding model? Never the one that talks.
@@ -167,7 +184,11 @@ pub fn coder_among<'r>(
 /// (the talking model's plus two, past the deep model's) and context.
 pub fn coder_settings(cfg: &crate::models::ModelsConfig) -> crate::models::ModelsConfig {
     let mut c = cfg.clone();
-    c.port = if cfg.coder_port == 0 { cfg.port.saturating_add(2) } else { cfg.coder_port };
+    c.port = if cfg.coder_port == 0 {
+        cfg.port.saturating_add(2)
+    } else {
+        cfg.coder_port
+    };
     c.context = coder_context(cfg);
     // No helper model, and no guessing ahead from the prompt: it's set up
     // for the talking model.
@@ -183,15 +204,28 @@ struct NotHere {
 }
 
 impl Llm for NotHere {
-    fn supports_bounded_chat(&self) -> bool { true }
+    fn supports_bounded_chat(&self) -> bool {
+        true
+    }
 
-    fn chat_until(&self, _: &crate::brain::ChatRequest, _: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> crate::error::Result<crate::brain::ChatReply> {
-        let message = if keep() { "the coding model can't be had right now" } else { "model request stopped" };
+    fn chat_until(
+        &self,
+        _: &crate::brain::ChatRequest,
+        _: &mut dyn FnMut(&str) -> bool,
+        keep: &dyn Fn() -> bool,
+    ) -> crate::error::Result<crate::brain::ChatReply> {
+        let message = if keep() {
+            "the coding model can't be had right now"
+        } else {
+            "model request stopped"
+        };
         Err(crate::error::AtlasError::Platform(message.into()))
     }
 
     fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> {
-        Err(crate::error::AtlasError::Platform("the coding model can't be had right now".into()))
+        Err(crate::error::AtlasError::Platform(
+            "the coding model can't be had right now".into(),
+        ))
     }
 
     fn context_tokens(&self) -> Option<u32> {
@@ -232,7 +266,12 @@ pub const SETTLE: Duration = Duration::from_millis(1500);
 impl Coder {
     /// No coding model here.
     pub fn none() -> Coder {
-        Coder { brain: DeepBrain::none(), holds_chat_room: false, context: 0, let_go_at: None }
+        Coder {
+            brain: DeepBrain::none(),
+            holds_chat_room: false,
+            context: 0,
+            let_go_at: None,
+        }
     }
 
     /// A coding model run as `brain` (a `DeepBrain` labelled for code),
@@ -240,7 +279,12 @@ impl Coder {
     pub fn new(mut brain: DeepBrain, context: u32) -> Coder {
         brain.label = "coding model";
         brain.for_what = "code";
-        Coder { brain, holds_chat_room: false, context, let_go_at: None }
+        Coder {
+            brain,
+            holds_chat_room: false,
+            context,
+            let_go_at: None,
+        }
     }
 
     pub fn is_set_up(&self) -> bool {
@@ -253,7 +297,9 @@ impl Coder {
         if !self.is_set_up() {
             return None;
         }
-        Some(self.brain.for_background(Arc::new(NotHere { context: self.context })))
+        Some(self.brain.for_background(Arc::new(NotHere {
+            context: self.context,
+        })))
     }
 
     /// Once a pass: make room for it when a code call waits and it can't
@@ -285,7 +331,12 @@ impl Coder {
         }
         said.extend(self.brain.keep());
         let state = self.brain.gate.state();
-        if self.holds_chat_room && !matches!(state, crate::deepbrain::State::Up | crate::deepbrain::State::Starting) {
+        if self.holds_chat_room
+            && !matches!(
+                state,
+                crate::deepbrain::State::Up | crate::deepbrain::State::Starting
+            )
+        {
             self.holds_chat_room = false;
             // A build still waiting on a model is falling back to the chain,
             // which may be the talking model: it comes back now. Otherwise
@@ -293,9 +344,11 @@ impl Coder {
             let now = self.brain.wanted();
             room.bring_chat_back(now);
             said.push(if now {
-                "the coding model can't be had; starting the talking model again for the build".to_string()
+                "the coding model can't be had; starting the talking model again for the build"
+                    .to_string()
             } else {
-                "the build is done; the talking model starts again with the next thing you say".to_string()
+                "the build is done; the talking model starts again with the next thing you say"
+                    .to_string()
             });
         }
         said
@@ -310,7 +363,10 @@ impl Coder {
         self.brain.stop();
         self.holds_chat_room = false;
         room.bring_chat_back(true);
-        Some("a turn needs the talking model: stopped the coding model and gave its room back".into())
+        Some(
+            "a turn needs the talking model: stopped the coding model and gave its room back"
+                .into(),
+        )
     }
 }
 
@@ -321,9 +377,16 @@ pub fn for_settings(tc: &crate::voice::ToolsConfig) -> Coder {
     if tc.llm.is_some() || tc.models.server.is_none() {
         return Coder::none();
     }
-    let (registry, _) = crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&tc.models));
+    let (registry, _) =
+        crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&tc.models));
     let machine = crate::fit::measure();
-    let Some(model) = coder_among(&registry, &tc.models, machine.total_ram_mb, machine.usable_vram_mb()).cloned() else {
+    let Some(model) = coder_among(
+        &registry,
+        &tc.models,
+        machine.total_ram_mb,
+        machine.usable_vram_mb(),
+    )
+    .cloned() else {
         return Coder::none();
     };
     let ccfg = coder_settings(&tc.models);
@@ -336,7 +399,8 @@ pub fn for_settings(tc: &crate::voice::ToolsConfig) -> Coder {
         .memory_needed(ccfg.context)
         .unwrap_or_else(|_| crate::models::estimate_memory(&model, ccfg.context))
         / (1024 * 1024);
-    let mut engine = crate::deepbrain::ServerEngine::new(model.clone(), ccfg.clone(), layers, tc.vars.clone());
+    let mut engine =
+        crate::deepbrain::ServerEngine::new(model.clone(), ccfg.clone(), layers, tc.vars.clone());
     engine.log = "coding-model-server.log";
     let brain = DeepBrain::new(
         Box::new(engine),

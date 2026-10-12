@@ -27,7 +27,9 @@ impl Daemon<'_> {
             Page::Messages => {
                 let pairings = crate::kin::Pairings::load(&self.peer_dir);
                 let mut rooms: Vec<&crate::chat::Room> = self.chats.rooms.iter().collect();
-                rooms.sort_by_key(|r| std::cmp::Reverse(r.messages.iter().map(|m| m.sent_at).max().unwrap_or(0)));
+                rooms.sort_by_key(|r| {
+                    std::cmp::Reverse(r.messages.iter().map(|m| m.sent_at).max().unwrap_or(0))
+                });
                 let rows = rooms
                     .iter()
                     .map(|r| {
@@ -36,42 +38,54 @@ impl Daemon<'_> {
                             id: r.id.clone(),
                             name: r.name.clone(),
                             area: area_of(&r.space),
-                            last: last.as_ref().map(|m| m.body.chars().take(60).collect()).unwrap_or_default(),
+                            last: last
+                                .as_ref()
+                                .map(|m| m.body.chars().take(60).collect())
+                                .unwrap_or_default(),
                             when: last.as_ref().map(|m| when(m.sent_at)).unwrap_or_default(),
                             unread: r.unread().len(),
                             group: r.is_group(),
                         }
                     })
                     .collect();
-                let open_id = field_of(&fields, "room").or_else(|| rooms.first().map(|r| r.id.clone()));
-                let open = open_id.and_then(|id| self.chats.room(&id).cloned()).map(|r| {
-                    let said: Vec<crate::hubpages::Said> = r
-                        .in_order()
-                        .iter()
-                        .map(|m| {
-                            let mine = m.from == crate::chat::ME;
-                            let waiting = m.still_waiting();
-                            let (state, held) = if !mine {
-                                (String::new(), false)
-                            } else if m.fully_read() {
-                                ("Read".into(), false)
-                            } else if m.fully_arrived() {
-                                ("Delivered".into(), false)
-                            } else {
-                                (format!("Sent · held for {}", waiting.join(", ")), true)
-                            };
-                            crate::hubpages::Said {
-                                mine,
-                                from: m.from.clone(),
-                                body: m.body.clone(),
-                                when: when(m.sent_at),
-                                state,
-                                held,
-                            }
-                        })
-                        .collect();
-                    (r.id.clone(), r.name.clone(), area_of(&r.space), r.members.clone(), said)
-                });
+                let open_id =
+                    field_of(&fields, "room").or_else(|| rooms.first().map(|r| r.id.clone()));
+                let open = open_id
+                    .and_then(|id| self.chats.room(&id).cloned())
+                    .map(|r| {
+                        let said: Vec<crate::hubpages::Said> = r
+                            .in_order()
+                            .iter()
+                            .map(|m| {
+                                let mine = m.from == crate::chat::ME;
+                                let waiting = m.still_waiting();
+                                let (state, held) = if !mine {
+                                    (String::new(), false)
+                                } else if m.fully_read() {
+                                    ("Read".into(), false)
+                                } else if m.fully_arrived() {
+                                    ("Delivered".into(), false)
+                                } else {
+                                    (format!("Sent · held for {}", waiting.join(", ")), true)
+                                };
+                                crate::hubpages::Said {
+                                    mine,
+                                    from: m.from.clone(),
+                                    body: m.body.clone(),
+                                    when: when(m.sent_at),
+                                    state,
+                                    held,
+                                }
+                            })
+                            .collect();
+                        (
+                            r.id.clone(),
+                            r.name.clone(),
+                            area_of(&r.space),
+                            r.members.clone(),
+                            said,
+                        )
+                    });
                 // Reading a conversation here is reading it.
                 if let Some((id, ..)) = &open {
                     if let Some(room) = self.chats.room_mut(id) {
@@ -81,13 +95,20 @@ impl Daemon<'_> {
                             // Where you've read up to: small, but said when
                             // it can't be kept (28 Sep 2026).
                             if let Err(e) = self.chats.save(&self.store) {
-                                self.log.info(&format!("couldn't keep where you've read up to in messages: {e}"));
+                                self.log.info(&format!(
+                                    "couldn't keep where you've read up to in messages: {e}"
+                                ));
                             }
                         }
                     }
                 }
                 let people = pairings.contacts.iter().map(|c| c.name.clone()).collect();
-                crate::hubpages::messages_page(&crate::hubpages::MessagesView { rooms: rows, open, people, notice: said })
+                crate::hubpages::messages_page(&crate::hubpages::MessagesView {
+                    rooms: rows,
+                    open,
+                    people,
+                    notice: said,
+                })
             }
             Page::Documents => {
                 let mut items: Vec<&crate::tray::Item> = self.tray.items.iter().collect();
@@ -110,7 +131,9 @@ impl Daemon<'_> {
                                 }
                             }
                             match i.shared.iter().map(|(_, at)| *at).max() {
-                                Some(last) => format!("Sent to {} · {}", who.join(", "), when(last)),
+                                Some(last) => {
+                                    format!("Sent to {} · {}", who.join(", "), when(last))
+                                }
                                 None => String::new(),
                             }
                         },
@@ -129,8 +152,11 @@ impl Daemon<'_> {
                             .filter(|p| std::path::Path::new(p).is_file()),
                     })
                     .collect();
-                let people: Vec<String> =
-                    crate::kin::Pairings::load(&self.peer_dir).contacts.iter().map(|c| c.name.clone()).collect();
+                let people: Vec<String> = crate::kin::Pairings::load(&self.peer_dir)
+                    .contacts
+                    .iter()
+                    .map(|c| c.name.clone())
+                    .collect();
                 let page = crate::hubpages::documents_page(&docs, &people, said.as_deref());
                 // What friends handed you, waiting for your yes. Before 27 Sep
                 // 2026 the only way to take one in was a terminal command.
@@ -141,7 +167,11 @@ impl Daemon<'_> {
                     let mut w = String::from("<section aria-labelledby=fromfriends><h2 id=fromfriends>Waiting from friends</h2>\
                         <p class=note>Nothing here has been opened. Keep puts it with your documents, where Atlas may read it.</p><ul class=plainlist>");
                     for i in &inbox.items {
-                        let file = i.file.as_ref().map(|f| format!(" ({}, {} KB)", f.name, f.size.div_ceil(1024))).unwrap_or_default();
+                        let file = i
+                            .file
+                            .as_ref()
+                            .map(|f| format!(" ({}, {} KB)", f.name, f.size.div_ceil(1024)))
+                            .unwrap_or_default();
                         w.push_str(&format!(
                             "<li><span>{}{}</span><span class=meta>from {} · {}</span>\
                              <form class=inline method=post action='/hub/documents'><input type=hidden name=what value=keep>\
@@ -187,8 +217,16 @@ impl Daemon<'_> {
                         });
                     }
                 }
-                let view = crate::hubpages::TaskView::from_query(&field_of(&fields, "view").unwrap_or_default());
-                crate::hubpages::shared_tasks_page(&rows, &businesses, field_of(&fields, "b").as_deref(), view, today)
+                let view = crate::hubpages::TaskView::from_query(
+                    &field_of(&fields, "view").unwrap_or_default(),
+                );
+                crate::hubpages::shared_tasks_page(
+                    &rows,
+                    &businesses,
+                    field_of(&fields, "b").as_deref(),
+                    view,
+                    today,
+                )
             }
             Page::Clients => {
                 let list = match crate::clients::ClientList::load_checked(&self.store) {
@@ -222,12 +260,17 @@ impl Daemon<'_> {
                         }
                     })
                     .collect();
-                crate::hubpages::clients_page(&rows, field_of(&fields, "c").as_deref(), said.as_deref())
+                crate::hubpages::clients_page(
+                    &rows,
+                    field_of(&fields, "c").as_deref(),
+                    said.as_deref(),
+                )
             }
             Page::Partners => {
                 let roster = crate::roster::Roster::load(&self.store);
                 let pairings = crate::kin::Pairings::load(&self.peer_dir);
-                let mut people: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+                let mut people: std::collections::BTreeMap<String, Vec<String>> =
+                    Default::default();
                 for b in roster.businesses() {
                     for m in roster.members(&b) {
                         people.entry(m).or_default().push(b.clone());
@@ -242,8 +285,12 @@ impl Daemon<'_> {
                         } else {
                             match self.reached.last(&p) {
                                 None => Reach::Unheard,
-                                Some(at) if now.saturating_sub(at) < crate::kin::ONLINE_SECS => Reach::Online,
-                                Some(at) => Reach::LastHeard(crate::freshness::ago(now.saturating_sub(at))),
+                                Some(at) if now.saturating_sub(at) < crate::kin::ONLINE_SECS => {
+                                    Reach::Online
+                                }
+                                Some(at) => {
+                                    Reach::LastHeard(crate::freshness::ago(now.saturating_sub(at)))
+                                }
                             }
                         };
                         let trusted = pairings.is_trusted(&p);
@@ -262,7 +309,10 @@ impl Daemon<'_> {
                     kokoro_ready,
                     kokoro_here: crate::kokoro::runtime_piece().is_some(),
                     kokoro_mb: crate::kokoro::download_mb(),
-                    getting: self.voice_downloads.state(crate::kokoro::DOWNLOAD_ID).map(|g| g.said()),
+                    getting: self
+                        .voice_downloads
+                        .state(crate::kokoro::DOWNLOAD_ID)
+                        .map(|g| g.said()),
                     fell_back: crate::kokoro::last_note(),
                 };
                 // Under Kokoro, its shortlist (`tts::SHORTLIST`), which comes
@@ -285,26 +335,32 @@ impl Daemon<'_> {
                 } else {
                     Vec::new()
                 };
-                let voices = if kokoro_chosen { kokoro_voices } else { crate::tts::catalogue()
-                    .into_iter()
-                    .map(|v| {
-                        // Where piper looks (under the install folder), not
-                        // relative to wherever Atlas was started from.
-                        let installed = std::path::Path::new(&cfg.tts_engine.voice_file_for(&v.id)).exists()
-                            || cfg.tts_engine.engine.can_clone();
-                        let source = crate::voicepick::source(&v.id);
-                        crate::hubpages::VoiceRow {
-                            chosen: v.id == cfg.voice_settings.voice,
-                            what: format!("{} · {}", v.accent, v.character),
-                            installed,
-                            hear: source.is_some(),
-                            size: source.map(crate::voicepick::size_said).unwrap_or_default(),
-                            getting: self.voice_downloads.state(&v.id).map(|g| g.said()),
-                            name: v.name,
-                            id: v.id,
-                        }
-                    })
-                    .collect() };
+                let voices = if kokoro_chosen {
+                    kokoro_voices
+                } else {
+                    crate::tts::catalogue()
+                        .into_iter()
+                        .map(|v| {
+                            // Where piper looks (under the install folder), not
+                            // relative to wherever Atlas was started from.
+                            let installed =
+                                std::path::Path::new(&cfg.tts_engine.voice_file_for(&v.id))
+                                    .exists()
+                                    || cfg.tts_engine.engine.can_clone();
+                            let source = crate::voicepick::source(&v.id);
+                            crate::hubpages::VoiceRow {
+                                chosen: v.id == cfg.voice_settings.voice,
+                                what: format!("{} · {}", v.accent, v.character),
+                                installed,
+                                hear: source.is_some(),
+                                size: source.map(crate::voicepick::size_said).unwrap_or_default(),
+                                getting: self.voice_downloads.state(&v.id).map(|g| g.said()),
+                                name: v.name,
+                                id: v.id,
+                            }
+                        })
+                        .collect()
+                };
                 let wake = cfg.wake.clone();
                 let view = crate::hubpages::SoundView {
                     engine,
@@ -321,14 +377,21 @@ impl Daemon<'_> {
                     quiet_on: cfg.sound.quiet_hours,
                     quiet_from: cfg.sound.quiet_from.clone(),
                     quiet_to: cfg.sound.quiet_to.clone(),
-                    mics: self.audio_devices.as_ref().map(|d| d.iter().map(|x| x.name.clone()).collect()).unwrap_or_default(),
+                    mics: self
+                        .audio_devices
+                        .as_ref()
+                        .map(|d| d.iter().map(|x| x.name.clone()).collect())
+                        .unwrap_or_default(),
                 };
                 crate::hubpages::sound_page(&view, said.as_deref())
             }
             Page::Trusted => {
                 let pairings = crate::kin::Pairings::load(&self.peer_dir);
-                let people: Vec<(String, bool)> =
-                    pairings.contacts.iter().map(|c| (c.name.clone(), pairings.is_trusted(&c.name))).collect();
+                let people: Vec<(String, bool)> = pairings
+                    .contacts
+                    .iter()
+                    .map(|c| (c.name.clone(), pairings.is_trusted(&c.name)))
+                    .collect();
                 crate::hubpages::trusted_page(&people, said.as_deref())
             }
             Page::Give => {
@@ -364,23 +427,59 @@ impl Daemon<'_> {
             }
             Page::Offline => {
                 let reach = self.connectivity.status_now(now);
-                let connection_wait = if reach == crate::connectivity::Reach::Offline { "Waiting for connection" } else { "Queued; connection and execution checks pending" };
+                let connection_wait = if reach == crate::connectivity::Reach::Offline {
+                    "Waiting for connection"
+                } else {
+                    "Queued; connection and execution checks pending"
+                };
                 let mut waiting: Vec<(String, String, String)> = Vec::new();
                 for (room, m) in self.chats.outbox() {
-                    let name = self.chats.room(room).map(|r| r.name.clone()).unwrap_or_default();
-                    waiting.push((format!("A message to {name}"), connection_wait.into(), when(m.sent_at)));
+                    let name = self
+                        .chats
+                        .room(room)
+                        .map(|r| r.name.clone())
+                        .unwrap_or_default();
+                    waiting.push((
+                        format!("A message to {name}"),
+                        connection_wait.into(),
+                        when(m.sent_at),
+                    ));
                 }
                 match crate::outbox::Outbox::load_checked(&self.store) {
                     Ok(outbox) => {
-                        for r in outbox.waiting() { waiting.push((format!("A reply to {}", r.to_name), "Awaiting approval or standing authorization check".into(), when(r.created_at))); }
-                        for r in outbox.unconfirmed() { waiting.push((format!("A reply to {}", r.to_name), "Submission unconfirmed; check the service before repeating".into(), when(r.created_at))); }
-                    },
-                    Err(_) => waiting.push(("Mail draft and submission coverage unavailable".into(), "Saved outbox unreadable; counts and outcomes unknown".into(), String::new())),
+                        for r in outbox.waiting() {
+                            waiting.push((
+                                format!("A reply to {}", r.to_name),
+                                "Awaiting approval or standing authorization check".into(),
+                                when(r.created_at),
+                            ));
+                        }
+                        for r in outbox.unconfirmed() {
+                            waiting.push((
+                                format!("A reply to {}", r.to_name),
+                                "Submission unconfirmed; check the service before repeating".into(),
+                                when(r.created_at),
+                            ));
+                        }
+                    }
+                    Err(_) => waiting.push((
+                        "Mail draft and submission coverage unavailable".into(),
+                        "Saved outbox unreadable; counts and outcomes unknown".into(),
+                        String::new(),
+                    )),
                 }
-                for t in self.queue.tasks.iter().filter(|t| t.needs_net && !matches!(t.state, crate::lanes::TaskState::Done | crate::lanes::TaskState::Failed)) {
+                for t in self.queue.tasks.iter().filter(|t| {
+                    t.needs_net
+                        && !matches!(
+                            t.state,
+                            crate::lanes::TaskState::Done | crate::lanes::TaskState::Failed
+                        )
+                }) {
                     let dependency = match t.state {
                         crate::lanes::TaskState::Running => "Worker result pending",
-                        crate::lanes::TaskState::WaitingForGap => "Waiting for a pause in your work",
+                        crate::lanes::TaskState::WaitingForGap => {
+                            "Waiting for a pause in your work"
+                        }
                         _ => connection_wait,
                     };
                     waiting.push((sentence(&t.command), dependency.into(), when(t.created)));
@@ -391,10 +490,14 @@ impl Daemon<'_> {
                     let dependency = match post.state {
                         PostState::Draft => "Draft; approval not confirmed",
                         PostState::AwaitingApproval => "Awaiting approval",
-                        PostState::Scheduled => "Scheduled; approval and connection rechecked at send time",
+                        PostState::Scheduled => {
+                            "Scheduled; approval and connection rechecked at send time"
+                        }
                         PostState::ReadyToSend => connection_wait,
                         PostState::Held => "Held; check the publication result",
-                        PostState::PendingSubmission | PostState::Uncertain => "Submission outcome unknown; review before retrying",
+                        PostState::PendingSubmission | PostState::Uncertain => {
+                            "Submission outcome unknown; review before retrying"
+                        }
                         PostState::Failed => "Failed; check the publication result",
                         PostState::Sent | PostState::Cancelled => continue,
                     };
@@ -407,7 +510,11 @@ impl Daemon<'_> {
                     "Projects and builds, in a copy".to_string(),
                     "Voice, on this machine".to_string(),
                 ];
-                crate::hubpages::offline_page(&crate::hubpages::OfflineView { reach, live, waiting })
+                crate::hubpages::offline_page(&crate::hubpages::OfflineView {
+                    reach,
+                    live,
+                    waiting,
+                })
             }
             Page::Talk => {
                 let ex: Vec<(String, String)> = self
@@ -426,11 +533,23 @@ impl Daemon<'_> {
                 // Texts Atlas wrote, with the button that opens Messages.
                 let texts = crate::texting::Texts::load(&self.store);
                 let card = crate::texting::card(&texts.current(crate::store::now()));
-                let page = if card.is_empty() { page } else { page.replacen("<form class=compose", &format!("{card}<form class=compose"), 1) };
+                let page = if card.is_empty() {
+                    page
+                } else {
+                    page.replacen(
+                        "<form class=compose",
+                        &format!("{card}<form class=compose"),
+                        1,
+                    )
+                };
                 // The reply so far, in place of "thinking…", while the model
                 // is still writing it (27 Sep 2026: replies stream now). The
                 // page already looks again every two seconds.
-                let so_far = if self.talk_is_thinking() { self.talk_so_far() } else { String::new() };
+                let so_far = if self.talk_is_thinking() {
+                    self.talk_so_far()
+                } else {
+                    String::new()
+                };
                 if so_far.trim().is_empty() {
                     page
                 } else {
@@ -450,7 +569,9 @@ impl Daemon<'_> {
             }
             Page::Workshop => {
                 let page = hub::workshop_page(&self.workshop);
-                let notice = said.map(|s| format!("<p class=notice role=status>{}</p>", hub::esc(&s))).unwrap_or_default();
+                let notice = said
+                    .map(|s| format!("<p class=notice role=status>{}</p>", hub::esc(&s)))
+                    .unwrap_or_default();
                 let form = crate::hubpages::new_project_form();
                 match page.rfind("</main>") {
                     Some(at) => format!("{}{notice}{form}{}", &page[..at], &page[at..]),
@@ -465,32 +586,43 @@ impl Daemon<'_> {
                     &self.connection_lines(now),
                 );
                 // The one list of everything connected leads the page (N1).
-                let page = hub::with_block_after_heading(page, &crate::connecting::the_one_list(self));
+                let page =
+                    hub::with_block_after_heading(page, &crate::connecting::the_one_list(self));
                 let page = with_block(page, &phone_model_block(said.as_deref()));
                 let page = with_block(page, &self.mcp_block());
                 let page = with_block(page, &self.brains_block());
                 with_block(page, &self.draft_block())
             }
             Page::Updates => {
-                let mut v = self.updates_view(now, field_of(&fields, "confirm").as_deref() == Some("undo"));
+                let mut v =
+                    self.updates_view(now, field_of(&fields, "confirm").as_deref() == Some("undo"));
                 let mut said = said;
                 // A release key just made: its recovery key, this once.
-                if let Some(crate::hubjobs::Flash::ReleaseKey { card, recovery, said: made }) =
-                    crate::hubjobs::take_flash(&mut self.flash_once, Page::Updates, now)
+                if let Some(crate::hubjobs::Flash::ReleaseKey {
+                    card,
+                    recovery,
+                    said: made,
+                }) = crate::hubjobs::take_flash(&mut self.flash_once, Page::Updates, now)
                 {
                     v.key = crate::hubpages::ReleaseKey::JustMade { card, recovery };
                     said = Some(made);
                 }
                 crate::hubpages::updates_page(&v, said.as_deref())
             }
-            Page::Feedback => crate::hubpages::feedback_page(&self.feedback_view(), said.as_deref()),
+            Page::Feedback => {
+                crate::hubpages::feedback_page(&self.feedback_view(), said.as_deref())
+            }
             Page::Opportunities => crate::hunting::opportunities_page(self, &fields),
             Page::Accounts => {
                 let page = self.hub_page(Page::Accounts);
                 let asked = field_of(&fields, "connect");
                 let page = match asked.as_deref() {
                     // The plain page has the section already; this one says the next step too.
-                    Some(a) => page.replacen(&crate::connecting::section(self, None), &crate::connecting::section(self, Some(a)), 1),
+                    Some(a) => page.replacen(
+                        &crate::connecting::section(self, None),
+                        &crate::connecting::section(self, Some(a)),
+                        1,
+                    ),
                     None => page,
                 };
                 hub::with_said(page, said.as_deref())

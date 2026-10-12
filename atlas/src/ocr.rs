@@ -47,7 +47,12 @@ pub struct OcrConfig {
 
 impl Default for OcrConfig {
     fn default() -> Self {
-        OcrConfig { enabled: false, engine: None, min_confidence: 0.55, language: "eng".into() }
+        OcrConfig {
+            enabled: false,
+            engine: None,
+            min_confidence: 0.55,
+            language: "eng".into(),
+        }
     }
 }
 
@@ -112,7 +117,9 @@ pub fn parse_tsv(tsv: &str, min_confidence: f32) -> Reading {
             continue;
         }
         // Tesseract reports -1 for structural rows, and 0-100 for words.
-        let Ok(conf) = cols[10].trim().parse::<f32>() else { continue };
+        let Ok(conf) = cols[10].trim().parse::<f32>() else {
+            continue;
+        };
         if conf < 0.0 {
             continue;
         }
@@ -122,7 +129,11 @@ pub fn parse_tsv(tsv: &str, min_confidence: f32) -> Reading {
             discarded += 1;
             continue;
         }
-        words.push(Word { text: text.to_string(), confidence: c, line: line_no });
+        words.push(Word {
+            text: text.to_string(),
+            confidence: c,
+            line: line_no,
+        });
     }
 
     let confidence = if words.is_empty() {
@@ -157,7 +168,13 @@ fn join_lines(words: &[Word]) -> String {
 
 /// Arguments for reading an image file. `-` sends the result to stdout.
 pub fn args(image: &str, language: &str) -> Vec<String> {
-    vec![image.into(), "-".into(), "-l".into(), language.into(), "tsv".into()]
+    vec![
+        image.into(),
+        "-".into(),
+        "-l".into(),
+        language.into(),
+        "tsv".into(),
+    ]
 }
 
 pub fn read_image(cfg: &OcrConfig, image: &str, vars: &Vars) -> Result<Reading> {
@@ -178,7 +195,10 @@ pub fn read_image(cfg: &OcrConfig, image: &str, vars: &Vars) -> Result<Reading> 
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }
-    Ok(parse_tsv(&String::from_utf8_lossy(&out.stdout), cfg.min_confidence))
+    Ok(parse_tsv(
+        &String::from_utf8_lossy(&out.stdout),
+        cfg.min_confidence,
+    ))
 }
 
 /// Tidy up what OCR produces. Engines split words oddly and hallucinate
@@ -186,7 +206,10 @@ pub fn read_image(cfg: &OcrConfig, image: &str, vars: &Vars) -> Result<Reading> 
 pub fn tidy(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for line in text.lines() {
-        let l = line.trim().trim_matches(|c: char| "|_~`".contains(c)).trim();
+        let l = line
+            .trim()
+            .trim_matches(|c: char| "|_~`".contains(c))
+            .trim();
         if l.is_empty() {
             continue;
         }

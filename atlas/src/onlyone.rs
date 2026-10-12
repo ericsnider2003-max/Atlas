@@ -35,7 +35,9 @@ use std::path::{Path, PathBuf};
 
 // The heartbeat remains readable by older Atlas versions. This native lease
 // is the authority for new versions: sleep and stalled beats never free it.
-static RUNNING_LEASES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, std::fs::File>>> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+static RUNNING_LEASES: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<PathBuf, std::fs::File>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
 
 /// How often the holder refreshes the lock.
 pub const BEAT_EVERY_SECS: u64 = 30;
@@ -116,11 +118,17 @@ pub struct OnlyOne {
 }
 
 pub struct RunningGuard(OnlyOne);
-impl Drop for RunningGuard { fn drop(&mut self) { self.0.release(); } }
+impl Drop for RunningGuard {
+    fn drop(&mut self) {
+        self.0.release();
+    }
+}
 
 impl OnlyOne {
     pub fn at(dir: &Path) -> OnlyOne {
-        OnlyOne { path: dir.join("running.lock") }
+        OnlyOne {
+            path: dir.join("running.lock"),
+        }
     }
 
     pub fn path(&self) -> &Path {
@@ -152,7 +160,11 @@ impl OnlyOne {
             // out: "tells you nothing must not read as nobody is there." An
             // unreadable one tells you exactly as little.
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Found::Free,
-            Err(_) => return Found::Running { last_beat_secs_ago: 0 },
+            Err(_) => {
+                return Found::Running {
+                    last_beat_secs_ago: 0,
+                }
+            }
         };
         // 29 Sep 2026: a holder whose process has ended is nobody. Eric ended
         // a stuck Atlas in Task Manager and opened it again; the lock still
@@ -172,40 +184,69 @@ impl OnlyOne {
         // when the file was last written: a live holder rewrites it every
         // BEAT_EVERY_SECS, so a file nobody has touched for GONE_AFTER_SECS
         // has no live holder.
-        let Some(age) = moment_in(&text).map(|written| now.saturating_sub(written)).or_else(|| self.written_secs_ago(now))
+        let Some(age) = moment_in(&text)
+            .map(|written| now.saturating_sub(written))
+            .or_else(|| self.written_secs_ago(now))
         else {
             // A lock whose contents cannot be read tells you nothing, and
             // "tells you nothing" must not read as "nobody is there". Treated
             // as occupied: refusing to start is recoverable by deleting a
             // file, and the other way round costs state.
-            return Found::Running { last_beat_secs_ago: 0 };
+            return Found::Running {
+                last_beat_secs_ago: 0,
+            };
         };
         if age <= GONE_AFTER_SECS {
-            Found::Running { last_beat_secs_ago: age }
+            Found::Running {
+                last_beat_secs_ago: age,
+            }
         } else {
-            Found::Abandoned { silent_for_secs: age }
+            Found::Abandoned {
+                silent_for_secs: age,
+            }
         }
     }
 
     /// How long ago the lock file was last written, by the file system.
     fn written_secs_ago(&self, now: u64) -> Option<u64> {
-        let at = std::fs::metadata(&self.path).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+        let at = std::fs::metadata(&self.path)
+            .ok()?
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_secs();
         Some(now.saturating_sub(at))
     }
 
     /// Take it, or say why not.
     pub fn take(&self, now: u64) -> Result<Found, String> {
-        let parent = self.path.parent().ok_or("the running lock has no directory")?;
-        std::fs::create_dir_all(parent).map_err(|e| format!("couldn't create the running lock directory: {e}"))?;
-        let native_path = std::fs::canonicalize(parent).map_err(|e| e.to_string())?.join("running.os.lock");
-        let mut leases = RUNNING_LEASES.lock().or_else(crate::crash::unpoison).map_err(|_| "the running lock could not be checked")?;
+        let parent = self
+            .path
+            .parent()
+            .ok_or("the running lock has no directory")?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("couldn't create the running lock directory: {e}"))?;
+        let native_path = std::fs::canonicalize(parent)
+            .map_err(|e| e.to_string())?
+            .join("running.os.lock");
+        let mut leases = RUNNING_LEASES
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map_err(|_| "the running lock could not be checked")?;
         if leases.contains_key(&native_path) {
             return Err("Atlas is already running. Close the other one first to prevent both copies writing over each other's state; an old heartbeat does not release a live Atlas.".into());
         }
         if std::fs::symlink_metadata(&native_path).is_ok_and(|m| m.file_type().is_symlink()) {
             return Err("the native running lock is a symbolic link; startup was stopped".into());
         }
-        let native = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&native_path).map_err(|e| format!("couldn't open the native running lock: {e}"))?;
+        let native = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&native_path)
+            .map_err(|e| format!("couldn't open the native running lock: {e}"))?;
         native.try_lock().map_err(|e| format!("Atlas is already running. Close the other one first to prevent both copies writing over each other's state; its native running lock is held ({e})."))?;
         let found = self.look(now);
         if !found.can_take() {
@@ -261,7 +302,11 @@ impl OnlyOne {
         // succeed. The winner re-checks and writes; the loser is told
         // somebody else is deciding right now, which is the truth.
         let claim = self.path.with_extension("claim");
-        match std::fs::OpenOptions::new().write(true).create_new(true).open(&claim) {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&claim)
+        {
             Ok(mut f) => {
                 use std::io::Write;
                 crate::kept!(write!(f, "{now}"));
@@ -287,7 +332,10 @@ impl OnlyOne {
                 crate::kept!(std::fs::write(&claim, format!("{now}")));
             }
             Err(e) => {
-                return Err(format!("couldn't claim the lock at {}: {e}", claim.display()));
+                return Err(format!(
+                    "couldn't claim the lock at {}: {e}",
+                    claim.display()
+                ));
             }
         }
 
@@ -337,7 +385,9 @@ impl OnlyOne {
     /// The moment written in the lock, as written; `None` when there is no
     /// lock or it can't be read.
     fn written(&self) -> Option<u64> {
-        std::fs::read_to_string(&self.path).ok().and_then(|t| moment_in(&t))
+        std::fs::read_to_string(&self.path)
+            .ok()
+            .and_then(|t| moment_in(&t))
     }
 
     /// A lock that reads `Abandoned`, looked at again after `wait` in case
@@ -348,7 +398,12 @@ impl OnlyOne {
     /// during the wait, somebody beat it -- a holder waking up -- and the
     /// answer is looked up again at `now()`, which reads `Running`. If it
     /// didn't move, the holder really is gone and `first` stands.
-    fn look_again_after(&self, first: Found, wait: std::time::Duration, now: &dyn Fn() -> u64) -> Found {
+    fn look_again_after(
+        &self,
+        first: Found,
+        wait: std::time::Duration,
+        now: &dyn Fn() -> u64,
+    ) -> Found {
         if !matches!(first, Found::Abandoned { .. }) {
             return first;
         }
@@ -368,7 +423,11 @@ impl OnlyOne {
     /// abandoned is watched for `wait` first, and if its holder beats in
     /// that time it was only asleep and this start is refused like any other
     /// second start (`WOKE_GRACE_SECS`). A free or live lock costs no wait.
-    pub fn take_patiently(&self, wait: std::time::Duration, now: &dyn Fn() -> u64) -> Result<Found, String> {
+    pub fn take_patiently(
+        &self,
+        wait: std::time::Duration,
+        now: &dyn Fn() -> u64,
+    ) -> Result<Found, String> {
         // unheard-ok: returns `Found`, not a Result
         let _ = self.look_again_after(self.look(now()), wait, now);
         self.take(now())
@@ -383,7 +442,9 @@ impl OnlyOne {
         crate::heard!(std::fs::remove_file(&self.path));
         if let Some(parent) = self.path.parent() {
             if let Ok(parent) = std::fs::canonicalize(parent) {
-                if let Ok(mut leases) = RUNNING_LEASES.lock().or_else(crate::crash::unpoison) { leases.remove(&parent.join("running.os.lock")); }
+                if let Ok(mut leases) = RUNNING_LEASES.lock().or_else(crate::crash::unpoison) {
+                    leases.remove(&parent.join("running.os.lock"));
+                }
             }
         }
     }
@@ -444,7 +505,9 @@ fn process_gone(pid: u32) -> bool {
     #[cfg(windows)]
     {
         use windows::Win32::Foundation::{CloseHandle, ERROR_INVALID_PARAMETER};
-        use windows::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+        use windows::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
         // SAFETY: the process handle is opened here and closed on every path; `code` is a live
         // local the call writes.
         unsafe {
@@ -479,7 +542,12 @@ fn process_gone(pid: u32) -> bool {
 /// (`is_atlas_program`) is ended; never this process. True when it has gone.
 pub fn end_holder(dir: &Path, wait: std::time::Duration) -> bool {
     let lock = OnlyOne::at(dir);
-    let Some(pid) = std::fs::read_to_string(lock.path()).ok().and_then(|t| holder_in(&t)) else { return false };
+    let Some(pid) = std::fs::read_to_string(lock.path())
+        .ok()
+        .and_then(|t| holder_in(&t))
+    else {
+        return false;
+    };
     if pid == std::process::id() {
         return false;
     }
@@ -507,7 +575,9 @@ pub fn end_holder(dir: &Path, wait: std::time::Duration) -> bool {
 pub fn is_atlas_program(p: &Path) -> bool {
     let full = p.to_string_lossy().to_lowercase();
     let name = full.rsplit(['/', '\\']).next().unwrap_or("").to_string();
-    name == "atlas" || name.starts_with("atlas.exe") || (name.starts_with("atlas") && name.ends_with(".exe"))
+    name == "atlas"
+        || name.starts_with("atlas.exe")
+        || (name.starts_with("atlas") && name.ends_with(".exe"))
 }
 
 #[cfg(test)]
@@ -515,13 +585,27 @@ mod poisoned_native_lease {
     use super::*;
     #[test]
     fn release_after_a_registry_panic_still_allows_a_new_holder() {
-        let folder = std::env::temp_dir().join(format!("atlas-native-lease-poison-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("atlas-native-lease-poison-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
-        let lock = OnlyOne::at(&folder); lock.release(); lock.take(1000).unwrap();
-        let _ = std::thread::spawn(|| { let _guard = RUNNING_LEASES.lock().or_else(crate::crash::unpoison).unwrap(); panic!("fixture registry panic"); }).join();
+        let lock = OnlyOne::at(&folder);
+        lock.release();
+        lock.take(1000).unwrap();
+        let _ = std::thread::spawn(|| {
+            let _guard = RUNNING_LEASES
+                .lock()
+                .or_else(crate::crash::unpoison)
+                .unwrap();
+            panic!("fixture registry panic");
+        })
+        .join();
         assert!(RUNNING_LEASES.is_poisoned());
         lock.release();
-        assert!(lock.take(1001).is_ok(), "a poisoned registry retained the released native holder");
-        lock.release(); let _ = std::fs::remove_dir_all(folder);
+        assert!(
+            lock.take(1001).is_ok(),
+            "a poisoned registry retained the released native holder"
+        );
+        lock.release();
+        let _ = std::fs::remove_dir_all(folder);
     }
 }

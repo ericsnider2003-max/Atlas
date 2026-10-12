@@ -67,8 +67,14 @@ fn legacy() -> Vault {
     .expect("a legacy vault");
     // The fixture has to actually be in the shape that triggered it, or this
     // file is testing the well-trodden path with a new name.
-    assert!(v.check.is_empty(), "the fixture has a check value, so it is not the old format");
-    assert!(v.wraps.is_empty(), "the fixture has an envelope, so it is not the old format");
+    assert!(
+        v.check.is_empty(),
+        "the fixture has a check value, so it is not the old format"
+    );
+    assert!(
+        v.wraps.is_empty(),
+        "the fixture has an envelope, so it is not the old format"
+    );
     assert!(
         v.secrets.iter().all(|s| !s.real),
         "the fixture's secrets are AEAD-sealed, so this goes down the branch that \
@@ -81,7 +87,8 @@ fn legacy() -> Vault {
 fn the_oldest_vault_opens_and_still_has_everything_in_it() {
     let mut v = legacy();
 
-    v.open(PASSPHRASE, 100, &cfg()).expect("the oldest vault stopped opening");
+    v.open(PASSPHRASE, 100, &cfg())
+        .expect("the oldest vault stopped opening");
 
     assert_eq!(
         v.get("bank", 100).expect("bank"),
@@ -89,7 +96,10 @@ fn the_oldest_vault_opens_and_still_has_everything_in_it() {
         "the secret came back wrong, which is what a replaced data key does to a \
          legacy secret"
     );
-    assert_eq!(v.get("note", 100).expect("note"), "the spare key is under the mat");
+    assert_eq!(
+        v.get("note", 100).expect("note"),
+        "the spare key is under the mat"
+    );
 }
 
 #[test]
@@ -103,7 +113,10 @@ fn opening_it_does_not_rewrite_a_single_secret() {
     v.open(PASSPHRASE, 100, &cfg()).expect("opens");
     let after: Vec<Vec<u8>> = v.secrets.iter().map(|s| s.sealed.clone()).collect();
 
-    assert_eq!(before, after, "the secrets were rewritten while opening the vault");
+    assert_eq!(
+        before, after,
+        "the secrets were rewritten while opening the vault"
+    );
 }
 
 #[test]
@@ -112,10 +125,17 @@ fn it_reopens_and_keeps_reopening() {
     v.open(PASSPHRASE, 100, &cfg()).expect("first open");
     v.lock();
     v.open(PASSPHRASE, 200, &cfg()).expect("it did not reopen");
-    assert_eq!(v.get("bank", 200).expect("bank"), "correct horse battery staple");
+    assert_eq!(
+        v.get("bank", 200).expect("bank"),
+        "correct horse battery staple"
+    );
     v.lock();
-    v.open(PASSPHRASE, 300, &cfg()).expect("it did not reopen a third time");
-    assert_eq!(v.get("note", 300).expect("note"), "the spare key is under the mat");
+    v.open(PASSPHRASE, 300, &cfg())
+        .expect("it did not reopen a third time");
+    assert_eq!(
+        v.get("note", 300).expect("note"),
+        "the spare key is under the mat"
+    );
 }
 
 #[test]
@@ -139,7 +159,10 @@ fn opening_it_writes_nothing_at_all() {
 
     v.open(PASSPHRASE, 100, &cfg()).expect("opens");
 
-    assert_eq!(v.check, check_before, "a check value was written from a weak check");
+    assert_eq!(
+        v.check, check_before,
+        "a check value was written from a weak check"
+    );
     assert_eq!(
         v.wraps.len(),
         wraps_before,
@@ -157,7 +180,10 @@ fn a_weak_check_is_not_reported_as_proof_of_who_typed() {
     // it stayed false.
     let mut v = legacy();
     v.open(PASSPHRASE, 100, &cfg()).expect("opens");
-    assert!(v.state() == atlas::vault::State::Open, "the vault did not open");
+    assert!(
+        v.state() == atlas::vault::State::Open,
+        "the vault did not open"
+    );
     assert!(
         !v.proved_it(),
         "a legacy vault opened on a plausibility check reports that the owner          proved who they are -- which is what `handover::take_back` asks before          handing control back"
@@ -178,7 +204,11 @@ fn every_legacy_secret_has_to_decode_not_just_one() {
         PASSPHRASE,
         &[
             ("pin", Kind::Note, "1234"),
-            ("bank", Kind::Login, "correct horse battery staple and then some more"),
+            (
+                "bank",
+                Kind::Login,
+                "correct horse battery staple and then some more",
+            ),
         ],
         50,
         &cfg(),
@@ -187,13 +217,19 @@ fn every_legacy_secret_has_to_decode_not_just_one() {
 
     // A spread of wrong passphrases. Any one of them might make the 4-byte
     // secret decode; none should make both.
-    for attempt in ["wrong", "also wrong", "nope not it", "the one thing you actually knew"] {
+    for attempt in [
+        "wrong",
+        "also wrong",
+        "nope not it",
+        "the one thing you actually knew",
+    ] {
         assert!(
             v.open(attempt, 100, &cfg()).is_err(),
             "{attempt:?} opened a legacy vault it should not have"
         );
     }
-    v.open(PASSPHRASE, 100, &cfg()).expect("the right passphrase still opens it");
+    v.open(PASSPHRASE, 100, &cfg())
+        .expect("the right passphrase still opens it");
     assert_eq!(v.get("pin", 100).expect("pin"), "1234");
 }
 
@@ -226,9 +262,18 @@ fn the_wrong_passphrase_is_refused_rather_than_adopted() {
     let err = v
         .open("not the passphrase at all", 100, &cfg())
         .expect_err("a wrong passphrase opened the oldest vault");
-    assert!(err.contains("passphrase"), "the refusal does not name the passphrase: {err}");
-    assert!(v.wraps.is_empty(), "a refused unlock still wrote an envelope");
-    assert!(v.check.is_empty(), "a refused unlock still wrote a check value");
+    assert!(
+        err.contains("passphrase"),
+        "the refusal does not name the passphrase: {err}"
+    );
+    assert!(
+        v.wraps.is_empty(),
+        "a refused unlock still wrote an envelope"
+    );
+    assert!(
+        v.check.is_empty(),
+        "a refused unlock still wrote a check value"
+    );
 }
 
 #[test]
@@ -253,7 +298,9 @@ fn a_genuinely_empty_vault_still_treats_the_first_unlock_as_choosing() {
     // chosen -- which must stay distinguishable from one being checked.
     let mut fresh = Vault::default();
     assert!(!fresh.has_a_passphrase());
-    fresh.open(PASSPHRASE, 100, &cfg()).expect("a new vault opens");
+    fresh
+        .open(PASSPHRASE, 100, &cfg())
+        .expect("a new vault opens");
     assert!(
         !fresh.proved_it(),
         "choosing a passphrase was reported as proving one, which is the thing \

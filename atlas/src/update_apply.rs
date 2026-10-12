@@ -79,12 +79,18 @@ pub enum AutoUpdate {
 /// Phones never install by themselves whatever this says: Android and iOS
 /// both need a tap (spec §6), so the phone side reads `Automatic` as "fetch
 /// and check, then offer one tap".
-pub fn mode_for(chosen: Option<AutoUpdate>, my_key: &str, channel: Option<&crate::groups::GroupState>) -> AutoUpdate {
+pub fn mode_for(
+    chosen: Option<AutoUpdate>,
+    my_key: &str,
+    channel: Option<&crate::groups::GroupState>,
+) -> AutoUpdate {
     if let Some(m) = chosen {
         return m;
     }
     match channel {
-        Some(c) if !my_key.is_empty() && (my_key == c.owner || c.is_delegate(my_key)) => AutoUpdate::Automatic,
+        Some(c) if !my_key.is_empty() && (my_key == c.owner || c.is_delegate(my_key)) => {
+            AutoUpdate::Automatic
+        }
         _ => AutoUpdate::Ask,
     }
 }
@@ -97,7 +103,12 @@ pub fn mode_for(chosen: Option<AutoUpdate>, my_key: &str, channel: Option<&crate
 ///   Locked (`Away`) counts as quiet.
 /// - You're not on a call.
 /// - No project work is half done.
-pub fn quiet_enough(idle_secs: Option<u64>, os: Option<crate::platform::OsQuiet>, on_call: bool, work_in_hand: bool) -> bool {
+pub fn quiet_enough(
+    idle_secs: Option<u64>,
+    os: Option<crate::platform::OsQuiet>,
+    on_call: bool,
+    work_in_hand: bool,
+) -> bool {
     use crate::platform::OsQuiet;
     let away_long_enough = idle_secs.is_some_and(|s| s >= QUIET_AFTER_SECS);
     let os_ok = matches!(os, None | Some(OsQuiet::Accepts) | Some(OsQuiet::Away));
@@ -121,7 +132,13 @@ pub enum InstallStep {
 ///
 /// - `said_yes`: the person said yes to this version.
 /// - `ask_due`: it's time to ask again (see `ask_due`).
-pub fn next_step(mode: AutoUpdate, available: &Available, said_yes: bool, ask_due: bool, quiet: bool) -> InstallStep {
+pub fn next_step(
+    mode: AutoUpdate,
+    available: &Available,
+    said_yes: bool,
+    ask_due: bool,
+    quiet: bool,
+) -> InstallStep {
     if mode == AutoUpdate::Off || available.notice.is_none() || available.downloaded.is_empty() {
         return InstallStep::Nothing;
     }
@@ -157,7 +174,13 @@ pub fn ask_due(store: &Store, version: &str, now: u64) -> bool {
 /// Record that the person was asked about `version` (or said "not now"):
 /// don't ask again for a day.
 pub fn asked(store: &Store, version: &str, now: u64) {
-    let _ = store.save(ASKED, &Asked { version: version.to_string(), next_ask_at: now + ASK_AGAIN_SECS });
+    let _ = store.save(
+        ASKED,
+        &Asked {
+            version: version.to_string(),
+            next_ask_at: now + ASK_AGAIN_SECS,
+        },
+    );
 }
 
 // ---------------------------------------------------------------- builds not offered again
@@ -177,11 +200,18 @@ struct NotAgain {
 pub fn not_offered_again(store: &Store, sha256: &str, version: &str) -> Option<String> {
     let n: NotAgain = store.load(NOT_AGAIN);
     let by_version = format!("version:{version}");
-    n.builds.into_iter().find(|(b, _, _)| (!sha256.is_empty() && b == sha256) || *b == by_version).map(|(_, _, why)| why)
+    n.builds
+        .into_iter()
+        .find(|(b, _, _)| (!sha256.is_empty() && b == sha256) || *b == by_version)
+        .map(|(_, _, why)| why)
 }
 
 fn never_again(store: &Store, sha256: &str, version: &str, why: &str) {
-    let key = if sha256.is_empty() { format!("version:{version}") } else { sha256.to_string() };
+    let key = if sha256.is_empty() {
+        format!("version:{version}")
+    } else {
+        sha256.to_string()
+    };
     let mut n: NotAgain = store.load(NOT_AGAIN);
     if !n.builds.iter().any(|(b, _, _)| *b == key) {
         n.builds.push((key, version.to_string(), why.to_string()));
@@ -263,7 +293,6 @@ fn default_cause() -> FailedBecause {
     FailedBecause::TheBuild
 }
 
-
 /// The largest report accepted over a pairing.
 pub const MAX_REPORT_BYTES: usize = 16 * 1024;
 
@@ -280,10 +309,13 @@ pub fn failed_because(reasons: &[String], crash: &str) -> FailedBecause {
         "gave back something other than what was written",
     ];
     let all = reasons.join(" ").to_lowercase();
-    if crash.is_empty() && !all.is_empty() && reasons.iter().all(|r| {
-        let r = r.to_lowercase();
-        r.starts_with("(passed)") || machine.iter().any(|m| r.contains(m))
-    }) {
+    if crash.is_empty()
+        && !all.is_empty()
+        && reasons.iter().all(|r| {
+            let r = r.to_lowercase();
+            r.starts_with("(passed)") || machine.iter().any(|m| r.contains(m))
+        })
+    {
         FailedBecause::ThisMachine
     } else {
         FailedBecause::TheBuild
@@ -296,7 +328,9 @@ pub fn scrub_personal(line: &str) -> String {
     for var in ["USERPROFILE", "HOME"] {
         if let Ok(home) = std::env::var(var) {
             if home.len() > 3 {
-                out = out.replace(&home, "~").replace(&home.replace('\\', "/"), "~");
+                out = out
+                    .replace(&home, "~")
+                    .replace(&home.replace('\\', "/"), "~");
             }
         }
     }
@@ -319,13 +353,25 @@ pub fn record_failure(store: &Store, install_root: &Path, mut report: FailureRep
     let mut all: Vec<FailureReport> = store.load(FAILURES);
     all.push(report.clone());
     let _ = store.save(FAILURES, &all);
-    let what = report.reasons.iter().filter(|r| !r.starts_with("(passed)")).cloned().collect::<Vec<_>>().join("; ");
+    let what = report
+        .reasons
+        .iter()
+        .filter(|r| !r.starts_with("(passed)"))
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("; ");
     match report.because {
         FailedBecause::ThisMachine => {
             // Not the build's fault: fix it here and try the same build again,
             // after a pause, so a disk that's still full isn't hit every tick.
-            upgrade::forgive(install_root, &upgrade::build_tag(&report.version, &report.sha256));
-            let _ = store.save(RETRY_AFTER, &(report.at.max(crate::store::now()) + MACHINE_RETRY_SECS));
+            upgrade::forgive(
+                install_root,
+                &upgrade::build_tag(&report.version, &report.sha256),
+            );
+            let _ = store.save(
+                RETRY_AFTER,
+                &(report.at.max(crate::store::now()) + MACHINE_RETRY_SECS),
+            );
             format!(
                 "Atlas {} couldn't start here because of something on this computer: {what}. Once that's put \
                  right I'll try {} again -- nothing is wrong with the update itself.",
@@ -333,7 +379,12 @@ pub fn record_failure(store: &Store, install_root: &Path, mut report: FailureRep
             )
         }
         FailedBecause::TheBuild => {
-            never_again(store, &report.sha256, &report.version, "it failed here and is waiting for a fix");
+            never_again(
+                store,
+                &report.sha256,
+                &report.version,
+                "it failed here and is waiting for a fix",
+            );
             let _ = store.save(LAST_FAILURE, &Some(report.clone()));
             format!(
                 "Atlas {} failed at its {} here ({}), so I went back to {}. I've written down exactly what went \
@@ -409,7 +460,10 @@ pub fn hold_release(store: &Store, sha256: &str) {
 /// Has a report stopped this build being handed out? Read by the file door
 /// (`update_courier::chunk`), from the state folder it serves.
 pub fn is_halted(state_root: &Path, sha256: &str) -> bool {
-    Store::new(state_root).load::<Vec<String>>(HALTED).iter().any(|s| s == sha256)
+    Store::new(state_root)
+        .load::<Vec<String>>(HALTED)
+        .iter()
+        .any(|s| s == sha256)
 }
 
 /// Every failure report the releaser has, newest last.
@@ -426,17 +480,26 @@ pub fn fix_brief(reports: &[FailureReport], version: &str) -> Option<String> {
         return None;
     }
     let mut b = format!("# Fix brief: Atlas {version} failed after updating\n\n");
-    let builds: std::collections::BTreeSet<&str> = these.iter().map(|r| r.sha256.as_str()).collect();
+    let builds: std::collections::BTreeSet<&str> =
+        these.iter().map(|r| r.sha256.as_str()).collect();
     b.push_str(&format!(
         "{} report(s), from {} machine(s), {} build(s).\n\n",
         these.len(),
-        these.iter().map(|r| r.from.as_str()).collect::<std::collections::BTreeSet<_>>().len(),
+        these
+            .iter()
+            .map(|r| r.from.as_str())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
         builds.len()
     ));
     for r in &these {
         b.push_str(&format!(
             "## {} ({}), replacing {}\n- stage: {}\n- sorted as: {}\n",
-            if r.from.is_empty() { "unknown" } else { &r.from },
+            if r.from.is_empty() {
+                "unknown"
+            } else {
+                &r.from
+            },
             r.platform,
             r.replaces,
             r.stage,
@@ -502,19 +565,35 @@ struct History {
 /// - a version that failed here or that you went back from.
 pub fn stage_update(store: &Store, install_root: &Path, platform: &str) -> Result<String, String> {
     let available = Available::load(store);
-    let Some(notice) = available.notice.clone() else { return Err("There's no update waiting.".into()) };
+    let Some(notice) = available.notice.clone() else {
+        return Err("There's no update waiting.".into());
+    };
     if available.downloaded.is_empty() {
-        return Err(format!("Atlas {} hasn't finished arriving yet.", available.version));
+        return Err(format!(
+            "Atlas {} hasn't finished arriving yet.",
+            available.version
+        ));
     }
     let installed = Installed::load(store);
-    let accepted = release::accept(&installed, &notice, upgrade::DATA_FORMAT, platform, Direction::Forward)
-        .map_err(|r| format!("I won't install Atlas {}: {}", available.version, r.plain()))?;
+    let accepted = release::accept(
+        &installed,
+        &notice,
+        upgrade::DATA_FORMAT,
+        platform,
+        Direction::Forward,
+    )
+    .map_err(|r| format!("I won't install Atlas {}: {}", available.version, r.plain()))?;
     let version = accepted.manifest.version.clone();
     if let Some(why) = not_offered_again(store, &accepted.artifact.sha256, &version) {
         return Err(format!("I won't install Atlas {version} again: {why}."));
     }
-    if upgrade::is_known_bad(install_root, &upgrade::build_tag(&version, &accepted.artifact.sha256)) {
-        return Err(format!("Atlas {version} failed here before and is waiting for a fixed release."));
+    if upgrade::is_known_bad(
+        install_root,
+        &upgrade::build_tag(&version, &accepted.artifact.sha256),
+    ) {
+        return Err(format!(
+            "Atlas {version} failed here before and is waiting for a fixed release."
+        ));
     }
     let bytes = std::fs::read(&available.downloaded)
         .map_err(|e| format!("I couldn't read the downloaded Atlas {version}: {e}"))?;
@@ -528,16 +607,22 @@ pub fn stage_update(store: &Store, install_root: &Path, platform: &str) -> Resul
         )
     })?;
     let to = upgrade::staging_path(install_root);
-    std::fs::create_dir_all(to.parent().unwrap_or(install_root)).map_err(|e| format!("I couldn't make the updates folder: {e}"))?;
+    std::fs::create_dir_all(to.parent().unwrap_or(install_root))
+        .map_err(|e| format!("I couldn't make the updates folder: {e}"))?;
     // Written beside, then renamed into place: the next start never sees half a file.
     let part = to.with_extension("part");
-    std::fs::write(&part, &bytes).map_err(|e| format!("I couldn't put Atlas {version} in place: {e}"))?;
+    std::fs::write(&part, &bytes)
+        .map_err(|e| format!("I couldn't put Atlas {version} in place: {e}"))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        crate::heard!(std::fs::set_permissions(&part, std::fs::Permissions::from_mode(0o755)));
+        crate::heard!(std::fs::set_permissions(
+            &part,
+            std::fs::Permissions::from_mode(0o755)
+        ));
     }
-    std::fs::rename(&part, &to).map_err(|e| format!("I couldn't put Atlas {version} in place: {e}"))?;
+    std::fs::rename(&part, &to)
+        .map_err(|e| format!("I couldn't put Atlas {version} in place: {e}"))?;
     let _ = store.save(
         PENDING,
         &StagedUpdate {
@@ -548,13 +633,19 @@ pub fn stage_update(store: &Store, install_root: &Path, platform: &str) -> Resul
             restarted: false,
         },
     );
-    upgrade::log_update(install_root, &format!("{version} checked again and staged for the next start"));
+    upgrade::log_update(
+        install_root,
+        &format!("{version} checked again and staged for the next start"),
+    );
     Ok(version)
 }
 
 /// The staged release, if any.
 pub fn pending(store: &Store) -> Option<StagedUpdate> {
-    store.exists(PENDING).then(|| store.load::<StagedUpdate>(PENDING)).filter(|p| !p.version.is_empty())
+    store
+        .exists(PENDING)
+        .then(|| store.load::<StagedUpdate>(PENDING))
+        .filter(|p| !p.version.is_empty())
 }
 
 /// What finishing found.
@@ -580,12 +671,18 @@ pub enum UpdateSettled {
 /// said 0.1.0, and an update that had been thrown away was recorded as
 /// installed: "Updated to Atlas 0.1.0" on the build that was already there.
 pub fn finish_after_start(store: &Store, install_root: &Path, running: &str) -> UpdateSettled {
-    let Some(p) = pending(store) else { return UpdateSettled::Nothing };
+    let Some(p) = pending(store) else {
+        return UpdateSettled::Nothing;
+    };
     let settle = |store: &Store| {
         let _ = store.save(PENDING, &StagedUpdate::default());
     };
     let staged = upgrade::build_tag(&p.version, &p.sha256);
-    let is_running = if p.sha256.is_empty() { p.version == upgrade::tag_version(running) } else { staged == running };
+    let is_running = if p.sha256.is_empty() {
+        p.version == upgrade::tag_version(running)
+    } else {
+        staged == running
+    };
     let running_version = upgrade::tag_version(running);
     if is_running {
         if upgrade::current_trial(install_root).is_some_and(|t| t.new == running) {
@@ -601,16 +698,34 @@ pub fn finish_after_start(store: &Store, install_root: &Path, running: &str) -> 
             settle(store);
             return UpdateSettled::Nothing;
         };
-        if let Ok(acc) = release::accept(&installed, notice, upgrade::DATA_FORMAT, platform, Direction::Forward) {
+        if let Ok(acc) = release::accept(
+            &installed,
+            notice,
+            upgrade::DATA_FORMAT,
+            platform,
+            Direction::Forward,
+        ) {
             installed.installed(&acc);
             if installed.save(store).is_err() {
                 return UpdateSettled::Waiting;
             }
-            let _ = store.save(HISTORY, &History { previous: Some(before) });
+            let _ = store.save(
+                HISTORY,
+                &History {
+                    previous: Some(before),
+                },
+            );
         }
         settle(store);
         Available::forget_offer(store);
-        upgrade::log_update(install_root, &format!("{} recorded as installed (release {})", p.version, Installed::load(store).sequence));
+        upgrade::log_update(
+            install_root,
+            &format!(
+                "{} recorded as installed (release {})",
+                p.version,
+                Installed::load(store).sequence
+            ),
+        );
         tell(store, &format!(
             "Updated to Atlas {}. It passed its check here. {} is kept, and \"go back to the last version\" (or the Updates page) goes back to it.",
             p.version, upgrade::tag_version(&p.replaces)
@@ -621,13 +736,23 @@ pub fn finish_after_start(store: &Store, install_root: &Path, running: &str) -> 
     // here, it was rolled back: it isn't offered again.
     if let Some(why) = upgrade::known_bad_reason(install_root, &staged) {
         let probation = why.contains("never got through");
-        let crash = if probation { crate::crash::last(store).map(|n| n.detail()).unwrap_or_default() } else { String::new() };
+        let crash = if probation {
+            crate::crash::last(store)
+                .map(|n| n.detail())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
         let report = FailureReport {
             version: p.version.clone(),
             sha256: p.sha256.clone(),
             replaces: running_version.to_string(),
             platform: release::this_platform().unwrap_or("unknown").to_string(),
-            stage: if probation { "probation".into() } else { "health check".into() },
+            stage: if probation {
+                "probation".into()
+            } else {
+                "health check".into()
+            },
             reasons: why.split("; ").map(str::to_string).collect(),
             crash,
             at: crate::store::now(),
@@ -637,7 +762,10 @@ pub fn finish_after_start(store: &Store, install_root: &Path, running: &str) -> 
         let said = record_failure(store, install_root, report);
         tell(store, &said);
         settle(store);
-        if failed_because(&why.split("; ").map(str::to_string).collect::<Vec<_>>(), "") == FailedBecause::TheBuild || probation {
+        if failed_because(&why.split("; ").map(str::to_string).collect::<Vec<_>>(), "")
+            == FailedBecause::TheBuild
+            || probation
+        {
             Available::forget_offer(store);
         }
         return UpdateSettled::RolledBack(p.version);
@@ -681,7 +809,10 @@ pub fn take_news(store: &Store) -> Option<String> {
 
 /// Your own `update.auto` choice, if you made one (`atlas update auto ...`).
 pub fn chosen_mode(store: &Store) -> Option<AutoUpdate> {
-    store.exists(CHOSEN).then(|| store.load::<Option<AutoUpdate>>(CHOSEN)).flatten()
+    store
+        .exists(CHOSEN)
+        .then(|| store.load::<Option<AutoUpdate>>(CHOSEN))
+        .flatten()
 }
 
 /// Make (or, with `None`, undo) your own choice. Only ever from you, here.
@@ -755,7 +886,10 @@ pub fn update_tick(
         // updates.log ("not swapped in: ..."); it's written up like any other
         // failure, so it gets fixed rather than quietly retried or dropped.
         let _ = store.save(PENDING, &StagedUpdate::default());
-        upgrade::log_update(install_root, &format!("{} was staged but didn't go in on restart", p.version));
+        upgrade::log_update(
+            install_root,
+            &format!("{} was staged but didn't go in on restart", p.version),
+        );
         let why: Vec<String> = upgrade::update_history(install_root)
             .iter()
             .rev()
@@ -768,7 +902,11 @@ pub fn update_tick(
             replaces: upgrade::version().to_string(),
             platform: platform.to_string(),
             stage: "restart".into(),
-            reasons: if why.is_empty() { vec!["the restart didn't pick it up, and nothing said why".into()] } else { why },
+            reasons: if why.is_empty() {
+                vec!["the restart didn't pick it up, and nothing said why".into()]
+            } else {
+                why
+            },
             crash: String::new(),
             at: now,
             from: String::new(),
@@ -781,9 +919,20 @@ pub fn update_tick(
         return Ticked::Nothing; // waiting for this machine to be put right
     }
     let mode = mode_for(chosen_mode(store), my_key, channel);
-    let quiet = quiet_enough(moment.idle_secs, moment.os, moment.on_call, moment.work_in_hand);
+    let quiet = quiet_enough(
+        moment.idle_secs,
+        moment.os,
+        moment.on_call,
+        moment.work_in_hand,
+    );
     let yes = said_yes(store, &available.version);
-    match next_step(mode, &available, yes, ask_due(store, &available.version, now), quiet) {
+    match next_step(
+        mode,
+        &available,
+        yes,
+        ask_due(store, &available.version, now),
+        quiet,
+    ) {
         InstallStep::Nothing | InstallStep::WaitForQuiet => Ticked::Nothing,
         InstallStep::Ask(question) => {
             asked(store, &available.version, now);
@@ -820,13 +969,18 @@ pub fn previous_build(install_root: &Path) -> Option<(String, PathBuf)> {
         .flatten()
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().to_string();
-            let v = name.strip_prefix("atlas-")?.strip_suffix(".previous")?.to_string();
+            let v = name
+                .strip_prefix("atlas-")?
+                .strip_suffix(".previous")?
+                .to_string();
             let at = e.metadata().and_then(|m| m.modified()).ok()?;
             Some((at, v, e.path()))
         })
         .collect();
     found.sort();
-    found.pop().map(|(_, v, p)| (upgrade::tag_version(&v).to_string(), p))
+    found
+        .pop()
+        .map(|(_, v, p)| (upgrade::tag_version(&v).to_string(), p))
 }
 
 /// Go back one version: the kept previous build returns to `running`'s name,
@@ -835,7 +989,12 @@ pub fn previous_build(install_root: &Path) -> Option<(String, PathBuf)> {
 ///
 /// Only with `LocalApproval`, which only the person at this device can give.
 /// Returns the version gone back to. The caller restarts (`relaunch_self`).
-pub fn undo_update(store: &Store, install_root: &Path, running: &Path, _yes: LocalApproval) -> Result<String, String> {
+pub fn undo_update(
+    store: &Store,
+    install_root: &Path,
+    running: &Path,
+    _yes: LocalApproval,
+) -> Result<String, String> {
     let (previous, kept) = previous_build(install_root)
         .ok_or_else(|| "There's no previous version kept here to go back to.".to_string())?;
     // The build running now, by tag: two builds with one version are told
@@ -845,14 +1004,18 @@ pub fn undo_update(store: &Store, install_root: &Path, running: &Path, _yes: Loc
     // The build being left, by fingerprint, before the record goes back.
     let current_build = Installed::load(store).sha256;
     if upgrade::sha256_of(&kept).is_some_and(|k| Some(k) == upgrade::sha256_of(running)) {
-        return Err(format!("The build kept is {previous}, the one already running."));
+        return Err(format!(
+            "The build kept is {previous}, the one already running."
+        ));
     }
     let aside = install_root.join(format!("atlas-{current_tag}.undone"));
     crate::heard!(std::fs::remove_file(&aside));
     std::fs::rename(running, &aside).map_err(|e| format!("I couldn't set {current} aside: {e}"))?;
     if let Err(e) = std::fs::rename(&kept, running) {
         crate::kept!(std::fs::rename(&aside, running));
-        return Err(format!("I couldn't put {previous} back ({e}); still on {current}."));
+        return Err(format!(
+            "I couldn't put {previous} back ({e}); still on {current}."
+        ));
     }
     upgrade::prune_kept(install_root, ".undone", upgrade::KEEP_BUILDS, Some(&aside));
     let history: History = store.load(HISTORY);
@@ -868,7 +1031,13 @@ pub fn undo_update(store: &Store, install_root: &Path, running: &Path, _yes: Loc
     // The running Atlas is still the version you left, in memory: it restarts
     // itself on its next tick (`update_tick`).
     let _ = store.save(RESTART, &true);
-    upgrade::log_update(install_root, &format!("you went back from {current} to {previous}; {current} kept as {}", aside.display()));
+    upgrade::log_update(
+        install_root,
+        &format!(
+            "you went back from {current} to {previous}; {current} kept as {}",
+            aside.display()
+        ),
+    );
     Ok(previous)
 }
 
@@ -879,7 +1048,10 @@ pub const ROTATION_PREFIX: &str = "atlas-rotation:";
 
 /// The text to post into the release channel for a signed rotation.
 pub fn rotation_notice(signed: &SignedRotation) -> String {
-    format!("{ROTATION_PREFIX}{}", serde_json::to_string(signed).unwrap_or_default())
+    format!(
+        "{ROTATION_PREFIX}{}",
+        serde_json::to_string(signed).unwrap_or_default()
+    )
 }
 
 /// A message from the release channel's owner that may be a key rotation.
@@ -898,7 +1070,9 @@ pub fn heard_rotation_with(store: &Store, body: &str, recovery: &[u8; 32]) -> Op
     // The same notice again, after it was taken: nothing to say.
     let already = serde_json::from_str::<release::Rotation>(&signed.rotation)
         .ok()
-        .is_some_and(|r| r.number <= installed.trust.rotations && r.new_anchor == hex32(&installed.trust.current));
+        .is_some_and(|r| {
+            r.number <= installed.trust.rotations && r.new_anchor == hex32(&installed.trust.current)
+        });
     if already {
         return None;
     }

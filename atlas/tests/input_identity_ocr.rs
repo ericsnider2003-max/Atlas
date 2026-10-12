@@ -1,4 +1,6 @@
-use atlas::identity::{explain, grace_remaining, From, Gate, Hello, Identity, IdentityConfig, Proof};
+use atlas::identity::{
+    explain, grace_remaining, From, Gate, Hello, Identity, IdentityConfig, Proof,
+};
 use atlas::ocr::{args, parse_tsv, tidy, OcrConfig};
 use atlas::quickinput::{parse_hotkey, Action, QuickInput, QuickInputConfig, State, Surface};
 
@@ -13,7 +15,11 @@ fn one_key_summons_a_box_over_whatever_you_are_doing() {
     let mut q = qi();
     assert_eq!(q.hotkey(Some("chrome".into()), 100), Action::Show);
     assert!(q.is_open());
-    assert_eq!(q.previous_focus.as_deref(), Some("chrome"), "so you land back where you were");
+    assert_eq!(
+        q.previous_focus.as_deref(),
+        Some("chrome"),
+        "so you land back where you were"
+    );
 }
 
 #[test]
@@ -80,7 +86,10 @@ fn backspace_works_and_does_not_underflow_on_an_empty_box() {
 
 #[test]
 fn the_hotkey_cannot_fire_while_typing_and_needs_no_alt() {
-    assert!(parse_hotkey("a").is_none(), "a bare letter would fire constantly");
+    assert!(
+        parse_hotkey("a").is_none(),
+        "a bare letter would fire constantly"
+    );
     assert!(parse_hotkey("tab").is_none());
     assert!(parse_hotkey("space").is_none());
     // Eric has no Alt key (26 Sep 2026): Ctrl, Shift or Win alone are enough,
@@ -89,7 +98,10 @@ fn the_hotkey_cannot_fire_while_typing_and_needs_no_alt() {
     assert_eq!(parse_hotkey("win+j"), Some((8, 'J' as u32)));
     assert_eq!(parse_hotkey("f9"), Some((0, 0x78)));
     assert_eq!(parse_hotkey("insert"), Some((0, 0x2D)));
-    assert!(parse_hotkey("rightctrl").is_none(), "a modifier on its own can't be registered");
+    assert!(
+        parse_hotkey("rightctrl").is_none(),
+        "a modifier on its own can't be registered"
+    );
     assert_eq!(parse_hotkey("ctrl+alt+a"), Some((2 | 1, 'A' as u32)));
     assert_eq!(parse_hotkey("ctrl+shift+space"), Some((2 | 4, 0x20)));
     assert_eq!(parse_hotkey("alt+f12"), Some((1, 0x7B)));
@@ -99,7 +111,10 @@ fn the_hotkey_cannot_fire_while_typing_and_needs_no_alt() {
 #[test]
 fn the_default_hotkey_is_not_a_key_you_press_while_writing() {
     let cfg = QuickInputConfig::default();
-    assert_eq!(cfg.hotkey, "ctrl+shift+space", "no Alt in the default: Eric's keyboard has none");
+    assert_eq!(
+        cfg.hotkey, "ctrl+shift+space",
+        "no Alt in the default: Eric's keyboard has none"
+    );
     assert!(parse_hotkey(&cfg.hotkey).is_some());
     assert_eq!(cfg.surface, Surface::Console);
 }
@@ -119,7 +134,13 @@ fn on(kinds: &[&str]) -> IdentityConfig {
 fn almost_nothing_ever_asks_you_to_prove_anything() {
     let id = Identity::default();
     let cfg = on(&["workspace_off"]);
-    for kind in ["open_app", "research", "draft_post", "view_display", "workspace_on"] {
+    for kind in [
+        "open_app",
+        "research",
+        "draft_post",
+        "view_display",
+        "workspace_on",
+    ] {
         let g = id.gate(kind, &From::Here, Hello::Available, &cfg, 100);
         assert!(!g.interrupts(), "{kind} must never prompt");
     }
@@ -131,15 +152,28 @@ fn proving_once_covers_the_rest_of_the_working_day() {
     // switched off.
     let mut id = Identity::default();
     let cfg = on(&["workspace_off"]);
-    assert!(matches!(id.gate("workspace_off", &From::Here, Hello::Available, &cfg, 0), Gate::AskHello(_)));
+    assert!(matches!(
+        id.gate("workspace_off", &From::Here, Hello::Available, &cfg, 0),
+        Gate::AskHello(_)
+    ));
 
     id.record(Proof::Verified, 0);
     let later = 3 * 3600;
-    assert!(!id.gate("workspace_off", &From::Here, Hello::Available, &cfg, later).interrupts());
+    assert!(!id
+        .gate("workspace_off", &From::Here, Hello::Available, &cfg, later)
+        .interrupts());
     assert!(grace_remaining(&id, &cfg, later).is_some());
 
     let tomorrow = 20 * 3600;
-    assert!(id.gate("workspace_off", &From::Here, Hello::Available, &cfg, tomorrow).interrupts());
+    assert!(id
+        .gate(
+            "workspace_off",
+            &From::Here,
+            Hello::Available,
+            &cfg,
+            tomorrow
+        )
+        .interrupts());
 }
 
 #[test]
@@ -147,7 +181,13 @@ fn your_phone_already_proved_it_so_atlas_does_not_ask_twice() {
     // It unlocked with your face before Atlas heard the request.
     let id = Identity::default();
     let cfg = on(&["workspace_off"]);
-    let g = id.gate("workspace_off", &From::TrustedDevice("iPhone".into()), Hello::Available, &cfg, 0);
+    let g = id.gate(
+        "workspace_off",
+        &From::TrustedDevice("iPhone".into()),
+        Hello::Available,
+        &cfg,
+        0,
+    );
     assert!(!g.interrupts());
     assert!(g.reason().contains("trust"));
 }
@@ -157,7 +197,13 @@ fn an_unenrolled_device_still_has_to_confirm_but_not_with_a_pin() {
     // A Hello prompt would appear on a screen nobody is looking at.
     let id = Identity::default();
     let cfg = on(&["workspace_off"]);
-    let g = id.gate("workspace_off", &From::UnknownDevice, Hello::Available, &cfg, 0);
+    let g = id.gate(
+        "workspace_off",
+        &From::UnknownDevice,
+        Hello::Available,
+        &cfg,
+        0,
+    );
     assert!(matches!(g, Gate::AskAloud(_)), "got {g:?}");
     assert!(g.reason().contains("not at the machine"));
 }
@@ -168,7 +214,10 @@ fn no_windows_hello_means_a_spoken_yes_not_a_lockout() {
     let cfg = on(&["workspace_off"]);
     for h in [Hello::NotSetUp, Hello::Unavailable, Hello::Unknown] {
         let g = id.gate("workspace_off", &From::Here, h, &cfg, 0);
-        assert!(matches!(g, Gate::AskAloud(_)), "{h:?} should degrade to a spoken yes");
+        assert!(
+            matches!(g, Gate::AskAloud(_)),
+            "{h:?} should degrade to a spoken yes"
+        );
     }
 }
 
@@ -185,7 +234,10 @@ fn a_spoken_yes_confirms_the_action_but_does_not_extend_the_grace_window() {
     let mut id = Identity::default();
     let cfg = on(&["workspace_off"]);
     assert!(!id.record(Proof::CouldNotAsk, 100));
-    assert!(!id.within_grace(&cfg, 100), "only a real verification counts as proof");
+    assert!(
+        !id.within_grace(&cfg, 100),
+        "only a real verification counts as proof"
+    );
 }
 
 #[test]
@@ -194,7 +246,9 @@ fn walking_away_voids_the_proof() {
     let cfg = on(&["workspace_off"]);
     id.record(Proof::Verified, 0);
     id.forget();
-    assert!(id.gate("workspace_off", &From::Here, Hello::Available, &cfg, 10).interrupts());
+    assert!(id
+        .gate("workspace_off", &From::Here, Hello::Available, &cfg, 10)
+        .interrupts());
 }
 
 #[test]
@@ -202,14 +256,22 @@ fn with_the_feature_off_nothing_ever_asks() {
     let id = Identity::default();
     let cfg = IdentityConfig::default();
     assert!(!cfg.enabled, "off by default");
-    assert!(!id.gate("workspace_off", &From::Here, Hello::Available, &cfg, 0).interrupts());
+    assert!(!id
+        .gate("workspace_off", &From::Here, Hello::Available, &cfg, 0)
+        .interrupts());
 }
 
 #[test]
 fn atlas_can_tell_you_exactly_when_it_will_ask() {
     let said = explain(&on(&["workspace_off"]));
-    assert!(said.contains("workspace_off") && said.contains("4 hours"), "got: {said}");
-    assert!(said.contains("iPhone"), "and which devices never ask: {said}");
+    assert!(
+        said.contains("workspace_off") && said.contains("4 hours"),
+        "got: {said}"
+    );
+    assert!(
+        said.contains("iPhone"),
+        "and which devices never ask: {said}"
+    );
     assert!(explain(&IdentityConfig::default()).contains("never ask"));
 }
 
@@ -246,12 +308,18 @@ fn a_bad_scan_is_reported_as_unreadable_rather_than_handed_on_as_text() {
     let r = parse_tsv(poor, 0.55);
     assert!(!r.trustworthy());
     assert!(r.summary().contains("half-read"), "got: {}", r.summary());
-    assert!(r.summary().contains("screenshot instead"), "and says what to do");
+    assert!(
+        r.summary().contains("screenshot instead"),
+        "and says what to do"
+    );
 }
 
 #[test]
 fn nothing_readable_says_so_plainly() {
-    let r = parse_tsv("level\tpage\tblock\tpar\tline\tword\tl\tt\tw\th\tconf\ttext", 0.55);
+    let r = parse_tsv(
+        "level\tpage\tblock\tpar\tline\tword\tl\tt\tw\th\tconf\ttext",
+        0.55,
+    );
     assert_eq!(r.words, 0);
     assert!(r.summary().contains("couldn't read any text"));
 }
@@ -272,8 +340,14 @@ fn edge_artefacts_are_tidied_away() {
 #[test]
 fn the_engine_is_asked_for_confidence_data_not_just_words() {
     let a = args("page.png", "eng");
-    assert!(a.contains(&"tsv".to_string()), "confidence is the whole point");
-    assert!(a.contains(&"-".to_string()), "straight to stdout, no temp file");
+    assert!(
+        a.contains(&"tsv".to_string()),
+        "confidence is the whole point"
+    );
+    assert!(
+        a.contains(&"-".to_string()),
+        "straight to stdout, no temp file"
+    );
 }
 
 #[test]
@@ -292,7 +366,9 @@ fn a_proof_at_time_zero_is_still_a_proof() {
     assert!(id.proved_at.is_none(), "never is not the same as zero");
     id.record(Proof::Verified, 0);
     assert!(id.within_grace(&cfg, 0));
-    assert!(!id.gate("workspace_off", &From::Here, Hello::Available, &cfg, 60).interrupts());
+    assert!(!id
+        .gate("workspace_off", &From::Here, Hello::Available, &cfg, 60)
+        .interrupts());
 }
 
 #[test]
@@ -300,8 +376,14 @@ fn the_shipped_config_is_cautious_about_all_three() {
     let y = std::fs::read_to_string("config/tools.yaml").unwrap();
     let t: atlas::voice::ToolsConfig = serde_yaml::from_str(&y).unwrap();
     assert!(t.quick_input.enabled, "typing must always be reachable");
-    assert!(parse_hotkey(&t.quick_input.hotkey).is_some(), "hotkey needs a modifier");
+    assert!(
+        parse_hotkey(&t.quick_input.hotkey).is_some(),
+        "hotkey needs a modifier"
+    );
     assert!(!t.identity.enabled, "identity checks are opt-in");
-    assert!(t.identity.fall_back_to_spoken, "no Hello must never mean locked out");
+    assert!(
+        t.identity.fall_back_to_spoken,
+        "no Hello must never mean locked out"
+    );
     assert!(!t.ocr.enabled, "OCR waits until an engine is installed");
 }

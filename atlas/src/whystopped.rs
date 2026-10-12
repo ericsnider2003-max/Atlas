@@ -46,8 +46,12 @@ impl Ended {
     pub fn plain(&self) -> String {
         match self {
             Ended::Clean(why) => why.plain().to_string(),
-            Ended::ComputerRestarted => "the computer restarted (Windows Update, power, or a restart)".into(),
-            Ended::EndedWithoutWarning => "it was ended without warning (a crash, or closed from Task Manager)".into(),
+            Ended::ComputerRestarted => {
+                "the computer restarted (Windows Update, power, or a restart)".into()
+            }
+            Ended::EndedWithoutWarning => {
+                "it was ended without warning (a crash, or closed from Task Manager)".into()
+            }
         }
     }
 }
@@ -82,7 +86,10 @@ impl Runs {
     pub fn save(&self, state_dir: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(state_dir)?;
         let tmp = state_dir.join(format!("{FILE}.part"));
-        std::fs::write(&tmp, serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?)?;
+        std::fs::write(
+            &tmp,
+            serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?,
+        )?;
         crate::store::rename_patiently(&tmp, &Self::path(state_dir))
     }
 
@@ -94,7 +101,11 @@ impl Runs {
         if let Some(mut last) = self.now.take() {
             if last.ended.is_none() {
                 let restarted = computer_started.is_some_and(|boot| boot > last.last_alive);
-                let ended = if restarted { Ended::ComputerRestarted } else { Ended::EndedWithoutWarning };
+                let ended = if restarted {
+                    Ended::ComputerRestarted
+                } else {
+                    Ended::EndedWithoutWarning
+                };
                 note = Some(format!(
                     "Atlas last stopped {} without closing properly: {}.",
                     crate::freshness::ago(now.saturating_sub(last.last_alive)),
@@ -106,7 +117,11 @@ impl Runs {
         }
         let excess = self.past.len().saturating_sub(KEEP);
         self.past.drain(..excess);
-        self.now = Some(Run { started: now, last_alive: now, ended: None });
+        self.now = Some(Run {
+            started: now,
+            last_alive: now,
+            ended: None,
+        });
         note
     }
 
@@ -136,8 +151,15 @@ impl Runs {
     /// The last run that ended, and how, in a sentence.
     pub fn last_stop(&self, now: u64) -> Option<String> {
         let r = self.past.last()?;
-        let how = r.ended.as_ref().map(Ended::plain).unwrap_or_else(|| "for a reason it didn't record".into());
-        Some(format!("I last stopped {}: {how}.", crate::freshness::ago(now.saturating_sub(r.last_alive))))
+        let how = r
+            .ended
+            .as_ref()
+            .map(Ended::plain)
+            .unwrap_or_else(|| "for a reason it didn't record".into());
+        Some(format!(
+            "I last stopped {}: {how}.",
+            crate::freshness::ago(now.saturating_sub(r.last_alive))
+        ))
     }
 }
 
@@ -158,7 +180,12 @@ fn uptime_secs() -> Option<u64> {
 #[cfg(not(windows))]
 fn uptime_secs() -> Option<u64> {
     let s = std::fs::read_to_string("/proc/uptime").ok()?;
-    s.split_whitespace().next()?.parse::<f64>().ok().filter(|f| f.is_finite()).map(|f| f as u64)
+    s.split_whitespace()
+        .next()?
+        .parse::<f64>()
+        .ok()
+        .filter(|f| f.is_finite())
+        .map(|f| f as u64)
 }
 
 /// Ask Windows to start Atlas again after an update restarts the computer

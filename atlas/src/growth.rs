@@ -55,12 +55,20 @@ impl WantedAbilities {
     /// updated), not twice.
     pub fn ask(&mut self, what: &str, t: u64) -> &Wanted {
         let what = what.trim().trim_end_matches(['.', '?', '!']).to_string();
-        if let Some(i) = self.items.iter().position(|w| w.what.eq_ignore_ascii_case(&what) && w.state == State::Asked) {
+        if let Some(i) = self
+            .items
+            .iter()
+            .position(|w| w.what.eq_ignore_ascii_case(&what) && w.state == State::Asked)
+        {
             self.items[i].asked_at = t;
             return &self.items[i];
         }
         let i = self.items.len();
-        self.items.push(Wanted { what, asked_at: t, state: State::Asked });
+        self.items.push(Wanted {
+            what,
+            asked_at: t,
+            state: State::Asked,
+        });
         &self.items[i]
     }
 
@@ -97,7 +105,13 @@ impl WantedAbilities {
 fn plain(s: &str) -> String {
     let s = s.to_lowercase().replace('\u{2019}', "'");
     s.chars()
-        .map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '\'' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -109,7 +123,12 @@ fn plain(s: &str) -> String {
 /// "work that so you have this capability").
 pub fn asks_for_an_ability(said: &str) -> Option<String> {
     let t = plain(said);
-    if t.is_empty() || t.starts_with("don't") || t.starts_with("do not") || t.starts_with("what ") || t.starts_with("which ") {
+    if t.is_empty()
+        || t.starts_with("don't")
+        || t.starts_with("do not")
+        || t.starts_with("what ")
+        || t.starts_with("which ")
+    {
         return None;
     }
     // "Give yourself the ability to …", "add the capability to …".
@@ -165,8 +184,23 @@ pub fn asks_for_an_ability(said: &str) -> Option<String> {
                 // "Add a feature to my app" is work on your code, not a new
                 // ability for Atlas (2 Oct 2026): your app, project or a
                 // folder named means the project, and `improve` takes it.
-                let yours = [" my app", " my project", " my code", " my script", " my program", " my site", " my website", " my repo", " my tool", " the app", " project"];
-                if lead.contains("feature") && (yours.iter().any(|y| format!(" {t}").contains(y)) || crate::build_it::folder_named(said).is_some()) {
+                let yours = [
+                    " my app",
+                    " my project",
+                    " my code",
+                    " my script",
+                    " my program",
+                    " my site",
+                    " my website",
+                    " my repo",
+                    " my tool",
+                    " the app",
+                    " project",
+                ];
+                if lead.contains("feature")
+                    && (yours.iter().any(|y| format!(" {t}").contains(y))
+                        || crate::build_it::folder_named(said).is_some())
+                {
                     continue;
                 }
                 if !rest.is_empty() {
@@ -211,9 +245,10 @@ fn rest_words(s: &str) -> usize {
 }
 
 const STOP: &[&str] = &[
-    "about", "after", "again", "also", "being", "could", "every", "from", "have", "into", "just", "like", "make", "more", "need", "only",
-    "should", "some", "than", "that", "them", "then", "there", "these", "they", "thing", "things", "this", "what", "when", "where", "which",
-    "while", "with", "would", "your", "able", "want", "atlas", "yourself",
+    "about", "after", "again", "also", "being", "could", "every", "from", "have", "into", "just",
+    "like", "make", "more", "need", "only", "should", "some", "than", "that", "them", "then",
+    "there", "these", "they", "thing", "things", "this", "what", "when", "where", "which", "while",
+    "with", "would", "your", "able", "want", "atlas", "yourself",
 ];
 
 /// The words that carry meaning: four letters or more, not filler.
@@ -232,7 +267,10 @@ fn meaning_words(s: &str) -> Vec<String> {
 /// What Atlas already does that shares at least two meaningful words with
 /// a request, best first, at most three (5 Oct 2026). Words, not meaning:
 /// it says "this looks like" and leaves the deciding to you.
-pub fn already_close(what: &str, catalogue: &[crate::capability::Capability]) -> Vec<(String, String)> {
+pub fn already_close(
+    what: &str,
+    catalogue: &[crate::capability::Capability],
+) -> Vec<(String, String)> {
     let want = meaning_words(what);
     let mut scored: Vec<(usize, &crate::capability::Capability)> = catalogue
         .iter()
@@ -243,7 +281,11 @@ pub fn already_close(what: &str, catalogue: &[crate::capability::Capability]) ->
         .filter(|(n, _)| *n >= 2)
         .collect();
     scored.sort_by_key(|a| std::cmp::Reverse(a.0));
-    scored.into_iter().take(3).map(|(_, c)| (c.id.to_string(), c.what.to_string())).collect()
+    scored
+        .into_iter()
+        .take(3)
+        .map(|(_, c)| (c.id.to_string(), c.what.to_string()))
+        .collect()
 }
 
 /// The Improvements page's "Asked for" section: every ability asked for,
@@ -268,16 +310,33 @@ pub fn section(w: &WantedAbilities) -> String {
 /// "Yes, build that ability", "approve that ability", "no, not that ability".
 pub fn answer(said: &str) -> Option<State> {
     let t = plain(said);
-    let about = ["that ability", "this ability", "that capability", "this capability", "the ability", "the new ability"]
-        .iter()
-        .any(|a| t.contains(a));
+    let about = [
+        "that ability",
+        "this ability",
+        "that capability",
+        "this capability",
+        "the ability",
+        "the new ability",
+    ]
+    .iter()
+    .any(|a| t.contains(a));
     if !about {
         return None;
     }
-    if ["don't", "do not", "decline", "no ", "not ", "never", "skip", "drop"].iter().any(|n| t.contains(n) || t == n.trim()) {
+    if [
+        "don't", "do not", "decline", "no ", "not ", "never", "skip", "drop",
+    ]
+    .iter()
+    .any(|n| t.contains(n) || t == n.trim())
+    {
         return Some(State::Declined);
     }
-    if ["build", "approve", "yes", "go ahead", "add it", "do it", "make it"].iter().any(|y| t.contains(y)) {
+    if [
+        "build", "approve", "yes", "go ahead", "add it", "do it", "make it",
+    ]
+    .iter()
+    .any(|y| t.contains(y))
+    {
         return Some(State::Approved);
     }
     None
@@ -287,9 +346,16 @@ pub fn answer(said: &str) -> Option<State> {
 /// Atlas's source (`scaffold`).
 pub fn asks_to_set_up(said: &str) -> bool {
     let t = plain(said);
-    ["set that ability up", "set up that ability", "set that up in your source", "scaffold that ability", "start building that ability", "set up the new ability"]
-        .iter()
-        .any(|p| t.contains(p))
+    [
+        "set that ability up",
+        "set up that ability",
+        "set that up in your source",
+        "scaffold that ability",
+        "start building that ability",
+        "set up the new ability",
+    ]
+    .iter()
+    .any(|p| t.contains(p))
 }
 
 /// The newest approved ability.
@@ -300,9 +366,17 @@ pub fn latest_approved(w: &WantedAbilities) -> Option<&Wanted> {
 /// Is this "what abilities have I asked for?"
 pub fn asks_for_the_list(said: &str) -> bool {
     let t = plain(said);
-    ["abilities have i asked", "abilities i asked", "abilities i've asked", "ability requests", "capabilities have i asked", "capabilities i asked", "new abilities waiting"]
-        .iter()
-        .any(|p| t.contains(p))
+    [
+        "abilities have i asked",
+        "abilities i asked",
+        "abilities i've asked",
+        "ability requests",
+        "capabilities have i asked",
+        "capabilities i asked",
+        "new abilities waiting",
+    ]
+    .iter()
+    .any(|p| t.contains(p))
 }
 
 /// What Atlas says when it writes a request down.
@@ -335,7 +409,10 @@ mod tests {
 
     #[test]
     fn erics_sentences_ask_for_an_ability() {
-        assert_eq!(asks_for_an_ability("Ok so can you work that so you have this capability."), Some(String::new()));
+        assert_eq!(
+            asks_for_an_ability("Ok so can you work that so you have this capability."),
+            Some(String::new())
+        );
         assert_eq!(
             asks_for_an_ability("Oh great youre learning but you should also be learning how you can add your own capabilities."),
             Some(String::new())
@@ -344,15 +421,30 @@ mod tests {
             asks_for_an_ability("Give yourself the ability to watch me for five minutes"),
             Some("watch me for five minutes".into())
         );
-        assert_eq!(asks_for_an_ability("add the capability to read my texts aloud").as_deref(), Some("read my texts aloud"));
+        assert_eq!(
+            asks_for_an_ability("add the capability to read my texts aloud").as_deref(),
+            Some("read my texts aloud")
+        );
     }
 
     #[test]
     fn the_way_it_is_most_often_said_is_heard() {
-        assert_eq!(asks_for_an_ability("I want you to be able to send texts from my phone").as_deref(), Some("send texts from my phone"));
-        assert_eq!(asks_for_an_ability("Ok Atlas, I'd like you to be able to edit my videos.").as_deref(), Some("edit my videos"));
-        assert_eq!(asks_for_an_ability("add a capability that tracks my sleep").as_deref(), Some("tracks my sleep"));
-        assert_eq!(asks_for_an_ability("can you learn how to read my calendar?").as_deref(), Some("read my calendar"));
+        assert_eq!(
+            asks_for_an_ability("I want you to be able to send texts from my phone").as_deref(),
+            Some("send texts from my phone")
+        );
+        assert_eq!(
+            asks_for_an_ability("Ok Atlas, I'd like you to be able to edit my videos.").as_deref(),
+            Some("edit my videos")
+        );
+        assert_eq!(
+            asks_for_an_ability("add a capability that tracks my sleep").as_deref(),
+            Some("tracks my sleep")
+        );
+        assert_eq!(
+            asks_for_an_ability("can you learn how to read my calendar?").as_deref(),
+            Some("read my calendar")
+        );
         assert_eq!(asks_for_an_ability("can you learn to?"), None);
         assert_eq!(asks_for_an_ability("I want to go to bed"), None);
     }
@@ -360,18 +452,30 @@ mod tests {
     #[test]
     fn what_atlas_already_does_is_named_and_the_list_is_on_the_page() {
         let all = crate::capability::all();
-        let close = already_close("check the weather forecast for tomorrow in another town", &all);
+        let close = already_close(
+            "check the weather forecast for tomorrow in another town",
+            &all,
+        );
         assert!(close.iter().any(|(id, _)| id == "weather"), "{close:?}");
         assert!(already_close("juggle flaming torches", &all).is_empty());
         assert!(noted_beside("say the weather", &close).contains("(weather)"));
         let mut w = WantedAbilities::default();
         w.ask("juggle flaming torches", 1);
-        assert!(section(&w).contains("juggle flaming torches") && section(&w).contains("waiting on your yes"));
+        assert!(
+            section(&w).contains("juggle flaming torches")
+                && section(&w).contains("waiting on your yes")
+        );
     }
 
     #[test]
     fn ordinary_sentences_are_not() {
-        for s in ["learn how to cook rice", "what can you do", "add milk to my list", "don't add that capability", "open chrome"] {
+        for s in [
+            "learn how to cook rice",
+            "what can you do",
+            "add milk to my list",
+            "don't add that capability",
+            "open chrome",
+        ] {
             assert_eq!(asks_for_an_ability(s), None, "{s}");
         }
     }
@@ -383,11 +487,17 @@ mod tests {
         w.ask("Watch me for five minutes.", 2);
         assert_eq!(w.items.len(), 1);
         assert_eq!(w.items[0].asked_at, 2);
-        assert_eq!(w.waiting().map(|x| x.what.as_str()), Some("watch me for five minutes"));
+        assert_eq!(
+            w.waiting().map(|x| x.what.as_str()),
+            Some("watch me for five minutes")
+        );
         assert_eq!(answer("yes, build that ability"), Some(State::Approved));
         assert_eq!(answer("no, not that ability"), Some(State::Declined));
         assert_eq!(answer("build the house"), None);
-        assert_eq!(w.decide_latest(State::Approved).as_deref(), Some("watch me for five minutes"));
+        assert_eq!(
+            w.decide_latest(State::Approved).as_deref(),
+            Some("watch me for five minutes")
+        );
         assert!(w.waiting().is_none());
         assert!(w.spoken().contains("approved"));
     }

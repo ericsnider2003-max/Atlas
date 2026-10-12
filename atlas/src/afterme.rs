@@ -288,7 +288,11 @@ fn gaps(
         });
     }
 
-    out.sort_by(|a, b| b.urgency.partial_cmp(&a.urgency).unwrap_or(std::cmp::Ordering::Equal));
+    out.sort_by(|a, b| {
+        b.urgency
+            .partial_cmp(&a.urgency)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     out
 }
 
@@ -382,9 +386,14 @@ impl Arrangement {
             .iter()
             .find(|x| x.person.eq_ignore_ascii_case(&i.person))
         {
-            i.they_know = if old.as_told() == i.as_told() { old.they_know } else { false };
+            i.they_know = if old.as_told() == i.as_told() {
+                old.they_know
+            } else {
+                false
+            };
         }
-        self.instructions.retain(|x| !x.person.eq_ignore_ascii_case(&i.person));
+        self.instructions
+            .retain(|x| !x.person.eq_ignore_ascii_case(&i.person));
         self.instructions.push(i);
     }
 
@@ -440,7 +449,11 @@ impl Arrangement {
         } else {
             format!("{} days", cfg.review_every_days)
         };
-        let who: Vec<&str> = self.instructions.iter().map(|i| i.person.as_str()).collect();
+        let who: Vec<&str> = self
+            .instructions
+            .iter()
+            .map(|i| i.person.as_str())
+            .collect();
         let named = if who.is_empty() {
             "nobody has been told".to_string()
         } else {
@@ -476,7 +489,11 @@ impl Arrangement {
                 s.push_str(&format!(
                     "{}{}: \"{}\"\n",
                     i.person,
-                    if i.they_know { "" } else { " (hasn't agreed yet)" },
+                    if i.they_know {
+                        ""
+                    } else {
+                        " (hasn't agreed yet)"
+                    },
                     i.as_told()
                 ));
             }

@@ -67,21 +67,32 @@ impl Fake {
     }
 
     fn with(mut self, peer: &str, kind: Kind, address: &str, answer: Handoff) -> Fake {
-        self.devices.entry(peer.to_string()).or_default().push(Device {
-            peer: peer.to_string(),
-            kind,
-            address: address.to_string(),
-        });
-        self.answers.borrow_mut().insert(address.to_string(), answer);
+        self.devices
+            .entry(peer.to_string())
+            .or_default()
+            .push(Device {
+                peer: peer.to_string(),
+                kind,
+                address: address.to_string(),
+            });
+        self.answers
+            .borrow_mut()
+            .insert(address.to_string(), answer);
         self
     }
 
     fn set(&self, address: &str, answer: Handoff) {
-        self.answers.borrow_mut().insert(address.to_string(), answer);
+        self.answers
+            .borrow_mut()
+            .insert(address.to_string(), answer);
     }
 
     fn attempts_on(&self, address: &str) -> usize {
-        self.tried.borrow().iter().filter(|(a, _)| a == address).count()
+        self.tried
+            .borrow()
+            .iter()
+            .filter(|(a, _)| a == address)
+            .count()
     }
 
     fn order(&self) -> Vec<String> {
@@ -91,8 +102,14 @@ impl Fake {
 
 impl Transport for Fake {
     fn hand_over(&self, device: &Device, msg: &atlas::chat::Message) -> Handoff {
-        self.tried.borrow_mut().push((device.address.clone(), msg.id.clone()));
-        self.answers.borrow().get(&device.address).cloned().unwrap_or(Handoff::NotUp)
+        self.tried
+            .borrow_mut()
+            .push((device.address.clone(), msg.id.clone()));
+        self.answers
+            .borrow()
+            .get(&device.address)
+            .cloned()
+            .unwrap_or(Handoff::NotUp)
     }
 
     fn devices_for(&self, peer: &str) -> Vec<Device> {
@@ -105,9 +122,24 @@ fn one_waiting(now: u64) -> (Chats, String, String, Roster, Pairings) {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
-    let (msg, _) = chats.post(&room, "the roof quote came back high", now, 0, &roster, &pairings).unwrap();
+    let (msg, _) = chats
+        .post(
+            &room,
+            "the roof quote came back high",
+            now,
+            0,
+            &roster,
+            &pairings,
+        )
+        .unwrap();
     (chats, room, msg.id, roster, pairings)
 }
 
@@ -127,10 +159,18 @@ fn nobody_up_means_held_not_lost() {
     let round = run(&mut chats, &post, &mut tries, &Attempts::default(), now);
     assert_eq!(round.delivered, vec![]);
     assert_eq!(round.still_waiting, vec!["Sam"]);
-    assert_eq!(chats.outbox().len(), 1, "the message was dropped when nobody answered");
+    assert_eq!(
+        chats.outbox().len(),
+        1,
+        "the message was dropped when nobody answered"
+    );
     let held = &chats.room(&room).unwrap().messages[0];
     assert_eq!(held.id, msg_id);
-    assert_eq!(held.to[0].1, Delivery::Waiting, "an attempt was recorded as something more");
+    assert_eq!(
+        held.to[0].1,
+        Delivery::Waiting,
+        "an attempt was recorded as something more"
+    );
 
     // Both devices were tried, not just the first.
     assert_eq!(post.attempts_on("sam-phone"), 1);
@@ -156,11 +196,17 @@ fn it_goes_the_moment_one_device_appears() {
     let later = now + 120;
     let round = run(&mut chats, &post, &mut tries, &attempts, later);
     assert_eq!(round.delivered, vec![("Sam".to_string(), msg_id.clone())]);
-    assert!(chats.outbox().is_empty(), "it stayed in the outbox after landing");
+    assert!(
+        chats.outbox().is_empty(),
+        "it stayed in the outbox after landing"
+    );
 
     let held = &chats.room(&room).unwrap().messages[0];
     assert!(held.fully_arrived());
-    assert_eq!(held.sent_at, now, "the timestamp moved to when it was delivered");
+    assert_eq!(
+        held.sent_at, now,
+        "the timestamp moved to when it was delivered"
+    );
 }
 
 #[test]
@@ -177,7 +223,11 @@ fn the_person_having_it_ends_the_attempt_for_that_person() {
 
     run(&mut chats, &post, &mut tries, &Attempts::default(), now);
     assert_eq!(post.attempts_on("sam-phone"), 1);
-    assert_eq!(post.attempts_on("sam-laptop"), 0, "it delivered to both devices");
+    assert_eq!(
+        post.attempts_on("sam-laptop"),
+        0,
+        "it delivered to both devices"
+    );
 }
 
 #[test]
@@ -193,7 +243,11 @@ fn a_dead_phone_falls_through_to_the_computer() {
 
     let round = run(&mut chats, &post, &mut tries, &Attempts::default(), now);
     assert_eq!(round.delivered, vec![("Sam".to_string(), msg_id)]);
-    assert_eq!(post.order(), vec!["sam-phone", "sam-laptop"], "it did not try them in order");
+    assert_eq!(
+        post.order(),
+        vec!["sam-phone", "sam-laptop"],
+        "it did not try them in order"
+    );
 }
 
 // --- an attempt is not a delivery ------------------------------------------
@@ -215,7 +269,10 @@ fn only_an_acknowledgement_counts_as_arrival() {
         at += 4 * 3600;
     }
     let held = &chats.room(&room).unwrap().messages[0];
-    assert!(!held.fully_arrived(), "repeated attempts added up to a delivery");
+    assert!(
+        !held.fully_arrived(),
+        "repeated attempts added up to a delivery"
+    );
     assert_eq!(chats.outbox().len(), 1);
 }
 
@@ -235,7 +292,10 @@ fn a_refusal_is_recorded_with_its_reason_rather_than_retried_silently() {
     let mut tries = Tries::default();
 
     let round = run(&mut chats, &post, &mut tries, &Attempts::default(), now);
-    assert_eq!(round.refused, vec![("Sam".to_string(), "not a member of Acme".to_string())]);
+    assert_eq!(
+        round.refused,
+        vec![("Sam".to_string(), "not a member of Acme".to_string())]
+    );
     let held = &chats.room(&room).unwrap().messages[0];
     match &held.to[0].1 {
         Delivery::Stuck(why) => assert!(why.contains("not a member"), "{why}"),
@@ -254,18 +314,37 @@ fn a_week_of_messages_arrives_in_the_order_they_were_written() {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
     let start = 1_000_000;
     for i in 0..6u64 {
         chats
-            .post(&room, &format!("message {i}"), start + i * 3600, 0, &roster, &pairings)
+            .post(
+                &room,
+                &format!("message {i}"),
+                start + i * 3600,
+                0,
+                &roster,
+                &pairings,
+            )
             .unwrap();
     }
 
     let post = Fake::new().with("Sam", Kind::Computer, "sam-laptop", Handoff::Took);
     let mut tries = Tries::default();
-    let round = run(&mut chats, &post, &mut tries, &Attempts::default(), start + 7 * 86_400);
+    let round = run(
+        &mut chats,
+        &post,
+        &mut tries,
+        &Attempts::default(),
+        start + 7 * 86_400,
+    );
 
     let bodies: Vec<String> = round
         .delivered
@@ -298,11 +377,19 @@ fn one_that_fails_holds_the_rest_of_that_conversation_behind_it() {
     let (roster, pairings) = business_with(&["Sam"]);
     let mut chats = Chats::default();
     let room = chats
-        .open("Sam", Space::Business("Acme".into()), &["Sam".into()], &roster, &pairings)
+        .open(
+            "Sam",
+            Space::Business("Acme".into()),
+            &["Sam".into()],
+            &roster,
+            &pairings,
+        )
         .unwrap();
     let start = 1_000_000;
     for i in 0..3u64 {
-        chats.post(&room, &format!("m{i}"), start + i, 0, &roster, &pairings).unwrap();
+        chats
+            .post(&room, &format!("m{i}"), start + i, 0, &roster, &pairings)
+            .unwrap();
     }
 
     // A transport that takes the first and then goes down.
@@ -320,13 +407,25 @@ fn one_that_fails_holds_the_rest_of_that_conversation_behind_it() {
             }
         }
         fn devices_for(&self, peer: &str) -> Vec<Device> {
-            vec![Device { peer: peer.into(), kind: Kind::Phone, address: "p".into() }]
+            vec![Device {
+                peer: peer.into(),
+                kind: Kind::Phone,
+                address: "p".into(),
+            }]
         }
     }
 
-    let post = FirstThenDown { taken: RefCell::new(0) };
+    let post = FirstThenDown {
+        taken: RefCell::new(0),
+    };
     let mut tries = Tries::default();
-    let round = run(&mut chats, &post, &mut tries, &Attempts::default(), start + 10);
+    let round = run(
+        &mut chats,
+        &post,
+        &mut tries,
+        &Attempts::default(),
+        start + 10,
+    );
 
     assert_eq!(round.delivered.len(), 1, "it carried on past a failure");
     assert_eq!(chats.outbox().len(), 2, "the rest were not still owed");
@@ -370,11 +469,18 @@ fn after_days_undelivered_the_word_changes_from_waiting_to_stuck() {
     let attempts = Attempts::default();
 
     run(&mut chats, &post, &mut tries, &attempts, now);
-    assert_eq!(chats.room(&room).unwrap().messages[0].to[0].1, Delivery::Waiting);
+    assert_eq!(
+        chats.room(&room).unwrap().messages[0].to[0].1,
+        Delivery::Waiting
+    );
 
     let four_days = now + 4 * 86_400;
     let round = run(&mut chats, &post, &mut tries, &attempts, four_days);
-    assert_eq!(round.gone_stuck.len(), 1, "a four-day-old message still read as waiting");
+    assert_eq!(
+        round.gone_stuck.len(),
+        1,
+        "a four-day-old message still read as waiting"
+    );
     match &chats.room(&room).unwrap().messages[0].to[0].1 {
         Delivery::Stuck(why) => assert!(why.contains("days"), "{why}"),
         other => panic!("{other:?}"),
@@ -437,7 +543,9 @@ fn in_a_group_each_person_is_delivered_to_separately() {
         )
         .unwrap();
     let now = 1_000_000;
-    chats.post(&room, "starting Monday", now, 0, &roster, &pairings).unwrap();
+    chats
+        .post(&room, "starting Monday", now, 0, &roster, &pairings)
+        .unwrap();
 
     let post = Fake::new()
         .with("Sam", Kind::Phone, "sam-phone", Handoff::Took)
@@ -450,7 +558,11 @@ fn in_a_group_each_person_is_delivered_to_separately() {
     let held = &chats.room(&room).unwrap().messages[0];
     assert!(!held.fully_arrived(), "one of two counted as everybody");
     assert_eq!(held.still_waiting(), vec!["Ali"]);
-    assert_eq!(chats.outbox().len(), 1, "it left the outbox with Ali still missing it");
+    assert_eq!(
+        chats.outbox().len(),
+        1,
+        "it left the outbox with Ali still missing it"
+    );
 }
 
 // --- what it says ----------------------------------------------------------
@@ -464,8 +576,14 @@ fn a_quiet_round_says_nothing_at_all() {
     assert!(round.nothing_happened());
     assert_eq!(round.spoken(), "");
 
-    let waiting_only = Round { still_waiting: vec!["Sam".into()], ..Default::default() };
-    assert!(waiting_only.nothing_happened(), "somebody being offline is not news");
+    let waiting_only = Round {
+        still_waiting: vec!["Sam".into()],
+        ..Default::default()
+    };
+    assert!(
+        waiting_only.nothing_happened(),
+        "somebody being offline is not news"
+    );
     assert_eq!(waiting_only.spoken(), "");
 }
 
@@ -483,7 +601,10 @@ fn what_it_says_names_people_rather_than_counting_messages() {
         refused: vec![("Ali".into(), "not a member of Acme".into())],
         ..Default::default()
     };
-    assert!(refused.spoken().contains("not a member of Acme"), "the reason was dropped");
+    assert!(
+        refused.spoken().contains("not a member of Acme"),
+        "the reason was dropped"
+    );
 }
 
 // --- what this install can actually do today -------------------------------
@@ -501,17 +622,33 @@ fn with_no_transport_nothing_is_tried_and_nothing_is_claimed() {
 
     assert!(NoLink.devices_for("Sam").is_empty());
     let round = run(&mut chats, &NoLink, &mut tries, &Attempts::default(), now);
-    assert!(round.delivered.is_empty(), "a transport that cannot reach anybody delivered something");
+    assert!(
+        round.delivered.is_empty(),
+        "a transport that cannot reach anybody delivered something"
+    );
     assert_eq!(round.still_waiting, vec!["Sam"]);
     assert_eq!(chats.outbox().len(), 1, "the message was not kept");
-    assert_eq!(chats.room(&room).unwrap().messages[0].to[0].1, Delivery::Waiting);
+    assert_eq!(
+        chats.room(&room).unwrap().messages[0].to[0].1,
+        Delivery::Waiting
+    );
 
     // And the honest sentence about why, rather than blaming the recipient.
     let said = atlas::courier::nothing_can_move_yet(1);
     assert!(said.contains("no link"), "{said}");
-    assert!(said.contains("kept"), "it does not say the message is safe: {said}");
-    assert!(!said.to_lowercase().contains("hasn't picked"), "it blamed the recipient: {said}");
-    assert_eq!(atlas::courier::nothing_can_move_yet(0), "", "it said something with nothing waiting");
+    assert!(
+        said.contains("kept"),
+        "it does not say the message is safe: {said}"
+    );
+    assert!(
+        !said.to_lowercase().contains("hasn't picked"),
+        "it blamed the recipient: {said}"
+    );
+    assert_eq!(
+        atlas::courier::nothing_can_move_yet(0),
+        "",
+        "it said something with nothing waiting"
+    );
 }
 
 #[test]

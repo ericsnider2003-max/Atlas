@@ -77,13 +77,17 @@ impl Kind {
     fn usually_because(&self) -> &'static str {
         match self {
             Kind::RouteFails => "the route's preconditions aren't being checked before it's chosen",
-            Kind::YouKeepCorrecting => "the rule that produces this answer is fitted to the wrong signal",
+            Kind::YouKeepCorrecting => {
+                "the rule that produces this answer is fitted to the wrong signal"
+            }
             Kind::GotSlower => "something is being recomputed that used to be cached",
             Kind::NotUnderstood => "the phrase list doesn't cover how you actually say it",
             Kind::NeverUsed => "it isn't reachable, or nothing points at it",
             Kind::AskedAgain => "the answer isn't being kept, so it's derived again each time",
             Kind::NeverFailed => "it asserts something that was always true",
-            Kind::SelfTestFails => "what the command does was changed without the self-test being run against it",
+            Kind::SelfTestFails => {
+                "what the command does was changed without the self-test being run against it"
+            }
         }
     }
 
@@ -145,7 +149,11 @@ pub struct Recommendation {
 /// handful — a list of thirty recommendations is a list nobody reads.
 pub fn recommend(signals: &[Signal], most: usize) -> Vec<Recommendation> {
     let mut faults: Vec<&Signal> = signals.iter().filter(|s| s.is_a_fault()).collect();
-    faults.sort_by(|a, b| b.worth().partial_cmp(&a.worth()).unwrap_or(std::cmp::Ordering::Equal));
+    faults.sort_by(|a, b| {
+        b.worth()
+            .partial_cmp(&a.worth())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     faults
         .into_iter()
@@ -159,7 +167,10 @@ pub fn recommend(signals: &[Signal], most: usize) -> Vec<Recommendation> {
             // that fails every time is a clearer fault than something that
             // fails often.
             certainty: (s.rate() * 0.7 + s.kind.weight() * 0.3).min(0.95),
-            because: format!("{} times out of {} — most recently {}", s.seen, s.of, s.example),
+            because: format!(
+                "{} times out of {} — most recently {}",
+                s.seen, s.of, s.example
+            ),
         })
         .collect()
 }
@@ -179,14 +190,25 @@ fn symptom_for(s: &Signal) -> String {
 
 fn proof_for(s: &Signal) -> String {
     match s.kind {
-        Kind::RouteFails => format!("a test that {} refuses to be chosen without its preconditions", s.subject),
-        Kind::YouKeepCorrecting => format!("a test asserting the corrected answer for {}", s.subject),
+        Kind::RouteFails => format!(
+            "a test that {} refuses to be chosen without its preconditions",
+            s.subject
+        ),
+        Kind::YouKeepCorrecting => {
+            format!("a test asserting the corrected answer for {}", s.subject)
+        }
         Kind::GotSlower => format!("a test that {} finishes inside its old budget", s.subject),
-        Kind::NotUnderstood => format!("a test that the phrasings you actually use reach {}", s.subject),
+        Kind::NotUnderstood => format!(
+            "a test that the phrasings you actually use reach {}",
+            s.subject
+        ),
         Kind::NeverUsed => format!("a test that calls {} and gets something back", s.subject),
         Kind::AskedAgain => format!("a test that the answer to {} is kept and reused", s.subject),
         Kind::NeverFailed => format!("break {} deliberately and watch the test fail", s.subject),
-        Kind::SelfTestFails => format!("a test that \"{}\" passes the self-test's judgement again", s.example),
+        Kind::SelfTestFails => format!(
+            "a test that \"{}\" passes the self-test's judgement again",
+            s.example
+        ),
     }
 }
 
@@ -287,7 +309,11 @@ pub struct Unprompted {
 pub fn unprompted(cfg: &SelfAuditConfig, recs: &[Recommendation]) -> Option<Unprompted> {
     let top = recs.first()?;
     if !cfg.act_without_asking {
-        return Some(Unprompted { said: spoken(recs), goal: None, thought: None });
+        return Some(Unprompted {
+            said: spoken(recs),
+            goal: None,
+            thought: None,
+        });
     }
     // Told not to ask. It still says what it is doing and how to stop it —
     // acting without asking is not the same as acting without saying, and a

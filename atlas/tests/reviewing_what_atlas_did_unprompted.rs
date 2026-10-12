@@ -26,7 +26,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// The handler reads the wall clock to decide the window, so the seeded
 /// actions have to sit just behind "now" to fall inside the default hour.
 fn now_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 fn tmp(tag: &str) -> PathBuf {
@@ -41,7 +44,14 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 /// Two things Atlas did on its own and one you asked for, all within the last
@@ -49,17 +59,41 @@ fn plat() -> MockPlatform {
 fn seed(d: &mut Daemon) {
     let now = now_secs();
     // you_asked = false: Atlas decided.
-    d.history.note("archived 12 newsletters", "files", Undo::Atlas("put them back".into()), false, now - 30);
-    d.history.note("dimmed your screen", "settings", Undo::Atlas("brighten it".into()), false, now - 20);
+    d.history.note(
+        "archived 12 newsletters",
+        "files",
+        Undo::Atlas("put them back".into()),
+        false,
+        now - 30,
+    );
+    d.history.note(
+        "dimmed your screen",
+        "settings",
+        Undo::Atlas("brighten it".into()),
+        false,
+        now - 20,
+    );
     // you_asked = true: you told it to.
-    d.history.note("opened Chrome", "apps", Undo::You("close it yourself".into()), true, now - 10);
+    d.history.note(
+        "opened Chrome",
+        "apps",
+        Undo::You("close it yourself".into()),
+        true,
+        now - 10,
+    );
 }
 
 #[test]
 fn asking_what_atlas_did_on_its_own_answers_from_the_unprompted_actions_alone() {
     let c = cfg();
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("own")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("own")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     seed(&mut d);
     // `now` small enough that the default hour window reaches all three.
     let reply = d.turn("what did you do on your own", 1_500);
@@ -85,7 +119,13 @@ fn asking_what_atlas_did_on_its_own_answers_from_the_unprompted_actions_alone() 
 fn without_asking_is_the_same_question_worded_differently() {
     let c = cfg();
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("without")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("without")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     seed(&mut d);
     let reply = d.turn("what have you done without asking", 1_500);
     assert!(
@@ -98,7 +138,13 @@ fn without_asking_is_the_same_question_worded_differently() {
 fn the_plain_question_still_returns_the_whole_log_not_just_the_unprompted() {
     let c = cfg();
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("plain")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("plain")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     seed(&mut d);
     let reply = d.turn("what did you do", 1_500);
     // The whole list includes the thing you asked for, which the on-your-own
@@ -118,9 +164,21 @@ fn the_plain_question_still_returns_the_whole_log_not_just_the_unprompted() {
 fn nothing_unprompted_is_said_plainly_rather_than_faked() {
     let c = cfg();
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("none")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("none")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     // Only things you asked for.
-    d.history.note("opened Chrome", "apps", Undo::You("close it".into()), true, now_secs() - 10);
+    d.history.note(
+        "opened Chrome",
+        "apps",
+        Undo::You("close it".into()),
+        true,
+        now_secs() - 10,
+    );
     let reply = d.turn("what did you do on your own", 1_500);
     assert!(
         reply.contains("Nothing on my own"),

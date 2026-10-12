@@ -9,8 +9,8 @@
 //! reading and input synthesis. Those still refuse here, and the refusal now
 //! names the specific thing rather than the whole platform.
 
-use crate::error::{AtlasError, Result};
 use crate::config::AppSpec;
+use crate::error::{AtlasError, Result};
 use crate::platform::{ActiveWindow, Monitor, Platform, WindowId};
 
 /// Which flavour of Unix this is.
@@ -27,7 +27,11 @@ pub struct Posix {
 impl Posix {
     pub fn here() -> Posix {
         Posix {
-            flavour: if cfg!(target_os = "macos") { Flavour::Mac } else { Flavour::Linux },
+            flavour: if cfg!(target_os = "macos") {
+                Flavour::Mac
+            } else {
+                Flavour::Linux
+            },
         }
     }
 
@@ -135,13 +139,21 @@ impl Platform for Posix {
         // to the opener.
         let web = path.starts_with("https://") || path.starts_with("http://");
         if !web && !std::path::Path::new(path).exists() {
-            return Err(crate::error::AtlasError::Platform(format!("{path} isn't there any more")));
+            return Err(crate::error::AtlasError::Platform(format!(
+                "{path} isn't there any more"
+            )));
         }
-        let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+        let opener = if cfg!(target_os = "macos") {
+            "open"
+        } else {
+            "xdg-open"
+        };
         let child = std::process::Command::new(opener)
             .arg(path)
             .spawn()
-            .map_err(|e| crate::error::AtlasError::Platform(format!("couldn't open {path}: {e}")))?;
+            .map_err(|e| {
+                crate::error::AtlasError::Platform(format!("couldn't open {path}: {e}"))
+            })?;
         crate::unwaited::dont_wait(child);
         Ok(())
     }
@@ -189,7 +201,8 @@ impl Platform for Posix {
             }
         }
         Err(AtlasError::Platform(
-            "no clipboard tool is installed here — on Linux that's wl-clipboard or xclip/xsel".into(),
+            "no clipboard tool is installed here — on Linux that's wl-clipboard or xclip/xsel"
+                .into(),
         ))
     }
 }

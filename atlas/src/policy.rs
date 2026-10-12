@@ -461,7 +461,11 @@ pub fn gate(intent: &Intent, approver: &dyn Approver) -> Result<()> {
     // `the_two_consent_routes_cannot_disagree` fails the build if that
     // happens.
     let floor = crate::categories::category_of(intent).default_decision();
-    gate_with(Decision::strictest(classify(intent), floor), intent, approver)
+    gate_with(
+        Decision::strictest(classify(intent), floor),
+        intent,
+        approver,
+    )
 }
 
 fn gate_with(decision: Decision, intent: &Intent, approver: &dyn Approver) -> Result<()> {
@@ -500,7 +504,10 @@ pub enum Press {
 /// only read as a picture (research report, Stage 1 item 5).
 pub fn press(name: &str) -> Press {
     let n = name.to_lowercase();
-    let words: Vec<&str> = n.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    let words: Vec<&str> = n
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
     let has = |w: &str| words.contains(&w);
     let paying = ["buy", "purchase", "checkout", "pay", "subscribe", "donate", "bid"].iter().any(|w| has(w))
         || n.contains("place order")

@@ -27,8 +27,15 @@ pub struct Id {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Op {
-    Insert { id: Id, left: Option<Id>, right: Option<Id>, ch: char },
-    Delete { id: Id },
+    Insert {
+        id: Id,
+        left: Option<Id>,
+        right: Option<Id>,
+        ch: char,
+    },
+    Delete {
+        id: Id,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -51,11 +58,18 @@ pub struct Doc {
 
 impl Doc {
     pub fn new(site: &str) -> Doc {
-        Doc { site: site.to_string(), ..Default::default() }
+        Doc {
+            site: site.to_string(),
+            ..Default::default()
+        }
     }
 
     pub fn text(&self) -> String {
-        self.items.iter().filter(|i| !i.deleted).map(|i| i.ch).collect()
+        self.items
+            .iter()
+            .filter(|i| !i.deleted)
+            .map(|i| i.ch)
+            .collect()
     }
 
     fn index_of(&self, id: &Id) -> Option<usize> {
@@ -63,7 +77,12 @@ impl Doc {
     }
 
     fn visible_index(&self, n: usize) -> Option<usize> {
-        self.items.iter().enumerate().filter(|(_, i)| !i.deleted).nth(n).map(|(k, _)| k)
+        self.items
+            .iter()
+            .enumerate()
+            .filter(|(_, i)| !i.deleted)
+            .nth(n)
+            .map(|(k, _)| k)
     }
 
     /// Apply an op from anywhere — this device or another. Idempotent, and
@@ -99,7 +118,12 @@ impl Doc {
                 }
                 None => false,
             },
-            Op::Insert { id, left, right, ch } => {
+            Op::Insert {
+                id,
+                left,
+                right,
+                ch,
+            } => {
                 if self.index_of(id).is_some() {
                     return true; // seen it
                 }
@@ -149,7 +173,16 @@ impl Doc {
                     }
                     o += 1;
                 }
-                self.items.insert(dest, Item { id: id.clone(), left: left.clone(), right: right.clone(), ch: *ch, deleted: false });
+                self.items.insert(
+                    dest,
+                    Item {
+                        id: id.clone(),
+                        left: left.clone(),
+                        right: right.clone(),
+                        ch: *ch,
+                        deleted: false,
+                    },
+                );
                 true
             }
         }
@@ -157,19 +190,31 @@ impl Doc {
 
     fn next_id(&mut self) -> Id {
         self.clock += 1;
-        Id { site: self.site.clone(), clock: self.clock }
+        Id {
+            site: self.site.clone(),
+            clock: self.clock,
+        }
     }
 
     /// Type `s` at visible position `at`. Returns the ops to send.
     pub fn insert(&mut self, at: usize, s: &str) -> Vec<Op> {
         let mut ops = Vec::new();
-        let mut after: Option<usize> = if at == 0 { None } else { self.visible_index(at - 1) };
+        let mut after: Option<usize> = if at == 0 {
+            None
+        } else {
+            self.visible_index(at - 1)
+        };
         for ch in s.chars() {
             let left = after.map(|k| self.items[k].id.clone());
             let right_idx = after.map(|k| k + 1).unwrap_or(0);
             let right = self.items.get(right_idx).map(|i| i.id.clone());
             let id = self.next_id();
-            let op = Op::Insert { id: id.clone(), left, right, ch };
+            let op = Op::Insert {
+                id: id.clone(),
+                left,
+                right,
+                ch,
+            };
             self.apply(op.clone());
             after = self.index_of(&id);
             ops.push(op);
@@ -179,7 +224,10 @@ impl Doc {
 
     /// Remove `len` visible characters starting at `at`.
     pub fn delete(&mut self, at: usize, len: usize) -> Vec<Op> {
-        let ids: Vec<Id> = (at..at + len).filter_map(|n| self.visible_index(n)).map(|k| self.items[k].id.clone()).collect();
+        let ids: Vec<Id> = (at..at + len)
+            .filter_map(|n| self.visible_index(n))
+            .map(|k| self.items[k].id.clone())
+            .collect();
         ids.into_iter()
             .map(|id| {
                 let op = Op::Delete { id };
@@ -251,7 +299,12 @@ pub fn from_log(name: &str, site: &str, events: &[crate::sync::Event]) -> Doc {
     let mut d = Doc::new(site);
     let prefix = format!("doc:{name}:");
     let mut evs: Vec<&crate::sync::Event> = events.iter().collect();
-    evs.sort_by(|a, b| crate::sync::effective_stamp(a).cmp(&crate::sync::effective_stamp(b)).then(a.device.cmp(&b.device)).then(a.seq.cmp(&b.seq)));
+    evs.sort_by(|a, b| {
+        crate::sync::effective_stamp(a)
+            .cmp(&crate::sync::effective_stamp(b))
+            .then(a.device.cmp(&b.device))
+            .then(a.seq.cmp(&b.seq))
+    });
     for e in evs {
         if let crate::sync::What::Captured { id, text } = &e.what {
             if id.starts_with(&prefix) {
@@ -269,7 +322,10 @@ fn names_in(events: &[crate::sync::Event]) -> Vec<String> {
     let mut v: Vec<String> = events
         .iter()
         .filter_map(|e| match &e.what {
-            crate::sync::What::Captured { id, .. } => id.strip_prefix("doc:").and_then(|r| r.split(':').next()).map(String::from),
+            crate::sync::What::Captured { id, .. } => id
+                .strip_prefix("doc:")
+                .and_then(|r| r.split(':').next())
+                .map(String::from),
             _ => None,
         })
         .collect();
@@ -282,7 +338,13 @@ fn names_in(events: &[crate::sync::Event]) -> Vec<String> {
 fn record(log: &mut crate::sync::Log, doc: &str, ops: &[Op], at: u64) {
     for op in ops {
         if let Ok(text) = serde_json::to_string(op) {
-            log.append(crate::sync::What::Captured { id: event_id(doc, op), text }, at);
+            log.append(
+                crate::sync::What::Captured {
+                    id: event_id(doc, op),
+                    text,
+                },
+                at,
+            );
         }
     }
 }
@@ -296,17 +358,29 @@ fn record(log: &mut crate::sync::Log, doc: &str, ops: &[Op], at: u64) {
 /// a small file here, and the daemon takes them in on its next tick.
 pub fn queue(dir: &std::path::Path, doc: &str, ops: &[Op]) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
-    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
     let body = serde_json::to_string(&(doc, ops)).map_err(std::io::Error::other)?;
     // Written whole, then renamed, so the daemon never reads half a file.
     let tmp = dir.join(format!(".{stamp}-{}.tmp", std::process::id()));
     std::fs::write(&tmp, body)?;
-    std::fs::rename(&tmp, dir.join(format!("{stamp}-{}.json", std::process::id())))
+    std::fs::rename(
+        &tmp,
+        dir.join(format!("{stamp}-{}.json", std::process::id())),
+    )
 }
 
 fn queued(dir: &std::path::Path) -> Vec<(std::path::PathBuf, String, Vec<Op>)> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return vec![] };
-    let mut files: Vec<std::path::PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return vec![];
+    };
+    let mut files: Vec<std::path::PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
     files.sort();
     files
         .into_iter()
@@ -321,7 +395,11 @@ fn queued(dir: &std::path::Path) -> Vec<(std::path::PathBuf, String, Vec<Op>)> {
 /// Take queued edits into the log. Returns the files taken, to be removed
 /// once the log with them in it has been saved — not before, so a crash in
 /// between repeats an edit (harmless: ops are idempotent) rather than losing it.
-pub fn take_queued(dir: &std::path::Path, log: &mut crate::sync::Log, at: u64) -> Vec<std::path::PathBuf> {
+pub fn take_queued(
+    dir: &std::path::Path,
+    log: &mut crate::sync::Log,
+    at: u64,
+) -> Vec<std::path::PathBuf> {
     let mut taken = Vec::new();
     for (path, doc, ops) in queued(dir) {
         record(log, &doc, &ops, at);
@@ -331,7 +409,12 @@ pub fn take_queued(dir: &std::path::Path, log: &mut crate::sync::Log, at: u64) -
 }
 
 /// A document as it stands: the log, plus edits still waiting in the inbox.
-pub fn current(name: &str, site: &str, events: &[crate::sync::Event], inbox: &std::path::Path) -> Doc {
+pub fn current(
+    name: &str,
+    site: &str,
+    events: &[crate::sync::Event],
+    inbox: &std::path::Path,
+) -> Doc {
     let mut d = from_log(name, site, events);
     for (_, doc, ops) in queued(inbox) {
         if doc == name {

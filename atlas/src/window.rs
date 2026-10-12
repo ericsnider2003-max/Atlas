@@ -115,7 +115,13 @@ pub struct Contents {
 
 impl Contents {
     pub fn new(panel: Panel, title: &str, lines: Vec<String>) -> Contents {
-        Contents { panel, title: title.into(), lines, footer: None, open: panel.hub_page().map(str::to_string) }
+        Contents {
+            panel,
+            title: title.into(),
+            lines,
+            footer: None,
+            open: panel.hub_page().map(str::to_string),
+        }
     }
 
     pub fn because(mut self, why: &str) -> Contents {
@@ -155,8 +161,7 @@ pub fn stage(c: &Contents) -> std::io::Result<std::path::PathBuf> {
 
 pub fn read_staged(path: &std::path::Path) -> std::io::Result<Contents> {
     let text = std::fs::read_to_string(path)?;
-    serde_json::from_str(&text)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    serde_json::from_str(&text).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
 /// Put a panel in front of the person, without blocking the caller.
@@ -173,7 +178,9 @@ pub fn open(c: &Contents) -> Result<(), String> {
         return Err(crate::selftest::NOT_IN_A_TEST.into());
     }
     if !running_as_atlas() {
-        return Err("I'm not running as the Atlas program, so there's no window of mine to open".into());
+        return Err(
+            "I'm not running as the Atlas program, so there's no window of mine to open".into(),
+        );
     }
     let path = stage(c).map_err(|e| format!("couldn't stage the panel: {e}"))?;
     let exe = std::env::current_exe().map_err(|e| format!("couldn't find myself on disk: {e}"))?;
@@ -209,7 +216,10 @@ pub fn open(c: &Contents) -> Result<(), String> {
 pub(crate) fn running_as_atlas() -> bool {
     std::env::current_exe()
         .ok()
-        .and_then(|e| e.file_stem().map(|s| s.to_string_lossy().eq_ignore_ascii_case("atlas")))
+        .and_then(|e| {
+            e.file_stem()
+                .map(|s| s.to_string_lossy().eq_ignore_ascii_case("atlas"))
+        })
         .unwrap_or(false)
 }
 
@@ -251,7 +261,8 @@ pub fn run(c: Contents) -> Result<(), String> {
     let insists = c.panel.insists();
     let height = 120.0 + (c.lines.len() as f32 * 22.0);
     let opts = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default().with_icon(crate::mark::window_icon())
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_icon(crate::mark::window_icon())
             .with_inner_size([420.0, height.min(520.0)])
             .with_always_on_top_if(insists)
             .with_decorations(true)
@@ -262,7 +273,12 @@ pub fn run(c: Contents) -> Result<(), String> {
     eframe::run_native(
         "atlas-panel",
         opts,
-        Box::new(|_cc| Ok(Box::new(App { c, opened: std::time::Instant::now() }))),
+        Box::new(|_cc| {
+            Ok(Box::new(App {
+                c,
+                opened: std::time::Instant::now(),
+            }))
+        }),
     )
     .map_err(|e| e.to_string())
 }
@@ -335,28 +351,64 @@ pub(crate) fn paint_mark(
     let (p, os) = crate::look_paint::palette_and_os();
     let pose = pose(motion, t, voice, os.reduce_motion);
     let side = rect.width().min(rect.height());
-    let at = |(x, y): (f32, f32)| pos2(rect.left() + x / 100.0 * side, rect.center().y - side / 2.0 + y / 100.0 * side);
-    let tone = |c: Color32, a: f32| Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), (a * pose.opacity * 255.0) as u8);
-    let (front, back) = if pose.dim { (p.dim, p.dim) } else { (p.text, p.signal) };
+    let at = |(x, y): (f32, f32)| {
+        pos2(
+            rect.left() + x / 100.0 * side,
+            rect.center().y - side / 2.0 + y / 100.0 * side,
+        )
+    };
+    let tone = |c: Color32, a: f32| {
+        Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), (a * pose.opacity * 255.0) as u8)
+    };
+    let (front, back) = if pose.dim {
+        (p.dim, p.dim)
+    } else {
+        (p.text, p.signal)
+    };
     // The fold: the accent a step darker, the paper lying over itself.
-    let fold = if pose.dim { p.soft } else { Color32::from_rgb((back.r() as f32 * 0.78) as u8, (back.g() as f32 * 0.78) as u8, (back.b() as f32 * 0.78) as u8) };
+    let fold = if pose.dim {
+        p.soft
+    } else {
+        Color32::from_rgb(
+            (back.r() as f32 * 0.78) as u8,
+            (back.g() as f32 * 0.78) as u8,
+            (back.b() as f32 * 0.78) as u8,
+        )
+    };
     let base = FRONT[0].1;
     // The ink leg rises from the base; the folded leg comes down from the crease.
     let rise = |pt: (f32, f32), k: f32| (pt.0, base - (base - pt.1) * k);
-    let drop = |pt: (f32, f32), k: f32| (pt.0, crate::mark::CREASE_Y + (pt.1 - crate::mark::CREASE_Y) * k);
-    let poly = |pts: Vec<(f32, f32)>, c: Color32| Shape::convex_polygon(pts.into_iter().map(at).collect(), c, Stroke::NONE);
+    let drop = |pt: (f32, f32), k: f32| {
+        (
+            pt.0,
+            crate::mark::CREASE_Y + (pt.1 - crate::mark::CREASE_Y) * k,
+        )
+    };
+    let poly = |pts: Vec<(f32, f32)>, c: Color32| {
+        Shape::convex_polygon(pts.into_iter().map(at).collect(), c, Stroke::NONE)
+    };
     if pose.front_rise > 0.001 {
-        painter.add(poly(FRONT.iter().map(|q| rise(*q, pose.front_rise)).collect(), tone(front, 1.0)));
+        painter.add(poly(
+            FRONT.iter().map(|q| rise(*q, pose.front_rise)).collect(),
+            tone(front, 1.0),
+        ));
     }
     if pose.back_drop > 0.001 {
-        painter.add(poly(BACK.iter().map(|q| drop(*q, pose.back_drop)).collect(), tone(back, 1.0)));
+        painter.add(poly(
+            BACK.iter().map(|q| drop(*q, pose.back_drop)).collect(),
+            tone(back, 1.0),
+        ));
     }
     if pose.fold_opacity > 0.001 && side >= 32.0 {
         painter.add(poly(FOLD.to_vec(), tone(fold, pose.fold_opacity)));
     }
     if pose.dot_opacity > 0.001 {
         let c = at((DOT.0, DOT.1 - pose.dot_lift));
-        painter.circle_filled(c, DOT.2 / 100.0 * side * pose.dot_scale, tone(if pose.dim { p.dim } else { back }, pose.dot_opacity));
+        painter.circle_filled(
+            c,
+            DOT.2 / 100.0 * side * pose.dot_scale,
+            tone(if pose.dim { p.dim } else { back }, pose.dot_opacity),
+        );
     }
 }
 
@@ -366,7 +418,6 @@ impl eframe::App for App {
         // The locked hub design's colourway, not egui's default grey.
         crate::look_paint::dress(ctx);
         use eframe::egui::{self, FontId, RichText};
-
 
         // The panel is a living thing while it's open: the mark breathes and
         // the sweep travels, so egui keeps repainting rather than only on
@@ -378,13 +429,18 @@ impl eframe::App for App {
 
         // Slate glass over the desktop, not a hole punched in it: the panel
         // is the raised end of look's gradient, over ink.
-        let frame = egui::Frame::none().fill(crate::look_paint::colourway().ink).inner_margin(egui::Margin::same(28.0));
+        let frame = egui::Frame::none()
+            .fill(crate::look_paint::colourway().ink)
+            .inner_margin(egui::Margin::same(28.0));
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
             // The mint line where the panel meets the screen edge (look's
             // `.panel:before`).
             let top = ui.max_rect().top();
             ui.painter().line_segment(
-                [egui::pos2(ui.max_rect().left(), top), egui::pos2(ui.max_rect().right(), top)],
+                [
+                    egui::pos2(ui.max_rect().left(), top),
+                    egui::pos2(ui.max_rect().right(), top),
+                ],
                 egui::Stroke::new(1.5_f32, crate::look_paint::colourway().signal),
             );
 
@@ -394,25 +450,56 @@ impl eframe::App for App {
             // with a count; Urgent leads with its heading in the warn colour.
             match panel {
                 Panel::Brief | Panel::Thinking => {
-                    let (rect, mark_resp) = ui.allocate_exact_size(egui::vec2(46.0, 46.0), egui::Sense::hover());
+                    let (rect, mark_resp) =
+                        ui.allocate_exact_size(egui::vec2(46.0, 46.0), egui::Sense::hover());
                     mark_resp.widget_info(|| {
-                        let what = if panel == Panel::Thinking { "Atlas mark: working" } else { "Atlas mark" };
-                        eframe::egui::WidgetInfo::labeled(eframe::egui::WidgetType::Label, true, what)
+                        let what = if panel == Panel::Thinking {
+                            "Atlas mark: working"
+                        } else {
+                            "Atlas mark"
+                        };
+                        eframe::egui::WidgetInfo::labeled(
+                            eframe::egui::WidgetType::Label,
+                            true,
+                            what,
+                        )
                     });
                     paint_mark(ui.painter(), rect, mark_state_for(panel), t, None);
                     ui.add_space(14.0);
-                    ui.label(RichText::new(&self.c.title).font(FontId::proportional(26.0)).strong().color(crate::look_paint::colourway().text));
+                    ui.label(
+                        RichText::new(&self.c.title)
+                            .font(FontId::proportional(26.0))
+                            .strong()
+                            .color(crate::look_paint::colourway().text),
+                    );
                 }
                 Panel::Outstanding => {
                     // The big count, look's `.count`: the number of things
                     // waiting, with the label beneath it.
                     let waiting = self.c.lines.len();
-                    ui.label(RichText::new(waiting.to_string()).font(FontId::proportional(64.0)).color(crate::look_paint::colourway().text));
-                    ui.label(RichText::new(if waiting == 1 { "thing waiting" } else { "things waiting" }).font(FontId::proportional(14.0)).color(crate::look_paint::colourway().soft));
+                    ui.label(
+                        RichText::new(waiting.to_string())
+                            .font(FontId::proportional(64.0))
+                            .color(crate::look_paint::colourway().text),
+                    );
+                    ui.label(
+                        RichText::new(if waiting == 1 {
+                            "thing waiting"
+                        } else {
+                            "things waiting"
+                        })
+                        .font(FontId::proportional(14.0))
+                        .color(crate::look_paint::colourway().soft),
+                    );
                     ui.add_space(20.0);
                 }
                 Panel::Urgent => {
-                    ui.label(RichText::new(&self.c.title).font(FontId::proportional(28.0)).strong().color(crate::look_paint::colourway().warn));
+                    ui.label(
+                        RichText::new(&self.c.title)
+                            .font(FontId::proportional(28.0))
+                            .strong()
+                            .color(crate::look_paint::colourway().warn),
+                    );
                     ui.add_space(16.0);
                 }
             }
@@ -423,14 +510,25 @@ impl eframe::App for App {
                 if idx > 0 {
                     let y = ui.cursor().top();
                     ui.painter().line_segment(
-                        [egui::pos2(ui.max_rect().left(), y), egui::pos2(ui.max_rect().right(), y)],
+                        [
+                            egui::pos2(ui.max_rect().left(), y),
+                            egui::pos2(ui.max_rect().right(), y),
+                        ],
                         egui::Stroke::new(1.0_f32, crate::look_paint::colourway().line),
                     );
                     ui.add_space(1.0);
                 }
                 ui.add_space(11.0);
-                let colour = if urgent { crate::look_paint::colourway().warn } else { crate::look_paint::colourway().text };
-                ui.label(RichText::new(line).font(FontId::proportional(18.0)).color(colour));
+                let colour = if urgent {
+                    crate::look_paint::colourway().warn
+                } else {
+                    crate::look_paint::colourway().text
+                };
+                ui.label(
+                    RichText::new(line)
+                        .font(FontId::proportional(18.0))
+                        .color(colour),
+                );
                 ui.add_space(11.0);
             }
 
@@ -440,11 +538,18 @@ impl eframe::App for App {
                 ui.add_space(16.0);
                 let y = ui.cursor().top();
                 ui.painter().line_segment(
-                    [egui::pos2(ui.max_rect().left(), y), egui::pos2(ui.max_rect().right(), y)],
+                    [
+                        egui::pos2(ui.max_rect().left(), y),
+                        egui::pos2(ui.max_rect().right(), y),
+                    ],
                     egui::Stroke::new(1.0_f32, crate::look_paint::colourway().line),
                 );
                 ui.add_space(12.0);
-                ui.label(RichText::new(f).font(FontId::proportional(13.0)).color(crate::look_paint::colourway().soft));
+                ui.label(
+                    RichText::new(f)
+                        .font(FontId::proportional(13.0))
+                        .color(crate::look_paint::colourway().soft),
+                );
             }
 
             // One way out, and it reads as text, not a bevelled button
@@ -453,8 +558,12 @@ impl eframe::App for App {
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 ui.horizontal(|ui| {
                     let got = ui.add(
-                        egui::Button::new(RichText::new("Got it").color(crate::look_paint::colourway().signal_text).font(FontId::proportional(15.0)))
-                            .frame(false),
+                        egui::Button::new(
+                            RichText::new("Got it")
+                                .color(crate::look_paint::colourway().signal_text)
+                                .font(FontId::proportional(15.0)),
+                        )
+                        .frame(false),
                     );
                     if got.clicked() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -463,11 +572,17 @@ impl eframe::App for App {
                     if let Some(page) = &self.c.open {
                         ui.add_space(18.0);
                         let open = ui.add(
-                            egui::Button::new(RichText::new("Open in the hub").color(crate::look_paint::colourway().signal_text).font(FontId::proportional(15.0)))
-                                .frame(false),
+                            egui::Button::new(
+                                RichText::new("Open in the hub")
+                                    .color(crate::look_paint::colourway().signal_text)
+                                    .font(FontId::proportional(15.0)),
+                            )
+                            .frame(false),
                         );
                         if open.clicked() {
-                            crate::heard!(crate::firstlaunch::open_atlas_window(&crate::firstlaunch::First::Hub(page.clone())));
+                            crate::heard!(crate::firstlaunch::open_atlas_window(
+                                &crate::firstlaunch::First::Hub(page.clone())
+                            ));
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
                     }

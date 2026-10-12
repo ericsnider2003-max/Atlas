@@ -90,7 +90,10 @@ fn starting_dictation_names_the_window_it_is_typing_into() {
 
     let said = d.turn("start dictating", 1_000);
     assert!(said.to_lowercase().contains("notepad"), "got {said:?}");
-    assert!(said.contains("stop dictating"), "it has to say how to get out: {said:?}");
+    assert!(
+        said.contains("stop dictating"),
+        "it has to say how to get out: {said:?}"
+    );
 }
 
 #[test]
@@ -104,7 +107,10 @@ fn with_dictation_off_nothing_starts_and_it_says_which_setting() {
     let mut d = daemon(&c, &p, "off");
 
     let said = d.turn("start dictating", 1_000);
-    assert!(said.contains("dictate.enabled"), "name the setting: {said:?}");
+    assert!(
+        said.contains("dictate.enabled"),
+        "name the setting: {said:?}"
+    );
     d.turn("hello there", 1_001);
     assert!(typed(&p).is_empty(), "nothing should have been typed");
 }
@@ -134,7 +140,10 @@ fn what_you_say_is_typed_and_not_answered() {
     let reply = d.turn("open chrome", 1_001);
 
     assert_eq!(typed(&p), vec!["Open chrome".to_string()]);
-    assert!(reply.is_empty(), "dictation answers with silence, not chatter: {reply:?}");
+    assert!(
+        reply.is_empty(),
+        "dictation answers with silence, not chatter: {reply:?}"
+    );
     assert!(
         !p.actions().iter().any(|a| matches!(a, Action::Launch(_))),
         "it opened a browser instead of typing the words"
@@ -201,7 +210,10 @@ fn scratch_that_takes_back_the_last_line_and_keeps_going() {
     d.turn("the second sentence", 1_003);
     assert_eq!(
         typed(&p),
-        vec!["The first sentence".to_string(), "The second sentence".to_string()]
+        vec![
+            "The first sentence".to_string(),
+            "The second sentence".to_string()
+        ]
     );
 }
 
@@ -259,7 +271,10 @@ fn moving_to_another_window_stops_it_rather_than_following_you() {
     p.focus_on("chrome.exe", "some page - Chrome");
     let said = d.turn("this should not land", 1_001);
 
-    assert!(said.contains("chrome.exe"), "it should say where you went: {said:?}");
+    assert!(
+        said.contains("chrome.exe"),
+        "it should say where you went: {said:?}"
+    );
     assert!(typed(&p).is_empty(), "text landed in a window you had left");
 
     // And it is genuinely off, not merely quiet for one turn.
@@ -308,14 +323,20 @@ fn dictation_is_local_operational_and_reported_rather_than_silent() {
     use atlas::intent::Intent;
     let i = Intent::Dictate(String::new());
 
-    assert_eq!(atlas::connectivity::need_of(&i), atlas::connectivity::Need::Local);
+    assert_eq!(
+        atlas::connectivity::need_of(&i),
+        atlas::connectivity::Need::Local
+    );
     assert_eq!(
         atlas::categories::category_of(&i),
         atlas::categories::Category::LocalOperational
     );
     // Not `AutoProceed`: this is the one capability that sends keystrokes into
     // a window Atlas does not own, and what it reports is which window.
-    assert_eq!(atlas::policy::classify(&i), atlas::policy::Decision::ProceedAndReport);
+    assert_eq!(
+        atlas::policy::classify(&i),
+        atlas::policy::Decision::ProceedAndReport
+    );
     assert_eq!(atlas::session::kind_of(&i), "dictate");
 }
 

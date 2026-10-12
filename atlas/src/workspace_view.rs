@@ -177,7 +177,10 @@ pub enum Status {
 impl Status {
     /// Does it want your attention right now?
     pub fn live(&self) -> bool {
-        matches!(self, Status::Waiting | Status::Doing | Status::Blocked | Status::NeedsYou)
+        matches!(
+            self,
+            Status::Waiting | Status::Doing | Status::Blocked | Status::NeedsYou
+        )
     }
 }
 
@@ -270,7 +273,12 @@ pub fn shipped() -> Vec<View> {
             name: "Everything live".into(),
             shape: Shape::Board,
             only_kinds: vec![],
-            only_status: vec![Status::Waiting, Status::Doing, Status::Blocked, Status::NeedsYou],
+            only_status: vec![
+                Status::Waiting,
+                Status::Doing,
+                Status::Blocked,
+                Status::NeedsYou,
+            ],
             only_project: None,
             only_client: None,
             as_of: None,
@@ -517,7 +525,10 @@ pub fn overview(items: &[Item], now: u64) -> Overview {
     blockers.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
 
     Overview {
-        needs_you: items.iter().filter(|i| i.status == Status::NeedsYou).count(),
+        needs_you: items
+            .iter()
+            .filter(|i| i.status == Status::NeedsYou)
+            .count(),
         doing: items.iter().filter(|i| i.status == Status::Doing).count(),
         blocked: items.iter().filter(|i| i.status == Status::Blocked).count(),
         waiting: items.iter().filter(|i| i.status == Status::Waiting).count(),
@@ -637,7 +648,9 @@ pub fn pick(views: &[View], wanted: &str) -> Option<View> {
 
 /// Did the name you set actually match a view?
 pub fn is_a_view(views: &[View], wanted: &str) -> bool {
-    views.iter().any(|v| v.name.eq_ignore_ascii_case(wanted.trim()))
+    views
+        .iter()
+        .any(|v| v.name.eq_ignore_ascii_case(wanted.trim()))
 }
 
 /// Drop what finished longer ago than you keep it.
@@ -646,11 +659,7 @@ pub fn is_a_view(views: &[View], wanted: &str) -> bool {
 /// Tuesday" has no answer if they vanish — so this hides them from a view
 /// without touching them. `keep_done_days: 0` hides them the moment they
 /// close, which is a real answer and not the same as "keep forever".
-pub fn still_worth_showing<'a>(
-    items: &[&'a Item],
-    keep_done_days: u32,
-    now: u64,
-) -> Vec<&'a Item> {
+pub fn still_worth_showing<'a>(items: &[&'a Item], keep_done_days: u32, now: u64) -> Vec<&'a Item> {
     let window = keep_done_days as u64 * 86_400;
     items
         .iter()

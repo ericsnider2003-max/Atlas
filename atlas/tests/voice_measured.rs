@@ -14,7 +14,10 @@ use atlas::speaker::{clip_frames, Background};
 use atlas::voiceid::{cosine, VoiceIdConfig};
 
 fn wav(name: &str) -> Vec<i16> {
-    let (s, r) = atlas::diarize::read_wav(&std::fs::read(format!("tests/fixtures/speech/corpus/{name}.wav")).unwrap()).unwrap();
+    let (s, r) = atlas::diarize::read_wav(
+        &std::fs::read(format!("tests/fixtures/speech/corpus/{name}.wav")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(r, 16000);
     s
 }
@@ -27,7 +30,9 @@ fn with_fan(s: &[i16], snr_db: f32, seed: u64) -> Vec<i16> {
     let mut lp = 0f32;
     let noise: Vec<f32> = (0..s.len())
         .map(|_| {
-            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let w = ((x >> 33) as f32 / (1u64 << 31) as f32) - 1.0;
             lp = 0.9 * lp + 0.1 * w;
             lp
@@ -36,7 +41,10 @@ fn with_fan(s: &[i16], snr_db: f32, seed: u64) -> Vec<i16> {
     let sp = (s.iter().map(|v| (*v as f32).powi(2)).sum::<f32>() / s.len() as f32).sqrt();
     let np = (noise.iter().map(|v| v * v).sum::<f32>() / noise.len() as f32).sqrt();
     let k = sp / np / 10f32.powf(snr_db / 20.0);
-    s.iter().zip(noise).map(|(a, n)| (*a as f32 + n * k).clamp(-32767.0, 32767.0) as i16).collect()
+    s.iter()
+        .zip(noise)
+        .map(|(a, n)| (*a as f32 + n * k).clamp(-32767.0, 32767.0) as i16)
+        .collect()
 }
 
 fn pad(s: &[i16]) -> Vec<i16> {
@@ -56,12 +64,17 @@ fn builtin_encoder_thresholds_are_where_the_voices_put_them() {
     let frames: Vec<(usize, Vec<[f32; 19]>)> = SPEAKERS
         .iter()
         .enumerate()
-        .flat_map(|(k, s)| (0..10).map(move |i| (k, clip_frames(&wav(&format!("{s}_s{i}")), 16000).unwrap())))
+        .flat_map(|(k, s)| {
+            (0..10).map(move |i| (k, clip_frames(&wav(&format!("{s}_s{i}")), 16000).unwrap()))
+        })
         .collect();
     // The machine's background: every clip it has heard (all six voices).
     let bg = Background::of(&frames.iter().map(|c| c.1.clone()).collect::<Vec<_>>());
     assert!(bg.ready());
-    let z: Vec<(usize, Vec<f32>)> = frames.iter().map(|(k, f)| (*k, bg.embed(f).unwrap())).collect();
+    let z: Vec<(usize, Vec<f32>)> = frames
+        .iter()
+        .map(|(k, f)| (*k, bg.embed(f).unwrap()))
+        .collect();
     let (mut own, mut others) = (vec![], vec![]);
     let cfg = VoiceIdConfig::default();
     let mut verdicts = (0, 0, 0); // own accepted, own rejected, others accepted
@@ -77,7 +90,13 @@ fn builtin_encoder_thresholds_are_where_the_voices_put_them() {
                 continue;
             }
             let s = cosine(&c.1, &cen);
-            let v = id.check(&c.1, &VoiceIdConfig { min_samples: 3, ..cfg.clone() });
+            let v = id.check(
+                &c.1,
+                &VoiceIdConfig {
+                    min_samples: 3,
+                    ..cfg.clone()
+                },
+            );
             if c.0 == k {
                 own.push(s);
                 verdicts.0 += matches!(v, atlas::voiceid::Verdict::You(_)) as usize;
@@ -112,15 +131,25 @@ fn builtin_encoder_thresholds_are_where_the_voices_put_them() {
     );
     // "You" starts where only 2% of other voices reach; "not you" sits below
     // the lowest 2% of your own.
-    assert!((cfg.builtin_accept - x98).abs() <= 0.03, "accept {} vs measured {x98:.3}", cfg.builtin_accept);
-    assert!(cfg.builtin_reject < o2 && cfg.builtin_reject < cfg.builtin_accept, "reject {} vs own 2nd percentile {o2:.3}", cfg.builtin_reject);
+    assert!(
+        (cfg.builtin_accept - x98).abs() <= 0.03,
+        "accept {} vs measured {x98:.3}",
+        cfg.builtin_accept
+    );
+    assert!(
+        cfg.builtin_reject < o2 && cfg.builtin_reject < cfg.builtin_accept,
+        "reject {} vs own 2nd percentile {o2:.3}",
+        cfg.builtin_reject
+    );
     assert!(verdicts.2 as f32 / others.len() as f32 <= 0.03);
     assert!(verdicts.1 as f32 / own.len() as f32 <= 0.03);
 }
 
 #[test]
 fn your_wake_phrase_from_three_takes_is_heard_and_near_misses_are_not() {
-    let takes: Vec<_> = (0..3).map(|i| atlas::wakeword::phrase_take(&wav(&format!("A_wake{i}")), 16000).unwrap()).collect();
+    let takes: Vec<_> = (0..3)
+        .map(|i| atlas::wakeword::phrase_take(&wav(&format!("A_wake{i}")), 16000).unwrap())
+        .collect();
     let m = atlas::wakeword::train(takes).unwrap();
     let hit = |s: &[i16]| atlas::wakeword::heard(s, 16000, &m);
     let (mut clean, mut fan) = (0, 0);
@@ -129,13 +158,28 @@ fn your_wake_phrase_from_three_takes_is_heard_and_near_misses_are_not() {
         clean += hit(&s) as usize;
         fan += hit(&with_fan(&s, 10.0, i)) as usize;
     }
-    let other_voice = (0..9).filter(|i| hit(&pad(&wav(&format!("B_wake{i}"))))).count();
-    let near = ["A", "B"].iter().flat_map(|s| (0..6).map(move |i| format!("{s}_near{i}"))).filter(|n| hit(&pad(&wav(n)))).count();
-    let sentences = ["A", "B", "C"].iter().flat_map(|s| (0..10).map(move |i| format!("{s}_s{i}"))).filter(|n| hit(&wav(n))).count();
-    println!("LIVE [wake word, DTW on three takes]  threshold {:.2}", m.threshold);
+    let other_voice = (0..9)
+        .filter(|i| hit(&pad(&wav(&format!("B_wake{i}")))))
+        .count();
+    let near = ["A", "B"]
+        .iter()
+        .flat_map(|s| (0..6).map(move |i| format!("{s}_near{i}")))
+        .filter(|n| hit(&pad(&wav(n))))
+        .count();
+    let sentences = ["A", "B", "C"]
+        .iter()
+        .flat_map(|s| (0..10).map(move |i| format!("{s}_s{i}")))
+        .filter(|n| hit(&wav(n)))
+        .count();
+    println!(
+        "LIVE [wake word, DTW on three takes]  threshold {:.2}",
+        m.threshold
+    );
     println!("  your phrase: {clean}/6 clean, {fan}/6 with a fan at 10 dB");
     println!("  false wakes: {near}/12 near-misses (\"hey alice\", \"hey at last\", \"at least\"…), {sentences}/30 sentences");
-    println!("  another voice saying \"hey atlas\": {other_voice}/9 — matched to your voice, by design");
+    println!(
+        "  another voice saying \"hey atlas\": {other_voice}/9 — matched to your voice, by design"
+    );
     assert_eq!((clean, fan), (6, 6));
     assert_eq!((near, sentences), (0, 0));
 }
@@ -154,10 +198,18 @@ fn hearing_calibrated_to_a_room_scores_at_least_as_well_as_the_shipped_defaults(
     // that level (plus a constant, which the mic's DC blocking would remove).
     let base = vec![1000i16; 16000 * 8];
     let room: Vec<i16> = with_fan(&base, 0.0, 9).iter().map(|v| v - 1000).collect();
-    let rms = (room.iter().map(|v| (*v as f32).powi(2)).sum::<f32>() / room.len() as f32).sqrt().max(1.0);
-    let room: Vec<i16> = room.iter().map(|v| (*v as f32 * loud / rms / 10f32.powf(6.0 / 20.0)) as i16).collect();
+    let rms = (room.iter().map(|v| (*v as f32).powi(2)).sum::<f32>() / room.len() as f32)
+        .sqrt()
+        .max(1.0);
+    let room: Vec<i16> = room
+        .iter()
+        .map(|v| (*v as f32 * loud / rms / 10f32.powf(6.0 / 20.0)) as i16)
+        .collect();
     let c = atlas::vadcal::calibrate(&room, &you, 16000, atlas::vad::DEFAULT_MEASURED).unwrap();
-    println!("LIVE [hearing calibration, a fan 6 dB under your voice]  {}", c.say());
+    println!(
+        "LIVE [hearing calibration, a fan 6 dB under your voice]  {}",
+        c.say()
+    );
     assert!(c.best_score >= c.before_score);
     assert!(c.best_score > 0.8, "{}", c.best_score);
 }
@@ -185,20 +237,40 @@ fn a_three_way_call_is_split_by_voice_with_the_builtin_encoder() {
         .map(|n| clip_frames(&wav(&n), 16000).unwrap())
         .collect();
     let machine = Background::of(&heard);
-    let own: Vec<Option<Vec<f32>>> = atlas::speaker::recording_embeddings(&call, 16000, &machine).into_iter().map(|(_, e)| e).collect();
+    let own: Vec<Option<Vec<f32>>> = atlas::speaker::recording_embeddings(&call, 16000, &machine)
+        .into_iter()
+        .map(|(_, e)| e)
+        .collect();
     let mut next = own.into_iter();
     let mut embed = |_: &[i16]| next.next().flatten();
     let mut hear = |_: &[i16]| None;
-    let lines = atlas::diarize::who_said_what_grouped(&call, 16000, &mut embed, &mut hear, None, VoiceIdConfig::default().builtin_accept, atlas::speaker::GROUP_CENTRED_AT);
+    let lines = atlas::diarize::who_said_what_grouped(
+        &call,
+        16000,
+        &mut embed,
+        &mut hear,
+        None,
+        VoiceIdConfig::default().builtin_accept,
+        atlas::speaker::GROUP_CENTRED_AT,
+    );
     // Each line's true speaker is the turn it overlaps most.
     let mut pairs = Vec::new();
     for l in &lines {
         let (s, e) = (l.start_ms as usize * 16, l.end_ms as usize * 16);
-        let t = truth.iter().max_by_key(|(a, b, _)| (*b).min(e).saturating_sub((*a).max(s))).unwrap().2;
+        let t = truth
+            .iter()
+            .max_by_key(|(a, b, _)| (*b).min(e).saturating_sub((*a).max(s)))
+            .unwrap()
+            .2;
         pairs.push((l.speaker.clone(), t));
     }
     // Best one-to-one naming of the found speakers against the real ones.
-    let found: Vec<String> = { let mut v: Vec<String> = pairs.iter().map(|p| p.0.clone()).collect(); v.sort(); v.dedup(); v };
+    let found: Vec<String> = {
+        let mut v: Vec<String> = pairs.iter().map(|p| p.0.clone()).collect();
+        v.sort();
+        v.dedup();
+        v
+    };
     let mut right = 0;
     for l in &found {
         let mut counts = std::collections::BTreeMap::new();
@@ -223,7 +295,14 @@ fn a_three_way_call_is_split_by_voice_with_the_builtin_encoder() {
 /// One synthetic call: `order` is (speaker, sentence) turns, 0.8 s apart,
 /// with a fan at 15 dB. The machine has heard the voices not on the call.
 /// Returns the call, the truth per turn, and the built-in grouping's lines.
-fn a_call(order: &[(&str, usize)], seed: u64) -> (Vec<i16>, Vec<(usize, usize, String)>, Vec<atlas::diarize::Line>) {
+fn a_call(
+    order: &[(&str, usize)],
+    seed: u64,
+) -> (
+    Vec<i16>,
+    Vec<(usize, usize, String)>,
+    Vec<atlas::diarize::Line>,
+) {
     let mut call = Vec::new();
     let mut truth = Vec::new();
     for (spk, i) in order {
@@ -241,20 +320,39 @@ fn a_call(order: &[(&str, usize)], seed: u64) -> (Vec<i16>, Vec<(usize, usize, S
         .map(|n| clip_frames(&wav(&n), 16000).unwrap())
         .collect();
     let machine = Background::of(&heard);
-    let own: Vec<Option<Vec<f32>>> = atlas::speaker::recording_embeddings(&call, 16000, &machine).into_iter().map(|(_, e)| e).collect();
+    let own: Vec<Option<Vec<f32>>> = atlas::speaker::recording_embeddings(&call, 16000, &machine)
+        .into_iter()
+        .map(|(_, e)| e)
+        .collect();
     let mut next = own.into_iter();
     let mut embed = |_: &[i16]| next.next().flatten();
     let mut hear = |_: &[i16]| None;
-    let lines = atlas::diarize::who_said_what_grouped(&call, 16000, &mut embed, &mut hear, None, VoiceIdConfig::default().builtin_accept, atlas::speaker::GROUP_CENTRED_AT);
+    let lines = atlas::diarize::who_said_what_grouped(
+        &call,
+        16000,
+        &mut embed,
+        &mut hear,
+        None,
+        VoiceIdConfig::default().builtin_accept,
+        atlas::speaker::GROUP_CENTRED_AT,
+    );
     (call, truth, lines)
 }
 
 /// (labels found, lines on a label that is one real speaker, lines).
-fn score(lines: &[atlas::diarize::Line], truth: &[(usize, usize, String)]) -> (usize, usize, usize) {
+fn score(
+    lines: &[atlas::diarize::Line],
+    truth: &[(usize, usize, String)],
+) -> (usize, usize, usize) {
     let mut pairs = Vec::new();
     for l in lines {
         let (s, e) = (l.start_ms as usize * 16, l.end_ms as usize * 16);
-        let t = truth.iter().max_by_key(|(a, b, _)| (*b).min(e).saturating_sub((*a).max(s))).unwrap().2.clone();
+        let t = truth
+            .iter()
+            .max_by_key(|(a, b, _)| (*b).min(e).saturating_sub((*a).max(s)))
+            .unwrap()
+            .2
+            .clone();
         pairs.push((l.speaker.clone(), t));
     }
     let mut found: Vec<String> = pairs.iter().map(|p| p.0.clone()).collect();
@@ -276,7 +374,9 @@ fn score(lines: &[atlas::diarize::Line], truth: &[(usize, usize, String)]) -> (u
 fn the_calls() -> Vec<Vec<(&'static str, usize)>> {
     let mut x = 0x9E37_79B9_7F4A_7C15u64;
     let mut rnd = |n: usize| {
-        x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        x = x
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         ((x >> 33) as usize) % n
     };
     let mut calls = Vec::new();
@@ -328,7 +428,12 @@ fn a_second_look_on_pooled_speech_merges_a_split_voice_without_mixing_two() {
     for (c, order) in calls.iter().enumerate() {
         let half = if c < 40 { 0 } else { 1 };
         let (call, truth, lines) = a_call(order, c as u64 + 1);
-        let people = { let mut v: Vec<&str> = order.iter().map(|o| o.0).collect(); v.sort(); v.dedup(); v.len() };
+        let people = {
+            let mut v: Vec<&str> = order.iter().map(|o| o.0).collect();
+            v.sort();
+            v.dedup();
+            v.len()
+        };
         let mut tally = |k: usize, lines: &[atlas::diarize::Line]| {
             let (found, right, n) = score(lines, &truth);
             let row = &mut table[k][half];
@@ -348,13 +453,26 @@ fn a_second_look_on_pooled_speech_merges_a_split_voice_without_mixing_two() {
             tally(k + 1, &merged);
         }
     }
-    for (half, name) in [(0, "the 40 calls the penalty is chosen on"), (1, "the 20 held-out calls")] {
+    for (half, name) in [
+        (0, "the 40 calls the penalty is chosen on"),
+        (1, "the 20 held-out calls"),
+    ] {
         println!("LIVE [who said what, 2-3 voices + fan — {name}]");
-        println!("    {:<14} {:>6} {:>11} {:>7} {:>12}", "setting", "right", "over-split", "mixed", "pure lines");
+        println!(
+            "    {:<14} {:>6} {:>11} {:>7} {:>12}",
+            "setting", "right", "over-split", "mixed", "pure lines"
+        );
         for (k, row) in table.iter().enumerate() {
-            let label = if k == 0 { "grouping only".to_string() } else { format!("λ = {}", lambdas[k - 1]) };
+            let label = if k == 0 {
+                "grouping only".to_string()
+            } else {
+                format!("λ = {}", lambdas[k - 1])
+            };
             let r = row[half];
-            println!("    {:<14} {:>6} {:>11} {:>7} {:>7}/{}", label, r[0], r[1], r[2], r[3], r[4]);
+            println!(
+                "    {:<14} {:>6} {:>11} {:>7} {:>7}/{}",
+                label, r[0], r[1], r[2], r[3], r[4]
+            );
         }
     }
     // The rule: most calls exactly right without mixing more than grouping
@@ -367,8 +485,15 @@ fn a_second_look_on_pooled_speech_merges_a_split_voice_without_mixing_two() {
             pick = k;
         }
     }
-    assert!(pick > 0, "no penalty did better than grouping alone on the choosing calls");
-    assert_eq!(lambdas[pick - 1], atlas::diarize::SAME_VOICE_LAMBDA, "the shipped penalty isn't the one the calls pick");
+    assert!(
+        pick > 0,
+        "no penalty did better than grouping alone on the choosing calls"
+    );
+    assert_eq!(
+        lambdas[pick - 1],
+        atlas::diarize::SAME_VOICE_LAMBDA,
+        "the shipped penalty isn't the one the calls pick"
+    );
     let (held_base, held) = (table[0][1], table[pick][1]);
     println!(
         "LIVE [who said what] chosen λ = {}: on the held-out calls, over-split {} → {}, mixed {} → {}",
@@ -384,7 +509,10 @@ fn a_second_look_on_pooled_speech_merges_a_split_voice_without_mixing_two() {
         !safe_by_default,
         "the second look's default in `atlas notes` doesn't match what the held-out calls say"
     );
-    assert!(held[1] <= held_base[1], "it should never split more than grouping alone");
+    assert!(
+        held[1] <= held_base[1],
+        "it should never split more than grouping alone"
+    );
 }
 
 /// Sixty calls like `the_calls`, except that in every other one a further
@@ -393,7 +521,9 @@ fn a_second_look_on_pooled_speech_merges_a_split_voice_without_mixing_two() {
 fn the_calls_with_loners() -> Vec<Vec<(&'static str, usize)>> {
     let mut x = 0x2545_F491_4F6C_DD1Du64;
     let mut rnd = |n: usize| {
-        x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        x = x
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         ((x >> 33) as usize) % n
     };
     let mut calls = the_calls();
@@ -449,16 +579,32 @@ fn someone_who_speaks_once_gets_their_own_name_back() {
         };
         tally(0, &lines);
         for (k, m) in margins.iter().enumerate() {
-            tally(k + 1, &atlas::diarize::split_strangers(&call, 16000, lines.clone(), *m));
+            tally(
+                k + 1,
+                &atlas::diarize::split_strangers(&call, 16000, lines.clone(), *m),
+            );
         }
     }
-    for (half, name) in [(0, "the 40 calls the margin is chosen on"), (1, "the 20 held-out calls")] {
+    for (half, name) in [
+        (0, "the 40 calls the margin is chosen on"),
+        (1, "the 20 held-out calls"),
+    ] {
         println!("LIVE [someone speaks once, 2-4 voices + fan — {name}]");
-        println!("    {:<14} {:>6} {:>11} {:>7} {:>12}", "setting", "right", "over-split", "mixed", "pure lines");
+        println!(
+            "    {:<14} {:>6} {:>11} {:>7} {:>12}",
+            "setting", "right", "over-split", "mixed", "pure lines"
+        );
         for (k, row) in table.iter().enumerate() {
-            let label = if k == 0 { "grouping only".to_string() } else { format!("margin {}", margins[k - 1]) };
+            let label = if k == 0 {
+                "grouping only".to_string()
+            } else {
+                format!("margin {}", margins[k - 1])
+            };
             let r = row[half];
-            println!("    {:<14} {:>6} {:>11} {:>7} {:>7}/{}", label, r[0], r[1], r[2], r[3], r[4]);
+            println!(
+                "    {:<14} {:>6} {:>11} {:>7} {:>7}/{}",
+                label, r[0], r[1], r[2], r[3], r[4]
+            );
         }
     }
     // The rule: most calls exactly right; on a tie, the larger margin (the
@@ -469,8 +615,15 @@ fn someone_who_speaks_once_gets_their_own_name_back() {
             pick = k;
         }
     }
-    assert!(pick > 0, "splitting did no better than grouping alone on the choosing calls");
-    assert_eq!(margins[pick - 1], atlas::diarize::STRANGER_MARGIN, "the shipped margin isn't the one the calls pick");
+    assert!(
+        pick > 0,
+        "splitting did no better than grouping alone on the choosing calls"
+    );
+    assert_eq!(
+        margins[pick - 1],
+        atlas::diarize::STRANGER_MARGIN,
+        "the shipped margin isn't the one the calls pick"
+    );
     let (base, held) = (table[0][1], table[pick][1]);
     println!(
         "LIVE [someone speaks once] chosen margin {}: held out, right {} → {}, mixed {} → {}, over-split {} → {}",
@@ -496,7 +649,18 @@ fn someone_who_speaks_once_gets_their_own_name_back() {
             v.dedup();
             v.len()
         };
-        for (row, l) in [(&mut before, lines.clone()), (&mut after, atlas::diarize::split_strangers(&call, 16000, lines, atlas::diarize::STRANGER_MARGIN))] {
+        for (row, l) in [
+            (&mut before, lines.clone()),
+            (
+                &mut after,
+                atlas::diarize::split_strangers(
+                    &call,
+                    16000,
+                    lines,
+                    atlas::diarize::STRANGER_MARGIN,
+                ),
+            ),
+        ] {
             let (found, right, n) = score(&l, &truth);
             if right < n {
                 row[2] += 1;
@@ -511,7 +675,10 @@ fn someone_who_speaks_once_gets_their_own_name_back() {
         "LIVE [someone speaks once] on the 60 calls where everyone speaks twice or more: right {} → {}, over-split {} → {}, mixed {} → {}",
         before[0], after[0], before[1], after[1], before[2], after[2]
     );
-    assert!(after[2] <= before[2] && after[0] + 3 >= before[0], "{before:?} → {after:?}");
+    assert!(
+        after[2] <= before[2] && after[0] + 3 >= before[0],
+        "{before:?} → {after:?}"
+    );
 }
 
 // Slow in a debug build, not stuck (measured 28 Sep 2026 on the two-CPU
@@ -529,7 +696,11 @@ fn told_how_many_people_there_were_the_grouping_gets_it_right_more_often() {
     let sets = [the_calls(), the_calls_with_loners()];
     for (set, calls) in sets.iter().enumerate() {
         for (c, order) in calls.iter().enumerate() {
-            let seed = if set == 0 { c as u64 + 1 } else { c as u64 + 101 };
+            let seed = if set == 0 {
+                c as u64 + 1
+            } else {
+                c as u64 + 101
+            };
             let (call, truth, lines) = a_call(order, seed);
             let people = {
                 let mut v: Vec<&str> = order.iter().map(|o| o.0).collect();
@@ -537,7 +708,12 @@ fn told_how_many_people_there_were_the_grouping_gets_it_right_more_often() {
                 v.dedup();
                 v.len()
             };
-            let split = atlas::diarize::split_strangers(&call, 16000, lines.clone(), atlas::diarize::STRANGER_MARGIN);
+            let split = atlas::diarize::split_strangers(
+                &call,
+                16000,
+                lines.clone(),
+                atlas::diarize::STRANGER_MARGIN,
+            );
             let counted = atlas::diarize::to_count(&call, 16000, split.clone(), people);
             for (k, l) in [(0, &split), (1, &counted)] {
                 let (found, right, n) = score(l, &truth);
@@ -549,7 +725,11 @@ fn told_how_many_people_there_were_the_grouping_gets_it_right_more_often() {
                     rows[k][1] += 1;
                 }
             }
-            assert_eq!(score(&counted, &truth).0, people, "told {people}, it should say {people}");
+            assert_eq!(
+                score(&counted, &truth).0,
+                people,
+                "told {people}, it should say {people}"
+            );
         }
     }
     println!(

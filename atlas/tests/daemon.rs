@@ -24,13 +24,33 @@ fn cfg() -> Config {
 
 fn plat() -> MockPlatform {
     MockPlatform::new(vec![
-        Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true },
-        Monitor { id: 3, x: 1920, y: 0, width: 1920, height: 1040, primary: false },
+        Monitor {
+            id: 1,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1040,
+            primary: true,
+        },
+        Monitor {
+            id: 3,
+            x: 1920,
+            y: 0,
+            width: 1920,
+            height: 1040,
+            primary: false,
+        },
     ])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 // ================= spoken turns =================
@@ -67,7 +87,10 @@ fn reviewing_a_post_silently_fixes_certain_wording_rather_than_narrating_it() {
     let reply = d.turn("review this post the the launch happens today", 100);
     assert!(reply.contains("Fixed 2 things"), "got: {reply}");
     assert!(reply.contains("The launch happens today"), "got: {reply}");
-    assert!(!reply.contains("things worth a look"), "certain fixes shouldn't be narrated: {reply}");
+    assert!(
+        !reply.contains("things worth a look"),
+        "certain fixes shouldn't be narrated: {reply}"
+    );
 }
 
 #[test]
@@ -78,7 +101,10 @@ fn reviewing_a_post_asks_rather_than_guesses_when_it_cannot_tell() {
     // read as a genuine question -- not a flat report and not a silent
     // change to wording that might have been intentional.
     let reply = d.turn("review this post there going to love it", 100);
-    assert!(reply.contains("Did you mean it, or should I fix it?"), "got: {reply}");
+    assert!(
+        reply.contains("Did you mean it, or should I fix it?"),
+        "got: {reply}"
+    );
 }
 
 #[test]
@@ -117,7 +143,11 @@ fn declining_something_is_learned_as_a_trait() {
     assert!(d.person.traits.is_empty(), "starts with nothing learned");
     d.turn("shutdown workspace", 100);
     d.turn("no thanks", 105);
-    assert_eq!(d.person.traits.len(), 1, "the refusal should be the one trait now on file");
+    assert_eq!(
+        d.person.traits.len(),
+        1,
+        "the refusal should be the one trait now on file"
+    );
     assert!(
         d.person.traits[0].what.starts_with("said no to:"),
         "got: {}",
@@ -139,9 +169,15 @@ fn an_answer_is_never_reparsed_as_a_new_command() {
     d.turn("shutdown workspace", 100);
     assert!(d.session.is_waiting(), "the shutdown should be asked about");
     let reply = d.turn("close chrome", 105);
-    assert_ne!(reply, "Left it alone.", "the new request was taken as a no and lost");
+    assert_ne!(
+        reply, "Left it alone.",
+        "the new request was taken as a no and lost"
+    );
     assert!(
-        !matches!(d.session.pending, atlas::session::Pending::Approval(atlas::intent::Intent::WorkspaceOff, _)),
+        !matches!(
+            d.session.pending,
+            atlas::session::Pending::Approval(atlas::intent::Intent::WorkspaceOff, _)
+        ),
         "the parked shutdown is still waiting for an answer"
     );
     let closed_other: Vec<String> = p
@@ -149,11 +185,16 @@ fn an_answer_is_never_reparsed_as_a_new_command() {
         .borrow()
         .iter()
         .filter_map(|a| match a {
-            atlas::platform::mock::Action::Close(w) if !w.to_lowercase().contains("chrome") => Some(w.clone()),
+            atlas::platform::mock::Action::Close(w) if !w.to_lowercase().contains("chrome") => {
+                Some(w.clone())
+            }
             _ => None,
         })
         .collect();
-    assert!(closed_other.is_empty(), "the workspace was shut down on a sentence that wasn't a yes: {closed_other:?}");
+    assert!(
+        closed_other.is_empty(),
+        "the workspace was shut down on a sentence that wasn't a yes: {closed_other:?}"
+    );
 }
 
 #[test]
@@ -163,7 +204,10 @@ fn restricted_actions_ask_every_single_time_no_matter_the_history() {
     let mut d = daemon(&c, &p, "alwaysask");
     for t in 0..8 {
         let q = d.turn("shutdown workspace", t * 20);
-        assert!(q.contains("Go ahead?"), "round {t} should still ask, got: {q}");
+        assert!(
+            q.contains("Go ahead?"),
+            "round {t} should still ask, got: {q}"
+        );
         assert_eq!(d.turn("yes", t * 20 + 5), "Workspace down.");
     }
     assert_eq!(d.memory.approval_rate("workspace_off"), Some(1.0));
@@ -201,7 +245,10 @@ fn single_app_control_works_by_voice() {
     // means knowing which are proper nouns, and the app names come from the
     // user's own config.
     let up = d.turn("open chrome", 100);
-    assert!(up.starts_with("Chrome is up"), "the persona capitalises what it says: {up}");
+    assert!(
+        up.starts_with("Chrome is up"),
+        "the persona capitalises what it says: {up}"
+    );
     let there = d.turn("focus notepad", 110);
     assert!(there.starts_with("There's notepad"), "got: {there}");
 }
@@ -216,7 +263,10 @@ fn unattended_atlas_still_does_the_safe_work() {
     let id = d.scheduler.at("boot workspace", 50);
     let out = d.tick(100);
     assert!(out.iter().any(|s| s.contains("online")), "got {out:?}");
-    assert_eq!(d.scheduler.jobs.iter().find(|j| j.id == id).unwrap().runs, 1);
+    assert_eq!(
+        d.scheduler.jobs.iter().find(|j| j.id == id).unwrap().runs,
+        1
+    );
 }
 
 #[test]
@@ -238,7 +288,8 @@ fn unattended_atlas_parks_anything_needing_consent_rather_than_guessing() {
     // Whether Atlas should stay silent about a filling disk while unattended
     // is a separate design question and not this test's business.
     assert!(
-        !out.iter().any(|s| s.contains("online") || s.contains("Workspace")),
+        !out.iter()
+            .any(|s| s.contains("online") || s.contains("Workspace")),
         "the parked job ran anyway: {out:?}"
     );
     let j = d.scheduler.jobs.iter().find(|j| j.id == id).unwrap();
@@ -259,7 +310,9 @@ fn a_parked_job_is_not_lost_it_resumes_when_approved() {
     // busy simply goes on the next tick.
     let mut out = d.tick(200);
     for _ in 0..200 {
-        if out.iter().any(|s| s.contains("down")) { break; }
+        if out.iter().any(|s| s.contains("down")) {
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(25));
         out.extend(d.tick(200));
     }
@@ -284,7 +337,10 @@ fn unattended_atlas_sets_it_aside_rather_than_acting() {
     d.autonomy = Autonomy::Unattended;
     let reply = d.turn("shutdown workspace", 100);
 
-    assert!(!d.session.is_waiting(), "must not park a question nobody will hear");
+    assert!(
+        !d.session.is_waiting(),
+        "must not park a question nobody will hear"
+    );
     assert!(!reply.is_empty(), "it said nothing at all");
     assert_eq!(
         d.backlog.outstanding().len(),
@@ -314,14 +370,31 @@ fn saying_no_to_a_backlog_offer_takes_it_off_the_list_for_good() {
         out.iter().any(|s| s.contains("water the plants")),
         "the backlog item was never offered: {out:?}"
     );
-    assert!(d.session.is_waiting(), "the offer must leave a question pending");
+    assert!(
+        d.session.is_waiting(),
+        "the offer must leave a question pending"
+    );
 
     // Now say no.
     let reply = d.turn("no", 70);
-    assert!(reply.to_lowercase().contains("leave"), "unexpected reply: {reply}");
-    assert!(d.backlog.outstanding().is_empty(), "a refused task must leave the list");
-    let item = d.backlog.items.iter().find(|i| i.id == id).expect("still on record");
-    assert!(item.dismissed, "the item is marked dismissed, not merely un-offered");
+    assert!(
+        reply.to_lowercase().contains("leave"),
+        "unexpected reply: {reply}"
+    );
+    assert!(
+        d.backlog.outstanding().is_empty(),
+        "a refused task must leave the list"
+    );
+    let item = d
+        .backlog
+        .items
+        .iter()
+        .find(|i| i.id == id)
+        .expect("still on record");
+    assert!(
+        item.dismissed,
+        "the item is marked dismissed, not merely un-offered"
+    );
     assert!(!d.session.is_waiting(), "the question has been answered");
 
     // And it is never raised again, however long the machine sits quiet.
@@ -336,7 +409,10 @@ fn saying_no_to_a_backlog_offer_takes_it_off_the_list_for_good() {
 
 fn busy_signals(added: usize) -> Signals {
     Signals {
-        active: Some(ActiveWindow { process: "chrome.exe".into(), title: "docs".into() }),
+        active: Some(ActiveWindow {
+            process: "chrome.exe".into(),
+            title: "docs".into(),
+        }),
         dwell_secs: 60,
         idle_secs: 120,
         recent_changes: Changes {
@@ -349,16 +425,26 @@ fn busy_signals(added: usize) -> Signals {
 }
 
 fn eager() -> ProactiveConfig {
-    ProactiveConfig { enabled: true, cooldown_secs: 60, ..Default::default() }
+    ProactiveConfig {
+        enabled: true,
+        cooldown_secs: 60,
+        ..Default::default()
+    }
 }
 
 #[test]
 fn atlas_offers_help_when_something_notable_happens() {
     let mut pr = Proactive::new(eager());
     let m = Memory::default();
-    let o = pr.consider(&busy_signals(6), &m, 1000).expect("should offer");
+    let o = pr
+        .consider(&busy_signals(6), &m, 1000)
+        .expect("should offer");
     assert_eq!(o.kind, "index_new_files");
-    assert!(o.message.ends_with('?'), "an offer is a question: {}", o.message);
+    assert!(
+        o.message.ends_with('?'),
+        "an offer is a question: {}",
+        o.message
+    );
 }
 
 #[test]
@@ -382,13 +468,24 @@ fn cooldown_stops_back_to_back_interruptions() {
     let mut pr = Proactive::new(eager());
     let m = Memory::default();
     assert!(pr.consider(&busy_signals(6), &m, 1000).is_some());
-    assert!(pr.consider(&busy_signals(6), &m, 1030).is_none(), "inside cooldown");
-    assert!(pr.consider(&busy_signals(6), &m, 1100).is_some(), "after cooldown");
+    assert!(
+        pr.consider(&busy_signals(6), &m, 1030).is_none(),
+        "inside cooldown"
+    );
+    assert!(
+        pr.consider(&busy_signals(6), &m, 1100).is_some(),
+        "after cooldown"
+    );
 }
 
 #[test]
 fn there_is_an_hourly_interruption_budget() {
-    let mut pr = Proactive::new(ProactiveConfig { enabled: true, cooldown_secs: 1, max_interruptions_per_hour: 3, ..Default::default() });
+    let mut pr = Proactive::new(ProactiveConfig {
+        enabled: true,
+        cooldown_secs: 1,
+        max_interruptions_per_hour: 3,
+        ..Default::default()
+    });
     let m = Memory::default();
     let mut got = 0;
     for t in 0..10 {
@@ -413,8 +510,14 @@ fn declining_raises_the_bar_without_silencing_the_offer() {
         pr.record_response("index_new_files", false, &mut m);
     }
     let saturated = pr.threshold_for("index_new_files", &m);
-    assert!(saturated <= pr.cfg.confidence_ceiling, "never silenced outright");
-    assert!(saturated < 1.0, "a strong enough signal can still get through");
+    assert!(
+        saturated <= pr.cfg.confidence_ceiling,
+        "never silenced outright"
+    );
+    assert!(
+        saturated < 1.0,
+        "a strong enough signal can still get through"
+    );
 }
 
 #[test]
@@ -425,7 +528,10 @@ fn accepting_offers_makes_atlas_more_forthcoming() {
     for _ in 0..3 {
         pr.record_response("index_new_files", true, &mut m);
     }
-    assert!(pr.threshold_for("index_new_files", &m) < base, "yes should lower the bar");
+    assert!(
+        pr.threshold_for("index_new_files", &m) < base,
+        "yes should lower the bar"
+    );
 }
 
 #[test]
@@ -435,24 +541,38 @@ fn learning_is_clamped_at_both_ends() {
     for _ in 0..100 {
         pr.record_response("k", true, &mut m);
     }
-    assert!(pr.threshold_for("k", &m) >= 0.25, "never becomes trigger-happy either");
+    assert!(
+        pr.threshold_for("k", &m) >= 0.25,
+        "never becomes trigger-happy either"
+    );
 }
 
 #[test]
 fn proactive_is_off_unless_explicitly_enabled() {
     let mut pr = Proactive::new(ProactiveConfig::default());
-    assert!(pr.consider(&busy_signals(20), &Memory::default(), 1000).is_none());
+    assert!(pr
+        .consider(&busy_signals(20), &Memory::default(), 1000)
+        .is_none());
 }
 
 #[test]
 fn a_quiet_signal_produces_no_offer_at_all() {
-    assert!(detect(&busy_signals(1)).is_empty(), "one new file is not an event");
+    assert!(
+        detect(&busy_signals(1)).is_empty(),
+        "one new file is not an event"
+    );
 }
 
 #[test]
 fn an_offer_is_answered_by_voice_and_runs_the_command() {
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("offer")), Proactive::new(eager()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("offer")),
+        Proactive::new(eager()),
+    );
     d.index.entries.clear();
     // Force an offer through the daemon's tick path.
     let out = {
@@ -518,12 +638,24 @@ fn what_atlas_learns_survives_a_restart() {
     let (c, p) = (cfg(), plat());
     let dir = tmp("persist");
     {
-        let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            &c,
+            &p,
+            None,
+            Store::new(&dir),
+            Proactive::new(ProactiveConfig::default()),
+        );
         d.turn("shutdown workspace", 100);
         d.turn("yes", 105);
         d.scheduler.every("boot workspace", 86400, 999_999);
     }
-    let d2 = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let d2 = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     assert_eq!(d2.memory.approval_rate("workspace_off"), Some(1.0));
     assert_eq!(d2.scheduler.active().len(), 1);
 }
@@ -538,7 +670,11 @@ fn empty_speech_is_ignored_not_misparsed() {
 
 #[test]
 fn intent_kinds_cover_every_variant() {
-    for i in [Intent::WorkspaceOn, Intent::Say("x".into()), Intent::CaptureWebcam] {
+    for i in [
+        Intent::WorkspaceOn,
+        Intent::Say("x".into()),
+        Intent::CaptureWebcam,
+    ] {
         assert_ne!(atlas::session::kind_of(&i), "");
     }
 }
@@ -571,7 +707,10 @@ fn a_bare_why_accounts_for_everything_decided_not_just_the_last_thing() {
     // single-latest-decision answer `why::answer` always gave.
     let one = d.turn("why did you explain that", 3);
     assert!(one.to_lowercase().contains("used the webcam mic"), "{one}");
-    assert!(!one.contains("Chrome"), "a specific question pulled in the other decision: {one}");
+    assert!(
+        !one.contains("Chrome"),
+        "a specific question pulled in the other decision: {one}"
+    );
 
     // A bare "why is that" (no subject) gets everything, not just whatever
     // happened last.
@@ -610,7 +749,10 @@ fn a_turn_records_where_its_answer_came_from_and_why_can_read_it_back() {
 
     // A novel question the phrase parser cannot settle, so the model is
     // actually reached. Nothing was recorded before this turn.
-    assert!(d.decisions.decisions.is_empty(), "started with a decision already recorded");
+    assert!(
+        d.decisions.decisions.is_empty(),
+        "started with a decision already recorded"
+    );
     let _ = d.turn("what were the main causes of the 1918 flu pandemic", 100);
     assert_eq!(
         d.decisions.decisions.len(),
@@ -665,12 +807,17 @@ fn closing_a_day_archives_it_for_the_hourly_sweep_to_later_prune() {
         atlas_could: Handoff::Unknown,
     });
     d.last_seen = 0;
-    assert!(d.daily_history.is_empty(), "nothing should be archived before a day ever closes");
+    assert!(
+        d.daily_history.is_empty(),
+        "nothing should be archived before a day ever closes"
+    );
 
     d.turn("what's outstanding", 2 * 86_400);
 
     assert_eq!(d.daily_history.len(), 1, "closing a day did not archive it");
-    assert!(d.daily_history[0].finished.contains(&"finish the report".to_string()));
+    assert!(d.daily_history[0]
+        .finished
+        .contains(&"finish the report".to_string()));
 }
 
 #[test]
@@ -681,7 +828,12 @@ fn the_hourly_sweep_prunes_archived_days_past_their_keep_window() {
     let day_secs = 86_400u64;
     // `DailyConfig::default().keep_days` is 90. One well inside the window,
     // one well past it.
-    d.daily_history.push(Closed { day: 0, finished: vec!["old".into()], carried: vec![], dropped: vec![] });
+    d.daily_history.push(Closed {
+        day: 0,
+        finished: vec!["old".into()],
+        carried: vec![],
+        dropped: vec![],
+    });
     d.daily_history.push(Closed {
         day: 95 * day_secs,
         finished: vec!["recent".into()],
@@ -691,7 +843,11 @@ fn the_hourly_sweep_prunes_archived_days_past_their_keep_window() {
 
     d.tick(100 * day_secs);
 
-    assert_eq!(d.daily_history.len(), 1, "the sweep should have pruned exactly the old one");
+    assert_eq!(
+        d.daily_history.len(),
+        1,
+        "the sweep should have pruned exactly the old one"
+    );
     assert_eq!(d.daily_history[0].finished, vec!["recent".to_string()]);
 }
 
@@ -707,7 +863,13 @@ fn the_hourly_reclaim_sweep_actually_looks_in_this_daemons_own_store() {
     // old enough to evict, must actually be gone after the sweep.
     let (c, p) = (cfg(), plat());
     let dir = tmp("reclaim-store-root");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     // `install_root().join("data")` is where the sweep looks; for a plain
     // tmp store root that resolves to `<dir>/data`.
@@ -719,7 +881,12 @@ fn the_hourly_reclaim_sweep_actually_looks_in_this_daemons_own_store() {
     // age check reads the file's real mtime — back-date it well past
     // `scratch_minutes` (10 minutes by default).
     let long_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 3600);
-    std::fs::File::options().write(true).open(&stale).unwrap().set_modified(long_ago).unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&stale)
+        .unwrap()
+        .set_modified(long_ago)
+        .unwrap();
 
     // The reclaim walk is a crew errand — it runs on a worker, not on the
     // tick, so it may finish a tick or two after it's handed off (and on a
@@ -742,7 +909,10 @@ fn the_hourly_reclaim_sweep_actually_looks_in_this_daemons_own_store() {
         t += 1;
     }
 
-    assert!(!stale.exists(), "a stale scratch file in this daemon's own store survived the sweep");
+    assert!(
+        !stale.exists(),
+        "a stale scratch file in this daemon's own store survived the sweep"
+    );
 }
 
 // ================= a crisis is not a command =================
@@ -773,7 +943,10 @@ fn an_ordinary_bad_week_is_not_treated_as_a_crisis() {
     // comes back as anything OTHER than the redirect.
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "bad-week");
-    let reply = d.turn("this project is killing me and I'm behind on everything", 100);
+    let reply = d.turn(
+        "this project is killing me and I'm behind on everything",
+        100,
+    );
     assert_ne!(
         reply,
         atlas::person::NOT_A_THERAPIST,
@@ -790,7 +963,8 @@ fn a_rough_day_is_met_with_an_offer_to_take_real_work_off_the_plate() {
     // Seed one blocked errand so the offer has something concrete to name.
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "rough-day");
-    d.backlog.record("email Jane back", atlas::backlog::Blocker::Offline, 50);
+    d.backlog
+        .record("email Jane back", atlas::backlog::Blocker::Offline, 50);
     let reply = d.turn("honestly, rough day", 100);
     assert!(
         reply.contains("I can deal with email Jane back"),
@@ -824,7 +998,13 @@ fn a_test_daemon_never_starts_a_mutation_sweep_of_the_checkout() {
     // slots gone from the work eight other tests were waiting on.
     let (c, p) = (cfg(), plat());
     let dir = tmp("no-sweep");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let t = atlas::store::now() + 3 * 24 * 3600;
     for i in 0..5 {
         d.tick(t + i * 1000);
@@ -844,6 +1024,9 @@ fn a_test_daemon_reads_the_mock_machine_for_room_not_the_real_one() {
     let p = plat();
     let room = (atlas::platform::Platform::crew_room(&p))();
     let floor = atlas::crew::CrewConfig::default();
-    assert!(room.free_mb.is_some_and(|mb| mb > floor.keep_free_mb), "{room:?}");
+    assert!(
+        room.free_mb.is_some_and(|mb| mb > floor.keep_free_mb),
+        "{room:?}"
+    );
     assert!(!room.on_battery);
 }

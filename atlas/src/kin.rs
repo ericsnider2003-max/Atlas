@@ -94,7 +94,6 @@ impl Default for KinConfig {
     }
 }
 
-
 /// Another Atlas instance you've decided to trust for notifications only.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Peer {
@@ -114,7 +113,11 @@ pub struct Peer {
 
 impl Peer {
     pub fn new(name: &str, token: &str) -> Peer {
-        Peer { name: name.into(), token: token.into(), key: None }
+        Peer {
+            name: name.into(),
+            token: token.into(),
+            key: None,
+        }
     }
 }
 
@@ -474,8 +477,15 @@ impl Door {
     /// they may: known by token, and within their budget.
     pub fn may_fetch(&mut self, token: &str, now: u64) -> Result<String, Refused> {
         let name = self.find(token).ok_or(Refused::UnknownPeer)?.name.clone();
-        self.recent_pieces.retain(|(_, at)| now.saturating_sub(*at) < WINDOW_SECS);
-        if self.recent_pieces.iter().filter(|(n, _)| *n == name).count() >= MAX_RELEASE_PIECES_PER_WINDOW {
+        self.recent_pieces
+            .retain(|(_, at)| now.saturating_sub(*at) < WINDOW_SECS);
+        if self
+            .recent_pieces
+            .iter()
+            .filter(|(n, _)| *n == name)
+            .count()
+            >= MAX_RELEASE_PIECES_PER_WINDOW
+        {
             return Err(Refused::TooMany);
         }
         self.recent_pieces.push((name.clone(), now));
@@ -496,7 +506,8 @@ impl Door {
     /// One knock from someone not yet a friend, within the budget all of
     /// them share.
     fn friend_knock_budget(&mut self, now: u64) -> Result<(), Refused> {
-        self.recent_friend_knocks.retain(|at| now.saturating_sub(*at) < WINDOW_SECS);
+        self.recent_friend_knocks
+            .retain(|at| now.saturating_sub(*at) < WINDOW_SECS);
         if self.recent_friend_knocks.len() >= MAX_FRIEND_KNOCKS_PER_WINDOW {
             return Err(Refused::TooMany);
         }
@@ -512,7 +523,11 @@ impl Door {
     /// Someone used one of your friend links. The one door with no token:
     /// the link's one-time secret is the credential, spent here, before
     /// anything else happens. Returns the friend to record, or why not.
-    pub fn receive_friend(&mut self, hello: crate::friends::Hello, now: u64) -> Result<Befriended, Refused> {
+    pub fn receive_friend(
+        &mut self,
+        hello: crate::friends::Hello,
+        now: u64,
+    ) -> Result<Befriended, Refused> {
         let store = self.friend_invites.clone().ok_or(Refused::UnknownPeer)?;
         self.friend_knock_budget(now)?;
         if hello.name.trim().is_empty()
@@ -530,7 +545,9 @@ impl Door {
     }
 
     fn find(&self, token: &str) -> Option<&Peer> {
-        self.peers.iter().find(|p| crate::server::token_matches(&p.token, Some(token)))
+        self.peers
+            .iter()
+            .find(|p| crate::server::token_matches(&p.token, Some(token)))
     }
 
     /// Stop letting this peer in, now, on the door that is actually open.
@@ -611,8 +628,14 @@ impl Door {
         }
         self.recent.push((peer.name.clone(), now));
         // Bounded rather than left to grow for the life of the process.
-        self.recent.retain(|(_, at)| now.saturating_sub(*at) < WINDOW_SECS);
-        Ok(Incoming { from: peer.name, urgency, what: what.trim().to_string(), at: now })
+        self.recent
+            .retain(|(_, at)| now.saturating_sub(*at) < WINDOW_SECS);
+        Ok(Incoming {
+            from: peer.name,
+            urgency,
+            what: what.trim().to_string(),
+            at: now,
+        })
     }
 
     /// Whether a peer is currently trusted with standing, i.e. not presently
@@ -669,7 +692,10 @@ impl Door {
             None => None,
             Some((_, b)) if b.is_empty() => return Err(Refused::Empty),
             Some((_, b)) if b.len() > MAX_HANDOFF_FILE_BYTES => return Err(Refused::TooBig),
-            Some((n, b)) => Some(DeliveredFile { name: crate::tray::safe_name(n), bytes: b }),
+            Some((n, b)) => Some(DeliveredFile {
+                name: crate::tray::safe_name(n),
+                bytes: b,
+            }),
         };
         let count = self
             .recent_handoffs
@@ -680,8 +706,14 @@ impl Door {
             return Err(Refused::TooMany);
         }
         self.recent_handoffs.push((peer.name.clone(), now));
-        self.recent_handoffs.retain(|(_, at)| now.saturating_sub(*at) < WINDOW_SECS);
-        Ok(Delivered { from: peer.name, what: what.trim().to_string(), at: now, file })
+        self.recent_handoffs
+            .retain(|(_, at)| now.saturating_sub(*at) < WINDOW_SECS);
+        Ok(Delivered {
+            from: peer.name,
+            what: what.trim().to_string(),
+            at: now,
+            file,
+        })
     }
 
     /// Take in a chat message from a peer.
@@ -769,7 +801,11 @@ impl Door {
         self.recent_reads.push((peer.name.clone(), now));
         self.recent_reads
             .retain(|(_, at)| now.saturating_sub(*at) < WINDOW_SECS);
-        Ok(ReadReceipt { from: peer.name, ids, at: now })
+        Ok(ReadReceipt {
+            from: peer.name,
+            ids,
+            at: now,
+        })
     }
 
     /// Take in a "left a group" notice from a peer.
@@ -801,7 +837,11 @@ impl Door {
         self.recent_leaves.push((peer.name.clone(), now));
         self.recent_leaves
             .retain(|(_, at)| now.saturating_sub(*at) < WINDOW_SECS);
-        Ok(LeftGroup { from: peer.name, group_id: group_id.trim().to_string(), at: now })
+        Ok(LeftGroup {
+            from: peer.name,
+            group_id: group_id.trim().to_string(),
+            at: now,
+        })
     }
 }
 
@@ -816,7 +856,8 @@ impl Door {
             return Err(Refused::TooMany);
         }
         self.recent_notices.push((name.to_string(), now));
-        self.recent_notices.retain(|(_, at)| now.saturating_sub(*at) < WINDOW_SECS);
+        self.recent_notices
+            .retain(|(_, at)| now.saturating_sub(*at) < WINDOW_SECS);
         Ok(())
     }
 
@@ -829,13 +870,22 @@ impl Door {
             return Err(Refused::Empty);
         }
         self.notice_budget(&peer.name, now)?;
-        Ok(Hello { from: peer.name, key: key.trim().to_string(), at: now })
+        Ok(Hello {
+            from: peer.name,
+            key: key.trim().to_string(),
+            at: now,
+        })
     }
 
     /// Feedback, or an answer to feedback, from a paired Atlas. Size-capped
     /// here and counted against the same notice budget as a hello; what it
     /// says is read where it's filed.
-    pub fn receive_feedback(&mut self, token: &str, body: &str, now: u64) -> Result<FeedbackIn, Refused> {
+    pub fn receive_feedback(
+        &mut self,
+        token: &str,
+        body: &str,
+        now: u64,
+    ) -> Result<FeedbackIn, Refused> {
         let peer = self.find(token).ok_or(Refused::UnknownPeer)?.clone();
         if body.trim().is_empty() {
             return Err(Refused::Empty);
@@ -844,13 +894,24 @@ impl Door {
             return Err(Refused::TooBig);
         }
         self.notice_budget(&peer.name, now)?;
-        Ok(FeedbackIn { from: peer.name, body: body.to_string(), at: now })
+        Ok(FeedbackIn {
+            from: peer.name,
+            body: body.to_string(),
+            at: now,
+        })
     }
 
     /// A signed group list, handed over by a peer. The only place a
     /// `GroupList` can be made. Its size is capped here; its signature is
     /// checked where it is taken (`groups::open`).
-    pub fn receive_group(&mut self, token: &str, state: &str, signature: &str, signer: &str, now: u64) -> Result<GroupList, Refused> {
+    pub fn receive_group(
+        &mut self,
+        token: &str,
+        state: &str,
+        signature: &str,
+        signer: &str,
+        now: u64,
+    ) -> Result<GroupList, Refused> {
         let peer = self.find(token).ok_or(Refused::UnknownPeer)?.clone();
         if state.trim().is_empty() || signature.trim().is_empty() {
             return Err(Refused::Empty);
@@ -905,7 +966,8 @@ pub fn as_waiting(
     inbox: &mut crate::household::Inbox,
     root: &std::path::Path,
 ) -> Result<u64, String> {
-    let _state = crate::store::state_transaction(root).map_err(|e| format!("couldn't keep that file: {e}"))?;
+    let _state = crate::store::state_transaction(root)
+        .map_err(|e| format!("couldn't keep that file: {e}"))?;
     let Some(f) = &d.file else {
         return Ok(inbox.add(&d.what, &d.from, d.at));
     };
@@ -934,7 +996,11 @@ pub fn as_waiting(
 /// What a handoff says on the wire.
 fn handoff_body(h: &crate::household::Handoff, file: Option<(&str, &[u8])>) -> String {
     match file {
-        None => format!("{{\"what\":{},\"from\":{}}}", json_string(&h.what), json_string(&h.from)),
+        None => format!(
+            "{{\"what\":{},\"from\":{}}}",
+            json_string(&h.what),
+            json_string(&h.from)
+        ),
         Some((name, bytes)) => format!(
             "{{\"what\":{},\"from\":{},\"name\":{},\"data\":{}}}",
             json_string(&h.what),
@@ -947,7 +1013,8 @@ fn handoff_body(h: &crate::household::Handoff, file: Option<(&str, &[u8])>) -> S
 
 /// A file to hand over, checked against the cap before it is encoded.
 fn read_handoff_file(path: &std::path::Path) -> Result<(String, Vec<u8>), String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
+    let bytes =
+        std::fs::read(path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
     if bytes.is_empty() {
         return Err(format!("{} is empty", path.display()));
     }
@@ -960,7 +1027,10 @@ fn read_handoff_file(path: &std::path::Path) -> Result<(String, Vec<u8>), String
             MAX_HANDOFF_FILE_BYTES / (1024 * 1024)
         ));
     }
-    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "file".into());
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "file".into());
     Ok((name, bytes))
 }
 
@@ -1081,14 +1151,23 @@ pub fn encode_invite(i: &Invite) -> Option<String> {
 /// pasting into a text message or an email routinely adds some.
 pub fn decode_invite(code: &str) -> Result<Invite, InviteError> {
     let code = code.trim();
-    let rest = code.strip_prefix(&format!("{INVITE_TAG}:")).ok_or(InviteError::NotAnInvite)?;
+    let rest = code
+        .strip_prefix(&format!("{INVITE_TAG}:"))
+        .ok_or(InviteError::NotAnInvite)?;
     let parts: Vec<&str> = rest.split('|').collect();
-    let [name, host, port, token] = parts[..] else { return Err(InviteError::Malformed) };
+    let [name, host, port, token] = parts[..] else {
+        return Err(InviteError::Malformed);
+    };
     let port: u16 = port.parse().map_err(|_| InviteError::Malformed)?;
     if name.trim().is_empty() || host.trim().is_empty() || token.trim().is_empty() {
         return Err(InviteError::Malformed);
     }
-    Ok(Invite { from_name: name.to_string(), host: host.to_string(), port, token: token.to_string() })
+    Ok(Invite {
+        from_name: name.to_string(),
+        host: host.to_string(),
+        port,
+        token: token.to_string(),
+    })
 }
 
 /// Everything a pairing needs on one side: who may send to you, and who you
@@ -1246,12 +1325,18 @@ impl Pairings {
 
     /// The public key pinned for this peer, if it has introduced itself.
     pub fn key_of(&self, name: &str) -> Option<&str> {
-        self.peers.iter().find(|p| same_name(&p.name, name)).and_then(|p| p.key.as_deref())
+        self.peers
+            .iter()
+            .find(|p| same_name(&p.name, name))
+            .and_then(|p| p.key.as_deref())
     }
 
     /// Which of your peers has this key, by your name for them.
     pub fn name_of_key(&self, key: &str) -> Option<String> {
-        self.peers.iter().find(|p| p.key.as_deref() == Some(key)).map(|p| p.name.clone())
+        self.peers
+            .iter()
+            .find(|p| p.key.as_deref() == Some(key))
+            .map(|p| p.name.clone())
     }
 
     /// Pin a peer's key the first time it introduces itself. `Ok(true)` when
@@ -1281,9 +1366,21 @@ impl Pairings {
 /// Start a pairing. Registers the other side as a peer immediately -- they
 /// can send to you the moment they receive this block, before they have even
 /// run `accept` -- and returns the block to send them.
-pub fn invite(pairings: &mut Pairings, their_name: &str, my_name: &str, my_host: &str, port: u16, token: &str) -> Option<String> {
+pub fn invite(
+    pairings: &mut Pairings,
+    their_name: &str,
+    my_name: &str,
+    my_host: &str,
+    port: u16,
+    token: &str,
+) -> Option<String> {
     pairings.add_peer(Peer::new(their_name, token));
-    encode_invite(&Invite { from_name: my_name.to_string(), host: my_host.to_string(), port, token: token.to_string() })
+    encode_invite(&Invite {
+        from_name: my_name.to_string(),
+        host: my_host.to_string(),
+        port,
+        token: token.to_string(),
+    })
 }
 
 /// What accepting a code does, and whether a return block is owed.
@@ -1300,11 +1397,22 @@ pub struct Accepted {
 /// (they may send to you) and a contact (you may send to them, using the
 /// same token -- one shared secret for both directions, one thing to leak
 /// rather than two). Only offers a return block the first time.
-pub fn accept(pairings: &mut Pairings, code: &str, my_name: &str, my_host: &str, my_port: u16) -> Result<Accepted, InviteError> {
+pub fn accept(
+    pairings: &mut Pairings,
+    code: &str,
+    my_name: &str,
+    my_host: &str,
+    my_port: u16,
+) -> Result<Accepted, InviteError> {
     let inv = decode_invite(code)?;
     let already_known = pairings.has_peer(&inv.from_name);
     pairings.add_peer(Peer::new(&inv.from_name, &inv.token));
-    pairings.add_contact(Contact { name: inv.from_name.clone(), host: inv.host, port: inv.port, token: inv.token.clone() });
+    pairings.add_contact(Contact {
+        name: inv.from_name.clone(),
+        host: inv.host,
+        port: inv.port,
+        token: inv.token.clone(),
+    });
     let return_block = if already_known {
         None
     } else {
@@ -1315,7 +1423,10 @@ pub fn accept(pairings: &mut Pairings, code: &str, my_name: &str, my_host: &str,
             token: inv.token,
         })
     };
-    Ok(Accepted { from: inv.from_name, return_block })
+    Ok(Accepted {
+        from: inv.from_name,
+        return_block,
+    })
 }
 
 // ===========================================================================
@@ -1453,12 +1564,19 @@ impl Reached {
 
     /// Last heard from, if ever.
     pub fn last(&self, name: &str) -> Option<u64> {
-        self.last.lock().or_else(crate::crash::unpoison).ok()?.get(&name.to_lowercase()).copied()
+        self.last
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()?
+            .get(&name.to_lowercase())
+            .copied()
     }
 
     pub fn load(store: &crate::store::Store) -> Reached {
         let m: std::collections::BTreeMap<String, u64> = store.load(REACHED);
-        Reached { last: std::sync::Mutex::new(m) }
+        Reached {
+            last: std::sync::Mutex::new(m),
+        }
     }
 
     pub fn save(&self, store: &crate::store::Store) {
@@ -1483,7 +1601,9 @@ impl Reached {
 /// and a connection it has closed is noticed and replaced).
 #[derive(Default)]
 pub struct TorConnections {
-    open: std::sync::Mutex<std::collections::HashMap<String, (std::net::TcpStream, std::time::Instant)>>,
+    open: std::sync::Mutex<
+        std::collections::HashMap<String, (std::net::TcpStream, std::time::Instant)>,
+    >,
 }
 
 pub const MAX_KEPT: usize = 16;
@@ -1507,7 +1627,11 @@ impl TorConnections {
 
     /// How many are open right now.
     pub fn open_now_for_test(&self) -> usize {
-        self.open.lock().or_else(crate::crash::unpoison).map(|o| o.len()).unwrap_or(0)
+        self.open
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map(|o| o.len())
+            .unwrap_or(0)
     }
 
     /// Let every one go: Tor was restarted, and they all died with it.
@@ -1537,18 +1661,31 @@ fn sealed_post_kept(
     let timeout = timeout.max(std::time::Duration::from_secs(30));
     let mut reused = kept.take(onion);
     for _ in 0..2 {
-        let inner = crate::wire::Inner { path: path.into(), token: token.into(), body: body.into(), at: crate::store::now() };
+        let inner = crate::wire::Inner {
+            path: path.into(),
+            token: token.into(),
+            body: body.into(),
+            at: crate::store::now(),
+        };
         let (env, key) = crate::wire::seal(me, to, &inner).ok_or("couldn't seal it")?;
         let env = serde_json::to_string(&env).unwrap_or_default();
         let was_kept = reused.is_some();
         let mut stream = match reused.take() {
             Some(s) => s,
-            None => crate::onion::connect(socks, onion, std::time::Duration::from_secs(crate::onion::CONNECT_SECS))
-                .map_err(|e| e.to_string())?,
+            None => crate::onion::connect(
+                socks,
+                onion,
+                std::time::Duration::from_secs(crate::onion::CONNECT_SECS),
+            )
+            .map_err(|e| e.to_string())?,
         };
-        match crate::http::post_kept(&mut stream, onion, crate::wire::PATH, &env, timeout).map_err(|e| e.to_string())? {
+        match crate::http::post_kept(&mut stream, onion, crate::wire::PATH, &env, timeout)
+            .map_err(|e| e.to_string())?
+        {
             KeptReply::Closed if was_kept => continue,
-            KeptReply::Closed => return Err("their Atlas closed the connection without answering".into()),
+            KeptReply::Closed => {
+                return Err("their Atlas closed the connection without answering".into())
+            }
             KeptReply::Answered(r, again) => {
                 if again {
                     kept.keep(onion, stream);
@@ -1556,8 +1693,13 @@ fn sealed_post_kept(
                 if !r.ok() {
                     return Ok(r);
                 }
-                let reply = crate::wire::open_reply(&key, &r.body).ok_or("the answer wasn't sealed by who it should have been")?;
-                return Ok(crate::http::Response { status: reply.status, body: reply.body, location: None });
+                let reply = crate::wire::open_reply(&key, &r.body)
+                    .ok_or("the answer wasn't sealed by who it should have been")?;
+                return Ok(crate::http::Response {
+                    status: reply.status,
+                    body: reply.body,
+                    location: None,
+                });
             }
         }
     }
@@ -1574,23 +1716,44 @@ pub fn sealed_post(
     body: &str,
     timeout: std::time::Duration,
 ) -> Result<crate::http::Response, String> {
-    let inner = crate::wire::Inner { path: path.into(), token: token.into(), body: body.into(), at: crate::store::now() };
+    let inner = crate::wire::Inner {
+        path: path.into(),
+        token: token.into(),
+        body: body.into(),
+        at: crate::store::now(),
+    };
     let (env, key) = crate::wire::seal(me, to, &inner).ok_or("couldn't seal it")?;
     let env = serde_json::to_string(&env).unwrap_or_default();
     let r = match via {
-        Via::Direct(addr) => crate::http::post_json(addr, crate::wire::PATH, &env, timeout).map_err(|e| e.to_string())?,
+        Via::Direct(addr) => crate::http::post_json(addr, crate::wire::PATH, &env, timeout)
+            .map_err(|e| e.to_string())?,
         Via::Tor { socks, onion } => {
-            let mut stream = crate::onion::connect(socks, onion, std::time::Duration::from_secs(crate::onion::CONNECT_SECS))
-                .map_err(|e| e.to_string())?;
-            crate::http::post_over(&mut stream, onion, crate::wire::PATH, &env, timeout.max(std::time::Duration::from_secs(30)))
-                .map_err(|e| e.to_string())?
+            let mut stream = crate::onion::connect(
+                socks,
+                onion,
+                std::time::Duration::from_secs(crate::onion::CONNECT_SECS),
+            )
+            .map_err(|e| e.to_string())?;
+            crate::http::post_over(
+                &mut stream,
+                onion,
+                crate::wire::PATH,
+                &env,
+                timeout.max(std::time::Duration::from_secs(30)),
+            )
+            .map_err(|e| e.to_string())?
         }
     };
     if !r.ok() {
         return Ok(r);
     }
-    let reply = crate::wire::open_reply(&key, &r.body).ok_or("the answer wasn't sealed by who it should have been")?;
-    Ok(crate::http::Response { status: reply.status, body: reply.body, location: None })
+    let reply = crate::wire::open_reply(&key, &r.body)
+        .ok_or("the answer wasn't sealed by who it should have been")?;
+    Ok(crate::http::Response {
+        status: reply.status,
+        body: reply.body,
+        location: None,
+    })
 }
 
 impl PeerLink {
@@ -1665,7 +1828,11 @@ impl PeerLink {
 
     /// Everywhere this contact can be tried, best first.
     fn addresses(&self, c: &Contact) -> Vec<String> {
-        let mut out = self.routes.get(&c.name.to_lowercase()).map(|r| r.addrs.clone()).unwrap_or_default();
+        let mut out = self
+            .routes
+            .get(&c.name.to_lowercase())
+            .map(|r| r.addrs.clone())
+            .unwrap_or_default();
         if c.host.is_empty() || c.port == 0 {
             return out;
         }
@@ -1704,14 +1871,25 @@ impl PeerLink {
     }
 
     fn post_once(&self, peer: &str, path: &str, body: &str) -> Sent {
-        let Some(c) = self.contact(peer) else { return Sent::Failed(format!("there's no pairing with {peer}")) };
+        let Some(c) = self.contact(peer) else {
+            return Sent::Failed(format!("there's no pairing with {peer}"));
+        };
         let key = self.keys.get(&c.name.to_lowercase());
         let mut why = String::from("nothing answered");
         for addr in self.addresses(c) {
             let got = match (&self.me, key) {
-                (Some(me), Some(k)) => sealed_post(me, k, Via::Direct(&addr), path, &c.token, body, self.timeout),
+                (Some(me), Some(k)) => sealed_post(
+                    me,
+                    k,
+                    Via::Direct(&addr),
+                    path,
+                    &c.token,
+                    body,
+                    self.timeout,
+                ),
                 _ if Self::own_network(&addr) => {
-                    crate::http::post_json_with_token(&addr, path, body, &c.token, self.timeout).map_err(|e| e.to_string())
+                    crate::http::post_json_with_token(&addr, path, body, &c.token, self.timeout)
+                        .map_err(|e| e.to_string())
                 }
                 _ => Err("not sealed, and not on your own network".into()),
             };
@@ -1720,28 +1898,62 @@ impl PeerLink {
                 Err(e) => why = e,
             }
         }
-        let onion = self.routes.get(&c.name.to_lowercase()).map(|r| r.onion.clone()).unwrap_or_default();
+        let onion = self
+            .routes
+            .get(&c.name.to_lowercase())
+            .map(|r| r.onion.clone())
+            .unwrap_or_default();
         match (&self.me, key, self.tor, onion.is_empty()) {
             (Some(me), Some(k), Some(socks), false) => {
                 let sent = match &self.kept {
-                    Some(kept) => sealed_post_kept(me, k, socks, &onion, kept, path, &c.token, body, self.timeout),
-                    None => sealed_post(me, k, Via::Tor { socks, onion: &onion }, path, &c.token, body, self.timeout),
+                    Some(kept) => sealed_post_kept(
+                        me,
+                        k,
+                        socks,
+                        &onion,
+                        kept,
+                        path,
+                        &c.token,
+                        body,
+                        self.timeout,
+                    ),
+                    None => sealed_post(
+                        me,
+                        k,
+                        Via::Tor {
+                            socks,
+                            onion: &onion,
+                        },
+                        path,
+                        &c.token,
+                        body,
+                        self.timeout,
+                    ),
                 };
                 match sent {
                     Ok(r) => Sent::Answered(r),
                     Err(e) => Sent::Failed(e),
                 }
             }
-            (_, _, None, false) => Sent::Failed(format!("{why}; and Tor isn't running here yet to reach them")),
+            (_, _, None, false) => Sent::Failed(format!(
+                "{why}; and Tor isn't running here yet to reach them"
+            )),
             _ => Sent::Failed(why),
         }
     }
 
     /// Hand a note (and maybe a file) to a paired Atlas, the same way as
     /// everything else here.
-    pub fn hand_note(&self, peer: &str, h: &crate::household::Handoff, file: Option<&std::path::Path>) -> Result<(), String> {
+    pub fn hand_note(
+        &self,
+        peer: &str,
+        h: &crate::household::Handoff,
+        file: Option<&std::path::Path>,
+    ) -> Result<(), String> {
         if h.carries_history {
-            return Err("that handoff claims to carry history, which never leaves this machine".into());
+            return Err(
+                "that handoff claims to carry history, which never leaves this machine".into(),
+            );
         }
         let file = match file {
             None => None,
@@ -1763,7 +1975,11 @@ impl PeerLink {
 
     /// Which of your paired Atlases this key belongs to.
     pub fn name_of_key(&self, key: &str) -> Option<String> {
-        let lower = self.keys.iter().find(|(_, v)| *v == key).map(|(n, _)| n.clone())?;
+        let lower = self
+            .keys
+            .iter()
+            .find(|(_, v)| *v == key)
+            .map(|(n, _)| n.clone())?;
         self.contact(&lower).map(|c| c.name.clone())
     }
 
@@ -1787,7 +2003,11 @@ fn unreached_why(e: &str) -> &'static str {
         "Atlas's own Tor isn't connected yet; try again in a minute."
     } else if e.contains("timed out") || e.contains("would block") {
         "Their Atlas didn't answer in time; it may be busy or on a slow connection. Try again later."
-    } else if e.contains("refused") || e.contains("reset") || e.contains("nothing answered") || e.contains("unreachable") {
+    } else if e.contains("refused")
+        || e.contains("reset")
+        || e.contains("nothing answered")
+        || e.contains("unreachable")
+    {
         "Their Atlas may be switched off or offline; try again once it's on."
     } else if e.contains("no pairing") {
         "You aren't paired with them any more."
@@ -1857,7 +2077,9 @@ impl PeerLink {
     /// Introduce this Atlas's public key to one paired Atlas. Returns whether
     /// it took it.
     pub fn say_hello(&self, peer: &str, key: &str) -> bool {
-        let Some(contact) = self.contact(peer) else { return false };
+        let Some(contact) = self.contact(peer) else {
+            return false;
+        };
         let body = format!("{{\"key\":{}}}", json_string(key));
         matches!(
             self.post(&contact.name, "/hello", &body).response(),
@@ -1881,7 +2103,9 @@ impl PeerLink {
         offset: i16,
         after: u64,
     ) -> bool {
-        let Some(contact) = self.contact(peer) else { return false };
+        let Some(contact) = self.contact(peer) else {
+            return false;
+        };
         let wire = format!(
             "{{\"business\":null,\"body\":{},\"sent_at\":{sent_at},\"offset\":{offset},\"after\":{after},\"id\":{},\"group_id\":{},\"group_name\":{},\"members\":[],\"on_behalf_of\":{}}}",
             json_string(body),
@@ -1913,7 +2137,9 @@ impl PeerLink {
     /// Hand one paired Atlas a piece of feedback (`path` "/feedback") or an
     /// answer to one ("/feedback-answer"). Returns whether it took it.
     pub fn send_feedback(&self, peer: &str, path: &str, body: &str) -> bool {
-        let Some(contact) = self.contact(peer) else { return false };
+        let Some(contact) = self.contact(peer) else {
+            return false;
+        };
         let wire = format!("{{\"body\":{}}}", json_string(body));
         matches!(
             self.post(&contact.name, path, &wire).response(),
@@ -1923,7 +2149,9 @@ impl PeerLink {
 
     /// Hand one paired Atlas a group's signed list. Returns whether it took it.
     pub fn push_group(&self, peer: &str, signed: &crate::groups::Signed) -> bool {
-        let Some(contact) = self.contact(peer) else { return false };
+        let Some(contact) = self.contact(peer) else {
+            return false;
+        };
         let body = format!(
             "{{\"state\":{},\"signature\":{},\"signer\":{}}}",
             json_string(&signed.state),
@@ -1968,8 +2196,7 @@ impl crate::courier::Transport for PeerLink {
             return Handoff::NotUp;
         };
         let body = chat_wire_body(room, msg);
-        match self.post(&contact.name, "/chat", &body).response()
-        {
+        match self.post(&contact.name, "/chat", &body).response() {
             Ok(r) if r.ok() => Handoff::Took,
             // Offline, refused, or a bad reply: all "not up" rather than
             // "took". The only thing that counts as delivered is a 2xx, the

@@ -30,11 +30,17 @@ const MAX_CELLS: usize = 2_000_000;
 /// Every sheet in the workbook, in the workbook's order.
 pub fn sheets(zip: &[u8]) -> Result<Vec<Sheet>, String> {
     let part = |name: &str| -> Result<Option<String>, String> {
-        Ok(crate::zipread::file_inside(zip, |n| n.eq_ignore_ascii_case(name), MAX_PART)?.map(|(_, b)| String::from_utf8_lossy(&b).into_owned()))
+        Ok(
+            crate::zipread::file_inside(zip, |n| n.eq_ignore_ascii_case(name), MAX_PART)?
+                .map(|(_, b)| String::from_utf8_lossy(&b).into_owned()),
+        )
     };
-    let workbook = part("xl/workbook.xml")?.ok_or("that isn't a spreadsheet (it has no workbook inside)")?;
+    let workbook =
+        part("xl/workbook.xml")?.ok_or("that isn't a spreadsheet (it has no workbook inside)")?;
     let rels = part("xl/_rels/workbook.xml.rels")?.unwrap_or_default();
-    let shared = part("xl/sharedStrings.xml")?.map(|s| shared_strings(&s)).unwrap_or_default();
+    let shared = part("xl/sharedStrings.xml")?
+        .map(|s| shared_strings(&s))
+        .unwrap_or_default();
 
     let mut out = Vec::new();
     for tag in tags(&workbook, "sheet") {
@@ -48,9 +54,16 @@ pub fn sheets(zip: &[u8]) -> Result<Vec<Sheet>, String> {
         if target.is_empty() {
             continue;
         }
-        let path = if let Some(abs) = target.strip_prefix('/') { abs.to_string() } else { format!("xl/{target}") };
+        let path = if let Some(abs) = target.strip_prefix('/') {
+            abs.to_string()
+        } else {
+            format!("xl/{target}")
+        };
         let Some(xml) = part(&path)? else { continue };
-        out.push(Sheet { name, rows: cells(&xml, &shared)? });
+        out.push(Sheet {
+            name,
+            rows: cells(&xml, &shared)?,
+        });
     }
     if out.is_empty() {
         return Err("that spreadsheet has no sheets I could read".into());
@@ -73,9 +86,14 @@ fn tags<'a>(xml: &'a str, name: &str) -> Vec<&'a str> {
     let mut i = 0;
     while let Some(at) = xml[i..].find('<') {
         let start = i + at + 1;
-        let Some(end) = xml[start..].find('>') else { break };
+        let Some(end) = xml[start..].find('>') else {
+            break;
+        };
         let tag = &xml[start..start + end];
-        let tag_name = tag.split(|c: char| c.is_whitespace() || c == '/').next().unwrap_or("");
+        let tag_name = tag
+            .split(|c: char| c.is_whitespace() || c == '/')
+            .next()
+            .unwrap_or("");
         if tag_name.rsplit(':').next() == Some(name) {
             out.push(tag);
         }
@@ -129,7 +147,9 @@ fn unescape(s: &str) -> String {
                     "gt" => Some('>'),
                     "quot" => Some('"'),
                     "apos" => Some('\''),
-                    e if e.starts_with("#x") => u32::from_str_radix(&e[2..], 16).ok().and_then(char::from_u32),
+                    e if e.starts_with("#x") => u32::from_str_radix(&e[2..], 16)
+                        .ok()
+                        .and_then(char::from_u32),
                     e if e.starts_with('#') => e[1..].parse().ok().and_then(char::from_u32),
                     _ => None,
                 };
@@ -165,13 +185,17 @@ fn texts_in(xml: &str) -> String {
             i = start + 2;
             continue;
         }
-        let Some(open_end) = after.find('>') else { break };
+        let Some(open_end) = after.find('>') else {
+            break;
+        };
         if after[..open_end].ends_with('/') {
             i = start + 2 + open_end + 1;
             continue;
         }
         let body_start = start + 2 + open_end + 1;
-        let Some(close) = xml[body_start..].find("</t>") else { break };
+        let Some(close) = xml[body_start..].find("</t>") else {
+            break;
+        };
         out.push_str(&unescape(&xml[body_start..body_start + close]));
         i = body_start + close + 4;
     }
@@ -201,7 +225,13 @@ fn column_of(r: &str) -> Option<usize> {
     if letters.is_empty() || letters.len() > 3 {
         return None;
     }
-    Some(letters.to_ascii_uppercase().bytes().fold(0usize, |n, b| n * 26 + (b - b'A' + 1) as usize) - 1)
+    Some(
+        letters
+            .to_ascii_uppercase()
+            .bytes()
+            .fold(0usize, |n, b| n * 26 + (b - b'A' + 1) as usize)
+            - 1,
+    )
 }
 
 fn cells(xml: &str, shared: &[String]) -> Result<Vec<Vec<String>>, String> {
@@ -213,7 +243,13 @@ fn cells(xml: &str, shared: &[String]) -> Result<Vec<Vec<String>>, String> {
         let rest = &xml[row_start..];
         let row_open_end = rest.find('>').ok_or("a row never closes")?;
         let self_closing = rest[..row_open_end].ends_with('/');
-        let row_end = if self_closing { row_open_end + 1 } else { rest.find("</row>").map(|n| n + 6).ok_or("a row never closes")? };
+        let row_end = if self_closing {
+            row_open_end + 1
+        } else {
+            rest.find("</row>")
+                .map(|n| n + 6)
+                .ok_or("a row never closes")?
+        };
         let row_xml = &rest[..row_end];
         // Rows can skip numbers (an empty row isn't written); the row's own
         // `r` keeps them where they belong.
@@ -237,9 +273,16 @@ fn cells(xml: &str, shared: &[String]) -> Result<Vec<Vec<String>>, String> {
                 (&c_rest[open_end + 1..close], close + 4)
             };
             let kind = attr(open, "t").unwrap_or_default();
-            let v = body.find("<v>").and_then(|s| body[s + 3..].find("</v>").map(|e| unescape(&body[s + 3..s + 3 + e])));
+            let v = body.find("<v>").and_then(|s| {
+                body[s + 3..]
+                    .find("</v>")
+                    .map(|e| unescape(&body[s + 3..s + 3 + e]))
+            });
             let text = match kind.as_str() {
-                "s" => v.and_then(|n| n.trim().parse::<usize>().ok()).and_then(|n| shared.get(n).cloned()).unwrap_or_default(),
+                "s" => v
+                    .and_then(|n| n.trim().parse::<usize>().ok())
+                    .and_then(|n| shared.get(n).cloned())
+                    .unwrap_or_default(),
                 "inlineStr" => texts_in(body),
                 "b" => match v.as_deref() {
                     Some("1") => "TRUE".into(),
@@ -248,7 +291,9 @@ fn cells(xml: &str, shared: &[String]) -> Result<Vec<Vec<String>>, String> {
                 },
                 _ => v.unwrap_or_default(),
             };
-            let col = attr(open, "r").and_then(|r| column_of(&r)).unwrap_or(row.len());
+            let col = attr(open, "r")
+                .and_then(|r| column_of(&r))
+                .unwrap_or(row.len());
             if col > 16_384 {
                 return Err("a cell is further right than a spreadsheet goes".into());
             }
@@ -262,7 +307,9 @@ fn cells(xml: &str, shared: &[String]) -> Result<Vec<Vec<String>>, String> {
             }
             seen += 1;
             if seen > MAX_CELLS {
-                return Err(format!("that sheet has more than {MAX_CELLS} cells, more than an export does"));
+                return Err(format!(
+                    "that sheet has more than {MAX_CELLS} cells, more than an export does"
+                ));
             }
             j = c_start + len;
         }

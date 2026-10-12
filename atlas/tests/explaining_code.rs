@@ -42,7 +42,13 @@ fn leaked_code_blocks() {
     // to avoid tripping the bare-name reachability scan.)
     let f = check("if the value is positive { total = total + 1; return true; }");
     assert!(has(&f, "words not code"), "{f:?}");
-    assert_eq!(f.iter().find(|x| x.rule == "words not code").unwrap().severity, Severity::Blocking);
+    assert_eq!(
+        f.iter()
+            .find(|x| x.rule == "words not code")
+            .unwrap()
+            .severity,
+        Severity::Blocking
+    );
 }
 
 #[test]
@@ -60,9 +66,16 @@ fn jargon_is_flagged_by_whole_word() {
         "It stores the value in a buffer and uses recursion to walk the structure back to the start \
          so nothing is lost along the way here.",
     );
-    let j = f.iter().find(|x| x.rule == "plain words").expect("jargon flagged");
+    let j = f
+        .iter()
+        .find(|x| x.rule == "plain words")
+        .expect("jargon flagged");
     assert_eq!(j.severity, Severity::Advisory);
-    assert!(j.detail.contains("buffer") && j.detail.contains("recursion"), "{}", j.detail);
+    assert!(
+        j.detail.contains("buffer") && j.detail.contains("recursion"),
+        "{}",
+        j.detail
+    );
 
     // Whole-word only: "enumerate" must NOT fire the "enum" rule.
     assert!(
@@ -82,8 +95,15 @@ fn a_clean_explanation_reads_plainly_and_is_not_called_correct() {
     let f = check(PLAIN);
     assert!(f.is_empty(), "PLAIN should be clean: {f:?}");
     let said = spoken(&f);
-    assert!(said.to_lowercase().contains("reads as a plain-english explanation"), "{said}");
-    assert!(said.to_lowercase().contains("for you to judge"), "must not claim it's accurate: {said}");
+    assert!(
+        said.to_lowercase()
+            .contains("reads as a plain-english explanation"),
+        "{said}"
+    );
+    assert!(
+        said.to_lowercase().contains("for you to judge"),
+        "must not claim it's accurate: {said}"
+    );
     assert!(blocking(&f).is_empty());
 }
 
@@ -93,8 +113,14 @@ fn a_clean_explanation_reads_plainly_and_is_not_called_correct() {
 fn the_depth_dial_is_read_from_the_words() {
     assert_eq!(Depth::from_words("explain it like i'm five"), Depth::Simple);
     assert_eq!(Depth::from_words("simply please"), Depth::Simple);
-    assert_eq!(Depth::from_words("explain in more detail"), Depth::Technical);
-    assert_eq!(Depth::from_words("technically what happens"), Depth::Technical);
+    assert_eq!(
+        Depth::from_words("explain in more detail"),
+        Depth::Technical
+    );
+    assert_eq!(
+        Depth::from_words("technically what happens"),
+        Depth::Technical
+    );
     assert_eq!(Depth::from_words("just explain the counter"), Depth::Normal);
 }
 
@@ -104,26 +130,49 @@ fn jargon_blocks_at_simple_but_is_allowed_at_technical() {
                        nothing is lost along the way as it goes.";
     // Simple: no jargon allowed — it blocks.
     let s = check_at(with_jargon, Depth::Simple);
-    let j = s.iter().find(|x| x.rule == "plain words").expect("jargon caught at Simple");
-    assert_eq!(j.severity, Severity::Blocking, "at 'like I'm five', jargon must block");
+    let j = s
+        .iter()
+        .find(|x| x.rule == "plain words")
+        .expect("jargon caught at Simple");
+    assert_eq!(
+        j.severity,
+        Severity::Blocking,
+        "at 'like I'm five', jargon must block"
+    );
     // Technical: precise terms are allowed — the rule doesn't fire.
-    assert!(!has(&check_at(with_jargon, Depth::Technical), "plain words"), "technical allows terms");
+    assert!(
+        !has(&check_at(with_jargon, Depth::Technical), "plain words"),
+        "technical allows terms"
+    );
     // Normal: worth flagging, but not blocking.
     let n = check_at(with_jargon, Depth::Normal);
-    assert_eq!(n.iter().find(|x| x.rule == "plain words").unwrap().severity, Severity::Advisory);
+    assert_eq!(
+        n.iter().find(|x| x.rule == "plain words").unwrap().severity,
+        Severity::Advisory
+    );
 }
 
 #[test]
 fn technical_gets_more_room_than_simple() {
     let medium = "word ".repeat(100); // 100 words: over Simple's cap (90), under Technical's (220)
-    assert!(has(&check_at(&medium, Depth::Simple), "kept short"), "100 words is long for Simple");
-    assert!(!has(&check_at(&medium, Depth::Technical), "kept short"), "100 words is fine for Technical");
+    assert!(
+        has(&check_at(&medium, Depth::Simple), "kept short"),
+        "100 words is long for Simple"
+    );
+    assert!(
+        !has(&check_at(&medium, Depth::Technical), "kept short"),
+        "100 words is fine for Technical"
+    );
 }
 
 // --- the rewrite loop ------------------------------------------------------
 
 fn blocker() -> Vec<Finding> {
-    vec![Finding { severity: Severity::Blocking, rule: "words not code".into(), detail: "code".into() }]
+    vec![Finding {
+        severity: Severity::Blocking,
+        rule: "words not code".into(),
+        detail: "code".into(),
+    }]
 }
 
 #[test]
@@ -150,7 +199,9 @@ fn a_problem_that_survives_the_budget_is_a_struggle() {
     let llm = MockLlm("still not plain".into());
     let outcome = explain_loop("code", &llm, 2, Depth::Normal, |_| blocker());
     match outcome {
-        Outcome::Struggled { rounds, findings, .. } => {
+        Outcome::Struggled {
+            rounds, findings, ..
+        } => {
             assert_eq!(rounds, 2);
             assert!(findings.iter().any(|f| f.severity == Severity::Blocking));
         }
@@ -161,16 +212,27 @@ fn a_problem_that_survives_the_budget_is_a_struggle() {
 #[test]
 fn no_model_output_is_no_draft() {
     let llm = MockLlm("   ".into());
-    assert!(matches!(explain_loop("code", &llm, 3, Depth::Normal, |_| vec![]), Outcome::NoDraft(_)));
+    assert!(matches!(
+        explain_loop("code", &llm, 3, Depth::Normal, |_| vec![]),
+        Outcome::NoDraft(_)
+    ));
 }
 
 #[test]
 fn in_plain_english_hands_back_the_explanation_for_auto_explain() {
     // The helper the build/improve paths use so generated code arrives with a
     // plain-English summary.
-    let llm = MockLlm("This keeps a running total of the numbers you give it and remembers the sum so far.".into());
+    let llm = MockLlm(
+        "This keeps a running total of the numbers you give it and remembers the sum so far."
+            .into(),
+    );
     let got = atlas::explain::in_plain_english("fn total() {}", &llm, 2);
-    assert!(got.as_deref().map(|s| s.to_lowercase().contains("total")).unwrap_or(false), "{got:?}");
+    assert!(
+        got.as_deref()
+            .map(|s| s.to_lowercase().contains("total"))
+            .unwrap_or(false),
+        "{got:?}"
+    );
 }
 
 #[test]
@@ -188,21 +250,43 @@ fn explain_routes_through_the_daemon() {
     std::fs::create_dir_all(&dir).unwrap();
 
     let c = Config::load(Path::new("config")).unwrap();
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     // No model in the test daemon → the handler's graceful branch, which still
     // proves the phrase routed to explain_code and the dispatch arm ran. A plain
     // string literal so the coverage guard can parse it.
-    let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let reply = d.turn("explain the code that keeps a running total", 100);
     // 30 Sep 2026: a description isn't code -- explained as if it were, a
     // model invented it. Asked for the code instead, before any model.
     assert!(reply.contains("doesn't look like code"), "{reply}");
-    let pasted = d.turn("explain the code: fn total(xs: &[u32]) -> u32 { xs.iter().sum() }", 100);
-    assert!(pasted.to_lowercase().contains("model"), "with no model it should say it needs one: {pasted}");
+    let pasted = d.turn(
+        "explain the code: fn total(xs: &[u32]) -> u32 { xs.iter().sum() }",
+        100,
+    );
+    assert!(
+        pasted.to_lowercase().contains("model"),
+        "with no model it should say it needs one: {pasted}"
+    );
     // Routed to explain_code as its own branch, not the catch-all: a nonsense
     // line does not get the same answer.
     let junk = d.turn("zzqx frobnicate wibble", 100);
-    assert_ne!(reply, junk, "the explain phrase must route to a branch of its own");
+    assert_ne!(
+        reply, junk,
+        "the explain phrase must route to a branch of its own"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -219,7 +303,10 @@ fn explaining_a_change_waiting_to_be_implemented_finds_it() {
         "Roofing",
         "the date parser",
         "reads dates from quotes",
-        vec![atlas::workshop::FileEdit { path: "dates.rs".into(), content: "date parsing goes here".into() }],
+        vec![atlas::workshop::FileEdit {
+            path: "dates.rs".into(),
+            content: "date parsing goes here".into(),
+        }],
         true,
         "ok",
         1,
@@ -227,14 +314,33 @@ fn explaining_a_change_waiting_to_be_implemented_finds_it() {
     let _ = w.save(&store);
 
     let c = Config::load(Path::new("config")).unwrap();
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
-    let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     // No model, but it must have FOUND the queued change (→ needs a model),
     // not fallen through to "nothing waiting".
     let reply = d.turn("explain the change waiting to be implemented", 100);
-    assert!(reply.to_lowercase().contains("model"), "should have found the change and asked for a model: {reply}");
-    assert!(!reply.to_lowercase().contains("nothing waiting"), "it exists, so not 'nothing waiting': {reply}");
+    assert!(
+        reply.to_lowercase().contains("model"),
+        "should have found the change and asked for a model: {reply}"
+    );
+    assert!(
+        !reply.to_lowercase().contains("nothing waiting"),
+        "it exists, so not 'nothing waiting': {reply}"
+    );
     // Finding the queued change is a real branch, distinct from the catch-all.
     let junk = d.turn("zzqx frobnicate wibble", 100);
     assert_ne!(reply, junk, "the found-change answer is its own branch");
@@ -248,11 +354,27 @@ fn explaining_a_queued_change_when_there_is_none_says_so() {
     std::fs::create_dir_all(&dir).unwrap();
 
     let c = Config::load(Path::new("config")).unwrap();
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
-    let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     let reply = d.turn("explain the change waiting to be implemented", 100);
-    assert!(reply.to_lowercase().contains("nothing waiting"), "no queued change → says so: {reply}");
+    assert!(
+        reply.to_lowercase().contains("nothing waiting"),
+        "no queued change → says so: {reply}"
+    );
     // The 'nothing waiting' answer is its own branch, not the catch-all.
     let junk = d.turn("zzqx frobnicate wibble", 100);
     assert_ne!(reply, junk, "the empty-queue answer is a branch of its own");

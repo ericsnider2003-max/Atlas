@@ -95,7 +95,10 @@ impl Platform {
 
     /// Where the posts are videos, so "my last video" means something.
     pub fn is_video(&self) -> bool {
-        matches!(self, Platform::Youtube | Platform::Tiktok | Platform::Instagram)
+        matches!(
+            self,
+            Platform::Youtube | Platform::Tiktok | Platform::Instagram
+        )
     }
 }
 
@@ -140,7 +143,14 @@ impl Metrics {
     /// Likes, comments, shares, saves, reposts and quotes that were given,
     /// summed; `None` when not one of them was.
     pub fn interactions(&self) -> Option<u64> {
-        let parts = [self.likes, self.comments, self.shares, self.saves, self.reposts, self.quotes];
+        let parts = [
+            self.likes,
+            self.comments,
+            self.shares,
+            self.saves,
+            self.reposts,
+            self.quotes,
+        ];
         if parts.iter().all(|p| p.is_none()) {
             return self.engagements;
         }
@@ -154,7 +164,22 @@ impl Metrics {
         macro_rules! take {
             ($($f:ident),*) => { $( if self.$f.is_none() { self.$f = other.$f; } )* };
         }
-        take!(views, likes, comments, shares, saves, reposts, quotes, impressions, reach, engagements, watch_minutes, avg_view_secs, avg_view_pct, followers_gained);
+        take!(
+            views,
+            likes,
+            comments,
+            shares,
+            saves,
+            reposts,
+            quotes,
+            impressions,
+            reach,
+            engagements,
+            watch_minutes,
+            avg_view_secs,
+            avg_view_pct,
+            followers_gained
+        );
     }
 }
 
@@ -222,8 +247,15 @@ impl Record {
     /// The same numbers, whenever and from wherever it was taken.
     fn same_numbers(&self, other: &Record) -> bool {
         match (self, other) {
-            (Record::Post(a), Record::Post(b)) => a.m == b.m && a.text == b.text && a.seconds == b.seconds && a.posted == b.posted,
-            (Record::Account(a), Record::Account(b)) => a.followers == b.followers && a.following == b.following && a.posts == b.posts && a.m == b.m,
+            (Record::Post(a), Record::Post(b)) => {
+                a.m == b.m && a.text == b.text && a.seconds == b.seconds && a.posted == b.posted
+            }
+            (Record::Account(a), Record::Account(b)) => {
+                a.followers == b.followers
+                    && a.following == b.following
+                    && a.posts == b.posts
+                    && a.m == b.m
+            }
             _ => false,
         }
     }
@@ -255,7 +287,9 @@ impl Book {
             if i >= MAX_LINES {
                 return Err("The social snapshot is too large for this brief.".into());
             }
-            let r: Record = serde_json::from_str(line).map_err(|_| "A social snapshot line could not be read; the file was left untouched.")?;
+            let r: Record = serde_json::from_str(line).map_err(|_| {
+                "A social snapshot line could not be read; the file was left untouched."
+            })?;
             b.by_key.insert(r.key(), r);
         }
         Ok(b)
@@ -263,7 +297,9 @@ impl Book {
 
     pub fn load(path: &Path) -> Book {
         let mut b = Book::default();
-        let Ok(text) = std::fs::read_to_string(path) else { return b };
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return b;
+        };
         let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
         let skip = lines.len().saturating_sub(MAX_LINES);
         b.left_unread = skip;
@@ -287,7 +323,9 @@ impl Book {
         let mut fresh: Vec<Record> = Vec::new();
         for r in records {
             let k = r.key();
-            if self.by_key.get(&k).is_some_and(|old| old.same_numbers(&r)) || fresh.iter().any(|f| f.key() == k && f.same_numbers(&r)) {
+            if self.by_key.get(&k).is_some_and(|old| old.same_numbers(&r))
+                || fresh.iter().any(|f| f.key() == k && f.same_numbers(&r))
+            {
                 added.unchanged += 1;
                 continue;
             }
@@ -300,7 +338,10 @@ impl Book {
             if let Some(dir) = path.parent() {
                 std::fs::create_dir_all(dir)?;
             }
-            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)?;
             f.write_all(out.as_bytes())?;
             f.sync_all()?;
         }

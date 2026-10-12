@@ -89,7 +89,12 @@ fn fields(b: &[u8]) -> Option<Vec<Field>> {
         if i > b.len() {
             return None;
         }
-        out.push(Field { number, wire, whole: start..i, payload });
+        out.push(Field {
+            number,
+            wire,
+            whole: start..i,
+            payload,
+        });
     }
     Some(out)
 }
@@ -114,7 +119,9 @@ fn rewrite(b: &[u8], n: u32, f: &mut dyn FnMut(&[u8]) -> Option<Vec<u8>>) -> Opt
 
 /// The string in a message's field `n`.
 fn string_field(b: &[u8], n: u32) -> Option<String> {
-    let fl = fields(b)?.into_iter().find(|f| f.number == n && f.wire == 2)?;
+    let fl = fields(b)?
+        .into_iter()
+        .find(|f| f.number == n && f.wire == 2)?;
     String::from_utf8(b[fl.payload].to_vec()).ok()
 }
 
@@ -176,10 +183,15 @@ pub fn with_fixed_inputs(model: &[u8], shapes: &[(String, Vec<i64>)]) -> Option<
 /// The sizes each input of `model` declares: `(name, dims)`, a dimension
 /// left open as `-1`. For checking what was written.
 pub fn input_shapes(model: &[u8]) -> Option<Vec<(String, Vec<i64>)>> {
-    let graph = fields(model)?.into_iter().find(|f| f.number == MODEL_GRAPH && f.wire == 2)?;
+    let graph = fields(model)?
+        .into_iter()
+        .find(|f| f.number == MODEL_GRAPH && f.wire == 2)?;
     let g = &model[graph.payload];
     let mut out = Vec::new();
-    for input in fields(g)?.into_iter().filter(|f| f.number == GRAPH_INPUT && f.wire == 2) {
+    for input in fields(g)?
+        .into_iter()
+        .filter(|f| f.number == GRAPH_INPUT && f.wire == 2)
+    {
         let v = &g[input.payload];
         let name = string_field(v, VALUE_NAME)?;
         let mut dims = Vec::new();
@@ -187,11 +199,16 @@ pub fn input_shapes(model: &[u8]) -> Option<Vec<(String, Vec<i64>)>> {
         let ty = &v[ty.payload];
         if let Some(tensor) = fields(ty)?.into_iter().find(|f| f.number == TYPE_TENSOR) {
             let tensor = &ty[tensor.payload];
-            if let Some(shape) = fields(tensor)?.into_iter().find(|f| f.number == TENSOR_SHAPE) {
+            if let Some(shape) = fields(tensor)?
+                .into_iter()
+                .find(|f| f.number == TENSOR_SHAPE)
+            {
                 let shape = &tensor[shape.payload];
                 for dim in fields(shape)?.into_iter().filter(|f| f.number == SHAPE_DIM) {
                     let d = &shape[dim.payload];
-                    let value = fields(d)?.into_iter().find(|f| f.number == DIM_VALUE && f.wire == 0);
+                    let value = fields(d)?
+                        .into_iter()
+                        .find(|f| f.number == DIM_VALUE && f.wire == 0);
                     dims.push(match value {
                         Some(f) => {
                             let mut i = f.payload.start;

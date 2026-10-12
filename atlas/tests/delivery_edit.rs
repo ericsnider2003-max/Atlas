@@ -22,7 +22,9 @@ fn an_approved_post_becomes_a_sequence_ending_in_submit() {
     let id = ready_post(&mut pub_, Channel::X, "shipping today");
     let steps = plan(&pub_, &cfg, id, true).unwrap();
     assert_eq!(steps.last(), Some(&PostStep::Submit));
-    assert!(steps.iter().any(|s| matches!(s, PostStep::Fill(t) if t == "shipping today")));
+    assert!(steps
+        .iter()
+        .any(|s| matches!(s, PostStep::Fill(t) if t == "shipping today")));
 }
 
 #[test]
@@ -66,7 +68,10 @@ fn a_channel_with_no_way_to_post_says_so_instead_of_pretending() {
     let mut pub_ = Publisher::default();
     let id = ready_post(
         &mut pub_,
-        Channel::Email { to: "a@b.com".into(), subject: "hi".into() },
+        Channel::Email {
+            to: "a@b.com".into(),
+            subject: "hi".into(),
+        },
         "body",
     );
     match plan(&pub_, &cfg, id, true) {
@@ -79,8 +84,18 @@ fn a_channel_with_no_way_to_post_says_so_instead_of_pretending() {
 fn channels_map_to_the_right_site_profile() {
     let cfg = BrowserConfig::default();
     assert_eq!(profile_for(&cfg, &Channel::X).unwrap().name, "x");
-    assert_eq!(profile_for(&cfg, &Channel::LinkedIn).unwrap().name, "linkedin");
-    assert!(profile_for(&cfg, &Channel::Email { to: "a".into(), subject: "b".into() }).is_none());
+    assert_eq!(
+        profile_for(&cfg, &Channel::LinkedIn).unwrap().name,
+        "linkedin"
+    );
+    assert!(profile_for(
+        &cfg,
+        &Channel::Email {
+            to: "a".into(),
+            subject: "b".into()
+        }
+    )
+    .is_none());
 }
 
 #[test]
@@ -96,7 +111,9 @@ fn a_slow_page_is_retried_but_a_missing_login_is_not() {
         Outcome::Retry(_)
     ));
     assert!(matches!(
-        classify(AtlasError::Platform("not signed in to x — sign in and try again".into())),
+        classify(AtlasError::Platform(
+            "not signed in to x — sign in and try again".into()
+        )),
         Outcome::Blocked(_)
     ));
 }
@@ -130,9 +147,24 @@ fn three_cuts() -> EditPlan {
     EditPlan {
         sources: vec!["raw/take1.mp4".into()],
         segments: vec![
-            Segment { source: 0, start: 12.0, end: 30.0, speed: 1.0 },
-            Segment { source: 0, start: 45.0, end: 60.0, speed: 1.0 },
-            Segment { source: 0, start: 2.0, end: 8.0, speed: 1.0 },
+            Segment {
+                source: 0,
+                start: 12.0,
+                end: 30.0,
+                speed: 1.0,
+            },
+            Segment {
+                source: 0,
+                start: 45.0,
+                end: 60.0,
+                speed: 1.0,
+            },
+            Segment {
+                source: 0,
+                start: 2.0,
+                end: 8.0,
+                speed: 1.0,
+            },
         ],
         overlays: vec![],
         music: None,
@@ -171,8 +203,17 @@ fn a_segment_running_past_the_end_of_the_video_is_caught_before_ffmpeg() {
 #[test]
 fn backwards_and_nonsense_timestamps_are_caught() {
     let mut p = three_cuts();
-    p.segments[0] = Segment { source: 0, start: 30.0, end: 12.0, speed: 1.0 };
-    assert!(p.validate(&[120.0]).unwrap_err().to_string().contains("ends before it starts"));
+    p.segments[0] = Segment {
+        source: 0,
+        start: 30.0,
+        end: 12.0,
+        speed: 1.0,
+    };
+    assert!(p
+        .validate(&[120.0])
+        .unwrap_err()
+        .to_string()
+        .contains("ends before it starts"));
 
     let mut p2 = three_cuts();
     p2.segments[0].start = f64::NAN;
@@ -183,21 +224,33 @@ fn backwards_and_nonsense_timestamps_are_caught() {
 fn a_segment_pointing_at_a_video_that_is_not_there_is_caught() {
     let mut p = three_cuts();
     p.segments[1].source = 7;
-    assert!(p.validate(&[120.0]).unwrap_err().to_string().contains("isn't there"));
+    assert!(p
+        .validate(&[120.0])
+        .unwrap_err()
+        .to_string()
+        .contains("isn't there"));
 }
 
 #[test]
 fn an_absurd_speed_is_refused() {
     let mut p = three_cuts();
     p.segments[0].speed = 50.0;
-    assert!(p.validate(&[120.0]).unwrap_err().to_string().contains("out of range"));
+    assert!(p
+        .validate(&[120.0])
+        .unwrap_err()
+        .to_string()
+        .contains("out of range"));
 }
 
 #[test]
 fn an_empty_plan_is_refused_rather_than_rendering_nothing() {
     let mut p = three_cuts();
     p.segments.clear();
-    assert!(p.validate(&[120.0]).unwrap_err().to_string().contains("no segments"));
+    assert!(p
+        .validate(&[120.0])
+        .unwrap_err()
+        .to_string()
+        .contains("no segments"));
 }
 
 #[test]
@@ -210,7 +263,11 @@ fn a_caption_after_the_end_of_the_edit_is_caught() {
         position: "bottom".into(),
         size: 36,
     });
-    assert!(p.validate(&[120.0]).unwrap_err().to_string().contains("after the video ends"));
+    assert!(p
+        .validate(&[120.0])
+        .unwrap_err()
+        .to_string()
+        .contains("after the video ends"));
 }
 
 #[test]
@@ -234,7 +291,10 @@ fn speeding_a_segment_up_shortens_it() {
 fn every_segment_is_trimmed_and_pts_reset_then_concatenated() {
     // Stream copying cannot cut on arbitrary frames; this is why.
     let args = ffmpeg_args(&three_cuts());
-    let f = args.iter().find(|a| a.contains("concat=")).expect("a filter graph");
+    let f = args
+        .iter()
+        .find(|a| a.contains("concat="))
+        .expect("a filter graph");
     assert!(f.contains("trim=start=12.000:end=30.000"));
     assert!(f.contains("setpts=(PTS-STARTPTS)"));
     assert!(f.contains("concat=n=3:v=1:a=1"));
@@ -261,7 +321,10 @@ fn large_speed_changes_chain_atempo_because_it_caps_at_two() {
 #[test]
 fn an_apostrophe_in_a_caption_cannot_break_the_filter_string() {
     let e = escape_drawtext("Here's the thing: 50% done");
-    assert!(!e.contains("Here's"), "the raw apostrophe must not survive: {e}");
+    assert!(
+        !e.contains("Here's"),
+        "the raw apostrophe must not survive: {e}"
+    );
     assert!(e.contains(r"\\\'"), "apostrophe escaped for drawtext: {e}");
     assert!(e.contains("\\:"), "colons must be escaped: {e}");
     assert!(e.contains("\\%"), "percent must be escaped: {e}");
@@ -289,7 +352,10 @@ fn background_music_is_mixed_under_rather_than_replacing_the_audio() {
     p.music = Some("music/bed.mp3".into());
     let f = ffmpeg_args(&p).join(" ");
     assert!(f.contains("amix=inputs=2"), "original audio must survive");
-    assert!(f.contains("volume=-18.0dB"), "and the bed must sit under it");
+    assert!(
+        f.contains("volume=-18.0dB"),
+        "and the bed must sit under it"
+    );
 }
 
 #[test]
@@ -297,12 +363,19 @@ fn a_resolution_change_is_applied_before_captions_are_drawn() {
     let mut p = three_cuts();
     p.resolution = Some((1080, 1920));
     p.overlays.push(Overlay {
-        text: "hi".into(), start: 0.0, end: 1.0, position: "bottom".into(), size: 36,
+        text: "hi".into(),
+        start: 0.0,
+        end: 1.0,
+        position: "bottom".into(),
+        size: 36,
     });
     let f = ffmpeg_args(&p).join(" ");
     let scale_at = f.find("scale=1080:1920").expect("a scale filter");
     let text_at = f.find("drawtext").expect("a text filter");
-    assert!(scale_at < text_at, "captions must be sized to the final frame");
+    assert!(
+        scale_at < text_at,
+        "captions must be sized to the final frame"
+    );
 }
 
 #[test]
@@ -311,7 +384,10 @@ fn a_model_reply_becomes_a_plan_even_wrapped_in_prose() {
                  \"intent\":\"tighten the open\"}\n``` hope that helps";
     let p = plan_from_model(reply, vec!["raw/a.mp4".into()], "out/b.mp4").unwrap();
     assert_eq!(p.segments.len(), 1);
-    assert_eq!(p.segments[0].speed, 1.0, "speed defaults when the model omits it");
+    assert_eq!(
+        p.segments[0].speed, 1.0,
+        "speed defaults when the model omits it"
+    );
     assert_eq!(p.intent, "tighten the open");
     assert_eq!(p.output, "out/b.mp4");
 }
@@ -325,7 +401,10 @@ fn a_planner_reply_that_is_not_json_is_a_clear_error() {
 fn a_planner_that_invents_an_impossible_edit_is_caught_by_validation() {
     let reply = r#"{"segments":[{"source":0,"start":0,"end":9999}]}"#;
     let p = plan_from_model(reply, vec!["raw/a.mp4".into()], "out/b.mp4").unwrap();
-    assert!(p.validate(&[60.0]).is_err(), "the model's arithmetic is not trusted");
+    assert!(
+        p.validate(&[60.0]).is_err(),
+        "the model's arithmetic is not trusted"
+    );
 }
 
 #[test]

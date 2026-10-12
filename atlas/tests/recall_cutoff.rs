@@ -31,7 +31,10 @@ fn hit(title: &str, score: f32) -> Hit {
 fn two_near_tied_hits_are_reported_as_a_disagreement() {
     // Not a confident answer with a runner-up. A question the notes answer
     // two ways.
-    let hits = vec![hit("holiday policy 2026", 0.92), hit("holiday policy 2024", 0.89)];
+    let hits = vec![
+        hit("holiday policy 2026", 0.92),
+        hit("holiday policy 2024", 0.89),
+    ];
     match Library::clarity(&hits) {
         Clarity::TwoEquallyGood { first, second } => {
             assert_eq!(first, "holiday policy 2026");
@@ -50,7 +53,10 @@ fn a_clear_winner_is_left_alone() {
 
 #[test]
 fn a_single_hit_is_a_clear_answer() {
-    assert_eq!(Library::clarity(&[hit("only one", 0.4)]), Clarity::OneClearAnswer);
+    assert_eq!(
+        Library::clarity(&[hit("only one", 0.4)]),
+        Clarity::OneClearAnswer
+    );
 }
 
 #[test]
@@ -83,5 +89,9 @@ fn the_default_relative_floor_is_set_and_sane() {
     assert!(c.relative_floor > 0.0 && c.relative_floor < 1.0);
     // Above 0.5 and a genuine second-best gets cut; below 0.25 and it does
     // nothing the absolute floor was not already doing.
-    assert!((0.25..=0.7).contains(&c.relative_floor), "got {}", c.relative_floor);
+    assert!(
+        (0.25..=0.7).contains(&c.relative_floor),
+        "got {}",
+        c.relative_floor
+    );
 }

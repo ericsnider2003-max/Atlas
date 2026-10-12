@@ -45,7 +45,10 @@ pub struct Step {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Phone {
     Checking,
-    Link { url: String, modules: (usize, Vec<bool>) },
+    Link {
+        url: String,
+        modules: (usize, Vec<bool>),
+    },
     Why(String),
 }
 
@@ -64,14 +67,35 @@ pub struct Progress {
 
 impl Progress {
     pub fn new() -> Progress {
-        let mut steps = vec![Step { label: "A home for Atlas".into(), state: StepState::Waiting }];
+        let mut steps = vec![Step {
+            label: "A home for Atlas".into(),
+            state: StepState::Waiting,
+        }];
         for p in setup_pieces() {
-            steps.push(Step { label: format!("{} ({} MB)", capitalise(p.name), p.megabytes()), state: StepState::Waiting });
+            steps.push(Step {
+                label: format!("{} ({} MB)", capitalise(p.name), p.megabytes()),
+                state: StepState::Waiting,
+            });
         }
-        steps.push(Step { label: "Letting your own devices reach Atlas".into(), state: StepState::Waiting });
-        steps.push(Step { label: "Getting to know this computer".into(), state: StepState::Waiting });
-        steps.push(Step { label: "Checking everything".into(), state: StepState::Waiting });
-        Progress { steps, to_look_at: Vec::new(), phone: Phone::Checking, finished: false, after: Vec::new() }
+        steps.push(Step {
+            label: "Letting your own devices reach Atlas".into(),
+            state: StepState::Waiting,
+        });
+        steps.push(Step {
+            label: "Getting to know this computer".into(),
+            state: StepState::Waiting,
+        });
+        steps.push(Step {
+            label: "Checking everything".into(),
+            state: StepState::Waiting,
+        });
+        Progress {
+            steps,
+            to_look_at: Vec::new(),
+            phone: Phone::Checking,
+            finished: false,
+            after: Vec::new(),
+        }
     }
 
     fn working(&self) -> bool {
@@ -79,7 +103,10 @@ impl Progress {
     }
 
     pub fn problems(&self) -> usize {
-        self.steps.iter().filter(|s| matches!(s.state, StepState::Problem(_))).count()
+        self.steps
+            .iter()
+            .filter(|s| matches!(s.state, StepState::Problem(_)))
+            .count()
     }
 }
 
@@ -122,7 +149,11 @@ impl FeedbackForm {
 
     /// "Show me what will be sent": builds it, sends nothing.
     pub fn show(&mut self, store: &crate::store::Store, now: u64) {
-        let attach = if self.attach { crate::update_apply::last_failure(store) } else { None };
+        let attach = if self.attach {
+            crate::update_apply::last_failure(store)
+        } else {
+            None
+        };
         match crate::feedback::compose_feedback(&self.words, attach, now) {
             Ok(f) => {
                 self.showing = Some(f);
@@ -185,13 +216,22 @@ pub struct Place {
 
 /// Doctor's lines that are only the consequence of a voice piece not being
 /// here yet.
-const VOICE_FINDINGS: &[&str] =
-    &["record (mic)", "stt", "tts", "play", "model 'stt_model'", "speech engine"];
+const VOICE_FINDINGS: &[&str] = &[
+    "record (mic)",
+    "stt",
+    "tts",
+    "play",
+    "model 'stt_model'",
+    "speech engine",
+];
 
 /// Doctor findings a person can act on, in words. The ones about Atlas's own
 /// shipped settings are Atlas's to fix, not yours, and apps you don't have
 /// are grouped into one line rather than one alarm each.
-pub fn for_you_to_look_at(findings: &[crate::doctor::Finding], pieces_missing: bool) -> Vec<String> {
+pub fn for_you_to_look_at(
+    findings: &[crate::doctor::Finding],
+    pieces_missing: bool,
+) -> Vec<String> {
     let mut out = Vec::new();
     let mut missing_apps: Vec<String> = Vec::new();
     let mut extras = false;
@@ -210,11 +250,21 @@ pub fn for_you_to_look_at(findings: &[crate::doctor::Finding], pieces_missing: b
             extras = true;
             continue;
         }
-        if let Some(app) = f.label.strip_prefix("app '").and_then(|a| a.strip_suffix('\'')) {
+        if let Some(app) = f
+            .label
+            .strip_prefix("app '")
+            .and_then(|a| a.strip_suffix('\''))
+        {
             missing_apps.push(app.to_string());
             continue;
         }
-        let first = f.detail.split(". ").next().unwrap_or(&f.detail).trim().trim_end_matches('.');
+        let first = f
+            .detail
+            .split(". ")
+            .next()
+            .unwrap_or(&f.detail)
+            .trim()
+            .trim_end_matches('.');
         out.push(format!("{}: {first}.", f.label));
     }
     if extras {
@@ -228,7 +278,11 @@ pub fn for_you_to_look_at(findings: &[crate::doctor::Finding], pieces_missing: b
         out.push(format!(
             "I couldn't find {} on this computer — that's fine if you don't use {}.",
             missing_apps.join(", "),
-            if missing_apps.len() == 1 { "it" } else { "them" }
+            if missing_apps.len() == 1 {
+                "it"
+            } else {
+                "them"
+            }
         ));
     }
     out
@@ -279,14 +333,22 @@ pub fn walk_the_steps(place: &Place, progress: &Arc<Mutex<Progress>>, tools: &ge
         if let Err(why) = &no_room {
             set(
                 i,
-                StepState::Problem(if said_no_room { "not fetched: there isn't room yet (see above)".into() } else { why.clone() }),
+                StepState::Problem(if said_no_room {
+                    "not fetched: there isn't room yet (see above)".into()
+                } else {
+                    why.clone()
+                }),
             );
             said_no_room = true;
             continue;
         }
         set(i, StepState::Working(Some(0.0)));
         let report = |done: u64, total: u64| {
-            let f = if total == 0 { 0.0 } else { done as f32 / total as f32 };
+            let f = if total == 0 {
+                0.0
+            } else {
+                done as f32 / total as f32
+            };
             set(i, StepState::Working(Some(f.clamp(0.0, 1.0))));
         };
         match getpieces::fetch(piece, &place.root, tools, &report) {
@@ -315,7 +377,11 @@ pub fn walk_the_steps(place: &Place, progress: &Arc<Mutex<Progress>>, tools: &ge
             Ok(out) if out.status.success() => set(adapt, StepState::Done("done".into())),
             Ok(out) => {
                 let said = String::from_utf8_lossy(&out.stdout);
-                let last = said.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it stopped partway");
+                let last = said
+                    .lines()
+                    .rev()
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("it stopped partway");
                 set(adapt, StepState::Problem(last.trim().to_string()))
             }
             Err(e) => set(adapt, StepState::Problem(format!("I couldn't run it: {e}"))),
@@ -330,9 +396,14 @@ pub fn walk_the_steps(place: &Place, progress: &Arc<Mutex<Progress>>, tools: &ge
     match crate::config::Config::load(&place.root.join("config")) {
         Ok(cfg) => {
             settings_ok = cfg.tools.is_some();
-            let cfg = crate::config::Config { tools: cfg.tools.map(|t| t.anchored()), ..cfg };
+            let cfg = crate::config::Config {
+                tools: cfg.tools.map(|t| t.anchored()),
+                ..cfg
+            };
             let findings = with_platform(|plat| crate::doctor::run(&cfg, cfg.tools.as_ref(), plat));
-            let pieces_missing = setup_pieces().iter().any(|p| !getpieces::have(p, &place.root));
+            let pieces_missing = setup_pieces()
+                .iter()
+                .any(|p| !getpieces::have(p, &place.root));
             let mut said = for_you_to_look_at(&findings, pieces_missing);
             // Smart App Control first: where it's on or about to be, it's
             // the thing that stops everything else working.
@@ -348,11 +419,17 @@ pub fn walk_the_steps(place: &Place, progress: &Arc<Mutex<Progress>>, tools: &ge
                 StepState::Done(if n == 0 {
                     "everything's in order".into()
                 } else {
-                    format!("{n} thing{} to look at, below", if n == 1 { "" } else { "s" })
+                    format!(
+                        "{n} thing{} to look at, below",
+                        if n == 1 { "" } else { "s" }
+                    )
                 }),
             );
         }
-        Err(e) => set(check, StepState::Problem(format!("I couldn't read my settings: {e}"))),
+        Err(e) => set(
+            check,
+            StepState::Problem(format!("I couldn't read my settings: {e}")),
+        ),
     }
 
     // 5. The phone.
@@ -365,7 +442,11 @@ pub fn walk_the_steps(place: &Place, progress: &Arc<Mutex<Progress>>, tools: &ge
     // that failed was marked done anyway, so Atlas never tried again and
     // fell back to push-to-talk for good). A step that had a problem is
     // tried again the next time Atlas is opened.
-    let problems = progress.lock().or_else(crate::crash::unpoison).map(|p| p.problems()).unwrap_or(0);
+    let problems = progress
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .map(|p| p.problems())
+        .unwrap_or(0);
     if problems == 0 {
         crate::heard!(firstlaunch::mark_set_up(&place.root));
     }
@@ -383,8 +464,14 @@ pub fn walk_the_steps(place: &Place, progress: &Arc<Mutex<Progress>>, tools: &ge
 /// Only from the Atlas program itself: a test harness running these steps
 /// must not register or start anything.
 fn after_setup(place: &Place, settings_ok: bool, just_set_up: bool) -> Vec<String> {
-    let is_atlas = place.exe.file_stem().map(|s| s.to_string_lossy().eq_ignore_ascii_case("atlas")).unwrap_or(false)
-        && std::env::current_exe().map(|me| me == place.exe).unwrap_or(false);
+    let is_atlas = place
+        .exe
+        .file_stem()
+        .map(|s| s.to_string_lossy().eq_ignore_ascii_case("atlas"))
+        .unwrap_or(false)
+        && std::env::current_exe()
+            .map(|me| me == place.exe)
+            .unwrap_or(false);
     let state = place.root.join("data").join("state");
     let next = crate::startup::after_setup(
         cfg!(windows) && is_atlas,
@@ -401,11 +488,17 @@ fn after_setup(place: &Place, settings_ok: bool, just_set_up: bool) -> Vec<Strin
                 said.push(format!("{words} You can switch that off below."));
             }
             // Not remembered, so the next setup tries again.
-            Err(e) => said.push(format!("I couldn't set Atlas to start when you sign in: {e}.")),
+            Err(e) => said.push(format!(
+                "I couldn't set Atlas to start when you sign in: {e}."
+            )),
         }
     }
     if next.start {
-        match firstlaunch::start_background_watched(&place.exe, &place.root, std::time::Duration::from_secs(4)) {
+        match firstlaunch::start_background_watched(
+            &place.exe,
+            &place.root,
+            std::time::Duration::from_secs(4),
+        ) {
             Ok(()) => said.push("Starting Atlas in the background.".into()),
             Err(why) => said.push(why),
         }
@@ -439,8 +532,8 @@ fn phone_section(place: &Place) -> Phone {
             // for adding another device.
             crate::kept!(crate::roots::store().save(crate::phonelink::LINK_KEY, &url));
             match crate::phonelink::qr_modules(&url) {
-            Some(modules) => Phone::Link { url, modules },
-            None => Phone::Why("I have your phone's link but couldn't draw its code.".into()),
+                Some(modules) => Phone::Link { url, modules },
+                None => Phone::Why("I have your phone's link but couldn't draw its code.".into()),
             }
         }
         other => Phone::Why(crate::phonelink::say(&other)),
@@ -470,14 +563,16 @@ pub fn run(place: Place, first: First) -> Result<(), String> {
     let window_lock = crate::onlyone::OnlyOne::at(&window_dir);
     let now = crate::store::now();
     if !window_lock.look(now).can_take() {
-        return std::fs::write(window_dir.join(RAISE_FILE), b"")
-            .map_err(|e| format!("Atlas's window is already open, and I couldn't ask it to come forward: {e}"));
+        return std::fs::write(window_dir.join(RAISE_FILE), b"").map_err(|e| {
+            format!("Atlas's window is already open, and I couldn't ask it to come forward: {e}")
+        });
     }
     crate::heard!(window_lock.take(now));
     let progress = Arc::new(Mutex::new(Progress::new()));
     start_work(&place, &progress);
     let opts = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default().with_icon(crate::mark::window_icon())
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_icon(crate::mark::window_icon())
             .with_inner_size([560.0, 860.0])
             .with_min_inner_size([420.0, 480.0])
             .with_title("Atlas"),
@@ -612,10 +707,19 @@ impl eframe::App for App {
         // thirty frames a second on every page, the hub page included).
         ctx.request_repaint_after(std::time::Duration::from_millis(500));
         let t = self.opened.elapsed().as_secs_f32();
-        let snapshot = self.progress.lock().or_else(crate::crash::unpoison).map(|p| p.clone()).unwrap_or_default();
+        let snapshot = self
+            .progress
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map(|p| p.clone())
+            .unwrap_or_default();
 
         // Is Atlas answering? Asked every couple of seconds, not every frame.
-        if self.last_poll.map(|p| p.elapsed().as_secs_f32() > 2.0).unwrap_or(true) {
+        if self
+            .last_poll
+            .map(|p| p.elapsed().as_secs_f32() > 2.0)
+            .unwrap_or(true)
+        {
             self.running = firstlaunch::atlas_running(&self.place.root);
             // The hub's real port: it may have opened beside a taken one
             // (`server::open_hub`), or moved back.
@@ -642,7 +746,9 @@ impl eframe::App for App {
                 self.fitted = true;
                 let fits = fit_height(now.y, room.y);
                 if fits + 1.0 < now.y {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(now.x, fits)));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                        now.x, fits,
+                    )));
                 }
             }
         }
@@ -650,7 +756,10 @@ impl eframe::App for App {
             self.hub_sized = true;
             let (now, screen) = ctx.input(|i| (i.screen_rect().size(), i.viewport().monitor_size));
             let room = screen.unwrap_or(egui::vec2(1440.0, 900.0));
-            let want = egui::vec2(1240.0f32.min(room.x * 0.92), fit_height(now.y.max(860.0), room.y));
+            let want = egui::vec2(
+                1240.0f32.min(room.x * 0.92),
+                fit_height(now.y.max(860.0), room.y),
+            );
             if now.x + 40.0 < want.x {
                 self.size_before_hub = Some(now);
                 ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(want));
@@ -662,7 +771,9 @@ impl eframe::App for App {
             }
         }
 
-        let frame = egui::Frame::none().fill(crate::look_paint::colourway().ink).inner_margin(egui::Margin::same(28.0));
+        let frame = egui::Frame::none()
+            .fill(crate::look_paint::colourway().ink)
+            .inner_margin(egui::Margin::same(28.0));
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
             // The two pages: Atlas (setup and whether it's running) and its
             // Settings. Always one click apart.
@@ -873,24 +984,48 @@ impl App {
         let store = crate::roots::store();
         let soft = crate::look_paint::colourway().soft;
         if !self.feedback.open {
-            if ui.button(RichText::new("Report a problem with Atlas").font(FontId::proportional(15.0))).clicked() {
+            if ui
+                .button(
+                    RichText::new("Report a problem with Atlas").font(FontId::proportional(15.0)),
+                )
+                .clicked()
+            {
                 self.feedback.open = true;
             }
             if !self.feedback.said.is_empty() {
-                ui.label(RichText::new(&self.feedback.said).font(FontId::proportional(13.0)).color(soft));
+                ui.label(
+                    RichText::new(&self.feedback.said)
+                        .font(FontId::proportional(13.0))
+                        .color(soft),
+                );
             }
             return;
         }
-        ui.label(RichText::new("Report a problem with Atlas").font(FontId::proportional(18.0)).color(crate::look_paint::colourway().text));
+        ui.label(
+            RichText::new("Report a problem with Atlas")
+                .font(FontId::proportional(18.0))
+                .color(crate::look_paint::colourway().text),
+        );
         ui.label(RichText::new("What's wrong? In your own words. Nothing is sent until you've seen it and pressed Send.")
             .font(FontId::proportional(13.0)).color(soft));
-        let edit = ui.add(egui::TextEdit::multiline(&mut self.feedback.words).desired_rows(4).desired_width(f32::INFINITY));
-        edit.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "What's wrong"));
+        let edit = ui.add(
+            egui::TextEdit::multiline(&mut self.feedback.words)
+                .desired_rows(4)
+                .desired_width(f32::INFINITY),
+        );
+        edit.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "What's wrong")
+        });
         if edit.changed() {
             self.feedback.edited();
         }
         if FeedbackForm::failure_here(&store)
-            && ui.checkbox(&mut self.feedback.attach, "Attach what was written down about the update that failed here").changed()
+            && ui
+                .checkbox(
+                    &mut self.feedback.attach,
+                    "Attach what was written down about the update that failed here",
+                )
+                .changed()
         {
             self.feedback.edited();
         }
@@ -900,45 +1035,67 @@ impl App {
             }
             if self.feedback.showing.is_some() && ui.button("Send it").clicked() {
                 self.feedback.send(&store, &crate::roots::state_dir());
-                self.feedback.open = !self.feedback.said.starts_with("Sending") && !self.feedback.said.starts_with("This is your own");
+                self.feedback.open = !self.feedback.said.starts_with("Sending")
+                    && !self.feedback.said.starts_with("This is your own");
             }
             if ui.button("Cancel").clicked() {
                 self.feedback = FeedbackForm::default();
             }
         });
         if let Some(f) = &self.feedback.showing {
-            ui.label(RichText::new(crate::feedback::feedback_preview(f)).font(FontId::monospace(12.0)).color(soft));
+            ui.label(
+                RichText::new(crate::feedback::feedback_preview(f))
+                    .font(FontId::monospace(12.0))
+                    .color(soft),
+            );
         }
         if !self.feedback.said.is_empty() {
-            ui.label(RichText::new(&self.feedback.said).font(FontId::proportional(13.0)).color(soft));
+            ui.label(
+                RichText::new(&self.feedback.said)
+                    .font(FontId::proportional(13.0))
+                    .color(soft),
+            );
         }
     }
 
     /// The Hub page: the hub itself, in this window, when Atlas is running.
     fn show_hub(&mut self, ui: &mut eframe::egui::Ui, frame: &eframe::Frame) {
-
         use eframe::egui::{self, FontId, RichText};
         let _ = frame;
         let say = |ui: &mut egui::Ui, s: &str| {
-            ui.label(RichText::new(s).font(FontId::proportional(15.0)).color(crate::look_paint::colourway().soft));
+            ui.label(
+                RichText::new(s)
+                    .font(FontId::proportional(15.0))
+                    .color(crate::look_paint::colourway().soft),
+            );
         };
         if !self.running {
             self.hub.hide();
             ui.add_space(12.0);
-            ui.label(RichText::new("Hub").font(FontId::proportional(26.0)).strong().color(crate::look_paint::colourway().text));
+            ui.label(
+                RichText::new("Hub")
+                    .font(FontId::proportional(26.0))
+                    .strong()
+                    .color(crate::look_paint::colourway().text),
+            );
             say(ui, "The hub is Atlas's own pages — what it's doing, what's waiting for you, your devices, \
                      your settings. It's shown here while Atlas is running, and Atlas isn't running right now.");
             ui.add_space(8.0);
-            if ui.button(RichText::new("Start Atlas").font(FontId::proportional(18.0))).clicked() {
-                self.note = Some(match firstlaunch::spawn_quietly(&self.place.exe, &["--daemon"]) {
-                    Ok(child) => {
-                        crate::unwaited::dont_wait(child);
-                        self.last_poll = None;
-                        self.hub_go = true;
-                        STARTING.into()
-                    }
-                    Err(e) => format!("I couldn't start: {e}"),
-                });
+            if ui
+                .button(RichText::new("Start Atlas").font(FontId::proportional(18.0)))
+                .clicked()
+            {
+                self.note = Some(
+                    match firstlaunch::spawn_quietly(&self.place.exe, &["--daemon"]) {
+                        Ok(child) => {
+                            crate::unwaited::dont_wait(child);
+                            self.last_poll = None;
+                            self.hub_go = true;
+                            STARTING.into()
+                        }
+                        Err(e) => format!("I couldn't start: {e}"),
+                    },
+                );
             }
             if let Some(n) = &self.note {
                 say(ui, n);
@@ -950,7 +1107,11 @@ impl App {
             ui.add_space(12.0);
             say(ui, "On Windows the hub shows right here. This system has no built-in web view for Atlas to \
                      borrow, so here is its address on this machine:");
-            ui.label(RichText::new(&url).font(FontId::monospace(12.0)).color(crate::look_paint::colourway().dim));
+            ui.label(
+                RichText::new(&url)
+                    .font(FontId::monospace(12.0))
+                    .color(crate::look_paint::colourway().dim),
+            );
             return;
         }
         if let Some(p) = self.hub.problem() {
@@ -961,7 +1122,12 @@ impl App {
         let r = ui.available_rect_before_wrap();
         #[cfg(windows)]
         {
-            let area = crate::hubwin::Area { x: r.min.x, y: r.min.y, w: r.width(), h: r.height() };
+            let area = crate::hubwin::Area {
+                x: r.min.x,
+                y: r.min.y,
+                w: r.width(),
+                h: r.height(),
+            };
             let go = std::mem::take(&mut self.hub_go);
             self.hub.show(frame, area, &url, go);
         }
@@ -972,7 +1138,8 @@ impl App {
 const STARTING: &str = "Starting…";
 
 /// What the window says once the background Atlas is answering.
-pub const RUNNING_WORDS: &str = "Atlas is running in the background. You can close this window — Atlas keeps \
+pub const RUNNING_WORDS: &str =
+    "Atlas is running in the background. You can close this window — Atlas keeps \
      running, and its icon by the clock opens it again.";
 
 /// The small marker beside each step.
@@ -999,7 +1166,11 @@ fn restart(place: &Place, note: &Arc<Mutex<Option<String>>>) {
             say("Atlas didn't stop when asked, so I left it running. Your changes take effect at its next start.");
             return;
         }
-        match firstlaunch::start_background_watched(&place.exe, &place.root, std::time::Duration::from_secs(4)) {
+        match firstlaunch::start_background_watched(
+            &place.exe,
+            &place.root,
+            std::time::Duration::from_secs(4),
+        ) {
             Ok(()) => say("Atlas restarted with your changes."),
             Err(why) => say(&format!("Atlas stopped but didn't start again. {why}")),
         }
@@ -1024,7 +1195,11 @@ fn paint_qr(ui: &mut eframe::egui::Ui, modules: &(usize, Vec<bool>), size: f32) 
         for x in 0..*width {
             if dark[y * width + x] {
                 let min = rect.min + egui::vec2(x as f32 * cell, y as f32 * cell);
-                painter.rect_filled(Rect::from_min_size(min, egui::vec2(cell.ceil(), cell.ceil())), 0.0, Color32::BLACK);
+                painter.rect_filled(
+                    Rect::from_min_size(min, egui::vec2(cell.ceil(), cell.ceil())),
+                    0.0,
+                    Color32::BLACK,
+                );
             }
         }
     }
@@ -1035,5 +1210,11 @@ pub fn here(root: &Path, exe: &Path, port: u16) -> Result<Place, String> {
     // The same store the running Atlas reads its hub token from, so the
     // phone's link opens the hub this install actually serves.
     let token = crate::server::token_for(&crate::roots::store()).map_err(|e| e.to_string())?;
-    Ok(Place { root: root.to_path_buf(), exe: exe.to_path_buf(), port: firstlaunch::hub_port_at(root, port), configured_port: port, token })
+    Ok(Place {
+        root: root.to_path_buf(),
+        exe: exe.to_path_buf(),
+        port: firstlaunch::hub_port_at(root, port),
+        configured_port: port,
+        token,
+    })
 }

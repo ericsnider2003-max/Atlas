@@ -1,7 +1,7 @@
 //! The background tick and what hangs off it: readings, `tick` itself, saving
 //! after it, watching the index, the wire and sync to your other devices, and
 //! the overnight run.
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
@@ -28,7 +28,9 @@ pub struct Dial {
 
 /// Make the sends on their own thread, one after another; each answer goes
 /// back as it comes. Nothing here touches Atlas's state.
-pub fn dial_off_the_loop(dials: Vec<Dial>) -> std::sync::mpsc::Receiver<(Dial, std::result::Result<Vec<u8>, String>)> {
+pub fn dial_off_the_loop(
+    dials: Vec<Dial>,
+) -> std::sync::mpsc::Receiver<(Dial, std::result::Result<Vec<u8>, String>)> {
     dial_off_the_loop_within(dials, DIAL_PASS_WITHIN)
 }
 
@@ -56,7 +58,8 @@ pub fn dial_off_the_loop_within(
                     continue;
                 }
                 d.timeout = d.timeout.min(left);
-                let got = crate::transport::exchange(&d.host, d.port, &d.bytes, d.timeout).map_err(|e| e.to_string());
+                let got = crate::transport::exchange(&d.host, d.port, &d.bytes, d.timeout)
+                    .map_err(|e| e.to_string());
                 if tx.send((d, got)).is_err() {
                     return;
                 }
@@ -90,7 +93,8 @@ impl<'a> Daemon<'a> {
         // Read from the folder's names only (`state-<when>`), at most every
         // ten minutes: this runs on every tick.
         if r.days_since_backup.is_none() {
-            static NEWEST: std::sync::Mutex<Option<(u64, std::path::PathBuf, Option<u64>)>> = std::sync::Mutex::new(None);
+            static NEWEST: std::sync::Mutex<Option<(u64, std::path::PathBuf, Option<u64>)>> =
+                std::sync::Mutex::new(None);
             let now = crate::store::now();
             let dir = std::path::PathBuf::from(&self.backup_cfg().dir);
             let mut kept = NEWEST.lock().unwrap_or_else(|p| p.into_inner());
@@ -99,14 +103,20 @@ impl<'a> Daemon<'a> {
                 _ => {
                     let newest = std::fs::read_dir(&dir).ok().and_then(|rd| {
                         rd.flatten()
-                            .filter_map(|e| e.file_name().to_str().and_then(|n| n.strip_prefix("state-")).and_then(|n| n.parse::<u64>().ok()))
+                            .filter_map(|e| {
+                                e.file_name()
+                                    .to_str()
+                                    .and_then(|n| n.strip_prefix("state-"))
+                                    .and_then(|n| n.parse::<u64>().ok())
+                            })
                             .max()
                     });
                     *kept = Some((now, dir.clone(), newest));
                     newest
                 }
             };
-            r.days_since_backup = newest.map(|at| u32::try_from(now.saturating_sub(at) / 86_400).unwrap_or(u32::MAX));
+            r.days_since_backup =
+                newest.map(|at| u32::try_from(now.saturating_sub(at) / 86_400).unwrap_or(u32::MAX));
         }
         r
     }
@@ -133,28 +143,43 @@ impl<'a> Daemon<'a> {
         self.apply_fast_hub_pause();
         let mut out = Vec::new();
         self.poll_signing_protection();
-        if let Some(line) = self.recover_calendar_booking() { out.push(line); }
-        if let Some(message) = self.poll_pending_reminder_edit() { out.push(message); }
+        if let Some(line) = self.recover_calendar_booking() {
+            out.push(line);
+        }
+        if let Some(message) = self.poll_pending_reminder_edit() {
+            out.push(message);
+        }
         self.pause_files(self.attention.is_paused());
         out.extend(self.poll_file_moves(t));
-        if let Some(said) = self.poll_approved_undo() { out.push(said); }
-        if self.attention.is_paused() { self.cancel_brief_preparation(); }
+        if let Some(said) = self.poll_approved_undo() {
+            out.push(said);
+        }
+        if self.attention.is_paused() {
+            self.cancel_brief_preparation();
+        }
         if let Some(result) = self.poll_brief() {
             let explicit = std::mem::take(&mut self.brief_requested_explicitly);
             let panel = std::mem::take(&mut self.brief_requested_panel);
             match result {
                 Ok(brief) => {
                     if panel {
-                        let mut lines: Vec<String> = brief.yours.iter().chain(brief.drafted.iter())
-                            .map(|i| format!("{} — {}", i.source.plain(), i.headline())).collect();
-                        if lines.is_empty() { lines.push("Nothing needs you right now.".into()); }
+                        let mut lines: Vec<String> = brief
+                            .yours
+                            .iter()
+                            .chain(brief.drafted.iter())
+                            .map(|i| format!("{} — {}", i.source.plain(), i.headline()))
+                            .collect();
+                        if lines.is_empty() {
+                            lines.push("Nothing needs you right now.".into());
+                        }
                         self.show_panel(crate::window::Panel::Outstanding, "Outstanding", lines);
                     }
                     let announcement = self.take_brief_announcement();
                     let has_announcement = announcement.is_some();
                     let line = announcement.unwrap_or_else(|| crate::brief::spoken(&brief));
-                    if explicit { out.push(line); }
-                    else if !panel && (!brief.is_empty() || has_announcement) {
+                    if explicit {
+                        out.push(line);
+                    } else if !panel && (!brief.is_empty() || has_announcement) {
                         self.morning_brief = Some(match self.morning_brief.take() {
                             Some(night) => format!("{night} {line}"),
                             None => line,
@@ -164,8 +189,11 @@ impl<'a> Daemon<'a> {
                 Err(why) => {
                     // An unaccepted automatic preparation is not today's offer.
                     // Retry eligibility remains distinct from actual delivery.
-                    if !explicit && !panel { self.automatic_brief_failed(); }
-                    self.log.warn(&why); out.push(why);
+                    if !explicit && !panel {
+                        self.automatic_brief_failed();
+                    }
+                    self.log.warn(&why);
+                    out.push(why);
                 }
             }
         }
@@ -179,7 +207,13 @@ impl<'a> Daemon<'a> {
         // the desk was never heard).
         out.append(&mut self.to_say_aloud);
         self.retry_phone(t);
-        if let Some(line) = self.model_warmed.lock().or_else(crate::crash::unpoison).ok().and_then(|mut w| w.take()) {
+        if let Some(line) = self
+            .model_warmed
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()
+            .and_then(|mut w| w.take())
+        {
             self.log.info(&line);
         }
         // The Talk page's waiting words, one turn each (`talk_queue`). A
@@ -265,7 +299,9 @@ impl<'a> Daemon<'a> {
                      this one is gone, take over, and the two of us will write over \
                      each other's memory. Worth checking the disk isn't full and that \
                      nothing has the file open.",
-                    crate::onlyone::OnlyOne::at(&self.store.data_dir()).path().display()
+                    crate::onlyone::OnlyOne::at(&self.store.data_dir())
+                        .path()
+                        .display()
                 ));
             }
         }
@@ -297,7 +333,11 @@ impl<'a> Daemon<'a> {
         // spoken — whoever changed it has just seen the change. A file that
         // wouldn't read is different (30 Sep 2026: it was dropped here, so
         // every choice seemed to revert with no word why): that is said.
-        out.extend(self.pick_up_settings().into_iter().filter(|l| l.starts_with("I couldn't read")));
+        out.extend(
+            self.pick_up_settings()
+                .into_iter()
+                .filter(|l| l.starts_with("I couldn't read")),
+        );
         self.tick_laps.mark("settings");
 
         // Calls: notice one starting or ending, and hand back finished notes.
@@ -327,7 +367,9 @@ impl<'a> Daemon<'a> {
         // A helper that died on its own comes off the books, so the next
         // time it is needed it is started again rather than trusted.
         for (name, how) in self.helpers.died() {
-            self.log.warn(&format!("{name} stopped on its own ({how}); it will be started again when next needed"));
+            self.log.warn(&format!(
+                "{name} stopped on its own ({how}); it will be started again when next needed"
+            ));
             if name == "model-server" {
                 self.model_server_died();
             }
@@ -396,7 +438,8 @@ impl<'a> Daemon<'a> {
         let vault_cfg = self.tools_cfg().vault.clone();
         if self.vault.should_lock(t, false, &vault_cfg) {
             self.vault.lock();
-            self.log.info("Re-locked the vault after it sat open past its idle limit.");
+            self.log
+                .info("Re-locked the vault after it sat open past its idle limit.");
         }
 
         self.tick_laps.mark("vault");
@@ -486,7 +529,9 @@ impl<'a> Daemon<'a> {
 
         // Scheduled jobs.
         for id in self.scheduler.due(t) {
-            let Some(job) = self.scheduler.jobs.iter().find(|j| j.id == id).cloned() else { continue };
+            let Some(job) = self.scheduler.jobs.iter().find(|j| j.id == id).cloned() else {
+                continue;
+            };
             let intent = self.parser.parse(&job.command);
             let call = crate::policy::classify_with_policy(&intent, &self.memory, &self.cfg.policy);
 
@@ -507,32 +552,58 @@ impl<'a> Daemon<'a> {
                 // A backup owns the state for a moment: nothing started and the
                 // job is still due, so it goes next tick, with no alarm raised
                 // (the queued work above is treated the same way).
-                if !matches!(&e, crate::error::AtlasError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock) {
-                    out.push(format!("Scheduled work did not start because its start couldn't be saved: {e}."));
+                if !matches!(&e, crate::error::AtlasError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock)
+                {
+                    out.push(format!(
+                        "Scheduled work did not start because its start couldn't be saved: {e}."
+                    ));
                 }
                 continue;
             }
             self.last_crew_handoff = None;
             let files_before = self.active_file_move_id();
             let result = self.execute(&intent);
-            if let Some(files) = self.active_file_move_id().filter(|id| Some(*id) != files_before) {
-                if let Some(job) = self.scheduler.jobs.iter_mut().find(|job| job.id == id) { job.file_move_id = Some(files); job.last_result = Some(result.clone()); }
+            if let Some(files) = self
+                .active_file_move_id()
+                .filter(|id| Some(*id) != files_before)
+            {
+                if let Some(job) = self.scheduler.jobs.iter_mut().find(|job| job.id == id) {
+                    job.file_move_id = Some(files);
+                    job.last_result = Some(result.clone());
+                }
                 if let Err(e) = briefly_busy(|| self.scheduler.save(&self.store)) {
                     self.stop_file_move(files);
                     out.push(format!("Scheduled file ownership couldn't be saved ({e}); stop was requested. Check its outcome."));
                 }
                 continue;
             }
-            if let Some(worker) = self.last_crew_handoff.filter(|worker| self.crew_links.get(worker).is_some_and(|link| matches!(link.label, "research" | "read-file" | "edit-media" | "studio" | "creator planning"))) {
-                if let Some(job) = self.scheduler.jobs.iter_mut().find(|job| job.id == id) { job.worker_id = Some(worker); job.last_result = Some(result.clone()); }
+            if let Some(worker) = self.last_crew_handoff.filter(|worker| {
+                self.crew_links.get(worker).is_some_and(|link| {
+                    matches!(
+                        link.label,
+                        "research" | "read-file" | "edit-media" | "studio" | "creator planning"
+                    )
+                })
+            }) {
+                if let Some(job) = self.scheduler.jobs.iter_mut().find(|job| job.id == id) {
+                    job.worker_id = Some(worker);
+                    job.last_result = Some(result.clone());
+                }
                 if let Err(e) = briefly_busy(|| self.scheduler.save(&self.store)) {
                     self.crew.ask_to_stop(worker);
                     out.push(format!("Scheduled worker ownership couldn't be saved ({e}); I asked it to stop. Its outcome is unconfirmed."));
                 }
                 continue;
             }
-            let receipt = self.execution_receipt.as_ref().filter(|(executed, _)| executed == &intent).map(|(_, outcome)| outcome);
-            let ok = receipt.map_or_else(|| !result.starts_with("error"), |outcome| matches!(outcome, crate::taskloop::Outcome::Done(_)));
+            let receipt = self
+                .execution_receipt
+                .as_ref()
+                .filter(|(executed, _)| executed == &intent)
+                .map(|(_, outcome)| outcome);
+            let ok = receipt.map_or_else(
+                || !result.starts_with("error"),
+                |outcome| matches!(outcome, crate::taskloop::Outcome::Done(_)),
+            );
             if job.command.starts_with("reminder ") {
                 self.last_reminder_fired = Some((job.command.clone(), t));
             }
@@ -559,43 +630,113 @@ impl<'a> Daemon<'a> {
         // being dropped.
         self.tick_laps.mark("scheduled jobs");
         if self.current_flow.is_none() {
-            let reg = crate::plugins::Registry::load_kept(&mut self.plugins_kept, &self.plugins_dir, &self.cfg.commands, &self.store).clone();
+            let reg = crate::plugins::Registry::load_kept(
+                &mut self.plugins_kept,
+                &self.plugins_dir,
+                &self.cfg.commands,
+                &self.store,
+            )
+            .clone();
             // Retain the actual first sight even when a snapshot holds the
             // root lock. Fresh saved anchors always win when the lock returns.
-            for plugin in reg.plugins.iter().filter(|plugin| plugin.status == crate::plugins::Status::Active) {
-                for (name, _) in &plugin.schedules { self.scheduled_anchors_pending.entry(format!("{}/{name}", plugin.id)).or_insert(t); }
+            for plugin in reg
+                .plugins
+                .iter()
+                .filter(|plugin| plugin.status == crate::plugins::Status::Active)
+            {
+                for (name, _) in &plugin.schedules {
+                    self.scheduled_anchors_pending
+                        .entry(format!("{}/{name}", plugin.id))
+                        .or_insert(t);
+                }
             }
-            let reserved = (|| -> crate::error::Result<Option<(String, crate::flow::Workflow, String)>> {
-                // Every tick looks here, so it never waits: a busy state means "next tick".
-                let _guard = self.store.transaction()?;
-                let mut runs = crate::plugins::ScheduleRuns::load_checked(&self.store)?;
-                let before = runs.clone();
-                for (key, anchor) in &self.scheduled_anchors_pending { runs.last.entry(key.clone()).or_insert(*anchor); }
-                let due = reg.due(&mut runs, t, local_offset_mins());
-                for (key, anchor) in &runs.last { if !before.last.contains_key(key) { self.scheduled_anchors_pending.entry(key.clone()).or_insert(*anchor); } }
-                for (token, claim) in &runs.claims {
-                    if !matches!(claim.phase, crate::plugins::SchedulePhase::Done | crate::plugins::SchedulePhase::Failed) && self.scheduled_notices.insert(token.clone()) {
-                        out.push(format!("Your scheduled {} add-on has an interrupted or unresolved occurrence. Its last step may have happened; I won't replay it or claim it finished. Review its saved work before starting it again.", claim.plugin));
+            let reserved =
+                (|| -> crate::error::Result<Option<(String, crate::flow::Workflow, String)>> {
+                    // Every tick looks here, so it never waits: a busy state means "next tick".
+                    let _guard = self.store.transaction()?;
+                    let mut runs = crate::plugins::ScheduleRuns::load_checked(&self.store)?;
+                    let before = runs.clone();
+                    for (key, anchor) in &self.scheduled_anchors_pending {
+                        runs.last.entry(key.clone()).or_insert(*anchor);
+                    }
+                    let due = reg.due(&mut runs, t, local_offset_mins());
+                    for (key, anchor) in &runs.last {
+                        if !before.last.contains_key(key) {
+                            self.scheduled_anchors_pending
+                                .entry(key.clone())
+                                .or_insert(*anchor);
+                        }
+                    }
+                    for (token, claim) in &runs.claims {
+                        if !matches!(
+                            claim.phase,
+                            crate::plugins::SchedulePhase::Done
+                                | crate::plugins::SchedulePhase::Failed
+                        ) && self.scheduled_notices.insert(token.clone())
+                        {
+                            out.push(format!("Your scheduled {} add-on has an interrupted or unresolved occurrence. Its last step may have happened; I won't replay it or claim it finished. Review its saved work before starting it again.", claim.plugin));
+                        }
+                    }
+                    let selected = due.into_iter().find(|(_, _, key)| {
+                        !runs.claims.values().any(|claim| {
+                            claim.schedule_key == *key
+                                && !matches!(
+                                    claim.phase,
+                                    crate::plugins::SchedulePhase::Done
+                                        | crate::plugins::SchedulePhase::Failed
+                                )
+                        })
+                    });
+                    let selected = if let Some((id, flow, key)) = selected {
+                        if runs.claims.len() >= 1024 {
+                            return Err(crate::error::AtlasError::Platform("scheduled add-on recovery history is full; saved occurrences are retained and no new occurrence started".into()));
+                        }
+                        let approved = reg
+                            .plugins
+                            .iter()
+                            .find(|plugin| plugin.id == id)
+                            .ok_or_else(|| {
+                                crate::error::AtlasError::Platform(
+                                    "scheduled add-on approval disappeared; nothing started".into(),
+                                )
+                            })?;
+                        let token = format!("{key}@{t}");
+                        runs.ran(&key, t);
+                        runs.claims.insert(
+                            token.clone(),
+                            crate::plugins::ScheduleClaim {
+                                schedule_key: key,
+                                plugin: id.clone(),
+                                approved_sha256: approved.sha256.clone(),
+                                workflow: flow.clone(),
+                                reserved_at: t,
+                                phase: crate::plugins::SchedulePhase::Reserved,
+                                run: None,
+                            },
+                        );
+                        Some((id, flow, token))
+                    } else {
+                        None
+                    };
+                    if runs != before {
+                        runs.save(&self.store)?;
+                    }
+                    self.scheduled_anchors_pending.clear();
+                    Ok(selected)
+                })();
+            match reserved {
+                Ok(Some((id, flow, token))) => {
+                    out.push(self.start_scheduled_flow(flow, id, token, t))
+                }
+                Ok(None) => {}
+                Err(crate::error::AtlasError::Io(error))
+                    if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(error) => {
+                    let message = format!("Scheduled add-on work couldn't save its recovery claim, so no new steps started ({error}).");
+                    if self.scheduled_notices.insert(message.clone()) {
+                        out.push(message);
                     }
                 }
-                let selected = due.into_iter().find(|(_, _, key)| !runs.claims.values().any(|claim| claim.schedule_key == *key && !matches!(claim.phase, crate::plugins::SchedulePhase::Done | crate::plugins::SchedulePhase::Failed)));
-                let selected = if let Some((id, flow, key)) = selected {
-                    if runs.claims.len() >= 1024 { return Err(crate::error::AtlasError::Platform("scheduled add-on recovery history is full; saved occurrences are retained and no new occurrence started".into())); }
-                    let approved = reg.plugins.iter().find(|plugin| plugin.id == id).ok_or_else(|| crate::error::AtlasError::Platform("scheduled add-on approval disappeared; nothing started".into()))?;
-                    let token = format!("{key}@{t}");
-                    runs.ran(&key, t);
-                    runs.claims.insert(token.clone(), crate::plugins::ScheduleClaim { schedule_key: key, plugin: id.clone(), approved_sha256: approved.sha256.clone(), workflow: flow.clone(), reserved_at: t, phase: crate::plugins::SchedulePhase::Reserved, run: None });
-                    Some((id, flow, token))
-                } else { None };
-                if runs != before { runs.save(&self.store)?; }
-                self.scheduled_anchors_pending.clear();
-                Ok(selected)
-            })();
-            match reserved {
-                Ok(Some((id, flow, token))) => out.push(self.start_scheduled_flow(flow, id, token, t)),
-                Ok(None) => {},
-                Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => {},
-                Err(error) => { let message = format!("Scheduled add-on work couldn't save its recovery claim, so no new steps started ({error})."); if self.scheduled_notices.insert(message.clone()) { out.push(message); } },
             }
         }
 
@@ -621,14 +762,22 @@ impl<'a> Daemon<'a> {
         // The probe already happened; this just writes down what it saw. Left
         // unrecorded, the board could never learn the one thing it is best
         // placed to notice — that an answer was produced with no network.
-        if let Some(i) = self.connections.get_mut(crate::integrations::INTERNET).filter(|_| known) {
+        if let Some(i) = self
+            .connections
+            .get_mut(crate::integrations::INTERNET)
+            .filter(|_| known)
+        {
             if online {
                 i.worked(t);
             } else {
                 i.failed(t, "no route out");
             }
         }
-        let due = if known { self.publisher.due(t, online) } else { Vec::new() };
+        let due = if known {
+            self.publisher.due(t, online)
+        } else {
+            Vec::new()
+        };
         out.extend(self.check_publication_timeouts(t));
         for id in due {
             match delivery::plan(&self.publisher, &self.browser_cfg(), id, online) {
@@ -642,9 +791,15 @@ impl<'a> Daemon<'a> {
                 }
                 Err(delivery::Outcome::Retry(_)) => {}
                 Err(delivery::Outcome::Blocked(why)) => {
-                    let what = self.publisher.get(id).map(|p| p.describe()).unwrap_or_default();
-                    self.backlog.record(&format!("send {what}"), Blocker::Failed(why.clone()), t);
-                    self.journal.record_at(Act::Blocked, &format!("{what}: {why}"), false, t);
+                    let what = self
+                        .publisher
+                        .get(id)
+                        .map(|p| p.describe())
+                        .unwrap_or_default();
+                    self.backlog
+                        .record(&format!("send {what}"), Blocker::Failed(why.clone()), t);
+                    self.journal
+                        .record_at(Act::Blocked, &format!("{what}: {why}"), false, t);
                     out.push(format!("Couldn't send: {why}"));
                 }
                 Err(delivery::Outcome::Sent(m)) => out.push(m),
@@ -668,7 +823,13 @@ impl<'a> Daemon<'a> {
         // waiting".
         self.tick_laps.mark("connectivity");
         let lanes = self.lane_cfg();
-        let ready = match self.queue.ready_durably(&self.store, &signals, &lanes, t, self.connectivity.cached()) {
+        let ready = match self.queue.ready_durably(
+            &self.store,
+            &signals,
+            &lanes,
+            t,
+            self.connectivity.cached(),
+        ) {
             Ok(ids) => ids,
             Err(crate::error::AtlasError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 // A backup owns the snapshot boundary briefly. Readiness
@@ -677,33 +838,51 @@ impl<'a> Daemon<'a> {
                 Vec::new()
             }
             Err(e) => {
-                out.push(format!("Queued work did not start because I couldn't save its starting state: {e}."));
+                out.push(format!(
+                    "Queued work did not start because I couldn't save its starting state: {e}."
+                ));
                 Vec::new()
             }
         };
         for id in ready {
-            let Some(task) = self.queue.tasks.iter().find(|x| x.id == id).cloned() else { continue };
+            let Some(task) = self.queue.tasks.iter().find(|x| x.id == id).cloned() else {
+                continue;
+            };
             let intent = self.parser.parse(&task.command);
             let call = crate::policy::classify_with_policy(&intent, &self.memory, &self.cfg.policy);
 
             // Queued work never sneaks past the approval gate.
             if call.needs_consent() {
                 self.queue.finish(id, "needs your go-ahead", false);
-                self.backlog.record(&task.command, Blocker::NeedsApproval, t);
+                self.backlog
+                    .record(&task.command, Blocker::NeedsApproval, t);
                 continue;
             }
             self.last_crew_handoff = None;
             let files_before = self.active_file_move_id();
             let result = self.execute(&intent);
-            if let Some(files) = self.active_file_move_id().filter(|id| Some(*id) != files_before) {
-                if let Some(task) = self.queue.tasks.iter_mut().find(|task| task.id == id) { task.file_move_id = Some(files); task.result = Some(result.clone()); }
+            if let Some(files) = self
+                .active_file_move_id()
+                .filter(|id| Some(*id) != files_before)
+            {
+                if let Some(task) = self.queue.tasks.iter_mut().find(|task| task.id == id) {
+                    task.file_move_id = Some(files);
+                    task.result = Some(result.clone());
+                }
                 if let Err(e) = briefly_busy(|| self.queue.save(&self.store)) {
                     self.stop_file_move(files);
                     out.push(format!("Queued file ownership couldn't be saved ({e}); stop was requested. Check its outcome."));
                 }
                 continue;
             }
-            if let Some(worker) = self.last_crew_handoff.filter(|worker| self.crew_links.get(worker).is_some_and(|link| matches!(link.label, "research" | "read-file" | "edit-media" | "studio" | "creator planning"))) {
+            if let Some(worker) = self.last_crew_handoff.filter(|worker| {
+                self.crew_links.get(worker).is_some_and(|link| {
+                    matches!(
+                        link.label,
+                        "research" | "read-file" | "edit-media" | "studio" | "creator planning"
+                    )
+                })
+            }) {
                 self.queue.attach_worker(id, worker, &result);
                 if let Err(e) = briefly_busy(|| self.queue.save(&self.store)) {
                     self.crew.ask_to_stop(worker);
@@ -711,8 +890,15 @@ impl<'a> Daemon<'a> {
                 }
                 continue;
             }
-            let receipt = self.execution_receipt.as_ref().filter(|(executed, _)| executed == &intent).map(|(_, outcome)| outcome);
-            let ok = receipt.map_or_else(|| !result.starts_with("error"), |outcome| matches!(outcome, crate::taskloop::Outcome::Done(_)));
+            let receipt = self
+                .execution_receipt
+                .as_ref()
+                .filter(|(executed, _)| executed == &intent)
+                .map(|(_, outcome)| outcome);
+            let ok = receipt.map_or_else(
+                || !result.starts_with("error"),
+                |outcome| matches!(outcome, crate::taskloop::Outcome::Done(_)),
+            );
             self.queue.finish(id, &result, ok);
             self.journal.record_at(Act::Scheduled, &task.command, ok, t);
             if !ok || call == Decision::ProceedAndReport {
@@ -763,7 +949,9 @@ impl<'a> Daemon<'a> {
         // 2026): it was started, and seconds later "Memory is nearly full"
         // was said aloud, about the memory Atlas had just taken itself. Held
         // while it loads; said after that with what's holding it.
-        let model_loading = self.model_started.is_some_and(|s| s.elapsed() < MODEL_LOAD_SETTLES);
+        let model_loading = self
+            .model_started
+            .is_some_and(|s| s.elapsed() < MODEL_LOAD_SETTLES);
         let model_running = self.helpers.is_running("model-server");
         findings.retain(|f| !(model_loading && f.id == "ram"));
         if model_running {
@@ -777,7 +965,10 @@ impl<'a> Daemon<'a> {
         self.health.reconcile_at(&findings, t);
         let quiet = signals.idle_secs > 60 && !self.session.is_waiting();
         if let Some(f) = self.health.next(&findings, quiet, &hcfg, t) {
-            if self.modes.may_interrupt(f.severity == crate::health::Severity::Urgent) {
+            if self
+                .modes
+                .may_interrupt(f.severity == crate::health::Severity::Urgent)
+            {
                 // Routed rather than only spoken. A disk warning is the
                 // clearest case for this: it matters most exactly when you are
                 // not at the desk to hear it.
@@ -795,7 +986,8 @@ impl<'a> Daemon<'a> {
                 // Recorded as offered only when it actually went somewhere a
                 // person could see. Journalling a held note as delivered is
                 // how "I told you" becomes untrue.
-                self.journal.record_at(Act::Offered, &f.say, sent.reached_you(), t);
+                self.journal
+                    .record_at(Act::Offered, &f.say, sent.reached_you(), t);
                 if let crate::notify::Sent::Failed(why) = &sent {
                     self.log.warn(&format!("could not notify: {why}"));
                 }
@@ -803,7 +995,12 @@ impl<'a> Daemon<'a> {
         }
 
         // --- Other machines, watched from the outside ---
-        let names: Vec<String> = self.watcher.targets.iter().map(|x| x.name.clone()).collect();
+        let names: Vec<String> = self
+            .watcher
+            .targets
+            .iter()
+            .map(|x| x.name.clone())
+            .collect();
         for name in names {
             if !self.watcher.due(&name, t) {
                 continue;
@@ -838,7 +1035,11 @@ impl<'a> Daemon<'a> {
             if crate::fit::worth_replanning(&self.fit_measured.0, &now_m) {
                 let before = self.fit.tier;
                 self.fit = crate::fit::plan_as_set(&now_m, &fit_cfg);
-                self.log.info(&format!("re-planned for this machine: {} -> {}", before.name(), self.fit.tier.name()));
+                self.log.info(&format!(
+                    "re-planned for this machine: {} -> {}",
+                    before.name(),
+                    self.fit.tier.name()
+                ));
                 self.fit_measured.0 = now_m;
             }
             self.fit_measured.1 = t;
@@ -859,7 +1060,9 @@ impl<'a> Daemon<'a> {
                 }
                 Some(Err(why)) if self.last_update_check.1 != why => {
                     self.log.warn(&format!("updates folder: {why}"));
-                    out.push(format!("There's something in the updates folder I won't use: {why}."));
+                    out.push(format!(
+                        "There's something in the updates folder I won't use: {why}."
+                    ));
                     self.last_update_check.1 = why;
                 }
                 _ => {}
@@ -883,13 +1086,26 @@ impl<'a> Daemon<'a> {
         let sync_cfg = self.tools_cfg().sync.clone();
         let cloud_cfg = self.tools_cfg().cloud.clone();
         let every = cloud_cfg.check_every_hours.max(1) as u64 * 3600;
-        if sync_cfg.enabled && !sync_cfg.folder.trim().is_empty() && t.saturating_sub(self.last_sync_check) >= every {
+        if sync_cfg.enabled
+            && !sync_cfg.folder.trim().is_empty()
+            && t.saturating_sub(self.last_sync_check) >= every
+        {
             self.last_sync_check = t;
             let mine = format!("{}.bundle", sanitise(&self.synclog.device));
             let others = !self.seen_up_to.is_empty();
-            if let Some((trouble, what)) = crate::cloudsync::still_syncing(std::path::Path::new(sync_cfg.folder.trim()), &mine, others, t, &cloud_cfg) {
+            if let Some((trouble, what)) = crate::cloudsync::still_syncing(
+                std::path::Path::new(sync_cfg.folder.trim()),
+                &mine,
+                others,
+                t,
+                &cloud_cfg,
+            ) {
                 let fix = trouble.fix();
-                let say = format!("Your sync folder: {what}. {}{}.", fix[..1].to_uppercase(), &fix[1..]);
+                let say = format!(
+                    "Your sync folder: {what}. {}{}.",
+                    fix[..1].to_uppercase(),
+                    &fix[1..]
+                );
                 self.log.warn(&say);
                 out.push(say);
             }
@@ -931,7 +1147,12 @@ impl<'a> Daemon<'a> {
         // them is on disk.
         let inbox = self.store.data_dir().join("doc-inbox");
         let taken = crate::yata::take_queued(&inbox, &mut self.synclog, t);
-        if !taken.is_empty() && self.store.save("synclog", &Some(self.synclog.clone())).is_ok() {
+        if !taken.is_empty()
+            && self
+                .store
+                .save("synclog", &Some(self.synclog.clone()))
+                .is_ok()
+        {
             for f in taken {
                 crate::heard!(std::fs::remove_file(f));
             }
@@ -946,19 +1167,33 @@ impl<'a> Daemon<'a> {
         self.tick_laps.mark("sync");
         let specs = self.tools_cfg().automations.clone();
         if !specs.is_empty() {
-            let rules: Vec<crate::automation::Automation> =
-                specs.iter().filter_map(|s| crate::automation::Automation::from_spec(s).ok()).collect();
+            let rules: Vec<crate::automation::Automation> = specs
+                .iter()
+                .filter_map(|s| crate::automation::Automation::from_spec(s).ok())
+                .collect();
             self.automations.rules = rules;
             let r = self.readings();
             let mut seen: Vec<(String, String)> = vec![
-                ("machine.disk_free_gb".into(), format!("{:.1}", r.disk_free_gb)),
-                ("machine.ram_used_gb".into(), format!("{:.1}", r.ram_used_gb)),
+                (
+                    "machine.disk_free_gb".into(),
+                    format!("{:.1}", r.disk_free_gb),
+                ),
+                (
+                    "machine.ram_used_gb".into(),
+                    format!("{:.1}", r.ram_used_gb),
+                ),
             ];
             if r.disk_total_gb > 0.0 {
-                seen.push(("machine.disk_used_pct".into(), format!("{:.1}", 100.0 * (1.0 - r.disk_free_gb / r.disk_total_gb))));
+                seen.push((
+                    "machine.disk_used_pct".into(),
+                    format!("{:.1}", 100.0 * (1.0 - r.disk_free_gb / r.disk_total_gb)),
+                ));
             }
             if r.ram_total_gb > 0.0 {
-                seen.push(("machine.ram_used_pct".into(), format!("{:.1}", 100.0 * r.ram_used_gb / r.ram_total_gb)));
+                seen.push((
+                    "machine.ram_used_pct".into(),
+                    format!("{:.1}", 100.0 * r.ram_used_gb / r.ram_total_gb),
+                ));
             }
             if let Some(b) = r.battery_percent {
                 seen.push(("machine.battery_pct".into(), b.to_string()));
@@ -978,7 +1213,10 @@ impl<'a> Daemon<'a> {
             // "at 7" in a watch means 7 on your clock, and the offset moves
             // twice a year, so it is taken fresh each tick.
             self.automations.utc_offset = self.home_zone().offset_at(t as i64);
-            let before = (self.automations.mem.pending.clone(), self.automations.mem.latched.clone());
+            let before = (
+                self.automations.mem.pending.clone(),
+                self.automations.mem.latched.clone(),
+            );
             let mut fired = Vec::new();
             for (entity, value) in &seen {
                 fired.extend(self.automations.observe(entity, value, t as i64));
@@ -1018,7 +1256,11 @@ impl<'a> Daemon<'a> {
             new_files: signals.recent_changes.added.clone(),
             returned: self.back_from.is_some(),
             idle_secs: signals.idle_secs,
-            last_said: self.thread.last().map(|e| e.said.clone()).unwrap_or_default(),
+            last_said: self
+                .thread
+                .last()
+                .map(|e| e.said.clone())
+                .unwrap_or_default(),
             // Never prepare anything while you're mid-task; anticipation that
             // makes the laptop stutter is worse than none.
             can_afford_work: signals.idle_secs > 30 && !signals.in_conversation,
@@ -1058,7 +1300,9 @@ impl<'a> Daemon<'a> {
         // one occurrence from firing twice.
         // Kept until the late window is over too, so a late reminder is
         // said once, not every tick.
-        self.reminded.retain(|(_, start)| start.saturating_add(crate::calendar::Calendar::REMIND_LATE_SECS) > t);
+        self.reminded.retain(|(_, start)| {
+            start.saturating_add(crate::calendar::Calendar::REMIND_LATE_SECS) > t
+        });
         out.extend(self.calendar_reminders_tick(t));
         self.tick_laps.mark("calendar reminders");
 
@@ -1107,9 +1351,12 @@ impl<'a> Daemon<'a> {
         // Whether one is due is looked at once every ten minutes, not every
         // tick (2 Oct 2026): `due_for_backup` counts every file in every
         // backup on disk, and on Eric's laptop that ran every 1.3 s.
-        let look = t >= self.next_backup_look
-            && t.saturating_sub(self.last_backup_attempt) > 600;
-        let bcfg = if look { self.backup_cfg() } else { BackupConfig::default() };
+        let look = t >= self.next_backup_look && t.saturating_sub(self.last_backup_attempt) > 600;
+        let bcfg = if look {
+            self.backup_cfg()
+        } else {
+            BackupConfig::default()
+        };
         if look {
             self.next_backup_look = t + 600;
         }
@@ -1118,14 +1365,26 @@ impl<'a> Daemon<'a> {
             // Checked on the crew, not here: binding the output folders waits for
             // the state lock, and the loop must never wait for it.
             let store_for_scope = self.store.clone();
-            let notes = self.notes_dir(); let trash = std::path::PathBuf::from(&self.trash.cfg.dir);
+            let notes = self.notes_dir();
+            let trash = std::path::PathBuf::from(&self.trash.cfg.dir);
             let cfg_for_errand = bcfg.clone();
-            let work: crew::Work = Box::new(move |_stop| match crate::safety::check_configured_scope(&store_for_scope, &notes, &trash).and_then(|_| crate::safety::back_up_with_inputs(&root, &cfg_for_errand, crate::store::now(), &notes, &trash)) {
-                Ok(b) => {
-                    prune_backups(&cfg_for_errand);
-                    Ok(format!("backed up {} files", b.files.unwrap_or(0)))
+            let work: crew::Work = Box::new(move |_stop| {
+                match crate::safety::check_configured_scope(&store_for_scope, &notes, &trash)
+                    .and_then(|_| {
+                        crate::safety::back_up_with_inputs(
+                            &root,
+                            &cfg_for_errand,
+                            crate::store::now(),
+                            &notes,
+                            &trash,
+                        )
+                    }) {
+                    Ok(b) => {
+                        prune_backups(&cfg_for_errand);
+                        Ok(format!("backed up {} files", b.files.unwrap_or(0)))
+                    }
+                    Err(e) => Err(e.to_string()),
                 }
-                Err(e) => Err(e.to_string()),
             });
             // Acceptance records an attempt, not a completed backup. Failed
             // jobs remain due and retry after the short attempt cooldown.
@@ -1190,8 +1449,7 @@ impl<'a> Daemon<'a> {
             if self.proactive.may_interrupt(&signals, t) {
                 if let Some(seen) = crate::person::noticing(&self.person, &pcfg, hours_straight, t)
                 {
-                    let mut said: crate::person::Said =
-                        self.store.load(crate::person::SAID_RECORD);
+                    let mut said: crate::person::Said = self.store.load(crate::person::SAID_RECORD);
                     if said.may_say(&seen, &pcfg, t) {
                         said.record(&seen, t);
                         if self.store.save(crate::person::SAID_RECORD, &said).is_ok() {
@@ -1218,25 +1476,25 @@ impl<'a> Daemon<'a> {
         if self.proactive.may_interrupt(&signals, t) {
             let acfg = self.tools_cfg().going_away.clone();
             let ccfg = self.tools_cfg().codes.clone();
-            let mut away: crate::goingaway::Away =
-                self.store.load(crate::goingaway::AWAY_RECORD);
+            let mut away: crate::goingaway::Away = self.store.load(crate::goingaway::AWAY_RECORD);
 
             // At most once a day, both halves. A trip reminder that fires
             // every tick for a fortnight is one you stop reading, and then
             // stop reading on the fortnight it mattered.
             if away.days_since_asked(t) >= 1 {
                 let mut said: Vec<String> = Vec::new();
-                if let Some(line) = crate::goingaway::the_trip_is_close(
-                    &away,
-                    &self.accounts.accounts,
-                    &acfg,
-                    t,
-                ) {
+                if let Some(line) =
+                    crate::goingaway::the_trip_is_close(&away, &self.accounts.accounts, &acfg, t)
+                {
                     said.push(line);
                 }
                 if crate::codes::worth_raising_now(&ccfg, away.days_until(t)) {
-                    let names: Vec<String> =
-                        self.accounts.accounts.iter().map(|a| a.site.clone()).collect();
+                    let names: Vec<String> = self
+                        .accounts
+                        .accounts
+                        .iter()
+                        .map(|a| a.site.clone())
+                        .collect();
                     said.push(crate::codes::before_you_go(&self.code_sets, &names, &ccfg));
                 }
                 // No trip, and long enough since anyone asked. Dates change
@@ -1256,7 +1514,11 @@ impl<'a> Daemon<'a> {
                     // write it down is a reminder you do not get rather than
                     // one you get every tick.
                     away.last_checked = t;
-                    if self.store.save(crate::goingaway::AWAY_RECORD, &away).is_ok() {
+                    if self
+                        .store
+                        .save(crate::goingaway::AWAY_RECORD, &away)
+                        .is_ok()
+                    {
                         out.push(said.join(" "));
                     }
                 }
@@ -1275,8 +1537,7 @@ impl<'a> Daemon<'a> {
         // acted on by Atlas, and it never holds the passphrase.
         if self.proactive.may_interrupt(&signals, t) {
             let acfg = self.tools_cfg().after_me.clone();
-            let arrangement: crate::afterme::Arrangement =
-                self.store.load(crate::afterme::RECORD);
+            let arrangement: crate::afterme::Arrangement = self.store.load(crate::afterme::RECORD);
             if let Some(said) = arrangement.nudge(&acfg, t) {
                 // Marked as reviewed-asked rather than reviewed: saying it
                 // once a year is the point, saying it every tick for a year
@@ -1309,8 +1570,7 @@ impl<'a> Daemon<'a> {
         // meetings delays the check rather than silently spending it.
         if self.proactive.may_interrupt(&signals, t) {
             let acfg = self.tools_cfg().self_audit.clone();
-            let last: crate::selfaudit::LastLook =
-                self.store.load(crate::selfaudit::LOOK_RECORD);
+            let last: crate::selfaudit::LastLook = self.store.load(crate::selfaudit::LOOK_RECORD);
             if crate::selfaudit::time_to_look(&acfg, last.at, t) {
                 let _ = self.store.save(
                     crate::selfaudit::LOOK_RECORD,
@@ -1332,9 +1592,13 @@ impl<'a> Daemon<'a> {
                 // cannot tell -- which is the right way round for something
                 // that speaks while you did not ask.
                 let hollow_found = self.hollow_answers();
-                let raise = crate::judgment::worth_raising(&hollow_found, &self.tools_cfg().judgment);
+                let raise =
+                    crate::judgment::worth_raising(&hollow_found, &self.tools_cfg().judgment);
                 if raise.settled() == Some(true) {
-                    out.push(crate::hollow::spoken(&hollow_found, &self.tools_cfg().judgment));
+                    out.push(crate::hollow::spoken(
+                        &hollow_found,
+                        &self.tools_cfg().judgment,
+                    ));
                 }
                 if let Some(u) = crate::selfaudit::unprompted(&acfg, &recs) {
                     out.push(u.said);
@@ -1465,7 +1729,10 @@ impl<'a> Daemon<'a> {
                 // Anything the plan named outside data/ is a bug upstream.
                 // Say so rather than quietly skipping it.
                 for stray in crate::retention::out_of_bounds(&plans, &root_for_errand) {
-                    lines.push(format!("refused to delete outside data/: {}", stray.display()));
+                    lines.push(format!(
+                        "refused to delete outside data/: {}",
+                        stray.display()
+                    ));
                 }
                 let freed = crate::retention::apply_until(&plans, &root_for_errand, &|| stop.checkpoint()).map_err(|error| format!("Cleanup did not finish ({error}); files that were not deleted remain available for a later attempt."))?;
                 if freed > 0 {
@@ -1499,7 +1766,8 @@ impl<'a> Daemon<'a> {
             // this block.
             let daily_cfg = self.tools_cfg().daily.clone();
             let before = self.daily_history.len();
-            self.daily_history.retain(|c| crate::daily::still_keep(c, t, &daily_cfg));
+            self.daily_history
+                .retain(|c| crate::daily::still_keep(c, t, &daily_cfg));
             if self.daily_history.len() != before {
                 let _ = self.store.save("daily_history", &self.daily_history);
             }
@@ -1526,7 +1794,8 @@ impl<'a> Daemon<'a> {
         }
         if !news.is_empty() && self.quiet_for(t) > self.away_after {
             for line in news {
-                let note = crate::notify::Note::new("Atlas", &line, crate::notify::Urgency::Routine, t);
+                let note =
+                    crate::notify::Note::new("Atlas", &line, crate::notify::Urgency::Routine, t);
                 // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
                 let _ = self.reach_you(note, t);
             }
@@ -1564,8 +1833,13 @@ impl<'a> Daemon<'a> {
             let dcfg = self.tools_cfg().daily.clone();
             let rolls_at = self.rhythm.rolls_at(&dcfg);
             let this_hour = crate::localclock::hour_here(t);
-            let arrival =
-                crate::daily::arriving(self.last_turn_of_yours, self.last_brief_at.max(self.last_brief_attempt_at), t, rolls_at, &dcfg);
+            let arrival = crate::daily::arriving(
+                self.last_turn_of_yours,
+                self.last_brief_at.max(self.last_brief_attempt_at),
+                t,
+                rolls_at,
+                &dcfg,
+            );
 
             // 30 Sep 2026: and you're actually here. `arriving` compares
             // your last turn with now, so on the tick it read "a gap and a
@@ -1581,12 +1855,25 @@ impl<'a> Daemon<'a> {
             {
                 // Choose the original greeting eligibility before the attempt
                 // timestamp suppresses that same arrival's later Hello gate.
-                let greeting = if crate::returning::hello_now(self.last_greeted_at.max(self.last_brief_attempt_at), t, self.quiet_for(t)) == crate::returning::Hello::Say {
+                let greeting = if crate::returning::hello_now(
+                    self.last_greeted_at.max(self.last_brief_attempt_at),
+                    t,
+                    self.quiet_for(t),
+                ) == crate::returning::Hello::Say
+                {
                     crate::nudge::Part::from_hour(this_hour)
-                } else { None };
+                } else {
+                    None
+                };
                 self.last_brief_attempt_at = t;
-                let started = match greeting { Some(part) => self.request_daypart_brief(t, part), None => self.request_brief(t) };
-                if let Err(why) = started { self.automatic_brief_failed(); out.push(why); }
+                let started = match greeting {
+                    Some(part) => self.request_daypart_brief(t, part),
+                    None => self.request_brief(t),
+                };
+                if let Err(why) = started {
+                    self.automatic_brief_failed();
+                    out.push(why);
+                }
             }
         }
 
@@ -1598,7 +1885,8 @@ impl<'a> Daemon<'a> {
                 out.push(said);
             } else {
                 self.proactive.quiet_until = s.until;
-                if s.check_in_due(t) && self.quiet_for(t) < crate::returning::GREET_HERE_WITHIN_SECS {
+                if s.check_in_due(t) && self.quiet_for(t) < crate::returning::GREET_HERE_WITHIN_SECS
+                {
                     out.push(crate::worksession::halfway(&s, t));
                     if let Some(w) = self.work_session.as_mut() {
                         w.checked_in = true;
@@ -1618,7 +1906,11 @@ impl<'a> Daemon<'a> {
             let wrapped_on: u64 = self.store.load("wrapped_on");
             let here = self.quiet_for(t) < crate::returning::GREET_HERE_WITHIN_SECS;
             let hour = crate::localclock::hour_here(t);
-            if self.work_session.is_none() && wrapped_on != today && here && (crate::daily::WRAP_FROM_HOUR..crate::daily::WRAP_UNTIL_HOUR).contains(&hour) {
+            if self.work_session.is_none()
+                && wrapped_on != today
+                && here
+                && (crate::daily::WRAP_FROM_HOUR..crate::daily::WRAP_UNTIL_HOUR).contains(&hour)
+            {
                 let w = self.wrap_now(t, false);
                 if crate::daily::wrap_due(hour, today, wrapped_on, w.active_secs, here) {
                     let _ = self.store.save("wrapped_on", &today);
@@ -1648,7 +1940,8 @@ impl<'a> Daemon<'a> {
             if d.is_clean() {
                 self.index_drifted = None;
             } else {
-                self.log.info(&format!("notes index has drifted: {}", d.plain()));
+                self.log
+                    .info(&format!("notes index has drifted: {}", d.plain()));
                 self.index_drifted = Some(d);
             }
         }
@@ -1698,8 +1991,16 @@ impl<'a> Daemon<'a> {
         // Written when it changes, not on every tick: on Eric's laptop the
         // same "never seen it work" line went to the log four times a
         // second (26 Sep 2026), which buries everything else in it.
-        let lines: Vec<String> = self.connections.needs_you(t).iter().map(|i| i.line(t)).collect();
-        for l in lines.iter().filter(|l| !self.connections_logged.contains(l)) {
+        let lines: Vec<String> = self
+            .connections
+            .needs_you(t)
+            .iter()
+            .map(|i| i.line(t))
+            .collect();
+        for l in lines
+            .iter()
+            .filter(|l| !self.connections_logged.contains(l))
+        {
             self.log.info(l);
         }
         self.connections_logged = lines;
@@ -1737,7 +2038,8 @@ impl<'a> Daemon<'a> {
         }
         self.tier_mix_logged = mix_line;
         let nudge = if self.proactive.may_interrupt(&signals, t) {
-            self.nudger.consider(t, hour, signals.dwell_secs, signals.idle_secs)
+            self.nudger
+                .consider(t, hour, signals.dwell_secs, signals.idle_secs)
         } else {
             None
         };
@@ -1760,7 +2062,11 @@ impl<'a> Daemon<'a> {
         // already greeted you, and an empty hello isn't said at all.
         let nudge = match nudge {
             Some(n) if n.trigger == crate::nudge::Trigger::Daypart => {
-                match crate::returning::hello_now(self.last_greeted_at.max(self.last_brief_attempt_at), t, self.quiet_for(t)) {
+                match crate::returning::hello_now(
+                    self.last_greeted_at.max(self.last_brief_attempt_at),
+                    t,
+                    self.quiet_for(t),
+                ) {
                     crate::returning::Hello::Hold => {
                         self.nudger.unsaid(&n);
                         None
@@ -1772,8 +2078,16 @@ impl<'a> Daemon<'a> {
                     crate::returning::Hello::Say => {
                         if self.automatic_brief_available(t) {
                             self.last_brief_attempt_at = t;
-                            if let Err(why) = match crate::nudge::Part::from_hour(hour) { Some(part) => self.request_daypart_brief(t, part), None => self.request_brief(t) } { self.automatic_brief_failed(); out.push(why); }
-                        } else { self.nudger.unsaid(&n); }
+                            if let Err(why) = match crate::nudge::Part::from_hour(hour) {
+                                Some(part) => self.request_daypart_brief(t, part),
+                                None => self.request_brief(t),
+                            } {
+                                self.automatic_brief_failed();
+                                out.push(why);
+                            }
+                        } else {
+                            self.nudger.unsaid(&n);
+                        }
                         // The completed brief comes back through the ordinary
                         // morning-offer gate. Preparing is not a greeting.
                         None
@@ -1787,7 +2101,9 @@ impl<'a> Daemon<'a> {
         // always taking the floor; either way only one question is asked.
         let from_nudge = nudge.as_ref().map(crate::proactive::from_nudge);
         let nudge_kind = from_nudge.as_ref().map(|o| o.kind.clone());
-        let chosen = self.proactive.consider_with(&signals, &self.memory, t, from_nudge);
+        let chosen = self
+            .proactive
+            .consider_with(&signals, &self.memory, t, from_nudge);
         // The nudge lost (or nothing was said at all): the nudger must not
         // go on believing it spoke, or its one-shot question and its
         // morning greeting are spent on something you never heard.
@@ -1854,13 +2170,24 @@ impl<'a> Daemon<'a> {
     /// you (a tick that spoke is a tick that saved) and never anything you
     /// did (a turn saves at its own call sites).
     pub fn persist_after(&mut self, t: u64, spoke: bool) {
-        if spoke || self.last_persist == 0 || t.saturating_sub(self.last_persist) >= PERSIST_SWEEP_SECS {
+        if spoke
+            || self.last_persist == 0
+            || t.saturating_sub(self.last_persist) >= PERSIST_SWEEP_SECS
+        {
             // The sweep writes the file index behind the loop; everything
             // else that saves (a turn, stopping) writes it there and then.
             self.index_behind = true;
             self.persist();
             self.index_behind = false;
-            self.last_persist = if self.persist_failures.iter().any(|(what, _)| *what == "state snapshot busy") { 0 } else { t.max(1) };
+            self.last_persist = if self
+                .persist_failures
+                .iter()
+                .any(|(what, _)| *what == "state snapshot busy")
+            {
+                0
+            } else {
+                t.max(1)
+            };
         }
     }
 
@@ -1907,11 +2234,17 @@ impl<'a> Daemon<'a> {
         // A rescan of the index costs disk and battery: none below your
         // battery floor, and none once it's past the size you set
         // (`perf::Throttle::may_scan`; `max_index_entries` was read by nothing).
-        let may_scan = loaded && crate::perf::Throttle::new(self.tools_cfg().perf.clone()).may_scan(self.power, self.index.entries.len());
+        let may_scan = loaded
+            && crate::perf::Throttle::new(self.tools_cfg().perf.clone())
+                .may_scan(self.power, self.index.entries.len());
         self.awareness.observe(
             self.plat,
             &mut self.index,
-            if may_scan { self.cfg.indexing.as_ref() } else { None },
+            if may_scan {
+                self.cfg.indexing.as_ref()
+            } else {
+                None
+            },
             self.session.is_waiting(),
             t,
         )
@@ -1944,14 +2277,15 @@ impl<'a> Daemon<'a> {
         key: Option<&[u8]>,
         now: u64,
     ) -> Option<Vec<u8>> {
-        let mut bundle =
-            {
-                self.note_addon_changes(now).ok()?;
-                crate::sync::make_bundle(&self.synclog, &self.synclog.device.clone(), 0, now)
-            };
+        let mut bundle = {
+            self.note_addon_changes(now).ok()?;
+            crate::sync::make_bundle(&self.synclog, &self.synclog.device.clone(), 0, now)
+        };
         bundle.belongs_to = cfg.belongs_to.clone();
         if cfg.encrypt_bundles {
-            crate::sync::seal(&bundle, key?).ok().map(String::into_bytes)
+            crate::sync::seal(&bundle, key?)
+                .ok()
+                .map(String::into_bytes)
         } else {
             serde_json::to_vec(&bundle).ok()
         }
@@ -1987,7 +2321,12 @@ impl<'a> Daemon<'a> {
         let fresh: Vec<crate::sync::Event> = bundle
             .events
             .iter()
-            .filter(|e| !self.seen_up_to.iter().any(|(d, s)| *d == e.device && e.seq <= *s))
+            .filter(|e| {
+                !self
+                    .seen_up_to
+                    .iter()
+                    .any(|(d, s)| *d == e.device && e.seq <= *s)
+            })
             .cloned()
             .collect();
         if fresh.is_empty() {
@@ -2003,7 +2342,10 @@ impl<'a> Daemon<'a> {
         let sealed = crate::sync::peek(text).is_some();
         let applied = match self.take_in_synced(&fresh, sealed, &bundle.from_name) {
             Ok(applied) => applied,
-            Err(error) => { clashes.push(error); return (0, clashes, skews); }
+            Err(error) => {
+                clashes.push(error);
+                return (0, clashes, skews);
+            }
         };
         for said in applied {
             clashes.push(said);
@@ -2041,7 +2383,11 @@ impl<'a> Daemon<'a> {
     /// Devices of yours named by address (`elsewhere.known`), reachable
     /// without a folder.
     pub(super) fn has_named_peers(&self) -> bool {
-        self.tools_cfg().elsewhere.known.iter().any(|p| !p.name.trim().is_empty() && !p.host.trim().is_empty())
+        self.tools_cfg()
+            .elsewhere
+            .known
+            .iter()
+            .any(|p| !p.name.trim().is_empty() && !p.host.trim().is_empty())
     }
 
     /// Sync with no folder: straight to each device you've named, over the
@@ -2051,7 +2397,9 @@ impl<'a> Daemon<'a> {
     fn carry_direct_only(&mut self, cfg: &crate::sync::SyncConfig, now: u64) -> String {
         let kept: crate::sync::KeptKey = self.store.load(crate::sync::KEY_FILE);
         let key: Option<Vec<u8>> = if kept.is_set() {
-            kept.phrase().and_then(|p| crate::sync::key_from_phrase(&p)).ok()
+            kept.phrase()
+                .and_then(|p| crate::sync::key_from_phrase(&p))
+                .ok()
         } else {
             None
         };
@@ -2059,7 +2407,10 @@ impl<'a> Daemon<'a> {
         if lines.is_empty() {
             "No folder to sync through, and none of your other devices answered directly this time -- I'll try again.".into()
         } else {
-            format!("Synced straight to your other devices, no folder needed. {}", lines.join(" "))
+            format!(
+                "Synced straight to your other devices, no folder needed. {}",
+                lines.join(" ")
+            )
         }
     }
 
@@ -2067,7 +2418,9 @@ impl<'a> Daemon<'a> {
     /// in as the direct sends would have been: never waits for one.
     fn take_dial_answers(&mut self, now: u64) -> Vec<String> {
         let mut lines = Vec::new();
-        let Some(rx) = self.dial_answers.take() else { return lines };
+        let Some(rx) = self.dial_answers.take() else {
+            return lines;
+        };
         let cfg = self.tools_cfg().sync.clone();
         let mut finished = false;
         loop {
@@ -2078,13 +2431,24 @@ impl<'a> Daemon<'a> {
                         || std::str::from_utf8(&reply)
                             .ok()
                             .and_then(|t| crate::sync::read_bundle(t, key).ok())
-                            .is_some_and(|b| crate::sync::can_open(&b).is_ok() && crate::sync::from_the_same_atlas(&b, &cfg.belongs_to).is_ok());
+                            .is_some_and(|b| {
+                                crate::sync::can_open(&b).is_ok()
+                                    && crate::sync::from_the_same_atlas(&b, &cfg.belongs_to).is_ok()
+                            });
                     if !theirs {
                         lines.push(format!("{} answered but didn't take the sync — it may belong to a different Atlas or hold an older key.", d.name));
                         continue;
                     }
                     let (t, cl, sk) = self.take_in_wire(&reply, &cfg, key, now);
-                    lines.push(format!("synced straight across to {}{}", d.name, if t > 0 { format!(", took in {t}") } else { String::new() }));
+                    lines.push(format!(
+                        "synced straight across to {}{}",
+                        d.name,
+                        if t > 0 {
+                            format!(", took in {t}")
+                        } else {
+                            String::new()
+                        }
+                    ));
                     lines.extend(cl);
                     lines.extend(sk);
                 }
@@ -2128,27 +2492,30 @@ impl<'a> Daemon<'a> {
             };
             let port = p.sync_port.unwrap_or(crate::transport::SYNC_PORT);
             if self.dial_later {
-                self.dials.push(Dial { name, host, port, bytes, timeout: DIAL_WITHIN, sealed_key: key.map(<[u8]>::to_vec) });
+                self.dials.push(Dial {
+                    name,
+                    host,
+                    port,
+                    bytes,
+                    timeout: DIAL_WITHIN,
+                    sealed_key: key.map(<[u8]>::to_vec),
+                });
                 continue;
             }
-            match crate::transport::exchange(
-                &host,
-                port,
-                &bytes,
-                std::time::Duration::from_secs(4),
-            ) {
+            match crate::transport::exchange(&host, port, &bytes, std::time::Duration::from_secs(4))
+            {
                 // 30 Sep 2026: a reply that isn't this Atlas's (a refusal, a
                 // wrong key, another Atlas) was still announced as "Synced".
                 // (Empty is a peer with nothing to hand back.)
                 Ok(reply)
                     if !reply.is_empty()
                         && !std::str::from_utf8(&reply)
-                        .ok()
-                        .and_then(|t| crate::sync::read_bundle(t, key).ok())
-                        .is_some_and(|b| {
-                            crate::sync::can_open(&b).is_ok()
-                                && crate::sync::from_the_same_atlas(&b, &cfg.belongs_to).is_ok()
-                        }) =>
+                            .ok()
+                            .and_then(|t| crate::sync::read_bundle(t, key).ok())
+                            .is_some_and(|b| {
+                                crate::sync::can_open(&b).is_ok()
+                                    && crate::sync::from_the_same_atlas(&b, &cfg.belongs_to).is_ok()
+                            }) =>
                 {
                     lines.push(format!(
                         "{name} answered but didn't take the sync — it may belong to a different Atlas or hold an older key."
@@ -2156,7 +2523,11 @@ impl<'a> Daemon<'a> {
                 }
                 Ok(reply) => {
                     let (t, cl, sk) = self.take_in_wire(&reply, cfg, key, now);
-                    let took = if t > 0 { format!(", took in {t}") } else { String::new() };
+                    let took = if t > 0 {
+                        format!(", took in {t}")
+                    } else {
+                        String::new()
+                    };
                     lines.push(format!(
                         "Synced straight across to {name}{took} — reached by address, \
                          so it works off your local network too."
@@ -2176,15 +2547,25 @@ impl<'a> Daemon<'a> {
     /// event so the laptop can reach it with Atlas closed (item 15, `apns`).
     /// An Android phone's push address and keys, carried to your other
     /// devices as a sync event (`webpush`).
-    pub(crate) fn carry_web_push_address(&mut self, endpoint: &str, p256dh: &str, auth: &str, now: u64) {
-        let (id, field, to) = crate::webpush::change_to_carry(&self.synclog.device.clone(), endpoint, p256dh, auth);
-        self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
+    pub(crate) fn carry_web_push_address(
+        &mut self,
+        endpoint: &str,
+        p256dh: &str,
+        auth: &str,
+        now: u64,
+    ) {
+        let (id, field, to) =
+            crate::webpush::change_to_carry(&self.synclog.device.clone(), endpoint, p256dh, auth);
+        self.synclog
+            .append(crate::sync::What::Changed { id, field, to }, now);
         let _ = self.store.save("synclog", &Some(self.synclog.clone()));
     }
 
     pub(crate) fn carry_push_address(&mut self, token: &str, env: &str, now: u64) {
-        let (id, field, to) = crate::apns::change_to_carry(&self.synclog.device.clone(), token, env);
-        self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
+        let (id, field, to) =
+            crate::apns::change_to_carry(&self.synclog.device.clone(), token, env);
+        self.synclog
+            .append(crate::sync::What::Changed { id, field, to }, now);
         let _ = self.store.save("synclog", &Some(self.synclog.clone()));
     }
 
@@ -2195,18 +2576,29 @@ impl<'a> Daemon<'a> {
         // renewed with three days left, from the device with the key.
         let carried: u64 = self.store.load("weatherkit_carried_until");
         let apns = self.tools_cfg().phone.apns.clone();
-        if let Some(((id, field, to), until)) =
-            crate::applewx::carry_token(&apns, &crate::roots::install_root(), &self.synclog.device.clone(), carried, now)
-        {
-            self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
+        if let Some(((id, field, to), until)) = crate::applewx::carry_token(
+            &apns,
+            &crate::roots::install_root(),
+            &self.synclog.device.clone(),
+            carried,
+            now,
+        ) {
+            self.synclog
+                .append(crate::sync::What::Changed { id, field, to }, now);
             let _ = self.store.save("weatherkit_carried_until", &until);
         }
-        crate::plugins::append_changes_checked(&self.store, &self.plugins_dir, &mut self.synclog, now)?;
+        crate::plugins::append_changes_checked(
+            &self.store,
+            &self.plugins_dir,
+            &mut self.synclog,
+            now,
+        )?;
         // Your groups' lists, and this device's key, for your other devices:
         // what lets your phone manage a group your laptop made.
         let me = self.my_key().unwrap_or_default();
         for (id, field, to) in crate::groups::changes_to_carry(&self.store, &me) {
-            self.synclog.append(crate::sync::What::Changed { id, field, to }, now);
+            self.synclog
+                .append(crate::sync::What::Changed { id, field, to }, now);
         }
         Ok(())
     }
@@ -2219,10 +2611,18 @@ impl<'a> Daemon<'a> {
     /// that travelled. Now a capture lands in the notebook, and an add-on
     /// change lands in the add-ons (`plugins::take_synced`, which only takes
     /// an approval from a sealed bundle). Returns anything worth saying.
-    fn take_in_synced(&mut self, fresh: &[crate::sync::Event], sealed: bool, from: &str) -> std::result::Result<Vec<String>, String> {
+    fn take_in_synced(
+        &mut self,
+        fresh: &[crate::sync::Event],
+        sealed: bool,
+        from: &str,
+    ) -> std::result::Result<Vec<String>, String> {
         // Do not acknowledge a batch while a backup owns the state lock.
         // The sender retains those events for a later pass.
-        let _transaction = self.store.transaction().map_err(|error| format!("Changes from {from} are waiting for storage: {error}"))?;
+        let _transaction = self
+            .store
+            .transaction()
+            .map_err(|error| format!("Changes from {from} are waiting for storage: {error}"))?;
         let mut said = Vec::new();
         let mut notes_changed = false;
         for e in fresh {
@@ -2233,58 +2633,118 @@ impl<'a> Daemon<'a> {
                     notes_changed = true;
                 }
                 crate::sync::What::Changed { id, to, .. }
-                    if id.starts_with(crate::groups::SYNC_GROUP) || id.starts_with(crate::groups::SYNC_DEVICE) =>
+                    if id.starts_with(crate::groups::SYNC_GROUP)
+                        || id.starts_with(crate::groups::SYNC_DEVICE) =>
                 {
                     let me = crate::peerkey::Identity::load_or_create(&self.peer_dir).ok();
-                    if let Some(s) = crate::groups::take_synced_checked(&self.store, me.as_ref(), id, to, sealed).map_err(|error| format!("Group changes from {from} were not saved: {error}"))? {
+                    if let Some(s) =
+                        crate::groups::take_synced_checked(&self.store, me.as_ref(), id, to, sealed)
+                            .map_err(|error| {
+                                format!("Group changes from {from} were not saved: {error}")
+                            })?
+                    {
                         said.push(s);
                     }
                 }
                 // One conversation on every device (item 16): the thread, facts,
                 // the later list and reminders -- your own devices only.
-                crate::sync::What::Said { text, .. } => self.take_an_exchange(text, sealed).map_err(|error| format!("Conversation from {from} was not saved: {error}"))?,
-                crate::sync::What::Changed { id, .. } if id.starts_with(onethread::FACT_PREFIX) => self.take_a_fact(e, sealed).map_err(|error| format!("Facts from {from} were not saved: {error}"))?,
-                crate::sync::What::Changed { id, .. } if id.starts_with(onethread::LATER_PREFIX) => {
-                    self.take_a_later_item(e, sealed).map_err(|error| format!("Later-list changes from {from} were not saved: {error}"))?
+                crate::sync::What::Said { text, .. } => self
+                    .take_an_exchange(text, sealed)
+                    .map_err(|error| format!("Conversation from {from} was not saved: {error}"))?,
+                crate::sync::What::Changed { id, .. } if id.starts_with(onethread::FACT_PREFIX) => {
+                    self.take_a_fact(e, sealed)
+                        .map_err(|error| format!("Facts from {from} were not saved: {error}"))?
                 }
-                crate::sync::What::Changed { id, .. } if id.starts_with(onethread::REMIND_PREFIX) => {
-                    self.take_a_reminder(e, sealed).map_err(|error| format!("Reminders from {from} were not saved: {error}"))?
+                crate::sync::What::Changed { id, .. }
+                    if id.starts_with(onethread::LATER_PREFIX) =>
+                {
+                    self.take_a_later_item(e, sealed).map_err(|error| {
+                        format!("Later-list changes from {from} were not saved: {error}")
+                    })?
+                }
+                crate::sync::What::Changed { id, .. }
+                    if id.starts_with(onethread::REMIND_PREFIX) =>
+                {
+                    self.take_a_reminder(e, sealed)
+                        .map_err(|error| format!("Reminders from {from} were not saved: {error}"))?
                 }
                 // Asked of the laptop from your phone, a yes to one held, and
                 // the laptop's answer back (item 24) -- your own devices only.
-                crate::sync::What::Changed { id, to, .. } if id.starts_with(crate::remote::ASK_PREFIX) => {
-                    self.take_a_request_from_the_phone(id, to, sealed).map_err(|error| format!("Phone request from {from} was not saved: {error}"))?;
+                crate::sync::What::Changed { id, to, .. }
+                    if id.starts_with(crate::remote::ASK_PREFIX) =>
+                {
+                    self.take_a_request_from_the_phone(id, to, sealed)
+                        .map_err(|error| {
+                            format!("Phone request from {from} was not saved: {error}")
+                        })?;
                 }
-                crate::sync::What::Changed { id, .. } if id.starts_with(crate::remote::YES_PREFIX) => {
+                crate::sync::What::Changed { id, .. }
+                    if id.starts_with(crate::remote::YES_PREFIX) =>
+                {
                     let now = crate::store::now();
-                    said.extend(self.take_a_yes_from_the_phone(id, sealed, now).map_err(|error| format!("Phone approval from {from} was not saved: {error}"))?);
+                    said.extend(self.take_a_yes_from_the_phone(id, sealed, now).map_err(
+                        |error| format!("Phone approval from {from} was not saved: {error}"),
+                    )?);
                 }
-                crate::sync::What::Changed { id, to, .. } if id.starts_with(crate::remote::ANSWER_PREFIX) => {
-                    if let Some(s) = self.take_an_answer_from_the_laptop(id, to, sealed).map_err(|error| format!("Laptop answer from {from} was not saved: {error}"))? {
+                crate::sync::What::Changed { id, to, .. }
+                    if id.starts_with(crate::remote::ANSWER_PREFIX) =>
+                {
+                    if let Some(s) = self
+                        .take_an_answer_from_the_laptop(id, to, sealed)
+                        .map_err(|error| {
+                            format!("Laptop answer from {from} was not saved: {error}")
+                        })?
+                    {
                         said.push(s);
                     }
                 }
                 // A WeatherKit token from the laptop (item 24), from your own
                 // devices only.
-                crate::sync::What::Changed { id, to, .. } if id.starts_with(crate::applewx::SYNC_PREFIX) => {
-                    if let Some(s) = crate::applewx::take_synced(&self.store.data_dir().join("state"), id, to, sealed, e.at) {
+                crate::sync::What::Changed { id, to, .. }
+                    if id.starts_with(crate::applewx::SYNC_PREFIX) =>
+                {
+                    if let Some(s) = crate::applewx::take_synced(
+                        &self.store.data_dir().join("state"),
+                        id,
+                        to,
+                        sealed,
+                        e.at,
+                    ) {
                         self.log.info(&s);
                     }
                 }
                 // An Android phone's push address and keys (item 15), from your
                 // own devices only.
-                crate::sync::What::Changed { id, to, .. } if id.starts_with(crate::webpush::SYNC_PREFIX) => {
-                    if let Some(s) = crate::webpush::take_synced(&self.store.data_dir().join("state"), id, to, sealed, e.at) {
+                crate::sync::What::Changed { id, to, .. }
+                    if id.starts_with(crate::webpush::SYNC_PREFIX) =>
+                {
+                    if let Some(s) = crate::webpush::take_synced(
+                        &self.store.data_dir().join("state"),
+                        id,
+                        to,
+                        sealed,
+                        e.at,
+                    ) {
                         self.log.info(&s);
                     }
                 }
                 // An iPhone's push address (item 15), from your own devices only.
-                crate::sync::What::Changed { id, to, .. } if id.starts_with(crate::apns::SYNC_PREFIX) => {
-                    if let Some(s) = crate::apns::take_synced(&self.store.data_dir().join("state"), id, to, sealed, e.at) {
+                crate::sync::What::Changed { id, to, .. }
+                    if id.starts_with(crate::apns::SYNC_PREFIX) =>
+                {
+                    if let Some(s) = crate::apns::take_synced(
+                        &self.store.data_dir().join("state"),
+                        id,
+                        to,
+                        sealed,
+                        e.at,
+                    ) {
                         self.log.info(&s);
                     }
                 }
-                crate::sync::What::Changed { id, field, to } if id.starts_with(crate::plugins::SYNC_PREFIX) => {
+                crate::sync::What::Changed { id, field, to }
+                    if id.starts_with(crate::plugins::SYNC_PREFIX) =>
+                {
                     if let Some(s) = crate::plugins::take_synced_versioned(
                         &self.store,
                         &self.plugins_dir,
@@ -2295,7 +2755,10 @@ impl<'a> Daemon<'a> {
                         sealed,
                         from,
                         Some(crate::sync::Version::of(e)),
-                    ).map_err(|error| format!("Add-on changes from {from} were not saved: {error}"))? {
+                    )
+                    .map_err(|error| {
+                        format!("Add-on changes from {from} were not saved: {error}")
+                    })? {
                         said.push(s);
                     }
                 }
@@ -2304,7 +2767,9 @@ impl<'a> Daemon<'a> {
         }
         if notes_changed {
             if let Err(e) = self.notebook.save(&self.store) {
-                return Err(format!("Notes came over from {from} and I couldn't save them: {e}"));
+                return Err(format!(
+                    "Notes came over from {from} and I couldn't save them: {e}"
+                ));
             }
         }
         Ok(said)
@@ -2329,8 +2794,19 @@ impl<'a> Daemon<'a> {
         cfg: &crate::sync::SyncConfig,
         key: Option<&[u8]>,
     ) -> bool {
-        let named = if key.is_none() && !peer.is_loopback() && self.is_a_named_peer(peer) { vec![peer] } else { Vec::new() };
-        crate::sync::may_answer_wire(peer, incoming, key, &named, &self.synclog.device, &cfg.belongs_to)
+        let named = if key.is_none() && !peer.is_loopback() && self.is_a_named_peer(peer) {
+            vec![peer]
+        } else {
+            Vec::new()
+        };
+        crate::sync::may_answer_wire(
+            peer,
+            incoming,
+            key,
+            &named,
+            &self.synclog.device,
+            &cfg.belongs_to,
+        )
     }
 
     /// Is this address one of the devices named in `elsewhere.known`? A
@@ -2344,7 +2820,10 @@ impl<'a> Daemon<'a> {
             }
             match host.parse::<std::net::IpAddr>() {
                 Ok(ip) => ip == peer,
-                Err(_) => (host, 0u16).to_socket_addrs().map(|mut a| a.any(|a| a.ip() == peer)).unwrap_or(false),
+                Err(_) => (host, 0u16)
+                    .to_socket_addrs()
+                    .map(|mut a| a.any(|a| a.ip() == peer))
+                    .unwrap_or(false),
             }
         })
     }
@@ -2354,7 +2833,9 @@ impl<'a> Daemon<'a> {
         if !kept.is_set() {
             return None;
         }
-        kept.phrase().and_then(|p| crate::sync::key_from_phrase(&p)).ok()
+        kept.phrase()
+            .and_then(|p| crate::sync::key_from_phrase(&p))
+            .ok()
     }
 
     /// Listen for a peer dialing us for a direct sync — once, without blocking —
@@ -2386,22 +2867,24 @@ impl<'a> Daemon<'a> {
             return Vec::new();
         };
         let mut lines: Vec<String> = Vec::new();
-        crate::heard!(server.poll_from(std::time::Duration::from_millis(50), |peer, incoming| {
-            // A peer actually connected — now the key derivation is worth it.
-            let key = self.sync_key();
-            if !self.may_answer_wire(peer, &incoming, &cfg, key.as_deref()) {
-                return None;
-            }
-            let (t, cl, sk) = self.take_in_wire(&incoming, &cfg, key.as_deref(), now);
-            if t > 0 {
-                lines.push(format!(
-                    "Took in {t} from another of your devices, straight across the network."
-                ));
-            }
-            lines.extend(cl);
-            lines.extend(sk);
-            self.wire_bytes(&cfg, key.as_deref(), now)
-        }));
+        crate::heard!(
+            server.poll_from(std::time::Duration::from_millis(50), |peer, incoming| {
+                // A peer actually connected — now the key derivation is worth it.
+                let key = self.sync_key();
+                if !self.may_answer_wire(peer, &incoming, &cfg, key.as_deref()) {
+                    return None;
+                }
+                let (t, cl, sk) = self.take_in_wire(&incoming, &cfg, key.as_deref(), now);
+                if t > 0 {
+                    lines.push(format!(
+                        "Took in {t} from another of your devices, straight across the network."
+                    ));
+                }
+                lines.extend(cl);
+                lines.extend(sk);
+                self.wire_bytes(&cfg, key.as_deref(), now)
+            })
+        );
         self.sync_server = Some(server);
         lines
     }
@@ -2446,10 +2929,12 @@ impl<'a> Daemon<'a> {
         // The window is fifteen minutes and a taken handoff deletes itself, so
         // this is only for the abandoned case -- which is exactly the one
         // nobody would think to tidy up.
-        let swept = crate::sync::sweep_handoffs(dir, now)
-            + crate::household::sweep_invitations(dir, now);
+        let swept =
+            crate::sync::sweep_handoffs(dir, now) + crate::household::sweep_invitations(dir, now);
         if swept > 0 {
-            self.log.info(&format!("cleared {swept} expired key handoff(s) from the sync folder"));
+            self.log.info(&format!(
+                "cleared {swept} expired key handoff(s) from the sync folder"
+            ));
         }
 
         // The household key, derived once for this pass rather than once per
@@ -2464,7 +2949,8 @@ impl<'a> Daemon<'a> {
             match kept.phrase().and_then(|p| crate::sync::key_from_phrase(&p)) {
                 Ok(k) => Some(k),
                 Err(why) => {
-                    self.log.info(&format!("the household key would not load: {why}"));
+                    self.log
+                        .info(&format!("the household key would not load: {why}"));
                     None
                 }
             }
@@ -2492,27 +2978,31 @@ impl<'a> Daemon<'a> {
         }
         if let Some(server) = self.sync_server.take() {
             let key_ref = key.as_deref();
-            crate::heard!(server.poll_from(std::time::Duration::from_millis(200), |peer, incoming| {
-                if !self.may_answer_wire(peer, &incoming, &cfg, key_ref) {
-                    return None;
+            crate::heard!(server.poll_from(
+                std::time::Duration::from_millis(200),
+                |peer, incoming| {
+                    if !self.may_answer_wire(peer, &incoming, &cfg, key_ref) {
+                        return None;
+                    }
+                    let (t, mut cl, mut sk) = self.take_in_wire(&incoming, &cfg, key_ref, now);
+                    taken += t;
+                    clashes.append(&mut cl);
+                    skews.append(&mut sk);
+                    self.wire_bytes(&cfg, key_ref, now)
                 }
-                let (t, mut cl, mut sk) = self.take_in_wire(&incoming, &cfg, key_ref, now);
-                taken += t;
-                clashes.append(&mut cl);
-                skews.append(&mut sk);
-                self.wire_bytes(&cfg, key_ref, now)
-            }));
+            ));
             self.sync_server = Some(server);
         }
         if let Ok(entries) = std::fs::read_dir(dir) {
-            let mut paths: Vec<std::path::PathBuf> =
-                entries.flatten().map(|e| e.path()).collect();
+            let mut paths: Vec<std::path::PathBuf> = entries.flatten().map(|e| e.path()).collect();
             paths.sort();
             for p in paths {
                 if p.extension().and_then(|x| x.to_str()) != Some("bundle") {
                     continue;
                 }
-                let Ok(raw) = std::fs::read_to_string(&p) else { continue };
+                let Ok(raw) = std::fs::read_to_string(&p) else {
+                    continue;
+                };
                 // Sealed or plain, through one reader. Two paths here is how
                 // a plaintext fallback survives a feature meant to remove
                 // one -- and a sealed bundle with no key says which command
@@ -2543,8 +3033,7 @@ impl<'a> Daemon<'a> {
                 // Only what we have not already taken from that device.
                 // Counting the whole bundle each time would report two new
                 // things every morning for a folder that had not changed.
-                let (new, _skipped) =
-                    crate::sync::already_seen(&bundle.events, &self.seen_up_to);
+                let (new, _skipped) = crate::sync::already_seen(&bundle.events, &self.seen_up_to);
                 if new == 0 {
                     continue;
                 }
@@ -2575,7 +3064,11 @@ impl<'a> Daemon<'a> {
                 let sealed = crate::sync::peek(&raw).is_some();
                 let applied = match self.take_in_synced(&fresh, sealed, &bundle.from_name) {
                     Ok(applied) => applied,
-                    Err(error) => { taken = taken.saturating_sub(fresh.len()); clashes.push(error); continue; }
+                    Err(error) => {
+                        taken = taken.saturating_sub(fresh.len());
+                        clashes.push(error);
+                        continue;
+                    }
                 };
                 for said in applied {
                     clashes.push(said);
@@ -2590,11 +3083,12 @@ impl<'a> Daemon<'a> {
             }
         }
 
-        let mut bundle =
-            {
-                if let Err(error) = self.note_addon_changes(now) { return format!("Add-on changes remain pending; sync was not sent: {error}"); }
-                crate::sync::make_bundle(&self.synclog, &self.synclog.device.clone(), 0, now)
-            };
+        let mut bundle = {
+            if let Err(error) = self.note_addon_changes(now) {
+                return format!("Add-on changes remain pending; sync was not sent: {error}");
+            }
+            crate::sync::make_bundle(&self.synclog, &self.synclog.device.clone(), 0, now)
+        };
         // Stamped on the way out, so the other side can tell whose it is
         // without having to know which folder it came from.
         bundle.belongs_to = cfg.belongs_to.clone();
@@ -2663,12 +3157,20 @@ impl<'a> Daemon<'a> {
         // to ask a question nobody is waiting to answer.
         let mcfg = self.tools_cfg().mesh.clone();
         let ncfg = self.tools_cfg().nearby.clone();
-        let peers = self.tools_cfg().elsewhere.names().iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let peers = self
+            .tools_cfg()
+            .elsewhere
+            .names()
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
         let (route, peer_addr) = if peers.is_empty() {
             (None, None)
         } else {
             let found = crate::nearby::look(&ncfg).unwrap_or_default();
-            let here = peers.iter().any(|p| crate::mesh::on_this_network(p, &found));
+            let here = peers
+                .iter()
+                .any(|p| crate::mesh::on_this_network(p, &found));
             // The peer that answered — its name (so the configured-address dial
             // below can skip it) and its host (the one we send straight to). Its
             // shout carries its host; the sync port is fixed.
@@ -2681,7 +3183,10 @@ impl<'a> Daemon<'a> {
             // `mesh_up` stays false: a private network is the one route with
             // nothing behind it, and saying otherwise here would be the
             // hardcoded literal coming back wearing an observation's clothes.
-            (Some(crate::mesh::choose(here, false, true, false, &mcfg)), addr)
+            (
+                Some(crate::mesh::choose(here, false, true, false, &mcfg)),
+                addr,
+            )
         };
 
         let mut said = match written {
@@ -2732,7 +3237,9 @@ impl<'a> Daemon<'a> {
                                 sealed_key: key.clone(),
                             });
                             synced_directly.push(name.clone());
-                            said.push_str(&format!(" ({why} — sending straight across to your other Atlas.)"));
+                            said.push_str(&format!(
+                                " ({why} — sending straight across to your other Atlas.)"
+                            ));
                         }
                         Some(bytes) => match crate::transport::exchange(
                             host,
@@ -2837,7 +3344,9 @@ impl<'a> Daemon<'a> {
         // mid-session still gives you the brief for the work already done
         // rather than swallowing it.
         if !where_you_are.free_to_work() {
-            if let Some(line) = crate::inhibit::apply(&mut self.sleep_hold, crate::awake::Hold::Release, "") {
+            if let Some(line) =
+                crate::inhibit::apply(&mut self.sleep_hold, crate::awake::Hold::Release, "")
+            {
                 self.log.info(&line);
             }
             if let Some(session) = self.overnight.take() {
@@ -2846,7 +3355,9 @@ impl<'a> Daemon<'a> {
                     // Taken from what was recorded at the time -- asking now
                     // would say "you're about", which is true and is a
                     // different fact.
-                    let then = self.worked_while.unwrap_or(crate::daily::Whereabouts::Asleep);
+                    let then = self
+                        .worked_while
+                        .unwrap_or(crate::daily::Whereabouts::Asleep);
                     let mut brief = crate::overnight::morning_brief(&session, then);
                     if let Some(why) = &session.ended_because {
                         brief.push_str(&format!(" I stopped because I {why}."));
@@ -2858,7 +3369,9 @@ impl<'a> Daemon<'a> {
                     let ccfg = self.tools_cfg().capture.clone();
                     self.notebook.capture(&detail, Some("overnight"), t, &ccfg);
                     let _ = self.notebook.save(&self.store);
-                    brief.push_str(" The full account is in your notes, or ask \"what did you do overnight\".");
+                    brief.push_str(
+                        " The full account is in your notes, or ask \"what did you do overnight\".",
+                    );
                     self.morning_brief = Some(brief);
                 }
             }
@@ -2876,9 +3389,8 @@ impl<'a> Daemon<'a> {
         // while you are asleep. Defaulting to "do nothing" is the only safe
         // direction for a mistake in this particular setting.
         if cfg.apply_while_asleep {
-            self.log.warn(
-                "overnight is set to apply changes while you're asleep — refusing to run",
-            );
+            self.log
+                .warn("overnight is set to apply changes while you're asleep — refusing to run");
             return;
         }
         if t.saturating_sub(self.last_overnight) < 3600 {
@@ -2925,10 +3437,13 @@ impl<'a> Daemon<'a> {
             lid_action: crate::awake::LidAction::Unknown,
             external_display: false,
         };
-        let held_mins = t.saturating_sub(self.overnight.as_ref().map(|s| s.started_at).unwrap_or(t))
-            / 60;
-        let (hold, why_not) =
-            self.keep_awake(crate::awake::Because::OvernightWork, &power, u32::try_from(held_mins).unwrap_or(u32::MAX));
+        let held_mins =
+            t.saturating_sub(self.overnight.as_ref().map(|s| s.started_at).unwrap_or(t)) / 60;
+        let (hold, why_not) = self.keep_awake(
+            crate::awake::Because::OvernightWork,
+            &power,
+            u32::try_from(held_mins).unwrap_or(u32::MAX),
+        );
         // And now it is acted on: the machine is actually held awake while
         // the night runs, and let go when the decision says so.
         if let Some(line) = crate::inhibit::apply(&mut self.sleep_hold, hold, "tonight's work") {
@@ -2941,12 +3456,15 @@ impl<'a> Daemon<'a> {
         if hold == crate::awake::Hold::Release && !why_not.is_empty() {
             // Said once, when the night declines to start, not on every tick.
             if self.overnight.is_none() {
-                self.log.info(&format!("not starting overnight work: {why_not}"));
+                self.log
+                    .info(&format!("not starting overnight work: {why_not}"));
             }
             return;
         }
 
-        let session = self.overnight.get_or_insert_with(|| crate::overnight::Session::start(t));
+        let session = self
+            .overnight
+            .get_or_insert_with(|| crate::overnight::Session::start(t));
         // No hosted brain is wired, so there is no spend to have left. Passed
         // explicitly rather than defaulted so that wiring one later has to
         // come back through here.
@@ -2979,7 +3497,9 @@ impl<'a> Daemon<'a> {
                 if session.ended_because.is_none() {
                     session.ended_because = Some(why);
                 }
-                if let Some(line) = crate::inhibit::apply(&mut self.sleep_hold, crate::awake::Hold::Release, "") {
+                if let Some(line) =
+                    crate::inhibit::apply(&mut self.sleep_hold, crate::awake::Hold::Release, "")
+                {
                     self.log.info(&line);
                 }
             }
@@ -3020,24 +3540,39 @@ impl Daemon<'_> {
         }
         // The first tick only books the first look, a couple of minutes on.
         if self.last_top_up == 0 {
-            self.last_top_up = t.saturating_sub(TOP_UP_EVERY_SECS).saturating_add(TOP_UP_AFTER_START_SECS).max(1);
+            self.last_top_up = t
+                .saturating_sub(TOP_UP_EVERY_SECS)
+                .saturating_add(TOP_UP_AFTER_START_SECS)
+                .max(1);
             return;
         }
         if t.saturating_sub(self.last_top_up) < TOP_UP_EVERY_SECS {
             return;
         }
         let root = self.store.install_root();
-        let setup_done = crate::getpieces::catalogue().first().is_some_and(|p| crate::getpieces::have(p, &root));
+        let setup_done = crate::getpieces::catalogue()
+            .first()
+            .is_some_and(|p| crate::getpieces::have(p, &root));
         if !setup_done || self.handover().stance.handed_over() {
             return;
         }
         self.last_top_up = t;
-        let missing: Vec<crate::getpieces::Piece> =
-            crate::getpieces::everything_else().into_iter().filter(|p| !crate::getpieces::have(p, &root)).collect();
+        let missing: Vec<crate::getpieces::Piece> = crate::getpieces::everything_else()
+            .into_iter()
+            .filter(|p| !crate::getpieces::have(p, &root))
+            .collect();
         if missing.is_empty() && !crate::codetools::unfinished(&root) {
             return;
         }
-        self.log.info(&format!("fetching {} missing piece(s) myself: {}", missing.len(), missing.iter().map(|p| p.name).collect::<Vec<_>>().join(", ")));
+        self.log.info(&format!(
+            "fetching {} missing piece(s) myself: {}",
+            missing.len(),
+            missing
+                .iter()
+                .map(|p| p.name)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
         let work: crew::Work = Box::new(move |ctl| {
             let (mut got, mut not) = (Vec::new(), Vec::new());
             for p in &missing {
@@ -3048,14 +3583,23 @@ impl Daemon<'_> {
                 if crate::getpieces::have(p, &root) {
                     continue;
                 }
-                if let Err(why) = crate::getpieces::room_for(std::slice::from_ref(p), &root, crate::getpieces::free_bytes(&root)) {
+                if let Err(why) = crate::getpieces::room_for(
+                    std::slice::from_ref(p),
+                    &root,
+                    crate::getpieces::free_bytes(&root),
+                ) {
                     not.push(format!("{} ({})", p.name, why));
                     continue;
                 }
                 let places = crate::getpieces::places_it_may_be(&root);
                 let done = match crate::getpieces::take_in(p, &root, &places) {
                     Ok(Some(_)) => Ok(()),
-                    _ => crate::getpieces::fetch(p, &root, &crate::getpieces::Tools::default(), &|_, _| {}),
+                    _ => crate::getpieces::fetch(
+                        p,
+                        &root,
+                        &crate::getpieces::Tools::default(),
+                        &|_, _| {},
+                    ),
                 };
                 match done {
                     Ok(()) => got.push(p.name.to_string()),
@@ -3071,16 +3615,25 @@ impl Daemon<'_> {
                 return Ok("Set up the code checkers.".into());
             }
             match (got.is_empty(), not.is_empty()) {
-                (_, true) => Ok(format!("Downloaded what I was missing: {}.", got.join(", "))),
-                (true, false) => Err(format!("I couldn't download what I'm missing yet: {}. I'll try again later.", not.join("; "))),
-                (false, false) => Ok(format!("Downloaded {}. Still missing: {} -- I'll try again later.", got.join(", "), not.join("; "))),
+                (_, true) => Ok(format!(
+                    "Downloaded what I was missing: {}.",
+                    got.join(", ")
+                )),
+                (true, false) => Err(format!(
+                    "I couldn't download what I'm missing yet: {}. I'll try again later.",
+                    not.join("; ")
+                )),
+                (false, false) => Ok(format!(
+                    "Downloaded {}. Still missing: {} -- I'll try again later.",
+                    got.join(", "),
+                    not.join("; ")
+                )),
             }
         });
         // unheard-ok: returns `bool`, not a Result
         let _ = self.hand_off("getting-everything", t, work, None, SpeakPolicy::ViaWatcher);
     }
 }
-
 
 #[cfg(test)]
 mod dials_have_a_deadline {
@@ -3098,13 +3651,31 @@ mod dials_have_a_deadline {
             }
             std::thread::sleep(std::time::Duration::from_secs(5));
         });
-        let dial = |n: &str| Dial { name: n.into(), host: "127.0.0.1".into(), port, bytes: b"x".to_vec(), timeout: std::time::Duration::from_secs(30), sealed_key: None };
+        let dial = |n: &str| Dial {
+            name: n.into(),
+            host: "127.0.0.1".into(),
+            port,
+            bytes: b"x".to_vec(),
+            timeout: std::time::Duration::from_secs(30),
+            sealed_key: None,
+        };
         let started = std::time::Instant::now();
-        let rx = dial_off_the_loop_within(vec![dial("a"), dial("b")], std::time::Duration::from_millis(600));
-        let first = rx.recv_timeout(std::time::Duration::from_secs(4)).expect("first answer");
-        let second = rx.recv_timeout(std::time::Duration::from_secs(4)).expect("second answer");
+        let rx = dial_off_the_loop_within(
+            vec![dial("a"), dial("b")],
+            std::time::Duration::from_millis(600),
+        );
+        let first = rx
+            .recv_timeout(std::time::Duration::from_secs(4))
+            .expect("first answer");
+        let second = rx
+            .recv_timeout(std::time::Duration::from_secs(4))
+            .expect("second answer");
         assert!(first.1.is_err() && second.1.is_err());
-        assert!(started.elapsed() < std::time::Duration::from_secs(4), "took {} ms", started.elapsed().as_millis());
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(4),
+            "took {} ms",
+            started.elapsed().as_millis()
+        );
     }
 }
 
@@ -3120,45 +3691,105 @@ mod sync_storage_recovery {
         let cfg = Config::load(std::path::Path::new("config")).unwrap();
         let plat = crate::platform::mock::MockPlatform::new(Vec::new());
         let now = crate::store::now();
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("atlas-reminder-sync-{}-{stamp}", std::process::id()));
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "atlas-reminder-sync-{}-{stamp}",
+            std::process::id()
+        ));
         let store = Store::new(root.clone());
-        let proactive = || crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default());
+        let proactive =
+            || crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default());
         let mut daemon = Daemon::new(&cfg, &plat, None, store.clone(), proactive());
         let mut log = crate::sync::Log::new("phone");
         let key = "remind:phone:1";
-        log.append(crate::sync::What::Changed { id: key.into(), field: "reminder".into(), to: serde_json::json!({ "command": "reminder check the studio", "due": now + 3600 }).to_string() }, now);
+        log.append(
+            crate::sync::What::Changed {
+                id: key.into(),
+                field: "reminder".into(),
+                to:
+                    serde_json::json!({ "command": "reminder check the studio", "due": now + 3600 })
+                        .to_string(),
+            },
+            now,
+        );
         let add = log.events[0].clone();
-        log.append(crate::sync::What::Changed { id: key.into(), field: "reminder".into(), to: String::new() }, now + 1);
+        log.append(
+            crate::sync::What::Changed {
+                id: key.into(),
+                field: "reminder".into(),
+                to: String::new(),
+            },
+            now + 1,
+        );
         let remove = log.events[1].clone();
-        daemon.take_in_synced(&[remove, add.clone()], true, "phone").unwrap();
+        daemon
+            .take_in_synced(&[remove, add.clone()], true, "phone")
+            .unwrap();
         assert!(daemon.reminders_elsewhere().is_empty());
-        let rows: Vec<onethread::Elsewhere> = store.load_checked(onethread::ELSEWHERE_KEY).unwrap().unwrap();
-        assert_eq!(rows.len(), 1); assert_eq!(rows[0].due, 0);
-        log.append(crate::sync::What::Changed { id: key.into(), field: "reminder".into(), to: serde_json::json!({ "command": "reminder check the studio", "due": now + 7200 }).to_string() }, now + 2);
-        daemon.take_in_synced(&[log.events[2].clone()], true, "phone").unwrap();
+        let rows: Vec<onethread::Elsewhere> = store
+            .load_checked(onethread::ELSEWHERE_KEY)
+            .unwrap()
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].due, 0);
+        log.append(
+            crate::sync::What::Changed {
+                id: key.into(),
+                field: "reminder".into(),
+                to:
+                    serde_json::json!({ "command": "reminder check the studio", "due": now + 7200 })
+                        .to_string(),
+            },
+            now + 2,
+        );
+        daemon
+            .take_in_synced(&[log.events[2].clone()], true, "phone")
+            .unwrap();
         daemon.cancel_elsewhere(key, now + 3).unwrap();
         drop(daemon); // No sync-log save: the cancellation intent must survive.
         let mut restarted = Daemon::new(&cfg, &plat, None, store.clone(), proactive());
         restarted.save_the_synclog_if_changed();
         let saved: Option<crate::sync::Log> = store.load_checked("synclog").unwrap().unwrap();
         assert!(saved.unwrap().events.iter().any(|e| matches!(&e.what, crate::sync::What::Changed { id, to, .. } if id == key && to.is_empty())));
-        let rows: Vec<onethread::Elsewhere> = store.load_checked(onethread::ELSEWHERE_KEY).unwrap().unwrap();
+        let rows: Vec<onethread::Elsewhere> = store
+            .load_checked(onethread::ELSEWHERE_KEY)
+            .unwrap()
+            .unwrap();
         assert!(!rows[0].cancel_pending);
         restarted.take_in_synced(&[add], true, "phone").unwrap();
         assert!(restarted.reminders_elsewhere().is_empty());
-        drop(restarted); std::fs::remove_dir_all(root).unwrap();
+        drop(restarted);
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn occupied_storage_defers_the_batch_and_capture_retry_survives_restart() {
         let cfg = Config::load(std::path::Path::new("config")).unwrap();
         let plat = crate::platform::mock::MockPlatform::new(Vec::new());
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("atlas-sync-storage-{}-{stamp}", std::process::id()));
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("atlas-sync-storage-{}-{stamp}", std::process::id()));
         let store = Store::new(root.clone());
-        let mut daemon = Daemon::new(&cfg, &plat, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let mut daemon = Daemon::new(
+            &cfg,
+            &plat,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
         let mut log = crate::sync::Log::new("phone");
-        log.append(crate::sync::What::Captured { id: "phone-note-1".into(), text: "Keep the studio setup idea".into() }, 100);
+        log.append(
+            crate::sync::What::Captured {
+                id: "phone-note-1".into(),
+                text: "Keep the studio setup idea".into(),
+            },
+            100,
+        );
         let fresh = log.events.clone();
         let (ready_tx, ready_rx) = std::sync::mpsc::channel();
         let (release_tx, release_rx) = std::sync::mpsc::channel();
@@ -3170,7 +3801,8 @@ mod sync_storage_recovery {
         });
         ready_rx.recv().unwrap();
         let deferred = daemon.take_in_synced(&fresh, true, "phone");
-        release_tx.send(()).unwrap(); worker.join().unwrap();
+        release_tx.send(()).unwrap();
+        worker.join().unwrap();
         assert!(deferred.is_err());
         assert!(daemon.notebook.notes.is_empty());
         assert!(daemon.take_in_synced(&fresh, true, "phone").is_ok());
@@ -3189,10 +3821,14 @@ mod sync_storage_recovery {
 /// few milliseconds is not a failed save, and treating it as one stopped a
 /// perfectly good worker. Try again for a quarter of a second; anything still
 /// refused after that is reported as before.
-fn briefly_busy<T>(mut attempt: impl FnMut() -> crate::error::Result<T>) -> crate::error::Result<T> {
+fn briefly_busy<T>(
+    mut attempt: impl FnMut() -> crate::error::Result<T>,
+) -> crate::error::Result<T> {
     for _ in 0..25 {
         match attempt() {
-            Err(crate::error::AtlasError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(std::time::Duration::from_millis(10)),
+            Err(crate::error::AtlasError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(std::time::Duration::from_millis(10))
+            }
             other => return other,
         }
     }

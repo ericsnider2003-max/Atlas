@@ -224,7 +224,8 @@ impl Lessons {
         s.as_of = now;
         s.times += 1.0;
         if s.times >= LEARN_AFTER - NEARLY && !self.learned.contains_key(&was.to_lowercase()) {
-            self.learned.insert(was.to_lowercase(), becomes.to_lowercase());
+            self.learned
+                .insert(was.to_lowercase(), becomes.to_lowercase());
             self.yours_seen.remove(&k);
             // Held to a size: the least-evidenced go first. A tally is the
             // evidence, so a learned word with none is the weakest.
@@ -232,7 +233,12 @@ impl Lessons {
                 let weakest = self
                     .learned
                     .iter()
-                    .map(|(w, b)| (w.clone(), self.tallies.get(&key(w, b)).map(|t| t.kept).unwrap_or(0.0)))
+                    .map(|(w, b)| {
+                        (
+                            w.clone(),
+                            self.tallies.get(&key(w, b)).map(|t| t.kept).unwrap_or(0.0),
+                        )
+                    })
                     .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
                     .map(|(w, _)| w);
                 match weakest {
@@ -284,7 +290,10 @@ impl Lessons {
         }
         let tallies = &self.tallies;
         let seen_recently = |w: &String, b: &String| {
-            tallies.get(&key(w, b)).map(|t| t.kept + t.changed_back > 0.25).unwrap_or(false)
+            tallies
+                .get(&key(w, b))
+                .map(|t| t.kept + t.changed_back > 0.25)
+                .unwrap_or(false)
         };
         let stale: Vec<String> = self
             .learned
@@ -310,10 +319,17 @@ impl Lessons {
     /// and ones stopped because you kept changing them back (and where).
     pub fn what_it_learned(&mut self, now: u64) -> String {
         let mut out = Vec::new();
-        let mut learned: Vec<String> = self.learned.iter().map(|(w, b)| format!("{w} → {b}")).collect();
+        let mut learned: Vec<String> = self
+            .learned
+            .iter()
+            .map(|(w, b)| format!("{w} → {b}"))
+            .collect();
         learned.sort();
         if !learned.is_empty() {
-            out.push(format!("Learned from your own fixes: {}.", learned.join(", ")));
+            out.push(format!(
+                "Learned from your own fixes: {}.",
+                learned.join(", ")
+            ));
         }
         let mut stopped = Vec::new();
         for (k, t) in self.tallies.iter_mut() {
@@ -331,7 +347,13 @@ impl Lessons {
                 .collect();
             apps.sort();
             if !apps.is_empty() {
-                stopped.push(format!("{k} (in {})", apps.iter().map(|a| a.as_str()).collect::<Vec<_>>().join(", ")));
+                stopped.push(format!(
+                    "{k} (in {})",
+                    apps.iter()
+                        .map(|a| a.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
             }
         }
         stopped.sort();
@@ -342,7 +364,8 @@ impl Lessons {
             ));
         }
         if out.is_empty() {
-            "Nothing learned about your typing yet — every correction is still the built-in one.".into()
+            "Nothing learned about your typing yet — every correction is still the built-in one."
+                .into()
         } else {
             out.join(" ")
         }
@@ -361,7 +384,9 @@ pub fn close_spellings(a: &str, b: &str) -> bool {
     if a == b || a.chars().count() < 5 || b.chars().count() < 5 {
         return false;
     }
-    if !a.chars().all(|c| c.is_alphabetic() || c == '\'') || !b.chars().all(|c| c.is_alphabetic() || c == '\'') {
+    if !a.chars().all(|c| c.is_alphabetic() || c == '\'')
+        || !b.chars().all(|c| c.is_alphabetic() || c == '\'')
+    {
         return false;
     }
     edit_distance(&a, &b) <= 2
@@ -382,7 +407,9 @@ fn edit_distance(a: &str, b: &str) -> usize {
     for i in 1..=a.len() {
         for j in 1..=b.len() {
             let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
-            d[i][j] = (d[i - 1][j] + 1).min(d[i][j - 1] + 1).min(d[i - 1][j - 1] + cost);
+            d[i][j] = (d[i - 1][j] + 1)
+                .min(d[i][j - 1] + 1)
+                .min(d[i - 1][j - 1] + cost);
             if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
                 d[i][j] = d[i][j].min(d[i - 2][j - 2] + 1);
             }
@@ -426,7 +453,11 @@ pub struct Text {
 /// ends inside.
 fn finished_words(text: &str) -> Vec<String> {
     let mut w = words_of(text);
-    if text.chars().last().is_some_and(|c| c.is_alphanumeric() || c == '\'') {
+    if text
+        .chars()
+        .last()
+        .is_some_and(|c| c.is_alphanumeric() || c == '\'')
+    {
         w.pop();
     }
     w
@@ -525,7 +556,9 @@ fn look(
     if !now_text.starts_with(&before) || now_text.len() <= before.len() {
         return Now::Nothing;
     }
-    let Some(boundary) = now_text.chars().last() else { return Now::Nothing };
+    let Some(boundary) = now_text.chars().last() else {
+        return Now::Nothing;
+    };
     if boundary.is_alphanumeric() || boundary == '\'' {
         return Now::Nothing;
     }
@@ -541,7 +574,9 @@ fn look(
         return Now::Nothing;
     }
     let word_no = words_of(body).len().saturating_sub(1);
-    if text.leave_alone.contains(&word.to_lowercase()) || cfg.my_words.iter().any(|w| w.eq_ignore_ascii_case(word)) {
+    if text.leave_alone.contains(&word.to_lowercase())
+        || cfg.my_words.iter().any(|w| w.eq_ignore_ascii_case(word))
+    {
         return Now::Nothing;
     }
     // The certain fixes in this word, read with the sentence it's in so
@@ -555,20 +590,29 @@ fn look(
     let offset = word_start - sentence_start;
     let fix = fixes
         .into_iter()
-        .find(|f| f.kind == crate::prose::Kind::Certain && f.at == offset && f.len == word.len() && !f.becomes.is_empty())
+        .find(|f| {
+            f.kind == crate::prose::Kind::Certain
+                && f.at == offset
+                && f.len == word.len()
+                && !f.becomes.is_empty()
+        })
         .map(|f| f.becomes)
         .or_else(|| {
             lessons.learned_fix(word).map(|b| {
                 // Keep a capital the way `prose` does.
                 if word.chars().next().is_some_and(char::is_uppercase) {
                     let mut c = b.chars();
-                    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or(b)
+                    c.next()
+                        .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                        .unwrap_or(b)
                 } else {
                     b
                 }
             })
         });
-    let Some(becomes) = fix else { return Now::Nothing };
+    let Some(becomes) = fix else {
+        return Now::Nothing;
+    };
     if !lessons.may_fix(word, &becomes, app, t) {
         return Now::Nothing;
     }
@@ -581,7 +625,11 @@ fn look(
     // Atlas sends is a moment in which one of yours can land between two of
     // its own (30 Sep 2026: the whole word retyped, a key at a time, took
     // about 0.4 s), so the fewer the better.
-    let same: usize = word.chars().zip(becomes.chars()).take_while(|(a, b)| a == b).count();
+    let same: usize = word
+        .chars()
+        .zip(becomes.chars())
+        .take_while(|(a, b)| a == b)
+        .count();
     let tail: String = becomes.chars().skip(same).collect();
     Now::Fix {
         was: word.to_string(),
@@ -595,11 +643,23 @@ fn look(
 
 /// After Atlas typed a fix: did the box end up as expected? Updates the
 /// text's memory either way.
-fn after_fixing(text: &mut Text, expected_end: &str, now_text: &str, was: &str, becomes: &str, word_no: usize) -> bool {
+fn after_fixing(
+    text: &mut Text,
+    expected_end: &str,
+    now_text: &str,
+    was: &str,
+    becomes: &str,
+    word_no: usize,
+) -> bool {
     text.last = now_text.to_string();
     let ok = ends_as_expected(now_text, expected_end);
     if ok {
-        text.made.push(Made { was: was.to_string(), becomes: becomes.to_string(), word_no, settled: false });
+        text.made.push(Made {
+            was: was.to_string(),
+            becomes: becomes.to_string(),
+            word_no,
+            settled: false,
+        });
     }
     // Atlas's own fix is where the word now stands, not a fix of yours.
     text.settled = finished_words(now_text);
@@ -670,7 +730,10 @@ pub struct Watch {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Polled {
     Nothing,
-    Fixed { was: String, becomes: String },
+    Fixed {
+        was: String,
+        becomes: String,
+    },
     /// A fix went in and the box didn't read back as expected.
     DidNotLand,
 }
@@ -686,12 +749,16 @@ pub fn look_at_the_box(
     now_ms: u64,
 ) -> Polled {
     let t = now_ms / 1000;
-    let Some(win) = plat.active_window_id().ok().flatten() else { return Polled::Nothing };
+    let Some(win) = plat.active_window_id().ok().flatten() else {
+        return Polled::Nothing;
+    };
     if busy.contains(&win.0) {
         w.waiting = None;
         return Polled::Nothing;
     }
-    let Some(aw) = plat.active_window().ok().flatten() else { return Polled::Nothing };
+    let Some(aw) = plat.active_window().ok().flatten() else {
+        return Polled::Nothing;
+    };
     if !crate::prose::may_correct_in(&format!("{} {}", aw.process, aw.title), cfg) {
         return Polled::Nothing;
     }
@@ -699,7 +766,9 @@ pub fn look_at_the_box(
         return Polled::Nothing;
     }
     // `focused_text` never reads a password box.
-    let Some(now_text) = plat.focused_text().ok().flatten() else { return Polled::Nothing };
+    let Some(now_text) = plat.focused_text().ok().flatten() else {
+        return Polled::Nothing;
+    };
     // Texts are remembered by window and title; a handful at a time.
     if w.texts.len() > 40 {
         w.texts.clear();
@@ -716,18 +785,37 @@ pub fn look_at_the_box(
         let found = look(text, &now_text, &aw.process, lessons, cfg, t);
         w.waiting = match found {
             Now::Nothing => None,
-            fix => Some(Waiting { fix, text_then: now_text, since_ms: now_ms }),
+            fix => Some(Waiting {
+                fix,
+                text_then: now_text,
+                since_ms: now_ms,
+            }),
         };
         return Polled::Nothing;
     }
 
     // Unchanged. Is a fix waiting, and have you paused long enough?
-    let Some(waiting) = w.waiting.clone() else { return Polled::Nothing };
-    if waiting.text_then != now_text || now_ms.saturating_sub(waiting.since_ms) < STILL_FOR_MS || now_ms < w.resting_until_ms {
+    let Some(waiting) = w.waiting.clone() else {
+        return Polled::Nothing;
+    };
+    if waiting.text_then != now_text
+        || now_ms.saturating_sub(waiting.since_ms) < STILL_FOR_MS
+        || now_ms < w.resting_until_ms
+    {
         return Polled::Nothing;
     }
     w.waiting = None;
-    let Now::Fix { was, becomes, delete, type_in, expect_end, word_no } = waiting.fix else { return Polled::Nothing };
+    let Now::Fix {
+        was,
+        becomes,
+        delete,
+        type_in,
+        expect_end,
+        word_no,
+    } = waiting.fix
+    else {
+        return Polled::Nothing;
+    };
     // Looked at again at the last moment: if you've started typing again,
     // Atlas's keys would land in the middle of yours.
     if plat.focused_text().ok().flatten().as_deref() != Some(now_text.as_str()) {
@@ -763,7 +851,9 @@ fn read_back(plat: &dyn crate::platform::Platform, expected_end: &str) -> String
     let started = std::time::Instant::now();
     loop {
         let now = plat.focused_text().ok().flatten().unwrap_or_default();
-        if ends_as_expected(&now, expected_end) || started.elapsed().as_millis() as u64 >= READ_BACK_MS {
+        if ends_as_expected(&now, expected_end)
+            || started.elapsed().as_millis() as u64 >= READ_BACK_MS
+        {
             return now;
         }
         std::thread::sleep(std::time::Duration::from_millis(40));
@@ -797,7 +887,14 @@ pub fn start(
             let busy_now = busy.lock().map(|b| b.clone()).unwrap_or_default();
             let before = lessons.clone();
             // unheard-ok: returns `Polled`, not a Result
-            let _ = crate::astype::look_at_the_box(plat.as_ref(), &mut w, &mut lessons, &cfg, &busy_now, now_ms);
+            let _ = crate::astype::look_at_the_box(
+                plat.as_ref(),
+                &mut w,
+                &mut lessons,
+                &cfg,
+                &busy_now,
+                now_ms,
+            );
             if lessons != before {
                 dirty = true;
             }

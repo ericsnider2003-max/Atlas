@@ -1,7 +1,7 @@
 //! Messages, groups and friends: signals, handovers, reading and sending
 //! messages, handoffs between your devices, Tor, friend requests, add-on shares
 //! and the peer upkeep.
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
@@ -19,7 +19,9 @@ impl<'a> Daemon<'a> {
     }
 
     pub fn open_signal_door_again(&mut self, t: u64) {
-        let Some((port, peers, at)) = self.signal_retry.as_ref() else { return };
+        let Some((port, peers, at)) = self.signal_retry.as_ref() else {
+            return;
+        };
         if self.signal_listener.is_some() {
             self.signal_retry = None;
             return;
@@ -30,7 +32,8 @@ impl<'a> Daemon<'a> {
         let (port, peers) = (*port, peers.clone());
         match crate::server::SignalListener::bind(port, peers.clone()) {
             Ok(l) => {
-                self.log.info(&format!("the door for friends is open now, on port {port}"));
+                self.log
+                    .info(&format!("the door for friends is open now, on port {port}"));
                 self.fit_door(&l);
                 self.signal_listener = Some(l);
                 self.signal_retry = None;
@@ -164,13 +167,21 @@ impl<'a> Daemon<'a> {
         if key.is_empty() {
             return "Which group? Try \"leave the Northwind group\".".into();
         }
-        let Some((id, name)) = self.chats.group_named(key).map(|r| (r.id.clone(), r.name.clone()))
+        let Some((id, name)) = self
+            .chats
+            .group_named(key)
+            .map(|r| (r.id.clone(), r.name.clone()))
         else {
             return format!("You don't have a group called \"{key}\".");
         };
         if crate::groups::is_owned_id(&id) {
             let groups = crate::groups::Groups::load(&self.store);
-            if groups.held.get(&id).map(|h| Some(h.state.owner.clone()) == self.my_key()).unwrap_or(false) {
+            if groups
+                .held
+                .get(&id)
+                .map(|h| Some(h.state.owner.clone()) == self.my_key())
+                .unwrap_or(false)
+            {
                 return format!(
                     "You made \"{name}\", so you're its owner -- take the others out instead \
                      (on the Groups page), or keep it."
@@ -228,7 +239,11 @@ impl<'a> Daemon<'a> {
         let mut reachable = Vec::new();
         let mut cannot = Vec::new();
         for m in &room.members {
-            if pairings.contacts.iter().any(|c| crate::kin::same_name(&c.name, m)) {
+            if pairings
+                .contacts
+                .iter()
+                .any(|c| crate::kin::same_name(&c.name, m))
+            {
                 reachable.push(m.clone());
             } else {
                 cannot.push(m.clone());
@@ -288,7 +303,12 @@ impl<'a> Daemon<'a> {
             .chats
             .rooms
             .iter()
-            .map(|r| (r.id.clone(), r.messages.iter().map(|m| m.after).max().unwrap_or(0)))
+            .map(|r| {
+                (
+                    r.id.clone(),
+                    r.messages.iter().map(|m| m.after).max().unwrap_or(0),
+                )
+            })
             .collect();
 
         let mut waiting: Vec<String> = Vec::new();
@@ -309,9 +329,12 @@ impl<'a> Daemon<'a> {
         // in a group, their read can't reach you, and `read_state` says so
         // rather than calling it unread.
         let pairings = crate::kin::Pairings::load(&self.peer_dir);
-        let read_lines = self
-            .chats
-            .read_state(|who| pairings.contacts.iter().any(|c| crate::kin::same_name(&c.name, who)));
+        let read_lines = self.chats.read_state(|who| {
+            pairings
+                .contacts
+                .iter()
+                .any(|c| crate::kin::same_name(&c.name, who))
+        });
 
         if lines.is_empty() && waiting.is_empty() && read_lines.is_empty() {
             return "Nothing new.".into();
@@ -345,7 +368,11 @@ impl<'a> Daemon<'a> {
             said.push_str(&format!(
                 "{} {} picked up what you sent.",
                 waiting.join(" and "),
-                if waiting.len() == 1 { "hasn't" } else { "haven't" }
+                if waiting.len() == 1 {
+                    "hasn't"
+                } else {
+                    "haven't"
+                }
             ));
         }
         if !read_lines.is_empty() {
@@ -407,9 +434,18 @@ impl<'a> Daemon<'a> {
     /// pending items it made up.
     pub(super) fn improvements_help(&mut self, said: &str) -> Option<String> {
         let t = said.to_lowercase();
-        let about_list = ["improvement list", "improvements list", "self-improvement", "self improvement", "free wins", "free win", "your improvements", "the improvements"]
-            .iter()
-            .any(|k| t.contains(k));
+        let about_list = [
+            "improvement list",
+            "improvements list",
+            "self-improvement",
+            "self improvement",
+            "free wins",
+            "free win",
+            "your improvements",
+            "the improvements",
+        ]
+        .iter()
+        .any(|k| t.contains(k));
         if !about_list {
             return None;
         }
@@ -417,14 +453,23 @@ impl<'a> Daemon<'a> {
         let most = self.tools_cfg().self_audit.most_at_once;
         let recs = self.recommendations_shown(most);
         let wins = self.free_wins();
-        let not_here: Vec<&crate::hub::FreeWin> = wins.iter().filter(|w| w.here != "On here.").collect();
+        let not_here: Vec<&crate::hub::FreeWin> =
+            wins.iter().filter(|w| w.here != "On here.").collect();
         let mut out = String::new();
         if recs.is_empty() {
             out.push_str("Nothing on the improvement list right now -- I haven't seen anything going wrong often enough to suggest a fix.");
         } else {
             out.push_str(&format!("{} on the improvement list: ", recs.len()));
-            out.push_str(&recs.iter().map(|r| r.symptom.trim_end_matches('.').to_string()).collect::<Vec<_>>().join("; "));
-            out.push_str(". Each is on the Improvements page with \"Have a go\" or \"Not worth it\".");
+            out.push_str(
+                &recs
+                    .iter()
+                    .map(|r| r.symptom.trim_end_matches('.').to_string())
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            );
+            out.push_str(
+                ". Each is on the Improvements page with \"Have a go\" or \"Not worth it\".",
+            );
         }
         if wins.is_empty() {
         } else if not_here.is_empty() {
@@ -434,7 +479,15 @@ impl<'a> Daemon<'a> {
                 " Free wins: {} of {} on; not yet: {}.",
                 wins.len() - not_here.len(),
                 wins.len(),
-                not_here.iter().map(|w| format!("{} ({})", w.what.trim_end_matches('.'), w.here.trim_end_matches('.').to_lowercase())).collect::<Vec<_>>().join("; ")
+                not_here
+                    .iter()
+                    .map(|w| format!(
+                        "{} ({})",
+                        w.what.trim_end_matches('.'),
+                        w.here.trim_end_matches('.').to_lowercase()
+                    ))
+                    .collect::<Vec<_>>()
+                    .join("; ")
             ));
         }
         Some(out)
@@ -444,18 +497,22 @@ impl<'a> Daemon<'a> {
     pub(super) fn move_window_help(&mut self, said: &str) -> Option<String> {
         let (what, side) = crate::workspace::move_to_screen_asked(said)?;
         let name = match what.as_str() {
-            "it" | "that" | "this" | "this window" | "that window" | "the window" | "window" => self.referents.last_app.clone(),
+            "it" | "that" | "this" | "this window" | "that window" | "the window" | "window" => {
+                self.referents.last_app.clone()
+            }
             w => Some(w.to_string()),
         };
-        Some(match crate::workspace::move_to_screen(self.cfg, self.plat, name.as_deref(), side) {
-            Ok(done) => {
-                if let Some(n) = &name {
-                    self.referents.last_app = Some(n.clone());
+        Some(
+            match crate::workspace::move_to_screen(self.cfg, self.plat, name.as_deref(), side) {
+                Ok(done) => {
+                    if let Some(n) = &name {
+                        self.referents.last_app = Some(n.clone());
+                    }
+                    done
                 }
-                done
-            }
-            Err(why) => format!("I couldn't move it: {why}."),
-        })
+                Err(why) => format!("I couldn't move it: {why}."),
+            },
+        )
     }
 
     /// "text Sam saying I'm running late": written for your phone to send
@@ -487,12 +544,24 @@ impl<'a> Daemon<'a> {
         let body = crate::outbox::body_from_spoken(message);
         let now = clock();
         let mut texts = crate::texting::Texts::load(&self.store);
-        texts.add(crate::texting::Waiting { to_name: name.clone(), number: number.clone(), body: body.clone(), at: now });
+        texts.add(crate::texting::Waiting {
+            to_name: name.clone(),
+            number: number.clone(),
+            body: body.clone(),
+            at: now,
+        });
         if let Err(e) = texts.save(&self.store) {
-            return format!("I wrote it but couldn't keep it ({e}), so it isn't waiting on your phone.");
+            return format!(
+                "I wrote it but couldn't keep it ({e}), so it isn't waiting on your phone."
+            );
         }
         let link = crate::texting::sms_link(&number, &body);
-        let note = crate::notify::Note::new(&format!("Text to {name}"), &format!("{body} -- tap to open it in Messages."), crate::notify::Urgency::Routine, now);
+        let note = crate::notify::Note::new(
+            &format!("Text to {name}"),
+            &format!("{body} -- tap to open it in Messages."),
+            crate::notify::Urgency::Routine,
+            now,
+        );
         let phone = self.phone_cfg();
         let on_phone = phone.enabled && crate::phone::send_with_click(&note, &phone, &link).is_ok();
         let where_ = if on_phone {
@@ -524,13 +593,21 @@ impl<'a> Daemon<'a> {
             let (room, name) = (g.id.clone(), g.name.clone());
             if crate::groups::is_owned_id(&room) {
                 let groups = crate::groups::Groups::load(&self.store);
-                let role = self.my_key().and_then(|k| groups.held.get(&room).and_then(|h| h.state.speaks_as(&k)).map(|(_, r)| r));
+                let role = self.my_key().and_then(|k| {
+                    groups
+                        .held
+                        .get(&room)
+                        .and_then(|h| h.state.speaks_as(&k))
+                        .map(|(_, r)| r)
+                });
                 if !role.is_some_and(|r| r.may_post()) {
                     return format!("You can read \"{name}\" but not post in it -- whoever made it decides that.");
                 }
             }
             let now = clock();
-            return match self.chats.post(&room, &body, now, local_offset_mins(), &roster, &pairings)
+            return match self
+                .chats
+                .post(&room, &body, now, local_offset_mins(), &roster, &pairings)
             {
                 Ok((msg, left_out)) => {
                     let _ = self.chats.save(&self.store);
@@ -567,7 +644,9 @@ impl<'a> Daemon<'a> {
             // a text, which is where most conversations are (30 Sep 2026).
             let people = self.people_known().clone();
             let has_number = match people.find(&who) {
-                crate::people::Found::One(k) => people.by_key.get(k).is_some_and(|c| !c.phones.is_empty()),
+                crate::people::Found::One(k) => {
+                    people.by_key.get(k).is_some_and(|c| !c.phones.is_empty())
+                }
                 _ => false,
             };
             if has_number {
@@ -587,7 +666,10 @@ impl<'a> Daemon<'a> {
 
         let (room, label) = if known.len() == 1 {
             let who = &known[0];
-            match self.chats.open(who, space, std::slice::from_ref(who), &roster, &pairings) {
+            match self
+                .chats
+                .open(who, space, std::slice::from_ref(who), &roster, &pairings)
+            {
                 Ok(id) => (id, who.clone()),
                 Err(e) => return e.plain(),
             }
@@ -606,13 +688,19 @@ impl<'a> Daemon<'a> {
                 return "I couldn't start that group just now.".into();
             };
             let name = known.join(", ");
-            match self.chats.open_group(&id, &name, space, &known, &roster, &pairings) {
+            match self
+                .chats
+                .open_group(&id, &name, space, &known, &roster, &pairings)
+            {
                 Ok(id) => (id, format!("the group ({name})")),
                 Err(e) => return e.plain(),
             }
         };
 
-        match self.chats.post(&room, &body, now, offset, &roster, &pairings) {
+        match self
+            .chats
+            .post(&room, &body, now, offset, &roster, &pairings)
+        {
             Ok((msg, left_out)) => {
                 let _ = self.chats.save(&self.store);
                 let mut said = if msg.fully_arrived() {
@@ -764,7 +852,15 @@ impl<'a> Daemon<'a> {
         // to you -- not installed, not approved, not run. Taking it is your
         // choice, made seeing what it would be allowed to do.
         if let Some(f) = &d.file {
-            match crate::plugins::offered(&self.store, &self.cfg.commands, &d.from, &f.name, &f.bytes, &d.what, d.at) {
+            match crate::plugins::offered(
+                &self.store,
+                &self.cfg.commands,
+                &d.from,
+                &f.name,
+                &f.bytes,
+                &d.what,
+                d.at,
+            ) {
                 crate::plugins::Offer::NotAnAddOn => {}
                 crate::plugins::Offer::Shelved(said) | crate::plugins::Offer::Refused(said) => {
                     if !said.is_empty() {
@@ -785,18 +881,23 @@ impl<'a> Daemon<'a> {
             Err(e) => {
                 // A file that could not be written is not filed as though it
                 // had been. The list would name something that is not there.
-                self.log.warn(&format!("couldn't take a handoff from {}: {e}", d.from));
+                self.log
+                    .warn(&format!("couldn't take a handoff from {}: {e}", d.from));
                 return format!("{} sent you something, and I couldn't keep it: {e}", d.from);
             }
         };
         let is_new = inbox.items.len() > before;
         if let Err(e) = inbox.save(&self.store) {
-            self.log.warn(&format!("couldn't save a handoff from {}: {e}", d.from));
+            self.log
+                .warn(&format!("couldn't save a handoff from {}: {e}", d.from));
             return format!("{} sent you something, and I couldn't put it away.", d.from);
         }
         self.journal.record_at(
             crate::activity::Kind::Blocked,
-            &format!("{} sent you something — it's waiting on your Documents page (number {id})", d.from),
+            &format!(
+                "{} sent you something — it's waiting on your Documents page (number {id})",
+                d.from
+            ),
             true,
             d.at,
         );
@@ -806,7 +907,10 @@ impl<'a> Daemon<'a> {
             // into your notification problem.
             return String::new();
         }
-        format!("{} sent you something. It's waiting on your Documents page.", d.from)
+        format!(
+            "{} sent you something. It's waiting on your Documents page.",
+            d.from
+        )
     }
 
     /// A chat message from a peer, filed into the conversation for them.
@@ -823,7 +927,11 @@ impl<'a> Daemon<'a> {
     pub fn receive_chat(&mut self, c: &crate::kin::Chatted) {
         use crate::chat::{Delivery, Message, ME};
         // A group with an owner: only its signed list says who may post.
-        if let Some(gid) = c.group_id.as_deref().filter(|g| crate::groups::is_owned_id(g)) {
+        if let Some(gid) = c
+            .group_id
+            .as_deref()
+            .filter(|g| crate::groups::is_owned_id(g))
+        {
             let mut groups = crate::groups::Groups::load(&self.store);
             let Some(held) = groups.held.get(gid).cloned() else {
                 // The message beat the list here. Held, not dropped and not
@@ -854,7 +962,13 @@ impl<'a> Daemon<'a> {
                     (Some(k), Some(s)) if *s == held.state.owner => Some(k.clone()),
                     _ => sender_key.clone(),
                 };
-                self.friend_request_in_group(gid, &held.state, author.as_deref(), sender_key.as_deref(), &c.body);
+                self.friend_request_in_group(
+                    gid,
+                    &held.state,
+                    author.as_deref(),
+                    sender_key.as_deref(),
+                    &c.body,
+                );
                 return;
             }
             let author_key = match (&c.on_behalf_of, &sender_key) {
@@ -862,10 +976,11 @@ impl<'a> Daemon<'a> {
                 _ => sender_key.clone(),
             };
             // Your own phone, posting as you: it speaks as the owner.
-            let (author_key, role) = match author_key.as_deref().and_then(|k| held.state.speaks_as(k)) {
-                Some((k, r)) => (Some(k), Some(r)),
-                None => (author_key, None),
-            };
+            let (author_key, role) =
+                match author_key.as_deref().and_then(|k| held.state.speaks_as(k)) {
+                    Some((k, r)) => (Some(k), Some(r)),
+                    None => (author_key, None),
+                };
             if !role.is_some_and(|r| r.may_post()) {
                 self.log.warn(&format!(
                     "declined a message in \"{}\" from {}: {}",
@@ -885,7 +1000,10 @@ impl<'a> Daemon<'a> {
                 ME.to_string()
             } else {
                 pairings.name_of_key(&author_key).unwrap_or_else(|| {
-                    held.state.seat(&author_key).map(|s| s.name.clone()).unwrap_or_else(|| c.from.clone())
+                    held.state
+                        .seat(&author_key)
+                        .map(|s| s.name.clone())
+                        .unwrap_or_else(|| c.from.clone())
                 })
             };
             self.settle_owned_groups();
@@ -931,13 +1049,20 @@ impl<'a> Daemon<'a> {
                         }
                     }
                 }
-                Err(e) => self.log.warn(&format!("declined a message from {}: {}", c.from, e.plain())),
+                Err(e) => self.log.warn(&format!(
+                    "declined a message from {}: {}",
+                    c.from,
+                    e.plain()
+                )),
             }
             // A signed update in a release channel is the courier's to read.
             if held.state.release_channel && role == Some(crate::groups::Role::Owner) {
-                if let Some(said) = crate::update_courier::heard(&self.store, &c.body, &held.state.owner, now) {
+                if let Some(said) =
+                    crate::update_courier::heard(&self.store, &c.body, &held.state.owner, now)
+                {
                     self.log.info(&said);
-                    self.journal.record_at(crate::activity::Kind::Blocked, &said, true, now);
+                    self.journal
+                        .record_at(crate::activity::Kind::Blocked, &said, true, now);
                 }
             }
             return;
@@ -961,20 +1086,35 @@ impl<'a> Daemon<'a> {
                 }
             }
             let name = c.group_name.clone().unwrap_or_else(|| c.from.clone());
-            match self.chats.open_group(gid, &name, space, &members, &roster, &pairings) {
+            match self
+                .chats
+                .open_group(gid, &name, space, &members, &roster, &pairings)
+            {
                 Ok(id) => id,
                 Err(e) => {
-                    self.log
-                        .warn(&format!("declined a group message from {}: {}", c.from, e.plain()));
+                    self.log.warn(&format!(
+                        "declined a group message from {}: {}",
+                        c.from,
+                        e.plain()
+                    ));
                     return;
                 }
             }
         } else {
-            match self.chats.open(&c.from, space, std::slice::from_ref(&c.from), &roster, &pairings) {
+            match self.chats.open(
+                &c.from,
+                space,
+                std::slice::from_ref(&c.from),
+                &roster,
+                &pairings,
+            ) {
                 Ok(id) => id,
                 Err(e) => {
-                    self.log
-                        .warn(&format!("declined a message from {}: {}", c.from, e.plain()));
+                    self.log.warn(&format!(
+                        "declined a message from {}: {}",
+                        c.from,
+                        e.plain()
+                    ));
                     return;
                 }
             }
@@ -997,8 +1137,11 @@ impl<'a> Daemon<'a> {
                 }
             }
             Err(e) => {
-                self.log
-                    .warn(&format!("declined a message from {}: {}", c.from, e.plain()));
+                self.log.warn(&format!(
+                    "declined a message from {}: {}",
+                    c.from,
+                    e.plain()
+                ));
             }
         }
     }
@@ -1014,7 +1157,8 @@ impl<'a> Daemon<'a> {
         match pairings.pin_key(&h.from, &h.key) {
             Ok(true) => {
                 if let Err(e) = pairings.save(&self.peer_dir) {
-                    self.log.warn(&format!("couldn't save {}'s key: {e}", h.from));
+                    self.log
+                        .warn(&format!("couldn't save {}'s key: {e}", h.from));
                 }
                 // Anyone waiting on this key to be seated in a group can be now.
                 self.settle_owned_groups();
@@ -1022,7 +1166,8 @@ impl<'a> Daemon<'a> {
             Ok(false) => {}
             Err(why) => {
                 self.log.warn(&why);
-                self.journal.record_at(crate::activity::Kind::Blocked, &why, false, h.at);
+                self.journal
+                    .record_at(crate::activity::Kind::Blocked, &why, false, h.at);
             }
         }
     }
@@ -1035,14 +1180,19 @@ impl<'a> Daemon<'a> {
         let taken = match groups.take(g.signed.clone()) {
             Ok(t) => t,
             Err(why) => {
-                self.log.warn(&format!("refused a group list {} handed over: {why}", g.from));
+                self.log.warn(&format!(
+                    "refused a group list {} handed over: {why}",
+                    g.from
+                ));
                 return String::new();
             }
         };
         if taken == crate::groups::Taken::NotNewer {
             return String::new();
         }
-        let Some(held) = crate::groups::open(&g.signed).ok() else { return String::new() };
+        let Some(held) = crate::groups::open(&g.signed).ok() else {
+            return String::new();
+        };
         let gid = held.group_id.clone();
         let waiting = groups.release_waiting(&gid);
         if let Err(e) = groups.save(&self.store) {
@@ -1051,9 +1201,14 @@ impl<'a> Daemon<'a> {
         }
         let me = self.my_key();
         let pairings = crate::kin::Pairings::load(&self.peer_dir);
-        let owner = pairings.name_of_key(&held.owner).unwrap_or_else(|| g.from.clone());
+        let owner = pairings
+            .name_of_key(&held.owner)
+            .unwrap_or_else(|| g.from.clone());
         let was_in = self.chats.room(&gid).is_some();
-        let role = me.as_deref().and_then(|k| held.speaks_as(k)).map(|(_, r)| r);
+        let role = me
+            .as_deref()
+            .and_then(|k| held.speaks_as(k))
+            .map(|(_, r)| r);
         // One of your own devices: it's your group, nobody "added" you.
         let is_my_device = me.as_deref().is_some_and(|k| held.is_delegate(k));
         self.settle_owned_groups();
@@ -1074,7 +1229,9 @@ impl<'a> Daemon<'a> {
         }
         match (was_in, role) {
             _ if is_my_device => String::new(),
-            (false, Some(r)) => format!("{owner} added you to \"{}\" as a {}.", held.name, r.plain()),
+            (false, Some(r)) => {
+                format!("{owner} added you to \"{}\" as a {}.", held.name, r.plain())
+            }
             (true, None) => format!("{owner} took you out of \"{}\".", held.name),
             _ => String::new(),
         }
@@ -1083,7 +1240,9 @@ impl<'a> Daemon<'a> {
     /// Why this would be refused however you answered, if it would -- so the
     /// refusal comes first and the question never does.
     pub(super) fn refused_before_asking(&self, intent: &Intent) -> Option<String> {
-        let Intent::Message(raw) = intent else { return None };
+        let Intent::Message(raw) = intent else {
+            return None;
+        };
         let (who, _) = split_who_and_what(raw);
         let key = who.trim().strip_prefix("the ").unwrap_or(who.trim());
         let key = key.strip_suffix(" group").unwrap_or(key).trim();
@@ -1092,9 +1251,19 @@ impl<'a> Daemon<'a> {
             return None;
         }
         let groups = crate::groups::Groups::load(&self.store);
-        let role = self.my_key().and_then(|k| groups.held.get(&room.id).and_then(|h| h.state.speaks_as(&k)).map(|(_, r)| r));
-        (!role.is_some_and(|r| r.may_post()))
-            .then(|| format!("You can read \"{}\" but not post in it -- whoever made it decides that.", room.name))
+        let role = self.my_key().and_then(|k| {
+            groups
+                .held
+                .get(&room.id)
+                .and_then(|h| h.state.speaks_as(&k))
+                .map(|(_, r)| r)
+        });
+        (!role.is_some_and(|r| r.may_post())).then(|| {
+            format!(
+                "You can read \"{}\" but not post in it -- whoever made it decides that.",
+                room.name
+            )
+        })
     }
 
     // ---- Friends (`friends`) ----------------------------------------------
@@ -1111,7 +1280,11 @@ impl<'a> Daemon<'a> {
     fn open_friend_door(&mut self) -> std::result::Result<(), String> {
         if self.signal_listener.is_none() {
             let kin = self.tools_cfg().kin.clone();
-            let port = if kin.port != 0 { kin.port } else { crate::kin::DEFAULT_PORT };
+            let port = if kin.port != 0 {
+                kin.port
+            } else {
+                crate::kin::DEFAULT_PORT
+            };
             let peers = crate::kin::Pairings::load(&self.peer_dir).peers;
             match crate::server::SignalListener::bind(port, peers) {
                 Ok(l) => {
@@ -1122,7 +1295,9 @@ impl<'a> Daemon<'a> {
                 // the command line), and links made here are kept where that
                 // door reads them. Anything else that isn't Atlas answering
                 // there would fail at the friend's end, not silently here.
-                Err(_) if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() => return Ok(()),
+                Err(_) if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() => {
+                    return Ok(())
+                }
                 Err(e) => return Err(format!("I couldn't open the door friends knock on: {e}")),
             }
         }
@@ -1155,7 +1330,10 @@ impl<'a> Daemon<'a> {
 
     /// Tor's SOCKS port, when Atlas's own Tor is connected.
     fn tor_socks(&self) -> Option<u16> {
-        self.tor.as_ref().filter(|t| t.progress() >= 100).map(|t| t.socks)
+        self.tor
+            .as_ref()
+            .filter(|t| t.progress() >= 100)
+            .map(|t| t.socks)
     }
 
     /// Start Atlas's own Tor, if it isn't running: this Atlas's onion service
@@ -1169,21 +1347,30 @@ impl<'a> Daemon<'a> {
             }
             self.tor = None;
         }
-        let Some(door) = self.signal_listener.as_ref().map(|l| l.sealed_port()).filter(|p| *p != 0) else {
+        let Some(door) = self
+            .signal_listener
+            .as_ref()
+            .map(|l| l.sealed_port())
+            .filter(|p| *p != 0)
+        else {
             return Err("the door friends reach isn't open".into());
         };
         let kin = self.tools_cfg().kin.clone();
         let (binary, extra) = match &self.tor_instead {
             Some(None) => return Err("Tor is switched off here.".into()),
             Some(Some((b, e))) => (Some(b.clone()), e.clone()),
-            None => (crate::onion::find_tor(kin.tor.as_deref()), kin.tor_extra.clone()),
+            None => (
+                crate::onion::find_tor(kin.tor.as_deref()),
+                kin.tor_extra.clone(),
+            ),
         };
         let Some(binary) = binary else {
             return Err("Tor isn't installed beside Atlas, so friends outside your home network can't reach it. \
                         Opening Atlas's setup again fetches it."
                 .into());
         };
-        let me = crate::peerkey::Identity::load_or_create(&self.peer_dir).map_err(|e| format!("I couldn't read this Atlas's key: {e}"))?;
+        let me = crate::peerkey::Identity::load_or_create(&self.peer_dir)
+            .map_err(|e| format!("I couldn't read this Atlas's key: {e}"))?;
         let dir = self.peer_dir.join("tor");
         // A network that blocked Tor before: straight back to the kind of
         // bridge that got through (`tor_bridges`). Only when you haven't set
@@ -1192,8 +1379,10 @@ impl<'a> Daemon<'a> {
         // A new Tor: connections through the old one died with it.
         self.tor_connections.close_all();
         self.tor = Some(match remembered.as_str() {
-            k if !k.is_empty() && extra.is_empty() => crate::onion::Tor::start_bridged(&binary, &dir, &me, door, k, &extra)
-                .or_else(|_| crate::onion::Tor::start(&binary, &dir, &me, door, &extra))?,
+            k if !k.is_empty() && extra.is_empty() => {
+                crate::onion::Tor::start_bridged(&binary, &dir, &me, door, k, &extra)
+                    .or_else(|_| crate::onion::Tor::start(&binary, &dir, &me, door, &extra))?
+            }
             _ => crate::onion::Tor::start(&binary, &dir, &me, door, &extra)?,
         });
         self.tor_binary = Some((binary, extra.is_empty()));
@@ -1234,7 +1423,8 @@ impl<'a> Daemon<'a> {
                 // The question and how to answer it lead: a spoken reply is
                 // cut to a few sentences, and this is the part that matters.
                 let q = format!("Say yes to go back from Atlas {now_on} to {previous} -- {now_on} won't be offered again.");
-                self.session.await_approval(Intent::Updates("undo-confirmed".into()), &q);
+                self.session
+                    .await_approval(Intent::Updates("undo-confirmed".into()), &q);
                 q
             }
             // Only the yes to the question above builds this.
@@ -1254,12 +1444,18 @@ impl<'a> Daemon<'a> {
                 let a = crate::update_courier::Available::load(&self.store);
                 out.push(heard);
                 if let Some(p) = crate::update_apply::pending(&self.store) {
-                    out.push(format!("Atlas {} is checked and goes in at the next start.", p.version));
+                    out.push(format!(
+                        "Atlas {} is checked and goes in at the next start.",
+                        p.version
+                    ));
                 } else if a.notice.is_some() && !a.downloaded.is_empty() {
                     out.push("Say \"install the update\" to put it in now.".into());
                 }
                 if let Some(t) = crate::upgrade::current_trial(&root) {
-                    out.push(format!("{} is on trial after replacing {}.", t.new, t.previous));
+                    out.push(format!(
+                        "{} is on trial after replacing {}.",
+                        t.new, t.previous
+                    ));
                 }
                 if crate::update_apply::previous_build(&root).is_some() {
                     out.push("The version before is kept; say \"go back to the last version\" to return to it.".into());
@@ -1285,13 +1481,24 @@ impl<'a> Daemon<'a> {
                         \"answer feedback 2 fixing\"."
                     .into();
             };
-            return match crate::feedback::answer_feedback(&self.store, n, status.clone(), &note, now) {
-                Ok(to) => format!("Marked {}; {to} will hear it the next time I reach them.", status.plain()),
+            return match crate::feedback::answer_feedback(
+                &self.store,
+                n,
+                status.clone(),
+                &note,
+                now,
+            ) {
+                Ok(to) => format!(
+                    "Marked {}; {to} will hear it the next time I reach them.",
+                    status.plain()
+                ),
                 Err(why) => why,
             };
         }
         if what == "confirmed-send" {
-            let Some(f) = self.feedback_draft.take() else { return "There's nothing waiting to send.".into() };
+            let Some(f) = self.feedback_draft.take() else {
+                return "There's nothing waiting to send.".into();
+            };
             return match crate::feedback::send_decided(&self.store, &self.peer_dir, f) {
                 Ok(s) => s.plain(),
                 Err(why) => why,
@@ -1302,28 +1509,42 @@ impl<'a> Daemon<'a> {
             Some(("bare", w)) => (false, w.trim()),
             _ => (false, ""),
         };
-        let Some((_, name, mine)) = crate::feedback::release_sender(&self.store, &self.peer_dir) else {
+        let Some((_, name, mine)) = crate::feedback::release_sender(&self.store, &self.peer_dir)
+        else {
             return "This Atlas isn't in anyone's release channel, so there's no one to send feedback to.".into();
         };
         if words.is_empty() {
             return "Say it all in one go: \"report a bug\" and then what's wrong, in your own words.".into();
         }
         let failure = crate::update_apply::last_failure(&self.store);
-        let attach = if attach_failure { failure.clone() } else { None };
+        let attach = if attach_failure {
+            failure.clone()
+        } else {
+            None
+        };
         let f = match crate::feedback::compose_feedback(words, attach, now) {
             Ok(f) => f,
             Err(why) => return why,
         };
-        let to = if mine { "your own feedback list".to_string() } else { name.clone().unwrap_or_else(|| "whoever sends you Atlas".into()) };
+        let to = if mine {
+            "your own feedback list".to_string()
+        } else {
+            name.clone()
+                .unwrap_or_else(|| "whoever sends you Atlas".into())
+        };
         // The question leads (a spoken reply is cut to a few sentences); then
         // exactly what goes.
         let mut q = format!("Send this to {to}? Say yes to send it.");
         if f.attached.is_some() {
             q.push_str(" It includes what was written down about the update that failed here, with your name and home folder taken out; to send just your words, say no, then \"report a bug without the failure\" and what's wrong.");
         }
-        q.push_str(&format!(" This is exactly what will go: {}", crate::feedback::feedback_preview(&f)));
+        q.push_str(&format!(
+            " This is exactly what will go: {}",
+            crate::feedback::feedback_preview(&f)
+        ));
         self.feedback_draft = Some(f);
-        self.session.await_approval(Intent::Feedback("confirmed-send".into()), &q);
+        self.session
+            .await_approval(Intent::Feedback("confirmed-send".into()), &q);
         q
     }
 
@@ -1350,7 +1571,10 @@ impl<'a> Daemon<'a> {
                     crate::heard!(crate::phonemodel::attach(&path));
                 });
             }
-            return crate::phonemodel::download_said(crate::phonemodel::download_state().as_ref(), attached.as_deref());
+            return crate::phonemodel::download_said(
+                crate::phonemodel::download_state().as_ref(),
+                attached.as_deref(),
+            );
         }
         #[cfg(not(feature = "phone-llm"))]
         {
@@ -1392,10 +1616,18 @@ impl<'a> Daemon<'a> {
         }
         // A whole round failed a little while ago: stay direct until it's
         // time for the next round, rather than cycling every two minutes.
-        if self.peer_tries.get("tor:round").is_some_and(|at| t.saturating_sub(*at) < ROUND_AGAIN_SECS) {
+        if self
+            .peer_tries
+            .get("tor:round")
+            .is_some_and(|at| t.saturating_sub(*at) < ROUND_AGAIN_SECS)
+        {
             return None;
         }
-        let door = self.signal_listener.as_ref().map(|l| l.sealed_port()).filter(|p| *p != 0)?;
+        let door = self
+            .signal_listener
+            .as_ref()
+            .map(|l| l.sealed_port())
+            .filter(|p| *p != 0)?;
         let me = crate::peerkey::Identity::load_or_create(&self.peer_dir).ok()?;
         let dir = self.peer_dir.join("tor");
         let mut kind = crate::onion::next_bridge_kind(tor.bridges.as_deref());
@@ -1412,7 +1644,8 @@ impl<'a> Daemon<'a> {
                 self.tor = None; // stops the stuck one first: one Tor, one data folder.
                 self.tor_connections.close_all();
                 self.tor = crate::onion::Tor::start_bridged(&binary, &dir, &me, door, k, &[]).ok();
-                self.log.warn(&format!("Tor was stuck connecting; trying {k} bridges"));
+                self.log
+                    .warn(&format!("Tor was stuck connecting; trying {k} bridges"));
                 was_direct.then(|| {
                     "Tor can't connect on this network -- it looks like it's blocked here. I'm trying Tor's bridges, \
                      which disguise the connection; friends outside your home network can't reach you until one works."
@@ -1456,7 +1689,8 @@ impl<'a> Daemon<'a> {
         let key = crate::peerkey::Identity::load_or_create(&self.peer_dir)
             .map_err(|e| format!("I couldn't read this Atlas's key: {e}"))?
             .public();
-        let me = crate::peerkey::Identity::load_or_create(&self.peer_dir).map_err(|e| format!("I couldn't read this Atlas's key: {e}"))?;
+        let me = crate::peerkey::Identity::load_or_create(&self.peer_dir)
+            .map_err(|e| format!("I couldn't read this Atlas's key: {e}"))?;
         let port = self.signal_listener.as_ref().map(|l| l.port()).unwrap_or(0);
         let mut addrs = Vec::new();
         match &self.friend_host {
@@ -1471,11 +1705,21 @@ impl<'a> Daemon<'a> {
         // made from this Atlas's key, so it's right even before Tor finishes
         // connecting.
         let tor_up = self.start_tor();
-        let onion = if tor_up.is_ok() || self.tor.is_some() { crate::onion::my_address(&me) } else { String::new() };
+        let onion = if tor_up.is_ok() || self.tor.is_some() {
+            crate::onion::my_address(&me)
+        } else {
+            String::new()
+        };
         if onion.is_empty() && addrs.is_empty() {
-            return Err(tor_up.err().unwrap_or_else(|| "I can't find any way for another Atlas to reach this one.".into()));
+            return Err(tor_up.err().unwrap_or_else(|| {
+                "I can't find any way for another Atlas to reach this one.".into()
+            }));
         }
-        Ok(crate::friends::Me { name: crate::friends::my_name(kin.my_name.as_deref()), key, routes: crate::kin::Routes { addrs, onion } })
+        Ok(crate::friends::Me {
+            name: crate::friends::my_name(kin.my_name.as_deref()),
+            key,
+            routes: crate::kin::Routes { addrs, onion },
+        })
     }
 
     /// A one-time friend link to send someone.
@@ -1487,7 +1731,13 @@ impl<'a> Daemon<'a> {
 
     /// Let a friend in on the door that's open now, not only at next start.
     fn admit_friend(&self, pairings: &crate::kin::Pairings, name: &str) {
-        if let (Some(l), Some(p)) = (&self.signal_listener, pairings.peers.iter().find(|p| crate::kin::same_name(&p.name, name))) {
+        if let (Some(l), Some(p)) = (
+            &self.signal_listener,
+            pairings
+                .peers
+                .iter()
+                .find(|p| crate::kin::same_name(&p.name, name)),
+        ) {
             l.admit_peer(p.clone());
         }
     }
@@ -1514,7 +1764,13 @@ impl<'a> Daemon<'a> {
         match self.prepare_friend(text) {
             Err(said) => said,
             Ok(k) => {
-                let outcome = crate::friends::knock(&k.identity, &k.keep.link, &k.keep.hello, k.socks, std::time::Duration::from_secs(10));
+                let outcome = crate::friends::knock(
+                    &k.identity,
+                    &k.keep.link,
+                    &k.keep.hello,
+                    k.socks,
+                    std::time::Duration::from_secs(10),
+                );
                 self.after_friend_knock(&k.keep, &outcome)
             }
         }
@@ -1523,7 +1779,10 @@ impl<'a> Daemon<'a> {
     /// Everything about adding a friend except the knock: the link read, the
     /// door open, them recorded, Tor started. What the knock needs, or what
     /// to say instead.
-    pub(crate) fn prepare_friend(&mut self, text: &str) -> std::result::Result<FriendKnock, String> {
+    pub(crate) fn prepare_friend(
+        &mut self,
+        text: &str,
+    ) -> std::result::Result<FriendKnock, String> {
         use crate::friends::{record, Hello, Link, Pending, LINK_DAYS};
         let link = match Link::decode(text) {
             Ok(l) => l,
@@ -1536,30 +1795,52 @@ impl<'a> Daemon<'a> {
             }
         };
         if self.my_key().as_deref() == Some(link.key.as_str()) {
-            return Err("That's your own friend link -- send it to the person you want to add.".into());
+            return Err(
+                "That's your own friend link -- send it to the person you want to add.".into(),
+            );
         }
         self.open_friend_door()?;
         let me = self.friend_me()?;
         let Ok(identity) = crate::peerkey::Identity::load_or_create(&self.peer_dir) else {
             return Err("I couldn't read this Atlas's key.".into());
         };
-        let token = crate::server::new_token().map_err(|e| format!("I couldn't make a secure pairing: {e}"))?;
+        let token = crate::server::new_token()
+            .map_err(|e| format!("I couldn't make a secure pairing: {e}"))?;
         let mut pairings = crate::kin::Pairings::load(&self.peer_dir);
         let name = record(&mut pairings, &link.name, &link.routes, &link.key, &token);
         if let Err(e) = pairings.save(&self.peer_dir) {
             return Err(format!("I couldn't save {name} as a friend: {e}"));
         }
         self.admit_friend(&pairings, &name);
-        let hello = Hello { invite: link.invite.clone(), name: me.name, key: me.key, routes: me.routes, token };
-        let keep = Pending { name, link, hello, until: clock() + LINK_DAYS * 86_400 };
+        let hello = Hello {
+            invite: link.invite.clone(),
+            name: me.name,
+            key: me.key,
+            routes: me.routes,
+            token,
+        };
+        let keep = Pending {
+            name,
+            link,
+            hello,
+            until: clock() + LINK_DAYS * 86_400,
+        };
         crate::heard!(self.start_tor());
-        Ok(FriendKnock { identity, keep, socks: self.tor_socks() })
+        Ok(FriendKnock {
+            identity,
+            keep,
+            socks: self.tor_socks(),
+        })
     }
 
     /// What a knock on a new friend's Atlas came to, and what's kept because
     /// of it: nothing more when they took it, them dropped again when they
     /// refused, and a week of trying again when nothing answered.
-    pub(super) fn after_friend_knock(&mut self, keep: &crate::friends::Pending, outcome: &crate::friends::Knock) -> String {
+    pub(super) fn after_friend_knock(
+        &mut self,
+        keep: &crate::friends::Pending,
+        outcome: &crate::friends::Knock,
+    ) -> String {
         use crate::friends::{Knock, Outbox};
         let said = knock_said(keep, outcome);
         match outcome {
@@ -1601,7 +1882,8 @@ impl<'a> Daemon<'a> {
         // Anyone they share a group with can be seated now their key is known.
         self.settle_owned_groups();
         let said = format!("{name} is your friend now -- they used the link you sent.");
-        self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, b.at);
+        self.journal
+            .record_at(crate::activity::Kind::Upkeep, &said, true, b.at);
         said
     }
 
@@ -1616,7 +1898,11 @@ impl<'a> Daemon<'a> {
         if out.pending.is_empty() && out.requests.is_empty() {
             return Vec::new();
         }
-        let Ok(identity) = crate::peerkey::Identity::load_or_create(&self.peer_dir).map(std::sync::Arc::new) else { return Vec::new() };
+        let Ok(identity) =
+            crate::peerkey::Identity::load_or_create(&self.peer_dir).map(std::sync::Arc::new)
+        else {
+            return Vec::new();
+        };
         let mut said = Vec::new();
         let mut changed = false;
         for p in out.pending.clone() {
@@ -1631,19 +1917,38 @@ impl<'a> Daemon<'a> {
                 changed = true;
                 continue;
             }
-            if self.peer_tries.get(&k).is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS) {
+            if self
+                .peer_tries
+                .get(&k)
+                .is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS)
+            {
                 continue;
             }
             self.peer_tries.insert(k, t);
             // Knocked on the crew, not here: up to ten seconds a friend,
             // every five minutes, used to hold the whole tick (27 Sep 2026).
             // Its answer is taken in `take_crew_news` (`HubAfter::FriendRetry`).
-            let (me, link, hello, socks) = (identity.clone(), p.link.clone(), p.hello.clone(), self.tor_socks());
+            let (me, link, hello, socks) = (
+                identity.clone(),
+                p.link.clone(),
+                p.hello.clone(),
+                self.tor_socks(),
+            );
             let work: crew::Work = Box::new(move |_| {
-                Ok(knock_tag(&knock(&me, &link, &hello, socks, std::time::Duration::from_secs(10))).to_string())
+                Ok(knock_tag(&knock(
+                    &me,
+                    &link,
+                    &hello,
+                    socks,
+                    std::time::Duration::from_secs(10),
+                ))
+                .to_string())
             });
-            if let Some(id) = self.hand_off_as("friend-knock", t, work, None, SpeakPolicy::ViaWatcher) {
-                self.hub_after.insert(id, HubAfter::FriendRetry { keep: p.clone() });
+            if let Some(id) =
+                self.hand_off_as("friend-knock", t, work, None, SpeakPolicy::ViaWatcher)
+            {
+                self.hub_after
+                    .insert(id, HubAfter::FriendRetry { keep: p.clone() });
             }
         }
         // Requests sent through a group, owed to its owner.
@@ -1652,10 +1957,24 @@ impl<'a> Daemon<'a> {
         let me = self.my_key().unwrap_or_default();
         for r in out.requests.clone() {
             let k = format!("friendreq:{}", r.via);
-            if self.peer_tries.get(&k).is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS) {
+            if self
+                .peer_tries
+                .get(&k)
+                .is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS)
+            {
                 continue;
             }
-            if link.relay(&r.via, &r.group_id, &r.group_name, &me, &r.id, &r.body, r.at, 0, 0) {
+            if link.relay(
+                &r.via,
+                &r.group_id,
+                &r.group_name,
+                &me,
+                &r.id,
+                &r.body,
+                r.at,
+                0,
+                0,
+            ) {
                 out.requests.retain(|x| x.id != r.id);
                 changed = true;
             } else {
@@ -1664,7 +1983,9 @@ impl<'a> Daemon<'a> {
         }
         if changed {
             if let Err(e) = out.save(&store) {
-                self.log.warn(&format!("couldn't save the friends still being reached: {e}"));
+                self.log.warn(&format!(
+                    "couldn't save the friends still being reached: {e}"
+                ));
             }
         }
         said
@@ -1692,7 +2013,9 @@ impl<'a> Daemon<'a> {
             let seat = h.state.seats.iter().find(|s| {
                 s.key != me
                     && (s.name.eq_ignore_ascii_case(who)
-                        || pairings.name_of_key(&s.key).is_some_and(|n| n.eq_ignore_ascii_case(who)))
+                        || pairings
+                            .name_of_key(&s.key)
+                            .is_some_and(|n| n.eq_ignore_ascii_case(who)))
             })?;
             Some((h.state.clone(), seat.key.clone(), seat.name.clone()))
         });
@@ -1733,7 +2056,10 @@ impl<'a> Daemon<'a> {
             }
         } else {
             let Some(via) = pairings.name_of_key(&state.owner) else {
-                return format!("I can't reach the owner of \"{}\" to pass it on.", state.name);
+                return format!(
+                    "I can't reach the owner of \"{}\" to pass it on.",
+                    state.name
+                );
             };
             let store = self.friend_store();
             let mut out = crate::friends::Outbox::load(&store);
@@ -1749,7 +2075,10 @@ impl<'a> Daemon<'a> {
                 return format!("I couldn't queue the friend request: {e}");
             }
         }
-        format!("Sent {their_name} a friend request through \"{}\". Once they accept, you're friends.", state.name)
+        format!(
+            "Sent {their_name} a friend request through \"{}\". Once they accept, you're friends.",
+            state.name
+        )
     }
 
     /// A friend request travelling through a group you're in: yours to keep
@@ -1763,18 +2092,28 @@ impl<'a> Daemon<'a> {
         handed_by: Option<&str>,
         body: &str,
     ) {
-        let Some((target, link_text)) = crate::friends::read_request(body) else { return };
+        let Some((target, link_text)) = crate::friends::read_request(body) else {
+            return;
+        };
         let Some(author) = author else { return };
         // Only someone in the group asks through it.
-        let Some((speaks_as, _)) = state.speaks_as(author) else { return };
+        let Some((speaks_as, _)) = state.speaks_as(author) else {
+            return;
+        };
         let Some(me) = self.my_key() else { return };
         if target == me {
-            let Ok(link) = crate::friends::Link::decode(&link_text) else { return };
+            let Ok(link) = crate::friends::Link::decode(&link_text) else {
+                return;
+            };
             // The link must be the asker's own: the person the group vouches
             // for is the person you'd be adding.
-            let theirs = link.key == author || (speaks_as == state.owner && state.is_delegate(&link.key));
+            let theirs =
+                link.key == author || (speaks_as == state.owner && state.is_delegate(&link.key));
             if !theirs {
-                self.log.warn(&format!("ignored a friend request in \"{}\" whose link wasn't the sender's", state.name));
+                self.log.warn(&format!(
+                    "ignored a friend request in \"{}\" whose link wasn't the sender's",
+                    state.name
+                ));
                 return;
             }
             let pairings = crate::kin::Pairings::load(&self.peer_dir);
@@ -1787,23 +2126,36 @@ impl<'a> Daemon<'a> {
                 .unwrap_or_else(|| link.name.clone());
             let store = self.friend_store();
             let mut reqs = crate::friends::Requests::load(&store);
-            reqs.add(crate::friends::Request { from: from.clone(), in_group: state.name.clone(), link: link_text, at: clock() });
+            reqs.add(crate::friends::Request {
+                from: from.clone(),
+                in_group: state.name.clone(),
+                link: link_text,
+                at: clock(),
+            });
             if let Err(e) = reqs.save(&store) {
-                self.log.warn(&format!("couldn't keep {from}'s friend request: {e}"));
+                self.log
+                    .warn(&format!("couldn't keep {from}'s friend request: {e}"));
                 return;
             }
             let said = format!(
                 "{from} (from \"{}\") wants to be friends. Say \"accept friend request from {from}\", or open Friends on the hub.",
                 state.name
             );
-            self.journal.record_at(crate::activity::Kind::Offered, &said, true, clock());
-            let note = crate::notify::Note::new("Friend request", &said, crate::notify::Urgency::Routine, clock());
+            self.journal
+                .record_at(crate::activity::Kind::Offered, &said, true, clock());
+            let note = crate::notify::Note::new(
+                "Friend request",
+                &said,
+                crate::notify::Urgency::Routine,
+                clock(),
+            );
             // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
             let _ = self.reach_you(note, clock());
             return;
         }
         // As the owner: on to that one person, never to the whole group.
-        if state.owner == me && handed_by != Some(me.as_str()) && state.speaks_as(&target).is_some() {
+        if state.owner == me && handed_by != Some(me.as_str()) && state.speaks_as(&target).is_some()
+        {
             let mut groups = crate::groups::Groups::load(&self.store);
             let id = format!("fr-{}", &crate::digest::sha256_hex(body.as_bytes())[..16]);
             if groups.relay_owed.iter().any(|r| r.id == id) {
@@ -1833,11 +2185,17 @@ impl<'a> Daemon<'a> {
 
     /// The link in a waiting friend request, taken off the list -- what
     /// accepting then adds (said, or from the hub on the crew).
-    pub(crate) fn take_friend_request(&mut self, from: &str) -> std::result::Result<String, String> {
+    pub(crate) fn take_friend_request(
+        &mut self,
+        from: &str,
+    ) -> std::result::Result<String, String> {
         let store = self.friend_store();
         let mut reqs = crate::friends::Requests::load(&store);
         let Some(r) = reqs.take(from.trim()) else {
-            return Err(format!("There's no friend request from {} waiting.", from.trim()));
+            return Err(format!(
+                "There's no friend request from {} waiting.",
+                from.trim()
+            ));
         };
         if let Err(e) = reqs.save(&store) {
             return Err(format!("I couldn't update your friend requests: {e}"));
@@ -1893,24 +2251,50 @@ impl<'a> Daemon<'a> {
             crate::kin::Arrived::Group(g) => self.receive_group(&g),
             crate::kin::Arrived::Friend(b) => self.receive_friend(&b),
             crate::kin::Arrived::Feedback(f) => {
-                let said = crate::feedback::heard_feedback(&self.store, &f.from, &f.body).unwrap_or_default();
+                let said = crate::feedback::heard_feedback(&self.store, &f.from, &f.body)
+                    .unwrap_or_default();
                 if !said.is_empty() {
-                    self.journal.record_at(crate::activity::Kind::Blocked, &said, true, f.at);
+                    self.journal
+                        .record_at(crate::activity::Kind::Blocked, &said, true, f.at);
                     // `reach_you` speaks it itself when you're here; said
                     // again by the caller only when it went elsewhere.
-                    if matches!(self.reach_you(crate::notify::Note::new("Feedback", &said, crate::notify::Urgency::Routine, f.at), f.at), crate::notify::Sent::Spoken) {
+                    if matches!(
+                        self.reach_you(
+                            crate::notify::Note::new(
+                                "Feedback",
+                                &said,
+                                crate::notify::Urgency::Routine,
+                                f.at
+                            ),
+                            f.at
+                        ),
+                        crate::notify::Sent::Spoken
+                    ) {
                         return String::new();
                     }
                 }
                 said
             }
             crate::kin::Arrived::FeedbackAnswer(f) => {
-                let said = crate::feedback::heard_answer(&self.store, &f.from, &f.body).unwrap_or_default();
+                let said = crate::feedback::heard_answer(&self.store, &f.from, &f.body)
+                    .unwrap_or_default();
                 if !said.is_empty() {
-                    self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, f.at);
+                    self.journal
+                        .record_at(crate::activity::Kind::Upkeep, &said, true, f.at);
                     // `reach_you` speaks it itself when you're here; said
                     // again by the caller only when it went elsewhere.
-                    if matches!(self.reach_you(crate::notify::Note::new("Your feedback", &said, crate::notify::Urgency::Routine, f.at), f.at), crate::notify::Sent::Spoken) {
+                    if matches!(
+                        self.reach_you(
+                            crate::notify::Note::new(
+                                "Your feedback",
+                                &said,
+                                crate::notify::Urgency::Routine,
+                                f.at
+                            ),
+                            f.at
+                        ),
+                        crate::notify::Sent::Spoken
+                    ) {
                         return String::new();
                     }
                 }
@@ -1946,7 +2330,9 @@ impl<'a> Daemon<'a> {
             return format!("{who} isn't one of your friends.");
         }
         if let Err(e) = pairings.save(&self.peer_dir) {
-            return format!("I couldn't write that down ({e}), so {who} comes back when Atlas restarts.");
+            return format!(
+                "I couldn't write that down ({e}), so {who} comes back when Atlas restarts."
+            );
         }
         if let Some(l) = &self.signal_listener {
             l.forget_peer(who);
@@ -1957,10 +2343,13 @@ impl<'a> Daemon<'a> {
         out.pending.retain(|p| !crate::kin::same_name(&p.name, who));
         if out.pending.len() != before {
             if let Err(e) = out.save(&store) {
-                self.log.warn(&format!("couldn't stop trying to reach {who}: {e}"));
+                self.log
+                    .warn(&format!("couldn't stop trying to reach {who}: {e}"));
             }
         }
-        format!("Unfriended {who}. They can't reach your Atlas any more, and you can't reach theirs.")
+        format!(
+            "Unfriended {who}. They can't reach your Atlas any more, and you can't reach theirs."
+        )
     }
 
     /// Everything the Friends page shows.
@@ -1975,7 +2364,11 @@ impl<'a> Daemon<'a> {
                 continue;
             }
             for s in &h.state.seats {
-                if s.key == me || pairings.name_of_key(&s.key).is_some() || seen.contains(&s.key) || h.state.is_delegate(&s.key) {
+                if s.key == me
+                    || pairings.name_of_key(&s.key).is_some()
+                    || seen.contains(&s.key)
+                    || h.state.is_delegate(&s.key)
+                {
                     continue;
                 }
                 seen.push(s.key.clone());
@@ -1984,9 +2377,17 @@ impl<'a> Daemon<'a> {
         }
         crate::hub::FriendsView {
             friends: pairings.peers.iter().map(|p| p.name.clone()).collect(),
-            requests: crate::friends::Requests::load(&store).waiting.into_iter().map(|r| (r.from, r.in_group)).collect(),
+            requests: crate::friends::Requests::load(&store)
+                .waiting
+                .into_iter()
+                .map(|r| (r.from, r.in_group))
+                .collect(),
             could_ask,
-            reaching: crate::friends::Outbox::load(&store).pending.into_iter().map(|p| p.name).collect(),
+            reaching: crate::friends::Outbox::load(&store)
+                .pending
+                .into_iter()
+                .map(|p| p.name)
+                .collect(),
             link: None,
             said: None,
             reach: self.reach_said(),
@@ -2030,7 +2431,11 @@ impl<'a> Daemon<'a> {
     /// the link to reach them. The sending is `AddonShare::send`, which the
     /// hub runs on the crew; the line in the group's chat and the sentence
     /// follow when it's done (`addon_shared_in_group`, `addon_share_said`).
-    pub(crate) fn prepare_addon_share(&mut self, id: &str, with: &str) -> std::result::Result<AddonShare, String> {
+    pub(crate) fn prepare_addon_share(
+        &mut self,
+        id: &str,
+        with: &str,
+    ) -> std::result::Result<AddonShare, String> {
         let (file_name, bytes, name) = crate::plugins::to_share(&self.plugins_dir, id)?;
         let pairings = crate::kin::Pairings::load(&self.peer_dir);
         let key = with.trim().strip_prefix("the ").unwrap_or(with.trim());
@@ -2038,17 +2443,31 @@ impl<'a> Daemon<'a> {
         if key.is_empty() {
             return Err("Say which group or person to share it with.".into());
         }
-        let (people, group): (Vec<String>, Option<(String, String)>) = match self.chats.group_named(key) {
-            Some(g) => (g.members.clone(), Some((g.id.clone(), g.name.clone()))),
-            None if pairings.has_peer(key) => (vec![key.to_string()], None),
-            None => return Err(format!("There's no group or paired person called \"{key}\".")),
-        };
+        let (people, group): (Vec<String>, Option<(String, String)>) =
+            match self.chats.group_named(key) {
+                Some(g) => (g.members.clone(), Some((g.id.clone(), g.name.clone()))),
+                None if pairings.has_peer(key) => (vec![key.to_string()], None),
+                None => {
+                    return Err(format!(
+                        "There's no group or paired person called \"{key}\"."
+                    ))
+                }
+            };
         let covering = match &group {
             Some((_, gname)) => format!("{}{gname}", crate::plugins::SHARED_IN),
             None => format!("the add-on {name}"),
         };
         let link = self.peer_link(&pairings);
-        Ok(AddonShare { name, file_name, bytes, covering, people, group, pairings, link })
+        Ok(AddonShare {
+            name,
+            file_name,
+            bytes,
+            covering,
+            people,
+            group,
+            pairings,
+            link,
+        })
     }
 
     /// The line in the group's chat when an add-on was shared in a group.
@@ -2056,8 +2475,14 @@ impl<'a> Daemon<'a> {
         if let Some((gid, _)) = group {
             let pairings = crate::kin::Pairings::load(&self.peer_dir);
             let roster = crate::roster::Roster::load(&self.store);
-            let line = format!("I shared the add-on \"{name}\" — it's on your Add-ons page if you want it.");
-            if self.chats.post(gid, &line, clock(), local_offset_mins(), &roster, &pairings).is_ok() {
+            let line = format!(
+                "I shared the add-on \"{name}\" — it's on your Add-ons page if you want it."
+            );
+            if self
+                .chats
+                .post(gid, &line, clock(), local_offset_mins(), &roster, &pairings)
+                .is_ok()
+            {
                 let _ = self.chats.save(&self.store);
             }
         }
@@ -2075,18 +2500,39 @@ impl<'a> Daemon<'a> {
             return Err(format!("\"{}\" already has an owner", old.name));
         }
         let pairings = crate::kin::Pairings::load(&self.peer_dir);
-        let (keyed, unkeyed): (Vec<String>, Vec<String>) =
-            old.members.iter().cloned().partition(|m| pairings.key_of(m).is_some());
-        self.chats.name_group(&old.id, &format!("{} (before)", old.name));
-        let done = crate::groups::act(&self.store, &self.peer_dir, "new", &old.name, &keyed.join(", "), "");
+        let (keyed, unkeyed): (Vec<String>, Vec<String>) = old
+            .members
+            .iter()
+            .cloned()
+            .partition(|m| pairings.key_of(m).is_some());
+        self.chats
+            .name_group(&old.id, &format!("{} (before)", old.name));
+        let done = crate::groups::act(
+            &self.store,
+            &self.peer_dir,
+            "new",
+            &old.name,
+            &keyed.join(", "),
+            "",
+        );
         if let Err(e) = &done {
             self.chats.name_group(&old.id, &old.name);
             return Err(e.clone());
         }
         let roster = crate::roster::Roster::load(&self.store);
-        let line = format!("I've started \"{}\" again as a group with an owner — let's carry on there.", old.name);
+        let line = format!(
+            "I've started \"{}\" again as a group with an owner — let's carry on there.",
+            old.name
+        );
         // unheard-ok: a note posted into a room that may have been closed; nothing to tell
-        let _ = self.chats.post(&old.id, &line, clock(), local_offset_mins(), &roster, &pairings);
+        let _ = self.chats.post(
+            &old.id,
+            &line,
+            clock(),
+            local_offset_mins(),
+            &roster,
+            &pairings,
+        );
         self.settle_owned_groups();
         let _ = self.chats.save(&self.store);
         let mut said = format!("\"{}\" now has an owner: you.", old.name);
@@ -2126,7 +2572,10 @@ impl<'a> Daemon<'a> {
         let pairings = crate::kin::Pairings::load(&self.peer_dir);
         let roster = crate::roster::Roster::load(&self.store);
         let line = format!("I'm using the add-on \"{name}\" and I'd recommend it.");
-        match self.chats.post(&g, &line, clock(), local_offset_mins(), &roster, &pairings) {
+        match self
+            .chats
+            .post(&g, &line, clock(), local_offset_mins(), &roster, &pairings)
+        {
             Ok(_) => {
                 let _ = self.chats.save(&self.store);
                 format!("Told {group} you recommend \"{name}\".")
@@ -2142,8 +2591,11 @@ impl<'a> Daemon<'a> {
     pub(super) fn post_release_notices(&mut self, t: u64) -> Option<String> {
         let dir = self.store.root().join(crate::update_courier::OUTBOX);
         let entries = std::fs::read_dir(&dir).ok()?;
-        let files: Vec<std::path::PathBuf> =
-            entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect();
+        let files: Vec<std::path::PathBuf> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "json"))
+            .collect();
         if files.is_empty() {
             return None;
         }
@@ -2163,37 +2615,55 @@ impl<'a> Daemon<'a> {
         let roster = crate::roster::Roster::load(&self.store);
         let mut posted = Vec::new();
         for f in files {
-            let Ok(text) = std::fs::read_to_string(&f) else { continue };
-            // A release notice, or a change of release key (`atlas release rotate`).
-            let body = if let Ok(signed) = serde_json::from_str::<crate::release::SignedManifest>(&text) {
-                crate::update_courier::announcement(&signed)
-            } else if let Ok(rotation) = serde_json::from_str::<crate::release::SignedRotation>(&text) {
-                crate::update_apply::rotation_notice(&rotation)
-            } else {
-                crate::kept!(std::fs::rename(&f, f.with_extension("not-a-notice")));
+            let Ok(text) = std::fs::read_to_string(&f) else {
                 continue;
             };
+            // A release notice, or a change of release key (`atlas release rotate`).
+            let body =
+                if let Ok(signed) = serde_json::from_str::<crate::release::SignedManifest>(&text) {
+                    crate::update_courier::announcement(&signed)
+                } else if let Ok(rotation) =
+                    serde_json::from_str::<crate::release::SignedRotation>(&text)
+                {
+                    crate::update_apply::rotation_notice(&rotation)
+                } else {
+                    crate::kept!(std::fs::rename(&f, f.with_extension("not-a-notice")));
+                    continue;
+                };
             let mut all = true;
             for gid in &channels {
-                if self.chats.post(gid, &body, t, local_offset_mins(), &roster, &pairings).is_err() {
+                if self
+                    .chats
+                    .post(gid, &body, t, local_offset_mins(), &roster, &pairings)
+                    .is_err()
+                {
                     all = false;
                 }
             }
             if all {
                 crate::kept!(std::fs::rename(&f, f.with_extension("posted")));
-                posted.push(f.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default());
+                posted.push(
+                    f.file_stem()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_default(),
+                );
             }
         }
         if posted.is_empty() {
             return None;
         }
         let _ = self.chats.save(&self.store);
-        Some(format!("Announced {} in your release channel.", posted.join(", ")))
+        Some(format!(
+            "Announced {} in your release channel.",
+            posted.join(", ")
+        ))
     }
 
     /// This Atlas's own public key, if it has one.
     pub(super) fn my_key(&self) -> Option<String> {
-        crate::peerkey::Identity::load_or_create(&self.peer_dir).ok().map(|i| i.public())
+        crate::peerkey::Identity::load_or_create(&self.peer_dir)
+            .ok()
+            .map(|i| i.public())
     }
 
     /// Make every owned group on this end match its signed list: who is in
@@ -2213,7 +2683,8 @@ impl<'a> Daemon<'a> {
             if h.state.is_delegate(&me) {
                 // One of the owner's own devices: it talks to the group
                 // through the owner's Atlas, which passes things on both ways.
-                let members: Vec<String> = pairings.name_of_key(&h.state.owner).into_iter().collect();
+                let members: Vec<String> =
+                    pairings.name_of_key(&h.state.owner).into_iter().collect();
                 changed |= self.chats.settle_owned(gid, &h.state.name, members);
             } else if h.state.seat(&me).is_some() {
                 // Everyone seated you can reach -- and, as the owner, your own
@@ -2226,7 +2697,12 @@ impl<'a> Daemon<'a> {
                     .filter_map(|s| pairings.name_of_key(&s.key))
                     .collect();
                 if h.state.owner == me {
-                    members.extend(h.state.delegates.iter().filter_map(|d| pairings.name_of_key(&d.device)));
+                    members.extend(
+                        h.state
+                            .delegates
+                            .iter()
+                            .filter_map(|d| pairings.name_of_key(&d.device)),
+                    );
                 }
                 changed |= self.chats.settle_owned(gid, &h.state.name, members);
             } else if self.chats.room(gid).is_some() {
@@ -2249,7 +2725,11 @@ impl<'a> Daemon<'a> {
         // Tor, kept running while there's anyone to reach or be reached by.
         if self.signal_listener.is_some() && self.tor.as_mut().is_none_or(|x| x.stopped()) {
             let k = "tor:start".to_string();
-            if !self.peer_tries.get(&k).is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS) {
+            if !self
+                .peer_tries
+                .get(&k)
+                .is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS)
+            {
                 self.peer_tries.insert(k, t);
                 if let Err(e) = self.start_tor() {
                     self.log.warn(&e);
@@ -2257,30 +2737,45 @@ impl<'a> Daemon<'a> {
             }
         }
         if let Some(said) = self.keep_tor_getting_through(t) {
-            self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, t);
+            self.journal
+                .record_at(crate::activity::Kind::Upkeep, &said, true, t);
             // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
-            let _ = self.reach_you(crate::notify::Note::new("Friends", &said, crate::notify::Urgency::Routine, t), t);
+            let _ = self.reach_you(
+                crate::notify::Note::new("Friends", &said, crate::notify::Urgency::Routine, t),
+                t,
+            );
         }
         for said in self.friend_upkeep(t) {
-            self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, t);
+            self.journal
+                .record_at(crate::activity::Kind::Upkeep, &said, true, t);
             // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
-            let _ = self.reach_you(crate::notify::Note::new("Friends", &said, crate::notify::Urgency::Routine, t), t);
+            let _ = self.reach_you(
+                crate::notify::Note::new("Friends", &said, crate::notify::Urgency::Routine, t),
+                t,
+            );
         }
         let pairings = crate::kin::Pairings::load(&self.peer_dir);
         if pairings.contacts.is_empty() {
             return;
         }
-        let Ok(me) = crate::peerkey::Identity::load_or_create(&self.peer_dir) else { return };
+        let Ok(me) = crate::peerkey::Identity::load_or_create(&self.peer_dir) else {
+            return;
+        };
         let me = me.public();
         let link = self.peer_link(&pairings);
-        let mut told: std::collections::BTreeMap<String, String> = self.store.load("peer_hello_told");
+        let mut told: std::collections::BTreeMap<String, String> =
+            self.store.load("peer_hello_told");
         let mut told_changed = false;
         for c in &pairings.contacts {
             if told.get(&c.name.to_lowercase()) == Some(&me) {
                 continue;
             }
             let k = format!("hello:{}", c.name.to_lowercase());
-            if self.peer_tries.get(&k).is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS) {
+            if self
+                .peer_tries
+                .get(&k)
+                .is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS)
+            {
                 continue;
             }
             self.peer_tries.insert(k, t);
@@ -2301,20 +2796,40 @@ impl<'a> Daemon<'a> {
         let avail = crate::update_courier::Available::load(&self.store);
         if !crate::phonemode::on() && avail.notice.is_some() && avail.downloaded.is_empty() {
             let k = "release:fetch".to_string();
-            let owner = (!avail.from.is_empty()).then(|| pairings.name_of_key(&avail.from)).flatten();
+            let owner = (!avail.from.is_empty())
+                .then(|| pairings.name_of_key(&avail.from))
+                .flatten();
             let friends: Vec<String> = pairings.contacts.iter().map(|c| c.name.clone()).collect();
-            if !self.peer_tries.get(&k).is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS) {
+            if !self
+                .peer_tries
+                .get(&k)
+                .is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS)
+            {
                 use crate::update_courier::Fetched;
-                match crate::update_courier::fetch_from_any(&self.store, 8, owner.as_deref(), &friends, 3, |who, sha, off| {
-                    link.fetch_release(who, sha, off)
-                }) {
+                match crate::update_courier::fetch_from_any(
+                    &self.store,
+                    8,
+                    owner.as_deref(),
+                    &friends,
+                    3,
+                    |who, sha, off| link.fetch_release(who, sha, off),
+                ) {
                     Fetched::Waiting => {
                         self.peer_tries.insert(k, t);
                     }
                     Fetched::Ready(said) | Fetched::Bad(said) => {
-                        self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, t);
+                        self.journal
+                            .record_at(crate::activity::Kind::Upkeep, &said, true, t);
                         // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
-                        let _ = self.reach_you(crate::notify::Note::new("Atlas update", &said, crate::notify::Urgency::Routine, t), t);
+                        let _ = self.reach_you(
+                            crate::notify::Note::new(
+                                "Atlas update",
+                                &said,
+                                crate::notify::Urgency::Routine,
+                                t,
+                            ),
+                            t,
+                        );
                     }
                     Fetched::Partway(..) => {}
                     // Nothing to fetch although an update was announced: its
@@ -2337,11 +2852,10 @@ impl<'a> Daemon<'a> {
         if let Some(platform) = crate::release::this_platform() {
             let me = self.my_key().unwrap_or_default();
             let held = crate::groups::Groups::load(&self.store);
-            let channel = held
-                .held
-                .values()
-                .map(|h| &h.state)
-                .find(|g| g.release_channel && (avail.from.is_empty() || g.owner == avail.from));
+            let channel =
+                held.held.values().map(|h| &h.state).find(|g| {
+                    g.release_channel && (avail.from.is_empty() || g.owner == avail.from)
+                });
             let moment = crate::update_apply::UpdateMoment {
                 idle_secs: self.plat.input_idle_secs(),
                 os: self.plat.quiet_state(),
@@ -2359,13 +2873,18 @@ impl<'a> Daemon<'a> {
             // iPhones that told the Your phone page their ID while nobody was
             // looking: kept, and queued for whoever sends Atlas out.
             for said in self.take_heard_phones(t) {
-                self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, t);
+                self.journal
+                    .record_at(crate::activity::Kind::Upkeep, &said, true, t);
             }
             // Feedback your friend chose to send, and your answers to theirs:
             // sent over the pairing, kept until taken.
             for (to, body, id) in crate::feedback::feedback_outbox(&self.store) {
                 let k = format!("feedback:{id}");
-                if self.peer_tries.get(&k).is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS) {
+                if self
+                    .peer_tries
+                    .get(&k)
+                    .is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS)
+                {
                     continue;
                 }
                 self.peer_tries.insert(k, t);
@@ -2375,7 +2894,11 @@ impl<'a> Daemon<'a> {
             }
             for (to, body, id) in crate::feedback::answers_out(&self.store) {
                 let k = format!("feedback-answer:{id}");
-                if self.peer_tries.get(&k).is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS) {
+                if self
+                    .peer_tries
+                    .get(&k)
+                    .is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS)
+                {
                     continue;
                 }
                 self.peer_tries.insert(k, t);
@@ -2383,22 +2906,44 @@ impl<'a> Daemon<'a> {
                     crate::feedback::answer_delivered(&self.store, &id);
                 }
             }
-            match crate::update_apply::update_tick(&self.store, &self.store.install_root(), platform, &me, channel, &moment, t) {
+            match crate::update_apply::update_tick(
+                &self.store,
+                &self.store.install_root(),
+                platform,
+                &me,
+                channel,
+                &moment,
+                t,
+            ) {
                 crate::update_apply::Ticked::Say(said) => {
-                    self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, t);
+                    self.journal
+                        .record_at(crate::activity::Kind::Upkeep, &said, true, t);
                     // unheard-ok: a note that can't get through is held in the outbox and retried (reach_you)
-                    let _ = self.reach_you(crate::notify::Note::new("Atlas update", &said, crate::notify::Urgency::Routine, t), t);
+                    let _ = self.reach_you(
+                        crate::notify::Note::new(
+                            "Atlas update",
+                            &said,
+                            crate::notify::Urgency::Routine,
+                            t,
+                        ),
+                        t,
+                    );
                 }
                 crate::update_apply::Ticked::Restart(said) => {
-                    self.journal.record_at(crate::activity::Kind::Upkeep, &said, true, t);
+                    self.journal
+                        .record_at(crate::activity::Kind::Upkeep, &said, true, t);
                     let args: Vec<String> = std::env::args().skip(1).collect();
                     // Stopped properly before the new copy starts, not after
                     // (`restart_as`): see there for what it cost.
                     match self.restart_as(|| {
-                        std::env::current_exe().map_err(|e| e.to_string()).and_then(|exe| crate::update_apply::relaunch_self(&exe, &args))
+                        std::env::current_exe()
+                            .map_err(|e| e.to_string())
+                            .and_then(|exe| crate::update_apply::relaunch_self(&exe, &args))
                     }) {
                         Ok(()) => std::process::exit(0),
-                        Err(why) => self.log.info(&format!("couldn't restart into the update: {why}")),
+                        Err(why) => self
+                            .log
+                            .info(&format!("couldn't restart into the update: {why}")),
                     }
                 }
                 crate::update_apply::Ticked::Nothing => {}
@@ -2407,13 +2952,21 @@ impl<'a> Daemon<'a> {
         let mut groups = crate::groups::Groups::load(&self.store);
         let mut delivered = false;
         for (gid, key) in groups.owed(&me) {
-            let Some(name) = pairings.name_of_key(&key) else { continue };
+            let Some(name) = pairings.name_of_key(&key) else {
+                continue;
+            };
             let k = format!("group:{gid}:{key}");
-            if self.peer_tries.get(&k).is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS) {
+            if self
+                .peer_tries
+                .get(&k)
+                .is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS)
+            {
                 continue;
             }
             self.peer_tries.insert(k, t);
-            let Some(signed) = groups.held.get(&gid).map(|h| h.signed.clone()) else { continue };
+            let Some(signed) = groups.held.get(&gid).map(|h| h.signed.clone()) else {
+                continue;
+            };
             if link.push_group(&name, &signed) {
                 groups.delivered_to(&gid, &key);
                 delivered = true;
@@ -2423,14 +2976,36 @@ impl<'a> Daemon<'a> {
         let owed: Vec<crate::groups::Relay> = groups.relay_owed.clone();
         let mut passed = false;
         for r in owed {
-            let Some(name) = pairings.name_of_key(&r.to) else { continue };
+            let Some(name) = pairings.name_of_key(&r.to) else {
+                continue;
+            };
             let k = format!("relay:{}", r.to);
-            if self.peer_tries.get(&k).is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS) {
+            if self
+                .peer_tries
+                .get(&k)
+                .is_some_and(|at| t.saturating_sub(*at) < RETRY_SECS)
+            {
                 continue;
             }
-            let gname = groups.held.get(&r.group_id).map(|h| h.state.name.clone()).unwrap_or_default();
-            if link.relay(&name, &r.group_id, &gname, &r.author, &r.id, &r.body, r.sent_at, r.sent_offset_mins, r.after) {
-                groups.relay_owed.retain(|x| !(x.id == r.id && x.to == r.to));
+            let gname = groups
+                .held
+                .get(&r.group_id)
+                .map(|h| h.state.name.clone())
+                .unwrap_or_default();
+            if link.relay(
+                &name,
+                &r.group_id,
+                &gname,
+                &r.author,
+                &r.id,
+                &r.body,
+                r.sent_at,
+                r.sent_offset_mins,
+                r.after,
+            ) {
+                groups
+                    .relay_owed
+                    .retain(|x| !(x.id == r.id && x.to == r.to));
                 passed = true;
             } else {
                 // One failed send puts that person off until the next retry
@@ -2456,8 +3031,10 @@ impl<'a> Daemon<'a> {
         }
         if changed {
             if let Err(e) = self.chats.save(&self.store) {
-                self.log
-                    .warn(&format!("couldn't save a read receipt from {}: {e}", r.from));
+                self.log.warn(&format!(
+                    "couldn't save a read receipt from {}: {e}",
+                    r.from
+                ));
             }
         }
     }
@@ -2472,11 +3049,15 @@ impl<'a> Daemon<'a> {
         // everybody else goes by.
         if crate::groups::is_owned_id(&l.group_id) {
             let pairings = crate::kin::Pairings::load(&self.peer_dir);
-            if let (Some(key), Ok(me)) =
-                (pairings.key_of(&l.from).map(String::from), crate::peerkey::Identity::load_or_create(&self.peer_dir))
-            {
+            if let (Some(key), Ok(me)) = (
+                pairings.key_of(&l.from).map(String::from),
+                crate::peerkey::Identity::load_or_create(&self.peer_dir),
+            ) {
                 let mut groups = crate::groups::Groups::load(&self.store);
-                if groups.held.get(&l.group_id).is_some_and(|h| h.state.owner == me.public())
+                if groups
+                    .held
+                    .get(&l.group_id)
+                    .is_some_and(|h| h.state.owner == me.public())
                     && groups.remove(&me, &l.group_id, &key).is_ok()
                 {
                     let _ = groups.save(&self.store);

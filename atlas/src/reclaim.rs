@@ -149,7 +149,11 @@ impl Candidate {
             self.path.display(),
             self.size_mb,
             self.age_days,
-            if self.kind.atlas_may_move() { "I can move this." } else { "Yours to decide." },
+            if self.kind.atlas_may_move() {
+                "I can move this."
+            } else {
+                "Yours to decide."
+            },
             self.kind.costs_you()
         )
     }
@@ -206,7 +210,9 @@ pub const NEVER: &[&str] = &[
 /// page's "Look for space" both start from it. Empty when neither is known.
 pub fn roots_from_env() -> Vec<PathBuf> {
     let mut roots: Vec<PathBuf> = Vec::new();
-    if let Some(home) = crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME")) {
+    if let Some(home) =
+        crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME"))
+    {
         roots.push(PathBuf::from(&home));
     }
     if let Some(t) = crate::doctor::lookup_env("TEMP") {
@@ -233,7 +239,10 @@ pub fn forbidden(path: &Path) -> bool {
 
 /// What kind of thing this folder is, if it is anything Atlas knows.
 pub fn classify(name: &str) -> Option<Kind> {
-    KNOWN.iter().find(|(n, _)| name.eq_ignore_ascii_case(n)).map(|(_, k)| *k)
+    KNOWN
+        .iter()
+        .find(|(n, _)| name.eq_ignore_ascii_case(n))
+        .map(|(_, k)| *k)
 }
 
 /// Look for space, and report. **Never removes anything.**
@@ -259,7 +268,9 @@ fn walk(dir: &Path, now: u64, depth: usize, out: &mut Vec<Candidate>) {
     if depth > MAX_DEPTH || forbidden(dir) {
         return;
     }
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let path = e.path();
         let Ok(meta) = e.metadata() else { continue };
@@ -283,7 +294,12 @@ fn walk(dir: &Path, now: u64, depth: usize, out: &mut Vec<Candidate>) {
                 let mb = bytes / (1024 * 1024);
                 // Below this the noise costs more than the space saves.
                 if mb >= 50 {
-                    out.push(Candidate { path, size_mb: mb, kind, age_days: age });
+                    out.push(Candidate {
+                        path,
+                        size_mb: mb,
+                        kind,
+                        age_days: age,
+                    });
                 }
             }
             // Not something Atlas knows: keep looking inside, but never offer
@@ -304,7 +320,9 @@ fn age_days(meta: &std::fs::Metadata, now: u64) -> u64 {
 }
 
 fn size_of(dir: &Path, total: &mut u64) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let Ok(meta) = e.metadata() else { continue };
         if meta.file_type().is_symlink() {
@@ -337,10 +355,16 @@ pub fn reclaim(
         // the removal are separated by a person reading a list, and this is
         // the last point at which a mistake is still cheap.
         if forbidden(&c.path) {
-            refused.push((c.path.clone(), "that path is one Atlas never touches".into()));
+            refused.push((
+                c.path.clone(),
+                "that path is one Atlas never touches".into(),
+            ));
             continue;
         }
-        match trash.take(&c.path, &format!("reclaimed {:?}, {} MB", c.kind, c.size_mb)) {
+        match trash.take(
+            &c.path,
+            &format!("reclaimed {:?}, {} MB", c.kind, c.size_mb),
+        ) {
             Ok(_) => moved.push(c.path.clone()),
             Err(e) => refused.push((c.path.clone(), e.to_string())),
         }
@@ -401,7 +425,12 @@ pub fn whole_disk(roots: &[PathBuf], now: u64) -> Vec<Candidate> {
 }
 
 /// Names that mean "these are screenshots".
-const SHOT_FOLDERS: &[&str] = &["Screenshots", "Screen Shots", "Captures", "Screen Recordings"];
+const SHOT_FOLDERS: &[&str] = &[
+    "Screenshots",
+    "Screen Shots",
+    "Captures",
+    "Screen Recordings",
+];
 
 /// Where applications live, so they can be reported with their size.
 const APP_FOLDERS: &[&str] = &["Program Files", "Program Files (x86)", "Applications"];
@@ -410,7 +439,9 @@ fn look(dir: &Path, now: u64, depth: usize, out: &mut Vec<Candidate>) {
     if depth > MAX_DEPTH {
         return;
     }
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let path = e.path();
         let Ok(meta) = e.metadata() else { continue };
@@ -425,7 +456,12 @@ fn look(dir: &Path, now: u64, depth: usize, out: &mut Vec<Candidate>) {
             let mb = meta.len() / (1024 * 1024);
             let age = age_days(&meta, now);
             if mb >= BIG_FILE_MB && age >= Kind::BigAndOld.min_age_days() {
-                out.push(Candidate { path, size_mb: mb, kind: Kind::BigAndOld, age_days: age });
+                out.push(Candidate {
+                    path,
+                    size_mb: mb,
+                    kind: Kind::BigAndOld,
+                    age_days: age,
+                });
             }
             continue;
         }
@@ -485,7 +521,9 @@ pub fn installed_apps(roots: &[PathBuf], now: u64) -> Vec<Candidate> {
     for root in roots {
         for folder in APP_FOLDERS {
             let dir = root.join(folder);
-            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
             for e in entries.flatten() {
                 let path = e.path();
                 let Ok(meta) = e.metadata() else { continue };
@@ -501,7 +539,12 @@ pub fn installed_apps(roots: &[PathBuf], now: u64) -> Vec<Candidate> {
                 let mut newest = 0u64;
                 newest_in(&path, &mut newest);
                 let age = now.saturating_sub(newest) / 86_400;
-                out.push(Candidate { path, size_mb: mb, kind: Kind::App, age_days: age });
+                out.push(Candidate {
+                    path,
+                    size_mb: mb,
+                    kind: Kind::App,
+                    age_days: age,
+                });
             }
         }
     }
@@ -510,7 +553,9 @@ pub fn installed_apps(roots: &[PathBuf], now: u64) -> Vec<Candidate> {
 }
 
 fn newest_in(dir: &Path, newest: &mut u64) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let Ok(meta) = e.metadata() else { continue };
         if meta.file_type().is_symlink() {

@@ -27,11 +27,19 @@ pub fn upcoming(s: &Scheduler, now: u64) -> Vec<serde_json::Value> {
         .active()
         .into_iter()
         .filter_map(|j| {
-            let text = j.command.strip_prefix("reminder ")?.trim_start_matches("Reminder:").trim().to_string();
-            (j.due > now && j.due <= now + AHEAD_SECS && !text.is_empty()).then_some((j.due, j.id, text))
+            let text = j
+                .command
+                .strip_prefix("reminder ")?
+                .trim_start_matches("Reminder:")
+                .trim()
+                .to_string();
+            (j.due > now && j.due <= now + AHEAD_SECS && !text.is_empty())
+                .then_some((j.due, j.id, text))
         })
         .collect();
     v.sort();
     v.truncate(MOST);
-    v.into_iter().map(|(due, id, text)| serde_json::json!({ "id": id, "due": due, "text": text })).collect()
+    v.into_iter()
+        .map(|(due, id, text)| serde_json::json!({ "id": id, "due": due, "text": text }))
+        .collect()
 }

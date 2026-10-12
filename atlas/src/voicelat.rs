@@ -55,7 +55,10 @@ pub fn note_asr(d: AsrDecision) {
 
 /// Take the latest decision, once.
 pub fn take_asr() -> Option<AsrDecision> {
-    LAST.lock().or_else(crate::crash::unpoison).ok().and_then(|mut g| g.take())
+    LAST.lock()
+        .or_else(crate::crash::unpoison)
+        .ok()
+        .and_then(|mut g| g.take())
 }
 
 /// One finished turn.
@@ -121,23 +124,56 @@ pub fn summary(ledger: &Ledger) -> String {
     .into_iter()
     .flatten()
     .collect();
-    let count = |e: &str| ledger.turns.iter().filter(|t| t.asr.as_ref().is_some_and(|a| a.engine == e)).count();
-    let fell_back = ledger.turns.iter().filter(|t| t.asr.as_ref().is_some_and(|a| a.engine == "whisper" && a.why.contains("failed"))).count();
-    let dropped = ledger.turns.iter().filter(|t| t.asr.as_ref().is_some_and(|a| a.dropped_hallucination)).count();
+    let count = |e: &str| {
+        ledger
+            .turns
+            .iter()
+            .filter(|t| t.asr.as_ref().is_some_and(|a| a.engine == e))
+            .count()
+    };
+    let fell_back = ledger
+        .turns
+        .iter()
+        .filter(|t| {
+            t.asr
+                .as_ref()
+                .is_some_and(|a| a.engine == "whisper" && a.why.contains("failed"))
+        })
+        .count();
+    let dropped = ledger
+        .turns
+        .iter()
+        .filter(|t| t.asr.as_ref().is_some_and(|a| a.dropped_hallucination))
+        .count();
     parts.push(format!(
         "engines parakeet={} whisper={} (fell back after a failure {fell_back}x, hallucinations dropped {dropped}x)",
         count("parakeet"),
         count("whisper")
     ));
-    format!("last {} turns, median/worst: {}", ledger.turns.len(), parts.join("; "))
+    format!(
+        "last {} turns, median/worst: {}",
+        ledger.turns.len(),
+        parts.join("; ")
+    )
 }
 
 /// Phrases whisper writes for a quiet or near-empty clip, beyond the
 /// whole-transcript silence list. "Thank you" is a real thing to say, so these
 /// are only treated as no speech when the clip itself was quiet or very short.
 pub const QUIET_HALLUCINATIONS: &[&str] = &[
-    "you", "thank you", "thanks", "thank you very much", "thanks for watching", "thank you for watching",
-    "bye", "bye bye", "okay", "ok", "yeah", "so", "the end",
+    "you",
+    "thank you",
+    "thanks",
+    "thank you very much",
+    "thanks for watching",
+    "thank you for watching",
+    "bye",
+    "bye bye",
+    "okay",
+    "ok",
+    "yeah",
+    "so",
+    "the end",
 ];
 
 /// A clip counts as quiet below this RMS (about -38 dBFS) or shorter than this.
@@ -149,7 +185,13 @@ pub fn rms(samples: &[i16]) -> f32 {
     if samples.is_empty() {
         return 0.0;
     }
-    let sum: f64 = samples.iter().map(|&s| { let x = s as f64 / 32768.0; x * x }).sum();
+    let sum: f64 = samples
+        .iter()
+        .map(|&s| {
+            let x = s as f64 / 32768.0;
+            x * x
+        })
+        .sum();
     (sum / samples.len() as f64).sqrt() as f32
 }
 
@@ -159,7 +201,13 @@ pub fn is_quiet_hallucination(text: &str, rms: f32, audio_ms: u32) -> bool {
     let plain: String = text
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '\'' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -179,13 +227,19 @@ mod tests {
     use super::*;
 
     fn turn(h: u32, fa: u32) -> TurnRecord {
-        TurnRecord { hearing_ms: Some(h), first_audio_ms: Some(fa), ..Default::default() }
+        TurnRecord {
+            hearing_ms: Some(h),
+            first_audio_ms: Some(fa),
+            ..Default::default()
+        }
     }
 
     #[test]
     fn ledger_keeps_only_recent() {
         let mut l = Ledger::default();
-        for i in 0..(KEEP as u32 + 10) { l.add(turn(i, i)); }
+        for i in 0..(KEEP as u32 + 10) {
+            l.add(turn(i, i));
+        }
         assert_eq!(l.turns.len(), KEEP);
         assert_eq!(l.turns[0].hearing_ms, Some(10));
     }
@@ -196,11 +250,19 @@ mod tests {
         assert!(summary(&l).contains("no voice turns"));
         for (h, f) in [(300, 1500), (500, 2500), (4000, 9000)] {
             let mut t = turn(h, f);
-            t.asr = Some(AsrDecision { engine: "parakeet".into(), ..Default::default() });
+            t.asr = Some(AsrDecision {
+                engine: "parakeet".into(),
+                ..Default::default()
+            });
             l.add(t);
         }
         l.add(TurnRecord {
-            asr: Some(AsrDecision { engine: "whisper".into(), why: "parakeet failed (x) -> whisper".into(), dropped_hallucination: true, ..Default::default() }),
+            asr: Some(AsrDecision {
+                engine: "whisper".into(),
+                why: "parakeet failed (x) -> whisper".into(),
+                dropped_hallucination: true,
+                ..Default::default()
+            }),
             ..Default::default()
         });
         let s = summary(&l);
@@ -213,7 +275,11 @@ mod tests {
 
     #[test]
     fn decision_is_taken_once() {
-        note_asr(AsrDecision { engine: "whisper".into(), why: "w".into(), ..Default::default() });
+        note_asr(AsrDecision {
+            engine: "whisper".into(),
+            why: "w".into(),
+            ..Default::default()
+        });
         assert_eq!(take_asr().map(|d| d.engine), Some("whisper".into()));
         assert!(take_asr().is_none());
     }

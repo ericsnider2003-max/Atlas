@@ -173,7 +173,11 @@ pub fn assess(said: &str, s: &Situation) -> Assessment {
         directed,
         confidence,
         kind,
-        why: if reasons.is_empty() { "nothing either way".into() } else { reasons.join(", ") },
+        why: if reasons.is_empty() {
+            "nothing either way".into()
+        } else {
+            reasons.join(", ")
+        },
     }
 }
 
@@ -187,9 +191,10 @@ pub fn respond(a: &Assessment, s: &Situation) -> Response {
         Directed::AtAtlas => Response::Act,
         // Atlas asked you something and another voice answered: said once,
         // with how to answer if it was you after all, and nothing done.
-        Directed::Overheard if s.other_voice && s.awaiting_answer => {
-            Response::Ask("I didn't recognise that voice. If it was you, start with my name and answer again.".into())
-        }
+        Directed::Overheard if s.other_voice && s.awaiting_answer => Response::Ask(
+            "I didn't recognise that voice. If it was you, start with my name and answer again."
+                .into(),
+        ),
         Directed::Overheard if s.other_voice => Response::Ignore,
         // Mid-conversation, a follow-up is never dropped without a word: at
         // worst Atlas asks.
@@ -220,25 +225,36 @@ fn classify(_t: &str, words: &[&str]) -> Kind {
 }
 
 const IMPERATIVES: &[&str] = &[
-    "open", "close", "focus", "move", "boot", "start", "stop", "pause", "resume",
-    "research", "find", "search", "read", "write", "draft", "send", "schedule",
-    "cancel", "show", "tell", "give", "make", "put", "type", "paste", "look",
-    "switch", "shut", "turn", "post", "reply", "undo", "back", "run", "check",
+    "open", "close", "focus", "move", "boot", "start", "stop", "pause", "resume", "research",
+    "find", "search", "read", "write", "draft", "send", "schedule", "cancel", "show", "tell",
+    "give", "make", "put", "type", "paste", "look", "switch", "shut", "turn", "post", "reply",
+    "undo", "back", "run", "check",
 ];
 
 const SECOND_PERSON: &[&str] = &["can", "could", "would", "will", "please", "you"];
 
-const QUESTIONS: &[&str] =
-    &["what", "when", "where", "who", "why", "how", "is", "are", "do", "does", "did", "can"];
+const QUESTIONS: &[&str] = &[
+    "what", "when", "where", "who", "why", "how", "is", "are", "do", "does", "did", "can",
+];
 
 /// Talking *about* someone rather than to Atlas.
-const THIRD_PARTY: &[&str] =
-    &[" he ", " she ", " they ", " him ", " her ", " them ", " his ", " their "];
+const THIRD_PARTY: &[&str] = &[
+    " he ", " she ", " they ", " him ", " her ", " them ", " his ", " their ",
+];
 
 /// The shape of half a phone call.
 const PHONE_MARKERS: &[&str] = &[
-    "yeah no", "no yeah", "hold on let me", "i told him", "i told her", "she said",
-    "he said", "they said", "i was like", "you know what i mean", "anyway so",
+    "yeah no",
+    "no yeah",
+    "hold on let me",
+    "i told him",
+    "i told her",
+    "she said",
+    "he said",
+    "they said",
+    "i was like",
+    "you know what i mean",
+    "anyway so",
 ];
 
 fn normalize(s: &str) -> String {
@@ -247,9 +263,12 @@ fn normalize(s: &str) -> String {
         .chars()
         .filter(|c| c.is_alphanumeric() || c.is_whitespace())
         .collect();
-    format!(" {} ", cleaned.split_whitespace().collect::<Vec<_>>().join(" "))
-        .trim_start()
-        .to_string()
+    format!(
+        " {} ",
+        cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+    )
+    .trim_start()
+    .to_string()
 }
 
 fn starts_with_any(words: &[&str], set: &[&str]) -> bool {

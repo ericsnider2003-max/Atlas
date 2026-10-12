@@ -25,7 +25,10 @@ fn spend(desc: &str, amount: f32, bucket: Bucket) -> Entry {
 
 /// A month of groceries at `food`, chosen-things at `fun`.
 fn month(food: f32, fun: f32) -> Vec<Entry> {
-    vec![spend("tesco", food, Bucket::Food), spend("hobby shop", fun, Bucket::Spending)]
+    vec![
+        spend("tesco", food, Bucket::Food),
+        spend("hobby shop", fun, Bucket::Spending),
+    ]
 }
 
 fn kept(months: &[(f32, f32)]) -> Vec<KeptMonth> {
@@ -90,7 +93,10 @@ fn the_same_fraction_reads_differently_per_bucket() {
     let now = month(600.0, 450.0); // both +50% of their middles (400, 300)
     let said = unusual_buckets(&past, &now);
     assert!(said.iter().any(|l| l.contains("food")), "{said:?}");
-    assert!(said.iter().all(|l| !l.contains("things you chose")), "{said:?}");
+    assert!(
+        said.iter().all(|l| !l.contains("things you chose")),
+        "{said:?}"
+    );
 }
 
 #[test]
@@ -124,7 +130,11 @@ fn the_series_is_bounded_oldest_out_first() {
         remember_month(&mut months, &month(400.0 + i as f32, 100.0), i as u64);
     }
     assert_eq!(months.len(), MONTHS_KEPT);
-    assert_eq!(months.first().unwrap().at, 10, "the oldest months fell off, not the newest");
+    assert_eq!(
+        months.first().unwrap().at,
+        10,
+        "the oldest months fell off, not the newest"
+    );
 }
 
 #[test]
@@ -134,5 +144,8 @@ fn what_is_remembered_is_the_summary_not_the_statement() {
     let m = &months[0];
     assert_eq!(m.at, 7);
     let s = summarise(&month(400.0, 100.0));
-    assert_eq!(m.by_bucket, s.by_bucket, "the kept month is the same summary money answers from");
+    assert_eq!(
+        m.by_bucket, s.by_bucket,
+        "the kept month is the same summary money answers from"
+    );
 }

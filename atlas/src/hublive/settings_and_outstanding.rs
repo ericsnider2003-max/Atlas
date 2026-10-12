@@ -24,7 +24,9 @@ impl Daemon<'_> {
             Ok(_) => {}
             Err(_) => review.push_str("<p role=alert>Calendar recovery records are unavailable. No previous outcome can be confirmed; refresh or recover the saved records before deciding.</p>"),
         }
-        if let Some(at) = html.rfind("</main>") { html.insert_str(at, &review); }
+        if let Some(at) = html.rfind("</main>") {
+            html.insert_str(at, &review);
+        }
         html
     }
 
@@ -67,8 +69,16 @@ impl Daemon<'_> {
             Err(why) => return why,
         };
         let groups = crate::groups::Groups::load(&self.store);
-        let sender = groups.held.values().map(|h| &h.state).find(|g| g.release_channel).map(|c| c.owner.clone());
-        let me = crate::peerkey::Identity::load_or_create(&self.peer_dir).ok().map(|i| i.public()).unwrap_or_default();
+        let sender = groups
+            .held
+            .values()
+            .map(|h| &h.state)
+            .find(|g| g.release_channel)
+            .map(|c| c.owner.clone());
+        let me = crate::peerkey::Identity::load_or_create(&self.peer_dir)
+            .ok()
+            .map(|i| i.public())
+            .unwrap_or_default();
         match sender {
             Some(owner) if owner != me && !me.is_empty() => {
                 let to = crate::kin::Pairings::load(&self.peer_dir).name_of_key(&owner);
@@ -77,14 +87,21 @@ impl Daemon<'_> {
                         if let Err(e) = crate::feedback::queue_feedback(&self.store, f, &to) {
                             return format!("Not sent: {e}.");
                         }
-                        format!("Sent to {to}. They'll see exactly what you wrote, and nothing else.")
+                        format!(
+                            "Sent to {to}. They'll see exactly what you wrote, and nothing else."
+                        )
                     }
-                    None => "I can't reach whoever gave you Atlas, so it's kept here for now.".to_string(),
+                    None => "I can't reach whoever gave you Atlas, so it's kept here for now."
+                        .to_string(),
                 }
             }
             _ => {
                 // unheard-ok: returns `Option<String>`, not a Result
-                let _ = crate::feedback::heard_feedback(&self.store, "you", &serde_json::to_string(&f).unwrap_or_default());
+                let _ = crate::feedback::heard_feedback(
+                    &self.store,
+                    "you",
+                    &serde_json::to_string(&f).unwrap_or_default(),
+                );
                 "It's on your own list to fix, on your Feedback page.".to_string()
             }
         }
@@ -102,7 +119,9 @@ impl Daemon<'_> {
             _ if !self.store.exists("address") => {
                 let n = self.tools_cfg().persona.address.clone();
                 // A title ("sir") is how to address you, not your name.
-                (!n.trim().is_empty() && n.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)).then_some(n)
+                (!n.trim().is_empty()
+                    && n.chars().next().map(|c| c.is_uppercase()).unwrap_or(false))
+                .then_some(n)
             }
             _ => None,
         };
@@ -119,12 +138,22 @@ impl Daemon<'_> {
         }
         // A question or a yes it's waiting on carries its reason with it.
         for w in waiting.iter_mut() {
-            if let Some(i) = self.backlog.items.iter().find(|i| !i.done && !i.dismissed && sentence(&i.request) == w.0) {
+            if let Some(i) = self
+                .backlog
+                .items
+                .iter()
+                .find(|i| !i.done && !i.dismissed && sentence(&i.request) == w.0)
+            {
                 w.1 = sentence(&i.blocker.explain());
             }
         }
         let mut blocked: Vec<hub::Stopped> = Vec::new();
-        for i in self.backlog.items.iter().filter(|i| !i.done && !i.dismissed && !waits_on_you(&i.blocker)) {
+        for i in self
+            .backlog
+            .items
+            .iter()
+            .filter(|i| !i.done && !i.dismissed && !waits_on_you(&i.blocker))
+        {
             blocked.push(hub::Stopped {
                 what: sentence(&i.request),
                 tried: format!("To {}.", i.request.trim().trim_end_matches('.')),
@@ -137,13 +166,27 @@ impl Daemon<'_> {
         let mut in_progress: Vec<(String, String)> = Vec::new();
         for job in &self.scheduler.jobs {
             if job.in_flight {
-                let status = if job.state == crate::scheduler::JobState::Cancelled { "Stopping; its result is not confirmed yet." } else { "Running now; its result is not confirmed yet." };
+                let status = if job.state == crate::scheduler::JobState::Cancelled {
+                    "Stopping; its result is not confirmed yet."
+                } else {
+                    "Running now; its result is not confirmed yet."
+                };
                 in_progress.push((sentence(&job.command), status.into()));
-                drops.in_progress.push((job.worker_id.is_some() || job.file_move_id.is_some()).then(|| format!("s:{}", job.id)));
+                drops.in_progress.push(
+                    (job.worker_id.is_some() || job.file_move_id.is_some())
+                        .then(|| format!("s:{}", job.id)),
+                );
             } else if job.interrupted {
-                blocked.push(hub::Stopped { what: sentence(&job.command), tried: format!("To {}.", job.command.trim().trim_end_matches('.')),
-                    stopped: job.last_result.clone().unwrap_or_else(|| "Previous outcome is unconfirmed.".into()),
-                    needs: "Check the previous result before asking Atlas to try again.".into(), area: None });
+                blocked.push(hub::Stopped {
+                    what: sentence(&job.command),
+                    tried: format!("To {}.", job.command.trim().trim_end_matches('.')),
+                    stopped: job
+                        .last_result
+                        .clone()
+                        .unwrap_or_else(|| "Previous outcome is unconfirmed.".into()),
+                    needs: "Check the previous result before asking Atlas to try again.".into(),
+                    area: None,
+                });
                 drops.blocked.push(Some(format!("s:{}", job.id)));
             }
         }
@@ -151,38 +194,61 @@ impl Daemon<'_> {
             blocked.push(hub::Stopped {
                 what: sentence(&task.command),
                 tried: format!("To {}.", task.command.trim().trim_end_matches('.')),
-                stopped: task.result.clone().unwrap_or_else(|| "Previous outcome not confirmed.".into()),
+                stopped: task
+                    .result
+                    .clone()
+                    .unwrap_or_else(|| "Previous outcome not confirmed.".into()),
                 needs: "Check the previous result before asking Atlas to try again.".into(),
                 area: None,
             });
             drops.blocked.push(Some(format!("t:{}", task.id)));
         }
-        for t in self
-            .queue
-            .tasks
-            .iter()
-            .filter(|t| !matches!(t.state, crate::lanes::TaskState::Done | crate::lanes::TaskState::Failed))
-        {
+        for t in self.queue.tasks.iter().filter(|t| {
+            !matches!(
+                t.state,
+                crate::lanes::TaskState::Done | crate::lanes::TaskState::Failed
+            )
+        }) {
             let how = match t.state {
-                crate::lanes::TaskState::Running if t.stop_requested => "Stopping; the worker has not finished yet.",
+                crate::lanes::TaskState::Running if t.stop_requested => {
+                    "Stopping; the worker has not finished yet."
+                }
                 crate::lanes::TaskState::Running => "Running now.",
                 crate::lanes::TaskState::WaitingForGap => "Waiting for a pause in your work.",
                 _ => "Next in line.",
             };
             in_progress.push((sentence(&t.command), how.to_string()));
-            drops.in_progress.push((t.state != crate::lanes::TaskState::Running || t.worker_id.is_some() || t.file_move_id.is_some()).then(|| format!("t:{}", t.id)));
+            drops.in_progress.push(
+                (t.state != crate::lanes::TaskState::Running
+                    || t.worker_id.is_some()
+                    || t.file_move_id.is_some())
+                .then(|| format!("t:{}", t.id)),
+            );
         }
         for e in self.crew.errands() {
-            in_progress.push((e.name.clone(), "Handed to a worker — I check what comes back before you see it.".into()));
+            in_progress.push((
+                e.name.clone(),
+                "Handed to a worker — I check what comes back before you see it.".into(),
+            ));
             drops.in_progress.push(Some(format!("e:{}", e.id)));
         }
         let today = crate::localclock::midnight(now, crate::localclock::offset_secs());
         let mut carried: Vec<(String, u64)> = Vec::new();
-        for i in self.workspace.iter().filter(|i| i.at < today && i.status.live()) {
+        for i in self
+            .workspace
+            .iter()
+            .filter(|i| i.at < today && i.status.live())
+        {
             carried.push((i.title.clone(), ((today - i.at) / 86_400).max(1)));
             drops.carried.push(Some(format!("w:{}", i.id)));
         }
-        hub::Open { waiting, blocked, in_progress, carried, drops }
+        hub::Open {
+            waiting,
+            blocked,
+            in_progress,
+            carried,
+            drops,
+        }
     }
 
     /// Everything on the Outstanding page that can be taken off it, in the
@@ -204,7 +270,11 @@ impl Daemon<'_> {
             .chain(o.blocked.iter().map(|b| b.what.clone()))
             .chain(o.in_progress.iter().map(|p| p.0.clone()))
             .chain(o.carried.iter().map(|c| c.0.clone()));
-        let pad = |v: &Vec<Option<String>>, n: usize| (0..n).map(|i| v.get(i).cloned().flatten()).collect::<Vec<_>>();
+        let pad = |v: &Vec<Option<String>>, n: usize| {
+            (0..n)
+                .map(|i| v.get(i).cloned().flatten())
+                .collect::<Vec<_>>()
+        };
         let keys = pad(&o.drops.waiting, o.waiting.len())
             .into_iter()
             .chain(pad(&o.drops.blocked, o.blocked.len()))
@@ -245,84 +315,165 @@ impl Daemon<'_> {
         match kind {
             "b" => {
                 let id: u64 = rest.parse().map_err(|_| gone())?;
-                let item = self.backlog.outstanding().into_iter().find(|i| i.id == id).cloned().ok_or_else(gone)?;
+                let item = self
+                    .backlog
+                    .outstanding()
+                    .into_iter()
+                    .find(|i| i.id == id)
+                    .cloned()
+                    .ok_or_else(gone)?;
                 self.backlog.dismiss(id);
                 let request = item.request.trim().to_string();
                 self.dropped.retain(|d| d.title != request);
                 self.dropped.push(crate::daily::Dropped {
                     title: request.clone(),
                     when: now,
-                    carried_for: u32::try_from(now.saturating_sub(item.first_seen) / 86_400).unwrap_or(u32::MAX),
+                    carried_for: u32::try_from(now.saturating_sub(item.first_seen) / 86_400)
+                        .unwrap_or(u32::MAX),
                     about: None,
                     thinking: Vec::new(),
                 });
-                let kept = self.backlog.save(&self.store).and_then(|_| self.store.save("dropped", &self.dropped));
-                Ok(OffTheList { title: request, unsaved: kept.err().map(|e| e.to_string()), stopping: false, can_bring_back: true })
+                let kept = self
+                    .backlog
+                    .save(&self.store)
+                    .and_then(|_| self.store.save("dropped", &self.dropped));
+                Ok(OffTheList {
+                    title: request,
+                    unsaved: kept.err().map(|e| e.to_string()),
+                    stopping: false,
+                    can_bring_back: true,
+                })
             }
             "w" => {
-                let i = self.workspace.iter_mut().find(|i| i.id == rest && i.status.live()).ok_or_else(gone)?;
+                let i = self
+                    .workspace
+                    .iter_mut()
+                    .find(|i| i.id == rest && i.status.live())
+                    .ok_or_else(gone)?;
                 i.status = crate::workspace_view::Status::Dropped;
                 i.closed_at = Some(now);
                 let title = i.title.clone();
                 let kept = self.store.save("workspace", &self.workspace);
-                Ok(OffTheList { title, unsaved: kept.err().map(|e| e.to_string()), stopping: false, can_bring_back: false })
+                Ok(OffTheList {
+                    title,
+                    unsaved: kept.err().map(|e| e.to_string()),
+                    stopping: false,
+                    can_bring_back: false,
+                })
             }
             "s" => {
                 let id: u64 = rest.parse().map_err(|_| gone())?;
-                let job = self.scheduler.jobs.iter().find(|job| job.id == id).ok_or_else(gone)?;
-                if !job.in_flight && !job.interrupted { return Err(gone()); }
+                let job = self
+                    .scheduler
+                    .jobs
+                    .iter()
+                    .find(|job| job.id == id)
+                    .ok_or_else(gone)?;
+                if !job.in_flight && !job.interrupted {
+                    return Err(gone());
+                }
                 if job.in_flight && job.worker_id.is_none() && job.file_move_id.is_none() {
                     return Err("That scheduled job is running without a cancellable worker; its result is not confirmed yet.".into());
                 }
                 let title = job.command.trim().to_string();
                 let stopping = job.in_flight;
-                if !self.cancel_scheduled_job(id) { return Err(gone()); }
+                if !self.cancel_scheduled_job(id) {
+                    return Err(gone());
+                }
                 let kept = self.scheduler.save(&self.store);
-                Ok(OffTheList { title, unsaved: kept.err().map(|e| e.to_string()), stopping, can_bring_back: false })
+                Ok(OffTheList {
+                    title,
+                    unsaved: kept.err().map(|e| e.to_string()),
+                    stopping,
+                    can_bring_back: false,
+                })
             }
             "t" => {
                 let id: u64 = rest.parse().map_err(|_| gone())?;
-                let t = self.queue.tasks.iter().find(|t| t.id == id).ok_or_else(gone)?;
+                let t = self
+                    .queue
+                    .tasks
+                    .iter()
+                    .find(|t| t.id == id)
+                    .ok_or_else(gone)?;
                 match t.state {
                     crate::lanes::TaskState::Queued | crate::lanes::TaskState::WaitingForGap => {}
                     crate::lanes::TaskState::Failed if t.interrupted => {}
                     crate::lanes::TaskState::Running => {
                         if let Some(files) = t.file_move_id {
                             let title = t.command.trim().to_string();
-                            if let Some(task) = self.queue.tasks.iter_mut().find(|task| task.id == id) { task.stop_requested = true; }
+                            if let Some(task) =
+                                self.queue.tasks.iter_mut().find(|task| task.id == id)
+                            {
+                                task.stop_requested = true;
+                            }
                             self.stop_file_move(files);
                             let kept = self.queue.save(&self.store);
-                            return Ok(OffTheList { title, unsaved: kept.err().map(|e| e.to_string()), stopping: true, can_bring_back: false });
+                            return Ok(OffTheList {
+                                title,
+                                unsaved: kept.err().map(|e| e.to_string()),
+                                stopping: true,
+                                can_bring_back: false,
+                            });
                         }
                         if let Some(worker) = t.worker_id {
                             let title = t.command.trim().to_string();
-                            if let Some(task) = self.queue.tasks.iter_mut().find(|task| task.id == id) { task.stop_requested = true; }
+                            if let Some(task) =
+                                self.queue.tasks.iter_mut().find(|task| task.id == id)
+                            {
+                                task.stop_requested = true;
+                            }
                             let stopping = self.stop_linked_worker(worker, now);
                             let kept = self.queue.save(&self.store);
-                            return Ok(OffTheList { title, unsaved: kept.err().map(|e| e.to_string()), stopping, can_bring_back: false });
+                            return Ok(OffTheList {
+                                title,
+                                unsaved: kept.err().map(|e| e.to_string()),
+                                stopping,
+                                can_bring_back: false,
+                            });
                         }
-                        return Err("That one's already running, and a queued job can't be stopped part way. It'll be off the list when it finishes.".into())
+                        return Err("That one's already running, and a queued job can't be stopped part way. It'll be off the list when it finishes.".into());
                     }
                     _ => return Err(gone()),
                 }
                 let title = t.command.trim().to_string();
                 self.queue.tasks.retain(|t| t.id != id);
                 let kept = self.queue.save(&self.store);
-                Ok(OffTheList { title, unsaved: kept.err().map(|e| e.to_string()), stopping: false, can_bring_back: false })
+                Ok(OffTheList {
+                    title,
+                    unsaved: kept.err().map(|e| e.to_string()),
+                    stopping: false,
+                    can_bring_back: false,
+                })
             }
             "e" => {
                 let id: u64 = rest.parse().map_err(|_| gone())?;
-                let e = self.crew.errands().into_iter().find(|e| e.id == id).ok_or_else(gone)?;
+                let e = self
+                    .crew
+                    .errands()
+                    .into_iter()
+                    .find(|e| e.id == id)
+                    .ok_or_else(gone)?;
                 // Not waited on: the errand stops at its next safe point and
                 // its ending comes back through `settle` like any other. One
                 // still waiting for a hand is simply dropped.
                 let stopping = self.stop_linked_worker(id, now);
-                Ok(OffTheList { title: e.name, unsaved: None, stopping, can_bring_back: false })
+                Ok(OffTheList {
+                    title: e.name,
+                    unsaved: None,
+                    stopping,
+                    can_bring_back: false,
+                })
             }
             "c" => {
                 let (id, project) = rest.split_once(':').ok_or_else(gone)?;
                 let id: u64 = id.parse().map_err(|_| gone())?;
-                let p = self.workshop.projects.iter_mut().find(|p| p.name == project).ok_or_else(gone)?;
+                let p = self
+                    .workshop
+                    .projects
+                    .iter_mut()
+                    .find(|p| p.name == project)
+                    .ok_or_else(gone)?;
                 let c = p
                     .changes
                     .iter_mut()
@@ -331,7 +482,12 @@ impl Daemon<'_> {
                 c.state = crate::workshop::State::Dropped;
                 let title = format!("Approve \"{}\" ({})", c.title, project);
                 let kept = self.workshop.save(&self.store);
-                Ok(OffTheList { title, unsaved: kept.err().map(|e| e.to_string()), stopping: false, can_bring_back: false })
+                Ok(OffTheList {
+                    title,
+                    unsaved: kept.err().map(|e| e.to_string()),
+                    stopping: false,
+                    can_bring_back: false,
+                })
             }
             _ => Err(gone()),
         }
@@ -381,11 +537,7 @@ impl Daemon<'_> {
         let cfg = self.tools_cfg();
 
         for p in crate::goingaway::plan(&self.accounts.accounts) {
-            out.push((
-                format!("{} — {}", p.site, p.what),
-                p.why.clone(),
-                p.urgency,
-            ));
+            out.push((format!("{} — {}", p.site, p.what), p.why.clone(), p.urgency));
         }
 
         let names: Vec<String> = self
@@ -411,7 +563,11 @@ impl Daemon<'_> {
         }
         // Each way back in, with its weakness said plainly (Eric, B5).
         for s in &self.vault_recovery {
-            out.push(("A way back into the vault".to_string(), crate::recovery::described(s), 0.0));
+            out.push((
+                "A way back into the vault".to_string(),
+                crate::recovery::described(s),
+                0.0,
+            ));
         }
 
         // Worst first, like everything else on this page.
@@ -463,18 +619,40 @@ mod calendar_review_ui_tests {
     use super::*;
     #[test]
     fn unreadable_recovery_is_visible_and_ambiguous_post_cannot_change_it() {
-        let root = std::env::temp_dir().join(format!("atlas-calendar-review-ui-{}-{}", std::process::id(), crate::store::now()));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-calendar-review-ui-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
         let store = crate::store::Store::new(&root);
         let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
         let platform = crate::platform::mock::MockPlatform::new(Vec::new());
-        let mut d = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
         let path = store.root().join("calendar_reminder_receipts.json");
         std::fs::write(&path, b"{broken").unwrap();
         let page = d.outstanding_page_live(crate::store::now());
-        assert!(page.contains("role=alert") && page.contains("Calendar recovery records are unavailable"));
-        let reply = crate::hublive::reply(&mut d, crate::server::Action::HubPost {
-            path: "/hub/calendar/review".into(), fields: vec![("id".into(), "reminder:synthetic".into()), ("token".into(), "synthetic-stale-token".into()), ("what".into(), "retry".into()), ("what".into(), "dismiss".into())],
-        });
+        assert!(
+            page.contains("role=alert")
+                && page.contains("Calendar recovery records are unavailable")
+        );
+        let reply = crate::hublive::reply(
+            &mut d,
+            crate::server::Action::HubPost {
+                path: "/hub/calendar/review".into(),
+                fields: vec![
+                    ("id".into(), "reminder:synthetic".into()),
+                    ("token".into(), "synthetic-stale-token".into()),
+                    ("what".into(), "retry".into()),
+                    ("what".into(), "dismiss".into()),
+                ],
+            },
+        );
         assert!(reply.body.contains("nothing"), "{}", reply.body);
         assert_eq!(std::fs::read(&path).unwrap(), b"{broken");
         drop(d);
@@ -487,12 +665,29 @@ mod scheduled_status_tests {
     use super::*;
     #[test]
     fn live_worker_is_running_and_restart_requires_review_without_retry() {
-        let root = std::env::temp_dir().join(format!("atlas-scheduled-projection-{}-{}", std::process::id(), crate::store::now()));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-scheduled-projection-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
         std::fs::create_dir_all(&root).unwrap();
         let store = crate::store::Store::new(&root);
         let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
-        let platform = crate::platform::mock::MockPlatform::new(vec![crate::platform::Monitor { id: 1, x: 0, y: 0, width: 1280, height: 800, primary: true }]);
-        let mut d = Daemon::new(&cfg, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let platform = crate::platform::mock::MockPlatform::new(vec![crate::platform::Monitor {
+            id: 1,
+            x: 0,
+            y: 0,
+            width: 1280,
+            height: 800,
+            primary: true,
+        }]);
+        let mut d = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
         let id = d.scheduler.every("prepare the report", 60, 1);
         d.scheduler.start_durably(id, &store).unwrap();
         d.scheduler.jobs[0].worker_id = Some(98765);
@@ -501,22 +696,53 @@ mod scheduled_status_tests {
         assert!(needs_you.is_empty(), "live work was presented as failed");
         assert!(day.iter().any(|item| item.what.starts_with("Running:")));
         let open = d.open_work(2);
-        assert!(open.in_progress.iter().any(|(what, status)| what == &sentence("prepare the report") && status.contains("Running now")));
-        assert!(open.drops.in_progress.iter().any(|key| key.as_deref() == Some(format!("s:{id}").as_str())));
-        assert!(!open.blocked.iter().any(|item| item.what == sentence("prepare the report")));
+        assert!(open
+            .in_progress
+            .iter()
+            .any(|(what, status)| what == &sentence("prepare the report")
+                && status.contains("Running now")));
+        assert!(open
+            .drops
+            .in_progress
+            .iter()
+            .any(|key| key.as_deref() == Some(format!("s:{id}").as_str())));
+        assert!(!open
+            .blocked
+            .iter()
+            .any(|item| item.what == sentence("prepare the report")));
         d.scheduler = crate::scheduler::Scheduler::load(&store);
         let prior = d.scheduler.jobs[0].last_result.clone();
         let (needs_you, day) = crate::brief::from_jobs(&d.scheduler, 3);
         assert!(day.is_empty());
-        assert!(needs_you.iter().any(|item| item.subject.contains("Check the previous result before retrying") && item.conflicts_with.as_deref().is_some_and(|text| text.contains("unconfirmed"))));
+        assert!(needs_you.iter().any(|item| item
+            .subject
+            .contains("Check the previous result before retrying")
+            && item
+                .conflicts_with
+                .as_deref()
+                .is_some_and(|text| text.contains("unconfirmed"))));
         let open = d.open_work(3);
-        assert!(open.blocked.iter().any(|item| item.what == sentence("prepare the report") && item.stopped.contains("unconfirmed")));
-        assert!(open.drops.blocked.iter().any(|key| key.as_deref() == Some(format!("s:{id}").as_str())));
-        assert!(!open.in_progress.iter().any(|(what, _)| what == &sentence("prepare the report")));
+        assert!(open
+            .blocked
+            .iter()
+            .any(|item| item.what == sentence("prepare the report")
+                && item.stopped.contains("unconfirmed")));
+        assert!(open
+            .drops
+            .blocked
+            .iter()
+            .any(|key| key.as_deref() == Some(format!("s:{id}").as_str())));
+        assert!(!open
+            .in_progress
+            .iter()
+            .any(|(what, _)| what == &sentence("prepare the report")));
         assert!(d.scheduler.due(1000).is_empty());
         let result = d.drop_outstanding(&format!("s:{id}"), 4).unwrap();
         assert!(!result.stopping && result.unsaved.is_none());
-        assert_eq!(d.scheduler.jobs[0].state, crate::scheduler::JobState::Cancelled);
+        assert_eq!(
+            d.scheduler.jobs[0].state,
+            crate::scheduler::JobState::Cancelled
+        );
         assert!(!d.scheduler.jobs[0].interrupted);
         assert_eq!(d.scheduler.jobs[0].last_result, prior);
         let restored = crate::scheduler::Scheduler::load(&store);

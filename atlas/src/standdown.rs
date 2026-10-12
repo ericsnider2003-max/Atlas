@@ -68,14 +68,19 @@ impl Blackout {
         // the band, not a point — `Event::is_window`'s own note: "modelling it
         // as a point would be precise and wrong". Said, because "wait for the
         // print" has no meaning until it has actually spoken.
-        let banded = self.events().iter().take(3).find(|e| e.is_window()).map(|e| {
-            format!(
-                ". {} has no fixed time — it lands somewhere in its band, so there's no \
+        let banded = self
+            .events()
+            .iter()
+            .take(3)
+            .find(|e| e.is_window())
+            .map(|e| {
+                format!(
+                    ". {} has no fixed time — it lands somewhere in its band, so there's no \
                  'after the print' until it has actually spoken, and a late statement is \
                  itself information",
-                e.name
-            )
-        });
+                    e.name
+                )
+            });
         let banded = banded.unwrap_or_default();
         match self {
             Blackout::Now(_) => format!(
@@ -137,9 +142,11 @@ pub fn standing_down(
         return if cfg.no_clock_is_clear {
             Ok(None)
         } else {
-            Err("these bars carry no timestamps, so I can't tell whether there's a release in \
+            Err(
+                "these bars carry no timestamps, so I can't tell whether there's a release in \
                  front of me. That isn't the same as there not being one"
-                .into())
+                    .into(),
+            )
         };
     };
 
@@ -176,7 +183,9 @@ pub fn standing_down(
 
     // The bar as a span. On M1 this is nearly the same question as the
     // instant; on H4 it is a different one, and it is the one that matters.
-    let Some(tf) = infer(view) else { return Ok(None) };
+    let Some(tf) = infer(view) else {
+        return Ok(None);
+    };
     if let Some(found) = spanning(tf, opened, instrument, cfg.purpose)? {
         return Ok(Some(Blackout::InsideTheBar(found)));
     }
@@ -197,8 +206,8 @@ pub fn spanning(
     purpose: Purpose,
 ) -> Result<Option<Vec<Event>>, String> {
     let (opened, closes) = tf.bar_window(open_ms);
-    let found = crate::market::events::overlapping(opened, closes, instrument, purpose)
-        .map_err(|e| e.0)?;
+    let found =
+        crate::market::events::overlapping(opened, closes, instrument, purpose).map_err(|e| e.0)?;
     Ok((!found.is_empty()).then_some(found))
 }
 

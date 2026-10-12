@@ -263,9 +263,16 @@ fn submit_js() -> String {
 fn says_wrong_password(page_text: &str) -> bool {
     let t = page_text.to_lowercase();
     [
-        "wrong password", "incorrect password", "password is incorrect", "password was incorrect",
-        "incorrect username or password", "invalid password", "invalid username or password",
-        "couldn't sign you in", "that password isn't right", "the password you entered is incorrect",
+        "wrong password",
+        "incorrect password",
+        "password is incorrect",
+        "password was incorrect",
+        "incorrect username or password",
+        "invalid password",
+        "invalid username or password",
+        "couldn't sign you in",
+        "that password isn't right",
+        "the password you entered is incorrect",
         "check your password",
     ]
     .iter()
@@ -327,28 +334,54 @@ pub fn sign_in_at(
         if crate::twofactor::asks_for_code(&page.text) {
             return SignedIn::WantsCode;
         }
-        let still = match b.cdp.eval(&still_signing_in_js()).ok().and_then(|v| v.as_bool()) {
+        let still = match b
+            .cdp
+            .eval(&still_signing_in_js())
+            .ok()
+            .and_then(|v| v.as_bool())
+        {
             Some(still) => still,
-            None => return SignedIn::Unconfirmed("the sign-in page could not be checked reliably".into()),
+            None => {
+                return SignedIn::Unconfirmed(
+                    "the sign-in page could not be checked reliably".into(),
+                )
+            }
         };
         if filled_password && !still {
-            return SignedIn::Unconfirmed("the password form disappeared, but there is no verified session receipt".into());
+            return SignedIn::Unconfirmed(
+                "the password form disappeared, but there is no verified session receipt".into(),
+            );
         }
         if filled_password && still {
             // The same password box again, and no words about why: filling
             // it a second time would only be the same guess twice.
             return SignedIn::Failed("the sign-in page didn't move on after the password".into());
         }
-        match b.cdp.eval(&login_js(user, password)).ok().and_then(|v| v.as_str().map(str::to_string)).as_deref() {
+        match b
+            .cdp
+            .eval(&login_js(user, password))
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .as_deref()
+        {
             Some("both") | Some("password") => filled_password = true,
             Some("user") => {}
-            _ if filled_password => return SignedIn::Unconfirmed("the password form changed without a verified session receipt".into()),
+            _ if filled_password => {
+                return SignedIn::Unconfirmed(
+                    "the password form changed without a verified session receipt".into(),
+                )
+            }
             _ => return SignedIn::NoLoginForm,
         }
     }
     std::thread::sleep(std::time::Duration::from_millis(1500));
     let text = b.cdp.text().unwrap_or_default();
-    let still = b.cdp.eval(&still_signing_in_js()).ok().and_then(|v| v.as_bool()).unwrap_or(false);
+    let still = b
+        .cdp
+        .eval(&still_signing_in_js())
+        .ok()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     if says_wrong_password(&text) {
         SignedIn::Rejected
     } else if crate::twofactor::asks_for_code(&text) {
@@ -365,49 +398,90 @@ pub fn sign_in_at(
 /// the password.
 fn robot_check(page_text: &str) -> bool {
     let t = page_text.to_lowercase();
-    ["not a robot", "are you a robot", "are you human", "verify you are human", "verify you're human",
-     "captcha", "prove you're human", "checking your browser"]
-        .iter()
-        .any(|p| t.contains(p))
+    [
+        "not a robot",
+        "are you a robot",
+        "are you human",
+        "verify you are human",
+        "verify you're human",
+        "captcha",
+        "prove you're human",
+        "checking your browser",
+    ]
+    .iter()
+    .any(|p| t.contains(p))
 }
 
 /// Sites that sign in on a sister domain of their own.
 fn same_family(want: &str, got: &str) -> bool {
     let families: &[&[&str]] = &[
         &["google.com", "gmail.com", "youtube.com"],
-        &["microsoft.com", "live.com", "outlook.com", "microsoftonline.com"],
+        &[
+            "microsoft.com",
+            "live.com",
+            "outlook.com",
+            "microsoftonline.com",
+        ],
         &["x.com", "twitter.com"],
         &["facebook.com", "instagram.com", "meta.com"],
     ];
-    families.iter().any(|f| f.contains(&want) && f.contains(&got))
+    families
+        .iter()
+        .any(|f| f.contains(&want) && f.contains(&got))
 }
 
 /// Put a code in the code box on the page Atlas's browser has open, and
 /// press on. Says whether the page accepted it.
 pub fn enter_code(b: &mut crate::browser::Browser, code: &str) -> Result<SignedIn, String> {
-    use crate::twofactor::{code_box_result, code_box_js, Filled};
+    use crate::twofactor::{code_box_js, code_box_result, Filled};
     let got = b.cdp.eval(&code_box_js(code)).map_err(|e| e.to_string())?;
     match code_box_result(got.as_str().unwrap_or("")) {
         Filled::Done => {}
         Filled::NoBox => return Err("there's no code box on the page any more".into()),
-        Filled::SeveralBoxes(n) => return Err(format!("there are {n} boxes that could be for the code, and I won't guess")),
-        Filled::OnlyAPasswordBox => return Err("the only box is a password box, and a code doesn't go there".into()),
+        Filled::SeveralBoxes(n) => {
+            return Err(format!(
+                "there are {n} boxes that could be for the code, and I won't guess"
+            ))
+        }
+        Filled::OnlyAPasswordBox => {
+            return Err("the only box is a password box, and a code doesn't go there".into())
+        }
     }
-    if b.cdp.eval(&submit_js()).is_err() { return Ok(SignedIn::Unconfirmed("the code submission response was lost".into())); }
+    if b.cdp.eval(&submit_js()).is_err() {
+        return Ok(SignedIn::Unconfirmed(
+            "the code submission response was lost".into(),
+        ));
+    }
     std::thread::sleep(std::time::Duration::from_millis(2500));
-    let text = match b.cdp.text() { Ok(text) => text, Err(_) => return Ok(SignedIn::Unconfirmed("the page could not be read after entering the code".into())) };
+    let text = match b.cdp.text() {
+        Ok(text) => text,
+        Err(_) => {
+            return Ok(SignedIn::Unconfirmed(
+                "the page could not be read after entering the code".into(),
+            ))
+        }
+    };
     Ok(if crate::twofactor::asks_for_code(&text) {
         let t = text.to_lowercase();
-        if ["wrong code", "incorrect code", "invalid code", "code is incorrect", "code didn't work", "try again"]
-            .iter()
-            .any(|w| t.contains(w))
+        if [
+            "wrong code",
+            "incorrect code",
+            "invalid code",
+            "code is incorrect",
+            "code didn't work",
+            "try again",
+        ]
+        .iter()
+        .any(|w| t.contains(w))
         {
             SignedIn::Failed("the site said that code was wrong".into())
         } else {
             SignedIn::WantsCode
         }
     } else {
-        SignedIn::Unconfirmed("the code prompt disappeared, but there is no verified session receipt".into())
+        SignedIn::Unconfirmed(
+            "the code prompt disappeared, but there is no verified session receipt".into(),
+        )
     })
 }
 
@@ -432,9 +506,21 @@ pub enum SignedUp {
 /// code hands it to you. The password was made by `enrol::PasswordPolicy`
 /// and goes into the vault by the caller before this runs, so an account
 /// made halfway is never one whose password was lost.
-pub fn sign_up_unless(b: &mut crate::browser::Browser, enrolment: &mut crate::enrol::Enrolment, email: &str, password: &str, cfg: &crate::enrol::EnrolConfig, start_url: Option<&str>, stop: &dyn Fn() -> bool) -> SignedUp {
-    if stop() { return SignedUp::Failed("stopped before opening the signup form".into()); }
-    let url = start_url.map(str::to_string).unwrap_or_else(|| signup_url(&enrolment.domain));
+pub fn sign_up_unless(
+    b: &mut crate::browser::Browser,
+    enrolment: &mut crate::enrol::Enrolment,
+    email: &str,
+    password: &str,
+    cfg: &crate::enrol::EnrolConfig,
+    start_url: Option<&str>,
+    stop: &dyn Fn() -> bool,
+) -> SignedUp {
+    if stop() {
+        return SignedUp::Failed("stopped before opening the signup form".into());
+    }
+    let url = start_url
+        .map(str::to_string)
+        .unwrap_or_else(|| signup_url(&enrolment.domain));
     if let Err(e) = b.open(&url) {
         return SignedUp::Failed(e.to_string());
     }
@@ -442,12 +528,24 @@ pub fn sign_up_unless(b: &mut crate::browser::Browser, enrolment: &mut crate::en
     let mut submitted = false;
     for _ in 0..4 {
         for _ in 0..30 {
-            if stop() { return if submitted || filled_any { SignedUp::Unconfirmed("stopped after signup fields were touched; check the service before repeating".into()) } else { SignedUp::Failed("stopped before signup fields were touched".into()) }; }
+            if stop() {
+                return if submitted || filled_any {
+                    SignedUp::Unconfirmed("stopped after signup fields were touched; check the service before repeating".into())
+                } else {
+                    SignedUp::Failed("stopped before signup fields were touched".into())
+                };
+            }
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         let page = match b.cdp.eval(&signals_js()) {
             Ok(v) => signals_from(v.as_str().unwrap_or("{}")),
-            Err(e) => return if submitted || filled_any { SignedUp::Unconfirmed(e.to_string()) } else { SignedUp::Failed(e.to_string()) },
+            Err(e) => {
+                return if submitted || filled_any {
+                    SignedUp::Unconfirmed(e.to_string())
+                } else {
+                    SignedUp::Failed(e.to_string())
+                }
+            }
         };
         match enrolment.step(&page, cfg) {
             crate::enrol::Verdict::Carry => {}
@@ -457,27 +555,61 @@ pub fn sign_up_unless(b: &mut crate::browser::Browser, enrolment: &mut crate::en
                 return SignedUp::Stopped(s);
             }
         }
-        if stop() { return if filled_any { SignedUp::Unconfirmed("stopped after earlier form work".into()) } else { SignedUp::Failed("stopped before filling the form".into()) }; }
-        let did = match b.cdp.eval(&signup_fill_js(email, &enrolment.username, password)) {
-            Ok(v) => match v.as_str() { Some(value) => value.to_string(), None => return SignedUp::Unconfirmed("The form-fill result was malformed; account outcome is unknown.".into()) },
+        if stop() {
+            return if filled_any {
+                SignedUp::Unconfirmed("stopped after earlier form work".into())
+            } else {
+                SignedUp::Failed("stopped before filling the form".into())
+            };
+        }
+        let did = match b
+            .cdp
+            .eval(&signup_fill_js(email, &enrolment.username, password))
+        {
+            Ok(v) => match v.as_str() {
+                Some(value) => value.to_string(),
+                None => {
+                    return SignedUp::Unconfirmed(
+                        "The form-fill result was malformed; account outcome is unknown.".into(),
+                    )
+                }
+            },
             Err(e) => return SignedUp::Unconfirmed(format!("The form-fill result was lost: {e}")),
         };
         if did == "none" {
-            return if filled_any { SignedUp::Unconfirmed("The signup fields disappeared; account creation has no verified provider receipt.".into()) } else { SignedUp::NoForm };
+            return if filled_any {
+                SignedUp::Unconfirmed("The signup fields disappeared; account creation has no verified provider receipt.".into())
+            } else {
+                SignedUp::NoForm
+            };
         }
         filled_any = true;
         // Read again with the fields filled: a plan picker or a card box can
         // appear only once an email is in.
         let after = match b.cdp.eval(&signals_js()) {
             Ok(v) => signals_from(v.as_str().unwrap_or("{}")),
-            Err(e) => return if submitted || filled_any { SignedUp::Unconfirmed(e.to_string()) } else { SignedUp::Failed(e.to_string()) },
+            Err(e) => {
+                return if submitted || filled_any {
+                    SignedUp::Unconfirmed(e.to_string())
+                } else {
+                    SignedUp::Failed(e.to_string())
+                }
+            }
         };
-        if let crate::enrol::Verdict::HandOver(s) | crate::enrol::Verdict::Abandon(s) = enrolment.step(&after, cfg) {
+        if let crate::enrol::Verdict::HandOver(s) | crate::enrol::Verdict::Abandon(s) =
+            enrolment.step(&after, cfg)
+        {
             return SignedUp::Stopped(s);
         }
-        if stop() { return SignedUp::Unconfirmed("stopped after filling signup fields; check the service before repeating".into()); }
+        if stop() {
+            return SignedUp::Unconfirmed(
+                "stopped after filling signup fields; check the service before repeating".into(),
+            );
+        }
         submitted = true;
-        if let Err(e) = b.cdp.eval(&submit_js()) { return SignedUp::Unconfirmed(format!("The signup submit result was lost: {e}")); }
+        if let Err(e) = b.cdp.eval(&submit_js()) {
+            return SignedUp::Unconfirmed(format!("The signup submit result was lost: {e}"));
+        }
     }
     SignedUp::Unconfirmed("The bounded form run ended without a verified account receipt.".into())
 }
@@ -494,7 +626,9 @@ mod tests {
 
     #[test]
     fn wrong_password_is_recognised() {
-        assert!(says_wrong_password("Wrong password. Try again or click Forgot password"));
+        assert!(says_wrong_password(
+            "Wrong password. Try again or click Forgot password"
+        ));
         assert!(!says_wrong_password("Welcome back, Eric"));
     }
 }
@@ -502,51 +636,120 @@ mod tests {
 #[cfg(test)]
 mod signup_receipts {
     use super::*;
-    use std::io::{Read, Write};
     use serde_json::{json, Value};
+    use std::io::{Read, Write};
     fn peer(lose_submit: bool) -> (crate::browser::Browser, std::thread::JoinHandle<usize>) {
-        peer_values(vec![Value::Null, json!("{}"), json!("email,password"), json!("{}"), json!("clicked"), json!("{}"), json!("none")], if lose_submit { Some(5) } else { None })
+        peer_values(
+            vec![
+                Value::Null,
+                json!("{}"),
+                json!("email,password"),
+                json!("{}"),
+                json!("clicked"),
+                json!("{}"),
+                json!("none"),
+            ],
+            if lose_submit { Some(5) } else { None },
+        )
     }
-    fn peer_values(values: Vec<Value>, lose_at: Option<usize>) -> (crate::browser::Browser, std::thread::JoinHandle<usize>) {
+    fn peer_values(
+        values: Vec<Value>,
+        lose_at: Option<usize>,
+    ) -> (crate::browser::Browser, std::thread::JoinHandle<usize>) {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("ws://{}/fixture", listener.local_addr().unwrap());
         let task = std::thread::spawn(move || {
-            let (mut socket, _) = listener.accept().unwrap(); socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
-            let mut headers = Vec::new(); let mut byte = [0];
-            while !headers.ends_with(b"\r\n\r\n") { socket.read_exact(&mut byte).unwrap(); headers.push(byte[0]); }
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            let mut headers = Vec::new();
+            let mut byte = [0];
+            while !headers.ends_with(b"\r\n\r\n") {
+                socket.read_exact(&mut byte).unwrap();
+                headers.push(byte[0]);
+            }
             socket.write_all(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n").unwrap();
             let mut count = 0;
             for value in values {
-                let mut frame = [0;2]; if socket.read_exact(&mut frame).is_err() { break; }
-                let mut len = (frame[1]&127) as usize;
-                if len == 126 { let mut size = [0;2]; socket.read_exact(&mut size).unwrap(); len = u16::from_be_bytes(size) as usize; }
-                assert!(len < 65536); let mut mask = [0;4]; socket.read_exact(&mut mask).unwrap();
-                let mut bytes = vec![0;len]; socket.read_exact(&mut bytes).unwrap(); crate::ws::unmask(&mut bytes, mask);
-                let call: Value = serde_json::from_slice(&bytes).unwrap(); count += 1;
-                if lose_at == Some(count) { break; }
+                let mut frame = [0; 2];
+                if socket.read_exact(&mut frame).is_err() {
+                    break;
+                }
+                let mut len = (frame[1] & 127) as usize;
+                if len == 126 {
+                    let mut size = [0; 2];
+                    socket.read_exact(&mut size).unwrap();
+                    len = u16::from_be_bytes(size) as usize;
+                }
+                assert!(len < 65536);
+                let mut mask = [0; 4];
+                socket.read_exact(&mut mask).unwrap();
+                let mut bytes = vec![0; len];
+                socket.read_exact(&mut bytes).unwrap();
+                crate::ws::unmask(&mut bytes, mask);
+                let call: Value = serde_json::from_slice(&bytes).unwrap();
+                count += 1;
+                if lose_at == Some(count) {
+                    break;
+                }
                 let body = json!({"id":call["id"],"result":{"result":{"value":value}}}).to_string();
-                let mut answer = vec![0x81]; if body.len()<126 { answer.push(body.len() as u8); } else { answer.push(126); answer.extend_from_slice(&(body.len() as u16).to_be_bytes()); } answer.extend_from_slice(body.as_bytes()); socket.write_all(&answer).unwrap();
+                let mut answer = vec![0x81];
+                if body.len() < 126 {
+                    answer.push(body.len() as u8);
+                } else {
+                    answer.push(126);
+                    answer.extend_from_slice(&(body.len() as u16).to_be_bytes());
+                }
+                answer.extend_from_slice(body.as_bytes());
+                socket.write_all(&answer).unwrap();
             }
             count
         });
-        (crate::browser::Browser::from_test_cdp(crate::cdp::Cdp::connect(&url, std::time::Duration::from_millis(50)).unwrap()), task)
+        (
+            crate::browser::Browser::from_test_cdp(
+                crate::cdp::Cdp::connect(&url, std::time::Duration::from_millis(50)).unwrap(),
+            ),
+            task,
+        )
     }
     #[test]
     fn vanished_form_and_lost_submit_never_claim_an_account_exists() {
         for lost in [false, true] {
             let (mut browser, task) = peer(lost);
             let mut enrolment = crate::enrol::Enrolment::new("fixture.test", "fixture", 100);
-            let result = sign_up_unless(&mut browser, &mut enrolment, "fixture@example.test", "fake generated password", &crate::enrol::EnrolConfig::default(), None, &|| false);
+            let result = sign_up_unless(
+                &mut browser,
+                &mut enrolment,
+                "fixture@example.test",
+                "fake generated password",
+                &crate::enrol::EnrolConfig::default(),
+                None,
+                &|| false,
+            );
             assert!(matches!(result, SignedUp::Unconfirmed(_)), "{result:?}");
-            drop(browser); assert_eq!(task.join().unwrap(), if lost { 5 } else { 7 });
+            drop(browser);
+            assert_eq!(task.join().unwrap(), if lost { 5 } else { 7 });
         }
     }
     #[test]
     fn stopped_signup_makes_zero_protocol_calls() {
         let (mut browser, task) = peer(false);
         let mut enrolment = crate::enrol::Enrolment::new("fixture.test", "fixture", 100);
-        assert!(matches!(sign_up_unless(&mut browser, &mut enrolment, "fixture@example.test", "fake generated password", &crate::enrol::EnrolConfig::default(), None, &|| true), SignedUp::Failed(_)));
-        drop(browser); assert_eq!(task.join().unwrap(), 0);
+        assert!(matches!(
+            sign_up_unless(
+                &mut browser,
+                &mut enrolment,
+                "fixture@example.test",
+                "fake generated password",
+                &crate::enrol::EnrolConfig::default(),
+                None,
+                &|| true
+            ),
+            SignedUp::Failed(_)
+        ));
+        drop(browser);
+        assert_eq!(task.join().unwrap(), 0);
     }
     #[test]
     fn vanished_password_or_code_prompt_is_not_a_session_receipt() {
@@ -554,11 +757,39 @@ mod signup_receipts {
         // Navigation emits both Page.enable and Page.navigate before any
         // form inspection. Keep those responses separate so this fixture
         // actually fills a password before checking the vanished form.
-        let (mut b, task) = peer_values(vec![Value::Null, Value::Null, page.clone(), json!(true), json!("password"), page, json!(false)], None);
-        assert!(matches!(sign_in_at(&mut b, "fixture.test", "https://fixture.test/login", "fixture", "fake password"), SignedIn::Unconfirmed(_)));
-        drop(b); assert_eq!(task.join().unwrap(), 7);
-        let (mut b, task) = peer_values(vec![json!("filled"), json!("clicked"), json!("Welcome")], None);
-        assert!(matches!(enter_code(&mut b, "123456").unwrap(), SignedIn::Unconfirmed(_)));
-        drop(b); assert_eq!(task.join().unwrap(), 3);
+        let (mut b, task) = peer_values(
+            vec![
+                Value::Null,
+                Value::Null,
+                page.clone(),
+                json!(true),
+                json!("password"),
+                page,
+                json!(false),
+            ],
+            None,
+        );
+        assert!(matches!(
+            sign_in_at(
+                &mut b,
+                "fixture.test",
+                "https://fixture.test/login",
+                "fixture",
+                "fake password"
+            ),
+            SignedIn::Unconfirmed(_)
+        ));
+        drop(b);
+        assert_eq!(task.join().unwrap(), 7);
+        let (mut b, task) = peer_values(
+            vec![json!("filled"), json!("clicked"), json!("Welcome")],
+            None,
+        );
+        assert!(matches!(
+            enter_code(&mut b, "123456").unwrap(),
+            SignedIn::Unconfirmed(_)
+        ));
+        drop(b);
+        assert_eq!(task.join().unwrap(), 3);
     }
 }

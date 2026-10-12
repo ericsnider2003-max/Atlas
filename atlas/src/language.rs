@@ -83,7 +83,11 @@ pub fn model_facts(filename: &str) -> ModelFacts {
     } else {
         142
     };
-    ModelFacts { name: filename.to_string(), english_only, megabytes }
+    ModelFacts {
+        name: filename.to_string(),
+        english_only,
+        megabytes,
+    }
 }
 
 /// The bigger model to try when accents are being missed.
@@ -124,8 +128,16 @@ pub fn template_vars(cfg: &LanguageConfig, model: &ModelFacts) -> (String, Strin
     if model.english_only || !cfg.multilingual {
         return (String::new(), "transcribe".into());
     }
-    let language = if cfg.my_language.is_empty() { "auto".into() } else { cfg.my_language.clone() };
-    let task = if cfg.translate_others { "translate" } else { "transcribe" };
+    let language = if cfg.my_language.is_empty() {
+        "auto".into()
+    } else {
+        cfg.my_language.clone()
+    };
+    let task = if cfg.translate_others {
+        "translate"
+    } else {
+        "transcribe"
+    };
     (language, task.into())
 }
 
@@ -150,7 +162,14 @@ pub fn insert_whisper_vars(
         vars.insert("lang_opt".into(), "-l".into());
         vars.insert("lang_val".into(), language);
     }
-    vars.insert("task_opt".into(), if task == "translate" { "-tr".into() } else { String::new() });
+    vars.insert(
+        "task_opt".into(),
+        if task == "translate" {
+            "-tr".into()
+        } else {
+            String::new()
+        },
+    );
     // Your words as hints (H11) are added by the voice when there are any;
     // empty here, so the command never carries the placeholder itself.
     vars.entry("hint_opt".into()).or_default();
@@ -218,7 +237,9 @@ pub fn plan(detected: &str, cfg: &LanguageConfig, model: &ModelFacts) -> Plan {
     let mine = cfg.my_language == "auto" || detected.eq_ignore_ascii_case(&cfg.my_language);
 
     if mine || detected.is_empty() {
-        return Plan::Transcribe { language: cfg.my_language.clone() };
+        return Plan::Transcribe {
+            language: cfg.my_language.clone(),
+        };
     }
     if model.english_only {
         // Worth being exact about: this isn't a quality problem, the model
@@ -232,9 +253,13 @@ pub fn plan(detected: &str, cfg: &LanguageConfig, model: &ModelFacts) -> Plan {
         };
     }
     if cfg.translate_others {
-        Plan::Translate { from: detected.to_string() }
+        Plan::Translate {
+            from: detected.to_string(),
+        }
     } else {
-        Plan::Transcribe { language: detected.to_string() }
+        Plan::Transcribe {
+            language: detected.to_string(),
+        }
     }
 }
 
@@ -265,7 +290,11 @@ impl Listening {
 
     /// Is it struggling enough to be worth mentioning?
     pub fn struggling(&self, cfg: &LanguageConfig) -> bool {
-        let poor = self.recent.iter().filter(|c| **c < cfg.min_confidence).count() as u32;
+        let poor = self
+            .recent
+            .iter()
+            .filter(|c| **c < cfg.min_confidence)
+            .count() as u32;
         poor >= cfg.struggles_before_suggesting
     }
 
@@ -354,7 +383,8 @@ pub fn live_line(t: &Turn) -> String {
 /// configured one is the shipped `ggml-base.en.bin`, else the configured one
 /// (29 Sep 2026). A model you named yourself is always kept.
 pub fn speech_model_for(configured: &str, root: &std::path::Path) -> String {
-    let shipped = configured.replace('\\', "/").ends_with("ggml-base.en.bin") || configured.trim().is_empty();
+    let shipped =
+        configured.replace('\\', "/").ends_with("ggml-base.en.bin") || configured.trim().is_empty();
     let sharper = root.join(crate::getpieces::SHARPER_LISTENING_MODEL);
     if shipped && sharper.is_file() {
         return sharper.display().to_string();

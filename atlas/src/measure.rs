@@ -58,8 +58,7 @@ pub const SIBILANCE_WITHIN_DB: f32 = 14.0;
 pub const LOW_BAND: &str = "lowpass=f=80,lowpass=f=80,lowpass=f=80,lowpass=f=80";
 
 /// The sibilance band, steepened for the same reason.
-pub const SIBILANCE_BAND: &str =
-    "highpass=f=5000,highpass=f=5000,lowpass=f=9000,lowpass=f=9000";
+pub const SIBILANCE_BAND: &str = "highpass=f=5000,highpass=f=5000,lowpass=f=9000,lowpass=f=9000";
 
 /// Loudness, true peak and range out of ffmpeg's `loudnorm` JSON block.
 pub fn loudness_from_loudnorm(text: &str) -> Option<(f32, f32, f32)> {
@@ -228,7 +227,17 @@ fn words(v: &[&str]) -> Vec<String> {
 }
 
 fn one_filter(path: &str, filter: &str) -> Vec<String> {
-    words(&["-hide_banner", "-nostats", "-i", path, "-af", filter, "-f", "null", "-"])
+    words(&[
+        "-hide_banner",
+        "-nostats",
+        "-i",
+        path,
+        "-af",
+        filter,
+        "-f",
+        "null",
+        "-",
+    ])
 }
 
 /// Measure a file's sound.
@@ -245,7 +254,10 @@ pub fn audio_of(ffmpeg: &ExternalTool, path: &str) -> Result<Audio> {
 
     let stats = say(
         ffmpeg,
-        &one_filter(path, "astats=measure_perchannel=none:measure_overall=Noise_floor"),
+        &one_filter(
+            path,
+            "astats=measure_perchannel=none:measure_overall=Noise_floor",
+        ),
     )?;
     let noise = noise_floor_from_astats(&stats).unwrap_or(-60.0);
 
@@ -285,9 +297,8 @@ pub fn audio_of(ffmpeg: &ExternalTool, path: &str) -> Result<Audio> {
 /// keeps a long clip's measurement to well under a second.
 pub fn picture_of(ffmpeg: &ExternalTool, ffprobe: &ExternalTool, path: &str) -> Result<Picture> {
     let probe = say(ffprobe, &crate::edit::probe_args(path))?;
-    let (width, height, fps) = frame_shape_from_probe(&probe).ok_or_else(|| {
-        AtlasError::Platform("ffprobe found no video stream in that file".into())
-    })?;
+    let (width, height, fps) = frame_shape_from_probe(&probe)
+        .ok_or_else(|| AtlasError::Platform("ffprobe found no video stream in that file".into()))?;
 
     let frames = bytes_of(
         ffmpeg,

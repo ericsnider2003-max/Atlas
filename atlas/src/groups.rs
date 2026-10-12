@@ -115,7 +115,11 @@ pub struct GroupState {
 impl GroupState {
     /// May this key change the group: the owner, or a device the owner vouched for.
     pub fn may_change(&self, key: &str) -> bool {
-        key == self.owner || self.delegates.iter().any(|d| d.device == key && peerkey::verify_delegation(&self.owner, d))
+        key == self.owner
+            || self
+                .delegates
+                .iter()
+                .any(|d| d.device == key && peerkey::verify_delegation(&self.owner, d))
     }
     pub fn seat(&self, key: &str) -> Option<&Seat> {
         self.seats.iter().find(|s| s.key == key)
@@ -125,7 +129,11 @@ impl GroupState {
     }
     /// Is this one of the owner's other devices, vouched for by the owner's key?
     pub fn is_delegate(&self, key: &str) -> bool {
-        key != self.owner && self.delegates.iter().any(|d| d.device == key && peerkey::verify_delegation(&self.owner, d))
+        key != self.owner
+            && self
+                .delegates
+                .iter()
+                .any(|d| d.device == key && peerkey::verify_delegation(&self.owner, d))
     }
     /// Who this key speaks as in the group: its seat, or -- for a device the
     /// owner vouched for, like the owner's phone -- the owner. Your phone is
@@ -134,7 +142,8 @@ impl GroupState {
         if let Some(role) = self.role_of(key) {
             return Some((key.to_string(), role));
         }
-        self.is_delegate(key).then(|| (self.owner.clone(), Role::Owner))
+        self.is_delegate(key)
+            .then(|| (self.owner.clone(), Role::Owner))
     }
 }
 
@@ -157,22 +166,34 @@ fn new_group_id(owner: &str) -> Option<String> {
     let fp = peerkey::fingerprint(owner)?;
     let mut r = [0u8; 8];
     chacha20poly1305::aead::OsRng.fill_bytes(&mut r);
-    Some(format!("og-{fp}-{}", r.iter().map(|b| format!("{b:02x}")).collect::<String>()))
+    Some(format!(
+        "og-{fp}-{}",
+        r.iter().map(|b| format!("{b:02x}")).collect::<String>()
+    ))
 }
 
 /// Is this the id of a group with an owner? Strict, so no older group's id
 /// can be mistaken for one.
 pub fn is_owned_id(id: &str) -> bool {
-    let Some(rest) = id.strip_prefix("og-") else { return false };
-    let Some((fp, r)) = rest.split_once('-') else { return false };
-    let hex = |s: &str, n: usize| s.len() == n && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    let Some(rest) = id.strip_prefix("og-") else {
+        return false;
+    };
+    let Some((fp, r)) = rest.split_once('-') else {
+        return false;
+    };
+    let hex = |s: &str, n: usize| {
+        s.len() == n && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    };
     hex(fp, 32) && hex(r, 16)
 }
 
 /// Everything that must be true of a state for anyone to take it.
 fn check(s: &GroupState) -> Result<(), String> {
     if s.format != FORMAT {
-        return Err(format!("it's written in a group format this Atlas doesn't read ({})", s.format));
+        return Err(format!(
+            "it's written in a group format this Atlas doesn't read ({})",
+            s.format
+        ));
     }
     if !is_owned_id(&s.group_id) {
         return Err("its id isn't an owned group's".into());
@@ -226,8 +247,13 @@ pub fn open(signed: &Signed) -> Result<GroupState, String> {
     if signed.state.len() > MAX_STATE_BYTES {
         return Err("it's larger than any group's list could be".into());
     }
-    let s: GroupState = serde_json::from_str(&signed.state).map_err(|e| format!("it doesn't read ({e})"))?;
-    let signer = if signed.signer.is_empty() { s.owner.as_str() } else { signed.signer.as_str() };
+    let s: GroupState =
+        serde_json::from_str(&signed.state).map_err(|e| format!("it doesn't read ({e})"))?;
+    let signer = if signed.signer.is_empty() {
+        s.owner.as_str()
+    } else {
+        signed.signer.as_str()
+    };
     if !s.may_change(signer) {
         return Err("it's signed by a key that can't change this group".into());
     }
@@ -242,8 +268,16 @@ fn seal(me: &Identity, s: &GroupState) -> Result<Signed, String> {
     check(s)?;
     let state = serde_json::to_string(s).map_err(|e| e.to_string())?;
     let signature = me.sign(DOMAIN, state.as_bytes());
-    let signer = if me.public() == s.owner { String::new() } else { me.public() };
-    Ok(Signed { state, signature, signer })
+    let signer = if me.public() == s.owner {
+        String::new()
+    } else {
+        me.public()
+    };
+    Ok(Signed {
+        state,
+        signature,
+        signer,
+    })
 }
 
 /// A group this Atlas holds the list for.
@@ -344,10 +378,12 @@ impl Groups {
             if s.version <= h.state.version {
                 return Ok(Taken::NotNewer);
             }
-            self.held.insert(s.group_id.clone(), Held { signed, state: s });
+            self.held
+                .insert(s.group_id.clone(), Held { signed, state: s });
             return Ok(Taken::Newer);
         }
-        self.held.insert(s.group_id.clone(), Held { signed, state: s });
+        self.held
+            .insert(s.group_id.clone(), Held { signed, state: s });
         Ok(Taken::New)
     }
 
@@ -364,8 +400,9 @@ impl Groups {
 
     /// The held messages for a group, taken out to be filed now.
     pub fn release_waiting(&mut self, group_id: &str) -> Vec<Waiting> {
-        let (mine, rest): (Vec<Waiting>, Vec<Waiting>) =
-            std::mem::take(&mut self.waiting).into_iter().partition(|w| w.group_id == group_id);
+        let (mine, rest): (Vec<Waiting>, Vec<Waiting>) = std::mem::take(&mut self.waiting)
+            .into_iter()
+            .partition(|w| w.group_id == group_id);
         self.waiting = rest;
         mine
     }
@@ -381,13 +418,21 @@ impl Groups {
     ) -> Result<String, String> {
         let owner = me.public();
         let id = new_group_id(&owner).ok_or("couldn't make an id")?;
-        let mut seats = vec![Seat { key: owner.clone(), name: "me".into(), role: Role::Owner }];
+        let mut seats = vec![Seat {
+            key: owner.clone(),
+            name: "me".into(),
+            role: Role::Owner,
+        }];
         for (key, who, role) in people {
             if *key == owner {
                 continue;
             }
             let role = if release_channel { Role::Reader } else { *role };
-            seats.push(Seat { key: key.clone(), name: who.clone(), role });
+            seats.push(Seat {
+                key: key.clone(),
+                name: who.clone(),
+                role,
+            });
         }
         let s = GroupState {
             format: FORMAT,
@@ -397,7 +442,12 @@ impl Groups {
             version: 1,
             seats,
             release_channel,
-            delegates: self.my_devices.iter().filter(|d| **d != me.public()).map(|d| me.delegate(d)).collect(),
+            delegates: self
+                .my_devices
+                .iter()
+                .filter(|d| **d != me.public())
+                .map(|d| me.delegate(d))
+                .collect(),
         };
         let signed = seal(me, &s)?;
         self.held.insert(id.clone(), Held { signed, state: s });
@@ -414,24 +464,47 @@ impl Groups {
     ) -> Result<String, String> {
         let h = self.held.get(group_id).ok_or("there's no such group")?;
         if !h.state.may_change(&me.public()) {
-            return Err(format!("only whoever made \"{}\" can change who's in it", h.state.name));
+            return Err(format!(
+                "only whoever made \"{}\" can change who's in it",
+                h.state.name
+            ));
         }
         let mut s = h.state.clone();
         let said = f(&mut s)?;
         s.version += 1;
         let signed = seal(me, &s)?;
-        self.held.insert(group_id.to_string(), Held { signed, state: s });
+        self.held
+            .insert(group_id.to_string(), Held { signed, state: s });
         Ok(said)
     }
 
-    pub fn add(&mut self, me: &Identity, group_id: &str, key: &str, name: &str, role: Role) -> Result<String, String> {
+    pub fn add(
+        &mut self,
+        me: &Identity,
+        group_id: &str,
+        key: &str,
+        name: &str,
+        role: Role,
+    ) -> Result<String, String> {
         self.change(me, group_id, |s| {
             if s.seat(key).is_some() {
                 return Err(format!("{name} is already in it"));
             }
-            let role = if s.release_channel { Role::Reader } else { role };
-            s.seats.push(Seat { key: key.to_string(), name: name.to_string(), role });
-            Ok(format!("Added {name} to \"{}\" as a {}.", s.name, role.plain()))
+            let role = if s.release_channel {
+                Role::Reader
+            } else {
+                role
+            };
+            s.seats.push(Seat {
+                key: key.to_string(),
+                name: name.to_string(),
+                role,
+            });
+            Ok(format!(
+                "Added {name} to \"{}\" as a {}.",
+                s.name,
+                role.plain()
+            ))
         })
     }
 
@@ -444,22 +517,37 @@ impl Groups {
             s.seats.retain(|x| x.key != key);
             Ok(format!("Took {} out of \"{}\".", seat.name, s.name))
         })?;
-        self.removed_owed.push((group_id.to_string(), key.to_string()));
+        self.removed_owed
+            .push((group_id.to_string(), key.to_string()));
         Ok(said)
     }
 
-    pub fn set_role(&mut self, me: &Identity, group_id: &str, key: &str, role: Role) -> Result<String, String> {
+    pub fn set_role(
+        &mut self,
+        me: &Identity,
+        group_id: &str,
+        key: &str,
+        role: Role,
+    ) -> Result<String, String> {
         self.change(me, group_id, |s| {
             if s.release_channel && role == Role::Member {
                 return Err("in a release channel only you post".into());
             }
             let name = s.name.clone();
-            let seat = s.seats.iter_mut().find(|x| x.key == key).ok_or("they aren't in it")?;
+            let seat = s
+                .seats
+                .iter_mut()
+                .find(|x| x.key == key)
+                .ok_or("they aren't in it")?;
             if seat.role == Role::Owner {
                 return Err("you're the owner; that doesn't change".into());
             }
             seat.role = role;
-            Ok(format!("{} is now a {} in \"{name}\".", seat.name, role.plain()))
+            Ok(format!(
+                "{} is now a {} in \"{name}\".",
+                seat.name,
+                role.plain()
+            ))
         })
     }
 
@@ -477,18 +565,22 @@ impl Groups {
         let mine: Vec<String> = self
             .held
             .iter()
-            .filter(|(_, h)| h.state.owner == me.public() && !h.state.delegates.iter().any(|d| d.device == device))
+            .filter(|(_, h)| {
+                h.state.owner == me.public()
+                    && !h.state.delegates.iter().any(|d| d.device == device)
+            })
             .map(|(id, _)| id.clone())
             .collect();
         let d = me.delegate(device);
         let mut n = 0;
         for id in mine {
             let d = d.clone();
-            if self.change(me, &id, move |s| {
-                s.delegates.push(d);
-                Ok(String::new())
-            })
-            .is_ok()
+            if self
+                .change(me, &id, move |s| {
+                    s.delegates.push(d);
+                    Ok(String::new())
+                })
+                .is_ok()
             {
                 n += 1;
             }
@@ -498,8 +590,16 @@ impl Groups {
 
     /// A group by the name it goes by, if exactly one.
     pub fn named(&self, name: &str) -> Option<&Held> {
-        let n = name.trim().trim_start_matches("the ").trim_end_matches(" group").trim();
-        let hits: Vec<&Held> = self.held.values().filter(|h| h.state.name.eq_ignore_ascii_case(n)).collect();
+        let n = name
+            .trim()
+            .trim_start_matches("the ")
+            .trim_end_matches(" group")
+            .trim();
+        let hits: Vec<&Held> = self
+            .held
+            .values()
+            .filter(|h| h.state.name.eq_ignore_ascii_case(n))
+            .collect();
         (hits.len() == 1).then(|| hits[0])
     }
 
@@ -512,9 +612,19 @@ impl Groups {
         for (gid, h) in self.held.iter().filter(|(_, h)| h.state.may_change(me)) {
             // Everyone seated, and the owner's other devices: your phone
             // gets the list over its pairing as well as through sync.
-            let keys = h.state.seats.iter().map(|s| s.key.as_str()).chain(h.state.delegates.iter().map(|d| d.device.as_str()));
+            let keys = h
+                .state
+                .seats
+                .iter()
+                .map(|s| s.key.as_str())
+                .chain(h.state.delegates.iter().map(|d| d.device.as_str()));
             for key in keys.filter(|k| *k != me) {
-                let had = self.delivered.get(key).and_then(|m| m.get(gid)).copied().unwrap_or(0);
+                let had = self
+                    .delivered
+                    .get(key)
+                    .and_then(|m| m.get(gid))
+                    .copied()
+                    .unwrap_or(0);
                 if had < h.state.version {
                     out.push((gid.clone(), key.to_string()));
                 }
@@ -532,7 +642,9 @@ impl Groups {
     /// except its author, the device that handed it over, and you -- your own
     /// other devices included, so your phone hears the group too.
     pub fn relay(&mut self, me: &str, group_id: &str, author: &str, sent_by: &str, w: &Waiting) {
-        let Some(h) = self.held.get(group_id) else { return };
+        let Some(h) = self.held.get(group_id) else {
+            return;
+        };
         if h.state.owner != me {
             // Only the seat that is the owner relays -- the one every member
             // is paired with and believes when it speaks for someone.
@@ -568,9 +680,17 @@ impl Groups {
 
     /// Their Atlas took the list.
     pub fn delivered_to(&mut self, group_id: &str, key: &str) {
-        let v = self.held.get(group_id).map(|h| h.state.version).unwrap_or(0);
-        self.delivered.entry(key.to_string()).or_default().insert(group_id.to_string(), v);
-        self.removed_owed.retain(|(g, k)| !(g == group_id && k == key));
+        let v = self
+            .held
+            .get(group_id)
+            .map(|h| h.state.version)
+            .unwrap_or(0);
+        self.delivered
+            .entry(key.to_string())
+            .or_default()
+            .insert(group_id.to_string(), v);
+        self.removed_owed
+            .retain(|(g, k)| !(g == group_id && k == key));
     }
 }
 
@@ -599,7 +719,9 @@ pub fn views(store: &Store, peer_dir: &std::path::Path) -> (Vec<View>, Vec<Strin
         if Some(&s.key) == me.as_ref() {
             "you".into()
         } else {
-            pairings.name_of_key(&s.key).unwrap_or_else(|| s.name.clone())
+            pairings
+                .name_of_key(&s.key)
+                .unwrap_or_else(|| s.name.clone())
         }
     };
     let views = groups
@@ -611,10 +733,20 @@ pub fn views(store: &Store, peer_dir: &std::path::Path) -> (Vec<View>, Vec<Strin
             mine: me.as_deref().is_some_and(|k| h.state.may_change(k)),
             release_channel: h.state.release_channel,
             owner: h.state.seat(&h.state.owner).map(named).unwrap_or_default(),
-            seats: h.state.seats.iter().map(|s| (named(s), s.role, s.key.clone())).collect(),
+            seats: h
+                .state
+                .seats
+                .iter()
+                .map(|s| (named(s), s.role, s.key.clone()))
+                .collect(),
         })
         .collect();
-    let addable = pairings.peers.iter().filter(|p| p.key.is_some()).map(|p| p.name.clone()).collect();
+    let addable = pairings
+        .peers
+        .iter()
+        .filter(|p| p.key.is_some())
+        .map(|p| p.name.clone())
+        .collect();
     (views, addable)
 }
 
@@ -629,7 +761,11 @@ pub fn read_spoken(said: &str) -> Option<(&'static str, String, String, String)>
     let lower = t.to_ascii_lowercase();
     let group_of = |g: &str| -> Option<String> {
         let g = g.trim();
-        let g = if g.to_ascii_lowercase().starts_with("the ") { &g[4..] } else { g };
+        let g = if g.to_ascii_lowercase().starts_with("the ") {
+            &g[4..]
+        } else {
+            g
+        };
         let g = g.strip_suffix(" group").unwrap_or(g).trim();
         (!g.is_empty()).then(|| g.to_string())
     };
@@ -648,7 +784,11 @@ pub fn read_spoken(said: &str) -> Option<(&'static str, String, String, String)>
             Some(at) => (tail[..at].to_string(), tail[at..].to_lowercase()),
             None => (tail.clone(), String::new()),
         };
-        let role = if role.contains("reader") { "reader" } else { "" };
+        let role = if role.contains("reader") {
+            "reader"
+        } else {
+            ""
+        };
         return Some(("add", who, group_of(&group)?, role.into()));
     }
     if lower.starts_with("take ") {
@@ -660,7 +800,12 @@ pub fn read_spoken(said: &str) -> Option<(&'static str, String, String, String)>
         return Some(("remove", who, group_of(&tail)?, String::new()));
     }
     if lower.starts_with("make ") {
-        for (sep, role) in [(" a reader in ", "reader"), (" a reader of ", "reader"), (" a member of ", "member"), (" a member in ", "member")] {
+        for (sep, role) in [
+            (" a reader in ", "reader"),
+            (" a reader of ", "reader"),
+            (" a member of ", "member"),
+            (" a member in ", "member"),
+        ] {
             if let Some((who, tail)) = cut(5, sep) {
                 return Some(("role", who, group_of(&tail)?, role.into()));
             }
@@ -696,12 +841,20 @@ pub fn changes_to_carry(store: &Store, my_key: &str) -> Vec<(String, String, Str
     let mut out = Vec::new();
     for (gid, h) in &groups.held {
         if told.versions.get(gid).copied().unwrap_or(0) < h.state.version {
-            out.push((format!("{SYNC_GROUP}{gid}"), "state".into(), serde_json::to_string(&h.signed).unwrap_or_default()));
+            out.push((
+                format!("{SYNC_GROUP}{gid}"),
+                "state".into(),
+                serde_json::to_string(&h.signed).unwrap_or_default(),
+            ));
             told.versions.insert(gid.clone(), h.state.version);
         }
     }
     if told.device != my_key && !my_key.is_empty() {
-        out.push((format!("{SYNC_DEVICE}{my_key}"), "key".into(), my_key.to_string()));
+        out.push((
+            format!("{SYNC_DEVICE}{my_key}"),
+            "key".into(),
+            my_key.to_string(),
+        ));
         told.device = my_key.to_string();
     }
     if !out.is_empty() {
@@ -710,14 +863,25 @@ pub fn changes_to_carry(store: &Store, my_key: &str) -> Vec<(String, String, Str
     out
 }
 
-
-
-pub fn take_synced_checked(store: &Store, me: Option<&Identity>, subject: &str, value: &str, sealed: bool) -> Result<Option<String>, String> {
+pub fn take_synced_checked(
+    store: &Store,
+    me: Option<&Identity>,
+    subject: &str,
+    value: &str,
+    sealed: bool,
+) -> Result<Option<String>, String> {
     let _transaction = store.transaction().map_err(|error| error.to_string())?;
-    let mut groups: Groups = store.load_checked(FILE).map_err(|error| error.to_string())?.unwrap_or_default();
-    let mut told: Told = store.load_checked(SYNC_TOLD).map_err(|error| error.to_string())?.unwrap_or_default();
+    let mut groups: Groups = store
+        .load_checked(FILE)
+        .map_err(|error| error.to_string())?
+        .unwrap_or_default();
+    let mut told: Told = store
+        .load_checked(SYNC_TOLD)
+        .map_err(|error| error.to_string())?
+        .unwrap_or_default();
     let said = if subject.starts_with(SYNC_GROUP) {
-        let signed: Signed = serde_json::from_str(value).map_err(|error| format!("Invalid group change: {error}"))?;
+        let signed: Signed = serde_json::from_str(value)
+            .map_err(|error| format!("Invalid group change: {error}"))?;
         let taken = groups.take(signed)?;
         for (gid, h) in &groups.held {
             let v = told.versions.entry(gid.clone()).or_insert(0);
@@ -725,11 +889,15 @@ pub fn take_synced_checked(store: &Store, me: Option<&Identity>, subject: &str, 
         }
         (taken == Taken::New).then(String::new)
     } else {
-        let Some(device) = subject.strip_prefix(SYNC_DEVICE) else { return Ok(None) };
+        let Some(device) = subject.strip_prefix(SYNC_DEVICE) else {
+            return Ok(None);
+        };
         if !sealed || !peerkey::is_public_key(device) || device != value {
             return Ok(None);
         }
-        let Some(me) = me else { return Err("Cannot save device trust without this device's identity".into()) };
+        let Some(me) = me else {
+            return Err("Cannot save device trust without this device's identity".into());
+        };
         if device == me.public() || groups.my_devices.iter().any(|d| d == device) {
             return Ok(None);
         }
@@ -742,7 +910,9 @@ pub fn take_synced_checked(store: &Store, me: Option<&Identity>, subject: &str, 
         })
     };
     groups.save(store).map_err(|error| error.to_string())?;
-    store.save(SYNC_TOLD, &told).map_err(|error| error.to_string())?;
+    store
+        .save(SYNC_TOLD, &told)
+        .map_err(|error| error.to_string())?;
     Ok(said.filter(|s| !s.is_empty()))
 }
 
@@ -751,8 +921,12 @@ mod durable_sync_receipts {
     use super::*;
     #[test]
     fn corrupt_group_state_is_not_replaced_or_acknowledged_as_an_empty_group_list() {
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("atlas-group-sync-{}-{stamp}", std::process::id()));
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("atlas-group-sync-{}-{stamp}", std::process::id()));
         let store = Store::new(root.clone());
         store.save(FILE, &Groups::default()).unwrap();
         let path = root.join(format!("{FILE}.json"));
@@ -771,7 +945,14 @@ mod durable_sync_receipts {
 /// (`role` = the new name). People are named as you paired them; each must
 /// have introduced its key, which a paired Atlas does by itself the next time
 /// both are running.
-pub fn act(store: &Store, peer_dir: &std::path::Path, what: &str, group: &str, who: &str, role: &str) -> Result<String, String> {
+pub fn act(
+    store: &Store,
+    peer_dir: &std::path::Path,
+    what: &str,
+    group: &str,
+    who: &str,
+    role: &str,
+) -> Result<String, String> {
     let me = Identity::load_or_create(peer_dir)?;
     let pairings = crate::kin::Pairings::load(peer_dir);
     let key_of = |name: &str| -> Result<String, String> {
@@ -787,7 +968,10 @@ pub fn act(store: &Store, peer_dir: &std::path::Path, what: &str, group: &str, w
         if groups.held.contains_key(g) {
             return Ok(g.to_string());
         }
-        groups.named(g).map(|h| h.state.group_id.clone()).ok_or_else(|| format!("there's no group called \"{g}\""))
+        groups
+            .named(g)
+            .map(|h| h.state.group_id.clone())
+            .ok_or_else(|| format!("there's no group called \"{g}\""))
     };
     let said = match what {
         "new" => {
@@ -795,7 +979,10 @@ pub fn act(store: &Store, peer_dir: &std::path::Path, what: &str, group: &str, w
                 return Err("what should the group be called?".into());
             }
             if groups.named(group).is_some() {
-                return Err(format!("you already have a group called \"{}\"", group.trim()));
+                return Err(format!(
+                    "you already have a group called \"{}\"",
+                    group.trim()
+                ));
             }
             let mut people = Vec::new();
             for n in who.split(',').map(str::trim).filter(|n| !n.is_empty()) {
@@ -804,9 +991,15 @@ pub fn act(store: &Store, peer_dir: &std::path::Path, what: &str, group: &str, w
             let release = role.trim().eq_ignore_ascii_case("release");
             groups.create(&me, group, &people, release)?;
             if release {
-                format!("Made the release channel \"{}\". Only you can post in it.", group.trim())
+                format!(
+                    "Made the release channel \"{}\". Only you can post in it.",
+                    group.trim()
+                )
             } else {
-                format!("Made \"{}\". You're its owner: you decide who's in it.", group.trim())
+                format!(
+                    "Made \"{}\". You're its owner: you decide who's in it.",
+                    group.trim()
+                )
             }
         }
         "add" => {
@@ -823,14 +1016,21 @@ pub fn act(store: &Store, peer_dir: &std::path::Path, what: &str, group: &str, w
                 Err(e) => groups
                     .held
                     .get(&id)
-                    .and_then(|h| h.state.seats.iter().find(|s| s.name.eq_ignore_ascii_case(who)).map(|s| s.key.clone()))
+                    .and_then(|h| {
+                        h.state
+                            .seats
+                            .iter()
+                            .find(|s| s.name.eq_ignore_ascii_case(who))
+                            .map(|s| s.key.clone())
+                    })
                     .ok_or(e)?,
             };
             groups.remove(&me, &id, &key)?
         }
         "role" => {
             let id = id_of(&groups, group)?;
-            let r = Role::read(role).ok_or_else(|| format!("\"{role}\" isn't a role -- member or reader"))?;
+            let r = Role::read(role)
+                .ok_or_else(|| format!("\"{role}\" isn't a role -- member or reader"))?;
             groups.set_role(&me, &id, &key_of(who)?, r)?
         }
         "rename" => {
@@ -839,7 +1039,9 @@ pub fn act(store: &Store, peer_dir: &std::path::Path, what: &str, group: &str, w
         }
         other => return Err(format!("I don't know how to {other} a group")),
     };
-    groups.save_briefly(store).map_err(|e| format!("couldn't save it: {e}"))?;
+    groups
+        .save_briefly(store)
+        .map_err(|e| format!("couldn't save it: {e}"))?;
     Ok(said)
 }
 
@@ -859,7 +1061,14 @@ mod tests {
 
     fn with_sam() -> (Groups, String) {
         let mut g = Groups::default();
-        let id = g.create(&eric(), "Friends", &[(sam().public(), "Sam".into(), Role::Member)], false).unwrap();
+        let id = g
+            .create(
+                &eric(),
+                "Friends",
+                &[(sam().public(), "Sam".into(), Role::Member)],
+                false,
+            )
+            .unwrap();
         (g, id)
     }
 
@@ -869,8 +1078,14 @@ mod tests {
         assert!(is_owned_id(&id));
         assert!(!is_owned_id("og-sam+tom"));
         assert!(!is_owned_id("a1b2c3"));
-        assert_eq!(g.held[&id].state.role_of(&eric().public()), Some(Role::Owner));
-        assert_eq!(g.held[&id].state.role_of(&sam().public()), Some(Role::Member));
+        assert_eq!(
+            g.held[&id].state.role_of(&eric().public()),
+            Some(Role::Owner)
+        );
+        assert_eq!(
+            g.held[&id].state.role_of(&sam().public()),
+            Some(Role::Member)
+        );
     }
 
     #[test]
@@ -879,10 +1094,22 @@ mod tests {
         let mut member = Groups::default();
         assert_eq!(member.take(owner.held[&id].signed.clone()), Ok(Taken::New));
         let v1 = owner.held[&id].signed.clone();
-        owner.add(&eric(), &id, &maya().public(), "Maya", Role::Reader).unwrap();
-        assert_eq!(member.take(owner.held[&id].signed.clone()), Ok(Taken::Newer));
-        assert_eq!(member.take(v1), Ok(Taken::NotNewer), "an old list replayed is ignored");
-        assert_eq!(member.held[&id].state.role_of(&maya().public()), Some(Role::Reader));
+        owner
+            .add(&eric(), &id, &maya().public(), "Maya", Role::Reader)
+            .unwrap();
+        assert_eq!(
+            member.take(owner.held[&id].signed.clone()),
+            Ok(Taken::Newer)
+        );
+        assert_eq!(
+            member.take(v1),
+            Ok(Taken::NotNewer),
+            "an old list replayed is ignored"
+        );
+        assert_eq!(
+            member.held[&id].state.role_of(&maya().public()),
+            Some(Role::Reader)
+        );
     }
 
     #[test]
@@ -894,10 +1121,20 @@ mod tests {
         // Sam edits the list and signs it himself.
         let mut forged = owner.held[&id].state.clone();
         forged.version += 1;
-        forged.seats.push(Seat { key: maya().public(), name: "Maya".into(), role: Role::Member });
+        forged.seats.push(Seat {
+            key: maya().public(),
+            name: "Maya".into(),
+            role: Role::Member,
+        });
         let text = serde_json::to_string(&forged).unwrap();
         let sig = sam().sign(DOMAIN, text.as_bytes());
-        assert!(member.take(Signed { state: text.clone(), signature: sig, signer: String::new() }).is_err());
+        assert!(member
+            .take(Signed {
+                state: text.clone(),
+                signature: sig,
+                signer: String::new()
+            })
+            .is_err());
 
         // Sam claims to be the owner of the same id.
         let mut claimed = forged.clone();
@@ -905,36 +1142,69 @@ mod tests {
         claimed.seats[0].key = sam().public();
         let text = serde_json::to_string(&claimed).unwrap();
         let sig = sam().sign(DOMAIN, text.as_bytes());
-        assert!(member.take(Signed { state: text, signature: sig, signer: String::new() }).is_err(), "the id is Eric's");
+        assert!(
+            member
+                .take(Signed {
+                    state: text,
+                    signature: sig,
+                    signer: String::new()
+                })
+                .is_err(),
+            "the id is Eric's"
+        );
 
         // Tampered after signing.
         let good = owner.held[&id].signed.clone();
-        let tampered = Signed { state: good.state.replace("Friends", "Enemies"), signature: good.signature, signer: String::new() };
+        let tampered = Signed {
+            state: good.state.replace("Friends", "Enemies"),
+            signature: good.signature,
+            signer: String::new(),
+        };
         assert!(member.take(tampered).is_err());
 
         // Sam can't change it through the owner's functions either.
         let mut copy = member.clone();
-        assert!(copy.add(&sam(), &id, &maya().public(), "Maya", Role::Member).is_err());
+        assert!(copy
+            .add(&sam(), &id, &maya().public(), "Maya", Role::Member)
+            .is_err());
     }
 
     #[test]
     fn the_owner_adds_removes_and_changes_roles_and_everyone_removed_is_told() {
         let (mut g, id) = with_sam();
-        g.add(&eric(), &id, &maya().public(), "Maya", Role::Member).unwrap();
-        assert!(g.add(&eric(), &id, &maya().public(), "Maya", Role::Member).is_err());
-        g.set_role(&eric(), &id, &maya().public(), Role::Reader).unwrap();
-        assert_eq!(g.held[&id].state.role_of(&maya().public()), Some(Role::Reader));
-        assert!(g.set_role(&eric(), &id, &eric().public(), Role::Reader).is_err());
-        assert!(g.remove(&eric(), &id, &eric().public()).is_err(), "the owner stays");
+        g.add(&eric(), &id, &maya().public(), "Maya", Role::Member)
+            .unwrap();
+        assert!(g
+            .add(&eric(), &id, &maya().public(), "Maya", Role::Member)
+            .is_err());
+        g.set_role(&eric(), &id, &maya().public(), Role::Reader)
+            .unwrap();
+        assert_eq!(
+            g.held[&id].state.role_of(&maya().public()),
+            Some(Role::Reader)
+        );
+        assert!(g
+            .set_role(&eric(), &id, &eric().public(), Role::Reader)
+            .is_err());
+        assert!(
+            g.remove(&eric(), &id, &eric().public()).is_err(),
+            "the owner stays"
+        );
         g.remove(&eric(), &id, &sam().public()).unwrap();
         assert!(g.held[&id].state.seat(&sam().public()).is_none());
         let owed = g.owed(&eric().public());
-        assert!(owed.contains(&(id.clone(), sam().public())), "Sam must be told he's out");
+        assert!(
+            owed.contains(&(id.clone(), sam().public())),
+            "Sam must be told he's out"
+        );
         assert!(owed.contains(&(id.clone(), maya().public())));
         g.delivered_to(&id, &sam().public());
         g.delivered_to(&id, &maya().public());
         assert!(g.owed(&eric().public()).is_empty());
-        assert_eq!(g.held[&id].state.version, 4, "refused changes are not numbered");
+        assert_eq!(
+            g.held[&id].state.version, 4,
+            "refused changes are not numbered"
+        );
     }
 
     #[test]
@@ -944,10 +1214,18 @@ mod tests {
         let mut member = Groups::default();
         member.take(g.held[&id].signed.clone()).unwrap();
         // Before vouching: the phone can't.
-        assert!(g.clone().add(&phone, &id, &maya().public(), "Maya", Role::Member).is_err());
+        assert!(g
+            .clone()
+            .add(&phone, &id, &maya().public(), "Maya", Role::Member)
+            .is_err());
         assert_eq!(g.vouch_everywhere(&eric(), &phone.public()), 1);
-        g.add(&phone, &id, &maya().public(), "Maya", Role::Member).unwrap();
-        assert_eq!(member.take(g.held[&id].signed.clone()), Ok(Taken::Newer), "a member refused the phone's change");
+        g.add(&phone, &id, &maya().public(), "Maya", Role::Member)
+            .unwrap();
+        assert_eq!(
+            member.take(g.held[&id].signed.clone()),
+            Ok(Taken::Newer),
+            "a member refused the phone's change"
+        );
         // The phone can't vouch for anything itself, and Sam can't sneak in as a device.
         assert_eq!(g.vouch_everywhere(&phone, &sam().public()), 0);
         let mut forged = g.held[&id].state.clone();
@@ -955,7 +1233,13 @@ mod tests {
         forged.delegates.push(sam().delegate(&sam().public()));
         let text = serde_json::to_string(&forged).unwrap();
         let sig = sam().sign(DOMAIN, text.as_bytes());
-        assert!(member.take(Signed { state: text, signature: sig, signer: sam().public() }).is_err());
+        assert!(member
+            .take(Signed {
+                state: text,
+                signature: sig,
+                signer: sam().public()
+            })
+            .is_err());
     }
 
     fn store(tag: &str) -> Store {
@@ -980,20 +1264,33 @@ mod tests {
 
         // The phone's key reaches the laptop: ignored unsealed, vouched for sealed.
         let from_phone = changes_to_carry(&phone, &phone_key.public());
-        let device: Vec<_> = from_phone.iter().filter(|(s, _, _)| s.starts_with(SYNC_DEVICE)).collect();
+        let device: Vec<_> = from_phone
+            .iter()
+            .filter(|(s, _, _)| s.starts_with(SYNC_DEVICE))
+            .collect();
         assert_eq!(device.len(), 1);
         let (sub, _, val) = device[0];
-        assert!(take_synced_checked(&laptop, Some(&eric()), sub, val, false).unwrap().is_none());
-        assert!(!Groups::load(&laptop).held[&id].state.may_change(&phone_key.public()));
-        assert!(take_synced_checked(&laptop, Some(&eric()), sub, val, true).unwrap().is_some());
-        assert!(Groups::load(&laptop).held[&id].state.may_change(&phone_key.public()));
+        assert!(take_synced_checked(&laptop, Some(&eric()), sub, val, false)
+            .unwrap()
+            .is_none());
+        assert!(!Groups::load(&laptop).held[&id]
+            .state
+            .may_change(&phone_key.public()));
+        assert!(take_synced_checked(&laptop, Some(&eric()), sub, val, true)
+            .unwrap()
+            .is_some());
+        assert!(Groups::load(&laptop).held[&id]
+            .state
+            .may_change(&phone_key.public()));
 
         // The vouched list goes back to the phone, which can now change the group.
         for (sub, _, val) in changes_to_carry(&laptop, &eric().public()) {
             take_synced_checked(&phone, Some(&phone_key), &sub, &val, true).unwrap();
         }
         let mut on_phone = Groups::load(&phone);
-        on_phone.add(&phone_key, &id, &maya().public(), "Maya", Role::Member).unwrap();
+        on_phone
+            .add(&phone_key, &id, &maya().public(), "Maya", Role::Member)
+            .unwrap();
         // Groups made later vouch for the phone from the start.
         let mut later = Groups::load(&laptop);
         let id2 = later.create(&eric(), "Later", &[], false).unwrap();
@@ -1003,22 +1300,56 @@ mod tests {
     #[test]
     fn in_a_release_channel_only_the_owner_posts() {
         let mut g = Groups::default();
-        let id = g.create(&eric(), "Atlas updates", &[(sam().public(), "Sam".into(), Role::Member)], true).unwrap();
-        assert_eq!(g.held[&id].state.role_of(&sam().public()), Some(Role::Reader));
-        assert!(g.set_role(&eric(), &id, &sam().public(), Role::Member).is_err());
-        g.add(&eric(), &id, &maya().public(), "Maya", Role::Member).unwrap();
-        assert_eq!(g.held[&id].state.role_of(&maya().public()), Some(Role::Reader));
+        let id = g
+            .create(
+                &eric(),
+                "Atlas updates",
+                &[(sam().public(), "Sam".into(), Role::Member)],
+                true,
+            )
+            .unwrap();
+        assert_eq!(
+            g.held[&id].state.role_of(&sam().public()),
+            Some(Role::Reader)
+        );
+        assert!(g
+            .set_role(&eric(), &id, &sam().public(), Role::Member)
+            .is_err());
+        g.add(&eric(), &id, &maya().public(), "Maya", Role::Member)
+            .unwrap();
+        assert_eq!(
+            g.held[&id].state.role_of(&maya().public()),
+            Some(Role::Reader)
+        );
         assert!(!Role::Reader.may_post() && Role::Member.may_post() && Role::Owner.may_post());
     }
 
     #[test]
     fn spoken_group_changes_are_read_and_other_sentences_are_not() {
-        assert_eq!(read_spoken("add Sam to the Friends group"), Some(("add", "Sam".into(), "Friends".into(), "".into())));
-        assert_eq!(read_spoken("Add Maya to Friends as a reader."), Some(("add", "Maya".into(), "Friends".into(), "reader".into())));
-        assert_eq!(read_spoken("take Sam out of the Friends group"), Some(("remove", "Sam".into(), "Friends".into(), "".into())));
-        assert_eq!(read_spoken("remove Sam from Friends"), Some(("remove", "Sam".into(), "Friends".into(), "".into())));
-        assert_eq!(read_spoken("make Maya a reader in the Friends group"), Some(("role", "Maya".into(), "Friends".into(), "reader".into())));
-        assert_eq!(read_spoken("let Maya post in the Friends group"), Some(("role", "Maya".into(), "Friends".into(), "member".into())));
+        assert_eq!(
+            read_spoken("add Sam to the Friends group"),
+            Some(("add", "Sam".into(), "Friends".into(), "".into()))
+        );
+        assert_eq!(
+            read_spoken("Add Maya to Friends as a reader."),
+            Some(("add", "Maya".into(), "Friends".into(), "reader".into()))
+        );
+        assert_eq!(
+            read_spoken("take Sam out of the Friends group"),
+            Some(("remove", "Sam".into(), "Friends".into(), "".into()))
+        );
+        assert_eq!(
+            read_spoken("remove Sam from Friends"),
+            Some(("remove", "Sam".into(), "Friends".into(), "".into()))
+        );
+        assert_eq!(
+            read_spoken("make Maya a reader in the Friends group"),
+            Some(("role", "Maya".into(), "Friends".into(), "reader".into()))
+        );
+        assert_eq!(
+            read_spoken("let Maya post in the Friends group"),
+            Some(("role", "Maya".into(), "Friends".into(), "member".into()))
+        );
         assert_eq!(read_spoken("make a cake"), None);
         assert_eq!(read_spoken("take a screenshot"), None);
         assert_eq!(read_spoken("add to Friends"), None);

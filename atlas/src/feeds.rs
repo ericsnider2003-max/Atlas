@@ -78,7 +78,9 @@ fn unescape_xml(s: &str) -> String {
             "quot" => Some('"'),
             "apos" => Some('\''),
             "nbsp" => Some(' '),
-            n if n.starts_with("#x") || n.starts_with("#X") => u32::from_str_radix(&n[2..], 16).ok().and_then(char::from_u32),
+            n if n.starts_with("#x") || n.starts_with("#X") => u32::from_str_radix(&n[2..], 16)
+                .ok()
+                .and_then(char::from_u32),
             n if n.starts_with('#') => n[1..].parse().ok().and_then(char::from_u32),
             _ => None,
         };
@@ -114,7 +116,11 @@ fn attr(tag: &str, name: &str) -> Option<String> {
             let end = v[1..].find(q)?;
             Some(unescape_xml(&v[1..1 + end]))
         } else {
-            Some(unescape_xml(v.split(|c: char| c.is_whitespace() || c == '/' || c == '>').next().unwrap_or("")))
+            Some(unescape_xml(
+                v.split(|c: char| c.is_whitespace() || c == '/' || c == '>')
+                    .next()
+                    .unwrap_or(""),
+            ))
         };
     }
     None
@@ -140,7 +146,10 @@ pub fn text_of(html: &str) -> String {
             _ => {}
         }
     }
-    unescape_xml(&out).split_whitespace().collect::<Vec<_>>().join(" ")
+    unescape_xml(&out)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Read a feed: RSS 2.0, RSS 1.0 (RDF) or Atom.
@@ -167,11 +176,17 @@ pub fn parse(xml: &str) -> Result<Parsed, String> {
             continue;
         }
         if rest.starts_with("<!--") {
-            i += rest.find("-->").map(|n| n + 3).ok_or("a comment never closes")?;
+            i += rest
+                .find("-->")
+                .map(|n| n + 3)
+                .ok_or("a comment never closes")?;
             continue;
         }
         if rest.starts_with("<?") || rest.starts_with("<!") {
-            i += rest.find('>').map(|n| n + 1).ok_or("a declaration never closes")?;
+            i += rest
+                .find('>')
+                .map(|n| n + 1)
+                .ok_or("a declaration never closes")?;
             continue;
         }
         let end = rest.find('>').ok_or("a tag never closes")?;
@@ -188,22 +203,35 @@ pub fn parse(xml: &str) -> Result<Parsed, String> {
                         "title" if parent == "item" || parent == "entry" => it.title = text_of(&t),
                         "link" if (parent == "item") && it.link.is_empty() => it.link = t.clone(),
                         "guid" | "id" if parent == "item" || parent == "entry" => it.id = t.clone(),
-                        "pubdate" | "date" | "published" | "updated" | "issued" if it.published.is_none() || name == "published" => {
+                        "pubdate" | "date" | "published" | "updated" | "issued"
+                            if it.published.is_none() || name == "published" =>
+                        {
                             it.published = parse_date(&t).or(it.published)
                         }
-                        "description" | "summary" | "content" | "encoded" if it.summary.is_empty() || name == "summary" || name == "description" => {
+                        "description" | "summary" | "content" | "encoded"
+                            if it.summary.is_empty()
+                                || name == "summary"
+                                || name == "description" =>
+                        {
                             it.summary = text_of(&t).chars().take(400).collect()
                         }
                         _ => {}
                     }
-                } else if name == "title" && p.title.is_empty() && (parent == "channel" || parent == "feed") {
+                } else if name == "title"
+                    && p.title.is_empty()
+                    && (parent == "channel" || parent == "feed")
+                {
                     p.title = text_of(&t);
                 }
                 if name == "item" || name == "entry" {
                     if let Some(mut it) = cur.take() {
                         it.link = clean_link(&it.link).unwrap_or_default();
                         if it.id.is_empty() {
-                            it.id = if it.link.is_empty() { it.title.clone() } else { it.link.clone() };
+                            it.id = if it.link.is_empty() {
+                                it.title.clone()
+                            } else {
+                                it.link.clone()
+                            };
                         }
                         if !it.id.is_empty() {
                             p.items.push(it);
@@ -216,7 +244,11 @@ pub fn parse(xml: &str) -> Result<Parsed, String> {
             continue;
         }
         let self_closing = tag.ends_with('/');
-        let name_raw = tag.trim_end_matches('/').split_whitespace().next().unwrap_or("");
+        let name_raw = tag
+            .trim_end_matches('/')
+            .split_whitespace()
+            .next()
+            .unwrap_or("");
         let name = local(name_raw);
         if !saw_root {
             if !matches!(name.as_str(), "rss" | "feed" | "rdf") {
@@ -267,7 +299,9 @@ pub fn parse_date(s: &str) -> Option<u64> {
             hh = s.get(11..13)?.parse().ok()?;
             mm = s.get(14..16)?.parse().ok()?;
             ss = s.get(17..19)?.parse().ok()?;
-            let tz = s.get(19..)?.trim_start_matches(|c: char| c == '.' || c.is_ascii_digit());
+            let tz = s
+                .get(19..)?
+                .trim_start_matches(|c: char| c == '.' || c.is_ascii_digit());
             if tz.len() >= 6 && (tz.starts_with('+') || tz.starts_with('-')) {
                 let sign = if tz.starts_with('-') { -1 } else { 1 };
                 let oh: i64 = tz.get(1..3)?.parse().ok()?;
@@ -275,7 +309,13 @@ pub fn parse_date(s: &str) -> Option<u64> {
                 off = sign * (oh * 3600 + om * 60);
             }
         }
-        if !(1..=12).contains(&m) || d == 0 || d > 31 || !(0..24).contains(&hh) || !(0..60).contains(&mm) || !(0..=60).contains(&ss) {
+        if !(1..=12).contains(&m)
+            || d == 0
+            || d > 31
+            || !(0..24).contains(&hh)
+            || !(0..60).contains(&mm)
+            || !(0..=60).contains(&ss)
+        {
             return None;
         }
         let t = crate::civil::days_from_civil(y, m, d) * 86_400 + hh * 3600 + mm * 60 + ss - off;
@@ -288,9 +328,37 @@ pub fn parse_date(s: &str) -> Option<u64> {
 
 /// Query parameters that only follow you around.
 const TRACKERS: &[&str] = &[
-    "fbclid", "gclid", "dclid", "gbraid", "wbraid", "msclkid", "yclid", "mc_cid", "mc_eid", "igshid", "_hsenc", "_hsmi",
-    "mkt_tok", "oly_anon_id", "oly_enc_id", "vero_id", "vero_conv", "ref_src", "ref_url", "__s", "s_cid", "icid",
-    "cmpid", "ncid", "sr_share", "ocid", "twclid", "ttclid", "rb_clickid", "wickedid", "_openstat",
+    "fbclid",
+    "gclid",
+    "dclid",
+    "gbraid",
+    "wbraid",
+    "msclkid",
+    "yclid",
+    "mc_cid",
+    "mc_eid",
+    "igshid",
+    "_hsenc",
+    "_hsmi",
+    "mkt_tok",
+    "oly_anon_id",
+    "oly_enc_id",
+    "vero_id",
+    "vero_conv",
+    "ref_src",
+    "ref_url",
+    "__s",
+    "s_cid",
+    "icid",
+    "cmpid",
+    "ncid",
+    "sr_share",
+    "ocid",
+    "twclid",
+    "ttclid",
+    "rb_clickid",
+    "wickedid",
+    "_openstat",
 ];
 
 /// A link with its tracking parameters gone; `None` for anything that isn't
@@ -347,7 +415,11 @@ pub fn split_feed_url(url: &str) -> Option<(bool, String, String)> {
     if host.is_empty() || host.contains(|c: char| c.is_whitespace()) {
         return None;
     }
-    Some((https, host.to_ascii_lowercase(), path.split('#').next().unwrap_or("/").to_string()))
+    Some((
+        https,
+        host.to_ascii_lowercase(),
+        path.split('#').next().unwrap_or("/").to_string(),
+    ))
 }
 
 /// A link relative to a page, made absolute.
@@ -381,7 +453,9 @@ pub fn discover(html: &str, page: &str) -> Vec<String> {
         from = end;
         let ty = attr(tag, "type").unwrap_or_default().to_ascii_lowercase();
         let rel = attr(tag, "rel").unwrap_or_default().to_ascii_lowercase();
-        if rel.split_whitespace().any(|r| r == "alternate") && (ty.contains("rss") || ty.contains("atom")) {
+        if rel.split_whitespace().any(|r| r == "alternate")
+            && (ty.contains("rss") || ty.contains("atom"))
+        {
             if let Some(href) = attr(tag, "href").and_then(|h| absolute_link(page, &h)) {
                 if !out.contains(&href) {
                     out.push(href);
@@ -394,18 +468,26 @@ pub fn discover(html: &str, page: &str) -> Vec<String> {
 
 /// Fetch a URL, following up to three redirects and never from https down
 /// to http. `get(https, host, path)` does the request.
-pub fn fetch(url: &str, get: &dyn Fn(bool, &str, &str) -> crate::error::Result<crate::http::Response>) -> Result<(String, String), String> {
+pub fn fetch(
+    url: &str,
+    get: &dyn Fn(bool, &str, &str) -> crate::error::Result<crate::http::Response>,
+) -> Result<(String, String), String> {
     let mut url = url.to_string();
     let mut was_https = false;
     for _ in 0..4 {
-        let (https, host, path) = split_feed_url(&url).ok_or_else(|| format!("{url} isn't a web address"))?;
+        let (https, host, path) =
+            split_feed_url(&url).ok_or_else(|| format!("{url} isn't a web address"))?;
         if was_https && !https {
-            return Err(format!("{url}: it redirects from https to plain http, which I won't follow"));
+            return Err(format!(
+                "{url}: it redirects from https to plain http, which I won't follow"
+            ));
         }
         was_https |= https;
         let r = get(https, &host, &path).map_err(|e| e.to_string())?;
         if (300..400).contains(&r.status) {
-            let loc = r.location.ok_or_else(|| format!("{url}: a redirect with nowhere to go"))?;
+            let loc = r
+                .location
+                .ok_or_else(|| format!("{url}: a redirect with nowhere to go"))?;
             url = absolute_link(&url, &loc).ok_or_else(|| format!("{url}: a redirect to {loc}"))?;
             continue;
         }
@@ -458,7 +540,10 @@ pub struct FeedsConfig {
 
 impl Default for FeedsConfig {
     fn default() -> Self {
-        FeedsConfig { enabled: true, every_minutes: 120 }
+        FeedsConfig {
+            enabled: true,
+            every_minutes: 120,
+        }
     }
 }
 
@@ -471,7 +556,11 @@ impl Feeds {
         if self.feeds.len() >= MAX_FEEDS {
             return Err(format!("you're following {MAX_FEEDS} feeds already"));
         }
-        self.feeds.push(Feed { url, title: title.to_string(), ..Default::default() });
+        self.feeds.push(Feed {
+            url,
+            title: title.to_string(),
+            ..Default::default()
+        });
         Ok(true)
     }
 
@@ -485,7 +574,12 @@ impl Feeds {
             .filter(|i| *i < self.feeds.len())
             .or_else(|| self.feeds.iter().position(|f| f.title.to_lowercase() == w))
             .or_else(|| {
-                let hits: Vec<usize> = (0..self.feeds.len()).filter(|i| self.feeds[*i].url.to_lowercase().contains(&w) || self.feeds[*i].title.to_lowercase().contains(&w)).collect();
+                let hits: Vec<usize> = (0..self.feeds.len())
+                    .filter(|i| {
+                        self.feeds[*i].url.to_lowercase().contains(&w)
+                            || self.feeds[*i].title.to_lowercase().contains(&w)
+                    })
+                    .collect();
                 (hits.len() == 1).then(|| hits[0])
             })?;
         let f = self.feeds.remove(i);
@@ -495,12 +589,16 @@ impl Feeds {
 
     /// Feeds whose turn it is.
     pub fn due(&self, now: u64) -> Vec<usize> {
-        (0..self.feeds.len()).filter(|i| self.feeds[*i].next_due <= now).collect()
+        (0..self.feeds.len())
+            .filter(|i| self.feeds[*i].next_due <= now)
+            .collect()
     }
 
     /// A read came back: add what's new. Returns how many were new.
     pub fn took(&mut self, i: usize, parsed: Parsed, cfg: &FeedsConfig, now: u64) -> usize {
-        let Some(f) = self.feeds.get_mut(i) else { return 0 };
+        let Some(f) = self.feeds.get_mut(i) else {
+            return 0;
+        };
         let first = f.seen.is_empty();
         if f.title.is_empty() {
             f.title = parsed.title.chars().take(80).collect();
@@ -508,7 +606,11 @@ impl Feeds {
         f.failures = 0;
         f.last_error.clear();
         f.next_due = now + cfg.every_minutes.max(15) * 60;
-        let mut fresh: Vec<Item> = parsed.items.into_iter().filter(|it| !f.seen.contains(&it.id)).collect();
+        let mut fresh: Vec<Item> = parsed
+            .items
+            .into_iter()
+            .filter(|it| !f.seen.contains(&it.id))
+            .collect();
         for it in &fresh {
             f.seen.push_back(it.id.clone());
         }
@@ -520,14 +622,23 @@ impl Feeds {
         if first {
             fresh.truncate(3);
         }
-        let name = if f.title.is_empty() { f.url.clone() } else { f.title.clone() };
+        let name = if f.title.is_empty() {
+            f.url.clone()
+        } else {
+            f.title.clone()
+        };
         let url = f.url.clone();
         let n = fresh.len();
         for it in fresh {
             if it.link.is_empty() || self.unread.iter().any(|u| u.link == it.link) {
                 continue;
             }
-            self.unread.push(Unread { feed: url.clone(), title: format!("{} — {}", it.title, name), link: it.link, at: it.published.unwrap_or(now) });
+            self.unread.push(Unread {
+                feed: url.clone(),
+                title: format!("{} — {}", it.title, name),
+                link: it.link,
+                at: it.published.unwrap_or(now),
+            });
         }
         self.unread.sort_by_key(|b| std::cmp::Reverse(b.at));
         self.unread.truncate(MAX_UNREAD);
@@ -539,21 +650,38 @@ impl Feeds {
         if let Some(f) = self.feeds.get_mut(i) {
             f.failures = f.failures.saturating_add(1);
             f.last_error = why.chars().take(120).collect();
-            let wait = (cfg.every_minutes.max(15) * 60).saturating_mul(1 << f.failures.min(10)).min(86_400);
+            let wait = (cfg.every_minutes.max(15) * 60)
+                .saturating_mul(1 << f.failures.min(10))
+                .min(86_400);
             f.next_due = now + wait;
         }
     }
 
     /// "What's new": numbered, newest first, with any feed that's failing.
     pub fn said(&self, n: usize) -> String {
-        let mut out: Vec<String> = self.unread.iter().take(n).enumerate().map(|(i, u)| format!("{}. {}", i + 1, u.title)).collect();
+        let mut out: Vec<String> = self
+            .unread
+            .iter()
+            .take(n)
+            .enumerate()
+            .map(|(i, u)| format!("{}. {}", i + 1, u.title))
+            .collect();
         if out.is_empty() {
-            out.push(if self.feeds.is_empty() { "You're not following anything. \"Follow <site>\" starts one.".into() } else { "Nothing new.".into() });
+            out.push(if self.feeds.is_empty() {
+                "You're not following anything. \"Follow <site>\" starts one.".into()
+            } else {
+                "Nothing new.".into()
+            });
         } else if self.unread.len() > n {
             out.push(format!("(and {} more)", self.unread.len() - n));
         }
         for f in self.feeds.iter().filter(|f| f.failures >= 3) {
-            out.push(format!("{} has failed {} times running: {}", if f.title.is_empty() { &f.url } else { &f.title }, f.failures, f.last_error));
+            out.push(format!(
+                "{} has failed {} times running: {}",
+                if f.title.is_empty() { &f.url } else { &f.title },
+                f.failures,
+                f.last_error
+            ));
         }
         out.join("\n")
     }

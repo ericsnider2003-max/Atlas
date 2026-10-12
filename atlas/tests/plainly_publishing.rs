@@ -4,8 +4,8 @@ use atlas::accounts::{
 };
 use atlas::plainly::{confirm, didnt_understand, result, understand};
 use atlas::publishing::{
-    description_from, export_args, export_for, format_of, ready_to_post, tags,
-    where_to_get_music, Format, MusicSource, Platform, IN_APP_TRADE,
+    description_from, export_args, export_for, format_of, ready_to_post, tags, where_to_get_music,
+    Format, MusicSource, Platform, IN_APP_TRADE,
 };
 
 // ================= your words, not the jargon =================
@@ -42,16 +42,34 @@ fn atlas_repeats_what_it_thinks_you_meant_before_doing_anything() {
 
 #[test]
 fn picture_complaints_work_the_same_way() {
-    assert!(understand("it's too dark").unwrap().fix.contains("lift the exposure"));
-    assert!(understand("the colour looks off").unwrap().target.contains("4800"));
-    assert!(understand("it looks washed out").unwrap().fix.contains("rather than by crushing"));
-    assert!(understand("looks fake and oversaturated").unwrap().target.contains("1.1x"));
+    assert!(understand("it's too dark")
+        .unwrap()
+        .fix
+        .contains("lift the exposure"));
+    assert!(understand("the colour looks off")
+        .unwrap()
+        .target
+        .contains("4800"));
+    assert!(understand("it looks washed out")
+        .unwrap()
+        .fix
+        .contains("rather than by crushing"));
+    assert!(understand("looks fake and oversaturated")
+        .unwrap()
+        .target
+        .contains("1.1x"));
 }
 
 #[test]
 fn something_no_edit_can_fix_says_so_rather_than_pretending() {
-    assert!(understand("it's jerky").unwrap().fix.contains("nothing in the edit fixes this"));
-    assert!(understand("there's an echo").unwrap().fix.contains("room problem"));
+    assert!(understand("it's jerky")
+        .unwrap()
+        .fix
+        .contains("nothing in the edit fixes this"));
+    assert!(understand("there's an echo")
+        .unwrap()
+        .fix
+        .contains("room problem"));
 }
 
 #[test]
@@ -84,9 +102,13 @@ fn something_it_cannot_place_asks_which_part_you_mean() {
 #[test]
 fn each_platform_has_its_own_settings_and_its_own_quirk() {
     assert_eq!(export_for(Platform::TikTok).width, 1080);
-    assert!(export_for(Platform::TikTok).note.contains("desktop uploader compresses harder"));
+    assert!(export_for(Platform::TikTok)
+        .note
+        .contains("desktop uploader compresses harder"));
     assert!(export_for(Platform::Reels).note.contains("bottom 25%"));
-    assert!(export_for(Platform::Shorts).note.contains("still a search engine"));
+    assert!(export_for(Platform::Shorts)
+        .note
+        .contains("still a search engine"));
     assert!(export_for(Platform::XTwitter).note.contains("burn them in"));
     assert_eq!(export_for(Platform::LinkedIn).height, 1350, "4:5, not 9:16");
 }
@@ -95,14 +117,23 @@ fn each_platform_has_its_own_settings_and_its_own_quirk() {
 fn the_length_that_performs_is_told_apart_from_the_length_allowed() {
     let t = export_for(Platform::TikTok);
     assert_eq!(t.max_secs, 600);
-    assert!(t.sweet_spot_secs.1 < 60, "what works is nowhere near the limit");
+    assert!(
+        t.sweet_spot_secs.1 < 60,
+        "what works is nowhere near the limit"
+    );
 }
 
 #[test]
 fn the_export_settings_include_the_two_things_people_get_wrong() {
     let args = export_args(&export_for(Platform::TikTok), "in.mp4", "out.mp4", true);
-    assert!(args.contains(&"yuv420p".to_string()), "or it won't play on some phones");
-    assert!(args.contains(&"+faststart".to_string()), "or it won't start until fully downloaded");
+    assert!(
+        args.contains(&"yuv420p".to_string()),
+        "or it won't play on some phones"
+    );
+    assert!(
+        args.contains(&"+faststart".to_string()),
+        "or it won't start until fully downloaded"
+    );
 }
 
 #[test]
@@ -117,7 +148,11 @@ fn stripping_metadata_is_what_the_export_actually_does() {
         .iter()
         .position(|a| a == "-map_metadata")
         .expect("the export keeps the original's metadata");
-    assert_eq!(stripped[at + 1], "-1", "-map_metadata needs the -1 to mean anything");
+    assert_eq!(
+        stripped[at + 1],
+        "-1",
+        "-map_metadata needs the -1 to mean anything"
+    );
     assert_eq!(
         stripped.last().map(String::as_str),
         Some("out.mp4"),
@@ -138,7 +173,10 @@ fn atlas_says_when_a_piece_is_the_wrong_length_for_where_it_is_going() {
     // Behaviour, not just wording: a well-fitted piece draws no length
     // advisory, so the too-long one's output carries extra guidance.
     let fitted = ready_to_post(Platform::Reels, 20.0, Format::ShortForm);
-    assert!(fitted.len() < said.len(), "a 75s piece was not flagged as longer than a 20s one");
+    assert!(
+        fitted.len() < said.len(),
+        "a 75s piece was not flagged as longer than a 20s one"
+    );
 }
 
 // ================= it knows what kind of thing you made =================
@@ -154,11 +192,17 @@ fn the_formats_are_told_apart() {
 #[test]
 fn each_format_has_rules_that_actually_differ() {
     let review = Format::ProductReview.rules();
-    assert!(review.iter().any(|r| r.contains("a review with no criticism reads as an ad")));
-    assert!(review.iter().any(|r| r.contains("Everyone is waiting for the price")));
+    assert!(review
+        .iter()
+        .any(|r| r.contains("a review with no criticism reads as an ad")));
+    assert!(review
+        .iter()
+        .any(|r| r.contains("Everyone is waiting for the price")));
 
     let screen = Format::ScreenRecording.rules();
-    assert!(screen.iter().any(|r| r.contains("nobody can read your full screen on a phone")));
+    assert!(screen
+        .iter()
+        .any(|r| r.contains("nobody can read your full screen on a phone")));
 
     let long = Format::LongForm.rules();
     assert!(long.iter().any(|r| r.contains("the pace can drop")));
@@ -183,15 +227,23 @@ fn the_in_app_library_is_not_safe_for_a_business_account() {
 #[test]
 fn a_real_song_is_never_safe_and_says_what_happens() {
     assert!(!MusicSource::Commercial.safe(false));
-    assert!(MusicSource::Commercial.why(false).contains("muted, demonetised, or taken down"));
+    assert!(MusicSource::Commercial
+        .why(false)
+        .contains("muted, demonetised, or taken down"));
 }
 
 #[test]
 fn there_are_free_sources_that_work_anywhere() {
     let sources = where_to_get_music();
-    assert!(sources.iter().any(|(_, s, _)| *s == MusicSource::PublicDomain));
-    assert!(sources.iter().any(|(n, _, _)| n.contains("YouTube Audio Library")));
-    assert!(sources.iter().any(|(_, _, why)| why.contains("no attribution")));
+    assert!(sources
+        .iter()
+        .any(|(_, s, _)| *s == MusicSource::PublicDomain));
+    assert!(sources
+        .iter()
+        .any(|(n, _, _)| n.contains("YouTube Audio Library")));
+    assert!(sources
+        .iter()
+        .any(|(_, _, why)| why.contains("no attribution")));
 }
 
 #[test]
@@ -215,30 +267,68 @@ fn the_description_is_built_from_what_you_actually_said() {
 
 #[test]
 fn youtube_gets_more_because_it_is_a_search_engine() {
-    let d = description_from("Stop paying tier two fees. It works.", Platform::Shorts, "broker fees");
+    let d = description_from(
+        "Stop paying tier two fees. It works.",
+        Platform::Shorts,
+        "broker fees",
+    );
     assert!(d.contains("broker fees"));
-    assert!(d.len() > description_from("Stop paying tier two fees. It works.", Platform::TikTok, "broker fees").len());
+    assert!(
+        d.len()
+            > description_from(
+                "Stop paying tier two fees. It works.",
+                Platform::TikTok,
+                "broker fees"
+            )
+            .len()
+    );
 }
 
 #[test]
 fn hashtags_are_few_or_none_because_thirty_reads_as_spam() {
     assert!(tags("broker fees", Platform::TikTok).len() <= 3);
-    assert!(tags("broker fees", Platform::YouTube).is_empty(), "they do nothing there");
+    assert!(
+        tags("broker fees", Platform::YouTube).is_empty(),
+        "they do nothing there"
+    );
 }
 
 // ================= where your accounts stand =================
 
 fn accounts() -> Vec<Account> {
     vec![
-        Account { site: "Gmail".into(), second_factor: SecondFactor::Sms, stakes: Stakes::Keystone,
-                  reused_password: false, has_recovery_codes: false,
-                  settings_url: Some("https://myaccount.google.com/security".into()) },
-        Account { site: "Chase Bank".into(), second_factor: SecondFactor::App, stakes: Stakes::High,
-                  reused_password: false, has_recovery_codes: false, settings_url: None },
-        Account { site: "TikTok".into(), second_factor: SecondFactor::None, stakes: Stakes::High,
-                  reused_password: true, has_recovery_codes: false, settings_url: None },
-        Account { site: "Spotify".into(), second_factor: SecondFactor::None, stakes: Stakes::Medium,
-                  reused_password: false, has_recovery_codes: false, settings_url: None },
+        Account {
+            site: "Gmail".into(),
+            second_factor: SecondFactor::Sms,
+            stakes: Stakes::Keystone,
+            reused_password: false,
+            has_recovery_codes: false,
+            settings_url: Some("https://myaccount.google.com/security".into()),
+        },
+        Account {
+            site: "Chase Bank".into(),
+            second_factor: SecondFactor::App,
+            stakes: Stakes::High,
+            reused_password: false,
+            has_recovery_codes: false,
+            settings_url: None,
+        },
+        Account {
+            site: "TikTok".into(),
+            second_factor: SecondFactor::None,
+            stakes: Stakes::High,
+            reused_password: true,
+            has_recovery_codes: false,
+            settings_url: None,
+        },
+        Account {
+            site: "Spotify".into(),
+            second_factor: SecondFactor::None,
+            stakes: Stakes::Medium,
+            reused_password: false,
+            has_recovery_codes: false,
+            settings_url: None,
+        },
     ]
 }
 
@@ -253,8 +343,14 @@ fn email_is_the_account_that_owns_all_the_others() {
 #[test]
 fn text_message_codes_are_named_as_the_weakest_kind_with_the_reason() {
     assert!(SecondFactor::Sms.concern().unwrap().contains("SIM swap"));
-    assert!(SecondFactor::Sms.concern().unwrap().contains("without touching your phone"));
-    assert!(SecondFactor::Email.concern().unwrap().contains("really one factor"));
+    assert!(SecondFactor::Sms
+        .concern()
+        .unwrap()
+        .contains("without touching your phone"));
+    assert!(SecondFactor::Email
+        .concern()
+        .unwrap()
+        .contains("really one factor"));
     assert!(SecondFactor::App.concern().is_none());
 }
 
@@ -262,14 +358,19 @@ fn text_message_codes_are_named_as_the_weakest_kind_with_the_reason() {
 fn nothing_at_all_on_a_high_stakes_account_comes_first() {
     let a = audit(&accounts());
     assert!(a[0].what.contains("turn on two-factor") || a[0].site == "Gmail");
-    assert!(a.iter().any(|x| x.site == "TikTok" && x.what.contains("turn on two-factor")));
+    assert!(a
+        .iter()
+        .any(|x| x.site == "TikTok" && x.what.contains("turn on two-factor")));
 }
 
 #[test]
 fn strong_two_factor_with_no_recovery_codes_is_flagged() {
     // How a lost phone becomes a lost account.
     let a = audit(&accounts());
-    let rec = a.iter().find(|x| x.what.contains("recovery codes")).unwrap();
+    let rec = a
+        .iter()
+        .find(|x| x.what.contains("recovery codes"))
+        .unwrap();
     assert!(rec.why.contains("lost phone becomes a lost account"));
 }
 
@@ -301,8 +402,14 @@ fn it_refuses_with_the_reason_rather_than_a_policy() {
     assert!(WONT_WEAKEN.contains("isn't about it being your account"));
     assert!(WONT_WEAKEN.contains("one bad instruction away"));
     assert!(WONT_WEAKEN.contains("a confirmation doesn't fix that"));
-    assert!(WONT_WEAKEN.contains("Same reason I don't touch the firewall"), "consistent");
-    assert!(WONT_WEAKEN.contains("I'll open any of those settings pages"), "and still helps");
+    assert!(
+        WONT_WEAKEN.contains("Same reason I don't touch the firewall"),
+        "consistent"
+    );
+    assert!(
+        WONT_WEAKEN.contains("I'll open any of those settings pages"),
+        "and still helps"
+    );
 }
 
 #[test]
@@ -315,11 +422,18 @@ fn what_it_offers_instead_is_most_of_what_was_wanted() {
 #[test]
 fn a_well_protected_set_of_accounts_is_left_alone() {
     let good = vec![Account {
-        site: "Gmail".into(), second_factor: SecondFactor::Passkey, stakes: Stakes::Keystone,
-        reused_password: false, has_recovery_codes: true, settings_url: None,
+        site: "Gmail".into(),
+        second_factor: SecondFactor::Passkey,
+        stakes: Stakes::Keystone,
+        reused_password: false,
+        has_recovery_codes: true,
+        settings_url: None,
     }];
     // Behaviour, not just wording: "left alone" means the audit produced no
     // advice at all, not that the summary happens to read reassuringly.
-    assert!(audit(&good).is_empty(), "a well-protected account still drew advice");
+    assert!(
+        audit(&good).is_empty(),
+        "a well-protected account still drew advice"
+    );
     assert!(acc_spoken(&good, &audit(&good)).contains("all reasonably protected"));
 }

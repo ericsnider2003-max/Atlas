@@ -28,7 +28,8 @@ pub struct Model {
 impl Model {
     /// A vision projector rather than a language model.
     pub fn is_a_projector(&self) -> bool {
-        self.architecture.eq_ignore_ascii_case("clip") || self.id.to_lowercase().starts_with("mmproj")
+        self.architecture.eq_ignore_ascii_case("clip")
+            || self.id.to_lowercase().starts_with("mmproj")
     }
 
     /// This model's picture encoder (`mmproj-<model>-<quant>.gguf`) when
@@ -47,9 +48,14 @@ impl Model {
             .flatten()
             .map(|e| e.path())
             .filter(|p| {
-                let Some(stem) = p.file_stem().map(|s| s.to_string_lossy().to_lowercase()) else { return false };
-                p.extension().is_some_and(|x| x.eq_ignore_ascii_case("gguf"))
-                    && stem.strip_prefix("mmproj-").is_some_and(|rest| without_quant(rest) == want)
+                let Some(stem) = p.file_stem().map(|s| s.to_string_lossy().to_lowercase()) else {
+                    return false;
+                };
+                p.extension()
+                    .is_some_and(|x| x.eq_ignore_ascii_case("gguf"))
+                    && stem
+                        .strip_prefix("mmproj-")
+                        .is_some_and(|rest| without_quant(rest) == want)
             })
             .collect();
         found.sort();
@@ -76,7 +82,10 @@ impl Model {
         }
         let m = Model::inspect(path)?;
         if let Some((len, when)) = stamp {
-            KEPT.lock().unwrap_or_else(|p| p.into_inner()).get_or_insert_with(Default::default).insert(path.to_path_buf(), (len, when, m.clone()));
+            KEPT.lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .get_or_insert_with(Default::default)
+                .insert(path.to_path_buf(), (len, when, m.clone()));
         }
         Ok(m)
     }
@@ -84,7 +93,10 @@ impl Model {
     fn inspect(path: &Path) -> Result<Model> {
         let g = Gguf::open(path)?;
         Ok(Model {
-            id: path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+            id: path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default(),
             architecture: g.architecture().unwrap_or("unknown").to_string(),
             quant: g.dominant_quant().name().to_string(),
             parameters: g.total_parameters(),
@@ -276,12 +288,20 @@ impl Sampling {
         m.insert("min_p".into(), json!(self.min_p));
         m.insert(
             "presence_penalty".into(),
-            json!(if stronger { self.stronger_presence_penalty.max(self.presence_penalty) } else { self.presence_penalty }),
+            json!(if stronger {
+                self.stronger_presence_penalty.max(self.presence_penalty)
+            } else {
+                self.presence_penalty
+            }),
         );
         m.insert("repeat_penalty".into(), json!(self.repeat_penalty));
         m.insert(
             "dry_multiplier".into(),
-            json!(if stronger { self.stronger_dry_multiplier.max(self.dry_multiplier) } else { self.dry_multiplier }),
+            json!(if stronger {
+                self.stronger_dry_multiplier.max(self.dry_multiplier)
+            } else {
+                self.dry_multiplier
+            }),
         );
         m.insert("dry_base".into(), json!(self.dry_base));
         m.insert("dry_allowed_length".into(), json!(self.dry_allowed_length));
@@ -302,7 +322,11 @@ fn set_sampling(s: &Sampling) {
 
 /// The sampling chat requests are sent with now.
 fn sampling_now() -> Sampling {
-    SAMPLING.read().ok().and_then(|g| g.clone()).unwrap_or_default()
+    SAMPLING
+        .read()
+        .ok()
+        .and_then(|g| g.clone())
+        .unwrap_or_default()
 }
 
 impl Default for ModelsConfig {
@@ -475,7 +499,10 @@ impl Registry {
                 return Some(m);
             }
         }
-        self.best_fit(budget_set_mb(cfg.memory_budget_mb) * 1024 * 1024, cfg.context)
+        self.best_fit(
+            budget_set_mb(cfg.memory_budget_mb) * 1024 * 1024,
+            cfg.context,
+        )
     }
 
     /// Why a model was or wasn't picked — so "it used the small one" is never
@@ -624,7 +651,11 @@ impl Template {
 /// Command line for llama.cpp's own server. This is the piece that removes
 /// Ollama: same engine underneath, one fewer wrapper on top.
 pub fn server_args(model: &Model, cfg: &ModelsConfig, gpu_layers: u32) -> Vec<String> {
-    let ctx = if cfg.context == 0 { model.max_context } else { cfg.context.min(model.max_context) };
+    let ctx = if cfg.context == 0 {
+        model.max_context
+    } else {
+        cfg.context.min(model.max_context)
+    };
     vec![
         "-m".into(),
         model.path.display().to_string(),
@@ -702,7 +733,13 @@ pub fn projector_args(model: &Model, cfg: &ModelsConfig) -> Vec<String> {
 /// `--spec-type` -- read off that build's `tools/server/README.md` and
 /// `common/speculative.cpp` (28 Sep 2026). Anything else in `speculate` is
 /// ignored rather than passed, because an unknown kind stops the server.
-pub const NGRAM_KINDS: &[&str] = &["ngram-mod", "ngram-simple", "ngram-map-k", "ngram-map-k4v", "ngram-cache"];
+pub const NGRAM_KINDS: &[&str] = &[
+    "ngram-mod",
+    "ngram-simple",
+    "ngram-map-k",
+    "ngram-map-k4v",
+    "ngram-cache",
+];
 
 /// How many words the draft model guesses ahead, at most and at least.
 /// b10456 took `--draft-max`/`--draft-min` away (its README: "the argument
@@ -717,7 +754,11 @@ pub fn draft_path(cfg: &ModelsConfig) -> Option<PathBuf> {
         return None;
     }
     let p = PathBuf::from(name);
-    let p = if p.is_absolute() { p } else { Path::new(&cfg.dir).join(p) };
+    let p = if p.is_absolute() {
+        p
+    } else {
+        Path::new(&cfg.dir).join(p)
+    };
     p.is_file().then_some(p)
 }
 
@@ -794,7 +835,10 @@ pub fn health_url(port: u16) -> String {
 
 /// The talking model's chat address, at the host it listens on.
 pub fn talking_chat_url(cfg: &ModelsConfig) -> String {
-    at_listen_host(format!("http://127.0.0.1:{}/v1/chat/completions", cfg.port), cfg)
+    at_listen_host(
+        format!("http://127.0.0.1:{}/v1/chat/completions", cfg.port),
+        cfg,
+    )
 }
 
 pub fn completion_url(port: u16) -> String {
@@ -812,11 +856,22 @@ pub fn completion_url(port: u16) -> String {
 /// conversation -- the running summary, a council seat, a screen read.
 /// Naming no slot let llama.cpp put it in the conversation's slot 0 when
 /// that one was idle, and the next turn read its whole prompt again.
-pub fn completion_body(prompt: &str, template: Template, max_tokens: u32, sampling: &Sampling) -> String {
-    let stops: Vec<serde_json::Value> =
-        template.stop_tokens().iter().map(|s| serde_json::Value::String(s.to_string())).collect();
+pub fn completion_body(
+    prompt: &str,
+    template: Template,
+    max_tokens: u32,
+    sampling: &Sampling,
+) -> String {
+    let stops: Vec<serde_json::Value> = template
+        .stop_tokens()
+        .iter()
+        .map(|s| serde_json::Value::String(s.to_string()))
+        .collect();
     let mut body = serde_json::Map::new();
-    body.insert("prompt".into(), serde_json::Value::String(prompt.to_string()));
+    body.insert(
+        "prompt".into(),
+        serde_json::Value::String(prompt.to_string()),
+    );
     body.insert("n_predict".into(), serde_json::json!(max_tokens));
     body.insert("stream".into(), serde_json::json!(false));
     body.extend(sampling.fields(false));
@@ -922,7 +977,10 @@ fn model_server_log(name: &str) -> std::process::Stdio {
     // The last run's log kept beside it (`.previous`): started afresh, a
     // server that died and was restarted took the reason with it (30 Sep
     // 2026: four restarts in an hour on Eric's laptop, none explained).
-    crate::kept!(std::fs::rename(dir.join(name), dir.join(format!("{name}.previous"))));
+    crate::kept!(std::fs::rename(
+        dir.join(name),
+        dir.join(format!("{name}.previous"))
+    ));
     match std::fs::File::create(dir.join(name)) {
         Ok(f) => std::process::Stdio::from(f),
         Err(_) => std::process::Stdio::null(),
@@ -933,16 +991,28 @@ fn model_server_log(name: &str) -> std::process::Stdio {
 /// `data/logs/model-server.log` that says something went wrong, or its last
 /// line. `None` when the log is empty or can't be read.
 pub fn model_server_last_words() -> Option<String> {
-    let text = std::fs::read_to_string(crate::roots::data_dir().join("logs").join("model-server.log")).ok()?;
+    let text = std::fs::read_to_string(
+        crate::roots::data_dir()
+            .join("logs")
+            .join("model-server.log"),
+    )
+    .ok()?;
     last_words_in(&text)
 }
 
 /// The telling line of a model server's log (see `model_server_last_words`).
 pub fn last_words_in(text: &str) -> Option<String> {
-    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
     let bad = |l: &&&str| {
         let l = l.to_ascii_lowercase();
-        l.contains("error") || l.contains("failed") || l.contains("out of memory") || l.contains("unable")
+        l.contains("error")
+            || l.contains("failed")
+            || l.contains("out of memory")
+            || l.contains("unable")
     };
     let line = lines.iter().rev().find(bad).or(lines.last())?;
     let mut line = line.to_string();
@@ -1034,7 +1104,12 @@ impl crate::brain::Llm for WaitsForServer {
         self.inner.complete(system, user)
     }
 
-    fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<crate::brain::LongReply> {
+    fn complete_long(
+        &self,
+        system: &str,
+        user: &str,
+        max_tokens: u32,
+    ) -> Result<crate::brain::LongReply> {
         let launched = LAUNCHED.load(std::sync::atomic::Ordering::Relaxed);
         if launched != 0 && crate::store::now().saturating_sub(launched) < LOADING_SECS {
             // unheard-ok: returns `bool`, not a Result
@@ -1119,15 +1194,30 @@ pub fn budget_bytes(cfg: &ModelsConfig, m: &Machine) -> u64 {
 /// machine's memory. What's "free" on a laptop with a browser open is small,
 /// and that alone left Eric's Atlas with no model at all (27 Sep 2026: every
 /// question got "I can't answer that here"); Windows pages out what's idle.
-pub fn pick<'a>(registry: &'a Registry, cfg: &ModelsConfig, m: &crate::fit::Machine) -> Option<&'a Model> {
+pub fn pick<'a>(
+    registry: &'a Registry,
+    cfg: &ModelsConfig,
+    m: &crate::fit::Machine,
+) -> Option<&'a Model> {
     let chosen = pick_by_budget(registry, cfg, m);
     // The bigger talking model, when it's here and this machine has room for
     // it beside the helpers installed (2 Oct 2026).
     let helpers = crate::getpieces::helpers_resident_mb(&crate::roots::install_root());
     match registry.get(crate::deepbrain::BIGGER_TALK) {
-        Some(big) if bigger_talk_wanted(cfg) && chosen.is_none_or(|c| c.parameters < big.parameters) => {
-            let projector = big.projector().and_then(|p| std::fs::metadata(p).ok()).map(|x| x.len()).unwrap_or(0);
-            if room_for_bigger_talk(m, cfg, helpers, bigger_talk_needs(cfg, big.weight_bytes + projector)) {
+        Some(big)
+            if bigger_talk_wanted(cfg) && chosen.is_none_or(|c| c.parameters < big.parameters) =>
+        {
+            let projector = big
+                .projector()
+                .and_then(|p| std::fs::metadata(p).ok())
+                .map(|x| x.len())
+                .unwrap_or(0);
+            if room_for_bigger_talk(
+                m,
+                cfg,
+                helpers,
+                bigger_talk_needs(cfg, big.weight_bytes + projector),
+            ) {
                 Some(big)
             } else {
                 chosen
@@ -1141,7 +1231,11 @@ pub fn pick<'a>(registry: &'a Registry, cfg: &ModelsConfig, m: &crate::fit::Mach
 /// named in `prefer`, and `talk` the shipped `faster` or empty. "better" or
 /// a file name is yours, and kept to.
 fn bigger_talk_wanted(cfg: &ModelsConfig) -> bool {
-    cfg.prefer.trim().is_empty() && matches!(talk_id(cfg).as_deref(), None | Some(crate::deepbrain::FASTER_TALK))
+    cfg.prefer.trim().is_empty()
+        && matches!(
+            talk_id(cfg).as_deref(),
+            None | Some(crate::deepbrain::FASTER_TALK)
+        )
 }
 
 /// The bigger talking model's cache per token of context, in bytes: Qwen3-VL
@@ -1171,7 +1265,12 @@ pub fn bigger_talk_needs(cfg: &ModelsConfig, files_bytes: u64) -> u64 {
 /// the hands, the meaning model) and `deepbrain::HEADROOM_MB` for everything
 /// else. On a 16 GB laptop with integrated graphics that leaves the 4B
 /// talking; 32 GB, or a card with 8 GB of its own, has room for the 8B.
-pub fn room_for_bigger_talk(m: &Machine, cfg: &ModelsConfig, helpers_mb: u64, needs_bytes: u64) -> bool {
+pub fn room_for_bigger_talk(
+    m: &Machine,
+    cfg: &ModelsConfig,
+    helpers_mb: u64,
+    needs_bytes: u64,
+) -> bool {
     let room_mb = match budget_set_mb(cfg.memory_budget_mb) {
         0 => (m.total_ram_mb * 2 / 5).max(m.budget_mb()) + m.usable_vram_mb(),
         set => set.min(m.budget_mb()) + m.usable_vram_mb(),
@@ -1182,7 +1281,11 @@ pub fn room_for_bigger_talk(m: &Machine, cfg: &ModelsConfig, helpers_mb: u64, ne
 
 /// `pick` before the bigger model is considered: the best that fits the
 /// budget, sized to the machine.
-fn pick_by_budget<'a>(registry: &'a Registry, cfg: &ModelsConfig, m: &crate::fit::Machine) -> Option<&'a Model> {
+fn pick_by_budget<'a>(
+    registry: &'a Registry,
+    cfg: &ModelsConfig,
+    m: &crate::fit::Machine,
+) -> Option<&'a Model> {
     let now = registry.choose_for(cfg, budget_bytes(cfg, m));
     if cfg.memory_budget_mb != 0 {
         return now;
@@ -1245,7 +1348,10 @@ impl Registry {
         // 2026) -- a bigger one dropped in the folder, the deep model
         // included, never takes over talking by being bigger.
         if cfg.prefer.is_empty() {
-            if let Some(m) = self.get(crate::deepbrain::FASTER_TALK).filter(|m| estimate_memory(m, cfg.context) <= budget) {
+            if let Some(m) = self
+                .get(crate::deepbrain::FASTER_TALK)
+                .filter(|m| estimate_memory(m, cfg.context) <= budget)
+            {
                 return Some(m);
             }
         }
@@ -1258,15 +1364,37 @@ impl Registry {
         // answering is worse than a slower start.
         // Nor a coding model (2 Oct 2026, `coder`): it writes code, it
         // doesn't talk, and the 1.5B would otherwise win on a small budget.
-        let talks = |m: &&Model| m.id != DRAFT_ONLY && !m.id.to_lowercase().starts_with("mmproj") && !crate::coder::is_coder_id(&m.id);
+        let talks = |m: &&Model| {
+            m.id != DRAFT_ONLY
+                && !m.id.to_lowercase().starts_with("mmproj")
+                && !crate::coder::is_coder_id(&m.id)
+        };
         let chosen = if cfg.talk_ceiling_b == 0 {
-            self.models.iter().filter(talks).filter(|m| estimate_memory(m, cfg.context) <= budget).max_by_key(|m| m.parameters)
+            self.models
+                .iter()
+                .filter(talks)
+                .filter(|m| estimate_memory(m, cfg.context) <= budget)
+                .max_by_key(|m| m.parameters)
         } else {
             let ceiling = cfg.talk_ceiling_b.saturating_mul(1_000_000_000);
-            let fits = || self.models.iter().filter(talks).filter(|m| estimate_memory(m, cfg.context) <= budget);
-            fits().filter(|m| m.parameters <= ceiling).max_by_key(|m| m.parameters).or_else(|| fits().min_by_key(|m| m.parameters))
+            let fits = || {
+                self.models
+                    .iter()
+                    .filter(talks)
+                    .filter(|m| estimate_memory(m, cfg.context) <= budget)
+            };
+            fits()
+                .filter(|m| m.parameters <= ceiling)
+                .max_by_key(|m| m.parameters)
+                .or_else(|| fits().min_by_key(|m| m.parameters))
         };
-        chosen.or_else(|| if cfg.prefer.is_empty() { self.get(crate::deepbrain::FASTER_TALK) } else { None })
+        chosen.or_else(|| {
+            if cfg.prefer.is_empty() {
+                self.get(crate::deepbrain::FASTER_TALK)
+            } else {
+                None
+            }
+        })
     }
 
     /// Why this model, in one line, sized against the real machine.
@@ -1374,7 +1502,9 @@ pub fn is_graphics_build(server: &Path) -> bool {
     let Some(dir) = server.parent().filter(|d| !d.as_os_str().is_empty()) else {
         return false;
     };
-    let Ok(rd) = std::fs::read_dir(dir) else { return false };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return false;
+    };
     rd.flatten().any(|e| {
         let n = e.file_name().to_string_lossy().to_ascii_lowercase();
         n.contains("ggml-") && BACKENDS.iter().any(|b| n.contains(b))
@@ -1387,7 +1517,11 @@ pub fn is_graphics_build(server: &Path) -> bool {
 /// so the supervisor and the chooser cannot disagree about how big the thing
 /// they are both talking about is.
 pub fn footprint_mb(model: &Model, cfg: &ModelsConfig) -> u64 {
-    let eyes = if cfg.see_with_talking_model { projector_memory(model) } else { 0 };
+    let eyes = if cfg.see_with_talking_model {
+        projector_memory(model)
+    } else {
+        0
+    };
     (estimate_memory(model, cfg.context) + eyes) / (1024 * 1024)
 }
 
@@ -1407,8 +1541,17 @@ pub fn server_post() -> ExternalTool {
     ExternalTool {
         command: "curl".into(),
         args: [
-            "-s", "-S", "--noproxy", "*", "-X", "POST",
-            "-H", "Content-Type: application/json", "--data-binary", "@-", "{url}",
+            "-s",
+            "-S",
+            "--noproxy",
+            "*",
+            "-X",
+            "POST",
+            "-H",
+            "Content-Type: application/json",
+            "--data-binary",
+            "@-",
+            "{url}",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -1425,15 +1568,28 @@ pub fn server_post() -> ExternalTool {
 /// a prompt.
 pub fn self_built_endpoint(cfg: &ModelsConfig) -> crate::brain::Endpoint {
     let mut tool = server_post();
-    tool.args = tool.args.iter().map(|a| a.replace("{url}", &at_listen_host(completion_url(cfg.port), cfg))).collect();
-    crate::brain::LlmConfig { tool, request: String::new(), response_path: String::new(), vision_request: None }.endpoint()
+    tool.args = tool
+        .args
+        .iter()
+        .map(|a| a.replace("{url}", &at_listen_host(completion_url(cfg.port), cfg)))
+        .collect();
+    crate::brain::LlmConfig {
+        tool,
+        request: String::new(),
+        response_path: String::new(),
+        vision_request: None,
+    }
+    .endpoint()
 }
 
 /// A plain GET against the model server, for `/health`.
 pub fn server_get() -> ExternalTool {
     ExternalTool {
         command: "curl".into(),
-        args: ["-s", "--noproxy", "*", "-m", "5", "{url}"].iter().map(|s| s.to_string()).collect(),
+        args: ["-s", "--noproxy", "*", "-m", "5", "{url}"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
         stdin_text: false,
         result_file: None,
         timeout_secs: 10,
@@ -1494,9 +1650,16 @@ pub fn no_thinking_prompt(prompt: String, chat_template: Option<&str>) -> String
 ///
 /// `{system}` and `{user}` are left as placeholders for `ShellLlm` to
 /// substitute, exactly as a hand-written config would.
-pub fn llm_config_for(model: &Model, cfg: &ModelsConfig, http: &ExternalTool) -> crate::brain::LlmConfig {
+pub fn llm_config_for(
+    model: &Model,
+    cfg: &ModelsConfig,
+    http: &ExternalTool,
+) -> crate::brain::LlmConfig {
     let template = Template::detect(model.chat_template.as_deref(), &model.id);
-    let prompt = no_thinking_prompt(template.render("{system}", "{user}"), model.chat_template.as_deref());
+    let prompt = no_thinking_prompt(
+        template.render("{system}", "{user}"),
+        model.chat_template.as_deref(),
+    );
     let body = completion_body(&prompt, template, 512, &cfg.sampling);
 
     let mut tool = http.clone();
@@ -1538,7 +1701,10 @@ pub fn why_no_model(cfg: &ModelsConfig) -> String {
     let m = crate::fit::measure();
     format!(
         "none of the models in my models folder fits the memory free right now: {}",
-        registry.explain_for(cfg, &m, budget_bytes(cfg, &m)).trim().trim_end_matches('.')
+        registry
+            .explain_for(cfg, &m, budget_bytes(cfg, &m))
+            .trim()
+            .trim_end_matches('.')
     )
 }
 
@@ -1560,20 +1726,28 @@ pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn c
             // nothing fits and leave Atlas with no model at all (the laptop,
             // 26 Sep 2026: "Nothing fits … 297MB spare" with the server up).
             let up = crate::models::is_running(mcfg, &crate::models::server_get(), &tc.vars);
-            let chosen = if up { registry.choose_for(mcfg, u64::MAX) } else { pick(&registry, mcfg, &crate::fit::measure()) };
-            chosen
-                .map(|model| crate::models::llm_config_for(model, mcfg, &crate::models::server_post()))
+            let chosen = if up {
+                registry.choose_for(mcfg, u64::MAX)
+            } else {
+                pick(&registry, mcfg, &crate::fit::measure())
+            };
+            chosen.map(|model| {
+                crate::models::llm_config_for(model, mcfg, &crate::models::server_post())
+            })
         }
     };
     let local = tc.llm.as_ref().or(derived.as_ref()).map(|lc| {
-        std::sync::Arc::new(crate::brain::ShellLlm { cfg: lc.clone(), vars: tc.vars.clone() })
-            as std::sync::Arc<dyn crate::brain::Llm>
+        std::sync::Arc::new(crate::brain::ShellLlm {
+            cfg: lc.clone(),
+            vars: tc.vars.clone(),
+        }) as std::sync::Arc<dyn crate::brain::Llm>
     });
     // No model on this machine: the free online ones are the only ones, when
     // they're allowed (`models.online_second`).
     let Some(primary) = local else {
         return tc.models.online_second.then(|| {
-            std::sync::Arc::new(crate::freeonline::FreeOnline::new()) as std::sync::Arc<dyn crate::brain::Llm>
+            std::sync::Arc::new(crate::freeonline::FreeOnline::new())
+                as std::sync::Arc<dyn crate::brain::Llm>
         });
     };
     // Atlas's own connection waits for a server Atlas has just started
@@ -1595,17 +1769,24 @@ pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn c
         .llm_secondary
         .as_ref()
         .map(|lc| {
-            std::sync::Arc::new(crate::brain::ShellLlm { cfg: lc.clone(), vars: tc.vars.clone() })
-                as std::sync::Arc<dyn crate::brain::Llm>
+            std::sync::Arc::new(crate::brain::ShellLlm {
+                cfg: lc.clone(),
+                vars: tc.vars.clone(),
+            }) as std::sync::Arc<dyn crate::brain::Llm>
         })
         // Your own second model first; otherwise the free online ones.
         .or_else(|| {
             tc.models.online_second.then(|| {
-                std::sync::Arc::new(crate::freeonline::FreeOnline::new()) as std::sync::Arc<dyn crate::brain::Llm>
+                std::sync::Arc::new(crate::freeonline::FreeOnline::new())
+                    as std::sync::Arc<dyn crate::brain::Llm>
             })
         });
     let both = crate::brain::FallbackLlm::new(primary, secondary);
-    let both = if own_second { both.secondary_is_your_own() } else { both };
+    let both = if own_second {
+        both.secondary_is_your_own()
+    } else {
+        both
+    };
     // Muse Spark first for the hard work while someone has connected it and
     // it's under their monthly limit; otherwise exactly the above.
     Some(std::sync::Arc::new(crate::muse::MuseFirst {
@@ -1631,22 +1812,31 @@ pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn c
 /// given outright), when it is plain `http://`. `None` for anything else --
 /// Ollama, a hosted API -- which keeps the one-prompt path it always had.
 pub fn chat_url_beside(cfg: &crate::brain::LlmConfig) -> Option<String> {
-    cfg.tool.args.iter().chain(std::iter::once(&cfg.tool.command)).find_map(|a| {
-        let a = a.trim();
-        if !a.starts_with("http://") {
-            return None;
-        }
-        if a.ends_with("/v1/chat/completions") {
-            return Some(a.to_string());
-        }
-        a.strip_suffix("/completion").map(|base| format!("{base}/v1/chat/completions"))
-    })
+    cfg.tool
+        .args
+        .iter()
+        .chain(std::iter::once(&cfg.tool.command))
+        .find_map(|a| {
+            let a = a.trim();
+            if !a.starts_with("http://") {
+                return None;
+            }
+            if a.ends_with("/v1/chat/completions") {
+                return Some(a.to_string());
+            }
+            a.strip_suffix("/completion")
+                .map(|base| format!("{base}/v1/chat/completions"))
+        })
 }
 
 /// Is `host` (`name:port` or an address) on Tailscale: its 100.64.0.0/10
 /// addresses, its IPv6 prefix, or a MagicDNS name?
 pub fn on_tailscale(host: &str) -> bool {
-    let name = host.rsplit_once(':').map(|(h, _)| h).unwrap_or(host).trim_matches(['[', ']']);
+    let name = host
+        .rsplit_once(':')
+        .map(|(h, _)| h)
+        .unwrap_or(host)
+        .trim_matches(['[', ']']);
     if name.ends_with(".ts.net") {
         return true;
     }
@@ -1672,7 +1862,9 @@ pub fn unreachable_words(host: &str, why: &str) -> String {
              again with your next message."
         )
     } else {
-        format!("I couldn't reach the model at {host}: {why}. I'll try again with your next message.")
+        format!(
+            "I couldn't reach the model at {host}: {why}. I'll try again with your next message."
+        )
     }
 }
 
@@ -1689,7 +1881,11 @@ pub const CHAT_RETRY_SECS: u64 = 600;
 /// Is this chat address worth trying now?
 pub fn chat_available(url: &str) -> bool {
     let now = crate::store::now();
-    CHAT_OFF.lock().or_else(crate::crash::unpoison).map(|v| !v.iter().any(|(u, until)| u == url && *until > now)).unwrap_or(true)
+    CHAT_OFF
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .map(|v| !v.iter().any(|(u, until)| u == url && *until > now))
+        .unwrap_or(true)
 }
 
 /// Note that a chat address failed.
@@ -1714,8 +1910,11 @@ fn chat_failed(url: &str) {
 /// slot, so they take whichever is free -- usually the other one.
 pub fn chat_body(req: &crate::brain::ChatRequest, stream: bool) -> String {
     use serde_json::{json, Value};
-    let messages: Vec<Value> =
-        req.messages.iter().map(|m| json!({"role": m.role.name(), "content": m.content})).collect();
+    let messages: Vec<Value> = req
+        .messages
+        .iter()
+        .map(|m| json!({"role": m.role.name(), "content": m.content}))
+        .collect();
     let mut body = json!({
         "messages": messages,
         "max_tokens": req.max_tokens.max(16),
@@ -1790,10 +1989,23 @@ pub fn forced_call(text: &str, tools: &[serde_json::Value]) -> Option<crate::bra
     use serde_json::{json, Value};
     let v: Value = serde_json::from_str(text.trim()).ok()?;
     let name = v.get("name")?.as_str()?.trim().to_string();
-    let spec = tools.iter().find(|t| t.pointer("/function/name").and_then(|n| n.as_str()) == Some(name.as_str()))?;
-    let takes_arg = spec.pointer("/function/parameters/properties/arg").is_some();
-    let arg = v.get("arg").and_then(|a| a.as_str()).unwrap_or("").trim().to_string();
-    let arguments = if takes_arg { json!({ "arg": arg }) } else { json!({}) };
+    let spec = tools
+        .iter()
+        .find(|t| t.pointer("/function/name").and_then(|n| n.as_str()) == Some(name.as_str()))?;
+    let takes_arg = spec
+        .pointer("/function/parameters/properties/arg")
+        .is_some();
+    let arg = v
+        .get("arg")
+        .and_then(|a| a.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let arguments = if takes_arg {
+        json!({ "arg": arg })
+    } else {
+        json!({})
+    };
     Some(crate::brain::ToolCall { name, arguments })
 }
 
@@ -1841,7 +2053,10 @@ pub fn tools_late_template(original: &str) -> Option<String> {
     // Qwen3.5's template (30 Sep 2026) tests the user role in an `elif`: the
     // late tools go just inside that branch, before the user's words.
     const USER_ELIF: &str = "{%- elif message.role == \"user\" %}";
-    let (if_form, elif_form) = (original.matches(USER_BRANCH).count(), original.matches(USER_ELIF).count());
+    let (if_form, elif_form) = (
+        original.matches(USER_BRANCH).count(),
+        original.matches(USER_ELIF).count(),
+    );
     if original.matches(TOOLS_LOOP).count() != 1
         || if_form + elif_form != 1
         || !original.contains("<tool_call>")
@@ -1877,7 +2092,17 @@ fn tools_late_template_file(model: &Model) -> Option<PathBuf> {
     let t = tools_late_template(model.chat_template.as_deref()?)?;
     let dir = crate::roots::state_dir().join("model-templates");
     std::fs::create_dir_all(&dir).ok()?;
-    let name: String = model.id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '.' { c } else { '_' }).collect();
+    let name: String = model
+        .id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
     let path = dir.join(format!("{name}.jinja"));
     std::fs::write(&path, t).ok()?;
     Some(path)
@@ -1924,7 +2149,11 @@ pub struct ServerTimings {
 impl ServerTimings {
     /// From the `timings` object, when it has the counts.
     fn from_json(t: &serde_json::Value) -> Option<ServerTimings> {
-        let n = |k: &str| t.get(k).and_then(|v| v.as_f64()).map(|v| v.max(0.0).round() as u64);
+        let n = |k: &str| {
+            t.get(k)
+                .and_then(|v| v.as_f64())
+                .map(|v| v.max(0.0).round() as u64)
+        };
         Some(ServerTimings {
             cached: n("cache_n").unwrap_or(0),
             read: n("prompt_n")?,
@@ -1949,7 +2178,11 @@ static LAST_TIMINGS: std::sync::Mutex<Option<ServerTimings>> = std::sync::Mutex:
 /// What the last chat call cost, as the server counted it; taken, so the
 /// next turn's line says only its own.
 pub fn take_last_timings() -> Option<ServerTimings> {
-    LAST_TIMINGS.lock().or_else(crate::crash::unpoison).ok().and_then(|mut g| g.take())
+    LAST_TIMINGS
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .ok()
+        .and_then(|mut g| g.take())
 }
 
 impl ChatStream {
@@ -1971,14 +2204,23 @@ impl ChatStream {
             self.timings = Some(t);
         }
         if let Some(e) = v.get("error") {
-            self.error = Some(e.get("message").and_then(|m| m.as_str()).map(str::to_string).unwrap_or_else(|| e.to_string()));
+            self.error = Some(
+                e.get("message")
+                    .and_then(|m| m.as_str())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| e.to_string()),
+            );
             return None;
         }
         let choice = v.get("choices").and_then(|c| c.get(0))?;
         let delta = choice.get("delta").or_else(|| choice.get("message"))?;
         if let Some(calls) = delta.get("tool_calls").and_then(|c| c.as_array()) {
             for (k, c) in calls.iter().enumerate() {
-                let i = c.get("index").and_then(|i| i.as_u64()).map(|i| i as usize).unwrap_or(k);
+                let i = c
+                    .get("index")
+                    .and_then(|i| i.as_u64())
+                    .map(|i| i as usize)
+                    .unwrap_or(k);
                 while self.calls.len() <= i {
                     self.calls.push(PartCall::default());
                 }
@@ -1994,7 +2236,11 @@ impl ChatStream {
                 }
             }
         }
-        if choice.get("finish_reason").and_then(|f| f.as_str()).is_some() {
+        if choice
+            .get("finish_reason")
+            .and_then(|f| f.as_str())
+            .is_some()
+        {
             self.done = true;
         }
         let piece = delta.get("content").and_then(|c| c.as_str()).unwrap_or("");
@@ -2007,15 +2253,23 @@ impl ChatStream {
 
     /// Everything read so far, as a reply.
     pub fn reply(&self) -> crate::brain::ChatReply {
-        let (text, mut calls) = crate::brain::inline_tool_calls(&crate::phonemodel::without_thinking(&self.text));
+        let (text, mut calls) =
+            crate::brain::inline_tool_calls(&crate::phonemodel::without_thinking(&self.text));
         for c in &self.calls {
             if c.name.trim().is_empty() {
                 continue;
             }
-            let arguments = serde_json::from_str(&c.args).unwrap_or(serde_json::Value::Object(Default::default()));
-            calls.push(crate::brain::ToolCall { name: c.name.trim().to_string(), arguments });
+            let arguments = serde_json::from_str(&c.args)
+                .unwrap_or(serde_json::Value::Object(Default::default()));
+            calls.push(crate::brain::ToolCall {
+                name: c.name.trim().to_string(),
+                arguments,
+            });
         }
-        crate::brain::ChatReply { text, tool_calls: calls }
+        crate::brain::ChatReply {
+            text,
+            tool_calls: calls,
+        }
     }
 }
 
@@ -2041,7 +2295,10 @@ pub enum ChatFail {
 impl ChatFail {
     fn into_error(self) -> AtlasError {
         match self {
-            ChatFail::NoChat(m) | ChatFail::Loading(m) | ChatFail::TooLong(m) | ChatFail::Other(m) => AtlasError::Platform(m),
+            ChatFail::NoChat(m)
+            | ChatFail::Loading(m)
+            | ChatFail::TooLong(m)
+            | ChatFail::Other(m) => AtlasError::Platform(m),
             ChatFail::Stopped => stopped_chat(),
         }
     }
@@ -2056,11 +2313,19 @@ impl ChatFail {
 pub fn judge_chat_failure(status: u16, body: &str) -> ChatFail {
     let b = body.to_lowercase();
     let msg = if status == 0 {
-        format!("the model server said: {}", body.trim().chars().take(200).collect::<String>())
+        format!(
+            "the model server said: {}",
+            body.trim().chars().take(200).collect::<String>()
+        )
     } else {
-        format!("the model server answered {status}: {}", body.trim().chars().take(200).collect::<String>())
+        format!(
+            "the model server answered {status}: {}",
+            body.trim().chars().take(200).collect::<String>()
+        )
     };
-    let about_chat = ["jinja", "tool", "template", "chat format", "not supported"].iter().any(|w| b.contains(w));
+    let about_chat = ["jinja", "tool", "template", "chat format", "not supported"]
+        .iter()
+        .any(|w| b.contains(w));
     let too_long = b.contains("n_ctx")
         || b.contains("context size")
         || b.contains("context length")
@@ -2090,7 +2355,11 @@ pub fn judge_chat_failure(status: u16, body: &str) -> ChatFail {
 fn shortened_request(req: &crate::brain::ChatRequest) -> Option<crate::brain::ChatRequest> {
     use crate::brain::{Msg, Role};
     let mut out = req.clone();
-    let first_system = req.messages.first().filter(|m| m.role == Role::System).cloned();
+    let first_system = req
+        .messages
+        .first()
+        .filter(|m| m.role == Role::System)
+        .cloned();
     let last = req.messages.last().cloned()?;
     if req.messages.len() > 2 || (req.messages.len() == 2 && first_system.is_none()) {
         let mut m: Vec<Msg> = first_system.into_iter().collect();
@@ -2098,7 +2367,11 @@ fn shortened_request(req: &crate::brain::ChatRequest) -> Option<crate::brain::Ch
         out.messages = m;
         return Some(out);
     }
-    let (i, longest) = out.messages.iter().enumerate().max_by_key(|(_, m)| m.content.len())?;
+    let (i, longest) = out
+        .messages
+        .iter()
+        .enumerate()
+        .max_by_key(|(_, m)| m.content.len())?;
     if longest.content.chars().count() < 2000 {
         return None;
     }
@@ -2123,93 +2396,220 @@ pub fn chat_call(
 
 #[derive(Debug)]
 struct ChatStopped;
-impl std::fmt::Display for ChatStopped { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("model request stopped before completion") } }
+impl std::fmt::Display for ChatStopped {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("model request stopped before completion")
+    }
+}
 impl std::error::Error for ChatStopped {}
-fn stopped_chat() -> AtlasError { std::io::Error::new(std::io::ErrorKind::Interrupted, ChatStopped).into() }
+fn stopped_chat() -> AtlasError {
+    std::io::Error::new(std::io::ErrorKind::Interrupted, ChatStopped).into()
+}
 pub(crate) fn chat_was_stopped(error: &AtlasError) -> bool {
     matches!(error, AtlasError::Io(error) if error.get_ref().is_some_and(|cause| cause.is::<ChatStopped>()))
 }
-struct ResolveChat { host: String, cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>, reply: std::sync::mpsc::SyncSender<std::result::Result<Vec<std::net::SocketAddr>, String>> }
+struct ResolveChat {
+    host: String,
+    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    reply: std::sync::mpsc::SyncSender<std::result::Result<Vec<std::net::SocketAddr>, String>>,
+}
 struct CancelResolution(std::sync::Arc<std::sync::atomic::AtomicBool>);
-impl Drop for CancelResolution { fn drop(&mut self) { self.0.store(true, std::sync::atomic::Ordering::Release); } }
-fn wait_chat_resolution(reply: &std::sync::mpsc::Receiver<std::result::Result<Vec<std::net::SocketAddr>, String>>, keep: &dyn Fn() -> bool) -> Result<Vec<std::net::SocketAddr>> {
+impl Drop for CancelResolution {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::Release);
+    }
+}
+fn wait_chat_resolution(
+    reply: &std::sync::mpsc::Receiver<std::result::Result<Vec<std::net::SocketAddr>, String>>,
+    keep: &dyn Fn() -> bool,
+) -> Result<Vec<std::net::SocketAddr>> {
     let began = std::time::Instant::now();
     loop {
-        if !keep() { return Err(stopped_chat()); }
-        if began.elapsed() >= std::time::Duration::from_secs(5) { return Err(AtlasError::Platform("model endpoint name lookup timed out".into())); }
+        if !keep() {
+            return Err(stopped_chat());
+        }
+        if began.elapsed() >= std::time::Duration::from_secs(5) {
+            return Err(AtlasError::Platform(
+                "model endpoint name lookup timed out".into(),
+            ));
+        }
         match reply.recv_timeout(std::time::Duration::from_millis(25)) {
-            Ok(addresses) => { if !keep() { return Err(stopped_chat()); } return addresses.map_err(AtlasError::Platform); }
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {},
-            Err(_) => return Err(AtlasError::Platform("model endpoint resolver stopped".into())),
+            Ok(addresses) => {
+                if !keep() {
+                    return Err(stopped_chat());
+                }
+                return addresses.map_err(AtlasError::Platform);
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(_) => {
+                return Err(AtlasError::Platform(
+                    "model endpoint resolver stopped".into(),
+                ))
+            }
         }
     }
 }
 fn resolve_chat_until(host: &str, keep: &dyn Fn() -> bool) -> Result<Vec<std::net::SocketAddr>> {
-    if !keep() { return Err(stopped_chat()); }
-    if let Ok(address) = host.parse() { return Ok(vec![address]); }
+    if !keep() {
+        return Err(stopped_chat());
+    }
+    if let Ok(address) = host.parse() {
+        return Ok(vec![address]);
+    }
     if let Some((name, port)) = host.rsplit_once(':') {
-        if name.eq_ignore_ascii_case("localhost") { return Ok(vec![std::net::SocketAddr::from(([127,0,0,1], port.parse::<u16>().map_err(|_| AtlasError::Platform("invalid model port".into()))?))]); }
+        if name.eq_ignore_ascii_case("localhost") {
+            return Ok(vec![std::net::SocketAddr::from((
+                [127, 0, 0, 1],
+                port.parse::<u16>()
+                    .map_err(|_| AtlasError::Platform("invalid model port".into()))?,
+            ))]);
+        }
     }
     // At most one native DNS call runs, with at most two pending requests.
     // A slow OS resolver cannot create an unbounded set of abandoned threads.
-    static RESOLVER: std::sync::OnceLock<std::result::Result<std::sync::mpsc::SyncSender<ResolveChat>, String>> = std::sync::OnceLock::new();
-    let resolver = RESOLVER.get_or_init(|| {
-        let (send, receive) = std::sync::mpsc::sync_channel::<ResolveChat>(2);
-        std::thread::Builder::new().name("atlas-model-dns".into()).spawn(move || {
-            use std::net::ToSocketAddrs;
-            while let Ok(job) = receive.recv() {
-                if job.cancelled.load(std::sync::atomic::Ordering::Acquire) { continue; }
-                let answer = job.host.to_socket_addrs().map(|addresses| addresses.take(8).collect()).map_err(|error| error.to_string());
-                if !job.cancelled.load(std::sync::atomic::Ordering::Acquire) { crate::heard!(job.reply.try_send(answer)); }
-            }
-        }).map(|_| send).map_err(|error| error.to_string())
-    }).as_ref().map_err(|error| AtlasError::Platform(format!("model endpoint resolver unavailable: {error}")))?;
+    static RESOLVER: std::sync::OnceLock<
+        std::result::Result<std::sync::mpsc::SyncSender<ResolveChat>, String>,
+    > = std::sync::OnceLock::new();
+    let resolver = RESOLVER
+        .get_or_init(|| {
+            let (send, receive) = std::sync::mpsc::sync_channel::<ResolveChat>(2);
+            std::thread::Builder::new()
+                .name("atlas-model-dns".into())
+                .spawn(move || {
+                    use std::net::ToSocketAddrs;
+                    while let Ok(job) = receive.recv() {
+                        if job.cancelled.load(std::sync::atomic::Ordering::Acquire) {
+                            continue;
+                        }
+                        let answer = job
+                            .host
+                            .to_socket_addrs()
+                            .map(|addresses| addresses.take(8).collect())
+                            .map_err(|error| error.to_string());
+                        if !job.cancelled.load(std::sync::atomic::Ordering::Acquire) {
+                            crate::heard!(job.reply.try_send(answer));
+                        }
+                    }
+                })
+                .map(|_| send)
+                .map_err(|error| error.to_string())
+        })
+        .as_ref()
+        .map_err(|error| {
+            AtlasError::Platform(format!("model endpoint resolver unavailable: {error}"))
+        })?;
     let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let _cancel = CancelResolution(cancelled.clone());
     let (send, reply) = std::sync::mpsc::sync_channel(1);
-    resolver.try_send(ResolveChat { host: host.into(), cancelled, reply: send }).map_err(|_| AtlasError::Platform("model endpoint resolver is busy; request was not sent".into()))?;
+    resolver
+        .try_send(ResolveChat {
+            host: host.into(),
+            cancelled,
+            reply: send,
+        })
+        .map_err(|_| {
+            AtlasError::Platform("model endpoint resolver is busy; request was not sent".into())
+        })?;
     wait_chat_resolution(&reply, keep)
 }
 fn pause_chat_until(duration: std::time::Duration, keep: &dyn Fn() -> bool) -> Result<()> {
     let began = std::time::Instant::now();
     while began.elapsed() < duration {
-        if !keep() { return Err(stopped_chat()); }
-        std::thread::sleep(std::time::Duration::from_millis(25).min(duration.saturating_sub(began.elapsed())));
+        if !keep() {
+            return Err(stopped_chat());
+        }
+        std::thread::sleep(
+            std::time::Duration::from_millis(25).min(duration.saturating_sub(began.elapsed())),
+        );
     }
-    if !keep() { return Err(stopped_chat()); }
+    if !keep() {
+        return Err(stopped_chat());
+    }
     Ok(())
 }
-fn connect_chat_until(addresses: &[std::net::SocketAddr], keep: &dyn Fn() -> bool) -> Result<std::net::TcpStream> {
-    let began = std::time::Instant::now(); let mut last = "no addresses were found".to_string();
+fn connect_chat_until(
+    addresses: &[std::net::SocketAddr],
+    keep: &dyn Fn() -> bool,
+) -> Result<std::net::TcpStream> {
+    let began = std::time::Instant::now();
+    let mut last = "no addresses were found".to_string();
     for address in addresses {
         loop {
-            if !keep() { return Err(stopped_chat()); }
+            if !keep() {
+                return Err(stopped_chat());
+            }
             let left = std::time::Duration::from_secs(5).saturating_sub(began.elapsed());
-            if left.is_zero() { return Err(AtlasError::Platform("model connection timed out".into())); }
-            match std::net::TcpStream::connect_timeout(address, std::time::Duration::from_millis(200).min(left)) {
-                Ok(stream) => { if !keep() { return Err(stopped_chat()); } return Ok(stream); }
-                Err(error) => { last = error.to_string(); if matches!(error.kind(), std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock) { continue; } break; }
+            if left.is_zero() {
+                return Err(AtlasError::Platform("model connection timed out".into()));
+            }
+            match std::net::TcpStream::connect_timeout(
+                address,
+                std::time::Duration::from_millis(200).min(left),
+            ) {
+                Ok(stream) => {
+                    if !keep() {
+                        return Err(stopped_chat());
+                    }
+                    return Ok(stream);
+                }
+                Err(error) => {
+                    last = error.to_string();
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                    ) {
+                        continue;
+                    }
+                    break;
+                }
             }
         }
     }
     Err(AtlasError::Platform(last))
 }
-fn write_chat_until(stream: &mut std::net::TcpStream, request: &[u8], keep: &dyn Fn() -> bool) -> Result<()> {
+fn write_chat_until(
+    stream: &mut std::net::TcpStream,
+    request: &[u8],
+    keep: &dyn Fn() -> bool,
+) -> Result<()> {
     use std::io::Write;
-    if request.len() > 2 * 1024 * 1024 { return Err(AtlasError::Platform("model request exceeds the bounded transport limit".into())); }
+    if request.len() > 2 * 1024 * 1024 {
+        return Err(AtlasError::Platform(
+            "model request exceeds the bounded transport limit".into(),
+        ));
+    }
     stream.set_write_timeout(Some(std::time::Duration::from_millis(200)))?;
-    let began = std::time::Instant::now(); let mut written = 0;
+    let began = std::time::Instant::now();
+    let mut written = 0;
     while written < request.len() {
-        if !keep() { return Err(stopped_chat()); }
-        if began.elapsed() >= std::time::Duration::from_secs(CHAT_READ_SECS) { return Err(AtlasError::Platform("model request write timed out".into())); }
+        if !keep() {
+            return Err(stopped_chat());
+        }
+        if began.elapsed() >= std::time::Duration::from_secs(CHAT_READ_SECS) {
+            return Err(AtlasError::Platform("model request write timed out".into()));
+        }
         match stream.write(&request[written..(written + 16 * 1024).min(request.len())]) {
-            Ok(0) => return Err(std::io::Error::new(std::io::ErrorKind::WriteZero, "model socket stopped accepting the request").into()),
+            Ok(0) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::WriteZero,
+                    "model socket stopped accepting the request",
+                )
+                .into())
+            }
             Ok(n) => written += n,
-            Err(error) if matches!(error.kind(), std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted) => {},
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::TimedOut
+                        | std::io::ErrorKind::WouldBlock
+                        | std::io::ErrorKind::Interrupted
+                ) => {}
             Err(error) => return Err(error.into()),
         }
     }
-    if !keep() { return Err(stopped_chat()); }
+    if !keep() {
+        return Err(stopped_chat());
+    }
     Ok(())
 }
 
@@ -2229,7 +2629,9 @@ pub fn chat_call_until(
     let mut req = req.clone();
     let mut shortened = false;
     loop {
-        if !keep_going() { return Err(stopped_chat()); }
+        if !keep_going() {
+            return Err(stopped_chat());
+        }
         match chat_call_once(url, &req, on_text, keep_going) {
             Ok(r) => return Ok(r),
             Err(ChatFail::NoChat(m)) => {
@@ -2238,7 +2640,9 @@ pub fn chat_call_until(
             }
             Err(ChatFail::Loading(_)) if started.elapsed().as_secs() < LOADING_WAIT_SECS => {
                 for _ in 0..40 {
-                    if !keep_going() { return Err(stopped_chat()); }
+                    if !keep_going() {
+                        return Err(stopped_chat());
+                    }
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
             }
@@ -2284,10 +2688,17 @@ fn read_or_stop(
     use std::io::Read;
     let began = std::time::Instant::now();
     loop {
-        if !keep_going() { return Ok(None); }
+        if !keep_going() {
+            return Ok(None);
+        }
         match s.read(buf) {
             Ok(n) => return Ok(Some(n)),
-            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
                 if !keep_going() {
                     return Ok(None);
                 }
@@ -2313,7 +2724,11 @@ fn chat_call_io(
         Some(k) => (&rest[..k], &rest[k..]),
         None => (rest, "/"),
     };
-    let host = if host.contains(':') { host.to_string() } else { format!("{host}:80") };
+    let host = if host.contains(':') {
+        host.to_string()
+    } else {
+        format!("{host}:80")
+    };
     let addresses = resolve_chat_until(&host, keep_going)?;
     let timeout = std::time::Duration::from_secs(CHAT_READ_SECS);
     let mut s = match connect_chat_until(&addresses, keep_going) {
@@ -2321,12 +2736,22 @@ fn chat_call_io(
         Err(error) if chat_was_stopped(&error) => return Err(error),
         Err(_) => {
             pause_chat_until(std::time::Duration::from_secs(1), keep_going)?;
-            connect_chat_until(&addresses, keep_going).map_err(|error| if chat_was_stopped(&error) { error } else { AtlasError::Platform(unreachable_words(&host, &error.to_string())) })?
+            connect_chat_until(&addresses, keep_going).map_err(|error| {
+                if chat_was_stopped(&error) {
+                    error
+                } else {
+                    AtlasError::Platform(unreachable_words(&host, &error.to_string()))
+                }
+            })?
         }
     };
     s.set_read_timeout(Some(std::time::Duration::from_millis(READ_SLICE_MS)))?;
     let body = chat_body(req, true);
-    write_chat_until(&mut s, crate::http::build_request("POST", &host, path, Some(&body)).as_bytes(), keep_going)?;
+    write_chat_until(
+        &mut s,
+        crate::http::build_request("POST", &host, path, Some(&body)).as_bytes(),
+        keep_going,
+    )?;
 
     let mut raw: Vec<u8> = Vec::new();
     let mut buf = [0u8; 4096];
@@ -2341,19 +2766,32 @@ fn chat_call_io(
             return Err(stopped_chat());
         };
         if n == 0 {
-            return Err(AtlasError::Platform("the model server closed the connection".into()));
+            return Err(AtlasError::Platform(
+                "the model server closed the connection".into(),
+            ));
         }
         raw.extend_from_slice(&buf[..n]);
         if raw.len() > 64 * 1024 {
-            return Err(AtlasError::Platform("the model server sent no end to its headers".into()));
+            return Err(AtlasError::Platform(
+                "the model server sent no end to its headers".into(),
+            ));
         }
     };
     let head = String::from_utf8_lossy(&raw[..head_end]).to_string();
-    let status: u16 = head.lines().next().and_then(|l| l.split_whitespace().nth(1)).and_then(|c| c.parse().ok()).unwrap_or(0);
+    let status: u16 = head
+        .lines()
+        .next()
+        .and_then(|l| l.split_whitespace().nth(1))
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
     let chunked = head.to_lowercase().contains("transfer-encoding: chunked");
     let error_len: Option<usize> = head
         .lines()
-        .find_map(|l| l.to_lowercase().strip_prefix("content-length:").map(|v| v.trim().to_string()))
+        .find_map(|l| {
+            l.to_lowercase()
+                .strip_prefix("content-length:")
+                .map(|v| v.trim().to_string())
+        })
         .and_then(|v| v.parse().ok());
     let mut pending: Vec<u8> = raw[head_end + 4..].to_vec();
     let mut body_bytes: Vec<u8> = Vec::new();
@@ -2365,7 +2803,10 @@ fn chat_call_io(
         if chunked {
             while let Some(eol) = pending.windows(2).position(|w| w == b"\r\n") {
                 let size_txt = String::from_utf8_lossy(&pending[..eol]).to_string();
-                let Ok(n) = usize::from_str_radix(size_txt.trim().split(';').next().unwrap_or("").trim(), 16) else {
+                let Ok(n) = usize::from_str_radix(
+                    size_txt.trim().split(';').next().unwrap_or("").trim(),
+                    16,
+                ) else {
                     eof = true;
                     break;
                 };
@@ -2438,7 +2879,9 @@ fn chat_call_io(
     // asked to stop: the connection dropped partway, and what came is not
     // the whole reply (28 Sep 2026: it was taken as one).
     if !stopped && !stream.done {
-        return Ok(Err(ChatFail::Other("the model server stopped partway through its reply".into())));
+        return Ok(Err(ChatFail::Other(
+            "the model server stopped partway through its reply".into(),
+        )));
     }
     if let Some(t) = stream.timings {
         if let Ok(mut g) = LAST_TIMINGS.lock().or_else(crate::crash::unpoison) {
@@ -2454,8 +2897,14 @@ mod eyes_tests {
 
     #[test]
     fn a_model_name_without_its_quantisation() {
-        assert_eq!(without_quant("Qwen3VL-4B-Instruct-Q4_K_M"), "qwen3vl-4b-instruct");
-        assert_eq!(without_quant("Qwen3VL-4B-Instruct-Q8_0"), "qwen3vl-4b-instruct");
+        assert_eq!(
+            without_quant("Qwen3VL-4B-Instruct-Q4_K_M"),
+            "qwen3vl-4b-instruct"
+        );
+        assert_eq!(
+            without_quant("Qwen3VL-4B-Instruct-Q8_0"),
+            "qwen3vl-4b-instruct"
+        );
         assert_eq!(without_quant("Qwen_Qwen3.5-9B-IQ4_XS"), "qwen_qwen3.5-9b");
         assert_eq!(without_quant("Qwen_Qwen3.5-4B-f16"), "qwen_qwen3.5-4b");
         assert_eq!(without_quant("plain-model"), "plain-model");
@@ -2487,8 +2936,14 @@ mod eyes_tests {
         let m = model_at(&talk);
         assert_eq!(m.projector(), Some(eyes.clone()));
         let cfg = ModelsConfig::default();
-        assert_eq!(projector_args(&m, &cfg), vec!["--mmproj".to_string(), eyes.display().to_string()]);
-        let off = ModelsConfig { see_with_talking_model: false, ..ModelsConfig::default() };
+        assert_eq!(
+            projector_args(&m, &cfg),
+            vec!["--mmproj".to_string(), eyes.display().to_string()]
+        );
+        let off = ModelsConfig {
+            see_with_talking_model: false,
+            ..ModelsConfig::default()
+        };
         assert!(projector_args(&m, &off).is_empty());
         // The deep model has no encoder beside it: nothing added.
         let deep = model_at(&dir.join("Qwen_Qwen3.5-9B-IQ4_XS.gguf"));
@@ -2510,44 +2965,87 @@ mod bounded_chat_cancellation {
         let (accepted, waiting) = std::sync::mpsc::channel();
         let worker = std::thread::spawn(move || {
             let (mut peer, _) = listener.accept().unwrap();
-            peer.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+            peer.set_read_timeout(Some(std::time::Duration::from_secs(2)))
+                .unwrap();
             let mut buffer = [0; 4096];
             let n = peer.read(&mut buffer).unwrap();
-            assert!(n > 0); accepted.send(()).unwrap();
-            loop { match peer.read(&mut buffer) { Ok(0) => break, Ok(_) => {}, Err(error) => panic!("cancelled request remained open: {error}"), } }
+            assert!(n > 0);
+            accepted.send(()).unwrap();
+            loop {
+                match peer.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(_) => {}
+                    Err(error) => panic!("cancelled request remained open: {error}"),
+                }
+            }
         });
         let began = std::time::Instant::now();
-        let output = chat_call_until(&format!("http://{address}/v1/chat/completions"), &crate::brain::ChatRequest::default(), &mut |_| panic!("no generation should arrive"), &|| began.elapsed() < std::time::Duration::from_millis(50));
-        waiting.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+        let output = chat_call_until(
+            &format!("http://{address}/v1/chat/completions"),
+            &crate::brain::ChatRequest::default(),
+            &mut |_| panic!("no generation should arrive"),
+            &|| began.elapsed() < std::time::Duration::from_millis(50),
+        );
+        waiting
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap();
         worker.join().unwrap();
-        assert!(output.is_err(), "a pre-header deadline is not a completed empty generation");
-        assert!(began.elapsed() < std::time::Duration::from_secs(1), "one read slice plus connection cleanup must stay bounded");
+        assert!(
+            output.is_err(),
+            "a pre-header deadline is not a completed empty generation"
+        );
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(1),
+            "one read slice plus connection cleanup must stay bounded"
+        );
     }
     fn reply_server(body: &'static str) -> (String, std::thread::JoinHandle<()>) {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!("http://{}/v1/chat/completions", listener.local_addr().unwrap());
+        let url = format!(
+            "http://{}/v1/chat/completions",
+            listener.local_addr().unwrap()
+        );
         let thread = std::thread::spawn(move || {
             use std::io::Write;
             let (mut peer, _) = listener.accept().unwrap();
-            peer.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
-            let mut bytes = [0; 4096]; assert!(peer.read(&mut bytes).unwrap() > 0);
+            peer.set_read_timeout(Some(std::time::Duration::from_secs(2)))
+                .unwrap();
+            let mut bytes = [0; 4096];
+            assert!(peer.read(&mut bytes).unwrap() > 0);
             peer.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
         });
         (url, thread)
     }
     #[test]
     fn partial_generation_disconnect_is_not_a_completed_reply() {
-        let (url, worker) = reply_server("data: {\"choices\":[{\"delta\":{\"content\":\"partial draft\"}}]}\n\n");
+        let (url, worker) =
+            reply_server("data: {\"choices\":[{\"delta\":{\"content\":\"partial draft\"}}]}\n\n");
         let mut received = String::new();
-        let result = chat_call_until(&url, &crate::brain::ChatRequest::default(), &mut |text| { received.push_str(text); true }, &|| true);
+        let result = chat_call_until(
+            &url,
+            &crate::brain::ChatRequest::default(),
+            &mut |text| {
+                received.push_str(text);
+                true
+            },
+            &|| true,
+        );
         worker.join().unwrap();
         assert_eq!(received, "partial draft");
-        assert!(result.is_err(), "connection close is not a provider completion marker");
+        assert!(
+            result.is_err(),
+            "connection close is not a provider completion marker"
+        );
     }
     #[test]
     fn provider_finish_reason_completes_a_stream_without_done_line() {
         let (url, worker) = reply_server("data: {\"choices\":[{\"delta\":{\"content\":\"complete draft\"},\"finish_reason\":\"stop\"}]}\n\n");
-        let result = chat_call_until(&url, &crate::brain::ChatRequest::default(), &mut |_| true, &|| true);
+        let result = chat_call_until(
+            &url,
+            &crate::brain::ChatRequest::default(),
+            &mut |_| true,
+            &|| true,
+        );
         worker.join().unwrap();
         assert_eq!(result.unwrap().text, "complete draft");
     }
@@ -2555,36 +3053,75 @@ mod bounded_chat_cancellation {
     fn stopped_resolver_mailbox_drops_late_result_without_transport() {
         let (send, reply) = std::sync::mpsc::sync_channel(1);
         let began = std::time::Instant::now();
-        assert!(chat_was_stopped(&wait_chat_resolution(&reply, &|| began.elapsed() < std::time::Duration::from_millis(50)).unwrap_err()));
+        assert!(chat_was_stopped(
+            &wait_chat_resolution(&reply, &|| began.elapsed()
+                < std::time::Duration::from_millis(50))
+            .unwrap_err()
+        ));
         drop(reply);
-        assert!(matches!(send.try_send(Ok(vec!["127.0.0.1:1".parse().unwrap()])), Err(std::sync::mpsc::TrySendError::Disconnected(_))));
+        assert!(matches!(
+            send.try_send(Ok(vec!["127.0.0.1:1".parse().unwrap()])),
+            Err(std::sync::mpsc::TrySendError::Disconnected(_))
+        ));
         assert!(began.elapsed() < std::time::Duration::from_millis(250));
     }
     #[test]
     fn refused_connection_retry_polls_stop_instead_of_sleeping_a_second() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap(); drop(listener);
+        let address = listener.local_addr().unwrap();
+        drop(listener);
         let began = std::time::Instant::now();
-        let result = chat_call_until(&format!("http://{address}/v1/chat/completions"), &crate::brain::ChatRequest::default(), &mut |_| true, &|| began.elapsed() < std::time::Duration::from_millis(50));
+        let result = chat_call_until(
+            &format!("http://{address}/v1/chat/completions"),
+            &crate::brain::ChatRequest::default(),
+            &mut |_| true,
+            &|| began.elapsed() < std::time::Duration::from_millis(50),
+        );
         assert!(chat_was_stopped(&result.unwrap_err()));
         assert!(began.elapsed() < std::time::Duration::from_millis(300));
     }
     #[test]
     fn writing_large_request_stops_between_chunks_and_closes_socket() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap(); let address = listener.local_addr().unwrap();
-        let worker = std::thread::spawn(move || { let (mut peer, _) = listener.accept().unwrap(); peer.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap(); let mut bytes = Vec::new(); peer.read_to_end(&mut bytes).unwrap(); bytes.len() });
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let worker = std::thread::spawn(move || {
+            let (mut peer, _) = listener.accept().unwrap();
+            peer.set_read_timeout(Some(std::time::Duration::from_secs(2)))
+                .unwrap();
+            let mut bytes = Vec::new();
+            peer.read_to_end(&mut bytes).unwrap();
+            bytes.len()
+        });
         let mut stream = std::net::TcpStream::connect(address).unwrap();
         let checkpoints = std::cell::Cell::new(0);
-        let result = write_chat_until(&mut stream, &vec![b'x'; 2 * 1024 * 1024], &|| { checkpoints.set(checkpoints.get() + 1); checkpoints.get() < 3 });
-        drop(stream); let received = worker.join().unwrap();
+        let result = write_chat_until(&mut stream, &vec![b'x'; 2 * 1024 * 1024], &|| {
+            checkpoints.set(checkpoints.get() + 1);
+            checkpoints.get() < 3
+        });
+        drop(stream);
+        let received = worker.join().unwrap();
         assert!(chat_was_stopped(&result.unwrap_err()));
-        assert!(received > 0 && received < 2 * 1024 * 1024, "only the initial bounded chunks may be sent");
+        assert!(
+            received > 0 && received < 2 * 1024 * 1024,
+            "only the initial bounded chunks may be sent"
+        );
     }
     #[test]
     fn already_cancelled_request_never_connects() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
-        assert!(chat_call_until(&format!("http://{}/v1/chat/completions", listener.local_addr().unwrap()), &crate::brain::ChatRequest::default(), &mut |_| true, &|| false).is_err());
-        assert!(matches!(listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock));
+        assert!(chat_call_until(
+            &format!(
+                "http://{}/v1/chat/completions",
+                listener.local_addr().unwrap()
+            ),
+            &crate::brain::ChatRequest::default(),
+            &mut |_| true,
+            &|| false
+        )
+        .is_err());
+        assert!(
+            matches!(listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock)
+        );
     }
 }

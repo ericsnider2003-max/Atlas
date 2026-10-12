@@ -39,7 +39,14 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn cfg() -> Config {
@@ -59,7 +66,11 @@ struct Talker {
 }
 impl Talker {
     fn new() -> Self {
-        Talker { calls: AtomicU32::new(0), last_ctx: std::sync::Mutex::new(String::new()), all_ctx: Default::default() }
+        Talker {
+            calls: AtomicU32::new(0),
+            last_ctx: std::sync::Mutex::new(String::new()),
+            all_ctx: Default::default(),
+        }
     }
 }
 impl Llm for Talker {
@@ -67,8 +78,10 @@ impl Llm for Talker {
         self.calls.fetch_add(1, Ordering::SeqCst);
         *self.last_ctx.lock().unwrap() = user.to_string();
         self.all_ctx.lock().unwrap().push(user.to_string());
-        Ok(r#"{"action":"say","arg":null,"say":"The rack would take a 10-inch shelf, yes."}"#
-            .into())
+        Ok(
+            r#"{"action":"say","arg":null,"say":"The rack would take a 10-inch shelf, yes."}"#
+                .into(),
+        )
     }
 }
 
@@ -95,7 +108,10 @@ fn a_sentence_the_phrase_list_does_not_know_reaches_the_model() {
         !reply.to_lowercase().contains("didn't catch"),
         "an ordinary sentence came back as a failure to hear: {reply}"
     );
-    assert!(reply.contains("10-inch shelf"), "the model's answer did not reach you: {reply}");
+    assert!(
+        reply.contains("10-inch shelf"),
+        "the model's answer did not reach you: {reply}"
+    );
 }
 
 #[test]
@@ -212,7 +228,9 @@ fn the_typed_path_takes_a_turn_rather_than_executing_an_intent() {
     // A source check because `prompt_line` is in the binary, not the library.
     // Coarse, and worth it: the whole bug was one call site.
     let src = crate::common::source_of("main");
-    let start = src.find("fn prompt_line(").expect("prompt_line still exists");
+    let start = src
+        .find("fn prompt_line(")
+        .expect("prompt_line still exists");
     let body = &src[start..start + 4000.min(src.len() - start)];
     // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
     let end = body.find("\n}\n").unwrap_or(body.len());

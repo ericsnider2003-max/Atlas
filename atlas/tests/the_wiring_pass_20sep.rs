@@ -24,11 +24,24 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 // ================= "call me X" reaches the memory store =================
@@ -75,7 +88,10 @@ fn capturing_against_a_project_stamps_it_as_worked_on() {
     // list is what read_spoken matches against; use whatever it carries, or
     // fall back to asserting nothing crashes when none match.
     let before = d.memory.projects.len();
-    d.turn("note that the roof needs fixing for the Homelab project", 100);
+    d.turn(
+        "note that the roof needs fixing for the Homelab project",
+        100,
+    );
     // Either it matched a configured project name and stamped it, or it did
     // not — but the store is now writable either way, which is the property
     // that was broken. When it matched, last_touched is set.
@@ -135,7 +151,10 @@ fn stop_everything_abandons_queued_lane_work() {
         .iter()
         .filter(|t| !matches!(t.state, TaskState::Done | TaskState::Failed))
         .count();
-    assert_eq!(live, 0, "a panic-stop must leave nothing queued to silently resume");
+    assert_eq!(
+        live, 0,
+        "a panic-stop must leave nothing queued to silently resume"
+    );
 }
 
 // ================= a queued net task says it needs a connection ======
@@ -147,7 +166,11 @@ fn work_that_needs_the_network_is_queued_as_needing_it() {
     use atlas::lanes::{Lane, Queue};
     let mut q = Queue::default();
     q.push_online("research the thing", Lane::Background);
-    assert_eq!(q.waiting_for_network().len(), 1, "a net task must be visible as one");
+    assert_eq!(
+        q.waiting_for_network().len(),
+        1,
+        "a net task must be visible as one"
+    );
 }
 
 // ================= smtp port comes from the provider ==================
@@ -161,7 +184,6 @@ fn the_smtp_port_is_the_providers_own_answer() {
     assert_eq!(Provider::Fastmail.smtp_port(), 465);
 }
 
-
 // ================= a reviewed post fills the open draft ==============
 
 #[test]
@@ -174,9 +196,15 @@ fn reviewing_text_with_a_draft_open_fills_it_and_asks_to_confirm() {
     let mut d = daemon(&c, &p, "post");
     // Open a draft the way "draft a post for X" does.
     let id = d.publisher.draft(atlas::publish::Channel::X, "");
-    d.turn("check this before I post it: We shipped the thing today", 100);
+    d.turn(
+        "check this before I post it: We shipped the thing today",
+        100,
+    );
     let post = d.publisher.get(id).expect("the draft still exists");
-    assert!(!post.body.is_empty(), "the reviewed words should have become the draft body");
+    assert!(
+        !post.body.is_empty(),
+        "the reviewed words should have become the draft body"
+    );
     assert_eq!(
         post.state,
         PostState::AwaitingApproval,
@@ -209,10 +237,16 @@ fn learned_merges_a_finding_into_the_knowledge_store() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "learned");
     let first = d.learned("The Ventura tide is low at 3pm", "research: tides", 100);
-    assert!(!first, "the first sighting of a claim is an addition, not a strengthening");
+    assert!(
+        !first,
+        "the first sighting of a claim is an addition, not a strengthening"
+    );
     // The same claim again strengthens rather than duplicating.
     let again = d.learned("Ventura tide is low around 3pm", "research: tides", 200);
-    assert!(again, "the same claim reworded should strengthen what's known");
+    assert!(
+        again,
+        "the same claim reworded should strengthen what's known"
+    );
 }
 
 #[test]
@@ -257,8 +291,14 @@ fn another_way_names_a_different_route_of_the_same_kind() {
     let mut d = daemon(&c, &p, "route");
     d.connectivity.set(atlas::connectivity::Reach::Online, 100);
     // Given one Extract route failed, it should name a different one.
-    let alt = d.another_way(atlas::route::Kind::Extract, "read the file that's already there");
-    assert!(alt.is_some(), "there is more than one way to extract; it should offer another");
+    let alt = d.another_way(
+        atlas::route::Kind::Extract,
+        "read the file that's already there",
+    );
+    assert!(
+        alt.is_some(),
+        "there is more than one way to extract; it should offer another"
+    );
     assert_ne!(alt.as_deref(), Some("read the file that's already there"));
 }
 
@@ -274,7 +314,11 @@ fn keep_awake_lets_the_machine_sleep_on_a_low_battery() {
         external_display: false,
     };
     let (hold, why) = d.keep_awake(atlas::awake::Because::OvernightWork, &flat, 0);
-    assert_eq!(hold, atlas::awake::Hold::Release, "5% battery is for the morning, not a render");
+    assert_eq!(
+        hold,
+        atlas::awake::Hold::Release,
+        "5% battery is for the morning, not a render"
+    );
     assert!(!why.is_empty(), "letting it sleep should say why");
 }
 
@@ -282,12 +326,18 @@ fn keep_awake_lets_the_machine_sleep_on_a_low_battery() {
 fn a_reply_can_be_interrupted_and_then_finished() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "interrupt");
-    let mouth = RecordingMouth { said: std::cell::RefCell::new(Vec::new()) };
+    let mouth = RecordingMouth {
+        said: std::cell::RefCell::new(Vec::new()),
+    };
     // A listener that interrupts after the first chunk.
     let mut calls = 0;
     let mut listen = move || {
         calls += 1;
-        if calls == 1 { Some("stop".to_string()) } else { None }
+        if calls == 1 {
+            Some("stop".to_string())
+        } else {
+            None
+        }
     };
     let d_res = d.say_interruptibly(
         &mouth,
@@ -296,8 +346,14 @@ fn a_reply_can_be_interrupted_and_then_finished() {
     );
     if d_res.was_interrupted() {
         // The unsaid remainder is parked and retrievable.
-        assert!(d.finish_saying().is_some(), "an interrupted reply must leave a remainder to finish");
-        assert!(d.finish_saying().is_none(), "the remainder is handed over once, not forever");
+        assert!(
+            d.finish_saying().is_some(),
+            "an interrupted reply must leave a remainder to finish"
+        );
+        assert!(
+            d.finish_saying().is_none(),
+            "the remainder is handed over once, not forever"
+        );
     }
 }
 
@@ -310,7 +366,9 @@ fn the_speaker_gets_words_not_symbols() {
     // the mouth.
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "spoken");
-    let mouth = RecordingMouth { said: std::cell::RefCell::new(Vec::new()) };
+    let mouth = RecordingMouth {
+        said: std::cell::RefCell::new(Vec::new()),
+    };
     let mut never = || None;
     let d_res = d.say_interruptibly(&mouth, "That's $5 and 20% off.", &mut never);
     // If the tier speaks at all, what it spoke is normalised.
@@ -325,7 +383,10 @@ fn the_speaker_gets_words_not_symbols() {
                 spoken.contains("20 percent"),
                 "the voice should say '20 percent', got: {spoken:?}"
             );
-            assert!(!spoken.contains('$'), "no bare symbols should reach the speaker: {spoken:?}");
+            assert!(
+                !spoken.contains('$'),
+                "no bare symbols should reach the speaker: {spoken:?}"
+            );
         }
     }
 }

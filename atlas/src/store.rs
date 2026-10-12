@@ -7,14 +7,19 @@ use std::path::{Path, PathBuf};
 
 #[path = "store/state_lock.rs"]
 mod state_lock;
-pub use state_lock::StateGuard;
 pub use state_lock::AccessGuard;
-pub fn state_access(root: &Path, exclusive: bool) -> std::io::Result<AccessGuard> { state_lock::access(root, exclusive) }
+pub use state_lock::StateGuard;
+pub fn state_access(root: &Path, exclusive: bool) -> std::io::Result<AccessGuard> {
+    state_lock::access(root, exclusive)
+}
 /// Fail closed before owner/permission reads if an earlier restore stopped.
 pub fn begin_state_command(root: &Path, restoring: bool) -> Result<AccessGuard> {
     let access = state_access(root, restoring)?;
     if access.root.join(".restore-journal.json").try_exists()? {
-        if restoring { crate::safety::recover_restore(&access.root)?; return Ok(access); }
+        if restoring {
+            crate::safety::recover_restore(&access.root)?;
+            return Ok(access);
+        }
         let root = access.root.clone();
         drop(access);
         let exclusive = state_access(&root, true)?;
@@ -28,7 +33,8 @@ pub fn begin_state_command(root: &Path, restoring: bool) -> Result<AccessGuard> 
 pub fn state_transaction(root: &Path) -> std::io::Result<StateGuard> {
     let guard = state_lock::try_acquire(root)?;
     if guard.root.join(".restore-journal.json").try_exists()? {
-        crate::safety::recover_restore(&guard.root).map_err(|e| std::io::Error::other(e.to_string()))?;
+        crate::safety::recover_restore(&guard.root)
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
     }
     Ok(guard)
 }
@@ -38,16 +44,26 @@ pub fn state_transaction(root: &Path) -> std::io::Result<StateGuard> {
 pub fn state_transaction_briefly(root: &Path) -> std::io::Result<StateGuard> {
     for _ in 0..25 {
         match state_transaction(root) {
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(std::time::Duration::from_millis(10)),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(std::time::Duration::from_millis(10))
+            }
             other => return other,
         }
     }
     state_transaction(root)
 }
-pub fn wait_for_state_transaction(root: &Path) -> std::io::Result<StateGuard> { state_lock::acquire(root) }
-pub(crate) fn try_state_guard(root: &Path) -> std::io::Result<StateGuard> { state_lock::try_acquire(root) }
-pub fn state_root_for(path: &Path) -> std::io::Result<Option<PathBuf>> { state_lock::root_for(path) }
-pub fn bind_owned_output(root: &Path, folder: &Path) -> std::io::Result<()> { state_lock::bind_output(root, folder) }
+pub fn wait_for_state_transaction(root: &Path) -> std::io::Result<StateGuard> {
+    state_lock::acquire(root)
+}
+pub(crate) fn try_state_guard(root: &Path) -> std::io::Result<StateGuard> {
+    state_lock::try_acquire(root)
+}
+pub fn state_root_for(path: &Path) -> std::io::Result<Option<PathBuf>> {
+    state_lock::root_for(path)
+}
+pub fn bind_owned_output(root: &Path, folder: &Path) -> std::io::Result<()> {
+    state_lock::bind_output(root, folder)
+}
 
 pub fn write_whole_in_state(root: &Path, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let _guard = state_transaction(root)?;
@@ -66,12 +82,26 @@ pub fn write_owned_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// Worker-only retry: the control loop uses the nonblocking writer above.
 /// A snapshot may briefly own the state lock; stop is checked before every
 /// attempt and no destination is changed while an attempt is refused.
-pub fn write_owned_file_until(path: &Path, bytes: &[u8], stop: &dyn Fn() -> bool) -> std::io::Result<()> {
+pub fn write_owned_file_until(
+    path: &Path,
+    bytes: &[u8],
+    stop: &dyn Fn() -> bool,
+) -> std::io::Result<()> {
     let started = std::time::Instant::now();
     loop {
-        if stop() { return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "stopped before saving Atlas output")); }
+        if stop() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "stopped before saving Atlas output",
+            ));
+        }
         match write_owned_file(path, bytes) {
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock && started.elapsed() < std::time::Duration::from_secs(10) => std::thread::sleep(std::time::Duration::from_millis(20)),
+            Err(error)
+                if error.kind() == std::io::ErrorKind::WouldBlock
+                    && started.elapsed() < std::time::Duration::from_secs(10) =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
             result => return result,
         }
     }
@@ -79,7 +109,11 @@ pub fn write_owned_file_until(path: &Path, bytes: &[u8], stop: &dyn Fn() -> bool
 
 pub fn remove_owned_file(path: &Path) -> std::io::Result<()> {
     let parent = path.parent().unwrap_or(Path::new("."));
-    let _output = if parent.join(".atlas-output-write.lock").try_exists()? { Some(owned_output_lease(parent, true)?) } else { None };
+    let _output = if parent.join(".atlas-output-write.lock").try_exists()? {
+        Some(owned_output_lease(parent, true)?)
+    } else {
+        None
+    };
     let _state = state_lock::for_path(path)?;
     std::fs::remove_file(path)
 }
@@ -89,9 +123,23 @@ pub fn remove_owned_file(path: &Path) -> std::io::Result<()> {
 pub fn owned_output_lease(folder: &Path, snapshot: bool) -> std::io::Result<std::fs::File> {
     std::fs::create_dir_all(folder)?;
     let path = folder.join(".atlas-output-write.lock");
-    if std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.file_type().is_symlink()) { return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "the output lock is a symbolic link")); }
-    let file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(path)?;
-    let locked = if snapshot { file.try_lock() } else { file.try_lock_shared() };
+    if std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "the output lock is a symbolic link",
+        ));
+    }
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)?;
+    let locked = if snapshot {
+        file.try_lock()
+    } else {
+        file.try_lock_shared()
+    };
     locked.map_err(|e| std::io::Error::new(std::io::ErrorKind::WouldBlock, format!("Atlas output is still being recorded or copied ({e}); try backup again after recording finishes")))?;
     Ok(file)
 }
@@ -225,7 +273,11 @@ static WRITTEN: std::sync::LazyLock<std::sync::Mutex<Written>> =
 /// the value.
 type Kept = std::collections::HashMap<
     PathBuf,
-    (u64, Option<std::time::SystemTime>, std::sync::Arc<dyn std::any::Any + Send + Sync>),
+    (
+        u64,
+        Option<std::time::SystemTime>,
+        std::sync::Arc<dyn std::any::Any + Send + Sync>,
+    ),
 >;
 static KEPT: std::sync::LazyLock<std::sync::Mutex<Kept>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(Kept::new()));
@@ -238,7 +290,9 @@ fn content_hash(bytes: &[u8]) -> u64 {
 }
 
 fn remember_written(path: &Path, hash: u64) {
-    let Ok(m) = std::fs::metadata(path) else { return };
+    let Ok(m) = std::fs::metadata(path) else {
+        return;
+    };
     if let Ok(mut w) = WRITTEN.lock().or_else(crate::crash::unpoison) {
         w.insert(path.to_path_buf(), (hash, m.len(), m.modified().ok()));
     }
@@ -249,8 +303,12 @@ fn remember_written(path: &Path, hash: u64) {
 /// doesn't know, for `save` to put back (Q12). Costs one more round trip
 /// through JSON per read, and records nothing in the usual case.
 fn remember_unknown<T: DeserializeOwned + Serialize>(path: &Path, text: &str) {
-    let raw = serde_json::from_str::<serde_json::Value>(text).ok().and_then(|v| v.get("data").cloned());
-    let known = serde_json::from_str::<Envelope<T>>(text).ok().and_then(|e| serde_json::to_value(&e.data).ok());
+    let raw = serde_json::from_str::<serde_json::Value>(text)
+        .ok()
+        .and_then(|v| v.get("data").cloned());
+    let known = serde_json::from_str::<Envelope<T>>(text)
+        .ok()
+        .and_then(|e| serde_json::to_value(&e.data).ok());
     let unknown = match (raw, known) {
         (Some(raw), Some(known)) => unknown_part(&raw, &known),
         _ => None,
@@ -271,7 +329,9 @@ fn remember_unknown<T: DeserializeOwned + Serialize>(path: &Path, text: &str) {
 type Stamp = Option<(u64, Option<std::time::SystemTime>)>;
 
 fn stamp_of(path: &Path) -> Stamp {
-    std::fs::metadata(path).ok().map(|m| (m.len(), m.modified().ok()))
+    std::fs::metadata(path)
+        .ok()
+        .map(|m| (m.len(), m.modified().ok()))
 }
 
 /// Each state file as this process last read or wrote it (5 Oct 2026, Q13).
@@ -303,7 +363,8 @@ fn remember_seen(path: &Path, stamp: Stamp) {
 /// it silent: `Daemon::persist` drains what belongs to its own store into
 /// `persist_failures`, and the person is told once, as for its own records.
 /// Bounded, so a disk that stays full can't grow it without limit.
-static FAILED_SAVES: std::sync::Mutex<Vec<(PathBuf, String, String, bool)>> = std::sync::Mutex::new(Vec::new());
+static FAILED_SAVES: std::sync::Mutex<Vec<(PathBuf, String, String, bool)>> =
+    std::sync::Mutex::new(Vec::new());
 const MOST_FAILED_SAVES_KEPT: usize = 64;
 
 fn record_failed_save(root: &Path, name: &str, error: &str, transient: bool) {
@@ -312,21 +373,35 @@ fn record_failed_save(root: &Path, name: &str, error: &str, transient: bool) {
         if v.len() >= MOST_FAILED_SAVES_KEPT {
             v.remove(0);
         }
-        v.push((root.to_path_buf(), name.to_string(), error.to_string(), transient));
+        v.push((
+            root.to_path_buf(),
+            name.to_string(),
+            error.to_string(),
+            transient,
+        ));
     }
 }
 
 /// The saves into `root` that failed since the last time this was asked, as
 /// (record name, error). Taken, so each is reported once.
 pub fn take_failed_saves(root: &Path) -> Vec<(String, String)> {
-    take_failed_saves_detailed(root).into_iter().map(|(name, error, _)| (name, error)).collect()
+    take_failed_saves_detailed(root)
+        .into_iter()
+        .map(|(name, error, _)| (name, error))
+        .collect()
 }
 
 pub fn take_failed_saves_detailed(root: &Path) -> Vec<(String, String, bool)> {
-    let Ok(mut v) = FAILED_SAVES.lock().or_else(crate::crash::unpoison) else { return Vec::new() };
-    let (mine, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut *v).into_iter().partition(|(r, _, _, _)| r == root);
+    let Ok(mut v) = FAILED_SAVES.lock().or_else(crate::crash::unpoison) else {
+        return Vec::new();
+    };
+    let (mine, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut *v)
+        .into_iter()
+        .partition(|(r, _, _, _)| r == root);
     *v = rest;
-    mine.into_iter().map(|(_, n, e, transient)| (n, e, transient)).collect()
+    mine.into_iter()
+        .map(|(_, n, e, transient)| (n, e, transient))
+        .collect()
 }
 
 /// A record name as a `&'static str`, for `Daemon::persist_failures`. The
@@ -334,7 +409,9 @@ pub fn take_failed_saves_detailed(root: &Path) -> Vec<(String, String, bool)> {
 /// once and reused.
 pub fn intern_record_name(name: &str) -> &'static str {
     static NAMES: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
-    let Ok(mut v) = NAMES.lock().or_else(crate::crash::unpoison) else { return "a record" };
+    let Ok(mut v) = NAMES.lock().or_else(crate::crash::unpoison) else {
+        return "a record";
+    };
     if let Some(n) = v.iter().find(|n| **n == name) {
         return n;
     }
@@ -353,7 +430,9 @@ pub struct Store {
 
 impl Store {
     pub fn new(root: impl AsRef<Path>) -> Self {
-        Store { root: root.as_ref().to_path_buf() }
+        Store {
+            root: root.as_ref().to_path_buf(),
+        }
     }
 
     /// Where this store's own state lives — notes, the tray, the vault,
@@ -363,12 +442,16 @@ impl Store {
     }
 
     /// Hold across a group of saves so a backup sees either whole group.
-    pub fn transaction(&self) -> Result<StateGuard> { Ok(state_transaction(&self.root)?) }
+    pub fn transaction(&self) -> Result<StateGuard> {
+        Ok(state_transaction(&self.root)?)
+    }
 
     /// The same, for a worker thread with something to keep: waits (up to ten
     /// seconds) for whoever holds the lock instead of failing at once. The
     /// control loop uses `transaction`, which never waits.
-    pub fn transaction_waiting(&self) -> Result<StateGuard> { Ok(wait_for_state_transaction(&self.root)?) }
+    pub fn transaction_waiting(&self) -> Result<StateGuard> {
+        Ok(wait_for_state_transaction(&self.root)?)
+    }
 
     /// The install's own root — the directory a fresh download unpacks
     /// into, and the one `atlas update`'s `upgrade::YOURS` list is checked
@@ -540,31 +623,56 @@ impl Store {
     }
 
     /// Checked snapshots may use a smaller caller-specific allocation budget.
-    pub fn load_checked_bounded<T: DeserializeOwned + Serialize>(&self, name: &str, maximum: u64) -> Result<Option<T>> {
+    pub fn load_checked_bounded<T: DeserializeOwned + Serialize>(
+        &self,
+        name: &str,
+        maximum: u64,
+    ) -> Result<Option<T>> {
         use std::io::Read;
         let maximum = maximum.min(16 * 1024 * 1024);
         let path = self.path(name);
         let mut file = match std::fs::File::open(&path) {
             Ok(file) => file,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => { remember_seen(&path, None); return Ok(None); }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                remember_seen(&path, None);
+                return Ok(None);
+            }
             Err(e) => return Err(e.into()),
         };
         let metadata = file.metadata()?;
-        let invalid = |why: &str| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{name}: {why}; state was left untouched"));
-        if !metadata.is_file() || metadata.len() > maximum { return Err(invalid("not a regular state file within the read budget").into()); }
+        let invalid = |why: &str| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("{name}: {why}; state was left untouched"),
+            )
+        };
+        if !metadata.is_file() || metadata.len() > maximum {
+            return Err(invalid("not a regular state file within the read budget").into());
+        }
         let before = Some((metadata.len(), metadata.modified().ok()));
         let mut text = String::new();
         (&mut file).take(maximum + 1).read_to_string(&mut text)?;
-        if text.len() as u64 > maximum || stamp_of(&path) != before { return Err(invalid("state changed or exceeded its read budget").into()); }
-        let raw: serde_json::Value = serde_json::from_str(&text).map_err(|_| invalid("malformed state"))?;
+        if text.len() as u64 > maximum || stamp_of(&path) != before {
+            return Err(invalid("state changed or exceeded its read budget").into());
+        }
+        let raw: serde_json::Value =
+            serde_json::from_str(&text).map_err(|_| invalid("malformed state"))?;
         let (data, envelope) = if let Some(schema) = raw.get("schema") {
-            if schema.as_u64() != Some(u64::from(SCHEMA)) { return Err(invalid("unsupported state format").into()); }
-            (raw.get("data").cloned().ok_or_else(|| invalid("missing state data"))?, text)
+            if schema.as_u64() != Some(u64::from(SCHEMA)) {
+                return Err(invalid("unsupported state format").into());
+            }
+            (
+                raw.get("data")
+                    .cloned()
+                    .ok_or_else(|| invalid("missing state data"))?,
+                text,
+            )
         } else {
             let envelope = serde_json::json!({"schema": SCHEMA, "data": raw.clone()}).to_string();
             (raw, envelope)
         };
-        let value: T = serde_json::from_value(data).map_err(|_| invalid("state does not match this record"))?;
+        let value: T = serde_json::from_value(data)
+            .map_err(|_| invalid("state does not match this record"))?;
         remember_seen(&path, before);
         remember_unknown::<T>(&path, &envelope);
         Ok(Some(value))
@@ -578,7 +686,12 @@ impl Store {
     /// exists to prevent, failing silently.
     fn preserve(&self, name: &str, why: &str) {
         let Ok(_guard) = state_transaction(&self.root) else {
-            record_failed_save(&self.root, name, "state was busy; the unreadable file was left intact", true);
+            record_failed_save(
+                &self.root,
+                name,
+                "state was busy; the unreadable file was left intact",
+                true,
+            );
             return;
         };
         note_set_aside(&self.root, name, why);
@@ -619,7 +732,9 @@ impl Store {
         T: DeserializeOwned + Serialize + Default + Clone + Send + Sync + 'static,
     {
         let path = self.path(name);
-        let stamp = std::fs::metadata(&path).ok().map(|m| (m.len(), m.modified().ok()));
+        let stamp = std::fs::metadata(&path)
+            .ok()
+            .map(|m| (m.len(), m.modified().ok()));
         if let (Some(stamp), Ok(kept)) = (stamp, KEPT.lock()) {
             if let Some((len, when, value)) = kept.get(&path) {
                 if (*len, *when) == stamp {
@@ -642,7 +757,11 @@ impl Store {
     /// about.
     pub fn changed_elsewhere(&self, name: &str) -> bool {
         let path = self.path(name);
-        let seen = SEEN.lock().or_else(crate::crash::unpoison).ok().and_then(|s| s.get(&path).copied());
+        let seen = SEEN
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()
+            .and_then(|s| s.get(&path).copied());
         match seen {
             Some(seen) => stamp_of(&path) != seen,
             None => false,
@@ -655,7 +774,11 @@ impl Store {
     pub fn keep_briefly<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
         for _ in 0..25 {
             match self.save(name, value) {
-                Err(crate::error::AtlasError::Io(io)) if io.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(std::time::Duration::from_millis(10)),
+                Err(crate::error::AtlasError::Io(io))
+                    if io.kind() == std::io::ErrorKind::WouldBlock =>
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(10))
+                }
                 other => return other,
             }
         }
@@ -680,17 +803,29 @@ impl Store {
         // an empty file over the good one, atomically, and returned Ok -- the
         // next load set the empty file aside and the data was gone (Q3).
         let bad = |e: serde_json::Error| {
-            crate::error::AtlasError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{name} couldn't be written as JSON: {e}")))
+            crate::error::AtlasError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("{name} couldn't be written as JSON: {e}"),
+            ))
         };
-        let unknown = UNKNOWN.lock().or_else(crate::crash::unpoison).ok().and_then(|u| u.get(&final_path).cloned());
+        let unknown = UNKNOWN
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()
+            .and_then(|u| u.get(&final_path).cloned());
         let body = match unknown {
             // What a newer Atlas wrote and this one doesn't know, put back (Q12).
             Some(u) => {
                 let mut data = serde_json::to_value(value).map_err(bad)?;
                 put_back_unknown(&u, &mut data);
-                serde_json::to_string_pretty(&serde_json::json!({ "schema": SCHEMA, "data": data })).map_err(bad)?
+                serde_json::to_string_pretty(&serde_json::json!({ "schema": SCHEMA, "data": data }))
+                    .map_err(bad)?
             }
-            None => serde_json::to_string_pretty(&Envelope { schema: SCHEMA, data: value }).map_err(bad)?,
+            None => serde_json::to_string_pretty(&Envelope {
+                schema: SCHEMA,
+                data: value,
+            })
+            .map_err(bad)?,
         };
 
         // Unchanged content is not written.
@@ -723,7 +858,9 @@ impl Store {
         // hand edit, a coarse clock) moves the size or time, and falls back
         // to the comparison against the file above, which cannot be wrong.
         let hash = content_hash(body.as_bytes());
-        let seen = std::fs::metadata(&final_path).ok().map(|m| (m.len(), m.modified().ok()));
+        let seen = std::fs::metadata(&final_path)
+            .ok()
+            .map(|m| (m.len(), m.modified().ok()));
         if let (Some(now), Ok(written)) = (seen, WRITTEN.lock()) {
             if written.get(&final_path) == Some(&(hash, now.0, now.1)) {
                 return Ok(());
@@ -826,7 +963,10 @@ impl Store {
         let _guard = self.transaction()?;
         let to = self.path(new_name);
         if to.exists() {
-            return Err(crate::error::AtlasError::Io(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("{new_name} is already there"))));
+            return Err(crate::error::AtlasError::Io(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("{new_name} is already there"),
+            )));
         }
         std::fs::rename(self.path(name), to)?;
         Ok(())
@@ -874,7 +1014,9 @@ fn read_with_patience(path: &std::path::Path) -> std::io::Result<String> {
 /// LOCK_VIOLATION (33) for those. Elsewhere a rename over a file isn't
 /// blocked by a reader, so nothing is worth waiting for.
 fn is_a_passing_lock(e: &std::io::Error) -> bool {
-    cfg!(windows) && (e.kind() == std::io::ErrorKind::PermissionDenied || matches!(e.raw_os_error(), Some(5 | 32 | 33)))
+    cfg!(windows)
+        && (e.kind() == std::io::ErrorKind::PermissionDenied
+            || matches!(e.raw_os_error(), Some(5 | 32 | 33)))
 }
 
 /// The waits between tries of a rename that hit a passing lock: about 1.3 s
@@ -888,7 +1030,9 @@ const RENAME_PAUSES_MS: [u64; 7] = [10, 20, 40, 80, 160, 320, 640];
 /// at the wrong moment. Any other failure, or one that outlasts the waits,
 /// is returned as it was.
 pub fn rename_patiently(from: &Path, to: &Path) -> std::io::Result<()> {
-    rename_patiently_with(from, to, &RENAME_PAUSES_MS, is_a_passing_lock, |f, t| std::fs::rename(f, t))
+    rename_patiently_with(from, to, &RENAME_PAUSES_MS, is_a_passing_lock, |f, t| {
+        std::fs::rename(f, t)
+    })
 }
 
 /// `rename_patiently`, with the waits, the test for a passing lock and the
@@ -922,12 +1066,20 @@ pub fn rename_patiently_with(
 /// overwrite: a damaged list is evidence, not an empty list. A file that
 /// merely cannot be read right now (antivirus holding it) is left untouched.
 pub fn read_json<T: serde::de::DeserializeOwned + Default>(path: &Path) -> T {
-    let Ok(bytes) = std::fs::read(path) else { return T::default() };
+    let Ok(bytes) = std::fs::read(path) else {
+        return T::default();
+    };
     match serde_json::from_slice(&bytes) {
         Ok(v) => v,
         Err(_) => {
-            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            crate::heard!(rename_patiently(path, &path.with_file_name(format!("{name}.corrupt.{}.bak", now()))));
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            crate::heard!(rename_patiently(
+                path,
+                &path.with_file_name(format!("{name}.corrupt.{}.bak", now()))
+            ));
             T::default()
         }
     }
@@ -935,7 +1087,10 @@ pub fn read_json<T: serde::de::DeserializeOwned + Default>(path: &Path) -> T {
 
 /// `value` written to `path` as pretty JSON, whole (`write_whole`).
 pub fn write_json<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
-    write_whole(path, &serde_json::to_vec_pretty(value).map_err(std::io::Error::other)?)
+    write_whole(
+        path,
+        &serde_json::to_vec_pretty(value).map_err(std::io::Error::other)?,
+    )
 }
 
 /// Write `bytes` as the whole of `path`, or leave the old file as it was:
@@ -949,7 +1104,10 @@ pub fn write_whole(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent)?;
     }
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let tmp = path.with_file_name(format!("{name}.{}.writing", std::process::id()));
     let written = std::fs::File::create(&tmp).and_then(|mut f| {
         f.write_all(bytes)?;
@@ -979,7 +1137,13 @@ static SET_ASIDE: std::sync::Mutex<Vec<SetAside>> = std::sync::Mutex::new(Vec::n
 
 fn note_set_aside(root: &std::path::Path, name: &str, why: &str) {
     let mut v = SET_ASIDE.lock().unwrap_or_else(|p| p.into_inner());
-    v.push(SetAside { root: root.to_path_buf(), name: name.to_string(), why: why.to_string(), at: now(), told: false });
+    v.push(SetAside {
+        root: root.to_path_buf(),
+        name: name.to_string(),
+        why: why.to_string(),
+        at: now(),
+        told: false,
+    });
     if v.len() > 50 {
         v.remove(0);
     }
@@ -998,7 +1162,11 @@ pub fn set_aside_since(store: &Store, since: u64) -> Vec<SetAside> {
 
 /// The sentence for a set-aside file, in plain words.
 pub fn set_aside_sentence(names: &[String]) -> String {
-    let what = names.iter().map(|n| n.replace('_', " ")).collect::<Vec<_>>().join(", ");
+    let what = names
+        .iter()
+        .map(|n| n.replace('_', " "))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!(
         "I couldn't read my saved {what} just now, so I put the file aside and started that part fresh -- \
          nothing was deleted; the old file is kept beside the others in my state folder."
@@ -1013,7 +1181,11 @@ pub fn tell_set_aside(store: &Store) -> Option<String> {
     let (mut unreadable, mut theirs): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
     for s in v.iter_mut().filter(|s| !s.told && s.root == store.root) {
         s.told = true;
-        let list = if s.why == THEIRS { &mut theirs } else { &mut unreadable };
+        let list = if s.why == THEIRS {
+            &mut theirs
+        } else {
+            &mut unreadable
+        };
         if !list.contains(&s.name) {
             list.push(s.name.clone());
         }
@@ -1034,7 +1206,11 @@ pub const THEIRS: &str = "changed elsewhere";
 /// Said when a save went over a change made elsewhere: the other version
 /// is kept, and where.
 fn theirs_sentence(names: &[String]) -> String {
-    let what = names.iter().map(|n| n.replace('_', " ")).collect::<Vec<_>>().join(", ");
+    let what = names
+        .iter()
+        .map(|n| n.replace('_', " "))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!(
         "My saved {what} was changed outside me (a command, or another Atlas on this folder) at the same moment I saved mine, \
          so I kept that other version beside mine in my state folder (the .theirs. file) rather than lose it."
@@ -1093,7 +1269,10 @@ mod install_root_tests {
         // test's own sandbox into whatever happens to sit above it in
         // `/tmp` — the one thing that must never happen.
         let s = Store::new("/tmp/atlas-some-test-abc123");
-        assert_eq!(s.install_root(), PathBuf::from("/tmp/atlas-some-test-abc123"));
+        assert_eq!(
+            s.install_root(),
+            PathBuf::from("/tmp/atlas-some-test-abc123")
+        );
     }
 
     #[test]
@@ -1145,9 +1324,20 @@ mod read_json_tests {
         std::fs::write(&f, b"[1,2,").unwrap();
         let bad: Vec<u32> = super::read_json(&f);
         assert!(bad.is_empty());
-        assert!(!f.exists(), "a damaged file must not stay where the next save overwrites it");
-        let kept: Vec<String> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
-        assert!(kept.iter().any(|n| n.starts_with("list.json.corrupt.") && n.ends_with(".bak")), "{kept:?}");
+        assert!(
+            !f.exists(),
+            "a damaged file must not stay where the next save overwrites it"
+        );
+        let kept: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            kept.iter()
+                .any(|n| n.starts_with("list.json.corrupt.") && n.ends_with(".bak")),
+            "{kept:?}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

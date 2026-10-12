@@ -56,7 +56,11 @@ impl Tilt {
 
 /// Grey from interleaved RGB (Rec. 601 weights).
 pub fn grey(rgb: &[u8]) -> Vec<f32> {
-    rgb.as_chunks::<3>().0.iter().map(|p| 0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32).collect()
+    rgb.as_chunks::<3>()
+        .0
+        .iter()
+        .map(|p| 0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32)
+        .collect()
 }
 
 /// Measure the tilt of a grey picture `w` x `h`. `None` when there are
@@ -145,10 +149,17 @@ pub fn measure(g: &[f32], w: usize, h: usize) -> Option<Tilt> {
     }
     // Confidence: the strength within `WINDOW` of the answer, of all the
     // edges in every direction. Noise spreads over all 90°, so gets about 9%.
-    let n = edges.iter().filter(|(l, _)| (l - lean).abs() <= WINDOW).count();
+    let n = edges
+        .iter()
+        .filter(|(l, _)| (l - lean).abs() <= WINDOW)
+        .count();
     // The edges lean `lean` degrees anticlockwise; turning the photo that
     // far clockwise levels them.
-    Some(Tilt { fix: lean, confidence: (support / total) as f32, edges: n })
+    Some(Tilt {
+        fix: lean,
+        confidence: (support / total) as f32,
+        edges: n,
+    })
 }
 
 /// A 1-2-1 blur across and down.
@@ -181,7 +192,10 @@ pub fn offer(t: &Tilt, name: &str) -> String {
         );
     }
     if t.level() {
-        return format!("{name} already looks level (within {:.1}°), so I've left it alone.", t.fix.abs());
+        return format!(
+            "{name} already looks level (within {:.1}°), so I've left it alone.",
+            t.fix.abs()
+        );
     }
     format!(
         "{name} looks {:.1}° off -- it leans {}. Straighten it? Say \"yes, straighten it\" and I'll make a straightened copy beside it; the original stays as it is.",

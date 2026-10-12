@@ -17,8 +17,10 @@
 //! against a market that may not exist. The fixtures below are bars, and the
 //! walls are wherever the reader actually finds them.
 
-use atlas::levels::{cost_share, gaps, how_far_it_travels, how_many_ranges_out, propose,
-                    stop_is_in_noise, NoTrade, Purse, Rules, Side};
+use atlas::levels::{
+    cost_share, gaps, how_far_it_travels, how_many_ranges_out, propose, stop_is_in_noise, NoTrade,
+    Purse, Rules, Side,
+};
 use atlas::market::bars::Bars;
 
 /// A range with known walls, oscillating between them.
@@ -37,11 +39,17 @@ fn boxed(lo: f64, hi: f64) -> Bars {
 /// do with what these tests are about. Turned off here and tested on its own in
 /// `tests/standdown.rs`, rather than left on and worked around.
 fn no_calendar() -> Rules {
-    Rules { mind_the_calendar: false, ..Rules::default() }
+    Rules {
+        mind_the_calendar: false,
+        ..Rules::default()
+    }
 }
 
 fn purse() -> Purse {
-    Purse { balance: 10_000.0, value_per_point: 1.0 }
+    Purse {
+        balance: 10_000.0,
+        value_per_point: 1.0,
+    }
 }
 
 fn near(a: f64, b: f64, slack: f64) -> bool {
@@ -122,13 +130,35 @@ fn without_a_balance_and_a_value_per_point_there_is_no_size_to_work_out() {
     // A size worked out from a guess is worse than no size.
     let bars = boxed(1.0800, 1.0900);
     let view = bars.latest().unwrap();
-    let broke = Purse { balance: 0.0, value_per_point: 1.0 };
-    let no = propose(&view, "EURUSD", Side::Buy, view.now(), 0.0001, &broke, &no_calendar());
+    let broke = Purse {
+        balance: 0.0,
+        value_per_point: 1.0,
+    };
+    let no = propose(
+        &view,
+        "EURUSD",
+        Side::Buy,
+        view.now(),
+        0.0001,
+        &broke,
+        &no_calendar(),
+    );
     assert!(matches!(no, Err(NoTrade::NoMoney(_))), "{no:?}");
 
-    let weightless = Purse { balance: 10_000.0, value_per_point: 0.0 };
+    let weightless = Purse {
+        balance: 10_000.0,
+        value_per_point: 0.0,
+    };
     assert!(matches!(
-        propose(&view, "EURUSD", Side::Buy, view.now(), 0.0001, &weightless, &no_calendar()),
+        propose(
+            &view,
+            "EURUSD",
+            Side::Buy,
+            view.now(),
+            0.0001,
+            &weightless,
+            &no_calendar()
+        ),
         Err(NoTrade::NoMoney(_))
     ));
 }
@@ -139,7 +169,15 @@ fn something_that_is_not_a_price_is_refused_before_anything_else() {
     let view = bars.latest().unwrap();
     for bad in [f64::NAN, 0.0, -1.1] {
         assert!(matches!(
-            propose(&view, "EURUSD", Side::Buy, bad, 0.0001, &purse(), &no_calendar()),
+            propose(
+                &view,
+                "EURUSD",
+                Side::Buy,
+                bad,
+                0.0001,
+                &purse(),
+                &no_calendar()
+            ),
             Err(NoTrade::Unreadable(_))
         ));
     }
@@ -151,7 +189,15 @@ fn a_spread_that_eats_the_reward_is_refused_and_says_what_it_ate() {
     let bars = boxed(1.0800, 1.0900);
     let view = bars.latest().unwrap();
     let huge = 0.0050;
-    match propose(&view, "EURUSD", Side::Buy, view.now(), huge, &purse(), &no_calendar()) {
+    match propose(
+        &view,
+        "EURUSD",
+        Side::Buy,
+        view.now(),
+        huge,
+        &purse(),
+        &no_calendar(),
+    ) {
         Err(NoTrade::CostsTooMuch(why)) => {
             assert!(!why.is_empty(), "a refusal has to say what it refused for");
         }
@@ -173,7 +219,15 @@ fn every_refusal_carries_a_short_name_and_a_sentence() {
     // the pattern in its refusals can never be seen.
     let bars = boxed(1.0800, 1.0810);
     let view = bars.latest().unwrap();
-    if let Err(no) = propose(&view, "EURUSD", Side::Buy, view.now(), 0.0001, &purse(), &no_calendar()) {
+    if let Err(no) = propose(
+        &view,
+        "EURUSD",
+        Side::Buy,
+        view.now(),
+        0.0001,
+        &purse(),
+        &no_calendar(),
+    ) {
         assert!(!no.label().is_empty());
         assert!(no.plain().len() > 20, "{}", no.plain());
         assert!(!no.label().contains(' ') || no.label().len() < 20);
@@ -189,7 +243,15 @@ fn an_idea_risks_what_the_rules_say_and_no_more() {
     let bars = boxed(1.0700, 1.1000);
     let view = bars.latest().unwrap();
     let rules = no_calendar();
-    if let Ok(idea) = propose(&view, "EURUSD", Side::Buy, view.now(), 0.0001, &purse(), &rules) {
+    if let Ok(idea) = propose(
+        &view,
+        "EURUSD",
+        Side::Buy,
+        view.now(),
+        0.0001,
+        &purse(),
+        &rules,
+    ) {
         let want = purse().balance * rules.risk_fraction;
         assert!(
             near(idea.risking, want, 0.01),
@@ -210,7 +272,15 @@ fn the_runners_up_are_shown_rather_than_discarded() {
     // makes the chosen target look like the only possibility.
     let bars = boxed(1.0700, 1.1000);
     let view = bars.latest().unwrap();
-    if let Ok(idea) = propose(&view, "EURUSD", Side::Buy, view.now(), 0.0001, &purse(), &no_calendar()) {
+    if let Ok(idea) = propose(
+        &view,
+        "EURUSD",
+        Side::Buy,
+        view.now(),
+        0.0001,
+        &purse(),
+        &no_calendar(),
+    ) {
         for (at, reward, why) in &idea.instead {
             assert!(*at > 0.0);
             assert!(*reward >= 0.0);
@@ -229,7 +299,15 @@ fn the_runners_up_are_shown_rather_than_discarded() {
 fn a_sell_is_the_mirror_of_a_buy_and_not_a_special_case() {
     let bars = boxed(1.0700, 1.1000);
     let view = bars.latest().unwrap();
-    if let Ok(idea) = propose(&view, "EURUSD", Side::Sell, view.now(), 0.0001, &purse(), &no_calendar()) {
+    if let Ok(idea) = propose(
+        &view,
+        "EURUSD",
+        Side::Sell,
+        view.now(),
+        0.0001,
+        &purse(),
+        &no_calendar(),
+    ) {
         assert!(idea.stop > idea.entry, "a short's stop is above it");
         assert!(idea.target < idea.entry, "and its target below");
         assert_eq!(idea.side, Side::Sell);
@@ -243,8 +321,24 @@ fn the_same_range_can_refuse_in_both_directions_and_that_is_an_answer() {
     // What would be wrong is producing an idea anyway.
     let tight = boxed(1.08000, 1.08040);
     let view = tight.latest().unwrap();
-    let buy = propose(&view, "EURUSD", Side::Buy, view.now(), 0.0001, &purse(), &no_calendar());
-    let sell = propose(&view, "EURUSD", Side::Sell, view.now(), 0.0001, &purse(), &no_calendar());
+    let buy = propose(
+        &view,
+        "EURUSD",
+        Side::Buy,
+        view.now(),
+        0.0001,
+        &purse(),
+        &no_calendar(),
+    );
+    let sell = propose(
+        &view,
+        "EURUSD",
+        Side::Sell,
+        view.now(),
+        0.0001,
+        &purse(),
+        &no_calendar(),
+    );
     assert!(buy.is_err() && sell.is_err(), "buy {buy:?}  sell {sell:?}");
 }
 
@@ -260,9 +354,20 @@ fn a_target_further_off_than_the_market_has_ever_moved_is_not_a_target() {
     let tight = boxed(1.08000, 1.08040);
     let view = tight.latest().unwrap();
     let travelled = how_far_it_travels(&view, no_calendar().structure_bars).unwrap();
-    assert!(travelled < 0.0010, "the fixture moves {travelled:.5}, which is the whole point");
+    assert!(
+        travelled < 0.0010,
+        "the fixture moves {travelled:.5}, which is the whole point"
+    );
 
-    let sell = propose(&view, "EURUSD", Side::Sell, view.now(), 0.0001, &purse(), &no_calendar());
+    let sell = propose(
+        &view,
+        "EURUSD",
+        Side::Sell,
+        view.now(),
+        0.0001,
+        &purse(),
+        &no_calendar(),
+    );
     match sell {
         Err(NoTrade::NotEnoughRoom(_)) | Err(NoTrade::CostsTooMuch(_)) => {}
         other => panic!("a fifty-pip target off a four-pip range came back as {other:?}"),
@@ -278,8 +383,24 @@ fn a_market_that_does_move_keeps_its_targets() {
     let view = wide.latest().unwrap();
     let travelled = how_far_it_travels(&view, no_calendar().structure_bars).unwrap();
     assert!(travelled > 0.0050, "moved {travelled:.5}");
-    let buy = propose(&view, "EURUSD", Side::Buy, view.now(), 0.0001, &purse(), &no_calendar());
-    let sell = propose(&view, "EURUSD", Side::Sell, view.now(), 0.0001, &purse(), &no_calendar());
+    let buy = propose(
+        &view,
+        "EURUSD",
+        Side::Buy,
+        view.now(),
+        0.0001,
+        &purse(),
+        &no_calendar(),
+    );
+    let sell = propose(
+        &view,
+        "EURUSD",
+        Side::Sell,
+        view.now(),
+        0.0001,
+        &purse(),
+        &no_calendar(),
+    );
     assert!(
         buy.is_ok() || sell.is_ok(),
         "the reach cap refused a market with three hundred pips in it: {buy:?} / {sell:?}"
@@ -292,7 +413,11 @@ fn the_reach_is_measured_off_the_bars_and_says_so_when_it_cannot_be() {
     let view = bars.latest().unwrap();
     // Over the whole window, exactly the high-water to low-water span.
     let all = how_far_it_travels(&view, view.len()).unwrap();
-    let highest = view.high().iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let highest = view
+        .high()
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
     let lowest = view.low().iter().copied().fold(f64::INFINITY, f64::min);
     assert!((all - (highest - lowest)).abs() < 1e-12);
     // A shorter window can only be narrower.
@@ -314,8 +439,24 @@ fn reading_a_view_is_what_makes_these_numbers_mean_anything() {
     assert_eq!(early.len(), 121);
     assert!(late.len() > early.len());
     // Both are readable; neither can see past its own bound.
-    let a = propose(&early, "EURUSD", Side::Buy, early.now(), 0.0001, &purse(), &no_calendar());
-    let b = propose(&late, "EURUSD", Side::Buy, late.now(), 0.0001, &purse(), &no_calendar());
+    let a = propose(
+        &early,
+        "EURUSD",
+        Side::Buy,
+        early.now(),
+        0.0001,
+        &purse(),
+        &no_calendar(),
+    );
+    let b = propose(
+        &late,
+        "EURUSD",
+        Side::Buy,
+        late.now(),
+        0.0001,
+        &purse(),
+        &no_calendar(),
+    );
     let _ = (a, b); // either may refuse; what matters is that neither panicked
 }
 

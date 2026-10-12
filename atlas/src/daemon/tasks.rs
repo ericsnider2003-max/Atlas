@@ -8,7 +8,8 @@ use super::*;
 
 /// Said when a request of several steps comes while another is being
 /// worked through: one at a time, so two don't interleave their steps.
-const STILL_WORKING: &str = "I'm still working through your last request of several steps. Ask me this again when \
+const STILL_WORKING: &str =
+    "I'm still working through your last request of several steps. Ask me this again when \
                              it's done, or say \"stop everything\" to drop that one.";
 
 /// What the loop's worker sends the daemon (`work_through`).
@@ -66,7 +67,16 @@ impl TaskLoop {
         if self.plan.is_empty() {
             format!("\"{}\"", self.said)
         } else {
-            format!("\"{}\" ({} steps planned). Completed steps: {}", self.said, self.plan.len(), if self.completed.is_empty() { "none reported".into() } else { self.completed.join("; ") })
+            format!(
+                "\"{}\" ({} steps planned). Completed steps: {}",
+                self.said,
+                self.plan.len(),
+                if self.completed.is_empty() {
+                    "none reported".into()
+                } else {
+                    self.completed.join("; ")
+                }
+            )
         }
     }
 }
@@ -89,9 +99,13 @@ struct WorkerHands {
 impl crate::taskloop::Hands for WorkerHands {
     fn act(&mut self, call: &brain::ToolCall) -> crate::taskloop::Outcome {
         if self.tx.send(LoopNews::Act(call.clone())).is_err() {
-            return crate::taskloop::Outcome::Failed("Atlas stopped before I could do that.".into());
+            return crate::taskloop::Outcome::Failed(
+                "Atlas stopped before I could do that.".into(),
+            );
         }
-        self.rx.recv().unwrap_or_else(|_| crate::taskloop::Outcome::Failed("Atlas stopped before I could do that.".into()))
+        self.rx.recv().unwrap_or_else(|_| {
+            crate::taskloop::Outcome::Failed("Atlas stopped before I could do that.".into())
+        })
     }
 }
 
@@ -134,9 +148,16 @@ fn progress_line(n: usize, of: usize, step: &crate::taskloop::Step) -> Option<St
     match &step.outcome {
         Outcome::Done(text) => {
             let text = crate::router::clip_words(text.trim(), 240);
-            Some(if text.is_empty() { format!("Step {n} of {of} done.") } else { format!("Step {n} of {of}: {text}") })
+            Some(if text.is_empty() {
+                format!("Step {n} of {of} done.")
+            } else {
+                format!("Step {n} of {of}: {text}")
+            })
         }
-        Outcome::Failed(text) => Some(format!("Step {n} didn't work: {}", crate::router::clip_words(text.trim(), 200))),
+        Outcome::Failed(text) => Some(format!(
+            "Step {n} didn't work: {}",
+            crate::router::clip_words(text.trim(), 200)
+        )),
         Outcome::NeedsYou(_) | Outcome::Started(_) => None,
     }
 }
@@ -153,30 +174,70 @@ impl<'a> Daemon<'a> {
     fn save_task_loop_checkpoint(&self, tl: &TaskLoop) -> crate::error::Result<()> {
         use super::running::{LeftWaiting, LEFT_WAITING};
         let at = crate::store::now();
-        let mut waiting: Vec<LeftWaiting> = self.session.all_approvals().into_iter()
-            .map(|(_, what)| LeftWaiting { what, asked: true, at }).collect();
+        let mut waiting: Vec<LeftWaiting> = self
+            .session
+            .all_approvals()
+            .into_iter()
+            .map(|(_, what)| LeftWaiting {
+                what,
+                asked: true,
+                at,
+            })
+            .collect();
         if self.current_flow.is_none() {
             if let crate::session::Pending::Clarification(question) = &self.session.pending {
-                waiting.push(LeftWaiting { what: question.clone(), asked: true, at });
+                waiting.push(LeftWaiting {
+                    what: question.clone(),
+                    asked: true,
+                    at,
+                });
             }
         }
-        waiting.push(LeftWaiting { what: tl.in_words(), asked: false, at });
+        waiting.push(LeftWaiting {
+            what: tl.in_words(),
+            asked: false,
+            at,
+        });
         self.store.save(LEFT_WAITING, &waiting)
     }
     pub(crate) fn cancel_scheduled_job(&mut self, id: u64) -> bool {
-        let worker = self.scheduler.jobs.iter().find(|job| job.id == id).and_then(|job| job.worker_id);
-        let files = self.scheduler.jobs.iter().find(|job| job.id == id).and_then(|job| job.file_move_id);
+        let worker = self
+            .scheduler
+            .jobs
+            .iter()
+            .find(|job| job.id == id)
+            .and_then(|job| job.worker_id);
+        let files = self
+            .scheduler
+            .jobs
+            .iter()
+            .find(|job| job.id == id)
+            .and_then(|job| job.file_move_id);
         let cancelled = self.scheduler.cancel(id);
-        if let Some(worker) = worker { self.stop_linked_worker(worker, crate::store::now()); }
-        if let Some(files) = files { self.stop_file_move(files); }
+        if let Some(worker) = worker {
+            self.stop_linked_worker(worker, crate::store::now());
+        }
+        if let Some(files) = files {
+            self.stop_file_move(files);
+        }
         cancelled
     }
     /// A worker's real result settles only the queued requests that own it.
-    pub(super) fn finish_queued_worker(&mut self, worker: u64, outcome: &crate::taskloop::Outcome, now: u64) {
+    pub(super) fn finish_queued_worker(
+        &mut self,
+        worker: u64,
+        outcome: &crate::taskloop::Outcome,
+        now: u64,
+    ) {
         self.finish_phone_worker(worker, outcome, now);
         self.finish_queued_owner(worker, outcome, now, false);
     }
-    pub(super) fn finish_file_move_job(&mut self, id: u64, outcome: &crate::taskloop::Outcome, now: u64) {
+    pub(super) fn finish_file_move_job(
+        &mut self,
+        id: u64,
+        outcome: &crate::taskloop::Outcome,
+        now: u64,
+    ) {
         self.finish_queued_owner(id, outcome, now, true);
         if let Some(tl) = self.task_loop.as_mut() {
             if tl.waiting_for_file_move == Some(id) {
@@ -185,15 +246,45 @@ impl<'a> Daemon<'a> {
             }
         }
     }
-    fn finish_queued_owner(&mut self, worker: u64, outcome: &crate::taskloop::Outcome, now: u64, file_move: bool) {
+    fn finish_queued_owner(
+        &mut self,
+        worker: u64,
+        outcome: &crate::taskloop::Outcome,
+        now: u64,
+        file_move: bool,
+    ) {
         use crate::taskloop::Outcome;
-        if matches!(outcome, Outcome::Started(_)) { return; }
-        let tasks: Vec<(u64, String, bool)> = self.queue.tasks.iter()
-            .filter(|task| task.state == crate::lanes::TaskState::Running && if file_move { task.file_move_id == Some(worker) } else { task.worker_id == Some(worker) })
-            .map(|task| (task.id, task.command.clone(), task.stop_requested)).collect();
-        let scheduled: Vec<(u64, String)> = self.scheduler.jobs.iter()
-            .filter(|job| job.in_flight && if file_move { job.file_move_id == Some(worker) } else { job.worker_id == Some(worker) })
-            .map(|job| (job.id, job.command.clone())).collect();
+        if matches!(outcome, Outcome::Started(_)) {
+            return;
+        }
+        let tasks: Vec<(u64, String, bool)> = self
+            .queue
+            .tasks
+            .iter()
+            .filter(|task| {
+                task.state == crate::lanes::TaskState::Running
+                    && if file_move {
+                        task.file_move_id == Some(worker)
+                    } else {
+                        task.worker_id == Some(worker)
+                    }
+            })
+            .map(|task| (task.id, task.command.clone(), task.stop_requested))
+            .collect();
+        let scheduled: Vec<(u64, String)> = self
+            .scheduler
+            .jobs
+            .iter()
+            .filter(|job| {
+                job.in_flight
+                    && if file_move {
+                        job.file_move_id == Some(worker)
+                    } else {
+                        job.worker_id == Some(worker)
+                    }
+            })
+            .map(|job| (job.id, job.command.clone()))
+            .collect();
         for (id, command) in &scheduled {
             let ok = matches!(outcome, Outcome::Done(_));
             self.scheduler.complete(*id, now, outcome.text(), ok);
@@ -211,18 +302,29 @@ impl<'a> Daemon<'a> {
         }
         if !scheduled.is_empty() {
             if let Err(e) = self.scheduler.save(&self.store) {
-                self.log.warn(&format!("Scheduled completion couldn't be saved: {e}. Its saved fence prevents replay."));
+                self.log.warn(&format!(
+                    "Scheduled completion couldn't be saved: {e}. Its saved fence prevents replay."
+                ));
             }
         }
-        if tasks.is_empty() { return; }
+        if tasks.is_empty() {
+            return;
+        }
         for (id, command, stop_requested) in tasks {
             let ok = matches!(outcome, Outcome::Done(_));
             let text = if ok && stop_requested {
-                format!("Finished before the stop request took effect. {}", outcome.text())
-            } else { outcome.text().to_string() };
+                format!(
+                    "Finished before the stop request took effect. {}",
+                    outcome.text()
+                )
+            } else {
+                outcome.text().to_string()
+            };
             self.queue.finish(id, &text, ok);
             if matches!(outcome, Outcome::NeedsYou(_)) {
-                if let Some(task) = self.queue.tasks.iter_mut().find(|task| task.id == id) { task.interrupted = true; }
+                if let Some(task) = self.queue.tasks.iter_mut().find(|task| task.id == id) {
+                    task.interrupted = true;
+                }
             }
             self.journal.record_at(Act::Scheduled, &command, ok, now);
         }
@@ -237,8 +339,13 @@ impl<'a> Daemon<'a> {
         let whole = self.parser.parse(said);
         if matches!(
             whole,
-            Intent::Capture(_) | Intent::Message(_) | Intent::Dictate(_) | Intent::Learn(_) | Intent::Translate(_)
-                | Intent::Delegate(_) | Intent::Snippet(_)
+            Intent::Capture(_)
+                | Intent::Message(_)
+                | Intent::Dictate(_)
+                | Intent::Learn(_)
+                | Intent::Translate(_)
+                | Intent::Delegate(_)
+                | Intent::Snippet(_)
         ) {
             return None;
         }
@@ -246,15 +353,19 @@ impl<'a> Daemon<'a> {
         // Two or more of the parts must ask for something: "You're built to
         // be you. Can you generate a report on yourself?" is one request with
         // a remark in front of it.
-        let asks = |p: &String| crate::taskloop::starts_with_verb(p) || crate::doing::looks_like_an_action(p);
+        let asks = |p: &String| {
+            crate::taskloop::starts_with_verb(p) || crate::doing::looks_like_an_action(p)
+        };
         if parts.iter().filter(|p| asks(p)).count() < 2 {
             return None;
         }
         // These background requests explicitly depend on their result even
         // when the later wording isn't a phrase-matched command ("research
         // this, then tell me what you found"). Keep the dependent plan.
-        if matches!(whole, Intent::Research(_) | Intent::ReadDocument(_) | Intent::Unzip(_) | Intent::EditMedia(_))
-            && parts[1..].iter().any(|p| crate::taskloop::refers_back(p))
+        if matches!(
+            whole,
+            Intent::Research(_) | Intent::ReadDocument(_) | Intent::Unzip(_) | Intent::EditMedia(_)
+        ) && parts[1..].iter().any(|p| crate::taskloop::refers_back(p))
         {
             return Some(Several::StepByStep);
         }
@@ -264,18 +375,26 @@ impl<'a> Daemon<'a> {
         if !matches!(whole, Intent::Unknown(_))
             && !parts[1..].iter().any(|p| {
                 let i = self.parser.parse(p);
-                !matches!(i, Intent::Unknown(_)) && std::mem::discriminant(&i) != std::mem::discriminant(&whole)
+                !matches!(i, Intent::Unknown(_))
+                    && std::mem::discriminant(&i) != std::mem::discriminant(&whole)
             })
         {
             return None;
         }
         // "Use my camera and look at me" is one thing said twice: parts that
         // come to the same command are not several.
-        let known: Vec<Intent> = parts.iter().map(|p| self.parser.parse(p)).filter(|i| !matches!(i, Intent::Unknown(_))).collect();
+        let known: Vec<Intent> = parts
+            .iter()
+            .map(|p| self.parser.parse(p))
+            .filter(|i| !matches!(i, Intent::Unknown(_)))
+            .collect();
         if known.len() == parts.len() && known.windows(2).all(|w| w[0] == w[1]) {
             return None;
         }
-        let tops: Vec<Option<String>> = parts.iter().map(|p| self.router.names_for(p, 1).into_iter().next()).collect();
+        let tops: Vec<Option<String>> = parts
+            .iter()
+            .map(|p| self.router.names_for(p, 1).into_iter().next())
+            .collect();
         if tops.iter().all(|t| t.is_some()) && tops.windows(2).all(|w| w[0] == w[1]) {
             return None;
         }
@@ -286,10 +405,18 @@ impl<'a> Daemon<'a> {
     }
 
     /// A tool call from the loop, as the command it names, carried out.
-    pub(super) fn act_on_call(&mut self, call: &brain::ToolCall, said: &str, tainted: &mut bool) -> crate::taskloop::Outcome {
+    pub(super) fn act_on_call(
+        &mut self,
+        call: &brain::ToolCall,
+        said: &str,
+        tainted: &mut bool,
+    ) -> crate::taskloop::Outcome {
         use crate::taskloop::Outcome;
         let Some(intent) = crate::intent::from_tool(&call.name, &call.arguments, said) else {
-            return Outcome::Failed(format!("There's no tool called {} that I may use.", call.name));
+            return Outcome::Failed(format!(
+                "There's no tool called {} that I may use.",
+                call.name
+            ));
         };
         if let Intent::Ask(question) = &intent {
             self.session.ask(question);
@@ -301,7 +428,12 @@ impl<'a> Daemon<'a> {
     /// One step of a loop, under its taint (Q2): once outside text has been
     /// read, a step the model chose is asked about unless it only reads or
     /// answers; and a step that reads outside text taints what follows.
-    fn act_tainted(&mut self, intent: &Intent, from_model: bool, tainted: &mut bool) -> crate::taskloop::Outcome {
+    fn act_tainted(
+        &mut self,
+        intent: &Intent,
+        from_model: bool,
+        tainted: &mut bool,
+    ) -> crate::taskloop::Outcome {
         let force_ask = from_model && *tainted && !brain::safe_after_outside_text(intent);
         let outcome = self.act_on_asking(intent, from_model, force_ask);
         if brain::reads_outside_text(intent) {
@@ -317,7 +449,12 @@ impl<'a> Daemon<'a> {
     /// single turn does.
     /// ... and, when `force_ask`, asked about first whatever the policy says
     /// (a loop that has read outside text, Q2).
-    pub(super) fn act_on_asking(&mut self, intent: &Intent, from_model: bool, force_ask: bool) -> crate::taskloop::Outcome {
+    pub(super) fn act_on_asking(
+        &mut self,
+        intent: &Intent,
+        from_model: bool,
+        force_ask: bool,
+    ) -> crate::taskloop::Outcome {
         use crate::taskloop::Outcome;
         if self.handover().stance.handed_over() {
             if let Some(refusal) = self.handed_over_refusal(intent) {
@@ -325,7 +462,11 @@ impl<'a> Daemon<'a> {
             }
         }
         let call = crate::policy::classify_with_policy(intent, &self.memory, &self.cfg.policy);
-        let call = if (from_model && brain::model_must_ask(intent)) || force_ask { Decision::max(call, Decision::RequireApproval) } else { call };
+        let call = if (from_model && brain::model_must_ask(intent)) || force_ask {
+            Decision::max(call, Decision::RequireApproval)
+        } else {
+            call
+        };
         let call = self.mcp_gate(intent, call);
         match call {
             Decision::AutoProceed | Decision::ProceedAndReport => {}
@@ -338,7 +479,8 @@ impl<'a> Daemon<'a> {
                 self.session.await_approval(intent.clone(), &q);
                 // Another was already waiting (30 Sep 2026): this one queues
                 // behind it, and is said as waiting, not as the question.
-                if !matches!(&self.session.pending, crate::session::Pending::Approval(i, _) if i == intent) {
+                if !matches!(&self.session.pending, crate::session::Pending::Approval(i, _) if i == intent)
+                {
                     return Outcome::NeedsYou(format!(
                         "{} That needs your OK too -- I'll ask once you've answered the one before it.",
                         say.trim()
@@ -352,11 +494,20 @@ impl<'a> Daemon<'a> {
         let operating_before = self.operating.is_some();
         let files_before = self.active_file_move_id();
         let text = self.execute(intent);
-        if let Some((_, outcome)) = self.execution_receipt.as_ref().filter(|(executed, _)| executed == intent) {
+        if let Some((_, outcome)) = self
+            .execution_receipt
+            .as_ref()
+            .filter(|(executed, _)| executed == intent)
+        {
             outcome.clone()
-        } else if self.session.pending != pending_before && !matches!(self.session.pending, crate::session::Pending::Nothing) {
+        } else if self.session.pending != pending_before
+            && !matches!(self.session.pending, crate::session::Pending::Nothing)
+        {
             Outcome::NeedsYou(text)
-        } else if self.last_crew_handoff.is_some() || (self.active_file_move_id().is_some() && self.active_file_move_id() != files_before) || (!operating_before && self.operating.is_some()) {
+        } else if self.last_crew_handoff.is_some()
+            || (self.active_file_move_id().is_some() && self.active_file_move_id() != files_before)
+            || (!operating_before && self.operating.is_some())
+        {
             Outcome::Started(text)
         } else {
             Outcome::Done(text)
@@ -368,14 +519,19 @@ impl<'a> Daemon<'a> {
     /// `router::CEILING`.
     pub(super) fn tools_for_parts(&self, parts: &[String]) -> Vec<serde_json::Value> {
         let mut out = vec![crate::router::meta_spec()];
-        let per = (crate::router::CEILING - 1).div_ceil(parts.len().max(1)).max(2);
+        let per = (crate::router::CEILING - 1)
+            .div_ceil(parts.len().max(1))
+            .max(2);
         let apps: Vec<String> = self.cfg.apps.apps.keys().cloned().collect();
         let apps_note = (!apps.is_empty()).then(|| format!("One of: {}.", apps.join(", ")));
         // Other programs' tools the request reads like (`mcp`), as a single
         // turn offers them.
         if self.mcp.any_on() {
             self.mcp.wake();
-            for t in self.mcp.tools_for(&parts.join(" "), crate::mcp::MOST_PER_TURN) {
+            for t in self
+                .mcp
+                .tools_for(&parts.join(" "), crate::mcp::MOST_PER_TURN)
+            {
                 if !out.contains(&t) && out.len() < crate::router::CEILING {
                     out.push(t);
                 }
@@ -383,7 +539,9 @@ impl<'a> Daemon<'a> {
         }
         for p in parts {
             for e in self.router.for_turn(p, None, per) {
-                let note = matches!(e.name.as_str(), "open_app" | "close_app" | "focus_app").then(|| apps_note.as_deref()).flatten();
+                let note = matches!(e.name.as_str(), "open_app" | "close_app" | "focus_app")
+                    .then(|| apps_note.as_deref())
+                    .flatten();
                 let spec = crate::router::compact_spec(e, note);
                 if !out.contains(&spec) && out.len() < crate::router::CEILING {
                     out.push(spec);
@@ -409,19 +567,34 @@ impl<'a> Daemon<'a> {
     /// crew. Each step is said as it finishes; Pause holds the loop between
     /// steps and "resume" carries it on; "stop everything" ends it there.
     /// What this returns is the plan, said at once; the answer follows.
-    pub(super) fn work_through(&mut self, llm: std::sync::Arc<dyn brain::Llm>, said: &str, mut turn: brain::Turn, t: u64) -> brain::Decision {
+    pub(super) fn work_through(
+        &mut self,
+        llm: std::sync::Arc<dyn brain::Llm>,
+        said: &str,
+        mut turn: brain::Turn,
+        t: u64,
+    ) -> brain::Decision {
         // One loop at a time: a second request of several steps while one
         // runs waits its turn rather than two interleaving their steps.
         if self.task_loop.is_some() {
             let s = STILL_WORKING.to_string();
-            return brain::Decision { intent: Intent::Say(s.clone()), say: s, model: brain::Reached::NotNeeded };
+            return brain::Decision {
+                intent: Intent::Say(s.clone()),
+                say: s,
+                model: brain::Reached::NotNeeded,
+            };
         }
         let plan = crate::taskloop::parts(said);
         turn.tools = self.tools_for_parts(&plan);
         turn.stable_tools = 1;
         self.streams = plan
             .iter()
-            .map(|p| crate::streams::Stream { part: p.clone(), state: crate::streams::State::Running, said: String::new(), at: t })
+            .map(|p| crate::streams::Stream {
+                part: p.clone(),
+                state: crate::streams::State::Running,
+                said: String::new(),
+                at: t,
+            })
             .collect();
 
         let llm = self.background_llm().unwrap_or(llm);
@@ -430,17 +603,39 @@ impl<'a> Daemon<'a> {
         let (news_tx, news_rx) = std::sync::mpsc::channel::<LoopNews>();
         let (reply_tx, reply_rx) = std::sync::mpsc::channel::<crate::taskloop::Outcome>();
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let paused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(self.attention.is_paused()));
+        let paused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
+            self.attention.is_paused(),
+        ));
         let (w_plan, w_stop, w_paused) = (plan.clone(), stop.clone(), paused.clone());
-        let spawned = std::thread::Builder::new().name("atlas-steps".into()).spawn(move || {
-            let mut hands = WorkerHands { tx: news_tx.clone(), rx: reply_rx };
-            let mut watch = WorkerWatch { tx: news_tx.clone(), stop: w_stop, paused: w_paused };
-            let run = crate::taskloop::run_watched(&*llm, &turn, &w_plan, &mut hands, crate::taskloop::MAX_STEPS, &mut watch);
-            let _ = news_tx.send(LoopNews::Done(run));
-        });
+        let spawned = std::thread::Builder::new()
+            .name("atlas-steps".into())
+            .spawn(move || {
+                let mut hands = WorkerHands {
+                    tx: news_tx.clone(),
+                    rx: reply_rx,
+                };
+                let mut watch = WorkerWatch {
+                    tx: news_tx.clone(),
+                    stop: w_stop,
+                    paused: w_paused,
+                };
+                let run = crate::taskloop::run_watched(
+                    &*llm,
+                    &turn,
+                    &w_plan,
+                    &mut hands,
+                    crate::taskloop::MAX_STEPS,
+                    &mut watch,
+                );
+                let _ = news_tx.send(LoopNews::Done(run));
+            });
         if let Err(e) = spawned {
             let s = format!("I couldn't start working through that: {e}");
-            return brain::Decision { intent: Intent::Say(s.clone()), say: s, model: brain::Reached::No };
+            return brain::Decision {
+                intent: Intent::Say(s.clone()),
+                say: s,
+                model: brain::Reached::No,
+            };
         }
         self.task_loop = Some(TaskLoop {
             said: said.to_string(),
@@ -462,9 +657,21 @@ impl<'a> Daemon<'a> {
             completed: Vec::new(),
             checkpoint_pending: false,
         });
-        let steps: Vec<String> = plan.iter().enumerate().map(|(i, p)| format!("{}) {p}", i + 1)).collect();
-        let s = format!("Working through that in {} steps: {}. I'll say how each one goes.", plan.len(), steps.join("; "));
-        brain::Decision { intent: Intent::Say(s.clone()), say: s, model: brain::Reached::Yes }
+        let steps: Vec<String> = plan
+            .iter()
+            .enumerate()
+            .map(|(i, p)| format!("{}) {p}", i + 1))
+            .collect();
+        let s = format!(
+            "Working through that in {} steps: {}. I'll say how each one goes.",
+            plan.len(),
+            steps.join("; ")
+        );
+        brain::Decision {
+            intent: Intent::Say(s.clone()),
+            say: s,
+            model: brain::Reached::Yes,
+        }
     }
 
     /// Stop the request of several steps being worked through, between
@@ -491,7 +698,11 @@ impl<'a> Daemon<'a> {
 
     /// A matching background result releases only its dependent request.
     /// Call after decoding the result and applying any approval question.
-    pub(super) fn finish_background_step(&mut self, id: u64, outcome: crate::taskloop::Outcome) -> bool {
+    pub(super) fn finish_background_step(
+        &mut self,
+        id: u64,
+        outcome: crate::taskloop::Outcome,
+    ) -> bool {
         if let Some(tl) = self.task_loop.as_mut() {
             if tl.waiting_for == Some(id) {
                 if self.attention.is_paused() {
@@ -508,7 +719,9 @@ impl<'a> Daemon<'a> {
 
     /// Release a completion held during a whole-system pause.
     pub(super) fn release_deferred_background_step(&mut self) {
-        if self.attention.is_paused() { return; }
+        if self.attention.is_paused() {
+            return;
+        }
         if let Some(tl) = self.task_loop.as_mut() {
             if let Some(outcome) = tl.deferred_background.take() {
                 tl.waiting_for = None;
@@ -519,7 +732,9 @@ impl<'a> Daemon<'a> {
 
     /// Only the matching edit job may park this dependent request for consent.
     pub(super) fn park_media_decision(&mut self, id: u64) -> bool {
-        if let (Some(tl), Some((_, _, result))) = (self.task_loop.as_mut(), self.pending_media_keep.as_ref()) {
+        if let (Some(tl), Some((_, _, result))) =
+            (self.task_loop.as_mut(), self.pending_media_keep.as_ref())
+        {
             if tl.waiting_for == Some(id) {
                 tl.waiting_for = None;
                 tl.waiting_for_media = Some(result.clone());
@@ -536,7 +751,9 @@ impl<'a> Daemon<'a> {
                 let outcome = if kept {
                     crate::taskloop::Outcome::Done(format!("Kept edited file: {result}."))
                 } else {
-                    crate::taskloop::Outcome::Failed("The edit was declined. Dependent steps were not run.".into())
+                    crate::taskloop::Outcome::Failed(
+                        "The edit was declined. Dependent steps were not run.".into(),
+                    )
                 };
                 let _ = tl.reply.send(outcome);
             }
@@ -558,15 +775,28 @@ impl<'a> Daemon<'a> {
         let operating_before = self.operating.is_some();
         let files_before = self.active_file_move_id();
         let said = self.execute(intent);
-        let files = self.active_file_move_id().filter(|id| Some(*id) != files_before);
+        let files = self
+            .active_file_move_id()
+            .filter(|id| Some(*id) != files_before);
         let handoff = self.last_crew_handoff;
-        let receipt = self.execution_receipt.as_ref().filter(|(executed, _)| executed == intent).map(|(_, outcome)| outcome.clone());
+        let receipt = self
+            .execution_receipt
+            .as_ref()
+            .filter(|(executed, _)| executed == intent)
+            .map(|(_, outcome)| outcome.clone());
         if let Some(tl) = self.task_loop.as_mut() {
             if tl.waiting_for_approval.as_ref() == Some(intent) {
                 tl.waiting_for_approval = None;
                 if let Some(id) = files {
                     tl.waiting_for_file_move = Some(id);
-                } else if let Some(id) = handoff.filter(|id| self.crew_links.get(id).is_some_and(|l| matches!(l.label, "read-file" | "research" | "edit-media" | "studio" | "creator planning"))) {
+                } else if let Some(id) = handoff.filter(|id| {
+                    self.crew_links.get(id).is_some_and(|l| {
+                        matches!(
+                            l.label,
+                            "read-file" | "research" | "edit-media" | "studio" | "creator planning"
+                        )
+                    })
+                }) {
                     tl.waiting_for = Some(id);
                 } else if !operating_before && self.operating.is_some() {
                     tl.waiting_for_operating = true;
@@ -598,17 +828,30 @@ impl<'a> Daemon<'a> {
 
     pub(super) fn abandon_dependent_question(&mut self) {
         if let Some(tl) = self.task_loop.as_mut() {
-            if tl.waiting_for_approval.take().is_some() || tl.waiting_for_question.take().is_some() || tl.waiting_for_media.take().is_some() || std::mem::take(&mut tl.waiting_for_scan) {
-                let _ = tl.reply.send(crate::taskloop::Outcome::Failed("The approval question was dropped or expired; dependent steps were not run.".into()));
+            if tl.waiting_for_approval.take().is_some()
+                || tl.waiting_for_question.take().is_some()
+                || tl.waiting_for_media.take().is_some()
+                || std::mem::take(&mut tl.waiting_for_scan)
+            {
+                let _ = tl.reply.send(crate::taskloop::Outcome::Failed(
+                    "The approval question was dropped or expired; dependent steps were not run."
+                        .into(),
+                ));
             }
         }
     }
 
     pub(super) fn answer_dependent_question(&mut self, question: &str, answer: &str) -> bool {
-        let Some(tl) = self.task_loop.as_mut() else { return false };
-        if tl.waiting_for_question.as_deref() != Some(question) { return false; }
+        let Some(tl) = self.task_loop.as_mut() else {
+            return false;
+        };
+        if tl.waiting_for_question.as_deref() != Some(question) {
+            return false;
+        }
         tl.waiting_for_question = None;
-        let _ = tl.reply.send(crate::taskloop::Outcome::Done(format!("The owner answered your clarification question '{question}': {answer}")));
+        let _ = tl.reply.send(crate::taskloop::Outcome::Done(format!(
+            "The owner answered your clarification question '{question}': {answer}"
+        )));
         true
     }
 
@@ -626,15 +869,29 @@ impl<'a> Daemon<'a> {
     pub(super) fn answer_scan_decision(&mut self, what: &str, path: &str, yes: bool) -> String {
         self.last_crew_handoff = None;
         let said = if yes {
-            let job = if what == "unzip" { FileJob::Unzip } else { FileJob::Read };
+            let job = if what == "unzip" {
+                FileJob::Unzip
+            } else {
+                FileJob::Read
+            };
             self.file_work_off_the_loop(job, path, true)
-        } else { "Alright, I've left it unopened.".into() };
+        } else {
+            "Alright, I've left it unopened.".into()
+        };
         if let Some(tl) = self.task_loop.as_mut() {
             if std::mem::take(&mut tl.waiting_for_scan) {
-                if let Some(id) = self.last_crew_handoff.filter(|id| self.crew_links.get(id).is_some_and(|l| l.label == "read-file")) {
+                if let Some(id) = self.last_crew_handoff.filter(|id| {
+                    self.crew_links
+                        .get(id)
+                        .is_some_and(|l| l.label == "read-file")
+                }) {
                     tl.waiting_for = Some(id);
                 } else {
-                    let _ = tl.reply.send(crate::taskloop::Outcome::Failed(if yes { said.clone() } else { "The scan exception was declined; dependent steps were not run.".into() }));
+                    let _ = tl.reply.send(crate::taskloop::Outcome::Failed(if yes {
+                        said.clone()
+                    } else {
+                        "The scan exception was declined; dependent steps were not run.".into()
+                    }));
                 }
             }
         }
@@ -651,7 +908,9 @@ impl<'a> Daemon<'a> {
     pub(super) fn take_task_loop_news(&mut self, t: u64) -> Vec<String> {
         let mut out = Vec::new();
         self.read_left_waiting();
-        let Some(mut tl) = self.task_loop.take() else { return out };
+        let Some(mut tl) = self.task_loop.take() else {
+            return out;
+        };
         if tl.checkpoint_pending && !tl.stop.load(std::sync::atomic::Ordering::SeqCst) {
             if self.save_task_loop_checkpoint(&tl).is_err() {
                 self.task_loop = Some(tl);
@@ -664,8 +923,19 @@ impl<'a> Daemon<'a> {
         if tl.paused.swap(paused, std::sync::atomic::Ordering::SeqCst) != paused {
             crate::doorbell::ring();
         }
-        if tl.stop.load(std::sync::atomic::Ordering::SeqCst) && (tl.waiting_for.take().is_some() || tl.deferred_background.take().is_some() || tl.waiting_for_file_move.take().is_some() || tl.waiting_for_media.take().is_some() || std::mem::take(&mut tl.waiting_for_operating) || tl.waiting_for_approval.take().is_some() || tl.waiting_for_question.take().is_some() || std::mem::take(&mut tl.waiting_for_scan)) {
-            let _ = tl.reply.send(crate::taskloop::Outcome::Failed("Stopped while waiting for background work.".into()));
+        if tl.stop.load(std::sync::atomic::Ordering::SeqCst)
+            && (tl.waiting_for.take().is_some()
+                || tl.deferred_background.take().is_some()
+                || tl.waiting_for_file_move.take().is_some()
+                || tl.waiting_for_media.take().is_some()
+                || std::mem::take(&mut tl.waiting_for_operating)
+                || tl.waiting_for_approval.take().is_some()
+                || tl.waiting_for_question.take().is_some()
+                || std::mem::take(&mut tl.waiting_for_scan))
+        {
+            let _ = tl.reply.send(crate::taskloop::Outcome::Failed(
+                "Stopped while waiting for background work.".into(),
+            ));
         }
         // A model call already in flight can submit a tool while paused.
         // Leave it on the channel until resume; cancellation still drains it.
@@ -689,27 +959,65 @@ impl<'a> Daemon<'a> {
                     };
                     // The handoff's exact id also identifies a queued or joined
                     // job. Counting workers cannot distinguish those cases.
-                    let waiting = self.last_crew_handoff.take().filter(|id| self.crew_links.get(id)
-                        .is_some_and(|l| matches!(l.label, "read-file" | "research" | "edit-media" | "studio" | "creator planning")));
+                    let waiting = self.last_crew_handoff.take().filter(|id| {
+                        self.crew_links.get(id).is_some_and(|l| {
+                            matches!(
+                                l.label,
+                                "read-file"
+                                    | "research"
+                                    | "edit-media"
+                                    | "studio"
+                                    | "creator planning"
+                            )
+                        })
+                    });
                     let approval = if matches!(outcome, crate::taskloop::Outcome::NeedsYou(_)) {
-                        crate::intent::from_tool(&call.name, &call.arguments, &tl.said).filter(|i| self.session.all_approvals().iter().any(|(pending, _)| pending == i))
-                    } else { None };
+                        crate::intent::from_tool(&call.name, &call.arguments, &tl.said).filter(
+                            |i| {
+                                self.session
+                                    .all_approvals()
+                                    .iter()
+                                    .any(|(pending, _)| pending == i)
+                            },
+                        )
+                    } else {
+                        None
+                    };
                     if let Some(intent) = approval {
                         out.push(outcome.text().to_string());
                         tl.waiting_for_approval = Some(intent);
-                    } else if call.name == "ask" && matches!(outcome, crate::taskloop::Outcome::NeedsYou(_)) {
-                        if let crate::session::Pending::Clarification(question) = &self.session.pending {
+                    } else if call.name == "ask"
+                        && matches!(outcome, crate::taskloop::Outcome::NeedsYou(_))
+                    {
+                        if let crate::session::Pending::Clarification(question) =
+                            &self.session.pending
+                        {
                             tl.waiting_for_question = Some(question.clone());
                             out.push(outcome.text().to_string());
-                        } else { let _ = tl.reply.send(outcome); }
-                    } else if self.active_file_move_id().is_some() && self.active_file_move_id() != files_before {
+                        } else {
+                            let _ = tl.reply.send(outcome);
+                        }
+                    } else if self.active_file_move_id().is_some()
+                        && self.active_file_move_id() != files_before
+                    {
                         tl.waiting_for_file_move = self.active_file_move_id();
                         out.push(outcome.text().to_string());
-                    } else if call.name == "operate" && !operating_before && self.operating.is_some() {
+                    } else if call.name == "operate"
+                        && !operating_before
+                        && self.operating.is_some()
+                    {
                         out.push(outcome.text().to_string());
                         tl.waiting_for_operating = true;
-                    } else if call.name == "operate" && matches!(outcome, crate::taskloop::Outcome::Done(_) | crate::taskloop::Outcome::Started(_)) {
-                        let _ = tl.reply.send(crate::taskloop::Outcome::Failed(outcome.text().to_string()));
+                    } else if call.name == "operate"
+                        && matches!(
+                            outcome,
+                            crate::taskloop::Outcome::Done(_)
+                                | crate::taskloop::Outcome::Started(_)
+                        )
+                    {
+                        let _ = tl
+                            .reply
+                            .send(crate::taskloop::Outcome::Failed(outcome.text().to_string()));
                     } else if let Some(id) = waiting {
                         out.push(outcome.text().to_string());
                         tl.waiting_for = Some(id);
@@ -726,12 +1034,13 @@ impl<'a> Daemon<'a> {
                     let _ = tl.reply.send(outcome);
                 }
                 Ok(LoopNews::Progress(line)) => {
-                    tl.completed.push(line.clone()); out.push(line);
+                    tl.completed.push(line.clone());
+                    out.push(line);
                     if self.save_task_loop_checkpoint(&tl).is_err() {
                         tl.checkpoint_pending = true;
                         break;
                     }
-                },
+                }
                 Ok(LoopNews::Done(run)) => {
                     finished = Some(run);
                     break;
@@ -748,11 +1057,22 @@ impl<'a> Daemon<'a> {
             }
         }
         if gone {
-            let reply = "The request of several steps stopped without finishing -- ask me again.".to_string();
-            for s in self.streams.iter_mut().filter(|s| s.state == crate::streams::State::Running) {
+            let reply = "The request of several steps stopped without finishing -- ask me again."
+                .to_string();
+            for s in self
+                .streams
+                .iter_mut()
+                .filter(|s| s.state == crate::streams::State::Running)
+            {
                 s.state = crate::streams::State::Failed;
             }
-            if let Some(e) = self.thread.recent.iter_mut().rev().find(|e| e.said == tl.said) {
+            if let Some(e) = self
+                .thread
+                .recent
+                .iter_mut()
+                .rev()
+                .find(|e| e.said == tl.said)
+            {
                 e.reply = reply.clone();
             }
             self.persist();
@@ -769,7 +1089,13 @@ impl<'a> Daemon<'a> {
             ));
             let reply = self.parts_answer(&streams);
             self.streams = streams;
-            if let Some(e) = self.thread.recent.iter_mut().rev().find(|e| e.said == tl.said) {
+            if let Some(e) = self
+                .thread
+                .recent
+                .iter_mut()
+                .rev()
+                .find(|e| e.said == tl.said)
+            {
                 e.reply = reply.clone();
             }
             self.persist();
@@ -790,7 +1116,13 @@ impl<'a> Daemon<'a> {
         self.finish_steps(&run);
         // The request's line in the conversation ends with the answer, not
         // the plan it started with.
-        if let Some(e) = self.thread.recent.iter_mut().rev().find(|e| e.said == tl.said) {
+        if let Some(e) = self
+            .thread
+            .recent
+            .iter_mut()
+            .rev()
+            .find(|e| e.said == tl.said)
+        {
             e.reply = run.reply.clone();
         }
         self.persist();
@@ -858,73 +1190,126 @@ impl<'a> Daemon<'a> {
         // daemon; the answers are said together when the last is in.
         if self.task_loop.is_some() {
             let s = STILL_WORKING.to_string();
-            return brain::Decision { intent: Intent::Say(s.clone()), say: s, model: brain::Reached::NotNeeded };
+            return brain::Decision {
+                intent: Intent::Say(s.clone()),
+                say: s,
+                model: brain::Reached::NotNeeded,
+            };
         }
         let (news_tx, news_rx) = std::sync::mpsc::channel::<LoopNews>();
         let (reply_tx, reply_rx) = std::sync::mpsc::channel::<crate::taskloop::Outcome>();
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let paused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(self.attention.is_paused()));
+        let paused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
+            self.attention.is_paused(),
+        ));
         // Answering you: the deep model gives way while these run.
         let talking = self.talking_guard();
         let parser = self.parser.clone();
         let persona = persona.clone();
         let (w_parts, w_stop, w_paused) = (parts.clone(), stop.clone(), paused.clone());
-        let spawned = std::thread::Builder::new().name("atlas-parts".into()).spawn(move || {
-            let started = std::time::Instant::now();
-            let decided: Vec<Option<brain::Decision>> = {
-                let (parser, turns, llm, persona) = (&parser, &turns, &*llm, &persona);
-                crate::streams::side_by_side(w_parts.len(), &|i| {
-                    let turn = turns[i].as_ref()?;
-                    let brain = Brain { llm, fallback: parser, voice: Some((persona, register)) };
-                    Some(brain.converse(turn, &mut |_| true))
-                })
-            };
-            drop(talking);
-            let thought_ms = started.elapsed().as_millis() as u64;
-            let mut streams: Vec<crate::streams::Stream> = Vec::new();
-            for (i, p) in w_parts.iter().enumerate() {
-                let (intent, from_model) = match (&settled[i], decided.get(i).cloned().flatten()) {
-                    (Some(known), _) => (known.clone(), false),
-                    (None, Some(d)) => (d.intent, d.model == brain::Reached::Yes),
-                    (None, None) => (Intent::Unknown(p.clone()), false),
-                };
-                // Paused: held here; stopped: the rest isn't done.
-                loop {
-                    let seen = crate::doorbell::rung();
-                    if !w_paused.load(std::sync::atomic::Ordering::SeqCst) || w_stop.load(std::sync::atomic::Ordering::SeqCst) {
-                        break;
-                    }
-                    crate::doorbell::wait_after(seen, 60_000);
-                }
-                let (state, said) = match intent {
-                    Intent::Say(s) => (crate::streams::State::Done, crate::backed::without_unbacked_claims(&s, false)),
-                    Intent::Unknown(_) => (crate::streams::State::Failed, format!("I couldn't work out how to {p}.")),
-                    _ if w_stop.load(std::sync::atomic::Ordering::SeqCst) => (crate::streams::State::Failed, format!("Stopped before I could {p}.")),
-                    i => {
-                        let outcome = if news_tx.send(LoopNews::ActIntent(i, from_model)).is_ok() {
-                            reply_rx.recv().unwrap_or_else(|_| crate::taskloop::Outcome::Failed("Atlas stopped before I could do that.".into()))
-                        } else {
-                            crate::taskloop::Outcome::Failed("Atlas stopped before I could do that.".into())
+        let spawned = std::thread::Builder::new()
+            .name("atlas-parts".into())
+            .spawn(move || {
+                let started = std::time::Instant::now();
+                let decided: Vec<Option<brain::Decision>> = {
+                    let (parser, turns, llm, persona) = (&parser, &turns, &*llm, &persona);
+                    crate::streams::side_by_side(w_parts.len(), &|i| {
+                        let turn = turns[i].as_ref()?;
+                        let brain = Brain {
+                            llm,
+                            fallback: parser,
+                            voice: Some((persona, register)),
                         };
-                        match outcome {
-                            crate::taskloop::Outcome::Done(s) => (crate::streams::State::Done, s),
-                            crate::taskloop::Outcome::Started(s) => (crate::streams::State::Running, s),
-                            crate::taskloop::Outcome::NeedsYou(s) => (crate::streams::State::NeedsYou, s),
-                            crate::taskloop::Outcome::Failed(s) => (crate::streams::State::Failed, s),
-                        }
-                    }
+                        Some(brain.converse(turn, &mut |_| true))
+                    })
                 };
-                streams.push(crate::streams::Stream { part: p.clone(), state, said, at: t });
-            }
-            let _ = news_tx.send(LoopNews::Parts(streams, asked, thought_ms));
-        });
+                drop(talking);
+                let thought_ms = started.elapsed().as_millis() as u64;
+                let mut streams: Vec<crate::streams::Stream> = Vec::new();
+                for (i, p) in w_parts.iter().enumerate() {
+                    let (intent, from_model) =
+                        match (&settled[i], decided.get(i).cloned().flatten()) {
+                            (Some(known), _) => (known.clone(), false),
+                            (None, Some(d)) => (d.intent, d.model == brain::Reached::Yes),
+                            (None, None) => (Intent::Unknown(p.clone()), false),
+                        };
+                    // Paused: held here; stopped: the rest isn't done.
+                    loop {
+                        let seen = crate::doorbell::rung();
+                        if !w_paused.load(std::sync::atomic::Ordering::SeqCst)
+                            || w_stop.load(std::sync::atomic::Ordering::SeqCst)
+                        {
+                            break;
+                        }
+                        crate::doorbell::wait_after(seen, 60_000);
+                    }
+                    let (state, said) = match intent {
+                        Intent::Say(s) => (
+                            crate::streams::State::Done,
+                            crate::backed::without_unbacked_claims(&s, false),
+                        ),
+                        Intent::Unknown(_) => (
+                            crate::streams::State::Failed,
+                            format!("I couldn't work out how to {p}."),
+                        ),
+                        _ if w_stop.load(std::sync::atomic::Ordering::SeqCst) => (
+                            crate::streams::State::Failed,
+                            format!("Stopped before I could {p}."),
+                        ),
+                        i => {
+                            let outcome =
+                                if news_tx.send(LoopNews::ActIntent(i, from_model)).is_ok() {
+                                    reply_rx.recv().unwrap_or_else(|_| {
+                                        crate::taskloop::Outcome::Failed(
+                                            "Atlas stopped before I could do that.".into(),
+                                        )
+                                    })
+                                } else {
+                                    crate::taskloop::Outcome::Failed(
+                                        "Atlas stopped before I could do that.".into(),
+                                    )
+                                };
+                            match outcome {
+                                crate::taskloop::Outcome::Done(s) => {
+                                    (crate::streams::State::Done, s)
+                                }
+                                crate::taskloop::Outcome::Started(s) => {
+                                    (crate::streams::State::Running, s)
+                                }
+                                crate::taskloop::Outcome::NeedsYou(s) => {
+                                    (crate::streams::State::NeedsYou, s)
+                                }
+                                crate::taskloop::Outcome::Failed(s) => {
+                                    (crate::streams::State::Failed, s)
+                                }
+                            }
+                        }
+                    };
+                    streams.push(crate::streams::Stream {
+                        part: p.clone(),
+                        state,
+                        said,
+                        at: t,
+                    });
+                }
+                let _ = news_tx.send(LoopNews::Parts(streams, asked, thought_ms));
+            });
         if let Err(e) = spawned {
             let s = format!("I couldn't start on those: {e}");
-            return brain::Decision { intent: Intent::Say(s.clone()), say: s, model: brain::Reached::No };
+            return brain::Decision {
+                intent: Intent::Say(s.clone()),
+                say: s,
+                model: brain::Reached::No,
+            };
         }
         self.streams = parts
             .iter()
-            .map(|p| crate::streams::Stream { part: p.clone(), state: crate::streams::State::Running, said: String::new(), at: t })
+            .map(|p| crate::streams::Stream {
+                part: p.clone(),
+                state: crate::streams::State::Running,
+                said: String::new(),
+                at: t,
+            })
             .collect();
         self.task_loop = Some(TaskLoop {
             said: said.to_string(),
@@ -950,7 +1335,11 @@ impl<'a> Daemon<'a> {
             2 => format!("Doing both at once: {}, and {}.", parts[0], parts[1]),
             n => format!("Doing all {n} at once: {}.", parts.join("; ")),
         };
-        brain::Decision { intent: Intent::Say(s.clone()), say: s, model: brain::Reached::Yes }
+        brain::Decision {
+            intent: Intent::Say(s.clone()),
+            say: s,
+            model: brain::Reached::Yes,
+        }
     }
 
     /// The answers of a request worked side by side, said together
@@ -961,12 +1350,18 @@ impl<'a> Daemon<'a> {
     /// The rest are said, then how many need your OK and the first of them
     /// (`Session::asking_line`); the others are asked in turn.
     fn parts_answer(&self, streams: &[crate::streams::Stream]) -> String {
-        let asking = streams.iter().filter(|s| s.state == crate::streams::State::NeedsYou).count();
+        let asking = streams
+            .iter()
+            .filter(|s| s.state == crate::streams::State::NeedsYou)
+            .count();
         if asking < 2 {
             return crate::streams::merged(streams);
         }
-        let others: Vec<crate::streams::Stream> =
-            streams.iter().filter(|s| s.state != crate::streams::State::NeedsYou).cloned().collect();
+        let others: Vec<crate::streams::Stream> = streams
+            .iter()
+            .filter(|s| s.state != crate::streams::State::NeedsYou)
+            .cloned()
+            .collect();
         let rest = crate::streams::merged(&others);
         match self.session.asking_line() {
             Some(q) => format!("{rest} {q}").trim().to_string(),
@@ -990,7 +1385,12 @@ impl<'a> Daemon<'a> {
     /// Several approvals answered at once ("yes to both", "no to the
     /// second"): each one done or left, in the order asked, and whatever was
     /// not answered still asked.
-    pub(super) fn answer_several(&mut self, said: &str, answers: Vec<Option<bool>>, t: u64) -> String {
+    pub(super) fn answer_several(
+        &mut self,
+        said: &str,
+        answers: Vec<Option<bool>>,
+        t: u64,
+    ) -> String {
         let all = self.session.all_approvals();
         self.session.pending = crate::session::Pending::Nothing;
         self.session.queued.clear();
@@ -1006,7 +1406,8 @@ impl<'a> Daemon<'a> {
                 lines.push(refusal);
                 continue;
             }
-            self.memory.record_approval(crate::session::kind_of(&intent), yes, None);
+            self.memory
+                .record_approval(crate::session::kind_of(&intent), yes, None);
             let line = if yes {
                 let r = self.execute_approved_step(&intent);
                 // The first was what a scheduled job was waiting on.
@@ -1018,7 +1419,10 @@ impl<'a> Daemon<'a> {
                 }
                 r
             } else {
-                self.decline_dependent_approval(&intent, "Approval declined; dependent steps were not run.");
+                self.decline_dependent_approval(
+                    &intent,
+                    "Approval declined; dependent steps were not run.",
+                );
                 if k == 0 {
                     self.pending_job = None;
                 }
@@ -1034,7 +1438,12 @@ impl<'a> Daemon<'a> {
         for (i, d) in still {
             self.session.await_approval(i, &d);
         }
-        let mut reply = lines.iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+        let mut reply = lines
+            .iter()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
         if let Some(q) = self.session.asking_line() {
             reply = format!("{reply} Still waiting: {q}").trim().to_string();
         }

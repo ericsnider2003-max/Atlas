@@ -19,10 +19,19 @@ fn a_cargo_toml_means_rust_even_with_no_rust_files_yet() {
 
 #[test]
 fn any_recognised_python_marker_means_python() {
-    for marker in ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt"] {
+    for marker in [
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "requirements.txt",
+    ] {
         let dir = tmp(&format!("py-{marker}"));
         std::fs::write(dir.join(marker), "").unwrap();
-        assert_eq!(craft::lang_of_dir(&dir), Some(Lang::Python), "marker: {marker}");
+        assert_eq!(
+            craft::lang_of_dir(&dir),
+            Some(Lang::Python),
+            "marker: {marker}"
+        );
     }
 }
 
@@ -100,9 +109,15 @@ fn cargo_check_on_a_real_broken_crate_actually_fails() {
         .env("CARGO_TARGET_DIR", dir.join("target"))
         .output()
         .expect("cargo must be on PATH for this test to mean anything");
-    assert!(!out.status.success(), "a genuinely broken crate should fail cargo check");
+    assert!(
+        !out.status.success(),
+        "a genuinely broken crate should fail cargo check"
+    );
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("error"), "cargo's own words should say so: {stderr}");
+    assert!(
+        stderr.contains("error"),
+        "cargo's own words should say so: {stderr}"
+    );
 }
 
 #[test]
@@ -118,7 +133,10 @@ fn cargo_check_on_a_real_working_crate_actually_passes() {
         .env("CARGO_TARGET_DIR", dir.join("target"))
         .output()
         .expect("cargo must be on PATH for this test to mean anything");
-    assert!(out.status.success(), "a working crate should pass cargo check");
+    assert!(
+        out.status.success(),
+        "a working crate should pass cargo check"
+    );
 }
 
 // ========================= read_ladder ordering, against real output shapes =========================

@@ -30,8 +30,8 @@ use std::net::TcpStream;
 /// re-verify. The first real connection has to happen on a machine that
 /// can actually reach `imap.gmail.com`.
 pub fn connect(host: &str, port: u16) -> Result<Session<native_tls::TlsStream<TcpStream>>, String> {
-    let tcp =
-        TcpStream::connect((host, port)).map_err(|e| format!("couldn't reach {host}:{port}: {e}"))?;
+    let tcp = TcpStream::connect((host, port))
+        .map_err(|e| format!("couldn't reach {host}:{port}: {e}"))?;
     // Before TLS, so the handshake is covered too. A server that completes
     // the TCP connection and then goes quiet during the handshake used to
     // hang here with nothing to break it.
@@ -39,11 +39,15 @@ pub fn connect(host: &str, port: u16) -> Result<Session<native_tls::TlsStream<Tc
         .map_err(|e| format!("couldn't set a read timeout on {host}: {e}"))?;
     tcp.set_write_timeout(Some(QUIET_FOR))
         .map_err(|e| format!("couldn't set a write timeout on {host}: {e}"))?;
-    let connector = native_tls::TlsConnector::new().map_err(|e| format!("couldn't set up TLS: {e}"))?;
-    let tls =
-        connector.connect(host, tcp).map_err(|e| format!("TLS handshake with {host} failed: {e}"))?;
+    let connector =
+        native_tls::TlsConnector::new().map_err(|e| format!("couldn't set up TLS: {e}"))?;
+    let tls = connector
+        .connect(host, tcp)
+        .map_err(|e| format!("TLS handshake with {host} failed: {e}"))?;
     let mut session = Session::new(tls);
-    let greeting = session.read_greeting().map_err(|e| format!("no greeting from {host}: {e}"))?;
+    let greeting = session
+        .read_greeting()
+        .map_err(|e| format!("no greeting from {host}: {e}"))?;
     if !greeting.contains("OK") {
         return Err(format!("{host} did not say it was ready: {greeting}"));
     }
@@ -160,7 +164,10 @@ pub(crate) fn fill_bounded<S: Read>(stream: &mut S, inbuf: &mut Vec<u8>) -> io::
     let mut chunk = [0u8; 4096];
     let n = stream.read(&mut chunk)?;
     if n == 0 {
-        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "server closed the connection"));
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "server closed the connection",
+        ));
     }
     inbuf.extend_from_slice(&chunk[..n]);
     Ok(())
@@ -168,7 +175,11 @@ pub(crate) fn fill_bounded<S: Read>(stream: &mut S, inbuf: &mut Vec<u8>) -> io::
 
 impl<S: Read + Write> Session<S> {
     pub fn new(stream: S) -> Session<S> {
-        Session { stream, inbuf: Vec::new(), tag: 0 }
+        Session {
+            stream,
+            inbuf: Vec::new(),
+            tag: 0,
+        }
     }
 
     /// One read into the buffer, with the buffer bounded.
@@ -302,7 +313,9 @@ impl<S: Read + Write> Session<S> {
         let initial = crate::msoauth::xoauth2_string(user, access_token);
         let tag = self.next_tag();
         let line = format!("{tag} AUTHENTICATE XOAUTH2 {initial}\r\n");
-        self.stream.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+        self.stream
+            .write_all(line.as_bytes())
+            .map_err(|e| e.to_string())?;
         self.stream.flush().map_err(|e| e.to_string())?;
 
         loop {
@@ -324,7 +337,11 @@ impl<S: Read + Write> Session<S> {
             }
             let prefix = format!("{tag} ");
             if let Some(after) = line.strip_prefix(&prefix) {
-                return if after.starts_with("OK") { Ok(()) } else { Err(after.to_string()) };
+                return if after.starts_with("OK") {
+                    Ok(())
+                } else {
+                    Err(after.to_string())
+                };
             }
             // An untagged line during authentication -- keep reading.
         }
@@ -346,7 +363,9 @@ impl<S: Read + Write> Session<S> {
         resp.ok()?;
         let mut uids = Vec::new();
         for line in &resp.untagged {
-            let rest = line.strip_prefix("* SEARCH").or_else(|| line.strip_prefix("SEARCH"));
+            let rest = line
+                .strip_prefix("* SEARCH")
+                .or_else(|| line.strip_prefix("SEARCH"));
             if let Some(rest) = rest {
                 for tok in rest.split_whitespace() {
                     if let Ok(n) = tok.parse::<u32>() {
@@ -378,11 +397,18 @@ impl<S: Read + Write> Session<S> {
     pub fn sent_mailbox(&mut self) -> Result<String, String> {
         let resp = self.command("LIST \"\" \"*\"").map_err(|e| e.to_string())?;
         resp.ok()?;
-        let names: Vec<(bool, String)> = resp.untagged.iter().filter_map(|l| list_entry(l)).collect();
+        let names: Vec<(bool, String)> =
+            resp.untagged.iter().filter_map(|l| list_entry(l)).collect();
         if let Some((_, n)) = names.iter().find(|(sent, _)| *sent) {
             return Ok(n.clone());
         }
-        for guess in ["[Gmail]/Sent Mail", "Sent Items", "Sent", "INBOX.Sent", "Sent Messages"] {
+        for guess in [
+            "[Gmail]/Sent Mail",
+            "Sent Items",
+            "Sent",
+            "INBOX.Sent",
+            "Sent Messages",
+        ] {
             if let Some((_, n)) = names.iter().find(|(_, n)| n.eq_ignore_ascii_case(guess)) {
                 return Ok(n.clone());
             }
@@ -392,10 +418,17 @@ impl<S: Read + Write> Session<S> {
 
     /// Make a folder if it isn't there. "Already exists" is fine.
     pub fn create(&mut self, mailbox: &str) -> Result<(), String> {
-        let resp = self.command(&format!("CREATE {}", quoted(mailbox))).map_err(|e| e.to_string())?;
+        let resp = self
+            .command(&format!("CREATE {}", quoted(mailbox)))
+            .map_err(|e| e.to_string())?;
         match resp.ok() {
             Ok(()) => Ok(()),
-            Err(e) if e.to_uppercase().contains("ALREADYEXISTS") || e.to_lowercase().contains("exist") => Ok(()),
+            Err(e)
+                if e.to_uppercase().contains("ALREADYEXISTS")
+                    || e.to_lowercase().contains("exist") =>
+            {
+                Ok(())
+            }
             Err(e) => Err(e),
         }
     }
@@ -415,13 +448,20 @@ impl<S: Read + Write> Session<S> {
     }
 
     fn uid_mark_read(&mut self, uid: u32) -> Result<(), String> {
-        self.command(&format!("UID STORE {uid} +FLAGS (\\Seen)")).map_err(|e| e.to_string())?.ok()
+        self.command(&format!("UID STORE {uid} +FLAGS (\\Seen)"))
+            .map_err(|e| e.to_string())?
+            .ok()
     }
 
     /// Carry out one of `mail`'s actions on a message in the selected
     /// mailbox. Archive on Gmail is taking the Inbox label off; elsewhere it's
     /// a move to the Archive folder. There is no delete here.
-    pub fn apply(&mut self, uid: u32, action: &crate::mail::Action, gmail: bool) -> Result<(), String> {
+    pub fn apply(
+        &mut self,
+        uid: u32,
+        action: &crate::mail::Action,
+        gmail: bool,
+    ) -> Result<(), String> {
         use crate::mail::Action;
         match action {
             Action::Nothing => Ok(()),
@@ -455,7 +495,11 @@ impl<S: Read + Write> Session<S> {
     /// call — the shape every real caller actually wants, rather than
     /// composing `select`/`uid_search`/`uid_fetch` by hand at each call
     /// site. One IMAP session, one mailbox, one search.
-    pub fn fetch_matching(&mut self, mailbox: &str, criteria: &str) -> Result<Vec<Message>, String> {
+    pub fn fetch_matching(
+        &mut self,
+        mailbox: &str,
+        criteria: &str,
+    ) -> Result<Vec<Message>, String> {
         self.select(mailbox)?;
         let uids = self.uid_search(criteria)?;
         let mut out = Vec::with_capacity(uids.len());
@@ -474,13 +518,19 @@ pub fn list_entry(line: &str) -> Option<(bool, String)> {
     let flags = rest[..close].trim_start_matches('(').to_ascii_lowercase();
     let after = rest[close + 1..].trim_start();
     // The delimiter: a quoted character or NIL.
-    let after = if let Some(a) = after.strip_prefix("NIL") { a } else {
+    let after = if let Some(a) = after.strip_prefix("NIL") {
+        a
+    } else {
         let a = after.strip_prefix('"')?;
         let end = a.find('"')?;
         &a[end + 1..]
     };
     let name = after.trim();
-    let name = name.strip_prefix('"').and_then(|n| n.strip_suffix('"')).unwrap_or(name).to_string();
+    let name = name
+        .strip_prefix('"')
+        .and_then(|n| n.strip_suffix('"'))
+        .unwrap_or(name)
+        .to_string();
     (!name.is_empty()).then(|| (flags.split_whitespace().any(|f| f == "\\sent"), name))
 }
 
@@ -511,7 +561,10 @@ fn quoted(s: &str) -> String {
 /// `Session::command`.
 fn parse_fetch(uid: u32, lines: &[String]) -> Message {
     let joined = lines.join("\n");
-    let mut m = Message { uid, ..Default::default() };
+    let mut m = Message {
+        uid,
+        ..Default::default()
+    };
     m.answered = flags_contain(&joined, "\\Answered");
     m.seen = flags_contain(&joined, "\\Seen");
     if let Some(marker_pos) = joined.find("HEADER.FIELDS") {
@@ -624,7 +677,10 @@ pub(crate) mod tests {
     }
     impl Scripted {
         pub(crate) fn new(script: &str) -> Scripted {
-            Scripted { replies: Cursor::new(script.as_bytes().to_vec()), sent: Vec::new() }
+            Scripted {
+                replies: Cursor::new(script.as_bytes().to_vec()),
+                sent: Vec::new(),
+            }
         }
     }
     impl Read for Scripted {
@@ -713,14 +769,15 @@ pub(crate) mod tests {
         let mut sess = Session::new(s);
         sess.login("me@example.com", "back\\slash").unwrap();
         let sent = String::from_utf8_lossy(&sess.stream.sent).into_owned();
-        assert!(sent.contains("back\\\\slash"), "the backslash wasn't escaped: {sent}");
+        assert!(
+            sent.contains("back\\\\slash"),
+            "the backslash wasn't escaped: {sent}"
+        );
     }
 
     #[test]
     fn each_command_gets_a_fresh_tag_so_responses_cannot_be_mismatched() {
-        let s = Scripted::new(
-            "A0001 OK LOGIN completed\r\nA0002 OK SELECT completed\r\n",
-        );
+        let s = Scripted::new("A0001 OK LOGIN completed\r\nA0002 OK SELECT completed\r\n");
         let mut sess = Session::new(s);
         sess.login("a", "b").unwrap();
         // If the tag didn't advance, this would hang waiting for a line
@@ -794,7 +851,8 @@ pub(crate) mod tests {
 
     #[test]
     fn a_message_with_no_answered_flag_is_not_marked_answered() {
-        let header = "From: a@example.com\r\nSubject: thing\r\nDate: Mon, 1 Jan 2026 09:00:00 -0800\r\n\r\n";
+        let header =
+            "From: a@example.com\r\nSubject: thing\r\nDate: Mon, 1 Jan 2026 09:00:00 -0800\r\n\r\n";
         let body = "ok";
         let script = format!(
             "* 6 FETCH (UID 6 FLAGS (\\Seen) BODY[HEADER.FIELDS (FROM SUBJECT DATE TO CC IN-REPLY-TO LIST-UNSUBSCRIBE)] {{{}}}\r\n{}\r\n BODY[TEXT] {{{}}}\r\n{})\r\nA0001 OK FETCH completed\r\n",
@@ -823,14 +881,19 @@ pub(crate) mod tests {
         let s = Scripted::new(&script);
         let mut sess = Session::new(s);
         let msg = sess.uid_fetch(8).unwrap();
-        assert!(msg.to.contains("someone-else@example.com"), "got: {}", msg.to);
+        assert!(
+            msg.to.contains("someone-else@example.com"),
+            "got: {}",
+            msg.to
+        );
         assert_eq!(msg.cc, "third@example.com");
         assert_eq!(msg.in_reply_to, "<abc123@example.com>");
     }
 
     #[test]
     fn fetch_matching_selects_searches_and_fetches_every_hit_in_one_call() {
-        let header_a = "From: a@example.com\r\nSubject: First\r\nDate: Mon, 1 Jan 2026 09:00:00 -0800\r\n\r\n";
+        let header_a =
+            "From: a@example.com\r\nSubject: First\r\nDate: Mon, 1 Jan 2026 09:00:00 -0800\r\n\r\n";
         let header_b = "From: b@example.com\r\nSubject: Second\r\nDate: Mon, 1 Jan 2026 10:00:00 -0800\r\n\r\n";
         let body = "hi";
         let script = format!(
@@ -884,8 +947,14 @@ pub(crate) mod tests {
 
     #[test]
     fn flags_contain_matches_a_flag_inside_the_parenthesised_list_only() {
-        assert!(flags_contain("* 1 FETCH (FLAGS (\\Seen \\Answered) UID 1)", "\\Answered"));
-        assert!(!flags_contain("* 1 FETCH (FLAGS (\\Seen) UID 1)", "\\Answered"));
+        assert!(flags_contain(
+            "* 1 FETCH (FLAGS (\\Seen \\Answered) UID 1)",
+            "\\Answered"
+        ));
+        assert!(!flags_contain(
+            "* 1 FETCH (FLAGS (\\Seen) UID 1)",
+            "\\Answered"
+        ));
         // No FLAGS section at all.
         assert!(!flags_contain("* 1 FETCH (UID 1)", "\\Answered"));
     }
@@ -910,7 +979,10 @@ pub(crate) mod tests {
         let err = sess.auth_xoauth2("me@outlook.com", "badtoken").unwrap_err();
         assert!(err.contains("SASL authentication failed"), "got: {err}");
         let sent = String::from_utf8_lossy(&sess.stream.sent).into_owned();
-        assert!(sent.ends_with("\r\n\r\n"), "the continuation must be answered with an empty line");
+        assert!(
+            sent.ends_with("\r\n\r\n"),
+            "the continuation must be answered with an empty line"
+        );
     }
 
     #[test]

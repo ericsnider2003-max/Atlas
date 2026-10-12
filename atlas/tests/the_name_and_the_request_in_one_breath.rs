@@ -43,13 +43,19 @@ use std::time::{Duration, Instant};
 const RATE: usize = 16_000;
 
 fn wake_clip(name: &str) -> Vec<i16> {
-    let (s, r) = atlas::diarize::read_wav(&std::fs::read(format!("tests/fixtures/speech/wake/{name}.wav")).unwrap()).unwrap();
+    let (s, r) = atlas::diarize::read_wav(
+        &std::fs::read(format!("tests/fixtures/speech/wake/{name}.wav")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(r, 16000);
     s
 }
 
 fn corpus(name: &str) -> Vec<i16> {
-    let (s, r) = atlas::diarize::read_wav(&std::fs::read(format!("tests/fixtures/speech/corpus/{name}.wav")).unwrap()).unwrap();
+    let (s, r) = atlas::diarize::read_wav(
+        &std::fs::read(format!("tests/fixtures/speech/corpus/{name}.wav")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(r, 16000);
     s
 }
@@ -60,7 +66,9 @@ fn room(ms: usize, seed: u64) -> Vec<i16> {
     let mut lp = 0f32;
     (0..ms * RATE / 1000)
         .map(|_| {
-            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let w = ((x >> 33) as f32 / (1u64 << 31) as f32) - 1.0;
             lp = 0.9 * lp + 0.1 * w;
             (lp * 90.0) as i16
@@ -98,7 +106,13 @@ impl MicStream for Script {
 #[test]
 fn two_things_said_with_a_pause_between_are_two_utterances_each_whole() {
     let (a, b) = (corpus("A_s3"), corpus("A_s8"));
-    let s = then(&[room(800, 1), a.clone(), room(1600, 2), b.clone(), room(1600, 3)]);
+    let s = then(&[
+        room(800, 1),
+        a.clone(),
+        room(1600, 2),
+        b.clone(),
+        room(1600, 3),
+    ]);
     let mut seg = Segmenter::new(&atlas::endpoint::EndpointConfig::default());
     let mut done = Vec::new();
     for w in s.chunks_exact(atlas::utterance::WINDOW) {
@@ -106,19 +120,42 @@ fn two_things_said_with_a_pause_between_are_two_utterances_each_whole() {
             done.push(u.len());
         }
     }
-    assert_eq!(done.len(), 2, "two sentences with a pause between: {:?}", done.iter().map(|n| secs(*n)).collect::<Vec<_>>());
+    assert_eq!(
+        done.len(),
+        2,
+        "two sentences with a pause between: {:?}",
+        done.iter().map(|n| secs(*n)).collect::<Vec<_>>()
+    );
     // Each whole (espeak's own lead-in and tail silence aside) and neither
     // swallowing the pause.
     for (got, said) in done.iter().zip([&a, &b]) {
-        assert!(secs(*got) >= secs(said.len()) - 0.35, "cut short: {} of {}", secs(*got), secs(said.len()));
-        assert!(secs(*got) <= secs(said.len()) + 0.8, "the pause went with it: {} for {}", secs(*got), secs(said.len()));
+        assert!(
+            secs(*got) >= secs(said.len()) - 0.35,
+            "cut short: {} of {}",
+            secs(*got),
+            secs(said.len())
+        );
+        assert!(
+            secs(*got) <= secs(said.len()) + 0.8,
+            "the pause went with it: {} for {}",
+            secs(*got),
+            secs(said.len())
+        );
     }
 }
 
 #[test]
 fn nobody_speaking_is_nothing_and_costs_no_transcription() {
-    let mut s = Script { samples: room(6000, 4), at: 0 };
-    let got = atlas::utterance::next_utterance(&mut s, &atlas::endpoint::EndpointConfig::default(), 5000, &|| false);
+    let mut s = Script {
+        samples: room(6000, 4),
+        at: 0,
+    };
+    let got = atlas::utterance::next_utterance(
+        &mut s,
+        &atlas::endpoint::EndpointConfig::default(),
+        5000,
+        &|| false,
+    );
     assert!(got.is_none());
 }
 
@@ -127,9 +164,23 @@ fn the_open_floor_waits_for_you_to_start_and_takes_all_you_say() {
     // Silence for four seconds, then a sentence: the old open floor recorded
     // six seconds and would have cut this one off.
     let said = corpus("B_s4");
-    let mut s = Script { samples: then(&[room(4000, 5), said.clone(), room(2000, 6)]), at: 0 };
-    let got = atlas::utterance::next_utterance(&mut s, &atlas::endpoint::EndpointConfig::default(), 25_000, &|| false).expect("heard");
-    assert!(secs(got.len()) >= secs(said.len()) - 0.35, "{} of {}", secs(got.len()), secs(said.len()));
+    let mut s = Script {
+        samples: then(&[room(4000, 5), said.clone(), room(2000, 6)]),
+        at: 0,
+    };
+    let got = atlas::utterance::next_utterance(
+        &mut s,
+        &atlas::endpoint::EndpointConfig::default(),
+        25_000,
+        &|| false,
+    )
+    .expect("heard");
+    assert!(
+        secs(got.len()) >= secs(said.len()) - 0.35,
+        "{} of {}",
+        secs(got.len()),
+        secs(said.len())
+    );
 }
 
 // ================= the wake word, on the microphone's thread =================
@@ -231,7 +282,11 @@ impl MicWork for Scripted {
             NameCheck::Named(r) | NameCheck::NotNamed(r) => r,
         })
     }
-    fn follow_up(&mut self, secs: u32, _stop: &dyn Fn() -> bool) -> atlas::error::Result<Option<String>> {
+    fn follow_up(
+        &mut self,
+        secs: u32,
+        _stop: &dyn Fn() -> bool,
+    ) -> atlas::error::Result<Option<String>> {
         self.follow_secs.lock().unwrap().push(secs);
         Ok(self.follow.lock().unwrap().pop_front().flatten())
     }
@@ -244,7 +299,12 @@ impl MicWork for Scripted {
     }
     fn name_in(&mut self, samples: &[i16]) -> atlas::error::Result<NameCheck> {
         self.asked.lock().unwrap().push(samples.len());
-        Ok(self.answers.lock().unwrap().pop_front().unwrap_or(NameCheck::NotNamed(String::new())))
+        Ok(self
+            .answers
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(NameCheck::NotNamed(String::new())))
     }
     fn models_dir(&self) -> PathBuf {
         PathBuf::from("tests/fixtures/silero")
@@ -271,13 +331,21 @@ fn atlas_what_time_is_it_in_one_breath_is_the_name_and_the_request() {
     m.set_wake(true);
     let got = first_heard(&m, Duration::from_secs(5)).expect("the name was heard");
     assert_eq!(got, Heard::Wake(Ok("what time is it?".into())));
-    assert_eq!(h.listened.load(Ordering::SeqCst), 0, "a second recording was made for a request already said");
+    assert_eq!(
+        h.listened.load(Ordering::SeqCst),
+        0,
+        "a second recording was made for a request already said"
+    );
     let asked = h.asked.lock().unwrap().clone();
     assert_eq!(asked.len(), 1, "one look at one stretch: {asked:?}");
     // The stretch the engine heard is the whole of what was said -- name and
     // request -- with a little room either side, not a three-second slice.
     let clip = secs(wake_clip("atlas_what_time").len());
-    assert!(secs(asked[0]) >= clip - 0.2 && secs(asked[0]) <= clip + 1.0, "heard {}s of a {clip}s clip", secs(asked[0]));
+    assert!(
+        secs(asked[0]) >= clip - 0.2 && secs(asked[0]) <= clip + 1.0,
+        "heard {}s of a {clip}s clip",
+        secs(asked[0])
+    );
 }
 
 #[test]
@@ -286,7 +354,13 @@ fn a_long_request_is_heard_to_the_end_not_cut_at_the_clip() {
     assert!(secs(long.len()) > 4.0);
     let audio = then(&[room(700, 9), long.clone(), room(3000, 10)]);
     let whole = "remind me to call the bank about the transfer tomorrow morning at nine";
-    let mic = Scripted::new(audio, vec![NameCheck::Named("remind me to".into()), NameCheck::Named(whole.into())]);
+    let mic = Scripted::new(
+        audio,
+        vec![
+            NameCheck::Named("remind me to".into()),
+            NameCheck::Named(whole.into()),
+        ],
+    );
     let h = mic.handles();
     let m = MicThread::start(Box::new(mic));
     m.set_wake(true);
@@ -294,14 +368,35 @@ fn a_long_request_is_heard_to_the_end_not_cut_at_the_clip() {
     assert_eq!(got, Heard::Wake(Ok(whole.into())));
     let asked = h.asked.lock().unwrap().clone();
     assert_eq!(asked.len(), 2, "{asked:?}");
-    assert!((secs(asked[0]) - 3.0).abs() < 0.1, "the first look is at the first three seconds: {}", secs(asked[0]));
-    assert!(secs(asked[1]) >= secs(long.len()) - 0.3, "the request was cut: {} of {}", secs(asked[1]), secs(long.len()));
+    assert!(
+        (secs(asked[0]) - 3.0).abs() < 0.1,
+        "the first look is at the first three seconds: {}",
+        secs(asked[0])
+    );
+    assert!(
+        secs(asked[1]) >= secs(long.len()) - 0.3,
+        "the request was cut: {} of {}",
+        secs(asked[1]),
+        secs(long.len())
+    );
 }
 
 #[test]
 fn the_name_then_a_pause_then_the_request_is_one_request() {
-    let audio = then(&[room(700, 11), wake_clip("atlas_alone"), room(1500, 12), wake_clip("what_time"), room(3000, 13)]);
-    let mic = Scripted::new(audio, vec![NameCheck::Named(String::new()), NameCheck::NotNamed("What time is it?".into())]);
+    let audio = then(&[
+        room(700, 11),
+        wake_clip("atlas_alone"),
+        room(1500, 12),
+        wake_clip("what_time"),
+        room(3000, 13),
+    ]);
+    let mic = Scripted::new(
+        audio,
+        vec![
+            NameCheck::Named(String::new()),
+            NameCheck::NotNamed("What time is it?".into()),
+        ],
+    );
     let h = mic.handles();
     let m = MicThread::start(Box::new(mic));
     m.set_wake(true);
@@ -330,7 +425,11 @@ fn talk_without_the_name_wakes_nothing() {
     assert_eq!(h.asked.lock().unwrap().len(), 1, "the speech was looked at");
     // Nobody talking: nothing more is transcribed.
     std::thread::sleep(Duration::from_millis(600));
-    assert_eq!(h.asked.lock().unwrap().len(), 1, "the quiet room went through the speech engine");
+    assert_eq!(
+        h.asked.lock().unwrap().len(),
+        1,
+        "the quiet room went through the speech engine"
+    );
 }
 
 /// Listening for the name by its sound first (`wake.listen_first`, 1 Oct
@@ -344,8 +443,14 @@ fn talk_the_spotter_rules_out_is_never_transcribed() {
     let m = MicThread::start(Box::new(mic));
     m.set_wake(true);
     assert_eq!(first_heard(&m, Duration::from_secs(2)), None);
-    assert!(h.sound_asked.load(Ordering::SeqCst) >= 1, "the spotter wasn't asked");
-    assert!(h.asked.lock().unwrap().is_empty(), "speech without the name went to the speech engine");
+    assert!(
+        h.sound_asked.load(Ordering::SeqCst) >= 1,
+        "the spotter wasn't asked"
+    );
+    assert!(
+        h.asked.lock().unwrap().is_empty(),
+        "speech without the name went to the speech engine"
+    );
 }
 
 /// ...and when it hears the name, the speech engine still writes out the
@@ -357,7 +462,10 @@ fn the_spotter_hearing_the_name_lets_the_request_through() {
     *mic.sound.lock().unwrap() = Some(true);
     let m = MicThread::start(Box::new(mic));
     m.set_wake(true);
-    assert_eq!(first_heard(&m, Duration::from_secs(5)), Some(Heard::Wake(Ok("what time is it?".into()))));
+    assert_eq!(
+        first_heard(&m, Duration::from_secs(5)),
+        Some(Heard::Wake(Ok("what time is it?".into())))
+    );
 }
 
 // ================= the daemon: "Yes?", hands-free, coming back =================
@@ -365,7 +473,13 @@ fn the_spotter_hearing_the_name_lets_the_request_through() {
 fn cfg() -> Config {
     let mut c = Config::load(Path::new("config")).unwrap();
     let t = c.tools.get_or_insert_with(Default::default);
-    t.wake = Some(atlas::voice::WakeConfig { enabled: true, phrase: "atlas".into(), clip_seconds: 3, detector: None, listen_first: false });
+    t.wake = Some(atlas::voice::WakeConfig {
+        enabled: true,
+        phrase: "atlas".into(),
+        clip_seconds: 3,
+        detector: None,
+        listen_first: false,
+    });
     c
 }
 
@@ -377,7 +491,14 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 #[derive(Default)]
@@ -409,19 +530,39 @@ impl Ears for ScriptedEars {
         Ok(self.briefly.lock().unwrap().pop_front().flatten())
     }
     fn mic_work(&self) -> Option<Box<dyn MicWork>> {
-        self.mic.lock().unwrap().take().map(|m| Box::new(m) as Box<dyn MicWork>)
+        self.mic
+            .lock()
+            .unwrap()
+            .take()
+            .map(|m| Box::new(m) as Box<dyn MicWork>)
     }
 }
 
 #[test]
 fn the_name_alone_gets_yes_and_what_you_say_next_is_answered() {
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("yes")), Proactive::new(ProactiveConfig::default()));
-    let mic = Scripted::new(then(&[room(700, 18), wake_clip("atlas_alone"), room(4000, 19)]), vec![NameCheck::Named(String::new())]);
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("yes")),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let mic = Scripted::new(
+        then(&[room(700, 18), wake_clip("atlas_alone"), room(4000, 19)]),
+        vec![NameCheck::Named(String::new())],
+    );
     // After "Yes?": the time asked for, then nothing more.
-    mic.follow.lock().unwrap().extend([Some("what time is it".to_string()), None]);
+    mic.follow
+        .lock()
+        .unwrap()
+        .extend([Some("what time is it".to_string()), None]);
     let h = mic.handles();
-    let ears = ScriptedEars { mic: Mutex::new(Some(mic)), briefly: Mutex::default(), briefly_secs: Mutex::default() };
+    let ears = ScriptedEars {
+        mic: Mutex::new(Some(mic)),
+        briefly: Mutex::default(),
+        briefly_secs: Mutex::default(),
+    };
     let mouth = Speaker::default();
     let clock = || 1_790_735_149u64;
     let until = Instant::now() + Duration::from_secs(10);
@@ -431,43 +572,83 @@ fn the_name_alone_gets_yes_and_what_you_say_next_is_answered() {
     }
     let said = mouth.0.lock().unwrap().clone();
     assert_eq!(said.first().map(String::as_str), Some("Yes?"), "{said:?}");
-    assert!(!said.iter().any(|s| s.contains("nothing after it")), "{said:?}");
-    assert!(said.len() >= 2 && said[1].chars().any(|c| c.is_ascii_digit()), "the time wasn't told: {said:?}");
+    assert!(
+        !said.iter().any(|s| s.contains("nothing after it")),
+        "{said:?}"
+    );
+    assert!(
+        said.len() >= 2 && said[1].chars().any(|c| c.is_ascii_digit()),
+        "the time wasn't told: {said:?}"
+    );
     // The open floor after the answer is the hands-free one.
     let asked = h.follow_secs.lock().unwrap().clone();
-    assert_eq!(asked.get(1).copied(), Some(atlas::utterance::ConversationConfig::default().quiet_secs), "{asked:?}");
+    assert_eq!(
+        asked.get(1).copied(),
+        Some(atlas::utterance::ConversationConfig::default().quiet_secs),
+        "{asked:?}"
+    );
 }
 
 #[test]
 fn hands_free_the_conversation_stays_open_until_you_say_thats_all() {
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("handsfree")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("handsfree")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let ears = ScriptedEars {
         mic: Mutex::new(None),
-        briefly: Mutex::new(VecDeque::from([Some("what day is it".to_string()), Some("thanks Atlas".to_string()), Some("what time is it".to_string())])),
+        briefly: Mutex::new(VecDeque::from([
+            Some("what day is it".to_string()),
+            Some("thanks Atlas".to_string()),
+            Some("what time is it".to_string()),
+        ])),
         briefly_secs: Mutex::default(),
     };
     let mouth = Speaker::default();
     let clock = || 1_790_735_149u64;
     d.converse("what time is it", &ears, &mouth, &clock);
     let said = mouth.0.lock().unwrap().clone();
-    assert_eq!(said.last().map(String::as_str), Some("Anytime."), "{said:?}");
+    assert_eq!(
+        said.last().map(String::as_str),
+        Some("Anytime."),
+        "{said:?}"
+    );
     // Two follow-ups taken, no key and no wake word; the third never asked.
     let secs = ears.briefly_secs.lock().unwrap().clone();
     assert_eq!(secs.len(), 2, "{secs:?}");
-    assert!(secs.iter().all(|s| *s == 25), "the floor wasn't the hands-free one: {secs:?}");
+    assert!(
+        secs.iter().all(|s| *s == 25),
+        "the floor wasn't the hands-free one: {secs:?}"
+    );
     assert_eq!(ears.briefly.lock().unwrap().len(), 1);
 }
 
 #[test]
 fn hands_free_ends_on_silence() {
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("silence")), Proactive::new(ProactiveConfig::default()));
-    let ears = ScriptedEars { mic: Mutex::new(None), briefly: Mutex::new(VecDeque::from([None])), briefly_secs: Mutex::default() };
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("silence")),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let ears = ScriptedEars {
+        mic: Mutex::new(None),
+        briefly: Mutex::new(VecDeque::from([None])),
+        briefly_secs: Mutex::default(),
+    };
     let mouth = Speaker::default();
     d.converse("what time is it", &ears, &mouth, &|| 1_790_735_149u64);
     assert_eq!(ears.briefly_secs.lock().unwrap().len(), 1);
-    assert_ne!(mouth.0.lock().unwrap().last().map(String::as_str), Some("Anytime."));
+    assert_ne!(
+        mouth.0.lock().unwrap().last().map(String::as_str),
+        Some("Anytime.")
+    );
 }
 
 #[test]
@@ -475,9 +656,21 @@ fn off_hands_free_the_floor_is_the_short_one_again() {
     let mut c = cfg();
     c.tools.as_mut().unwrap().conversation.hands_free = false;
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("short")), Proactive::new(ProactiveConfig::default()));
-    let ears = ScriptedEars { mic: Mutex::new(None), briefly: Mutex::new(VecDeque::from([None])), briefly_secs: Mutex::default() };
-    d.converse("what time is it", &ears, &Speaker::default(), &|| 1_790_735_149u64);
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("short")),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let ears = ScriptedEars {
+        mic: Mutex::new(None),
+        briefly: Mutex::new(VecDeque::from([None])),
+        briefly_secs: Mutex::default(),
+    };
+    d.converse("what time is it", &ears, &Speaker::default(), &|| {
+        1_790_735_149u64
+    });
     let secs = ears.briefly_secs.lock().unwrap().clone();
     assert!(secs[0] < 25, "{secs:?}");
 }
@@ -488,21 +681,39 @@ fn push_to_talk_after_a_missing_microphone_comes_back_to_the_wake_word_by_itself
     // only device with name [nothing]" three times, "Switching to
     // push-to-talk -- wake word isn't working", and never back.
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("comeback")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("comeback")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let mic = Scripted::new(Vec::new(), Vec::new());
     mic.audio.lock().unwrap().take();
     mic.broken.store(true, Ordering::SeqCst);
     let h = mic.handles();
-    let ears = ScriptedEars { mic: Mutex::new(Some(mic)), briefly: Mutex::default(), briefly_secs: Mutex::default() };
+    let ears = ScriptedEars {
+        mic: Mutex::new(Some(mic)),
+        briefly: Mutex::default(),
+        briefly_secs: Mutex::default(),
+    };
     let mouth = Speaker::default();
     let clock = || 100u64;
     let until = Instant::now() + Duration::from_secs(10);
     while d.tiers.tier != atlas::input::Tier::PushToTalk {
         d.listen_pass(&ears, &mouth, &clock);
-        assert!(Instant::now() < until, "a microphone that can't be opened never dropped the wake word");
+        assert!(
+            Instant::now() < until,
+            "a microphone that can't be opened never dropped the wake word"
+        );
         std::thread::sleep(Duration::from_millis(20));
     }
-    assert!(mouth.0.lock().unwrap().iter().any(|s| s.contains("push-to-talk")));
+    assert!(mouth
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|s| s.contains("push-to-talk")));
     // Still broken: tried now and then, and nothing changes.
     let mut t = 1_000u64;
     for _ in 0..3 {
@@ -517,11 +728,18 @@ fn push_to_talk_after_a_missing_microphone_comes_back_to_the_wake_word_by_itself
     while d.tiers.tier != atlas::input::Tier::Voice {
         d.back_to_the_wake_word(&mouth, t);
         t += 30;
-        assert!(Instant::now() < until, "a working microphone never brought the wake word back");
+        assert!(
+            Instant::now() < until,
+            "a working microphone never brought the wake word back"
+        );
         std::thread::sleep(Duration::from_millis(100));
     }
     let said = mouth.0.lock().unwrap().clone();
-    assert!(said.iter().any(|s| s.contains("The microphone works again")), "{said:?}");
+    assert!(
+        said.iter()
+            .any(|s| s.contains("The microphone works again")),
+        "{said:?}"
+    );
 }
 
 #[test]
@@ -529,19 +747,39 @@ fn a_headset_can_be_cut_into_by_voice_and_speakers_stay_as_set() {
     let b = atlas::micthread::BargeInConfig::default();
     assert!(!b.enabled);
     assert!(b.for_microphone("Headset (Jordan's AirPods)").enabled);
-    assert!(b.for_microphone("Microphone (AirPods Hands-Free AG Audio)").enabled);
-    assert!(!b.for_microphone("Microphone Array (Intel\u{ae} Smart Sound Technology for Digital Microphones)").enabled);
-    let off = atlas::micthread::BargeInConfig { headset: false, ..b };
+    assert!(
+        b.for_microphone("Microphone (AirPods Hands-Free AG Audio)")
+            .enabled
+    );
+    assert!(
+        !b.for_microphone(
+            "Microphone Array (Intel\u{ae} Smart Sound Technology for Digital Microphones)"
+        )
+        .enabled
+    );
+    let off = atlas::micthread::BargeInConfig {
+        headset: false,
+        ..b
+    };
     assert!(!off.for_microphone("Headset (AirPods)").enabled);
 }
 
 #[test]
 fn the_words_after_the_name_are_the_request() {
     use atlas::voice::words_after_name;
-    assert_eq!(words_after_name("Atlas, what time is it?", "atlas").as_deref(), Some("what time is it?"));
-    assert_eq!(words_after_name("Hey, Atlas! Open my notes.", "hey atlas").as_deref(), Some("Open my notes."));
+    assert_eq!(
+        words_after_name("Atlas, what time is it?", "atlas").as_deref(),
+        Some("what time is it?")
+    );
+    assert_eq!(
+        words_after_name("Hey, Atlas! Open my notes.", "hey atlas").as_deref(),
+        Some("Open my notes.")
+    );
     assert_eq!(words_after_name("Atlas.", "atlas").as_deref(), Some(""));
-    assert_eq!(words_after_name("so I told Atlas to wait", "atlas").as_deref(), Some("to wait"));
+    assert_eq!(
+        words_after_name("so I told Atlas to wait", "atlas").as_deref(),
+        Some("to wait")
+    );
     assert_eq!(words_after_name("open Atlassian", "atlas"), None);
     assert_eq!(words_after_name("what time is it", "atlas"), None);
 }
@@ -593,15 +831,22 @@ fn with_the_real_speech_engine_atlas_what_time_is_it_is_heard_as_a_request() {
     let mic = MicThread::start(Box::new(work));
     mic.set_wake(true);
     let got = first_heard(&mic, Duration::from_secs(60)).expect("nothing came through");
-    let Heard::Wake(Ok(said)) = got else { panic!("{got:?}") };
+    let Heard::Wake(Ok(said)) = got else {
+        panic!("{got:?}")
+    };
     println!("LIVE [whisper] the request heard: {said:?}");
-    assert!(atlas::voice::loose(&said).contains("whattimeisit"), "{said:?}");
+    assert!(
+        atlas::voice::loose(&said).contains("whattimeisit"),
+        "{said:?}"
+    );
 
     let dir = tmp("whisper-alone");
     let audio = then(&[room(700, 22), wake_clip("atlas_alone"), room(4000, 23)]);
     let t = real_ears(&dir, &audio, &w, &m);
     let mic = MicThread::start(Box::new(atlas::voice::Voice::new(&t).mic_work()));
     mic.set_wake(true);
-    assert_eq!(first_heard(&mic, Duration::from_secs(60)), Some(Heard::Named));
+    assert_eq!(
+        first_heard(&mic, Duration::from_secs(60)),
+        Some(Heard::Named)
+    );
 }
-

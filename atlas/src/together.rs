@@ -128,7 +128,10 @@ impl Default for TogetherConfig {
         // Two R is the first number where the ticket and the truth have
         // meaningfully parted company: two "one per cent" trades that are the
         // same bet are a two per cent trade, and the rule said one.
-        TogetherConfig { say_above: 2.0, alarm_above: 3.0 }
+        TogetherConfig {
+            say_above: 2.0,
+            alarm_above: 3.0,
+        }
     }
 }
 
@@ -162,7 +165,11 @@ pub fn net(held: &[Position]) -> Netted {
     }
     per.retain(|(_, v)| v.abs() > 1e-9);
     per.sort_by(|a, b| b.1.abs().total_cmp(&a.1.abs()).then(a.0.cmp(&b.0)));
-    Netted { per_currency: per, unknown, as_counted }
+    Netted {
+        per_currency: per,
+        unknown,
+        as_counted,
+    }
 }
 
 /// Would adding this trade make it worse?

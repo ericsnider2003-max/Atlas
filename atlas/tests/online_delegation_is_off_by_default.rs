@@ -17,14 +17,31 @@ fn cfg() -> Config {
 #[test]
 fn cloudflare_ships_off_but_ready_to_be_switched_on() {
     let c = cfg();
-    let cf = c.tools.as_ref().expect("tools.yaml loads").cloudflare.clone();
+    let cf = c
+        .tools
+        .as_ref()
+        .expect("tools.yaml loads")
+        .cloudflare
+        .clone();
     assert!(!cf.enabled, "the online booster must wait to be asked for");
     // Complete enough that enabling + adding an account and token is the only
     // work — the switch must not be a switch that does nothing.
-    assert!(cf.inference.is_some(), "no inference endpoint, so the switch would do nothing");
-    assert!(!cf.model.trim().is_empty(), "a model must be pre-filled so there's a working default");
-    assert!(!cf.token_vault.trim().is_empty(), "the vault entry name must be pre-filled");
-    assert!(cf.verify, "verification should default on — the point is to check what comes back");
+    assert!(
+        cf.inference.is_some(),
+        "no inference endpoint, so the switch would do nothing"
+    );
+    assert!(
+        !cf.model.trim().is_empty(),
+        "a model must be pre-filled so there's a working default"
+    );
+    assert!(
+        !cf.token_vault.trim().is_empty(),
+        "the vault entry name must be pre-filled"
+    );
+    assert!(
+        cf.verify,
+        "verification should default on — the point is to check what comes back"
+    );
 }
 
 #[test]
@@ -60,5 +77,8 @@ fn enabled_and_set_up_is_ready() {
     let mut cf = c.tools.as_ref().unwrap().cloudflare.clone();
     cf.enabled = true;
     cf.account_id = "acct".into();
-    assert!(readiness(&cf, true).ready_now(), "with everything set and a token present, ready");
+    assert!(
+        readiness(&cf, true).ready_now(),
+        "with everything set and a token present, ready"
+    );
 }

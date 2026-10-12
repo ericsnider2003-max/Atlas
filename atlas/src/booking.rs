@@ -119,7 +119,13 @@ impl Default for BookingConfig {
 /// Judge each offered time against what you already have.
 /// `zone` is your clock: "your hours" are 9 to 6 where you are (UTC when
 /// no time zone is set, as before).
-pub fn assess(p: &Proposal, busy: &[Slot], now: u64, cfg: &BookingConfig, zone: &crate::tz::Zone) -> Vec<Assessed> {
+pub fn assess(
+    p: &Proposal,
+    busy: &[Slot],
+    now: u64,
+    cfg: &BookingConfig,
+    zone: &crate::tz::Zone,
+) -> Vec<Assessed> {
     p.times
         .iter()
         .map(|s| {
@@ -127,7 +133,10 @@ pub fn assess(p: &Proposal, busy: &[Slot], now: u64, cfg: &BookingConfig, zone: 
             let (verdict, because) = if s.start < now {
                 (Fit::Past, "already gone".to_string())
             } else if s.start < now + cfg.notice_hours as u64 * 3600 {
-                (Fit::Awkward, format!("under {} hours' notice", cfg.notice_hours))
+                (
+                    Fit::Awkward,
+                    format!("under {} hours' notice", cfg.notice_hours),
+                )
             } else if hour < cfg.hours.0 || hour >= cfg.hours.1 {
                 (Fit::OffHours, format!("{hour}:00 is outside your hours"))
             } else if busy.iter().any(|b| b.clashes_with(s)) {
@@ -135,7 +144,11 @@ pub fn assess(p: &Proposal, busy: &[Slot], now: u64, cfg: &BookingConfig, zone: 
             } else {
                 (Fit::Free, "clear".to_string())
             };
-            Assessed { slot: *s, verdict, because }
+            Assessed {
+                slot: *s,
+                verdict,
+                because,
+            }
         })
         .collect()
 }
@@ -144,7 +157,14 @@ pub fn assess(p: &Proposal, busy: &[Slot], now: u64, cfg: &BookingConfig, zone: 
 ///
 /// Only inside your hours and only with notice — a counter-offer of eleven at
 /// night is worse than saying no.
-pub fn could_offer(busy: &[Slot], from: u64, mins: u32, cfg: &BookingConfig, how_many: usize, zone: &crate::tz::Zone) -> Vec<Slot> {
+pub fn could_offer(
+    busy: &[Slot],
+    from: u64,
+    mins: u32,
+    cfg: &BookingConfig,
+    how_many: usize,
+    zone: &crate::tz::Zone,
+) -> Vec<Slot> {
     let mut out = Vec::new();
     let start_looking = from + cfg.notice_hours as u64 * 3600;
     // Days and hours on your clock, each slot brought back to UTC.
@@ -152,7 +172,10 @@ pub fn could_offer(busy: &[Slot], from: u64, mins: u32, cfg: &BookingConfig, how
 
     for _ in 0..14 {
         for hour in cfg.hours.0..cfg.hours.1 {
-            let s = Slot { start: zone.to_utc(day + hour as i64 * 3600).max(0) as u64, mins };
+            let s = Slot {
+                start: zone.to_utc(day + hour as i64 * 3600).max(0) as u64,
+                mins,
+            };
             if s.start < start_looking {
                 continue;
             }
@@ -188,7 +211,10 @@ pub fn to_decide(p: &Proposal, assessed: &[Assessed], alternatives: &[Slot]) -> 
             }
             s.push('.');
             if !alternatives.is_empty() {
-                s.push_str(&format!(" I've got {} you could offer.", alternatives.len()));
+                s.push_str(&format!(
+                    " I've got {} you could offer.",
+                    alternatives.len()
+                ));
             }
         }
         1 => s.push_str("One of their times is clear."),
@@ -217,7 +243,11 @@ pub fn answered(said: &str) -> Option<State> {
     {
         return Some(State::Declined);
     }
-    if t.contains("instead") || t.contains("how about") || t.contains("what about") || t.contains("offer") {
+    if t.contains("instead")
+        || t.contains("how about")
+        || t.contains("what about")
+        || t.contains("offer")
+    {
         return Some(State::CounterOffered);
     }
     None

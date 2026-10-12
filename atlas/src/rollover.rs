@@ -215,12 +215,19 @@ pub enum Thin {
 impl Thin {
     pub fn plain(&self) -> String {
         match self {
-            Thin::Rollover { minutes_away, triple } => format!(
+            Thin::Rollover {
+                minutes_away,
+                triple,
+            } => format!(
                 "this is {} minute(s) from the 17:00 New York rollover{}. Every desk rolls at \
                  once, the spread widens several times over, and a stop sitting in that window \
                  gets filled at the wide price — the trade isn't worse, the fill is",
                 minutes_away.abs(),
-                if *triple { ", and it is Wednesday's — three nights of swap" } else { "" }
+                if *triple {
+                    ", and it is Wednesday's — three nights of swap"
+                } else {
+                    ""
+                }
             ),
             Thin::NobodyOpen => "no major centre is open, so what's quoted is a price nobody is \
                                  really making"
@@ -237,7 +244,10 @@ pub fn thin(ms: i64) -> Option<Thin> {
     if let Some(r) = rollover_ending(ms) {
         let gap = (r.at - ms) / MS_PER_MIN;
         if gap.abs() <= THIN_MINUTES {
-            return Some(Thin::Rollover { minutes_away: gap, triple: r.triple });
+            return Some(Thin::Rollover {
+                minutes_away: gap,
+                triple: r.triple,
+            });
         }
     }
     // And the previous rollover, for the half-hour after it.
@@ -246,7 +256,9 @@ pub fn thin(ms: i64) -> Option<Thin> {
     {
         return Some(Thin::Rollover {
             minutes_away: -((ms - before) / MS_PER_MIN),
-            triple: rollover_ending(before - MS_PER_HOUR).map(|r| r.triple).unwrap_or(false),
+            triple: rollover_ending(before - MS_PER_HOUR)
+                .map(|r| r.triple)
+                .unwrap_or(false),
         });
     }
 

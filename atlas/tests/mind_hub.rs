@@ -5,8 +5,16 @@ use atlas::mind::{speak_brief, Item, Mind, Stage, Weight, Work};
 
 fn working() -> Work {
     let mut w = Work::new(1, "tidy the downloads folder", false, 0);
-    w.plan(&["list what's there".into(), "work out where each goes".into(), "move them".into()]);
-    w.think(Stage::Gathering, "looking at what's in Downloads before deciding anything", 1);
+    w.plan(&[
+        "list what's there".into(),
+        "work out where each goes".into(),
+        "move them".into(),
+    ]);
+    w.think(
+        Stage::Gathering,
+        "looking at what's in Downloads before deciding anything",
+        1,
+    );
     w.finish_step(0, None);
     w.think(Stage::Planning, "34 files, mostly PDFs and installers", 2);
     w
@@ -18,7 +26,10 @@ fn atlas_can_say_what_it_is_doing_and_how_far_in() {
     let w = working();
     let said = w.spoken();
     assert!(said.contains("tidy the downloads folder"));
-    assert!(said.contains("work out where each goes"), "the actual step: {said}");
+    assert!(
+        said.contains("work out where each goes"),
+        "the actual step: {said}"
+    );
     assert!(said.contains("step 2 of 3"));
 }
 
@@ -43,7 +54,10 @@ fn thinking_is_recorded_in_plain_language_not_as_log_lines() {
 fn a_failed_step_is_shown_as_failed_rather_than_silently_skipped() {
     let mut w = working();
     w.finish_step(1, Some("no permission on that folder".into()));
-    assert_eq!(w.steps[1].failed.as_deref(), Some("no permission on that folder"));
+    assert_eq!(
+        w.steps[1].failed.as_deref(),
+        Some("no permission on that folder")
+    );
     assert!(!w.steps[1].done);
 }
 
@@ -62,7 +76,10 @@ fn the_thinking_log_is_bounded_on_a_long_job() {
         w.think(Stage::Doing, &format!("step {i}"), i);
     }
     assert!(w.thoughts.len() <= 200);
-    assert!(w.thoughts.last().unwrap().text.contains("399"), "the recent end is kept");
+    assert!(
+        w.thoughts.last().unwrap().text.contains("399"),
+        "the recent end is kept"
+    );
 }
 
 // ================= talking while it works =================
@@ -75,7 +92,11 @@ fn background_work_is_tracked_separately_from_what_you_are_waiting_on() {
     let fg = m.begin("open chrome", false, 1);
     assert_eq!(m.background().len(), 1);
     assert_eq!(m.background()[0].id, bg);
-    assert_eq!(m.focus().unwrap().id, fg, "foreground is what you're waiting on");
+    assert_eq!(
+        m.focus().unwrap().id,
+        fg,
+        "foreground is what you're waiting on"
+    );
 }
 
 #[test]
@@ -116,7 +137,11 @@ fn finished_work_is_cleared_so_the_list_stays_about_now() {
 
 fn items() -> Vec<Item> {
     vec![
-        Item { what: "the index is stale".into(), weight: Weight::Passing, because: "no rush".into() },
+        Item {
+            what: "the index is stale".into(),
+            weight: Weight::Passing,
+            because: "no rush".into(),
+        },
         Item {
             what: "a scheduled post can't go out".into(),
             weight: Weight::Urgent,
@@ -135,8 +160,14 @@ fn the_most_important_thing_is_said_first() {
     // A written brief is something you read later. Three sentences in
     // priority order is something you act on now.
     let said = speak_brief(&items());
-    assert!(said.starts_with("First thing: a scheduled post can't go out"), "got: {said}");
-    assert!(said.contains("due at nine"), "the top one gets its reasoning");
+    assert!(
+        said.starts_with("First thing: a scheduled post can't go out"),
+        "got: {said}"
+    );
+    assert!(
+        said.contains("due at nine"),
+        "the top one gets its reasoning"
+    );
 }
 
 #[test]
@@ -144,7 +175,10 @@ fn the_rest_are_named_but_not_justified() {
     // A spoken list of six with justifications is unlistenable.
     let said = speak_brief(&items());
     assert!(said.contains("the wake word fix needs a decision"));
-    assert!(!said.contains("everything else is waiting on it"), "no reasoning for the rest");
+    assert!(
+        !said.contains("everything else is waiting on it"),
+        "no reasoning for the rest"
+    );
     assert!(said.len() < 220, "still speakable: {said}");
 }
 
@@ -161,7 +195,11 @@ fn a_blocking_item_is_phrased_as_holding_things_up() {
 #[test]
 fn a_long_list_says_how_many_more_rather_than_reading_them() {
     let many: Vec<Item> = (0..9)
-        .map(|i| Item { what: format!("thing {i}"), weight: Weight::Soon, because: "x".into() })
+        .map(|i| Item {
+            what: format!("thing {i}"),
+            weight: Weight::Soon,
+            because: "x".into(),
+        })
         .collect();
     let said = speak_brief(&many);
     assert!(said.contains("5 more after that"), "got: {said}");
@@ -197,7 +235,10 @@ fn the_live_page_shows_the_thinking_animation_while_it_works() {
     assert!(page.contains("class=think"));
     assert!(page.contains("animation:spin"), "it actually moves");
     let idle = now("Nothing at the moment", vec![], vec![], false);
-    assert!(idle.contains("idle"), "and it settles when there's nothing to do");
+    assert!(
+        idle.contains("idle"),
+        "and it settles when there's nothing to do"
+    );
 }
 
 #[test]
@@ -214,8 +255,14 @@ fn the_animation_needs_nothing_from_the_internet() {
     // Its one script (26 Sep) is inline and fetches only this page again,
     // from Atlas itself.
     let page = now("x", vec![], vec![], true);
-    assert!(!page.to_lowercase().contains("<script src"), "no script is fetched");
-    assert!(!page.contains("fetch('http") && !page.contains("fetch(\"http"), "nothing from elsewhere");
+    assert!(
+        !page.to_lowercase().contains("<script src"),
+        "no script is fetched"
+    );
+    assert!(
+        !page.contains("fetch('http") && !page.contains("fetch(\"http"),
+        "nothing from elsewhere"
+    );
 }
 
 #[test]
@@ -232,9 +279,16 @@ fn the_live_page_refreshes_itself() {
     // (WCAG 2.2.1, technique F41) — and the updates can be paused.
     let page = now("x", vec![], vec![], true);
     assert!(!page.contains("http-equiv=refresh"), "no timed reload");
-    assert!(page.contains(atlas::hub::LIVE_SCRIPT), "it updates itself in place");
+    assert!(
+        page.contains(atlas::hub::LIVE_SCRIPT),
+        "it updates itself in place"
+    );
     // One pause control, which the script finds by its id.
-    assert_eq!(page.matches("id=livepause").count(), 1, "and the updates can be paused");
+    assert_eq!(
+        page.matches("id=livepause").count(),
+        1,
+        "and the updates can be paused"
+    );
     assert_eq!(page.matches("getElementById('livepause')").count(), 1);
 }
 
@@ -262,7 +316,10 @@ fn steps_show_what_is_done_what_is_now_and_what_failed() {
 fn the_thinking_is_shown_as_it_happens() {
     let page = now(
         "tidy downloads",
-        vec![(Step::Plan, "looking at what's in Downloads".into()), (Step::Doing, "34 files, mostly PDFs".into())],
+        vec![
+            (Step::Plan, "looking at what's in Downloads".into()),
+            (Step::Doing, "34 files, mostly PDFs".into()),
+        ],
         vec![],
         true,
     );
@@ -275,9 +332,14 @@ fn the_thinking_is_shown_as_it_happens() {
 
 #[test]
 fn background_work_is_listed_without_taking_over_the_page() {
-    let bg = vec!["indexing documents".to_string(), "researching the spec".to_string()];
+    let bg = vec![
+        "indexing documents".to_string(),
+        "researching the spec".to_string(),
+    ];
     let page = now("open chrome", vec![], bg, true);
-    assert!(page.contains("Also running") && page.contains("indexing documents · researching the spec"));
+    assert!(
+        page.contains("Also running") && page.contains("indexing documents · researching the spec")
+    );
 }
 
 #[test]
@@ -295,13 +357,20 @@ fn a_new_request_pushes_the_running_one_out_of_sight_rather_than_queueing_you() 
     m.begin("index the documents folder", false, 0);
     match m.take_on("what's on my calendar", false, 10) {
         atlas::mind::Started::Demoted { moved, .. } => {
-            assert!(moved.contains("index"), "the old one carried on out of sight");
+            assert!(
+                moved.contains("index"),
+                "the old one carried on out of sight"
+            );
         }
         o => panic!("{o:?}"),
     }
     assert_eq!(m.active().len(), 2, "both are still running");
     assert_eq!(m.background().len(), 1);
-    assert_eq!(m.focus().unwrap().asked, "what's on my calendar", "the new one has the floor");
+    assert_eq!(
+        m.focus().unwrap().asked,
+        "what's on my calendar",
+        "the new one has the floor"
+    );
 }
 
 #[test]
@@ -321,7 +390,11 @@ fn with_nothing_running_it_just_starts_and_says_nothing_about_it() {
     let mut m = Mind::default();
     let started = m.take_on("open chrome", true, 0);
     assert!(matches!(started, atlas::mind::Started::Straight { .. }));
-    assert_eq!(started.spoken(), "", "no commentary when there's nothing to report");
+    assert_eq!(
+        started.spoken(),
+        "",
+        "no commentary when there's nothing to report"
+    );
 }
 
 #[test]
@@ -329,7 +402,10 @@ fn atlas_says_what_it_moved_so_you_know_it_didnt_drop_it() {
     let mut m = Mind::default();
     m.begin("research the spec", false, 0);
     let said = m.take_on("open chrome", true, 10).spoken();
-    assert!(said.contains("Carrying on with research the spec in the background"), "got: {said}");
+    assert!(
+        said.contains("Carrying on with research the spec in the background"),
+        "got: {said}"
+    );
 }
 
 #[test]
@@ -349,7 +425,9 @@ fn a_demoted_job_keeps_its_progress_and_its_thinking() {
     let id = m.begin("index the documents folder", false, 0);
     m.get_mut(id).unwrap().plan(&["scan".into(), "read".into()]);
     m.get_mut(id).unwrap().finish_step(0, None);
-    m.get_mut(id).unwrap().think(Stage::Doing, "12,000 files so far", 5);
+    m.get_mut(id)
+        .unwrap()
+        .think(Stage::Doing, "12,000 files so far", 5);
 
     m.take_on("open chrome", true, 10);
     let w = m.get(id).unwrap();
@@ -375,9 +453,18 @@ fn notes_kept_for_you_are_on_the_now_page() {
         receipt: None,
     };
     let page = now_page(&v);
-    assert!(page.contains("<div class=lab>Kept for you</div>"), "no box for held notes");
+    assert!(
+        page.contains("<div class=lab>Kept for you</div>"),
+        "no box for held notes"
+    );
     assert!(page.contains("2 notes that couldn't reach you when they came"));
-    assert!(page.contains("<li>Disk &lt;nearly&gt; full</li>"), "titles must be escaped");
+    assert!(
+        page.contains("<li>Disk &lt;nearly&gt; full</li>"),
+        "titles must be escaped"
+    );
     v.held.clear();
-    assert!(!now_page(&v).contains("Kept for you"), "nothing held, nothing shown");
+    assert!(
+        !now_page(&v).contains("Kept for you"),
+        "nothing held, nothing shown"
+    );
 }

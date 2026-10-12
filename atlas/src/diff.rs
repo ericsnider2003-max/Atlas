@@ -37,7 +37,11 @@ pub fn edits<T: PartialEq>(a: &[T], b: &[T]) -> Vec<Edit> {
         let mut k = -d;
         while k <= d {
             let i = (k + off) as usize;
-            let mut x = if k == -d || (k != d && v[i - 1] < v[i + 1]) { v[i + 1] } else { v[i - 1] + 1 };
+            let mut x = if k == -d || (k != d && v[i - 1] < v[i + 1]) {
+                v[i + 1]
+            } else {
+                v[i - 1] + 1
+            };
             let mut y = x - k;
             while x < n && y < m && a[x as usize] == b[y as usize] {
                 x += 1;
@@ -59,7 +63,11 @@ pub fn edits<T: PartialEq>(a: &[T], b: &[T]) -> Vec<Edit> {
         let d = d as isize;
         let k = x - y;
         let i = (k + off) as usize;
-        let prev_k = if k == -d || (k != d && v[i - 1] < v[i + 1]) { k + 1 } else { k - 1 };
+        let prev_k = if k == -d || (k != d && v[i - 1] < v[i + 1]) {
+            k + 1
+        } else {
+            k - 1
+        };
         let prev_x = v[(prev_k + off) as usize];
         let prev_y = prev_x - prev_k;
         while x > prev_x && y > prev_y {
@@ -87,11 +95,20 @@ pub fn edits<T: PartialEq>(a: &[T], b: &[T]) -> Vec<Edit> {
 /// Lines added plus lines removed, the way `git diff --stat` counts.
 pub fn lines_changed(before: &str, after: &str) -> usize {
     let (a, b): (Vec<&str>, Vec<&str>) = (before.lines().collect(), after.lines().collect());
-    edits(&a, &b).iter().filter(|e| !matches!(e, Edit::Keep(..))).count()
+    edits(&a, &b)
+        .iter()
+        .filter(|e| !matches!(e, Edit::Keep(..)))
+        .count()
 }
 
 /// A unified diff (`---`/`+++`, `@@` hunks, `context` lines around each).
-pub fn unified(before: &str, after: &str, old_name: &str, new_name: &str, context: usize) -> String {
+pub fn unified(
+    before: &str,
+    after: &str,
+    old_name: &str,
+    new_name: &str,
+    context: usize,
+) -> String {
     let (a, b): (Vec<&str>, Vec<&str>) = (before.lines().collect(), after.lines().collect());
     let es = edits(&a, &b);
     if es.iter().all(|e| matches!(e, Edit::Keep(..))) {
@@ -99,7 +116,12 @@ pub fn unified(before: &str, after: &str, old_name: &str, new_name: &str, contex
     }
     let mut out = format!("--- {old_name}\n+++ {new_name}\n");
     // Group changes that are within 2×context of each other into one hunk.
-    let changed: Vec<usize> = es.iter().enumerate().filter(|(_, e)| !matches!(e, Edit::Keep(..))).map(|(i, _)| i).collect();
+    let changed: Vec<usize> = es
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| !matches!(e, Edit::Keep(..)))
+        .map(|(i, _)| i)
+        .collect();
     let mut groups: Vec<(usize, usize)> = Vec::new();
     for &c in &changed {
         match groups.last_mut() {
@@ -120,8 +142,14 @@ pub fn unified(before: &str, after: &str, old_name: &str, new_name: &str, contex
             Edit::Keep(_, j) | Edit::Insert(j) => Some(*j),
             _ => None,
         });
-        let a_len = span.iter().filter(|x| !matches!(x, Edit::Insert(_))).count();
-        let b_len = span.iter().filter(|x| !matches!(x, Edit::Delete(_))).count();
+        let a_len = span
+            .iter()
+            .filter(|x| !matches!(x, Edit::Insert(_)))
+            .count();
+        let b_len = span
+            .iter()
+            .filter(|x| !matches!(x, Edit::Delete(_)))
+            .count();
         let a_at = a_start.map(|i| i + 1).unwrap_or(0);
         let b_at = b_start.map(|j| j + 1).unwrap_or(0);
         out.push_str(&format!("@@ -{a_at},{a_len} +{b_at},{b_len} @@\n"));

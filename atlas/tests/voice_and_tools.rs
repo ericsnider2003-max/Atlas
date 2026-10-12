@@ -7,7 +7,11 @@ use atlas::voice::{clean_transcript, ToolsConfig, Voice};
 /// Windows, and `cp`, `cat` and `tee` do not exist on Windows. Every shell
 /// does, so everything goes through one.
 fn sh(script: &str, stdin_text: bool, result_file: Option<&str>) -> ExternalTool {
-    let (command, first) = if cfg!(windows) { ("cmd", "/c") } else { ("sh", "-c") };
+    let (command, first) = if cfg!(windows) {
+        ("cmd", "/c")
+    } else {
+        ("sh", "-c")
+    };
     ExternalTool {
         command: command.into(),
         args: vec![first.into(), script.into()],
@@ -19,7 +23,11 @@ fn sh(script: &str, stdin_text: bool, result_file: Option<&str>) -> ExternalTool
 
 /// A binary that exists on every machine, for the PATH lookup test.
 fn a_real_binary() -> &'static str {
-    if cfg!(windows) { "cmd" } else { "cat" }
+    if cfg!(windows) {
+        "cmd"
+    } else {
+        "cat"
+    }
 }
 
 fn copy(from: &str, to: &str) -> ExternalTool {
@@ -42,9 +50,16 @@ fn test_tools() -> ToolsConfig {
     let f = fixture.display().to_string();
     let work = dir.display().to_string();
 
-    let write_stdin_to_out =
-        if cfg!(windows) { "more > {out_wav}" } else { "cat > '{out_wav}'" };
-    let show_out = if cfg!(windows) { "type {out_wav}" } else { "cat '{out_wav}'" };
+    let write_stdin_to_out = if cfg!(windows) {
+        "more > {out_wav}"
+    } else {
+        "cat > '{out_wav}'"
+    };
+    let show_out = if cfg!(windows) {
+        "type {out_wav}"
+    } else {
+        "cat '{out_wav}'"
+    };
 
     ToolsConfig {
         enabled: true,
@@ -66,7 +81,10 @@ fn test_tools() -> ToolsConfig {
 }
 
 fn vars(pairs: &[(&str, &str)]) -> Vars {
-    pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    pairs
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
 }
 
 // ---------- placeholder expansion ----------
@@ -98,8 +116,14 @@ fn braces_that_are_not_placeholders_survive() {
 fn whisper_annotations_are_stripped() {
     // Without this, "[BLANK_AUDIO]" gets parsed as a command every silence.
     assert_eq!(clean_transcript("[BLANK_AUDIO]"), "");
-    assert_eq!(clean_transcript(" [00:00.000] boot workspace \n"), "boot workspace");
-    assert_eq!(clean_transcript("boot workspace (crosstalk)"), "boot workspace");
+    assert_eq!(
+        clean_transcript(" [00:00.000] boot workspace \n"),
+        "boot workspace"
+    );
+    assert_eq!(
+        clean_transcript("boot workspace (crosstalk)"),
+        "boot workspace"
+    );
 }
 
 // ---------- real subprocess execution ----------
@@ -128,7 +152,10 @@ fn missing_binary_gives_an_actionable_error() {
         timeout_secs: 120,
     };
     let e = t.run(&vars(&[]), None).unwrap_err().to_string();
-    assert!(e.contains("Connections page") && !e.contains("`atlas"), "error should point somewhere useful, not to a terminal: {e}");
+    assert!(
+        e.contains("Connections page") && !e.contains("`atlas"),
+        "error should point somewhere useful, not to a terminal: {e}"
+    );
 }
 
 #[test]
@@ -179,7 +206,10 @@ fn capture_screen_writes_a_file_and_returns_its_path() {
 #[test]
 fn work_dir_is_created_on_demand() {
     let mut cfg = test_tools();
-    cfg.work_dir = std::env::temp_dir().join("atlas-voice-fresh").display().to_string();
+    cfg.work_dir = std::env::temp_dir()
+        .join("atlas-voice-fresh")
+        .display()
+        .to_string();
     let _ = std::fs::remove_dir_all(&cfg.work_dir);
     Voice::new(&cfg).listen().unwrap();
     assert!(std::path::Path::new(&cfg.work_dir).is_dir());
@@ -192,7 +222,10 @@ fn shipped_tools_yaml_parses_and_declares_every_stage() {
     let y = std::fs::read_to_string("config/tools.yaml").unwrap();
     let t: ToolsConfig = serde_yaml::from_str(&y).unwrap();
     assert!(t.capture_screen.is_some());
-    assert!(t.tts.stdin_text, "the speech engine reads its text on stdin");
+    assert!(
+        t.tts.stdin_text,
+        "the speech engine reads its text on stdin"
+    );
     assert!(t.stt.result_file.is_some(), "whisper writes a .txt file");
     // Every var referenced in a command must be defined or supplied at runtime.
     // Names the code supplies at run time rather than the config declaring.
@@ -230,7 +263,13 @@ fn shipped_tools_yaml_parses_and_declares_every_stage() {
         "hint_opt",
         "hint_val",
     ];
-    for tool in [&t.record, &t.stt, &t.tts, &t.play, t.capture_screen.as_ref().unwrap()] {
+    for tool in [
+        &t.record,
+        &t.stt,
+        &t.tts,
+        &t.play,
+        t.capture_screen.as_ref().unwrap(),
+    ] {
         for a in &tool.args {
             let mut rest = a.as_str();
             while let Some(i) = rest.find('{') {
@@ -252,7 +291,10 @@ fn capture_works_on_a_fresh_install_where_the_folder_does_not_exist_yet() {
     // didn't, so the first thing you did after installing decided whether the
     // second thing worked.
     let mut cfg = test_tools();
-    cfg.work_dir = std::env::temp_dir().join("atlas-capture-fresh").display().to_string();
+    cfg.work_dir = std::env::temp_dir()
+        .join("atlas-capture-fresh")
+        .display()
+        .to_string();
     let _ = std::fs::remove_dir_all(&cfg.work_dir);
 
     let path = Voice::new(&cfg).capture_screen().unwrap();
@@ -265,14 +307,30 @@ fn capture_works_on_a_fresh_install_where_the_folder_does_not_exist_yet() {
 fn with_wake(enabled: bool, marker: &std::path::Path) -> ToolsConfig {
     let mut cfg = test_tools();
     // Recording leaves a mark, so a recording that happened can be seen.
-    let fixture = std::env::temp_dir().join("atlas-voice-test").join("heard.txt");
+    let fixture = std::env::temp_dir()
+        .join("atlas-voice-test")
+        .join("heard.txt");
     let script = if cfg!(windows) {
-        format!("echo x > {} & copy /y {} {{in_wav}} >nul", marker.display(), fixture.display())
+        format!(
+            "echo x > {} & copy /y {} {{in_wav}} >nul",
+            marker.display(),
+            fixture.display()
+        )
     } else {
-        format!("touch '{}' && cp '{}' '{{in_wav}}'", marker.display(), fixture.display())
+        format!(
+            "touch '{}' && cp '{}' '{{in_wav}}'",
+            marker.display(),
+            fixture.display()
+        )
     };
     cfg.record = sh(&script, false, None);
-    cfg.wake = Some(atlas::voice::WakeConfig { enabled, phrase: "boot".into(), clip_seconds: 1, detector: None, listen_first: false });
+    cfg.wake = Some(atlas::voice::WakeConfig {
+        enabled,
+        phrase: "boot".into(),
+        clip_seconds: 1,
+        detector: None,
+        listen_first: false,
+    });
     cfg
 }
 
@@ -284,16 +342,26 @@ fn a_wake_word_switched_off_is_not_listened_for() {
     let _ = std::fs::remove_file(&marker);
     let cfg = with_wake(false, &marker);
     let started = std::time::Instant::now();
-    assert!(!Voice::new(&cfg).wake_once().unwrap(), "a switched-off wake word was heard");
+    assert!(
+        !Voice::new(&cfg).wake_once().unwrap(),
+        "a switched-off wake word was heard"
+    );
     assert!(!marker.exists(), "it recorded anyway");
-    crate::common::assert_prompt(started.elapsed(), std::time::Duration::from_millis(100), "took too long");
+    crate::common::assert_prompt(
+        started.elapsed(),
+        std::time::Duration::from_millis(100),
+        "took too long",
+    );
 
     // Switched on, the same setup does listen -- so the test above is
     // measuring the switch, not a broken fixture.
     let on_marker = std::env::temp_dir().join("atlas-wake-on-marker");
     let _ = std::fs::remove_file(&on_marker);
     let on = with_wake(true, &on_marker);
-    assert!(Voice::new(&on).wake_once().unwrap(), "the phrase in the clip was not heard");
+    assert!(
+        Voice::new(&on).wake_once().unwrap(),
+        "the phrase in the clip was not heard"
+    );
     assert!(on_marker.exists(), "switched on, nothing was recorded");
 }
 
@@ -302,9 +370,16 @@ fn with_the_wake_word_off_atlas_starts_at_push_to_talk_and_stays_there() {
     use atlas::input::{Tier, Tiers};
     let mut t = Tiers::default();
     t.set_wake(false);
-    assert_eq!(t.tier, Tier::PushToTalk, "the wake-word tier with the wake word off");
+    assert_eq!(
+        t.tier,
+        Tier::PushToTalk,
+        "the wake-word tier with the wake word off"
+    );
     for _ in 0..20 {
-        assert!(t.succeeded().is_none(), "it announced climbing to a tier that is switched off");
+        assert!(
+            t.succeeded().is_none(),
+            "it announced climbing to a tier that is switched off"
+        );
     }
     assert_eq!(t.tier, Tier::PushToTalk);
     // Demoted to typing and recovering, it climbs back to push-to-talk only.
@@ -331,6 +406,12 @@ fn with_the_wake_word_off_atlas_starts_at_push_to_talk_and_stays_there() {
 #[test]
 fn the_loop_sets_the_tier_from_the_wake_setting() {
     let src = crate::common::read_source_path("src/daemon.rs").unwrap();
-    assert!(src.contains("self.tiers.set_wake(self.wake_on());"), "run no longer starts from the setting");
-    assert!(src.contains("self.tiers.set_wake(on);"), "a changed setting no longer moves the tier");
+    assert!(
+        src.contains("self.tiers.set_wake(self.wake_on());"),
+        "run no longer starts from the setting"
+    );
+    assert!(
+        src.contains("self.tiers.set_wake(on);"),
+        "a changed setting no longer moves the tier"
+    );
 }

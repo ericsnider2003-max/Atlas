@@ -170,7 +170,17 @@ impl MockPlatform {
 
     /// Everything typed, in order.
     pub fn typed(&self) -> Vec<String> {
-        self.log.borrow().iter().filter_map(|a| if let Action::Type(t) = a { Some(t.clone()) } else { None }).collect()
+        self.log
+            .borrow()
+            .iter()
+            .filter_map(|a| {
+                if let Action::Type(t) = a {
+                    Some(t.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     /// Simulate a slow-starting app (Discord, Claude).
@@ -220,7 +230,11 @@ impl Platform for MockPlatform {
     /// A mock machine with room to spare and on mains power, whatever the
     /// machine running the tests has free.
     fn crew_room(&self) -> fn() -> crate::crew::Room {
-        || crate::crew::Room { free_mb: Some(64 * 1024), on_battery: false, battery_percent: None }
+        || crate::crew::Room {
+            free_mb: Some(64 * 1024),
+            on_battery: false,
+            battery_percent: None,
+        }
     }
     fn device_kind(&self) -> crate::sync::Kind {
         self.kind.get()
@@ -256,7 +270,9 @@ impl Platform for MockPlatform {
             .and_then(|n| n.by_name(name).map(|c| c.enabled))
             .unwrap_or(false);
         if found {
-            self.log.borrow_mut().push(Action::Press(format!("button:{name}")));
+            self.log
+                .borrow_mut()
+                .push(Action::Press(format!("button:{name}")));
         }
         Ok(found)
     }
@@ -358,7 +374,9 @@ impl Platform for MockPlatform {
         self.polls.borrow_mut().remove(&k);
         self.launched.borrow_mut().remove(&k);
         self.log.borrow_mut().push(Action::Close(k));
-        if let Some(callback) = self.after_close.borrow().as_ref() { callback(); }
+        if let Some(callback) = self.after_close.borrow().as_ref() {
+            callback();
+        }
         Ok(())
     }
 
@@ -386,7 +404,10 @@ impl Platform for MockPlatform {
         if let Some(front) = *self.front.borrow() {
             if let Some(node) = self.screens.borrow_mut().get_mut(&front.0) {
                 let shown = if *self.garbles.borrow() {
-                    text.chars().last().map(|c| c.to_string().repeat(text.chars().count())).unwrap_or_default()
+                    text.chars()
+                        .last()
+                        .map(|c| c.to_string().repeat(text.chars().count()))
+                        .unwrap_or_default()
                 } else {
                     text.to_string()
                 };
@@ -416,7 +437,9 @@ impl Platform for MockPlatform {
         Ok(self.clipboard.borrow().clone())
     }
     fn open_path(&self, path: &str) -> Result<()> {
-        self.log.borrow_mut().push(Action::Type(format!("open:{path}")));
+        self.log
+            .borrow_mut()
+            .push(Action::Type(format!("open:{path}")));
         Ok(())
     }
     fn clipboard_change(&self) -> Option<u32> {
@@ -438,11 +461,27 @@ impl Platform for MockPlatform {
         if !*self.screen_pictures.borrow() {
             return Ok(None);
         }
-        let Some(m) = self.monitors.iter().find(|m| m.id == monitor) else { return Ok(None) };
+        let Some(m) = self.monitors.iter().find(|m| m.id == monitor) else {
+            return Ok(None);
+        };
         let (w, h) = (m.width.max(1) as u32, m.height.max(1) as u32);
-        let c = [(monitor * 40 % 256) as u8, (monitor * 90 % 256) as u8, (monitor * 150 % 256) as u8];
-        let rgb = c.iter().copied().cycle().take((w * h * 3) as usize).collect();
-        Ok(Some(super::Grab { width: w, height: h, rgb, title: format!("screen {monitor}") }))
+        let c = [
+            (monitor * 40 % 256) as u8,
+            (monitor * 90 % 256) as u8,
+            (monitor * 150 % 256) as u8,
+        ];
+        let rgb = c
+            .iter()
+            .copied()
+            .cycle()
+            .take((w * h * 3) as usize)
+            .collect();
+        Ok(Some(super::Grab {
+            width: w,
+            height: h,
+            rgb,
+            title: format!("screen {monitor}"),
+        }))
     }
     fn active_monitor(&self) -> Option<u32> {
         *self.active_screen.borrow()

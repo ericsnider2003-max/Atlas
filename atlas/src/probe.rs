@@ -38,7 +38,10 @@ pub struct Probe {
 
 impl Default for Probe {
     fn default() -> Self {
-        Probe { settle_ms: 400, restore_focus: true }
+        Probe {
+            settle_ms: 400,
+            restore_focus: true,
+        }
     }
 }
 
@@ -62,7 +65,10 @@ impl Probe {
                 .startup_order
                 .iter()
                 .filter(|n| {
-                    cfg.apps.get(n).map(|s| plat.find_window(s).ok().flatten().is_some()).unwrap_or(false)
+                    cfg.apps
+                        .get(n)
+                        .map(|s| plat.find_window(s).ok().flatten().is_some())
+                        .unwrap_or(false)
                 })
                 .cloned()
                 .collect(),
@@ -74,8 +80,14 @@ impl Probe {
         if apps.is_empty() {
             match shoot() {
                 Ok(path) => out.push(Capture {
-                    app: was_focused.as_ref().map(|w| w.process.clone()).unwrap_or_default(),
-                    title: was_focused.as_ref().map(|w| w.title.clone()).unwrap_or_default(),
+                    app: was_focused
+                        .as_ref()
+                        .map(|w| w.process.clone())
+                        .unwrap_or_default(),
+                    title: was_focused
+                        .as_ref()
+                        .map(|w| w.title.clone())
+                        .unwrap_or_default(),
                     path,
                 }),
                 Err(e) => first_err = Some(e),
@@ -88,9 +100,17 @@ impl Probe {
                 continue;
             }
             plat.sleep_ms(self.settle_ms);
-            let title = plat.active_window().unwrap_or(None).map(|w| w.title).unwrap_or_default();
+            let title = plat
+                .active_window()
+                .unwrap_or(None)
+                .map(|w| w.title)
+                .unwrap_or_default();
             match shoot() {
-                Ok(path) => out.push(Capture { app: name.clone(), title, path }),
+                Ok(path) => out.push(Capture {
+                    app: name.clone(),
+                    title,
+                    path,
+                }),
                 Err(e) => {
                     first_err.get_or_insert(e);
                 }

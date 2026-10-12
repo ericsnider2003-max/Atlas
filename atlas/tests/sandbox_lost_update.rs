@@ -12,8 +12,8 @@
 //! Six of the system prompts in the reference collection state this rule
 //! outright: never revert changes you did not make.
 
-use atlas::sandbox::{Change, Fingerprint, Sandbox};
 use atlas::safety::{Trash, TrashConfig};
+use atlas::sandbox::{Change, Fingerprint, Sandbox};
 use std::fs;
 use std::path::PathBuf;
 
@@ -92,7 +92,9 @@ fn the_refusal_names_the_file_and_says_nothing_was_touched() {
     std::thread::sleep(std::time::Duration::from_millis(1100));
     fs::write(&target, "yours").unwrap();
 
-    let err = Sandbox::promote(&[c], &t.trash(), true).unwrap_err().to_string();
+    let err = Sandbox::promote(&[c], &t.trash(), true)
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("prose.rs"), "got: {err}");
     assert!(err.contains("haven't touched"), "got: {err}");
 }
@@ -113,7 +115,11 @@ fn one_moved_file_stops_the_whole_batch() {
     fs::write(&b, "you edited b").unwrap();
 
     assert!(Sandbox::promote(&[ca, cb], &t.trash(), true).is_err());
-    assert_eq!(fs::read_to_string(&a).unwrap(), "old-a", "a was landed anyway");
+    assert_eq!(
+        fs::read_to_string(&a).unwrap(),
+        "old-a",
+        "a was landed anyway"
+    );
     assert_eq!(fs::read_to_string(&b).unwrap(), "you edited b");
 }
 
@@ -153,7 +159,11 @@ fn a_fingerprint_notices_length_and_time_separately() {
     let before = Fingerprint::of(&p).unwrap();
 
     fs::write(&p, "hello there").unwrap();
-    assert_ne!(Fingerprint::of(&p).unwrap(), before, "a length change was missed");
+    assert_ne!(
+        Fingerprint::of(&p).unwrap(),
+        before,
+        "a length change was missed"
+    );
 
     let missing = Fingerprint::of(&t.0.join("not-here"));
     assert!(missing.is_none());

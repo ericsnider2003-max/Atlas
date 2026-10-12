@@ -40,7 +40,10 @@ use atlas::config::Config;
 use std::path::Path;
 
 fn tools() -> atlas::voice::ToolsConfig {
-    Config::load(Path::new("config")).expect("config/ loads").tools.expect("tools.yaml")
+    Config::load(Path::new("config"))
+        .expect("config/ loads")
+        .tools
+        .expect("tools.yaml")
 }
 
 fn live_source(path: &str) -> String {
@@ -57,22 +60,46 @@ fn live_source(path: &str) -> String {
 #[test]
 fn a_video_longer_than_you_allow_is_refused_rather_than_half_watched() {
     use atlas::viewing::{too_long, ViewConfig};
-    let cfg = ViewConfig { longest_minutes: 90, ..ViewConfig::default() };
+    let cfg = ViewConfig {
+        longest_minutes: 90,
+        ..ViewConfig::default()
+    };
 
-    assert!(too_long(60.0 * 60.0, &cfg).is_none(), "an hour is inside ninety minutes");
+    assert!(
+        too_long(60.0 * 60.0, &cfg).is_none(),
+        "an hour is inside ninety minutes"
+    );
     let said = too_long(3.0 * 3600.0, &cfg).expect("three hours is not");
-    assert!(said.contains("180 minutes"), "say how long it actually is: {said}");
-    assert!(said.contains("longest_minutes"), "and which setting to change: {said}");
+    assert!(
+        said.contains("180 minutes"),
+        "say how long it actually is: {said}"
+    );
+    assert!(
+        said.contains("longest_minutes"),
+        "and which setting to change: {said}"
+    );
 
     // The setting is what decides it, not the number that happens to ship.
-    let patient = ViewConfig { longest_minutes: 240, ..ViewConfig::default() };
-    assert!(too_long(3.0 * 3600.0, &patient).is_none(), "four hours allowed means four hours");
-    let strict = ViewConfig { longest_minutes: 5, ..ViewConfig::default() };
+    let patient = ViewConfig {
+        longest_minutes: 240,
+        ..ViewConfig::default()
+    };
+    assert!(
+        too_long(3.0 * 3600.0, &patient).is_none(),
+        "four hours allowed means four hours"
+    );
+    let strict = ViewConfig {
+        longest_minutes: 5,
+        ..ViewConfig::default()
+    };
     assert!(too_long(10.0 * 60.0, &strict).is_some());
 
     // Zero has to keep meaning "no limit" — a cap of nothing would refuse
     // every video, which is not what an empty setting says.
-    let no_limit = ViewConfig { longest_minutes: 0, ..ViewConfig::default() };
+    let no_limit = ViewConfig {
+        longest_minutes: 0,
+        ..ViewConfig::default()
+    };
     assert!(too_long(10.0 * 3600.0, &no_limit).is_none());
     // ffmpeg not saying the duration reads as 0.0. Refusing on that would
     // make an unreadable header look like a three-hour film.
@@ -94,13 +121,22 @@ fn the_watcher_asks_before_it_starts() {
 fn the_shelves_you_name_are_the_shelves_it_uses() {
     use atlas::reference::{chosen, worth_having, ReferenceConfig};
     let all = worth_having();
-    assert!(all.len() >= 2, "this test needs more than one shelf to tell a subset from the lot");
+    assert!(
+        all.len() >= 2,
+        "this test needs more than one shelf to tell a subset from the lot"
+    );
     let one = all[0].name.clone();
 
-    let off = ReferenceConfig { enabled: false, ..ReferenceConfig::default() };
+    let off = ReferenceConfig {
+        enabled: false,
+        ..ReferenceConfig::default()
+    };
     assert!(chosen(&off).is_empty(), "disabled still means no shelf");
 
-    let empty = ReferenceConfig { enabled: true, ..ReferenceConfig::default() };
+    let empty = ReferenceConfig {
+        enabled: true,
+        ..ReferenceConfig::default()
+    };
     assert_eq!(
         chosen(&empty).len(),
         atlas::reference::for_trading().len(),
@@ -113,12 +149,22 @@ fn the_shelves_you_name_are_the_shelves_it_uses() {
         ..ReferenceConfig::default()
     };
     let got = chosen(&named);
-    assert_eq!(got.len(), 1, "one named shelf is one shelf, not all of them");
+    assert_eq!(
+        got.len(),
+        1,
+        "one named shelf is one shelf, not all of them"
+    );
     assert_eq!(got[0].name, one, "and matching is not case-sensitive");
 
-    let nonsense =
-        ReferenceConfig { enabled: true, shelves: vec!["nothing like this".into()], ..named };
-    assert!(chosen(&nonsense).is_empty(), "a name that matches nothing conjures nothing");
+    let nonsense = ReferenceConfig {
+        enabled: true,
+        shelves: vec!["nothing like this".into()],
+        ..named
+    };
+    assert!(
+        chosen(&nonsense).is_empty(),
+        "a name that matches nothing conjures nothing"
+    );
 }
 
 // ---------- presence.discreet_with_strangers ----------
@@ -126,7 +172,11 @@ fn the_shelves_you_name_are_the_shelves_it_uses() {
 #[test]
 fn someone_else_in_the_room_turns_a_note_into_a_knock() {
     use atlas::presence::{keep_it_to_yourself, Presence, PresenceConfig};
-    let on = PresenceConfig { enabled: true, discreet_with_strangers: true, ..Default::default() };
+    let on = PresenceConfig {
+        enabled: true,
+        discreet_with_strangers: true,
+        ..Default::default()
+    };
 
     assert!(keep_it_to_yourself(Presence::Stranger, &on));
     assert!(keep_it_to_yourself(Presence::NotAlone, &on));
@@ -138,9 +188,18 @@ fn someone_else_in_the_room_turns_a_note_into_a_knock() {
         "a machine with no camera must not go quiet forever"
     );
 
-    let off = PresenceConfig { discreet_with_strangers: false, ..on.clone() };
-    assert!(!keep_it_to_yourself(Presence::Stranger, &off), "the setting is what decides");
-    let blind = PresenceConfig { enabled: false, ..on };
+    let off = PresenceConfig {
+        discreet_with_strangers: false,
+        ..on.clone()
+    };
+    assert!(
+        !keep_it_to_yourself(Presence::Stranger, &off),
+        "the setting is what decides"
+    );
+    let blind = PresenceConfig {
+        enabled: false,
+        ..on
+    };
     assert!(
         !keep_it_to_yourself(Presence::Stranger, &blind),
         "with the camera off there is no reading to act on"
@@ -189,8 +248,15 @@ fn the_conversation_keeps_the_number_of_turns_you_asked_for() {
     for i in 0..10 {
         s.record(&format!("say {i}"), &Intent::Unknown(String::new()), "fine");
     }
-    assert_eq!(s.turns.len(), 3, "`retention.session_turns` decides this, not a literal 40");
-    assert!(s.turns[2].said.contains('9'), "the newest turns are the ones kept");
+    assert_eq!(
+        s.turns.len(),
+        3,
+        "`retention.session_turns` decides this, not a literal 40"
+    );
+    assert!(
+        s.turns[2].said.contains('9'),
+        "the newest turns are the ones kept"
+    );
 
     // Default stays where it was, for callers with no config to hand.
     let mut d = Session::default();
@@ -247,7 +313,10 @@ fn the_export_reads_your_opsec_setting_rather_than_a_literal() {
         !m.contains("export_args(&e, path, &out, true)"),
         "the setting has been replaced by a hardcoded true"
     );
-    assert!(tools().opsec.always_strip_metadata, "the shipped default is to strip");
+    assert!(
+        tools().opsec.always_strip_metadata,
+        "the shipped default is to strip"
+    );
 }
 
 // ---------- capture.never_ask_on_capture / .tasks_become_work ----------
@@ -262,10 +331,17 @@ fn catching_a_thought_asks_nothing_and_puts_a_task_on_the_list() {
 
     let c = Config::load(Path::new("config")).expect("config/ loads");
     assert!(
-        c.tools.as_ref().map(|t| t.capture.never_ask_on_capture).unwrap_or(false),
+        c.tools
+            .as_ref()
+            .map(|t| t.capture.never_ask_on_capture)
+            .unwrap_or(false),
         "the shipped file says ask nothing at capture time"
     );
-    assert!(c.tools.as_ref().map(|t| t.capture.tasks_become_work).unwrap_or(false));
+    assert!(c
+        .tools
+        .as_ref()
+        .map(|t| t.capture.tasks_become_work)
+        .unwrap_or(false));
 
     // Phrased so the question would fire if anything let it: a title and no
     // project is exactly what `Spoken::worth_asking` answers "which project?"
@@ -279,7 +355,10 @@ fn catching_a_thought_asks_nothing_and_puts_a_task_on_the_list() {
         Some("which project?"),
         "this sentence has to be one Atlas would want to ask about"
     );
-    assert!(!spoken.is_a_whole_item(), "or it takes the other branch entirely");
+    assert!(
+        !spoken.is_a_whole_item(),
+        "or it takes the other branch entirely"
+    );
 
     let p = MockPlatform::new(vec![Monitor {
         id: 1,
@@ -308,8 +387,12 @@ fn catching_a_thought_asks_nothing_and_puts_a_task_on_the_list() {
 
     // "Turn tasks into outstanding items automatically" -- the other half of
     // the same section, and the reason the note is not the end of it.
-    let outstanding: Vec<String> =
-        d.backlog.outstanding().iter().map(|i| i.request.clone()).collect();
+    let outstanding: Vec<String> = d
+        .backlog
+        .outstanding()
+        .iter()
+        .map(|i| i.request.clone())
+        .collect();
     assert!(
         outstanding.iter().any(|r| r.contains("dentist")),
         "a captured task never reached the outstanding list: {outstanding:?}"
@@ -411,11 +494,23 @@ fn sync_setup_with_nothing_after_it_uses_the_provider_you_configured() {
     // empty output of a program that fell over. `tests/retrospective.rs`
     // rightly flags a test whose every assertion is a phrase lookup -- that
     // proves a wording, not a behaviour.
-    assert!(!one.trim().is_empty(), "`atlas sync-setup` printed nothing at all");
-    assert_ne!(one, two, "two different providers produced identical output");
-    assert!(one.contains("OneDrive"), "the configured provider is not the one it set up:\n{one}");
+    assert!(
+        !one.trim().is_empty(),
+        "`atlas sync-setup` printed nothing at all"
+    );
+    assert_ne!(
+        one, two,
+        "two different providers produced identical output"
+    );
+    assert!(
+        one.contains("OneDrive"),
+        "the configured provider is not the one it set up:\n{one}"
+    );
     assert!(!one.contains("Dropbox"));
-    assert!(two.contains("Dropbox"), "changing the file changed nothing:\n{two}");
+    assert!(
+        two.contains("Dropbox"),
+        "changing the file changed nothing:\n{two}"
+    );
     assert!(!two.contains("OneDrive"));
 
     let _ = std::fs::remove_dir_all(&home);
@@ -443,7 +538,10 @@ fn every_setting_wired_today_is_still_in_the_shipped_file() {
         "longest_minutes:",
         "provider:",
     ] {
-        assert!(raw.contains(key), "{key} is no longer in the shipped config");
+        assert!(
+            raw.contains(key),
+            "{key} is no longer in the shipped config"
+        );
     }
 }
 
@@ -502,38 +600,66 @@ fn the_loudness_target_you_set_is_the_one_it_measures_against() {
 
     // At the shipped target, -20 LUFS is six under and worth saying.
     let shipped = GradeConfig::default();
-    assert_eq!(shipped.target_lufs, TARGET_LUFS, "the constant is still the default");
+    assert_eq!(
+        shipped.target_lufs, TARGET_LUFS,
+        "the constant is still the default"
+    );
     assert_eq!(shipped.max_true_peak_db, MAX_TRUE_PEAK_DB);
     let notes = check_audio(&quiet, &shipped);
     assert!(notes.iter().any(|n| n.what.contains("quiet")), "{notes:?}");
 
     // Mastering for somewhere quieter: the same file is now on target, and
     // the complaint goes away because the setting moved, not the audio.
-    let quieter_target = GradeConfig { target_lufs: -20.0, ..GradeConfig::default() };
+    let quieter_target = GradeConfig {
+        target_lufs: -20.0,
+        ..GradeConfig::default()
+    };
     let notes = check_audio(&quiet, &quieter_target);
     assert!(
-        !notes.iter().any(|n| n.what.contains("quiet") || n.what.contains("too loud")),
+        !notes
+            .iter()
+            .any(|n| n.what.contains("quiet") || n.what.contains("too loud")),
         "the loudness note should follow the target: {notes:?}"
     );
 
     // And the ceiling is read the same way.
-    let hot = Audio { true_peak_db: -2.0, ..quiet };
-    assert!(!check_audio(&hot, &shipped).iter().any(|n| n.what.contains("clip")));
-    let strict = GradeConfig { max_true_peak_db: -3.0, ..GradeConfig::default() };
-    assert!(check_audio(&hot, &strict).iter().any(|n| n.what.contains("clip")));
+    let hot = Audio {
+        true_peak_db: -2.0,
+        ..quiet
+    };
+    assert!(!check_audio(&hot, &shipped)
+        .iter()
+        .any(|n| n.what.contains("clip")));
+    let strict = GradeConfig {
+        max_true_peak_db: -3.0,
+        ..GradeConfig::default()
+    };
+    assert!(check_audio(&hot, &strict)
+        .iter()
+        .any(|n| n.what.contains("clip")));
 }
 
 #[test]
 fn a_preset_name_that_is_not_one_is_said_rather_than_ignored() {
     use atlas::grade::preset_named;
     assert_eq!(preset_named("clean").map(|p| p.name), Some("clean"));
-    assert_eq!(preset_named("  CLEAN ").map(|p| p.name), Some("clean"), "trimmed, any case");
-    assert!(preset_named("sepia").is_none(), "a name that matches nothing must not fall back");
+    assert_eq!(
+        preset_named("  CLEAN ").map(|p| p.name),
+        Some("clean"),
+        "trimmed, any case"
+    );
+    assert!(
+        preset_named("sepia").is_none(),
+        "a name that matches nothing must not fall back"
+    );
 
     // The shipped file's preset has to be a real one, or `atlas video grade`
     // opens by telling you your own config is wrong.
     let named = tools().grade.preset;
-    assert!(preset_named(&named).is_some(), "config/tools.yaml ships `preset: {named}`");
+    assert!(
+        preset_named(&named).is_some(),
+        "config/tools.yaml ships `preset: {named}`"
+    );
 }
 
 #[test]
@@ -560,9 +686,20 @@ fn how_much_posted_before_a_direction_is_claimed_is_yours() {
 
     let shipped = ReachConfig::default();
     assert_eq!(shipped.min_posts_for_direction, 6);
-    assert_eq!(direction(&posts, &shipped, &atlas::judgment::JudgmentConfig::default()).0, Direction::Unclear, "five is under the floor");
+    assert_eq!(
+        direction(
+            &posts,
+            &shipped,
+            &atlas::judgment::JudgmentConfig::default()
+        )
+        .0,
+        Direction::Unclear,
+        "five is under the floor"
+    );
 
-    let keener = ReachConfig { min_posts_for_direction: 4 };
+    let keener = ReachConfig {
+        min_posts_for_direction: 4,
+    };
     assert_ne!(
         direction(&posts, &keener, &atlas::judgment::JudgmentConfig::default()).0,
         Direction::Unclear,
@@ -580,7 +717,10 @@ fn neither_section_is_listed_as_having_nowhere_to_land() {
     }
     // And both really do parse, out of the shipped file rather than a literal.
     let t = tools();
-    assert!(t.grade.target_lufs < 0.0, "LUFS is negative or the section did not parse");
+    assert!(
+        t.grade.target_lufs < 0.0,
+        "LUFS is negative or the section did not parse"
+    );
     assert!(t.reach.min_posts_for_direction >= 2);
 }
 
@@ -607,7 +747,10 @@ fn nothing_claims_more_than_the_switch_does() {
     );
 
     let about = atlas::cloudsync::ABOUT_BUNDLES;
-    assert!(about.contains("plain text"), "the default has to be said plainly: {about}");
+    assert!(
+        about.contains("plain text"),
+        "the default has to be said plainly: {about}"
+    );
     // Named the way the person will look for it -- the switch is in the hub
     // now, and a sentence that names a YAML key is a sentence that sends
     // somebody to a file they do not edit.
@@ -638,7 +781,9 @@ fn turning_sealing_on_makes_its_own_key() {
     // design: losing it costs nothing durable. `a_lost_key_costs_nothing`
     // below is that claim, run.
     let d = live_source("src/daemon.rs");
-    let at = d.find("fn carry_to_your_other_devices").expect("the carrier is gone");
+    let at = d
+        .find("fn carry_to_your_other_devices")
+        .expect("the carrier is gone");
     let body = &d[at..(at + 8000).min(d.len())];
     assert!(
         body.contains("if cfg.encrypt_bundles"),
@@ -682,7 +827,10 @@ fn the_switch_is_in_the_hub_and_the_key_has_a_page() {
         "a setting is named, then explained -- `{}` is a sentence",
         item.name
     );
-    assert!(item.weight.needs_confirming(), "it changes what a folder elsewhere holds");
+    assert!(
+        item.weight.needs_confirming(),
+        "it changes what a folder elsewhere holds"
+    );
 
     assert_eq!(atlas::hub::route("/hub/sync"), Some(atlas::hub::Page::Sync));
     assert!(
@@ -690,18 +838,32 @@ fn the_switch_is_in_the_hub_and_the_key_has_a_page() {
         "the day sync breaks may be a day you cannot ask out loud"
     );
     assert!(
-        atlas::hub::NAV.iter().any(|(_, pages)| pages.contains(&atlas::hub::Page::Sync)),
+        atlas::hub::NAV
+            .iter()
+            .any(|(_, pages)| pages.contains(&atlas::hub::Page::Sync)),
         "a page nothing links to is a page nobody opens"
     );
 
     // The page itself says the thing that stops someone being afraid of it,
     // and offers the button that makes it true.
     let page = sync_page_unplaced(true, "D:/Dropbox/atlas", Some("ABCD-2345"), None, None, "");
-    assert!(page.contains("courier"), "the page has to explain what a bundle is");
+    assert!(
+        page.contains("courier"),
+        "the page has to explain what a bundle is"
+    );
     assert!(page.contains("Make a new key"));
-    assert!(page.contains("action=/hub/sync"), "the button has to post somewhere");
-    assert!(page.contains("ABCD-2345"), "the key has to be findable by someone who lost it");
-    assert!(!page.to_lowercase().contains("<script"), "the hub works with scripts off");
+    assert!(
+        page.contains("action=/hub/sync"),
+        "the button has to post somewhere"
+    );
+    assert!(
+        page.contains("ABCD-2345"),
+        "the key has to be findable by someone who lost it"
+    );
+    assert!(
+        !page.to_lowercase().contains("<script"),
+        "the hub works with scripts off"
+    );
 }
 
 #[test]
@@ -709,13 +871,25 @@ fn a_recovery_card_is_a_file_you_can_copy_not_a_thing_to_memorise() {
     let phrase = atlas::sync::new_key_phrase();
     let card = atlas::sync::recovery_card(&phrase);
     assert!(card.contains(&phrase), "the card has to carry the key");
-    assert!(card.contains("You lose nothing that matters"), "and the reassurance: {card}");
-    assert!(card.contains("--card"), "and how to use it without typing the phrase");
+    assert!(
+        card.contains("You lose nothing that matters"),
+        "and the reassurance: {card}"
+    );
+    assert!(
+        card.contains("--card"),
+        "and how to use it without typing the phrase"
+    );
 
     // Read back out of the card, including one a person has scribbled on.
-    assert_eq!(atlas::sync::phrase_in_card(&card).as_deref(), Some(phrase.as_str()));
+    assert_eq!(
+        atlas::sync::phrase_in_card(&card).as_deref(),
+        Some(phrase.as_str())
+    );
     let annotated = format!("{card}\n\nkept in the desk drawer, top right\n");
-    assert_eq!(atlas::sync::phrase_in_card(&annotated).as_deref(), Some(phrase.as_str()));
+    assert_eq!(
+        atlas::sync::phrase_in_card(&annotated).as_deref(),
+        Some(phrase.as_str())
+    );
     assert!(
         atlas::sync::phrase_in_card("nothing here looks like a key").is_none(),
         "it must not invent one"
@@ -741,9 +915,15 @@ fn a_sealed_bundle_opens_with_the_phrase_and_with_nothing_else() {
     let sealed = seal(&bundle, &key).expect("sealing");
 
     // The contents are not in the file, and the header is.
-    assert!(!sealed.contains("Eric's laptop"), "the sender's name is inside the sealed part");
+    assert!(
+        !sealed.contains("Eric's laptop"),
+        "the sender's name is inside the sealed part"
+    );
     let header = peek(&sealed).expect("a sealed bundle says it is one");
-    assert_eq!(header.from_device, "evening-laptop", "routing works without a key");
+    assert_eq!(
+        header.from_device, "evening-laptop",
+        "routing works without a key"
+    );
     assert_eq!(header.belongs_to, "personal");
 
     // The phrase is the key: derived again from the words alone, on what
@@ -760,11 +940,20 @@ fn a_sealed_bundle_opens_with_the_phrase_and_with_nothing_else() {
     // another device" now. The command line keeps naming its command
     // (`Reader::Command`, and the `atlas sync read` test further down).
     assert!(refused.contains("Sync page"), "got: {refused}");
-    assert!(!refused.contains("atlas sync"), "a command in the running Atlas's words: {refused}");
+    assert!(
+        !refused.contains("atlas sync"),
+        "a command in the running Atlas's words: {refused}"
+    );
     let at_the_prompt =
         atlas::sync::read_bundle_for(&sealed, None, atlas::sync::Reader::Command).unwrap_err();
-    assert!(at_the_prompt.contains("atlas sync key set"), "got: {at_the_prompt}");
-    assert!(refused.contains("evening-laptop"), "and which device left it: {refused}");
+    assert!(
+        at_the_prompt.contains("atlas sync key set"),
+        "got: {at_the_prompt}"
+    );
+    assert!(
+        refused.contains("evening-laptop"),
+        "and which device left it: {refused}"
+    );
 
     // A different phrase is a different key, and says so as a wrong key
     // rather than a broken file.
@@ -776,7 +965,10 @@ fn a_sealed_bundle_opens_with_the_phrase_and_with_nothing_else() {
     // off must not strand what was written before it went on.
     let plain = serde_json::to_string(&bundle).expect("plain");
     assert_eq!(read_bundle(&plain, None).expect("plain opens"), bundle);
-    assert_eq!(read_bundle(&plain, Some(&key)).expect("and with a key"), bundle);
+    assert_eq!(
+        read_bundle(&plain, Some(&key)).expect("and with a key"),
+        bundle
+    );
 }
 
 #[test]
@@ -832,8 +1024,10 @@ fn a_bundle_can_only_carry_the_five_things_it_carries_today() {
         .map(|l| l.trim())
         .filter(|l| !l.starts_with("//") && !l.is_empty())
         .filter_map(|l| {
-            let name: String =
-                l.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            let name: String = l
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
             (!name.is_empty() && name.chars().next().unwrap().is_uppercase()).then_some(name)
         })
         .collect();
@@ -878,7 +1072,10 @@ fn a_bundle_written_by_the_daemon_is_sealed_and_opens_by_hand() {
 
     let store = Store::new(root.join("state"));
     store
-        .save(atlas::sync::KEY_FILE, &atlas::sync::KeptKey::keeping(&phrase, 1_700_000_000))
+        .save(
+            atlas::sync::KEY_FILE,
+            &atlas::sync::KeptKey::keeping(&phrase, 1_700_000_000),
+        )
         .expect("keep the key");
 
     let p = MockPlatform::new(vec![Monitor {
@@ -889,7 +1086,13 @@ fn a_bundle_written_by_the_daemon_is_sealed_and_opens_by_hand() {
         height: 1040,
         primary: true,
     }]);
-    let mut d = Daemon::new(&c, &p, None, store, Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store,
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     // Something worth not leaving in a cloud folder in the clear.
     d.turn("note that called the roof quote from Hendricks", 100);
@@ -901,7 +1104,11 @@ fn a_bundle_written_by_the_daemon_is_sealed_and_opens_by_hand() {
         .map(|e| e.path())
         .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("bundle"))
         .collect();
-    assert_eq!(written.len(), 1, "one bundle, got {written:?} -- said: {said}");
+    assert_eq!(
+        written.len(),
+        1,
+        "one bundle, got {written:?} -- said: {said}"
+    );
 
     let raw = std::fs::read_to_string(&written[0]).expect("read it back");
     // Case-insensitively, because the capture is stored lower-cased -- a
@@ -911,14 +1118,23 @@ fn a_bundle_written_by_the_daemon_is_sealed_and_opens_by_hand() {
         "what was captured is sitting in the carrier in the clear:\n{raw}"
     );
     let header = atlas::sync::peek(&raw).expect("it should be a sealed bundle");
-    assert!(!header.from_device.is_empty(), "the header has to survive for routing");
+    assert!(
+        !header.from_device.is_empty(),
+        "the header has to survive for routing"
+    );
 
     // Opened by hand, by the command, with nothing but the phrase — the
     // process holds no key file of its own.
     let elsewhere = root.join("another-machine");
     std::fs::create_dir_all(&elsewhere).expect("another machine");
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_atlas"))
-        .args(["sync", "read", &written[0].to_string_lossy(), "--key", &phrase])
+        .args([
+            "sync",
+            "read",
+            &written[0].to_string_lossy(),
+            "--key",
+            &phrase,
+        ])
         .env("ATLAS_HOME", &elsewhere)
         .env("ATLAS_CONFIG", Path::new("config"))
         .output()
@@ -1001,14 +1217,22 @@ fn a_lost_key_costs_nothing() {
     // First run: nothing is set up at all. No key, no card, no commands.
     {
         let store = Store::new(state.clone());
-        let mut d =
-            Daemon::new(&c, &p, None, store, Proactive::new(ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            &c,
+            &p,
+            None,
+            store,
+            Proactive::new(ProactiveConfig::default()),
+        );
         d.turn("note that called the roof quote from Hendricks", 100);
         let said = d.turn("sync", 200);
         assert!(said.contains("sealed"), "it should have sealed it: {said}");
     }
     let first = std::fs::read_to_string(the_bundle(&folder)).expect("a bundle was written");
-    assert!(atlas::sync::peek(&first).is_some(), "sealed, with no key ever asked for");
+    assert!(
+        atlas::sync::peek(&first).is_some(),
+        "sealed, with no key ever asked for"
+    );
     assert!(!first.to_lowercase().contains("hendricks"));
 
     // Now lose it. Not "forget the paper" -- delete every copy this machine
@@ -1026,7 +1250,10 @@ fn a_lost_key_costs_nothing() {
 
     // The button on the sync page. One press.
     let made = atlas::sync::new_key(&store, 300).expect("a new key");
-    assert!(made.card.is_some(), "and it writes the card without being asked");
+    assert!(
+        made.card.is_some(),
+        "and it writes the card without being asked"
+    );
 
     // The next thing it carries has everything in it again.
     {
@@ -1040,7 +1267,10 @@ fn a_lost_key_costs_nothing() {
         d.turn("sync", 400);
     }
     let second = std::fs::read_to_string(the_bundle(&folder)).expect("a second bundle");
-    assert_ne!(first, second, "it should have been rewritten under the new key");
+    assert_ne!(
+        first, second,
+        "it should have been rewritten under the new key"
+    );
 
     let key = atlas::sync::key_from_phrase(&made.phrase).expect("the new key");
     let opened = atlas::sync::read_bundle(&second, Some(&key)).expect("it opens");
@@ -1050,7 +1280,9 @@ fn a_lost_key_costs_nothing() {
         .map(|e| format!("{:?}", e.what))
         .collect();
     assert!(
-        carried.iter().any(|e| e.to_lowercase().contains("hendricks")),
+        carried
+            .iter()
+            .any(|e| e.to_lowercase().contains("hendricks")),
         "the capture from before the key was lost did not come back: {carried:?}"
     );
 
@@ -1077,7 +1309,10 @@ fn a_new_device_gets_the_key_from_the_pairing_it_already_does() {
 
     let left = leave_handoff(&folder, house, &code, &phrase, 1_000, 180).expect("left");
     let raw = std::fs::read_to_string(&left).expect("it is a file");
-    assert!(!raw.contains(&phrase), "the key is sitting in the folder in the clear");
+    assert!(
+        !raw.contains(&phrase),
+        "the key is sitting in the folder in the clear"
+    );
     assert!(
         raw.contains(house),
         "the header says which household, so the wrong one is refused"
@@ -1091,7 +1326,10 @@ fn a_new_device_gets_the_key_from_the_pairing_it_already_does() {
     // The far side, with the code it was given.
     let got = take_handoff(&folder, house, &code, 1_060).expect("it opens");
     assert_eq!(got, phrase, "the same key, so sealed bundles will open");
-    assert!(!left.exists(), "single use -- a handoff left lying about is the cost of this");
+    assert!(
+        !left.exists(),
+        "single use -- a handoff left lying about is the cost of this"
+    );
 
     // Wrong code, wrong household, and too late: three different sentences,
     // none of them a silent failure.
@@ -1120,13 +1358,24 @@ fn a_new_device_gets_the_key_from_the_pairing_it_already_does() {
 
     let late = take_handoff(&folder, house, &code, 9_999).unwrap_err();
     assert!(late.contains("expired"), "got: {late}");
-    assert!(!left.exists(), "and an expired one is cleared as it is found");
+    assert!(
+        !left.exists(),
+        "and an expired one is cleared as it is found"
+    );
 
     // A pairing somebody started and walked away from.
     leave_handoff(&folder, house, &code, &phrase, 1_000, 180).expect("abandoned");
-    assert_eq!(sweep_handoffs(&folder, 1_060), 0, "not while the window is open");
+    assert_eq!(
+        sweep_handoffs(&folder, 1_060),
+        0,
+        "not while the window is open"
+    );
     assert_eq!(sweep_handoffs(&folder, 9_999), 1, "gone once it has closed");
-    assert_eq!(sweep_handoffs(&folder, 9_999), 0, "and nothing to do the second time");
+    assert_eq!(
+        sweep_handoffs(&folder, 9_999),
+        0,
+        "and nothing to do the second time"
+    );
 
     let _ = std::fs::remove_dir_all(&folder);
 }
@@ -1170,21 +1419,42 @@ fn pairing_is_ten_characters_and_the_folder_carries_the_rest() {
     std::fs::create_dir_all(&folder).expect("folder");
 
     let code = new_invite_code();
-    assert_eq!(code.chars().filter(|c| *c != '-').count(), 10, "ten to type: {code}");
-    assert!(code.contains('-'), "grouped, or it is ten characters of soup: {code}");
+    assert_eq!(
+        code.chars().filter(|c| *c != '-').count(),
+        10,
+        "ten to type: {code}"
+    );
+    assert!(
+        code.contains('-'),
+        "grouped, or it is ten characters of soup: {code}"
+    );
     assert!(
         !code.chars().any(|c| "ILOU".contains(c)),
         "no letters that are read as digits: {code}"
     );
 
     let phrase = atlas::sync::new_key_phrase();
-    let at = leave_invitation(&folder, "hh-1", "Eric's things", &code, Some(&phrase), 1_000, 180)
-        .expect("left");
+    let at = leave_invitation(
+        &folder,
+        "hh-1",
+        "Eric's things",
+        &code,
+        Some(&phrase),
+        1_000,
+        180,
+    )
+    .expect("left");
 
     // The folder gives nothing away.
     let raw = std::fs::read_to_string(&at).expect("a file");
-    assert!(!raw.contains("hh-1"), "the household is in the clear: {raw}");
-    assert!(!raw.contains("Eric's things"), "its name is in the clear: {raw}");
+    assert!(
+        !raw.contains("hh-1"),
+        "the household is in the clear: {raw}"
+    );
+    assert!(
+        !raw.contains("Eric's things"),
+        "its name is in the clear: {raw}"
+    );
     assert!(!raw.contains(&phrase), "the key is in the clear: {raw}");
     assert!(
         !at.file_name().unwrap().to_string_lossy().contains("hh-1"),
@@ -1240,11 +1510,18 @@ fn the_short_code_is_worth_typing_and_the_long_one_still_works() {
     // behind Argon2id at 64MiB.
     let mut alphabet: std::collections::BTreeSet<char> = std::collections::BTreeSet::new();
     for _ in 0..200 {
-        for c in atlas::household::new_invite_code().chars().filter(|c| *c != '-') {
+        for c in atlas::household::new_invite_code()
+            .chars()
+            .filter(|c| *c != '-')
+        {
             alphabet.insert(c);
         }
     }
-    assert!(alphabet.len() >= 30, "the alphabet collapsed to {} characters", alphabet.len());
+    assert!(
+        alphabet.len() >= 30,
+        "the alphabet collapsed to {} characters",
+        alphabet.len()
+    );
     assert_eq!(atlas::household::CODE_LEN, 10);
 
     // The old long block still opens, so a pairing started before this
@@ -1257,9 +1534,18 @@ fn the_short_code_is_worth_typing_and_the_long_one_still_works() {
 
     // And both live in `household pair` / `join`, with the short one first.
     let m = live_source("src/main.rs");
-    assert!(m.contains("atlas::household::leave_invitation("), "pair no longer offers the short code");
-    assert!(m.contains("atlas::household::take_invitation("), "join no longer accepts one");
-    assert!(m.contains("atlas::household::decode_pairing(code)"), "the long block was dropped");
+    assert!(
+        m.contains("atlas::household::leave_invitation("),
+        "pair no longer offers the short code"
+    );
+    assert!(
+        m.contains("atlas::household::take_invitation("),
+        "join no longer accepts one"
+    );
+    assert!(
+        m.contains("atlas::household::decode_pairing(code)"),
+        "the long block was dropped"
+    );
 }
 
 #[test]
@@ -1267,12 +1553,21 @@ fn a_device_can_be_invited_and_joined_without_a_terminal() {
     // "I don't remember commands" applies to pairing too -- it was the one
     // part of this still living only in a shell.
     let page = sync_page_unplaced(true, "D:/Dropbox/atlas", Some("ABCD-2345"), None, None, "");
-    assert!(page.contains("Invite a device"), "no way to start a pairing from the page");
+    assert!(
+        page.contains("Invite a device"),
+        "no way to start a pairing from the page"
+    );
     assert!(page.contains("name=code"), "and no way to finish one");
-    assert!(page.contains("name=device"), "a joining machine has to say what it is called");
+    assert!(
+        page.contains("name=device"),
+        "a joining machine has to say what it is called"
+    );
     // 30 Sep 2026: fifteen, not three -- the invitation has to survive a
     // cloud folder's few minutes of carrying it (`INVITE_WAIT_SECS`).
-    assert!(page.contains("fifteen minutes"), "the page has to say the window is short");
+    assert!(
+        page.contains("fifteen minutes"),
+        "the page has to say the window is short"
+    );
 
     // And the buttons reach something. A page whose forms post into the void
     // is prose with a border on it -- `tests/retrospective.rs` is right to
@@ -1320,9 +1615,14 @@ fn the_hub_can_be_reached_from_your_phone_without_being_on_the_internet() {
 
     // Unchanged for anyone who does not ask: this machine only.
     assert_eq!(bind_address("").unwrap().to_string(), "127.0.0.1");
-    assert!(atlas::server::ServerConfig::default().reachable_from.is_empty());
+    assert!(atlas::server::ServerConfig::default()
+        .reachable_from
+        .is_empty());
     let shipped = tools().server.reachable_from.clone();
-    assert!(shipped.is_empty(), "the shipped file must not open a listener for you");
+    assert!(
+        shipped.is_empty(),
+        "the shipped file must not open a listener for you"
+    );
 
     // A Tailscale address, which is the case this is for.
     assert!(bind_address("100.101.102.103").is_ok());
@@ -1332,7 +1632,10 @@ fn the_hub_can_be_reached_from_your_phone_without_being_on_the_internet() {
 
     // The setting is documented where someone would look for it.
     let raw = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    assert!(raw.contains("reachable_from:"), "the switch is not in the shipped file");
+    assert!(
+        raw.contains("reachable_from:"),
+        "the switch is not in the shipped file"
+    );
     assert!(
         raw.contains("Tailscale") || raw.contains("VPN"),
         "and nothing says how you would get such an address"
@@ -1340,8 +1643,14 @@ fn the_hub_can_be_reached_from_your_phone_without_being_on_the_internet() {
 
     // The page it exists for works on a phone.
     let page = sync_page_unplaced(true, "D:/atlas", Some("ABCD-2345"), None, None, "");
-    assert!(page.contains("<meta name=viewport"), "the sync page has to work on a phone");
-    assert!(page.contains("Make a new key"), "which is the button you came for");
+    assert!(
+        page.contains("<meta name=viewport"),
+        "the sync page has to work on a phone"
+    );
+    assert!(
+        page.contains("Make a new key"),
+        "which is the button you came for"
+    );
 }
 
 // ---------- self_audit.every_days / .act_without_asking ----------
@@ -1382,7 +1691,10 @@ fn how_often_it_looks_at_itself_is_the_number_you_set() {
 
     // The number is read, not a literal that happens to equal it.
     cfg.every_days = 30;
-    assert!(!time_to_look(&cfg, now - 7 * day, now), "the cadence is still a hardcoded week");
+    assert!(
+        !time_to_look(&cfg, now - 7 * day, now),
+        "the cadence is still a hardcoded week"
+    );
     assert!(time_to_look(&cfg, now - 30 * day, now));
 
     // Off means off, whatever the cadence says.
@@ -1402,18 +1714,27 @@ fn how_often_it_looks_at_itself_is_the_number_you_set() {
 
     // The shipped file still says so.
     let raw = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    assert!(raw.contains("every_days:"), "the cadence is not in the shipped file");
+    assert!(
+        raw.contains("every_days:"),
+        "the cadence is not in the shipped file"
+    );
     assert_eq!(tools().self_audit.every_days, 7);
     // On in the shipped file since Eric's rulings E1 and E2 (25 Sep 2026):
     // Atlas fixes its own things and starts on its own findings.
-    assert!(tools().self_audit.enabled, "looking at itself ships on, by Eric's ruling E2");
+    assert!(
+        tools().self_audit.enabled,
+        "looking at itself ships on, by Eric's ruling E2"
+    );
 }
 
 #[test]
 fn telling_it_not_to_ask_is_the_difference_between_a_question_and_a_start() {
     use atlas::selfaudit::{recommend, unprompted, SelfAuditConfig};
     let recs = recommend(&[a_fault()], 3);
-    assert!(!recs.is_empty(), "the fixture must clear its own bar or this tests nothing");
+    assert!(
+        !recs.is_empty(),
+        "the fixture must clear its own bar or this tests nothing"
+    );
 
     let mut cfg = SelfAuditConfig::default();
     cfg.enabled = true;
@@ -1421,8 +1742,15 @@ fn telling_it_not_to_ask_is_the_difference_between_a_question_and_a_start() {
     // The default: it asks, and starts nothing.
     assert!(!cfg.act_without_asking);
     let asked = unprompted(&cfg, &recs).expect("a fault is worth saying");
-    assert!(asked.goal.is_none(), "it started work without being told it could");
-    assert!(asked.said.contains("Want me to have a go?"), "{}", asked.said);
+    assert!(
+        asked.goal.is_none(),
+        "it started work without being told it could"
+    );
+    assert!(
+        asked.said.contains("Want me to have a go?"),
+        "{}",
+        asked.said
+    );
 
     // Told otherwise: it starts, and still says what it is doing and how to
     // stop it. Acting without asking is not the same as acting without
@@ -1431,7 +1759,11 @@ fn telling_it_not_to_ask_is_the_difference_between_a_question_and_a_start() {
     let acting = unprompted(&cfg, &recs).expect("a fault is worth saying");
     assert_eq!(acting.goal.as_deref(), Some(recs[0].symptom.as_str()));
     assert!(acting.said.contains("Say stop"), "{}", acting.said);
-    assert!(!acting.said.contains("Want me to have a go?"), "{}", acting.said);
+    assert!(
+        !acting.said.contains("Want me to have a go?"),
+        "{}",
+        acting.said
+    );
 
     // Nothing found is nothing said, either way. A weekly "nothing about
     // myself I'd change" is a weekly interruption carrying no information.
@@ -1482,7 +1814,14 @@ fn the_daemon_is_what_looks_on_the_cadence_rather_than_a_test() {
 
 fn granted(domain: &str) -> atlas::signin::Access {
     let mut a = atlas::signin::Access::default();
-    a.grant(domain, "eric", "mine", atlas::signin::Allowed::SignIn, "entry", 1000);
+    a.grant(
+        domain,
+        "eric",
+        "mine",
+        atlas::signin::Allowed::SignIn,
+        "entry",
+        1000,
+    );
     a
 }
 
@@ -1503,15 +1842,31 @@ fn the_check_that_saves_you_from_a_lookalike_domain_is_actually_reachable() {
     assert!(a.may_start("login.mybank.com", true, true, &cfg).is_ok());
 
     // A locked vault and an empty chair each stop it, and say which.
-    assert_eq!(a.may_start("mybank.com", false, true, &cfg), Err(Refused::Locked));
-    assert_eq!(a.may_start("mybank.com", true, false, &cfg), Err(Refused::YouAreNotHere));
+    assert_eq!(
+        a.may_start("mybank.com", false, true, &cfg),
+        Err(Refused::Locked)
+    );
+    assert_eq!(
+        a.may_start("mybank.com", true, false, &cfg),
+        Err(Refused::YouAreNotHere)
+    );
     cfg.enabled = false;
-    assert_eq!(a.may_start("mybank.com", true, true, &cfg), Err(Refused::Disabled));
+    assert_eq!(
+        a.may_start("mybank.com", true, true, &cfg),
+        Err(Refused::Disabled)
+    );
     cfg.enabled = true;
 
     // A grant of nothing is not a grant.
     let mut nothing = Access::default();
-    nothing.grant("mybank.com", "eric", "mine", Allowed::Nothing, "entry", 1000);
+    nothing.grant(
+        "mybank.com",
+        "eric",
+        "mine",
+        Allowed::Nothing,
+        "entry",
+        1000,
+    );
     assert!(matches!(
         nothing.may_start("mybank.com", true, true, &cfg),
         Err(Refused::NotGranted(_))
@@ -1519,7 +1874,9 @@ fn the_check_that_saves_you_from_a_lookalike_domain_is_actually_reachable() {
 
     // `may_fill` still answers the same way about the same things, plus the
     // two questions only a browser can answer.
-    assert!(a.may_fill("mybank.com", true, true, true, true, &cfg).is_ok());
+    assert!(a
+        .may_fill("mybank.com", true, true, true, true, &cfg)
+        .is_ok());
     assert_eq!(
         a.may_fill("mybank.com", false, true, true, true, &cfg),
         Err(Refused::NotALoginPage)
@@ -1540,7 +1897,10 @@ fn whether_it_asks_before_signing_you_in_is_the_switch_you_set() {
     cfg.fill_without_asking = false;
     assert!(Access::asks_first(&cfg));
 
-    assert!(tools().signin.fill_without_asking, "the shipped file still ships it on");
+    assert!(
+        tools().signin.fill_without_asking,
+        "the shipped file still ships it on"
+    );
     let raw = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
     assert!(raw.contains("fill_without_asking:"));
 
@@ -1564,23 +1924,39 @@ fn whether_it_asks_before_signing_you_in_is_the_switch_you_set() {
 
 #[test]
 fn a_request_that_is_not_obviously_a_read_asks_before_the_other_machine_runs_it() {
-    use atlas::remote::{asking_before_it_runs, needs_your_yes, reading_or_change, Looks, RemoteConfig};
+    use atlas::remote::{
+        asking_before_it_runs, needs_your_yes, reading_or_change, Looks, RemoteConfig,
+    };
     let cfg = RemoteConfig::default();
-    assert!(cfg.confirm_side_effects, "it ships on, which is why being inert mattered");
+    assert!(
+        cfg.confirm_side_effects,
+        "it ships on, which is why being inert mattered"
+    );
 
     // Reads go through.
-    for what in ["check the render finished", "what's in the outbox", "list the open files"] {
+    for what in [
+        "check the render finished",
+        "what's in the outbox",
+        "list the open files",
+    ] {
         assert_eq!(reading_or_change(what), Looks::LikeAReading, "{what}");
         assert!(!needs_your_yes(what, &cfg), "{what}");
     }
     // Anything else is a change until you say otherwise -- policy.rs's rule,
     // borrowed rather than reinvented: unclassified is not safe.
-    for what in ["render the draft", "delete the old exports", "send the invoice"] {
+    for what in [
+        "render the draft",
+        "delete the old exports",
+        "send the invoice",
+    ] {
         assert_eq!(reading_or_change(what), Looks::Unknown, "{what}");
         assert!(needs_your_yes(what, &cfg), "{what}");
     }
     // An opening word is not a way past the gate.
-    assert_eq!(reading_or_change("check the exports and delete the old ones"), Looks::Unknown);
+    assert_eq!(
+        reading_or_change("check the exports and delete the old ones"),
+        Looks::Unknown
+    );
     // Nor is a word that merely starts with one.
     assert_eq!(reading_or_change("checkout the branch"), Looks::Unknown);
 
@@ -1620,15 +1996,24 @@ fn the_name_you_gave_this_machine_is_the_one_the_join_box_offers() {
     // config, is the kind of small friction that gets a feature abandoned.
     let page = sync_page_unplaced(true, "D:/atlas", None, None, None, "the study laptop");
     assert!(page.contains("name=device"), "the join box is gone");
-    assert!(page.contains("value=\"the study laptop\""), "it isn't filled in");
+    assert!(
+        page.contains("value=\"the study laptop\""),
+        "it isn't filled in"
+    );
 
     // Nothing set means nothing filled in, rather than the word "None".
     let blank = sync_page_unplaced(true, "D:/atlas", None, None, None, "");
-    assert!(blank.contains("value=\"\""), "an empty name printed something");
+    assert!(
+        blank.contains("value=\"\""),
+        "an empty name printed something"
+    );
 
     // A name is somebody's words, so it is escaped like any of them.
     let sneaky = sync_page_unplaced(true, "D:/atlas", None, None, None, "a\"><script>x");
-    assert!(!sneaky.contains("<script>x"), "a device name got into the page as markup");
+    assert!(
+        !sneaky.contains("<script>x"),
+        "a device name got into the page as markup"
+    );
 
     // And the join handler is what falls back to it.
     let src = live_source("src/hublive.rs");
@@ -1657,7 +2042,10 @@ fn the_two_household_fields_that_described_nothing_are_gone_and_are_named() {
     assert!(named.contains(&"household.discoverable"), "{named:?}");
     // And the field that does work is not swept up with them.
     assert!(!named.contains(&"household.device_name"), "{named:?}");
-    assert!(!named.contains(&"household"), "the section itself is read: {named:?}");
+    assert!(
+        !named.contains(&"household"),
+        "the section itself is read: {named:?}"
+    );
 
     // The reasons say what to do instead, rather than just "ignored".
     let why: String = said.iter().map(|(_, w)| *w).collect::<Vec<_>>().join(" ");
@@ -1673,7 +2061,10 @@ fn the_two_household_fields_that_described_nothing_are_gone_and_are_named() {
 
     // The shipped file stopped offering them.
     let raw = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    assert!(!raw.contains("discoverable: true"), "still shipped as a switch");
+    assert!(
+        !raw.contains("discoverable: true"),
+        "still shipped as a switch"
+    );
 }
 
 // ---------- workspace.default_view / .keep_done_days / .group_by_project ----------
@@ -1746,7 +2137,12 @@ fn how_long_a_finished_thing_stays_on_the_dashboard_is_yours() {
     let all: Vec<&atlas::workspace_view::Item> = vec![&live, &recent, &old];
 
     let kept = still_worth_showing(&all, 14, now);
-    assert_eq!(kept.len(), 2, "{:?}", kept.iter().map(|i| &i.title).collect::<Vec<_>>());
+    assert_eq!(
+        kept.len(),
+        2,
+        "{:?}",
+        kept.iter().map(|i| &i.title).collect::<Vec<_>>()
+    );
     assert!(kept.iter().any(|i| i.title == "done last week"));
     assert!(!kept.iter().any(|i| i.title == "done last month"));
 
@@ -1755,7 +2151,9 @@ fn how_long_a_finished_thing_stays_on_the_dashboard_is_yours() {
     // Zero hides them as they close, which is a real answer.
     assert_eq!(still_worth_showing(&all, 0, now).len(), 1);
     // Nothing unfinished is ever hidden by this.
-    assert!(still_worth_showing(&all, 0, now).iter().all(|i| i.closed_at.is_none()));
+    assert!(still_worth_showing(&all, 0, now)
+        .iter()
+        .all(|i| i.closed_at.is_none()));
     // A close time in the future is a clock that moved, not an item from
     // tomorrow -- shown, because the failure here should always be too much.
     let future = an_item("clock moved", Some(now + day));
@@ -1786,18 +2184,28 @@ fn the_dashboard_is_what_reads_all_three_rather_than_these_tests() {
         "still_worth_showing(&items, wcfg.keep_done_days, now)",
         "grouping(view.grouped_by, wcfg.group_by_project)",
     ] {
-        assert!(src.contains(reads), "the dashboard doesn't read it: {reads}");
+        assert!(
+            src.contains(reads),
+            "the dashboard doesn't read it: {reads}"
+        );
     }
 
     // There is a block for them to arrive in now, and it lands in a field.
     let raw = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    assert!(raw.contains("\nworkspace:"), "no workspace block is shipped");
+    assert!(
+        raw.contains("\nworkspace:"),
+        "no workspace block is shipped"
+    );
     let parsed: atlas::voice::ToolsConfig =
         serde_yaml::from_str("workspace:\n  default_view: Stuck\n  keep_done_days: 3\n")
             .expect("it parses");
     assert_eq!(parsed.workspace.default_view, "Stuck");
     assert_eq!(parsed.workspace.keep_done_days, 3);
-    assert_eq!(tools().workspace.default_view, "Now", "the shipped file still opens on Now");
+    assert_eq!(
+        tools().workspace.default_view,
+        "Now",
+        "the shipped file still opens on Now"
+    );
 }
 
 // ---------- reference.warn_when_stale ----------
@@ -1820,9 +2228,15 @@ fn it_does_not_claim_to_hold_a_shelf_it_has_never_fetched() {
         "something claims to have been fetched -- has a fetcher been written?"
     );
 
-    let cfg = ReferenceConfig { enabled: true, ..Default::default() };
+    let cfg = ReferenceConfig {
+        enabled: true,
+        ..Default::default()
+    };
     let shelves = chosen(&cfg);
-    assert!(!shelves.is_empty(), "the shelf list is empty, so this tests nothing");
+    assert!(
+        !shelves.is_empty(),
+        "the shelf list is empty, so this tests nothing"
+    );
     let said = nothing_found("what is the tick value", &shelves, cfg.warn_when_stale, 0);
     assert!(
         !said.contains("I could reason from that"),
@@ -1839,7 +2253,10 @@ fn it_does_not_claim_to_hold_a_shelf_it_has_never_fetched() {
     let now = 86_400 * 20_000; // well past 2020
     let warned = nothing_found(&held.covers.clone(), &[held.clone()], true, now);
     assert!(warned.contains("I could reason from that"), "{warned}");
-    assert!(warned.contains("days old") || warned.contains("a bit old"), "{warned}");
+    assert!(
+        warned.contains("days old") || warned.contains("a bit old"),
+        "{warned}"
+    );
 
     // Off means it does not say -- the half that makes it a setting.
     let quiet = nothing_found(&held.covers.clone(), &[held.clone()], false, now);
@@ -1895,7 +2312,10 @@ fn a_peer_named_by_address_syncs_straight_across_off_the_local_network() {
     // slot to capture what it received.
     let mut peer_log = Log::new("homelab");
     peer_log.append(
-        What::Captured { id: "peer-note".into(), text: "from the far side".into() },
+        What::Captured {
+            id: "peer-note".into(),
+            text: "from the far side".into(),
+        },
         500,
     );
     let mut peer_bundle = make_bundle(&peer_log, "homelab", 0, 600);
@@ -1975,7 +2395,11 @@ fn a_peer_named_by_address_syncs_straight_across_off_the_local_network() {
 
     // 2) This machine's own capture really crossed the socket — by address, not
     //    through the folder.
-    let received = got.lock().unwrap().take().expect("the peer got dialed at all");
+    let received = got
+        .lock()
+        .unwrap()
+        .take()
+        .expect("the peer got dialed at all");
     let text = String::from_utf8(received).expect("utf8 bundle");
     let crossed = read_bundle(&text, None).expect("a plaintext bundle");
     assert!(
@@ -1989,11 +2413,17 @@ fn a_peer_named_by_address_syncs_straight_across_off_the_local_network() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-
 /// The Sync page drawn without knowing where this device stands -- what
 /// `hub::sync_page` did before the running Atlas moved to `sync_page_with`
 /// and the wrapper, called by nothing else, was folded in (28 Sep 2026).
-fn sync_page_unplaced(sealing: bool, folder: &str, phrase: Option<&str>, card: Option<&str>, last: Option<&str>, this_device: &str) -> String {
+fn sync_page_unplaced(
+    sealing: bool,
+    folder: &str,
+    phrase: Option<&str>,
+    card: Option<&str>,
+    last: Option<&str>,
+    this_device: &str,
+) -> String {
     atlas::hub::sync_page_with(
         sealing,
         folder,
@@ -2001,6 +2431,9 @@ fn sync_page_unplaced(sealing: bool, folder: &str, phrase: Option<&str>, card: O
         card,
         last,
         this_device,
-        &atlas::hub::SyncView { house: atlas::hub::HouseView::Unknown, suggested_folder: None },
+        &atlas::hub::SyncView {
+            house: atlas::hub::HouseView::Unknown,
+            suggested_folder: None,
+        },
     )
 }

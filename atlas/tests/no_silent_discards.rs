@@ -13,15 +13,75 @@ use std::path::Path;
 
 /// Discarded on purpose. Kept in step with `src/unheard.rs`'s module docs.
 const ON_PURPOSE: &[(&str, &[&str])] = &[
-    ("a send whose reader has stopped", &[".send(", "try_send(", "send_to(", "send_text(", "send_binary(", ".send_json("]),
-    ("a process that has already ended", &[".kill()", ".wait()", "try_wait(", ".wait_timeout("]),
-    ("socket shutdown and timeouts", &["shutdown(", "set_read_timeout", "set_write_timeout", "set_nonblocking", "set_nodelay", "set_ttl", "set_broadcast", "set_linger"]),
+    (
+        "a send whose reader has stopped",
+        &[
+            ".send(",
+            "try_send(",
+            "send_to(",
+            "send_text(",
+            "send_binary(",
+            ".send_json(",
+        ],
+    ),
+    (
+        "a process that has already ended",
+        &[".kill()", ".wait()", "try_wait(", ".wait_timeout("],
+    ),
+    (
+        "socket shutdown and timeouts",
+        &[
+            "shutdown(",
+            "set_read_timeout",
+            "set_write_timeout",
+            "set_nonblocking",
+            "set_nodelay",
+            "set_ttl",
+            "set_broadcast",
+            "set_linger",
+        ],
+    ),
     ("a thread joined", &[".join()"]),
     ("an atomic swap", &["compare_exchange", ".fetch_", ".swap("]),
     ("a channel read", &[".recv(", "recv_timeout(", "try_recv("]),
-    ("store saves, which report their own failures (store::save)", &[".save(&self.store", ".save(&store", ".save( &self.store", "store.save(", ".save(&d.store", ".save(store)", ".save(&daemon.store", ".save(&s)", ".save(&st)", "save_to_store"]),
+    (
+        "store saves, which report their own failures (store::save)",
+        &[
+            ".save(&self.store",
+            ".save(&store",
+            ".save( &self.store",
+            "store.save(",
+            ".save(&d.store",
+            ".save(store)",
+            ".save(&daemon.store",
+            ".save(&s)",
+            ".save(&st)",
+            "save_to_store",
+        ],
+    ),
     ("console output", &["stdout", "stderr", "o.flush()"]),
-    ("a reply to a client that may have gone", &["HTTP/1.", "stream.write", "sock.write", "socket.write", "conn.write", "client.write", "resp.write", "reply.write", "ws.write", "stream.flush", "conn.flush", "client.flush", "write!(stream", "writeln!(stream", "write!(conn", "write!(client", "write!(resp"]),
+    (
+        "a reply to a client that may have gone",
+        &[
+            "HTTP/1.",
+            "stream.write",
+            "sock.write",
+            "socket.write",
+            "conn.write",
+            "client.write",
+            "resp.write",
+            "reply.write",
+            "ws.write",
+            "stream.flush",
+            "conn.flush",
+            "client.flush",
+            "write!(stream",
+            "writeln!(stream",
+            "write!(conn",
+            "write!(client",
+            "write!(resp",
+        ],
+    ),
 ];
 
 fn on_purpose(expr: &str) -> bool {
@@ -30,25 +90,42 @@ fn on_purpose(expr: &str) -> bool {
     if !e.contains('(') && !e.contains('!') {
         return true;
     }
-    if e.chars().all(|c| c.is_alphanumeric() || " _&.,()".contains(c)) && !e.contains("()") && e.starts_with('(') {
+    if e.chars()
+        .all(|c| c.is_alphanumeric() || " _&.,()".contains(c))
+        && !e.contains("()")
+        && e.starts_with('(')
+    {
         return true;
     }
     // A Win32 call (`SetPriorityClass(..)`, `unsafe { CloseHandle(..) }`).
     let call = e.trim_start_matches("unsafe {").trim_start();
     let name = call.split('(').next().unwrap_or("");
-    let name = if name.starts_with("windows::") { name.rsplit("::").next().unwrap_or(name) } else { name };
-    if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) && name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+    let name = if name.starts_with("windows::") {
+        name.rsplit("::").next().unwrap_or(name)
+    } else {
+        name
+    };
+    if name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+        && name.chars().all(|c| c.is_alphanumeric() || c == '_')
+    {
         return true;
     }
     if e.ends_with(".lock()") || e.ends_with(".read()") || e.ends_with(".write()") {
         return true;
     }
-    ON_PURPOSE.iter().any(|(_, pats)| pats.iter().any(|p| e.contains(p)))
+    ON_PURPOSE
+        .iter()
+        .any(|(_, pats)| pats.iter().any(|p| e.contains(p)))
 }
 
 fn test_module_spans(src: &str) -> Vec<(usize, usize)> {
-    if src.lines().take_while(|line| line.trim().is_empty() || line.starts_with("//") || line.starts_with("#!"))
-        .any(|line| line.trim_end() == "#![cfg(test)]") {
+    if src
+        .lines()
+        .take_while(|line| {
+            line.trim().is_empty() || line.starts_with("//") || line.starts_with("#!")
+        })
+        .any(|line| line.trim_end() == "#![cfg(test)]")
+    {
         return vec![(0, src.len())];
     }
     let mut out = Vec::new();
@@ -82,7 +159,8 @@ fn test_module_spans(src: &str) -> Vec<(usize, usize)> {
 
 #[test]
 fn a_private_test_module_is_skipped_but_an_attribute_mention_is_not() {
-    let fixture = "//! Fixtures.\n#![cfg(test)]\nfn proof() { let _ = std::fs::remove_file(path); }";
+    let fixture =
+        "//! Fixtures.\n#![cfg(test)]\nfn proof() { let _ = std::fs::remove_file(path); }";
     assert_eq!(test_module_spans(fixture), vec![(0, fixture.len())]);
     let live = "// #![cfg(test)] is a comment\nfn live() { let _ = std::fs::remove_file(path); }";
     assert!(test_module_spans(live).is_empty());
@@ -140,13 +218,19 @@ fn scan(dir: &Path, found: &mut Vec<String>) {
             let line_start = src[..at].rfind('\n').map(|n| n + 1).unwrap_or(0);
             let line_end = src[at..].find('\n').map(|n| at + n).unwrap_or(src.len());
             let line = &src[line_start..line_end];
-            let prev_start = src[..line_start.saturating_sub(1)].rfind('\n').map(|n| n + 1).unwrap_or(0);
+            let prev_start = src[..line_start.saturating_sub(1)]
+                .rfind('\n')
+                .map(|n| n + 1)
+                .unwrap_or(0);
             let prev = &src[prev_start..line_start];
             // Inside a string literal (`mend.rs` looks for the words).
             if at > 0 && src.as_bytes()[at - 1] == b'"' {
                 continue;
             }
-            if line.trim_start().starts_with("//") || line.contains('$') || line.contains("`let _ =") {
+            if line.trim_start().starts_with("//")
+                || line.contains('$')
+                || line.contains("`let _ =")
+            {
                 continue;
             }
             if line.contains("unheard-ok") || prev.contains("unheard-ok") {
@@ -155,7 +239,11 @@ fn scan(dir: &Path, found: &mut Vec<String>) {
             let expr = expression(&src, at + "let _ = ".len());
             if !on_purpose(expr) {
                 let n = src[..at].matches('\n').count() + 1;
-                found.push(format!("{}:{n}: let _ = {}", p.display(), expr.split_whitespace().collect::<Vec<_>>().join(" ")));
+                found.push(format!(
+                    "{}:{n}: let _ = {}",
+                    p.display(),
+                    expr.split_whitespace().collect::<Vec<_>>().join(" ")
+                ));
             }
         }
     }
@@ -164,7 +252,10 @@ fn scan(dir: &Path, found: &mut Vec<String>) {
 #[test]
 fn nothing_is_thrown_away_without_saying_why() {
     let mut found = Vec::new();
-    scan(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut found);
+    scan(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut found,
+    );
     assert!(
         found.is_empty(),
         "{} silent discard(s). Use crate::kept!(..) for a write meant to last, crate::heard!(..) \
@@ -182,7 +273,9 @@ fn the_scan_tells_a_silent_discard_from_a_deliberate_one() {
     assert!(on_purpose("(cfg, vars)"));
     assert!(on_purpose("unsafe { CloseHandle(h) }"));
     assert!(on_purpose("self.thread.save(&self.store)"));
-    assert!(on_purpose("windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(HWND(h))"));
+    assert!(on_purpose(
+        "windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(HWND(h))"
+    ));
     assert!(!on_purpose("std::fs::write(&path, text)"));
     assert!(!on_purpose("std::fs::remove_file(&p)"));
     assert!(!on_purpose("write_yaml_whole(&told, version)"));

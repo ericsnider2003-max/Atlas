@@ -171,11 +171,7 @@ impl Bars {
             ));
         }
         if !time.is_empty() && time.len() != n {
-            return refuse(format!(
-                "{} timestamps for {} bars",
-                time.len(),
-                n
-            ));
+            return refuse(format!("{} timestamps for {} bars", time.len(), n));
         }
         // Finite, or it is not a price.
         //
@@ -203,10 +199,19 @@ impl Bars {
         // real. This is the merge of the two -- their single pass and their
         // reason, and the value printed, with NaN and infinity named
         // correctly rather than both called "not a number".
-        for (name, col) in [("open", &open), ("high", &high), ("low", &low), ("close", &close)] {
+        for (name, col) in [
+            ("open", &open),
+            ("high", &high),
+            ("low", &low),
+            ("close", &close),
+        ] {
             if let Some(i) = col.iter().position(|v| !v.is_finite()) {
                 let v = col[i];
-                let what = if v.is_nan() { "is not a number" } else { "is not finite" };
+                let what = if v.is_nan() {
+                    "is not a number"
+                } else {
+                    "is not finite"
+                };
                 return refuse(format!(
                     "{name} has a value at bar {i} that {what} ({v}). A price \
                      series with a hole in it produces a figure rather than an error, \
@@ -283,7 +288,10 @@ impl Bars {
                 self.len()
             ));
         }
-        Ok(AsOf { bars: self, upto: bar })
+        Ok(AsOf {
+            bars: self,
+            upto: bar,
+        })
     }
 
     /// The view at the last bar. What a live system always has.
@@ -458,12 +466,18 @@ impl<'a> AsOf<'a> {
                 self.upto, bar
             ));
         }
-        Ok(AsOf { bars: self.bars, upto: bar })
+        Ok(AsOf {
+            bars: self.bars,
+            upto: bar,
+        })
     }
 
     /// The same view, `n` bars earlier. Saturates at the start of the series.
     pub fn back(&self, n: usize) -> AsOf<'a> {
-        AsOf { bars: self.bars, upto: self.upto.saturating_sub(n) }
+        AsOf {
+            bars: self.bars,
+            upto: self.upto.saturating_sub(n),
+        }
     }
 
     /// Refuse unless at least `need` bars are visible.
@@ -501,7 +515,9 @@ impl<'a> AsOf<'a> {
         let mut total = 0.0;
         for i in first..len {
             let prev = if i == 0 { c[0] } else { c[i - 1] };
-            total += (h[i] - l[i]).max((h[i] - prev).abs()).max((l[i] - prev).abs());
+            total += (h[i] - l[i])
+                .max((h[i] - prev).abs())
+                .max((l[i] - prev).abs());
         }
         total / take as f64
     }
@@ -591,7 +607,12 @@ impl<'a> AsOf<'a> {
         let i = match cache.grown.iter().position(|g| g.k == k) {
             Some(i) => i,
             None => {
-                cache.grown.push(Grown { k, tested_through: k.wrapping_sub(1), highs: vec![], lows: vec![] });
+                cache.grown.push(Grown {
+                    k,
+                    tested_through: k.wrapping_sub(1),
+                    highs: vec![],
+                    lows: vec![],
+                });
                 cache.grown.len() - 1
             }
         };
@@ -601,7 +622,11 @@ impl<'a> AsOf<'a> {
         // which is the whole point — and is why this is identical to the old
         // full rescan rather than an approximation of it.
         if let Some(through) = decidable_through {
-            let from = if g.tested_through == k.wrapping_sub(1) { k } else { g.tested_through + 1 };
+            let from = if g.tested_through == k.wrapping_sub(1) {
+                k
+            } else {
+                g.tested_through + 1
+            };
             for i in from..=through {
                 if i < k || i + k >= h.len() {
                     continue;
@@ -630,7 +655,10 @@ impl<'a> AsOf<'a> {
             // `since` at the front, `through` at the back. The old version
             // took a `take_while` prefix from the front of every pivot the
             // file had ever produced.
-            Some(through) => (in_range(&g.highs, since, through), in_range(&g.lows, since, through)),
+            Some(through) => (
+                in_range(&g.highs, since, through),
+                in_range(&g.lows, since, through),
+            ),
         }
     }
 
@@ -830,7 +858,9 @@ mod tests {
     #[test]
     fn the_tolerance_is_measured_from_the_bars() {
         let quiet = Bars::from_closes(
-            &(0..60).map(|i| 1.1 + (i % 2) as f64 * 1e-5).collect::<Vec<_>>(),
+            &(0..60)
+                .map(|i| 1.1 + (i % 2) as f64 * 1e-5)
+                .collect::<Vec<_>>(),
             1e-5,
         )
         .unwrap();

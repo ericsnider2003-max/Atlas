@@ -47,7 +47,11 @@ pub struct Walk {
 
 impl Walk {
     pub fn new(what_for: &str, stops: Vec<Stop>) -> Walk {
-        Walk { what_for: what_for.into(), stops, at: 0 }
+        Walk {
+            what_for: what_for.into(),
+            stops,
+            at: 0,
+        }
     }
 
     pub fn current(&self) -> Option<&Stop> {
@@ -78,7 +82,10 @@ impl Walk {
         }
     }
 
-    #[allow(clippy::should_implement_trait, reason = "moves the walkthrough to its next stop and says whether there was one; not an Iterator")]
+    #[allow(
+        clippy::should_implement_trait,
+        reason = "moves the walkthrough to its next stop and says whether there was one; not an Iterator"
+    )]
     pub fn next(&mut self) -> bool {
         if let Some(s) = self.stops.get_mut(self.at) {
             s.done = true;
@@ -94,7 +101,10 @@ impl Walk {
     }
 
     pub fn progress(&self) -> (usize, usize) {
-        (self.stops.iter().filter(|s| s.done).count(), self.stops.len())
+        (
+            self.stops.iter().filter(|s| s.done).count(),
+            self.stops.len(),
+        )
     }
 
     /// What's left, for picking it up later.
@@ -162,7 +172,9 @@ pub fn to_turn_off(sites: &[String]) -> Walk {
                 url: url.into(),
                 where_to_look: where_to_look.into(),
                 do_this: "Turn it off there. I'll wait — say next when you're done.".into(),
-                have_ready: Some("your password, and probably a code from the method you're removing".into()),
+                have_ready: Some(
+                    "your password, and probably a code from the method you're removing".into(),
+                ),
                 warning: warning_for(site),
                 done: false,
             })
@@ -220,12 +232,15 @@ pub fn to_prepare(sites: &[String]) -> Walk {
 fn warning_for(site: &str) -> Option<String> {
     let s = site.to_lowercase();
     if s.contains("apple") || s.contains("icloud") {
-        return Some("Apple mostly doesn't allow this any more — you may find the option isn't there."
-            .into());
+        return Some(
+            "Apple mostly doesn't allow this any more — you may find the option isn't there."
+                .into(),
+        );
     }
     if s.contains("github") {
-        return Some("This can also drop your SSH keys and tokens, which breaks anything automated."
-            .into());
+        return Some(
+            "This can also drop your SSH keys and tokens, which breaks anything automated.".into(),
+        );
     }
     if s.contains("bank") || s.contains("chase") || s.contains("coinbase") {
         return Some(
@@ -284,6 +299,10 @@ pub struct WalkConfig {
 
 impl Default for WalkConfig {
     fn default() -> Self {
-        WalkConfig { enabled: true, open_pages: true, atlas_clicks: false }
+        WalkConfig {
+            enabled: true,
+            open_pages: true,
+            atlas_clicks: false,
+        }
     }
 }

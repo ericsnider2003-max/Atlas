@@ -11,7 +11,11 @@
 //! machine with nothing installed, the module works there.
 //!
 //! Call [`report`] from a binary, a test, or Atlas itself.
-#![allow(clippy::unwrap_used, clippy::expect_used, reason = "built from fixed fixture data that is known to be valid; a self-check, not a path for real input")]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "built from fixed fixture data that is known to be valid; a self-check, not a path for real input"
+)]
 
 use super::bars::Bars;
 use super::claims::{verify, Claim, Side, ALL_KINDS};
@@ -39,7 +43,9 @@ pub fn report() -> String {
     let raw = fixtures::walk(400, 11);
     let v0 = raw.latest().unwrap();
     let start = Utc::at(2026, 9, 28, 0, 0).to_ms();
-    let time: Vec<i64> = (0..raw.len()).map(|i| start + i as i64 * 15 * MS_PER_MIN).collect();
+    let time: Vec<i64> = (0..raw.len())
+        .map(|i| start + i as i64 * 15 * MS_PER_MIN)
+        .collect();
     let bars = Bars::new(
         v0.open().to_vec(),
         v0.high().to_vec(),
@@ -122,12 +128,22 @@ pub fn report() -> String {
         Err(e) => out.push(format!("  calendar refused: {}", e)),
     }
     let late = Utc::at(2026, 10, 2, 16, 0).to_ms();
-    let h4 = events::overlapping(late - Tf::H4.span_ms(1), late, "EURUSD", Purpose::Volatility)
-        .map(|v| v.len())
-        .unwrap_or(0);
-    let m5 = events::overlapping(late - Tf::M5.span_ms(1), late, "EURUSD", Purpose::Volatility)
-        .map(|v| v.len())
-        .unwrap_or(0);
+    let h4 = events::overlapping(
+        late - Tf::H4.span_ms(1),
+        late,
+        "EURUSD",
+        Purpose::Volatility,
+    )
+    .map(|v| v.len())
+    .unwrap_or(0);
+    let m5 = events::overlapping(
+        late - Tf::M5.span_ms(1),
+        late,
+        "EURUSD",
+        Purpose::Volatility,
+    )
+    .map(|v| v.len())
+    .unwrap_or(0);
     out.push(format!(
         "  the bar closing 16:00Z contains {} release(s) on H4 and {} on M5 -- \
          a close-only check would call both clean",
@@ -298,7 +314,11 @@ mod tests {
     fn the_self_check_names_every_claim_kind() {
         let r = report();
         for k in ALL_KINDS {
-            assert!(r.contains(k.name()), "{} is missing from the report", k.name());
+            assert!(
+                r.contains(k.name()),
+                "{} is missing from the report",
+                k.name()
+            );
         }
     }
 

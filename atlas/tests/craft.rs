@@ -5,7 +5,12 @@ use atlas::craft::*;
 use atlas::goal::Check;
 
 fn ran(cmd: &str, tells: Tells, passed: bool, out: &str) -> Ran {
-    Ran { command: cmd.into(), tells, passed, output: out.into() }
+    Ran {
+        command: cmd.into(),
+        tells,
+        passed,
+        output: out.into(),
+    }
 }
 
 // --- the ladder is ordered, and the order is the point ----------------------
@@ -26,8 +31,12 @@ fn python_gets_a_parse_check_because_it_has_no_compiler() {
     // Without one the first real signal is a test failure, which is the
     // vaguest and slowest — the exact thing the ladder exists to avoid.
     let l = ladder(Lang::Python);
-    assert!(l.iter().any(|g| g.tells == Tells::Sound && g.command.contains("compileall")));
-    assert!(l.iter().any(|g| g.tells == Tells::Sound && g.command.contains("mypy")));
+    assert!(l
+        .iter()
+        .any(|g| g.tells == Tells::Sound && g.command.contains("compileall")));
+    assert!(l
+        .iter()
+        .any(|g| g.tells == Tells::Sound && g.command.contains("mypy")));
 }
 
 #[test]
@@ -35,7 +44,10 @@ fn both_languages_have_every_rung() {
     for lang in [Lang::Rust, Lang::Python] {
         let l = ladder(lang);
         for t in [Tells::Shape, Tells::Sound, Tells::Style, Tells::Behaviour] {
-            assert!(l.iter().any(|g| g.tells == t), "{lang:?} has no {t:?} check");
+            assert!(
+                l.iter().any(|g| g.tells == t),
+                "{lang:?} has no {t:?} check"
+            );
         }
     }
 }
@@ -58,13 +70,21 @@ fn a_compile_failure_is_what_gets_reported_not_the_test_noise() {
     // worse than nothing: it gives the next attempt something confident and
     // wrong to work from.
     let r = vec![
-        ran("cargo check --all-targets", Tells::Sound, false, "error[E0308] line 41"),
+        ran(
+            "cargo check --all-targets",
+            Tells::Sound,
+            false,
+            "error[E0308] line 41",
+        ),
         ran("cargo test", Tells::Behaviour, false, "42 tests failed"),
     ];
     match read_ladder(Lang::Rust, &r) {
         Next::Fix { gate, output } => {
             assert_eq!(gate.tells, Tells::Sound);
-            assert!(output.contains("E0308"), "it reported the test noise instead");
+            assert!(
+                output.contains("E0308"),
+                "it reported the test noise instead"
+            );
         }
         other => panic!("{other:?}"),
     }
@@ -74,7 +94,12 @@ fn a_compile_failure_is_what_gets_reported_not_the_test_noise() {
 fn the_tools_own_words_are_kept_verbatim() {
     // A paraphrased compiler error loses the line number, which is the useful
     // part.
-    let r = vec![ran("cargo check --all-targets", Tells::Sound, false, "src/x.rs:41:9 expected u64")];
+    let r = vec![ran(
+        "cargo check --all-targets",
+        Tells::Sound,
+        false,
+        "src/x.rs:41:9 expected u64",
+    )];
     match read_ladder(Lang::Rust, &r) {
         Next::Fix { output, .. } => assert!(output.contains("41:9")),
         other => panic!("{other:?}"),
@@ -94,7 +119,12 @@ fn a_failing_test_on_compiling_code_is_the_thing_to_fix() {
 fn style_complaints_do_not_block_and_are_reported_as_notes() {
     let r = vec![
         ran("cargo check --all-targets", Tells::Sound, true, ""),
-        ran("cargo clippy --all-targets -- -D warnings", Tells::Style, false, "needless clone"),
+        ran(
+            "cargo clippy --all-targets -- -D warnings",
+            Tells::Style,
+            false,
+            "needless clone",
+        ),
         ran("cargo test", Tells::Behaviour, true, ""),
     ];
     match read_ladder(Lang::Rust, &r) {
@@ -107,7 +137,12 @@ fn style_complaints_do_not_block_and_are_reported_as_notes() {
 fn everything_passing_is_good() {
     let r = vec![
         ran("cargo check --all-targets", Tells::Sound, true, ""),
-        ran("cargo clippy --all-targets -- -D warnings", Tells::Style, true, ""),
+        ran(
+            "cargo clippy --all-targets -- -D warnings",
+            Tells::Style,
+            true,
+            "",
+        ),
         ran("cargo test", Tells::Behaviour, true, ""),
     ];
     assert_eq!(read_ladder(Lang::Rust, &r), Next::Good);
@@ -118,9 +153,17 @@ fn everything_passing_is_good() {
 #[test]
 fn tests_are_not_run_on_code_that_does_not_compile() {
     // Saves forty seconds, and stops the noise existing at all.
-    let r = vec![ran("cargo check --all-targets", Tells::Sound, false, "error")];
+    let r = vec![ran(
+        "cargo check --all-targets",
+        Tells::Sound,
+        false,
+        "error",
+    )];
     let left = still_worth_running(Lang::Rust, &r);
-    assert!(!left.iter().any(|g| g.tells == Tells::Behaviour), "it would have run the tests");
+    assert!(
+        !left.iter().any(|g| g.tells == Tells::Behaviour),
+        "it would have run the tests"
+    );
     assert!(!left.iter().any(|g| g.tells == Tells::Style));
 }
 
@@ -129,7 +172,10 @@ fn everything_is_worth_running_when_it_compiles() {
     let r = vec![ran("cargo check --all-targets", Tells::Sound, true, "")];
     let left = still_worth_running(Lang::Rust, &r);
     assert!(left.iter().any(|g| g.tells == Tells::Behaviour));
-    assert!(!left.iter().any(|g| g.command.contains("cargo check")), "it would rerun");
+    assert!(
+        !left.iter().any(|g| g.command.contains("cargo check")),
+        "it would rerun"
+    );
 }
 
 // --- the questions before writing anything ----------------------------------
@@ -164,7 +210,11 @@ fn having_no_prohibitions_is_allowed() {
     s.when_wrong = Some("c".into());
     s.done_when = vec![Check::CommandPasses("pytest".into())];
     assert!(s.never.is_empty());
-    assert!(s.ready(), "an empty never-list blocked it: {:?}", s.next_question());
+    assert!(
+        s.ready(),
+        "an empty never-list blocked it: {:?}",
+        s.next_question()
+    );
 }
 
 #[test]
@@ -196,7 +246,10 @@ fn the_spec_becomes_a_goal_the_toolchain_can_settle() {
 
     let g = s.as_goal(Lang::Python, 6);
     assert!(g.runnable_unattended().is_ok(), "it couldn't check itself");
-    assert!(g.machine_checks().len() >= 4, "the toolchain checks didn't come across");
+    assert!(
+        g.machine_checks().len() >= 4,
+        "the toolchain checks didn't come across"
+    );
 }
 
 #[test]
@@ -207,7 +260,10 @@ fn formatting_is_not_a_success_criterion() {
     s.done_when = vec![Check::CommandPasses("pytest".into())];
     let g = s.as_goal(Lang::Rust, 3);
     let all = format!("{:?}", g.checks);
-    assert!(!all.contains("cargo fmt"), "formatting became a pass/fail gate");
+    assert!(
+        !all.contains("cargo fmt"),
+        "formatting became a pass/fail gate"
+    );
 }
 
 #[test]
@@ -227,19 +283,33 @@ fn cpp_has_a_ladder_of_its_own() {
     for t in [Tells::Shape, Tells::Sound, Tells::Style, Tells::Behaviour] {
         assert!(l.iter().any(|g| g.tells == t), "C++ has no {t:?} check");
     }
-    assert!(l.iter().any(|g| g.command.starts_with("clang++") && g.command.contains("-fsyntax-only")));
+    assert!(l
+        .iter()
+        .any(|g| g.command.starts_with("clang++") && g.command.contains("-fsyntax-only")));
     // Built before it's run: the gate runner has no `&&`.
     let build = l.iter().position(|g| g.command.contains(" -o ")).unwrap();
     let run = l.iter().position(|g| g.tells == Tells::Behaviour).unwrap();
     assert!(build < run);
-    assert_eq!(Lang::Cpp.draft_files("int main() { return 0; }")[0].0, "main.cpp");
+    assert_eq!(
+        Lang::Cpp.draft_files("int main() { return 0; }")[0].0,
+        "main.cpp"
+    );
 }
 
 #[test]
 fn a_cpp_request_is_built_in_cpp_even_when_called_a_script() {
-    assert_eq!(atlas::build_it::lang_from_words("write a C++ script that sorts numbers", Lang::Rust), Lang::Cpp);
-    assert_eq!(atlas::build_it::lang_from_words("a cpp function to parse dates", Lang::Rust), Lang::Cpp);
-    assert_eq!(atlas::build_it::lang_from_words("write me a script to rename files", Lang::Rust), Lang::Python);
+    assert_eq!(
+        atlas::build_it::lang_from_words("write a C++ script that sorts numbers", Lang::Rust),
+        Lang::Cpp
+    );
+    assert_eq!(
+        atlas::build_it::lang_from_words("a cpp function to parse dates", Lang::Rust),
+        Lang::Cpp
+    );
+    assert_eq!(
+        atlas::build_it::lang_from_words("write me a script to rename files", Lang::Rust),
+        Lang::Python
+    );
 }
 
 #[test]
@@ -254,19 +324,39 @@ fn a_cpp_project_is_known_by_its_build_file() {
 #[test]
 fn a_missing_checker_is_reported_as_missing_not_as_a_bug_to_fix() {
     let r = vec![
-        ran("ruff format .", Tells::Shape, false, "could not start ruff: program not found"),
+        ran(
+            "ruff format .",
+            Tells::Shape,
+            false,
+            "could not start ruff: program not found",
+        ),
         ran("python -m compileall -q .", Tells::Sound, true, ""),
-        ran("mypy .", Tells::Sound, false, "could not start mypy: No such file or directory (os error 2)"),
+        ran(
+            "mypy .",
+            Tells::Sound,
+            false,
+            "could not start mypy: No such file or directory (os error 2)",
+        ),
     ];
     match read_ladder(Lang::Python, &r) {
         Next::CannotCheck { program, .. } => assert_eq!(program, "mypy"),
         other => panic!("{other:?}"),
     }
     // A real type error is still a fix.
-    let r = vec![ran("mypy .", Tells::Sound, false, "main.py:3: error: Incompatible types in assignment")];
+    let r = vec![ran(
+        "mypy .",
+        Tells::Sound,
+        false,
+        "main.py:3: error: Incompatible types in assignment",
+    )];
     assert!(matches!(read_ladder(Lang::Python, &r), Next::Fix { .. }));
     // A missing linter is not a note about the code.
-    let r = vec![ran("cargo clippy --all-targets -- -D warnings", Tells::Style, false, "could not start cargo: not found")];
+    let r = vec![ran(
+        "cargo clippy --all-targets -- -D warnings",
+        Tells::Style,
+        false,
+        "could not start cargo: not found",
+    )];
     assert_eq!(read_ladder(Lang::Rust, &r), Next::Good);
 }
 
@@ -275,31 +365,56 @@ fn python_and_javascript_drafts_carry_a_test_so_they_can_pass() {
     // pytest with nothing to collect exits 5 and `npm test` with no script
     // fails: before 1 Oct 2026 no Python or JavaScript build could be Built.
     let py = Lang::Python.draft_files("print('hi')");
-    assert!(py.iter().any(|(p, c)| p == "test_main.py" && c.contains("import_module(\"main\")")));
+    assert!(py
+        .iter()
+        .any(|(p, c)| p == "test_main.py" && c.contains("import_module(\"main\")")));
     let js = Lang::JavaScript.draft_files("console.log('hi')");
-    assert!(js.iter().any(|(p, c)| p == "package.json" && c.contains("\"test\": \"node --test\"")));
-    assert!(js.iter().any(|(p, c)| p == "main.test.js" && c.contains("require('./main.js')")));
+    assert!(js
+        .iter()
+        .any(|(p, c)| p == "package.json" && c.contains("\"test\": \"node --test\"")));
+    assert!(js
+        .iter()
+        .any(|(p, c)| p == "main.test.js" && c.contains("require('./main.js')")));
     // The draft itself is still laid down whole, beside its test.
-    assert_eq!(py.iter().find(|(p, _)| p == "main.py").map(|(_, c)| c.as_str()), Some("print('hi')"));
+    assert_eq!(
+        py.iter()
+            .find(|(p, _)| p == "main.py")
+            .map(|(_, c)| c.as_str()),
+        Some("print('hi')")
+    );
     assert_eq!(js.len(), 3);
 }
 
 #[test]
 fn an_unchecked_build_says_so_and_is_never_called_built() {
     let llm = atlas::brain::MockLlm("```cpp\nint main() { return 0; }\n```".into());
-    let o = atlas::build_it::build_loop("a C++ hello", Lang::Cpp, &llm, 3, |_| atlas::build_it::Check::CannotCheck("clang++".into()));
+    let o = atlas::build_it::build_loop("a C++ hello", Lang::Cpp, &llm, 3, |_| {
+        atlas::build_it::Check::CannotCheck("clang++".into())
+    });
     assert!(!o.is_built());
     assert!(o.code().is_some());
     let said = o.spoken(Lang::Cpp);
-    assert!(said.contains("clang++ isn't installed") && said.contains("untested"), "{said}");
+    assert!(
+        said.contains("clang++ isn't installed") && said.contains("untested"),
+        "{said}"
+    );
 }
 
 #[test]
 fn a_typescript_draft_carries_a_test_node_can_run() {
     let ts = Lang::TypeScript.draft_files("export const x = 1;");
-    assert!(ts.iter().any(|(p, c)| p == "package.json" && c.contains("\"test\": \"node --test\"")));
-    assert!(ts.iter().any(|(p, c)| p == "main.test.ts" && c.contains("import('./main.ts')")));
-    assert!(!ladder(Lang::TypeScript).iter().any(|g| g.command.starts_with("eslint")), "eslint can't run on a fresh draft");
+    assert!(ts
+        .iter()
+        .any(|(p, c)| p == "package.json" && c.contains("\"test\": \"node --test\"")));
+    assert!(ts
+        .iter()
+        .any(|(p, c)| p == "main.test.ts" && c.contains("import('./main.ts')")));
+    assert!(
+        !ladder(Lang::TypeScript)
+            .iter()
+            .any(|g| g.command.starts_with("eslint")),
+        "eslint can't run on a fresh draft"
+    );
 }
 
 /// On the laptop (1 Oct 2026): the C++ run gate said "isn't installed" for
@@ -309,12 +424,22 @@ fn a_typescript_draft_carries_a_test_node_can_run() {
 fn the_cpp_ladder_runs_what_it_built_and_names_its_checks() {
     let dir = std::env::temp_dir().join(format!("atlas-cpp-run-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let run = ladder(Lang::Cpp).into_iter().find(|g| g.tells == Tells::Behaviour).unwrap().command;
-    assert_eq!(program_in(&dir, &run), run, "nothing built yet: left as it is");
+    let run = ladder(Lang::Cpp)
+        .into_iter()
+        .find(|g| g.tells == Tells::Behaviour)
+        .unwrap()
+        .command;
+    assert_eq!(
+        program_in(&dir, &run),
+        run,
+        "nothing built yet: left as it is"
+    );
     let built = dir.join(run.trim_start_matches("./"));
     std::fs::write(&built, b"").unwrap();
     assert_eq!(std::path::PathBuf::from(program_in(&dir, &run)), built);
-    assert!(ladder(Lang::Cpp).iter().any(|g| g.command.starts_with("clang-tidy --checks=")));
+    assert!(ladder(Lang::Cpp)
+        .iter()
+        .any(|g| g.command.starts_with("clang-tidy --checks=")));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -323,10 +448,19 @@ fn the_cpp_tools_are_found_by_path_not_left_on_the_search_path() {
     let root = std::env::temp_dir().join(format!("atlas-llvm-{}", std::process::id()));
     let bin = root.join("tools/llvm/bin");
     std::fs::create_dir_all(&bin).unwrap();
-    let exe = bin.join(if cfg!(windows) { "clang-tidy.exe" } else { "clang-tidy" });
+    let exe = bin.join(if cfg!(windows) {
+        "clang-tidy.exe"
+    } else {
+        "clang-tidy"
+    });
     std::fs::write(&exe, b"").unwrap();
-    assert_eq!(atlas::codetools::llvm_program("clang-tidy", &root), Some(exe));
+    assert_eq!(
+        atlas::codetools::llvm_program("clang-tidy", &root),
+        Some(exe)
+    );
     assert_eq!(atlas::codetools::llvm_program("cargo", &root), None);
-    assert!(!atlas::codetools::bin_dirs(&root).iter().any(|d| d.ends_with("llvm/bin")));
+    assert!(!atlas::codetools::bin_dirs(&root)
+        .iter()
+        .any(|d| d.ends_with("llvm/bin")));
     let _ = std::fs::remove_dir_all(&root);
 }

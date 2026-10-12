@@ -38,7 +38,11 @@ impl Gcra {
     /// `per` requests every `period_ms`, bursting up to `burst`.
     pub fn new(per: u64, period_ms: u64, burst: u64) -> Gcra {
         assert!(per > 0 && burst > 0);
-        Gcra { interval_ms: (period_ms / per).max(1), burst, tat: HashMap::new() }
+        Gcra {
+            interval_ms: (period_ms / per).max(1),
+            burst,
+            tat: HashMap::new(),
+        }
     }
 
     /// `Ok(())` to go ahead, or `Err(ms)` to wait that long first.
@@ -59,7 +63,9 @@ impl Gcra {
 pub enum State {
     Closed,
     /// Calls refused until this time (ms).
-    Open { until: u64 },
+    Open {
+        until: u64,
+    },
     /// One trial call allowed.
     HalfOpen,
 }
@@ -124,13 +130,17 @@ impl Breaker {
         match self.state(now) {
             State::HalfOpen => {
                 self.current_open = (self.current_open * 2).min(self.max_open_ms);
-                self.state = State::Open { until: now + self.current_open };
+                self.state = State::Open {
+                    until: now + self.current_open,
+                };
                 self.trial_out = false;
             }
             _ => {
                 self.consecutive += 1;
                 if self.consecutive >= self.failures_to_open {
-                    self.state = State::Open { until: now + self.current_open };
+                    self.state = State::Open {
+                        until: now + self.current_open,
+                    };
                 }
             }
         }

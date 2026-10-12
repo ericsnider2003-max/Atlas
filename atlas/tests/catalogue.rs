@@ -39,9 +39,15 @@ const EVERY_PLATFORM: &[Platform] = &[
 #[test]
 fn connection_descriptions_and_removal_receipts_belong_to_existing_mail_capability() {
     let all = capability::all();
-    let mail = all.iter().find(|capability| capability.id == "mail").unwrap();
+    let mail = all
+        .iter()
+        .find(|capability| capability.id == "mail")
+        .unwrap();
     assert!(mail.modules.contains(&"connectors") && mail.modules.contains(&"connection_removal"));
-    assert!(modules_in_tree().contains("connectors") && modules_in_tree().contains("connection_removal"));
+    assert!(
+        modules_in_tree().contains("connectors")
+            && modules_in_tree().contains("connection_removal")
+    );
     assert_eq!(modules_in_tree().len(), capability::MODULES_IN_TREE);
 }
 
@@ -53,14 +59,18 @@ fn connection_descriptions_and_removal_receipts_belong_to_existing_mail_capabili
 /// its `src/<m>.rs` beside `src/<m>/`), so they add nothing.
 fn modules_in_tree() -> BTreeSet<String> {
     fn walk(dir: &Path, out: &mut BTreeSet<String>) {
-        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
         for e in entries.flatten() {
             let path = e.path();
             if path.is_dir() {
                 walk(&path, out);
                 continue;
             }
-            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
             if path.extension().and_then(|s| s.to_str()) != Some("rs") {
                 continue;
             }
@@ -153,7 +163,10 @@ fn a_capability_is_no_better_than_the_hardest_thing_it_asks_for() {
     // else's app. On an iPhone the microphone is fine and the second is a
     // wall, so dictate is a wall. Taking the best of its needs rather than
     // the worst would advertise it as working there.
-    let dictate = capability::all().into_iter().find(|c| c.id == "dictate").unwrap();
+    let dictate = capability::all()
+        .into_iter()
+        .find(|c| c.id == "dictate")
+        .unwrap();
     assert!(dictate.runs.contains(&Needs::Audio));
     assert!(dictate.runs.contains(&Needs::ActInApps));
 
@@ -163,7 +176,10 @@ fn a_capability_is_no_better_than_the_hardest_thing_it_asks_for() {
 
     // And the reason given is the need that actually walls it, not the one
     // that happens to be first in the list.
-    assert_eq!(capability::blocked_by(&dictate, Platform::Ios), Some(Needs::ActInApps));
+    assert_eq!(
+        capability::blocked_by(&dictate, Platform::Ios),
+        Some(Needs::ActInApps)
+    );
 }
 
 #[test]
@@ -211,14 +227,20 @@ fn the_phones_are_the_ones_with_walls_and_windows_is_not() {
     }
 
     let ios = capability::walled_on(Platform::Ios);
-    assert!(!ios.is_empty(), "an iPhone has real walls and the catalogue should know them");
+    assert!(
+        !ios.is_empty(),
+        "an iPhone has real walls and the catalogue should know them"
+    );
     assert!(
         capability::on(Platform::Ios).len() < capability::all().len(),
         "if nothing is walled on iOS the join isn't being applied"
     );
 
     // Android and iOS differ, and the difference is the one people ask about.
-    let wake = capability::all().into_iter().find(|c| c.id == "wake").unwrap();
+    let wake = capability::all()
+        .into_iter()
+        .find(|c| c.id == "wake")
+        .unwrap();
     assert_eq!(capability::runs_on(&wake, Platform::Ios), How::Never);
     assert!(capability::runs_on(&wake, Platform::Android).is_effort_not_a_wall());
 }
@@ -262,7 +284,12 @@ fn being_allowed_by_the_platform_is_not_reported_as_being_built() {
         if c.state != State::Planned {
             continue;
         }
-        for p in [Platform::Ios, Platform::Android, Platform::Windows, Platform::Mac] {
+        for p in [
+            Platform::Ios,
+            Platform::Android,
+            Platform::Windows,
+            Platform::Mac,
+        ] {
             let said = capability::says(&c, p);
             assert!(
                 !said.contains("works"),
@@ -284,7 +311,10 @@ fn being_allowed_by_the_platform_is_not_reported_as_being_built() {
         .expect("mesh is the standing example of allowed-but-built-nowhere");
     assert_eq!(example.state, State::Planned);
     assert!(
-        matches!(capability::runs_on(&example, Platform::Ios), How::Built | How::Awkward),
+        matches!(
+            capability::runs_on(&example, Platform::Ios),
+            How::Built | How::Awkward
+        ),
         "iOS allows mesh (cleanly or with a catch): {:?}",
         capability::runs_on(&example, Platform::Ios)
     );
@@ -300,10 +330,16 @@ fn being_allowed_by_the_platform_is_not_reported_as_being_built() {
 
 #[test]
 fn a_blocked_capability_says_what_it_is_waiting_on_out_loud() {
-    let wake = capability::all().into_iter().find(|c| c.id == "wake").unwrap();
+    let wake = capability::all()
+        .into_iter()
+        .find(|c| c.id == "wake")
+        .unwrap();
     assert_eq!(wake.state, State::Blocked);
     let said = capability::says(&wake, Platform::Windows);
-    assert!(said.contains("whisper"), "\"waiting on something\" is not an answer: {said}");
+    assert!(
+        said.contains("whisper"),
+        "\"waiting on something\" is not an answer: {said}"
+    );
 }
 
 #[test]
@@ -311,7 +347,11 @@ fn the_platform_listing_warns_that_there_is_only_one_build() {
     // Every line under a heading like "WHAT ATLAS DOES ON ANDROID" reads as a
     // promise unless something at the top says there is no Android build.
     let here = atlas::platform::what_am_i();
-    let elsewhere = if here == Platform::Ios { Platform::Android } else { Platform::Ios };
+    let elsewhere = if here == Platform::Ios {
+        Platform::Android
+    } else {
+        Platform::Ios
+    };
     let text = capability::on_platform_full(elsewhere);
     assert!(
         text.contains(&format!("There is no {} build yet", elsewhere.bare())),
@@ -395,7 +435,10 @@ fn every_plumbing_entry_is_a_real_module_with_a_reason() {
     let tree = modules_in_tree();
     let mut seen = BTreeSet::new();
     for (m, why) in capability::PLUMBING {
-        assert!(tree.contains(*m), "PLUMBING names {m}, and there is no {m}.rs under src/");
+        assert!(
+            tree.contains(*m),
+            "PLUMBING names {m}, and there is no {m}.rs under src/"
+        );
         assert!(seen.insert(*m), "{m} is on PLUMBING twice");
         assert!(
             why.split_whitespace().count() >= 4,
@@ -404,7 +447,9 @@ fn every_plumbing_entry_is_a_real_module_with_a_reason() {
         // A to-do is not plumbing. "not wired yet" belongs in the catalogue
         // as `Planned`, where it is counted as unfinished.
         assert!(
-            !why.contains("not wired") && !why.contains(" yet") && !why.contains(concat!("TO", "DO")),
+            !why.contains("not wired")
+                && !why.contains(" yet")
+                && !why.contains(concat!("TO", "DO")),
             "{m}'s reason is really a to-do: {why:?}"
         );
     }
@@ -420,14 +465,54 @@ fn the_features_that_were_missing_are_in_the_catalogue_by_name() {
     // Eric reasonably thought Atlas lacked, because the list never said.
     let ids: BTreeSet<&str> = capability::all().into_iter().map(|c| c.id).collect();
     for id in [
-        "edit", "grade", "voiceover", "viewing", "content", "opsec", "opportunity", "brief",
-        "overnight", "council", "decide", "orders", "booking", "finance", "flow", "routine",
-        "undo", "phone", "remote", "companion", "chat", "handover", "workspace", "rehearse",
-        "later", "backlog", "nudge", "daily", "health", "anticipate", "reference",
+        "edit",
+        "grade",
+        "voiceover",
+        "viewing",
+        "content",
+        "opsec",
+        "opportunity",
+        "brief",
+        "overnight",
+        "council",
+        "decide",
+        "orders",
+        "booking",
+        "finance",
+        "flow",
+        "routine",
+        "undo",
+        "phone",
+        "remote",
+        "companion",
+        "chat",
+        "handover",
+        "workspace",
+        "rehearse",
+        "later",
+        "backlog",
+        "nudge",
+        "daily",
+        "health",
+        "anticipate",
+        "reference",
     ] {
         assert!(ids.contains(id), "{id} is built and not in the catalogue");
     }
-    for m in ["editors", "publishing", "delivery", "outbox", "outreach", "otherside", "safety", "glance", "why", "modes", "profiles", "register"] {
+    for m in [
+        "editors",
+        "publishing",
+        "delivery",
+        "outbox",
+        "outreach",
+        "otherside",
+        "safety",
+        "glance",
+        "why",
+        "modes",
+        "profiles",
+        "register",
+    ] {
         assert!(
             !capability::what_uses(m).is_empty(),
             "{m} is built and no capability says so"
@@ -441,7 +526,10 @@ fn what_the_vault_and_the_hub_do_is_in_the_catalogue_at_all() {
     // and a count would go on passing if they were swapped for six others.
     let ids: BTreeSet<&str> = capability::all().into_iter().map(|c| c.id).collect();
     for id in ["vault", "recovery", "sync", "household", "hub", "reclaim"] {
-        assert!(ids.contains(id), "{id} is built and wired and not in the catalogue");
+        assert!(
+            ids.contains(id),
+            "{id} is built and wired and not in the catalogue"
+        );
     }
 }
 
@@ -456,7 +544,10 @@ fn a_module_can_be_traced_back_to_what_it_is_for() {
     // A module shared by two capabilities comes back as both.
     let language = capability::what_uses("language");
     let ids: BTreeSet<&str> = language.iter().map(|c| c.id).collect();
-    assert!(ids.contains("accents") && ids.contains("translate"), "{ids:?}");
+    assert!(
+        ids.contains("accents") && ids.contains("translate"),
+        "{ids:?}"
+    );
 
     // And plumbing honestly comes back empty rather than guessing.
     assert!(capability::what_uses("config").is_empty());
@@ -539,12 +630,19 @@ fn the_script_that_regenerates_the_module_reference_can_still_find_the_tree() {
 fn every_area_is_in_the_listing() {
     // An area missing from `EVERY_AREA` is a whole section of the catalogue
     // that silently stops printing.
-    let used: BTreeSet<String> =
-        capability::all().into_iter().map(|c| format!("{:?}", c.area)).collect();
-    let listed: BTreeSet<String> =
-        capability::EVERY_AREA.iter().map(|a| format!("{a:?}")).collect();
+    let used: BTreeSet<String> = capability::all()
+        .into_iter()
+        .map(|c| format!("{:?}", c.area))
+        .collect();
+    let listed: BTreeSet<String> = capability::EVERY_AREA
+        .iter()
+        .map(|a| format!("{a:?}"))
+        .collect();
     let dropped: Vec<&String> = used.difference(&listed).collect();
-    assert!(dropped.is_empty(), "capabilities in an area nothing prints: {dropped:?}");
+    assert!(
+        dropped.is_empty(),
+        "capabilities in an area nothing prints: {dropped:?}"
+    );
 
     // And the full listing really does print them all.
     let full = capability::full();
@@ -562,7 +660,9 @@ fn every_area_is_in_the_listing() {
 #[test]
 fn a_machine_with_walls_is_warned_about_and_one_without_is_not() {
     use atlas::portable::PortableConfig;
-    let cfg = PortableConfig { warn_up_front: true };
+    let cfg = PortableConfig {
+        warn_up_front: true,
+    };
 
     // The three desktops have nothing off the table, so saying "everything
     // here is possible" would be reassurance that teaches you to skip the
@@ -581,10 +681,15 @@ fn a_machine_with_walls_is_warned_about_and_one_without_is_not() {
     assert!(said.contains("On an iPhone or iPad"), "{said}");
     assert!(said.contains("can't work at all"), "{said}");
     assert!(said.contains("hearing you without opening it"), "{said}");
-    assert!(said.contains("hear a wake word"), "the capability isn't named: {said}");
+    assert!(
+        said.contains("hear a wake word"),
+        "the capability isn't named: {said}"
+    );
 
     // Off means silent, which is the half that makes it a setting.
-    let off = PortableConfig { warn_up_front: false };
+    let off = PortableConfig {
+        warn_up_front: false,
+    };
     assert!(capability::heads_up(Platform::Ios, &off).is_none());
     assert!(PortableConfig::default().warn_up_front, "it ships on");
 
@@ -601,5 +706,8 @@ fn a_machine_with_walls_is_warned_about_and_one_without_is_not() {
     assert!(raw.contains("warn_up_front:"));
     let tools: atlas::voice::ToolsConfig =
         serde_yaml::from_str("portable:\n  warn_up_front: false\n").expect("it parses");
-    assert!(!tools.portable.warn_up_front, "the block still lands nowhere");
+    assert!(
+        !tools.portable.warn_up_front,
+        "the block still lands nowhere"
+    );
 }

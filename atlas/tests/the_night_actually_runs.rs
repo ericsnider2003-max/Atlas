@@ -47,7 +47,14 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn cfg() -> Config {
@@ -61,7 +68,13 @@ fn at_hour(day: u64, hour: u64) -> u64 {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 // ---------- the settings are real ----------
@@ -69,7 +82,12 @@ fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
 #[test]
 fn the_night_ships_on() {
     let c = cfg();
-    let o = c.tools.as_ref().expect("tools.yaml loads").overnight.clone();
+    let o = c
+        .tools
+        .as_ref()
+        .expect("tools.yaml loads")
+        .overnight
+        .clone();
     assert!(o.enabled, "overnight still ships disabled");
     assert_eq!(
         o.brain,
@@ -96,14 +114,23 @@ fn the_clock_window_is_gone_rather_than_left_settable_and_unread() {
         .filter(|l| !l.trim_start().starts_with('#'))
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(!settings.contains("start_hour:"), "the clock window is settable again");
+    assert!(
+        !settings.contains("start_hour:"),
+        "the clock window is settable again"
+    );
     assert!(!settings.contains("stop_hour:"));
     // And what replaced it is settable, because it is about you.
-    assert!(yaml.contains("away_a_while_minutes:"), "nowhere to say what counts as gone");
+    assert!(
+        yaml.contains("away_a_while_minutes:"),
+        "nowhere to say what counts as gone"
+    );
 
     let src = std::fs::read_to_string("src/overnight.rs").expect("overnight.rs");
     assert!(!src.contains("pub fn in_window"), "the clock gate is back");
-    assert!(src.contains("where_you_are.free_to_work()"), "the night doesn't ask where you are");
+    assert!(
+        src.contains("where_you_are.free_to_work()"),
+        "the night doesn't ask where you are"
+    );
 }
 
 // ---------- the guarantee ----------
@@ -132,7 +159,10 @@ fn a_decision_only_you_can_make_is_left_alone() {
     // The one thing a night must not do is guess at an answer. The filter
     // reads the request the way you said it.
     use atlas::handoff::Problem;
-    let mine = |g: &str| Problem { goal: g.into(), ..Default::default() };
+    let mine = |g: &str| Problem {
+        goal: g.into(),
+        ..Default::default()
+    };
 
     for needs_you in [
         "which of these should I cancel",
@@ -147,7 +177,11 @@ fn a_decision_only_you_can_make_is_left_alone() {
         );
     }
 
-    for fine in ["retry the backup", "reindex the notes folder", "look up the tide times"] {
+    for fine in [
+        "retry the backup",
+        "reindex the notes folder",
+        "look up the tide times",
+    ] {
         assert!(
             atlas::overnight::worth_doing_overnight(&mine(fine)),
             "the night skipped something harmless: {fine}"
@@ -172,7 +206,8 @@ fn work_happens_while_you_are_gone_and_is_reported_when_you_are_back() {
     // daemon tests do it -- the first draft of this test spoke a request and
     // assumed it was parked, it never was, and the whole file then passed
     // with the wiring torn out because nothing ever happened.
-    d.backlog.record("retry the backup", Blocker::NeedsApproval, at_hour(100, 14));
+    d.backlog
+        .record("retry the backup", Blocker::NeedsApproval, at_hour(100, 14));
 
     // 1am and 2am: the night advances a step an hour.
     d.tick(at_hour(100, 25));
@@ -192,7 +227,13 @@ fn work_happens_while_you_are_gone_and_is_reported_when_you_are_back() {
     let mut lines = Vec::new();
     loop {
         lines.extend(d.tick(now));
-        if lines.iter().any(|line| line.contains("While you were out:")) || std::time::Instant::now() >= deadline { break; }
+        if lines
+            .iter()
+            .any(|line| line.contains("While you were out:"))
+            || std::time::Instant::now() >= deadline
+        {
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     let morning = lines.join(" | ");
@@ -213,9 +254,15 @@ fn work_happens_while_you_are_gone_and_is_reported_when_you_are_back() {
 
     // And only once. A write-up repeated every tick is worse than a late one.
     let mut later = Vec::new();
-    for _ in 0..30 { later.extend(d.tick(at_hour(101, 8) + 120)); std::thread::sleep(std::time::Duration::from_millis(5)); }
+    for _ in 0..30 {
+        later.extend(d.tick(at_hour(101, 8) + 120));
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
     let later = later.join(" | ");
-    assert!(!later.contains("While you were out:"), "it was said twice: {later}");
+    assert!(
+        !later.contains("While you were out:"),
+        "it was said twice: {later}"
+    );
 }
 
 #[test]
@@ -250,10 +297,25 @@ fn a_night_is_called_a_night_once_atlas_knows_your_hours() {
     let last_turn = at_hour(100, 22);
 
     // One in the morning, four hours after you stopped: asleep.
-    assert_eq!(whereabouts(last_turn, at_hour(100, 25), &r, &cfg, &JudgmentConfig::default()), Whereabouts::Asleep);
+    assert_eq!(
+        whereabouts(
+            last_turn,
+            at_hour(100, 25),
+            &r,
+            &cfg,
+            &JudgmentConfig::default()
+        ),
+        Whereabouts::Asleep
+    );
     // Two in the afternoon, having been gone since ten: out, not asleep.
     assert_eq!(
-        whereabouts(at_hour(101, 10), at_hour(101, 14), &r, &cfg, &JudgmentConfig::default()),
+        whereabouts(
+            at_hour(101, 10),
+            at_hour(101, 14),
+            &r,
+            &cfg,
+            &JudgmentConfig::default()
+        ),
         Whereabouts::Out
     );
     // And both mean Atlas may get on with something.
@@ -269,7 +331,13 @@ fn being_quiet_for_ten_minutes_is_not_being_gone() {
     let cfg = DailyConfig::default();
     let r = Rhythm::default();
     assert_eq!(
-        whereabouts(at_hour(100, 14), at_hour(100, 14) + 600, &r, &cfg, &JudgmentConfig::default()),
+        whereabouts(
+            at_hour(100, 14),
+            at_hour(100, 14) + 600,
+            &r,
+            &cfg,
+            &JudgmentConfig::default()
+        ),
         Whereabouts::Here,
         "ten minutes of not typing started an hour of work"
     );
@@ -283,7 +351,13 @@ fn a_machine_that_has_never_seen_you_starts_nothing() {
     use atlas::daily::{whereabouts, DailyConfig, Rhythm, Whereabouts};
     use atlas::judgment::JudgmentConfig;
     assert_eq!(
-        whereabouts(0, at_hour(100, 3), &Rhythm::default(), &DailyConfig::default(), &JudgmentConfig::default()),
+        whereabouts(
+            0,
+            at_hour(100, 3),
+            &Rhythm::default(),
+            &DailyConfig::default(),
+            &JudgmentConfig::default()
+        ),
         Whereabouts::Here
     );
 }
@@ -297,7 +371,8 @@ fn nothing_happens_while_you_are_sitting_there() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "present");
 
-    d.backlog.record("retry the backup", Blocker::NeedsApproval, at_hour(200, 13));
+    d.backlog
+        .record("retry the backup", Blocker::NeedsApproval, at_hour(200, 13));
     // A turn of yours, then a tick a minute later. You are plainly here.
     d.turn("hello", at_hour(200, 14));
     let said = d.tick(at_hour(200, 14) + 60).join(" | ");
@@ -315,12 +390,16 @@ fn switching_it_off_stops_the_night() {
     let p = plat();
     let mut d = daemon(&c, &p, "off");
 
-    d.backlog.record("retry the backup", Blocker::NeedsApproval, at_hour(300, 14));
+    d.backlog
+        .record("retry the backup", Blocker::NeedsApproval, at_hour(300, 14));
     d.tick(at_hour(300, 25));
     d.tick(at_hour(300, 26));
     let said = d.tick(at_hour(301, 8)).join(" | ");
 
-    assert!(!said.contains("Overnight:"), "the night ran with the setting off: {said}");
+    assert!(
+        !said.contains("Overnight:"),
+        "the night ran with the setting off: {said}"
+    );
 }
 
 // ---------- the brief tells the truth ----------
@@ -334,7 +413,10 @@ fn the_note_does_not_claim_an_attempt_that_never_happened() {
     let o = c.tools.as_ref().unwrap().overnight.clone();
     let note = atlas::overnight::note_for("retry the backup", &o);
 
-    assert!(note.contains("retry the backup"), "the note lost the problem: {note}");
+    assert!(
+        note.contains("retry the backup"),
+        "the note lost the problem: {note}"
+    );
     for claim in ["fixed", "solved", "tests pass", "attempted", "tried"] {
         assert!(
             !note.to_lowercase().contains(claim),

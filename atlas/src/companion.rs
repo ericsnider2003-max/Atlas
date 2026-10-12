@@ -241,7 +241,10 @@ pub fn merge(pending: &[Pending], changed_on_laptop: &[String]) -> Merge {
             clean += 1;
             continue;
         }
-        if changed_on_laptop.iter().any(|c| c.eq_ignore_ascii_case(&p.what)) {
+        if changed_on_laptop
+            .iter()
+            .any(|c| c.eq_ignore_ascii_case(&p.what))
+        {
             clashes.push(p.what.clone());
         } else {
             clean += 1;

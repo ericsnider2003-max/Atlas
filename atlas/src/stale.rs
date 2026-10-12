@@ -96,7 +96,10 @@ pub struct StaleConfig {
 
 impl Default for StaleConfig {
     fn default() -> Self {
-        StaleConfig { patience: 3.0, progress_floor: 0.25 }
+        StaleConfig {
+            patience: 3.0,
+            progress_floor: 0.25,
+        }
     }
 }
 
@@ -115,7 +118,11 @@ pub enum Going {
     /// Running, past the implied pace, and making progress.
     Working { bars: usize, best: f64 },
     /// Running, past the patience, and going nowhere.
-    Stale { bars: usize, implied: f64, best: f64 },
+    Stale {
+        bars: usize,
+        implied: f64,
+        best: f64,
+    },
 }
 
 impl Going {
@@ -138,7 +145,11 @@ impl Going {
                  direction it was opened for.",
                 best * 100.0
             ),
-            Going::Stale { bars, implied, best } => format!(
+            Going::Stale {
+                bars,
+                implied,
+                best,
+            } => format!(
                 "{bars} bars in against an implied {implied:.0}, and the best it has managed is \
                  {:.0}% of the way. This isn't a winner in the making — the reading it was \
                  opened on has expired and the position is paying spread and swap to stay in a \
@@ -163,19 +174,23 @@ pub fn how_its_going(
 ) -> Result<Going, String> {
     let time = view.time();
     if time.is_empty() {
-        return Err("these bars carry no timestamps, so I can't tell which of them are since the \
+        return Err(
+            "these bars carry no timestamps, so I can't tell which of them are since the \
                     trade was opened"
-            .into());
+                .into(),
+        );
     }
     let n = view.len().min(time.len());
     let Some(from) = (0..n).find(|&i| time[i] >= open.opened_at) else {
         return Err("none of these bars are from after the trade was opened".into());
     };
     if from == 0 && time[0] > open.opened_at {
-        return Err("these bars start after the trade was opened, so the best it has been isn't \
+        return Err(
+            "these bars start after the trade was opened, so the best it has been isn't \
                     in them — and reading progress off a window that starts mid-trade flatters \
                     every stale position there is"
-            .into());
+                .into(),
+        );
     }
 
     let (h, l) = (view.high(), view.low());
@@ -208,9 +223,11 @@ pub fn how_its_going(
 
     let bars = n - from;
     let Some(implied) = implied_bars(open, average_range) else {
-        return Err("I can't work out how long a move this size ought to take here — without \
+        return Err(
+            "I can't work out how long a move this size ought to take here — without \
                     that, 'it's taking too long' is just an opinion about a number"
-            .into());
+                .into(),
+        );
     };
 
     if (bars as f64) < implied * cfg.patience {
@@ -220,7 +237,11 @@ pub fn how_its_going(
         return Ok(Going::Working { bars, best });
     }
     if best < cfg.progress_floor {
-        Ok(Going::Stale { bars, implied, best })
+        Ok(Going::Stale {
+            bars,
+            implied,
+            best,
+        })
     } else {
         Ok(Going::Working { bars, best })
     }

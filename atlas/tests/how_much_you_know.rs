@@ -41,7 +41,13 @@ fn plat() -> MockPlatform {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -109,7 +115,11 @@ fn the_answer_tracks_the_store_rather_than_a_fixed_string() {
     // signal that it landed is the store count, which is exactly what the
     // handler reads.
     let mut used = daemon(&c, &p, "used");
-    used.learned("the wash sale rule bars a repurchase within thirty days", "test", 100);
+    used.learned(
+        "the wash sale rule bars a repurchase within thirty days",
+        "test",
+        100,
+    );
     let filled = used.execute(&Intent::KnowledgeSize);
 
     assert_eq!(

@@ -19,7 +19,10 @@ const CANDIDATES: usize = 24 * 24 * 2 + 12 * 12 * 6;
 
 #[test]
 fn the_candidate_count_matches_what_the_model_reports() {
-    assert_eq!(CANDIDATES, 2016, "the model reports 2016 candidates per frame");
+    assert_eq!(
+        CANDIDATES, 2016,
+        "the model reports 2016 candidates per frame"
+    );
 }
 
 #[test]
@@ -46,8 +49,14 @@ fn a_confident_candidate_is_found_and_placed() {
     boxes[2] = 48.0; // a quarter of 192 wide
     boxes[3] = 48.0;
     let found = where_the_hand_is(&hand_outputs(boxes, scores)).expect("a hand");
-    assert!((found.x + found.width / 2.0 - 0.5 / 24.0).abs() < 0.01, "{found:?}");
-    assert!((found.y + found.height / 2.0 - 0.5 / 24.0).abs() < 0.01, "{found:?}");
+    assert!(
+        (found.x + found.width / 2.0 - 0.5 / 24.0).abs() < 0.01,
+        "{found:?}"
+    );
+    assert!(
+        (found.y + found.height / 2.0 - 0.5 / 24.0).abs() < 0.01,
+        "{found:?}"
+    );
     assert!((found.width - 0.25).abs() < 0.01, "{found:?}");
 }
 
@@ -82,7 +91,11 @@ fn joints_measured_in_the_models_own_pixels_come_back_as_places_in_the_frame() {
         "the middle of that crop is the middle of the frame: {:?}",
         marks.points[8]
     );
-    assert!((marks.points[8].y - 0.5).abs() < 0.01, "{:?}", marks.points[8]);
+    assert!(
+        (marks.points[8].y - 0.5).abs() < 0.01,
+        "{:?}",
+        marks.points[8]
+    );
     assert!(
         marks.points.iter().all(|p| (0.0..=1.0).contains(&p.x)),
         "everything downstream treats these as fractions"

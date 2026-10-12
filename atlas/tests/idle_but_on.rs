@@ -68,7 +68,9 @@ fn only_the_blocked_ones_are_named() {
 fn every_mapped_key_is_a_real_toggle() {
     let s = fresh();
     for (cap, key) in IDLE_TOGGLES {
-        let item = s.get(key).unwrap_or_else(|| panic!("{key} (for {cap}) isn't a setting"));
+        let item = s
+            .get(key)
+            .unwrap_or_else(|| panic!("{key} (for {cap}) isn't a setting"));
         assert!(
             matches!(item.value, atlas::settings::Value::Toggle(_)),
             "{key} isn't a switch"
@@ -80,7 +82,9 @@ fn every_mapped_key_is_a_real_toggle() {
 fn the_settings_page_shows_the_banner_for_what_is_really_blocked() {
     // `ocr` ships Blocked in the capability table; this checks the page asks
     // that table rather than being handed a list nobody passes.
-    let ocr_blocked = atlas::capability::blocked().iter().any(|(c, _)| c.id == "ocr");
+    let ocr_blocked = atlas::capability::blocked()
+        .iter()
+        .any(|(c, _)| c.id == "ocr");
     let mut s = fresh();
     s.set("ocr.enabled", "on").unwrap();
     let page = settings_page(&s);

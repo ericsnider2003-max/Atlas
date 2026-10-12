@@ -2,60 +2,128 @@
 //! routines, goals, the later list, mail sorting, scheduled posts, pressing buttons,
 //! storage, undo, media edits, reading documents off the loop, bringing things back,
 //! advice, gestures and keys.
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
-use super::*;
 use super::running::{LeftWaiting, LEFT_WAITING};
+use super::*;
 
 #[cfg(test)]
 mod approved_undo_retry_tests {
     use super::*;
     fn exercise(cancel: bool, change_source: bool) {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!("atlas-approved-undo-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        let path = std::env::temp_dir().join(format!(
+            "atlas-approved-undo-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
         let store = crate::store::Store::new(&path);
         let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
         let platform = crate::platform::mock::MockPlatform::new(vec![]);
-        let mut daemon = Daemon::new(&cfg, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
-        let original = path.join("original.txt"); let moved = path.join("sorted.txt");
+        let mut daemon = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let original = path.join("original.txt");
+        let moved = path.join("sorted.txt");
         std::fs::write(&original, b"owner bytes").unwrap();
         let evidence = crate::tune::RecordedMove::new(&original, &moved).unwrap();
         std::fs::rename(&original, &moved).unwrap();
-        let id = daemon.history.note("moved one file", "files", crate::undo::Undo::Atlas("put it back".into()), true, 10);
+        let id = daemon.history.note(
+            "moved one file",
+            "files",
+            crate::undo::Undo::Atlas("put it back".into()),
+            true,
+            10,
+        );
         daemon.history.save_merged(&store).unwrap();
-        store.save(crate::tune::TUNE_UNDO_RECORD, &vec![(id, crate::tune::TuneUndo::RecordedMoves { moves: vec![evidence], made: vec![] })]).unwrap();
+        store
+            .save(
+                crate::tune::TUNE_UNDO_RECORD,
+                &vec![(
+                    id,
+                    crate::tune::TuneUndo::RecordedMoves {
+                        moves: vec![evidence],
+                        made: vec![],
+                    },
+                )],
+            )
+            .unwrap();
         let root = store.root().to_path_buf();
-        let (ready_tx, ready_rx) = std::sync::mpsc::channel(); let (release_tx, release_rx) = std::sync::mpsc::channel();
-        let worker = std::thread::spawn(move || { let _guard = crate::store::state_transaction(&root).unwrap(); ready_tx.send(()).unwrap(); release_rx.recv().unwrap(); });
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let _guard = crate::store::state_transaction(&root).unwrap();
+            ready_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        });
         ready_rx.recv().unwrap();
-        assert!(daemon.carry_out_undo(id).contains("waiting for recovery storage"));
-        assert!(!original.exists()); assert_eq!(std::fs::read(&moved).unwrap(), b"owner bytes");
+        assert!(daemon
+            .carry_out_undo(id)
+            .contains("waiting for recovery storage"));
+        assert!(!original.exists());
+        assert_eq!(std::fs::read(&moved).unwrap(), b"owner bytes");
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while !daemon.undo_waiting_for_ack() {
             assert!(daemon.poll_file_moves(20).is_empty());
-            assert!(std::time::Instant::now() < deadline, "undo worker never reached its durable ACK");
+            assert!(
+                std::time::Instant::now() < deadline,
+                "undo worker never reached its durable ACK"
+            );
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         assert!(!original.exists());
-        if cancel { assert!(daemon.cancel_approved_undo()); }
-        if change_source { std::fs::write(&moved, b"new owner bytes").unwrap(); }
-        release_tx.send(()).unwrap(); worker.join().unwrap();
+        if cancel {
+            assert!(daemon.cancel_approved_undo());
+        }
+        if change_source {
+            std::fs::write(&moved, b"new owner bytes").unwrap();
+        }
+        release_tx.send(()).unwrap();
+        worker.join().unwrap();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         let result = loop {
             let news = daemon.poll_file_moves(30);
-            if let Some(said) = news.into_iter().next() { break Some(said); }
-            assert!(std::time::Instant::now() < deadline, "undo worker never reached a terminal result");
+            if let Some(said) = news.into_iter().next() {
+                break Some(said);
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "undo worker never reached a terminal result"
+            );
             std::thread::sleep(std::time::Duration::from_millis(5));
         };
-        if cancel { assert!(!result.unwrap().starts_with("Undone")); assert!(!original.exists()); }
-        else if change_source { assert!(!result.unwrap().starts_with("Undone")); assert!(!original.exists()); assert_eq!(std::fs::read(&moved).unwrap(), b"new owner bytes"); }
-        else { assert!(result.unwrap().starts_with("Undone")); assert_eq!(std::fs::read(&original).unwrap(), b"owner bytes"); assert!(!moved.exists()); }
-        drop(daemon); let _ = std::fs::remove_dir_all(path);
+        if cancel {
+            assert!(!result.unwrap().starts_with("Undone"));
+            assert!(!original.exists());
+        } else if change_source {
+            assert!(!result.unwrap().starts_with("Undone"));
+            assert!(!original.exists());
+            assert_eq!(std::fs::read(&moved).unwrap(), b"new owner bytes");
+        } else {
+            assert!(result.unwrap().starts_with("Undone"));
+            assert_eq!(std::fs::read(&original).unwrap(), b"owner bytes");
+            assert!(!moved.exists());
+        }
+        drop(daemon);
+        let _ = std::fs::remove_dir_all(path);
     }
-    #[test] fn approval_waits_without_moving_then_retries_after_backup_release() { exercise(false, false); }
-    #[test] fn stopping_a_waiting_undo_prevents_later_movement() { exercise(true, false); }
-    #[test] fn changed_owner_bytes_are_not_moved_by_a_waiting_undo() { exercise(false, true); }
+    #[test]
+    fn approval_waits_without_moving_then_retries_after_backup_release() {
+        exercise(false, false);
+    }
+    #[test]
+    fn stopping_a_waiting_undo_prevents_later_movement() {
+        exercise(true, false);
+    }
+    #[test]
+    fn changed_owner_bytes_are_not_moved_by_a_waiting_undo() {
+        exercise(false, true);
+    }
 }
 
 #[cfg(test)]
@@ -67,36 +135,91 @@ mod routine_durable_origin_tests {
 
     #[test]
     fn a_failed_routine_reservation_does_not_duplicate_its_saved_queue_after_restart() {
-        let path = std::env::temp_dir().join(format!("atlas-routine-origin-{}-{}", std::process::id(), crate::store::now()));
-        std::fs::create_dir(&path).unwrap(); let store = crate::store::Store::new(&path);
-        let mut cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap(); cfg.tools.as_mut().unwrap().routine.enabled = true;
+        let path = std::env::temp_dir().join(format!(
+            "atlas-routine-origin-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        std::fs::create_dir(&path).unwrap();
+        let store = crate::store::Store::new(&path);
+        let mut cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        cfg.tools.as_mut().unwrap().routine.enabled = true;
         let platform = crate::platform::mock::MockPlatform::new(vec![]);
         let t = 1_790_740_000;
-        let mut daemon = Daemon::new(&cfg, &platform, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+        let mut daemon = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            store.clone(),
+            Proactive::new(ProactiveConfig::default()),
+        );
         let hour = crate::localclock::hour(t, crate::localclock::offset_secs()) as u32;
-        daemon.routines.routines.push(crate::routine::Routine { name: "fixture".into(), steps: vec!["show my later list".into()], seen: 3, usual_hour: hour, usual_weekday: None, confirmed: true, automatic: true, asked: true, last_day: 0 });
+        daemon.routines.routines.push(crate::routine::Routine {
+            name: "fixture".into(),
+            steps: vec!["show my later list".into()],
+            seen: 3,
+            usual_hour: hour,
+            usual_weekday: None,
+            confirmed: true,
+            automatic: true,
+            asked: true,
+            last_day: 0,
+        });
         store.save("routines", &daemon.routines).unwrap();
-        let blocker = std::fs::OpenOptions::new().read(true).share_mode(0).open(store.root().join("routines.json")).unwrap();
+        let blocker = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(store.root().join("routines.json"))
+            .unwrap();
         let said = daemon.routines_on_the_hour(t);
-        assert!(said.iter().any(|line| line.starts_with("Queued your usual fixture")));
-        let ids: Vec<_> = daemon.queue.tasks.iter().map(|task| task.id).collect(); assert_eq!(ids.len(), 1);
-        drop(daemon); drop(blocker);
-        let mut restarted = Daemon::new(&cfg, &platform, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+        assert!(said
+            .iter()
+            .any(|line| line.starts_with("Queued your usual fixture")));
+        let ids: Vec<_> = daemon.queue.tasks.iter().map(|task| task.id).collect();
+        assert_eq!(ids.len(), 1);
+        drop(daemon);
+        drop(blocker);
+        let mut restarted = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            store.clone(),
+            Proactive::new(ProactiveConfig::default()),
+        );
         assert_eq!(restarted.routines.routines[0].last_day, 0);
         restarted.routines_on_the_hour(t);
-        assert_eq!(restarted.queue.tasks.iter().map(|task| task.id).collect::<Vec<_>>(), ids);
+        assert_eq!(
+            restarted
+                .queue
+                .tasks
+                .iter()
+                .map(|task| task.id)
+                .collect::<Vec<_>>(),
+            ids
+        );
         assert!(restarted.routines.routines[0].last_day > 0);
-        drop(restarted); let _ = std::fs::remove_dir_all(path);
+        drop(restarted);
+        let _ = std::fs::remove_dir_all(path);
     }
 }
 
 impl<'a> Daemon<'a> {
-    fn queue_routine_once(&mut self, key: &str, steps: &[String], t: u64) -> crate::error::Result<bool> {
+    fn queue_routine_once(
+        &mut self,
+        key: &str,
+        steps: &[String],
+        t: u64,
+    ) -> crate::error::Result<bool> {
         let _guard = self.store.transaction()?;
         let before = self.queue.clone();
-        let (_, added) = self.queue.enqueue_origin_once(key, steps, crate::lanes::Lane::Foreground, t);
+        let (_, added) =
+            self.queue
+                .enqueue_origin_once(key, steps, crate::lanes::Lane::Foreground, t);
         if added {
-            if let Err(error) = self.queue.save(&self.store) { self.queue = before; return Err(error); }
+            if let Err(error) = self.queue.save(&self.store) {
+                self.queue = before;
+                return Err(error);
+            }
         }
         Ok(added)
     }
@@ -115,26 +238,54 @@ impl<'a> Daemon<'a> {
         if matches!(self.last_verdict, crate::voiceid::Verdict::NotYou(_)) {
             return false;
         }
-        self.plat.input_idle_secs().map(|s| s <= 300).unwrap_or(true)
+        self.plat
+            .input_idle_secs()
+            .map(|s| s <= 300)
+            .unwrap_or(true)
     }
 
     /// Where a code you asked to be typed goes: the sign-in Atlas is in the
     /// middle of, or the window in front of you.
     fn code_target(&self) -> Option<(crate::twofactor::Target, Option<String>)> {
         if let Some(site) = &self.signing_in_waiting {
-            return Some((crate::twofactor::Target::AtlasBrowser { site: site.clone() }, Some(site.clone())));
+            return Some((
+                crate::twofactor::Target::AtlasBrowser { site: site.clone() },
+                Some(site.clone()),
+            ));
         }
         let win = self.plat.active_window_id().ok().flatten()?;
-        let title = self.plat.active_window().ok().flatten().map(|w| w.title).unwrap_or_default();
+        let title = self
+            .plat
+            .active_window()
+            .ok()
+            .flatten()
+            .map(|w| w.title)
+            .unwrap_or_default();
         // The site, when the window's title names one ("Sign in - Google
         // Accounts — Chrome"), so a code from that site is preferred.
         let site = title
             .split(|c: char| !c.is_alphanumeric() && c != '.')
             .map(str::to_lowercase)
             .find(|w| {
-                ["google", "microsoft", "apple", "github", "amazon", "facebook", "instagram", "paypal",
-                 "discord", "reddit", "linkedin", "dropbox", "tiktok", "twitter", "chase", "outlook"]
-                    .contains(&w.as_str())
+                [
+                    "google",
+                    "microsoft",
+                    "apple",
+                    "github",
+                    "amazon",
+                    "facebook",
+                    "instagram",
+                    "paypal",
+                    "discord",
+                    "reddit",
+                    "linkedin",
+                    "dropbox",
+                    "tiktok",
+                    "twitter",
+                    "chase",
+                    "outlook",
+                ]
+                .contains(&w.as_str())
                     || (w.contains('.') && w.len() > 4)
             });
         Some((crate::twofactor::Target::Window { win: win.0, title }, site))
@@ -180,9 +331,18 @@ impl<'a> Daemon<'a> {
         use crate::twofactor::{read_out, Target};
         match target {
             Target::Window { win, title } => {
-                match crate::delegate::type_into_window(self.plat, crate::platform::WindowId(*win), code, true) {
+                match crate::delegate::type_into_window(
+                    self.plat,
+                    crate::platform::WindowId(*win),
+                    code,
+                    true,
+                ) {
                     Ok(()) => {
-                        let place = if title.is_empty() { String::new() } else { format!(" in {title}") };
+                        let place = if title.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" in {title}")
+                        };
                         format!("Typed {}{place} and pressed Enter.", read_out(code))
                     }
                     Err(e) => format!("I couldn't type it: {e}. The code is {}.", read_out(code)),
@@ -209,7 +369,10 @@ impl<'a> Daemon<'a> {
                         said
                     }
                     Ok(crate::webrun::SignedIn::WantsCode) => {
-                        format!("{site} took that and wants another code. {}", crate::twofactor::ask_for_it(Some(site)))
+                        format!(
+                            "{site} took that and wants another code. {}",
+                            crate::twofactor::ask_for_it(Some(site))
+                        )
                     }
                     Ok(other) => other.say(site),
                     Err(e) => format!("I couldn't put the code in: {e}."),
@@ -220,14 +383,22 @@ impl<'a> Daemon<'a> {
 
     /// The code is in your email: look through today's mail on a crew
     /// errand, and type the newest fresh one when it comes back.
-    fn find_code_in_mail(&mut self, target: crate::twofactor::Target, site: Option<String>, t: u64) -> String {
+    fn find_code_in_mail(
+        &mut self,
+        target: crate::twofactor::Target,
+        site: Option<String>,
+        t: u64,
+    ) -> String {
         let cfg = self.tools_cfg().mail.clone();
         if !cfg.enabled || cfg.accounts.is_empty() {
             return "I can't read your email yet (it isn't set up), so read me the code.".into();
         }
         let (jobs, problems) = self.resolve_mail_jobs(&cfg, t);
         if jobs.is_empty() {
-            return format!("I couldn't get into your email: {}. Read me the code.", problems.join("; "));
+            return format!(
+                "I couldn't get into your email: {}. Read me the code.",
+                problems.join("; ")
+            );
         }
         let since = crate::triage::imap_date(1, t);
         let work: crew::Work = Box::new(move |_ctl| {
@@ -251,7 +422,8 @@ impl<'a> Daemon<'a> {
                 ) {
                     Ok(msgs) => {
                         for m in msgs.iter().rev().take(40) {
-                            if let Some(code) = crate::twofactor::code_in_text(&m.subject, &m.body) {
+                            if let Some(code) = crate::twofactor::code_in_text(&m.subject, &m.body)
+                            {
                                 found.push(crate::twofactor::Found {
                                     code,
                                     from: m.from.clone(),
@@ -278,7 +450,12 @@ impl<'a> Daemon<'a> {
     }
 
     /// A code search, a sign-in, a security change or a sign-up came back.
-    pub(super) fn two_factor_news(&mut self, label: &str, ending: &crew::Ending, t: u64) -> Option<String> {
+    pub(super) fn two_factor_news(
+        &mut self,
+        label: &str,
+        ending: &crew::Ending,
+        t: u64,
+    ) -> Option<String> {
         let json = match ending {
             crew::Ending::Done(Ok(j)) => j.clone(),
             crew::Ending::Done(Err(e)) => {
@@ -295,16 +472,30 @@ impl<'a> Daemon<'a> {
         match label {
             "code" => {
                 let (target, site) = self.code_wanted.take()?;
-                let found: Vec<crate::twofactor::Found> = serde_json::from_str(&json).unwrap_or_default();
+                let found: Vec<crate::twofactor::Found> =
+                    serde_json::from_str(&json).unwrap_or_default();
                 Some(match crate::twofactor::newest(&found, site.as_deref(), t) {
                     Some(f) => self.put_code(&target, &f.code),
-                    None => crate::twofactor::none_found(crate::twofactor::Source::Email, site.as_deref()),
+                    None => crate::twofactor::none_found(
+                        crate::twofactor::Source::Email,
+                        site.as_deref(),
+                    ),
                 })
             }
             "sign-in" => {
                 let o: SignInOutcome = serde_json::from_str(&json).ok()?;
-                let worked = matches!(o.outcome, crate::webrun::SignedIn::In | crate::webrun::SignedIn::WantsCode);
-                self.access.note_use(&o.site, &o.account, &crate::webrun::login_url(&o.site), worked, true, t);
+                let worked = matches!(
+                    o.outcome,
+                    crate::webrun::SignedIn::In | crate::webrun::SignedIn::WantsCode
+                );
+                self.access.note_use(
+                    &o.site,
+                    &o.account,
+                    &crate::webrun::login_url(&o.site),
+                    worked,
+                    true,
+                    t,
+                );
                 let _ = self.access.save(&self.store);
                 if o.outcome == crate::webrun::SignedIn::WantsCode {
                     self.signing_in_waiting = Some(o.site.clone());
@@ -324,7 +515,10 @@ impl<'a> Daemon<'a> {
                     ));
                 }
                 if let Some(why) = o.failed {
-                    return Some(format!("I couldn't open my browser to do it ({why}). It's yours from here: {}", o.url));
+                    return Some(format!(
+                        "I couldn't open my browser to do it ({why}). It's yours from here: {}",
+                        o.url
+                    ));
                 }
                 let p = o.pressed?;
                 let worked = p == crate::confirmed::Pressed::Done;
@@ -368,15 +562,40 @@ impl<'a> Daemon<'a> {
                     ),
                     crate::webrun::SignedUp::Failed(why) => format!("I couldn't make the account on {}: {why}.", e.domain),
                 };
-                let state = match &o.outcome { crate::webrun::SignedUp::Made => crate::enrol::SignupState::Confirmed, crate::webrun::SignedUp::NoForm | crate::webrun::SignedUp::Failed(_) => crate::enrol::SignupState::NotSubmitted, crate::webrun::SignedUp::Stopped(_) => crate::enrol::SignupState::Blocked, crate::webrun::SignedUp::Unconfirmed(_) => crate::enrol::SignupState::Unconfirmed };
+                let state = match &o.outcome {
+                    crate::webrun::SignedUp::Made => crate::enrol::SignupState::Confirmed,
+                    crate::webrun::SignedUp::NoForm | crate::webrun::SignedUp::Failed(_) => {
+                        crate::enrol::SignupState::NotSubmitted
+                    }
+                    crate::webrun::SignedUp::Stopped(_) => crate::enrol::SignupState::Blocked,
+                    crate::webrun::SignedUp::Unconfirmed(_) => {
+                        crate::enrol::SignupState::Unconfirmed
+                    }
+                };
                 let persisted = (|| -> crate::error::Result<()> {
                     let _guard = self.store.transaction()?;
-                    let mut attempts: crate::enrol::SignupAttempts = self.store.load_checked(crate::enrol::SIGNUP_ATTEMPTS)?.unwrap_or_default();
-                    if !attempts.settle(&e, state, &said) { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "signup attempt identity changed; result wasn't applied").into()); }
+                    let mut attempts: crate::enrol::SignupAttempts = self
+                        .store
+                        .load_checked(crate::enrol::SIGNUP_ATTEMPTS)?
+                        .unwrap_or_default();
+                    if !attempts.settle(&e, state, &said) {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "signup attempt identity changed; result wasn't applied",
+                        )
+                        .into());
+                    }
                     self.store.save(crate::enrol::SIGNUP_ATTEMPTS, &attempts)
                 })();
-                if let Err(err) = persisted { return Some(format!("{said} Its result couldn't be saved ({err}); the pending attempt remains fenced. Don't repeat it before checking.")); }
-                self.journal.record_at(Act::Upkeep, &format!("sign-up on {}: {}", e.domain, said), matches!(o.outcome, crate::webrun::SignedUp::Made), t);
+                if let Err(err) = persisted {
+                    return Some(format!("{said} Its result couldn't be saved ({err}); the pending attempt remains fenced. Don't repeat it before checking."));
+                }
+                self.journal.record_at(
+                    Act::Upkeep,
+                    &format!("sign-up on {}: {}", e.domain, said),
+                    matches!(o.outcome, crate::webrun::SignedUp::Made),
+                    t,
+                );
                 self.enrolling = if e.is_waiting() { Some(e) } else { None };
                 Some(said)
             }
@@ -408,9 +627,20 @@ impl<'a> Daemon<'a> {
                 }
                 Err(e) => crate::webrun::SignedIn::Failed(e.to_string()),
             };
-            serde_json::to_string(&SignInOutcome { site: s, account: a, outcome }).map_err(|e| e.to_string())
+            serde_json::to_string(&SignInOutcome {
+                site: s,
+                account: a,
+                outcome,
+            })
+            .map_err(|e| e.to_string())
         });
-        if self.hand_off("sign-in", t, work, Some(site.to_string()), SpeakPolicy::Always) {
+        if self.hand_off(
+            "sign-in",
+            t,
+            work,
+            Some(site.to_string()),
+            SpeakPolicy::Always,
+        ) {
             format!("Signing you in to {site} as {account}.")
         } else {
             "I'm too busy to sign in right now — ask me again in a moment.".into()
@@ -421,7 +651,10 @@ impl<'a> Daemon<'a> {
     pub(super) fn two_factor(&mut self, said: &str) -> String {
         use crate::confirmed::{Asked, Change, Step};
         let t = said.to_lowercase();
-        let change = if ["off", "disable", "remove"].iter().any(|w| t.split_whitespace().any(|x| x == *w)) {
+        let change = if ["off", "disable", "remove"]
+            .iter()
+            .any(|w| t.split_whitespace().any(|x| x == *w))
+        {
             Change::TurnOffTwoFactor
         } else {
             Change::TurnOnTwoFactor
@@ -430,7 +663,11 @@ impl<'a> Daemon<'a> {
             return format!("Which site should I {} for?", change.plainly());
         };
         let cfg = self.tools_cfg().confirmed.clone();
-        let asked = Asked { site: site.clone(), account: String::new(), change };
+        let asked = Asked {
+            site: site.clone(),
+            account: String::new(),
+            change,
+        };
         match crate::confirmed::read_back(
             &asked,
             self.you_are_at_the_machine(),
@@ -452,7 +689,11 @@ impl<'a> Daemon<'a> {
 
     /// Your yes to a read-back: sign in if need be, then press the switch,
     /// on a crew errand.
-    pub(super) fn make_security_change(&mut self, asked: crate::confirmed::Asked, t: u64) -> String {
+    pub(super) fn make_security_change(
+        &mut self,
+        asked: crate::confirmed::Asked,
+        t: u64,
+    ) -> String {
         let Some((url, _)) = crate::walkthrough::where_2fa_lives(&asked.site) else {
             return format!(
                 "I don't know where the two-factor setting lives on {} yet, and I won't guess. \
@@ -472,7 +713,13 @@ impl<'a> Daemon<'a> {
             .and_then(|v| crate::enrol::Enrolment::split_login(&v));
         let a = asked.clone();
         let work: crew::Work = Box::new(move |_ctl| {
-            let mut out = SecurityOutcome { asked: a.clone(), url: url.clone(), pressed: None, wants_code: false, failed: None };
+            let mut out = SecurityOutcome {
+                asked: a.clone(),
+                url: url.clone(),
+                pressed: None,
+                wants_code: false,
+                failed: None,
+            };
             let mut b = match crate::browser::Browser::start(&bcfg, &vars) {
                 Ok(b) => b,
                 Err(e) => {
@@ -509,7 +756,13 @@ impl<'a> Daemon<'a> {
             }
             serde_json::to_string(&out).map_err(|e| e.to_string())
         });
-        if self.hand_off("security-change", t, work, Some(asked.site.clone()), SpeakPolicy::Always) {
+        if self.hand_off(
+            "security-change",
+            t,
+            work,
+            Some(asked.site.clone()),
+            SpeakPolicy::Always,
+        ) {
             format!("Going to {} to {}.", asked.site, asked.change.plainly())
         } else {
             "I'm too busy to do that right now — ask me again in a moment.".into()
@@ -533,11 +786,24 @@ impl<'a> Daemon<'a> {
         if email.is_empty() {
             return "I need an email address to sign you up with, and I don't have one — set up your mail first.".into();
         }
-        if self.signup_inflight(domain) { return format!("I'm already making an account on {domain}; I won't open a second form for it."); }
+        if self.signup_inflight(domain) {
+            return format!(
+                "I'm already making an account on {domain}; I won't open a second form for it."
+            );
+        }
         let username = email.split('@').next().unwrap_or("").to_string();
-        let guard = match self.store.transaction() { Ok(guard) => guard, Err(e) => return format!("Signup didn't start: state is busy ({e}); no external form opened.") };
+        let guard = match self.store.transaction() {
+            Ok(guard) => guard,
+            Err(e) => {
+                return format!(
+                    "Signup didn't start: state is busy ({e}); no external form opened."
+                )
+            }
+        };
         let mut attempts: crate::enrol::SignupAttempts = match self.store.load_checked(crate::enrol::SIGNUP_ATTEMPTS) { Ok(attempts) => attempts.unwrap_or_default(), Err(e) => return format!("Signup didn't start: earlier attempt coverage is unavailable ({e}); check the service before repeating.") };
-        if !attempts.may_start(domain, &username) { return format!("An earlier signup for {username} on {domain} is still recorded. Check that service before another attempt; no new form opened."); }
+        if !attempts.may_start(domain, &username) {
+            return format!("An earlier signup for {username} on {domain} is still recorded. Check that service before another attempt; no new form opened.");
+        }
         let entropy = crate::vault::random_bytes(64);
         let password = match cfg.password.make(&entropy) {
             Ok(p) => p,
@@ -547,15 +813,34 @@ impl<'a> Daemon<'a> {
         let (name, kind, value) = e.vault_write(&password);
         let previous_vault = self.vault.clone();
         if let Err(err) = self.vault.put(&name, kind, &value, t) {
-            return format!("I couldn't keep the new password in the vault ({err}), so I didn't start.");
+            return format!(
+                "I couldn't keep the new password in the vault ({err}), so I didn't start."
+            );
         }
-        if let Err(err) = self.vault.save(&self.vault_home) { self.vault = previous_vault; return format!("Signup didn't start: its generated password couldn't be saved ({err}); no external form opened."); }
+        if let Err(err) = self.vault.save(&self.vault_home) {
+            self.vault = previous_vault;
+            return format!("Signup didn't start: its generated password couldn't be saved ({err}); no external form opened.");
+        }
         // Grant sign-in on the new account, so the next "sign me in" works.
         let previous_access = self.access.clone();
-        self.access.grant(domain, &username, domain, crate::signin::Allowed::SignIn, &name, t);
-        if let Err(err) = self.access.save(&self.store) { self.access = previous_access; return format!("The password is kept, but signup didn't start because its access permission couldn't be saved ({err}). No external form opened."); }
-        if !attempts.begin(&e) { return "Signup didn't start: its attempt record could not be reserved. No external form opened.".into(); }
-        if let Err(err) = self.store.save(crate::enrol::SIGNUP_ATTEMPTS, &attempts) { return format!("Signup didn't start: its attempt fence couldn't be saved ({err}); no external form opened."); }
+        self.access.grant(
+            domain,
+            &username,
+            domain,
+            crate::signin::Allowed::SignIn,
+            &name,
+            t,
+        );
+        if let Err(err) = self.access.save(&self.store) {
+            self.access = previous_access;
+            return format!("The password is kept, but signup didn't start because its access permission couldn't be saved ({err}). No external form opened.");
+        }
+        if !attempts.begin(&e) {
+            return "Signup didn't start: its attempt record could not be reserved. No external form opened.".into();
+        }
+        if let Err(err) = self.store.save(crate::enrol::SIGNUP_ATTEMPTS, &attempts) {
+            return format!("Signup didn't start: its attempt fence couldn't be saved ({err}); no external form opened.");
+        }
         drop(guard);
         let queued_enrolment = e.clone();
         let bcfg = self.tools_cfg().browser.clone();
@@ -563,21 +848,50 @@ impl<'a> Daemon<'a> {
         let work: crew::Work = Box::new(move |ctl| {
             let outcome = match crate::browser::Browser::start(&bcfg, &vars) {
                 Ok(mut b) => {
-                    let o = crate::webrun::sign_up_unless(&mut b, &mut e, &email, &password, &cfg, None, &|| ctl.stopping());
+                    let o = crate::webrun::sign_up_unless(
+                        &mut b,
+                        &mut e,
+                        &email,
+                        &password,
+                        &cfg,
+                        None,
+                        &|| ctl.stopping(),
+                    );
                     b.close();
                     o
                 }
                 Err(err) => crate::webrun::SignedUp::Failed(err.to_string()),
             };
-            serde_json::to_string(&SignUpOutcome { enrolment: e, outcome }).map_err(|e| e.to_string())
+            serde_json::to_string(&SignUpOutcome {
+                enrolment: e,
+                outcome,
+            })
+            .map_err(|e| e.to_string())
         });
-        if self.hand_off("sign-up", t, work, Some(domain.to_string()), SpeakPolicy::Always) {
+        if self.hand_off(
+            "sign-up",
+            t,
+            work,
+            Some(domain.to_string()),
+            SpeakPolicy::Always,
+        ) {
             format!("Making you an account on {domain}. I'll stop at anything that wants payment, ID or a robot check.")
         } else {
             let saved = (|| -> crate::error::Result<()> {
                 let _guard = self.store.transaction()?;
-                let mut current: crate::enrol::SignupAttempts = self.store.load_checked(crate::enrol::SIGNUP_ATTEMPTS)?.unwrap_or_default();
-                if !current.settle(&queued_enrolment, crate::enrol::SignupState::NotSubmitted, "The worker queue was full; no browser or signup form started.") { return Err(crate::error::AtlasError::Platform("signup reservation changed".into())); }
+                let mut current: crate::enrol::SignupAttempts = self
+                    .store
+                    .load_checked(crate::enrol::SIGNUP_ATTEMPTS)?
+                    .unwrap_or_default();
+                if !current.settle(
+                    &queued_enrolment,
+                    crate::enrol::SignupState::NotSubmitted,
+                    "The worker queue was full; no browser or signup form started.",
+                ) {
+                    return Err(crate::error::AtlasError::Platform(
+                        "signup reservation changed".into(),
+                    ));
+                }
                 self.store.save(crate::enrol::SIGNUP_ATTEMPTS, &current)
             })();
             match saved {
@@ -587,7 +901,15 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    fn signup_inflight(&self, domain: &str) -> bool { self.crew_links.values().any(|link| link.label == "sign-up" && link.topic.as_deref().is_some_and(|d| d.eq_ignore_ascii_case(domain))) }
+    fn signup_inflight(&self, domain: &str) -> bool {
+        self.crew_links.values().any(|link| {
+            link.label == "sign-up"
+                && link
+                    .topic
+                    .as_deref()
+                    .is_some_and(|d| d.eq_ignore_ascii_case(domain))
+        })
+    }
 }
 
 impl<'a> Daemon<'a> {
@@ -607,7 +929,12 @@ impl<'a> Daemon<'a> {
                 _ => false,
             };
             if fixed {
-                self.journal.record_at(Act::Upkeep, &format!("fixed on my own: {}", s.what), true, t);
+                self.journal.record_at(
+                    Act::Upkeep,
+                    &format!("fixed on my own: {}", s.what),
+                    true,
+                    t,
+                );
                 done.push(s.id.clone());
             }
         }
@@ -647,18 +974,34 @@ impl<'a> Daemon<'a> {
             // Still stuck: write it up properly and ask the bigger model once
             // (D, minimally). Without one, the write-up is kept for when
             // there is.
-            if let crate::build_it::Outcome::Struggled { code, rounds, last_failure } = &outcome {
-                let latest = crate::build_it::Struggle { code: code.clone(), failure: last_failure.clone(), ..s.clone() };
+            if let crate::build_it::Outcome::Struggled {
+                code,
+                rounds,
+                last_failure,
+            } = &outcome
+            {
+                let latest = crate::build_it::Struggle {
+                    code: code.clone(),
+                    failure: last_failure.clone(),
+                    ..s.clone()
+                };
                 if llm.has_stronger() {
-                    let (o, why) = crate::build_it::ask_for_help(&latest, *rounds, llm.as_ref(), &hcfg, |code: &str| {
-                        check_draft_in_sandbox(&mut sandbox, lang, code)
-                    });
+                    let (o, why) = crate::build_it::ask_for_help(
+                        &latest,
+                        *rounds,
+                        llm.as_ref(),
+                        &hcfg,
+                        |code: &str| check_draft_in_sandbox(&mut sandbox, lang, code),
+                    );
                     outcome = o;
                     said = format!("{said} {why}");
                 } else {
                     crate::heard!(std::fs::create_dir_all(&out_dir));
                     let brief = out_dir.join("ask-for-help.md");
-                    crate::kept!(std::fs::write(&brief, crate::build_it::write_up(&latest, *rounds, &hcfg)));
+                    crate::kept!(std::fs::write(
+                        &brief,
+                        crate::build_it::write_up(&latest, *rounds, &hcfg)
+                    ));
                     said = format!(
                         "{said} I've written the problem up for a bigger model in {} — once your server's model is set as the stronger one, I'll ask it myself.",
                         brief.display()
@@ -668,10 +1011,20 @@ impl<'a> Daemon<'a> {
             crate::heard!(sandbox.discard());
             if let Some(code) = outcome.code() {
                 crate::heard!(std::fs::create_dir_all(&out_dir));
-                let ext = if outcome.is_built() { ext_for(lang).to_string() } else { format!("draft.{}", ext_for(lang)) };
+                let ext = if outcome.is_built() {
+                    ext_for(lang).to_string()
+                } else {
+                    format!("draft.{}", ext_for(lang))
+                };
                 let path = crate::build_it::file_name_for(&out_dir, &named, &ext);
                 said = match std::fs::write(&path, code) {
-                    Ok(()) => format!("{said} Saved as {}, in {}.", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), out_dir.display()),
+                    Ok(()) => format!(
+                        "{said} Saved as {}, in {}.",
+                        path.file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default(),
+                        out_dir.display()
+                    ),
                     Err(e) => format!("{said} (I couldn't save it to {} -- {e}.)", path.display()),
                 };
             }
@@ -698,7 +1051,11 @@ impl<'a> Daemon<'a> {
         // Answers, chat and anything to do with secrets aren't routines.
         if matches!(
             intent,
-            Intent::Say(_) | Intent::Unknown(_) | Intent::Unlock(_) | Intent::TypeCode(_) | Intent::TwoFactor(_)
+            Intent::Say(_)
+                | Intent::Unknown(_)
+                | Intent::Unlock(_)
+                | Intent::TypeCode(_)
+                | Intent::TwoFactor(_)
         ) {
             return;
         }
@@ -707,7 +1064,12 @@ impl<'a> Daemon<'a> {
         if words.is_empty() {
             return;
         }
-        self.routines.did(&words, t, crate::localclock::hour(t, off) as u32, crate::localclock::weekday(t, off));
+        self.routines.did(
+            &words,
+            t,
+            crate::localclock::hour(t, off) as u32,
+            crate::localclock::weekday(t, off),
+        );
     }
 
     /// E4, on the hour: ask about a routine once it's been seen three times,
@@ -728,28 +1090,75 @@ impl<'a> Daemon<'a> {
             }
         }
         let off = crate::localclock::offset_secs();
-        let (hour, weekday) = (crate::localclock::hour(t, off) as u32, crate::localclock::weekday(t, off));
+        let (hour, weekday) = (
+            crate::localclock::hour(t, off) as u32,
+            crate::localclock::weekday(t, off),
+        );
         let day = crate::localclock::day(t, off).max(0) as u64;
-        let due: Vec<_> = self.routines.routines.iter().filter(|routine| routine.due(hour, weekday) && routine.last_day != day).cloned().collect();
+        let due: Vec<_> = self
+            .routines
+            .routines
+            .iter()
+            .filter(|routine| routine.due(hour, weekday) && routine.last_day != day)
+            .cloned()
+            .collect();
         for r in due {
             if r.automatic {
                 let key = format!("routine:{}:{day}", r.name);
                 match self.queue_routine_once(&key, &r.steps, t) {
                     Ok(added) => {
-                        if let Some(routine) = self.routines.routines.iter_mut().find(|routine| routine.name == r.name) { routine.last_day = day; }
-                        if let Err(error) = self.store.save("routines", &self.routines) { self.log.warn(&format!("routine reservation remains pending ({error}); its saved queue origin prevents duplicate work")); }
-                        if added { out.push(format!("Queued your usual {} ({} steps).", r.name, r.steps.len())); }
+                        if let Some(routine) = self
+                            .routines
+                            .routines
+                            .iter_mut()
+                            .find(|routine| routine.name == r.name)
+                        {
+                            routine.last_day = day;
+                        }
+                        if let Err(error) = self.store.save("routines", &self.routines) {
+                            self.log.warn(&format!("routine reservation remains pending ({error}); its saved queue origin prevents duplicate work"));
+                        }
+                        if added {
+                            out.push(format!(
+                                "Queued your usual {} ({} steps).",
+                                r.name,
+                                r.steps.len()
+                            ));
+                        }
                     }
-                    Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => {},
-                    Err(error) => out.push(format!("I couldn't save your {} routine, so no steps started ({error}).", r.name)),
+                    Err(crate::error::AtlasError::Io(error))
+                        if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                    Err(error) => out.push(format!(
+                        "I couldn't save your {} routine, so no steps started ({error}).",
+                        r.name
+                    )),
                 }
-            } else if self.pending_routine_run.is_none() && matches!(self.session.pending, Pending::Nothing) {
+            } else if self.pending_routine_run.is_none()
+                && matches!(self.session.pending, Pending::Nothing)
+            {
                 let question = crate::routine::starting(&r);
                 self.read_left_waiting();
-                let mut pending: Vec<LeftWaiting> = match self.store.load_checked(LEFT_WAITING) { Ok(value) => value.unwrap_or_default(), Err(error) => { self.log.warn(&format!("couldn't preserve routine question ({error})")); continue; } };
-                if !pending.iter().any(|entry| entry.what == question) { pending.push(LeftWaiting { what: question.clone(), asked: true, at: t }); }
-                if self.store.save(LEFT_WAITING, &pending).is_err() { continue; }
-                self.session.ask(&question); self.pending_routine_run = Some(r.steps.clone()); out.push(question);
+                let mut pending: Vec<LeftWaiting> = match self.store.load_checked(LEFT_WAITING) {
+                    Ok(value) => value.unwrap_or_default(),
+                    Err(error) => {
+                        self.log
+                            .warn(&format!("couldn't preserve routine question ({error})"));
+                        continue;
+                    }
+                };
+                if !pending.iter().any(|entry| entry.what == question) {
+                    pending.push(LeftWaiting {
+                        what: question.clone(),
+                        asked: true,
+                        at: t,
+                    });
+                }
+                if self.store.save(LEFT_WAITING, &pending).is_err() {
+                    continue;
+                }
+                self.session.ask(&question);
+                self.pending_routine_run = Some(r.steps.clone());
+                out.push(question);
             }
         }
         let _ = self.store.save("routines", &self.routines);
@@ -763,13 +1172,21 @@ impl<'a> Daemon<'a> {
             let pending = self.session.pending.clone();
             self.session.pending = Pending::Nothing;
             let reply = if is_yes(said) {
-                let steps = self.routines.routines.iter().find(|r| r.name == name).map(|r| r.steps.clone()).unwrap_or_default();
+                let steps = self
+                    .routines
+                    .routines
+                    .iter()
+                    .find(|r| r.name == name)
+                    .map(|r| r.steps.clone())
+                    .unwrap_or_default();
                 let cfg = self.tools_cfg().routine.clone();
                 let automatic = crate::routine::is_concrete(&steps)
                     && !(cfg.never_automate_outgoing && crate::routine::sends_something(&steps));
                 self.routines.confirm(&name, automatic);
                 if automatic {
-                    format!("Done — I'll do your {name} myself when it's time, and say so as I start.")
+                    format!(
+                        "Done — I'll do your {name} myself when it's time, and say so as I start."
+                    )
                 } else {
                     format!("Done — when it's time I'll ask: \"Your usual {name}?\"")
                 }
@@ -778,8 +1195,12 @@ impl<'a> Daemon<'a> {
                 "Alright, I won't.".into()
             };
             if let Err(error) = self.store.save("routines", &self.routines) {
-                self.routines = before; self.pending_routine = Some(name); self.session.pending = pending;
-                return Some(format!("I couldn't save that routine decision ({error}); it is still waiting on you."));
+                self.routines = before;
+                self.pending_routine = Some(name);
+                self.session.pending = pending;
+                return Some(format!(
+                    "I couldn't save that routine decision ({error}); it is still waiting on you."
+                ));
             }
             return Some(reply);
         }
@@ -788,23 +1209,58 @@ impl<'a> Daemon<'a> {
             if !is_yes(said) {
                 let before = self.routines.clone();
                 let day = crate::localclock::day(t, crate::localclock::offset_secs()).max(0) as u64;
-                if let Some(routine) = self.routines.routines.iter_mut().find(|routine| routine.steps == steps) { routine.last_day = day; }
+                if let Some(routine) = self
+                    .routines
+                    .routines
+                    .iter_mut()
+                    .find(|routine| routine.steps == steps)
+                {
+                    routine.last_day = day;
+                }
                 if let Err(error) = self.store.save("routines", &self.routines) {
-                    self.routines = before; self.pending_routine_run = Some(steps); self.session.ask("Your routine decision is still waiting to be saved.");
-                    return Some(format!("I couldn't save ‘not today’ ({error}); no routine steps started."));
+                    self.routines = before;
+                    self.pending_routine_run = Some(steps);
+                    self.session
+                        .ask("Your routine decision is still waiting to be saved.");
+                    return Some(format!(
+                        "I couldn't save ‘not today’ ({error}); no routine steps started."
+                    ));
                 }
                 return Some("Alright, not today.".into());
             }
             let day = crate::localclock::day(t, crate::localclock::offset_secs()).max(0) as u64;
-            let name = self.routines.routines.iter().find(|routine| routine.steps == steps).map(|routine| routine.name.clone()).unwrap_or_else(|| steps.join(" | "));
+            let name = self
+                .routines
+                .routines
+                .iter()
+                .find(|routine| routine.steps == steps)
+                .map(|routine| routine.name.clone())
+                .unwrap_or_else(|| steps.join(" | "));
             let key = format!("routine:{name}:{day}");
             return Some(match self.queue_routine_once(&key, &steps, t) {
                 Ok(added) => {
-                    if let Some(routine) = self.routines.routines.iter_mut().find(|routine| routine.name == name) { routine.last_day = day; }
+                    if let Some(routine) = self
+                        .routines
+                        .routines
+                        .iter_mut()
+                        .find(|routine| routine.name == name)
+                    {
+                        routine.last_day = day;
+                    }
                     let _ = self.store.save("routines", &self.routines);
-                    if added { format!("Queued your usual {name} ({} steps).", steps.len()) } else { "That routine is already queued or has an outcome recorded for today.".into() }
+                    if added {
+                        format!("Queued your usual {name} ({} steps).", steps.len())
+                    } else {
+                        "That routine is already queued or has an outcome recorded for today."
+                            .into()
+                    }
                 }
-                Err(error) => { self.pending_routine_run = Some(steps); self.session.ask("Your routine is still waiting. Shall I try to save its queue again?"); format!("No routine steps started: its queue couldn't be saved ({error}).") }
+                Err(error) => {
+                    self.pending_routine_run = Some(steps);
+                    self.session
+                        .ask("Your routine is still waiting. Shall I try to save its queue again?");
+                    format!("No routine steps started: its queue couldn't be saved ({error}).")
+                }
             });
         }
         None
@@ -816,23 +1272,36 @@ impl<'a> Daemon<'a> {
         let lower = said.to_lowercase();
         let words = crate::nudge::goal_words(said);
         let reply = if lower.contains("what are my goals") || lower.trim() == "my goals" {
-            let live: Vec<&crate::nudge::Goal> = self.nudger.goals.iter().filter(|g| !g.muted).collect();
+            let live: Vec<&crate::nudge::Goal> =
+                self.nudger.goals.iter().filter(|g| !g.muted).collect();
             if live.is_empty() {
                 "You haven't set any goals. Say \"my goal is …\" and I'll nudge you toward it when it goes quiet.".into()
             } else {
                 let each: Vec<String> = live.iter().map(|g| g.what.clone()).collect();
                 format!("Your goals: {}.", each.join("; "))
             }
-        } else if ["drop the goal", "forget the goal", "done with the goal"].iter().any(|p| lower.contains(p)) {
+        } else if ["drop the goal", "forget the goal", "done with the goal"]
+            .iter()
+            .any(|p| lower.contains(p))
+        {
             match crate::nudge::which_goal(&self.nudger.goals, &words).map(|g| g.id.clone()) {
                 Some(id) => {
-                    let what = self.nudger.goals.iter().find(|g| g.id == id).map(|g| g.what.clone()).unwrap_or_default();
+                    let what = self
+                        .nudger
+                        .goals
+                        .iter()
+                        .find(|g| g.id == id)
+                        .map(|g| g.what.clone())
+                        .unwrap_or_default();
                     self.nudger.goals.retain(|g| g.id != id);
                     format!("Dropped \"{what}\". I won't bring it up again.")
                 }
                 None => "I couldn't tell which goal you meant.".into(),
             }
-        } else if ["worked on", "progress on"].iter().any(|p| lower.contains(p)) {
+        } else if ["worked on", "progress on"]
+            .iter()
+            .any(|p| lower.contains(p))
+        {
             match crate::nudge::which_goal(&self.nudger.goals, &words).map(|g| g.id.clone()) {
                 Some(id) => {
                     self.nudger.moved(&id, t);
@@ -888,7 +1357,12 @@ impl<'a> Daemon<'a> {
             .collect();
         let key = format!("estimate_said_{label}");
         let last: Option<u64> = self.store.load(&key);
-        let line = crate::timebox::estimate_worth_saying(crate::timebox::usual_secs(&past), open_ended, last, t)?;
+        let line = crate::timebox::estimate_worth_saying(
+            crate::timebox::usual_secs(&past),
+            open_ended,
+            last,
+            t,
+        )?;
         let _ = self.store.save(&key, &Some(t));
         Some(line)
     }
@@ -911,7 +1385,8 @@ impl<'a> Daemon<'a> {
         }
         // "Call me Eric" is the answer to the first question, not a command.
         let (parsed, name) = self.parser.parse_named(said);
-        let commanded = !matches!(parsed, Intent::Unknown(_)) && name.as_deref() != Some("address_as");
+        let commanded =
+            !matches!(parsed, Intent::Unknown(_)) && name.as_deref() != Some("address_as");
         if said.trim_end().ends_with('?') || commanded {
             self.interview = None;
             return None;
@@ -925,7 +1400,9 @@ impl<'a> Daemon<'a> {
             // The hunt's two lists are lists, kept whole under their own
             // names -- `learn` would merge the second into the first, their
             // words being the same.
-            if f.name == crate::facts::slug(crate::hunt::FACT_WANT) || f.name == crate::facts::slug(crate::hunt::FACT_SKILLS) {
+            if f.name == crate::facts::slug(crate::hunt::FACT_WANT)
+                || f.name == crate::facts::slug(crate::hunt::FACT_SKILLS)
+            {
                 self.facts.put(f);
             } else {
                 self.facts.learn(f, t);
@@ -970,11 +1447,19 @@ impl<'a> Daemon<'a> {
             } else {
                 "That's already on your later list.".into()
             }
-        } else if !["that", "this", "it"].iter().any(|w| lower.split(|c: char| !c.is_alphanumeric()).any(|x| x == *w)) {
+        } else if !["that", "this", "it"]
+            .iter()
+            .any(|w| lower.split(|c: char| !c.is_alphanumeric()).any(|x| x == *w))
+        {
             "Say what to put on it -- \"add call the bank to my later list\" -- or \"save that for later\" right after I've said something.".into()
         } else {
             // "That" is what Atlas last said.
-            let last = self.session.turns.last().map(|t| t.reply.clone()).unwrap_or_default();
+            let last = self
+                .session
+                .turns
+                .last()
+                .map(|t| t.reply.clone())
+                .unwrap_or_default();
             let what = crate::later::gist(&last);
             if what.is_empty() {
                 "There's nothing I just said to put on it.".into()
@@ -1000,8 +1485,16 @@ impl<'a> Daemon<'a> {
             let _ = self.store.save("landing_asked", &(0u32, 0u64));
             return None;
         }
-        let what = self.selfwork.as_ref().map(|s| s.goal.clone()).unwrap_or_else(|| "a fix to myself".into());
-        let paths: Vec<String> = self.pending_landing.iter().map(|c| c.target.display().to_string()).collect();
+        let what = self
+            .selfwork
+            .as_ref()
+            .map(|s| s.goal.clone())
+            .unwrap_or_else(|| "a fix to myself".into());
+        let paths: Vec<String> = self
+            .pending_landing
+            .iter()
+            .map(|c| c.target.display().to_string())
+            .collect();
         let reach = crate::selfgrant::reach_of_change(&paths);
         let (times, last): (u32, u64) = self.store.load("landing_asked");
         let line = if times == 0 {
@@ -1012,25 +1505,43 @@ impl<'a> Daemon<'a> {
             None
         }?;
         let _ = self.store.save("landing_asked", &(times + 1, t));
-        Some(format!("{line} Say \"go ahead\" to land it, or \"add that to the later list\"."))
+        Some(format!(
+            "{line} Say \"go ahead\" to land it, or \"add that to the later list\"."
+        ))
     }
 }
 
 impl<'a> Daemon<'a> {
     /// F9: an old correction that bears on the work just asked for, said once.
-    pub(super) fn related_old_correction(&mut self, intent: &Intent, said: &str, t: u64) -> Option<String> {
+    pub(super) fn related_old_correction(
+        &mut self,
+        intent: &Intent,
+        said: &str,
+        t: u64,
+    ) -> Option<String> {
         if !matches!(
             intent,
-            Intent::Research(_) | Intent::DraftPost(_) | Intent::Build(_) | Intent::Improve(_)
-                | Intent::AskTheRoom(_) | Intent::Message(_) | Intent::Dictate(_) | Intent::Explain(_)
+            Intent::Research(_)
+                | Intent::DraftPost(_)
+                | Intent::Build(_)
+                | Intent::Improve(_)
+                | Intent::AskTheRoom(_)
+                | Intent::Message(_)
+                | Intent::Dictate(_)
+                | Intent::Explain(_)
         ) {
             return None;
         }
         let mut mentioned: Vec<u64> = self.store.load("stale_notes_mentioned");
-        let hit = crate::revise::related_stale(&self.mending, said, t, &mentioned).first().map(|c| (c.at, c.wanted.clone().unwrap_or_default()))?;
+        let hit = crate::revise::related_stale(&self.mending, said, t, &mentioned)
+            .first()
+            .map(|c| (c.at, c.wanted.clone().unwrap_or_default()))?;
         mentioned.push(hit.0);
         let _ = self.store.save("stale_notes_mentioned", &mentioned);
-        Some(format!("Something like this came up before, and you wanted {} — I've kept that in mind.", hit.1.trim().trim_end_matches('.')))
+        Some(format!(
+            "Something like this came up before, and you wanted {} — I've kept that in mind.",
+            hit.1.trim().trim_end_matches('.')
+        ))
     }
 }
 
@@ -1039,9 +1550,13 @@ impl<'a> Daemon<'a> {
     /// Nothing when there's nothing missing.
     pub fn cant_do_here(&self) -> Option<String> {
         let root = crate::roots::install_root();
-        let pictures = self.tools_ref().map(|t| crate::picture_talk::ready(&t.picture_talk, &root));
-        let limits = what_this_machine_cant_do(crate::fit::limits(&self.fit), pictures, self.llm.is_some());
-        (!limits.is_empty()).then(|| format!("Before we start — on this machine: {}", limits.join(" ")))
+        let pictures = self
+            .tools_ref()
+            .map(|t| crate::picture_talk::ready(&t.picture_talk, &root));
+        let limits =
+            what_this_machine_cant_do(crate::fit::limits(&self.fit), pictures, self.llm.is_some());
+        (!limits.is_empty())
+            .then(|| format!("Before we start — on this machine: {}", limits.join(" ")))
     }
 }
 
@@ -1055,7 +1570,11 @@ impl<'a> Daemon<'a> {
         // the last sort put in that category. Deleting is moving to Trash,
         // where your mail app keeps it for its usual time.
         if let Some(cat) = crate::mail::category_to_delete(said) {
-            if self.mail_plans.iter().all(|p| !p.moves.iter().any(|(_, c)| c == cat)) {
+            if self
+                .mail_plans
+                .iter()
+                .all(|p| !p.moves.iter().any(|(_, c)| c == cat))
+            {
                 return format!("I haven't sorted anything into {cat} this time — ask me to sort your mailbox first.");
             }
             return self.apply_mail_plan(Some(cat), t);
@@ -1069,9 +1588,16 @@ impl<'a> Daemon<'a> {
         let work: crew::Work = Box::new(move |_ctl| {
             let mut plans = Vec::new();
             for (account, password) in &jobs {
-                let Some(host) = mail_host(account) else { continue };
+                let Some(host) = mail_host(account) else {
+                    continue;
+                };
                 let mut s = crate::imap::connect(&host, 993)?;
-                authenticate_imap(&mut s, &account.address, password, account.oauth.then_some(account.client_id.as_str()))?;
+                authenticate_imap(
+                    &mut s,
+                    &account.address,
+                    password,
+                    account.oauth.then_some(account.client_id.as_str()),
+                )?;
                 let msgs = s.fetch_matching("INBOX", &format!("SINCE {since}"))?;
                 s.logout();
                 let gmail = crate::mail::Provider::from_address(&account.address).has_labels();
@@ -1081,7 +1607,11 @@ impl<'a> Daemon<'a> {
                     // Never into a folder you've said to leave alone.
                     .filter(|(_, c)| !leave_alone.iter().any(|l| l.eq_ignore_ascii_case(c)))
                     .collect();
-                plans.push(crate::mail::SortPlan { account: account.name.clone(), gmail, moves });
+                plans.push(crate::mail::SortPlan {
+                    account: account.name.clone(),
+                    gmail,
+                    moves,
+                });
             }
             serde_json::to_string(&plans).map_err(|e| e.to_string())
         });
@@ -1112,10 +1642,20 @@ impl<'a> Daemon<'a> {
             let mut done = 0usize;
             let mut failed = Vec::new();
             for plan in &plans {
-                let Some((account, password)) = jobs.iter().find(|(a, _)| a.name == plan.account) else { continue };
-                let Some(host) = mail_host(account) else { continue };
+                let Some((account, password)) = jobs.iter().find(|(a, _)| a.name == plan.account)
+                else {
+                    continue;
+                };
+                let Some(host) = mail_host(account) else {
+                    continue;
+                };
                 let mut s = crate::imap::connect(&host, 993)?;
-                authenticate_imap(&mut s, &account.address, password, account.oauth.then_some(account.client_id.as_str()))?;
+                authenticate_imap(
+                    &mut s,
+                    &account.address,
+                    password,
+                    account.oauth.then_some(account.client_id.as_str()),
+                )?;
                 s.select("INBOX")?;
                 let provider = crate::mail::Provider::from_address(&account.address);
                 let trash = if plan.gmail { "[Gmail]/Trash" } else { "Trash" };
@@ -1189,71 +1729,153 @@ impl<'a> Daemon<'a> {
 
 impl<'a> Daemon<'a> {
     /// Schedule a post for a time you said, and approve it. "now" is now.
-    fn approve_post_in_background(&mut self, id: u64, at: Option<u64>, review: Option<&str>, t: u64) -> String {
-        let Some(expected) = self.publisher.get(id).cloned() else { return "That post no longer exists.".into(); };
+    fn approve_post_in_background(
+        &mut self,
+        id: u64,
+        at: Option<u64>,
+        review: Option<&str>,
+        t: u64,
+    ) -> String {
+        let Some(expected) = self.publisher.get(id).cloned() else {
+            return "That post no longer exists.".into();
+        };
         if let Some(review) = review {
-            if expected.state != crate::publish::PostState::Draft || expected.result.as_deref() != Some(crate::publish::CHECKED_ABSENT) || crate::publish::review_fingerprint(&expected) != review {
+            if expected.state != crate::publish::PostState::Draft
+                || expected.result.as_deref() != Some(crate::publish::CHECKED_ABSENT)
+                || crate::publish::review_fingerprint(&expected) != review
+            {
                 return "That reviewed draft changed, or its publication remains unconfirmed. Reload and review again.".into();
             }
         }
-        if matches!(expected.state, crate::publish::PostState::Sent | crate::publish::PostState::Cancelled | crate::publish::PostState::PendingSubmission | crate::publish::PostState::Uncertain) { return "That post cannot be approved now.".into(); }
+        if matches!(
+            expected.state,
+            crate::publish::PostState::Sent
+                | crate::publish::PostState::Cancelled
+                | crate::publish::PostState::PendingSubmission
+                | crate::publish::PostState::Uncertain
+        ) {
+            return "That post cannot be approved now.".into();
+        }
         let mut candidate = self.publisher.clone();
         let fingerprint = crate::publish::review_fingerprint(&expected);
-        let topic = format!("{id}:{}:{fingerprint}", at.map(|v| v.to_string()).unwrap_or_else(|| "now".into()));
+        let topic = format!(
+            "{id}:{}:{fingerprint}",
+            at.map(|v| v.to_string()).unwrap_or_else(|| "now".into())
+        );
         let work: crew::Work = Box::new(move |ctl| {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-            if let Some(at) = at { if !candidate.schedule(id, at) { return Err("That post cannot be scheduled.".into()); } }
-            if crate::publish::review_fingerprint(&expected) != fingerprint { return Err("An attachment changed after review.".into()); }
-            candidate.approve_unless(id, &|| ctl.stopping() || std::time::Instant::now() >= deadline)?;
-            if crate::publish::review_fingerprint(&expected) != fingerprint { return Err("An attachment changed during approval.".into()); }
+            if let Some(at) = at {
+                if !candidate.schedule(id, at) {
+                    return Err("That post cannot be scheduled.".into());
+                }
+            }
+            if crate::publish::review_fingerprint(&expected) != fingerprint {
+                return Err("An attachment changed after review.".into());
+            }
+            candidate.approve_unless(id, &|| {
+                ctl.stopping() || std::time::Instant::now() >= deadline
+            })?;
+            if crate::publish::review_fingerprint(&expected) != fingerprint {
+                return Err("An attachment changed during approval.".into());
+            }
             let approved = candidate.get(id).cloned().ok_or("post vanished")?;
-            serde_json::to_string(&crate::publish::PostApprovalReceipt { tag: "atlas.post_approval".into(), version: 1, expected, approved, requested_at: t, requested_send_at: at }).map_err(|e| e.to_string())
+            serde_json::to_string(&crate::publish::PostApprovalReceipt {
+                tag: "atlas.post_approval".into(),
+                version: 1,
+                expected,
+                approved,
+                requested_at: t,
+                requested_send_at: at,
+            })
+            .map_err(|e| e.to_string())
         });
-        if self.hand_off_as("post approval", t, work, Some(topic), SpeakPolicy::Always).is_some() {
+        if self
+            .hand_off_as("post approval", t, work, Some(topic), SpeakPolicy::Always)
+            .is_some()
+        {
             "Checking the exact approved attachments in the background. Publication is not confirmed; the result will say whether approval was saved.".into()
-        } else { "Approval work could not start; the post remains unchanged.".into() }
+        } else {
+            "Approval work could not start; the post remains unchanged.".into()
+        }
     }
 
-    pub(super) fn post_approval_news(&mut self, ending: &crew::Ending, t: u64) -> crate::taskloop::Outcome {
+    pub(super) fn post_approval_news(
+        &mut self,
+        ending: &crew::Ending,
+        t: u64,
+    ) -> crate::taskloop::Outcome {
         use crate::taskloop::Outcome;
         let receipt = match ending {
-            crew::Ending::Done(Ok(text)) if text.len() <= 131072 => serde_json::from_str::<crate::publish::PostApprovalReceipt>(text),
-            _ => return Outcome::Failed("Approval did not finish; nothing was approved by this worker.".into()),
+            crew::Ending::Done(Ok(text)) if text.len() <= 131072 => {
+                serde_json::from_str::<crate::publish::PostApprovalReceipt>(text)
+            }
+            _ => {
+                return Outcome::Failed(
+                    "Approval did not finish; nothing was approved by this worker.".into(),
+                )
+            }
         };
-        let Ok(receipt) = receipt else { return Outcome::Failed("Approval returned an invalid receipt; nothing changed.".into()); };
+        let Ok(receipt) = receipt else {
+            return Outcome::Failed(
+                "Approval returned an invalid receipt; nothing changed.".into(),
+            );
+        };
         let before = self.publisher.clone();
-        if !self.publisher.apply_approval_receipt(&receipt) { return Outcome::Failed("The post changed during approval; review it again.".into()); }
-        if let Err(e) = self.publisher.save(&self.store) { self.publisher = before; return Outcome::Failed(format!("Approval could not be saved: {e}")); }
+        if !self.publisher.apply_approval_receipt(&receipt) {
+            return Outcome::Failed("The post changed during approval; review it again.".into());
+        }
+        if let Err(e) = self.publisher.save(&self.store) {
+            self.publisher = before;
+            return Outcome::Failed(format!("Approval could not be saved: {e}"));
+        }
         if let Some(at) = receipt.approved.send_at.filter(|at| *at > t) {
-            Outcome::Done(format!("Approved and queued for {}. Publication will be checked separately.", crate::localclock::hhmm_here(at)))
-        } else { Outcome::NeedsYou("Approval saved for the exact post and attachments. Submission is queued; publication is not confirmed.".into()) }
+            Outcome::Done(format!(
+                "Approved and queued for {}. Publication will be checked separately.",
+                crate::localclock::hhmm_here(at)
+            ))
+        } else {
+            Outcome::NeedsYou("Approval saved for the exact post and attachments. Submission is queued; publication is not confirmed.".into())
+        }
     }
 
     pub(super) fn schedule_post_at(&mut self, id: u64, said: &str, t: u64) -> String {
         // Read on your clock, kept in UTC (28 Sep 2026): "tomorrow at 9" was
         // read as 9 in UTC, hours out, the way offered meeting times once
         // were (`booking_from`).
-        let now_said = crate::intent::normalize(said).split_whitespace().any(|w| w == "now");
+        let now_said = crate::intent::normalize(said)
+            .split_whitespace()
+            .any(|w| w == "now");
         let when = if now_said {
             Some(t)
         } else {
             let zone = self.home_zone();
             let lnow = zone.to_local(t as i64).max(0) as u64;
-            crate::calendar::resolve_when(said, lnow).map(|w| zone.to_utc(w.start as i64).max(0) as u64)
+            crate::calendar::resolve_when(said, lnow)
+                .map(|w| zone.to_utc(w.start as i64).max(0) as u64)
         };
         let Some(at) = when else {
             self.pending_post_when = Some(id);
-            let q = "I didn't catch the time — \"now\", \"at 6pm\" or \"tomorrow at 9\"?".to_string();
+            let q =
+                "I didn't catch the time — \"now\", \"at 6pm\" or \"tomorrow at 9\"?".to_string();
             self.session.ask(&q);
             return q;
         };
-        if self.publisher.get(id).is_some_and(|p| !p.media.is_empty()) { return self.approve_post_in_background(id, Some(at), None, t); }
+        if self.publisher.get(id).is_some_and(|p| !p.media.is_empty()) {
+            return self.approve_post_in_background(id, Some(at), None, t);
+        }
         let before = self.publisher.clone();
         if !self.publisher.schedule(id, at) || !self.publisher.approve(id) {
             return "That post can't be scheduled any more.".into();
         }
-        if let Err(e) = self.publisher.save(&self.store) { self.publisher = before; return format!("The approval and time couldn't be saved ({e}); the previous draft or schedule is unchanged. Nothing submitted by this request."); }
-        let what = self.publisher.get(id).map(|p| p.describe()).unwrap_or_default();
+        if let Err(e) = self.publisher.save(&self.store) {
+            self.publisher = before;
+            return format!("The approval and time couldn't be saved ({e}); the previous draft or schedule is unchanged. Nothing submitted by this request.");
+        }
+        let what = self
+            .publisher
+            .get(id)
+            .map(|p| p.describe())
+            .unwrap_or_default();
         if at <= t {
             format!("Posting {what} now.")
         } else {
@@ -1271,7 +1893,9 @@ impl<'a> Daemon<'a> {
             let id = self.publisher.pending().iter().rev().map(|p| p.id).next();
             return match id {
                 Some(id) if self.publisher.cancel(id) => {
-                    if let Err(e) = self.publisher.save(&self.store) { return format!("The post is paused here, but cancellation couldn't be saved ({e}). Check it before restarting Atlas; the earlier saved schedule may remain."); }
+                    if let Err(e) = self.publisher.save(&self.store) {
+                        return format!("The post is paused here, but cancellation couldn't be saved ({e}). Check it before restarting Atlas; the earlier saved schedule may remain.");
+                    }
                     "Cancelled — it won't go.".into()
                 }
                 _ => "There's no post waiting to cancel.".into(),
@@ -1342,7 +1966,11 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn send_post(&mut self, id: u64, t: u64, online: bool) -> Option<String> {
-        if self.posting.iter().any(|(p, not_before)| *p == id && t < *not_before) {
+        if self
+            .posting
+            .iter()
+            .any(|(p, not_before)| *p == id && t < *not_before)
+        {
             return None;
         }
         self.posting.retain(|(p, _)| *p != id);
@@ -1368,19 +1996,42 @@ impl<'a> Daemon<'a> {
         }
         // Bluesky goes through its own API with the app password from the
         // vault (social step 4); everything else through Atlas's browser.
-        let bluesky = self.publisher.get(id).is_some_and(|p| crate::delivery::is_bluesky(&p.channel)).then(|| {
-            if self.vault.state() != crate::vault::State::Open {
-                crate::heard!(self.vault.open_unattended(t));
-            }
-            let password = self.vault.get(crate::social::VAULT_BLUESKY, t).unwrap_or_default();
-            (self.social_cfg().bluesky_handle, password)
-        });
+        let bluesky = self
+            .publisher
+            .get(id)
+            .is_some_and(|p| crate::delivery::is_bluesky(&p.channel))
+            .then(|| {
+                if self.vault.state() != crate::vault::State::Open {
+                    crate::heard!(self.vault.open_unattended(t));
+                }
+                let password = self
+                    .vault
+                    .get(crate::social::VAULT_BLUESKY, t)
+                    .unwrap_or_default();
+                (self.social_cfg().bluesky_handle, password)
+            });
         let work: crew::Work = Box::new(move |ctl| {
             let outcome = match &bluesky {
-                Some((handle, password)) => crate::delivery::send_bluesky_unless(&mut publisher, &crate::social::posting::Live, handle, password, id, online, crate::store::now(), &|| ctl.stopping()),
+                Some((handle, password)) => crate::delivery::send_bluesky_unless(
+                    &mut publisher,
+                    &crate::social::posting::Live,
+                    handle,
+                    password,
+                    id,
+                    online,
+                    crate::store::now(),
+                    &|| ctl.stopping(),
+                ),
                 None => match crate::browser::Browser::start(&bcfg, &vars) {
                     Ok(mut b) => {
-                        let o = crate::delivery::send_unless(&mut publisher, &mut b, &bcfg, id, online, &|| ctl.stopping());
+                        let o = crate::delivery::send_unless(
+                            &mut publisher,
+                            &mut b,
+                            &bcfg,
+                            id,
+                            online,
+                            &|| ctl.stopping(),
+                        );
                         b.close();
                         o
                     }
@@ -1396,7 +2047,8 @@ impl<'a> Daemon<'a> {
             Ok(format!("{id}\t{kind}\t{msg}"))
         });
         if let Some(job) =
-            self.hand_off_as("post", t, work, Some(id.to_string()), SpeakPolicy::Always) {
+            self.hand_off_as("post", t, work, Some(id.to_string()), SpeakPolicy::Always)
+        {
             self.posting.push((id, u64::MAX));
             self.publication_jobs.insert(job, (id, t));
         } else {
@@ -1443,11 +2095,20 @@ impl<'a> Daemon<'a> {
         if kind == "retry" {
             self.posting.push((id, t + 300));
         }
-        let what = self.publisher.get(id).map(|p| p.describe()).unwrap_or_default();
+        let what = self
+            .publisher
+            .get(id)
+            .map(|p| p.describe())
+            .unwrap_or_default();
         let said = match kind.as_str() {
             "sent" => {
-                self.publisher.mark_sent(id, &format!("Program confirmed publication: {msg}"), true);
-                self.journal.record_at(Act::Published, &format!("{what}: {msg}"), true, t);
+                self.publisher.mark_sent(
+                    id,
+                    &format!("Program confirmed publication: {msg}"),
+                    true,
+                );
+                self.journal
+                    .record_at(Act::Published, &format!("{what}: {msg}"), true, t);
                 Some(format!("Posted: {what}."))
             }
             // Tried again on a later tick.
@@ -1465,7 +2126,8 @@ impl<'a> Daemon<'a> {
             }
             _ => {
                 self.publisher.mark_sent(id, &msg, false);
-                self.journal.record_at(Act::Blocked, &format!("{what}: {msg}"), false, t);
+                self.journal
+                    .record_at(Act::Blocked, &format!("{what}: {msg}"), false, t);
                 let hint = if msg.to_lowercase().contains("not signed in") {
                     " Say \"sign me into\" the site and I'll post it after."
                 } else {
@@ -1499,7 +2161,14 @@ impl<'a> Daemon<'a> {
         };
         // The window: the named app's, or the one in front.
         let win = match &app {
-            Some(a) => match self.cfg.apps.apps.iter().find(|(n, _)| n.eq_ignore_ascii_case(a)).map(|(_, s)| s) {
+            Some(a) => match self
+                .cfg
+                .apps
+                .apps
+                .iter()
+                .find(|(n, _)| n.eq_ignore_ascii_case(a))
+                .map(|(_, s)| s)
+            {
                 Some(spec) => self.plat.find_window(spec).ok().flatten(),
                 None => {
                     let spec = crate::config::AppSpec::for_process(&format!("{a}.exe"));
@@ -1528,13 +2197,25 @@ impl<'a> Daemon<'a> {
         self.press_now(win, &name, &where_)
     }
 
-    pub(super) fn press_now(&mut self, win: crate::platform::WindowId, name: &str, where_: &str) -> String {
+    pub(super) fn press_now(
+        &mut self,
+        win: crate::platform::WindowId,
+        name: &str,
+        where_: &str,
+    ) -> String {
         match self.plat.press_named(win, name) {
             Ok(true) => {
-                self.journal.record_at(Act::Upkeep, &format!("pressed \"{name}\" in {where_}"), true, crate::store::now());
+                self.journal.record_at(
+                    Act::Upkeep,
+                    &format!("pressed \"{name}\" in {where_}"),
+                    true,
+                    crate::store::now(),
+                );
                 format!("Pressed \"{name}\" in {where_}.")
             }
-            Ok(false) => format!("I found \"{name}\" in {where_} but it wouldn't press — it's yours to click."),
+            Ok(false) => format!(
+                "I found \"{name}\" in {where_} but it wouldn't press — it's yours to click."
+            ),
             Err(e) => format!("I couldn't press it: {e}."),
         }
     }
@@ -1547,7 +2228,10 @@ impl<'a> Daemon<'a> {
             if moved.is_empty() {
                 return "I haven't moved anything.".into();
             }
-            let each: Vec<String> = moved.iter().map(|m| format!("{} → {} ({} MB)", m.from, m.to, m.mb)).collect();
+            let each: Vec<String> = moved
+                .iter()
+                .map(|m| format!("{} → {} ({} MB)", m.from, m.to, m.mb))
+                .collect();
             return format!("Moved: {}.", each.join("; "));
         }
         let r = self.plat.readings();
@@ -1565,7 +2249,11 @@ impl<'a> Daemon<'a> {
                 "There's nothing big of mine worth moving.".into()
             };
         };
-        let each: Vec<String> = plan.moves.iter().map(|(f, to, mb)| format!("{f} ({mb} MB) to {to}")).collect();
+        let each: Vec<String> = plan
+            .moves
+            .iter()
+            .map(|(f, to, mb)| format!("{f} ({mb} MB) to {to}"))
+            .collect();
         let q = format!(
             "I'd move {}, freeing about {} MB. {} I'll check every file arrived before removing anything, leave a note \
              where each was, and point my settings at the new place. Go ahead?",
@@ -1578,8 +2266,16 @@ impl<'a> Daemon<'a> {
         q
     }
 
-    pub(super) fn carry_out_storage_plan(&mut self, plan: crate::tune::StoragePlan, t: u64) -> String {
-        if let Err(error) = self.history.save_merged(&self.store) { return format!("No folder move started: pending recovery history could not be saved ({error})."); }
+    pub(super) fn carry_out_storage_plan(
+        &mut self,
+        plan: crate::tune::StoragePlan,
+        t: u64,
+    ) -> String {
+        if let Err(error) = self.history.save_merged(&self.store) {
+            return format!(
+                "No folder move started: pending recovery history could not be saved ({error})."
+            );
+        }
         let store = self.store.clone();
         let work: crew::Work = Box::new(move |ctl| {
             let mut done = Vec::new();
@@ -1588,7 +2284,13 @@ impl<'a> Daemon<'a> {
                 if ctl.checkpoint() {
                     break;
                 }
-                match crate::tune::move_folder_durably(&store, std::path::Path::new(from), std::path::Path::new(to), t, &|| ctl.checkpoint()) {
+                match crate::tune::move_folder_durably(
+                    &store,
+                    std::path::Path::new(from),
+                    std::path::Path::new(to),
+                    t,
+                    &|| ctl.checkpoint(),
+                ) {
                     Ok(m) => done.push(m),
                     Err(e) => failed.push(e),
                 }
@@ -1635,18 +2337,29 @@ impl<'a> Daemon<'a> {
             crate::system::judge(
                 &crate::system::Change::MoveFile {
                     from: from.join("x").display().to_string(),
-                    to: to.join(crate::organize::TO_REVIEW).join("x").display().to_string(),
+                    to: to
+                        .join(crate::organize::TO_REVIEW)
+                        .join("x")
+                        .display()
+                        .to_string(),
                 },
                 &sys,
             )
         };
         for f in &ask.folders {
-            if let crate::system::Verdict::Refuse(why) = probe(f, ask.into.as_deref().unwrap_or(f)) {
+            if let crate::system::Verdict::Refuse(why) = probe(f, ask.into.as_deref().unwrap_or(f))
+            {
                 return format!("I can't sort {}: {why}", f.display());
             }
         }
         let now = crate::store::now();
-        let plan = crate::organize::plan_folders(&ask.folders, ask.into.as_deref(), ask.copies_only, now, std::time::Duration::from_secs(8));
+        let plan = crate::organize::plan_folders(
+            &ask.folders,
+            ask.into.as_deref(),
+            ask.copies_only,
+            now,
+            std::time::Duration::from_secs(8),
+        );
         let words = crate::organize::plan_said(&plan);
         if plan.has_moves() {
             self.session.ask(&words);
@@ -1661,11 +2374,20 @@ impl<'a> Daemon<'a> {
     /// in front of you and what you've used in the last hour all spared), and
     /// the startup entries you haven't opened this week. Temp and moves are
     /// the caller's to add.
-    pub(super) fn tune_plan(&mut self, sampled: Option<&crate::tune::Sampled>, with_tasks: bool) -> crate::tune::Plan {
+    pub(super) fn tune_plan(
+        &mut self,
+        sampled: Option<&crate::tune::Sampled>,
+        with_tasks: bool,
+    ) -> crate::tune::Plan {
         let cfg = self.tools_ref().map(|t| t.tune.clone()).unwrap_or_default();
         let now = crate::store::now();
         let apps_since = |since: u64| -> Vec<String> {
-            let mut v: Vec<String> = self.worklog.between(since, now).iter().map(|sp| sp.app.clone()).collect();
+            let mut v: Vec<String> = self
+                .worklog
+                .between(since, now)
+                .iter()
+                .map(|sp| sp.app.clone())
+                .collect();
             v.sort();
             v.dedup();
             v
@@ -1673,10 +2395,17 @@ impl<'a> Daemon<'a> {
         let in_use = apps_since(now.saturating_sub(3600));
         let week = apps_since(now.saturating_sub(7 * 86_400));
         let own_exe = std::env::current_exe().ok();
-        let own_name = own_exe.as_ref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let own_name = own_exe
+            .as_ref()
+            .and_then(|p| p.file_stem())
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
         let close = match sampled {
             Some(sm) => {
-                let mut own_names: Vec<String> = crate::tune::ATLAS_HELPERS.iter().map(|s| s.to_string()).collect();
+                let mut own_names: Vec<String> = crate::tune::ATLAS_HELPERS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
                 if !own_name.is_empty() {
                     own_names.push(own_name.clone());
                 }
@@ -1695,8 +2424,18 @@ impl<'a> Daemon<'a> {
             None => Vec::new(),
         };
         let own_path = own_exe.map(|p| p.display().to_string()).unwrap_or_default();
-        let stop_starting = crate::tune::pick_startup_to_stop(&crate::tune::startup_entries_kept(with_tasks), &week, &cfg.keep, &own_path);
-        crate::tune::Plan { close, stop_starting, temp: None, moves: None }
+        let stop_starting = crate::tune::pick_startup_to_stop(
+            &crate::tune::startup_entries_kept(with_tasks),
+            &week,
+            &cfg.keep,
+            &own_path,
+        );
+        crate::tune::Plan {
+            close,
+            stop_starting,
+            temp: None,
+            moves: None,
+        }
     }
 
     /// "Close what I don't need", "what's slowing my computer down", "what
@@ -1709,15 +2448,21 @@ impl<'a> Daemon<'a> {
     pub(super) fn tune_up(&mut self, said: &str) -> String {
         use crate::tune::TuneAsk;
         let cfg = self.tools_ref().map(|t| t.tune.clone()).unwrap_or_default();
-        let home = crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME")).map(std::path::PathBuf::from);
+        let home = crate::doctor::lookup_env("USERPROFILE")
+            .or_else(|| crate::doctor::lookup_env("HOME"))
+            .map(std::path::PathBuf::from);
         let downloads = home.as_ref().map(|h| h.join("Downloads"));
         let temp = std::env::temp_dir();
         let ask = crate::tune::tune_ask(said);
         let (mut words, plan) = match ask {
             TuneAsk::Slowing | TuneAsk::Close => {
-                let Some(sm) = crate::tune::sample_machine(std::time::Duration::from_secs(2)) else {
-                    let mem: Vec<String> =
-                        crate::tune::memory_by_app().into_iter().take(4).map(|(a, mb)| format!("{a} {mb} MB")).collect();
+                let Some(sm) = crate::tune::sample_machine(std::time::Duration::from_secs(2))
+                else {
+                    let mem: Vec<String> = crate::tune::memory_by_app()
+                        .into_iter()
+                        .take(4)
+                        .map(|(a, mb)| format!("{a} {mb} MB"))
+                        .collect();
                     return format!(
                         "Measuring each program's processor use, and closing programs, is only done on Windows, and this isn't Windows.{}",
                         if mem.is_empty() { String::new() } else { format!(" Holding the most memory: {}.", mem.join(", ")) }
@@ -1728,7 +2473,13 @@ impl<'a> Daemon<'a> {
                 if plan.close.is_empty() {
                     w.push_str(" Nothing is worth closing: everything heavy is either in use, in front of you, part of Windows, or me.");
                 }
-                (w, crate::tune::Plan { stop_starting: Vec::new(), ..plan })
+                (
+                    w,
+                    crate::tune::Plan {
+                        stop_starting: Vec::new(),
+                        ..plan
+                    },
+                )
             }
             TuneAsk::Startup => {
                 if !cfg!(windows) {
@@ -1741,9 +2492,14 @@ impl<'a> Daemon<'a> {
             }
             TuneAsk::Space | TuneAsk::ClearTemp => {
                 let look = match &downloads {
-                    Some(d) => crate::tune::look_at_space(d, &temp, std::time::Duration::from_secs(3)),
+                    Some(d) => {
+                        crate::tune::look_at_space(d, &temp, std::time::Duration::from_secs(3))
+                    }
                     None => crate::tune::SpaceLook {
-                        temp_mb: crate::tune::folder_mb(&temp, std::time::Duration::from_millis(500)),
+                        temp_mb: crate::tune::folder_mb(
+                            &temp,
+                            std::time::Duration::from_millis(500),
+                        ),
                         complete: true,
                         ..Default::default()
                     },
@@ -1753,12 +2509,24 @@ impl<'a> Daemon<'a> {
                 } else {
                     crate::tune::space_words(&look)
                 };
-                if ask == TuneAsk::Space && (!look.biggest.is_empty() || !look.duplicates.is_empty()) {
+                if ask == TuneAsk::Space
+                    && (!look.biggest.is_empty() || !look.duplicates.is_empty())
+                {
                     w.push_str(" Say \"move my big downloads to\" a folder, or \"move the duplicates to\" one, and I'll move them there -- undo moves them back.");
                 }
-                let floor = if ask == TuneAsk::ClearTemp { 1 } else { cfg.min_mb };
+                let floor = if ask == TuneAsk::ClearTemp {
+                    1
+                } else {
+                    cfg.min_mb
+                };
                 let temp_offer = (look.temp_mb >= floor).then(|| (temp.clone(), look.temp_mb));
-                (w, crate::tune::Plan { temp: temp_offer, ..Default::default() })
+                (
+                    w,
+                    crate::tune::Plan {
+                        temp: temp_offer,
+                        ..Default::default()
+                    },
+                )
             }
             TuneAsk::MoveWhere => {
                 return "Where to? Name the folder in full -- \"move my big downloads to D:\\Archive\" -- and I'll say what would go before anything moves.".into();
@@ -1777,27 +2545,46 @@ impl<'a> Daemon<'a> {
                 let files: Vec<std::path::PathBuf> = if duplicates {
                     look.extra_copies()
                 } else {
-                    look.biggest.iter().filter(|(_, mb)| *mb >= 100).map(|(p, _)| p.clone()).collect()
+                    look.biggest
+                        .iter()
+                        .filter(|(_, mb)| *mb >= 100)
+                        .map(|(p, _)| p.clone())
+                        .collect()
                 };
                 if files.is_empty() {
                     return if duplicates {
                         "There are no duplicate files in Downloads to move.".into()
                     } else {
-                        "Nothing in Downloads is 100 MB or more, so there's nothing big to move.".into()
+                        "Nothing in Downloads is 100 MB or more, so there's nothing big to move."
+                            .into()
                     };
                 }
                 let names: Vec<String> = files
                     .iter()
                     .take(6)
-                    .map(|p| p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
+                    .map(|p| {
+                        p.file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default()
+                    })
                     .collect();
                 let more = files.len().saturating_sub(names.len());
                 let w = format!(
                     "From Downloads: {}{}.",
                     names.join(", "),
-                    if more > 0 { format!(" and {more} more") } else { String::new() }
+                    if more > 0 {
+                        format!(" and {more} more")
+                    } else {
+                        String::new()
+                    }
                 );
-                (w, crate::tune::Plan { moves: Some((files, to)), ..Default::default() })
+                (
+                    w,
+                    crate::tune::Plan {
+                        moves: Some((files, to)),
+                        ..Default::default()
+                    },
+                )
             }
         };
         if !plan.is_empty() {
@@ -1821,7 +2608,8 @@ impl<'a> Daemon<'a> {
         use crate::undo::Undo;
         let mut done: Vec<String> = Vec::new();
         let mut not: Vec<String> = Vec::new();
-        let mut undo_record: Vec<(u64, crate::tune::TuneUndo)> = self.store.load(crate::tune::TUNE_UNDO_RECORD);
+        let mut undo_record: Vec<(u64, crate::tune::TuneUndo)> =
+            self.store.load(crate::tune::TUNE_UNDO_RECORD);
         let closed = crate::tune::close_loads(&plan.close, std::time::Duration::from_secs(5));
         for (l, how) in plan.close.iter().zip(closed) {
             let app = &l.name;
@@ -1851,7 +2639,12 @@ impl<'a> Daemon<'a> {
             match crate::tune::set_startup(e, false) {
                 Ok(()) => {
                     done.push(format!("{name} won't start with Windows"));
-                    self.journal.record_at(Act::Upkeep, &format!("stopped {name} starting with Windows"), true, t);
+                    self.journal.record_at(
+                        Act::Upkeep,
+                        &format!("stopped {name} starting with Windows"),
+                        true,
+                        t,
+                    );
                     let id = self.history.note(
                         &format!("stopped {name} starting with Windows"),
                         "settings",
@@ -1866,8 +2659,16 @@ impl<'a> Daemon<'a> {
         }
         if let Some((dir, _)) = &plan.temp {
             let c = crate::tune::clear_old_files(dir, 86_400);
-            done.push(format!("cleared {} MB of temporary files ({} files; {} in use or recent, left)", c.mb, c.files, c.skipped));
-            self.journal.record_at(Act::Upkeep, &format!("cleared {} MB of temporary files", c.mb), true, t);
+            done.push(format!(
+                "cleared {} MB of temporary files ({} files; {} in use or recent, left)",
+                c.mb, c.files, c.skipped
+            ));
+            self.journal.record_at(
+                Act::Upkeep,
+                &format!("cleared {} MB of temporary files", c.mb),
+                true,
+                t,
+            );
             self.history.note(
                 &format!("cleared {} MB of temporary files", c.mb),
                 "files",
@@ -1886,16 +2687,29 @@ impl<'a> Daemon<'a> {
             recovery_ready = false;
             not.push(format!("the latest history couldn't be saved ({e})"));
         }
-        let moving = plan.moves.as_ref().map(|(files, to)| if recovery_ready {
-            self.start_download_worker(files.clone(), to.clone(), t)
-        } else { "No Downloads file moved: the preceding recovery changes could not be saved.".into() });
-        let mut said = if done.is_empty() { moving.clone().unwrap_or_else(|| "Nothing changed.".to_string()) } else { format!("Done: {}. {}", done.join("; "), moving.unwrap_or_default()) };
+        let moving = plan.moves.as_ref().map(|(files, to)| {
+            if recovery_ready {
+                self.start_download_worker(files.clone(), to.clone(), t)
+            } else {
+                "No Downloads file moved: the preceding recovery changes could not be saved.".into()
+            }
+        });
+        let mut said = if done.is_empty() {
+            moving
+                .clone()
+                .unwrap_or_else(|| "Nothing changed.".to_string())
+        } else {
+            format!("Done: {}. {}", done.join("; "), moving.unwrap_or_default())
+        };
         if !not.is_empty() {
             said.push_str(&format!(" Not done: {}.", not.join("; ")));
         }
         let r = self.plat.readings();
         if r.ram_total_gb > 0.0 && !plan.close.is_empty() {
-            said.push_str(&format!(" Memory is at {:.0}% now.", r.ram_used_gb / r.ram_total_gb * 100.0));
+            said.push_str(&format!(
+                " Memory is at {:.0}% now.",
+                r.ram_used_gb / r.ram_total_gb * 100.0
+            ));
         }
         said
     }
@@ -1919,14 +2733,24 @@ impl<'a> Daemon<'a> {
         let Some(tc) = self.tools_ref().cloned() else {
             return "I can't hear on this machine yet -- there's no voice set up.".into();
         };
-        let ffmpeg = tc.vars.get("ffmpeg").cloned().unwrap_or_else(|| "ffmpeg".into());
+        let ffmpeg = tc
+            .vars
+            .get("ffmpeg")
+            .cloned()
+            .unwrap_or_else(|| "ffmpeg".into());
         let devices = match crate::audio::probe_devices(&ffmpeg) {
             Ok(d) => d,
             Err(e) => return format!("I couldn't list the microphones: {e}"),
         };
         let camera = tc.vars.get("webcam_device").cloned().unwrap_or_default();
-        let mics: Vec<&crate::audio::Device> = devices.iter().filter(|d| d.kind == crate::audio::Kind::Input).collect();
-        let names: Vec<String> = mics.iter().map(|d| crate::hearing::short(&d.name)).collect();
+        let mics: Vec<&crate::audio::Device> = devices
+            .iter()
+            .filter(|d| d.kind == crate::audio::Kind::Input)
+            .collect();
+        let names: Vec<String> = mics
+            .iter()
+            .map(|d| crate::hearing::short(&d.name))
+            .collect();
         match crate::hearing::mic_by_kind(&devices, kind, &camera) {
             crate::hearing::MicFit::One(d) => {
                 let device = d.ffmpeg_name();
@@ -1935,13 +2759,19 @@ impl<'a> Daemon<'a> {
                 let mut hearing = crate::hearing::Hearing::load_from(&store);
                 hearing.choose(&d.name);
                 crate::kept!(hearing.save_to(&store));
-                let line = format!("Listening with {} now, and I'll stay on it until you pick another.", crate::hearing::short(&d.name));
+                let line = format!(
+                    "Listening with {} now, and I'll stay on it until you pick another.",
+                    crate::hearing::short(&d.name)
+                );
                 self.log.info(&line);
                 line
             }
             crate::hearing::MicFit::Several(ds) => {
                 let n: Vec<String> = ds.iter().map(|d| crate::hearing::short(&d.name)).collect();
-                format!("More than one microphone fits \"{kind}\": {}. Which one?", n.join(", "))
+                format!(
+                    "More than one microphone fits \"{kind}\": {}. Which one?",
+                    n.join(", ")
+                )
             }
             crate::hearing::MicFit::None => {
                 if names.is_empty() {
@@ -1959,9 +2789,13 @@ impl<'a> Daemon<'a> {
 
     pub(super) fn moved_news(&mut self, ending: &crew::Ending) -> Option<String> {
         let crew::Ending::Done(Ok(json)) = ending else {
-            return Some("Moving the files didn't finish; nothing was removed that hadn't been copied.".into());
+            return Some(
+                "Moving the files didn't finish; nothing was removed that hadn't been copied."
+                    .into(),
+            );
         };
-        let (done, failed): (Vec<crate::tune::Moved>, Vec<String>) = serde_json::from_str(json).ok()?;
+        let (done, failed): (Vec<crate::tune::Moved>, Vec<String>) =
+            serde_json::from_str(json).ok()?;
         // Settings follow the folders, so Atlas still finds its models.
         let dir = crate::roots::config_dir();
         let prefs_read = crate::preferences::Preferences::load_checked(&dir);
@@ -1973,7 +2807,12 @@ impl<'a> Daemon<'a> {
             } else if m.from.ends_with("video") {
                 prefs.set("video.work_dir", &m.to);
             }
-            self.journal.record_at(Act::Upkeep, &format!("moved {} to {}", m.from, m.to), true, crate::store::now());
+            self.journal.record_at(
+                Act::Upkeep,
+                &format!("moved {} to {}", m.from, m.to),
+                true,
+                crate::store::now(),
+            );
         }
         // Checked (30 Sep 2026): "Moved" was said when the new place wasn't
         // saved, and after a restart Atlas couldn't find its models.
@@ -1982,7 +2821,11 @@ impl<'a> Daemon<'a> {
             None => prefs.save(&dir).map_err(|e| e.to_string()),
         };
         let mut said = if done.is_empty() {
-            if failed.is_empty() { "Nothing moved.".to_string() } else { "No folder move has a fully saved completion receipt; inspect the recovery history before trying again.".to_string() }
+            if failed.is_empty() {
+                "Nothing moved.".to_string()
+            } else {
+                "No folder move has a fully saved completion receipt; inspect the recovery history before trying again.".to_string()
+            }
         } else {
             let mb: u64 = done.iter().map(|m| m.mb).sum();
             format!(
@@ -2002,22 +2845,43 @@ impl<'a> Daemon<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct ApprovedUndo { pub id: u64, row: crate::undo::Did, identity: Option<String>, recovery: crate::tune::TuneUndo }
+pub(super) struct ApprovedUndo {
+    pub id: u64,
+    row: crate::undo::Did,
+    identity: Option<String>,
+    recovery: crate::tune::TuneUndo,
+}
 
 impl<'a> Daemon<'a> {
     pub(super) fn poll_approved_undo(&mut self) -> Option<String> {
-        if self.attention.is_paused() || self.active_file_move_id().is_some() { return None; }
+        if self.attention.is_paused() || self.active_file_move_id().is_some() {
+            return None;
+        }
         let pending = self.approved_undo.clone()?;
         let store = self.store.clone();
         let _guard = match store.transaction() {
             Ok(guard) => guard,
-            Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => return None,
-            Err(error) => { self.approved_undo = None; return Some(format!("The approved undo stopped before moving files: {error}. Its recovery record remains available.")); },
+            Err(crate::error::AtlasError::Io(error))
+                if error.kind() == std::io::ErrorKind::WouldBlock =>
+            {
+                return None
+            }
+            Err(error) => {
+                self.approved_undo = None;
+                return Some(format!("The approved undo stopped before moving files: {error}. Its recovery record remains available."));
+            }
         };
         let checked = (|| -> crate::error::Result<bool> {
-            let history: crate::undo::History = store.load_checked("undo_history")?.unwrap_or_default();
-            let records: Vec<(u64, crate::tune::TuneUndo)> = store.load_checked(crate::tune::TUNE_UNDO_RECORD)?.unwrap_or_default();
-            Ok(history.identity(pending.id) == pending.identity.as_deref() && history.done.iter().any(|row| row == &pending.row) && records.iter().any(|(id, recovery)| *id == pending.id && recovery == &pending.recovery))
+            let history: crate::undo::History =
+                store.load_checked("undo_history")?.unwrap_or_default();
+            let records: Vec<(u64, crate::tune::TuneUndo)> = store
+                .load_checked(crate::tune::TUNE_UNDO_RECORD)?
+                .unwrap_or_default();
+            Ok(history.identity(pending.id) == pending.identity.as_deref()
+                && history.done.iter().any(|row| row == &pending.row)
+                && records
+                    .iter()
+                    .any(|(id, recovery)| *id == pending.id && recovery == &pending.recovery))
         })();
         self.approved_undo = None;
         match checked {
@@ -2027,16 +2891,37 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    pub(super) fn cancel_approved_undo(&mut self) -> bool { let waiting = self.approved_undo.take().is_some(); self.cancel_undo_worker() || waiting }
+    pub(super) fn cancel_approved_undo(&mut self) -> bool {
+        let waiting = self.approved_undo.take().is_some();
+        self.cancel_undo_worker() || waiting
+    }
 
     pub(super) fn carry_out_undo(&mut self, id: u64) -> String {
         let store = self.store.clone();
-        let current: Vec<(u64, crate::tune::TuneUndo)> = match store.load_checked(crate::tune::TUNE_UNDO_RECORD) {
-            Ok(records) => records.unwrap_or_default(), Err(error) => return format!("No undo started: file recovery could not be read ({error})."),
-        };
-        if let Some((_, recovery)) = current.into_iter().find(|(row_id, recovery)| *row_id == id && !matches!(recovery, crate::tune::TuneUndo::Startup(_))) {
-            let Some(row) = self.history.done.iter().find(|row| row.id == id && !row.undone).cloned() else { return "That recovery row is no longer available for undo.".into(); };
-            return self.start_undo_worker(row, self.history.identity(id).map(str::to_owned), recovery);
+        let current: Vec<(u64, crate::tune::TuneUndo)> =
+            match store.load_checked(crate::tune::TUNE_UNDO_RECORD) {
+                Ok(records) => records.unwrap_or_default(),
+                Err(error) => {
+                    return format!("No undo started: file recovery could not be read ({error}).")
+                }
+            };
+        if let Some((_, recovery)) = current.into_iter().find(|(row_id, recovery)| {
+            *row_id == id && !matches!(recovery, crate::tune::TuneUndo::Startup(_))
+        }) {
+            let Some(row) = self
+                .history
+                .done
+                .iter()
+                .find(|row| row.id == id && !row.undone)
+                .cloned()
+            else {
+                return "That recovery row is no longer available for undo.".into();
+            };
+            return self.start_undo_worker(
+                row,
+                self.history.identity(id).map(str::to_owned),
+                recovery,
+            );
         }
         let _guard = match store.transaction() {
             Ok(guard) => guard,
@@ -2053,10 +2938,14 @@ impl<'a> Daemon<'a> {
             }
             Err(error) => return format!("No undo started: recovery storage is unavailable ({error}). The saved recovery record remains available."),
         };
-        if let Err(error) = self.history.save_merged(&store) { return format!("No undo started: pending history could not be saved ({error})."); }
+        if let Err(error) = self.history.save_merged(&store) {
+            return format!("No undo started: pending history could not be saved ({error}).");
+        }
         self.history = match store.load_checked::<crate::undo::History>("undo_history") {
             Ok(history) => history.unwrap_or_default(),
-            Err(error) => return format!("No undo started: recovery history could not be read ({error})."),
+            Err(error) => {
+                return format!("No undo started: recovery history could not be read ({error}).")
+            }
         };
         let Some(d) = self.history.done.iter().find(|d| d.id == id).cloned() else {
             return "That one isn't in my history any more.".into();
@@ -2066,10 +2955,15 @@ impl<'a> Daemon<'a> {
         }
         // A startup entry switched off, or files moved, by an optimization
         // run (2 Oct 2026): taken back from what was kept beside it.
-        let mut record: Vec<(u64, crate::tune::TuneUndo)> = match store.load_checked(crate::tune::TUNE_UNDO_RECORD) {
-            Ok(records) => records.unwrap_or_default(),
-            Err(error) => return format!("No undo started: file recovery records could not be read ({error})."),
-        };
+        let mut record: Vec<(u64, crate::tune::TuneUndo)> =
+            match store.load_checked(crate::tune::TUNE_UNDO_RECORD) {
+                Ok(records) => records.unwrap_or_default(),
+                Err(error) => {
+                    return format!(
+                        "No undo started: file recovery records could not be read ({error})."
+                    )
+                }
+            };
         if let Some(pos) = record.iter().position(|(rid, _)| *rid == id) {
             let undo = record[pos].1.clone();
             return match crate::tune::undo_tune_change_with_checkpoint(&undo, &mut |next| {
@@ -2104,11 +2998,19 @@ impl<'a> Daemon<'a> {
                 .posts
                 .iter()
                 .rev()
-                .find(|p| matches!(p.state, crate::publish::PostState::Draft | crate::publish::PostState::AwaitingApproval))
+                .find(|p| {
+                    matches!(
+                        p.state,
+                        crate::publish::PostState::Draft
+                            | crate::publish::PostState::AwaitingApproval
+                    )
+                })
                 .map(|p| p.id);
             match draft {
                 Some(pid) if self.publisher.cancel(pid) => {
-                    if let Err(e) = self.publisher.save(&self.store) { return format!("The draft is paused here, but discarding it couldn't be saved ({e}); its earlier saved state may remain after restart."); }
+                    if let Err(e) = self.publisher.save(&self.store) {
+                        return format!("The draft is paused here, but discarding it couldn't be saved ({e}); its earlier saved state may remain after restart.");
+                    }
                     "Threw the draft away.".to_string()
                 }
                 _ => return "There's no draft left to throw away.".into(),
@@ -2120,7 +3022,9 @@ impl<'a> Daemon<'a> {
             }
         };
         self.history.mark_undone(id);
-        if let Err(error) = self.history.save_merged(&self.store) { return format!("{said} The undo acknowledgment is pending a durable save ({error}); I retained it for retry."); }
+        if let Err(error) = self.history.save_merged(&self.store) {
+            return format!("{said} The undo acknowledgment is pending a durable save ({error}); I retained it for retry.");
+        }
         format!("Undone: {}. {said}", d.what)
     }
 }
@@ -2137,13 +3041,21 @@ impl<'a> Daemon<'a> {
                 let cat = crate::categories::category_of(&intent);
                 let goes_out = matches!(
                     cat,
-                    crate::categories::Category::AgreementExternal | crate::categories::Category::ExternalAiCreative
-                ) || matches!(intent, Intent::Message(_) | Intent::DraftPost(_) | Intent::SchedulePost(_));
+                    crate::categories::Category::AgreementExternal
+                        | crate::categories::Category::ExternalAiCreative
+                ) || matches!(
+                    intent,
+                    Intent::Message(_) | Intent::DraftPost(_) | Intent::SchedulePost(_)
+                );
                 // Reversible: what "undo" knows how to take back, or anything
                 // that only works on this machine and isn't a send.
                 let reversible = !goes_out
                     && (undo_intent(&crate::intent::Intent::plain(&intent)).is_some()
-                        || matches!(cat, crate::categories::Category::LocalOperational | crate::categories::Category::LocalCreative));
+                        || matches!(
+                            cat,
+                            crate::categories::Category::LocalOperational
+                                | crate::categories::Category::LocalCreative
+                        ));
                 crate::chain::Step {
                     what: s.command.clone(),
                     app: String::new(),
@@ -2167,14 +3079,26 @@ impl<'a> Daemon<'a> {
     /// dead air cut, captions, thumbnail frames, a title, all on a copy.
     pub(super) fn studio_help(&mut self, said: &str, t: u64) -> Option<String> {
         let low = said.to_ascii_lowercase();
-        if !["get this video ready", "get my video ready", "get the video ready", "video studio", "prep this video", "prepare this video", "ready this video", "studio this"]
-            .iter()
-            .any(|p| low.contains(p))
+        if ![
+            "get this video ready",
+            "get my video ready",
+            "get the video ready",
+            "video studio",
+            "prep this video",
+            "prepare this video",
+            "ready this video",
+            "studio this",
+        ]
+        .iter()
+        .any(|p| low.contains(p))
         {
             return None;
         }
         let Some((path, wish)) = crate::edit::path_and_wish(said) else {
-            return Some("Which video? Give me its path -- get this video ready: \"C:\\clips\\bakery.mp4\".".into());
+            return Some(
+                "Which video? Give me its path -- get this video ready: \"C:\\clips\\bakery.mp4\"."
+                    .into(),
+            );
         };
         let original = std::path::PathBuf::from(&path);
         let aspect = crate::studio::requested_aspect(&wish);
@@ -2187,13 +3111,21 @@ impl<'a> Daemon<'a> {
         let mut vars = tools.vars.clone();
         self.add_language_vars(&mut vars);
         let llm = self.background_llm();
-        let stem = original.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "video".into());
+        let stem = original
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "video".into());
         let work: crew::Work = Box::new(move |ctl| {
-            let run = |tool: &crate::tools::ExternalTool, args: Vec<String>| -> std::result::Result<std::process::Output, String> {
-                if ctl.checkpoint() { return Err("stopped".into()); }
+            let run = |tool: &crate::tools::ExternalTool,
+                       args: Vec<String>|
+             -> std::result::Result<std::process::Output, String> {
+                if ctl.checkpoint() {
+                    return Err("stopped".into());
+                }
                 crate::studio::run_tool(tool, args, &|| ctl.stopping())
             };
-            let folder = crate::studio::reserve_folder(&original).map_err(|e| format!("couldn't reserve a result folder: {e}"))?;
+            let folder = crate::studio::reserve_folder(&original)
+                .map_err(|e| format!("couldn't reserve a result folder: {e}"))?;
             let s = |p: &std::path::Path| p.display().to_string();
             let src = s(&original);
             let probed = run(&video.ffprobe, crate::edit::probe_args(&src))?;
@@ -2205,77 +3137,204 @@ impl<'a> Daemon<'a> {
             let mut remaining = Vec::new();
             let spans = if audio {
                 let found = run(&video.ffmpeg, crate::studio::silence_args(&src))?;
-                let keep = crate::studio::keep_spans(&crate::studio::silences(&String::from_utf8_lossy(&found.stderr), before), before);
-                if keep.is_empty() { notes.push("The audio is entirely silent; the full picture was preserved for your review.".to_string()); vec![(0.0, before)] } else { keep }
+                let keep = crate::studio::keep_spans(
+                    &crate::studio::silences(&String::from_utf8_lossy(&found.stderr), before),
+                    before,
+                );
+                if keep.is_empty() {
+                    notes.push("The audio is entirely silent; the full picture was preserved for your review.".to_string());
+                    vec![(0.0, before)]
+                } else {
+                    keep
+                }
             } else {
                 notes.push("No audio stream: the full picture was preserved; captions and audio editing were skipped.".to_string());
                 vec![(0.0, before)]
             };
             let cut = folder.join(format!("{stem} - cut.mp4"));
-            let made = run(&video.ffmpeg, crate::studio::cut_args_with_audio(&src, &spans, &s(&cut), audio))?;
+            let made = run(
+                &video.ffmpeg,
+                crate::studio::cut_args_with_audio(&src, &spans, &s(&cut), audio),
+            )?;
             if !made.status.success() || !cut.is_file() {
                 return Err("ffmpeg couldn't make the cut".into());
             }
             let output_probe = run(&video.ffprobe, crate::edit::probe_args(&s(&cut)))?;
-            let (after, output_audio) = crate::studio::probe(&String::from_utf8_lossy(&output_probe.stdout))?;
-            if audio != output_audio { return Err(format!("Rendered audio does not match the source; review {}", folder.display())); }
+            let (after, output_audio) =
+                crate::studio::probe(&String::from_utf8_lossy(&output_probe.stdout))?;
+            if audio != output_audio {
+                return Err(format!(
+                    "Rendered audio does not match the source; review {}",
+                    folder.display()
+                ));
+            }
             if let Some((width, height)) = aspect {
                 let framed = folder.join(format!("{stem} - {width}x{height}.mp4"));
-                run(&video.ffmpeg, crate::studio::aspect_args(&s(&cut), &s(&framed), width, height))?;
+                run(
+                    &video.ffmpeg,
+                    crate::studio::aspect_args(&s(&cut), &s(&framed), width, height),
+                )?;
                 let checked = run(&video.ffprobe, crate::edit::probe_args(&s(&framed)))?;
                 let json = String::from_utf8_lossy(&checked.stdout);
                 let (length, has_audio) = crate::studio::probe(&json)?;
-                if crate::studio::dimensions(&json) != Some((width, height)) || has_audio != audio || (length-after).abs() > 0.5 {
-                    return Err(format!("Aspect copy failed output checks; review {}", folder.display()));
+                if crate::studio::dimensions(&json) != Some((width, height))
+                    || has_audio != audio
+                    || (length - after).abs() > 0.5
+                {
+                    return Err(format!(
+                        "Aspect copy failed output checks; review {}",
+                        folder.display()
+                    ));
                 }
                 notes.push(format!("Requested aspect copy: {width}x{height}, with padding to keep the whole image. Preview it in the destination app: captions, controls and account overlays vary; no fixed safe-area claim has been verified."));
             }
-            if let Err(error) = run(&video.ffmpeg, crate::studio::thumb_args(&s(&cut), &s(&folder.join("thumbnail-%02d.jpg")))) {
-                if ctl.stopping() { return Err("stopped".into()); }
+            if let Err(error) = run(
+                &video.ffmpeg,
+                crate::studio::thumb_args(&s(&cut), &s(&folder.join("thumbnail-%02d.jpg"))),
+            ) {
+                if ctl.stopping() {
+                    return Err("stopped".into());
+                }
                 notes.push(format!("Scene thumbnails failed: {error}"));
             }
             if !folder.join("thumbnail-01.jpg").is_file() {
-                if let Err(error) = run(&video.ffmpeg, crate::studio::thumbnail_fallback_args(&s(&cut), &s(&folder.join("thumbnail-%02d.jpg")), after)) {
-                    if ctl.stopping() { return Err("stopped".into()); }
+                if let Err(error) = run(
+                    &video.ffmpeg,
+                    crate::studio::thumbnail_fallback_args(
+                        &s(&cut),
+                        &s(&folder.join("thumbnail-%02d.jpg")),
+                        after,
+                    ),
+                ) {
+                    if ctl.stopping() {
+                        return Err("stopped".into());
+                    }
                     notes.push(format!("Sample thumbnails failed: {error}"));
                 }
             }
-            let thumbs = std::fs::read_dir(&folder).map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("thumbnail-") && e.path().extension().is_some_and(|s| s == "jpg") && e.metadata().is_ok_and(|m| m.len() > 0)).count()).unwrap_or(0);
-            if thumbs == 0 { remaining.push("Choose or make a thumbnail; no usable frame was saved.".into()); }
+            let thumbs = std::fs::read_dir(&folder)
+                .map(|d| {
+                    d.flatten()
+                        .filter(|e| {
+                            e.file_name().to_string_lossy().starts_with("thumbnail-")
+                                && e.path().extension().is_some_and(|s| s == "jpg")
+                                && e.metadata().is_ok_and(|m| m.len() > 0)
+                        })
+                        .count()
+                })
+                .unwrap_or(0);
+            if thumbs == 0 {
+                remaining.push("Choose or make a thumbnail; no usable frame was saved.".into());
+            }
             let caption_file = folder.join(format!("{stem} - cut.srt"));
             let transcript = if audio {
-                match transcript_checked(&video, timed.as_ref(), &vars, &s(&cut), &folder, Some(&caption_file), &|| ctl.stopping()) {
+                match transcript_checked(
+                    &video,
+                    timed.as_ref(),
+                    &vars,
+                    &s(&cut),
+                    &folder,
+                    Some(&caption_file),
+                    &|| ctl.stopping(),
+                ) {
                     Ok(text) => text,
-                    Err(error) => { if ctl.stopping() { return Err("stopped".into()); } remaining.push("Captions still need to be prepared or explicitly skipped.".into()); notes.push(format!("Captions unavailable: {error}")); String::new() }
+                    Err(error) => {
+                        if ctl.stopping() {
+                            return Err("stopped".into());
+                        }
+                        remaining.push(
+                            "Captions still need to be prepared or explicitly skipped.".into(),
+                        );
+                        notes.push(format!("Captions unavailable: {error}"));
+                        String::new()
+                    }
                 }
-            } else { String::new() };
+            } else {
+                String::new()
+            };
             let mut title = None;
             if let (Some(m), false) = (llm.as_deref(), transcript.trim().is_empty()) {
                 let excerpt: String = transcript.chars().take(8000).collect();
-                let quoted = crate::untrusted::Read::new("a video transcript excerpt", &excerpt, crate::store::now()).quoted();
-                let request = crate::brain::ChatRequest { messages: vec![crate::brain::Msg::system(crate::studio::TITLE_PROMPT), crate::brain::Msg::user(quoted)], max_tokens: 384, aside: true, ..Default::default() };
+                let quoted = crate::untrusted::Read::new(
+                    "a video transcript excerpt",
+                    &excerpt,
+                    crate::store::now(),
+                )
+                .quoted();
+                let request = crate::brain::ChatRequest {
+                    messages: vec![
+                        crate::brain::Msg::system(crate::studio::TITLE_PROMPT),
+                        crate::brain::Msg::user(quoted),
+                    ],
+                    max_tokens: 384,
+                    aside: true,
+                    ..Default::default()
+                };
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(45);
                 let mut bytes = 0usize;
-                let result = if m.supports_bounded_chat() { m.chat_until(&request, &mut |text| { bytes += text.len(); bytes <= 4096 && !ctl.stopping() && std::time::Instant::now() < deadline }, &|| !ctl.stopping() && std::time::Instant::now() < deadline).ok().filter(|r| r.text.len() <= 4096 && !ctl.stopping() && std::time::Instant::now() < deadline) } else { None };
-                if let Some((t, d)) = result.and_then(|r| crate::studio::title_and_description(&r.text, &excerpt)) {
+                let result = if m.supports_bounded_chat() {
+                    m.chat_until(
+                        &request,
+                        &mut |text| {
+                            bytes += text.len();
+                            bytes <= 4096 && !ctl.stopping() && std::time::Instant::now() < deadline
+                        },
+                        &|| !ctl.stopping() && std::time::Instant::now() < deadline,
+                    )
+                    .ok()
+                    .filter(|r| {
+                        r.text.len() <= 4096
+                            && !ctl.stopping()
+                            && std::time::Instant::now() < deadline
+                    })
+                } else {
+                    None
+                };
+                if let Some((t, d)) =
+                    result.and_then(|r| crate::studio::title_and_description(&r.text, &excerpt))
+                {
                     std::fs::write(folder.join("title and description.txt"), format!("Suggested wording; review against the transcript before approval.\n\n{t}\n\n{d}\n")).map_err(|e| format!("couldn't save suggested wording: {e}"))?;
                     title = Some(t);
                 }
             }
-            if title.is_none() { remaining.push("Title and description need your wording or a valid model suggestion.".into()); }
-            if ctl.checkpoint() { return Err("stopped".into()); }
+            if title.is_none() {
+                remaining.push(
+                    "Title and description need your wording or a valid model suggestion.".into(),
+                );
+            }
+            if ctl.checkpoint() {
+                return Err("stopped".into());
+            }
             notes.push(if aspect.is_none() { "Platform/aspect not chosen: original framing preserved. Audio correction, colour and platform safe areas still need review. Nothing has been published.".into() } else { "The native cut is also preserved. Audio correction, colour and platform safe areas still need review. Nothing has been published.".into() });
             std::fs::write(folder.join("review.txt"), format!("Source: {src}\nOutput: {}\nMeasured duration: {after:.3}s\nCaptions saved: {}\nThumbnail files: {thumbs}\n{}\n", s(&cut), caption_file.is_file(), notes.join("\n")))
                 .map_err(|e| format!("couldn't save the review: {e}"))?;
             let text = format!("A review copy is in {}: measured {} seconds, from {} seconds. Captions saved: {}. Thumbnail choices: {thumbs}. {} {} Original untouched.", s(&folder), after.round(), before.round(), caption_file.is_file(), title.map(|t| format!("Suggested title: {t}. Wording needs your review.")).unwrap_or_else(|| "No title suggestion was saved.".into()), notes.join(" "));
-            let files = std::fs::read_dir(&folder).map_err(|e| format!("couldn't verify review files: {e}"))?.filter_map(|e| e.ok()).filter(|e| e.path().is_file()).map(|e| s(&e.path())).collect();
-            crate::content::review_worker_result("studio_review", if remaining.is_empty() { "review_ready" } else { "partial" }, text, Some(s(&folder)), files, remaining)
+            let files = std::fs::read_dir(&folder)
+                .map_err(|e| format!("couldn't verify review files: {e}"))?
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().is_file())
+                .map(|e| s(&e.path()))
+                .collect();
+            crate::content::review_worker_result(
+                "studio_review",
+                if remaining.is_empty() {
+                    "review_ready"
+                } else {
+                    "partial"
+                },
+                text,
+                Some(s(&folder)),
+                files,
+                remaining,
+            )
         });
-        Some(if self.hand_off("studio", t, work, Some(path.clone()), SpeakPolicy::Always) {
-            format!("Preparing a review copy of {path}. I'll report which editing steps and files actually succeeded; nothing will be posted.")
-        } else {
-            "I'm swamped with background work right now -- ask me again in a moment.".into()
-        })
+        Some(
+            if self.hand_off("studio", t, work, Some(path.clone()), SpeakPolicy::Always) {
+                format!("Preparing a review copy of {path}. I'll report which editing steps and files actually succeeded; nothing will be posted.")
+            } else {
+                "I'm swamped with background work right now -- ask me again in a moment.".into()
+            },
+        )
     }
 
     pub(super) fn edit_media(&mut self, said: &str, t: u64) -> String {
@@ -2298,7 +3357,8 @@ impl<'a> Daemon<'a> {
         let work: crew::Work = Box::new(move |_ctl| {
             // The copy first: everything happens to it, never the original.
             std::fs::create_dir_all(&work_dir).map_err(|e| e.to_string())?;
-            std::fs::copy(&original, &copy).map_err(|e| format!("couldn't make a copy to work on: {e}"))?;
+            std::fs::copy(&original, &copy)
+                .map_err(|e| format!("couldn't make a copy to work on: {e}"))?;
             let probed = crate::tools::command(&video.ffprobe.command)
                 .args(crate::edit::probe_args(&copy.display().to_string()))
                 .output()
@@ -2306,12 +3366,21 @@ impl<'a> Daemon<'a> {
                 .unwrap_or_default();
             let len = crate::edit::duration_from_probe(&probed).unwrap_or(0.0);
             let reply = llm
-                .complete(crate::edit::PLANNER_PROMPT, &format!("The video is {len:.0} seconds long. What's wanted: {wish}"))
+                .complete(
+                    crate::edit::PLANNER_PROMPT,
+                    &format!("The video is {len:.0} seconds long. What's wanted: {wish}"),
+                )
                 .map_err(|e| e.to_string())?;
-            let plan = crate::edit::plan_from_model(&reply, vec![copy.display().to_string()], &result.display().to_string())
+            let plan = crate::edit::plan_from_model(
+                &reply,
+                vec![copy.display().to_string()],
+                &result.display().to_string(),
+            )
+            .map_err(|e| e.to_string())?;
+            plan.validate(&[len])
+                .map_err(|e| format!("the plan didn't hold up: {e}"))?;
+            crate::edit::render(&video.ffmpeg, &plan, &crate::tools::Vars::new())
                 .map_err(|e| e.to_string())?;
-            plan.validate(&[len]).map_err(|e| format!("the plan didn't hold up: {e}"))?;
-            crate::edit::render(&video.ffmpeg, &plan, &crate::tools::Vars::new()).map_err(|e| e.to_string())?;
             let described = crate::edit::describe(&plan, len);
             serde_json::to_string(&(
                 original.display().to_string(),
@@ -2321,7 +3390,13 @@ impl<'a> Daemon<'a> {
             ))
             .map_err(|e| e.to_string())
         });
-        if self.hand_off("edit-media", t, work, Some(path.clone()), SpeakPolicy::Always) {
+        if self.hand_off(
+            "edit-media",
+            t,
+            work,
+            Some(path.clone()),
+            SpeakPolicy::Always,
+        ) {
             format!("Working on a copy of {path} — the original isn't touched. I'll show you the result.")
         } else {
             "I'm swamped with background work right now — ask me again in a moment.".into()
@@ -2333,7 +3408,11 @@ impl<'a> Daemon<'a> {
     /// A handed-over file that's a PDF, a Word file or a zip is read as one
     /// rather than as plain text.
     pub(super) fn read_as_document(item: &crate::tray::Item) -> bool {
-        let name = item.stored_at.as_deref().unwrap_or(&item.what).to_lowercase();
+        let name = item
+            .stored_at
+            .as_deref()
+            .unwrap_or(&item.what)
+            .to_lowercase();
         [".pdf", ".docx", ".zip"].iter().any(|e| name.ends_with(e))
     }
 
@@ -2347,10 +3426,17 @@ impl<'a> Daemon<'a> {
         // one", "read the lease" (30 Sep 2026: only open/show/merge/sign took a
         // number, and read said "Which file? Give me its path").
         let listed = self.files_last_listed();
-        let fits = |p: &String| exts.iter().any(|e| p.to_lowercase().ends_with(&format!(".{e}")));
+        let fits = |p: &String| {
+            exts.iter()
+                .any(|e| p.to_lowercase().ends_with(&format!(".{e}")))
+        };
         if !listed.is_empty() {
             let low = said.to_lowercase();
-            let as_open = low.split_once(' ').map(|x| x.1).map(|rest| format!("open {rest}")).unwrap_or_default();
+            let as_open = low
+                .split_once(' ')
+                .map(|x| x.1)
+                .map(|rest| format!("open {rest}"))
+                .unwrap_or_default();
             if let Some(i) = crate::findfile::which(&as_open, listed.len()) {
                 if let Some(p) = listed.get(i).filter(|p| fits(p)) {
                     return Some(p.clone());
@@ -2358,11 +3444,33 @@ impl<'a> Daemon<'a> {
             }
             let words: Vec<&str> = low
                 .split(|c: char| !c.is_alphanumeric())
-                .filter(|w| w.len() > 2 && !["read", "the", "that", "this", "file", "pdf", "document", "summarise", "summarize", "open", "me", "what", "does", "say"].contains(w))
+                .filter(|w| {
+                    w.len() > 2
+                        && ![
+                            "read",
+                            "the",
+                            "that",
+                            "this",
+                            "file",
+                            "pdf",
+                            "document",
+                            "summarise",
+                            "summarize",
+                            "open",
+                            "me",
+                            "what",
+                            "does",
+                            "say",
+                        ]
+                        .contains(w)
+                })
                 .collect();
             if !words.is_empty() {
                 if let Some(p) = listed.iter().filter(|p| fits(p)).find(|p| {
-                    let name = std::path::Path::new(p.as_str()).file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+                    let name = std::path::Path::new(p.as_str())
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_lowercase())
+                        .unwrap_or_default();
                     words.iter().all(|w| name.contains(w))
                 }) {
                     return Some(p.clone());
@@ -2384,13 +3492,24 @@ impl<'a> Daemon<'a> {
         let Some(path) = self.file_meant(said, &["pdf", "docx", "txt", "md", "zip"]) else {
             let question = "Which file? Give me its path, or hand it to me first.".to_string();
             self.session.ask(&question);
-            self.execution_receipt = Some((Intent::ReadDocument(said.into()), crate::taskloop::Outcome::NeedsYou(question.clone())));
+            self.execution_receipt = Some((
+                Intent::ReadDocument(said.into()),
+                crate::taskloop::Outcome::NeedsYou(question.clone()),
+            ));
             return question;
         };
-        let job = if path.to_lowercase().ends_with(".zip") { FileJob::Unzip } else { FileJob::Read };
+        let job = if path.to_lowercase().ends_with(".zip") {
+            FileJob::Unzip
+        } else {
+            FileJob::Read
+        };
         self.last_crew_handoff = None;
         let text = self.file_work_off_the_loop(job, &path, false);
-        let outcome = if self.last_crew_handoff.is_some() { crate::taskloop::Outcome::Started(text.clone()) } else { crate::taskloop::Outcome::Failed(text.clone()) };
+        let outcome = if self.last_crew_handoff.is_some() {
+            crate::taskloop::Outcome::Started(text.clone())
+        } else {
+            crate::taskloop::Outcome::Failed(text.clone())
+        };
         self.execution_receipt = Some((Intent::ReadDocument(said.into()), outcome));
         text
     }
@@ -2399,12 +3518,19 @@ impl<'a> Daemon<'a> {
         let Some(path) = self.file_meant(said, &["zip"]) else {
             let question = "Which zip? Give me its path, or hand it to me first.".to_string();
             self.session.ask(&question);
-            self.execution_receipt = Some((Intent::Unzip(said.into()), crate::taskloop::Outcome::NeedsYou(question.clone())));
+            self.execution_receipt = Some((
+                Intent::Unzip(said.into()),
+                crate::taskloop::Outcome::NeedsYou(question.clone()),
+            ));
             return question;
         };
         self.last_crew_handoff = None;
         let text = self.file_work_off_the_loop(FileJob::Unzip, &path, false);
-        let outcome = if self.last_crew_handoff.is_some() { crate::taskloop::Outcome::Started(text.clone()) } else { crate::taskloop::Outcome::Failed(text.clone()) };
+        let outcome = if self.last_crew_handoff.is_some() {
+            crate::taskloop::Outcome::Started(text.clone())
+        } else {
+            crate::taskloop::Outcome::Failed(text.clone())
+        };
         self.execution_receipt = Some((Intent::Unzip(said.into()), outcome));
         text
     }
@@ -2422,11 +3548,18 @@ impl<'a> Daemon<'a> {
     /// is still opened only on your yes -- the question is asked when the
     /// errand comes back), and the answer is said when it's ready. With the
     /// crew full it fails visibly; it never scans on the control loop.
-    pub(super) fn file_work_off_the_loop(&mut self, job: FileJob, path: &str, anyway: bool) -> String {
+    pub(super) fn file_work_off_the_loop(
+        &mut self,
+        job: FileJob,
+        path: &str,
+        anyway: bool,
+    ) -> String {
         let tools = self.tools_cfg();
         let (p, what) = (path.to_string(), job);
         let work: crew::Work = Box::new(move |ctl: &crew::Control| {
-            if ctl.checkpoint() { return Err("Stopped before opening the file.".into()); }
+            if ctl.checkpoint() {
+                return Err("Stopped before opening the file.".into());
+            }
             let done = match what {
                 FileJob::Read => read_document_until(&p, anyway, &tools, &|| ctl.stopping()),
                 FileJob::Unzip => unzip_until(&p, anyway, &tools, &|| ctl.stopping()),
@@ -2435,10 +3568,28 @@ impl<'a> Daemon<'a> {
             // than claim the file was untouched by a late cancellation.
             serde_json::to_string(&done).map_err(|e| e.to_string())
         });
-        let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.to_string());
-        if self.hand_off("read-file", crate::store::now(), work, Some(format!("{} {path}", if job == FileJob::Read { "read" } else { "unzip" })), SpeakPolicy::Always) {
+        let name = std::path::Path::new(path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.to_string());
+        if self.hand_off(
+            "read-file",
+            crate::store::now(),
+            work,
+            Some(format!(
+                "{} {path}",
+                if job == FileJob::Read {
+                    "read"
+                } else {
+                    "unzip"
+                }
+            )),
+            SpeakPolicy::Always,
+        ) {
             match job {
-                FileJob::Read => format!("Reading {name} -- I'll tell you what's in it in a moment."),
+                FileJob::Read => {
+                    format!("Reading {name} -- I'll tell you what's in it in a moment.")
+                }
                 FileJob::Unzip => format!("Unpacking {name} -- I'll tell you when it's done."),
             }
         } else {
@@ -2456,7 +3607,11 @@ impl<'a> Daemon<'a> {
                 }
                 said
             }
-            FileDone::Ask { what, path, question } => {
+            FileDone::Ask {
+                what,
+                path,
+                question,
+            } => {
                 self.session.ask(&question);
                 self.pending_unscanned = Some((what, path));
                 question
@@ -2466,7 +3621,11 @@ impl<'a> Daemon<'a> {
 
     /// Read a PDF or Word file, after scanning it, here and now (the tray's
     /// reading, which is already its own step). `Err` is the sentence.
-    pub(super) fn read_document_at(&mut self, path: &str, anyway: bool) -> std::result::Result<String, String> {
+    pub(super) fn read_document_at(
+        &mut self,
+        path: &str,
+        anyway: bool,
+    ) -> std::result::Result<String, String> {
         let tools = self.tools_cfg();
         match read_document_off(path, anyway, &tools) {
             FileDone::Said { said, ok, log } => {
@@ -2487,16 +3646,30 @@ impl<'a> Daemon<'a> {
 impl<'a> Daemon<'a> {
     pub(super) fn drop_or_bring_back(&mut self, said: &str, t: u64) -> String {
         let l = said.to_lowercase();
-        let bringing = ["bring back", "what did i drop", "what have i dropped", "pick back up", "pick up what", "un drop"]
-            .iter()
-            .any(|p| l.contains(p));
+        let bringing = [
+            "bring back",
+            "what did i drop",
+            "what have i dropped",
+            "pick back up",
+            "pick up what",
+            "un drop",
+        ]
+        .iter()
+        .any(|p| l.contains(p));
         if bringing {
             return self.what_was_dropped(said);
         }
         // "drop the task X", "I'm not doing X", "take X off my list".
         let what = words_after(
             &l,
-            &["drop the task", "i'm not doing", "im not doing", "take off my list", "take it off my list", "take"],
+            &[
+                "drop the task",
+                "i'm not doing",
+                "im not doing",
+                "take off my list",
+                "take it off my list",
+                "take",
+            ],
         )
         .replace("off my list", "")
         .trim()
@@ -2508,7 +3681,15 @@ impl<'a> Daemon<'a> {
         let found = self
             .outstanding_removable(t)
             .into_iter()
-            .map(|(key, title)| (words.iter().filter(|w| title.to_lowercase().contains(**w)).count(), key))
+            .map(|(key, title)| {
+                (
+                    words
+                        .iter()
+                        .filter(|w| title.to_lowercase().contains(**w))
+                        .count(),
+                    key,
+                )
+            })
             .filter(|(n, _)| *n > 0)
             .max_by_key(|(n, _)| *n);
         let Some((_, key)) = found else {
@@ -2520,7 +3701,10 @@ impl<'a> Daemon<'a> {
         };
         match self.drop_outstanding(&key, t) {
             Ok(off) if off.can_bring_back && off.unsaved.is_none() => {
-                format!("Dropped \"{}\". It's kept — \"bring back what I dropped\" finds it again.", off.title)
+                format!(
+                    "Dropped \"{}\". It's kept — \"bring back what I dropped\" finds it again.",
+                    off.title
+                )
             }
             Ok(off) => off.said(),
             Err(why) => why,
@@ -2533,7 +3717,16 @@ impl<'a> Daemon<'a> {
         }
         let asked = words_after(
             &said.to_lowercase(),
-            &["bring back what i dropped", "bring back the task", "bring back", "pick up what i dropped", "pick back up", "what did i drop", "what have i dropped", "un drop"],
+            &[
+                "bring back what i dropped",
+                "bring back the task",
+                "bring back",
+                "pick up what i dropped",
+                "pick back up",
+                "what did i drop",
+                "what have i dropped",
+                "un drop",
+            ],
         );
         let found: Vec<crate::daily::Dropped> = if asked.trim().is_empty() {
             let mut all = self.dropped.clone();
@@ -2541,19 +3734,28 @@ impl<'a> Daemon<'a> {
             all.truncate(5);
             all
         } else {
-            crate::daily::find_dropped(&self.dropped, &asked).into_iter().cloned().collect()
+            crate::daily::find_dropped(&self.dropped, &asked)
+                .into_iter()
+                .cloned()
+                .collect()
         };
         match found.as_slice() {
             [] => format!("Nothing you dropped matches \"{}\".", asked.trim()),
             [one] => {
-                let q = format!("{} Put it back on your list?", crate::daily::picking_back_up(one));
+                let q = format!(
+                    "{} Put it back on your list?",
+                    crate::daily::picking_back_up(one)
+                );
                 self.session.ask(&q);
                 self.pending_bring_back = Some(one.title.clone());
                 q
             }
             many => {
                 let names: Vec<String> = many.iter().map(|d| format!("\"{}\"", d.title)).collect();
-                format!("You dropped {}. Say \"bring back the task\" and which one.", names.join(", "))
+                format!(
+                    "You dropped {}. Say \"bring back the task\" and which one.",
+                    names.join(", ")
+                )
             }
         }
     }
@@ -2561,7 +3763,11 @@ impl<'a> Daemon<'a> {
     pub(super) fn bring_back(&mut self, title: &str, t: u64) -> String {
         self.dropped.retain(|d| d.title != title);
         let _ = self.store.save("dropped", &self.dropped);
-        self.backlog.record(title, crate::backlog::Blocker::Unsupported("do that one for you".into()), t);
+        self.backlog.record(
+            title,
+            crate::backlog::Blocker::Unsupported("do that one for you".into()),
+            t,
+        );
         let _ = self.backlog.save(&self.store);
         format!("\"{title}\" is back on your list.")
     }
@@ -2573,9 +3779,20 @@ impl<'a> Daemon<'a> {
     pub(super) fn knew_once_help(&self, said: &str) -> Option<String> {
         let l = said.trim().to_lowercase();
         let asking = said.contains('?')
-            || ["what", "who", "when", "where", "which", "how", "why", "do you know", "tell me about", "remind me what"]
-                .iter()
-                .any(|w| l.starts_with(w));
+            || [
+                "what",
+                "who",
+                "when",
+                "where",
+                "which",
+                "how",
+                "why",
+                "do you know",
+                "tell me about",
+                "remind me what",
+            ]
+            .iter()
+            .any(|w| l.starts_with(w));
         if !asking {
             return None;
         }
@@ -2614,8 +3831,21 @@ impl<'a> Daemon<'a> {
     /// own" (H13b).
     pub(super) fn suggestions(&mut self, said: &str) -> String {
         let l = said.to_lowercase();
-        let off = ["stop suggesting", "dont suggest", "don't suggest", "turn off the suggestion"].iter().find(|p| l.contains(*p));
-        let on = ["start suggesting", "suggest again", "turn on the suggestion"].iter().find(|p| l.contains(*p));
+        let off = [
+            "stop suggesting",
+            "dont suggest",
+            "don't suggest",
+            "turn off the suggestion",
+        ]
+        .iter()
+        .find(|p| l.contains(*p));
+        let on = [
+            "start suggesting",
+            "suggest again",
+            "turn on the suggestion",
+        ]
+        .iter()
+        .find(|p| l.contains(*p));
         let listing = off.is_none() && on.is_none();
         if listing || self.anticipator.rules.is_empty() {
             if self.anticipator.rules.is_empty() {
@@ -2627,16 +3857,29 @@ impl<'a> Daemon<'a> {
                 .iter()
                 .map(|r| format!("{} ({})", r.name, if r.enabled { "on" } else { "off" }))
                 .collect();
-            return format!("My suggestions: {}. Say \"stop suggesting\" and the name to turn one off.", each.join(", "));
+            return format!(
+                "My suggestions: {}. Say \"stop suggesting\" and the name to turn one off.",
+                each.join(", ")
+            );
         }
         let phrase = off.or(on).copied().unwrap_or("");
-        let named = words_after(&l, &[phrase]).trim_start_matches("the ").to_string();
+        let named = words_after(&l, &[phrase])
+            .trim_start_matches("the ")
+            .to_string();
         let words: Vec<&str> = named.split_whitespace().filter(|w| w.len() > 2).collect();
         let found = self
             .anticipator
             .rules
             .iter()
-            .map(|r| (words.iter().filter(|w| r.name.to_lowercase().contains(**w)).count(), r.name.clone()))
+            .map(|r| {
+                (
+                    words
+                        .iter()
+                        .filter(|w| r.name.to_lowercase().contains(**w))
+                        .count(),
+                    r.name.clone(),
+                )
+            })
             .filter(|(n, _)| *n > 0)
             .max_by_key(|(n, _)| *n)
             .map(|(_, name)| name);
@@ -2659,13 +3902,25 @@ impl<'a> Daemon<'a> {
         if d.is_empty() {
             return "Every note that points somewhere points at something that exists.".into();
         }
-        let each: Vec<String> = d.iter().take(6).map(|(from, to)| format!("{from} points to {to}")).collect();
+        let each: Vec<String> = d
+            .iter()
+            .take(6)
+            .map(|(from, to)| format!("{from} points to {to}"))
+            .collect();
         let more = d.len().saturating_sub(6);
         format!(
             "{} that don't exist yet: {}{}. Those are worth writing next.",
-            if d.len() == 1 { "One note points at something" } else { "Some notes point at things" },
+            if d.len() == 1 {
+                "One note points at something"
+            } else {
+                "Some notes point at things"
+            },
             each.join("; "),
-            if more > 0 { format!(", and {more} more") } else { String::new() }
+            if more > 0 {
+                format!(", and {more} more")
+            } else {
+                String::new()
+            }
         )
     }
 
@@ -2685,14 +3940,18 @@ impl<'a> Daemon<'a> {
         // The turn knows it came by voice: a correction of it may be a
         // mishearing (`learning`, 2 Oct 2026).
         self.heard_by_voice(said);
-        let understood = !matches!(self.parser.parse(said), Intent::Unknown(_)) || said.split_whitespace().count() >= 3;
+        let understood = !matches!(self.parser.parse(said), Intent::Unknown(_))
+            || said.split_whitespace().count() >= 3;
         if let Some(line) = self.note_how_well_i_heard(understood) {
             self.heard_note = Some(line);
         }
         // By the microphone's own name: `mic_device` holds what ffmpeg opens,
         // which on Windows is now the device's id (29 Sep 2026), and the
         // record of which microphone understands you is kept by name.
-        let mic = self.tools_ref().map(|t| crate::voice::microphone_now(t).0).unwrap_or_default();
+        let mic = self
+            .tools_ref()
+            .map(|t| crate::voice::microphone_now(t).0)
+            .unwrap_or_default();
         if mic.is_empty() {
             return;
         }
@@ -2704,7 +3963,12 @@ impl<'a> Daemon<'a> {
         // Windows' input level raised once if it's what is low (30 Sep 2026:
         // "I feel like I have to yell").
         let mut changes: crate::miclevel::Changes = store.load(crate::miclevel::Changes::RECORD);
-        if let Some(line) = crate::miclevel::after_a_turn(&mic, &crate::leveller::remembered(), &mut changes, crate::store::now()) {
+        if let Some(line) = crate::miclevel::after_a_turn(
+            &mic,
+            &crate::leveller::remembered(),
+            &mut changes,
+            crate::store::now(),
+        ) {
             let _ = store.save(crate::miclevel::Changes::RECORD, &changes);
             self.log.info(&line);
             self.heard_note = Some(line);
@@ -2734,7 +3998,9 @@ impl<'a> Daemon<'a> {
         // call on the same model: on Eric's laptop one ran for eight minutes
         // beside the conversation, every turn meanwhile shared the graphics
         // with it and took 26-58 seconds. It waits for a quiet stretch.
-        let talking = self.llm.is_some() && (self.pending_turn.is_some() || t.saturating_sub(self.thread.last_active) < FOLD_WHEN_QUIET_SECS);
+        let talking = self.llm.is_some()
+            && (self.pending_turn.is_some()
+                || t.saturating_sub(self.thread.last_active) < FOLD_WHEN_QUIET_SECS);
         if self.thread.needs_folding(&self.thread_cfg()) && !self.folding && !talking {
             // Compressed rather than dropped (H12): summarised by the local
             // model off the turn, with anything important it leaves out
@@ -2749,14 +4015,24 @@ impl<'a> Daemon<'a> {
             // on Eric's laptop that ran 4-13 minutes beside the conversation
             // while every turn waited 25-130 s (30 Sep 2026 logs): then it's
             // the plain summary unless you've been away a good while.
-            let deep_up = matches!(self.deep.gate.state(), crate::deepbrain::State::Up | crate::deepbrain::State::Starting);
-            let long_quiet = t.saturating_sub(self.thread.last_active) >= FOLD_ON_TALK_MODEL_AFTER_SECS;
-            let llm = if deep_up || long_quiet { self.background_llm() } else { None };
+            let deep_up = matches!(
+                self.deep.gate.state(),
+                crate::deepbrain::State::Up | crate::deepbrain::State::Starting
+            );
+            let long_quiet =
+                t.saturating_sub(self.thread.last_active) >= FOLD_ON_TALK_MODEL_AFTER_SECS;
+            let llm = if deep_up || long_quiet {
+                self.background_llm()
+            } else {
+                None
+            };
             match llm {
                 Some(llm) => {
                     let input = self.thread.fold_input(&cfg);
                     let work: crew::Work = Box::new(move |_ctl| {
-                        let summary = llm.complete(crate::thread::FOLD_PROMPT, &input).map_err(|e| e.to_string())?;
+                        let summary = llm
+                            .complete(crate::thread::FOLD_PROMPT, &input)
+                            .map_err(|e| e.to_string())?;
                         // Checked before it is kept: no reply boilerplate,
                         // no commentary, else the plain summary.
                         let kept = crate::thread::accepted_summary(&summary, &old, &earlier);
@@ -2781,19 +4057,33 @@ impl<'a> Daemon<'a> {
             return "Video and creator advice is switched off in your settings.".into();
         }
         if let Some((kind, topic)) = crate::content::creator_request(said) {
-            if kind == crate::content::CreatorAsk::Research && said.to_ascii_lowercase().contains("video research online for") {
+            if kind == crate::content::CreatorAsk::Research
+                && said
+                    .to_ascii_lowercase()
+                    .contains("video research online for")
+            {
                 return self.research(&format!("Videos about {topic}: cite real sources and observation dates; distinguish observed views/retention from unknowns and predictions."));
             }
             let source = self.store.root().join(crate::social::snapshots::FILE);
             let t = crate::store::now();
             let model = self.creator_llm();
             let work: crew::Work = Box::new(move |ctl| {
-                if ctl.checkpoint() { return Err("stopped".into()); }
+                if ctl.checkpoint() {
+                    return Err("stopped".into());
+                }
                 let (book, cache_note) = match crate::content::creator_evidence(&source) {
-                    Ok(book) => (book, "Saved evidence read within the planning limit.".to_string()),
-                    Err(error) => (crate::social::snapshots::Book::default(), format!("Cached evidence not used: {error}. Observations remain unknown.")),
+                    Ok(book) => (
+                        book,
+                        "Saved evidence read within the planning limit.".to_string(),
+                    ),
+                    Err(error) => (
+                        crate::social::snapshots::Book::default(),
+                        format!("Cached evidence not used: {error}. Observations remain unknown."),
+                    ),
                 };
-                if ctl.checkpoint() { return Err("stopped".into()); }
+                if ctl.checkpoint() {
+                    return Err("stopped".into());
+                }
                 let mut model_note = "No structured background model is available; these are limited offline planning prompts.".to_string();
                 let mut proposed = None;
                 if kind != crate::content::CreatorAsk::Research {
@@ -2801,28 +4091,87 @@ impl<'a> Daemon<'a> {
                         let request = crate::content::creator_model_request(kind, &topic, &book, t);
                         let began = std::time::Instant::now();
                         let count = std::cell::Cell::new(0usize);
-                        let keep = || !ctl.stopping() && began.elapsed().as_secs() < 45 && count.get() <= 16_000;
-                        let reply = model.chat_until(&request, &mut |piece| { count.set(count.get().saturating_add(piece.len())); keep() }, &keep);
-                        if ctl.stopping() { return Err("stopped".into()); }
-                        proposed = reply.ok().filter(|r| r.tool_calls.is_empty() && keep()).and_then(|r| crate::content::creator_model_output(kind, &topic, &book, &r.text).ok());
-                        model_note = if proposed.is_some() { "Structured model suggestions; supplied source IDs checked, factual wording still needs review.".into() }
-                            else { "The model did not return a valid proposal within this request's limits; these are limited offline planning prompts.".into() };
+                        let keep = || {
+                            !ctl.stopping()
+                                && began.elapsed().as_secs() < 45
+                                && count.get() <= 16_000
+                        };
+                        let reply = model.chat_until(
+                            &request,
+                            &mut |piece| {
+                                count.set(count.get().saturating_add(piece.len()));
+                                keep()
+                            },
+                            &keep,
+                        );
+                        if ctl.stopping() {
+                            return Err("stopped".into());
+                        }
+                        proposed = reply
+                            .ok()
+                            .filter(|r| r.tool_calls.is_empty() && keep())
+                            .and_then(|r| {
+                                crate::content::creator_model_output(kind, &topic, &book, &r.text)
+                                    .ok()
+                            });
+                        model_note = if proposed.is_some() {
+                            "Structured model suggestions; supplied source IDs checked, factual wording still needs review.".into()
+                        } else {
+                            "The model did not return a valid proposal within this request's limits; these are limited offline planning prompts.".into()
+                        };
                     }
                 }
-                let ready = proposed.is_some() || (kind == crate::content::CreatorAsk::Research && crate::content::creator_has_evidence(&topic, &book));
+                let ready = proposed.is_some()
+                    || (kind == crate::content::CreatorAsk::Research
+                        && crate::content::creator_has_evidence(&topic, &book));
                 let answer = if let Some(proposed) = proposed {
-                    format!("{proposed}\nObserved evidence, separate from suggestions:\n{}", crate::content::creator_plan(crate::content::CreatorAsk::Research, &topic, &book, t))
-                } else { crate::content::creator_plan(kind, &topic, &book, t) };
-                if ctl.checkpoint() { return Err("stopped".into()); }
-                crate::content::review_worker_result("creator_review", if ready { "review_ready" } else { "limited" }, format!("{answer}\n{model_note}\n{cache_note}"), None, vec![], if ready { vec![] } else { vec!["More evidence or a valid model proposal is needed to fulfill this request.".into()] })
+                    format!(
+                        "{proposed}\nObserved evidence, separate from suggestions:\n{}",
+                        crate::content::creator_plan(
+                            crate::content::CreatorAsk::Research,
+                            &topic,
+                            &book,
+                            t
+                        )
+                    )
+                } else {
+                    crate::content::creator_plan(kind, &topic, &book, t)
+                };
+                if ctl.checkpoint() {
+                    return Err("stopped".into());
+                }
+                crate::content::review_worker_result(
+                    "creator_review",
+                    if ready { "review_ready" } else { "limited" },
+                    format!("{answer}\n{model_note}\n{cache_note}"),
+                    None,
+                    vec![],
+                    if ready {
+                        vec![]
+                    } else {
+                        vec!["More evidence or a valid model proposal is needed to fulfill this request.".into()]
+                    },
+                )
             });
-            return if self.hand_off("creator planning", t, work, Some(said.into()), SpeakPolicy::Always) {
-                "Preparing suggestions from the saved video evidence. Nothing will be posted.".into()
-            } else { "Background work is full; the planning request has not started.".into() };
+            return if self.hand_off(
+                "creator planning",
+                t,
+                work,
+                Some(said.into()),
+                SpeakPolicy::Always,
+            ) {
+                "Preparing suggestions from the saved video evidence. Nothing will be posted."
+                    .into()
+            } else {
+                "Background work is full; the planning request has not started.".into()
+            };
         }
         let l = said.to_lowercase();
         // A brand deal: what it actually asks of you.
-        if ["deal", "affiliate", "sponsor", "commission"].iter().any(|w| l.contains(w)) {
+        if ["deal", "affiliate", "sponsor", "commission"]
+            .iter()
+            .any(|w| l.contains(w))
+        {
             let terms = crate::editcraft::terms_from(said);
             let mut s = crate::editcraft::judge_deal(&terms);
             if terms.exclusive {
@@ -2838,7 +4187,12 @@ impl<'a> Daemon<'a> {
                 .iter()
                 .enumerate()
                 .map(|(i, n)| match n.the_mistake() {
-                    Some(m) => format!("{}. {} — watch {}; the usual mistake: {m}", i + 1, n.what(), n.watch()),
+                    Some(m) => format!(
+                        "{}. {} — watch {}; the usual mistake: {m}",
+                        i + 1,
+                        n.what(),
+                        n.watch()
+                    ),
                     None => format!("{}. {} — watch {}", i + 1, n.what(), n.watch()),
                 })
                 .collect();
@@ -2869,7 +4223,10 @@ impl<'a> Daemon<'a> {
         }
         if let Some(f) = format {
             let (lo, hi) = f.length();
-            out.push(format!("What it needs: {}. Length: {lo}–{hi} seconds.", f.rules().join("; ")));
+            out.push(format!(
+                "What it needs: {}. Length: {lo}–{hi} seconds.",
+                f.rules().join("; ")
+            ));
         }
         if out.is_empty() {
             "Ask me about grading, a brand deal, your profile, or where a video's going — TikTok, Reels, Shorts, YouTube, X or LinkedIn.".into()
@@ -2880,18 +4237,46 @@ impl<'a> Daemon<'a> {
 
     pub(super) fn money_advice(&self, said: &str) -> String {
         let l = said.to_lowercase();
-        if l.contains("bank") || l.contains("statement") && (l.contains("login") || l.contains("password") || l.contains("read") || l.contains("get")) {
+        if l.contains("bank")
+            || l.contains("statement")
+                && (l.contains("login")
+                    || l.contains("password")
+                    || l.contains("read")
+                    || l.contains("get"))
+        {
             let ways: Vec<String> = crate::finance::sources()
                 .iter()
-                .map(|s| format!("{}{}", s.describe(), if s.needs_credentials() { " (that one means I'd hold your login)" } else { "" }))
+                .map(|s| {
+                    format!(
+                        "{}{}",
+                        s.describe(),
+                        if s.needs_credentials() {
+                            " (that one means I'd hold your login)"
+                        } else {
+                            ""
+                        }
+                    )
+                })
                 .collect();
             return format!(
                 "The ways I could read it, best first: {}. I'd use the first one that works for your bank.",
                 ways.join("; ")
             );
         }
-        let what = words_after(&l, &["how long should i keep", "how long do i keep", "how long to keep", "keep my", "keep"]);
-        format!("{} That's the general rule, not advice for your situation.", crate::ledger::keep_for(&what))
+        let what = words_after(
+            &l,
+            &[
+                "how long should i keep",
+                "how long do i keep",
+                "how long to keep",
+                "keep my",
+                "keep",
+            ],
+        );
+        format!(
+            "{} That's the general rule, not advice for your situation.",
+            crate::ledger::keep_for(&what)
+        )
     }
 }
 
@@ -2901,86 +4286,282 @@ mod creator_daemon_journey_tests {
     use crate::brain::{ChatReply, ChatRequest, Llm};
     use crate::platform::mock::MockPlatform;
     use crate::proactive::ProactiveConfig;
-    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
 
     struct BoundedProposal(Arc<AtomicUsize>);
 
     #[cfg(windows)]
     #[test]
     #[ignore = "requires coordinated owned synthetic speech WAV, localhost model and installed video/Whisper tools"]
-    fn installed_video_speech_and_configured_model_prepare_actual_daemon_captions_and_title_for_review() {
-        let speech = std::path::PathBuf::from(std::env::var("ATLAS_SYNTHETIC_VIDEO_WAV").expect("owned synthetic speech WAV"));
-        assert!(speech.canonicalize().unwrap().starts_with(std::env::temp_dir().canonicalize().unwrap()), "refuse non-disposable speech input");
+    fn installed_video_speech_and_configured_model_prepare_actual_daemon_captions_and_title_for_review(
+    ) {
+        let speech = std::path::PathBuf::from(
+            std::env::var("ATLAS_SYNTHETIC_VIDEO_WAV").expect("owned synthetic speech WAV"),
+        );
+        assert!(
+            speech
+                .canonicalize()
+                .unwrap()
+                .starts_with(std::env::temp_dir().canonicalize().unwrap()),
+            "refuse non-disposable speech input"
+        );
         let url = std::env::var("ATLAS_REAL_MODEL_URL").expect("coordinated local model");
-        let authority = url.strip_prefix("http://").expect("localhost HTTP only").split('/').next().unwrap();
+        let authority = url
+            .strip_prefix("http://")
+            .expect("localhost HTTP only")
+            .split('/')
+            .next()
+            .unwrap();
         let (host, port) = authority.rsplit_once(':').unwrap();
-        assert!(matches!(host, "127.0.0.1" | "localhost") && port.parse::<u16>().is_ok_and(|p| p != 0));
+        assert!(
+            matches!(host, "127.0.0.1" | "localhost") && port.parse::<u16>().is_ok_and(|p| p != 0)
+        );
         assert!(url.ends_with("/v1/chat/completions"));
-        let install = std::path::PathBuf::from(std::env::var("LOCALAPPDATA").unwrap()).join("Atlas");
-        let ffmpeg = crate::tools::ExternalTool { command: install.join("tools/ffmpeg/ffmpeg.exe").display().to_string(), timeout_secs: 15, ..Default::default() };
-        let ffprobe = crate::tools::ExternalTool { command: install.join("tools/ffmpeg/ffprobe.exe").display().to_string(), timeout_secs: 15, ..Default::default() };
+        let install =
+            std::path::PathBuf::from(std::env::var("LOCALAPPDATA").unwrap()).join("Atlas");
+        let ffmpeg = crate::tools::ExternalTool {
+            command: install
+                .join("tools/ffmpeg/ffmpeg.exe")
+                .display()
+                .to_string(),
+            timeout_secs: 15,
+            ..Default::default()
+        };
+        let ffprobe = crate::tools::ExternalTool {
+            command: install
+                .join("tools/ffmpeg/ffprobe.exe")
+                .display()
+                .to_string(),
+            timeout_secs: 15,
+            ..Default::default()
+        };
         let whisper = install.join("tools/whisper/whisper-cli.exe");
         let asr_model = install.join("models/ggml-base.en.bin");
         assert!(whisper.is_file() && asr_model.is_file());
-        let root = std::env::current_dir().unwrap().join("scratch").join(format!("atlas-daemon-spoken-video-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let root = std::env::current_dir()
+            .unwrap()
+            .join("scratch")
+            .join(format!(
+                "atlas-daemon-spoken-video-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
         std::fs::create_dir_all(&root).unwrap();
         let input = root.join("synthetic-spoken.mp4");
-        let args = vec!["-hide_banner".into(), "-n".into(), "-f".into(), "lavfi".into(), "-i".into(), "color=c=blue:s=320x240:d=60:r=25".into(), "-i".into(), speech.display().to_string(), "-shortest".into(), "-c:v".into(), "libx264".into(), "-pix_fmt".into(), "yuv420p".into(), "-c:a".into(), "aac".into(), input.display().to_string()];
+        let args = vec![
+            "-hide_banner".into(),
+            "-n".into(),
+            "-f".into(),
+            "lavfi".into(),
+            "-i".into(),
+            "color=c=blue:s=320x240:d=60:r=25".into(),
+            "-i".into(),
+            speech.display().to_string(),
+            "-shortest".into(),
+            "-c:v".into(),
+            "libx264".into(),
+            "-pix_fmt".into(),
+            "yuv420p".into(),
+            "-c:a".into(),
+            "aac".into(),
+            input.display().to_string(),
+        ];
         crate::studio::run_tool(&ffmpeg, args, &|| false).unwrap();
         let original = std::fs::read(&input).unwrap();
         let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
         let tools = cfg.tools.as_mut().unwrap();
-        tools.video.ffmpeg = ffmpeg.clone(); tools.video.ffprobe = ffprobe.clone();
-        tools.browser.launch = None; tools.models.online_second = false; tools.llm_secondary = None;
-        tools.vars.insert("stt_model".into(), asr_model.display().to_string());
-        tools.stt_timed = Some(crate::tools::ExternalTool { command: whisper.display().to_string(), args: ["-m", "{stt_model}", "-f", "{in_wav}", "-osrt", "-of", "{stem}", "-t", "4", "-l", "en"].iter().map(|s| s.to_string()).collect(), result_file: Some("{srt}".into()), timeout_secs: 30, ..Default::default() });
+        tools.video.ffmpeg = ffmpeg.clone();
+        tools.video.ffprobe = ffprobe.clone();
+        tools.browser.launch = None;
+        tools.models.online_second = false;
+        tools.llm_secondary = None;
+        tools
+            .vars
+            .insert("stt_model".into(), asr_model.display().to_string());
+        tools.stt_timed = Some(crate::tools::ExternalTool {
+            command: whisper.display().to_string(),
+            args: [
+                "-m",
+                "{stt_model}",
+                "-f",
+                "{in_wav}",
+                "-osrt",
+                "-of",
+                "{stem}",
+                "-t",
+                "4",
+                "-l",
+                "en",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+            result_file: Some("{srt}".into()),
+            timeout_secs: 30,
+            ..Default::default()
+        });
         let mut http = crate::models::server_post();
-        http.args = http.args.iter().map(|arg| arg.replace("{url}", &url)).collect();
-        tools.llm = Some(crate::brain::LlmConfig { tool: http, request: "{}".into(), response_path: "content".into(), vision_request: None });
+        http.args = http
+            .args
+            .iter()
+            .map(|arg| arg.replace("{url}", &url))
+            .collect();
+        tools.llm = Some(crate::brain::LlmConfig {
+            tool: http,
+            request: "{}".into(),
+            response_path: "content".into(),
+            vision_request: None,
+        });
         let factory = crate::models::connection(tools).unwrap();
         assert!(factory.supports_bounded_chat());
         let captured = Arc::new(std::sync::Mutex::new(String::new()));
-        let model = Arc::new(CaptureConfiguredCreator { inner: factory, last: captured.clone() });
+        let model = Arc::new(CaptureConfiguredCreator {
+            inner: factory,
+            last: captured.clone(),
+        });
         let platform = MockPlatform::new(vec![]);
-        let mut d = Daemon::new(&cfg, &platform, Some(model), Store::new(root.join("state")), Proactive::new(ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            &cfg,
+            &platform,
+            Some(model),
+            Store::new(root.join("state")),
+            Proactive::new(ProactiveConfig::default()),
+        );
         d.use_deep_brain_for_test(crate::deepbrain::DeepBrain::none());
-        d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room { free_mb: Some(16_384), on_battery: false, battery_percent: Some(100) }));
+        d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room {
+            free_mb: Some(16_384),
+            on_battery: false,
+            battery_percent: Some(100),
+        }));
         let command = format!("get this video ready: \"{}\"", input.display());
-        let t = crate::store::now(); let id = d.queue.push_at(&command, crate::lanes::Lane::Background, t);
-        assert!(d.queue.ready_durably(&d.store, &crate::awareness::Signals::default(), &crate::lanes::LaneConfig::default(), t, crate::connectivity::Reach::Offline).unwrap().contains(&id));
-        let reply = d.turn(&command, t); let worker = d.last_crew_handoff.expect("actual studio worker");
-        d.queue.attach_worker(id, worker, &reply); d.queue.save(&d.store).unwrap();
-        let began = std::time::Instant::now(); let mut output = Vec::new();
-        while d.queue.tasks.iter().find(|task| task.id == id).unwrap().state == crate::lanes::TaskState::Running && began.elapsed() < std::time::Duration::from_secs(60) {
-            output.extend(d.take_crew_news(t + 1)); std::thread::sleep(std::time::Duration::from_millis(10));
+        let t = crate::store::now();
+        let id = d.queue.push_at(&command, crate::lanes::Lane::Background, t);
+        assert!(d
+            .queue
+            .ready_durably(
+                &d.store,
+                &crate::awareness::Signals::default(),
+                &crate::lanes::LaneConfig::default(),
+                t,
+                crate::connectivity::Reach::Offline
+            )
+            .unwrap()
+            .contains(&id));
+        let reply = d.turn(&command, t);
+        let worker = d.last_crew_handoff.expect("actual studio worker");
+        d.queue.attach_worker(id, worker, &reply);
+        d.queue.save(&d.store).unwrap();
+        let began = std::time::Instant::now();
+        let mut output = Vec::new();
+        while d
+            .queue
+            .tasks
+            .iter()
+            .find(|task| task.id == id)
+            .unwrap()
+            .state
+            == crate::lanes::TaskState::Running
+            && began.elapsed() < std::time::Duration::from_secs(60)
+        {
+            output.extend(d.take_crew_news(t + 1));
+            std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        if d.queue.tasks.iter().find(|task| task.id == id).unwrap().state == crate::lanes::TaskState::Running {
+        if d.queue
+            .tasks
+            .iter()
+            .find(|task| task.id == id)
+            .unwrap()
+            .state
+            == crate::lanes::TaskState::Running
+        {
             d.stop_linked_worker(worker, t + 2);
             let drain = std::time::Instant::now();
-            while d.crew.in_hand(worker) && drain.elapsed() < std::time::Duration::from_secs(5) { output.extend(d.take_crew_news(t + 2)); std::thread::sleep(std::time::Duration::from_millis(10)); }
+            while d.crew.in_hand(worker) && drain.elapsed() < std::time::Duration::from_secs(5) {
+                output.extend(d.take_crew_news(t + 2));
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
         }
         let task = d.queue.tasks.iter().find(|task| task.id == id).unwrap();
-        assert_eq!(task.state, crate::lanes::TaskState::Failed, "review-ready preparation is not publication Done");
-        assert!(task.interrupted, "real captions/title must reach NeedsYou: {}; {}", output.join("; "), captured.lock().unwrap());
+        assert_eq!(
+            task.state,
+            crate::lanes::TaskState::Failed,
+            "review-ready preparation is not publication Done"
+        );
+        assert!(
+            task.interrupted,
+            "real captions/title must reach NeedsYou: {}; {}",
+            output.join("; "),
+            captured.lock().unwrap()
+        );
         let review = root.join("synthetic-spoken - ready");
         let captions = std::fs::read_to_string(review.join("synthetic-spoken - cut.srt")).unwrap();
         let timed = crate::viewing::read_timed(&captions);
-        assert!(!timed.is_empty() && timed.iter().map(|s| s.words.split_whitespace().count()).sum::<usize>() >= 5);
-        let transcript = timed.iter().map(|s| s.words.clone()).collect::<Vec<_>>().join(" ");
+        assert!(
+            !timed.is_empty()
+                && timed
+                    .iter()
+                    .map(|s| s.words.split_whitespace().count())
+                    .sum::<usize>()
+                    >= 5
+        );
+        let transcript = timed
+            .iter()
+            .map(|s| s.words.clone())
+            .collect::<Vec<_>>()
+            .join(" ");
         let title = std::fs::read_to_string(review.join("title and description.txt")).unwrap();
         assert!(title.contains("Suggested wording; review against the transcript"));
-        assert!(crate::studio::title_and_description(&captured.lock().unwrap().split("synthetic reply: ").last().unwrap_or(""), &transcript).is_some(), "actual model title must pass the unchanged grounding check");
+        assert!(
+            crate::studio::title_and_description(
+                &captured
+                    .lock()
+                    .unwrap()
+                    .split("synthetic reply: ")
+                    .last()
+                    .unwrap_or(""),
+                &transcript
+            )
+            .is_some(),
+            "actual model title must pass the unchanged grounding check"
+        );
         let rendered = review.join("synthetic-spoken - cut.mp4");
-        let probed = crate::studio::run_tool(&ffprobe, crate::edit::probe_args(&rendered.display().to_string()), &|| false).unwrap();
-        let json = String::from_utf8_lossy(&probed.stdout); let (duration, audio) = crate::studio::probe(&json).unwrap();
+        let probed = crate::studio::run_tool(
+            &ffprobe,
+            crate::edit::probe_args(&rendered.display().to_string()),
+            &|| false,
+        )
+        .unwrap();
+        let json = String::from_utf8_lossy(&probed.stdout);
+        let (duration, audio) = crate::studio::probe(&json).unwrap();
         assert!(duration > 1.0 && duration < 60.0 && audio);
         assert_eq!(crate::studio::dimensions(&json), Some((320, 240)));
         assert!(review.join("thumbnail-01.jpg").metadata().unwrap().len() > 0);
-        assert!(std::fs::read_to_string(review.join("review.txt")).unwrap().contains("Captions saved: true"));
-        assert!(d.long_work.jobs.iter().any(|job| job.outcome == crate::watching::Outcome::Finished));
-        assert!(d.publisher.posts.is_empty()); assert_eq!(std::fs::read(&input).unwrap(), original);
+        assert!(std::fs::read_to_string(review.join("review.txt"))
+            .unwrap()
+            .contains("Captions saved: true"));
+        assert!(d
+            .long_work
+            .jobs
+            .iter()
+            .any(|job| job.outcome == crate::watching::Outcome::Finished));
+        assert!(d.publisher.posts.is_empty());
+        assert_eq!(std::fs::read(&input).unwrap(), original);
         let restarted = crate::lanes::Queue::load_checked(&d.store).unwrap();
-        assert!(restarted.tasks.iter().find(|task| task.id == id).unwrap().interrupted && restarted.pending() == 0);
+        assert!(
+            restarted
+                .tasks
+                .iter()
+                .find(|task| task.id == id)
+                .unwrap()
+                .interrupted
+                && restarted.pending() == 0
+        );
         drop(d);
         println!("SYNTHETIC VIDEO REVIEW PROOF: {}", review.display());
     }
@@ -2990,57 +4571,158 @@ mod creator_daemon_journey_tests {
     #[ignore = "requires coordinated installed ffmpeg/ffprobe CPU lane; creates only disposable silent footage"]
     fn installed_video_tools_run_the_actual_daemon_studio_route_and_report_partial_work() {
         let proof_started = std::time::Instant::now();
-        let tools = std::path::PathBuf::from(std::env::var("LOCALAPPDATA").unwrap()).join("Atlas/tools/ffmpeg");
-        let ffmpeg = crate::tools::ExternalTool { command: tools.join("ffmpeg.exe").display().to_string(), timeout_secs: 15, ..Default::default() };
-        let ffprobe = crate::tools::ExternalTool { command: tools.join("ffprobe.exe").display().to_string(), timeout_secs: 15, ..Default::default() };
-        assert!(std::path::Path::new(&ffmpeg.command).is_file() && std::path::Path::new(&ffprobe.command).is_file());
-        let root = std::env::temp_dir().join(format!("atlas-daemon-video-proof-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let tools = std::path::PathBuf::from(std::env::var("LOCALAPPDATA").unwrap())
+            .join("Atlas/tools/ffmpeg");
+        let ffmpeg = crate::tools::ExternalTool {
+            command: tools.join("ffmpeg.exe").display().to_string(),
+            timeout_secs: 15,
+            ..Default::default()
+        };
+        let ffprobe = crate::tools::ExternalTool {
+            command: tools.join("ffprobe.exe").display().to_string(),
+            timeout_secs: 15,
+            ..Default::default()
+        };
+        assert!(
+            std::path::Path::new(&ffmpeg.command).is_file()
+                && std::path::Path::new(&ffprobe.command).is_file()
+        );
+        let root = std::env::temp_dir().join(format!(
+            "atlas-daemon-video-proof-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir_all(&root).unwrap();
         let input = root.join("synthetic-camera.mp4");
-        let args = ["-hide_banner", "-n", "-f", "lavfi", "-i", "color=c=blue:s=320x240:d=2:r=25", "-c:v", "libx264", "-pix_fmt", "yuv420p"].iter().map(|s| s.to_string()).chain([input.display().to_string()]).collect();
+        let args = [
+            "-hide_banner",
+            "-n",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:s=320x240:d=2:r=25",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .chain([input.display().to_string()])
+        .collect();
         crate::studio::run_tool(&ffmpeg, args, &|| false).unwrap();
         let original = std::fs::read(&input).unwrap();
         let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
         let configured = cfg.tools.as_mut().unwrap();
-        configured.video.ffmpeg = ffmpeg.clone(); configured.video.ffprobe = ffprobe.clone();
-        configured.browser.launch = None; configured.models.online_second = false;
+        configured.video.ffmpeg = ffmpeg.clone();
+        configured.video.ffprobe = ffprobe.clone();
+        configured.browser.launch = None;
+        configured.models.online_second = false;
         configured.stt_timed = None;
         let platform = MockPlatform::new(vec![]);
-        let mut d = Daemon::new(&cfg, &platform, None, Store::new(root.join("state")), Proactive::new(ProactiveConfig::default()));
-        d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room { free_mb: Some(16_384), on_battery: false, battery_percent: Some(100) }));
+        let mut d = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            Store::new(root.join("state")),
+            Proactive::new(ProactiveConfig::default()),
+        );
+        d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room {
+            free_mb: Some(16_384),
+            on_battery: false,
+            battery_percent: Some(100),
+        }));
         let command = format!("get this video ready: \"{}\"", input.display());
         let t = crate::store::now();
         let id = d.queue.push_at(&command, crate::lanes::Lane::Background, t);
-        assert!(d.queue.ready_durably(&d.store, &crate::awareness::Signals::default(), &crate::lanes::LaneConfig::default(), t, crate::connectivity::Reach::Offline).unwrap().contains(&id));
+        assert!(d
+            .queue
+            .ready_durably(
+                &d.store,
+                &crate::awareness::Signals::default(),
+                &crate::lanes::LaneConfig::default(),
+                t,
+                crate::connectivity::Reach::Offline
+            )
+            .unwrap()
+            .contains(&id));
         let began = std::time::Instant::now();
         let reply = d.turn(&command, t);
-        assert!(reply.contains("Preparing a review copy") && reply.contains("nothing will be posted"), "{reply}");
+        assert!(
+            reply.contains("Preparing a review copy") && reply.contains("nothing will be posted"),
+            "{reply}"
+        );
         let worker = d.last_crew_handoff.expect("actual studio worker");
-        d.queue.attach_worker(id, worker, &reply); d.queue.save(&d.store).unwrap();
+        d.queue.attach_worker(id, worker, &reply);
+        d.queue.save(&d.store).unwrap();
         let mut output = Vec::new();
-        while d.queue.tasks.iter().find(|task| task.id == id).unwrap().state == crate::lanes::TaskState::Running && began.elapsed() < std::time::Duration::from_secs(55) {
+        while d
+            .queue
+            .tasks
+            .iter()
+            .find(|task| task.id == id)
+            .unwrap()
+            .state
+            == crate::lanes::TaskState::Running
+            && began.elapsed() < std::time::Duration::from_secs(55)
+        {
             output.extend(d.take_crew_news(t + 1));
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        if d.queue.tasks.iter().find(|task| task.id == id).unwrap().state == crate::lanes::TaskState::Running { d.stop_linked_worker(worker, t + 2); }
+        if d.queue
+            .tasks
+            .iter()
+            .find(|task| task.id == id)
+            .unwrap()
+            .state
+            == crate::lanes::TaskState::Running
+        {
+            d.stop_linked_worker(worker, t + 2);
+        }
         let task = d.queue.tasks.iter().find(|task| task.id == id).unwrap();
-        assert_eq!(task.state, crate::lanes::TaskState::Failed, "silent footage without a title cannot finish the full preparation: {}", output.join("; "));
-        assert!(!task.interrupted, "partial work must not be labelled review-ready");
+        assert_eq!(
+            task.state,
+            crate::lanes::TaskState::Failed,
+            "silent footage without a title cannot finish the full preparation: {}",
+            output.join("; ")
+        );
+        assert!(
+            !task.interrupted,
+            "partial work must not be labelled review-ready"
+        );
         let review = root.join("synthetic-camera - ready");
         let rendered = review.join("synthetic-camera - cut.mp4");
-        let probed = crate::studio::run_tool(&ffprobe, crate::edit::probe_args(&rendered.display().to_string()), &|| false).unwrap();
+        let probed = crate::studio::run_tool(
+            &ffprobe,
+            crate::edit::probe_args(&rendered.display().to_string()),
+            &|| false,
+        )
+        .unwrap();
         let json = String::from_utf8_lossy(&probed.stdout);
         let (duration, audio) = crate::studio::probe(&json).unwrap();
         assert!((duration - 2.0).abs() < 0.2 && !audio);
         assert_eq!(crate::studio::dimensions(&json), Some((320, 240)));
         assert!(review.join("thumbnail-01.jpg").metadata().unwrap().len() > 0);
         let manifest = std::fs::read_to_string(review.join("review.txt")).unwrap();
-        assert!(manifest.contains("captions and audio editing were skipped") && manifest.contains("Captions saved: false"));
-        assert!(output.iter().any(|text| text.contains("No title suggestion was saved")));
-        assert!(d.long_work.jobs.iter().any(|job| job.outcome == crate::watching::Outcome::Failed));
+        assert!(
+            manifest.contains("captions and audio editing were skipped")
+                && manifest.contains("Captions saved: false")
+        );
+        assert!(output
+            .iter()
+            .any(|text| text.contains("No title suggestion was saved")));
+        assert!(d
+            .long_work
+            .jobs
+            .iter()
+            .any(|job| job.outcome == crate::watching::Outcome::Failed));
         assert!(d.publisher.posts.is_empty());
         assert_eq!(std::fs::read(&input).unwrap(), original);
-        drop(d); std::fs::remove_dir_all(root).unwrap();
+        drop(d);
+        std::fs::remove_dir_all(root).unwrap();
         assert!(proof_started.elapsed() < std::time::Duration::from_secs(90));
     }
     struct HeldCreator {
@@ -3048,29 +4730,61 @@ mod creator_daemon_journey_tests {
         released: Arc<std::sync::atomic::AtomicBool>,
     }
     impl Llm for HeldCreator {
-        fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> { panic!("creator must remain cancellable") }
-        fn supports_bounded_chat(&self) -> bool { true }
-        fn chat_until(&self, req: &ChatRequest, _: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> crate::error::Result<ChatReply> {
+        fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> {
+            panic!("creator must remain cancellable")
+        }
+        fn supports_bounded_chat(&self) -> bool {
+            true
+        }
+        fn chat_until(
+            &self,
+            req: &ChatRequest,
+            _: &mut dyn FnMut(&str) -> bool,
+            keep: &dyn Fn() -> bool,
+        ) -> crate::error::Result<ChatReply> {
             assert!(req.aside && req.output_schema.is_some());
             self.entered.send(()).unwrap();
-            while keep() && !self.released.load(Ordering::SeqCst) { std::thread::sleep(std::time::Duration::from_millis(5)); }
-            while !self.released.load(Ordering::SeqCst) { std::thread::sleep(std::time::Duration::from_millis(5)); }
-            Err(crate::error::AtlasError::Platform("creator fixture stopped".into()))
+            while keep() && !self.released.load(Ordering::SeqCst) {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            while !self.released.load(Ordering::SeqCst) {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            Err(crate::error::AtlasError::Platform(
+                "creator fixture stopped".into(),
+            ))
         }
     }
     struct ReleaseOnDrop(Arc<std::sync::atomic::AtomicBool>);
-    impl Drop for ReleaseOnDrop { fn drop(&mut self) { self.0.store(true, Ordering::SeqCst); } }
+    impl Drop for ReleaseOnDrop {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
     struct CaptureConfiguredCreator {
         inner: Arc<dyn Llm>,
         last: Arc<std::sync::Mutex<String>>,
     }
     impl Llm for CaptureConfiguredCreator {
-        fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> { panic!("native creator proof must use bounded chat") }
-        fn supports_bounded_chat(&self) -> bool { self.inner.supports_bounded_chat() }
-        fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> crate::error::Result<ChatReply> {
+        fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> {
+            panic!("native creator proof must use bounded chat")
+        }
+        fn supports_bounded_chat(&self) -> bool {
+            self.inner.supports_bounded_chat()
+        }
+        fn chat_until(
+            &self,
+            req: &ChatRequest,
+            on_text: &mut dyn FnMut(&str) -> bool,
+            keep: &dyn Fn() -> bool,
+        ) -> crate::error::Result<ChatReply> {
             let result = self.inner.chat_until(req, on_text, keep);
             *self.last.lock().unwrap() = match &result {
-                Ok(reply) => format!("schema supplied: {}; synthetic reply: {}", req.output_schema.is_some(), reply.text.chars().take(2000).collect::<String>()),
+                Ok(reply) => format!(
+                    "schema supplied: {}; synthetic reply: {}",
+                    req.output_schema.is_some(),
+                    reply.text.chars().take(2000).collect::<String>()
+                ),
                 Err(error) => format!("bounded configured adapter error: {error}"),
             };
             result
@@ -3084,27 +4798,66 @@ mod creator_daemon_journey_tests {
         tools.models.online_second = false;
         tools.llm_secondary = None;
         let mut http = crate::models::server_post();
-        http.args = http.args.iter().map(|arg| arg.replace("{url}", "http://127.0.0.1:1/v1/chat/completions")).collect();
-        tools.llm = Some(crate::brain::LlmConfig { tool: http, request: "{}".into(), response_path: "content".into(), vision_request: None });
+        http.args = http
+            .args
+            .iter()
+            .map(|arg| arg.replace("{url}", "http://127.0.0.1:1/v1/chat/completions"))
+            .collect();
+        tools.llm = Some(crate::brain::LlmConfig {
+            tool: http,
+            request: "{}".into(),
+            response_path: "content".into(),
+            vision_request: None,
+        });
         let model = crate::models::connection(tools).unwrap();
         assert!(model.supports_bounded_chat());
-        let request = crate::content::creator_model_request(crate::content::CreatorAsk::Idea, "sourdough starter", &crate::social::snapshots::Book::default(), 0);
+        let request = crate::content::creator_model_request(
+            crate::content::CreatorAsk::Idea,
+            "sourdough starter",
+            &crate::social::snapshots::Book::default(),
+            0,
+        );
         let began = std::time::Instant::now();
         let mut callback_called = false;
-        let result = model.chat_until(&request, &mut |_| { callback_called = true; true }, &|| false);
+        let result = model.chat_until(
+            &request,
+            &mut |_| {
+                callback_called = true;
+                true
+            },
+            &|| false,
+        );
         assert!(result.is_err());
-        assert!(crate::models::chat_was_stopped(result.as_ref().unwrap_err()));
+        assert!(crate::models::chat_was_stopped(
+            result.as_ref().unwrap_err()
+        ));
         assert!(!callback_called);
         assert!(began.elapsed() < std::time::Duration::from_secs(1));
     }
     impl Llm for BoundedProposal {
-        fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> { panic!("creator must use the bounded production request") }
-        fn supports_bounded_chat(&self) -> bool { true }
-        fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> crate::error::Result<ChatReply> {
+        fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> {
+            panic!("creator must use the bounded production request")
+        }
+        fn supports_bounded_chat(&self) -> bool {
+            true
+        }
+        fn chat_until(
+            &self,
+            req: &ChatRequest,
+            on_text: &mut dyn FnMut(&str) -> bool,
+            keep: &dyn Fn() -> bool,
+        ) -> crate::error::Result<ChatReply> {
             assert!(keep());
             assert!(req.aside && req.tools.is_empty());
-            assert!(req.messages.iter().any(|m| m.content.contains("sourdough starter")));
-            assert_eq!(req.output_schema.as_ref().unwrap()["properties"]["suggestions"]["items"]["properties"]["reference_ids"]["maxItems"], 0);
+            assert!(req
+                .messages
+                .iter()
+                .any(|m| m.content.contains("sourdough starter")));
+            assert_eq!(
+                req.output_schema.as_ref().unwrap()["properties"]["suggestions"]["items"]
+                    ["properties"]["reference_ids"]["maxItems"],
+                0
+            );
             self.0.fetch_add(1, Ordering::SeqCst);
             let text = r#"{"suggestions":[{"title":"Compare two starter jars","action":"Film the sourdough starter before feeding and again after rising, keeping the camera position fixed.","reason":"Visible changes give the viewer a concrete comparison.","reference_ids":[]}],"duration_seconds":null}"#;
             assert!(on_text(text) && keep());
@@ -3119,32 +4872,86 @@ mod creator_daemon_journey_tests {
             cfg.tools.as_mut().unwrap().editcraft.enabled = true;
             cfg.tools.as_mut().unwrap().browser.launch = None;
             let platform = MockPlatform::new(vec![]);
-            let root = std::env::temp_dir().join(format!("atlas-creator-daemon-{}-{}-{available}", std::process::id(), crate::store::now()));
+            let root = std::env::temp_dir().join(format!(
+                "atlas-creator-daemon-{}-{}-{available}",
+                std::process::id(),
+                crate::store::now()
+            ));
             let calls = Arc::new(AtomicUsize::new(0));
             let model = available.then(|| Arc::new(BoundedProposal(calls.clone())) as Arc<dyn Llm>);
-            let mut d = Daemon::new(&cfg, &platform, model, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
-            d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room { free_mb: Some(16_384), on_battery: false, battery_percent: Some(100) }));
+            let mut d = Daemon::new(
+                &cfg,
+                &platform,
+                model,
+                Store::new(root.clone()),
+                Proactive::new(ProactiveConfig::default()),
+            );
+            d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room {
+                free_mb: Some(16_384),
+                on_battery: false,
+                battery_percent: Some(100),
+            }));
             let command = "video idea for sourdough starter";
             let t = crate::store::now();
             let id = d.queue.push_at(command, crate::lanes::Lane::Background, t);
-            assert!(d.queue.ready_durably(&d.store, &crate::awareness::Signals::default(), &crate::lanes::LaneConfig::default(), t, crate::connectivity::Reach::Offline).unwrap().contains(&id));
+            assert!(d
+                .queue
+                .ready_durably(
+                    &d.store,
+                    &crate::awareness::Signals::default(),
+                    &crate::lanes::LaneConfig::default(),
+                    t,
+                    crate::connectivity::Reach::Offline
+                )
+                .unwrap()
+                .contains(&id));
             let reply = d.turn(command, t);
             assert!(reply.contains("Nothing will be posted"), "{reply}");
             let worker = d.last_crew_handoff.expect("actual creator handoff");
             d.queue.attach_worker(id, worker, &reply);
-            assert_eq!(d.queue.tasks.iter().find(|task| task.id == id).unwrap().worker_id, Some(worker));
+            assert_eq!(
+                d.queue
+                    .tasks
+                    .iter()
+                    .find(|task| task.id == id)
+                    .unwrap()
+                    .worker_id,
+                Some(worker)
+            );
             d.queue.save(&d.store).unwrap();
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
             let mut output = Vec::new();
-            while d.queue.tasks.iter().find(|task| task.id == id).unwrap().state == crate::lanes::TaskState::Running && std::time::Instant::now() < deadline {
+            while d
+                .queue
+                .tasks
+                .iter()
+                .find(|task| task.id == id)
+                .unwrap()
+                .state
+                == crate::lanes::TaskState::Running
+                && std::time::Instant::now() < deadline
+            {
                 output.extend(d.take_crew_news(t + 1));
                 std::thread::sleep(std::time::Duration::from_millis(5));
             }
             let task = d.queue.tasks.iter().find(|task| task.id == id).unwrap();
-            assert_eq!(task.state, crate::lanes::TaskState::Failed, "review or limited capability must not mark the whole requested journey Done: {}", output.join("; "));
-            assert_eq!(task.interrupted, available, "only a valid prepared proposal is waiting for owner review");
+            assert_eq!(
+                task.state,
+                crate::lanes::TaskState::Failed,
+                "review or limited capability must not mark the whole requested journey Done: {}",
+                output.join("; ")
+            );
+            assert_eq!(
+                task.interrupted, available,
+                "only a valid prepared proposal is waiting for owner review"
+            );
             assert_eq!(calls.load(Ordering::SeqCst), usize::from(available));
-            assert!(d.long_work.jobs.iter().any(|job| job.outcome == if available { crate::watching::Outcome::Finished } else { crate::watching::Outcome::Failed }));
+            assert!(d.long_work.jobs.iter().any(|job| job.outcome
+                == if available {
+                    crate::watching::Outcome::Finished
+                } else {
+                    crate::watching::Outcome::Failed
+                }));
             drop(d);
             std::fs::remove_dir_all(root).unwrap();
         }
@@ -3156,23 +4963,52 @@ mod creator_daemon_journey_tests {
         cfg.tools.as_mut().unwrap().editcraft.enabled = true;
         cfg.tools.as_mut().unwrap().browser.launch = None;
         let platform = MockPlatform::new(vec![]);
-        let root = std::env::temp_dir().join(format!("atlas-creator-cancel-{}-{}", std::process::id(), crate::store::now()));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-creator-cancel-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
         let released = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let (entered, receiver) = std::sync::mpsc::channel();
-        let model = Arc::new(HeldCreator { entered, released: released.clone() });
-        let mut d = Daemon::new(&cfg, &platform, Some(model), Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+        let model = Arc::new(HeldCreator {
+            entered,
+            released: released.clone(),
+        });
+        let mut d = Daemon::new(
+            &cfg,
+            &platform,
+            Some(model),
+            Store::new(root.clone()),
+            Proactive::new(ProactiveConfig::default()),
+        );
         // Drop before Daemon on every assertion failure so its worker can wind down.
         let release_guard = ReleaseOnDrop(released.clone());
-        d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room { free_mb: Some(16_384), on_battery: false, battery_percent: Some(100) }));
+        d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room {
+            free_mb: Some(16_384),
+            on_battery: false,
+            battery_percent: Some(100),
+        }));
         let command = "video idea for sourdough starter";
         let t = crate::store::now();
         let id = d.queue.push_at(command, crate::lanes::Lane::Background, t);
-        assert!(d.queue.ready_durably(&d.store, &crate::awareness::Signals::default(), &crate::lanes::LaneConfig::default(), t, crate::connectivity::Reach::Offline).unwrap().contains(&id));
+        assert!(d
+            .queue
+            .ready_durably(
+                &d.store,
+                &crate::awareness::Signals::default(),
+                &crate::lanes::LaneConfig::default(),
+                t,
+                crate::connectivity::Reach::Offline
+            )
+            .unwrap()
+            .contains(&id));
         let reply = d.turn(command, t);
         let worker = d.last_crew_handoff.expect("actual creator worker");
         d.queue.attach_worker(id, worker, &reply);
         d.queue.save(&d.store).unwrap();
-        receiver.recv_timeout(std::time::Duration::from_secs(2)).expect("bounded creator model entered");
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("bounded creator model entered");
         let cancelled = d.drop_outstanding(&format!("t:{id}"), t + 1).unwrap();
         assert!(cancelled.stopping && cancelled.unsaved.is_none());
         let pending: crate::lanes::Queue = d.store.load_checked("queue").unwrap().unwrap();
@@ -3182,15 +5018,31 @@ mod creator_daemon_journey_tests {
         assert_eq!(task.worker_id, Some(worker));
         released.store(true, Ordering::SeqCst);
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
-        while d.queue.tasks.iter().find(|task| task.id == id).unwrap().state == crate::lanes::TaskState::Running && std::time::Instant::now() < deadline {
+        while d
+            .queue
+            .tasks
+            .iter()
+            .find(|task| task.id == id)
+            .unwrap()
+            .state
+            == crate::lanes::TaskState::Running
+            && std::time::Instant::now() < deadline
+        {
             d.take_crew_news(t + 2);
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         let restarted = crate::lanes::Queue::load_checked(&d.store).unwrap();
         let task = restarted.tasks.iter().find(|task| task.id == id).unwrap();
         assert_eq!(task.state, crate::lanes::TaskState::Failed);
-        assert!(task.result.as_ref().is_some_and(|text| text.contains("stopped")));
-        assert!(d.long_work.jobs.iter().any(|job| job.outcome == crate::watching::Outcome::Failed));
+        assert!(task
+            .result
+            .as_ref()
+            .is_some_and(|text| text.contains("stopped")));
+        assert!(d
+            .long_work
+            .jobs
+            .iter()
+            .any(|job| job.outcome == crate::watching::Outcome::Failed));
         assert_eq!(restarted.pending(), 0);
         drop(release_guard);
         drop(d);
@@ -3201,7 +5053,12 @@ mod creator_daemon_journey_tests {
     #[ignore = "requires the parent's coordinated owned localhost model server"]
     fn configured_local_model_runs_the_actual_daemon_creator_route_without_publication() {
         let url = std::env::var("ATLAS_REAL_MODEL_URL").expect("coordinated local chat endpoint");
-        let authority = url.strip_prefix("http://").expect("local HTTP only").split('/').next().unwrap();
+        let authority = url
+            .strip_prefix("http://")
+            .expect("local HTTP only")
+            .split('/')
+            .next()
+            .unwrap();
         let (host, port) = authority.rsplit_once(':').expect("explicit localhost port");
         assert!(matches!(host, "127.0.0.1" | "localhost"));
         assert!(port.parse::<u16>().is_ok_and(|port| port != 0));
@@ -3213,20 +5070,64 @@ mod creator_daemon_journey_tests {
         tools.models.online_second = false;
         tools.llm_secondary = None;
         let mut http = crate::models::server_post();
-        http.args = http.args.iter().map(|arg| arg.replace("{url}", &url)).collect();
-        tools.llm = Some(crate::brain::LlmConfig { tool: http, request: "{}".into(), response_path: "content".into(), vision_request: None });
-        let model = crate::models::connection(tools).expect("production configured-primary factory");
-        assert!(model.supports_bounded_chat(), "production wrappers must preserve the bounded local interface");
+        http.args = http
+            .args
+            .iter()
+            .map(|arg| arg.replace("{url}", &url))
+            .collect();
+        tools.llm = Some(crate::brain::LlmConfig {
+            tool: http,
+            request: "{}".into(),
+            response_path: "content".into(),
+            vision_request: None,
+        });
+        let model =
+            crate::models::connection(tools).expect("production configured-primary factory");
+        assert!(
+            model.supports_bounded_chat(),
+            "production wrappers must preserve the bounded local interface"
+        );
         let captured = Arc::new(std::sync::Mutex::new(String::new()));
-        let model = Arc::new(CaptureConfiguredCreator { inner: model, last: captured.clone() });
+        let model = Arc::new(CaptureConfiguredCreator {
+            inner: model,
+            last: captured.clone(),
+        });
         let platform = MockPlatform::new(vec![]);
-        let root = std::env::temp_dir().join(format!("atlas-native-creator-daemon-{}-{}", std::process::id(), crate::store::now()));
-        let mut d = Daemon::new(&cfg, &platform, Some(model), Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
-        d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room { free_mb: Some(16_384), on_battery: false, battery_percent: Some(100) }));
-        for command in ["video idea for sourdough starter troubleshooting for beginners", "video structure for sourdough starter troubleshooting for beginners 60 seconds", "editing advice for sourdough starter troubleshooting for beginners"] {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-native-creator-daemon-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        let mut d = Daemon::new(
+            &cfg,
+            &platform,
+            Some(model),
+            Store::new(root.clone()),
+            Proactive::new(ProactiveConfig::default()),
+        );
+        d.crew = crew::Crew::new(1).with_room(Box::new(|| crew::Room {
+            free_mb: Some(16_384),
+            on_battery: false,
+            battery_percent: Some(100),
+        }));
+        for command in [
+            "video idea for sourdough starter troubleshooting for beginners",
+            "video structure for sourdough starter troubleshooting for beginners 60 seconds",
+            "editing advice for sourdough starter troubleshooting for beginners",
+        ] {
             let t = crate::store::now();
             let id = d.queue.push_at(command, crate::lanes::Lane::Background, t);
-            assert!(d.queue.ready_durably(&d.store, &crate::awareness::Signals::default(), &crate::lanes::LaneConfig::default(), t, crate::connectivity::Reach::Offline).unwrap().contains(&id));
+            assert!(d
+                .queue
+                .ready_durably(
+                    &d.store,
+                    &crate::awareness::Signals::default(),
+                    &crate::lanes::LaneConfig::default(),
+                    t,
+                    crate::connectivity::Reach::Offline
+                )
+                .unwrap()
+                .contains(&id));
             let began = std::time::Instant::now();
             let reply = d.turn(command, t);
             assert!(reply.contains("Nothing will be posted"), "{reply}");
@@ -3234,18 +5135,48 @@ mod creator_daemon_journey_tests {
             d.queue.attach_worker(id, worker, &reply);
             d.queue.save(&d.store).unwrap();
             let mut output = Vec::new();
-            while d.queue.tasks.iter().find(|task| task.id == id).unwrap().state == crate::lanes::TaskState::Running && began.elapsed() < std::time::Duration::from_secs(45) {
+            while d
+                .queue
+                .tasks
+                .iter()
+                .find(|task| task.id == id)
+                .unwrap()
+                .state
+                == crate::lanes::TaskState::Running
+                && began.elapsed() < std::time::Duration::from_secs(45)
+            {
                 output.extend(d.take_crew_news(t + 1));
                 std::thread::sleep(std::time::Duration::from_millis(5));
             }
             let task = d.queue.tasks.iter().find(|task| task.id == id).unwrap();
-            assert!(began.elapsed() < std::time::Duration::from_secs(45), "actual configured creator route exceeded its unchanged budget");
-            assert_eq!(task.state, crate::lanes::TaskState::Failed, "preparation alone cannot complete publication");
-            assert!(task.interrupted, "a real valid proposal must reach NeedsYou, not limited-model failure: {}; {}", output.join("; "), captured.lock().unwrap());
-            assert!(output.iter().any(|line| line.contains("originality unverified")));
+            assert!(
+                began.elapsed() < std::time::Duration::from_secs(45),
+                "actual configured creator route exceeded its unchanged budget"
+            );
+            assert_eq!(
+                task.state,
+                crate::lanes::TaskState::Failed,
+                "preparation alone cannot complete publication"
+            );
+            assert!(
+                task.interrupted,
+                "a real valid proposal must reach NeedsYou, not limited-model failure: {}; {}",
+                output.join("; "),
+                captured.lock().unwrap()
+            );
+            assert!(output
+                .iter()
+                .any(|line| line.contains("originality unverified")));
             assert!(d.publisher.posts.is_empty());
             let restarted = crate::lanes::Queue::load_checked(&d.store).unwrap();
-            assert!(restarted.tasks.iter().find(|task| task.id == id).unwrap().interrupted);
+            assert!(
+                restarted
+                    .tasks
+                    .iter()
+                    .find(|task| task.id == id)
+                    .unwrap()
+                    .interrupted
+            );
             assert_eq!(restarted.pending(), 0);
         }
         drop(d);
@@ -3285,7 +5216,13 @@ impl<'a> Daemon<'a> {
             let shown = crate::handloop::shape_shown(eyes.as_mut(), &n, &d, 300);
             serde_json::to_string(&shown).map_err(|e| e.to_string())
         });
-        if self.hand_off("teach-gesture", t, work, Some(name.clone()), SpeakPolicy::Always) {
+        if self.hand_off(
+            "teach-gesture",
+            t,
+            work,
+            Some(name.clone()),
+            SpeakPolicy::Always,
+        ) {
             format!("Hold the shape for {name} up to the camera and keep it still for a couple of seconds.")
         } else {
             "I'm swamped with background work right now — ask me again in a moment.".into()
@@ -3296,7 +5233,8 @@ impl<'a> Daemon<'a> {
         let crew::Ending::Done(Ok(json)) = ending else {
             return Some("I couldn't watch for the gesture.".into());
         };
-        let shown: std::result::Result<crate::handshape::Gesture, String> = serde_json::from_str(json).ok()?;
+        let shown: std::result::Result<crate::handshape::Gesture, String> =
+            serde_json::from_str(json).ok()?;
         Some(match shown {
             Ok(g) => match self.gestures.adopt(g) {
                 Ok(said) => {
@@ -3321,12 +5259,22 @@ impl<'a> Daemon<'a> {
             } else {
                 String::new()
             };
-            return format!("Only English right now.{swap} Turn on other languages in settings and I'll {}.",
-                if cfg.translate_others { "bring them back in English" } else { "write them down as they're said" });
+            return format!(
+                "Only English right now.{swap} Turn on other languages in settings and I'll {}.",
+                if cfg.translate_others {
+                    "bring them back in English"
+                } else {
+                    "write them down as they're said"
+                }
+            );
         }
         format!(
             "Any language Whisper knows — ninety-odd. {}",
-            if cfg.translate_others { "Anything that isn't yours comes back in English, and call notes keep both." } else { "I write each down as it's said." }
+            if cfg.translate_others {
+                "Anything that isn't yours comes back in English, and call notes keep both."
+            } else {
+                "I write each down as it's said."
+            }
         )
     }
 
@@ -3350,7 +5298,10 @@ impl<'a> Daemon<'a> {
     pub(super) fn set_key(&mut self, said: &str) -> String {
         let l = said.to_lowercase();
         let tools = self.tools_cfg();
-        let (talk, typing) = (tools.push_to_talk.key.clone(), tools.quick_input.hotkey.clone());
+        let (talk, typing) = (
+            tools.push_to_talk.key.clone(),
+            tools.quick_input.hotkey.clone(),
+        );
         let Some(i) = l.rfind(" to ") else {
             return format!(
                 "Hold {} to talk, and press {} to type. Say \"set my typing key to\" and the keys to change one, or set it by pressing it in Settings.",
@@ -3358,12 +5309,20 @@ impl<'a> Daemon<'a> {
                 crate::settingswin::pretty_key(&typing)
             );
         };
-        let which = if l.contains("talk") { "push_to_talk.key" } else { "quick_input.hotkey" };
+        let which = if l.contains("talk") {
+            "push_to_talk.key"
+        } else {
+            "quick_input.hotkey"
+        };
         let spec = key_spoken(&l[i + 4..]);
         match crate::settingswin::keep_setting(&crate::roots::config_dir(), which, &spec) {
             Ok(_) => format!(
                 "Done — {} is now {}. It takes hold when Atlas restarts.",
-                if which == "push_to_talk.key" { "push-to-talk" } else { "the typing box" },
+                if which == "push_to_talk.key" {
+                    "push-to-talk"
+                } else {
+                    "the typing box"
+                },
                 crate::settingswin::pretty_key(&spec)
             ),
             Err(why) => format!("I've left it as it was: {why}."),
@@ -3373,14 +5332,36 @@ impl<'a> Daemon<'a> {
     /// A photo, or a folder of them, edited on a new copy (`photo`).
     pub(super) fn edit_photo(&mut self, said: &str) -> String {
         // The clipboard only when the words point at it, as "explain this" does.
-        let copied = if crate::clipboard::refers_to_clipboard(said) { self.clipboard_text.clone().or_else(|| self.plat.read_clipboard().ok().flatten()) } else { None };
-        let handed = crate::photo::which_photo(said, copied.as_deref(), self.file_meant(said, crate::photo::PHOTO_EXTS));
-        let setup = crate::photo::Setup::here(&self.tools_cfg().video.ffmpeg.command, self.store.root());
+        let copied = if crate::clipboard::refers_to_clipboard(said) {
+            self.clipboard_text
+                .clone()
+                .or_else(|| self.plat.read_clipboard().ok().flatten())
+        } else {
+            None
+        };
+        let handed = crate::photo::which_photo(
+            said,
+            copied.as_deref(),
+            self.file_meant(said, crate::photo::PHOTO_EXTS),
+        );
+        let setup =
+            crate::photo::Setup::here(&self.tools_cfg().video.ffmpeg.command, self.store.root());
         match crate::photo::ask(said, handed, setup) {
             crate::photo::Plan::Now(answer) => answer,
             crate::photo::Plan::Later { start, work } => {
-                let work: crew::Work = Box::new(move |c: &crew::Control| Ok(work(&|| c.stopping())));
-                if self.hand_off("photo", crate::store::now(), work, Some(said.to_string()), SpeakPolicy::Always) { start } else { "I'm swamped with background work right now — ask me again in a moment.".into() }
+                let work: crew::Work =
+                    Box::new(move |c: &crew::Control| Ok(work(&|| c.stopping())));
+                if self.hand_off(
+                    "photo",
+                    crate::store::now(),
+                    work,
+                    Some(said.to_string()),
+                    SpeakPolicy::Always,
+                ) {
+                    start
+                } else {
+                    "I'm swamped with background work right now — ask me again in a moment.".into()
+                }
             }
         }
     }
@@ -3395,10 +5376,17 @@ fn later_own_words(said: &str) -> Option<String> {
     for lead in ["please ", "can you ", "could you ", "add ", "put ", "save "] {
         t = t.strip_prefix(lead).unwrap_or(t);
     }
-    let cut = [" to the later list", " to my later list", " on the later list", " on my later list", " for later", " to later"]
-        .iter()
-        .filter_map(|p| t.find(p))
-        .min()?;
+    let cut = [
+        " to the later list",
+        " to my later list",
+        " on the later list",
+        " on my later list",
+        " for later",
+        " to later",
+    ]
+    .iter()
+    .filter_map(|p| t.find(p))
+    .min()?;
     let own = t[..cut].trim();
     if own.is_empty() || ["that", "this", "it", "that one", "this one"].contains(&own) {
         return None;
@@ -3434,10 +5422,17 @@ fn transcript_checked(
     let timed = timed.ok_or("no local transcriber is configured")?;
     let s = |p: &std::path::Path| p.display().to_string();
     let wav = folder.join("sound.wav");
-    let scratch = crate::retention::RetentionConfig { delete_audio_after_transcribing: true, ..Default::default() };
+    let scratch = crate::retention::RetentionConfig {
+        delete_audio_after_transcribing: true,
+        ..Default::default()
+    };
     let mut sound = crate::retention::Recording::new(&wav, &scratch);
     sound.and_also(&wav.with_extension("srt"));
-    crate::studio::run_tool(&video.ffmpeg, crate::studio::audio_args(src, &s(&wav)), stop)?;
+    crate::studio::run_tool(
+        &video.ffmpeg,
+        crate::studio::audio_args(src, &s(&wav)),
+        stop,
+    )?;
     let mut v = vars.clone();
     let stem_path = wav.with_extension("");
     v.insert("in_wav".into(), s(&wav));
@@ -3447,10 +5442,21 @@ fn transcript_checked(
     v.entry("lang_opt".into()).or_default();
     v.entry("lang_val".into()).or_default();
     let mut tool = timed.clone();
-    tool.timeout_secs = tool.timeout_secs.max(crate::callnotes::transcribe_timeout_secs(&wav));
-    let srt = tool.run_stoppable(&v, None, stop).map_err(|e| e.to_string())?.ok_or("stopped")?;
-    let words = crate::viewing::read_timed(&srt).iter().map(|x| x.words.clone()).collect::<Vec<_>>().join(" ");
-    if words.trim().is_empty() { return Err("the transcriber returned no usable timed words".into()); }
+    tool.timeout_secs = tool
+        .timeout_secs
+        .max(crate::callnotes::transcribe_timeout_secs(&wav));
+    let srt = tool
+        .run_stoppable(&v, None, stop)
+        .map_err(|e| e.to_string())?
+        .ok_or("stopped")?;
+    let words = crate::viewing::read_timed(&srt)
+        .iter()
+        .map(|x| x.words.clone())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if words.trim().is_empty() {
+        return Err("the transcriber returned no usable timed words".into());
+    }
     if let Some(keep) = keep_srt {
         std::fs::write(keep, &srt).map_err(|e| format!("couldn't save captions: {e}"))?;
     }
@@ -3460,40 +5466,114 @@ fn transcript_checked(
 #[cfg(test)]
 mod publication_and_signup_durability {
     use super::*;
-    use crate::{config::Config, platform::mock::MockPlatform, proactive::{Proactive, ProactiveConfig}, store::Store};
+    use crate::{
+        config::Config,
+        platform::mock::MockPlatform,
+        proactive::{Proactive, ProactiveConfig},
+        store::Store,
+    };
     #[test]
     fn backup_contention_never_claims_a_post_was_scheduled_or_cancelled_durably() {
-        let root = std::env::temp_dir().join(format!("atlas-post-busy-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-post-busy-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let store = Store::new(root.clone());
-        let cfg = Config::load(std::path::Path::new("config")).unwrap(); let platform = MockPlatform::new(vec![]);
-        let mut daemon = Daemon::new(&cfg, &platform, None, store.clone(), Proactive::new(ProactiveConfig::default()));
-        let id = daemon.publisher.draft(crate::publish::Channel::X, "reviewed words"); daemon.publisher.save(&store).unwrap();
-        let (ready_tx, ready_rx) = std::sync::mpsc::channel(); let (release_tx, release_rx) = std::sync::mpsc::channel();
-        let held = std::thread::spawn(move || { let _guard = crate::store::state_transaction(&root).unwrap(); ready_tx.send(()).unwrap(); release_rx.recv().unwrap(); }); ready_rx.recv().unwrap();
+        let cfg = Config::load(std::path::Path::new("config")).unwrap();
+        let platform = MockPlatform::new(vec![]);
+        let mut daemon = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            store.clone(),
+            Proactive::new(ProactiveConfig::default()),
+        );
+        let id = daemon
+            .publisher
+            .draft(crate::publish::Channel::X, "reviewed words");
+        daemon.publisher.save(&store).unwrap();
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let held = std::thread::spawn(move || {
+            let _guard = crate::store::state_transaction(&root).unwrap();
+            ready_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        });
+        ready_rx.recv().unwrap();
         let schedule = daemon.schedule_post_at(id, "now", 1000);
         let scheduled_state = daemon.publisher.get(id).unwrap().state;
         let cancelled = daemon.schedule_post("cancel the post", 1001);
         let cancelled_state = daemon.publisher.get(id).unwrap().state;
-        release_tx.send(()).unwrap(); held.join().unwrap();
-        assert!(schedule.contains("couldn't be saved"), "{schedule}"); assert_eq!(scheduled_state, crate::publish::PostState::Draft);
-        assert!(cancelled.contains("cancellation couldn't be saved"), "{cancelled}"); assert_eq!(cancelled_state, crate::publish::PostState::Cancelled);
-        assert_eq!(crate::publish::Publisher::load(&store).get(id).unwrap().state, crate::publish::PostState::Draft);
+        release_tx.send(()).unwrap();
+        held.join().unwrap();
+        assert!(schedule.contains("couldn't be saved"), "{schedule}");
+        assert_eq!(scheduled_state, crate::publish::PostState::Draft);
+        assert!(
+            cancelled.contains("cancellation couldn't be saved"),
+            "{cancelled}"
+        );
+        assert_eq!(cancelled_state, crate::publish::PostState::Cancelled);
+        assert_eq!(
+            crate::publish::Publisher::load(&store)
+                .get(id)
+                .unwrap()
+                .state,
+            crate::publish::PostState::Draft
+        );
     }
     #[cfg(windows)]
     #[test]
     fn unsaved_signup_password_or_access_never_starts_a_browser_worker() {
         for blocked in ["vault", crate::signin::Access::RECORD] {
-            let root = std::env::temp_dir().join(format!("atlas-signup-save-{blocked}-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
-            let store = Store::new(root.clone()); let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
-            cfg.tools.as_mut().unwrap().mail.accounts = vec![crate::mail::Account { name: "fixture".into(), address: "fixture@example.test".into(), ..Default::default() }];
+            let root = std::env::temp_dir().join(format!(
+                "atlas-signup-save-{blocked}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            let store = Store::new(root.clone());
+            let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
+            cfg.tools.as_mut().unwrap().mail.accounts = vec![crate::mail::Account {
+                name: "fixture".into(),
+                address: "fixture@example.test".into(),
+                ..Default::default()
+            }];
             cfg.tools.as_mut().unwrap().browser.launch = None;
-            let platform = MockPlatform::new(vec![]); let mut daemon = Daemon::new(&cfg, &platform, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+            let platform = MockPlatform::new(vec![]);
+            let mut daemon = Daemon::new(
+                &cfg,
+                &platform,
+                None,
+                store.clone(),
+                Proactive::new(ProactiveConfig::default()),
+            );
             assert_eq!(daemon.vault_home.root(), store.root());
-            daemon.vault = crate::vault::Vault::default(); daemon.vault.start_on_this_login(1000).unwrap();
-            std::fs::create_dir_all(&root).unwrap(); let path = root.join(format!("{blocked}.json")); if path.is_file() { std::fs::remove_file(&path).unwrap(); } std::fs::create_dir(&path).unwrap();
+            daemon.vault = crate::vault::Vault::default();
+            daemon.vault.start_on_this_login(1000).unwrap();
+            std::fs::create_dir_all(&root).unwrap();
+            let path = root.join(format!("{blocked}.json"));
+            if path.is_file() {
+                std::fs::remove_file(&path).unwrap();
+            }
+            std::fs::create_dir(&path).unwrap();
             let result = daemon.start_sign_up("fixture.test", 1001);
-            assert!(result.contains("couldn't be saved") && result.contains("No external form opened") || result.contains("couldn't be saved") && result.contains("no external form opened"), "{result}");
-            assert_eq!(daemon.crew.active(), 0); assert!(store.load_checked::<crate::enrol::SignupAttempts>(crate::enrol::SIGNUP_ATTEMPTS).unwrap().is_none());
+            assert!(
+                result.contains("couldn't be saved") && result.contains("No external form opened")
+                    || result.contains("couldn't be saved")
+                        && result.contains("no external form opened"),
+                "{result}"
+            );
+            assert_eq!(daemon.crew.active(), 0);
+            assert!(store
+                .load_checked::<crate::enrol::SignupAttempts>(crate::enrol::SIGNUP_ATTEMPTS)
+                .unwrap()
+                .is_none());
         }
     }
 }
@@ -3558,17 +5638,33 @@ mod publication_terminal_results {
     fn missing_worker_after_deadline_becomes_uncertain_without_automatic_retry() {
         let cfg = Config::load(std::path::Path::new("config")).unwrap();
         let platform = MockPlatform::new(vec![]);
-        let root = std::env::temp_dir().join(format!("atlas-post-timeout-{}-{}", std::process::id(), crate::store::now()));
-        let mut daemon = Daemon::new(&cfg, &platform, None, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
-        let id = daemon.publisher.draft(Channel::X, "hello"); daemon.publisher.approve(id);
+        let root = std::env::temp_dir().join(format!(
+            "atlas-post-timeout-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        let mut daemon = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            Store::new(root.clone()),
+            Proactive::new(ProactiveConfig::default()),
+        );
+        let id = daemon.publisher.draft(Channel::X, "hello");
+        daemon.publisher.approve(id);
         daemon.publisher.mark_submission(id, false, "pending");
-        daemon.publication_jobs.insert(999999, (id, 0)); daemon.posting.push((id, u64::MAX));
+        daemon.publication_jobs.insert(999999, (id, 0));
+        daemon.posting.push((id, u64::MAX));
         assert!(daemon.check_publication_timeouts(119).is_empty());
         assert_eq!(daemon.check_publication_timeouts(120).len(), 1);
-        assert_eq!(daemon.publisher.get(id).unwrap().state, PostState::Uncertain);
+        assert_eq!(
+            daemon.publisher.get(id).unwrap().state,
+            PostState::Uncertain
+        );
         assert!(daemon.publisher.due(120, true).is_empty());
         assert!(!daemon.publication_inflight(id));
         assert!(daemon.posting.is_empty());
-        drop(daemon); let _ = std::fs::remove_dir_all(root);
+        drop(daemon);
+        let _ = std::fs::remove_dir_all(root);
     }
 }

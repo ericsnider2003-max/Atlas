@@ -44,7 +44,13 @@ fn plat() -> MockPlatform {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -82,9 +88,17 @@ fn refiling_as_a_task_flips_the_stored_kind_through_the_daemon() {
     // Catch a thought. Nothing task-ish in the words, so capture files it as a
     // Fact -- the guess this test then corrects.
     d.turn("note that the north skylight leaks in heavy rain", 100);
-    assert_eq!(d.notebook.notes.len(), 1, "the capture should have filed one note");
+    assert_eq!(
+        d.notebook.notes.len(),
+        1,
+        "the capture should have filed one note"
+    );
     let before = &d.notebook.notes[0];
-    assert_eq!(before.kind, Kind::Fact, "capture's guessed kind for this note is Fact");
+    assert_eq!(
+        before.kind,
+        Kind::Fact,
+        "capture's guessed kind for this note is Fact"
+    );
     assert!(!before.confirmed, "a fresh capture is an unconfirmed guess");
 
     // Correct it, through the real parser and daemon.
@@ -92,8 +106,15 @@ fn refiling_as_a_task_flips_the_stored_kind_through_the_daemon() {
 
     // The stored note itself changed -- not the reply, the state.
     let after = d.notebook.notes.last().expect("the note is still there");
-    assert_eq!(after.kind, Kind::Task, "refiling as a task must rewrite the stored kind");
-    assert!(after.confirmed, "a correction marks the note confirmed, so it is not re-guessed");
+    assert_eq!(
+        after.kind,
+        Kind::Task,
+        "refiling as a task must rewrite the stored kind"
+    );
+    assert!(
+        after.confirmed,
+        "a correction marks the note confirmed, so it is not re-guessed"
+    );
 }
 
 #[test]
@@ -102,7 +123,10 @@ fn refiling_under_a_name_adds_a_handle_you_can_find_it_by() {
     let p = plat();
     let mut d = daemon(&c, &p, "handle");
 
-    d.turn("note that the tiles arrive in three separate deliveries", 100);
+    d.turn(
+        "note that the tiles arrive in three separate deliveries",
+        100,
+    );
     assert_eq!(d.notebook.notes.len(), 1);
     let note_id = d.notebook.notes[0].id;
     assert!(
@@ -114,7 +138,12 @@ fn refiling_under_a_name_adds_a_handle_you_can_find_it_by() {
     // File it under a name -- the handle is the argument after "file that under".
     d.turn("file that under roofjob", 200);
 
-    let after = d.notebook.notes.iter().find(|n| n.id == note_id).expect("same note");
+    let after = d
+        .notebook
+        .notes
+        .iter()
+        .find(|n| n.id == note_id)
+        .expect("same note");
     assert!(
         after.about.iter().any(|h| h == "roofjob"),
         "refiling under a name must add that handle to the note, got {:?}",
@@ -142,5 +171,8 @@ fn refiling_with_no_recent_note_says_so_rather_than_touching_state() {
         reply.contains("no recent note") || reply.to_lowercase().contains("no recent"),
         "with nothing captured, refile should say there is nothing to refile, got: {reply}"
     );
-    assert!(d.notebook.notes.is_empty(), "a refusal must not invent a note");
+    assert!(
+        d.notebook.notes.is_empty(),
+        "a refusal must not invent a note"
+    );
 }

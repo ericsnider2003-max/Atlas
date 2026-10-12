@@ -125,7 +125,10 @@ pub fn pack(files: &[Carried], cfg: &WorkingSetConfig) -> Packed {
             let smaller = f.bytes / 10;
             if used + smaller <= budget {
                 used += smaller;
-                taking.push(Carried { bytes: smaller, ..f.clone() });
+                taking.push(Carried {
+                    bytes: smaller,
+                    ..f.clone()
+                });
                 shrunk.push(f.name.clone());
                 continue;
             }
@@ -140,7 +143,12 @@ pub fn pack(files: &[Carried], cfg: &WorkingSetConfig) -> Packed {
         ));
     }
 
-    Packed { taking, leaving, total_mb: used / 1_048_576, shrunk }
+    Packed {
+        taking,
+        leaving,
+        total_mb: used / 1_048_576,
+        shrunk,
+    }
 }
 
 /// What Atlas says as you pick your phone up.
@@ -148,7 +156,11 @@ pub fn spoken(p: &Packed) -> String {
     if p.taking.is_empty() {
         return "Nothing to carry.".into();
     }
-    let mut s = format!("{} files with you, {}MB.", p.taking.len(), p.total_mb.max(1));
+    let mut s = format!(
+        "{} files with you, {}MB.",
+        p.taking.len(),
+        p.total_mb.max(1)
+    );
     if !p.shrunk.is_empty() {
         s.push_str(&format!(" {} shrunk for the trip.", p.shrunk.len()));
     }
@@ -157,7 +169,11 @@ pub fn spoken(p: &Packed) -> String {
         // the wrong moment.
         s.push_str(&format!(
             " Left behind: {}.",
-            p.leaving.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", ")
+            p.leaving
+                .iter()
+                .map(|(n, _)| n.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
     s

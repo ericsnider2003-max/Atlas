@@ -286,7 +286,11 @@ impl Library {
             .filter(|h| h.score > cfg.floor)
             .collect();
 
-        hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        hits.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         if let Some(best) = hits.first().map(|h| h.score) {
             let cut = best * cfg.relative_floor.clamp(0.0, 1.0);
             hits.retain(|h| h.score >= cut);
@@ -324,7 +328,11 @@ impl Library {
 
     /// Pieces still needing a meaning vector.
     pub fn unembedded(&self) -> Vec<u64> {
-        self.pieces.iter().filter(|p| p.embedding.is_none()).map(|p| p.id).collect()
+        self.pieces
+            .iter()
+            .filter(|p| p.embedding.is_none())
+            .map(|p| p.id)
+            .collect()
     }
 
     pub fn set_embedding(&mut self, id: u64, e: Vec<f32>) {
@@ -341,7 +349,10 @@ pub enum Clarity {
     /// One hit stands out.
     OneClearAnswer,
     /// Two hits are close enough that the notes disagree.
-    TwoEquallyGood { first: String, second: String },
+    TwoEquallyGood {
+        first: String,
+        second: String,
+    },
 }
 
 impl Clarity {
@@ -403,9 +414,9 @@ fn quote_from(text: &str, terms: &[String]) -> String {
 }
 
 const NOISE: &[&str] = &[
-    "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "at", "for",
-    "with", "is", "was", "были", "it", "that", "this", "i", "you", "we", "my",
-    "what", "where", "when", "did", "do", "does", "about", "from", "by", "as",
+    "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "at", "for", "with", "is", "was",
+    "были", "it", "that", "this", "i", "you", "we", "my", "what", "where", "when", "did", "do",
+    "does", "about", "from", "by", "as",
 ];
 
 pub fn words_of(text: &str) -> Vec<String> {
@@ -421,7 +432,10 @@ pub fn words_of(text: &str) -> Vec<String> {
 /// context words and quotes stay the words people wrote, and a stem is never
 /// shown to anyone.
 fn stems(text: &str) -> Vec<String> {
-    words_of(text).iter().map(|w| crate::stemmer::stem(w)).collect()
+    words_of(text)
+        .iter()
+        .map(|w| crate::stemmer::stem(w))
+        .collect()
 }
 
 fn unique_words(text: &str) -> Vec<String> {
@@ -441,7 +455,11 @@ pub fn spoken(hits: &[Hit]) -> String {
         Some((first, rest)) => {
             let mut s = format!("{} — \"{}\"", first.title, first.quote.trim());
             if !rest.is_empty() {
-                s.push_str(&format!(" And {} other{}.", rest.len(), if rest.len() == 1 { "" } else { "s" }));
+                s.push_str(&format!(
+                    " And {} other{}.",
+                    rest.len(),
+                    if rest.len() == 1 { "" } else { "s" }
+                ));
             }
             s
         }
@@ -520,7 +538,12 @@ pub fn questions_from(lib: &Library, max: usize) -> Vec<KnownQuestion> {
             .join(" ");
         let best = body
             .split_inclusive(['.', '!', '?'])
-            .max_by_key(|s| words_of(&s.to_lowercase()).into_iter().filter(|w| !title_words.contains(w)).count())
+            .max_by_key(|s| {
+                words_of(&s.to_lowercase())
+                    .into_iter()
+                    .filter(|w| !title_words.contains(w))
+                    .count()
+            })
             .unwrap_or("");
         let kept: Vec<String> = words_of(&best.to_lowercase())
             .into_iter()
@@ -530,7 +553,11 @@ pub fn questions_from(lib: &Library, max: usize) -> Vec<KnownQuestion> {
             .map(|(_, w)| w)
             .collect();
         if kept.len() >= 4 {
-            out.push(KnownQuestion { ask: kept.join(" "), answer: p.title.clone(), yours: false });
+            out.push(KnownQuestion {
+                ask: kept.join(" "),
+                answer: p.title.clone(),
+                yours: false,
+            });
         }
     }
     out
@@ -542,8 +569,13 @@ pub fn questions_written(text: &str) -> Vec<KnownQuestion> {
         .filter_map(|l| {
             let (ask, answer) = l.split_once("=>")?;
             let (ask, answer) = (ask.trim(), answer.trim());
-            (!ask.is_empty() && !answer.is_empty() && !ask.starts_with('#'))
-                .then(|| KnownQuestion { ask: ask.into(), answer: answer.into(), yours: true })
+            (!ask.is_empty() && !answer.is_empty() && !ask.starts_with('#')).then(|| {
+                KnownQuestion {
+                    ask: ask.into(),
+                    answer: answer.into(),
+                    yours: true,
+                }
+            })
         })
         .collect()
 }
@@ -578,32 +610,63 @@ pub fn measure(
     for q in questions {
         let v = embed.and_then(|e| e(&q.ask));
         let hits = lib.search(&q.ask, v.as_deref(), &cfg, now);
-        if let Some(rank) = hits.iter().position(|h| h.title.eq_ignore_ascii_case(&q.answer)) {
+        if let Some(rank) = hits
+            .iter()
+            .position(|h| h.title.eq_ignore_ascii_case(&q.answer))
+        {
             found += 1;
             rr += 1.0 / (rank as f32 + 1.0);
             gain += 1.0 / ((rank as f32 + 2.0).log2());
         }
     }
     let n = questions.len().max(1) as f32;
-    Scores { recall_at_5: found as f32 / n, mrr: rr / n, ndcg_at_5: gain / n, asked: questions.len() }
+    Scores {
+        recall_at_5: found as f32 / n,
+        mrr: rr / n,
+        ndcg_at_5: gain / n,
+        asked: questions.len(),
+    }
 }
 
 /// A measurement, kept so the next one has something to compare with.
 pub fn measure_until(
-    lib: &Library, questions: &[KnownQuestion],
+    lib: &Library,
+    questions: &[KnownQuestion],
     embed: Option<&dyn Fn(&str) -> std::result::Result<Vec<f32>, String>>,
-    cfg: &RecallConfig, now: u64, stop: &dyn Fn() -> bool,
+    cfg: &RecallConfig,
+    now: u64,
+    stop: &dyn Fn() -> bool,
 ) -> std::result::Result<Scores, String> {
     let mut scores = Scores::default();
     for question in questions {
-        if stop() { return Err("Search measurement stopped before it was complete; no scores were saved.".into()); }
-        let vector = match embed { Some(encoder) => Some(encoder(&question.ask)?), None => None };
+        if stop() {
+            return Err(
+                "Search measurement stopped before it was complete; no scores were saved.".into(),
+            );
+        }
+        let vector = match embed {
+            Some(encoder) => Some(encoder(&question.ask)?),
+            None => None,
+        };
         let fixed = |_: &str| vector.clone();
-        let one = measure(lib, std::slice::from_ref(question), vector.as_ref().map(|_| &fixed as &dyn Fn(&str) -> Option<Vec<f32>>), cfg, now);
-        scores.recall_at_5 += one.recall_at_5; scores.mrr += one.mrr; scores.ndcg_at_5 += one.ndcg_at_5; scores.asked += 1;
+        let one = measure(
+            lib,
+            std::slice::from_ref(question),
+            vector
+                .as_ref()
+                .map(|_| &fixed as &dyn Fn(&str) -> Option<Vec<f32>>),
+            cfg,
+            now,
+        );
+        scores.recall_at_5 += one.recall_at_5;
+        scores.mrr += one.mrr;
+        scores.ndcg_at_5 += one.ndcg_at_5;
+        scores.asked += 1;
     }
     let n = scores.asked.max(1) as f32;
-    scores.recall_at_5 /= n; scores.mrr /= n; scores.ndcg_at_5 /= n;
+    scores.recall_at_5 /= n;
+    scores.mrr /= n;
+    scores.ndcg_at_5 /= n;
     Ok(scores)
 }
 
@@ -668,25 +731,45 @@ pub const READING_PIECES_MOST: usize = 6000;
 /// Notebook in the research report: until now a PDF Atlas had read could
 /// never be found again).
 pub fn add_readings(lib: &mut Library, dir: &std::path::Path) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     let mut paths: Vec<std::path::PathBuf> = entries
         .flatten()
         .map(|e| e.path())
-        .filter(|p| matches!(p.extension().and_then(|x| x.to_str()), Some("txt") | Some("md")))
+        .filter(|p| {
+            matches!(
+                p.extension().and_then(|x| x.to_str()),
+                Some("txt") | Some("md")
+            )
+        })
         .collect();
     paths.sort();
     let mut id = lib.pieces.iter().map(|p| p.id).max().unwrap_or(0);
     let mut added = 0usize;
     for path in paths {
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
-        let name = path.file_stem().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let name = path
+            .file_stem()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let at = std::fs::metadata(&path)
             .and_then(|m| m.modified())
             .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        let Ok(chunks) = crate::chunker::chunk(&text, crate::chunker::ChunkConfig { max: 1200, overlap: 150 }) else { continue };
+        let Ok(chunks) = crate::chunker::chunk(
+            &text,
+            crate::chunker::ChunkConfig {
+                max: 1200,
+                overlap: 150,
+            },
+        ) else {
+            continue;
+        };
         let shown = path.to_string_lossy().into_owned();
         for c in chunks {
             if added >= READING_PIECES_MOST {
@@ -708,7 +791,9 @@ pub fn add_readings(lib: &mut Library, dir: &std::path::Path) {
 
 pub fn library_from_dir(dir: &std::path::Path) -> Library {
     let mut lib = Library::default();
-    let Ok(entries) = std::fs::read_dir(dir) else { return lib };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return lib;
+    };
     let mut paths: Vec<std::path::PathBuf> = entries.flatten().map(|e| e.path()).collect();
     paths.sort();
     let mut id = 0u64;
@@ -716,12 +801,18 @@ pub fn library_from_dir(dir: &std::path::Path) -> Library {
         if path.extension().and_then(|x| x.to_str()) != Some("md") {
             continue;
         }
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
         let title = text
             .lines()
             .find(|l| l.starts_with("# "))
             .map(|l| l.trim_start_matches("# ").trim().to_string())
-            .unwrap_or_else(|| path.file_stem().map(|f| f.to_string_lossy().into()).unwrap_or_default());
+            .unwrap_or_else(|| {
+                path.file_stem()
+                    .map(|f| f.to_string_lossy().into())
+                    .unwrap_or_default()
+            });
         let at = std::fs::metadata(&path)
             .and_then(|m| m.modified())
             .ok()
@@ -729,7 +820,14 @@ pub fn library_from_dir(dir: &std::path::Path) -> Library {
             .map(|d| d.as_secs())
             .unwrap_or(0);
         id += 1;
-        lib.add(Piece { id, source: path.to_string_lossy().into(), title, text, at, embedding: None });
+        lib.add(Piece {
+            id,
+            source: path.to_string_lossy().into(),
+            title,
+            text,
+            at,
+            embedding: None,
+        });
     }
     lib
 }
@@ -750,14 +848,32 @@ pub fn docs_question(said: &str) -> Option<String> {
     // ASCII lowering keeps byte offsets: "İ" lowers to three bytes, and a
     // slice taken by the lowered length panicked (round10's dotted I).
     let low = t.to_ascii_lowercase();
-    let low = low.trim_start_matches("atlas, ").trim_start_matches("atlas ");
+    let low = low
+        .trim_start_matches("atlas, ")
+        .trim_start_matches("atlas ");
     let skip = t.len() - low.len();
     const LEADS: &[&str] = &[
-        "ask my documents about ", "ask my documents ", "ask my docs about ", "ask my docs ", "ask my files about ",
-        "ask my files ", "what do my documents say about ", "what do my docs say about ", "what does my reading say about ",
-        "according to my documents, ", "according to my documents ", "check my documents for ", "search my documents for ",
+        "ask my documents about ",
+        "ask my documents ",
+        "ask my docs about ",
+        "ask my docs ",
+        "ask my files about ",
+        "ask my files ",
+        "what do my documents say about ",
+        "what do my docs say about ",
+        "what does my reading say about ",
+        "according to my documents, ",
+        "according to my documents ",
+        "check my documents for ",
+        "search my documents for ",
     ];
-    LEADS.iter().find_map(|l| low.strip_prefix(l).map(|_| t[skip + l.len()..].trim().to_string())).filter(|q| q.len() > 2)
+    LEADS
+        .iter()
+        .find_map(|l| {
+            low.strip_prefix(l)
+                .map(|_| t[skip + l.len()..].trim().to_string())
+        })
+        .filter(|q| q.len() > 2)
 }
 
 /// What the model is told, and handed: the passages, numbered. It answers
@@ -807,7 +923,12 @@ pub fn check_cites(answer: &str, passages: &[(String, String)]) -> DocsAnswer {
             .split('[')
             .skip(1)
             .filter_map(|p| p.split(']').next())
-            .flat_map(|inner| inner.split(',').filter_map(|n| n.trim().parse::<usize>().ok()).collect::<Vec<_>>())
+            .flat_map(|inner| {
+                inner
+                    .split(',')
+                    .filter_map(|n| n.trim().parse::<usize>().ok())
+                    .collect::<Vec<_>>()
+            })
             .collect();
         let valid = !cites.is_empty() && cites.iter().all(|n| *n >= 1 && *n <= passages.len());
         let body: String = s.split('[').next().unwrap_or("").to_string();
@@ -817,7 +938,11 @@ pub fn check_cites(answer: &str, passages: &[(String, String)]) -> DocsAnswer {
             .filter(|f| f.chars().any(|c| c.is_ascii_digit()))
             .collect();
         let grounded = valid
-            && figures.iter().all(|f| cites.iter().any(|n| passages[n - 1].1.contains(f.as_str()) || passages[n - 1].0.contains(f.as_str())));
+            && figures.iter().all(|f| {
+                cites.iter().any(|n| {
+                    passages[n - 1].1.contains(f.as_str()) || passages[n - 1].0.contains(f.as_str())
+                })
+            });
         if grounded {
             for n in &cites {
                 if !used.contains(n) {
@@ -829,7 +954,11 @@ pub fn check_cites(answer: &str, passages: &[(String, String)]) -> DocsAnswer {
             dropped += 1;
         }
     }
-    DocsAnswer { said: kept.join(" "), used, dropped }
+    DocsAnswer {
+        said: kept.join(" "),
+        used,
+        dropped,
+    }
 }
 
 /// Sentences, each with the citations that follow its full stop.
@@ -842,7 +971,8 @@ fn cited_sentences(text: &str) -> Vec<String> {
         let c = chars[i];
         cur.push(c);
         i += 1;
-        let at_end = matches!(c, '.' | '!' | '?') && chars.get(i).is_none_or(|n| n.is_whitespace() || *n == '[');
+        let at_end = matches!(c, '.' | '!' | '?')
+            && chars.get(i).is_none_or(|n| n.is_whitespace() || *n == '[');
         if at_end {
             // Take any "[n]" groups after the stop with it.
             loop {
@@ -876,7 +1006,11 @@ pub fn docs_reply(a: &DocsAnswer, passages: &[(String, String)]) -> String {
     }
     let mut out = a.said.clone();
     if !a.used.is_empty() {
-        let from: Vec<String> = a.used.iter().map(|n| format!("[{n}] {}", passages[n - 1].0)).collect();
+        let from: Vec<String> = a
+            .used
+            .iter()
+            .map(|n| format!("[{n}] {}", passages[n - 1].0))
+            .collect();
         out.push_str(&format!(" From: {}.", from.join("; ")));
     }
     if a.dropped > 0 {
@@ -888,7 +1022,6 @@ pub fn docs_reply(a: &DocsAnswer, passages: &[(String, String)]) -> String {
     }
     out
 }
-
 
 // ---------- a summary on read ----------
 
@@ -904,13 +1037,29 @@ pub fn summary_sample(text: &str, each: usize) -> String {
     let take = |from: usize| -> String {
         let s: String = chars[from..(from + each).min(chars.len())].iter().collect();
         let s = s.trim();
-        let start = if from == 0 { 0 } else { s.char_indices().find(|(_, c)| c.is_whitespace()).map(|(i, c)| i + c.len_utf8()).unwrap_or(0) };
-        let end = if from + each >= chars.len() { s.len() } else { s.rfind(char::is_whitespace).unwrap_or(s.len()) };
+        let start = if from == 0 {
+            0
+        } else {
+            s.char_indices()
+                .find(|(_, c)| c.is_whitespace())
+                .map(|(i, c)| i + c.len_utf8())
+                .unwrap_or(0)
+        };
+        let end = if from + each >= chars.len() {
+            s.len()
+        } else {
+            s.rfind(char::is_whitespace).unwrap_or(s.len())
+        };
         s[start..end.max(start)].trim().to_string()
     };
     let mid = chars.len() / 2 - each / 2;
     let end = chars.len() - each;
-    format!("[The start]\n{}\n\n[The middle]\n{}\n\n[The end]\n{}", take(0), take(mid), take(end))
+    format!(
+        "[The start]\n{}\n\n[The middle]\n{}\n\n[The end]\n{}",
+        take(0),
+        take(mid),
+        take(end)
+    )
 }
 
 /// The summary with every sentence that names a figure the document

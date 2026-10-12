@@ -21,7 +21,11 @@ fn a_lock_a_panic_poisoned_is_still_taken_with_its_data() {
     .join();
     assert!(m.is_poisoned());
     let got = m.lock().or_else(atlas::crash::unpoison);
-    assert_eq!(got.map(|g| g.clone()).ok(), Some(vec![1, 2, 3]), "the work behind the lock was skipped");
+    assert_eq!(
+        got.map(|g| g.clone()).ok(),
+        Some(vec![1, 2, 3]),
+        "the work behind the lock was skipped"
+    );
 }
 
 #[test]
@@ -35,7 +39,11 @@ fn no_lock_failure_is_skipped_silently_any_more() {
                 break;
             }
             let l = line.trim_start();
-            if l.starts_with("//") || !l.contains(".lock()") || l.contains("unpoison") || l.contains("stdin") {
+            if l.starts_with("//")
+                || !l.contains(".lock()")
+                || l.contains("unpoison")
+                || l.contains("stdin")
+            {
                 continue;
             }
             let skips = l.contains(".lock().ok()")
@@ -45,5 +53,9 @@ fn no_lock_failure_is_skipped_silently_any_more() {
             }
         }
     }
-    assert!(skipping.is_empty(), "a poisoned lock skips work silently here -- use `.or_else(crate::crash::unpoison)`:\n{}", skipping.join("\n"));
+    assert!(
+        skipping.is_empty(),
+        "a poisoned lock skips work silently here -- use `.or_else(crate::crash::unpoison)`:\n{}",
+        skipping.join("\n")
+    );
 }

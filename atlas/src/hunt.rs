@@ -49,7 +49,8 @@ pub const KEEP_SAVED_RECENT: usize = 100;
 /// Near-duplicate: normalised-title trigram overlap at or above this.
 pub const NEAR_DUPLICATE: f32 = 0.8;
 /// Who is asking, sent with every request. Reddit refuses a bare request.
-pub const USER_AGENT: &str = "Atlas/1.0 (a personal assistant reading public listings once a day for one person)";
+pub const USER_AGENT: &str =
+    "Atlas/1.0 (a personal assistant reading public listings once a day for one person)";
 
 // ---------------------------------------------------------------- settings
 
@@ -99,7 +100,10 @@ impl Default for HuntConfig {
 
 /// A comma list, trimmed, empties dropped.
 pub fn list(s: &str) -> Vec<String> {
-    s.split(',').map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect()
+    s.split(',')
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect()
 }
 
 impl HuntConfig {
@@ -108,7 +112,10 @@ impl HuntConfig {
     }
 
     pub fn sources(&self) -> Vec<Source> {
-        let mut out: Vec<Source> = list(&self.sources).iter().filter_map(|s| Source::named(s)).collect();
+        let mut out: Vec<Source> = list(&self.sources)
+            .iter()
+            .filter_map(|s| Source::named(s))
+            .collect();
         out.dedup();
         out
     }
@@ -146,7 +153,11 @@ pub const ALL_SOURCES: &[Source] = &[
 
 impl Source {
     pub fn named(s: &str) -> Option<Source> {
-        let t: String = s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
+        let t: String = s
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect();
         Some(match t.as_str() {
             "hn" | "hackernews" | "whoishiring" => Source::Hn,
             "grants" | "grantsgov" => Source::Grants,
@@ -197,10 +208,19 @@ impl Source {
         match self {
             Source::Grants => (8, "a federal listing on Grants.gov"),
             Source::Sam => (8, "a federal listing on SAM.gov"),
-            Source::Hn => (7, "posted in Hacker News's monthly hiring thread, where each company posts itself"),
+            Source::Hn => (
+                7,
+                "posted in Hacker News's monthly hiring thread, where each company posts itself",
+            ),
             Source::Mail => (6, "an alert from a job site you signed up to"),
-            Source::ProductHunt => (5, "launched on Product Hunt: shows people are building here, not that it pays"),
-            Source::AppStore => (6, "in the App Store's own top chart: real downloads, not a pitch"),
+            Source::ProductHunt => (
+                5,
+                "launched on Product Hunt: shows people are building here, not that it pays",
+            ),
+            Source::AppStore => (
+                6,
+                "in the App Store's own top chart: real downloads, not a pitch",
+            ),
             Source::Github => (5, "new repositories gathering stars: attention, not money"),
             Source::Reddit => (4, "a Reddit post: anyone can post, nothing is checked"),
             Source::Feeds => (5, "from a feed you chose"),
@@ -280,13 +300,27 @@ pub struct Found {
 /// log line ever repeats the path.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ask {
-    Get { https: bool, host: String, path: String, secret: bool },
-    PostJson { host: String, path: String, body: String },
+    Get {
+        https: bool,
+        host: String,
+        path: String,
+        secret: bool,
+    },
+    PostJson {
+        host: String,
+        path: String,
+        body: String,
+    },
 }
 
 impl Ask {
     fn get(host: &str, path: &str) -> Ask {
-        Ask::Get { https: true, host: host.into(), path: path.into(), secret: false }
+        Ask::Get {
+            https: true,
+            host: host.into(),
+            path: path.into(),
+            secret: false,
+        }
     }
 
     pub fn host(&self) -> &str {
@@ -298,8 +332,12 @@ impl Ask {
     /// For a status line: the host, and the path unless it holds a key.
     pub fn shown(&self) -> String {
         match self {
-            Ask::Get { host, secret: true, .. } => format!("{host} (key withheld)"),
-            Ask::Get { host, path, .. } | Ask::PostJson { host, path, .. } => format!("{host}{path}"),
+            Ask::Get {
+                host, secret: true, ..
+            } => format!("{host} (key withheld)"),
+            Ask::Get { host, path, .. } | Ask::PostJson { host, path, .. } => {
+                format!("{host}{path}")
+            }
         }
     }
 }
@@ -321,7 +359,13 @@ pub fn cost(source: Source, cfg: &HuntConfig, searxng: bool) -> u32 {
         Source::Hn => 3,
         Source::Reddit => list(&cfg.subreddits).len() as u32,
         Source::Feeds => list(&cfg.feeds).len() as u32,
-        Source::Search => if searxng { list(&cfg.searches).len() as u32 } else { 0 },
+        Source::Search => {
+            if searxng {
+                list(&cfg.searches).len() as u32
+            } else {
+                0
+            }
+        }
         Source::AppStore => 2,
         Source::Mail => 0,
         _ => 1,
@@ -350,12 +394,24 @@ pub fn source_due(source: Source, last: u64, now: u64, day_of_month: u32) -> boo
 }
 
 fn scrub(e: String, key: &str) -> String {
-    if key.is_empty() { e } else { e.replace(key, "…") }
+    if key.is_empty() {
+        e
+    } else {
+        e.replace(key, "…")
+    }
 }
 
 /// Read one source. `sam_key` is only used for SAM.gov and never appears in
 /// what comes back. `searxng` is the base address, or empty.
-pub fn read(source: Source, cfg: &HuntConfig, fetch: Fetch, sam_key: &str, searxng: &str, now: u64, today: (i64, u32, u32)) -> Took {
+pub fn read(
+    source: Source,
+    cfg: &HuntConfig,
+    fetch: Fetch,
+    sam_key: &str,
+    searxng: &str,
+    now: u64,
+    today: (i64, u32, u32),
+) -> Took {
     let mut took = Took::default();
     let mut ask = |a: Ask| -> Result<String, String> {
         took.requests += 1;
@@ -363,7 +419,10 @@ pub fn read(source: Source, cfg: &HuntConfig, fetch: Fetch, sam_key: &str, searx
     };
     let r: Result<Vec<Found>, String> = (|| match source {
         Source::Hn => {
-            let list = ask(Ask::get("hn.algolia.com", "/api/v1/search_by_date?tags=story,author_whoishiring&hitsPerPage=10"))?;
+            let list = ask(Ask::get(
+                "hn.algolia.com",
+                "/api/v1/search_by_date?tags=story,author_whoishiring&hitsPerPage=10",
+            ))?;
             let threads = hn_threads(&list)?;
             let mut out = Vec::new();
             for (id, kind) in threads {
@@ -374,12 +433,19 @@ pub fn read(source: Source, cfg: &HuntConfig, fetch: Fetch, sam_key: &str, searx
         }
         Source::Grants => {
             let body = serde_json::json!({ "keyword": cfg.keywords.trim(), "rows": 25, "oppStatuses": "forecasted|posted" }).to_string();
-            let reply = ask(Ask::PostJson { host: "api.grants.gov".into(), path: "/v1/api/search2".into(), body })?;
+            let reply = ask(Ask::PostJson {
+                host: "api.grants.gov".into(),
+                path: "/v1/api/search2".into(),
+                body,
+            })?;
             grants_gov(&reply, now)
         }
         Source::Sam => {
             if sam_key.trim().is_empty() {
-                return Err(format!("no SAM.gov key in the vault under \"{}\"", cfg.sam_key_vault));
+                return Err(format!(
+                    "no SAM.gov key in the vault under \"{}\"",
+                    cfg.sam_key_vault
+                ));
             }
             let (y, m, d) = today;
             let (fy, fm, fd) = crate::hubpages::ymd(crate::civil::days_from_civil(y, m, d) - 7);
@@ -388,14 +454,23 @@ pub fn read(source: Source, cfg: &HuntConfig, fetch: Fetch, sam_key: &str, searx
                 crate::research::urlencode(sam_key.trim()),
                 crate::research::urlencode(cfg.keywords.trim())
             );
-            let reply = ask(Ask::Get { https: true, host: "api.sam.gov".into(), path, secret: true })?;
+            let reply = ask(Ask::Get {
+                https: true,
+                host: "api.sam.gov".into(),
+                path,
+                secret: true,
+            })?;
             sam(&reply, now)
         }
         Source::Reddit => {
             let mut out = Vec::new();
             let mut last_err = None;
             for sub in list(&cfg.subreddits) {
-                let sub: String = sub.trim_start_matches("r/").chars().filter(|c| c.is_alphanumeric() || *c == '_').collect();
+                let sub: String = sub
+                    .trim_start_matches("r/")
+                    .chars()
+                    .filter(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
                 if sub.is_empty() {
                     continue;
                 }
@@ -416,7 +491,10 @@ pub fn read(source: Source, cfg: &HuntConfig, fetch: Fetch, sam_key: &str, searx
         Source::AppStore => {
             let mut out = Vec::new();
             for chart in ["top-free", "top-paid"] {
-                let body = ask(Ask::get("rss.marketingtools.apple.com", &format!("/api/v2/us/apps/{chart}/25/apps.json")))?;
+                let body = ask(Ask::get(
+                    "rss.marketingtools.apple.com",
+                    &format!("/api/v2/us/apps/{chart}/25/apps.json"),
+                ))?;
                 out.extend(app_chart(&body, chart, now)?);
             }
             Ok(out)
@@ -433,15 +511,24 @@ pub fn read(source: Source, cfg: &HuntConfig, fetch: Fetch, sam_key: &str, searx
         Source::Feeds => {
             let mut out = Vec::new();
             for url in list(&cfg.feeds) {
-                let Some((https, host, path)) = crate::feeds::split_feed_url(&url) else { continue };
-                let xml = ask(Ask::Get { https, host, path, secret: false })?;
+                let Some((https, host, path)) = crate::feeds::split_feed_url(&url) else {
+                    continue;
+                };
+                let xml = ask(Ask::Get {
+                    https,
+                    host,
+                    path,
+                    secret: false,
+                })?;
                 out.extend(feed_items(&xml, Source::Feeds, Kind::Lead, now)?);
             }
             Ok(out)
         }
         Source::Search => {
             if searxng.trim().is_empty() {
-                return Err("no SearXNG address is set (Settings, Reaching outside this machine)".into());
+                return Err(
+                    "no SearXNG address is set (Settings, Reaching outside this machine)".into(),
+                );
             }
             let mut out = Vec::new();
             for q in list(&cfg.searches) {
@@ -449,7 +536,12 @@ pub fn read(source: Source, cfg: &HuntConfig, fetch: Fetch, sam_key: &str, searx
                 let Some((https, host, path)) = crate::feeds::split_feed_url(&url) else {
                     return Err(format!("{searxng} isn't a web address"));
                 };
-                let body = ask(Ask::Get { https, host, path, secret: false })?;
+                let body = ask(Ask::Get {
+                    https,
+                    host,
+                    path,
+                    secret: false,
+                })?;
                 out.extend(search_results(&body, now)?);
             }
             Ok(out)
@@ -490,10 +582,32 @@ fn pay_in(text: &str) -> Option<String> {
             let end = rest
                 .char_indices()
                 .skip(1)
-                .find(|(_, ch)| !(ch.is_ascii_digit() || matches!(ch, ',' | '.' | 'k' | 'K' | ' ' | '-' | '–' | '$' | '€' | '£' | '/' | 'h' | 'r' | 'o' | 'u')))
+                .find(|(_, ch)| {
+                    !(ch.is_ascii_digit()
+                        || matches!(
+                            ch,
+                            ',' | '.'
+                                | 'k'
+                                | 'K'
+                                | ' '
+                                | '-'
+                                | '–'
+                                | '$'
+                                | '€'
+                                | '£'
+                                | '/'
+                                | 'h'
+                                | 'r'
+                                | 'o'
+                                | 'u'
+                        ))
+                })
                 .map(|(j, _)| j)
                 .unwrap_or(rest.len());
-            let got = rest[..end].trim().trim_end_matches(['-', '–', '/', ' ']).to_string();
+            let got = rest[..end]
+                .trim()
+                .trim_end_matches(['-', '–', '/', ' '])
+                .to_string();
             if got.chars().any(|c| c.is_ascii_digit()) {
                 return Some(got);
             }
@@ -513,7 +627,8 @@ fn pay_in(text: &str) -> Option<String> {
 
 /// The newest "Who is hiring?" and "Seeking freelancer?" threads.
 pub fn hn_threads(json: &str) -> Result<Vec<(String, Kind)>, String> {
-    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("HN's answer wasn't JSON: {e}"))?;
+    let v: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| format!("HN's answer wasn't JSON: {e}"))?;
     let hits = v["hits"].as_array().ok_or("HN's answer had no hits")?;
     let mut best: BTreeMap<&str, (i64, String)> = BTreeMap::new();
     for h in hits {
@@ -536,18 +651,32 @@ pub fn hn_threads(json: &str) -> Result<Vec<(String, Kind)>, String> {
     }
     Ok(best
         .into_iter()
-        .map(|(k, (_, id))| (id, if k == "freelance" { Kind::Gig } else { Kind::Job }))
+        .map(|(k, (_, id))| {
+            (
+                id,
+                if k == "freelance" {
+                    Kind::Gig
+                } else {
+                    Kind::Job
+                },
+            )
+        })
         .collect())
 }
 
 /// One posting per top-level comment. The first line is the header:
 /// "Company | Role | Remote | Full-time | $150k".
 pub fn hn_postings(json: &str, kind: Kind) -> Result<Vec<Found>, String> {
-    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("HN's thread wasn't JSON: {e}"))?;
-    let kids = v["children"].as_array().ok_or("HN's thread had no comments")?;
+    let v: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| format!("HN's thread wasn't JSON: {e}"))?;
+    let kids = v["children"]
+        .as_array()
+        .ok_or("HN's thread had no comments")?;
     let mut out = Vec::new();
     for c in kids {
-        let Some(html) = c["text"].as_str() else { continue };
+        let Some(html) = c["text"].as_str() else {
+            continue;
+        };
         let id = c["id"].as_i64().map(|i| i.to_string()).unwrap_or_default();
         if id.is_empty() || html.trim().is_empty() {
             continue;
@@ -581,7 +710,11 @@ fn mdy(s: &str) -> Option<u64> {
     if p.len() != 3 {
         return None;
     }
-    let (m, d, y) = (p[0].parse::<u32>().ok()?, p[1].parse::<u32>().ok()?, p[2].parse::<i64>().ok()?);
+    let (m, d, y) = (
+        p[0].parse::<u32>().ok()?,
+        p[1].parse::<u32>().ok()?,
+        p[2].parse::<i64>().ok()?,
+    );
     if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
         return None;
     }
@@ -590,11 +723,17 @@ fn mdy(s: &str) -> Option<u64> {
 }
 
 pub fn grants_gov(json: &str, now: u64) -> Result<Vec<Found>, String> {
-    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("Grants.gov's answer wasn't JSON: {e}"))?;
+    let v: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| format!("Grants.gov's answer wasn't JSON: {e}"))?;
     if v["errorcode"].as_i64().unwrap_or(0) != 0 {
-        return Err(format!("Grants.gov said: {}", v["msg"].as_str().unwrap_or("an error")));
+        return Err(format!(
+            "Grants.gov said: {}",
+            v["msg"].as_str().unwrap_or("an error")
+        ));
     }
-    let hits = v["data"]["oppHits"].as_array().ok_or("Grants.gov's answer had no results list")?;
+    let hits = v["data"]["oppHits"]
+        .as_array()
+        .ok_or("Grants.gov's answer had no results list")?;
     Ok(hits
         .iter()
         .filter_map(|h| {
@@ -609,7 +748,15 @@ pub fn grants_gov(json: &str, now: u64) -> Result<Vec<Found>, String> {
                 kind: Kind::Grant,
                 title: clip(&title, 140),
                 link: format!("https://www.grants.gov/search-results-detail/{id}"),
-                summary: clip(&format!("{agency}. {} {}. Number {}.", status, h["docType"].as_str().unwrap_or(""), h["number"].as_str().unwrap_or("")), 300),
+                summary: clip(
+                    &format!(
+                        "{agency}. {} {}. Number {}.",
+                        status,
+                        h["docType"].as_str().unwrap_or(""),
+                        h["number"].as_str().unwrap_or("")
+                    ),
+                    300,
+                ),
                 at: h["openDate"].as_str().and_then(mdy).unwrap_or(now),
                 closes,
                 pay: None,
@@ -626,22 +773,29 @@ fn iso_day(s: &str) -> Option<u64> {
     if p.len() != 3 {
         return None;
     }
-    let days = crate::civil::days_from_civil(p[0].parse().ok()?, p[1].parse().ok()?, p[2].parse().ok()?);
+    let days =
+        crate::civil::days_from_civil(p[0].parse().ok()?, p[1].parse().ok()?, p[2].parse().ok()?);
     (days >= 0).then(|| days as u64 * 86_400)
 }
 
 pub fn sam(json: &str, now: u64) -> Result<Vec<Found>, String> {
-    let v: serde_json::Value = serde_json::from_str(json).map_err(|_| "SAM.gov's answer wasn't JSON".to_string())?;
+    let v: serde_json::Value =
+        serde_json::from_str(json).map_err(|_| "SAM.gov's answer wasn't JSON".to_string())?;
     if let Some(e) = v["error"]["message"].as_str().or(v["message"].as_str()) {
         return Err(format!("SAM.gov said: {e}"));
     }
-    let data = v["opportunitiesData"].as_array().ok_or("SAM.gov's answer had no opportunities list")?;
+    let data = v["opportunitiesData"]
+        .as_array()
+        .ok_or("SAM.gov's answer had no opportunities list")?;
     Ok(data
         .iter()
         .filter_map(|o| {
             let id = o["noticeId"].as_str()?.to_string();
             let title = o["title"].as_str()?.to_string();
-            let link = o["uiLink"].as_str().map(|s| s.to_string()).unwrap_or_else(|| format!("https://sam.gov/opp/{id}/view"));
+            let link = o["uiLink"]
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("https://sam.gov/opp/{id}/view"));
             Some(Found {
                 id: format!("sam:{id}"),
                 source: Source::Sam,
@@ -676,7 +830,15 @@ pub fn feed_items(xml: &str, source: Source, kind: Kind, now: u64) -> Result<Vec
             let link = crate::feeds::clean_link(&i.link)?;
             let summary = plain_text(&i.summary);
             Some(Found {
-                id: format!("{}:{}", source.key(), if i.id.is_empty() { link.clone() } else { i.id.clone() }),
+                id: format!(
+                    "{}:{}",
+                    source.key(),
+                    if i.id.is_empty() {
+                        link.clone()
+                    } else {
+                        i.id.clone()
+                    }
+                ),
                 source,
                 kind,
                 title: clip(&crate::feeds::text_of(&i.title), 140),
@@ -694,8 +856,14 @@ pub fn feed_items(xml: &str, source: Source, kind: Kind, now: u64) -> Result<Vec
 /// A subreddit's feed. On r/forhire only `[Hiring]` posts count -- the rest
 /// are people offering themselves, which is not an opportunity for you.
 pub fn reddit(xml: &str, sub: &str, now: u64) -> Result<Vec<Found>, String> {
-    let hiring_only = sub.eq_ignore_ascii_case("forhire") || sub.eq_ignore_ascii_case("slavelabour");
-    let mut items = feed_items(xml, Source::Reddit, if hiring_only { Kind::Gig } else { Kind::Lead }, now)?;
+    let hiring_only =
+        sub.eq_ignore_ascii_case("forhire") || sub.eq_ignore_ascii_case("slavelabour");
+    let mut items = feed_items(
+        xml,
+        Source::Reddit,
+        if hiring_only { Kind::Gig } else { Kind::Lead },
+        now,
+    )?;
     if hiring_only {
         items.retain(|f| {
             let t = f.title.to_lowercase();
@@ -706,9 +874,16 @@ pub fn reddit(xml: &str, sub: &str, now: u64) -> Result<Vec<Found>, String> {
 }
 
 pub fn app_chart(json: &str, chart: &str, now: u64) -> Result<Vec<Found>, String> {
-    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("the App Store chart wasn't JSON: {e}"))?;
-    let results = v["feed"]["results"].as_array().ok_or("the App Store chart had no results")?;
-    let which = if chart.contains("paid") { "paid" } else { "free" };
+    let v: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| format!("the App Store chart wasn't JSON: {e}"))?;
+    let results = v["feed"]["results"]
+        .as_array()
+        .ok_or("the App Store chart had no results")?;
+    let which = if chart.contains("paid") {
+        "paid"
+    } else {
+        "free"
+    };
     Ok(results
         .iter()
         .enumerate()
@@ -721,7 +896,11 @@ pub fn app_chart(json: &str, chart: &str, now: u64) -> Result<Vec<Found>, String
                 kind: Kind::Niche,
                 title: format!("{name} — number {} in top {which} apps", i + 1),
                 link: r["url"].as_str().unwrap_or("").to_string(),
-                summary: format!("By {}. Released {}.", r["artistName"].as_str().unwrap_or("?"), r["releaseDate"].as_str().unwrap_or("?")),
+                summary: format!(
+                    "By {}. Released {}.",
+                    r["artistName"].as_str().unwrap_or("?"),
+                    r["releaseDate"].as_str().unwrap_or("?")
+                ),
                 at: now,
                 closes: None,
                 pay: None,
@@ -732,11 +911,14 @@ pub fn app_chart(json: &str, chart: &str, now: u64) -> Result<Vec<Found>, String
 }
 
 pub fn github(json: &str, now: u64) -> Result<Vec<Found>, String> {
-    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("GitHub's answer wasn't JSON: {e}"))?;
+    let v: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| format!("GitHub's answer wasn't JSON: {e}"))?;
     if let Some(m) = v["message"].as_str() {
         return Err(format!("GitHub said: {m}"));
     }
-    let items = v["items"].as_array().ok_or("GitHub's answer had no items")?;
+    let items = v["items"]
+        .as_array()
+        .ok_or("GitHub's answer had no items")?;
     Ok(items
         .iter()
         .filter_map(|r| {
@@ -745,7 +927,10 @@ pub fn github(json: &str, now: u64) -> Result<Vec<Found>, String> {
                 id: format!("github:{}", r["id"].as_i64().unwrap_or(0)),
                 source: Source::Github,
                 kind: Kind::Niche,
-                title: format!("{name} — {} stars in its first week", r["stargazers_count"].as_i64().unwrap_or(0)),
+                title: format!(
+                    "{name} — {} stars in its first week",
+                    r["stargazers_count"].as_i64().unwrap_or(0)
+                ),
                 link: r["html_url"].as_str().unwrap_or("").to_string(),
                 summary: clip(r["description"].as_str().unwrap_or(""), 300),
                 at: r["created_at"].as_str().and_then(iso_day).unwrap_or(now),
@@ -758,8 +943,12 @@ pub fn github(json: &str, now: u64) -> Result<Vec<Found>, String> {
 }
 
 pub fn search_results(json: &str, now: u64) -> Result<Vec<Found>, String> {
-    let v: serde_json::Value = serde_json::from_str(json).map_err(|_| "the search didn't answer with results -- is JSON turned on in SearXNG?".to_string())?;
-    let results = v["results"].as_array().ok_or("the search answer had no results")?;
+    let v: serde_json::Value = serde_json::from_str(json).map_err(|_| {
+        "the search didn't answer with results -- is JSON turned on in SearXNG?".to_string()
+    })?;
+    let results = v["results"]
+        .as_array()
+        .ok_or("the search answer had no results")?;
     Ok(results
         .iter()
         .filter_map(|r| {
@@ -806,12 +995,28 @@ pub fn alerts_in_mail(letters: &[crate::mailbook::Letter], since: u64) -> Vec<Fo
     let mut out = Vec::new();
     for l in letters.iter().filter(|l| !l.mine && l.at >= since) {
         let domain = l.from.rsplit('@').next().unwrap_or("").to_lowercase();
-        let Some((site, kind)) = ALERT_SENDERS.iter().find(|(s, _)| domain == *s || domain.ends_with(&format!(".{s}"))) else {
+        let Some((site, kind)) = ALERT_SENDERS
+            .iter()
+            .find(|(s, _)| domain == *s || domain.ends_with(&format!(".{s}")))
+        else {
             continue;
         };
         // A receipt, a password reset or a login code is not an alert.
         let subj = l.subject.to_lowercase();
-        if ["password", "verify", "verification", "receipt", "invoice", "security", "sign in", "login", "code"].iter().any(|w| subj.contains(w)) {
+        if [
+            "password",
+            "verify",
+            "verification",
+            "receipt",
+            "invoice",
+            "security",
+            "sign in",
+            "login",
+            "code",
+        ]
+        .iter()
+        .any(|w| subj.contains(w))
+        {
             continue;
         }
         let link = l
@@ -862,7 +1067,11 @@ fn similarity(a: &str, b: &str) -> f32 {
     let (x, y) = (trigrams(a), trigrams(b));
     let inter = x.intersection(&y).count() as f32;
     let union = x.union(&y).count() as f32;
-    if union == 0.0 { 0.0 } else { inter / union }
+    if union == 0.0 {
+        0.0
+    } else {
+        inter / union
+    }
 }
 
 /// The key that makes two sightings of one thing the same: the clean link,
@@ -892,18 +1101,29 @@ impl Interests {
 
     pub fn from_facts(book: &crate::facts::Book) -> Interests {
         let get = |name: &str| book.get(name).map(|f| list(&f.body)).unwrap_or_default();
-        Interests { want: get(FACT_WANT), skills: get(FACT_SKILLS), avoid: get(FACT_AVOID) }
+        Interests {
+            want: get(FACT_WANT),
+            skills: get(FACT_SKILLS),
+            avoid: get(FACT_AVOID),
+        }
     }
 
     /// The facts, as you stated them. `which` is one of the three names.
     pub fn fact(which: &str, items: &[String], now: u64) -> crate::facts::Fact {
         let summary = match which {
             _ if items.is_empty() => format!("Nothing set for {}", which.replace('-', " ")),
-            FACT_SKILLS => format!("Skills to match opportunities against: {}", items.join(", ")),
+            FACT_SKILLS => format!(
+                "Skills to match opportunities against: {}",
+                items.join(", ")
+            ),
             FACT_AVOID => format!("Opportunities to skip: anything about {}", items.join(", ")),
             _ => format!("Opportunities worth looking for: {}", items.join(", ")),
         };
-        let kind = if which == FACT_AVOID { crate::facts::Kind::Instruction } else { crate::facts::Kind::You };
+        let kind = if which == FACT_AVOID {
+            crate::facts::Kind::Instruction
+        } else {
+            crate::facts::Kind::You
+        };
         let mut f = crate::facts::Fact::new(which, &summary, &items.join(", "), kind, now);
         // A list, not a statement about one thing: no slot to supersede.
         f.subject = None;
@@ -935,9 +1155,10 @@ pub struct Ranked {
 /// Content words of a title, for learning what you said no to.
 fn title_content_words(t: &str) -> Vec<String> {
     const STOP: &[&str] = &[
-        "the", "and", "for", "with", "you", "your", "are", "our", "from", "this", "that", "who", "into", "have",
-        "will", "full", "time", "remote", "hiring", "job", "jobs", "senior", "engineer", "new", "app", "apps",
-        "top", "free", "paid", "number", "in", "of", "a", "to", "an", "on", "at", "is", "or", "by",
+        "the", "and", "for", "with", "you", "your", "are", "our", "from", "this", "that", "who",
+        "into", "have", "will", "full", "time", "remote", "hiring", "job", "jobs", "senior",
+        "engineer", "new", "app", "apps", "top", "free", "paid", "number", "in", "of", "a", "to",
+        "an", "on", "at", "is", "or", "by",
     ];
     title_key(t)
         .split(' ')
@@ -947,12 +1168,19 @@ fn title_content_words(t: &str) -> Vec<String> {
 }
 
 /// Weigh one thing against what you want. `Err(reason)` when it's out.
-pub fn weigh_found(f: &Found, you: &Interests, nope: &BTreeMap<String, u32>) -> Result<Ranked, String> {
+pub fn weigh_found(
+    f: &Found,
+    you: &Interests,
+    nope: &BTreeMap<String, u32>,
+) -> Result<Ranked, String> {
     let words = format!(" {} ", title_key(&format!("{} {}", f.title, f.summary)));
     if let Some(a) = you.avoid.iter().find(|a| has_term(&words, a)) {
         return Err(format!("you said to skip anything about {a}"));
     }
-    let learned: Vec<String> = title_content_words(&f.title).into_iter().filter(|w| nope.get(w).copied().unwrap_or(0) >= 2).collect();
+    let learned: Vec<String> = title_content_words(&f.title)
+        .into_iter()
+        .filter(|w| nope.get(w).copied().unwrap_or(0) >= 2)
+        .collect();
     if learned.len() >= 2 {
         return Err(format!("like ones you said no to ({})", learned.join(", ")));
     }
@@ -965,17 +1193,40 @@ pub fn weigh_found(f: &Found, you: &Interests, nope: &BTreeMap<String, u32>) -> 
     let mut o = Opportunity::new(&f.title, &format!("{} ({})", f.source.plain(), f.link));
     // Fit: what in it is yours.
     if you.is_empty() {
-        o.note(Axis::Fit, Finding::Unknown("you haven't told me what to look for yet".into()));
+        o.note(
+            Axis::Fit,
+            Finding::Unknown("you haven't told me what to look for yet".into()),
+        );
     } else {
         let mut rests = Vec::new();
         if !skills.is_empty() {
-            rests.push(format!("uses your {}", skills.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")));
+            rests.push(format!(
+                "uses your {}",
+                skills
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         }
         if !wants.is_empty() {
-            rests.push(format!("about {}, which you look for", wants.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")));
+            rests.push(format!(
+                "about {}, which you look for",
+                wants
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         }
         let n = (skills.len() * 2 + wants.len()).min(5) as u8;
-        o.note(Axis::Fit, Finding::Scored { out_of_ten: 4 + n, rests_on: rests });
+        o.note(
+            Axis::Fit,
+            Finding::Scored {
+                out_of_ten: 4 + n,
+                rests_on: rests,
+            },
+        );
     }
     // Authenticity: who can post there, and whether it states its terms.
     let (base, why) = f.source.standing();
@@ -985,7 +1236,13 @@ pub fn weigh_found(f: &Found, you: &Interests, nope: &BTreeMap<String, u32>) -> 
         score = (score + 1).min(10);
         rests.push(format!("states its pay ({p})"));
     }
-    o.note(Axis::Authenticity, Finding::Scored { out_of_ten: score, rests_on: rests });
+    o.note(
+        Axis::Authenticity,
+        Finding::Scored {
+            out_of_ten: score,
+            rests_on: rests,
+        },
+    );
     // Work: only what the listing says.
     let low = format!("{} {}", f.title, f.summary).to_lowercase();
     let work = [
@@ -1003,20 +1260,41 @@ pub fn weigh_found(f: &Found, you: &Interests, nope: &BTreeMap<String, u32>) -> 
     .iter()
     .find(|(k, _)| low.contains(k));
     match (work, f.kind) {
-        (Some((_, said)), _) => o.note(Axis::Work, Finding::Scored { out_of_ten: 6, rests_on: vec![said.to_string()] }),
-        (None, Kind::Niche) => o.note(Axis::Work, Finding::Unknown("a niche, not a job: the work is whatever you'd build".into())),
-        (None, _) => o.note(Axis::Work, Finding::Unknown("the listing doesn't say how much work".into())),
+        (Some((_, said)), _) => o.note(
+            Axis::Work,
+            Finding::Scored {
+                out_of_ten: 6,
+                rests_on: vec![said.to_string()],
+            },
+        ),
+        (None, Kind::Niche) => o.note(
+            Axis::Work,
+            Finding::Unknown("a niche, not a job: the work is whatever you'd build".into()),
+        ),
+        (None, _) => o.note(
+            Axis::Work,
+            Finding::Unknown("the listing doesn't say how much work".into()),
+        ),
     }
     // Roadmap: is there somewhere to go next?
     match f.kind {
         Kind::Gig | Kind::Job | Kind::Grant | Kind::Contract if !f.link.is_empty() => o.note(
             Axis::Roadmap,
-            Finding::Scored { out_of_ten: 6, rests_on: vec![format!("there's a listing to read and answer: {}", f.link)] },
+            Finding::Scored {
+                out_of_ten: 6,
+                rests_on: vec![format!("there's a listing to read and answer: {}", f.link)],
+            },
         ),
-        _ => o.note(Axis::Roadmap, Finding::Unknown("no first step is named; it's a signal to look into".into())),
+        _ => o.note(
+            Axis::Roadmap,
+            Finding::Unknown("no first step is named; it's a signal to look into".into()),
+        ),
     }
     // Money: never guessed.
-    o.note(Axis::Money, crate::opportunity::money_is_not_auditable_yet());
+    o.note(
+        Axis::Money,
+        crate::opportunity::money_is_not_auditable_yet(),
+    );
 
     if let Verdict::SetAside { axis, why } = o.verdict() {
         return Err(format!("{axis:?} sank it: {why}"));
@@ -1030,7 +1308,12 @@ pub fn weigh_found(f: &Found, you: &Interests, nope: &BTreeMap<String, u32>) -> 
     if let Some(Finding::Scored { rests_on, .. }) = o.finding(Axis::Authenticity) {
         why.push(rests_on.join("; "));
     }
-    Ok(Ranked { found: f.clone(), weighed: o, rank, why })
+    Ok(Ranked {
+        found: f.clone(),
+        weighed: o,
+        rank,
+        why,
+    })
 }
 
 /// How fresh, 0 to 1; `None` once it's past use.
@@ -1136,14 +1419,23 @@ impl HuntState {
         for f in found {
             let key = canonical_key(&f);
             let tk = title_key(&f.title);
-            if self.seen.contains_key(&key) || self.seen.contains_key(&f.id) || self.rejected.contains_key(&f.id) {
+            if self.seen.contains_key(&key)
+                || self.seen.contains_key(&f.id)
+                || self.rejected.contains_key(&f.id)
+            {
                 m.duplicates += 1;
                 continue;
             }
             // Cross-posts: the same title under a different link. Niches
             // from a chart are exempt -- "number 3 in top free" and "number
             // 4" differ by a digit and are different things.
-            if tk.len() >= 12 && f.kind != Kind::Niche && self.titles.iter().any(|t| similarity(t, &tk) >= NEAR_DUPLICATE) {
+            if tk.len() >= 12
+                && f.kind != Kind::Niche
+                && self
+                    .titles
+                    .iter()
+                    .any(|t| similarity(t, &tk) >= NEAR_DUPLICATE)
+            {
                 m.duplicates += 1;
                 self.seen.insert(key, now);
                 continue;
@@ -1153,7 +1445,8 @@ impl HuntState {
             self.titles.push_back(tk);
             if freshness_of(&f, now).is_none() {
                 m.rejected += 1;
-                self.rejected.insert(f.id.clone(), "already stale when found".into());
+                self.rejected
+                    .insert(f.id.clone(), "already stale when found".into());
                 continue;
             }
             match weigh_found(&f, you, &self.nope) {
@@ -1173,16 +1466,22 @@ impl HuntState {
 
     /// Drop what's stale, and hold every list to its size.
     pub fn prune(&mut self, now: u64) {
-        self.shortlist.retain(|r| freshness_of(&r.found, now).is_some());
+        self.shortlist
+            .retain(|r| freshness_of(&r.found, now).is_some());
         if self.shortlist.len() > KEEP_SHORTLIST {
-            self.shortlist.sort_by(|a, b| b.rank.partial_cmp(&a.rank).unwrap_or(std::cmp::Ordering::Equal));
+            self.shortlist.sort_by(|a, b| {
+                b.rank
+                    .partial_cmp(&a.rank)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
             self.shortlist.truncate(KEEP_SHORTLIST);
         }
         while self.titles.len() > KEEP_SEEN {
             self.titles.pop_front();
         }
         if self.seen.len() > KEEP_SEEN {
-            let mut by_age: Vec<(u64, String)> = self.seen.iter().map(|(k, t)| (*t, k.clone())).collect();
+            let mut by_age: Vec<(u64, String)> =
+                self.seen.iter().map(|(k, t)| (*t, k.clone())).collect();
             by_age.sort();
             for (_, k) in by_age.into_iter().take(self.seen.len() - KEEP_SEEN) {
                 self.seen.remove(&k);
@@ -1198,13 +1497,20 @@ impl HuntState {
             }
         }
         self.bound_rejection_words();
-        self.briefed.retain(|_, at| now.saturating_sub(*at) < 30 * 86_400);
-        self.offered.retain(|id, (at, _)| now.saturating_sub(*at) < 86_400 && self.shortlist.iter().any(|r| &r.found.id == id));
+        self.briefed
+            .retain(|_, at| now.saturating_sub(*at) < 30 * 86_400);
+        self.offered.retain(|id, (at, _)| {
+            now.saturating_sub(*at) < 86_400 && self.shortlist.iter().any(|r| &r.found.id == id)
+        });
     }
 
     pub fn bound_rejection_words(&mut self) {
         if self.nope.len() > KEEP_REJECTED {
-            let mut strongest: Vec<_> = self.nope.iter().map(|(word, count)| (word.clone(), *count)).collect();
+            let mut strongest: Vec<_> = self
+                .nope
+                .iter()
+                .map(|(word, count)| (word.clone(), *count))
+                .collect();
             strongest.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
             strongest.truncate(KEEP_REJECTED);
             self.nope = strongest.into_iter().collect();
@@ -1218,7 +1524,11 @@ impl HuntState {
             .iter()
             .filter_map(|r| freshness_of(&r.found, now).map(|f| (r, r.rank * (0.5 + 0.5 * f))))
             .collect();
-        v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.found.at.cmp(&a.0.found.at)));
+        v.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(b.0.found.at.cmp(&a.0.found.at))
+        });
         v.into_iter().take(n).map(|(r, _)| r).collect()
     }
 
@@ -1234,10 +1544,15 @@ impl HuntState {
             .filter(|r| !self.offered.contains_key(&r.found.id))
             .filter_map(|r| freshness_of(&r.found, now).map(|f| (r, r.rank * (0.5 + 0.5 * f))))
             .collect();
-        v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.found.at.cmp(&a.0.found.at)));
+        v.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(b.0.found.at.cmp(&a.0.found.at))
+        });
         let out: Vec<Ranked> = v.into_iter().take(n).map(|(r, _)| r.clone()).collect();
         for (i, r) in out.iter().enumerate() {
-            self.offered.insert(r.found.id.clone(), (now, line(i + 1, r)));
+            self.offered
+                .insert(r.found.id.clone(), (now, line(i + 1, r)));
         }
         out
     }
@@ -1245,19 +1560,40 @@ impl HuntState {
     /// Offers prepared by an earlier brief remain visible during their
     /// cooldown until delivery is acknowledged. Preparation is not delivery.
     pub fn pending_offers(&self, now: u64) -> Vec<Ranked> {
-        self.shortlist.iter()
-            .filter(|r| self.offered.get(&r.found.id).is_some_and(|(at, _)| now.saturating_sub(*at) < 86_400))
+        self.shortlist
+            .iter()
+            .filter(|r| {
+                self.offered
+                    .get(&r.found.id)
+                    .is_some_and(|(at, _)| now.saturating_sub(*at) < 86_400)
+            })
             .filter(|r| !self.briefed.contains_key(&r.found.id))
             .cloned()
             .collect()
     }
 
     pub fn acknowledge_text(&mut self, delivered: &str, now: u64) -> bool {
-        let compact = |s: &str| s.chars().map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { ' ' }).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ");
+        let compact = |s: &str| {
+            s.chars()
+                .map(|c| {
+                    if c.is_alphanumeric() {
+                        c.to_ascii_lowercase()
+                    } else {
+                        ' '
+                    }
+                })
+                .collect::<String>()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
         let delivered = compact(delivered);
-        let ids: Vec<_> = self.offered.iter().filter(|(_, (_, text))| {
-            delivered.contains(&compact(text))
-        }).map(|(id, _)| id.clone()).collect();
+        let ids: Vec<_> = self
+            .offered
+            .iter()
+            .filter(|(_, (_, text))| delivered.contains(&compact(text)))
+            .map(|(id, _)| id.clone())
+            .collect();
         self.acknowledge_seen(&ids, now)
     }
 
@@ -1286,7 +1622,8 @@ impl HuntState {
             let count = self.nope.entry(w).or_insert(0);
             *count = count.saturating_add(1);
         }
-        self.rejected.insert(r.found.id.clone(), "you said not interested".into());
+        self.rejected
+            .insert(r.found.id.clone(), "you said not interested".into());
         Some(r.found.title)
     }
 
@@ -1319,15 +1656,23 @@ impl HuntState {
     /// Stable IDs and immutable slots make interrupted migration retryable.
     pub fn archive_saved(&mut self, store: &crate::store::Store) -> Result<(), String> {
         let overflow = self.saved.len().saturating_sub(KEEP_SAVED_RECENT);
-        if overflow == 0 { return Ok(()); }
+        if overflow == 0 {
+            return Ok(());
+        }
         let archive = crate::store::Store::new(store.root().join("opportunities_saved"));
         for (offset, found) in self.saved.iter().take(overflow).enumerate() {
             let key = crate::digest::sha256_hex(found.id.as_bytes());
-            let slot = self.saved_archived.checked_add(offset as u64).ok_or("The saved opportunity archive is full.")?;
+            let slot = self
+                .saved_archived
+                .checked_add(offset as u64)
+                .ok_or("The saved opportunity archive is full.")?;
             immutable_saved(&archive, &key, found)?;
             immutable_saved(&archive, &format!("index-{slot:020}"), &key)?;
         }
-        self.saved_archived = self.saved_archived.checked_add(overflow as u64).ok_or("The saved opportunity archive is full.")?;
+        self.saved_archived = self
+            .saved_archived
+            .checked_add(overflow as u64)
+            .ok_or("The saved opportunity archive is full.")?;
         self.saved.drain(..overflow);
         Ok(())
     }
@@ -1337,7 +1682,12 @@ impl HuntState {
     }
 
     /// Recent and archived saves form one newest-first, bounded page.
-    pub fn saved_page(&self, store: &crate::store::Store, page: u64, limit: usize) -> Result<Vec<Found>, String> {
+    pub fn saved_page(
+        &self,
+        store: &crate::store::Store,
+        page: u64,
+        limit: usize,
+    ) -> Result<Vec<Found>, String> {
         let limit = limit.clamp(1, 20);
         let start = page.saturating_mul(limit as u64);
         let archive = crate::store::Store::new(store.root().join("opportunities_saved"));
@@ -1372,15 +1722,25 @@ impl HuntState {
     }
 }
 
-fn strict_saved<T: serde::de::DeserializeOwned>(store: &crate::store::Store, key: &str) -> Result<T, String> {
-    let fail = || "A saved opportunity could not be read; its archive was left in place.".to_string();
+fn strict_saved<T: serde::de::DeserializeOwned>(
+    store: &crate::store::Store,
+    key: &str,
+) -> Result<T, String> {
+    let fail =
+        || "A saved opportunity could not be read; its archive was left in place.".to_string();
     let bytes = std::fs::read(store.root().join(format!("{key}.json"))).map_err(|_| fail())?;
     let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| fail())?;
-    if value.get("schema").and_then(|v| v.as_u64()) != Some(u64::from(crate::store::SCHEMA)) { return Err(fail()); }
+    if value.get("schema").and_then(|v| v.as_u64()) != Some(u64::from(crate::store::SCHEMA)) {
+        return Err(fail());
+    }
     serde_json::from_value(value.get("data").cloned().ok_or_else(fail)?).map_err(|_| fail())
 }
 
-fn immutable_saved<T: serde::Serialize + serde::de::DeserializeOwned + PartialEq>(store: &crate::store::Store, key: &str, value: &T) -> Result<(), String> {
+fn immutable_saved<T: serde::Serialize + serde::de::DeserializeOwned + PartialEq>(
+    store: &crate::store::Store,
+    key: &str,
+    value: &T,
+) -> Result<(), String> {
     let path = store.root().join(format!("{key}.json"));
     match std::fs::metadata(path) {
         Ok(_) if strict_saved::<T>(store, key)? == *value => Ok(()),
@@ -1395,10 +1755,22 @@ mod retention_and_delivery_tests {
     use super::*;
     const NOW: u64 = 1_900_000_000;
     fn found(id: usize) -> Found {
-        Found { id: format!("saved-{id}"), source: Source::Hn, kind: Kind::Job, title: format!("Opportunity {id}"), link: format!("https://example.org/{id}"), summary: "Public listing".into(), at: NOW, closes: None, pay: None, remote: true }
+        Found {
+            id: format!("saved-{id}"),
+            source: Source::Hn,
+            kind: Kind::Job,
+            title: format!("Opportunity {id}"),
+            link: format!("https://example.org/{id}"),
+            summary: "Public listing".into(),
+            at: NOW,
+            closes: None,
+            pay: None,
+            remote: true,
+        }
     }
     fn store(tag: &str) -> crate::store::Store {
-        let root = std::env::temp_dir().join(format!("atlas-hunt-lifecycle-{tag}-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("atlas-hunt-lifecycle-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         crate::store::Store::new(root)
@@ -1412,12 +1784,19 @@ mod retention_and_delivery_tests {
         assert_eq!(prepared.len(), 1);
         assert!(state.briefed.is_empty());
         assert!(!state.acknowledge_text(&prepared[0].found.title, NOW));
-        assert!(state.take_unbriefed(1, NOW + 60).is_empty(), "interrupted speech must not nag on each tick");
+        assert!(
+            state.take_unbriefed(1, NOW + 60).is_empty(),
+            "interrupted speech must not nag on each tick"
+        );
         let disk = store("delivery");
         disk.save(FILE, &state).unwrap();
         let mut reopened: HuntState = disk.load(FILE);
         assert!(reopened.take_unbriefed(1, NOW + 3600).is_empty());
-        assert_eq!(reopened.take_unbriefed(1, NOW + 86_401).len(), 1, "unheard offers become eligible again");
+        assert_eq!(
+            reopened.take_unbriefed(1, NOW + 86_401).len(),
+            1,
+            "unheard offers become eligible again"
+        );
         assert!(reopened.acknowledge_text(&line(1, &prepared[0]), NOW + 86_402));
         assert!(reopened.briefed.contains_key(&prepared[0].found.id));
         assert!(reopened.take_unbriefed(1, NOW + 2 * 86_400).is_empty());
@@ -1441,7 +1820,10 @@ mod retention_and_delivery_tests {
     #[test]
     fn older_deliberate_saves_remain_retrievable_after_archive_and_restart() {
         let disk = store("archive");
-        let mut state = HuntState { saved: (0..105).map(found).collect(), ..Default::default() };
+        let mut state = HuntState {
+            saved: (0..105).map(found).collect(),
+            ..Default::default()
+        };
         state.archive_saved(&disk).unwrap();
         assert_eq!(state.saved.len(), KEEP_SAVED_RECENT);
         assert_eq!(state.saved_count(), 105);
@@ -1450,7 +1832,10 @@ mod retention_and_delivery_tests {
         let recent = reopened.saved_page(&disk, 0, 20).unwrap();
         assert_eq!(recent[0].id, "saved-104");
         let oldest = reopened.saved_page(&disk, 5, 20).unwrap();
-        assert_eq!(oldest.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), vec!["saved-4", "saved-3", "saved-2", "saved-1", "saved-0"]);
+        assert_eq!(
+            oldest.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(),
+            vec!["saved-4", "saved-3", "saved-2", "saved-1", "saved-0"]
+        );
         std::fs::remove_dir_all(disk.root()).unwrap();
     }
 
@@ -1458,23 +1843,39 @@ mod retention_and_delivery_tests {
     fn interrupted_archive_does_not_remove_saves_or_overwrite_a_conflict() {
         let disk = store("archive-conflict");
         let archive = crate::store::Store::new(disk.root().join("opportunities_saved"));
-        archive.save("index-00000000000000000001", &"another-item").unwrap();
-        let mut state = HuntState { saved: (0..105).map(found).collect(), ..Default::default() };
+        archive
+            .save("index-00000000000000000001", &"another-item")
+            .unwrap();
+        let mut state = HuntState {
+            saved: (0..105).map(found).collect(),
+            ..Default::default()
+        };
         assert!(state.archive_saved(&disk).is_err());
         assert_eq!(state.saved.len(), 105);
         assert_eq!(state.saved_archived, 0);
-        assert_eq!(strict_saved::<String>(&archive, "index-00000000000000000001").unwrap(), "another-item");
+        assert_eq!(
+            strict_saved::<String>(&archive, "index-00000000000000000001").unwrap(),
+            "another-item"
+        );
         std::fs::remove_file(archive.root().join("index-00000000000000000001.json")).unwrap();
         state.archive_saved(&disk).unwrap();
         assert_eq!(state.saved_count(), 105);
-        assert_eq!(state.saved_page(&disk, 5, 20).unwrap().last().unwrap().id, "saved-0");
+        assert_eq!(
+            state.saved_page(&disk, 5, 20).unwrap().last().unwrap().id,
+            "saved-0"
+        );
         std::fs::remove_dir_all(disk.root()).unwrap();
     }
 
     #[test]
     fn learned_rejection_words_are_bounded_without_changing_saved_items() {
-        let mut state = HuntState { saved: vec![found(1)], ..Default::default() };
-        for id in 0..2500 { state.nope.insert(format!("word-{id}"), 1); }
+        let mut state = HuntState {
+            saved: vec![found(1)],
+            ..Default::default()
+        };
+        for id in 0..2500 {
+            state.nope.insert(format!("word-{id}"), 1);
+        }
         state.nope.insert("frequent-rejection".into(), 10);
         state.prune(NOW);
         assert_eq!(state.nope.len(), KEEP_REJECTED);
@@ -1487,7 +1888,12 @@ mod retention_and_delivery_tests {
 
 /// One line: what, where, why, and the weakest part.
 pub fn line(n: usize, r: &Ranked) -> String {
-    let mut s = format!("{n}. {} — {} {}", r.found.title, r.found.kind.plain(), from_where(r.found.source));
+    let mut s = format!(
+        "{n}. {} — {} {}",
+        r.found.title,
+        r.found.kind.plain(),
+        from_where(r.found.source)
+    );
     if let Some(w) = r.why.first().filter(|w| !w.is_empty()) {
         s.push_str(&format!("; {w}"));
     }
@@ -1501,7 +1907,12 @@ fn from_where(s: Source) -> String {
 /// "Tell me more": everything it rests on.
 pub fn more(r: &Ranked) -> String {
     let f = &r.found;
-    let mut out = vec![format!("{} — a {} from {}.", f.title, f.kind.plain(), f.source.plain())];
+    let mut out = vec![format!(
+        "{} — a {} from {}.",
+        f.title,
+        f.kind.plain(),
+        f.source.plain()
+    )];
     if !f.summary.is_empty() {
         out.push(f.summary.clone());
     }
@@ -1513,7 +1924,10 @@ pub fn more(r: &Ranked) -> String {
     }
     for l in &r.weighed.looks {
         let said = match &l.finding {
-            Finding::Scored { out_of_ten, rests_on } => format!("{out_of_ten}/10 — {}", rests_on.join("; ")),
+            Finding::Scored {
+                out_of_ten,
+                rests_on,
+            } => format!("{out_of_ten}/10 — {}", rests_on.join("; ")),
             Finding::Unknown(why) => format!("can't say — {why}"),
             Finding::Blocked(why) => format!("not yet — {why}"),
         };
@@ -1564,7 +1978,13 @@ pub enum Said {
 fn norm(s: &str) -> String {
     s.to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == ',' || c == '\'' || c == '-' || c == '+' || c == '#' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == ',' || c == '\'' || c == '-' || c == '+' || c == '#' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect::<String>()
         .split_whitespace()
         .filter(|w| w.trim_matches(',') != "atlas")
@@ -1580,7 +2000,13 @@ fn split_items(rest: &str) -> Option<Vec<String>> {
         .replace(" and ", ",")
         .replace(" or ", ",")
         .split(',')
-        .map(|s| s.trim().trim_start_matches("in ").trim_start_matches("about ").trim().to_string())
+        .map(|s| {
+            s.trim()
+                .trim_start_matches("in ")
+                .trim_start_matches("about ")
+                .trim()
+                .to_string()
+        })
         .filter(|s| !s.is_empty())
         .collect();
     (!v.is_empty()).then_some(v)
@@ -1598,19 +2024,53 @@ fn items_after(t: &str, leads: &[&str]) -> Option<Vec<String>> {
 /// The words that make a sentence about opportunities rather than anything
 /// else: "look for video editing *gigs*".
 const KINDS: &[&str] = &[
-    "gigs", "gig", "jobs", "job", "work", "contracts", "contract", "grants", "grant", "opportunities", "opportunity",
-    "clients", "freelance work", "side hustles", "niches",
+    "gigs",
+    "gig",
+    "jobs",
+    "job",
+    "work",
+    "contracts",
+    "contract",
+    "grants",
+    "grant",
+    "opportunities",
+    "opportunity",
+    "clients",
+    "freelance work",
+    "side hustles",
+    "niches",
 ];
 
 /// "look for video editing gigs" -> ["video editing"]. The sentence must
 /// end in one of `KINDS`, so "look for my keys" is not this.
 fn topic_then_kind(t: &str, leads: &[&str]) -> Option<Vec<String>> {
     for l in leads {
-        let Some(rest) = t.strip_prefix(l) else { continue };
+        let Some(rest) = t.strip_prefix(l) else {
+            continue;
+        };
         for k in KINDS {
             if let Some(topic) = rest.strip_suffix(&format!(" {k}")) {
-                let topic = topic.trim().trim_start_matches("some ").trim_start_matches("more ").trim();
-                if topic.is_empty() || matches!(topic, "new" | "any" | "the" | "good" | "me" | "for me" | "more" | "some" | "other" | "my" | "your") {
+                let topic = topic
+                    .trim()
+                    .trim_start_matches("some ")
+                    .trim_start_matches("more ")
+                    .trim();
+                if topic.is_empty()
+                    || matches!(
+                        topic,
+                        "new"
+                            | "any"
+                            | "the"
+                            | "good"
+                            | "me"
+                            | "for me"
+                            | "more"
+                            | "some"
+                            | "other"
+                            | "my"
+                            | "your"
+                    )
+                {
                     return None;
                 }
                 return split_items(topic);
@@ -1634,10 +2094,14 @@ fn a_subject(rest: &str) -> Option<Vec<String>> {
     }
     let first = r.split_whitespace().next().unwrap_or("");
     const NOT: &[&str] = &[
-        "that", "this", "it", "the", "one", "number", "any", "them", "those", "these", "first", "second", "third",
-        "fourth", "fifth", "last", "no",
+        "that", "this", "it", "the", "one", "number", "any", "them", "those", "these", "first",
+        "second", "third", "fourth", "fifth", "last", "no",
     ];
-    if NOT.contains(&first) || r.trim_start_matches('#').chars().all(|c| c.is_ascii_digit()) {
+    if NOT.contains(&first)
+        || r.trim_start_matches('#')
+            .chars()
+            .all(|c| c.is_ascii_digit())
+    {
         return None;
     }
     split_items(r)
@@ -1650,39 +2114,110 @@ pub fn understand(said: &str, listed: usize) -> Option<Said> {
     let t = norm(said);
     let bare = t.trim_end_matches(['?', '.', '!']).trim();
     const LIST: &[&str] = &[
-        "opportunities", "any opportunities", "any new opportunities", "show opportunities", "show me opportunities",
-        "what opportunities", "what opportunities are there", "what opportunities have you found", "list opportunities",
-        "show me the opportunities", "any gigs", "any new gigs", "find me gigs", "find me opportunities",
-        "what have you found for me", "opportunities today", "my opportunities",
+        "opportunities",
+        "any opportunities",
+        "any new opportunities",
+        "show opportunities",
+        "show me opportunities",
+        "what opportunities",
+        "what opportunities are there",
+        "what opportunities have you found",
+        "list opportunities",
+        "show me the opportunities",
+        "any gigs",
+        "any new gigs",
+        "find me gigs",
+        "find me opportunities",
+        "what have you found for me",
+        "opportunities today",
+        "my opportunities",
     ];
     if LIST.contains(&bare) {
         return Some(Said::List);
     }
-    if ["saved opportunities", "my saved opportunities", "what opportunities did i save"].contains(&bare) {
+    if [
+        "saved opportunities",
+        "my saved opportunities",
+        "what opportunities did i save",
+    ]
+    .contains(&bare)
+    {
         return Some(Said::Saved);
     }
-    if ["start hunting", "start hunting for opportunities", "hunt for opportunities", "look for opportunities", "start looking for opportunities"].contains(&bare) {
+    if [
+        "start hunting",
+        "start hunting for opportunities",
+        "hunt for opportunities",
+        "look for opportunities",
+        "start looking for opportunities",
+    ]
+    .contains(&bare)
+    {
         return Some(Said::Start);
     }
-    if ["stop hunting", "stop hunting for opportunities", "stop looking for opportunities"].contains(&bare) {
+    if [
+        "stop hunting",
+        "stop hunting for opportunities",
+        "stop looking for opportunities",
+    ]
+    .contains(&bare)
+    {
         return Some(Said::Stop);
     }
-    if let Some(v) = items_after(bare, &["look for opportunities in ", "look for opportunities about ", "look for opportunities like ", "hunt for opportunities in ", "opportunities i want are ", "find opportunities in "]) {
+    if let Some(v) = items_after(
+        bare,
+        &[
+            "look for opportunities in ",
+            "look for opportunities about ",
+            "look for opportunities like ",
+            "hunt for opportunities in ",
+            "opportunities i want are ",
+            "find opportunities in ",
+        ],
+    ) {
         return Some(Said::LookFor(v));
     }
-    if let Some(v) = items_after(bare, &["my skills are ", "skills for opportunities are ", "match opportunities to "]) {
+    if let Some(v) = items_after(
+        bare,
+        &[
+            "my skills are ",
+            "skills for opportunities are ",
+            "match opportunities to ",
+        ],
+    ) {
         return Some(Said::Skills(v));
     }
-    if let Some(v) = items_after(bare, &["skip opportunities about ", "skip opportunities in ", "no opportunities about ", "never show me opportunities about "]) {
+    if let Some(v) = items_after(
+        bare,
+        &[
+            "skip opportunities about ",
+            "skip opportunities in ",
+            "no opportunities about ",
+            "never show me opportunities about ",
+        ],
+    ) {
         return Some(Said::Avoid(v));
     }
     // "Look for video editing gigs", "find me rust contracts".
-    if let Some(v) = topic_then_kind(bare, &["look for ", "find me ", "hunt for ", "keep an eye out for "]) {
+    if let Some(v) = topic_then_kind(
+        bare,
+        &["look for ", "find me ", "hunt for ", "keep an eye out for "],
+    ) {
         return Some(Said::LookFor(v));
     }
     // "Not interested in crypto gigs", "no crypto opportunities": said with
     // the kind, it's the hunter's even with no list showing.
-    if let Some(v) = topic_then_kind(bare, &["not interested in ", "i'm not interested in ", "im not interested in ", "no ", "skip ", "no more "]) {
+    if let Some(v) = topic_then_kind(
+        bare,
+        &[
+            "not interested in ",
+            "i'm not interested in ",
+            "im not interested in ",
+            "no ",
+            "skip ",
+            "no more ",
+        ],
+    ) {
         return Some(Said::Avoid(v));
     }
     if listed == 0 {
@@ -1692,13 +2227,23 @@ pub fn understand(said: &str, listed: usize) -> Option<Said> {
     // interested in the first", "save 3". "Opportunity" or "one" may sit in
     // the middle ("save opportunity 2").
     let follow = bare.replace("opportunity ", "").replace("number ", "");
-    let pick = |verbs: &[&str]| crate::workday::numbered_reply(&follow, verbs, listed).map(|(_, i)| i);
+    let pick =
+        |verbs: &[&str]| crate::workday::numbered_reply(&follow, verbs, listed).map(|(_, i)| i);
     // "that kind" first: "not interested in that kind" is more than "not
     // interested in that one".
     const THAT_KIND: &[&str] = &[
-        "not interested in that kind", "not interested in that kind of thing", "not interested in those",
-        "not interested in ones like that", "nothing like that", "no more like that", "none like that",
-        "not that kind", "not that kind of thing", "no more of those", "fewer like that", "less like that",
+        "not interested in that kind",
+        "not interested in that kind of thing",
+        "not interested in those",
+        "not interested in ones like that",
+        "nothing like that",
+        "no more like that",
+        "none like that",
+        "not that kind",
+        "not that kind of thing",
+        "no more of those",
+        "fewer like that",
+        "less like that",
     ];
     if THAT_KIND.contains(&bare) {
         return Some(Said::NotThatKind(if listed == 1 { 0 } else { THAT_ONE }));
@@ -1706,7 +2251,14 @@ pub fn understand(said: &str, listed: usize) -> Option<Said> {
     if let Some(i) = pick(&["no more like", "nothing like", "none like", "fewer like"]) {
         return Some(Said::NotThatKind(i));
     }
-    if let Some(i) = pick(&["tell me more about", "more about", "more on", "tell me about", "details on", "what about"]) {
+    if let Some(i) = pick(&[
+        "tell me more about",
+        "more about",
+        "more on",
+        "tell me about",
+        "details on",
+        "what about",
+    ]) {
         return Some(Said::More(i));
     }
     if let Some(i) = pick(&["not interested in", "no to", "drop", "not for me"]) {
@@ -1718,14 +2270,20 @@ pub fn understand(said: &str, listed: usize) -> Option<Said> {
     // "That one" and "it": the one you last asked more about.
     let that = if listed == 1 { 0 } else { THAT_ONE };
     match bare {
-        "not interested in that one" | "not interested in that" | "not interested in it" | "drop that one" | "drop it" => {
-            return Some(Said::NotInterested(that))
-        }
+        "not interested in that one"
+        | "not interested in that"
+        | "not interested in it"
+        | "drop that one"
+        | "drop it" => return Some(Said::NotInterested(that)),
         "save that one" | "save that" | "keep that one" => return Some(Said::Save(that)),
         _ => {}
     }
     // With a list showing, "not interested in crypto" is about the list.
-    for lead in ["not interested in ", "i'm not interested in ", "im not interested in "] {
+    for lead in [
+        "not interested in ",
+        "i'm not interested in ",
+        "im not interested in ",
+    ] {
         if let Some(v) = bare.strip_prefix(lead).and_then(a_subject) {
             return Some(Said::Avoid(v));
         }
@@ -1762,20 +2320,108 @@ pub struct Fit {
 
 /// Words a posting uses to say what it requires.
 const ASKS_FOR: &[&str] = &[
-    "require", "must", "experience with", "experience in", "proficien", "you have", "you'll have", "you will have",
-    "qualification", "skills", "familiar", "knowledge of", "background in", "strong", "expert", "years of",
-    "looking for", "nice to have", "bonus", "plus",
+    "require",
+    "must",
+    "experience with",
+    "experience in",
+    "proficien",
+    "you have",
+    "you'll have",
+    "you will have",
+    "qualification",
+    "skills",
+    "familiar",
+    "knowledge of",
+    "background in",
+    "strong",
+    "expert",
+    "years of",
+    "looking for",
+    "nice to have",
+    "bonus",
+    "plus",
 ];
 
 /// Capitalised words that aren't skills.
 const NOT_SKILLS: &[&str] = &[
-    "we", "you", "our", "the", "a", "an", "and", "or", "in", "with", "of", "for", "to", "experience", "strong",
-    "bachelor", "bachelors", "master", "masters", "degree", "years", "year", "team", "teams", "requirements",
-    "required", "qualifications", "skills", "must", "nice", "have", "bonus", "plus", "ability", "excellent",
-    "remote", "us", "usa", "canada", "senior", "junior", "engineer", "developer", "role", "about", "what",
-    "who", "why", "how", "responsibilities", "benefits", "salary", "equity", "knowledge", "familiarity",
-    "proficiency", "proficient", "working", "work", "communication", "written", "verbal", "english", "i",
-    "is", "are", "be", "at", "on", "as", "if", "it", "this", "that", "they", "their", "will", "can",
+    "we",
+    "you",
+    "our",
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "in",
+    "with",
+    "of",
+    "for",
+    "to",
+    "experience",
+    "strong",
+    "bachelor",
+    "bachelors",
+    "master",
+    "masters",
+    "degree",
+    "years",
+    "year",
+    "team",
+    "teams",
+    "requirements",
+    "required",
+    "qualifications",
+    "skills",
+    "must",
+    "nice",
+    "have",
+    "bonus",
+    "plus",
+    "ability",
+    "excellent",
+    "remote",
+    "us",
+    "usa",
+    "canada",
+    "senior",
+    "junior",
+    "engineer",
+    "developer",
+    "role",
+    "about",
+    "what",
+    "who",
+    "why",
+    "how",
+    "responsibilities",
+    "benefits",
+    "salary",
+    "equity",
+    "knowledge",
+    "familiarity",
+    "proficiency",
+    "proficient",
+    "working",
+    "work",
+    "communication",
+    "written",
+    "verbal",
+    "english",
+    "i",
+    "is",
+    "are",
+    "be",
+    "at",
+    "on",
+    "as",
+    "if",
+    "it",
+    "this",
+    "that",
+    "they",
+    "their",
+    "will",
+    "can",
 ];
 
 /// The named things a posting asks for: capitalised or symbol-bearing
@@ -1788,7 +2434,10 @@ pub fn asked_for(posting: &str) -> Vec<String> {
         if !ASKS_FOR.iter().any(|c| low.contains(c)) {
             continue;
         }
-        let words: Vec<&str> = line.split(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | '(' | ')' | '/' | ':')).filter(|w| !w.is_empty()).collect();
+        let words: Vec<&str> = line
+            .split(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | '(' | ')' | '/' | ':'))
+            .filter(|w| !w.is_empty())
+            .collect();
         let mut run: Vec<String> = Vec::new();
         let flush = |run: &mut Vec<String>, out: &mut Vec<String>| {
             if !run.is_empty() {
@@ -1800,9 +2449,14 @@ pub fn asked_for(posting: &str) -> Vec<String> {
             }
         };
         for (i, w) in words.iter().enumerate() {
-            let w = w.trim_matches(|c: char| matches!(c, '.' | '!' | '?' | '"' | '\'' | '-' | '*' | '•'));
+            let w = w.trim_matches(|c: char| {
+                matches!(c, '.' | '!' | '?' | '"' | '\'' | '-' | '*' | '•')
+            });
             let first = w.chars().next().unwrap_or(' ');
-            let named = first.is_uppercase() || w.contains('+') || w.contains('#') || (w.contains('.') && w.len() > 2);
+            let named = first.is_uppercase()
+                || w.contains('+')
+                || w.contains('#')
+                || (w.contains('.') && w.len() > 2);
             let lead = i == 0 && w.chars().skip(1).all(|c| c.is_lowercase());
             if named && !lead && w.len() > 1 && !NOT_SKILLS.contains(&w.to_lowercase().as_str()) {
                 run.push(w.to_string());
@@ -1823,15 +2477,28 @@ pub fn fit_to_posting(posting: &str, you: &Interests) -> Option<Fit> {
     }
     let asked = asked_for(posting);
     let words = format!(" {} ", title_key(posting));
-    let matched: Vec<String> = you.skills.iter().filter(|s| has_term(&words, s)).cloned().collect();
-    let covered = |a: &String| you.skills.iter().any(|s| title_key(s) == title_key(a) || title_key(a).contains(&title_key(s)));
+    let matched: Vec<String> = you
+        .skills
+        .iter()
+        .filter(|s| has_term(&words, s))
+        .cloned()
+        .collect();
+    let covered = |a: &String| {
+        you.skills
+            .iter()
+            .any(|s| title_key(s) == title_key(a) || title_key(a).contains(&title_key(s)))
+    };
     let missing: Vec<String> = asked.iter().filter(|a| !covered(a)).cloned().collect();
     let total = matched.len() + missing.len();
     if total == 0 {
         return None;
     }
     let out_of_ten = ((matched.len() * 10 + total / 2) / total) as u8;
-    Some(Fit { matched, missing, out_of_ten })
+    Some(Fit {
+        matched,
+        missing,
+        out_of_ten,
+    })
 }
 
 /// The fit, said: what matched, what's missing, and that only what you've
@@ -1839,7 +2506,10 @@ pub fn fit_to_posting(posting: &str, you: &Interests) -> Option<Fit> {
 pub fn fit_said(fit: &Fit) -> String {
     let mut out = format!("About {}/10 by what you've told me.", fit.out_of_ten);
     if !fit.matched.is_empty() {
-        out.push_str(&format!(" It wants {}, which you have.", fit.matched.join(", ")));
+        out.push_str(&format!(
+            " It wants {}, which you have.",
+            fit.matched.join(", ")
+        ));
     }
     if !fit.missing.is_empty() {
         let shown: Vec<&str> = fit.missing.iter().take(6).map(|s| s.as_str()).collect();
@@ -1847,7 +2517,11 @@ pub fn fit_said(fit: &Fit) -> String {
         out.push_str(&format!(
             " Not in what you've told me: {}{}.",
             shown.join(", "),
-            if more > 0 { format!(", and {more} more") } else { String::new() }
+            if more > 0 {
+                format!(", and {more} more")
+            } else {
+                String::new()
+            }
         ));
     }
     out.push_str(" If you have any of those, say \"my skills are\" and add them -- I only count what you've said.");

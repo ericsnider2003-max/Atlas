@@ -65,7 +65,16 @@ fn empty_sources<'a>(
     publisher: &'a Publisher,
     upkeep: &'a [String],
 ) -> Sources<'a> {
-    Sources { inbox, backlog, scheduler, proposals, publisher, upkeep, mail: &[], online: true }
+    Sources {
+        inbox,
+        backlog,
+        scheduler,
+        proposals,
+        publisher,
+        upkeep,
+        mail: &[],
+        online: true,
+    }
 }
 
 // ===================== the config could not be turned on ================
@@ -76,8 +85,14 @@ fn the_brief_can_be_turned_on_at_all_now() {
     // `ToolsConfig`, so the only value it could ever have was its own
     // `Default` — and that was `enabled: false`. There was no switch.
     let c = Config::load(Path::new("config")).unwrap();
-    let tools = c.tools.as_ref().expect("the shipped config has a tools section");
-    assert!(tools.brief.enabled, "the brief ships off again, so it computes nothing");
+    let tools = c
+        .tools
+        .as_ref()
+        .expect("the shipped config has a tools section");
+    assert!(
+        tools.brief.enabled,
+        "the brief ships off again, so it computes nothing"
+    );
 }
 
 #[test]
@@ -103,7 +118,11 @@ fn a_friends_note_at_the_door_is_something_only_you_can_settle() {
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].source, Source::Handoff);
     assert_eq!(items[0].from, "Priya");
-    assert_eq!(items[0].outcome, Outcome::Yours, "Atlas cannot decide to keep or bin this");
+    assert_eq!(
+        items[0].outcome,
+        Outcome::Yours,
+        "Atlas cannot decide to keep or bin this"
+    );
 }
 
 #[test]
@@ -114,7 +133,11 @@ fn a_note_that_has_sat_for_two_days_stops_being_information() {
     let old = from_handoffs(&inbox, NOW + THREE_DAYS);
 
     assert_eq!(fresh[0].weight, Weight::Info);
-    assert_eq!(old[0].weight, Weight::Urgent, "a note you have ignored for days is not news");
+    assert_eq!(
+        old[0].weight,
+        Weight::Urgent,
+        "a note you have ignored for days is not news"
+    );
 }
 
 #[test]
@@ -124,11 +147,22 @@ fn something_waiting_on_you_outranks_something_waiting_on_the_world() {
     b.record("look up the train times", Blocker::Offline, NOW);
 
     let items = from_backlog(&b);
-    let approval = items.iter().find(|i| i.subject.contains("certificate")).unwrap();
+    let approval = items
+        .iter()
+        .find(|i| i.subject.contains("certificate"))
+        .unwrap();
     let offline = items.iter().find(|i| i.subject.contains("train")).unwrap();
 
-    assert_eq!(approval.weight, Weight::Urgent, "a thing waiting on you is not information");
-    assert_eq!(offline.weight, Weight::Info, "a thing that clears itself is");
+    assert_eq!(
+        approval.weight,
+        Weight::Urgent,
+        "a thing waiting on you is not information"
+    );
+    assert_eq!(
+        offline.weight,
+        Weight::Info,
+        "a thing that clears itself is"
+    );
 }
 
 #[test]
@@ -137,7 +171,11 @@ fn most_blocking_finally_has_something_to_work_on() {
     // nothing ever gave it a `conflicts_with` to count. Offline the answer is
     // the blocker, which is exactly the sentence worth hearing.
     let mut b = atlas::backlog::Backlog::default();
-    for what in ["check the train times", "look up the invoice", "fetch the forecast"] {
+    for what in [
+        "check the train times",
+        "look up the invoice",
+        "fetch the forecast",
+    ] {
         b.record(what, Blocker::Offline, NOW);
     }
     let items = from_backlog(&b);
@@ -145,7 +183,10 @@ fn most_blocking_finally_has_something_to_work_on() {
 
     let blocking = brief.blocking.expect("nothing was named as the hold-up");
     assert!(blocking.contains("no connection"), "got: {blocking}");
-    assert!(blocking.contains('3'), "it did not say how many: {blocking}");
+    assert!(
+        blocking.contains('3'),
+        "it did not say how many: {blocking}"
+    );
 }
 
 #[test]
@@ -158,11 +199,26 @@ fn a_job_that_failed_needs_you_and_a_job_that_is_due_is_your_day() {
 
     let (items, day) = from_jobs(&s, NOW);
 
-    assert_eq!(items.len(), 1, "the wrong number of jobs needed you: {items:?}");
-    assert_eq!(items[0].weight, Weight::Urgent, "Atlas tried and it broke; that is not info");
-    assert_eq!(day.len(), 1, "a job due in a fortnight is not the shape of this morning");
+    assert_eq!(
+        items.len(),
+        1,
+        "the wrong number of jobs needed you: {items:?}"
+    );
+    assert_eq!(
+        items[0].weight,
+        Weight::Urgent,
+        "Atlas tried and it broke; that is not info"
+    );
+    assert_eq!(
+        day.len(),
+        1,
+        "a job due in a fortnight is not the shape of this morning"
+    );
     assert!(day[0].id.contains(&soon.to_string()));
-    assert_eq!(day[0].at_minute, 30, "minutes from now, so the brief does not go stale");
+    assert_eq!(
+        day[0].at_minute, 30,
+        "minutes from now, so the brief does not go stale"
+    );
 }
 
 #[test]
@@ -175,7 +231,11 @@ fn work_that_ran_and_worked_is_counted_not_listed() {
         s.complete(id, NOW + i, "done", true);
     }
     assert_eq!(handled_since(&s, NOW), 4);
-    assert_eq!(handled_since(&s, NOW + 10), 0, "it counted work from before the brief looked");
+    assert_eq!(
+        handled_since(&s, NOW + 10),
+        0,
+        "it counted work from before the brief looked"
+    );
 }
 
 #[test]
@@ -185,14 +245,21 @@ fn a_proposed_time_nobody_answered_is_urgent_because_silence_is_a_no() {
         from: "Sam".into(),
         about: None,
         their_words: "could we do Tuesday or Wednesday morning".into(),
-        times: vec![Slot { start: NOW + 3600, mins: 60 }],
+        times: vec![Slot {
+            start: NOW + 3600,
+            mins: 60,
+        }],
         at: NOW - THREE_DAYS,
         state: State::NeedsYou,
     };
     let items = from_bookings(&[p], NOW);
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].source, Source::Booking);
-    assert_eq!(items[0].weight, Weight::Urgent, "it becomes a no by default, which is not info");
+    assert_eq!(
+        items[0].weight,
+        Weight::Urgent,
+        "it becomes a no by default, which is not info"
+    );
 }
 
 #[test]
@@ -213,7 +280,10 @@ fn a_post_waiting_on_your_yes_is_drafted_not_yours() {
 fn a_post_still_being_written_is_not_in_the_brief() {
     let mut p = Publisher::default();
     p.draft(Channel::X, "half a thought");
-    assert!(from_posts(&p).is_empty(), "an unfinished draft was put in front of you");
+    assert!(
+        from_posts(&p).is_empty(),
+        "an unfinished draft was put in front of you"
+    );
 }
 
 #[test]
@@ -221,7 +291,11 @@ fn upkeep_atlas_will_not_settle_alone_gets_a_line() {
     let items = from_upkeep(&["the notes index has drifted".to_string()]);
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].source, Source::Upkeep);
-    assert_eq!(items[0].weight, Weight::Info, "housekeeping never outranks a person");
+    assert_eq!(
+        items[0].weight,
+        Weight::Info,
+        "housekeeping never outranks a person"
+    );
 }
 
 // ===================== how it reads ====================================
@@ -242,7 +316,11 @@ fn an_item_reads_as_a_thing_rather_than_as_a_mechanism() {
     };
     assert_eq!(mail.headline(), "Priya — the numbers");
 
-    let blocked = Item { source: Source::Blocked, from: "me".into(), ..mail.clone() };
+    let blocked = Item {
+        source: Source::Blocked,
+        from: "me".into(),
+        ..mail.clone()
+    };
     assert_eq!(blocked.headline(), "the numbers", "it led with 'me —'");
 }
 
@@ -287,10 +365,20 @@ fn with_the_router_down_it_does_not_lead_with_an_email() {
         mail: &mail,
         online: false,
     };
-    assert!(gather(&offline, NOW).0.is_empty(), "an unreachable email led the brief");
+    assert!(
+        gather(&offline, NOW).0.is_empty(),
+        "an unreachable email led the brief"
+    );
 
-    let online = Sources { online: true, ..offline };
-    assert_eq!(gather(&online, NOW).0.len(), 1, "mail vanished when the network was up");
+    let online = Sources {
+        online: true,
+        ..offline
+    };
+    assert_eq!(
+        gather(&online, NOW).0.len(),
+        1,
+        "mail vanished when the network was up"
+    );
 }
 
 #[test]
@@ -322,7 +410,14 @@ fn everything_but_mail_survives_the_router_going_down() {
 // ===================== reached from the running program ================
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn cfg() -> Config {
@@ -330,26 +425,46 @@ fn cfg() -> Config {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 fn prepared_answer(d: &mut Daemon) -> String {
     let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
     loop {
-        if let Some(result) = d.poll_brief() { return spoken(&result.expect("brief preparation failed")); }
-        assert!(std::time::Instant::now() < until, "brief preparation never completed");
+        if let Some(result) = d.poll_brief() {
+            return spoken(&result.expect("brief preparation failed"));
+        }
+        assert!(
+            std::time::Instant::now() < until,
+            "brief preparation never completed"
+        );
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
 }
 
 // Worker completion changes wall time, never the simulated time of day.
 fn tick_brief_at(d: &mut Daemon, logical_time: u64, expected: bool) -> String {
-    let until = std::time::Instant::now() + if expected { std::time::Duration::from_secs(5) } else { std::time::Duration::from_millis(150) };
+    let until = std::time::Instant::now()
+        + if expected {
+            std::time::Duration::from_secs(5)
+        } else {
+            std::time::Duration::from_millis(150)
+        };
     let mut said = Vec::new();
     loop {
         said.extend(d.tick(logical_time));
-        if expected && said.iter().any(|line| line.contains("Start with")) { break; }
-        if std::time::Instant::now() >= until { break; }
+        if expected && said.iter().any(|line| line.contains("Start with")) {
+            break;
+        }
+        if std::time::Instant::now() >= until {
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     said.join(" ")
@@ -359,10 +474,14 @@ fn tick_brief_at(d: &mut Daemon, logical_time: u64, expected: bool) -> String {
 fn a_real_daemon_builds_a_brief_out_of_its_own_state() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "real");
-    d.backlog.record("renew the certificate", Blocker::NeedsApproval, NOW);
+    d.backlog
+        .record("renew the certificate", Blocker::NeedsApproval, NOW);
 
     let b = d.brief_now(NOW);
-    assert!(!b.is_empty(), "the daemon built an empty brief from a populated backlog");
+    assert!(
+        !b.is_empty(),
+        "the daemon built an empty brief from a populated backlog"
+    );
     assert!(b.yours.iter().any(|i| i.subject.contains("certificate")));
 }
 
@@ -371,10 +490,14 @@ fn asking_what_is_outstanding_now_answers_from_something() {
     // This is the call site that was `run(&[], &[], &default())`.
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "outstanding");
-    d.backlog.record("renew the certificate", Blocker::NeedsApproval, NOW);
+    d.backlog
+        .record("renew the certificate", Blocker::NeedsApproval, NOW);
 
     let said = d.turn("what's outstanding", atlas::store::now());
-    assert!(said.contains("preparing"), "the request did not report its pending state: {said}");
+    assert!(
+        said.contains("preparing"),
+        "the request did not report its pending state: {said}"
+    );
     let said = prepared_answer(&mut d);
     // Deliberately *not* asserting on the word "certificate": this reply is
     // the brief followed by `backlog.summary()`, and the summary names the
@@ -386,7 +509,10 @@ fn asking_what_is_outstanding_now_answers_from_something() {
         said.contains("Start with"),
         "the brief contributed nothing; this is the backlog summary alone: {said}"
     );
-    assert!(said.contains("certificate"), "the brief named no real item: {said}");
+    assert!(
+        said.contains("certificate"),
+        "the brief named no real item: {said}"
+    );
 }
 
 #[test]
@@ -399,7 +525,10 @@ fn handled_counts_only_what_happened_since_the_last_brief() {
     let first = d.brief_now(NOW + 10);
     assert_eq!(first.handled, 1);
     let second = d.brief_now(NOW + 20);
-    assert_eq!(second.handled, 1, "preparation alone must not consume the delivered-work interval");
+    assert_eq!(
+        second.handled, 1,
+        "preparation alone must not consume the delivered-work interval"
+    );
 }
 
 #[test]
@@ -441,7 +570,10 @@ fn a_drifted_index_reaches_the_brief_as_upkeep() {
     let b = run(&items, &[], &on());
     assert!(b.yours.iter().any(|i| i.source == Source::Upkeep));
     // And that the daemon's own collector is the thing that would supply it.
-    assert!(d.brief_now(NOW).is_empty(), "a clean daemon invented upkeep to report");
+    assert!(
+        d.brief_now(NOW).is_empty(),
+        "a clean daemon invented upkeep to report"
+    );
 }
 
 // ===================== the morning greeting ============================
@@ -456,7 +588,11 @@ fn the_morning_greeting_carries_the_run_rather_than_a_count() {
     let n = daypart_with_brief(Part::Morning, &brief);
     assert_eq!(n.trigger, Trigger::Daypart);
     assert!(n.message.starts_with("Good morning"));
-    assert!(n.message.contains("certificate"), "the greeting carried no brief: {}", n.message);
+    assert!(
+        n.message.contains("certificate"),
+        "the greeting carried no brief: {}",
+        n.message
+    );
 }
 
 #[test]
@@ -489,9 +625,15 @@ fn mail_is_still_a_source_for_the_day_there_is_a_reader() {
     let publisher = Publisher::default();
     let upkeep: Vec<String> = Vec::new();
     let s = empty_sources(&inbox, &backlog, &scheduler, &[], &publisher, &upkeep);
-    assert!(s.mail.is_empty(), "this build has no mail reader, and should say so by being empty");
+    assert!(
+        s.mail.is_empty(),
+        "this build has no mail reader, and should say so by being empty"
+    );
     assert!(Source::Mail.needs_network());
-    assert!(!Source::Handoff.needs_network(), "a note already on this disk needs no network");
+    assert!(
+        !Source::Handoff.needs_network(),
+        "a note already on this disk needs no network"
+    );
 }
 
 // ===================== when the day's run happens =======================
@@ -547,7 +689,10 @@ fn working_through_the_night_is_not_starting_a_day() {
     assert_ne!(day_of_with(eleven_pm, 4), day_of_with(four_am, 4));
 
     // And it still is not a new day for you, because you never went away.
-    assert_eq!(arriving(at(day, 3) + 60, 0, four_am, 4, &d), Arrival::StillGoing);
+    assert_eq!(
+        arriving(at(day, 3) + 60, 0, four_am, 4, &d),
+        Arrival::StillGoing
+    );
 }
 
 #[test]
@@ -560,10 +705,16 @@ fn the_brief_is_held_until_you_come_back_rather_than_missed() {
     let day = DAY0;
 
     // 6am, still going, no brief given.
-    assert_eq!(arriving(at(day, 6) - 120, 0, at(day, 6), 4, &d), Arrival::StillGoing);
+    assert_eq!(
+        arriving(at(day, 6) - 120, 0, at(day, 6), 4, &d),
+        Arrival::StillGoing
+    );
 
     // 2pm, eight hours later, and no brief has been given today.
-    assert_eq!(arriving(at(day, 6), 0, at(day, 14), 4, &d), Arrival::Starting);
+    assert_eq!(
+        arriving(at(day, 6), 0, at(day, 14), 4, &d),
+        Arrival::Starting
+    );
 }
 
 #[test]
@@ -589,7 +740,10 @@ fn a_night_owls_day_ends_when_they_stop_rather_than_at_midnight() {
     // 1am is still the previous day for this person, and would be a new one
     // under a calendar rollover.
     let day = DAY0;
-    assert_eq!(day_of_with(at(day, 23), rolls), day_of_with(at(day + 1, 1), rolls));
+    assert_eq!(
+        day_of_with(at(day, 23), rolls),
+        day_of_with(at(day + 1, 1), rolls)
+    );
 }
 
 // ===================== coming in =======================================
@@ -599,7 +753,10 @@ fn the_first_time_you_come_in_on_a_new_day_is_what_earns_it() {
     let d = daily();
     let day = DAY0;
     // Away since last night, back at nine.
-    assert_eq!(arriving(at(day - 1, 22), at(day - 1, 9), at(day, 9), 4, &d), Arrival::Starting);
+    assert_eq!(
+        arriving(at(day - 1, 22), at(day - 1, 9), at(day, 9), 4, &d),
+        Arrival::Starting
+    );
 }
 
 #[test]
@@ -610,7 +767,10 @@ fn coming_back_later_the_same_day_does_not_earn_a_second_one() {
     let d = daily();
     let day = DAY0;
     // Brief at nine. Out for the afternoon. Back at six.
-    assert_eq!(arriving(at(day, 9), at(day, 9), at(day, 18), 4, &d), Arrival::BackAgain);
+    assert_eq!(
+        arriving(at(day, 9), at(day, 9), at(day, 18), 4, &d),
+        Arrival::BackAgain
+    );
 }
 
 #[test]
@@ -620,10 +780,19 @@ fn a_lunch_break_is_not_going_away() {
     // wearing a greeting.
     let d = daily();
     let day = DAY0;
-    assert_eq!(arriving(at(day, 12), 0, at(day, 13), 4, &d), Arrival::StillGoing);
+    assert_eq!(
+        arriving(at(day, 12), 0, at(day, 13), 4, &d),
+        Arrival::StillGoing
+    );
     // And the setting is read rather than a number that happens to match.
-    let twitchy = DailyConfig { back_after_minutes: 30, ..daily() };
-    assert_eq!(arriving(at(day, 12), 0, at(day, 13), 4, &twitchy), Arrival::Starting);
+    let twitchy = DailyConfig {
+        back_after_minutes: 30,
+        ..daily()
+    };
+    assert_eq!(
+        arriving(at(day, 12), 0, at(day, 13), 4, &twitchy),
+        Arrival::Starting
+    );
 }
 
 #[test]
@@ -645,12 +814,18 @@ fn the_daemon_is_what_reaches_it_rather_than_this_test() {
         .collect::<Vec<_>>()
         .join("\n");
 
-    assert!(code.contains("crate::daily::arriving("), "nothing asks whether you arrived");
+    assert!(
+        code.contains("crate::daily::arriving("),
+        "nothing asks whether you arrived"
+    );
     assert!(
         code.contains("crate::daily::Arrival::Starting"),
         "the arrival is computed and not acted on"
     );
-    assert!(code.contains("self.rhythm.rolls_at("), "it uses the calendar's day, not yours");
+    assert!(
+        code.contains("self.rhythm.rolls_at("),
+        "it uses the calendar's day, not yours"
+    );
     assert!(
         code.contains("self.last_turn_of_yours = t;"),
         "nothing records when you last did something, so there is no gap to measure"
@@ -664,12 +839,24 @@ fn the_daemon_is_what_reaches_it_rather_than_this_test() {
         "the turn's own time is being ignored in favour of the wall clock"
     );
     // The clock trigger this replaced, gone rather than left beside it.
-    assert!(!code.contains("this_hour == bcfg.at_hour"), "the fixed-hour run is back");
+    assert!(
+        !code.contains("this_hour == bcfg.at_hour"),
+        "the fixed-hour run is back"
+    );
 
     let yaml = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    assert!(yaml.contains("back_after_minutes:"), "nowhere to set what counts as going away");
-    assert!(yaml.contains("not_before_hour:"), "nowhere to set the earliest hour");
-    assert!(!yaml.contains("at_hour: 7"), "the old name is still settable and no longer read");
+    assert!(
+        yaml.contains("back_after_minutes:"),
+        "nowhere to set what counts as going away"
+    );
+    assert!(
+        yaml.contains("not_before_hour:"),
+        "nowhere to set the earliest hour"
+    );
+    assert!(
+        !yaml.contains("at_hour: 7"),
+        "the old name is still settable and no longer read"
+    );
 }
 
 #[test]
@@ -681,22 +868,36 @@ fn asking_works_at_any_hour() {
     // is a bad time to be handed a list and a fine time to ask for one.
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "asked-at-4am");
-    d.backlog.record("renew the certificate", Blocker::NeedsApproval, NOW);
+    d.backlog
+        .record("renew the certificate", Blocker::NeedsApproval, NOW);
 
     let four_am = at(DAY0, 4);
     let said = d.turn("what\'s outstanding", four_am);
-    assert!(said.contains("preparing"), "asking was refused by the hour: {said}");
+    assert!(
+        said.contains("preparing"),
+        "asking was refused by the hour: {said}"
+    );
     let said = prepared_answer(&mut d);
-    assert_eq!(said.matches("Start with").count(), 1, "asking was refused by the hour: {said}");
+    assert_eq!(
+        said.matches("Start with").count(),
+        1,
+        "asking was refused by the hour: {said}"
+    );
 
     // And the control: the *unasked* brief is refused at that hour, so this
     // test is about `not_before_hour` rather than about four o'clock being
     // an ordinary time. Without it, a brief that fired at any hour would
     // pass this just as well.
     let mut quiet = daemon(&c, &p, "unasked-at-4am");
-    quiet.backlog.record("renew the certificate", Blocker::NeedsApproval, NOW);
+    quiet
+        .backlog
+        .record("renew the certificate", Blocker::NeedsApproval, NOW);
     let ticked = quiet.tick(four_am).join(" ");
-    assert_eq!(ticked.matches("Start with").count(), 0, "it interrupted at four: {ticked}");
+    assert_eq!(
+        ticked.matches("Start with").count(),
+        0,
+        "it interrupted at four: {ticked}"
+    );
 }
 
 #[test]
@@ -705,19 +906,32 @@ fn the_unasked_one_waits_for_the_hour_you_set() {
     // only when cargo found `.cargo/config.toml` (run from the crate's folder).
     atlas::localclock::pin_offset(Some(0));
     let (c, p) = (cfg(), plat());
-    assert_eq!(c.tools.as_ref().unwrap().brief.not_before_hour, 7, "the shipped hour moved");
+    assert_eq!(
+        c.tools.as_ref().unwrap().brief.not_before_hour,
+        7,
+        "the shipped hour moved"
+    );
 
     let mut d = daemon(&c, &p, "not-before");
-    d.backlog.record("renew the certificate", Blocker::NeedsApproval, NOW);
+    d.backlog
+        .record("renew the certificate", Blocker::NeedsApproval, NOW);
     let day = DAY0;
 
     // Up at five, having been away all night. An arrival, and too early.
     let early = tick_brief_at(&mut d, at(day, 5), false);
-    assert_eq!(early.matches("Start with").count(), 0, "it interrupted at five: {early}");
+    assert_eq!(
+        early.matches("Start with").count(),
+        0,
+        "it interrupted at five: {early}"
+    );
 
     // Eight, still the first time in.
     let later = tick_brief_at(&mut d, at(day, 8), true);
-    assert_eq!(later.matches("Start with").count(), 1, "the held brief never arrived: {later}");
+    assert_eq!(
+        later.matches("Start with").count(),
+        1,
+        "the held brief never arrived: {later}"
+    );
 }
 
 #[test]
@@ -727,7 +941,8 @@ fn it_is_given_once_and_then_not_again_that_day() {
     atlas::localclock::pin_offset(Some(0));
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "once-a-day");
-    d.backlog.record("renew the certificate", Blocker::NeedsApproval, NOW);
+    d.backlog
+        .record("renew the certificate", Blocker::NeedsApproval, NOW);
     let day = DAY0;
 
     let first = tick_brief_at(&mut d, at(day, 9), true);
@@ -735,7 +950,11 @@ fn it_is_given_once_and_then_not_again_that_day() {
 
     for hour in [10u64, 14, 20] {
         let again = tick_brief_at(&mut d, at(day, hour), false);
-        assert_eq!(again.matches("Start with").count(), 0, "said again at {hour}: {again}");
+        assert_eq!(
+            again.matches("Start with").count(),
+            0,
+            "said again at {hour}: {again}"
+        );
     }
 }
 
@@ -755,15 +974,24 @@ fn turning_it_off_turns_it_off() {
     // a brief with nothing in it.
     let on_cfg = cfg();
     let mut on = daemon(&on_cfg, &p, "off-control");
-    on.backlog.record("renew the certificate", Blocker::NeedsApproval, NOW);
-    assert_eq!(tick_brief_at(&mut on, at(day, 9), true).matches("Start with").count(), 1);
+    on.backlog
+        .record("renew the certificate", Blocker::NeedsApproval, NOW);
+    assert_eq!(
+        tick_brief_at(&mut on, at(day, 9), true)
+            .matches("Start with")
+            .count(),
+        1
+    );
 
     let mut off_cfg = cfg();
     off_cfg.tools.as_mut().unwrap().brief.enabled = false;
     let mut off = daemon(&off_cfg, &p, "off");
-    off.backlog.record("renew the certificate", Blocker::NeedsApproval, NOW);
+    off.backlog
+        .record("renew the certificate", Blocker::NeedsApproval, NOW);
     assert_eq!(
-        tick_brief_at(&mut off, at(day, 9), false).matches("Start with").count(),
+        tick_brief_at(&mut off, at(day, 9), false)
+            .matches("Start with")
+            .count(),
         0,
         "a disabled brief still went out"
     );
@@ -778,7 +1006,14 @@ fn a_quiet_morning_says_nothing_rather_than_saying_there_is_nothing() {
     let mut d = daemon(&c, &p, "quiet-morning");
     let day = DAY0;
 
-    assert!(d.brief_now(at(day, 9)).is_empty(), "this machine had something to say");
+    assert!(
+        d.brief_now(at(day, 9)).is_empty(),
+        "this machine had something to say"
+    );
     let said = d.tick(at(day, 9)).join(" ");
-    assert_eq!(said.matches("Nothing needs you").count(), 0, "it volunteered an empty brief: {said}");
+    assert_eq!(
+        said.matches("Nothing needs you").count(),
+        0,
+        "it volunteered an empty brief: {said}"
+    );
 }

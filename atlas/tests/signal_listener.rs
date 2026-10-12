@@ -32,7 +32,9 @@ fn send_signal(port: u16, token: &str, what: &str, urgency: &str) -> std::thread
     std::thread::spawn(move || {
         let body = format!(r#"{{"what":"{what}","urgency":"{urgency}"}}"#);
         let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
-        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
         let req = format!(
             "POST /signal HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {token}\r\n\
              Content-Length: {}\r\n\r\n{body}",
@@ -53,7 +55,11 @@ fn send_signal(port: u16, token: &str, what: &str, urgency: &str) -> std::thread
 /// racing a client thread that has not reached `connect()` yet is a real
 /// possibility, not a flake to paper over -- the daemon's loop handles this
 /// the same way, by simply checking again on its next tick.
-fn poll_until<T>(l: &SignalListener, deadline: Duration, mut want: impl FnMut(&SignalListener) -> Option<T>) -> Option<T> {
+fn poll_until<T>(
+    l: &SignalListener,
+    deadline: Duration,
+    mut want: impl FnMut(&SignalListener) -> Option<T>,
+) -> Option<T> {
     let start = Instant::now();
     loop {
         if let Some(v) = want(l) {
@@ -71,7 +77,12 @@ fn a_real_request_over_a_real_socket_is_accepted_and_delivered() {
     let port = free_port();
     let l = SignalListener::bind(port, vec![Peer::new("Homelab", TOKEN)]).unwrap();
 
-    let client = send_signal(port, TOKEN, "margin call on the leveraged position", "urgent");
+    let client = send_signal(
+        port,
+        TOKEN,
+        "margin call on the leveraged position",
+        "urgent",
+    );
     let arrived = poll_until(&l, Duration::from_secs(2), |l| l.poll_once(1))
         .expect("the daemon's tick should eventually see the connection and accept it");
     // The variant is part of the assertion, not a formality. `/signal` and
@@ -84,7 +95,11 @@ fn a_real_request_over_a_real_socket_is_accepted_and_delivered() {
     assert_eq!(incoming.from, "Homelab");
     assert!(incoming.what.contains("margin call"));
 
-    assert_eq!(client.join().unwrap(), 200, "the peer should see a 200 once the daemon serviced it");
+    assert_eq!(
+        client.join().unwrap(),
+        200,
+        "the peer should see a 200 once the daemon serviced it"
+    );
 }
 
 #[test]
@@ -112,7 +127,10 @@ fn a_token_nobody_registered_is_refused_over_the_real_socket() {
     // here by design. Give the daemon side one tick to service it, then
     // confirm nothing was delivered and the peer saw a real refusal.
     let delivered = poll_until(&l, Duration::from_millis(300), |l| l.poll_once(1));
-    assert!(delivered.is_none(), "a refused request must not surface as a delivered signal");
+    assert!(
+        delivered.is_none(),
+        "a refused request must not surface as a delivered signal"
+    );
     assert_eq!(client.join().unwrap(), 401);
 }
 
@@ -124,9 +142,14 @@ fn two_ports_do_not_interfere_with_each_other() {
 
     send_signal(pa, TOKEN, "for a", "info");
     let got = poll_until(&a, Duration::from_secs(2), |a| a.poll_once(1)).unwrap();
-    let atlas::kin::Arrived::Signal(got) = got else { panic!("not a signal: {got:?}") };
+    let atlas::kin::Arrived::Signal(got) = got else {
+        panic!("not a signal: {got:?}")
+    };
     assert_eq!(got.from, "A");
-    assert!(b.poll_once(1).is_none(), "nothing was ever sent to b's port");
+    assert!(
+        b.poll_once(1).is_none(),
+        "nothing was ever sent to b's port"
+    );
 }
 
 #[test]
@@ -134,13 +157,18 @@ fn a_second_peer_on_the_same_door_is_told_apart_from_the_first() {
     let port = free_port();
     let l = SignalListener::bind(
         port,
-        vec![Peer::new("Homelab", TOKEN), Peer::new("SomeOtherAtlas", "second-token")],
+        vec![
+            Peer::new("Homelab", TOKEN),
+            Peer::new("SomeOtherAtlas", "second-token"),
+        ],
     )
     .unwrap();
 
     send_signal(port, "second-token", "from the other one", "info");
     let got = poll_until(&l, Duration::from_secs(2), |l| l.poll_once(1)).unwrap();
-    let atlas::kin::Arrived::Signal(got) = got else { panic!("not a signal: {got:?}") };
+    let atlas::kin::Arrived::Signal(got) = got else {
+        panic!("not a signal: {got:?}")
+    };
     assert_eq!(got.from, "SomeOtherAtlas");
 }
 
@@ -157,7 +185,9 @@ fn send_handoff(port: u16, token: &str, what: &str) -> std::thread::JoinHandle<u
     std::thread::spawn(move || {
         let body = format!(r#"{{"what":"{what}","from":"whoever they say"}}"#);
         let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
-        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
         let req = format!(
             "POST /handoff HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {token}\r\n\
              Content-Length: {}\r\n\r\n{body}",
@@ -199,7 +229,10 @@ fn an_unregistered_token_is_refused_at_the_handoff_door_too() {
 
     let client = send_handoff(port, "not-a-token-at-all-0123456789", "have this");
     let got = poll_until(&l, Duration::from_millis(300), |l| l.poll_once(1));
-    assert!(got.is_none(), "an unregistered token handed something over: {got:?}");
+    assert!(
+        got.is_none(),
+        "an unregistered token handed something over: {got:?}"
+    );
     assert_eq!(client.join().unwrap(), 401, "refused, not ignored");
 }
 
@@ -214,7 +247,9 @@ fn an_endpoint_nobody_serves_is_refused_rather_than_falling_through() {
     let client = std::thread::spawn(move || {
         let body = r#"{"what":"open chrome"}"#;
         let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
-        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
         let req = format!(
             "POST /say HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {token}\r\n\
              Content-Length: {}\r\n\r\n{body}",
@@ -231,6 +266,9 @@ fn an_endpoint_nobody_serves_is_refused_rather_than_falling_through() {
     });
 
     let got = poll_until(&l, Duration::from_millis(300), |l| l.poll_once(1));
-    assert!(got.is_none(), "a peer token reached /say on the signal socket: {got:?}");
+    assert!(
+        got.is_none(),
+        "a peer token reached /say on the signal socket: {got:?}"
+    );
     assert_eq!(client.join().unwrap(), 401);
 }

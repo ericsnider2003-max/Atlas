@@ -29,7 +29,10 @@ pub enum Remedy {
     /// Only ever applies to things Atlas created.
     Self_ { action: String },
     /// Atlas knows the fix but it touches your machine. Needs a yes.
-    Offer { action: String, what_changes: String },
+    Offer {
+        action: String,
+        what_changes: String,
+    },
     /// You have to do it — an install, a setting, a decision.
     Yours { action: String },
     /// Not understood well enough to suggest anything.
@@ -79,7 +82,9 @@ pub fn diagnose(v: &Vitals) -> Vec<Symptom> {
                 .config_error
                 .clone()
                 .unwrap_or_else(|| "My configuration won't load.".into()),
-            remedy: Remedy::Yours { action: "fix the config file named in the error".into() },
+            remedy: Remedy::Yours {
+                action: "fix the config file named in the error".into(),
+            },
         });
     }
 
@@ -100,7 +105,9 @@ pub fn diagnose(v: &Vitals) -> Vec<Symptom> {
             id: "scratch".into(),
             impact: Impact::Degraded,
             what: "My scratch folder was missing.".into(),
-            remedy: Remedy::Self_ { action: "recreate it".into() },
+            remedy: Remedy::Self_ {
+                action: "recreate it".into(),
+            },
         });
     }
 
@@ -121,7 +128,9 @@ pub fn diagnose(v: &Vitals) -> Vec<Symptom> {
             id: format!("tool:{t}"),
             impact: Impact::Broken,
             what: format!("{t} isn't installed, so anything needing it won't work."),
-            remedy: Remedy::Yours { action: format!("run setup/install-voice.bat, or install {t}") },
+            remedy: Remedy::Yours {
+                action: format!("run setup/install-voice.bat, or install {t}"),
+            },
         });
     }
 
@@ -130,7 +139,9 @@ pub fn diagnose(v: &Vitals) -> Vec<Symptom> {
             id: format!("model:{m}"),
             impact: Impact::Broken,
             what: format!("The model {m} isn't downloaded."),
-            remedy: Remedy::Yours { action: "run setup/install-voice.bat".into() },
+            remedy: Remedy::Yours {
+                action: "run setup/install-voice.bat".into(),
+            },
         });
     }
 
@@ -174,7 +185,10 @@ pub fn diagnose(v: &Vitals) -> Vec<Symptom> {
         out.push(Symptom {
             id: "failures".into(),
             impact: Impact::Broken,
-            what: format!("{} of my last hundred turns ended in an error.", v.recent_failures),
+            what: format!(
+                "{} of my last hundred turns ended in an error.",
+                v.recent_failures
+            ),
             remedy: Remedy::Unknown,
         });
     }
@@ -184,7 +198,10 @@ pub fn diagnose(v: &Vitals) -> Vec<Symptom> {
             out.push(Symptom {
                 id: format!("slow:{stage}"),
                 impact: Impact::Degraded,
-                what: format!("{stage} is taking {:.1} seconds, which is slow enough to notice.", *ms as f32 / 1000.0),
+                what: format!(
+                    "{stage} is taking {:.1} seconds, which is slow enough to notice.",
+                    *ms as f32 / 1000.0
+                ),
                 remedy: Remedy::Unknown,
             });
         }
@@ -196,17 +213,26 @@ pub fn diagnose(v: &Vitals) -> Vec<Symptom> {
 
 /// The ones Atlas may act on unasked.
 pub fn self_fixable(symptoms: &[Symptom]) -> Vec<&Symptom> {
-    symptoms.iter().filter(|s| matches!(s.remedy, Remedy::Self_ { .. })).collect()
+    symptoms
+        .iter()
+        .filter(|s| matches!(s.remedy, Remedy::Self_ { .. }))
+        .collect()
 }
 
 /// The ones it wants permission for.
 pub fn needs_permission(symptoms: &[Symptom]) -> Vec<&Symptom> {
-    symptoms.iter().filter(|s| matches!(s.remedy, Remedy::Offer { .. })).collect()
+    symptoms
+        .iter()
+        .filter(|s| matches!(s.remedy, Remedy::Offer { .. }))
+        .collect()
 }
 
 /// The ones only you can resolve.
 pub fn yours(symptoms: &[Symptom]) -> Vec<&Symptom> {
-    symptoms.iter().filter(|s| matches!(s.remedy, Remedy::Yours { .. })).collect()
+    symptoms
+        .iter()
+        .filter(|s| matches!(s.remedy, Remedy::Yours { .. }))
+        .collect()
 }
 
 /// What Atlas says when asked how it's doing.
@@ -228,7 +254,10 @@ pub fn report(symptoms: &[Symptom]) -> String {
         return parts.join(" ");
     }
 
-    let broken: Vec<&Symptom> = symptoms.iter().filter(|s| s.impact == Impact::Broken).collect();
+    let broken: Vec<&Symptom> = symptoms
+        .iter()
+        .filter(|s| s.impact == Impact::Broken)
+        .collect();
     if !broken.is_empty() {
         parts.push(broken[0].what.clone());
         if broken.len() > 1 {
@@ -265,9 +294,10 @@ pub fn detail(symptoms: &[Symptom]) -> String {
         s.push_str(&format!("[{tag}] {}\n", sym.what));
         match &sym.remedy {
             Remedy::Self_ { action } => s.push_str(&format!("    I handled it: {action}\n")),
-            Remedy::Offer { action, what_changes } => {
-                s.push_str(&format!("    I can {action} — {what_changes}\n"))
-            }
+            Remedy::Offer {
+                action,
+                what_changes,
+            } => s.push_str(&format!("    I can {action} — {what_changes}\n")),
             Remedy::Yours { action } => s.push_str(&format!("    You'd need to {action}\n")),
             Remedy::Unknown => s.push_str("    I don't know what's causing this\n"),
         }

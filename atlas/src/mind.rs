@@ -109,7 +109,11 @@ impl Work {
 
     pub fn think(&mut self, stage: Stage, text: &str, t: u64) {
         self.stage = stage;
-        self.thoughts.push(Thought { at: t, stage, text: text.to_string() });
+        self.thoughts.push(Thought {
+            at: t,
+            stage,
+            text: text.to_string(),
+        });
         // Bounded: a long job shouldn't grow without limit, and the recent
         // thinking is the part anyone reads.
         if self.thoughts.len() > 200 {
@@ -121,7 +125,12 @@ impl Work {
     pub fn plan(&mut self, steps: &[String]) {
         self.steps = steps
             .iter()
-            .map(|s| Step { what: s.clone(), done: false, failed: None, reported_output: None })
+            .map(|s| Step {
+                what: s.clone(),
+                done: false,
+                failed: None,
+                reported_output: None,
+            })
             .collect();
     }
 
@@ -141,7 +150,10 @@ impl Work {
     }
 
     pub fn progress(&self) -> (usize, usize) {
-        (self.steps.iter().filter(|s| s.done).count(), self.steps.len())
+        (
+            self.steps.iter().filter(|s| s.done).count(),
+            self.steps.len(),
+        )
     }
 
     /// The step it's on now.
@@ -155,7 +167,9 @@ impl Work {
             return format!(
                 "Stuck on {} — {}.",
                 self.asked,
-                self.blocked_on.clone().unwrap_or_else(|| "not sure why yet".into())
+                self.blocked_on
+                    .clone()
+                    .unwrap_or_else(|| "not sure why yet".into())
             );
         }
         let (done, total) = self.progress();
@@ -195,16 +209,23 @@ pub enum Started {
 impl Started {
     pub fn id(&self) -> u64 {
         match self {
-            Started::Straight { id } | Started::Demoted { id, .. } | Started::Alongside { id, .. } => *id,
+            Started::Straight { id }
+            | Started::Demoted { id, .. }
+            | Started::Alongside { id, .. } => *id,
         }
     }
     /// What Atlas says. Nothing at all when there was nothing to say.
     pub fn spoken(&self) -> String {
         match self {
             Started::Straight { .. } => String::new(),
-            Started::Demoted { moved, .. } => format!("Carrying on with {moved} in the background."),
+            Started::Demoted { moved, .. } => {
+                format!("Carrying on with {moved} in the background.")
+            }
             Started::Alongside { with, .. } => {
-                format!("Running that alongside {with} other{}.", if *with == 1 { "" } else { "s" })
+                format!(
+                    "Running that alongside {with} other{}.",
+                    if *with == 1 { "" } else { "s" }
+                )
             }
         }
     }
@@ -306,15 +327,23 @@ impl Mind {
             1 => active[0].spoken(),
             n => {
                 let focus = self.focus().map(|w| w.spoken()).unwrap_or_default();
-                format!("{focus} And {} other{} running.", n - 1, if n == 2 { "" } else { "s" })
+                format!(
+                    "{focus} And {} other{} running.",
+                    n - 1,
+                    if n == 2 { "" } else { "s" }
+                )
             }
         }
     }
 
     /// Finished work, cleared out so the list stays about now.
     pub fn tidy(&mut self, keep: usize) {
-        let finished: Vec<u64> =
-            self.work.iter().filter(|w| w.stage.finished()).map(|w| w.id).collect();
+        let finished: Vec<u64> = self
+            .work
+            .iter()
+            .filter(|w| w.stage.finished())
+            .map(|w| w.id)
+            .collect();
         if finished.len() > keep {
             let drop: Vec<u64> = finished[..finished.len() - keep].to_vec();
             self.work.retain(|w| !drop.contains(&w.id));
@@ -366,7 +395,11 @@ pub fn speak_brief(items: &[Item]) -> String {
 
     // Only the top item gets its reasoning. The rest are named so you know
     // they exist — a spoken list of six with justifications is unlistenable.
-    let rest: Vec<&str> = sorted[1..].iter().take(3).map(|i| i.what.as_str()).collect();
+    let rest: Vec<&str> = sorted[1..]
+        .iter()
+        .take(3)
+        .map(|i| i.what.as_str())
+        .collect();
     if !rest.is_empty() {
         out.push_str(&format!(" Then {}.", rest.join(", ")));
     }
@@ -380,16 +413,55 @@ pub fn speak_brief(items: &[Item]) -> String {
 /// asking after work already started. 30 Sep 2026: nothing answered these;
 /// they went to the model, which can't see the background work and guessed.
 pub fn asks_how_its_going(said: &str) -> bool {
-    let t: String = said.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == ' ' || c == '\'' { c } else { ' ' }).collect();
-    let t = t.split_whitespace().collect::<Vec<_>>().join(" ").replace('\'', "");
+    let t: String = said
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' || c == '\'' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
+    let t = t
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace('\'', "");
     const ASKS: &[&str] = &[
-        "hows that going", "hows it going with", "how is that going", "hows the", "how is the research", "hows it coming",
-        "how's it coming", "is it done yet", "is that done yet", "is it finished", "is that finished", "are you done yet",
-        "are you finished", "whats running", "what are you working on", "what are you doing right now", "what are you up to",
-        "still working on it", "any progress", "how far along", "status update", "whats the status",
+        "hows that going",
+        "hows it going with",
+        "how is that going",
+        "hows the",
+        "how is the research",
+        "hows it coming",
+        "how's it coming",
+        "is it done yet",
+        "is that done yet",
+        "is it finished",
+        "is that finished",
+        "are you done yet",
+        "are you finished",
+        "whats running",
+        "what are you working on",
+        "what are you doing right now",
+        "what are you up to",
+        "still working on it",
+        "any progress",
+        "how far along",
+        "status update",
+        "whats the status",
     ];
     // "how's the weather" / "how's the market" are not about Atlas's work.
-    if t.starts_with("hows the ") && !["research", "download", "build", "report", "letter", "search", "writing", "job", "task", "update", "backup", "sort"].iter().any(|w| t.contains(w)) {
+    if t.starts_with("hows the ")
+        && ![
+            "research", "download", "build", "report", "letter", "search", "writing", "job",
+            "task", "update", "backup", "sort",
+        ]
+        .iter()
+        .any(|w| t.contains(w))
+    {
         return false;
     }
     ASKS.iter().any(|a| t.starts_with(a) || t == *a)

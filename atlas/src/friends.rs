@@ -65,7 +65,11 @@ pub struct Link {
 }
 
 fn url_safe(b: &[u8]) -> String {
-    crate::b64::encode(b).replace('+', "-").replace('/', "_").trim_end_matches('=').to_string()
+    crate::b64::encode(b)
+        .replace('+', "-")
+        .replace('/', "_")
+        .trim_end_matches('=')
+        .to_string()
 }
 
 fn from_url_safe(s: &str) -> Option<Vec<u8>> {
@@ -78,20 +82,30 @@ fn from_url_safe(s: &str) -> Option<Vec<u8>> {
 
 impl Link {
     pub fn encode(&self) -> String {
-        format!("{PREFIX}{}", url_safe(serde_json::to_string(self).unwrap_or_default().as_bytes()))
+        format!(
+            "{PREFIX}{}",
+            url_safe(serde_json::to_string(self).unwrap_or_default().as_bytes())
+        )
     }
 
     /// Read a link, from wherever in a pasted message it sits.
     pub fn decode(text: &str) -> Result<Link, String> {
         let at = text.find(PREFIX).ok_or("that isn't an Atlas friend link")?;
-        let body: String =
-            text[at + PREFIX.len()..].chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
-        let bytes = from_url_safe(&body).ok_or("that friend link is damaged -- check it was copied whole")?;
-        let l: Link = serde_json::from_slice(&bytes).map_err(|_| "that friend link is damaged -- check it was copied whole")?;
+        let body: String = text[at + PREFIX.len()..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+            .collect();
+        let bytes = from_url_safe(&body)
+            .ok_or("that friend link is damaged -- check it was copied whole")?;
+        let l: Link = serde_json::from_slice(&bytes)
+            .map_err(|_| "that friend link is damaged -- check it was copied whole")?;
         if l.name.trim().is_empty() || l.name.chars().count() > 60 {
             return Err("that friend link is missing who it's from".into());
         }
-        let l = Link { routes: l.routes.checked(), ..l };
+        let l = Link {
+            routes: l.routes.checked(),
+            ..l
+        };
         if l.routes.is_empty() {
             return Err("that friend link doesn't say how to reach its Atlas".into());
         }
@@ -119,7 +133,9 @@ impl Invites {
         store.load(INVITES)
     }
     fn save(&self, store: &crate::store::Store) -> Result<(), String> {
-        store.keep_briefly(INVITES, self).map_err(|e| format!("couldn't save it: {e}"))
+        store
+            .keep_briefly(INVITES, self)
+            .map_err(|e| format!("couldn't save it: {e}"))
     }
 }
 
@@ -135,15 +151,26 @@ pub struct Me {
 
 /// Make a one-time friend link.
 pub fn make_link(store: &crate::store::Store, me: &Me, now: u64) -> Result<String, String> {
-    let secret = crate::server::new_token().map_err(|e| format!("couldn't make a secure link: {e}"))?;
+    let secret =
+        crate::server::new_token().map_err(|e| format!("couldn't make a secure link: {e}"))?;
     let mut inv = Invites::load(store);
-    inv.open.retain(|i| now.saturating_sub(i.made_at) < LINK_DAYS * 86_400);
-    inv.open.push(Invite { secret: secret.clone(), made_at: now });
+    inv.open
+        .retain(|i| now.saturating_sub(i.made_at) < LINK_DAYS * 86_400);
+    inv.open.push(Invite {
+        secret: secret.clone(),
+        made_at: now,
+    });
     while inv.open.len() > MAX_INVITES {
         inv.open.remove(0);
     }
     inv.save(store)?;
-    Ok(Link { name: me.name.clone(), key: me.key.clone(), invite: secret, routes: me.routes.clone() }.encode())
+    Ok(Link {
+        name: me.name.clone(),
+        key: me.key.clone(),
+        invite: secret,
+        routes: me.routes.clone(),
+    }
+    .encode())
 }
 
 /// Someone used one of your links. Returns `Ok` only for a secret you made,
@@ -185,13 +212,22 @@ fn free_name(pairings: &crate::kin::Pairings, wanted: &str) -> String {
     if !pairings.has_peer(base) {
         return base.to_string();
     }
-    (2..).map(|n| format!("{base} ({n})")).find(|n| !pairings.has_peer(n)).unwrap_or_else(|| base.to_string())
+    (2..)
+        .map(|n| format!("{base} ({n})"))
+        .find(|n| !pairings.has_peer(n))
+        .unwrap_or_else(|| base.to_string())
 }
 
 /// Record a friend in your pairings: they may reach you, you may reach them,
 /// with their key pinned and every way to reach them kept. Returns the name
 /// they're kept under.
-pub fn record(pairings: &mut crate::kin::Pairings, name: &str, routes: &crate::kin::Routes, key: &str, token: &str) -> String {
+pub fn record(
+    pairings: &mut crate::kin::Pairings,
+    name: &str,
+    routes: &crate::kin::Routes,
+    key: &str,
+    token: &str,
+) -> String {
     // The address the contact is made with: the first one given. The rest
     // (and the onion address) are kept beside it.
     let (host, port) = routes
@@ -203,19 +239,37 @@ pub fn record(pairings: &mut crate::kin::Pairings, name: &str, routes: &crate::k
     // Already a friend under that key: refresh where to reach them, keep the
     // name you have for them.
     if let Some(existing) = pairings.name_of_key(key) {
-        pairings.contacts.retain(|c| !c.name.eq_ignore_ascii_case(&existing));
-        pairings.add_contact(crate::kin::Contact { name: existing.clone(), host, port, token: token.into() });
-        if let Some(p) = pairings.peers.iter_mut().find(|p| p.name.eq_ignore_ascii_case(&existing)) {
+        pairings
+            .contacts
+            .retain(|c| !c.name.eq_ignore_ascii_case(&existing));
+        pairings.add_contact(crate::kin::Contact {
+            name: existing.clone(),
+            host,
+            port,
+            token: token.into(),
+        });
+        if let Some(p) = pairings
+            .peers
+            .iter_mut()
+            .find(|p| p.name.eq_ignore_ascii_case(&existing))
+        {
             p.token = token.to_string();
         }
-        pairings.routes.insert(existing.to_lowercase(), routes.clone());
+        pairings
+            .routes
+            .insert(existing.to_lowercase(), routes.clone());
         return existing;
     }
     let name = free_name(pairings, name);
     let mut peer = crate::kin::Peer::new(&name, token);
     peer.key = Some(key.to_string());
     pairings.add_peer(peer);
-    pairings.add_contact(crate::kin::Contact { name: name.clone(), host, port, token: token.into() });
+    pairings.add_contact(crate::kin::Contact {
+        name: name.clone(),
+        host,
+        port,
+        token: token.into(),
+    });
     pairings.routes.insert(name.to_lowercase(), routes.clone());
     name
 }
@@ -226,7 +280,9 @@ pub fn my_name(configured: Option<&str>) -> String {
     if let Some(n) = configured.map(str::trim).filter(|n| !n.is_empty()) {
         return n.chars().take(60).collect();
     }
-    let user = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).unwrap_or_default();
+    let user = std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_default();
     let user = user.trim();
     let mut c = user.chars();
     match c.next() {
@@ -274,7 +330,9 @@ impl Outbox {
         store.load(OUTBOX)
     }
     pub fn save(&self, store: &crate::store::Store) -> Result<(), String> {
-        store.keep_briefly(OUTBOX, self).map_err(|e| format!("couldn't save it: {e}"))
+        store
+            .keep_briefly(OUTBOX, self)
+            .map_err(|e| format!("couldn't save it: {e}"))
     }
     pub fn add(&mut self, p: Pending) {
         self.pending.retain(|x| x.hello.invite != p.hello.invite);
@@ -298,13 +356,22 @@ pub enum Knock {
 /// can tell the knock really comes from the key you introduce. Straight to
 /// its home address when you're on the same network; otherwise through Tor
 /// (`tor`: its SOCKS port) to its onion address.
-pub fn knock(me: &crate::peerkey::Identity, link: &Link, hello: &Hello, tor: Option<u16>, timeout: std::time::Duration) -> Knock {
+pub fn knock(
+    me: &crate::peerkey::Identity,
+    link: &Link,
+    hello: &Hello,
+    tor: Option<u16>,
+    timeout: std::time::Duration,
+) -> Knock {
     use crate::kin::{sealed_post, Via};
     let body = serde_json::to_string(hello).unwrap_or_default();
     let mut why = String::from("nothing answered");
     let direct = link.routes.addrs.iter().map(|a| Via::Direct(a.as_str()));
     let through_tor = match (tor, link.routes.onion.is_empty()) {
-        (Some(socks), false) => Some(Via::Tor { socks, onion: &link.routes.onion }),
+        (Some(socks), false) => Some(Via::Tor {
+            socks,
+            onion: &link.routes.onion,
+        }),
         (None, false) => {
             why = "Tor isn't running here yet".into();
             None
@@ -358,23 +425,50 @@ pub fn read_spoken(said: &str) -> Option<Spoken> {
     if LINK.contains(&n) {
         return Some(Spoken::Link);
     }
-    if matches!(n, "friend requests" | "any friend requests" | "show friend requests" | "show my friend requests") {
+    if matches!(
+        n,
+        "friend requests"
+            | "any friend requests"
+            | "show friend requests"
+            | "show my friend requests"
+    ) {
         return Some(Spoken::Requests);
     }
     let after = |prefixes: &[&str]| -> Option<String> {
-        prefixes.iter().find_map(|p| n.strip_prefix(p)).map(|r| r.trim().to_string()).filter(|r| !r.is_empty())
+        prefixes
+            .iter()
+            .find_map(|p| n.strip_prefix(p))
+            .map(|r| r.trim().to_string())
+            .filter(|r| !r.is_empty())
     };
-    if let Some(who) = after(&["accept the friend request from ", "accept friend request from ", "accept a friend request from "]) {
+    if let Some(who) = after(&[
+        "accept the friend request from ",
+        "accept friend request from ",
+        "accept a friend request from ",
+    ]) {
         return Some(Spoken::Accept(who));
     }
-    if let Some(who) = after(&["decline the friend request from ", "decline friend request from ", "ignore the friend request from "]) {
+    if let Some(who) = after(&[
+        "decline the friend request from ",
+        "decline friend request from ",
+        "ignore the friend request from ",
+    ]) {
         return Some(Spoken::Decline(who));
     }
-    if let Some(who) = after(&["send a friend request to ", "send friend request to ", "friend request ", "be friends with "]) {
+    if let Some(who) = after(&[
+        "send a friend request to ",
+        "send friend request to ",
+        "friend request ",
+        "be friends with ",
+    ]) {
         return Some(Spoken::Request(who));
     }
     // "send Sam a friend request"
-    if let Some(who) = n.strip_prefix("send ").and_then(|r| r.strip_suffix(" a friend request")).map(str::trim) {
+    if let Some(who) = n
+        .strip_prefix("send ")
+        .and_then(|r| r.strip_suffix(" a friend request"))
+        .map(str::trim)
+    {
         if !who.is_empty() {
             return Some(Spoken::Request(who.to_string()));
         }
@@ -401,18 +495,24 @@ impl Requests {
         store.load(REQUESTS)
     }
     pub fn save(&self, store: &crate::store::Store) -> Result<(), String> {
-        store.keep_briefly(REQUESTS, self).map_err(|e| format!("couldn't save it: {e}"))
+        store
+            .keep_briefly(REQUESTS, self)
+            .map_err(|e| format!("couldn't save it: {e}"))
     }
     /// A request, unless the same person already has one waiting.
     pub fn add(&mut self, r: Request) {
-        self.waiting.retain(|x| !x.from.eq_ignore_ascii_case(&r.from));
+        self.waiting
+            .retain(|x| !x.from.eq_ignore_ascii_case(&r.from));
         self.waiting.push(r);
         while self.waiting.len() > 50 {
             self.waiting.remove(0);
         }
     }
     pub fn take(&mut self, from: &str) -> Option<Request> {
-        let at = self.waiting.iter().position(|r| r.from.eq_ignore_ascii_case(from))?;
+        let at = self
+            .waiting
+            .iter()
+            .position(|r| r.from.eq_ignore_ascii_case(from))?;
         Some(self.waiting.remove(at))
     }
 }
@@ -444,7 +544,10 @@ mod tests {
         Me {
             name: "Eric".into(),
             key: crate::peerkey::Identity::from_seed_for_test([1; 32]).public(),
-            routes: crate::kin::Routes { addrs: vec!["192.168.1.7:8788".into()], onion: String::new() },
+            routes: crate::kin::Routes {
+                addrs: vec!["192.168.1.7:8788".into()],
+                onion: String::new(),
+            },
         }
     }
 
@@ -466,9 +569,15 @@ mod tests {
         let l = Link::decode(&make_link(&s, &me(), 1_000).unwrap()).unwrap();
         assert!(redeem(&s, "not-mine-at-all-000000", 2_000).is_err());
         redeem(&s, &l.invite, 2_000).unwrap();
-        assert!(redeem(&s, &l.invite, 2_001).is_err(), "a link was used twice");
+        assert!(
+            redeem(&s, &l.invite, 2_001).is_err(),
+            "a link was used twice"
+        );
         let old = Link::decode(&make_link(&s, &me(), 1_000).unwrap()).unwrap();
-        assert!(redeem(&s, &old.invite, 1_000 + LINK_DAYS * 86_400).is_err(), "an expired link worked");
+        assert!(
+            redeem(&s, &old.invite, 1_000 + LINK_DAYS * 86_400).is_err(),
+            "an expired link worked"
+        );
     }
 
     #[test]
@@ -476,14 +585,27 @@ mod tests {
         let mut p = crate::kin::Pairings::default();
         p.add_peer(crate::kin::Peer::new("Sam", "old-token"));
         let key = crate::peerkey::Identity::from_seed_for_test([2; 32]).public();
-        let at = |a: &str| crate::kin::Routes { addrs: vec![a.into()], onion: String::new() };
+        let at = |a: &str| crate::kin::Routes {
+            addrs: vec![a.into()],
+            onion: String::new(),
+        };
         let name = record(&mut p, "Sam", &at("198.51.101.4:8788"), &key, "tok");
         assert_eq!(name, "Sam (2)", "a second Sam must not replace the first");
         assert_eq!(p.key_of("Sam (2)"), Some(key.as_str()));
-        assert!(p.contacts.iter().any(|c| c.name == "Sam (2)" && c.host == "198.51.101.4"));
+        assert!(p
+            .contacts
+            .iter()
+            .any(|c| c.name == "Sam (2)" && c.host == "198.51.101.4"));
         // The same person again: refreshed, not duplicated.
-        assert_eq!(record(&mut p, "Samuel", &at("198.51.101.9:8788"), &key, "tok2"), "Sam (2)");
-        assert_eq!(p.routes["sam (2)"].addrs, vec!["198.51.101.9:8788".to_string()], "where to reach them wasn't refreshed");
+        assert_eq!(
+            record(&mut p, "Samuel", &at("198.51.101.9:8788"), &key, "tok2"),
+            "Sam (2)"
+        );
+        assert_eq!(
+            p.routes["sam (2)"].addrs,
+            vec!["198.51.101.9:8788".to_string()],
+            "where to reach them wasn't refreshed"
+        );
         assert_eq!(p.peers.len(), 2);
     }
 
@@ -500,10 +622,22 @@ mod tests {
         assert_eq!(read_spoken("add a friend"), Some(Spoken::Link));
         assert_eq!(read_spoken("Add friend"), Some(Spoken::Link));
         assert_eq!(read_spoken("here atlas-friend:abc"), Some(Spoken::Add));
-        assert_eq!(read_spoken("accept friend request from Sam"), Some(Spoken::Accept("sam".into())));
-        assert_eq!(read_spoken("decline the friend request from Sam"), Some(Spoken::Decline("sam".into())));
-        assert_eq!(read_spoken("send Maya a friend request"), Some(Spoken::Request("maya".into())));
-        assert_eq!(read_spoken("be friends with Maya"), Some(Spoken::Request("maya".into())));
+        assert_eq!(
+            read_spoken("accept friend request from Sam"),
+            Some(Spoken::Accept("sam".into()))
+        );
+        assert_eq!(
+            read_spoken("decline the friend request from Sam"),
+            Some(Spoken::Decline("sam".into()))
+        );
+        assert_eq!(
+            read_spoken("send Maya a friend request"),
+            Some(Spoken::Request("maya".into()))
+        );
+        assert_eq!(
+            read_spoken("be friends with Maya"),
+            Some(Spoken::Request("maya".into()))
+        );
         assert_eq!(read_spoken("friend requests"), Some(Spoken::Requests));
         assert_eq!(read_spoken("add milk to the list"), None);
         assert_eq!(read_spoken("friend"), None);

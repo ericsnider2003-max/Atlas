@@ -21,8 +21,14 @@ fn reached(p: &Parser, s: &str) -> Option<String> {
 fn everyday_sentences_reach_their_command_without_the_model() {
     let p = parser();
     for (s, want) in [
-        ("my laptop is running slow, what's eating the memory", "machine_health"),
-        ("how much space have I got left on this thing", "machine_health"),
+        (
+            "my laptop is running slow, what's eating the memory",
+            "machine_health",
+        ),
+        (
+            "how much space have I got left on this thing",
+            "machine_health",
+        ),
         ("what's using all my ram", "machine_health"),
         ("find the tax pdf from last year", "find_file"),
         ("where's that invoice from March", "find_file"),
@@ -31,7 +37,10 @@ fn everyday_sentences_reach_their_command_without_the_model() {
         ("how did my last youtube video do", "social"),
         ("go into focus", "set_mode"),
         ("Ok correct the issues found", "work_on_yourself"),
-        ("Correct the issues found in the self test", "work_on_yourself"),
+        (
+            "Correct the issues found in the self test",
+            "work_on_yourself",
+        ),
         ("fix the problems you found", "work_on_yourself"),
     ] {
         assert_eq!(reached(&p, s).as_deref(), Some(want), "{s}");
@@ -62,4 +71,3 @@ fn the_file_asked_for_is_kept() {
         other => panic!("{other:?}"),
     }
 }
-

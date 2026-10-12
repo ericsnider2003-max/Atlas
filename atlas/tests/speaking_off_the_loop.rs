@@ -43,12 +43,22 @@ fn tmp(tag: &str) -> PathBuf {
 fn cfg(barge: bool) -> atlas::config::Config {
     let mut c = atlas::config::Config::load(Path::new("config")).unwrap();
     let t = c.tools.get_or_insert_with(Default::default);
-    t.barge_in = BargeInConfig { enabled: barge, ..BargeInConfig::default() };
+    t.barge_in = BargeInConfig {
+        enabled: barge,
+        ..BargeInConfig::default()
+    };
     c
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 /// The player's stop switch is one for the whole process (there is one
@@ -72,8 +82,22 @@ impl Llm for Talker {
     fn native_chat(&self) -> bool {
         true
     }
-    fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> {
-        let about = req.messages.last().map(|m| m.content.rsplit("User said: ").next().unwrap_or("").to_string()).unwrap_or_default();
+    fn chat(
+        &self,
+        req: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+    ) -> atlas::error::Result<ChatReply> {
+        let about = req
+            .messages
+            .last()
+            .map(|m| {
+                m.content
+                    .rsplit("User said: ")
+                    .next()
+                    .unwrap_or("")
+                    .to_string()
+            })
+            .unwrap_or_default();
         let reply = format!("On {about}: {}", self.reply);
         for w in reply.split_inclusive(' ') {
             if !on_text(w) {
@@ -81,7 +105,10 @@ impl Llm for Talker {
             }
             std::thread::sleep(Duration::from_millis(self.word_ms));
         }
-        Ok(ChatReply { text: reply, tool_calls: vec![] })
+        Ok(ChatReply {
+            text: reply,
+            tool_calls: vec![],
+        })
     }
 }
 
@@ -109,9 +136,14 @@ struct SlowWork {
 impl SpeakWork for SlowWork {
     fn speak(&mut self, text: &str) -> atlas::error::Result<()> {
         let first = self.played.lines.lock().unwrap().is_empty();
-        self.played.threads.lock().unwrap().push(std::thread::current().name().unwrap_or("").to_string());
+        self.played
+            .threads
+            .lock()
+            .unwrap()
+            .push(std::thread::current().name().unwrap_or("").to_string());
         *self.played.now.lock().unwrap() = Some(text.to_string());
-        let until = Instant::now() + Duration::from_millis(if first { self.first_ms } else { self.ms });
+        let until =
+            Instant::now() + Duration::from_millis(if first { self.first_ms } else { self.ms });
         let mut cut = false;
         while Instant::now() < until {
             if micthread::playback_cut() {
@@ -121,7 +153,11 @@ impl SpeakWork for SlowWork {
             std::thread::sleep(Duration::from_millis(5));
         }
         *self.played.now.lock().unwrap() = None;
-        self.played.lines.lock().unwrap().push((text.to_string(), cut));
+        self.played
+            .lines
+            .lock()
+            .unwrap()
+            .push((text.to_string(), cut));
         Ok(())
     }
 }
@@ -134,7 +170,11 @@ struct SlowMouth {
 
 impl SlowMouth {
     fn new(first_ms: u64, ms: u64) -> SlowMouth {
-        SlowMouth { played: Arc::new(Played::default()), first_ms, ms }
+        SlowMouth {
+            played: Arc::new(Played::default()),
+            first_ms,
+            ms,
+        }
     }
     fn lines(&self) -> Vec<(String, bool)> {
         self.played.lines.lock().unwrap().clone()
@@ -144,10 +184,19 @@ impl SlowMouth {
 impl Mouth for SlowMouth {
     /// Only reached for lines said outside a reply (`Daemon::say`).
     fn speak(&self, text: &str) -> atlas::error::Result<()> {
-        SlowWork { played: self.played.clone(), first_ms: self.ms, ms: self.ms }.speak(text)
+        SlowWork {
+            played: self.played.clone(),
+            first_ms: self.ms,
+            ms: self.ms,
+        }
+        .speak(text)
     }
     fn speak_work(&self) -> Option<Box<dyn SpeakWork>> {
-        Some(Box::new(SlowWork { played: self.played.clone(), first_ms: self.first_ms, ms: self.ms }))
+        Some(Box::new(SlowWork {
+            played: self.played.clone(),
+            first_ms: self.first_ms,
+            ms: self.ms,
+        }))
     }
 }
 
@@ -163,7 +212,15 @@ struct Asker {
 }
 
 fn hub_on(d: &mut Daemon) -> Asker {
-    let server = atlas::server::Server::bind(&atlas::server::ServerConfig { enabled: true, port: 0, ..Default::default() }, TOKEN).expect("bind");
+    let server = atlas::server::Server::bind(
+        &atlas::server::ServerConfig {
+            enabled: true,
+            port: 0,
+            ..Default::default()
+        },
+        TOKEN,
+    )
+    .expect("bind");
     let port = server.port();
     d.hub_server = Some(server.threaded().expect("threaded"));
     let stop = Arc::new(AtomicBool::new(false));
@@ -173,7 +230,8 @@ fn hub_on(d: &mut Daemon) -> Asker {
         while !s2.load(Ordering::SeqCst) {
             let started = Instant::now();
             let mut conn = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
-            conn.set_read_timeout(Some(Duration::from_secs(60))).unwrap();
+            conn.set_read_timeout(Some(Duration::from_secs(60)))
+                .unwrap();
             conn.write_all(format!("GET /hub/glance.json HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Atlas-Token: {TOKEN}\r\n\r\n").as_bytes()).unwrap();
             let mut out = Vec::new();
             let _ = conn.read_to_end(&mut out);
@@ -217,8 +275,18 @@ fn the_hub_is_answered_while_a_long_sentence_is_being_said() {
     let _one = ONE_PLAYER.lock().unwrap_or_else(|e| e.into_inner());
     micthread::clear_cut();
     let (c, p) = (cfg(false), plat());
-    let llm = Arc::new(Talker { reply: "This first sentence is a long one and takes four seconds to say. Then a short one.".into(), word_ms: 0 });
-    let mut d = Daemon::new(&c, &p, Some(llm as Arc<dyn Llm>), Store::new(tmp("long")), Proactive::new(ProactiveConfig::default()));
+    let llm = Arc::new(Talker {
+        reply: "This first sentence is a long one and takes four seconds to say. Then a short one."
+            .into(),
+        word_ms: 0,
+    });
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(llm as Arc<dyn Llm>),
+        Store::new(tmp("long")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let mouth = SlowMouth::new(4_000, 300);
     let asker = hub_on(&mut d);
     let started = Instant::now();
@@ -227,17 +295,44 @@ fn the_hub_is_answered_while_a_long_sentence_is_being_said() {
     let waits = hub_off(&mut d, asker);
 
     let lines = mouth.lines();
-    assert!(lines.len() >= 2 && lines.iter().all(|(_, cut)| !cut), "{lines:?}");
-    assert!(talked >= Duration::from_millis(4_000), "the long sentence wasn't waited for: {talked:?}");
+    assert!(
+        lines.len() >= 2 && lines.iter().all(|(_, cut)| !cut),
+        "{lines:?}"
+    );
+    assert!(
+        talked >= Duration::from_millis(4_000),
+        "the long sentence wasn't waited for: {talked:?}"
+    );
     // Played on its own thread, not the loop's.
-    assert!(mouth.played.threads.lock().unwrap().iter().all(|t| t == "atlas-speaking"), "{:?}", mouth.played.threads.lock().unwrap());
+    assert!(
+        mouth
+            .played
+            .threads
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|t| t == "atlas-speaking"),
+        "{:?}",
+        mouth.played.threads.lock().unwrap()
+    );
     // Pages asked for while the long sentence played were answered then,
     // not when it ended.
-    let during: Vec<Duration> = waits.iter().filter(|(at, _)| at.duration_since(started) < Duration::from_millis(3_500)).map(|(_, w)| *w).collect();
+    let during: Vec<Duration> = waits
+        .iter()
+        .filter(|(at, _)| at.duration_since(started) < Duration::from_millis(3_500))
+        .map(|(_, w)| *w)
+        .collect();
     let worst = during.iter().max().copied().unwrap_or_default();
     println!("said {} sentence(s) in {talked:?}; {} page(s) asked for during the long one, the slowest answered in {worst:?}", lines.len(), during.len());
-    assert!(during.len() >= 10, "only {} pages were answered in three and a half seconds of speaking", during.len());
-    assert!(worst < Duration::from_millis(1_500), "a page waited {worst:?} while a four-second sentence played");
+    assert!(
+        during.len() >= 10,
+        "only {} pages were answered in three and a half seconds of speaking",
+        during.len()
+    );
+    assert!(
+        worst < Duration::from_millis(1_500),
+        "a page waited {worst:?} while a four-second sentence played"
+    );
 }
 
 // ================= 4. carry on starts with the sentence that was cut =================
@@ -247,7 +342,13 @@ fn carrying_on_after_a_cut_starts_with_the_sentence_that_was_cut() {
     let _one = ONE_PLAYER.lock().unwrap_or_else(|e| e.into_inner());
     micthread::clear_cut();
     let (c, p) = (cfg(false), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("carry")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("carry")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let mouth = SlowMouth::new(400, 1_500);
     let played = mouth.played.clone();
     // "Stop", said half-way through the second sentence.
@@ -258,17 +359,37 @@ fn carrying_on_after_a_cut_starts_with_the_sentence_that_was_cut() {
             "stop".to_string()
         })
     };
-    let delivery = d.say_interruptibly(&mouth, "First, the short part. Second, the part you missed. Third, the end.", &mut listen);
+    let delivery = d.say_interruptibly(
+        &mouth,
+        "First, the short part. Second, the part you missed. Third, the end.",
+        &mut listen,
+    );
     assert!(delivery.was_interrupted());
-    assert_eq!(delivery.spoken, vec!["First, the short part.".to_string()], "the cut sentence was counted as said");
-    assert_eq!(delivery.unspoken.first().map(String::as_str), Some("Second, the part you missed."));
+    assert_eq!(
+        delivery.spoken,
+        vec!["First, the short part.".to_string()],
+        "the cut sentence was counted as said"
+    );
+    assert_eq!(
+        delivery.unspoken.first().map(String::as_str),
+        Some("Second, the part you missed.")
+    );
     let lines = mouth.lines();
-    assert!(lines.iter().any(|(s, cut)| s.starts_with("Second") && *cut), "the second sentence wasn't cut off mid-way: {lines:?}");
-    assert!(!lines.iter().any(|(s, _)| s.starts_with("Third")), "the third was played after the stop: {lines:?}");
+    assert!(
+        lines.iter().any(|(s, cut)| s.starts_with("Second") && *cut),
+        "the second sentence wasn't cut off mid-way: {lines:?}"
+    );
+    assert!(
+        !lines.iter().any(|(s, _)| s.starts_with("Third")),
+        "the third was played after the stop: {lines:?}"
+    );
 
     // "Carry on" picks up at the start of the sentence that was cut.
     let rest = d.turn("carry on", 1_790_000_000);
-    assert!(rest.starts_with("Second, the part you missed."), "carry on said: {rest:?}");
+    assert!(
+        rest.starts_with("Second, the part you missed."),
+        "carry on said: {rest:?}"
+    );
     assert!(rest.contains("Third, the end."), "{rest:?}");
     micthread::clear_cut();
 }
@@ -283,7 +404,13 @@ fn talking_over_a_line_atlas_volunteered_stops_it_and_nothing_is_kept_to_carry_o
     let _one = ONE_PLAYER.lock().unwrap_or_else(|e| e.into_inner());
     micthread::clear_cut();
     let (c, p) = (cfg(false), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("volunteered")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("volunteered")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let mouth = SlowMouth::new(400, 1_500);
     let played = mouth.played.clone();
     let mut listen = || {
@@ -293,17 +420,34 @@ fn talking_over_a_line_atlas_volunteered_stops_it_and_nothing_is_kept_to_carry_o
             "stop".to_string()
         })
     };
-    let cut = d.say_volunteered_with(&mouth, "First, a note. Second, more of it. Third, the end.", &mut listen);
-    assert_eq!(cut.as_deref(), Some("stop"), "talking over it wasn't noticed");
+    let cut = d.say_volunteered_with(
+        &mouth,
+        "First, a note. Second, more of it. Third, the end.",
+        &mut listen,
+    );
+    assert_eq!(
+        cut.as_deref(),
+        Some("stop"),
+        "talking over it wasn't noticed"
+    );
     let lines = mouth.lines();
-    assert!(!lines.iter().any(|(s, _)| s.starts_with("Third")), "it kept going after you cut in: {lines:?}");
+    assert!(
+        !lines.iter().any(|(s, _)| s.starts_with("Third")),
+        "it kept going after you cut in: {lines:?}"
+    );
     // You talked over it because you didn't want it: not parked.
-    assert!(d.finish_saying().is_none(), "a volunteered line was kept to carry on");
+    assert!(
+        d.finish_saying().is_none(),
+        "a volunteered line was kept to carry on"
+    );
     micthread::clear_cut();
 
     // Said to the end: nothing to report.
     let mouth = SlowMouth::new(50, 50);
-    assert_eq!(d.say_volunteered_with(&mouth, "Short. Done.", &mut || None), None);
+    assert_eq!(
+        d.say_volunteered_with(&mouth, "Short. Done.", &mut || None),
+        None
+    );
     micthread::clear_cut();
 }
 
@@ -311,10 +455,19 @@ fn talking_over_a_line_atlas_volunteered_stops_it_and_nothing_is_kept_to_carry_o
 #[test]
 fn the_loop_says_the_ticks_lines_so_they_can_be_cut() {
     let src = std::fs::read_to_string("src/daemon/running.rs").unwrap();
-    let after_tick = src.split("self.done_working(clock());").nth(1).expect("the tick's lines");
+    let after_tick = src
+        .split("self.done_working(clock());")
+        .nth(1)
+        .expect("the tick's lines");
     let next_lines: String = after_tick.lines().take(30).collect::<Vec<_>>().join("\n");
-    assert!(next_lines.contains("say_volunteered("), "the tick's lines aren't said cuttably:\n{next_lines}");
-    assert!(!next_lines.contains("for line in lines {\n                self.say(mouth"), "{next_lines}");
+    assert!(
+        next_lines.contains("say_volunteered("),
+        "the tick's lines aren't said cuttably:\n{next_lines}"
+    );
+    assert!(
+        !next_lines.contains("for line in lines {\n                self.say(mouth"),
+        "{next_lines}"
+    );
 }
 
 // ================= 2. the open floor after a reply =================
@@ -349,7 +502,11 @@ impl MicWork for FloorMic {
     fn transcribe(&mut self, _samples: &[i16]) -> atlas::error::Result<String> {
         Ok(String::new())
     }
-    fn follow_up(&mut self, _secs: u32, stop: &dyn Fn() -> bool) -> atlas::error::Result<Option<String>> {
+    fn follow_up(
+        &mut self,
+        _secs: u32,
+        stop: &dyn Fn() -> bool,
+    ) -> atlas::error::Result<Option<String>> {
         let n = self.st.asked.fetch_add(1, Ordering::SeqCst);
         self.st.recording.store(true, Ordering::SeqCst);
         let until = Instant::now() + Duration::from_millis(self.floor_ms);
@@ -383,7 +540,11 @@ impl Ears for FloorEars {
         Ok(None)
     }
     fn mic_work(&self) -> Option<Box<dyn MicWork>> {
-        Some(Box::new(FloorMic { st: self.st.clone(), floor_ms: self.floor_ms, then: "and what day is it".into() }))
+        Some(Box::new(FloorMic {
+            st: self.st.clone(),
+            floor_ms: self.floor_ms,
+            then: "and what day is it".into(),
+        }))
     }
 }
 
@@ -392,9 +553,19 @@ fn the_hub_is_answered_while_the_floor_is_open_after_a_reply() {
     let _one = ONE_PLAYER.lock().unwrap_or_else(|e| e.into_inner());
     micthread::clear_cut();
     let (c, p) = (cfg(false), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("floor")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("floor")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let st = Arc::new(FloorState::default());
-    let ears = FloorEars { st: st.clone(), floor_ms: 3_000, on_the_loop: AtomicUsize::new(0) };
+    let ears = FloorEars {
+        st: st.clone(),
+        floor_ms: 3_000,
+        on_the_loop: AtomicUsize::new(0),
+    };
     let mouth = SlowMouth::new(100, 100);
     let clock = || 1_790_000_000u64;
     // The microphone's thread starts with the first pass of the loop.
@@ -406,15 +577,42 @@ fn the_hub_is_answered_while_the_floor_is_open_after_a_reply() {
     let waits = hub_off(&mut d, asker);
     let _ = d.shut_down();
 
-    assert_eq!(ears.on_the_loop.load(Ordering::SeqCst), 0, "the open floor was recorded on the loop");
-    assert!(st.asked.load(Ordering::SeqCst) >= 2, "the floor was opened {} time(s)", st.asked.load(Ordering::SeqCst));
-    assert!(took >= Duration::from_millis(6_000), "two open floors of three seconds each took {took:?}");
+    assert_eq!(
+        ears.on_the_loop.load(Ordering::SeqCst),
+        0,
+        "the open floor was recorded on the loop"
+    );
+    assert!(
+        st.asked.load(Ordering::SeqCst) >= 2,
+        "the floor was opened {} time(s)",
+        st.asked.load(Ordering::SeqCst)
+    );
+    assert!(
+        took >= Duration::from_millis(6_000),
+        "two open floors of three seconds each took {took:?}"
+    );
     // What was said in the open floor was answered, as the next turn.
-    assert!(d.thread.recent.iter().any(|e| e.said.contains("what day is it")), "the follow-up wasn't answered");
+    assert!(
+        d.thread
+            .recent
+            .iter()
+            .any(|e| e.said.contains("what day is it")),
+        "the follow-up wasn't answered"
+    );
     let worst = waits.iter().map(|(_, w)| *w).max().unwrap_or_default();
-    println!("{} page(s) asked for over {took:?} of conversation, the slowest answered in {worst:?}", waits.len());
-    assert!(waits.len() >= 20, "only {} pages answered in {took:?}", waits.len());
-    assert!(worst < Duration::from_millis(1_500), "a page waited {worst:?} while the floor was open");
+    println!(
+        "{} page(s) asked for over {took:?} of conversation, the slowest answered in {worst:?}",
+        waits.len()
+    );
+    assert!(
+        waits.len() >= 20,
+        "only {} pages answered in {took:?}",
+        waits.len()
+    );
+    assert!(
+        worst < Duration::from_millis(1_500),
+        "a page waited {worst:?} while the floor was open"
+    );
 }
 
 // ================= 3. one watch per reply, and what it learns kept =================
@@ -448,7 +646,9 @@ fn room(n: usize, db: f32, seed: u64) -> Vec<i16> {
     let amp = 32768.0 * 10f32.powf(db / 20.0) * 3.0;
     (0..n)
         .map(|_| {
-            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let w = ((x >> 33) as f32 / (1u64 << 31) as f32) - 1.0;
             lp = 0.9 * lp + 0.1 * w;
             (lp * amp) as i16
@@ -457,7 +657,11 @@ fn room(n: usize, db: f32, seed: u64) -> Vec<i16> {
 }
 
 fn wav(name: &str) -> Vec<i16> {
-    atlas::diarize::read_wav(&std::fs::read(format!("tests/fixtures/speech/corpus/{name}.wav")).unwrap()).unwrap().0
+    atlas::diarize::read_wav(
+        &std::fs::read(format!("tests/fixtures/speech/corpus/{name}.wav")).unwrap(),
+    )
+    .unwrap()
+    .0
 }
 
 #[derive(Default)]
@@ -502,14 +706,29 @@ impl MicWork for EchoMic {
     }
     fn open_stream(&mut self) -> Option<Box<dyn MicStream>> {
         let n = self.st.streams.fetch_add(1, Ordering::SeqCst);
-        let samples = if n == 0 { room(16000 * 2, -60.0, 7) } else { self.stream.clone() };
+        let samples = if n == 0 {
+            room(16000 * 2, -60.0, 7)
+        } else {
+            self.stream.clone()
+        };
         self.st.read.store(0, Ordering::SeqCst);
-        Some(Box::new(Counted { inner: Paced { samples, at: 0, started: Instant::now() }, read: self.st.read.clone() }))
+        Some(Box::new(Counted {
+            inner: Paced {
+                samples,
+                at: 0,
+                started: Instant::now(),
+            },
+            read: self.st.read.clone(),
+        }))
     }
     fn transcribe(&mut self, _samples: &[i16]) -> atlas::error::Result<String> {
         Ok(String::new())
     }
-    fn follow_up(&mut self, _secs: u32, _stop: &dyn Fn() -> bool) -> atlas::error::Result<Option<String>> {
+    fn follow_up(
+        &mut self,
+        _secs: u32,
+        _stop: &dyn Fn() -> bool,
+    ) -> atlas::error::Result<Option<String>> {
         Ok(None)
     }
     /// Read the moment the window was: in the real thing the envelope is
@@ -534,7 +753,9 @@ struct EchoEars {
 
 impl EchoEars {
     fn new() -> EchoEars {
-        EchoEars { st: Arc::new(EchoState::default()) }
+        EchoEars {
+            st: Arc::new(EchoState::default()),
+        }
     }
 }
 
@@ -557,15 +778,21 @@ impl Ears for EchoEars {
         let start = 4000;
         let mut padded = vec![0i16; start];
         padded.extend_from_slice(&reply);
-        let envelope = atlas::speaking::levels_of_wav(&atlas::audio::wav_bytes(&padded, 16000), 32).unwrap();
+        let envelope =
+            atlas::speaking::levels_of_wav(&atlas::audio::wav_bytes(&padded, 16000), 32).unwrap();
         let late = start + 6 * micthread::WINDOW;
         let len = late + reply.len() + 16000 * 2;
         let mut stream = room(len, -55.0, 3);
         let k = 10f32.powf(-12.0 / 20.0);
         for (i, v) in reply.iter().enumerate() {
-            stream[late + i] = (stream[late + i] as f32 + *v as f32 * k).clamp(-32767.0, 32767.0) as i16;
+            stream[late + i] =
+                (stream[late + i] as f32 + *v as f32 * k).clamp(-32767.0, 32767.0) as i16;
         }
-        Some(Box::new(EchoMic { st: self.st.clone(), stream, envelope }))
+        Some(Box::new(EchoMic {
+            st: self.st.clone(),
+            stream,
+            envelope,
+        }))
     }
 }
 
@@ -581,7 +808,13 @@ fn a_reply_the_model_is_still_writing_is_watched_once_and_what_was_learned_is_ke
         reply: "Octopuses have three hearts. Two pump blood through the gills. The third serves the body. It stops when they swim.".into(),
         word_ms: 60,
     });
-    let mut d = Daemon::new(&c, &p, Some(llm as Arc<dyn Llm>), Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(llm as Arc<dyn Llm>),
+        Store::new(dir.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let ears = EchoEars::new();
     let mouth = SlowMouth::new(700, 700);
     let clock = || 1_790_000_000u64;
@@ -590,10 +823,18 @@ fn a_reply_the_model_is_still_writing_is_watched_once_and_what_was_learned_is_ke
 
     let lines = mouth.lines();
     assert!(lines.len() >= 4, "{lines:?}");
-    assert!(lines.iter().all(|(_, cut)| !cut), "Atlas cut itself off on its own voice: {lines:?}");
+    assert!(
+        lines.iter().all(|(_, cut)| !cut),
+        "Atlas cut itself off on its own voice: {lines:?}"
+    );
     // The room once, while nothing was going on; then one watch for the
     // whole reply (it was one per sentence).
-    assert_eq!(ears.st.streams.load(Ordering::SeqCst), 2, "the microphone was opened {} times for one reply", ears.st.streams.load(Ordering::SeqCst));
+    assert_eq!(
+        ears.st.streams.load(Ordering::SeqCst),
+        2,
+        "the microphone was opened {} times for one reply",
+        ears.st.streams.load(Ordering::SeqCst)
+    );
 
     // What the watch learned about the speakers and the microphone is kept
     // in Atlas's state for the next start.
@@ -603,10 +844,17 @@ fn a_reply_the_model_is_still_writing_is_watched_once_and_what_was_learned_is_ke
         if let Some(l) = Store::new(dir.clone()).load::<Option<micthread::Learned>>("cut_in") {
             break l;
         }
-        assert!(Instant::now() < until, "nothing learned about the echo was kept");
+        assert!(
+            Instant::now() < until,
+            "nothing learned about the echo was kept"
+        );
         std::thread::sleep(Duration::from_millis(50));
     };
-    assert!((5..=7).contains(&kept.lag), "kept a lag of {} windows; it was 6", kept.lag);
+    assert!(
+        (5..=7).contains(&kept.lag),
+        "kept a lag of {} windows; it was 6",
+        kept.lag
+    );
     println!("kept: {kept:?}");
     let _ = d.shut_down();
     micthread::clear_cut();
@@ -615,7 +863,12 @@ fn a_reply_the_model_is_still_writing_is_watched_once_and_what_was_learned_is_ke
 // ================= 3. seeded, the first reply can be cut into at once =================
 
 /// Fed through a gate a window at a time: when it fired, in ms.
-fn fires_at(gate: &mut micthread::BargeGate, det: &mut dyn micthread::VoiceDetector, s: &[i16], envelope: &[u8]) -> Option<u32> {
+fn fires_at(
+    gate: &mut micthread::BargeGate,
+    det: &mut dyn micthread::VoiceDetector,
+    s: &[i16],
+    envelope: &[u8],
+) -> Option<u32> {
     for (i, w) in s.chunks_exact(micthread::WINDOW).enumerate() {
         let playing = envelope.get(i).copied().unwrap_or(0) as f32 / 255.0;
         if gate.feed(det.speech(w), atlas::audio::level_db(w), Some(playing)) {
@@ -628,7 +881,10 @@ fn fires_at(gate: &mut micthread::BargeGate, det: &mut dyn micthread::VoiceDetec
 #[test]
 fn seeded_with_what_the_last_run_learned_the_first_reply_can_be_cut_into_from_its_start() {
     let silero = PathBuf::from("tests/fixtures/silero").join(micthread::SILERO_FILE);
-    let cfg = BargeInConfig { enabled: true, ..BargeInConfig::default() };
+    let cfg = BargeInConfig {
+        enabled: true,
+        ..BargeInConfig::default()
+    };
     // Atlas's reply from the speakers (12 dB down, 6 windows late), and you,
     // 15 dB over it, from 300 ms into the reply. (Measured: with the echo
     // learned, you are heard about 450 ms after you start; learning it from
@@ -651,7 +907,10 @@ fn seeded_with_what_the_last_run_learned_the_first_reply_can_be_cut_into_from_it
     for (i, v) in you.iter().enumerate() {
         s[you_at + i] += *v as f32 * 10f32.powf(3.0 / 20.0);
     }
-    let s: Vec<i16> = s.iter().map(|v| v.clamp(-32767.0, 32767.0) as i16).collect();
+    let s: Vec<i16> = s
+        .iter()
+        .map(|v| v.clamp(-32767.0, 32767.0) as i16)
+        .collect();
 
     // What a first run learns from a reply said with nobody talking over it.
     let alone: Vec<i16> = {
@@ -663,23 +922,34 @@ fn seeded_with_what_the_last_run_learned_the_first_reply_can_be_cut_into_from_it
     };
     let mut first_run = micthread::BargeGate::new(&cfg);
     let mut det = micthread::detector_for(Some(&silero)).0;
-    assert_eq!(fires_at(&mut first_run, &mut *det, &alone, &env), None, "cut itself off on its own voice");
-    let learned = first_run.learned().expect("the first run learned nothing about the echo");
+    assert_eq!(
+        fires_at(&mut first_run, &mut *det, &alone, &env),
+        None,
+        "cut itself off on its own voice"
+    );
+    let learned = first_run
+        .learned()
+        .expect("the first run learned nothing about the echo");
     assert!((5..=7).contains(&learned.lag), "{learned:?}");
     // Kept as Atlas keeps it, and read back.
-    let back: micthread::Learned = serde_json::from_str(&serde_json::to_string(&learned).unwrap()).unwrap();
+    let back: micthread::Learned =
+        serde_json::from_str(&serde_json::to_string(&learned).unwrap()).unwrap();
     assert_eq!(back, learned);
 
     // The next start: seeded, and the room measured before any reply.
     let mut seeded = micthread::BargeGate::new(&cfg);
     seeded.seed(&back);
     let mut det = micthread::detector_for(Some(&silero)).0;
-    for w in room(16000, -55.0, 11).chunks_exact(micthread::WINDOW).take(11) {
+    for w in room(16000, -55.0, 11)
+        .chunks_exact(micthread::WINDOW)
+        .take(11)
+    {
         let _ = det.speech(w);
         seeded.learn_room(atlas::audio::level_db(w));
     }
     assert!(seeded.knows_the_room());
-    let seeded_at = fires_at(&mut seeded, &mut *det, &s, &env).expect("seeded, you weren't heard over the reply");
+    let seeded_at = fires_at(&mut seeded, &mut *det, &s, &env)
+        .expect("seeded, you weren't heard over the reply");
 
     // Not seeded: the echo has to be learned again first.
     let mut cold = micthread::BargeGate::new(&cfg);
@@ -687,9 +957,16 @@ fn seeded_with_what_the_last_run_learned_the_first_reply_can_be_cut_into_from_it
     let cold_at = fires_at(&mut cold, &mut *det, &s, &env);
     let you_ms = (you_at * 1000 / 16000) as u32;
     println!("you started at {you_ms} ms: heard at {seeded_at} ms seeded, {cold_at:?} learning from nothing");
-    assert!(seeded_at > you_ms, "fired at {seeded_at} ms, before you started");
-    assert!(seeded_at <= you_ms + 1_000, "seeded, you were heard only at {seeded_at} ms");
-    assert!(cold_at.is_none_or(|c| c > seeded_at), "seeding made no difference: {cold_at:?} vs {seeded_at}");
+    assert!(
+        seeded_at > you_ms,
+        "fired at {seeded_at} ms, before you started"
+    );
+    assert!(
+        seeded_at <= you_ms + 1_000,
+        "seeded, you were heard only at {seeded_at} ms"
+    );
+    assert!(
+        cold_at.is_none_or(|c| c > seeded_at),
+        "seeding made no difference: {cold_at:?} vs {seeded_at}"
+    );
 }
-
-

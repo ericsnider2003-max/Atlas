@@ -12,7 +12,11 @@ use atlas::money::{
 #[test]
 fn the_order_is_the_point_not_any_one_adjustment() {
     let t = tree();
-    assert_eq!(t[0], Node::TransformIn, "log footage is normalised before anything");
+    assert_eq!(
+        t[0],
+        Node::TransformIn,
+        "log footage is normalised before anything"
+    );
     assert_eq!(t[t.len() - 1], Node::TransformOut);
     // Balance before contrast: adding contrast to a colour cast bakes it in.
     let bal = t.iter().position(|n| *n == Node::Balance).unwrap();
@@ -46,8 +50,11 @@ fn the_contrast_pivot_is_not_the_default_and_that_is_why_contrast_darkens_everyt
 #[test]
 fn skin_off_the_line_is_reported_as_too_red_or_too_green_not_in_degrees_alone() {
     let m = Measured {
-        crushed_black: 0.0, clipped_white: 0.0, skin_off_line: 14.0,
-        saturation: 1.0, raised_globally: false,
+        crushed_black: 0.0,
+        clipped_white: 0.0,
+        skin_off_line: 14.0,
+        saturation: 1.0,
+        raised_globally: false,
     };
     let notes = check(&m);
     assert!(notes[0].1.contains("too red"));
@@ -57,8 +64,11 @@ fn skin_off_the_line_is_reported_as_too_red_or_too_green_not_in_degrees_alone() 
 #[test]
 fn raising_saturation_globally_is_caught_with_what_to_do_instead() {
     let m = Measured {
-        crushed_black: 0.0, clipped_white: 0.0, skin_off_line: 0.0,
-        saturation: 1.4, raised_globally: true,
+        crushed_black: 0.0,
+        clipped_white: 0.0,
+        skin_off_line: 0.0,
+        saturation: 1.4,
+        raised_globally: true,
     };
     let notes = check(&m);
     assert!(notes[0].1.contains("turns skin orange"));
@@ -68,8 +78,11 @@ fn raising_saturation_globally_is_caught_with_what_to_do_instead() {
 #[test]
 fn the_notes_come_back_in_tree_order_so_fixing_them_is_one_pass() {
     let m = Measured {
-        crushed_black: 0.08, clipped_white: 0.0, skin_off_line: 12.0,
-        saturation: 1.4, raised_globally: true,
+        crushed_black: 0.08,
+        clipped_white: 0.0,
+        skin_off_line: 12.0,
+        saturation: 1.4,
+        raised_globally: true,
     };
     let notes = check(&m);
     let order = tree();
@@ -77,15 +90,21 @@ fn the_notes_come_back_in_tree_order_so_fixing_them_is_one_pass() {
         .iter()
         .map(|(n, _)| order.iter().position(|x| x == n).unwrap())
         .collect();
-    assert!(positions.windows(2).all(|w| w[0] <= w[1]), "not in tree order: {positions:?}");
+    assert!(
+        positions.windows(2).all(|w| w[0] <= w[1]),
+        "not in tree order: {positions:?}"
+    );
     assert_eq!(notes[0].0, Node::Balance, "balance comes before contrast");
 }
 
 #[test]
 fn a_clean_grade_gets_one_line() {
     let m = Measured {
-        crushed_black: 0.001, clipped_white: 0.0, skin_off_line: 2.0,
-        saturation: 1.05, raised_globally: false,
+        crushed_black: 0.001,
+        clipped_white: 0.0,
+        skin_off_line: 2.0,
+        saturation: 1.05,
+        raised_globally: false,
     };
     assert_eq!(grade_spoken(&check(&m)), "Grade looks clean.");
 }
@@ -111,20 +130,32 @@ fn e(desc: &str, amount: f32, bucket: Bucket) -> Entry {
 #[test]
 fn moving_your_own_money_is_never_counted_as_spending() {
     // The single commonest way a summary lies to you.
-    assert_eq!(sort_one("Transfer to savings", -500.0, &[]), Bucket::MovingYourOwnMoney);
-    assert_eq!(sort_one("Payment to card ending 4417", -300.0, &[]), Bucket::MovingYourOwnMoney);
+    assert_eq!(
+        sort_one("Transfer to savings", -500.0, &[]),
+        Bucket::MovingYourOwnMoney
+    );
+    assert_eq!(
+        sort_one("Payment to card ending 4417", -300.0, &[]),
+        Bucket::MovingYourOwnMoney
+    );
 
     let entries = vec![
         e("Transfer to savings", -500.0, Bucket::MovingYourOwnMoney),
         e("Tesco", -60.0, Bucket::Food),
     ];
     let m = summarise(&entries);
-    assert!((m.out_total - 60.0).abs() < 0.01, "the transfer isn't spending");
+    assert!(
+        (m.out_total - 60.0).abs() < 0.01,
+        "the transfer isn't spending"
+    );
 }
 
 #[test]
 fn a_transfer_that_mentions_a_shop_is_still_a_transfer() {
-    assert_eq!(sort_one("Transfer - tesco savings pot", -50.0, &[]), Bucket::MovingYourOwnMoney);
+    assert_eq!(
+        sort_one("Transfer - tesco savings pot", -50.0, &[]),
+        Bucket::MovingYourOwnMoney
+    );
 }
 
 #[test]
@@ -163,7 +194,8 @@ fn things_that_go_out_without_you_thinking_are_totalled_separately() {
         e("Gym", -40.0, Bucket::Standing),
         e("Food", -300.0, Bucket::Food),
     ];
-    assert!(money_spoken(&summarise(&entries), &[]).contains("55 went out on things you don't think about"));
+    assert!(money_spoken(&summarise(&entries), &[])
+        .contains("55 went out on things you don't think about"));
 }
 
 #[test]
@@ -182,7 +214,9 @@ fn a_subscription_that_appeared_is_the_thing_nobody_looks_for() {
 
     // Something new is new whatever the threshold -- there is nothing for it
     // to have risen from.
-    assert!(new_or_grown(&this, &last, 5.0).iter().any(|c| c.contains("Adobe is new")));
+    assert!(new_or_grown(&this, &last, 5.0)
+        .iter()
+        .any(|c| c.contains("Adobe is new")));
 
     // And a subscription billed twice in one month is one subscription.
     let twice = vec![
@@ -200,7 +234,10 @@ fn a_price_rise_on_something_you_already_had_is_caught() {
     // read rather than a fraction that happens to equal it.
     let changes = new_or_grown(&this, &last, 0.15);
     assert!(changes[0].contains("went from 10.00 to 13.00"));
-    assert!(new_or_grown(&this, &last, 0.5).is_empty(), "the threshold is hardcoded");
+    assert!(
+        new_or_grown(&this, &last, 0.5).is_empty(),
+        "the threshold is hardcoded"
+    );
 }
 
 #[test]
@@ -218,7 +255,9 @@ fn atlas_sorts_what_happened_and_does_not_tell_you_what_to_do() {
     assert!(!MoneyConfig::default().gives_advice);
     let parsed: MoneyConfig = serde_yaml::from_str("enabled: true\ngives_advice: true\n").unwrap();
     assert!(!parsed.gives_advice);
-    assert!(NOT_ADVICE.contains("the last thing that should be telling you where to put your money"));
+    assert!(
+        NOT_ADVICE.contains("the last thing that should be telling you where to put your money")
+    );
 }
 
 #[test]

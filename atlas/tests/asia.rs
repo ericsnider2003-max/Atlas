@@ -46,7 +46,10 @@ fn overnight_means_asia_awake_and_london_shut_and_asks_session_to_find_out() {
             nights += 1;
         }
     }
-    assert!(nights > 0, "a week with no overnight hours in it is not a week");
+    assert!(
+        nights > 0,
+        "a week with no overnight hours in it is not a week"
+    );
 }
 
 #[test]
@@ -56,13 +59,19 @@ fn the_boundary_moves_with_the_clocks_rather_than_staying_put_in_utc() {
     // and July — and a module holding its own constant would have it wrong for
     // seven months of the year while looking perfectly reasonable.
     let end_of_night = |day_start: i64| -> Option<i64> {
-        (0..24).find(|h| !overnight(day_start + h * MS_PER_HOUR) && overnight(day_start + (h - 1).max(0) * MS_PER_HOUR))
+        (0..24).find(|h| {
+            !overnight(day_start + h * MS_PER_HOUR)
+                && overnight(day_start + (h - 1).max(0) * MS_PER_HOUR)
+        })
     };
     // Wednesday 14 January 2026 and Wednesday 15 July 2026, both 00:00 UTC.
     let winter = end_of_night(1_768_348_800_000);
     let summer = end_of_night(1_784_246_400_000);
     assert!(winter.is_some() && summer.is_some());
-    assert_ne!(winter, summer, "the overnight session ends at the same UTC hour all year");
+    assert_ne!(
+        winter, summer,
+        "the overnight session ends at the same UTC hour all year"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -100,7 +109,10 @@ fn a_completed_night_gives_its_high_and_its_low() {
     let hours = 24 * 6;
     let start = MONDAY;
     let (from, to) = last_completed_run(start, hours);
-    assert!(to > from, "no completed overnight session in six days of bars");
+    assert!(
+        to > from,
+        "no completed overnight session in six days of bars"
+    );
     let bars = hourly(start, hours, |i| {
         if i >= from && i < to {
             (1.1010, 1.0990)
@@ -110,7 +122,10 @@ fn a_completed_night_gives_its_high_and_its_low() {
     });
     let view = bars.latest().unwrap();
     let night = last_night(&view).expect("a night in six days of bars");
-    assert!(!night.still_forming, "the last bar of this series is not overnight");
+    assert!(
+        !night.still_forming,
+        "the last bar of this series is not overnight"
+    );
     assert!((night.high - 1.1010).abs() < 1e-9, "high {:.5}", night.high);
     assert!((night.low - 1.0990).abs() < 1e-9, "low {:.5}", night.low);
     assert!(night.bars >= 4, "only {} bars", night.bars);
@@ -122,12 +137,17 @@ fn a_night_still_in_progress_offers_no_levels_at_all() {
     // still move, so neither is a line anybody is defending yet.
     let start = MONDAY;
     // Walk forward to a bar that IS overnight and end the series there.
-    let end = (1..(24 * 6)).find(|h| overnight(start + h * MS_PER_HOUR)).unwrap();
+    let end = (1..(24 * 6))
+        .find(|h| overnight(start + h * MS_PER_HOUR))
+        .unwrap();
     let bars = hourly(start, end as usize + 1, |_| (1.1010, 1.0990));
     let view = bars.latest().unwrap();
     let night = last_night(&view).expect("the session in progress");
     assert!(night.still_forming);
-    assert!(levels(&view).is_empty(), "a range that can still move was offered as a level");
+    assert!(
+        levels(&view).is_empty(),
+        "a range that can still move was offered as a level"
+    );
     assert!(spoken(&view).contains("still trading"));
 }
 
@@ -179,7 +199,8 @@ fn too_little_history_to_compare_against_says_so_instead_of_guessing() {
     // One night and no completed day behind it. The honest answer is that it
     // cannot be called tight or wide, not a number with nothing under it.
     let start = MONDAY;
-    let end = (1..48).find(|h| !overnight(start + h * MS_PER_HOUR) && overnight(start + (h - 1) * MS_PER_HOUR));
+    let end = (1..48)
+        .find(|h| !overnight(start + h * MS_PER_HOUR) && overnight(start + (h - 1) * MS_PER_HOUR));
     let Some(end) = end else { return };
     let bars = hourly(start, end as usize + 1, |_| (1.1010, 1.0990));
     let view = bars.latest().unwrap();
@@ -207,7 +228,10 @@ fn the_overnight_lines_reach_the_place_targets_are_chosen() {
         }
     });
     let view = bars.latest().unwrap();
-    assert!(!levels(&view).is_empty(), "the fixture must end outside the overnight session");
+    assert!(
+        !levels(&view).is_empty(),
+        "the fixture must end outside the overnight session"
+    );
     let wired = include_str!("../src/levels.rs");
     assert!(
         wired.contains("crate::asia::levels(view)"),

@@ -80,19 +80,70 @@ pub const DEFAULT_VOICE: &str = "af_heart";
 /// Kokoro v1.0's voices in speaker-id order, read from the model's own
 /// `speaker2id` metadata (kokoro-int8-multi-lang-v1_0, 28 Sep 2026).
 pub const VOICES: &[&str] = &[
-    "af_alloy", "af_aoede", "af_bella", "af_heart", "af_jessica", "af_kore", "af_nicole", "af_nova",
-    "af_river", "af_sarah", "af_sky", "am_adam", "am_echo", "am_eric", "am_fenrir", "am_liam",
-    "am_michael", "am_onyx", "am_puck", "am_santa", "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
-    "bm_daniel", "bm_fable", "bm_george", "bm_lewis", "ef_dora", "em_alex", "ff_siwis", "hf_alpha",
-    "hf_beta", "hm_omega", "hm_psi", "if_sara", "im_nicola", "jf_alpha", "jf_gongitsune", "jf_nezumi",
-    "jf_tebukuro", "jm_kumo", "pf_dora", "pm_alex", "pm_santa", "zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao",
-    "zf_xiaoyi", "zm_yunjian", "zm_yunxi", "zm_yunxia", "zm_yunyang", "em_santa",
+    "af_alloy",
+    "af_aoede",
+    "af_bella",
+    "af_heart",
+    "af_jessica",
+    "af_kore",
+    "af_nicole",
+    "af_nova",
+    "af_river",
+    "af_sarah",
+    "af_sky",
+    "am_adam",
+    "am_echo",
+    "am_eric",
+    "am_fenrir",
+    "am_liam",
+    "am_michael",
+    "am_onyx",
+    "am_puck",
+    "am_santa",
+    "bf_alice",
+    "bf_emma",
+    "bf_isabella",
+    "bf_lily",
+    "bm_daniel",
+    "bm_fable",
+    "bm_george",
+    "bm_lewis",
+    "ef_dora",
+    "em_alex",
+    "ff_siwis",
+    "hf_alpha",
+    "hf_beta",
+    "hm_omega",
+    "hm_psi",
+    "if_sara",
+    "im_nicola",
+    "jf_alpha",
+    "jf_gongitsune",
+    "jf_nezumi",
+    "jf_tebukuro",
+    "jm_kumo",
+    "pf_dora",
+    "pm_alex",
+    "pm_santa",
+    "zf_xiaobei",
+    "zf_xiaoni",
+    "zf_xiaoxiao",
+    "zf_xiaoyi",
+    "zm_yunjian",
+    "zm_yunxi",
+    "zm_yunxia",
+    "zm_yunyang",
+    "em_santa",
 ];
 
 /// The English voices (American and British), which are the ones offered:
 /// the others speak other languages.
 pub fn english_voices() -> Vec<&'static str> {
-    VOICES.iter().copied().filter(|v| v.starts_with('a') || v.starts_with('b')).collect()
+    VOICES
+        .iter()
+        .copied()
+        .filter(|v| v.starts_with('a') || v.starts_with('b'))
+        .collect()
 }
 
 /// A voice's speaker id in the model, if it is one of Kokoro's.
@@ -199,7 +250,9 @@ pub enum Missing {
 impl Missing {
     pub fn plain(&self) -> String {
         match self {
-            Missing::NotHere => "the Kokoro voice isn't available on this kind of computer yet".into(),
+            Missing::NotHere => {
+                "the Kokoro voice isn't available on this kind of computer yet".into()
+            }
             Missing::Runtime | Missing::Model => format!(
                 "the Kokoro voice isn't downloaded yet ({} MB, from Sound & voice)",
                 download_mb()
@@ -223,7 +276,12 @@ pub fn check(root: &Path) -> Result<Ready, Missing> {
         return Err(Missing::Runtime);
     }
     let model = root.join(MODEL_DIR);
-    let needed = ["model.int8.onnx", "voices.bin", "tokens.txt", "lexicon-us-en.txt"];
+    let needed = [
+        "model.int8.onnx",
+        "voices.bin",
+        "tokens.txt",
+        "lexicon-us-en.txt",
+    ];
     if needed.iter().any(|f| !model.join(f).is_file()) || !model.join("espeak-ng-data").is_dir() {
         return Err(Missing::Model);
     }
@@ -359,7 +417,8 @@ type VersionFn = unsafe extern "C" fn() -> *const c_char;
 type CreateFn = unsafe extern "C" fn(*const TtsConfig) -> *const c_void;
 type DestroyFn = unsafe extern "C" fn(*const c_void);
 type RateFn = unsafe extern "C" fn(*const c_void) -> i32;
-type GenerateFn = unsafe extern "C" fn(*const c_void, *const c_char, i32, f32) -> *const GeneratedAudio;
+type GenerateFn =
+    unsafe extern "C" fn(*const c_void, *const c_char, i32, f32) -> *const GeneratedAudio;
 type FreeAudioFn = unsafe extern "C" fn(*const GeneratedAudio);
 
 /// Kokoro, loaded and ready to speak.
@@ -413,7 +472,11 @@ impl Kokoro {
                 .get::<VersionFn>(b"SherpaOnnxGetVersionStr\0")
                 .map_err(|e| format!("the Kokoro voice's engine is missing a part ({e})"))?;
             let p = f();
-            if p.is_null() { String::new() } else { CStr::from_ptr(p).to_string_lossy().into_owned() }
+            if p.is_null() {
+                String::new()
+            } else {
+                CStr::from_ptr(p).to_string_lossy().into_owned()
+            }
         };
         if version != SHERPA_VERSION {
             return Err(format!(
@@ -435,7 +498,10 @@ impl Kokoro {
         let generate: GenerateFn = sym(&capi, b"SherpaOnnxOfflineTtsGenerate\0")?;
         let free_audio: FreeAudioFn = sym(&capi, b"SherpaOnnxDestroyOfflineTtsGeneratedAudio\0")?;
 
-        let c = |p: PathBuf| CString::new(p.to_string_lossy().into_owned()).map_err(|_| "a path with a zero byte in it".to_string());
+        let c = |p: PathBuf| {
+            CString::new(p.to_string_lossy().into_owned())
+                .map_err(|_| "a path with a zero byte in it".to_string())
+        };
         let m = c(model.join("model.int8.onnx"))?;
         let voices = c(model.join("voices.bin"))?;
         let tokens = c(model.join("tokens.txt"))?;
@@ -475,7 +541,15 @@ impl Kokoro {
         }
         // SAFETY: `tts` was just checked to be non-null and came from this library's `create`.
         let r = unsafe { rate(tts) };
-        Ok(Kokoro { tts, generate, free_audio, destroy, rate: r.max(1) as u32, _capi: capi, _ort: ort })
+        Ok(Kokoro {
+            tts,
+            generate,
+            free_audio,
+            destroy,
+            rate: r.max(1) as u32,
+            _capi: capi,
+            _ort: ort,
+        })
     }
 
     /// Samples per second of what it says (24,000 for Kokoro).
@@ -486,8 +560,13 @@ impl Kokoro {
     /// Say `text` in voice `sid` at `speed` (1 is normal, larger is faster):
     /// the samples, -1..1.
     pub fn synth(&self, text: &str, sid: i32, speed: f32) -> Result<Vec<f32>, String> {
-        let t = CString::new(text.replace('\0', " ")).map_err(|_| "unspeakable text".to_string())?;
-        let speed = if speed.is_finite() && speed > 0.0 { speed } else { 1.0 };
+        let t =
+            CString::new(text.replace('\0', " ")).map_err(|_| "unspeakable text".to_string())?;
+        let speed = if speed.is_finite() && speed > 0.0 {
+            speed
+        } else {
+            1.0
+        };
         // SAFETY: `self.tts` is live (destroyed only in Drop), `t` is a NUL-terminated string that
         // outlives the call, and calls are serialised by the engine's Mutex.
         let audio = unsafe { (self.generate)(self.tts, t.as_ptr(), sid, speed) };
@@ -520,7 +599,10 @@ impl Kokoro {
 
 /// Float samples to a 16-bit mono WAV.
 pub fn to_wav(samples: &[f32], rate: u32) -> Vec<u8> {
-    let pcm: Vec<i16> = samples.iter().map(|s| (s.clamp(-1.0, 1.0) * 32767.0).round() as i16).collect();
+    let pcm: Vec<i16> = samples
+        .iter()
+        .map(|s| (s.clamp(-1.0, 1.0) * 32767.0).round() as i16)
+        .collect();
     crate::audio::wav_bytes(&pcm, rate)
 }
 
@@ -530,7 +612,9 @@ pub fn to_wav(samples: &[f32], rate: u32) -> Vec<u8> {
 /// Xeon cores: two threads made speech at 1.25-1.31x its own length, one
 /// thread at 1.67x.
 pub fn thread_count() -> i32 {
-    let n = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2);
+    let n = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(2);
     (n / 2).clamp(2, 4).min(n) as i32
 }
 
@@ -543,7 +627,9 @@ static ENGINE: Mutex<Option<(PathBuf, Loaded)>> = Mutex::new(None);
 /// failure is kept too, so a missing voice is found missing once, not on
 /// every sentence; `forget` clears it.
 pub fn engine(root: &Path) -> Loaded {
-    let mut slot = ENGINE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut slot = ENGINE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some((at, loaded)) = slot.as_ref() {
         if at == root {
             return loaded.clone();
@@ -551,7 +637,9 @@ pub fn engine(root: &Path) -> Loaded {
     }
     let loaded = match check(root) {
         Err(m) => Err(m.plain()),
-        Ok(r) => Kokoro::load(&r.runtime, &r.model, thread_count()).map(|k| Arc::new(Mutex::new(k))),
+        Ok(r) => {
+            Kokoro::load(&r.runtime, &r.model, thread_count()).map(|k| Arc::new(Mutex::new(k)))
+        }
     };
     *slot = Some((root.to_path_buf(), loaded.clone()));
     loaded
@@ -559,8 +647,12 @@ pub fn engine(root: &Path) -> Loaded {
 
 /// Try again next time: after a download finishes, or files were put back.
 pub fn forget() {
-    *ENGINE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-    *NOTED.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    *ENGINE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    *NOTED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
 }
 
 static NOTED: Mutex<Option<String>> = Mutex::new(None);
@@ -568,7 +660,9 @@ static NOTED: Mutex<Option<String>> = Mutex::new(None);
 /// The one thing to say about falling back to the usual voice — the first
 /// time, and again only if the reason changes. `None` otherwise.
 pub fn note_once(why: &str) -> Option<String> {
-    let mut n = NOTED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut n = NOTED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if n.as_deref() == Some(why) {
         return None;
     }
@@ -578,7 +672,11 @@ pub fn note_once(why: &str) -> Option<String> {
 
 /// Why Atlas last fell back, if it has, for the Sound page.
 pub fn last_note() -> Option<String> {
-    NOTED.lock().or_else(crate::crash::unpoison).ok().and_then(|n| n.clone())
+    NOTED
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .ok()
+        .and_then(|n| n.clone())
 }
 
 // ---------------------------------------------------------------- one sentence ahead
@@ -629,7 +727,12 @@ impl Ahead {
         for text in sentences.into_iter().filter(|s| !s.trim().is_empty()) {
             st.next_id += 1;
             let id = st.next_id;
-            st.jobs.push_back(Job { id, text, started: false, out: None });
+            st.jobs.push_back(Job {
+                id,
+                text,
+                started: false,
+                out: None,
+            });
         }
         st.synth = Some(synth);
         cv.notify_all();
@@ -644,7 +747,12 @@ impl Ahead {
         for text in sentences.into_iter().filter(|s| !s.trim().is_empty()) {
             st.next_id += 1;
             let id = st.next_id;
-            st.jobs.push_back(Job { id, text, started: false, out: None });
+            st.jobs.push_back(Job {
+                id,
+                text,
+                started: false,
+                out: None,
+            });
         }
         st.synth = Some(synth);
         cv.notify_all();
@@ -663,7 +771,11 @@ impl Ahead {
 
     /// Is `text` queued?
     pub fn has(&self, text: &str) -> bool {
-        let st = self.inner.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let st = self
+            .inner
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         st.jobs.iter().any(|j| j.text == text)
     }
 
@@ -690,7 +802,9 @@ impl Ahead {
                 Some(j) if j.id == id => {}
                 _ => return None,
             }
-            let (next, _) = cv.wait_timeout(st, Duration::from_millis(500)).unwrap_or_else(std::sync::PoisonError::into_inner);
+            let (next, _) = cv
+                .wait_timeout(st, Duration::from_millis(500))
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             st = next;
         }
     }
@@ -717,7 +831,9 @@ fn work(inner: Arc<(Mutex<State>, Condvar)>) {
                     st.worker = false;
                     return;
                 }
-                let (next, _) = cv.wait_timeout(st, Duration::from_millis(500)).unwrap_or_else(std::sync::PoisonError::into_inner);
+                let (next, _) = cv
+                    .wait_timeout(st, Duration::from_millis(500))
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 st = next;
                 waited += Duration::from_millis(500);
             }
@@ -751,7 +867,11 @@ pub const DOWNLOAD_ID: &str = "kokoro";
 /// other piece (`getpieces::fetch`: a download slower than 10 kB/s for a
 /// minute is retried, five times, and carries on from what arrived). Runs on
 /// its own thread: 140 MB would hold up everything else.
-pub fn fetch_all(root: &Path, downloads: &crate::voicepick::Downloads, tools: &crate::getpieces::Tools) {
+pub fn fetch_all(
+    root: &Path,
+    downloads: &crate::voicepick::Downloads,
+    tools: &crate::getpieces::Tools,
+) {
     let pieces = pieces();
     if pieces.is_empty() {
         downloads.finish(DOWNLOAD_ID, Err(Missing::NotHere.plain()));
@@ -810,7 +930,8 @@ pub const STOCK_LINES: &[&str] = &[
 
 /// The made lines, and what they were made with (voice, speed, volume): a
 /// change of voice makes them stale, and a stale one is never played.
-static STOCK: Mutex<Option<(String, std::collections::HashMap<String, Vec<u8>>)>> = Mutex::new(None);
+static STOCK: Mutex<Option<(String, std::collections::HashMap<String, Vec<u8>>)>> =
+    Mutex::new(None);
 
 fn stock_key(sentence: &str) -> String {
     sentence.trim().to_lowercase()
@@ -841,7 +962,9 @@ pub fn prepare_stock(synth: Synth, made_for: String) {
 pub fn stock(sentence: &str, made_for: &str) -> Option<Vec<u8>> {
     let g = STOCK.lock().or_else(crate::crash::unpoison).ok()?;
     let (with, made) = g.as_ref()?;
-    (with == made_for).then(|| made.get(&stock_key(sentence)).cloned()).flatten()
+    (with == made_for)
+        .then(|| made.get(&stock_key(sentence)).cloned())
+        .flatten()
 }
 
 /// What the stock lines are made with: voice, speed and volume.

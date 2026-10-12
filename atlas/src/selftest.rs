@@ -30,7 +30,9 @@
 
 use crate::config::AppSpec;
 use crate::error::Result;
-use crate::platform::{ActiveWindow, Button, ClipCopy, Grab, Monitor, OsQuiet, PixelRect, Platform, WindowId};
+use crate::platform::{
+    ActiveWindow, Button, ClipCopy, Grab, Monitor, OsQuiet, PixelRect, Platform, WindowId,
+};
 use serde::Serialize;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -53,26 +55,125 @@ pub enum Tier {
 /// named here is rehearsed: the safe default for a command added later.
 pub fn tier(kind: &str) -> Tier {
     const RUN: &[&str] = &[
-        "capabilities", "clock", "what_i_have", "time_spent", "how_am_i_doing", "model_trace", "machine_health",
-        "self_check", "shakedown", "which_model", "outstanding", "queued", "history", "recap", "act_alone",
-        "knowledge_size", "why", "languages", "market_day", "agenda", "messages", "people", "waiting_for",
-        "note_review", "dangling", "recommend", "plain_change", "overnight", "money_advice", "creator_advice",
-        "translate", "diagnose", "walk_through", "updates", "feedback", "phone_model", "who_is_in", "clip_history",
-        "ready", "say", "ask", "unknown", "capture_webcam", "got_it_wrong", "apply_lesson", "rehearse", "ask_the_room",
-        "whats_there", "whats_this", "find_file", "habit", "cards", "goals", "later", "trade_day",
-        "meeting_prep", "explain_code", "animate", "scene3d", "design_review", "make_picture", "research",
-        "read_document", "booking", "schedule", "brief_on", "opportunities", "social", "feeds", "receipt",
-        "snippet", "teach_gesture", "set_key", "this_is_me", "name_this", "address_as", "wit", "mute_topic",
-        "suggestions", "mail", "review_post", "travel_prep", "edit_media",
+        "capabilities",
+        "clock",
+        "what_i_have",
+        "time_spent",
+        "how_am_i_doing",
+        "model_trace",
+        "machine_health",
+        "self_check",
+        "shakedown",
+        "which_model",
+        "outstanding",
+        "queued",
+        "history",
+        "recap",
+        "act_alone",
+        "knowledge_size",
+        "why",
+        "languages",
+        "market_day",
+        "agenda",
+        "messages",
+        "people",
+        "waiting_for",
+        "note_review",
+        "dangling",
+        "recommend",
+        "plain_change",
+        "overnight",
+        "money_advice",
+        "creator_advice",
+        "translate",
+        "diagnose",
+        "walk_through",
+        "updates",
+        "feedback",
+        "phone_model",
+        "who_is_in",
+        "clip_history",
+        "ready",
+        "say",
+        "ask",
+        "unknown",
+        "capture_webcam",
+        "got_it_wrong",
+        "apply_lesson",
+        "rehearse",
+        "ask_the_room",
+        "whats_there",
+        "whats_this",
+        "find_file",
+        "habit",
+        "cards",
+        "goals",
+        "later",
+        "trade_day",
+        "meeting_prep",
+        "explain_code",
+        "animate",
+        "scene3d",
+        "design_review",
+        "make_picture",
+        "research",
+        "read_document",
+        "booking",
+        "schedule",
+        "brief_on",
+        "opportunities",
+        "social",
+        "feeds",
+        "receipt",
+        "snippet",
+        "teach_gesture",
+        "set_key",
+        "this_is_me",
+        "name_this",
+        "address_as",
+        "wit",
+        "mute_topic",
+        "suggestions",
+        "mail",
+        "review_post",
+        "travel_prep",
+        "edit_media",
         "after_me",
-        "drop_task", "files",
-        "learn_knowledge", "two_factor", "type_code", "create_account", "sign_in",
-        "message", "pair", "accept_pairing", "forget_peer", "name_group", "leave_group", "draft_post",
-        "schedule_post", "rebuild_index", "use_mic", "finish_setup",
+        "drop_task",
+        "files",
+        "learn_knowledge",
+        "two_factor",
+        "type_code",
+        "create_account",
+        "sign_in",
+        "message",
+        "pair",
+        "accept_pairing",
+        "forget_peer",
+        "name_group",
+        "leave_group",
+        "draft_post",
+        "schedule_post",
+        "rebuild_index",
+        "use_mic",
+        "finish_setup",
     ];
     const STAND_IN: &[&str] = &[
-        "open_app", "close_app", "focus_app", "workspace_on", "workspace_off", "view_display", "set_mode",
-        "show_panel", "dismiss_panel", "pause", "resume", "press_button", "use_clipboard", "screen_text", "launch",
+        "open_app",
+        "close_app",
+        "focus_app",
+        "workspace_on",
+        "workspace_off",
+        "view_display",
+        "set_mode",
+        "show_panel",
+        "dismiss_panel",
+        "pause",
+        "resume",
+        "press_button",
+        "use_clipboard",
+        "screen_text",
+        "launch",
         "operate",
     ];
     // Never run, whatever else is true: they change Atlas's own install,
@@ -81,10 +182,36 @@ pub fn tier(kind: &str) -> Tier {
     // own thread: rehearsed, so a test can't move, convert or capture
     // anything real whatever its settings point at.
     const NEVER: &[&str] = &[
-        "self_test", "hand_over", "take_it_back", "unlock", "back_up", "undo", "sync", "capture", "refile", "files", "unzip",
-        "edit_photo", "edit_media", "move_big_files", "pc_tune", "tidy_desktop", "pdf", "receipt", "finish_setup",
-        "work_on_yourself", "implement", "improve", "build_it", "keep_at_it", "run_build", "delegate", "sort_mail", "dictate",
-        "gestures", "call_notes",
+        "self_test",
+        "hand_over",
+        "take_it_back",
+        "unlock",
+        "back_up",
+        "undo",
+        "sync",
+        "capture",
+        "refile",
+        "files",
+        "unzip",
+        "edit_photo",
+        "edit_media",
+        "move_big_files",
+        "pc_tune",
+        "tidy_desktop",
+        "pdf",
+        "receipt",
+        "finish_setup",
+        "work_on_yourself",
+        "implement",
+        "improve",
+        "build_it",
+        "keep_at_it",
+        "run_build",
+        "delegate",
+        "sort_mail",
+        "dictate",
+        "gestures",
+        "call_notes",
     ];
     if NEVER.contains(&kind) {
         Tier::Rehearse
@@ -117,7 +244,11 @@ pub const STAND_IN_WINDOW: u64 = 0;
 
 impl<'a> SafePlatform<'a> {
     pub fn wrapping(real: &'a dyn Platform) -> SafePlatform<'a> {
-        SafePlatform { real, did: RefCell::new(Vec::new()), started: RefCell::new(Vec::new()) }
+        SafePlatform {
+            real,
+            did: RefCell::new(Vec::new()),
+            started: RefCell::new(Vec::new()),
+        }
     }
     /// What was asked of the screen since the last look, emptied.
     pub fn take(&self) -> Vec<String> {
@@ -166,7 +297,10 @@ impl Platform for SafePlatform<'_> {
         Ok(None)
     }
     fn place(&self, win: WindowId, rect: PixelRect) -> Result<()> {
-        self.note(format!("move window {} to {}x{} at {},{}", win.0, rect.width, rect.height, rect.x, rect.y))
+        self.note(format!(
+            "move window {} to {}x{} at {},{}",
+            win.0, rect.width, rect.height, rect.x, rect.y
+        ))
     }
     fn focus(&self, win: WindowId) -> Result<()> {
         self.note(format!("bring window {} forward", win.0))
@@ -252,7 +386,10 @@ impl Platform for SafePlatform<'_> {
         self.real.read_clipboard()
     }
     fn write_clipboard(&self, text: &str) -> Result<()> {
-        self.note(format!("put {} characters on the clipboard", text.chars().count()))
+        self.note(format!(
+            "put {} characters on the clipboard",
+            text.chars().count()
+        ))
     }
 }
 
@@ -298,7 +435,10 @@ impl Verdict {
     }
     /// Something to fix, as opposed to a state you can change yourself.
     pub fn is_a_fault(&self) -> bool {
-        matches!(self, Verdict::WrongTool(_) | Verdict::Slow(_) | Verdict::Broken(_))
+        matches!(
+            self,
+            Verdict::WrongTool(_) | Verdict::Slow(_) | Verdict::Broken(_)
+        )
     }
 }
 
@@ -336,7 +476,19 @@ fn reply_fault(reply: &str) -> Option<&'static str> {
     if r.is_empty() {
         return Some("said nothing");
     }
-    for leak in ["Some(", "None)", "Ok(", "Err(", "Intent::", "{:?}", "\\n", "PathBuf", "AtlasError", "panicked", "unwrap()"] {
+    for leak in [
+        "Some(",
+        "None)",
+        "Ok(",
+        "Err(",
+        "Intent::",
+        "{:?}",
+        "\\n",
+        "PathBuf",
+        "AtlasError",
+        "panicked",
+        "unwrap()",
+    ] {
         if r.contains(leak) {
             return Some("code in the words");
         }
@@ -352,12 +504,21 @@ fn reply_fault(reply: &str) -> Option<&'static str> {
     if !r.contains('\n') && unquoted(r).contains("  ") {
         return Some("a slip in the words");
     }
-    for stub in ["not built yet", "isn't built", "not implemented", "todo!", "unimplemented", "coming soon"] {
+    for stub in [
+        "not built yet",
+        "isn't built",
+        "not implemented",
+        "todo!",
+        "unimplemented",
+        "coming soon",
+    ] {
         if l.contains(stub) {
             return Some("says it isn't built");
         }
     }
-    if l.contains("couldn't get an answer from the language model") || l.contains("didn't get a usable answer") {
+    if l.contains("couldn't get an answer from the language model")
+        || l.contains("didn't get a usable answer")
+    {
         return Some("the model didn't answer");
     }
     if l.contains("thinking about what to do next") && l.contains("went wrong") {
@@ -368,12 +529,28 @@ fn reply_fault(reply: &str) -> Option<&'static str> {
 
 /// Commands whose answer is written by the model, by design: held to the
 /// model's fifteen seconds, not the three a rule-answered command gets.
-const WRITES_WITH_THE_MODEL: &[&str] =
-    &["explain_code", "use_clipboard", "draft_post", "translate", "research", "brief_on", "meeting_prep", "read_document", "animate", "design_review"];
+const WRITES_WITH_THE_MODEL: &[&str] = &[
+    "explain_code",
+    "use_clipboard",
+    "draft_post",
+    "translate",
+    "research",
+    "brief_on",
+    "meeting_prep",
+    "read_document",
+    "animate",
+    "design_review",
+];
 
 /// What one reply says about the command, from its words, the time it took,
 /// where it was routed and where it should have gone.
-fn judge_reply(reply: &str, ms: u64, reached: &str, expected: Option<&str>, would_start: bool) -> Verdict {
+fn judge_reply(
+    reply: &str,
+    ms: u64,
+    reached: &str,
+    expected: Option<&str>,
+    would_start: bool,
+) -> Verdict {
     if let Some(want) = expected {
         if reached != want {
             return Verdict::WrongTool(format!("{reached} (wanted {want})"));
@@ -394,21 +571,43 @@ fn judge_reply(reply: &str, ms: u64, reached: &str, expected: Option<&str>, woul
     if l_all.starts_with("[rehearsed]") {
         return Verdict::Rehearsed;
     }
-    if l.contains("switched off") || l.contains(" is off") || l.contains("it's off") || l.contains("turn on ") {
+    if l.contains("switched off")
+        || l.contains(" is off")
+        || l.contains("it's off")
+        || l.contains("turn on ")
+    {
         return Verdict::SwitchedOff;
     }
-    if l.contains("download") || (l.contains("i don't have") && l.contains("yet")) || l.contains("isn't installed") || l.contains("not installed") {
+    if l.contains("download")
+        || (l.contains("i don't have") && l.contains("yet"))
+        || l.contains("isn't installed")
+        || l.contains("not installed")
+    {
         return Verdict::NeedsInstalling;
     }
-    if l.contains("isn't set up") || l.contains("is set up") || l.contains("no mailbox") || l.contains("none is configured") || l.contains("haven't got one configured") {
+    if l.contains("isn't set up")
+        || l.contains("is set up")
+        || l.contains("no mailbox")
+        || l.contains("none is configured")
+        || l.contains("haven't got one configured")
+    {
         return Verdict::NeedsSettingUp;
     }
-    if l_all.trim_end().ends_with("go ahead?") || l.starts_with("allow ") || l_all.contains("say yes to allow") {
+    if l_all.trim_end().ends_with("go ahead?")
+        || l.starts_with("allow ")
+        || l_all.contains("say yes to allow")
+    {
         return Verdict::AsksFirst;
     }
     // A model answering a sentence takes seconds on a laptop; a command
     // answered without one shouldn't.
-    if ms > 15_000 || (ms > 3_000 && reached != "unknown" && reached != "say" && reached != "ask" && !WRITES_WITH_THE_MODEL.contains(&reached)) {
+    if ms > 15_000
+        || (ms > 3_000
+            && reached != "unknown"
+            && reached != "say"
+            && reached != "ask"
+            && !WRITES_WITH_THE_MODEL.contains(&reached))
+    {
         return Verdict::Slow(ms);
     }
     if would_start {
@@ -440,12 +639,21 @@ pub struct Row {
 pub const EVERYDAY: &[(&str, &str)] = &[
     ("I guess I want you to organize my desktop.", "tidy_desktop"),
     ("look at my screen and tell me what's on it", "view_display"),
-    ("I want you to go and do a diagnosis on yourself.", "self_check"),
+    (
+        "I want you to go and do a diagnosis on yourself.",
+        "self_check",
+    ),
     ("Please use my camera and look at me.", "capture_webcam"),
     ("what's on my calendar tomorrow", "agenda"),
     ("find the tax pdf from last year", "find_file"),
-    ("my laptop is running slow, what's eating the memory", "machine_health"),
-    ("how much space have I got left on this thing", "machine_health"),
+    (
+        "my laptop is running slow, what's eating the memory",
+        "machine_health",
+    ),
+    (
+        "how much space have I got left on this thing",
+        "machine_health",
+    ),
     ("anything new come in by email", "mail"),
     ("could you find me some freelance gigs", "opportunities"),
     ("how did my last youtube video do", "social"),
@@ -501,7 +709,9 @@ pub fn sentences(book: &crate::intent::ToolBook) -> Vec<(String, String, Option<
         if e.describe.starts_with("Internal:") {
             continue;
         }
-        let Some(phrase) = e.phrases.iter().find(|p| !p.trim().is_empty()) else { continue };
+        let Some(phrase) = e.phrases.iter().find(|p| !p.trim().is_empty()) else {
+            continue;
+        };
         // A command that needs something after it is tried with something
         // that fits it (1 Oct 2026: every one got "the quarterly budget", so
         // "add a friend the quarterly budget" was judged and called broken).
@@ -553,7 +763,9 @@ pub fn run_all(
         // unheard-ok: returns `Vec<String>`, not a Result
         let _ = plat.take();
         let started = std::time::Instant::now();
-        let reply = match crate::crash::caught("a self-test sentence", || d.turn(&said, t0 + i as u64 * 60)) {
+        let reply = match crate::crash::caught("a self-test sentence", || {
+            d.turn(&said, t0 + i as u64 * 60)
+        }) {
             Ok(r) => r,
             Err(why) => format!("thinking about what to do next went wrong: {why}"),
         };
@@ -565,7 +777,8 @@ pub fn run_all(
         // right either way.
         let expected = expected.map(|e| if parsed == e { reached.clone() } else { e });
         let mut would = plat.take();
-        let started_bg = !d.rehearsed.is_empty() && d.rehearsed.iter().any(|r| r.starts_with("start "));
+        let started_bg =
+            !d.rehearsed.is_empty() && d.rehearsed.iter().any(|r| r.starts_with("start "));
         would.extend(std::mem::take(&mut d.rehearsed));
         let k = crate::session::kind_of(&parser.parse(&said));
         let tier = tier(k);
@@ -577,27 +790,46 @@ pub fn run_all(
         // stand-in screen was asked to start and so never showed: that is
         // the test, not Atlas.
         let starts_an_app = would.iter().any(|w| w.starts_with("start "));
-        if reply.trim_start().to_lowercase().starts_with("error") && !(tier == Tier::StandIn && starts_an_app) && !v.is_a_fault() {
+        if reply.trim_start().to_lowercase().starts_with("error")
+            && !(tier == Tier::StandIn && starts_an_app)
+            && !v.is_a_fault()
+        {
             v = Verdict::Broken("an error said as the answer".into());
         }
         // Says it did something when nothing was done or started: the
         // failure Eric hears as "it doesn't actually do it".
         if would.is_empty()
             && d.last_reached().is_none()
-            && crate::repeating::sentences(&reply).iter().any(|s| crate::backed::claims_work_started(s))
+            && crate::repeating::sentences(&reply)
+                .iter()
+                .any(|s| crate::backed::claims_work_started(s))
             && !v.is_a_fault()
         {
             v = Verdict::Broken("says it did something it didn't".into());
         }
-        let row = Row { command, said, reached, tier, verdict: v, reply, ms, would };
+        let row = Row {
+            command,
+            said,
+            reached,
+            tier,
+            verdict: v,
+            reply,
+            ms,
+            would,
+        };
         on_row(&row);
         rows.push(row);
     }
     // What you've corrected before, said again (`regressions`): the row fails
     // if Atlas gives the answer you said was wrong.
-    let cases: Vec<crate::regressions::Case> = crate::store::Store::new(store_dir).load(crate::regressions::FILE);
+    let cases: Vec<crate::regressions::Case> =
+        crate::store::Store::new(store_dir).load(crate::regressions::FILE);
     let base = rows.len() as u64;
-    for (i, case) in cases.iter().filter(|c| c.source == crate::regressions::Source::Correction).enumerate() {
+    for (i, case) in cases
+        .iter()
+        .filter(|c| c.source == crate::regressions::Source::Correction)
+        .enumerate()
+    {
         let mut d = crate::daemon::Daemon::new(
             cfg,
             plat,
@@ -610,7 +842,9 @@ pub fn run_all(
         // unheard-ok: returns `Vec<String>`, not a Result
         let _ = plat.take();
         let started = std::time::Instant::now();
-        let reply = match crate::crash::caught("a corrected sentence", || d.turn(&case.said, t0 + (base + i as u64) * 60)) {
+        let reply = match crate::crash::caught("a corrected sentence", || {
+            d.turn(&case.said, t0 + (base + i as u64) * 60)
+        }) {
             Ok(r) => r,
             Err(why) => format!("thinking about what to do next went wrong: {why}"),
         };
@@ -620,11 +854,23 @@ pub fn run_all(
         let mut would = plat.take();
         would.extend(std::mem::take(&mut d.rehearsed));
         let v = if crate::regressions::repeats_the_mistake(case, &reply) {
-            Verdict::Broken(format!("the answer you corrected before -- you wanted: {}", case.wanted))
+            Verdict::Broken(format!(
+                "the answer you corrected before -- you wanted: {}",
+                case.wanted
+            ))
         } else {
             judge_reply(&reply, ms, &reached, None, !would.is_empty())
         };
-        let row = Row { command: format!("corrected: {}", reached), said: case.said.clone(), reached, tier: tier(k), verdict: v, reply, ms, would };
+        let row = Row {
+            command: format!("corrected: {}", reached),
+            said: case.said.clone(),
+            reached,
+            tier: tier(k),
+            verdict: v,
+            reply,
+            ms,
+            would,
+        };
         on_row(&row);
         rows.push(row);
     }
@@ -672,7 +918,13 @@ pub fn report(rows: &[Row], started: &str, with_model: bool) -> String {
         }
         s.push_str(&format!("## {title} ({})\n\n| command | said | result | reply | would |\n|---|---|---|---|---|\n", these.len()));
         for r in these {
-            let reply: String = r.reply.replace('\n', " / ").replace('|', "/").chars().take(220).collect();
+            let reply: String = r
+                .reply
+                .replace('\n', " / ")
+                .replace('|', "/")
+                .chars()
+                .take(220)
+                .collect();
             s.push_str(&format!(
                 "| {} | {} | {} | {} | {} |\n",
                 r.command,
@@ -685,9 +937,22 @@ pub fn report(rows: &[Row], started: &str, with_model: bool) -> String {
         s.push('\n');
     };
     section("To fix", &|v| v.is_a_fault());
-    section("Switched off, installing or setting up -- yours to change", &|v| matches!(v, Verdict::SwitchedOff | Verdict::NeedsInstalling | Verdict::NeedsSettingUp));
+    section(
+        "Switched off, installing or setting up -- yours to change",
+        &|v| {
+            matches!(
+                v,
+                Verdict::SwitchedOff | Verdict::NeedsInstalling | Verdict::NeedsSettingUp
+            )
+        },
+    );
     section("Asks first", &|v| *v == Verdict::AsksFirst);
-    section("Works", &|v| matches!(v, Verdict::Works | Verdict::WouldStart | Verdict::AsksForMore));
+    section("Works", &|v| {
+        matches!(
+            v,
+            Verdict::Works | Verdict::WouldStart | Verdict::AsksForMore
+        )
+    });
     section("Rehearsed", &|v| *v == Verdict::Rehearsed);
     s
 }
@@ -695,7 +960,15 @@ pub fn report(rows: &[Row], started: &str, with_model: bool) -> String {
 /// One line for the voice and the console.
 pub fn summary(rows: &[Row]) -> String {
     let faults = rows.iter().filter(|r| r.verdict.is_a_fault()).count();
-    let off = rows.iter().filter(|r| matches!(r.verdict, Verdict::SwitchedOff | Verdict::NeedsInstalling | Verdict::NeedsSettingUp)).count();
+    let off = rows
+        .iter()
+        .filter(|r| {
+            matches!(
+                r.verdict,
+                Verdict::SwitchedOff | Verdict::NeedsInstalling | Verdict::NeedsSettingUp
+            )
+        })
+        .count();
     format!(
         "Tested {} sentences: {} to fix, {} waiting on a switch or an install, the rest work or ask first.",
         rows.len(),
@@ -778,9 +1051,17 @@ mod tests {
     #[test]
     fn a_pretend_start_gives_a_window_instead_of_a_false_alarm() {
         let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
-        let mock = crate::platform::mock::MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+        let mock = crate::platform::mock::MockPlatform::new(vec![Monitor {
+            id: 1,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1040,
+            primary: true,
+        }]);
         let safe = SafePlatform::wrapping(&mock);
-        crate::workspace::open_app(&cfg, &safe, "notepad").expect("no 'window didn't show up' for a pretend start");
+        crate::workspace::open_app(&cfg, &safe, "notepad")
+            .expect("no 'window didn't show up' for a pretend start");
         let did = safe.take();
         assert!(did.iter().any(|d| d.starts_with("start ")), "{did:?}");
         assert!(did.iter().any(|d| d.starts_with("move window")), "{did:?}");
@@ -788,21 +1069,74 @@ mod tests {
 
     #[test]
     fn verdicts_read_the_reply() {
-        assert_eq!(judge_reply("Reading your email is switched off.", 10, "mail", None, false), Verdict::SwitchedOff);
-        assert_eq!(judge_reply("Sending a message to Sam -- it goes out as you. Go ahead?", 10, "message", None, false), Verdict::AsksFirst);
-        assert_eq!(judge_reply("Platform: there's nothing to undo", 10, "undo", None, false), Verdict::Broken("a slip in the words".into()));
-        assert_eq!(judge_reply("It's 7:42 PM.", 10, "clock", Some("clock"), false), Verdict::Works);
-        assert_eq!(judge_reply("It's 7:42 PM.", 10, "say", Some("clock"), false), Verdict::WrongTool("say (wanted clock)".into()));
-        assert_eq!(judge_reply("Done.", 9_000, "clock", None, false), Verdict::Slow(9_000));
-        assert_eq!(judge_reply("[rehearsed] would back up", 5, "back_up", None, false), Verdict::Rehearsed);
+        assert_eq!(
+            judge_reply(
+                "Reading your email is switched off.",
+                10,
+                "mail",
+                None,
+                false
+            ),
+            Verdict::SwitchedOff
+        );
+        assert_eq!(
+            judge_reply(
+                "Sending a message to Sam -- it goes out as you. Go ahead?",
+                10,
+                "message",
+                None,
+                false
+            ),
+            Verdict::AsksFirst
+        );
+        assert_eq!(
+            judge_reply("Platform: there's nothing to undo", 10, "undo", None, false),
+            Verdict::Broken("a slip in the words".into())
+        );
+        assert_eq!(
+            judge_reply("It's 7:42 PM.", 10, "clock", Some("clock"), false),
+            Verdict::Works
+        );
+        assert_eq!(
+            judge_reply("It's 7:42 PM.", 10, "say", Some("clock"), false),
+            Verdict::WrongTool("say (wanted clock)".into())
+        );
+        assert_eq!(
+            judge_reply("Done.", 9_000, "clock", None, false),
+            Verdict::Slow(9_000)
+        );
+        assert_eq!(
+            judge_reply("[rehearsed] would back up", 5, "back_up", None, false),
+            Verdict::Rehearsed
+        );
         // Two spaces inside what it quotes are the quoted text's, not a slip.
-        assert_eq!(judge_reply("You copied: \u{201c}one.  Two.\u{201d}", 10, "use_clipboard", None, false), Verdict::Works);
-        assert_eq!(judge_reply("Done.  Twice.", 10, "clock", None, false), Verdict::Broken("a slip in the words".into()));
+        assert_eq!(
+            judge_reply(
+                "You copied: \u{201c}one.  Two.\u{201d}",
+                10,
+                "use_clipboard",
+                None,
+                false
+            ),
+            Verdict::Works
+        );
+        assert_eq!(
+            judge_reply("Done.  Twice.", 10, "clock", None, false),
+            Verdict::Broken("a slip in the words".into())
+        );
     }
 
     #[test]
     fn nothing_that_changes_the_install_runs() {
-        for k in ["hand_over", "take_it_back", "unlock", "back_up", "undo", "sync", "a_command_added_later"] {
+        for k in [
+            "hand_over",
+            "take_it_back",
+            "unlock",
+            "back_up",
+            "undo",
+            "sync",
+            "a_command_added_later",
+        ] {
             assert_eq!(tier(k), Tier::Rehearse, "{k}");
         }
         assert_eq!(tier("open_app"), Tier::StandIn);
@@ -814,7 +1148,8 @@ mod tests {
 pub const IN_A_TEST: &str = "ATLAS_SELFTEST";
 
 /// Said when something in a test would have started another Atlas.
-pub const NO_SECOND_ATLAS: &str = "this is the self-test's copy of Atlas, which never starts another Atlas";
+pub const NO_SECOND_ATLAS: &str =
+    "this is the self-test's copy of Atlas, which never starts another Atlas";
 
 /// Is this process (or the one that started it) the self-test?
 ///
@@ -833,4 +1168,3 @@ pub const NOT_IN_A_TEST: &str = "the self-test never opens a window or starts an
 pub fn in_a_test() -> bool {
     std::env::var_os(IN_A_TEST).is_some_and(|v| !v.is_empty())
 }
-

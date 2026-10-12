@@ -211,7 +211,11 @@ impl Hearing {
         match self.snr_of(&c.name) {
             Some(snr) => {
                 let attempts = c.good_turns + c.bad_turns;
-                let reliability = if attempts == 0 { 0.5 } else { c.good_turns as f32 / attempts as f32 };
+                let reliability = if attempts == 0 {
+                    0.5
+                } else {
+                    c.good_turns as f32 / attempts as f32
+                };
                 (snr / 30.0).clamp(0.0, 1.0) * 0.6 + reliability * 0.4
             }
             None => c.score(cfg.floor_db),
@@ -220,7 +224,8 @@ impl Hearing {
 
     /// Known to hear you, whatever a second of the room read.
     fn heard_you_on(&self, name: &str) -> bool {
-        self.snr_of(name).is_some_and(|snr| snr >= crate::leveller::MIN_SNR_DB)
+        self.snr_of(name)
+            .is_some_and(|snr| snr >= crate::leveller::MIN_SNR_DB)
     }
 
     /// Keep to this microphone from now on (`pick_microphone`).
@@ -232,7 +237,8 @@ impl Hearing {
     pub fn observe_devices(&mut self, devices: &[Device]) {
         let inputs: Vec<&Device> = devices.iter().filter(|d| d.kind == Kind::Input).collect();
         // Keep what we've learned about devices that are still here.
-        self.candidates.retain(|c| inputs.iter().any(|d| d.name == c.name));
+        self.candidates
+            .retain(|c| inputs.iter().any(|d| d.name == c.name));
         for d in inputs {
             if !self.candidates.iter().any(|c| c.name == d.name) {
                 self.candidates.push(Candidate::from(d));
@@ -266,7 +272,9 @@ impl Hearing {
         // A microphone that measured as dead (muted, switched off) is
         // measured again at every start: unmuting it should count at once,
         // not days later (29 Sep 2026: Eric's webcam mic).
-        self.candidates.iter().any(|c| c.measured_db.is_none_or(|db| db <= SILENCE_DB))
+        self.candidates
+            .iter()
+            .any(|c| c.measured_db.is_none_or(|db| db <= SILENCE_DB))
             || t.saturating_sub(self.last_calibration) >= cfg.recalibrate_secs
     }
 
@@ -275,7 +283,11 @@ impl Hearing {
         self.candidates
             .iter()
             .filter(|c| !c.bluetooth && self.hears(c, cfg))
-            .max_by(|a, b| self.rank(a, cfg).partial_cmp(&self.rank(b, cfg)).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|a, b| {
+                self.rank(a, cfg)
+                    .partial_cmp(&self.rank(b, cfg))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
     }
 
     /// The loudest desk microphone that gives any real sound at all, when
@@ -286,8 +298,16 @@ impl Hearing {
         let level = |c: &Candidate| c.measured_db.unwrap_or(SILENCE_DB + 1.0);
         self.candidates
             .iter()
-            .filter(|c| !c.bluetooth && (c.measured_db.is_none_or(|db| db > SILENCE_DB) || self.heard_you_on(&c.name)))
-            .max_by(|a, b| level(a).partial_cmp(&level(b)).unwrap_or(std::cmp::Ordering::Equal))
+            .filter(|c| {
+                !c.bluetooth
+                    && (c.measured_db.is_none_or(|db| db > SILENCE_DB)
+                        || self.heard_you_on(&c.name))
+            })
+            .max_by(|a, b| {
+                level(a)
+                    .partial_cmp(&level(b))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
     }
 
     /// Is `name` a microphone that isn't known to be silent (muted, dead,
@@ -321,13 +341,22 @@ impl Hearing {
         // silently move Atlas to the headset.
         let probably_here = w.at_desk || w.presence_unknown;
 
-        match (probably_here, desk, headset, w.headset_connected, self.faint_desk()) {
+        match (
+            probably_here,
+            desk,
+            headset,
+            w.headset_connected,
+            self.faint_desk(),
+        ) {
             // At the desk with something that actually hears you: use it, and
             // leave the headset on full-quality playback.
             (true, Some(d), _, _, _) => Choice {
                 ear: Ear::Desk(d.name.clone()),
                 why: if w.headset_connected {
-                    format!("{} hears you well, so your headphones keep full sound", short(&d.name))
+                    format!(
+                        "{} hears you well, so your headphones keep full sound",
+                        short(&d.name)
+                    )
                 } else {
                     format!("{} hears you best", short(&d.name))
                 },
@@ -347,13 +376,14 @@ impl Hearing {
             // reply in low, "robot" sound. Quiet speech is turned up before
             // it is transcribed (`audio::check_speech`). A laptop mic under a
             // shut lid isn't offered here at all (`pick_microphone`).
-            (true, None, Some(_), true, Some(d)) => {
-                Choice {
-                    ear: Ear::Desk(d.name.clone()),
-                    why: format!("{} picks you up, so your headphones keep full sound", short(&d.name)),
-                    costs_quality: false,
-                }
-            }
+            (true, None, Some(_), true, Some(d)) => Choice {
+                ear: Ear::Desk(d.name.clone()),
+                why: format!(
+                    "{} picks you up, so your headphones keep full sound",
+                    short(&d.name)
+                ),
+                costs_quality: false,
+            },
             // At the desk but nothing here can hear you — the closed-laptop
             // case. The headset is the only option left.
             (true, None, Some(h), true, _) => Choice {
@@ -374,13 +404,14 @@ impl Hearing {
             // -51.6 dB against a -45 floor: every microphone was ruled out
             // and Atlas listened to nothing at all. Only digital silence (a
             // muted or dead device, about -90) means it truly can't hear.
-            (true, None, None, _, Some(d)) => {
-                Choice {
-                    ear: Ear::Desk(d.name.clone()),
-                    why: format!("{} is the only microphone picking anything up, and only faintly", short(&d.name)),
-                    costs_quality: false,
-                }
-            }
+            (true, None, None, _, Some(d)) => Choice {
+                ear: Ear::Desk(d.name.clone()),
+                why: format!(
+                    "{} is the only microphone picking anything up, and only faintly",
+                    short(&d.name)
+                ),
+                costs_quality: false,
+            },
             (_, None, None, _, _) => Choice {
                 ear: Ear::Deaf,
                 why: "no microphone can hear you".into(),
@@ -429,7 +460,8 @@ impl Hearing {
         // Off an ear that costs sound quality (a headset's mic, call mode)
         // onto one that doesn't: at once, not after the settle time -- every
         // minute waited is a minute of "robot" sound (29 Sep 2026).
-        let back_to_full_sound = current.costs_quality() && !ideal.ear.costs_quality() && ideal.ear != Ear::Deaf;
+        let back_to_full_sound =
+            current.costs_quality() && !ideal.ear.costs_quality() && ideal.ear != Ear::Deaf;
         if gone || current == Ear::Deaf || back_to_full_sound {
             self.current = Some(ideal.ear.clone());
             self.switched_at = t;
@@ -501,7 +533,17 @@ impl Hearing {
 /// Bluetooth hands-free link -- rather than on the desk?
 pub fn is_headset(name: &str) -> bool {
     let n = name.to_lowercase();
-    ["headset", "headphone", "hands-free", "handsfree", "airpods", "buds", "earbuds"].iter().any(|k| n.contains(k))
+    [
+        "headset",
+        "headphone",
+        "hands-free",
+        "handsfree",
+        "airpods",
+        "buds",
+        "earbuds",
+    ]
+    .iter()
+    .any(|k| n.contains(k))
 }
 
 /// "Microphone (HD Pro Webcam C920)" -> "the webcam".
@@ -586,7 +628,10 @@ pub fn pick_microphone(
     // so a laptop mic asked for with the lid shut was ignored).
     hearing.observe_devices(devices);
     if let Some(name) = hearing.chosen.clone() {
-        if devices.iter().any(|d| d.kind == crate::audio::Kind::Input && d.name == name) {
+        if devices
+            .iter()
+            .any(|d| d.kind == crate::audio::Kind::Input && d.name == name)
+        {
             return Some(Picked {
                 device: crate::audio::ffmpeg_name_for(devices, &name),
                 name,
@@ -598,7 +643,12 @@ pub fn pick_microphone(
     // A microphone you named in Settings wins (29 Sep 2026: it was used only
     // when the measured pick came up empty).
     if let Some(d) = crate::audio::preferred_input_of(devices, &tc.audio) {
-        return Some(Picked { name: d.name.clone(), device: d.ffmpeg_name(), why: "you chose it".into(), costs_quality: d.bluetooth });
+        return Some(Picked {
+            name: d.name.clone(),
+            device: d.ffmpeg_name(),
+            why: "you chose it".into(),
+            costs_quality: d.bluetooth,
+        });
     }
     // The laptop's own microphone isn't a choice with the lid shut: it hears
     // the inside of the lid (29 Sep 2026).
@@ -610,11 +660,17 @@ pub fn pick_microphone(
     // stored away from me." A shut laptop is often put away, not only closed
     // behind monitors: its mic is no choice while anything else can hear,
     // a headset's included.)
-    let other_input = devices.iter().any(|d| d.kind == Kind::Input && !d.builtin && hearing.can_hear_through(&d.name));
+    let other_input = devices
+        .iter()
+        .any(|d| d.kind == Kind::Input && !d.builtin && hearing.can_hear_through(&d.name));
     let reachable: Vec<Device> = if laptop_active || !other_input {
         devices.to_vec()
     } else {
-        devices.iter().filter(|d| !(d.builtin && d.kind == Kind::Input)).cloned().collect()
+        devices
+            .iter()
+            .filter(|d| !(d.builtin && d.kind == Kind::Input))
+            .cloned()
+            .collect()
     };
     let devices = &reachable[..];
     hearing.observe_devices(devices);
@@ -634,8 +690,16 @@ pub fn pick_microphone(
     }
     // By name, among those not known to be silent; the lid counts only when
     // something else can hear (see above).
-    let hearable: Vec<Device> = devices.iter().filter(|d| d.kind != Kind::Input || hearing.can_hear_through(&d.name)).cloned().collect();
-    let pool: &[Device] = if hearable.iter().any(|d| d.kind == Kind::Input) { &hearable } else { devices };
+    let hearable: Vec<Device> = devices
+        .iter()
+        .filter(|d| d.kind != Kind::Input || hearing.can_hear_through(&d.name))
+        .cloned()
+        .collect();
+    let pool: &[Device] = if hearable.iter().any(|d| d.kind == Kind::Input) {
+        &hearable
+    } else {
+        devices
+    };
     let sel = crate::audio::choose(pool, &tc.audio, laptop_active || !other_input);
     if let Some(mic) = &sel.input {
         return Some(Picked {
@@ -645,12 +709,14 @@ pub fn pick_microphone(
             costs_quality: false,
         });
     }
-    pool.iter().find(|d| d.kind == crate::audio::Kind::Input).map(|d| Picked {
-        name: d.name.clone(),
-        device: d.ffmpeg_name(),
-        why: format!("no microphone stood out ({}), so the first one", sel.why),
-        costs_quality: false,
-    })
+    pool.iter()
+        .find(|d| d.kind == crate::audio::Kind::Input)
+        .map(|d| Picked {
+            name: d.name.clone(),
+            device: d.ffmpeg_name(),
+            why: format!("no microphone stood out ({}), so the first one", sel.why),
+            costs_quality: false,
+        })
 }
 
 /// Which microphone a spoken kind ("webcam", "headset", "laptop") means.
@@ -667,10 +733,25 @@ pub enum MicFit<'a> {
 /// `camera`), or -- for "laptop" -- the built-in one.
 pub fn mic_by_kind<'a>(devices: &'a [Device], kind: &str, camera: &str) -> MicFit<'a> {
     let k = kind.trim().to_lowercase();
-    let k = k.trim_end_matches(" microphone").trim_end_matches(" mic").trim();
+    let k = k
+        .trim_end_matches(" microphone")
+        .trim_end_matches(" mic")
+        .trim();
     let camera = camera.trim().to_lowercase();
     let also: &[&str] = match k {
-        "webcam" | "camera" | "cam" => &["webcam", "camera", "cam", "c920", "c922", "c930", "brio", "kiyo", "streamcam", "facecam", "lifecam"],
+        "webcam" | "camera" | "cam" => &[
+            "webcam",
+            "camera",
+            "cam",
+            "c920",
+            "c922",
+            "c930",
+            "brio",
+            "kiyo",
+            "streamcam",
+            "facecam",
+            "lifecam",
+        ],
         "headset" | "headphones" => &["headset", "headphone", "hands-free", "handsfree"],
         "laptop" | "builtin" | "built in" => &["array", "internal", "built-in", "realtek", "intel"],
         "airpods" => &["airpods"],
@@ -685,7 +766,12 @@ pub fn mic_by_kind<'a>(devices: &'a [Device], kind: &str, camera: &str) -> MicFi
         let n = d.name.to_lowercase();
         n.contains(k)
             || also.iter().any(|a| n.contains(a))
-            || (matches!(k, "webcam" | "camera" | "cam") && !camera.is_empty() && camera.split_whitespace().filter(|w| w.len() > 3 && *w != "camera").any(|w| n.contains(w)))
+            || (matches!(k, "webcam" | "camera" | "cam")
+                && !camera.is_empty()
+                && camera
+                    .split_whitespace()
+                    .filter(|w| w.len() > 3 && *w != "camera")
+                    .any(|w| n.contains(w)))
             || (matches!(k, "laptop" | "builtin" | "built in") && d.builtin)
     };
     let found: Vec<&Device> = devices.iter().filter(fits).collect();

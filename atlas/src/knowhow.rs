@@ -61,13 +61,104 @@ pub struct Snag {
 /// ones every request has taken out.
 pub fn content_words(t: &str) -> Vec<String> {
     const ORDINARY: &[&str] = &[
-        "a", "an", "the", "and", "or", "of", "to", "in", "on", "for", "with", "at", "by", "from", "into", "about",
-        "i", "me", "my", "you", "your", "it", "its", "it's", "is", "are", "was", "be", "do", "does", "did", "can",
-        "could", "would", "should", "will", "how", "what", "what's", "whats", "who", "why", "when", "where", "which",
-        "this", "that", "these", "those", "there", "here", "some", "something", "anything", "thing", "things",
-        "make", "get", "got", "go", "want", "need", "help", "please", "just", "up", "out", "not", "isn't", "don't",
-        "can't", "won't", "let", "tell", "show", "walk", "through", "steps", "step", "way", "best", "good", "new",
-        "when", "then", "than", "so", "if", "but", "all", "any", "more", "have", "has", "had", "am", "we", "our",
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "of",
+        "to",
+        "in",
+        "on",
+        "for",
+        "with",
+        "at",
+        "by",
+        "from",
+        "into",
+        "about",
+        "i",
+        "me",
+        "my",
+        "you",
+        "your",
+        "it",
+        "its",
+        "it's",
+        "is",
+        "are",
+        "was",
+        "be",
+        "do",
+        "does",
+        "did",
+        "can",
+        "could",
+        "would",
+        "should",
+        "will",
+        "how",
+        "what",
+        "what's",
+        "whats",
+        "who",
+        "why",
+        "when",
+        "where",
+        "which",
+        "this",
+        "that",
+        "these",
+        "those",
+        "there",
+        "here",
+        "some",
+        "something",
+        "anything",
+        "thing",
+        "things",
+        "make",
+        "get",
+        "got",
+        "go",
+        "want",
+        "need",
+        "help",
+        "please",
+        "just",
+        "up",
+        "out",
+        "not",
+        "isn't",
+        "don't",
+        "can't",
+        "won't",
+        "let",
+        "tell",
+        "show",
+        "walk",
+        "through",
+        "steps",
+        "step",
+        "way",
+        "best",
+        "good",
+        "new",
+        "when",
+        "then",
+        "than",
+        "so",
+        "if",
+        "but",
+        "all",
+        "any",
+        "more",
+        "have",
+        "has",
+        "had",
+        "am",
+        "we",
+        "our",
     ];
     t.split(|c: char| !(c.is_alphanumeric() || c == '\''))
         .map(|w| w.trim_matches('\'').to_string())
@@ -241,7 +332,9 @@ pub const LEARNED: &str = "knowhow_learned";
 
 impl Knowhow {
     pub fn shipped() -> Knowhow {
-        Knowhow { procedures: shipped() }
+        Knowhow {
+            procedures: shipped(),
+        }
     }
 
     /// The shipped procedures plus every snag learned since. "Improved by
@@ -259,7 +352,10 @@ impl Knowhow {
     /// Learn a snag and keep it.
     pub fn learn_and_keep(store: &crate::store::Store, procedure_id: &str, snag: Snag) -> bool {
         let mut learned: Vec<(String, Snag)> = store.load(LEARNED);
-        if learned.iter().any(|(id, s)| id == procedure_id && s.looks_like == snag.looks_like) {
+        if learned
+            .iter()
+            .any(|(id, s)| id == procedure_id && s.looks_like == snag.looks_like)
+        {
             return false;
         }
         learned.push((procedure_id.to_string(), snag));
@@ -288,8 +384,9 @@ impl Knowhow {
                     let a = a.to_lowercase();
                     !content_words(&a).is_empty() && t.contains(&a)
                 });
-                let goal: Vec<String> =
-                    content_words(&format!("{} {}", p.goal, p.also_called.join(" ")).to_lowercase());
+                let goal: Vec<String> = content_words(
+                    &format!("{} {}", p.goal, p.also_called.join(" ")).to_lowercase(),
+                );
                 let hits = asked.iter().filter(|w| goal.contains(w)).count();
                 let enough = !asked.is_empty() && hits >= asked.len().min(2);
                 (phrase || enough).then_some((p, hits + phrase as usize * 5))
@@ -330,7 +427,13 @@ impl Knowhow {
     }
 
     /// Add what was learned, so the same surprise happens once.
-    pub fn learn_snag(&mut self, procedure_id: &str, looks_like: &str, cause: &str, fix: &str) -> bool {
+    pub fn learn_snag(
+        &mut self,
+        procedure_id: &str,
+        looks_like: &str,
+        cause: &str,
+        fix: &str,
+    ) -> bool {
         match self.procedures.iter_mut().find(|p| p.id == procedure_id) {
             Some(p) => {
                 if p.snags.iter().any(|s| s.looks_like == looks_like) {
@@ -349,7 +452,10 @@ impl Knowhow {
 
     /// What Atlas can still do with no internet at all.
     pub fn offline_coverage(&self) -> (usize, usize) {
-        (self.procedures.iter().filter(|p| p.offline).count(), self.procedures.len())
+        (
+            self.procedures.iter().filter(|p| p.offline).count(),
+            self.procedures.len(),
+        )
     }
 }
 
@@ -360,7 +466,10 @@ impl Knowhow {
 pub fn announce(p: &Procedure, online: bool) -> String {
     let mut s = format!("{} — I know this one, {} steps.", p.goal, p.steps.len());
     if !p.offline && !online {
-        s = format!("{} needs the internet, and there isn't any. Here's what I'd do offline instead.", p.goal);
+        s = format!(
+            "{} needs the internet, and there isn't any. Here's what I'd do offline instead.",
+            p.goal
+        );
     }
     s
 }
@@ -394,7 +503,14 @@ pub fn checklist(p: &Procedure) -> String {
     let short: Vec<String> = p
         .steps
         .iter()
-        .map(|st| st.do_this.split([',', '—', '(']).next().unwrap_or(&st.do_this).trim().to_string())
+        .map(|st| {
+            st.do_this
+                .split([',', '—', '('])
+                .next()
+                .unwrap_or(&st.do_this)
+                .trim()
+                .to_string()
+        })
         .collect();
     s.push_str(&format!("In short: {}.", short.join(" → ")));
     s
@@ -409,10 +525,15 @@ pub fn checklist(p: &Procedure) -> String {
 pub fn look_back(p: &Procedure, what_happened: &str, known_cause: Option<&str>) -> String {
     let mut s = format!("# Look back: {}\n\n", p.goal);
     s.push_str(&format!("**What happened:** {what_happened}\n\n"));
-    s.push_str(&format!("**What should have happened:** {}.\n\n", as_plan(p).join("; ")));
+    s.push_str(&format!(
+        "**What should have happened:** {}.\n\n",
+        as_plan(p).join("; ")
+    ));
     s.push_str("**Why** (no blame — each answer asks why again, until it reaches something that can be changed):\n\n");
     match known_cause {
-        Some(c) => s.push_str(&format!("1. {c}\n2. Why did that happen? (not known yet)\n")),
+        Some(c) => s.push_str(&format!(
+            "1. {c}\n2. Why did that happen? (not known yet)\n"
+        )),
         None => s.push_str("1. Why did it happen? (not known yet)\n"),
     }
     s.push_str("\n**What changes:** the symptom is now a known snag for this procedure, so the same surprise is recognised next time.\n");

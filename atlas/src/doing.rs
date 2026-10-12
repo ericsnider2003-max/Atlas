@@ -35,7 +35,11 @@ fn heard_words(said: &str) -> Vec<String> {
     let mut i = 0;
     while i < w.len() {
         // "smart apps" / "smart as" / "smart ask" / "smart arse": smart-ass.
-        if w[i] == "smart" && w.get(i + 1).is_some_and(|n| ["apps", "app", "as", "ask", "arse", "ass", "asses", "asks"].contains(&n.as_str())) {
+        if w[i] == "smart"
+            && w.get(i + 1).is_some_and(|n| {
+                ["apps", "app", "as", "ask", "arse", "ass", "asses", "asks"].contains(&n.as_str())
+            })
+        {
             out.push("smartass".into());
             i += 2;
             continue;
@@ -89,9 +93,9 @@ pub fn rescue(said: &str) -> Option<String> {
         one_ask(&w).then(|| how_a_post_did(&w)).flatten(),
         one_ask(&w).then(|| a_mode(&w)).flatten(),
     ]
-        .into_iter()
-        .flatten()
-        .collect();
+    .into_iter()
+    .flatten()
+    .collect();
     match found.as_slice() {
         [one] => Some(one.clone()),
         _ => None,
@@ -120,7 +124,9 @@ fn wit(w: &[String]) -> Option<String> {
     // "You can tune it down. It's in the setting." -- the setting that
     // makes Atlas less of a smart-ass, said without naming it. Only with the
     // setting mentioned, so "tone it down in the email" stays the email's.
-    if (has_phrase(w, "tune it down") || has_phrase(w, "tone it down")) && has_any(w, &["setting", "settings"]) {
+    if (has_phrase(w, "tune it down") || has_phrase(w, "tone it down"))
+        && has_any(w, &["setting", "settings"])
+    {
         return Some("tone it down".into());
     }
     None
@@ -128,26 +134,69 @@ fn wit(w: &[String]) -> Option<String> {
 
 /// "Organize my desktop", "clean up the desktop", "tidy my desktop".
 fn desktop(w: &[String]) -> Option<String> {
-    let verb = has_any(w, &["organize", "organise", "organizing", "organising", "tidy", "clean", "sort", "arrange", "declutter", "neaten"]);
+    let verb = has_any(
+        w,
+        &[
+            "organize",
+            "organise",
+            "organizing",
+            "organising",
+            "tidy",
+            "clean",
+            "sort",
+            "arrange",
+            "declutter",
+            "neaten",
+        ],
+    );
     (verb && has(w, "desktop")).then(|| "tidy my desktop".into())
 }
 
 /// "Look at my screen and tell me...", "what do you see on my screen",
 /// "can you read my screen".
 fn screen(w: &[String]) -> Option<String> {
-    let on_screen = has_phrase(w, "my screen") || has_phrase(w, "the screen") || has_phrase(w, "my display") || has_phrase(w, "my monitor");
-    let looking = has_any(w, &["look", "see", "read", "check", "view", "describe", "watch"]) || has_phrase(w, "whats on");
+    let on_screen = has_phrase(w, "my screen")
+        || has_phrase(w, "the screen")
+        || has_phrase(w, "my display")
+        || has_phrase(w, "my monitor");
+    let looking = has_any(
+        w,
+        &["look", "see", "read", "check", "view", "describe", "watch"],
+    ) || has_phrase(w, "whats on");
     // Not the settings of the screen ("turn my screen brightness down").
-    let settings = has_any(w, &["brightness", "resolution", "wallpaper", "background", "lock", "record", "recording", "share", "sharing"]);
+    let settings = has_any(
+        w,
+        &[
+            "brightness",
+            "resolution",
+            "wallpaper",
+            "background",
+            "lock",
+            "record",
+            "recording",
+            "share",
+            "sharing",
+        ],
+    );
     (on_screen && looking && !settings).then(|| "look at my screen".into())
 }
 
 /// "Do a diagnosis on yourself", "generate a report on yourself", "check
 /// yourself", "run a diagnostic".
 fn self_check(w: &[String]) -> Option<String> {
-    let yourself = has(w, "yourself") || has_phrase(w, "your self") || has_phrase(w, "on you") || has_phrase(w, "your own");
-    let checking = w.iter().any(|x| x.starts_with("diagnos") || x.starts_with("self"))
-        || has_any(w, &["check", "report", "test", "examine", "audit", "checkup", "inspect", "health"]);
+    let yourself = has(w, "yourself")
+        || has_phrase(w, "your self")
+        || has_phrase(w, "on you")
+        || has_phrase(w, "your own");
+    let checking = w
+        .iter()
+        .any(|x| x.starts_with("diagnos") || x.starts_with("self"))
+        || has_any(
+            w,
+            &[
+                "check", "report", "test", "examine", "audit", "checkup", "inspect", "health",
+            ],
+        );
     // "Work on yourself" / "fix yourself" / "improve yourself" are other
     // commands (`work_on_yourself`).
     let changing = has_any(w, &["fix", "improve", "change", "rewrite", "code"]);
@@ -158,9 +207,34 @@ fn self_check(w: &[String]) -> Option<String> {
 /// not set up yet".
 fn setup_left(w: &[String]) -> Option<String> {
     let set_up = has_phrase(w, "set up") || has(w, "setup") || has_phrase(w, "setting up");
-    let left = has_any(w, &["still", "left", "missing", "remaining", "outstanding", "yet", "needs", "need", "unfinished"]);
+    let left = has_any(
+        w,
+        &[
+            "still",
+            "left",
+            "missing",
+            "remaining",
+            "outstanding",
+            "yet",
+            "needs",
+            "need",
+            "unfinished",
+        ],
+    );
     // "Set up a meeting", "set up my printer": something else being set up.
-    let other = has_any(w, &["meeting", "call", "printer", "reminder", "account", "email", "phone", "appointment"]);
+    let other = has_any(
+        w,
+        &[
+            "meeting",
+            "call",
+            "printer",
+            "reminder",
+            "account",
+            "email",
+            "phone",
+            "appointment",
+        ],
+    );
     (set_up && left && !other).then(|| "what's left to set up".into())
 }
 
@@ -175,23 +249,80 @@ fn one_ask(w: &[String]) -> bool {
 /// 2026): each went to the model to be routed, ten to sixteen seconds on the
 /// laptop, for a reading the rules can name.
 fn machine(w: &[String]) -> Option<String> {
-    let slow = has_phrase(w, "running slow") || has_phrase(w, "so slow") || has_phrase(w, "really slow") || has_phrase(w, "is slow");
-    let memory = has_any(w, &["memory", "ram"]) && has_any(w, &["eating", "using", "hogging", "taking", "full"]);
-    let space = ["how much space", "how much storage", "how much disk", "space left", "storage left", "space have i", "space do i", "free space", "disk space", "how full is"]
-        .iter()
-        .any(|p| has_phrase(w, p));
-    let about_the_machine = has_any(w, &["laptop", "computer", "pc", "machine", "thing", "disk", "drive", "memory", "ram", "space", "storage", "this"]);
+    let slow = has_phrase(w, "running slow")
+        || has_phrase(w, "so slow")
+        || has_phrase(w, "really slow")
+        || has_phrase(w, "is slow");
+    let memory = has_any(w, &["memory", "ram"])
+        && has_any(w, &["eating", "using", "hogging", "taking", "full"]);
+    let space = [
+        "how much space",
+        "how much storage",
+        "how much disk",
+        "space left",
+        "storage left",
+        "space have i",
+        "space do i",
+        "free space",
+        "disk space",
+        "how full is",
+    ]
+    .iter()
+    .any(|p| has_phrase(w, p));
+    let about_the_machine = has_any(
+        w,
+        &[
+            "laptop", "computer", "pc", "machine", "thing", "disk", "drive", "memory", "ram",
+            "space", "storage", "this",
+        ],
+    );
     // "Speed it up" / "close what isn't needed" is the tune-up (`pc_tune`);
     // a slow app or website is about that app.
-    let acting = has_any(w, &["close", "kill", "speed", "fix", "optimize", "optimise", "clean", "clear", "free"]) && !space;
-    let elsewhere = has_any(w, &["website", "site", "internet", "wifi", "connection", "game", "video", "email"]);
-    ((slow || memory || space) && about_the_machine && !acting && !elsewhere).then(|| "how's the machine".into())
+    let acting = has_any(
+        w,
+        &[
+            "close", "kill", "speed", "fix", "optimize", "optimise", "clean", "clear", "free",
+        ],
+    ) && !space;
+    let elsewhere = has_any(
+        w,
+        &[
+            "website",
+            "site",
+            "internet",
+            "wifi",
+            "connection",
+            "game",
+            "video",
+            "email",
+        ],
+    );
+    ((slow || memory || space) && about_the_machine && !acting && !elsewhere)
+        .then(|| "how's the machine".into())
 }
 
 /// Names a mode usually has.
 const MODE_NAMES: &[&str] = &[
-    "focus", "work", "gaming", "game", "study", "quiet", "call", "meeting", "presentation", "research", "reading",
-    "writing", "night", "deep", "editing", "streaming", "recording", "travel", "public", "cafe",
+    "focus",
+    "work",
+    "gaming",
+    "game",
+    "study",
+    "quiet",
+    "call",
+    "meeting",
+    "presentation",
+    "research",
+    "reading",
+    "writing",
+    "night",
+    "deep",
+    "editing",
+    "streaming",
+    "recording",
+    "travel",
+    "public",
+    "cafe",
 ];
 
 /// "Go into focus", "switch to focus mode", "focus mode on": a mode, named
@@ -199,7 +330,10 @@ const MODE_NAMES: &[&str] = &[
 /// sentence carries on to the model (self-test, 4 Oct 2026: "go into focus"
 /// went to the model, 6 s, to be told there is no focus mode).
 fn a_mode(w: &[String]) -> Option<String> {
-    let lead = matches!((w.first().map(|s| s.as_str()), w.get(1).map(|s| s.as_str())), (Some("go"), Some("into")) | (Some("switch"), Some("to")) | (Some("enter"), _));
+    let lead = matches!(
+        (w.first().map(|s| s.as_str()), w.get(1).map(|s| s.as_str())),
+        (Some("go"), Some("into")) | (Some("switch"), Some("to")) | (Some("enter"), _)
+    );
     let named = w.iter().find(|x| MODE_NAMES.contains(&x.as_str()))?;
     let said_mode = has(w, "mode");
     let short = w.len() <= 4;
@@ -208,9 +342,34 @@ fn a_mode(w: &[String]) -> Option<String> {
 
 /// Kinds of file a person names when looking for one.
 const FILE_KINDS: &[&str] = &[
-    "pdf", "pdfs", "file", "files", "document", "documents", "doc", "docx", "spreadsheet", "spreadsheets", "xlsx", "csv",
-    "photo", "photos", "picture", "pictures", "presentation", "slides", "receipt", "receipts", "invoice", "invoices",
-    "contract", "lease", "statement", "screenshot", "screenshots", "folder",
+    "pdf",
+    "pdfs",
+    "file",
+    "files",
+    "document",
+    "documents",
+    "doc",
+    "docx",
+    "spreadsheet",
+    "spreadsheets",
+    "xlsx",
+    "csv",
+    "photo",
+    "photos",
+    "picture",
+    "pictures",
+    "presentation",
+    "slides",
+    "receipt",
+    "receipts",
+    "invoice",
+    "invoices",
+    "contract",
+    "lease",
+    "statement",
+    "screenshot",
+    "screenshots",
+    "folder",
 ];
 
 /// "Find the tax pdf from last year", "where's that invoice from March",
@@ -226,7 +385,21 @@ fn find_a_file(w: &[String]) -> Option<String> {
         return None;
     }
     // "Find me a flight", "find out", "find a gig": not a file.
-    if has_any(w, &["out", "flight", "flights", "gig", "gigs", "job", "jobs", "restaurant", "hotel", "song"]) {
+    if has_any(
+        w,
+        &[
+            "out",
+            "flight",
+            "flights",
+            "gig",
+            "gigs",
+            "job",
+            "jobs",
+            "restaurant",
+            "hotel",
+            "song",
+        ],
+    ) {
         return None;
     }
     let what: Vec<&str> = w[start..]
@@ -240,9 +413,30 @@ fn find_a_file(w: &[String]) -> Option<String> {
 /// "Anything new come in by email", "any mail today", "did I get an email".
 fn new_mail(w: &[String]) -> Option<String> {
     let mail = has_any(w, &["email", "emails", "mail", "inbox", "gmail", "outlook"]);
-    let asking = w.first().is_some_and(|x| ["any", "anything", "did", "is", "has", "have", "check", "whats"].contains(&x.as_str()));
-    let new = has_any(w, &["new", "received", "unread"]) || has_phrase(w, "come in") || (asking && has_any(w, &["any", "anything", "check", "inbox"]));
-    let writing = has_any(w, &["send", "write", "draft", "reply", "forward", "unsubscribe", "address", "account", "set", "add"]);
+    let asking = w.first().is_some_and(|x| {
+        [
+            "any", "anything", "did", "is", "has", "have", "check", "whats",
+        ]
+        .contains(&x.as_str())
+    });
+    let new = has_any(w, &["new", "received", "unread"])
+        || has_phrase(w, "come in")
+        || (asking && has_any(w, &["any", "anything", "check", "inbox"]));
+    let writing = has_any(
+        w,
+        &[
+            "send",
+            "write",
+            "draft",
+            "reply",
+            "forward",
+            "unsubscribe",
+            "address",
+            "account",
+            "set",
+            "add",
+        ],
+    );
     (mail && new && !writing).then(|| "check my email".into())
 }
 
@@ -254,7 +448,9 @@ fn how_a_post_did(w: &[String]) -> Option<String> {
     if !(last && post && how) {
         return None;
     }
-    let on = ["youtube", "tiktok", "instagram", "linkedin", "bluesky"].into_iter().find(|p| has(w, p));
+    let on = ["youtube", "tiktok", "instagram", "linkedin", "bluesky"]
+        .into_iter()
+        .find(|p| has(w, p));
     Some(match on {
         Some(p) => format!("how did my last video do on {p}"),
         None => "how did my last video do".into(),
@@ -262,7 +458,24 @@ fn how_a_post_did(w: &[String]) -> Option<String> {
 }
 
 /// Words a microphone is known by, for "use my webcam mic".
-const MIC_KINDS: &[&str] = &["webcam", "camera", "cam", "headset", "headphones", "usb", "laptop", "builtin", "airpods", "bluetooth", "desk", "external", "blue", "yeti", "rode", "shure"];
+const MIC_KINDS: &[&str] = &[
+    "webcam",
+    "camera",
+    "cam",
+    "headset",
+    "headphones",
+    "usb",
+    "laptop",
+    "builtin",
+    "airpods",
+    "bluetooth",
+    "desk",
+    "external",
+    "blue",
+    "yeti",
+    "rode",
+    "shure",
+];
 
 /// "Use my webcam mic", "listen with the webcam microphone", "switch to the
 /// headset mic" -- the kind named (not one after "not": "using my webcam mic
@@ -271,15 +484,22 @@ fn microphone(w: &[String]) -> Option<String> {
     if !(has(w, "mic") || has(w, "microphone")) {
         return None;
     }
-    let wants = has_any(w, &["use", "using", "listen", "switch", "try", "change", "hear"]);
+    let wants = has_any(
+        w,
+        &["use", "using", "listen", "switch", "try", "change", "hear"],
+    );
     if !wants {
         return None;
     }
     let mut picked: Vec<&str> = Vec::new();
     for (i, x) in w.iter().enumerate() {
-        let Some(kind) = MIC_KINDS.iter().find(|k| **k == x.as_str()) else { continue };
+        let Some(kind) = MIC_KINDS.iter().find(|k| **k == x.as_str()) else {
+            continue;
+        };
         // Said as the one NOT to use.
-        let negated = w[i.saturating_sub(3)..i].iter().any(|p| p == "not" || p == "instead" || p == "than");
+        let negated = w[i.saturating_sub(3)..i]
+            .iter()
+            .any(|p| p == "not" || p == "instead" || p == "than");
         if !negated && !picked.contains(kind) {
             picked.push(kind);
         }
@@ -301,15 +521,39 @@ pub fn refers_to_screen(said: &str, app: &str) -> bool {
     if w.is_empty() {
         return false;
     }
-    const WORDS: &[&str] = &["screen", "window", "windows", "display", "monitor", "tab", "page", "onscreen"];
+    const WORDS: &[&str] = &[
+        "screen", "window", "windows", "display", "monitor", "tab", "page", "onscreen",
+    ];
     if has_any(&w, WORDS) {
         return true;
     }
     const PHRASES: &[&str] = &[
-        "this app", "this program", "this chart", "this graph", "this document", "this file", "this site",
-        "this website", "this server", "this channel", "this chat", "this video", "this one here", "on here",
-        "in front of me", "im looking at", "i am looking at", "what am i looking at", "whats this", "what is this",
-        "look at this", "read this", "explain this", "see this", "what do you see", "can you see",
+        "this app",
+        "this program",
+        "this chart",
+        "this graph",
+        "this document",
+        "this file",
+        "this site",
+        "this website",
+        "this server",
+        "this channel",
+        "this chat",
+        "this video",
+        "this one here",
+        "on here",
+        "in front of me",
+        "im looking at",
+        "i am looking at",
+        "what am i looking at",
+        "whats this",
+        "what is this",
+        "look at this",
+        "read this",
+        "explain this",
+        "see this",
+        "what do you see",
+        "can you see",
     ];
     if PHRASES.iter().any(|p| has_phrase(&w, p)) {
         return true;

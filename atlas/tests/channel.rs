@@ -66,8 +66,13 @@ fn closing_puts_a_failure_first_and_then_checks_the_wording() {
     let r = run(&["Backing up."]);
     let steps = vec![Step::did("tidied"), Step::failed("backup", "disk full")];
     let (said, leaks) = r.close(&steps, "Tidied the desktop.");
-    assert!(said.starts_with("backup"), "the failure was not put first: {said}");
-    assert!(leaks.iter().all(|l| !matches!(l, Leak::RefersToAnUpdate(_))));
+    assert!(
+        said.starts_with("backup"),
+        "the failure was not put first: {said}"
+    );
+    assert!(leaks
+        .iter()
+        .all(|l| !matches!(l, Leak::RefersToAnUpdate(_))));
 }
 
 #[test]

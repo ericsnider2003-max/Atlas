@@ -131,7 +131,13 @@ fn parse_change(s: &mut &str) -> Option<Change> {
 
 impl Zone {
     pub fn utc() -> Zone {
-        Zone { name: "UTC".into(), spec: "UTC0".into(), std_abbr: "UTC".into(), std_off: 0, dst: None }
+        Zone {
+            name: "UTC".into(),
+            spec: "UTC0".into(),
+            std_abbr: "UTC".into(),
+            std_off: 0,
+            dst: None,
+        }
     }
 
     /// A fixed offset, `off` seconds east of UTC, with no daylight saving:
@@ -144,8 +150,19 @@ impl Zone {
         let a = off.unsigned_abs();
         let abbr = format!("{sign}{:02}{:02}", a / 3600, (a % 3600) / 60);
         // POSIX offsets are west-positive, so the sign flips in the spec.
-        let spec = format!("<{abbr}>{}{}:{:02}", if off > 0 { '-' } else { '+' }, a / 3600, (a % 3600) / 60);
-        Zone { name: format!("UTC{sign}{:02}:{:02}", a / 3600, (a % 3600) / 60), spec, std_abbr: abbr, std_off: off, dst: None }
+        let spec = format!(
+            "<{abbr}>{}{}:{:02}",
+            if off > 0 { '-' } else { '+' },
+            a / 3600,
+            (a % 3600) / 60
+        );
+        Zone {
+            name: format!("UTC{sign}{:02}:{:02}", a / 3600, (a % 3600) / 60),
+            spec,
+            std_abbr: abbr,
+            std_off: off,
+            dst: None,
+        }
     }
 
     /// A POSIX TZ string: `PST8PDT,M3.2.0,M11.1.0`, `<+0530>-5:30`, `CET-1CEST,M3.5.0,M10.5.0/3`.
@@ -154,14 +171,33 @@ impl Zone {
         let std_abbr = parse_abbr(&mut s)?;
         let std_off = -parse_hms(&mut s)?;
         if s.is_empty() {
-            return Some(Zone { name: spec.trim().into(), spec: spec.trim().into(), std_abbr, std_off, dst: None });
+            return Some(Zone {
+                name: spec.trim().into(),
+                spec: spec.trim().into(),
+                std_abbr,
+                std_off,
+                dst: None,
+            });
         }
         let dst_abbr = parse_abbr(&mut s)?;
-        let dst_off = if s.starts_with(',') || s.is_empty() { std_off + 3600 } else { -parse_hms(&mut s)? };
+        let dst_off = if s.starts_with(',') || s.is_empty() {
+            std_off + 3600
+        } else {
+            -parse_hms(&mut s)?
+        };
         // No rule given: POSIX leaves it to the implementation; the US rule is
         // what every libc uses.
         let (start, end) = if s.is_empty() {
-            (Change { when: When::Month(3, 2, 0), at: 7200 }, Change { when: When::Month(11, 1, 0), at: 7200 })
+            (
+                Change {
+                    when: When::Month(3, 2, 0),
+                    at: 7200,
+                },
+                Change {
+                    when: When::Month(11, 1, 0),
+                    at: 7200,
+                },
+            )
         } else {
             s = s.strip_prefix(',')?;
             let a = parse_change(&mut s)?;
@@ -172,24 +208,42 @@ impl Zone {
             }
             (a, b)
         };
-        Some(Zone { name: spec.trim().into(), spec: spec.trim().into(), std_abbr, std_off, dst: Some((dst_abbr, dst_off, start, end)) })
+        Some(Zone {
+            name: spec.trim().into(),
+            spec: spec.trim().into(),
+            std_abbr,
+            std_off,
+            dst: Some((dst_abbr, dst_off, start, end)),
+        })
     }
 
     /// An IANA name (`America/Los_Angeles`), a Windows name (`Pacific
     /// Standard Time`), `UTC`/`Z`, or a POSIX string.
     pub fn named(name: &str) -> Option<Zone> {
         let n = name.trim().trim_matches('"');
-        if n.eq_ignore_ascii_case("utc") || n.eq_ignore_ascii_case("z") || n.eq_ignore_ascii_case("gmt") || n == "Etc/UTC" {
+        if n.eq_ignore_ascii_case("utc")
+            || n.eq_ignore_ascii_case("z")
+            || n.eq_ignore_ascii_case("gmt")
+            || n == "Etc/UTC"
+        {
             return Some(Zone::utc());
         }
-        let iana = WINDOWS.iter().find(|(w, _)| w.eq_ignore_ascii_case(n)).map(|(_, i)| *i).unwrap_or(n);
+        let iana = WINDOWS
+            .iter()
+            .find(|(w, _)| w.eq_ignore_ascii_case(n))
+            .map(|(_, i)| *i)
+            .unwrap_or(n);
         if let Some((_, p)) = IANA.iter().find(|(i, _)| i.eq_ignore_ascii_case(iana)) {
             let mut z = Zone::posix(p)?;
             z.name = iana.to_string();
             return Some(z);
         }
         // Outlook sometimes writes "(UTC-08:00) Pacific Time (US & Canada)".
-        if let Some(i) = WINDOWS_DISPLAY.iter().find(|(d, _)| n.contains(d)).map(|(_, i)| *i) {
+        if let Some(i) = WINDOWS_DISPLAY
+            .iter()
+            .find(|(d, _)| n.contains(d))
+            .map(|(_, i)| *i)
+        {
             return Zone::named(i);
         }
         Zone::posix(n)
@@ -198,7 +252,11 @@ impl Zone {
     fn change_utc(&self, year: i64, c: &Change, off_before: i64) -> i64 {
         let day = match c.when {
             When::Julian1(n) => {
-                let leap_skip = if crate::civil::is_leap(year) && n >= 60 { 1 } else { 0 };
+                let leap_skip = if crate::civil::is_leap(year) && n >= 60 {
+                    1
+                } else {
+                    0
+                };
                 days_from_civil(year, 1, 1) + n as i64 - 1 + leap_skip
             }
             When::Julian0(n) => days_from_civil(year, 1, 1) + n as i64,
@@ -217,7 +275,9 @@ impl Zone {
     }
 
     fn in_dst(&self, utc: i64) -> bool {
-        let Some((_, dst_off, start, end)) = &self.dst else { return false };
+        let Some((_, dst_off, start, end)) = &self.dst else {
+            return false;
+        };
         let year = crate::civil::Civil::from_local(utc + self.std_off).year;
         let s = self.change_utc(year, start, self.std_off);
         let e = self.change_utc(year, end, *dst_off);
@@ -250,7 +310,9 @@ impl Zone {
     /// A wall-clock time in this zone, as UTC. Twice-happening times take the
     /// first; never-happening ones use the offset from before the gap.
     pub fn to_utc(&self, local: i64) -> i64 {
-        let Some((_, dst_off, ..)) = &self.dst else { return local - self.std_off };
+        let Some((_, dst_off, ..)) = &self.dst else {
+            return local - self.std_off;
+        };
         let as_std = local - self.std_off;
         let as_dst = local - dst_off;
         let std_ok = self.offset_at(as_std) == self.std_off;
@@ -313,7 +375,10 @@ pub fn machine() -> Zone {
 pub fn suggest() -> Option<Zone> {
     static ONCE: std::sync::OnceLock<Option<Zone>> = std::sync::OnceLock::new();
     ONCE.get_or_init(|| {
-        if let Some(z) = std::env::var("TZ").ok().and_then(|t| Zone::named(t.trim_start_matches(':'))) {
+        if let Some(z) = std::env::var("TZ")
+            .ok()
+            .and_then(|t| Zone::named(t.trim_start_matches(':')))
+        {
             return Some(z);
         }
         if cfg!(windows) {

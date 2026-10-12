@@ -30,7 +30,12 @@ pub fn offset_secs() -> i64 {
     // setting and fell back to UTC. Now one home zone: the setting if set,
     // otherwise this machine's clock.
     if let Some(z) = home_zone() {
-        return z.offset_at(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0));
+        return z.offset_at(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0),
+        );
     }
     machine_offset_secs()
 }
@@ -81,7 +86,11 @@ pub fn told_offset() -> Option<i64> {
     if let Some(p) = *PINNED.lock().unwrap_or_else(|p| p.into_inner()) {
         return Some(p);
     }
-    std::env::var("ATLAS_CLOCK_OFFSET").ok()?.trim().parse().ok()
+    std::env::var("ATLAS_CLOCK_OFFSET")
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 static PINNED: Mutex<Option<i64>> = Mutex::new(None);
@@ -184,7 +193,9 @@ fn offset_at(t: u64) -> i64 {
         Some(z) => z.offset_at(t as i64),
         // This machine's zone, when it can be named, knows its rules;
         // otherwise the machine's offset now is all there is.
-        None => crate::tz::suggest().map(|z| z.offset_at(t as i64)).unwrap_or_else(machine_offset_secs),
+        None => crate::tz::suggest()
+            .map(|z| z.offset_at(t as i64))
+            .unwrap_or_else(machine_offset_secs),
     }
 }
 
@@ -262,9 +273,28 @@ pub fn spoken_now(t: u64, offset: i64) -> String {
         _ => (h24 - 12, "PM"),
     };
     let (_, month, dom) = civil_from_days(day(t, offset));
-    const DAYS: [&str; 7] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const DAYS: [&str; 7] = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ];
     const MONTHS: [&str; 12] = [
-        "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December",
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
     ];
     format!(
         "It's {h12}:{m:02} {ampm} on {} {dom} {}.",

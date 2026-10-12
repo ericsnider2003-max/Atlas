@@ -1,6 +1,6 @@
 //! The market commands: reading bars, the Fed calendar, trading and market
 //! readings, several time frames at once, and money.
-//! 
+//!
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
@@ -37,7 +37,11 @@ pub(super) fn run_fed() {
     println!();
     println!("What tried:");
     for r in tried {
-        let who = if r.from.is_empty() { "an unnamed source" } else { &r.from };
+        let who = if r.from.is_empty() {
+            "an unnamed source"
+        } else {
+            &r.from
+        };
         println!("  {who}: {}", r.orders_found().join(", "));
         // The text itself, quoted the same way it was quoted to the model --
         // so what is printed here cannot be mistaken for Atlas's own words
@@ -359,7 +363,10 @@ pub(super) fn run_market(args: &[String]) {
     };
     if pair.eq_ignore_ascii_case("buy") || pair.eq_ignore_ascii_case("sell") {
         println!("That's the direction, and the pair comes first now:");
-        println!("  atlas market {path} EURUSD {} <spread>", pair.to_lowercase());
+        println!(
+            "  atlas market {path} EURUSD {} <spread>",
+            pair.to_lowercase()
+        );
         return;
     }
 
@@ -429,7 +436,11 @@ pub(super) fn run_market(args: &[String]) {
             &view.high()[..last],
             &view.low()[..last],
             &view.close()[..last],
-            if view.time().is_empty() { &[] } else { &view.time()[..last] },
+            if view.time().is_empty() {
+                &[]
+            } else {
+                &view.time()[..last]
+            },
         );
         if let Err(e) = primed {
             println!("  (couldn't read the forming bar: {})", e.0);
@@ -542,7 +553,10 @@ pub(super) fn run_market(args: &[String]) {
         });
     }
 
-    let purse = atlas::levels::Purse { balance: 10_000.0, value_per_point: 1.0 };
+    let purse = atlas::levels::Purse {
+        balance: 10_000.0,
+        value_per_point: 1.0,
+    };
     let rules = trading.levels;
     println!();
 
@@ -569,7 +583,10 @@ pub(super) fn run_market(args: &[String]) {
             .collect();
     supporting.sort_by(|a, b| b.1.magnitude.total_cmp(&a.1.magnitude));
     if supporting.is_empty() {
-        println!("Nothing in the claim vocabulary backs {} here.", side.as_claim().say());
+        println!(
+            "Nothing in the claim vocabulary backs {} here.",
+            side.as_claim().say()
+        );
     } else {
         println!("Claims backing {}, strongest first:", side.as_claim().say());
         for (k, v) in &supporting {
@@ -587,7 +604,10 @@ pub(super) fn run_market(args: &[String]) {
         Ok(idea) => {
             println!("{}", idea.spoken());
             println!("  on a 10,000 balance risking 1%: {:.0} units", idea.size);
-            println!("  the spread costs {:.1}% of what it's aiming at", idea.cost_share * 100.0);
+            println!(
+                "  the spread costs {:.1}% of what it's aiming at",
+                idea.cost_share * 100.0
+            );
             turned_down.proposed(&pair);
 
             // Asked before the trade, which is the only time the answer is
@@ -679,8 +699,16 @@ pub(super) fn run_money(cfg: &Config, args: &[String]) {
     use atlas::money::{self, Entry};
 
     let store = atlas::roots::store();
-    let mcfg = cfg.tools.as_ref().map(|t| t.money.clone()).unwrap_or_default();
-    let fcfg = cfg.tools.as_ref().map(|t| t.finance.clone()).unwrap_or_default();
+    let mcfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.money.clone())
+        .unwrap_or_default();
+    let fcfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.finance.clone())
+        .unwrap_or_default();
     let now = atlas::store::now();
     let flag = |name: &str| atlas::cli::flag_value(args, name);
 

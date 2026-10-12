@@ -8,7 +8,11 @@
 use atlas::consent::{explain, ConsentConfig, Recorder, Scope, State, Step, QUESTION};
 
 fn rec() -> Recorder {
-    Recorder::new(ConsentConfig { enabled: true, ask_every_call: false, ..Default::default() })
+    Recorder::new(ConsentConfig {
+        enabled: true,
+        ask_every_call: false,
+        ..Default::default()
+    })
 }
 
 #[test]
@@ -22,7 +26,10 @@ fn asking_is_what_ships() {
 #[test]
 fn the_call_is_asked_and_nobody_else_is_recorded_until_they_say_yes() {
     let mut c = rec();
-    assert_eq!(c.call_started(Scope::Everyone), Step::Announce(QUESTION.to_string()));
+    assert_eq!(
+        c.call_started(Scope::Everyone),
+        Step::Announce(QUESTION.to_string())
+    );
     // The question landed: your side is noted while they answer.
     assert_eq!(c.announcement_delivered(), Step::Start(Scope::YouOnly));
     assert_eq!(c.state, State::Asking);
@@ -73,7 +80,11 @@ fn a_call_ending_while_asking_keeps_your_side() {
 
 #[test]
 fn it_says_it_asks() {
-    let said = explain(&ConsentConfig { enabled: true, default_scope: Scope::Everyone, ..Default::default() });
+    let said = explain(&ConsentConfig {
+        enabled: true,
+        default_scope: Scope::Everyone,
+        ..Default::default()
+    });
     assert_eq!(said.matches("wait for a yes").count(), 1, "{said}");
     assert!(!said.contains("I tell everyone first"), "{said}");
 }

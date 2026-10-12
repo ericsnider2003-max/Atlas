@@ -19,7 +19,7 @@
 //! Talking stays on the model on this machine: free, and quick to answer.
 //! What goes out is scrubbed first, like everything else that leaves.
 
-use crate::brain::{ChatReply, ChatRequest, LongReply, Llm};
+use crate::brain::{ChatReply, ChatRequest, Llm, LongReply};
 use crate::error::{AtlasError, Result};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -77,11 +77,17 @@ pub fn set_key(key: Option<String>) {
 }
 
 pub fn has_key() -> bool {
-    KEY.lock().or_else(crate::crash::unpoison).map(|k| k.is_some()).unwrap_or(false)
+    KEY.lock()
+        .or_else(crate::crash::unpoison)
+        .map(|k| k.is_some())
+        .unwrap_or(false)
 }
 
 fn key() -> Option<String> {
-    KEY.lock().or_else(crate::crash::unpoison).ok().and_then(|k| k.clone())
+    KEY.lock()
+        .or_else(crate::crash::unpoison)
+        .ok()
+        .and_then(|k| k.clone())
 }
 
 // ---------------------------------------------------------------- the money
@@ -146,7 +152,11 @@ pub fn restore(l: &Ledger, cap_usd: f64, now: u64) {
 /// The ledger as it stands, for the daemon to keep.
 pub fn ledger(now: u64) -> Ledger {
     roll_month(now);
-    Ledger { month: month_of(now), spent_usd: SPENT_MICRO.load(Ordering::SeqCst) as f64 / 1e6, calls: CALLS.load(Ordering::SeqCst) }
+    Ledger {
+        month: month_of(now),
+        spent_usd: SPENT_MICRO.load(Ordering::SeqCst) as f64 / 1e6,
+        calls: CALLS.load(Ordering::SeqCst),
+    }
 }
 
 fn to_micro(usd: f64) -> u64 {
@@ -179,7 +189,8 @@ pub fn ready(now: u64) -> bool {
 
 /// What one answer cost, from the token counts it reports.
 fn cost_usd(prompt_tokens: u64, completion_tokens: u64, cfg: &MuseConfig) -> f64 {
-    prompt_tokens as f64 / 1e6 * cfg.price_in_per_million + completion_tokens as f64 / 1e6 * cfg.price_out_per_million
+    prompt_tokens as f64 / 1e6 * cfg.price_in_per_million
+        + completion_tokens as f64 / 1e6 * cfg.price_out_per_million
 }
 
 fn charge(usd: f64, now: u64) {
@@ -192,8 +203,17 @@ fn charge(usd: f64, now: u64) {
 pub fn spent_sentence(now: u64) -> String {
     let l = ledger(now);
     let cap = CAP_MICRO.load(Ordering::SeqCst) as f64 / 1e6;
-    let limit = if cap > 0.0 { format!(" of your ${cap:.2} limit") } else { " (no limit set)".to_string() };
-    format!("${:.2}{limit} this month, {} answer{}", l.spent_usd, l.calls, if l.calls == 1 { "" } else { "s" })
+    let limit = if cap > 0.0 {
+        format!(" of your ${cap:.2} limit")
+    } else {
+        " (no limit set)".to_string()
+    };
+    format!(
+        "${:.2}{limit} this month, {} answer{}",
+        l.spent_usd,
+        l.calls,
+        if l.calls == 1 { "" } else { "s" }
+    )
 }
 
 // ---------------------------------------------------------------- asking
@@ -201,8 +221,18 @@ pub fn spent_sentence(now: u64) -> String {
 /// The request body: an OpenAI-shaped chat, with Meta's effort setting.
 /// Meta refuses `stop`, `logprobs`, `n` and an effort of "none", so none of
 /// them is ever sent.
-pub fn muse_request(cfg: &MuseConfig, system: &str, user: &str, max_tokens: u32, effort: &str) -> String {
-    let effort = if EFFORTS.contains(&effort) { effort } else { "medium" };
+pub fn muse_request(
+    cfg: &MuseConfig,
+    system: &str,
+    user: &str,
+    max_tokens: u32,
+    effort: &str,
+) -> String {
+    let effort = if EFFORTS.contains(&effort) {
+        effort
+    } else {
+        "medium"
+    };
     serde_json::json!({
         "model": cfg.model,
         "messages": [
@@ -222,9 +252,14 @@ pub fn answer_of(raw: &str) -> std::result::Result<(String, bool, u64, u64), Str
         let short: String = raw.chars().take(160).collect();
         format!("not an answer: {short}")
     })?;
-    let used = |k: &str| crate::brain::dig(&v, &format!("usage.{k}")).and_then(|x| x.as_u64()).unwrap_or(0);
+    let used = |k: &str| {
+        crate::brain::dig(&v, &format!("usage.{k}"))
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0)
+    };
     let (tin, tout) = (used("prompt_tokens"), used("completion_tokens"));
-    if let Some(text) = crate::brain::dig(&v, "choices.0.message.content").and_then(|t| t.as_str()) {
+    if let Some(text) = crate::brain::dig(&v, "choices.0.message.content").and_then(|t| t.as_str())
+    {
         let text = crate::phonemodel::without_thinking(text).trim().to_string();
         if text.is_empty() {
             return Err("an empty answer".into());
@@ -257,7 +292,10 @@ fn send_for_real(key: &str, body: &str) -> std::result::Result<String, String> {
         401 | 403 => Err("Meta refused the key -- connect Muse again with a new one".into()),
         402 => Err("Meta says the account needs a payment method or more credit".into()),
         429 => Err("Meta asked to slow down; try again in a minute".into()),
-        s => Err(format!("Meta answered {s}: {}", r.body.chars().take(160).collect::<String>())),
+        s => Err(format!(
+            "Meta answered {s}: {}",
+            r.body.chars().take(160).collect::<String>()
+        )),
     }
 }
 
@@ -265,8 +303,15 @@ fn send_for_real(key: &str, body: &str) -> std::result::Result<String, String> {
 /// nothing.
 pub fn check_key(key: &str) -> std::result::Result<(), String> {
     let auth = format!("Bearer {key}");
-    let (r, _) = crate::http::https_call("GET", HOST, "/v1/models", &[("Authorization", auth.as_str())], None, std::time::Duration::from_secs(20))
-        .map_err(|e| format!("couldn't reach Meta: {e}"))?;
+    let (r, _) = crate::http::https_call(
+        "GET",
+        HOST,
+        "/v1/models",
+        &[("Authorization", auth.as_str())],
+        None,
+        std::time::Duration::from_secs(20),
+    )
+    .map_err(|e| format!("couldn't reach Meta: {e}"))?;
     match r.status {
         200 => Ok(()),
         401 | 403 => Err("Meta says the key isn't valid".into()),
@@ -282,7 +327,10 @@ pub struct MuseSpark {
 
 impl MuseSpark {
     pub fn new(cfg: MuseConfig) -> MuseSpark {
-        MuseSpark { cfg, send: Box::new(send_for_real) }
+        MuseSpark {
+            cfg,
+            send: Box::new(send_for_real),
+        }
     }
 
     pub fn with_sender(cfg: MuseConfig, send: Sender) -> MuseSpark {
@@ -291,13 +339,21 @@ impl MuseSpark {
 
     /// One question, scrubbed on the way out and put back on the way in,
     /// counted against the month's limit.
-    pub fn ask(&self, system: &str, user: &str, max_tokens: u32, effort: &str) -> Result<LongReply> {
+    pub fn ask(
+        &self,
+        system: &str,
+        user: &str,
+        max_tokens: u32,
+        effort: &str,
+    ) -> Result<LongReply> {
         let now = crate::store::now();
         if crate::phonemode::on() && !crate::phonemode::online_ok() {
             return Err(AtlasError::Platform(crate::phonemode::ASK_ONLINE.into()));
         }
         let Some(key) = key() else {
-            return Err(AtlasError::Platform("Muse isn't connected (Accounts page, Muse Spark)".into()));
+            return Err(AtlasError::Platform(
+                "Muse isn't connected (Accounts page, Muse Spark)".into(),
+            ));
         };
         if over_cap(now) {
             return Err(AtlasError::Platform(format!("Muse has reached this month's limit ({}); it starts again next month, or raise the limit on the Accounts page", spent_sentence(now))));
@@ -307,10 +363,18 @@ impl MuseSpark {
         if let Some(note) = scrub.say() {
             system.push_str(&format!("\n\n({note}; they appear as placeholders like ⟦EMAIL_1⟧. Use the placeholders exactly as written.)"));
         }
-        let raw = (self.send)(&key, &muse_request(&self.cfg, &system, &user, max_tokens, effort)).map_err(AtlasError::Platform)?;
-        let (text, cut_off, tin, tout) = answer_of(&raw).map_err(|e| AtlasError::Platform(format!("Muse: {e}")))?;
+        let raw = (self.send)(
+            &key,
+            &muse_request(&self.cfg, &system, &user, max_tokens, effort),
+        )
+        .map_err(AtlasError::Platform)?;
+        let (text, cut_off, tin, tout) =
+            answer_of(&raw).map_err(|e| AtlasError::Platform(format!("Muse: {e}")))?;
         charge(cost_usd(tin, tout, &self.cfg), now);
-        Ok(LongReply { text: scrub.put_back(&text), cut_off })
+        Ok(LongReply {
+            text: scrub.put_back(&text),
+            cut_off,
+        })
     }
 }
 
@@ -357,7 +421,12 @@ impl Llm for MuseFirst {
         self.rest.chat(req, on_text)
     }
 
-    fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> Result<ChatReply> {
+    fn chat_until(
+        &self,
+        req: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        keep_going: &dyn Fn() -> bool,
+    ) -> Result<ChatReply> {
         self.rest.chat_until(req, on_text, keep_going)
     }
 
@@ -396,7 +465,13 @@ impl Llm for MuseFirst {
 pub fn asked_of_muse(said: &str) -> Option<String> {
     let t = said.trim();
     let low = t.to_ascii_lowercase();
-    for p in ["ask muse spark ", "ask muse ", "muse spark, ", "muse, ", "hey muse "] {
+    for p in [
+        "ask muse spark ",
+        "ask muse ",
+        "muse spark, ",
+        "muse, ",
+        "hey muse ",
+    ] {
         if low.starts_with(p) {
             let q = t[p.len()..].trim().trim_start_matches([',', ':']).trim();
             let q = q.strip_prefix("to ").unwrap_or(q);

@@ -95,24 +95,47 @@ pub struct Known {
 }
 
 fn first_word(s: &str) -> String {
-    s.split_whitespace().next().unwrap_or("").trim_matches(|c: char| !c.is_alphanumeric()).to_ascii_lowercase()
+    s.split_whitespace()
+        .next()
+        .unwrap_or("")
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_ascii_lowercase()
 }
 
 /// A number after a verb: "open 2", "done 3", "read the second".
 pub fn numbered_reply(said: &str, verbs: &[&str], count: usize) -> Option<(String, usize)> {
-    let low = said.trim().trim_end_matches(['.', '!']).to_ascii_lowercase();
+    let low = said
+        .trim()
+        .trim_end_matches(['.', '!'])
+        .to_ascii_lowercase();
     let words: Vec<&str> = low.split_whitespace().collect();
     let (verb, rest) = verbs.iter().find_map(|v| {
         let vw: Vec<&str> = v.split_whitespace().collect();
-        (words.len() > vw.len() && words[..vw.len()] == vw[..]).then(|| (v.to_string(), &words[vw.len()..]))
+        (words.len() > vw.len() && words[..vw.len()] == vw[..])
+            .then(|| (v.to_string(), &words[vw.len()..]))
     })?;
-    const ORD: &[(&str, usize)] = &[("first", 1), ("second", 2), ("third", 3), ("fourth", 4), ("fifth", 5), ("sixth", 6), ("seventh", 7), ("eighth", 8), ("ninth", 9), ("tenth", 10)];
+    const ORD: &[(&str, usize)] = &[
+        ("first", 1),
+        ("second", 2),
+        ("third", 3),
+        ("fourth", 4),
+        ("fifth", 5),
+        ("sixth", 6),
+        ("seventh", 7),
+        ("eighth", 8),
+        ("ninth", 9),
+        ("tenth", 10),
+    ];
     for w in rest {
         let w = w.trim_matches(|c: char| !c.is_alphanumeric());
         if matches!(w, "the" | "one" | "number" | "no") {
             continue;
         }
-        let n = w.parse::<usize>().ok().or_else(|| ORD.iter().find(|(o, _)| *o == w).map(|(_, n)| *n)).or_else(|| (w == "last").then_some(count))?;
+        let n = w
+            .parse::<usize>()
+            .ok()
+            .or_else(|| ORD.iter().find(|(o, _)| *o == w).map(|(_, n)| *n))
+            .or_else(|| (w == "last").then_some(count))?;
         return (1..=count).contains(&n).then(|| (verb, n - 1));
     }
     None
@@ -129,27 +152,73 @@ pub fn read_first(input: &str, k: &Known) -> Option<(Intent, &'static str)> {
     }
     let own = || said.to_string();
     match &k.follow {
-        Some(Follow::Files(n)) if numbered_reply(said, &["open", "show", "merge", "extract", "sign"], *n).is_some() || crate::findfile::which(said, *n).is_some() => {
+        Some(Follow::Files(n))
+            if numbered_reply(said, &["open", "show", "merge", "extract", "sign"], *n)
+                .is_some()
+                || crate::findfile::which(said, *n).is_some() =>
+        {
             let v = first_word(said);
-            return Some(if v == "open" || v == "show" { (Intent::FindFile(own()), "find_file") } else { (Intent::Pdf(own()), "pdf") });
+            return Some(if v == "open" || v == "show" {
+                (Intent::FindFile(own()), "find_file")
+            } else {
+                (Intent::Pdf(own()), "pdf")
+            });
         }
-        Some(Follow::Review(n)) if numbered_reply(said, &["keep", "drop", "done with", "bin"], *n).is_some() || said.trim().trim_end_matches('.').eq_ignore_ascii_case("keep all") => {
+        Some(Follow::Review(n))
+            if numbered_reply(said, &["keep", "drop", "done with", "bin"], *n).is_some()
+                || said
+                    .trim()
+                    .trim_end_matches('.')
+                    .eq_ignore_ascii_case("keep all") =>
+        {
             return Some((Intent::NoteReview(own()), "note_review"))
         }
-        Some(Follow::Launch(n)) if numbered_reply(said, &["open", "launch", "start"], *n).is_some() => return Some((Intent::Launch(own()), "launch")),
-        Some(Follow::Waiting(n)) if numbered_reply(said, &["done", "not a promise", "not a request", "wrong", "close"], *n).is_some() => {
+        Some(Follow::Launch(n))
+            if numbered_reply(said, &["open", "launch", "start"], *n).is_some() =>
+        {
+            return Some((Intent::Launch(own()), "launch"))
+        }
+        Some(Follow::Waiting(n))
+            if numbered_reply(
+                said,
+                &["done", "not a promise", "not a request", "wrong", "close"],
+                *n,
+            )
+            .is_some() =>
+        {
             return Some((Intent::WaitingFor(own()), "waiting_for"))
         }
-        Some(Follow::Feeds(n)) if numbered_reply(said, &["read", "open", "save", "skip", "keep"], *n).is_some() => return Some((Intent::Feeds(own()), "feeds")),
-        Some(Follow::Opportunities(n)) if crate::hunt::understand(said, *n).is_some() => return Some((Intent::Opportunities(own()), "opportunities")),
-        Some(Follow::Quiz) if crate::srs::Grade::read(said).is_some() || matches!(said.to_ascii_lowercase().trim_end_matches(['.', '!']), "show" | "show me" | "flip" | "answer" | "stop" | "that's enough" | "done") => {
+        Some(Follow::Feeds(n))
+            if numbered_reply(said, &["read", "open", "save", "skip", "keep"], *n).is_some() =>
+        {
+            return Some((Intent::Feeds(own()), "feeds"))
+        }
+        Some(Follow::Opportunities(n)) if crate::hunt::understand(said, *n).is_some() => {
+            return Some((Intent::Opportunities(own()), "opportunities"))
+        }
+        Some(Follow::Quiz)
+            if crate::srs::Grade::read(said).is_some()
+                || matches!(
+                    said.to_ascii_lowercase().trim_end_matches(['.', '!']),
+                    "show" | "show me" | "flip" | "answer" | "stop" | "that's enough" | "done"
+                ) =>
+        {
             return Some((Intent::Cards(own()), "cards"))
         }
-        Some(Follow::Trade(qs)) if crate::tradeday::read(qs, said).is_some() || said.eq_ignore_ascii_case("skip") => return Some((Intent::TradeDay(own()), "trade_day")),
+        Some(Follow::Trade(qs))
+            if crate::tradeday::read(qs, said).is_some() || said.eq_ignore_ascii_case("skip") =>
+        {
+            return Some((Intent::TradeDay(own()), "trade_day"))
+        }
         Some(Follow::Receipt) => {
             let low = said.to_ascii_lowercase();
             let low = low.trim_end_matches(['.', '!']);
-            if matches!(low, "yes" | "yes keep it" | "keep it" | "no" | "don't keep it") || (crate::receipts::amounts(said).len() == 1 && said.split_whitespace().count() <= 3) {
+            if matches!(
+                low,
+                "yes" | "yes keep it" | "keep it" | "no" | "don't keep it"
+            ) || (crate::receipts::amounts(said).len() == 1
+                && said.split_whitespace().count() <= 3)
+            {
                 return Some((Intent::Receipt(own()), "receipt"));
             }
         }
@@ -159,7 +228,9 @@ pub fn read_first(input: &str, k: &Known) -> Option<(Intent, &'static str)> {
         use crate::people::Asked;
         let knows = |who: &str| {
             let w = who.to_lowercase();
-            k.people.iter().any(|p| *p == w || p.split(' ').next() == Some(w.as_str()))
+            k.people
+                .iter()
+                .any(|p| *p == w || p.split(' ').next() == Some(w.as_str()))
         };
         let take = match &a {
             Asked::Talked { who } | Asked::About { who } => knows(who),
@@ -174,7 +245,9 @@ pub fn read_first(input: &str, k: &Known) -> Option<(Intent, &'static str)> {
         let take = match &a {
             Asked::Did { name } | Asked::Undo { name } => {
                 let n = name.to_lowercase();
-                k.habits.iter().any(|h| h.contains(&n) || n.contains(h.as_str()))
+                k.habits
+                    .iter()
+                    .any(|h| h.contains(&n) || n.contains(h.as_str()))
             }
             _ => true,
         };
@@ -183,7 +256,10 @@ pub fn read_first(input: &str, k: &Known) -> Option<(Intent, &'static str)> {
         }
     }
     // "Follow theverge.com": a site, by its address.
-    if let Some(rest) = said.strip_prefix("follow ").or_else(|| said.strip_prefix("Follow ")) {
+    if let Some(rest) = said
+        .strip_prefix("follow ")
+        .or_else(|| said.strip_prefix("Follow "))
+    {
         let r = rest.trim().trim_end_matches('.');
         if !r.contains(' ') && r.contains('.') && r.len() >= 4 {
             return Some((Intent::Feeds(own()), "feeds"));
@@ -273,7 +349,8 @@ pub struct Kit {
     prepped: std::collections::HashSet<(u64, u64)>,
     trade_asked: Option<(i64, crate::tradeday::When)>,
     last_look: u64,
-    feed_in_flight: Option<std::sync::mpsc::Receiver<(String, Result<crate::feeds::Parsed, String>)>>,
+    feed_in_flight:
+        Option<std::sync::mpsc::Receiver<(String, Result<crate::feeds::Parsed, String>)>>,
     chords: Option<std::sync::mpsc::Receiver<crate::chords::Does>>,
     chords_failed: Vec<crate::chords::Does>,
     /// What `social` keeps between turns (`social::glue`).
@@ -304,11 +381,18 @@ impl Kit {
     /// read by the brief worker; the worker never fills or writes these caches.
     pub(crate) fn brief_records(&self) -> Result<serde_json::Value, String> {
         crate::daemon::brief_snapshot_value(&(
-            &self.people, &self.habits, &self.deck, &self.journal, &self.taught,
+            &self.people,
+            &self.habits,
+            &self.deck,
+            &self.journal,
+            &self.taught,
         ))
     }
     pub fn follow(&self, now: u64) -> Option<Follow> {
-        self.follow.as_ref().filter(|(_, at)| now.saturating_sub(*at) <= FOLLOW_FOR).map(|(f, _)| f.clone())
+        self.follow
+            .as_ref()
+            .filter(|(_, at)| now.saturating_sub(*at) <= FOLLOW_FOR)
+            .map(|(f, _)| f.clone())
     }
 
     fn set_follow(&mut self, f: Option<Follow>, now: u64) {
@@ -329,8 +413,16 @@ impl Kit {
             .keys()
             .cloned()
             .collect();
-        let habits = loaded!(self, store, habits, HABITS).habits.iter().map(|h| h.name.to_lowercase()).collect();
-        Known { people, habits, follow: self.follow(now) }
+        let habits = loaded!(self, store, habits, HABITS)
+            .habits
+            .iter()
+            .map(|h| h.name.to_lowercase())
+            .collect();
+        Known {
+            people,
+            habits,
+            follow: self.follow(now),
+        }
     }
 }
 
@@ -354,7 +446,9 @@ pub fn unused_name(dir: &std::path::Path, stem: &str, what: &str, ext: &str) -> 
 
 impl Daemon<'_> {
     pub(crate) fn workday_cfg(&self) -> WorkdayConfig {
-        self.tools_ref().map(|t| t.workday.clone()).unwrap_or_default()
+        self.tools_ref()
+            .map(|t| t.workday.clone())
+            .unwrap_or_default()
     }
 
     fn local(&self, t: u64) -> u64 {
@@ -372,7 +466,10 @@ impl Daemon<'_> {
     }
 
     fn keep<T: Serialize>(&self, name: &str, v: &T) -> Option<String> {
-        self.store.save(name, v).err().map(|e| format!(" (I couldn't save that: {e})"))
+        self.store
+            .save(name, v)
+            .err()
+            .map(|e| format!(" (I couldn't save that: {e})"))
     }
 
     /// `keep` for a list loaded on demand (`loaded!`). It is always loaded by
@@ -388,7 +485,10 @@ impl Daemon<'_> {
     fn clips_on(&mut self) -> bool {
         let cfg = self.workday_cfg().clipboard_history;
         let store = &self.store;
-        *self.workday.clips_on.get_or_insert_with(|| store.load::<Option<bool>>(CLIPS_ON).unwrap_or(cfg.enabled))
+        *self
+            .workday
+            .clips_on
+            .get_or_insert_with(|| store.load::<Option<bool>>(CLIPS_ON).unwrap_or(cfg.enabled))
     }
 
     pub(crate) fn wd_clip_history(&mut self, said: &str, t: u64) -> String {
@@ -416,17 +516,28 @@ impl Daemon<'_> {
             self.workday.clips.clips.clear();
             return format!("Forgot {}.", plural(n, "copy"));
         }
-        if let Some((_, i)) = numbered_reply(said, &["paste", "copy", "put back", "give me", "restore", "use"], self.workday.clips.clips.len()) {
+        if let Some((_, i)) = numbered_reply(
+            said,
+            &["paste", "copy", "put back", "give me", "restore", "use"],
+            self.workday.clips.clips.len(),
+        ) {
             let recent = self.workday.clips.recent(usize::MAX);
-            let Some(c) = recent.get(i) else { return "There's no copy with that number.".into() };
+            let Some(c) = recent.get(i) else {
+                return "There's no copy with that number.".into();
+            };
             let text = c.text.clone();
             return match self.plat.write_clipboard(&text) {
-                Ok(()) => format!("It's back on your clipboard: {}", crate::cliphist::line(c, t)),
+                Ok(()) => format!(
+                    "It's back on your clipboard: {}",
+                    crate::cliphist::line(c, t)
+                ),
                 Err(e) => format!("I couldn't put it back: {e}"),
             };
         }
         self.workday.clips.forget(&cfg, t);
-        let q = ["find ", "search for ", "with ", "about ", "containing "].iter().find_map(|m| low.find(m).map(|i| said[i + m.len()..].trim().to_string()));
+        let q = ["find ", "search for ", "with ", "about ", "containing "]
+            .iter()
+            .find_map(|m| low.find(m).map(|i| said[i + m.len()..].trim().to_string()));
         let list: Vec<&crate::cliphist::Clip> = match &q {
             Some(q) if !q.is_empty() => self.workday.clips.find(q),
             _ => self.workday.clips.recent(10),
@@ -434,10 +545,21 @@ impl Daemon<'_> {
         if list.is_empty() {
             return match q {
                 Some(q) => format!("Nothing you copied matches \"{q}\"."),
-                None => self.workday.clips.describe(&crate::cliphist::HistoryConfig { enabled: true, ..cfg.clone() }),
+                None => self
+                    .workday
+                    .clips
+                    .describe(&crate::cliphist::HistoryConfig {
+                        enabled: true,
+                        ..cfg.clone()
+                    }),
             };
         }
-        let mut out: Vec<String> = list.iter().take(10).enumerate().map(|(i, c)| format!("{}. {}", i + 1, crate::cliphist::line(c, t))).collect();
+        let mut out: Vec<String> = list
+            .iter()
+            .take(10)
+            .enumerate()
+            .map(|(i, c)| format!("{}. {}", i + 1, crate::cliphist::line(c, t)))
+            .collect();
         out.push("\"Paste 2\" puts one back on your clipboard.".into());
         out.join("\n")
     }
@@ -451,8 +573,16 @@ impl Daemon<'_> {
         if !self.workday.clips.changed(self.plat.clipboard_change()) {
             return;
         }
-        let Some(copy) = self.plat.clipboard_copy() else { return };
-        let from = self.plat.active_window().ok().flatten().map(|w| w.process).unwrap_or_default();
+        let Some(copy) = self.plat.clipboard_copy() else {
+            return;
+        };
+        let from = self
+            .plat
+            .active_window()
+            .ok()
+            .flatten()
+            .map(|w| w.process)
+            .unwrap_or_default();
         let cfg = self.workday_cfg().clipboard_history;
         // unheard-ok: the clipboard history declines some copies by design (private, too long)
         let _ = self.workday.clips.keep(&cfg, &copy, &from, t);
@@ -497,12 +627,16 @@ impl Daemon<'_> {
 
     pub(crate) fn wd_market_day(&mut self, said: &str, t: u64) -> String {
         let low = said.to_lowercase();
-        if low.contains("next") && (low.contains("holiday") || low.contains("closed") || low.contains("closure")) {
+        if low.contains("next")
+            && (low.contains("holiday") || low.contains("closed") || low.contains("closure"))
+        {
             return match crate::marketdays::next_closure(t as i64) {
                 Some(((y, m, d), day)) => {
                     let what = match day {
                         crate::marketdays::Day::Closed(n) => format!("closed for {n}"),
-                        crate::marketdays::Day::EarlyClose(n) => format!("closes early, 1:00 pm New York ({n})"),
+                        crate::marketdays::Day::EarlyClose(n) => {
+                            format!("closes early, 1:00 pm New York ({n})")
+                        }
                         _ => "open".into(),
                     };
                     format!("Next: {y}-{m:02}-{d:02}, US markets {what}.")
@@ -515,7 +649,11 @@ impl Daemon<'_> {
         if low.contains("open") || low.contains("closed") {
             let now = crate::marketdays::open_now(t as i64);
             let lines = crate::marketdays::today_and_tomorrow(t as i64, &self.home_zone());
-            return if lines.is_empty() { now } else { format!("{now} {}", lines.join(" ")) };
+            return if lines.is_empty() {
+                now
+            } else {
+                format!("{now} {}", lines.join(" "))
+            };
         }
         let lines = crate::marketdays::today_and_tomorrow(t as i64, &self.home_zone());
         if lines.is_empty() {
@@ -532,7 +670,11 @@ impl Daemon<'_> {
         self.waiting_in(&book, t)
     }
 
-    fn waiting_in(&mut self, book: &crate::mailbook::MailBook, t: u64) -> Vec<crate::waitingfor::Waiting> {
+    fn waiting_in(
+        &mut self,
+        book: &crate::mailbook::MailBook,
+        t: u64,
+    ) -> Vec<crate::waitingfor::Waiting> {
         let cfg = self.workday_cfg().waiting_for;
         let offset = self.home_zone().to_local(t as i64) - t as i64;
         let taught = loaded!(self.workday, self.store, taught, TAUGHT);
@@ -545,7 +687,11 @@ impl Daemon<'_> {
             return "The waiting-for list is switched off (workday.waiting_for.enabled).".into();
         }
         let n = self.workday.last_waiting.len();
-        if let Some((verb, i)) = numbered_reply(said, &["done", "not a promise", "not a request", "wrong", "close"], n) {
+        if let Some((verb, i)) = numbered_reply(
+            said,
+            &["done", "not a promise", "not a request", "wrong", "close"],
+            n,
+        ) {
             let w = self.workday.last_waiting[i].clone();
             let taught = loaded!(self.workday, self.store, taught, TAUGHT);
             let right = matches!(verb.as_str(), "done" | "close");
@@ -558,7 +704,12 @@ impl Daemon<'_> {
             return if right {
                 format!("Closed \"{}\".{}", w.subject, saved.unwrap_or_default())
             } else {
-                format!("Noted: \"{}\" wasn't one. I'll trust \"{}\" less.{}", w.subject, w.cue, saved.unwrap_or_default())
+                format!(
+                    "Noted: \"{}\" wasn't one. I'll trust \"{}\" less.{}",
+                    w.subject,
+                    w.cue,
+                    saved.unwrap_or_default()
+                )
             };
         }
         let items = self.waiting_now(t);
@@ -571,7 +722,8 @@ impl Daemon<'_> {
         let reply = crate::waitingfor::say(&items, t);
         self.workday.last_waiting = items;
         let n = self.workday.last_waiting.len();
-        self.workday.set_follow((n > 0).then_some(Follow::Waiting(n)), t);
+        self.workday
+            .set_follow((n > 0).then_some(Follow::Waiting(n)), t);
         reply
     }
 
@@ -586,21 +738,32 @@ impl Daemon<'_> {
     pub(crate) fn wd_note_review(&mut self, said: &str, _t: u64) -> String {
         let low = said.to_lowercase();
         let pending: Vec<u64> = self.notebook.to_review().iter().map(|n| n.id).collect();
-        if let Some((verb, i)) = numbered_reply(said, &["keep", "drop", "done with", "bin"], pending.len()) {
+        if let Some((verb, i)) =
+            numbered_reply(said, &["keep", "drop", "done with", "bin"], pending.len())
+        {
             let keep = verb == "keep";
             self.notebook.settle(pending[i], keep);
-            let _ = self.store.save(crate::capture::Notebook::FILE, &self.notebook);
-            return if keep { "Kept.".into() } else { "Dropped.".into() };
+            let _ = self
+                .store
+                .save(crate::capture::Notebook::FILE, &self.notebook);
+            return if keep {
+                "Kept.".into()
+            } else {
+                "Dropped.".into()
+            };
         }
         if low.contains("keep all") || low.contains("keep them all") {
             for id in &pending {
                 self.notebook.settle(*id, true);
             }
-            let _ = self.store.save(crate::capture::Notebook::FILE, &self.notebook);
+            let _ = self
+                .store
+                .save(crate::capture::Notebook::FILE, &self.notebook);
             return format!("Kept all {}.", pending.len());
         }
         let listed = self.notebook.to_review().len().min(20);
-        self.workday.set_follow((listed > 0).then_some(Follow::Review(listed)), _t);
+        self.workday
+            .set_follow((listed > 0).then_some(Follow::Review(listed)), _t);
         crate::capture::review_said(&self.notebook.to_review())
     }
 
@@ -608,14 +771,35 @@ impl Daemon<'_> {
 
     fn launch_candidates(&mut self, t: u64) -> Vec<crate::launcher::Candidate> {
         use crate::launcher::{Candidate, Kind};
-        let mut all: Vec<Candidate> = self.cfg.apps.apps.keys().map(|name| Candidate { kind: Kind::App, label: name.clone(), target: name.clone() }).collect();
+        let mut all: Vec<Candidate> = self
+            .cfg
+            .apps
+            .apps
+            .keys()
+            .map(|name| Candidate {
+                kind: Kind::App,
+                label: name.clone(),
+                target: name.clone(),
+            })
+            .collect();
         // The Start menu is walked at most once an hour.
-        let fresh = self.workday.shortcuts.as_ref().map(|(at, _)| t.saturating_sub(*at) < 3600).unwrap_or(false);
+        let fresh = self
+            .workday
+            .shortcuts
+            .as_ref()
+            .map(|(at, _)| t.saturating_sub(*at) < 3600)
+            .unwrap_or(false);
         if !fresh {
             let found = crate::launcher::shortcuts(&crate::launcher::start_menu_dirs());
             self.workday.shortcuts = Some((t, found));
         }
-        all.extend(self.workday.shortcuts.as_ref().map(|(_, v)| v.clone()).unwrap_or_default());
+        all.extend(
+            self.workday
+                .shortcuts
+                .as_ref()
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default(),
+        );
         all
     }
 
@@ -642,7 +826,12 @@ impl Daemon<'_> {
             return self.launch_one(c, t);
         }
         let low = said.to_lowercase();
-        let q = ["launch ", "start up ", "run the app ", "fire up ", "open "].iter().find_map(|p| low.strip_prefix(p)).unwrap_or(&low).trim().to_string();
+        let q = ["launch ", "start up ", "run the app ", "fire up ", "open "]
+            .iter()
+            .find_map(|p| low.strip_prefix(p))
+            .unwrap_or(&low)
+            .trim()
+            .to_string();
         if q.is_empty() {
             return "Launch what?".into();
         }
@@ -656,7 +845,9 @@ impl Daemon<'_> {
                 self.workday.last_launch = list;
                 said
             }
-            crate::launcher::Pick::Nothing => format!("I can't find an app or shortcut called \"{q}\"."),
+            crate::launcher::Pick::Nothing => {
+                format!("I can't find an app or shortcut called \"{q}\".")
+            }
         }
     }
 
@@ -666,13 +857,23 @@ impl Daemon<'_> {
         use crate::tradeday::*;
         let cfg = self.workday_cfg().trade_day;
         if !cfg.enabled {
-            return format!("Trading check-ins are switched off (workday.trade_day.enabled).\n{THE_LINE}");
+            return format!(
+                "Trading check-ins are switched off (workday.trade_day.enabled).\n{THE_LINE}"
+            );
         }
         let today = self.today(t);
         // An answer to the questions just asked.
         if let Some(Follow::Trade(qs)) = self.workday.follow(t) {
-            let when = if qs == cfg.before { When::Before } else { When::After };
-            let given = if said.trim().eq_ignore_ascii_case("skip") { Some(qs.iter().map(|_| Given::Skipped).collect()) } else { read(&qs, said) };
+            let when = if qs == cfg.before {
+                When::Before
+            } else {
+                When::After
+            };
+            let given = if said.trim().eq_ignore_ascii_case("skip") {
+                Some(qs.iter().map(|_| Given::Skipped).collect())
+            } else {
+                read(&qs, said)
+            };
             if let Some(given) = given {
                 let journal = loaded!(self.workday, self.store, journal, JOURNAL);
                 journal.record(today, when, t, &qs, given);
@@ -682,12 +883,24 @@ impl Daemon<'_> {
             }
         }
         let low = said.to_lowercase();
-        if low.contains("how has") || low.contains("summary") || low.contains("how have") || low.contains("my process") {
+        if low.contains("how has")
+            || low.contains("summary")
+            || low.contains("how have")
+            || low.contains("my process")
+        {
             let days = if low.contains("month") { 30 } else { 7 };
             let journal = loaded!(self.workday, self.store, journal, JOURNAL);
             return journal.summary(&cfg, today, days);
         }
-        let when = if low.contains("after") || low.contains("journal") || low.contains("post") || low.contains("close") { When::After } else { When::Before };
+        let when = if low.contains("after")
+            || low.contains("journal")
+            || low.contains("post")
+            || low.contains("close")
+        {
+            When::After
+        } else {
+            When::Before
+        };
         self.trade_ask(when, t)
     }
 
@@ -697,7 +910,11 @@ impl Daemon<'_> {
             crate::tradeday::When::Before => cfg.before.clone(),
             crate::tradeday::When::After => cfg.after.clone(),
         };
-        let schedule = if when == crate::tradeday::When::Before { crate::marketdays::today_and_tomorrow(t as i64, &self.home_zone()) } else { vec![] };
+        let schedule = if when == crate::tradeday::When::Before {
+            crate::marketdays::today_and_tomorrow(t as i64, &self.home_zone())
+        } else {
+            vec![]
+        };
         // Before the open: today's scheduled releases, from the checked
         // event tables (the general market desk -- general trading knowledge only).
         let releases = if when == crate::tradeday::When::Before {
@@ -713,7 +930,11 @@ impl Daemon<'_> {
             String::new()
         };
         self.workday.set_follow(Some(Follow::Trade(qs.clone())), t);
-        format!("{}{releases}\n{}", crate::tradeday::ask(&qs, when, &schedule), crate::tradeday::THE_LINE)
+        format!(
+            "{}{releases}\n{}",
+            crate::tradeday::ask(&qs, when, &schedule),
+            crate::tradeday::THE_LINE
+        )
     }
 
     /// Before the open and after the close, on a trading day, once each.
@@ -756,30 +977,57 @@ impl Daemon<'_> {
     fn prep_for(&mut self, ev: &crate::calendar::Event, t: u64) -> (Vec<String>, bool) {
         let cfg = self.workday_cfg();
         let book: crate::mailbook::MailBook = self.store.load(crate::mailbook::MailBook::FILE);
-        let waiting = if cfg.waiting_for.enabled { self.waiting_in(&book, t) } else { vec![] };
+        let waiting = if cfg.waiting_for.enabled {
+            self.waiting_in(&book, t)
+        } else {
+            vec![]
+        };
         let note = ev.note.clone().unwrap_or_default();
         let named = !crate::meetprep::people_in(&ev.title, &note).is_empty();
-        (crate::meetprep::prepare(&ev.title, &note, &book, &self.notebook.notes, &waiting, cfg.waiting_for.look_back_days, t), named)
+        (
+            crate::meetprep::prepare(
+                &ev.title,
+                &note,
+                &book,
+                &self.notebook.notes,
+                &waiting,
+                cfg.waiting_for.look_back_days,
+                t,
+            ),
+            named,
+        )
     }
 
     pub(crate) fn wd_meeting_prep(&mut self, _said: &str, t: u64) -> String {
         if self.calendar.availability_error().is_some() {
             return "Your calendar is unavailable, so I can't confirm your next meeting. Refresh or recover it first.".into();
         }
-        let next = self.calendar.occurrences_between(t, t + 12 * 3600).into_iter().find(|e| !e.all_day);
-        let Some(ev) = next else { return "Nothing on your calendar in the next twelve hours.".into() };
+        let next = self
+            .calendar
+            .occurrences_between(t, t + 12 * 3600)
+            .into_iter()
+            .find(|e| !e.all_day);
+        let Some(ev) = next else {
+            return "Nothing on your calendar in the next twelve hours.".into();
+        };
         let (lines, _) = self.prep_for(&ev, t);
         crate::meetprep::said(&ev.title, ev.start.saturating_sub(t) / 60, &lines)
     }
 
     fn prep_tick(&mut self, t: u64) -> Option<String> {
-        if self.calendar.availability_error().is_some() { return None; }
+        if self.calendar.availability_error().is_some() {
+            return None;
+        }
         let mins = self.workday_cfg().meeting_prep_minutes;
         if mins == 0 {
             return None;
         }
         self.workday.prepped.retain(|(_, start)| *start > t);
-        let soon = self.calendar.occurrences_between(t, t + mins * 60).into_iter().find(|e| !e.all_day && !self.workday.prepped.contains(&(e.id, e.start)))?;
+        let soon = self
+            .calendar
+            .occurrences_between(t, t + mins * 60)
+            .into_iter()
+            .find(|e| !e.all_day && !self.workday.prepped.contains(&(e.id, e.start)))?;
         self.workday.prepped.insert((soon.id, soon.start));
         let (lines, named) = self.prep_for(&soon, t);
         // Nobody named, nothing to prepare: not worth an interruption.
@@ -797,9 +1045,17 @@ impl Daemon<'_> {
                     let saved = self.keep_loaded(SNIPPETS, self.workday.snippets.as_ref());
                     format!("Saved \"{trigger}\".{}", saved.unwrap_or_default())
                 }
-                Err(crate::snippets::Refused::Secret(kinds)) => format!("That holds what looks like a {} -- keep it in the vault, not a snippet.", kinds.join(" and a ")),
-                Err(crate::snippets::Refused::TooLong) => format!("That's over {} characters; a snippet is for text you type often.", crate::snippets::MAX_CHARS),
-                Err(crate::snippets::Refused::Empty) => "Say it as \"save snippet ;sig as Best, Sam\".".into(),
+                Err(crate::snippets::Refused::Secret(kinds)) => format!(
+                    "That holds what looks like a {} -- keep it in the vault, not a snippet.",
+                    kinds.join(" and a ")
+                ),
+                Err(crate::snippets::Refused::TooLong) => format!(
+                    "That's over {} characters; a snippet is for text you type often.",
+                    crate::snippets::MAX_CHARS
+                ),
+                Err(crate::snippets::Refused::Empty) => {
+                    "Say it as \"save snippet ;sig as Best, Sam\".".into()
+                }
             };
         }
         for lead in ["delete snippet ", "forget snippet ", "remove snippet "] {
@@ -816,15 +1072,43 @@ impl Daemon<'_> {
             }
         }
         let s = loaded!(self.workday, self.store, snippets, SNIPPETS).clone();
-        let asked = ["type my ", "insert my ", "type snippet ", "insert snippet ", "paste my ", "type "].iter().find_map(|p| low.strip_prefix(p));
+        let asked = [
+            "type my ",
+            "insert my ",
+            "type snippet ",
+            "insert snippet ",
+            "paste my ",
+            "type ",
+        ]
+        .iter()
+        .find_map(|p| low.strip_prefix(p));
         match asked {
-            Some(name) if !name.trim().is_empty() && !matches!(name.trim(), "snippets" | "snippet") => {
-                let Some((trigger, text)) = s.get(name) else { return format!("There's no snippet \"{}\".", name.trim()) };
-                let app = self.plat.active_window().ok().flatten().map(|w| w.process).unwrap_or_default();
-                if !crate::dictate::may_type_into(&app, &self.tools_ref().map(|t| t.dictate.clone()).unwrap_or_default()) {
+            Some(name)
+                if !name.trim().is_empty() && !matches!(name.trim(), "snippets" | "snippet") =>
+            {
+                let Some((trigger, text)) = s.get(name) else {
+                    return format!("There's no snippet \"{}\".", name.trim());
+                };
+                let app = self
+                    .plat
+                    .active_window()
+                    .ok()
+                    .flatten()
+                    .map(|w| w.process)
+                    .unwrap_or_default();
+                if !crate::dictate::may_type_into(
+                    &app,
+                    &self
+                        .tools_ref()
+                        .map(|t| t.dictate.clone())
+                        .unwrap_or_default(),
+                ) {
                     return format!("I won't type into {app} -- it's on your never-type list.");
                 }
-                match self.plat.type_text(&crate::snippets::fill(text, self.local(t))) {
+                match self
+                    .plat
+                    .type_text(&crate::snippets::fill(text, self.local(t)))
+                {
                     Ok(()) => format!("Typed \"{trigger}\"."),
                     Err(e) => format!("I couldn't type it: {e}"),
                 }
@@ -833,7 +1117,10 @@ impl Daemon<'_> {
                 if s.by_trigger.is_empty() {
                     "No snippets yet. \"Save snippet ;sig as Best, Sam\" makes one.".into()
                 } else {
-                    format!("Your snippets: {}.", s.by_trigger.keys().cloned().collect::<Vec<_>>().join(", "))
+                    format!(
+                        "Your snippets: {}.",
+                        s.by_trigger.keys().cloned().collect::<Vec<_>>().join(", ")
+                    )
                 }
             }
         }
@@ -850,7 +1137,10 @@ impl Daemon<'_> {
         // A moment for the list on disk, if it's still being read at start.
         self.wait_for_index(std::time::Duration::from_secs(2));
         let n = self.workday.last_files.len();
-        if let Some(i) = numbered_reply(said, &["open", "show"], n).map(|x| x.1).or_else(|| crate::findfile::which(said, n)) {
+        if let Some(i) = numbered_reply(said, &["open", "show"], n)
+            .map(|x| x.1)
+            .or_else(|| crate::findfile::which(said, n))
+        {
             let path = self.workday.last_files[i].clone();
             return match self.plat.open_path(&path) {
                 Ok(()) => format!("Opening {}.", crate::findfile::short_path(&path)),
@@ -858,14 +1148,33 @@ impl Daemon<'_> {
             };
         }
         let local = self.local(t);
-        let day_start = self.home_zone().to_utc((local - local % 86_400) as i64).max(0) as u64;
-        let q = ["find the file ", "find my file ", "find file ", "find files ", "where is my file ", "where's my file ", "find "].iter().find_map(|p| said.to_lowercase().strip_prefix(p).map(|s| s.to_string())).unwrap_or_else(|| said.to_string());
+        let day_start = self
+            .home_zone()
+            .to_utc((local - local % 86_400) as i64)
+            .max(0) as u64;
+        let q = [
+            "find the file ",
+            "find my file ",
+            "find file ",
+            "find files ",
+            "where is my file ",
+            "where's my file ",
+            "find ",
+        ]
+        .iter()
+        .find_map(|p| said.to_lowercase().strip_prefix(p).map(|s| s.to_string()))
+        .unwrap_or_else(|| said.to_string());
         let asked = crate::findfile::read(&q, t, day_start);
         let mut found: Vec<&crate::index::Entry> = if asked.words.is_empty() {
             crate::findfile::by_filter(self.index.entries.values(), &asked, 8)
         } else {
             // Every word must be in the name; the index ranks the first.
-            let mut hits: Vec<&crate::index::Entry> = self.index.search(&asked.words[0]).into_iter().filter(|e| crate::findfile::passes(e, &asked)).collect();
+            let mut hits: Vec<&crate::index::Entry> = self
+                .index
+                .search(&asked.words[0])
+                .into_iter()
+                .filter(|e| crate::findfile::passes(e, &asked))
+                .collect();
             hits.retain(|e| {
                 let n = e.name.to_lowercase();
                 asked.words.iter().all(|w| n.contains(w.as_str()))
@@ -888,8 +1197,15 @@ impl Daemon<'_> {
             };
         }
         let paths: Vec<String> = found.iter().map(|e| e.path.clone()).collect();
-        let head = if closest { "Nothing exact; closest:" } else { "Found:" };
-        let reply = format!("{head} {}\n\"Open 1\" opens one.", crate::findfile::numbered(&paths));
+        let head = if closest {
+            "Nothing exact; closest:"
+        } else {
+            "Found:"
+        };
+        let reply = format!(
+            "{head} {}\n\"Open 1\" opens one.",
+            crate::findfile::numbered(&paths)
+        );
         self.workday.set_follow(Some(Follow::Files(paths.len())), t);
         self.workday.last_files = paths;
         reply
@@ -899,7 +1215,13 @@ impl Daemon<'_> {
 
     pub(crate) fn wd_pdf(&mut self, said: &str, t: u64) -> String {
         let low = said.to_lowercase();
-        let listed: Vec<String> = self.workday.last_files.iter().filter(|p| p.to_lowercase().ends_with(".pdf")).cloned().collect();
+        let listed: Vec<String> = self
+            .workday
+            .last_files
+            .iter()
+            .filter(|p| p.to_lowercase().ends_with(".pdf"))
+            .cloned()
+            .collect();
         if self.workday.last_files.is_empty() {
             return "Find the PDFs first (\"find the pdf from yesterday\"), then \"merge 1 and 2\", \"extract pages 2-4 from 1\" or \"sign 1\".".into();
         }
@@ -908,14 +1230,24 @@ impl Daemon<'_> {
             .split(|c: char| !c.is_alphanumeric() && c != '-')
             .filter_map(|w| w.parse::<usize>().ok())
             .collect();
-        let pick = |k: usize| self.workday.last_files.get(k.wrapping_sub(1)).filter(|p| p.to_lowercase().ends_with(".pdf")).cloned();
+        let pick = |k: usize| {
+            self.workday
+                .last_files
+                .get(k.wrapping_sub(1))
+                .filter(|p| p.to_lowercase().ends_with(".pdf"))
+                .cloned()
+        };
         let read = |p: &str| -> Result<crate::pdfkit::Doc, String> {
             let meta = std::fs::metadata(p).map_err(|e| format!("{p}: {e}"))?;
             if meta.len() as usize > crate::pdfkit::MAX_BYTES {
-                return Err(format!("{} is too big for me to rewrite", crate::findfile::short_path(p)));
+                return Err(format!(
+                    "{} is too big for me to rewrite",
+                    crate::findfile::short_path(p)
+                ));
             }
             let bytes = std::fs::read(p).map_err(|e| format!("{p}: {e}"))?;
-            crate::pdfkit::Doc::parse(&bytes).map_err(|e| format!("{}: {e}", crate::findfile::short_path(p)))
+            crate::pdfkit::Doc::parse(&bytes)
+                .map_err(|e| format!("{}: {e}", crate::findfile::short_path(p)))
         };
         let write_out = |first: &str, what: &str, bytes: Vec<u8>, pages: usize| -> String {
             if let Err(e) = crate::pdfkit::check_written(&bytes, pages) {
@@ -926,19 +1258,37 @@ impl Daemon<'_> {
             let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
             let out = unused_name(dir, stem, what, "pdf");
             match std::fs::write(&out, &bytes) {
-                Ok(()) => format!("Saved {} ({}).", crate::findfile::short_path(&out.to_string_lossy()), plural(pages, "page")),
+                Ok(()) => format!(
+                    "Saved {} ({}).",
+                    crate::findfile::short_path(&out.to_string_lossy()),
+                    plural(pages, "page")
+                ),
                 Err(e) => format!("I couldn't save it: {e}"),
             }
         };
         if low.starts_with("merge") || low.starts_with("combine") || low.starts_with("join") {
-            let files: Vec<String> = if nums.is_empty() { listed.clone() } else { nums.iter().filter_map(|n| pick(*n)).collect() };
+            let files: Vec<String> = if nums.is_empty() {
+                listed.clone()
+            } else {
+                nums.iter().filter_map(|n| pick(*n)).collect()
+            };
             if files.len() < 2 {
                 return "Merging needs two PDFs or more from the list.".into();
             }
-            let docs: Result<Vec<crate::pdfkit::Doc>, String> = files.iter().map(|f| read(f)).collect();
-            let docs = match docs { Ok(d) => d, Err(e) => return e };
+            let docs: Result<Vec<crate::pdfkit::Doc>, String> =
+                files.iter().map(|f| read(f)).collect();
+            let docs = match docs {
+                Ok(d) => d,
+                Err(e) => return e,
+            };
             let refs: Vec<&crate::pdfkit::Doc> = docs.iter().collect();
-            let pages: Vec<crate::pdfkit::PageRef> = docs.iter().enumerate().flat_map(|(di, d)| (0..d.pages.len()).map(move |p| crate::pdfkit::PageRef { doc: di, page: p })).collect();
+            let pages: Vec<crate::pdfkit::PageRef> = docs
+                .iter()
+                .enumerate()
+                .flat_map(|(di, d)| {
+                    (0..d.pages.len()).map(move |p| crate::pdfkit::PageRef { doc: di, page: p })
+                })
+                .collect();
             let n = pages.len();
             return match crate::pdfkit::write(&refs, &pages, None) {
                 Ok(b) => write_out(&files[0], "merged", b, n),
@@ -947,19 +1297,46 @@ impl Daemon<'_> {
         }
         // One file: "extract pages 2-5 from 1", "sign 1", "how many pages in 1".
         let (file_no, spec) = match low.find(" from ").or_else(|| low.find(" of ")) {
-            Some(i) => (low[i..].split(|c: char| !c.is_ascii_digit()).find_map(|w| w.parse::<usize>().ok()), low[..i].to_string()),
+            Some(i) => (
+                low[i..]
+                    .split(|c: char| !c.is_ascii_digit())
+                    .find_map(|w| w.parse::<usize>().ok()),
+                low[..i].to_string(),
+            ),
             None => (nums.last().copied(), low.clone()),
         };
-        let file = match file_no.and_then(pick).or_else(|| (listed.len() == 1).then(|| listed[0].clone())) {
+        let file = match file_no
+            .and_then(pick)
+            .or_else(|| (listed.len() == 1).then(|| listed[0].clone()))
+        {
             Some(f) => f,
             None => return "Which PDF? Say its number from the list.".into(),
         };
-        let d = match read(&file) { Ok(d) => d, Err(e) => return e };
+        let d = match read(&file) {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
         let count = d.pages.len();
-        if low.starts_with("extract") || low.starts_with("split") || low.contains("pages ") && !low.starts_with("sign") && !low.starts_with("how many") {
-            let range = spec.split("pages").nth(1).or_else(|| spec.split("page").nth(1)).unwrap_or("").trim().to_string();
-            let idx = match crate::pdfkit::ranges(&range, count) { Ok(i) if !i.is_empty() => i, Ok(_) => return "Which pages?".into(), Err(e) => return e };
-            let pages: Vec<crate::pdfkit::PageRef> = idx.iter().map(|p| crate::pdfkit::PageRef { doc: 0, page: *p }).collect();
+        if low.starts_with("extract")
+            || low.starts_with("split")
+            || low.contains("pages ") && !low.starts_with("sign") && !low.starts_with("how many")
+        {
+            let range = spec
+                .split("pages")
+                .nth(1)
+                .or_else(|| spec.split("page").nth(1))
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let idx = match crate::pdfkit::ranges(&range, count) {
+                Ok(i) if !i.is_empty() => i,
+                Ok(_) => return "Which pages?".into(),
+                Err(e) => return e,
+            };
+            let pages: Vec<crate::pdfkit::PageRef> = idx
+                .iter()
+                .map(|p| crate::pdfkit::PageRef { doc: 0, page: *p })
+                .collect();
             let n = pages.len();
             return match crate::pdfkit::write(&[&d], &pages, None) {
                 Ok(b) => write_out(&file, &format!("pages {}", range.replace(' ', "")), b, n),
@@ -971,19 +1348,50 @@ impl Daemon<'_> {
             if sig.is_empty() {
                 return "Set workday.signature_png to a PNG of your signature (a transparent background looks best), and I'll put it on.".into();
             }
-            let img = match std::fs::read(&sig).map_err(|e| e.to_string()).and_then(|b| crate::pngcodec::read_png(&b)) { Ok(i) => i, Err(e) => return format!("Your signature image: {e}") };
-            let page = spec.split("page ").nth(1).and_then(|w| w.split_whitespace().next()).and_then(|w| w.parse::<usize>().ok()).map(|p| p.saturating_sub(1)).unwrap_or(count - 1).min(count - 1);
+            let img = match std::fs::read(&sig)
+                .map_err(|e| e.to_string())
+                .and_then(|b| crate::pngcodec::read_png(&b))
+            {
+                Ok(i) => i,
+                Err(e) => return format!("Your signature image: {e}"),
+            };
+            let page = spec
+                .split("page ")
+                .nth(1)
+                .and_then(|w| w.split_whitespace().next())
+                .and_then(|w| w.parse::<usize>().ok())
+                .map(|p| p.saturating_sub(1))
+                .unwrap_or(count - 1)
+                .min(count - 1);
             let (w, _) = crate::pdfkit::page_size(&d, page).unwrap_or((612.0, 792.0));
             let width = 150.0f64.min(w / 3.0);
-            let stamp = match crate::pdfkit::stamp(0, page, &img.pixels, img.width, img.height, w - width - 54.0, 54.0, width) { Ok(s) => s, Err(e) => return e };
-            let pages: Vec<crate::pdfkit::PageRef> = (0..count).map(|p| crate::pdfkit::PageRef { doc: 0, page: p }).collect();
+            let stamp = match crate::pdfkit::stamp(
+                0,
+                page,
+                &img.pixels,
+                img.width,
+                img.height,
+                w - width - 54.0,
+                54.0,
+                width,
+            ) {
+                Ok(s) => s,
+                Err(e) => return e,
+            };
+            let pages: Vec<crate::pdfkit::PageRef> = (0..count)
+                .map(|p| crate::pdfkit::PageRef { doc: 0, page: p })
+                .collect();
             return match crate::pdfkit::write(&[&d], &pages, Some(stamp)) {
                 Ok(b) => write_out(&file, "signed", b, count),
                 Err(e) => format!("I couldn't sign it: {e}"),
             };
         }
         let _ = t;
-        format!("{} has {}.", crate::findfile::short_path(&file), plural(count, "page"))
+        format!(
+            "{} has {}.",
+            crate::findfile::short_path(&file),
+            plural(count, "page")
+        )
     }
 
     // -- 12. people -----------------------------------------------------------------------
@@ -1019,8 +1427,13 @@ impl Daemon<'_> {
                 let saved = self.keep_loaded(PEOPLE, self.workday.people.as_ref());
                 format!("{said}{}", saved.unwrap_or_default())
             }
-            Err(Refused::Which(names)) => format!("Which one -- {}? Say the full name.", names.join(" or ")),
-            Err(Refused::Secret(kinds)) => format!("That holds what looks like a {} -- I won't keep it in a note about someone.", kinds.join(" and a ")),
+            Err(Refused::Which(names)) => {
+                format!("Which one -- {}? Say the full name.", names.join(" or "))
+            }
+            Err(Refused::Secret(kinds)) => format!(
+                "That holds what looks like a {} -- I won't keep it in a note about someone.",
+                kinds.join(" and a ")
+            ),
             Err(Refused::Full) => "Your people list is full.".into(),
             Err(Refused::Empty) => "I didn't catch who, or what.".into(),
         }
@@ -1031,7 +1444,11 @@ impl Daemon<'_> {
     fn fetch_url(url: &str) -> Result<(String, String), String> {
         let get = |https: bool, host: &str, path: &str| {
             let timeout = std::time::Duration::from_secs(10);
-            if https { crate::http::https_get(host, path, timeout) } else { crate::http::get(host, path, timeout) }
+            if https {
+                crate::http::https_get(host, path, timeout)
+            } else {
+                crate::http::get(host, path, timeout)
+            }
         };
         crate::feeds::fetch(url, &get)
     }
@@ -1043,7 +1460,8 @@ impl Daemon<'_> {
         }
         let low = said.to_lowercase();
         let n = self.workday.last_feeds.len();
-        if let Some((verb, i)) = numbered_reply(said, &["read", "open", "save", "skip", "keep"], n) {
+        if let Some((verb, i)) = numbered_reply(said, &["read", "open", "save", "skip", "keep"], n)
+        {
             let item = self.workday.last_feeds[i].clone();
             let feeds = loaded!(self.workday, self.store, feeds, FEEDS);
             feeds.unread.retain(|u| u.link != item.link);
@@ -1052,13 +1470,18 @@ impl Daemon<'_> {
             }
             return match verb.as_str() {
                 "skip" => "Skipped.".into(),
-                "save" | "keep" => match self.tray.hand(&item.link, &crate::earned::Space::Personal, "feeds", t) {
-                    Ok(_) => {
-                        let _ = self.tray.save(&self.store);
-                        format!("Saved for later: {}", item.title)
+                "save" | "keep" => {
+                    match self
+                        .tray
+                        .hand(&item.link, &crate::earned::Space::Personal, "feeds", t)
+                    {
+                        Ok(_) => {
+                            let _ = self.tray.save(&self.store);
+                            format!("Saved for later: {}", item.title)
+                        }
+                        Err(e) => e,
                     }
-                    Err(e) => e,
-                },
+                }
                 "open" => match self.plat.open_path(&item.link) {
                     Ok(()) => format!("Opening {}.", item.title),
                     Err(e) => format!("I couldn't open it: {e}"),
@@ -1067,7 +1490,20 @@ impl Daemon<'_> {
                     Ok((_, html)) => {
                         let a = crate::readable::extract(&html);
                         let text: String = a.text.chars().take(2400).collect();
-                        format!("{}\n\n{}{}", if a.title.is_empty() { &item.title } else { &a.title }, text, if a.text.chars().count() > 2400 { "…" } else { "" })
+                        format!(
+                            "{}\n\n{}{}",
+                            if a.title.is_empty() {
+                                &item.title
+                            } else {
+                                &a.title
+                            },
+                            text,
+                            if a.text.chars().count() > 2400 {
+                                "…"
+                            } else {
+                                ""
+                            }
+                        )
                     }
                     Err(e) => format!("I couldn't fetch it: {e}"),
                 },
@@ -1087,20 +1523,33 @@ impl Daemon<'_> {
                 };
             }
         }
-        let follow = ["follow the site ", "follow the blog ", "subscribe to ", "follow "].iter().find_map(|p| low.strip_prefix(p));
+        let follow = [
+            "follow the site ",
+            "follow the blog ",
+            "subscribe to ",
+            "follow ",
+        ]
+        .iter()
+        .find_map(|p| low.strip_prefix(p));
         if let Some(rest) = follow {
             let mut url = rest.trim().trim_end_matches('.').to_string();
             if !url.starts_with("http") {
                 url = format!("https://{url}");
             }
-            let (final_url, body) = match Self::fetch_url(&url) { Ok(x) => x, Err(e) => return format!("I couldn't reach it: {e}") };
+            let (final_url, body) = match Self::fetch_url(&url) {
+                Ok(x) => x,
+                Err(e) => return format!("I couldn't reach it: {e}"),
+            };
             let (feed_url, parsed) = match crate::feeds::parse(&body) {
                 Ok(p) => (final_url, p),
                 Err(_) => {
-                    let Some(found) = crate::feeds::discover(&body, &final_url).into_iter().next() else {
+                    let Some(found) = crate::feeds::discover(&body, &final_url).into_iter().next()
+                    else {
                         return "That page doesn't say where its feed is. If you have the feed's own address, give me that.".into();
                     };
-                    match Self::fetch_url(&found).and_then(|(u, b)| crate::feeds::parse(&b).map(|p| (u, p))) {
+                    match Self::fetch_url(&found)
+                        .and_then(|(u, b)| crate::feeds::parse(&b).map(|p| (u, p)))
+                    {
                         Ok(x) => x,
                         Err(e) => return format!("Its feed didn't read: {e}"),
                     }
@@ -1115,23 +1564,43 @@ impl Daemon<'_> {
                     if let Some(v) = self.workday.feeds.as_ref() {
                         let _ = self.store.save(FEEDS, v);
                     }
-                    format!("Following {}. {} to start with; after that, only what's new.", if title.is_empty() { &feed_url } else { &title }, plural(got, "item"))
+                    format!(
+                        "Following {}. {} to start with; after that, only what's new.",
+                        if title.is_empty() { &feed_url } else { &title },
+                        plural(got, "item")
+                    )
                 }
                 Ok(false) => "You already follow that.".into(),
                 Err(e) => e,
             };
         }
         let feeds = loaded!(self.workday, self.store, feeds, FEEDS);
-        if low.contains("what am i following") || low.contains("my feeds list") || low.contains("list my feeds") {
+        if low.contains("what am i following")
+            || low.contains("my feeds list")
+            || low.contains("list my feeds")
+        {
             if feeds.feeds.is_empty() {
                 return "You're not following anything yet.".into();
             }
-            return feeds.feeds.iter().enumerate().map(|(i, f)| format!("{}. {}", i + 1, if f.title.is_empty() { &f.url } else { &f.title })).collect::<Vec<_>>().join("\n");
+            return feeds
+                .feeds
+                .iter()
+                .enumerate()
+                .map(|(i, f)| {
+                    format!(
+                        "{}. {}",
+                        i + 1,
+                        if f.title.is_empty() { &f.url } else { &f.title }
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
         }
         let reply = feeds.said(10);
         self.workday.last_feeds = feeds.unread.iter().take(10).cloned().collect();
         let n = self.workday.last_feeds.len();
-        self.workday.set_follow((n > 0).then_some(Follow::Feeds(n)), t);
+        self.workday
+            .set_follow((n > 0).then_some(Follow::Feeds(n)), t);
         if n > 0 {
             format!("{reply}\n\"Read 1\", \"save 2\" for later, or \"skip 3\".")
         } else {
@@ -1164,7 +1633,9 @@ impl Daemon<'_> {
                     }
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => return,
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.workday.feed_in_flight = None,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.workday.feed_in_flight = None
+                }
             }
         }
         if !online || self.workday.feed_in_flight.is_some() {
@@ -1173,15 +1644,19 @@ impl Daemon<'_> {
         // Loaded only if there's a feeds file at all: a daemon that follows
         // nothing never reads one.
         let feeds = loaded!(self.workday, self.store, feeds, FEEDS);
-        let Some(i) = feeds.due(t).into_iter().next() else { return };
+        let Some(i) = feeds.due(t).into_iter().next() else {
+            return;
+        };
         let url = feeds.feeds[i].url.clone();
         // Marked due later now, so a slow read isn't started twice.
         feeds.feeds[i].next_due = t + cfg.every_minutes.max(15) * 60;
         let (tx, rx) = std::sync::mpsc::channel();
-        let spawned = std::thread::Builder::new().name("atlas-feed".into()).spawn(move || {
-            let r = Self::fetch_url(&url).and_then(|(_, body)| crate::feeds::parse(&body));
-            let _ = tx.send((url, r));
-        });
+        let spawned = std::thread::Builder::new()
+            .name("atlas-feed".into())
+            .spawn(move || {
+                let r = Self::fetch_url(&url).and_then(|(_, body)| crate::feeds::parse(&body));
+                let _ = tx.send((url, r));
+            });
         if spawned.is_ok() {
             self.workday.feed_in_flight = Some(rx);
         }
@@ -1215,27 +1690,57 @@ impl Daemon<'_> {
                 if let Some(v) = self.workday.receipts.as_ref() {
                     let _ = self.store.save(RECEIPTS, v);
                 }
-                return if kept { format!("Kept: {} {}.", reading.merchant, crate::receipts::money(total, &reading.currency)) } else { "I already have that one.".into() };
+                return if kept {
+                    format!(
+                        "Kept: {} {}.",
+                        reading.merchant,
+                        crate::receipts::money(total, &reading.currency)
+                    )
+                } else {
+                    "I already have that one.".into()
+                };
             }
         }
         // Questions about what's kept.
-        if low.contains("spend") || low.contains("spent") || low.starts_with("receipts for") || low.starts_with("my receipts") || low.starts_with("show my receipts") {
+        if low.contains("spend")
+            || low.contains("spent")
+            || low.starts_with("receipts for")
+            || low.starts_with("my receipts")
+            || low.starts_with("show my receipts")
+        {
             let today = self.today(t);
             let c = crate::civil::Civil::from_local(today * 86_400);
             let month_start = crate::civil::days_from_civil(c.year, c.month, 1);
             let (from, to) = if low.contains("last month") {
-                let (y, m) = if c.month == 1 { (c.year - 1, 12) } else { (c.year, c.month - 1) };
-                (Some(crate::civil::days_from_civil(y, m, 1)), Some(month_start - 1))
+                let (y, m) = if c.month == 1 {
+                    (c.year - 1, 12)
+                } else {
+                    (c.year, c.month - 1)
+                };
+                (
+                    Some(crate::civil::days_from_civil(y, m, 1)),
+                    Some(month_start - 1),
+                )
             } else if low.contains("this month") {
                 (Some(month_start), Some(today))
             } else if low.contains("this year") {
-                (Some(crate::civil::days_from_civil(c.year, 1, 1)), Some(today))
+                (
+                    Some(crate::civil::days_from_civil(c.year, 1, 1)),
+                    Some(today),
+                )
             } else {
                 (None, None)
             };
             let words: String = low
                 .split_whitespace()
-                .filter(|w| !["what", "did", "i", "spend", "spent", "at", "on", "this", "last", "month", "year", "my", "receipts", "for", "show", "how", "much", "have", "in", "total"].contains(w))
+                .filter(|w| {
+                    ![
+                        "what", "did", "i", "spend", "spent", "at", "on", "this", "last", "month",
+                        "year", "my", "receipts", "for", "show", "how", "much", "have", "in",
+                        "total",
+                    ]
+                    .contains(w)
+                })
                 .collect::<Vec<_>>()
                 .join(" ");
             let r = loaded!(self.workday, self.store, receipts, RECEIPTS);
@@ -1244,7 +1749,11 @@ impl Daemon<'_> {
         }
         // Keep one: from the clipboard if you copied a receipt's text, else
         // off the window in front.
-        let clip = self.plat.read_clipboard().ok().flatten().filter(|c| c.to_lowercase().contains("total") && !crate::receipts::amounts(c).is_empty() && !low.contains("screen"));
+        let clip = self.plat.read_clipboard().ok().flatten().filter(|c| {
+            c.to_lowercase().contains("total")
+                && !crate::receipts::amounts(c).is_empty()
+                && !low.contains("screen")
+        });
         let text = match clip {
             Some(c) => c,
             None => match self.screen_words() {
@@ -1280,8 +1789,13 @@ impl Daemon<'_> {
         let low = said.to_lowercase();
         if low.starts_with("pause my habits") || low.starts_with("pause habits") {
             let local = self.local(t);
-            let until = crate::when::parse(said, local).filter(|p| p.day_said).map(|p| (p.start / 86_400) as i64);
-            let days = low.split_whitespace().find_map(|w| w.parse::<i64>().ok()).filter(|_| low.contains("day"));
+            let until = crate::when::parse(said, local)
+                .filter(|p| p.day_said)
+                .map(|p| (p.start / 86_400) as i64);
+            let days = low
+                .split_whitespace()
+                .find_map(|w| w.parse::<i64>().ok())
+                .filter(|_| low.contains("day"));
             let to = until.or(days.map(|d| today + d - 1)).unwrap_or(today);
             let h = loaded!(self.workday, self.store, habits, HABITS);
             // All of them, so it can't be refused; it says how many it paused.
@@ -1291,22 +1805,57 @@ impl Daemon<'_> {
             if let Some(v) = self.workday.habits.as_ref() {
                 let _ = self.store.save(HABITS, v);
             }
-            return format!("Habits paused through {} -- those days won't count against them.", if to == today { "today".to_string() } else { format!("{} days from now", to - today) });
+            return format!(
+                "Habits paused through {} -- those days won't count against them.",
+                if to == today {
+                    "today".to_string()
+                } else {
+                    format!("{} days from now", to - today)
+                }
+            );
         }
         let h = loaded!(self.workday, self.store, habits, HABITS);
         let r = match crate::habits::read(said) {
             Some(Asked::Add { name, times, days }) => h.add(&name, times, days, today).map(|_| {
-                let quiet = if crate::nudge::is_medical(&name) { " I'll track it, but I won't bring it up -- body numbers are yours to raise." } else { "" };
-                format!("Tracking \"{name}\", {}.{quiet}", if days == 1 { "daily".to_string() } else { format!("{times} in {days} days") })
+                let quiet = if crate::nudge::is_medical(&name) {
+                    " I'll track it, but I won't bring it up -- body numbers are yours to raise."
+                } else {
+                    ""
+                };
+                format!(
+                    "Tracking \"{name}\", {}.{quiet}",
+                    if days == 1 {
+                        "daily".to_string()
+                    } else {
+                        format!("{times} in {days} days")
+                    }
+                )
             }),
             Some(Asked::Did { name }) => h.did(&name, today).map(|n| {
                 // `did` just found it by this name; if it somehow can't be
                 // found again, the streak is simply left out (audit Q2).
-                let streak = h.habits.iter().find(|x| x.name == n).filter(|x| x.days == 1).map(|x| x.streak(today)).unwrap_or(0);
-                format!("{n}: done.{}", if streak >= 2 { format!(" {streak} days running.") } else { String::new() })
+                let streak = h
+                    .habits
+                    .iter()
+                    .find(|x| x.name == n)
+                    .filter(|x| x.days == 1)
+                    .map(|x| x.streak(today))
+                    .unwrap_or(0);
+                format!(
+                    "{n}: done.{}",
+                    if streak >= 2 {
+                        format!(" {streak} days running.")
+                    } else {
+                        String::new()
+                    }
+                )
             }),
-            Some(Asked::Undo { name }) => h.undo(&name, today).map(|n| format!("{n}: unmarked for today.")),
-            Some(Asked::Remove { name }) => h.remove(&name).map(|n| format!("Stopped tracking {n}.")),
+            Some(Asked::Undo { name }) => h
+                .undo(&name, today)
+                .map(|n| format!("{n}: unmarked for today.")),
+            Some(Asked::Remove { name }) => {
+                h.remove(&name).map(|n| format!("Stopped tracking {n}."))
+            }
             Some(Asked::Show) | None => return h.said(today),
         };
         match r {
@@ -1314,7 +1863,9 @@ impl Daemon<'_> {
                 let saved = self.keep_loaded(HABITS, self.workday.habits.as_ref());
                 format!("{s}{}", saved.unwrap_or_default())
             }
-            Err(Refused::NotFound) => "I'm not tracking a habit by that name. \"How are my habits\" lists them.".into(),
+            Err(Refused::NotFound) => {
+                "I'm not tracking a habit by that name. \"How are my habits\" lists them.".into()
+            }
             Err(Refused::Which(names)) => format!("Which one -- {}?", names.join(" or ")),
             Err(Refused::Exists) => "You're already tracking that.".into(),
             Err(Refused::Full) => format!("That's {} habits already.", crate::habits::MAX_HABITS),
@@ -1334,18 +1885,31 @@ impl Daemon<'_> {
             return match deck.add(&front, &back, "", today) {
                 Ok(()) => {
                     let saved = self.keep_loaded(DECK, self.workday.deck.as_ref());
-                    format!("Card made. It comes up in your next \"quiz me\".{}", saved.unwrap_or_default())
+                    format!(
+                        "Card made. It comes up in your next \"quiz me\".{}",
+                        saved.unwrap_or_default()
+                    )
                 }
-                Err(crate::srs::Refused::Secret(k)) => format!("That holds what looks like a {} -- not something to put on a flashcard.", k.join(" and a ")),
-                Err(crate::srs::Refused::Exists) => "You already have a card with that front.".into(),
+                Err(crate::srs::Refused::Secret(k)) => format!(
+                    "That holds what looks like a {} -- not something to put on a flashcard.",
+                    k.join(" and a ")
+                ),
+                Err(crate::srs::Refused::Exists) => {
+                    "You already have a card with that front.".into()
+                }
                 Err(crate::srs::Refused::Full) => "Your deck is full.".into(),
-                Err(crate::srs::Refused::Empty) => "Say it as \"make a card: front | back\".".into(),
+                Err(crate::srs::Refused::Empty) => {
+                    "Say it as \"make a card: front | back\".".into()
+                }
             };
         }
         if quizzing && matches!(low.as_str(), "stop" | "that's enough" | "done") {
             deck.asking = None;
             self.workday.follow = None;
-            return format!("Stopped. {} still due today.", plural(deck.due(today, usize::MAX).len(), "card"));
+            return format!(
+                "Stopped. {} still due today.",
+                plural(deck.due(today, usize::MAX).len(), "card")
+            );
         }
         if quizzing && matches!(low.as_str(), "show" | "show me" | "flip" | "answer") {
             return match deck.show() {
@@ -1365,12 +1929,19 @@ impl Daemon<'_> {
                 Some(q) => format!("{head}\n{q}{}", saved.unwrap_or_default()),
                 None => {
                     self.workday.follow = None;
-                    format!("{head}\nThat's all that's due.{}", saved.unwrap_or_default())
+                    format!(
+                        "{head}\nThat's all that's due.{}",
+                        saved.unwrap_or_default()
+                    )
                 }
             };
         }
         if low.contains("how many") {
-            return format!("{} due today, of {}.", plural(deck.due(today, usize::MAX).len(), "card"), deck.cards.len());
+            return format!(
+                "{} due today, of {}.",
+                plural(deck.due(today, usize::MAX).len(), "card"),
+                deck.cards.len()
+            );
         }
         // "Quiz me".
         match deck.next(today, &cfg) {
@@ -1378,7 +1949,9 @@ impl Daemon<'_> {
                 self.workday.follow = Some((Follow::Quiz, t));
                 q
             }
-            None if deck.cards.is_empty() => "No cards yet. \"Make a card: front | back\" starts a deck.".into(),
+            None if deck.cards.is_empty() => {
+                "No cards yet. \"Make a card: front | back\" starts a deck.".into()
+            }
             None => "Nothing's due -- you're up to date.".into(),
         }
     }
@@ -1390,7 +1963,9 @@ impl Daemon<'_> {
         if !cfg.enabled {
             return "Translation is switched off (workday.translate.enabled).".into();
         }
-        let Some((to, inline)) = crate::translation::read(said) else { return "Translate into which language?".into() };
+        let Some((to, inline)) = crate::translation::read(said) else {
+            return "Translate into which language?".into();
+        };
         let text = match inline {
             Some(t) => t,
             None => match self.plat.read_clipboard() {
@@ -1398,17 +1973,32 @@ impl Daemon<'_> {
                 _ => return "Copy the text first, then say \"translate this into …\".".into(),
             },
         };
-        let Some(llm) = self.llm.clone() else { return "Translation runs on your local model, and none is set up.".into() };
+        let Some(llm) = self.llm.clone() else {
+            return "Translation runs on your local model, and none is set up.".into();
+        };
         // The source is assumed to be English when the target isn't and the
         // text is plain Latin letters; otherwise the back-check is skipped
         // rather than done against a guessed language.
-        let latin = text.chars().filter(|c| c.is_alphabetic()).all(|c| c.is_ascii());
-        let from = if to != "English" && latin { "English" } else { "" };
+        let latin = text
+            .chars()
+            .filter(|c| c.is_alphabetic())
+            .all(|c| c.is_ascii());
+        let from = if to != "English" && latin {
+            "English"
+        } else {
+            ""
+        };
         match crate::translation::translate(llm.as_ref(), &text, to, from, &cfg) {
             Ok(done) => {
-                let reply_to_clip = self.tools_ref().map(|t| t.clipboard.reply_to_clipboard).unwrap_or(false);
+                let reply_to_clip = self
+                    .tools_ref()
+                    .map(|t| t.clipboard.reply_to_clipboard)
+                    .unwrap_or(false);
                 let mut out = done.said(to);
-                if reply_to_clip && done.issues.is_empty() && self.plat.write_clipboard(&done.text).is_ok() {
+                if reply_to_clip
+                    && done.issues.is_empty()
+                    && self.plat.write_clipboard(&done.text).is_ok()
+                {
                     out.push_str("\n(On your clipboard.)");
                 }
                 out
@@ -1421,7 +2011,13 @@ impl Daemon<'_> {
 
     /// What these tools do on their own. `may_speak` is whether Atlas may
     /// interrupt now; `paused` whether you've asked it to stand down.
-    pub(crate) fn workday_tick(&mut self, t: u64, may_speak: bool, paused: bool, online: bool) -> Vec<String> {
+    pub(crate) fn workday_tick(
+        &mut self,
+        t: u64,
+        may_speak: bool,
+        paused: bool,
+        online: bool,
+    ) -> Vec<String> {
         let mut out = Vec::new();
         // Chords are you pressing a key: answered even when Atlas may not
         // speak up on its own.
@@ -1465,11 +2061,19 @@ impl Daemon<'_> {
             self.workday.chords = Some(rx);
             let mut said: Vec<String> = bad;
             if !self.workday.chords_failed.is_empty() {
-                said.push(format!("{} of your key chords couldn't be registered -- another program has them.", self.workday.chords_failed.len()));
+                said.push(format!(
+                    "{} of your key chords couldn't be registered -- another program has them.",
+                    self.workday.chords_failed.len()
+                ));
             }
             return said;
         }
-        let pressed: Vec<crate::chords::Does> = self.workday.chords.as_ref().map(|rx| rx.try_iter().collect()).unwrap_or_default();
+        let pressed: Vec<crate::chords::Does> = self
+            .workday
+            .chords
+            .as_ref()
+            .map(|rx| rx.try_iter().collect())
+            .unwrap_or_default();
         let mut out = Vec::new();
         for does in pressed {
             match does {
@@ -1492,7 +2096,12 @@ impl Daemon<'_> {
         crate::heard!(self.plat.write_clipboard("\u{2063}"));
         crate::heard!(self.plat.press("ctrl+c"));
         self.plat.sleep_ms(80);
-        let got = self.plat.read_clipboard().ok().flatten().filter(|g| g != "\u{2063}" && !g.trim().is_empty());
+        let got = self
+            .plat
+            .read_clipboard()
+            .ok()
+            .flatten()
+            .filter(|g| g != "\u{2063}" && !g.trim().is_empty());
         crate::heard!(self.plat.write_clipboard(before.as_deref().unwrap_or("")));
         match got {
             Some(text) => self.execute(&Intent::Capture(text)),
@@ -1504,5 +2113,4 @@ impl Daemon<'_> {
     }
 
     // ---------------------------------------------------------------- the brief
-
 }

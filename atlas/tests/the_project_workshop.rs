@@ -28,11 +28,29 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
-fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str, llm: Option<Arc<dyn Llm>>) -> Daemon<'a> {
-    Daemon::new(c, p, llm, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+fn daemon<'a>(
+    c: &'a Config,
+    p: &'a MockPlatform,
+    tag: &str,
+    llm: Option<Arc<dyn Llm>>,
+) -> Daemon<'a> {
+    Daemon::new(
+        c,
+        p,
+        llm,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -50,11 +68,16 @@ fn improving_a_project_without_naming_one_asks_which() {
 #[test]
 fn improving_a_named_project_is_scoped_and_handed_off() {
     let (c, p) = (cfg(), plat());
-    let llm: Arc<dyn Llm> = Arc::new(MockLlm("```rust\nfn add(a:i32,b:i32)->i32{a+b}\n```".into()));
+    let llm: Arc<dyn Llm> = Arc::new(MockLlm(
+        "```rust\nfn add(a:i32,b:i32)->i32{a+b}\n```".into(),
+    ));
     let mut d = daemon(&c, &p, "named", Some(llm));
     // Register a project so the name resolves.
     d.workshop.register("Atlas", "/tmp/atlas", 1);
-    let reply = d.turn("on the Atlas project, add a function that adds numbers", 100);
+    let reply = d.turn(
+        "on the Atlas project, add a function that adds numbers",
+        100,
+    );
     assert!(
         reply.to_lowercase().contains("atlas") && reply.to_lowercase().contains("queue"),
         "it should acknowledge scoping the change for the project's queue, got: {reply}"
@@ -83,15 +106,24 @@ fn implementing_a_queued_change_writes_its_files_and_marks_it_done() {
         "Atlas",
         "add greeting",
         "adds a hello function",
-        vec![atlas::workshop::FileEdit { path: "hello.rs".into(), content: "fn hello() {}\n".into() }],
+        vec![atlas::workshop::FileEdit {
+            path: "hello.rs".into(),
+            content: "fn hello() {}\n".into(),
+        }],
         true,
         "checks passed",
         1,
     );
     let reply = d.turn("implement add greeting", 100);
-    assert!(reply.to_lowercase().contains("implemented"), "should confirm, got: {reply}");
+    assert!(
+        reply.to_lowercase().contains("implemented"),
+        "should confirm, got: {reply}"
+    );
     // The file was actually written.
-    assert!(proj.join("hello.rs").exists(), "the change's file should be on disk");
+    assert!(
+        proj.join("hello.rs").exists(),
+        "the change's file should be on disk"
+    );
     // And it's out of the ready queue.
     assert_eq!(d.workshop.resolve("Atlas").unwrap().ready().len(), 0);
 }
@@ -105,7 +137,10 @@ fn implementing_a_change_with_no_folder_asks_where_the_project_is() {
         "Mystery",
         "do a thing",
         "does a thing",
-        vec![atlas::workshop::FileEdit { path: "x.rs".into(), content: "// x".into() }],
+        vec![atlas::workshop::FileEdit {
+            path: "x.rs".into(),
+            content: "// x".into(),
+        }],
         true,
         "",
         1,

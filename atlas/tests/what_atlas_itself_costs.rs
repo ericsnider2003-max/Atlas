@@ -26,7 +26,12 @@ use atlas::retention::{self, Class, Item, RetentionConfig, Usage};
 use std::path::PathBuf;
 
 fn item(path: &str, class: Class, mb: u64) -> Item {
-    Item { path: PathBuf::from(path), class, bytes: mb * 1024 * 1024, modified: 0 }
+    Item {
+        path: PathBuf::from(path),
+        class,
+        bytes: mb * 1024 * 1024,
+        modified: 0,
+    }
 }
 
 // ================= the number that had no caller =================
@@ -75,7 +80,10 @@ fn rounding_down_is_the_honest_direction_for_a_number_you_will_act_on() {
 
 #[test]
 fn over_budget_and_beyond_help_are_told_apart() {
-    let cfg = RetentionConfig { total_budget_mb: 100, ..Default::default() };
+    let cfg = RetentionConfig {
+        total_budget_mb: 100,
+        ..Default::default()
+    };
 
     // Over, but the over is scratch and recordings — the housekeeping pass
     // fixes this on its own and saying anything else would send you editing
@@ -121,12 +129,18 @@ fn the_budget_read_is_yours_rather_than_the_shipped_one() {
 #[test]
 fn the_reclaim_command_is_what_reaches_it_rather_than_this_test() {
     let raw = crate::common::source_of("main");
-    assert!(raw.contains("fn report_own_footprint("), "nothing reports the footprint");
+    assert!(
+        raw.contains("fn report_own_footprint("),
+        "nothing reports the footprint"
+    );
     assert!(
         raw.contains("atlas::retention::usage(&items)"),
         "nothing groups the data folder by what the files are for"
     );
-    assert!(raw.contains("usage.total_mb()"), "the total is still uncalled");
+    assert!(
+        raw.contains("usage.total_mb()"),
+        "the total is still uncalled"
+    );
 
     // Both ways out of `run_reclaim` say it. The early return is the one that
     // matters: "nothing to reclaim", from a program sitting on 900 MB of its
@@ -151,8 +165,14 @@ fn the_breakdown_uses_the_classs_own_words_for_the_classs_own_meanings() {
     // labelled `captures` "recordings", which reads as audio and points at
     // the wrong half of the folder — caught by running `atlas reclaim` on a
     // folder with one wav in it and reading the line it printed.
-    assert_eq!(retention::classify(&PathBuf::from("data/captures/a.wav")), Class::Scratch);
-    assert_eq!(retention::classify(&PathBuf::from("data/captures/a.png")), Class::Captures);
+    assert_eq!(
+        retention::classify(&PathBuf::from("data/captures/a.wav")),
+        Class::Scratch
+    );
+    assert_eq!(
+        retention::classify(&PathBuf::from("data/captures/a.png")),
+        Class::Captures
+    );
 
     let raw = crate::common::source_of("main");
     // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
@@ -184,7 +204,12 @@ fn reporting_is_all_it_does() {
         .nth(1)
         .and_then(|r| r.split("\n}\n").next())
         .expect("report_own_footprint");
-    for destructive in ["retention::plan(", "retention::apply(", "remove_file", "remove_dir"] {
+    for destructive in [
+        "retention::plan(",
+        "retention::apply(",
+        "remove_file",
+        "remove_dir",
+    ] {
         assert!(
             !body.contains(destructive),
             "the footprint report calls {destructive} -- it is meant to only count"
@@ -207,7 +232,9 @@ fn the_name_collision_that_hid_this_is_gone_rather_than_renamed_around() {
     // anywhere re-creates the collision, whichever module it lands in.
     let mut found = Vec::new();
     fn walk(d: &std::path::Path, found: &mut Vec<String>) {
-        let Ok(entries) = std::fs::read_dir(d) else { return };
+        let Ok(entries) = std::fs::read_dir(d) else {
+            return;
+        };
         for e in entries.flatten() {
             let p = e.path();
             if p.is_dir() {

@@ -26,13 +26,26 @@ fn tmp(tag: &str) -> PathBuf {
     p
 }
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 fn cfg() -> Config {
     Config::load(Path::new("config")).unwrap()
 }
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 // ---------- saying it ----------
@@ -44,9 +57,15 @@ fn asking_for_it_tonight_parks_it_instead_of_doing_it() {
 
     let said = d.turn("rebuild the index tonight", NOW);
 
-    assert!(said.contains("hold"), "it did not say it was holding: {said}");
+    assert!(
+        said.contains("hold"),
+        "it did not say it was holding: {said}"
+    );
     assert_eq!(d.backlog.outstanding().len(), 1, "nothing was parked");
-    assert_eq!(d.backlog.outstanding()[0].blocker, Blocker::NotWhileYouAreHere);
+    assert_eq!(
+        d.backlog.outstanding()[0].blocker,
+        Blocker::NotWhileYouAreHere
+    );
 }
 
 #[test]
@@ -57,8 +76,14 @@ fn the_same_request_without_the_words_runs_now() {
 
     let said = d.turn("rebuild the index", NOW);
 
-    assert!(!said.contains("hold"), "an ordinary request was parked: {said}");
-    assert!(d.backlog.outstanding().is_empty(), "an ordinary request was parked");
+    assert!(
+        !said.contains("hold"),
+        "an ordinary request was parked: {said}"
+    );
+    assert!(
+        d.backlog.outstanding().is_empty(),
+        "an ordinary request was parked"
+    );
 }
 
 #[test]
@@ -70,8 +95,14 @@ fn a_question_containing_the_word_is_still_answered() {
 
     let said = d.turn("what did I get done tonight", NOW);
 
-    assert!(!said.contains("hold"), "a question was parked as work: {said}");
-    assert!(d.backlog.outstanding().is_empty(), "a question was parked as work");
+    assert!(
+        !said.contains("hold"),
+        "a question was parked as work: {said}"
+    );
+    assert!(
+        d.backlog.outstanding().is_empty(),
+        "a question was parked as work"
+    );
 }
 
 // ---------- it waits for the right thing ----------
@@ -89,11 +120,25 @@ fn it_stays_blocked_while_you_are_here_and_clears_when_you_go() {
         dismissed: false,
         done: false,
     };
-    let here = Conditions { online: true, screen_free: true, you_are_here: true, tools: vec![] };
-    let away = Conditions { you_are_here: false, ..here.clone() };
+    let here = Conditions {
+        online: true,
+        screen_free: true,
+        you_are_here: true,
+        tools: vec![],
+    };
+    let away = Conditions {
+        you_are_here: false,
+        ..here.clone()
+    };
 
-    assert!(b.is_blocked(&item, &here), "it would have run while you were sitting there");
-    assert!(!b.is_blocked(&item, &away), "it never clears, so it would never run");
+    assert!(
+        b.is_blocked(&item, &here),
+        "it would have run while you were sitting there"
+    );
+    assert!(
+        !b.is_blocked(&item, &away),
+        "it never clears, so it would never run"
+    );
 }
 
 #[test]
@@ -105,4 +150,3 @@ fn it_clears_on_its_own_so_nothing_has_to_ask_you_again() {
 }
 
 // ---------- a bundle is yours ----------
-

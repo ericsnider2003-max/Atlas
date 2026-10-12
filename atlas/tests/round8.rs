@@ -78,7 +78,10 @@ fn the_same_model_reads_the_same_from_obj_stl_and_glb() {
     for (f, n, lo, hi, _) in &seen[1..] {
         assert_eq!(*n, n0, "{f}");
         for k in 0..3 {
-            assert!((lo[k] - lo0[k]).abs() < 1e-4 && (hi[k] - hi0[k]).abs() < 1e-4, "{f} bounds differ on axis {k}");
+            assert!(
+                (lo[k] - lo0[k]).abs() < 1e-4 && (hi[k] - hi0[k]).abs() < 1e-4,
+                "{f} bounds differ on axis {k}"
+            );
         }
     }
     // Suzanne at size=2 (once smoothed) is 2.65 m ear to ear and faces +z (toward a camera on +z).
@@ -88,7 +91,10 @@ fn the_same_model_reads_the_same_from_obj_stl_and_glb() {
     assert_eq!(obj_c.len(), 1);
     assert_eq!(glb_c.len(), 1);
     for k in 0..3 {
-        assert!((obj_c[0][k] - glb_c[0][k]).abs() < 1e-3, "{obj_c:?} vs {glb_c:?}");
+        assert!(
+            (obj_c[0][k] - glb_c[0][k]).abs() < 1e-3,
+            "{obj_c:?} vs {glb_c:?}"
+        );
     }
 }
 
@@ -104,7 +110,10 @@ fn a_gltf_written_by_hand_reads_its_node_tree_indices_and_colour() {
     for i in [0u16, 1, 2, 0] {
         bin.extend_from_slice(&i.to_le_bytes()); // the last one is padding
     }
-    let uri = format!("data:application/octet-stream;base64,{}", atlas::b64::encode(&bin));
+    let uri = format!(
+        "data:application/octet-stream;base64,{}",
+        atlas::b64::encode(&bin)
+    );
     let gltf = format!(
         r#"{{"asset":{{"version":"2.0"}},"scene":0,"scenes":[{{"nodes":[0]}}],
         "nodes":[{{"translation":[10,0,0],"scale":[2,2,2],"children":[1]}},{{"translation":[0,5,0],"mesh":0}}],
@@ -117,7 +126,13 @@ fn a_gltf_written_by_hand_reads_its_node_tree_indices_and_colour() {
         bin.len()
     );
     let mesh = atlas::meshio::read_gltf(gltf.as_bytes(), None).unwrap();
-    println!("LIVE [gltf by hand] {} triangle(s), from {:?} to {:?}, colours {:?}", mesh.tris.len(), mesh.lo, mesh.hi, mesh.colours);
+    println!(
+        "LIVE [gltf by hand] {} triangle(s), from {:?} to {:?}, colours {:?}",
+        mesh.tris.len(),
+        mesh.lo,
+        mesh.hi,
+        mesh.colours
+    );
     assert_eq!(mesh.tris.len(), 1);
     assert_eq!(mesh.lo, [10.0, 10.0, 0.0]);
     assert_eq!(mesh.hi, [12.0, 12.0, 0.0]);
@@ -146,7 +161,9 @@ fn a_model_stands_where_its_fit_puts_it_and_blender_agrees_for_every_format() {
         let mine = mask(&ours);
         // Stands on y = 0 and is 1.4 m at its longest: its lowest pixel is
         // where y = 0 lands, worked out with a pinhole here.
-        let rows: Vec<u32> = (0..ours.height).filter(|y| (0..ours.width).any(|x| mine[(*y * ours.width + x) as usize])).collect();
+        let rows: Vec<u32> = (0..ours.height)
+            .filter(|y| (0..ours.width).any(|x| mine[(*y * ours.width + x) as usize]))
+            .collect();
         let (top, bottom) = (rows[0], *rows.last().unwrap());
         let t = (35f64.to_radians() / 2.0).tan();
         // The base's nearest point (its front, about z = +0.35 before turning)
@@ -154,13 +171,23 @@ fn a_model_stands_where_its_fit_puts_it_and_blender_agrees_for_every_format() {
         let y_of = |y: f64, z: f64| (1.0 - (y - 0.7) / (5.0 - z) / t) / 2.0 * 120.0;
         let floor_lo = y_of(0.0, 0.0);
         let floor_hi = y_of(0.0, 0.6);
-        let mut line = format!("{f}: rows {top}..{bottom} (the floor at {floor_lo:.0}–{floor_hi:.0})");
-        assert!(bottom as f64 >= floor_lo - 2.0 && bottom as f64 <= floor_hi + 2.0, "{line}");
+        let mut line =
+            format!("{f}: rows {top}..{bottom} (the floor at {floor_lo:.0}–{floor_hi:.0})");
+        assert!(
+            bottom as f64 >= floor_lo - 2.0 && bottom as f64 <= floor_hi + 2.0,
+            "{line}"
+        );
         if let Some(b) = &blender {
             let made = make(&s, &dir, &f.replace('.', "_"), 0, Some(b)).unwrap();
-            let theirs = atlas::pngcodec::read_png(&std::fs::read(made.blender.as_ref().expect("Blender rendered")).unwrap()).unwrap();
+            let theirs = atlas::pngcodec::read_png(
+                &std::fs::read(made.blender.as_ref().expect("Blender rendered")).unwrap(),
+            )
+            .unwrap();
             let overlap = iou(&mine, &mask(&theirs));
-            line.push_str(&format!(", silhouette overlap with Blender {:.1}%", overlap * 100.0));
+            line.push_str(&format!(
+                ", silhouette overlap with Blender {:.1}%",
+                overlap * 100.0
+            ));
             assert!(overlap > 0.9, "{line}");
         }
         lines.push(line);
@@ -193,8 +220,14 @@ fn a_glass_ball_turns_the_world_behind_it_upside_down() {
     let blue = |p: [i32; 3]| p[2] > p[0] + 40;
     let (g, a) = (px(&glass, x, y), px(&air, x, y));
     println!("LIVE [glass] left of the ball's middle: {g:?} through glass (ior 1.5), {a:?} through 'glass' that doesn't bend (ior 1.0)");
-    assert!(red(a), "with nothing bending, the wall behind shows as it is: {a:?}");
-    assert!(blue(g), "a glass ball is a lens: left and right swap: {g:?}");
+    assert!(
+        red(a),
+        "with nothing bending, the wall behind shows as it is: {a:?}"
+    );
+    assert!(
+        blue(g),
+        "a glass ball is a lens: left and right swap: {g:?}"
+    );
     let r = 80 + 12;
     assert!(red(px(&glass, r, y)), "{:?}", px(&glass, r, y));
 }
@@ -245,7 +278,10 @@ fn glass_lets_light_through_its_shadow_and_glow_lights_its_neighbours() {
         }
         sum / 50.0
     };
-    let (dark, lit) = (near(r#""material":"solid""#), near(r#""material":"glow","glow":8"#));
+    let (dark, lit) = (
+        near(r#""material":"solid""#),
+        near(r#""material":"glow","glow":8"#),
+    );
     println!("LIVE [glow] the ground beside a ball at night: {dark:.1} beside a plain ball, {lit:.1} beside a glowing one");
     assert!(lit > dark + 8.0, "{lit} vs {dark}");
 }
@@ -296,17 +332,28 @@ fn patterns_have_the_size_they_are_given_and_blender_draws_the_same_ones() {
             }
         }
         let share = light as f64 / all as f64;
-        said.push(format!("{kind}: {} changes across, {} down, {:.0}% second colour", changes(&row), changes(&col), share * 100.0));
+        said.push(format!(
+            "{kind}: {} changes across, {} down, {:.0}% second colour",
+            changes(&row),
+            changes(&col),
+            share * 100.0
+        ));
         match kind {
             // A 1 m face centred on 0 in 0.2 m squares: half a square, four
             // whole ones, half a square — 5 changes each way.
-            "checker" => assert!(changes(&row) == 5 && changes(&col) == 5 && (share - 0.5).abs() < 0.12, "{said:?}"),
+            "checker" => assert!(
+                changes(&row) == 5 && changes(&col) == 5 && (share - 0.5).abs() < 0.12,
+                "{said:?}"
+            ),
             // Bands up the object: none across, 5 down.
             "stripes" => assert!(changes(&row) == 0 && changes(&col) == 5, "{said:?}"),
             // Lines 0.12 of a cell wide each way (1 − 0.88² ≈ 23 % of the face,
             // more on screen where a pixel is part line, part square); five
             // lines across, so ten changes.
-            "grid" => assert!(changes(&row) == 10 && changes(&col) == 10 && share > 0.18 && share < 0.40, "{said:?}"),
+            "grid" => assert!(
+                changes(&row) == 10 && changes(&col) == 10 && share > 0.18 && share < 0.40,
+                "{said:?}"
+            ),
             // The face cuts the middle of a layer of dots of radius 0.3 cells
             // (π·0.3² ≈ 28 %, again a little more on screen).
             "dots" => assert!(share > 0.22 && share < 0.42, "{said:?}"),
@@ -315,14 +362,19 @@ fn patterns_have_the_size_they_are_given_and_blender_draws_the_same_ones() {
         }
     }
     println!("LIVE [patterns] {}", said.join(" · "));
-    let Some(blender) = a_blender() else { return println!("LIVE [patterns, Blender] skipped: no Blender here") };
+    let Some(blender) = a_blender() else {
+        return println!("LIVE [patterns, Blender] skipped: no Blender here");
+    };
     let dir = tmp("patterns-blender");
     let mut agree = Vec::new();
     for kind in ["checker", "stripes", "grid", "dots"] {
         let s = pattern_box(kind);
         let ours = render_frame(&s, 0.0);
         let made = make(&s, &dir, kind, 0, Some(&blender)).unwrap();
-        let theirs = atlas::pngcodec::read_png(&std::fs::read(made.blender.as_ref().expect("Blender rendered")).unwrap()).unwrap();
+        let theirs = atlas::pngcodec::read_png(
+            &std::fs::read(made.blender.as_ref().expect("Blender rendered")).unwrap(),
+        )
+        .unwrap();
         let (x0, x1, y0, y1) = face(&ours);
         let (mut same, mut n) = (0, 0);
         for y in y0..y1 {
@@ -360,13 +412,19 @@ fn night(quality: &str, denoise: bool) -> Scene {
 
 fn rmse(a: &Rgba, b: &Rgba) -> f64 {
     let n = a.pixels.len();
-    let s: f64 = (0..n).filter(|i| i % 4 != 3).map(|i| (a.pixels[i] as f64 - b.pixels[i] as f64).powi(2)).sum();
+    let s: f64 = (0..n)
+        .filter(|i| i % 4 != 3)
+        .map(|i| (a.pixels[i] as f64 - b.pixels[i] as f64).powi(2))
+        .sum();
     (s / (n as f64 * 0.75)).sqrt()
 }
 
 /// The strength of edges where the reference has them.
 fn edges(img: &Rgba, at: &[(u32, u32)]) -> f64 {
-    at.iter().map(|&(x, y)| (bright(img, x + 1, y) - bright(img, x, y)).abs()).sum::<f64>() / at.len().max(1) as f64
+    at.iter()
+        .map(|&(x, y)| (bright(img, x + 1, y) - bright(img, x, y)).abs())
+        .sum::<f64>()
+        / at.len().max(1) as f64
 }
 
 #[test]
@@ -401,7 +459,10 @@ fn the_denoiser_takes_grain_out_and_leaves_edges_in() {
             bright(&raw, x, y) > bright(&reference, x, y) + 60.0
         })
         .count();
-    println!("LIVE [lamp light] pixels 60+ levels too bright in the raw draft: {fireflies} of {}", raw.width * raw.height);
+    println!(
+        "LIVE [lamp light] pixels 60+ levels too bright in the raw draft: {fireflies} of {}",
+        raw.width * raw.height
+    );
     assert!(fireflies < 20, "{fireflies}");
     // Measured on this scene: 3.31 → 2.91; on a held-out scene (glass,
     // lamp, model, patterns) 3.19 → 3.01. Modest, and said so.
@@ -417,9 +478,24 @@ fn a_missing_model_or_unknown_pattern_is_said_before_drawing() {
     ))
     .unwrap();
     let found = check_scene(&s);
-    println!("LIVE [checks] {}", found.iter().map(|f| f.detail.clone()).collect::<Vec<_>>().join(" · "));
-    assert!(found.iter().any(|f| f.rule == "models read" && f.severity == atlas::motion::Severity::Blocking), "{found:?}");
-    assert!(found.iter().any(|f| f.rule == "patterns known"), "{found:?}");
+    println!(
+        "LIVE [checks] {}",
+        found
+            .iter()
+            .map(|f| f.detail.clone())
+            .collect::<Vec<_>>()
+            .join(" · ")
+    );
+    assert!(
+        found
+            .iter()
+            .any(|f| f.rule == "models read" && f.severity == atlas::motion::Severity::Blocking),
+        "{found:?}"
+    );
+    assert!(
+        found.iter().any(|f| f.rule == "patterns known"),
+        "{found:?}"
+    );
     // Drawing anyway leaves the missing model out rather than failing.
     let img = render_frame(&s, 0.0);
     assert!(mask(&img).iter().any(|m| *m));
@@ -438,7 +514,10 @@ fn a_scene_file_finds_its_models_beside_it_and_the_folder_is_listed() {
     let s = load_scene(&dir.join("look.json")).unwrap();
     assert!(check_scene(&s).is_empty(), "{:?}", check_scene(&s));
     assert!(mask(&render_frame(&s, 0.0)).iter().filter(|m| **m).count() > 60);
-    assert_eq!(atlas::scene3d::model_files(&dir), vec!["head.stl".to_string()]);
+    assert_eq!(
+        atlas::scene3d::model_files(&dir),
+        vec!["head.stl".to_string()]
+    );
 }
 
 #[test]

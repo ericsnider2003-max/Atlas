@@ -38,7 +38,14 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 /// The number a menu reply opens with — "3 ways I'd try, in order — ...".
@@ -57,11 +64,20 @@ fn ways_counted(reply: &str) -> usize {
 fn asking_for_all_the_ways_lays_the_menu_out_in_order() {
     let c = cfg();
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("menu")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("menu")),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     // Not a command — it lands as an unrecognised line, the same door
     // `decision_help` sits behind, and `ways_in_help` sits just above it.
-    let reply = d.turn("what are all the ways you could get the spreadsheet numbers", 1_000);
+    let reply = d.turn(
+        "what are all the ways you could get the spreadsheet numbers",
+        1_000,
+    );
 
     // A non-`.contains` assertion: the reply must open by naming a real count
     // of routes, and a menu is more than one way. This is the whole point of
@@ -87,9 +103,18 @@ fn an_ordinary_line_does_not_trip_the_menu() {
     // `None` here and the ordinary path answers instead.
     let c = cfg();
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("contrast")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("contrast")),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
-    let menu = d.turn("what are all the ways you could get the spreadsheet numbers", 1_000);
+    let menu = d.turn(
+        "what are all the ways you could get the spreadsheet numbers",
+        1_000,
+    );
     let plain = d.turn("the capital of France is Paris", 2_000);
 
     assert_ne!(

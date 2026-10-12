@@ -88,23 +88,34 @@ impl Memory {
             w.last_used = now();
             w.steps = steps;
         } else {
-            self.workflows.push(WorkflowMemo { trigger: t, steps, times_used: 1, last_used: now() });
+            self.workflows.push(WorkflowMemo {
+                trigger: t,
+                steps,
+                times_used: 1,
+                last_used: now(),
+            });
         }
     }
 
     /// Sequences seen enough times to be treated as a habit.
     pub fn habits(&self, min_uses: u32) -> Vec<&WorkflowMemo> {
-        let mut v: Vec<&WorkflowMemo> =
-            self.workflows.iter().filter(|w| w.times_used >= min_uses).collect();
+        let mut v: Vec<&WorkflowMemo> = self
+            .workflows
+            .iter()
+            .filter(|w| w.times_used >= min_uses)
+            .collect();
         v.sort_by_key(|b| std::cmp::Reverse(b.times_used));
         v
     }
 
     pub fn touch_project(&mut self, name: &str, folder: Option<&str>) {
-        let p = self.projects.entry(name.to_string()).or_insert_with(|| Project {
-            name: name.to_string(),
-            ..Default::default()
-        });
+        let p = self
+            .projects
+            .entry(name.to_string())
+            .or_insert_with(|| Project {
+                name: name.to_string(),
+                ..Default::default()
+            });
         p.last_touched = now();
         if let Some(f) = folder {
             if !p.folders.iter().any(|x| x == f) {

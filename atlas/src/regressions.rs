@@ -72,8 +72,17 @@ pub fn settle_selftest(cases: &mut Vec<Case>, failing: &[Case]) {
 /// Did the reply repeat the one you corrected? Compared loosely: case,
 /// spacing and trailing punctuation don't make it a different answer.
 pub fn repeats_the_mistake(case: &Case, reply: &str) -> bool {
-    let norm = |s: &str| s.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ").trim_end_matches(['.', '!', '?']).to_string();
-    case.source == Source::Correction && !case.wrong.trim().is_empty() && norm(&case.wrong) == norm(reply)
+    let norm = |s: &str| {
+        s.to_lowercase()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .trim_end_matches(['.', '!', '?'])
+            .to_string()
+    };
+    case.source == Source::Correction
+        && !case.wrong.trim().is_empty()
+        && norm(&case.wrong) == norm(reply)
 }
 
 #[cfg(test)]
@@ -81,7 +90,14 @@ mod tests {
     use super::*;
 
     fn c(said: &str, source: Source) -> Case {
-        Case { said: said.into(), wrong: "Paused.".into(), wanted: "open chrome".into(), command: String::new(), source, at: 1 }
+        Case {
+            said: said.into(),
+            wrong: "Paused.".into(),
+            wanted: "open chrome".into(),
+            command: String::new(),
+            source,
+            at: 1,
+        }
     }
 
     #[test]

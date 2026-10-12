@@ -578,7 +578,9 @@ impl Intent {
             Intent::Overnight => "what Atlas did overnight".to_string(),
             Intent::Dangling => "notes that point at things that don't exist yet".to_string(),
             Intent::Suggestions(_) => "switching one of Atlas's suggestions on or off".to_string(),
-            Intent::DropTask(_) => "taking something off your list, or bringing it back".to_string(),
+            Intent::DropTask(_) => {
+                "taking something off your list, or bringing it back".to_string()
+            }
             Intent::Unzip(_) => "unzipping".to_string(),
             Intent::ReadDocument(_) => "reading a document".to_string(),
             Intent::WorkOnYourself(_) => "working on myself".into(),
@@ -663,7 +665,9 @@ impl Intent {
             Intent::LeaveGroup(_) => "leaving a group".into(),
             Intent::ChangeGroup(_) => "changing who's in a group".into(),
             Intent::Friend(_) => "adding a friend".into(),
-            Intent::Updates(w) if w.starts_with("undo") => "going back to the last version of Atlas".into(),
+            Intent::Updates(w) if w.starts_with("undo") => {
+                "going back to the last version of Atlas".into()
+            }
             Intent::Updates(w) if w == "install" => "installing the Atlas update".into(),
             Intent::Updates(_) => "Atlas's updates".into(),
             Intent::Feedback(w) if w == "list" => "feedback about Atlas".into(),
@@ -761,8 +765,18 @@ impl Parser {
             })
             .collect();
         // Longest phrase first. This is the whole trick.
-        table.sort_by(|a, b| b.phrase.len().cmp(&a.phrase.len()).then(a.phrase.cmp(&b.phrase)));
-        Parser { table, projects: Vec::new(), workday: Default::default(), names: None }
+        table.sort_by(|a, b| {
+            b.phrase
+                .len()
+                .cmp(&a.phrase.len())
+                .then(a.phrase.cmp(&b.phrase))
+        });
+        Parser {
+            table,
+            projects: Vec::new(),
+            workday: Default::default(),
+            names: None,
+        }
     }
 
     /// The projects a general phrase may reach. Without one named, "change
@@ -772,32 +786,73 @@ impl Parser {
     }
 
     pub fn know_projects(&mut self, names: impl IntoIterator<Item = String>) {
-        self.projects = names.into_iter().map(|n| n.to_lowercase()).filter(|n| !n.is_empty()).collect();
+        self.projects = names
+            .into_iter()
+            .map(|n| n.to_lowercase())
+            .filter(|n| !n.is_empty())
+            .collect();
     }
 
     /// The apps, modes and other Atlases a `names_only` command may name.
     pub fn know_names(&mut self, names: KnownNames) {
-        let low = |v: Vec<String>| v.into_iter().map(|n| normalize(&n)).filter(|n| !n.is_empty()).collect();
-        self.names = Some(KnownNames { apps: low(names.apps), modes: low(names.modes), peers: low(names.peers) });
+        let low = |v: Vec<String>| {
+            v.into_iter()
+                .map(|n| normalize(&n))
+                .filter(|n| !n.is_empty())
+                .collect()
+        };
+        self.names = Some(KnownNames {
+            apps: low(names.apps),
+            modes: low(names.modes),
+            peers: low(names.peers),
+        });
     }
 
     /// Is `arg` a name this command may take? Always, until names are known.
     fn is_a_known_name(&self, intent: &str, arg: &str) -> bool {
         let Some(n) = &self.names else { return true };
         let a = normalize(arg);
-        let a = a.strip_prefix("the ").or_else(|| a.strip_prefix("my ")).unwrap_or(&a).trim();
+        let a = a
+            .strip_prefix("the ")
+            .or_else(|| a.strip_prefix("my "))
+            .unwrap_or(&a)
+            .trim();
         let a = a.strip_suffix(" mode").unwrap_or(a).trim();
         // "close it", "switch to that one": the reference resolver says
         // which, or asks.
         if a.is_empty()
-            || matches!(a, "it" | "that" | "this" | "them" | "these" | "those" | "that one" | "this one" | "the other one" | "other one")
+            || matches!(
+                a,
+                "it" | "that"
+                    | "this"
+                    | "them"
+                    | "these"
+                    | "those"
+                    | "that one"
+                    | "this one"
+                    | "the other one"
+                    | "other one"
+            )
         {
             return true;
         }
         let list = match intent {
             "open_app" | "close_app" | "focus_app" => &n.apps,
             // Leaving a mode is said with words that aren't a mode's name.
-            "set_mode" if matches!(a, "off" | "leave" | "exit" | "normal" | "none" | "nothing" | "standard" | "default" | "out") => {
+            "set_mode"
+                if matches!(
+                    a,
+                    "off"
+                        | "leave"
+                        | "exit"
+                        | "normal"
+                        | "none"
+                        | "nothing"
+                        | "standard"
+                        | "default"
+                        | "out"
+                ) =>
+            {
                 return true
             }
             "set_mode" => &n.modes,
@@ -812,7 +867,8 @@ impl Parser {
     /// for the handler to read.
     fn work_in_a_folder(&self, input: &str) -> Option<(Intent, Option<String>)> {
         let lower = input.trim_start().to_lowercase();
-        if !(lower.starts_with("in ") || lower.starts_with("inside ") || lower.starts_with("into ")) {
+        if !(lower.starts_with("in ") || lower.starts_with("inside ") || lower.starts_with("into "))
+        {
             return None;
         }
         let (_, rest) = crate::build_it::folder_named(input)?;
@@ -821,9 +877,28 @@ impl Parser {
             (Intent::Improve(_), n) => Some((Intent::Improve(whole), n)),
             (Intent::Build(_), n) => Some((Intent::Build(whole), n)),
             (Intent::Unknown(_), _) => {
-                let first = normalize(&rest).split_whitespace().next().unwrap_or("").to_string();
-                matches!(first.as_str(), "add" | "fix" | "change" | "make" | "refactor" | "update" | "remove" | "rename" | "rewrite" | "implement" | "write" | "create" | "build")
-                    .then(|| (Intent::Improve(whole), Some("improve".to_string())))
+                let first = normalize(&rest)
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
+                matches!(
+                    first.as_str(),
+                    "add"
+                        | "fix"
+                        | "change"
+                        | "make"
+                        | "refactor"
+                        | "update"
+                        | "remove"
+                        | "rename"
+                        | "rewrite"
+                        | "implement"
+                        | "write"
+                        | "create"
+                        | "build"
+                )
+                .then(|| (Intent::Improve(whole), Some("improve".to_string())))
             }
             _ => None,
         }
@@ -839,14 +914,38 @@ impl Parser {
         // shopping list" are not code (30 Sep 2026 sweep): a project of
         // yours by name, or something that is code, has to be in it.
         let low = rest.to_lowercase();
-        let words: Vec<&str> = low.split(|c: char| !c.is_alphanumeric() && c != '-' && c != '_').filter(|w| !w.is_empty()).collect();
+        let words: Vec<&str> = low
+            .split(|c: char| !c.is_alphanumeric() && c != '-' && c != '_')
+            .filter(|w| !w.is_empty())
+            .collect();
         const CODE: &[&str] = &[
-            "code", "codebase", "app", "program", "script", "website", "site", "function", "module", "repo",
-            "repository", "atlas", "bug", "tests", "test", "api", "backend", "frontend", "ui", "cli",
+            "code",
+            "codebase",
+            "app",
+            "program",
+            "script",
+            "website",
+            "site",
+            "function",
+            "module",
+            "repo",
+            "repository",
+            "atlas",
+            "bug",
+            "tests",
+            "test",
+            "api",
+            "backend",
+            "frontend",
+            "ui",
+            "cli",
         ];
         // "on the <name> project, ..." names a project the way Atlas tells
         // you to; the everyday verbs need more than the word "project".
-        let everyday = matches!(phrase, "work on the" | "update the" | "change the" | "add to" | "increase");
+        let everyday = matches!(
+            phrase,
+            "work on the" | "update the" | "change the" | "add to" | "increase"
+        );
         words.iter().any(|w| CODE.contains(w))
             || self.projects.iter().any(|p| words.iter().any(|w| w == p))
             // A folder named as where the work goes (2 Oct 2026).
@@ -887,7 +986,10 @@ impl Parser {
         // "send Maya a friend request" puts the name in the middle, where no
         // phrase can reach it; `friends::read_spoken` reads only its own shapes.
         if input.contains(crate::friends::PREFIX) || crate::friends::read_spoken(input).is_some() {
-            return (Intent::Friend(input.trim().to_string()), Some("friend".into()));
+            return (
+                Intent::Friend(input.trim().to_string()),
+                Some("friend".into()),
+            );
         }
         // Asked for a report on itself, inside a longer sentence (29 Sep 2026:
         // "Can you do some work and generate a report on yourself?" went to
@@ -951,7 +1053,10 @@ impl Parser {
                 }
             } else if text == *phrase {
                 Some(String::new())
-            } else { text.strip_prefix(&format!("{} ", phrase)).map(|r| r.trim().to_string()) };
+            } else {
+                text.strip_prefix(&format!("{} ", phrase))
+                    .map(|r| r.trim().to_string())
+            };
 
             let Some(rest) = rest else { continue };
             if row.needs_arg && rest.is_empty() {
@@ -1016,8 +1121,25 @@ impl Parser {
 /// Words that don't change what a short command asks: the wake word,
 /// "please", "now", "for me". Taken off both ends, for anchored commands.
 pub fn without_fillers(normalized: &str) -> String {
-    const LEAD: &[&str] = &["hey atlas", "ok atlas", "okay atlas", "atlas", "please", "ok", "okay", "just"];
-    const TAIL: &[&str] = &["please", "now", "for me", "atlas", "thanks", "thank you", "right now"];
+    const LEAD: &[&str] = &[
+        "hey atlas",
+        "ok atlas",
+        "okay atlas",
+        "atlas",
+        "please",
+        "ok",
+        "okay",
+        "just",
+    ];
+    const TAIL: &[&str] = &[
+        "please",
+        "now",
+        "for me",
+        "atlas",
+        "thanks",
+        "thank you",
+        "right now",
+    ];
     let mut t = normalized.trim().to_string();
     loop {
         let before = t.clone();
@@ -1080,7 +1202,10 @@ impl Parser {
 /// it would send the vault passphrase to the model instead, which is the one
 /// thing `typed.rs` says a microphone must never carry.
 fn argument_is_a_name(intent: &str) -> bool {
-    matches!(intent, "open_app" | "close_app" | "focus_app" | "set_mode" | "draft_post")
+    matches!(
+        intent,
+        "open_app" | "close_app" | "focus_app" | "set_mode" | "draft_post"
+    )
 }
 
 /// Words that mean the sentence carried on past the bit that was understood.
@@ -1249,15 +1374,44 @@ pub(crate) fn fits_the_command(intent: &str, phrase: &str, rest: &str) -> bool {
     let r = rest.trim().to_lowercase();
     let first = r.split_whitespace().next().unwrap_or("");
     let words = r.split_whitespace().count();
-    let has = |ws: &[&str]| ws.iter().any(|w| format!(" {r} ").contains(&format!(" {w} ")));
+    let has = |ws: &[&str]| {
+        ws.iter()
+            .any(|w| format!(" {r} ").contains(&format!(" {w} ")))
+    };
     const DAYS: &[&str] = &[
-        "today", "tonight", "tomorrow", "yesterday", "week", "weekend", "monday", "tuesday", "wednesday", "thursday",
-        "friday", "saturday", "sunday", "morning", "afternoon", "evening", "month", "next", "this", "calendar", "schedule", "agenda",
+        "today",
+        "tonight",
+        "tomorrow",
+        "yesterday",
+        "week",
+        "weekend",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+        "morning",
+        "afternoon",
+        "evening",
+        "month",
+        "next",
+        "this",
+        "calendar",
+        "schedule",
+        "agenda",
     ];
     match intent {
         // "what's on" + a day, or nothing -- not "my mind", "TV".
-        "agenda" => (r.is_empty() || has(DAYS) || r.chars().any(|c| c.is_ascii_digit())) && !has(&["tv", "telly", "netflix", "youtube", "news", "mind", "radio"]),
-        "back_up" => !matches!(first, "a" | "an" | "the") || has(&["files", "everything", "atlas", "notes", "backup"]),
+        "agenda" => {
+            (r.is_empty() || has(DAYS) || r.chars().any(|c| c.is_ascii_digit()))
+                && !has(&["tv", "telly", "netflix", "youtube", "news", "mind", "radio"])
+        }
+        "back_up" => {
+            !matches!(first, "a" | "an" | "the")
+                || has(&["files", "everything", "atlas", "notes", "backup"])
+        }
         "address_as" => {
             let p = phrase.trim();
             if p.starts_with("drop the") || p.starts_with("just talk") {
@@ -1268,30 +1422,151 @@ pub(crate) fn fits_the_command(intent: &str, phrase: &str, rest: &str) -> bool {
         }
         // "this is my sister Anna" -- a name; not "this is a great idea".
         "name_this" => {
-            let describing = ["great", "good", "bad", "nice", "favorite", "favourite", "best", "worst", "big", "small", "lot", "real",
-                "new", "great", "terrible", "problem", "joke", "mess", "idea", "question", "song", "movie", "thing", "time", "way", "lie", "test"];
-            words <= 3 && !describing.iter().any(|d| r.split_whitespace().any(|w| w == *d))
+            let describing = [
+                "great",
+                "good",
+                "bad",
+                "nice",
+                "favorite",
+                "favourite",
+                "best",
+                "worst",
+                "big",
+                "small",
+                "lot",
+                "real",
+                "new",
+                "great",
+                "terrible",
+                "problem",
+                "joke",
+                "mess",
+                "idea",
+                "question",
+                "song",
+                "movie",
+                "thing",
+                "time",
+                "way",
+                "lie",
+                "test",
+            ];
+            words <= 3
+                && !describing
+                    .iter()
+                    .any(|d| r.split_whitespace().any(|w| w == *d))
         }
         // Another Atlas, a friend -- not "Sam to dinner".
         "pair" if phrase.trim() == "invite" => !has(&["to", "for", "over"]) || r.contains("atlas"),
         // A calendar entry is something at a time, not "is busy", "him on Twitter".
-        "schedule" => {
-            !matches!(first, "is" | "was" | "me" | "him" | "her" | "them" | "us" | "it" | "that" | "your")
-        }
-        "open_app" => !matches!(first, "to" | "up" | "minded" | "about" | "with" | "for" | "and"),
+        "schedule" => !matches!(
+            first,
+            "is" | "was" | "me" | "him" | "her" | "them" | "us" | "it" | "that" | "your"
+        ),
+        "open_app" => !matches!(
+            first,
+            "to" | "up" | "minded" | "about" | "with" | "for" | "and"
+        ),
         // "look up to him" is admiring someone, not a search.
         "research" if phrase.trim() == "look up" && first == "to" => false,
-        "research" => !matches!(first, "is" | "was" | "shows" | "showed" | "says" | "said" | "suggests" | "found" | "has" | "have" | "does" | "did" | "keeps" | "isnt" | "wasnt" | "doesnt"),
+        "research" => !matches!(
+            first,
+            "is" | "was"
+                | "shows"
+                | "showed"
+                | "says"
+                | "said"
+                | "suggests"
+                | "found"
+                | "has"
+                | "have"
+                | "does"
+                | "did"
+                | "keeps"
+                | "isnt"
+                | "wasnt"
+                | "doesnt"
+        ),
         "call_they_declined" => words <= 2,
         // A program, a tool, a page -- not a letter or a report.
         "improve" if phrase.trim() == "improve" => {
-            !matches!(first, "my" | "your" | "our" | "his" | "her" | "their") || has(&["code", "app", "program", "script", "project", "page", "site", "website", "function", "tool"])
+            !matches!(first, "my" | "your" | "our" | "his" | "her" | "their")
+                || has(&[
+                    "code", "app", "program", "script", "project", "page", "site", "website",
+                    "function", "tool",
+                ])
         }
         // Words, not code -- and a "script" for a video is words too.
-        "build_it" if has(&["letter", "report", "email", "essay", "note", "poem", "story", "speech", "summary", "cover", "bio", "message", "post", "article", "document", "doc", "memo", "paragraph", "response", "reply", "video", "youtube", "film", "movie", "episode", "podcast", "reel", "tiktok", "commercial", "play", "scene", "list", "plan", "recipe", "song", "lyrics", "caption", "tweet", "thread", "calendar", "event", "reminder", "account", "budget"]) => false,
+        "build_it"
+            if has(&[
+                "letter",
+                "report",
+                "email",
+                "essay",
+                "note",
+                "poem",
+                "story",
+                "speech",
+                "summary",
+                "cover",
+                "bio",
+                "message",
+                "post",
+                "article",
+                "document",
+                "doc",
+                "memo",
+                "paragraph",
+                "response",
+                "reply",
+                "video",
+                "youtube",
+                "film",
+                "movie",
+                "episode",
+                "podcast",
+                "reel",
+                "tiktok",
+                "commercial",
+                "play",
+                "scene",
+                "list",
+                "plan",
+                "recipe",
+                "song",
+                "lyrics",
+                "caption",
+                "tweet",
+                "thread",
+                "calendar",
+                "event",
+                "reminder",
+                "account",
+                "budget",
+            ]) =>
+        {
+            false
+        }
         // The short leads (2 Oct 2026) need what follows to be code: "write a
         // python script", "create a tool that", "make me a scraper".
-        "build_it" if matches!(phrase.trim(), "write a" | "write an" | "create a" | "create an" | "create me a" | "make me a" | "make me an" | "code a" | "program a" | "build a" | "build an") => names_code(&r),
+        "build_it"
+            if matches!(
+                phrase.trim(),
+                "write a"
+                    | "write an"
+                    | "create a"
+                    | "create an"
+                    | "create me a"
+                    | "make me a"
+                    | "make me an"
+                    | "code a"
+                    | "program a"
+                    | "build a"
+                    | "build an"
+            ) =>
+        {
+            names_code(&r)
+        }
         "build_it" => true,
         _ => true,
     }
@@ -1302,13 +1577,59 @@ pub(crate) fn fits_the_command(intent: &str, phrase: &str, rest: &str) -> bool {
 /// leads need after them to be a build (2 Oct 2026).
 fn names_code(r: &str) -> bool {
     const CODE: &[&str] = &[
-        "script", "scripts", "program", "programs", "app", "apps", "application", "tool", "tools", "function", "functions",
-        "bot", "cli", "scraper", "website", "webpage", "site", "game", "class", "module", "parser", "api", "server",
-        "utility", "code", "library", "extension", "plugin", "macro", "command-line", "commandline", "gui",
-        "python", "rust", "javascript", "typescript", "golang", "c++", "cpp", "powershell", "bash", "regex",
-        "calculator", "converter", "generator", "crawler", "dashboard", "endpoint", "daemon", "service",
+        "script",
+        "scripts",
+        "program",
+        "programs",
+        "app",
+        "apps",
+        "application",
+        "tool",
+        "tools",
+        "function",
+        "functions",
+        "bot",
+        "cli",
+        "scraper",
+        "website",
+        "webpage",
+        "site",
+        "game",
+        "class",
+        "module",
+        "parser",
+        "api",
+        "server",
+        "utility",
+        "code",
+        "library",
+        "extension",
+        "plugin",
+        "macro",
+        "command-line",
+        "commandline",
+        "gui",
+        "python",
+        "rust",
+        "javascript",
+        "typescript",
+        "golang",
+        "c++",
+        "cpp",
+        "powershell",
+        "bash",
+        "regex",
+        "calculator",
+        "converter",
+        "generator",
+        "crawler",
+        "dashboard",
+        "endpoint",
+        "daemon",
+        "service",
     ];
-    r.split(|c: char| c.is_whitespace() || c == ',' || c == '.').any(|w| CODE.contains(&w))
+    r.split(|c: char| c.is_whitespace() || c == ',' || c == '.')
+        .any(|w| CODE.contains(&w))
 }
 
 /// Intents whose argument must reach `build` exactly as spoken, whatever it
@@ -1538,11 +1859,30 @@ fn build(intent: &str, arg: String, raw: &str) -> Intent {
 fn polite_rest(input: &str) -> Option<&str> {
     let t = input.trim().trim_end_matches(['?', '!', '.']).trim_end();
     let lower = t.to_ascii_lowercase();
-    for p in ["can you please ", "could you please ", "would you please ", "please can you ", "can you ", "could you ", "would you ", "will you ", "can u ", "please ",
+    for p in [
+        "can you please ",
+        "could you please ",
+        "would you please ",
+        "please can you ",
+        "can you ",
+        "could you ",
+        "would you ",
+        "will you ",
+        "can u ",
+        "please ",
         // "Ok correct the issues found" (Eric, 4 Oct 2026): a lead-in that
         // changes nothing, kept off so the command underneath is read. Only
         // taken when what's left is a command (see `parse_named`).
-        "ok so ", "ok, ", "ok ", "okay, ", "okay ", "alright, ", "alright ", "right, ", "now "] {
+        "ok so ",
+        "ok, ",
+        "ok ",
+        "okay, ",
+        "okay ",
+        "alright, ",
+        "alright ",
+        "right, ",
+        "now ",
+    ] {
         if lower.starts_with(p) && t.len() > p.len() {
             let rest = t[p.len()..].trim_start();
             let rest = rest.strip_suffix(" please").unwrap_or(rest).trim();
@@ -1575,12 +1915,30 @@ fn polite_rest(input: &str) -> Option<&str> {
 /// about you or how it behaves. `commands.yaml` marks the same ones
 /// `expose: never` (checked by `tests/talking_freely.rs`).
 pub const NEVER_FOR_THE_MODEL: &[&str] = &[
-    "dictate", "snippet", "type_code", "unlock", "set_key", "update_install", "update_undo",
-    "feedback_send", "feedback_send_bare", "feedback_reply", "reminder",
-    "pause", "resume", "ready",
-    "call_record_everyone", "call_they_agreed", "call_they_declined", "call_couldnt_ask", "call_no_answer",
+    "dictate",
+    "snippet",
+    "type_code",
+    "unlock",
+    "set_key",
+    "update_install",
+    "update_undo",
+    "feedback_send",
+    "feedback_send_bare",
+    "feedback_reply",
+    "reminder",
+    "pause",
+    "resume",
+    "ready",
+    "call_record_everyone",
+    "call_they_agreed",
+    "call_they_declined",
+    "call_couldnt_ask",
+    "call_no_answer",
     "call_just_mine",
-    "got_it_wrong", "apply_lesson", "this_is_me", "address_as",
+    "got_it_wrong",
+    "apply_lesson",
+    "this_is_me",
+    "address_as",
 ];
 
 /// How a command is offered to the model.
@@ -1614,7 +1972,11 @@ impl ToolEntry {
             None => (self.describe.trim().to_string(), String::new()),
         };
         let parameters = if self.takes_arg {
-            let arg_doc = if arg.is_empty() { "What it is about, in the user's words.".to_string() } else { arg };
+            let arg_doc = if arg.is_empty() {
+                "What it is about, in the user's words.".to_string()
+            } else {
+                arg
+            };
             let mut p = json!({
                 "type": "object",
                 "properties": {"arg": {"type": "string", "description": arg_doc}},
@@ -1658,7 +2020,12 @@ impl ToolBook {
             };
             entries.push(ToolEntry {
                 name: c.intent.clone(),
-                describe: c.describe.clone().unwrap_or_else(|| format!("The \"{}\" command.", c.phrases.first().cloned().unwrap_or_default())),
+                describe: c.describe.clone().unwrap_or_else(|| {
+                    format!(
+                        "The \"{}\" command.",
+                        c.phrases.first().cloned().unwrap_or_default()
+                    )
+                }),
                 takes_arg: c.takes_argument,
                 arg_optional: c.argument_optional,
                 exposure,
@@ -1684,14 +2051,19 @@ impl ToolBook {
 
     /// May the model choose this command?
     pub fn offered(&self, name: &str) -> bool {
-        self.get(name).is_some_and(|e| e.exposure != Exposure::Never)
+        self.get(name)
+            .is_some_and(|e| e.exposure != Exposure::Never)
     }
 
     /// The tools for one sentence: every core tool, always in the same
     /// order, then up to `more` others the sentence reads like.
     pub fn for_sentence(&self, said: &str, more: usize) -> Vec<serde_json::Value> {
-        let mut out: Vec<serde_json::Value> =
-            self.entries.iter().filter(|e| e.exposure == Exposure::Core).map(|e| e.spec()).collect();
+        let mut out: Vec<serde_json::Value> = self
+            .entries
+            .iter()
+            .filter(|e| e.exposure == Exposure::Core)
+            .map(|e| e.spec())
+            .collect();
         for (id, _score) in self.index.search(said, more) {
             if let Some(e) = self.entries.get(id as usize) {
                 out.push(e.spec());
@@ -1731,7 +2103,9 @@ pub fn from_tool(name: &str, args: &serde_json::Value, said: &str) -> Option<Int
     if name == "ask" {
         return (!arg.trim().is_empty()).then(|| Intent::Ask(arg.trim().to_string()));
     }
-    if matches!(name, "read_document" | "unzip" | "edit_media" | "operate") && !arg.trim().is_empty() {
+    if matches!(name, "read_document" | "unzip" | "edit_media" | "operate")
+        && !arg.trim().is_empty()
+    {
         return command_by_name(name, arg.trim().to_string(), arg.trim());
     }
     command_by_name(name, arg.trim().to_string(), said)
@@ -1740,7 +2114,11 @@ pub fn from_tool(name: &str, args: &serde_json::Value, said: &str) -> Option<Int
 /// `build`, for a command named outright rather than matched by a phrase.
 /// `None` when the name isn't a command.
 fn command_by_name(name: &str, arg: String, raw: &str) -> Option<Intent> {
-    let raw = if raw.trim().is_empty() { arg.clone() } else { raw.to_string() };
+    let raw = if raw.trim().is_empty() {
+        arg.clone()
+    } else {
+        raw.to_string()
+    };
     match build(name, arg, &raw) {
         Intent::Unknown(_) => None,
         i => Some(i),
@@ -1750,7 +2128,17 @@ fn command_by_name(name: &str, arg: String, raw: &str) -> Option<Intent> {
 /// Does this sentence ask for a report on Atlas itself, or what's left to
 /// set up? Narrow on purpose: only these shapes, anywhere in the sentence.
 fn asks_for_a_self_report(said: &str) -> bool {
-    let t: String = said.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == ' ' { c } else { ' ' }).collect();
+    let t: String = said
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
     let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
     [
         "report on yourself",

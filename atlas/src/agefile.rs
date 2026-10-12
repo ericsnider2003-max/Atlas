@@ -90,13 +90,31 @@ fn fe_bytes(a: Fe) -> [u8; 32] {
 }
 
 fn fe_add(a: Fe, b: Fe) -> Fe {
-    [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3], a[4] + b[4]]
+    [
+        a[0] + b[0],
+        a[1] + b[1],
+        a[2] + b[2],
+        a[3] + b[3],
+        a[4] + b[4],
+    ]
 }
 
 fn fe_sub(a: Fe, b: Fe) -> Fe {
     // Add 2p first so nothing underflows.
-    let two_p: Fe = [0xFFFFFFFFFFFDA, 0xFFFFFFFFFFFFE, 0xFFFFFFFFFFFFE, 0xFFFFFFFFFFFFE, 0xFFFFFFFFFFFFE];
-    fe_carry([a[0] + two_p[0] - b[0], a[1] + two_p[1] - b[1], a[2] + two_p[2] - b[2], a[3] + two_p[3] - b[3], a[4] + two_p[4] - b[4]])
+    let two_p: Fe = [
+        0xFFFFFFFFFFFDA,
+        0xFFFFFFFFFFFFE,
+        0xFFFFFFFFFFFFE,
+        0xFFFFFFFFFFFFE,
+        0xFFFFFFFFFFFFE,
+    ];
+    fe_carry([
+        a[0] + two_p[0] - b[0],
+        a[1] + two_p[1] - b[1],
+        a[2] + two_p[2] - b[2],
+        a[3] + two_p[3] - b[3],
+        a[4] + two_p[4] - b[4],
+    ])
 }
 
 fn fe_mul(a: Fe, b: Fe) -> Fe {
@@ -115,7 +133,13 @@ fn fe_mul(a: Fe, b: Fe) -> Fe {
     let c = r[4] >> 51;
     r[4] &= MASK as u128;
     r[0] += c * 19;
-    fe_carry([r[0] as u64, r[1] as u64, r[2] as u64, r[3] as u64, r[4] as u64])
+    fe_carry([
+        r[0] as u64,
+        r[1] as u64,
+        r[2] as u64,
+        r[3] as u64,
+        r[4] as u64,
+    ])
 }
 
 fn fe_sq(a: Fe) -> Fe {
@@ -162,7 +186,8 @@ fn x25519(k: &[u8; 32], u: &[u8; 32]) -> [u8; 32] {
     let mut u = *u;
     u[31] &= 127;
     let x1 = fe_from(&u);
-    let (mut x2, mut z2, mut x3, mut z3): (Fe, Fe, Fe, Fe) = ([1, 0, 0, 0, 0], [0; 5], x1, [1, 0, 0, 0, 0]);
+    let (mut x2, mut z2, mut x3, mut z3): (Fe, Fe, Fe, Fe) =
+        ([1, 0, 0, 0, 0], [0; 5], x1, [1, 0, 0, 0, 0]);
     let mut swap = 0u64;
     for t in (0..255).rev() {
         let kt = ((k[t / 8] >> (t % 8)) & 1) as u64;
@@ -234,7 +259,13 @@ fn hkdf(salt: &[u8], ikm: &[u8], info: &[u8], len: usize) -> Vec<u8> {
 const CHARSET: &[u8] = b"qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 
 fn polymod(values: &[u8]) -> u32 {
-    let gen = [0x3b6a57b2u32, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+    let gen = [
+        0x3b6a57b2u32,
+        0x26508e6d,
+        0x1ea119fa,
+        0x3d4233dd,
+        0x2a1462b3,
+    ];
     let mut chk = 1u32;
     for v in values {
         let b = chk >> 25;
@@ -291,7 +322,12 @@ fn bech32_encode(hrp: &str, data: &[u8]) -> String {
     v.extend([0u8; 6]);
     let pm = polymod(&v) ^ 1;
     let mut s = format!("{hrp}1");
-    for x in d5.iter().chain((0..6).map(|i| ((pm >> (5 * (5 - i))) & 31) as u8).collect::<Vec<_>>().iter()) {
+    for x in d5.iter().chain(
+        (0..6)
+            .map(|i| ((pm >> (5 * (5 - i))) & 31) as u8)
+            .collect::<Vec<_>>()
+            .iter(),
+    ) {
         s.push(CHARSET[*x as usize] as char);
     }
     s
@@ -304,7 +340,10 @@ fn bech32_decode(s: &str) -> Option<(String, Vec<u8>)> {
     if rest.len() < 6 {
         return None;
     }
-    let vals: Vec<u8> = rest.bytes().map(|c| CHARSET.iter().position(|x| *x == c).map(|p| p as u8)).collect::<Option<_>>()?;
+    let vals: Vec<u8> = rest
+        .bytes()
+        .map(|c| CHARSET.iter().position(|x| *x == c).map(|p| p as u8))
+        .collect::<Option<_>>()?;
     let mut v = hrp_expand(hrp);
     v.extend(&vals);
     if polymod(&v) != 1 {
@@ -318,7 +357,9 @@ const B64: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456
 fn b64(data: &[u8]) -> String {
     let mut s = String::new();
     for c in data.chunks(3) {
-        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        let n = (c[0] as u32) << 16
+            | (*c.get(1).unwrap_or(&0) as u32) << 8
+            | *c.get(2).unwrap_or(&0) as u32;
         for i in 0..c.len() + 1 {
             s.push(B64[((n >> (18 - 6 * i)) & 63) as usize] as char);
         }
@@ -330,10 +371,16 @@ fn unb64(s: &str) -> Option<Vec<u8>> {
     if s.contains('=') || s.len() % 4 == 1 {
         return None; // age uses unpadded base64 only
     }
-    let vals: Vec<u32> = s.bytes().map(|c| B64.iter().position(|x| *x == c).map(|p| p as u32)).collect::<Option<_>>()?;
+    let vals: Vec<u32> = s
+        .bytes()
+        .map(|c| B64.iter().position(|x| *x == c).map(|p| p as u32))
+        .collect::<Option<_>>()?;
     let mut out = Vec::new();
     for c in vals.chunks(4) {
-        let n = c.iter().enumerate().fold(0u32, |a, (i, v)| a | v << (18 - 6 * i));
+        let n = c
+            .iter()
+            .enumerate()
+            .fold(0u32, |a, (i, v)| a | v << (18 - 6 * i));
         for i in 0..c.len() - 1 {
             out.push((n >> (16 - 8 * i)) as u8);
         }
@@ -359,7 +406,10 @@ pub fn new_identity() -> (String, String) {
 
 fn identity_strings(sk: &[u8; 32]) -> (String, String) {
     let pk = x25519(sk, &BASEPOINT);
-    (bech32_encode("age-secret-key-", sk).to_uppercase(), bech32_encode("age", &pk))
+    (
+        bech32_encode("age-secret-key-", sk).to_uppercase(),
+        bech32_encode("age", &pk),
+    )
 }
 
 /// The `age1…` recipient an `AGE-SECRET-KEY-1…` identity answers to.
@@ -378,7 +428,8 @@ fn secret_key(identity: &str) -> Result<[u8; 32], String> {
 }
 
 fn public_key(recipient: &str) -> Result<[u8; 32], String> {
-    let (hrp, data) = bech32_decode(recipient.trim()).ok_or_else(|| format!("\"{}\" isn't an age1… key", recipient.trim()))?;
+    let (hrp, data) = bech32_decode(recipient.trim())
+        .ok_or_else(|| format!("\"{}\" isn't an age1… key", recipient.trim()))?;
     if hrp != "age" || data.len() != 32 {
         return Err(format!("\"{}\" isn't an age1… key", recipient.trim()));
     }
@@ -395,8 +446,16 @@ const CHUNK: usize = 64 * 1024;
 fn aead(key: &[u8], nonce: &[u8; 12], data: &[u8], seal: bool) -> Result<Vec<u8>, String> {
     let c = ChaCha20Poly1305::new(Key::from_slice(key));
     let n = Nonce::from_slice(nonce);
-    let p = Payload { msg: data, aad: &[] };
-    if seal { c.encrypt(n, p) } else { c.decrypt(n, p) }.map_err(|_| "it didn't authenticate".to_string())
+    let p = Payload {
+        msg: data,
+        aad: &[],
+    };
+    if seal {
+        c.encrypt(n, p)
+    } else {
+        c.decrypt(n, p)
+    }
+    .map_err(|_| "it didn't authenticate".to_string())
 }
 
 fn wrap_lines(s: &str) -> String {
@@ -445,7 +504,11 @@ pub fn seal(plain: &[u8], recipients: &[String]) -> Result<Vec<u8>, String> {
     let pkey = hkdf(&nonce, &file_key, b"payload", 32);
     let mut out = header.into_bytes();
     out.extend_from_slice(&nonce);
-    let chunks: Vec<&[u8]> = if plain.is_empty() { vec![&[][..]] } else { plain.chunks(CHUNK).collect() };
+    let chunks: Vec<&[u8]> = if plain.is_empty() {
+        vec![&[][..]]
+    } else {
+        plain.chunks(CHUNK).collect()
+    };
     for (i, c) in chunks.iter().enumerate() {
         let mut n = [0u8; 12];
         n[3..11].copy_from_slice(&(i as u64).to_be_bytes());
@@ -460,10 +523,19 @@ pub fn open(sealed: &[u8], identity: &str) -> Result<Vec<u8>, String> {
     let sk = secret_key(identity)?;
     let my_pk = x25519(&sk, &BASEPOINT);
     // The header is text up to and including the "--- <mac>\n" line.
-    let end = sealed.windows(4).position(|w| w == b"\n---").ok_or("not an age file")? + 1;
-    let mac_line_end = sealed[end..].iter().position(|b| *b == b'\n').ok_or("not an age file")? + end;
+    let end = sealed
+        .windows(4)
+        .position(|w| w == b"\n---")
+        .ok_or("not an age file")?
+        + 1;
+    let mac_line_end = sealed[end..]
+        .iter()
+        .position(|b| *b == b'\n')
+        .ok_or("not an age file")?
+        + end;
     let head = std::str::from_utf8(&sealed[..end]).map_err(|_| "not an age file")?;
-    let mac_line = std::str::from_utf8(&sealed[end..mac_line_end]).map_err(|_| "not an age file")?;
+    let mac_line =
+        std::str::from_utf8(&sealed[end..mac_line_end]).map_err(|_| "not an age file")?;
     let mut lines = head.lines();
     if lines.next() != Some(INTRO) {
         return Err("not an age v1 file".into());
@@ -489,7 +561,9 @@ pub fn open(sealed: &[u8], identity: &str) -> Result<Vec<u8>, String> {
         if args.first().map(String::as_str) != Some("X25519") || args.len() != 2 {
             continue; // someone else's kind of recipient
         }
-        let epk: [u8; 32] = unb64(&args[1]).and_then(|v| v.try_into().ok()).ok_or("a damaged recipient line")?;
+        let epk: [u8; 32] = unb64(&args[1])
+            .and_then(|v| v.try_into().ok())
+            .ok_or("a damaged recipient line")?;
         let shared = x25519(&sk, &epk);
         let mut salt = epk.to_vec();
         salt.extend_from_slice(&my_pk);
@@ -501,7 +575,8 @@ pub fn open(sealed: &[u8], identity: &str) -> Result<Vec<u8>, String> {
         }
     }
     let file_key = file_key.ok_or("it isn't sealed to this key")?;
-    let mac = unb64(mac_line.strip_prefix("--- ").ok_or("not an age file")?).ok_or("a damaged header")?;
+    let mac =
+        unb64(mac_line.strip_prefix("--- ").ok_or("not an age file")?).ok_or("a damaged header")?;
     let want = hmac(&hkdf(&[], &file_key, b"header", 32), &sealed[..end + 3]);
     if mac != want {
         return Err("the header was changed after it was sealed".into());
@@ -518,7 +593,10 @@ pub fn open(sealed: &[u8], identity: &str) -> Result<Vec<u8>, String> {
         let mut n = [0u8; 12];
         n[3..11].copy_from_slice(&(i as u64).to_be_bytes());
         n[11] = (i + 1 == pieces.len()) as u8;
-        out.extend(aead(&pkey, &n, c, false).map_err(|_| "the contents were changed or cut short".to_string())?);
+        out.extend(
+            aead(&pkey, &n, c, false)
+                .map_err(|_| "the contents were changed or cut short".to_string())?,
+        );
     }
     Ok(out)
 }
@@ -528,7 +606,9 @@ mod tests {
     use super::*;
 
     fn hex32(s: &str) -> [u8; 32] {
-        let v: Vec<u8> = (0..32).map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap()).collect();
+        let v: Vec<u8> = (0..32)
+            .map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap())
+            .collect();
         v.try_into().unwrap()
     }
 
@@ -537,18 +617,30 @@ mod tests {
         // §5.2 test vectors.
         let k = hex32("a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4");
         let u = hex32("e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c");
-        assert_eq!(x25519(&k, &u), hex32("c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552"));
+        assert_eq!(
+            x25519(&k, &u),
+            hex32("c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552")
+        );
         let k = hex32("4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d");
         let u = hex32("e5210f12786811d3f4b7959d0538ae2c31dbe7106fc03c3efc4cd549c715a493");
-        assert_eq!(x25519(&k, &u), hex32("95cbde9476e8907d7aade45cb4b873f88b595a68799fa152e6f8f7647aac7957"));
+        assert_eq!(
+            x25519(&k, &u),
+            hex32("95cbde9476e8907d7aade45cb4b873f88b595a68799fa152e6f8f7647aac7957")
+        );
         // §6.1 Diffie–Hellman: both sides reach the same secret.
         let a = hex32("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a");
         let b = hex32("5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb");
         let mut nine = [0u8; 32];
         nine[0] = 9;
         let (pa, pb) = (x25519(&a, &nine), x25519(&b, &nine));
-        assert_eq!(pa, hex32("8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a"));
-        assert_eq!(pb, hex32("de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f"));
+        assert_eq!(
+            pa,
+            hex32("8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a")
+        );
+        assert_eq!(
+            pb,
+            hex32("de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f")
+        );
         let shared = hex32("4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742");
         assert_eq!(x25519(&a, &pb), shared);
         assert_eq!(x25519(&b, &pa), shared);
@@ -559,6 +651,9 @@ mod tests {
             u = k;
             k = r;
         }
-        assert_eq!(k, hex32("684cf59ba83309552800ef566f2f4d3c1c3887c49360e3875f2eb94d99532c51"));
+        assert_eq!(
+            k,
+            hex32("684cf59ba83309552800ef566f2f4d3c1c3887c49360e3875f2eb94d99532c51")
+        );
     }
 }

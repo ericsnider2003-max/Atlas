@@ -23,7 +23,11 @@ use std::net::TcpStream;
 const TOKEN: &str = "phonea-ppmnkq-rstuvw-xyz234";
 
 fn a_server() -> (Server, u16) {
-    let cfg = ServerConfig { enabled: true, port: 0, ..ServerConfig::default() };
+    let cfg = ServerConfig {
+        enabled: true,
+        port: 0,
+        ..ServerConfig::default()
+    };
     let s = Server::bind(&cfg, TOKEN).expect("bind");
     let port = s.port();
     (s, port)
@@ -31,7 +35,8 @@ fn a_server() -> (Server, u16) {
 
 fn ask(port: u16, raw: &str) -> Vec<u8> {
     let mut c = TcpStream::connect(("127.0.0.1", port)).expect("connect");
-    c.set_read_timeout(Some(std::time::Duration::from_secs(10))).expect("timeout");
+    c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .expect("timeout");
     c.write_all(raw.as_bytes()).expect("write");
     c.flush().expect("flush");
     let mut out = Vec::new();
@@ -94,27 +99,42 @@ fn the_manifest_is_json_that_opens_the_app_on_the_hub_with_the_token() {
     assert_eq!(m["id"], "/hub");
     assert_eq!(m["name"], "Atlas");
     assert_eq!(m["short_name"], "Atlas");
-    assert_eq!(m["background_color"], "#f7f4ee", "the app opens on Warm Paper, the lead colourway");
+    assert_eq!(
+        m["background_color"], "#f7f4ee",
+        "the app opens on Warm Paper, the lead colourway"
+    );
     let sizes: Vec<&str> = m["icons"]
         .as_array()
         .expect("icons")
         .iter()
         .filter_map(|i| i["sizes"].as_str())
         .collect();
-    assert!(sizes.contains(&"192x192") && sizes.contains(&"512x512"), "icons: {sizes:?}");
+    assert!(
+        sizes.contains(&"192x192") && sizes.contains(&"512x512"),
+        "icons: {sizes:?}"
+    );
 }
 
 #[test]
 fn the_manifest_with_a_wrong_token_or_none_is_refused() {
-    let (head, body) = get(&format!("{}?t=not-the-token-at-all-sorry", hub::MANIFEST_PATH));
-    assert!(head.starts_with("HTTP/1.1 401"), "a wrong ?t= opened the manifest:\n{head}");
+    let (head, body) = get(&format!(
+        "{}?t=not-the-token-at-all-sorry",
+        hub::MANIFEST_PATH
+    ));
+    assert!(
+        head.starts_with("HTTP/1.1 401"),
+        "a wrong ?t= opened the manifest:\n{head}"
+    );
     assert!(
         !String::from_utf8_lossy(&body).contains(TOKEN),
         "a refused request was handed the token"
     );
 
     let (head, _) = get(hub::MANIFEST_PATH);
-    assert!(head.starts_with("HTTP/1.1 401"), "no token opened the manifest:\n{head}");
+    assert!(
+        head.starts_with("HTTP/1.1 401"),
+        "no token opened the manifest:\n{head}"
+    );
 }
 
 #[test]
@@ -133,28 +153,46 @@ fn the_manifest_also_opens_with_the_cookie() {
 #[test]
 fn the_service_worker_is_served_without_a_token() {
     let (head, body) = get(hub::SERVICE_WORKER_PATH);
-    assert!(head.starts_with("HTTP/1.1 200"), "the service worker needs no token:\n{head}");
+    assert!(
+        head.starts_with("HTTP/1.1 200"),
+        "the service worker needs no token:\n{head}"
+    );
     assert!(head.contains("Content-Type: text/javascript"), "{head}");
     assert!(
         head.contains("Service-Worker-Allowed: /hub"),
         "without this a worker at /hub/sw.js may not control /hub itself:\n{head}"
     );
     let js = String::from_utf8(body).expect("utf-8");
-    assert!(!js.contains(TOKEN), "the public worker must hold nothing private");
+    assert!(
+        !js.contains(TOKEN),
+        "the public worker must hold nothing private"
+    );
     assert!(js.contains("navigate"), "it handles page loads");
-    assert!(js.contains("AbortController") && js.contains("12000"), "a laptop asleep doesn't hang the page");
-    assert!(js.contains("method!=='GET'"), "and leaves everything but GET alone");
+    assert!(
+        js.contains("AbortController") && js.contains("12000"),
+        "a laptop asleep doesn't hang the page"
+    );
+    assert!(
+        js.contains("method!=='GET'"),
+        "and leaves everything but GET alone"
+    );
     // It stores nothing on the phone: `tests/server_safety.rs` holds that a
     // phone must not cache workspace state, and a worker's cache ignores
     // the pages' `no-store`.
-    assert!(!js.contains("caches.open") && !js.contains(".put("), "the worker keeps copies of pages");
+    assert!(
+        !js.contains("caches.open") && !js.contains(".put("),
+        "the worker keeps copies of pages"
+    );
     assert!(
         // Not "on your laptop" since 26 Sep: the phone app runs Atlas on the
         // phone itself, and this worker serves both.
         js.contains("I can't reach Atlas from here right now."),
         "the offline page says plainly that Atlas can't be reached"
     );
-    assert!(!js.contains("http://") && !js.contains("https://"), "nothing from elsewhere");
+    assert!(
+        !js.contains("http://") && !js.contains("https://"),
+        "nothing from elsewhere"
+    );
 }
 
 /// Width and height from a PNG's IHDR chunk, after checking the signature.
@@ -175,7 +213,10 @@ fn the_icons_are_served_without_a_token_at_their_stated_sizes() {
         ("/hub/apple-touch-icon.png", 180),
     ] {
         let (head, body) = get(path);
-        assert!(head.starts_with("HTTP/1.1 200"), "{path} needs no token:\n{head}");
+        assert!(
+            head.starts_with("HTTP/1.1 200"),
+            "{path} needs no token:\n{head}"
+        );
         assert!(head.contains("Content-Type: image/png"), "{path}:\n{head}");
         assert!(
             head.contains(&format!("Content-Length: {}", body.len())),
@@ -188,15 +229,29 @@ fn the_icons_are_served_without_a_token_at_their_stated_sizes() {
 #[test]
 fn only_the_public_files_skip_the_token() {
     // The exemption is a short fixed list, not a prefix.
-    for path in ["/hub", "/hub/settings", "/hub/icon-999.png", "/hub/sw.js.map"] {
+    for path in [
+        "/hub",
+        "/hub/settings",
+        "/hub/icon-999.png",
+        "/hub/sw.js.map",
+    ] {
         let (head, _) = get(path);
-        assert!(head.starts_with("HTTP/1.1 401"), "{path} was answered without a token:\n{head}");
+        assert!(
+            head.starts_with("HTTP/1.1 401"),
+            "{path} was answered without a token:\n{head}"
+        );
     }
     let (head, _) = exchange(
-        format!("POST {} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n", hub::SERVICE_WORKER_PATH),
+        format!(
+            "POST {} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n",
+            hub::SERVICE_WORKER_PATH
+        ),
         String::new(),
     );
-    assert!(head.starts_with("HTTP/1.1 401"), "only a GET is public:\n{head}");
+    assert!(
+        head.starts_with("HTTP/1.1 401"),
+        "only a GET is public:\n{head}"
+    );
 }
 
 #[test]
@@ -212,7 +267,10 @@ fn every_page_points_at_the_app_with_the_token() {
     let html = String::from_utf8(body).expect("utf-8");
     let head_part = &html[..html.find("</head>").expect("a head")];
     for needle in [
-        format!("<link rel=manifest href=\"{}?t={TOKEN}\">", hub::MANIFEST_PATH),
+        format!(
+            "<link rel=manifest href=\"{}?t={TOKEN}\">",
+            hub::MANIFEST_PATH
+        ),
         "name=apple-mobile-web-app-capable content=yes".to_string(),
         "name=mobile-web-app-capable content=yes".to_string(),
         "name=apple-mobile-web-app-title content=Atlas".to_string(),
@@ -220,7 +278,10 @@ fn every_page_points_at_the_app_with_the_token() {
         "rel=apple-touch-icon href=\"/hub/apple-touch-icon.png\"".to_string(),
         "navigator.serviceWorker.register('/hub/sw.js',{scope:'/hub'})".to_string(),
     ] {
-        assert!(head_part.contains(&needle), "the page head is missing {needle}:\n{head_part}");
+        assert!(
+            head_part.contains(&needle),
+            "the page head is missing {needle}:\n{head_part}"
+        );
     }
     assert_eq!(
         html.matches("rel=manifest").count(),

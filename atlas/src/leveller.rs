@@ -76,7 +76,11 @@ pub struct Measured {
 
 fn frame_levels(samples: &[i16], rate: u32) -> Vec<f32> {
     let frame = (rate as usize * FRAME_MS / 1000).max(1);
-    samples.chunks(frame).filter(|c| c.len() == frame).map(crate::audio::level_db).collect()
+    samples
+        .chunks(frame)
+        .filter(|c| c.len() == frame)
+        .map(crate::audio::level_db)
+        .collect()
 }
 
 /// The room's level in a clip (its quietest fifth of frames), and the bar a
@@ -89,7 +93,10 @@ fn room_and_bar(levels: &[f32]) -> Option<(f32, f32)> {
     let mut sorted = levels.to_vec();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let room = sorted[sorted.len() / 5];
-    Some((room, (room + crate::audio::SPEECH_OVER_ROOM_DB).max(crate::audio::QUIETEST_SPEECH_DB)))
+    Some((
+        room,
+        (room + crate::audio::SPEECH_OVER_ROOM_DB).max(crate::audio::QUIETEST_SPEECH_DB),
+    ))
 }
 
 /// How loud the voice and the room were in `samples`. `None` when there is
@@ -104,15 +111,24 @@ pub fn measure_voice(samples: &[i16], rate: u32) -> Option<Measured> {
     if (speech.len() * FRAME_MS) < crate::audio::MIN_SPEECH_MS as usize {
         return None;
     }
-    let energy = speech.iter().map(|l| 10f64.powf(f64::from(*l) / 10.0)).sum::<f64>() / speech.len() as f64;
-    Some(Measured { speech_db: (10.0 * energy.max(1e-12).log10()) as f32, noise_db: room })
+    let energy = speech
+        .iter()
+        .map(|l| 10f64.powf(f64::from(*l) / 10.0))
+        .sum::<f64>()
+        / speech.len() as f64;
+    Some(Measured {
+        speech_db: (10.0 * energy.max(1e-12).log10()) as f32,
+        noise_db: room,
+    })
 }
 
 /// The gain, in dB, that brings speech at `speech_db` to `TARGET_SPEECH_DB`
 /// without lifting a room at `noise_db` past `NOISE_CEILING_DB` or going over
 /// `MAX_GAIN_DB`. Never below zero: loud speech is left as it is.
 pub fn gain_db(speech_db: f32, noise_db: f32) -> f32 {
-    (TARGET_SPEECH_DB - speech_db).min(NOISE_CEILING_DB - noise_db).clamp(0.0, MAX_GAIN_DB)
+    (TARGET_SPEECH_DB - speech_db)
+        .min(NOISE_CEILING_DB - noise_db)
+        .clamp(0.0, MAX_GAIN_DB)
 }
 
 /// `samples` turned up by `gain_db`, less if that would take the loudest
@@ -127,7 +143,10 @@ pub fn levelled(samples: &[i16], gain_db: f32) -> Vec<i16> {
     if peak * g > ceiling {
         g = ceiling / peak;
     }
-    samples.iter().map(|s| (f32::from(*s) * g).clamp(f32::from(i16::MIN), f32::from(i16::MAX)) as i16).collect()
+    samples
+        .iter()
+        .map(|s| (f32::from(*s) * g).clamp(f32::from(i16::MIN), f32::from(i16::MAX)) as i16)
+        .collect()
 }
 
 /// What Atlas has heard of your voice on one microphone.
@@ -171,7 +190,10 @@ impl Leveller {
         let i = match self.mics.iter().position(|x| x.name == mic) {
             Some(i) => i,
             None => {
-                self.mics.push(MicLevel { name: mic.to_string(), ..MicLevel::default() });
+                self.mics.push(MicLevel {
+                    name: mic.to_string(),
+                    ..MicLevel::default()
+                });
                 self.mics.len() - 1
             }
         };
@@ -194,12 +216,16 @@ impl Leveller {
     /// Your typical speech level on `mic` (the median of what's remembered),
     /// once there are at least two utterances to go on.
     pub fn speech_db(&self, mic: &str) -> Option<f32> {
-        self.mic(mic).filter(|m| m.speech.len() >= 2).and_then(|m| median(&m.speech))
+        self.mic(mic)
+            .filter(|m| m.speech.len() >= 2)
+            .and_then(|m| median(&m.speech))
     }
 
     /// The typical room under it.
     fn noise_db(&self, mic: &str) -> Option<f32> {
-        self.mic(mic).filter(|m| m.noise.len() >= 2).and_then(|m| median(&m.noise))
+        self.mic(mic)
+            .filter(|m| m.noise.len() >= 2)
+            .and_then(|m| median(&m.noise))
     }
 
     /// How far your voice stands above the room on `mic`.
@@ -229,7 +255,12 @@ impl Leveller {
 /// speaking in it (whisper is never asked about a quiet room); otherwise the
 /// clip turned up to the target level, with what was heard remembered in
 /// `lev` so the next clip is levelled by your typical voice.
-pub fn for_speech_to_text(samples: &[i16], rate: u32, mic: &str, lev: &mut Leveller) -> Option<Vec<i16>> {
+pub fn for_speech_to_text(
+    samples: &[i16],
+    rate: u32,
+    mic: &str,
+    lev: &mut Leveller,
+) -> Option<Vec<i16>> {
     match crate::audio::check_speech(samples, rate) {
         crate::audio::SpeechCheck::Silence => None,
         other => match crate::leveller::measure_voice(samples, rate) {
@@ -275,7 +306,12 @@ pub fn remembered() -> Leveller {
 /// The sentence for a microphone set too low: plainly, with where to raise
 /// it, and what Atlas did about it. `level` is the input level Windows has it
 /// at (0..1) when that could be read; `raised_to` is where Atlas put it.
-pub fn quiet_input_line(mic_short: &str, speech_db: f32, level: Option<crate::miclevel::InputLevel>, raised_to: Option<f32>) -> String {
+pub fn quiet_input_line(
+    mic_short: &str,
+    speech_db: f32,
+    level: Option<crate::miclevel::InputLevel>,
+    raised_to: Option<f32>,
+) -> String {
     let pct = |x: f32| format!("{}%", (x * 100.0).round() as i32);
     match (level, raised_to) {
         (Some(l), _) if l.muted => format!(

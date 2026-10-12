@@ -51,7 +51,12 @@ pub struct ApnsConfig {
 
 impl Default for ApnsConfig {
     fn default() -> Self {
-        ApnsConfig { key_file: String::new(), key_id: String::new(), team_id: String::new(), topic: "com.ericsnider.atlas".into() }
+        ApnsConfig {
+            key_file: String::new(),
+            key_id: String::new(),
+            team_id: String::new(),
+            topic: "com.ericsnider.atlas".into(),
+        }
     }
 }
 
@@ -103,7 +108,12 @@ impl Devices {
     /// after a restore or reinstall).
     pub fn set(&mut self, name: &str, token: &str, env: &str, now: u64) {
         self.devices.retain(|d| d.name != name);
-        self.devices.push(Device { name: name.into(), token: token.into(), env: env.into(), since: now });
+        self.devices.push(Device {
+            name: name.into(),
+            token: token.into(),
+            env: env.into(),
+            since: now,
+        });
     }
 
     /// Apple said this address is gone (410): forget it.
@@ -115,7 +125,11 @@ impl Devices {
 /// The sync event a phone sends with its address: `(id, field, to)` for
 /// `sync::What::Changed`.
 pub fn change_to_carry(device: &str, token: &str, env: &str) -> (String, String, String) {
-    (format!("{SYNC_PREFIX}{device}"), "apns".into(), format!("{token}|{env}"))
+    (
+        format!("{SYNC_PREFIX}{device}"),
+        "apns".into(),
+        format!("{token}|{env}"),
+    )
 }
 
 /// Is this a push address an iPhone could have given? 64 or more hex digits.
@@ -135,7 +149,10 @@ pub fn take_synced(state_dir: &Path, id: &str, to: &str, sealed: bool, now: u64)
         return None;
     }
     let mut d = Devices::load(state_dir);
-    if d.devices.iter().any(|x| x.name == device && x.token == token) {
+    if d.devices
+        .iter()
+        .any(|x| x.name == device && x.token == token)
+    {
         return None;
     }
     d.set(device, token, env, now);
@@ -146,14 +163,23 @@ pub fn take_synced(state_dir: &Path, id: &str, to: &str, sealed: bool, now: u64)
 // ------------------------------------------------------------------ signing
 
 fn b64url(bytes: &[u8]) -> String {
-    crate::b64::encode(bytes).trim_end_matches('=').replace('+', "-").replace('/', "_")
+    crate::b64::encode(bytes)
+        .trim_end_matches('=')
+        .replace('+', "-")
+        .replace('/', "_")
 }
 
 /// The signed token Apple asks for: ES256 over `{"alg","kid"}.{"iss","iat"}`.
-pub fn provider_token(key_pem: &str, key_id: &str, team_id: &str, now: u64) -> Result<String, String> {
+pub fn provider_token(
+    key_pem: &str,
+    key_id: &str,
+    team_id: &str,
+    now: u64,
+) -> Result<String, String> {
     use p256::ecdsa::signature::Signer;
     use p256::pkcs8::DecodePrivateKey;
-    let key = p256::ecdsa::SigningKey::from_pkcs8_pem(key_pem).map_err(|e| format!("the push key isn't a key Apple gives: {e}"))?;
+    let key = p256::ecdsa::SigningKey::from_pkcs8_pem(key_pem)
+        .map_err(|e| format!("the push key isn't a key Apple gives: {e}"))?;
     let header = b64url(format!("{{\"alg\":\"ES256\",\"kid\":\"{}\"}}", key_id.trim()).as_bytes());
     let claims = b64url(format!("{{\"iss\":\"{}\",\"iat\":{now}}}", team_id.trim()).as_bytes());
     let signing_input = format!("{header}.{claims}");
@@ -192,13 +218,20 @@ pub fn curl_piece() -> Option<Piece> {
         url: "https://curl.se/windows/dl-8.22.0_2/curl-8.22.0_2-win64-mingw.zip",
         sha256: "7c8c6b953b4eb2953d2bdc08cca1d5f09a964e9f86c361693559400c9a6d6db0",
         bytes: 8_690_576,
-        lands: Lands::Zip { inside: "curl-8.22.0_2-win64-mingw/bin", dir: "tools/curl", key: "tools/curl/curl.exe" },
+        lands: Lands::Zip {
+            inside: "curl-8.22.0_2-win64-mingw/bin",
+            dir: "tools/curl",
+            key: "tools/curl/curl.exe",
+        },
     })
 }
 
 /// The curl to use: the fetched one on Windows, the system's elsewhere.
 pub(crate) fn pinned_curl(root: &Path) -> PathBuf {
-    let ours = root.join("tools").join("curl").join(if cfg!(windows) { "curl.exe" } else { "curl" });
+    let ours =
+        root.join("tools")
+            .join("curl")
+            .join(if cfg!(windows) { "curl.exe" } else { "curl" });
     if ours.is_file() {
         ours
     } else {
@@ -209,7 +242,11 @@ pub(crate) fn pinned_curl(root: &Path) -> PathBuf {
 /// The arguments for one push. The token goes in a header file rather than
 /// on the command line, where other programs could read it.
 pub fn push_args(headers_file: &Path, device: &Device) -> Vec<String> {
-    let host = if device.env == "sandbox" { SANDBOX } else { PRODUCTION };
+    let host = if device.env == "sandbox" {
+        SANDBOX
+    } else {
+        PRODUCTION
+    };
     vec![
         "--http2".into(),
         "--silent".into(),
@@ -256,12 +293,24 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
     if devices.devices.is_empty() {
         return Err("no iPhone has given Atlas its push address yet".into());
     }
-    let pem = std::fs::read_to_string(&key_path).map_err(|e| format!("couldn't read the push key: {e}"))?;
-    let jwt = provider_token(&pem, &cfg.apns.key_id, &cfg.apns.team_id, crate::store::now())?;
+    let pem = std::fs::read_to_string(&key_path)
+        .map_err(|e| format!("couldn't read the push key: {e}"))?;
+    let jwt = provider_token(
+        &pem,
+        &cfg.apns.key_id,
+        &cfg.apns.team_id,
+        crate::store::now(),
+    )?;
     let body = push_payload(note, cfg);
-    let headers = crate::roots::data_dir().join("tmp").join(format!("apns-{}.txt", std::process::id()));
+    let headers = crate::roots::data_dir()
+        .join("tmp")
+        .join(format!("apns-{}.txt", std::process::id()));
     crate::heard!(std::fs::create_dir_all(headers.parent().unwrap_or(&state)));
-    let priority = if note.urgency == crate::notify::Urgency::Urgent { "10" } else { "5" };
+    let priority = if note.urgency == crate::notify::Urgency::Urgent {
+        "10"
+    } else {
+        "5"
+    };
     std::fs::write(
         &headers,
         format!(
@@ -290,7 +339,10 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
     if delivered > 0 {
         Ok(())
     } else if why.is_empty() {
-        Err("the iPhone's push address is no longer valid; opening Atlas on it gives a new one".into())
+        Err(
+            "the iPhone's push address is no longer valid; opening Atlas on it gives a new one"
+                .into(),
+        )
     } else {
         Err(why)
     }

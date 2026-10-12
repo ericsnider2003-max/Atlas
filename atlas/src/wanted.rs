@@ -44,23 +44,54 @@ pub struct Reading {
 
 /// Said outright. Nothing beats being told.
 const SAYS_LISTEN: &[&str] = &[
-    "just listen", "don't fix", "dont fix", "not looking for advice",
-    "don't need solutions", "dont need solutions", "just need to vent",
-    "just venting", "let me get this out", "hear me out", "no advice",
-    "not asking you to fix", "just needed to say",
+    "just listen",
+    "don't fix",
+    "dont fix",
+    "not looking for advice",
+    "don't need solutions",
+    "dont need solutions",
+    "just need to vent",
+    "just venting",
+    "let me get this out",
+    "hear me out",
+    "no advice",
+    "not asking you to fix",
+    "just needed to say",
 ];
 
 const SAYS_SOLVE: &[&str] = &[
-    "what should i", "what do i do", "any ideas", "how do i", "help me",
-    "what would you", "give me options", "fix this", "sort this out",
-    "talk me through", "what's the play", "whats the play", "how would you",
+    "what should i",
+    "what do i do",
+    "any ideas",
+    "how do i",
+    "help me",
+    "what would you",
+    "give me options",
+    "fix this",
+    "sort this out",
+    "talk me through",
+    "what's the play",
+    "whats the play",
+    "how would you",
 ];
 
 /// Marks of working something out rather than asking something.
 const THINKING_ALOUD: &[&str] = &[
-    "i can't believe", "i cant believe", "i don't even know", "i dont even know",
-    "it's just", "its just", "the worst part", "and then", "on top of that",
-    "i'm so", "im so", "i've had it", "ive had it", "again", "every time",
+    "i can't believe",
+    "i cant believe",
+    "i don't even know",
+    "i dont even know",
+    "it's just",
+    "its just",
+    "the worst part",
+    "and then",
+    "on top of that",
+    "i'm so",
+    "im so",
+    "i've had it",
+    "ive had it",
+    "again",
+    "every time",
 ];
 
 /// A question that's really a question.
@@ -72,7 +103,10 @@ const THINKING_ALOUD: &[&str] = &[
 /// listen?" — and then take the real answer as the reply to that (26 Sep 2026).
 fn asks_something(s: &str) -> bool {
     let t = s.trim().to_lowercase();
-    if ["right?", "you know?", "isn't it?", "no?"].iter().any(|f| t.ends_with(f)) {
+    if ["right?", "you know?", "isn't it?", "no?"]
+        .iter()
+        .any(|f| t.ends_with(f))
+    {
         return false;
     }
     t.ends_with('?') || opens_as_a_request(&t)
@@ -86,11 +120,46 @@ pub fn is_a_question(said: &str) -> bool {
 /// Opens the way a question or a request does.
 fn opens_as_a_request(t: &str) -> bool {
     const OPENERS: &[&str] = &[
-        "what", "what's", "whats", "who", "who's", "whos", "why", "how", "when", "where", "which", "is", "are",
-        "can", "could", "would", "will", "do", "does", "did", "should", "tell", "give", "show", "explain",
-        "recommend", "suggest", "summarise", "summarize", "describe", "name", "list", "write", "find",
+        "what",
+        "what's",
+        "whats",
+        "who",
+        "who's",
+        "whos",
+        "why",
+        "how",
+        "when",
+        "where",
+        "which",
+        "is",
+        "are",
+        "can",
+        "could",
+        "would",
+        "will",
+        "do",
+        "does",
+        "did",
+        "should",
+        "tell",
+        "give",
+        "show",
+        "explain",
+        "recommend",
+        "suggest",
+        "summarise",
+        "summarize",
+        "describe",
+        "name",
+        "list",
+        "write",
+        "find",
     ];
-    let first = t.split_whitespace().next().unwrap_or("").trim_matches(|c: char| !c.is_alphanumeric() && c != '\'');
+    let first = t
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .trim_matches(|c: char| !c.is_alphanumeric() && c != '\'');
     OPENERS.contains(&first)
 }
 
@@ -114,7 +183,10 @@ pub fn read(said: &str) -> Reading {
     }
 
     let words = t.split_whitespace().count();
-    let questions = said.split_inclusive(['.', '!', '?']).filter(|s| asks_something(s)).count();
+    let questions = said
+        .split_inclusive(['.', '!', '?'])
+        .filter(|s| asks_something(s))
+        .count();
     let venting = THINKING_ALOUD.iter().filter(|m| t.contains(**m)).count();
 
     // A direct question wants an answer.
@@ -130,7 +202,11 @@ pub fn read(said: &str) -> Reading {
     // something out.
     if words > 45 && questions == 0 {
         return Reading {
-            wanted: if venting >= 2 { Wanted::Hearing } else { Wanted::Both },
+            wanted: if venting >= 2 {
+                Wanted::Hearing
+            } else {
+                Wanted::Both
+            },
             confidence: if venting >= 2 { 0.75 } else { 0.55 },
             because: if venting >= 2 {
                 "it reads like you're getting it out rather than asking".into()
@@ -171,10 +247,34 @@ pub fn answer_to_ask(said: &str) -> Option<Wanted> {
     // "know", "note", "nothing to do with it" the same way.
     let t = format!(" {} ", crate::intent::normalize(said));
     let has = |w: &&str| t.contains(&format!(" {w} "));
-    if ["listen", "just listen", "nothing", "no", "neither", "vent", "nope"].iter().any(has) {
+    if [
+        "listen",
+        "just listen",
+        "nothing",
+        "no",
+        "neither",
+        "vent",
+        "nope",
+    ]
+    .iter()
+    .any(has)
+    {
         return Some(Wanted::Hearing);
     }
-    if ["think", "thinking", "think it through", "ideas", "solve", "options", "yes", "help", "fix"].iter().any(has) {
+    if [
+        "think",
+        "thinking",
+        "think it through",
+        "ideas",
+        "solve",
+        "options",
+        "yes",
+        "help",
+        "fix",
+    ]
+    .iter()
+    .any(has)
+    {
         return Some(Wanted::Solutions);
     }
     if ["both", "either", "up to you", "whatever"].iter().any(has) {
@@ -239,7 +339,11 @@ pub struct Preferences {
 
 impl Preferences {
     pub fn note(&mut self, topic: &str, wanted: Wanted) {
-        match self.by_topic.iter_mut().find(|(t, w, _)| t == topic && *w == wanted) {
+        match self
+            .by_topic
+            .iter_mut()
+            .find(|(t, w, _)| t == topic && *w == wanted)
+        {
             Some((_, _, n)) => *n += 1,
             None => self.by_topic.push((topic.into(), wanted, 1)),
         }
@@ -261,7 +365,8 @@ impl Preferences {
             }
         }
         // Two of the same isn't a pattern; three is.
-        best.filter(|(_, n)| *n >= 3 && *n * 2 > total).map(|(w, _)| w)
+        best.filter(|(_, n)| *n >= 3 && *n * 2 > total)
+            .map(|(w, _)| w)
     }
 }
 
@@ -277,7 +382,9 @@ pub struct WantedConfig {
 
 impl Default for WantedConfig {
     fn default() -> Self {
-        WantedConfig { ask_when_unclear: true }
+        WantedConfig {
+            ask_when_unclear: true,
+        }
     }
 }
 

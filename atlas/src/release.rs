@@ -62,10 +62,18 @@ const fn key_in(file: &str, name: &[u8]) -> [u8; 32] {
         }
         if matches && i + name.len() < b.len() && b[i + name.len()] == b'=' {
             let s = i + name.len() + 1;
-            if s + 4 <= b.len() && b[s] == b'n' && b[s + 1] == b'o' && b[s + 2] == b'n' && b[s + 3] == b'e' {
+            if s + 4 <= b.len()
+                && b[s] == b'n'
+                && b[s + 1] == b'o'
+                && b[s + 2] == b'n'
+                && b[s + 3] == b'e'
+            {
                 return out;
             }
-            assert!(s + 64 <= b.len(), "release-keys.txt: a key is 64 hex characters");
+            assert!(
+                s + 64 <= b.len(),
+                "release-keys.txt: a key is 64 hex characters"
+            );
             let mut k = 0;
             while k < 32 {
                 out[k] = hex_value(b[s + 2 * k]) * 16 + hex_value(b[s + 2 * k + 1]);
@@ -122,20 +130,35 @@ pub fn make_release_key(vault: &mut crate::vault::Vault, now: u64) -> Result<Mad
         return Err(IN_THE_OLD_VAULT.into());
     }
     if vault.list().iter().any(|(n, _)| *n == RELEASE_KEY_NAME) {
-        return Err("There's already a release key in your vault. A second one would make every copy of \
+        return Err(
+            "There's already a release key in your vault. A second one would make every copy of \
                     Atlas you've handed out refuse your updates. If the key is lost or stolen, the \
                     recovery key is what replaces it."
-            .into());
+                .into(),
+        );
     }
     let seed = new_seed();
     let recovery = new_seed();
-    vault.put(RELEASE_KEY_NAME, crate::vault::Kind::ApiKey, &seed_hex(&seed), now)?;
+    vault.put(
+        RELEASE_KEY_NAME,
+        crate::vault::Kind::ApiKey,
+        &seed_hex(&seed),
+        now,
+    )?;
     let public = anchor_of(&signing_key_from_seed(&seed));
     let recovery_public = anchor_of(&signing_key_from_seed(&recovery));
     let hex = seed_hex(&recovery);
-    let grouped: Vec<String> = hex.as_bytes().chunks(8).map(|c| String::from_utf8_lossy(c).to_string()).collect();
+    let grouped: Vec<String> = hex
+        .as_bytes()
+        .chunks(8)
+        .map(|c| String::from_utf8_lossy(c).to_string())
+        .collect();
     Ok(MadeKey {
-        card: format!("release={}\nrecovery={}", seed_hex(&public), seed_hex(&recovery_public)),
+        card: format!(
+            "release={}\nrecovery={}",
+            seed_hex(&public),
+            seed_hex(&recovery_public)
+        ),
         recovery: grouped.join(" "),
     })
 }
@@ -421,15 +444,22 @@ impl Manifest {
             return Err(Refusal::Malformed("no builds listed".into()));
         }
         if self.data_format < self.min_data_format {
-            return Err(Refusal::Malformed("it writes an older data format than it requires".into()));
+            return Err(Refusal::Malformed(
+                "it writes an older data format than it requires".into(),
+            ));
         }
         if self.next_word_by <= self.released_at {
-            return Err(Refusal::Malformed("its next-notice date is not after its release date".into()));
+            return Err(Refusal::Malformed(
+                "its next-notice date is not after its release date".into(),
+            ));
         }
         let mut seen: Vec<&str> = Vec::new();
         for a in &self.artifacts {
             if !KNOWN_PLATFORMS.contains(&a.platform.as_str()) {
-                return Err(Refusal::Malformed(format!("unknown platform {:?}", a.platform)));
+                return Err(Refusal::Malformed(format!(
+                    "unknown platform {:?}",
+                    a.platform
+                )));
             }
             if seen.contains(&a.platform.as_str()) {
                 return Err(Refusal::Malformed(format!("two builds for {}", a.platform)));
@@ -441,8 +471,16 @@ impl Manifest {
             if a.size == 0 {
                 return Err(Refusal::Malformed(format!("{} is empty", a.file)));
             }
-            if a.sha256.len() != 64 || !a.sha256.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
-                return Err(Refusal::Malformed(format!("{} has no valid fingerprint", a.file)));
+            if a.sha256.len() != 64
+                || !a
+                    .sha256
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            {
+                return Err(Refusal::Malformed(format!(
+                    "{} has no valid fingerprint",
+                    a.file
+                )));
             }
         }
         Ok(())
@@ -458,15 +496,23 @@ fn safe_file_name(name: &str) -> bool {
         && name.len() <= 128
         && !name.starts_with('.')
         && !name.contains("..")
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
 }
 
 /// Build side: sign a manifest into the form that travels over the mesh.
 pub fn seal_manifest(key: &SigningKey, manifest: &Manifest) -> SignedManifest {
-    #[allow(clippy::expect_used, reason = "a plain struct of strings and numbers always serializes to JSON")]
+    #[allow(
+        clippy::expect_used,
+        reason = "a plain struct of strings and numbers always serializes to JSON"
+    )]
     let text = serde_json::to_string(manifest).expect("a manifest always serializes");
     let signature = sign(key, &domain_bytes(text.as_bytes()));
-    SignedManifest { manifest: text, signature: to_hex(&signature) }
+    SignedManifest {
+        manifest: text,
+        signature: to_hex(&signature),
+    }
 }
 
 /// Proof that a person, at this device, asked to go back to an older release.
@@ -550,11 +596,17 @@ pub fn accept_against(
         return Err(Refusal::AlreadyInstalled(installed_sequence));
     }
     if manifest.sequence < installed_sequence && !allow_older {
-        return Err(Refusal::Downgrade { offered: manifest.sequence, installed: installed_sequence });
+        return Err(Refusal::Downgrade {
+            offered: manifest.sequence,
+            installed: installed_sequence,
+        });
     }
     // 6. Data format.
     if local_data_format < manifest.min_data_format {
-        return Err(Refusal::DataTooOld { needs: manifest.min_data_format, have: local_data_format });
+        return Err(Refusal::DataTooOld {
+            needs: manifest.min_data_format,
+            have: local_data_format,
+        });
     }
     // 7. This device's build.
     let artifact = manifest
@@ -635,7 +687,13 @@ pub fn verified_notice(installed: &Installed, signed: &SignedManifest) -> Option
         return None;
     }
     let sig = from_hex_64(&signed.signature)?;
-    if !verify_against(&installed.trust.current, &domain_bytes(signed.manifest.as_bytes()), &sig).is_trusted() {
+    if !verify_against(
+        &installed.trust.current,
+        &domain_bytes(signed.manifest.as_bytes()),
+        &sig,
+    )
+    .is_trusted()
+    {
         return None;
     }
     let m: Manifest = serde_json::from_str(&signed.manifest).ok()?;
@@ -679,7 +737,10 @@ impl Fingerprint {
     pub fn update(&mut self, chunk: &[u8]) -> Result<(), Refusal> {
         self.seen += chunk.len() as u64;
         if self.seen > self.expected_size {
-            return Err(Refusal::WrongSize { expected: self.expected_size, got: self.seen });
+            return Err(Refusal::WrongSize {
+                expected: self.expected_size,
+                got: self.seen,
+            });
         }
         self.hasher.update(chunk);
         Ok(())
@@ -688,7 +749,10 @@ impl Fingerprint {
     /// The whole file has arrived: exact size, then exact fingerprint.
     pub fn finish(self) -> Result<(), Refusal> {
         if self.seen != self.expected_size {
-            return Err(Refusal::WrongSize { expected: self.expected_size, got: self.seen });
+            return Err(Refusal::WrongSize {
+                expected: self.expected_size,
+                got: self.seen,
+            });
         }
         if to_hex(&self.hasher.finalize()) != self.expected_hash {
             return Err(Refusal::WrongHash);
@@ -805,7 +869,9 @@ pub enum Freshness {
     /// Nothing heard yet (a first copy) — nothing to measure.
     NoNoticeYet,
     Current,
-    Overdue { days: u64 },
+    Overdue {
+        days: u64,
+    },
 }
 
 impl Freshness {
@@ -828,7 +894,9 @@ pub fn freshness(installed: &Installed, now: u64) -> Freshness {
     if now <= installed.newest_seen_next_word_by {
         return Freshness::Current;
     }
-    Freshness::Overdue { days: (now - installed.newest_seen_next_word_by) / 86_400 }
+    Freshness::Overdue {
+        days: (now - installed.newest_seen_next_word_by) / 86_400,
+    }
 }
 
 // =============================================================================
@@ -864,7 +932,10 @@ pub struct TrustState {
 impl TrustState {
     /// Where every device starts: the key baked into its build.
     fn from_build() -> TrustState {
-        TrustState { current: RELEASE_PUBLIC_KEY, rotations: 0 }
+        TrustState {
+            current: RELEASE_PUBLIC_KEY,
+            rotations: 0,
+        }
     }
 }
 
@@ -889,11 +960,17 @@ pub struct SignedRotation {
 
 /// Build side: sign a rotation with the current release key or the recovery key.
 pub fn seal_rotation(key: &SigningKey, rotation: &Rotation) -> SignedRotation {
-    #[allow(clippy::expect_used, reason = "a plain struct of strings and numbers always serializes to JSON")]
+    #[allow(
+        clippy::expect_used,
+        reason = "a plain struct of strings and numbers always serializes to JSON"
+    )]
     let text = serde_json::to_string(rotation).expect("a rotation always serializes");
     let mut msg = ROTATION_DOMAIN.to_vec();
     msg.extend_from_slice(text.as_bytes());
-    SignedRotation { rotation: text, signature: to_hex(&sign(key, &msg)) }
+    SignedRotation {
+        rotation: text,
+        signature: to_hex(&sign(key, &msg)),
+    }
 }
 
 /// Device side: apply a rotation against the device's trust and the baked-in
@@ -908,7 +985,9 @@ pub fn apply_rotation_with(
     signed: &SignedRotation,
 ) -> Result<TrustState, Refusal> {
     if signed.rotation.len() + signed.signature.len() > MAX_MANIFEST_BYTES {
-        return Err(Refusal::TooLarge(signed.rotation.len() + signed.signature.len()));
+        return Err(Refusal::TooLarge(
+            signed.rotation.len() + signed.signature.len(),
+        ));
     }
     let sig = from_hex_64(&signed.signature)
         .ok_or_else(|| Refusal::Unreadable("the rotation signature isn't valid hex".into()))?;
@@ -940,9 +1019,14 @@ pub fn apply_rotation_with(
     let new = from_hex_32(&rotation.new_anchor)
         .ok_or_else(|| Refusal::Malformed("the new key isn't valid hex".into()))?;
     if new == PLACEHOLDER_ANCHOR || VerifyingKey::from_bytes(&new).is_err() || new == *recovery {
-        return Err(Refusal::Malformed("the new key isn't a usable release key".into()));
+        return Err(Refusal::Malformed(
+            "the new key isn't a usable release key".into(),
+        ));
     }
-    Ok(TrustState { current: new, rotations: rotation.number })
+    Ok(TrustState {
+        current: new,
+        rotations: rotation.number,
+    })
 }
 
 fn from_hex_32(s: &str) -> Option<[u8; 32]> {
@@ -1032,13 +1116,20 @@ fn could_be_a_build(name: &str) -> bool {
 pub fn find_build(dirs: &[std::path::PathBuf]) -> Option<Result<FoundBuild, (String, String)>> {
     let mut found: Vec<(u64, std::path::PathBuf)> = Vec::new();
     for dir in dirs {
-        let Ok(entries) = std::fs::read_dir(dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
         for e in entries.flatten() {
             let Ok(meta) = e.metadata() else { continue };
             if !meta.is_file() || !could_be_a_build(&e.file_name().to_string_lossy()) {
                 continue;
             }
-            let at = meta.modified().ok().and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+            let at = meta
+                .modified()
+                .ok()
+                .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
             found.push((at, e.path()));
         }
     }
@@ -1046,7 +1137,10 @@ pub fn find_build(dirs: &[std::path::PathBuf]) -> Option<Result<FoundBuild, (Str
     found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     let mut first_problem: Option<(String, String)> = None;
     for (modified, path) in found {
-        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
         match look_at_build(&path, modified) {
             Ok(b) => return Some(Ok(b)),
             Err(why) => {
@@ -1065,18 +1159,33 @@ pub fn find_build(dirs: &[std::path::PathBuf]) -> Option<Result<FoundBuild, (Str
 /// Several are remembered, since the page now looks past files that aren't
 /// builds to the one that is.
 fn look_at_build(path: &std::path::Path, modified: u64) -> Result<FoundBuild, String> {
-    type Seen = Vec<(std::path::PathBuf, u64, Option<std::time::SystemTime>, Result<FoundBuild, String>)>;
+    type Seen = Vec<(
+        std::path::PathBuf,
+        u64,
+        Option<std::time::SystemTime>,
+        Result<FoundBuild, String>,
+    )>;
     static SEEN: std::sync::Mutex<Seen> = std::sync::Mutex::new(Vec::new());
     let meta = std::fs::metadata(path).ok();
-    let (len, at) = (meta.as_ref().map(|m| m.len()).unwrap_or(0), meta.and_then(|m| m.modified().ok()));
+    let (len, at) = (
+        meta.as_ref().map(|m| m.len()).unwrap_or(0),
+        meta.and_then(|m| m.modified().ok()),
+    );
     {
-        let seen = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some((_, _, _, found)) = seen.iter().find(|(p, l, t, _)| p == path && *l == len && *t == at && at.is_some()) {
+        let seen = SEEN
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((_, _, _, found)) = seen
+            .iter()
+            .find(|(p, l, t, _)| p == path && *l == len && *t == at && at.is_some())
+        {
             return found.clone();
         }
     }
     let found = read_build(path, modified);
-    let mut seen = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut seen = SEEN
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     seen.retain(|(p, ..)| p != path);
     // Only a few: a usable build holds the whole program in memory.
     if seen.len() >= 4 {
@@ -1089,14 +1198,18 @@ fn look_at_build(path: &std::path::Path, modified: u64) -> Result<FoundBuild, St
 
 fn read_build(path: &std::path::Path, modified: u64) -> Result<FoundBuild, String> {
     const MAX: u64 = 400_000_000;
-    let zip = path.extension().is_some_and(|x| x.eq_ignore_ascii_case("zip"));
+    let zip = path
+        .extension()
+        .is_some_and(|x| x.eq_ignore_ascii_case("zip"));
     let bytes = std::fs::read(path).map_err(|e| format!("it couldn't be read ({e})"))?;
     let program = if zip {
         let wanted = |n: &str| {
             let base = n.rsplit('/').next().unwrap_or(n).to_ascii_lowercase();
             !n.contains("tor/") && base.starts_with("atlas") && base.ends_with(".exe")
         };
-        match crate::zipread::file_inside(&bytes, wanted, MAX).map_err(|e| format!("it isn't a zip I can open ({e})"))? {
+        match crate::zipread::file_inside(&bytes, wanted, MAX)
+            .map_err(|e| format!("it isn't a zip I can open ({e})"))?
+        {
             Some((_, program)) => program,
             None => return Err("there's no Atlas program inside it".into()),
         }
@@ -1104,8 +1217,16 @@ fn read_build(path: &std::path::Path, modified: u64) -> Result<FoundBuild, Strin
         bytes
     };
     let platform = pe_platform(&program).ok_or("it isn't a Windows program")?;
-    let version = version_in_exe(&program).ok_or("it doesn't say it's Atlas, or which version it is")?;
-    Ok(FoundBuild { path: path.to_path_buf(), platform, version, sha256: crate::digest::sha256_hex(&program), program, modified })
+    let version =
+        version_in_exe(&program).ok_or("it doesn't say it's Atlas, or which version it is")?;
+    Ok(FoundBuild {
+        path: path.to_path_buf(),
+        platform,
+        version,
+        sha256: crate::digest::sha256_hex(&program),
+        program,
+        modified,
+    })
 }
 
 /// A Windows program's machine type, from its PE header.
@@ -1131,9 +1252,16 @@ fn pe_platform(b: &[u8]) -> Option<&'static str> {
 fn version_in_exe(b: &[u8]) -> Option<String> {
     let names = utf16_values(b, "ProductName");
     let versions = utf16_values(b, "ProductVersion");
-    names.iter().filter(|(_, v)| v == "Atlas").find_map(|(at, _)| {
-        versions.iter().filter(|(p, _)| p.abs_diff(*at) < 512).map(|(_, v)| v.clone()).next()
-    })
+    names
+        .iter()
+        .filter(|(_, v)| v == "Atlas")
+        .find_map(|(at, _)| {
+            versions
+                .iter()
+                .filter(|(p, _)| p.abs_diff(*at) < 512)
+                .map(|(_, v)| v.clone())
+                .next()
+        })
 }
 
 /// Every `key` in a version block, with where it sits and its value.
@@ -1142,7 +1270,10 @@ fn utf16_values(b: &[u8], key: &str) -> Vec<(usize, String)> {
     needle.extend([0, 0]);
     let mut out = Vec::new();
     let mut from = 0;
-    while let Some(i) = b.get(from..).and_then(|rest| rest.windows(needle.len()).position(|w| w == needle.as_slice())) {
+    while let Some(i) = b.get(from..).and_then(|rest| {
+        rest.windows(needle.len())
+            .position(|w| w == needle.as_slice())
+    }) {
         let at = from + i;
         // Then up to three zero units of padding (the value starts on a
         // 4-byte boundary), then the value, which never starts with a zero.
@@ -1189,7 +1320,11 @@ pub fn sign_build(
     trusted: &[u8; 32],
 ) -> Result<SignedBuild, String> {
     let seed = vault.get(RELEASE_KEY_NAME, now).map_err(|_| {
-        if vault.set_aside.iter().any(|n| n == RELEASE_KEY_NAME) { IN_THE_OLD_VAULT.to_string() } else { "There's no release key in your vault.".to_string() }
+        if vault.set_aside.iter().any(|n| n == RELEASE_KEY_NAME) {
+            IN_THE_OLD_VAULT.to_string()
+        } else {
+            "There's no release key in your vault.".to_string()
+        }
     })?;
     let seed = seed_from_hex(&seed).ok_or("The release key in your vault is damaged.")?;
     let key = signing_key_from_seed(&seed);
@@ -1199,10 +1334,24 @@ pub fn sign_build(
             .into());
     }
     let sequence = last_sequence + 1;
-    let files = [(found.platform.to_string(), "atlas.exe".to_string(), found.program.clone())];
-    let manifest = manifest_for(sequence, &found.version, crate::upgrade::DATA_FORMAT, now, now + 30 * 86_400, &files)
-        .map_err(|r| r.plain())?;
-    Ok(SignedBuild { sequence, signed: seal_manifest(&key, &manifest) })
+    let files = [(
+        found.platform.to_string(),
+        "atlas.exe".to_string(),
+        found.program.clone(),
+    )];
+    let manifest = manifest_for(
+        sequence,
+        &found.version,
+        crate::upgrade::DATA_FORMAT,
+        now,
+        now + 30 * 86_400,
+        &files,
+    )
+    .map_err(|r| r.plain())?;
+    Ok(SignedBuild {
+        sequence,
+        signed: seal_manifest(&key, &manifest),
+    })
 }
 
 #[cfg(test)]
@@ -1222,7 +1371,10 @@ mod tests {
         assert_eq!(key_in(CARD, b"recovery"), [0u8; 32]);
         assert_eq!(key_in("", b"release"), PLACEHOLDER_ANCHOR);
         // The tree's own file says none until Eric makes the key.
-        let shipped = KEYS_FILE.lines().find(|l| l.starts_with("release=")).unwrap();
+        let shipped = KEYS_FILE
+            .lines()
+            .find(|l| l.starts_with("release="))
+            .unwrap();
         assert_eq!(anchor_configured(), !shipped.ends_with("none"));
     }
 
@@ -1232,7 +1384,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let store = crate::store::Store::new(&dir);
         let mut vault = crate::vault::Vault::load(&store);
-        vault.open("a long passphrase", 1_000, &crate::vault::VaultConfig::default()).unwrap();
+        vault
+            .open(
+                "a long passphrase",
+                1_000,
+                &crate::vault::VaultConfig::default(),
+            )
+            .unwrap();
         let made = make_release_key(&mut vault, 1_000).unwrap();
         let seed = seed_from_hex(&vault.get(RELEASE_KEY_NAME, 1_000).unwrap()).unwrap();
         let public = seed_hex(&anchor_of(&signing_key_from_seed(&seed)));
@@ -1243,8 +1401,15 @@ mod tests {
         let card: &'static str = Box::leak(made.card.clone().into_boxed_str());
         assert_eq!(seed_hex(&key_in(card, b"release")), public);
         assert_eq!(made.recovery.split(' ').count(), 8, "{}", made.recovery);
-        assert_eq!(vault.list().len(), 1, "only the release key is kept; the recovery key never is");
-        assert!(make_release_key(&mut vault, 1_000).is_err(), "a second key would strand every copy");
+        assert_eq!(
+            vault.list().len(),
+            1,
+            "only the release key is kept; the recovery key never is"
+        );
+        assert!(
+            make_release_key(&mut vault, 1_000).is_err(),
+            "a second key would strand every copy"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1265,7 +1430,10 @@ mod tests {
         let key = test_key();
         let anchor = anchor_of(&key);
         let sig = sign(&key, b"install version 1.4.0");
-        assert_eq!(verify_against(&anchor, b"install version 9.9.9", &sig), Verdict::Forged);
+        assert_eq!(
+            verify_against(&anchor, b"install version 9.9.9", &sig),
+            Verdict::Forged
+        );
     }
 
     #[test]
@@ -1286,7 +1454,10 @@ mod tests {
         let theirs = signing_key_from_seed(&[9u8; 32]);
         let msg = b"a manifest";
         let their_sig = sign(&theirs, msg);
-        assert_eq!(verify_against(&anchor_of(&mine), msg, &their_sig), Verdict::Forged);
+        assert_eq!(
+            verify_against(&anchor_of(&mine), msg, &their_sig),
+            Verdict::Forged
+        );
     }
 
     #[test]
@@ -1296,7 +1467,10 @@ mod tests {
         let key = test_key();
         let msg = b"a manifest";
         let sig = sign(&key, msg);
-        assert_eq!(verify_against(&PLACEHOLDER_ANCHOR, msg, &sig), Verdict::NoAnchor);
+        assert_eq!(
+            verify_against(&PLACEHOLDER_ANCHOR, msg, &sig),
+            Verdict::NoAnchor
+        );
         assert!(!verify_against(&PLACEHOLDER_ANCHOR, msg, &sig).is_trusted());
     }
 
@@ -1305,9 +1479,18 @@ mod tests {
         // Eric made his key on 27 Sep 2026 and sent the card; every build from
         // here trusts it. Changing this line is changing who Atlas trusts.
         assert!(anchor_configured());
-        assert_eq!(seed_hex(&RELEASE_PUBLIC_KEY), "107ad00abcc9a466ddacb816ca55ccc31134ffa38052149a17069b0f86d2536c");
-        assert!(VerifyingKey::from_bytes(&RELEASE_PUBLIC_KEY).is_ok(), "the card's key isn't a real public key");
-        assert_eq!(verify_against(&RELEASE_PUBLIC_KEY, b"anything", &[0u8; 64]), Verdict::Forged);
+        assert_eq!(
+            seed_hex(&RELEASE_PUBLIC_KEY),
+            "107ad00abcc9a466ddacb816ca55ccc31134ffa38052149a17069b0f86d2536c"
+        );
+        assert!(
+            VerifyingKey::from_bytes(&RELEASE_PUBLIC_KEY).is_ok(),
+            "the card's key isn't a real public key"
+        );
+        assert_eq!(
+            verify_against(&RELEASE_PUBLIC_KEY, b"anything", &[0u8; 64]),
+            Verdict::Forged
+        );
     }
 
     #[test]
@@ -1356,7 +1539,14 @@ mod tests {
     }
 
     fn accept_on_windows(signed: &SignedManifest, installed: u64) -> Result<Accepted, Refusal> {
-        accept_against(&anchor_of(&test_key()), signed, installed, 3, "windows-x86_64", Direction::Forward)
+        accept_against(
+            &anchor_of(&test_key()),
+            signed,
+            installed,
+            3,
+            "windows-x86_64",
+            Direction::Forward,
+        )
     }
 
     #[test]
@@ -1366,7 +1556,15 @@ mod tests {
         assert_eq!(ok.manifest.sequence, 4);
         assert_eq!(ok.artifact.platform, "windows-x86_64");
         // And the same release hands an iPhone its own build.
-        let ios = accept_against(&anchor_of(&test_key()), &signed, 3, 3, "ios-aarch64", Direction::Forward).unwrap();
+        let ios = accept_against(
+            &anchor_of(&test_key()),
+            &signed,
+            3,
+            3,
+            "ios-aarch64",
+            Direction::Forward,
+        )
+        .unwrap();
         assert_eq!(ios.artifact.file, "Atlas-1.4.0.ipa");
     }
 
@@ -1376,27 +1574,55 @@ mod tests {
         // their own file's. Either way the signature no longer holds.
         let mut signed = seal_manifest(&test_key(), &release(4));
         signed.manifest = signed.manifest.replace("\"sequence\":4", "\"sequence\":99");
-        assert_eq!(accept_on_windows(&signed, 3), Err(Refusal::NotSigned(Verdict::Forged)));
+        assert_eq!(
+            accept_on_windows(&signed, 3),
+            Err(Refusal::NotSigned(Verdict::Forged))
+        );
 
         let mut swapped = seal_manifest(&test_key(), &release(4));
-        swapped.manifest = swapped.manifest.replace(&crate::digest::sha256_hex(WIN_FILE), &crate::digest::sha256_hex(b"evil"));
-        assert_eq!(accept_on_windows(&swapped, 3), Err(Refusal::NotSigned(Verdict::Forged)));
+        swapped.manifest = swapped.manifest.replace(
+            &crate::digest::sha256_hex(WIN_FILE),
+            &crate::digest::sha256_hex(b"evil"),
+        );
+        assert_eq!(
+            accept_on_windows(&swapped, 3),
+            Err(Refusal::NotSigned(Verdict::Forged))
+        );
     }
 
     #[test]
     fn a_release_signed_by_someone_else_is_refused() {
         let signed = seal_manifest(&signing_key_from_seed(&[9u8; 32]), &release(4));
-        assert_eq!(accept_on_windows(&signed, 3), Err(Refusal::NotSigned(Verdict::Forged)));
+        assert_eq!(
+            accept_on_windows(&signed, 3),
+            Err(Refusal::NotSigned(Verdict::Forged))
+        );
     }
 
     #[test]
     fn with_no_release_key_set_every_release_is_refused() {
         let signed = seal_manifest(&test_key(), &release(4));
-        let r = accept_against(&PLACEHOLDER_ANCHOR, &signed, 3, 3, "windows-x86_64", Direction::Forward);
+        let r = accept_against(
+            &PLACEHOLDER_ANCHOR,
+            &signed,
+            3,
+            3,
+            "windows-x86_64",
+            Direction::Forward,
+        );
         assert_eq!(r, Err(Refusal::NotSigned(Verdict::NoAnchor)));
         // The build as shipped trusts Eric's key only (27 Sep 2026): anyone
         // else's signature is refused as not his.
-        assert_eq!(accept(&Installed::default(), &signed, 3, "windows-x86_64", Direction::Forward), Err(Refusal::NotSigned(Verdict::Forged)));
+        assert_eq!(
+            accept(
+                &Installed::default(),
+                &signed,
+                3,
+                "windows-x86_64",
+                Direction::Forward
+            ),
+            Err(Refusal::NotSigned(Verdict::Forged))
+        );
     }
 
     #[test]
@@ -1404,44 +1630,91 @@ mod tests {
         // Domain separation: something the key signed that was NOT a release
         // must never be accepted as one, even if the bytes are identical.
         let text = serde_json::to_string(&release(4)).unwrap();
-        let bare = SignedManifest { signature: to_hex(&sign(&test_key(), text.as_bytes())), manifest: text };
-        assert_eq!(accept_on_windows(&bare, 3), Err(Refusal::NotSigned(Verdict::Forged)));
+        let bare = SignedManifest {
+            signature: to_hex(&sign(&test_key(), text.as_bytes())),
+            manifest: text,
+        };
+        assert_eq!(
+            accept_on_windows(&bare, 3),
+            Err(Refusal::NotSigned(Verdict::Forged))
+        );
     }
 
     #[test]
     fn an_older_release_is_refused_unless_explicitly_rolling_back() {
         let old = seal_manifest(&test_key(), &release(2));
-        assert_eq!(accept_on_windows(&old, 5), Err(Refusal::Downgrade { offered: 2, installed: 5 }));
+        assert_eq!(
+            accept_on_windows(&old, 5),
+            Err(Refusal::Downgrade {
+                offered: 2,
+                installed: 5
+            })
+        );
         // A deliberate rollback is allowed — and still has to be signed.
-        let back = accept_against(&anchor_of(&test_key()), &old, 5, 3, "windows-x86_64", Direction::Rollback(LocalApproval::given_by_the_person_at_this_device()));
+        let back = accept_against(
+            &anchor_of(&test_key()),
+            &old,
+            5,
+            3,
+            "windows-x86_64",
+            Direction::Rollback(LocalApproval::given_by_the_person_at_this_device()),
+        );
         assert!(back.is_ok());
     }
 
     #[test]
     fn the_same_release_twice_is_already_installed_not_reinstalled() {
         let same = seal_manifest(&test_key(), &release(5));
-        assert_eq!(accept_on_windows(&same, 5), Err(Refusal::AlreadyInstalled(5)));
+        assert_eq!(
+            accept_on_windows(&same, 5),
+            Err(Refusal::AlreadyInstalled(5))
+        );
     }
 
     #[test]
     fn a_release_that_cant_open_this_devices_data_is_refused() {
         let signed = seal_manifest(&test_key(), &release(4)); // needs data format 3
-        let r = accept_against(&anchor_of(&test_key()), &signed, 3, 2, "windows-x86_64", Direction::Forward);
+        let r = accept_against(
+            &anchor_of(&test_key()),
+            &signed,
+            3,
+            2,
+            "windows-x86_64",
+            Direction::Forward,
+        );
         assert_eq!(r, Err(Refusal::DataTooOld { needs: 3, have: 2 }));
     }
 
     #[test]
     fn a_release_with_no_build_for_this_device_says_so() {
         let signed = seal_manifest(&test_key(), &release(4));
-        let r = accept_against(&anchor_of(&test_key()), &signed, 3, 3, "android-aarch64", Direction::Forward);
-        assert_eq!(r, Err(Refusal::NotForThisPlatform("android-aarch64".into())));
+        let r = accept_against(
+            &anchor_of(&test_key()),
+            &signed,
+            3,
+            3,
+            "android-aarch64",
+            Direction::Forward,
+        );
+        assert_eq!(
+            r,
+            Err(Refusal::NotForThisPlatform("android-aarch64".into()))
+        );
     }
 
     #[test]
     fn a_path_in_a_file_name_is_refused_even_when_signed() {
         // Signing proves who wrote it, not that it's safe. A name that escapes
         // the download folder must never reach the installer.
-        for bad in ["../../Startup/evil.exe", "..\\evil.exe", "C:evil.exe", "/etc/passwd", ".hidden", "a b.exe", ""] {
+        for bad in [
+            "../../Startup/evil.exe",
+            "..\\evil.exe",
+            "C:evil.exe",
+            "/etc/passwd",
+            ".hidden",
+            "a b.exe",
+            "",
+        ] {
             let mut m = release(4);
             m.artifacts[0].file = bad.into();
             let signed = seal_manifest(&test_key(), &m);
@@ -1456,38 +1729,59 @@ mod tests {
     fn two_builds_for_one_platform_or_a_fake_fingerprint_are_refused() {
         let mut dup = release(4);
         dup.artifacts[1].platform = "windows-x86_64".into();
-        assert!(matches!(accept_on_windows(&seal_manifest(&test_key(), &dup), 3), Err(Refusal::Malformed(_))));
+        assert!(matches!(
+            accept_on_windows(&seal_manifest(&test_key(), &dup), 3),
+            Err(Refusal::Malformed(_))
+        ));
 
         let mut fake = release(4);
         fake.artifacts[0].sha256 = "not-a-hash".into();
-        assert!(matches!(accept_on_windows(&seal_manifest(&test_key(), &fake), 3), Err(Refusal::Malformed(_))));
+        assert!(matches!(
+            accept_on_windows(&seal_manifest(&test_key(), &fake), 3),
+            Err(Refusal::Malformed(_))
+        ));
 
         let mut empty = release(4);
         empty.artifacts.clear();
-        assert!(matches!(accept_on_windows(&seal_manifest(&test_key(), &empty), 3), Err(Refusal::Malformed(_))));
+        assert!(matches!(
+            accept_on_windows(&seal_manifest(&test_key(), &empty), 3),
+            Err(Refusal::Malformed(_))
+        ));
     }
 
     #[test]
     fn a_manifest_in_a_format_this_build_doesnt_know_is_refused() {
         let mut m = release(4);
         m.format = 99;
-        assert_eq!(accept_on_windows(&seal_manifest(&test_key(), &m), 3), Err(Refusal::UnsupportedFormat(99)));
+        assert_eq!(
+            accept_on_windows(&seal_manifest(&test_key(), &m), 3),
+            Err(Refusal::UnsupportedFormat(99))
+        );
     }
 
     #[test]
     fn an_absurdly_large_manifest_is_refused_before_any_checking() {
         let mut signed = seal_manifest(&test_key(), &release(4));
         signed.manifest.push_str(&" ".repeat(MAX_MANIFEST_BYTES));
-        assert!(matches!(accept_on_windows(&signed, 3), Err(Refusal::TooLarge(_))));
+        assert!(matches!(
+            accept_on_windows(&signed, 3),
+            Err(Refusal::TooLarge(_))
+        ));
     }
 
     #[test]
     fn a_garbled_signature_is_unreadable_not_a_crash() {
         let mut signed = seal_manifest(&test_key(), &release(4));
         signed.signature = "zz".repeat(64);
-        assert!(matches!(accept_on_windows(&signed, 3), Err(Refusal::Unreadable(_))));
+        assert!(matches!(
+            accept_on_windows(&signed, 3),
+            Err(Refusal::Unreadable(_))
+        ));
         signed.signature = "ab".into();
-        assert!(matches!(accept_on_windows(&signed, 3), Err(Refusal::Unreadable(_))));
+        assert!(matches!(
+            accept_on_windows(&signed, 3),
+            Err(Refusal::Unreadable(_))
+        ));
     }
 
     #[test]
@@ -1497,9 +1791,15 @@ mod tests {
         // One byte different: refused.
         let mut altered = WIN_FILE.to_vec();
         altered[0] ^= 1;
-        assert_eq!(check_artifact(&ok.artifact, &altered), Err(Refusal::WrongHash));
+        assert_eq!(
+            check_artifact(&ok.artifact, &altered),
+            Err(Refusal::WrongHash)
+        );
         // Cut short (an interrupted download): refused, and said as such.
-        assert!(matches!(check_artifact(&ok.artifact, &WIN_FILE[..5]), Err(Refusal::WrongSize { .. })));
+        assert!(matches!(
+            check_artifact(&ok.artifact, &WIN_FILE[..5]),
+            Err(Refusal::WrongSize { .. })
+        ));
     }
 
     #[test]
@@ -1513,10 +1813,16 @@ mod tests {
             Refusal::UnsupportedFormat(2),
             Refusal::Malformed("x".into()),
             Refusal::AlreadyInstalled(1),
-            Refusal::Downgrade { offered: 1, installed: 2 },
+            Refusal::Downgrade {
+                offered: 1,
+                installed: 2,
+            },
             Refusal::DataTooOld { needs: 2, have: 1 },
             Refusal::NotForThisPlatform("p".into()),
-            Refusal::WrongSize { expected: 2, got: 1 },
+            Refusal::WrongSize {
+                expected: 2,
+                got: 1,
+            },
             Refusal::WrongHash,
         ];
         for r in all {
@@ -1543,14 +1849,18 @@ mod tests {
         let ok = accept_on_windows(&seal_manifest(&test_key(), &release(4)), 3).unwrap();
         let mut f = Fingerprint::for_artifact(&ok.artifact);
         f.update(WIN_FILE).unwrap();
-        assert!(matches!(f.update(b"one byte too many"), Err(Refusal::WrongSize { .. })));
+        assert!(matches!(
+            f.update(b"one byte too many"),
+            Err(Refusal::WrongSize { .. })
+        ));
     }
 
     // ---------------- gap C: what the device remembers ----------------
 
     #[test]
     fn the_installed_release_survives_a_restart() {
-        let dir = std::env::temp_dir().join(format!("atlas-release-installed-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("atlas-release-installed-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let store = crate::store::Store::new(&dir);
         let mut mine = Installed::load(&store);
@@ -1571,7 +1881,10 @@ mod tests {
         mine.installed(&first);
         // Eric re-announces the same builds under a new number (a notice).
         let again = accept_on_windows(&seal_manifest(&test_key(), &release(5)), 4).unwrap();
-        assert!(!mine.needs_install(&again), "identical bytes must not be reinstalled");
+        assert!(
+            !mine.needs_install(&again),
+            "identical bytes must not be reinstalled"
+        );
     }
 
     // ---------------- gap D: rollback only from here ----------------
@@ -1585,8 +1898,14 @@ mod tests {
         let text = serde_json::to_string(&v).unwrap();
         let mut msg = MANIFEST_DOMAIN.to_vec();
         msg.extend_from_slice(text.as_bytes());
-        let signed = SignedManifest { signature: to_hex(&sign(&test_key(), &msg)), manifest: text };
-        assert!(matches!(accept_on_windows(&signed, 5), Err(Refusal::Unreadable(_))));
+        let signed = SignedManifest {
+            signature: to_hex(&sign(&test_key(), &msg)),
+            manifest: text,
+        };
+        assert!(matches!(
+            accept_on_windows(&signed, 5),
+            Err(Refusal::Unreadable(_))
+        ));
     }
 
     // ---------------- gap E: one name for each platform ----------------
@@ -1601,7 +1920,10 @@ mod tests {
     fn a_misspelled_platform_is_refused_at_signing_time_not_found_missing_later() {
         let mut m = release(4);
         m.artifacts[0].platform = "win64".into();
-        assert!(matches!(accept_on_windows(&seal_manifest(&test_key(), &m), 3), Err(Refusal::Malformed(_))));
+        assert!(matches!(
+            accept_on_windows(&seal_manifest(&test_key(), &m), 3),
+            Err(Refusal::Malformed(_))
+        ));
     }
 
     #[test]
@@ -1611,7 +1933,14 @@ mod tests {
             m.artifacts.truncate(1);
             m.artifacts[0].platform = (*p).into();
             let signed = seal_manifest(&test_key(), &m);
-            let ok = accept_against(&anchor_of(&test_key()), &signed, 3, 3, p, Direction::Forward);
+            let ok = accept_against(
+                &anchor_of(&test_key()),
+                &signed,
+                3,
+                3,
+                p,
+                Direction::Forward,
+            );
             assert!(ok.is_ok(), "{p} did not round-trip");
         }
     }
@@ -1635,14 +1964,20 @@ mod tests {
     fn a_release_whose_next_notice_date_is_not_in_its_future_is_refused() {
         let mut m = release(4);
         m.next_word_by = m.released_at;
-        assert!(matches!(accept_on_windows(&seal_manifest(&test_key(), &m), 3), Err(Refusal::Malformed(_))));
+        assert!(matches!(
+            accept_on_windows(&seal_manifest(&test_key(), &m), 3),
+            Err(Refusal::Malformed(_))
+        ));
     }
 
     #[test]
     fn a_release_that_writes_an_older_format_than_it_needs_is_refused() {
         let mut m = release(4);
         m.data_format = 2; // min_data_format is 3
-        assert!(matches!(accept_on_windows(&seal_manifest(&test_key(), &m), 3), Err(Refusal::Malformed(_))));
+        assert!(matches!(
+            accept_on_windows(&seal_manifest(&test_key(), &m), 3),
+            Err(Refusal::Malformed(_))
+        ));
     }
 
     // ---------------- gap G: rotation and recovery ----------------
@@ -1652,24 +1987,48 @@ mod tests {
     }
 
     fn rotation_to(number: u32, key: &SigningKey) -> Rotation {
-        Rotation { number, new_anchor: to_hex(&anchor_of(key)), reason: "planned".into() }
+        Rotation {
+            number,
+            new_anchor: to_hex(&anchor_of(key)),
+            reason: "planned".into(),
+        }
     }
 
     fn trusting_test_key() -> TrustState {
-        TrustState { current: anchor_of(&test_key()), rotations: 0 }
+        TrustState {
+            current: anchor_of(&test_key()),
+            rotations: 0,
+        }
     }
 
     #[test]
     fn a_planned_rotation_moves_trust_to_the_new_key() {
         let next = signing_key_from_seed(&[11u8; 32]);
         let signed = seal_rotation(&test_key(), &rotation_to(1, &next));
-        let t = apply_rotation_with(&trusting_test_key(), &anchor_of(&recovery_key()), &signed).unwrap();
+        let t = apply_rotation_with(&trusting_test_key(), &anchor_of(&recovery_key()), &signed)
+            .unwrap();
         assert_eq!(t.current, anchor_of(&next));
         // Releases now verify under the new key and not the old one.
         let by_new = seal_manifest(&next, &release(1));
-        assert!(accept_against(&t.current, &by_new, 0, 3, "windows-x86_64", Direction::Forward).is_ok());
+        assert!(accept_against(
+            &t.current,
+            &by_new,
+            0,
+            3,
+            "windows-x86_64",
+            Direction::Forward
+        )
+        .is_ok());
         let by_old = seal_manifest(&test_key(), &release(9));
-        assert!(accept_against(&t.current, &by_old, 0, 3, "windows-x86_64", Direction::Forward).is_err());
+        assert!(accept_against(
+            &t.current,
+            &by_old,
+            0,
+            3,
+            "windows-x86_64",
+            Direction::Forward
+        )
+        .is_err());
     }
 
     #[test]
@@ -1684,7 +2043,8 @@ mod tests {
     fn a_planned_rotation_cannot_be_replayed_or_skip_ahead() {
         let next = signing_key_from_seed(&[11u8; 32]);
         let signed = seal_rotation(&test_key(), &rotation_to(1, &next));
-        let after = apply_rotation_with(&trusting_test_key(), &anchor_of(&recovery_key()), &signed).unwrap();
+        let after = apply_rotation_with(&trusting_test_key(), &anchor_of(&recovery_key()), &signed)
+            .unwrap();
         // Replaying #1 on a device already at 1: refused (and it's not even
         // signed by the key trusted now).
         assert!(apply_rotation_with(&after, &anchor_of(&recovery_key()), &signed).is_err());
@@ -1700,31 +2060,63 @@ mod tests {
         // A thief with the release key rotates devices to their own key...
         let thief = signing_key_from_seed(&[66u8; 32]);
         let stolen = seal_rotation(&test_key(), &rotation_to(1, &thief));
-        let hijacked = apply_rotation_with(&trusting_test_key(), &anchor_of(&recovery_key()), &stolen).unwrap();
+        let hijacked =
+            apply_rotation_with(&trusting_test_key(), &anchor_of(&recovery_key()), &stolen)
+                .unwrap();
         assert_eq!(hijacked.current, anchor_of(&thief));
         // ...and signs a release numbered at the very top.
         let poisoned = seal_manifest(&thief, &release(u64::MAX - 1));
-        let mut device = Installed { trust: hijacked.clone(), ..Installed::default() };
+        let mut device = Installed {
+            trust: hijacked.clone(),
+            ..Installed::default()
+        };
         let taken = accept(&device, &poisoned, 3, "windows-x86_64", Direction::Forward).unwrap();
         device.installed(&taken);
         // Eric recovers with the offline key, at any later number.
         let fresh = signing_key_from_seed(&[12u8; 32]);
         let recover = seal_rotation(&recovery_key(), &rotation_to(5, &fresh));
-        device.trust = apply_rotation_with(&device.trust, &anchor_of(&recovery_key()), &recover).unwrap();
+        device.trust =
+            apply_rotation_with(&device.trust, &anchor_of(&recovery_key()), &recover).unwrap();
         assert_eq!(device.trust.current, anchor_of(&fresh));
         // The thief's key is dead, and the poisoned release number doesn't
         // lock Eric out: a new era counts fresh.
-        assert!(accept(&device, &seal_manifest(&thief, &release(u64::MAX)), 3, "windows-x86_64", Direction::Forward).is_err());
-        assert!(accept(&device, &seal_manifest(&fresh, &release(1)), 3, "windows-x86_64", Direction::Forward).is_ok());
+        assert!(accept(
+            &device,
+            &seal_manifest(&thief, &release(u64::MAX)),
+            3,
+            "windows-x86_64",
+            Direction::Forward
+        )
+        .is_err());
+        assert!(accept(
+            &device,
+            &seal_manifest(&fresh, &release(1)),
+            3,
+            "windows-x86_64",
+            Direction::Forward
+        )
+        .is_ok());
     }
 
     #[test]
     fn a_rotation_to_a_useless_key_is_refused() {
-        for bad in [to_hex(&PLACEHOLDER_ANCHOR), "zz".repeat(32), "ab".into(), to_hex(&anchor_of(&recovery_key()))] {
-            let r = Rotation { number: 1, new_anchor: bad.clone(), reason: "x".into() };
+        for bad in [
+            to_hex(&PLACEHOLDER_ANCHOR),
+            "zz".repeat(32),
+            "ab".into(),
+            to_hex(&anchor_of(&recovery_key())),
+        ] {
+            let r = Rotation {
+                number: 1,
+                new_anchor: bad.clone(),
+                reason: "x".into(),
+            };
             let signed = seal_rotation(&test_key(), &r);
             assert!(
-                matches!(apply_rotation_with(&trusting_test_key(), &anchor_of(&recovery_key()), &signed), Err(Refusal::Malformed(_))),
+                matches!(
+                    apply_rotation_with(&trusting_test_key(), &anchor_of(&recovery_key()), &signed),
+                    Err(Refusal::Malformed(_))
+                ),
                 "rotated to {bad}"
             );
         }
@@ -1746,23 +2138,60 @@ mod tests {
         m.min_data_format = crate::upgrade::DATA_FORMAT;
         m.data_format = crate::upgrade::DATA_FORMAT;
         let signed = seal_manifest(&test_key(), &m);
-        let r = accept_against(&anchor_of(&test_key()), &signed, 3, crate::upgrade::DATA_FORMAT, "windows-x86_64", Direction::Forward);
+        let r = accept_against(
+            &anchor_of(&test_key()),
+            &signed,
+            3,
+            crate::upgrade::DATA_FORMAT,
+            "windows-x86_64",
+            Direction::Forward,
+        );
         assert!(r.is_ok());
     }
 
     #[test]
     fn a_release_is_measured_from_its_files_not_typed() {
-        let m = manifest_for(3, "1.3.0", 1, 100, 200, &[("windows-x86_64".into(), "atlas.exe".into(), b"hello".to_vec())]).unwrap();
+        let m = manifest_for(
+            3,
+            "1.3.0",
+            1,
+            100,
+            200,
+            &[(
+                "windows-x86_64".into(),
+                "atlas.exe".into(),
+                b"hello".to_vec(),
+            )],
+        )
+        .unwrap();
         assert_eq!(m.artifacts[0].size, 5);
         assert_eq!(m.artifacts[0].sha256, crate::digest::sha256_hex(b"hello"));
         assert_eq!(m.data_format, crate::upgrade::DATA_FORMAT);
-        assert!(manifest_for(3, "1.3.0", 1, 100, 200, &[("win64".into(), "a.exe".into(), b"x".to_vec())]).is_err(), "unknown platform");
-        assert!(manifest_for(3, "1.3.0", 1, 100, 200, &[("windows-x86_64".into(), "../a.exe".into(), b"x".to_vec())]).is_err());
+        assert!(
+            manifest_for(
+                3,
+                "1.3.0",
+                1,
+                100,
+                200,
+                &[("win64".into(), "a.exe".into(), b"x".to_vec())]
+            )
+            .is_err(),
+            "unknown platform"
+        );
+        assert!(manifest_for(
+            3,
+            "1.3.0",
+            1,
+            100,
+            200,
+            &[("windows-x86_64".into(), "../a.exe".into(), b"x".to_vec())]
+        )
+        .is_err());
         let seed = new_seed();
         assert_eq!(seed_from_hex(&seed_hex(&seed)), Some(seed));
         assert!(as_rust_array(&[0xab; 32]).starts_with("[0xab, 0xab"));
     }
-
 
     // ------------------------------------------------ sending an update from the hub
 
@@ -1799,29 +2228,54 @@ mod tests {
     }
 
     fn edge() -> Vec<u8> {
-        version_block(&[("ProductName", "Microsoft Edge"), ("ProductVersion", "129.0.2792.65")])
+        version_block(&[
+            ("ProductName", "Microsoft Edge"),
+            ("ProductVersion", "129.0.2792.65"),
+        ])
     }
 
     fn atlas_block(v: &str) -> Vec<u8> {
-        version_block(&[("FileDescription", "Atlas"), ("ProductName", "Atlas"), ("ProductVersion", v)])
+        version_block(&[
+            ("FileDescription", "Atlas"),
+            ("ProductName", "Atlas"),
+            ("ProductVersion", v),
+        ])
     }
 
     #[test]
     fn a_program_is_known_by_its_own_header_and_the_atlas_version_block_not_the_edge_one() {
         let p = fake_program(0x8664, &[edge(), atlas_block("0.2.0")]);
         assert_eq!(pe_platform(&p), Some("windows-x86_64"));
-        assert_eq!(version_in_exe(&p).as_deref(), Some("0.2.0"), "the WebView2 part's version must not be taken for Atlas's");
-        assert_eq!(pe_platform(&fake_program(0xAA64, &[])), Some("windows-aarch64"));
-        assert_eq!(pe_platform(&fake_program(0x014C, &[])), None, "32-bit Windows isn't a platform Atlas ships");
+        assert_eq!(
+            version_in_exe(&p).as_deref(),
+            Some("0.2.0"),
+            "the WebView2 part's version must not be taken for Atlas's"
+        );
+        assert_eq!(
+            pe_platform(&fake_program(0xAA64, &[])),
+            Some("windows-aarch64")
+        );
+        assert_eq!(
+            pe_platform(&fake_program(0x014C, &[])),
+            None,
+            "32-bit Windows isn't a platform Atlas ships"
+        );
         assert_eq!(pe_platform(b"#!/bin/sh\necho atlas"), None);
-        assert_eq!(version_in_exe(&fake_program(0x8664, &[edge()])), None, "a program that doesn't say it's Atlas");
+        assert_eq!(
+            version_in_exe(&fake_program(0x8664, &[edge()])),
+            None,
+            "a program that doesn't say it's Atlas"
+        );
     }
 
     #[test]
     fn the_real_version_block_reads_as_this_version() {
         // The compiled resource build.rs links into atlas.exe.
         let res = include_bytes!("../windows/atlas-res.o");
-        assert_eq!(version_in_exe(res).as_deref(), Some(env!("CARGO_PKG_VERSION")));
+        assert_eq!(
+            version_in_exe(res).as_deref(),
+            Some(env!("CARGO_PKG_VERSION"))
+        );
     }
 
     fn builds_dir(name: &str) -> std::path::PathBuf {
@@ -1834,14 +2288,28 @@ mod tests {
     #[test]
     fn the_newest_atlas_download_is_found_and_other_files_are_passed_over() {
         let d = builds_dir("newest");
-        assert!(find_build(std::slice::from_ref(&d)).is_none(), "nothing there: nothing found");
-        std::fs::write(d.join("atlas-old.exe"), fake_program(0x8664, &[atlas_block("0.1.0")])).unwrap();
+        assert!(
+            find_build(std::slice::from_ref(&d)).is_none(),
+            "nothing there: nothing found"
+        );
+        std::fs::write(
+            d.join("atlas-old.exe"),
+            fake_program(0x8664, &[atlas_block("0.1.0")]),
+        )
+        .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        std::fs::write(d.join("Atlas Setup.exe"), fake_program(0x8664, &[edge(), atlas_block("0.2.0")])).unwrap();
+        std::fs::write(
+            d.join("Atlas Setup.exe"),
+            fake_program(0x8664, &[edge(), atlas_block("0.2.0")]),
+        )
+        .unwrap();
         std::fs::write(d.join("holiday.exe"), b"MZ").unwrap();
         let other = builds_dir("newest-other");
         let found = find_build(&[d.clone(), other.clone()]).unwrap().unwrap();
-        assert_eq!((found.version.as_str(), found.platform), ("0.2.0", "windows-x86_64"));
+        assert_eq!(
+            (found.version.as_str(), found.platform),
+            ("0.2.0", "windows-x86_64")
+        );
         assert!(found.path.ends_with("Atlas Setup.exe"));
         assert_eq!(found.sha256, crate::digest::sha256_hex(&found.program));
         // A newer file that isn't a build is passed over for the build behind
@@ -1851,7 +2319,9 @@ mod tests {
         let found = find_build(&[d.clone(), other.clone()]).unwrap().unwrap();
         assert!(found.path.ends_with("Atlas Setup.exe"), "{:?}", found.path);
         // Nothing usable at all: the page is told which file, and why.
-        let (name, why) = find_build(std::slice::from_ref(&other)).unwrap().unwrap_err();
+        let (name, why) = find_build(std::slice::from_ref(&other))
+            .unwrap()
+            .unwrap_err();
         assert_eq!(name, "atlas-notes.zip");
         assert!(why.contains("isn't a zip"), "{why}");
         let _ = std::fs::remove_dir_all(&d);
@@ -1863,11 +2333,21 @@ mod tests {
         let d = builds_dir("zip");
         let work = d.join("work");
         std::fs::create_dir_all(work.join("tor")).unwrap();
-        std::fs::write(work.join("atlas.exe"), fake_program(0x8664, &[atlas_block("0.3.0")])).unwrap();
+        std::fs::write(
+            work.join("atlas.exe"),
+            fake_program(0x8664, &[atlas_block("0.3.0")]),
+        )
+        .unwrap();
         std::fs::write(work.join("tor").join("tor.exe"), fake_program(0x8664, &[])).unwrap();
         let zipped = crate::tools::command("zip")
             .current_dir(&work)
-            .args(["-q", "-r", d.join("Atlas-Windows-57.zip").to_str().unwrap(), "tor", "atlas.exe"])
+            .args([
+                "-q",
+                "-r",
+                d.join("Atlas-Windows-57.zip").to_str().unwrap(),
+                "tor",
+                "atlas.exe",
+            ])
             .status()
             .is_ok_and(|s| s.success());
         if !zipped {
@@ -1878,7 +2358,11 @@ mod tests {
         let found = find_build(std::slice::from_ref(&d)).unwrap().unwrap();
         assert_eq!(found.version, "0.3.0");
         assert!(found.path.ends_with("Atlas-Windows-57.zip"));
-        assert_eq!(found.sha256, crate::digest::sha256_hex(&fake_program(0x8664, &[atlas_block("0.3.0")])), "the program is what's signed, not the zip");
+        assert_eq!(
+            found.sha256,
+            crate::digest::sha256_hex(&fake_program(0x8664, &[atlas_block("0.3.0")])),
+            "the program is what's signed, not the zip"
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -1887,7 +2371,13 @@ mod tests {
         let dir = builds_dir("sign");
         let store = crate::store::Store::new(&dir);
         let mut vault = crate::vault::Vault::load(&store);
-        vault.open("a long passphrase", 1_000, &crate::vault::VaultConfig::default()).unwrap();
+        vault
+            .open(
+                "a long passphrase",
+                1_000,
+                &crate::vault::VaultConfig::default(),
+            )
+            .unwrap();
         let found = FoundBuild {
             path: dir.join("atlas.exe"),
             platform: "windows-x86_64",
@@ -1902,15 +2392,24 @@ mod tests {
         let seed = seed_from_hex(&vault.get(RELEASE_KEY_NAME, 1_000).unwrap()).unwrap();
         let mine = anchor_of(&signing_key_from_seed(&seed));
         let refused = sign_build(&mut vault, &found, 3, 1_000, &[7; 32]).unwrap_err();
-        assert!(refused.contains("isn't the one this Atlas was built with"), "{refused}");
+        assert!(
+            refused.contains("isn't the one this Atlas was built with"),
+            "{refused}"
+        );
         let sent = sign_build(&mut vault, &found, 3, 1_000, &mine).unwrap();
         assert_eq!(sent.sequence, 4);
         let sig = from_hex_64(&sent.signed.signature).unwrap();
-        assert!(verify_against(&mine, &domain_bytes(sent.signed.manifest.as_bytes()), &sig).is_trusted());
+        assert!(
+            verify_against(&mine, &domain_bytes(sent.signed.manifest.as_bytes()), &sig)
+                .is_trusted()
+        );
         let m: Manifest = serde_json::from_str(&sent.signed.manifest).unwrap();
         assert_eq!((m.sequence, m.version.as_str()), (4, "0.2.0"));
         assert_eq!(m.artifacts[0].platform, "windows-x86_64");
-        assert_eq!(m.artifacts[0].sha256, crate::digest::sha256_hex(&found.program));
+        assert_eq!(
+            m.artifacts[0].sha256,
+            crate::digest::sha256_hex(&found.program)
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

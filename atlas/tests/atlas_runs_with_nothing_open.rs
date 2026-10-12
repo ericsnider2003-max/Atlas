@@ -10,8 +10,8 @@
 //! setting. The Win32 icon itself (`notifyicon::win`) only cross-compiles here.
 
 use atlas::firstlaunch::{what_opening_does, First};
-use atlas::startup::{self, AfterSetup, Mode};
 use atlas::notifyicon::{self as tray, TrayAction};
+use atlas::startup::{self, AfterSetup, Mode};
 use std::path::PathBuf;
 
 fn scratch(tag: &str) -> PathBuf {
@@ -31,7 +31,10 @@ fn eric_task() -> String {
 fn between<'a>(xml: &'a str, tag: &str) -> Vec<&'a str> {
     let open = format!("<{tag}>");
     let close = format!("</{tag}>");
-    xml.split(&open).skip(1).filter_map(|rest| rest.split_once(&close).map(|(v, _)| v)).collect()
+    xml.split(&open)
+        .skip(1)
+        .filter_map(|rest| rest.split_once(&close).map(|(v, _)| v))
+        .collect()
 }
 
 #[test]
@@ -60,8 +63,14 @@ fn the_task_starts_one_atlas_at_your_sign_in_with_nothing_elevated() {
     // Three since item 33 (1 Oct 2026): the sign-in, the unlock (Windows
     // locks and unlocks with the lid shut rather than signing in again), and
     // the principal. The wake trigger is a system event and names no one.
-    assert_eq!(between(&xml, "UserId"), vec![r"LAPTOP\erics", r"LAPTOP\erics", r"LAPTOP\erics"]);
-    assert!(xml.contains("<StateChange>SessionUnlock</StateChange>"), "{xml}");
+    assert_eq!(
+        between(&xml, "UserId"),
+        vec![r"LAPTOP\erics", r"LAPTOP\erics", r"LAPTOP\erics"]
+    );
+    assert!(
+        xml.contains("<StateChange>SessionUnlock</StateChange>"),
+        "{xml}"
+    );
     assert_eq!(between(&xml, "LogonType"), vec!["InteractiveToken"]);
     assert_eq!(between(&xml, "RunLevel"), vec!["LeastPrivilege"]);
     // Normal priority: a task's default (7) starts the program below normal.
@@ -71,12 +80,21 @@ fn the_task_starts_one_atlas_at_your_sign_in_with_nothing_elevated() {
 #[test]
 fn the_task_runs_atlas_itself_from_its_own_folder_and_never_a_console() {
     let xml = eric_task();
-    assert_eq!(between(&xml, "Command"), vec![r"C:\Users\erics\AppData\Local\Atlas\atlas.exe"]);
+    assert_eq!(
+        between(&xml, "Command"),
+        vec![r"C:\Users\erics\AppData\Local\Atlas\atlas.exe"]
+    );
     assert_eq!(between(&xml, "Arguments"), vec!["--daemon"]);
-    assert_eq!(between(&xml, "WorkingDirectory"), vec![r"C:\Users\erics\AppData\Local\Atlas"]);
+    assert_eq!(
+        between(&xml, "WorkingDirectory"),
+        vec![r"C:\Users\erics\AppData\Local\Atlas"]
+    );
     let lower = xml.to_lowercase();
     for console in ["cmd", ".bat", "powershell", "conhost"] {
-        assert!(!lower.contains(console), "the task goes through {console}: {xml}");
+        assert!(
+            !lower.contains(console),
+            "the task goes through {console}: {xml}"
+        );
     }
 }
 
@@ -84,14 +102,34 @@ fn the_task_runs_atlas_itself_from_its_own_folder_and_never_a_console() {
 fn a_folder_with_an_ampersand_still_makes_a_task_windows_can_read() {
     let exe = PathBuf::from(r"C:\Users\Tom & Jo\Atlas\atlas.exe");
     let xml = startup::task_xml(&exe, Mode::Background, Some("PC\\tom&jo"));
-    assert!(xml.contains(r"C:\Users\Tom &amp; Jo\Atlas\atlas.exe"), "{xml}");
-    assert!(!xml.contains("Tom & Jo"), "a bare & makes the XML unreadable: {xml}");
+    assert!(
+        xml.contains(r"C:\Users\Tom &amp; Jo\Atlas\atlas.exe"),
+        "{xml}"
+    );
+    assert!(
+        !xml.contains("Tom & Jo"),
+        "a bare & makes the XML unreadable: {xml}"
+    );
     assert!(xml.contains("tom&amp;jo"), "{xml}");
     // Every element that opens, closes.
-    for tag in ["Task", "Triggers", "LogonTrigger", "Principals", "Principal", "Settings", "Actions", "Exec", "IdleSettings"] {
-        let opens = xml.matches(&format!("<{tag}>")).count() + xml.matches(&format!("<{tag} ")).count();
+    for tag in [
+        "Task",
+        "Triggers",
+        "LogonTrigger",
+        "Principals",
+        "Principal",
+        "Settings",
+        "Actions",
+        "Exec",
+        "IdleSettings",
+    ] {
+        let opens =
+            xml.matches(&format!("<{tag}>")).count() + xml.matches(&format!("<{tag} ")).count();
         let closes = xml.matches(&format!("</{tag}>")).count();
-        assert_eq!(opens, closes, "<{tag}> opens {opens} times and closes {closes}");
+        assert_eq!(
+            opens, closes,
+            "<{tag}> opens {opens} times and closes {closes}"
+        );
     }
 }
 
@@ -110,7 +148,10 @@ fn the_task_file_is_what_its_declaration_says_it_is() {
     assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-16\"?>"));
     let bytes = startup::task_file_bytes(&xml);
     assert_eq!(&bytes[..2], &[0xFF, 0xFE]);
-    let units: Vec<u16> = bytes[2..].chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    let units: Vec<u16> = bytes[2..]
+        .chunks(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
     assert_eq!(String::from_utf16(&units).unwrap(), xml);
 }
 
@@ -120,15 +161,26 @@ fn the_task_file_is_written_where_the_plan_reads_it() {
     let exe = root.join("atlas.exe");
     let written = startup::write_task_file(&exe, Mode::Background).unwrap();
     assert_eq!(written, startup::task_file_path(&exe));
-    assert_eq!(written, root.join("data").join("state").join("atlas-task.xml"));
+    assert_eq!(
+        written,
+        root.join("data").join("state").join("atlas-task.xml")
+    );
     let bytes = std::fs::read(&written).unwrap();
     assert_eq!(&bytes[..2], &[0xFF, 0xFE]);
     let plan = startup::register(&exe, Mode::Background);
     if plan.program == "schtasks" {
-        let at = plan.args.iter().position(|a| a == "/XML").expect("made from the XML");
+        let at = plan
+            .args
+            .iter()
+            .position(|a| a == "/XML")
+            .expect("made from the XML");
         assert_eq!(plan.args[at + 1], written.display().to_string());
         assert!(plan.args.iter().any(|a| a == "/F"));
-        assert!(!plan.args.iter().any(|a| a == "/SC" || a == "/TR"), "{:?}", plan.args);
+        assert!(
+            !plan.args.iter().any(|a| a == "/SC" || a == "/TR"),
+            "{:?}",
+            plan.args
+        );
     }
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -138,10 +190,22 @@ fn the_fallback_sign_in_entry_runs_atlas_itself_quoted() {
     let exe = PathBuf::from(r"C:\Program Files\Atlas\atlas.exe");
     let add = startup::run_entry_add(&exe, Mode::Background);
     assert_eq!(add.program, "reg");
-    assert!(add.args.contains(&r#""C:\Program Files\Atlas\atlas.exe" --daemon"#.to_string()), "{:?}", add.args);
-    assert!(add.args.iter().any(|a| a.starts_with(r"HKCU\")), "per-user, never the machine: {:?}", add.args);
+    assert!(
+        add.args
+            .contains(&r#""C:\Program Files\Atlas\atlas.exe" --daemon"#.to_string()),
+        "{:?}",
+        add.args
+    );
+    assert!(
+        add.args.iter().any(|a| a.starts_with(r"HKCU\")),
+        "per-user, never the machine: {:?}",
+        add.args
+    );
     let del = startup::run_entry_remove();
-    assert_eq!(add.args[1], del.args[1], "adding and removing name different places");
+    assert_eq!(
+        add.args[1], del.args[1],
+        "adding and removing name different places"
+    );
     assert!(del.args.contains(&startup::TASK_NAME.to_string()));
 }
 
@@ -151,16 +215,31 @@ fn the_fallback_sign_in_entry_runs_atlas_itself_quoted() {
 fn after_setup_on_windows_it_starts_with_windows_once_and_starts_now() {
     assert_eq!(
         startup::after_setup(true, true, true, None, false),
-        AfterSetup { register: true, start: true }
+        AfterSetup {
+            register: true,
+            start: true
+        }
     );
     // Already running: nothing to start.
-    assert_eq!(startup::after_setup(true, true, true, None, true), AfterSetup { register: true, start: false });
+    assert_eq!(
+        startup::after_setup(true, true, true, None, true),
+        AfterSetup {
+            register: true,
+            start: false
+        }
+    );
 }
 
 #[test]
 fn unticking_it_later_is_never_undone_by_setup() {
     // Eric turned it off: setup walking again doesn't turn it back on.
-    assert_eq!(startup::after_setup(true, true, false, Some(false), true), AfterSetup { register: false, start: false });
+    assert_eq!(
+        startup::after_setup(true, true, false, Some(false), true),
+        AfterSetup {
+            register: false,
+            start: false
+        }
+    );
     assert!(!startup::after_setup(true, true, true, Some(false), false).register);
     // And on stays on without being registered again every open.
     assert!(!startup::after_setup(true, true, false, Some(true), true).register);
@@ -168,9 +247,21 @@ fn unticking_it_later_is_never_undone_by_setup() {
 
 #[test]
 fn nothing_happens_off_windows_or_without_readable_settings() {
-    assert_eq!(startup::after_setup(false, true, true, None, false), AfterSetup { register: false, start: false });
+    assert_eq!(
+        startup::after_setup(false, true, true, None, false),
+        AfterSetup {
+            register: false,
+            start: false
+        }
+    );
     // The background Atlas stops at once without its settings.
-    assert_eq!(startup::after_setup(true, false, true, None, false), AfterSetup { register: false, start: false });
+    assert_eq!(
+        startup::after_setup(true, false, true, None, false),
+        AfterSetup {
+            register: false,
+            start: false
+        }
+    );
 }
 
 #[test]
@@ -214,7 +305,10 @@ fn opening_a_running_atlas_just_opens_the_hub() {
 #[test]
 fn opening_before_setup_is_the_setup_window_as_before() {
     let o = what_opening_does(false, false, First::Home);
-    assert!(!o.start_background, "setup starts it itself when it finishes");
+    assert!(
+        !o.start_background,
+        "setup starts it itself when it finishes"
+    );
     assert_eq!(o.first, First::Home);
 }
 
@@ -223,7 +317,10 @@ fn a_page_asked_for_is_kept() {
     let o = what_opening_does(true, false, First::Settings);
     assert!(o.start_background);
     assert_eq!(o.first, First::Settings);
-    assert_eq!(what_opening_does(true, true, First::Hub("/hub/outstanding".into())).first, First::Hub("/hub/outstanding".into()));
+    assert_eq!(
+        what_opening_does(true, true, First::Hub("/hub/outstanding".into())).first,
+        First::Hub("/hub/outstanding".into())
+    );
 }
 
 // ================= the icon by the clock =================
@@ -249,8 +346,22 @@ fn every_menu_entry_does_what_it_says() {
         }
         assert_eq!(words.first(), Some(&"Open Atlas"));
         assert_eq!(words.last(), Some(&"Quit Atlas"));
-        assert!(words.contains(&if paused { tray::PAUSED_ENTRY } else { tray::RUNNING_ENTRY }), "{words:?}");
-        assert!(!words.contains(&if paused { tray::RUNNING_ENTRY } else { tray::PAUSED_ENTRY }), "{words:?}");
+        assert!(
+            words.contains(&if paused {
+                tray::PAUSED_ENTRY
+            } else {
+                tray::RUNNING_ENTRY
+            }),
+            "{words:?}"
+        );
+        assert!(
+            !words.contains(&if paused {
+                tray::RUNNING_ENTRY
+            } else {
+                tray::PAUSED_ENTRY
+            }),
+            "{words:?}"
+        );
     }
     // Clicking away from the menu picks 0: nothing happens.
     assert_eq!(tray::tray_choice(0, false), None);
@@ -272,24 +383,53 @@ fn pause_and_resume_reach_the_run_loop_and_nothing_else_does() {
     let _ = tray::tray_asks();
     tray::tray_ask(TrayAction::Pause);
     tray::tray_ask(TrayAction::Resume);
-    assert_eq!(tray::tray_asks(), vec![TrayAction::Pause, TrayAction::Resume]);
+    assert_eq!(
+        tray::tray_asks(),
+        vec![TrayAction::Pause, TrayAction::Resume]
+    );
     assert!(tray::tray_asks().is_empty(), "asks are taken once");
     let daemon = crate::common::source_of("daemon");
     // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
-    let body = daemon.split_once("fn answer_tray(").expect("answer_tray").1.split("\n    }\n").next().unwrap().to_string();
+    let body = daemon
+        .split_once("fn answer_tray(")
+        .expect("answer_tray")
+        .1
+        .split("\n    }\n")
+        .next()
+        .unwrap()
+        .to_string();
     assert!(body.contains("tray_asks()"));
-    assert!(body.contains(r#"self.turn("pause""#), "not the hub's Pause: {body}");
-    assert!(body.contains(r#"self.turn("carry on""#), "not the hub's Carry on: {body}");
+    assert!(
+        body.contains(r#"self.turn("pause""#),
+        "not the hub's Pause: {body}"
+    );
+    assert!(
+        body.contains(r#"self.turn("carry on""#),
+        "not the hub's Carry on: {body}"
+    );
     assert!(body.contains("tray_paused_now(self.attention.is_paused())"));
-    assert!(daemon.contains("self.answer_tray(clock());"), "the run loop never asks");
+    assert!(
+        daemon.contains("self.answer_tray(clock());"),
+        "the run loop never asks"
+    );
 }
 
 #[test]
 fn quitting_from_the_icon_is_the_clean_way_out() {
     let src = std::fs::read_to_string("src/notifyicon.rs").unwrap();
-    let quit = src.split_once("TrayAction::Quit => {").expect("Quit handled").1.split('}').next().unwrap().to_string();
+    let quit = src
+        .split_once("TrayAction::Quit => {")
+        .expect("Quit handled")
+        .1
+        .split('}')
+        .next()
+        .unwrap()
+        .to_string();
     // The same door, saying why (item 33: the record of runs says "you closed it").
-    assert!(quit.contains("goodbye::please_stop_because(crate::goodbye::Why::YouClosedIt)"), "{quit}");
+    assert!(
+        quit.contains("goodbye::please_stop_because(crate::goodbye::Why::YouClosedIt)"),
+        "{quit}"
+    );
     // Removed on the way out, and put back when Explorer restarts.
     assert!(src.contains("NIM_DELETE"));
     assert!(src.contains("TaskbarCreated"));
@@ -299,11 +439,23 @@ fn quitting_from_the_icon_is_the_clean_way_out() {
 fn the_background_atlas_puts_up_the_icon_when_the_setting_says_so() {
     let main = crate::common::source_of("main");
     // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
-    let body = main.split_once("fn run_daemon(").expect("run_daemon").1.split("\n}\n").next().unwrap().to_string();
-    assert!(body.contains("tc.desktop.tray_icon"), "the setting isn't read");
+    let body = main
+        .split_once("fn run_daemon(")
+        .expect("run_daemon")
+        .1
+        .split("\n}\n")
+        .next()
+        .unwrap()
+        .to_string();
+    assert!(
+        body.contains("tc.desktop.tray_icon"),
+        "the setting isn't read"
+    );
     assert!(body.contains("atlas::notifyicon::show_icon("), "no icon");
     // Held across the run loop, not dropped at once.
-    let icon = body.find("let _tray =").expect("held in a named binding, not `let _`");
+    let icon = body
+        .find("let _tray =")
+        .expect("held in a named binding, not `let _`");
     let run = body.find("d.run(").expect("the run loop");
     assert!(icon < run);
 }
@@ -313,7 +465,10 @@ fn the_setting_is_on_by_default_and_in_the_list() {
     let shipped: atlas::voice::ToolsConfig =
         serde_yaml::from_str(&std::fs::read_to_string("config/tools.yaml").unwrap()).unwrap();
     assert!(shipped.desktop.tray_icon, "off in the shipped file");
-    assert!(atlas::voice::ToolsConfig::default().desktop.tray_icon, "off by default");
+    assert!(
+        atlas::voice::ToolsConfig::default().desktop.tray_icon,
+        "off by default"
+    );
     let s = atlas::settings::registry(&shipped);
     let it = s.get("desktop.tray_icon").expect("in the settings list");
     assert_eq!(it.value, atlas::settings::Value::Toggle(true));
@@ -327,17 +482,41 @@ fn the_setting_is_on_by_default_and_in_the_list() {
 fn opening_atlas_starts_the_background_atlas_with_no_window() {
     let main = crate::common::source_of("main");
     // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
-    let body = main.split_once("fn run_home(").expect("run_home").1.split("\n}\n").next().unwrap().to_string();
+    let body = main
+        .split_once("fn run_home(")
+        .expect("run_home")
+        .1
+        .split("\n}\n")
+        .next()
+        .unwrap()
+        .to_string();
     assert!(body.contains("what_opening_does("));
     // 29 Sep 2026: both starts go through `start_background_watched`, which
     // is the same no-window `spawn_quietly(.., ["--daemon"])` watched for a
     // few seconds, so a start that fails at once says why.
     assert!(body.contains("start_background_watched("), "{body}");
     let fl = std::fs::read_to_string("src/firstlaunch.rs").unwrap();
-    let watched = fl.split_once("fn start_background_watched(").expect("start_background_watched").1.split("\n}").next().unwrap().to_string();
-    assert!(watched.contains(r#"spawn_quietly(exe, &["--daemon"])"#), "{watched}");
+    let watched = fl
+        .split_once("fn start_background_watched(")
+        .expect("start_background_watched")
+        .1
+        .split("\n}")
+        .next()
+        .unwrap()
+        .to_string();
+    assert!(
+        watched.contains(r#"spawn_quietly(exe, &["--daemon"])"#),
+        "{watched}"
+    );
     let setup = std::fs::read_to_string("src/setupwin.rs").unwrap();
-    let after = setup.split_once("fn after_setup(").expect("after_setup").1.split("\nfn ").next().unwrap().to_string();
+    let after = setup
+        .split_once("fn after_setup(")
+        .expect("after_setup")
+        .1
+        .split("\nfn ")
+        .next()
+        .unwrap()
+        .to_string();
     assert!(after.contains("startup::turn_on("));
     assert!(after.contains("start_background_watched(&place.exe"));
     assert!(after.contains("startup::remember(&state, true)"));
@@ -347,23 +526,50 @@ fn opening_atlas_starts_the_background_atlas_with_no_window() {
 fn every_way_atlas_starts_goes_to_atlas_exe_and_never_a_console() {
     // The shortcuts: atlas.exe itself, no arguments (a double-click).
     let fl = std::fs::read_to_string("src/firstlaunch.rs").unwrap();
-    let make = fl.split_once("fn make_shortcut(exe: &Path, lnk: &Path)").expect("make_shortcut").1.split("\n}").next().unwrap().to_string();
-    assert!(make.contains("SetPath(&HSTRING::from(exe.as_os_str()))"), "{make}");
+    let make = fl
+        .split_once("fn make_shortcut(exe: &Path, lnk: &Path)")
+        .expect("make_shortcut")
+        .1
+        .split("\n}")
+        .next()
+        .unwrap()
+        .to_string();
+    assert!(
+        make.contains("SetPath(&HSTRING::from(exe.as_os_str()))"),
+        "{make}"
+    );
     assert!(!make.contains("SetArguments"), "{make}");
     // Background starts go through the no-window door.
-    let quiet = fl.split_once("fn hidden_command(").unwrap().1.split("\n}").next().unwrap().to_string();
+    let quiet = fl
+        .split_once("fn hidden_command(")
+        .unwrap()
+        .1
+        .split("\n}")
+        .next()
+        .unwrap()
+        .to_string();
     assert!(quiet.contains("CREATE_NO_WINDOW"));
     // Nothing starts a console program without CREATE_NO_WINDOW from the
     // windowless Atlas: the three that did (a console flashed up).
     let win = std::fs::read_to_string("src/platform/win.rs").unwrap();
     for p in ["taskkill", "powershell", "clip"] {
-        assert!(!win.contains(&format!("Command::new(\"{p}\")")), "{p} opens a console window");
+        assert!(
+            !win.contains(&format!("Command::new(\"{p}\")")),
+            "{p} opens a console window"
+        );
     }
     // And nothing points at a batch file or cmd to start Atlas.
     for f in ["src/startup.rs", "src/setupwin.rs", "src/notifyicon.rs"] {
         let s = std::fs::read_to_string(f).unwrap();
-        let code: String = s.lines().filter(|l| !l.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n");
-        assert!(!code.contains("ATLAS.bat") && !code.contains("\"cmd\"") && !code.contains("cmd.exe"), "{f}");
+        let code: String = s
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            !code.contains("ATLAS.bat") && !code.contains("\"cmd\"") && !code.contains("cmd.exe"),
+            "{f}"
+        );
     }
 }
 
@@ -376,4 +582,3 @@ fn what_eric_is_given_is_atlas_exe_not_the_batch_file() {
     assert!(!wf.contains("ATLAS.bat"), "the package ships ATLAS.bat");
     assert!(wf.contains(r#"cp dist/atlas.exe "friend/Atlas Setup.exe""#));
 }
-

@@ -89,7 +89,11 @@ impl Report {
 }
 
 pub fn workspace_on(cfg: &Config, plat: &dyn Platform) -> Result<Report> {
-    workspace_on_within(cfg, plat, std::time::Duration::from_secs(BRINGUP_BUDGET_SECS))
+    workspace_on_within(
+        cfg,
+        plat,
+        std::time::Duration::from_secs(BRINGUP_BUDGET_SECS),
+    )
 }
 
 /// The same bring-up, with the wall-clock budget given rather than assumed.
@@ -252,7 +256,12 @@ pub fn close_app(cfg: &Config, plat: &dyn Platform, name: &str) -> Result<()> {
 
 /// Apps Atlas will arrange but never type into.
 pub fn input_blocked_apps(cfg: &Config) -> Vec<String> {
-    cfg.apps.apps.iter().filter(|(_, s)| s.no_input).map(|(n, _)| n.clone()).collect()
+    cfg.apps
+        .apps
+        .iter()
+        .filter(|(_, s)| s.no_input)
+        .map(|(n, _)| n.clone())
+        .collect()
 }
 
 /// Bring an app forward, launching it first if it isn't running.
@@ -293,13 +302,32 @@ pub enum ScreenSide {
 /// reached the model, which picked "move big files to another drive").
 pub fn move_to_screen_asked(said: &str) -> Option<(String, ScreenSide)> {
     let low = said.trim().trim_end_matches(['.', '!', '?']).to_lowercase();
-    let low = low.strip_prefix("atlas").map(|r| r.trim_start_matches([',', ' '])).unwrap_or(&low).to_string();
-    let low = ["can you ", "could you ", "please "].iter().fold(low, |l, p| l.strip_prefix(p).map(str::to_string).unwrap_or(l));
-    let rest = ["move ", "put ", "send ", "throw ", "drag "].iter().find_map(|v| low.strip_prefix(v))?;
-    let at = [" to my ", " to the ", " onto my ", " onto the ", " on my ", " on the ", " over to my ", " over to the "]
+    let low = low
+        .strip_prefix("atlas")
+        .map(|r| r.trim_start_matches([',', ' ']))
+        .unwrap_or(&low)
+        .to_string();
+    let low = ["can you ", "could you ", "please "]
         .iter()
-        .filter_map(|m| rest.find(m).map(|i| (i, m.len())))
-        .min_by_key(|(i, _)| *i)?;
+        .fold(low, |l, p| {
+            l.strip_prefix(p).map(str::to_string).unwrap_or(l)
+        });
+    let rest = ["move ", "put ", "send ", "throw ", "drag "]
+        .iter()
+        .find_map(|v| low.strip_prefix(v))?;
+    let at = [
+        " to my ",
+        " to the ",
+        " onto my ",
+        " onto the ",
+        " on my ",
+        " on the ",
+        " over to my ",
+        " over to the ",
+    ]
+    .iter()
+    .filter_map(|m| rest.find(m).map(|i| (i, m.len())))
+    .min_by_key(|(i, _)| *i)?;
     let what = rest[..at.0].trim();
     let place = &rest[at.0 + at.1..];
     let mut words = place.split_whitespace();
@@ -318,8 +346,17 @@ pub fn move_to_screen_asked(said: &str) -> Option<(String, ScreenSide)> {
     };
     // "the chrome you opened in Chrome": the words after the thing named
     // are about it, not part of its name.
-    let what = what.split(" you ").next().unwrap_or(what).split(" that ").next().unwrap_or(what);
-    let what = what.trim_start_matches("the ").trim_start_matches("my ").trim();
+    let what = what
+        .split(" you ")
+        .next()
+        .unwrap_or(what)
+        .split(" that ")
+        .next()
+        .unwrap_or(what);
+    let what = what
+        .trim_start_matches("the ")
+        .trim_start_matches("my ")
+        .trim();
     if what.is_empty() || what.split_whitespace().count() > 5 {
         return None;
     }
@@ -327,7 +364,12 @@ pub fn move_to_screen_asked(said: &str) -> Option<(String, ScreenSide)> {
 }
 
 /// The screen meant, from the monitors this machine has.
-pub fn screen_for(side: ScreenSide, monitors: &[Monitor], built_in: Option<u32>, now_on: Option<u32>) -> Option<Monitor> {
+pub fn screen_for(
+    side: ScreenSide,
+    monitors: &[Monitor],
+    built_in: Option<u32>,
+    now_on: Option<u32>,
+) -> Option<Monitor> {
     if monitors.is_empty() {
         return None;
     }
@@ -344,14 +386,22 @@ pub fn screen_for(side: ScreenSide, monitors: &[Monitor], built_in: Option<u32>,
 /// Move a window to a screen, filling it. `name` is an app in apps.yaml, or
 /// words in a window's title ("TradingView" in Chrome); `None` means the
 /// window in front. Says what it did, or plainly why not.
-pub(crate) fn move_to_screen(cfg: &Config, plat: &dyn Platform, name: Option<&str>, side: ScreenSide) -> std::result::Result<String, String> {
+pub(crate) fn move_to_screen(
+    cfg: &Config,
+    plat: &dyn Platform,
+    name: Option<&str>,
+    side: ScreenSide,
+) -> std::result::Result<String, String> {
     let monitors = plat.monitors().map_err(|e| e.to_string())?;
     if monitors.len() < 2 && side != ScreenSide::Primary {
         return Err("there's only one screen connected".into());
     }
     let (win, called) = match name {
         None => {
-            let w = plat.active_window_id().map_err(|e| e.to_string())?.ok_or("there's no window in front")?;
+            let w = plat
+                .active_window_id()
+                .map_err(|e| e.to_string())?
+                .ok_or("there's no window in front")?;
             (w, "that window".to_string())
         }
         Some(n) => {
@@ -369,21 +419,39 @@ pub(crate) fn move_to_screen(cfg: &Config, plat: &dyn Platform, name: Option<&st
                     plat.find_window(&s).ok().flatten()
                 })
             });
-            (found.ok_or_else(|| format!("I can't find a window for {n} -- is it open?"))?, n.to_string())
+            (
+                found.ok_or_else(|| format!("I can't find a window for {n} -- is it open?"))?,
+                n.to_string(),
+            )
         }
     };
-    let now_on = plat.rect_of(win).ok().and_then(|r| crate::platform::monitor_under(&monitors, r));
-    let to = screen_for(side, &monitors, plat.built_in_monitor(), now_on).ok_or("I can't tell which screen that is")?;
+    let now_on = plat
+        .rect_of(win)
+        .ok()
+        .and_then(|r| crate::platform::monitor_under(&monitors, r));
+    let to = screen_for(side, &monitors, plat.built_in_monitor(), now_on)
+        .ok_or("I can't tell which screen that is")?;
     if now_on == Some(to.id) && side != ScreenSide::Other {
         return Ok(format!("{called} is already on that screen."));
     }
-    plat.place(win, PixelRect { x: to.x, y: to.y, width: to.width, height: to.height }).map_err(|e| e.to_string())?;
+    plat.place(
+        win,
+        PixelRect {
+            x: to.x,
+            y: to.y,
+            width: to.width,
+            height: to.height,
+        },
+    )
+    .map_err(|e| e.to_string())?;
     crate::heard!(plat.focus(win));
     // Looked at again before saying it's done: a window that refused the
     // move (an elevated program, one that sizes itself) isn't reported moved.
     if let Ok(r) = plat.rect_of(win) {
         if crate::platform::monitor_under(&monitors, r).is_some_and(|m| m != to.id) {
-            return Err(format!("{called} didn't move -- Windows put it back where it was"));
+            return Err(format!(
+                "{called} didn't move -- Windows put it back where it was"
+            ));
         }
     }
     let which = match side {

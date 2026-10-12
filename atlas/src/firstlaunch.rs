@@ -61,7 +61,9 @@ pub fn write_default_config(config_dir: &Path) -> std::io::Result<usize> {
 /// Are Atlas's settings missing from this folder? The three files
 /// `Config::load` cannot start without.
 pub fn settings_missing(config_dir: &Path) -> bool {
-    ["apps.yaml", "layouts.yaml", "commands.yaml"].iter().any(|f| !config_dir.join(f).is_file())
+    ["apps.yaml", "layouts.yaml", "commands.yaml"]
+        .iter()
+        .any(|f| !config_dir.join(f).is_file())
 }
 
 /// The one standard place Atlas lives when you didn't choose one:
@@ -72,7 +74,9 @@ pub fn standard_home() -> Option<PathBuf> {
     } else {
         std::env::var_os("XDG_DATA_HOME")
             .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share")))
+            .or_else(|| {
+                std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share"))
+            })
             .map(|d| d.join("atlas"))
     }
 }
@@ -89,7 +93,12 @@ pub enum Where {
 
 /// Decide, without touching anything. `already_an_install` is `roots`'s own
 /// judgement of the folder the program is in.
-pub fn where_to_live(exe_dir: &Path, already_an_install: bool, told: bool, home: Option<&Path>) -> Where {
+pub fn where_to_live(
+    exe_dir: &Path,
+    already_an_install: bool,
+    told: bool,
+    home: Option<&Path>,
+) -> Where {
     if told || already_an_install {
         return Where::Here;
     }
@@ -136,35 +145,48 @@ pub const INSTALLED_NAME: &str = if cfg!(windows) { "atlas.exe" } else { "atlas"
 /// Sep 2026 this was `move_in`, which never asked; and later that day it
 /// took the hub's port, which was the wrong question -- see
 /// `atlas_running`.)
-pub fn move_in_over(exe: &Path, home: &Path, stop_first: bool, stop_wait: std::time::Duration) -> Result<PathBuf, String> {
-    std::fs::create_dir_all(home).map_err(|e| format!("I couldn't make {}: {e}", home.display()))?;
+pub fn move_in_over(
+    exe: &Path,
+    home: &Path,
+    stop_first: bool,
+    stop_wait: std::time::Duration,
+) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(home)
+        .map_err(|e| format!("I couldn't make {}: {e}", home.display()))?;
     let target = home.join(INSTALLED_NAME);
     tidy_set_aside(home);
     let same_bytes = target.is_file()
-        && crate::upgrade::sha256_of(exe).is_some_and(|a| Some(a) == crate::upgrade::sha256_of(&target));
+        && crate::upgrade::sha256_of(exe)
+            .is_some_and(|a| Some(a) == crate::upgrade::sha256_of(&target));
     if !same_place(exe, &target) && !same_bytes {
         if target.is_file()
-            && stop_first && !ask_atlas_to_stop_because(home, stop_wait, crate::goodbye::UPDATING) {
-                // It finishes what it's saving on the way out when asked. One
-                // that doesn't is ended; one that can't be is said, rather
-                // than left running the old version from the file it would be
-                // moved aside to (29 Sep 2026).
-                let data = home.join("data");
-                if !crate::onlyone::end_holder(&data, std::time::Duration::from_secs(5)) && atlas_running(home) {
-                    return Err(format!(
+            && stop_first
+            && !ask_atlas_to_stop_because(home, stop_wait, crate::goodbye::UPDATING)
+        {
+            // It finishes what it's saving on the way out when asked. One
+            // that doesn't is ended; one that can't be is said, rather
+            // than left running the old version from the file it would be
+            // moved aside to (29 Sep 2026).
+            let data = home.join("data");
+            if !crate::onlyone::end_holder(&data, std::time::Duration::from_secs(5))
+                && atlas_running(home)
+            {
+                return Err(format!(
                         "the Atlas already running from {} didn't stop when asked, so I haven't replaced it. \
                          Quit it from its icon by the clock (or end atlas.exe in Task Manager), then open this one again.",
                         home.display()
                     ));
-                }
             }
-        copy_over(exe, &target).map_err(|e| format!("I couldn't copy myself into {}: {e}", home.display()))?;
+        }
+        copy_over(exe, &target)
+            .map_err(|e| format!("I couldn't copy myself into {}: {e}", home.display()))?;
     }
     // A copy keeps the "downloaded from the internet" mark, which would make
     // Windows ask again every time the shortcut is used. Asked once, at the
     // download, is enough.
     forget_download_mark(&target);
-    write_default_config(&home.join("config")).map_err(|e| format!("I couldn't write my settings: {e}"))?;
+    write_default_config(&home.join("config"))
+        .map_err(|e| format!("I couldn't write my settings: {e}"))?;
     Ok(target)
 }
 
@@ -177,10 +199,18 @@ fn copy_over(from: &Path, to: &Path) -> std::io::Result<()> {
     match std::fs::copy(from, to) {
         Ok(_) => Ok(()),
         Err(first) if to.is_file() => {
-            let name = to.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let name = to
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
             let aside = to.with_file_name(format!("{name}{SET_ASIDE}{}", std::process::id()));
             crate::heard!(std::fs::remove_file(&aside));
-            std::fs::rename(to, &aside).map_err(|e| std::io::Error::new(e.kind(), format!("{first}; and it couldn't be moved aside: {e}")))?;
+            std::fs::rename(to, &aside).map_err(|e| {
+                std::io::Error::new(
+                    e.kind(),
+                    format!("{first}; and it couldn't be moved aside: {e}"),
+                )
+            })?;
             match std::fs::copy(from, to) {
                 Ok(_) => Ok(()),
                 Err(e) => {
@@ -197,7 +227,9 @@ fn copy_over(from: &Path, to: &Path) -> std::io::Result<()> {
 /// Remove programs set aside by an earlier `copy_over` that are no longer
 /// running (a running one can't be removed, and is left for next time).
 pub fn tidy_set_aside(home: &Path) -> usize {
-    let Ok(entries) = std::fs::read_dir(home) else { return 0 };
+    let Ok(entries) = std::fs::read_dir(home) else {
+        return 0;
+    };
     entries
         .flatten()
         .filter(|e| e.file_name().to_string_lossy().contains(SET_ASIDE))
@@ -220,13 +252,21 @@ pub enum Replacing {
 /// build whose version can't be read is replaced (it's what a broken
 /// install looks like), but a readable newer one is never silently
 /// downgraded.
-pub fn replacing(mine: (&str, &str), installed: Option<(Result<String, String>, String)>) -> Replacing {
-    let Some((installed_version, installed_sha)) = installed else { return Replacing::Install };
+pub fn replacing(
+    mine: (&str, &str),
+    installed: Option<(Result<String, String>, String)>,
+) -> Replacing {
+    let Some((installed_version, installed_sha)) = installed else {
+        return Replacing::Install;
+    };
     if !mine.1.is_empty() && mine.1 == installed_sha {
         return Replacing::Same;
     }
     match installed_version {
-        Ok(v) if crate::upgrade::older_version(mine.0, &v) => Replacing::Older { installed: v, mine: mine.0.to_string() },
+        Ok(v) if crate::upgrade::older_version(mine.0, &v) => Replacing::Older {
+            installed: v,
+            mine: mine.0.to_string(),
+        },
         _ => Replacing::Install,
     }
 }
@@ -234,10 +274,19 @@ pub fn replacing(mine: (&str, &str), installed: Option<(Result<String, String>, 
 /// Look at what's installed in `home` and decide (`replacing`).
 pub fn replacing_in(exe: &Path, home: &Path) -> Replacing {
     let target = home.join(INSTALLED_NAME);
-    let installed = target
-        .is_file()
-        .then(|| (crate::upgrade::version_of(&target), crate::upgrade::sha256_of(&target).unwrap_or_default()));
-    replacing((crate::upgrade::version(), &crate::upgrade::sha256_of(exe).unwrap_or_default()), installed)
+    let installed = target.is_file().then(|| {
+        (
+            crate::upgrade::version_of(&target),
+            crate::upgrade::sha256_of(&target).unwrap_or_default(),
+        )
+    });
+    replacing(
+        (
+            crate::upgrade::version(),
+            &crate::upgrade::sha256_of(exe).unwrap_or_default(),
+        ),
+        installed,
+    )
 }
 
 /// Tell the person something went wrong: a message box when Atlas was
@@ -275,9 +324,20 @@ fn message_box(text: &str, question: bool) -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{
         MessageBoxW, IDYES, MB_ICONQUESTION, MB_ICONWARNING, MB_OK, MB_SETFOREGROUND, MB_YESNO,
     };
-    let style = if question { MB_YESNO | MB_ICONQUESTION } else { MB_OK | MB_ICONWARNING };
+    let style = if question {
+        MB_YESNO | MB_ICONQUESTION
+    } else {
+        MB_OK | MB_ICONWARNING
+    };
     // SAFETY: both strings outlive the call; no owner window.
-    let r = unsafe { MessageBoxW(None, &HSTRING::from(text), &HSTRING::from("Atlas"), style | MB_SETFOREGROUND) };
+    let r = unsafe {
+        MessageBoxW(
+            None,
+            &HSTRING::from(text),
+            &HSTRING::from("Atlas"),
+            style | MB_SETFOREGROUND,
+        )
+    };
     r == IDYES
 }
 
@@ -321,8 +381,12 @@ pub enum AppControl {
 /// Read `reg query`'s answer for `VerifiedAndReputablePolicyState`: 0 off,
 /// 1 on, 2 evaluating.
 pub fn app_control_from(reg_output: &str) -> AppControl {
-    let line = reg_output.lines().find(|l| l.contains("VerifiedAndReputablePolicyState"));
-    let Some(value) = line.and_then(|l| l.split_whitespace().last()) else { return AppControl::Unknown };
+    let line = reg_output
+        .lines()
+        .find(|l| l.contains("VerifiedAndReputablePolicyState"));
+    let Some(value) = line.and_then(|l| l.split_whitespace().last()) else {
+        return AppControl::Unknown;
+    };
     let n = value
         .strip_prefix("0x")
         .map(|h| u32::from_str_radix(h, 16).ok())
@@ -341,11 +405,18 @@ pub fn app_control() -> AppControl {
     if !cfg!(windows) {
         return AppControl::Unknown;
     }
-    let root = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    let root = std::env::var_os("SystemRoot")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
     let reg = root.join("System32").join("reg.exe");
     match run_quietly(
         &reg,
-        &["query", r"HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy", "/v", "VerifiedAndReputablePolicyState"],
+        &[
+            "query",
+            r"HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy",
+            "/v",
+            "VerifiedAndReputablePolicyState",
+        ],
     ) {
         Ok(out) => app_control_from(&String::from_utf8_lossy(&out.stdout)),
         Err(_) => AppControl::Unknown,
@@ -354,7 +425,8 @@ pub fn app_control() -> AppControl {
 
 /// What to tell you about Smart App Control, if anything.
 pub fn app_control_words(state: AppControl) -> Option<String> {
-    const WHERE: &str = "Windows Security → App & browser control → Smart App Control settings → Off";
+    const WHERE: &str =
+        "Windows Security → App & browser control → Smart App Control settings → Off";
     match state {
         AppControl::Off | AppControl::Unknown => None,
         AppControl::Evaluating => Some(format!(
@@ -380,7 +452,11 @@ pub fn is_set_up(root: &Path) -> bool {
 pub fn mark_set_up(root: &Path) -> std::io::Result<()> {
     let dir = root.join("data").join("state");
     std::fs::create_dir_all(&dir)?;
-    crate::store::write_whole_in_state(&dir, &dir.join("set_up"), crate::store::now().to_string().as_bytes())
+    crate::store::write_whole_in_state(
+        &dir,
+        &dir.join("set_up"),
+        crate::store::now().to_string().as_bytes(),
+    )
 }
 
 /// What opening Atlas (a double-click, the Start menu, the tray's "Open
@@ -402,10 +478,20 @@ pub struct Opening {
 /// finishes. A particular page asked for (`home settings`) is kept.
 pub fn what_opening_does(set_up: bool, running: bool, first: First) -> Opening {
     if !set_up {
-        return Opening { start_background: false, first };
+        return Opening {
+            start_background: false,
+            first,
+        };
     }
-    let first = if first == First::Home { First::Hub("/hub".into()) } else { first };
-    Opening { start_background: !running, first }
+    let first = if first == First::Home {
+        First::Hub("/hub".into())
+    } else {
+        first
+    };
+    Opening {
+        start_background: !running,
+        first,
+    }
 }
 
 /// Is the background Atlas of the install at `root` running?
@@ -430,8 +516,10 @@ pub fn what_opening_does(set_up: bool, running: bool, first: First) -> Opening {
 /// while the hub is already answering.
 pub fn atlas_running(root: &Path) -> bool {
     let lock = crate::onlyone::OnlyOne::at(&root.join("data"));
-    matches!(lock.look(crate::store::now()), crate::onlyone::Found::Running { .. })
-        || crate::server::atlas_hub_port(&root.join("data").join("state")).is_some()
+    matches!(
+        lock.look(crate::store::now()),
+        crate::onlyone::Found::Running { .. }
+    ) || crate::server::atlas_hub_port(&root.join("data").join("state")).is_some()
 }
 
 /// The port the hub of the Atlas at `root` really answers on, when it
@@ -478,9 +566,14 @@ fn ask_atlas_to_stop_because(root: &Path, wait: std::time::Duration, why: &str) 
 /// (a test harness) would be starting a copy of itself.
 pub fn open_atlas_window(first: &First) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let is_atlas = exe.file_stem().map(|s| s.to_string_lossy().eq_ignore_ascii_case("atlas")).unwrap_or(false);
+    let is_atlas = exe
+        .file_stem()
+        .map(|s| s.to_string_lossy().eq_ignore_ascii_case("atlas"))
+        .unwrap_or(false);
     if !is_atlas {
-        return Err("I'm not running as the Atlas program, so there's no window of mine to open".into());
+        return Err(
+            "I'm not running as the Atlas program, so there's no window of mine to open".into(),
+        );
     }
     if crate::selftest::in_a_test() {
         return Err(crate::selftest::NO_SECOND_ATLAS.into());
@@ -509,7 +602,9 @@ pub fn spawn_quietly(exe: &Path, args: &[&str]) -> std::io::Result<std::process:
 /// Run a step like `adapt` with no window of its own, and keep what it said
 /// so a problem can be shown in words.
 pub fn run_quietly(exe: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
-    hidden_command(exe, args).stdin(std::process::Stdio::null()).output()
+    hidden_command(exe, args)
+        .stdin(std::process::Stdio::null())
+        .output()
 }
 
 fn hidden_command(exe: &Path, args: &[&str]) -> std::process::Command {
@@ -540,7 +635,9 @@ pub fn started_without_a_terminal() -> bool {
         // `main` makes before printing anything.
         static STARTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         *STARTED.get_or_init(|| {
-            use windows::Win32::System::Console::{AttachConsole, GetConsoleProcessList, ATTACH_PARENT_PROCESS};
+            use windows::Win32::System::Console::{
+                AttachConsole, GetConsoleProcessList, ATTACH_PARENT_PROCESS,
+            };
             let mut ids = [0u32; 4];
             // SAFETY: the buffer outlives the call and its length is passed.
             let n = unsafe { GetConsoleProcessList(&mut ids) };
@@ -585,7 +682,10 @@ pub fn make_shortcuts(exe: &Path) -> Vec<String> {
 fn shortcut_places() -> Vec<(&'static str, PathBuf)> {
     use windows::Win32::UI::Shell::{FOLDERID_Desktop, FOLDERID_Programs};
     let mut v = Vec::new();
-    for (place, id) in [("Start menu", &FOLDERID_Programs), ("desktop", &FOLDERID_Desktop)] {
+    for (place, id) in [
+        ("Start menu", &FOLDERID_Programs),
+        ("desktop", &FOLDERID_Desktop),
+    ] {
         if let Some(dir) = known_folder(id) {
             v.push((place, dir.join("Atlas.lnk")));
         }
@@ -602,17 +702,28 @@ fn shortcut_places() -> Vec<(&'static str, PathBuf)> {
 /// "Send an update" never saw a build saved to the desktop. Elsewhere, and
 /// when Windows doesn't say, the folders under home.
 pub fn downloads_and_desktop() -> Vec<PathBuf> {
-    let home = crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME")).map(PathBuf::from);
+    let home = crate::doctor::lookup_env("USERPROFILE")
+        .or_else(|| crate::doctor::lookup_env("HOME"))
+        .map(PathBuf::from);
     let fallback = |name: &str| home.as_ref().map(|h| h.join(name));
     #[cfg(windows)]
     let (downloads, desktop) = {
         use windows::Win32::UI::Shell::{FOLDERID_Desktop, FOLDERID_Downloads};
-        (known_folder(&FOLDERID_Downloads), known_folder(&FOLDERID_Desktop))
+        (
+            known_folder(&FOLDERID_Downloads),
+            known_folder(&FOLDERID_Desktop),
+        )
     };
     #[cfg(not(windows))]
     let (downloads, desktop): (Option<PathBuf>, Option<PathBuf>) = (None, None);
     let mut out: Vec<PathBuf> = Vec::new();
-    for p in [downloads.or_else(|| fallback("Downloads")), desktop.or_else(|| fallback("Desktop"))].into_iter().flatten() {
+    for p in [
+        downloads.or_else(|| fallback("Downloads")),
+        desktop.or_else(|| fallback("Desktop")),
+    ]
+    .into_iter()
+    .flatten()
+    {
         if !out.contains(&p) {
             out.push(p);
         }
@@ -639,7 +750,8 @@ pub(crate) fn known_folder(id: &windows::core::GUID) -> Option<PathBuf> {
 fn make_shortcut(exe: &Path, lnk: &Path) -> Result<(), String> {
     use windows::core::{Interface, HSTRING};
     use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, IPersistFile, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
+        CoCreateInstance, CoInitializeEx, IPersistFile, CLSCTX_INPROC_SERVER,
+        COINIT_APARTMENTTHREADED,
     };
     use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
     // SAFETY: plain COM calls on this thread; every interface is dropped
@@ -648,13 +760,17 @@ fn make_shortcut(exe: &Path, lnk: &Path) -> Result<(), String> {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let link: IShellLinkW =
             CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(|e| e.to_string())?;
-        link.SetPath(&HSTRING::from(exe.as_os_str())).map_err(|e| e.to_string())?;
+        link.SetPath(&HSTRING::from(exe.as_os_str()))
+            .map_err(|e| e.to_string())?;
         if let Some(dir) = exe.parent() {
-            link.SetWorkingDirectory(&HSTRING::from(dir.as_os_str())).map_err(|e| e.to_string())?;
+            link.SetWorkingDirectory(&HSTRING::from(dir.as_os_str()))
+                .map_err(|e| e.to_string())?;
         }
-        link.SetDescription(&HSTRING::from("Atlas")).map_err(|e| e.to_string())?;
+        link.SetDescription(&HSTRING::from("Atlas"))
+            .map_err(|e| e.to_string())?;
         let file: IPersistFile = link.cast().map_err(|e| e.to_string())?;
-        file.Save(&HSTRING::from(lnk.as_os_str()), true).map_err(|e| e.to_string())?;
+        file.Save(&HSTRING::from(lnk.as_os_str()), true)
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -664,7 +780,12 @@ fn make_shortcut(exe: &Path, lnk: &Path) -> Result<(), String> {
 #[cfg(not(windows))]
 fn shortcut_places() -> Vec<(&'static str, PathBuf)> {
     std::env::var_os("HOME")
-        .map(|h| vec![("applications menu", PathBuf::from(h).join(".local/share/applications/atlas.desktop"))])
+        .map(|h| {
+            vec![(
+                "applications menu",
+                PathBuf::from(h).join(".local/share/applications/atlas.desktop"),
+            )]
+        })
         .unwrap_or_default()
 }
 
@@ -700,10 +821,20 @@ impl First {
         match words.first().map(|w| w.to_lowercase()) {
             Some(w) if w == "settings" => First::Settings,
             Some(w) if w == "hub" => {
-                let page = words.get(1).map(|p| p.trim_matches('/').to_lowercase()).unwrap_or_default();
+                let page = words
+                    .get(1)
+                    .map(|p| p.trim_matches('/').to_lowercase())
+                    .unwrap_or_default();
                 let page = page.trim_start_matches("hub/").to_string();
-                let ok = !page.is_empty() && page.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-                First::Hub(if ok { format!("/hub/{page}") } else { "/hub".into() })
+                let ok = !page.is_empty()
+                    && page
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+                First::Hub(if ok {
+                    format!("/hub/{page}")
+                } else {
+                    "/hub".into()
+                })
             }
             _ => First::Home,
         }
@@ -748,7 +879,9 @@ pub fn note_start_problem(root: &Path, why: &str) {
 pub fn start_failed_words(root: &Path, code: Option<i32>) -> String {
     let written = std::fs::read_to_string(start_problem_file(root)).unwrap_or_default();
     let written = written.trim();
-    let code = code.map(|c| format!(" (it ended with code {c})")).unwrap_or_default();
+    let code = code
+        .map(|c| format!(" (it ended with code {c})"))
+        .unwrap_or_default();
     if written.is_empty() {
         format!(
             "Atlas started in the background but stopped straight away{code}. Its log is in {}.",
@@ -762,13 +895,20 @@ pub fn start_failed_words(root: &Path, code: Option<i32>) -> String {
 /// Start the background Atlas and watch it for `watch`: one that ends at
 /// once with a failure is reported rather than left silent. `Ok(())` is
 /// "still running when the watch ended" (or ended cleanly).
-pub fn start_background_watched(exe: &Path, root: &Path, watch: std::time::Duration) -> Result<(), String> {
+pub fn start_background_watched(
+    exe: &Path,
+    root: &Path,
+    watch: std::time::Duration,
+) -> Result<(), String> {
     crate::heard!(std::fs::remove_file(start_problem_file(root)));
-    let mut child = spawn_quietly(exe, &["--daemon"]).map_err(|e| format!("I couldn't start Atlas in the background: {e}"))?;
+    let mut child = spawn_quietly(exe, &["--daemon"])
+        .map_err(|e| format!("I couldn't start Atlas in the background: {e}"))?;
     let until = std::time::Instant::now() + watch;
     while std::time::Instant::now() < until {
         match child.try_wait() {
-            Ok(Some(status)) if !status.success() => return Err(start_failed_words(root, status.code())),
+            Ok(Some(status)) if !status.success() => {
+                return Err(start_failed_words(root, status.code()))
+            }
             Ok(Some(_)) => return Ok(()),
             Ok(None) => std::thread::sleep(std::time::Duration::from_millis(200)),
             Err(_) => break,

@@ -43,23 +43,48 @@ pub const YOUTUBE_SEARCH_CEILING: u32 = 100;
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Target {
     /// `id` is the UC... id; empty until the handle has been looked up.
-    YoutubeChannel { id: String, handle: String },
-    YoutubeSearch { query: String },
-    MastodonTag { instance: String, tag: String },
-    BlueskyProfile { handle: String },
+    YoutubeChannel {
+        id: String,
+        handle: String,
+    },
+    YoutubeSearch {
+        query: String,
+    },
+    MastodonTag {
+        instance: String,
+        tag: String,
+    },
+    BlueskyProfile {
+        handle: String,
+    },
     /// An empty query is the front page.
-    HackerNews { query: String },
+    HackerNews {
+        query: String,
+    },
     ProductHunt,
-    GoogleTrends { geo: String },
-    Reddit { sub: String },
+    GoogleTrends {
+        geo: String,
+    },
+    Reddit {
+        sub: String,
+    },
 }
 
 impl Target {
     pub fn key(&self) -> String {
         match self {
-            Target::YoutubeChannel { id, handle } => format!("yt:{}", if id.is_empty() { handle.to_lowercase() } else { id.clone() }),
+            Target::YoutubeChannel { id, handle } => format!(
+                "yt:{}",
+                if id.is_empty() {
+                    handle.to_lowercase()
+                } else {
+                    id.clone()
+                }
+            ),
             Target::YoutubeSearch { query } => format!("yts:{}", query.to_lowercase()),
-            Target::MastodonTag { instance, tag } => format!("masto:{}#{}", instance.to_lowercase(), tag.to_lowercase()),
+            Target::MastodonTag { instance, tag } => {
+                format!("masto:{}#{}", instance.to_lowercase(), tag.to_lowercase())
+            }
             Target::BlueskyProfile { handle } => format!("bsky:{}", handle.to_lowercase()),
             Target::HackerNews { query } => format!("hn:{}", query.to_lowercase()),
             Target::ProductHunt => "ph".into(),
@@ -70,7 +95,9 @@ impl Target {
 
     pub fn label(&self) -> String {
         match self {
-            Target::YoutubeChannel { handle, id } => format!("YouTube: {}", if handle.is_empty() { id } else { handle }),
+            Target::YoutubeChannel { handle, id } => {
+                format!("YouTube: {}", if handle.is_empty() { id } else { handle })
+            }
             Target::YoutubeSearch { query } => format!("YouTube search: {query}"),
             Target::MastodonTag { instance, tag } => format!("Mastodon #{tag} (on {instance})"),
             Target::BlueskyProfile { handle } => format!("Bluesky: {handle}"),
@@ -98,7 +125,9 @@ impl Target {
 
 /// A plain word, safe in a path.
 fn word(s: &str) -> String {
-    s.chars().filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == '.').collect()
+    s.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == '.')
+        .collect()
 }
 
 /// What you said, as the sources to watch. Refuses TikTok, Instagram and X
@@ -120,38 +149,68 @@ pub fn parse_target(said: &str, cfg: &super::SocialConfig) -> Result<Vec<Target>
         "follow ",
         "watch ",
     ]
-        .iter()
-        .find_map(|p| low.find(p).map(|i| said[i + p.len()..].trim().to_string()))
-        .unwrap_or_else(|| said.trim().to_string());
+    .iter()
+    .find_map(|p| low.find(p).map(|i| said[i + p.len()..].trim().to_string()))
+    .unwrap_or_else(|| said.trim().to_string());
     let r = rest.trim().trim_end_matches(['.', '?', '!']).to_string();
     let rl = r.to_ascii_lowercase();
-    for (site, name) in [("tiktok", "TikTok"), ("instagram", "Instagram"), ("twitter", "X"), ("x.com", "X"), (" on x", "X")] {
+    for (site, name) in [
+        ("tiktok", "TikTok"),
+        ("instagram", "Instagram"),
+        ("twitter", "X"),
+        ("x.com", "X"),
+        (" on x", "X"),
+    ] {
         if rl.contains(site) || low.ends_with(site) {
-            return Err(format!("I can't watch {name} on a schedule. {}", super::onepage::WHY_NO_SCHEDULE));
+            return Err(format!(
+                "I can't watch {name} on a schedule. {}",
+                super::onepage::WHY_NO_SCHEDULE
+            ));
         }
     }
     if rl.ends_with(" on threads") || rl.contains("threads.net") || rl.contains("threads.com") {
         return Err("I can't watch other people on Threads: reading their posts needs Meta's approval, which isn't given for personal use. Your own Threads numbers I can read (the Social page).".into());
     }
     if rl.contains("hacker news") || rl == "hn" {
-        return Ok(vec![Target::HackerNews { query: String::new() }]);
+        return Ok(vec![Target::HackerNews {
+            query: String::new(),
+        }]);
     }
     if rl.contains("product hunt") || rl.contains("producthunt") {
         return Ok(vec![Target::ProductHunt]);
     }
-    if rl.contains("trend") && (rl.contains("google") || rl == "trends" || rl.contains("trending")) {
-        return Ok(vec![Target::GoogleTrends { geo: cfg.trends_geo.trim().to_uppercase() }]);
+    if rl.contains("trend") && (rl.contains("google") || rl == "trends" || rl.contains("trending"))
+    {
+        return Ok(vec![Target::GoogleTrends {
+            geo: cfg.trends_geo.trim().to_uppercase(),
+        }]);
     }
-    if let Some(sub) = rl.strip_prefix("r/").or_else(|| rl.split("reddit.com/r/").nth(1)).or_else(|| rl.strip_prefix("the subreddit ")) {
+    if let Some(sub) = rl
+        .strip_prefix("r/")
+        .or_else(|| rl.split("reddit.com/r/").nth(1))
+        .or_else(|| rl.strip_prefix("the subreddit "))
+    {
         let sub = word(sub.split(['/', ' ']).next().unwrap_or(""));
         if !sub.is_empty() {
             return Ok(vec![Target::Reddit { sub }]);
         }
     }
-    if let Some(tag) = rl.strip_prefix('#').or_else(|| rl.strip_prefix("hashtag ")).or_else(|| (low.contains("hashtag") && !rl.contains(' ')).then_some(rl.as_str())) {
-        let tag = word(tag.split_whitespace().next().unwrap_or("").trim_start_matches('#'));
+    if let Some(tag) = rl
+        .strip_prefix('#')
+        .or_else(|| rl.strip_prefix("hashtag "))
+        .or_else(|| (low.contains("hashtag") && !rl.contains(' ')).then_some(rl.as_str()))
+    {
+        let tag = word(
+            tag.split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_start_matches('#'),
+        );
         if !tag.is_empty() {
-            return Ok(vec![Target::MastodonTag { instance: word(&cfg.mastodon_instance), tag }]);
+            return Ok(vec![Target::MastodonTag {
+                instance: word(&cfg.mastodon_instance),
+                tag,
+            }]);
         }
     }
     if rl.contains("bsky") || rl.contains("bluesky") {
@@ -161,28 +220,60 @@ pub fn parse_target(said: &str, cfg: &super::SocialConfig) -> Result<Vec<Target>
             .find(|w| w.contains('.') && !w.eq_ignore_ascii_case("bsky.app/profile"))
             .map(|w| w.rsplit('/').next().unwrap_or(w).to_string())
             .ok_or("Which Bluesky account? Give me its handle, like name.bsky.social.")?;
-        return Ok(vec![Target::BlueskyProfile { handle: word(&handle) }]);
+        return Ok(vec![Target::BlueskyProfile {
+            handle: word(&handle),
+        }]);
     }
-    if rl.contains("youtube") || rl.starts_with('@') || rl.contains("/channel/uc") || rl.split_whitespace().any(|w| w.starts_with("uc") && w.len() == 24) {
+    if rl.contains("youtube")
+        || rl.starts_with('@')
+        || rl.contains("/channel/uc")
+        || rl
+            .split_whitespace()
+            .any(|w| w.starts_with("uc") && w.len() == 24)
+    {
         if let Some(i) = rl.find("/channel/") {
-            let id: String = r[i + 9..].chars().take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '-').collect();
-            return Ok(vec![Target::YoutubeChannel { id, handle: String::new() }]);
+            let id: String = r[i + 9..]
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+                .collect();
+            return Ok(vec![Target::YoutubeChannel {
+                id,
+                handle: String::new(),
+            }]);
         }
-        if let Some(w) = r.split_whitespace().find(|w| w.len() == 24 && w.starts_with("UC")) {
-            return Ok(vec![Target::YoutubeChannel { id: word(w), handle: String::new() }]);
+        if let Some(w) = r
+            .split_whitespace()
+            .find(|w| w.len() == 24 && w.starts_with("UC"))
+        {
+            return Ok(vec![Target::YoutubeChannel {
+                id: word(w),
+                handle: String::new(),
+            }]);
         }
         if let Some(h) = r.split(['/', ' ']).find(|w| w.starts_with('@')) {
-            return Ok(vec![Target::YoutubeChannel { id: String::new(), handle: format!("@{}", word(h.trim_start_matches('@'))) }]);
+            return Ok(vec![Target::YoutubeChannel {
+                id: String::new(),
+                handle: format!("@{}", word(h.trim_start_matches('@'))),
+            }]);
         }
         return Err("Which YouTube channel? Give me its @handle or its address.".into());
     }
     // Anything else is a topic: Hacker News stories about it, and the
     // week's most-viewed YouTube videos on it when there's a key.
-    let topic = rl.trim_start_matches("the topic ").trim_start_matches("topic ").trim().to_string();
+    let topic = rl
+        .trim_start_matches("the topic ")
+        .trim_start_matches("topic ")
+        .trim()
+        .to_string();
     if topic.is_empty() {
         return Err("Watch what? A YouTube channel (@handle), a #hashtag, r/subreddit, a Bluesky handle, or a topic.".into());
     }
-    Ok(vec![Target::HackerNews { query: topic.clone() }, Target::YoutubeSearch { query: topic }])
+    Ok(vec![
+        Target::HackerNews {
+            query: topic.clone(),
+        },
+        Target::YoutubeSearch { query: topic },
+    ])
 }
 
 /// Is this sentence, whole, a watch-list request? For the parser's strict
@@ -193,13 +284,40 @@ pub fn parse_target(said: &str, cfg: &super::SocialConfig) -> Result<Vec<Target>
 /// whatever else reads them.
 pub fn spoken_watch(said: &str) -> bool {
     let low = said.trim().trim_end_matches(['.', '!', '?']).to_lowercase();
-    let starts = ["watch ", "follow ", "start watching ", "stop watching ", "unwatch ", "keep an eye on ", "stop following "];
-    let Some(rest) = starts.iter().find_map(|p| low.strip_prefix(p)) else { return false };
-    if ["the hashtag ", "the channel ", "the subreddit ", "hashtag "].iter().any(|p| rest.starts_with(p)) {
+    let starts = [
+        "watch ",
+        "follow ",
+        "start watching ",
+        "stop watching ",
+        "unwatch ",
+        "keep an eye on ",
+        "stop following ",
+    ];
+    let Some(rest) = starts.iter().find_map(|p| low.strip_prefix(p)) else {
+        return false;
+    };
+    if ["the hashtag ", "the channel ", "the subreddit ", "hashtag "]
+        .iter()
+        .any(|p| rest.starts_with(p))
+    {
         return true;
     }
-    let marked = rest.split_whitespace().any(|w| (w.starts_with('@') || w.starts_with('#') || w.starts_with("r/")) && w.len() > 1);
-    let sites = ["youtube", "mastodon", "bluesky", "reddit", "hacker news", "product hunt", "tiktok", "instagram", "x", "twitter", "threads"];
+    let marked = rest
+        .split_whitespace()
+        .any(|w| (w.starts_with('@') || w.starts_with('#') || w.starts_with("r/")) && w.len() > 1);
+    let sites = [
+        "youtube",
+        "mastodon",
+        "bluesky",
+        "reddit",
+        "hacker news",
+        "product hunt",
+        "tiktok",
+        "instagram",
+        "x",
+        "twitter",
+        "threads",
+    ];
     let on_site = sites.iter().any(|s| rest.ends_with(&format!(" on {s}")));
     marked || on_site
 }
@@ -268,14 +386,19 @@ impl Quota {
     }
 
     pub fn left(&self, pacific_day: i64, budget: u32) -> u32 {
-        let used = if self.day == pacific_day { self.used } else { 0 };
+        let used = if self.day == pacific_day {
+            self.used
+        } else {
+            0
+        };
         budget.min(YOUTUBE_SEARCH_CEILING).saturating_sub(used)
     }
 }
 
 /// YouTube's quota day starts at midnight Pacific.
 pub fn pacific_day(t: u64) -> i64 {
-    let z = crate::tz::Zone::named("America/Los_Angeles").unwrap_or_else(|| crate::tz::Zone::fixed(-8 * 3600));
+    let z = crate::tz::Zone::named("America/Los_Angeles")
+        .unwrap_or_else(|| crate::tz::Zone::fixed(-8 * 3600));
     z.to_local(t as i64).div_euclid(86_400)
 }
 
@@ -322,10 +445,19 @@ impl Watch {
                 continue;
             }
             if self.list.len() >= MAX_TARGETS {
-                return Err(format!("You're watching {MAX_TARGETS} things already -- stop watching one first."));
+                return Err(format!(
+                    "You're watching {MAX_TARGETS} things already -- stop watching one first."
+                ));
             }
             added.push(t.label());
-            self.list.push(Watched { target: t, next_due: now, failures: 0, last_ok: None, last_error: String::new(), last_modified: None });
+            self.list.push(Watched {
+                target: t,
+                next_due: now,
+                failures: 0,
+                last_ok: None,
+                last_error: String::new(),
+                last_modified: None,
+            });
         }
         Ok(added)
     }
@@ -337,13 +469,24 @@ impl Watch {
         if let Some(i) = w.rfind(" on ") {
             w.truncate(i);
         }
-        for p in ["the hashtag ", "the channel ", "the subreddit ", "the topic ", "the "] {
+        for p in [
+            "the hashtag ",
+            "the channel ",
+            "the subreddit ",
+            "the topic ",
+            "the ",
+        ] {
             if let Some(r) = w.strip_prefix(p) {
                 w = r.to_string();
                 break;
             }
         }
-        let w = w.trim_end_matches(" hashtag").trim_end_matches(" channel").trim().trim_start_matches(['#', '@']).to_string();
+        let w = w
+            .trim_end_matches(" hashtag")
+            .trim_end_matches(" channel")
+            .trim()
+            .trim_start_matches(['#', '@'])
+            .to_string();
         if w.is_empty() {
             return Vec::new();
         }
@@ -351,13 +494,19 @@ impl Watch {
         // only when nothing is named exactly, anything containing it.
         let exact = |x: &Watched| {
             let k = x.target.key();
-            [":", "#", ":@"].iter().any(|sep| k.ends_with(&format!("{sep}{w}"))) || x.target.label().to_lowercase().ends_with(&format!(" {w}"))
+            [":", "#", ":@"]
+                .iter()
+                .any(|sep| k.ends_with(&format!("{sep}{w}")))
+                || x.target.label().to_lowercase().ends_with(&format!(" {w}"))
         };
         let any_exact = self.list.iter().any(exact);
-        let (gone, kept): (Vec<Watched>, Vec<Watched>) = self
-            .list
-            .drain(..)
-            .partition(|x| if any_exact { exact(x) } else { x.target.key().contains(&w) || x.target.label().to_lowercase().contains(&w) });
+        let (gone, kept): (Vec<Watched>, Vec<Watched>) = self.list.drain(..).partition(|x| {
+            if any_exact {
+                exact(x)
+            } else {
+                x.target.key().contains(&w) || x.target.label().to_lowercase().contains(&w)
+            }
+        });
         self.list = kept;
         let keys: Vec<String> = gone.iter().map(|g| g.target.key()).collect();
         self.seen.retain(|s| !keys.contains(&s.from));
@@ -366,14 +515,18 @@ impl Watch {
 
     /// Sources due a read, oldest first.
     pub fn due(&self, now: u64) -> Vec<usize> {
-        let mut v: Vec<usize> = (0..self.list.len()).filter(|&i| self.list[i].next_due <= now).collect();
+        let mut v: Vec<usize> = (0..self.list.len())
+            .filter(|&i| self.list[i].next_due <= now)
+            .collect();
         v.sort_by_key(|&i| self.list[i].next_due);
         v
     }
 
     /// A read came back.
     pub fn took(&mut self, key: &str, got: Fetched, now: u64, every_minutes: u64) {
-        let Some(w) = self.list.iter_mut().find(|w| w.target.key() == key) else { return };
+        let Some(w) = self.list.iter_mut().find(|w| w.target.key() == key) else {
+            return;
+        };
         if let Some(t) = got.resolved.clone() {
             w.target = t;
         }
@@ -387,7 +540,11 @@ impl Watch {
         w.next_due = now + every_minutes.max(30) * 60;
         for mut item in got.items {
             item.from = key.clone();
-            match self.seen.iter_mut().find(|s| s.from == item.from && s.id == item.id) {
+            match self
+                .seen
+                .iter_mut()
+                .find(|s| s.from == item.from && s.id == item.id)
+            {
                 Some(old) => {
                     if let (Some(before), Some(_)) = (old.views, item.views) {
                         if old.last_seen < now {
@@ -407,7 +564,8 @@ impl Watch {
         }
         // Newest kept, oldest dropped past the cap.
         if self.seen.len() > MAX_SEEN {
-            self.seen.sort_by_key(|s| std::cmp::Reverse(s.at.unwrap_or(s.first_seen)));
+            self.seen
+                .sort_by_key(|s| std::cmp::Reverse(s.at.unwrap_or(s.first_seen)));
             self.seen.truncate(MAX_SEEN);
         }
     }
@@ -415,7 +573,9 @@ impl Watch {
     /// A read failed: back off, doubling to a day, and never sooner than the
     /// server asked.
     pub fn failed(&mut self, key: &str, f: &Failed, now: u64, every_minutes: u64) {
-        let Some(w) = self.list.iter_mut().find(|w| w.target.key() == key) else { return };
+        let Some(w) = self.list.iter_mut().find(|w| w.target.key() == key) else {
+            return;
+        };
         w.failures = w.failures.saturating_add(1);
         w.last_error = f.why.clone();
         let base = every_minutes.max(30) * 60;
@@ -428,46 +588,110 @@ impl Watch {
 
 /// Read one source. `yt_key` is the YouTube API key, or your Google sign-in (`apis::BEARER`), when there is one;
 /// `may_search` says today's search budget has room (taken by the caller).
-pub fn read_one(net: &dyn Net, t: &Target, last_modified: Option<&str>, yt_key: Option<&str>, may_search: bool, now: u64) -> Result<Fetched, Failed> {
-    let fail = |why: String| Failed { why, retry_after: None };
+pub fn read_one(
+    net: &dyn Net,
+    t: &Target,
+    last_modified: Option<&str>,
+    yt_key: Option<&str>,
+    may_search: bool,
+    now: u64,
+) -> Result<Fetched, Failed> {
+    let fail = |why: String| Failed {
+        why,
+        retry_after: None,
+    };
     let enc = crate::research::urlencode;
     let mut resolved = None;
     let (host, path, conditional) = match t {
         Target::YoutubeChannel { id, handle } => {
             let id = if id.is_empty() {
                 let found = resolve_channel(net, handle, yt_key).map_err(fail)?;
-                resolved = Some(Target::YoutubeChannel { id: found.clone(), handle: handle.clone() });
+                resolved = Some(Target::YoutubeChannel {
+                    id: found.clone(),
+                    handle: handle.clone(),
+                });
                 found
             } else {
                 id.clone()
             };
-            (t.host(), format!("/feeds/videos.xml?channel_id={}", enc(&id)), true)
+            (
+                t.host(),
+                format!("/feeds/videos.xml?channel_id={}", enc(&id)),
+                true,
+            )
         }
         Target::YoutubeSearch { query } => {
-            let Some(key) = yt_key else { return Err(fail("YouTube search needs YouTube connected (Social page)".into())) };
+            let Some(key) = yt_key else {
+                return Err(fail(
+                    "YouTube search needs YouTube connected (Social page)".into(),
+                ));
+            };
             if !may_search {
-                return Err(Failed { why: "today's YouTube search budget is spent".into(), retry_after: Some(3600) });
+                return Err(Failed {
+                    why: "today's YouTube search budget is spent".into(),
+                    retry_after: Some(3600),
+                });
             }
             let week_ago = now.saturating_sub(7 * 86_400);
             let c = crate::civil::Civil::from_local(week_ago as i64);
             let after = format!("{:04}-{:02}-{:02}T00:00:00Z", c.year, c.month, c.day);
             let r = check(net.get(&t.host(), &format!("/youtube/v3/search?part=snippet&type=video&order=viewCount&maxResults=10&publishedAfter={}&q={}{}", enc(&after), enc(query), super::apis::yt_query(key)), &super::apis::yt_headers(key)))?;
-            let v: Value = serde_json::from_str(&r.body).map_err(|e| fail(format!("YouTube search didn't read: {e}")))?;
-            let ids: Vec<&str> = v.get("items").and_then(|i| i.as_array()).into_iter().flatten().filter_map(|i| i.pointer("/id/videoId").and_then(|x| x.as_str())).collect();
+            let v: Value = serde_json::from_str(&r.body)
+                .map_err(|e| fail(format!("YouTube search didn't read: {e}")))?;
+            let ids: Vec<&str> = v
+                .get("items")
+                .and_then(|i| i.as_array())
+                .into_iter()
+                .flatten()
+                .filter_map(|i| i.pointer("/id/videoId").and_then(|x| x.as_str()))
+                .collect();
             let mut items = Vec::new();
             if !ids.is_empty() {
-                let r = check(net.get(&t.host(), &format!("/youtube/v3/videos?part=statistics,snippet&id={}{}", ids.join(","), super::apis::yt_query(key)), &super::apis::yt_headers(key)))?;
-                let v: Value = serde_json::from_str(&r.body).map_err(|e| fail(format!("YouTube videos didn't read: {e}")))?;
-                for it in v.get("items").and_then(|i| i.as_array()).into_iter().flatten() {
+                let r = check(net.get(
+                    &t.host(),
+                    &format!(
+                        "/youtube/v3/videos?part=statistics,snippet&id={}{}",
+                        ids.join(","),
+                        super::apis::yt_query(key)
+                    ),
+                    &super::apis::yt_headers(key),
+                ))?;
+                let v: Value = serde_json::from_str(&r.body)
+                    .map_err(|e| fail(format!("YouTube videos didn't read: {e}")))?;
+                for it in v
+                    .get("items")
+                    .and_then(|i| i.as_array())
+                    .into_iter()
+                    .flatten()
+                {
                     let s = it.get("statistics");
-                    let num = |k: &str| s.and_then(|s| s.get(k)).and_then(|x| x.as_str()).and_then(|x| x.parse().ok());
-                    let id = it.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                    let num = |k: &str| {
+                        s.and_then(|s| s.get(k))
+                            .and_then(|x| x.as_str())
+                            .and_then(|x| x.parse().ok())
+                    };
+                    let id = it
+                        .get("id")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     items.push(Seen {
                         url: format!("https://www.youtube.com/watch?v={id}"),
                         id,
-                        who: it.pointer("/snippet/channelTitle").and_then(|x| x.as_str()).unwrap_or("").into(),
-                        title: it.pointer("/snippet/title").and_then(|x| x.as_str()).unwrap_or("").into(),
-                        at: it.pointer("/snippet/publishedAt").and_then(|x| x.as_str()).and_then(super::apis::rfc3339),
+                        who: it
+                            .pointer("/snippet/channelTitle")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .into(),
+                        title: it
+                            .pointer("/snippet/title")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .into(),
+                        at: it
+                            .pointer("/snippet/publishedAt")
+                            .and_then(|x| x.as_str())
+                            .and_then(super::apis::rfc3339),
                         views: num("viewCount"),
                         likes: num("likeCount"),
                         comments: num("commentCount"),
@@ -475,11 +699,29 @@ pub fn read_one(net: &dyn Net, t: &Target, last_modified: Option<&str>, yt_key: 
                     });
                 }
             }
-            return Ok(Fetched { items, ..Default::default() });
+            return Ok(Fetched {
+                items,
+                ..Default::default()
+            });
         }
-        Target::MastodonTag { instance, tag } => (instance.clone(), format!("/api/v1/timelines/tag/{}?limit=40", enc(tag)), false),
-        Target::BlueskyProfile { handle } => (t.host(), format!("/xrpc/app.bsky.feed.getAuthorFeed?actor={}&limit=30&filter=posts_no_replies", enc(handle)), false),
-        Target::HackerNews { query } if query.is_empty() => (t.host(), "/api/v1/search?tags=front_page&hitsPerPage=30".into(), false),
+        Target::MastodonTag { instance, tag } => (
+            instance.clone(),
+            format!("/api/v1/timelines/tag/{}?limit=40", enc(tag)),
+            false,
+        ),
+        Target::BlueskyProfile { handle } => (
+            t.host(),
+            format!(
+                "/xrpc/app.bsky.feed.getAuthorFeed?actor={}&limit=30&filter=posts_no_replies",
+                enc(handle)
+            ),
+            false,
+        ),
+        Target::HackerNews { query } if query.is_empty() => (
+            t.host(),
+            "/api/v1/search?tags=front_page&hitsPerPage=30".into(),
+            false,
+        ),
         Target::HackerNews { query } => {
             let since = now.saturating_sub(3 * 86_400);
             (t.host(), format!("/api/v1/search?query={}&tags=story&hitsPerPage=30&numericFilters=created_at_i%3E{since}", enc(query)), false)
@@ -498,7 +740,11 @@ pub fn read_one(net: &dyn Net, t: &Target, last_modified: Option<&str>, yt_key: 
     }
     let r = net.get(&host, &path, &headers).map_err(fail)?;
     if r.status == 304 {
-        return Ok(Fetched { unchanged: true, resolved, ..Default::default() });
+        return Ok(Fetched {
+            unchanged: true,
+            resolved,
+            ..Default::default()
+        });
     }
     let r = check(Ok(r))?;
     let items = match t {
@@ -511,16 +757,33 @@ pub fn read_one(net: &dyn Net, t: &Target, last_modified: Option<&str>, yt_key: 
         Target::YoutubeSearch { .. } => Ok(Vec::new()),
     }
     .map_err(fail)?;
-    Ok(Fetched { items, last_modified: r.last_modified, resolved, ..Default::default() })
+    Ok(Fetched {
+        items,
+        last_modified: r.last_modified,
+        resolved,
+        ..Default::default()
+    })
 }
 
 fn check(r: Result<Reply, String>) -> Result<Reply, Failed> {
-    let r = r.map_err(|why| Failed { why, retry_after: None })?;
+    let r = r.map_err(|why| Failed {
+        why,
+        retry_after: None,
+    })?;
     match r.status {
         200..=299 => Ok(r),
-        429 | 503 => Err(Failed { why: format!("the site asked us to slow down ({})", r.status), retry_after: r.retry_after.or(Some(3600)) }),
-        403 => Err(Failed { why: "the site refused (403) -- from some networks it refuses everyone".into(), retry_after: r.retry_after }),
-        s => Err(Failed { why: format!("the site answered {s}"), retry_after: r.retry_after }),
+        429 | 503 => Err(Failed {
+            why: format!("the site asked us to slow down ({})", r.status),
+            retry_after: r.retry_after.or(Some(3600)),
+        }),
+        403 => Err(Failed {
+            why: "the site refused (403) -- from some networks it refuses everyone".into(),
+            retry_after: r.retry_after,
+        }),
+        s => Err(Failed {
+            why: format!("the site answered {s}"),
+            retry_after: r.retry_after,
+        }),
     }
 }
 
@@ -529,19 +792,38 @@ fn check(r: Result<Reply, String>) -> Result<Reply, Failed> {
 fn resolve_channel(net: &dyn Net, handle: &str, yt_key: Option<&str>) -> Result<String, String> {
     let h = handle.trim_start_matches('@');
     if let Some(key) = yt_key {
-        let r = net.get("www.googleapis.com", &format!("/youtube/v3/channels?part=id&forHandle=%40{}{}", crate::research::urlencode(h), super::apis::yt_query(key)), &super::apis::yt_headers(key))?;
-        if let Some(id) = serde_json::from_str::<Value>(&r.body).ok().and_then(|v| v.pointer("/items/0/id").and_then(|x| x.as_str()).map(str::to_string)) {
+        let r = net.get(
+            "www.googleapis.com",
+            &format!(
+                "/youtube/v3/channels?part=id&forHandle=%40{}{}",
+                crate::research::urlencode(h),
+                super::apis::yt_query(key)
+            ),
+            &super::apis::yt_headers(key),
+        )?;
+        if let Some(id) = serde_json::from_str::<Value>(&r.body).ok().and_then(|v| {
+            v.pointer("/items/0/id")
+                .and_then(|x| x.as_str())
+                .map(str::to_string)
+        }) {
             return Ok(id);
         }
     }
-    let r = net.get("www.youtube.com", &format!("/@{}", crate::research::urlencode(h)), &[])?;
+    let r = net.get(
+        "www.youtube.com",
+        &format!("/@{}", crate::research::urlencode(h)),
+        &[],
+    )?;
     channel_id_in_page(&r.body).ok_or_else(|| format!("I couldn't find the channel @{h}"))
 }
 
 /// `<link rel="canonical" href="https://www.youtube.com/channel/UC...">`.
 pub fn channel_id_in_page(html: &str) -> Option<String> {
     let i = html.find("youtube.com/channel/UC")?;
-    let id: String = html[i + 20..].chars().take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '-').collect();
+    let id: String = html[i + 20..]
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+        .collect();
     (id.len() == 24).then_some(id)
 }
 
@@ -559,7 +841,9 @@ fn blocks<'a>(xml: &'a str, tag: &str) -> Vec<&'a str> {
             i = s + open.len();
             continue;
         }
-        let Some(e) = xml[s..].find(&close) else { break };
+        let Some(e) = xml[s..].find(&close) else {
+            break;
+        };
         out.push(&xml[s..s + e]);
         i = s + e + close.len();
     }
@@ -570,7 +854,10 @@ fn inner(block: &str, tag: &str) -> Option<String> {
     let b = blocks(block, tag).into_iter().next()?;
     let body = &b[b.find('>')? + 1..];
     let body = body.trim();
-    let body = body.strip_prefix("<![CDATA[").and_then(|x| x.strip_suffix("]]>")).unwrap_or(body);
+    let body = body
+        .strip_prefix("<![CDATA[")
+        .and_then(|x| x.strip_suffix("]]>"))
+        .unwrap_or(body);
     Some(crate::feeds::text_of(body))
 }
 
@@ -636,12 +923,19 @@ pub fn parse_plain_feed(xml: &str) -> Result<Vec<Seen>, String> {
     let p = crate::feeds::parse(xml)?;
     Ok(p.items
         .into_iter()
-        .map(|i| Seen { id: i.id, title: i.title, url: i.link, at: i.published, ..Default::default() })
+        .map(|i| Seen {
+            id: i.id,
+            title: i.title,
+            url: i.link,
+            at: i.published,
+            ..Default::default()
+        })
         .collect())
 }
 
 pub fn parse_hn(json: &str) -> Result<Vec<Seen>, String> {
-    let v: Value = serde_json::from_str(json).map_err(|e| format!("Hacker News didn't read: {e}"))?;
+    let v: Value =
+        serde_json::from_str(json).map_err(|e| format!("Hacker News didn't read: {e}"))?;
     Ok(v.get("hits")
         .and_then(|h| h.as_array())
         .into_iter()
@@ -649,9 +943,17 @@ pub fn parse_hn(json: &str) -> Result<Vec<Seen>, String> {
         .filter_map(|h| {
             let id = h.get("objectID")?.as_str()?.to_string();
             Some(Seen {
-                url: h.get("url").and_then(|u| u.as_str()).map(str::to_string).unwrap_or_else(|| format!("https://news.ycombinator.com/item?id={id}")),
+                url: h
+                    .get("url")
+                    .and_then(|u| u.as_str())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("https://news.ycombinator.com/item?id={id}")),
                 id,
-                who: h.get("author").and_then(|a| a.as_str()).unwrap_or("").into(),
+                who: h
+                    .get("author")
+                    .and_then(|a| a.as_str())
+                    .unwrap_or("")
+                    .into(),
                 title: h.get("title").and_then(|t| t.as_str()).unwrap_or("").into(),
                 at: h.get("created_at_i").and_then(|t| t.as_u64()),
                 points: h.get("points").and_then(|p| p.as_u64()),
@@ -664,16 +966,30 @@ pub fn parse_hn(json: &str) -> Result<Vec<Seen>, String> {
 
 pub fn parse_mastodon(json: &str) -> Result<Vec<Seen>, String> {
     let v: Value = serde_json::from_str(json).map_err(|_| "that Mastodon server didn't answer with posts (some refuse visitors who aren't signed in)".to_string())?;
-    let arr = v.as_array().ok_or("that Mastodon server didn't answer with posts")?;
+    let arr = v
+        .as_array()
+        .ok_or("that Mastodon server didn't answer with posts")?;
     Ok(arr
         .iter()
         .filter_map(|s| {
             Some(Seen {
                 id: s.get("id")?.as_str()?.to_string(),
-                who: s.pointer("/account/acct").and_then(|a| a.as_str()).unwrap_or("").into(),
-                title: crate::feeds::text_of(s.get("content").and_then(|c| c.as_str()).unwrap_or("")).chars().take(200).collect(),
+                who: s
+                    .pointer("/account/acct")
+                    .and_then(|a| a.as_str())
+                    .unwrap_or("")
+                    .into(),
+                title: crate::feeds::text_of(
+                    s.get("content").and_then(|c| c.as_str()).unwrap_or(""),
+                )
+                .chars()
+                .take(200)
+                .collect(),
                 url: s.get("url").and_then(|u| u.as_str()).unwrap_or("").into(),
-                at: s.get("created_at").and_then(|c| c.as_str()).and_then(crate::feeds::parse_date),
+                at: s
+                    .get("created_at")
+                    .and_then(|c| c.as_str())
+                    .and_then(crate::feeds::parse_date),
                 likes: s.get("favourites_count").and_then(|x| x.as_u64()),
                 reposts: s.get("reblogs_count").and_then(|x| x.as_u64()),
                 comments: s.get("replies_count").and_then(|x| x.as_u64()),
@@ -689,7 +1005,13 @@ pub fn parse_bluesky(json: &str) -> Result<Vec<Seen>, String> {
         .into_iter()
         .filter_map(|r| match r {
             super::snapshots::Record::Post(p) => Some(Seen {
-                who: p.url.split("/profile/").nth(1).and_then(|x| x.split('/').next()).unwrap_or("").into(),
+                who: p
+                    .url
+                    .split("/profile/")
+                    .nth(1)
+                    .and_then(|x| x.split('/').next())
+                    .unwrap_or("")
+                    .into(),
                 id: p.id,
                 title: p.text.chars().take(200).collect(),
                 url: p.url,

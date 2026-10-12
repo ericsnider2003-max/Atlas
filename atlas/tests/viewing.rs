@@ -47,9 +47,7 @@ fn a_chaotic_video_is_thinned_across_its_whole_length_not_truncated() {
     // A handheld clip where everything is a scene change. Taking the first
     // forty would read the opening titles in detail and never reach the part
     // where anything happened.
-    let told: String = (0..400)
-        .map(|i| format!("pts_time:{}\n", i * 3))
-        .collect();
+    let told: String = (0..400).map(|i| format!("pts_time:{}\n", i * 3)).collect();
     let times = scene_times(&told, 40);
     assert_eq!(times.len(), 40);
     assert!(
@@ -177,21 +175,33 @@ fn what_was_said_before_the_first_screen_is_not_dropped() {
 
 #[test]
 fn a_screen_nobody_narrated_still_appears() {
-    let spoken = vec![Spoken { at: 0.0, words: "Right.".into() }];
+    let spoken = vec![Spoken {
+        at: 0.0,
+        words: "Right.".into(),
+    }];
     let moments = weave(&spoken, &screens());
     let silent = moments
         .iter()
         .find(|m| m.at == 37.5)
         .expect("the second screen is still a moment");
     assert!(silent.said.is_none());
-    assert!(silent.on_screen.is_some(), "the screen is carrying the meaning");
+    assert!(
+        silent.on_screen.is_some(),
+        "the screen is carrying the meaning"
+    );
 }
 
 #[test]
 fn a_repeated_screen_is_folded_rather_than_repeated() {
     let repeated = vec![
-        (10.0, "Quarterly review revenue up eleven percent".to_string()),
-        (14.0, "Quarterly review — revenue up eleven percent".to_string()),
+        (
+            10.0,
+            "Quarterly review revenue up eleven percent".to_string(),
+        ),
+        (
+            14.0,
+            "Quarterly review — revenue up eleven percent".to_string(),
+        ),
         (60.0, "Next steps: hire two engineers".to_string()),
     ];
     let moments = weave(&[], &repeated);
@@ -220,7 +230,12 @@ fn the_account_is_timestamped_so_you_can_scrub_to_it() {
 
 #[test]
 fn a_minute_is_a_minute_not_sixty_seconds() {
-    let m = Moment { at: 1103.4, said: None, on_screen: None, kept_frame: None };
+    let m = Moment {
+        at: 1103.4,
+        said: None,
+        on_screen: None,
+        kept_frame: None,
+    };
     assert_eq!(m.stamp(), "18:23");
 }
 
@@ -278,7 +293,6 @@ fn the_defaults_suit_the_thing_he_will_actually_send() {
     );
 }
 
-
 // ---------------------------------------------------------------------------
 // The hole in "keep the reading, delete the frame"
 // ---------------------------------------------------------------------------
@@ -290,11 +304,19 @@ fn the_defaults_suit_the_thing_he_will_actually_send() {
 // context arrived at from the other direction.
 
 fn unreadable(at: f32, kept: &str) -> Seen {
-    Seen { at, text: String::new(), kept_frame: Some(kept.to_string()) }
+    Seen {
+        at,
+        text: String::new(),
+        kept_frame: Some(kept.to_string()),
+    }
 }
 
 fn readable(at: f32, text: &str) -> Seen {
-    Seen { at, text: text.to_string(), kept_frame: None }
+    Seen {
+        at,
+        text: text.to_string(),
+        kept_frame: None,
+    }
 }
 
 #[test]
@@ -324,7 +346,10 @@ fn two_different_unreadable_screens_are_two_moments() {
     // folds a chart and a photo into one.
     let moments = weave_seen(
         &[],
-        &[unreadable(10.0, "frames-1/000.jpg"), unreadable(40.0, "frames-1/001.jpg")],
+        &[
+            unreadable(10.0, "frames-1/000.jpg"),
+            unreadable(40.0, "frames-1/001.jpg"),
+        ],
     );
     assert_eq!(moments.len(), 2);
     assert_ne!(moments[0].kept_frame, moments[1].kept_frame);
@@ -332,8 +357,14 @@ fn two_different_unreadable_screens_are_two_moments() {
 
 #[test]
 fn the_account_says_something_was_there_rather_than_going_quiet() {
-    let spoken = vec![Spoken { at: 11.0, words: "Look at the shape of that.".into() }];
-    let told = retell(&weave_seen(&spoken, &[unreadable(10.0, "frames-1/000.jpg")]), false);
+    let spoken = vec![Spoken {
+        at: 11.0,
+        words: "Look at the shape of that.".into(),
+    }];
+    let told = retell(
+        &weave_seen(&spoken, &[unreadable(10.0, "frames-1/000.jpg")]),
+        false,
+    );
     assert!(
         told.contains("Look at the shape of that"),
         "the words are still there: {told}"
@@ -347,9 +378,15 @@ fn the_account_says_something_was_there_rather_than_going_quiet() {
 
 #[test]
 fn an_unnarrated_unreadable_screen_is_not_dropped_either() {
-    let told = retell(&weave_seen(&[], &[unreadable(10.0, "frames-1/000.jpg")]), false);
+    let told = retell(
+        &weave_seen(&[], &[unreadable(10.0, "frames-1/000.jpg")]),
+        false,
+    );
     assert!(told.contains("kept the picture"), "{told}");
-    assert!(told.contains("[0:10]"), "and it is still timestamped: {told}");
+    assert!(
+        told.contains("[0:10]"),
+        "and it is still timestamped: {told}"
+    );
 }
 
 #[test]
@@ -384,7 +421,6 @@ fn the_old_way_of_weaving_still_works_for_screens_that_are_all_words() {
     let moments = weave(&read_timed(SRT), &screens());
     assert!(moments.iter().all(|m| m.kept_frame.is_none()));
 }
-
 
 // ---------------------------------------------------------------------------
 // Measured against a real video Eric sent
@@ -496,7 +532,11 @@ fn two_frames_a_thirtieth_of_a_second_apart_are_one_moment() {
     let frames: Vec<std::path::PathBuf> =
         ["a.png", "b.png", "c.png"].iter().map(Into::into).collect();
     let (keep, (times, drop)) = one_per_moment(frames, &[4.0, 4.03, 8.0], &[4.0, 8.0]);
-    assert_eq!(keep.len(), 2, "six requested moments produced twelve frames");
+    assert_eq!(
+        keep.len(),
+        2,
+        "six requested moments produced twelve frames"
+    );
     assert_eq!(times, vec![4.0, 8.0]);
     assert_eq!(drop.len(), 1, "and the extra is handed back to be deleted");
     assert_eq!(drop[0], std::path::PathBuf::from("b.png"));
@@ -516,8 +556,10 @@ fn a_frame_with_no_reported_time_is_dropped_not_placed_at_the_start() {
 
 #[test]
 fn nothing_is_kept_that_is_not_also_tracked() {
-    let frames: Vec<std::path::PathBuf> =
-        ["a.png", "b.png", "c.png", "d.png"].iter().map(Into::into).collect();
+    let frames: Vec<std::path::PathBuf> = ["a.png", "b.png", "c.png", "d.png"]
+        .iter()
+        .map(Into::into)
+        .collect();
     let (keep, (times, drop)) = one_per_moment(frames, &[0.0, 0.02, 4.0, 4.01], &[]);
     assert_eq!(keep.len(), times.len(), "a frame with no time is untracked");
     assert_eq!(keep.len() + drop.len(), 4, "every file is accounted for");

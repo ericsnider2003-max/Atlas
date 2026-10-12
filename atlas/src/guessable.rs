@@ -18,12 +18,27 @@
 //! phrase comes.
 
 const LISTS: [(&str, &str); 6] = [
-    ("common passwords", include_str!("../config/guessable/passwords.txt")),
-    ("English words", include_str!("../config/guessable/english.txt")),
+    (
+        "common passwords",
+        include_str!("../config/guessable/passwords.txt"),
+    ),
+    (
+        "English words",
+        include_str!("../config/guessable/english.txt"),
+    ),
     ("surnames", include_str!("../config/guessable/surnames.txt")),
-    ("first names", include_str!("../config/guessable/male_names.txt")),
-    ("first names", include_str!("../config/guessable/female_names.txt")),
-    ("film and TV words", include_str!("../config/guessable/tv_and_film.txt")),
+    (
+        "first names",
+        include_str!("../config/guessable/male_names.txt"),
+    ),
+    (
+        "first names",
+        include_str!("../config/guessable/female_names.txt"),
+    ),
+    (
+        "film and TV words",
+        include_str!("../config/guessable/tv_and_film.txt"),
+    ),
 ];
 
 use std::collections::HashMap;
@@ -51,7 +66,12 @@ fn ranked() -> &'static HashMap<String, (usize, &'static str)> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Kind {
-    Word { word: String, list: &'static str, reversed: bool, l33t: bool },
+    Word {
+        word: String,
+        list: &'static str,
+        reversed: bool,
+        l33t: bool,
+    },
     Sequence,
     Repeat,
     Keyboard,
@@ -82,11 +102,24 @@ impl Estimate {
         // The piece covering most of it first; failing that, any named piece —
         // "atlas" + "atlas" + "2026" has no single big piece but is still
         // three guessable ones.
-        let mut order: Vec<&Piece> = self.pieces.iter().filter(|p| whole || (p.j + 1 - p.i) * 2 >= chars).collect();
-        order.extend(self.pieces.iter().filter(|p| !(whole || (p.j + 1 - p.i) * 2 >= chars)));
+        let mut order: Vec<&Piece> = self
+            .pieces
+            .iter()
+            .filter(|p| whole || (p.j + 1 - p.i) * 2 >= chars)
+            .collect();
+        order.extend(
+            self.pieces
+                .iter()
+                .filter(|p| !(whole || (p.j + 1 - p.i) * 2 >= chars)),
+        );
         for p in order {
             return Some(match &p.kind {
-                Kind::Word { word, list, reversed, l33t } => {
+                Kind::Word {
+                    word,
+                    list,
+                    reversed,
+                    l33t,
+                } => {
                     let how = match (reversed, l33t) {
                         (true, _) => " spelled backwards",
                         (_, true) => " with letters swapped for symbols",
@@ -109,7 +142,13 @@ impl Estimate {
     }
 
     pub fn say(&self) -> String {
-        let label = ["very guessable", "guessable", "somewhat guessable", "hard to guess", "very hard to guess"][self.score as usize];
+        let label = [
+            "very guessable",
+            "guessable",
+            "somewhat guessable",
+            "hard to guess",
+            "very hard to guess",
+        ][self.score as usize];
         let mut s = format!("{label} (about 10^{:.0} guesses)", self.guesses_log10);
         // The weakest piece is only worth naming when it made the whole weak;
         // "the" in a strong sentence is not a warning.
@@ -159,12 +198,18 @@ fn capital_variations(s: &[char]) -> f64 {
     if first_only || last_only || low == 0 {
         return 2.0;
     }
-    (1..=up.min(low)).map(|k| n_ck(up + low, k)).sum::<f64>().max(1.0)
+    (1..=up.min(low))
+        .map(|k| n_ck(up + low, k))
+        .sum::<f64>()
+        .max(1.0)
 }
 
 fn dictionary(cs: &[char], extra: &[String], out: &mut Vec<Piece>) {
     let n = cs.len();
-    let lower: Vec<char> = cs.iter().map(|c| c.to_lowercase().next().unwrap_or(*c)).collect();
+    let lower: Vec<char> = cs
+        .iter()
+        .map(|c| c.to_lowercase().next().unwrap_or(*c))
+        .collect();
     let dict = ranked();
     for i in 0..n {
         for j in i..n.min(i + 30) {
@@ -184,19 +229,52 @@ fn dictionary(cs: &[char], extra: &[String], out: &mut Vec<Piece>) {
                 dict.get(w).copied()
             };
             if let Some((rank, list)) = look(&plain) {
-                out.push(Piece { i, j, kind: Kind::Word { word: plain.clone(), list, reversed: false, l33t: false }, guesses: rank as f64 * caps });
+                out.push(Piece {
+                    i,
+                    j,
+                    kind: Kind::Word {
+                        word: plain.clone(),
+                        list,
+                        reversed: false,
+                        l33t: false,
+                    },
+                    guesses: rank as f64 * caps,
+                });
             }
             if j > i && rev != plain {
                 if let Some((rank, list)) = look(&rev) {
-                    out.push(Piece { i, j, kind: Kind::Word { word: rev.clone(), list, reversed: true, l33t: false }, guesses: rank as f64 * caps * 2.0 });
+                    out.push(Piece {
+                        i,
+                        j,
+                        kind: Kind::Word {
+                            word: rev.clone(),
+                            list,
+                            reversed: true,
+                            l33t: false,
+                        },
+                        guesses: rank as f64 * caps * 2.0,
+                    });
                 }
             }
             if let Some(u) = unl33t {
                 if j > i {
                     if let Some((rank, list)) = look(&u) {
                         let subs = slice.iter().filter(|c| l33t_undo(**c).is_some()).count();
-                        let l33t = (1..=subs).map(|k| n_ck(slice.len(), k)).sum::<f64>().max(2.0);
-                        out.push(Piece { i, j, kind: Kind::Word { word: u, list, reversed: false, l33t: true }, guesses: rank as f64 * caps * l33t });
+                        let l33t = (1..=subs)
+                            .map(|k| n_ck(slice.len(), k))
+                            .sum::<f64>()
+                            .max(2.0);
+                        out.push(Piece {
+                            i,
+                            j,
+                            kind: Kind::Word {
+                                word: u,
+                                list,
+                                reversed: false,
+                                l33t: true,
+                            },
+                            guesses: rank as f64 * caps * l33t,
+                        });
                     }
                 }
             }
@@ -227,7 +305,12 @@ fn sequences(cs: &[char], out: &mut Vec<Piece>) {
                 26.0
             };
             let dir = if d < 0 { 2.0 } else { 1.0 };
-            out.push(Piece { i, j, kind: Kind::Sequence, guesses: base * dir * (j + 1 - i) as f64 });
+            out.push(Piece {
+                i,
+                j,
+                kind: Kind::Sequence,
+                guesses: base * dir * (j + 1 - i) as f64,
+            });
         }
         i = j;
     }
@@ -244,13 +327,23 @@ fn repeats(cs: &[char], out: &mut Vec<Piece>) {
             let count = (j - i) / unit;
             if count >= 2 && (unit > 1 || count >= 3) {
                 let base = estimate_chars(&cs[i..i + unit], &[]).guesses_log10;
-                out.push(Piece { i, j: j - 1, kind: Kind::Repeat, guesses: 10f64.powf(base) * count as f64 });
+                out.push(Piece {
+                    i,
+                    j: j - 1,
+                    kind: Kind::Repeat,
+                    guesses: 10f64.powf(base) * count as f64,
+                });
             }
         }
     }
 }
 
-const QWERTY_ROWS: [&str; 4] = ["`1234567890-=", "qwertyuiop[]\\", "asdfghjkl;'", "zxcvbnm,./"];
+const QWERTY_ROWS: [&str; 4] = [
+    "`1234567890-=",
+    "qwertyuiop[]\\",
+    "asdfghjkl;'",
+    "zxcvbnm,./",
+];
 
 fn key_at(c: char) -> Option<(i32, i32)> {
     let c = c.to_ascii_lowercase();
@@ -258,7 +351,10 @@ fn key_at(c: char) -> Option<(i32, i32)> {
     if let Some(x) = shifted.find(c) {
         return Some((0, x as i32));
     }
-    QWERTY_ROWS.iter().enumerate().find_map(|(r, row)| row.find(c).map(|x| (r as i32, x as i32 + r as i32 / 2)))
+    QWERTY_ROWS
+        .iter()
+        .enumerate()
+        .find_map(|(r, row)| row.find(c).map(|x| (r as i32, x as i32 + r as i32 / 2)))
 }
 
 fn keyboard(cs: &[char], out: &mut Vec<Piece>) {
@@ -294,7 +390,12 @@ fn keyboard(cs: &[char], out: &mut Vec<Piece>) {
                     g += n_ck(l - 1, t - 1) * s * d.powi(t as i32);
                 }
             }
-            out.push(Piece { i, j, kind: Kind::Keyboard, guesses: g * capital_variations(&cs[i..=j]) });
+            out.push(Piece {
+                i,
+                j,
+                kind: Kind::Keyboard,
+                guesses: g * capital_variations(&cs[i..=j]),
+            });
             i = j;
         } else {
             i += 1;
@@ -310,21 +411,40 @@ fn dates(cs: &[char], out: &mut Vec<Piece>) {
         if i + 3 < n && digits(i, i + 3) {
             let y: i32 = cs[i..i + 4].iter().collect::<String>().parse().unwrap_or(0);
             if (1900..=2049).contains(&y) {
-                out.push(Piece { i, j: i + 3, kind: Kind::Date, guesses: ((y - 2026).abs().max(20)) as f64 });
+                out.push(Piece {
+                    i,
+                    j: i + 3,
+                    kind: Kind::Date,
+                    guesses: ((y - 2026).abs().max(20)) as f64,
+                });
             }
         }
         // 6–8 digits that read as a date, with or without separators
         for len in [6usize, 8] {
             if i + len <= n && digits(i, i + len - 1) {
-                out.push(Piece { i, j: i + len - 1, kind: Kind::Date, guesses: 365.0 * 30.0 });
+                out.push(Piece {
+                    i,
+                    j: i + len - 1,
+                    kind: Kind::Date,
+                    guesses: 365.0 * 30.0,
+                });
             }
         }
         for len in [8usize, 10] {
             if i + len <= n {
                 let seg: String = cs[i..i + len].iter().collect();
                 let parts: Vec<&str> = seg.split(['/', '-', '.', ' ']).collect();
-                if parts.len() == 3 && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())) {
-                    out.push(Piece { i, j: i + len - 1, kind: Kind::Date, guesses: 365.0 * 30.0 * 4.0 });
+                if parts.len() == 3
+                    && parts
+                        .iter()
+                        .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+                {
+                    out.push(Piece {
+                        i,
+                        j: i + len - 1,
+                        kind: Kind::Date,
+                        guesses: 365.0 * 30.0 * 4.0,
+                    });
                 }
             }
         }
@@ -332,13 +452,19 @@ fn dates(cs: &[char], out: &mut Vec<Piece>) {
 }
 
 fn brute(len: usize) -> f64 {
-    10f64.powi(len as i32).max(if len == 1 { 11.0 } else { 51.0 })
+    10f64
+        .powi(len as i32)
+        .max(if len == 1 { 11.0 } else { 51.0 })
 }
 
 fn estimate_chars(cs: &[char], extra: &[String]) -> Estimate {
     let n = cs.len();
     if n == 0 {
-        return Estimate { guesses_log10: 0.0, score: 0, pieces: vec![] };
+        return Estimate {
+            guesses_log10: 0.0,
+            score: 0,
+            pieces: vec![],
+        };
     }
     let mut ms = Vec::new();
     dictionary(cs, extra, &mut ms);
@@ -361,14 +487,30 @@ fn estimate_chars(cs: &[char], extra: &[String]) -> Estimate {
         for k in 1..=kmax {
             // ends with a brute-force run i..=j
             for i in 0..=j {
-                let prev = if i == 0 { if k == 1 { 0.0 } else { inf } } else { best[i - 1][k - 1].0 };
+                let prev = if i == 0 {
+                    if k == 1 {
+                        0.0
+                    } else {
+                        inf
+                    }
+                } else {
+                    best[i - 1][k - 1].0
+                };
                 let v = prev + brute(j + 1 - i).log10();
                 if v < best[j][k].0 {
                     best[j][k] = (v, Some((i, k, None)));
                 }
             }
             for (mi, m) in ms.iter().enumerate().filter(|(_, m)| m.j == j) {
-                let prev = if m.i == 0 { if k == 1 { 0.0 } else { inf } } else { best[m.i - 1][k - 1].0 };
+                let prev = if m.i == 0 {
+                    if k == 1 {
+                        0.0
+                    } else {
+                        inf
+                    }
+                } else {
+                    best[m.i - 1][k - 1].0
+                };
                 let v = prev + m.guesses.log10();
                 if v < best[j][k].0 {
                     best[j][k] = (v, Some((m.i, k, Some(mi))));
@@ -385,7 +527,12 @@ fn estimate_chars(cs: &[char], extra: &[String]) -> Estimate {
     while let Some((i, _, m)) = best[j][kk].1 {
         pieces.push(match m {
             Some(mi) => ms[mi].clone(),
-            None => Piece { i, j, kind: Kind::Brute, guesses: brute(j + 1 - i) },
+            None => Piece {
+                i,
+                j,
+                kind: Kind::Brute,
+                guesses: brute(j + 1 - i),
+            },
         });
         if i == 0 {
             break;
@@ -401,14 +548,22 @@ fn estimate_chars(cs: &[char], extra: &[String]) -> Estimate {
         g if g < 10.0 => 3,
         _ => 4,
     };
-    Estimate { guesses_log10: lg, score, pieces }
+    Estimate {
+        guesses_log10: lg,
+        score,
+        pieces,
+    }
 }
 
 /// Estimate a passphrase. `about_you` are words guessers would try first
 /// for this person (their name, "atlas", the business) — lower-cased.
 pub fn estimate(phrase: &str, about_you: &[&str]) -> Estimate {
     let cs: Vec<char> = phrase.chars().take(100).collect();
-    let extra: Vec<String> = about_you.iter().map(|w| w.to_lowercase()).filter(|w| w.len() > 2).collect();
+    let extra: Vec<String> = about_you
+        .iter()
+        .map(|w| w.to_lowercase())
+        .filter(|w| w.len() > 2)
+        .collect();
     let mut e = estimate_chars(&cs, &extra);
     let tail = phrase.chars().count().saturating_sub(100);
     if tail > 0 {
@@ -428,7 +583,10 @@ pub fn fit_for_the_vault(phrase: &str, about_you: &[&str]) -> Result<Option<Stri
             "that's {} — a guesser gets there early. A few unrelated words in a row is enough",
             e.say()
         )),
-        2 => Ok(Some(format!("Accepted, but it's {} — one more unrelated word would put it well out of reach.", e.say()))),
+        2 => Ok(Some(format!(
+            "Accepted, but it's {} — one more unrelated word would put it well out of reach.",
+            e.say()
+        ))),
         _ => Ok(None),
     }
 }

@@ -48,89 +48,173 @@ pub fn abilities() -> Vec<Ability> {
     use Can::*;
     vec![
         // ---- hearing and speaking ----
-        Ability { what: "hear what you say and transcribe it", can: Yes,
+        Ability {
+            what: "hear what you say and transcribe it",
+            can: Yes,
             detail: "Apple's own speech recogniser, kept on the phone (on-device only). A little \
-                     less accurate than the laptop's Parakeet on hard audio" },
-        Ability { what: "talk back", can: Yes,
-            detail: "iOS has good voices built in, and they cost nothing" },
-        Ability { what: "wake on a word while the app is closed", can: Never,
+                     less accurate than the laptop's Parakeet on hard audio",
+        },
+        Ability {
+            what: "talk back",
+            can: Yes,
+            detail: "iOS has good voices built in, and they cost nothing",
+        },
+        Ability {
+            what: "wake on a word while the app is closed",
+            can: Never,
             detail: "iOS won't let an app listen in the background. Use the Action Button, a \
-                     Shortcut, or open it — this is the biggest single difference from the laptop" },
-        Ability { what: "talk through AirPods", can: Yes,
-            detail: "including while the screen is off, once you've started" },
-        Ability { what: "keep listening with the screen off", can: Limited,
+                     Shortcut, or open it — this is the biggest single difference from the laptop",
+        },
+        Ability {
+            what: "talk through AirPods",
+            can: Yes,
+            detail: "including while the screen is off, once you've started",
+        },
+        Ability {
+            what: "keep listening with the screen off",
+            can: Limited,
             detail: "an audio session holds while a conversation is going, but it ends when you \
-                     stop — it can't sit waiting all day" },
-
+                     stop — it can't sit waiting all day",
+        },
         // ---- thinking ----
-        Ability { what: "think with a local model", can: Limited,
+        Ability {
+            what: "think with a local model",
+            can: Limited,
             detail: "a smaller one than the laptop's. Fine for conversation, notes and questions; \
-                     long reasoning is better sent to the laptop" },
-        Ability { what: "remember everything", can: Yes,
-            detail: "the whole log lives on the phone — your projects, notes and history" },
-        Ability { what: "search everything you've written", can: Yes,
-            detail: "same search as the laptop, over what has synced" },
-
+                     long reasoning is better sent to the laptop",
+        },
+        Ability {
+            what: "remember everything",
+            can: Yes,
+            detail: "the whole log lives on the phone — your projects, notes and history",
+        },
+        Ability {
+            what: "search everything you've written",
+            can: Yes,
+            detail: "same search as the laptop, over what has synced",
+        },
         // ---- looking at things ----
-        Ability { what: "scan a document with the camera", can: Yes,
+        Ability {
+            what: "scan a document with the camera",
+            can: Yes,
             detail: "iOS does this itself — edge detection, perspective correction and OCR, all \
-                     free and better than anything I'd write" },
-        Ability { what: "read text out of a photo", can: Yes,
-            detail: "built in, offline, and quick" },
-        Ability { what: "see your screen or other apps", can: Never,
-            detail: "no app can. This is why it can't do the window and desktop work" },
-        Ability { what: "read your photo library", can: Limited,
-            detail: "with permission, and you can grant it just the photos you pick" },
-
+                     free and better than anything I'd write",
+        },
+        Ability {
+            what: "read text out of a photo",
+            can: Yes,
+            detail: "built in, offline, and quick",
+        },
+        Ability {
+            what: "see your screen or other apps",
+            can: Never,
+            detail: "no app can. This is why it can't do the window and desktop work",
+        },
+        Ability {
+            what: "read your photo library",
+            can: Limited,
+            detail: "with permission, and you can grant it just the photos you pick",
+        },
         // ---- other apps ----
-        Ability { what: "control other apps", can: Never,
+        Ability {
+            what: "control other apps",
+            can: Never,
             detail: "iOS has no automation for this. The nearest thing is Shortcuts, and only \
-                     where an app has chosen to offer them" },
-        Ability { what: "read your other apps' data", can: Never,
-            detail: "each app's data is sealed off from every other" },
-        Ability { what: "receive things you share to it", can: Yes,
-            detail: "anything from any app — a link, a PDF, a photo, a selection of text" },
-        Ability { what: "read your calendar, contacts and reminders", can: Yes,
-            detail: "with permission, through Apple's own interfaces" },
-        Ability { what: "send an email or message on your behalf", can: Limited,
+                     where an app has chosen to offer them",
+        },
+        Ability {
+            what: "read your other apps' data",
+            can: Never,
+            detail: "each app's data is sealed off from every other",
+        },
+        Ability {
+            what: "receive things you share to it",
+            can: Yes,
+            detail: "anything from any app — a link, a PDF, a photo, a selection of text",
+        },
+        Ability {
+            what: "read your calendar, contacts and reminders",
+            can: Yes,
+            detail: "with permission, through Apple's own interfaces",
+        },
+        Ability {
+            what: "send an email or message on your behalf",
+            can: Limited,
             detail: "it can compose one and hand it to Mail or Messages, but you tap send. iOS \
-                     doesn't allow otherwise, and I wouldn't want it to" },
-
+                     doesn't allow otherwise, and I wouldn't want it to",
+        },
         // ---- being there ----
-        Ability { what: "run all the time", can: Never,
+        Ability {
+            what: "run all the time",
+            can: Never,
             detail: "iOS gives short background windows and takes them away if you waste them. \
-                     Nothing runs continuously" },
-        Ability { what: "do work in short background bursts", can: Limited,
+                     Nothing runs continuously",
+        },
+        Ability {
+            what: "do work in short background bursts",
+            can: Limited,
             detail: "a few minutes at a time, when iOS decides — enough to sync and process a \
-                     queue, not enough to think hard" },
-        Ability { what: "notify you when something finishes", can: Yes,
-            detail: "including work the laptop did" },
-        Ability { what: "show things on the lock screen", can: Yes,
-            detail: "a widget with what's outstanding, and a live one while something's running" },
-        Ability { what: "be on the Action Button", can: Yes,
-            detail: "iPhone 15 Pro and up — one press, straight into listening" },
-        Ability { what: "replace Siri", can: Never,
+                     queue, not enough to think hard",
+        },
+        Ability {
+            what: "notify you when something finishes",
+            can: Yes,
+            detail: "including work the laptop did",
+        },
+        Ability {
+            what: "show things on the lock screen",
+            can: Yes,
+            detail: "a widget with what's outstanding, and a live one while something's running",
+        },
+        Ability {
+            what: "be on the Action Button",
+            can: Yes,
+            detail: "iPhone 15 Pro and up — one press, straight into listening",
+        },
+        Ability {
+            what: "replace Siri",
+            can: Never,
             detail: "no app can be the system assistant. \"Hey Siri, ask Atlas\" works through \
-                     Shortcuts, and that's the closest it gets" },
-
+                     Shortcuts, and that's the closest it gets",
+        },
         // ---- talking to the laptop ----
-        Ability { what: "find the laptop on the same wifi", can: Yes,
-            detail: "the same way an AirPlay speaker is found — no account, nothing configured" },
-        Ability { what: "sync through the cloud folder", can: Yes,
-            detail: "works when the two are never on together" },
-        Ability { what: "sync over a cable", can: Yes,
-            detail: "no network of any kind needed" },
-        Ability { what: "AirDrop to your iPad", can: Yes,
-            detail: "one tap, nothing online. Not to the laptop though — that's Apple only" },
-        Ability { what: "ask the laptop to do something", can: Yes,
-            detail: "and it queues if the laptop is off rather than failing" },
-
+        Ability {
+            what: "find the laptop on the same wifi",
+            can: Yes,
+            detail: "the same way an AirPlay speaker is found — no account, nothing configured",
+        },
+        Ability {
+            what: "sync through the cloud folder",
+            can: Yes,
+            detail: "works when the two are never on together",
+        },
+        Ability {
+            what: "sync over a cable",
+            can: Yes,
+            detail: "no network of any kind needed",
+        },
+        Ability {
+            what: "AirDrop to your iPad",
+            can: Yes,
+            detail: "one tap, nothing online. Not to the laptop though — that's Apple only",
+        },
+        Ability {
+            what: "ask the laptop to do something",
+            can: Yes,
+            detail: "and it queues if the laptop is off rather than failing",
+        },
         // ---- the vault ----
-        Ability { what: "hold your credentials", can: Never,
+        Ability {
+            what: "hold your credentials",
+            can: Never,
             detail: "by choice rather than by iOS — the phone is the device you're most likely \
-                     to lose" },
-        Ability { what: "unlock with Face ID", can: Yes,
-            detail: "for the phone's own things, not for the laptop's vault" },
+                     to lose",
+        },
+        Ability {
+            what: "unlock with Face ID",
+            can: Yes,
+            detail: "for the phone's own things, not for the laptop's vault",
+        },
     ]
 }
 
@@ -150,10 +234,19 @@ pub fn works_offline(what: &str) -> bool {
 /// How you get Atlas listening, in order of how little it costs you.
 pub fn ways_to_start() -> Vec<(&'static str, &'static str)> {
     vec![
-        ("the Action Button", "one press, straight into listening. iPhone 15 Pro and up"),
-        ("\"Hey Siri, ask Atlas\"", "hands free, and Siri hands it straight over"),
+        (
+            "the Action Button",
+            "one press, straight into listening. iPhone 15 Pro and up",
+        ),
+        (
+            "\"Hey Siri, ask Atlas\"",
+            "hands free, and Siri hands it straight over",
+        ),
         ("the lock screen widget", "one tap without unlocking"),
-        ("the back tap", "double or triple tap the back of the phone, set in Accessibility"),
+        (
+            "the back tap",
+            "double or triple tap the back of the phone, set in Accessibility",
+        ),
         ("opening the app", "always works"),
     ]
 }

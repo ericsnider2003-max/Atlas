@@ -51,8 +51,15 @@ pub struct Interview {
 pub fn asked_to_start(said: &str) -> bool {
     let t = said.trim().trim_end_matches(['.', '!', '?']).to_lowercase();
     [
-        "get to know me", "let's get to know each other", "lets get to know each other", "get to know each other",
-        "interview me", "learn about me", "ask me about myself", "find out about me", "set yourself up for me",
+        "get to know me",
+        "let's get to know each other",
+        "lets get to know each other",
+        "get to know each other",
+        "interview me",
+        "learn about me",
+        "ask me about myself",
+        "find out about me",
+        "set yourself up for me",
     ]
     .iter()
     .any(|p| t == *p || t.ends_with(p) || t.starts_with(p))
@@ -60,14 +67,36 @@ pub fn asked_to_start(said: &str) -> bool {
 
 fn skipped(said: &str) -> bool {
     let t = said.trim().trim_end_matches(['.', '!']).to_lowercase();
-    matches!(t.as_str(), "skip" | "skip it" | "skip that" | "pass" | "next" | "next one" | "don't know" | "dont know" | "not sure" | "no idea")
+    matches!(
+        t.as_str(),
+        "skip"
+            | "skip it"
+            | "skip that"
+            | "pass"
+            | "next"
+            | "next one"
+            | "don't know"
+            | "dont know"
+            | "not sure"
+            | "no idea"
+    )
 }
 
 fn stopped(said: &str) -> bool {
     let t = said.trim().trim_end_matches(['.', '!']).to_lowercase();
     matches!(
         t.as_str(),
-        "stop" | "that's enough" | "thats enough" | "later" | "let's stop" | "lets stop" | "finish" | "done" | "never mind" | "nevermind" | "enough"
+        "stop"
+            | "that's enough"
+            | "thats enough"
+            | "later"
+            | "let's stop"
+            | "lets stop"
+            | "finish"
+            | "done"
+            | "never mind"
+            | "nevermind"
+            | "enough"
     )
 }
 
@@ -77,7 +106,13 @@ fn pieces(answer: &str) -> Vec<String> {
     answer
         .split([',', ';', '\n'])
         .flat_map(|p| p.split(" and "))
-        .map(|p| p.trim().trim_start_matches("and ").trim_end_matches(['.', '!']).trim().to_string())
+        .map(|p| {
+            p.trim()
+                .trim_start_matches("and ")
+                .trim_end_matches(['.', '!'])
+                .trim()
+                .to_string()
+        })
         .filter(|p| p.split_whitespace().count() >= 1 && p.len() > 1)
         .collect()
 }
@@ -90,7 +125,9 @@ pub fn said_back(text: &str) -> String {
     let mut out: Vec<String> = Vec::new();
     let mut after_you = false;
     for w in text.split_whitespace() {
-        let core: String = w.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'').to_string();
+        let core: String = w
+            .trim_matches(|c: char| !c.is_alphanumeric() && c != '\'')
+            .to_string();
         let low = core.to_lowercase();
         let swap = match low.as_str() {
             "i" => Some("you"),
@@ -115,9 +152,14 @@ pub fn said_back(text: &str) -> String {
         after_you = matches!(low.as_str(), "i");
         match swap {
             Some(r) if !core.is_empty() => {
-                let r = if core.chars().next().is_some_and(|c| c.is_uppercase()) && low != "i" && out.is_empty() {
+                let r = if core.chars().next().is_some_and(|c| c.is_uppercase())
+                    && low != "i"
+                    && out.is_empty()
+                {
                     let mut c = r.chars();
-                    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+                    c.next()
+                        .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                        .unwrap_or_default()
                 } else {
                     r.to_string()
                 };
@@ -136,7 +178,10 @@ fn clipped(text: &str, n: usize) -> String {
     if words.len() <= n {
         return text.trim().trim_end_matches(['.', '!']).to_string();
     }
-    format!("{}...", words[..n].join(" ").trim_end_matches([',', '.', ';']))
+    format!(
+        "{}...",
+        words[..n].join(" ").trim_end_matches([',', '.', ';'])
+    )
 }
 
 /// Is this a short list of names ("the bakery, my channel and Atlas"),
@@ -153,10 +198,19 @@ pub fn without_push_lead(answer: &str) -> String {
     let a = answer.trim();
     let low = a.to_ascii_lowercase();
     const LEADS: &[&str] = &[
-        "i need you to push me on ", "i want you to push me on ", "i'd like you to push me on ", "push me on ",
-        "keep me honest about ", "keep me honest on ", "you can push me on ", "i need pushing on ",
+        "i need you to push me on ",
+        "i want you to push me on ",
+        "i'd like you to push me on ",
+        "push me on ",
+        "keep me honest about ",
+        "keep me honest on ",
+        "you can push me on ",
+        "i need pushing on ",
     ];
-    LEADS.iter().find_map(|l| low.strip_prefix(l).map(|_| a[l.len()..].to_string())).unwrap_or_else(|| a.to_string())
+    LEADS
+        .iter()
+        .find_map(|l| low.strip_prefix(l).map(|_| a[l.len()..].to_string()))
+        .unwrap_or_else(|| a.to_string())
 }
 
 /// What an answer becomes: the facts to keep, and the lines to read back.
@@ -168,12 +222,32 @@ pub fn facts_from(slot: Slot, answer: &str, now: u64) -> Vec<(Fact, String)> {
     match slot {
         Slot::Name => {
             let low = a.to_ascii_lowercase();
-            let name = ["call me ", "it's ", "its ", "i'm ", "im ", "my name is ", "just "]
-                .iter()
-                .find_map(|p| low.strip_prefix(p).map(|r| a[a.len() - r.len()..].to_string()))
-                .unwrap_or_else(|| a.to_string());
+            let name = [
+                "call me ",
+                "it's ",
+                "its ",
+                "i'm ",
+                "im ",
+                "my name is ",
+                "just ",
+            ]
+            .iter()
+            .find_map(|p| {
+                low.strip_prefix(p)
+                    .map(|r| a[a.len() - r.len()..].to_string())
+            })
+            .unwrap_or_else(|| a.to_string());
             let name = name.trim().to_string();
-            vec![(Fact::new("what to call them", &format!("Call them {name}"), &format!("They asked to be called {name}."), Kind::Instruction, now), format!("I'll call you {name}."))]
+            vec![(
+                Fact::new(
+                    "what to call them",
+                    &format!("Call them {name}"),
+                    &format!("They asked to be called {name}."),
+                    Kind::Instruction,
+                    now,
+                ),
+                format!("I'll call you {name}."),
+            )]
         }
         // A short list is several projects; sentences about your work are
         // kept whole, in your words, as one (1 Oct 2026: a paragraph was cut
@@ -182,25 +256,40 @@ pub fn facts_from(slot: Slot, answer: &str, now: u64) -> Vec<(Fact, String)> {
             .into_iter()
             .map(|p| {
                 let line = format!("Working on: {p}");
-                (Fact::new(&format!("project {p}"), &line, &line, Kind::Project, now), format!("You're working on {}.", said_back(&p)))
+                (
+                    Fact::new(&format!("project {p}"), &line, &line, Kind::Project, now),
+                    format!("You're working on {}.", said_back(&p)),
+                )
             })
             .collect(),
         Slot::Work => {
             let line = format!("What they're working on: {a}");
-            vec![(Fact::new("what they're working on", &line, &line, Kind::Project, now), format!("Your work: {}.", clipped(&said_back(a), 30)))]
+            vec![(
+                Fact::new("what they're working on", &line, &line, Kind::Project, now),
+                format!("Your work: {}.", clipped(&said_back(a), 30)),
+            )]
         }
         Slot::Day => {
             let line = format!("Their day: {a}");
-            vec![(Fact::new("their day", &line, &line, Kind::You, now), format!("Your day: {}.", clipped(&said_back(a), 25)))]
+            vec![(
+                Fact::new("their day", &line, &line, Kind::You, now),
+                format!("Your day: {}.", clipped(&said_back(a), 25)),
+            )]
         }
         Slot::Push => {
             let what = without_push_lead(a);
             let line = format!("Push them on: {what}");
-            vec![(Fact::new("push them on", &line, &line, Kind::Instruction, now), format!("I'll push you on {}.", clipped(&said_back(&what), 25)))]
+            vec![(
+                Fact::new("push them on", &line, &line, Kind::Instruction, now),
+                format!("I'll push you on {}.", clipped(&said_back(&what), 25)),
+            )]
         }
         Slot::Folders => {
             let line = format!("Their work is in: {a}");
-            vec![(Fact::new("where their work is", &line, &line, Kind::Reference, now), format!("Where your work is: {}.", clipped(&said_back(a), 25)))]
+            vec![(
+                Fact::new("where their work is", &line, &line, Kind::Reference, now),
+                format!("Where your work is: {}.", clipped(&said_back(a), 25)),
+            )]
         }
         // What to hunt for (why-stale idea 8): the short pieces, as the
         // opportunity hunt's own two lists, so "look for" and "my skills
@@ -216,8 +305,14 @@ pub fn facts_from(slot: Slot, answer: &str, now: u64) -> Vec<(Fact, String)> {
             }
             let line = format!("I'll look out for {}.", items.join(", "));
             vec![
-                (crate::hunt::Interests::fact(crate::hunt::FACT_WANT, &items, now), line),
-                (crate::hunt::Interests::fact(crate::hunt::FACT_SKILLS, &items, now), String::new()),
+                (
+                    crate::hunt::Interests::fact(crate::hunt::FACT_WANT, &items, now),
+                    line,
+                ),
+                (
+                    crate::hunt::Interests::fact(crate::hunt::FACT_SKILLS, &items, now),
+                    String::new(),
+                ),
             ]
         }
         Slot::Connect => Vec::new(),
@@ -228,14 +323,30 @@ pub fn facts_from(slot: Slot, answer: &str, now: u64) -> Vec<(Fact, String)> {
 fn without_money_lead(answer: &str) -> String {
     let a = answer.trim();
     let low = a.to_ascii_lowercase();
-    const LEADS: &[&str] = &["i'm good at ", "im good at ", "i am good at ", "look for ", "look out for ", "anything in ", "things like ", "stuff like "];
-    LEADS.iter().find_map(|l| low.strip_prefix(l).map(|_| a[l.len()..].to_string())).unwrap_or_else(|| a.to_string())
+    const LEADS: &[&str] = &[
+        "i'm good at ",
+        "im good at ",
+        "i am good at ",
+        "look for ",
+        "look out for ",
+        "anything in ",
+        "things like ",
+        "stuff like ",
+    ];
+    LEADS
+        .iter()
+        .find_map(|l| low.strip_prefix(l).map(|_| a[l.len()..].to_string()))
+        .unwrap_or_else(|| a.to_string())
 }
 
 /// Does this answer say yes?
 fn said_yes(answer: &str) -> bool {
     let t = answer.trim().to_lowercase();
-    ["yes", "yeah", "yep", "sure", "ok", "okay", "please", "do it", "go ahead"].iter().any(|w| t == *w || t.starts_with(&format!("{w} ")) || t.starts_with(&format!("{w},")))
+    [
+        "yes", "yeah", "yep", "sure", "ok", "okay", "please", "do it", "go ahead",
+    ]
+    .iter()
+    .any(|w| t == *w || t.starts_with(&format!("{w} ")) || t.starts_with(&format!("{w},")))
 }
 
 /// What happens to one answer.
@@ -262,7 +373,10 @@ impl Interview {
     /// Take the answer to the question asked last.
     pub fn answer(&mut self, said: &str, now: u64) -> Next {
         if stopped(said) {
-            return Next::Done { keep: Vec::new(), say: self.read_back(true) };
+            return Next::Done {
+                keep: Vec::new(),
+                say: self.read_back(true),
+            };
         }
         let (slot, _) = QUESTIONS[self.at];
         let mut keep = Vec::new();
@@ -284,19 +398,33 @@ impl Interview {
         }
         self.at += 1;
         if self.at >= QUESTIONS.len() {
-            return Next::Done { keep, say: format!("{}{extra}", self.read_back(false)) };
+            return Next::Done {
+                keep,
+                say: format!("{}{extra}", self.read_back(false)),
+            };
         }
-        Next::Ask { keep, say: QUESTIONS[self.at].1.to_string() }
+        Next::Ask {
+            keep,
+            say: QUESTIONS[self.at].1.to_string(),
+        }
     }
 
     /// What was kept, said back so it can be corrected.
     fn read_back(&self, early: bool) -> String {
         if self.kept.is_empty() {
-            return if early { "Stopped -- nothing kept. Ask me to get to know you whenever you like.".into() } else { "Done -- you skipped them all, so nothing's kept.".into() };
+            return if early {
+                "Stopped -- nothing kept. Ask me to get to know you whenever you like.".into()
+            } else {
+                "Done -- you skipped them all, so nothing's kept.".into()
+            };
         }
         format!(
             "{}Here's what I kept: {} If any of that's wrong, just tell me what's right.",
-            if early { "Stopped there. " } else { "That's everything. " },
+            if early {
+                "Stopped there. "
+            } else {
+                "That's everything. "
+            },
             self.kept.join(" ")
         )
     }
@@ -308,7 +436,10 @@ mod tests {
 
     #[test]
     fn a_list_said_in_one_breath_is_several_projects() {
-        assert_eq!(pieces("the bakery, my YouTube channel and Atlas"), vec!["the bakery", "my YouTube channel", "Atlas"]);
+        assert_eq!(
+            pieces("the bakery, my YouTube channel and Atlas"),
+            vec!["the bakery", "my YouTube channel", "Atlas"]
+        );
     }
 
     #[test]
@@ -316,7 +447,11 @@ mod tests {
         let a = "I have two projects. The bakery which is opening in November. Atlas (you). I want to make the bakery profitable";
         let f = facts_from(Slot::Work, a, 0);
         assert_eq!(f.len(), 1);
-        assert!(f[0].1.starts_with("Your work: you have two projects."), "{}", f[0].1);
+        assert!(
+            f[0].1.starts_with("Your work: you have two projects."),
+            "{}",
+            f[0].1
+        );
         assert!(f[0].1.contains("Atlas (me)"), "{}", f[0].1);
     }
 

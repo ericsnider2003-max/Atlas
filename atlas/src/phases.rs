@@ -24,7 +24,9 @@ impl Phases {
     /// The folder for this piece of work: `root/phases/<kind>-<key hash>`.
     pub fn for_work(root: &Path, kind: &str, key: &str) -> Phases {
         let hash = crate::digest::sha256_hex(key.as_bytes());
-        Phases { dir: root.join("phases").join(format!("{kind}-{}", &hash[..16])) }
+        Phases {
+            dir: root.join("phases").join(format!("{kind}-{}", &hash[..16])),
+        }
     }
 
     /// A finished phase's result, if it finished before.
@@ -36,16 +38,23 @@ impl Phases {
     /// Write a phase down as finished. Written to a side file and renamed,
     /// so a stop mid-write leaves the phase unfinished rather than half a file.
     pub fn finished<T: Serialize>(&self, phase: &str, result: &T) -> bool {
-        let Some(root) = self.dir.parent().and_then(Path::parent) else { return false };
+        let Some(root) = self.dir.parent().and_then(Path::parent) else {
+            return false;
+        };
         // Written by a worker with a finished phase in hand: wait for the lock
         // rather than lose the record that would let a restart skip this work.
-        let Ok(_state) = crate::store::wait_for_state_transaction(root) else { return false };
+        let Ok(_state) = crate::store::wait_for_state_transaction(root) else {
+            return false;
+        };
         if std::fs::create_dir_all(&self.dir).is_err() {
             return false;
         }
-        let Ok(text) = serde_json::to_string(result) else { return false };
+        let Ok(text) = serde_json::to_string(result) else {
+            return false;
+        };
         let tmp = self.dir.join(format!("{phase}.json.part"));
-        std::fs::write(&tmp, text).is_ok() && crate::store::rename_patiently(&tmp, &self.dir.join(format!("{phase}.json"))).is_ok()
+        std::fs::write(&tmp, text).is_ok()
+            && crate::store::rename_patiently(&tmp, &self.dir.join(format!("{phase}.json"))).is_ok()
     }
 
     /// Which phases are written down, for "what's queued".
@@ -53,7 +62,12 @@ impl Phases {
         let mut v: Vec<String> = std::fs::read_dir(&self.dir)
             .map(|rd| {
                 rd.flatten()
-                    .filter_map(|e| e.file_name().to_str().and_then(|n| n.strip_suffix(".json")).map(str::to_string))
+                    .filter_map(|e| {
+                        e.file_name()
+                            .to_str()
+                            .and_then(|n| n.strip_suffix(".json"))
+                            .map(str::to_string)
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -63,10 +77,14 @@ impl Phases {
 
     /// The work is filed: its phases aren't needed any more.
     pub fn close(&self) {
-        let Some(root) = self.dir.parent().and_then(Path::parent) else { return };
+        let Some(root) = self.dir.parent().and_then(Path::parent) else {
+            return;
+        };
         // Called from the control loop, so a brief retry, not a long wait. Giving
         // up here left the saved phases behind for good.
-        let Ok(_state) = crate::store::state_transaction_briefly(root) else { return };
+        let Ok(_state) = crate::store::state_transaction_briefly(root) else {
+            return;
+        };
         crate::heard!(std::fs::remove_dir_all(&self.dir));
     }
 }

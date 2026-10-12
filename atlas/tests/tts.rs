@@ -1,6 +1,5 @@
 use atlas::tts::{
-    adjust, audition_line, catalogue, find, interpret, Change, Quality,
-    VoiceSettings,
+    adjust, audition_line, catalogue, find, interpret, Change, Quality, VoiceSettings,
 };
 
 fn now() -> VoiceSettings {
@@ -16,7 +15,10 @@ fn the_choice_is_short_enough_to_actually_be_a_choice() {
     assert!(c.len() <= 8 && c.len() >= 5);
     assert!(c.iter().any(|v| v.accent == "British"));
     assert!(c.iter().any(|v| v.accent == "American"));
-    assert!(c.iter().all(|v| !v.character.is_empty()), "each one says how it reads");
+    assert!(
+        c.iter().all(|v| !v.character.is_empty()),
+        "each one says how it reads"
+    );
 }
 
 #[test]
@@ -90,7 +92,10 @@ fn asking_for_a_british_voice_gets_one() {
 fn asking_for_a_deeper_one_gets_a_deeper_one() {
     match interpret("try something deeper", &now()) {
         Change::Switch { to, why } => {
-            assert!(to.character.contains("low") || to.character.contains("dry"), "{to:?}");
+            assert!(
+                to.character.contains("low") || to.character.contains("dry"),
+                "{to:?}"
+            );
             assert!(!why.is_empty(), "and says what it's like");
         }
         o => panic!("{o:?}"),
@@ -110,7 +115,10 @@ fn asking_for_better_offers_the_best_one_with_its_cost() {
     match interpret("can you sound more natural", &now()) {
         Change::Switch { to, why } => {
             assert_eq!(to.quality, Quality::High);
-            assert!(why.contains("MB") && why.contains("slower"), "the honest trade: {why}");
+            assert!(
+                why.contains("MB") && why.contains("slower"),
+                "the honest trade: {why}"
+            );
         }
         o => panic!("{o:?}"),
     }
@@ -121,7 +129,10 @@ fn asking_for_a_different_voice_plays_a_few_rather_than_picking_one() {
     match interpret("use a different voice", &now()) {
         Change::Audition(choices) => {
             assert_eq!(choices.len(), 3);
-            assert!(choices.iter().all(|v| v.id != now().voice), "not the one you have");
+            assert!(
+                choices.iter().all(|v| v.id != now().voice),
+                "not the one you have"
+            );
         }
         o => panic!("{o:?}"),
     }
@@ -147,7 +158,10 @@ fn something_it_cannot_do_says_so_rather_than_picking_at_random() {
 
 #[test]
 fn an_unrelated_sentence_changes_nothing() {
-    assert!(matches!(interpret("what's the weather", &now()), Change::Unclear(_)));
+    assert!(matches!(
+        interpret("what's the weather", &now()),
+        Change::Unclear(_)
+    ));
 }
 
 // ================= what it is now =================
@@ -158,7 +172,10 @@ fn atlas_can_say_what_voice_it_is_using() {
     // is now a Chatterbox reference clip, which has no catalogue entry and so
     // no accent to describe — this test is about `describe`, not about which
     // voice happens to ship.
-    let ryan = VoiceSettings { voice: "en_US-ryan-medium".into(), ..now() };
+    let ryan = VoiceSettings {
+        voice: "en_US-ryan-medium".into(),
+        ..now()
+    };
     let said = ryan.describe();
     assert!(said.contains("Ryan") && said.contains("American"));
     assert!(said.contains("normal pace"));
@@ -173,12 +190,18 @@ fn the_settings_reach_piper_as_plain_arguments() {
     // piper voice. The live command comes from `tools.yaml` now, and this
     // stays as the check that piper's own argument shape is still right for
     // when you switch back to it.
-    let ryan = VoiceSettings { voice: "en_US-ryan-medium".into(), ..now() };
+    let ryan = VoiceSettings {
+        voice: "en_US-ryan-medium".into(),
+        ..now()
+    };
     let a = ryan.args("models", "out.wav");
     assert!(a.contains(&"models/en_US-ryan-medium.onnx".to_string()));
     assert!(a.contains(&"--length_scale".to_string()));
     assert!(a.contains(&"--noise_scale".to_string()));
-    assert!(!a.iter().any(|x| x.contains("api") || x.contains("key")), "nothing to sign up for");
+    assert!(
+        !a.iter().any(|x| x.contains("api") || x.contains("key")),
+        "nothing to sign up for"
+    );
 }
 
 #[test]
@@ -258,7 +281,10 @@ fn the_speech_command_carries_the_settings_that_exist_to_change_it() {
     // demanding it here would force a flag that does nothing — which is the
     // fault this whole area was fixing, in the other direction.
     if t.tts_engine.engine.can_clone() {
-        assert!(joined.contains("{variation}"), "a cloning engine ignores variation: {joined}");
+        assert!(
+            joined.contains("{variation}"),
+            "a cloning engine ignores variation: {joined}"
+        );
     }
 }
 
@@ -276,14 +302,28 @@ fn speed_is_converted_for_whichever_engine_is_named() {
     let piper = Engine::Piper.speed_value(faster);
     let kokoro = Engine::Kokoro.speed_value(faster);
     assert_eq!(piper, faster, "piper's length scale is already a pace");
-    assert!(kokoro > 1.0, "a multiplier engine needs a larger number to speak faster: {kokoro}");
-    assert_ne!(piper, kokoro, "the same setting reached both engines unchanged");
+    assert!(
+        kokoro > 1.0,
+        "a multiplier engine needs a larger number to speak faster: {kokoro}"
+    );
+    assert_ne!(
+        piper, kokoro,
+        "the same setting reached both engines unchanged"
+    );
 }
 
 #[test]
 fn a_voice_file_takes_the_extension_its_engine_expects() {
-    for (engine, ext) in [(Engine::Piper, "onnx"), (Engine::Kokoro, "pt"), (Engine::Chatterbox, "wav")] {
-        let cfg = EngineConfig { engine, exe: String::new(), voices_dir: "models".into() };
+    for (engine, ext) in [
+        (Engine::Piper, "onnx"),
+        (Engine::Kokoro, "pt"),
+        (Engine::Chatterbox, "wav"),
+    ] {
+        let cfg = EngineConfig {
+            engine,
+            exe: String::new(),
+            voices_dir: "models".into(),
+        };
         let f = cfg.voice_file_for("some-voice");
         assert!(f.ends_with(ext), "{engine:?} asked for {f}");
     }
@@ -306,12 +346,26 @@ fn a_mismatched_engine_and_executable_is_caught() {
         exe: "tools/chatterbox/speak.cmd".into(),
         voices_dir: "models".into(),
     };
-    assert!(!bad.is_consistent(), "a piper engine driving chatterbox was accepted");
-    let bad = EngineConfig { engine: Engine::Kokoro, exe: "tools/chatterbox/speak.cmd".into(), voices_dir: "models".into() };
-    assert!(!bad.is_consistent(), "a kokoro engine falling back to chatterbox was accepted");
+    assert!(
+        !bad.is_consistent(),
+        "a piper engine driving chatterbox was accepted"
+    );
+    let bad = EngineConfig {
+        engine: Engine::Kokoro,
+        exe: "tools/chatterbox/speak.cmd".into(),
+        voices_dir: "models".into(),
+    };
+    assert!(
+        !bad.is_consistent(),
+        "a kokoro engine falling back to chatterbox was accepted"
+    );
     // Kokoro is spoken inside Atlas; the program it names is the fallback
     // that speaks while Kokoro is missing, which is piper (Phase 0.8).
-    let kokoro_first = EngineConfig { engine: Engine::Kokoro, exe: "tools/piper/piper.exe".into(), voices_dir: "models".into() };
+    let kokoro_first = EngineConfig {
+        engine: Engine::Kokoro,
+        exe: "tools/piper/piper.exe".into(),
+        voices_dir: "models".into(),
+    };
     assert!(kokoro_first.is_consistent());
     // And voicebox counts as chatterbox, which is what it is.
     let vb = EngineConfig {

@@ -6,9 +6,9 @@
 //! determination ... Kind of like a feedback loop."
 
 use atlas::feedback::{
-    answer_delivered, answer_feedback, answers_out, compose_feedback, feedback_delivered, feedback_inbox, feedback_outbox,
-    feedback_preview, feedback_sent, heard_answer, heard_feedback, queue_feedback, Feedback, FeedbackStatus,
-    MAX_FEEDBACK_BYTES, MAX_WORDS_CHARS,
+    answer_delivered, answer_feedback, answers_out, compose_feedback, feedback_delivered,
+    feedback_inbox, feedback_outbox, feedback_preview, feedback_sent, heard_answer, heard_feedback,
+    queue_feedback, Feedback, FeedbackStatus, MAX_FEEDBACK_BYTES, MAX_WORDS_CHARS,
 };
 use atlas::store::Store;
 use atlas::update_apply::{self as apply, FailedBecause, FailureReport};
@@ -47,7 +47,10 @@ fn a_friend_sends_feedback_you_get_a_report_and_they_hear_your_answer() {
     let f = compose_feedback("The hub goes blank after the update", Some(failure()), 100).unwrap();
     let shown = feedback_preview(&f);
     println!("LIVE [what the friend sees before sending]\n{shown}");
-    assert!(shown.contains("The hub goes blank") && shown.contains("src/hub.rs:88"), "they see what goes");
+    assert!(
+        shown.contains("The hub goes blank") && shown.contains("src/hub.rs:88"),
+        "they see what goes"
+    );
     queue_feedback(&friend, f.clone(), "Eric").unwrap();
     let out = feedback_outbox(&friend);
     assert_eq!(out.len(), 1);
@@ -57,22 +60,41 @@ fn a_friend_sends_feedback_you_get_a_report_and_they_hear_your_answer() {
     // It arrives at your end over the pairing named "Priya".
     let said = heard_feedback(&you, "Priya", body).expect("filed");
     println!("LIVE [what you're told] {said}");
-    assert!(said.contains("Priya") && said.contains("The hub goes blank") && said.contains("number 1"), "{said}");
+    assert!(
+        said.contains("Priya") && said.contains("The hub goes blank") && said.contains("number 1"),
+        "{said}"
+    );
     feedback_delivered(&friend, id);
     assert!(feedback_outbox(&friend).is_empty(), "delivered once");
-    assert!(heard_feedback(&you, "Priya", body).is_none(), "the same feedback twice is filed once");
+    assert!(
+        heard_feedback(&you, "Priya", body).is_none(),
+        "the same feedback twice is filed once"
+    );
     let inbox = feedback_inbox(&you);
-    assert_eq!((inbox.len(), inbox[0].from.as_str(), inbox[0].status.clone()), (1, "Priya", FeedbackStatus::New));
+    assert_eq!(
+        (inbox.len(), inbox[0].from.as_str(), inbox[0].status.clone()),
+        (1, "Priya", FeedbackStatus::New)
+    );
     // The attached failure goes where fix briefs come from -- and on a
     // friend's say-so alone the build is NOT pulled; that's yours to decide.
     let reports = apply::failure_reports(&you);
     assert_eq!((reports.len(), reports[0].from.as_str()), (1, "Priya"));
-    assert!(!apply::is_halted(you.root(), &"cc".repeat(32)), "a friend's feedback doesn't stop your releases");
+    assert!(
+        !apply::is_halted(you.root(), &"cc".repeat(32)),
+        "a friend's feedback doesn't stop your releases"
+    );
     let brief = apply::fix_brief(&reports, "9.1.0").unwrap();
     assert!(brief.contains("Priya") && brief.contains("src/hub.rs:88"));
 
     // You answer; the friend hears it.
-    let to = answer_feedback(&you, 1, FeedbackStatus::Fixed("9.1.1".into()), "thanks -- the hub now waits for the palette", 200).unwrap();
+    let to = answer_feedback(
+        &you,
+        1,
+        FeedbackStatus::Fixed("9.1.1".into()),
+        "thanks -- the hub now waits for the palette",
+        200,
+    )
+    .unwrap();
     assert_eq!(to, "Priya");
     let answers = answers_out(&you);
     assert_eq!(answers.len(), 1);
@@ -80,13 +102,19 @@ fn a_friend_sends_feedback_you_get_a_report_and_they_hear_your_answer() {
     assert_eq!(ato, "Priya");
     let said = heard_answer(&friend, "Eric", abody).expect("they hear it");
     println!("LIVE [what the friend is told] {said}");
-    assert!(said.contains("fixed in 9.1.1") && said.contains("waits for the palette"), "{said}");
+    assert!(
+        said.contains("fixed in 9.1.1") && said.contains("waits for the palette"),
+        "{said}"
+    );
     answer_delivered(&you, aid);
     assert!(answers_out(&you).is_empty());
     let mine = feedback_sent(&friend);
     assert_eq!(mine[0].status, FeedbackStatus::Fixed("9.1.1".into()));
     assert_eq!(mine[0].replies.len(), 1);
-    assert!(heard_answer(&friend, "Eric", abody).is_none(), "the same answer twice is said once");
+    assert!(
+        heard_answer(&friend, "Eric", abody).is_none(),
+        "the same answer twice is said once"
+    );
 }
 
 #[test]
@@ -94,12 +122,25 @@ fn an_answer_is_taken_only_from_whoever_the_feedback_went_to_and_only_about_real
     let (friend, _) = fresh("answers");
     let f = compose_feedback("Typing goes wrong in Notepad", None, 1).unwrap();
     queue_feedback(&friend, f.clone(), "Eric").unwrap();
-    let answer = |id: &str| format!(r#"{{"id":"{id}","status":{{"state":"fixed","detail":"9.9.9"}},"note":"all fixed","at":5}}"#);
-    assert!(heard_answer(&friend, "Mallory", &answer(&f.id)).is_none(), "someone else can't close your feedback");
-    assert!(heard_answer(&friend, "Eric", &answer("not-something-you-sent")).is_none(), "nor invent one");
+    let answer = |id: &str| {
+        format!(
+            r#"{{"id":"{id}","status":{{"state":"fixed","detail":"9.9.9"}},"note":"all fixed","at":5}}"#
+        )
+    };
+    assert!(
+        heard_answer(&friend, "Mallory", &answer(&f.id)).is_none(),
+        "someone else can't close your feedback"
+    );
+    assert!(
+        heard_answer(&friend, "Eric", &answer("not-something-you-sent")).is_none(),
+        "nor invent one"
+    );
     assert!(heard_answer(&friend, "Eric", "not json").is_none());
     assert_eq!(feedback_sent(&friend)[0].status, FeedbackStatus::New);
-    assert!(heard_answer(&friend, "eric", &answer(&f.id)).is_some(), "your name for them, in any case");
+    assert!(
+        heard_answer(&friend, "eric", &answer(&f.id)).is_some(),
+        "your name for them, in any case"
+    );
 }
 
 #[test]
@@ -112,18 +153,41 @@ fn what_arrives_is_checked_and_the_sender_is_the_pairing_not_the_body() {
     heard_feedback(&you, "Priya", &body).unwrap();
     let got = &feedback_inbox(&you)[0];
     assert_eq!(got.from, "Priya", "who sent it is the pairing's name");
-    assert_eq!(got.status, FeedbackStatus::New, "a sender can't mark their own feedback fixed");
-    assert!(heard_feedback(&you, "Priya", "{}").is_none(), "no words, no feedback");
+    assert_eq!(
+        got.status,
+        FeedbackStatus::New,
+        "a sender can't mark their own feedback fixed"
+    );
+    assert!(
+        heard_feedback(&you, "Priya", "{}").is_none(),
+        "no words, no feedback"
+    );
     assert!(heard_feedback(&you, "Priya", &"x".repeat(MAX_FEEDBACK_BYTES + 1)).is_none());
-    let long = Feedback { id: "big".into(), words: "w".repeat(MAX_WORDS_CHARS + 1), ..Default::default() };
+    let long = Feedback {
+        id: "big".into(),
+        words: "w".repeat(MAX_WORDS_CHARS + 1),
+        ..Default::default()
+    };
     assert!(heard_feedback(&you, "Priya", &serde_json::to_string(&long).unwrap()).is_none());
-    assert!(compose_feedback("   ", None, 1).is_err(), "nothing written, nothing to send");
+    assert!(
+        compose_feedback("   ", None, 1).is_err(),
+        "nothing written, nothing to send"
+    );
     // A friend's attached failure is re-sorted on your side.
     let mut a = failure();
     a.because = FailedBecause::ThisMachine;
-    let with = Feedback { id: "f2".into(), words: "update failed".into(), attached: Some(a), ..Default::default() };
+    let with = Feedback {
+        id: "f2".into(),
+        words: "update failed".into(),
+        attached: Some(a),
+        ..Default::default()
+    };
     heard_feedback(&you, "Priya", &serde_json::to_string(&with).unwrap()).unwrap();
-    assert_eq!(apply::failure_reports(&you)[0].because, FailedBecause::TheBuild, "a crash is the build's, whatever the sender said");
+    assert_eq!(
+        apply::failure_reports(&you)[0].because,
+        FailedBecause::TheBuild,
+        "a crash is the build's, whatever the sender said"
+    );
 }
 
 #[test]
@@ -134,12 +198,18 @@ fn you_decide_to_hold_a_build_after_reading_the_feedback() {
     assert!(atlas::update_courier::chunk(you.root(), &sha, 0).is_some());
     apply::hold_release(&you, &sha);
     assert!(apply::is_halted(you.root(), &sha));
-    assert!(atlas::update_courier::chunk(you.root(), &sha, 0).is_none(), "held: not handed out");
+    assert!(
+        atlas::update_courier::chunk(you.root(), &sha, 0).is_none(),
+        "held: not handed out"
+    );
 }
 
 #[test]
 fn the_feedback_doors_take_it_from_a_known_peer_and_nothing_else() {
-    let door = std::sync::Mutex::new(atlas::kin::Door::new(vec![atlas::kin::Peer::new("Priya", "priya-token")]));
+    let door = std::sync::Mutex::new(atlas::kin::Door::new(vec![atlas::kin::Peer::new(
+        "Priya",
+        "priya-token",
+    )]));
     let post = |path: &str, body: String| atlas::server::Request {
         method: "POST".into(),
         path: path.into(),
@@ -150,17 +220,31 @@ fn the_feedback_doors_take_it_from_a_known_peer_and_nothing_else() {
     };
     let body = serde_json::json!({ "body": "{\"id\":\"f1\",\"words\":\"broken\"}" }).to_string();
     match atlas::server::route_feedback(&post("/feedback", body.clone()), &door, "priya-token") {
-        Some(atlas::server::Action::PeerFeedback(f)) => assert_eq!(f.from, "Priya", "from the token"),
+        Some(atlas::server::Action::PeerFeedback(f)) => {
+            assert_eq!(f.from, "Priya", "from the token")
+        }
         other => panic!("{other:?}"),
     }
-    match atlas::server::route_feedback(&post("/feedback-answer", body.clone()), &door, "priya-token") {
+    match atlas::server::route_feedback(
+        &post("/feedback-answer", body.clone()),
+        &door,
+        "priya-token",
+    ) {
         Some(atlas::server::Action::PeerFeedbackAnswer(f)) => assert_eq!(f.from, "Priya"),
         other => panic!("{other:?}"),
     }
-    assert!(atlas::server::route_feedback(&post("/feedback", body.clone()), &door, "stranger").is_none());
-    assert!(atlas::server::route_feedback(&post("/chat", body), &door, "priya-token").is_none(), "wrong door");
+    assert!(
+        atlas::server::route_feedback(&post("/feedback", body.clone()), &door, "stranger")
+            .is_none()
+    );
+    assert!(
+        atlas::server::route_feedback(&post("/chat", body), &door, "priya-token").is_none(),
+        "wrong door"
+    );
     let huge = serde_json::json!({ "body": "x".repeat(MAX_FEEDBACK_BYTES + 1) }).to_string();
-    assert!(atlas::server::route_feedback(&post("/feedback", huge), &door, "priya-token").is_none());
+    assert!(
+        atlas::server::route_feedback(&post("/feedback", huge), &door, "priya-token").is_none()
+    );
 }
 
 /// The real program on your side: `atlas feedback` lists what came in, and
@@ -186,14 +270,30 @@ fn the_real_feedback_command_lists_and_answers() {
     };
     let out = run(&["feedback"], "");
     println!("LIVE [atlas feedback] {out}");
-    assert!(out.contains("1. Priya") && out.contains("Settings page won't save") && out.contains("[update failure attached]"), "{out}");
-    let out = run(&["feedback", "reply", "1", "fixed", "9.1.1", "sorted", "in", "the", "next", "one"], "");
+    assert!(
+        out.contains("1. Priya")
+            && out.contains("Settings page won't save")
+            && out.contains("[update failure attached]"),
+        "{out}"
+    );
+    let out = run(
+        &[
+            "feedback", "reply", "1", "fixed", "9.1.1", "sorted", "in", "the", "next", "one",
+        ],
+        "",
+    );
     println!("LIVE [atlas feedback reply] {out}");
-    assert!(out.contains("Marked fixed in 9.1.1") && out.contains("Priya"), "{out}");
+    assert!(
+        out.contains("Marked fixed in 9.1.1") && out.contains("Priya"),
+        "{out}"
+    );
     let queued = answers_out(&you);
     assert_eq!(queued.len(), 1);
     assert!(queued[0].1.contains("sorted in the next one"));
-    assert_eq!(feedback_inbox(&you)[0].status, FeedbackStatus::Fixed("9.1.1".into()));
+    assert_eq!(
+        feedback_inbox(&you)[0].status,
+        FeedbackStatus::Fixed("9.1.1".into())
+    );
     // With no release channel, there's no one to send to -- said, nothing queued.
     let out = run(&["feedback", "send"], "it broke\nyes\n");
     assert!(out.contains("isn't in anyone's release channel"), "{out}");

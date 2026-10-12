@@ -1,8 +1,7 @@
 use atlas::editors::{best_for, used, where_to_look, without_anything, Editor, EditorConfig, Job};
 use atlas::grade::{
-    audio_chain, check_audio, check_picture, preset_filter, presets,
-    recording_advice, GradeConfig,
-    spoken as grade_spoken, Audio, Picture, SafeArea, MAX_TRUE_PEAK_DB, TARGET_LUFS,
+    audio_chain, check_audio, check_picture, preset_filter, presets, recording_advice,
+    spoken as grade_spoken, Audio, GradeConfig, Picture, SafeArea, MAX_TRUE_PEAK_DB, TARGET_LUFS,
 };
 use atlas::judgment::JudgmentConfig;
 use atlas::reach::{
@@ -13,27 +12,58 @@ use atlas::reach::{
 /// `judgment`'s default floor is trading's thirty. `reach` narrows it to its
 /// own, and so must anything testing `reach`.
 fn judging() -> JudgmentConfig {
-    JudgmentConfig { min_seen: ENOUGH_POSTS, ..JudgmentConfig::default() }
+    JudgmentConfig {
+        min_seen: ENOUGH_POSTS,
+        ..JudgmentConfig::default()
+    }
 }
 
 fn quiet_audio() -> Audio {
-    Audio { lufs: -22.0, true_peak_db: -6.0, range_db: 9.0, noise_floor_db: -60.0,
-            harsh_s: false, rumble: false }
+    Audio {
+        lufs: -22.0,
+        true_peak_db: -6.0,
+        range_db: 9.0,
+        noise_floor_db: -60.0,
+        harsh_s: false,
+        rumble: false,
+    }
 }
 
 fn good_audio() -> Audio {
-    Audio { lufs: -14.2, true_peak_db: -1.4, range_db: 8.0, noise_floor_db: -62.0,
-            harsh_s: false, rumble: false }
+    Audio {
+        lufs: -14.2,
+        true_peak_db: -1.4,
+        range_db: 8.0,
+        noise_floor_db: -62.0,
+        harsh_s: false,
+        rumble: false,
+    }
 }
 
 fn crushed() -> Picture {
-    Picture { clipped_black: 0.09, clipped_white: 0.002, brightness: 0.42,
-              skin_kelvin: Some(5400), saturation: 1.1, width: 1080, height: 1920, fps: 30.0 }
+    Picture {
+        clipped_black: 0.09,
+        clipped_white: 0.002,
+        brightness: 0.42,
+        skin_kelvin: Some(5400),
+        saturation: 1.1,
+        width: 1080,
+        height: 1920,
+        fps: 30.0,
+    }
 }
 
 fn good_picture() -> Picture {
-    Picture { clipped_black: 0.004, clipped_white: 0.001, brightness: 0.5,
-              skin_kelvin: Some(5600), saturation: 1.08, width: 1080, height: 1920, fps: 30.0 }
+    Picture {
+        clipped_black: 0.004,
+        clipped_white: 0.001,
+        brightness: 0.5,
+        skin_kelvin: Some(5600),
+        saturation: 1.08,
+        width: 1080,
+        height: 1920,
+        fps: 30.0,
+    }
 }
 
 // ================= it's a number, not a taste =================
@@ -50,8 +80,15 @@ fn being_quiet_is_explained_as_what_the_platform_does_to_you() {
 
 #[test]
 fn every_note_carries_the_measurement_behind_it() {
-    for n in check_audio(&quiet_audio(), &GradeConfig::default()).iter().chain(check_picture(&crushed()).iter()) {
-        assert!(!n.because.is_empty(), "\"{}\" has no number behind it", n.what);
+    for n in check_audio(&quiet_audio(), &GradeConfig::default())
+        .iter()
+        .chain(check_picture(&crushed()).iter())
+    {
+        assert!(
+            !n.because.is_empty(),
+            "\"{}\" has no number behind it",
+            n.what
+        );
         assert!(!n.fix.is_empty());
     }
 }
@@ -62,22 +99,34 @@ fn crushed_blacks_are_the_first_thing_said_about_a_picture() {
     // to themselves reaching for contrast.
     let n = check_picture(&crushed());
     assert_eq!(n[0].what, "the shadows are crushed");
-    assert!(n[0].fix.contains("Contrast comes from the curve, not the floor"));
+    assert!(n[0]
+        .fix
+        .contains("Contrast comes from the curve, not the floor"));
 }
 
 #[test]
 fn skin_tone_off_is_named_as_orange_or_blue_rather_than_in_kelvin() {
-    let orange = Picture { skin_kelvin: Some(3800), ..good_picture() };
+    let orange = Picture {
+        skin_kelvin: Some(3800),
+        ..good_picture()
+    };
     let n = check_picture(&orange);
     assert!(n.iter().any(|n| n.what.contains("orange")));
 
-    let blue = Picture { skin_kelvin: Some(7800), ..good_picture() };
+    let blue = Picture {
+        skin_kelvin: Some(7800),
+        ..good_picture()
+    };
     assert!(check_picture(&blue).iter().any(|n| n.what.contains("blue")));
 }
 
 #[test]
 fn letterboxing_is_called_out_because_bars_read_as_reposted() {
-    let landscape = Picture { width: 1920, height: 1080, ..good_picture() };
+    let landscape = Picture {
+        width: 1920,
+        height: 1080,
+        ..good_picture()
+    };
     let n = check_picture(&landscape);
     assert!(n.iter().any(|n| n.fix.contains("bars read as reposted")));
 }
@@ -85,32 +134,49 @@ fn letterboxing_is_called_out_because_bars_read_as_reposted() {
 #[test]
 fn something_that_needs_re_recording_is_told_apart_from_something_fixable() {
     // Fixing it in the edit every time is a tax you pay forever.
-    let blown = Picture { clipped_white: 0.12, ..good_picture() };
+    let blown = Picture {
+        clipped_white: 0.12,
+        ..good_picture()
+    };
     let n = check_picture(&blown);
     let highlight = n.iter().find(|n| n.what.contains("highlights")).unwrap();
     assert!(!highlight.fixable_now);
 
-    let low_fps = Picture { fps: 24.0, ..good_picture() };
+    let low_fps = Picture {
+        fps: 24.0,
+        ..good_picture()
+    };
     let advice = recording_advice(&check_picture(&low_fps));
     assert!(!advice.is_empty(), "and it becomes advice about next time");
 }
 
 #[test]
 fn good_material_is_left_alone() {
-    let said = grade_spoken(&check_audio(&good_audio(), &GradeConfig::default()), &check_picture(&good_picture()));
+    let said = grade_spoken(
+        &check_audio(&good_audio(), &GradeConfig::default()),
+        &check_picture(&good_picture()),
+    );
     assert!(said.contains("Nothing worth changing"));
 }
 
 #[test]
 fn the_audio_chain_normalises_last_because_anything_after_undoes_it() {
-    let noisy = Audio { rumble: true, harsh_s: true, range_db: 18.0, noise_floor_db: -40.0,
-                        ..quiet_audio() };
+    let noisy = Audio {
+        rumble: true,
+        harsh_s: true,
+        range_db: 18.0,
+        noise_floor_db: -40.0,
+        ..quiet_audio()
+    };
     let chain = audio_chain(&noisy);
     assert!(chain.last().unwrap().contains("loudnorm"));
     assert!(chain[0].contains("highpass"), "rumble goes first");
     assert!(chain.iter().any(|c| c.contains("acompressor")));
     assert!(chain.last().unwrap().contains(&format!("I={TARGET_LUFS}")));
-    assert!(chain.last().unwrap().contains(&format!("TP={MAX_TRUE_PEAK_DB}")));
+    assert!(chain
+        .last()
+        .unwrap()
+        .contains(&format!("TP={MAX_TRUE_PEAK_DB}")));
 }
 
 #[test]
@@ -123,7 +189,10 @@ fn clean_audio_gets_only_the_normalising() {
 #[test]
 fn text_under_the_interface_is_text_nobody_reads() {
     let s = SafeArea::typical();
-    assert!(!s.clears(50.0, 90.0), "bottom is covered by the caption and buttons");
+    assert!(
+        !s.clears(50.0, 90.0),
+        "bottom is covered by the caption and buttons"
+    );
     assert!(!s.clears(92.0, 50.0), "right side is the button column");
     assert!(s.clears(40.0, 60.0));
 }
@@ -142,8 +211,13 @@ fn the_presets_are_few_and_restrained() {
     // The ones that look like a filter are the ones that date.
     let p = presets();
     assert!(p.len() <= 5);
-    assert!(p.iter().all(|p| p.saturation <= 1.1), "nothing oversaturated");
-    assert!(p.iter().all(|p| !p.what_it_is.is_empty() && !p.for_what.is_empty()));
+    assert!(
+        p.iter().all(|p| p.saturation <= 1.1),
+        "nothing oversaturated"
+    );
+    assert!(p
+        .iter()
+        .all(|p| !p.what_it_is.is_empty() && !p.for_what.is_empty()));
 }
 
 #[test]
@@ -157,20 +231,48 @@ fn every_preset_is_a_filter_ffmpeg_can_apply() {
 
 // ================= one post is not a finding =================
 
-fn post(id: &str, at: u64, views: u64, held: f32, completion: f32, hook: &str, topic: &str, secs: f32) -> Post {
+fn post(
+    id: &str,
+    at: u64,
+    views: u64,
+    held: f32,
+    completion: f32,
+    hook: &str,
+    topic: &str,
+    secs: f32,
+) -> Post {
     Post {
-        id: id.into(), at, views, held_at_three: held, completion,
-        saves: (views / 50).max(1), shares: (views / 100).max(1), comments: 5, follows: views / 500,
-        topic: topic.into(), hook: hook.into(), seconds: secs,
+        id: id.into(),
+        at,
+        views,
+        held_at_three: held,
+        completion,
+        saves: (views / 50).max(1),
+        shares: (views / 100).max(1),
+        comments: 5,
+        follows: views / 500,
+        topic: topic.into(),
+        hook: hook.into(),
+        seconds: secs,
     }
 }
 
 #[test]
 fn one_post_is_never_reported_as_a_finding() {
     // The single most expensive mistake in content.
-    let one = vec![post("a", 0, 90_000, 0.8, 0.6, "contradiction", "fees", 24.0)];
+    let one = vec![post(
+        "a",
+        0,
+        90_000,
+        0.8,
+        0.6,
+        "contradiction",
+        "fees",
+        24.0,
+    )];
     assert!(findings(&one, &judging()).is_empty());
-    assert!(reach_spoken(&one, &ReachConfig::default(), &judging()).contains("not enough to tell you anything I'd trust"));
+    assert!(reach_spoken(&one, &ReachConfig::default(), &judging())
+        .contains("not enough to tell you anything I'd trust"));
 }
 
 #[test]
@@ -191,13 +293,34 @@ fn a_group_carried_by_one_outlier_is_not_called_consistent() {
 fn a_pattern_across_several_posts_is_reported_with_how_sure_it_is() {
     let mut posts = Vec::new();
     for i in 0..5 {
-        posts.push(post(&format!("c{i}"), i * 1000, 5000, 0.78, 0.5, "contradiction", "fees", 24.0));
+        posts.push(post(
+            &format!("c{i}"),
+            i * 1000,
+            5000,
+            0.78,
+            0.5,
+            "contradiction",
+            "fees",
+            24.0,
+        ));
     }
     for i in 0..5 {
-        posts.push(post(&format!("q{i}"), 5000 + i * 1000, 5000, 0.3, 0.12, "question", "general", 55.0));
+        posts.push(post(
+            &format!("q{i}"),
+            5000 + i * 1000,
+            5000,
+            0.3,
+            0.12,
+            "question",
+            "general",
+            55.0,
+        ));
     }
     let f = findings(&posts, &judging());
-    let best = f.iter().find(|f| f.what.contains("contradiction")).expect("should find it");
+    let best = f
+        .iter()
+        .find(|f| f.what.contains("contradiction"))
+        .expect("should find it");
     assert!(best.sure.worth_acting_on());
     assert!(best.lift > 1.25);
     assert!(best.across >= 4);
@@ -207,10 +330,28 @@ fn a_pattern_across_several_posts_is_reported_with_how_sure_it_is() {
 fn direction_is_a_trend_not_a_comparison_with_the_last_post() {
     let mut posts = Vec::new();
     for i in 0..5 {
-        posts.push(post(&format!("old{i}"), i * 1000, 2000, 0.35, 0.15, "question", "x", 50.0));
+        posts.push(post(
+            &format!("old{i}"),
+            i * 1000,
+            2000,
+            0.35,
+            0.15,
+            "question",
+            "x",
+            50.0,
+        ));
     }
     for i in 0..5 {
-        posts.push(post(&format!("new{i}"), 10_000 + i * 1000, 2000, 0.75, 0.5, "contradiction", "x", 24.0));
+        posts.push(post(
+            &format!("new{i}"),
+            10_000 + i * 1000,
+            2000,
+            0.75,
+            0.5,
+            "contradiction",
+            "x",
+            24.0,
+        ));
     }
     let (d, why) = direction(&posts, &ReachConfig::default(), &judging());
     assert_eq!(d, Direction::Up);
@@ -220,7 +361,10 @@ fn direction_is_a_trend_not_a_comparison_with_the_last_post() {
 #[test]
 fn too_few_posts_gives_no_direction_rather_than_a_guess() {
     let few = vec![post("a", 0, 100, 0.5, 0.3, "x", "y", 20.0)];
-    assert_eq!(direction(&few, &ReachConfig::default(), &judging()).0, Direction::Unclear);
+    assert_eq!(
+        direction(&few, &ReachConfig::default(), &judging()).0,
+        Direction::Unclear
+    );
 }
 
 /// Nine ordinary posts, so there is a distribution to be unusual against.
@@ -232,7 +376,18 @@ fn too_few_posts_gives_no_direction_rather_than_a_guess() {
 /// them to copy it, and that needs more than a "worth watching" sample.
 fn ordinary_run() -> Vec<Post> {
     (0..9)
-        .map(|i| post(&format!("n{i}"), i * 1000, 2000, 0.6, 0.4, "contradiction", "fees", 24.0))
+        .map(|i| {
+            post(
+                &format!("n{i}"),
+                i * 1000,
+                2000,
+                0.6,
+                0.4,
+                "contradiction",
+                "fees",
+                24.0,
+            )
+        })
         .collect()
 }
 
@@ -240,7 +395,9 @@ fn ordinary_run() -> Vec<Post> {
 fn a_viral_post_that_did_not_hold_is_named_as_exactly_that() {
     // It got shown around. It didn't land. Building on it wastes a month.
     let mut posts = ordinary_run();
-    posts.push(post("viral", 9000, 400_000, 0.28, 0.06, "question", "random", 55.0));
+    posts.push(post(
+        "viral", 9000, 400_000, 0.28, 0.06, "question", "random", 55.0,
+    ));
 
     let (p, note) = outlier(&posts, &judging()).expect("should spot it");
     assert_eq!(p.id, "viral");
@@ -251,7 +408,16 @@ fn a_viral_post_that_did_not_hold_is_named_as_exactly_that() {
 #[test]
 fn a_viral_post_that_did_hold_is_still_only_one_post() {
     let mut posts = ordinary_run();
-    posts.push(post("viral", 9000, 400_000, 0.81, 0.55, "contradiction", "fees", 22.0));
+    posts.push(post(
+        "viral",
+        9000,
+        400_000,
+        0.81,
+        0.55,
+        "contradiction",
+        "fees",
+        22.0,
+    ));
     let (_, note) = outlier(&posts, &judging()).unwrap();
     assert!(note.contains("still one post"), "{note}");
 }
@@ -264,12 +430,23 @@ fn a_lucky_post_and_a_good_post_are_told_apart() {
     // more views than usual; one was a better post underneath and one was
     // not, and "5x your usual views" says the same thing about both.
     let mut lucky = ordinary_run();
-    lucky.push(post("lucky", 9000, 400_000, 0.22, 0.05, "question", "random", 55.0));
+    lucky.push(post(
+        "lucky", 9000, 400_000, 0.22, 0.05, "question", "random", 55.0,
+    ));
     let (_, said) = outlier(&lucky, &judging()).expect("spotted");
     assert!(said.contains("weaker post than you usually make"), "{said}");
 
     let mut good = ordinary_run();
-    good.push(post("good", 9000, 400_000, 0.88, 0.72, "contradiction", "fees", 22.0));
+    good.push(post(
+        "good",
+        9000,
+        400_000,
+        0.88,
+        0.72,
+        "contradiction",
+        "fees",
+        22.0,
+    ));
     let (_, said) = outlier(&good, &judging()).expect("spotted");
     assert!(said.contains("better post than you usually make"), "{said}");
 }
@@ -281,18 +458,64 @@ fn whether_it_held_is_measured_against_your_own_posts() {
     // hold 0.75 has a poor one at 0.62. A fixed line calls the first a
     // failure and the second a success.
     let mut low: Vec<Post> = (0..9)
-        .map(|i| post(&format!("l{i}"), i * 1000, 2000, 0.35, 0.3, "contradiction", "fees", 24.0))
+        .map(|i| {
+            post(
+                &format!("l{i}"),
+                i * 1000,
+                2000,
+                0.35,
+                0.3,
+                "contradiction",
+                "fees",
+                24.0,
+            )
+        })
         .collect();
-    low.push(post("theirs", 9000, 400_000, 0.55, 0.45, "contradiction", "fees", 22.0));
+    low.push(post(
+        "theirs",
+        9000,
+        400_000,
+        0.55,
+        0.45,
+        "contradiction",
+        "fees",
+        22.0,
+    ));
     let (_, said) = outlier(&low, &judging()).expect("spotted");
-    assert!(said.contains("and it held"), "0.55 is good for this person: {said}");
+    assert!(
+        said.contains("and it held"),
+        "0.55 is good for this person: {said}"
+    );
 
     let mut high: Vec<Post> = (0..9)
-        .map(|i| post(&format!("h{i}"), i * 1000, 2000, 0.75, 0.6, "contradiction", "fees", 24.0))
+        .map(|i| {
+            post(
+                &format!("h{i}"),
+                i * 1000,
+                2000,
+                0.75,
+                0.6,
+                "contradiction",
+                "fees",
+                24.0,
+            )
+        })
         .collect();
-    high.push(post("theirs", 9000, 400_000, 0.62, 0.5, "contradiction", "fees", 22.0));
+    high.push(post(
+        "theirs",
+        9000,
+        400_000,
+        0.62,
+        0.5,
+        "contradiction",
+        "fees",
+        22.0,
+    ));
     let (_, said) = outlier(&high, &judging()).expect("spotted");
-    assert!(said.contains("didn't hold"), "0.62 is poor for this person: {said}");
+    assert!(
+        said.contains("didn't hold"),
+        "0.62 is poor for this person: {said}"
+    );
 }
 
 #[test]
@@ -309,11 +532,25 @@ fn a_huge_multiple_of_a_small_median_is_not_an_outlier_if_several_did_well() {
     let run: Vec<Post> = views
         .iter()
         .enumerate()
-        .map(|(i, v)| post(&format!("q{i}"), i as u64 * 1000, *v, 0.6, 0.4, "contradiction", "fees", 24.0))
+        .map(|(i, v)| {
+            post(
+                &format!("q{i}"),
+                i as u64 * 1000,
+                *v,
+                0.6,
+                0.4,
+                "contradiction",
+                "fees",
+                24.0,
+            )
+        })
         .collect();
 
     let multiple = 800.0 / 10.0;
-    assert!(multiple > 5.0, "the fixture must clear the old rule: {multiple}x");
+    assert!(
+        multiple > 5.0,
+        "the fixture must clear the old rule: {multiple}x"
+    );
     assert!(
         outlier(&run, &judging()).is_none(),
         "it called the best of four good posts an outlier"
@@ -321,15 +558,37 @@ fn a_huge_multiple_of_a_small_median_is_not_an_outlier_if_several_did_well() {
 
     // And the control: the same run with one post genuinely far out.
     let mut real = run.clone();
-    real.push(post("far", 9000, 40_000, 0.6, 0.4, "contradiction", "fees", 24.0));
+    real.push(post(
+        "far",
+        9000,
+        40_000,
+        0.6,
+        0.4,
+        "contradiction",
+        "fees",
+        24.0,
+    ));
     assert!(outlier(&real, &judging()).is_some(), "it missed a real one");
 }
 
 #[test]
 fn too_few_posts_to_have_a_distribution_says_nothing() {
     let four: Vec<Post> = (0..3)
-        .map(|i| post(&format!("f{i}"), i * 1000, 2000, 0.6, 0.4, "contradiction", "fees", 24.0))
-        .chain(std::iter::once(post("viral", 9000, 400_000, 0.9, 0.7, "x", "y", 22.0)))
+        .map(|i| {
+            post(
+                &format!("f{i}"),
+                i * 1000,
+                2000,
+                0.6,
+                0.4,
+                "contradiction",
+                "fees",
+                24.0,
+            )
+        })
+        .chain(std::iter::once(post(
+            "viral", 9000, 400_000, 0.9, 0.7, "x", "y", 22.0,
+        )))
         .collect();
     assert!(
         outlier(&four, &judging()).is_none(),
@@ -347,8 +606,26 @@ fn how_good_a_post_was_is_measured_against_your_own_posts() {
     // rate happens to sit near 0.05. If it is 0.005 the "0.2 weight" was
     // really 0.02.
     let posts = ordinary_run();
-    let better = post("better", 9000, 2000, 0.85, 0.7, "contradiction", "fees", 22.0);
-    let worse = post("worse", 9000, 2000, 0.3, 0.15, "contradiction", "fees", 22.0);
+    let better = post(
+        "better",
+        9000,
+        2000,
+        0.85,
+        0.7,
+        "contradiction",
+        "fees",
+        22.0,
+    );
+    let worse = post(
+        "worse",
+        9000,
+        2000,
+        0.3,
+        0.15,
+        "contradiction",
+        "fees",
+        22.0,
+    );
 
     let mut with_better = posts.clone();
     with_better.push(better.clone());
@@ -375,7 +652,16 @@ fn a_part_with_nothing_behind_it_is_named_rather_than_counted_as_ordinary() {
             shares: 5,
             follows: 1,
             views: 2000,
-            ..post(&format!("k{i}"), i * 1000, 2000, 0.4 + i as f32 * 0.03, 0.3, "c", "f", 24.0)
+            ..post(
+                &format!("k{i}"),
+                i * 1000,
+                2000,
+                0.4 + i as f32 * 0.03,
+                0.3,
+                "c",
+                "f",
+                24.0,
+            )
         })
         .collect();
     let (_score, thin) = quality_against(&flat[0], &flat, &judging());
@@ -388,9 +674,15 @@ fn the_weights_are_weights_and_nothing_else() {
     // with or changed without re-measuring anything. No scaling constant
     // hides among them.
     let total: f64 = WHAT_MAKES_A_POST_GOOD.iter().map(|(_, w)| w).sum();
-    assert!((total - 1.0).abs() < 1e-9, "the weights no longer add to one: {total}");
+    assert!(
+        (total - 1.0).abs() < 1e-9,
+        "the weights no longer add to one: {total}"
+    );
     for (name, w) in WHAT_MAKES_A_POST_GOOD {
-        assert!(*w > 0.0 && *w < 1.0, "{name} carries a scaling factor, not a weight: {w}");
+        assert!(
+            *w > 0.0 && *w < 1.0,
+            "{name} carries a scaling factor, not a weight: {w}"
+        );
         assert!(name.len() > 5, "{name:?} is not something to say out loud");
     }
     // Held-at-three counts most, because nothing downstream happens without
@@ -445,7 +737,10 @@ fn premiere_is_used_for_handing_you_something_to_finish() {
 fn owning_premiere_does_not_change_how_the_simple_jobs_are_done() {
     // Opening Premiere to normalise audio is slower and no better.
     for job in [Job::Loudness, Job::Trim, Job::Captions, Job::Crop] {
-        let (tool, _) = best_for(job, &[Editor::Premiere, Editor::AfterEffects, Editor::Photoshop]);
+        let (tool, _) = best_for(
+            job,
+            &[Editor::Premiere, Editor::AfterEffects, Editor::Photoshop],
+        );
         assert_eq!(tool, Editor::Ffmpeg, "{job:?}");
     }
 }
@@ -453,7 +748,9 @@ fn owning_premiere_does_not_change_how_the_simple_jobs_are_done() {
 #[test]
 fn final_cut_can_be_prepared_for_but_not_driven() {
     assert!(!Editor::FinalCut.drivable());
-    assert!(Editor::FinalCut.how().contains("Atlas prepares, you finish"));
+    assert!(Editor::FinalCut
+        .how()
+        .contains("Atlas prepares, you finish"));
     assert!(Editor::Resolve.drivable());
     assert!(Editor::Premiere.how().contains("ExtendScript"));
 }
@@ -466,7 +763,11 @@ fn atlas_says_when_it_used_something_your_friend_would_not_have() {
     assert!(said.contains("Used Premiere Pro"));
     assert!(said.contains("On a machine without it I'd have done it with ffmpeg"));
 
-    assert_eq!(used(Editor::Ffmpeg, Job::Trim, &cfg), "", "nothing to say about the default");
+    assert_eq!(
+        used(Editor::Ffmpeg, Job::Trim, &cfg),
+        "",
+        "nothing to say about the default"
+    );
 }
 
 #[test]

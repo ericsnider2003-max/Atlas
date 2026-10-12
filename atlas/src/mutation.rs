@@ -36,15 +36,26 @@ pub struct Survivor {
 impl Survivor {
     /// "src/x.rs::total (line 12): replaced with 0".
     pub fn said(&self) -> String {
-        let f = if self.function.is_empty() { String::new() } else { format!("::{}", self.function) };
-        format!("{}{f} (line {}): replaced with {}", self.file, self.line, self.replacement)
+        let f = if self.function.is_empty() {
+            String::new()
+        } else {
+            format!("::{}", self.function)
+        };
+        format!(
+            "{}{f} (line {}): replaced with {}",
+            self.file, self.line, self.replacement
+        )
     }
 }
 
 /// Where cargo-mutants writes its results under its output folder.
 fn results_dir(out: &std::path::Path) -> std::path::PathBuf {
     let inner = out.join("mutants.out");
-    if inner.is_dir() { inner } else { out.to_path_buf() }
+    if inner.is_dir() {
+        inner
+    } else {
+        out.to_path_buf()
+    }
 }
 
 /// The survivors from a run's output folder: `outcomes.json` when it reads,
@@ -56,7 +67,9 @@ pub fn read_survivors(out: &std::path::Path) -> Vec<Survivor> {
             return s;
         }
     }
-    std::fs::read_to_string(dir.join("missed.txt")).map(|t| from_missed_txt(&t)).unwrap_or_default()
+    std::fs::read_to_string(dir.join("missed.txt"))
+        .map(|t| from_missed_txt(&t))
+        .unwrap_or_default()
 }
 
 /// Survivors from `outcomes.json`: every outcome whose summary is
@@ -70,11 +83,22 @@ pub fn from_outcomes_json(json: &str) -> Option<Vec<Survivor>> {
         if o.get("summary").and_then(|s| s.as_str()) != Some("MissedMutant") {
             continue;
         }
-        let m = o.get("scenario").and_then(|s| s.get("Mutant")).unwrap_or(&serde_json::Value::Null);
-        let file = m.get("file").and_then(|f| f.as_str()).unwrap_or("").to_string();
+        let m = o
+            .get("scenario")
+            .and_then(|s| s.get("Mutant"))
+            .unwrap_or(&serde_json::Value::Null);
+        let file = m
+            .get("file")
+            .and_then(|f| f.as_str())
+            .unwrap_or("")
+            .to_string();
         let function = m
             .get("function")
-            .and_then(|f| f.get("function_name").and_then(|n| n.as_str()).or_else(|| f.as_str()))
+            .and_then(|f| {
+                f.get("function_name")
+                    .and_then(|n| n.as_str())
+                    .or_else(|| f.as_str())
+            })
             .unwrap_or("")
             .to_string();
         let line = m
@@ -84,9 +108,18 @@ pub fn from_outcomes_json(json: &str) -> Option<Vec<Survivor>> {
             .and_then(|l| l.as_u64())
             .and_then(|l| u32::try_from(l).ok())
             .unwrap_or(0);
-        let replacement = m.get("replacement").and_then(|r| r.as_str()).unwrap_or("").to_string();
+        let replacement = m
+            .get("replacement")
+            .and_then(|r| r.as_str())
+            .unwrap_or("")
+            .to_string();
         if !file.is_empty() {
-            out.push(Survivor { file, function, line, replacement });
+            out.push(Survivor {
+                file,
+                function,
+                line,
+                replacement,
+            });
         }
     }
     Some(out)
@@ -108,7 +141,12 @@ pub fn from_missed_txt(text: &str) -> Vec<Survivor> {
             let rest = rest.strip_prefix("replace ").unwrap_or(rest);
             let (what, with) = rest.split_once(" with ").unwrap_or((rest, ""));
             let function = what.split(" -> ").next().unwrap_or(what).trim().to_string();
-            Some(Survivor { file, function, line, replacement: with.trim().to_string() })
+            Some(Survivor {
+                file,
+                function,
+                line,
+                replacement: with.trim().to_string(),
+            })
         })
         .collect()
 }
@@ -122,10 +160,21 @@ pub fn diff_of(path: &str, before: &str, after: &str) -> String {
         return String::new();
     }
     let head = a.iter().zip(&b).take_while(|(x, y)| x == y).count();
-    let tail = a[head..].iter().rev().zip(b[head..].iter().rev()).take_while(|(x, y)| x == y).count();
+    let tail = a[head..]
+        .iter()
+        .rev()
+        .zip(b[head..].iter().rev())
+        .take_while(|(x, y)| x == y)
+        .count();
     let old = &a[head..a.len() - tail];
     let new = &b[head..b.len() - tail];
-    let mut d = format!("--- a/{path}\n+++ b/{path}\n@@ -{},{} +{},{} @@\n", head + 1, old.len(), head + 1, new.len());
+    let mut d = format!(
+        "--- a/{path}\n+++ b/{path}\n@@ -{},{} +{},{} @@\n",
+        head + 1,
+        old.len(),
+        head + 1,
+        new.len()
+    );
     for l in old {
         d.push_str(&format!("-{l}\n"));
     }
@@ -136,14 +185,27 @@ pub fn diff_of(path: &str, before: &str, after: &str) -> String {
 }
 
 /// Is cargo-mutants installed where `cargo` runs?
-pub fn available(root: &std::path::Path) -> bool { available_controlled(root, None) }
+pub fn available(root: &std::path::Path) -> bool {
+    available_controlled(root, None)
+}
 
-fn available_controlled(root: &std::path::Path, budget: Option<&crate::tools::WorkBudget<'_>>) -> bool {
+fn available_controlled(
+    root: &std::path::Path,
+    budget: Option<&crate::tools::WorkBudget<'_>>,
+) -> bool {
     let mut c = crate::tools::command("cargo");
     c.args(["mutants", "--version"]).current_dir(root);
     let stop = || budget.is_some_and(|b| b.stopping());
     let cap = std::time::Duration::from_secs(10);
-    crate::tools::run_scoped(&mut c, budget.map_or(cap, |b| b.remaining(cap)), 64 * 1024, None, Some(&stop)).said(1000).0
+    crate::tools::run_scoped(
+        &mut c,
+        budget.map_or(cap, |b| b.remaining(cap)),
+        64 * 1024,
+        None,
+        Some(&stop),
+    )
+    .said(1000)
+    .0
 }
 
 /// How long a diff-scoped run may take.
@@ -161,13 +223,23 @@ pub enum Checked {
 }
 
 /// Mutate only the lines in `diff`, in the sandbox copy at `root`.
-pub(crate) fn check_diff_controlled(root: &std::path::Path, diff: &str, budget: Option<&crate::tools::WorkBudget<'_>>) -> Checked {
-    if let Some(b) = budget { if let Err(why) = b.check() { return Checked::NotRun(why); } }
+pub(crate) fn check_diff_controlled(
+    root: &std::path::Path,
+    diff: &str,
+    budget: Option<&crate::tools::WorkBudget<'_>>,
+) -> Checked {
+    if let Some(b) = budget {
+        if let Err(why) = b.check() {
+            return Checked::NotRun(why);
+        }
+    }
     if diff.trim().is_empty() {
         return Checked::AllCaught;
     }
     if !available_controlled(root, budget) {
-        return Checked::NotRun("cargo-mutants isn't installed (`cargo install cargo-mutants`)".into());
+        return Checked::NotRun(
+            "cargo-mutants isn't installed (`cargo install cargo-mutants`)".into(),
+        );
     }
     let diff_file = root.join("atlas-change.diff");
     if let Err(e) = std::fs::write(&diff_file, diff) {
@@ -188,20 +260,45 @@ pub(crate) fn check_diff_controlled(root: &std::path::Path, diff: &str, budget: 
             "--output".into(),
             out.display().to_string(),
         ],
-        timeout_secs: budget.map_or(RUN_LIMIT_SECS, |b| b.remaining(std::time::Duration::from_secs(RUN_LIMIT_SECS)).as_secs().max(1)),
+        timeout_secs: budget.map_or(RUN_LIMIT_SECS, |b| {
+            b.remaining(std::time::Duration::from_secs(RUN_LIMIT_SECS))
+                .as_secs()
+                .max(1)
+        }),
         ..Default::default()
     };
-    let mut sb = crate::sandbox::Sandbox { root: root.to_path_buf(), name: "mutants".into(), attempts: Vec::new() };
+    let mut sb = crate::sandbox::Sandbox {
+        root: root.to_path_buf(),
+        name: "mutants".into(),
+        attempts: Vec::new(),
+    };
     let stop = || budget.is_some_and(|b| b.stopping());
     let a = sb.run_controlled(&tool, &Default::default(), 4000, Some(&stop));
-    if let Some(b) = budget { if let Err(why) = b.check() { return Checked::NotRun(why); } }
+    if let Some(b) = budget {
+        if let Err(why) = b.check() {
+            return Checked::NotRun(why);
+        }
+    }
     if a.output.contains("stopped after") || a.output.contains("could not start") {
-        return Checked::NotRun(a.output.lines().next().unwrap_or("it didn't finish").to_string());
+        return Checked::NotRun(
+            a.output
+                .lines()
+                .next()
+                .unwrap_or("it didn't finish")
+                .to_string(),
+        );
     }
     let survivors = read_survivors(&out);
     // cargo-mutants exits non-zero when anything survived; zero with none.
     if survivors.is_empty() {
-        if a.passed { Checked::AllCaught } else { Checked::NotRun(a.first_problem().unwrap_or_else(|| "it failed without saying why".into())) }
+        if a.passed {
+            Checked::AllCaught
+        } else {
+            Checked::NotRun(
+                a.first_problem()
+                    .unwrap_or_else(|| "it failed without saying why".into()),
+            )
+        }
     } else {
         Checked::Survivors(survivors)
     }
@@ -222,20 +319,39 @@ mod tests {
             {"scenario":{"Mutant":{"file":"src/a.rs","function":{"function_name":"ok"},"span":{"start":{"line":30,"column":5}},"replacement":"true"}},"summary":"CaughtMutant"}
         ]}"#;
         let s = from_outcomes_json(json).unwrap();
-        assert_eq!(s, vec![Survivor { file: "src/a.rs".into(), function: "total".into(), line: 12, replacement: "0".into() }]);
+        assert_eq!(
+            s,
+            vec![Survivor {
+                file: "src/a.rs".into(),
+                function: "total".into(),
+                line: 12,
+                replacement: "0".into()
+            }]
+        );
         assert_eq!(s[0].said(), "src/a.rs::total (line 12): replaced with 0");
     }
 
     #[test]
     fn missed_txt_is_read_when_the_json_isnt_there() {
         let s = from_missed_txt("src/b.rs:7:9: replace is_ready -> bool with true\n\n");
-        assert_eq!(s, vec![Survivor { file: "src/b.rs".into(), function: "is_ready".into(), line: 7, replacement: "true".into() }]);
+        assert_eq!(
+            s,
+            vec![Survivor {
+                file: "src/b.rs".into(),
+                function: "is_ready".into(),
+                line: 7,
+                replacement: "true".into()
+            }]
+        );
     }
 
     #[test]
     fn the_diff_covers_only_the_lines_that_changed() {
         let d = diff_of("src/x.rs", "a\nb\nc\nd\n", "a\nB\nc\nd\n");
-        assert_eq!(d, "--- a/src/x.rs\n+++ b/src/x.rs\n@@ -2,1 +2,1 @@\n-b\n+B\n");
+        assert_eq!(
+            d,
+            "--- a/src/x.rs\n+++ b/src/x.rs\n@@ -2,1 +2,1 @@\n-b\n+B\n"
+        );
         assert!(diff_of("src/x.rs", "same\n", "same\n").is_empty());
     }
 }

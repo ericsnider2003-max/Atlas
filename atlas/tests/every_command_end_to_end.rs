@@ -38,7 +38,9 @@ struct Command {
 
 fn commands() -> Vec<Command> {
     let text = std::fs::read_to_string("config/commands.yaml").expect("config/commands.yaml");
-    serde_yaml::from_str::<Commands>(&text).expect("commands.yaml parses").commands
+    serde_yaml::from_str::<Commands>(&text)
+        .expect("commands.yaml parses")
+        .commands
 }
 
 /// What to say for a command: its first phrase, with something to act on
@@ -61,15 +63,19 @@ fn said(c: &Command) -> Option<String> {
 }
 
 fn daemon(tag: &str) -> (atlas::daemon::Daemon<'static>, std::path::PathBuf) {
-    let cfg: &'static atlas::config::Config = Box::leak(Box::new(atlas::config::Config::load(Path::new("config")).expect("config")));
-    let plat = Box::leak(Box::new(atlas::platform::mock::MockPlatform::new(vec![atlas::platform::Monitor {
-        id: 1,
-        x: 0,
-        y: 0,
-        width: 1920,
-        height: 1040,
-        primary: true,
-    }])));
+    let cfg: &'static atlas::config::Config = Box::leak(Box::new(
+        atlas::config::Config::load(Path::new("config")).expect("config"),
+    ));
+    let plat = Box::leak(Box::new(atlas::platform::mock::MockPlatform::new(vec![
+        atlas::platform::Monitor {
+            id: 1,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1040,
+            primary: true,
+        },
+    ])));
     let dir = std::env::temp_dir().join(format!("atlas-e2e-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("temp dir");
@@ -98,13 +104,22 @@ fn every_command_is_understood_as_itself() {
         // What the command's own name builds, to compare the kind of intent
         // (commands the model may never choose have no tool form; the parse
         // not being Unknown is the check for those).
-        if let Some(want) = atlas::intent::from_tool(&c.intent, &serde_json::Value::String("the weather in paris".into()), &s) {
+        if let Some(want) = atlas::intent::from_tool(
+            &c.intent,
+            &serde_json::Value::String("the weather in paris".into()),
+            &s,
+        ) {
             if std::mem::discriminant(&want) != std::mem::discriminant(&got) {
                 wrong.push(format!("{}: \"{s}\" -> {got:?}", c.intent));
             }
         }
     }
-    assert!(wrong.is_empty(), "{} command(s) not understood as themselves:\n{}", wrong.len(), wrong.join("\n"));
+    assert!(
+        wrong.is_empty(),
+        "{} command(s) not understood as themselves:\n{}",
+        wrong.len(),
+        wrong.join("\n")
+    );
 }
 
 /// The install-wide state (handed over or not, pairing, the lock), cleared
@@ -117,7 +132,11 @@ fn every_command_is_understood_as_itself() {
 /// So it checks rather than trusts, and refuses to touch anything else.
 fn fresh_install_state() {
     let dir = atlas::roots::state_dir();
-    let ours = dir.components().any(|c| c.as_os_str().to_string_lossy().starts_with(&format!("atlas-test-{}", std::process::id())));
+    let ours = dir.components().any(|c| {
+        c.as_os_str()
+            .to_string_lossy()
+            .starts_with(&format!("atlas-test-{}", std::process::id()))
+    });
     assert!(ours, "install state is {} -- not this test's own folder, so a command said here would change a real Atlas", dir.display());
     if dir.exists() {
         std::fs::remove_dir_all(&dir).expect("clear this test's install state");
@@ -144,7 +163,12 @@ fn every_command_answers_when_said() {
                     let _ = std::fs::remove_dir_all(&dir);
                     reply
                 }));
-                let _ = tx.send(r.map_err(|p| p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_default()));
+                let _ = tx.send(r.map_err(|p| {
+                    p.downcast_ref::<&str>()
+                        .map(|s| s.to_string())
+                        .or_else(|| p.downcast_ref::<String>().cloned())
+                        .unwrap_or_default()
+                }));
             })
             .expect("thread");
         match rx.recv_timeout(Duration::from_secs(60)) {
@@ -154,5 +178,10 @@ fn every_command_answers_when_said() {
             Err(_) => wrong.push(format!("{}: \"{s}\" -> no answer in 60 s", c.intent)),
         }
     }
-    assert!(wrong.is_empty(), "{} command(s) failed end to end:\n{}", wrong.len(), wrong.join("\n"));
+    assert!(
+        wrong.is_empty(),
+        "{} command(s) failed end to end:\n{}",
+        wrong.len(),
+        wrong.join("\n")
+    );
 }

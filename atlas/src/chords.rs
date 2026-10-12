@@ -50,15 +50,22 @@ pub fn read_chord(text: &str) -> Result<Chord, String> {
             "" => return Err(format!("\"{text}\" has an empty part")),
             k => {
                 if key.is_some() {
-                    return Err(format!("\"{text}\" has two keys; a chord is modifiers and one key"));
+                    return Err(format!(
+                        "\"{text}\" has two keys; a chord is modifiers and one key"
+                    ));
                 }
-                key = Some(crate::platform::virtual_key(k).ok_or_else(|| format!("I don't know the key \"{k}\""))?);
+                key = Some(
+                    crate::platform::virtual_key(k)
+                        .ok_or_else(|| format!("I don't know the key \"{k}\""))?,
+                );
             }
         }
     }
     let vk = key.ok_or_else(|| format!("\"{text}\" has no key, only modifiers"))?;
     if mods & (MOD_CONTROL | MOD_ALT | MOD_WIN) == 0 {
-        return Err(format!("\"{text}\" needs Ctrl, Alt or Win, or it would fire while you type"));
+        return Err(format!(
+            "\"{text}\" needs Ctrl, Alt or Win, or it would fire while you type"
+        ));
     }
     if mods & MOD_WIN != 0 && (b'A' as u16..=b'Z' as u16).contains(&vk) {
         return Err(format!("\"{text}\": Windows keeps Win+letter for itself"));
@@ -102,12 +109,18 @@ impl ChordsConfig {
     pub fn chords(&self) -> (Vec<(Does, Chord)>, Vec<String>) {
         let mut ok: Vec<(Does, Chord)> = Vec::new();
         let mut bad = Vec::new();
-        for (does, text) in [(Does::Capture, &self.capture), (Does::Expand, &self.expand), (Does::CopyText, &self.copy_text)] {
+        for (does, text) in [
+            (Does::Capture, &self.capture),
+            (Does::Expand, &self.expand),
+            (Does::CopyText, &self.copy_text),
+        ] {
             if text.trim().is_empty() {
                 continue;
             }
             match read_chord(text) {
-                Ok(c) if ok.iter().any(|(_, o)| *o == c) => bad.push(format!("{text} is set for two things")),
+                Ok(c) if ok.iter().any(|(_, o)| *o == c) => {
+                    bad.push(format!("{text} is set for two things"))
+                }
                 Ok(c) => ok.push((does, c)),
                 Err(e) => bad.push(e),
             }
@@ -126,7 +139,11 @@ pub fn plausible_trigger(selected: &str) -> Option<&str> {
 /// Run the expand chord against the focused app: select the word before the
 /// cursor, read it through the clipboard, restore the clipboard, and type
 /// the snippet over it if the word is a trigger. Returns the trigger used.
-pub fn expand(p: &dyn crate::platform::Platform, snippets: &crate::snippets::Snippets, local_now: u64) -> crate::error::Result<Option<String>> {
+pub fn expand(
+    p: &dyn crate::platform::Platform,
+    snippets: &crate::snippets::Snippets,
+    local_now: u64,
+) -> crate::error::Result<Option<String>> {
     let before = p.read_clipboard()?;
     // A sentinel, so a failed copy isn't mistaken for the old clipboard.
     p.write_clipboard("\u{2063}")?;
@@ -138,7 +155,11 @@ pub fn expand(p: &dyn crate::platform::Platform, snippets: &crate::snippets::Sni
         Some(b) => p.write_clipboard(b)?,
         None => p.write_clipboard("")?,
     }
-    let Some(word) = got.as_deref().filter(|g| *g != "\u{2063}").and_then(|w| plausible_trigger(w)) else {
+    let Some(word) = got
+        .as_deref()
+        .filter(|g| *g != "\u{2063}")
+        .and_then(|w| plausible_trigger(w))
+    else {
         // Nothing selected, or a copy that didn't happen: put the cursor
         // back where it was.
         p.press("right")?;
@@ -174,7 +195,14 @@ pub fn start_chords(chords: Vec<(Does, Chord)>, tx: std::sync::mpsc::Sender<Does
                 for (i, (does, c)) in chords.iter().enumerate() {
                     // SAFETY: a thread-owned hotkey (no window); unregistered
                     // when the thread's message queue goes away with it.
-                    let ok = unsafe { RegisterHotKey(None, i as i32 + 1, HOT_KEY_MODIFIERS(c.mods | MOD_NOREPEAT), c.vk as u32) };
+                    let ok = unsafe {
+                        RegisterHotKey(
+                            None,
+                            i as i32 + 1,
+                            HOT_KEY_MODIFIERS(c.mods | MOD_NOREPEAT),
+                            c.vk as u32,
+                        )
+                    };
                     if ok.is_err() {
                         failed.push(*does);
                     }
@@ -194,7 +222,8 @@ pub fn start_chords(chords: Vec<(Does, Chord)>, tx: std::sync::mpsc::Sender<Does
                 }
             })
             .ok();
-        rrx.recv_timeout(std::time::Duration::from_secs(2)).unwrap_or_default()
+        rrx.recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap_or_default()
     }
     #[cfg(not(windows))]
     {

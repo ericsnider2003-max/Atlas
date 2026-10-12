@@ -30,7 +30,19 @@ pub fn broken(reply: &str) -> Option<&'static str> {
     if r.is_empty() {
         return Some("empty");
     }
-    for leak in ["Some(", "None)", "Ok(", "Err(", "Intent::", "{:?}", "\\n", "PathBuf", "AtlasError", "panicked", "unwrap()"] {
+    for leak in [
+        "Some(",
+        "None)",
+        "Ok(",
+        "Err(",
+        "Intent::",
+        "{:?}",
+        "\\n",
+        "PathBuf",
+        "AtlasError",
+        "panicked",
+        "unwrap()",
+    ] {
         if r.contains(leak) {
             return Some("code in the words");
         }
@@ -45,7 +57,14 @@ pub fn broken(reply: &str) -> Option<&'static str> {
             return Some("a slip in the words");
         }
     }
-    for stub in ["not built yet", "isn't built", "not implemented", "todo!", "unimplemented", "coming soon"] {
+    for stub in [
+        "not built yet",
+        "isn't built",
+        "not implemented",
+        "todo!",
+        "unimplemented",
+        "coming soon",
+    ] {
         if l.contains(stub) {
             return Some("a stub");
         }
@@ -68,10 +87,22 @@ fn every_command_answers_in_words_without_a_model() {
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(home.join("data").join("state")).unwrap();
     std::env::set_var("ATLAS_HOME", &home);
-    atlas::handover::Handover::default().save(&atlas::roots::install_state()).unwrap();
-    assert!(atlas::roots::install_root().starts_with(&home), "the sweep must not touch a shared install");
+    atlas::handover::Handover::default()
+        .save(&atlas::roots::install_state())
+        .unwrap();
+    assert!(
+        atlas::roots::install_root().starts_with(&home),
+        "the sweep must not touch a shared install"
+    );
     let c = Config::load(Path::new("config")).unwrap();
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     let book = atlas::intent::ToolBook::new(&c.commands);
     let parser = atlas::intent::Parser::new(&c.commands);
     let print = std::env::var_os("SWEEP_PRINT").is_some();
@@ -82,19 +113,38 @@ fn every_command_answers_in_words_without_a_model() {
         if e.describe.starts_with("Internal:") {
             continue;
         }
-        let Some(phrase) = e.phrases.iter().find(|p| !p.trim().is_empty()) else { continue };
-        let said = if e.takes_arg && !e.arg_optional { with_arg(phrase) } else { phrase.clone() };
+        let Some(phrase) = e.phrases.iter().find(|p| !p.trim().is_empty()) else {
+            continue;
+        };
+        let said = if e.takes_arg && !e.arg_optional {
+            with_arg(phrase)
+        } else {
+            phrase.clone()
+        };
         // Yours again for each: "hand over" is one of the commands swept.
-        atlas::handover::Handover::default().save(&atlas::roots::install_state()).unwrap();
+        atlas::handover::Handover::default()
+            .save(&atlas::roots::install_state())
+            .unwrap();
         // Each on a fresh Atlas: one command's state never excuses another's.
-        let mut d = Daemon::new(&c, &p, None, Store::new(dir.join(&e.name)), Proactive::new(ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            &c,
+            &p,
+            None,
+            Store::new(dir.join(&e.name)),
+            Proactive::new(ProactiveConfig::default()),
+        );
         t += 60;
         let parsed = atlas::session::kind_of(&parser.parse(&said)).to_string();
         let started = std::time::Instant::now();
         let reply = d.turn(&said, t);
         let took = started.elapsed();
         if print {
-            eprintln!("[{}] {said:?} -> {parsed} ({:?})\n    {}", e.name, took, reply.replace('\n', " / "));
+            eprintln!(
+                "[{}] {said:?} -> {parsed} ({:?})\n    {}",
+                e.name,
+                took,
+                reply.replace('\n', " / ")
+            );
         }
         if let Some(why) = broken(&reply) {
             bad.push(format!("{}: {why}: {said:?} -> {reply:?}", e.name));
@@ -103,7 +153,9 @@ fn every_command_answers_in_words_without_a_model() {
             bad.push(format!("{}: took {took:?} with no model: {said:?}", e.name));
         }
     }
-    atlas::handover::Handover::default().save(&atlas::roots::install_state()).unwrap();
+    atlas::handover::Handover::default()
+        .save(&atlas::roots::install_state())
+        .unwrap();
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&home);
     assert!(bad.is_empty(), "{} broken:\n{}", bad.len(), bad.join("\n"));

@@ -110,19 +110,40 @@ impl Tongue {
     /// comment should not become JavaScript because that word appeared once.
     pub fn of_code(code: &str) -> Tongue {
         let marks: &[(Tongue, &[&str])] = &[
-            (Tongue::Rust, &["fn ", "let mut ", "impl ", "->", "pub fn", "use crate"]),
-            (Tongue::Python, &["def ", "import ", "self.", "elif ", "__init__"]),
-            (Tongue::TypeScript, &["interface ", ": string", ": number", "export type"]),
-            (Tongue::JavaScript, &["function ", "const ", "=>", "console.log", "require("]),
+            (
+                Tongue::Rust,
+                &["fn ", "let mut ", "impl ", "->", "pub fn", "use crate"],
+            ),
+            (
+                Tongue::Python,
+                &["def ", "import ", "self.", "elif ", "__init__"],
+            ),
+            (
+                Tongue::TypeScript,
+                &["interface ", ": string", ": number", "export type"],
+            ),
+            (
+                Tongue::JavaScript,
+                &["function ", "const ", "=>", "console.log", "require("],
+            ),
             (Tongue::Go, &["func ", "package ", ":=", "import (", "nil"]),
-            (Tongue::Java, &["public class", "void ", "import java", "System.out"]),
-            (Tongue::CSharp, &["namespace ", "using System", "public class", "var "]),
+            (
+                Tongue::Java,
+                &["public class", "void ", "import java", "System.out"],
+            ),
+            (
+                Tongue::CSharp,
+                &["namespace ", "using System", "public class", "var "],
+            ),
             (Tongue::Cpp, &["#include", "std::", "template<", "::"]),
             (Tongue::C, &["#include", "int main", "printf(", "malloc("]),
             (Tongue::Ruby, &["def ", "end", "puts ", "require '"]),
             (Tongue::Php, &["<?php", "$this->", "echo ", "function "]),
             (Tongue::Shell, &["#!/bin/", "echo ", "fi", "esac", "$1"]),
-            (Tongue::Sql, &["SELECT ", "INSERT INTO", "CREATE TABLE", "WHERE "]),
+            (
+                Tongue::Sql,
+                &["SELECT ", "INSERT INTO", "CREATE TABLE", "WHERE "],
+            ),
         ];
         let upper = code.to_uppercase();
         let mut best = (Tongue::Unknown, 0usize);
@@ -213,14 +234,20 @@ impl Shape {
     pub fn fix(self) -> &'static str {
         match self {
             Shape::DoesNothing => "write the body, or delete it and whatever calls it",
-            Shape::SaysSoItself => "finish it, or file it somewhere it'll be seen and take the note out",
-            Shape::SwallowsTheError => "handle the error, or pass it up — at least log what went wrong",
+            Shape::SaysSoItself => {
+                "finish it, or file it somewhere it'll be seen and take the note out"
+            }
+            Shape::SwallowsTheError => {
+                "handle the error, or pass it up — at least log what went wrong"
+            }
             Shape::ThrowsAwayTheAnswer => "use the result, or stop computing it",
             Shape::AlwaysTheSame => "make it depend on its input, or replace it with the constant",
             Shape::NeverRuns => "delete it, or fix the condition that keeps it from running",
             Shape::NeverCalled => "call it where it was meant to be used, or delete it",
             Shape::NeverCalledInProject => "wire it to whatever was meant to use it, or delete it",
-            Shape::MadeUpDependency => "add it to the project's dependencies if it's real; if it isn't, replace the import",
+            Shape::MadeUpDependency => {
+                "add it to the project's dependencies if it's real; if it isn't, replace the import"
+            }
         }
     }
 
@@ -273,8 +300,16 @@ const EMPTY_BODIES: &[&str] = &[
 
 /// Says so itself.
 const ADMITS: &[&str] = &[
-    "todo", "fixme", "hack:", "xxx:", "not implemented", "unimplemented",
-    "stub", "placeholder", "for now", "temporary",
+    "todo",
+    "fixme",
+    "hack:",
+    "xxx:",
+    "not implemented",
+    "unimplemented",
+    "stub",
+    "placeholder",
+    "for now",
+    "temporary",
 ];
 
 /// A caught error going nowhere.
@@ -310,7 +345,11 @@ pub fn read(code: &str, tongue: Tongue) -> Vec<Finding> {
             continue;
         }
         let at = i + 1;
-        let note = |shape| Finding { line: at, shape, code: line.to_string() };
+        let note = |shape| Finding {
+            line: at,
+            shape,
+            code: line.to_string(),
+        };
 
         // Says so itself, but only in a comment or a marker — the word "todo"
         // inside a string that a program prints to a user is that program
@@ -321,7 +360,10 @@ pub fn read(code: &str, tongue: Tongue) -> Vec<Finding> {
         }
 
         // An error caught and dropped.
-        if SWALLOWS.iter().any(|p| lower.replace(' ', "").contains(&p.replace(' ', ""))) {
+        if SWALLOWS
+            .iter()
+            .any(|p| lower.replace(' ', "").contains(&p.replace(' ', "")))
+        {
             found.push(note(Shape::SwallowsTheError));
             continue;
         }
@@ -365,21 +407,34 @@ fn never_called(lines: &[&str], tongue: Tongue) -> Vec<Finding> {
         let line = raw.trim();
         let name_after = |prefix: &str| -> Option<String> {
             let rest = line.strip_prefix(prefix)?;
-            let name: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
             (!name.is_empty()).then_some(name)
         };
         let found = match tongue {
             Tongue::Rust => {
                 let before_test = i > 0 && lines[i - 1].trim().starts_with("#[");
-                if before_test || in_trait_impl(lines, i) { None } else { name_after("fn ") }
+                if before_test || in_trait_impl(lines, i) {
+                    None
+                } else {
+                    name_after("fn ")
+                }
             }
-            Tongue::Python => name_after("def _").map(|n| format!("_{n}")).filter(|n| !n.starts_with("__")),
-            Tongue::Go => name_after("func ").filter(|n| n.chars().next().is_some_and(|c| c.is_lowercase())),
+            Tongue::Python => name_after("def _")
+                .map(|n| format!("_{n}"))
+                .filter(|n| !n.starts_with("__")),
+            Tongue::Go => {
+                name_after("func ").filter(|n| n.chars().next().is_some_and(|c| c.is_lowercase()))
+            }
             Tongue::JavaScript | Tongue::TypeScript => name_after("function "),
             _ => None,
         };
         if let Some(name) = found {
-            if ["main", "init", "new", "default", "drop", "fmt", "from"].contains(&name.as_str()) || name.starts_with("test") {
+            if ["main", "init", "new", "default", "drop", "fmt", "from"].contains(&name.as_str())
+                || name.starts_with("test")
+            {
                 continue;
             }
             defs.push((i + 1, name, line.to_string()));
@@ -397,7 +452,11 @@ fn never_called(lines: &[&str], tongue: Tongue) -> Vec<Finding> {
                 .any(|(_, l)| mentions(l, name));
             !used
         })
-        .map(|(line, _, code)| Finding { line, shape: Shape::NeverCalled, code })
+        .map(|(line, _, code)| Finding {
+            line,
+            shape: Shape::NeverCalled,
+            code,
+        })
         .collect()
 }
 
@@ -450,18 +509,27 @@ pub fn never_called_in_project(file: &std::path::Path, code: &str, tongue: Tongu
         let line = raw.trim();
         let name_after = |prefix: &str| -> Option<String> {
             let rest = line.strip_prefix(prefix)?;
-            let name: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
             (!name.is_empty()).then_some(name)
         };
         let found = match tongue {
             Tongue::Rust => name_after("pub fn ").or_else(|| name_after("pub(crate) fn ")),
             Tongue::Python => name_after("def ").filter(|n| !n.starts_with('_')),
-            Tongue::Go => name_after("func ").filter(|n| n.chars().next().is_some_and(|c| c.is_uppercase())),
-            Tongue::JavaScript | Tongue::TypeScript => name_after("export function ").or_else(|| name_after("export async function ")),
+            Tongue::Go => {
+                name_after("func ").filter(|n| n.chars().next().is_some_and(|c| c.is_uppercase()))
+            }
+            Tongue::JavaScript | Tongue::TypeScript => {
+                name_after("export function ").or_else(|| name_after("export async function "))
+            }
             _ => None,
         };
         if let Some(name) = found {
-            if ["main", "init", "new", "default", "setup", "handler"].contains(&name.as_str()) || name.starts_with("test") {
+            if ["main", "init", "new", "default", "setup", "handler"].contains(&name.as_str())
+                || name.starts_with("test")
+            {
                 continue;
             }
             defs.push((i + 1, name, line.to_string()));
@@ -471,7 +539,12 @@ pub fn never_called_in_project(file: &std::path::Path, code: &str, tongue: Tongu
         return Vec::new();
     }
     // Mentioned in this file past its own definition?
-    defs.retain(|(line, name, _)| !lines.iter().enumerate().any(|(i, l)| i + 1 != *line && mentions(l, name)));
+    defs.retain(|(line, name, _)| {
+        !lines
+            .iter()
+            .enumerate()
+            .any(|(i, l)| i + 1 != *line && mentions(l, name))
+    });
     if defs.is_empty() {
         return Vec::new();
     }
@@ -487,10 +560,19 @@ pub fn never_called_in_project(file: &std::path::Path, code: &str, tongue: Tongu
         if std::fs::canonicalize(&p).unwrap_or_else(|_| p.clone()) == mine {
             continue;
         }
-        let Ok(text) = std::fs::read_to_string(&p) else { continue };
+        let Ok(text) = std::fs::read_to_string(&p) else {
+            continue;
+        };
         unseen.retain(|(_, name, _)| !text.lines().any(|l| mentions(l, name)));
     }
-    unseen.into_iter().map(|(line, _, code)| Finding { line, shape: Shape::NeverCalledInProject, code }).collect()
+    unseen
+        .into_iter()
+        .map(|(line, _, code)| Finding {
+            line,
+            shape: Shape::NeverCalledInProject,
+            code,
+        })
+        .collect()
 }
 
 /// The most source files read for `never_called_in_project`.
@@ -500,7 +582,16 @@ fn project_root(file: &std::path::Path) -> std::path::PathBuf {
     let mut dir = file.parent();
     for _ in 0..4 {
         let Some(d) = dir else { break };
-        if ["Cargo.toml", "package.json", "pyproject.toml", "requirements.txt", "go.mod"].iter().any(|m| d.join(m).is_file()) {
+        if [
+            "Cargo.toml",
+            "package.json",
+            "pyproject.toml",
+            "requirements.txt",
+            "go.mod",
+        ]
+        .iter()
+        .any(|m| d.join(m).is_file())
+        {
             return d.to_path_buf();
         }
         dir = d.parent();
@@ -508,20 +599,39 @@ fn project_root(file: &std::path::Path) -> std::path::PathBuf {
     file.parent().map(|p| p.to_path_buf()).unwrap_or_default()
 }
 
-fn collect_sources(dir: &std::path::Path, tongue: Tongue, out: &mut Vec<std::path::PathBuf>, depth: usize) {
+fn collect_sources(
+    dir: &std::path::Path,
+    tongue: Tongue,
+    out: &mut Vec<std::path::PathBuf>,
+    depth: usize,
+) {
     if depth > 8 || out.len() >= PROJECT_FILES {
         return;
     }
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in rd.flatten() {
         let p = e.path();
         let name = e.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') || ["target", "node_modules", "__pycache__", "dist", "build", "vendor"].contains(&name.as_str()) {
+        if name.starts_with('.')
+            || [
+                "target",
+                "node_modules",
+                "__pycache__",
+                "dist",
+                "build",
+                "vendor",
+            ]
+            .contains(&name.as_str())
+        {
             continue;
         }
         if p.is_dir() {
             collect_sources(&p, tongue, out, depth + 1);
-        } else if Tongue::of_name(&name) == tongue && e.metadata().map(|m| m.len() <= 512 * 1024).unwrap_or(false) {
+        } else if Tongue::of_name(&name) == tongue
+            && e.metadata().map(|m| m.len() <= 512 * 1024).unwrap_or(false)
+        {
             out.push(p);
             if out.len() >= PROJECT_FILES {
                 return;
@@ -537,7 +647,12 @@ pub fn manifest_near(file: &std::path::Path) -> Option<String> {
     let mut dir = file.parent();
     for _ in 0..4 {
         let d = dir?;
-        for name in ["Cargo.toml", "requirements.txt", "pyproject.toml", "package.json"] {
+        for name in [
+            "Cargo.toml",
+            "requirements.txt",
+            "pyproject.toml",
+            "package.json",
+        ] {
             if let Ok(text) = std::fs::read_to_string(d.join(name)) {
                 return Some(text);
             }
@@ -564,8 +679,16 @@ pub fn made_up_dependencies(code: &str, tongue: Tongue, manifest: &str) -> Vec<F
                 .strip_prefix("use ")
                 .or_else(|| line.strip_prefix("pub use "))
                 .or_else(|| line.strip_prefix("extern crate "))
-                .map(|r| r.split([':', ';', ' ', '{']).next().unwrap_or("").to_string())
-                .filter(|p| !p.is_empty() && !["std", "core", "alloc", "crate", "self", "super"].contains(&p.as_str())),
+                .map(|r| {
+                    r.split([':', ';', ' ', '{'])
+                        .next()
+                        .unwrap_or("")
+                        .to_string()
+                })
+                .filter(|p| {
+                    !p.is_empty()
+                        && !["std", "core", "alloc", "crate", "self", "super"].contains(&p.as_str())
+                }),
             Tongue::Python => {
                 let first = line
                     .strip_prefix("import ")
@@ -578,10 +701,19 @@ pub fn made_up_dependencies(code: &str, tongue: Tongue, manifest: &str) -> Vec<F
                     .find("from '")
                     .or_else(|| line.find("from \""))
                     .map(|i| &line[i + 6..])
-                    .or_else(|| line.find("require('").or_else(|| line.find("require(\"")).map(|i| &line[i + 9..]));
+                    .or_else(|| {
+                        line.find("require('")
+                            .or_else(|| line.find("require(\""))
+                            .map(|i| &line[i + 9..])
+                    });
                 quoted
                     .map(|q| q.split(['\'', '"']).next().unwrap_or("").to_string())
-                    .filter(|p| !p.is_empty() && !p.starts_with('.') && !p.starts_with('/') && !p.starts_with("node:"))
+                    .filter(|p| {
+                        !p.is_empty()
+                            && !p.starts_with('.')
+                            && !p.starts_with('/')
+                            && !p.starts_with("node:")
+                    })
                     .map(|p| {
                         // "@scope/pkg/sub" -> "@scope/pkg"; "pkg/sub" -> "pkg".
                         let mut parts = p.split('/');
@@ -597,7 +729,11 @@ pub fn made_up_dependencies(code: &str, tongue: Tongue, manifest: &str) -> Vec<F
         };
         if let Some(p) = pkg {
             if !known(&p) {
-                out.push(Finding { line: i + 1, shape: Shape::MadeUpDependency, code: line.to_string() });
+                out.push(Finding {
+                    line: i + 1,
+                    shape: Shape::MadeUpDependency,
+                    code: line.to_string(),
+                });
             }
         }
     }
@@ -606,21 +742,115 @@ pub fn made_up_dependencies(code: &str, tongue: Tongue, manifest: &str) -> Vec<F
 
 /// Python's own modules — the ones no project lists because they come with it.
 const PYTHON_STDLIB: &[&str] = &[
-    "__future__", "abc", "argparse", "array", "ast", "asyncio", "base64", "bisect", "builtins", "calendar",
-    "collections", "concurrent", "contextlib", "copy", "csv", "ctypes", "dataclasses", "datetime", "decimal",
-    "difflib", "enum", "errno", "fnmatch", "fractions", "functools", "gc", "getpass", "glob", "gzip", "hashlib",
-    "heapq", "hmac", "html", "http", "importlib", "inspect", "io", "ipaddress", "itertools", "json", "logging",
-    "math", "mimetypes", "multiprocessing", "operator", "os", "pathlib", "pickle", "platform", "pprint",
-    "queue", "random", "re", "secrets", "select", "shlex", "shutil", "signal", "socket", "sqlite3", "ssl",
-    "statistics", "string", "struct", "subprocess", "sys", "tempfile", "textwrap", "threading", "time",
-    "timeit", "traceback", "types", "typing", "unittest", "urllib", "uuid", "warnings", "weakref", "xml",
-    "zipfile", "zlib", "zoneinfo",
+    "__future__",
+    "abc",
+    "argparse",
+    "array",
+    "ast",
+    "asyncio",
+    "base64",
+    "bisect",
+    "builtins",
+    "calendar",
+    "collections",
+    "concurrent",
+    "contextlib",
+    "copy",
+    "csv",
+    "ctypes",
+    "dataclasses",
+    "datetime",
+    "decimal",
+    "difflib",
+    "enum",
+    "errno",
+    "fnmatch",
+    "fractions",
+    "functools",
+    "gc",
+    "getpass",
+    "glob",
+    "gzip",
+    "hashlib",
+    "heapq",
+    "hmac",
+    "html",
+    "http",
+    "importlib",
+    "inspect",
+    "io",
+    "ipaddress",
+    "itertools",
+    "json",
+    "logging",
+    "math",
+    "mimetypes",
+    "multiprocessing",
+    "operator",
+    "os",
+    "pathlib",
+    "pickle",
+    "platform",
+    "pprint",
+    "queue",
+    "random",
+    "re",
+    "secrets",
+    "select",
+    "shlex",
+    "shutil",
+    "signal",
+    "socket",
+    "sqlite3",
+    "ssl",
+    "statistics",
+    "string",
+    "struct",
+    "subprocess",
+    "sys",
+    "tempfile",
+    "textwrap",
+    "threading",
+    "time",
+    "timeit",
+    "traceback",
+    "types",
+    "typing",
+    "unittest",
+    "urllib",
+    "uuid",
+    "warnings",
+    "weakref",
+    "xml",
+    "zipfile",
+    "zlib",
+    "zoneinfo",
 ];
 
 /// Node's own modules.
 const NODE_BUILTINS: &[&str] = &[
-    "assert", "buffer", "child_process", "crypto", "dns", "events", "fs", "http", "https", "net", "os", "path",
-    "process", "querystring", "readline", "stream", "string_decoder", "timers", "tls", "url", "util", "zlib",
+    "assert",
+    "buffer",
+    "child_process",
+    "crypto",
+    "dns",
+    "events",
+    "fs",
+    "http",
+    "https",
+    "net",
+    "os",
+    "path",
+    "process",
+    "querystring",
+    "readline",
+    "stream",
+    "string_decoder",
+    "timers",
+    "tls",
+    "url",
+    "util",
+    "zlib",
 ];
 
 /// Is this line a comment?
@@ -643,13 +873,10 @@ fn is_only_body(lines: &[&str], i: usize) -> bool {
     let indent = |s: &str| s.len() - s.trim_start().len();
     let here = indent(lines[i]);
 
-    let before = lines[..i]
-        .iter()
-        .rev()
-        .find(|l| !l.trim().is_empty() && !l.trim().starts_with("//") && !l.trim().starts_with('#'));
-    let after = lines[i + 1..]
-        .iter()
-        .find(|l| !l.trim().is_empty());
+    let before = lines[..i].iter().rev().find(|l| {
+        !l.trim().is_empty() && !l.trim().starts_with("//") && !l.trim().starts_with('#')
+    });
+    let after = lines[i + 1..].iter().find(|l| !l.trim().is_empty());
 
     // Opens directly above — and opens a *function*, not a branch.
     //
@@ -659,9 +886,8 @@ fn is_only_body(lines: &[&str], i: usize) -> bool {
     // apart by what opened the block, because flagging every guard clause in a
     // codebase is how a tool gets switched off on its first run.
     let control = [
-        "if ", "if(", "else", "while ", "while(", "for ", "for(", "switch",
-        "case ", "match ", "loop", "try", "catch", "except", "with ", "do ",
-        "when ", "unless ",
+        "if ", "if(", "else", "while ", "while(", "for ", "for(", "switch", "case ", "match ",
+        "loop", "try", "catch", "except", "with ", "do ", "when ", "unless ",
     ];
     let opened_above = before.is_some_and(|b| {
         let t = b.trim_end();
@@ -713,7 +939,13 @@ pub fn spoken(name: &str, tongue: Tongue, found: &[Finding]) -> String {
         if found.len() == 1 { "" } else { "s" }
     );
     for f in worst.iter().take(6) {
-        out.push_str(&format!("Line {}: {} — {}\n  Fix: {}\n", f.line, f.shape.plain(), f.code, f.shape.fix()));
+        out.push_str(&format!(
+            "Line {}: {} — {}\n  Fix: {}\n",
+            f.line,
+            f.shape.plain(),
+            f.code,
+            f.shape.fix()
+        ));
     }
     out.push_str(
         "I read it for shape rather than running it, so this is where to look, \
@@ -741,12 +973,30 @@ pub fn porting_notes(tongue: Tongue, code: &str) -> String {
     let mut hard = Vec::new();
     let lower = code.to_lowercase();
     for (needle, why) in [
-        ("import ", "it pulls in libraries that would each need a Rust equivalent"),
-        ("require(", "it pulls in packages that would each need a Rust equivalent"),
-        ("async ", "it's asynchronous, which is a different shape here"),
-        ("class ", "it's built around classes, which don't map across directly"),
-        ("eval(", "it builds code at runtime, which has no equivalent here"),
-        ("global ", "it uses shared mutable state, which is the hard part of any port"),
+        (
+            "import ",
+            "it pulls in libraries that would each need a Rust equivalent",
+        ),
+        (
+            "require(",
+            "it pulls in packages that would each need a Rust equivalent",
+        ),
+        (
+            "async ",
+            "it's asynchronous, which is a different shape here",
+        ),
+        (
+            "class ",
+            "it's built around classes, which don't map across directly",
+        ),
+        (
+            "eval(",
+            "it builds code at runtime, which has no equivalent here",
+        ),
+        (
+            "global ",
+            "it uses shared mutable state, which is the hard part of any port",
+        ),
     ] {
         if lower.contains(needle) {
             hard.push(why);
@@ -761,7 +1011,9 @@ pub fn porting_notes(tongue: Tongue, code: &str) -> String {
         tongue.plain()
     );
     if !hard.is_empty() {
-        out.push_str("\n\nIf you're porting it by hand, these are the parts that won't come across cleanly:");
+        out.push_str(
+            "\n\nIf you're porting it by hand, these are the parts that won't come across cleanly:",
+        );
         for h in hard {
             out.push_str(&format!("\n- {h}"));
         }
@@ -781,11 +1033,14 @@ mod across_files {
         std::fs::write(d.join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
         let lib = "pub fn used_elsewhere() -> u32 { 1 }\npub fn called_by_nobody() -> u32 { 2 }\n";
         std::fs::write(d.join("src/lib.rs"), lib).unwrap();
-        std::fs::write(d.join("src/main.rs"), "fn main() { println!(\"{}\", x::used_elsewhere()); }\n").unwrap();
+        std::fs::write(
+            d.join("src/main.rs"),
+            "fn main() { println!(\"{}\", x::used_elsewhere()); }\n",
+        )
+        .unwrap();
         let found = never_called_in_project(&d.join("src/lib.rs"), lib, Tongue::Rust);
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!(found[0].line, 2);
         assert_eq!(found[0].shape, Shape::NeverCalledInProject);
     }
 }
-

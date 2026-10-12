@@ -7,8 +7,12 @@ use atlas::portable::{
 fn everything_that_only_thinks_runs_everywhere() {
     // That's most of the modules and all of the judgement.
     for p in [
-        Platform::Windows, Platform::Mac, Platform::Linux,
-        Platform::Ios, Platform::Android, Platform::Web,
+        Platform::Windows,
+        Platform::Mac,
+        Platform::Linux,
+        Platform::Ios,
+        Platform::Android,
+        Platform::Web,
     ] {
         assert_eq!(how(p, Needs::JustThinking), How::Built, "{}", p.name());
     }
@@ -37,7 +41,9 @@ fn a_mac_and_linux_have_no_walls_only_work() {
 fn an_iphone_has_real_walls_and_they_are_named() {
     assert_eq!(how(Platform::Ios, Needs::WakeWord), How::Never);
     assert_eq!(how(Platform::Ios, Needs::ReadScreen), How::Never);
-    assert!(because(Platform::Ios, Needs::WakeWord).unwrap().contains("isn't going to change"));
+    assert!(because(Platform::Ios, Needs::WakeWord)
+        .unwrap()
+        .contains("isn't going to change"));
 
     let said = honest_summary(Platform::Ios);
     assert!(said.contains("Not possible at all"));
@@ -62,12 +68,27 @@ fn a_browser_cannot_protect_a_secret_and_says_why() {
 
 #[test]
 fn windows_is_the_one_that_is_actually_written() {
-    for n in [Needs::Windows_, Needs::ReadScreen, Needs::WakeWord, Needs::RealEncryption] {
+    for n in [
+        Needs::Windows_,
+        Needs::ReadScreen,
+        Needs::WakeWord,
+        Needs::RealEncryption,
+    ] {
         assert_eq!(how(Platform::Windows, n), How::Built);
     }
     // And nothing else claims Built, because nothing else has been written.
-    for p in [Platform::Mac, Platform::Linux, Platform::Ios, Platform::Android] {
-        assert_ne!(how(p, Needs::RealEncryption), How::Built, "{} claims too much", p.name());
+    for p in [
+        Platform::Mac,
+        Platform::Linux,
+        Platform::Ios,
+        Platform::Android,
+    ] {
+        assert_ne!(
+            how(p, Needs::RealEncryption),
+            How::Built,
+            "{} claims too much",
+            p.name()
+        );
     }
 }
 
@@ -79,7 +100,11 @@ fn the_awkward_cases_explain_the_catch_rather_than_just_flagging_one() {
         (Platform::Android, Needs::ActInApps),
     ] {
         assert_eq!(how(p, n), How::Awkward);
-        assert!(because(p, n).is_some(), "{} {n:?} is awkward and doesn't say why", p.name());
+        assert!(
+            because(p, n).is_some(),
+            "{} {n:?} is awkward and doesn't say why",
+            p.name()
+        );
     }
 }
 
@@ -104,7 +129,7 @@ fn it_can_never_claim_a_capability_the_platform_forbids() {
     // says what a platform allows, and `honest_summary` is derived from it —
     // so a wall cannot be reported as anything else without changing the
     // table that defines it.
-    use atlas::portable::{how, honest_summary, How, Needs, Platform};
+    use atlas::portable::{honest_summary, how, How, Needs, Platform};
 
     // A real wall on a real platform, named in the summary rather than
     // quietly dropped. iOS is where the walls are: no wake word, no reading
@@ -124,12 +149,18 @@ fn it_can_never_claim_a_capability_the_platform_forbids() {
          other way"
     );
     assert!(!How::Never.is_effort_not_a_wall());
-    assert!(How::Awkward.is_effort_not_a_wall(), "awkward is work, not a wall");
+    assert!(
+        How::Awkward.is_effort_not_a_wall(),
+        "awkward is work, not a wall"
+    );
 
     // And an old config naming the removed key still loads.
     let parsed: PortableConfig =
         serde_yaml::from_str("warn_up_front: false\nhonest_about_walls: false\n").unwrap();
-    assert!(!parsed.warn_up_front, "an unknown key must not stop the section parsing");
+    assert!(
+        !parsed.warn_up_front,
+        "an unknown key must not stop the section parsing"
+    );
 }
 
 // ================= every need is in the one list =================
@@ -152,16 +183,23 @@ fn the_list_of_needs_is_complete_and_says_each_one_in_words() {
         "a need was added or removed — update this count and check EVERY lists it"
     );
 
-    let said: std::collections::BTreeSet<&str> =
-        Needs::EVERY.iter().map(|n| n.plain()).collect();
-    assert_eq!(said.len(), Needs::EVERY.len(), "two needs say the same thing out loud");
+    let said: std::collections::BTreeSet<&str> = Needs::EVERY.iter().map(|n| n.plain()).collect();
+    assert_eq!(
+        said.len(),
+        Needs::EVERY.len(),
+        "two needs say the same thing out loud"
+    );
     assert!(!said.iter().any(|s| s.is_empty()));
 
     // Every platform has an answer for every need — no arm falls through to
     // something wrong by being unreachable.
     for p in [
-        Platform::Windows, Platform::Mac, Platform::Linux,
-        Platform::Ios, Platform::Android, Platform::Web,
+        Platform::Windows,
+        Platform::Mac,
+        Platform::Linux,
+        Platform::Ios,
+        Platform::Android,
+        Platform::Web,
     ] {
         for n in Needs::EVERY {
             let _ = how(p, *n);
@@ -187,7 +225,9 @@ fn the_camera_is_written_on_the_desktops_and_allowed_on_the_phones() {
             p.name()
         );
     }
-    assert!(because(Platform::Ios, Needs::Camera).unwrap().contains("capture API"));
+    assert!(because(Platform::Ios, Needs::Camera)
+        .unwrap()
+        .contains("capture API"));
 }
 
 #[test]
@@ -199,7 +239,9 @@ fn opening_an_app_and_acting_inside_one_are_not_the_same_question() {
     assert_eq!(how(Platform::Ios, Needs::ActInApps), How::Never);
     assert_eq!(how(Platform::Ios, Needs::LaunchApps), How::Awkward);
     assert!(how(Platform::Ios, Needs::LaunchApps).is_effort_not_a_wall());
-    assert!(because(Platform::Ios, Needs::LaunchApps).unwrap().contains("published a way in"));
+    assert!(because(Platform::Ios, Needs::LaunchApps)
+        .unwrap()
+        .contains("published a way in"));
 
     // And on a desktop both are written, so the split costs nothing there.
     for p in [Platform::Windows, Platform::Mac, Platform::Linux] {
@@ -253,7 +295,10 @@ fn there_is_a_platform_layer_for_whatever_this_is() {
     // "Not supported on your platform" for everything is a lack of effort
     // dressed as a limit.
     let p = atlas::platform::here();
-    assert!(p.monitors().is_ok(), "it can't even say where the screen is");
+    assert!(
+        p.monitors().is_ok(),
+        "it can't even say where the screen is"
+    );
 }
 
 #[cfg(unix)]
@@ -281,10 +326,18 @@ fn what_genuinely_needs_writing_says_which_piece_rather_than_giving_up() {
     use atlas::platform::posix::Posix;
     use atlas::platform::Platform as PlatformTrait;
     let p = Posix::here();
-    let rect = atlas::platform::PixelRect { x: 0, y: 0, width: 800, height: 600 };
+    let rect = atlas::platform::PixelRect {
+        x: 0,
+        y: 0,
+        width: 800,
+        height: 600,
+    };
     let e = p.place(atlas::platform::WindowId(1), rect).unwrap_err();
     let msg = e.to_string();
-    assert!(msg.contains("moving windows"), "doesn't name the piece: {msg}");
+    assert!(
+        msg.contains("moving windows"),
+        "doesn't name the piece: {msg}"
+    );
     assert!(
         msg.contains("isn't written yet"),
         "reads like a wall rather than work not done: {msg}"
@@ -298,9 +351,8 @@ fn a_window_that_is_not_up_yet_is_not_an_error() {
     // into an error breaks a working path for no reason.
     use atlas::platform::posix::Posix;
     use atlas::platform::Platform as PlatformTrait;
-    let spec: atlas::config::AppSpec = serde_yaml::from_str(
-        "launch: nothing\nprocess_names: []\nrole: main\nlayout: full\n",
-    )
-    .unwrap();
+    let spec: atlas::config::AppSpec =
+        serde_yaml::from_str("launch: nothing\nprocess_names: []\nrole: main\nlayout: full\n")
+            .unwrap();
     assert!(matches!(Posix::here().find_window(&spec), Ok(None)));
 }

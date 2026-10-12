@@ -53,9 +53,20 @@ impl Native {
             return None;
         }
         let raw = std::fs::read_to_string(&v).ok()?;
-        let vocab = raw.lines().enumerate().map(|(i, w)| (w.to_string(), i as i64)).collect();
+        let vocab = raw
+            .lines()
+            .enumerate()
+            .map(|(i, w)| (w.to_string(), i as i64))
+            .collect();
         let proto = tract_onnx::onnx().model_for_path(&m).ok()?;
-        Some(Native { vocab, proto, compiled: HashMap::new(), npu: HashMap::new(), npu_judged: Vec::new(), root: root.to_path_buf() })
+        Some(Native {
+            vocab,
+            proto,
+            compiled: HashMap::new(),
+            npu: HashMap::new(),
+            npu_judged: Vec::new(),
+            root: root.to_path_buf(),
+        })
     }
 
     /// Are the files there?
@@ -70,7 +81,17 @@ impl Native {
     /// Which padded lengths run on the NPU now (true) or were sent back to
     /// the processor (false), for `atlas npu-check`.
     pub fn npu_lengths(&self) -> Vec<(usize, bool)> {
-        let mut v: Vec<(usize, bool)> = self.npu.iter().map(|(n, s)| (*n, s.as_ref().is_some_and(|(session, _)| session.on() == crate::npu::Where::Npu))).collect();
+        let mut v: Vec<(usize, bool)> = self
+            .npu
+            .iter()
+            .map(|(n, s)| {
+                (
+                    *n,
+                    s.as_ref()
+                        .is_some_and(|(session, _)| session.on() == crate::npu::Where::Npu),
+                )
+            })
+            .collect();
         v.sort();
         v
     }
@@ -88,7 +109,11 @@ impl Native {
             ids.truncate(most - 1);
             ids.push(*self.vocab.get(SEP).unwrap_or(&102));
         }
-        let n = BUCKETS.iter().copied().find(|b| *b >= ids.len()).unwrap_or(most);
+        let n = BUCKETS
+            .iter()
+            .copied()
+            .find(|b| *b >= ids.len())
+            .unwrap_or(most);
         // The NPU first, where there is one; the same vector either way.
         if npu {
             if let Some(v) = self.on_npu(&ids, n) {
@@ -114,7 +139,10 @@ impl Native {
         let session = self.npu.entry(n).or_insert_with(|| {
             let model = root.join(MODEL);
             let names = crate::npu::Session::input_names(&root, &model).ok()?;
-            let shapes: Vec<(String, Vec<i64>)> = names.iter().map(|nm| (nm.clone(), vec![1, n as i64])).collect();
+            let shapes: Vec<(String, Vec<i64>)> = names
+                .iter()
+                .map(|nm| (nm.clone(), vec![1, n as i64]))
+                .collect();
             // Lost to the processor last time, with this engine: not tried again.
             if crate::npu::lost_before(&model, &shapes) {
                 return None;
@@ -130,7 +158,14 @@ impl Native {
         let (s, names) = session.as_ref()?;
         let names_c = names.clone();
         // The export's own names, in its own order: ids, mask, segment.
-        let name = |want: &str, i: usize| names.iter().find(|x| x.contains(want)).or(names.get(i)).cloned().unwrap_or_default();
+        let name = |want: &str, i: usize| {
+            names
+                .iter()
+                .find(|x| x.contains(want))
+                .or(names.get(i))
+                .cloned()
+                .unwrap_or_default()
+        };
         let real = ids.len().min(n);
         let mut padded = ids[..real].to_vec();
         padded.resize(n, 0);
@@ -141,10 +176,16 @@ impl Native {
             crate::npu::In::I64(name("attention_mask", 1), vec![1, n as i64], mask),
         ];
         if names.len() > 2 {
-            inputs.push(crate::npu::In::I64(name("token_type", 2), vec![1, n as i64], vec![0; n]));
+            inputs.push(crate::npu::In::I64(
+                name("token_type", 2),
+                vec![1, n as i64],
+                vec![0; n],
+            ));
         }
         let (out, npu_took) = s.run_timed(inputs).ok()?;
-        if s.on() != crate::npu::Where::Npu { return None; }
+        if s.on() != crate::npu::Where::Npu {
+            return None;
+        }
         let v = pool_flat(out.first()?, real, n);
         // The first sentence at this length runs on both, once: the NPU stays
         // only if it gives the processor's answer and is quicker.
@@ -153,10 +194,16 @@ impl Native {
             let t = std::time::Instant::now();
             let cpu = self.embed_where_tract(ids, n);
             let cpu_took = t.elapsed();
-            let agree = cpu.as_ref().map(|c| crate::npu::agreement(c, &v)).unwrap_or(0.0);
+            let agree = cpu
+                .as_ref()
+                .map(|c| crate::npu::agreement(c, &v))
+                .unwrap_or(0.0);
             let keep = crate::npu::worth_keeping(npu_took, cpu_took, agree);
             let model = self.root.join(MODEL);
-            let shapes: Vec<(String, Vec<i64>)> = names_c.iter().map(|x| (x.clone(), vec![1, n as i64])).collect();
+            let shapes: Vec<(String, Vec<i64>)> = names_c
+                .iter()
+                .map(|x| (x.clone(), vec![1, n as i64]))
+                .collect();
             crate::npu::remember(&model, &shapes, keep);
             if !keep {
                 crate::outln!(
@@ -197,9 +244,18 @@ pub fn pool_flat(hidden: &[f32], real: usize, n: usize) -> Vec<f32> {
 
 fn shaped(model: InferenceModel, n: usize) -> TractResult<Runnable> {
     model
-        .with_input_fact(0, InferenceFact::dt_shape(i64::datum_type(), tvec!(1, n as i64)))?
-        .with_input_fact(1, InferenceFact::dt_shape(i64::datum_type(), tvec!(1, n as i64)))?
-        .with_input_fact(2, InferenceFact::dt_shape(i64::datum_type(), tvec!(1, n as i64)))?
+        .with_input_fact(
+            0,
+            InferenceFact::dt_shape(i64::datum_type(), tvec!(1, n as i64)),
+        )?
+        .with_input_fact(
+            1,
+            InferenceFact::dt_shape(i64::datum_type(), tvec!(1, n as i64)),
+        )?
+        .with_input_fact(
+            2,
+            InferenceFact::dt_shape(i64::datum_type(), tvec!(1, n as i64)),
+        )?
         .into_optimized()?
         .into_runnable()
 }
@@ -334,7 +390,11 @@ mod tests {
     use super::*;
 
     fn vocab_of(words: &[&str]) -> HashMap<String, i64> {
-        words.iter().enumerate().map(|(i, w)| (w.to_string(), i as i64)).collect()
+        words
+            .iter()
+            .enumerate()
+            .map(|(i, w)| (w.to_string(), i as i64))
+            .collect()
     }
 
     #[test]

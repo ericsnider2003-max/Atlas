@@ -82,11 +82,19 @@ pub fn sort(left: Vec<Unfinished>) -> (Vec<Unfinished>, Vec<Unfinished>) {
 }
 
 /// The sentence said at start-up, if anything was cut off.
-pub fn said(again: &[Unfinished], ask: &[Unfinished], describe: impl Fn(&Unfinished) -> String) -> Option<String> {
+pub fn said(
+    again: &[Unfinished],
+    ask: &[Unfinished],
+    describe: impl Fn(&Unfinished) -> String,
+) -> Option<String> {
     let mut parts = Vec::new();
     if !again.is_empty() {
         let names: Vec<String> = again.iter().map(&describe).collect();
-        parts.push(format!("I stopped in the middle of {}, so I've started {} again.", names.join(" and "), if again.len() == 1 { "it" } else { "them" }));
+        parts.push(format!(
+            "I stopped in the middle of {}, so I've started {} again.",
+            names.join(" and "),
+            if again.len() == 1 { "it" } else { "them" }
+        ));
     }
     if !ask.is_empty() {
         let names: Vec<String> = ask.iter().map(&describe).collect();

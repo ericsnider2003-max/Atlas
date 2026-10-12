@@ -40,7 +40,10 @@ impl Drop for Held {
 
 /// Ask the system not to sleep, for `why`. Err says why it couldn't.
 fn hold_off_sleep(why: &str) -> Result<Held, String> {
-    Ok(Held { why: why.to_string(), inner: platform::take_hold(why)? })
+    Ok(Held {
+        why: why.to_string(),
+        inner: platform::take_hold(why)?,
+    })
 }
 
 /// Apply what `awake::decide` said, keeping or dropping the hold in `slot`.
@@ -52,7 +55,9 @@ pub fn apply(slot: &mut Option<Held>, decision: Hold, why: &str) -> Option<Strin
                 *slot = Some(h);
                 Some(format!("keeping the machine awake: {why}"))
             }
-            Err(e) => Some(format!("couldn't keep the machine awake ({e}); the work may stop if it sleeps")),
+            Err(e) => Some(format!(
+                "couldn't keep the machine awake ({e}); the work may stop if it sleeps"
+            )),
         },
         (Hold::Release, true) => {
             *slot = None;
@@ -64,7 +69,9 @@ pub fn apply(slot: &mut Option<Held>, decision: Hold, why: &str) -> Option<Strin
 
 #[cfg(windows)]
 mod platform {
-    use windows::Win32::System::Power::{SetThreadExecutionState, ES_CONTINUOUS, ES_SYSTEM_REQUIRED};
+    use windows::Win32::System::Power::{
+        SetThreadExecutionState, ES_CONTINUOUS, ES_SYSTEM_REQUIRED,
+    };
 
     /// The thread holding the state, and the way to tell it to stop.
     pub struct Inner {
@@ -89,7 +96,10 @@ mod platform {
             }
         });
         match ok_rx.recv() {
-            Ok(true) => Ok(Inner { stop: Some(stop_tx), thread: Some(thread) }),
+            Ok(true) => Ok(Inner {
+                stop: Some(stop_tx),
+                thread: Some(thread),
+            }),
             _ => Err("Windows refused the request".into()),
         }
     }
@@ -115,7 +125,14 @@ mod platform {
             c
         } else {
             let mut c = crate::tools::command("systemd-inhibit");
-            c.args(["--what=sleep", "--who=Atlas", &format!("--why={why}"), "--mode=block", "sleep", "infinity"]);
+            c.args([
+                "--what=sleep",
+                "--who=Atlas",
+                &format!("--why={why}"),
+                "--mode=block",
+                "sleep",
+                "infinity",
+            ]);
             c
         };
         let mut child = cmd
@@ -135,7 +152,10 @@ mod platform {
                     use std::io::Read;
                     crate::heard!(e.read_to_string(&mut err));
                 }
-                Err(format!("the sleep inhibitor stopped at once ({status}): {}", err.trim()))
+                Err(format!(
+                    "the sleep inhibitor stopped at once ({status}): {}",
+                    err.trim()
+                ))
             }
             _ => Ok(Inner { child: Some(child) }),
         }

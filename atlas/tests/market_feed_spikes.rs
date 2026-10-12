@@ -37,7 +37,11 @@ fn the_count_is_the_number_of_spikes_not_the_number_of_notes() {
         "the note cap is deliberate and should stay"
     );
     assert_eq!(spikes_in(&r), 9, "the count must not be the cap");
-    assert!(r.say().contains("9 Spike"), "the summary still quotes the cap: {}", r.say());
+    assert!(
+        r.say().contains("9 Spike"),
+        "the summary still quotes the cap: {}",
+        r.say()
+    );
 }
 
 #[test]

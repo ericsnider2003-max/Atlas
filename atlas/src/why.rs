@@ -100,15 +100,15 @@ fn mentions(haystack: &str, word: &str) -> bool {
     if haystack.contains(word) {
         return true;
     }
-    haystack.split(|c: char| !c.is_alphanumeric()).any(|h| {
-        h.len() >= 3 && (word.starts_with(h) || h.starts_with(word))
-    })
+    haystack
+        .split(|c: char| !c.is_alphanumeric())
+        .any(|h| h.len() >= 3 && (word.starts_with(h) || h.starts_with(word)))
 }
 
 /// Words that carry no meaning for matching.
 const IGNORE: &[&str] = &[
-    "why", "did", "you", "the", "that", "this", "for", "and", "was", "were",
-    "how", "come", "what", "made", "your",
+    "why", "did", "you", "the", "that", "this", "for", "and", "was", "were", "how", "come", "what",
+    "made", "your",
 ];
 
 /// Is this a question about something Atlas did?
@@ -166,7 +166,10 @@ pub fn account(decisions: &[&Decision]) -> String {
 /// unknown source produces no line at all, rather than "Instead of: none",
 /// which reads as a finding when it is an absence.
 pub fn steps(d: &Decision) -> Vec<String> {
-    let mut out = vec![format!("Did: {}", d.what), format!("Because: {}", d.because)];
+    let mut out = vec![
+        format!("Did: {}", d.what),
+        format!("Because: {}", d.because),
+    ];
     if let Some(alt) = &d.instead_of {
         out.push(format!("Rather than: {alt}"));
     }

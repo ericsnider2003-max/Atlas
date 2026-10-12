@@ -19,7 +19,11 @@ use atlas::selfwork::{prove_in_project, Edit};
 fn tiny_project(dir: &std::path::Path, result_line: &str) {
     use std::os::unix::fs::PermissionsExt;
     std::fs::create_dir_all(dir.join("src")).unwrap();
-    std::fs::write(dir.join("src/lib.rs"), "// original\npub fn f() -> i32 { 1 }\n").unwrap();
+    std::fs::write(
+        dir.join("src/lib.rs"),
+        "// original\npub fn f() -> i32 { 1 }\n",
+    )
+    .unwrap();
     // Build output that must NOT be copied — if it were, the copy would be huge
     // and slow. A marker file proves it was skipped.
     std::fs::create_dir_all(dir.join("target")).unwrap();
@@ -50,14 +54,28 @@ fn a_change_that_replaces_a_real_file_and_keeps_the_suite_green_is_verified() {
     }];
     let proof = prove_in_project(&root, "sh run.sh", &edits, &work.join("base")).unwrap();
 
-    assert!(proof.built_and_passed, "the stub reported all passing: {}", proof.output);
-    assert!(proof.replaced_existing, "src/lib.rs already existed, so this is a real replacement");
+    assert!(
+        proof.built_and_passed,
+        "the stub reported all passing: {}",
+        proof.output
+    );
+    assert!(
+        proof.replaced_existing,
+        "src/lib.rs already existed, so this is a real replacement"
+    );
     assert_eq!(proof.tests_run, 3);
-    assert!(proof.plain("Homelab").contains("Verified inside Homelab"), "{}", proof.plain("Homelab"));
+    assert!(
+        proof.plain("Homelab").contains("Verified inside Homelab"),
+        "{}",
+        proof.plain("Homelab")
+    );
 
     // The project itself was never touched — the change is only in the copy.
     let still = std::fs::read_to_string(root.join("src/lib.rs")).unwrap();
-    assert!(still.contains("// original"), "the real project must be untouched");
+    assert!(
+        still.contains("// original"),
+        "the real project must be untouched"
+    );
     let _ = std::fs::remove_dir_all(&work);
 }
 
@@ -67,11 +85,19 @@ fn a_failing_suite_is_not_a_pass() {
     let root = work.join("proj");
     tiny_project(&root, "test result: FAILED. 2 passed; 1 failed; 0 ignored");
 
-    let edits = vec![Edit { path: "src/lib.rs".into(), content: "broken".into(), reason: String::new() }];
+    let edits = vec![Edit {
+        path: "src/lib.rs".into(),
+        content: "broken".into(),
+        reason: String::new(),
+    }];
     let proof = prove_in_project(&root, "sh run.sh", &edits, &work.join("base")).unwrap();
 
     assert!(!proof.built_and_passed, "a failed test is not a pass");
-    assert!(proof.plain("Homelab").contains("doesn't hold up"), "{}", proof.plain("Homelab"));
+    assert!(
+        proof.plain("Homelab").contains("doesn't hold up"),
+        "{}",
+        proof.plain("Homelab")
+    );
     let _ = std::fs::remove_dir_all(&work);
 }
 
@@ -91,10 +117,19 @@ fn a_brand_new_file_is_not_claimed_as_exercised() {
     }];
     let proof = prove_in_project(&root, "sh run.sh", &edits, &work.join("base")).unwrap();
 
-    assert!(!proof.replaced_existing, "src/brand_new.rs did not exist before");
+    assert!(
+        !proof.replaced_existing,
+        "src/brand_new.rs did not exist before"
+    );
     let said = proof.plain("Homelab");
-    assert!(!said.contains("Verified inside"), "must not claim verification of unexercised code: {said}");
-    assert!(said.contains("doesn't exercise it") || said.contains("Read it"), "{said}");
+    assert!(
+        !said.contains("Verified inside"),
+        "must not claim verification of unexercised code: {said}"
+    );
+    assert!(
+        said.contains("doesn't exercise it") || said.contains("Read it"),
+        "{said}"
+    );
     let _ = std::fs::remove_dir_all(&work);
 }
 
@@ -111,9 +146,16 @@ fn build_output_is_not_copied_into_the_work_area() {
     std::fs::write(root.join("run.sh"), script).unwrap();
     std::fs::set_permissions(root.join("run.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
 
-    let edits = vec![Edit { path: "src/lib.rs".into(), content: "// x\n".into(), reason: String::new() }];
+    let edits = vec![Edit {
+        path: "src/lib.rs".into(),
+        content: "// x\n".into(),
+        reason: String::new(),
+    }];
     let proof = prove_in_project(&root, "sh run.sh", &edits, &work.join("base")).unwrap();
-    assert!(proof.built_and_passed, "target/ should have been skipped, so the run sees no marker");
+    assert!(
+        proof.built_and_passed,
+        "target/ should have been skipped, so the run sees no marker"
+    );
     let _ = std::fs::remove_dir_all(&work);
 }
 

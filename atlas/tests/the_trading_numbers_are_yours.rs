@@ -89,7 +89,10 @@ fn it_is_no_longer_listed_as_a_setting_that_does_nothing() {
     // tells the user a working setting is dead, which is the same lie the
     // other way round.
     for (key, _) in atlas::config::PARSED_AND_NEVER_READ {
-        assert_ne!(*key, "trading", "trading is wired and still listed as doing nothing");
+        assert_ne!(
+            *key, "trading",
+            "trading is wired and still listed as doing nothing"
+        );
     }
 }
 
@@ -140,10 +143,22 @@ fn the_shipped_file_still_carries_the_numbers() {
 #[test]
 fn the_value_in_the_file_is_the_value_on_the_struct() {
     let t = shipped();
-    assert_eq!(t.trading.levels.risk_fraction, number_in_file("risk_fraction"));
-    assert_eq!(t.trading.levels.level_span_pips, number_in_file("level_span_pips"));
-    assert_eq!(t.trading.levels.structure_bars as f64, number_in_file("structure_bars"));
-    assert_eq!(t.trading.levels.pivot_reach as f64, number_in_file("pivot_reach"));
+    assert_eq!(
+        t.trading.levels.risk_fraction,
+        number_in_file("risk_fraction")
+    );
+    assert_eq!(
+        t.trading.levels.level_span_pips,
+        number_in_file("level_span_pips")
+    );
+    assert_eq!(
+        t.trading.levels.structure_bars as f64,
+        number_in_file("structure_bars")
+    );
+    assert_eq!(
+        t.trading.levels.pivot_reach as f64,
+        number_in_file("pivot_reach")
+    );
 }
 
 // ---------- the program, run twice ----------
@@ -211,7 +226,10 @@ fn config_with_span(dir: &Path, span_pips: f64) -> PathBuf {
             edited.push('\n');
         }
     }
-    assert!(done, "no level_span_pips: line in the shipped tools.yaml to change");
+    assert!(
+        done,
+        "no level_span_pips: line in the shipped tools.yaml to change"
+    );
     std::fs::write(&tools, edited).expect("write tools.yaml");
     cfg
 }

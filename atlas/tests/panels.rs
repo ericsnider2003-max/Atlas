@@ -4,12 +4,33 @@ use atlas::platform::Monitor;
 
 fn two_screens() -> Vec<Monitor> {
     vec![
-        Monitor { id: 1, x: 0, y: 0, width: 2560, height: 1392, primary: true },
-        Monitor { id: 2, x: 2560, y: 0, width: 2560, height: 1392, primary: false },
+        Monitor {
+            id: 1,
+            x: 0,
+            y: 0,
+            width: 2560,
+            height: 1392,
+            primary: true,
+        },
+        Monitor {
+            id: 2,
+            x: 2560,
+            y: 0,
+            width: 2560,
+            height: 1392,
+            primary: false,
+        },
     ]
 }
 fn one_screen() -> Vec<Monitor> {
-    vec![Monitor { id: 1, x: 0, y: 0, width: 2560, height: 1392, primary: true }]
+    vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 2560,
+        height: 1392,
+        primary: true,
+    }]
 }
 fn cfg() -> PanelConfig {
     PanelConfig::default()
@@ -32,7 +53,10 @@ fn everything_is_spoken_as_well_as_shown_except_the_ambient_mark() {
     let c = cfg();
     assert!(narration(Panel::Tasks, "three things waiting", &c).is_some());
     assert!(narration(Panel::Mind, "step two of three", &c).is_some());
-    assert!(narration(Panel::Presence, "", &c).is_none(), "the mark says nothing");
+    assert!(
+        narration(Panel::Presence, "", &c).is_none(),
+        "the mark says nothing"
+    );
 }
 
 // ================= where things appear =================
@@ -71,7 +95,10 @@ fn reading_panels_open_full_height_down_the_right_of_the_screen_youre_on() {
 
 #[test]
 fn you_can_send_them_to_the_other_screen_if_you_would_rather() {
-    let second = PanelConfig { prefer_second_screen: true, ..cfg() };
+    let second = PanelConfig {
+        prefer_second_screen: true,
+        ..cfg()
+    };
     match place(Panel::Tasks, &two_screens(), &second) {
         Decision::Show(p) => assert_eq!(p.monitor, 2),
         o => panic!("{o:?}"),
@@ -93,25 +120,62 @@ fn on_a_big_monitor_the_column_costs_nothing_so_it_just_opens() {
 fn on_a_laptop_screen_it_asks_because_a_fifth_of_the_width_is_in_your_way() {
     // The thing that matters is how much of the screen it costs, not how
     // many screens there are.
-    let laptop = vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1080, primary: true }];
+    let laptop = vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        primary: true,
+    }];
     match place(Panel::Tasks, &laptop, &cfg()) {
         Decision::AskFirst(q) => assert!(q.contains("shall I just read it"), "got: {q}"),
         o => panic!("{o:?}"),
     }
-    let small = vec![Monitor { id: 1, x: 0, y: 0, width: 1366, height: 768, primary: true }];
-    assert!(matches!(place(Panel::Mind, &small, &cfg()), Decision::AskFirst(_)));
+    let small = vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1366,
+        height: 768,
+        primary: true,
+    }];
+    assert!(matches!(
+        place(Panel::Mind, &small, &cfg()),
+        Decision::AskFirst(_)
+    ));
 }
 
 #[test]
 fn plugging_into_monitors_stops_it_asking_without_you_changing_anything() {
-    let laptop = vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1080, primary: true }];
-    assert!(matches!(place(Panel::Tasks, &laptop, &cfg()), Decision::AskFirst(_)));
-    assert!(matches!(place(Panel::Tasks, &two_screens(), &cfg()), Decision::Show(_)));
+    let laptop = vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        primary: true,
+    }];
+    assert!(matches!(
+        place(Panel::Tasks, &laptop, &cfg()),
+        Decision::AskFirst(_)
+    ));
+    assert!(matches!(
+        place(Panel::Tasks, &two_screens(), &cfg()),
+        Decision::Show(_)
+    ));
 }
 
 #[test]
 fn saying_yes_on_a_laptop_still_puts_it_down_the_side() {
-    let laptop = vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1080, primary: true }];
+    let laptop = vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        primary: true,
+    }];
     let p = place_anyway(Panel::Tasks, &laptop, &cfg()).unwrap();
     assert_eq!(p.rect.x, 1520);
     assert_eq!(p.rect.height, 1080, "still full height");
@@ -119,7 +183,10 @@ fn saying_yes_on_a_laptop_still_puts_it_down_the_side() {
 
 #[test]
 fn it_only_asks_when_you_wanted_a_second_screen_and_there_isnt_one() {
-    let second = PanelConfig { prefer_second_screen: true, ..cfg() };
+    let second = PanelConfig {
+        prefer_second_screen: true,
+        ..cfg()
+    };
     match place(Panel::Tasks, &one_screen(), &second) {
         Decision::AskFirst(q) => assert!(q.contains("or shall I just read it"), "got: {q}"),
         o => panic!("{o:?}"),
@@ -128,8 +195,11 @@ fn it_only_asks_when_you_wanted_a_second_screen_and_there_isnt_one() {
 
 #[test]
 fn saying_no_means_it_speaks_instead_of_showing() {
-    let never_ask =
-        PanelConfig { prefer_second_screen: true, ask_on_single_display: false, ..cfg() };
+    let never_ask = PanelConfig {
+        prefer_second_screen: true,
+        ask_on_single_display: false,
+        ..cfg()
+    };
     match place(Panel::Tasks, &one_screen(), &never_ask) {
         Decision::SpeakOnly(why) => assert!(why.contains("nowhere to put it")),
         o => panic!("{o:?}"),
@@ -160,18 +230,30 @@ fn the_ambient_mark_never_touches_the_screen_youre_working_on() {
 #[test]
 fn with_one_screen_there_is_nowhere_for_an_ambient_mark_to_go() {
     // Better to have none than to put a glowing dot over your work.
-    assert!(matches!(place(Panel::Presence, &one_screen(), &cfg()), Decision::SpeakOnly(_)));
+    assert!(matches!(
+        place(Panel::Presence, &one_screen(), &cfg()),
+        Decision::SpeakOnly(_)
+    ));
 }
 
 #[test]
 fn a_panel_window_has_no_browser_furniture() {
     let p = place_anyway(Panel::Tasks, &one_screen(), &cfg()).unwrap();
     let args = window_args("http://127.0.0.1:8787/panel/tasks", &p);
-    assert!(args.iter().any(|a| a.starts_with("--app=")), "no tabs, no address bar");
+    assert!(
+        args.iter().any(|a| a.starts_with("--app=")),
+        "no tabs, no address bar"
+    );
     assert!(args.iter().any(|a| a.contains("--window-position=2160,0")));
     assert!(args.iter().any(|a| a.contains("--window-size=400,1392")));
-    assert!(args.iter().any(|a| a.contains("panel-profile")), "never inherits your tabs");
-    assert!(args.iter().any(|a| a == "--disable-background-networking"), "a panel doesn't call Google on its own");
+    assert!(
+        args.iter().any(|a| a.contains("panel-profile")),
+        "never inherits your tabs"
+    );
+    assert!(
+        args.iter().any(|a| a == "--disable-background-networking"),
+        "a panel doesn't call Google on its own"
+    );
 }
 
 // ================= how it looks =================
@@ -184,7 +266,10 @@ fn the_palette_avoids_both_obvious_routes() {
     // white, and Ember Dark's slate — neither cyan nor black.
     assert!(TOKENS.contains("--signal:#D9730D"), "warm orange, not cyan");
     assert!(!TOKENS.contains("#00FFFF") && !TOKENS.contains("#00E5FF"));
-    assert!(atlas::look::TOKENS_DARK.contains("--ink:#0C0F14"), "slate, not black");
+    assert!(
+        atlas::look::TOKENS_DARK.contains("--ink:#0C0F14"),
+        "slate, not black"
+    );
     assert!(!TOKENS.contains("#000000") && !atlas::look::TOKENS_DARK.contains("#000000"));
 }
 
@@ -210,7 +295,13 @@ fn mock(monitors: Vec<Monitor>) -> MockPlatform {
     MockPlatform::new(monitors)
 }
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -272,7 +363,10 @@ fn asking_for_something_that_isnt_a_panel_says_so() {
     let (c, p) = (conf(), mock(two_screens()));
     let mut d = daemon(&c, &p, "nope");
     let said = d.turn("pull up the weather", 100);
-    assert!(said.contains("can't put") && said.contains("open an app by name"), "{said}");
+    assert!(
+        said.contains("can't put") && said.contains("open an app by name"),
+        "{said}"
+    );
 }
 
 #[test]
@@ -282,8 +376,9 @@ fn saying_youre_ready_only_means_resume_if_something_was_paused() {
     let mut d = daemon(&c, &p, "ready-vs-resume");
     d.turn("hold on", 100);
     let resumed = d.turn("i'm ready", 110);
-    assert!(resumed.contains("Go ahead") || resumed.contains("Where were we")
-        || !resumed.is_empty(), "got: {resumed}");
+    assert!(
+        resumed.contains("Go ahead") || resumed.contains("Where were we") || !resumed.is_empty(),
+        "got: {resumed}"
+    );
     assert!(d.wants_panel.is_none(), "resuming is not the waking moment");
 }
-

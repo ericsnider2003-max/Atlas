@@ -298,7 +298,9 @@ impl Role {
     pub fn may(&self, action: &str) -> bool {
         match self {
             Role::Owner => true,
-            Role::Guest => !NEVER_AS_A_GUEST.contains(&action) && !ONLY_YOU_MAY_ASK.contains(&action),
+            Role::Guest => {
+                !NEVER_AS_A_GUEST.contains(&action) && !ONLY_YOU_MAY_ASK.contains(&action)
+            }
         }
     }
 }
@@ -365,7 +367,9 @@ impl Profiles {
             return Err(AtlasError::Config("a profile needs a name".into()));
         }
         if self.profiles.iter().any(|p| p.id == id) {
-            return Err(AtlasError::Config(format!("there's already a profile called {name}")));
+            return Err(AtlasError::Config(format!(
+                "there's already a profile called {name}"
+            )));
         }
         let p = Profile {
             id: id.clone(),
@@ -416,12 +420,17 @@ impl Profiles {
             p.last_used = t;
         }
         self.active = Some(id.to_string());
-        Ok(Switch { from, to: id.to_string() })
+        Ok(Switch {
+            from,
+            to: id.to_string(),
+        })
     }
 
     pub fn remove(&mut self, id: &str) -> Result<()> {
         if self.active.as_deref() == Some(id) {
-            return Err(AtlasError::Config("switch away before removing a profile".into()));
+            return Err(AtlasError::Config(
+                "switch away before removing a profile".into(),
+            ));
         }
         let before = self.profiles.len();
         self.profiles.retain(|p| p.id != id);
@@ -437,7 +446,9 @@ impl Profiles {
             1 => format!("Just you: {}.", self.profiles[0].name),
             n => format!(
                 "{n} profiles. You're on {}.",
-                self.current().map(|p| p.name.clone()).unwrap_or_else(|| "none".into())
+                self.current()
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| "none".into())
             ),
         }
     }

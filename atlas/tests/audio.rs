@@ -30,7 +30,13 @@ fn device_names_come_out_of_ffmpeg_exactly_as_written() {
     // rather than an error, which is the worst kind of failure to debug.
     let d = parse_devices(FFMPEG_OUTPUT);
     let names: Vec<&str> = d.iter().map(|x| x.name.as_str()).collect();
-    assert_eq!(names, vec!["Microphone Array (Realtek(R) Audio)", "Headset (AirPods Pro Hands-Free)"]);
+    assert_eq!(
+        names,
+        vec![
+            "Microphone Array (Realtek(R) Audio)",
+            "Headset (AirPods Pro Hands-Free)"
+        ]
+    );
 }
 
 #[test]
@@ -52,7 +58,10 @@ fn airpods_and_the_built_in_mic_are_told_apart() {
 fn a_webcam_mic_is_neither_bluetooth_nor_builtin() {
     let w = webcam_mic();
     assert!(!w.bluetooth);
-    assert!(!w.builtin, "a plugged-in webcam is not the machine's own array");
+    assert!(
+        !w.builtin,
+        "a plugged-in webcam is not the machine's own array"
+    );
 }
 
 #[test]
@@ -62,7 +71,10 @@ fn atlas_listens_on_the_laptop_mic_so_your_headphones_keep_full_quality() {
     // turns muddy — for as long as Atlas is listening, which with a wake word
     // is all day.
     let s = choose(&devices(), &AudioConfig::default(), true);
-    assert_eq!(s.input.as_deref(), Some("Microphone Array (Realtek(R) Audio)"));
+    assert_eq!(
+        s.input.as_deref(),
+        Some("Microphone Array (Realtek(R) Audio)")
+    );
     assert_eq!(s.output.as_deref(), Some("Headphones (AirPods Pro Stereo)"));
     assert!(!s.degrades_audio);
     assert!(s.why.contains("full sound quality"), "got: {}", s.why);
@@ -85,7 +97,10 @@ fn you_can_insist_on_the_headset_mic_for_walking_around() {
     // The only reason to turn the guard off is that you want the headset mic
     // — you're away from the desk and the laptop can't hear you. So off means
     // "use it", not "stop worrying about it".
-    let cfg = AudioConfig { avoid_bluetooth_mic: false, ..Default::default() };
+    let cfg = AudioConfig {
+        avoid_bluetooth_mic: false,
+        ..Default::default()
+    };
     let s = choose(&devices(), &cfg, true);
     assert!(s.input.as_deref().unwrap().contains("AirPods"));
     assert!(s.degrades_audio, "and it still says what that costs");
@@ -106,21 +121,34 @@ fn output_goes_to_headphones_by_default_but_can_be_kept_on_speakers() {
     let s = choose(&devices(), &AudioConfig::default(), true);
     assert!(s.output.as_deref().unwrap().contains("AirPods"));
 
-    let cfg = AudioConfig { prefer_headphones_for_output: false, ..Default::default() };
+    let cfg = AudioConfig {
+        prefer_headphones_for_output: false,
+        ..Default::default()
+    };
     let s2 = choose(&devices(), &cfg, true);
-    assert!(s2.output.as_deref().unwrap().contains("Realtek"), "replies stay on the speakers");
+    assert!(
+        s2.output.as_deref().unwrap().contains("Realtek"),
+        "replies stay on the speakers"
+    );
 }
 
 #[test]
 fn no_microphone_at_all_is_a_clear_answer_not_a_crash() {
-    let s = choose(&[Device::new("Speakers", Kind::Output)], &AudioConfig::default(), true);
+    let s = choose(
+        &[Device::new("Speakers", Kind::Output)],
+        &AudioConfig::default(),
+        true,
+    );
     assert!(s.input.is_none());
     assert!(s.why.contains("no microphone"));
 }
 
 #[test]
 fn headphones_connecting_mid_session_is_noticed() {
-    let before = vec![Device::new("Microphone Array (Realtek(R) Audio)", Kind::Input)];
+    let before = vec![Device::new(
+        "Microphone Array (Realtek(R) Audio)",
+        Kind::Input,
+    )];
     let after = devices();
     assert!(changed(&before, &after));
     assert!(!changed(&after, &after));
@@ -130,9 +158,18 @@ fn headphones_connecting_mid_session_is_noticed() {
 fn atlas_says_something_useful_when_the_audio_changes_under_it() {
     let with_mic = choose(&devices(), &AudioConfig::default(), true);
     let none = choose(&[], &AudioConfig::default(), true);
-    assert_eq!(announce(&with_mic, &none).as_deref(), Some("I've lost the microphone."));
-    assert_eq!(announce(&none, &with_mic).as_deref(), Some("Microphone's back."));
-    assert!(announce(&with_mic, &with_mic).is_none(), "nothing changed, nothing said");
+    assert_eq!(
+        announce(&with_mic, &none).as_deref(),
+        Some("I've lost the microphone.")
+    );
+    assert_eq!(
+        announce(&none, &with_mic).as_deref(),
+        Some("Microphone's back.")
+    );
+    assert!(
+        announce(&with_mic, &with_mic).is_none(),
+        "nothing changed, nothing said"
+    );
 
     let airpods_only = choose(
         &[Device::new("Headset (AirPods Pro Hands-Free)", Kind::Input)],
@@ -167,7 +204,10 @@ fn with_the_lid_down_a_reachable_wired_mic_beats_the_bluetooth_one() {
     d.push(webcam_mic());
     let s = choose(&d, &AudioConfig::default(), false);
     assert_eq!(s.input.as_deref(), Some("Microphone (HD Pro Webcam C920)"));
-    assert!(!s.degrades_audio, "a reachable wired mic should not cost audio quality");
+    assert!(
+        !s.degrades_audio,
+        "a reachable wired mic should not cost audio quality"
+    );
     assert!(s.why.contains("lid down"), "got: {}", s.why);
 }
 
@@ -177,7 +217,11 @@ fn with_the_lid_down_and_nothing_else_the_headset_is_used_and_the_reason_is_the_
     let s = choose(&d, &AudioConfig::default(), false);
     assert_eq!(s.input.as_deref(), Some("Headset (AirPods Pro Hands-Free)"));
     assert!(s.degrades_audio);
-    assert!(s.why.contains("lid down"), "the reason should name the actual cause: {}", s.why);
+    assert!(
+        s.why.contains("lid down"),
+        "the reason should name the actual cause: {}",
+        s.why
+    );
 }
 
 #[test]
@@ -186,7 +230,10 @@ fn with_the_lid_up_the_built_in_mic_is_offered_exactly_as_before() {
     // whole point of this module before tonight was to prefer the built-in
     // mic, and that has to keep working for anyone whose lid is open.
     let s = choose(&devices(), &AudioConfig::default(), true);
-    assert_eq!(s.input.as_deref(), Some("Microphone Array (Realtek(R) Audio)"));
+    assert_eq!(
+        s.input.as_deref(),
+        Some("Microphone Array (Realtek(R) Audio)")
+    );
 }
 
 #[test]
@@ -195,7 +242,10 @@ fn a_lid_state_that_cannot_be_read_defaults_to_trusting_the_built_in_mic() {
     // working microphone. Guessing it is open, at worst, offers a mic that
     // turns out to be unreachable — a louder, more honest failure.
     let s_open_guess = choose(&devices(), &AudioConfig::default(), true);
-    assert_eq!(s_open_guess.input.as_deref(), Some("Microphone Array (Realtek(R) Audio)"));
+    assert_eq!(
+        s_open_guess.input.as_deref(),
+        Some("Microphone Array (Realtek(R) Audio)")
+    );
 }
 
 #[test]

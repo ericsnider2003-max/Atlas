@@ -19,12 +19,26 @@ fn tmp(tag: &str) -> PathBuf {
 
 fn have(tool: &str) -> bool {
     atlas::tools::which(tool).is_some()
-        && std::process::Command::new(tool).arg("-version").output().map(|o| o.status.success()).unwrap_or(false)
+        && std::process::Command::new(tool)
+            .arg("-version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
 }
 
 fn ffprobe_frames(file: &Path) -> String {
     let out = std::process::Command::new("ffprobe")
-        .args(["-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=width,height,nb_read_frames", "-of", "csv=p=0"])
+        .args([
+            "-v",
+            "error",
+            "-count_frames",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height,nb_read_frames",
+            "-of",
+            "csv=p=0",
+        ])
         .arg(file)
         .output()
         .unwrap();
@@ -61,7 +75,11 @@ fn pinhole(from: [f64; 3], at: [f64; 3], fov: f64, w: f64, h: f64, p: [f64; 3]) 
     };
     let f = norm(sub(at, from));
     let r = norm([-f[2], 0.0, f[0]]); // f × up, up = y
-    let u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+    let u = [
+        r[1] * f[2] - r[2] * f[1],
+        r[2] * f[0] - r[0] * f[2],
+        r[0] * f[1] - r[1] * f[0],
+    ];
     let rel = sub(p, from);
     let z = dot(rel, f);
     let t = (fov.to_radians() / 2.0).tan();
@@ -92,7 +110,14 @@ fn a_keyed_ball_is_drawn_where_its_keyframes_put_it_every_frame() {
         let img = render_frame(&s, t);
         let (cx, _, _) = centre_of(&img, orange).expect("the ball is drawn");
         let x = -1.6 + 3.2 * t;
-        let (ex, _) = pinhole([0.0, 1.2, 6.0], [0.0, 0.8, 0.0], 40.0, 160.0, 96.0, [x, 0.35, 0.0]);
+        let (ex, _) = pinhole(
+            [0.0, 1.2, 6.0],
+            [0.0, 0.8, 0.0],
+            40.0,
+            160.0,
+            96.0,
+            [x, 0.35, 0.0],
+        );
         worst = worst.max((cx - ex).abs());
         line.push(format!("{cx:.0}"));
     }
@@ -111,10 +136,12 @@ fn a_spinning_box_turns_its_silhouette() {
         .map(|i| {
             let img = render_frame(&s, i as f64 / 4.0);
             let cols: Vec<u32> = (0..img.width)
-                .filter(|&x| (0..img.height).any(|y| {
-                    let p = img.at(x, y);
-                    p[2] as i32 > p[0] as i32 + 40
-                }))
+                .filter(|&x| {
+                    (0..img.height).any(|y| {
+                        let p = img.at(x, y);
+                        p[2] as i32 > p[0] as i32 + 40
+                    })
+                })
                 .collect();
             cols.len() as u32
         })
@@ -132,13 +159,29 @@ fn a_bounce_lands_and_settles_on_the_ground() {
                          "animate":[{{"prop":"at","keys":[[0,[0,2.0,0]],[1,[0,0.3,0]]],"ease":"bounce"}}]}}]}}"##
     ))
     .unwrap();
-    let ys: Vec<f64> = (0..10).map(|i| centre_of(&render_frame(&s, i as f64 / 10.0), orange).unwrap().1).collect();
+    let ys: Vec<f64> = (0..10)
+        .map(|i| {
+            centre_of(&render_frame(&s, i as f64 / 10.0), orange)
+                .unwrap()
+                .1
+        })
+        .collect();
     let end = centre_of(&render_frame(&s, 1.0), orange).unwrap().1;
-    let (_, landed) = pinhole([0.0, 1.2, 6.0], [0.0, 0.8, 0.0], 40.0, 128.0, 96.0, [0.0, 0.3, 0.0]);
+    let (_, landed) = pinhole(
+        [0.0, 1.2, 6.0],
+        [0.0, 0.8, 0.0],
+        40.0,
+        128.0,
+        96.0,
+        [0.0, 0.3, 0.0],
+    );
     println!("LIVE [3-D bounce] ball height on screen by frame (px, down is bigger): {:?} → rests at {end:.0} (keyed {landed:.0})", ys.iter().map(|y| y.round()).collect::<Vec<_>>());
     // It falls, then — the bounce — goes back up (smaller y) before settling.
     let rose = ys.windows(2).position(|w| w[1] < w[0] - 2.0);
-    assert!(rose.is_some_and(|i| i > 0 && ys[i] > ys[0] + 20.0), "no bounce after the fall: {ys:?}");
+    assert!(
+        rose.is_some_and(|i| i > 0 && ys[i] > ys[0] + 20.0),
+        "no bounce after the fall: {ys:?}"
+    );
     assert!((end - landed).abs() < 2.0);
 }
 
@@ -157,10 +200,12 @@ fn motion_blur_smears_what_moves_fast_and_nothing_else() {
     // Columns where the ball changed the picture at all (by more than 6 levels).
     let touched = |img: &Rgba| {
         (0..img.width)
-            .filter(|&x| (0..img.height).any(|y| {
-                let (p, q) = (img.at(x, y), empty.at(x, y));
-                (0..3).any(|c| (p[c] as i32 - q[c] as i32).abs() > 6)
-            }))
+            .filter(|&x| {
+                (0..img.height).any(|y| {
+                    let (p, q) = (img.at(x, y), empty.at(x, y));
+                    (0..3).any(|c| (p[c] as i32 - q[c] as i32).abs() > 6)
+                })
+            })
             .count()
     };
     let (sharp, blurred) = (touched(&at(false, true)), touched(&at(true, true)));
@@ -168,7 +213,10 @@ fn motion_blur_smears_what_moves_fast_and_nothing_else() {
     // 96 rows that's about 0.4 × 96 / (2·6·tan 20°) ≈ 8.8 px more.
     let expect = 0.4 * 96.0 / (2.0 * 6.0 * 20f64.to_radians().tan());
     println!("LIVE [3-D motion blur] the moving ball touches {sharp} columns sharp, {blurred} with the shutter open half a frame (travel in that time ≈ {expect:.1} px)");
-    assert!((blurred as f64 - sharp as f64) > expect * 0.5, "{sharp} vs {blurred}");
+    assert!(
+        (blurred as f64 - sharp as f64) > expect * 0.5,
+        "{sharp} vs {blurred}"
+    );
     // Something that isn't moving isn't blurred: with the ball gone, the open
     // shutter changes not one pixel.
     assert_eq!(at(true, false).pixels, empty.pixels);
@@ -206,7 +254,10 @@ fn a_bigger_sun_gives_softer_shadow_edges() {
         let (a, b) = (lo + (hi - lo) / 10, hi - (hi - lo) / 10);
         row.iter().filter(|l| **l > a && **l < b).count()
     };
-    let (hard, soft) = (edge(&render_frame(&scene(0.0), 0.0)), edge(&render_frame(&scene(12.0), 0.0)));
+    let (hard, soft) = (
+        edge(&render_frame(&scene(0.0), 0.0)),
+        edge(&render_frame(&scene(12.0), 0.0)),
+    );
     // The box's underside is 1.1 m up; a 12° sun (6° either side) spreads
     // each edge over 1.1 × 2·tan 6° ≈ 0.23 m of ground — two edges a row.
     println!("LIVE [3-D soft shadows] pixels across the shadow's edges on one row: {hard} with a point sun, {soft} with a 12° sun");
@@ -228,9 +279,16 @@ fn a_moving_scene_comes_out_as_a_gif_and_an_mp4_with_every_frame() {
     .unwrap();
     let made = make(&s, &dir, "rings", 0, None).unwrap();
     println!("LIVE [3-D animation] {}", made.say().replace('\n', " "));
-    assert!(atlas::motion::blocking(&made.findings).is_empty(), "{:?}", made.findings);
+    assert!(
+        atlas::motion::blocking(&made.findings).is_empty(),
+        "{:?}",
+        made.findings
+    );
     assert_eq!(made.frames, 18);
-    assert_eq!(made.changed, 17, "every frame should differ from the one before");
+    assert_eq!(
+        made.changed, 17,
+        "every frame should differ from the one before"
+    );
     if have("ffmpeg") {
         let gif = ffprobe_frames(made.gif.as_ref().unwrap());
         let mp4 = ffprobe_frames(made.mp4.as_ref().unwrap());
@@ -248,12 +306,25 @@ fn leaving_the_frame_and_not_moving_at_all_are_both_said() {
                          "animate":[{{"prop":"at","keys":[[0,[0,0.8,0]],[2,[12,0.8,0]]],"ease":"linear"}}]}}]}}"##
     ))
     .unwrap();
-    let said: Vec<String> = atlas::scene3d::check_scene(&off).into_iter().map(|f| f.detail).collect();
+    let said: Vec<String> = atlas::scene3d::check_scene(&off)
+        .into_iter()
+        .map(|f| f.detail)
+        .collect();
     println!("LIVE [3-D checks] a ball keyed off to the right: {said:?}");
-    assert!(said.iter().any(|d| d.contains("out of the picture from about")), "{said:?}");
+    assert!(
+        said.iter()
+            .any(|d| d.contains("out of the picture from about")),
+        "{said:?}"
+    );
 
-    let still = parse_scene(&format!(r##"{{"duration":2,{CAM},"objects":[{{"shape":"sphere","radius":0.3,"at":[0,0.8,0]}}]}}"##)).unwrap();
-    let said: Vec<String> = atlas::scene3d::check_scene(&still).into_iter().map(|f| f.detail).collect();
+    let still = parse_scene(&format!(
+        r##"{{"duration":2,{CAM},"objects":[{{"shape":"sphere","radius":0.3,"at":[0,0.8,0]}}]}}"##
+    ))
+    .unwrap();
+    let said: Vec<String> = atlas::scene3d::check_scene(&still)
+        .into_iter()
+        .map(|f| f.detail)
+        .collect();
     println!("LIVE [3-D checks] 2 s long with nothing animated: {said:?}");
     assert!(said.iter().any(|d| d.contains("nothing in it is animated")));
 }
@@ -261,7 +332,11 @@ fn leaving_the_frame_and_not_moving_at_all_are_both_said() {
 #[test]
 fn the_blender_script_bakes_the_same_motion_frame_by_frame() {
     if !(atlas::tools::which("python3").is_some()
-        && std::process::Command::new("python3").arg("--version").output().map(|o| o.status.success()).unwrap_or(false))
+        && std::process::Command::new("python3")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false))
     {
         return println!("LIVE [3-D blender] skipped: no working python3 here");
     }
@@ -270,12 +345,19 @@ fn the_blender_script_bakes_the_same_motion_frame_by_frame() {
     let script = atlas::scene3d::blender_script(&s, &dir.join("ball."));
     let path = dir.join("anim.py");
     std::fs::write(&path, &script).unwrap();
-    let st = std::process::Command::new("python3").args(["-m", "py_compile"]).arg(&path).status().unwrap();
+    let st = std::process::Command::new("python3")
+        .args(["-m", "py_compile"])
+        .arg(&path)
+        .status()
+        .unwrap();
     assert!(st.success(), "the Blender script doesn't compile");
     assert!(script.contains("scene.frame_end = 8"));
     assert!(script.contains("bpy.ops.render.render(animation=True)"));
     // The ball's keyed x at frame 5 (t = 0.5) is 0: baked, not re-derived by Blender.
-    assert!(script.contains("(5, (0.00000, -0.00000, 0.35000)"), "frame 5 should put the ball at the middle");
+    assert!(
+        script.contains("(5, (0.00000, -0.00000, 0.35000)"),
+        "frame 5 should put the ball at the middle"
+    );
     println!("LIVE [3-D blender] {} lines, compiles; 8 frames baked for the ball and the camera; motion blur on; renders frames ball.0001.png…", script.lines().count());
 }
 
@@ -289,12 +371,28 @@ fn ordered_dithering_keeps_a_smooth_gradient_smooth() {
     let mut img = Rgba::new(256, 64);
     for y in 0..64 {
         for x in 0..256u32 {
-            img.put(x, y, [(150 + x / 4) as u8, (170 + x / 6 + y / 8) as u8, (210 + x / 10) as u8, 255]);
+            img.put(
+                x,
+                y,
+                [
+                    (150 + x / 4) as u8,
+                    (170 + x / 6 + y / 8) as u8,
+                    (210 + x / 10) as u8,
+                    255,
+                ],
+            );
         }
     }
     let err = |dither: bool| {
-        let f = [atlas::gifenc::Frame { image: &img, delay_cs: 10 }];
-        let bytes = if dither { atlas::gifenc::encode_gif_dithered(&f).unwrap() } else { atlas::gifenc::encode_gif(&f).unwrap() };
+        let f = [atlas::gifenc::Frame {
+            image: &img,
+            delay_cs: 10,
+        }];
+        let bytes = if dither {
+            atlas::gifenc::encode_gif_dithered(&f).unwrap()
+        } else {
+            atlas::gifenc::encode_gif(&f).unwrap()
+        };
         let p = dir.join(if dither { "d.gif" } else { "p.gif" });
         std::fs::write(&p, bytes).unwrap();
         let out = std::process::Command::new("ffmpeg")
@@ -349,7 +447,14 @@ impl atlas::brain::Llm for Director {
 #[test]
 fn asking_for_a_bouncing_ball_in_3d_gets_an_animation() {
     let c = atlas::config::Config::load(Path::new("config")).unwrap();
-    let p = atlas::platform::mock::MockPlatform::new(vec![atlas::platform::Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let p = atlas::platform::mock::MockPlatform::new(vec![atlas::platform::Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     let llm = std::sync::Arc::new(Director(std::sync::Mutex::new(0)));
     let mut d = atlas::daemon::Daemon::new(
         &c,
@@ -359,9 +464,16 @@ fn asking_for_a_bouncing_ball_in_3d_gets_an_animation() {
         atlas::proactive::Proactive::new(atlas::proactive::ProactiveConfig::default()),
     );
     let said = d.turn("animate a bouncing ball in 3d", 1_790_000_000);
-    println!("LIVE [you: \"animate a bouncing ball in 3d\"]  Atlas: {}", said.replace('\n', " "));
+    println!(
+        "LIVE [you: \"animate a bouncing ball in 3d\"]  Atlas: {}",
+        said.replace('\n', " ")
+    );
     assert!(said.contains("Animated it"), "{said}");
-    assert_eq!(*llm.0.lock().unwrap(), 2, "the still draft should have been sent back once");
+    assert_eq!(
+        *llm.0.lock().unwrap(),
+        2,
+        "the still draft should have been sent back once"
+    );
 }
 
 /// Blender, when there is one: the installed program, or — in the container
@@ -376,7 +488,9 @@ fn a_blender() -> Option<PathBuf> {
 
 #[test]
 fn blender_renders_the_same_motion_the_in_house_renderer_draws() {
-    let Some(blender) = a_blender() else { return println!("LIVE [3-D blender, animated] skipped: no Blender here") };
+    let Some(blender) = a_blender() else {
+        return println!("LIVE [3-D blender, animated] skipped: no Blender here");
+    };
     let dir = tmp("blender-anim");
     let s = parse_scene(&format!(
         r##"{{"width":160,"height":96,"quality":"draft","duration":1,"fps":6,"motion_blur":false,{CAM},
@@ -387,15 +501,26 @@ fn blender_renders_the_same_motion_the_in_house_renderer_draws() {
     .unwrap();
     let started = std::time::Instant::now();
     let made = make(&s, &dir, "roll", 0, Some(&blender)).unwrap();
-    println!("LIVE [3-D blender, animated] {} ({:.1} s with Blender)", made.say().replace('\n', " "), started.elapsed().as_secs_f64());
+    println!(
+        "LIVE [3-D blender, animated] {} ({:.1} s with Blender)",
+        made.say().replace('\n', " "),
+        started.elapsed().as_secs_f64()
+    );
     assert!(made.blender.is_some(), "{:?}", made.notes);
-    assert!(atlas::motion::blocking(&made.findings).is_empty(), "{:?}", made.findings);
+    assert!(
+        atlas::motion::blocking(&made.findings).is_empty(),
+        "{:?}",
+        made.findings
+    );
     // Frame by frame: the ball's centre in Blender's render against the
     // in-house one. Two different renderers, the same baked timeline.
     let mut worst: f64 = 0.0;
     let mut pairs = Vec::new();
     for f in 0..6 {
-        let theirs = atlas::pngcodec::read_png(&std::fs::read(dir.join(format!("roll.blender.{:04}.png", f + 1))).unwrap()).unwrap();
+        let theirs = atlas::pngcodec::read_png(
+            &std::fs::read(dir.join(format!("roll.blender.{:04}.png", f + 1))).unwrap(),
+        )
+        .unwrap();
         let ours = render_frame(&s, f as f64 / 6.0);
         let (bx, _, _) = centre_of(&theirs, orange).expect("Blender drew the ball");
         let (ox, _, _) = centre_of(&ours, orange).expect("Atlas drew the ball");

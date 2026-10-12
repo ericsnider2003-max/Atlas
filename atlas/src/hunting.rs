@@ -20,30 +20,74 @@ mod opportunity_receipt_contention_tests {
     use super::*;
     #[test]
     fn busy_receipts_leave_cache_unconsumed_and_retry_preserves_new_disk_items() {
-        let root = std::env::temp_dir().join(format!("atlas-opportunity-receipt-{}-{}", std::process::id(), crate::store::now()));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-opportunity-receipt-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
         let store = crate::store::Store::new(&root);
         let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
-        let platform = crate::platform::mock::MockPlatform::new(vec![crate::platform::Monitor { id: 1, x: 0, y: 0, width: 1280, height: 800, primary: true }]);
-        let mut d = Daemon::new(&cfg, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let platform = crate::platform::mock::MockPlatform::new(vec![crate::platform::Monitor {
+            id: 1,
+            x: 0,
+            y: 0,
+            width: 1280,
+            height: 800,
+            primary: true,
+        }]);
+        let mut d = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
         let now = 1_900_000_000;
-        let found = |id: &str| hunt::Found { id: id.into(), source: Source::Hn, kind: hunt::Kind::Job, title: format!("Opportunity {id}"), link: format!("https://example.org/{id}"), summary: "Public listing".into(), at: now, closes: None, pay: None, remote: true };
-        let mut first = HuntState::default(); first.merge(vec![found("one")], &Interests::default(), now);
-        let offered = first.take_unbriefed(1, now); let line = hunt::line(1, &offered[0]);
-        store.save(hunt::FILE, &first).unwrap(); d.workday.hunt.state = Some(first.clone());
-        let mut newer = first.clone(); newer.merge(vec![found("two")], &Interests::default(), now);
+        let found = |id: &str| hunt::Found {
+            id: id.into(),
+            source: Source::Hn,
+            kind: hunt::Kind::Job,
+            title: format!("Opportunity {id}"),
+            link: format!("https://example.org/{id}"),
+            summary: "Public listing".into(),
+            at: now,
+            closes: None,
+            pay: None,
+            remote: true,
+        };
+        let mut first = HuntState::default();
+        first.merge(vec![found("one")], &Interests::default(), now);
+        let offered = first.take_unbriefed(1, now);
+        let line = hunt::line(1, &offered[0]);
+        store.save(hunt::FILE, &first).unwrap();
+        d.workday.hunt.state = Some(first.clone());
+        let mut newer = first.clone();
+        newer.merge(vec![found("two")], &Interests::default(), now);
         store.save(hunt::FILE, &newer).unwrap();
-        let owned = store.clone(); let (ready, rx) = std::sync::mpsc::sync_channel(1); let (release, wait) = std::sync::mpsc::sync_channel(1);
-        let holder = std::thread::spawn(move || { let _guard = owned.transaction().unwrap(); ready.send(()).unwrap(); wait.recv().unwrap(); });
+        let owned = store.clone();
+        let (ready, rx) = std::sync::mpsc::sync_channel(1);
+        let (release, wait) = std::sync::mpsc::sync_channel(1);
+        let holder = std::thread::spawn(move || {
+            let _guard = owned.transaction().unwrap();
+            ready.send(()).unwrap();
+            wait.recv().unwrap();
+        });
         rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
         let started = std::time::Instant::now();
         assert!(!acknowledge_delivered(&mut d, &line, now + 1));
         assert!(!acknowledge_brief_question(&mut d));
         assert!(started.elapsed() < std::time::Duration::from_millis(500));
-        let cached = d.workday.hunt.state.as_ref().unwrap(); assert!(cached.briefed.is_empty()); assert!(!cached.asked); assert!(cached.offered.contains_key("one"));
-        release.send(()).unwrap(); holder.join().unwrap();
+        let cached = d.workday.hunt.state.as_ref().unwrap();
+        assert!(cached.briefed.is_empty());
+        assert!(!cached.asked);
+        assert!(cached.offered.contains_key("one"));
+        release.send(()).unwrap();
+        holder.join().unwrap();
         assert!(acknowledge_delivered(&mut d, &line, now + 2));
         let saved: HuntState = store.load_checked(hunt::FILE).unwrap().unwrap();
-        assert!(saved.shortlist.iter().any(|r| r.found.id == "two")); assert!(saved.briefed.contains_key("one")); assert!(!saved.offered.contains_key("one"));
+        assert!(saved.shortlist.iter().any(|r| r.found.id == "two"));
+        assert!(saved.briefed.contains_key("one"));
+        assert!(!saved.offered.contains_key("one"));
         let _ = std::fs::remove_dir_all(root);
     }
 }
@@ -66,37 +110,75 @@ pub struct Live {
 }
 
 impl Live {
-    pub(crate) fn brief_state(&self) -> &Option<HuntState> { &self.state }
+    pub(crate) fn brief_state(&self) -> &Option<HuntState> {
+        &self.state
+    }
 }
 
-pub(crate) fn install_brief_offers(d: &mut Daemon, base: Option<HuntState>, offers: &[(String, String)], now: u64) -> Result<(), String> {
-    if offers.is_empty() { return Ok(()); }
-    let store = d.store.clone();
-    let _guard = store.transaction().map_err(|e| format!("Opportunity offers could not be recorded: {e}"))?;
-    let mut candidate: HuntState = store.load_checked(hunt::FILE).map_err(|e| e.to_string())?.or(base).unwrap_or_default();
-    for (id, line) in offers {
-        if candidate.shortlist.iter().any(|r| &r.found.id == id) { candidate.offered.insert(id.clone(), (now, line.clone())); }
+pub(crate) fn install_brief_offers(
+    d: &mut Daemon,
+    base: Option<HuntState>,
+    offers: &[(String, String)],
+    now: u64,
+) -> Result<(), String> {
+    if offers.is_empty() {
+        return Ok(());
     }
-    store.save(hunt::FILE, &candidate).map_err(|e| format!("Opportunity offers could not be recorded: {e}"))?;
+    let store = d.store.clone();
+    let _guard = store
+        .transaction()
+        .map_err(|e| format!("Opportunity offers could not be recorded: {e}"))?;
+    let mut candidate: HuntState = store
+        .load_checked(hunt::FILE)
+        .map_err(|e| e.to_string())?
+        .or(base)
+        .unwrap_or_default();
+    for (id, line) in offers {
+        if candidate.shortlist.iter().any(|r| &r.found.id == id) {
+            candidate.offered.insert(id.clone(), (now, line.clone()));
+        }
+    }
+    store
+        .save(hunt::FILE, &candidate)
+        .map_err(|e| format!("Opportunity offers could not be recorded: {e}"))?;
     d.workday.hunt.state = Some(candidate);
-    if d.workday.follow(now).is_none() { show(d, offers.iter().map(|(id, _)| id.clone()).collect(), now); }
+    if d.workday.follow(now).is_none() {
+        show(d, offers.iter().map(|(id, _)| id.clone()).collect(), now);
+    }
     Ok(())
 }
 
 pub(crate) fn acknowledge_brief_question(d: &mut Daemon) -> bool {
-    match persist_ack(d, &[], crate::store::now(), true) { Ok(()) => true, Err(why) => { d.log.warn(&why); false } }
+    match persist_ack(d, &[], crate::store::now(), true) {
+        Ok(()) => true,
+        Err(why) => {
+            d.log.warn(&why);
+            false
+        }
+    }
 }
 
 fn persist_ack(d: &mut Daemon, ids: &[String], now: u64, question: bool) -> Result<(), String> {
     let store = d.store.clone();
-    let _guard = store.transaction().map_err(|e| format!("Opportunity receipts remain pending: {e}"))?;
-    let mut current: HuntState = store.load_checked(hunt::FILE).map_err(|e| e.to_string())?.unwrap_or_default();
+    let _guard = store
+        .transaction()
+        .map_err(|e| format!("Opportunity receipts remain pending: {e}"))?;
+    let mut current: HuntState = store
+        .load_checked(hunt::FILE)
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
     current.acknowledge_seen(ids, now);
-    if question { current.asked = true; }
-    store.save(hunt::FILE, &current).map_err(|e| format!("Opportunity receipts remain pending: {e}"))?;
+    if question {
+        current.asked = true;
+    }
+    store
+        .save(hunt::FILE, &current)
+        .map_err(|e| format!("Opportunity receipts remain pending: {e}"))?;
     if let Some(cached) = d.workday.hunt.state.as_mut() {
         cached.acknowledge_seen(ids, now);
-        if question { cached.asked = true; }
+        if question {
+            cached.asked = true;
+        }
     }
     Ok(())
 }
@@ -110,14 +192,20 @@ fn state<'a>(d: &'a mut Daemon<'_>) -> &'a mut HuntState {
 }
 
 fn keep(d: &mut Daemon) -> Result<(), String> {
-    let Some(s) = d.workday.hunt.state.as_mut() else { return Ok(()) };
+    let Some(s) = d.workday.hunt.state.as_mut() else {
+        return Ok(());
+    };
     s.bound_rejection_words();
     s.archive_saved(&d.store)?;
     d.store.save(hunt::FILE, s).map_err(|e| e.to_string())
 }
 
 #[derive(Clone, Copy)]
-enum OwnerEdit { Save, Reject, RejectKind }
+enum OwnerEdit {
+    Save,
+    Reject,
+    RejectKind,
+}
 
 #[cfg(test)]
 mod owner_action_durability_tests {
@@ -126,73 +214,183 @@ mod owner_action_durability_tests {
         // Unique per fixture: the second-resolution clock gave two tests started in
         // the same second one folder, and so one state lock.
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let root = std::env::temp_dir().join(format!("atlas-owner-opportunity-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-owner-opportunity-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
         let store = crate::store::Store::new(&root);
-        let mut cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap(); cfg.tools.as_mut().unwrap().browser.launch = None;
-        let platform = crate::platform::mock::MockPlatform::new(vec![crate::platform::Monitor { id: 1, x: 0, y: 0, width: 1280, height: 800, primary: true }]);
-        let mut daemon = Daemon::new(&cfg, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
-        run(&mut daemon, &store); drop(daemon); crate::heard!(std::fs::remove_dir_all(root));
+        let mut cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        cfg.tools.as_mut().unwrap().browser.launch = None;
+        let platform = crate::platform::mock::MockPlatform::new(vec![crate::platform::Monitor {
+            id: 1,
+            x: 0,
+            y: 0,
+            width: 1280,
+            height: 800,
+            primary: true,
+        }]);
+        let mut daemon = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        run(&mut daemon, &store);
+        drop(daemon);
+        crate::heard!(std::fs::remove_dir_all(root));
     }
     fn state_with(ids: &[&str]) -> HuntState {
-        let now = crate::store::now(); let mut state = HuntState::default();
-        state.merge(ids.iter().map(|id| hunt::Found { id: (*id).into(), source: Source::Hn, kind: hunt::Kind::Gig, title: if *id == "two" { "Audio mixer for orchestral recordings".into() } else { "Video editor for baking demonstrations".into() }, link: format!("https://example.org/{id}"), summary: "Synthetic listing".into(), at: now, closes: None, pay: None, remote: true }).collect(), &Interests::default(), now); state
+        let now = crate::store::now();
+        let mut state = HuntState::default();
+        state.merge(
+            ids.iter()
+                .map(|id| hunt::Found {
+                    id: (*id).into(),
+                    source: Source::Hn,
+                    kind: hunt::Kind::Gig,
+                    title: if *id == "two" {
+                        "Audio mixer for orchestral recordings".into()
+                    } else {
+                        "Video editor for baking demonstrations".into()
+                    },
+                    link: format!("https://example.org/{id}"),
+                    summary: "Synthetic listing".into(),
+                    at: now,
+                    closes: None,
+                    pay: None,
+                    remote: true,
+                })
+                .collect(),
+            &Interests::default(),
+            now,
+        );
+        state
     }
     #[test]
     fn owner_save_merges_latest_disk_and_preserves_unrelated_listings() {
         fixture(|d, store| {
-            let first = state_with(&["one"]); d.workday.hunt.state = Some(first); d.workday.hunt.shown = vec!["one".into()];
-            let latest = state_with(&["one", "two"]); store.save(hunt::FILE, &latest).unwrap();
-            assert!(edit_opportunity(d, "one", OwnerEdit::Save).unwrap().is_some());
-            let saved: HuntState = store.load_checked(hunt::FILE).unwrap().unwrap(); assert!(saved.saved.iter().any(|item| item.id == "one")); assert!(saved.find("two").is_some()); assert!(d.workday.hunt.shown.is_empty());
+            let first = state_with(&["one"]);
+            d.workday.hunt.state = Some(first);
+            d.workday.hunt.shown = vec!["one".into()];
+            let latest = state_with(&["one", "two"]);
+            store.save(hunt::FILE, &latest).unwrap();
+            assert!(edit_opportunity(d, "one", OwnerEdit::Save)
+                .unwrap()
+                .is_some());
+            let saved: HuntState = store.load_checked(hunt::FILE).unwrap().unwrap();
+            assert!(saved.saved.iter().any(|item| item.id == "one"));
+            assert!(saved.find("two").is_some());
+            assert!(d.workday.hunt.shown.is_empty());
         });
     }
     #[test]
     fn busy_owner_drop_preserves_cache_disk_and_display_until_retry() {
         fixture(|d, store| {
-            let first = state_with(&["one"]); store.save(hunt::FILE, &first).unwrap(); d.workday.hunt.state = Some(first.clone()); d.workday.hunt.shown = vec!["one".into()];
-            let owned = store.clone(); let (ready, arrived) = std::sync::mpsc::sync_channel(1); let (release, wait) = std::sync::mpsc::sync_channel(1);
-            let holder = std::thread::spawn(move || { let _guard = owned.transaction().unwrap(); ready.send(()).unwrap(); wait.recv().unwrap(); }); arrived.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
-            let result = edit_opportunity(d, "one", OwnerEdit::Reject); release.send(()).unwrap(); holder.join().unwrap();
-            assert!(result.unwrap_err().contains("nothing changed")); assert!(d.workday.hunt.state.as_ref().unwrap().find("one").is_some()); assert_eq!(d.workday.hunt.shown, vec!["one".to_string()]); assert!(store.load_checked::<HuntState>(hunt::FILE).unwrap().unwrap().find("one").is_some());
-            assert!(edit_opportunity(d, "one", OwnerEdit::Reject).unwrap().is_some()); assert!(store.load_checked::<HuntState>(hunt::FILE).unwrap().unwrap().find("one").is_none());
+            let first = state_with(&["one"]);
+            store.save(hunt::FILE, &first).unwrap();
+            d.workday.hunt.state = Some(first.clone());
+            d.workday.hunt.shown = vec!["one".into()];
+            let owned = store.clone();
+            let (ready, arrived) = std::sync::mpsc::sync_channel(1);
+            let (release, wait) = std::sync::mpsc::sync_channel(1);
+            let holder = std::thread::spawn(move || {
+                let _guard = owned.transaction().unwrap();
+                ready.send(()).unwrap();
+                wait.recv().unwrap();
+            });
+            arrived
+                .recv_timeout(std::time::Duration::from_secs(2))
+                .unwrap();
+            let result = edit_opportunity(d, "one", OwnerEdit::Reject);
+            release.send(()).unwrap();
+            holder.join().unwrap();
+            assert!(result.unwrap_err().contains("nothing changed"));
+            assert!(d.workday.hunt.state.as_ref().unwrap().find("one").is_some());
+            assert_eq!(d.workday.hunt.shown, vec!["one".to_string()]);
+            assert!(store
+                .load_checked::<HuntState>(hunt::FILE)
+                .unwrap()
+                .unwrap()
+                .find("one")
+                .is_some());
+            assert!(edit_opportunity(d, "one", OwnerEdit::Reject)
+                .unwrap()
+                .is_some());
+            assert!(store
+                .load_checked::<HuntState>(hunt::FILE)
+                .unwrap()
+                .unwrap()
+                .find("one")
+                .is_none());
         });
     }
     #[test]
     fn corrupt_owner_actions_never_replace_original_bytes() {
         fixture(|d, store| {
-            store.save(hunt::FILE, &state_with(&["one"])).unwrap(); let path = store.root().join(format!("{}.json", hunt::FILE)); std::fs::write(&path, b"broken").unwrap();
-            for edit in [OwnerEdit::Save, OwnerEdit::Reject, OwnerEdit::RejectKind] { assert!(edit_opportunity(d, "one", edit).unwrap_err().contains("unreadable")); }
-            assert_eq!(std::fs::read(path).unwrap(), b"broken"); assert_eq!(d.crew.active(), 0);
+            store.save(hunt::FILE, &state_with(&["one"])).unwrap();
+            let path = store.root().join(format!("{}.json", hunt::FILE));
+            std::fs::write(&path, b"broken").unwrap();
+            for edit in [OwnerEdit::Save, OwnerEdit::Reject, OwnerEdit::RejectKind] {
+                assert!(edit_opportunity(d, "one", edit)
+                    .unwrap_err()
+                    .contains("unreadable"));
+            }
+            assert_eq!(std::fs::read(path).unwrap(), b"broken");
+            assert_eq!(d.crew.active(), 0);
         });
     }
 }
 
 fn edit_opportunity(d: &mut Daemon, id: &str, edit: OwnerEdit) -> Result<Option<String>, String> {
     let store = d.store.clone();
-    let _transaction = store.transaction().map_err(|e| format!("Opportunity storage is busy; nothing changed: {e}"))?;
-    let mut current: HuntState = store.load_checked(hunt::FILE).map_err(|e| format!("Saved opportunities are unreadable; nothing changed: {e}"))?.unwrap_or_default();
+    let _transaction = store
+        .transaction()
+        .map_err(|e| format!("Opportunity storage is busy; nothing changed: {e}"))?;
+    let mut current: HuntState = store
+        .load_checked(hunt::FILE)
+        .map_err(|e| format!("Saved opportunities are unreadable; nothing changed: {e}"))?
+        .unwrap_or_default();
     let title = match edit {
         OwnerEdit::Save => current.save(id).map(|found| found.title),
         OwnerEdit::Reject => current.not_interested(id),
         OwnerEdit::RejectKind => current.not_that_kind(id),
     };
-    if title.is_none() { return Ok(None); }
+    if title.is_none() {
+        return Ok(None);
+    }
     current.bound_rejection_words();
     current.archive_saved(&store)?;
-    store.save(hunt::FILE, &current).map_err(|e| format!("Opportunity change wasn't saved; nothing changed: {e}"))?;
+    store
+        .save(hunt::FILE, &current)
+        .map_err(|e| format!("Opportunity change wasn't saved; nothing changed: {e}"))?;
     d.workday.hunt.state = Some(current);
     d.workday.hunt.shown.retain(|shown| shown != id);
     Ok(title)
 }
 
 pub(crate) fn acknowledge_delivered(d: &mut Daemon, text: &str, now: u64) -> bool {
-    let Some(cached) = d.workday.hunt.state.as_ref() else { return true };
+    let Some(cached) = d.workday.hunt.state.as_ref() else {
+        return true;
+    };
     let mut candidate = cached.clone();
-    if !candidate.acknowledge_text(text, now) { return true; }
-    let ids: Vec<_> = candidate.briefed.iter().filter(|(id, at)| **at == now && cached.briefed.get(*id) != Some(*at)).map(|(id, _)| id.clone()).collect();
+    if !candidate.acknowledge_text(text, now) {
+        return true;
+    }
+    let ids: Vec<_> = candidate
+        .briefed
+        .iter()
+        .filter(|(id, at)| **at == now && cached.briefed.get(*id) != Some(*at))
+        .map(|(id, _)| id.clone())
+        .collect();
     match persist_ack(d, &ids, now, false) {
         Ok(()) => true,
-        Err(why) => { d.log.warn(&why); d.keep_said_for_apps(vec![why]); false }
+        Err(why) => {
+            d.log.warn(&why);
+            d.keep_said_for_apps(vec![why]);
+            false
+        }
     }
 }
 
@@ -204,10 +402,20 @@ fn fetch_listing(a: &Ask) -> Result<String, String> {
     let headers = [("User-Agent", hunt::USER_AGENT)];
     match a {
         Ask::PostJson { host, path, body } => {
-            let r = crate::http::https_post_json(host, path, body, None, timeout).map_err(|e| e.to_string())?;
-            if r.ok() { Ok(r.body) } else { Err(format!("{} answered {}", a.shown(), r.status)) }
+            let r = crate::http::https_post_json(host, path, body, None, timeout)
+                .map_err(|e| e.to_string())?;
+            if r.ok() {
+                Ok(r.body)
+            } else {
+                Err(format!("{} answered {}", a.shown(), r.status))
+            }
         }
-        Ask::Get { https, host, path, secret } => {
+        Ask::Get {
+            https,
+            host,
+            path,
+            secret,
+        } => {
             let (mut https, mut host, mut path) = (*https, host.clone(), path.clone());
             for _ in 0..4 {
                 let r = if https {
@@ -218,11 +426,17 @@ fn fetch_listing(a: &Ask) -> Result<String, String> {
                 .map_err(|e| e.to_string())?;
                 if (300..400).contains(&r.status) {
                     let here = format!("{}://{host}{path}", if https { "https" } else { "http" });
-                    let loc = r.location.ok_or_else(|| format!("{host}: a redirect with nowhere to go"))?;
-                    let next = crate::feeds::absolute_link(&here, &loc).ok_or_else(|| format!("{host}: a redirect I couldn't follow"))?;
-                    let (h2, host2, path2) = crate::feeds::split_feed_url(&next).ok_or_else(|| format!("{host}: a redirect I couldn't follow"))?;
+                    let loc = r
+                        .location
+                        .ok_or_else(|| format!("{host}: a redirect with nowhere to go"))?;
+                    let next = crate::feeds::absolute_link(&here, &loc)
+                        .ok_or_else(|| format!("{host}: a redirect I couldn't follow"))?;
+                    let (h2, host2, path2) = crate::feeds::split_feed_url(&next)
+                        .ok_or_else(|| format!("{host}: a redirect I couldn't follow"))?;
                     if https && !h2 {
-                        return Err(format!("{host} redirects to plain http, which I won't follow"));
+                        return Err(format!(
+                            "{host} redirects to plain http, which I won't follow"
+                        ));
                     }
                     (https, host, path) = (h2, host2, path2);
                     continue;
@@ -230,7 +444,12 @@ fn fetch_listing(a: &Ask) -> Result<String, String> {
                 if !r.ok() {
                     // Said the way a status line shows a request: a key in
                     // the address is never repeated.
-                    let asked = Ask::Get { https, host: host.clone(), path: path.split('?').next().unwrap_or("").to_string(), secret: *secret };
+                    let asked = Ask::Get {
+                        https,
+                        host: host.clone(),
+                        path: path.split('?').next().unwrap_or("").to_string(),
+                        secret: *secret,
+                    };
                     return Err(format!("{} answered {}", asked.shown(), r.status));
                 }
                 return Ok(r.body);
@@ -251,7 +470,13 @@ pub fn tick(d: &mut Daemon, t: u64, online: bool) {
 /// `tick`, with the requests made by `get` and spaced by `spacing` -- the
 /// same path, so a test drives the real schedule, budget and thread with
 /// saved answers instead of the network.
-pub fn tick_with(d: &mut Daemon, t: u64, online: bool, get: fn(&Ask) -> Result<String, String>, spacing: std::time::Duration) {
+pub fn tick_with(
+    d: &mut Daemon,
+    t: u64,
+    online: bool,
+    get: fn(&Ask) -> Result<String, String>,
+    spacing: std::time::Duration,
+) {
     if let Some(rx) = &d.workday.hunt.in_flight {
         match rx.try_recv() {
             Ok(results) => {
@@ -263,7 +488,8 @@ pub fn tick_with(d: &mut Daemon, t: u64, online: bool, get: fn(&Ask) -> Result<S
                     s.merge(took.found, &you, t);
                 }
                 if let Err(e) = keep(d) {
-                    d.log.warn(&format!("opportunities: couldn't keep what I found: {e}"));
+                    d.log
+                        .warn(&format!("opportunities: couldn't keep what I found: {e}"));
                 }
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => return,
@@ -290,12 +516,24 @@ pub fn tick_with(d: &mut Daemon, t: u64, online: bool, get: fn(&Ask) -> Result<S
 
     // Your own mail first: on this machine, no request made.
     if sources.contains(&Source::Mail) {
-        let last = state(d).sources.get("mail").map(|s| s.last_read).unwrap_or(0);
+        let last = state(d)
+            .sources
+            .get("mail")
+            .map(|s| s.last_read)
+            .unwrap_or(0);
         if hunt::source_due(Source::Mail, last, t, dom) {
             let book: crate::mailbook::MailBook = d.store.load(crate::mailbook::MailBook::FILE);
-            let since = if last == 0 { t.saturating_sub(7 * 86_400) } else { last };
+            let since = if last == 0 {
+                t.saturating_sub(7 * 86_400)
+            } else {
+                last
+            };
             let found = hunt::alerts_in_mail(&book.letters, since);
-            let took = Took { found, requests: 0, error: None };
+            let took = Took {
+                found,
+                requests: 0,
+                error: None,
+            };
             let you = Interests::from_facts(&d.facts);
             let s = state(d);
             s.note_source(Source::Mail, &took, t);
@@ -328,7 +566,10 @@ pub fn tick_with(d: &mut Daemon, t: u64, online: bool, get: fn(&Ask) -> Result<S
     }
     for src in over {
         let st = s.sources.entry(src.key().to_string()).or_default();
-        st.last_error = format!("skipped today: it would go past your {} requests a day", cfg.budget());
+        st.last_error = format!(
+            "skipped today: it would go past your {} requests a day",
+            cfg.budget()
+        );
     }
     // The SAM.gov key, if SAM is due: out of the vault, never into a log.
     let mut sam_key = String::new();
@@ -348,20 +589,25 @@ pub fn tick_with(d: &mut Daemon, t: u64, online: bool, get: fn(&Ask) -> Result<S
         return;
     }
     let (tx, rx) = std::sync::mpsc::channel();
-    let spawned = std::thread::Builder::new().name("atlas-hunt".into()).spawn(move || {
-        let first = std::cell::Cell::new(true);
-        let spaced = |a: &Ask| {
-            if !first.replace(false) {
-                std::thread::sleep(spacing);
+    let spawned = std::thread::Builder::new()
+        .name("atlas-hunt".into())
+        .spawn(move || {
+            let first = std::cell::Cell::new(true);
+            let spaced = |a: &Ask| {
+                if !first.replace(false) {
+                    std::thread::sleep(spacing);
+                }
+                get(a)
+            };
+            let mut out = Vec::new();
+            for src in plan {
+                out.push((
+                    src,
+                    hunt::read(src, &cfg, &spaced, &sam_key, &searxng, t, (y, m, dom)),
+                ));
             }
-            get(a)
-        };
-        let mut out = Vec::new();
-        for src in plan {
-            out.push((src, hunt::read(src, &cfg, &spaced, &sam_key, &searxng, t, (y, m, dom))));
-        }
-        let _ = tx.send(out);
-    });
+            let _ = tx.send(out);
+        });
     if spawned.is_ok() {
         d.workday.hunt.in_flight = Some(rx);
     }
@@ -404,7 +650,11 @@ fn add_to(d: &mut Daemon, which: &str, items: Vec<String>, t: u64) -> String {
     let summary = fact.summary.clone();
     d.facts.put(fact);
     if which == hunt::FACT_AVOID {
-        let want: Vec<String> = Interests::from_facts(&d.facts).want.into_iter().filter(|w| !have.iter().any(|a| a.eq_ignore_ascii_case(w))).collect();
+        let want: Vec<String> = Interests::from_facts(&d.facts)
+            .want
+            .into_iter()
+            .filter(|w| !have.iter().any(|a| a.eq_ignore_ascii_case(w)))
+            .collect();
         if d.facts.get(hunt::FACT_WANT).is_some() {
             d.facts.put(Interests::fact(hunt::FACT_WANT, &want, t));
         }
@@ -430,7 +680,23 @@ pub fn said(d: &mut Daemon, said: &str, t: u64) -> String {
         Some(w) => w,
         None => {
             let bare = said.trim().trim_end_matches(['?', '.', '!']).to_lowercase();
-            if bare.is_empty() || bare.split_whitespace().all(|w| matches!(w, "any" | "new" | "opportunities" | "gigs" | "my" | "the" | "show" | "me" | "list" | "today")) {
+            if bare.is_empty()
+                || bare.split_whitespace().all(|w| {
+                    matches!(
+                        w,
+                        "any"
+                            | "new"
+                            | "opportunities"
+                            | "gigs"
+                            | "my"
+                            | "the"
+                            | "show"
+                            | "me"
+                            | "list"
+                            | "today"
+                    )
+                })
+            {
                 hunt::Said::List
             } else {
                 return "I didn't follow that one. I can list the opportunities I found, tell you more about one by its number, \
@@ -448,7 +714,9 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
     }
     match d.store.load_checked::<HuntState>(hunt::FILE) {
         Ok(value) => d.workday.hunt.state = Some(value.unwrap_or_default()),
-        Err(error) => return format!("Saved opportunities are unreadable; nothing changed: {error}"),
+        Err(error) => {
+            return format!("Saved opportunities are unreadable; nothing changed: {error}")
+        }
     }
     let cfg = d.tools_cfg().hunt.clone();
     let id_at = |d: &Daemon, i: usize| {
@@ -462,7 +730,11 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
     match what {
         Said::List => {
             let you = Interests::from_facts(&d.facts);
-            let top: Vec<hunt::Ranked> = state(d).top(cfg.top_n.max(1) as usize, t).into_iter().cloned().collect();
+            let top: Vec<hunt::Ranked> = state(d)
+                .top(cfg.top_n.max(1) as usize, t)
+                .into_iter()
+                .cloned()
+                .collect();
             if top.is_empty() {
                 let mut s = if cfg.enabled {
                     "Nothing worth your time yet.".to_string()
@@ -481,13 +753,22 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
             // This is an explicit request to read the list, rather than an
             // unsolicited offer. Its returned text remains on Talk as well.
             let ids = top.iter().map(|r| r.found.id.clone()).collect::<Vec<_>>();
-            if let Err(why) = persist_ack(d, &ids, t, false) { d.log.warn(&why); d.keep_said_for_apps(vec![why]); }
-            let mut lines: Vec<String> = top.iter().enumerate().map(|(i, r)| hunt::line(i + 1, r)).collect();
+            if let Err(why) = persist_ack(d, &ids, t, false) {
+                d.log.warn(&why);
+                d.keep_said_for_apps(vec![why]);
+            }
+            let mut lines: Vec<String> = top
+                .iter()
+                .enumerate()
+                .map(|(i, r)| hunt::line(i + 1, r))
+                .collect();
             lines.push("Say \"tell me more about 1\", \"not interested in 1\" or \"save 1\" -- or any other number on the list.".into());
             lines.join("\n")
         }
         Said::More(i) => {
-            let Some(id) = id_at(d, i) else { return WHICH.into() };
+            let Some(id) = id_at(d, i) else {
+                return WHICH.into();
+            };
             // Talking about it keeps the list's numbers live.
             let shown = d.workday.hunt.shown.len();
             d.workday.follow_opportunities(shown, t);
@@ -500,13 +781,25 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
             }
         }
         Said::NotThatKind(i) | Said::NotInterested(i) | Said::Save(i) => {
-            let Some(id) = id_at(d, i) else { return WHICH.into() };
-            let edit = match what { Said::Save(_) => OwnerEdit::Save, Said::NotThatKind(_) => OwnerEdit::RejectKind, _ => OwnerEdit::Reject };
+            let Some(id) = id_at(d, i) else {
+                return WHICH.into();
+            };
+            let edit = match what {
+                Said::Save(_) => OwnerEdit::Save,
+                Said::NotThatKind(_) => OwnerEdit::RejectKind,
+                _ => OwnerEdit::Reject,
+            };
             match edit_opportunity(d, &id, edit) {
                 Ok(Some(title)) => match edit {
-                    OwnerEdit::Save => format!("Saved \"{title}\". It's on the Opportunities page; nothing's been sent."),
-                    OwnerEdit::Reject => format!("Dropped \"{title}\". I'll hold back ones like it."),
-                    OwnerEdit::RejectKind => format!("Dropped \"{title}\", and I'll hold back anything like it from now on."),
+                    OwnerEdit::Save => format!(
+                        "Saved \"{title}\". It's on the Opportunities page; nothing's been sent."
+                    ),
+                    OwnerEdit::Reject => {
+                        format!("Dropped \"{title}\". I'll hold back ones like it.")
+                    }
+                    OwnerEdit::RejectKind => format!(
+                        "Dropped \"{title}\", and I'll hold back anything like it from now on."
+                    ),
                 },
                 Ok(None) => "That one's gone from the list.".into(),
                 Err(error) => error,
@@ -514,11 +807,20 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
         }
         Said::Saved => {
             let store = d.store.clone();
-            let saved = match state(d).saved_page(&store, 0, 8) { Ok(saved) => saved, Err(why) => return why };
+            let saved = match state(d).saved_page(&store, 0, 8) {
+                Ok(saved) => saved,
+                Err(why) => return why,
+            };
             if saved.is_empty() {
                 "You haven't saved any.".into()
             } else {
-                saved.iter().rev().take(8).map(|f| format!("{} — {}", f.title, f.link)).collect::<Vec<_>>().join("\n")
+                saved
+                    .iter()
+                    .rev()
+                    .take(8)
+                    .map(|f| format!("{} — {}", f.title, f.link))
+                    .collect::<Vec<_>>()
+                    .join("\n")
             }
         }
         Said::LookFor(v) => add_to(d, hunt::FACT_WANT, v, t),
@@ -560,7 +862,6 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
     }
 }
 
-
 // ---------------------------------------------------------------- the page
 
 fn button(what: &str, id: &str, label: &str) -> String {
@@ -577,7 +878,12 @@ fn button(what: &str, id: &str, label: &str) -> String {
 pub fn opportunities_page(d: &mut Daemon, fields: &[(String, String)]) -> String {
     match d.store.load_checked::<HuntState>(hunt::FILE) {
         Ok(value) => d.workday.hunt.state = Some(value.unwrap_or_default()),
-        Err(error) => return format!("<p role=status>Saved opportunity coverage is unavailable; nothing changed: {}</p>", esc(&error.to_string())),
+        Err(error) => {
+            return format!(
+                "<p role=status>Saved opportunity coverage is unavailable; nothing changed: {}</p>",
+                esc(&error.to_string())
+            )
+        }
     }
     let get = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
     let now = crate::store::now();
@@ -598,7 +904,9 @@ pub fn opportunities_page(d: &mut Daemon, fields: &[(String, String)]) -> String
     body.push_str("<h2>Worth a look</h2>");
     let top = s.top(20, now);
     let viewed = top.iter().map(|r| r.found.id.clone()).collect::<Vec<_>>();
-    if let Err(why) = persist_ack(d, &viewed, now, false) { body.push_str(&format!("<p class=notice role=status>{}</p>", esc(&why))); }
+    if let Err(why) = persist_ack(d, &viewed, now, false) {
+        body.push_str(&format!("<p class=notice role=status>{}</p>", esc(&why)));
+    }
     if top.is_empty() {
         body.push_str("<p class=empty>Nothing yet. Once it has looked, the best ones land here, with why.</p>");
     } else {
@@ -631,10 +939,15 @@ pub fn opportunities_page(d: &mut Daemon, fields: &[(String, String)]) -> String
         body.push_str("</ol>");
     }
     body.push_str("<h2>Saved</h2>");
-    let saved_page = get("saved_page").and_then(|p| p.parse::<u64>().ok()).unwrap_or(0);
+    let saved_page = get("saved_page")
+        .and_then(|p| p.parse::<u64>().ok())
+        .unwrap_or(0);
     let saved = match s.saved_page(&d.store, saved_page, 20) {
         Ok(saved) => saved,
-        Err(why) => { body.push_str(&format!("<p class=notice role=status>{}</p>", esc(&why))); Vec::new() }
+        Err(why) => {
+            body.push_str(&format!("<p class=notice role=status>{}</p>", esc(&why)));
+            Vec::new()
+        }
     };
     if s.saved_count() == 0 {
         body.push_str("<p class=empty>None saved.</p>");
@@ -642,18 +955,33 @@ pub fn opportunities_page(d: &mut Daemon, fields: &[(String, String)]) -> String
         body.push_str("<ul class=plainlist>");
         for f in &saved {
             let link = if f.link.starts_with("https://") || f.link.starts_with("http://") {
-                format!(" <a href='{}' rel=noreferrer target=_blank>open</a>", esc(&f.link))
+                format!(
+                    " <a href='{}' rel=noreferrer target=_blank>open</a>",
+                    esc(&f.link)
+                )
             } else {
                 String::new()
             };
-            body.push_str(&format!("<li><span>{}</span><span class=meta>{}</span>{link}</li>", esc(&f.title), esc(f.source.plain())));
+            body.push_str(&format!(
+                "<li><span>{}</span><span class=meta>{}</span>{link}</li>",
+                esc(&f.title),
+                esc(f.source.plain())
+            ));
         }
         body.push_str("</ul>");
         if saved_page > 0 {
-            body.push_str(&format!("<a href='{}?saved_page={}'>Newer saved opportunities</a> ", Page::Opportunities.href(), saved_page - 1));
+            body.push_str(&format!(
+                "<a href='{}?saved_page={}'>Newer saved opportunities</a> ",
+                Page::Opportunities.href(),
+                saved_page - 1
+            ));
         }
         if saved_page.saturating_add(1).saturating_mul(20) < s.saved_count() {
-            body.push_str(&format!("<a href='{}?saved_page={}'>Older saved opportunities</a>", Page::Opportunities.href(), saved_page + 1));
+            body.push_str(&format!(
+                "<a href='{}?saved_page={}'>Older saved opportunities</a>",
+                Page::Opportunities.href(),
+                saved_page + 1
+            ));
         }
     }
     body.push_str(&format!(
@@ -676,7 +1004,11 @@ pub fn opportunities_page(d: &mut Daemon, fields: &[(String, String)]) -> String
             (true, Some(x)) if !x.last_error.is_empty() => format!("last time: {}", x.last_error),
             (true, Some(x)) => format!("{} found last time", x.last_count),
         };
-        body.push_str(&format!("<li><span>{}</span><span class=meta>{}</span></li>", esc(src.plain()), esc(&state_line)));
+        body.push_str(&format!(
+            "<li><span>{}</span><span class=meta>{}</span></li>",
+            esc(src.plain()),
+            esc(&state_line)
+        ));
     }
     body.push_str(&format!(
         "</ul><p class=note>{} of {} requests used today. Change the sources, feeds and searches in Settings.</p>",
@@ -688,24 +1020,42 @@ pub fn opportunities_page(d: &mut Daemon, fields: &[(String, String)]) -> String
 
 /// The page's buttons.
 pub fn post(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
-    let get = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone()).unwrap_or_default();
+    let get = |k: &str| {
+        fields
+            .iter()
+            .find(|(n, _)| n == k)
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default()
+    };
     let now = crate::store::now();
     let id = get("id");
     let said = match get("what").as_str() {
         "nope" | "kind" | "save" => {
-            let edit = match get("what").as_str() { "save" => OwnerEdit::Save, "kind" => OwnerEdit::RejectKind, _ => OwnerEdit::Reject };
+            let edit = match get("what").as_str() {
+                "save" => OwnerEdit::Save,
+                "kind" => OwnerEdit::RejectKind,
+                _ => OwnerEdit::Reject,
+            };
             match edit_opportunity(d, &id, edit) {
                 Ok(Some(title)) => match edit {
                     OwnerEdit::Save => format!("Saved \"{title}\". Nothing's been sent."),
-                    OwnerEdit::Reject => format!("Dropped \"{title}\". I'll hold back ones like it."),
-                    OwnerEdit::RejectKind => format!("Dropped \"{title}\", and I'll hold back anything like it from now on."),
+                    OwnerEdit::Reject => {
+                        format!("Dropped \"{title}\". I'll hold back ones like it.")
+                    }
+                    OwnerEdit::RejectKind => format!(
+                        "Dropped \"{title}\", and I'll hold back anything like it from now on."
+                    ),
                 },
                 Ok(None) => "That one's already gone.".into(),
                 Err(error) => error,
             }
-        },
+        }
         "interests" => {
-            for (field, which) in [("want", hunt::FACT_WANT), ("skills", hunt::FACT_SKILLS), ("avoid", hunt::FACT_AVOID)] {
+            for (field, which) in [
+                ("want", hunt::FACT_WANT),
+                ("skills", hunt::FACT_SKILLS),
+                ("avoid", hunt::FACT_AVOID),
+            ] {
                 let v = hunt::list(&get(field));
                 // An emptied box clears what was there; one never filled in
                 // adds nothing.
@@ -730,9 +1080,17 @@ pub fn fit_asked(d: &mut Daemon, said: &str) -> Option<String> {
     let t = said.trim().trim_end_matches(['?', '.', '!']).to_lowercase();
     let t = t.trim_start_matches("atlas, ").trim_start_matches("atlas ");
     const ASKS: &[&str] = &[
-        "how well do i fit this job", "do i fit this job", "how do i fit this job", "am i a fit for this job",
-        "am i a good fit for this job", "job fit", "check this job posting", "score this job", "how well do i fit this posting",
-        "do i fit this posting", "how well do i match this job",
+        "how well do i fit this job",
+        "do i fit this job",
+        "how do i fit this job",
+        "am i a fit for this job",
+        "am i a good fit for this job",
+        "job fit",
+        "check this job posting",
+        "score this job",
+        "how well do i fit this posting",
+        "do i fit this posting",
+        "how well do i match this job",
     ];
     if !ASKS.contains(&t) {
         return None;
@@ -759,7 +1117,18 @@ pub fn applied_asked(d: &mut Daemon, said: &str, t: u64) -> Option<String> {
         return Some("The application list is the owner's.".into());
     }
     let listing = heard == crate::applied::Heard::List;
-    let _guard = if listing { None } else { match d.store.transaction() { Ok(guard) => Some(guard), Err(e) => return Some(format!("The application update wasn't saved: state is busy ({e}). Nothing changed.")) } };
+    let _guard = if listing {
+        None
+    } else {
+        match d.store.transaction() {
+            Ok(guard) => Some(guard),
+            Err(e) => {
+                return Some(format!(
+                    "The application update wasn't saved: state is busy ({e}). Nothing changed."
+                ))
+            }
+        }
+    };
     let mut apps: crate::applied::Applications = match d.store.load_checked(crate::applied::FILE) { Ok(apps) => apps.unwrap_or_default(), Err(e) => return Some(format!("Application coverage unavailable: its saved record couldn't be read ({e}); nothing changed.")) };
     let reply = apps.take(heard, t);
     if listing {

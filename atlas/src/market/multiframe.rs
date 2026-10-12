@@ -42,10 +42,15 @@ pub struct FrameRead {
 /// decide how many bars count as [`Horizon::Structure`] — a trading
 /// week's worth, converted correctly whether this view is M15 or D.
 pub fn read_frame(view: &AsOf<'_>, k: usize) -> FrameRead {
-    let tf_name = timeframe::infer(view).map(|t| t.name().to_string()).unwrap_or_else(|| "unknown".into());
+    let tf_name = timeframe::infer(view)
+        .map(|t| t.name().to_string())
+        .unwrap_or_else(|| "unknown".into());
     let n = timeframe::window(view, Horizon::Structure, 20);
     let structure = recent(view, n, k);
-    FrameRead { timeframe: tf_name, trend: structure.trend() }
+    FrameRead {
+        timeframe: tf_name,
+        trend: structure.trend(),
+    }
 }
 
 /// Read every given view and return one labeled result per timeframe, in
@@ -85,8 +90,11 @@ pub enum Agreement {
 /// agrees: DOWN" — true only of the reads that had an opinion, and false
 /// of what was actually asked.
 pub fn agreement(reads: &[FrameRead]) -> Agreement {
-    let directional: Vec<Trend> =
-        reads.iter().map(|r| r.trend).filter(|t| matches!(t, Trend::Up | Trend::Down)).collect();
+    let directional: Vec<Trend> = reads
+        .iter()
+        .map(|r| r.trend)
+        .filter(|t| matches!(t, Trend::Up | Trend::Down))
+        .collect();
     let Some(&first) = directional.first() else {
         return Agreement::Inconclusive;
     };
@@ -108,11 +116,13 @@ pub fn spoken(reads: &[FrameRead]) -> String {
         out.push_str(&format!("  {}: {}\n", r.timeframe, r.trend.say()));
     }
     match agreement(reads) {
-        Agreement::Agrees(t) => out.push_str(&format!("Every timeframe checked agrees: {}.", t.say())),
-        Agreement::Conflicts => out.push_str("These timeframes do not agree with each other."),
-        Agreement::Inconclusive => {
-            out.push_str("Nothing directional on any timeframe checked — nothing to agree or conflict about.")
+        Agreement::Agrees(t) => {
+            out.push_str(&format!("Every timeframe checked agrees: {}.", t.say()))
         }
+        Agreement::Conflicts => out.push_str("These timeframes do not agree with each other."),
+        Agreement::Inconclusive => out.push_str(
+            "Nothing directional on any timeframe checked — nothing to agree or conflict about.",
+        ),
         Agreement::Mixed(t) => out.push_str(&format!(
             "The timeframes with a directional read agree ({}), but at least one had no \
              directional read at all — not the same as every timeframe agreeing.",

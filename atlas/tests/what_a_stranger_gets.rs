@@ -88,7 +88,13 @@ fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
     let dir = home().join(format!("person-{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    Daemon::new(c, p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(dir),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 fn refused(said: &str) -> bool {
@@ -107,11 +113,20 @@ fn the_daemon_refuses_what_the_command_line_refuses() {
     // One from each list: acting as you, and reading what Atlas holds for
     // you. The second is the one that was not refused anywhere at all.
     let posting = d.turn("draft a post for twitter", 2_000);
-    assert!(refused(&posting), "a stranger could post as you by saying so: {posting}");
+    assert!(
+        refused(&posting),
+        "a stranger could post as you by saying so: {posting}"
+    );
 
     let yours = d.turn("what's outstanding", 2_010);
-    assert!(refused(&yours), "a stranger could read your day out loud: {yours}");
-    assert!(yours.contains("vault"), "the refusal does not name the way back: {yours}");
+    assert!(
+        refused(&yours),
+        "a stranger could read your day out loud: {yours}"
+    );
+    assert!(
+        yours.contains("vault"),
+        "the refusal does not name the way back: {yours}"
+    );
 }
 
 #[test]
@@ -123,9 +138,16 @@ fn the_same_daemon_does_all_of_it_when_the_machine_is_yours() {
     it_is_yours();
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "yours");
-    for said in ["draft a post for twitter", "what's outstanding", "what did you do"] {
+    for said in [
+        "draft a post for twitter",
+        "what's outstanding",
+        "what did you do",
+    ] {
         let reply = d.turn(said, 2_000);
-        assert!(!refused(&reply), "still refusing after the handover ended: {said} -> {reply}");
+        assert!(
+            !refused(&reply),
+            "still refusing after the handover ended: {said} -> {reply}"
+        );
     }
 }
 
@@ -141,7 +163,10 @@ fn ordinary_help_still_works_for_whoever_is_holding_it() {
     let mut d = daemon(&c, &p, "ordinary");
     for said in ["boot workspace", "how's the machine", "what can you do"] {
         let reply = d.turn(said, 2_000);
-        assert!(!refused(&reply), "an ordinary thing was refused: {said} -> {reply}");
+        assert!(
+            !refused(&reply),
+            "an ordinary thing was refused: {said} -> {reply}"
+        );
         assert!(!reply.is_empty(), "{said} produced nothing at all");
     }
 }
@@ -159,11 +184,17 @@ fn a_question_you_were_asked_is_not_answered_by_whoever_is_there_next() {
     let mut d = daemon(&c, &p, "parked");
 
     let asked = d.turn("shutdown workspace", 2_000);
-    assert!(asked.contains("Go ahead?"), "this test needs a parked approval: {asked}");
+    assert!(
+        asked.contains("Go ahead?"),
+        "this test needs a parked approval: {asked}"
+    );
 
     hand_it_over();
     let answered = d.turn("yes", 2_010);
-    assert!(refused(&answered), "a stranger answered a question you were asked: {answered}");
+    assert!(
+        refused(&answered),
+        "a stranger answered a question you were asked: {answered}"
+    );
 
     // And the yes did not become a standing grant. This is the quieter half:
     // `policy::classify_with_policy` reads approval history, so a recorded
@@ -192,9 +223,21 @@ fn an_unrecognised_sentence_is_not_answered_out_of_your_notes() {
     // answers Atlas holds) and after it (the whole chain, for what the model
     // left unknown). Each call must sit behind the handed-over check, and
     // each helper must still be the one that reads the notes.
-    for call in ["self.answer_before_the_model(said, _t)", "self.answer_locally(raw, _t)"] {
-        let lookup = body.find(call).unwrap_or_else(|| panic!("the notes lookup is gone or renamed: {call}"));
-        let before: String = body[..lookup].chars().rev().take(600).collect::<String>().chars().rev().collect();
+    for call in [
+        "self.answer_before_the_model(said, _t)",
+        "self.answer_locally(raw, _t)",
+    ] {
+        let lookup = body
+            .find(call)
+            .unwrap_or_else(|| panic!("the notes lookup is gone or renamed: {call}"));
+        let before: String = body[..lookup]
+            .chars()
+            .rev()
+            .take(600)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect();
         assert!(
             before.contains("handed_over()"),
             "{call} no longer asks whether the machine is handed over, so \
@@ -205,15 +248,25 @@ fn an_unrecognised_sentence_is_not_answered_out_of_your_notes() {
     // with a model, the notes go in front of it as hints (`notes_as_hints`),
     // which carries the same check itself -- the conversation path reaches
     // it without going through `run_command`'s handed-over guard above.
-    assert!(function_body(&src, "fn answer_locally(").contains("self.answer_from_notes(raw, t)"), "answer_locally no longer reads the notes");
+    assert!(
+        function_body(&src, "fn answer_locally(").contains("self.answer_from_notes(raw, t)"),
+        "answer_locally no longer reads the notes"
+    );
     assert!(
         !function_body(&src, "fn answer_before_the_model(").contains("from_notes"),
         "the notes answer on their own before the model again, instead of being a hint to it"
     );
     let hints = code_only(function_body(&src, "fn notes_as_hints("));
-    let guard = hints.find("handed_over()").expect("the notes go to the model while somebody else has the machine");
-    let first_read = hints.find("self.facts").expect("notes_as_hints no longer reads the fact book");
-    assert!(guard < first_read, "the handover is checked after the notes are read");
+    let guard = hints
+        .find("handed_over()")
+        .expect("the notes go to the model while somebody else has the machine");
+    let first_read = hints
+        .find("self.facts")
+        .expect("notes_as_hints no longer reads the fact book");
+    assert!(
+        guard < first_read,
+        "the handover is checked after the notes are read"
+    );
 }
 
 // --- the checks are where they have to be ----------------------------------
@@ -275,8 +328,13 @@ fn execute_is_the_last_line_and_not_the_only_one() {
     let check = body
         .find("handed_over_refusal(intent)")
         .expect("execute no longer asks about the handover");
-    let first_work = body.find("resolve_subject").expect("execute has changed shape");
-    assert!(check < first_work, "the handover check is not the first thing execute does");
+    let first_work = body
+        .find("resolve_subject")
+        .expect("execute has changed shape");
+    assert!(
+        check < first_work,
+        "the handover check is not the first thing execute does"
+    );
 
     // And it reads the install's own state rather than the active person's,
     // where switching profiles -- which passes through no gate at all --
@@ -337,8 +395,18 @@ fn a_stranger_cannot_set_the_first_passphrase_and_let_themselves_out() {
     use atlas::handover::would_hand_out_the_way_back as would;
 
     // The case itself.
-    for setting in ["passphrase", "set", "change", "recovery", "recovery-key", "newkey"] {
-        assert!(would(true, false, Some(setting)), "`atlas vault {setting}` is allowed");
+    for setting in [
+        "passphrase",
+        "set",
+        "change",
+        "recovery",
+        "recovery-key",
+        "newkey",
+    ] {
+        assert!(
+            would(true, false, Some(setting)),
+            "`atlas vault {setting}` is allowed"
+        );
     }
 
     // And the three ways of being too strict, each of which breaks something
@@ -346,12 +414,24 @@ fn a_stranger_cannot_set_the_first_passphrase_and_let_themselves_out() {
     // blocking it when a passphrase exists takes away the thing you most want
     // right after somebody watched you type it; blocking the read-only
     // commands leaves a guest unable to see why they are being refused.
-    assert!(!would(false, false, Some("passphrase")), "blocked while the machine is yours");
-    assert!(!would(true, true, Some("passphrase")), "a passphrase you have cannot be changed");
+    assert!(
+        !would(false, false, Some("passphrase")),
+        "blocked while the machine is yours"
+    );
+    assert!(
+        !would(true, true, Some("passphrase")),
+        "a passphrase you have cannot be changed"
+    );
     assert!(!would(true, false, None), "reading the status is blocked");
-    assert!(!would(true, false, Some("status")), "reading the status is blocked");
-    assert!(!would(true, false, Some("recover")), "using a recovery key is blocked -- which is \
-                                                   the one way back a stranger cannot fake");
+    assert!(
+        !would(true, false, Some("status")),
+        "reading the status is blocked"
+    );
+    assert!(
+        !would(true, false, Some("recover")),
+        "using a recovery key is blocked -- which is \
+                                                   the one way back a stranger cannot fake"
+    );
 }
 
 #[test]
@@ -362,8 +442,14 @@ fn the_refusal_says_why_without_assuming_who_is_reading_it() {
     let said = atlas::handover::not_yours_to_set();
     assert!(said.contains("handed over"), "it does not say why: {said}");
     assert!(said.contains("owner"), "it does not say who can: {said}");
-    assert!(!said.contains('_'), "an identifier reached the sentence: {said}");
-    assert!(!said.to_lowercase().contains("you can't"), "it reads as a telling-off: {said}");
+    assert!(
+        !said.contains('_'),
+        "an identifier reached the sentence: {said}"
+    );
+    assert!(
+        !said.to_lowercase().contains("you can't"),
+        "it reads as a telling-off: {said}"
+    );
 }
 
 #[test]
@@ -385,7 +471,10 @@ fn the_refusal_to_set_a_first_passphrase_is_actually_wired_to_the_command() {
     let asks = body
         .find("ask_quietly")
         .expect("run_vault no longer asks for anything -- this guard needs rewriting");
-    assert!(check < asks, "the check sits below the point where a passphrase is taken");
+    assert!(
+        check < asks,
+        "the check sits below the point where a passphrase is taken"
+    );
 }
 
 #[test]
@@ -396,13 +485,23 @@ fn a_recovery_key_is_a_way_back_that_is_not_in_the_room() {
     // laptop was handed over. It is the one credential the person holding it
     // cannot have got hold of by being there.
     let mut v = atlas::vault::Vault::default();
-    v.open("the one thing you actually know", 100, &atlas::vault::VaultConfig::default())
+    v.open(
+        "the one thing you actually know",
+        100,
+        &atlas::vault::VaultConfig::default(),
+    )
+    .unwrap();
+    let code = v
+        .issue_recovery_key(100, &atlas::vault::VaultConfig::default())
         .unwrap();
-    let code = v.issue_recovery_key(100, &atlas::vault::VaultConfig::default()).unwrap();
     v.lock();
 
     let mut h = Handover::default();
     h.hand_over("Sam has it", 100);
-    v.open_with_recovery_key(&code, 200, &atlas::vault::VaultConfig::default()).unwrap();
-    assert!(h.take_back(&v, 200).is_ok(), "a recovery key could not end a handover");
+    v.open_with_recovery_key(&code, 200, &atlas::vault::VaultConfig::default())
+        .unwrap();
+    assert!(
+        h.take_back(&v, 200).is_ok(),
+        "a recovery key could not end a handover"
+    );
 }

@@ -15,10 +15,21 @@ fn wav(name: &str) -> Vec<i16> {
 /// it?" -- and not in "Alice, can you pass the salt?" or "Hey Alexa".
 #[test]
 fn the_name_is_heard_by_its_sound() {
-    let Ok(root) = std::env::var("ATLAS_KWS_ROOT") else { return };
+    let Ok(root) = std::env::var("ATLAS_KWS_ROOT") else {
+        return;
+    };
     let root = std::path::PathBuf::from(root);
-    for (clip, want) in [("hey-atlas-open-chrome", true), ("atlas-what-time-misheard", true), ("alice-pass-the-salt", false), ("hey-alexa", false)] {
-        assert_eq!(atlas::kws::heard_name(&root, &wav(clip)), Some(want), "{clip}");
+    for (clip, want) in [
+        ("hey-atlas-open-chrome", true),
+        ("atlas-what-time-misheard", true),
+        ("alice-pass-the-salt", false),
+        ("hey-alexa", false),
+    ] {
+        assert_eq!(
+            atlas::kws::heard_name(&root, &wav(clip)),
+            Some(want),
+            "{clip}"
+        );
     }
 }
 
@@ -37,7 +48,13 @@ fn the_spotter_is_fetched_by_name_and_pinned() {
 /// A misheard name counts only at the start, and only as a known mishearing.
 #[test]
 fn a_misheard_name_counts_only_at_the_start() {
-    assert_eq!(atlas::kws::soundalike_at_start("Alice, what time is it?").as_deref(), Some("what time is it?"));
-    assert_eq!(atlas::kws::soundalike_at_start("I use Atlassian at work"), None);
+    assert_eq!(
+        atlas::kws::soundalike_at_start("Alice, what time is it?").as_deref(),
+        Some("what time is it?")
+    );
+    assert_eq!(
+        atlas::kws::soundalike_at_start("I use Atlassian at work"),
+        None
+    );
     assert!(atlas::kws::knows("Atlas") && !atlas::kws::knows("Jarvis"));
 }

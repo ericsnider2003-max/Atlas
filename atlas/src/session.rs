@@ -78,7 +78,10 @@ impl Session {
     /// `Default` stays for callers with no config to hand, and keeps the same
     /// number so nothing moves for them.
     pub fn holding(max_turns: usize) -> Session {
-        Session { max_turns: max_turns.max(1), ..Session::default() }
+        Session {
+            max_turns: max_turns.max(1),
+            ..Session::default()
+        }
     }
 
     pub fn record(&mut self, said: &str, intent: &Intent, reply: &str) {
@@ -146,10 +149,16 @@ impl Session {
     /// The question as it is put now: the one approval, or -- with more
     /// waiting -- how many, and the first of them.
     pub fn asking_line(&self) -> Option<String> {
-        let Pending::Approval(_, first) = &self.pending else { return None };
+        let Pending::Approval(_, first) = &self.pending else {
+            return None;
+        };
         Some(match self.queued.len() {
             0 => first.clone(),
-            n => format!("{} things need your OK. First: {}", count_word(n + 1), yes_or_no(first)),
+            n => format!(
+                "{} things need your OK. First: {}",
+                count_word(n + 1),
+                yes_or_no(first)
+            ),
         })
     }
 
@@ -160,7 +169,11 @@ impl Session {
         self.pending = Pending::Approval(i, d.clone());
         Some(match self.queued.len() {
             0 => format!("Next: {}", yes_or_no(&d)),
-            n => format!("{} more need your OK. Next: {}", count_word(n + 1), yes_or_no(&d)),
+            n => format!(
+                "{} more need your OK. Next: {}",
+                count_word(n + 1),
+                yes_or_no(&d)
+            ),
         })
     }
 
@@ -219,18 +232,61 @@ pub fn answers_for_several(said: &str, n: usize) -> Option<Vec<Option<bool>>> {
     if n < 2 {
         return None;
     }
-    let t = said.to_lowercase().replace('\u{2019}', "'").replace("don't", "dont").replace("do not", "dont");
-    let t: String = t.chars().map(|c| if c.is_alphanumeric() || c == ' ' || c == ',' || c == ';' { c } else { ' ' }).collect();
+    let t = said
+        .to_lowercase()
+        .replace('\u{2019}', "'")
+        .replace("don't", "dont")
+        .replace("do not", "dont");
+    let t: String = t
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' || c == ',' || c == ';' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
     let flat = t.replace([',', ';'], " ");
     let flat: String = flat.split_whitespace().collect::<Vec<_>>().join(" ");
     const ALL_YES: &[&str] = &[
-        "yes to both", "yes both", "both", "both of them", "do both", "yes do both", "go ahead with both", "ok both",
-        "okay both", "yes to all", "yes all", "all of them", "yes to all of them", "yes to everything", "do all of them",
-        "yes to all three", "all three", "yes please both", "yes to both please", "both please", "sure both",
+        "yes to both",
+        "yes both",
+        "both",
+        "both of them",
+        "do both",
+        "yes do both",
+        "go ahead with both",
+        "ok both",
+        "okay both",
+        "yes to all",
+        "yes all",
+        "all of them",
+        "yes to all of them",
+        "yes to everything",
+        "do all of them",
+        "yes to all three",
+        "all three",
+        "yes please both",
+        "yes to both please",
+        "both please",
+        "sure both",
     ];
     const ALL_NO: &[&str] = &[
-        "no to both", "no both", "neither", "neither of them", "no to either", "no to all", "no to all of them",
-        "none", "none of them", "dont do either", "no to everything", "not either", "no neither", "no to all three",
+        "no to both",
+        "no both",
+        "neither",
+        "neither of them",
+        "no to either",
+        "no to all",
+        "no to all of them",
+        "none",
+        "none of them",
+        "dont do either",
+        "no to everything",
+        "not either",
+        "no neither",
+        "no to all three",
     ];
     if ALL_YES.contains(&flat.as_str()) {
         return Some(vec![Some(true); n]);
@@ -241,14 +297,29 @@ pub fn answers_for_several(said: &str, n: usize) -> Option<Vec<Option<bool>>> {
     // Clause by clause: "yes to the first, no to the second".
     let mut out: Vec<Option<bool>> = vec![None; n];
     let mut any = false;
-    for clause in t.split([',', ';']).flat_map(|c| c.split(" and ")).flat_map(|c| c.split(" but ")) {
+    for clause in t
+        .split([',', ';'])
+        .flat_map(|c| c.split(" and "))
+        .flat_map(|c| c.split(" but "))
+    {
         let words: Vec<&str> = clause.split_whitespace().collect();
         if words.is_empty() {
             continue;
         }
-        let no = words.iter().any(|w| matches!(*w, "no" | "nope" | "dont" | "not" | "skip" | "leave" | "cancel"));
+        let no = words.iter().any(|w| {
+            matches!(
+                *w,
+                "no" | "nope" | "dont" | "not" | "skip" | "leave" | "cancel"
+            )
+        });
         // "Do" is a yes only when nothing in the clause says no.
-        let yes = !no && words.iter().any(|w| matches!(*w, "yes" | "yeah" | "yep" | "ok" | "okay" | "sure" | "do" | "approve"));
+        let yes = !no
+            && words.iter().any(|w| {
+                matches!(
+                    *w,
+                    "yes" | "yeah" | "yep" | "ok" | "okay" | "sure" | "do" | "approve"
+                )
+            });
         let which = words.iter().find_map(|w| match *w {
             "first" | "1st" | "one" => Some(0),
             "second" | "2nd" | "two" => Some(1),
@@ -277,12 +348,27 @@ pub fn answers_for_several(said: &str, n: usize) -> Option<Vec<Option<bool>>> {
 /// Deliberately strict. An ambiguous grunt must not count as consent for a
 /// gated action, so anything not clearly affirmative reads as "no".
 pub fn is_yes(s: &str) -> bool {
-    let t: String = s.to_lowercase().chars().filter(|c| c.is_alphanumeric() || *c == ' ').collect();
+    let t: String = s
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == ' ')
+        .collect();
     let t = t.trim();
     if matches!(
         t,
-        "y" | "yes" | "yeah" | "yep" | "yup" | "sure" | "ok" | "okay" | "do it"
-            | "go ahead" | "confirm" | "confirmed" | "please do" | "affirmative"
+        "y" | "yes"
+            | "yeah"
+            | "yep"
+            | "yup"
+            | "sure"
+            | "ok"
+            | "okay"
+            | "do it"
+            | "go ahead"
+            | "confirm"
+            | "confirmed"
+            | "please do"
+            | "affirmative"
     ) {
         return true;
     }
@@ -291,17 +377,92 @@ pub fn is_yes(s: &str) -> bool {
     // away and went on as a new request). Opening with a yes, short, and
     // nothing in it that takes the yes back.
     let words: Vec<&str> = t.split_whitespace().collect();
-    let opens = ["yes", "yeah", "yep", "yup", "sure", "ok", "okay", "absolutely", "definitely", "please"];
-    let phrases = ["go ahead", "do it", "go for it", "sounds good", "of course", "why not", "please do", "that works", "lets do it", "yes please"];
-    let opened = words.first().is_some_and(|w| opens.contains(w)) || phrases.iter().any(|p| t.starts_with(p));
-    let takes_it_back = words.iter().any(|w| matches!(*w, "no" | "not" | "dont" | "wait" | "but" | "actually" | "hold" | "stop" | "cancel" | "never"))
-        && !t.starts_with("why not");
+    let opens = [
+        "yes",
+        "yeah",
+        "yep",
+        "yup",
+        "sure",
+        "ok",
+        "okay",
+        "absolutely",
+        "definitely",
+        "please",
+    ];
+    let phrases = [
+        "go ahead",
+        "do it",
+        "go for it",
+        "sounds good",
+        "of course",
+        "why not",
+        "please do",
+        "that works",
+        "lets do it",
+        "yes please",
+    ];
+    let opened = words.first().is_some_and(|w| opens.contains(w))
+        || phrases.iter().any(|p| t.starts_with(p));
+    let takes_it_back = words.iter().any(|w| {
+        matches!(
+            *w,
+            "no" | "not"
+                | "dont"
+                | "wait"
+                | "but"
+                | "actually"
+                | "hold"
+                | "stop"
+                | "cancel"
+                | "never"
+        )
+    }) && !t.starts_with("why not");
     // Nothing but more yes: "sure, what's the weather" is a new question,
     // not an answer to "go ahead?".
     const MORE_YES: &[&str] = &[
-        "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "please", "go", "ahead", "do", "it", "for", "sounds", "good", "great",
-        "thanks", "thank", "you", "lets", "that", "works", "fine", "perfect", "atlas", "absolutely", "definitely", "of", "course",
-        "why", "not", "right", "correct", "exactly", "cool", "alright", "all", "send", "save", "book", "go", "on", "then",
+        "yes",
+        "yeah",
+        "yep",
+        "yup",
+        "sure",
+        "ok",
+        "okay",
+        "please",
+        "go",
+        "ahead",
+        "do",
+        "it",
+        "for",
+        "sounds",
+        "good",
+        "great",
+        "thanks",
+        "thank",
+        "you",
+        "lets",
+        "that",
+        "works",
+        "fine",
+        "perfect",
+        "atlas",
+        "absolutely",
+        "definitely",
+        "of",
+        "course",
+        "why",
+        "not",
+        "right",
+        "correct",
+        "exactly",
+        "cool",
+        "alright",
+        "all",
+        "send",
+        "save",
+        "book",
+        "go",
+        "on",
+        "then",
     ];
     let only_yes = words.iter().all(|w| MORE_YES.contains(w));
     opened && !takes_it_back && only_yes && words.len() <= 6
@@ -310,13 +471,26 @@ pub fn is_yes(s: &str) -> bool {
 /// "Yes, and don't ask me that again." Strict the same way `is_yes` is: it
 /// is a yes *and* a standing decision, so only unmistakable wording counts.
 pub fn is_always(s: &str) -> bool {
-    let t: String = s.to_lowercase().chars().filter(|c| c.is_alphanumeric() || *c == ' ').collect();
+    let t: String = s
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == ' ')
+        .collect();
     let t: String = t.split_whitespace().collect::<Vec<_>>().join(" ");
     matches!(
         t.as_str(),
-        "always" | "yes always" | "yeah always" | "always do that" | "yes always do that"
-            | "dont ask again" | "dont ask me again" | "yes dont ask again" | "yes dont ask me again"
-            | "yes and dont ask again" | "yes and dont ask me again" | "you dont need to ask"
+        "always"
+            | "yes always"
+            | "yeah always"
+            | "always do that"
+            | "yes always do that"
+            | "dont ask again"
+            | "dont ask me again"
+            | "yes dont ask again"
+            | "yes dont ask me again"
+            | "yes and dont ask again"
+            | "yes and dont ask me again"
+            | "you dont need to ask"
     )
 }
 
@@ -325,35 +499,94 @@ pub fn is_always(s: &str) -> bool {
 /// the open floor after a reply closes (30 Sep 2026: "bye" was dropped as
 /// a speech-to-text ghost, and nothing ended the floor but silence).
 pub fn ends_the_conversation(s: &str) -> bool {
-    let t: String = s.to_lowercase().chars().filter(|c| c.is_alphanumeric() || *c == ' ').collect();
+    let t: String = s
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == ' ')
+        .collect();
     let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
-    let t = t.trim_start_matches("ok ").trim_start_matches("okay ").trim_start_matches("thanks ").trim_start_matches("thank you ").trim();
+    let t = t
+        .trim_start_matches("ok ")
+        .trim_start_matches("okay ")
+        .trim_start_matches("thanks ")
+        .trim_start_matches("thank you ")
+        .trim();
     matches!(
         t,
-        "bye" | "goodbye" | "bye bye" | "see you" | "later" | "thats all" | "thats it" | "thats everything" | "nothing"
-            | "nothing else" | "no thats it" | "no thats all" | "all done" | "im done" | "done" | "were done"
-            | "thanks" | "thank you" | "thanks atlas" | "thank you atlas" | "cheers" | "good night" | "goodnight"
+        "bye"
+            | "goodbye"
+            | "bye bye"
+            | "see you"
+            | "later"
+            | "thats all"
+            | "thats it"
+            | "thats everything"
+            | "nothing"
+            | "nothing else"
+            | "no thats it"
+            | "no thats all"
+            | "all done"
+            | "im done"
+            | "done"
+            | "were done"
+            | "thanks"
+            | "thank you"
+            | "thanks atlas"
+            | "thank you atlas"
+            | "cheers"
+            | "good night"
+            | "goodnight"
     )
 }
 
 pub fn is_no(s: &str) -> bool {
-    let t: String = s.to_lowercase().chars().filter(|c| c.is_alphanumeric() || *c == ' ').collect();
+    let t: String = s
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == ' ')
+        .collect();
     let t = t.trim();
     if matches!(
         t,
-        "n" | "no" | "nope" | "nah" | "dont" | "do not" | "cancel" | "stop"
-            | "not now" | "no thanks" | "leave it" | "never mind" | "negative"
+        "n" | "no"
+            | "nope"
+            | "nah"
+            | "dont"
+            | "do not"
+            | "cancel"
+            | "stop"
+            | "not now"
+            | "no thanks"
+            | "leave it"
+            | "never mind"
+            | "negative"
     ) {
         return true;
     }
     // "No thanks, I'm good", "nah leave it", "not right now".
     let words: Vec<&str> = t.split_whitespace().collect();
-    let opened = words.first().is_some_and(|w| matches!(*w, "no" | "nope" | "nah")) || ["not now", "not right now", "never mind", "leave it", "dont bother", "no need"].iter().any(|p| t.starts_with(p));
-    let turns_to_yes = words.iter().skip(1).any(|w| matches!(*w, "yes" | "yeah" | "go" | "do" | "sure"));
+    let opened = words
+        .first()
+        .is_some_and(|w| matches!(*w, "no" | "nope" | "nah"))
+        || [
+            "not now",
+            "not right now",
+            "never mind",
+            "leave it",
+            "dont bother",
+            "no need",
+        ]
+        .iter()
+        .any(|p| t.starts_with(p));
+    let turns_to_yes = words
+        .iter()
+        .skip(1)
+        .any(|w| matches!(*w, "yes" | "yeah" | "go" | "do" | "sure"));
     // Nothing but more no: "no more jokes" is a request, not an answer.
     const MORE_NO: &[&str] = &[
-        "no", "nope", "nah", "thanks", "thank", "you", "im", "good", "fine", "leave", "it", "dont", "bother", "need", "not",
-        "now", "right", "atlas", "its", "ok", "okay", "all", "that", "never", "mind", "thats", "alright", "maybe", "later",
+        "no", "nope", "nah", "thanks", "thank", "you", "im", "good", "fine", "leave", "it", "dont",
+        "bother", "need", "not", "now", "right", "atlas", "its", "ok", "okay", "all", "that",
+        "never", "mind", "thats", "alright", "maybe", "later",
     ];
     let only_no = words.iter().all(|w| MORE_NO.contains(w));
     opened && !turns_to_yes && only_no && words.len() <= 6

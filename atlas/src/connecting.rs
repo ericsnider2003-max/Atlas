@@ -5,9 +5,9 @@
 //! Free functions taking the daemon, so every call site names this module.
 
 use crate::connect::{self, CalendarLink, Way};
-use crate::oauthlink::{self, Provider};
 use crate::daemon::Daemon;
 use crate::hub::{self, esc, Page};
+use crate::oauthlink::{self, Provider};
 use crate::server::Reply;
 use std::sync::Mutex;
 
@@ -40,7 +40,11 @@ const SIGNIN_SAID: &str = "connect_signin_said";
 const SIGNIN_WAIT_SECS: u64 = 300;
 
 fn field(fields: &[(String, String)], name: &str) -> String {
-    fields.iter().find(|(k, _)| k == name).map(|(_, v)| v.trim().to_string()).unwrap_or_default()
+    fields
+        .iter()
+        .find(|(k, _)| k == name)
+        .map(|(_, v)| v.trim().to_string())
+        .unwrap_or_default()
 }
 
 fn back(said: &str) -> Reply {
@@ -60,7 +64,9 @@ pub fn section(d: &mut Daemon, asked: Option<&str>) -> String {
         out.push_str(&format!("<p class=said role=status>{}</p>", esc(&said)));
     }
     out.push_str(&one_click(d));
-    out.push_str(&publication_status(&d.publisher, &|id| d.publication_inflight(id)));
+    out.push_str(&publication_status(&d.publisher, &|id| {
+        d.publication_inflight(id)
+    }));
     out.push_str(&removal_notes(&d.store));
     out.push_str(
         "<form method=post action='/hub/connect' class=inline><input type=hidden name=what value=start>\
@@ -93,7 +99,10 @@ fn step_for(d: &mut Daemon, address: &str) -> String {
         Some(w) => w,
         None => return String::new(),
     };
-    let mut out = format!("<div class=box id=connect-next><div class=lab>{}</div>", esc(address));
+    let mut out = format!(
+        "<div class=box id=connect-next><div class=lab>{}</div>",
+        esc(address)
+    );
     match way {
         Way::AppPassword(m) => {
             out.push_str(&format!("<p><b>{}</b>. {}</p>", esc(&m.provider), esc(&m.steps)));
@@ -156,7 +165,9 @@ fn step_for(d: &mut Daemon, address: &str) -> String {
 fn vault_field(d: &Daemon) -> String {
     let opens_itself = d.vault.state() == crate::vault::State::Open
         || d.vault.sealed_to_this_login()
-        || (d.vault.is_brand_new() && d.tools_cfg().vault.open_on_this_login && crate::loginseal::available());
+        || (d.vault.is_brand_new()
+            && d.tools_cfg().vault.open_on_this_login
+            && crate::loginseal::available());
     if opens_itself {
         return String::new();
     }
@@ -208,7 +219,11 @@ fn disconnect(kind: &str, id: &str) -> String {
 fn removal_notes(store: &crate::store::Store) -> String {
     let mut out = String::new();
     for r in crate::connection_removal::unconfirmed_removals(store) {
-        out.push_str(&format!("<p class=note role=status>{} was removed from this Atlas. {}</p>", esc(&r.connection), esc(&crate::connection_removal::provider_check(&r.provider))));
+        out.push_str(&format!(
+            "<p class=note role=status>{} was removed from this Atlas. {}</p>",
+            esc(&r.connection),
+            esc(&crate::connection_removal::provider_check(&r.provider))
+        ));
     }
     out
 }
@@ -218,12 +233,23 @@ fn removal_notes(store: &crate::store::Store) -> String {
 /// offers the owner's own check ("I looked at the service") as a form.
 /// A post still being sent right now (`in_flight`) is shown as that, with no
 /// form: its outcome isn't unconfirmed yet, it just isn't back.
-pub fn publication_status(publisher: &crate::publish::Publisher, in_flight: &dyn Fn(u64) -> bool) -> String {
+pub fn publication_status(
+    publisher: &crate::publish::Publisher,
+    in_flight: &dyn Fn(u64) -> bool,
+) -> String {
     use crate::publish::{PostState, CHECKED_ABSENT};
     let mut out = String::new();
     for post in publisher.pending() {
         let id = post.id;
-        let attachments = if post.media.is_empty() { "None".to_string() } else { post.media.iter().map(|m| esc(m)).collect::<Vec<_>>().join(", ") };
+        let attachments = if post.media.is_empty() {
+            "None".to_string()
+        } else {
+            post.media
+                .iter()
+                .map(|m| esc(m))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         match post.state {
             PostState::PendingSubmission | PostState::Uncertain if in_flight(id) => out.push_str(&format!(
                 "<section class=publication><h3>Post {id} to {chan}: being sent now</h3>\
@@ -263,21 +289,35 @@ pub fn publication_status(publisher: &crate::publish::Publisher, in_flight: &dyn
 
 /// Take in the calendar lists the background threads brought back.
 fn keep_listed(d: &mut Daemon) {
-    let came: Vec<(String, Result<Vec<(String, String)>, String>)> = LISTED.lock().or_else(crate::crash::unpoison).map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
-    if came.is_empty() { return; }
-    let mut offered: std::collections::BTreeMap<String, Vec<(String, String)>> = d.store.load(CHOICES);
+    let came: Vec<(String, Result<Vec<(String, String)>, String>)> = LISTED
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .map(|mut q| std::mem::take(&mut *q))
+        .unwrap_or_default();
+    if came.is_empty() {
+        return;
+    }
+    let mut offered: std::collections::BTreeMap<String, Vec<(String, String)>> =
+        d.store.load(CHOICES);
     let mut links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
     let mut links_changed = false;
     for (url, got) in came {
         match got {
-            Ok(list) => { offered.insert(url, list); }
+            Ok(list) => {
+                offered.insert(url, list);
+            }
             Err(e) => {
-                if let Some(l) = links.iter_mut().find(|l| l.url == url) { l.last_said = format!("couldn't list its calendars: {e}"); links_changed = true; }
+                if let Some(l) = links.iter_mut().find(|l| l.url == url) {
+                    l.last_said = format!("couldn't list its calendars: {e}");
+                    links_changed = true;
+                }
             }
         }
     }
     crate::kept!(d.store.save(CHOICES, &offered));
-    if links_changed { crate::kept!(d.store.save(connect::CALENDAR_LINKS, &links)); }
+    if links_changed {
+        crate::kept!(d.store.save(connect::CALENDAR_LINKS, &links));
+    }
 }
 
 /// The calendar picker for one signed-in link: ask for the list, then choose
@@ -293,7 +333,12 @@ fn calendar_picker(d: &Daemon, l: &CalendarLink) -> String {
         out.push_str(&format!("<form method=post action='/hub/connect'><input type=hidden name=what value=calendars-choose><input type=hidden name=id value='{id}'>"));
         for (cid, name) in list {
             let on = l.selected.iter().any(|s| s == cid);
-            out.push_str(&format!("<label><input type=checkbox name=pick value='{}'{}> {}</label>", esc(cid), if on { " checked" } else { "" }, esc(name)));
+            out.push_str(&format!(
+                "<label><input type=checkbox name=pick value='{}'{}> {}</label>",
+                esc(cid),
+                if on { " checked" } else { "" },
+                esc(name)
+            ));
         }
         out.push_str("<button>Read these</button></form>");
     }
@@ -459,14 +504,18 @@ fn taken_back(d: &mut Daemon, p: Provider, token: Option<String>) -> String {
             format!(" To take back Microsoft's permission too: {} (Microsoft doesn't let Atlas do that part).", oauthlink::MICROSOFT_PERMISSIONS)
         }
         Provider::Google => {
-            let Some(token) = token else { return String::new() };
+            let Some(token) = token else {
+                return String::new();
+            };
             crate::connect::forget_access(&format!("calendar {} {token}", p.key()));
             let youtube_too = d
                 .vault
                 .get(crate::social::VAULT_YOUTUBE_OAUTH, crate::store::now())
                 .ok()
                 .and_then(|j| serde_json::from_str::<crate::social::apis::GoogleSignIn>(&j).ok())
-                .is_some_and(|g| g.client_id == oauthlink::GOOGLE_CLIENT_ID && !g.refresh_token.is_empty());
+                .is_some_and(|g| {
+                    g.client_id == oauthlink::GOOGLE_CLIENT_ID && !g.refresh_token.is_empty()
+                });
             if youtube_too {
                 return " Google's permission stays: your YouTube numbers use the same sign-in. Disconnect YouTube on the Social page to end both.".into();
             }
@@ -474,11 +523,21 @@ fn taken_back(d: &mut Daemon, p: Provider, token: Option<String>) -> String {
             // (the same durable path YouTube uses), never guessed at, and the
             // revocation runs as an errand rather than on a loose thread.
             let t = crate::store::now();
-            let id = match crate::connection_removal::begin(&d.store, "Google calendar", "Google", t) {
-                Ok(id) => id,
-                Err(e) => return format!(" I couldn't record taking Google's permission back ({e}); {}", crate::connection_removal::provider_check("Google")),
-            };
-            if let Err(e) = crate::connection_removal::complete(&d.store, id, "Calendar sign-in removed from this Atlas vault.") {
+            let id =
+                match crate::connection_removal::begin(&d.store, "Google calendar", "Google", t) {
+                    Ok(id) => id,
+                    Err(e) => {
+                        return format!(
+                            " I couldn't record taking Google's permission back ({e}); {}",
+                            crate::connection_removal::provider_check("Google")
+                        )
+                    }
+                };
+            if let Err(e) = crate::connection_removal::complete(
+                &d.store,
+                id,
+                "Calendar sign-in removed from this Atlas vault.",
+            ) {
                 return format!(" The sign-in is out of the vault, but its receipt wasn't saved ({e}); Google's permission is unconfirmed. {}", crate::connection_removal::provider_check("Google"));
             }
             format!(" {}", d.queue_google_revocation(id, token, t))
@@ -489,8 +548,12 @@ fn taken_back(d: &mut Daemon, p: Provider, token: Option<String>) -> String {
 /// An unknown provider, looked up in Mozilla's ISPDB and kept for the page.
 fn look_up(d: &mut Daemon, domain: &str) {
     let url = connect::ispdb_url(domain);
-    let Some((host, path)) = connect::host_and_path(&url) else { return };
-    let Ok(r) = crate::http::https_get(&host, &path, std::time::Duration::from_secs(8)) else { return };
+    let Some((host, path)) = connect::host_and_path(&url) else {
+        return;
+    };
+    let Ok(r) = crate::http::https_get(&host, &path, std::time::Duration::from_secs(8)) else {
+        return;
+    };
     if !r.ok() {
         return;
     }
@@ -503,21 +566,39 @@ fn look_up(d: &mut Daemon, domain: &str) {
 
 /// Try the password against the mail server; keep it only if it worked.
 fn connect_mailbox(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
-    let Some(address) = connect::address(&field(fields, "address")) else { return back("That address went missing -- type it again.") };
-    let password = fields.iter().find(|(k, _)| k == "password").map(|(_, v)| v.clone()).unwrap_or_default();
-    let host = field(fields, "host").trim_start_matches("imaps://").to_string();
+    let Some(address) = connect::address(&field(fields, "address")) else {
+        return back("That address went missing -- type it again.");
+    };
+    let password = fields
+        .iter()
+        .find(|(k, _)| k == "password")
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
+    let host = field(fields, "host")
+        .trim_start_matches("imaps://")
+        .to_string();
     let port: u16 = field(fields, "port").parse().unwrap_or(993);
     if password.trim().is_empty() || host.is_empty() {
         return back("The password box was empty, so nothing was tried.");
     }
-    let again = |said: &str| hub::back_with(&format!("{}#connect-next", Page::Accounts.href()), &format!("connect={}", crate::research::urlencode(&address)), said);
+    let again = |said: &str| {
+        hub::back_with(
+            &format!("{}#connect-next", Page::Accounts.href()),
+            &format!("connect={}", crate::research::urlencode(&address)),
+            said,
+        )
+    };
     // The vault first: there's no point proving a password that can't be kept.
     let now = crate::store::now();
     if let Err(e) = open_the_vault(d, &field(fields, "passphrase"), now) {
         return again(&format!("Nothing was connected: {e}."));
     }
     // Spaces in an app password are how Google shows it, not part of it.
-    let password = if host.contains("gmail") { password.replace(' ', "") } else { password };
+    let password = if host.contains("gmail") {
+        password.replace(' ', "")
+    } else {
+        password
+    };
     let tried = crate::imap::connect(&host, port).and_then(|mut s| s.login(&address, &password));
     if let Err(e) = tried {
         connect::note_health(&d.store, &address, Some(&e));
@@ -531,7 +612,9 @@ fn connect_mailbox(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
         .put(&vault_name, crate::vault::Kind::Login, &password, now)
         .and_then(|()| d.vault.save(&d.vault_home).map_err(|e| e.to_string()));
     if let Err(e) = kept {
-        return again(&format!("The password worked, but I couldn't seal it in the vault, so nothing was kept: {e}."));
+        return again(&format!(
+            "The password worked, but I couldn't seal it in the vault, so nothing was kept: {e}."
+        ));
     }
     let account = crate::mail::Account {
         name: address.split('@').next().unwrap_or(&address).to_string(),
@@ -542,7 +625,9 @@ fn connect_mailbox(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
     };
     connect::note_health(&d.store, &address, None);
     match d.keep_connected_account(account) {
-        Ok(true) => back(&format!("Connected {address}. I'll read it with your mail from now on.")),
+        Ok(true) => back(&format!(
+            "Connected {address}. I'll read it with your mail from now on."
+        )),
         Ok(false) => {
             // Connecting a mailbox is asking for it to be read.
             let dir = crate::roots::config_dir();
@@ -553,7 +638,9 @@ fn connect_mailbox(d: &mut Daemon, fields: &[(String, String)]) -> Reply {
                 Err(e) => back(&format!("Connected {address}, but I couldn't switch reading mail on ({e}) -- turn on Email in Settings.")),
             }
         }
-        Err(e) => back(&format!("The password worked and is sealed, but I couldn't add the account: {e}.")),
+        Err(e) => back(&format!(
+            "The password worked and is sealed, but I couldn't add the account: {e}."
+        )),
     }
 }
 
@@ -567,9 +654,15 @@ fn add_calendar(d: &mut Daemon, typed: &str) -> Reply {
         return back("That calendar is already connected.");
     }
     let name = connect::calendar_name(&url);
-    links.push(CalendarLink { name: name.clone(), url, ..Default::default() });
+    links.push(CalendarLink {
+        name: name.clone(),
+        url,
+        ..Default::default()
+    });
     match d.store.save(connect::CALENDAR_LINKS, &links) {
-        Ok(()) => back(&format!("Added {name}. I'm reading it now; its events appear on your calendar within a minute.")),
+        Ok(()) => back(&format!(
+            "Added {name}. I'm reading it now; its events appear on your calendar within a minute."
+        )),
         Err(e) => back(&format!("I couldn't keep that: {e}")),
     }
 }
@@ -581,7 +674,16 @@ pub fn tick(d: &mut Daemon, now: u64) {
     // Every half minute is plenty for links read every 15; the store isn't
     // read every second for nothing.
     static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let waiting = READ.lock().or_else(crate::crash::unpoison).map(|r| !r.is_empty()).unwrap_or(false) || SIGNED.lock().or_else(crate::crash::unpoison).map(|r| !r.is_empty()).unwrap_or(false);
+    let waiting = READ
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .map(|r| !r.is_empty())
+        .unwrap_or(false)
+        || SIGNED
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map(|r| !r.is_empty())
+            .unwrap_or(false);
     if !waiting && now.saturating_sub(LAST.load(std::sync::atomic::Ordering::Relaxed)) < 30 {
         return;
     }
@@ -595,16 +697,26 @@ pub fn tick(d: &mut Daemon, now: u64) {
     if links.is_empty() {
         return;
     }
-    let came: Vec<(String, Result<String, String>)> = READ.lock().or_else(crate::crash::unpoison).map(|mut r| std::mem::take(&mut *r)).unwrap_or_default();
+    let came: Vec<(String, Result<String, String>)> = READ
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .map(|mut r| std::mem::take(&mut *r))
+        .unwrap_or_default();
     let mut changed = false;
     for (url, got) in came {
-        let Some(l) = links.iter_mut().find(|l| l.url == url) else { continue };
+        let Some(l) = links.iter_mut().find(|l| l.url == url) else {
+            continue;
+        };
         let home = d.home_zone();
         // A complete read replaces only this connection's own events (cancelled
         // ones go; other calendars' events stay). A signed-in read covers a
         // window, so only events inside it can be dropped.
         let window = oauthlink::parse_calendar_key(&url).map(|_| oauthlink::snapshot_window(now));
-        let took = got.and_then(|text| d.calendar.reconcile_ics_window(&url, &text, now, &home, window).map(|(n, _)| n));
+        let took = got.and_then(|text| {
+            d.calendar
+                .reconcile_ics_window(&url, &text, now, &home, window)
+                .map(|(n, _)| n)
+        });
         match took {
             Ok(n) => {
                 let _ = d.calendar.save(&d.store);
@@ -630,7 +742,15 @@ pub fn tick(d: &mut Daemon, now: u64) {
             std::thread::spawn(move || {
                 let got = token
                     .map_err(|e| format!("its sign-in couldn't be read from the vault ({e})"))
-                    .and_then(|t| oauthlink::calendar_ics_selected(&crate::social::apis::Https, p, &t, now, &selected));
+                    .and_then(|t| {
+                        oauthlink::calendar_ics_selected(
+                            &crate::social::apis::Https,
+                            p,
+                            &t,
+                            now,
+                            &selected,
+                        )
+                    });
                 if let Ok(mut q) = READ.lock().or_else(crate::crash::unpoison) {
                     q.push((url, got));
                 }
@@ -641,9 +761,16 @@ pub fn tick(d: &mut Daemon, now: u64) {
             let got = connect::host_and_path(&url)
                 .ok_or_else(|| "not an https link".to_string())
                 .and_then(|(host, path)| {
-                    crate::http::https_get(&host, &path, std::time::Duration::from_secs(20)).map_err(|e| e.to_string())
+                    crate::http::https_get(&host, &path, std::time::Duration::from_secs(20))
+                        .map_err(|e| e.to_string())
                 })
-                .and_then(|r| if r.ok() { Ok(r.body) } else { Err(format!("the calendar's site answered {}", r.status)) });
+                .and_then(|r| {
+                    if r.ok() {
+                        Ok(r.body)
+                    } else {
+                        Err(format!("the calendar's site answered {}", r.status))
+                    }
+                });
             if let Ok(mut q) = READ.lock().or_else(crate::crash::unpoison) {
                 q.push((url, got));
             }
@@ -711,11 +838,30 @@ pub enum Connect {
 /// Read a request to connect an account, said or typed. Only when the
 /// sentence is about connecting: "what's on my google calendar" isn't.
 pub fn connect_asked(said: &str) -> Option<Connect> {
-    let l = said.trim().trim_end_matches(['.', '!', '?']).to_ascii_lowercase();
-    let l = l.trim_start_matches("please ").trim_start_matches("can you ").trim_start_matches("atlas, ").trim();
-    let asks = ["connect ", "link ", "sign me in", "sign me into", "sign in to my", "sign into my", "sign in with ", "log me in", "log me into", "hook up ", "set up my "]
-        .iter()
-        .any(|p| l.starts_with(p));
+    let l = said
+        .trim()
+        .trim_end_matches(['.', '!', '?'])
+        .to_ascii_lowercase();
+    let l = l
+        .trim_start_matches("please ")
+        .trim_start_matches("can you ")
+        .trim_start_matches("atlas, ")
+        .trim();
+    let asks = [
+        "connect ",
+        "link ",
+        "sign me in",
+        "sign me into",
+        "sign in to my",
+        "sign into my",
+        "sign in with ",
+        "log me in",
+        "log me into",
+        "hook up ",
+        "set up my ",
+    ]
+    .iter()
+    .any(|p| l.starts_with(p));
     if !asks {
         return None;
     }
@@ -725,14 +871,39 @@ pub fn connect_asked(said: &str) -> Option<Connect> {
     if l.contains("youtube") && !l.contains("youtube studio") {
         return Some(Connect::Youtube);
     }
-    let social = ["social", "socials", "social media", "instagram", "tiktok", "facebook", "linkedin", "reddit", "twitter", "youtube studio"];
+    let social = [
+        "social",
+        "socials",
+        "social media",
+        "instagram",
+        "tiktok",
+        "facebook",
+        "linkedin",
+        "reddit",
+        "twitter",
+        "youtube studio",
+    ];
     if social.iter().any(|w| l.contains(w)) || l.ends_with(" x") {
         return Some(Connect::Socials);
     }
-    if ["outlook", "microsoft", "hotmail", "live.com", "office 365", "office365"].iter().any(|w| l.contains(w)) {
+    if [
+        "outlook",
+        "microsoft",
+        "hotmail",
+        "live.com",
+        "office 365",
+        "office365",
+    ]
+    .iter()
+    .any(|w| l.contains(w))
+    {
         return Some(Connect::Microsoft);
     }
-    if l.contains("google") || l.contains("gmail calendar") || l.ends_with("my calendar") || l.ends_with("calendar") {
+    if l.contains("google")
+        || l.contains("gmail calendar")
+        || l.ends_with("my calendar")
+        || l.ends_with("calendar")
+    {
         return Some(Connect::Google);
     }
     None
@@ -741,7 +912,11 @@ pub fn connect_asked(said: &str) -> Option<Connect> {
 /// Start a provider's sign-in in your own browser. `Ok` and `Err` are both a
 /// sentence for you; the result is said again when you've finished there
 /// (`keep_signed_in`).
-pub(crate) fn begin_signin(d: &mut Daemon, p: Provider, passphrase: &str) -> Result<String, String> {
+pub(crate) fn begin_signin(
+    d: &mut Daemon,
+    p: Provider,
+    passphrase: &str,
+) -> Result<String, String> {
     if p == Provider::Google && oauthlink::google_secret().is_none() {
         return Err(oauthlink::NO_GOOGLE_SECRET.into());
     }
@@ -753,7 +928,12 @@ pub(crate) fn begin_signin(d: &mut Daemon, p: Provider, passphrase: &str) -> Res
     }
     let first = match std::net::TcpListener::bind("127.0.0.1:0") {
         Ok(l) => l,
-        Err(e) => return Err(format!("I couldn't open a port for {} to come back to: {e}", p.name())),
+        Err(e) => {
+            return Err(format!(
+                "I couldn't open a port for {} to come back to: {e}",
+                p.name()
+            ))
+        }
     };
     let port = first.local_addr().map(|a| a.port()).unwrap_or(0);
     let mut listeners = vec![first];
@@ -768,9 +948,15 @@ pub(crate) fn begin_signin(d: &mut Daemon, p: Provider, passphrase: &str) -> Res
     let state = crate::vault::short_code(24);
     let url = oauthlink::consent_url(p, &redirect, &state, &oauthlink::challenge(&verifier));
     if let Err(e) = d.plat.open_path(&url) {
-        return Err(format!("I couldn't open your browser for {}'s sign-in: {e}", p.name()));
+        return Err(format!(
+            "I couldn't open your browser for {}'s sign-in: {e}",
+            p.name()
+        ));
     }
-    let _ = d.store.save(SIGNIN_SAID, &format!("Waiting for {}'s sign-in in your browser...", p.name()));
+    let _ = d.store.save(
+        SIGNIN_SAID,
+        &format!("Waiting for {}'s sign-in in your browser...", p.name()),
+    );
     std::thread::spawn(move || {
         let got = wait_for_code(&listeners, p, &state).and_then(|code| {
             oauthlink::exchange(&crate::social::apis::Https, p, &code, &redirect, &verifier)
@@ -786,7 +972,11 @@ pub(crate) fn begin_signin(d: &mut Daemon, p: Provider, passphrase: &str) -> Res
 }
 
 /// Answer the browser's redirect, and give back the code in it.
-fn wait_for_code(listeners: &[std::net::TcpListener], p: Provider, state: &str) -> Result<String, String> {
+fn wait_for_code(
+    listeners: &[std::net::TcpListener],
+    p: Provider,
+    state: &str,
+) -> Result<String, String> {
     use std::io::{BufRead, Write};
     for l in listeners {
         let _ = l.set_nonblocking(true);
@@ -806,7 +996,10 @@ fn wait_for_code(listeners: &[std::net::TcpListener], p: Provider, state: &str) 
             let mut w = &stream;
             // A browser also asks for /favicon.ico and the like: not the answer.
             if !line.contains("code=") && !line.contains("error=") {
-                let _ = write!(w, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                let _ = write!(
+                    w,
+                    "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                );
                 continue;
             }
             let code = oauthlink::code_from(p, &line, state);
@@ -823,13 +1016,20 @@ fn wait_for_code(listeners: &[std::net::TcpListener], p: Provider, state: &str) 
         }
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
-    Err(format!("the {} sign-in wasn't finished within five minutes", p.name()))
+    Err(format!(
+        "the {} sign-in wasn't finished within five minutes",
+        p.name()
+    ))
 }
 
 /// Keep what finished sign-ins brought back: the token in the vault, the
 /// calendar in the list, and (Microsoft) the Outlook mailbox in mail.
 fn keep_signed_in(d: &mut Daemon, now: u64) {
-    let came: Vec<Result<oauthlink::SignedIn, String>> = SIGNED.lock().or_else(crate::crash::unpoison).map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
+    let came: Vec<Result<oauthlink::SignedIn, String>> = SIGNED
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .map(|mut q| std::mem::take(&mut *q))
+        .unwrap_or_default();
     for got in came {
         let said = match got {
             Err(e) => format!("Nothing was connected: {e}."),
@@ -878,7 +1078,11 @@ fn keep_inner(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
         Provider::Google => format!("Google Calendar ({})", s.email),
         Provider::Microsoft => format!("Outlook Calendar ({})", s.email),
     };
-    links.push(CalendarLink { name: label, url: key, ..Default::default() });
+    links.push(CalendarLink {
+        name: label,
+        url: key,
+        ..Default::default()
+    });
     // Not `let _`: "its events appear" is false if the link was never kept.
     let linked = d.store.save(connect::CALENDAR_LINKS, &links);
     note_google_data(d);
@@ -891,20 +1095,35 @@ fn keep_inner(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
 
 fn finish_signin_line(d: &mut Daemon, s: &oauthlink::SignedIn) -> String {
     if s.provider == Provider::Google {
-        return format!("Connected {}'s Google Calendar. Its events appear on your calendar within a minute.", s.email);
+        return format!(
+            "Connected {}'s Google Calendar. Its events appear on your calendar within a minute.",
+            s.email
+        );
     }
     match d.keep_connected_account(oauthlink::outlook_account(&s.email)) {
-        Ok(true) => format!("Connected {}: Outlook mail and calendar. I'll read both from now on.", s.email),
+        Ok(true) => format!(
+            "Connected {}: Outlook mail and calendar. I'll read both from now on.",
+            s.email
+        ),
         Ok(false) => {
             let dir = crate::roots::config_dir();
             let mut prefs = crate::preferences::Preferences::load(&dir);
             prefs.set("mail.enabled", "true");
             match prefs.save(&dir) {
-                Ok(()) => format!("Connected {}: Outlook mail and calendar, and reading mail is now on.", s.email),
-                Err(e) => format!("Connected {}'s calendar; turn on Email in Settings for its mail ({e}).", s.email),
+                Ok(()) => format!(
+                    "Connected {}: Outlook mail and calendar, and reading mail is now on.",
+                    s.email
+                ),
+                Err(e) => format!(
+                    "Connected {}'s calendar; turn on Email in Settings for its mail ({e}).",
+                    s.email
+                ),
             }
         }
-        Err(e) => format!("Connected {}'s calendar, but I couldn't add its mail: {e}.", s.email),
+        Err(e) => format!(
+            "Connected {}'s calendar, but I couldn't add its mail: {e}.",
+            s.email
+        ),
     }
 }
 
@@ -938,7 +1157,11 @@ pub fn keep_rotated(d: &mut Daemon, now: u64) {
     let mut changed = false;
     for (old, new) in &waiting {
         for name in &names {
-            if d.vault.get(name, now).as_deref() == Ok(old.as_str()) && d.vault.put(name, crate::vault::Kind::Login, new, now).is_ok() {
+            if d.vault.get(name, now).as_deref() == Ok(old.as_str())
+                && d.vault
+                    .put(name, crate::vault::Kind::Login, new, now)
+                    .is_ok()
+            {
                 changed = true;
             }
         }
@@ -946,7 +1169,9 @@ pub fn keep_rotated(d: &mut Daemon, now: u64) {
     if changed {
         if let Err(e) = d.vault.save(&crate::roots::install_state()) {
             // Kept in the open vault already; the next vault save writes it.
-            d.log.warn(&format!("a renewed Microsoft sign-in couldn't be saved to the vault yet: {e}"));
+            d.log.warn(&format!(
+                "a renewed Microsoft sign-in couldn't be saved to the vault yet: {e}"
+            ));
         }
     }
 }
@@ -1006,7 +1231,9 @@ fn parse_cap(typed: &str) -> Option<f64> {
     if t.is_empty() {
         return None;
     }
-    t.parse::<f64>().ok().filter(|c| c.is_finite() && *c >= 0.0 && *c <= 10_000.0)
+    t.parse::<f64>()
+        .ok()
+        .filter(|c| c.is_finite() && *c >= 0.0 && *c <= 10_000.0)
 }
 
 fn set_muse_cap(d: &mut Daemon, typed: &str) -> String {
@@ -1020,7 +1247,8 @@ fn set_muse_cap(d: &mut Daemon, typed: &str) -> String {
     let l: crate::muse::Ledger = d.store.load(crate::muse::LEDGER);
     crate::muse::restore(&crate::muse::ledger(now).max_of(&l), cap, now);
     if cap == 0.0 {
-        "No monthly limit for Muse now. Meta has none either, so everything it's asked is billed.".into()
+        "No monthly limit for Muse now. Meta has none either, so everything it's asked is billed."
+            .into()
     } else {
         format!("Muse's monthly limit is ${cap:.2}.")
     }
@@ -1037,7 +1265,16 @@ fn connect_muse(d: &mut Daemon, key: &str, cap: &str) -> String {
     if let Err(e) = d.vault_ready(now) {
         return format!("Nothing was kept: {e}.");
     }
-    if let Err(e) = d.vault.put(crate::muse::VAULT_MUSE, crate::vault::Kind::ApiKey, &key, now).and_then(|()| d.vault.save(&d.vault_home).map_err(|e| e.to_string())) {
+    if let Err(e) = d
+        .vault
+        .put(
+            crate::muse::VAULT_MUSE,
+            crate::vault::Kind::ApiKey,
+            &key,
+            now,
+        )
+        .and_then(|()| d.vault.save(&d.vault_home).map_err(|e| e.to_string()))
+    {
         return format!("I couldn't keep the key in the vault: {e}");
     }
     let cap = parse_cap(cap).unwrap_or_else(|| muse_cap(d));
@@ -1053,7 +1290,10 @@ fn connect_muse(d: &mut Daemon, key: &str, cap: &str) -> String {
             *c = Some(r);
         }
     });
-    let _ = d.store.save(SIGNIN_SAID, &"Checking the Muse key with Meta...".to_string());
+    let _ = d.store.save(
+        SIGNIN_SAID,
+        &"Checking the Muse key with Meta...".to_string(),
+    );
     match cap_kept {
         Ok(()) => format!("Kept the key; checking it with Meta now. Monthly limit: ${cap:.2}."),
         Err(e) => format!("Kept the key; checking it with Meta now. The ${cap:.2} monthly limit applies for now but couldn't be saved ({e}), so set it again after a restart."),
@@ -1063,7 +1303,12 @@ fn connect_muse(d: &mut Daemon, key: &str, cap: &str) -> String {
 /// The key into memory once the vault opens, a key check's result onto the
 /// page, and the month's spending onto disk.
 fn keep_muse(d: &mut Daemon, now: u64) {
-    if let Some(r) = MUSE_CHECK.lock().or_else(crate::crash::unpoison).ok().and_then(|mut c| c.take()) {
+    if let Some(r) = MUSE_CHECK
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .ok()
+        .and_then(|mut c| c.take())
+    {
         let said = match r {
             Ok(()) => "Muse Spark is connected. It takes the hard work from now on; say \"ask Muse what to cook tonight\", or anything, to ask it directly.".to_string(),
             Err(why) if why.starts_with("couldn't reach") => {
@@ -1078,7 +1323,11 @@ fn keep_muse(d: &mut Daemon, now: u64) {
         };
         let _ = d.store.save(SIGNIN_SAID, &said);
     }
-    let kept = d.vault.list().iter().any(|(n, _)| *n == crate::muse::VAULT_MUSE);
+    let kept = d
+        .vault
+        .list()
+        .iter()
+        .any(|(n, _)| *n == crate::muse::VAULT_MUSE);
     if kept && !crate::muse::has_key() && d.vault_ready(now).is_ok() {
         let key = d.vault.get(crate::muse::VAULT_MUSE, now).ok();
         let l: crate::muse::Ledger = d.store.load(crate::muse::LEDGER);
@@ -1102,7 +1351,9 @@ fn keep_muse(d: &mut Daemon, now: u64) {
 /// starting a sign-in each had one, and the 5 Oct no-passphrase change had to
 /// be made in both.
 fn open_the_vault(d: &mut Daemon<'_>, passphrase: &str, now: u64) -> Result<(), String> {
-    let Err(why) = d.vault_ready(now) else { return Ok(()) };
+    let Err(why) = d.vault_ready(now) else {
+        return Ok(());
+    };
     if passphrase.is_empty() {
         return Err(why);
     }
@@ -1117,8 +1368,14 @@ fn open_the_vault(d: &mut Daemon<'_>, passphrase: &str, now: u64) -> Result<(), 
 /// party's model (`brain::google_data_held`).
 pub fn note_google_data(d: &mut Daemon) {
     let links: Vec<CalendarLink> = d.store.load(connect::CALENDAR_LINKS);
-    let held = links.iter().any(|l| matches!(oauthlink::parse_calendar_key(&l.url), Some((Provider::Google, _))))
-        || d.vault.list().iter().any(|(n, _)| *n == crate::social::VAULT_YOUTUBE_OAUTH || n.starts_with(&oauthlink::vault_name(Provider::Google, "")))
-        || d.calendar.holds_google_events();
+    let held = links.iter().any(|l| {
+        matches!(
+            oauthlink::parse_calendar_key(&l.url),
+            Some((Provider::Google, _))
+        )
+    }) || d.vault.list().iter().any(|(n, _)| {
+        *n == crate::social::VAULT_YOUTUBE_OAUTH
+            || n.starts_with(&oauthlink::vault_name(Provider::Google, ""))
+    }) || d.calendar.holds_google_events();
     crate::brain::set_google_data_held(held);
 }

@@ -31,13 +31,26 @@ fn tmp(tag: &str) -> PathBuf {
     p
 }
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 fn cfg() -> Config {
     Config::load(Path::new("config")).unwrap()
 }
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 /// A config that knows one Atlas, at an address nothing is listening on.
@@ -104,7 +117,10 @@ fn asking_without_naming_one_lists_what_it_can_ask() {
 
     let said = d.turn("brief me on", NOW);
 
-    assert!(said.contains("homelab"), "it did not offer what it could ask: {said}");
+    assert!(
+        said.contains("homelab"),
+        "it did not offer what it could ask: {said}"
+    );
 }
 
 #[test]
@@ -115,7 +131,10 @@ fn switching_it_off_stops_it_reaching_anything() {
     let mut d = daemon(&c, &p, "off");
 
     let said = d.turn("how is homelab", NOW);
-    assert!(said.contains("switched off"), "it asked with the setting off: {said}");
+    assert!(
+        said.contains("switched off"),
+        "it asked with the setting off: {said}"
+    );
 }
 
 // ---------- nothing is trusted by being reachable ----------
@@ -126,7 +145,10 @@ fn nothing_is_askable_until_you_name_it() {
     // the network is not the same as being yours to ask.
     let c = cfg();
     let e = c.tools.as_ref().unwrap().elsewhere.clone();
-    assert!(e.known.is_empty(), "the shipped config trusts something by default");
+    assert!(
+        e.known.is_empty(),
+        "the shipped config trusts something by default"
+    );
     assert!(e.find("homelab").is_none());
 }
 
@@ -156,7 +178,10 @@ fn a_brief_is_words_not_instructions() {
         queued: String::new(),
     };
     let said: String = spoken(&b);
-    assert!(said.contains("sell everything"), "it dropped what the other side said");
+    assert!(
+        said.contains("sell everything"),
+        "it dropped what the other side said"
+    );
 }
 
 #[test]
@@ -165,7 +190,10 @@ fn it_reads_and_never_writes() {
     // serves. A POST here would be this door doing something over there,
     // which is a different capability with a different answer.
     let src = std::fs::read_to_string("src/elsewhere.rs").expect("src/elsewhere.rs");
-    assert!(!src.contains("post_json"), "elsewhere.rs is writing to another Atlas");
+    assert!(
+        !src.contains("post_json"),
+        "elsewhere.rs is writing to another Atlas"
+    );
     for path in ["/status", "/outstanding", "/queued"] {
         assert!(src.contains(path), "it stopped asking for {path}");
     }
@@ -179,6 +207,8 @@ fn a_machine_that_cannot_be_reached_is_reported_not_swallowed() {
 
     let r = ask(&one, &e);
     let why = r.expect_err("it claimed to reach a machine that isn't there");
-    assert!(why.contains("homelab"), "the failure doesn't say which one: {why}");
+    assert!(
+        why.contains("homelab"),
+        "the failure doesn't say which one: {why}"
+    );
 }
-

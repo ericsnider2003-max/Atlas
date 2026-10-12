@@ -8,7 +8,10 @@
 //! component a rough class of sound; adapting it to one clip moves each
 //! component only as far as that clip has evidence for, so two clips are
 //! compared sound-class by sound-class — like with like.
-#![allow(clippy::needless_range_loop, reason = "numeric kernels step through several arrays by one index; the index loop is the clear form")]
+#![allow(
+    clippy::needless_range_loop,
+    reason = "numeric kernels step through several arrays by one index; the index loop is the clear form"
+)]
 
 use crate::mfcc::CEPS;
 
@@ -101,7 +104,11 @@ impl Gmm {
         for c in 0..k {
             let a = n[c] / (n[c] + r);
             for d in 0..CEPS {
-                let ex = if n[c] > 0.0 { s1[c][d] / n[c] } else { self.mu[c][d] };
+                let ex = if n[c] > 0.0 {
+                    s1[c][d] / n[c]
+                } else {
+                    self.mu[c][d]
+                };
                 let adapted = a * ex + (1.0 - a) * self.mu[c][d];
                 out.push((adapted - self.mu[c][d]) * self.w[c].sqrt() / self.var[c][d].sqrt());
             }

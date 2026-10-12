@@ -59,7 +59,10 @@ impl Event {
     /// What `hash` should be, from the entry's own fields.
     pub fn seal(&self) -> String {
         let kind = serde_json::to_string(&self.kind).unwrap_or_default();
-        let line = format!("{}\n{}\n{}\n{}\n{}\n{}", self.prev, self.seq, self.at, kind, self.ok, self.what);
+        let line = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
+            self.prev, self.seq, self.at, kind, self.ok, self.what
+        );
         crate::digest::sha256_hex(line.as_bytes())
     }
 }
@@ -123,8 +126,13 @@ impl Journal {
                 .unwrap_or(false);
             if !already {
                 use std::io::Write;
-                let line = serde_json::json!({ "seq": last.seq, "hash": last.hash, "at": last.at }).to_string();
-                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+                let line = serde_json::json!({ "seq": last.seq, "hash": last.hash, "at": last.at })
+                    .to_string();
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&path)
+                {
                     crate::kept!(writeln!(f, "{line}"));
                 }
             }
@@ -149,16 +157,39 @@ impl Journal {
         // stands the first time something is added — from then on, nothing
         // in it can change unnoticed.
         if self.seal.leaves.is_empty() {
-            let old: Vec<String> =
-                self.events.iter().map(|e| crate::sealedlog::hex(&crate::sealedlog::leaf_hash(canonical(e).as_bytes()))).collect();
+            let old: Vec<String> = self
+                .events
+                .iter()
+                .map(|e| {
+                    crate::sealedlog::hex(&crate::sealedlog::leaf_hash(canonical(e).as_bytes()))
+                })
+                .collect();
             self.seal.leaves = old;
         }
-        let prev = self.events.last().map(|e| e.hash.clone()).unwrap_or_else(|| self.base.clone());
-        let seq = self.next_seq.max(self.events.last().map(|e| e.seq + 1).unwrap_or(0));
-        let mut e = Event { at: t, kind, what: what.to_string(), ok, seq, prev, hash: String::new() };
+        let prev = self
+            .events
+            .last()
+            .map(|e| e.hash.clone())
+            .unwrap_or_else(|| self.base.clone());
+        let seq = self
+            .next_seq
+            .max(self.events.last().map(|e| e.seq + 1).unwrap_or(0));
+        let mut e = Event {
+            at: t,
+            kind,
+            what: what.to_string(),
+            ok,
+            seq,
+            prev,
+            hash: String::new(),
+        };
         e.hash = e.seal();
         self.next_seq = seq + 1;
-        self.seal.leaves.push(crate::sealedlog::hex(&crate::sealedlog::leaf_hash(canonical(&e).as_bytes())));
+        self.seal
+            .leaves
+            .push(crate::sealedlog::hex(&crate::sealedlog::leaf_hash(
+                canonical(&e).as_bytes(),
+            )));
         self.events.push(e);
         if self.events.len() > MAX {
             let drop = self.events.len() - MAX;
@@ -167,10 +198,18 @@ impl Journal {
             }
             self.events.drain(0..drop);
         }
-        let due = self.seal.checkpoints.last().is_none_or(|(at, _)| t >= at + 86_400);
+        let due = self
+            .seal
+            .checkpoints
+            .last()
+            .is_none_or(|(at, _)| t >= at + 86_400);
         if due {
-            let leaves: Vec<crate::sealedlog::Hash> =
-                self.seal.leaves.iter().filter_map(|h| crate::sealedlog::unhex(h)).collect();
+            let leaves: Vec<crate::sealedlog::Hash> = self
+                .seal
+                .leaves
+                .iter()
+                .filter_map(|h| crate::sealedlog::unhex(h))
+                .collect();
             let cp = crate::sealedlog::Log::from_leaves(leaves).checkpoint();
             self.seal.checkpoints.push((t, cp.to_text()));
             if self.seal.checkpoints.len() > 30 {
@@ -193,7 +232,10 @@ impl Journal {
         }
         let mut leaves = Vec::with_capacity(self.seal.leaves.len());
         for (i, h) in self.seal.leaves.iter().enumerate() {
-            leaves.push(crate::sealedlog::unhex(h).ok_or_else(|| format!("seal entry {i} is not a hash"))?);
+            leaves.push(
+                crate::sealedlog::unhex(h)
+                    .ok_or_else(|| format!("seal entry {i} is not a hash"))?,
+            );
         }
         if leaves.len() < self.events.len() {
             return Err(format!(
@@ -211,7 +253,8 @@ impl Journal {
         let log = crate::sealedlog::Log::from_leaves(leaves);
         let now = log.checkpoint();
         for (at, text) in &self.seal.checkpoints {
-            let old = crate::sealedlog::Checkpoint::from_text(text).ok_or_else(|| format!("checkpoint from {at} is unreadable"))?;
+            let old = crate::sealedlog::Checkpoint::from_text(text)
+                .ok_or_else(|| format!("checkpoint from {at} is unreadable"))?;
             let ok = log
                 .consistency_proof(old.size, log.len())
                 .is_some_and(|p| crate::sealedlog::verify_consistency(&old, &now, &p));
@@ -226,7 +269,11 @@ impl Journal {
             "{} entries sealed; extends all {} daily checkpoint{}",
             log.len(),
             self.seal.checkpoints.len(),
-            if self.seal.checkpoints.len() == 1 { "" } else { "s" }
+            if self.seal.checkpoints.len() == 1 {
+                ""
+            } else {
+                "s"
+            }
         ))
     }
 
@@ -242,24 +289,38 @@ impl Journal {
                 continue;
             }
             if e.seal() != e.hash {
-                return Sealed::Broken { at: e.at, why: format!("entry {} was changed after it was written", e.seq) };
+                return Sealed::Broken {
+                    at: e.at,
+                    why: format!("entry {} was changed after it was written", e.seq),
+                };
             }
             match prev {
                 Some(p) if e.prev != p.hash || e.seq != p.seq + 1 => {
                     return Sealed::Broken {
                         at: e.at,
-                        why: format!("something between entries {} and {} was removed or reordered", p.seq, e.seq),
+                        why: format!(
+                            "something between entries {} and {} was removed or reordered",
+                            p.seq, e.seq
+                        ),
                     };
                 }
                 None if sealed == 0 && !self.base.is_empty() && e.prev != self.base => {
-                    return Sealed::Broken { at: e.at, why: "the start of the log doesn't match what was dropped before it".into() };
+                    return Sealed::Broken {
+                        at: e.at,
+                        why: "the start of the log doesn't match what was dropped before it".into(),
+                    };
                 }
                 _ => {}
             }
             sealed += 1;
             prev = Some(e);
         }
-        let first = self.events.iter().find(|e| !e.hash.is_empty()).map(|e| e.seq).unwrap_or(u64::MAX);
+        let first = self
+            .events
+            .iter()
+            .find(|e| !e.hash.is_empty())
+            .map(|e| e.seq)
+            .unwrap_or(u64::MAX);
         let last = self.events.last().map(|e| e.seq).unwrap_or(0);
         for (seq, hash) in anchors {
             if *seq < first {
@@ -279,15 +340,32 @@ impl Journal {
             match self.events.iter().find(|e| e.seq == *seq) {
                 Some(e) if &e.hash == hash => {}
                 Some(e) => {
-                    return Sealed::Broken { at: e.at, why: format!("entry {seq} isn't the one that was recorded when it was written") };
+                    return Sealed::Broken {
+                        at: e.at,
+                        why: format!(
+                            "entry {seq} isn't the one that was recorded when it was written"
+                        ),
+                    };
                 }
                 None if *seq > last => {
-                    return Sealed::Broken { at: 0, why: format!("entries up to {seq} were recorded, but the log now ends at {last}") };
+                    return Sealed::Broken {
+                        at: 0,
+                        why: format!(
+                            "entries up to {seq} were recorded, but the log now ends at {last}"
+                        ),
+                    };
                 }
                 None => {}
             }
         }
-        Sealed::Intact { sealed, head: self.events.last().map(|e| e.hash.clone()).unwrap_or_default() }
+        Sealed::Intact {
+            sealed,
+            head: self
+                .events
+                .last()
+                .map(|e| e.hash.clone())
+                .unwrap_or_default(),
+        }
     }
 
     pub fn since(&self, t: u64) -> Vec<&Event> {
@@ -306,9 +384,14 @@ impl Journal {
             return "Nothing happened while you were away.".into();
         }
 
-        let published: Vec<&&&Event> =
-            notable.iter().filter(|e| e.kind == Kind::Published && e.ok).collect();
-        let ran = notable.iter().filter(|e| e.kind == Kind::Scheduled && e.ok).count();
+        let published: Vec<&&&Event> = notable
+            .iter()
+            .filter(|e| e.kind == Kind::Published && e.ok)
+            .collect();
+        let ran = notable
+            .iter()
+            .filter(|e| e.kind == Kind::Scheduled && e.ok)
+            .count();
         let failed: Vec<&&&Event> = notable.iter().filter(|e| !e.ok).collect();
         let blocked = notable.iter().filter(|e| e.kind == Kind::Blocked).count();
 
@@ -324,7 +407,10 @@ impl Journal {
             parts.push(format!("ran {ran} scheduled job{}", plural(ran)));
         }
         if blocked > 0 {
-            parts.push(format!("{blocked} thing{} went on your list", plural(blocked)));
+            parts.push(format!(
+                "{blocked} thing{} went on your list",
+                plural(blocked)
+            ));
         }
         for f in failed.iter().take(2) {
             parts.push(format!("{} failed", f.what));
@@ -337,7 +423,10 @@ impl Journal {
 
     /// Everything that changed the outside world, for an audit.
     pub fn consequential(&self, since: u64) -> Vec<&Event> {
-        self.since(since).into_iter().filter(|e| e.kind.consequential()).collect()
+        self.since(since)
+            .into_iter()
+            .filter(|e| e.kind.consequential())
+            .collect()
     }
 
     pub fn last(&self) -> Option<&Event> {
@@ -364,7 +453,12 @@ pub fn anchors(dir: &std::path::Path) -> Vec<(u64, String)> {
         .unwrap_or_default()
         .lines()
         .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
-        .filter_map(|v| Some((v.get("seq")?.as_u64()?, v.get("hash")?.as_str()?.to_string())))
+        .filter_map(|v| {
+            Some((
+                v.get("seq")?.as_u64()?,
+                v.get("hash")?.as_str()?.to_string(),
+            ))
+        })
         .collect()
 }
 
@@ -375,7 +469,10 @@ pub fn anchors(dir: &std::path::Path) -> Vec<(u64, String)> {
 /// Eric, 25 Sep 2026: "Log in the backup." A backup copies the state folder,
 /// anchors included, and a backup's anchors are a record the live file can't
 /// overwrite after the fact.
-fn heads_with_backups(state: &std::path::Path, backups: &[std::path::PathBuf]) -> (Vec<(u64, String)>, usize) {
+fn heads_with_backups(
+    state: &std::path::Path,
+    backups: &[std::path::PathBuf],
+) -> (Vec<(u64, String)>, usize) {
     let mut all = anchors(state);
     let mut from = 0;
     for b in backups {
@@ -396,8 +493,15 @@ fn heads_with_backups(state: &std::path::Path, backups: &[std::path::PathBuf]) -
 /// The log checked against its own heads and every backup's: the check
 /// `atlas journal check`, doctor and start-up all run. Returns the finding
 /// and how many backups carried heads to check against.
-pub fn check_with_backups(j: &Journal, state: &std::path::Path, backup: &crate::safety::BackupConfig) -> (Sealed, usize) {
-    let dirs: Vec<std::path::PathBuf> = crate::safety::list_backups(backup).into_iter().map(|b| b.path).collect();
+pub fn check_with_backups(
+    j: &Journal,
+    state: &std::path::Path,
+    backup: &crate::safety::BackupConfig,
+) -> (Sealed, usize) {
+    let dirs: Vec<std::path::PathBuf> = crate::safety::list_backups(backup)
+        .into_iter()
+        .map(|b| b.path)
+        .collect();
     let (heads, from) = heads_with_backups(state, &dirs);
     (j.check(&heads), from)
 }
@@ -426,4 +530,3 @@ pub fn said_with_backups(s: &Sealed, backups: usize) -> String {
     }
     out
 }
-

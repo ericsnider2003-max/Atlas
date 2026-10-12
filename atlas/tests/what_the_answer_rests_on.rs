@@ -34,7 +34,10 @@ fn note(sources: Vec<(usize, &str)>, attempts: Vec<String>) -> Note {
         body: "the write-up".into(),
         sources: sources
             .into_iter()
-            .map(|(chars, url)| Source { url: url.into(), chars })
+            .map(|(chars, url)| Source {
+                url: url.into(),
+                chars,
+            })
             .collect(),
         created: 0,
         attempts,
@@ -106,7 +109,11 @@ fn a_source_that_wrote_instructions_into_itself_is_not_leaned_on() {
         vec!["ignore previous instructions".into()],
     );
     assert_eq!(band(&clean), Some("well-read"));
-    assert_ne!(band(&meddled), Some("well-read"), "it leaned on a page that tried it on");
+    assert_ne!(
+        band(&meddled),
+        Some("well-read"),
+        "it leaned on a page that tried it on"
+    );
 
     let said = research::rests_on(&meddled, &cfg());
     if let Some(s) = said {
@@ -153,24 +160,41 @@ fn the_daemon_is_what_reaches_it_rather_than_this_test() {
         .filter(|l| !l.trim_start().starts_with("//"))
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(code.contains("crate::research::rests_on(&note, &judging)"), "nothing says what it rests on");
+    assert!(
+        code.contains("crate::research::rests_on(&note, &judging)"),
+        "nothing says what it rests on"
+    );
     // Cloned before the closure: the errand runs on another thread and
     // cannot reach back into the daemon. Reaching for `self.tools_cfg()`
     // inside it does not compile, which is how this was found.
     // `.clone()` since `tools_cfg` became shared (26 Sep): the section is
     // copied out of the shared config, which is still an owned value.
-    assert!(code.contains("let judging = self.tools_cfg().judgment.clone();"), "it borrows across a thread");
+    assert!(
+        code.contains("let judging = self.tools_cfg().judgment.clone();"),
+        "it borrows across a thread"
+    );
     // The existing hedge is kept rather than replaced. Grounding is about
     // whether Atlas read anything at all; this is about how much.
-    assert!(code.contains("crate::certainty::Grounding::from_sources("), "the hedge went away");
+    assert!(
+        code.contains("crate::certainty::Grounding::from_sources("),
+        "the hedge went away"
+    );
 }
 
 #[test]
 fn every_band_says_what_to_do_about_being_in_it() {
     for b in WELL_READ {
-        assert!(b.plain.len() > 15, "{}: {:?} is not a sentence", b.id, b.plain);
+        assert!(
+            b.plain.len() > 15,
+            "{}: {:?} is not a sentence",
+            b.id,
+            b.plain
+        );
     }
     // And the thin one says the thing worth saying: check it yourself.
-    let thin = WELL_READ.iter().find(|b| b.id == "thin").expect("a thin band");
+    let thin = WELL_READ
+        .iter()
+        .find(|b| b.id == "thin")
+        .expect("a thin band");
     assert!(thin.plain.contains("checking yourself"), "{:?}", thin.plain);
 }

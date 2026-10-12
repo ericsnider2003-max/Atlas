@@ -39,7 +39,13 @@ pub enum Axis {
 
 impl Axis {
     pub fn all() -> [Axis; 5] {
-        [Axis::Work, Axis::Authenticity, Axis::Roadmap, Axis::Money, Axis::Fit]
+        [
+            Axis::Work,
+            Axis::Authenticity,
+            Axis::Roadmap,
+            Axis::Money,
+            Axis::Fit,
+        ]
     }
 
     /// What this axis is asking, in the words you would use.
@@ -75,7 +81,10 @@ impl Axis {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Finding {
     /// Scored, with what the score rests on.
-    Scored { out_of_ten: u8, rests_on: Vec<String> },
+    Scored {
+        out_of_ten: u8,
+        rests_on: Vec<String>,
+    },
     /// Looked at and could not be answered, with why.
     Unknown(String),
     /// Cannot be answered until something is true — Atlas being online,
@@ -148,7 +157,10 @@ impl Opportunity {
     }
 
     pub fn finding(&self, axis: Axis) -> Option<&Finding> {
-        self.looks.iter().find(|l| l.axis == axis).map(|l| &l.finding)
+        self.looks
+            .iter()
+            .find(|l| l.axis == axis)
+            .map(|l| &l.finding)
     }
 
     /// Axes nobody has looked at yet.
@@ -218,7 +230,10 @@ impl Opportunity {
             .looks
             .iter()
             .filter_map(|l| match &l.finding {
-                Finding::Scored { out_of_ten, rests_on } => Some(format!(
+                Finding::Scored {
+                    out_of_ten,
+                    rests_on,
+                } => Some(format!(
                     "{:?} {}/10 — {}",
                     l.axis,
                     out_of_ten,
@@ -262,13 +277,14 @@ impl Opportunity {
     pub fn presented(&self) -> String {
         match self.verdict() {
             Verdict::NeedFirst(q) => format!("{} — before anything else: {q}", self.what),
-            Verdict::SetAside { axis, why } => format!(
-                "{} — setting it aside on {axis:?}: {why}",
-                self.what
-            ),
+            Verdict::SetAside { axis, why } => {
+                format!("{} — setting it aside on {axis:?}: {why}", self.what)
+            }
             Verdict::Worth { because, weakest } => {
                 let mut lines = vec![format!("{} — worth a look.", self.what)];
-                lines.push(format!("Weakest part is {weakest:?}, so that's what to test first."));
+                lines.push(format!(
+                    "Weakest part is {weakest:?}, so that's what to test first."
+                ));
                 lines.extend(because);
                 lines.join("\n")
             }

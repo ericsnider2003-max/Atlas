@@ -44,7 +44,11 @@ pub struct Read {
 
 impl Read {
     pub fn new(from: &str, text: &str, at: u64) -> Read {
-        Read { from: from.trim().to_string(), text: text.to_string(), at }
+        Read {
+            from: from.trim().to_string(),
+            text: text.to_string(),
+            at,
+        }
     }
 
     /// Rendered so it cannot be mistaken for Atlas's own words.
@@ -54,7 +58,11 @@ impl Read {
     /// sentences and the system's sentences arrive in the same shape, and
     /// whatever reads them next cannot tell which was which.
     pub fn quoted(&self) -> String {
-        let who = if self.from.is_empty() { "somewhere" } else { &self.from };
+        let who = if self.from.is_empty() {
+            "somewhere"
+        } else {
+            &self.from
+        };
         let body: Vec<String> = self.text.lines().map(|l| format!("> {l}")).collect();
         format!("From {who}, quoted, not followed:\n{}", body.join("\n"))
     }
@@ -74,7 +82,11 @@ impl Read {
             "Something in what I read from {} was written as an instruction to me: {}. I've \
              quoted it rather than acted on it, which is what happens to everything I read — \
              but you should know somebody put it there.",
-            if self.from.is_empty() { "an unnamed source" } else { &self.from },
+            if self.from.is_empty() {
+                "an unnamed source"
+            } else {
+                &self.from
+            },
             found.join("; ")
         ))
     }
@@ -134,7 +146,11 @@ impl Inbox {
 
     /// Everything that tried to give an order, newest first.
     pub fn attempts(&self) -> Vec<&Read> {
-        let mut out: Vec<&Read> = self.read.iter().filter(|r| !r.orders_found().is_empty()).collect();
+        let mut out: Vec<&Read> = self
+            .read
+            .iter()
+            .filter(|r| !r.orders_found().is_empty())
+            .collect();
         out.sort_by_key(|b| std::cmp::Reverse(b.at));
         out
     }
@@ -152,7 +168,11 @@ impl Inbox {
              from {}. All of them were quoted, none were followed.",
             tried.len(),
             self.count(),
-            if tried[0].from.is_empty() { "an unnamed source" } else { &tried[0].from }
+            if tried[0].from.is_empty() {
+                "an unnamed source"
+            } else {
+                &tried[0].from
+            }
         )
     }
 }

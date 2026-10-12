@@ -185,7 +185,11 @@ impl Appearance {
             for (v, label) in opts {
                 s.push_str(&format!(
                     "<a{} href='/hub/appearance?set=look.{key}&amp;to={v}'>{label}</a>",
-                    if *v == now { " class=on aria-current=true" } else { "" }
+                    if *v == now {
+                        " class=on aria-current=true"
+                    } else {
+                        ""
+                    }
                 ));
             }
             s.push_str("</div></div>");
@@ -218,16 +222,45 @@ impl Appearance {
              also clears the theme picked in the Aa menu at the top of every page, so this one shows. \
              The Aa menu keeps text size, contrast and motion.</p>",
         );
-        s.push_str(&row("Colourway", "theme", theme, &[
-            ("warm", "Warm Paper"), ("ember", "Deck dark"), ("system", "Follow this computer"), ("access", "Colour-blind safe"),
-        ]));
-        s.push_str(&row("Accent", "accent", accent, &[
-            ("ember", "Ember"), ("blue", "Blue"), ("teal", "Teal"), ("purple", "Purple"), ("forest", "Forest"),
-        ]));
-        s.push_str(&row("Colour-blind mode", "cvd", cvd, &[
-            ("none", "Off"), ("deuter", "Red-green"), ("tritan", "Blue-yellow"),
-        ]));
-        s.push_str(&row("Density", "density", density, &[("comfortable", "Comfortable"), ("compact", "Compact")]));
+        s.push_str(&row(
+            "Colourway",
+            "theme",
+            theme,
+            &[
+                ("warm", "Warm Paper"),
+                ("ember", "Deck dark"),
+                ("system", "Follow this computer"),
+                ("access", "Colour-blind safe"),
+            ],
+        ));
+        s.push_str(&row(
+            "Accent",
+            "accent",
+            accent,
+            &[
+                ("ember", "Ember"),
+                ("blue", "Blue"),
+                ("teal", "Teal"),
+                ("purple", "Purple"),
+                ("forest", "Forest"),
+            ],
+        ));
+        s.push_str(&row(
+            "Colour-blind mode",
+            "cvd",
+            cvd,
+            &[
+                ("none", "Off"),
+                ("deuter", "Red-green"),
+                ("tritan", "Blue-yellow"),
+            ],
+        ));
+        s.push_str(&row(
+            "Density",
+            "density",
+            density,
+            &[("comfortable", "Comfortable"), ("compact", "Compact")],
+        ));
         s.push_str("</div>");
         s
     }
@@ -278,7 +311,10 @@ impl Appearance {
 pub fn choose(what: &str, to: &str) -> Option<Result<String, String>> {
     let key = what.strip_prefix("look.")?;
     let mut a = Appearance::load();
-    Some(a.set(key, to).and_then(|said| a.save().map(|_| said).map_err(|e| e.to_string())))
+    Some(
+        a.set(key, to)
+            .and_then(|said| a.save().map(|_| said).map_err(|e| e.to_string())),
+    )
 }
 
 #[cfg(test)]
@@ -291,26 +327,46 @@ mod tests {
         assert_eq!(Appearance::default().html_attrs(), " data-theme=paper");
         // Following the system is a choice, written out: the page's base is
         // Warm Paper, so with no attribute the system would never be heard.
-        let a = Appearance { theme: Theme::System, ..Default::default() };
+        let a = Appearance {
+            theme: Theme::System,
+            ..Default::default()
+        };
         assert_eq!(a.html_attrs(), " data-theme=auto");
     }
 
     #[test]
     fn a_chosen_theme_and_accent_become_attributes() {
-        let a = Appearance { theme: Theme::Warm, accent: Accent::Teal, ..Default::default() };
+        let a = Appearance {
+            theme: Theme::Warm,
+            accent: Accent::Teal,
+            ..Default::default()
+        };
         let at = a.html_attrs();
-        assert!(at.contains("data-theme=paper"), "warm paper is its own theme: {at}");
-        assert!(at.contains("data-accent=teal"), "the accent pick is applied: {at}");
+        assert!(
+            at.contains("data-theme=paper"),
+            "warm paper is its own theme: {at}"
+        );
+        assert!(
+            at.contains("data-accent=teal"),
+            "the accent pick is applied: {at}"
+        );
     }
 
     #[test]
     fn colour_blind_mode_drops_the_accent_so_safety_wins() {
         // Even with a bold accent picked, turning on a colour-blind mode must
         // hand the palette to the safe Access set and NOT emit the accent.
-        let a = Appearance { accent: Accent::Purple, cvd: Cvd::Deuter, ..Default::default() };
+        let a = Appearance {
+            accent: Accent::Purple,
+            cvd: Cvd::Deuter,
+            ..Default::default()
+        };
         let at = a.html_attrs();
         assert!(at.contains("data-cvd=deuter"), "the mode is applied: {at}");
-        assert!(!at.contains("data-accent"), "the accent pick is dropped under colour-blind mode: {at}");
+        assert!(
+            !at.contains("data-accent"),
+            "the accent pick is dropped under colour-blind mode: {at}"
+        );
     }
 
     #[test]

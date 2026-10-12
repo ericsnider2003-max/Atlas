@@ -24,9 +24,18 @@ fn the_write_up_reads_as_pieces() {
     let b = atlas::report::write_up_blocks(NOTE);
     assert_eq!(b[0], Block::Title("Heat pumps in cold climates".into()));
     assert!(b.contains(&Block::Heading("What the sources say".into())));
-    assert!(b.contains(&Block::Numbered("2.".into(), "Keep the backup heater.".into())));
-    assert!(b.contains(&Block::Source(2, "https://www.energy.gov/energysaver/heat-pump-systems".into())));
-    assert_eq!(b.iter().filter(|x| matches!(x, Block::Bullet(_))).count(), 2);
+    assert!(b.contains(&Block::Numbered(
+        "2.".into(),
+        "Keep the backup heater.".into()
+    )));
+    assert!(b.contains(&Block::Source(
+        2,
+        "https://www.energy.gov/energysaver/heat-pump-systems".into()
+    )));
+    assert_eq!(
+        b.iter().filter(|x| matches!(x, Block::Bullet(_))).count(),
+        2
+    );
 }
 
 #[test]
@@ -34,7 +43,12 @@ fn the_pdf_reads_back_with_its_words_and_links() {
     let bytes = atlas::report::pdf(NOTE).unwrap();
     let back = atlas::pdftext::read(&bytes).unwrap();
     let text = back.text.replace('\n', " ");
-    for want in ["Heat pumps in cold climates", "most of their output", "Size it for the coldest week", "Page 1 of 1"] {
+    for want in [
+        "Heat pumps in cold climates",
+        "most of their output",
+        "Size it for the coldest week",
+        "Page 1 of 1",
+    ] {
         assert!(text.contains(want), "{want:?} not in {text:?}");
     }
     let raw = String::from_utf8_lossy(&bytes);
@@ -44,22 +58,42 @@ fn the_pdf_reads_back_with_its_words_and_links() {
 
 #[test]
 fn a_long_write_up_runs_onto_more_pages() {
-    let long = format!("# Long\n\n{}", "A paragraph of ordinary words that goes on for a while. ".repeat(40).repeat(1) + "\n\n").repeat(12);
+    let long = format!(
+        "# Long\n\n{}",
+        "A paragraph of ordinary words that goes on for a while. "
+            .repeat(40)
+            .repeat(1)
+            + "\n\n"
+    )
+    .repeat(12);
     let bytes = atlas::report::pdf(&long).unwrap();
     let back = atlas::pdftext::read(&bytes).unwrap();
-    assert!(back.text.contains("Page 1 of") && back.text.contains("Page 3 of"), "{}", &back.text[..200.min(back.text.len())]);
+    assert!(
+        back.text.contains("Page 1 of") && back.text.contains("Page 3 of"),
+        "{}",
+        &back.text[..200.min(back.text.len())]
+    );
 }
 
 #[test]
 fn the_docx_is_a_word_package_with_styles_and_links() {
     let bytes = atlas::report::docx(NOTE);
     let get = |name: &'static str| {
-        atlas::zipread::file_inside(&bytes, |n| n == name, 1 << 20).unwrap().map(|(_, b)| String::from_utf8(b).unwrap()).unwrap_or_else(|| panic!("{name} missing"))
+        atlas::zipread::file_inside(&bytes, |n| n == name, 1 << 20)
+            .unwrap()
+            .map(|(_, b)| String::from_utf8(b).unwrap())
+            .unwrap_or_else(|| panic!("{name} missing"))
     };
     let doc = get("word/document.xml");
-    assert!(doc.contains("<w:pStyle w:val=\"Title\"/>") && doc.contains("<w:pStyle w:val=\"Heading1\"/>"));
+    assert!(
+        doc.contains("<w:pStyle w:val=\"Title\"/>")
+            && doc.contains("<w:pStyle w:val=\"Heading1\"/>")
+    );
     assert!(doc.contains("<w:b/></w:rPr><w:t xml:space=\"preserve\">most of their output"));
-    assert!(doc.contains("\u{201C}compared with electric resistance\u{201D}"), "punctuation kept");
+    assert!(
+        doc.contains("\u{201C}compared with electric resistance\u{201D}"),
+        "punctuation kept"
+    );
     assert_eq!(doc.matches("<w:hyperlink").count(), 2);
     let rels = get("word/_rels/document.xml.rels");
     assert!(rels.contains("TargetMode=\"External\"") && rels.contains("neep.org"));
@@ -78,7 +112,11 @@ fn the_file_lands_beside_the_write_up() {
     assert_eq!(out.extension().unwrap(), "docx");
     if let Ok(keep) = std::env::var("ATLAS_KEEP_REPORTS") {
         for e in ["pdf", "docx"] {
-            std::fs::copy(md.with_extension(e), std::path::Path::new(&keep).join(format!("sample.{e}"))).unwrap();
+            std::fs::copy(
+                md.with_extension(e),
+                std::path::Path::new(&keep).join(format!("sample.{e}")),
+            )
+            .unwrap();
         }
     }
     let _ = std::fs::remove_dir_all(&dir);

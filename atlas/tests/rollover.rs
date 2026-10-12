@@ -103,7 +103,10 @@ fn a_week_held_end_to_end_counts_four_nights_and_charges_six() {
     // Thursday rollovers, with Wednesday's counting three.
     let (y, m, d) = MON;
     let (fy, fm, fd) = FRI;
-    let held = held_through(roll(y, m, d) - 8 * MS_PER_HOUR, roll(fy, fm, fd) - MS_PER_HOUR);
+    let held = held_through(
+        roll(y, m, d) - 8 * MS_PER_HOUR,
+        roll(fy, fm, fd) - MS_PER_HOUR,
+    );
     assert_eq!(held.nights(), 4, "{:?}", held.rollovers);
     assert_eq!(held.charged(), 6);
 }
@@ -139,7 +142,11 @@ fn the_minutes_around_the_turn_are_named_as_thin_and_the_rest_of_the_day_is_not(
     }
     // Mid-afternoon London, with New York open too: the deepest book there is.
     let busy = at - 5 * MS_PER_HOUR;
-    assert_eq!(thin(busy), None, "the London-New York overlap was called thin");
+    assert_eq!(
+        thin(busy),
+        None,
+        "the London-New York overlap was called thin"
+    );
 }
 
 #[test]
@@ -150,7 +157,10 @@ fn the_thin_window_says_when_it_is_wednesdays_turn() {
         Some(Thin::Rollover { triple, .. }) => assert!(triple),
         other => panic!("{other:?}"),
     }
-    assert!(thin(at - 2 * MS_PER_MIN).unwrap().plain().contains("three nights"));
+    assert!(thin(at - 2 * MS_PER_MIN)
+        .unwrap()
+        .plain()
+        .contains("three nights"));
 }
 
 #[test]
@@ -203,9 +213,15 @@ fn proposing_a_trade_in_the_rollover_window_is_refused_as_a_bad_minute_not_a_bad
         atlas::levels::Side::Buy,
         view.now(),
         0.000_15,
-        &atlas::levels::Purse { balance: 10_000.0, value_per_point: 1.0 },
+        &atlas::levels::Purse {
+            balance: 10_000.0,
+            value_per_point: 1.0,
+        },
         &atlas::levels::Rules::default(),
     );
-    assert!(matches!(out, Err(atlas::levels::NoTrade::ThinBook(_))), "got {out:?}");
+    assert!(
+        matches!(out, Err(atlas::levels::NoTrade::ThinBook(_))),
+        "got {out:?}"
+    );
     assert_eq!(out.unwrap_err().label(), "thin book");
 }

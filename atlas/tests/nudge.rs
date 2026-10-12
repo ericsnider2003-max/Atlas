@@ -48,7 +48,10 @@ fn movement_resets_the_clock_and_the_silence_count() {
     assert_eq!(n.goals[0].ignored, 2);
 
     n.moved("deck", T0 + 4 * DAY);
-    assert_eq!(n.goals[0].ignored, 0, "getting on with it is the answer it wanted");
+    assert_eq!(
+        n.goals[0].ignored, 0,
+        "getting on with it is the answer it wanted"
+    );
     assert!(beyond_greeting(&mut n, T0 + 4 * DAY, 14, 0, 0).is_none());
 }
 
@@ -128,7 +131,10 @@ fn asking_why_happens_once_and_never_again() {
     assert!(first.message.contains("What am I getting wrong"));
 
     let second = beyond_greeting(&mut n, t + 400 * DAY, 14, 0, 0).unwrap();
-    assert!(!second.asking_why, "asking why twice is the nagging it was meant to avoid");
+    assert!(
+        !second.asking_why,
+        "asking why twice is the nagging it was meant to avoid"
+    );
 }
 
 #[test]
@@ -164,7 +170,10 @@ fn each_daypart_greets_once_and_says_how_much_is_on() {
     assert!(m.message.contains("3 things open"), "{}", m.message);
     assert!(m.message.contains("Where would you like to start?"));
 
-    assert!(n.consider(T0 + 9 * 3600, 9, 0, 0).is_none(), "one morning, one greeting");
+    assert!(
+        n.consider(T0 + 9 * 3600, 9, 0, 0).is_none(),
+        "one morning, one greeting"
+    );
     let a = n.consider(T0 + 14 * 3600, 14, 0, 0).unwrap();
     assert!(a.message.starts_with("Good afternoon"));
 }
@@ -251,8 +260,12 @@ fn gone_half_an_hour_is_away_not_drifting() {
     // empty room.
     let mut n = nudger();
     n.track(Goal::new("ads", "the ad review", T0).offering("the ad review"));
-    assert!(beyond_greeting(&mut n, T0, 14, 3600, atlas::nudge::DRIFT_AWAY_SECS - 1).is_some_and(|o| o.trigger == Trigger::Drifting));
+    assert!(
+        beyond_greeting(&mut n, T0, 14, 3600, atlas::nudge::DRIFT_AWAY_SECS - 1)
+            .is_some_and(|o| o.trigger == Trigger::Drifting)
+    );
     let mut n = nudger();
     n.track(Goal::new("ads", "the ad review", T0).offering("the ad review"));
-    assert!(beyond_greeting(&mut n, T0, 14, 3600, 6 * 3600).map_or(true, |o| o.trigger != Trigger::Drifting));
+    assert!(beyond_greeting(&mut n, T0, 14, 3600, 6 * 3600)
+        .map_or(true, |o| o.trigger != Trigger::Drifting));
 }

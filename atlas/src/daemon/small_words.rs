@@ -13,7 +13,10 @@ pub(super) fn channel_named(name: &str) -> Channel {
         "instagram" | "insta" => Channel::Instagram,
         "facebook" => Channel::Facebook,
         "discord" => Channel::Discord,
-        "email" | "mail" => Channel::Email { to: String::new(), subject: String::new() },
+        "email" | "mail" => Channel::Email {
+            to: String::new(),
+            subject: String::new(),
+        },
         other => Channel::Other(other.to_string()),
     }
 }
@@ -134,7 +137,10 @@ pub(super) fn seconds_of(told: &str) -> f32 {
 ///
 /// The same substitution `ExternalTool` does when it runs something, needed
 /// here because the camera arguments are reused rather than run.
-pub(super) fn resolved(args: &[String], vars: &std::collections::BTreeMap<String, String>) -> Vec<String> {
+pub(super) fn resolved(
+    args: &[String],
+    vars: &std::collections::BTreeMap<String, String>,
+) -> Vec<String> {
     args.iter()
         .map(|a| {
             let mut out = a.clone();
@@ -227,7 +233,9 @@ pub fn parse_offset(raw: &str) -> i16 {
     // hours as "+0", failed, took 0 -- and then read "50" as the minutes and
     // returned a real-looking offset of fifty minutes. A parser that cannot
     // fail will always prefer a wrong answer to no answer.
-    let Some(digits) = raw.get(1..5) else { return 0 };
+    let Some(digits) = raw.get(1..5) else {
+        return 0;
+    };
     if !digits.bytes().all(|b| b.is_ascii_digit()) {
         return 0;
     }
@@ -260,25 +268,51 @@ pub(super) fn clock() -> u64 {
         .unwrap_or(0)
 }
 
-pub(super) fn worth_recording(intent: &Intent, said: &str) -> Option<(String, &'static str, crate::undo::Undo)> {
+pub(super) fn worth_recording(
+    intent: &Intent,
+    said: &str,
+) -> Option<(String, &'static str, crate::undo::Undo)> {
     use crate::undo::Undo;
     // A failure didn't change anything, so it isn't undoable.
     if said.starts_with("I can't") || said.contains("didn't work") {
         return None;
     }
     Some(match intent {
-        Intent::WorkspaceOn => ("brought the workspace up".into(), "windows",
-            Undo::Atlas("take it back down".into())),
-        Intent::WorkspaceOff => ("put the workspace away".into(), "windows",
-            Undo::Atlas("bring it back".into())),
-        Intent::OpenApp(a) => (format!("opened {a}"), "windows", Undo::Atlas(format!("close {a}"))),
-        Intent::CloseApp(a) => (format!("closed {a}"), "windows", Undo::Atlas(format!("open {a}"))),
-        Intent::SetMode(m) => (format!("switched to {m}"), "settings",
-            Undo::Atlas("switch back".into())),
-        Intent::DraftPost(_) => ("wrote a draft".into(), "posting",
-            Undo::Atlas("throw the draft away".into())),
-        Intent::BackUp => ("backed itself up".into(), "atlas",
-            Undo::Cannot("a backup isn't something to take back".into())),
+        Intent::WorkspaceOn => (
+            "brought the workspace up".into(),
+            "windows",
+            Undo::Atlas("take it back down".into()),
+        ),
+        Intent::WorkspaceOff => (
+            "put the workspace away".into(),
+            "windows",
+            Undo::Atlas("bring it back".into()),
+        ),
+        Intent::OpenApp(a) => (
+            format!("opened {a}"),
+            "windows",
+            Undo::Atlas(format!("close {a}")),
+        ),
+        Intent::CloseApp(a) => (
+            format!("closed {a}"),
+            "windows",
+            Undo::Atlas(format!("open {a}")),
+        ),
+        Intent::SetMode(m) => (
+            format!("switched to {m}"),
+            "settings",
+            Undo::Atlas("switch back".into()),
+        ),
+        Intent::DraftPost(_) => (
+            "wrote a draft".into(),
+            "posting",
+            Undo::Atlas("throw the draft away".into()),
+        ),
+        Intent::BackUp => (
+            "backed itself up".into(),
+            "atlas",
+            Undo::Cannot("a backup isn't something to take back".into()),
+        ),
         // Everything else only read, asked or explained.
         _ => return None,
     })

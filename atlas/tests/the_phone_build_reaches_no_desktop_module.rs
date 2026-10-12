@@ -35,7 +35,10 @@ fn desktop_only() -> Vec<String> {
 /// on the nearest enclosing item (the last line above it that starts at
 /// column zero), or on any statement of the lines just above it.
 fn behind_desktop_ui(lines: &[&str], i: usize) -> bool {
-    if lines[i.saturating_sub(3)..i].iter().any(|l| l.contains("feature = \"desktop-ui\"")) {
+    if lines[i.saturating_sub(3)..i]
+        .iter()
+        .any(|l| l.contains("feature = \"desktop-ui\""))
+    {
         return true;
     }
     let mut j = i;
@@ -62,7 +65,10 @@ fn behind_desktop_ui(lines: &[&str], i: usize) -> bool {
 #[test]
 fn nothing_every_build_compiles_calls_a_desktop_only_module() {
     let gated = desktop_only();
-    assert!(gated.contains(&"setupwin".to_string()), "lib.rs no longer gates setupwin: {gated:?}");
+    assert!(
+        gated.contains(&"setupwin".to_string()),
+        "lib.rs no longer gates setupwin: {gated:?}"
+    );
     let mut bad = Vec::new();
     // Every file under src/, subfolders included (29 Sep 2026). This read the
     // top level only, so the day `daemon.rs` was split into `src/daemon/*.rs`
@@ -88,11 +94,20 @@ fn nothing_every_build_compiles_calls_a_desktop_only_module() {
                 if l.contains(&format!("crate::{m}::")) && !l.trim_start().starts_with("//") {
                     // Allowed when the use itself sits behind the same feature.
                     if !behind_desktop_ui(&lines, i) {
-                        bad.push(format!("{}:{}: {}", Path::new(&p).display(), i + 1, l.trim()));
+                        bad.push(format!(
+                            "{}:{}: {}",
+                            Path::new(&p).display(),
+                            i + 1,
+                            l.trim()
+                        ));
                     }
                 }
             }
         }
     }
-    assert!(bad.is_empty(), "these break the phone builds (no desktop-ui):\n  {}", bad.join("\n  "));
+    assert!(
+        bad.is_empty(),
+        "these break the phone builds (no desktop-ui):\n  {}",
+        bad.join("\n  ")
+    );
 }

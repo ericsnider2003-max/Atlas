@@ -23,11 +23,20 @@ impl Daemon<'_> {
             return back("That document isn't here any more.");
         };
         let pairings = crate::kin::Pairings::load(&self.peer_dir);
-        let Some(contact) = pairings.contacts.iter().find(|c| crate::kin::same_name(&c.name, who)).cloned() else {
+        let Some(contact) = pairings
+            .contacts
+            .iter()
+            .find(|c| crate::kin::same_name(&c.name, who))
+            .cloned()
+        else {
             return back(&format!("You aren't paired with {who}."));
         };
         let me = crate::friends::my_name(self.tools_cfg().kin.my_name.as_deref());
-        let file = item.stored_at.as_deref().map(std::path::PathBuf::from).filter(|p| p.is_file());
+        let file = item
+            .stored_at
+            .as_deref()
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.is_file());
         // A file goes under its title; a link or words go as the text itself.
         let h = match &file {
             Some(_) => crate::household::share_with_friend(&item.title(), &me),
@@ -67,8 +76,17 @@ impl Daemon<'_> {
                     "",
                     &label,
                     Box::new(move || {
-                        let outcome = crate::friends::knock(&k.identity, &k.keep.link, &k.keep.hello, k.socks, std::time::Duration::from_secs(10));
-                        (Ok(crate::daemon::knock_said(&k.keep, &outcome)), crate::daemon::knock_tag(&outcome).to_string())
+                        let outcome = crate::friends::knock(
+                            &k.identity,
+                            &k.keep.link,
+                            &k.keep.hello,
+                            k.socks,
+                            std::time::Duration::from_secs(10),
+                        );
+                        (
+                            Ok(crate::daemon::knock_said(&k.keep, &outcome)),
+                            crate::daemon::knock_tag(&outcome).to_string(),
+                        )
                     }),
                     |job| crate::daemon::HubAfter::FriendAdd { job, keep },
                 )
@@ -94,14 +112,24 @@ impl Daemon<'_> {
                 .collect();
             if !shared.is_empty() {
                 let what = shared.join(" — ");
-                let said = match self.tray.hand(&what, &crate::earned::Space::Personal, "your phone's share sheet", now) {
-                    Ok(_) => with_keeping("Sent to Atlas. Reading it now — I'll tell you what I find.".to_string(), self.tray.save(&self.store)),
+                let said = match self.tray.hand(
+                    &what,
+                    &crate::earned::Space::Personal,
+                    "your phone's share sheet",
+                    now,
+                ) {
+                    Ok(_) => with_keeping(
+                        "Sent to Atlas. Reading it now — I'll tell you what I find.".to_string(),
+                        self.tray.save(&self.store),
+                    ),
                     Err(why) => why,
                 };
                 return hub::back_with(Page::Give.href(), "", &said);
             }
         }
-        let job = field_of(&fields, "job").and_then(|j| j.parse::<u64>().ok()).and_then(|id| self.hub_jobs.look(id));
+        let job = field_of(&fields, "job")
+            .and_then(|j| j.parse::<u64>().ok())
+            .and_then(|id| self.hub_jobs.look(id));
         // Waiting on a job, its state is what's said, not the line the
         // button left in the address.
         let q = if job.is_some() {
@@ -114,7 +142,11 @@ impl Daemon<'_> {
         } else {
             q.to_string()
         };
-        let mut html = if q.is_empty() { self.hub_page(page) } else { self.hub_page_q(page, &q) };
+        let mut html = if q.is_empty() {
+            self.hub_page(page)
+        } else {
+            self.hub_page_q(page, &q)
+        };
         let mut refresh = false;
         match &job {
             Some(j) => {
@@ -128,12 +160,17 @@ impl Daemon<'_> {
                 }
             }
         }
-        if let Some(crate::hubjobs::Flash::Said(said)) = crate::hubjobs::take_flash(&mut self.flash_once, page, now) {
+        if let Some(crate::hubjobs::Flash::Said(said)) =
+            crate::hubjobs::take_flash(&mut self.flash_once, page, now)
+        {
             html = hub::with_said(html, Some(&said));
         }
         // A saved file set aside in the last day, on every page until then.
         let set_aside: Vec<String> =
-            crate::store::set_aside_since(&self.store, now.saturating_sub(86_400)).into_iter().map(|s| s.name).collect();
+            crate::store::set_aside_since(&self.store, now.saturating_sub(86_400))
+                .into_iter()
+                .map(|s| s.name)
+                .collect();
         if !set_aside.is_empty() {
             let mut names = set_aside;
             names.dedup();
@@ -151,22 +188,44 @@ impl Daemon<'_> {
     }
 
     /// The Updates page, from what this install knows (OPEN_GAPS 8.2).
-    pub(super) fn updates_view(&self, now: u64, confirming_undo: bool) -> crate::hubpages::UpdatesView {
+    pub(super) fn updates_view(
+        &self,
+        now: u64,
+        confirming_undo: bool,
+    ) -> crate::hubpages::UpdatesView {
         use crate::update_apply::AutoUpdate;
         let root = self.store.install_root();
         let a = crate::update_courier::Available::load(&self.store);
         let pending = crate::update_apply::pending(&self.store).map(|p| p.version);
         let installed = crate::release::Installed::load(&self.store);
-        let available = (pending.is_none() && a.notice.is_some() && a.sequence > installed.sequence_in_this_era())
-            .then(|| (a.version.clone(), !a.downloaded.is_empty(), a.size / 1_000_000));
-        let mine = crate::feedback::release_sender(&self.store, &self.peer_dir).is_some_and(|(_, _, mine)| mine);
+        let available = (pending.is_none()
+            && a.notice.is_some()
+            && a.sequence > installed.sequence_in_this_era())
+        .then(|| {
+            (
+                a.version.clone(),
+                !a.downloaded.is_empty(),
+                a.size / 1_000_000,
+            )
+        });
+        let mine = crate::feedback::release_sender(&self.store, &self.peer_dir)
+            .is_some_and(|(_, _, mine)| mine);
         let mut failures: Vec<(String, Vec<String>, bool, String)> = Vec::new();
         if mine {
             for r in crate::update_apply::failure_reports(&self.store) {
-                let why: Vec<&str> = r.reasons.iter().map(|x| x.as_str()).filter(|x| !x.starts_with("(passed)")).collect();
+                let why: Vec<&str> = r
+                    .reasons
+                    .iter()
+                    .map(|x| x.as_str())
+                    .filter(|x| !x.starts_with("(passed)"))
+                    .collect();
                 let line = format!(
                     "{} ({}), at its {}: {}",
-                    if r.from.is_empty() { "this device" } else { &r.from },
+                    if r.from.is_empty() {
+                        "this device"
+                    } else {
+                        &r.from
+                    },
                     r.platform,
                     r.stage,
                     why.join("; ")
@@ -246,9 +305,16 @@ impl Daemon<'_> {
             return Err(crate::handover::not_yours_to_set());
         }
         if !self.vault.has_a_passphrase() && field_of(f, "again").unwrap_or_default() != phrase {
-            return Err("The two passphrases were different, so nothing was made. Try again.".into());
+            return Err(
+                "The two passphrases were different, so nothing was made. Try again.".into(),
+            );
         }
-        if self.vault.set_aside.iter().any(|n| n == crate::release::RELEASE_KEY_NAME) {
+        if self
+            .vault
+            .set_aside
+            .iter()
+            .any(|n| n == crate::release::RELEASE_KEY_NAME)
+        {
             return Err(crate::release::IN_THE_OLD_VAULT.into());
         }
         let now = crate::store::now();
@@ -265,14 +331,21 @@ impl Daemon<'_> {
         crate::hubjobs::keep_flash(
             &mut self.flash_once,
             Page::Updates,
-            crate::hubjobs::Flash::ReleaseKey { card: made.card, recovery: made.recovery, said },
+            crate::hubjobs::Flash::ReleaseKey {
+                card: made.card,
+                recovery: made.recovery,
+                said,
+            },
             now,
         );
         Ok(())
     }
 
     /// The Improvements page's list, less the ones you said weren't worth it.
-    pub(crate) fn recommendations_shown(&self, most: usize) -> Vec<crate::selfaudit::Recommendation> {
+    pub(crate) fn recommendations_shown(
+        &self,
+        most: usize,
+    ) -> Vec<crate::selfaudit::Recommendation> {
         let dropped: Vec<String> = self.store.load(RECS_DROPPED);
         crate::selfaudit::recommend(&self.signals, most + dropped.len())
             .into_iter()
@@ -291,7 +364,8 @@ impl Daemon<'_> {
         let recs = self.recommendations_shown(cfg.most_at_once);
         // Found by what it says (27 Sep 2026: by its place in the list, which
         // recomputed here could be a different idea from the one pressed).
-        let Some(r) = which.and_then(|w| recs.iter().find(|r| r.symptom == w.trim()).cloned()) else {
+        let Some(r) = which.and_then(|w| recs.iter().find(|r| r.symptom == w.trim()).cloned())
+        else {
             return "That idea has changed since the page was drawn. Here's the list as it stands now.".into();
         };
         // Abilities never asked for: "have a go" is how to ask, not code work.
@@ -310,9 +384,15 @@ impl Daemon<'_> {
         // installed copy doesn't have. Then the idea goes where Atlas is
         // built, as feedback, rather than a switch-off message and nothing.
         if !self.tools_cfg().pipeline.enabled {
-            let words = format!("Atlas's own idea: {} -- it thinks {}. {}", r.symptom, r.cause, r.because);
+            let words = format!(
+                "Atlas's own idea: {} -- it thinks {}. {}",
+                r.symptom, r.cause, r.because
+            );
             let sent = crate::feedback::compose_feedback(&words, None, crate::store::now())
-                .and_then(|fb| crate::feedback::send_decided(&self.store, &self.peer_dir, fb).map(|s| s.plain()));
+                .and_then(|fb| {
+                    crate::feedback::send_decided(&self.store, &self.peer_dir, fb)
+                        .map(|s| s.plain())
+                });
             return match sent {
                 Ok(s) => format!("This copy can't change its own code, so the idea went to whoever builds Atlas. {s}"),
                 Err(why) => format!("This copy can't change its own code, and the idea couldn't be sent on: {why}"),
@@ -330,28 +410,49 @@ impl Daemon<'_> {
         let caps = crate::capability::all();
         let mut lines = Vec::new();
         for a in abilities.iter().take(6) {
-            let Some(c) = caps.iter().find(|c| c.id == a) else { continue };
-            let kinds: Vec<&str> = crate::used::FOR_KIND.iter().filter(|(_, x)| x == a).map(|(k, _)| *k).collect();
+            let Some(c) = caps.iter().find(|c| c.id == a) else {
+                continue;
+            };
+            let kinds: Vec<&str> = crate::used::FOR_KIND
+                .iter()
+                .filter(|(_, x)| x == a)
+                .map(|(k, _)| *k)
+                .collect();
             let say = book
                 .entries()
                 .iter()
                 .find(|e| kinds.contains(&e.name.as_str()))
-                .and_then(|e| e.phrases.iter().find(|p| p.split_whitespace().count() >= 2).cloned());
+                .and_then(|e| {
+                    e.phrases
+                        .iter()
+                        .find(|p| p.split_whitespace().count() >= 2)
+                        .cloned()
+                });
             lines.push(match say {
-                Some(p) => format!("{} -- try \u{201c}{}\u{201d}.", sentence(c.what).trim_end_matches('.'), p),
+                Some(p) => format!(
+                    "{} -- try \u{201c}{}\u{201d}.",
+                    sentence(c.what).trim_end_matches('.'),
+                    p
+                ),
                 None => sentence(c.what),
             });
         }
         if lines.is_empty() {
             return "You've tried everything there's a way to ask for.".into();
         }
-        format!("A few things I can do that you haven't asked for yet: {}", lines.join(" "))
+        format!(
+            "A few things I can do that you haven't asked for yet: {}",
+            lines.join(" ")
+        )
     }
 
     /// Keep or bin something a friend handed you (the Documents page).
     /// Keeping is the moment it becomes something Atlas may read.
     pub(super) fn take_handoff(&mut self, id: u64, keep: bool) -> String {
-        let _state = match self.store.transaction() { Ok(guard) => guard, Err(e) => return format!("Couldn't keep that change yet: {e}") };
+        let _state = match self.store.transaction() {
+            Ok(guard) => guard,
+            Err(e) => return format!("Couldn't keep that change yet: {e}"),
+        };
         let mut inbox = crate::household::Inbox::load(&self.store);
         let Some(got) = inbox.take(id) else {
             return "That's no longer waiting.".into();
@@ -361,7 +462,10 @@ impl Daemon<'_> {
                 return format!("Couldn't save that: {e}");
             }
             if let Some(f) = &got.file {
-                crate::heard!(crate::store::remove_state_file(self.store.root(), &self.store.root().join(&f.stored_at)));
+                crate::heard!(crate::store::remove_state_file(
+                    self.store.root(),
+                    &self.store.root().join(&f.stored_at)
+                ));
             }
             return format!("Binned the one from {}.", got.from);
         }
@@ -370,15 +474,30 @@ impl Daemon<'_> {
             None => self.tray.hand(&got.what, &space, &got.from, got.at),
             Some(f) => match std::fs::read(self.store.root().join(&f.stored_at)) {
                 // A friend's covering line is theirs, not yours: never `asked`.
-                Ok(bytes) => self.tray.hand_file(&f.name, &bytes, &space, &got.from, None, got.at, self.store.root()),
+                Ok(bytes) => self.tray.hand_file(
+                    &f.name,
+                    &bytes,
+                    &space,
+                    &got.from,
+                    None,
+                    got.at,
+                    self.store.root(),
+                ),
                 Err(e) => Err(format!("the file wasn't where it was left: {e}")),
             },
         };
         match handed {
-            Ok(_) => match self.tray.save(&self.store).and_then(|()| inbox.save(&self.store)) {
+            Ok(_) => match self
+                .tray
+                .save(&self.store)
+                .and_then(|()| inbox.save(&self.store))
+            {
                 Ok(()) => {
                     if let Some(f) = &got.file {
-                        crate::heard!(crate::store::remove_state_file(self.store.root(), &self.store.root().join(&f.stored_at)));
+                        crate::heard!(crate::store::remove_state_file(
+                            self.store.root(),
+                            &self.store.root().join(&f.stored_at)
+                        ));
                     }
                     format!("Kept the one from {}. It's with your documents.", got.from)
                 }
@@ -400,7 +519,13 @@ impl Daemon<'_> {
     /// vault holds the release key) and once a build carries that key.
     pub(super) fn send_view(&self, now: u64) -> Option<crate::hubpages::SendBuild> {
         use crate::hubpages::SendBuild;
-        if self.release_anchor == [0u8; 32] || !self.vault.list().iter().any(|(n, _)| *n == crate::release::RELEASE_KEY_NAME) {
+        if self.release_anchor == [0u8; 32]
+            || !self
+                .vault
+                .list()
+                .iter()
+                .any(|(n, _)| *n == crate::release::RELEASE_KEY_NAME)
+        {
             return None;
         }
         Some(match crate::release::find_build(&self.builds_dirs()) {
@@ -409,10 +534,17 @@ impl Daemon<'_> {
             Some(Ok(b)) => {
                 let sent: String = self.store.load(crate::release::SENT_SHA);
                 if sent == b.sha256 {
-                    SendBuild::AlreadySent { version: b.version, sequence: self.store.load(crate::release::LAST_SEQUENCE) }
+                    SendBuild::AlreadySent {
+                        version: b.version,
+                        sequence: self.store.load(crate::release::LAST_SEQUENCE),
+                    }
                 } else {
                     SendBuild::Ready {
-                        name: b.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+                        name: b
+                            .path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default(),
                         ago: crate::freshness::ago(now.saturating_sub(b.modified)),
                         version: b.version,
                         platform: match b.platform {
@@ -441,14 +573,23 @@ impl Daemon<'_> {
         };
         let state = self.store.clone();
         if state.load::<String>(crate::release::SENT_SHA) == found.sha256 {
-            return format!("Atlas {} already went out. Nothing was sent twice.", found.version);
+            return format!(
+                "Atlas {} already went out. Nothing was sent twice.",
+                found.version
+            );
         }
         let now = crate::store::now();
         let was_open = self.vault.state() == crate::vault::State::Open;
         if let Err(e) = self.vault.open(&phrase, now, &self.tools_cfg().vault) {
             return e;
         }
-        let signed = crate::release::sign_build(&mut self.vault, &found, state.load(crate::release::LAST_SEQUENCE), now, &self.release_anchor);
+        let signed = crate::release::sign_build(
+            &mut self.vault,
+            &found,
+            state.load(crate::release::LAST_SEQUENCE),
+            now,
+            &self.release_anchor,
+        );
         if !was_open {
             self.vault.lock();
         }
@@ -467,12 +608,23 @@ impl Daemon<'_> {
         let text = serde_json::to_string_pretty(&signed.signed).unwrap_or_default();
         let name = format!("atlas-release-{}.json", found.version);
         let outbox = self.store.root().join(crate::update_courier::OUTBOX);
-        if let Err(e) = std::fs::create_dir_all(&outbox).and_then(|_| std::fs::write(outbox.join(&name), &text)) {
-            return format!("Signed, but the notice couldn't be queued ({e}), so nothing was sent.");
+        if let Err(e) =
+            std::fs::create_dir_all(&outbox).and_then(|_| std::fs::write(outbox.join(&name), &text))
+        {
+            return format!(
+                "Signed, but the notice couldn't be queued ({e}), so nothing was sent."
+            );
         }
         let kept = state.save(crate::release::SENT_SHA, &found.sha256);
-        let channels = crate::groups::Groups::load(&self.store).held.values().filter(|h| h.state.release_channel).count();
-        let mut said = format!("Signed Atlas {} as release {}.", found.version, signed.sequence);
+        let channels = crate::groups::Groups::load(&self.store)
+            .held
+            .values()
+            .filter(|h| h.state.release_channel)
+            .count();
+        let mut said = format!(
+            "Signed Atlas {} as release {}.",
+            found.version, signed.sequence
+        );
         said.push_str(if channels == 0 {
             " No group of friends gets updates from you yet, so it waits here until one does."
         } else {
@@ -486,25 +638,47 @@ impl Daemon<'_> {
 
     /// The Feedback page, from what's been sent and what's come in (8.14).
     pub(super) fn feedback_view(&self) -> crate::hubpages::FeedbackView {
-        let to = crate::feedback::release_sender(&self.store, &self.peer_dir).map(|(_, name, mine)| {
-            if mine {
-                "your own list".to_string()
-            } else {
-                name.unwrap_or_else(|| "whoever sends you Atlas".into())
-            }
-        });
+        let to =
+            crate::feedback::release_sender(&self.store, &self.peer_dir).map(|(_, name, mine)| {
+                if mine {
+                    "your own list".to_string()
+                } else {
+                    name.unwrap_or_else(|| "whoever sends you Atlas".into())
+                }
+            });
         crate::hubpages::FeedbackView {
             to,
-            failure_here: crate::update_apply::last_failure(&self.store).map(|f| format!("Atlas {}, at its {}", f.version, f.stage)),
-            draft: self.feedback_draft.as_ref().map(crate::feedback::feedback_preview),
+            failure_here: crate::update_apply::last_failure(&self.store)
+                .map(|f| format!("Atlas {}, at its {}", f.version, f.stage)),
+            draft: self
+                .feedback_draft
+                .as_ref()
+                .map(crate::feedback::feedback_preview),
             inbox: crate::feedback::feedback_inbox(&self.store)
                 .iter()
                 .enumerate()
-                .map(|(i, f)| (i + 1, f.from.clone(), f.version.clone(), f.platform.clone(), f.words.clone(), f.attached.is_some(), f.status.plain()))
+                .map(|(i, f)| {
+                    (
+                        i + 1,
+                        f.from.clone(),
+                        f.version.clone(),
+                        f.platform.clone(),
+                        f.words.clone(),
+                        f.attached.is_some(),
+                        f.status.plain(),
+                    )
+                })
                 .collect(),
             sent: crate::feedback::feedback_sent(&self.store)
                 .iter()
-                .map(|f| (f.to.clone(), f.words.clone(), f.status.plain(), f.replies.iter().map(|(_, n)| n.clone()).collect()))
+                .map(|f| {
+                    (
+                        f.to.clone(),
+                        f.words.clone(),
+                        f.status.plain(),
+                        f.replies.iter().map(|(_, n)| n.clone()).collect(),
+                    )
+                })
                 .collect(),
         }
     }
@@ -515,7 +689,11 @@ impl Daemon<'_> {
         let pairings = crate::kin::Pairings::load(&self.peer_dir);
         let tasks = crate::shared_task::Tasks::load(&self.store);
         let clients = crate::clients::ClientList::load(&self.store).len();
-        let held: Vec<String> = crate::firewall::Firewall::load(&self.store).waiting().iter().map(|h| h.what.clone()).collect();
+        let held: Vec<String> = crate::firewall::Firewall::load(&self.store)
+            .waiting()
+            .iter()
+            .map(|h| h.what.clone())
+            .collect();
         roster
             .businesses()
             .into_iter()
@@ -528,11 +706,16 @@ impl Daemon<'_> {
                         let due = t
                             .due
                             .map(|d| {
-                                let (_, m, dd) = crate::hubpages::ymd(crate::localclock::day_here(d));
+                                let (_, m, dd) =
+                                    crate::hubpages::ymd(crate::localclock::day_here(d));
                                 format!("{} {dd}", crate::hubpages::MONTHS[(m - 1) as usize])
                             })
                             .unwrap_or_else(|| "No date".into());
-                        (t.description.clone(), due, t.due.map(|d| d < now).unwrap_or(false))
+                        (
+                            t.description.clone(),
+                            due,
+                            t.due.map(|d| d < now).unwrap_or(false),
+                        )
                     })
                     .collect();
                 let partners: Vec<(String, bool, bool)> = roster
@@ -547,17 +730,37 @@ impl Daemon<'_> {
                 let overdue = open.iter().filter(|t| t.2).count();
                 let mut read = match (open.len(), overdue) {
                     (0, _) => "Nothing open.".to_string(),
-                    (n, 0) => format!("{n} open task{}, nothing overdue.", if n == 1 { "" } else { "s" }),
-                    (n, o) => format!("{n} open task{}, {o} overdue — that's the first thing.", if n == 1 { "" } else { "s" }),
+                    (n, 0) => format!(
+                        "{n} open task{}, nothing overdue.",
+                        if n == 1 { "" } else { "s" }
+                    ),
+                    (n, o) => format!(
+                        "{n} open task{}, {o} overdue — that's the first thing.",
+                        if n == 1 { "" } else { "s" }
+                    ),
                 };
                 if !held.is_empty() {
-                    read.push_str(&format!(" {} thing{} waiting at the firewall for your yes.", held.len(), if held.len() == 1 { " is" } else { "s are" }));
+                    read.push_str(&format!(
+                        " {} thing{} waiting at the firewall for your yes.",
+                        held.len(),
+                        if held.len() == 1 { " is" } else { "s are" }
+                    ));
                 }
                 let unpaired = partners.iter().filter(|p| !p.1).count();
                 if unpaired > 0 {
-                    read.push_str(&format!(" {unpaired} partner{} not paired, so nothing reaches them.", if unpaired == 1 { " is" } else { "s are" }));
+                    read.push_str(&format!(
+                        " {unpaired} partner{} not paired, so nothing reaches them.",
+                        if unpaired == 1 { " is" } else { "s are" }
+                    ));
                 }
-                crate::hubpages::BusinessView { name, open_tasks: open, clients, partners, held: held.clone(), read }
+                crate::hubpages::BusinessView {
+                    name,
+                    open_tasks: open,
+                    clients,
+                    partners,
+                    held: held.clone(),
+                    read,
+                }
             })
             .collect()
     }

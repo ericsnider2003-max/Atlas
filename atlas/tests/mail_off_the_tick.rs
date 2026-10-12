@@ -27,20 +27,35 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn cfg_with_account(account: Account) -> Config {
     let mut c = Config::load(Path::new("config")).unwrap();
-    let tools = c.tools.as_mut().expect("the shipped config has a tools section");
+    let tools = c
+        .tools
+        .as_mut()
+        .expect("the shipped config has a tools section");
     tools.mail.enabled = true;
     tools.mail.accounts = vec![account];
     c
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    let mut d =
-        Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    );
     d.connectivity.set(atlas::connectivity::Reach::Online, 0);
     d
 }
@@ -68,8 +83,21 @@ fn daemon_with_llm<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<
 }
 
 fn set_up_vault(d: &mut Daemon) {
-    d.vault.open("a genuinely long passphrase, not a word", 0, &VaultConfig::default()).unwrap();
-    d.vault.put("gmail app password", Kind::Login, "app-specific-password", 0).unwrap();
+    d.vault
+        .open(
+            "a genuinely long passphrase, not a word",
+            0,
+            &VaultConfig::default(),
+        )
+        .unwrap();
+    d.vault
+        .put(
+            "gmail app password",
+            Kind::Login,
+            "app-specific-password",
+            0,
+        )
+        .unwrap();
 }
 
 #[test]
@@ -82,7 +110,11 @@ fn no_accounts_configured_is_reported_immediately_not_deferred() {
 
     let said = d.execute(&Intent::Mail(String::new()));
     assert!(said.contains("don't have any mail accounts"), "got: {said}");
-    assert_eq!(d.crew.active(), 0, "nothing should have been handed to the crew");
+    assert_eq!(
+        d.crew.active(),
+        0,
+        "nothing should have been handed to the crew"
+    );
 }
 
 #[test]
@@ -99,7 +131,10 @@ fn an_account_with_no_vault_entry_named_is_reported_immediately() {
 
     let said = d.execute(&Intent::Mail(String::new()));
     assert!(said.contains("couldn't get at any"), "got: {said}");
-    assert!(said.contains("won't take a password in config"), "got: {said}");
+    assert!(
+        said.contains("won't take a password in config"),
+        "got: {said}"
+    );
     assert_eq!(d.crew.active(), 0);
 }
 
@@ -139,12 +174,32 @@ fn an_unreachable_account_gets_an_honest_ack_then_a_real_failure_report() {
     let c = cfg_with_account(account);
     let p = plat();
     let mut d = daemon(&c, &p, "unreachable");
-    d.vault.open("a genuinely long passphrase, not a word", 0, &VaultConfig::default()).unwrap();
-    d.vault.put("gmail app password", Kind::Login, "app-specific-password", 0).unwrap();
+    d.vault
+        .open(
+            "a genuinely long passphrase, not a word",
+            0,
+            &VaultConfig::default(),
+        )
+        .unwrap();
+    d.vault
+        .put(
+            "gmail app password",
+            Kind::Login,
+            "app-specific-password",
+            0,
+        )
+        .unwrap();
 
     let ack = d.execute(&Intent::Mail(String::new()));
-    assert!(ack.contains("Checking your mail"), "expected an acknowledgment, got: {ack}");
-    assert_eq!(d.crew.active(), 1, "the connection attempt should be running in the crew");
+    assert!(
+        ack.contains("Checking your mail"),
+        "expected an acknowledgment, got: {ack}"
+    );
+    assert_eq!(
+        d.crew.active(),
+        1,
+        "the connection attempt should be running in the crew"
+    );
 
     let deadline = Instant::now() + Duration::from_secs(10);
     let mut said_lines: Vec<String> = Vec::new();
@@ -154,13 +209,19 @@ fn an_unreachable_account_gets_an_honest_ack_then_a_real_failure_report() {
         if d.crew.active() == 0 && !said_lines.is_empty() {
             break;
         }
-        assert!(Instant::now() < deadline, "no report arrived within the deadline");
+        assert!(
+            Instant::now() < deadline,
+            "no report arrived within the deadline"
+        );
         std::thread::sleep(Duration::from_millis(20));
         t += 1;
     }
     assert!(!said_lines.is_empty(), "the failure was never reported");
     let joined = said_lines.join(" ");
-    assert!(joined.contains("personal"), "the failing account should be named: {joined}");
+    assert!(
+        joined.contains("personal"),
+        "the failing account should be named: {joined}"
+    );
 }
 
 #[test]
@@ -175,8 +236,21 @@ fn asking_to_clear_out_mail_goes_through_the_unsubscribe_path_not_check_mail() {
     let c = cfg_with_account(account);
     let p = plat();
     let mut d = daemon(&c, &p, "unsub-ack");
-    d.vault.open("a genuinely long passphrase, not a word", 0, &VaultConfig::default()).unwrap();
-    d.vault.put("gmail app password", Kind::Login, "app-specific-password", 0).unwrap();
+    d.vault
+        .open(
+            "a genuinely long passphrase, not a word",
+            0,
+            &VaultConfig::default(),
+        )
+        .unwrap();
+    d.vault
+        .put(
+            "gmail app password",
+            Kind::Login,
+            "app-specific-password",
+            0,
+        )
+        .unwrap();
 
     let ack = d.execute(&Intent::Mail("clear out my inbox".into()));
     assert!(
@@ -193,11 +267,17 @@ fn asking_to_clear_out_mail_goes_through_the_unsubscribe_path_not_check_mail() {
         if d.crew.active() == 0 && !said_lines.is_empty() {
             break;
         }
-        assert!(Instant::now() < deadline, "no report arrived within the deadline");
+        assert!(
+            Instant::now() < deadline,
+            "no report arrived within the deadline"
+        );
         std::thread::sleep(Duration::from_millis(20));
         t += 1;
     }
-    assert!(!said_lines.is_empty(), "the unsubscribe plan's failure was never reported");
+    assert!(
+        !said_lines.is_empty(),
+        "the unsubscribe plan's failure was never reported"
+    );
     assert!(said_lines.join(" ").contains("personal"));
 }
 
@@ -233,8 +313,15 @@ fn pulling_up_a_draft_reads_the_outbox_directly_without_touching_the_crew() {
     outbox.save(&d.store).unwrap();
 
     let said = d.execute(&Intent::Mail("pull up the reply to jane".into()));
-    assert!(said.contains("Sounds good"), "expected the draft body, got: {said}");
-    assert_eq!(d.crew.active(), 0, "reading a stored draft needs no crew errand");
+    assert!(
+        said.contains("Sounds good"),
+        "expected the draft body, got: {said}"
+    );
+    assert_eq!(
+        d.crew.active(),
+        0,
+        "reading a stored draft needs no crew errand"
+    );
 }
 
 #[test]
@@ -284,15 +371,28 @@ fn throwing_away_a_draft_marks_it_discarded_and_removes_it_from_the_waiting_set(
     outbox.save(&d.store).unwrap();
 
     let said = d.execute(&Intent::Mail("throw away the reply to jane".into()));
-    assert!(said.contains("Thrown away"), "expected a discard confirmation, got: {said}");
-    assert_eq!(d.crew.active(), 0, "discarding a stored draft needs no crew errand");
+    assert!(
+        said.contains("Thrown away"),
+        "expected a discard confirmation, got: {said}"
+    );
+    assert_eq!(
+        d.crew.active(),
+        0,
+        "discarding a stored draft needs no crew errand"
+    );
 
     // The reply is gone from the waiting set, so "pull up the reply to jane"
     // won't surface it again and it stops counting as a draft awaiting you --
     // which is what saying no to a held draft has to mean.
     let reloaded = atlas::outbox::Outbox::load(&d.store);
-    assert!(reloaded.waiting().is_empty(), "the discarded draft must leave the waiting set");
-    assert_eq!(reloaded.get("id-1").unwrap().status, atlas::outbox::Status::Discarded);
+    assert!(
+        reloaded.waiting().is_empty(),
+        "the discarded draft must leave the waiting set"
+    );
+    assert_eq!(
+        reloaded.get("id-1").unwrap().status,
+        atlas::outbox::Status::Discarded
+    );
 }
 
 fn account_for(tag: &str) -> Account {
@@ -314,7 +414,10 @@ fn wait_for_outreach_report(d: &mut Daemon) -> String {
         if d.crew.active() == 0 && !said_lines.is_empty() {
             return said_lines.join(" ");
         }
-        assert!(Instant::now() < deadline, "no outreach report arrived within the deadline");
+        assert!(
+            Instant::now() < deadline,
+            "no outreach report arrived within the deadline"
+        );
         std::thread::sleep(Duration::from_millis(20));
         t += 1;
     }
@@ -328,13 +431,18 @@ fn outreach_without_approval_is_drafted_and_held_not_sent() {
     set_up_vault(&mut d);
     // `may_email_brands` stays off, the honest default.
 
-    let ack = d.execute(&Intent::Mail("draft outreach to brand@example.com about a partnership".into()));
+    let ack = d.execute(&Intent::Mail(
+        "draft outreach to brand@example.com about a partnership".into(),
+    ));
     assert!(ack.contains("Drafting outreach"), "got: {ack}");
     assert_eq!(d.crew.active(), 1);
 
     let said = wait_for_outreach_report(&mut d);
     assert!(said.contains("ready to look at"), "got: {said}");
-    assert!(!said.contains("Sent"), "must not claim to have sent anything without approval: {said}");
+    assert!(
+        !said.contains("Sent"),
+        "must not claim to have sent anything without approval: {said}"
+    );
 }
 
 #[test]
@@ -346,9 +454,14 @@ fn outreach_with_the_master_switch_on_but_recipient_unapproved_still_does_not_se
     set_up_vault(&mut d);
     // The recipient is never added to `outreach::OutreachTargets`.
 
-    d.execute(&Intent::Mail("draft outreach to brand@example.com about a partnership".into()));
+    d.execute(&Intent::Mail(
+        "draft outreach to brand@example.com about a partnership".into(),
+    ));
     let said = wait_for_outreach_report(&mut d);
-    assert!(said.contains("isn't on your approved outreach list"), "got: {said}");
+    assert!(
+        said.contains("isn't on your approved outreach list"),
+        "got: {said}"
+    );
 }
 
 #[test]
@@ -382,9 +495,14 @@ fn outreach_at_the_daily_cap_is_held_rather_than_sent() {
     });
     outbox.save(&d.store).unwrap();
 
-    d.execute(&Intent::Mail("draft outreach to brand@example.com about a partnership".into()));
+    d.execute(&Intent::Mail(
+        "draft outreach to brand@example.com about a partnership".into(),
+    ));
     let said = wait_for_outreach_report(&mut d);
-    assert!(said.contains("cap") && said.contains("already reached"), "got: {said}");
+    assert!(
+        said.contains("cap") && said.contains("already reached"),
+        "got: {said}"
+    );
 }
 
 #[test]
@@ -394,7 +512,11 @@ fn asking_for_outreach_with_no_recipient_is_answered_immediately() {
     let mut d = daemon_with_llm(&c, &p, "outreach-no-recipient");
     let said = d.execute(&Intent::Mail("draft outreach about a partnership".into()));
     assert!(said.contains("whom"), "got: {said}");
-    assert_eq!(d.crew.active(), 0, "nothing should be handed to the crew with no recipient");
+    assert_eq!(
+        d.crew.active(),
+        0,
+        "nothing should be handed to the crew with no recipient"
+    );
 }
 
 #[test]
@@ -404,13 +526,22 @@ fn asking_about_an_order_reads_the_order_store_directly() {
     let mut d = daemon(&c, &p, "order-status");
 
     let mut orders = atlas::orders::Orders::load(&d.store);
-    orders.update("Amazon", "Your USB-C cable order", atlas::orders::Status::Shipped, 0);
+    orders.update(
+        "Amazon",
+        "Your USB-C cable order",
+        atlas::orders::Status::Shipped,
+        0,
+    );
     orders.save(&d.store).unwrap();
 
     let said = d.execute(&Intent::Mail("what's the status of my amazon order".into()));
     assert!(said.contains("Amazon"), "got: {said}");
     assert!(said.contains("shipped"), "got: {said}");
-    assert_eq!(d.crew.active(), 0, "reading a stored order needs no crew errand");
+    assert_eq!(
+        d.crew.active(),
+        0,
+        "reading a stored order needs no crew errand"
+    );
 }
 
 #[test]
@@ -439,7 +570,11 @@ fn connecting_outlook_with_no_address_asks_for_one_without_touching_the_network(
     let mut d = daemon(&c, &p, "outlook-no-address");
     let said = d.execute(&Intent::Mail("connect my outlook account".into()));
     assert!(said.contains("address"), "got: {said}");
-    assert_eq!(d.crew.active(), 0, "must not start the device flow without an address");
+    assert_eq!(
+        d.crew.active(),
+        0,
+        "must not start the device flow without an address"
+    );
 }
 
 #[test]
@@ -447,9 +582,15 @@ fn connecting_outlook_with_an_address_but_no_client_id_asks_for_one() {
     let c = cfg_with_account(account_for("outlook-no-client"));
     let p = plat();
     let mut d = daemon(&c, &p, "outlook-no-client");
-    let said = d.execute(&Intent::Mail("connect my outlook account me@outlook.com".into()));
+    let said = d.execute(&Intent::Mail(
+        "connect my outlook account me@outlook.com".into(),
+    ));
     assert!(said.contains("client ID"), "got: {said}");
-    assert_eq!(d.crew.active(), 0, "must not start the device flow without a client ID");
+    assert_eq!(
+        d.crew.active(),
+        0,
+        "must not start the device flow without a client ID"
+    );
 }
 
 #[test]
@@ -457,6 +598,8 @@ fn connecting_outlook_with_an_empty_client_id_is_reported_immediately() {
     let c = cfg_with_account(account_for("outlook-empty-client"));
     let p = plat();
     let mut d = daemon(&c, &p, "outlook-empty-client");
-    let said = d.execute(&Intent::Mail("connect my outlook account me@outlook.com client ".into()));
+    let said = d.execute(&Intent::Mail(
+        "connect my outlook account me@outlook.com client ".into(),
+    ));
     assert!(said.contains("empty"), "got: {said}");
 }

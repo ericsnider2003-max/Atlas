@@ -33,10 +33,13 @@ use std::path::PathBuf;
 pub fn keep_setting(config_dir: &Path, key: &str, raw: &str) -> Result<String, String> {
     let mut settings = current_settings(config_dir)?;
     let said = settings.set(key, raw)?;
-    let mut prefs = crate::preferences::Preferences::load_checked(config_dir)
-        .map_err(|e| format!("I haven't changed anything: {e}. Fix that file or delete it, then try again."))?;
+    let mut prefs = crate::preferences::Preferences::load_checked(config_dir).map_err(|e| {
+        format!("I haven't changed anything: {e}. Fix that file or delete it, then try again.")
+    })?;
     prefs.set(key, raw);
-    prefs.save(config_dir).map_err(|e| format!("I couldn't keep that change: {e}"))?;
+    prefs
+        .save(config_dir)
+        .map_err(|e| format!("I couldn't keep that change: {e}"))?;
     Ok(said)
 }
 
@@ -55,16 +58,20 @@ pub fn when_it_applies(key: &str, said: &str) -> String {
 pub fn put_back(config_dir: &Path, key: &str) -> Result<String, String> {
     let mut settings = current_settings(config_dir)?;
     let said = settings.reset(key)?;
-    let mut prefs = crate::preferences::Preferences::load_checked(config_dir)
-        .map_err(|e| format!("I haven't changed anything: {e}. Fix that file or delete it, then try again."))?;
+    let mut prefs = crate::preferences::Preferences::load_checked(config_dir).map_err(|e| {
+        format!("I haven't changed anything: {e}. Fix that file or delete it, then try again.")
+    })?;
     prefs.clear(key);
-    prefs.save(config_dir).map_err(|e| format!("I couldn't put that back: {e}"))?;
+    prefs
+        .save(config_dir)
+        .map_err(|e| format!("I couldn't put that back: {e}"))?;
     Ok(said)
 }
 
 /// The settings as they stand now: shipped values with your changes on top.
 pub fn current_settings(config_dir: &Path) -> Result<Settings, String> {
-    let cfg = crate::config::Config::load(config_dir).map_err(|e| format!("I couldn't read my settings: {e}"))?;
+    let cfg = crate::config::Config::load(config_dir)
+        .map_err(|e| format!("I couldn't read my settings: {e}"))?;
     Ok(crate::settings::registry(&cfg.tools.unwrap_or_default()))
 }
 
@@ -72,7 +79,13 @@ pub fn current_settings(config_dir: &Path) -> Result<Settings, String> {
 /// reads back.
 pub fn raw_of(v: &Value) -> String {
     match v {
-        Value::Toggle(b) => if *b { "on".into() } else { "off".into() },
+        Value::Toggle(b) => {
+            if *b {
+                "on".into()
+            } else {
+                "off".into()
+            }
+        }
         Value::Number { value, .. } => format!("{value}"),
         Value::Text(s) | Value::Choice { value: s, .. } => s.clone(),
         Value::List(items) => items.join(", "),
@@ -95,7 +108,10 @@ pub fn needs_a_yes(s: &Setting, raw: &str) -> bool {
         return false;
     }
     match s.value {
-        Value::Toggle(_) => matches!(raw.trim().to_lowercase().as_str(), "on" | "true" | "yes" | "1"),
+        Value::Toggle(_) => matches!(
+            raw.trim().to_lowercase().as_str(),
+            "on" | "true" | "yes" | "1"
+        ),
         _ => true,
     }
 }
@@ -106,7 +122,9 @@ pub fn why_ask(w: crate::settings::Weight) -> &'static str {
         crate::settings::Weight::Sensitive => {
             "This turns on a sensor or reaches outside this machine. Keep it?"
         }
-        crate::settings::Weight::Permission => "This changes what Atlas may do without asking you. Keep it?",
+        crate::settings::Weight::Permission => {
+            "This changes what Atlas may do without asking you. Keep it?"
+        }
         _ => "Keep it?",
     }
 }
@@ -160,7 +178,9 @@ impl Page {
     }
 
     fn change(&mut self, key: &str, raw: String) {
-        let Some(s) = self.settings.as_ref().and_then(|all| all.get(key)).cloned() else { return };
+        let Some(s) = self.settings.as_ref().and_then(|all| all.get(key)).cloned() else {
+            return;
+        };
         if needs_a_yes(&s, &raw) {
             self.asking = Some(Asking {
                 key: key.to_string(),
@@ -190,11 +210,15 @@ impl Page {
     /// module (keeping a setting, reading them back) is used by the hub too,
     /// and is in the GUI-free core as well.
     pub fn show(&mut self, ui: &mut eframe::egui::Ui, running: bool) -> Option<Ask> {
-
         use eframe::egui::{self, FontId, RichText};
         let mut ask = None;
 
-        ui.label(RichText::new("Settings").font(FontId::proportional(26.0)).strong().color(crate::look_paint::colourway().text));
+        ui.label(
+            RichText::new("Settings")
+                .font(FontId::proportional(26.0))
+                .strong()
+                .color(crate::look_paint::colourway().text),
+        );
         ui.label(
             RichText::new("Everything here is kept the moment you change it, and most of it applies straight away.")
                 .font(FontId::proportional(13.0))
@@ -209,20 +233,31 @@ impl Page {
 
         // The confirm step, above everything so it can't be missed.
         if let Some(a) = self.asking.clone() {
-            egui::Frame::none().fill(crate::look_paint::colourway().raised).inner_margin(egui::Margin::same(12.0)).show(ui, |ui| {
-                ui.label(RichText::new(format!("{}: {}", a.name, a.raw)).font(FontId::proportional(16.0)).color(crate::look_paint::colourway().text));
-                ui.label(RichText::new(&a.why).font(FontId::proportional(13.0)).color(crate::look_paint::colourway().warn));
-                ui.horizontal(|ui| {
-                    if ui.button("Yes, keep it").clicked() {
-                        self.asking = None;
-                        self.keep(&a.key, &a.raw);
-                    }
-                    if ui.button("No, leave it").clicked() {
-                        self.asking = None;
-                        self.reload();
-                    }
+            egui::Frame::none()
+                .fill(crate::look_paint::colourway().raised)
+                .inner_margin(egui::Margin::same(12.0))
+                .show(ui, |ui| {
+                    ui.label(
+                        RichText::new(format!("{}: {}", a.name, a.raw))
+                            .font(FontId::proportional(16.0))
+                            .color(crate::look_paint::colourway().text),
+                    );
+                    ui.label(
+                        RichText::new(&a.why)
+                            .font(FontId::proportional(13.0))
+                            .color(crate::look_paint::colourway().warn),
+                    );
+                    ui.horizontal(|ui| {
+                        if ui.button("Yes, keep it").clicked() {
+                            self.asking = None;
+                            self.keep(&a.key, &a.raw);
+                        }
+                        if ui.button("No, leave it").clicked() {
+                            self.asking = None;
+                            self.reload();
+                        }
+                    });
                 });
-            });
             ui.add_space(8.0);
         }
 
@@ -244,7 +279,11 @@ impl Page {
             ui.add_space(4.0);
         }
         for line in self.said.iter().rev().take(3) {
-            ui.label(RichText::new(line).font(FontId::proportional(13.0)).color(crate::look_paint::colourway().soft));
+            ui.label(
+                RichText::new(line)
+                    .font(FontId::proportional(13.0))
+                    .color(crate::look_paint::colourway().soft),
+            );
         }
 
         // A key being set by pressing it: the next key you press is it.
@@ -262,26 +301,52 @@ impl Page {
             }
         }
 
-        let Some(settings) = self.settings.clone() else { return ask };
+        let Some(settings) = self.settings.clone() else {
+            return ask;
+        };
         let mut wanted: Vec<(String, String)> = Vec::new();
         let mut back: Option<String> = None;
         for group in settings.groups() {
             ui.add_space(14.0);
-            ui.label(RichText::new(&group).font(FontId::proportional(18.0)).color(crate::look_paint::colourway().text));
+            ui.label(
+                RichText::new(&group)
+                    .font(FontId::proportional(18.0))
+                    .color(crate::look_paint::colourway().text),
+            );
             if let Some(note) = Settings::group_note(&group) {
-                ui.label(RichText::new(note).font(FontId::proportional(12.0)).color(crate::look_paint::colourway().dim));
+                ui.label(
+                    RichText::new(note)
+                        .font(FontId::proportional(12.0))
+                        .color(crate::look_paint::colourway().dim),
+                );
             }
             for s in settings.in_group(&group) {
                 ui.add_space(8.0);
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new(&s.name).font(FontId::proportional(15.0)).color(crate::look_paint::colourway().text));
+                    ui.label(
+                        RichText::new(&s.name)
+                            .font(FontId::proportional(15.0))
+                            .color(crate::look_paint::colourway().text),
+                    );
                     if s.weight.needs_confirming() {
-                        ui.label(RichText::new(s.weight.label()).font(FontId::proportional(11.0)).color(crate::look_paint::colourway().warn));
+                        ui.label(
+                            RichText::new(s.weight.label())
+                                .font(FontId::proportional(11.0))
+                                .color(crate::look_paint::colourway().warn),
+                        );
                     }
                 });
-                ui.label(RichText::new(&s.what).font(FontId::proportional(12.0)).color(crate::look_paint::colourway().soft));
+                ui.label(
+                    RichText::new(&s.what)
+                        .font(FontId::proportional(12.0))
+                        .color(crate::look_paint::colourway().soft),
+                );
                 if !s.cost.trim().is_empty() {
-                    ui.label(RichText::new(&s.cost).font(FontId::proportional(11.0)).color(crate::look_paint::colourway().dim));
+                    ui.label(
+                        RichText::new(&s.cost)
+                            .font(FontId::proportional(11.0))
+                            .color(crate::look_paint::colourway().dim),
+                    );
                 }
                 ui.horizontal_wrapped(|ui| {
                     match &s.value {
@@ -289,23 +354,32 @@ impl Page {
                             let mut v = *on;
                             let label = if v { "On" } else { "Off" };
                             if ui.checkbox(&mut v, label).changed() {
-                                wanted.push((s.key.clone(), if v { "on".into() } else { "off".into() }));
+                                wanted.push((
+                                    s.key.clone(),
+                                    if v { "on".into() } else { "off".into() },
+                                ));
                             }
                         }
                         Value::Number { value, min, max } => {
                             let mut v = *value;
-                            let r = ui.add(egui::DragValue::new(&mut v).range(*min..=*max).speed(((max - min) / 200.0).max(0.01)));
+                            let r = ui.add(
+                                egui::DragValue::new(&mut v)
+                                    .range(*min..=*max)
+                                    .speed(((max - min) / 200.0).max(0.01)),
+                            );
                             if (r.drag_stopped() || r.lost_focus()) && (v - value).abs() > 1e-9 {
                                 wanted.push((s.key.clone(), format!("{v}")));
                             }
                         }
                         Value::Choice { value, options } => {
                             let mut v = value.clone();
-                            egui::ComboBox::from_id_source(&s.key).selected_text(v.clone()).show_ui(ui, |ui| {
-                                for o in options {
-                                    ui.selectable_value(&mut v, o.clone(), o);
-                                }
-                            });
+                            egui::ComboBox::from_id_source(&s.key)
+                                .selected_text(v.clone())
+                                .show_ui(ui, |ui| {
+                                    for o in options {
+                                        ui.selectable_value(&mut v, o.clone(), o);
+                                    }
+                                });
                             if &v != value {
                                 wanted.push((s.key.clone(), v));
                             }
@@ -313,14 +387,28 @@ impl Page {
                         Value::Text(_) if KEY_SETTINGS.contains(&s.key.as_str()) => {
                             let current = raw_of(&s.value);
                             if self.capturing.as_deref() == Some(s.key.as_str()) {
-                                ui.label(RichText::new("Press the key now… (Esc to leave it)").color(crate::look_paint::colourway().signal_text));
+                                ui.label(
+                                    RichText::new("Press the key now… (Esc to leave it)")
+                                        .color(crate::look_paint::colourway().signal_text),
+                                );
                             } else {
-                                ui.label(RichText::new(pretty_key(&current)).font(FontId::monospace(15.0)).color(crate::look_paint::colourway().text));
+                                ui.label(
+                                    RichText::new(pretty_key(&current))
+                                        .font(FontId::monospace(15.0))
+                                        .color(crate::look_paint::colourway().text),
+                                );
                                 if ui.button("Set by pressing").clicked() {
                                     self.capturing = Some(s.key.clone());
                                 }
-                                let draft = self.drafts.entry(s.key.clone()).or_insert_with(|| current.clone());
-                                let r = ui.add(egui::TextEdit::singleline(draft).desired_width(160.0).hint_text("or type it"));
+                                let draft = self
+                                    .drafts
+                                    .entry(s.key.clone())
+                                    .or_insert_with(|| current.clone());
+                                let r = ui.add(
+                                    egui::TextEdit::singleline(draft)
+                                        .desired_width(160.0)
+                                        .hint_text("or type it"),
+                                );
                                 if r.lost_focus() && *draft != current {
                                     wanted.push((s.key.clone(), draft.clone()));
                                 }
@@ -328,7 +416,10 @@ impl Page {
                         }
                         Value::Text(_) | Value::List(_) => {
                             let current = raw_of(&s.value);
-                            let draft = self.drafts.entry(s.key.clone()).or_insert_with(|| current.clone());
+                            let draft = self
+                                .drafts
+                                .entry(s.key.clone())
+                                .or_insert_with(|| current.clone());
                             let r = ui.add(egui::TextEdit::singleline(draft).desired_width(260.0));
                             if r.lost_focus() && *draft != current {
                                 wanted.push((s.key.clone(), draft.clone()));
@@ -364,7 +455,10 @@ pub const KEY_SETTINGS: &[&str] = &["push_to_talk.key", "quick_input.hotkey"];
 
 /// "ctrl+shift+space" as it's shown: "Ctrl + Shift + Space".
 pub fn pretty_key(spec: &str) -> String {
-    spec.split('+').map(crate::hotkeys::key_word).collect::<Vec<_>>().join(" + ")
+    spec.split('+')
+        .map(crate::hotkeys::key_word)
+        .collect::<Vec<_>>()
+        .join(" + ")
 }
 
 /// The key a person just pressed, as a setting for `which`. `Some(None)` is
@@ -374,7 +468,13 @@ pub fn pretty_key(spec: &str) -> String {
 pub fn key_pressed(which: &str, events: &[eframe::egui::Event]) -> Option<Option<String>> {
     use eframe::egui::{Event, Key};
     for e in events {
-        if let Event::Key { key, pressed: true, modifiers, .. } = e {
+        if let Event::Key {
+            key,
+            pressed: true,
+            modifiers,
+            ..
+        } = e
+        {
             if *key == Key::Escape {
                 return Some(None);
             }
@@ -382,7 +482,13 @@ pub fn key_pressed(which: &str, events: &[eframe::egui::Event]) -> Option<Option
             let spec = if which == "push_to_talk.key" {
                 crate::hotkeys::spec_of(false, false, false, false, &name)
             } else {
-                crate::hotkeys::spec_of(modifiers.ctrl, modifiers.shift, modifiers.alt, false, &name)
+                crate::hotkeys::spec_of(
+                    modifiers.ctrl,
+                    modifiers.shift,
+                    modifiers.alt,
+                    false,
+                    &name,
+                )
             };
             if let Some(s) = spec {
                 return Some(Some(s));

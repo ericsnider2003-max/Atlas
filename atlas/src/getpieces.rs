@@ -32,7 +32,11 @@ pub enum Lands {
     File(&'static str),
     /// A zip: everything under `inside` (the folder in the zip) goes into
     /// `dir`; `key` is the file that proves it's there.
-    Zip { inside: &'static str, dir: &'static str, key: &'static str },
+    Zip {
+        inside: &'static str,
+        dir: &'static str,
+        key: &'static str,
+    },
 }
 
 /// One thing to fetch.
@@ -346,12 +350,19 @@ pub fn bigger_talk_model() -> Vec<Piece> {
 /// take running -- not measured: enough to keep a bigger talking model from
 /// being chosen into memory they already use.
 pub fn helpers_resident_mb(root: &Path) -> u64 {
-    let bytes: u64 = [parakeet_pieces(), vec![crate::kws::spotter_piece()], voice_model(), crate::kokoro::pieces(), understanding(), seeing()]
-        .into_iter()
-        .flatten()
-        .filter(|p| have(p, root))
-        .map(|p| p.bytes)
-        .sum();
+    let bytes: u64 = [
+        parakeet_pieces(),
+        vec![crate::kws::spotter_piece()],
+        voice_model(),
+        crate::kokoro::pieces(),
+        understanding(),
+        seeing(),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|p| have(p, root))
+    .map(|p| p.bytes)
+    .sum();
     bytes * 3 / 2 / (1024 * 1024)
 }
 
@@ -442,15 +453,20 @@ pub fn places_it_may_be(root: &Path) -> Vec<PathBuf> {
 /// right size and SHA-256: moved into place (copied, where it can't be
 /// moved). The folder it came from, or `None` when it isn't anywhere.
 pub fn take_in(p: &Piece, root: &Path, places: &[PathBuf]) -> Result<Option<PathBuf>, String> {
-    let Lands::File(rel) = &p.lands else { return Ok(None) };
-    let Some(file) = Path::new(rel).file_name() else { return Ok(None) };
+    let Lands::File(rel) = &p.lands else {
+        return Ok(None);
+    };
+    let Some(file) = Path::new(rel).file_name() else {
+        return Ok(None);
+    };
     let dest = root.join(rel);
     for place in places {
         let found = place.join(file);
         if found == dest || std::fs::metadata(&found).map(|m| m.len()).ok() != Some(p.bytes) {
             continue;
         }
-        let got = crate::digest::sha256_file_hex(&found).map_err(|e| format!("I couldn't read {}: {e}", found.display()))?;
+        let got = crate::digest::sha256_file_hex(&found)
+            .map_err(|e| format!("I couldn't read {}: {e}", found.display()))?;
         if !got.eq_ignore_ascii_case(p.sha256) {
             continue;
         }
@@ -460,9 +476,11 @@ pub fn take_in(p: &Piece, root: &Path, places: &[PathBuf]) -> Result<Option<Path
         std::fs::rename(&found, &dest)
             .or_else(|_| {
                 let beside = dest.with_extension("incoming");
-                std::fs::copy(&found, &beside).and_then(|_| std::fs::rename(&beside, &dest)).inspect_err(|_| {
-                    crate::heard!(std::fs::remove_file(&beside));
-                })
+                std::fs::copy(&found, &beside)
+                    .and_then(|_| std::fs::rename(&beside, &dest))
+                    .inspect_err(|_| {
+                        crate::heard!(std::fs::remove_file(&beside));
+                    })
             })
             .map_err(|e| format!("I couldn't put {} in place: {e}", p.name))?;
         return Ok(Some(place.clone()));
@@ -725,9 +743,13 @@ pub fn have(p: &Piece, root: &Path) -> bool {
     match &p.lands {
         // A lone file is judged by its size: the whole point of the pin is
         // that the right file has exactly this many bytes.
-        Lands::File(_) => std::fs::metadata(&key).map(|m| m.len() == p.bytes).unwrap_or(false),
+        Lands::File(_) => std::fs::metadata(&key)
+            .map(|m| m.len() == p.bytes)
+            .unwrap_or(false),
         Lands::Zip { .. } => {
-            let Some(mark) = marker_path(p, root) else { return false };
+            let Some(mark) = marker_path(p, root) else {
+                return false;
+            };
             if let Ok(text) = std::fs::read_to_string(&mark) {
                 return text.trim().eq_ignore_ascii_case(p.sha256) && key.is_file();
             }
@@ -776,7 +798,9 @@ pub fn space_needed(pieces: &[Piece], root: &Path) -> u64 {
         .iter()
         .filter(|p| !have(p, root))
         .map(|p| {
-            let part = std::fs::metadata(work.join(format!("{}.part", slug(p.name)))).map(|m| m.len()).unwrap_or(0);
+            let part = std::fs::metadata(work.join(format!("{}.part", slug(p.name))))
+                .map(|m| m.len())
+                .unwrap_or(0);
             p.bytes.saturating_sub(part)
         })
         .sum();
@@ -821,17 +845,27 @@ pub fn free_bytes(path: &Path) -> Option<u64> {
         use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
         let mut free = 0u64;
         // SAFETY: the string outlives the call; only the out value is written.
-        unsafe { GetDiskFreeSpaceExW(&HSTRING::from(at.as_os_str()), Some(&mut free), None, None) }.ok()?;
+        unsafe { GetDiskFreeSpaceExW(&HSTRING::from(at.as_os_str()), Some(&mut free), None, None) }
+            .ok()?;
         Some(free)
     }
     #[cfg(not(windows))]
     {
         // `df -P -k`: POSIX output, 1024-byte blocks; the 4th column is what's
         // available to this user.
-        let out = crate::tools::command("df").arg("-P").arg("-k").arg(&at).output().ok()?;
+        let out = crate::tools::command("df")
+            .arg("-P")
+            .arg("-k")
+            .arg(&at)
+            .output()
+            .ok()?;
         let text = String::from_utf8_lossy(&out.stdout);
         let line = text.lines().nth(1)?;
-        line.split_whitespace().nth(3)?.parse::<u64>().ok().map(|k| k * 1024)
+        line.split_whitespace()
+            .nth(3)?
+            .parse::<u64>()
+            .ok()
+            .map(|k| k * 1024)
     }
 }
 
@@ -845,7 +879,9 @@ pub fn clear_unfinished(pieces: &[Piece], root: &Path) -> u64 {
         let part = work.join(format!("{}.part", slug(p.name)));
         freed += std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
         crate::heard!(std::fs::remove_file(&part));
-        crate::heard!(std::fs::remove_dir_all(work.join(format!("{}.unpacked", slug(p.name)))));
+        crate::heard!(std::fs::remove_dir_all(
+            work.join(format!("{}.unpacked", slug(p.name)))
+        ));
     }
     freed
 }
@@ -875,24 +911,42 @@ impl Default for Tools {
             let sys = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
             let own = |name: &str| {
                 let p = PathBuf::from(&sys).join("System32").join(name);
-                if p.is_file() { p.display().to_string() } else { name.to_string() }
+                if p.is_file() {
+                    p.display().to_string()
+                } else {
+                    name.to_string()
+                }
             };
-            Tools { curl: own("curl.exe"), unzip: Unzip::Tar, unzipper: own("tar.exe") }
+            Tools {
+                curl: own("curl.exe"),
+                unzip: Unzip::Tar,
+                unzipper: own("tar.exe"),
+            }
         } else {
-            Tools { curl: "curl".into(), unzip: Unzip::Unzip, unzipper: "unzip".into() }
+            Tools {
+                curl: "curl".into(),
+                unzip: Unzip::Unzip,
+                unzipper: "unzip".into(),
+            }
         }
     }
 }
 
 /// Fetch one piece into the install at `root`, calling `progress(done, total)`
 /// as bytes arrive. Resumes a download that was cut off.
-pub fn fetch(p: &Piece, root: &Path, tools: &Tools, progress: &dyn Fn(u64, u64)) -> Result<(), String> {
+pub fn fetch(
+    p: &Piece,
+    root: &Path,
+    tools: &Tools,
+    progress: &dyn Fn(u64, u64),
+) -> Result<(), String> {
     if have(p, root) {
         progress(p.bytes, p.bytes);
         return Ok(());
     }
     let work = work_dir(root);
-    std::fs::create_dir_all(&work).map_err(|e| format!("I couldn't make a place to download into: {e}"))?;
+    std::fs::create_dir_all(&work)
+        .map_err(|e| format!("I couldn't make a place to download into: {e}"))?;
     let part = work.join(format!("{}.part", slug(p.name)));
 
     if let Err(why) = download(p, &part, tools, progress) {
@@ -905,7 +959,8 @@ pub fn fetch(p: &Piece, root: &Path, tools: &Tools, progress: &dyn Fn(u64, u64))
     }
 
     // Checked before anything is unpacked or moved into place.
-    let got = crate::digest::sha256_file_hex(&part).map_err(|e| format!("I couldn't read what I downloaded: {e}"))?;
+    let got = crate::digest::sha256_file_hex(&part)
+        .map_err(|e| format!("I couldn't read what I downloaded: {e}"))?;
     if !got.eq_ignore_ascii_case(p.sha256) {
         crate::heard!(std::fs::remove_file(&part));
         return Err(format!(
@@ -956,7 +1011,8 @@ pub fn fetch(p: &Piece, root: &Path, tools: &Tools, progress: &dyn Fn(u64, u64))
                 crate::heard!(std::fs::remove_dir_all(&unpack));
                 return Err(format!("I couldn't put {} in place: {e}", p.name));
             }
-            std::fs::write(&mark, p.sha256).map_err(|e| format!("I couldn't finish putting {} in place: {e}", p.name))?;
+            std::fs::write(&mark, p.sha256)
+                .map_err(|e| format!("I couldn't finish putting {} in place: {e}", p.name))?;
             crate::heard!(std::fs::remove_dir_all(&unpack));
             crate::heard!(std::fs::remove_file(&part));
         }
@@ -1006,7 +1062,12 @@ pub fn deadline_for(bytes: u64) -> Duration {
     Duration::from_secs(600 + bytes / 100_000)
 }
 
-fn download(p: &Piece, part: &Path, tools: &Tools, progress: &dyn Fn(u64, u64)) -> Result<(), String> {
+fn download(
+    p: &Piece,
+    part: &Path,
+    tools: &Tools,
+    progress: &dyn Fn(u64, u64),
+) -> Result<(), String> {
     let mut cmd = crate::tools::command(&tools.curl);
     cmd.args(curl_args())
         .arg("-o")
@@ -1020,17 +1081,15 @@ fn download(p: &Piece, part: &Path, tools: &Tools, progress: &dyn Fn(u64, u64)) 
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000);
     }
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                "this copy of Windows has no curl.exe, which Windows has included since 2018 — \
+    let mut child = cmd.spawn().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "this copy of Windows has no curl.exe, which Windows has included since 2018 — \
                  a Windows update brings it"
-                    .to_string()
-            } else {
-                format!("I couldn't start the download: {e}")
-            }
-        })?;
+                .to_string()
+        } else {
+            format!("I couldn't start the download: {e}")
+        }
+    })?;
     // curl's complaints are read as they come, so a chatty failure can't
     // fill the pipe and hold curl up.
     let mut stderr = child.stderr.take();
@@ -1055,7 +1114,10 @@ fn download(p: &Piece, part: &Path, tools: &Tools, progress: &dyn Fn(u64, u64)) 
                 let err = said.join().unwrap_or_default();
                 // A resume against a file that is already complete comes
                 // back as an error from some servers; the hash check decides.
-                if std::fs::metadata(part).map(|m| m.len() == p.bytes).unwrap_or(false) {
+                if std::fs::metadata(part)
+                    .map(|m| m.len() == p.bytes)
+                    .unwrap_or(false)
+                {
                     return Ok(());
                 }
                 return Err(plain_download_error(p.name, err.trim()));
@@ -1085,7 +1147,10 @@ pub fn plain_download_error(name: &str, err: &str) -> String {
         format!("I couldn't get {name}: the connection was too slow and gave up — try again")
     } else if e.contains("404") {
         format!("I couldn't get {name}: it's no longer where it was kept")
-    } else if e.contains("no space") || e.contains("failure writing output") || e.contains("disk full") {
+    } else if e.contains("no space")
+        || e.contains("failure writing output")
+        || e.contains("disk full")
+    {
         format!("I couldn't get {name}: the disk is full. Free up some space and try again")
     } else if e.contains("ssl") || e.contains("certificate") {
         format!("I couldn't get {name}: the secure connection was refused, often by a firewall or proxy")
@@ -1109,8 +1174,16 @@ fn unzip(zip: &Path, into: &Path, tools: &Tools) -> Result<(), String> {
             std::io::Read::read_exact(&mut f, &mut m).map(|_| m)
         })
         .is_ok_and(|m| m == [0x1f, 0x8b] || m == *b"BZ");
-    let how = if tarball && tools.unzip == Unzip::Unzip { Unzip::Tar } else { tools.unzip };
-    let program = if how == Unzip::Tar && tools.unzip == Unzip::Unzip { "tar".to_string() } else { tools.unzipper.clone() };
+    let how = if tarball && tools.unzip == Unzip::Unzip {
+        Unzip::Tar
+    } else {
+        tools.unzip
+    };
+    let program = if how == Unzip::Tar && tools.unzip == Unzip::Unzip {
+        "tar".to_string()
+    } else {
+        tools.unzipper.clone()
+    };
     let mut cmd = match how {
         Unzip::Tar => {
             let mut c = crate::tools::command(&program);
@@ -1128,11 +1201,16 @@ fn unzip(zip: &Path, into: &Path, tools: &Tools) -> Result<(), String> {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000);
     }
-    let out = cmd.output().map_err(|e| format!("I couldn't unpack it: {e}"))?;
+    let out = cmd
+        .output()
+        .map_err(|e| format!("I couldn't unpack it: {e}"))?;
     if out.status.success() {
         Ok(())
     } else {
-        Err(format!("I couldn't unpack it: {}", String::from_utf8_lossy(&out.stderr).trim()))
+        Err(format!(
+            "I couldn't unpack it: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
     }
 }
 
@@ -1146,7 +1224,10 @@ pub fn swap_folder(new: &Path, live: &Path) -> std::result::Result<(), String> {
     if let Some(parent) = live.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let name = live.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let name = live
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
     let aside = live.with_file_name(format!("{name}.old-{}", std::process::id()));
     crate::heard!(std::fs::remove_dir_all(&aside));
     let had = live.exists();
@@ -1192,7 +1273,9 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
 }
 
 fn slug(name: &str) -> String {
-    name.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect()
+    name.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect()
 }
 
 /// Atlas's own tools folder, put on this process's search path so `ffmpeg`
@@ -1214,7 +1297,11 @@ pub fn use_own_tools(root: &Path) {
     for (k, v) in crate::codetools::rust_env(root) {
         std::env::set_var(k, v);
     }
-    let mut own: Vec<PathBuf> = ["tools/ffmpeg"].iter().map(|d| root.join(d)).filter(|d| d.is_dir()).collect();
+    let mut own: Vec<PathBuf> = ["tools/ffmpeg"]
+        .iter()
+        .map(|d| root.join(d))
+        .filter(|d| d.is_dir())
+        .collect();
     own.extend(crate::codetools::bin_dirs(root));
     if own.is_empty() {
         return;
@@ -1227,7 +1314,6 @@ pub fn use_own_tools(root: &Path) {
         std::env::set_var("PATH", joined);
     }
 }
-
 
 /// Whisper's multilingual model (the `.en` ones can't hear other languages
 /// at all): what `translate` and `language` need. Hash and size from
@@ -1279,10 +1365,14 @@ pub fn everything_else() -> Vec<Piece> {
         // curl with HTTP/2, for Apple's push service (item 15).
         crate::apns::curl_piece().into_iter().collect(),
     ]
-        .into_iter()
-        .flatten()
+    .into_iter()
+    .flatten()
     {
-        if !essentials.iter().chain(out.iter()).any(|a| a.key_path() == p.key_path()) {
+        if !essentials
+            .iter()
+            .chain(out.iter())
+            .any(|a| a.key_path() == p.key_path())
+        {
             out.push(p);
         }
     }
@@ -1297,5 +1387,10 @@ pub fn setup_pieces() -> Vec<Piece> {
     // The Kokoro voice too (29 Sep 2026: Eric, "Atlas sounds like a robot" --
     // piper was the only voice setup fetched, and Kokoro, which Atlas already
     // speaks with when it's there, was an extra nobody knew to ask for).
-    catalogue().into_iter().chain(crate::kokoro::pieces()).chain(pictures()).chain(tor()).collect()
+    catalogue()
+        .into_iter()
+        .chain(crate::kokoro::pieces())
+        .chain(pictures())
+        .chain(tor())
+        .collect()
 }

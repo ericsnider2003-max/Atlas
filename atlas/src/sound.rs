@@ -112,7 +112,8 @@ pub fn scale_wav(bytes: &mut [u8], volume: u8) -> bool {
     let mut pcm = false;
     while at + 8 <= bytes.len() {
         let id = &bytes[at..at + 4];
-        let len = u32::from_le_bytes([bytes[at + 4], bytes[at + 5], bytes[at + 6], bytes[at + 7]]) as usize;
+        let len = u32::from_le_bytes([bytes[at + 4], bytes[at + 5], bytes[at + 6], bytes[at + 7]])
+            as usize;
         let start = at + 8;
         let end = (start + len).min(bytes.len());
         if id == b"fmt " && len >= 16 && end >= start + 16 {
@@ -140,7 +141,10 @@ mod tests {
 
     #[test]
     fn quiet_hours_wrap_midnight_and_an_unreadable_time_silences_nothing() {
-        let mut s = SoundConfig { quiet_hours: true, ..Default::default() };
+        let mut s = SoundConfig {
+            quiet_hours: true,
+            ..Default::default()
+        };
         assert!(s.in_quiet_hours(23 * 60), "11pm");
         assert!(s.in_quiet_hours(3 * 60), "3am");
         assert!(!s.in_quiet_hours(12 * 60), "noon");
@@ -159,25 +163,51 @@ mod tests {
     #[test]
     fn speaking_follows_mute_quiet_and_the_reply_rule() {
         let s = SoundConfig::default();
-        assert!(s.may_speak_now(600, true), "hands-free: a spoken turn is answered aloud");
+        assert!(
+            s.may_speak_now(600, true),
+            "hands-free: a spoken turn is answered aloud"
+        );
         assert!(!s.may_speak_now(600, false), "a typed one isn't");
-        let always = SoundConfig { speak_replies: "always".into(), ..Default::default() };
+        let always = SoundConfig {
+            speak_replies: "always".into(),
+            ..Default::default()
+        };
         assert!(always.may_speak_now(600, false));
-        let never = SoundConfig { speak_replies: "never".into(), ..Default::default() };
+        let never = SoundConfig {
+            speak_replies: "never".into(),
+            ..Default::default()
+        };
         assert!(!never.may_speak_now(600, true));
-        let muted = SoundConfig { muted: true, speak_replies: "always".into(), ..Default::default() };
+        let muted = SoundConfig {
+            muted: true,
+            speak_replies: "always".into(),
+            ..Default::default()
+        };
         assert!(!muted.may_speak_now(600, true));
-        let quiet = SoundConfig { quiet_hours: true, speak_replies: "always".into(), ..Default::default() };
+        let quiet = SoundConfig {
+            quiet_hours: true,
+            speak_replies: "always".into(),
+            ..Default::default()
+        };
         assert!(!quiet.may_speak_now(23 * 60, true) && quiet.may_speak_now(12 * 60, true));
     }
 
     #[test]
     fn pop_ups_follow_the_locked_rule() {
         let s = SoundConfig::default();
-        assert!(s.may_pop_up(true) && !s.may_pop_up(false), "urgent only, by default");
-        let ask = SoundConfig { popups: "ask".into(), ..Default::default() };
+        assert!(
+            s.may_pop_up(true) && !s.may_pop_up(false),
+            "urgent only, by default"
+        );
+        let ask = SoundConfig {
+            popups: "ask".into(),
+            ..Default::default()
+        };
         assert!(!ask.may_pop_up(true));
-        let any = SoundConfig { popups: "anything".into(), ..Default::default() };
+        let any = SoundConfig {
+            popups: "anything".into(),
+            ..Default::default()
+        };
         assert!(any.may_pop_up(false));
     }
 

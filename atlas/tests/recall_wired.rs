@@ -62,13 +62,25 @@ fn write_note_in(root: &Path, name: &str, body: &str) -> PathBuf {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 /// For tests that need notes on disk before the daemon is constructed —
 /// `root` must be the exact same directory as `daemon_at`'s `Store` uses.
 fn daemon_at<'a>(c: &'a Config, p: &'a MockPlatform, root: PathBuf) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(root), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(root),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -95,12 +107,19 @@ fn the_library_is_loaded_at_startup_not_only_after_a_research_run() {
     // Loading it only after research would mean notes from an earlier session
     // stayed invisible until another one happened — wired, and still broken.
     let root = tmp("startup");
-    let n = write_note_in(&root, "test-recall-startup.md", "# Startup note\n\nSomething memorable here.\n");
+    let n = write_note_in(
+        &root,
+        "test-recall-startup.md",
+        "# Startup note\n\nSomething memorable here.\n",
+    );
     let (c, p) = (cfg(), plat());
     let d = daemon_at(&c, &p, root);
     let loaded = !d.library.is_empty();
     let _ = std::fs::remove_file(&n);
-    assert!(loaded, "the library was empty on a fresh daemon with notes on disk");
+    assert!(
+        loaded,
+        "the library was empty on a fresh daemon with notes on disk"
+    );
 }
 
 #[test]
@@ -108,7 +127,11 @@ fn a_question_the_notes_do_not_answer_falls_through_rather_than_guessing() {
     // Returning the best of a bad set is worse than saying nothing: it reads
     // as an answer.
     let root = tmp("fallthrough");
-    let n = write_note_in(&root, "test-recall-unrelated.md", "# Bicycle maintenance\n\nChain tension.\n");
+    let n = write_note_in(
+        &root,
+        "test-recall-unrelated.md",
+        "# Bicycle maintenance\n\nChain tension.\n",
+    );
     let (c, p) = (cfg(), plat());
     let mut d = daemon_at(&c, &p, root);
     let reply = d.turn("what is the capital of Peru", 100);
@@ -155,8 +178,14 @@ fn an_empty_shelf_is_not_an_error() {
     let mut d = daemon(&c, &p, "empty");
     d.library = atlas::recall::Library::default();
     let reply = d.turn("what do I know about anything at all", 100);
-    assert!(!reply.contains("error"), "an empty library reported an error: {reply}");
-    assert!(!reply.is_empty(), "an empty library produced no reply at all");
+    assert!(
+        !reply.contains("error"),
+        "an empty library reported an error: {reply}"
+    );
+    assert!(
+        !reply.is_empty(),
+        "an empty library produced no reply at all"
+    );
 }
 
 #[test]
@@ -166,10 +195,17 @@ fn searching_works_without_any_model_installed() {
     // one — and day one is when you have the least idea where anything is.
     let c = cfg();
     let r = c.tools.as_ref().unwrap().recall.clone();
-    assert!(!atlas::recall::needs_a_model(&r), "recall now requires a model to work at all");
+    assert!(
+        !atlas::recall::needs_a_model(&r),
+        "recall now requires a model to work at all"
+    );
 
     let root = tmp("nomodel");
-    let n = write_note_in(&root, "test-recall-nomodel.md", "# Kettle descaling\n\nVinegar and patience.\n");
+    let n = write_note_in(
+        &root,
+        "test-recall-nomodel.md",
+        "# Kettle descaling\n\nVinegar and patience.\n",
+    );
     let (c2, p) = (cfg(), plat());
     // `llm: None` — no model of any kind.
     let mut d = daemon_at(&c2, &p, root);
@@ -184,12 +220,19 @@ fn searching_works_without_any_model_installed() {
 #[test]
 fn a_note_is_findable_by_its_title_as_well_as_its_body() {
     let root = tmp("title");
-    let n = write_note_in(&root, "test-recall-title.md", "# Aquifer recharge rates\n\nUnrelated body text.\n");
+    let n = write_note_in(
+        &root,
+        "test-recall-title.md",
+        "# Aquifer recharge rates\n\nUnrelated body text.\n",
+    );
     let (c, p) = (cfg(), plat());
     let mut d = daemon_at(&c, &p, root);
     let reply = d.turn("tell me about aquifer recharge", 100);
     let _ = std::fs::remove_file(&n);
-    assert!(reply.contains("Aquifer"), "the title was not searchable: {reply}");
+    assert!(
+        reply.contains("Aquifer"),
+        "the title was not searchable: {reply}"
+    );
 }
 
 /// A recalled fact is aged against the note it rests on.
@@ -220,7 +263,8 @@ fn a_fact_recalled_from_a_stale_note_is_said_with_its_age() {
     let half_life = 60 * 60 * 24 * 14u64;
     let now = as_of + 5 * half_life;
     let f = std::fs::File::options().write(true).open(&n).unwrap();
-    f.set_modified(UNIX_EPOCH + Duration::from_secs(as_of)).unwrap();
+    f.set_modified(UNIX_EPOCH + Duration::from_secs(as_of))
+        .unwrap();
     drop(f);
 
     let (c, p) = (cfg(), plat());
@@ -252,7 +296,8 @@ fn a_fact_recalled_from_a_fresh_note_carries_no_caveat() {
     let as_of = 1_000_000u64;
     let now = as_of + 60 * 60 * 24;
     let f = std::fs::File::options().write(true).open(&n).unwrap();
-    f.set_modified(UNIX_EPOCH + Duration::from_secs(as_of)).unwrap();
+    f.set_modified(UNIX_EPOCH + Duration::from_secs(as_of))
+        .unwrap();
     drop(f);
 
     let (c, p) = (cfg(), plat());
@@ -291,7 +336,8 @@ fn a_stale_note_from_a_file_offers_to_go_and_recheck_it() {
     let half_life = 60 * 60 * 24 * 14u64;
     let now = as_of + 5 * half_life;
     let f = std::fs::File::options().write(true).open(&n).unwrap();
-    f.set_modified(UNIX_EPOCH + Duration::from_secs(as_of)).unwrap();
+    f.set_modified(UNIX_EPOCH + Duration::from_secs(as_of))
+        .unwrap();
     drop(f);
 
     let (c, p) = (cfg(), plat());
@@ -322,7 +368,8 @@ fn a_fresh_note_makes_no_offer_to_recheck() {
     let as_of = 1_000_000u64;
     let now = as_of + 60 * 60 * 24; // one day: Fresh.
     let f = std::fs::File::options().write(true).open(&n).unwrap();
-    f.set_modified(UNIX_EPOCH + Duration::from_secs(as_of)).unwrap();
+    f.set_modified(UNIX_EPOCH + Duration::from_secs(as_of))
+        .unwrap();
     drop(f);
 
     let (c, p) = (cfg(), plat());

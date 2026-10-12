@@ -18,7 +18,17 @@ const H: usize = 90;
 /// Cut times in seconds (ffmpeg scene score above `threshold`, 0..1).
 fn cut_times(ffmpeg: &str, video: &str, threshold: f32) -> Result<Vec<f64>, String> {
     let out = crate::tools::command(ffmpeg)
-        .args(["-hide_banner", "-nostats", "-i", video, "-filter:v", &format!("select='gt(scene,{threshold})',showinfo"), "-f", "null", "-"])
+        .args([
+            "-hide_banner",
+            "-nostats",
+            "-i",
+            video,
+            "-filter:v",
+            &format!("select='gt(scene,{threshold})',showinfo"),
+            "-f",
+            "null",
+            "-",
+        ])
         .output()
         .map_err(|e| format!("couldn't run {ffmpeg}: {e}"))?;
     let log = String::from_utf8_lossy(&out.stderr);
@@ -32,14 +42,36 @@ fn cut_times(ffmpeg: &str, video: &str, threshold: f32) -> Result<Vec<f64>, Stri
 fn parse_showinfo(log: &str) -> Vec<f64> {
     log.lines()
         .filter(|l| l.contains("Parsed_showinfo"))
-        .filter_map(|l| l.split("pts_time:").nth(1)?.split_whitespace().next()?.parse().ok())
+        .filter_map(|l| {
+            l.split("pts_time:")
+                .nth(1)?
+                .split_whitespace()
+                .next()?
+                .parse()
+                .ok()
+        })
         .collect()
 }
 
 /// One grey frame at `t` seconds, 160×90.
 fn frame_at(ffmpeg: &str, video: &str, t: f64) -> Option<Vec<u8>> {
     let out = crate::tools::command(ffmpeg)
-        .args(["-hide_banner", "-loglevel", "error", "-ss", &format!("{:.3}", t.max(0.0)), "-i", video, "-frames:v", "1", "-vf", &format!("scale={W}:{H},format=gray"), "-f", "rawvideo", "-"])
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            &format!("{:.3}", t.max(0.0)),
+            "-i",
+            video,
+            "-frames:v",
+            "1",
+            "-vf",
+            &format!("scale={W}:{H},format=gray"),
+            "-f",
+            "rawvideo",
+            "-",
+        ])
         .output()
         .ok()?;
     (out.stdout.len() == W * H).then_some(out.stdout)
@@ -66,9 +98,20 @@ pub fn cuts(ffmpeg: &str, video: &str) -> Result<Vec<(f64, Cut)>, String> {
     let times = cut_times(ffmpeg, video, 0.3)?;
     let mut out = Vec::new();
     for t in times {
-        let (Some(a), Some(b)) = (frame_at(ffmpeg, video, t - 0.08), frame_at(ffmpeg, video, t + 0.04)) else { continue };
+        let (Some(a), Some(b)) = (
+            frame_at(ffmpeg, video, t - 0.08),
+            frame_at(ffmpeg, video, t + 0.04),
+        ) else {
+            continue;
+        };
         if let (Some(l), Some(r)) = (eye_line(&a, W, H), eye_line(&b, W, H)) {
-            out.push((t, Cut { leaving_at: l, arriving_at: r }));
+            out.push((
+                t,
+                Cut {
+                    leaving_at: l,
+                    arriving_at: r,
+                },
+            ));
         }
     }
     Ok(out)

@@ -37,7 +37,10 @@ fn only_a_computer_with_an_intel_npu_fetches_it() {
 
 #[test]
 fn fixed_shapes_are_written_the_way_the_provider_reads_them() {
-    let v = npu::reshape_value(&[("input_ids".into(), vec![1, 16]), ("attention_mask".into(), vec![1, 16])]);
+    let v = npu::reshape_value(&[
+        ("input_ids".into(), vec![1, 16]),
+        ("attention_mask".into(), vec![1, 16]),
+    ]);
     assert_eq!(v, "input_ids[1,16],attention_mask[1,16]");
 }
 
@@ -64,7 +67,10 @@ fn without_the_runtime_the_reason_is_said_and_nothing_breaks() {
     // is once per process); either way the check names a reason or none.
     let report = npu::check(&empty);
     assert!(report.contains("NPU engine:"), "{report}");
-    assert!(report.contains("Search:") && report.contains("Voice ID:"), "{report}");
+    assert!(
+        report.contains("Search:") && report.contains("Voice ID:"),
+        "{report}"
+    );
 }
 
 /// With a real ONNX Runtime and the two models in `ATLAS_ORT_TEST_ROOT`
@@ -73,14 +79,17 @@ fn without_the_runtime_the_reason_is_said_and_nothing_breaks() {
 /// runtime path gives tract's answers. Skipped when it isn't set.
 #[test]
 fn the_runtime_path_gives_the_same_answers_as_tract() {
-    let Ok(root) = std::env::var("ATLAS_ORT_TEST_ROOT") else { return };
+    let Ok(root) = std::env::var("ATLAS_ORT_TEST_ROOT") else {
+        return;
+    };
     let root = std::path::PathBuf::from(root);
     let model = root.join(atlas::meaningnative::MODEL);
     let names = npu::Session::input_names(&root, &model).expect("ONNX Runtime opens the model");
     assert_eq!(names.len(), 3, "{names:?}");
     let n = 32i64;
     let shapes: Vec<(String, Vec<i64>)> = names.iter().map(|x| (x.clone(), vec![1, n])).collect();
-    let s = npu::Session::open(&root, &model, &shapes, npu::Where::Cpu).expect("opens on the processor");
+    let s = npu::Session::open(&root, &model, &shapes, npu::Where::Cpu)
+        .expect("opens on the processor");
     assert_eq!(s.on(), npu::Where::Cpu);
     // "hello world" as the encoder's own ids, padded to 32.
     let mut enc = atlas::meaningnative::Native::load(&root).expect("model and words");
@@ -104,9 +113,23 @@ fn the_runtime_path_gives_the_same_answers_as_tract() {
     // The voice model on 200-frame windows.
     let voice = root.join("models").join("campplus_en_voxceleb.onnx");
     let vnames = npu::Session::input_names(&root, &voice).unwrap();
-    let vs = npu::Session::open(&root, &voice, &[(vnames[0].clone(), vec![1, 200, 80])], npu::Where::Cpu).unwrap();
-    let frames: Vec<f32> = (0..200 * 80).map(|i| ((i % 97) as f32 / 97.0) - 0.5).collect();
-    let out = vs.run(vec![npu::In::F32(vnames[0].clone(), vec![1, 200, 80], frames)]).unwrap();
+    let vs = npu::Session::open(
+        &root,
+        &voice,
+        &[(vnames[0].clone(), vec![1, 200, 80])],
+        npu::Where::Cpu,
+    )
+    .unwrap();
+    let frames: Vec<f32> = (0..200 * 80)
+        .map(|i| ((i % 97) as f32 / 97.0) - 0.5)
+        .collect();
+    let out = vs
+        .run(vec![npu::In::F32(
+            vnames[0].clone(),
+            vec![1, 200, 80],
+            frames,
+        )])
+        .unwrap();
     assert_eq!(out[0].len(), 512);
 }
 
@@ -114,7 +137,13 @@ fn the_runtime_path_gives_the_same_answers_as_tract() {
 fn the_free_dimensions_are_fixed_by_their_own_names() {
     // MiniLM's export: input_ids is [batch_size, sequence_length].
     let fixed = npu::free_dimensions_of(&["batch_size".into(), "sequence_length".into()], &[1, 32]);
-    assert_eq!(fixed, vec![("batch_size".to_string(), 1), ("sequence_length".to_string(), 32)]);
+    assert_eq!(
+        fixed,
+        vec![
+            ("batch_size".to_string(), 1),
+            ("sequence_length".to_string(), 32)
+        ]
+    );
     // An already-fixed dimension has no name and is left alone.
     let fixed = npu::free_dimensions_of(&["".into(), "frames".into(), "".into()], &[1, 200, 80]);
     assert_eq!(fixed, vec![("frames".to_string(), 200)]);
@@ -149,9 +178,15 @@ fn the_sizes_are_written_into_a_copy_of_the_model() {
     let graph = ld(7, &ld(11, &value));
     let model = [vec![0x08, 0x08], graph].concat();
 
-    assert_eq!(atlas::onnxfix::input_shapes(&model).unwrap(), vec![("x".to_string(), vec![-1, -1])]);
+    assert_eq!(
+        atlas::onnxfix::input_shapes(&model).unwrap(),
+        vec![("x".to_string(), vec![-1, -1])]
+    );
     let fixed = atlas::onnxfix::with_fixed_inputs(&model, &[("x".into(), vec![1, 32])]).unwrap();
-    assert_eq!(atlas::onnxfix::input_shapes(&fixed).unwrap(), vec![("x".to_string(), vec![1, 32])]);
+    assert_eq!(
+        atlas::onnxfix::input_shapes(&fixed).unwrap(),
+        vec![("x".to_string(), vec![1, 32])]
+    );
     // The rest of the file is untouched: ir_version still first.
     assert_eq!(&fixed[..2], &[0x08, 0x08]);
     // An input that isn't there is refused rather than half-done.
@@ -162,10 +197,16 @@ fn the_sizes_are_written_into_a_copy_of_the_model() {
 /// fixed sizes, it still loads in ONNX Runtime and declares them.
 #[test]
 fn the_real_search_model_takes_fixed_sizes() {
-    let Ok(root) = std::env::var("ATLAS_ORT_TEST_ROOT") else { return };
+    let Ok(root) = std::env::var("ATLAS_ORT_TEST_ROOT") else {
+        return;
+    };
     let model = std::path::PathBuf::from(root).join(atlas::meaningnative::MODEL);
     let bytes = std::fs::read(&model).unwrap();
-    let names: Vec<String> = atlas::onnxfix::input_shapes(&bytes).unwrap().into_iter().map(|(n, _)| n).collect();
+    let names: Vec<String> = atlas::onnxfix::input_shapes(&bytes)
+        .unwrap()
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect();
     let shapes: Vec<(String, Vec<i64>)> = names.iter().map(|n| (n.clone(), vec![1, 16])).collect();
     let fixed = atlas::onnxfix::with_fixed_inputs(&bytes, &shapes).unwrap();
     for (_, dims) in atlas::onnxfix::input_shapes(&fixed).unwrap() {
@@ -179,20 +220,70 @@ fn the_real_search_model_takes_fixed_sizes() {
     let _ = std::fs::remove_file(out);
 }
 
-
 #[test]
 fn the_actual_private_worker_entry_refuses_malformed_frames_without_starting_atlas() {
-    use std::{io::{Read,Write},net::{TcpListener,Ipv4Addr},process::{Command,Stdio},time::{Duration,Instant}};
-    let listener=TcpListener::bind((Ipv4Addr::LOCALHOST,0)).unwrap();listener.set_nonblocking(true).unwrap();
-    let mut command=Command::new(env!("CARGO_BIN_EXE_atlas"));
-    command.arg("--npu-worker").env("ATLAS_NPU_WORKER_PORT",listener.local_addr().unwrap().port().to_string()).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
-    #[cfg(windows)] {use std::os::windows::process::CommandExt;command.creation_flags(0x0800_0000);}
-    let mut child=command.spawn().unwrap();
-    struct Reap<'a>(&'a mut std::process::Child);impl Drop for Reap<'_>{fn drop(&mut self){atlas::heard!(self.0.kill());atlas::heard!(self.0.wait());}}
-    let guard=Reap(&mut child);guard.0.stdin.take().unwrap().write_all(&[7;32]).unwrap();
-    let deadline=Instant::now()+Duration::from_secs(5);
-    let mut stream=loop{match listener.accept(){Ok((stream,peer))=>{assert!(peer.ip().is_loopback());stream.set_nonblocking(false).unwrap();break stream},Err(e) if e.kind()==std::io::ErrorKind::WouldBlock=>{assert!(Instant::now()<deadline,"actual helper never connected");std::thread::sleep(Duration::from_millis(5));},Err(e)=>panic!("{e}")}};
-    stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();let mut token=[0;32];stream.read_exact(&mut token).unwrap();assert_eq!(token,[7;32]);
-    stream.write_all(&1u32.to_le_bytes()).unwrap();stream.write_all(b"!").unwrap();
-    loop{if let Some(status)=guard.0.try_wait().unwrap(){assert_eq!(status.code(),Some(2));break;}assert!(Instant::now()<deadline,"malformed worker was not reaped");std::thread::sleep(Duration::from_millis(5));}
+    use std::{
+        io::{Read, Write},
+        net::{Ipv4Addr, TcpListener},
+        process::{Command, Stdio},
+        time::{Duration, Instant},
+    };
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let mut command = Command::new(env!("CARGO_BIN_EXE_atlas"));
+    command
+        .arg("--npu-worker")
+        .env(
+            "ATLAS_NPU_WORKER_PORT",
+            listener.local_addr().unwrap().port().to_string(),
+        )
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    let mut child = command.spawn().unwrap();
+    struct Reap<'a>(&'a mut std::process::Child);
+    impl Drop for Reap<'_> {
+        fn drop(&mut self) {
+            atlas::heard!(self.0.kill());
+            atlas::heard!(self.0.wait());
+        }
+    }
+    let guard = Reap(&mut child);
+    guard.0.stdin.take().unwrap().write_all(&[7; 32]).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut stream = loop {
+        match listener.accept() {
+            Ok((stream, peer)) => {
+                assert!(peer.ip().is_loopback());
+                stream.set_nonblocking(false).unwrap();
+                break stream;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                assert!(Instant::now() < deadline, "actual helper never connected");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(e) => panic!("{e}"),
+        }
+    };
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    let mut token = [0; 32];
+    stream.read_exact(&mut token).unwrap();
+    assert_eq!(token, [7; 32]);
+    stream.write_all(&1u32.to_le_bytes()).unwrap();
+    stream.write_all(b"!").unwrap();
+    loop {
+        if let Some(status) = guard.0.try_wait().unwrap() {
+            assert_eq!(status.code(), Some(2));
+            break;
+        }
+        assert!(Instant::now() < deadline, "malformed worker was not reaped");
+        std::thread::sleep(Duration::from_millis(5));
+    }
 }

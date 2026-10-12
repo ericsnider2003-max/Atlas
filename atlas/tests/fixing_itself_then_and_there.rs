@@ -46,7 +46,12 @@ fn cfg() -> SelfWorkConfig {
 }
 
 /// A change from `sandbox` content to a real file.
-fn change(dir: &PathBuf, target_rel: &str, sandbox_text: &str, target_text: Option<&str>) -> Change {
+fn change(
+    dir: &PathBuf,
+    target_rel: &str,
+    sandbox_text: &str,
+    target_text: Option<&str>,
+) -> Change {
     let source = dir.join("sandbox-copy.rs");
     std::fs::write(&source, sandbox_text).unwrap();
     let target = dir.join(target_rel);
@@ -67,7 +72,12 @@ fn change(dir: &PathBuf, target_rel: &str, sandbox_text: &str, target_text: Opti
 }
 
 fn clean_review() -> Review {
-    Review { notes: vec![Note { kind: Concern::Fine, what: "does what it said".into() }] }
+    Review {
+        notes: vec![Note {
+            kind: Concern::Fine,
+            what: "does what it said".into(),
+        }],
+    }
 }
 
 /// A standing grant that covers an ordinary fix.
@@ -97,13 +107,21 @@ fn a_change_that_passes_and_papers_over_nothing_lands() {
         Some("fn thing() -> u32 {\n    0\n}\n"),
     );
 
-    let held = what_holds_it_back(std::slice::from_ref(&c), Some(&clean_review()), &cfg(), &grant(), &dir);
+    let held = what_holds_it_back(
+        std::slice::from_ref(&c),
+        Some(&clean_review()),
+        &cfg(),
+        &grant(),
+        &dir,
+    );
     assert!(held.is_empty(), "a genuine fix was held back: {held:?}");
 
     let keep = dir.join("kept");
     assert_eq!(land(std::slice::from_ref(&c), &keep).unwrap(), 1);
     assert!(
-        std::fs::read_to_string(&c.target).unwrap().contains("compute()"),
+        std::fs::read_to_string(&c.target)
+            .unwrap()
+            .contains("compute()"),
         "it reported landing and the file is unchanged"
     );
 }
@@ -120,24 +138,55 @@ fn a_land_that_fails_partway_undoes_everything_it_already_did() {
     std::fs::write(&src1, "the new version").unwrap();
     let tgt1 = dir.join("a.rs");
     std::fs::write(&tgt1, "the old version").unwrap();
-    let c1 = Change { bytes: 15, new_file: false, target_was: Fingerprint::of(&tgt1), target: tgt1.clone(), source: src1 };
+    let c1 = Change {
+        bytes: 15,
+        new_file: false,
+        target_was: Fingerprint::of(&tgt1),
+        target: tgt1.clone(),
+        source: src1,
+    };
 
     // 2. Create a brand-new file.
     let src2 = dir.join("src2.rs");
     std::fs::write(&src2, "a new file's contents").unwrap();
     let tgt2 = dir.join("b.rs");
-    let c2 = Change { bytes: 21, new_file: true, target_was: None, target: tgt2.clone(), source: src2 };
+    let c2 = Change {
+        bytes: 21,
+        new_file: true,
+        target_was: None,
+        target: tgt2.clone(),
+        source: src2,
+    };
 
     // 3. A change whose source does not exist, so the copy fails.
     let tgt3 = dir.join("c.rs");
-    let c3 = Change { bytes: 0, new_file: true, target_was: None, target: tgt3.clone(), source: dir.join("missing.rs") };
+    let c3 = Change {
+        bytes: 0,
+        new_file: true,
+        target_was: None,
+        target: tgt3.clone(),
+        source: dir.join("missing.rs"),
+    };
 
     let keep = dir.join("kept");
     let result = land(&[c1, c2, c3], &keep);
-    assert!(result.is_err(), "a land with an unreadable source must fail, not partially succeed");
-    assert_eq!(std::fs::read_to_string(&tgt1).unwrap(), "the old version", "the overwritten file was restored");
-    assert!(!tgt2.exists(), "the new file created before the failure was removed");
-    assert!(!tgt3.exists(), "the file that failed to copy is not on disk");
+    assert!(
+        result.is_err(),
+        "a land with an unreadable source must fail, not partially succeed"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&tgt1).unwrap(),
+        "the old version",
+        "the overwritten file was restored"
+    );
+    assert!(
+        !tgt2.exists(),
+        "the new file created before the failure was removed"
+    );
+    assert!(
+        !tgt3.exists(),
+        "the file that failed to copy is not on disk"
+    );
 }
 
 #[test]
@@ -174,7 +223,13 @@ fn a_change_that_deletes_the_test_is_held() {
     let with_a_test = format!("fn thing() {{}}\n{marker}\nfn it_works() {{ assert!(thing()); }}\n");
     let c = change(&dir, "src/thing.rs", "fn thing() {}\n", Some(&with_a_test));
 
-    let held = what_holds_it_back(std::slice::from_ref(&c), Some(&clean_review()), &cfg(), &grant(), &dir);
+    let held = what_holds_it_back(
+        std::slice::from_ref(&c),
+        Some(&clean_review()),
+        &cfg(),
+        &grant(),
+        &dir,
+    );
     assert!(
         held.iter().any(|h| matches!(h, Held::PapersOver(_))),
         "a deleted test was allowed to land: {held:?}"
@@ -190,11 +245,25 @@ fn the_six_paper_over_shapes_are_each_held() {
         ("a silenced warning", "#[allow(dead_code)]"),
         ("a widened type", "fn thing() -> Any {}"),
         ("a swallowed error", "except Exception: pass"),
-        ("a defaulted failure", "let n = compute().unwrap_or_default();"),
+        (
+            "a defaulted failure",
+            "let n = compute().unwrap_or_default();",
+        ),
     ] {
         let dir = tmp(&format!("shape-{}", line.len()));
-        let c = change(&dir, "src/thing.rs", &format!("fn thing() {{}}\n{line}\n"), Some("fn thing() {}\n"));
-        let held = what_holds_it_back(std::slice::from_ref(&c), Some(&clean_review()), &cfg(), &grant(), &dir);
+        let c = change(
+            &dir,
+            "src/thing.rs",
+            &format!("fn thing() {{}}\n{line}\n"),
+            Some("fn thing() {}\n"),
+        );
+        let held = what_holds_it_back(
+            std::slice::from_ref(&c),
+            Some(&clean_review()),
+            &cfg(),
+            &grant(),
+            &dir,
+        );
         assert!(
             held.iter().any(|h| matches!(h, Held::PapersOver(_))),
             "{name} was allowed to land: {held:?}"
@@ -205,15 +274,32 @@ fn the_six_paper_over_shapes_are_each_held() {
 #[test]
 fn what_is_wrong_with_it_is_said_rather_than_just_refused() {
     let dir = tmp("why");
-    let c = change(&dir, "src/thing.rs", "fn thing() {}\n#[ignore]\n", Some("fn thing() {}\n"));
-    let held = what_holds_it_back(std::slice::from_ref(&c), Some(&clean_review()), &cfg(), &grant(), &dir);
+    let c = change(
+        &dir,
+        "src/thing.rs",
+        "fn thing() {}\n#[ignore]\n",
+        Some("fn thing() {}\n"),
+    );
+    let held = what_holds_it_back(
+        std::slice::from_ref(&c),
+        Some(&clean_review()),
+        &cfg(),
+        &grant(),
+        &dir,
+    );
     let said = held
         .iter()
         .find(|h| matches!(h, Held::PapersOver(_)))
         .expect("no paper-over was reported")
         .plain();
-    assert!(said.contains("never fail again"), "it did not say why it is not a fix: {said}");
-    assert!(said.contains("haven't landed it"), "it did not say what it did: {said}");
+    assert!(
+        said.contains("never fail again"),
+        "it did not say why it is not a fix: {said}"
+    );
+    assert!(
+        said.contains("haven't landed it"),
+        "it did not say what it did: {said}"
+    );
 }
 
 // ============ the paths that are not Atlas's ===========================
@@ -222,8 +308,19 @@ fn what_is_wrong_with_it_is_said_rather_than_just_refused() {
 fn it_may_not_edit_the_file_that_decides_what_it_may_edit() {
     // A system that can edit its own permissions has none.
     let dir = tmp("permissions");
-    let c = change(&dir, "src/policy.rs", "fn anything_goes() {}\n", Some("fn strict() {}\n"));
-    let held = what_holds_it_back(std::slice::from_ref(&c), Some(&clean_review()), &cfg(), &grant(), &dir);
+    let c = change(
+        &dir,
+        "src/policy.rs",
+        "fn anything_goes() {}\n",
+        Some("fn strict() {}\n"),
+    );
+    let held = what_holds_it_back(
+        std::slice::from_ref(&c),
+        Some(&clean_review()),
+        &cfg(),
+        &grant(),
+        &dir,
+    );
     assert!(
         held.iter().any(|h| matches!(h, Held::NotMine(_))),
         "it was allowed to rewrite its own limits: {held:?}"
@@ -234,8 +331,17 @@ fn it_may_not_edit_the_file_that_decides_what_it_may_edit() {
 fn a_path_outside_the_parts_it_works_on_is_held() {
     let dir = tmp("outside");
     let c = change(&dir, "elsewhere/thing.rs", "new\n", Some("old\n"));
-    let held = what_holds_it_back(std::slice::from_ref(&c), Some(&clean_review()), &cfg(), &grant(), &dir);
-    assert!(held.iter().any(|h| matches!(h, Held::NotMine(_))), "got: {held:?}");
+    let held = what_holds_it_back(
+        std::slice::from_ref(&c),
+        Some(&clean_review()),
+        &cfg(),
+        &grant(),
+        &dir,
+    );
+    assert!(
+        held.iter().any(|h| matches!(h, Held::NotMine(_))),
+        "got: {held:?}"
+    );
 }
 
 // ============ your edits win =============================================
@@ -246,13 +352,28 @@ fn it_does_not_land_on_top_of_something_you_changed_meanwhile() {
     // the gap hours wide, and a whole-file copy silently wins against an
     // evening's editing.
     let dir = tmp("yours");
-    let c = change(&dir, "src/thing.rs", "what Atlas built\n", Some("what was there\n"));
+    let c = change(
+        &dir,
+        "src/thing.rs",
+        "what Atlas built\n",
+        Some("what was there\n"),
+    );
 
     // You edit it while Atlas is working.
     std::thread::sleep(std::time::Duration::from_millis(1100));
-    std::fs::write(&c.target, "what you just wrote, which is longer than before\n").unwrap();
+    std::fs::write(
+        &c.target,
+        "what you just wrote, which is longer than before\n",
+    )
+    .unwrap();
 
-    let held = what_holds_it_back(std::slice::from_ref(&c), Some(&clean_review()), &cfg(), &grant(), &dir);
+    let held = what_holds_it_back(
+        std::slice::from_ref(&c),
+        Some(&clean_review()),
+        &cfg(),
+        &grant(),
+        &dir,
+    );
     assert!(
         held.iter().any(|h| matches!(h, Held::YouChangedIt(_))),
         "it landed over your edit: {held:?}"
@@ -262,7 +383,10 @@ fn it_does_not_land_on_top_of_something_you_changed_meanwhile() {
         .find(|h| matches!(h, Held::YouChangedIt(_)))
         .expect("your edit was not the reason given")
         .plain();
-    assert!(said.contains("still in the sandbox"), "it did not say where the work went: {said}");
+    assert!(
+        said.contains("still in the sandbox"),
+        "it did not say where the work went: {said}"
+    );
 }
 
 #[test]
@@ -271,7 +395,13 @@ fn a_file_you_deleted_is_not_quietly_recreated() {
     let c = change(&dir, "src/thing.rs", "new\n", Some("old\n"));
     std::fs::remove_file(&c.target).unwrap();
 
-    let held = what_holds_it_back(std::slice::from_ref(&c), Some(&clean_review()), &cfg(), &grant(), &dir);
+    let held = what_holds_it_back(
+        std::slice::from_ref(&c),
+        Some(&clean_review()),
+        &cfg(),
+        &grant(),
+        &dir,
+    );
     assert!(
         held.iter().any(|h| matches!(h, Held::YouChangedIt(_))),
         "it put back a file you deleted: {held:?}"
@@ -282,8 +412,13 @@ fn a_file_you_deleted_is_not_quietly_recreated() {
 fn a_genuinely_new_file_is_not_treated_as_one_you_changed() {
     let dir = tmp("new");
     let c = change(&dir, "src/brand_new.rs", "fn fresh() {}\n", None);
-    let held =
-        what_holds_it_back(std::slice::from_ref(&c), Some(&clean_review()), &cfg(), &grant(), &dir);
+    let held = what_holds_it_back(
+        std::slice::from_ref(&c),
+        Some(&clean_review()),
+        &cfg(),
+        &grant(),
+        &dir,
+    );
     // Narrowed from `held.is_empty()`, which was asserting more than this
     // test is about. A new file really is held — as `Reach::SomethingNew`,
     // which `how_it_decides` does not cover and which
@@ -295,7 +430,9 @@ fn a_genuinely_new_file_is_not_treated_as_one_you_changed() {
         "a file that did not exist was reported as one you edited meanwhile: {held:?}"
     );
     assert!(
-        !held.iter().any(|h| matches!(h, Held::NotMine(_) | Held::PapersOver(_))),
+        !held
+            .iter()
+            .any(|h| matches!(h, Held::NotMine(_) | Held::PapersOver(_))),
         "a plain new source file was refused on its path or its contents: {held:?}"
     );
 }
@@ -309,8 +446,13 @@ fn a_new_module_is_asked_about_rather_than_added_quietly() {
     // caller — so a new module landed under a grant that covers rewording.
     let dir = tmp("new-module");
     let c = change(&dir, "src/brand_new.rs", "fn fresh() {}\n", None);
-    let held =
-        what_holds_it_back(std::slice::from_ref(&c), Some(&clean_review()), &cfg(), &grant(), &dir);
+    let held = what_holds_it_back(
+        std::slice::from_ref(&c),
+        Some(&clean_review()),
+        &cfg(),
+        &grant(),
+        &dir,
+    );
     let why = held
         .iter()
         .find_map(|h| match h {
@@ -336,8 +478,17 @@ fn a_fix_the_review_blocked_does_not_land() {
             what: "the cause was in src/other.rs and nothing there changed".into(),
         }],
     };
-    let held = what_holds_it_back(std::slice::from_ref(&c), Some(&blocked), &cfg(), &grant(), &dir);
-    assert!(held.iter().any(|h| matches!(h, Held::ReviewSaysNo(_))), "got: {held:?}");
+    let held = what_holds_it_back(
+        std::slice::from_ref(&c),
+        Some(&blocked),
+        &cfg(),
+        &grant(),
+        &dir,
+    );
+    assert!(
+        held.iter().any(|h| matches!(h, Held::ReviewSaysNo(_))),
+        "got: {held:?}"
+    );
 }
 
 #[test]
@@ -345,13 +496,31 @@ fn every_reason_is_reported_not_only_the_first() {
     // Three problems learned one round at a time is three rounds, and the
     // second and third are usually the informative ones.
     let dir = tmp("all");
-    let c = change(&dir, "src/policy.rs", "fn thing() {}\n#[ignore]\n", Some("fn thing() {}\n"));
+    let c = change(
+        &dir,
+        "src/policy.rs",
+        "fn thing() {}\n#[ignore]\n",
+        Some("fn thing() {}\n"),
+    );
     let blocked = Review {
-        notes: vec![Note { kind: Concern::TestWeakened, what: "two fewer tests".into() }],
+        notes: vec![Note {
+            kind: Concern::TestWeakened,
+            what: "two fewer tests".into(),
+        }],
     };
-    let held = what_holds_it_back(std::slice::from_ref(&c), Some(&blocked), &cfg(), &grant(), &dir);
+    let held = what_holds_it_back(
+        std::slice::from_ref(&c),
+        Some(&blocked),
+        &cfg(),
+        &grant(),
+        &dir,
+    );
 
-    assert!(held.len() >= 3, "only {} reason(s) reported: {held:?}", held.len());
+    assert!(
+        held.len() >= 3,
+        "only {} reason(s) reported: {held:?}",
+        held.len()
+    );
     assert!(held.iter().any(|h| matches!(h, Held::NotMine(_))));
     assert!(held.iter().any(|h| matches!(h, Held::PapersOver(_))));
     assert!(held.iter().any(|h| matches!(h, Held::ReviewSaysNo(_))));
@@ -408,9 +577,19 @@ fn a_change_reaching_further_than_the_grant_is_held_and_says_so() {
     // `how_it_decides`. It is a real file Atlas is allowed to edit, so this
     // is the grant refusing rather than the never-list.
     let dir = tmp("further");
-    let c = change(&dir, "src/browser.rs", "fn new() {}\n", Some("fn old() {}\n"));
-    let held =
-        what_holds_it_back(std::slice::from_ref(&c), Some(&clean_review()), &cfg(), &grant(), &dir);
+    let c = change(
+        &dir,
+        "src/browser.rs",
+        "fn new() {}\n",
+        Some("fn old() {}\n"),
+    );
+    let held = what_holds_it_back(
+        std::slice::from_ref(&c),
+        Some(&clean_review()),
+        &cfg(),
+        &grant(),
+        &dir,
+    );
     assert!(
         !held.iter().any(|h| matches!(h, Held::NotMine(_))),
         "src/browser.rs is not on the never-list, so this is the wrong refusal: {held:?}"
@@ -433,10 +612,19 @@ fn a_change_to_its_own_limits_is_never_rather_than_not_yet() {
     // The distinction matters: "you haven't said I can" invites you to say
     // it, and this is not a thing you can say.
     let dir = tmp("never");
-    let c = change(&dir, "config/tools.yaml", "self_grant:\n  may_change: its_own_limits\n",
-        Some("self_grant:\n  may_change: nothing\n"));
-    let held =
-        what_holds_it_back(std::slice::from_ref(&c), Some(&clean_review()), &cfg(), &grant(), &dir);
+    let c = change(
+        &dir,
+        "config/tools.yaml",
+        "self_grant:\n  may_change: its_own_limits\n",
+        Some("self_grant:\n  may_change: nothing\n"),
+    );
+    let held = what_holds_it_back(
+        std::slice::from_ref(&c),
+        Some(&clean_review()),
+        &cfg(),
+        &grant(),
+        &dir,
+    );
     assert!(
         held.iter().any(|h| matches!(h, Held::NeverMine(_))),
         "editing the file that holds its own grant was treated as merely ungranted: {held:?}"
@@ -468,6 +656,13 @@ fn a_session_carries_its_stage_across_a_save() {
     s.work.stage = atlas::pipeline::Stage::Review;
     s.work.rounds = 2;
     let back: Session = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
-    assert_eq!(back.work.stage, atlas::pipeline::Stage::Review, "the stage was lost");
-    assert_eq!(back.work.rounds, 2, "the rounds were lost, so max_rounds can never bite");
+    assert_eq!(
+        back.work.stage,
+        atlas::pipeline::Stage::Review,
+        "the stage was lost"
+    );
+    assert_eq!(
+        back.work.rounds, 2,
+        "the rounds were lost, so max_rounds can never bite"
+    );
 }

@@ -54,14 +54,19 @@ pub fn wait_after(seen: u64, ms: u64) -> bool {
     // day and looks again.
     let ms = LONGEST_SLEEP_MS.map_or(ms, |most| ms.min(most));
     let now = Instant::now();
-    let until = now.checked_add(Duration::from_millis(ms)).unwrap_or(now + Duration::from_secs(86_400));
+    let until = now
+        .checked_add(Duration::from_millis(ms))
+        .unwrap_or(now + Duration::from_secs(86_400));
     let mut n = RUNG.lock().unwrap_or_else(PoisonError::into_inner);
     while *n == seen {
         let left = until.saturating_duration_since(Instant::now());
         if left.is_zero() {
             return false;
         }
-        n = BELL.wait_timeout(n, left).unwrap_or_else(PoisonError::into_inner).0;
+        n = BELL
+            .wait_timeout(n, left)
+            .unwrap_or_else(PoisonError::into_inner)
+            .0;
     }
     true
 }

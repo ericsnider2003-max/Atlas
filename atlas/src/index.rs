@@ -26,11 +26,16 @@ pub enum AssetClass {
 impl AssetClass {
     pub fn of(ext: &str) -> Self {
         match ext.to_lowercase().as_str() {
-            "pdf" | "docx" | "doc" | "txt" | "md" | "rtf" | "odt" | "pptx" | "xlsx" | "csv" => Self::Document,
-            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tiff" | "svg" | "heic" => Self::Image,
+            "pdf" | "docx" | "doc" | "txt" | "md" | "rtf" | "odt" | "pptx" | "xlsx" | "csv" => {
+                Self::Document
+            }
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tiff" | "svg" | "heic" => {
+                Self::Image
+            }
             "mp4" | "mov" | "mkv" | "avi" | "webm" | "wmv" | "m4v" => Self::Video,
             "mp3" | "wav" | "flac" | "m4a" | "aac" | "ogg" => Self::Audio,
-            "rs" | "py" | "js" | "ts" | "go" | "c" | "cpp" | "h" | "java" | "cs" | "rb" | "sh" | "ps1" | "yaml" | "yml" | "json" | "toml" => Self::Code,
+            "rs" | "py" | "js" | "ts" | "go" | "c" | "cpp" | "h" | "java" | "cs" | "rb" | "sh"
+            | "ps1" | "yaml" | "yml" | "json" | "toml" => Self::Code,
             "zip" | "7z" | "rar" | "tar" | "gz" => Self::Archive,
             _ => Self::Other,
         }
@@ -61,8 +66,12 @@ pub struct IndexConfig {
     #[serde(default = "d_maxmb")]
     pub max_enrich_mb: u64,
 }
-fn d_depth() -> u32 { 8 }
-fn d_maxmb() -> u64 { 20 }
+fn d_depth() -> u32 {
+    8
+}
+fn d_maxmb() -> u64 {
+    20
+}
 
 impl IndexConfig {
     fn excluded_dir(&self, name: &str) -> bool {
@@ -186,7 +195,11 @@ impl Changes {
 
 impl Index {
     pub fn scan(cfg: &IndexConfig) -> Index {
-        let mut idx = Index { entries: BTreeMap::new(), last_scan: now(), missed: Missed::default() };
+        let mut idx = Index {
+            entries: BTreeMap::new(),
+            last_scan: now(),
+            missed: Missed::default(),
+        };
         for root in &Self::roots_of(cfg) {
             let mut missed = std::mem::take(&mut idx.missed);
             walk(root, cfg, 0, &mut idx.entries, &mut missed);
@@ -255,7 +268,9 @@ impl Index {
         // paths freed one by one was part of the half-second (30 Sep 2026).
         let old = std::mem::replace(&mut self.entries, fresh.entries);
         if old.len() > 5_000 {
-            crate::heard!(std::thread::Builder::new().name("atlas-index-free".into()).spawn(move || drop(old)));
+            crate::heard!(std::thread::Builder::new()
+                .name("atlas-index-free".into())
+                .spawn(move || drop(old)));
         }
         self.last_scan = fresh.last_scan;
         c
@@ -300,9 +315,16 @@ impl Index {
     /// is represented by its best chunk — so the answer can say
     /// `plan.md:112-131` and quote the paragraph that matched, rather than
     /// the first place a word happened to appear in the newest file.
-    pub fn search_content(&self, query: &str, cfg: &IndexConfig, max_hits: usize) -> Vec<ContentHit> {
-        let stems: Vec<String> =
-            crate::stemmer::stems_of(query).into_iter().filter(|w| w.chars().count() > 2).collect();
+    pub fn search_content(
+        &self,
+        query: &str,
+        cfg: &IndexConfig,
+        max_hits: usize,
+    ) -> Vec<ContentHit> {
+        let stems: Vec<String> = crate::stemmer::stems_of(query)
+            .into_iter()
+            .filter(|w| w.chars().count() > 2)
+            .collect();
         if stems.is_empty() {
             return Vec::new();
         }
@@ -317,7 +339,10 @@ impl Index {
         let mut ix = crate::bm25::Index::default();
         // (the file, the passage, and the file inside it when it's an archive)
         let mut chunks: Vec<(&Entry, crate::chunker::Chunk, Option<String>)> = Vec::new();
-        let shape = crate::chunker::ChunkConfig { max: 800, overlap: 0 };
+        let shape = crate::chunker::ChunkConfig {
+            max: 800,
+            overlap: 0,
+        };
         // Every text to search: plain files, and — inside .zip archives
         // (`zipread`), behind the same unpack guard that refuses a zip bomb
         // before anything is inflated — the text files they hold.
@@ -327,9 +352,19 @@ impl Index {
                 sources.push((e, text, None));
             }
         }
-        for e in self.entries.values().filter(|e| e.class == AssetClass::Archive && e.name.to_lowercase().ends_with(".zip") && e.size <= cap) {
-            let Ok(bytes) = std::fs::read(&e.path) else { continue };
-            let Ok(members) = crate::zipread::texts_inside(&bytes, &crate::files::FilesConfig::default(), cap) else { continue };
+        for e in self.entries.values().filter(|e| {
+            e.class == AssetClass::Archive
+                && e.name.to_lowercase().ends_with(".zip")
+                && e.size <= cap
+        }) {
+            let Ok(bytes) = std::fs::read(&e.path) else {
+                continue;
+            };
+            let Ok(members) =
+                crate::zipread::texts_inside(&bytes, &crate::files::FilesConfig::default(), cap)
+            else {
+                continue;
+            };
             sources.extend(members.into_iter().map(|(m, t)| (e, t, Some(m))));
         }
         for (e, text, member) in sources {
@@ -426,9 +461,11 @@ impl Loading {
     pub fn start(store: &Store) -> Loading {
         let (tx, rx) = std::sync::mpsc::channel();
         let theirs = store.clone();
-        let started = std::thread::Builder::new().name("atlas-index-load".into()).spawn(move || {
-            let _ = tx.send(Index::load(&theirs));
-        });
+        let started = std::thread::Builder::new()
+            .name("atlas-index-load".into())
+            .spawn(move || {
+                let _ = tx.send(Index::load(&theirs));
+            });
         match started {
             Ok(_) => Loading { rx: Some(rx) },
             // No thread: read it here, as before, rather than not at all.
@@ -455,7 +492,9 @@ impl Loading {
     /// `current` is untouched (nothing in it and never scanned); otherwise
     /// what is in memory is newer and stays.
     pub fn settle(&mut self, current: &mut Index) -> Settled {
-        let Some(rx) = &self.rx else { return Settled::Ready };
+        let Some(rx) = &self.rx else {
+            return Settled::Ready;
+        };
         let loaded = match rx.try_recv() {
             Ok(i) => i,
             Err(std::sync::mpsc::TryRecvError::Empty) => return Settled::StillLoading,
@@ -489,7 +528,8 @@ impl Loading {
 
 /// What to say when a search finds nothing while the index is still being
 /// read (`Loading`).
-pub const STILL_READING: &str = "I'm still reading the list of your files from when I last looked -- \
+pub const STILL_READING: &str =
+    "I'm still reading the list of your files from when I last looked -- \
      ask again in a few seconds and I'll have all of it.";
 
 fn walk(
@@ -532,7 +572,10 @@ fn walk(
             }
             continue;
         }
-        let ext = p.extension().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let ext = p
+            .extension()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
         if cfg.excluded_ext(&ext) {
             continue;
         }
@@ -554,7 +597,14 @@ fn walk(
         let key = p.to_string_lossy().to_string();
         out.insert(
             key.clone(),
-            Entry { path: key, name, ext: ext.clone(), size: md.len(), modified, class: AssetClass::of(&ext) },
+            Entry {
+                path: key,
+                name,
+                ext: ext.clone(),
+                size: md.len(),
+                modified,
+                class: AssetClass::of(&ext),
+            },
         );
     }
 }

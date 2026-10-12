@@ -73,30 +73,38 @@ impl Category {
     /// What Atlas can say about it, honestly.
     pub fn note(&self) -> Option<&'static str> {
         Some(match self {
-            Category::Meals =>
+            Category::Meals => {
                 "Business meals are generally 50% deductible, and you need to record who and why. \
-                 Meals on your own while working usually don't count.",
-            Category::Internet | Category::Phone =>
+                 Meals on your own while working usually don't count."
+            }
+            Category::Internet | Category::Phone => {
                 "Only the business share is deductible, and you need a defensible way of working \
-                 out what that share is.",
-            Category::Office =>
+                 out what that share is."
+            }
+            Category::Office => {
                 "A home office has to be used regularly and exclusively for business — a desk in \
-                 the corner of a room you also live in generally doesn't qualify.",
-            Category::Hardware =>
+                 the corner of a room you also live in generally doesn't qualify."
+            }
+            Category::Hardware => {
                 "Equipment can often be deducted in the year you buy it rather than depreciated, \
-                 but there are limits and elections involved.",
-            Category::Travel =>
+                 but there are limits and elections involved."
+            }
+            Category::Travel => {
                 "Travel needs a business purpose and the days need to be mostly business. Keep \
-                 the itinerary, not just the receipt.",
-            Category::Education =>
+                 the itinerary, not just the receipt."
+            }
+            Category::Education => {
                 "Training that maintains or improves skills in your current trade is usually \
-                 deductible. Training that qualifies you for a new one usually isn't.",
-            Category::Investment =>
+                 deductible. Training that qualifies you for a new one usually isn't."
+            }
+            Category::Investment => {
                 "Brokerage transfers aren't income or expense — they're your own money moving. \
-                 The gains are what matter, and they're on the 1099.",
-            Category::Fees =>
+                 The gains are what matter, and they're on the 1099."
+            }
+            Category::Fees => {
                 "Platform, data and exchange fees are usually a business expense if you're \
-                 trading as a business. If you're not, the treatment is different.",
+                 trading as a business. If you're not, the treatment is different."
+            }
             _ => return None,
         })
     }
@@ -194,36 +202,101 @@ pub fn categorise(t: &Transaction) -> Category {
     let d = t.description.to_lowercase();
     let has = |words: &[&str]| words.iter().any(|w| d.contains(w));
 
-    if t.amount > 0.0 && has(&["payroll", "salary", "deposit from", "invoice", "stripe", "payment from"]) {
+    if t.amount > 0.0
+        && has(&[
+            "payroll",
+            "salary",
+            "deposit from",
+            "invoice",
+            "stripe",
+            "payment from",
+        ])
+    {
         return Category::Income;
     }
     // Fees first: a charge from a broker is a fee, not money moving into a
     // brokerage. Matching the broker's name first gets that backwards.
-    if has(&["exchange fee", "data feed", "market data", "commission", "platform fee", "clearing", "cme "]) {
+    if has(&[
+        "exchange fee",
+        "data feed",
+        "market data",
+        "commission",
+        "platform fee",
+        "clearing",
+        "cme ",
+    ]) {
         return Category::Fees;
     }
-    if has(&["schwab", "fidelity", "interactive brokers", "tastytrade", "tradestation", "coinbase", "brokerage"]) {
+    if has(&[
+        "schwab",
+        "fidelity",
+        "interactive brokers",
+        "tastytrade",
+        "tradestation",
+        "coinbase",
+        "brokerage",
+    ]) {
         return Category::Investment;
     }
     if has(&["transfer", "zelle", "venmo", "payment to card", "autopay"]) {
         return Category::Transfer;
     }
-    if has(&["aws", "azure", "github", "jetbrains", "adobe", "microsoft 365", "google workspace", "figma", "notion"]) {
+    if has(&[
+        "aws",
+        "azure",
+        "github",
+        "jetbrains",
+        "adobe",
+        "microsoft 365",
+        "google workspace",
+        "figma",
+        "notion",
+    ]) {
         return Category::Software;
     }
-    if has(&["dell", "apple store", "newegg", "micro center", "best buy", "monitor", "laptop"]) {
+    if has(&[
+        "dell",
+        "apple store",
+        "newegg",
+        "micro center",
+        "best buy",
+        "monitor",
+        "laptop",
+    ]) {
         return Category::Hardware;
     }
-    if has(&["comcast", "xfinity", "spectrum", "fiber", "broadband", "internet"]) {
+    if has(&[
+        "comcast",
+        "xfinity",
+        "spectrum",
+        "fiber",
+        "broadband",
+        "internet",
+    ]) {
         return Category::Internet;
     }
     if has(&["verizon", "at&t", "t-mobile", "mint mobile"]) {
         return Category::Phone;
     }
-    if has(&["netflix", "spotify", "hulu", "disney", "prime video", "patreon", "substack"]) {
+    if has(&[
+        "netflix",
+        "spotify",
+        "hulu",
+        "disney",
+        "prime video",
+        "patreon",
+        "substack",
+    ]) {
         return Category::Subscription;
     }
-    if has(&["udemy", "coursera", "pluralsight", "books", "course", "training"]) {
+    if has(&[
+        "udemy",
+        "coursera",
+        "pluralsight",
+        "books",
+        "course",
+        "training",
+    ]) {
         return Category::Education;
     }
     if has(&["accountant", "cpa", "attorney", "legal", "bookkeep"]) {
@@ -235,13 +308,30 @@ pub fn categorise(t: &Transaction) -> Category {
     if has(&["electric", "gas company", "water", "utility", "power"]) {
         return Category::Utilities;
     }
-    if has(&["uber", "lyft", "shell", "chevron", "parking", "toll", "transit"]) {
+    if has(&[
+        "uber", "lyft", "shell", "chevron", "parking", "toll", "transit",
+    ]) {
         return Category::Transport;
     }
-    if has(&["kroger", "safeway", "whole foods", "trader joe", "aldi", "grocer"]) {
+    if has(&[
+        "kroger",
+        "safeway",
+        "whole foods",
+        "trader joe",
+        "aldi",
+        "grocer",
+    ]) {
         return Category::Groceries;
     }
-    if has(&["restaurant", "cafe", "coffee", "doordash", "grubhub", "pizza", "bar "]) {
+    if has(&[
+        "restaurant",
+        "cafe",
+        "coffee",
+        "doordash",
+        "grubhub",
+        "pizza",
+        "bar ",
+    ]) {
         return Category::Meals;
     }
     if has(&["pharmacy", "cvs", "walgreens", "doctor", "dental", "clinic"]) {
@@ -276,7 +366,11 @@ pub fn summarise(txns: &[Transaction]) -> Summary {
     let mut totals: std::collections::BTreeMap<Category, f64> = Default::default();
 
     for t in txns {
-        let c = t.category.as_deref().map(parse_category).unwrap_or_else(|| categorise(t));
+        let c = t
+            .category
+            .as_deref()
+            .map(parse_category)
+            .unwrap_or_else(|| categorise(t));
         if c == Category::Unknown {
             s.unrecognised += 1;
         }
@@ -298,7 +392,12 @@ pub fn summarise(txns: &[Transaction]) -> Summary {
     }
 
     let mut by: Vec<(Category, f64)> = totals.into_iter().collect();
-    by.sort_by(|a, b| a.1.abs().partial_cmp(&b.1.abs()).unwrap_or(std::cmp::Ordering::Equal).reverse());
+    by.sort_by(|a, b| {
+        a.1.abs()
+            .partial_cmp(&b.1.abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .reverse()
+    });
     s.by_category = by;
     s
 }
@@ -321,10 +420,9 @@ pub fn spoken(s: &Summary) -> String {
     }
     // The biggest outgoing, not the biggest line: income being the largest
     // number tells you nothing.
-    let biggest = s
-        .by_category
-        .iter()
-        .find(|(c, amount)| *amount < 0.0 && *c != Category::Transfer && *c != Category::Investment);
+    let biggest = s.by_category.iter().find(|(c, amount)| {
+        *amount < 0.0 && *c != Category::Transfer && *c != Category::Investment
+    });
     let mut out = format!(
         "In {:.0}, out {:.0}, net {:.0}.",
         s.in_total,

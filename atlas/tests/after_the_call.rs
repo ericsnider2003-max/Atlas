@@ -17,7 +17,11 @@ They do: Sam sends the final photos tomorrow\n\
 You do: book the photographer for the grand opening";
     let f = follow_ups(summary, CALL);
     assert_eq!(f.agreed, vec!["launch the bakery site on Tuesday"]);
-    assert_eq!(f.yours, vec!["update the menu prices tonight", "email the printer"], "the made-up one is dropped");
+    assert_eq!(
+        f.yours,
+        vec!["update the menu prices tonight", "email the printer"],
+        "the made-up one is dropped"
+    );
     assert_eq!(f.theirs, vec!["Sam sends the final photos tomorrow"]);
     assert_eq!(
         follow_ups_said(&f, 2),

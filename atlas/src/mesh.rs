@@ -68,7 +68,12 @@ impl Mesh {
     /// Named `from_setting` rather than `named`: `messaging::Platform` has a
     /// `named`, and the deadness scans read bare names.
     pub fn from_setting(s: &str) -> Option<Mesh> {
-        match s.trim().to_lowercase().replace([' ', '-', '_'], "").as_str() {
+        match s
+            .trim()
+            .to_lowercase()
+            .replace([' ', '-', '_'], "")
+            .as_str()
+        {
             "tailscale" => Some(Mesh::Tailscale),
             "headscale" => Some(Mesh::Headscale),
             "wireguard" | "wg" => Some(Mesh::Wireguard),
@@ -94,7 +99,9 @@ impl Mesh {
                  write the configs; it needs one port forwarded on your router and a name that \
                  follows your home address, or it breaks when that address changes"
             }
-            Mesh::None => "everything still works, just through the cloud folder rather than directly",
+            Mesh::None => {
+                "everything still works, just through the cloud folder rather than directly"
+            }
         }
     }
 }
@@ -205,7 +212,10 @@ pub fn choose(
         return (Path::SameNetwork, "same wifi — direct");
     }
     if cfg.enabled && mesh_up {
-        return (Path::Mesh, "over the private network — direct, even on cell");
+        return (
+            Path::Mesh,
+            "over the private network — direct, even on cell",
+        );
     }
     if plugged_in {
         return (Path::Cable, "plugged in");
@@ -213,7 +223,10 @@ pub fn choose(
     if cloud_ok && cfg.fall_back {
         return (Path::Cloud, "through the cloud folder — it'll land shortly");
     }
-    (Path::Nothing, "nothing's reachable, so I'll hold it until something is")
+    (
+        Path::Nothing,
+        "nothing's reachable, so I'll hold it until something is",
+    )
 }
 
 /// Can Atlas set it up for you?
@@ -233,17 +246,24 @@ pub fn setup_steps(mesh: Mesh) -> Vec<(&'static str, bool)> {
             ("approve this machine joining your network", false),
             ("check the laptop and phone can see each other", true),
         ],
-        Mesh::Headscale => vec![
-            ("nothing — this one needs a server you don't have", false),
-        ],
+        Mesh::Headscale => vec![("nothing — this one needs a server you don't have", false)],
         // Your own server, not someone's coordination service. Atlas makes
         // the keys, the three configs and the server's fence; the router and
         // the phone's import stay yours (`wireguard::YOURS` has them in full).
         Mesh::Wireguard => vec![
-            ("make the keys and a config for the server, the laptop and the phone", true),
-            ("write the server's fence, so your devices reach only its model server", true),
+            (
+                "make the keys and a config for the server, the laptop and the phone",
+                true,
+            ),
+            (
+                "write the server's fence, so your devices reach only its model server",
+                true,
+            ),
             ("check each device has connected", true),
-            ("forward the port on your router and point a name at your home address", false),
+            (
+                "forward the port on your router and point a name at your home address",
+                false,
+            ),
             ("import the phone's config into the WireGuard app", false),
         ],
         _ => vec![("point Atlas at an existing setup", true)],
@@ -329,10 +349,16 @@ pub fn what_a_private_network_would_give_you(cfg: &MeshConfig) -> Vec<String> {
                 ));
             }
             let steps = setup_steps(m);
-            let mine: Vec<&str> =
-                steps.iter().filter(|(_, atlas)| *atlas).map(|(s, _)| *s).collect();
-            let yours: Vec<&str> =
-                steps.iter().filter(|(_, atlas)| !*atlas).map(|(s, _)| *s).collect();
+            let mine: Vec<&str> = steps
+                .iter()
+                .filter(|(_, atlas)| *atlas)
+                .map(|(s, _)| *s)
+                .collect();
+            let yours: Vec<&str> = steps
+                .iter()
+                .filter(|(_, atlas)| !*atlas)
+                .map(|(s, _)| *s)
+                .collect();
             if !mine.is_empty() {
                 out.push(format!("I can: {}.", mine.join(", ")));
             }
@@ -347,7 +373,10 @@ pub fn what_a_private_network_would_give_you(cfg: &MeshConfig) -> Vec<String> {
     // Last, and never omitted. The point of this module's own header is that
     // a private network is an addition, not a replacement, and a list of what
     // you are missing without one reads as a list of what is broken.
-    out.push(format!("What works without it: {}.", works_without().join("; ")));
+    out.push(format!(
+        "What works without it: {}.",
+        works_without().join("; ")
+    ));
     out
 }
 

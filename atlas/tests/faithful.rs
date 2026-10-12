@@ -13,7 +13,10 @@ fn a_failure_mentioned_at_the_end_is_still_buried() {
     // Position, not presence. A failure in the last sentence of a cheerful
     // paragraph has been disclosed and not communicated.
     let faults = ran(
-        vec![Step::did("tidied the desktop"), Step::failed("backup", "disk full")],
+        vec![
+            Step::did("tidied the desktop"),
+            Step::failed("backup", "disk full"),
+        ],
         "Tidied the desktop and everything looks good. The backup didn't work.",
     );
     assert!(matches!(faults[0], Fault::BuriedTheProblem { .. }));
@@ -22,7 +25,10 @@ fn a_failure_mentioned_at_the_end_is_still_buried() {
 #[test]
 fn naming_the_failed_step_first_is_enough() {
     let faults = ran(
-        vec![Step::did("tidied the desktop"), Step::failed("backup", "disk full")],
+        vec![
+            Step::did("tidied the desktop"),
+            Step::failed("backup", "disk full"),
+        ],
         "The backup couldn't run, disk is full. I tidied the desktop.",
     );
     assert!(faults.is_empty(), "{faults:?}");
@@ -39,7 +45,11 @@ fn a_skipped_step_counts_as_something_gone_wrong() {
 
 #[test]
 fn a_clean_run_needs_no_apology() {
-    assert!(ran(vec![Step::did("backed up"), Step::did("tidied")], "Backed up and tidied.").is_empty());
+    assert!(ran(
+        vec![Step::did("backed up"), Step::did("tidied")],
+        "Backed up and tidied."
+    )
+    .is_empty());
 }
 
 // --- claiming more than happened -------------------------------------------
@@ -101,7 +111,11 @@ fn saying_verified_when_nothing_was_checked() {
 
 #[test]
 fn verified_is_fine_when_something_was_actually_observed() {
-    assert!(ran(vec![Step::did("read the file back")], "Checked it — the file reads back fine.").is_empty());
+    assert!(ran(
+        vec![Step::did("read the file back")],
+        "Checked it — the file reads back fine."
+    )
+    .is_empty());
 }
 
 // --- everything failed ------------------------------------------------------
@@ -129,7 +143,10 @@ fn the_rewrite_puts_the_problem_first_and_keeps_the_rest() {
     assert!(fixed.starts_with("backup"));
     assert!(fixed.contains("disk full"));
     assert!(fixed.contains("Tidied the desktop."));
-    assert!(check(&steps, &fixed).is_empty(), "the rewrite still fails its own check");
+    assert!(
+        check(&steps, &fixed).is_empty(),
+        "the rewrite still fails its own check"
+    );
 }
 
 #[test]
@@ -178,9 +195,15 @@ fn unchecked_is_not_counted_as_gone_wrong_either() {
 #[test]
 fn every_fault_explains_itself_in_words() {
     for f in [
-        Fault::BuriedTheProblem { step: "backup".into() },
-        Fault::ClaimedWithoutEvidence { word: "saved".into() },
-        Fault::SaidCheckedWhenItWasNot { word: "verified".into() },
+        Fault::BuriedTheProblem {
+            step: "backup".into(),
+        },
+        Fault::ClaimedWithoutEvidence {
+            word: "saved".into(),
+        },
+        Fault::SaidCheckedWhenItWasNot {
+            word: "verified".into(),
+        },
         Fault::NothingWorkedButItReadsFine,
     ] {
         assert!(f.plain().len() > 20, "{f:?} has no useful explanation");

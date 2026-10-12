@@ -1,5 +1,7 @@
 use atlas::persona::Persona;
-use atlas::register::{announcement_for, formality, read, CallContext, Formality, Moment, Register};
+use atlas::register::{
+    announcement_for, formality, read, CallContext, Formality, Moment, Register,
+};
 
 fn quiet() -> Moment {
     Moment::default()
@@ -9,7 +11,12 @@ fn quiet() -> Moment {
 
 #[test]
 fn a_task_is_recognised_as_a_task() {
-    for said in ["open chrome", "boot workspace", "research the CME spec", "close discord"] {
+    for said in [
+        "open chrome",
+        "boot workspace",
+        "research the CME spec",
+        "close discord",
+    ] {
         assert_eq!(read(said, &quiet()), Register::Working, "{said:?}");
     }
 }
@@ -18,7 +25,10 @@ fn a_task_is_recognised_as_a_task() {
 fn a_polite_task_is_still_a_task() {
     // "Can you open Chrome" is a request wearing a question's clothes.
     assert_eq!(read("can you open chrome", &quiet()), Register::Working);
-    assert_eq!(read("could you close discord please", &quiet()), Register::Working);
+    assert_eq!(
+        read("could you close discord please", &quiet()),
+        Register::Working
+    );
 }
 
 #[test]
@@ -36,23 +46,44 @@ fn talking_is_not_tasking() {
 fn a_question_about_atlas_is_told_apart_from_a_question_containing_you() {
     // The distinction that matters: one is about Atlas, the other is a
     // request for an opinion on something else.
-    assert_eq!(read("what do you do exactly", &quiet()), Register::AboutAtlas);
-    assert_eq!(read("are you recording this", &quiet()), Register::AboutAtlas);
-    assert_eq!(read("why did you put chrome there", &quiet()), Register::AboutAtlas);
-    assert_eq!(read("what do you think of this draft", &quiet()), Register::Chatting);
+    assert_eq!(
+        read("what do you do exactly", &quiet()),
+        Register::AboutAtlas
+    );
+    assert_eq!(
+        read("are you recording this", &quiet()),
+        Register::AboutAtlas
+    );
+    assert_eq!(
+        read("why did you put chrome there", &quiet()),
+        Register::AboutAtlas
+    );
+    assert_eq!(
+        read("what do you think of this draft", &quiet()),
+        Register::Chatting
+    );
 }
 
 #[test]
 fn frustration_is_noticed_and_overrides_everything_else() {
-    let after_failure = Moment { after_a_failure: true, ..quiet() };
+    let after_failure = Moment {
+        after_a_failure: true,
+        ..quiet()
+    };
     assert_eq!(read("open chrome", &after_failure), Register::Rough);
     assert_eq!(read("that didn't work again", &quiet()), Register::Rough);
-    assert_eq!(read("seriously, why isn't this working", &quiet()), Register::Rough);
+    assert_eq!(
+        read("seriously, why isn't this working", &quiet()),
+        Register::Rough
+    );
 }
 
 #[test]
 fn a_short_fragment_mid_task_reads_as_work_not_chat() {
-    let busy = Moment { busy: true, ..quiet() };
+    let busy = Moment {
+        busy: true,
+        ..quiet()
+    };
     assert_eq!(read("the other one", &busy), Register::Working);
     assert_eq!(read("the other one", &quiet()), Register::Chatting);
 }
@@ -70,7 +101,10 @@ fn a_conversation_gets_room_to_actually_be_one() {
 fn jokes_belong_in_conversation_and_nowhere_else() {
     assert!(Register::Chatting.humour_welcome());
     assert!(!Register::Working.humour_welcome());
-    assert!(!Register::Rough.humour_welcome(), "not when something just broke");
+    assert!(
+        !Register::Rough.humour_welcome(),
+        "not when something just broke"
+    );
 }
 
 #[test]
@@ -78,12 +112,18 @@ fn the_character_instructions_change_with_the_moment() {
     let p = Persona::default();
     let working = p.prompt_for(Register::Working);
     let chatting = p.prompt_for(Register::Chatting);
-    assert_ne!(working, chatting, "one fixed prompt is what makes it sound like a machine");
+    assert_ne!(
+        working, chatting,
+        "one fixed prompt is what makes it sound like a machine"
+    );
     assert!(working.contains("No commentary, no jokes"));
     // 29 Sep 2026: "Talk like a person: follow a tangent" became "answer
     // what they just said first, like a person would" (Eric's evening).
     assert!(chatting.contains("like a person would"));
-    assert!(chatting.contains("Do not offer to help"), "no steering it back to work");
+    assert!(
+        chatting.contains("Do not offer to help"),
+        "no steering it back to work"
+    );
 }
 
 #[test]
@@ -98,7 +138,9 @@ fn atlas_is_told_to_disagree_rather_than_go_along_with_things() {
 
 #[test]
 fn it_is_told_it_is_not_only_for_work() {
-    assert!(Persona::default().system_prompt().contains("not only for work"));
+    assert!(Persona::default()
+        .system_prompt()
+        .contains("not only for work"));
 }
 
 #[test]
@@ -107,8 +149,10 @@ fn nothing_is_witty_when_something_has_just_gone_wrong() {
     let rough = p.prompt_for(Register::Rough);
     assert!(rough.contains("No jokes"));
     assert!(!rough.contains("dry aside"), "humour is switched off");
-    assert!(!rough.contains("Do not soften it into agreement"),
-        "and it isn't pushed to argue");
+    assert!(
+        !rough.contains("Do not soften it into agreement"),
+        "and it isn't pushed to argue"
+    );
 }
 
 #[test]
@@ -185,7 +229,9 @@ fn a_saturday_evening_catch_up_with_one_person_reads_as_casual() {
 fn someone_outside_your_own_domain_pushes_it_toward_business() {
     let internal = call("sync", &["a@homelab.com", "b@homelab.com"]);
     let external = call("sync", &["a@homelab.com", "sam@acme.com"]);
-    assert!(formality(&external) == Formality::Business || formality(&internal) != Formality::Business);
+    assert!(
+        formality(&external) == Formality::Business || formality(&internal) != Formality::Business
+    );
 }
 
 #[test]
@@ -211,7 +257,9 @@ fn every_announcement_makes_declining_easy() {
     for f in [Formality::Business, Formality::Casual, Formality::Unsure] {
         let a = announcement_for(f).to_lowercase();
         assert!(
-            a.contains("rather i didn't") || a.contains("turn it off") || a.contains("switch it off"),
+            a.contains("rather i didn't")
+                || a.contains("turn it off")
+                || a.contains("switch it off"),
             "{f:?} must offer a way out"
         );
     }

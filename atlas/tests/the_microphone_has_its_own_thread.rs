@@ -15,7 +15,9 @@
 
 use atlas::config::Config;
 use atlas::daemon::{Daemon, Ears, Mouth};
-use atlas::micthread::{self, BargeGate, BargeInConfig, Heard, MicStream, MicThread, MicWork, VoiceDetector};
+use atlas::micthread::{
+    self, BargeGate, BargeInConfig, Heard, MicStream, MicThread, MicWork, VoiceDetector,
+};
 use atlas::platform::mock::MockPlatform;
 use atlas::platform::Monitor;
 use atlas::proactive::{Proactive, ProactiveConfig};
@@ -40,21 +42,46 @@ fn tmp(tag: &str) -> PathBuf {
 fn cfg(barge: bool) -> Config {
     let mut c = Config::load(Path::new("config")).unwrap();
     let t = c.tools.get_or_insert_with(Default::default);
-    t.wake = Some(atlas::voice::WakeConfig { enabled: true, phrase: "atlas".into(), clip_seconds: 3, detector: None, listen_first: false });
-    t.barge_in = BargeInConfig { enabled: barge, ..BargeInConfig::default() };
+    t.wake = Some(atlas::voice::WakeConfig {
+        enabled: true,
+        phrase: "atlas".into(),
+        clip_seconds: 3,
+        detector: None,
+        listen_first: false,
+    });
+    t.barge_in = BargeInConfig {
+        enabled: barge,
+        ..BargeInConfig::default()
+    };
     c
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 fn wav(name: &str) -> Vec<i16> {
-    let (s, r) = atlas::diarize::read_wav(&std::fs::read(format!("tests/fixtures/speech/corpus/{name}.wav")).unwrap()).unwrap();
+    let (s, r) = atlas::diarize::read_wav(
+        &std::fs::read(format!("tests/fixtures/speech/corpus/{name}.wav")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(r, 16000);
     s
 }
@@ -70,7 +97,9 @@ fn room(n: usize, db: f32, seed: u64) -> Vec<f32> {
     let amp = 32768.0 * 10f32.powf(db / 20.0) * 3.0;
     (0..n)
         .map(|_| {
-            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let w = ((x >> 33) as f32 / (1u64 << 31) as f32) - 1.0;
             lp = 0.9 * lp + 0.1 * w;
             lp * amp
@@ -92,7 +121,9 @@ fn mix(parts: &[(&[f32], usize)], len: usize) -> Vec<i16> {
             }
         }
     }
-    out.iter().map(|v| v.clamp(-32767.0, 32767.0) as i16).collect()
+    out.iter()
+        .map(|v| v.clamp(-32767.0, 32767.0) as i16)
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -143,15 +174,31 @@ impl MicWork for FakeMic {
     }
     fn open_stream(&mut self) -> Option<Box<dyn MicStream>> {
         let n = self.st.streams.fetch_add(1, Ordering::SeqCst);
-        let samples = if n == self.speech_on { (*self.speech).clone() } else { mix(&[(&room(16000 * 4, -60.0, 9), 0)], 16000 * 4) };
-        Some(Box::new(Paced { samples, at: 0, started: Instant::now() }))
+        let samples = if n == self.speech_on {
+            (*self.speech).clone()
+        } else {
+            mix(&[(&room(16000 * 4, -60.0, 9), 0)], 16000 * 4)
+        };
+        Some(Box::new(Paced {
+            samples,
+            at: 0,
+            started: Instant::now(),
+        }))
     }
     fn transcribe(&mut self, samples: &[i16]) -> atlas::error::Result<String> {
-        assert!(samples.len() > 16000 / 2, "what was kept of your words is too short: {}", samples.len());
+        assert!(
+            samples.len() > 16000 / 2,
+            "what was kept of your words is too short: {}",
+            samples.len()
+        );
         self.st.transcribed.fetch_add(1, Ordering::SeqCst);
         Ok(self.heard_words.clone())
     }
-    fn follow_up(&mut self, _secs: u32, _stop: &dyn Fn() -> bool) -> atlas::error::Result<Option<String>> {
+    fn follow_up(
+        &mut self,
+        _secs: u32,
+        _stop: &dyn Fn() -> bool,
+    ) -> atlas::error::Result<Option<String>> {
         Ok(None)
     }
     fn models_dir(&self) -> PathBuf {
@@ -214,7 +261,16 @@ impl Ears for FakeEars {
 
 fn ears(clip_ms: u64, fire_at: usize) -> (FakeEars, Arc<MicState>) {
     let st = Arc::new(MicState::default());
-    (FakeEars { st: st.clone(), clip_ms, fire_at, speech: Arc::new(Vec::new()), speech_on: 0 }, st)
+    (
+        FakeEars {
+            st: st.clone(),
+            clip_ms,
+            fire_at,
+            speech: Arc::new(Vec::new()),
+            speech_on: 0,
+        },
+        st,
+    )
 }
 
 /// A speaker whose first line plays for up to `first_ms` (long enough, in
@@ -229,7 +285,10 @@ struct Speaker {
 
 impl Default for Speaker {
     fn default() -> Self {
-        Speaker { first_ms: 100, said: Mutex::new(Vec::new()) }
+        Speaker {
+            first_ms: 100,
+            said: Mutex::new(Vec::new()),
+        }
     }
 }
 
@@ -266,7 +325,8 @@ fn wait_until(what: &str, secs: u64, mut f: impl FnMut() -> bool) {
 // ================= 1. the wake word off the loop =================
 
 #[test]
-fn a_pass_of_the_loop_returns_at_once_while_the_wake_clip_records_and_the_wake_arrives_by_channel() {
+fn a_pass_of_the_loop_returns_at_once_while_the_wake_clip_records_and_the_wake_arrives_by_channel()
+{
     let (c, p) = (cfg(false), plat());
     let mut d = daemon(&c, &p, "fast");
     let (e, st) = ears(1500, 1);
@@ -275,31 +335,57 @@ fn a_pass_of_the_loop_returns_at_once_while_the_wake_clip_records_and_the_wake_a
 
     let t = Instant::now();
     assert!(!d.listen_pass(&e, &mouth, &clock), "nothing heard yet");
-    crate::common::assert_prompt(t.elapsed(), Duration::from_millis(200), "starting the microphone took");
-    wait_until("the wake clip to start recording", 2, || st.recording.load(Ordering::SeqCst));
+    crate::common::assert_prompt(
+        t.elapsed(),
+        Duration::from_millis(200),
+        "starting the microphone took",
+    );
+    wait_until("the wake clip to start recording", 2, || {
+        st.recording.load(Ordering::SeqCst)
+    });
 
     // Mid-recording: a pass takes no time, and the hub is answered.
     for _ in 0..5 {
         let t = Instant::now();
         assert!(!d.listen_pass(&e, &mouth, &clock));
-        crate::common::assert_prompt(t.elapsed(), Duration::from_millis(50), "a pass waited on the microphone");
-        assert!(d.mic_recording_for_test(), "the clip should still be recording");
+        crate::common::assert_prompt(
+            t.elapsed(),
+            Duration::from_millis(50),
+            "a pass waited on the microphone",
+        );
+        assert!(
+            d.mic_recording_for_test(),
+            "the clip should still be recording"
+        );
         std::thread::sleep(Duration::from_millis(20));
     }
     let t = Instant::now();
     let r = atlas::hublive::reply(&mut d, Action::GlanceJson);
     assert_eq!(r.status, 200);
-    assert!(st.recording.load(Ordering::SeqCst), "the hub was answered while the clip recorded");
+    assert!(
+        st.recording.load(Ordering::SeqCst),
+        "the hub was answered while the clip recorded"
+    );
     crate::common::assert_prompt(t.elapsed(), Duration::from_millis(1500), "the hub took");
 
     // The wake, and what was said after it, arrive through the channel and
     // are answered.
     let t = Instant::now();
-    wait_until("the wake word to be taken", 5, || d.listen_pass(&e, &mouth, &clock));
-    assert!(t.elapsed() >= Duration::from_millis(500), "the wake came before the clip had finished");
-    assert!(!mouth.said.lock().unwrap().is_empty(), "the wake's turn wasn't answered");
+    wait_until("the wake word to be taken", 5, || {
+        d.listen_pass(&e, &mouth, &clock)
+    });
+    assert!(
+        t.elapsed() >= Duration::from_millis(500),
+        "the wake came before the clip had finished"
+    );
+    assert!(
+        !mouth.said.lock().unwrap().is_empty(),
+        "the wake's turn wasn't answered"
+    );
     // Listening again for the next one.
-    wait_until("the next wake clip", 3, || st.attempts.load(Ordering::SeqCst) >= 2);
+    wait_until("the next wake clip", 3, || {
+        st.attempts.load(Ordering::SeqCst) >= 2
+    });
 }
 
 #[test]
@@ -336,12 +422,20 @@ fn stopping_atlas_stops_the_microphone_thread_mid_clip() {
     let (e, st) = ears(10_000, 99);
     let mouth = Speaker::default();
     d.listen_pass(&e, &mouth, &|| 100);
-    wait_until("the clip to start", 2, || st.recording.load(Ordering::SeqCst));
+    wait_until("the clip to start", 2, || {
+        st.recording.load(Ordering::SeqCst)
+    });
     let t = Instant::now();
     let _ = d.shut_down();
     crate::common::assert_prompt(t.elapsed(), Duration::from_secs(2), "shutting down waited");
-    assert!(d.mic_stopped_for_test(), "the microphone's thread outlived Atlas");
-    assert!(!st.recording.load(Ordering::SeqCst), "the ten-second clip was still recording");
+    assert!(
+        d.mic_stopped_for_test(),
+        "the microphone's thread outlived Atlas"
+    );
+    assert!(
+        !st.recording.load(Ordering::SeqCst),
+        "the ten-second clip was still recording"
+    );
 }
 
 // ================= 3. Pause mutes the microphone =================
@@ -354,43 +448,70 @@ fn pause_stops_the_recording_and_resume_starts_it_again() {
     let mouth = Speaker::default();
     let clock = || 100u64;
     d.listen_pass(&e, &mouth, &clock);
-    wait_until("the clip to start", 2, || st.recording.load(Ordering::SeqCst));
+    wait_until("the clip to start", 2, || {
+        st.recording.load(Ordering::SeqCst)
+    });
 
     // The hub's Pause, the same path as the icon's.
     let _ = atlas::hublive::reply(&mut d, Action::Pause(true));
     d.listen_pass(&e, &mouth, &clock);
-    wait_until("the clip to stop on Pause", 1, || !st.recording.load(Ordering::SeqCst));
+    wait_until("the clip to stop on Pause", 1, || {
+        !st.recording.load(Ordering::SeqCst)
+    });
     let tries = st.attempts.load(Ordering::SeqCst);
     for _ in 0..20 {
         d.listen_pass(&e, &mouth, &clock);
         std::thread::sleep(Duration::from_millis(25));
-        assert!(!st.recording.load(Ordering::SeqCst), "recorded while paused");
+        assert!(
+            !st.recording.load(Ordering::SeqCst),
+            "recorded while paused"
+        );
     }
-    assert_eq!(st.attempts.load(Ordering::SeqCst), tries, "a clip was started while paused");
+    assert_eq!(
+        st.attempts.load(Ordering::SeqCst),
+        tries,
+        "a clip was started while paused"
+    );
     assert!(!d.mic_recording_for_test());
 
     let _ = atlas::hublive::reply(&mut d, Action::Pause(false));
     d.listen_pass(&e, &mouth, &clock);
-    wait_until("listening again after resume", 2, || st.recording.load(Ordering::SeqCst));
+    wait_until("listening again after resume", 2, || {
+        st.recording.load(Ordering::SeqCst)
+    });
     let _ = d.shut_down();
 }
 
 #[test]
 fn the_icon_and_the_hub_say_pause_turns_the_microphone_off() {
     use atlas::notifyicon as tray;
-    assert!(tray::RUNNING_ENTRY.contains("stop listening"), "{}", tray::RUNNING_ENTRY);
-    assert!(tray::PAUSED_ENTRY.contains("listen again"), "{}", tray::PAUSED_ENTRY);
+    assert!(
+        tray::RUNNING_ENTRY.contains("stop listening"),
+        "{}",
+        tray::RUNNING_ENTRY
+    );
+    assert!(
+        tray::PAUSED_ENTRY.contains("listen again"),
+        "{}",
+        tray::PAUSED_ENTRY
+    );
     assert!(tray::tray_tooltip(true).contains("not listening"));
     let (c, p) = (cfg(false), plat());
     let mut d = daemon(&c, &p, "words");
     let r = atlas::hublive::reply(&mut d, Action::Pause(true));
-    assert!(r.body.contains("microphone") || r.body.contains("said="), "{}", r.body);
+    assert!(
+        r.body.contains("microphone") || r.body.contains("said="),
+        "{}",
+        r.body
+    );
 }
 
 // ================= 2. cutting in by voice =================
 
 fn probs(det: &mut dyn VoiceDetector, s: &[i16]) -> Vec<f32> {
-    s.chunks_exact(micthread::WINDOW).map(|w| det.speech(w).unwrap_or(0.0)).collect()
+    s.chunks_exact(micthread::WINDOW)
+        .map(|w| det.speech(w).unwrap_or(0.0))
+        .collect()
 }
 
 #[test]
@@ -400,16 +521,24 @@ fn silero_runs_through_tract_and_tells_speech_from_noise() {
     assert_eq!(det.name(), "Silero VAD");
     let speech = probs(&mut *det, &wav("A_s1"));
     let loud = speech.iter().filter(|p| **p >= 0.5).count() as f32 / speech.len() as f32;
-    assert!(loud > 0.5, "Silero heard speech in only {:.0}% of a spoken sentence", loud * 100.0);
+    assert!(
+        loud > 0.5,
+        "Silero heard speech in only {:.0}% of a spoken sentence",
+        loud * 100.0
+    );
     det.reset();
     let noise = mix(&[(&room(16000 * 3, -30.0, 3), 0)], 16000 * 3);
-    let fooled = probs(&mut *det, &noise).iter().filter(|p| **p >= 0.5).count();
+    let fooled = probs(&mut *det, &noise)
+        .iter()
+        .filter(|p| **p >= 0.5)
+        .count();
     assert_eq!(fooled, 0, "Silero took room noise for a voice");
 }
 
 #[test]
 fn a_missing_or_broken_model_falls_back_to_atlas_own_detector() {
-    let (det, why) = micthread::detector_for(Some(Path::new("tests/fixtures/silero/not-here.onnx")));
+    let (det, why) =
+        micthread::detector_for(Some(Path::new("tests/fixtures/silero/not-here.onnx")));
     assert_eq!(det.name(), "Atlas's own voice detector");
     assert!(why.unwrap().contains("isn't in the models folder"));
     let junk = tmp("junk").join("junk.onnx");
@@ -423,8 +552,15 @@ fn a_missing_or_broken_model_falls_back_to_atlas_own_detector() {
 
 /// Fed through the gate a window at a time, with Atlas's reply envelope when
 /// there is one. Returns when it fired (ms) and the gate, for what it learned.
-fn fires_at(det: &mut dyn VoiceDetector, s: &[i16], envelope: Option<&[u8]>) -> (Option<u32>, BargeGate) {
-    let mut gate = BargeGate::new(&BargeInConfig { enabled: true, ..BargeInConfig::default() });
+fn fires_at(
+    det: &mut dyn VoiceDetector,
+    s: &[i16],
+    envelope: Option<&[u8]>,
+) -> (Option<u32>, BargeGate) {
+    let mut gate = BargeGate::new(&BargeInConfig {
+        enabled: true,
+        ..BargeInConfig::default()
+    });
     for (i, w) in s.chunks_exact(micthread::WINDOW).enumerate() {
         let playing = envelope.map(|e| e.get(i).copied().unwrap_or(0) as f32 / 255.0);
         if gate.feed(det.speech(w), atlas::audio::level_db(w), playing) {
@@ -438,7 +574,13 @@ fn fires_at(det: &mut dyn VoiceDetector, s: &[i16], envelope: Option<&[u8]>) -> 
 /// and as the microphone hears it from the speakers: `echo_db` down, `lag`
 /// windows late, over a quiet room -- and, if given, you starting at
 /// `you_at` samples, `you_db` louder than the echo.
-fn scene(echo: &[i16], echo_db: Option<f32>, lag: usize, you: Option<(&[i16], usize, f32)>, seed: u64) -> (Vec<i16>, Vec<u8>) {
+fn scene(
+    echo: &[i16],
+    echo_db: Option<f32>,
+    lag: usize,
+    you: Option<(&[i16], usize, f32)>,
+    seed: u64,
+) -> (Vec<i16>, Vec<u8>) {
     let start = 4000;
     let mut padded = vec![0i16; start];
     padded.extend_from_slice(echo);
@@ -447,7 +589,9 @@ fn scene(echo: &[i16], echo_db: Option<f32>, lag: usize, you: Option<(&[i16], us
     let len = (late + echo.len()).max(you.map(|(y, at, _)| at + y.len()).unwrap_or(0)) + 4000;
     let r = room(len, -55.0, seed);
     let e = gain(echo, echo_db.unwrap_or(-200.0));
-    let y = you.map(|(y, _, db)| gain(y, echo_db.unwrap_or(-12.0) + db)).unwrap_or_default();
+    let y = you
+        .map(|(y, _, db)| gain(y, echo_db.unwrap_or(-12.0) + db))
+        .unwrap_or_default();
     let mut parts: Vec<(&[f32], usize)> = vec![(&r, 0), (&e, late)];
     if let Some((_, at, _)) = you {
         parts.push((&y, at));
@@ -464,8 +608,13 @@ fn you_speaking_over_a_quiet_room_is_heard_in_about_a_third_of_a_second() {
         ("Silero", micthread::detector_for(Some(&silero())).0),
         ("Atlas's own", micthread::detector_for(None).0),
     ] {
-        let at = fires_at(&mut *det, &s, None).0.unwrap_or_else(|| panic!("{name}: never heard you"));
-        assert!(at >= 1000 + 300, "{name}: fired at {at} ms, before you had said 300 ms");
+        let at = fires_at(&mut *det, &s, None)
+            .0
+            .unwrap_or_else(|| panic!("{name}: never heard you"));
+        assert!(
+            at >= 1000 + 300,
+            "{name}: fired at {at} ms, before you had said 300 ms"
+        );
         assert!(at <= 1000 + 1500, "{name}: took until {at} ms");
     }
 }
@@ -479,15 +628,22 @@ fn atlas_hearing_its_own_voice_through_the_speakers_does_not_cut_it_off_with_sil
     let mut det = micthread::detector_for(Some(&silero())).0;
     let (at, gate) = fires_at(&mut *det, &alone, Some(&env));
     assert_eq!(at, None, "Atlas cut itself off on its own voice");
-    let lag = gate.lag_windows().expect("how late the microphone hears the reply wasn't found");
-    assert!((5..=7).contains(&lag), "found the microphone {lag} windows late; it was 6");
+    let lag = gate
+        .lag_windows()
+        .expect("how late the microphone hears the reply wasn't found");
+    assert!(
+        (5..=7).contains(&lag),
+        "found the microphone {lag} windows late; it was 6"
+    );
 
     // You, 9 dB louder than that echo, a second and a half into the reply:
     // heard.
     let you = wav("B_s3");
     let (over, env) = scene(&echo, Some(-12.0), 6, Some((&you, 24000, 9.0)), 2);
     let mut det = micthread::detector_for(Some(&silero())).0;
-    let at = fires_at(&mut *det, &over, Some(&env)).0.expect("you, speaking over Atlas, weren't heard");
+    let at = fires_at(&mut *det, &over, Some(&env))
+        .0
+        .expect("you, speaking over Atlas, weren't heard");
     assert!(at > 1500, "fired at {at} ms, before you started");
 }
 
@@ -502,7 +658,11 @@ fn with_a_headset_the_reply_is_not_heard_and_you_can_cut_in_once_it_is_under_way
     let (at, gate) = fires_at(&mut *det, &s, Some(&env));
     let at = at.expect("with a headset, you weren't heard over the reply");
     assert!(at > 1500, "fired at {at} ms, before you started");
-    assert_eq!(gate.lag_windows(), Some(0), "no echo should have been learned as 'no echo'");
+    assert_eq!(
+        gate.lag_windows(),
+        Some(0),
+        "no echo should have been learned as 'no echo'"
+    );
 }
 
 #[test]
@@ -517,9 +677,18 @@ fn speaking_over_a_reply_stops_it_and_what_you_said_is_answered_next() {
     let st = Arc::new(MicState::default());
     // Stream 0 measures the room when the thread starts; stream 1 is the
     // one watched while Atlas speaks.
-    let e = FakeEars { st: st.clone(), clip_ms: 10_000, fire_at: 99, speech: Arc::new(speech), speech_on: 1 };
+    let e = FakeEars {
+        st: st.clone(),
+        clip_ms: 10_000,
+        fire_at: 99,
+        speech: Arc::new(speech),
+        speech_on: 1,
+    };
     let _one = ONE_PLAYER.lock().unwrap_or_else(|e| e.into_inner());
-    let mouth = Speaker { first_ms: 30_000, ..Speaker::default() };
+    let mouth = Speaker {
+        first_ms: 30_000,
+        ..Speaker::default()
+    };
     let clock = || 100u64;
     d.listen_pass(&e, &mouth, &clock);
     micthread::clear_cut();
@@ -527,8 +696,15 @@ fn speaking_over_a_reply_stops_it_and_what_you_said_is_answered_next() {
     d.converse("what time is it", &e, &mouth, &clock);
 
     let said = mouth.said.lock().unwrap().clone();
-    assert!(said.first().is_some_and(|(_, cut)| *cut), "the first line wasn't cut off: {said:?}");
-    assert_eq!(st.transcribed.load(Ordering::SeqCst), 1, "what you said over it wasn't taken");
+    assert!(
+        said.first().is_some_and(|(_, cut)| *cut),
+        "the first line wasn't cut off: {said:?}"
+    );
+    assert_eq!(
+        st.transcribed.load(Ordering::SeqCst),
+        1,
+        "what you said over it wasn't taken"
+    );
     // The room and the first reply were watched; and the answer to what you
     // said was spoken. 29 Sep 2026: this counted a third microphone stream,
     // for the answer -- which opened only because "Paused." was said first
@@ -538,12 +714,24 @@ fn speaking_over_a_reply_stops_it_and_what_you_said_is_answered_next() {
     // said before the thread is watching again; a real answer waits on the
     // model. What the test is about -- you were heard over the reply, it
     // stopped, and what you said was answered -- is asserted directly.
-    assert!(st.streams.load(Ordering::SeqCst) >= 2, "the reply wasn't watched: {said:?}");
-    assert!(said.len() >= 2, "no second reply was spoken (the cut-in wasn't answered): {said:?}");
+    assert!(
+        st.streams.load(Ordering::SeqCst) >= 2,
+        "the reply wasn't watched: {said:?}"
+    );
+    assert!(
+        said.len() >= 2,
+        "no second reply was spoken (the cut-in wasn't answered): {said:?}"
+    );
     // Both chats' version of this test (merged 30 Sep 2026): no "Paused."
     // before the answer to words said over a reply.
-    assert!(!said.iter().any(|(l, _)| l == "Paused."), "\"Paused.\" was said before the answer: {said:?}");
-    assert!(said.iter().skip(1).any(|(_, cut)| !cut), "the answer to what you said was cut too: {said:?}");
+    assert!(
+        !said.iter().any(|(l, _)| l == "Paused."),
+        "\"Paused.\" was said before the answer: {said:?}"
+    );
+    assert!(
+        said.iter().skip(1).any(|(_, cut)| !cut),
+        "the answer to what you said was cut too: {said:?}"
+    );
     assert!(!st.recording.load(Ordering::SeqCst) || st.attempts.load(Ordering::SeqCst) > 0);
     let _ = d.shut_down();
     micthread::clear_cut();
@@ -556,14 +744,24 @@ fn cutting_in_by_voice_is_off_unless_turned_on() {
     let mut d = daemon(&c, &p, "off");
     let st = Arc::new(MicState::default());
     let you = wav("B_s3");
-    let e = FakeEars { st: st.clone(), clip_ms: 10_000, fire_at: 99, speech: Arc::new(you), speech_on: 0 };
+    let e = FakeEars {
+        st: st.clone(),
+        clip_ms: 10_000,
+        fire_at: 99,
+        speech: Arc::new(you),
+        speech_on: 0,
+    };
     let _one = ONE_PLAYER.lock().unwrap_or_else(|e| e.into_inner());
     let mouth = Speaker::default();
     let clock = || 100u64;
     d.listen_pass(&e, &mouth, &clock);
     micthread::clear_cut();
     d.converse("what time is it", &e, &mouth, &clock);
-    assert_eq!(st.streams.load(Ordering::SeqCst), 0, "the microphone was opened while Atlas spoke with cutting in off");
+    assert_eq!(
+        st.streams.load(Ordering::SeqCst),
+        0,
+        "the microphone was opened while Atlas spoke with cutting in off"
+    );
     assert!(mouth.said.lock().unwrap().iter().all(|(_, cut)| !cut));
     let _ = d.shut_down();
 }
@@ -571,10 +769,13 @@ fn cutting_in_by_voice_is_off_unless_turned_on() {
 #[test]
 fn the_setting_is_in_the_list_and_applies_without_a_restart() {
     let s = atlas::settings::registry(&atlas::voice::ToolsConfig::default());
-    let item = s.items.iter().find(|i| i.key == "barge_in.enabled").expect("no setting for cutting in by voice");
+    let item = s
+        .items
+        .iter()
+        .find(|i| i.key == "barge_in.enabled")
+        .expect("no setting for cutting in by voice");
     assert!(!atlas::settings::needs_a_restart(&item.key));
 }
-
 
 /// Measured across the corpus: Atlas's reply in each of six voices through
 /// the speakers at three strengths and three delays, alone (must never cut
@@ -600,14 +801,26 @@ fn across_voices_echo_strengths_and_delays_atlas_does_not_cut_itself_off_and_you
                 let (alone, env) = scene(&echo, Some(echo_db), lag, None, i as u64);
                 let mut det = micthread::detector_for(Some(&silero())).0;
                 if let (Some(at), _) = fires_at(&mut *det, &alone, Some(&env)) {
-                    println!("{v} at {echo_db} dB, {} ms late: cut itself off at {at} ms", lag * 32);
+                    println!(
+                        "{v} at {echo_db} dB, {} ms late: cut itself off at {at} ms",
+                        lag * 32
+                    );
                     false_cuts += 1;
                 }
-                let (over, env) = scene(&echo, Some(echo_db), lag, Some((&you, 24000, 9.0)), i as u64);
+                let (over, env) = scene(
+                    &echo,
+                    Some(echo_db),
+                    lag,
+                    Some((&you, 24000, 9.0)),
+                    i as u64,
+                );
                 let mut det = micthread::detector_for(Some(&silero())).0;
                 match fires_at(&mut *det, &over, Some(&env)).0 {
                     Some(at) if at > 1500 => heard += 1,
-                    other => println!("{v} at {echo_db} dB, {} ms late: you not heard ({other:?})", lag * 32),
+                    other => println!(
+                        "{v} at {echo_db} dB, {} ms late: you not heard ({other:?})",
+                        lag * 32
+                    ),
                 }
                 tries += 1;
             }
@@ -615,5 +828,8 @@ fn across_voices_echo_strengths_and_delays_atlas_does_not_cut_itself_off_and_you
     }
     println!("Silero: cut itself off {false_cuts}/{tries}, heard you over it {heard}/{tries}");
     assert_eq!(false_cuts, 0, "Atlas cut itself off on its own voice");
-    assert!(heard * 10 >= tries * 9, "you were heard over Atlas only {heard}/{tries} times");
+    assert!(
+        heard * 10 >= tries * 9,
+        "you were heard over Atlas only {heard}/{tries} times"
+    );
 }

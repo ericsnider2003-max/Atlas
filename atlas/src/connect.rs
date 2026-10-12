@@ -31,7 +31,10 @@ pub enum Way {
     /// A provider Atlas has no entry for: looked up next (`ispdb_url`).
     LookItUp { domain: String },
     /// A provider that can't be read over IMAP at all, and why.
-    NotPossible { provider: &'static str, why: &'static str },
+    NotPossible {
+        provider: &'static str,
+        why: &'static str,
+    },
 }
 
 /// Where a mailbox is read, and how you make the password for it.
@@ -144,7 +147,10 @@ pub fn ispdb_url(domain: &str) -> String {
 pub fn imap_from_autoconfig(xml: &str) -> Option<(String, u16)> {
     let mut rest = xml;
     while let Some(at) = rest.find("<incomingServer") {
-        let block_end = rest[at..].find("</incomingServer>").map(|e| at + e).unwrap_or(rest.len());
+        let block_end = rest[at..]
+            .find("</incomingServer>")
+            .map(|e| at + e)
+            .unwrap_or(rest.len());
         let block = &rest[at..block_end];
         rest = &rest[block_end.min(rest.len())..];
         if rest.starts_with("</incomingServer>") {
@@ -162,7 +168,9 @@ pub fn imap_from_autoconfig(xml: &str) -> Option<(String, u16)> {
         };
         let host = tag("hostname")?;
         let port: u16 = tag("port").and_then(|p| p.parse().ok()).unwrap_or(993);
-        let secure = tag("socketType").map(|s| s.eq_ignore_ascii_case("SSL")).unwrap_or(false);
+        let secure = tag("socketType")
+            .map(|s| s.eq_ignore_ascii_case("SSL"))
+            .unwrap_or(false);
         if secure && !host.is_empty() && !host.contains('%') {
             return Some((host, port));
         }
@@ -226,9 +234,9 @@ pub fn calendar_link(typed: &str) -> Result<String, String> {
         Some(rest) => format!("https://{rest}"),
         None => t.to_string(),
     };
-    let rest = t
-        .strip_prefix("https://")
-        .ok_or_else(|| "That isn't a calendar link -- it should start with https:// or webcal://.".to_string())?;
+    let rest = t.strip_prefix("https://").ok_or_else(|| {
+        "That isn't a calendar link -- it should start with https:// or webcal://.".to_string()
+    })?;
     let host = rest.split(['/', '?']).next().unwrap_or("");
     if host.is_empty() || !host.contains('.') || rest.contains(char::is_whitespace) {
         return Err("That link doesn't name a website, so there's nothing to read.".into());
@@ -238,7 +246,11 @@ pub fn calendar_link(typed: &str) -> Result<String, String> {
 
 /// What to call a calendar from its link, when you didn't say.
 pub fn calendar_name(url: &str) -> String {
-    let host = url.trim_start_matches("https://").split(['/', '?']).next().unwrap_or("");
+    let host = url
+        .trim_start_matches("https://")
+        .split(['/', '?'])
+        .next()
+        .unwrap_or("");
     if host.contains("google.com") {
         "Google Calendar".into()
     } else if host.contains("outlook") || host.contains("office365") || host.contains("live.com") {
@@ -326,10 +338,16 @@ fn key_of(key: &str) -> u64 {
 ///
 /// `key` names the sign-in and what the token is for (Microsoft's mail and
 /// calendar tokens differ); it is hashed, so no refresh token sits in here.
-pub fn access_once(key: &str, now: u64, fetch: impl FnOnce() -> Result<(String, u64), String>) -> Result<String, String> {
+pub fn access_once(
+    key: &str,
+    now: u64,
+    fetch: impl FnOnce() -> Result<(String, u64), String>,
+) -> Result<String, String> {
     let k = key_of(key);
     let held: Held = {
-        let mut all = ACCESS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut all = ACCESS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match all.iter().find(|(h, _)| *h == k) {
             Some((_, held)) => held.clone(),
             None => {
@@ -339,7 +357,9 @@ pub fn access_once(key: &str, now: u64, fetch: impl FnOnce() -> Result<(String, 
             }
         }
     };
-    let mut slot = held.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut slot = held
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some((token, until)) = slot.as_ref() {
         if now + RENEW_BEFORE_SECS < *until {
             return Ok(token.clone());
@@ -354,7 +374,10 @@ pub fn access_once(key: &str, now: u64, fetch: impl FnOnce() -> Result<(String, 
 /// Forget a sign-in's access token (it was disconnected, or refused).
 pub fn forget_access(key: &str) {
     let k = key_of(key);
-    ACCESS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).retain(|(h, _)| *h != k);
+    ACCESS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .retain(|(h, _)| *h != k);
 }
 
 /// The link's host and path, for an https request.
@@ -382,15 +405,26 @@ pub const HEALTH: &str = "connected_health";
 
 /// Note how an account just went (`None`: it worked).
 pub fn note_health(store: &crate::store::Store, who: &str, failed: Option<&str>) {
-    if let Err(error) = note_health_checked(store, who, failed) { crate::heard!(Err::<(), _>(error)); }
+    if let Err(error) = note_health_checked(store, who, failed) {
+        crate::heard!(Err::<(), _>(error));
+    }
 }
 
-fn note_health_checked(store: &crate::store::Store, who: &str, failed: Option<&str>) -> crate::error::Result<()> {
+fn note_health_checked(
+    store: &crate::store::Store,
+    who: &str,
+    failed: Option<&str>,
+) -> crate::error::Result<()> {
     let _transaction = store.transaction()?;
-    let mut all: std::collections::BTreeMap<String, Health> = store.load_checked(HEALTH)?.unwrap_or_default();
+    let mut all: std::collections::BTreeMap<String, Health> =
+        store.load_checked(HEALTH)?.unwrap_or_default();
     all.insert(
         who.to_ascii_lowercase(),
-        Health { at: crate::store::now(), ok: failed.is_none(), said: failed.unwrap_or("").chars().take(200).collect() },
+        Health {
+            at: crate::store::now(),
+            ok: failed.is_none(),
+            said: failed.unwrap_or("").chars().take(200).collect(),
+        },
     );
     store.save(HEALTH, &all)
 }

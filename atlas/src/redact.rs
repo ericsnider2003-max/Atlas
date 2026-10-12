@@ -95,10 +95,14 @@ fn entropy(s: &str) -> f64 {
         counts[b as usize] += 1;
     }
     let n = s.len() as f64;
-    counts.iter().filter(|c| **c > 0).map(|c| {
-        let p = *c as f64 / n;
-        -p * p.log2()
-    }).sum()
+    counts
+        .iter()
+        .filter(|c| **c > 0)
+        .map(|c| {
+            let p = *c as f64 / n;
+            -p * p.log2()
+        })
+        .sum()
 }
 
 fn luhn(digits: &[u8]) -> bool {
@@ -118,7 +122,12 @@ fn luhn(digits: &[u8]) -> bool {
 
 fn iban_ok(s: &str) -> bool {
     let b = s.as_bytes();
-    if !(15..=34).contains(&b.len()) || !b[0].is_ascii_uppercase() || !b[1].is_ascii_uppercase() || !b[2].is_ascii_digit() || !b[3].is_ascii_digit() {
+    if !(15..=34).contains(&b.len())
+        || !b[0].is_ascii_uppercase()
+        || !b[1].is_ascii_uppercase()
+        || !b[2].is_ascii_digit()
+        || !b[3].is_ascii_digit()
+    {
         return false;
     }
     let rearranged = s[4..].bytes().chain(s[..4].bytes());
@@ -129,7 +138,11 @@ fn iban_ok(s: &str) -> bool {
             b'A'..=b'Z' => (c - b'A') as u64 + 10,
             _ => return false,
         };
-        rem = if v >= 10 { (rem * 100 + v) % 97 } else { (rem * 10 + v) % 97 };
+        rem = if v >= 10 {
+            (rem * 100 + v) % 97
+        } else {
+            (rem * 10 + v) % 97
+        };
     }
     rem == 1
 }
@@ -139,7 +152,9 @@ fn find(t: &str) -> Vec<(usize, usize, Kind)> {
     let b = t.as_bytes();
     let n = b.len();
     let mut out: Vec<(usize, usize, Kind)> = Vec::new();
-    let taken = |out: &Vec<(usize, usize, Kind)>, s: usize, e: usize| out.iter().any(|(a, z, _)| s < *z && *a < e);
+    let taken = |out: &Vec<(usize, usize, Kind)>, s: usize, e: usize| {
+        out.iter().any(|(a, z, _)| s < *z && *a < e)
+    };
     let boundary = |i: usize| i == 0 || !is_tok(b[i - 1]);
 
     // PEM private key blocks, whole.
@@ -148,7 +163,10 @@ fn find(t: &str) -> Vec<(usize, usize, Kind)> {
         let s = from + i;
         let head_end = t[s..].find('\n').map(|x| s + x).unwrap_or(n);
         if t[s..head_end].contains("PRIVATE KEY-----") {
-            let e = t[s..].find("-----END ").and_then(|x| t[s + x..].find("KEY-----").map(|y| s + x + y + 8)).unwrap_or(n);
+            let e = t[s..]
+                .find("-----END ")
+                .and_then(|x| t[s + x..].find("KEY-----").map(|y| s + x + y + 8))
+                .unwrap_or(n);
             out.push((s, e, Kind::PrivateKey));
             from = e;
         } else {
@@ -174,19 +192,29 @@ fn find(t: &str) -> Vec<(usize, usize, Kind)> {
         };
         let rest = &t[i..];
         let mut hit: Option<(usize, Kind)> = None;
-        if (rest.starts_with("AKIA") || rest.starts_with("ASIA")) && i + 20 <= n && b[i + 4..i + 20].iter().all(|c| is_b32(*c)) && (i + 20 == n || !is_tok(b[i + 20])) {
+        if (rest.starts_with("AKIA") || rest.starts_with("ASIA"))
+            && i + 20 <= n
+            && b[i + 4..i + 20].iter().all(|c| is_b32(*c))
+            && (i + 20 == n || !is_tok(b[i + 20]))
+        {
             hit = Some((i + 20, Kind::AwsKey));
         } else if rest.starts_with("github_pat_") {
             let e = run(i + 11, |c| c.is_ascii_alphanumeric() || c == b'_');
             if e - (i + 11) >= 82 {
                 hit = Some((e, Kind::GithubToken));
             }
-        } else if ["ghp_", "gho_", "ghu_", "ghs_", "ghr_"].iter().any(|p| rest.starts_with(p)) {
+        } else if ["ghp_", "gho_", "ghu_", "ghs_", "ghr_"]
+            .iter()
+            .any(|p| rest.starts_with(p))
+        {
             let e = run(i + 4, |c| c.is_ascii_alphanumeric());
             if e - (i + 4) >= 36 {
                 hit = Some((e, Kind::GithubToken));
             }
-        } else if ["xoxb-", "xoxp-", "xoxe-", "xoxa-", "xoxs-"].iter().any(|p| rest.starts_with(p)) {
+        } else if ["xoxb-", "xoxp-", "xoxe-", "xoxa-", "xoxs-"]
+            .iter()
+            .any(|p| rest.starts_with(p))
+        {
             let e = run(i + 5, |c| c.is_ascii_alphanumeric() || c == b'-');
             if e - (i + 5) >= 10 {
                 hit = Some((e, Kind::SlackToken));
@@ -202,7 +230,8 @@ fn find(t: &str) -> Vec<(usize, usize, Kind)> {
                 e -= 1; // a sentence's full stop is not part of the token
             }
             let parts: Vec<&str> = t[i..e].split('.').collect();
-            if parts.len() == 3 && parts[1].starts_with("eyJ") && parts.iter().all(|p| p.len() >= 4) {
+            if parts.len() == 3 && parts[1].starts_with("eyJ") && parts.iter().all(|p| p.len() >= 4)
+            {
                 hit = Some((e, Kind::Jwt));
             }
         }
@@ -228,7 +257,10 @@ fn find(t: &str) -> Vec<(usize, usize, Kind)> {
             e -= 1;
         }
         let domain = &t[at + 1..e];
-        let tld_ok = domain.rsplit('.').next().is_some_and(|x| x.len() >= 2 && x.bytes().all(|c| c.is_ascii_alphabetic()));
+        let tld_ok = domain
+            .rsplit('.')
+            .next()
+            .is_some_and(|x| x.len() >= 2 && x.bytes().all(|c| c.is_ascii_alphabetic()));
         if s < at && domain.contains('.') && tld_ok && !taken(&out, s, e) {
             out.push((s, e, Kind::Email));
         }
@@ -237,14 +269,21 @@ fn find(t: &str) -> Vec<(usize, usize, Kind)> {
     // Digit runs with separators: cards, SSNs, phones.
     let mut i = 0;
     while i < n {
-        let starts = b[i].is_ascii_digit() || (b[i] == b'+' && i + 1 < n && b[i + 1].is_ascii_digit()) || (b[i] == b'(' && i + 1 < n && b[i + 1].is_ascii_digit());
+        let starts = b[i].is_ascii_digit()
+            || (b[i] == b'+' && i + 1 < n && b[i + 1].is_ascii_digit())
+            || (b[i] == b'(' && i + 1 < n && b[i + 1].is_ascii_digit());
         if !starts || (i > 0 && (b[i - 1].is_ascii_alphanumeric())) || taken(&out, i, i + 1) {
             i += 1;
             continue;
         }
         let mut e = i;
         let mut digits: Vec<u8> = Vec::new();
-        while e < n && (b[e].is_ascii_digit() || (b" -().+".contains(&b[e]) && e + 1 < n && (b[e + 1].is_ascii_digit() || b" -(".contains(&b[e + 1])))) {
+        while e < n
+            && (b[e].is_ascii_digit()
+                || (b" -().+".contains(&b[e])
+                    && e + 1 < n
+                    && (b[e + 1].is_ascii_digit() || b" -(".contains(&b[e + 1]))))
+        {
             if b[e].is_ascii_digit() {
                 digits.push(b[e]);
             }
@@ -258,15 +297,25 @@ fn find(t: &str) -> Vec<(usize, usize, Kind)> {
             continue;
         }
         let span = &t[i..e];
-        let kind = if (13..=19).contains(&digits.len()) && luhn(&digits) && !span.contains('(') && !span.starts_with('+') {
+        let kind = if (13..=19).contains(&digits.len())
+            && luhn(&digits)
+            && !span.contains('(')
+            && !span.starts_with('+')
+        {
             Some(Kind::Card)
         } else if digits.len() == 9 && span.len() == 11 && b[i + 3] == b'-' && b[i + 6] == b'-' {
             let area: u32 = span[0..3].parse().unwrap_or(0);
             let group: u32 = span[4..6].parse().unwrap_or(0);
             let serial: u32 = span[7..11].parse().unwrap_or(0);
-            (area != 0 && area != 666 && area < 900 && group != 0 && serial != 0).then_some(Kind::Ssn)
+            (area != 0 && area != 666 && area < 900 && group != 0 && serial != 0)
+                .then_some(Kind::Ssn)
         } else if (span.starts_with('+') && (8..=15).contains(&digits.len()))
-            || (digits.len() == 10 && (span.contains('-') || span.contains('(') || span.contains('.') || span.contains(' ')) && span.len() >= 12)
+            || (digits.len() == 10
+                && (span.contains('-')
+                    || span.contains('(')
+                    || span.contains('.')
+                    || span.contains(' '))
+                && span.len() >= 12)
             || (digits.len() == 11 && digits[0] == b'1' && span.len() >= 13)
         {
             Some(Kind::Phone)
@@ -284,10 +333,21 @@ fn find(t: &str) -> Vec<(usize, usize, Kind)> {
     // IBANs, written with or without the spaces banks print.
     let mut i = 0;
     while i + 4 < n {
-        if boundary(i) && b[i].is_ascii_uppercase() && b[i + 1].is_ascii_uppercase() && b[i + 2].is_ascii_digit() && b[i + 3].is_ascii_digit() {
+        if boundary(i)
+            && b[i].is_ascii_uppercase()
+            && b[i + 1].is_ascii_uppercase()
+            && b[i + 2].is_ascii_digit()
+            && b[i + 3].is_ascii_digit()
+        {
             let mut e = i;
             let mut packed = String::new();
-            while e < n && (b[e].is_ascii_alphanumeric() || (b[e] == b' ' && e + 1 < n && b[e + 1].is_ascii_alphanumeric() && packed.len().is_multiple_of(4))) {
+            while e < n
+                && (b[e].is_ascii_alphanumeric()
+                    || (b[e] == b' '
+                        && e + 1 < n
+                        && b[e + 1].is_ascii_alphanumeric()
+                        && packed.len().is_multiple_of(4)))
+            {
                 if b[e] != b' ' {
                     packed.push(b[e].to_ascii_uppercase() as char);
                 }
@@ -331,9 +391,14 @@ fn find(t: &str) -> Vec<(usize, usize, Kind)> {
         }
         let tok = &t[i..e];
         let hex = tok.len() >= 32 && tok.bytes().all(|c| c.is_ascii_hexdigit());
-        let mixed = tok.bytes().any(|c| c.is_ascii_digit()) && tok.bytes().any(|c| c.is_ascii_alphabetic());
+        let mixed =
+            tok.bytes().any(|c| c.is_ascii_digit()) && tok.bytes().any(|c| c.is_ascii_alphabetic());
         let pathish = tok.matches('/').count() >= 2 || tok.contains("://");
-        let secret = if hex { entropy(tok) > 3.0 } else { tok.len() >= 20 && mixed && !pathish && entropy(tok) > 4.5 };
+        let secret = if hex {
+            entropy(tok) > 3.0
+        } else {
+            tok.len() >= 20 && mixed && !pathish && entropy(tok) > 4.5
+        };
         if secret && !taken(&out, i, e) {
             out.push((i, e, Kind::HighEntropy));
         }
@@ -350,7 +415,11 @@ fn find(t: &str) -> Vec<(usize, usize, Kind)> {
 /// what the clipboard history, the mail cache and the receipts reader check
 /// before anything is kept.
 pub fn secrets_in(text: &str) -> Vec<&'static str> {
-    let mut kinds: Vec<Kind> = find(text).into_iter().map(|(_, _, k)| k).filter(|k| !matches!(k, Kind::Email | Kind::Phone)).collect();
+    let mut kinds: Vec<Kind> = find(text)
+        .into_iter()
+        .map(|(_, _, k)| k)
+        .filter(|k| !matches!(k, Kind::Email | Kind::Phone))
+        .collect();
     kinds.sort();
     kinds.dedup();
     kinds.into_iter().map(|k| k.say()).collect()
@@ -406,6 +475,9 @@ impl Scrubber {
                 format!("{c} {}{}", k.say(), if c == 1 { "" } else { "s" })
             })
             .collect();
-        Some(format!("{} kept back from the online model", parts.join(", ")))
+        Some(format!(
+            "{} kept back from the online model",
+            parts.join(", ")
+        ))
     }
 }

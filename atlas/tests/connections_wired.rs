@@ -18,12 +18,12 @@ use atlas::connectivity::Need;
 use atlas::daemon::Daemon;
 use atlas::error::{AtlasError, Result};
 use atlas::integrations::{dependencies, sources_for, Health, INTERNET, MODEL};
-use std::sync::Arc;
 use atlas::platform::mock::MockPlatform;
 use atlas::platform::Monitor;
 use atlas::proactive::{Proactive, ProactiveConfig};
 use atlas::store::Store;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-cw-{tag}"));
@@ -110,11 +110,17 @@ fn the_admission_survives_the_sentence_cap() {
     );
     d.persona.max_spoken_sentences = 1;
     let reply = d.turn("what do you make of the situation with the roof", 100);
-    assert!(reply.contains(MODEL), "a one-sentence cap swallowed the caveat: {reply}");
+    assert!(
+        reply.contains(MODEL),
+        "a one-sentence cap swallowed the caveat: {reply}"
+    );
     // The cap still did its job on the answer itself; the caveat is additional
     // rather than exempting the reply from shaping.
     assert!(reply.len() > 20, "the reply collapsed entirely: {reply}");
-    assert_eq!(d.persona.max_spoken_sentences, 1, "the cap was silently raised");
+    assert_eq!(
+        d.persona.max_spoken_sentences, 1,
+        "the cap was silently raised"
+    );
 }
 
 #[test]
@@ -130,7 +136,10 @@ fn an_answer_the_parser_handled_alone_is_not_marked() {
         Proactive::new(ProactiveConfig::default()),
     );
     let reply = d.turn("boot workspace", 100);
-    assert!(!reply.contains(MODEL), "a complete local answer got a caveat: {reply}");
+    assert!(
+        !reply.contains(MODEL),
+        "a complete local answer got a caveat: {reply}"
+    );
 }
 
 #[test]
@@ -144,7 +153,10 @@ fn a_working_model_leaves_the_answer_clean() {
         Proactive::new(ProactiveConfig::default()),
     );
     let reply = d.turn("what do you make of the situation with the roof", 100);
-    assert!(!reply.contains("missing whatever"), "a healthy answer was marked: {reply}");
+    assert!(
+        !reply.contains("missing whatever"),
+        "a healthy answer was marked: {reply}"
+    );
 }
 
 #[test]
@@ -161,8 +173,14 @@ fn the_daemon_records_the_model_going_down_rather_than_only_saying_so_once() {
         Proactive::new(ProactiveConfig::default()),
     );
     d.turn("what do you make of the situation with the roof", 100);
-    let i = d.connections.get_mut(MODEL).expect("the model is a registered dependency");
-    assert_eq!(i.failures_running, 1, "the failure was never written to the board");
+    let i = d
+        .connections
+        .get_mut(MODEL)
+        .expect("the model is a registered dependency");
+    assert_eq!(
+        i.failures_running, 1,
+        "the failure was never written to the board"
+    );
     assert_eq!(i.health(100), Health::Failing);
 }
 
@@ -180,7 +198,11 @@ fn a_parser_only_turn_does_not_invent_a_success_for_the_model() {
     );
     d.turn("boot workspace", 100);
     let i = d.connections.get_mut(MODEL).unwrap();
-    assert_eq!(i.health(100), Health::Unknown, "a local turn claimed the model works");
+    assert_eq!(
+        i.health(100),
+        Health::Unknown,
+        "a local turn claimed the model works"
+    );
 }
 
 #[test]
@@ -205,7 +227,10 @@ fn the_daemon_starts_with_a_board_that_can_actually_report() {
 
 #[test]
 fn a_local_request_that_never_asked_the_model_leaned_on_nothing() {
-    assert_eq!(sources_for(Need::Local, Reached::NotNeeded), Vec::<&str>::new());
+    assert_eq!(
+        sources_for(Need::Local, Reached::NotNeeded),
+        Vec::<&str>::new()
+    );
 }
 
 #[test]
@@ -214,7 +239,10 @@ fn research_leans_on_the_internet_and_nothing_else() {
     // the mapping quietly started listing something it has no business
     // listing, which is the failure that put "I've never seen the internet
     // work" on every ordinary reply.
-    assert_eq!(sources_for(Need::Internet, Reached::NotNeeded), vec![INTERNET]);
+    assert_eq!(
+        sources_for(Need::Internet, Reached::NotNeeded),
+        vec![INTERNET]
+    );
 }
 
 #[test]
@@ -222,7 +250,10 @@ fn a_request_that_merely_prefers_the_network_is_not_marked_as_missing_it() {
     // `PrefersInternet` still answers, from the local model. Treating that as
     // a missing source is what put a caveat on healthy answers, and a caveat
     // that appears on healthy answers is one you learn to skip.
-    assert_eq!(sources_for(Need::PrefersInternet, Reached::NotNeeded), Vec::<&str>::new());
+    assert_eq!(
+        sources_for(Need::PrefersInternet, Reached::NotNeeded),
+        Vec::<&str>::new()
+    );
 }
 
 #[test]
@@ -239,7 +270,10 @@ fn a_model_that_was_never_asked_is_not_listed() {
 
 #[test]
 fn a_research_request_that_also_needed_the_model_lists_both() {
-    assert_eq!(sources_for(Need::Internet, Reached::Yes), vec![INTERNET, MODEL]);
+    assert_eq!(
+        sources_for(Need::Internet, Reached::Yes),
+        vec![INTERNET, MODEL]
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -255,15 +289,34 @@ fn reaching_the_model_is_recorded_as_a_value_not_inferred_from_wording() {
     let c = cfg();
     let parser = Parser::new(&c.commands);
     let down = DownLlm;
-    let d = Brain { llm: &down, fallback: &parser, voice: None }.decide("ruminate on the roof", "");
+    let d = Brain {
+        llm: &down,
+        fallback: &parser,
+        voice: None,
+    }
+    .decide("ruminate on the roof", "");
     assert_eq!(d.model, Reached::No);
 
     let up = UpLlm;
-    let d = Brain { llm: &up, fallback: &parser, voice: None }.decide("ruminate on the roof", "");
+    let d = Brain {
+        llm: &up,
+        fallback: &parser,
+        voice: None,
+    }
+    .decide("ruminate on the roof", "");
     assert_eq!(d.model, Reached::Yes);
 
-    let d = Brain { llm: &down, fallback: &parser, voice: None }.decide("boot workspace", "");
-    assert_eq!(d.model, Reached::NotNeeded, "the parser handled it; the model was never asked");
+    let d = Brain {
+        llm: &down,
+        fallback: &parser,
+        voice: None,
+    }
+    .decide("boot workspace", "");
+    assert_eq!(
+        d.model,
+        Reached::NotNeeded,
+        "the parser handled it; the model was never asked"
+    );
 }
 
 #[test]
@@ -282,14 +335,23 @@ fn a_model_that_answers_with_rubbish_is_reached_not_down() {
     let c = cfg();
     let parser = Parser::new(&c.commands);
     let r = Rubbish;
-    let d = Brain { llm: &r, fallback: &parser, voice: None }.decide("ruminate on the roof", "");
+    let d = Brain {
+        llm: &r,
+        fallback: &parser,
+        voice: None,
+    }
+    .decide("ruminate on the roof", "");
     assert_eq!(d.model, Reached::Yes);
 }
 
 #[test]
 fn the_registry_names_a_consequence_for_every_dependency() {
     for i in dependencies().integrations {
-        assert!(!i.if_it_breaks.trim().is_empty(), "{} has no stated consequence", i.name);
+        assert!(
+            !i.if_it_breaks.trim().is_empty(),
+            "{} has no stated consequence",
+            i.name
+        );
     }
 }
 
@@ -305,7 +367,10 @@ fn a_failing_connection_is_said_out_loud_not_only_logged() {
     i.failed(100, "401");
     let n = link_broke(&i);
     assert_eq!(n.subject.as_deref(), Some("integration:stripe"));
-    assert!(n.confidence > 0.9, "a measurement should not be hedged like a judgement");
+    assert!(
+        n.confidence > 0.9,
+        "a measurement should not be hedged like a judgement"
+    );
     assert!(n.message.contains("stripe"), "{}", n.message);
     assert!(
         n.message.contains("payment alerts stop"),
@@ -316,9 +381,15 @@ fn a_failing_connection_is_said_out_loud_not_only_logged() {
     // And it goes through the same gate as every other nudge.
     let mut ng = Nudger::default();
     let subject = n.subject.clone().unwrap();
-    assert!(ng.may_raise(&subject, 100), "a first mention should be allowed");
+    assert!(
+        ng.may_raise(&subject, 100),
+        "a first mention should be allowed"
+    );
     ng.raised(&subject, &n.message, 100);
-    assert!(!ng.may_raise(&subject, 100), "it re-announced itself immediately");
+    assert!(
+        !ng.may_raise(&subject, 100),
+        "it re-announced itself immediately"
+    );
 }
 
 #[test]
@@ -343,10 +414,23 @@ fn silence_widens_the_gap_rather_than_repeating_at_the_same_rate() {
     use atlas::nudge::Nudger;
     let mut ng = Nudger::default();
     ng.raised("integration:stripe", "stripe is down", 0);
-    let first = ng.goals.iter().find(|g| g.id == "integration:stripe").unwrap().ignored;
+    let first = ng
+        .goals
+        .iter()
+        .find(|g| g.id == "integration:stripe")
+        .unwrap()
+        .ignored;
     ng.raised("integration:stripe", "stripe is down", 1_000_000);
-    let second = ng.goals.iter().find(|g| g.id == "integration:stripe").unwrap().ignored;
-    assert!(second > first, "unanswered nudges must accumulate, or back-off never kicks in");
+    let second = ng
+        .goals
+        .iter()
+        .find(|g| g.id == "integration:stripe")
+        .unwrap()
+        .ignored;
+    assert!(
+        second > first,
+        "unanswered nudges must accumulate, or back-off never kicks in"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -367,8 +451,14 @@ fn a_machine_that_could_not_be_read_does_not_say_all_fine() {
     let unread = Readings::default();
     let findings = assess(&unread, &HealthConfig::default());
     let said = summary(&unread, &findings);
-    assert!(!said.contains("All fine"), "an unread machine reported healthy: {said}");
-    assert!(said.contains("could not read"), "it did not say what it was missing: {said}");
+    assert!(
+        !said.contains("All fine"),
+        "an unread machine reported healthy: {said}"
+    );
+    assert!(
+        said.contains("could not read"),
+        "it did not say what it was missing: {said}"
+    );
 }
 
 #[test]
@@ -386,18 +476,37 @@ fn a_machine_that_was_read_and_is_healthy_still_says_so() {
     // A read machine leads with its numbers. It may still carry a finding
     // (an un-backed-up state folder is a real one), but it must never claim
     // an instrument was unreadable when it was read.
-    assert!(!said.contains("could not read"), "a read machine claimed it was unreadable: {said}");
-    assert!(said.contains("300 gigabytes free"), "the real numbers were dropped: {said}");
-    assert!(said.contains("50 percent"), "the memory reading was dropped: {said}");
+    assert!(
+        !said.contains("could not read"),
+        "a read machine claimed it was unreadable: {said}"
+    );
+    assert!(
+        said.contains("300 gigabytes free"),
+        "the real numbers were dropped: {said}"
+    );
+    assert!(
+        said.contains("50 percent"),
+        "the memory reading was dropped: {said}"
+    );
 }
 
 #[test]
 fn one_unread_instrument_is_named_rather_than_lumped_in() {
     use atlas::health::{summary, Readings};
-    let half = Readings { ram_total_gb: 16.0, ram_used_gb: 8.0, ..Default::default() };
+    let half = Readings {
+        ram_total_gb: 16.0,
+        ram_used_gb: 8.0,
+        ..Default::default()
+    };
     let said = summary(&half, &[]);
-    assert!(said.contains("disk"), "the unread instrument was not named: {said}");
-    assert!(!said.contains("memory or"), "it blamed an instrument that worked: {said}");
+    assert!(
+        said.contains("disk"),
+        "the unread instrument was not named: {said}"
+    );
+    assert!(
+        !said.contains("memory or"),
+        "it blamed an instrument that worked: {said}"
+    );
 }
 
 #[test]
@@ -408,6 +517,12 @@ fn this_machine_reports_real_numbers_rather_than_zero() {
     let r = atlas::health::read_machine();
     assert!(r.disk_total_gb > 0.0, "disk read as zero on this platform");
     assert!(r.ram_total_gb > 0.0, "memory read as zero on this platform");
-    assert!(r.disk_free_gb <= r.disk_total_gb, "free disk exceeded total");
-    assert!(r.ram_used_gb <= r.ram_total_gb, "used memory exceeded total");
+    assert!(
+        r.disk_free_gb <= r.disk_total_gb,
+        "free disk exceeded total"
+    );
+    assert!(
+        r.ram_used_gb <= r.ram_total_gb,
+        "used memory exceeded total"
+    );
 }

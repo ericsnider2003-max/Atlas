@@ -36,11 +36,19 @@ pub struct Line {
 
 impl Line {
     pub fn new(name: &str, says: &str) -> Line {
-        Line { name: name.into(), says: says.into(), is_folder: false }
+        Line {
+            name: name.into(),
+            says: says.into(),
+            is_folder: false,
+        }
     }
 
     pub fn folder(name: &str, says: &str) -> Line {
-        Line { name: name.into(), says: says.into(), is_folder: true }
+        Line {
+            name: name.into(),
+            says: says.into(),
+            is_folder: true,
+        }
     }
 
     /// A line that only restates the filename tells you nothing you did not
@@ -69,7 +77,10 @@ pub const MAX_LINES: usize = 40;
 
 impl Contents {
     pub fn new(folder: &str) -> Contents {
-        Contents { folder: folder.into(), lines: Vec::new() }
+        Contents {
+            folder: folder.into(),
+            lines: Vec::new(),
+        }
     }
 
     pub fn add(&mut self, l: Line) {
@@ -215,7 +226,10 @@ impl Boot {
 /// `loaded` is one — the index itself. Anything higher means something is
 /// eagerly loading notes again, which is the whole problem returning.
 pub fn boot(master: &Contents) -> Boot {
-    Boot { loaded: 1, known_of: master.lines.len() }
+    Boot {
+        loaded: 1,
+        known_of: master.lines.len(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -373,7 +387,11 @@ fn line_for_folder(dir: &Path, name: &str) -> Line {
     let inside = names_on_disk(&dir.join(name)).len();
     Line::folder(
         name,
-        &format!("{} note{} inside", inside, if inside == 1 { "" } else { "s" }),
+        &format!(
+            "{} note{} inside",
+            inside,
+            if inside == 1 { "" } else { "s" }
+        ),
     )
 }
 
@@ -401,7 +419,9 @@ pub fn parse(folder: &str, md: &str) -> Contents {
     let mut c = Contents::new(folder);
     for raw in md.lines() {
         let line = raw.trim();
-        let Some(rest) = line.strip_prefix("- ") else { continue };
+        let Some(rest) = line.strip_prefix("- ") else {
+            continue;
+        };
         // The em dash is the separator `as_markdown` writes. A bullet without
         // one is prose in the file, not a line of the index.
         //

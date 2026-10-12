@@ -134,7 +134,11 @@ impl Tasks {
     /// with; insertion order is not an order at all.
     pub fn in_order(&self, space: &Space, now: u64) -> Vec<(&Task, String)> {
         let k = crate::urgency::Coefficients::default();
-        let open: Vec<&Task> = self.for_space(space).into_iter().filter(|t| !t.done).collect();
+        let open: Vec<&Task> = self
+            .for_space(space)
+            .into_iter()
+            .filter(|t| !t.done)
+            .collect();
         let items: Vec<crate::urgency::Item> = open
             .iter()
             .map(|t| crate::urgency::Item {
@@ -147,7 +151,12 @@ impl Tasks {
             .into_iter()
             .map(|i| (open[i], crate::urgency::why(&items[i], now as i64, &k)))
             .collect();
-        out.extend(self.for_space(space).into_iter().filter(|t| t.done).map(|t| (t, String::new())));
+        out.extend(
+            self.for_space(space)
+                .into_iter()
+                .filter(|t| t.done)
+                .map(|t| (t, String::new())),
+        );
         out
     }
 
@@ -172,7 +181,10 @@ impl Tasks {
         now: u64,
     ) -> Crossing {
         let Some(task) = self.get(task_id) else {
-            return Crossing::Stopped { held: 0, why: "there's no task with that id".into() };
+            return Crossing::Stopped {
+                held: 0,
+                why: "there's no task with that id".into(),
+            };
         };
         if task.space != Space::Personal {
             return Crossing::Stopped {
@@ -206,7 +218,10 @@ impl Tasks {
         if !firewall.get(held_id).is_some_and(|h| h.released) {
             return None;
         }
-        let pos = self.pending_shares.iter().position(|p| p.held_id == held_id)?;
+        let pos = self
+            .pending_shares
+            .iter()
+            .position(|p| p.held_id == held_id)?;
         let pending = self.pending_shares.remove(pos);
         Some(self.deliver(pending.task_id, &pending.business, now))
     }

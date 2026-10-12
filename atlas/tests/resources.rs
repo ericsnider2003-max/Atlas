@@ -6,7 +6,12 @@ use std::fs;
 use std::path::PathBuf;
 
 fn req(cap: Capability, app: &str) -> Request<'_> {
-    Request { capability: cap, app, may_steal_focus: false, must_be_your_window: false }
+    Request {
+        capability: cap,
+        app,
+        may_steal_focus: false,
+        must_be_your_window: false,
+    }
 }
 
 // ============ picking the right mechanism ============
@@ -77,14 +82,24 @@ fn a_backend_that_keeps_failing_on_one_app_loses_that_app_only() {
     let c = r.choose(&req(Capability::ReadText, "discord")).unwrap();
     assert_ne!(c.backend, Backend::Uia);
     // But UIA is still first choice for Notepad.
-    assert_eq!(r.choose(&req(Capability::ReadText, "notepad")).unwrap().backend, Backend::Uia);
+    assert_eq!(
+        r.choose(&req(Capability::ReadText, "notepad"))
+            .unwrap()
+            .backend,
+        Backend::Uia
+    );
 }
 
 #[test]
 fn one_failure_is_not_enough_to_write_a_backend_off() {
     let mut r = Router::default();
     r.record(Backend::Uia, "notepad", false);
-    assert_eq!(r.choose(&req(Capability::ReadText, "notepad")).unwrap().backend, Backend::Uia);
+    assert_eq!(
+        r.choose(&req(Capability::ReadText, "notepad"))
+            .unwrap()
+            .backend,
+        Backend::Uia
+    );
 }
 
 #[test]
@@ -117,14 +132,22 @@ fn an_app_update_can_reset_what_atlas_learned_about_it() {
         r.record(Backend::Uia, "discord", false);
     }
     r.learned.forget_app("discord");
-    assert_eq!(r.choose(&req(Capability::ReadText, "discord")).unwrap().backend, Backend::Uia);
+    assert_eq!(
+        r.choose(&req(Capability::ReadText, "discord"))
+            .unwrap()
+            .backend,
+        Backend::Uia
+    );
 }
 
 #[test]
 fn a_failure_falls_down_the_ladder_rather_than_giving_up() {
     let r = Router::default();
     let ladder = r.ladder(&req(Capability::ReadText, "chrome"));
-    assert!(ladder.len() >= 2, "there is always a next thing to try: {ladder:?}");
+    assert!(
+        ladder.len() >= 2,
+        "there is always a next thing to try: {ladder:?}"
+    );
 }
 
 // ============ not holding memory forever ============
@@ -134,7 +157,11 @@ fn a_helper_is_started_on_demand_and_reused_while_warm() {
     let mut s = Supervisor::new(LifecycleConfig::default());
     assert_eq!(s.acquire("cdp", 180, 100).0, Order::Start("cdp".into()));
     s.release("cdp", 110);
-    assert_eq!(s.acquire("cdp", 180, 120).0, Order::Reuse("cdp".into()), "no cold start twice");
+    assert_eq!(
+        s.acquire("cdp", 180, 120).0,
+        Order::Reuse("cdp".into()),
+        "no cold start twice"
+    );
 }
 
 #[test]
@@ -153,7 +180,10 @@ fn the_browser_stays_warm_longer_because_research_comes_in_bursts() {
     let mut s = Supervisor::new(LifecycleConfig::default());
     s.acquire("cdp", 180, 100);
     s.release("cdp", 100);
-    assert!(s.reap(250).is_empty(), "would have reaped a default helper by now");
+    assert!(
+        s.reap(250).is_empty(),
+        "would have reaped a default helper by now"
+    );
     assert!(s.is_running("cdp"));
     assert_eq!(s.reap(500), vec![Order::Stop("cdp".into())]);
 }
@@ -167,7 +197,10 @@ fn a_helper_in_the_middle_of_a_job_is_never_reaped() {
 
 #[test]
 fn exceeding_the_budget_evicts_the_least_recently_used() {
-    let mut s = Supervisor::new(LifecycleConfig { budget_mb: 400, ..Default::default() });
+    let mut s = Supervisor::new(LifecycleConfig {
+        budget_mb: 400,
+        ..Default::default()
+    });
     s.acquire("uia", 25, 100);
     s.release("uia", 100);
     s.acquire("cdp", 180, 200);
@@ -175,13 +208,19 @@ fn exceeding_the_budget_evicts_the_least_recently_used() {
 
     let (order, evicted) = s.acquire("hidden_desktop", 300, 300);
     assert_eq!(order, Order::Start("hidden_desktop".into()));
-    assert!(evicted.contains(&Order::Stop("uia".into())), "oldest goes first: {evicted:?}");
+    assert!(
+        evicted.contains(&Order::Stop("uia".into())),
+        "oldest goes first: {evicted:?}"
+    );
     assert!(s.memory_mb() <= 400);
 }
 
 #[test]
 fn atlas_refuses_rather_than_exceeding_its_memory_budget() {
-    let mut s = Supervisor::new(LifecycleConfig { budget_mb: 200, ..Default::default() });
+    let mut s = Supervisor::new(LifecycleConfig {
+        budget_mb: 200,
+        ..Default::default()
+    });
     s.acquire("cdp", 180, 100); // in use, cannot be evicted
     let (order, _) = s.acquire("hidden_desktop", 300, 110);
     assert!(matches!(order, Order::Refuse(_)), "got {order:?}");
@@ -210,11 +249,23 @@ fn tmpdir(tag: &str) -> PathBuf {
 
 #[test]
 fn files_are_classified_by_what_they_cost_and_what_they_are_worth() {
-    assert_eq!(classify(&PathBuf::from("data/tmp/turn.wav")), Class::Scratch);
-    assert_eq!(classify(&PathBuf::from("data/tmp/screen_1.png")), Class::Captures);
-    assert_eq!(classify(&PathBuf::from("data/notes/1234-topic.md")), Class::Notes);
+    assert_eq!(
+        classify(&PathBuf::from("data/tmp/turn.wav")),
+        Class::Scratch
+    );
+    assert_eq!(
+        classify(&PathBuf::from("data/tmp/screen_1.png")),
+        Class::Captures
+    );
+    assert_eq!(
+        classify(&PathBuf::from("data/notes/1234-topic.md")),
+        Class::Notes
+    );
     assert_eq!(classify(&PathBuf::from("data/logs/atlas.log")), Class::Logs);
-    assert_eq!(classify(&PathBuf::from("data/state/memory.json")), Class::State);
+    assert_eq!(
+        classify(&PathBuf::from("data/state/memory.json")),
+        Class::State
+    );
 }
 
 #[test]
@@ -230,13 +281,19 @@ fn stale_scratch_and_captures_are_deleted_notes_are_not() {
         i.modified = 0;
     }
     let plans = plan(&items, &RetentionConfig::default(), 7 * 86400);
-    let deleted: Vec<String> = plans.iter().map(|p| match p {
-        Plan::Delete { path, .. } => path.file_name().unwrap().to_string_lossy().to_string(),
-        Plan::Keep => String::new(),
-    }).collect();
+    let deleted: Vec<String> = plans
+        .iter()
+        .map(|p| match p {
+            Plan::Delete { path, .. } => path.file_name().unwrap().to_string_lossy().to_string(),
+            Plan::Keep => String::new(),
+        })
+        .collect();
     assert!(deleted.contains(&"turn.wav".to_string()));
     assert!(deleted.contains(&"screen_1.png".to_string()));
-    assert!(!deleted.contains(&"research.md".to_string()), "notes survive a week");
+    assert!(
+        !deleted.contains(&"research.md".to_string()),
+        "notes survive a week"
+    );
 }
 
 #[test]
@@ -261,14 +318,28 @@ fn going_over_budget_evicts_scratch_before_captures_and_never_notes() {
     for i in &mut items {
         i.modified = 1000;
     }
-    let cfg = RetentionConfig { total_budget_mb: 1, ..Default::default() };
+    let cfg = RetentionConfig {
+        total_budget_mb: 1,
+        ..Default::default()
+    };
     let plans = plan(&items, &cfg, 1100);
-    let deleted: Vec<String> = plans.iter().filter_map(|p| match p {
-        Plan::Delete { path, .. } => Some(path.file_name().unwrap().to_string_lossy().to_string()),
-        _ => None,
-    }).collect();
-    assert!(deleted.contains(&"a.wav".to_string()), "scratch goes first: {deleted:?}");
-    assert!(!deleted.contains(&"keep.md".to_string()), "notes are never evicted for space");
+    let deleted: Vec<String> = plans
+        .iter()
+        .filter_map(|p| match p {
+            Plan::Delete { path, .. } => {
+                Some(path.file_name().unwrap().to_string_lossy().to_string())
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(
+        deleted.contains(&"a.wav".to_string()),
+        "scratch goes first: {deleted:?}"
+    );
+    assert!(
+        !deleted.contains(&"keep.md".to_string()),
+        "notes are never evicted for space"
+    );
 }
 
 #[test]
@@ -299,7 +370,11 @@ fn old_approvals_collapse_to_counts_without_changing_behaviour() {
     let dropped = m.compact_approvals(50);
     assert!(dropped > 0);
     assert_eq!(m.approvals.len(), 50, "only recent detail is kept");
-    assert_eq!(m.approval_rate("close_app"), rate_before, "the statistics survive");
+    assert_eq!(
+        m.approval_rate("close_app"),
+        rate_before,
+        "the statistics survive"
+    );
     assert_eq!(m.times_seen("close_app"), seen_before, "the count survives");
 }
 
@@ -372,8 +447,14 @@ fn what_ive_learned_reports_readable_and_unreadable_apps_after_enough_evidence()
 
     let lines = r.what_ive_learned();
     let joined = lines.join("\n");
-    assert!(joined.contains("notepad") && joined.contains("reads cleanly"), "{joined}");
-    assert!(joined.contains("discord") && joined.contains("can't read it"), "{joined}");
+    assert!(
+        joined.contains("notepad") && joined.contains("reads cleanly"),
+        "{joined}"
+    );
+    assert!(
+        joined.contains("discord") && joined.contains("can't read it"),
+        "{joined}"
+    );
     assert!(
         !joined.contains("slack"),
         "an app with too few tries must not be reported as a verdict: {joined}"

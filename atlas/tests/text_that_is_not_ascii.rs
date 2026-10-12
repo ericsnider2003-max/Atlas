@@ -78,7 +78,10 @@ fn applying_fixes_to_awkward_text_does_not_panic() {
         let (out, _) = apply_certain(t, &fixes);
         // And the result is still text. A byte-sliced String that survived by
         // luck would show up here.
-        assert!(out.chars().count() > 0 || t.trim().is_empty(), "{t:?} became {out:?}");
+        assert!(
+            out.chars().count() > 0 || t.trim().is_empty(),
+            "{t:?} became {out:?}"
+        );
     }
 }
 
@@ -97,7 +100,10 @@ fn the_sentence_capital_is_the_right_character_and_not_the_first_byte() {
         out.starts_with('É'),
         "the first letter was not capitalised as one character: {out:?}"
     );
-    assert!(out.contains("cole starts today"), "the rest of the word was damaged: {out:?}");
+    assert!(
+        out.contains("cole starts today"),
+        "the rest of the word was damaged: {out:?}"
+    );
 }
 
 #[test]

@@ -33,9 +33,9 @@
 //! missing handler, and neither of those is visible to a test that only calls
 //! functions.
 
+use atlas::backlog::{Backlog, Blocker};
 use atlas::config::Config;
 use atlas::daemon::Daemon;
-use atlas::backlog::{Backlog, Blocker};
 use atlas::onlyone::{Found, OnlyOne};
 use atlas::platform::mock::MockPlatform;
 use atlas::platform::Monitor;
@@ -52,7 +52,13 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, dir: &Path) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(dir),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 fn conf() -> Config {
@@ -60,7 +66,14 @@ fn conf() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 /// The ask-to-stop flag is process-wide — it has to be, because a signal
@@ -81,7 +94,10 @@ fn the_lock_is_let_go_of_on_the_way_out() {
 
     let lock = OnlyOne::at(&d.store.data_dir());
     lock.take(1_000).expect("a fresh folder's lock is free");
-    assert!(lock.path().exists(), "the lock was not taken, so this proves nothing");
+    assert!(
+        lock.path().exists(),
+        "the lock was not taken, so this proves nothing"
+    );
 
     d.shut_down();
 
@@ -134,9 +150,16 @@ fn what_changed_since_the_last_save_is_written_down() {
 
     let reopened = Backlog::load(&Store::new(&dir));
     assert!(
-        reopened.items.iter().any(|i| i.request == "book the flight"),
+        reopened
+            .items
+            .iter()
+            .any(|i| i.request == "book the flight"),
         "the backlog on disk does not have what was filed just before stopping: {:?}",
-        reopened.items.iter().map(|i| &i.request).collect::<Vec<_>>()
+        reopened
+            .items
+            .iter()
+            .map(|i| &i.request)
+            .collect::<Vec<_>>()
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -216,11 +239,14 @@ fn background_errands_are_called_off_before_the_saving_starts() {
 
     // Give the errand a moment to actually be running.
     std::thread::sleep(std::time::Duration::from_millis(50));
-    assert_eq!(crew.ask_everyone_to_stop(), 1, "the running errand was not asked");
+    assert_eq!(
+        crew.ask_everyone_to_stop(),
+        1,
+        "the running errand was not asked"
+    );
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
-    while !stopped.load(std::sync::atomic::Ordering::SeqCst)
-        && std::time::Instant::now() < deadline
+    while !stopped.load(std::sync::atomic::Ordering::SeqCst) && std::time::Instant::now() < deadline
     {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
@@ -242,7 +268,9 @@ fn the_way_out_calls_the_errands_off_first() {
     let called_off = body
         .find("ask_everyone_to_stop()")
         .expect("shut_down no longer calls off background work");
-    let persist = body.find("self.persist_at_exit()").expect("shut_down no longer saves state");
+    let persist = body
+        .find("self.persist_at_exit()")
+        .expect("shut_down no longer saves state");
     assert!(
         called_off < persist,
         "the errands are called off after the state is written, so the ten-second \
@@ -402,8 +430,18 @@ fn the_signal_handler_only_stores_a_flag() {
     );
 
     const FORBIDDEN: &[&str] = &[
-        "println!", "print!", "eprintln!", "format!", "to_string", "String::",
-        "Vec::", "vec!", "std::fs", "lock()", "unwrap()", "log",
+        "println!",
+        "print!",
+        "eprintln!",
+        "format!",
+        "to_string",
+        "String::",
+        "Vec::",
+        "vec!",
+        "std::fs",
+        "lock()",
+        "unwrap()",
+        "log",
     ];
     for body in &bodies {
         // Strip comments: the prose explains what must not happen and would
@@ -436,9 +474,15 @@ fn the_lock_is_released_after_the_state_is_written() {
     let end = body.find("\n    }").map(|e| e + 6).unwrap_or(body.len());
     let body = &body[..end];
 
-    let persist = body.find("self.persist_at_exit()").expect("shut_down no longer saves state");
-    let helpers = body.find("stop_all()").expect("shut_down no longer stops the helpers");
-    let release = body.find("release()").expect("shut_down no longer releases the lock");
+    let persist = body
+        .find("self.persist_at_exit()")
+        .expect("shut_down no longer saves state");
+    let helpers = body
+        .find("stop_all()")
+        .expect("shut_down no longer stops the helpers");
+    let release = body
+        .find("release()")
+        .expect("shut_down no longer releases the lock");
 
     assert!(
         persist < release,
@@ -514,10 +558,16 @@ fn the_update_restart_goes_through_the_way_out() {
     // nothing in the daemon exits the process without it.
     let src = crate::common::source_of("daemon");
     let exits = src.matches("std::process::exit(").count();
-    assert_eq!(exits, 1, "a new way for the daemon to exit the process without stopping properly");
+    assert_eq!(
+        exits, 1,
+        "a new way for the daemon to exit the process without stopping properly"
+    );
     let at = src.find("std::process::exit(").unwrap();
     let before = &src[at.saturating_sub(600)..at];
-    assert!(before.contains("self.restart_as("), "the process exit isn't behind restart_as: {before}");
+    assert!(
+        before.contains("self.restart_as("),
+        "the process exit isn't behind restart_as: {before}"
+    );
 }
 
 // ------------------------------------------------ a crash with nothing open
@@ -534,7 +584,11 @@ fn after_a_crash_atlas_starts_itself_again_but_not_in_a_loop() {
     let state = dir.join("state");
     let t = 1_000_000;
     for i in 0..AGAIN_AT_MOST as u64 {
-        assert!(may_start_again(&state, t + i * 10), "restart {} was refused", i + 1);
+        assert!(
+            may_start_again(&state, t + i * 10),
+            "restart {} was refused",
+            i + 1
+        );
     }
     assert!(
         !may_start_again(&state, t + 100),
@@ -563,9 +617,18 @@ fn the_background_loop_is_caught_and_the_way_out_still_runs() {
     // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
     let end = body.find("\n}\n").unwrap_or(body.len());
     let body = &body[..end];
-    assert!(body.contains("catch_unwind"), "a panic past the loop still ends Atlas silently");
-    assert!(body.contains("d.shut_down()"), "a crash skips the way out, so the lock stays held");
-    assert!(body.contains("may_start_again"), "nothing starts Atlas again after a crash");
+    assert!(
+        body.contains("catch_unwind"),
+        "a panic past the loop still ends Atlas silently"
+    );
+    assert!(
+        body.contains("d.shut_down()"),
+        "a crash skips the way out, so the lock stays held"
+    );
+    assert!(
+        body.contains("may_start_again"),
+        "nothing starts Atlas again after a crash"
+    );
 }
 
 // ------------------------------------------------ signing out of Windows
@@ -597,7 +660,10 @@ fn the_end_of_a_windows_session_asks_atlas_to_stop_and_waits_for_the_lock_to_go(
     assert!(done, "it didn't wait for the way out to finish");
     // And it gives up rather than hanging the sign-out when Atlas can't stop.
     lock.take(2_000).unwrap();
-    assert!(!atlas::goodbye::stop_and_wait(lock.path(), std::time::Duration::from_millis(200)));
+    assert!(!atlas::goodbye::stop_and_wait(
+        lock.path(),
+        std::time::Duration::from_millis(200)
+    ));
     atlas::goodbye::reset_for_test();
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -605,9 +671,14 @@ fn the_end_of_a_windows_session_asks_atlas_to_stop_and_waits_for_the_lock_to_go(
 #[test]
 fn the_icon_by_the_clock_answers_the_end_of_the_session() {
     let src = crate::common::source_of("notifyicon");
-    let at = src.find("WM_ENDSESSION if").expect("the icon's window doesn't handle the end of the session");
+    let at = src
+        .find("WM_ENDSESSION if")
+        .expect("the icon's window doesn't handle the end of the session");
     let arm = &src[at..(at + 600).min(src.len())];
-    assert!(arm.contains("stop_and_wait("), "it answers the end of the session without letting Atlas stop");
+    assert!(
+        arm.contains("stop_and_wait("),
+        "it answers the end of the session without letting Atlas stop"
+    );
 }
 
 #[test]
@@ -631,10 +702,21 @@ fn an_update_moving_in_is_recorded_as_an_update() {
 #[test]
 fn closing_checkpoint_retries_the_real_save_only_with_a_bounded_deadline() {
     let source = crate::common::source_of("daemon");
-    let start = source.find("fn persist_at_exit(").expect("closing checkpoint missing");
+    let start = source
+        .find("fn persist_at_exit(")
+        .expect("closing checkpoint missing");
     let tail = &source[start..];
     let body = &tail[..tail.find("\n    }").expect("checkpoint end missing")];
-    assert!(body.contains("self.persist()"), "wrapper never writes state");
-    assert!(body.contains("Duration::from_secs(2)") && body.contains("Instant::now() >= until"), "closing retry has no bounded deadline");
-    assert!(body.contains("state snapshot busy") && body.contains("Duration::from_millis(20)"), "retry must target transient contention without spinning");
+    assert!(
+        body.contains("self.persist()"),
+        "wrapper never writes state"
+    );
+    assert!(
+        body.contains("Duration::from_secs(2)") && body.contains("Instant::now() >= until"),
+        "closing retry has no bounded deadline"
+    );
+    assert!(
+        body.contains("state snapshot busy") && body.contains("Duration::from_millis(20)"),
+        "retry must target transient contention without spinning"
+    );
 }

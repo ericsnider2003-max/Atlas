@@ -41,7 +41,6 @@ pub enum Disposition {
 }
 
 impl Disposition {
-
     pub fn plain(&self) -> &'static str {
         match self {
             Disposition::Bias => "wants it moving",
@@ -68,7 +67,12 @@ pub struct Seat {
 
 impl Seat {
     pub fn new(id: &str, brief: &str, disposition: Disposition) -> Seat {
-        Seat { id: id.into(), brief: brief.into(), disposition, tiebreak: false }
+        Seat {
+            id: id.into(),
+            brief: brief.into(),
+            disposition,
+            tiebreak: false,
+        }
     }
 
     fn breaks_ties(mut self) -> Seat {
@@ -180,7 +184,10 @@ pub const MAX_SEATS: usize = 7;
 
 impl Council {
     pub fn new(seats: Vec<Seat>) -> Council {
-        Council { seats, retests: false }
+        Council {
+            seats,
+            retests: false,
+        }
     }
 
     /// This room's no's come with what would make it yes, and get retested.
@@ -194,11 +201,23 @@ impl Council {
     pub fn default_room() -> Council {
         Council::new(vec![
             Seat::new("mover", "someone who ships things", Disposition::Bias),
-            Seat::new("sceptic", "someone who has been burned before", Disposition::Sceptic),
+            Seat::new(
+                "sceptic",
+                "someone who has been burned before",
+                Disposition::Sceptic,
+            ),
             Seat::new("operator", "someone who pays for it", Disposition::Operator),
-            Seat::new("user", "the person it is supposed to help", Disposition::Customer),
-            Seat::new("steward", "whoever maintains it in a year", Disposition::Steward)
-                .breaks_ties(),
+            Seat::new(
+                "user",
+                "the person it is supposed to help",
+                Disposition::Customer,
+            ),
+            Seat::new(
+                "steward",
+                "whoever maintains it in a year",
+                Disposition::Steward,
+            )
+            .breaks_ties(),
         ])
     }
 
@@ -222,7 +241,10 @@ impl Council {
     /// way — ask every seat, in one batch, none of them fed another's answer
     /// before their own is in.
     pub fn open_prompts(&self, question: &str, blind: &[Opinion]) -> Vec<(String, String)> {
-        self.seats.iter().map(|s| (s.id.clone(), s.open_prompt(question, blind))).collect()
+        self.seats
+            .iter()
+            .map(|s| (s.id.clone(), s.open_prompt(question, blind)))
+            .collect()
     }
 
     pub fn is_quorate(&self) -> bool {
@@ -270,8 +292,7 @@ impl Council {
                 .map(|o| format!("{}: {}", o.seat, o.because))
         });
 
-        let unanimous = !opinions.is_empty()
-            && opinions.iter().all(|o| o.lean == opinions[0].lean);
+        let unanimous = !opinions.is_empty() && opinions.iter().all(|o| o.lean == opinions[0].lean);
 
         Verdict {
             call,
@@ -331,10 +352,35 @@ use crate::fit::{Machine, Plan};
 pub fn is_hardware_question(q: &str) -> bool {
     let q = q.to_lowercase();
     const ABOUT: &[&str] = &[
-        "ram", "memory", "gpu", "graphics card", "vram", "cpu", "cores", "disk", "ssd",
-        "nvme", "upgrade", "hardware", "machine", "spec", "npu", "model size", "bigger model",
-        "smaller model", "14b", "7b", "quantis", "quantiz", "rack", "server", "mini pc",
-        "thermal", "fans", "power draw", "watt",
+        "ram",
+        "memory",
+        "gpu",
+        "graphics card",
+        "vram",
+        "cpu",
+        "cores",
+        "disk",
+        "ssd",
+        "nvme",
+        "upgrade",
+        "hardware",
+        "machine",
+        "spec",
+        "npu",
+        "model size",
+        "bigger model",
+        "smaller model",
+        "14b",
+        "7b",
+        "quantis",
+        "quantiz",
+        "rack",
+        "server",
+        "mini pc",
+        "thermal",
+        "fans",
+        "power draw",
+        "watt",
     ];
     ABOUT.iter().any(|w| q.contains(w))
 }
@@ -385,9 +431,7 @@ pub fn hardware_room(m: &Machine, p: &Plan) -> Council {
         ),
         Seat::new(
             "operator",
-            &format!(
-                "someone who pays for the hardware and the power it draws. You know: {facts}"
-            ),
+            &format!("someone who pays for the hardware and the power it draws. You know: {facts}"),
             Disposition::Operator,
         ),
         Seat::new(
@@ -429,7 +473,11 @@ pub fn conditions(opinions: &[Opinion]) -> Vec<(String, String)> {
     opinions
         .iter()
         .filter(|o| matches!(o.lean, Lean::Against | Lean::Depends))
-        .filter_map(|o| o.would_change_my_mind.as_ref().map(|c| (o.seat.clone(), c.trim().trim_end_matches('.').to_string())))
+        .filter_map(|o| {
+            o.would_change_my_mind
+                .as_ref()
+                .map(|c| (o.seat.clone(), c.trim().trim_end_matches('.').to_string()))
+        })
         .filter(|(_, c)| !c.is_empty())
         .collect()
 }
@@ -449,7 +497,10 @@ pub fn amended(question: &str, changes: &[(String, String)]) -> String {
     if changes.is_empty() {
         return question.to_string();
     }
-    let list: String = changes.iter().map(|(seat, c)| format!("\n- {c} (asked for by {seat})")).collect();
+    let list: String = changes
+        .iter()
+        .map(|(seat, c)| format!("\n- {c} (asked for by {seat})"))
+        .collect();
     format!(
         "{question}\n\nThe proposal has since been changed so that:{list}\n\nJudge it as changed, not as it was."
     )
@@ -458,7 +509,10 @@ pub fn amended(question: &str, changes: &[(String, String)]) -> String {
 /// The two rooms a changed proposal goes back to: fixing what worried one
 /// can open a hole the other would see, so it is put to both.
 pub fn retest_rooms() -> Vec<(&'static str, Council)> {
-    vec![("Should it be built", build_room()), ("Is it safe", security_room())]
+    vec![
+        ("Should it be built", build_room()),
+        ("Is it safe", security_room()),
+    ]
 }
 
 /// Is this "should I build it?" — a product, a tool, a feature, before any
@@ -466,9 +520,21 @@ pub fn retest_rooms() -> Vec<(&'static str, Council)> {
 pub fn is_build_question(q: &str) -> bool {
     let q = q.to_lowercase();
     const BUILD: &[&str] = &[
-        "should i build", "should we build", "worth building", "should i make", "should we make",
-        "should i launch", "should i ship", "worth making", "worth shipping", "should i start building",
-        "is there a market", "would anyone pay", "would anyone use", "worth selling", "should i sell",
+        "should i build",
+        "should we build",
+        "worth building",
+        "should i make",
+        "should we make",
+        "should i launch",
+        "should i ship",
+        "worth making",
+        "worth shipping",
+        "should i start building",
+        "is there a market",
+        "would anyone pay",
+        "would anyone use",
+        "worth selling",
+        "should i sell",
     ];
     BUILD.iter().any(|w| q.contains(w))
 }
@@ -518,9 +584,22 @@ pub fn build_room() -> Council {
 pub fn is_security_question(q: &str) -> bool {
     let q = q.to_lowercase();
     const SAFE: &[&str] = &[
-        "is it safe", "is this safe", "secure", "security", "attack", "hack", "leak",
-        "could someone", "can someone", "exploit", "breach", "phish", "who can reach",
-        "who can see", "expose", "exposed",
+        "is it safe",
+        "is this safe",
+        "secure",
+        "security",
+        "attack",
+        "hack",
+        "leak",
+        "could someone",
+        "can someone",
+        "exploit",
+        "breach",
+        "phish",
+        "who can reach",
+        "who can see",
+        "expose",
+        "exposed",
     ];
     SAFE.iter().any(|w| q.contains(w))
 }
@@ -626,7 +705,12 @@ pub fn parse_opinion(seat: &str, reply: &str) -> Opinion {
     let would = after_phrase(reply, "would be ok if")
         .or_else(|| after_phrase(reply, "would be okay if"))
         .or_else(|| after_phrase(reply, "change my mind"));
-    Opinion { seat: seat.into(), lean, because: first_sentence(reply), would_change_my_mind: would }
+    Opinion {
+        seat: seat.into(),
+        lean,
+        because: first_sentence(reply),
+        would_change_my_mind: would,
+    }
 }
 
 /// Where `needle` first appears as a whole word, if it does.
@@ -664,7 +748,9 @@ fn first_sentence(text: &str) -> String {
 /// Whatever the seat said after "change my mind", where it said anything.
 fn after_phrase(text: &str, phrase: &str) -> Option<String> {
     let at = text.to_ascii_lowercase().find(phrase)?;
-    let rest = text[at + phrase.len()..].trim_start_matches([':', ' ', '-', '\n']).trim();
+    let rest = text[at + phrase.len()..]
+        .trim_start_matches([':', ' ', '-', '\n'])
+        .trim();
     let line = rest.lines().next()?.trim();
     if line.is_empty() {
         None

@@ -84,82 +84,121 @@ impl Param {
         matches!(self.basis, Basis::Measured | Basis::Chosen)
     }
     pub fn say(&self) -> String {
-        format!("{}::{} = {} [{:?}] {}", self.module, self.name, self.live, self.basis, self.why)
+        format!(
+            "{}::{} = {} [{:?}] {}",
+            self.module, self.name, self.live, self.basis, self.why
+        )
     }
 }
 
 pub fn frozen() -> Vec<Param> {
     vec![
         Param {
-            module: "levels", name: "TOUCH_SEPARATION",
-            expected: 3.0, live: levels::TOUCH_SEPARATION as f64, basis: Basis::Chosen,
+            module: "levels",
+            name: "TOUCH_SEPARATION",
+            expected: 3.0,
+            live: levels::TOUCH_SEPARATION as f64,
+            basis: Basis::Chosen,
             why: "bars between visits before a second touch counts as separate. Without \
                   it a level price hugged for twenty bars reports twenty touches and \
                   outranks one tested on three occasions",
         },
         Param {
-            module: "levels", name: "STOP_BAND_PIPS",
-            expected: 10.0, live: levels::STOP_BAND_PIPS, basis: Basis::Measured,
+            module: "levels",
+            name: "STOP_BAND_PIPS",
+            expected: 10.0,
+            live: levels::STOP_BAND_PIPS,
+            basis: Basis::Measured,
             why: "Osler (2003): stop orders cluster at rates ending 01-10 past the \
                   figure, 14.4% against 7.4% just below it",
         },
         Param {
-            module: "regime", name: "DEFAULT_SPREAD_PIPS",
-            expected: 0.8, live: regime::DEFAULT_SPREAD_PIPS, basis: Basis::External,
+            module: "regime",
+            name: "DEFAULT_SPREAD_PIPS",
+            expected: 0.8,
+            live: regime::DEFAULT_SPREAD_PIPS,
+            basis: Basis::External,
             why: "typical retail EURUSD; a real deployment passes its own",
         },
         Param {
-            module: "regime", name: "DEFAULT_SLIPPAGE_PIPS",
-            expected: 0.3, live: regime::DEFAULT_SLIPPAGE_PIPS, basis: Basis::External,
+            module: "regime",
+            name: "DEFAULT_SLIPPAGE_PIPS",
+            expected: 0.3,
+            live: regime::DEFAULT_SLIPPAGE_PIPS,
+            basis: Basis::External,
             why: "a property of the broker, not of this system",
         },
         Param {
-            module: "regime", name: "COST_MULTIPLE",
-            expected: 8.0, live: regime::COST_MULTIPLE, basis: Basis::Chosen,
+            module: "regime",
+            name: "COST_MULTIPLE",
+            expected: 8.0,
+            live: regime::COST_MULTIPLE,
+            basis: Basis::Chosen,
             why: "how many round trips of cost a range must be worth to be worth \
                   trading. The SHAPE of the rule is arithmetic; the 8 is a choice",
         },
         Param {
-            module: "regime", name: "ENTER_TREND",
-            expected: 1.30, live: regime::ENTER_TREND, basis: Basis::Chosen,
+            module: "regime",
+            name: "ENTER_TREND",
+            expected: 1.30,
+            live: regime::ENTER_TREND,
+            basis: Basis::Chosen,
             why: "multiples of the random-walk efficiency ratio needed to call a trend. \
                   Measured consequence: pure noise reads as a trend about a third of \
                   the time on a twenty-bar window at this gate",
         },
         Param {
-            module: "regime", name: "EXIT_TREND",
-            expected: 1.10, live: regime::EXIT_TREND, basis: Basis::Chosen,
+            module: "regime",
+            name: "EXIT_TREND",
+            expected: 1.10,
+            live: regime::EXIT_TREND,
+            basis: Basis::Chosen,
             why: "the hysteresis floor. Must stay below ENTER_TREND or the label flips \
                   every time the measure grazes the threshold",
         },
         Param {
-            module: "regime", name: "MIN_DWELL",
-            expected: 5.0, live: regime::MIN_DWELL as f64, basis: Basis::Chosen,
+            module: "regime",
+            name: "MIN_DWELL",
+            expected: 5.0,
+            live: regime::MIN_DWELL as f64,
+            basis: Basis::Chosen,
             why: "bars a regime must be held before it can be left. Should exceed the \
                   lag of the measure driving it",
         },
         Param {
-            module: "timeframe", name: "MIN_BARS",
-            expected: 20.0, live: timeframe::MIN_BARS as f64, basis: Basis::Derived,
+            module: "timeframe",
+            name: "MIN_BARS",
+            expected: 20.0,
+            live: timeframe::MIN_BARS as f64,
+            basis: Basis::Derived,
             why: "the floor below which the measures cannot answer: the efficiency \
                   ratio's baseline at n=6 is 0.41 and the 95% critical R-squared at \
                   n=5 is 0.77, so a smaller window is a sample too small to ask",
         },
         Param {
-            module: "timeframe", name: "TRADING_HOURS_PER_WEEK",
-            expected: 120.0, live: timeframe::TRADING_HOURS_PER_WEEK, basis: Basis::External,
+            module: "timeframe",
+            name: "TRADING_HOURS_PER_WEEK",
+            expected: 120.0,
+            live: timeframe::TRADING_HOURS_PER_WEEK,
+            basis: Basis::External,
             why: "FX trades about 120 hours a week, not 168. Using 168 would promise \
                   data a third sooner than it can arrive",
         },
         Param {
-            module: "feed", name: "GAP_BARS",
-            expected: 2.0, live: super::feed::GAP_BARS, basis: Basis::Chosen,
+            module: "feed",
+            name: "GAP_BARS",
+            expected: 2.0,
+            live: super::feed::GAP_BARS,
+            basis: Basis::Chosen,
             why: "bar-lengths of silence before a hole is worth reporting. One missing \
                   bar is a quiet market; several is a feed problem",
         },
         Param {
-            module: "bars", name: "swing k",
-            expected: 2.0, live: 2.0, basis: Basis::Chosen,
+            module: "bars",
+            name: "swing k",
+            expected: 2.0,
+            live: 2.0,
+            basis: Basis::Chosen,
             why: "swing strength, and therefore the confirmation delay. On H4 this is \
                   eight hours before a pivot is knowable",
         },
@@ -205,20 +244,28 @@ pub fn drift() -> Vec<String> {
     frozen()
         .iter()
         .filter(|p| (p.live - p.expected).abs() > 1e-12)
-        .map(|p| format!("{}::{}: live {}, frozen at {}", p.module, p.name, p.live, p.expected))
+        .map(|p| {
+            format!(
+                "{}::{}: live {}, frozen at {}",
+                p.module, p.name, p.live, p.expected
+            )
+        })
         .collect()
 }
 
 pub fn report() -> String {
     let d = drift();
-    let mut out = vec![format!(
-        "parameter freeze {} -- {} values, {} of them searchable, {} \
+    let mut out = vec![
+        format!(
+            "parameter freeze {} -- {} values, {} of them searchable, {} \
          configuration(s) tried so far",
-        fingerprint(),
-        frozen().len(),
-        freedoms(),
-        attempts()
-    ), String::new()];
+            fingerprint(),
+            frozen().len(),
+            freedoms(),
+            attempts()
+        ),
+        String::new(),
+    ];
     if !d.is_empty() {
         out.push("DRIFT -- the registry and the code disagree:".into());
         for line in &d {
@@ -227,7 +274,12 @@ pub fn report() -> String {
         out.push(String::new());
     }
     let all = frozen();
-    for basis in [Basis::Derived, Basis::Measured, Basis::Chosen, Basis::External] {
+    for basis in [
+        Basis::Derived,
+        Basis::Measured,
+        Basis::Chosen,
+        Basis::External,
+    ] {
         let rows: Vec<&Param> = all.iter().filter(|p| p.basis == basis).collect();
         if rows.is_empty() {
             continue;
@@ -258,8 +310,11 @@ mod tests {
     fn the_drift_check_catches_a_value_planted_to_disagree() {
         // A check that cannot fire is decoration.
         let planted = Param {
-            module: "regime", name: "MIN_DWELL",
-            expected: 99.0, live: regime::MIN_DWELL as f64, basis: Basis::Chosen,
+            module: "regime",
+            name: "MIN_DWELL",
+            expected: 99.0,
+            live: regime::MIN_DWELL as f64,
+            basis: Basis::Chosen,
             why: "deliberately wrong, to prove the check can fail",
         };
         assert!((planted.live - planted.expected).abs() > 1e-12);

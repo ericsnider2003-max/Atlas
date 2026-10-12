@@ -13,7 +13,14 @@ use atlas::store::Store;
 use std::path::{Path, PathBuf};
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn root(tag: &str) -> PathBuf {
@@ -40,13 +47,23 @@ fn pair(tag: &str) -> (Config, Config, Store, Store, String) {
     };
     let (ls, ps) = (Store::new(r.join("laptop")), Store::new(r.join("phone")));
     for s in [&ls, &ps] {
-        s.save(atlas::sync::KEY_FILE, &atlas::sync::KeptKey::keeping(&phrase, 1_700_000_000)).unwrap();
+        s.save(
+            atlas::sync::KEY_FILE,
+            &atlas::sync::KeptKey::keeping(&phrase, 1_700_000_000),
+        )
+        .unwrap();
     }
     (make("laptop"), make("phone"), ls, ps, phrase)
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, s: &Store) -> Daemon<'a> {
-    Daemon::new(c, p, None, s.clone(), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        s.clone(),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 const T: u64 = 1_790_900_000;
@@ -54,13 +71,24 @@ const T: u64 = 1_790_900_000;
 #[test]
 fn the_words_that_hand_something_to_the_laptop() {
     use atlas::remote::handed_over;
-    assert_eq!(handed_over("ask the laptop to find the contract").as_deref(), Some("find the contract"));
-    assert_eq!(handed_over("On my laptop, check the render finished.").as_deref(), Some("check the render finished"));
-    assert_eq!(handed_over("have my laptop look up the Hendricks quote").as_deref(), Some("look up the Hendricks quote"));
+    assert_eq!(
+        handed_over("ask the laptop to find the contract").as_deref(),
+        Some("find the contract")
+    );
+    assert_eq!(
+        handed_over("On my laptop, check the render finished.").as_deref(),
+        Some("check the render finished")
+    );
+    assert_eq!(
+        handed_over("have my laptop look up the Hendricks quote").as_deref(),
+        Some("look up the Hendricks quote")
+    );
     assert_eq!(handed_over("ask the laptop"), None);
     assert_eq!(handed_over("what's on the laptop"), None);
     assert_eq!(handed_over("find the contract"), None);
-    assert!(atlas::remote::go_ahead_on_the_laptop("Yes, go ahead on the laptop."));
+    assert!(atlas::remote::go_ahead_on_the_laptop(
+        "Yes, go ahead on the laptop."
+    ));
     assert!(!atlas::remote::go_ahead_on_the_laptop("go ahead"));
 }
 
@@ -70,7 +98,10 @@ fn said_on_the_laptop_itself_it_is_just_done() {
     let p = plat();
     let mut l = daemon(&lc, &p, &ls);
     let reply = l.turn("ask the laptop to check what time it is", T);
-    assert!(!reply.contains("Sent"), "the laptop sent it to itself: {reply}");
+    assert!(
+        !reply.contains("Sent"),
+        "the laptop sent it to itself: {reply}"
+    );
 }
 
 #[test]
@@ -80,21 +111,42 @@ fn a_reading_runs_on_the_laptop_and_the_answer_comes_back_to_the_phone() {
     pp.be_a_phone_for_test();
     let mut phone = daemon(&pc, &pp, &ps);
     let said = phone.turn("ask the laptop to check what time it is", T);
-    assert!(said.starts_with("Sent \"check what time it is\" to your laptop"), "{said}");
+    assert!(
+        said.starts_with("Sent \"check what time it is\" to your laptop"),
+        "{said}"
+    );
 
     let mut laptop = daemon(&lc, &lp, &ls);
-    assert_eq!(laptop.parser.parse("check what time it is"), laptop.parser.parse("what time is it"), "the directed phone phrase must reach the actual time command");
+    assert_eq!(
+        laptop.parser.parse("check what time it is"),
+        laptop.parser.parse("what time is it"),
+        "the directed phone phrase must reach the actual time command"
+    );
     laptop.turn("sync", T + 10);
     let waiting: Vec<serde_json::Value> = ls.load("asked_by_your_phone");
-    assert_eq!(waiting.len(), 1, "the laptop never took the phone's request");
+    assert_eq!(
+        waiting.len(),
+        1,
+        "the laptop never took the phone's request"
+    );
     laptop.tick(T + 20);
     let waiting: Vec<serde_json::Value> = ls.load("asked_by_your_phone");
-    assert_eq!(waiting[0]["phase"], "finished", "a reading was held: {waiting:?}");
-    assert_eq!(waiting.len(), 1, "the terminal receipt must survive duplicate delivery");
+    assert_eq!(
+        waiting[0]["phase"], "finished",
+        "a reading was held: {waiting:?}"
+    );
+    assert_eq!(
+        waiting.len(),
+        1,
+        "the terminal receipt must survive duplicate delivery"
+    );
     laptop.turn("sync", T + 30);
 
     let back = phone.turn("sync", T + 40);
-    assert!(back.contains("From your laptop, on \"check what time it is\""), "the answer never reached the phone: {back}");
+    assert!(
+        back.contains("From your laptop, on \"check what time it is\""),
+        "the answer never reached the phone: {back}"
+    );
     let q: atlas::remote::Queue = ps.load("asked_of_the_laptop");
     assert_eq!(q.requests[0].state, atlas::remote::State::Done);
 }
@@ -105,7 +157,10 @@ fn something_that_might_change_things_waits_for_your_yes_from_the_phone() {
     let (lp, pp) = (plat(), plat());
     pp.be_a_phone_for_test();
     let mut phone = daemon(&pc, &pp, &ps);
-    phone.turn("ask the laptop to delete the old installers in downloads", T);
+    phone.turn(
+        "ask the laptop to delete the old installers in downloads",
+        T,
+    );
     let mut laptop = daemon(&lc, &lp, &ls);
     laptop.turn("sync", T + 10);
     laptop.tick(T + 20);
@@ -114,17 +169,26 @@ fn something_that_might_change_things_waits_for_your_yes_from_the_phone() {
     assert_eq!(held[0]["held"], true, "a change ran without a yes");
     laptop.turn("sync", T + 30);
     let back = phone.turn("sync", T + 40);
-    assert!(back.contains("waiting for your yes") && back.contains("go ahead on the laptop"), "{back}");
+    assert!(
+        back.contains("waiting for your yes") && back.contains("go ahead on the laptop"),
+        "{back}"
+    );
 
     // The yes, from the phone.
     let ok = phone.turn("go ahead on the laptop", T + 50);
     assert!(ok.contains("Told the laptop to go ahead"), "{ok}");
     laptop.turn("sync", T + 60);
     let after: Vec<serde_json::Value> = ls.load("asked_by_your_phone");
-    assert_eq!(after[0]["phase"], "authorized", "the yes never reached the held request");
+    assert_eq!(
+        after[0]["phase"], "authorized",
+        "the yes never reached the held request"
+    );
     laptop.tick(T + 61);
     let after: Vec<serde_json::Value> = ls.load("asked_by_your_phone");
-    assert_ne!(after[0]["phase"], "authorized", "authorized work was never considered");
+    assert_ne!(
+        after[0]["phase"], "authorized",
+        "authorized work was never considered"
+    );
 }
 
 #[test]
@@ -159,23 +223,32 @@ fn apple_weather_reaches_your_other_devices_as_a_token_and_never_as_the_key() {
     use atlas::applewx::{self, CarriedToken};
     use p256::pkcs8::EncodePrivateKey;
     let r = root("wx");
-    let key = p256::SecretKey::from_slice(&[7u8; 32]).unwrap().to_pkcs8_pem(Default::default()).unwrap();
+    let key = p256::SecretKey::from_slice(&[7u8; 32])
+        .unwrap()
+        .to_pkcs8_pem(Default::default())
+        .unwrap();
     std::fs::write(r.join("AuthKey_TEST000000.p8"), key.as_bytes()).unwrap();
     let apns = atlas::apns::ApnsConfig {
-        key_file: r.join("AuthKey_TEST000000.p8").to_string_lossy().into_owned(),
+        key_file: r
+            .join("AuthKey_TEST000000.p8")
+            .to_string_lossy()
+            .into_owned(),
         key_id: "TEST000000".into(),
         team_id: "Z6NSM9AXB7".into(),
         topic: "com.ericsnider.atlas".into(),
     };
     // The laptop, with the key: a week's token, then nothing until three days are left.
-    let ((id, field, to), until) = applewx::carry_token(&apns, &r, "laptop", 0, T).expect("a token to carry");
+    let ((id, field, to), until) =
+        applewx::carry_token(&apns, &r, "laptop", 0, T).expect("a token to carry");
     assert_eq!(field, "weatherkit");
     assert_eq!(until, T + applewx::CARRIED_LIFE_SECS);
     assert!(!to.contains("PRIVATE KEY"), "the key itself was carried");
     assert!(applewx::carry_token(&apns, &r, "laptop", until, T + 86_400).is_none());
     assert!(applewx::carry_token(&apns, &r, "laptop", until, until - 2 * 86_400).is_some());
     // A friend's Atlas, with no key: nothing to carry.
-    assert!(applewx::carry_token(&atlas::apns::ApnsConfig::default(), &r, "friend", 0, T).is_none());
+    assert!(
+        applewx::carry_token(&atlas::apns::ApnsConfig::default(), &r, "friend", 0, T).is_none()
+    );
 
     // The phone: only from your own (sealed) bundle, and then it can ask Apple.
     let state = r.join("phone-state");
@@ -206,33 +279,91 @@ fn the_conversation_facts_later_list_and_reminders_are_the_same_on_the_phone() {
     let mut phone = daemon(&pc, &pp, &ps);
     phone.turn("sync", now + 20);
     // The thread: the laptop's exchanges, in order, word for word.
-    let said: Vec<&str> = phone.thread.recent.iter().map(|x| x.said.as_str()).collect();
-    for s in ["actually, my car is a Honda", "remind me in 30 minutes to stretch"] {
-        assert!(said.contains(&s), "{s:?} never reached the phone's thread: {said:?}");
+    let said: Vec<&str> = phone
+        .thread
+        .recent
+        .iter()
+        .map(|x| x.said.as_str())
+        .collect();
+    for s in [
+        "actually, my car is a Honda",
+        "remind me in 30 minutes to stretch",
+    ] {
+        assert!(
+            said.contains(&s),
+            "{s:?} never reached the phone's thread: {said:?}"
+        );
     }
-    let lt: Vec<(u64, &str, &str)> = laptop.thread.recent.iter().filter(|x| x.said.starts_with("remind")).map(|x| (x.at, x.said.as_str(), x.reply.as_str())).collect();
-    let pt: Vec<(u64, &str, &str)> = phone.thread.recent.iter().filter(|x| x.said.starts_with("remind")).map(|x| (x.at, x.said.as_str(), x.reply.as_str())).collect();
+    let lt: Vec<(u64, &str, &str)> = laptop
+        .thread
+        .recent
+        .iter()
+        .filter(|x| x.said.starts_with("remind"))
+        .map(|x| (x.at, x.said.as_str(), x.reply.as_str()))
+        .collect();
+    let pt: Vec<(u64, &str, &str)> = phone
+        .thread
+        .recent
+        .iter()
+        .filter(|x| x.said.starts_with("remind"))
+        .map(|x| (x.at, x.said.as_str(), x.reply.as_str()))
+        .collect();
     assert_eq!(lt, pt, "the same exchange, with the laptop's reply");
     // The fact.
-    let car = |d: &Daemon| d.facts.facts.iter().find(|f| f.body.to_lowercase().contains("honda")).map(|f| (f.name.clone(), f.as_of));
+    let car = |d: &Daemon| {
+        d.facts
+            .facts
+            .iter()
+            .find(|f| f.body.to_lowercase().contains("honda"))
+            .map(|f| (f.name.clone(), f.as_of))
+    };
     assert!(car(&laptop).is_some(), "the laptop didn't keep the fact");
-    assert_eq!(car(&phone), car(&laptop), "the fact never reached the phone");
+    assert_eq!(
+        car(&phone),
+        car(&laptop),
+        "the fact never reached the phone"
+    );
     // The reminder, known on the phone with the same due time -- but rung
     // only where it was set (see `a_reminder_rings_on_one_device_only`).
-    let due = |d: &Daemon| d.scheduler.active().into_iter().find(|j| j.command.contains("stretch")).map(|j| j.due);
+    let due = |d: &Daemon| {
+        d.scheduler
+            .active()
+            .into_iter()
+            .find(|j| j.command.contains("stretch"))
+            .map(|j| j.due)
+    };
     assert!(due(&laptop).is_some());
-    let known = phone.reminders_elsewhere().into_iter().find(|e| e.words() == "stretch").map(|e| e.due);
-    assert_eq!(known, due(&laptop), "the reminder never reached the phone at the same time");
+    let known = phone
+        .reminders_elsewhere()
+        .into_iter()
+        .find(|e| e.words() == "stretch")
+        .map(|e| e.due);
+    assert_eq!(
+        known,
+        due(&laptop),
+        "the reminder never reached the phone at the same time"
+    );
 
     // And the phone's own turn reaches the laptop, without echoing back.
     phone.turn("remember that the rack needs a ten inch shelf", now + 30);
     phone.turn("sync", now + 40);
     laptop.turn("sync", now + 50);
-    assert!(laptop.thread.recent.iter().any(|x| x.said == "remember that the rack needs a ten inch shelf"));
+    assert!(laptop
+        .thread
+        .recent
+        .iter()
+        .any(|x| x.said == "remember that the rack needs a ten inch shelf"));
     let count = |d: &Daemon, s: &str| d.thread.recent.iter().filter(|x| x.said == s).count();
     phone.turn("sync", now + 60);
-    assert_eq!(count(&phone, "actually, my car is a Honda"), 1, "an exchange came back twice");
-    assert_eq!(count(&laptop, "remember that the rack needs a ten inch shelf"), 1);
+    assert_eq!(
+        count(&phone, "actually, my car is a Honda"),
+        1,
+        "an exchange came back twice"
+    );
+    assert_eq!(
+        count(&laptop, "remember that the rack needs a ten inch shelf"),
+        1
+    );
 }
 
 /// 4 Oct 2026, Eric: a reminder rang twice -- the phone's own alarm, and
@@ -251,40 +382,84 @@ fn a_reminder_rings_on_one_device_only() {
     phone.turn("remind me in 2 hours to call the dentist", now);
     phone.turn("sync", now + 10);
     laptop.turn("sync", now + 20);
-    let rings = |d: &Daemon, w: &str| d.scheduler.active().into_iter().filter(|j| j.command.contains(w)).count();
-    assert_eq!(rings(&phone, "dentist"), 1, "the phone, where it was set, doesn't hold it to ring");
+    let rings = |d: &Daemon, w: &str| {
+        d.scheduler
+            .active()
+            .into_iter()
+            .filter(|j| j.command.contains(w))
+            .count()
+    };
+    assert_eq!(
+        rings(&phone, "dentist"),
+        1,
+        "the phone, where it was set, doesn't hold it to ring"
+    );
     assert_eq!(rings(&laptop, "dentist"), 0, "the laptop holds the phone's reminder as a job of its own: it would ring (and push) a second time");
     assert!(atlas::phonealarms::upcoming(&laptop.scheduler, now).is_empty());
     // But the laptop knows it, and says where it rings.
     let listed = laptop.turn("what reminders do I have", now + 30);
-    assert!(listed.contains("call the dentist") && listed.contains("on your phone"), "{listed}");
+    assert!(
+        listed.contains("call the dentist") && listed.contains("on your phone"),
+        "{listed}"
+    );
 
     // Set on the laptop: the phone knows it, and never hands it to iOS.
     laptop.turn("remind me in 3 hours to stretch", now + 40);
     laptop.turn("sync", now + 50);
     phone.turn("sync", now + 60);
     assert_eq!(rings(&phone, "stretch"), 0);
-    assert!(atlas::phonealarms::upcoming(&phone.scheduler, now + 60).iter().all(|u| !u["text"].as_str().unwrap_or("").contains("stretch")),
-        "the phone would hand the laptop's reminder to iOS and ring it too");
+    assert!(
+        atlas::phonealarms::upcoming(&phone.scheduler, now + 60)
+            .iter()
+            .all(|u| !u["text"].as_str().unwrap_or("").contains("stretch")),
+        "the phone would hand the laptop's reminder to iOS and ring it too"
+    );
     let listed = phone.turn("what reminders do I have", now + 70);
-    assert!(listed.contains("stretch") && listed.contains("on your laptop"), "{listed}");
+    assert!(
+        listed.contains("stretch") && listed.contains("on your laptop"),
+        "{listed}"
+    );
 
     // Cancelled on the phone: cancelled on the laptop, where it lives.
-    let stretch_key = phone.reminders_elsewhere().into_iter().find(|reminder| reminder.words().contains("stretch")).unwrap().key;
+    let stretch_key = phone
+        .reminders_elsewhere()
+        .into_iter()
+        .find(|reminder| reminder.words().contains("stretch"))
+        .unwrap()
+        .key;
     let said = phone.turn("cancel the reminder about stretch", now + 80);
-    assert!(said.contains("Cancellation saved") && said.contains("next sync"), "{said}");
-    assert_eq!(rings(&laptop, "stretch"), 1, "the owner has not received the cancellation yet");
+    assert!(
+        said.contains("Cancellation saved") && said.contains("next sync"),
+        "{said}"
+    );
+    assert_eq!(
+        rings(&laptop, "stretch"),
+        1,
+        "the owner has not received the cancellation yet"
+    );
     let saved: Vec<serde_json::Value> = ps.load("reminders_on_your_other_devices");
-    assert!(saved.iter().any(|reminder| reminder["key"] == stretch_key && reminder["due"] == 0 && reminder["text"] == ""), "the cancellation must be durable while awaiting the owning device: {saved:?}");
+    assert!(
+        saved.iter().any(|reminder| reminder["key"] == stretch_key
+            && reminder["due"] == 0
+            && reminder["text"] == ""),
+        "the cancellation must be durable while awaiting the owning device: {saved:?}"
+    );
     phone.turn("sync", now + 90);
     laptop.turn("sync", now + 100);
-    assert_eq!(rings(&laptop, "stretch"), 0, "cancelled on the phone, it still rings on the laptop");
+    assert_eq!(
+        rings(&laptop, "stretch"),
+        0,
+        "cancelled on the phone, it still rings on the laptop"
+    );
 
     // Cancelled where it lives: the other device forgets it.
     phone.turn("cancel the reminder about the dentist", now + 110);
     phone.turn("sync", now + 120);
     laptop.turn("sync", now + 130);
-    assert!(laptop.reminders_elsewhere().is_empty(), "the laptop still lists a reminder the phone cancelled");
+    assert!(
+        laptop.reminders_elsewhere().is_empty(),
+        "the laptop still lists a reminder the phone cancelled"
+    );
 }
 
 #[test]
@@ -298,10 +473,22 @@ fn nothing_private_travels_and_a_stranger_gets_none_of_it() {
     laptop.turn("sync", now + 10);
     let mut phone = daemon(&pc, &pp, &ps);
     phone.turn("sync", now + 20);
-    assert!(laptop.thread.recent.iter().any(|x| x.said.contains("4111")), "the laptop's own thread keeps it");
-    assert!(phone.thread.recent.iter().any(|x| x.said == "sync"), "nothing travelled at all, so this proves nothing");
-    assert!(!phone.thread.recent.iter().any(|x| x.said.contains("4111")), "a card number travelled in the thread");
-    assert!(!phone.facts.facts.iter().any(|f| f.body.contains("4111")), "a card number travelled as a fact");
+    assert!(
+        laptop.thread.recent.iter().any(|x| x.said.contains("4111")),
+        "the laptop's own thread keeps it"
+    );
+    assert!(
+        phone.thread.recent.iter().any(|x| x.said == "sync"),
+        "nothing travelled at all, so this proves nothing"
+    );
+    assert!(
+        !phone.thread.recent.iter().any(|x| x.said.contains("4111")),
+        "a card number travelled in the thread"
+    );
+    assert!(
+        !phone.facts.facts.iter().any(|f| f.body.contains("4111")),
+        "a card number travelled as a fact"
+    );
 
     // Somebody else's bundle (no household key): none of it is taken.
     let r = root("stranger");
@@ -324,6 +511,13 @@ fn nothing_private_travels_and_a_stranger_gets_none_of_it() {
     stranger.turn("sync", now + 10);
     let mut mine = daemon(&mc, &mp, &ms);
     mine.turn("sync", now + 20);
-    assert!(!mine.thread.recent.iter().any(|x| x.said.contains("password hint")), "an unsealed bundle's thread was taken");
+    assert!(
+        !mine
+            .thread
+            .recent
+            .iter()
+            .any(|x| x.said.contains("password hint")),
+        "an unsealed bundle's thread was taken"
+    );
     assert!(!mine.facts.facts.iter().any(|f| f.body.contains("fish")));
 }

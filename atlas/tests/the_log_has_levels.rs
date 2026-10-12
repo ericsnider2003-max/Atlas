@@ -38,7 +38,11 @@ fn the_two_levels_are_distinguishable_in_the_file() {
 
     let warns: Vec<&str> = text.lines().filter(|l| l.contains(" WARN ")).collect();
     let infos: Vec<&str> = text.lines().filter(|l| l.contains(" INFO ")).collect();
-    assert_eq!(warns.len(), 1, "grepping for WARN does not isolate the warning:\n{text}");
+    assert_eq!(
+        warns.len(),
+        1,
+        "grepping for WARN does not isolate the warning:\n{text}"
+    );
     assert_eq!(infos.len(), 1, "{text}");
     assert!(warns[0].contains("handoff"), "{}", warns[0]);
     assert!(infos[0].contains("refused"), "{}", infos[0]);
@@ -55,7 +59,9 @@ fn failures_are_warnings_and_refusals_are_not() {
     let mut wrong: Vec<String> = Vec::new();
     for line in src.lines() {
         let t = line.trim();
-        let Some(rest) = t.strip_prefix("self.log.info(") else { continue };
+        let Some(rest) = t.strip_prefix("self.log.info(") else {
+            continue;
+        };
         let lower = rest.to_lowercase();
         // "couldn't", "could not", "failed" — Atlas tried and did not manage.
         // Anything matching that is a warning, whatever else is on the line.

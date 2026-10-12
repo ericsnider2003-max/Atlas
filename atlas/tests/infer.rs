@@ -22,7 +22,10 @@ fn a_model_that_is_not_installed_is_named_rather_than_shrugged_at() {
     let err = Model::load(Kind::HandLandmarks, nowhere).unwrap_err();
     let said = format!("{err}");
     assert!(said.contains("reading your fingers"), "{said}");
-    assert!(said.contains("hand_landmarks.onnx"), "and which file: {said}");
+    assert!(
+        said.contains("hand_landmarks.onnx"),
+        "and which file: {said}"
+    );
 }
 
 #[test]

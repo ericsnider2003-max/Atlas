@@ -288,7 +288,10 @@ impl Pace {
         // Under one a second it's said as "one every N seconds" (1 Oct 2026:
         // "I'm only managing 0 looks a second").
         let rate = match self.per_second(cfg) {
-            0 => format!("one look every {:.0} seconds", (self.wait_ms(cfg) as f32 / 1000.0).max(1.0)),
+            0 => format!(
+                "one look every {:.0} seconds",
+                (self.wait_ms(cfg) as f32 / 1000.0).max(1.0)
+            ),
             1 => "one look a second".to_string(),
             n => format!("{n} looks a second"),
         };

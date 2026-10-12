@@ -96,7 +96,10 @@ impl Checkpoint {
     }
     pub fn from_text(s: &str) -> Option<Checkpoint> {
         let (n, r) = s.trim().split_once(' ')?;
-        Some(Checkpoint { size: n.parse().ok()?, root: unhex(r)? })
+        Some(Checkpoint {
+            size: n.parse().ok()?,
+            root: unhex(r)?,
+        })
     }
 }
 
@@ -121,7 +124,10 @@ impl Log {
     }
 
     pub fn checkpoint(&self) -> Checkpoint {
-        Checkpoint { size: self.len(), root: mth(&self.leaves) }
+        Checkpoint {
+            size: self.len(),
+            root: mth(&self.leaves),
+        }
     }
 
     /// Proof that the first `old` leaves are unchanged in the first `new`.
@@ -172,7 +178,9 @@ pub fn verify_consistency(old: &Checkpoint, new: &Checkpoint, proof: &[Hash]) ->
         fnn >>= 1;
         sn >>= 1;
     }
-    let Some(first) = path.first() else { return false };
+    let Some(first) = path.first() else {
+        return false;
+    };
     let (mut fr, mut sr) = (*first, *first);
     for c in &path[1..] {
         if sn == 0 {
@@ -201,16 +209,26 @@ mod tests {
     use super::*;
 
     fn log(n: usize) -> Log {
-        Log::from_leaves((0..n).map(|i| leaf_hash(format!("decision {i}: atlas=long engine=short").as_bytes())).collect())
+        Log::from_leaves(
+            (0..n)
+                .map(|i| leaf_hash(format!("decision {i}: atlas=long engine=short").as_bytes()))
+                .collect(),
+        )
     }
 
     fn at(l: &Log, size: usize) -> Checkpoint {
-        Checkpoint { size, root: mth(&l.leaves[..size]) }
+        Checkpoint {
+            size,
+            root: mth(&l.leaves[..size]),
+        }
     }
 
     #[test]
     fn sha_is_the_trees_own_and_right() {
-        assert_eq!(hex(&sha(b"abc")), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        assert_eq!(
+            hex(&sha(b"abc")),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
         assert_eq!(unhex(&hex(&sha(b"x"))), Some(sha(b"x")));
         assert_eq!(unhex("zz"), None);
     }
@@ -219,7 +237,10 @@ mod tests {
     fn rfc6962_shapes() {
         assert_eq!(Log::default().checkpoint().root, sha(b""));
         let two = log(2);
-        assert_eq!(two.checkpoint().root, node_hash(&two.leaves[0], &two.leaves[1]));
+        assert_eq!(
+            two.checkpoint().root,
+            node_hash(&two.leaves[0], &two.leaves[1])
+        );
     }
 
     #[test]
@@ -228,7 +249,10 @@ mod tests {
         for old in 0..=20 {
             for new in old..=20 {
                 let p = l.consistency_proof(old, new).unwrap();
-                assert!(verify_consistency(&at(&l, old), &at(&l, new), &p), "old={old} new={new}");
+                assert!(
+                    verify_consistency(&at(&l, old), &at(&l, new), &p),
+                    "old={old} new={new}"
+                );
             }
         }
     }
@@ -242,7 +266,11 @@ mod tests {
         let edited = Log::from_leaves(leaves);
         let p = edited.consistency_proof(6, 10).unwrap();
         assert!(!verify_consistency(&before, &edited.checkpoint(), &p));
-        assert!(verify_consistency(&before, &honest.checkpoint(), &honest.consistency_proof(6, 10).unwrap()));
+        assert!(verify_consistency(
+            &before,
+            &honest.checkpoint(),
+            &honest.consistency_proof(6, 10).unwrap()
+        ));
     }
 
     #[test]

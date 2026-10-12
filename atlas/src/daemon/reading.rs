@@ -1,6 +1,6 @@
 //! Research, photos, watching videos and listening to recordings, and running
 //! flows (with add-on steps only as far as they were allowed).
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
@@ -11,19 +11,47 @@ impl<'a> Daemon<'a> {
     /// sentences were ever said, and where the rest went was never told).
     pub(super) fn research_note_help(&mut self, said: &str) -> Option<String> {
         let t = said.to_lowercase();
-        let reading = ["full brief", "full write up", "full write-up", "full report", "whole report", "rest of the research", "read me the report", "read me the research", "read the research"]
-            .iter()
-            .any(|p| t.contains(p));
-        let opening = ["open the report", "open that report", "open the research", "open the write up", "open the write-up", "open the brief", "show me the report", "show me the research"]
-            .iter()
-            .any(|p| t.contains(p));
+        let reading = [
+            "full brief",
+            "full write up",
+            "full write-up",
+            "full report",
+            "whole report",
+            "rest of the research",
+            "read me the report",
+            "read me the research",
+            "read the research",
+        ]
+        .iter()
+        .any(|p| t.contains(p));
+        let opening = [
+            "open the report",
+            "open that report",
+            "open the research",
+            "open the write up",
+            "open the write-up",
+            "open the brief",
+            "show me the report",
+            "show me the research",
+        ]
+        .iter()
+        .any(|p| t.contains(p));
         // "Save the report as a Word document", "make that a PDF" (1 Oct
         // 2026, research report item 24).
-        let export = if reading || opening { None } else { crate::report::file_asked(said) };
+        let export = if reading || opening {
+            None
+        } else {
+            crate::report::file_asked(said)
+        };
         if !reading && !opening && export.is_none() {
             return None;
         }
-        let dir = self.tools_ref().map(|t| t.research.clone()).unwrap_or_default().resolved(&self.store.install_root()).notes_dir;
+        let dir = self
+            .tools_ref()
+            .map(|t| t.research.clone())
+            .unwrap_or_default()
+            .resolved(&self.store.install_root())
+            .notes_dir;
         // The brief or the research means the research write-up; a report,
         // letter or document means whichever of the two was written last.
         let research_meant = ["brief", "research"].iter().any(|w| t.contains(w));
@@ -32,8 +60,16 @@ impl<'a> Daemon<'a> {
         } else {
             let r = crate::research::last(&dir, crate::research::LAST_RESEARCH);
             let w = crate::research::last(&dir, crate::research::LAST_WRITTEN);
-            let when = |p: &Option<std::path::PathBuf>| p.as_ref().and_then(|p| p.metadata().ok()).and_then(|m| m.modified().ok());
-            if when(&w) > when(&r) { w } else { r.or(w) }
+            let when = |p: &Option<std::path::PathBuf>| {
+                p.as_ref()
+                    .and_then(|p| p.metadata().ok())
+                    .and_then(|m| m.modified().ok())
+            };
+            if when(&w) > when(&r) {
+                w
+            } else {
+                r.or(w)
+            }
         };
         // Notes from before the marks were kept: the newest file, as before.
         let path = match marked {
@@ -51,25 +87,46 @@ impl<'a> Daemon<'a> {
             }
         };
         if let Some(kind) = export {
-            let name = |p: &std::path::Path| p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let name = |p: &std::path::Path| {
+                p.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default()
+            };
             return Some(match crate::report::export(&path, kind) {
                 Ok(out) => match self.plat.open_path(&out.display().to_string()) {
-                    Ok(()) => format!("Saved and opening {} -- it's in {}, with its sources as links.", name(&out), dir),
-                    Err(_) => format!("Saved as {}, in {}, with its sources as links.", name(&out), dir),
+                    Ok(()) => format!(
+                        "Saved and opening {} -- it's in {}, with its sources as links.",
+                        name(&out),
+                        dir
+                    ),
+                    Err(_) => format!(
+                        "Saved as {}, in {}, with its sources as links.",
+                        name(&out),
+                        dir
+                    ),
                 },
                 Err(e) => format!("I couldn't make that file: {e}."),
             });
         }
         if opening {
             return Some(match self.plat.open_path(&path.display().to_string()) {
-                Ok(()) => format!("Opening {}.", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()),
+                Ok(()) => format!(
+                    "Opening {}.",
+                    path.file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default()
+                ),
                 Err(e) => format!("I couldn't open it ({e}). It's at {}.", path.display()),
             });
         }
         let text = std::fs::read_to_string(&path).ok()?;
         // The write-up without its "# title" line and its source list.
         let body = text.split("\n## Sources").next().unwrap_or(&text);
-        let body = if body.starts_with('#') { body.split_once('\n').map(|(_, rest)| rest).unwrap_or("") } else { body };
+        let body = if body.starts_with('#') {
+            body.split_once('\n').map(|(_, rest)| rest).unwrap_or("")
+        } else {
+            body
+        };
         let body = body.trim().to_string();
         Some(body)
     }
@@ -81,30 +138,96 @@ impl<'a> Daemon<'a> {
     /// program).
     pub(super) fn writing_help(&mut self, said: &str) -> Option<String> {
         let t = said.trim().to_lowercase();
-        let lead = ["write me a ", "write me an ", "write a ", "write an ", "draft me a ", "draft a ", "draft an ", "compose a ", "can you write me a ", "can you write a ", "could you write me a ", "please write a ", "please write me a "]
-            .iter()
-            .find(|p| t.starts_with(**p))?;
+        let lead = [
+            "write me a ",
+            "write me an ",
+            "write a ",
+            "write an ",
+            "draft me a ",
+            "draft a ",
+            "draft an ",
+            "compose a ",
+            "can you write me a ",
+            "can you write a ",
+            "could you write me a ",
+            "please write a ",
+            "please write me a ",
+        ]
+        .iter()
+        .find(|p| t.starts_with(**p))?;
         let what = t[lead.len()..].trim().to_string();
         const DOCS: &[&str] = &[
-            "letter", "cover letter", "report", "essay", "memo", "speech", "bio", "biography", "summary", "proposal",
-            "article", "blog", "press release", "resume", "cv", "outline", "plan", "announcement", "statement", "toast",
-            "eulogy", "complaint", "reference", "recommendation", "thank you note", "note to",
+            "letter",
+            "cover letter",
+            "report",
+            "essay",
+            "memo",
+            "speech",
+            "bio",
+            "biography",
+            "summary",
+            "proposal",
+            "article",
+            "blog",
+            "press release",
+            "resume",
+            "cv",
+            "outline",
+            "plan",
+            "announcement",
+            "statement",
+            "toast",
+            "eulogy",
+            "complaint",
+            "reference",
+            "recommendation",
+            "thank you note",
+            "note to",
         ];
         let first_word = what.split_whitespace().next().unwrap_or("");
-        let is_doc = DOCS.iter().any(|d| what.starts_with(d) || (first_word.len() > 2 && what.split_whitespace().take(3).any(|w| d.starts_with(w) && w.len() > 3)));
+        let is_doc = DOCS.iter().any(|d| {
+            what.starts_with(d)
+                || (first_word.len() > 2
+                    && what
+                        .split_whitespace()
+                        .take(3)
+                        .any(|w| d.starts_with(w) && w.len() > 3))
+        });
         if !is_doc {
             return None;
         }
         let Some(llm) = self.llm.clone() else {
-            return Some("I need a language model to write that, and I haven't got one yet.".into());
+            return Some(
+                "I need a language model to write that, and I haven't got one yet.".into(),
+            );
         };
-        let dir = self.tools_ref().map(|t| t.research.clone()).unwrap_or_default().resolved(&self.store.install_root()).notes_dir;
+        let dir = self
+            .tools_ref()
+            .map(|t| t.research.clone())
+            .unwrap_or_default()
+            .resolved(&self.store.install_root())
+            .notes_dir;
         let ask = said.trim().to_string();
         let draft_cfg = self.tools_cfg().draft.clone();
-        let for_someone = ["letter", "reference", "recommendation", "complaint", "proposal", "note to", "thank you note", "resume", "cv", "bio"]
-            .iter()
-            .any(|d| what.starts_with(d) || what.contains(&format!(" {d}")));
-        let title: String = what.split_whitespace().take(8).collect::<Vec<_>>().join(" ");
+        let for_someone = [
+            "letter",
+            "reference",
+            "recommendation",
+            "complaint",
+            "proposal",
+            "note to",
+            "thank you note",
+            "resume",
+            "cv",
+            "bio",
+        ]
+        .iter()
+        .any(|d| what.starts_with(d) || what.contains(&format!(" {d}")));
+        let title: String = what
+            .split_whitespace()
+            .take(8)
+            .collect::<Vec<_>>()
+            .join(" ");
         let work: crew::Work = Box::new(move |ctl| {
             if ctl.checkpoint() {
                 return Err("stopped before writing".into());
@@ -113,8 +236,12 @@ impl<'a> Daemon<'a> {
                           ready to use. Write the whole document -- no preamble, no notes about what you did, \
                           no placeholder brackets unless a fact truly isn't known (then one short [bracket] \
                           saying what goes there). Plain text with simple headings where they help.";
-            let text = llm.complete_hard(system, &ask).map_err(|e| format!("the writing didn't come back ({e})"))?;
-            let text = crate::phonemodel::without_thinking(&text).trim().to_string();
+            let text = llm
+                .complete_hard(system, &ask)
+                .map_err(|e| format!("the writing didn't come back ({e})"))?;
+            let text = crate::phonemodel::without_thinking(&text)
+                .trim()
+                .to_string();
             if text.is_empty() {
                 return Err("the model wrote nothing".into());
             }
@@ -123,9 +250,19 @@ impl<'a> Daemon<'a> {
             // One rewrite pass at a time, kept only when it has fewer faults
             // (`draft::revise`), and said in the reply -- "what changed".
             let (text, tidied) = match crate::draft::revise(&text, &*llm, &draft_cfg) {
-                crate::draft::Outcome::Revised { text: better, fixed, .. } => {
-                    let better = crate::phonemodel::without_thinking(&better).trim().to_string();
-                    if better.is_empty() { (text, Vec::new()) } else { (better, fixed) }
+                crate::draft::Outcome::Revised {
+                    text: better,
+                    fixed,
+                    ..
+                } => {
+                    let better = crate::phonemodel::without_thinking(&better)
+                        .trim()
+                        .to_string();
+                    if better.is_empty() {
+                        (text, Vec::new())
+                    } else {
+                        (better, fixed)
+                    }
                 }
                 _ => (text, Vec::new()),
             };
@@ -139,12 +276,28 @@ impl<'a> Daemon<'a> {
                 (text, false)
             };
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-            let slug: String = title.chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect::<String>().trim_matches('-').to_string();
-            let path = std::path::Path::new(&dir).join(format!("{}-{slug}.md", crate::store::now()));
-            std::fs::write(&path, format!("# {title}\n\n{text}\n")).map_err(|e| format!("it's written, but I couldn't save it ({e})"))?;
-            crate::research::mark_last(&dir, crate::research::LAST_WRITTEN, &path.display().to_string());
+            let slug: String = title
+                .chars()
+                .map(|c| if c.is_alphanumeric() { c } else { '-' })
+                .collect::<String>()
+                .trim_matches('-')
+                .to_string();
+            let path =
+                std::path::Path::new(&dir).join(format!("{}-{slug}.md", crate::store::now()));
+            std::fs::write(&path, format!("# {title}\n\n{text}\n"))
+                .map_err(|e| format!("it's written, but I couldn't save it ({e})"))?;
+            crate::research::mark_last(
+                &dir,
+                crate::research::LAST_WRITTEN,
+                &path.display().to_string(),
+            );
             let words = text.split_whitespace().count();
-            let opening: String = text.split(['.', '\n']).find(|l| l.split_whitespace().count() > 3).unwrap_or("").trim().to_string();
+            let opening: String = text
+                .split(['.', '\n'])
+                .find(|l| l.split_whitespace().count() > 3)
+                .unwrap_or("")
+                .trim()
+                .to_string();
             let mut tidy = tidied_line(&tidied);
             if reviewed {
                 tidy.push_str(" A second read, as the person receiving it, sharpened it.");
@@ -153,11 +306,25 @@ impl<'a> Daemon<'a> {
                 "Written: your {title}, about {words} words.{tidy} It opens: \"{opening}.\" Say \"read me the report\" to hear it, or \"open the report\" to see it."
             ))
         });
-        Some(if self.hand_off("writing", crate::store::now(), work, Some(what.clone()), SpeakPolicy::Always) {
-            format!("Writing your {} now. I'll tell you when it's ready.", what.split_whitespace().take(6).collect::<Vec<_>>().join(" "))
-        } else {
-            "I'm swamped with background work right now -- ask me again in a moment.".into()
-        })
+        Some(
+            if self.hand_off(
+                "writing",
+                crate::store::now(),
+                work,
+                Some(what.clone()),
+                SpeakPolicy::Always,
+            ) {
+                format!(
+                    "Writing your {} now. I'll tell you when it's ready.",
+                    what.split_whitespace()
+                        .take(6)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
+            } else {
+                "I'm swamped with background work right now -- ask me again in a moment.".into()
+            },
+        )
     }
 
     /// "Check my writing", "is this slop", "check this draft": what's wrong
@@ -168,7 +335,12 @@ impl<'a> Daemon<'a> {
         if !asks_to_check_writing(said) {
             return None;
         }
-        let copied = self.plat.read_clipboard().ok().flatten().unwrap_or_default();
+        let copied = self
+            .plat
+            .read_clipboard()
+            .ok()
+            .flatten()
+            .unwrap_or_default();
         if copied.split_whitespace().count() < 5 {
             return Some("Copy the text first, then ask me to check your writing -- I read what's on the clipboard.".into());
         }
@@ -184,9 +356,14 @@ impl<'a> Daemon<'a> {
         if self.library.is_empty() {
             return Some("There's nothing of yours for me to search yet -- no notes, and nothing I've read for you. Say \"learn\" and a file name to give me something.".into());
         }
-        let mut cfg = self.tools_ref().map(|t| t.recall.clone()).unwrap_or_default();
+        let mut cfg = self
+            .tools_ref()
+            .map(|t| t.recall.clone())
+            .unwrap_or_default();
         cfg.results = cfg.results.max(5);
-        let hits = self.library.search(&question, None, &cfg, crate::store::now());
+        let hits = self
+            .library
+            .search(&question, None, &cfg, crate::store::now());
         let passages: Vec<(String, String)> = hits
             .iter()
             .filter_map(|h| self.library.get(h.id))
@@ -204,16 +381,26 @@ impl<'a> Daemon<'a> {
                 return Err("stopped".into());
             }
             let (system, user) = crate::recall::docs_prompt(&question, &passages);
-            let answer = llm.complete(&system, &user).map_err(|e| format!("the answer didn't come back ({e})"))?;
+            let answer = llm
+                .complete(&system, &user)
+                .map_err(|e| format!("the answer didn't come back ({e})"))?;
             let answer = crate::phonemodel::without_thinking(&answer);
             let checked = crate::recall::check_cites(&answer, &passages);
             Ok(crate::recall::docs_reply(&checked, &passages))
         });
-        Some(if self.hand_off("documents", crate::store::now(), work, None, SpeakPolicy::Always) {
-            "Looking through your documents.".into()
-        } else {
-            "I'm swamped with background work right now -- ask me again in a moment.".into()
-        })
+        Some(
+            if self.hand_off(
+                "documents",
+                crate::store::now(),
+                work,
+                None,
+                SpeakPolicy::Always,
+            ) {
+                "Looking through your documents.".into()
+            } else {
+                "I'm swamped with background work right now -- ask me again in a moment.".into()
+            },
+        )
     }
 
     pub(super) fn research(&mut self, topic: &str) -> String {
@@ -232,7 +419,9 @@ impl<'a> Daemon<'a> {
         let topic = {
             let t = topic.trim_start();
             match t.split_whitespace().next() {
-                Some(w) if w.trim_end_matches([',', '.']).eq_ignore_ascii_case("atlas") => t[w.len()..].trim_start_matches([',', ' ']),
+                Some(w) if w.trim_end_matches([',', '.']).eq_ignore_ascii_case("atlas") => {
+                    t[w.len()..].trim_start_matches([',', ' '])
+                }
                 _ => t,
             }
         };
@@ -240,20 +429,33 @@ impl<'a> Daemon<'a> {
         // does anyway, not part of what to look up (1 Oct 2026).
         let topic = {
             let low = topic.to_ascii_lowercase();
-            let cut = [" and write it up", " and write up", " and give me a write up", " and report back"]
-                .iter()
-                .filter_map(|p| low.find(p))
-                .min();
+            let cut = [
+                " and write it up",
+                " and write up",
+                " and give me a write up",
+                " and report back",
+            ]
+            .iter()
+            .filter_map(|p| low.find(p))
+            .min();
             let t = match cut {
                 Some(i) if i > 0 => topic[..i].trim_end(),
                 _ => topic,
             };
             t.strip_suffix(" for me").unwrap_or(t)
         };
-        let fresh = topic.to_lowercase().split_whitespace().any(|w| w == "again");
-        let cleaned: String = topic.split_whitespace().filter(|w| !w.eq_ignore_ascii_case("again")).collect::<Vec<_>>().join(" ");
+        let fresh = topic
+            .to_lowercase()
+            .split_whitespace()
+            .any(|w| w == "again");
+        let cleaned: String = topic
+            .split_whitespace()
+            .filter(|w| !w.eq_ignore_ascii_case("again"))
+            .collect::<Vec<_>>()
+            .join(" ");
         let topic = cleaned.as_str();
-        let mut cfg = self.tools_ref()
+        let mut cfg = self
+            .tools_ref()
             .map(|t| t.research.clone())
             .unwrap_or_default()
             .resolved(&self.store.install_root());
@@ -278,9 +480,10 @@ impl<'a> Daemon<'a> {
                 .find(|c| {
                     !c.corrected
                         && (c.confirmations.iter().any(|f| {
-                            f.source
-                                .strip_prefix("research: ")
-                                .is_some_and(|asked| asked.trim().eq_ignore_ascii_case(topic.trim()) || crate::consolidate::same_claim(topic, asked))
+                            f.source.strip_prefix("research: ").is_some_and(|asked| {
+                                asked.trim().eq_ignore_ascii_case(topic.trim())
+                                    || crate::consolidate::same_claim(topic, asked)
+                            })
                         }) || crate::consolidate::same_claim(topic, &c.says))
                 })
             {
@@ -302,7 +505,9 @@ impl<'a> Daemon<'a> {
         // than a second copy hand-written at the point of use. Research is the
         // only `Need::Internet` intent, so this is that function's real home.
         if self.connectivity.cached() == Reach::Offline {
-            return Outcome::Failed(crate::connectivity::deferral_message(&Intent::Research(topic.to_string())));
+            return Outcome::Failed(crate::connectivity::deferral_message(&Intent::Research(
+                topic.to_string(),
+            )));
         }
         // Reading the sources and writing them up is background work: the
         // deep model's, when there is one (`deepbrain`).
@@ -342,8 +547,10 @@ impl<'a> Daemon<'a> {
         let judging = self.tools_cfg().judgment.clone();
         let cf_verify = self.tools_cfg().cloudflare.verify;
         let verifier = worker.as_ref().map(|_| llm.clone());
-        let summariser: std::sync::Arc<dyn crate::brain::Llm> =
-            worker.as_ref().map(|(w, _)| w.clone()).unwrap_or_else(|| llm.clone());
+        let summariser: std::sync::Arc<dyn crate::brain::Llm> = worker
+            .as_ref()
+            .map(|(w, _)| w.clone())
+            .unwrap_or_else(|| llm.clone());
         let delegated = worker.is_some();
         // The headless browser the search step falls back on when curl's
         // copy of the results page had no links in it. Only when a tools
@@ -447,7 +654,9 @@ impl<'a> Daemon<'a> {
                      I'll check what comes back before I bring it to you."
                 ))
             } else {
-                Outcome::Started(format!("Looking into {topic}. I'll let you know what I find."))
+                Outcome::Started(format!(
+                    "Looking into {topic}. I'll let you know what I find."
+                ))
             }
         } else {
             // The bounded waiting list is full -- vanishingly unlikely in
@@ -456,8 +665,6 @@ impl<'a> Daemon<'a> {
         }
     }
 
-
-
     /// Read the writing in a photo.
     ///
     /// Atlas's own reader first, and the outside program only if it is both
@@ -465,7 +672,10 @@ impl<'a> Daemon<'a> {
     /// to tesseract first, "I can't read photos yet" was the answer to every
     /// photo ever handed to Atlas, and the settings switch it pointed at could
     /// not fix it — there was no tesseract to switch on.
-    pub(super) fn read_photo(&self, item: &crate::tray::Item) -> std::result::Result<String, String> {
+    pub(super) fn read_photo(
+        &self,
+        item: &crate::tray::Item,
+    ) -> std::result::Result<String, String> {
         let tools = self.tools_cfg();
         let path = item.stored_at.clone().unwrap_or_else(|| item.what.clone());
         let vars = self.tools_ref().map(|t| t.vars.clone()).unwrap_or_default();
@@ -508,8 +718,6 @@ impl<'a> Daemon<'a> {
             Err(e) => Err(format!("I couldn't read that photo: {e}")),
         }
     }
-
-
 
     /// Shrink a frame down to something worth keeping.
     ///
@@ -555,7 +763,11 @@ impl<'a> Daemon<'a> {
     /// So: ask ffmpeg which frames actually differ, read those, and delete
     /// each frame once it has been read. What a frame is worth is the words on
     /// it, and those are a few hundred bytes against a few hundred kilobytes.
-    pub(super) fn watch(&self, item: &crate::tray::Item, path: &str) -> std::result::Result<String, String> {
+    pub(super) fn watch(
+        &self,
+        item: &crate::tray::Item,
+        path: &str,
+    ) -> std::result::Result<String, String> {
         let tools = self.tools_cfg();
         let view = tools.viewing.clone();
         let scratch = std::path::Path::new(&tools.work_dir).join(format!("watch-{}", item.id));
@@ -646,8 +858,7 @@ impl<'a> Daemon<'a> {
             let at = times.get(i).copied().unwrap_or(i as f32);
             let mut text = String::new();
             if ocr.enabled {
-                if let Ok(reading) = crate::ocr::read_image(&ocr, &frame.to_string_lossy(), &vars)
-                {
+                if let Ok(reading) = crate::ocr::read_image(&ocr, &frame.to_string_lossy(), &vars) {
                     // A half-read screen is worse than a skipped one: it looks
                     // like a quotation and is not.
                     if reading.trustworthy() {
@@ -668,7 +879,11 @@ impl<'a> Daemon<'a> {
             };
 
             if !text.trim().is_empty() || kept_frame.is_some() {
-                screens.push(crate::viewing::Seen { at, text, kept_frame });
+                screens.push(crate::viewing::Seen {
+                    at,
+                    text,
+                    kept_frame,
+                });
             }
 
             // Read, then gone. The full frame never survives either way: this
@@ -704,13 +919,9 @@ impl<'a> Daemon<'a> {
                  rather than reading any of it. Settings, under what I can see.\n",
             );
         } else if screens.is_empty() {
-            account.push_str(
-                "\nI could hear it but couldn't read anything on screen.\n",
-            );
+            account.push_str("\nI could hear it but couldn't read anything on screen.\n");
         } else if spoken.is_empty() {
-            account.push_str(
-                "\nI could see it but couldn't line it up with anything said.\n",
-            );
+            account.push_str("\nI could see it but couldn't line it up with anything said.\n");
         }
         Ok(account)
     }
@@ -744,11 +955,16 @@ impl<'a> Daemon<'a> {
                 vars.insert("stt_model".into(), m.clone());
             }
         }
-        let model = crate::language::model_facts(vars.get("stt_model").map(String::as_str).unwrap_or(""));
+        let model =
+            crate::language::model_facts(vars.get("stt_model").map(String::as_str).unwrap_or(""));
         crate::language::insert_whisper_vars(&tools.language, &model, vars);
     }
 
-    fn transcribe_timed(&self, item: &crate::tray::Item, path: &str) -> Vec<crate::viewing::Spoken> {
+    fn transcribe_timed(
+        &self,
+        item: &crate::tray::Item,
+        path: &str,
+    ) -> Vec<crate::viewing::Spoken> {
         let tools = self.tools_cfg();
         let Some(timed) = tools.stt_timed.as_ref() else {
             return Vec::new();
@@ -788,7 +1004,10 @@ impl<'a> Daemon<'a> {
     /// Both go through the same transcriber Atlas already uses for your voice.
     /// A video is converted to audio first, which is what ffmpeg is already
     /// installed for — no new dependency for a whole new kind of thing.
-    pub(super) fn listen_to(&self, item: &crate::tray::Item) -> std::result::Result<String, String> {
+    pub(super) fn listen_to(
+        &self,
+        item: &crate::tray::Item,
+    ) -> std::result::Result<String, String> {
         let tools = self.tools_cfg();
         let path = item.stored_at.clone().unwrap_or_else(|| item.what.clone());
         let scratch = std::path::Path::new(&tools.work_dir);
@@ -824,7 +1043,10 @@ impl<'a> Daemon<'a> {
         // The transcript file is the same words in another form, and it was
         // left beside the audio by the old cleanup.
         recording.and_also(&transcript);
-        vars.insert("transcript".into(), transcript.to_string_lossy().to_string());
+        vars.insert(
+            "transcript".into(),
+            transcript.to_string_lossy().to_string(),
+        );
         self.add_language_vars(&mut vars);
         let said = tools
             .stt
@@ -838,8 +1060,6 @@ impl<'a> Daemon<'a> {
         Ok(crate::research::first_sentences(&said, 5))
     }
 
-
-
     /// Start a sequence: one you saved, or an add-on's (`plugin`).
     pub(super) fn start_flow(
         &mut self,
@@ -851,11 +1071,24 @@ impl<'a> Daemon<'a> {
         self.start_flow_with_claim(f, plugin, said, t, None)
     }
 
-    pub(super) fn start_scheduled_flow(&mut self, f: crate::flow::Workflow, plugin: String, claim: String, t: u64) -> String {
+    pub(super) fn start_scheduled_flow(
+        &mut self,
+        f: crate::flow::Workflow,
+        plugin: String,
+        claim: String,
+        t: u64,
+    ) -> String {
         self.start_flow_with_claim(f, Some(plugin), None, t, Some(claim))
     }
 
-    fn start_flow_with_claim(&mut self, f: crate::flow::Workflow, plugin: Option<String>, said: Option<&str>, t: u64, claim: Option<String>) -> String {
+    fn start_flow_with_claim(
+        &mut self,
+        f: crate::flow::Workflow,
+        plugin: Option<String>,
+        said: Option<&str>,
+        t: u64,
+        claim: Option<String>,
+    ) -> String {
         let w = f.name.clone();
         let steps: Vec<String> = f.steps.iter().map(|s| s.command.clone()).collect();
         let (mind_id, moved) = if self.mind.active().is_empty() {
@@ -880,10 +1113,15 @@ impl<'a> Daemon<'a> {
                 format!("Running {w}, {} steps.", steps.len())
             }
         };
-        if let Some(run) = &mut self.current_flow { run.scheduled_claim = claim; run.started = t; }
+        if let Some(run) = &mut self.current_flow {
+            run.scheduled_claim = claim;
+            run.started = t;
+        }
         if let Some(run) = self.current_flow.clone() {
-            if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Ready) {
-                self.log.warn(&format!("scheduled add-on start remains fenced ({error})"));
+            if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Ready)
+            {
+                self.log
+                    .warn(&format!("scheduled add-on start remains fenced ({error})"));
                 return "Your scheduled add-on is waiting to save its recovery state. No step started; I'll retry while this request remains active.".into();
             }
         }
@@ -891,9 +1129,17 @@ impl<'a> Daemon<'a> {
         // the third chat's inline copy of this path).
         if let Some(run) = self.current_flow.clone() {
             let chain = self.chain_of(&run, run.steps.len());
-            let cant: Vec<&str> = chain.steps.iter().filter(|s| !s.reversible).map(|s| s.what.as_str()).collect();
+            let cant: Vec<&str> = chain
+                .steps
+                .iter()
+                .filter(|s| !s.reversible)
+                .map(|s| s.what.as_str())
+                .collect();
             if !cant.is_empty() {
-                reply.push_str(&format!(" These can't be undone once done: {}.", cant.join("; ")));
+                reply.push_str(&format!(
+                    " These can't be undone once done: {}.",
+                    cant.join("; ")
+                ));
             }
         }
         if !moved.is_empty() {
@@ -909,38 +1155,98 @@ impl<'a> Daemon<'a> {
         reply
     }
 
-    fn fence_scheduled_run(&mut self, run: &crate::flow::Run, phase: crate::plugins::SchedulePhase) -> crate::error::Result<()> {
-        let Some(token) = &run.scheduled_claim else { return Ok(()) };
+    fn fence_scheduled_run(
+        &mut self,
+        run: &crate::flow::Run,
+        phase: crate::plugins::SchedulePhase,
+    ) -> crate::error::Result<()> {
+        let Some(token) = &run.scheduled_claim else {
+            return Ok(());
+        };
         let _guard = crate::store::state_transaction_briefly(self.store.root())?;
         let mut runs = crate::plugins::ScheduleRuns::load_checked(&self.store)?;
-        let claim = runs.claims.get_mut(token).ok_or_else(|| crate::error::AtlasError::Platform("the scheduled occurrence lost its durable claim; no next step started".into()))?;
-        if run.plugin.as_deref() != Some(claim.plugin.as_str()) || run.workflow != claim.workflow.name || run.steps != claim.workflow.steps || claim.run.as_ref().is_some_and(|saved| saved.position > run.position) || matches!(claim.phase, crate::plugins::SchedulePhase::Done | crate::plugins::SchedulePhase::Failed) {
-            return Err(crate::error::AtlasError::Platform("the scheduled occurrence identity or saved progress changed; no next step started".into()));
+        let claim = runs.claims.get_mut(token).ok_or_else(|| {
+            crate::error::AtlasError::Platform(
+                "the scheduled occurrence lost its durable claim; no next step started".into(),
+            )
+        })?;
+        if run.plugin.as_deref() != Some(claim.plugin.as_str())
+            || run.workflow != claim.workflow.name
+            || run.steps != claim.workflow.steps
+            || claim
+                .run
+                .as_ref()
+                .is_some_and(|saved| saved.position > run.position)
+            || matches!(
+                claim.phase,
+                crate::plugins::SchedulePhase::Done | crate::plugins::SchedulePhase::Failed
+            )
+        {
+            return Err(crate::error::AtlasError::Platform(
+                "the scheduled occurrence identity or saved progress changed; no next step started"
+                    .into(),
+            ));
         }
-        let registry = crate::plugins::Registry::load_kept(&mut self.plugins_kept, &self.plugins_dir, &self.cfg.commands, &self.store);
-        if !matches!(phase, crate::plugins::SchedulePhase::Failed) && !registry.plugins.iter().any(|plugin| plugin.id == claim.plugin && plugin.sha256 == claim.approved_sha256 && plugin.status == crate::plugins::Status::Active) {
-            return Err(crate::error::AtlasError::Platform("the scheduled add-on approval changed; saved work is held without another action".into()));
+        let registry = crate::plugins::Registry::load_kept(
+            &mut self.plugins_kept,
+            &self.plugins_dir,
+            &self.cfg.commands,
+            &self.store,
+        );
+        if !matches!(phase, crate::plugins::SchedulePhase::Failed)
+            && !registry.plugins.iter().any(|plugin| {
+                plugin.id == claim.plugin
+                    && plugin.sha256 == claim.approved_sha256
+                    && plugin.status == crate::plugins::Status::Active
+            })
+        {
+            return Err(crate::error::AtlasError::Platform(
+                "the scheduled add-on approval changed; saved work is held without another action"
+                    .into(),
+            ));
         }
-        claim.run = Some(run.clone()); claim.phase = phase;
+        claim.run = Some(run.clone());
+        claim.phase = phase;
         runs.save(&self.store)
     }
 
     /// Did you say this add-on step needn't ask? (`plugins::may_skip_question`)
     fn plugin_step_trusted(&self, run: &crate::flow::Run, cmd: &str) -> bool {
-        let (Some(id), Some(step)) = (&run.plugin, run.current()) else { return false };
+        let (Some(id), Some(step)) = (&run.plugin, run.current()) else {
+            return false;
+        };
         let (_, name) = self.parser.parse_named(cmd);
-        crate::plugins::may_skip_question(&self.store, &self.plugins_dir, id, &step.command, cmd, name.as_deref())
+        crate::plugins::may_skip_question(
+            &self.store,
+            &self.plugins_dir,
+            id,
+            &step.command,
+            cmd,
+            name.as_deref(),
+        )
     }
 
     /// An add-on's step, checked against what you still allow it
     /// (`plugins::may_run`). `Err` is the sentence to stop the run with.
-    fn plugin_step_allowed(&self, run: &crate::flow::Run, cmd: &str) -> std::result::Result<(), String> {
+    fn plugin_step_allowed(
+        &self,
+        run: &crate::flow::Run,
+        cmd: &str,
+    ) -> std::result::Result<(), String> {
         let Some(id) = &run.plugin else { return Ok(()) };
         let (_, name) = self.parser.parse_named(cmd);
         // The step as the add-on wrote it, before `{name}` was filled in.
-        let written = run.current().and_then(|s| self.parser.parse_named(&s.command).1);
-        crate::plugins::may_run(&self.store, &self.plugins_dir, id, name.as_deref(), written.as_deref())
-            .map_err(|why| format!("Stopped: {why}."))
+        let written = run
+            .current()
+            .and_then(|s| self.parser.parse_named(&s.command).1);
+        crate::plugins::may_run(
+            &self.store,
+            &self.plugins_dir,
+            id,
+            name.as_deref(),
+            written.as_deref(),
+        )
+        .map_err(|why| format!("Stopped: {why}."))
     }
 
     /// Drive the workflow in flight until it needs something — your yes, or
@@ -954,7 +1260,9 @@ impl<'a> Daemon<'a> {
     /// rest rather than half-doing it.
     /// Run the one step a fresh yes just approved, without re-classifying it.
     pub(super) fn approved_flow_step(&mut self, t: u64) {
-        let Some(mut run) = self.current_flow.take() else { return };
+        let Some(mut run) = self.current_flow.take() else {
+            return;
+        };
         run.approve();
         run.approved_position = Some(run.position);
         if let crate::flow::Next::Run(cmd) = run.next() {
@@ -971,9 +1279,14 @@ impl<'a> Daemon<'a> {
                 return;
             }
             let intent = self.parser.parse(&cmd);
-            if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::InFlight) {
-                self.log.warn(&format!("approved scheduled step is waiting for its durable fence ({error})"));
-                self.current_flow = Some(run); return;
+            if let Err(error) =
+                self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::InFlight)
+            {
+                self.log.warn(&format!(
+                    "approved scheduled step is waiting for its durable fence ({error})"
+                ));
+                self.current_flow = Some(run);
+                return;
             }
             let result = self.execute(&intent);
             let ok = !result.starts_with("error");
@@ -983,7 +1296,10 @@ impl<'a> Daemon<'a> {
             }
             run.report(&result, ok);
             run.approved_position = None;
-            if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Ready) { self.log.warn(&format!("scheduled step finished but its progress is waiting to save ({error}); no next step will start")); }
+            if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Ready)
+            {
+                self.log.warn(&format!("scheduled step finished but its progress is waiting to save ({error}); no next step will start"));
+            }
             if let Some(w) = self.mind.get_mut(self.flow_mind) {
                 w.runner_position = run.current().map(|_| run.position);
             }
@@ -994,11 +1310,17 @@ impl<'a> Daemon<'a> {
     pub(super) fn drive_flow(&mut self, t: u64) -> Option<String> {
         let mut run = self.current_flow.take()?;
         if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Ready) {
-            self.log.warn(&format!("scheduled add-on progress remains held ({error}); no next step started"));
+            self.log.warn(&format!(
+                "scheduled add-on progress remains held ({error}); no next step started"
+            ));
             let busy = matches!(&error, crate::error::AtlasError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock);
             let message = format!("Your scheduled add-on work is held because its recovery progress couldn't be saved ({error}). No next step started. Its saved work is retained for review.");
             self.current_flow = Some(run);
-            return if !busy && self.scheduled_notices.insert(message.clone()) { Some(message) } else { None };
+            return if !busy && self.scheduled_notices.insert(message.clone()) {
+                Some(message)
+            } else {
+                None
+            };
         }
         let mut said: Vec<String> = Vec::new();
         // Bounded. A flow cannot hold the turn forever, whatever is in it;
@@ -1024,10 +1346,17 @@ impl<'a> Daemon<'a> {
                         &self.memory,
                         &self.cfg.policy,
                     );
-                    if call.needs_consent() && !self.plugin_step_trusted(&run, &cmd) && run.approved_position != Some(step_i) {
+                    if call.needs_consent()
+                        && !self.plugin_step_trusted(&run, &cmd)
+                        && run.approved_position != Some(step_i)
+                    {
                         run.needs_approval();
-                        if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Ready) {
-                            run.approve(); self.log.warn(&format!("scheduled approval question is waiting to save ({error}); nothing was asked or run")); break;
+                        if let Err(error) =
+                            self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Ready)
+                        {
+                            run.approve();
+                            self.log.warn(&format!("scheduled approval question is waiting to save ({error}); nothing was asked or run"));
+                            break;
                         }
                         let from = match &run.plugin {
                             Some(id) => format!(" (from the {id} add-on)"),
@@ -1038,7 +1367,11 @@ impl<'a> Daemon<'a> {
                         // need not come back every run.
                         let trustable = run.plugin.is_some()
                             && run.current().is_some_and(|s| s.command == cmd)
-                            && crate::plugins::why_always_asks(&cmd, self.parser.parse_named(&cmd).1.as_deref()).is_none();
+                            && crate::plugins::why_always_asks(
+                                &cmd,
+                                self.parser.parse_named(&cmd).1.as_deref(),
+                            )
+                            .is_none();
                         let always = if trustable {
                             " Say \"always\" and I won't ask about this step again."
                         } else {
@@ -1056,8 +1389,13 @@ impl<'a> Daemon<'a> {
                         said.push(q);
                         break;
                     }
-                    if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::InFlight) {
-                        self.log.warn(&format!("scheduled step remains waiting for its durable fence ({error})")); break;
+                    if let Err(error) =
+                        self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::InFlight)
+                    {
+                        self.log.warn(&format!(
+                            "scheduled step remains waiting for its durable fence ({error})"
+                        ));
+                        break;
                     }
                     let result = self.execute(&intent);
                     let ok = !result.starts_with("error");
@@ -1067,8 +1405,11 @@ impl<'a> Daemon<'a> {
                     }
                     run.report(&result, ok);
                     run.approved_position = None;
-                    if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Ready) {
-                        self.log.warn(&format!("scheduled step outcome is waiting to save ({error}); no next step started")); break;
+                    if let Err(error) =
+                        self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Ready)
+                    {
+                        self.log.warn(&format!("scheduled step outcome is waiting to save ({error}); no next step started"));
+                        break;
                     }
                     if let Some(w) = self.mind.get_mut(self.flow_mind) {
                         w.runner_position = run.current().map(|_| run.position);
@@ -1081,15 +1422,19 @@ impl<'a> Daemon<'a> {
                     break;
                 }
                 crate::flow::Next::Finished => {
-                    if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Done) { self.log.warn(&format!("scheduled completion remains waiting to save ({error})")); break; }
-                    let progress = self
-                        .mind
-                        .get_mut(self.flow_mind)
-                        .map(|w| {
-                            let p = w.progress();
-                            w.think(crate::mind::Stage::Done, "finished", t);
-                            p
-                        });
+                    if let Err(error) =
+                        self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Done)
+                    {
+                        self.log.warn(&format!(
+                            "scheduled completion remains waiting to save ({error})"
+                        ));
+                        break;
+                    }
+                    let progress = self.mind.get_mut(self.flow_mind).map(|w| {
+                        let p = w.progress();
+                        w.think(crate::mind::Stage::Done, "finished", t);
+                        p
+                    });
                     said.push(match progress {
                         Some((done, total)) if total > 0 => {
                             format!("{}: done, {done} of {total} steps.", run.workflow)
@@ -1108,12 +1453,9 @@ impl<'a> Daemon<'a> {
                     );
                     // Said once, at the moment a sequence crosses the bar —
                     // not re-announced on every run after.
-                    if self
-                        .memory
-                        .habits(3)
-                        .iter()
-                        .any(|w| w.trigger == run.workflow.trim().to_lowercase() && w.times_used == 3)
-                    {
+                    if self.memory.habits(3).iter().any(|w| {
+                        w.trigger == run.workflow.trim().to_lowercase() && w.times_used == 3
+                    }) {
                         said.push(
                             "That's the third time through this one — I'll treat it as a habit."
                                 .into(),
@@ -1124,7 +1466,14 @@ impl<'a> Daemon<'a> {
                     return Some(said.join(" "));
                 }
                 crate::flow::Next::Stopped(why) => {
-                    if let Err(error) = self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Failed) { self.log.warn(&format!("scheduled failure result remains waiting to save ({error})")); break; }
+                    if let Err(error) =
+                        self.fence_scheduled_run(&run, crate::plugins::SchedulePhase::Failed)
+                    {
+                        self.log.warn(&format!(
+                            "scheduled failure result remains waiting to save ({error})"
+                        ));
+                        break;
+                    }
                     if let Some(w) = self.mind.get_mut(self.flow_mind) {
                         w.think(crate::mind::Stage::Stuck, &why, t);
                     }
@@ -1133,7 +1482,10 @@ impl<'a> Daemon<'a> {
                     let chain = self.chain_of(&run, run.position);
                     let stands = crate::chain::what_stands(&chain);
                     if !stands.is_empty() {
-                        said.push(format!("Already done and can't be taken back: {}.", stands.join("; ")));
+                        said.push(format!(
+                            "Already done and can't be taken back: {}.",
+                            stands.join("; ")
+                        ));
                     }
                     self.flow_mind = 0;
                     return Some(said.join(" "));
@@ -1169,7 +1521,13 @@ impl Daemon<'_> {
         let now = crate::store::now();
         let mins = |from: u64| {
             let m = now.saturating_sub(from) / 60;
-            if m == 0 { "under a minute".to_string() } else if m == 1 { "a minute".to_string() } else { format!("{m} minutes") }
+            if m == 0 {
+                "under a minute".to_string()
+            } else if m == 1 {
+                "a minute".to_string()
+            } else {
+                format!("{m} minutes")
+            }
         };
         let mut lines = Vec::new();
         if !self.mind.active().is_empty() {
@@ -1181,16 +1539,28 @@ impl Daemon<'_> {
                 None => e.name.clone(),
             };
             lines.push(match e.state {
-                crate::crew::State::Running | crate::crew::State::Pausing => format!("{what}: working on it, {} so far.", mins(e.started)),
-                crate::crew::State::Holding => format!("{what}: paused -- say \"carry on\" to pick it up."),
-                crate::crew::State::Waiting => format!("{what}: queued, waiting for a free hand ({} so far).", mins(e.started)),
+                crate::crew::State::Running | crate::crew::State::Pausing => {
+                    format!("{what}: working on it, {} so far.", mins(e.started))
+                }
+                crate::crew::State::Holding => {
+                    format!("{what}: paused -- say \"carry on\" to pick it up.")
+                }
+                crate::crew::State::Waiting => format!(
+                    "{what}: queued, waiting for a free hand ({} so far).",
+                    mins(e.started)
+                ),
                 crate::crew::State::WaitingPaused => format!("{what}: queued and paused."),
             });
         }
         if !lines.is_empty() {
             return Some(lines.join(" "));
         }
-        let last = self.long_work.jobs.iter().filter(|j| j.finished.is_some()).max_by_key(|j| j.finished);
+        let last = self
+            .long_work
+            .jobs
+            .iter()
+            .filter(|j| j.finished.is_some())
+            .max_by_key(|j| j.finished);
         Some(match last {
             Some(j) => {
                 let how = match j.outcome {
@@ -1199,26 +1569,42 @@ impl Daemon<'_> {
                     crate::watching::Outcome::Vanished => "stopped without a result",
                     crate::watching::Outcome::Running => "is still going",
                 };
-                let tail = if j.last_line.trim().is_empty() || j.outcome != crate::watching::Outcome::Failed {
+                let tail = if j.last_line.trim().is_empty()
+                    || j.outcome != crate::watching::Outcome::Failed
+                {
                     String::new()
                 } else {
                     format!(": {}", j.last_line.trim().trim_end_matches('.'))
                 };
-                format!("Nothing's running now. The last thing, {}, {how} {} ago{tail}.", j.name, mins(j.finished.unwrap_or(now)))
+                format!(
+                    "Nothing's running now. The last thing, {}, {how} {} ago{tail}.",
+                    j.name,
+                    mins(j.finished.unwrap_or(now))
+                )
             }
             None => "Nothing's running, and nothing has run yet this session.".into(),
         })
     }
 }
 
-
 /// Is this asking Atlas to check a piece of writing?
 fn asks_to_check_writing(said: &str) -> bool {
     let t = said.trim().trim_end_matches(['.', '!', '?']).to_lowercase();
-    let t = t.trim_start_matches("atlas, ").trim_start_matches("atlas ").trim_start_matches("can you ").trim_start_matches("please ");
+    let t = t
+        .trim_start_matches("atlas, ")
+        .trim_start_matches("atlas ")
+        .trim_start_matches("can you ")
+        .trim_start_matches("please ");
     [
-        "check my writing", "check this draft", "check my draft", "is this slop", "check what i wrote",
-        "critique my writing", "critique this draft", "does this read well", "how does this read",
+        "check my writing",
+        "check this draft",
+        "check my draft",
+        "is this slop",
+        "check what i wrote",
+        "critique my writing",
+        "critique this draft",
+        "does this read well",
+        "how does this read",
     ]
     .iter()
     .any(|p| t == *p || t.starts_with(&format!("{p} ")))
@@ -1235,13 +1621,24 @@ fn writing_report(notes: &[crate::draft::Note]) -> String {
         .take(3)
         .map(|n| {
             let ev = n.evidence.trim();
-            if ev.is_empty() { format!("it {}", n.fault.what()) } else { format!("it {} (\"{ev}\")", n.fault.what()) }
+            if ev.is_empty() {
+                format!("it {}", n.fault.what())
+            } else {
+                format!("it {} (\"{ev}\")", n.fault.what())
+            }
         })
         .collect();
     let more = notes.len().saturating_sub(shown.len());
-    let tail = if more > 0 { format!(", and {more} more") } else { String::new() };
+    let tail = if more > 0 {
+        format!(", and {more} more")
+    } else {
+        String::new()
+    };
     let list = shown.join("; ");
-    let list = list.strip_prefix("it ").map(|r| format!("It {r}")).unwrap_or(list);
+    let list = list
+        .strip_prefix("it ")
+        .map(|r| format!("It {r}"))
+        .unwrap_or(list);
     format!("{} {list}{tail}.", crate::draft::spoken(notes))
 }
 
@@ -1253,11 +1650,14 @@ fn tidied_line(fixed: &[crate::draft::Fault]) -> String {
         n => format!(
             " I tidied {n} thing{} first: it {}.",
             if n == 1 { "" } else { "s" },
-            fixed.iter().map(|f| f.what()).collect::<Vec<_>>().join("; it ")
+            fixed
+                .iter()
+                .map(|f| f.what())
+                .collect::<Vec<_>>()
+                .join("; it ")
         ),
     }
 }
-
 
 /// What the blind reviewer is told: only the letter, no brief, no history.
 const REVIEWER: &str = "You are the person this was written to. Read it as they would. In at most three short \
@@ -1265,21 +1665,38 @@ const REVIEWER: &str = "You are the person this was written to. Read it as they 
      needs fixing, reply with exactly NOTHING. Points only, no rewrite.";
 
 /// The rewrite on the reviewer's points.
-const ON_REVIEW: &str = "Rewrite this to fix the reader's points below. Keep everything that was good, \
+const ON_REVIEW: &str =
+    "Rewrite this to fix the reader's points below. Keep everything that was good, \
      add no facts that aren't already in it, and return only the rewritten text.";
 
 /// One blind review and one rewrite. The rewrite is kept only when it isn't
 /// empty and the critique finds no more faults in it than before.
-fn review_once(llm: &dyn crate::brain::Llm, text: &str, cfg: &crate::draft::DraftConfig) -> (String, bool) {
-    let Ok(points) = llm.complete(REVIEWER, text) else { return (text.to_string(), false) };
-    let points = crate::phonemodel::without_thinking(&points).trim().to_string();
-    if points.is_empty() || points.eq_ignore_ascii_case("nothing") || points.to_lowercase().starts_with("nothing") {
-        return (text.to_string(), false);
-    }
-    let Ok(better) = llm.complete(ON_REVIEW, &format!("The reader's points:\n{points}\n\nThe text:\n{text}")) else {
+fn review_once(
+    llm: &dyn crate::brain::Llm,
+    text: &str,
+    cfg: &crate::draft::DraftConfig,
+) -> (String, bool) {
+    let Ok(points) = llm.complete(REVIEWER, text) else {
         return (text.to_string(), false);
     };
-    let better = crate::phonemodel::without_thinking(&better).trim().to_string();
+    let points = crate::phonemodel::without_thinking(&points)
+        .trim()
+        .to_string();
+    if points.is_empty()
+        || points.eq_ignore_ascii_case("nothing")
+        || points.to_lowercase().starts_with("nothing")
+    {
+        return (text.to_string(), false);
+    }
+    let Ok(better) = llm.complete(
+        ON_REVIEW,
+        &format!("The reader's points:\n{points}\n\nThe text:\n{text}"),
+    ) else {
+        return (text.to_string(), false);
+    };
+    let better = crate::phonemodel::without_thinking(&better)
+        .trim()
+        .to_string();
     let before = crate::draft::critique(text, None, cfg).len();
     if better.is_empty() || crate::draft::critique(&better, None, cfg).len() > before {
         return (text.to_string(), false);

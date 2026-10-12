@@ -47,7 +47,11 @@ pub struct Attention {
 
 impl Default for Attention {
     fn default() -> Self {
-        Attention { mode: Mode::Active, suspended: Vec::new(), halted: false }
+        Attention {
+            mode: Mode::Active,
+            suspended: Vec::new(),
+            halted: false,
+        }
     }
 }
 
@@ -60,7 +64,10 @@ impl Attention {
         if self.is_paused() {
             return "Already paused.".into();
         }
-        self.mode = Mode::Paused { since: t, doing: doing.clone() };
+        self.mode = Mode::Paused {
+            since: t,
+            doing: doing.clone(),
+        };
         match doing {
             Some(d) => format!("Paused. {d} on hold."),
             None => "Paused.".into(),
@@ -89,7 +96,10 @@ impl Attention {
     /// its own — the difference from a pause is that nothing is waiting for
     /// you to come back.
     pub fn halt(&mut self, t: u64) -> String {
-        self.mode = Mode::Paused { since: t, doing: Some("everything".into()) };
+        self.mode = Mode::Paused {
+            since: t,
+            doing: Some("everything".into()),
+        };
         self.suspended.clear();
         self.halted = true;
         "Everything stopped.".into()
@@ -156,23 +166,61 @@ pub fn hear(said: &str) -> Option<Heard> {
         .join(" ");
 
     const PAUSE: &[&str] = &[
-        "pause", "hold on", "hold up", "one moment", "one second", "wait",
-        "give me a minute", "give me a second", "stand by", "hang on",
-        "pause atlas", "atlas pause",
+        "pause",
+        "hold on",
+        "hold up",
+        "one moment",
+        "one second",
+        "wait",
+        "give me a minute",
+        "give me a second",
+        "stand by",
+        "hang on",
+        "pause atlas",
+        "atlas pause",
     ];
     const RESUME: &[&str] = &[
-        "resume", "im ready", "i am ready", "im back", "i am back", "carry on",
-        "go ahead", "continue", "keep going", "im ready to continue",
-        "i am ready to continue", "ready to continue", "unpause", "atlas resume",
+        "resume",
+        "im ready",
+        "i am ready",
+        "im back",
+        "i am back",
+        "carry on",
+        "go ahead",
+        "continue",
+        "keep going",
+        "im ready to continue",
+        "i am ready to continue",
+        "ready to continue",
+        "unpause",
+        "atlas resume",
     ];
-    const CANCEL: &[&str] = &["stop", "cancel that", "forget it", "never mind", "abort", "cancel"];
+    const CANCEL: &[&str] = &[
+        "stop",
+        "cancel that",
+        "forget it",
+        "never mind",
+        "abort",
+        "cancel",
+    ];
     // Deliberately phrases nobody says by accident, and that are easy to
     // reach for when something is going wrong.
     const PANIC: &[&str] = &[
-        "atlas stop everything", "stop everything", "halt", "emergency stop",
-        "shut it down", "kill it", "atlas halt", "drop everything",
+        "atlas stop everything",
+        "stop everything",
+        "halt",
+        "emergency stop",
+        "shut it down",
+        "kill it",
+        "atlas halt",
+        "drop everything",
     ];
-    const STATUS: &[&str] = &["what are you doing", "are you paused", "status", "where were we"];
+    const STATUS: &[&str] = &[
+        "what are you doing",
+        "are you paused",
+        "status",
+        "where were we",
+    ];
 
     if PAUSE.contains(&t.as_str()) {
         return Some(Heard::Pause);

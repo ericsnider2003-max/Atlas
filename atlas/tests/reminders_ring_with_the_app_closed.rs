@@ -28,7 +28,10 @@ fn no_more_than_ios_keeps() {
     for i in 0..100 {
         s.at(&format!("reminder r{i}"), now + 60 + i);
     }
-    assert_eq!(atlas::phonealarms::upcoming(&s, now).len(), atlas::phonealarms::MOST);
+    assert_eq!(
+        atlas::phonealarms::upcoming(&s, now).len(),
+        atlas::phonealarms::MOST
+    );
 }
 
 #[test]
@@ -37,9 +40,21 @@ fn the_app_hands_them_over_on_leaving_and_takes_them_back_on_return() {
     // take back in begin(), and decode `upcoming` from live.json.
     let live = std::fs::read_to_string("mobile/ios/Atlas/LiveActivity.swift").unwrap();
     let core = std::fs::read_to_string("mobile/ios/Atlas/AtlasCore.swift").unwrap();
-    let bg = live.split_once("func background()").unwrap().1.split("\n    }\n").next().unwrap();
+    let bg = live
+        .split_once("func background()")
+        .unwrap()
+        .1
+        .split("\n    }\n")
+        .next()
+        .unwrap();
     assert!(bg.contains("Reminders.handOver("), "{bg}");
-    let begin = live.split_once("func begin()").unwrap().1.split("\n    }\n").next().unwrap();
+    let begin = live
+        .split_once("func begin()")
+        .unwrap()
+        .1
+        .split("\n    }\n")
+        .next()
+        .unwrap();
     assert!(begin.contains("Reminders.takeBack()"), "{begin}");
     assert!(live.contains("UNTimeIntervalNotificationTrigger"));
     assert!(core.contains("let upcoming: [Upcoming]?"));

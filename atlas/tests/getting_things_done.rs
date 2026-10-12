@@ -19,7 +19,14 @@ fn cfg() -> atlas::config::Config {
     atlas::config::Config::load(Path::new("config")).unwrap()
 }
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 const NOW: u64 = 1_790_776_800;
 
@@ -27,66 +34,194 @@ const NOW: u64 = 1_790_776_800;
 fn a_reviewed_lead_and_explicit_client_draft_survive_restart_without_submission() {
     let (mut c, p) = (cfg(), plat());
     c.tools.as_mut().unwrap().mail = serde_yaml::from_str("may_email_clients: true\n").unwrap();
-    c.tools.as_mut().unwrap().mail.accounts = vec![atlas::mail::Account { name: "personal".into(), address: "me@example.com".into(), password_from_vault: "synthetic missing mail".into(), ..Default::default() }];
+    c.tools.as_mut().unwrap().mail.accounts = vec![atlas::mail::Account {
+        name: "personal".into(),
+        address: "me@example.com".into(),
+        password_from_vault: "synthetic missing mail".into(),
+        ..Default::default()
+    }];
     c.tools.as_mut().unwrap().browser.launch = None;
     let store = Store::new(tmp("business-journey"));
     let now = atlas::store::now();
-    let lead = atlas::hunt::Found { id: "reviewed-video-lead".into(), source: atlas::hunt::Source::Hn, kind: atlas::hunt::Kind::Gig, title: "Video editor for local demonstrations".into(), link: "https://example.org/synthetic-lead".into(), summary: "Owner must contact separately".into(), at: now, closes: None, pay: None, remote: true };
-    let mut hunt = atlas::hunt::HuntState::default(); hunt.merge(vec![lead.clone()], &atlas::hunt::Interests::default(), now); store.save(atlas::hunt::FILE, &hunt).unwrap();
-    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
-    let review = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(atlas::hub::Page::Opportunities));
+    let lead = atlas::hunt::Found {
+        id: "reviewed-video-lead".into(),
+        source: atlas::hunt::Source::Hn,
+        kind: atlas::hunt::Kind::Gig,
+        title: "Video editor for local demonstrations".into(),
+        link: "https://example.org/synthetic-lead".into(),
+        summary: "Owner must contact separately".into(),
+        at: now,
+        closes: None,
+        pay: None,
+        remote: true,
+    };
+    let mut hunt = atlas::hunt::HuntState::default();
+    hunt.merge(vec![lead.clone()], &atlas::hunt::Interests::default(), now);
+    store.save(atlas::hunt::FILE, &hunt).unwrap();
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let review = atlas::hublive::reply(
+        &mut d,
+        atlas::server::Action::Hub(atlas::hub::Page::Opportunities),
+    );
     assert!(review.body.contains("Video editor"));
-    atlas::hublive::reply(&mut d, atlas::server::Action::HubPost { path: "/hub/opportunities".into(), fields: vec![("what".into(), "save".into()), ("id".into(), lead.id.clone())] });
-    assert!(atlas::clients::ClientList::load_checked(&store).unwrap().is_empty());
-    assert!(atlas::outbox::Outbox::load_checked(&store).unwrap().waiting().is_empty());
+    atlas::hublive::reply(
+        &mut d,
+        atlas::server::Action::HubPost {
+            path: "/hub/opportunities".into(),
+            fields: vec![
+                ("what".into(), "save".into()),
+                ("id".into(), lead.id.clone()),
+            ],
+        },
+    );
+    assert!(atlas::clients::ClientList::load_checked(&store)
+        .unwrap()
+        .is_empty());
+    assert!(atlas::outbox::Outbox::load_checked(&store)
+        .unwrap()
+        .waiting()
+        .is_empty());
     drop(d);
-    let saved: atlas::hunt::HuntState = store.load_checked(atlas::hunt::FILE).unwrap().unwrap(); assert!(saved.saved.iter().any(|item| item.id == lead.id));
-    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
-    atlas::hublive::reply(&mut d, atlas::server::Action::HubPost { path: "/hub/clients".into(), fields: vec![("address".into(), "sam@example.com".into()), ("name".into(), "Sam".into())] });
+    let saved: atlas::hunt::HuntState = store.load_checked(atlas::hunt::FILE).unwrap().unwrap();
+    assert!(saved.saved.iter().any(|item| item.id == lead.id));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    atlas::hublive::reply(
+        &mut d,
+        atlas::server::Action::HubPost {
+            path: "/hub/clients".into(),
+            fields: vec![
+                ("address".into(), "sam@example.com".into()),
+                ("name".into(), "Sam".into()),
+            ],
+        },
+    );
     d.turn("Sam's email is sam@example.com", now);
-    let drafted = d.turn("email Sam saying I'll prepare a video editing outline", now + 1); assert!(drafted.contains("send it"), "{drafted}");
-    let before = atlas::outbox::Outbox::load_checked(&store).unwrap().waiting_for("sam@example.com").unwrap().clone();
-    assert_eq!(before.status, atlas::outbox::Status::Waiting); assert_eq!(d.crew.active(), 0);
+    let drafted = d.turn(
+        "email Sam saying I'll prepare a video editing outline",
+        now + 1,
+    );
+    assert!(drafted.contains("send it"), "{drafted}");
+    let before = atlas::outbox::Outbox::load_checked(&store)
+        .unwrap()
+        .waiting_for("sam@example.com")
+        .unwrap()
+        .clone();
+    assert_eq!(before.status, atlas::outbox::Status::Waiting);
+    assert_eq!(d.crew.active(), 0);
     drop(d);
-    let after = atlas::outbox::Outbox::load_checked(&Store::new(store.root())).unwrap().waiting_for("sam@example.com").unwrap().clone(); assert_eq!(serde_json::to_value(&before).unwrap(), serde_json::to_value(&after).unwrap());
+    let after = atlas::outbox::Outbox::load_checked(&Store::new(store.root()))
+        .unwrap()
+        .waiting_for("sam@example.com")
+        .unwrap()
+        .clone();
+    assert_eq!(
+        serde_json::to_value(&before).unwrap(),
+        serde_json::to_value(&after).unwrap()
+    );
     c.tools.as_mut().unwrap().mail.accounts.clear();
-    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let review = d.turn("send the reply to Sam", now + 2);
     assert!(review.starts_with("Review the current reply"), "{review}");
-    assert!(review.contains(&before.body) && review.contains(&before.to_address) && review.contains("Nothing sent"), "the restarted draft must be reviewed before approval: {review}");
+    assert!(
+        review.contains(&before.body)
+            && review.contains(&before.to_address)
+            && review.contains("Nothing sent"),
+        "the restarted draft must be reviewed before approval: {review}"
+    );
     assert_eq!(d.crew.active(), 0);
     let refusal = d.turn("send it", now + 3);
-    assert!(refusal.contains("original mailbox") && refusal.contains("no longer connected") && refusal.contains("Nothing sent"), "fresh approval cannot silently switch mailboxes: {refusal}");
+    assert!(
+        refusal.contains("original mailbox")
+            && refusal.contains("no longer connected")
+            && refusal.contains("Nothing sent"),
+        "fresh approval cannot silently switch mailboxes: {refusal}"
+    );
     assert_eq!(d.crew.active(), 0);
-    assert_eq!(serde_json::to_value(atlas::outbox::Outbox::load_checked(&store).unwrap().waiting_for("sam@example.com").unwrap()).unwrap(), serde_json::to_value(&before).unwrap());
+    assert_eq!(
+        serde_json::to_value(
+            atlas::outbox::Outbox::load_checked(&store)
+                .unwrap()
+                .waiting_for("sam@example.com")
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(&before).unwrap()
+    );
 }
 
 #[test]
 fn a_note_is_kept_and_found_again() {
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("notes")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("notes")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let kept = d.turn("note that the broker fee is 25 dollars a month", NOW);
     assert!(!kept.to_lowercase().contains("couldn't"), "{kept}");
     let found = d.turn("where's that note about the broker fee", NOW + 60);
     assert!(found.contains("25 dollars"), "{found}");
-    assert!(d.turn("find my note about the gym", NOW + 70).starts_with("I can't find a note like that"));
+    assert!(d
+        .turn("find my note about the gym", NOW + 70)
+        .starts_with("I can't find a note like that"));
 }
 
 #[test]
 fn a_capture_that_reads_as_a_whole_item_is_kept_too() {
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("made")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("made")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let before = d.notebook.notes.len();
-    let said = d.turn("note this: record a video called Tuesday tips, due Friday", NOW);
-    assert!(d.notebook.notes.len() > before, "announced ({said}) and kept");
+    let said = d.turn(
+        "note this: record a video called Tuesday tips, due Friday",
+        NOW,
+    );
+    assert!(
+        d.notebook.notes.len() > before,
+        "announced ({said}) and kept"
+    );
 }
 
 #[test]
 fn drafts_are_listed_and_sending_says_what_it_needs() {
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("drafts")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("drafts")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     assert_eq!(d.turn("what drafts are waiting", NOW), "No drafts waiting.");
-    assert_eq!(d.turn("send the reply to Jane", NOW), "I don't have a draft waiting for jane.");
+    assert_eq!(
+        d.turn("send the reply to Jane", NOW),
+        "I don't have a draft waiting for jane."
+    );
 }
 
 #[test]
@@ -94,7 +229,13 @@ fn duckduckgo_results_are_read_through_its_redirect() {
     let html = r#"<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fsolar%2Dpanels&amp;rut=abc">Solar</a>
 <a href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FSolar_panel&amp;rut=def">Wiki</a>"#;
     let urls = atlas::research::extract_urls(html, 5);
-    assert_eq!(urls, vec!["https://example.org/solar-panels".to_string(), "https://en.wikipedia.org/wiki/Solar_panel".to_string()]);
+    assert_eq!(
+        urls,
+        vec![
+            "https://example.org/solar-panels".to_string(),
+            "https://en.wikipedia.org/wiki/Solar_panel".to_string()
+        ]
+    );
 }
 
 #[test]
@@ -103,31 +244,74 @@ fn the_full_research_write_up_can_be_heard() {
     let notes = tmp("research-notes");
     c.tools.as_mut().unwrap().research.notes_dir = notes.display().to_string();
     std::fs::write(notes.join("1790000000-solar.md"), "# solar\n\nPanels lose about half a percent a year.\n\n## Sources\n- https://example.org\n").unwrap();
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("research")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("research")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let heard = d.turn("read me the full brief", NOW);
-    assert_eq!(heard, "Panels lose about half a percent a year.", "the write-up, without its title or source list");
+    assert_eq!(
+        heard, "Panels lose about half a percent a year.",
+        "the write-up, without its title or source list"
+    );
 }
 
 #[test]
 fn a_letter_asked_for_is_written_not_built() {
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("writing")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("writing")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     // No model here: it says what it needs, rather than building a program.
     let said = d.turn("write me a letter to my landlord about the heating", NOW);
-    assert_eq!(said, "I need a language model to write that, and I haven't got one yet.");
-    assert!(matches!(d.parser.parse("write me a letter to my landlord"), atlas::intent::Intent::Unknown(_)), "not a program to build");
+    assert_eq!(
+        said,
+        "I need a language model to write that, and I haven't got one yet."
+    );
+    assert!(
+        matches!(
+            d.parser.parse("write me a letter to my landlord"),
+            atlas::intent::Intent::Unknown(_)
+        ),
+        "not a program to build"
+    );
 }
 
 #[test]
 fn a_note_routed_to_speaking_is_said() {
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("speak")), Proactive::new(ProactiveConfig::default()));
-    d.to_say_aloud.push("Your research on solar is ready.".into());
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("speak")),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    d.to_say_aloud
+        .push("Your research on solar is ready.".into());
     let out = d.tick(NOW);
-    assert_eq!(out.iter().filter(|l| l.as_str() == "Your research on solar is ready.").count(), 1, "said once: {out:?}");
+    assert_eq!(
+        out.iter()
+            .filter(|l| l.as_str() == "Your research on solar is ready.")
+            .count(),
+        1,
+        "said once: {out:?}"
+    );
     // 30 Sep 2026: was `is_empty()`; the same tick can queue something new
     // of its own for the next pass. What matters is this one was taken.
-    assert!(!d.to_say_aloud.iter().any(|l| l.contains("research on solar")), "said and still waiting: {:?}", d.to_say_aloud);
+    assert!(
+        !d.to_say_aloud
+            .iter()
+            .any(|l| l.contains("research on solar")),
+        "said and still waiting: {:?}",
+        d.to_say_aloud
+    );
 }
 
 #[test]
@@ -143,7 +327,11 @@ fn a_settings_file_that_wont_read_is_not_overwritten() {
     let said = atlas::settingswin::keep_setting(&dir, "wake.enabled", "off");
     let err = said.expect_err("refused");
     assert!(err.starts_with("I haven't changed anything"), "{err}");
-    assert_eq!(std::fs::read_to_string(&prefs).unwrap(), "wake.enabled: [unclosed\n", "left as it was");
+    assert_eq!(
+        std::fs::read_to_string(&prefs).unwrap(),
+        "wake.enabled: [unclosed\n",
+        "left as it was"
+    );
 }
 
 // ---- email, started by asking (30 Sep 2026) ----
@@ -151,21 +339,53 @@ fn a_settings_file_that_wont_read_is_not_overwritten() {
 #[test]
 fn an_email_asked_for_is_read_as_who_and_what() {
     use atlas::outbox::email_asked;
-    assert_eq!(email_asked("Email Sam saying I'll be late"), Some(("Sam".into(), "I'll be late".into())));
-    assert_eq!(email_asked("send an email to jo@example.com that the deck is ready."), Some(("jo@example.com".into(), "the deck is ready".into())));
-    assert_eq!(email_asked("shoot Priya an email saying thanks for today"), Some(("Priya".into(), "thanks for today".into())));
-    assert_eq!(email_asked("email him saying hello there"), None, "nobody named");
-    assert_eq!(email_asked("email is broken on my phone"), None, "not a request");
+    assert_eq!(
+        email_asked("Email Sam saying I'll be late"),
+        Some(("Sam".into(), "I'll be late".into()))
+    );
+    assert_eq!(
+        email_asked("send an email to jo@example.com that the deck is ready."),
+        Some(("jo@example.com".into(), "the deck is ready".into()))
+    );
+    assert_eq!(
+        email_asked("shoot Priya an email saying thanks for today"),
+        Some(("Priya".into(), "thanks for today".into()))
+    );
+    assert_eq!(
+        email_asked("email him saying hello there"),
+        None,
+        "nobody named"
+    );
+    assert_eq!(
+        email_asked("email is broken on my phone"),
+        None,
+        "not a request"
+    );
     assert_eq!(email_asked("check my email"), None);
-    assert_eq!(atlas::outbox::body_from_spoken("i'll be there by 6 and i can bring the files"), "I'll be there by 6 and I can bring the files.");
-    assert_eq!(atlas::outbox::subject_from_body("Running late."), "Running late");
-    assert_eq!(atlas::outbox::subject_from_body("The deck for Thursday is ready to look at now."), "The deck for Thursday is ready to...");
+    assert_eq!(
+        atlas::outbox::body_from_spoken("i'll be there by 6 and i can bring the files"),
+        "I'll be there by 6 and I can bring the files."
+    );
+    assert_eq!(
+        atlas::outbox::subject_from_body("Running late."),
+        "Running late"
+    );
+    assert_eq!(
+        atlas::outbox::subject_from_body("The deck for Thursday is ready to look at now."),
+        "The deck for Thursday is ready to..."
+    );
 }
 
 #[test]
 fn an_email_asked_for_is_drafted_and_held_until_you_say_send() {
     let (mut c, p) = (cfg(), plat());
-    let mut d0 = Daemon::new(&c, &p, None, Store::new(tmp("email-none")), Proactive::new(ProactiveConfig::default()));
+    let mut d0 = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("email-none")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     assert_eq!(
         d0.turn("email Sam saying I'll be late", NOW),
         "I can't email Sam yet -- there's no mail account set up. Add one in Settings, under Mail, and ask me again."
@@ -178,8 +398,20 @@ fn an_email_asked_for_is_drafted_and_held_until_you_say_send() {
         ..Default::default()
     }];
     let store = Store::new(tmp("email"));
-    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
-    assert!(matches!(d.parser.parse("email Sam saying I'll be late"), atlas::intent::Intent::Unknown(_)), "no command takes it first");
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    assert!(
+        matches!(
+            d.parser.parse("email Sam saying I'll be late"),
+            atlas::intent::Intent::Unknown(_)
+        ),
+        "no command takes it first"
+    );
     assert_eq!(
         d.turn("email Sam saying I'll be late", NOW),
         "I don't have an email address for Sam. Tell me \"Sam's email is\" and the address, then ask again."
@@ -188,9 +420,17 @@ fn an_email_asked_for_is_drafted_and_held_until_you_say_send() {
     let said = d.turn("email Sam saying i'll be late", NOW + 20);
     assert_eq!(said, "To Sam (sam@example.com): \"I'll be late.\" Say \"send it\" and it goes, or \"scrap the draft to Sam\".");
     let outbox = atlas::outbox::Outbox::load(&store);
-    let held = outbox.waiting_for("sam@example.com").expect("held, not sent");
-    assert_eq!((held.subject.as_str(), held.body.as_str()), ("I'll be late", "I'll be late."));
-    assert_eq!(d.turn("what drafts are waiting", NOW + 30), "Waiting: a reply to Sam.");
+    let held = outbox
+        .waiting_for("sam@example.com")
+        .expect("held, not sent");
+    assert_eq!(
+        (held.subject.as_str(), held.body.as_str()),
+        ("I'll be late", "I'll be late.")
+    );
+    assert_eq!(
+        d.turn("what drafts are waiting", NOW + 30),
+        "Waiting: a reply to Sam."
+    );
 }
 
 /// 30 Sep 2026: a push to the phone that failed waited for the desk; it's
@@ -210,10 +450,21 @@ fn a_push_that_failed_is_tried_again_while_you_are_away() {
         ..Default::default()
     };
     *p.input_idle.borrow_mut() = Some(4 * 3600);
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("phone-retry")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("phone-retry")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     // Hours after the daemon last heard or said anything: away.
     let now = atlas::store::now() + 10 * 3600;
-    let note = atlas::notify::Note::new("Build finished", "all green", atlas::notify::Urgency::Routine, NOW);
+    let note = atlas::notify::Note::new(
+        "Build finished",
+        "all green",
+        atlas::notify::Urgency::Routine,
+        NOW,
+    );
     d.outbox.held.push(note.clone());
     d.phone_to_retry.push(note);
     d.phone_retry_at = now + 300;
@@ -225,20 +476,29 @@ fn a_push_that_failed_is_tried_again_while_you_are_away() {
         let mut s = loop {
             match l.accept() {
                 Ok((s, _)) => break s,
-                Err(_) if std::time::Instant::now() < until => std::thread::sleep(std::time::Duration::from_millis(20)),
+                Err(_) if std::time::Instant::now() < until => {
+                    std::thread::sleep(std::time::Duration::from_millis(20))
+                }
                 Err(_) => return String::new(),
             }
         };
         s.set_nonblocking(false).unwrap();
         let mut buf = [0u8; 2048];
         let n = s.read(&mut buf).unwrap();
-        s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok").unwrap();
+        s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+            .unwrap();
         String::from_utf8_lossy(&buf[..n]).to_string()
     });
     d.retry_phone(now + 400);
-    assert!(got.join().unwrap().contains("Build finished"), "the retry didn't reach the phone");
+    assert!(
+        got.join().unwrap().contains("Build finished"),
+        "the retry didn't reach the phone"
+    );
     assert!(d.phone_to_retry.is_empty(), "delivered, so no more tries");
-    assert!(d.outbox.held.is_empty(), "delivered, so not said again at the desk");
+    assert!(
+        d.outbox.held.is_empty(),
+        "delivered, so not said again at the desk"
+    );
 }
 
 /// 30 Sep 2026: the Status page said "Listening: Yes." whenever Atlas wasn't
@@ -246,12 +506,32 @@ fn a_push_that_failed_is_tried_again_while_you_are_away() {
 #[test]
 fn the_status_page_says_what_is_actually_listening() {
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("listening")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("listening")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let r = atlas::hublive::reply(&mut d, atlas::server::Action::Hub(atlas::hub::Page::Status));
     assert_eq!(r.status, 200);
-    assert_eq!(r.body.matches("the microphone isn").count(), 1, "the Listening line, once");
-    assert!(r.body.contains("No — the microphone isn&#39;t running, so type to me here.") || r.body.contains("No — the microphone isn't running, so type to me here."), "{}", r.body);
-    assert!(!r.body.contains(">Yes.<"), "claimed to be listening with no microphone");
+    assert_eq!(
+        r.body.matches("the microphone isn").count(),
+        1,
+        "the Listening line, once"
+    );
+    assert!(
+        r.body
+            .contains("No — the microphone isn&#39;t running, so type to me here.")
+            || r.body
+                .contains("No — the microphone isn't running, so type to me here."),
+        "{}",
+        r.body
+    );
+    assert!(
+        !r.body.contains(">Yes.<"),
+        "claimed to be listening with no microphone"
+    );
 }
 
 /// 30 Sep 2026: on the phone the background's lines (a reminder going off)
@@ -259,14 +539,30 @@ fn the_status_page_says_what_is_actually_listening() {
 #[test]
 fn what_the_background_says_reaches_the_phone_app() {
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("said-apps")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("said-apps")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     d.keep_said_for_apps(vec!["Reminder: call the dentist".into(), " ".into()]);
     d.keep_said_for_apps((0..30).map(|i| format!("line {i}")).collect());
-    assert_eq!(d.said_for_apps.len(), atlas::daemon::SAID_FOR_APPS_KEPT, "bounded");
-    assert_eq!(d.said_for_apps.last().unwrap(), &(31, "line 29".to_string()), "numbered on from the last");
+    assert_eq!(
+        d.said_for_apps.len(),
+        atlas::daemon::SAID_FOR_APPS_KEPT,
+        "bounded"
+    );
+    assert_eq!(
+        d.said_for_apps.last().unwrap(),
+        &(31, "line 29".to_string()),
+        "numbered on from the last"
+    );
     let r = atlas::hublive::reply(&mut d, atlas::server::Action::LiveJson);
     let v: serde_json::Value = serde_json::from_str(&r.body).unwrap();
-    let said = v["said"].as_array().expect("live.json carries what was said");
+    let said = v["said"]
+        .as_array()
+        .expect("live.json carries what was said");
     assert_eq!(said.last().unwrap()["text"], "line 29");
     assert_eq!(said.last().unwrap()["id"], 31);
 }
@@ -278,7 +574,13 @@ fn what_the_background_says_reaches_the_phone_app() {
 fn the_days_brief_waits_until_you_are_here() {
     let (c, p) = (cfg(), plat());
     let store = Store::new(tmp("brief-here"));
-    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(ProactiveConfig::default()),
+    );
     // Ten in the morning, hours after anything was said.
     let mut t = atlas::store::now() + 10 * 3600;
     while atlas::localclock::hour_here(t) != 10 {
@@ -286,7 +588,11 @@ fn the_days_brief_waits_until_you_are_here() {
     }
     *p.input_idle.borrow_mut() = Some(3 * 3600);
     d.tick(t);
-    assert_eq!(store.load::<u64>("last_brief_at"), 0, "given to an empty room");
+    assert_eq!(
+        store.load::<u64>("last_brief_at"),
+        0,
+        "given to an empty room"
+    );
     // You sit down.
     *p.input_idle.borrow_mut() = Some(5);
     d.tick(t + 60);
@@ -295,8 +601,16 @@ fn the_days_brief_waits_until_you_are_here() {
         std::thread::sleep(std::time::Duration::from_millis(10));
         d.tick(t + 60);
     }
-    assert_eq!(store.load::<u64>("last_brief_attempt_at"), t + 60, "you're here and it's a new day, so the brief is prepared");
-    assert_eq!(store.load::<u64>("last_brief_at"), 0, "preparing text is not a delivery receipt");
+    assert_eq!(
+        store.load::<u64>("last_brief_attempt_at"),
+        t + 60,
+        "you're here and it's a new day, so the brief is prepared"
+    );
+    assert_eq!(
+        store.load::<u64>("last_brief_at"),
+        0,
+        "preparing text is not a delivery receipt"
+    );
 }
 
 #[test]
@@ -304,7 +618,11 @@ fn a_prepared_brief_gets_a_receipt_only_after_its_complete_delivery() {
     struct Speaker(bool);
     impl atlas::daemon::Mouth for Speaker {
         fn speak(&self, _: &str) -> atlas::error::Result<()> {
-            if self.0 { Ok(()) } else { Err(std::io::Error::other("speaker unavailable").into()) }
+            if self.0 {
+                Ok(())
+            } else {
+                Err(std::io::Error::other("speaker unavailable").into())
+            }
         }
     }
     let (mut c, p) = (cfg(), plat());
@@ -315,18 +633,33 @@ fn a_prepared_brief_gets_a_receipt_only_after_its_complete_delivery() {
     let store = Store::new(tmp("brief-delivery"));
     let prepared = Some(("First item. Second item.".to_string(), NOW));
     store.save("brief_prepared", &prepared).unwrap();
-    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(ProactiveConfig::default()),
+    );
     // Force an available speaking tier so this fixture exercises playback,
     // not the typed fallback which is also a legitimate visible delivery.
     d.tiers.tier = atlas::input::Tier::Voice;
     d.say_volunteered_with(&Speaker(false), "First item. Second item.", &mut || None);
     assert_eq!(store.load::<u64>("last_brief_at"), 0);
-    assert_eq!(store.load::<Option<(String, u64)>>("brief_prepared"), prepared);
+    assert_eq!(
+        store.load::<Option<(String, u64)>>("brief_prepared"),
+        prepared
+    );
     d.say_volunteered_with(&Speaker(true), "First item.", &mut || None);
-    assert_eq!(store.load::<u64>("last_brief_at"), 0, "a partial delivery is not the whole brief");
+    assert_eq!(
+        store.load::<u64>("last_brief_at"),
+        0,
+        "a partial delivery is not the whole brief"
+    );
     d.say_volunteered_with(&Speaker(true), "First item. Second item.", &mut || None);
     assert!(store.load::<u64>("last_brief_at") > 0);
-    assert!(store.load::<Option<(String, u64)>>("brief_prepared").is_none());
+    assert!(store
+        .load::<Option<(String, u64)>>("brief_prepared")
+        .is_none());
 }
 
 /// 30 Sep 2026: "how's that going?" had no answer; the model guessed.
@@ -336,14 +669,31 @@ fn hows_that_going_is_answered_from_what_is_actually_running() {
     assert!(asks_how_its_going("How's that going?"));
     assert!(asks_how_its_going("is it done yet"));
     assert!(asks_how_its_going("how's the research coming along"));
-    assert!(!asks_how_its_going("how's the weather"), "not about Atlas's work");
+    assert!(
+        !asks_how_its_going("how's the weather"),
+        "not about Atlas's work"
+    );
     assert!(!asks_how_its_going("how is your day"));
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("progress")), Proactive::new(ProactiveConfig::default()));
-    assert_eq!(d.turn("how's that going?", NOW), "Nothing's running, and nothing has run yet this session.");
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("progress")),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    assert_eq!(
+        d.turn("how's that going?", NOW),
+        "Nothing's running, and nothing has run yet this session."
+    );
     let t = atlas::store::now();
     let id = d.long_work.watch("research", "crew", t.saturating_sub(600));
-    d.long_work.update(id, atlas::watching::Outcome::Failed, "every source failed to fetch", t.saturating_sub(120));
+    d.long_work.update(
+        id,
+        atlas::watching::Outcome::Failed,
+        "every source failed to fetch",
+        t.saturating_sub(120),
+    );
     assert_eq!(
         d.turn("is it done yet", NOW),
         "Nothing's running now. The last thing, research, failed 2 minutes ago: every source failed to fetch."
@@ -356,18 +706,32 @@ fn hows_that_going_is_answered_from_what_is_actually_running() {
 fn technical_detail_stays_on_the_screen_not_in_the_ear() {
     use atlas::spoken_form::without_technical_detail as plain;
     assert_eq!(
-        plain("The reply to Sam didn't go: connection refused (os error 10061). It's still waiting."),
+        plain(
+            "The reply to Sam didn't go: connection refused (os error 10061). It's still waiting."
+        ),
         "The reply to Sam didn't go: connection refused. It's still waiting."
     );
-    assert_eq!(plain("I couldn't open C:\\Users\\erics\\Atlas\\notes\\lease.pdf."), "I couldn't open lease.pdf.");
-    assert_eq!(plain("Saved from https://www.example.org/solar/panels today."), "Saved from example.org today.");
+    assert_eq!(
+        plain("I couldn't open C:\\Users\\erics\\Atlas\\notes\\lease.pdf."),
+        "I couldn't open lease.pdf."
+    );
+    assert_eq!(
+        plain("Saved from https://www.example.org/solar/panels today."),
+        "Saved from example.org today."
+    );
     assert_eq!(
         plain("The build failed: E0599 at src/x.rs:12 ECONNREFUSED. Want me to try again?"),
         "The build failed -- the details are on the screen. Want me to try again?"
     );
     // Ordinary words, numbers and money are left alone.
-    assert_eq!(plain("It came to $2,350 (about 12% more) in 2026."), "It came to $2,350 (about 12% more) in 2026.");
-    assert_eq!(plain("Call Sam (he said after 5)."), "Call Sam (he said after 5).");
+    assert_eq!(
+        plain("It came to $2,350 (about 12% more) in 2026."),
+        "It came to $2,350 (about 12% more) in 2026."
+    );
+    assert_eq!(
+        plain("Call Sam (he said after 5)."),
+        "Call Sam (he said after 5)."
+    );
 }
 
 /// 30 Sep 2026: the unsubscribe report couldn't be acted on.
@@ -375,10 +739,19 @@ fn technical_detail_stays_on_the_screen_not_in_the_ear() {
 fn the_unsubscribe_report_can_be_acted_on() {
     assert!(atlas::unsub::go_ahead("Unsubscribe from those."));
     assert!(atlas::unsub::go_ahead("go ahead and unsubscribe"));
-    assert!(!atlas::unsub::go_ahead("unsubscribe from what I don't read"), "that's the look, not the go-ahead");
+    assert!(
+        !atlas::unsub::go_ahead("unsubscribe from what I don't read"),
+        "that's the look, not the go-ahead"
+    );
     let (mut c, p) = (cfg(), plat());
     c.tools.as_mut().unwrap().mail.enabled = true;
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("unsub")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("unsub")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     assert_eq!(
         d.turn("unsubscribe from those", NOW),
         "There's nothing lined up to unsubscribe from. Ask me to clear out your email and I'll look first."
@@ -399,22 +772,49 @@ fn an_account_atlas_connected_is_used_without_editing_a_file() {
         client_id: "abc-123".into(),
         ..Default::default()
     };
-    store.save(atlas::daemon::CONNECTED_ACCOUNTS, &vec![acct.clone()]).unwrap();
-    let d = Daemon::new(&c, &p, None, store, Proactive::new(ProactiveConfig::default()));
+    store
+        .save(atlas::daemon::CONNECTED_ACCOUNTS, &vec![acct.clone()])
+        .unwrap();
+    let d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store,
+        Proactive::new(ProactiveConfig::default()),
+    );
     let accounts = d.tools_cfg().mail.accounts.clone();
-    assert_eq!(accounts.iter().filter(|a| a.address == "me@outlook.com").count(), 1);
-    assert_eq!(accounts.iter().find(|a| a.address == "me@outlook.com"), Some(&acct));
+    assert_eq!(
+        accounts
+            .iter()
+            .filter(|a| a.address == "me@outlook.com")
+            .count(),
+        1
+    );
+    assert_eq!(
+        accounts.iter().find(|a| a.address == "me@outlook.com"),
+        Some(&acct)
+    );
 }
 
 /// 30 Sep 2026: an installed copy asked to work on itself ran cargo in
 /// whatever folder it was started from.
 #[test]
 fn only_a_source_checkout_is_worked_on() {
-    assert!(atlas::selfwork::is_a_source_checkout(Path::new(".")), "this checkout is Atlas's source");
+    assert!(
+        atlas::selfwork::is_a_source_checkout(Path::new(".")),
+        "this checkout is Atlas's source"
+    );
     let elsewhere = tmp("not-source");
     assert!(!atlas::selfwork::is_a_source_checkout(&elsewhere));
-    std::fs::write(elsewhere.join("Cargo.toml"), "[package]\nname = \"something-else\"\n").unwrap();
-    assert!(!atlas::selfwork::is_a_source_checkout(&elsewhere), "another project isn't Atlas");
+    std::fs::write(
+        elsewhere.join("Cargo.toml"),
+        "[package]\nname = \"something-else\"\n",
+    )
+    .unwrap();
+    assert!(
+        !atlas::selfwork::is_a_source_checkout(&elsewhere),
+        "another project isn't Atlas"
+    );
 }
 
 /// 30 Sep 2026: anticipation was handed midnight-on-a-Monday every tick.
@@ -432,16 +832,28 @@ fn anticipation_reads_the_real_clock() {
 #[test]
 fn one_email_can_be_read_and_replied_to() {
     use atlas::daemon::{one_message_asked, OneMessage};
-    assert_eq!(one_message_asked("read me the email from Sam"), Some(OneMessage::Read("Sam".into())));
-    assert_eq!(one_message_asked("what did Sam's email say?"), Some(OneMessage::Read("Sam".into())));
+    assert_eq!(
+        one_message_asked("read me the email from Sam"),
+        Some(OneMessage::Read("Sam".into()))
+    );
+    assert_eq!(
+        one_message_asked("what did Sam's email say?"),
+        Some(OneMessage::Read("Sam".into()))
+    );
     assert_eq!(
         one_message_asked("reply to Sam saying I'll be there at six"),
-        Some(OneMessage::Reply("Sam".into(), "I'll be there at six".into()))
+        Some(OneMessage::Reply(
+            "Sam".into(),
+            "I'll be there at six".into()
+        ))
     );
     assert_eq!(one_message_asked("reply to him saying ok then"), None);
     assert_eq!(
         one_message_asked("send a reply to Jane saying Thursday works for me"),
-        Some(OneMessage::Reply("Jane".into(), "Thursday works for me".into()))
+        Some(OneMessage::Reply(
+            "Jane".into(),
+            "Thursday works for me".into()
+        ))
     );
     assert_eq!(one_message_asked("read me a story"), None);
 
@@ -470,15 +882,32 @@ fn one_email_can_be_read_and_replied_to() {
         checked: Default::default(),
     };
     store.save(atlas::mailbook::MailBook::FILE, &book).unwrap();
-    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let read = d.turn("read me the email from Sam", NOW);
-    assert!(read.contains("From Sam Ortiz") && read.contains("Dinner Friday") && read.contains("still on for dinner"), "{read}");
+    assert!(
+        read.contains("From Sam Ortiz")
+            && read.contains("Dinner Friday")
+            && read.contains("still on for dinner"),
+        "{read}"
+    );
     let reply = d.turn("reply to Sam saying yes, see you at seven", NOW + 10);
     assert!(reply.contains("Re: Dinner Friday"), "{reply}");
     let outbox = atlas::outbox::Outbox::load(&store);
-    let held = outbox.waiting_for("sam@example.com").expect("held as a draft, not sent");
+    let held = outbox
+        .waiting_for("sam@example.com")
+        .expect("held as a draft, not sent");
     assert_eq!(held.subject, "Re: Dinner Friday");
-    assert!(held.body.to_lowercase().contains("see you at seven"), "{}", held.body);
+    assert!(
+        held.body.to_lowercase().contains("see you at seven"),
+        "{}",
+        held.body
+    );
     // Nobody fetched from that sender: said, not guessed.
     let none = d.turn("read me the email from Priya", NOW + 20);
     assert!(none.contains("haven't got an email from Priya"), "{none}");
@@ -488,14 +917,32 @@ fn one_email_can_be_read_and_replied_to() {
 /// subject that isn't plain ASCII is encoded (30 Sep 2026 sweep).
 #[test]
 fn a_sent_message_is_a_proper_message() {
-    let m = atlas::smtp::message_text("me@example.com", "sam@example.com", "Café Friday", "See you there\nat six", 1_790_776_800);
+    let m = atlas::smtp::message_text(
+        "me@example.com",
+        "sam@example.com",
+        "Café Friday",
+        "See you there\nat six",
+        1_790_776_800,
+    );
     assert!(m.starts_with("Date: "), "{m}");
-    assert!(m.contains("\r\nMessage-ID: <") && m.contains("@example.com>\r\n"), "{m}");
-    assert!(m.contains("Content-Type: text/plain; charset=utf-8\r\n"), "{m}");
+    assert!(
+        m.contains("\r\nMessage-ID: <") && m.contains("@example.com>\r\n"),
+        "{m}"
+    );
+    assert!(
+        m.contains("Content-Type: text/plain; charset=utf-8\r\n"),
+        "{m}"
+    );
     assert!(m.contains("Subject: =?UTF-8?B?"), "{m}");
     assert!(m.ends_with("\r\n\r\nSee you there\r\nat six"), "{m}");
-    assert_eq!(atlas::smtp::rfc2822_date(0), "Thu, 01 Jan 1970 00:00:00 +0000");
-    assert_eq!(atlas::smtp::rfc2822_date(1_790_776_800), "Wed, 30 Sep 2026 14:00:00 +0000");
+    assert_eq!(
+        atlas::smtp::rfc2822_date(0),
+        "Thu, 01 Jan 1970 00:00:00 +0000"
+    );
+    assert_eq!(
+        atlas::smtp::rfc2822_date(1_790_776_800),
+        "Wed, 30 Sep 2026 14:00:00 +0000"
+    );
 }
 
 /// With `mail.backend: himalaya`, a draft goes out through Himalaya with its
@@ -508,9 +955,20 @@ fn with_himalaya_a_draft_is_sent_through_himalaya() {
     let got = dir.join("sent.eml");
     let args = dir.join("args.txt");
     let fake = dir.join("himalaya");
-    std::fs::write(&fake, format!("#!/bin/sh\necho \"$@\" > '{}'\ncat > '{}'\n", args.display(), got.display())).unwrap();
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\necho \"$@\" > '{}'\ncat > '{}'\n",
+            args.display(),
+            got.display()
+        ),
+    )
+    .unwrap();
     std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
-    assert_eq!(atlas::himalaya::send_args("work"), vec!["--account", "work", "message", "send"]);
+    assert_eq!(
+        atlas::himalaya::send_args("work"),
+        vec!["--account", "work", "message", "send"]
+    );
 
     let (mut c, p) = (cfg(), plat());
     let mail = &mut c.tools.as_mut().unwrap().mail;
@@ -523,7 +981,13 @@ fn with_himalaya_a_draft_is_sent_through_himalaya() {
         ..Default::default()
     }];
     let store = Store::new(tmp("himalaya-send-store"));
-    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(ProactiveConfig::default()),
+    );
     d.connectivity.set(atlas::connectivity::Reach::Online, 0);
     d.turn("Sam's email is sam@example.com", NOW);
     let drafted = d.turn("email Sam saying see you at six", NOW + 10);
@@ -533,15 +997,30 @@ fn with_himalaya_a_draft_is_sent_through_himalaya() {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     let mut t = NOW + 21;
     let mut said_meanwhile: Vec<String> = Vec::new();
-    while std::time::Instant::now() < deadline && atlas::outbox::Outbox::load(&store).waiting_for("sam@example.com").is_some() {
+    while std::time::Instant::now() < deadline
+        && atlas::outbox::Outbox::load(&store)
+            .waiting_for("sam@example.com")
+            .is_some()
+    {
         said_meanwhile.extend(d.tick(t));
         t += 1;
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    assert!(atlas::outbox::Outbox::load(&store).waiting_for("sam@example.com").is_none(), "still waiting: never sent; said meanwhile: {said_meanwhile:?}");
-    assert_eq!(std::fs::read_to_string(&args).unwrap().trim(), "--account gmail message send");
+    assert!(
+        atlas::outbox::Outbox::load(&store)
+            .waiting_for("sam@example.com")
+            .is_none(),
+        "still waiting: never sent; said meanwhile: {said_meanwhile:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&args).unwrap().trim(),
+        "--account gmail message send"
+    );
     let sent = std::fs::read_to_string(&got).unwrap();
-    assert!(sent.contains("To: sam@example.com") && sent.contains("See you at six"), "{sent}");
+    assert!(
+        sent.contains("To: sam@example.com") && sent.contains("See you at six"),
+        "{sent}"
+    );
 }
 
 /// With Himalaya, a mailto: unsubscribe goes through it too (1 Oct 2026:
@@ -569,11 +1048,25 @@ fn with_himalaya_an_unsubscribe_email_goes_through_himalaya() {
     }];
     let store = Store::new(tmp("himalaya-unsub-store"));
     let cleanup = atlas::unsub::Cleanup {
-        unsubscribe: vec![("Deals Weekly".into(), "<mailto:leave@deals.example?subject=unsubscribe>".into())],
+        unsubscribe: vec![(
+            "Deals Weekly".into(),
+            "<mailto:leave@deals.example?subject=unsubscribe>".into(),
+        )],
         ..Default::default()
     };
-    store.save(atlas::unsub::PENDING, &vec![("personal".to_string(), cleanup)]).unwrap();
-    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    store
+        .save(
+            atlas::unsub::PENDING,
+            &vec![("personal".to_string(), cleanup)],
+        )
+        .unwrap();
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(ProactiveConfig::default()),
+    );
     d.connectivity.set(atlas::connectivity::Reach::Online, 0);
     let said = d.turn("unsubscribe from those", NOW);
     assert!(!said.contains("couldn't get at the mailbox"), "{said}");
@@ -587,8 +1080,15 @@ fn with_himalaya_an_unsubscribe_email_goes_through_himalaya() {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     let sent = std::fs::read_to_string(&got).expect("Himalaya was never asked to send");
-    assert!(sent.contains("To: leave@deals.example") && sent.contains("Subject: unsubscribe"), "{sent}");
-    assert_eq!(sent.matches("To: leave@deals.example\r\n").count(), 1, "the address, without the ?subject part: {sent}");
+    assert!(
+        sent.contains("To: leave@deals.example") && sent.contains("Subject: unsubscribe"),
+        "{sent}"
+    );
+    assert_eq!(
+        sent.matches("To: leave@deals.example\r\n").count(),
+        1,
+        "the address, without the ?subject part: {sent}"
+    );
 }
 
 /// Texts (30 Sep 2026 ruling: messaging goes where the conversations are).
@@ -596,31 +1096,64 @@ fn with_himalaya_an_unsubscribe_email_goes_through_himalaya() {
 #[test]
 fn a_text_is_written_for_your_phone_to_send() {
     use atlas::texting::{sms_link, text_asked};
-    assert_eq!(text_asked("text Sam saying I'm running late"), Some(("Sam".into(), "I'm running late".into())));
-    assert_eq!(text_asked("send Sam a text saying see you at six"), Some(("Sam".into(), "see you at six".into())));
-    assert_eq!(text_asked("send a text to my wife saying love you lots"), Some(("my wife".into(), "love you lots".into())));
+    assert_eq!(
+        text_asked("text Sam saying I'm running late"),
+        Some(("Sam".into(), "I'm running late".into()))
+    );
+    assert_eq!(
+        text_asked("send Sam a text saying see you at six"),
+        Some(("Sam".into(), "see you at six".into()))
+    );
+    assert_eq!(
+        text_asked("send a text to my wife saying love you lots"),
+        Some(("my wife".into(), "love you lots".into()))
+    );
     assert_eq!(text_asked("send the report to Sam, please do"), None);
     assert_eq!(text_asked("text me when it's done"), None);
-    assert_eq!(sms_link("+15551234567", "I'm late"), "sms:+15551234567?&body=I%27m%20late");
-    assert_eq!(atlas::people::phone_number("(555) 123-4567"), Some("5551234567".into()));
-    assert_eq!(atlas::people::phone_number("+44 7700 900123"), Some("+447700900123".into()));
+    assert_eq!(
+        sms_link("+15551234567", "I'm late"),
+        "sms:+15551234567?&body=I%27m%20late"
+    );
+    assert_eq!(
+        atlas::people::phone_number("(555) 123-4567"),
+        Some("5551234567".into())
+    );
+    assert_eq!(
+        atlas::people::phone_number("+44 7700 900123"),
+        Some("+447700900123".into())
+    );
     assert_eq!(atlas::people::phone_number("next tuesday"), None);
 
     let (c, p) = (cfg(), plat());
     let store = Store::new(tmp("texting"));
-    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let none = d.turn("text Sam saying I'm running late", NOW);
     assert!(none.contains("don't have a number for Sam"), "{none}");
     let kept = d.turn("Sam's number is (555) 123-4567", NOW + 5);
     assert!(kept.contains("Sam's number"), "{kept}");
     let wrote = d.turn("text Sam saying I'm running late", NOW + 10);
-    assert!(wrote.starts_with("Text to Sam: \"I'm running late.\""), "{wrote}");
-    assert!(!wrote.to_lowercase().contains("sent"), "never claims it was sent: {wrote}");
+    assert!(
+        wrote.starts_with("Text to Sam: \"I'm running late.\""),
+        "{wrote}"
+    );
+    assert!(
+        !wrote.to_lowercase().contains("sent"),
+        "never claims it was sent: {wrote}"
+    );
     let texts = atlas::texting::Texts::load(&store);
     assert_eq!(texts.waiting.len(), 1);
     assert_eq!(texts.waiting[0].number, "5551234567");
     let card = atlas::texting::card(&texts.current(NOW + 20));
-    assert!(card.contains("href=\"sms:5551234567?&amp;body=I%27m%20running%20late.\""), "{card}");
+    assert!(
+        card.contains("href=\"sms:5551234567?&amp;body=I%27m%20running%20late.\""),
+        "{card}"
+    );
     // "message Sam saying ..." with no paired Atlas called Sam: a text too.
     let ask = d.turn("message Sam saying on my way", NOW + 30);
     assert!(ask.contains("as you") && !ask.contains("terms"), "{ask}");
@@ -633,7 +1166,12 @@ fn a_text_is_written_for_your_phone_to_send() {
 /// the laptop with a robot check, so research found "no sources").
 #[test]
 fn bing_results_are_read_through_its_redirect() {
-    let enc = |u: &str| atlas::b64::encode(u.as_bytes()).trim_end_matches('=').replace('+', "-").replace('/', "_");
+    let enc = |u: &str| {
+        atlas::b64::encode(u.as_bytes())
+            .trim_end_matches('=')
+            .replace('+', "-")
+            .replace('/', "_")
+    };
     let page = format!(
         "<link href=\"https://r.bing.com/rs/x.css\"><h2><a href=\"https://www.bing.com/ck/a?!&amp;&amp;p=abc&amp;u=a1{}&amp;ntb=1\">Canberra</a></h2>\
          <h2><a href=\"https://www.bing.com/ck/a?!&amp;&amp;p=def&amp;u=a1{}&amp;ntb=1\">B</a></h2><a href=\"https://www.bing.com/images\">x</a>",
@@ -642,10 +1180,16 @@ fn bing_results_are_read_through_its_redirect() {
     );
     assert_eq!(
         atlas::research::extract_urls(&page, 5),
-        vec!["https://en.wikipedia.org/wiki/Canberra".to_string(), "https://www.britannica.com/place/Canberra".to_string()]
+        vec![
+            "https://en.wikipedia.org/wiki/Canberra".to_string(),
+            "https://www.britannica.com/place/Canberra".to_string()
+        ]
     );
     let bing = atlas::research::bing_search();
-    assert!(bing.args.iter().any(|a| a.ends_with("q={query_pct}&form=QBLH")));
+    assert!(bing
+        .args
+        .iter()
+        .any(|a| a.ends_with("q={query_pct}&form=QBLH")));
 }
 
 /// Research report, Stage 1 item 10: a failed push waited a flat five
@@ -667,17 +1211,37 @@ fn a_failed_push_waits_longer_each_time_and_survives_a_restart() {
     };
     let dir = tmp("phone-kept");
     {
-        let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
-        let note = atlas::notify::Note::new("Build finished", "all green", atlas::notify::Urgency::Routine, NOW);
+        let mut d = Daemon::new(
+            &c,
+            &p,
+            None,
+            Store::new(dir.clone()),
+            Proactive::new(ProactiveConfig::default()),
+        );
+        let note = atlas::notify::Note::new(
+            "Build finished",
+            "all green",
+            atlas::notify::Urgency::Routine,
+            NOW,
+        );
         *p.input_idle.borrow_mut() = Some(4 * 3600);
         let now = atlas::store::now() + 10 * 3600;
         d.phone_to_retry.push(note);
         d.phone_retry_at = now;
         d.retry_phone(now);
         assert_eq!(d.phone_to_retry.len(), 1, "nothing listening, so it waits");
-        assert!(d.phone_retry_at >= now + 120, "the second wait is longer than the first");
+        assert!(
+            d.phone_retry_at >= now + 120,
+            "the second wait is longer than the first"
+        );
     }
-    let d = Daemon::new(&c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
+    let d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     assert_eq!(d.phone_to_retry.len(), 1, "still waiting after a restart");
 }
 
@@ -715,9 +1279,18 @@ fn with_no_folder_sync_goes_straight_to_your_named_devices() {
         sync_port: Some(port),
         ..Default::default()
     }];
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("sync-direct")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("sync-direct")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let said = d.execute(&atlas::intent::Intent::Sync(String::new()));
-    assert!(dialled.join().unwrap(), "the named device was never dialled: {said}");
+    assert!(
+        dialled.join().unwrap(),
+        "the named device was never dialled: {said}"
+    );
     assert!(!said.contains("nowhere to put it"), "{said}");
 }
 

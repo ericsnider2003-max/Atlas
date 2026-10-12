@@ -110,7 +110,9 @@ impl EditPlan {
         for (i, seg) in self.segments.iter().enumerate() {
             let n = i + 1;
             if seg.source >= self.sources.len() {
-                return Err(bad(&format!("segment {n} refers to a video that isn't there")));
+                return Err(bad(&format!(
+                    "segment {n} refers to a video that isn't there"
+                )));
             }
             if !(seg.start.is_finite() && seg.end.is_finite()) {
                 return Err(bad(&format!("segment {n} has a nonsense timestamp")));
@@ -122,7 +124,10 @@ impl EditPlan {
                 return Err(bad(&format!("segment {n} ends before it starts")));
             }
             if !(0.1..=10.0).contains(&seg.speed) {
-                return Err(bad(&format!("segment {n} speed {} is out of range", seg.speed)));
+                return Err(bad(&format!(
+                    "segment {n} speed {} is out of range",
+                    seg.speed
+                )));
             }
             if let Some(d) = source_durations.get(seg.source) {
                 if *d > 0.0 && seg.end > *d + 0.5 {
@@ -196,7 +201,10 @@ pub fn ffmpeg_args(plan: &EditPlan) -> Vec<String> {
     for i in 0..plan.segments.len() {
         filter.push_str(&format!("[v{i}][a{i}]"));
     }
-    filter.push_str(&format!("concat=n={}:v=1:a=1[cv][ca];", plan.segments.len()));
+    filter.push_str(&format!(
+        "concat=n={}:v=1:a=1[cv][ca];",
+        plan.segments.len()
+    ));
 
     let mut vlabel = "cv".to_string();
     if let Some((w, h)) = plan.resolution {
@@ -335,22 +343,26 @@ Rules:
 
 /// Parse the model's reply into a plan, filling in the parts the model does
 /// not decide (paths, output, resolution).
-pub fn plan_from_model(
-    reply: &str,
-    sources: Vec<String>,
-    output: &str,
-) -> Result<EditPlan> {
-    let start = reply.find('{').ok_or_else(|| bad("the planner returned no JSON"))?;
-    let end = reply.rfind('}').ok_or_else(|| bad("the planner's JSON is unterminated"))?;
+pub fn plan_from_model(reply: &str, sources: Vec<String>, output: &str) -> Result<EditPlan> {
+    let start = reply
+        .find('{')
+        .ok_or_else(|| bad("the planner returned no JSON"))?;
+    let end = reply
+        .rfind('}')
+        .ok_or_else(|| bad("the planner's JSON is unterminated"))?;
     let v: serde_json::Value = serde_json::from_str(&reply[start..=end])
         .map_err(|e| bad(&format!("the planner returned bad JSON: {e}")))?;
 
     let segments: Vec<Segment> = serde_json::from_value(
-        v.get("segments").cloned().unwrap_or(serde_json::Value::Array(vec![])),
+        v.get("segments")
+            .cloned()
+            .unwrap_or(serde_json::Value::Array(vec![])),
     )
     .map_err(|e| bad(&format!("bad segments: {e}")))?;
     let overlays: Vec<Overlay> = serde_json::from_value(
-        v.get("overlays").cloned().unwrap_or(serde_json::Value::Array(vec![])),
+        v.get("overlays")
+            .cloned()
+            .unwrap_or(serde_json::Value::Array(vec![])),
     )
     .unwrap_or_default();
 
@@ -363,7 +375,11 @@ pub fn plan_from_model(
         output: output.to_string(),
         resolution: None,
         fps: None,
-        intent: v.get("intent").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        intent: v
+            .get("intent")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string(),
     })
 }
 
@@ -377,7 +393,11 @@ pub fn describe(plan: &EditPlan, original: f64) -> String {
         if cuts == 1 { "" } else { "s" },
         original,
         new.max(0.0)
-    ) + &if saved > 1.0 { format!(" Trimmed {saved:.0}s.") } else { String::new() }
+    ) + &if saved > 1.0 {
+        format!(" Trimmed {saved:.0}s.")
+    } else {
+        String::new()
+    }
 }
 
 /// The single longest-running thing Atlas does. Every other external tool
@@ -404,7 +424,8 @@ fn render_with_floor(
     let mut full = tool.clone();
     full.args.extend(ffmpeg_args(plan));
     full.timeout_secs = full.timeout_secs.max(floor_secs);
-    full.run(vars, None).map_err(|e| AtlasError::Platform(format!("render failed: {e}")))?;
+    full.run(vars, None)
+        .map_err(|e| AtlasError::Platform(format!("render failed: {e}")))?;
     Ok(plan.output.clone())
 }
 
@@ -440,7 +461,10 @@ mod render_timeout_tests {
         };
         let start = std::time::Instant::now();
         let result = render_with_floor(&tool, &empty_plan(), &Vars::new(), 1);
-        assert!(result.is_err(), "a hung process must be reported as a failure, not hang forever");
+        assert!(
+            result.is_err(),
+            "a hung process must be reported as a failure, not hang forever"
+        );
         assert!(
             start.elapsed() < std::time::Duration::from_secs(10),
             "render must give up at the timeout floor rather than waiting indefinitely, took {:?}",
@@ -474,7 +498,10 @@ pub fn path_and_wish(said: &str) -> Option<(String, String)> {
     if let Some(a) = said.find('"') {
         if let Some(b) = said[a + 1..].find('"') {
             let path = said[a + 1..a + 1 + b].to_string();
-            let wish = said[a + 2 + b..].trim().trim_start_matches([':', ',']).trim();
+            let wish = said[a + 2 + b..]
+                .trim()
+                .trim_start_matches([':', ','])
+                .trim();
             let wish = wish.strip_prefix("to ").unwrap_or(wish).to_string();
             return Some((path, wish));
         }
@@ -482,7 +509,8 @@ pub fn path_and_wish(said: &str) -> Option<(String, String)> {
     let words: Vec<&str> = said.split_whitespace().collect();
     let i = words.iter().position(|w| {
         let l = w.to_lowercase();
-        EXT.iter().any(|e| l.trim_end_matches([':', ',', '.']).ends_with(e))
+        EXT.iter()
+            .any(|e| l.trim_end_matches([':', ',', '.']).ends_with(e))
     })?;
     let path = words[i].trim_end_matches([':', ',']).to_string();
     let rest = words[i + 1..].join(" ");
@@ -493,11 +521,23 @@ pub fn path_and_wish(said: &str) -> Option<(String, String)> {
 /// Where the working copy and the result go: beside Atlas's video work, and
 /// beside the original, never over it (Eric, 25 Sep 2026, G8: "make a copy,
 /// then do the work").
-pub fn copy_and_result_paths(original: &std::path::Path, work_dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
-    let stem = original.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "video".into());
-    let ext = original.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_else(|| "mp4".into());
+pub fn copy_and_result_paths(
+    original: &std::path::Path,
+    work_dir: &std::path::Path,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    let stem = original
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "video".into());
+    let ext = original
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
+        .unwrap_or_else(|| "mp4".into());
     let copy = work_dir.join(format!("{stem}.working-copy.{ext}"));
-    let dir = original.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    let dir = original
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_default();
     let mut result = dir.join(format!("{stem}.edited.{ext}"));
     let mut n = 2;
     while result.exists() {

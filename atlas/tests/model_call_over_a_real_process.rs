@@ -52,7 +52,9 @@ fn stub_llm(reply_text: &str) -> ShellLlm {
 #[test]
 fn complete_runs_a_real_process_and_returns_its_text() {
     let llm = stub_llm("the sum of the two arguments");
-    let out = llm.complete("you are terse", "explain fn add(a,b){a+b}").expect("the stub process ran");
+    let out = llm
+        .complete("you are terse", "explain fn add(a,b){a+b}")
+        .expect("the stub process ran");
     assert_eq!(
         out, "the sum of the two arguments",
         "the primitive did not carry the process's text back through response_path"
@@ -66,7 +68,8 @@ fn complete_runs_a_real_process_and_returns_its_text() {
 #[test]
 fn a_consumer_drafts_through_the_primitive_against_a_live_process() {
     let llm = stub_llm("This function adds its two arguments and returns the sum.");
-    let explained = atlas::explain::in_plain_english("fn add(a: i32, b: i32) -> i32 { a + b }", &llm, 2);
+    let explained =
+        atlas::explain::in_plain_english("fn add(a: i32, b: i32) -> i32 { a + b }", &llm, 2);
     let text = explained.expect("a live model process should yield an explanation");
     assert!(
         text.contains("adds its two arguments"),
@@ -95,5 +98,8 @@ fn a_failed_model_process_is_an_error_not_an_empty_answer() {
         },
         vars: Vars::new(),
     };
-    assert!(llm.complete("s", "u").is_err(), "a non-zero model process must be an error");
+    assert!(
+        llm.complete("s", "u").is_err(),
+        "a non-zero model process must be an error"
+    );
 }

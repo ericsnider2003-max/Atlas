@@ -23,7 +23,8 @@ use std::collections::BTreeSet;
 
 #[test]
 fn a_test_only_child_file_cannot_be_counted_as_a_production_writer() {
-    let text = "//! Private test fixtures.\n#![cfg(test)]\nfn check() { store.save(\"test\", &value); }\n";
+    let text =
+        "//! Private test fixtures.\n#![cfg(test)]\nfn check() { store.save(\"test\", &value); }\n";
     let (production, tests) = common::split_production_and_tests(text);
     assert!(production.is_empty());
     assert_eq!(tests, text);
@@ -35,7 +36,9 @@ fn a_test_only_child_file_cannot_be_counted_as_a_production_writer() {
 
 fn src_files() -> Vec<(String, String)> {
     fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
-        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
         let mut paths: Vec<_> = entries.flatten().map(|e| e.path()).collect();
         paths.sort();
         for p in paths {
@@ -103,7 +106,10 @@ fn a_doc_comment_mentioning_the_attribute_is_not_a_block() {
     // from the measurement.
     let text = "//! Not scaffolding, and not `#[cfg(test)]`. Real bars.\npub fn a() {}\n";
     let (prod, tests) = common::split_production_and_tests(text);
-    assert!(tests.trim().is_empty(), "a doc comment was read as a test block: {tests:?}");
+    assert!(
+        tests.trim().is_empty(),
+        "a doc comment was read as a test block: {tests:?}"
+    );
     assert!(prod.contains("pub fn a()"));
 }
 
@@ -126,10 +132,18 @@ fn every_inline_test_block_has_the_shape_the_splitter_assumes() {
         if tests.trim().is_empty() {
             continue;
         }
-        if text.lines().take_while(|line| line.trim().is_empty() || line.starts_with("//") || line.starts_with("#!"))
-            .any(|line| line.trim_end() == "#![cfg(test)]") {
+        if text
+            .lines()
+            .take_while(|line| {
+                line.trim().is_empty() || line.starts_with("//") || line.starts_with("#!")
+            })
+            .any(|line| line.trim_end() == "#![cfg(test)]")
+        {
             let (production, tests) = common::split_production_and_tests(&text);
-            assert!(production.is_empty(), "{path}: test-only module leaked into production");
+            assert!(
+                production.is_empty(),
+                "{path}: test-only module leaked into production"
+            );
             assert_eq!(tests, text, "{path}: test-only module changed during split");
             continue;
         }
@@ -169,8 +183,15 @@ fn splitting_loses_nothing() {
     for (path, text) in src_files() {
         let (prod, tests) = common::split_production_and_tests(&text);
         let before = text.split('\n').count();
-        let after = if prod.is_empty() { 0 } else { prod.split('\n').count() }
-            + if tests.is_empty() { 0 } else { tests.split('\n').count() };
+        let after = if prod.is_empty() {
+            0
+        } else {
+            prod.split('\n').count()
+        } + if tests.is_empty() {
+            0
+        } else {
+            tests.split('\n').count()
+        };
         assert_eq!(
             before, after,
             "{path}: {before} lines in, {after} out -- the splitter is losing or duplicating code"

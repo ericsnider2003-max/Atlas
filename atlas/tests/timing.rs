@@ -3,7 +3,10 @@
 use atlas::timing::*;
 
 fn turn(about: &str, parts: &[(Stage, u32)]) -> Turn {
-    let mut t = Turn { ms: vec![], about: about.into() };
+    let mut t = Turn {
+        ms: vec![],
+        about: about.into(),
+    };
     for (s, ms) in parts {
         t.note(*s, *ms);
     }
@@ -46,7 +49,10 @@ fn the_worst_stage_is_one_atlas_could_have_helped() {
 #[test]
 fn a_slow_turn_is_measured_on_the_part_atlas_owns() {
     let t = ordinary();
-    assert!(!t.was_slow(FEELS_SLOW_MS), "4s of audio counted as slowness");
+    assert!(
+        !t.was_slow(FEELS_SLOW_MS),
+        "4s of audio counted as slowness"
+    );
     let slow = turn("x", &[(Stage::Hearing, 4000), (Stage::Playing, 500)]);
     assert!(slow.was_slow(FEELS_SLOW_MS));
 }
@@ -80,7 +86,11 @@ fn the_typical_turn_is_the_middle_one_not_the_mean() {
     for ms in [100, 110, 120, 130, 9000] {
         r.add(turn("x", &[(Stage::Doing, ms)]));
     }
-    assert_eq!(r.typical_ms(), Some(120), "one bad turn moved the typical one");
+    assert_eq!(
+        r.typical_ms(),
+        Some(120),
+        "one bad turn moved the typical one"
+    );
 }
 
 #[test]
@@ -130,7 +140,10 @@ fn asked_why_it_is_slow_it_names_the_stage_rather_than_listing_numbers() {
     assert!(said.contains(Stage::Hearing.plain()), "got: {said}");
     // One number is an answer; six is a table you have to interpret. The
     // typical turn time earns its place — the per-stage breakdown does not.
-    let stages_named = Stage::all().iter().filter(|s| said.contains(s.plain())).count();
+    let stages_named = Stage::all()
+        .iter()
+        .filter(|s| said.contains(s.plain()))
+        .count();
     assert_eq!(stages_named, 1, "it listed the whole breakdown: {said}");
 }
 
@@ -145,7 +158,9 @@ fn nothing_slow_says_so_rather_than_inventing_a_culprit() {
 
 #[test]
 fn too_little_data_says_so_rather_than_guessing() {
-    assert!(Recent::default().why_slow().contains("haven't handled enough"));
+    assert!(Recent::default()
+        .why_slow()
+        .contains("haven't handled enough"));
 }
 
 // --- the signal that never had a producer -----------------------------------
@@ -162,7 +177,9 @@ fn getting_slower_over_the_window_produces_the_signal() {
     for _ in 0..6 {
         r.add(turn("x", &[(Stage::Doing, 900)]));
     }
-    let s = r.got_slower().expect("it got four times slower and said nothing");
+    let s = r
+        .got_slower()
+        .expect("it got four times slower and said nothing");
     assert_eq!(s.kind, atlas::selfaudit::Kind::GotSlower);
     assert!(s.example.contains("200") && s.example.contains("900"));
 }
@@ -187,7 +204,10 @@ fn a_small_wobble_is_not_a_regression() {
     for _ in 0..6 {
         r.add(turn("x", &[(Stage::Doing, 240)]));
     }
-    assert!(r.got_slower().is_none(), "noise was reported as a regression");
+    assert!(
+        r.got_slower().is_none(),
+        "noise was reported as a regression"
+    );
 }
 
 #[test]
@@ -197,7 +217,10 @@ fn too_few_turns_is_not_evidence_of_anything() {
         r.add(turn("x", &[(Stage::Doing, 100)]));
     }
     r.add(turn("x", &[(Stage::Doing, 9000)]));
-    assert!(r.got_slower().is_none(), "five turns was treated as a trend");
+    assert!(
+        r.got_slower().is_none(),
+        "five turns was treated as a trend"
+    );
 }
 
 #[test]
@@ -205,7 +228,11 @@ fn every_stage_can_say_what_it_is_in_plain_words() {
     for s in Stage::all() {
         // "doing it" is eight characters and is the right answer, so the bar
         // is that it reads as words rather than that it is long.
-        assert!(s.plain().contains(' '), "{s:?} isn't phrased as words: {}", s.plain());
+        assert!(
+            s.plain().contains(' '),
+            "{s:?} isn't phrased as words: {}",
+            s.plain()
+        );
         assert!(s.plain().chars().all(|c| c.is_lowercase() || c == ' '));
     }
 }
@@ -239,7 +266,10 @@ fn a_readable_but_empty_folder_reports_no_trouble() {
     let (reg, trouble) = atlas::models::Registry::scan_reporting(&d);
     let _ = std::fs::remove_dir_all(&d);
     assert!(reg.models.is_empty());
-    assert!(trouble.is_none(), "an empty folder was reported as a fault: {trouble:?}");
+    assert!(
+        trouble.is_none(),
+        "an empty folder was reported as a fault: {trouble:?}"
+    );
 }
 
 #[test]

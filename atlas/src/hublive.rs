@@ -20,12 +20,12 @@
 //! method written for a person, and `tests/hub_is_not_code.rs` fails the
 //! build if debug formatting shows up in a page again.
 
-use crate::dash::Card;
-use crate::intent::Intent;
-use crate::daemon::Daemon;
-use crate::hub::{self, Page};
-use crate::server::{Action, Reply};
 use crate::daemon::local_offset_mins;
+use crate::daemon::Daemon;
+use crate::dash::Card;
+use crate::hub::{self, Page};
+use crate::intent::Intent;
+use crate::server::{Action, Reply};
 
 /// Atlas's own ideas you said weren't worth it (the Improvements page).
 const RECS_DROPPED: &str = "self_audit_dropped";
@@ -41,44 +41,100 @@ pub(crate) struct SigningPending {
 }
 
 #[derive(Clone, PartialEq)]
-struct SigningOwner { root: std::path::PathBuf, active: std::path::PathBuf, stamps: Vec<Option<(u64, Option<std::time::SystemTime>)>> }
+struct SigningOwner {
+    root: std::path::PathBuf,
+    active: std::path::PathBuf,
+    stamps: Vec<Option<(u64, Option<std::time::SystemTime>)>>,
+}
 impl SigningOwner {
     fn capture(root: std::path::PathBuf, active: std::path::PathBuf) -> Result<Self, String> {
         let store = crate::store::Store::new(&root);
-        let handover: crate::handover::Handover = store.load_checked_bounded("handover", 64 * 1024).map_err(|_| "The owner access record cannot be verified")?.unwrap_or_default();
-        let profiles: crate::profiles::Profiles = store.load_checked_bounded("profiles", 64 * 1024).map_err(|_| "The active owner record cannot be verified")?.unwrap_or_default();
-        if handover.stance.handed_over() || profiles.active_state_dir(&root).unwrap_or_else(|| root.clone()) != active { return Err("The active owner changed; signing work is held without changing files".into()); }
+        let handover: crate::handover::Handover = store
+            .load_checked_bounded("handover", 64 * 1024)
+            .map_err(|_| "The owner access record cannot be verified")?
+            .unwrap_or_default();
+        let profiles: crate::profiles::Profiles = store
+            .load_checked_bounded("profiles", 64 * 1024)
+            .map_err(|_| "The active owner record cannot be verified")?
+            .unwrap_or_default();
+        if handover.stance.handed_over()
+            || profiles
+                .active_state_dir(&root)
+                .unwrap_or_else(|| root.clone())
+                != active
+        {
+            return Err(
+                "The active owner changed; signing work is held without changing files".into(),
+            );
+        }
         let mut stamps = Vec::new();
         for name in ["handover.json", "profiles.json"] {
             match std::fs::symlink_metadata(root.join(name)) {
-                Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => stamps.push(Some((metadata.len(), metadata.modified().ok()))),
+                Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+                    stamps.push(Some((metadata.len(), metadata.modified().ok())))
+                }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => stamps.push(None),
                 _ => return Err("The owner record cannot be safely identified".into()),
             }
         }
-        Ok(Self { root, active, stamps })
+        Ok(Self {
+            root,
+            active,
+            stamps,
+        })
     }
-    fn unchanged(&self) -> bool { Self::capture(self.root.clone(), self.active.clone()).ok().as_ref() == Some(self) }
+    fn unchanged(&self) -> bool {
+        Self::capture(self.root.clone(), self.active.clone())
+            .ok()
+            .as_ref()
+            == Some(self)
+    }
 }
 
-pub(crate) enum SigningAck { Saved, Refused(String), Unconfirmed(String) }
+pub(crate) enum SigningAck {
+    Saved,
+    Refused(String),
+    Unconfirmed(String),
+}
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
-pub(crate) struct SigningUnconfirmed { pub operation_id: String, pub operation: String, pub message: String, #[serde(default)] pub target: String }
+pub(crate) struct SigningUnconfirmed {
+    pub operation_id: String,
+    pub operation: String,
+    pub message: String,
+    #[serde(default)]
+    pub target: String,
+}
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SigningReceipt {
-    pub operation: String, pub status: String, pub message: String,
-    #[serde(default)] pub operation_id: String,
-    #[serde(default)] pub prior_unconfirmed: Vec<SigningUnconfirmed>,
-    #[serde(default)] pub target: String,
+    pub operation: String,
+    pub status: String,
+    pub message: String,
+    #[serde(default)]
+    pub operation_id: String,
+    #[serde(default)]
+    pub prior_unconfirmed: Vec<SigningUnconfirmed>,
+    #[serde(default)]
+    pub target: String,
 }
 
-fn save_signing_receipt(store: &crate::store::Store, receipt: &SigningReceipt) -> Result<(), String> {
+fn save_signing_receipt(
+    store: &crate::store::Store,
+    receipt: &SigningReceipt,
+) -> Result<(), String> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     loop {
         let saved = (|| -> crate::error::Result<()> {
             let _guard = store.transaction()?;
-            let current: SigningReceipt = store.load_checked_bounded("signing_protection_receipt", 128 * 1024)?.ok_or_else(|| crate::error::AtlasError::Platform("The signing intent disappeared".into()))?;
-            if current.operation_id != receipt.operation_id { return Err(crate::error::AtlasError::Platform("A later signing operation owns the receipt".into())); }
+            let current: SigningReceipt = store
+                .load_checked_bounded("signing_protection_receipt", 128 * 1024)?
+                .ok_or_else(|| {
+                    crate::error::AtlasError::Platform("The signing intent disappeared".into())
+                })?;
+            if current.operation_id != receipt.operation_id {
+                return Err(crate::error::AtlasError::Platform(
+                    "A later signing operation owns the receipt".into(),
+                ));
+            }
             store.save("signing_protection_receipt", receipt)
         })();
         match saved {
@@ -90,40 +146,107 @@ fn save_signing_receipt(store: &crate::store::Store, receipt: &SigningReceipt) -
 }
 
 impl Daemon<'_> {
-    pub(crate) fn signing_post(&mut self, what: &str, name: &str, source: &str, destination: &str, unlock: crate::server::Secret, recovery: bool, nonce: &str) -> Reply {
+    pub(crate) fn signing_post(
+        &mut self,
+        what: &str,
+        name: &str,
+        source: &str,
+        destination: &str,
+        unlock: crate::server::Secret,
+        recovery: bool,
+        nonce: &str,
+    ) -> Reply {
         let refuse = |message: &str| hub::back_with(Page::Accounts.href(), "", message);
-        if !self.shown_once.spend_signing(nonce, what) { return refuse("That signing form was already sent or changed. Nothing new started."); }
-        if self.handed_over_now() { return refuse("Signing protection needs the owner's access. Nothing started."); }
-        if self.rehearsal { return refuse("Signing protection reads selected private files and needs a real owner action; it cannot run in rehearsal."); }
-        if self.signing_pending.is_some() { return refuse("Signing protection is already in progress. Wait for its receipt before starting another action."); }
-        if !matches!(what, "protect" | "export") || unlock.reveal().is_empty() || (recovery && !self.vault.has_a_recovery_key()) || (!recovery && !self.vault.has_a_passphrase()) { return refuse("Use an established owner passphrase or recovery key. Nothing started."); }
-        let path = std::path::PathBuf::from(if what == "protect" { source } else { destination });
-        if !crate::server::signing_local_path(path.to_str().unwrap_or_default()) { return refuse("Choose an explicit local absolute file path; network and device paths are refused. Nothing started."); }
+        if !self.shown_once.spend_signing(nonce, what) {
+            return refuse("That signing form was already sent or changed. Nothing new started.");
+        }
+        if self.handed_over_now() {
+            return refuse("Signing protection needs the owner's access. Nothing started.");
+        }
+        if self.rehearsal {
+            return refuse("Signing protection reads selected private files and needs a real owner action; it cannot run in rehearsal.");
+        }
+        if self.signing_pending.is_some() {
+            return refuse("Signing protection is already in progress. Wait for its receipt before starting another action.");
+        }
+        if !matches!(what, "protect" | "export")
+            || unlock.reveal().is_empty()
+            || (recovery && !self.vault.has_a_recovery_key())
+            || (!recovery && !self.vault.has_a_passphrase())
+        {
+            return refuse("Use an established owner passphrase or recovery key. Nothing started.");
+        }
+        let path = std::path::PathBuf::from(if what == "protect" {
+            source
+        } else {
+            destination
+        });
+        if !crate::server::signing_local_path(path.to_str().unwrap_or_default()) {
+            return refuse("Choose an explicit local absolute file path; network and device paths are refused. Nothing started.");
+        }
         let install = crate::roots::state_dir();
-        let owner_root = if self.store.root().starts_with(&install) { install } else { self.store.root().into() };
-        let owner = match SigningOwner::capture(owner_root, self.store.root().into()) { Ok(owner) => owner, Err(_) => return refuse("The current owner/profile cannot be verified. Nothing started.") };
-        let root = match std::fs::canonicalize(self.vault_home.root()) { Ok(root) => root, Err(_) => return refuse("The vault's storage cannot be identified. Nothing started.") };
-        let operation_id = match crate::server::new_token() { Ok(id) => id, Err(_) => return refuse("A signing operation identity could not be made. Nothing started.") };
+        let owner_root = if self.store.root().starts_with(&install) {
+            install
+        } else {
+            self.store.root().into()
+        };
+        let owner = match SigningOwner::capture(owner_root, self.store.root().into()) {
+            Ok(owner) => owner,
+            Err(_) => {
+                return refuse("The current owner/profile cannot be verified. Nothing started.")
+            }
+        };
+        let root = match std::fs::canonicalize(self.vault_home.root()) {
+            Ok(root) => root,
+            Err(_) => return refuse("The vault's storage cannot be identified. Nothing started."),
+        };
+        let operation_id = match crate::server::new_token() {
+            Ok(id) => id,
+            Err(_) => {
+                return refuse("A signing operation identity could not be made. Nothing started.")
+            }
+        };
         let receipt = (|| -> crate::error::Result<SigningReceipt> {
             let _guard = self.vault_home.transaction()?;
-            let previous: Option<SigningReceipt> = self.vault_home.load_checked_bounded("signing_protection_receipt", 128 * 1024)?;
+            let previous: Option<SigningReceipt> = self
+                .vault_home
+                .load_checked_bounded("signing_protection_receipt", 128 * 1024)?;
             let mut prior_unconfirmed = Vec::new();
             if let Some(previous) = previous {
-                if !matches!(previous.status.as_str(), "pending" | "unconfirmed" | "verified" | "failed") || previous.prior_unconfirmed.len() > 16 { return Err(crate::error::AtlasError::Platform("The previous signing outcome cannot be safely interpreted; it is retained for review".into())); }
+                if !matches!(
+                    previous.status.as_str(),
+                    "pending" | "unconfirmed" | "verified" | "failed"
+                ) || previous.prior_unconfirmed.len() > 16
+                {
+                    return Err(crate::error::AtlasError::Platform("The previous signing outcome cannot be safely interpreted; it is retained for review".into()));
+                }
                 prior_unconfirmed = previous.prior_unconfirmed;
-                if matches!(previous.status.as_str(), "pending" | "unconfirmed") { prior_unconfirmed.push(SigningUnconfirmed { operation_id: previous.operation_id, operation: previous.operation, message: previous.message, target: previous.target }); }
+                if matches!(previous.status.as_str(), "pending" | "unconfirmed") {
+                    prior_unconfirmed.push(SigningUnconfirmed {
+                        operation_id: previous.operation_id,
+                        operation: previous.operation,
+                        message: previous.message,
+                        target: previous.target,
+                    });
+                }
             }
-            if prior_unconfirmed.len() >= 16 { return Err(crate::error::AtlasError::Platform("Signing recovery has sixteen unresolved outcomes. They are retained; review them before starting more signing work".into())); }
+            if prior_unconfirmed.len() >= 16 {
+                return Err(crate::error::AtlasError::Platform("Signing recovery has sixteen unresolved outcomes. They are retained; review them before starting more signing work".into()));
+            }
             let receipt = SigningReceipt { operation: what.into(), status: "pending".into(), message: "Signing work was accepted. If Atlas restarts before its final receipt, the outcome is unconfirmed; inspect the protected copies or selected destination before retrying. Originals are retained.".into(), operation_id, prior_unconfirmed, target: if what == "protect" { format!("{name} ({source})") } else { destination.to_owned() } };
-            self.vault_home.save("signing_protection_receipt", &receipt)?;
+            self.vault_home
+                .save("signing_protection_receipt", &receipt)?;
             Ok(receipt)
         })();
         let receipt = match receipt { Ok(receipt) => receipt, Err(_) => return refuse("The signing recovery intent could not be saved, or unresolved history is full/unreadable. Earlier outcomes are retained. No file was read and no new signing work started.") };
         let store = self.vault_home.clone();
         let config = self.tools_cfg().vault.clone();
-        let name = name.to_owned(); let operation = what.to_owned();
+        let name = name.to_owned();
+        let operation = what.to_owned();
         let now = crate::store::now();
-        let job = self.hub_jobs.start(Page::Accounts, "Protecting signing copies");
+        let job = self
+            .hub_jobs
+            .start(Page::Accounts, "Protecting signing copies");
         let jobs = self.hub_jobs.clone();
         let (send, prepared) = std::sync::mpsc::channel();
         let (ack, receive_ack) = std::sync::mpsc::channel();
@@ -134,15 +257,38 @@ impl Daemon<'_> {
             let stopped = || control.checkpoint_until(deadline);
             let uncertain = std::cell::Cell::new(false);
             let result = (|| -> Result<String, String> {
-                if stopped() { return Err("Signing work was cancelled before reading a file".into()); }
-                let mut vault: crate::vault::Vault = store.load_checked(crate::vault::Vault::FILE).map_err(|_| "The saved vault cannot be read; nothing was imported or exported")?.ok_or("The owner vault is missing")?;
-                if (recovery && !vault.has_a_recovery_key()) || (!recovery && !vault.has_a_passphrase()) { return Err("An established owner unlock is required; nothing was imported or exported".into()); }
-                let base = serde_json::to_value(&vault).map_err(|_| "The saved vault cannot be compared")?;
-                let opened = if recovery { vault.open_with_recovery_key(unlock.reveal(), now, &config) } else { vault.open(unlock.reveal(), now, &config) };
+                if stopped() {
+                    return Err("Signing work was cancelled before reading a file".into());
+                }
+                let mut vault: crate::vault::Vault = store
+                    .load_checked(crate::vault::Vault::FILE)
+                    .map_err(|_| {
+                        "The saved vault cannot be read; nothing was imported or exported"
+                    })?
+                    .ok_or("The owner vault is missing")?;
+                if (recovery && !vault.has_a_recovery_key())
+                    || (!recovery && !vault.has_a_passphrase())
+                {
+                    return Err(
+                        "An established owner unlock is required; nothing was imported or exported"
+                            .into(),
+                    );
+                }
+                let base = serde_json::to_value(&vault)
+                    .map_err(|_| "The saved vault cannot be compared")?;
+                let opened = if recovery {
+                    vault.open_with_recovery_key(unlock.reveal(), now, &config)
+                } else {
+                    vault.open(unlock.reveal(), now, &config)
+                };
                 opened.map_err(|_| "The owner unlock did not match; no signing file was read")?;
-                if stopped() { return Err("Signing work was cancelled after unlock; no copy was saved".into()); }
+                if stopped() {
+                    return Err("Signing work was cancelled after unlock; no copy was saved".into());
+                }
                 if operation == "protect" {
-                    let prepared = crate::vault::prepare_signing_copy(vault, &path, &name, now, &config, &stopped, base)?;
+                    let prepared = crate::vault::prepare_signing_copy(
+                        vault, &path, &name, now, &config, &stopped, base,
+                    )?;
                     uncertain.set(true);
                     send.send(prepared).map_err(|_| "Signing protection lost its durable save connection; the original is retained")?;
                     loop {
@@ -155,61 +301,206 @@ impl Daemon<'_> {
                         }
                     }
                 }
-                let guard = loop { match store.transaction() {
-                    Ok(guard) => break guard,
-                    Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock && !stopped() => std::thread::sleep(std::time::Duration::from_millis(20)),
-                    Err(_) => return Err("Vault storage is unavailable; no signing backup was exported".into()),
-                }};
+                let guard = loop {
+                    match store.transaction() {
+                        Ok(guard) => break guard,
+                        Err(crate::error::AtlasError::Io(error))
+                            if error.kind() == std::io::ErrorKind::WouldBlock && !stopped() =>
+                        {
+                            std::thread::sleep(std::time::Duration::from_millis(20))
+                        }
+                        Err(_) => {
+                            return Err(
+                                "Vault storage is unavailable; no signing backup was exported"
+                                    .into(),
+                            )
+                        }
+                    }
+                };
                 let owner_store = crate::store::Store::new(&worker_owner.root);
-                let owner_guard = owner_store.transaction().map_err(|_| "The owner access record is busy; no signing copy was exported")?;
-                if !worker_owner.unchanged() { return Err("The owner/profile changed while signing export was prepared; nothing was exported".into()); }
-                let fresh: crate::vault::Vault = store.load_checked(crate::vault::Vault::FILE).map_err(|_| "The vault cannot be rechecked")?.ok_or("The vault disappeared")?;
-                if serde_json::to_value(fresh).map_err(|_| "The vault cannot be compared")? != base { return Err("The vault changed while unlocking; try the export again with a fresh owner unlock".into()); }
-                let unlock_kind = if recovery { crate::vault::SigningUnlock::RecoveryKey(unlock.reveal()) } else { crate::vault::SigningUnlock::Passphrase(unlock.reveal()) };
+                let owner_guard = owner_store
+                    .transaction()
+                    .map_err(|_| "The owner access record is busy; no signing copy was exported")?;
+                if !worker_owner.unchanged() {
+                    return Err("The owner/profile changed while signing export was prepared; nothing was exported".into());
+                }
+                let fresh: crate::vault::Vault = store
+                    .load_checked(crate::vault::Vault::FILE)
+                    .map_err(|_| "The vault cannot be rechecked")?
+                    .ok_or("The vault disappeared")?;
+                if serde_json::to_value(fresh).map_err(|_| "The vault cannot be compared")? != base
+                {
+                    return Err("The vault changed while unlocking; try the export again with a fresh owner unlock".into());
+                }
+                let unlock_kind = if recovery {
+                    crate::vault::SigningUnlock::RecoveryKey(unlock.reveal())
+                } else {
+                    crate::vault::SigningUnlock::Passphrase(unlock.reveal())
+                };
                 uncertain.set(true);
-                let result = crate::vault::signing_export_until(&vault, &path, unlock_kind, now, &config, &stopped);
-                drop(owner_guard); drop(guard); vault.lock(); result
+                let result = crate::vault::signing_export_until(
+                    &vault,
+                    &path,
+                    unlock_kind,
+                    now,
+                    &config,
+                    &stopped,
+                );
+                drop(owner_guard);
+                drop(guard);
+                vault.lock();
+                result
             })();
-            let receipt = SigningReceipt { operation, status: if result.is_ok() { "verified" } else if uncertain.get() { "unconfirmed" } else { "failed" }.into(), message: result.clone().unwrap_or_else(|error| error), ..receipt };
-            let result = match save_signing_receipt(&store, &receipt) { Ok(()) => result, Err(error) => Err(error) };
+            let receipt = SigningReceipt {
+                operation,
+                status: if result.is_ok() {
+                    "verified"
+                } else if uncertain.get() {
+                    "unconfirmed"
+                } else {
+                    "failed"
+                }
+                .into(),
+                message: result.clone().unwrap_or_else(|error| error),
+                ..receipt
+            };
+            let result = match save_signing_receipt(&store, &receipt) {
+                Ok(()) => result,
+                Err(error) => Err(error),
+            };
             jobs.finish(job, result.clone(), false);
             result
         });
         match self.hand_off_signing(now, work) {
-            Some(crew_id) => { self.signing_pending = Some(SigningPending { crew_id, root, deadline: std::time::Instant::now() + std::time::Duration::from_secs(30), prepared, held: None, ack, owner }); hub::back_with(Page::Accounts.href(), &format!("job={job}"), "Signing work is queued. The page will show its actual receipt; originals are retained.") },
+            Some(crew_id) => {
+                self.signing_pending = Some(SigningPending {
+                    crew_id,
+                    root,
+                    deadline: std::time::Instant::now() + std::time::Duration::from_secs(30),
+                    prepared,
+                    held: None,
+                    ack,
+                    owner,
+                });
+                hub::back_with(Page::Accounts.href(), &format!("job={job}"), "Signing work is queued. The page will show its actual receipt; originals are retained.")
+            }
             None => {
-                let failed = SigningReceipt { status: "failed".into(), message: "Signing work could not be queued; no file was read or changed".into(), ..declined_receipt };
-                let saved = (|| -> crate::error::Result<()> { let _guard = self.vault_home.transaction()?; let current: SigningReceipt = self.vault_home.load_checked_bounded("signing_protection_receipt", 128 * 1024)?.ok_or_else(|| crate::error::AtlasError::Platform("The signing intent disappeared".into()))?; if current.operation_id != failed.operation_id { return Err(crate::error::AtlasError::Platform("A later signing action owns the receipt".into())); } self.vault_home.save("signing_protection_receipt", &failed) })();
-                if saved.is_err() { self.log.warn("Signing work did not start, but its failed-to-queue recovery receipt is still unconfirmed"); }
-                self.hub_jobs.finish(job, Err(failed.message), false); refuse("Signing work could not be queued; no file was read or changed.")
-            },
+                let failed = SigningReceipt {
+                    status: "failed".into(),
+                    message: "Signing work could not be queued; no file was read or changed".into(),
+                    ..declined_receipt
+                };
+                let saved = (|| -> crate::error::Result<()> {
+                    let _guard = self.vault_home.transaction()?;
+                    let current: SigningReceipt = self
+                        .vault_home
+                        .load_checked_bounded("signing_protection_receipt", 128 * 1024)?
+                        .ok_or_else(|| {
+                            crate::error::AtlasError::Platform(
+                                "The signing intent disappeared".into(),
+                            )
+                        })?;
+                    if current.operation_id != failed.operation_id {
+                        return Err(crate::error::AtlasError::Platform(
+                            "A later signing action owns the receipt".into(),
+                        ));
+                    }
+                    self.vault_home.save("signing_protection_receipt", &failed)
+                })();
+                if saved.is_err() {
+                    self.log.warn("Signing work did not start, but its failed-to-queue recovery receipt is still unconfirmed");
+                }
+                self.hub_jobs.finish(job, Err(failed.message), false);
+                refuse("Signing work could not be queued; no file was read or changed.")
+            }
         }
     }
 
     pub(crate) fn poll_signing_protection(&mut self) {
-        let Some(mut pending) = self.signing_pending.take() else { return };
-        if pending.held.is_none() { match pending.prepared.try_recv() {
-            Ok(prepared) => pending.held = Some(prepared),
-            Err(std::sync::mpsc::TryRecvError::Empty) => {},
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => if !self.crew.in_hand(pending.crew_id) { return; },
-        }}
+        let Some(mut pending) = self.signing_pending.take() else {
+            return;
+        };
+        if pending.held.is_none() {
+            match pending.prepared.try_recv() {
+                Ok(prepared) => pending.held = Some(prepared),
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    if !self.crew.in_hand(pending.crew_id) {
+                        return;
+                    }
+                }
+            }
+        }
         if pending.held.is_some() {
-            if !self.crew.in_hand(pending.crew_id) || self.crew.cancellation_requested(pending.crew_id) || std::time::Instant::now() >= pending.deadline {
+            if !self.crew.in_hand(pending.crew_id)
+                || self.crew.cancellation_requested(pending.crew_id)
+                || std::time::Instant::now() >= pending.deadline
+            {
                 if pending.ack.send(SigningAck::Refused("Signing protection was stopped before its save acknowledgement. Its original is retained; no new commit started".into())).is_err() { self.log.warn("Signing preparation expired after its worker disconnected; no new commit started"); }
                 return;
             }
-            if self.attention.is_paused() && !self.crew.cancellation_requested(pending.crew_id) && std::time::Instant::now() < pending.deadline { self.signing_pending = Some(pending); return; }
+            if self.attention.is_paused()
+                && !self.crew.cancellation_requested(pending.crew_id)
+                && std::time::Instant::now() < pending.deadline
+            {
+                self.signing_pending = Some(pending);
+                return;
+            }
             let owner_store = crate::store::Store::new(&pending.owner.root);
-            let owner_guard = match owner_store.transaction() { Ok(guard) => guard, Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => { self.signing_pending = Some(pending); return; }, Err(_) => { if pending.ack.send(SigningAck::Refused("The owner record could not be verified; no signing copy was committed".into())).is_err() { self.log.warn("Signing ownership verification failed after worker disconnect"); } return; } };
-            let invalid = self.crew.cancellation_requested(pending.crew_id) || std::time::Instant::now() >= pending.deadline || self.handed_over_now() || !pending.owner.unchanged() || std::fs::canonicalize(self.vault_home.root()).ok().as_ref() != Some(&pending.root);
+            let owner_guard = match owner_store.transaction() {
+                Ok(guard) => guard,
+                Err(crate::error::AtlasError::Io(error))
+                    if error.kind() == std::io::ErrorKind::WouldBlock =>
+                {
+                    self.signing_pending = Some(pending);
+                    return;
+                }
+                Err(_) => {
+                    if pending
+                        .ack
+                        .send(SigningAck::Refused(
+                            "The owner record could not be verified; no signing copy was committed"
+                                .into(),
+                        ))
+                        .is_err()
+                    {
+                        self.log
+                            .warn("Signing ownership verification failed after worker disconnect");
+                    }
+                    return;
+                }
+            };
+            let invalid = self.crew.cancellation_requested(pending.crew_id)
+                || std::time::Instant::now() >= pending.deadline
+                || self.handed_over_now()
+                || !pending.owner.unchanged()
+                || std::fs::canonicalize(self.vault_home.root()).ok().as_ref()
+                    != Some(&pending.root);
             let result = match pending.held.as_ref() { Some(held) if !invalid => held.commit(&self.vault_home, &mut self.vault), _ => Err(crate::error::AtlasError::Platform("Signing protection was cancelled or its owner/storage changed before save; the original is retained".into())) };
             match result {
-                Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => { self.signing_pending = Some(pending); return; },
-                result => { let acknowledged = if invalid { SigningAck::Refused("The owner/profile changed before save; no protected copy was committed".into()) } else { match result { Ok(()) => SigningAck::Saved, Err(_) => SigningAck::Unconfirmed("The protected copy could not be durably verified. The original is retained; inspect the vault before retrying".into()) } }; if pending.ack.send(acknowledged).is_err() { self.log.warn("Signing save ended after its worker disconnected; inspect the protected copy before retrying"); } pending.held = None; },
+                Err(crate::error::AtlasError::Io(error))
+                    if error.kind() == std::io::ErrorKind::WouldBlock =>
+                {
+                    self.signing_pending = Some(pending);
+                    return;
+                }
+                result => {
+                    let acknowledged = if invalid {
+                        SigningAck::Refused("The owner/profile changed before save; no protected copy was committed".into())
+                    } else {
+                        match result { Ok(()) => SigningAck::Saved, Err(_) => SigningAck::Unconfirmed("The protected copy could not be durably verified. The original is retained; inspect the vault before retrying".into()) }
+                    };
+                    if pending.ack.send(acknowledged).is_err() {
+                        self.log.warn("Signing save ended after its worker disconnected; inspect the protected copy before retrying");
+                    }
+                    pending.held = None;
+                }
             }
             drop(owner_guard);
         }
-        if self.crew.in_hand(pending.crew_id) { self.signing_pending = Some(pending); }
+        if self.crew.in_hand(pending.crew_id) {
+            self.signing_pending = Some(pending);
+        }
     }
 }
 
@@ -244,13 +535,19 @@ pub(crate) fn readonly_pages(daemon: &Daemon) -> Vec<(Page, Reply)> {
     [
         (Page::Now, daemon.now_page_live()),
         (Page::Outstanding, daemon.outstanding_page_live(now)),
-    ].into_iter().map(|(page, html)| {
+    ]
+    .into_iter()
+    .map(|(page, html)| {
         let html = hub::with_palette(html, &crate::palette::catalogue(), &daemon.palette);
         let html = hub::with_waiting(html, daemon.waiting_count(now));
         let html = daemon.with_sidebar_names(html);
         let html = daemon.with_handover_banner(html);
-        (page, Reply::html(hub::with_appearance(html, &daemon.appearance())))
-    }).collect()
+        (
+            page,
+            Reply::html(hub::with_appearance(html, &daemon.appearance())),
+        )
+    })
+    .collect()
 }
 
 impl Daemon<'_> {
@@ -896,8 +1193,15 @@ impl Daemon<'_> {
     fn api_status(&self) -> String {
         let doing = self.crew.active();
         let waiting = self.crew.queued();
-        let paused = if self.attention.is_paused() { " Paused." } else { "" };
-        format!("Running. {doing} errand{} in hand, {waiting} waiting.{paused}", if doing == 1 { "" } else { "s" })
+        let paused = if self.attention.is_paused() {
+            " Paused."
+        } else {
+            ""
+        };
+        format!(
+            "Running. {doing} errand{} in hand, {waiting} waiting.{paused}",
+            if doing == 1 { "" } else { "s" }
+        )
     }
 
     fn hub_page(&mut self, page: Page) -> String {
@@ -978,7 +1282,10 @@ impl Daemon<'_> {
                 // How you talk, and what went wrong this week (2 Oct 2026,
                 // `learning`).
                 // What you've asked it to be able to do (`growth`).
-                let page = with_block(hub::recommendations_page(&recs, None, &free), &crate::growth::section(&self.store.load(crate::growth::STORE)));
+                let page = with_block(
+                    hub::recommendations_page(&recs, None, &free),
+                    &crate::growth::section(&self.store.load(crate::growth::STORE)),
+                );
                 with_block(page, &self.how_you_talk_block(now))
             }
             Page::Status => {
@@ -1001,7 +1308,15 @@ impl Daemon<'_> {
                 if crate::phonemode::on() {
                     with_block(page, &self.space_section_live())
                 } else {
-                    with_block(page, &format!("{}{}{}", self.space_section_live(), hub::speed_section(), hub::sorting_section()))
+                    with_block(
+                        page,
+                        &format!(
+                            "{}{}{}",
+                            self.space_section_live(),
+                            hub::speed_section(),
+                            hub::sorting_section()
+                        ),
+                    )
                 }
             }
             Page::Settings => {
@@ -1022,10 +1337,18 @@ impl Daemon<'_> {
                 &self.permissions.granted_apps(),
             ),
             Page::AddOns => {
-                let groups: Vec<String> =
-                    self.chats.rooms.iter().filter(|r| r.members.len() > 1 || crate::groups::is_owned_id(&r.id)).map(|r| r.name.clone()).collect();
-                let people: Vec<String> =
-                    crate::kin::Pairings::load(&self.peer_dir).contacts.iter().map(|c| c.name.clone()).collect();
+                let groups: Vec<String> = self
+                    .chats
+                    .rooms
+                    .iter()
+                    .filter(|r| r.members.len() > 1 || crate::groups::is_owned_id(&r.id))
+                    .map(|r| r.name.clone())
+                    .collect();
+                let people: Vec<String> = crate::kin::Pairings::load(&self.peer_dir)
+                    .contacts
+                    .iter()
+                    .map(|c| c.name.clone())
+                    .collect();
                 let share_to: Vec<String> = groups.iter().chain(people.iter()).cloned().collect();
                 hub::addons_page_with(
                     &crate::plugins::scan(
@@ -1045,7 +1368,9 @@ impl Daemon<'_> {
             Page::Friends => {
                 let mut v = self.friends_view();
                 // A link just made, shown this once.
-                if let Some(crate::hubjobs::Flash::FriendLink(l)) = crate::hubjobs::take_flash(&mut self.flash_once, Page::Friends, now) {
+                if let Some(crate::hubjobs::Flash::FriendLink(l)) =
+                    crate::hubjobs::take_flash(&mut self.flash_once, Page::Friends, now)
+                {
                     v.link = Some(l);
                 }
                 hub::friends_page(&v)
@@ -1084,10 +1409,8 @@ impl Daemon<'_> {
                 // the whole catalogue would tell you Atlas holds a mail
                 // password it has never been given.
                 let all = crate::credentials::all();
-                let held: Vec<&crate::credentials::Credential> = all
-                    .iter()
-                    .filter(|c| self.holds(c))
-                    .collect();
+                let held: Vec<&crate::credentials::Credential> =
+                    all.iter().filter(|c| self.holds(c)).collect();
                 let misplaced = crate::credentials::misplaced();
                 // The sites half, which was passed as an empty slice until
                 // 19 Sep 2026. This page's own docstring warns that an access
@@ -1102,12 +1425,8 @@ impl Daemon<'_> {
 
     // ---------- the cards ----------
 
-
     // ---------- the lists behind the cards ----------
-
-
 }
-
 
 #[derive(Clone)]
 enum IpaRead {
@@ -1118,11 +1437,7 @@ enum IpaRead {
 type IpaSeen = Option<(std::path::PathBuf, u64, std::time::SystemTime, IpaRead)>;
 static IPA_SEEN: std::sync::Mutex<IpaSeen> = std::sync::Mutex::new(None);
 
-
-impl Daemon<'_> {
-
-
-}
+impl Daemon<'_> {}
 
 /// What a hub form says when the change it made couldn't be written down
 /// (28 Sep 2026). The client list and the shared tasks are read from disk for
@@ -1146,7 +1461,10 @@ impl OffTheList {
     /// What the hub's notice says.
     pub(crate) fn said(&self) -> String {
         let mut said = if self.stopping {
-            format!("Asked \"{}\" to stop. It finishes the step it's on, then it's off the list.", self.title)
+            format!(
+                "Asked \"{}\" to stop. It finishes the step it's on, then it's off the list.",
+                self.title
+            )
         } else {
             format!("\"{}\" is off your outstanding list.", self.title)
         };
@@ -1154,7 +1472,9 @@ impl OffTheList {
             said.push_str(" \"Bring back what I dropped\" finds it again.");
         }
         if let Some(e) = &self.unsaved {
-            said.push_str(&format!(" But I couldn't save that ({e}), so it may come back after a restart."));
+            said.push_str(&format!(
+                " But I couldn't save that ({e}), so it may come back after a restart."
+            ));
         }
         said
     }
@@ -1176,14 +1496,14 @@ fn with_keeping(said: String, kept: crate::error::Result<()>) -> String {
 
 // The rest of this module, by what it does (audit Q6, 6 Oct 2026).
 mod cards;
-mod phone_and_voice;
 mod deck;
+mod phone_and_voice;
 mod settings_and_outstanding;
 mod status_and_now;
 pub use status_and_now::*;
+mod posts;
 mod queries;
 mod sharing;
-mod posts;
 
 #[cfg(test)]
 mod signing_backend_tests {
@@ -1191,183 +1511,609 @@ mod signing_backend_tests {
     const PHRASE: &str = "Juniper observatory lanterns cross the quiet estuary";
     fn area(tag: &str) -> std::path::PathBuf {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let area = std::env::temp_dir().join(format!("atlas-signing-hub-{tag}-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
-        std::fs::create_dir_all(area.join("state")).unwrap(); area
+        let area = std::env::temp_dir().join(format!(
+            "atlas-signing-hub-{tag}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(area.join("state")).unwrap();
+        area
     }
     fn await_receipt(d: &mut Daemon, store: &crate::store::Store) -> SigningReceipt {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
         loop {
             d.tick(crate::store::now());
-            let receipt: SigningReceipt = store.load_checked("signing_protection_receipt").unwrap().unwrap();
-            if receipt.status != "pending" { return receipt; }
-            assert!(std::time::Instant::now() < deadline, "signing work had no terminal durable receipt");
+            let receipt: SigningReceipt = store
+                .load_checked("signing_protection_receipt")
+                .unwrap()
+                .unwrap();
+            if receipt.status != "pending" {
+                return receipt;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "signing work had no terminal durable receipt"
+            );
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
     }
     #[test]
     fn owner_signing_hub_import_and_export_have_durable_verified_receipts() {
-        let area = area("roundtrip"); let store = crate::store::Store::new(area.join("state"));
+        let area = area("roundtrip");
+        let store = crate::store::Store::new(area.join("state"));
         let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
         let platform = crate::platform::mock::MockPlatform::new(Vec::new());
-        let mut d = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
-        let vault_config = d.tools_cfg().vault.clone(); let now = crate::store::now();
-        d.vault.open(PHRASE, now, &vault_config).unwrap(); d.vault.save(&store).unwrap(); d.vault.lock();
-        let source = area.join("selected-synthetic-key.bin"); let material = b"synthetic private signing fixture only";
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let vault_config = d.tools_cfg().vault.clone();
+        let now = crate::store::now();
+        d.vault.open(PHRASE, now, &vault_config).unwrap();
+        d.vault.save(&store).unwrap();
+        d.vault.lock();
+        let source = area.join("selected-synthetic-key.bin");
+        let material = b"synthetic private signing fixture only";
         std::fs::write(&source, material).unwrap();
         let nonce = d.shown_once.mark_signing("protect");
-        let reply = d.signing_post("protect", "synthetic", source.to_str().unwrap(), "", crate::server::Secret::new(PHRASE), false, &nonce);
+        let reply = d.signing_post(
+            "protect",
+            "synthetic",
+            source.to_str().unwrap(),
+            "",
+            crate::server::Secret::new(PHRASE),
+            false,
+            &nonce,
+        );
         assert!(reply.body.contains("job="), "{}", reply.body);
-        assert!(d.vault.secrets.is_empty(), "the request did not synchronously read or import the file");
-        let receipt = await_receipt(&mut d, &store); assert_eq!(receipt.status, "verified", "{}", receipt.message);
+        assert!(
+            d.vault.secrets.is_empty(),
+            "the request did not synchronously read or import the file"
+        );
+        let receipt = await_receipt(&mut d, &store);
+        assert_eq!(receipt.status, "verified", "{}", receipt.message);
         assert_eq!(std::fs::read(&source).unwrap(), material);
-        assert!(d.vault.secrets.iter().any(|secret| secret.name == "signing:synthetic"));
+        assert!(d
+            .vault
+            .secrets
+            .iter()
+            .any(|secret| secret.name == "signing:synthetic"));
         let serialized = std::fs::read(store.root().join("vault.json")).unwrap();
-        assert!(!serialized.windows(material.len()).any(|bytes| bytes == material));
-        let replay = d.signing_post("protect", "other", source.to_str().unwrap(), "", crate::server::Secret::new(PHRASE), false, &nonce);
+        assert!(!serialized
+            .windows(material.len())
+            .any(|bytes| bytes == material));
+        let replay = d.signing_post(
+            "protect",
+            "other",
+            source.to_str().unwrap(),
+            "",
+            crate::server::Secret::new(PHRASE),
+            false,
+            &nonce,
+        );
         assert!(!replay.body.contains("job="));
         // Drain the finishing crew before accepting another fresh owner action.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        while d.signing_pending.is_some() { d.tick(crate::store::now()); assert!(std::time::Instant::now() < deadline); std::thread::sleep(std::time::Duration::from_millis(20)); }
-        let destination = area.join("explicit-encrypted-copy.json"); let nonce = d.shown_once.mark_signing("export");
-        let reply = d.signing_post("export", "", "", destination.to_str().unwrap(), crate::server::Secret::new(PHRASE), false, &nonce);
+        while d.signing_pending.is_some() {
+            d.tick(crate::store::now());
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let destination = area.join("explicit-encrypted-copy.json");
+        let nonce = d.shown_once.mark_signing("export");
+        let reply = d.signing_post(
+            "export",
+            "",
+            "",
+            destination.to_str().unwrap(),
+            crate::server::Secret::new(PHRASE),
+            false,
+            &nonce,
+        );
         assert!(reply.body.contains("job="), "{}", reply.body);
-        let receipt = await_receipt(&mut d, &store); assert_eq!(receipt.status, "verified", "{}", receipt.message);
-        let backup = std::fs::read(&destination).unwrap(); assert!(!backup.windows(material.len()).any(|bytes| bytes == material));
-        crate::vault::recover_protected_signing_backup(&destination, crate::vault::SigningUnlock::Passphrase(PHRASE), crate::store::now(), &vault_config).unwrap();
+        let receipt = await_receipt(&mut d, &store);
+        assert_eq!(receipt.status, "verified", "{}", receipt.message);
+        let backup = std::fs::read(&destination).unwrap();
+        assert!(!backup
+            .windows(material.len())
+            .any(|bytes| bytes == material));
+        crate::vault::recover_protected_signing_backup(
+            &destination,
+            crate::vault::SigningUnlock::Passphrase(PHRASE),
+            crate::store::now(),
+            &vault_config,
+        )
+        .unwrap();
         assert_eq!(std::fs::read(source).unwrap(), material);
-        drop(d); let _ = std::fs::remove_dir_all(area);
+        drop(d);
+        let _ = std::fs::remove_dir_all(area);
     }
     #[test]
     fn an_unestablished_owner_or_wrong_unlock_never_reads_a_signing_file() {
-        let area = area("owner-gate"); let store = crate::store::Store::new(area.join("state"));
-        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap(); let platform = crate::platform::mock::MockPlatform::new(Vec::new());
-        let mut d = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
-        let missing = area.join("selected-but-unreadable.bin"); let nonce = d.shown_once.mark_signing("protect");
-        let reply = d.signing_post("protect", "fixture", missing.to_str().unwrap(), "", crate::server::Secret::new(PHRASE), false, &nonce);
-        assert!(!reply.body.contains("job=")); assert!(!store.root().join("signing_protection_receipt.json").exists());
-        let vault_config = d.tools_cfg().vault.clone();
-        d.vault.open(PHRASE, crate::store::now(), &vault_config).unwrap(); d.vault.save(&store).unwrap(); d.vault.lock();
+        let area = area("owner-gate");
+        let store = crate::store::Store::new(area.join("state"));
+        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let missing = area.join("selected-but-unreadable.bin");
         let nonce = d.shown_once.mark_signing("protect");
-        d.signing_post("protect", "fixture", missing.to_str().unwrap(), "", crate::server::Secret::new("wrong owner phrase"), false, &nonce);
+        let reply = d.signing_post(
+            "protect",
+            "fixture",
+            missing.to_str().unwrap(),
+            "",
+            crate::server::Secret::new(PHRASE),
+            false,
+            &nonce,
+        );
+        assert!(!reply.body.contains("job="));
+        assert!(!store
+            .root()
+            .join("signing_protection_receipt.json")
+            .exists());
+        let vault_config = d.tools_cfg().vault.clone();
+        d.vault
+            .open(PHRASE, crate::store::now(), &vault_config)
+            .unwrap();
+        d.vault.save(&store).unwrap();
+        d.vault.lock();
+        let nonce = d.shown_once.mark_signing("protect");
+        d.signing_post(
+            "protect",
+            "fixture",
+            missing.to_str().unwrap(),
+            "",
+            crate::server::Secret::new("wrong owner phrase"),
+            false,
+            &nonce,
+        );
         let receipt = await_receipt(&mut d, &store);
-        assert_eq!(receipt.status, "failed"); assert!(receipt.message.contains("owner unlock did not match"), "{}", receipt.message);
-        assert!(store.load_checked::<crate::vault::Vault>(crate::vault::Vault::FILE).unwrap().unwrap().secrets.is_empty());
-        assert!(!missing.exists()); drop(d); let _ = std::fs::remove_dir_all(area);
+        assert_eq!(receipt.status, "failed");
+        assert!(
+            receipt.message.contains("owner unlock did not match"),
+            "{}",
+            receipt.message
+        );
+        assert!(store
+            .load_checked::<crate::vault::Vault>(crate::vault::Vault::FILE)
+            .unwrap()
+            .unwrap()
+            .secrets
+            .is_empty());
+        assert!(!missing.exists());
+        drop(d);
+        let _ = std::fs::remove_dir_all(area);
     }
     #[test]
     fn a_held_signing_ack_cancels_or_expires_without_waiting_for_root_ownership() {
         for cancelled in [true, false] {
-            let area = area(if cancelled { "held-cancel" } else { "held-expire" });
+            let area = area(if cancelled {
+                "held-cancel"
+            } else {
+                "held-expire"
+            });
             let store = crate::store::Store::new(area.join("state"));
-            let config = crate::config::Config::load(std::path::Path::new("config")).unwrap(); let platform = crate::platform::mock::MockPlatform::new(Vec::new());
-            let mut d = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
-            let vault_config = d.tools_cfg().vault.clone(); let now = crate::store::now();
-            d.vault.open(PHRASE, now, &vault_config).unwrap(); d.vault.save(&store).unwrap();
-            d.vault.lock(); d.vault.open(PHRASE, now, &vault_config).unwrap();
+            let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+            let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+            let mut d = Daemon::new(
+                &config,
+                &platform,
+                None,
+                store.clone(),
+                crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+            );
+            let vault_config = d.tools_cfg().vault.clone();
+            let now = crate::store::now();
+            d.vault.open(PHRASE, now, &vault_config).unwrap();
+            d.vault.save(&store).unwrap();
+            d.vault.lock();
+            d.vault.open(PHRASE, now, &vault_config).unwrap();
             let before = std::fs::read(store.root().join("vault.json")).unwrap();
-            let source = area.join("synthetic.bin"); std::fs::write(&source, b"synthetic retained bytes").unwrap();
-            let prepared = crate::vault::prepare_signing_copy(d.vault.clone(), &source, "held", now, &vault_config, &|| false, serde_json::to_value(&d.vault).unwrap()).unwrap();
+            let source = area.join("synthetic.bin");
+            std::fs::write(&source, b"synthetic retained bytes").unwrap();
+            let prepared = crate::vault::prepare_signing_copy(
+                d.vault.clone(),
+                &source,
+                "held",
+                now,
+                &vault_config,
+                &|| false,
+                serde_json::to_value(&d.vault).unwrap(),
+            )
+            .unwrap();
             let owner = SigningOwner::capture(store.root().into(), store.root().into()).unwrap();
             let (started_tx, started_rx) = std::sync::mpsc::channel();
-            let crew_id = d.crew.hand("signing cancellation proof", now, Box::new(move |control| { started_tx.send(()).unwrap(); while !control.stopping() { std::thread::sleep(std::time::Duration::from_millis(20)); } Ok("stopped".into()) })).unwrap();
-            started_rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
-            let (lock_tx, lock_rx) = std::sync::mpsc::channel(); let (release_tx, release_rx) = std::sync::mpsc::channel();
+            let crew_id = d
+                .crew
+                .hand(
+                    "signing cancellation proof",
+                    now,
+                    Box::new(move |control| {
+                        started_tx.send(()).unwrap();
+                        while !control.stopping() {
+                            std::thread::sleep(std::time::Duration::from_millis(20));
+                        }
+                        Ok("stopped".into())
+                    }),
+                )
+                .unwrap();
+            started_rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            let (lock_tx, lock_rx) = std::sync::mpsc::channel();
+            let (release_tx, release_rx) = std::sync::mpsc::channel();
             let locked_store = store.clone();
-            let holder = std::thread::spawn(move || { let _guard = locked_store.transaction().unwrap(); lock_tx.send(()).unwrap(); release_rx.recv().unwrap(); });
-            lock_rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
-            let (_prepared_tx, receiver) = std::sync::mpsc::channel(); let (ack, receive_ack) = std::sync::mpsc::channel();
-            d.signing_pending = Some(SigningPending { crew_id, root: std::fs::canonicalize(store.root()).unwrap(), deadline: if cancelled { std::time::Instant::now() + std::time::Duration::from_secs(30) } else { std::time::Instant::now() }, prepared: receiver, held: Some(prepared), ack, owner });
-            if cancelled { d.crew.ask_to_stop(crew_id); }
+            let holder = std::thread::spawn(move || {
+                let _guard = locked_store.transaction().unwrap();
+                lock_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            });
+            lock_rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            let (_prepared_tx, receiver) = std::sync::mpsc::channel();
+            let (ack, receive_ack) = std::sync::mpsc::channel();
+            d.signing_pending = Some(SigningPending {
+                crew_id,
+                root: std::fs::canonicalize(store.root()).unwrap(),
+                deadline: if cancelled {
+                    std::time::Instant::now() + std::time::Duration::from_secs(30)
+                } else {
+                    std::time::Instant::now()
+                },
+                prepared: receiver,
+                held: Some(prepared),
+                ack,
+                owner,
+            });
+            if cancelled {
+                d.crew.ask_to_stop(crew_id);
+            }
             d.poll_signing_protection();
-            assert!(d.signing_pending.is_none(), "root contention must not retain a cancelled or expired ACK");
-            assert!(matches!(receive_ack.recv_timeout(std::time::Duration::from_millis(100)).unwrap(), SigningAck::Refused(_)));
-            assert_eq!(std::fs::read(store.root().join("vault.json")).unwrap(), before);
+            assert!(
+                d.signing_pending.is_none(),
+                "root contention must not retain a cancelled or expired ACK"
+            );
+            assert!(matches!(
+                receive_ack
+                    .recv_timeout(std::time::Duration::from_millis(100))
+                    .unwrap(),
+                SigningAck::Refused(_)
+            ));
+            assert_eq!(
+                std::fs::read(store.root().join("vault.json")).unwrap(),
+                before
+            );
             assert_eq!(std::fs::read(source).unwrap(), b"synthetic retained bytes");
-            d.crew.ask_to_stop(crew_id); release_tx.send(()).unwrap(); holder.join().unwrap(); drop(d);
+            d.crew.ask_to_stop(crew_id);
+            release_tx.send(()).unwrap();
+            holder.join().unwrap();
+            drop(d);
             let _ = std::fs::remove_dir_all(area);
         }
     }
     #[test]
     fn changed_handover_or_a_profile_away_and_back_refuses_a_prepared_import() {
         for handed in [true, false] {
-            let area = area(if handed { "changed-owner" } else { "profile-away-back" }); let store = crate::store::Store::new(area.join("state"));
-            let config = crate::config::Config::load(std::path::Path::new("config")).unwrap(); let platform = crate::platform::mock::MockPlatform::new(Vec::new());
-            let mut d = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
-            let vault_config = d.tools_cfg().vault.clone(); let now = crate::store::now();
-            d.vault.open(PHRASE, now, &vault_config).unwrap(); d.vault.save(&store).unwrap(); d.vault.lock(); d.vault.open(PHRASE, now, &vault_config).unwrap();
-            store.save("profiles", &crate::profiles::Profiles::default()).unwrap();
-            let before = std::fs::read(store.root().join("vault.json")).unwrap(); let source = area.join("synthetic.bin"); std::fs::write(&source, b"unchanged synthetic original").unwrap();
-            let prepared = crate::vault::prepare_signing_copy(d.vault.clone(), &source, "owner-held", now, &vault_config, &|| false, serde_json::to_value(&d.vault).unwrap()).unwrap();
+            let area = area(if handed {
+                "changed-owner"
+            } else {
+                "profile-away-back"
+            });
+            let store = crate::store::Store::new(area.join("state"));
+            let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+            let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+            let mut d = Daemon::new(
+                &config,
+                &platform,
+                None,
+                store.clone(),
+                crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+            );
+            let vault_config = d.tools_cfg().vault.clone();
+            let now = crate::store::now();
+            d.vault.open(PHRASE, now, &vault_config).unwrap();
+            d.vault.save(&store).unwrap();
+            d.vault.lock();
+            d.vault.open(PHRASE, now, &vault_config).unwrap();
+            store
+                .save("profiles", &crate::profiles::Profiles::default())
+                .unwrap();
+            let before = std::fs::read(store.root().join("vault.json")).unwrap();
+            let source = area.join("synthetic.bin");
+            std::fs::write(&source, b"unchanged synthetic original").unwrap();
+            let prepared = crate::vault::prepare_signing_copy(
+                d.vault.clone(),
+                &source,
+                "owner-held",
+                now,
+                &vault_config,
+                &|| false,
+                serde_json::to_value(&d.vault).unwrap(),
+            )
+            .unwrap();
             let owner = SigningOwner::capture(store.root().into(), store.root().into()).unwrap();
             let (started_tx, started_rx) = std::sync::mpsc::channel();
-            let crew_id = d.crew.hand("signing owner proof", now, Box::new(move |control| { started_tx.send(()).unwrap(); while !control.stopping() { std::thread::sleep(std::time::Duration::from_millis(20)); } Ok("stopped".into()) })).unwrap();
-            started_rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
-            let (_send, receiver) = std::sync::mpsc::channel(); let (ack, receive_ack) = std::sync::mpsc::channel();
-            d.signing_pending = Some(SigningPending { crew_id, root: std::fs::canonicalize(store.root()).unwrap(), deadline: std::time::Instant::now() + std::time::Duration::from_secs(30), prepared: receiver, held: Some(prepared), ack, owner });
-            if handed { store.save("handover", &{ let mut h = crate::handover::Handover::default(); h.hand_over("test", 1_000); h }).unwrap(); }
-            else {
-                store.save("profiles", &crate::profiles::Profiles { active: Some("another-person".into()), ..Default::default() }).unwrap();
-                store.save("profiles", &crate::profiles::Profiles::default()).unwrap();
+            let crew_id = d
+                .crew
+                .hand(
+                    "signing owner proof",
+                    now,
+                    Box::new(move |control| {
+                        started_tx.send(()).unwrap();
+                        while !control.stopping() {
+                            std::thread::sleep(std::time::Duration::from_millis(20));
+                        }
+                        Ok("stopped".into())
+                    }),
+                )
+                .unwrap();
+            started_rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            let (_send, receiver) = std::sync::mpsc::channel();
+            let (ack, receive_ack) = std::sync::mpsc::channel();
+            d.signing_pending = Some(SigningPending {
+                crew_id,
+                root: std::fs::canonicalize(store.root()).unwrap(),
+                deadline: std::time::Instant::now() + std::time::Duration::from_secs(30),
+                prepared: receiver,
+                held: Some(prepared),
+                ack,
+                owner,
+            });
+            if handed {
+                store
+                    .save("handover", &{
+                        let mut h = crate::handover::Handover::default();
+                        h.hand_over("test", 1_000);
+                        h
+                    })
+                    .unwrap();
+            } else {
+                store
+                    .save(
+                        "profiles",
+                        &crate::profiles::Profiles {
+                            active: Some("another-person".into()),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+                store
+                    .save("profiles", &crate::profiles::Profiles::default())
+                    .unwrap();
             }
             d.poll_signing_protection();
-            assert!(matches!(receive_ack.recv_timeout(std::time::Duration::from_millis(100)).unwrap(), SigningAck::Refused(_)));
-            assert_eq!(std::fs::read(store.root().join("vault.json")).unwrap(), before);
-            assert!(d.vault.secrets.is_empty()); assert_eq!(std::fs::read(source).unwrap(), b"unchanged synthetic original");
-            d.crew.ask_to_stop(crew_id); drop(d); let _ = std::fs::remove_dir_all(area);
+            assert!(matches!(
+                receive_ack
+                    .recv_timeout(std::time::Duration::from_millis(100))
+                    .unwrap(),
+                SigningAck::Refused(_)
+            ));
+            assert_eq!(
+                std::fs::read(store.root().join("vault.json")).unwrap(),
+                before
+            );
+            assert!(d.vault.secrets.is_empty());
+            assert_eq!(
+                std::fs::read(source).unwrap(),
+                b"unchanged synthetic original"
+            );
+            d.crew.ask_to_stop(crew_id);
+            drop(d);
+            let _ = std::fs::remove_dir_all(area);
         }
     }
     #[test]
     fn a_queued_owner_export_rechecks_ownership_before_creating_its_destination() {
-        let area = area("queued-owner-export"); let store = crate::store::Store::new(area.join("state"));
-        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap(); let platform = crate::platform::mock::MockPlatform::new(Vec::new());
-        let mut d = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
-        let vault_config = d.tools_cfg().vault.clone(); let now = crate::store::now();
-        d.vault.open(PHRASE, now, &vault_config).unwrap(); d.vault.save(&store).unwrap(); d.vault.lock(); d.vault.open(PHRASE, now, &vault_config).unwrap();
-        let source = area.join("synthetic.bin"); std::fs::write(&source, b"original synthetic signing material").unwrap();
-        let prepared = crate::vault::prepare_signing_copy(d.vault.clone(), &source, "owner-test", now, &vault_config, &|| false, serde_json::to_value(&d.vault).unwrap()).unwrap(); prepared.commit(&store, &mut d.vault).unwrap(); d.vault.lock();
+        let area = area("queued-owner-export");
+        let store = crate::store::Store::new(area.join("state"));
+        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let vault_config = d.tools_cfg().vault.clone();
+        let now = crate::store::now();
+        d.vault.open(PHRASE, now, &vault_config).unwrap();
+        d.vault.save(&store).unwrap();
+        d.vault.lock();
+        d.vault.open(PHRASE, now, &vault_config).unwrap();
+        let source = area.join("synthetic.bin");
+        std::fs::write(&source, b"original synthetic signing material").unwrap();
+        let prepared = crate::vault::prepare_signing_copy(
+            d.vault.clone(),
+            &source,
+            "owner-test",
+            now,
+            &vault_config,
+            &|| false,
+            serde_json::to_value(&d.vault).unwrap(),
+        )
+        .unwrap();
+        prepared.commit(&store, &mut d.vault).unwrap();
+        d.vault.lock();
         d.crew = crate::crew::Crew::new(1);
-        let (started_tx, started_rx) = std::sync::mpsc::channel(); let (release_tx, release_rx) = std::sync::mpsc::channel();
-        d.crew.hand("controlled export predecessor", now, Box::new(move |control| { started_tx.send(()).unwrap(); loop { match release_rx.recv_timeout(std::time::Duration::from_millis(20)) { Ok(()) => return Ok("released".into()), Err(_) if control.stopping() => return Err("stopped".into()), Err(_) => {} } } })).unwrap();
-        started_rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
-        let destination = area.join("must-not-be-created.json"); let nonce = d.shown_once.mark_signing("export");
-        let reply = d.signing_post("export", "", "", destination.to_str().unwrap(), crate::server::Secret::new(PHRASE), false, &nonce);
-        assert!(reply.body.contains("job=")); assert_eq!(d.crew.queued(), 1); assert!(!destination.exists());
-        store.save("handover", &{ let mut h = crate::handover::Handover::default(); h.hand_over("test", 1_000); h }).unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        d.crew
+            .hand(
+                "controlled export predecessor",
+                now,
+                Box::new(move |control| {
+                    started_tx.send(()).unwrap();
+                    loop {
+                        match release_rx.recv_timeout(std::time::Duration::from_millis(20)) {
+                            Ok(()) => return Ok("released".into()),
+                            Err(_) if control.stopping() => return Err("stopped".into()),
+                            Err(_) => {}
+                        }
+                    }
+                }),
+            )
+            .unwrap();
+        started_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+        let destination = area.join("must-not-be-created.json");
+        let nonce = d.shown_once.mark_signing("export");
+        let reply = d.signing_post(
+            "export",
+            "",
+            "",
+            destination.to_str().unwrap(),
+            crate::server::Secret::new(PHRASE),
+            false,
+            &nonce,
+        );
+        assert!(reply.body.contains("job="));
+        assert_eq!(d.crew.queued(), 1);
+        assert!(!destination.exists());
+        store
+            .save("handover", &{
+                let mut h = crate::handover::Handover::default();
+                h.hand_over("test", 1_000);
+                h
+            })
+            .unwrap();
         release_tx.send(()).unwrap();
         let receipt = await_receipt(&mut d, &store);
-        assert_eq!(receipt.status, "failed", "{}", receipt.message); assert!(receipt.message.contains("owner/profile changed"), "{}", receipt.message);
-        assert!(!destination.exists()); assert_eq!(std::fs::read(source).unwrap(), b"original synthetic signing material");
-        drop(d); let _ = std::fs::remove_dir_all(area);
+        assert_eq!(receipt.status, "failed", "{}", receipt.message);
+        assert!(
+            receipt.message.contains("owner/profile changed"),
+            "{}",
+            receipt.message
+        );
+        assert!(!destination.exists());
+        assert_eq!(
+            std::fs::read(source).unwrap(),
+            b"original synthetic signing material"
+        );
+        drop(d);
+        let _ = std::fs::remove_dir_all(area);
     }
     #[test]
     fn restart_unknown_outcomes_survive_later_actions_and_full_history_refuses_unchanged() {
-        let area = area("unknown-history"); let store = crate::store::Store::new(area.join("state"));
-        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap(); let platform = crate::platform::mock::MockPlatform::new(Vec::new());
-        let mut d = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
-        let vault_config = d.tools_cfg().vault.clone(); d.vault.open(PHRASE, crate::store::now(), &vault_config).unwrap(); d.vault.save(&store).unwrap(); d.vault.lock();
-        let unknown = SigningReceipt { operation: "export".into(), status: "pending".into(), message: "Earlier destination verification was interrupted".into(), operation_id: "earlier-opaque-operation".into(), target: area.join("earlier-selected-encrypted-copy.json").to_string_lossy().into_owned(), ..Default::default() };
-        store.save("signing_protection_receipt", &unknown).unwrap(); drop(d);
-        let mut d = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
-        let missing = area.join("unreadable-selected-file.bin"); let nonce = d.shown_once.mark_signing("protect");
-        let reply = d.signing_post("protect", "new-copy", missing.to_str().unwrap(), "", crate::server::Secret::new("wrong owner unlock"), false, &nonce);
+        let area = area("unknown-history");
+        let store = crate::store::Store::new(area.join("state"));
+        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let vault_config = d.tools_cfg().vault.clone();
+        d.vault
+            .open(PHRASE, crate::store::now(), &vault_config)
+            .unwrap();
+        d.vault.save(&store).unwrap();
+        d.vault.lock();
+        let unknown = SigningReceipt {
+            operation: "export".into(),
+            status: "pending".into(),
+            message: "Earlier destination verification was interrupted".into(),
+            operation_id: "earlier-opaque-operation".into(),
+            target: area
+                .join("earlier-selected-encrypted-copy.json")
+                .to_string_lossy()
+                .into_owned(),
+            ..Default::default()
+        };
+        store.save("signing_protection_receipt", &unknown).unwrap();
+        drop(d);
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let missing = area.join("unreadable-selected-file.bin");
+        let nonce = d.shown_once.mark_signing("protect");
+        let reply = d.signing_post(
+            "protect",
+            "new-copy",
+            missing.to_str().unwrap(),
+            "",
+            crate::server::Secret::new("wrong owner unlock"),
+            false,
+            &nonce,
+        );
         assert!(reply.body.contains("job="));
-        let receipt = await_receipt(&mut d, &store); assert_eq!(receipt.status, "failed");
-        assert_eq!(receipt.prior_unconfirmed.len(), 1); assert_eq!(receipt.prior_unconfirmed[0].operation_id, unknown.operation_id);
+        let receipt = await_receipt(&mut d, &store);
+        assert_eq!(receipt.status, "failed");
+        assert_eq!(receipt.prior_unconfirmed.len(), 1);
+        assert_eq!(
+            receipt.prior_unconfirmed[0].operation_id,
+            unknown.operation_id
+        );
         assert_eq!(receipt.prior_unconfirmed[0].message, unknown.message);
         assert_eq!(receipt.prior_unconfirmed[0].target, unknown.target);
         assert_eq!(receipt.target, format!("new-copy ({})", missing.display()));
         let before = std::fs::read(store.root().join("signing_protection_receipt.json")).unwrap();
-        assert!(save_signing_receipt(&store, &unknown).is_err(), "an earlier worker cannot overwrite a later operation's receipt");
-        assert_eq!(std::fs::read(store.root().join("signing_protection_receipt.json")).unwrap(), before);
+        assert!(
+            save_signing_receipt(&store, &unknown).is_err(),
+            "an earlier worker cannot overwrite a later operation's receipt"
+        );
+        assert_eq!(
+            std::fs::read(store.root().join("signing_protection_receipt.json")).unwrap(),
+            before
+        );
         drop(d);
-        let mut full = receipt; full.prior_unconfirmed = (0..16).map(|id| SigningUnconfirmed { operation_id: format!("opaque-{id}"), operation: "export".into(), message: "Unconfirmed earlier copy".into(), target: String::new() }).collect();
+        let mut full = receipt;
+        full.prior_unconfirmed = (0..16)
+            .map(|id| SigningUnconfirmed {
+                operation_id: format!("opaque-{id}"),
+                operation: "export".into(),
+                message: "Unconfirmed earlier copy".into(),
+                target: String::new(),
+            })
+            .collect();
         store.save("signing_protection_receipt", &full).unwrap();
         let before = std::fs::read(store.root().join("signing_protection_receipt.json")).unwrap();
-        let mut d = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
-        let nonce = d.shown_once.mark_signing("protect"); let reply = d.signing_post("protect", "new-copy", missing.to_str().unwrap(), "", crate::server::Secret::new(PHRASE), false, &nonce);
-        assert!(!reply.body.contains("job=")); assert!(reply.body.contains("history"));
-        assert_eq!(std::fs::read(store.root().join("signing_protection_receipt.json")).unwrap(), before); assert!(d.signing_pending.is_none());
-        assert!(!missing.exists()); drop(d); let _ = std::fs::remove_dir_all(area);
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let nonce = d.shown_once.mark_signing("protect");
+        let reply = d.signing_post(
+            "protect",
+            "new-copy",
+            missing.to_str().unwrap(),
+            "",
+            crate::server::Secret::new(PHRASE),
+            false,
+            &nonce,
+        );
+        assert!(!reply.body.contains("job="));
+        assert!(reply.body.contains("history"));
+        assert_eq!(
+            std::fs::read(store.root().join("signing_protection_receipt.json")).unwrap(),
+            before
+        );
+        assert!(d.signing_pending.is_none());
+        assert!(!missing.exists());
+        drop(d);
+        let _ = std::fs::remove_dir_all(area);
     }
 }
-

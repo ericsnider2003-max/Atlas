@@ -24,7 +24,11 @@ impl Daemon<'_> {
             later,
             waiting: self.waiting_count(now),
         };
-        crate::glance::for_widgets(&facts, now, self.tools_cfg().phone.widget_titles_on_lock_screen)
+        crate::glance::for_widgets(
+            &facts,
+            now,
+            self.tools_cfg().phone.widget_titles_on_lock_screen,
+        )
     }
 
     pub fn deck(&self, now: u64, off: i64) -> hub::Deck {
@@ -39,7 +43,11 @@ impl Daemon<'_> {
 
         let cfg = self.tools_cfg();
         let hears = cfg.enabled
-            && self.audio_devices.as_ref().map(|d| !d.is_empty()).unwrap_or(false);
+            && self
+                .audio_devices
+                .as_ref()
+                .map(|d| !d.is_empty())
+                .unwrap_or(false);
         let (status, tone) = if self.attention.is_paused() {
             ("Paused".to_string(), "held")
         } else if hears {
@@ -54,7 +62,12 @@ impl Daemon<'_> {
         let mut events: Vec<(i64, String, String, hub::Mark)> = Vec::new();
         let start_of_day = crate::localclock::midnight(now, off);
         let calendar_available = self.calendar.availability_error().is_none();
-        for e in self.calendar.occurrences_between(start_of_day, start_of_day + 86_400).into_iter().filter(|_| calendar_available) {
+        for e in self
+            .calendar
+            .occurrences_between(start_of_day, start_of_day + 86_400)
+            .into_iter()
+            .filter(|_| calendar_available)
+        {
             if day(e.start, off) != today && !e.all_day {
                 continue;
             }
@@ -66,13 +79,23 @@ impl Daemon<'_> {
             } else {
                 (hhmm(e.start, off), hub::Mark::Later)
             };
-            events.push((if e.all_day { today * 86_400 } else { at }, label, e.title.clone(), mark));
+            events.push((
+                if e.all_day { today * 86_400 } else { at },
+                label,
+                e.title.clone(),
+                mark,
+            ));
         }
         for e in self.journal.since(now.saturating_sub(86_400)) {
             if e.kind == crate::activity::Kind::Upkeep || day(e.at, off) != today {
                 continue;
             }
-            events.push((e.at as i64 + off, hhmm(e.at, off), e.what.clone(), hub::Mark::Done));
+            events.push((
+                e.at as i64 + off,
+                hhmm(e.at, off),
+                e.what.clone(),
+                hub::Mark::Done,
+            ));
         }
         events.sort_by_key(|(w, ..)| *w);
 
@@ -82,11 +105,27 @@ impl Daemon<'_> {
             .iter()
             .find(|t| t.state == crate::lanes::TaskState::Running);
         let waiting_to_start = self.queue.tasks.iter().find(|t| {
-            matches!(t.state, crate::lanes::TaskState::Queued | crate::lanes::TaskState::WaitingForGap)
+            matches!(
+                t.state,
+                crate::lanes::TaskState::Queued | crate::lanes::TaskState::WaitingForGap
+            )
         });
-        let next = events.iter().find(|(w, _, _, m)| *m == hub::Mark::Later && *w >= now_wall);
+        let next = events
+            .iter()
+            .find(|(w, _, _, m)| *m == hub::Mark::Later && *w >= now_wall);
         let (now_line, mut sub, now_short) = if let Some(t) = running {
-            let more = self.queue.tasks.iter().filter(|t| !matches!(t.state, crate::lanes::TaskState::Done | crate::lanes::TaskState::Failed)).count().saturating_sub(1);
+            let more = self
+                .queue
+                .tasks
+                .iter()
+                .filter(|t| {
+                    !matches!(
+                        t.state,
+                        crate::lanes::TaskState::Done | crate::lanes::TaskState::Failed
+                    )
+                })
+                .count()
+                .saturating_sub(1);
             (
                 sentence(&t.command),
                 if more > 0 {
@@ -107,13 +146,19 @@ impl Daemon<'_> {
                 "About to start".to_string(),
             )
         } else if self.attention.is_paused() {
-            ("Paused.".to_string(), "Say \"carry on\" when you want me back.".to_string(), "Paused".to_string())
+            (
+                "Paused.".to_string(),
+                "Say \"carry on\" when you want me back.".to_string(),
+                "Paused".to_string(),
+            )
         } else {
             (
                 "Nothing underway.".to_string(),
                 match next {
                     Some((_, time, what, _)) => format!("Next: {what} at {time}."),
-                    None if crate::phonemode::on() => "Say what you need, or tap the search to find anything.".to_string(),
+                    None if crate::phonemode::on() => {
+                        "Say what you need, or tap the search to find anything.".to_string()
+                    }
                     None => "Say what you need, or press Ctrl K to find anything.".to_string(),
                 },
                 "You're here".to_string(),
@@ -121,7 +166,9 @@ impl Daemon<'_> {
         };
 
         if !calendar_available {
-            sub.push_str(" Calendar unavailable: today's events cannot be confirmed. Refresh or recover it.");
+            sub.push_str(
+                " Calendar unavailable: today's events cannot be confirmed. Refresh or recover it.",
+            );
         }
         // The last three things done, now, and the next three.
         let done: Vec<_> = events.iter().filter(|(w, ..)| *w <= now_wall).collect();
@@ -134,11 +181,17 @@ impl Daemon<'_> {
         if !events.is_empty() || running.is_some() {
             spine.push(("NOW".to_string(), now_short, hub::Mark::Now));
         }
-        spine.extend(later.iter().take(3).map(|(_, t, w, m)| (t.clone(), w.clone(), *m)));
+        spine.extend(
+            later
+                .iter()
+                .take(3)
+                .map(|(_, t, w, m)| (t.clone(), w.clone(), *m)),
+        );
 
         let asks = self.home_asks(now);
         let brief = self.brief_line(&asks, running.is_some(), &now_line);
-        let first_run = calendar_available && events.is_empty()
+        let first_run = calendar_available
+            && events.is_empty()
             && self.workspace.is_empty()
             && self.workshop.projects.is_empty()
             && self.calendar.is_empty()
@@ -163,7 +216,10 @@ impl Daemon<'_> {
     /// for, and changes it built that wait on your yes. The same things the
     /// waiting count at the top of every page counts.
     pub(super) fn home_asks(&self, now: u64) -> Vec<(String, String)> {
-        self.home_asks_keyed(now).into_iter().map(|(what, href, _)| (what, href)).collect()
+        self.home_asks_keyed(now)
+            .into_iter()
+            .map(|(what, href, _)| (what, href))
+            .collect()
     }
 
     /// `home_asks`, each with the key its Drop it button sends (see
@@ -171,14 +227,30 @@ impl Daemon<'_> {
     /// matched back up by its words afterwards: two things can read the same.
     pub(super) fn home_asks_keyed(&self, now: u64) -> Vec<(String, String, Option<String>)> {
         let mut out: Vec<(String, String, Option<String>)> = Vec::new();
-        if let Some(view) = crate::workspace_view::shipped().into_iter().find(|v| v.name == "Now") {
+        if let Some(view) = crate::workspace_view::shipped()
+            .into_iter()
+            .find(|v| v.name == "Now")
+        {
             for i in crate::workspace_view::apply(&self.workspace, &view, now) {
-                out.push((i.title.clone(), hub::Page::Workspace.href().to_string(), Some(format!("w:{}", i.id))));
+                out.push((
+                    i.title.clone(),
+                    hub::Page::Workspace.href().to_string(),
+                    Some(format!("w:{}", i.id)),
+                ));
             }
         }
-        for b in self.backlog.items.iter().filter(|i| !i.done && !i.dismissed) {
+        for b in self
+            .backlog
+            .items
+            .iter()
+            .filter(|i| !i.done && !i.dismissed)
+        {
             if waits_on_you(&b.blocker) {
-                out.push((sentence(&b.request), hub::Page::Outstanding.href().to_string(), Some(format!("b:{}", b.id))));
+                out.push((
+                    sentence(&b.request),
+                    hub::Page::Outstanding.href().to_string(),
+                    Some(format!("b:{}", b.id)),
+                ));
             }
         }
         for p in &self.workshop.projects {
@@ -195,15 +267,33 @@ impl Daemon<'_> {
 
     /// The Brief, in Atlas's words: how many things want you, what it's on,
     /// and — when nothing does — that it's quiet, said plainly.
-    pub(super) fn brief_line(&self, asks: &[(String, String)], working: bool, now_line: &str) -> String {
-        let doing = if working { format!(" I'm on it now: {}", now_line.trim_end_matches('.')) } else { String::new() };
-        let doing = if doing.is_empty() { doing } else { format!("{doing}.") };
+    pub(super) fn brief_line(
+        &self,
+        asks: &[(String, String)],
+        working: bool,
+        now_line: &str,
+    ) -> String {
+        let doing = if working {
+            format!(" I'm on it now: {}", now_line.trim_end_matches('.'))
+        } else {
+            String::new()
+        };
+        let doing = if doing.is_empty() {
+            doing
+        } else {
+            format!("{doing}.")
+        };
         match asks.len() {
             0 => format!("It's quiet. Nothing needs you.{doing}"),
             1 => format!("One thing wants you.{doing}"),
             n => {
-                const WORDS: [&str; 9] = ["Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
-                let said = WORDS.get(n - 2).map(|w| w.to_string()).unwrap_or_else(|| n.to_string());
+                const WORDS: [&str; 9] = [
+                    "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+                ];
+                let said = WORDS
+                    .get(n - 2)
+                    .map(|w| w.to_string())
+                    .unwrap_or_else(|| n.to_string());
                 format!("{said} things want you.{doing}")
             }
         }
@@ -220,9 +310,19 @@ impl Daemon<'_> {
                 let open = self
                     .workspace
                     .iter()
-                    .filter(|i| i.status.live() && i.client.as_deref().map(|c| crate::kin::same_name(c, &name)).unwrap_or(false))
+                    .filter(|i| {
+                        i.status.live()
+                            && i.client
+                                .as_deref()
+                                .map(|c| crate::kin::same_name(c, &name))
+                                .unwrap_or(false)
+                    })
                     .count();
-                let people = roster.members(&name).into_iter().map(|m| (m, "on the roster".to_string())).collect();
+                let people = roster
+                    .members(&name)
+                    .into_iter()
+                    .map(|m| (m, "on the roster".to_string()))
+                    .collect();
                 hub::Glance { name, open, people }
             })
             .collect()

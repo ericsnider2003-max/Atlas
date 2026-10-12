@@ -528,7 +528,11 @@ pub fn working() -> Vec<Capability> {
 pub fn blocked() -> Vec<(Capability, &'static str)> {
     all()
         .into_iter()
-        .filter_map(|c| c.needs.map(|n| (c.clone(), n)).filter(|_| c.state == State::Blocked))
+        .filter_map(|c| {
+            c.needs
+                .map(|n| (c.clone(), n))
+                .filter(|_| c.state == State::Blocked)
+        })
         .collect()
 }
 
@@ -594,7 +598,11 @@ pub fn to_finish() -> Vec<Unfinished> {
                 // Working or deliberately Off: not unfinished.
                 State::Working | State::Off => return None,
             };
-            Some(Unfinished { what: c.what, finisher, waiting_on: c.needs })
+            Some(Unfinished {
+                what: c.what,
+                finisher,
+                waiting_on: c.needs,
+            })
         })
         .collect();
     out.sort_by_key(|u| match u.finisher {
@@ -623,7 +631,9 @@ pub fn to_finish_report() -> String {
         parts.push(format!("{mine} I could wire myself"));
     }
     if run > 0 {
-        parts.push(format!("{run} that are built but have never run on your machine"));
+        parts.push(format!(
+            "{run} that are built but have never run on your machine"
+        ));
     }
     if yours > 0 {
         parts.push(format!("{yours} waiting on you"));
@@ -632,13 +642,18 @@ pub fn to_finish_report() -> String {
     s.push('.');
 
     if mine > 0 {
-        let named: Vec<&str> =
-            items.iter().filter(|u| u.finisher == Finisher::Mine).map(|u| u.what).collect();
+        let named: Vec<&str> = items
+            .iter()
+            .filter(|u| u.finisher == Finisher::Mine)
+            .map(|u| u.what)
+            .collect();
         s.push_str(&format!(" I'd start on: {}.", named.join("; ")));
     }
     if yours > 0 {
         if let Some((need, n)) = what_would_unblock_most().first() {
-            s.push_str(&format!(" The one thing that unlocks the most is {need} ({n} of them)."));
+            s.push_str(&format!(
+                " The one thing that unlocks the most is {need} ({n} of them)."
+            ));
         }
     }
     if run > 0 {
@@ -758,13 +773,29 @@ pub fn about_atlas(said: &str, most: usize) -> String {
 /// applying to everything: "what's the capital of France" got "I'm not sure"
 /// (27 Sep 2026).
 pub fn is_about_atlas(said: &str) -> bool {
-    let t: String = said.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' }).collect();
+    let t: String = said
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '\'' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
     let mut w: Vec<&str> = t.split_whitespace().collect();
     // "Atlas, ..." is calling it by name, not asking about it (29 Sep 2026:
     // nearly everything Eric said began "Atlas" -- or "At this", the name
     // misheard -- and every one of them carried the whole about-Atlas block,
     // two thousand characters, into the prompt).
-    for lead in [&["hey", "atlas"][..], &["ok", "atlas"], &["okay", "atlas"], &["at", "this"], &["atlas"]] {
+    for lead in [
+        &["hey", "atlas"][..],
+        &["ok", "atlas"],
+        &["okay", "atlas"],
+        &["at", "this"],
+        &["atlas"],
+    ] {
         if w.len() > lead.len() && w[..lead.len()] == *lead {
             w.drain(..lead.len());
             break;
@@ -778,11 +809,40 @@ pub fn is_about_atlas(said: &str) -> bool {
         return true;
     }
     const ABOUT: &[&str] = &[
-        " atlas ", " the hub ", " hub page", " your settings", " settings ", " setup ", " set up ", " set you up",
-        " can you ", " could you ", " are you able", " do you have ", " your memory", " you store", " you remember",
-        " where do i ", " where is the ", " where are my ", " how do i turn ", " how do i change ", " switch on ",
-        " switch off ", " turn on ", " turn off ", " your model", " you running", " your voice", " about you",
-        " yourself ", " what are you ", " who are you ", " who made you", " work offline", " without internet",
+        " atlas ",
+        " the hub ",
+        " hub page",
+        " your settings",
+        " settings ",
+        " setup ",
+        " set up ",
+        " set you up",
+        " can you ",
+        " could you ",
+        " are you able",
+        " do you have ",
+        " your memory",
+        " you store",
+        " you remember",
+        " where do i ",
+        " where is the ",
+        " where are my ",
+        " how do i turn ",
+        " how do i change ",
+        " switch on ",
+        " switch off ",
+        " turn on ",
+        " turn off ",
+        " your model",
+        " you running",
+        " your voice",
+        " about you",
+        " yourself ",
+        " what are you ",
+        " who are you ",
+        " who made you",
+        " work offline",
+        " without internet",
     ];
     ABOUT.iter().any(|a| t.contains(a))
 }
@@ -791,7 +851,14 @@ fn about_atlas_lines(said: &str, most: usize) -> String {
     let words: Vec<String> = said
         .to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| w.len() > 2 && !["the", "and", "you", "can", "how", "what", "where", "atlas", "for", "does", "with", "your", "are"].contains(w))
+        .filter(|w| {
+            w.len() > 2
+                && ![
+                    "the", "and", "you", "can", "how", "what", "where", "atlas", "for", "does",
+                    "with", "your", "are",
+                ]
+                .contains(w)
+        })
         .map(str::to_string)
         .collect();
     let score = |text: &str| -> usize {
@@ -801,7 +868,9 @@ fn about_atlas_lines(said: &str, most: usize) -> String {
     let mut pages: Vec<(usize, String)> = crate::palette::catalogue()
         .iter()
         .filter_map(|e| {
-            let crate::palette::Does::Go(href) = e.does else { return None };
+            let crate::palette::Does::Go(href) = e.does else {
+                return None;
+            };
             let n = score(&format!("{} {} {}", e.label, e.hint, e.also.join(" ")));
             (n > 0).then(|| (n, format!("- {}: {} (hub page {href})", e.label, e.hint)))
         })
@@ -834,7 +903,6 @@ fn about_atlas_lines(said: &str, most: usize) -> String {
     out
 }
 
-
 // ---------------------------------------------------------------------------
 // Knowing its own abilities (30 Sep 2026).
 //
@@ -851,13 +919,22 @@ fn about_atlas_lines(said: &str, most: usize) -> String {
 
 /// Everyday words for an ability that its own description doesn't carry.
 const ABILITY_WORDS: &[(&str, &str)] = &[
-    ("vision", "camera webcam see me look at me face faces who's here room"),
+    (
+        "vision",
+        "camera webcam see me look at me face faces who's here room",
+    ),
     ("presence", "camera webcam see me desk watching"),
-    ("research", "research internet web online browse search look up find out study"),
+    (
+        "research",
+        "research internet web online browse search look up find out study",
+    ),
     ("speak", "voice talk speak out loud say"),
     ("wake", "hear listen microphone mic wake word"),
     ("mail", "email emails inbox"),
-    ("calendar", "calendar schedule agenda events appointments meetings"),
+    (
+        "calendar",
+        "calendar schedule agenda events appointments meetings",
+    ),
     ("ocr", "screen read text"),
 ];
 
@@ -866,9 +943,14 @@ fn state_said(c: &Capability) -> String {
     match c.state {
         State::Working => "works now".to_string(),
         State::Off => "built, switched off -- Settings turns it on".to_string(),
-        State::Blocked => format!("built, waiting on {} -- setup fetches it", c.needs.unwrap_or("a piece that isn't installed")),
+        State::Blocked => format!(
+            "built, waiting on {} -- setup fetches it",
+            c.needs.unwrap_or("a piece that isn't installed")
+        ),
         State::Untested => match c.needs {
-            Some(n) => format!("built, not tried on this machine yet (it uses {n}) -- ask and it will try"),
+            Some(n) => {
+                format!("built, not tried on this machine yet (it uses {n}) -- ask and it will try")
+            }
             None => "built, not tried on this machine yet -- ask and it will try".to_string(),
         },
         State::Planned => "not built yet".to_string(),
@@ -882,7 +964,11 @@ fn as_set_up(research_on: bool) -> Vec<Capability> {
     let mut all = all();
     for c in all.iter_mut() {
         if c.id == "research" {
-            c.state = if research_on { State::Working } else { State::Off };
+            c.state = if research_on {
+                State::Working
+            } else {
+                State::Off
+            };
         }
     }
     all
@@ -893,9 +979,17 @@ pub fn find_abilities(said: &str, research_on: bool, most: usize) -> Vec<Capabil
     let all = as_set_up(research_on);
     let mut index = crate::bm25::Index::default();
     for (i, c) in all.iter().enumerate() {
-        let extra: Vec<&str> = ABILITY_WORDS.iter().filter(|(id, _)| *id == c.id).map(|(_, w)| *w).collect();
+        let extra: Vec<&str> = ABILITY_WORDS
+            .iter()
+            .filter(|(id, _)| *id == c.id)
+            .map(|(_, w)| *w)
+            .collect();
         // The everyday words count as much as its own description does.
-        index.add(i as u64, &format!("{} {}", c.what, extra.join(" ")), &format!("{} {}", c.id, c.area.plain()));
+        index.add(
+            i as u64,
+            &format!("{} {}", c.what, extra.join(" ")),
+            &format!("{} {}", c.id, c.area.plain()),
+        );
     }
     let q = crate::router::request_words(said).join(" ");
     if q.trim().is_empty() {
@@ -966,7 +1060,9 @@ pub fn abilities_for_prompt(said: &str, research_on: bool, most: usize) -> Strin
         out.push_str(&format!("- {}: {}\n", c.what, state_said(c)));
     }
     if found.is_empty() && pages.is_empty() {
-        out.push_str("For anything else you might do, call the capabilities tool rather than guess.\n");
+        out.push_str(
+            "For anything else you might do, call the capabilities tool rather than guess.\n",
+        );
     }
     out
 }
@@ -977,28 +1073,58 @@ fn hub_pages_for(said: &str, most: usize) -> Vec<String> {
     // Only for a question about where something is or how to change it:
     // "can you see me" isn't asking for a page.
     let t = format!(" {} ", said.to_lowercase());
-    let about_where = [" where ", " setting", " change ", " turn on", " turn off", " switch ", " set up", " setup", " page", " how do i "]
-        .iter()
-        .any(|w| t.contains(w));
+    let about_where = [
+        " where ",
+        " setting",
+        " change ",
+        " turn on",
+        " turn off",
+        " switch ",
+        " set up",
+        " setup",
+        " page",
+        " how do i ",
+    ]
+    .iter()
+    .any(|w| t.contains(w));
     if !about_where {
         return Vec::new();
     }
-    let words: Vec<String> = crate::router::request_words(said).into_iter().filter(|w| w.len() > 2).collect();
+    let words: Vec<String> = crate::router::request_words(said)
+        .into_iter()
+        .filter(|w| w.len() > 2)
+        .collect();
     if words.is_empty() {
         return Vec::new();
     }
     let mut pages: Vec<(usize, String)> = crate::palette::catalogue()
         .iter()
         .filter_map(|e| {
-            let crate::palette::Does::Go(href) = e.does else { return None };
+            let crate::palette::Does::Go(href) = e.does else {
+                return None;
+            };
             let t = format!("{} {} {}", e.label, e.hint, e.also.join(" ")).to_lowercase();
             let n = words.iter().filter(|w| t.contains(w.as_str())).count();
-            (n > 0).then(|| (n, format!("- {}: {} (hub page {href})", e.label, crate::router::clip_words(e.hint, 90))))
+            (n > 0).then(|| {
+                (
+                    n,
+                    format!(
+                        "- {}: {} (hub page {href})",
+                        e.label,
+                        crate::router::clip_words(e.hint, 90)
+                    ),
+                )
+            })
         })
         .collect();
     pages.sort_by_key(|b| std::cmp::Reverse(b.0));
     let best = pages.first().map(|p| p.0).unwrap_or(0);
-    pages.into_iter().filter(|p| p.0 == best).take(most).map(|p| p.1).collect()
+    pages
+        .into_iter()
+        .filter(|p| p.0 == best)
+        .take(most)
+        .map(|p| p.1)
+        .collect()
 }
 
 /// What Atlas says to "what can you do?"
@@ -1018,11 +1144,22 @@ pub fn summary() -> String {
     // the rest.
     let mut by_area: Vec<(Area, usize)> = EVERY_AREA
         .iter()
-        .map(|a| (*a, all.iter().filter(|c| c.area == *a && c.state.usable()).count()))
+        .map(|a| {
+            (
+                *a,
+                all.iter()
+                    .filter(|c| c.area == *a && c.state.usable())
+                    .count(),
+            )
+        })
         .filter(|(_, n)| *n > 0)
         .collect();
     by_area.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
-    let top: Vec<String> = by_area.iter().take(3).map(|(a, n)| format!("{} {n}", a.plain())).collect();
+    let top: Vec<String> = by_area
+        .iter()
+        .take(3)
+        .map(|(a, n)| format!("{} {n}", a.plain()))
+        .collect();
     let mut s = format!("{working} things work right now");
     match top.len() {
         0 => s.push('.'),
@@ -1038,7 +1175,9 @@ pub fn summary() -> String {
     }
     if blocked > 0 {
         if let Some((need, n)) = what_would_unblock_most().first() {
-            s.push_str(&format!(" {blocked} are waiting on something — {n} of them on {need}."));
+            s.push_str(&format!(
+                " {blocked} are waiting on something — {n} of them on {need}."
+            ));
         }
     }
     if untested > 0 {
@@ -1090,14 +1229,18 @@ pub fn can(id: &str) -> Option<(bool, String)> {
     let c = all().into_iter().find(|c| c.id == id)?;
     Some(match c.state {
         State::Working => (true, format!("yes — {}", c.what)),
-        State::Off => (false, format!("built, but switched off. Turn on \"{}\" in settings.", c.id)),
+        State::Off => (
+            false,
+            format!("built, but switched off. Turn on \"{}\" in settings.", c.id),
+        ),
         State::Blocked => (
             false,
             format!("not until {} is installed.", c.needs.unwrap_or("something")),
         ),
         State::Untested => (
             false,
-            "built, but it has never run on a real machine — so I can't promise it works.".to_string(),
+            "built, but it has never run on a real machine — so I can't promise it works."
+                .to_string(),
         ),
         State::Planned => (false, "not built yet.".to_string()),
     })
@@ -1174,18 +1317,16 @@ pub fn says(c: &Capability, p: Platform) -> String {
     };
 
     match runs_on(c, p) {
-        How::Never => {
-            match blocked_by(c, p) {
-                Some(n) => {
-                    let mut s = format!("never on {} — it would have to be {}", p.name(), n.plain());
-                    if let Some(why) = portable::because(p, n) {
-                        s.push_str(&format!(", and {why}"));
-                    }
-                    s
+        How::Never => match blocked_by(c, p) {
+            Some(n) => {
+                let mut s = format!("never on {} — it would have to be {}", p.name(), n.plain());
+                if let Some(why) = portable::because(p, n) {
+                    s.push_str(&format!(", and {why}"));
                 }
-                None => format!("never on {}", p.name()),
+                s
             }
-        }
+            None => format!("never on {}", p.name()),
+        },
         How::Awkward => {
             let why = c
                 .runs
@@ -1248,7 +1389,11 @@ pub fn on_platform_summary(p: Platform) -> String {
         .iter()
         .map(|(r, n)| format!("{n} {} {r}", if *n == 1 { "needs" } else { "need" }))
         .collect();
-    s.push_str(&format!(" The other {} can't: {}.", walls.len(), said.join(", ")));
+    s.push_str(&format!(
+        " The other {} can't: {}.",
+        walls.len(),
+        said.join(", ")
+    ));
     s
 }
 
@@ -1260,7 +1405,11 @@ pub fn on_platform_full(p: Platform) -> String {
     // otherwise. There is one build of Atlas and it is the one you are
     // running; the rest of this is what would happen if there were another.
     if p != crate::platform::what_am_i() {
-        s.push_str(&format!("There is no {} build yet. What one would get: {}\n", p.bare(), portable::for_a_friend(p)));
+        s.push_str(&format!(
+            "There is no {} build yet. What one would get: {}\n",
+            p.bare(),
+            portable::for_a_friend(p)
+        ));
     }
     for area in EVERY_AREA {
         let items: Vec<Capability> = in_area(*area);
@@ -1277,9 +1426,19 @@ pub fn on_platform_full(p: Platform) -> String {
 
 /// Every area, once, so nothing is left out of a listing by being forgotten.
 pub const EVERY_AREA: &[Area] = &[
-    Area::Hearing, Area::Speaking, Area::Windows, Area::Files, Area::Web,
-    Area::Writing, Area::Money, Area::Email, Area::Thinking, Area::Itself,
-    Area::Seeing, Area::Keeping, Area::Time,
+    Area::Hearing,
+    Area::Speaking,
+    Area::Windows,
+    Area::Files,
+    Area::Web,
+    Area::Writing,
+    Area::Money,
+    Area::Email,
+    Area::Thinking,
+    Area::Itself,
+    Area::Seeing,
+    Area::Keeping,
+    Area::Time,
 ];
 
 /// The catalogue as the document in `docs/CAPABILITIES.md`.
@@ -1310,7 +1469,13 @@ pub fn as_markdown() -> String {
          iPhone and unbuilt everywhere, and collapsing them hides which.\n\n",
     );
     s.push_str("| state | means |\n|---|---|\n");
-    for st in [State::Working, State::Off, State::Blocked, State::Untested, State::Planned] {
+    for st in [
+        State::Working,
+        State::Off,
+        State::Blocked,
+        State::Untested,
+        State::Planned,
+    ] {
         s.push_str(&format!("| **{}** | ", st.plain()));
         s.push_str(match st {
             State::Working => "you can rely on it today",
@@ -1326,7 +1491,9 @@ pub fn as_markdown() -> String {
     // "not built yet", "works" reads as a contradiction rather than as the
     // separate fact it is.
     s.push_str("\n| platform | means |\n|---|---|\n");
-    s.push_str("| ready | the platform allows it, and Atlas's layer for that platform is written |\n");
+    s.push_str(
+        "| ready | the platform allows it, and Atlas's layer for that platform is written |\n",
+    );
     s.push_str("| would | the platform allows it; that layer isn't written yet |\n");
     s.push_str("| catch | allowed, with a compromise worth knowing — listed at the bottom |\n");
     s.push_str("| **no** | the platform forbids it, however much gets written |\n");
@@ -1336,8 +1503,12 @@ pub fn as_markdown() -> String {
     );
 
     let platforms = [
-        Platform::Windows, Platform::Mac, Platform::Linux,
-        Platform::Ios, Platform::Android, Platform::Web,
+        Platform::Windows,
+        Platform::Mac,
+        Platform::Linux,
+        Platform::Ios,
+        Platform::Android,
+        Platform::Web,
     ];
 
     for area in EVERY_AREA {
@@ -1382,11 +1553,15 @@ pub fn as_markdown() -> String {
     for p in platforms {
         let walls = walled_on(p);
         if walls.is_empty() {
-            s.push_str(&format!("**{}** — nothing. The rest is time.\n\n", p.bare()));
+            s.push_str(&format!(
+                "**{}** — nothing. The rest is time.\n\n",
+                p.bare()
+            ));
             continue;
         }
         s.push_str(&format!("**{}**\n\n", p.bare()));
-        let mut by_reason: std::collections::BTreeMap<Needs, Vec<&'static str>> = Default::default();
+        let mut by_reason: std::collections::BTreeMap<Needs, Vec<&'static str>> =
+            Default::default();
         for (c, n) in &walls {
             by_reason.entry(*n).or_default().push(c.what);
         }
@@ -1462,7 +1637,10 @@ pub fn heads_up(p: Platform, cfg: &crate::portable::PortableConfig) -> Option<St
 /// The catalogue's own view of the source tree. `tests/catalogue.rs` checks
 /// each of these is a real file and counts the ones nothing claims.
 pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
-    all().into_iter().flat_map(|c| c.modules.iter().copied()).collect()
+    all()
+        .into_iter()
+        .flat_map(|c| c.modules.iter().copied())
+        .collect()
 }
 
 /// How many source files there are.
@@ -1663,5 +1841,8 @@ pub fn module_coverage() -> (usize, usize) {
 /// The direction Atlas needs when it is working on itself: it has a file open
 /// and wants to know what breaks if it gets this wrong.
 pub fn what_uses(module: &str) -> Vec<Capability> {
-    all().into_iter().filter(|c| c.modules.contains(&module)).collect()
+    all()
+        .into_iter()
+        .filter(|c| c.modules.contains(&module))
+        .collect()
 }

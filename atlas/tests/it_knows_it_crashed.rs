@@ -29,17 +29,28 @@ fn temp(tag: &str) -> PathBuf {
 #[test]
 fn one_bad_turn_costs_a_turn_and_not_the_session() {
     // The whole point. Before this, the second line here never ran.
-    let first = crash::caught("doing the first thing", || panic!("an assumption was wrong"));
+    let first = crash::caught("doing the first thing", || {
+        panic!("an assumption was wrong")
+    });
     assert!(first.is_err());
     let second = crash::caught("doing the second thing", || "still here");
-    assert_eq!(second, Ok("still here"), "the session ended with the first failure");
+    assert_eq!(
+        second,
+        Ok("still here"),
+        "the session ended with the first failure"
+    );
 }
 
 #[test]
 fn the_sentence_a_person_hears_is_not_the_one_a_compiler_wrote() {
-    let why = crash::caught("answering you", || panic!("called `Option::unwrap()` on a `None` value"))
-        .unwrap_err();
-    assert!(why.contains("answering you"), "it does not say what it was doing: {why}");
+    let why = crash::caught("answering you", || {
+        panic!("called `Option::unwrap()` on a `None` value")
+    })
+    .unwrap_err();
+    assert!(
+        why.contains("answering you"),
+        "it does not say what it was doing: {why}"
+    );
     for leak in ["unwrap", "Option", "panic", "None"] {
         assert!(!why.contains(leak), "{leak:?} reached the person: {why}");
     }
@@ -59,7 +70,11 @@ fn a_crash_is_written_down_and_read_back_once() {
         where_: "src/somewhere.rs:42".into(),
         during: "reading your notes".into(),
     };
-    fs::write(crash::note_path(store.root()), serde_json::to_string(&note).unwrap()).unwrap();
+    fs::write(
+        crash::note_path(store.root()),
+        serde_json::to_string(&note).unwrap(),
+    )
+    .unwrap();
 
     // `last` may be asked twice and answer the same — that is what
     // `atlas crash` needs.
@@ -69,7 +84,10 @@ fn a_crash_is_written_down_and_read_back_once() {
     // `take` is the spoken path: said once, then gone, or you are told about
     // the same crash every morning for the rest of the install's life.
     assert_eq!(crash::take(&store).as_ref(), Some(&note));
-    assert!(crash::last(&store).is_none(), "the crash would be reported forever");
+    assert!(
+        crash::last(&store).is_none(),
+        "the crash would be reported forever"
+    );
 
     let _ = fs::remove_dir_all(&root);
 }
@@ -82,7 +100,10 @@ fn the_note_lives_beside_the_state_and_not_in_it() {
     let root = temp("where");
     let store = Store::new(&root);
     let p = crash::note_path(store.root());
-    assert!(p.starts_with(store.root()), "the note escapes the store: {p:?}");
+    assert!(
+        p.starts_with(store.root()),
+        "the note escapes the store: {p:?}"
+    );
     assert_eq!(p.extension().and_then(|e| e.to_str()), Some("json"));
     let _ = fs::remove_dir_all(&root);
 }
@@ -108,7 +129,9 @@ fn the_daemon_catches_its_own_tick() {
 #[test]
 fn the_hook_is_installed_before_anything_can_panic() {
     let main = crate::common::source_of("main");
-    let at_hook = main.find("crash::watch(").expect("no panic hook is installed at all");
+    let at_hook = main
+        .find("crash::watch(")
+        .expect("no panic hook is installed at all");
     // Anything that reads config or opens the store can panic, so the hook
     // has to be in front of them.
     let at_cfg = main.find("Config::load(&dir)").expect("config load moved");
@@ -128,7 +151,10 @@ fn there_is_a_way_to_read_the_crash_after_it_has_been_spoken() {
     assert!(main.contains("Some(\"crash\")"), "`atlas crash` is gone");
     let at = main.find("Some(\"crash\")").unwrap();
     let body = &main[at..at + 900];
-    assert!(body.contains("crash::last("), "`atlas crash` should read without clearing");
+    assert!(
+        body.contains("crash::last("),
+        "`atlas crash` should read without clearing"
+    );
     assert!(
         !body.contains("crash::take("),
         "`atlas crash` clears the note, so asking twice loses it"
@@ -206,5 +232,8 @@ fn reading_a_model_file_cannot_end_the_process() {
         !code.contains("try_into().unwrap()"),
         "a truncated or hostile model file can end the process again"
     );
-    assert!(src.contains("ended in the middle of a number"), "the honest error is gone");
+    assert!(
+        src.contains("ended in the middle of a number"),
+        "the honest error is gone"
+    );
 }

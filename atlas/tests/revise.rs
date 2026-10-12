@@ -15,14 +15,20 @@ fn one_correction_is_a_note_not_a_rule() {
         m.heard(c("too long", 1, 0)).is_none(),
         "a rule built from one irritable evening is worse than no rule"
     );
-    assert_eq!(m.heard.len(), 1, "but it is remembered as evidence for the next one");
+    assert_eq!(
+        m.heard.len(),
+        1,
+        "but it is remembered as evidence for the next one"
+    );
 }
 
 #[test]
 fn the_second_time_earns_an_edit() {
     let mut m = Mending::default();
     m.heard(c("too long", 1, 0));
-    let e = m.heard(c("too long", 2, DAY)).expect("said twice is a rule");
+    let e = m
+        .heard(c("too long", 2, DAY))
+        .expect("said twice is a rule");
     assert_eq!(e.said_times, REPEATS_NEEDED);
     assert_eq!(e.becomes, "keep it under five lines");
 }
@@ -72,7 +78,10 @@ fn an_edit_records_what_right_looks_like_rather_than_displeasure() {
     let e = m.heard(c("too long", 2, DAY)).unwrap();
     let lower = e.becomes.to_lowercase();
     for word in ["didn't like", "annoyed", "unhappy", "bad"] {
-        assert!(!lower.contains(word), "the edit records a mood, which teaches nothing");
+        assert!(
+            !lower.contains(word),
+            "the edit records a mood, which teaches nothing"
+        );
     }
     assert!(e.becomes.contains("five lines"));
 }
@@ -81,8 +90,8 @@ fn an_edit_records_what_right_looks_like_rather_than_displeasure() {
 
 #[test]
 fn a_lesson_about_how_a_job_is_done_goes_where_it_is_read_every_time() {
-    let c = Correction::new("order", "ran the tests last", 0, 1)
-        .wanting("always run the tests first");
+    let c =
+        Correction::new("order", "ran the tests last", 0, 1).wanting("always run the tests first");
     assert_eq!(home_for(&c), Home::HowTo);
     assert!(
         Home::HowTo.read_every_time(),
@@ -92,8 +101,7 @@ fn a_lesson_about_how_a_job_is_done_goes_where_it_is_read_every_time() {
 
 #[test]
 fn a_lesson_about_taste_goes_where_taste_is_kept() {
-    let c = Correction::new("tone", "sounded like a brochure", 0, 1)
-        .wanting("I prefer it blunt");
+    let c = Correction::new("tone", "sounded like a brochure", 0, 1).wanting("I prefer it blunt");
     assert_eq!(home_for(&c), Home::AboutYou);
     assert!(!Home::AboutYou.read_every_time());
 }
@@ -114,7 +122,10 @@ fn atlas_names_the_change_before_making_it() {
     let p = proposal(&e);
     assert!(p.contains("keep it under five lines"), "{p}");
     assert!(p.contains("2 times"), "{p}");
-    assert!(p.ends_with("Alright?"), "an edit you cannot refuse is not a proposal: {p}");
+    assert!(
+        p.ends_with("Alright?"),
+        "an edit you cannot refuse is not a proposal: {p}"
+    );
 }
 
 #[test]
@@ -124,7 +135,10 @@ fn a_replacement_shows_the_old_line_as_well_as_the_new_one() {
     let mut e = m.heard(c("too long", 2, DAY)).unwrap();
     e.replacing = Some("answer thoroughly".into());
     let p = proposal(&e);
-    assert!(p.contains("answer thoroughly"), "surgical edits name what they replace: {p}");
+    assert!(
+        p.contains("answer thoroughly"),
+        "surgical edits name what they replace: {p}"
+    );
     assert!(p.contains("keep it under five lines"));
 }
 
@@ -135,7 +149,10 @@ fn mending_reaches_you_as_an_offer_rather_than_a_silent_rewrite() {
     let e = m.heard(c("too long", 2, DAY)).unwrap();
     let n = atlas::nudge::offer_to_mend(&e);
     assert!(n.message.ends_with("Alright?"));
-    assert!(n.confidence < 1.0, "rewriting its own instructions always asks");
+    assert!(
+        n.confidence < 1.0,
+        "rewriting its own instructions always asks"
+    );
 }
 
 // ================= the only metric =================
@@ -146,7 +163,11 @@ fn the_scoreboard_is_whether_it_makes_the_same_mistake_twice() {
     m.heard(c("too long", 1, 0));
     let e = m.heard(c("too long", 2, DAY)).unwrap();
     m.applied(e);
-    assert_eq!(m.repeat_rate(), 0.0, "written down and not repeated is a clean score");
+    assert_eq!(
+        m.repeat_rate(),
+        0.0,
+        "written down and not repeated is a clean score"
+    );
 
     // Told, written down, did it again.
     m.heard(c("too long", 3, 2 * DAY));
@@ -179,18 +200,29 @@ fn correcting_an_applied_rule_with_something_different_offers_to_replace_it() {
     let mut m = Mending::default();
     m.heard(c("too long", 1, 0));
     let first = m.heard(c("too long", 2, DAY)).unwrap();
-    assert_eq!(first.replacing, None, "the first time through, there is nothing to replace yet");
+    assert_eq!(
+        first.replacing, None,
+        "the first time through, there is nothing to replace yet"
+    );
     m.applied(first);
 
     let different = Correction::new("too long", "gave a long answer", 3 * DAY, 3)
         .wanting("three sentences, not five lines");
-    let second = m.heard(different).expect("a different instruction on a fixed subject is an edit");
+    let second = m
+        .heard(different)
+        .expect("a different instruction on a fixed subject is an edit");
     assert_eq!(second.replacing, Some("keep it under five lines".into()));
     assert_eq!(second.becomes, "three sentences, not five lines");
 
     let p = proposal(&second);
-    assert!(p.contains("keep it under five lines"), "names the old line: {p}");
-    assert!(p.contains("three sentences, not five lines"), "and the new one: {p}");
+    assert!(
+        p.contains("keep it under five lines"),
+        "names the old line: {p}"
+    );
+    assert!(
+        p.contains("three sentences, not five lines"),
+        "and the new one: {p}"
+    );
 }
 
 #[test]
@@ -214,7 +246,10 @@ fn repeating_the_identical_instruction_after_it_was_applied_offers_nothing_new()
 fn a_system_that_has_never_written_anything_scores_zero_rather_than_perfect() {
     let m = Mending::default();
     assert_eq!(m.repeat_rate(), 0.0);
-    assert!(m.applied.is_empty(), "zero out of zero is not a good score, it is no score");
+    assert!(
+        m.applied.is_empty(),
+        "zero out of zero is not a good score, it is no score"
+    );
 }
 
 // ================= housekeeping =================
@@ -225,7 +260,11 @@ fn notes_that_never_became_rules_are_surfaced_not_deleted() {
     m.heard(c("one off", 1, 0));
     let stale = m.stale_notes(90 * DAY, 30 * DAY);
     assert_eq!(stale.len(), 1);
-    assert_eq!(m.heard.len(), 1, "a complaint that keeps not recurring is itself information");
+    assert_eq!(
+        m.heard.len(),
+        1,
+        "a complaint that keeps not recurring is itself information"
+    );
 }
 
 #[test]

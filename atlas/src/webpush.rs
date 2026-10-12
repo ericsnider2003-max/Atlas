@@ -92,14 +92,25 @@ pub fn looks_like_an_address(endpoint: &str, p256dh: &str, auth: &str) -> bool {
         && e.len() < 1024
         && !e.chars().any(|c| c.is_whitespace() || c == '|' || c == '"');
     url_ok
-        && b64url_decode(p256dh).is_some_and(|k| k.len() == 65 && k[0] == 4 && p256::PublicKey::from_sec1_bytes(&k).is_ok())
+        && b64url_decode(p256dh).is_some_and(|k| {
+            k.len() == 65 && k[0] == 4 && p256::PublicKey::from_sec1_bytes(&k).is_ok()
+        })
         && b64url_decode(auth).is_some_and(|a| a.len() == 16)
 }
 
 /// The sync event a phone sends with its address: `(id, field, to)` for
 /// `sync::What::Changed`.
-pub fn change_to_carry(device: &str, endpoint: &str, p256dh: &str, auth: &str) -> (String, String, String) {
-    (format!("{SYNC_PREFIX}{device}"), "webpush".into(), format!("{}|{}|{}", endpoint.trim(), p256dh.trim(), auth.trim()))
+pub fn change_to_carry(
+    device: &str,
+    endpoint: &str,
+    p256dh: &str,
+    auth: &str,
+) -> (String, String, String) {
+    (
+        format!("{SYNC_PREFIX}{device}"),
+        "webpush".into(),
+        format!("{}|{}|{}", endpoint.trim(), p256dh.trim(), auth.trim()),
+    )
 }
 
 /// A phone's address arriving by sync, kept only from a sealed bundle (your
@@ -115,10 +126,19 @@ pub fn take_synced(state_dir: &Path, id: &str, to: &str, sealed: bool, now: u64)
         return None;
     }
     let mut d = Devices::load(state_dir);
-    if d.devices.iter().any(|x| x.name == device && x.endpoint == endpoint && x.p256dh == p256dh) {
+    if d.devices
+        .iter()
+        .any(|x| x.name == device && x.endpoint == endpoint && x.p256dh == p256dh)
+    {
         return None;
     }
-    d.set(Device { name: device.into(), endpoint: endpoint.into(), p256dh: p256dh.into(), auth: auth.into(), since: now });
+    d.set(Device {
+        name: device.into(),
+        endpoint: endpoint.into(),
+        p256dh: p256dh.into(),
+        auth: auth.into(),
+        since: now,
+    });
     d.save(state_dir).ok()?;
     Some(format!("{device} can now be reached with Atlas closed"))
 }
@@ -126,7 +146,10 @@ pub fn take_synced(state_dir: &Path, id: &str, to: &str, sealed: bool, now: u64)
 // ------------------------------------------------------------------ encryption
 
 fn hmac(key: &[u8], parts: &[&[u8]]) -> [u8; 32] {
-    #[allow(clippy::expect_used, reason = "HMAC accepts a key of any length; new_from_slice cannot fail for it")]
+    #[allow(
+        clippy::expect_used,
+        reason = "HMAC accepts a key of any length; new_from_slice cannot fail for it"
+    )]
     let mut m = <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC takes any key length");
     for p in parts {
         m.update(p);
@@ -145,7 +168,8 @@ pub fn seal_with(
     salt: &[u8; 16],
 ) -> Result<Vec<u8>, String> {
     use aes_gcm::aead::{Aead, KeyInit};
-    let ua = p256::PublicKey::from_sec1_bytes(ua_public).map_err(|_| "the phone's key isn't a P-256 key".to_string())?;
+    let ua = p256::PublicKey::from_sec1_bytes(ua_public)
+        .map_err(|_| "the phone's key isn't a P-256 key".to_string())?;
     let as_public = as_secret.public_key().to_encoded_point(false);
     let as_public = as_public.as_bytes();
     let ecdh = p256::ecdh::diffie_hellman(as_secret.to_nonzero_scalar(), ua.as_affine());
@@ -195,12 +219,16 @@ pub fn vapid_key(state_dir: &Path) -> Result<p256::SecretKey, String> {
     use p256::pkcs8::{DecodePrivateKey, EncodePrivateKey};
     let path = state_dir.join(VAPID_FILE);
     if let Ok(pem) = std::fs::read_to_string(&path) {
-        return p256::SecretKey::from_pkcs8_pem(&pem).map_err(|e| format!("the push signing key at {} is damaged: {e}", path.display()));
+        return p256::SecretKey::from_pkcs8_pem(&pem)
+            .map_err(|e| format!("the push signing key at {} is damaged: {e}", path.display()));
     }
     let key = fresh_secret();
-    let pem = key.to_pkcs8_pem(Default::default()).map_err(|e| e.to_string())?;
+    let pem = key
+        .to_pkcs8_pem(Default::default())
+        .map_err(|e| e.to_string())?;
     std::fs::create_dir_all(state_dir).map_err(|e| e.to_string())?;
-    std::fs::write(&path, pem.as_bytes()).map_err(|e| format!("couldn't keep the push signing key: {e}"))?;
+    std::fs::write(&path, pem.as_bytes())
+        .map_err(|e| format!("couldn't keep the push signing key: {e}"))?;
     Ok(key)
 }
 
@@ -220,14 +248,19 @@ pub fn audience(endpoint: &str) -> Option<String> {
 /// `Authorization: vapid t=<jwt>, k=<key>` for `endpoint`, good for 12 hours.
 pub fn vapid_header(key: &p256::SecretKey, endpoint: &str, now: u64) -> Result<String, String> {
     use p256::ecdsa::signature::Signer;
-    let aud = audience(endpoint).ok_or_else(|| "the push address has no server in it".to_string())?;
+    let aud =
+        audience(endpoint).ok_or_else(|| "the push address has no server in it".to_string())?;
     let header = b64url(br#"{"typ":"JWT","alg":"ES256"}"#);
     let claims = b64url(
         serde_json::json!({ "aud": aud, "exp": now + 12 * 60 * 60, "sub": "mailto:atlas@localhost" }).to_string().as_bytes(),
     );
     let input = format!("{header}.{claims}");
     let sig: p256::ecdsa::Signature = p256::ecdsa::SigningKey::from(key).sign(input.as_bytes());
-    Ok(format!("vapid t={input}.{}, k={}", b64url(&sig.to_bytes()), vapid_public(key)))
+    Ok(format!(
+        "vapid t={input}.{}, k={}",
+        b64url(&sig.to_bytes()),
+        vapid_public(key)
+    ))
 }
 
 // ------------------------------------------------------------------ sending
@@ -279,7 +312,10 @@ pub fn read_distributor_reply(out: &str) -> Outcome {
         "200" | "201" | "202" => Outcome::Delivered,
         "404" | "410" => Outcome::Gone,
         "" | "000" => Outcome::Failed("couldn't reach the push service".into()),
-        s => Outcome::Failed(format!("the push service answered {s}: {}", body.trim().chars().take(200).collect::<String>())),
+        s => Outcome::Failed(format!(
+            "the push service answered {s}: {}",
+            body.trim().chars().take(200).collect::<String>()
+        )),
     }
 }
 
@@ -314,15 +350,19 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
                 ),
             )
             .map_err(|e| format!("couldn't prepare the push: {e}"))?;
-            std::fs::write(&body_file, &body).map_err(|e| format!("couldn't prepare the push: {e}"))?;
-            let out = crate::tools::command(crate::apns::pinned_curl(&crate::roots::install_root()))
-                .args(webpush_args(&headers, &body_file, &d.endpoint))
-                .stderr(std::process::Stdio::null())
-                .output();
+            std::fs::write(&body_file, &body)
+                .map_err(|e| format!("couldn't prepare the push: {e}"))?;
+            let out =
+                crate::tools::command(crate::apns::pinned_curl(&crate::roots::install_root()))
+                    .args(webpush_args(&headers, &body_file, &d.endpoint))
+                    .stderr(std::process::Stdio::null())
+                    .output();
             crate::heard!(std::fs::remove_file(&headers));
             crate::heard!(std::fs::remove_file(&body_file));
             let out = out.map_err(|e| format!("couldn't start curl: {e}"))?;
-            Ok(read_distributor_reply(&String::from_utf8_lossy(&out.stdout)))
+            Ok(read_distributor_reply(&String::from_utf8_lossy(
+                &out.stdout,
+            )))
         })();
         match outcome {
             Ok(Outcome::Delivered) => delivered += 1,
@@ -348,16 +388,23 @@ pub fn send(note: &crate::notify::Note, cfg: &crate::phone::PhoneConfig) -> Resu
 // ------------------------------------------------------------------ base64url
 
 fn b64url(bytes: &[u8]) -> String {
-    crate::b64::encode(bytes).trim_end_matches('=').replace('+', "-").replace('/', "_")
+    crate::b64::encode(bytes)
+        .trim_end_matches('=')
+        .replace('+', "-")
+        .replace('/', "_")
 }
 
 /// base64url, padded or not, whitespace ignored.
 pub fn b64url_decode(s: &str) -> Option<Vec<u8>> {
-    let mut t: String = s.chars().filter(|c| !c.is_whitespace()).map(|c| match c {
-        '-' => '+',
-        '_' => '/',
-        c => c,
-    }).collect();
+    let mut t: String = s
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .map(|c| match c {
+            '-' => '+',
+            '_' => '/',
+            c => c,
+        })
+        .collect();
     let t2 = t.trim_end_matches('=').to_string();
     t = t2;
     while !t.len().is_multiple_of(4) {

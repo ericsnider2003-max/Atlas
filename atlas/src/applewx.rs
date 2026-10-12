@@ -50,7 +50,9 @@ pub fn apple_sky_words(code: &str) -> String {
         "Rain" => "rain",
         "HeavyRain" => "heavy rain",
         "Showers" | "ScatteredShowers" => "showers",
-        "Thunderstorms" | "IsolatedThunderstorms" | "ScatteredThunderstorms" | "StrongStorms" => "thunderstorms",
+        "Thunderstorms" | "IsolatedThunderstorms" | "ScatteredThunderstorms" | "StrongStorms" => {
+            "thunderstorms"
+        }
         "Snow" | "Flurries" | "SnowShowers" => "snow",
         "HeavySnow" | "Blizzard" | "BlowingSnow" => "heavy snow",
         "Sleet" | "FreezingRain" | "FreezingDrizzle" | "WintryMix" => "freezing rain",
@@ -93,7 +95,11 @@ pub fn from_apple_json(json: &str) -> Option<Reading> {
                         f(d, "temperatureMax")?,
                         f(d, "temperatureMin")?,
                         f(d, "precipitationChance").unwrap_or(0.0),
-                        apple_sky_words(d.get("conditionCode").and_then(|c| c.as_str()).unwrap_or("")),
+                        apple_sky_words(
+                            d.get("conditionCode")
+                                .and_then(|c| c.as_str())
+                                .unwrap_or(""),
+                        ),
                     ))
                 })
                 .collect()
@@ -103,7 +109,11 @@ pub fn from_apple_json(json: &str) -> Option<Reading> {
         now_c,
         feels_c: f(cur, "temperatureApparent").unwrap_or(now_c),
         wind_kmh: f(cur, "windSpeed").unwrap_or(0.0),
-        sky: apple_sky_words(cur.get("conditionCode").and_then(|c| c.as_str()).unwrap_or("")),
+        sky: apple_sky_words(
+            cur.get("conditionCode")
+                .and_then(|c| c.as_str())
+                .unwrap_or(""),
+        ),
         days,
     })
 }
@@ -124,12 +134,25 @@ pub fn said(p: &Place, r: &Reading, tomorrow: bool, f: bool) -> Option<String> {
         String::new()
     };
     if tomorrow {
-        return Some(format!("Tomorrow in {}: {dsky}, high {:.0}{deg}, low {:.0}{deg}.{rain_line}{MARK}", p.name, t(hi), t(lo)));
+        return Some(format!(
+            "Tomorrow in {}: {dsky}, high {:.0}{deg}, low {:.0}{deg}.{rain_line}{MARK}",
+            p.name,
+            t(hi),
+            t(lo)
+        ));
     }
     let wind = if f { r.wind_kmh / 1.609 } else { r.wind_kmh };
     let unit = if f { "mph" } else { "km/h" };
-    let feels_line = if (t(r.feels_c) - t(r.now_c)).abs() >= 4.0 { format!(", feels like {:.0}", t(r.feels_c)) } else { String::new() };
-    let wind_line = if wind >= 15.0 { format!(", windy ({wind:.0} {unit})") } else { String::new() };
+    let feels_line = if (t(r.feels_c) - t(r.now_c)).abs() >= 4.0 {
+        format!(", feels like {:.0}", t(r.feels_c))
+    } else {
+        String::new()
+    };
+    let wind_line = if wind >= 15.0 {
+        format!(", windy ({wind:.0} {unit})")
+    } else {
+        String::new()
+    };
     Some(format!(
         "In {}: {:.0}{deg} and {}{feels_line}{wind_line}. Today's high {:.0}, low {:.0}.{rain_line}{MARK}",
         p.name,
@@ -144,7 +167,8 @@ pub fn said(p: &Place, r: &Reading, tomorrow: bool, f: bool) -> Option<String> {
 
 /// The app's function: `{lat, lon}` in, WeatherKit-shaped JSON out (into
 /// `out`, NUL-terminated), returning 0 when it answered.
-pub type WeatherFn = unsafe extern "C" fn(req: *const c_char, out: *mut c_char, out_len: usize) -> i32;
+pub type WeatherFn =
+    unsafe extern "C" fn(req: *const c_char, out: *mut c_char, out_len: usize) -> i32;
 
 static ON_PHONE: Mutex<Option<WeatherFn>> = Mutex::new(None);
 
@@ -162,7 +186,11 @@ pub unsafe extern "C" fn atlas_mobile_apple_weather(f: Option<WeatherFn>) {
 }
 
 fn from_the_phone(p: &Place) -> Option<Reading> {
-    let f = ON_PHONE.lock().or_else(crate::crash::unpoison).ok().and_then(|g| *g)?;
+    let f = ON_PHONE
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .ok()
+        .and_then(|g| *g)?;
     let req = CString::new(serde_json::json!({ "lat": p.lat, "lon": p.lon }).to_string()).ok()?;
     let mut buf = vec![0u8; 64 * 1024];
     // SAFETY: `f` is the host's registered callback; `req` is a live NUL-terminated string and
@@ -172,24 +200,47 @@ fn from_the_phone(p: &Place) -> Option<Reading> {
         return None;
     }
     // Bounded by the buffer: a callback that filled it without a NUL reads as empty, not past the end.
-    from_apple_json(&CStr::from_bytes_until_nul(&buf).map(|c| c.to_string_lossy().into_owned()).unwrap_or_default())
+    from_apple_json(
+        &CStr::from_bytes_until_nul(&buf)
+            .map(|c| c.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+    )
 }
 
 // ------------------------------------------------------------------ the laptop
 
 /// The token WeatherKit's REST service asks for: ES256, with the service id
 /// (the app's id with WeatherKit on) in the header and as the subject.
-pub fn signed_token(key_pem: &str, key_id: &str, team_id: &str, service_id: &str, now: u64) -> Result<String, String> {
+pub fn signed_token(
+    key_pem: &str,
+    key_id: &str,
+    team_id: &str,
+    service_id: &str,
+    now: u64,
+) -> Result<String, String> {
     signed_token_for(key_pem, key_id, team_id, service_id, now, 3600)
 }
 
 /// `signed_token`, good for `life_secs`: what the laptop carries to your
 /// other devices (`carry_token`), so they ask Apple without the key.
-fn signed_token_for(key_pem: &str, key_id: &str, team_id: &str, service_id: &str, now: u64, life_secs: u64) -> Result<String, String> {
+fn signed_token_for(
+    key_pem: &str,
+    key_id: &str,
+    team_id: &str,
+    service_id: &str,
+    now: u64,
+    life_secs: u64,
+) -> Result<String, String> {
     use p256::ecdsa::signature::Signer;
     use p256::pkcs8::DecodePrivateKey;
-    let key = p256::ecdsa::SigningKey::from_pkcs8_pem(key_pem).map_err(|e| format!("the Apple key isn't one Apple gives: {e}"))?;
-    let b64 = |b: &[u8]| crate::b64::encode(b).trim_end_matches('=').replace('+', "-").replace('/', "_");
+    let key = p256::ecdsa::SigningKey::from_pkcs8_pem(key_pem)
+        .map_err(|e| format!("the Apple key isn't one Apple gives: {e}"))?;
+    let b64 = |b: &[u8]| {
+        crate::b64::encode(b)
+            .trim_end_matches('=')
+            .replace('+', "-")
+            .replace('/', "_")
+    };
     let header = b64(format!(
         "{{\"alg\":\"ES256\",\"kid\":\"{}\",\"id\":\"{}.{}\"}}",
         key_id.trim(),
@@ -233,7 +284,11 @@ fn from_the_rest_service(p: &Place, apns: &crate::apns::ApnsConfig) -> Option<Re
         Err(_) => CarriedToken::load(&crate::roots::state_dir()).usable(now)?,
     };
     let zone = crate::localclock::zone().name;
-    let zone = if zone.contains('/') { zone } else { "UTC".to_string() };
+    let zone = if zone.contains('/') {
+        zone
+    } else {
+        "UTC".to_string()
+    };
     let auth = format!("Bearer {jwt}");
     let r = crate::http::https_get_with(
         "weatherkit.apple.com",
@@ -281,7 +336,10 @@ impl CarriedToken {
     pub fn save(&self, state_dir: &std::path::Path) -> std::io::Result<()> {
         let _state = crate::store::state_transaction(state_dir)?;
         std::fs::create_dir_all(state_dir)?;
-        crate::store::write_whole(&state_dir.join(CARRIED_FILE), &serde_json::to_vec(self).map_err(std::io::Error::other)?)
+        crate::store::write_whole(
+            &state_dir.join(CARRIED_FILE),
+            &serde_json::to_vec(self).map_err(std::io::Error::other)?,
+        )
     }
 
     /// The token, while it has at least a minute left.
@@ -293,19 +351,46 @@ impl CarriedToken {
 /// A fresh token to carry, when this device has the key and the last one it
 /// carried (`carried_until`) has less than three days left: `(id, field, to)`
 /// for a `sync::What::Changed`, and its expiry. `None` otherwise.
-pub fn carry_token(apns: &crate::apns::ApnsConfig, root: &std::path::Path, device: &str, carried_until: u64, now: u64) -> Option<((String, String, String), u64)> {
+pub fn carry_token(
+    apns: &crate::apns::ApnsConfig,
+    root: &std::path::Path,
+    device: &str,
+    carried_until: u64,
+    now: u64,
+) -> Option<((String, String, String), u64)> {
     if carried_until > now + RENEW_WITHIN_SECS {
         return None;
     }
     let pem = std::fs::read_to_string(apns.ready(root).ok()?).ok()?;
     let until = now + CARRIED_LIFE_SECS;
-    let jwt = signed_token_for(&pem, &apns.key_id, &apns.team_id, &apns.topic, now, CARRIED_LIFE_SECS).ok()?;
-    Some(((format!("{SYNC_PREFIX}{device}"), "weatherkit".into(), format!("{until}|{jwt}")), until))
+    let jwt = signed_token_for(
+        &pem,
+        &apns.key_id,
+        &apns.team_id,
+        &apns.topic,
+        now,
+        CARRIED_LIFE_SECS,
+    )
+    .ok()?;
+    Some((
+        (
+            format!("{SYNC_PREFIX}{device}"),
+            "weatherkit".into(),
+            format!("{until}|{jwt}"),
+        ),
+        until,
+    ))
 }
 
 /// A carried token arriving by sync, kept only from a sealed bundle (your
 /// own devices) and only when newer than the one held.
-pub fn take_synced(state_dir: &std::path::Path, id: &str, to: &str, sealed: bool, now: u64) -> Option<String> {
+pub fn take_synced(
+    state_dir: &std::path::Path,
+    id: &str,
+    to: &str,
+    sealed: bool,
+    now: u64,
+) -> Option<String> {
     id.strip_prefix(SYNC_PREFIX)?;
     if !sealed {
         return None;
@@ -319,7 +404,12 @@ pub fn take_synced(state_dir: &std::path::Path, id: &str, to: &str, sealed: bool
     if held.until >= until {
         return None;
     }
-    CarriedToken { token: token.into(), until }.save(state_dir).ok()?;
+    CarriedToken {
+        token: token.into(),
+        until,
+    }
+    .save(state_dir)
+    .ok()?;
     Some("Apple Weather can answer here now, with the laptop's say-so".into())
 }
 

@@ -49,7 +49,9 @@ pub fn phrase_take(samples: &[i16], rate: u32) -> Option<Take> {
         return None; // under a fifth of a second: not a phrase
     }
     let span: Vec<&mfcc::Frame> = all[first..=last].iter().collect();
-    Some(Take { frames: mfcc::normalised(&span) })
+    Some(Take {
+        frames: mfcc::normalised(&span),
+    })
 }
 
 /// Build the model from the takes. The threshold comes from how far the takes
@@ -57,7 +59,10 @@ pub fn phrase_take(samples: &[i16], rate: u32) -> Option<Take> {
 /// phrase varies, and anything within that (plus `MARGIN`) is the phrase.
 pub fn train(takes: Vec<Take>) -> Result<WakeModel, String> {
     if takes.len() < TAKES {
-        return Err(format!("I need {TAKES} takes of the phrase; I have {}", takes.len()));
+        return Err(format!(
+            "I need {TAKES} takes of the phrase; I have {}",
+            takes.len()
+        ));
     }
     let mut worst = 0f32;
     for i in 0..takes.len() {
@@ -65,7 +70,10 @@ pub fn train(takes: Vec<Take>) -> Result<WakeModel, String> {
             worst = worst.max(distance(&takes[i].frames, &takes[j].frames));
         }
     }
-    Ok(WakeModel { takes, threshold: worst * MARGIN })
+    Ok(WakeModel {
+        takes,
+        threshold: worst * MARGIN,
+    })
 }
 
 /// Dynamic time warping distance between two frame sequences, averaged over
@@ -112,7 +120,11 @@ pub fn distance(a: &[[f32; CEPS]], b: &[[f32; CEPS]]) -> f32 {
 }
 
 fn frame_dist(a: &[f32; CEPS], b: &[f32; CEPS]) -> f32 {
-    a.iter().zip(b.iter()).map(|(x, y)| (x - y) * (x - y)).sum::<f32>().sqrt()
+    a.iter()
+        .zip(b.iter())
+        .map(|(x, y)| (x - y) * (x - y))
+        .sum::<f32>()
+        .sqrt()
 }
 
 /// The closest any stretch of `samples` comes to any take, and where.
@@ -151,7 +163,9 @@ pub fn closest(samples: &[i16], rate: u32, model: &WakeModel) -> Option<(f32, us
 
 /// Was the phrase said somewhere in this clip?
 pub fn heard(samples: &[i16], rate: u32, model: &WakeModel) -> bool {
-    closest(samples, rate, model).map(|(d, _)| d <= model.threshold).unwrap_or(false)
+    closest(samples, rate, model)
+        .map(|(d, _)| d <= model.threshold)
+        .unwrap_or(false)
 }
 
 const RECORD: &str = "wake_model";
@@ -175,11 +189,16 @@ pub fn add_take(store: &crate::store::Store, samples: &[i16], rate: u32) -> Resu
     pending.push(t);
     if pending.len() < TAKES {
         store.save(PENDING, &pending).map_err(|e| e.to_string())?;
-        return Ok(format!("Take {} of {TAKES} kept. Say it again the way you normally would.", pending.len()));
+        return Ok(format!(
+            "Take {} of {TAKES} kept. Say it again the way you normally would.",
+            pending.len()
+        ));
     }
     let m = train(pending)?;
     keep_model(store, &m).map_err(|e| e.to_string())?;
-    store.save(PENDING, &Vec::<Take>::new()).map_err(|e| e.to_string())?;
+    store
+        .save(PENDING, &Vec::<Take>::new())
+        .map_err(|e| e.to_string())?;
     Ok(format!(
         "Learned it from {TAKES} takes. From now on I listen for your phrase directly, without \
          speech-to-text running all the time. It's matched to your voice: someone else saying it \
@@ -200,9 +219,22 @@ mod tests {
 
     #[test]
     fn a_sequence_is_nearest_itself_and_warping_absorbs_a_slower_copy() {
-        let a: Vec<[f32; CEPS]> = (0..40).map(|i| { let mut f = [0f32; CEPS]; f[0] = (i as f32 / 6.0).sin(); f[1] = (i as f32 / 9.0).cos(); f }).collect();
+        let a: Vec<[f32; CEPS]> = (0..40)
+            .map(|i| {
+                let mut f = [0f32; CEPS];
+                f[0] = (i as f32 / 6.0).sin();
+                f[1] = (i as f32 / 9.0).cos();
+                f
+            })
+            .collect();
         let slow: Vec<[f32; CEPS]> = (0..60).map(|i| a[i * 40 / 60]).collect();
-        let other: Vec<[f32; CEPS]> = (0..40).map(|i| { let mut f = [0f32; CEPS]; f[0] = (i as f32 / 2.0).cos(); f }).collect();
+        let other: Vec<[f32; CEPS]> = (0..40)
+            .map(|i| {
+                let mut f = [0f32; CEPS];
+                f[0] = (i as f32 / 2.0).cos();
+                f
+            })
+            .collect();
         assert_eq!(distance(&a, &a), 0.0);
         assert!(distance(&a, &slow) < 0.05, "{}", distance(&a, &slow));
         assert!(distance(&a, &other) > 0.3, "{}", distance(&a, &other));

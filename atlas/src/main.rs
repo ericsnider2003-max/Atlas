@@ -2,16 +2,16 @@
 // prompt (Eric, 27 Sep 2026). Typed in a terminal, it borrows that terminal
 // for what it prints (`firstlaunch::started_without_a_terminal`).
 #![cfg_attr(all(windows, feature = "desktop-ui"), windows_subsystem = "windows")]
-use atlas::config::Config;
 use atlas::brain::{self, Brain, Llm, ShellLlm};
+use atlas::config::Config;
 use atlas::daemon::{Autonomy, Daemon};
-use atlas::input::Keyboard;
-use atlas::perf::Throttle;
-use atlas::proactive::Proactive;
 use atlas::doctor;
+use atlas::input::Keyboard;
 use atlas::intent::{Intent, Parser};
+use atlas::perf::Throttle;
 use atlas::platform::{mock::MockPlatform, Monitor, Platform};
 use atlas::policy::{self, AllowAll, Approver, DenyAll};
+use atlas::proactive::Proactive;
 use atlas::voice::Voice;
 use atlas::workspace;
 use std::io::{self, Write};
@@ -28,7 +28,11 @@ use serving::*;
 // two startup doors continue to describe the same microphone choice.  The
 // desk signal is the laptop screen or an attached monitor:
 // `at_desk: laptop_active || screens_on`.
-fn pick_the_microphone(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::ToolsConfig) -> atlas::voice::ToolsConfig {
+fn pick_the_microphone(
+    cfg: &Config,
+    plat: &dyn Platform,
+    tc: &atlas::voice::ToolsConfig,
+) -> atlas::voice::ToolsConfig {
     // The desk signal is `at_desk: laptop_active || screens_on`.
     serving::pick_the_microphone_impl(cfg, plat, tc)
 }
@@ -190,7 +194,11 @@ struct TrialGuard;
 fn settle_update(root: &std::path::Path) {
     if atlas::upgrade::trial_passed(root) {
         // unheard-ok: returns `UpdateSettled`, not a Result
-        let _ = atlas::update_apply::finish_after_start(&atlas::roots::store(), root, &atlas::upgrade::this_tag());
+        let _ = atlas::update_apply::finish_after_start(
+            &atlas::roots::store(),
+            root,
+            &atlas::upgrade::this_tag(),
+        );
     }
 }
 
@@ -213,7 +221,10 @@ impl Drop for TrialGuard {
 }
 
 fn main() {
-    if std::env::args_os().nth(1).is_some_and(|arg| arg == "--npu-worker") {
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--npu-worker")
+    {
         std::process::exit(atlas::npu::worker_entry());
     }
     // First, before anything is printed: join the terminal Atlas was typed
@@ -237,8 +248,11 @@ fn main() {
     atlas::platform::win::become_dpi_aware();
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let flag = |f: &str| argv.iter().any(|a| a == f);
-    let words: Vec<String> =
-        argv.iter().filter(|a| !a.starts_with("--")).cloned().collect();
+    let words: Vec<String> = argv
+        .iter()
+        .filter(|a| !a.starts_with("--"))
+        .cloned()
+        .collect();
 
     if flag("--help") || flag("-h") {
         print!("{USAGE}");
@@ -247,7 +261,8 @@ fn main() {
 
     // Keep this lease from before the first state read until the command (or
     // daemon) finishes. Restore needs every process to release its read lease.
-    let restoring = words.first().is_some_and(|w| w == "backups") && words.get(1).is_some_and(|w| w == "restore");
+    let restoring = words.first().is_some_and(|w| w == "backups")
+        && words.get(1).is_some_and(|w| w == "restore");
     // The outer selftest launches a child with ATLAS_HOME pointed at its
     // scratch copy. Holding the real install's state lease across that child
     // makes the child fail before it can write a report (the GUI build hides
@@ -256,13 +271,21 @@ fn main() {
     let _state_access = if !selftest_parent && !flag("--version") && !flag("-V") {
         let state = atlas::roots::install_state();
         if restoring {
-            if let Err(error) = atlas::safety::may_restore(&state) { eprintln!("{error}"); return; }
+            if let Err(error) = atlas::safety::may_restore(&state) {
+                eprintln!("{error}");
+                return;
+            }
         }
         match atlas::store::begin_state_command(state.root(), restoring) {
             Ok(guard) => Some(guard),
-            Err(error) => { eprintln!("I couldn't safely open Atlas state: {error}"); return; }
+            Err(error) => {
+                eprintln!("I couldn't safely open Atlas state: {error}");
+                return;
+            }
         }
-    } else { None };
+    } else {
+        None
+    };
 
     // `setup/reference/RUN-TESTS.bat` has run `atlas.exe --version` since the
     // day it was written. Nothing handled it: `--version` was filtered out of
@@ -278,8 +301,15 @@ fn main() {
     // helper start counted as a start of the build on trial, so a build that
     // could not get through was never rolled back, and a helper could swap
     // the program file out from under the Atlas that started it).
-    let helper = matches!(words.first().map(|s| s.as_str()), Some("overlay") | Some("typebox"));
-    if !helper && std::env::var_os("ATLAS_UPDATE_PROBE").is_none() && !flag("--version") && !flag("-V") {
+    let helper = matches!(
+        words.first().map(|s| s.as_str()),
+        Some("overlay") | Some("typebox")
+    );
+    if !helper
+        && std::env::var_os("ATLAS_UPDATE_PROBE").is_none()
+        && !flag("--version")
+        && !flag("-V")
+    {
         let root = atlas::roots::install_root();
         if let Ok(running) = std::env::current_exe() {
             // The new build checks itself before it is started, and the
@@ -313,14 +343,18 @@ fn main() {
                         atlas::upgrade::TRIAL_STARTS,
                         atlas::upgrade::failed_at(&root, &failed).display()
                     );
-                    let status = atlas::tools::command(&running).args(std::env::args().skip(1)).status();
+                    let status = atlas::tools::command(&running)
+                        .args(std::env::args().skip(1))
+                        .status();
                     std::process::exit(status.ok().and_then(|s| s.code()).unwrap_or(0));
                 }
                 atlas::upgrade::TrialStep::Trying(_) => {
                     // Got through if it returns normally or stays up long enough.
                     let r = root.clone();
                     std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_secs(atlas::upgrade::HEALTHY_AFTER_SECS));
+                        std::thread::sleep(std::time::Duration::from_secs(
+                            atlas::upgrade::HEALTHY_AFTER_SECS,
+                        ));
                         settle_update(&r);
                     });
                     TRIAL_ROOT.with(|t| *t.borrow_mut() = Some(root.clone()));
@@ -333,7 +367,11 @@ fn main() {
                     let store = atlas::roots::store();
                     if atlas::update_apply::pending(&store).is_some() {
                         // unheard-ok: returns `UpdateSettled`, not a Result
-                        let _ = atlas::update_apply::finish_after_start(&store, &root, &atlas::upgrade::this_tag());
+                        let _ = atlas::update_apply::finish_after_start(
+                            &store,
+                            &root,
+                            &atlas::upgrade::this_tag(),
+                        );
                     }
                 }
             }
@@ -345,7 +383,11 @@ fn main() {
     // Asked by the build it is replacing: check yourself and say so.
     if flag("--health-check") {
         let root = atlas::roots::install_root();
-        match atlas::upgrade::health_check(&root, &atlas::roots::config_dir(), &atlas::roots::state_dir()) {
+        match atlas::upgrade::health_check(
+            &root,
+            &atlas::roots::config_dir(),
+            &atlas::roots::state_dir(),
+        ) {
             Ok(lines) => {
                 for l in &lines {
                     println!("ok: {l}");
@@ -374,13 +416,19 @@ fn main() {
     // `firstlaunch`.
     let double_clicked = atlas::firstlaunch::started_without_a_terminal();
     if (argv.is_empty() && double_clicked) || words.first().map(|s| s.as_str()) == Some("home") {
-        return run_home(double_clicked, atlas::firstlaunch::First::from_words(words.get(1..).unwrap_or(&[])));
+        return run_home(
+            double_clicked,
+            atlas::firstlaunch::First::from_words(words.get(1..).unwrap_or(&[])),
+        );
     }
     // The words-on-the-desktop overlay, started by the background Atlas
     // (`overlaywin`). No console, no window of its own to speak of.
     if words.first().map(|s| s.as_str()) == Some("overlay") {
         #[cfg(feature = "desktop-ui")]
-        if let Err(e) = atlas::overlaywin::run(atlas::overlaywin::Folders { data: atlas::roots::data_dir(), config: atlas::roots::config_dir() }) {
+        if let Err(e) = atlas::overlaywin::run(atlas::overlaywin::Folders {
+            data: atlas::roots::data_dir(),
+            config: atlas::roots::config_dir(),
+        }) {
             eprintln!("The desktop overlay couldn't start: {e}");
         }
         #[cfg(not(feature = "desktop-ui"))]
@@ -394,7 +442,10 @@ fn main() {
             .ok()
             .and_then(|c| c.tools.map(|t| t.quick_input))
             .unwrap_or_default();
-        if let Err(e) = atlas::typebox::run(qcfg, words.get(1).map(|w| w == "--standby").unwrap_or(false) || flag("--standby")) {
+        if let Err(e) = atlas::typebox::run(
+            qcfg,
+            words.get(1).map(|w| w == "--standby").unwrap_or(false) || flag("--standby"),
+        ) {
             eprintln!("The typing box couldn't open: {e}");
         }
         return;
@@ -407,7 +458,15 @@ fn main() {
             .ok()
             .and_then(|c| c.tools)
             .unwrap_or_default();
-        println!("{}", atlas::hotkeys::try_them(&tc.push_to_talk, &tc.quick_input, secs, &mut |line| println!("{line}")));
+        println!(
+            "{}",
+            atlas::hotkeys::try_them(
+                &tc.push_to_talk,
+                &tc.quick_input,
+                secs,
+                &mut |line| println!("{line}")
+            )
+        );
         return;
     }
     // Started by Windows at sign-in (the start-with-Windows task): the
@@ -487,7 +546,10 @@ fn main() {
     // `work_dir` and the two `Voice::new` call sites did not, which is how
     // the recorder came to write into a folder nothing else in the same run
     // used.
-    let cfg = Config { tools: cfg.tools.map(|t| t.anchored()), ..cfg };
+    let cfg = Config {
+        tools: cfg.tools.map(|t| t.anchored()),
+        ..cfg
+    };
 
     let plat: Box<dyn Platform> = if dry || !cfg!(windows) {
         if !dry && !cfg!(windows) {
@@ -496,9 +558,13 @@ fn main() {
         Box::new(MockPlatform::new(fake_monitors()))
     } else {
         #[cfg(windows)]
-        { Box::new(atlas::platform::win::WindowsPlatform) }
+        {
+            Box::new(atlas::platform::win::WindowsPlatform)
+        }
         #[cfg(not(windows))]
-        { unreachable!() }
+        {
+            unreachable!()
+        }
     };
 
     // Teaching Atlas your voice.
@@ -581,7 +647,10 @@ fn main() {
         return;
     }
 
-    if matches!(words.first().map(|s| s.as_str()), Some("seal-file") | Some("open-file") | Some("my-key")) {
+    if matches!(
+        words.first().map(|s| s.as_str()),
+        Some("seal-file") | Some("open-file") | Some("my-key")
+    ) {
         run_agefile(&words);
         return;
     }
@@ -589,16 +658,26 @@ fn main() {
         // `--merge-voices` from the raw arguments: `words` drops `--` flags.
         let merge = argv.iter().any(|a| a == "--merge-voices");
         // `--people 3`: how many were on the call, when you know.
-        let people = argv.iter().position(|a| a == "--people").and_then(|i| argv.get(i + 1)).and_then(|n| n.parse::<usize>().ok());
+        let people = argv
+            .iter()
+            .position(|a| a == "--people")
+            .and_then(|i| argv.get(i + 1))
+            .and_then(|n| n.parse::<usize>().ok());
         run_notes(&cfg, &words[1..], merge, people);
         return;
     }
     if words.first().map(|s| s.as_str()) == Some("cuts") {
         // Where each cut in a video sends the viewer's eye (`cutcheck` +
         // `editcraft`).
-        let Some(video) = words.get(1) else { return println!("atlas cuts <video>") };
+        let Some(video) = words.get(1) else {
+            return println!("atlas cuts <video>");
+        };
         let tc = cfg.tools.clone().unwrap_or_default();
-        let ffmpeg = tc.vars.get("ffmpeg").cloned().unwrap_or_else(|| "ffmpeg".into());
+        let ffmpeg = tc
+            .vars
+            .get("ffmpeg")
+            .cloned()
+            .unwrap_or_else(|| "ffmpeg".into());
         match atlas::cutcheck::cuts(&ffmpeg, video) {
             Ok(cuts) if cuts.is_empty() => println!("I didn't find any cuts in {video}."),
             Ok(cuts) => {
@@ -606,8 +685,17 @@ fn main() {
                 let notes = atlas::editcraft::check_cuts_within(&list, tc.editcraft.eye_jump_limit);
                 println!("{} cuts.", cuts.len());
                 for (i, (t, c)) in cuts.iter().enumerate() {
-                    let note = notes.iter().find(|(j, _)| *j == i).map(|(_, n)| format!(" — {n}")).unwrap_or_else(|| " — the eye stays put".into());
-                    println!("  {:>5.1}s  {:.0}% → {:.0}%{note}", t, c.leaving_at * 100.0, c.arriving_at * 100.0);
+                    let note = notes
+                        .iter()
+                        .find(|(j, _)| *j == i)
+                        .map(|(_, n)| format!(" — {n}"))
+                        .unwrap_or_else(|| " — the eye stays put".into());
+                    println!(
+                        "  {:>5.1}s  {:.0}% → {:.0}%{note}",
+                        t,
+                        c.leaving_at * 100.0,
+                        c.arriving_at * 100.0
+                    );
                 }
             }
             Err(e) => println!("{video}: {e}"),
@@ -617,7 +705,9 @@ fn main() {
     if words.first().map(|s| s.as_str()) == Some("film") {
         // Play an SVG animation and save it as a GIF (and an MP4 with
         // ffmpeg), next to the SVG (`filmstrip`).
-        let Some(file) = words.get(1) else { return println!("atlas film <animation.svg> [frames per second]") };
+        let Some(file) = words.get(1) else {
+            return println!("atlas film <animation.svg> [frames per second]");
+        };
         let fps: u32 = words.get(2).and_then(|w| w.parse().ok()).unwrap_or(12);
         let svg = match std::fs::read_to_string(file) {
             Ok(s) => s,
@@ -630,14 +720,28 @@ fn main() {
             spec.height = h;
         }
         let tc = cfg.tools.clone().unwrap_or_default();
-        let Some(browser) = atlas::filmstrip::find_browser(tc.vars.get("browser").map(|s| s.as_str())) else {
-            return println!("That needs Edge or Chrome to play the animation in, and I didn't find either.");
+        let Some(browser) =
+            atlas::filmstrip::find_browser(tc.vars.get("browser").map(|s| s.as_str()))
+        else {
+            return println!(
+                "That needs Edge or Chrome to play the animation in, and I didn't find either."
+            );
         };
         let path = std::path::Path::new(file);
-        let dir = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
-        let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "animation".into());
+        let dir = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(std::path::Path::new("."));
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "animation".into());
         let plan = atlas::filmstrip::Plan::for_svg(&svg, &spec, fps);
-        let ffmpeg = tc.vars.get("ffmpeg").cloned().unwrap_or_else(|| "ffmpeg".into());
+        let ffmpeg = tc
+            .vars
+            .get("ffmpeg")
+            .cloned()
+            .unwrap_or_else(|| "ffmpeg".into());
         match atlas::filmstrip::film(&svg, &plan, &browser, Some(&ffmpeg), dir, &stem) {
             Ok(made) => println!("{}", made.say()),
             Err(e) => println!("{file}: {e}"),
@@ -647,15 +751,23 @@ fn main() {
     if words.first().map(|s| s.as_str()) == Some("scene") {
         // Draw a 3-D scene from its JSON (`scene3d`): a still, a turntable
         // GIF, and Blender's render when Blender is installed.
-        let Some(file) = words.get(1) else { return println!("atlas scene <scene.json>") };
+        let Some(file) = words.get(1) else {
+            return println!("atlas scene <scene.json>");
+        };
         let scene = match atlas::scene3d::load_scene(std::path::Path::new(file)) {
             Ok(s) => s,
             Err(e) => return println!("{file}: {e}"),
         };
         let tc = cfg.tools.clone().unwrap_or_default();
         let path = std::path::Path::new(file);
-        let dir = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
-        let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "scene".into());
+        let dir = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(std::path::Path::new("."));
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "scene".into());
         let blender = atlas::scene3d::find_blender(tc.vars.get("blender").map(|s| s.as_str()));
         match atlas::scene3d::make(&scene, dir, &stem, 24, blender.as_deref()) {
             Ok(made) => println!("{}", made.say()),
@@ -666,11 +778,18 @@ fn main() {
     if words.first().map(|s| s.as_str()) == Some("fix") {
         // From the raw arguments: `words` drops everything starting with
         // `--`, and `atlas fix` needs both its `--` separator and `--land`.
-        let at = argv.iter().position(|a| a == "fix").map(|i| i + 1).unwrap_or(argv.len());
+        let at = argv
+            .iter()
+            .position(|a| a == "fix")
+            .map(|i| i + 1)
+            .unwrap_or(argv.len());
         run_fix(&cfg, &argv[at..]);
         return;
     }
-    if matches!(words.first().map(|s| s.as_str()), Some("wake-word") | Some("hearing") | Some("voices")) {
+    if matches!(
+        words.first().map(|s| s.as_str()),
+        Some("wake-word") | Some("hearing") | Some("voices")
+    ) {
         run_voice_lab(&cfg, &words);
         return;
     }
@@ -687,7 +806,11 @@ fn main() {
         let which = words.get(1).map(|s| s.as_str()).unwrap_or("today");
         let (from, to, name) = match which {
             "yesterday" => (today - 86_400, today, "yesterday"),
-            "week" => (today - 6 * 86_400, today + 86_400, "over the last seven days"),
+            "week" => (
+                today - 6 * 86_400,
+                today + 86_400,
+                "over the last seven days",
+            ),
             _ => (today, today + 86_400, "today"),
         };
         let back = |l: u64| zone.to_utc(l as i64).max(0) as u64;
@@ -696,11 +819,25 @@ fn main() {
             let l = zone.to_local(u as i64).max(0) as u64 % 86_400;
             format!("{}:{:02}", l / 3600, (l % 3600) / 60)
         };
-        println!("{}", atlas::worklog::say(&summary, name, !log.saw_input && log.blind_beats > 0, &clock));
+        println!(
+            "{}",
+            atlas::worklog::say(
+                &summary,
+                name,
+                !log.saw_input && log.blind_beats > 0,
+                &clock
+            )
+        );
         let p = atlas::platform::here();
-        println!("(This machine: {} since the last keyboard or mouse input; {}.)",
-            p.input_idle_secs().map(|s| format!("{s} s")).unwrap_or_else(|| "no way to tell".into()),
-            p.quiet_state().map(|q| q.plain()).unwrap_or("the OS doesn't say whether it's a good moment to interrupt"));
+        println!(
+            "(This machine: {} since the last keyboard or mouse input; {}.)",
+            p.input_idle_secs()
+                .map(|s| format!("{s} s"))
+                .unwrap_or_else(|| "no way to tell".into()),
+            p.quiet_state()
+                .map(|q| q.plain())
+                .unwrap_or("the OS doesn't say whether it's a good moment to interrupt")
+        );
         return;
     }
     if words.first().map(|s| s.as_str()) == Some("logs") {
@@ -716,7 +853,12 @@ fn main() {
         }
         let only_warn = flag("--warn");
         println!("{lines} lines, {} kinds of line:", d.templates.len());
-        for t in d.by_count().into_iter().filter(|t| !only_warn || t.words.first().map(|w| w != "INFO").unwrap_or(true)).take(25) {
+        for t in d
+            .by_count()
+            .into_iter()
+            .filter(|t| !only_warn || t.words.first().map(|w| w != "INFO").unwrap_or(true))
+            .take(25)
+        {
             println!("{:>6}  {}", t.count, t.text());
             if t.words.iter().filter(|w| *w == "<*>").count() * 2 > t.words.len() {
                 println!("        e.g. {}", t.example);
@@ -845,7 +987,9 @@ fn main() {
                     atlas::crash::note_path(store.root()).display()
                 );
             }
-            None => println!("No crash on record. Nothing has ended unexpectedly since I last said so."),
+            None => {
+                println!("No crash on record. Nothing has ended unexpectedly since I last said so.")
+            }
         }
         return;
     }
@@ -854,7 +998,10 @@ fn main() {
     // comment both told people to run `atlas setup` and nothing answered to
     // that name. Two spellings of one command is cheaper than a shipped
     // config file that lies, and `setup` is what a person types.
-    if matches!(words.first().map(|s| s.as_str()), Some("firstrun") | Some("setup")) {
+    if matches!(
+        words.first().map(|s| s.as_str()),
+        Some("firstrun") | Some("setup")
+    ) {
         run_firstrun(&cfg, plat.as_ref());
         return;
     }
@@ -958,7 +1105,9 @@ fn main() {
         return;
     }
 
-    if words.first().map(|s| s.as_str()) == Some("window") && words.get(1).map(|s| s.as_str()) == Some("read") {
+    if words.first().map(|s| s.as_str()) == Some("window")
+        && words.get(1).map(|s| s.as_str()) == Some("read")
+    {
         // `atlas window read notepad.exe`: what Atlas can read of that app's
         // window, the same way it reads one it's working for you.
         let name = words.get(2).cloned().unwrap_or_default();
@@ -974,7 +1123,9 @@ fn main() {
         return;
     }
 
-    if words.first().map(|s| s.as_str()) == Some("window") && words.get(1).map(|s| s.as_str()) == Some("type") {
+    if words.first().map(|s| s.as_str()) == Some("window")
+        && words.get(1).map(|s| s.as_str()) == Some("type")
+    {
         // `atlas window type notepad.exe some words`: type into that app's
         // window exactly the way a window job types a reply — brought to the
         // front, checked it's a text box, typed, your window put back. Never
@@ -988,16 +1139,23 @@ fn main() {
         }
         let spec = atlas::config::AppSpec::for_process(&name);
         match plat.find_window(&spec) {
-            Ok(Some(id)) => match atlas::delegate::type_into_window(plat.as_ref(), id, &text, false) {
-                Ok(()) => println!("Typed {} characters into {name}. Nothing was sent.", text.chars().count()),
-                Err(e) => println!("I couldn't type into it: {e}."),
-            },
+            Ok(Some(id)) => {
+                match atlas::delegate::type_into_window(plat.as_ref(), id, &text, false) {
+                    Ok(()) => println!(
+                        "Typed {} characters into {name}. Nothing was sent.",
+                        text.chars().count()
+                    ),
+                    Err(e) => println!("I couldn't type into it: {e}."),
+                }
+            }
             _ => println!("There's no {name} window open."),
         }
         return;
     }
 
-    if words.first().map(|s| s.as_str()) == Some("window") && words.get(1).map(|s| s.as_str()) == Some("idle") {
+    if words.first().map(|s| s.as_str()) == Some("window")
+        && words.get(1).map(|s| s.as_str()) == Some("idle")
+    {
         // `atlas window idle`: how long since the keyboard or mouse was last
         // touched — what "wait for a gap in your typing" is measured by.
         match plat.input_idle_secs() {
@@ -1166,7 +1324,10 @@ fn main() {
     // Both open the hub; they differ only in which page they land on, and
     // having separate words for them means the launcher doesn't have to
     // explain the URL.
-    if matches!(words.first().map(|s| s.as_str()), Some("access") | Some("sync-setup")) {
+    if matches!(
+        words.first().map(|s| s.as_str()),
+        Some("access") | Some("sync-setup")
+    ) {
         // Naming a provider gets the real steps; naming nothing still opens
         // the hub, which is what this word did before.
         if words.first().map(|s| s.as_str()) == Some("sync-setup")
@@ -1265,7 +1426,6 @@ fn main() {
         return run_budget(&cfg, atlas::cli::tail_after(&argv, "budget"));
     }
 
-
     if words.first().map(|s| s.as_str()) == Some("metrics") {
         return run_metrics();
     }
@@ -1286,7 +1446,13 @@ fn main() {
     }
 
     if flag("--voice") || flag("--wake") {
-        return voice_loop(&cfg, plat.as_ref(), &parser, approver.as_ref(), flag("--wake"));
+        return voice_loop(
+            &cfg,
+            plat.as_ref(),
+            &parser,
+            approver.as_ref(),
+            flag("--wake"),
+        );
     }
 
     // The prompt used to answer six intents itself and say "not wired to an
@@ -1302,10 +1468,14 @@ fn main() {
     // on the same store, and its first save wrote every file -- the
     // schedule, the calendar, what you've told it -- back from the copy it
     // loaded at start, over whatever the running one had done since.
-    let _typed_running_lease = match atlas::onlyone::OnlyOne::at(&atlas::roots::data_dir()).hold(atlas::store::now()) {
-        Ok(lease) => lease,
-        Err(why) => { eprintln!("{why} Talk to the running Atlas through its typing box or hub."); return; }
-    };
+    let _typed_running_lease =
+        match atlas::onlyone::OnlyOne::at(&atlas::roots::data_dir()).hold(atlas::store::now()) {
+            Ok(lease) => lease,
+            Err(why) => {
+                eprintln!("{why} Talk to the running Atlas through its typing box or hub.");
+                return;
+            }
+        };
     let store = atlas::roots::store();
     let mut output_initialization_failed = false;
     if let Err(error) = atlas::connection_removal::reconcile_interrupted_provider_removals(&store) {
@@ -1315,9 +1485,19 @@ fn main() {
     let mut shell: Option<Daemon> = cfg.tools.as_ref().and_then(|tc| {
         // With the model, like every other door. `None` here meant a
         // question typed at `atlas` was never put to a model at all.
-        let daemon = match Daemon::try_new(&cfg, plat.as_ref(), model_connection(tc), store, Proactive::new(tc.proactive.clone())) {
+        let daemon = match Daemon::try_new(
+            &cfg,
+            plat.as_ref(),
+            model_connection(tc),
+            store,
+            Proactive::new(tc.proactive.clone()),
+        ) {
             Ok(daemon) => daemon,
-            Err(error) => { eprintln!("Atlas could not safely open its configured output folders: {error}"); output_initialization_failed = true; return None; }
+            Err(error) => {
+                eprintln!("Atlas could not safely open its configured output folders: {error}");
+                output_initialization_failed = true;
+                return None;
+            }
         };
         let mut d = daemon
             .starting_the_model_server()
@@ -1327,7 +1507,9 @@ fn main() {
         Some(d)
     });
 
-    if output_initialization_failed { return; }
+    if output_initialization_failed {
+        return;
+    }
 
     if words.is_empty() {
         println!("atlas ready. type a command, 'help', or 'quit'.");
@@ -1346,20 +1528,41 @@ fn main() {
             match line.as_str() {
                 "" => continue,
                 "quit" | "exit" => return,
-                "help" => { print!("{USAGE}"); continue; }
+                "help" => {
+                    print!("{USAGE}");
+                    continue;
+                }
                 _ => {
                     println!(
                         "{}",
-                        prompt_line(&cfg, plat.as_ref(), &parser, approver.as_ref(), shell.as_mut(), &line)
+                        prompt_line(
+                            &cfg,
+                            plat.as_ref(),
+                            &parser,
+                            approver.as_ref(),
+                            shell.as_mut(),
+                            &line
+                        )
                     );
                 }
             }
         }
     } else {
-        let line = words.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ");
+        let line = words
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
         println!(
             "{}",
-            prompt_line(&cfg, plat.as_ref(), &parser, approver.as_ref(), shell.as_mut(), &line)
+            prompt_line(
+                &cfg,
+                plat.as_ref(),
+                &parser,
+                approver.as_ref(),
+                shell.as_mut(),
+                &line
+            )
         );
     }
 }
@@ -1378,14 +1581,21 @@ fn run_talk_bench(cfg: &atlas::config::Config, words: &[String]) -> i32 {
     };
     let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
     let reg = atlas::models::Registry::scan(&dir);
-    let Some(model) = reg.models.iter().find(|m| m.path == path || m.path.file_name() == path.file_name()) else {
+    let Some(model) = reg
+        .models
+        .iter()
+        .find(|m| m.path == path || m.path.file_name() == path.file_name())
+    else {
         println!("Couldn't read a model at {}.", path.display());
         return 2;
     };
     let mut mcfg = tc.models.clone();
     mcfg.port = port;
     let lc = atlas::models::llm_config_for(model, &mcfg, &atlas::models::server_post());
-    let llm = std::sync::Arc::new(atlas::brain::ShellLlm { cfg: lc, vars: tc.vars.clone() }) as std::sync::Arc<dyn atlas::brain::Llm>;
+    let llm = std::sync::Arc::new(atlas::brain::ShellLlm {
+        cfg: lc,
+        vars: tc.vars.clone(),
+    }) as std::sync::Arc<dyn atlas::brain::Llm>;
     let store = std::env::temp_dir().join(format!("atlas-talk-bench-{}", std::process::id()));
     let answers = atlas::talkbench::run(cfg, llm, &store);
     println!("{}", atlas::talkbench::report(&model.id, &answers));

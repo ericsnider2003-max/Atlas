@@ -18,11 +18,18 @@ use atlas::confirmed::{
 };
 
 fn on() -> ConfirmConfig {
-    ConfirmConfig { enabled: true, ..Default::default() }
+    ConfirmConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 fn asked(site: &str, change: Change) -> Asked {
-    Asked { site: site.into(), account: String::new(), change }
+    Asked {
+        site: site.into(),
+        account: String::new(),
+        change,
+    }
 }
 
 // ================= which ones get said back =================
@@ -42,7 +49,10 @@ fn reading_back_everything_is_a_switch_and_weakening_changes_ignore_it() {
     // Off: only the ones that leave an account less protected than it is now.
     let mut quieter = on();
     quieter.read_back_everything = false;
-    assert!(needs_reading_back(&weaker, &quieter), "a weakening change went through silently");
+    assert!(
+        needs_reading_back(&weaker, &quieter),
+        "a weakening change went through silently"
+    );
     assert!(!needs_reading_back(&stronger, &quieter));
 
     // And the feature being off means nothing is read back at all.
@@ -67,7 +77,10 @@ fn the_vault_check_belongs_to_atlas_doing_it_and_not_to_you_doing_it() {
     // shape of a precondition, so the read-back itself is separate.
     let a = asked("Instagram", Change::TurnOffTwoFactor);
     assert!(matches!(read_back(&a, true, false, &on()), Step::Cannot(_)));
-    assert!(!saying_it_back(&a).is_empty(), "the read-back needs no vault");
+    assert!(
+        !saying_it_back(&a).is_empty(),
+        "the read-back needs no vault"
+    );
 
     // And being away still stops the version that acts.
     assert!(matches!(read_back(&a, false, true, &on()), Step::Cannot(_)));
@@ -135,7 +148,10 @@ fn saying_yes_comes_with_how_to_put_it_back() {
         from: "a text code".into(),
         to: "an authenticator app".into(),
     });
-    assert!(switched.contains("from an authenticator app to a text code"), "{switched}");
+    assert!(
+        switched.contains("from an authenticator app to a text code"),
+        "{switched}"
+    );
 
     // And the one that cannot be undone says so rather than offering a page.
     let codes = how_to_undo(&Change::GenerateRecoveryCodes);
@@ -158,7 +174,10 @@ fn the_walkthrough_is_what_asks_rather_than_these_tests() {
         main.contains("confirmed::saying_it_back("),
         "nothing says the change back to you"
     );
-    assert!(main.contains("Some(said @ (\"yes\" | \"no\"))"), "there is no way to answer");
+    assert!(
+        main.contains("Some(said @ (\"yes\" | \"no\"))"),
+        "there is no way to answer"
+    );
     assert!(
         main.contains("confirmed::record(&asked, worked, said,"),
         "nothing keeps a trail of what was changed and when"
@@ -184,5 +203,8 @@ fn the_walkthrough_is_what_asks_rather_than_these_tests() {
         .and_then(|s| s.split_once("];"))
         .map(|(a, _)| a)
         .unwrap_or("");
-    assert!(!baseline.contains("\"confirmed\","), "still listed as unreachable");
+    assert!(
+        !baseline.contains("\"confirmed\","),
+        "still listed as unreachable"
+    );
 }

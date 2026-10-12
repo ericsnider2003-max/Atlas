@@ -166,7 +166,10 @@ pub enum Step {
 
 impl Session {
     pub fn start(t: u64) -> Session {
-        Session { started_at: t, ..Default::default() }
+        Session {
+            started_at: t,
+            ..Default::default()
+        }
     }
 
     pub fn record(&mut self, r: Result_) {
@@ -245,7 +248,9 @@ impl Session {
         if cfg.brain != Brain::Delegate || cfg.delegate_window.trim().is_empty() {
             return None;
         }
-        let left = cfg.delegate_turns_total.saturating_sub(self.delegate_turns_used);
+        let left = cfg
+            .delegate_turns_total
+            .saturating_sub(self.delegate_turns_used);
         if left == 0 {
             return None;
         }
@@ -256,7 +261,11 @@ impl Session {
                 crate::delegate::Reach::Converse,
                 cfg.delegate_turns_each.min(left),
             )
-            .stopping_on(&["that should fix it", "let me know how that goes", "does that work"]),
+            .stopping_on(&[
+                "that should fix it",
+                "let me know how that goes",
+                "does that work",
+            ]),
         )
     }
 
@@ -265,13 +274,22 @@ impl Session {
     }
 
     fn solved(&self) -> Vec<&Result_> {
-        self.results.iter().filter(|r| r.outcome == Outcome::Solved).collect()
+        self.results
+            .iter()
+            .filter(|r| r.outcome == Outcome::Solved)
+            .collect()
     }
     pub fn stuck(&self) -> Vec<&Result_> {
-        self.results.iter().filter(|r| r.outcome == Outcome::Stuck).collect()
+        self.results
+            .iter()
+            .filter(|r| r.outcome == Outcome::Stuck)
+            .collect()
     }
     pub fn needs_you(&self) -> Vec<&Result_> {
-        self.results.iter().filter(|r| r.outcome == Outcome::NeedsYou).collect()
+        self.results
+            .iter()
+            .filter(|r| r.outcome == Outcome::NeedsYou)
+            .collect()
     }
 }
 
@@ -328,7 +346,11 @@ pub fn morning_brief(s: &Session, while_you_were: crate::daily::Whereabouts) -> 
             "{} fixed and waiting for you to look at: {}{}",
             solved.len(),
             names.join(", "),
-            if solved.len() > 3 { format!(", and {} more", solved.len() - 3) } else { String::new() }
+            if solved.len() > 3 {
+                format!(", and {} more", solved.len() - 3)
+            } else {
+                String::new()
+            }
         ));
     }
     if !needs.is_empty() {
@@ -375,8 +397,12 @@ pub fn morning_detail(s: &Session) -> String {
             Outcome::NotReached => "not reached",
         };
         out.push_str(&format!("[{mark}] {}\n", r.problem));
-        out.push_str(&format!("    {} after {} attempt{}\n", r.note, r.attempts,
-            if r.attempts == 1 { "" } else { "s" }));
+        out.push_str(&format!(
+            "    {} after {} attempt{}\n",
+            r.note,
+            r.attempts,
+            if r.attempts == 1 { "" } else { "s" }
+        ));
         if let Some(n) = r.tests_passed {
             out.push_str(&format!("    {n} tests pass with the change in\n"));
         }
@@ -417,8 +443,18 @@ pub fn note_for(problem: &str, cfg: &OvernightConfig) -> String {
 pub fn worth_doing_overnight(p: &Problem) -> bool {
     let t = format!("{} {}", p.goal, p.theory.clone().unwrap_or_default()).to_lowercase();
     const NEEDS_YOU: &[&str] = &[
-        "which", "prefer", "should i", "decide", "choose", "design",
-        "delete", "remove permanently", "send", "post", "publish", "pay",
+        "which",
+        "prefer",
+        "should i",
+        "decide",
+        "choose",
+        "design",
+        "delete",
+        "remove permanently",
+        "send",
+        "post",
+        "publish",
+        "pay",
     ];
     !NEEDS_YOU.iter().any(|w| t.contains(w))
 }

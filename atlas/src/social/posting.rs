@@ -28,14 +28,26 @@ pub const MAX_IMAGE_BYTES: usize = 1_000_000;
 /// body of `content_type`. Answers the status and the body. A trait so the
 /// whole exchange is tested without the network.
 pub trait Xrpc {
-    fn call(&self, nsid: &str, token: Option<&str>, content_type: &str, body: &[u8]) -> Result<(u16, String), String>;
+    fn call(
+        &self,
+        nsid: &str,
+        token: Option<&str>,
+        content_type: &str,
+        body: &[u8],
+    ) -> Result<(u16, String), String>;
 }
 
 /// The real one: HTTPS to `PDS`.
 pub struct Live;
 
 impl Xrpc for Live {
-    fn call(&self, nsid: &str, token: Option<&str>, content_type: &str, body: &[u8]) -> Result<(u16, String), String> {
+    fn call(
+        &self,
+        nsid: &str,
+        token: Option<&str>,
+        content_type: &str,
+        body: &[u8],
+    ) -> Result<(u16, String), String> {
         let auth = token.map(|t| format!("Bearer {t}"));
         let mut headers: Vec<(&str, &str)> = vec![("User-Agent", super::apis::USER_AGENT)];
         if let Some(a) = &auth {
@@ -56,7 +68,10 @@ impl Xrpc for Live {
 
 /// The picture types Bluesky shows, by file extension.
 fn image_type(path: &str) -> Option<&'static str> {
-    let ext = std::path::Path::new(path).extension()?.to_str()?.to_ascii_lowercase();
+    let ext = std::path::Path::new(path)
+        .extension()?
+        .to_str()?
+        .to_ascii_lowercase();
     match ext.as_str() {
         "jpg" | "jpeg" => Some("image/jpeg"),
         "png" => Some("image/png"),
@@ -74,18 +89,30 @@ fn image_type(path: &str) -> Option<&'static str> {
 fn problem(text: &str, files: &[(String, usize)]) -> Option<String> {
     let n = text.chars().count();
     if n > MAX_GRAPHEMES {
-        return Some(format!("{} characters too long for Bluesky ({MAX_GRAPHEMES} at most)", n - MAX_GRAPHEMES));
+        return Some(format!(
+            "{} characters too long for Bluesky ({MAX_GRAPHEMES} at most)",
+            n - MAX_GRAPHEMES
+        ));
     }
     if files.len() > MAX_IMAGES {
-        return Some(format!("Bluesky takes {MAX_IMAGES} pictures at most, and this has {}", files.len()));
+        return Some(format!(
+            "Bluesky takes {MAX_IMAGES} pictures at most, and this has {}",
+            files.len()
+        ));
     }
     for (path, size) in files {
-        let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.clone());
+        let name = std::path::Path::new(path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.clone());
         if image_type(path).is_none() {
             return Some(format!("{name} isn't a picture Bluesky takes (JPEG, PNG, WebP or GIF; video isn't posted from here yet)"));
         }
         if *size > MAX_IMAGE_BYTES {
-            return Some(format!("{name} is {:.1} MB and Bluesky takes 1 MB at most per picture", *size as f64 / 1_000_000.0));
+            return Some(format!(
+                "{name} is {:.1} MB and Bluesky takes 1 MB at most per picture",
+                *size as f64 / 1_000_000.0
+            ));
         }
     }
     None
@@ -96,9 +123,16 @@ fn problem(text: &str, files: &[(String, usize)]) -> Option<String> {
 pub fn link_facets(text: &str) -> Vec<Value> {
     let mut out = Vec::new();
     let mut from = 0;
-    while let Some(i) = ["https://", "http://"].iter().filter_map(|p| text[from..].find(p)).min() {
+    while let Some(i) = ["https://", "http://"]
+        .iter()
+        .filter_map(|p| text[from..].find(p))
+        .min()
+    {
         let start = from + i;
-        let mut end = start + text[start..].find(char::is_whitespace).unwrap_or(text.len() - start);
+        let mut end = start
+            + text[start..]
+                .find(char::is_whitespace)
+                .unwrap_or(text.len() - start);
         while end > start && text[..end].ends_with(['.', ',', ';', ':', '!', '?', ')', '"', '\'']) {
             end -= 1;
         }
@@ -142,7 +176,11 @@ fn json_answer(what: &str, got: Result<(u16, String), String>) -> Result<Value, 
         return Err("Bluesky refused the app password -- make a new one in Bluesky's settings and keep it on the Social page".into());
     }
     if !(200..300).contains(&status) {
-        let msg = v.get("message").and_then(Value::as_str).or_else(|| v.get("error").and_then(Value::as_str)).unwrap_or("no reason given");
+        let msg = v
+            .get("message")
+            .and_then(Value::as_str)
+            .or_else(|| v.get("error").and_then(Value::as_str))
+            .unwrap_or("no reason given");
         return Err(format!("Bluesky said no ({what}, {status}): {msg}"));
     }
     Ok(v)
@@ -168,19 +206,54 @@ pub fn post_with_app_password(
     if let Some(why) = problem(text, &sizes) {
         return Err(why);
     }
-    let login = json!({ "identifier": handle.trim_start_matches('@'), "password": app_password }).to_string();
-    let session = json_answer("signing in", x.call("com.atproto.server.createSession", None, "application/json", login.as_bytes()))?;
-    let token = session.get("accessJwt").and_then(Value::as_str).ok_or("Bluesky's sign-in answered without a token")?;
-    let did = session.get("did").and_then(Value::as_str).ok_or("Bluesky's sign-in answered without the account's id")?;
+    let login = json!({ "identifier": handle.trim_start_matches('@'), "password": app_password })
+        .to_string();
+    let session = json_answer(
+        "signing in",
+        x.call(
+            "com.atproto.server.createSession",
+            None,
+            "application/json",
+            login.as_bytes(),
+        ),
+    )?;
+    let token = session
+        .get("accessJwt")
+        .and_then(Value::as_str)
+        .ok_or("Bluesky's sign-in answered without a token")?;
+    let did = session
+        .get("did")
+        .and_then(Value::as_str)
+        .ok_or("Bluesky's sign-in answered without the account's id")?;
     let mut images = Vec::new();
     for (path, bytes) in &files {
         let kind = image_type(path).unwrap_or("application/octet-stream");
-        let up = json_answer("uploading a picture", x.call("com.atproto.repo.uploadBlob", Some(token), kind, bytes))?;
-        let blob = up.get("blob").cloned().ok_or("Bluesky took the picture but didn't say where it is")?;
+        let up = json_answer(
+            "uploading a picture",
+            x.call("com.atproto.repo.uploadBlob", Some(token), kind, bytes),
+        )?;
+        let blob = up
+            .get("blob")
+            .cloned()
+            .ok_or("Bluesky took the picture but didn't say where it is")?;
         images.push((blob, String::new()));
     }
     let body = json!({ "repo": did, "collection": "app.bsky.feed.post", "record": record(text, now, &images) }).to_string();
-    let made = json_answer("posting", x.call("com.atproto.repo.createRecord", Some(token), "application/json", body.as_bytes()))?;
-    let uri = made.get("uri").and_then(Value::as_str).filter(|uri| uri.starts_with("at://") && uri.contains("/app.bsky.feed.post/") && !uri.ends_with('/')).ok_or("Bluesky gave no valid receipt (posting); publication is unconfirmed")?;
+    let made = json_answer(
+        "posting",
+        x.call(
+            "com.atproto.repo.createRecord",
+            Some(token),
+            "application/json",
+            body.as_bytes(),
+        ),
+    )?;
+    let uri = made
+        .get("uri")
+        .and_then(Value::as_str)
+        .filter(|uri| {
+            uri.starts_with("at://") && uri.contains("/app.bsky.feed.post/") && !uri.ends_with('/')
+        })
+        .ok_or("Bluesky gave no valid receipt (posting); publication is unconfirmed")?;
     Ok(uri.to_string())
 }

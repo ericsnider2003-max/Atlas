@@ -15,9 +15,17 @@ fn every_command_that_needs_words_has_an_example_that_fits() {
         .filter(|e| atlas::selftest::example_for(&e.name).is_none())
         .map(|e| e.name.clone())
         .collect();
-    assert!(missing.is_empty(), "add an example to selftest::EXAMPLES for: {missing:?}");
+    assert!(
+        missing.is_empty(),
+        "add an example to selftest::EXAMPLES for: {missing:?}"
+    );
     let s = atlas::selftest::sentences(&book);
-    assert!(!s.iter().any(|(_, said, _)| said.contains("quarterly budget")), "no filler left");
-    assert!(s.iter().any(|(_, said, _)| said == "mode focus" || said.ends_with(" focus")));
+    assert!(
+        !s.iter()
+            .any(|(_, said, _)| said.contains("quarterly budget")),
+        "no filler left"
+    );
+    assert!(s
+        .iter()
+        .any(|(_, said, _)| said == "mode focus" || said.ends_with(" focus")));
 }
-

@@ -29,7 +29,9 @@ impl Server {
             ));
         }
         if token.len() < 16 {
-            return Err(AtlasError::Config("the API token is too short to be safe".into()));
+            return Err(AtlasError::Config(
+                "the API token is too short to be safe".into(),
+            ));
         }
         // Loopback unless you named one other address, and never 0.0.0.0 --
         // `bind_address` is the rule and refuses anything public. Reaching
@@ -101,7 +103,11 @@ impl Server {
     /// Something to tell you when wrong tokens keep arriving — a run of them
     /// is something other than you trying.
     pub fn guesses_worth_mentioning(&self) -> Option<String> {
-        self.failures.lock().or_else(crate::crash::unpoison).ok().and_then(|f| f.worth_mentioning())
+        self.failures
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()
+            .and_then(|f| f.worth_mentioning())
     }
 
     pub fn port(&self) -> u16 {
@@ -290,7 +296,11 @@ impl Server {
         // from outside: nothing but the start's own id, which opens nothing.
         if req.method == "GET" && req.path == PING_PATH {
             let body = serde_json::json!({ "atlas": self.id }).to_string();
-            let _ = stream.write_all(&render_file("application/json", "Cache-Control: no-store\r\n", body.as_bytes()));
+            let _ = stream.write_all(&render_file(
+                "application/json",
+                "Cache-Control: no-store\r\n",
+                body.as_bytes(),
+            ));
             let _ = stream.flush();
             return Ok(None);
         }
@@ -333,7 +343,8 @@ impl Server {
         // before any token is looked at.
         // A link carrying the token itself (`?t=`) was made by Atlas, so
         // following it from another page -- a note, a chat -- still opens.
-        let carries_its_token = req.method == "GET" && token_matches(&self.token, query_field(&req.query, "t").as_deref());
+        let carries_its_token = req.method == "GET"
+            && token_matches(&self.token, query_field(&req.query, "t").as_deref());
         if from_another_page(&head) && !carries_its_token {
             let _ = stream.write_all(render(&Reply::denied()).as_bytes());
             let _ = stream.flush();
@@ -346,12 +357,20 @@ impl Server {
         // `route_handoff`, which is the property that keeps a peer token
         // incapable of reaching a hub page.
         let is_peer = match (&self.signals, given.as_deref()) {
-            (Some(door), Some(t)) => door.lock().or_else(crate::crash::unpoison).map(|d| d.knows(t)).unwrap_or(false),
+            (Some(door), Some(t)) => door
+                .lock()
+                .or_else(crate::crash::unpoison)
+                .map(|d| d.knows(t))
+                .unwrap_or(false),
             _ => false,
         };
         if !is_hub && !is_peer {
             self.slow_down_a_guess();
-            let r = if Reply::wants_a_page(&req.method, &req.path) { Reply::denied_page() } else { Reply::denied() };
+            let r = if Reply::wants_a_page(&req.method, &req.path) {
+                Reply::denied_page()
+            } else {
+                Reply::denied()
+            };
             let _ = stream.write_all(render(&r).as_bytes());
             let _ = stream.flush();
             return Ok(None);
@@ -366,7 +385,11 @@ impl Server {
         let len = content_length(&head);
         let cap = body_cap(&req, self.max_body, self.max_upload);
         if len > cap {
-            let too_big = if req.path.starts_with("/hub") { Reply::too_big_page(&req.path) } else { Reply::too_big_for(cap) };
+            let too_big = if req.path.starts_with("/hub") {
+                Reply::too_big_page(&req.path)
+            } else {
+                Reply::too_big_for(cap)
+            };
             if req.path.starts_with("/hub") {
                 // 30 Sep 2026: the drain had the request's own five seconds,
                 // so a big file over Wi-Fi was still arriving when it stopped
@@ -381,7 +404,11 @@ impl Server {
                 let mut sink = [0u8; 16 * 1024];
                 reader.get_mut().allow_body(0);
                 while left > 0 && std::time::Instant::now() < drain_until {
-                    match reader.by_ref().take(left.min(sink.len() as u64)).read(&mut sink) {
+                    match reader
+                        .by_ref()
+                        .take(left.min(sink.len() as u64))
+                        .read(&mut sink)
+                    {
                         Ok(0) | Err(_) => break,
                         Ok(n) => left -= n as u64,
                     }
@@ -411,7 +438,11 @@ impl Server {
         // routing function ever called for a peer-authenticated request.
         if let (Some(door), Some(t)) = (&self.signals, given.as_deref()) {
             if let Some(action) = route_signal(&req, door, t) {
-                return Ok(Some(Asked { stream, action, page: None }));
+                return Ok(Some(Asked {
+                    stream,
+                    action,
+                    page: None,
+                }));
             }
         }
 
@@ -445,15 +476,27 @@ impl Server {
             // Kept as one small hunk so it can move with connection handling.
             Some(action)
                 if action.carries_a_secret()
-                    && !stream.peer_addr().map(|a| private_line(a.ip())).unwrap_or(false) =>
+                    && !stream
+                        .peer_addr()
+                        .map(|a| private_line(a.ip()))
+                        .unwrap_or(false) =>
             {
                 secret_refused_page()
             }
             // ---- end of the private-line check ----
             Some(action) => {
-                return Ok(Some(Asked { stream, action, page: Some((req.method.clone(), req.path.clone())) }));
+                return Ok(Some(Asked {
+                    stream,
+                    action,
+                    page: Some((req.method.clone(), req.path.clone())),
+                }));
             }
-            None if req.method == "GET" && req.path.starts_with("/hub") && !req.path.contains('.') => Reply::not_found_page(&req.path),
+            None if req.method == "GET"
+                && req.path.starts_with("/hub")
+                && !req.path.contains('.') =>
+            {
+                Reply::not_found_page(&req.path)
+            }
             None => {
                 // A form that posts somewhere nothing answers: the fault is
                 // Atlas's, so say so in words, with the way back.
@@ -482,7 +525,11 @@ impl Server {
         let mut r = reply;
         // Something in Atlas failed while answering a page or a form:
         // said in words with the way back, never a bare JSON error.
-        if r.status >= 500 && r.kind == Body::Json && path.starts_with("/hub") && !path.contains('.') {
+        if r.status >= 500
+            && r.kind == Body::Json
+            && path.starts_with("/hub")
+            && !path.contains('.')
+        {
             crate::errln!("atlas: {} {} failed: {}", method, path, r.body);
             r = Reply::failed_page();
         }
@@ -495,7 +542,11 @@ impl Server {
         match &r.bytes {
             // Kept a day in the browser: the same sample is the same bytes.
             Some((mime, b)) => {
-                let _ = stream.write_all(&render_file(mime, "Cache-Control: private, max-age=86400\r\n", b));
+                let _ = stream.write_all(&render_file(
+                    mime,
+                    "Cache-Control: private, max-age=86400\r\n",
+                    b,
+                ));
             }
             None => {
                 let _ = stream.write_all(render(&r).as_bytes());

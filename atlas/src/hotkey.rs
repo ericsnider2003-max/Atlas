@@ -39,15 +39,26 @@ pub struct Gate {
 
 impl Gate {
     pub fn new(hold_ms: u64) -> Gate {
-        Gate { hold: HoldToTalk::new("", hold_ms), down: false }
+        Gate {
+            hold: HoldToTalk::new("", hold_ms),
+            down: false,
+        }
     }
 
     /// The key went down (or auto-repeated while down).
     pub fn down(&mut self, now_ms: u64) -> Verdict {
         let first = !self.down;
         self.down = true;
-        let e = if first { self.hold.down(now_ms) } else { self.hold.poll(now_ms) };
-        Verdict { hold_back: true, give_tap_back: false, event: (e == KeyEvent::StartTalking).then_some(e) }
+        let e = if first {
+            self.hold.down(now_ms)
+        } else {
+            self.hold.poll(now_ms)
+        };
+        Verdict {
+            hold_back: true,
+            give_tap_back: false,
+            event: (e == KeyEvent::StartTalking).then_some(e),
+        }
     }
 
     /// Time passed with the key still down: a hold crosses its threshold here
@@ -69,15 +80,26 @@ impl Gate {
     /// The key came up.
     pub fn up(&mut self, now_ms: u64) -> Verdict {
         if !self.down {
-            return Verdict { hold_back: false, give_tap_back: false, event: None };
+            return Verdict {
+                hold_back: false,
+                give_tap_back: false,
+                event: None,
+            };
         }
         self.down = false;
         match self.hold.up(now_ms) {
-            KeyEvent::StopTalking => Verdict { hold_back: true, give_tap_back: false, event: Some(KeyEvent::StopTalking) },
-            _ => Verdict { hold_back: true, give_tap_back: true, event: None },
+            KeyEvent::StopTalking => Verdict {
+                hold_back: true,
+                give_tap_back: false,
+                event: Some(KeyEvent::StopTalking),
+            },
+            _ => Verdict {
+                hold_back: true,
+                give_tap_back: true,
+                event: None,
+            },
         }
     }
-
 }
 
 /// The key named in `push_to_talk.key`, as a Windows virtual-key code.
@@ -96,9 +118,15 @@ pub fn windows_vk(name: &str) -> Option<u16> {
         "space" => 0x20,
         f if f.starts_with('f') => {
             let k: u16 = f[1..].parse().ok()?;
-            if (1..=24).contains(&k) { 0x6F + k } else { return None }
+            if (1..=24).contains(&k) {
+                0x6F + k
+            } else {
+                return None;
+            }
         }
-        c if c.len() == 1 && c.chars().all(|x| x.is_ascii_alphanumeric()) => c.to_ascii_uppercase().as_bytes()[0] as u16,
+        c if c.len() == 1 && c.chars().all(|x| x.is_ascii_alphanumeric()) => {
+            c.to_ascii_uppercase().as_bytes()[0] as u16
+        }
         _ => return None,
     })
 }
@@ -146,7 +174,10 @@ pub fn parse_linux_event(b: &[u8]) -> Option<(u16, i32)> {
 
 #[cfg(any(windows, target_os = "linux"))]
 fn now_ms() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// The key, being heard.
@@ -192,11 +223,12 @@ mod platform {
     use std::sync::Mutex;
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VIRTUAL_KEY,
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
+        VIRTUAL_KEY,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, GetMessageW, SetWindowsHookExW, KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP,
-        WM_SYSKEYDOWN, WM_SYSKEYUP,
+        CallNextHookEx, GetMessageW, SetWindowsHookExW, KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL,
+        WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
 
     /// Marks keys Atlas injected, so the hook lets them through untouched.
@@ -230,7 +262,11 @@ mod platform {
                             } else if m == WM_KEYUP || m == WM_SYSKEYUP {
                                 s.gate.up(super::now_ms())
                             } else {
-                                Verdict { hold_back: false, give_tap_back: false, event: None }
+                                Verdict {
+                                    hold_back: false,
+                                    give_tap_back: false,
+                                    event: None,
+                                }
                             };
                             if let Some(e) = v.event {
                                 let _ = s.tx.send(e);
@@ -257,7 +293,13 @@ mod platform {
         let key = |flags: KEYBD_EVENT_FLAGS| INPUT {
             r#type: INPUT_KEYBOARD,
             Anonymous: INPUT_0 {
-                ki: KEYBDINPUT { wVk: VIRTUAL_KEY(vk), wScan: 0, dwFlags: flags, time: 0, dwExtraInfo: MINE },
+                ki: KEYBDINPUT {
+                    wVk: VIRTUAL_KEY(vk),
+                    wScan: 0,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: MINE,
+                },
             },
         };
         let inputs = [key(KEYBD_EVENT_FLAGS(0)), key(KEYEVENTF_KEYUP)];
@@ -270,7 +312,11 @@ mod platform {
 
     pub fn spawn(key: &str, hold_ms: u64, tx: Sender<KeyEvent>) -> Result<(), String> {
         let vk = windows_vk(key).ok_or_else(|| format!("I don't know a key called \"{key}\""))?;
-        *STATE.lock().map_err(|_| "the key state is poisoned")? = Some(Shared { vk, gate: Gate::new(hold_ms), tx });
+        *STATE.lock().map_err(|_| "the key state is poisoned")? = Some(Shared {
+            vk,
+            gate: Gate::new(hold_ms),
+            tx,
+        });
         let (ok_tx, ok_rx) = std::sync::mpsc::channel();
         // SAFETY: this thread installs the hook and then pumps its messages for as long as it
         // lives, as a low-level hook requires; `hook` is a valid callback for the process lifetime.
@@ -282,14 +328,21 @@ mod platform {
                     while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
                 }
                 Err(e) => {
-                    let _ = ok_tx.send(Err(format!("Windows wouldn't let me watch the keyboard: {e}")));
+                    let _ = ok_tx.send(Err(format!(
+                        "Windows wouldn't let me watch the keyboard: {e}"
+                    )));
                 }
             }
         });
         // The timer: a hold crosses its threshold even with no key repeats.
         // Asleep while the key is up; the hook unparks it on a press.
         let timer = std::thread::spawn(|| loop {
-            let waiting = STATE.lock().or_else(crate::crash::unpoison).ok().and_then(|g| g.as_ref().map(|s| s.gate.waiting_for_hold())).unwrap_or(false);
+            let waiting = STATE
+                .lock()
+                .or_else(crate::crash::unpoison)
+                .ok()
+                .and_then(|g| g.as_ref().map(|s| s.gate.waiting_for_hold()))
+                .unwrap_or(false);
             if !waiting {
                 std::thread::park_timeout(std::time::Duration::from_secs(5));
                 continue;
@@ -305,7 +358,9 @@ mod platform {
         });
         // unheard-ok: a OnceLock already set keeps its first value, which is the one wanted
         let _ = TIMER.set(timer.thread().clone());
-        ok_rx.recv().map_err(|_| "the keyboard thread didn't start".to_string())?
+        ok_rx
+            .recv()
+            .map_err(|_| "the keyboard thread didn't start".to_string())?
     }
 }
 
@@ -341,7 +396,12 @@ mod platform {
         let timer = {
             let (tx, gate) = (tx.clone(), gate.clone());
             std::thread::spawn(move || loop {
-                if !gate.lock().or_else(crate::crash::unpoison).map(|g| g.waiting_for_hold()).unwrap_or(false) {
+                if !gate
+                    .lock()
+                    .or_else(crate::crash::unpoison)
+                    .map(|g| g.waiting_for_hold())
+                    .unwrap_or(false)
+                {
                     std::thread::park_timeout(std::time::Duration::from_secs(5));
                     continue;
                 }
@@ -370,7 +430,11 @@ mod platform {
                             continue;
                         }
                         if let Ok(mut g) = gate.lock().or_else(crate::crash::unpoison) {
-                            let verdict = if v == 0 { g.up(now_ms()) } else { g.down(now_ms()) };
+                            let verdict = if v == 0 {
+                                g.up(now_ms())
+                            } else {
+                                g.down(now_ms())
+                            };
                             if let Some(e) = verdict.event {
                                 let _ = tx.send(e);
                             }
@@ -383,7 +447,10 @@ mod platform {
             });
         }
         if opened == 0 {
-            return Err("I can see the keyboard but can't read it — add yourself to the `input` group".into());
+            return Err(
+                "I can see the keyboard but can't read it — add yourself to the `input` group"
+                    .into(),
+            );
         }
         Ok(())
     }
@@ -392,7 +459,11 @@ mod platform {
 #[cfg(not(any(windows, target_os = "linux")))]
 mod platform {
     use super::*;
-    pub fn spawn(_key: &str, _hold_ms: u64, _tx: std::sync::mpsc::Sender<KeyEvent>) -> Result<(), String> {
+    pub fn spawn(
+        _key: &str,
+        _hold_ms: u64,
+        _tx: std::sync::mpsc::Sender<KeyEvent>,
+    ) -> Result<(), String> {
         Err("no keyboard hook on this system yet".into())
     }
 }

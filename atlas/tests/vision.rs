@@ -16,16 +16,23 @@
 
 use atlas::infer::{Kind, Layout, Outputs};
 use atlas::vision::{
-    alike, faces, letterbox, thin_out, things, to_unit, whole_picture, Album, Face, Framing,
-    Guess, Object, Patch, Scene, Sight, VisionConfig,
+    alike, faces, letterbox, thin_out, things, to_unit, whole_picture, Album, Face, Framing, Guess,
+    Object, Patch, Scene, Sight, VisionConfig,
 };
 
 fn settings() -> VisionConfig {
-    VisionConfig { enabled: true, ..VisionConfig::default() }
+    VisionConfig {
+        enabled: true,
+        ..VisionConfig::default()
+    }
 }
 
 fn thing(name: &str, x: f32, y: f32, w: f32, h: f32, sure: f32) -> Object {
-    Object { name: name.into(), area: Patch::new(x, y, w, h), sure }
+    Object {
+        name: name.into(),
+        area: Patch::new(x, y, w, h),
+        sure,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -38,14 +45,23 @@ fn not_looking_and_seeing_nothing_are_different_answers() {
     let empty = Sight::Looked(Scene::default());
     let blind = Sight::Unread("the camera wouldn't open".into());
 
-    assert!(empty.scene().is_some(), "a look that found nothing is still a look");
-    assert!(blind.scene().is_none(), "a look that didn't happen has no scene");
+    assert!(
+        empty.scene().is_some(),
+        "a look that found nothing is still a look"
+    );
+    assert!(
+        blind.scene().is_none(),
+        "a look that didn't happen has no scene"
+    );
 
     let said_empty = empty.spoken(&cfg);
     let said_blind = blind.spoken(&cfg);
     assert_ne!(said_empty, said_blind);
     assert!(said_blind.contains("couldn't look"), "{said_blind}");
-    assert!(said_blind.contains("camera wouldn't open"), "and why: {said_blind}");
+    assert!(
+        said_blind.contains("camera wouldn't open"),
+        "and why: {said_blind}"
+    );
 }
 
 #[test]
@@ -71,7 +87,9 @@ fn a_look_that_really_found_nobody_does_say_so() {
 fn a_half_failed_look_reports_the_half_that_failed() {
     let mut scene = Scene::default();
     scene.things.push(thing("mug", 0.1, 0.1, 0.2, 0.2, 0.9));
-    scene.could_not.push("I couldn't look for faces: model missing".into());
+    scene
+        .could_not
+        .push("I couldn't look for faces: model missing".into());
     let lines = Sight::Looked(scene).as_lines("me");
     assert!(lines.contains("could_not:"), "{lines}");
     assert!(
@@ -90,7 +108,10 @@ fn how_many_faces_is_reported_at_the_confidence_of_the_weakest() {
         who: None,
         sure_who: 0.0,
     };
-    let scene = Scene { faces: vec![face(0.95), face(0.61)], ..Scene::default() };
+    let scene = Scene {
+        faces: vec![face(0.95), face(0.61)],
+        ..Scene::default()
+    };
     let lines = Sight::Looked(scene).as_lines("me");
     assert!(lines.contains("faces: 2 0.610"), "{lines}");
 }
@@ -117,7 +138,10 @@ fn a_room_with_nothing_nameable_says_so_without_dressing_it_up() {
     // Not an error, and not a confident nothing either — `hollow` exists
     // because "All fine. 0 gigabytes free" reads as an answer.
     assert!(said.contains("nothing I can name"), "{said}");
-    assert!(!said.contains("0"), "a count of zero is not an answer: {said}");
+    assert!(
+        !said.contains("0"),
+        "a count of zero is not an answer: {said}"
+    );
 }
 
 #[test]
@@ -151,9 +175,15 @@ fn the_thing_being_pointed_at_is_the_smallest_one_under_the_finger() {
         ],
         ..Scene::default()
     };
-    assert_eq!(scene.at(0.35, 0.35).map(|t| t.name.as_str()), Some("keyboard"));
+    assert_eq!(
+        scene.at(0.35, 0.35).map(|t| t.name.as_str()),
+        Some("keyboard")
+    );
     assert_eq!(scene.at(0.15, 0.15).map(|t| t.name.as_str()), Some("tv"));
-    assert_eq!(scene.at(0.95, 0.95).map(|t| t.name.as_str()), Some("dining table"));
+    assert_eq!(
+        scene.at(0.95, 0.95).map(|t| t.name.as_str()),
+        Some("dining table")
+    );
 }
 
 #[test]
@@ -172,7 +202,9 @@ fn pointing_at_nothing_is_nothing_rather_than_the_nearest_guess() {
 #[test]
 fn a_thing_shown_once_is_recognised_again() {
     let mut album = Album::default();
-    album.remember_thing("my mug", &[1.0, 0.0, 0.0, 0.0], 10).unwrap();
+    album
+        .remember_thing("my mug", &[1.0, 0.0, 0.0, 0.0], 10)
+        .unwrap();
     match album.which_thing(&[0.98, 0.1, 0.0, 0.0], 0.5, 0.06) {
         Guess::Is(name, _) => assert_eq!(name, "my mug"),
         other => panic!("{other:?}"),
@@ -199,7 +231,10 @@ fn two_close_matches_are_reported_as_not_knowing_rather_than_as_the_winner() {
 fn nothing_like_it_is_no_idea_rather_than_the_least_bad_option() {
     let mut album = Album::default();
     album.remember_thing("my mug", &[1.0, 0.0, 0.0], 1).unwrap();
-    assert_eq!(album.which_thing(&[0.0, 0.0, 1.0], 0.5, 0.06), Guess::NoIdea);
+    assert_eq!(
+        album.which_thing(&[0.0, 0.0, 1.0], 0.5, 0.06),
+        Guess::NoIdea
+    );
 }
 
 #[test]
@@ -228,8 +263,14 @@ fn showing_the_same_thing_twice_adds_a_view_rather_than_a_second_entry() {
     assert_eq!(album.things.len(), 1, "one thing, two views");
     assert_eq!(album.things[0].views.len(), 2);
     // And either view finds it, which is the point of keeping more than one.
-    assert!(matches!(album.which_thing(&[0.0, 1.0], 0.5, 0.06), Guess::Is(_, _)));
-    assert!(matches!(album.which_thing(&[1.0, 0.0], 0.5, 0.06), Guess::Is(_, _)));
+    assert!(matches!(
+        album.which_thing(&[0.0, 1.0], 0.5, 0.06),
+        Guess::Is(_, _)
+    ));
+    assert!(matches!(
+        album.which_thing(&[1.0, 0.0], 0.5, 0.06),
+        Guess::Is(_, _)
+    ));
 }
 
 #[test]
@@ -246,7 +287,10 @@ fn forgetting_a_thing_actually_removes_it() {
     album.remember_thing("my mug", &[1.0, 0.0], 1).unwrap();
     assert!(album.forget("MY MUG"));
     assert!(album.things.is_empty());
-    assert!(!album.forget("my mug"), "forgetting it twice is not a second removal");
+    assert!(
+        !album.forget("my mug"),
+        "forgetting it twice is not a second removal"
+    );
 }
 
 #[test]
@@ -286,8 +330,14 @@ fn a_wide_frame_is_fitted_into_a_square_model_without_being_squashed() {
     assert_eq!(pixels.len(), r.values());
     // The picture keeps its shape and the spare space is padding.
     assert!((placed.scale - 1.0).abs() < 0.001, "{placed:?}");
-    assert!(placed.pad_y > 70.0, "the short side should be padded: {placed:?}");
-    assert!(placed.pad_x.abs() < 0.001, "the long side should not be: {placed:?}");
+    assert!(
+        placed.pad_y > 70.0,
+        "the short side should be padded: {placed:?}"
+    );
+    assert!(
+        placed.pad_x.abs() < 0.001,
+        "the long side should not be: {placed:?}"
+    );
 }
 
 #[test]
@@ -337,7 +387,10 @@ fn the_face_model_is_read_from_the_outputs_that_hold_the_boxes() {
     let a = found[0].area;
     assert!((a.x + a.width / 2.0 - 176.0 / 640.0).abs() < 0.01, "{a:?}");
     assert!((a.y + a.height / 2.0 - 176.0 / 640.0).abs() < 0.01, "{a:?}");
-    assert!(found[0].who.is_none(), "finding a face is not knowing whose it is");
+    assert!(
+        found[0].who.is_none(),
+        "finding a face is not knowing whose it is"
+    );
 }
 
 #[test]
@@ -377,7 +430,12 @@ fn the_object_model_is_read_into_a_name_and_a_place() {
     raw[i * row + 5 + 41] = 0.9; // and that something is name 41
 
     let placed = Framing::work_out(640, 640, 640, 640);
-    let found = things(&Outputs::of("objects.onnx", vec![raw]), &placed, &settings()).unwrap();
+    let found = things(
+        &Outputs::of("objects.onnx", vec![raw]),
+        &placed,
+        &settings(),
+    )
+    .unwrap();
     assert_eq!(found.len(), 1, "{found:?}");
     assert!(!found[0].name.is_empty());
     let a = found[0].area;
@@ -402,8 +460,11 @@ fn a_name_list_that_does_not_match_the_model_is_refused_rather_than_used_anyway(
 
 #[test]
 fn a_picture_score_list_that_does_not_match_is_refused_too() {
-    let err = whole_picture(&Outputs::of("picture.onnx", vec![vec![0.1; 7]]), &settings())
-        .unwrap_err();
+    let err = whole_picture(
+        &Outputs::of("picture.onnx", vec![vec![0.1; 7]]),
+        &settings(),
+    )
+    .unwrap_err();
     assert!(format!("{err}").contains("don't match"), "{err}");
 }
 
@@ -417,7 +478,12 @@ fn an_unsure_object_is_left_out_rather_than_listed_weakly() {
     raw[i * row + 4] = 0.2; // below the floor
     raw[i * row + 5] = 0.9;
     let placed = Framing::work_out(640, 640, 640, 640);
-    let found = things(&Outputs::of("objects.onnx", vec![raw]), &placed, &settings()).unwrap();
+    let found = things(
+        &Outputs::of("objects.onnx", vec![raw]),
+        &placed,
+        &settings(),
+    )
+    .unwrap();
     assert!(found.is_empty(), "{found:?}");
 }
 
@@ -431,7 +497,10 @@ fn the_same_thing_found_three_times_is_reported_once() {
     ];
     let kept = thin_out(&boxes, 0.45);
     assert_eq!(kept.len(), 2, "{kept:?}");
-    assert!(kept.contains(&1), "the strongest of the overlapping three survives: {kept:?}");
+    assert!(
+        kept.contains(&1),
+        "the strongest of the overlapping three survives: {kept:?}"
+    );
     assert!(kept.contains(&3), "and the one somewhere else: {kept:?}");
 }
 
@@ -464,7 +533,10 @@ fn laying_a_picture_out_for_a_planar_model_puts_all_the_reds_first() {
     // Two pixels: pure red, then pure green.
     let fitted = vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
     let out = atlas::infer::arrange(&fitted, &r);
-    assert_eq!(out, vec![1.0, 0.0, /* reds */ 0.0, 1.0, /* greens */ 0.0, 0.0]);
+    assert_eq!(
+        out,
+        vec![1.0, 0.0, /* reds */ 0.0, 1.0, /* greens */ 0.0, 0.0]
+    );
 }
 
 #[test]
@@ -479,7 +551,11 @@ fn a_model_that_wants_blue_first_gets_blue_first() {
         blue_first: true,
     };
     let out = atlas::infer::arrange(&[1.0, 0.5, 0.0], &r);
-    assert_eq!(out, vec![0.0, 0.5, 1.0], "red and blue swap, green stays put");
+    assert_eq!(
+        out,
+        vec![0.0, 0.5, 1.0],
+        "red and blue swap, green stays put"
+    );
 }
 
 #[test]
@@ -503,7 +579,10 @@ fn every_model_names_itself_in_words_and_in_a_file_of_its_own() {
         assert!(!k.plain().contains('_'), "{}", k.plain());
         let r = k.recipe();
         assert!(r.width > 0 && r.height > 0, "{:?}", k);
-        assert!(r.deviation.iter().all(|d| *d != 0.0), "dividing by nothing: {k:?}");
+        assert!(
+            r.deviation.iter().all(|d| *d != 0.0),
+            "dividing by nothing: {k:?}"
+        );
     }
     for (i, a) in all.iter().enumerate() {
         for b in all.iter().skip(i + 1) {
@@ -537,7 +616,14 @@ fn nothing_in_here_turns_a_face_into_permission() {
     // that does not exist yet: the moment something asks `vision` whether it
     // may proceed, a photograph held up to a webcam becomes a key.
     let source = include_str!("../src/vision.rs");
-    for word in ["approve", "authorise", "authorize", "unlock", "grant", "may_proceed"] {
+    for word in [
+        "approve",
+        "authorise",
+        "authorize",
+        "unlock",
+        "grant",
+        "may_proceed",
+    ] {
         assert!(
             !source.to_lowercase().contains(&format!("fn {word}")),
             "vision must never decide whether something is allowed: found {word}"

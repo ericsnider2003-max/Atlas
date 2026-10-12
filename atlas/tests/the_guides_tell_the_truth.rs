@@ -118,11 +118,17 @@ fn no_guide_tells_you_to_set_something_that_does_nothing() {
         if p.extension().and_then(|x| x.to_str()) != Some("md") {
             continue;
         }
-        let name = p.file_name().and_then(|x| x.to_str()).unwrap_or("").to_string();
+        let name = p
+            .file_name()
+            .and_then(|x| x.to_str())
+            .unwrap_or("")
+            .to_string();
         if is_record(&name) {
             continue;
         }
-        let Ok(text) = fs::read_to_string(&p) else { continue };
+        let Ok(text) = fs::read_to_string(&p) else {
+            continue;
+        };
         for path in config_paths_in(&text, &sections) {
             if !allowed.contains(&(name.clone(), path.clone())) {
                 found.push(format!("{name}: {path}"));
@@ -153,9 +159,15 @@ fn each_allowed_page_actually_admits_it() {
         // Case-insensitively: a page may open the sentence with the phrase,
         // which is exactly what SELF_REPAIR.md does.
         let lower = text.to_lowercase();
-        let admits = ["does not run", "doesn't run", "not wired", "nothing reads", "not yours to tune"]
-            .iter()
-            .any(|p| lower.contains(p));
+        let admits = [
+            "does not run",
+            "doesn't run",
+            "not wired",
+            "nothing reads",
+            "not yours to tune",
+        ]
+        .iter()
+        .any(|p| lower.contains(p));
         assert!(
             admits,
             "docs/{doc} is allowed to name {path} because it admits the setting \
@@ -180,8 +192,14 @@ fn the_scan_still_works() {
     // into a test that passes for any tree.
     let sections: BTreeSet<String> = ["push_to_talk".to_string()].into_iter().collect();
     let found = config_paths_in("set `push_to_talk.hold_ms` to 400", &sections);
-    assert!(found.contains("push_to_talk.hold_ms"), "the path scan stopped working");
+    assert!(
+        found.contains("push_to_talk.hold_ms"),
+        "the path scan stopped working"
+    );
 
     let filenames = config_paths_in("see push_to_talk.rs for the machine", &sections);
-    assert!(filenames.is_empty(), "a source filename was read as a setting");
+    assert!(
+        filenames.is_empty(),
+        "a source filename was read as a setting"
+    );
 }

@@ -29,7 +29,6 @@ fn tmp(tag: &str) -> PathBuf {
     d
 }
 
-
 #[test]
 fn the_phrase_firstrun_teaches_is_recognised() {
     // Whatever `firstrun` promises must be a phrase `hear` knows. Read out of
@@ -57,9 +56,22 @@ fn the_phrase_firstrun_teaches_is_recognised() {
 #[test]
 fn saying_it_actually_halts() {
     let c = Config::load(Path::new("config")).unwrap();
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     let dir = tmp("halt");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     let reply = d.turn("stop everything", 1000);
 
@@ -77,18 +89,39 @@ fn saying_it_actually_halts() {
 #[test]
 fn every_panic_phrase_halts_not_just_the_taught_one() {
     let c = Config::load(Path::new("config")).unwrap();
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
-    for (i, phrase) in ["stop everything", "emergency stop", "halt", "drop everything"]
-        .iter()
-        .enumerate()
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
+    for (i, phrase) in [
+        "stop everything",
+        "emergency stop",
+        "halt",
+        "drop everything",
+    ]
+    .iter()
+    .enumerate()
     {
         if atlas::attention::hear(phrase) != Some(atlas::attention::Heard::Panic) {
             continue; // not a panic phrase in this build; the one above covers the promise
         }
         let dir = tmp(&format!("p{i}"));
-        let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            &c,
+            &p,
+            None,
+            Store::new(&dir),
+            Proactive::new(ProactiveConfig::default()),
+        );
         d.turn(phrase, 1000);
-        assert!(d.attention.was_halted(), "{phrase:?} was recognised as a panic and did not halt");
+        assert!(
+            d.attention.was_halted(),
+            "{phrase:?} was recognised as a panic and did not halt"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

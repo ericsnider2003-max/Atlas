@@ -41,30 +41,67 @@ pub enum Said {
 /// "Let's work on the edit for two hours", "two hours on the edit", "work
 /// session on the budget for 45 minutes", "end the session".
 pub fn heard(said: &str) -> Option<Said> {
-    let t = said.trim().trim_end_matches(['.', '!', '?']).to_ascii_lowercase();
-    let t = t.trim_start_matches("atlas, ").trim_start_matches("atlas ").trim().to_string();
-    if ["end the session", "end session", "stop the session", "end the work session", "session over", "i'm done with the session"]
-        .contains(&t.as_str())
+    let t = said
+        .trim()
+        .trim_end_matches(['.', '!', '?'])
+        .to_ascii_lowercase();
+    let t = t
+        .trim_start_matches("atlas, ")
+        .trim_start_matches("atlas ")
+        .trim()
+        .to_string();
+    if [
+        "end the session",
+        "end session",
+        "stop the session",
+        "end the work session",
+        "session over",
+        "i'm done with the session",
+    ]
+    .contains(&t.as_str())
     {
         return Some(Said::End);
     }
-    if ["how long is left", "how long left", "how much time is left", "how long left in the session"].contains(&t.as_str()) {
+    if [
+        "how long is left",
+        "how long left",
+        "how much time is left",
+        "how long left in the session",
+    ]
+    .contains(&t.as_str())
+    {
         return Some(Said::HowLong);
     }
     let secs = crate::camwatch::length_in(&t)?;
     // What it's for: after "on"/"for" and without the length.
-    let lead = ["let's work on ", "lets work on ", "let's work ", "lets work ", "work session on ", "work session for ", "focus session on ", "focus on "];
-    let body = lead.iter().find_map(|l| t.strip_prefix(l)).map(str::to_string).or_else(|| {
-        // "two hours on the edit"
-        let i = t.find(" on ")?;
-        let before = &t[..i];
-        crate::camwatch::length_in(before).map(|_| t[i + 4..].to_string())
-    })?;
+    let lead = [
+        "let's work on ",
+        "lets work on ",
+        "let's work ",
+        "lets work ",
+        "work session on ",
+        "work session for ",
+        "focus session on ",
+        "focus on ",
+    ];
+    let body = lead
+        .iter()
+        .find_map(|l| t.strip_prefix(l))
+        .map(str::to_string)
+        .or_else(|| {
+            // "two hours on the edit"
+            let i = t.find(" on ")?;
+            let before = &t[..i];
+            crate::camwatch::length_in(before).map(|_| t[i + 4..].to_string())
+        })?;
     let what = strip_length(&body);
     if what.is_empty() {
         return None;
     }
-    Some(Said::Start { what, secs: secs.clamp(SHORTEST_SECS, LONGEST_SECS) })
+    Some(Said::Start {
+        what,
+        secs: secs.clamp(SHORTEST_SECS, LONGEST_SECS),
+    })
 }
 
 /// The words of a session's purpose without "for two hours".
@@ -80,7 +117,12 @@ fn strip_length(body: &str) -> String {
 
 impl Session {
     pub fn new(what: &str, secs: u64, now: u64) -> Session {
-        Session { what: what.to_string(), started: now, until: now + secs, checked_in: false }
+        Session {
+            what: what.to_string(),
+            started: now,
+            until: now + secs,
+            checked_in: false,
+        }
     }
 
     pub fn left(&self, now: u64) -> u64 {
@@ -89,7 +131,9 @@ impl Session {
 
     /// The halfway check-in, once.
     pub fn check_in_due(&self, now: u64) -> bool {
-        !self.checked_in && now >= self.started + (self.until - self.started) / 2 && now < self.until
+        !self.checked_in
+            && now >= self.started + (self.until - self.started) / 2
+            && now < self.until
     }
 
     pub fn over(&self, now: u64) -> bool {
@@ -108,7 +152,11 @@ pub fn started(s: &Session) -> String {
 
 /// The halfway line.
 pub fn halfway(s: &Session, now: u64) -> String {
-    format!("Halfway on {} -- {} to go. Still on it?", s.what, crate::worklog::duration_words(s.left(now)))
+    format!(
+        "Halfway on {} -- {} to go. Still on it?",
+        s.what,
+        crate::worklog::duration_words(s.left(now))
+    )
 }
 
 /// How it went: what the work log shows for the session's span.
@@ -116,21 +164,40 @@ pub fn halfway(s: &Session, now: u64) -> String {
 /// when nothing was).
 pub fn how_it_went(s: &Session, ended: u64, log: &crate::worklog::Summary, held: &str) -> String {
     let span = ended.saturating_sub(s.started);
-    let mut out = format!("That's the session on {}: {}", s.what, crate::worklog::duration_words(span));
+    let mut out = format!(
+        "That's the session on {}: {}",
+        s.what,
+        crate::worklog::duration_words(span)
+    );
     if ended < s.until {
         out.push_str(" (ended early)");
     }
     out.push('.');
     if log.active > 0 {
-        let top: Vec<String> = log.by_category.iter().take(2).map(|(c, n)| format!("{c} {}", crate::worklog::duration_words(*n))).collect();
-        out.push_str(&format!(" At the machine {}: {}.", crate::worklog::duration_words(log.active), top.join(", ")));
+        let top: Vec<String> = log
+            .by_category
+            .iter()
+            .take(2)
+            .map(|(c, n)| format!("{c} {}", crate::worklog::duration_words(*n)))
+            .collect();
+        out.push_str(&format!(
+            " At the machine {}: {}.",
+            crate::worklog::duration_words(log.active),
+            top.join(", ")
+        ));
         match log.blocks.first() {
-            Some(b) => out.push_str(&format!(" Longest stretch: {}.", crate::worklog::duration_words(b.end.saturating_sub(b.start)))),
+            Some(b) => out.push_str(&format!(
+                " Longest stretch: {}.",
+                crate::worklog::duration_words(b.end.saturating_sub(b.start))
+            )),
             None => out.push_str(" No stretch of 25 minutes on one thing."),
         }
         let hours = log.active as f64 / 3600.0;
         if log.switches > 0 && hours >= 0.25 {
-            out.push_str(&format!(" You switched about {:.0} times an hour.", (log.switches as f64 / hours).max(1.0)));
+            out.push_str(&format!(
+                " You switched about {:.0} times an hour.",
+                (log.switches as f64 / hours).max(1.0)
+            ));
         }
     }
     if !held.trim().is_empty() {
@@ -141,5 +208,11 @@ pub fn how_it_went(s: &Session, ended: u64, log: &crate::worklog::Summary, held:
 
 /// The line kept in your notes.
 pub fn note_line(s: &Session, ended: u64, said: &str, clock: &dyn Fn(u64) -> String) -> String {
-    format!("- {} to {}, {}: {}", clock(s.started), clock(ended), s.what, said)
+    format!(
+        "- {} to {}, {}: {}",
+        clock(s.started),
+        clock(ended),
+        s.what,
+        said
+    )
 }

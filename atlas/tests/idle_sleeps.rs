@@ -18,7 +18,10 @@ fn news_sent_before_the_wait_is_not_slept_through() {
     let (tx, rx) = atlas::doorbell::channel::<u8>();
     tx.send(1).unwrap();
     let started = Instant::now();
-    assert!(atlas::doorbell::wait_after(seen, 10_000), "a send after the count was read must end the wait");
+    assert!(
+        atlas::doorbell::wait_after(seen, 10_000),
+        "a send after the count was read must end the wait"
+    );
     crate::common::assert_prompt(started.elapsed(), Duration::from_secs(1), "took too long");
     assert_eq!(rx.try_recv().ok(), Some(1));
 }
@@ -58,9 +61,18 @@ fn the_push_to_talk_timer_has_work_only_while_the_key_is_held_short_of_talking()
     let mut g = atlas::hotkeys::Gate::new(300);
     assert!(!g.waiting_for_hold(), "key up: the timer sleeps");
     g.key_down(1_000);
-    assert!(g.waiting_for_hold(), "held, not yet talking: the timer checks");
-    assert!(g.tick(1_350).is_some(), "the hold crosses its threshold on the timer");
-    assert!(!g.waiting_for_hold(), "talking: nothing left for the timer to decide");
+    assert!(
+        g.waiting_for_hold(),
+        "held, not yet talking: the timer checks"
+    );
+    assert!(
+        g.tick(1_350).is_some(),
+        "the hold crosses its threshold on the timer"
+    );
+    assert!(
+        !g.waiting_for_hold(),
+        "talking: nothing left for the timer to decide"
+    );
     g.key_up(2_000);
     assert!(!g.waiting_for_hold());
 
@@ -107,7 +119,11 @@ fn a_paused_errand_goes_on_the_moment_it_is_resumed() {
     };
     assert!(until(&|| done.load(Ordering::SeqCst) >= 2));
     assert!(c.pause(id));
-    let holding = |c: &Crew| c.errands().into_iter().any(|e| e.id == id && e.state == State::Holding);
+    let holding = |c: &Crew| {
+        c.errands()
+            .into_iter()
+            .any(|e| e.id == id && e.state == State::Holding)
+    };
     let end = Instant::now() + crate::common::allowed(Duration::from_secs(5));
     while Instant::now() < end && !holding(&c) {
         std::thread::sleep(Duration::from_millis(2));
@@ -116,8 +132,15 @@ fn a_paused_errand_goes_on_the_moment_it_is_resumed() {
     let held_at = done.load(Ordering::SeqCst);
     let resumed = Instant::now();
     assert!(c.resume(id));
-    assert!(until(&|| done.load(Ordering::SeqCst) > held_at), "it never went on");
-    crate::common::assert_prompt(resumed.elapsed(), Duration::from_secs(1), "took to notice the resume");
+    assert!(
+        until(&|| done.load(Ordering::SeqCst) > held_at),
+        "it never went on"
+    );
+    crate::common::assert_prompt(
+        resumed.elapsed(),
+        Duration::from_secs(1),
+        "took to notice the resume",
+    );
     c.ask_to_stop(id);
 }
 
@@ -126,22 +149,40 @@ fn nothing_idle_polls_on_a_timer_any_more() {
     let running = crate::common::source_of("daemon");
     let nap = &running[running.find("fn nap_awake(").expect("nap_awake")..];
     let nap = &nap[..nap.find("\n    }\n").unwrap()];
-    assert!(nap.contains("doorbell::wait_after"), "nap_awake sleeps on the doorbell");
-    assert!(!nap.contains("keyboard.wait("), "no 10 ms keyboard wait in a loop");
+    assert!(
+        nap.contains("doorbell::wait_after"),
+        "nap_awake sleeps on the doorbell"
+    );
+    assert!(
+        !nap.contains("keyboard.wait("),
+        "no 10 ms keyboard wait in a loop"
+    );
 
     let goodbye = crate::common::source_of("goodbye");
     let nap = &goodbye[goodbye.find("pub fn nap(").unwrap()..];
     let nap = &nap[..nap.find("\n}\n").unwrap()];
-    assert!(!nap.contains("thread::sleep"), "goodbye::nap sleeps on the doorbell");
+    assert!(
+        !nap.contains("thread::sleep"),
+        "goodbye::nap sleeps on the doorbell"
+    );
 
     let crew = crate::common::source_of("crew");
     let cp = &crew[crew.find("pub fn checkpoint(").unwrap()..];
     let cp = &cp[..cp.find("\n    }\n").unwrap()];
-    assert!(!cp.contains("thread::sleep"), "a paused errand sleeps on the doorbell");
+    assert!(
+        !cp.contains("thread::sleep"),
+        "a paused errand sleeps on the doorbell"
+    );
 
-    for (name, m) in [("hotkeys", "waiting_for_hold"), ("hotkey", "waiting_for_hold")] {
+    for (name, m) in [
+        ("hotkeys", "waiting_for_hold"),
+        ("hotkey", "waiting_for_hold"),
+    ] {
         let src = crate::common::source_of(name);
-        assert!(src.matches("park_timeout").count() >= 1 && src.contains(m), "{name}: the hold timer parks while the key is up");
+        assert!(
+            src.matches("park_timeout").count() >= 1 && src.contains(m),
+            "{name}: the hold timer parks while the key is up"
+        );
     }
 }
 
@@ -152,7 +193,10 @@ fn nothing_idle_polls_on_a_timer_any_more() {
 fn ringing_moves_the_count() {
     let before = atlas::doorbell::rung();
     atlas::doorbell::ring();
-    assert!(atlas::doorbell::rung() > before, "the count is how a waiter knows there was news");
+    assert!(
+        atlas::doorbell::rung() > before,
+        "the count is how a waiter knows there was news"
+    );
 }
 
 #[test]
@@ -160,7 +204,10 @@ fn a_wait_that_nothing_rings_says_it_timed_out() {
     // Other tests in this binary ring the bell, so one quiet window is looked
     // for among many: a wait that always claims news never finds one.
     let quiet = (0..500).any(|_| !atlas::doorbell::wait_after(atlas::doorbell::rung(), 2));
-    assert!(quiet, "a wait that ran out must say so, not report news that never came");
+    assert!(
+        quiet,
+        "a wait that ran out must say so, not report news that never came"
+    );
 }
 
 #[test]
@@ -171,7 +218,14 @@ fn a_wait_longer_than_the_clock_can_hold_still_wakes_on_news() {
         atlas::doorbell::ring();
     });
     let started = std::time::Instant::now();
-    assert!(atlas::doorbell::wait_after(seen, u64::MAX), "news must end even an endless wait");
-    crate::common::assert_prompt(started.elapsed(), std::time::Duration::from_secs(10), "took too long");
+    assert!(
+        atlas::doorbell::wait_after(seen, u64::MAX),
+        "news must end even an endless wait"
+    );
+    crate::common::assert_prompt(
+        started.elapsed(),
+        std::time::Duration::from_secs(10),
+        "took too long",
+    );
     ringer.join().expect("ringer");
 }

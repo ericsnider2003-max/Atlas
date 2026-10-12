@@ -51,7 +51,10 @@ pub fn shipped_yaml() -> Vec<(&'static str, &'static str)> {
 }
 
 fn shipped_yaml_from(all: &[(&'static str, &'static str)]) -> Vec<(&'static str, &'static str)> {
-    all.iter().copied().filter(|(n, _)| n.ends_with(".yaml") && !n.contains('/')).collect()
+    all.iter()
+        .copied()
+        .filter(|(n, _)| n.ends_with(".yaml") && !n.contains('/'))
+        .collect()
 }
 
 /// One setting you changed.
@@ -135,7 +138,9 @@ fn diff_at(path: &mut Vec<String>, base: &Value, mine: &Value, out: &mut Vec<Cha
         (Value::Mapping(b), Value::Mapping(m)) if string_keyed(b) && string_keyed(m) => {
             for (k, mv) in m {
                 // `string_keyed` above makes this always Some.
-                let Some(key) = k.as_str().map(str::to_string) else { continue };
+                let Some(key) = k.as_str().map(str::to_string) else {
+                    continue;
+                };
                 path.push(key);
                 match b.get(k) {
                     Some(bv) => diff_at(path, bv, mv, out),
@@ -154,7 +159,13 @@ fn diff_at(path: &mut Vec<String>, base: &Value, mine: &Value, out: &mut Vec<Cha
                     let mut p = path.clone();
                     let Some(key) = k.as_str() else { continue };
                     p.push(key.to_string());
-                    out.push(Change { path: p, yours: None, removed: true, was: Some(bv.clone()), unsure: false });
+                    out.push(Change {
+                        path: p,
+                        yours: None,
+                        removed: true,
+                        was: Some(bv.clone()),
+                        unsure: false,
+                    });
                 }
             }
         }
@@ -206,11 +217,17 @@ fn apply_one(root: &mut Value, c: &Change) -> bool {
     };
     let mut cur = root;
     for p in parents {
-        let Some(map) = cur.as_mapping_mut() else { return false };
-        let Some(next) = map.get_mut(Value::String(p.clone())) else { return false };
+        let Some(map) = cur.as_mapping_mut() else {
+            return false;
+        };
+        let Some(next) = map.get_mut(Value::String(p.clone())) else {
+            return false;
+        };
         cur = next;
     }
-    let Some(map) = cur.as_mapping_mut() else { return false };
+    let Some(map) = cur.as_mapping_mut() else {
+        return false;
+    };
     let key = Value::String(last.clone());
     if c.removed {
         map.remove(&key);
@@ -267,7 +284,10 @@ pub fn load_overlay(config_dir: &Path, file: &str) -> Result<Vec<Change>, String
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => return Err(format!("{}: {e}", path.display())),
     };
-    if text.lines().all(|l| l.trim().is_empty() || l.trim_start().starts_with('#')) {
+    if text
+        .lines()
+        .all(|l| l.trim().is_empty() || l.trim_start().starts_with('#'))
+    {
         return Ok(Vec::new());
     }
     serde_yaml::from_str::<OverlayFile>(&text)
@@ -283,8 +303,10 @@ fn save_overlay(config_dir: &Path, file: &str, changes: &[Change]) -> std::io::R
             _ => Ok(()),
         };
     }
-    let body = serde_yaml::to_string(&OverlayFile { changes: changes.to_vec() })
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let body = serde_yaml::to_string(&OverlayFile {
+        changes: changes.to_vec(),
+    })
+    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     write_yaml_whole(&path, &format!("{}{body}", HEADER.replace("FILE", file)))
 }
 
@@ -338,13 +360,17 @@ fn rename_preferences(config_dir: &Path, renames: &[(&str, &str, &str)]) -> Vec<
             };
             if let Some(v) = prefs.chosen.remove(&k) {
                 prefs.chosen.entry(new_key.clone()).or_insert(v);
-                notes.push(format!("Your setting {k} is now called {new_key}; your choice moved with it."));
+                notes.push(format!(
+                    "Your setting {k} is now called {new_key}; your choice moved with it."
+                ));
             }
         }
     }
     if !notes.is_empty() {
         if let Err(e) = prefs.save(config_dir) {
-            return vec![format!("A setting of yours was renamed, and I couldn't save the new name: {e}")];
+            return vec![format!(
+                "A setting of yours was renamed, and I couldn't save the new name: {e}"
+            )];
         }
     }
     notes
@@ -367,7 +393,10 @@ fn load_settings_was(config_dir: &Path) -> std::collections::BTreeMap<String, Op
 }
 
 fn key_path(key: &str) -> Vec<String> {
-    crate::preferences::path_for(key).split('.').map(String::from).collect()
+    crate::preferences::path_for(key)
+        .split('.')
+        .map(String::from)
+        .collect()
 }
 
 /// Fill in the shipped value for every Settings choice that has none on
@@ -380,11 +409,19 @@ fn record_setting_defaults(config_dir: &Path) {
     let mut was = load_settings_was(config_dir);
     let before = was.clone();
     was.retain(|k, _| prefs.chosen.contains_key(k));
-    let missing: Vec<String> = prefs.chosen.keys().filter(|k| !was.contains_key(*k)).cloned().collect();
+    let missing: Vec<String> = prefs
+        .chosen
+        .keys()
+        .filter(|k| !was.contains_key(*k))
+        .cloned()
+        .collect();
     if !missing.is_empty() {
         let text = std::fs::read_to_string(base_path(config_dir, "tools.yaml"))
             .or_else(|_| std::fs::read_to_string(config_dir.join("tools.yaml")));
-        if let Some(root) = text.ok().and_then(|t| serde_yaml::from_str::<Value>(&t).ok()) {
+        if let Some(root) = text
+            .ok()
+            .and_then(|t| serde_yaml::from_str::<Value>(&t).ok())
+        {
             for k in missing {
                 let v = get(&root, &key_path(&k)).cloned();
                 was.insert(k, v);
@@ -446,7 +483,11 @@ pub fn all_kept(config_dir: &Path) -> (Vec<KeptEdit>, Vec<String>) {
                 let now: Option<Value> = serde_yaml::from_str(text).ok();
                 for c in changes {
                     let shipped_now = now.as_ref().and_then(|n| get(n, &c.path)).cloned();
-                    out.push(KeptEdit { file: file.to_string(), change: c, shipped_now });
+                    out.push(KeptEdit {
+                        file: file.to_string(),
+                        change: c,
+                        shipped_now,
+                    });
                 }
             }
             Err(e) => problems.push(e),
@@ -467,7 +508,8 @@ pub fn forget(config_dir: &Path, file: &str, dotted: &str) -> Result<bool, Strin
     if changes.len() == before {
         return Ok(false);
     }
-    save_overlay(config_dir, file, &changes).map_err(|e| format!("couldn't save the change: {e}"))?;
+    save_overlay(config_dir, file, &changes)
+        .map_err(|e| format!("couldn't save the change: {e}"))?;
     Ok(true)
 }
 
@@ -476,7 +518,11 @@ pub fn forget(config_dir: &Path, file: &str, dotted: &str) -> Result<bool, Strin
 /// How many of your hand edits are kept, across every shipped file. An
 /// overlay that will not parse counts as none, and `atlas doctor` says why.
 pub fn kept_count(config_dir: &Path) -> usize {
-    shipped_yaml().iter().filter_map(|(f, _)| load_overlay(config_dir, f).ok()).map(|c| c.len()).sum()
+    shipped_yaml()
+        .iter()
+        .filter_map(|(f, _)| load_overlay(config_dir, f).ok())
+        .map(|c| c.len())
+        .sum()
 }
 
 /// What `keep_hand_edits` did, for the person.
@@ -497,14 +543,21 @@ pub fn keep_hand_edits(config_dir: &Path) -> Kept {
         // out of them would revert the source a developer is working on.
         return Kept::default();
     }
-    keep_hand_edits_with(config_dir, &shipped_yaml(), crate::upgrade::RENAMED_SETTINGS, crate::upgrade::version())
+    keep_hand_edits_with(
+        config_dir,
+        &shipped_yaml(),
+        crate::upgrade::RENAMED_SETTINGS,
+        crate::upgrade::version(),
+    )
 }
 
 /// A config folder that sits in Atlas's own source tree: the files there are
 /// the ones `include_str!` builds in, so an edit is a change to the next
 /// release, not a hand edit to keep.
 pub fn is_source_tree(config_dir: &Path) -> bool {
-    config_dir.parent().is_some_and(|p| p.join("Cargo.toml").is_file() && p.join("src").join("firstlaunch.rs").is_file())
+    config_dir.parent().is_some_and(|p| {
+        p.join("Cargo.toml").is_file() && p.join("src").join("firstlaunch.rs").is_file()
+    })
 }
 
 pub fn keep_hand_edits_with(
@@ -528,10 +581,14 @@ pub fn keep_hand_edits_with(
     // Once per version: the defaults this release changed under your edits
     // and under your Settings choices.
     let told = config_dir.join(LOCAL_DIR).join("told-about-version");
-    let already = std::fs::read_to_string(&told).map(|s| s.trim() == version).unwrap_or(false);
+    let already = std::fs::read_to_string(&told)
+        .map(|s| s.trim() == version)
+        .unwrap_or(false);
     let mut anything_of_yours = false;
     for (file, new_text) in shipped {
-        let Ok(changes) = load_overlay(config_dir, file) else { continue };
+        let Ok(changes) = load_overlay(config_dir, file) else {
+            continue;
+        };
         if changes.is_empty() {
             continue;
         }
@@ -540,8 +597,13 @@ pub fn keep_hand_edits_with(
         if already {
             continue;
         }
-        let Ok(new) = serde_yaml::from_str::<Value>(new_text) else { continue };
-        let moved: Vec<String> = conflicts(&new, &changes).iter().map(|c| c.dotted()).collect();
+        let Ok(new) = serde_yaml::from_str::<Value>(new_text) else {
+            continue;
+        };
+        let moved: Vec<String> = conflicts(&new, &changes)
+            .iter()
+            .map(|c| c.dotted())
+            .collect();
         if !moved.is_empty() {
             kept.notices.push(format!(
                 "This version changed the default for {} in config/{file}, which you had set yourself. \
@@ -580,7 +642,12 @@ pub fn keep_hand_edits_with(
     kept
 }
 
-fn keep_one(config_dir: &Path, file: &str, new_text: &str, renames: &[(&str, &str, &str)]) -> Option<String> {
+fn keep_one(
+    config_dir: &Path,
+    file: &str,
+    new_text: &str,
+    renames: &[(&str, &str, &str)],
+) -> Option<String> {
     let disk_path = config_dir.join(file);
     let base_file = base_path(config_dir, file);
 
@@ -592,12 +659,16 @@ fn keep_one(config_dir: &Path, file: &str, new_text: &str, renames: &[(&str, &st
             // Your overlay will not parse. Touch nothing for this file --
             // merging into it would overwrite it, and replacing the shipped
             // file could lose an edit not yet captured.
-            return Some(format!("{e}. I left config/{file} exactly as it is until that is fixed."));
+            return Some(format!(
+                "{e}. I left config/{file} exactly as it is until that is fixed."
+            ));
         }
     };
     if rename_paths(&mut kept_changes, file, renames) {
         if let Err(e) = save_overlay(config_dir, file, &kept_changes) {
-            return Some(format!("A setting in config/{file} was renamed, and I couldn't move your edit: {e}"));
+            return Some(format!(
+                "A setting in config/{file} was renamed, and I couldn't move your edit: {e}"
+            ));
         }
     }
 
@@ -620,9 +691,13 @@ fn keep_one(config_dir: &Path, file: &str, new_text: &str, renames: &[(&str, &st
             disk_path.display()
         ));
     };
-    let Ok(new) = serde_yaml::from_str::<Value>(new_text) else { return None };
+    let Ok(new) = serde_yaml::from_str::<Value>(new_text) else {
+        return None;
+    };
     let base_text = std::fs::read_to_string(&base_file).ok();
-    let base = base_text.as_deref().and_then(|t| serde_yaml::from_str::<Value>(t).ok());
+    let base = base_text
+        .as_deref()
+        .and_then(|t| serde_yaml::from_str::<Value>(t).ok());
     let unsure = base.is_none();
     let base = base.unwrap_or_else(|| new.clone());
 
@@ -643,16 +718,22 @@ fn keep_one(config_dir: &Path, file: &str, new_text: &str, renames: &[(&str, &st
     if count > 0 {
         merge(&mut kept_changes, captured.clone());
         if let Err(e) = save_overlay(config_dir, file, &kept_changes) {
-            return Some(format!("I couldn't keep your edits to config/{file} ({e}), so I left it as it is."));
+            return Some(format!(
+                "I couldn't keep your edits to config/{file} ({e}), so I left it as it is."
+            ));
         }
     }
     if base_text.as_deref() != Some(disk_text.as_str()) {
         if let Err(e) = write_yaml_whole(&previous_path(config_dir, file), &disk_text) {
-            return Some(format!("I couldn't save a copy of your config/{file} ({e}), so I left it as it is."));
+            return Some(format!(
+                "I couldn't save a copy of your config/{file} ({e}), so I left it as it is."
+            ));
         }
     }
     if let Err(e) = write_yaml_whole(&disk_path, new_text) {
-        return Some(format!("I couldn't bring config/{file} up to this version: {e}"));
+        return Some(format!(
+            "I couldn't bring config/{file} up to this version: {e}"
+        ));
     }
     crate::kept!(write_yaml_whole(&base_file, new_text));
 
@@ -688,13 +769,15 @@ mod tests {
     }
 
     fn scratch(tag: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("atlas-yourchanges-{tag}-{}", std::process::id()));
+        let d =
+            std::env::temp_dir().join(format!("atlas-yourchanges-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
     }
 
-    const V1: &str = "# shipped v1\nask_before:\n  delete: true\n  send: true\nlimit: 5\nfolders: [a, b]\n";
+    const V1: &str =
+        "# shipped v1\nask_before:\n  delete: true\n  send: true\nlimit: 5\nfolders: [a, b]\n";
     const V2: &str = "# shipped v2\nask_before:\n  delete: true\n  send: true\n  buy: true\nlimit: 10\nfolders: [a, b]\n";
 
     #[test]
@@ -709,7 +792,10 @@ mod tests {
 
     #[test]
     fn diff_records_a_deleted_setting() {
-        let d = diff(&y(V1), &y("ask_before:\n  delete: true\nlimit: 5\nfolders: [a, b]\n"));
+        let d = diff(
+            &y(V1),
+            &y("ask_before:\n  delete: true\nlimit: 5\nfolders: [a, b]\n"),
+        );
         assert_eq!(d.len(), 1);
         assert!(d[0].removed);
         assert_eq!(d[0].dotted(), "ask_before.send");
@@ -717,14 +803,23 @@ mod tests {
 
     #[test]
     fn a_default_you_never_touched_follows_the_release_and_yours_stays_yours() {
-        let mine = diff(&y(V1), &y("ask_before:\n  delete: false\n  send: true\nlimit: 5\nfolders: [a, b]\n"));
+        let mine = diff(
+            &y(V1),
+            &y("ask_before:\n  delete: false\n  send: true\nlimit: 5\nfolders: [a, b]\n"),
+        );
         let mut new = y(V2);
         assert!(apply(&mut new, &mine).is_empty());
-        assert_eq!(get(&new, &["ask_before".into(), "delete".into()]), Some(&Value::Bool(false)));
+        assert_eq!(
+            get(&new, &["ask_before".into(), "delete".into()]),
+            Some(&Value::Bool(false))
+        );
         // Untouched by you, changed by the release: the release wins.
         assert_eq!(get(&new, &["limit".into()]), Some(&y("10")));
         // New in the release: arrives.
-        assert_eq!(get(&new, &["ask_before".into(), "buy".into()]), Some(&Value::Bool(true)));
+        assert_eq!(
+            get(&new, &["ask_before".into(), "buy".into()]),
+            Some(&Value::Bool(true))
+        );
     }
 
     #[test]
@@ -744,7 +839,10 @@ mod tests {
 
     #[test]
     fn a_default_the_release_moved_under_your_edit_is_a_conflict() {
-        let mine = diff(&y(V1), &y("ask_before:\n  delete: true\n  send: true\nlimit: 3\nfolders: [a, b]\n"));
+        let mine = diff(
+            &y(V1),
+            &y("ask_before:\n  delete: true\n  send: true\nlimit: 3\nfolders: [a, b]\n"),
+        );
         let c = conflicts(&y(V2), &mine);
         assert_eq!(c.len(), 1);
         assert_eq!(c[0].dotted(), "limit");
@@ -767,21 +865,37 @@ mod tests {
         let r1 = [("policy.yaml", V1)];
         std::fs::write(dir.join("policy.yaml"), V1).unwrap();
         keep_hand_edits_with(&dir, &r1, &[], "1");
-        std::fs::write(dir.join("policy.yaml"), V1.replace("delete: true", "delete: false")).unwrap();
+        std::fs::write(
+            dir.join("policy.yaml"),
+            V1.replace("delete: true", "delete: false"),
+        )
+        .unwrap();
 
         // Release 2 arrives.
         let r2 = [("policy.yaml", V2)];
         let k = keep_hand_edits_with(&dir, &r2, &[], "2");
-        assert!(k.notices.iter().any(|n| n.contains("ask_before.delete")), "{:?}", k.notices);
+        assert!(
+            k.notices.iter().any(|n| n.contains("ask_before.delete")),
+            "{:?}",
+            k.notices
+        );
         assert_eq!(k.total, 1);
         // The shipped file is exactly release 2, comments and all.
-        assert_eq!(std::fs::read_to_string(dir.join("policy.yaml")).unwrap(), V2);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("policy.yaml")).unwrap(),
+            V2
+        );
         // Your old file is kept byte for byte.
-        assert!(std::fs::read_to_string(previous_path(&dir, "policy.yaml")).unwrap().contains("delete: false"));
+        assert!(std::fs::read_to_string(previous_path(&dir, "policy.yaml"))
+            .unwrap()
+            .contains("delete: false"));
 
         let mut loaded = y(V2);
         apply(&mut loaded, &load_overlay(&dir, "policy.yaml").unwrap());
-        assert_eq!(get(&loaded, &["ask_before".into(), "delete".into()]), Some(&Value::Bool(false)));
+        assert_eq!(
+            get(&loaded, &["ask_before".into(), "delete".into()]),
+            Some(&Value::Bool(false))
+        );
         assert_eq!(get(&loaded, &["limit".into()]), Some(&y("10")));
 
         // A second start changes nothing and says nothing.
@@ -798,7 +912,10 @@ mod tests {
         let k = keep_hand_edits_with(&dir, &[("policy.yaml", V2)], &[], "2");
         assert!(k.notices.is_empty(), "{:?}", k.notices);
         assert_eq!(k.total, 0);
-        assert_eq!(std::fs::read_to_string(dir.join("policy.yaml")).unwrap(), V2);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("policy.yaml")).unwrap(),
+            V2
+        );
         assert!(!overlay_path(&dir, "policy.yaml").exists());
     }
 
@@ -807,7 +924,11 @@ mod tests {
         let dir = scratch("unsure");
         std::fs::write(dir.join("policy.yaml"), V1).unwrap();
         let k = keep_hand_edits_with(&dir, &[("policy.yaml", V2)], &[], "2");
-        assert!(k.notices.iter().any(|n| n.contains("couldn't tell")), "{:?}", k.notices);
+        assert!(
+            k.notices.iter().any(|n| n.contains("couldn't tell")),
+            "{:?}",
+            k.notices
+        );
         let kept = load_overlay(&dir, "policy.yaml").unwrap();
         assert!(!kept.is_empty() && kept.iter().all(|c| c.unsure));
     }
@@ -821,7 +942,10 @@ mod tests {
         std::fs::write(dir.join("policy.yaml"), &mine).unwrap();
         let k = keep_hand_edits_with(&dir, &[("policy.yaml", V1)], &[], "1");
         assert!(k.notices.is_empty());
-        assert_eq!(std::fs::read_to_string(dir.join("policy.yaml")).unwrap(), mine);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("policy.yaml")).unwrap(),
+            mine
+        );
     }
 
     #[test]
@@ -831,10 +955,21 @@ mod tests {
         keep_hand_edits_with(&dir, &[("policy.yaml", V1)], &[], "1");
         let edited = V1.replace("limit: 5", "limit: 1");
         std::fs::write(dir.join("policy.yaml"), &edited).unwrap();
-        write_yaml_whole(&overlay_path(&dir, "policy.yaml"), "changes: [this is: not: valid").unwrap();
+        write_yaml_whole(
+            &overlay_path(&dir, "policy.yaml"),
+            "changes: [this is: not: valid",
+        )
+        .unwrap();
         let k = keep_hand_edits_with(&dir, &[("policy.yaml", V2)], &[], "2");
-        assert!(k.notices.iter().any(|n| n.contains("does not parse")), "{:?}", k.notices);
-        assert_eq!(std::fs::read_to_string(dir.join("policy.yaml")).unwrap(), edited);
+        assert!(
+            k.notices.iter().any(|n| n.contains("does not parse")),
+            "{:?}",
+            k.notices
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("policy.yaml")).unwrap(),
+            edited
+        );
     }
 
     #[test]
@@ -843,7 +978,10 @@ mod tests {
         std::fs::write(dir.join("policy.yaml"), "a: [unclosed").unwrap();
         let k = keep_hand_edits_with(&dir, &[("policy.yaml", V2)], &[], "2");
         assert!(k.notices.iter().any(|n| n.contains("does not parse")));
-        assert_eq!(std::fs::read_to_string(dir.join("policy.yaml")).unwrap(), "a: [unclosed");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("policy.yaml")).unwrap(),
+            "a: [unclosed"
+        );
     }
 
     #[test]
@@ -854,7 +992,14 @@ mod tests {
         std::fs::write(dir.join("policy.yaml"), V1.replace("limit: 5", "limit: 3")).unwrap();
         keep_hand_edits_with(&dir, &[("policy.yaml", V1)], &[], "1");
         let first = keep_hand_edits_with(&dir, &[("policy.yaml", V2)], &[], "2");
-        assert!(first.notices.iter().any(|n| n.contains("changed the default for limit")), "{:?}", first.notices);
+        assert!(
+            first
+                .notices
+                .iter()
+                .any(|n| n.contains("changed the default for limit")),
+            "{:?}",
+            first.notices
+        );
         let second = keep_hand_edits_with(&dir, &[("policy.yaml", V2)], &[], "2");
         assert!(second.notices.is_empty(), "{:?}", second.notices);
     }
@@ -881,11 +1026,30 @@ mod tests {
         p.set("old.y", "on");
         p.save(&dir).unwrap();
 
-        let k = keep_hand_edits_with(&dir, &[("tools.yaml", "new:\n  x: 0\n  y: false\n")], &[("tools.yaml", "old", "new")], "2");
-        assert!(k.notices.iter().any(|n| n.contains("new.y")), "{:?}", k.notices);
-        assert_eq!(crate::preferences::Preferences::load(&dir).chosen.get("new.y").map(String::as_str), Some("on"));
+        let k = keep_hand_edits_with(
+            &dir,
+            &[("tools.yaml", "new:\n  x: 0\n  y: false\n")],
+            &[("tools.yaml", "old", "new")],
+            "2",
+        );
+        assert!(
+            k.notices.iter().any(|n| n.contains("new.y")),
+            "{:?}",
+            k.notices
+        );
+        assert_eq!(
+            crate::preferences::Preferences::load(&dir)
+                .chosen
+                .get("new.y")
+                .map(String::as_str),
+            Some("on")
+        );
         let mut kept = load_overlay(&dir, "tools.yaml").unwrap();
-        assert!(!rename_paths(&mut kept, "tools.yaml", &[("tools.yaml", "old", "new")]));
+        assert!(!rename_paths(
+            &mut kept,
+            "tools.yaml",
+            &[("tools.yaml", "old", "new")]
+        ));
         assert_eq!(kept[0].dotted(), "new.x");
     }
 
@@ -894,9 +1058,15 @@ mod tests {
         let covered: Vec<&str> = shipped_yaml().iter().map(|(n, _)| *n).collect();
         for (path, _) in crate::upgrade::SHIPPED {
             let name = path.strip_prefix("config/").unwrap();
-            assert!(covered.contains(&name), "{name} ships but hand edits to it would not survive an update");
+            assert!(
+                covered.contains(&name),
+                "{name} ships but hand edits to it would not survive an update"
+            );
         }
-        assert!(shipped_yaml_from(&[("labels/x.yaml", ""), ("a.txt", ""), ("b.yaml", "")]) == vec![("b.yaml", "")]);
+        assert!(
+            shipped_yaml_from(&[("labels/x.yaml", ""), ("a.txt", ""), ("b.yaml", "")])
+                == vec![("b.yaml", "")]
+        );
     }
 
     #[test]
@@ -909,14 +1079,27 @@ mod tests {
         p.set("voice.rate", "7");
         p.save(&dir).unwrap();
         // Start again on the same version: the default is recorded, nothing to say.
-        assert!(keep_hand_edits_with(&dir, &[("tools.yaml", t1)], &[], "1").notices.is_empty());
-        assert_eq!(load_settings_was(&dir).get("voice.rate"), Some(&Some(y("5"))));
+        assert!(keep_hand_edits_with(&dir, &[("tools.yaml", t1)], &[], "1")
+            .notices
+            .is_empty());
+        assert_eq!(
+            load_settings_was(&dir).get("voice.rate"),
+            Some(&Some(y("5")))
+        );
 
         // A release that changes the rate default, and one that doesn't.
         let t2 = "voice:\n  rate: 6\n  pitch: 1\n";
         let k = keep_hand_edits_with(&dir, &[("tools.yaml", t2)], &[], "2");
-        assert!(k.notices.iter().any(|n| n.contains("voice.rate") && n.contains("Settings")), "{:?}", k.notices);
-        assert!(keep_hand_edits_with(&dir, &[("tools.yaml", t2)], &[], "2").notices.is_empty());
+        assert!(
+            k.notices
+                .iter()
+                .any(|n| n.contains("voice.rate") && n.contains("Settings")),
+            "{:?}",
+            k.notices
+        );
+        assert!(keep_hand_edits_with(&dir, &[("tools.yaml", t2)], &[], "2")
+            .notices
+            .is_empty());
 
         // Clearing the choice drops the record.
         p.clear("voice.rate");
@@ -944,7 +1127,10 @@ mod tests {
         .unwrap();
         let (kept, problems) = all_kept(&dir);
         assert!(problems.is_empty());
-        let e = kept.iter().find(|e| e.file == "policy.yaml").expect("listed");
+        let e = kept
+            .iter()
+            .find(|e| e.file == "policy.yaml")
+            .expect("listed");
         assert_eq!(shown(e.change.yours.as_ref()), "9");
         // The real shipped policy.yaml says something other than 4 (or nothing).
         assert!(e.default_moved() || e.shipped_now.is_some());
@@ -968,9 +1154,18 @@ mod tests {
     fn the_rename_list_is_sane() {
         let mut from_seen = Vec::new();
         for (file, from, to) in crate::upgrade::RENAMED_SETTINGS {
-            assert!(shipped_yaml().iter().any(|(n, _)| n == file), "{file} is not a shipped file");
-            assert!(!from.is_empty() && !to.is_empty() && from != to, "bad rename {from} -> {to}");
-            assert!(!from_seen.contains(&(file, from)), "{from} in {file} is renamed twice");
+            assert!(
+                shipped_yaml().iter().any(|(n, _)| n == file),
+                "{file} is not a shipped file"
+            );
+            assert!(
+                !from.is_empty() && !to.is_empty() && from != to,
+                "bad rename {from} -> {to}"
+            );
+            assert!(
+                !from_seen.contains(&(file, from)),
+                "{from} in {file} is renamed twice"
+            );
             from_seen.push((file, from));
         }
     }
@@ -986,7 +1181,10 @@ mod tests {
     #[test]
     fn the_real_shipped_files_parse_so_edits_to_them_can_be_kept() {
         for (name, text) in shipped_yaml() {
-            assert!(serde_yaml::from_str::<Value>(text).is_ok(), "{name} does not parse");
+            assert!(
+                serde_yaml::from_str::<Value>(text).is_ok(),
+                "{name} does not parse"
+            );
         }
     }
 }

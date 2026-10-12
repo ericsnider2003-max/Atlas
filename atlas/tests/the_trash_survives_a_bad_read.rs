@@ -27,7 +27,10 @@ fn dir(tag: &str) -> PathBuf {
 }
 
 fn trash(d: &PathBuf) -> Trash {
-    Trash::new(TrashConfig { dir: d.display().to_string(), keep_days: 30 })
+    Trash::new(TrashConfig {
+        dir: d.display().to_string(),
+        keep_days: 30,
+    })
 }
 
 /// Put a real file into the trash so the ledger has something in it.
@@ -85,8 +88,14 @@ fn an_unreadable_ledger_does_not_erase_the_record() {
     std::fs::create_dir(&ledger).unwrap();
 
     let expired = t.expire(atlas::store::now());
-    assert_eq!(expired, 0, "it expired entries from a ledger it could not read");
-    assert!(ledger.is_dir(), "it wrote over the unreadable ledger anyway");
+    assert_eq!(
+        expired, 0,
+        "it expired entries from a ledger it could not read"
+    );
+    assert!(
+        ledger.is_dir(),
+        "it wrote over the unreadable ledger anyway"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -110,7 +119,11 @@ fn nothing_recent_is_expired() {
     let d = dir("recent");
     let t = trash(&d);
     discard_one(&t, &d, "new.txt");
-    assert_eq!(t.expire(atlas::store::now()), 0, "a fresh entry was expired");
+    assert_eq!(
+        t.expire(atlas::store::now()),
+        0,
+        "a fresh entry was expired"
+    );
     assert_eq!(t.ledger().len(), 1, "and it is still listed");
     let _ = std::fs::remove_dir_all(&d);
 }

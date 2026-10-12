@@ -28,7 +28,8 @@ pub fn parse_wav(bytes: &[u8]) -> Result<Wav, String> {
         return Err("not a WAV file".into());
     }
     let u16_at = |i: usize| u16::from_le_bytes([bytes[i], bytes[i + 1]]);
-    let u32_at = |i: usize| u32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]);
+    let u32_at =
+        |i: usize| u32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]);
     let (mut fmt, mut data): (Option<(u16, u16, u32, u16)>, Option<&[u8]>) = (None, None);
     let mut at = 12;
     while at + 8 <= bytes.len() {
@@ -36,9 +37,18 @@ pub fn parse_wav(bytes: &[u8]) -> Result<Wav, String> {
         let len = u32_at(at + 4) as usize;
         let body = at + 8;
         // A streamed WAV can say its data runs to the end (0 or too long).
-        let end = if len == 0 || body + len > bytes.len() { bytes.len() } else { body + len };
+        let end = if len == 0 || body + len > bytes.len() {
+            bytes.len()
+        } else {
+            body + len
+        };
         if id == b"fmt " && end >= body + 16 {
-            fmt = Some((u16_at(body), u16_at(body + 2), u32_at(body + 4), u16_at(body + 14)));
+            fmt = Some((
+                u16_at(body),
+                u16_at(body + 2),
+                u32_at(body + 4),
+                u16_at(body + 14),
+            ));
         } else if id == b"data" {
             data = Some(&bytes[body..end]);
             break;
@@ -52,14 +62,31 @@ pub fn parse_wav(bytes: &[u8]) -> Result<Wav, String> {
     }
     // 0xFFFE is WAVE_FORMAT_EXTENSIBLE; its sub-format follows the same bits.
     let samples: Vec<f32> = match (format, bits) {
-        (1 | 0xFFFE, 16) => data.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect(),
-        (1 | 0xFFFE, 32) => {
-            data.as_chunks::<4>().0.iter().map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f32 / 2_147_483_648.0).collect()
-        }
-        (3, 32) => data.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect(),
+        (1 | 0xFFFE, 16) => data
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0)
+            .collect(),
+        (1 | 0xFFFE, 32) => data
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f32 / 2_147_483_648.0)
+            .collect(),
+        (3, 32) => data
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            .collect(),
         (f, b) => return Err(format!("a WAV I don't play (format {f}, {b}-bit)")),
     };
-    Ok(Wav { rate, channels, samples })
+    Ok(Wav {
+        rate,
+        channels,
+        samples,
+    })
 }
 
 /// `w` as a device wants it: `rate` and `channels`, interleaved. Linear
@@ -118,13 +145,19 @@ fn outputs() -> Vec<String> {
 
 /// The speakers, as devices `audio::choose` can pick from.
 pub fn output_devices() -> Vec<crate::audio::Device> {
-    outputs().iter().map(|n| crate::audio::Device::new(n, crate::audio::Kind::Output)).collect()
+    outputs()
+        .iter()
+        .map(|n| crate::audio::Device::new(n, crate::audio::Kind::Output))
+        .collect()
 }
 
 /// Which speaker to play through: `audio::choose`'s pick among `outputs`
 /// (your named ones, then headphones when they're connected). `None`: the
 /// system's default.
-pub fn chosen_output(outputs: &[crate::audio::Device], cfg: &crate::audio::AudioConfig) -> Option<String> {
+pub fn chosen_output(
+    outputs: &[crate::audio::Device],
+    cfg: &crate::audio::AudioConfig,
+) -> Option<String> {
     if outputs.is_empty() {
         return None;
     }
@@ -133,7 +166,8 @@ pub fn chosen_output(outputs: &[crate::audio::Device], cfg: &crate::audio::Audio
 
 /// The speaker picked, kept for a little while: listing devices for every
 /// sentence would put that in front of every sentence.
-static PICKED: std::sync::Mutex<Option<(std::time::Instant, Option<String>)>> = std::sync::Mutex::new(None);
+static PICKED: std::sync::Mutex<Option<(std::time::Instant, Option<String>)>> =
+    std::sync::Mutex::new(None);
 
 /// How long a speaker pick is kept before the devices are listed again.
 pub const PICK_KEPT_SECS: u64 = 20;
@@ -166,10 +200,16 @@ pub fn play(wav: &Wav, device: Option<&str>, stop: &dyn Fn() -> bool) -> Result<
     use std::sync::Arc;
     let host = cpal::default_host();
     let named = device.and_then(|want| {
-        host.output_devices().ok()?.find(|d| d.name().is_ok_and(|n| n == want))
+        host.output_devices()
+            .ok()?
+            .find(|d| d.name().is_ok_and(|n| n == want))
     });
-    let dev = named.or_else(|| host.default_output_device()).ok_or("there's no speaker to play through")?;
-    let config = dev.default_output_config().map_err(|e| format!("the speaker won't say how it plays: {e}"))?;
+    let dev = named
+        .or_else(|| host.default_output_device())
+        .ok_or("there's no speaker to play through")?;
+    let config = dev
+        .default_output_config()
+        .map_err(|e| format!("the speaker won't say how it plays: {e}"))?;
     let (rate, channels) = (config.sample_rate().0, config.channels());
     let samples: Arc<Vec<f32>> = Arc::new(fit_to_speaker(wav, rate, channels));
     let pos = Arc::new(AtomicUsize::new(0));
@@ -190,13 +230,22 @@ pub fn play(wav: &Wav, device: Option<&str>, stop: &dyn Fn() -> bool) -> Result<
     let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => {
             let (s, p) = (samples.clone(), pos.clone());
-            dev.build_output_stream(&cfg, move |out: &mut [f32], _: &_| fill(out, &s, &p, |v| v), err, None)
+            dev.build_output_stream(
+                &cfg,
+                move |out: &mut [f32], _: &_| fill(out, &s, &p, |v| v),
+                err,
+                None,
+            )
         }
         cpal::SampleFormat::I16 => {
             let (s, p) = (samples.clone(), pos.clone());
             dev.build_output_stream(
                 &cfg,
-                move |out: &mut [i16], _: &_| fill(out, &s, &p, |v| (v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16),
+                move |out: &mut [i16], _: &_| {
+                    fill(out, &s, &p, |v| {
+                        (v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
+                    })
+                },
                 err,
                 None,
             )
@@ -205,15 +254,25 @@ pub fn play(wav: &Wav, device: Option<&str>, stop: &dyn Fn() -> bool) -> Result<
             let (s, p) = (samples.clone(), pos.clone());
             dev.build_output_stream(
                 &cfg,
-                move |out: &mut [u16], _: &_| fill(out, &s, &p, |v| ((v.clamp(-1.0, 1.0) + 1.0) * 32767.5) as u16),
+                move |out: &mut [u16], _: &_| {
+                    fill(out, &s, &p, |v| {
+                        ((v.clamp(-1.0, 1.0) + 1.0) * 32767.5) as u16
+                    })
+                },
                 err,
                 None,
             )
         }
-        other => return Err(format!("the speaker plays in a form I don't write ({other:?})")),
+        other => {
+            return Err(format!(
+                "the speaker plays in a form I don't write ({other:?})"
+            ))
+        }
     }
     .map_err(|e| format!("couldn't open the speaker: {e}"))?;
-    stream.play().map_err(|e| format!("couldn't start the speaker: {e}"))?;
+    stream
+        .play()
+        .map_err(|e| format!("couldn't start the speaker: {e}"))?;
     let total = samples.len();
     // A little past the end, so the device's own buffer is heard out.
     let tail = std::time::Duration::from_millis(150);
@@ -249,7 +308,12 @@ pub fn play(_wav: &Wav, _device: Option<&str>, _stop: &dyn Fn() -> bool) -> Resu
 /// Is the configured player the shipped `ffplay`, which Atlas plays in place
 /// of? A player you named yourself is always used as named.
 pub fn plays_inside(command: &str) -> bool {
-    let name = command.trim().rsplit(['/', '\\']).next().unwrap_or("").to_lowercase();
+    let name = command
+        .trim()
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
     name == "ffplay" || name == "ffplay.exe"
 }
 

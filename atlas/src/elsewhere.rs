@@ -90,7 +90,11 @@ pub struct ElsewhereConfig {
 
 impl Default for ElsewhereConfig {
     fn default() -> Self {
-        ElsewhereConfig { enabled: true, known: Vec::new(), timeout_secs: 5 }
+        ElsewhereConfig {
+            enabled: true,
+            known: Vec::new(),
+            timeout_secs: 5,
+        }
     }
 }
 
@@ -99,12 +103,18 @@ impl ElsewhereConfig {
     /// does it. `kin.rs` learned this once already.
     pub fn find(&self, name: &str) -> Option<&Elsewhere> {
         let n = name.trim();
-        self.known.iter().find(|e| e.name.trim().eq_ignore_ascii_case(n))
+        self.known
+            .iter()
+            .find(|e| e.name.trim().eq_ignore_ascii_case(n))
     }
 
     /// What you could ask about, for when you name one that isn't there.
     pub fn names(&self) -> Vec<&str> {
-        self.known.iter().map(|e| e.name.trim()).filter(|n| !n.is_empty()).collect()
+        self.known
+            .iter()
+            .map(|e| e.name.trim())
+            .filter(|n| !n.is_empty())
+            .collect()
     }
 }
 
@@ -246,7 +256,10 @@ mod tests {
 
     #[test]
     fn a_silent_machine_is_not_reported_as_a_healthy_one() {
-        let b = Brief { name: "Homelab".into(), ..Default::default() };
+        let b = Brief {
+            name: "Homelab".into(),
+            ..Default::default()
+        };
         let said = spoken(&b);
         assert!(
             said.contains("nothing to say"),
@@ -256,8 +269,14 @@ mod tests {
 
     #[test]
     fn switched_off_it_asks_nothing() {
-        let off = ElsewhereConfig { enabled: false, ..cfg() };
+        let off = ElsewhereConfig {
+            enabled: false,
+            ..cfg()
+        };
         let e = off.known[0].clone();
-        assert!(ask(&e, &off).is_err(), "it went to the network with the setting off");
+        assert!(
+            ask(&e, &off).is_err(),
+            "it went to the network with the setting off"
+        );
     }
 }

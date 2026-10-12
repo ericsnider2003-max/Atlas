@@ -166,7 +166,12 @@ impl VoiceId {
         // A different encoder (the trained model arriving, 30 Sep 2026)
         // scores on another scale: the old samples can't be mixed in, so
         // enrolling starts the print again rather than refusing forever.
-        if self.print.as_ref().and_then(|p| p.samples.first()).is_some_and(|f| f.len() != embedding.len()) {
+        if self
+            .print
+            .as_ref()
+            .and_then(|p| p.samples.first())
+            .is_some_and(|f| f.len() != embedding.len())
+        {
             self.print = None;
             self.accepted.clear();
             self.after_name.clear();
@@ -230,10 +235,18 @@ impl VoiceId {
             "after the wake word ({} turns, nearly always you) your voice scored as low as {low:.2}; {below} of them were at or under the \"not you\" line ({reject:.2})",
             yours.len()
         );
-        if let Some(top) = self.turned_away.iter().cloned().fold(None, |m: Option<f32>, s| Some(m.map_or(s, |m| m.max(s)))) {
+        if let Some(top) = self
+            .turned_away
+            .iter()
+            .cloned()
+            .fold(None, |m: Option<f32>, s| Some(m.map_or(s, |m| m.max(s))))
+        {
             line.push_str(&format!("; the voices turned away scored at most {top:.2}"));
             if top < low {
-                line.push_str(&format!(", so a line near {:.2} would keep both", (top + low) / 2.0));
+                line.push_str(&format!(
+                    ", so a line near {:.2} would keep both",
+                    (top + low) / 2.0
+                ));
             } else {
                 line.push_str(" -- they overlap with yours, so more enrolment samples would help more than moving the line");
             }
@@ -272,7 +285,9 @@ impl VoiceId {
     }
 
     pub fn check(&self, embedding: &[f32], cfg: &VoiceIdConfig) -> Verdict {
-        let Some(p) = &self.print else { return Verdict::NotEnrolled };
+        let Some(p) = &self.print else {
+            return Verdict::NotEnrolled;
+        };
         if p.samples.len() < cfg.min_samples || p.centroid.len() != embedding.len() {
             return Verdict::NotEnrolled;
         }
@@ -386,7 +401,9 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
 }
 
 fn mean(samples: &[Vec<f32>]) -> Vec<f32> {
-    let Some(first) = samples.first() else { return Vec::new() };
+    let Some(first) = samples.first() else {
+        return Vec::new();
+    };
     let mut out = vec![0.0f32; first.len()];
     for s in samples {
         if s.len() != out.len() {

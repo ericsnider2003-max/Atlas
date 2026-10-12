@@ -39,14 +39,24 @@ impl Role {
     fn interactive(&self) -> bool {
         matches!(
             self,
-            Role::Button | Role::Edit | Role::CheckBox | Role::RadioButton
-                | Role::ComboBox | Role::Link | Role::MenuItem | Role::Tab | Role::ListItem
+            Role::Button
+                | Role::Edit
+                | Role::CheckBox
+                | Role::RadioButton
+                | Role::ComboBox
+                | Role::Link
+                | Role::MenuItem
+                | Role::Tab
+                | Role::ListItem
         )
     }
 
     /// Roles that carry readable content.
     fn textual(&self) -> bool {
-        matches!(self, Role::Text | Role::Document | Role::Edit | Role::ListItem)
+        matches!(
+            self,
+            Role::Text | Role::Document | Role::Edit | Role::ListItem
+        )
     }
 
     /// Map a Windows control type id. Values from UIA_ControlTypeIds.
@@ -96,7 +106,14 @@ fn yes() -> bool {
 
 impl Node {
     pub fn new(role: Role, name: &str) -> Node {
-        Node { role, name: name.into(), value: String::new(), enabled: true, children: Vec::new(), rect: None }
+        Node {
+            role,
+            name: name.into(),
+            value: String::new(),
+            enabled: true,
+            children: Vec::new(),
+            rect: None,
+        }
     }
 
     pub fn with(mut self, children: Vec<Node>) -> Node {
@@ -177,7 +194,11 @@ impl Node {
             if !n.role.textual() {
                 return;
             }
-            let s = if n.value.trim().is_empty() { &n.name } else { &n.value };
+            let s = if n.value.trim().is_empty() {
+                &n.name
+            } else {
+                &n.value
+            };
             let s = s.trim();
             if !s.is_empty() {
                 parts.push(s.to_string());
@@ -227,7 +248,9 @@ impl Quality {
                 format!("app exposes only {nodes} controls — falling back to a screenshot")
             }
             Quality::Unlabelled { named, total } => {
-                format!("only {named} of {total} controls are labelled — falling back to a screenshot")
+                format!(
+                    "only {named} of {total} controls are labelled — falling back to a screenshot"
+                )
             }
             Quality::Empty => "app publishes no accessibility tree".into(),
         }
@@ -284,7 +307,11 @@ fn write_outline(n: &Node, depth: usize, out: &mut Vec<String>, max: usize) {
     if out.len() >= max {
         return;
     }
-    let label = if n.value.trim().is_empty() { &n.name } else { &n.value };
+    let label = if n.value.trim().is_empty() {
+        &n.name
+    } else {
+        &n.value
+    };
     if !label.trim().is_empty() || n.role.interactive() {
         out.push(format!(
             "{}{:?}: {}",
@@ -316,24 +343,55 @@ pub enum UiAct {
 }
 
 /// Buttons whose press can't be taken back: asked about first, every time.
-const CANT_BE_UNDONE: &[&str] = &["send", "delete", "remove", "pay", "buy", "purchase", "submit", "post",
-    "publish", "confirm", "transfer", "order", "sign", "accept", "erase", "format", "uninstall"];
+const CANT_BE_UNDONE: &[&str] = &[
+    "send",
+    "delete",
+    "remove",
+    "pay",
+    "buy",
+    "purchase",
+    "submit",
+    "post",
+    "publish",
+    "confirm",
+    "transfer",
+    "order",
+    "sign",
+    "accept",
+    "erase",
+    "format",
+    "uninstall",
+];
 
 pub fn cannot_be_undone(button: &str) -> bool {
     let b = button.to_lowercase();
-    CANT_BE_UNDONE.iter().any(|w| b.split(|c: char| !c.is_alphanumeric()).any(|x| x == *w))
+    CANT_BE_UNDONE
+        .iter()
+        .any(|w| b.split(|c: char| !c.is_alphanumeric()).any(|x| x == *w))
 }
 
 /// "click Export in Excel" / "press the Save button" → ("Export", Some("Excel")).
 pub fn button_request(said: &str) -> Option<(String, Option<String>)> {
     let t = said.trim();
     let lower = t.to_ascii_lowercase();
-    let start = ["click the", "press the", "click", "press", "hit the", "hit", "tap the", "tap"]
-        .iter()
-        .find_map(|p| lower.find(p).map(|i| i + p.len()))?;
+    let start = [
+        "click the",
+        "press the",
+        "click",
+        "press",
+        "hit the",
+        "hit",
+        "tap the",
+        "tap",
+    ]
+    .iter()
+    .find_map(|p| lower.find(p).map(|i| i + p.len()))?;
     let rest = t[start..].trim();
     let (button, app) = match rest.to_ascii_lowercase().rfind(" in ") {
-        Some(i) => (rest[..i].trim().to_string(), Some(rest[i + 4..].trim().to_string())),
+        Some(i) => (
+            rest[..i].trim().to_string(),
+            Some(rest[i + 4..].trim().to_string()),
+        ),
         None => (rest.to_string(), None),
     };
     let button = button

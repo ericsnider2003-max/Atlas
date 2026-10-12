@@ -29,7 +29,12 @@ impl Daemon<'_> {
                 } else if !self.mic_running() {
                     "No — the microphone isn't running, so type to me here.".to_string()
                 } else {
-                    let phrase = self.tools_cfg().wake.as_ref().map(|w| w.phrase.clone()).unwrap_or_default();
+                    let phrase = self
+                        .tools_cfg()
+                        .wake
+                        .as_ref()
+                        .map(|w| w.phrase.clone())
+                        .unwrap_or_default();
                     match self.tiers.tier {
                         crate::input::Tier::Voice if !phrase.trim().is_empty() => format!("Yes — listening for \"{}\".", phrase.trim()),
                         crate::input::Tier::Voice => "Yes — listening for my name.".to_string(),
@@ -41,7 +46,10 @@ impl Daemon<'_> {
             ),
             (
                 "Things open".to_string(),
-                format!("{}", self.workspace.iter().filter(|i| i.status.live()).count()),
+                format!(
+                    "{}",
+                    self.workspace.iter().filter(|i| i.status.live()).count()
+                ),
             ),
         ];
         // What the crew has in hand, and whether it's too small: work that
@@ -72,7 +80,10 @@ impl Daemon<'_> {
             }
             if let Some((name, ms)) = self.crew.longest_wait() {
                 if ms >= 1000 {
-                    line.push_str(&format!(" Longest wait for a hand: {name}, {}.", crate::crew::spoken_ms(ms)));
+                    line.push_str(&format!(
+                        " Longest wait for a hand: {name}, {}.",
+                        crate::crew::spoken_ms(ms)
+                    ));
                 }
             }
             out.push(("Work in hand".to_string(), line));
@@ -124,7 +135,10 @@ impl Daemon<'_> {
                 self.talk_queue.len().hash(&mut h);
                 self.talk_is_thinking().hash(&mut h);
                 self.talk_so_far().len().hash(&mut h);
-                (h.finish(), !self.talk_queue.is_empty() || self.talk_is_thinking())
+                (
+                    h.finish(),
+                    !self.talk_queue.is_empty() || self.talk_is_thinking(),
+                )
             }
             _ => (0, false),
         }
@@ -134,10 +148,23 @@ impl Daemon<'_> {
         use crate::mind::Stage;
         let now = crate::store::now();
         let paused = self.attention.is_paused();
-        let background: Vec<String> = self.mind.background().iter().map(|w| sentence(&w.asked)).collect();
+        let background: Vec<String> = self
+            .mind
+            .background()
+            .iter()
+            .map(|w| sentence(&w.asked))
+            .collect();
         let held: Vec<String> = self.outbox.held.iter().map(|n| n.title.clone()).collect();
-        let Some(w) = self.mind.focus().or_else(|| self.mind.work.iter().rev().find(|w| w.stage.finished())) else {
-            let title = if paused { "Paused." } else { "Waiting for you." };
+        let Some(w) = self
+            .mind
+            .focus()
+            .or_else(|| self.mind.work.iter().rev().find(|w| w.stage.finished()))
+        else {
+            let title = if paused {
+                "Paused."
+            } else {
+                "Waiting for you."
+            };
             return hub::NowView {
                 title: title.into(),
                 since: if paused {
@@ -170,13 +197,33 @@ impl Daemon<'_> {
             steps.push((kind, sentence(&t.text)));
         }
         for s in w.steps.iter().filter(|s| s.failed.is_some()) {
-            steps.push((hub::Step::Rerouted, format!("{} didn't work: {}", sentence(&s.what).trim_end_matches('.'), s.failed.clone().unwrap_or_default())));
+            steps.push((
+                hub::Step::Rerouted,
+                format!(
+                    "{} didn't work: {}",
+                    sentence(&s.what).trim_end_matches('.'),
+                    s.failed.clone().unwrap_or_default()
+                ),
+            ));
         }
-        for e in self.crew.errands().into_iter().filter(|_| !w.stage.finished()) {
-            steps.push((hub::Step::Delegated, format!("Handed to a worker: {}. Its result is pending.", e.name)));
+        for e in self
+            .crew
+            .errands()
+            .into_iter()
+            .filter(|_| !w.stage.finished())
+        {
+            steps.push((
+                hub::Step::Delegated,
+                format!("Handed to a worker: {}. Its result is pending.", e.name),
+            ));
         }
-        let from = w.runner_position.or_else(|| w.steps.iter().position(|s| !s.done));
-        let mut open = w.steps.iter().enumerate()
+        let from = w
+            .runner_position
+            .or_else(|| w.steps.iter().position(|s| !s.done));
+        let mut open = w
+            .steps
+            .iter()
+            .enumerate()
             .filter(|(i, _)| !w.stage.finished() && from.is_some_and(|p| *i >= p))
             .map(|(_, s)| s);
         if let Some(cur) = open.next() {
@@ -185,7 +232,11 @@ impl Daemon<'_> {
         for n in open {
             steps.push((hub::Step::Next, sentence(&n.what)));
         }
-        let plain_from = steps.iter().filter(|(k, _)| !matches!(k, hub::Step::Now | hub::Step::Next)).count().saturating_sub(5);
+        let plain_from = steps
+            .iter()
+            .filter(|(k, _)| !matches!(k, hub::Step::Now | hub::Step::Next))
+            .count()
+            .saturating_sub(5);
         let mins = now.saturating_sub(w.started) / 60;
         let fallback = match (&w.blocked_on, w.thoughts.iter().rev().find(|t| t.stage == Stage::Rethinking)) {
             (Some(b), _) => format!("It's waiting on {b}. If that doesn't come, I'll stop and tell you rather than guess."),
@@ -194,10 +245,22 @@ impl Daemon<'_> {
         };
         hub::NowView {
             title: sentence(&w.asked),
-            since: format!("Started {} · {}", crate::localclock::hhmm_here(w.started), if w.stage == Stage::Done { "runner ended" } else { w.stage.label() }),
+            since: format!(
+                "Started {} · {}",
+                crate::localclock::hhmm_here(w.started),
+                if w.stage == Stage::Done {
+                    "runner ended"
+                } else {
+                    w.stage.label()
+                }
+            ),
             steps,
             plain_from,
-            spent: Some(if mins == 0 { "under a minute".into() } else { format!("{mins} min") }),
+            spent: Some(if mins == 0 {
+                "under a minute".into()
+            } else {
+                format!("{mins} min")
+            }),
             fallback,
             paused,
             working: !paused && !w.stage.finished() && w.stage != Stage::Waiting,
@@ -241,7 +304,10 @@ impl Daemon<'_> {
 /// A blocker that is a question for you or a yes from you: it belongs in
 /// "Waiting on you", not "Blocked" — nothing stopped Atlas but your answer.
 pub(super) fn waits_on_you(b: &crate::backlog::Blocker) -> bool {
-    matches!(b, crate::backlog::Blocker::NeedsApproval | crate::backlog::Blocker::NeedsYourDecision { .. })
+    matches!(
+        b,
+        crate::backlog::Blocker::NeedsApproval | crate::backlog::Blocker::NeedsYourDecision { .. }
+    )
 }
 
 /// What a stored thing is, said rather than named.
@@ -278,25 +344,45 @@ impl Daemon<'_> {
     pub(super) fn bring_in(&mut self, name: &str, bytes: &[u8]) -> String {
         let now = crate::store::now();
         let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
-        let text = || String::from_utf8(bytes.to_vec()).map_err(|_| format!("{name} isn't text, so it isn't a calendar or contacts file"));
+        let text = || {
+            String::from_utf8(bytes.to_vec())
+                .map_err(|_| format!("{name} isn't text, so it isn't a calendar or contacts file"))
+        };
         match ext.as_str() {
-            "ics" | "ical" => match text().and_then(|t| self.calendar.import_ics(&t, now, &self.home_zone())) {
-                Ok((n, unknown)) => {
-                    if let Err(e) = self.calendar.save(&self.store) {
-                        return with_keeping(format!("{n} event{} read from {name}.", if n == 1 { "" } else { "s" }), Err(e));
+            "ics" | "ical" => {
+                match text().and_then(|t| self.calendar.import_ics(&t, now, &self.home_zone())) {
+                    Ok((n, unknown)) => {
+                        if let Err(e) = self.calendar.save(&self.store) {
+                            return with_keeping(
+                                format!(
+                                    "{n} event{} read from {name}.",
+                                    if n == 1 { "" } else { "s" }
+                                ),
+                                Err(e),
+                            );
+                        }
+                        let mut said = format!(
+                            "{n} event{} added or updated from {name}.",
+                            if n == 1 { "" } else { "s" }
+                        );
+                        for z in unknown {
+                            said.push_str(&format!(
+                                " It names a time zone I don't know (\"{z}\"), read as yours."
+                            ));
+                        }
+                        said
                     }
-                    let mut said = format!("{n} event{} added or updated from {name}.", if n == 1 { "" } else { "s" });
-                    for z in unknown {
-                        said.push_str(&format!(" It names a time zone I don't know (\"{z}\"), read as yours."));
-                    }
-                    said
+                    Err(why) => format!("{name} didn't read as a calendar: {why}"),
                 }
-                Err(why) => format!("{name} didn't read as a calendar: {why}"),
-            },
+            }
             "vcf" | "vcard" => {
-                let input = match text() { Ok(input) => input, Err(why) => return format!("{name} didn't read as contacts: {why}") };
+                let input = match text() {
+                    Ok(input) => input,
+                    Err(why) => return format!("{name} didn't read as contacts: {why}"),
+                };
                 match crate::clients::ClientList::change(&self.store, |list| {
-                    list.import_vcf(&input, now).map_err(crate::error::AtlasError::Platform)
+                    list.import_vcf(&input, now)
+                        .map_err(crate::error::AtlasError::Platform)
                 }) {
                     Ok((added, skipped, notes)) => {
                         let mut said = format!("{added} added to your clients from {name}");
@@ -325,14 +411,23 @@ impl Daemon<'_> {
                 } else if lower.starts_with("room-") || lower.starts_with("you-") {
                     let room_path = self.store.data_dir().join("hearing-room.wav");
                     let you_path = self.store.data_dir().join("hearing-you.wav");
-                    let here = if lower.starts_with("room-") { &room_path } else { &you_path };
+                    let here = if lower.starts_with("room-") {
+                        &room_path
+                    } else {
+                        &you_path
+                    };
                     if let Err(e) = std::fs::write(here, bytes) {
                         return format!("couldn't keep {name}: {e}");
                     }
                     match (std::fs::read(&room_path), std::fs::read(&you_path)) {
                         (Ok(room), Ok(you)) => {
                             let current = self.tools_cfg().endpoint.vad_params();
-                            let said = match crate::vadcal::from_recordings(&room, &you, current, &crate::roots::config_dir()) {
+                            let said = match crate::vadcal::from_recordings(
+                                &room,
+                                &you,
+                                current,
+                                &crate::roots::config_dir(),
+                            ) {
                                 Ok(o) => crate::vadcal::Outcome::say(&o),
                                 Err(e) => e,
                             };
@@ -340,8 +435,12 @@ impl Daemon<'_> {
                             crate::heard!(std::fs::remove_file(&you_path));
                             said
                         }
-                        (Ok(_), Err(_)) => "Got the room. Now bring in a recording of you talking somewhere quiet.".into(),
-                        _ => "Got you. Now bring in a recording of the room with nobody talking.".into(),
+                        (Ok(_), Err(_)) => {
+                            "Got the room. Now bring in a recording of you talking somewhere quiet."
+                                .into()
+                        }
+                        _ => "Got you. Now bring in a recording of the room with nobody talking."
+                            .into(),
                     }
                 } else {
                     match crate::speaker::learn_background(&samples, rate, &self.store) {
@@ -350,15 +449,30 @@ impl Daemon<'_> {
                             if bg.ready() {
                                 format!("Learned from {n} stretch{} of speech in {name}. I've heard enough voices now to tell yours apart.", if n == 1 { "" } else { "es" })
                             } else {
-                                format!("Learned from {n} stretch{} of speech in {name}. {}", if n == 1 { "" } else { "es" }, crate::speaker::still_learning(&bg))
+                                format!(
+                                    "Learned from {n} stretch{} of speech in {name}. {}",
+                                    if n == 1 { "" } else { "es" },
+                                    crate::speaker::still_learning(&bg)
+                                )
                             }
                         }
                         Err(e) => format!("{name}: {e}"),
                     }
                 }
             }
-            _ => match self.tray.hand_file(name, bytes, &crate::earned::Space::Personal, "the hub", None, now, self.store.root()) {
-                Ok(_) => with_keeping(format!("Got {name}. I'll look at it and tell you what's in it."), self.tray.save(&self.store)),
+            _ => match self.tray.hand_file(
+                name,
+                bytes,
+                &crate::earned::Space::Personal,
+                "the hub",
+                None,
+                now,
+                self.store.root(),
+            ) {
+                Ok(_) => with_keeping(
+                    format!("Got {name}. I'll look at it and tell you what's in it."),
+                    self.tray.save(&self.store),
+                ),
                 Err(why) => why,
             },
         }
@@ -391,7 +505,9 @@ pub fn ipa_facts_ready(f: &std::path::Path) -> bool {
 pub(super) fn ipa_seen(f: &std::path::Path) -> Option<IpaRead> {
     let meta = std::fs::metadata(f).ok()?;
     let (len, at) = (meta.len(), meta.modified().ok()?);
-    let mut seen = IPA_SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut seen = IPA_SEEN
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some((p, l, t, state)) = seen.as_ref() {
         if p == f && *l == len && *t == at {
             return Some(state.clone());
@@ -400,18 +516,27 @@ pub(super) fn ipa_seen(f: &std::path::Path) -> Option<IpaRead> {
     *seen = Some((f.to_path_buf(), len, at, IpaRead::Reading));
     drop(seen);
     let path = f.to_path_buf();
-    let spawned = std::thread::Builder::new().name("atlas-ipa".into()).spawn(move || {
-        let facts = std::fs::read(&path).ok().and_then(|b| crate::ota::Ipa::read(&b).ok()).map(|i| (i.version, i.devices));
-        let mut seen = IPA_SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some((p, l, t, state)) = seen.as_mut() {
-            if *p == path && *l == len && *t == at {
-                *state = IpaRead::Done(facts);
+    let spawned = std::thread::Builder::new()
+        .name("atlas-ipa".into())
+        .spawn(move || {
+            let facts = std::fs::read(&path)
+                .ok()
+                .and_then(|b| crate::ota::Ipa::read(&b).ok())
+                .map(|i| (i.version, i.devices));
+            let mut seen = IPA_SEEN
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some((p, l, t, state)) = seen.as_mut() {
+                if *p == path && *l == len && *t == at {
+                    *state = IpaRead::Done(facts);
+                }
             }
-        }
-    });
+        });
     if spawned.is_err() {
         // No thread: say nothing about it rather than stall the page.
-        let mut seen = IPA_SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut seen = IPA_SEEN
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *seen = Some((f.to_path_buf(), len, at, IpaRead::Done(None)));
     }
     Some(IpaRead::Reading)
@@ -429,11 +554,16 @@ pub(super) fn with_block(page: String, block: &str) -> String {
 /// (P.7): which model is in use, how its download is going, and the button
 /// to fetch it. Nothing on a computer, which uses its models folder.
 pub(super) fn phone_model_block(said: Option<&str>) -> String {
-    let notice = said.map(|s| format!("<p class=notice role=status>{}</p>", hub::esc(s))).unwrap_or_default();
+    let notice = said
+        .map(|s| format!("<p class=notice role=status>{}</p>", hub::esc(s)))
+        .unwrap_or_default();
     #[cfg(feature = "phone-llm")]
     {
         let attached = crate::phonemodel::attached();
-        let state = crate::phonemodel::download_said(crate::phonemodel::download_state().as_ref(), attached.as_deref());
+        let state = crate::phonemodel::download_said(
+            crate::phonemodel::download_state().as_ref(),
+            attached.as_deref(),
+        );
         let button = if attached.is_none() {
             "<form class=inline method=post action='/hub/phonemodel'><input type=hidden name=what value=get>\
              <button class=primary>Get this phone's own model</button></form>\
@@ -442,7 +572,10 @@ pub(super) fn phone_model_block(said: Option<&str>) -> String {
         } else {
             ""
         };
-        return format!("{notice}<h2>This phone's own model</h2><p>{}</p>{button}", hub::esc(&state));
+        return format!(
+            "{notice}<h2>This phone's own model</h2><p>{}</p>{button}",
+            hub::esc(&state)
+        );
     }
     #[cfg(not(feature = "phone-llm"))]
     {
@@ -452,7 +585,10 @@ pub(super) fn phone_model_block(said: Option<&str>) -> String {
 
 /// A field of a query or a posted form, decoded.
 pub(super) fn field_of(fields: &[(String, String)], name: &str) -> Option<String> {
-    fields.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone())
+    fields
+        .iter()
+        .find(|(k, _)| k == name)
+        .map(|(_, v)| v.clone())
 }
 
 /// "Personal" or the business's name: the firewall, as a word.

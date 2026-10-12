@@ -46,7 +46,11 @@ fn an_announcement_carries_a_name_and_a_port_and_nothing_else() {
     // would have told them anyway.
     let said = answer_for("homelab", 8787);
     assert_eq!(said, "atlas-here-1 homelab 8787");
-    assert_eq!(said.split_whitespace().count(), 3, "a field was added: {said}");
+    assert_eq!(
+        said.split_whitespace().count(),
+        3,
+        "a field was added: {said}"
+    );
 }
 
 #[test]
@@ -71,7 +75,10 @@ fn anything_that_is_not_an_announcement_is_ignored() {
         "ATLAS-HERE-1 name 8787",
         "atlas-here-1 name 0",
     ] {
-        assert!(answer_from(junk, from("10.0.0.9")).is_none(), "accepted {junk:?}");
+        assert!(
+            answer_from(junk, from("10.0.0.9")).is_none(),
+            "accepted {junk:?}"
+        );
     }
 }
 
@@ -90,13 +97,20 @@ fn what_it_found_is_not_written_into_your_settings() {
     // Atlas prints the entry and leaves the token to you. An entry that only
     // needs one more field is an invitation to paste a token in without
     // thinking about which machine it lets in.
-    let f = Found { name: "homelab".into(), host: "10.0.0.9".into(), port: 8787 };
+    let f = Found {
+        name: "homelab".into(),
+        host: "10.0.0.9".into(),
+        port: 8787,
+    };
     let how = f.how_to_add();
     assert!(how.contains("name: homelab"));
     assert!(how.contains("host: \"10.0.0.9\""));
     // The token is a hole, not a value.
     assert!(how.contains("<run `atlas hub`"), "{how}");
-    assert!(!how.contains("token: \"\""), "an empty token reads as one that works: {how}");
+    assert!(
+        !how.contains("token: \"\""),
+        "an empty token reads as one that works: {how}"
+    );
 
     let raw = crate::common::source_of("main");
     let body = raw
@@ -109,13 +123,20 @@ fn what_it_found_is_not_written_into_your_settings() {
         .and_then(|r| r.split("\n}\n").next())
         .expect("run_nearby");
     for writing in ["save(", "write(", "fs::"] {
-        assert!(!body.contains(writing), "the nearby command writes something: {writing}");
+        assert!(
+            !body.contains(writing),
+            "the nearby command writes something: {writing}"
+        );
     }
 }
 
 #[test]
 fn the_spoken_answer_says_that_finding_is_not_reaching() {
-    let found = vec![Found { name: "homelab".into(), host: "10.0.0.9".into(), port: 8787 }];
+    let found = vec![Found {
+        name: "homelab".into(),
+        host: "10.0.0.9".into(),
+        port: 8787,
+    }];
     let said = nearby::spoken(&found, &NearbyConfig::default());
     assert!(said.contains("homelab at 10.0.0.9:8787"), "{said}");
     assert!(said.contains("not being allowed in"), "{said}");
@@ -128,17 +149,36 @@ fn finding_nothing_says_which_of_the_two_reasons_it_might_be() {
     let said = nearby::spoken(&[], &NearbyConfig::default());
     assert!(said.contains("no other Atlas on this network"), "{said}");
     assert!(said.contains("nearby.announce: true"), "{said}");
-    assert!(said.contains("on that machine"), "it didn't say where to change it: {said}");
+    assert!(
+        said.contains("on that machine"),
+        "it didn't say where to change it: {said}"
+    );
 }
 
 #[test]
 fn a_machine_that_is_not_answering_is_told_it_is_not() {
     // You looked, you found one, and the other one cannot find you. Worth
     // knowing before you wonder why.
-    let found = vec![Found { name: "homelab".into(), host: "10.0.0.9".into(), port: 8787 }];
-    let quiet = nearby::spoken(&found, &NearbyConfig { announce: false, ..Default::default() });
+    let found = vec![Found {
+        name: "homelab".into(),
+        host: "10.0.0.9".into(),
+        port: 8787,
+    }];
+    let quiet = nearby::spoken(
+        &found,
+        &NearbyConfig {
+            announce: false,
+            ..Default::default()
+        },
+    );
     assert!(quiet.contains("isn't answering probes itself"), "{quiet}");
-    let loud = nearby::spoken(&found, &NearbyConfig { announce: true, ..Default::default() });
+    let loud = nearby::spoken(
+        &found,
+        &NearbyConfig {
+            announce: true,
+            ..Default::default()
+        },
+    );
     assert!(!loud.contains("isn't answering probes itself"), "{loud}");
 }
 
@@ -148,13 +188,19 @@ fn answering_is_off_until_you_turn_it_on() {
     assert!(!NearbyConfig::default().announce);
     let yaml = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
     assert!(yaml.contains("announce: false"), "it ships announcing");
-    assert!(yaml.contains("isn't always your own"), "the reason isn't written down");
+    assert!(
+        yaml.contains("isn't always your own"),
+        "the reason isn't written down"
+    );
 }
 
 #[test]
 fn a_probe_is_not_answered_when_announcing_is_off() {
     // The switch, checked before a socket is opened rather than after.
-    let off = NearbyConfig { announce: false, ..Default::default() };
+    let off = NearbyConfig {
+        announce: false,
+        ..Default::default()
+    };
     let r = nearby::answer_probes("homelab", 8787, &off, &|| false);
     // Returns rather than binding and looping forever, which is what makes
     // this testable at all.
@@ -175,7 +221,9 @@ fn a_probe_over_a_real_socket_gets_a_real_answer() {
     // broadcast address, which a sandbox will not route.
     let responder = UdpSocket::bind(("127.0.0.1", 0)).expect("bind responder");
     let door = responder.local_addr().expect("addr").port();
-    responder.set_read_timeout(Some(Duration::from_secs(2))).expect("timeout");
+    responder
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .expect("timeout");
 
     let listening = std::thread::spawn(move || {
         let mut buf = [0u8; 512];
@@ -186,8 +234,12 @@ fn a_probe_over_a_real_socket_gets_a_real_answer() {
     });
 
     let prober = UdpSocket::bind(("127.0.0.1", 0)).expect("bind prober");
-    prober.set_read_timeout(Some(Duration::from_secs(2))).expect("timeout");
-    prober.send_to(ASKING.as_bytes(), ("127.0.0.1", door)).expect("probe");
+    prober
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .expect("timeout");
+    prober
+        .send_to(ASKING.as_bytes(), ("127.0.0.1", door))
+        .expect("probe");
 
     let mut buf = [0u8; 512];
     let (n, from) = prober.recv_from(&mut buf).expect("an answer");
@@ -203,7 +255,10 @@ fn a_probe_over_a_real_socket_gets_a_real_answer() {
 fn looking_on_a_network_with_nothing_on_it_comes_back_empty_rather_than_hanging() {
     // The wait is bounded by `listen_ms`, so a machine with no other Atlas on
     // it answers quickly instead of appearing to stall.
-    let quick = NearbyConfig { listen_ms: 150, ..Default::default() };
+    let quick = NearbyConfig {
+        listen_ms: 150,
+        ..Default::default()
+    };
     let began = std::time::Instant::now();
     let r = nearby::look(&quick);
     let took = began.elapsed();
@@ -221,11 +276,22 @@ fn looking_on_a_network_with_nothing_on_it_comes_back_empty_rather_than_hanging(
 #[test]
 fn the_machine_you_sync_with_being_here_is_what_same_network_means() {
     let found = vec![
-        Found { name: "homelab".into(), host: "10.0.0.9".into(), port: 8787 },
-        Found { name: "laptop".into(), host: "10.0.0.4".into(), port: 8787 },
+        Found {
+            name: "homelab".into(),
+            host: "10.0.0.9".into(),
+            port: 8787,
+        },
+        Found {
+            name: "laptop".into(),
+            host: "10.0.0.4".into(),
+            port: 8787,
+        },
     ];
     assert!(mesh::on_this_network("homelab", &found));
-    assert!(mesh::on_this_network("LAPTOP", &found), "case shouldn't matter");
+    assert!(
+        mesh::on_this_network("LAPTOP", &found),
+        "case shouldn't matter"
+    );
     // Two Atlases on a network do not help if the one you want is neither.
     assert!(!mesh::on_this_network("workshop", &found));
     assert!(!mesh::on_this_network("", &found));
@@ -237,9 +303,16 @@ fn same_network_is_a_route_that_can_now_be_reached_at_all() {
     // It never could be. Every caller of `choose` passed literals, so the
     // answer was invariably `Cloud`.
     let cfg = MeshConfig::default();
-    let found = vec![Found { name: "homelab".into(), host: "10.0.0.9".into(), port: 8787 }];
+    let found = vec![Found {
+        name: "homelab".into(),
+        host: "10.0.0.9".into(),
+        port: 8787,
+    }];
     let here = mesh::on_this_network("homelab", &found);
-    assert_eq!(mesh::choose(here, false, true, false, &cfg).0, Path::SameNetwork);
+    assert_eq!(
+        mesh::choose(here, false, true, false, &cfg).0,
+        Path::SameNetwork
+    );
     // And away from it, the folder, which is the one that is actually built.
     assert_eq!(mesh::choose(false, false, true, false, &cfg).0, Path::Cloud);
 }
@@ -255,7 +328,10 @@ fn being_on_the_same_network_is_not_reported_as_having_sent_it_that_way() {
         .filter(|l| !l.trim_start().starts_with("//"))
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(code.contains("crate::mesh::on_this_network("), "nothing observes the network");
+    assert!(
+        code.contains("crate::mesh::on_this_network("),
+        "nothing observes the network"
+    );
     assert!(code.contains("crate::nearby::look("), "nothing looks");
     // Sending straight across is built now (`transport::exchange` in the
     // sync pass). The line this test draws still holds, in its new form: it
@@ -263,7 +339,10 @@ fn being_on_the_same_network_is_not_reported_as_having_sent_it_that_way() {
     // came back, and says the folder carried it when it didn't. (Until the
     // 26 Sep merge this looked for "isn't built yet", which lived in the post
     // sender that the Atlas Project chat's 25j replaced with a real send.)
-    assert!(code.contains("crate::transport::exchange("), "nothing sends across");
+    assert!(
+        code.contains("crate::transport::exchange("),
+        "nothing sends across"
+    );
     assert!(
         code.contains("direct send didn't land; it's in the folder"),
         "a failed direct send is reported as if it went across"
@@ -275,20 +354,31 @@ fn being_on_the_same_network_is_not_reported_as_having_sent_it_that_way() {
     // longer belongs on. That list was created empty this same day and this
     // is its first entry, which is the case it was created for: reachable,
     // and still not a thing Atlas can do.
-    let honesty = std::fs::read_to_string("tests/capability_honesty.rs").expect("capability_honesty");
+    let honesty =
+        std::fs::read_to_string("tests/capability_honesty.rs").expect("capability_honesty");
     let named = honesty
         .split("PLANNED_FOR_A_REASON_OF_ITS_OWN: &[(&str, &str)] = &[")
         .nth(1)
         .and_then(|r| r.split("];").next())
         .expect("the list");
-    assert!(named.contains("\"mesh\""), "nothing records why mesh is still Planned");
+    assert!(
+        named.contains("\"mesh\""),
+        "nothing records why mesh is still Planned"
+    );
     // Line continuations put the reason across several source lines, so the
     // backslashes go and the whitespace is collapsed before looking for a
     // phrase in it. Checking raw source for a sentence that a `\` split in
     // two is a test that fails on reformatting rather than on meaning --
     // which it did, twice, before this line looked like this.
-    let flat = named.replace('\\', " ").split_whitespace().collect::<Vec<_>>().join(" ");
-    assert!(flat.contains("still not built is the sending"), "the reason went vague: {flat}");
+    let flat = named
+        .replace('\\', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        flat.contains("still not built is the sending"),
+        "the reason went vague: {flat}"
+    );
 }
 
 #[test]
@@ -304,7 +394,11 @@ fn nothing_is_broadcast_on_a_machine_with_nobody_to_look_for() {
         .nth(1)
         .expect("the guard is gone -- every sync now broadcasts");
     let first = body.trim_start();
-    assert!(first.starts_with("None") || first.starts_with("(None, None)"), "{}", &body[..80.min(body.len())]);
+    assert!(
+        first.starts_with("None") || first.starts_with("(None, None)"),
+        "{}",
+        &body[..80.min(body.len())]
+    );
 }
 
 #[test]
@@ -323,11 +417,23 @@ fn something_actually_starts_the_answerer() {
         // commands' writes.
         .and_then(|r| r.split("\n}\n").next())
         .expect("run_hub");
-    assert!(body.contains("atlas::nearby::answer_probes("), "nothing answers probes");
-    assert!(body.contains("if ncfg.announce {"), "it answers whether or not you asked it to");
-    assert!(body.contains("std::thread::spawn"), "answering would block the hub");
+    assert!(
+        body.contains("atlas::nearby::answer_probes("),
+        "nothing answers probes"
+    );
+    assert!(
+        body.contains("if ncfg.announce {"),
+        "it answers whether or not you asked it to"
+    );
+    assert!(
+        body.contains("std::thread::spawn"),
+        "answering would block the hub"
+    );
     // A failure to announce must not take the hub down with it.
-    assert!(body.contains("The hub is unaffected"), "a discovery failure looks fatal");
+    assert!(
+        body.contains("The hub is unaffected"),
+        "a discovery failure looks fatal"
+    );
 }
 
 #[test]

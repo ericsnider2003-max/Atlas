@@ -1,6 +1,6 @@
 //! The small settings readers the tick and turns share, and help with decisions,
 //! opportunities, reminders and ways in.
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
@@ -18,7 +18,9 @@ pub(super) struct PendingReminderEdit {
 fn reminder_record(path: &std::path::Path) -> crate::error::Result<Option<Vec<u8>>> {
     match std::fs::metadata(path) {
         Ok(metadata) if metadata.len() <= 2 * 1024 * 1024 => Ok(Some(std::fs::read(path)?)),
-        Ok(_) => Err(crate::error::AtlasError::Platform("reminder state exceeds its read budget".into())),
+        Ok(_) => Err(crate::error::AtlasError::Platform(
+            "reminder state exceeds its read budget".into(),
+        )),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
     }
@@ -27,70 +29,127 @@ fn reminder_record(path: &std::path::Path) -> crate::error::Result<Option<Vec<u8
 impl<'a> Daemon<'a> {
     fn reminder_owner_records(&self) -> crate::error::Result<Vec<Option<Vec<u8>>>> {
         let installed = crate::roots::state_dir();
-        let owner = if self.store.root().starts_with(&installed) { installed } else { self.store.root().to_path_buf() };
-        ["profiles.json", "handover.json"].iter().map(|name| reminder_record(&owner.join(name))).collect()
+        let owner = if self.store.root().starts_with(&installed) {
+            installed
+        } else {
+            self.store.root().to_path_buf()
+        };
+        ["profiles.json", "handover.json"]
+            .iter()
+            .map(|name| reminder_record(&owner.join(name)))
+            .collect()
     }
     fn reminder_targets(&self) -> std::result::Result<serde_json::Value, String> {
-        super::brief_prep::snapshot_value(&self.scheduler.jobs.iter().filter(|job| job.command.starts_with("reminder ")).collect::<Vec<_>>())
+        super::brief_prep::snapshot_value(
+            &self
+                .scheduler
+                .jobs
+                .iter()
+                .filter(|job| job.command.starts_with("reminder "))
+                .collect::<Vec<_>>(),
+        )
     }
     fn saved_schedule_matches_memory(&self) -> crate::error::Result<bool> {
         let bytes = reminder_record(&self.store.root().join("schedule.json"))?;
         let saved = match bytes {
             Some(bytes) => {
-                let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| crate::error::AtlasError::Platform(format!("saved reminders could not be read: {error}")))?;
+                let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
+                    crate::error::AtlasError::Platform(format!(
+                        "saved reminders could not be read: {error}"
+                    ))
+                })?;
                 value.get("data").cloned().unwrap_or(value)
             }
-            None => serde_json::to_value(crate::scheduler::Scheduler::default()).map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?,
+            None => serde_json::to_value(crate::scheduler::Scheduler::default())
+                .map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?,
         };
-        Ok(saved == serde_json::to_value(&self.scheduler).map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?)
+        Ok(saved
+            == serde_json::to_value(&self.scheduler)
+                .map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?)
     }
     fn defer_reminder_edit(&mut self, request: &str, logical_time: u64) -> String {
         if let Some(pending) = &self.pending_reminder_edit {
             return format!("Still waiting to save '{}'. That change is not saved yet; I haven't replaced it with another request.", pending.request);
         }
         let captured = (|| -> crate::error::Result<PendingReminderEdit> {
-            Ok(PendingReminderEdit { request: request.into(), logical_time, deadline: std::time::Instant::now() + std::time::Duration::from_secs(30), root: self.store.root().into(), owner: self.reminder_owner_records()?, reminders: self.reminder_targets().map_err(crate::error::AtlasError::Platform)?, fired: self.last_reminder_fired.clone() })
+            Ok(PendingReminderEdit {
+                request: request.into(),
+                logical_time,
+                deadline: std::time::Instant::now() + std::time::Duration::from_secs(30),
+                root: self.store.root().into(),
+                owner: self.reminder_owner_records()?,
+                reminders: self
+                    .reminder_targets()
+                    .map_err(crate::error::AtlasError::Platform)?,
+                fired: self.last_reminder_fired.clone(),
+            })
         })();
         match captured {
-            Ok(pending) => { self.pending_reminder_edit = Some(pending); "Waiting for local storage to save that reminder change. It is not saved yet; closing Atlas would cancel this waiting request.".into() }
+            Ok(pending) => {
+                self.pending_reminder_edit = Some(pending);
+                "Waiting for local storage to save that reminder change. It is not saved yet; closing Atlas would cancel this waiting request.".into()
+            }
             Err(error) => format!("That reminder change was not saved or queued: {error}"),
         }
     }
-    pub(super) fn cancel_pending_reminder_edit(&mut self) -> bool { self.pending_reminder_edit.take().is_some() }
+    pub(super) fn cancel_pending_reminder_edit(&mut self) -> bool {
+        self.pending_reminder_edit.take().is_some()
+    }
     pub(super) fn poll_pending_reminder_edit(&mut self) -> Option<String> {
         let pending = self.pending_reminder_edit.as_ref()?;
         if std::time::Instant::now() >= pending.deadline {
             self.pending_reminder_edit = None;
             return Some("The waiting reminder change expired before storage became available. It was not saved.".into());
         }
-        if self.attention.is_paused() { return None; }
+        if self.attention.is_paused() {
+            return None;
+        }
         let store = self.store.clone();
         let _guard = match store.transaction() {
             Ok(guard) => guard,
-            Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => return None,
-            Err(error) => { self.pending_reminder_edit = None; return Some(format!("The waiting reminder change could not be saved: {error}")); }
+            Err(crate::error::AtlasError::Io(error))
+                if error.kind() == std::io::ErrorKind::WouldBlock =>
+            {
+                return None
+            }
+            Err(error) => {
+                self.pending_reminder_edit = None;
+                return Some(format!(
+                    "The waiting reminder change could not be saved: {error}"
+                ));
+            }
         };
         let pending = self.pending_reminder_edit.take()?;
         let saved_matches = match self.saved_schedule_matches_memory() {
             Ok(matches) => matches,
             Err(error) => return Some(format!("The waiting reminder change was canceled because its saved state could not be checked: {error}. It was not saved.")),
         };
-        if self.store.root() != pending.root || self.reminder_owner_records().ok().as_ref() != Some(&pending.owner)
+        if self.store.root() != pending.root
+            || self.reminder_owner_records().ok().as_ref() != Some(&pending.owner)
             || !saved_matches
-            || self.reminder_targets().as_ref().ok() != Some(&pending.reminders) || self.last_reminder_fired != pending.fired {
+            || self.reminder_targets().as_ref().ok() != Some(&pending.reminders)
+            || self.last_reminder_fired != pending.fired
+        {
             return Some("The person or saved reminders changed while this request waited. The waiting reminder change was canceled without saving it.".into());
         }
-        self.remind_help(&pending.request, pending.logical_time).or_else(|| self.keeping_track(&pending.request, pending.logical_time))
+        self.remind_help(&pending.request, pending.logical_time)
+            .or_else(|| self.keeping_track(&pending.request, pending.logical_time))
     }
 
     pub(super) fn health_cfg(&self) -> HealthConfig {
-        self.tools_ref().map(|t| t.health.clone()).unwrap_or_default()
+        self.tools_ref()
+            .map(|t| t.health.clone())
+            .unwrap_or_default()
     }
     pub(super) fn thread_cfg(&self) -> ThreadConfig {
-        self.tools_ref().map(|t| t.thread.clone()).unwrap_or_default()
+        self.tools_ref()
+            .map(|t| t.thread.clone())
+            .unwrap_or_default()
     }
     pub(super) fn panel_cfg(&self) -> crate::panel::PanelConfig {
-        self.tools_ref().map(|t| t.panels.clone()).unwrap_or_default()
+        self.tools_ref()
+            .map(|t| t.panels.clone())
+            .unwrap_or_default()
     }
 
     /// What's outstanding, weighted so the brief can be said in priority
@@ -118,11 +177,15 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn clipboard_cfg(&self) -> crate::clipboard::ClipboardConfig {
-        self.tools_ref().map(|t| t.clipboard.clone()).unwrap_or_default()
+        self.tools_ref()
+            .map(|t| t.clipboard.clone())
+            .unwrap_or_default()
     }
 
     pub(super) fn lane_cfg(&self) -> LaneConfig {
-        self.tools_ref().map(|t| t.lanes.clone()).unwrap_or_default()
+        self.tools_ref()
+            .map(|t| t.lanes.clone())
+            .unwrap_or_default()
     }
 
     /// Machine readings. Filled in properly by the platform layer; until then
@@ -190,15 +253,29 @@ impl<'a> Daemon<'a> {
         // The time for a reminder that was waiting for one.
         if let Some(text) = self.reminder_waiting_for_a_time.take() {
             let low = said.to_lowercase();
-            let timed = crate::keeping::duration_secs(&low).map(|_| format!("remind me in {} to {text}", low.trim_start_matches("in ").trim()))
-                .or_else(|| crate::when::parse(said, self.home_zone().to_local(t as i64).max(0) as u64).map(|_| format!("remind me {} to {text}", said.trim())));
+            let timed = crate::keeping::duration_secs(&low)
+                .map(|_| {
+                    format!(
+                        "remind me in {} to {text}",
+                        low.trim_start_matches("in ").trim()
+                    )
+                })
+                .or_else(|| {
+                    crate::when::parse(said, self.home_zone().to_local(t as i64).max(0) as u64)
+                        .map(|_| format!("remind me {} to {text}", said.trim()))
+                });
             if let Some(again) = timed {
                 return self.remind_help(&again, t);
             }
         }
         let ask = crate::keeping::read(said)?;
-        let reminder_edit = matches!(&ask, Ask::CancelReminder(_) | Ask::Timer(_) | Ask::Snooze(_));
-        if reminder_edit && self.pending_reminder_edit.is_some() { return Some(self.defer_reminder_edit(said, t)); }
+        let reminder_edit = matches!(
+            &ask,
+            Ask::CancelReminder(_) | Ask::Timer(_) | Ask::Snooze(_)
+        );
+        if reminder_edit && self.pending_reminder_edit.is_some() {
+            return Some(self.defer_reminder_edit(said, t));
+        }
         let _transaction = if matches!(&ask, Ask::ListReminders) {
             None
         } else {
@@ -220,15 +297,27 @@ impl<'a> Daemon<'a> {
             };
         }
         let reminders = |s: &Self| -> Vec<crate::scheduler::Job> {
-            let mut v: Vec<crate::scheduler::Job> =
-                s.scheduler.active().into_iter().filter(|j| j.command.starts_with("reminder ")).cloned().collect();
+            let mut v: Vec<crate::scheduler::Job> = s
+                .scheduler
+                .active()
+                .into_iter()
+                .filter(|j| j.command.starts_with("reminder "))
+                .cloned()
+                .collect();
             v.sort_by_key(|j| j.due);
             v
         };
         let words_of = |j: &crate::scheduler::Job| -> String {
-            let w = j.command.trim_start_matches("reminder ").trim_start_matches("Reminder:").trim();
+            let w = j
+                .command
+                .trim_start_matches("reminder ")
+                .trim_start_matches("Reminder:")
+                .trim();
             // A timer is named by its length: "Your 10-minute timer is done." -> "the 10-minute timer".
-            match w.strip_prefix("Your ").and_then(|r| r.strip_suffix(" is done.")) {
+            match w
+                .strip_prefix("Your ")
+                .and_then(|r| r.strip_suffix(" is done."))
+            {
                 Some(timer) => format!("the {timer}"),
                 None => w.to_string(),
             }
@@ -239,7 +328,10 @@ impl<'a> Daemon<'a> {
             let local = zone.to_local(due as i64).max(0) as u64;
             if due.saturating_sub(t) < 3600 {
                 // Rounded up: 9 min 59 s is "in 10 minutes", as a person says it.
-                format!("in {}", say_duration(due.saturating_sub(t).div_ceil(60) * 60))
+                format!(
+                    "in {}",
+                    say_duration(due.saturating_sub(t).div_ceil(60) * 60)
+                )
             } else {
                 local_moment(local, lnow)
             }
@@ -253,13 +345,37 @@ impl<'a> Daemon<'a> {
                     return Some("No reminders or timers set.".into());
                 }
                 let there = self.where_it_rings();
-                let mut listed: Vec<(u64, String)> = all.iter().map(|j| (j.due, format!("{} {} (#{})", words_of(j), when_of(j.due), j.id))).collect();
-                listed.extend(elsewhere.iter().map(|e| (e.due, format!("{} {} ({there})", e.words(), when_of(e.due)))));
+                let mut listed: Vec<(u64, String)> = all
+                    .iter()
+                    .map(|j| {
+                        (
+                            j.due,
+                            format!("{} {} (#{})", words_of(j), when_of(j.due), j.id),
+                        )
+                    })
+                    .collect();
+                listed.extend(
+                    elsewhere
+                        .iter()
+                        .map(|e| (e.due, format!("{} {} ({there})", e.words(), when_of(e.due)))),
+                );
                 listed.sort_by_key(|(due, _)| *due);
                 let n = listed.len();
                 let listed: Vec<String> = listed.into_iter().take(8).map(|(_, s)| s).collect();
-                let more = if n > 8 { format!(", and {} more", n - 8) } else { String::new() };
-                Some(format!("{}: {}{more}.", if n == 1 { "One".to_string() } else { format!("{n}") }, listed.join("; ")))
+                let more = if n > 8 {
+                    format!(", and {} more", n - 8)
+                } else {
+                    String::new()
+                };
+                Some(format!(
+                    "{}: {}{more}.",
+                    if n == 1 {
+                        "One".to_string()
+                    } else {
+                        format!("{n}")
+                    },
+                    listed.join("; ")
+                ))
             }
             Ask::CancelReminder(which) => {
                 let all = reminders(self);
@@ -269,22 +385,48 @@ impl<'a> Daemon<'a> {
                 let theirs: Vec<super::onethread::Elsewhere> = match &which {
                     Which::All => elsewhere.clone(),
                     Which::About(words) => {
-                        let want: Vec<String> = words.split_whitespace().filter(|w| w.len() > 2).map(str::to_lowercase).collect();
-                        elsewhere.iter().filter(|e| !want.is_empty() && want.iter().all(|w| e.words().to_lowercase().contains(w.as_str()))).cloned().collect()
+                        let want: Vec<String> = words
+                            .split_whitespace()
+                            .filter(|w| w.len() > 2)
+                            .map(str::to_lowercase)
+                            .collect();
+                        elsewhere
+                            .iter()
+                            .filter(|e| {
+                                !want.is_empty()
+                                    && want
+                                        .iter()
+                                        .all(|w| e.words().to_lowercase().contains(w.as_str()))
+                            })
+                            .cloned()
+                            .collect()
                     }
                     _ => Vec::new(),
                 };
                 let ours_match = match &which {
                     Which::About(words) => {
-                        let want: Vec<String> = words.split_whitespace().filter(|w| w.len() > 2).map(str::to_lowercase).collect();
-                        all.iter().any(|j| !want.is_empty() && want.iter().all(|w| words_of(j).to_lowercase().contains(w.as_str())))
+                        let want: Vec<String> = words
+                            .split_whitespace()
+                            .filter(|w| w.len() > 2)
+                            .map(str::to_lowercase)
+                            .collect();
+                        all.iter().any(|j| {
+                            !want.is_empty()
+                                && want
+                                    .iter()
+                                    .all(|w| words_of(j).to_lowercase().contains(w.as_str()))
+                        })
                     }
                     _ => false,
                 };
-                if !theirs.is_empty() && (all.is_empty() || matches!(which, Which::About(_)) && !ours_match) {
+                if !theirs.is_empty()
+                    && (all.is_empty() || matches!(which, Which::About(_)) && !ours_match)
+                {
                     let there = self.where_it_rings();
                     for e in &theirs {
-                        if let Err(error) = self.cancel_elsewhere(&e.key, t) { return Some(format!("I couldn't save that cancellation: {error}. The other device's reminder is unchanged.")); }
+                        if let Err(error) = self.cancel_elsewhere(&e.key, t) {
+                            return Some(format!("I couldn't save that cancellation: {error}. The other device's reminder is unchanged."));
+                        }
                     }
                     return Some(if theirs.len() == 1 {
                         format!("Cancellation saved for {} (set {there}); it will reach that device on the next sync.", theirs[0].words())
@@ -294,7 +436,9 @@ impl<'a> Daemon<'a> {
                 }
                 if matches!(which, Which::All) {
                     for e in &theirs {
-                        if let Err(error) = self.cancel_elsewhere(&e.key, t) { return Some(format!("I couldn't save that cancellation: {error}. Check the reminders before trying again.")); }
+                        if let Err(error) = self.cancel_elsewhere(&e.key, t) {
+                            return Some(format!("I couldn't save that cancellation: {error}. Check the reminders before trying again."));
+                        }
                     }
                 }
                 if all.is_empty() {
@@ -304,17 +448,27 @@ impl<'a> Daemon<'a> {
                     Which::All => all.clone(),
                     Which::Number(n) => all.iter().filter(|j| j.id == *n).cloned().collect(),
                     Which::About(words) => {
-                        let want: Vec<String> = words.split_whitespace().filter(|w| w.len() > 2).map(str::to_lowercase).collect();
-                        all.iter().filter(|j| {
-                            let text = words_of(j).to_lowercase();
-                            !want.is_empty() && want.iter().all(|w| text.contains(w.as_str()))
-                        }).cloned().collect()
+                        let want: Vec<String> = words
+                            .split_whitespace()
+                            .filter(|w| w.len() > 2)
+                            .map(str::to_lowercase)
+                            .collect();
+                        all.iter()
+                            .filter(|j| {
+                                let text = words_of(j).to_lowercase();
+                                !want.is_empty() && want.iter().all(|w| text.contains(w.as_str()))
+                            })
+                            .cloned()
+                            .collect()
                     }
                     Which::Last => {
                         if all.len() == 1 {
                             all.clone()
                         } else {
-                            all.iter().filter(|j| Some(j.id) == self.last_reminder_set).cloned().collect()
+                            all.iter()
+                                .filter(|j| Some(j.id) == self.last_reminder_set)
+                                .cloned()
+                                .collect()
                         }
                     }
                 };
@@ -341,7 +495,13 @@ impl<'a> Daemon<'a> {
                 }
             }
             Ask::Timer(secs) => {
-                let id = self.scheduler.at(&format!("reminder Your {} timer is done.", say_duration(secs).replace(' ', "-").trim_end_matches('s')), t + secs);
+                let id = self.scheduler.at(
+                    &format!(
+                        "reminder Your {} timer is done.",
+                        say_duration(secs).replace(' ', "-").trim_end_matches('s')
+                    ),
+                    t + secs,
+                );
                 self.last_reminder_set = Some(id);
                 keep_schedule_change!();
                 Some(format!("Timer set for {}. (#{id})", say_duration(secs)))
@@ -376,10 +536,23 @@ impl<'a> Daemon<'a> {
                     let local = zone.to_local(found.start as i64).max(0) as u64;
                     let day = local - local % 86_400;
                     let hour = *hours.first()? as u64;
-                    let start = zone.to_utc((day + hour * 3600 + minute as u64 * 60) as i64).max(0) as u64;
-                    Some(crate::calendar::When { start, end: start + len, all_day: false })
+                    let start = zone
+                        .to_utc((day + hour * 3600 + minute as u64 * 60) as i64)
+                        .max(0) as u64;
+                    Some(crate::calendar::When {
+                        start,
+                        end: start + len,
+                        all_day: false,
+                    })
                 })?;
-                let new_when = if new_when.all_day { new_when } else { crate::calendar::When { end: new_when.start + len, ..new_when } };
+                let new_when = if new_when.all_day {
+                    new_when
+                } else {
+                    crate::calendar::When {
+                        end: new_when.start + len,
+                        ..new_when
+                    }
+                };
                 let previous = self.calendar.clone();
                 self.calendar.move_to(found.id, new_when);
                 if let Err(error) = self.calendar.save(&self.store) {
@@ -387,7 +560,11 @@ impl<'a> Daemon<'a> {
                     self.calendar.request_refresh();
                     return Some(format!("I couldn't confirm the calendar change ({error}). Refresh the calendar before trying again; its saved status is unconfirmed."));
                 }
-                let moved = self.calendar.event(found.id).map(|e| e.say_when()).unwrap_or_default();
+                let moved = self
+                    .calendar
+                    .event(found.id)
+                    .map(|e| e.say_when())
+                    .unwrap_or_default();
                 Some(format!("Moved {} to {moved}.", found.title))
             }
         }
@@ -399,20 +576,28 @@ impl<'a> Daemon<'a> {
     pub(super) fn weather_help(&mut self, said: &str) -> Option<String> {
         let asked = crate::weather::about_the_weather(said)?;
         if self.connectivity.cached() == Reach::Offline {
-            return Some("I can't check the weather without the internet, and I'd only be guessing.".into());
+            return Some(
+                "I can't check the weather without the internet, and I'd only be guessing.".into(),
+            );
         }
-        let cfg = self.tools_ref().map(|t| t.weather.clone()).unwrap_or_default();
+        let cfg = self
+            .tools_ref()
+            .map(|t| t.weather.clone())
+            .unwrap_or_default();
         // Apple's weather, with the same Apple key as push (Eric, 2 Oct 2026).
         let apple = self.tools_ref().map(|t| t.phone.apns.clone());
-        Some(match crate::weather::answer(&cfg, &asked, self.weather_place.as_ref(), apple.as_ref()) {
-            Ok((said, place)) => {
-                if asked.place.is_none() {
-                    self.weather_place = Some(place);
+        Some(
+            match crate::weather::answer(&cfg, &asked, self.weather_place.as_ref(), apple.as_ref())
+            {
+                Ok((said, place)) => {
+                    if asked.place.is_none() {
+                        self.weather_place = Some(place);
+                    }
+                    said
                 }
-                said
-            }
-            Err(why) => format!("I couldn't get the weather: {why}."),
-        })
+                Err(why) => format!("I couldn't get the weather: {why}."),
+            },
+        )
     }
 
     /// "Where's that note about broker fees", "what did I note yesterday",
@@ -422,9 +607,23 @@ impl<'a> Daemon<'a> {
     pub(super) fn note_asked(&self, said: &str, now: u64) -> Option<String> {
         let t = said.to_lowercase();
         let asking = [
-            "where's that note", "wheres that note", "where is that note", "find my note", "find the note", "find that note",
-            "what did i note", "what did i write down", "what did i jot", "did i note", "my note about", "my notes about",
-            "read my notes", "what's in my notes", "whats in my notes", "what notes do i have", "my last note",
+            "where's that note",
+            "wheres that note",
+            "where is that note",
+            "find my note",
+            "find the note",
+            "find that note",
+            "what did i note",
+            "what did i write down",
+            "what did i jot",
+            "did i note",
+            "my note about",
+            "my notes about",
+            "read my notes",
+            "what's in my notes",
+            "whats in my notes",
+            "what notes do i have",
+            "my last note",
         ]
         .iter()
         .any(|p| t.contains(p));
@@ -439,9 +638,14 @@ impl<'a> Daemon<'a> {
         }
         let hits = self.notebook.find(said, now);
         if hits.is_empty() {
-            return Some("I can't find a note like that. Say \"note that ...\" and I'll keep the next one.".into());
+            return Some(
+                "I can't find a note like that. Say \"note that ...\" and I'll keep the next one."
+                    .into(),
+            );
         }
-        Some(crate::capture::found(&hits.into_iter().take(3).collect::<Vec<_>>()))
+        Some(crate::capture::found(
+            &hits.into_iter().take(3).collect::<Vec<_>>(),
+        ))
     }
 
     /// The event these words mean, among the next two weeks' (and today's
@@ -453,7 +657,13 @@ impl<'a> Daemon<'a> {
             .calendar
             .occurrences_between(from, t + 14 * 86_400)
             .into_iter()
-            .filter(|e| crate::keeping::event_answers_to(&e.title, zone.to_local(e.start as i64).max(0) as u64, what))
+            .filter(|e| {
+                crate::keeping::event_answers_to(
+                    &e.title,
+                    zone.to_local(e.start as i64).max(0) as u64,
+                    what,
+                )
+            })
             .collect();
         let today_or_tomorrow = what.contains("tomorrow") || what.contains("today");
         if today_or_tomorrow {
@@ -479,11 +689,21 @@ impl<'a> Daemon<'a> {
         // "give me a nudge at 4 to call the dentist" (1 Oct 2026 model
         // ranking: the model reached for signing in somewhere).
         let said = match [
-            "set a reminder for ", "set a reminder ", "set reminder for ", "set reminder ", "add a reminder for ", "add a reminder ",
-            "give me a nudge ", "nudge me ", "ping me ", "give me a shout ", "give me a reminder ", "send me a reminder ",
+            "set a reminder for ",
+            "set a reminder ",
+            "set reminder for ",
+            "set reminder ",
+            "add a reminder for ",
+            "add a reminder ",
+            "give me a nudge ",
+            "nudge me ",
+            "ping me ",
+            "give me a shout ",
+            "give me a reminder ",
+            "send me a reminder ",
         ]
-            .iter()
-            .find(|p| low0.starts_with(**p))
+        .iter()
+        .find(|p| low0.starts_with(**p))
         {
             Some(p) => {
                 restated = format!("remind me {}", said.get(p.len()..).unwrap_or(""));
@@ -505,11 +725,21 @@ impl<'a> Daemon<'a> {
         let lnow = zone.to_local(now as i64).max(0) as u64;
         let back = |local: u64| zone.to_utc(local as i64).max(0) as u64;
 
-        if self.pending_reminder_edit.is_some() { return Some(self.defer_reminder_edit(said, t)); }
+        if self.pending_reminder_edit.is_some() {
+            return Some(self.defer_reminder_edit(said, t));
+        }
         let _transaction = match self.store.transaction() {
             Ok(guard) => guard,
-            Err(crate::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => return Some(self.defer_reminder_edit(said, t)),
-            Err(error) => return Some(format!("I haven't set that reminder: storage is unavailable ({error}). Please try again.")),
+            Err(crate::error::AtlasError::Io(error))
+                if error.kind() == std::io::ErrorKind::WouldBlock =>
+            {
+                return Some(self.defer_reminder_edit(said, t))
+            }
+            Err(error) => {
+                return Some(format!(
+                "I haven't set that reminder: storage is unavailable ({error}). Please try again."
+            ))
+            }
         };
         let before = self.scheduler.clone();
         let previous_last = self.last_reminder_set;
@@ -518,7 +748,9 @@ impl<'a> Daemon<'a> {
                 if let Err(error) = self.scheduler.save(&self.store) {
                     self.scheduler = before.clone();
                     self.last_reminder_set = previous_last;
-                    return Some(format!("I couldn't save that reminder ({error}); it has not been set."));
+                    return Some(format!(
+                        "I couldn't save that reminder ({error}); it has not been set."
+                    ));
                 }
             };
         }
@@ -529,7 +761,9 @@ impl<'a> Daemon<'a> {
             // From the turn's own moment, like every other time here (it read
             // the wall clock itself, so a turn's "in 2 minutes" and its tick
             // disagreed whenever they weren't the same clock).
-            let id = self.scheduler.at(&format!("reminder Reminder: {text}"), now + secs);
+            let id = self
+                .scheduler
+                .at(&format!("reminder Reminder: {text}"), now + secs);
             self.last_reminder_set = Some(id);
             keep_reminder!();
             return Some(format!(
@@ -545,12 +779,24 @@ impl<'a> Daemon<'a> {
             let text = reminder_text(said);
             // A general rule finds its own first slot (the Friday, not today).
             if let Some(rule) = repeat.rule() {
-                let Some(when) = crate::calendar::resolve_recurring_when(said, lnow, &repeat) else {
-                    return Some(format!("What time? — \"remind me {} at 9 to …\".", rule.describe()));
+                let Some(when) = crate::calendar::resolve_recurring_when(said, lnow, &repeat)
+                else {
+                    return Some(format!(
+                        "What time? — \"remind me {} at 9 to …\".",
+                        rule.describe()
+                    ));
                 };
-                let id = self.scheduler.on_rule(&format!("reminder Reminder: {text}"), &rule, back(when.start), &zone);
+                let id = self.scheduler.on_rule(
+                    &format!("reminder Reminder: {text}"),
+                    &rule,
+                    back(when.start),
+                    &zone,
+                );
                 keep_reminder!();
-                return Some(format!("Set — {} I'll remind you to {text}. (#{id})", rule.describe()));
+                return Some(format!(
+                    "Set — {} I'll remind you to {text}. (#{id})",
+                    rule.describe()
+                ));
             }
             let Ok(first) = first_occurrence(said, lnow) else {
                 return Some("Every day at what time? — \"remind me every day at 8 to …\".".into());
@@ -564,20 +810,32 @@ impl<'a> Daemon<'a> {
             let (h, m) = (local_secs_of_day / 3600, (local_secs_of_day % 3600) / 60);
             if !zone.is_utc() {
                 let (expr, cadence) = match repeat {
-                    crate::calendar::Repeat::Daily => (format!("{m} {h} * * *"), "every day".to_string()),
-                    crate::calendar::Repeat::Weekdays => (format!("{m} {h} * * MON-FRI"), "every weekday".to_string()),
+                    crate::calendar::Repeat::Daily => {
+                        (format!("{m} {h} * * *"), "every day".to_string())
+                    }
+                    crate::calendar::Repeat::Weekdays => {
+                        (format!("{m} {h} * * MON-FRI"), "every weekday".to_string())
+                    }
                     _ => {
-                        let dow = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"][crate::civil::weekday((first / 86_400) as i64) as usize];
+                        let dow = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+                            [crate::civil::weekday((first / 86_400) as i64) as usize];
                         (format!("{m} {h} * * {dow}"), "every week".to_string())
                     }
                 };
-                return Some(match self.scheduler.on_cron(&format!("reminder Reminder: {text}"), &expr, now, &zone) {
-                    Ok(id) => {
-                        keep_reminder!();
-                        format!("Set — {cadence} at {h:02}:{m:02} {} I'll remind you to {text}. (#{id})", zone.abbreviation_at(now as i64))
-                    }
-                    Err(why) => format!("I couldn't set that: {why}"),
-                });
+                return Some(
+                    match self.scheduler.on_cron(
+                        &format!("reminder Reminder: {text}"),
+                        &expr,
+                        now,
+                        &zone,
+                    ) {
+                        Ok(id) => {
+                            keep_reminder!();
+                            format!("Set — {cadence} at {h:02}:{m:02} {} I'll remind you to {text}. (#{id})", zone.abbreviation_at(now as i64))
+                        }
+                        Err(why) => format!("I couldn't set that: {why}"),
+                    },
+                );
             }
             let (every, cadence) = match repeat {
                 crate::calendar::Repeat::Weekly => (7 * 86_400, "every week"),
@@ -587,7 +845,12 @@ impl<'a> Daemon<'a> {
                 // honest shape for it, so it is set, and it does skip them.
                 crate::calendar::Repeat::Weekdays => {
                     return Some(
-                        match self.scheduler.on_cron(&format!("reminder Reminder: {text}"), &format!("{m} {h} * * MON-FRI"), now, &zone) {
+                        match self.scheduler.on_cron(
+                            &format!("reminder Reminder: {text}"),
+                            &format!("{m} {h} * * MON-FRI"),
+                            now,
+                            &zone,
+                        ) {
                             Ok(id) => {
                                 keep_reminder!();
                                 format!("Set — every weekday I'll remind you to {text}. (#{id})")
@@ -598,9 +861,13 @@ impl<'a> Daemon<'a> {
                 }
                 crate::calendar::Repeat::Once | crate::calendar::Repeat::Rule(_) => unreachable!(),
             };
-            let id = self.scheduler.every(&format!("reminder Reminder: {text}"), every, first);
+            let id = self
+                .scheduler
+                .every(&format!("reminder Reminder: {text}"), every, first);
             keep_reminder!();
-            return Some(format!("Set — {cadence} I'll remind you to {text}. (#{id})"));
+            return Some(format!(
+                "Set — {cadence} I'll remind you to {text}. (#{id})"
+            ));
         }
 
         // (3) Absolute clock time: "at 6", "tomorrow at 9", "Monday at 8".
@@ -610,12 +877,19 @@ impl<'a> Daemon<'a> {
         match first_occurrence(said, lnow) {
             Ok(first) => {
                 let text = reminder_text(said);
-                let id = self.scheduler.at(&format!("reminder Reminder: {text}"), back(first));
+                let id = self
+                    .scheduler
+                    .at(&format!("reminder Reminder: {text}"), back(first));
                 keep_reminder!();
-                return Some(format!("Set — {} I'll remind you to {text}. (#{id})", local_moment(first, lnow)));
+                return Some(format!(
+                    "Set — {} I'll remind you to {text}. (#{id})",
+                    local_moment(first, lnow)
+                ));
             }
             Err(Some(why)) => {
-                return Some(format!("I haven't set it yet: {why} Say it again with the day and time and I will."));
+                return Some(format!(
+                    "I haven't set it yet: {why} Say it again with the day and time and I will."
+                ));
             }
             Err(None) => {}
         }
@@ -625,7 +899,9 @@ impl<'a> Daemon<'a> {
         // "Reminder: X" there and then, and set nothing).
         let text = reminder_text(said);
         self.reminder_waiting_for_a_time = Some(text.clone());
-        Some(format!("When should I remind you to {text}? In 20 minutes, at 6, tomorrow at 9 -- whenever."))
+        Some(format!(
+            "When should I remind you to {text}? In 20 minutes, at 6, tomorrow at 9 -- whenever."
+        ))
     }
 
     /// Eric states a want or floats an idea; Atlas takes it and weighs it as an
@@ -639,20 +915,36 @@ impl<'a> Daemon<'a> {
             return None;
         }
         let framed = self.weigh_opportunity(said, "something you said you wanted");
-        Some(format!("You mentioned wanting that — worth weighing.\n{framed}"))
+        Some(format!(
+            "You mentioned wanting that — worth weighing.\n{framed}"
+        ))
     }
 
     pub(super) fn decision_help(&mut self, said: &str) -> Option<String> {
         let l = said.to_lowercase();
         // Picking a set-aside decision back up.
         if l.contains("back to the decision") || l.contains("that decision again") {
-            return Some(if self.deciding.is_some() { self.say_the_decision() } else { "There's no decision on the go.".into() });
+            return Some(if self.deciding.is_some() {
+                self.say_the_decision()
+            } else {
+                "There's no decision on the go.".into()
+            });
         }
         // "Set aside the contract, it pays late" -- while one is being worked.
-        if let Some(rest) = l.strip_prefix("set aside ").or_else(|| l.strip_prefix("rule out ")) {
+        if let Some(rest) = l
+            .strip_prefix("set aside ")
+            .or_else(|| l.strip_prefix("rule out "))
+        {
             if let Some(d) = self.deciding.as_mut() {
-                let (what, why) = rest.split_once(" because ").or_else(|| rest.split_once(", ")).unwrap_or((rest, "you ruled it out"));
-                let name = d.options.iter().find(|o| o.what.to_lowercase().contains(what.trim())).map(|o| o.what.clone());
+                let (what, why) = rest
+                    .split_once(" because ")
+                    .or_else(|| rest.split_once(", "))
+                    .unwrap_or((rest, "you ruled it out"));
+                let name = d
+                    .options
+                    .iter()
+                    .find(|o| o.what.to_lowercase().contains(what.trim()))
+                    .map(|o| o.what.clone());
                 if let Some(name) = name {
                     d.set_aside(&name, why.trim());
                     return Some(self.say_the_decision());
@@ -673,9 +965,16 @@ impl<'a> Daemon<'a> {
         if let Some(llm) = self.background_llm() {
             let about = said.to_string();
             let work: crew::Work = Box::new(move |_ctl| {
-                llm.complete(crate::decide::DRAFTER_PROMPT, &about).map_err(|e| e.to_string())
+                llm.complete(crate::decide::DRAFTER_PROMPT, &about)
+                    .map_err(|e| e.to_string())
             });
-            if self.hand_off("decide", crate::store::now(), work, Some(said.to_string()), SpeakPolicy::Always) {
+            if self.hand_off(
+                "decide",
+                crate::store::now(),
+                work,
+                Some(said.to_string()),
+                SpeakPolicy::Always,
+            ) {
                 return Some("Let me think that through properly — I'll come back with where I'd lean and why.".into());
             }
         }
@@ -685,7 +984,9 @@ impl<'a> Daemon<'a> {
     /// Where the decision stands, said, and the next question asked.
     pub(super) fn say_the_decision(&mut self) -> String {
         let _ = self.store.save("deciding", &self.deciding);
-        let Some(d) = self.deciding.as_ref() else { return "There's no decision on the go.".into() };
+        let Some(d) = self.deciding.as_ref() else {
+            return "There's no decision on the go.".into();
+        };
         let said = crate::decide::said(d);
         if d.lean().is_ok() {
             self.session.ask(&said);
@@ -817,7 +1118,11 @@ impl<'a> Daemon<'a> {
         use crate::decide::{Decision, Weight};
         let d = Decision::new(
             about,
-            if cheap_and_reversible { Weight::JustPick } else { Weight::WorthWorking },
+            if cheap_and_reversible {
+                Weight::JustPick
+            } else {
+                Weight::WorthWorking
+            },
         );
         match d.next_move() {
             None => d.laid_out(),
@@ -851,7 +1156,11 @@ impl<'a> Daemon<'a> {
     /// `allow(dead_code)` that went with the note is gone, which means the
     /// compiler will say so if it ever stops having a caller again.
     pub(super) fn called(&self) -> String {
-        self.memory.preference("called").unwrap_or("").trim().to_string()
+        self.memory
+            .preference("called")
+            .unwrap_or("")
+            .trim()
+            .to_string()
     }
 }
 
@@ -864,60 +1173,124 @@ mod durable_reminder_changes {
         config
     }
     fn root(tag: &str) -> std::path::PathBuf {
-        let root = std::env::temp_dir().join(format!("atlas-reminder-proof-{tag}-{}-{}", std::process::id(), crate::store::now()));
-        std::fs::create_dir_all(&root).unwrap(); root
+        let root = std::env::temp_dir().join(format!(
+            "atlas-reminder-proof-{tag}-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        root
     }
     #[test]
     fn busy_storage_cannot_claim_a_reminder_or_timer_was_set() {
-        let root = root("busy"); let store = crate::store::Store::new(&root);
-        let config = config(); let platform = crate::platform::mock::MockPlatform::new(vec![]);
-        let mut daemon = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
-        let (ready, received) = std::sync::mpsc::channel(); let (release, wait) = std::sync::mpsc::channel();
+        let root = root("busy");
+        let store = crate::store::Store::new(&root);
+        let config = config();
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let mut daemon = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let (ready, received) = std::sync::mpsc::channel();
+        let (release, wait) = std::sync::mpsc::channel();
         let held = store.clone();
-        let worker = std::thread::spawn(move || { let _guard = crate::store::wait_for_state_transaction(held.root()).unwrap(); ready.send(()).unwrap(); wait.recv().unwrap(); });
+        let worker = std::thread::spawn(move || {
+            let _guard = crate::store::wait_for_state_transaction(held.root()).unwrap();
+            ready.send(()).unwrap();
+            wait.recv().unwrap();
+        });
         received.recv().unwrap();
-        let reminder = daemon.remind_help("remind me in 20 minutes to drink water", 1000).unwrap();
-        let timer = daemon.keeping_track("set a timer for 10 minutes", 1000).unwrap();
+        let reminder = daemon
+            .remind_help("remind me in 20 minutes to drink water", 1000)
+            .unwrap();
+        let timer = daemon
+            .keeping_track("set a timer for 10 minutes", 1000)
+            .unwrap();
         let count = daemon.scheduler.active().len();
-        release.send(()).unwrap(); worker.join().unwrap();
+        release.send(()).unwrap();
+        worker.join().unwrap();
         assert!(reminder.contains("not saved yet"), "{reminder}");
         assert!(timer.contains("haven't replaced"), "{timer}");
         assert_eq!(count, 0);
         assert_eq!(daemon.last_reminder_set, None);
-        drop(daemon); std::fs::remove_dir_all(root).unwrap();
+        drop(daemon);
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn failed_save_keeps_a_previous_reminder_and_refuses_new_timers() {
-        let root = root("disk"); let store = crate::store::Store::new(&root);
-        let config = config(); let platform = crate::platform::mock::MockPlatform::new(vec![]);
-        let mut daemon = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let root = root("disk");
+        let store = crate::store::Store::new(&root);
+        let config = config();
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let mut daemon = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
         let id = daemon.scheduler.at("reminder Drink water", 2200);
         daemon.last_reminder_set = Some(id);
         let guard = crate::store::wait_for_state_transaction(&root).unwrap();
         daemon.scheduler.save(&store).unwrap();
-        let saved = root.join("schedule.json"); std::fs::remove_file(&saved).unwrap(); std::fs::create_dir(&saved).unwrap();
+        let saved = root.join("schedule.json");
+        std::fs::remove_file(&saved).unwrap();
+        std::fs::create_dir(&saved).unwrap();
         std::fs::write(saved.join("owner.txt"), "keep this folder").unwrap();
         let cancel = daemon.keeping_track("cancel all reminders", 1000).unwrap();
-        let timer = daemon.keeping_track("set a timer for 10 minutes", 1000).unwrap();
-        let reminder = daemon.remind_help("remind me in 20 minutes to walk", 1000).unwrap();
+        let timer = daemon
+            .keeping_track("set a timer for 10 minutes", 1000)
+            .unwrap();
+        let reminder = daemon
+            .remind_help("remind me in 20 minutes to walk", 1000)
+            .unwrap();
         assert!(cancel.contains("couldn't save"), "{cancel}");
         assert!(timer.contains("couldn't save"), "{timer}");
         assert!(reminder.contains("couldn't save"), "{reminder}");
-        assert_eq!(daemon.scheduler.active().iter().map(|j| j.id).collect::<Vec<_>>(), vec![id]);
+        assert_eq!(
+            daemon
+                .scheduler
+                .active()
+                .iter()
+                .map(|j| j.id)
+                .collect::<Vec<_>>(),
+            vec![id]
+        );
         assert_eq!(daemon.last_reminder_set, Some(id));
-        assert_eq!(std::fs::read_to_string(saved.join("owner.txt")).unwrap(), "keep this folder");
-        drop(guard); drop(daemon); std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(saved.join("owner.txt")).unwrap(),
+            "keep this folder"
+        );
+        drop(guard);
+        drop(daemon);
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn held_snooze_retries_once_at_original_time_and_invalidations_save_nothing() {
         for case in ["release", "cancel", "expiry", "owner"] {
-            let root = root(case); let store = crate::store::Store::new(&root);
-            let config = config(); let platform = crate::platform::mock::MockPlatform::new(vec![]);
-            let mut daemon = Daemon::new(&config, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+            let root = root(case);
+            let store = crate::store::Store::new(&root);
+            let config = config();
+            let platform = crate::platform::mock::MockPlatform::new(vec![]);
+            let mut daemon = Daemon::new(
+                &config,
+                &platform,
+                None,
+                store.clone(),
+                crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+            );
             daemon.last_reminder_fired = Some(("reminder Reminder: stretch".into(), 1000));
-            let (ready, received) = std::sync::mpsc::channel(); let (release, wait) = std::sync::mpsc::channel();
+            let (ready, received) = std::sync::mpsc::channel();
+            let (release, wait) = std::sync::mpsc::channel();
             let held = store.clone();
-            let worker = std::thread::spawn(move || { let _guard = held.transaction().unwrap(); ready.send(()).unwrap(); wait.recv().unwrap(); });
+            let worker = std::thread::spawn(move || {
+                let _guard = held.transaction().unwrap();
+                ready.send(()).unwrap();
+                wait.recv().unwrap();
+            });
             received.recv().unwrap();
             let started = std::time::Instant::now();
             let waiting = daemon.keeping_track("snooze", 1130).unwrap();
@@ -925,23 +1298,52 @@ mod durable_reminder_changes {
             assert!(daemon.poll_pending_reminder_edit().is_none());
             assert!(started.elapsed() < std::time::Duration::from_millis(200));
             assert!(daemon.scheduler.jobs.is_empty());
-            release.send(()).unwrap(); worker.join().unwrap();
+            release.send(()).unwrap();
+            worker.join().unwrap();
             match case {
-                "cancel" => { let reply = daemon.turn("stop", 1131); assert!(reply.contains("not saved")); }
-                "expiry" => daemon.pending_reminder_edit.as_mut().unwrap().deadline = std::time::Instant::now(),
-                "owner" => std::fs::write(root.join("handover.json"), "changed fixture owner").unwrap(),
+                "cancel" => {
+                    let reply = daemon.turn("stop", 1131);
+                    assert!(reply.contains("not saved"));
+                }
+                "expiry" => {
+                    daemon.pending_reminder_edit.as_mut().unwrap().deadline =
+                        std::time::Instant::now()
+                }
+                "owner" => {
+                    std::fs::write(root.join("handover.json"), "changed fixture owner").unwrap()
+                }
                 _ => {}
             }
             let terminal = daemon.poll_pending_reminder_edit();
             if case == "release" {
-                assert_eq!(terminal.as_deref(), Some("I'll say it again in 10 minutes."));
+                assert_eq!(
+                    terminal.as_deref(),
+                    Some("I'll say it again in 10 minutes.")
+                );
                 assert_eq!(daemon.scheduler.jobs.len(), 1);
-                assert_eq!(daemon.scheduler.jobs[0].due, 1730, "retry must use the original request's time");
-                assert_eq!(store.load::<crate::scheduler::Scheduler>("schedule").jobs.len(), 1);
-            } else { assert!(daemon.scheduler.jobs.is_empty(), "{case} saved an invalidated request"); }
-            assert!(daemon.poll_pending_reminder_edit().is_none(), "request was repeated");
-            drop(daemon); std::fs::remove_dir_all(root).unwrap();
+                assert_eq!(
+                    daemon.scheduler.jobs[0].due, 1730,
+                    "retry must use the original request's time"
+                );
+                assert_eq!(
+                    store
+                        .load::<crate::scheduler::Scheduler>("schedule")
+                        .jobs
+                        .len(),
+                    1
+                );
+            } else {
+                assert!(
+                    daemon.scheduler.jobs.is_empty(),
+                    "{case} saved an invalidated request"
+                );
+            }
+            assert!(
+                daemon.poll_pending_reminder_edit().is_none(),
+                "request was repeated"
+            );
+            drop(daemon);
+            std::fs::remove_dir_all(root).unwrap();
         }
     }
-
 }

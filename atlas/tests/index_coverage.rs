@@ -52,7 +52,10 @@ fn a_clean_scan_reports_nothing_missed() {
 fn hitting_the_depth_cap_is_counted_rather_than_silent() {
     let t = Tree::new("deep");
     let idx = Index::scan(&t.cfg(2));
-    assert!(idx.missed.too_deep > 0, "the depth cap dropped folders silently");
+    assert!(
+        idx.missed.too_deep > 0,
+        "the depth cap dropped folders silently"
+    );
     assert!(idx.missed.caveat().unwrap().contains("nested too deep"));
 }
 
@@ -77,7 +80,10 @@ fn a_folder_it_cannot_open_is_counted_not_skipped() {
     // and there is nothing to miss. Asserting a count here would make the test
     // pass or fail on who is running it rather than on what the code does.
     if reached_it {
-        assert_eq!(missed, 0, "it read the folder and still called it unreadable");
+        assert_eq!(
+            missed, 0,
+            "it read the folder and still called it unreadable"
+        );
         return;
     }
     assert!(missed > 0, "an unreadable folder vanished silently");
@@ -112,10 +118,22 @@ fn an_undated_file_is_flagged_because_it_ranks_as_old() {
 #[test]
 fn every_kind_of_miss_counts_as_something_worth_saying() {
     for m in [
-        Missed { unreadable_dirs: 1, ..Missed::default() },
-        Missed { unreadable_files: 1, ..Missed::default() },
-        Missed { too_deep: 1, ..Missed::default() },
-        Missed { undated: 1, ..Missed::default() },
+        Missed {
+            unreadable_dirs: 1,
+            ..Missed::default()
+        },
+        Missed {
+            unreadable_files: 1,
+            ..Missed::default()
+        },
+        Missed {
+            too_deep: 1,
+            ..Missed::default()
+        },
+        Missed {
+            undated: 1,
+            ..Missed::default()
+        },
     ] {
         assert!(m.anything());
         assert!(m.caveat().is_some());

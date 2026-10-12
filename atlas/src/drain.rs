@@ -90,7 +90,11 @@ impl Drain {
         let mut best: Option<(usize, f64, usize)> = None; // (idx, sim, wildcards)
         for &i in group.iter() {
             let t = &self.templates[i].words;
-            let same = t.iter().zip(&toks).filter(|(a, b)| a == b && *a != WILD).count();
+            let same = t
+                .iter()
+                .zip(&toks)
+                .filter(|(a, b)| a == b && *a != WILD)
+                .count();
             let wild = t.iter().filter(|w| *w == WILD).count();
             let sim = if n == 0 { 1.0 } else { same as f64 / n as f64 };
             if best.is_none_or(|b| sim > b.1 || (sim == b.1 && wild > b.2)) {
@@ -110,7 +114,13 @@ impl Drain {
                 i
             }
             _ => {
-                self.templates.push(Template { words: toks, count: 1, first_seen: at, last_seen: at, example: line.to_string() });
+                self.templates.push(Template {
+                    words: toks,
+                    count: 1,
+                    first_seen: at,
+                    last_seen: at,
+                    example: line.to_string(),
+                });
                 let i = self.templates.len() - 1;
                 group.push(i);
                 i
@@ -134,7 +144,9 @@ pub fn read_log(text: &str) -> (Drain, usize) {
     let mut lines = 0;
     for line in text.lines() {
         let mut parts = line.splitn(3, ' ');
-        let (Some(ts), Some(level), Some(msg)) = (parts.next(), parts.next(), parts.next()) else { continue };
+        let (Some(ts), Some(level), Some(msg)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
         let at = ts.parse().unwrap_or(0);
         d.add(&format!("{level} {msg}"), at);
         lines += 1;

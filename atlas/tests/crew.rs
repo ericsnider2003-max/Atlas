@@ -15,7 +15,10 @@ fn next_news(c: &mut Crew) -> News {
         if let Some(n) = c.settle(1).pop() {
             return n;
         }
-        assert!(start.elapsed() < crate::common::allowed(Duration::from_secs(3)), "no news");
+        assert!(
+            start.elapsed() < crate::common::allowed(Duration::from_secs(3)),
+            "no news"
+        );
         std::thread::sleep(Duration::from_millis(3));
     }
 }
@@ -35,13 +38,18 @@ fn the_tick_never_waits_not_even_to_stop() {
     c.settle(1);
     c.ask_to_stop(id);
     c.settle(1);
-    crate::common::assert_prompt(t.elapsed(), Duration::from_millis(50), "settle or stop waited");
+    crate::common::assert_prompt(
+        t.elapsed(),
+        Duration::from_millis(50),
+        "settle or stop waited",
+    );
 }
 
 #[test]
 fn an_errand_that_dies_without_a_word_is_vanished_not_finished() {
     let mut c = Crew::new(1);
-    c.hand("boom", 0, Box::new(|_| panic!("the errand died"))).unwrap();
+    c.hand("boom", 0, Box::new(|_| panic!("the errand died")))
+        .unwrap();
     assert!(matches!(next_news(&mut c).ending, Ending::Vanished));
 }
 
@@ -68,7 +76,9 @@ fn stopped_is_not_failed() {
 #[test]
 fn a_result_is_reported_with_its_errand() {
     let mut c = Crew::new(1);
-    let id = c.hand("backup", 7, Box::new(|_| Ok("backed up 12 files".into()))).unwrap();
+    let id = c
+        .hand("backup", 7, Box::new(|_| Ok("backed up 12 files".into())))
+        .unwrap();
     let n = next_news(&mut c);
     assert_eq!((n.id, n.name.as_str(), n.started), (id, "backup", 7));
     assert!(matches!(n.ending, Ending::Done(Ok(ref s)) if s == "backed up 12 files"));
@@ -90,9 +100,14 @@ fn more_work_than_hands_waits_rather_than_failing_or_all_starting() {
         }),
     )
     .unwrap();
-    let second = c.hand("second", 0, Box::new(|_| Ok(String::new()))).unwrap();
+    let second = c
+        .hand("second", 0, Box::new(|_| Ok(String::new())))
+        .unwrap();
     assert_eq!((c.active(), c.queued()), (1, 1));
-    assert!(c.errands().iter().any(|e| e.id == second && e.state == State::Waiting));
+    assert!(c
+        .errands()
+        .iter()
+        .any(|e| e.id == second && e.state == State::Waiting));
     go.store(true, Ordering::SeqCst);
     let start = Instant::now();
     while c.in_hand(second) {
@@ -124,7 +139,11 @@ fn a_pause_holds_without_losing_anything() {
         .unwrap();
     c.pause(id);
     let start = Instant::now();
-    while !c.errands().iter().any(|e| e.id == id && e.state == State::Holding) {
+    while !c
+        .errands()
+        .iter()
+        .any(|e| e.id == id && e.state == State::Holding)
+    {
         assert!(start.elapsed() < crate::common::allowed(Duration::from_secs(3)));
         std::thread::sleep(Duration::from_millis(5));
     }
@@ -140,14 +159,29 @@ fn shutdown_waits_but_not_forever() {
         let mut c = Crew::new(1);
         c.hand("stubborn", 0, forever()).unwrap();
     }
-    crate::common::assert_prompt(t.elapsed(), Duration::from_secs(SHUTDOWN_DEADLINE_SECS + 5), "took too long");
+    crate::common::assert_prompt(
+        t.elapsed(),
+        Duration::from_secs(SHUTDOWN_DEADLINE_SECS + 5),
+        "took too long",
+    );
 }
 
 #[test]
 fn the_daemon_settles_the_crew_every_tick_and_hands_off_through_one_door() {
     let d = crate::common::source_of("daemon");
-    let tick = d.find("pub fn tick(&mut self, t: u64)").expect("tick is gone");
-    let end = d[tick..].find("\n    pub fn observe(").map(|e| tick + e).unwrap_or(d.len());
-    assert!(d[tick..end].contains("self.take_crew_news(t)"), "the tick no longer collects crew news");
-    assert!(d.contains("fn hand_off("), "the one door into the crew is gone");
+    let tick = d
+        .find("pub fn tick(&mut self, t: u64)")
+        .expect("tick is gone");
+    let end = d[tick..]
+        .find("\n    pub fn observe(")
+        .map(|e| tick + e)
+        .unwrap_or(d.len());
+    assert!(
+        d[tick..end].contains("self.take_crew_news(t)"),
+        "the tick no longer collects crew news"
+    );
+    assert!(
+        d.contains("fn hand_off("),
+        "the one door into the crew is gone"
+    );
 }

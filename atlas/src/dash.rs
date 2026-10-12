@@ -197,7 +197,11 @@ impl Default for Layout {
             .into_iter()
             .map(|card| Placed {
                 card,
-                span: if matches!(card, Card::Outstanding | Card::Activity) { Span::Full } else { Span::Half },
+                span: if matches!(card, Card::Outstanding | Card::Activity) {
+                    Span::Full
+                } else {
+                    Span::Half
+                },
                 hidden: !shown.contains(&card),
             })
             .collect();

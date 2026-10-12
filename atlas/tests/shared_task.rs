@@ -35,7 +35,11 @@ fn completing_marks_done_without_moving_it_to_another_shelf() {
     let id = tasks.add(Space::Personal, "call the accountant", None, 100);
     assert!(tasks.complete(id));
     assert!(tasks.get(id).unwrap().done);
-    assert_eq!(tasks.for_space(&Space::Personal).len(), 1, "still on the same shelf, just done");
+    assert_eq!(
+        tasks.for_space(&Space::Personal).len(),
+        1,
+        "still on the same shelf, just done"
+    );
 }
 
 #[test]
@@ -59,8 +63,14 @@ fn sharing_a_personal_task_into_a_business_is_always_held_first() {
     let id = tasks.add(Space::Personal, "draft the vendor contract", None, 100);
 
     let verdict = tasks.share_into_business(id, "Acme", &mut wall, 100);
-    assert!(!verdict.allowed(), "personal never crosses on the first attempt");
-    assert!(wall.waiting().len() == 1, "the firewall's own held record exists");
+    assert!(
+        !verdict.allowed(),
+        "personal never crosses on the first attempt"
+    );
+    assert!(
+        wall.waiting().len() == 1,
+        "the firewall's own held record exists"
+    );
 
     // And nothing was actually copied yet -- Acme's shelf is still empty.
     assert!(tasks.for_space(&business("Acme")).is_empty());
@@ -81,7 +91,9 @@ fn releasing_the_hold_actually_completes_the_share() {
     };
 
     wall.release(held_id).unwrap();
-    let new_id = tasks.complete_release(held_id, &wall, 200).expect("release should complete the share");
+    let new_id = tasks
+        .complete_release(held_id, &wall, 200)
+        .expect("release should complete the share");
 
     let on_shelf = tasks.for_space(&business("Acme"));
     assert_eq!(on_shelf.len(), 1);
@@ -118,7 +130,10 @@ fn dropping_a_hold_instead_of_releasing_it_leaves_the_share_permanently_incomple
     };
 
     wall.forget(held_id).unwrap();
-    assert!(tasks.complete_release(held_id, &wall, 200).is_none(), "there's nothing left to release");
+    assert!(
+        tasks.complete_release(held_id, &wall, 200).is_none(),
+        "there's nothing left to release"
+    );
     assert!(tasks.for_space(&business("Acme")).is_empty());
 }
 
@@ -135,7 +150,11 @@ fn releasing_the_same_hold_twice_only_delivers_once() {
     assert!(tasks.complete_release(held_id, &wall, 200).is_some());
     // The pending share was consumed the first time.
     assert!(tasks.complete_release(held_id, &wall, 200).is_none());
-    assert_eq!(tasks.for_space(&business("Acme")).len(), 1, "only one copy, not two");
+    assert_eq!(
+        tasks.for_space(&business("Acme")).len(),
+        1,
+        "only one copy, not two"
+    );
 }
 
 #[test]
@@ -145,7 +164,10 @@ fn sharing_something_that_is_already_a_business_s_own_task_is_refused() {
     let id = tasks.add(business("Acme"), "already theirs", None, 100);
     let verdict = tasks.share_into_business(id, "Widgets Inc", &mut wall, 100);
     assert!(!verdict.allowed());
-    assert!(wall.waiting().is_empty(), "this was refused before it ever reached the firewall");
+    assert!(
+        wall.waiting().is_empty(),
+        "this was refused before it ever reached the firewall"
+    );
 }
 
 #[test]

@@ -11,8 +11,14 @@ fn a_reply_still_arriving_is_not_acted_on() {
     // A streaming reply looks like a short reply. Acting on half of one is
     // how you apply the first paragraph of a two-paragraph fix.
     let c = cfg();
-    assert!(!settled("The problem is", "The problem is the cached", 5000, &c), "still growing");
-    assert!(!settled("same text", "same text", 500, &c), "stopped, but not for long enough");
+    assert!(
+        !settled("The problem is", "The problem is the cached", 5000, &c),
+        "still growing"
+    );
+    assert!(
+        !settled("same text", "same text", 500, &c),
+        "stopped, but not for long enough"
+    );
     assert!(settled("same text", "same text", 3000, &c));
 }
 
@@ -38,8 +44,10 @@ fn a_question_back_does_not_use_an_attempt() {
 
 #[test]
 fn an_explanation_with_no_code_does_not_use_an_attempt() {
-    let r = classify("The handle is cached in the config struct, which is why re-enumerating \
-                      doesn't help. You'll want to move it out.");
+    let r = classify(
+        "The handle is cached in the config struct, which is why re-enumerating \
+                      doesn't help. You'll want to move it out.",
+    );
     assert!(matches!(r, Reply::Guidance(_)));
     assert!(!r.costs_an_attempt());
 }
@@ -84,8 +92,14 @@ fn it_opens_by_saying_what_it_needs_and_attaching_the_write_up() {
     match c.open("THE BRIEF", &cfg()) {
         Move::Open { message, attach } => {
             assert!(message.starts_with("Pause all other tasks"));
-            assert!(message.contains("already tried"), "so nothing is re-suggested");
-            assert!(message.contains("the change itself"), "and it says what it wants back");
+            assert!(
+                message.contains("already tried"),
+                "so nothing is re-suggested"
+            );
+            assert!(
+                message.contains("the change itself"),
+                "and it says what it wants back"
+            );
             assert_eq!(attach, "THE BRIEF");
         }
         o => panic!("{o:?}"),
@@ -108,7 +122,10 @@ fn guidance_is_pushed_toward_something_testable() {
     let reply = classify("You'll want to move the handle out of the config struct.");
     match c.next(&reply, 12, &cfg()) {
         Move::Reply(text) => {
-            assert!(text.contains("What should I change, specifically"), "got: {text}")
+            assert!(
+                text.contains("What should I change, specifically"),
+                "got: {text}"
+            )
         }
         o => panic!("{o:?}"),
     }
@@ -148,11 +165,16 @@ fn the_result_of_each_attempt_is_reported_back() {
     // Reporting what happened is what makes it a conversation rather than a
     // series of guesses.
     let c = Consultation::new("x");
-    assert!(c.report_result(true, "test result: ok. 945 passed").contains("That worked"));
+    assert!(c
+        .report_result(true, "test result: ok. 945 passed")
+        .contains("That worked"));
 
     let failed = c.report_result(false, "thread 'main' panicked at src/voice.rs:212");
     assert!(failed.contains("still failing"));
-    assert!(failed.contains("panicked at src/voice.rs:212"), "with the actual error");
+    assert!(
+        failed.contains("panicked at src/voice.rs:212"),
+        "with the actual error"
+    );
     assert!(failed.trim().ends_with("What next?"));
 }
 
@@ -167,5 +189,7 @@ fn a_wall_of_failure_output_is_trimmed_before_being_pasted_back() {
 
 #[test]
 fn nothing_has_been_asked_yet_is_said_plainly() {
-    assert!(Consultation::new("x").summary().contains("Haven't asked yet"));
+    assert!(Consultation::new("x")
+        .summary()
+        .contains("Haven't asked yet"));
 }

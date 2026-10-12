@@ -23,7 +23,10 @@ fn token() -> String {
 
 #[test]
 fn switching_the_local_api_off_actually_stops_it_listening() {
-    let off = ServerConfig { enabled: false, ..ServerConfig::default() };
+    let off = ServerConfig {
+        enabled: false,
+        ..ServerConfig::default()
+    };
     let r = Server::bind(&off, &token());
     assert!(r.is_err(), "the listener came up with the setting off");
     let why = format!("{}", r.err().unwrap());

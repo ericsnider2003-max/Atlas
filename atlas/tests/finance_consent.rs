@@ -1,8 +1,14 @@
 use atlas::consent::{explain, ConsentConfig, Recorder, Rule, Scope, State, Step};
-use atlas::finance::{allowed, parse_csv, review, summary, FinanceConfig, Flag, PageAction, Source, Transaction, Verdict};
+use atlas::finance::{
+    allowed, parse_csv, review, summary, FinanceConfig, Flag, PageAction, Source, Transaction,
+    Verdict,
+};
 
 fn fin() -> FinanceConfig {
-    FinanceConfig { enabled: true, ..Default::default() }
+    FinanceConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 const BANK: &str = "https://www.chase.com/accounts";
 const NOT_BANK: &str = "https://news.example.com";
@@ -14,7 +20,10 @@ fn atlas_can_look_around_a_bank_site() {
     let c = fin();
     assert!(allowed(BANK, &PageAction::Navigate(BANK.into()), &c).ok());
     assert!(allowed(BANK, &PageAction::Read, &c).ok());
-    assert!(allowed(BANK, &PageAction::Download, &c).ok(), "the export button is the point");
+    assert!(
+        allowed(BANK, &PageAction::Download, &c).ok(),
+        "the export button is the point"
+    );
 }
 
 #[test]
@@ -33,8 +42,16 @@ fn it_will_never_submit_a_form_on_a_bank_site() {
 fn buttons_that_move_money_are_refused_by_name() {
     let c = fin();
     for label in [
-        "Transfer money", "Send", "Pay bill", "Zelle", "Withdraw",
-        "Buy", "Sell", "Confirm payment", "Wire transfer", "Schedule payment",
+        "Transfer money",
+        "Send",
+        "Pay bill",
+        "Zelle",
+        "Withdraw",
+        "Buy",
+        "Sell",
+        "Confirm payment",
+        "Wire transfer",
+        "Schedule payment",
     ] {
         let v = allowed(BANK, &PageAction::Click(label.into()), &c);
         assert!(!v.ok(), "\"{label}\" should have been refused");
@@ -45,15 +62,34 @@ fn buttons_that_move_money_are_refused_by_name() {
 fn harmless_buttons_still_work() {
     let c = fin();
     for label in ["Statements", "Download CSV", "Next page", "Account details"] {
-        assert!(allowed(BANK, &PageAction::Click(label.into()), &c).ok(), "{label}");
+        assert!(
+            allowed(BANK, &PageAction::Click(label.into()), &c).ok(),
+            "{label}"
+        );
     }
 }
 
 #[test]
 fn typing_is_limited_to_logins_and_date_filters() {
     let c = fin();
-    assert!(allowed(BANK, &PageAction::Type { field: "username".into(), text: "x".into() }, &c).ok());
-    assert!(allowed(BANK, &PageAction::Type { field: "start date".into(), text: "x".into() }, &c).ok());
+    assert!(allowed(
+        BANK,
+        &PageAction::Type {
+            field: "username".into(),
+            text: "x".into()
+        },
+        &c
+    )
+    .ok());
+    assert!(allowed(
+        BANK,
+        &PageAction::Type {
+            field: "start date".into(),
+            text: "x".into()
+        },
+        &c
+    )
+    .ok());
 }
 
 #[test]
@@ -62,7 +98,10 @@ fn an_unrecognised_field_on_a_bank_page_fails_closed() {
     // click; allowing costs money.
     let v = allowed(
         BANK,
-        &PageAction::Type { field: "recipient account".into(), text: "123".into() },
+        &PageAction::Type {
+            field: "recipient account".into(),
+            text: "123".into(),
+        },
         &fin(),
     );
     assert!(!v.ok(), "unknown fields must be refused, not allowed");
@@ -78,8 +117,17 @@ fn none_of_this_applies_to_ordinary_websites() {
 #[test]
 fn the_domain_list_covers_banks_cards_and_brokerages() {
     let c = fin();
-    for d in ["chase.com", "amex.com", "paypal.com", "coinbase.com", "fidelity.com"] {
-        assert!(c.is_financial(&format!("https://{d}/x")), "{d} should be protected");
+    for d in [
+        "chase.com",
+        "amex.com",
+        "paypal.com",
+        "coinbase.com",
+        "fidelity.com",
+    ] {
+        assert!(
+            c.is_financial(&format!("https://{d}/x")),
+            "{d} should be protected"
+        );
     }
 }
 
@@ -87,7 +135,10 @@ fn the_domain_list_covers_banks_cards_and_brokerages() {
 fn getting_the_data_without_credentials_is_possible_and_marked_as_such() {
     assert!(!Source::LocalFile.needs_credentials());
     assert!(!Source::Aggregator.needs_credentials());
-    assert!(Source::SiteExport.needs_credentials(), "only this one holds your login");
+    assert!(
+        Source::SiteExport.needs_credentials(),
+        "only this one holds your login"
+    );
 }
 
 // ================= reading the numbers =================
@@ -136,7 +187,9 @@ fn a_file_it_cannot_understand_yields_nothing_rather_than_nonsense() {
 fn large_transactions_are_flagged() {
     let t = parse_csv(CSV, Source::LocalFile);
     let flags = review(&t, &fin());
-    assert!(flags.iter().any(|f| matches!(f, Flag::Large { t } if t.description == "RENT PAYMENT")));
+    assert!(flags
+        .iter()
+        .any(|f| matches!(f, Flag::Large { t } if t.description == "RENT PAYMENT")));
 }
 
 #[test]
@@ -144,7 +197,9 @@ fn the_same_charge_twice_in_a_few_days_is_flagged() {
     let t = parse_csv(CSV, Source::LocalFile);
     let flags = review(&t, &fin());
     assert!(
-        flags.iter().any(|f| matches!(f, Flag::PossibleDuplicate { a, .. } if a.description.contains("NETFLIX"))),
+        flags.iter().any(
+            |f| matches!(f, Flag::PossibleDuplicate { a, .. } if a.description.contains("NETFLIX"))
+        ),
         "two identical charges a day apart is worth a look"
     );
 }
@@ -164,7 +219,9 @@ fn a_charge_repeating_a_month_later_is_not_a_duplicate() {
 fn something_billing_repeatedly_is_recognised_as_a_subscription() {
     let t = parse_csv(CSV, Source::LocalFile);
     let flags = review(&t, &fin());
-    assert!(flags.iter().any(|f| matches!(f, Flag::Recurring { times, .. } if *times == 3)));
+    assert!(flags
+        .iter()
+        .any(|f| matches!(f, Flag::Recurring { times, .. } if *times == 3)));
 }
 
 #[test]
@@ -186,15 +243,25 @@ fn the_summary_leads_with_how_much_there_is_to_hear() {
     let s = summary(&review(&t, &fin()));
     // Behaviour, not just wording: the summary leads with a count because
     // review actually found things -- an empty review takes the other branch.
-    assert!(!review(&t, &fin()).is_empty(), "the summary claims things to hear but review found none");
-    assert!(s.contains("things worth a look") || s.contains("One thing"), "got: {s}");
+    assert!(
+        !review(&t, &fin()).is_empty(),
+        "the summary claims things to hear but review found none"
+    );
+    assert!(
+        s.contains("things worth a look") || s.contains("One thing"),
+        "got: {s}"
+    );
 }
 
 // ================= recording a call =================
 
 fn rec() -> Recorder {
     // The announce-and-object mode; asking first is tested in `asking_before_recording.rs`.
-    Recorder::new(ConsentConfig { enabled: true, ask_the_others: false, ..Default::default() })
+    Recorder::new(ConsentConfig {
+        enabled: true,
+        ask_the_others: false,
+        ..Default::default()
+    })
 }
 
 #[test]
@@ -218,7 +285,10 @@ fn recording_everyone_asks_you_first_then_tells_them() {
         o => panic!("{o:?}"),
     }
     assert_eq!(r.state, State::Announcing);
-    assert!(!r.capturing_others(), "nothing is captured until they've been told");
+    assert!(
+        !r.capturing_others(),
+        "nothing is captured until they've been told"
+    );
 }
 
 #[test]
@@ -228,7 +298,10 @@ fn capture_begins_only_after_the_announcement_actually_lands() {
     r.you_approved();
     assert_eq!(r.announcement_delivered(), Step::Start(Scope::Everyone));
     assert!(r.capturing_others());
-    assert!(!r.recorded_others_without_announcing(), "the invariant holds");
+    assert!(
+        !r.recorded_others_without_announcing(),
+        "the invariant holds"
+    );
 }
 
 #[test]
@@ -292,7 +365,11 @@ fn recording_is_always_visible_while_it_happens() {
 fn the_strict_rule_is_assumed_because_atlas_cannot_know_where_anyone_is() {
     let cfg = ConsentConfig::default();
     assert_eq!(cfg.assume, Rule::AllParties);
-    assert_eq!(cfg.default_scope, Scope::YouOnly, "the safe scope by default");
+    assert_eq!(
+        cfg.default_scope,
+        Scope::YouOnly,
+        "the safe scope by default"
+    );
     assert!(cfg.ask_every_call);
     assert!(!cfg.enabled, "and off entirely until you turn it on");
 }
@@ -306,10 +383,17 @@ fn with_the_feature_off_nothing_records_at_all() {
 
 #[test]
 fn atlas_can_explain_exactly_what_it_does_on_calls() {
-    let said = explain(&ConsentConfig { enabled: true, ask_the_others: false, ..Default::default() });
+    let said = explain(&ConsentConfig {
+        enabled: true,
+        ask_the_others: false,
+        ..Default::default()
+    });
     assert!(said.contains("announce"));
     assert!(said.contains("objects"));
-    assert!(said.contains("7 days"), "and how long audio is kept: {said}");
+    assert!(
+        said.contains("7 days"),
+        "and how long audio is kept: {said}"
+    );
     assert!(explain(&ConsentConfig::default()).contains("don't record"));
 }
 
@@ -346,14 +430,26 @@ fn you_can_see_exactly_what_would_appear_in_the_chat() {
 #[test]
 fn the_whole_script_is_visible_up_front() {
     use atlas::consent::script;
-    let s = script(&ConsentConfig { enabled: true, ..Default::default() });
+    let s = script(&ConsentConfig {
+        enabled: true,
+        ..Default::default()
+    });
     let stages: Vec<&str> = s.iter().map(|(k, _)| *k).collect();
     assert!(stages.contains(&"on joining"));
     assert!(stages.contains(&"if someone objects"));
     assert!(stages.iter().any(|k| k.contains("asks what it does")));
-    assert!(!stages.iter().any(|k| k.contains("call ends")), "no sign-off in the chat");
+    assert!(
+        !stages.iter().any(|k| k.contains("call ends")),
+        "no sign-off in the chat"
+    );
 
-    let explains = s.iter().find(|(k, _)| k.contains("asks what it does")).unwrap();
-    assert!(explains.1.contains("locally"), "people will ask where it goes");
+    let explains = s
+        .iter()
+        .find(|(k, _)| k.contains("asks what it does"))
+        .unwrap();
+    assert!(
+        explains.1.contains("locally"),
+        "people will ask where it goes"
+    );
     assert!(explains.1.contains("Nothing is uploaded"));
 }

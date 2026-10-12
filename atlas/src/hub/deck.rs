@@ -28,11 +28,26 @@ impl Deck {
 pub(super) fn pill(kind: &str, word: &str) -> String {
     let (class, paths) = match kind {
         "done" => ("ok", "<path d='M5 12l5 5L20 6'/>"),
-        "working" => ("wait", "<circle cx=12 cy=12 r=9 /><path d='M12 8v4l2.5 1.5'/>"),
-        "waiting" => ("wait", "<path d='M12 8v4M12 16h.01'/><circle cx=12 cy=12 r=9 />"),
-        "next" => ("info", "<rect x=3 y=4.5 width=18 height=16.5 rx=2.5 /><path d='M3 9.5h18'/>"),
-        "stopped" => ("stop", "<path d='M12 8v4M12 16h.01'/><circle cx=12 cy=12 r=9 />"),
-        "online" => ("ok", "<path d='M12 3a9 9 0 1 0 9 9'/><path d='M8 12l3 3 5-6'/>"),
+        "working" => (
+            "wait",
+            "<circle cx=12 cy=12 r=9 /><path d='M12 8v4l2.5 1.5'/>",
+        ),
+        "waiting" => (
+            "wait",
+            "<path d='M12 8v4M12 16h.01'/><circle cx=12 cy=12 r=9 />",
+        ),
+        "next" => (
+            "info",
+            "<rect x=3 y=4.5 width=18 height=16.5 rx=2.5 /><path d='M3 9.5h18'/>",
+        ),
+        "stopped" => (
+            "stop",
+            "<path d='M12 8v4M12 16h.01'/><circle cx=12 cy=12 r=9 />",
+        ),
+        "online" => (
+            "ok",
+            "<path d='M12 3a9 9 0 1 0 9 9'/><path d='M8 12l3 3 5-6'/>",
+        ),
         _ => ("", "<circle cx=12 cy=12 r=9 />"),
     };
     format!(
@@ -113,7 +128,11 @@ pub(super) fn brief_html(d: &Deck) -> String {
     if !d.asks.is_empty() {
         asks.push_str("<ul class=asks>");
         for (what, href) in d.asks.iter().take(5) {
-            asks.push_str(&format!("<li><a href='{}'>{}</a></li>", esc(href), esc(what)));
+            asks.push_str(&format!(
+                "<li><a href='{}'>{}</a></li>",
+                esc(href),
+                esc(what)
+            ));
         }
         if d.asks.len() > 5 {
             asks.push_str(&format!(
@@ -338,8 +357,7 @@ pub fn dashboard_deck(
     body.push_str("</div>");
 
     if arranging {
-        let hidden: Vec<&crate::dash::Placed> =
-            layout.cards.iter().filter(|p| p.hidden).collect();
+        let hidden: Vec<&crate::dash::Placed> = layout.cards.iter().filter(|p| p.hidden).collect();
         if !hidden.is_empty() {
             body.push_str("<h2>Hidden</h2><div class=handles>");
             for p in hidden {
@@ -474,7 +492,11 @@ pub fn accounts_page(
              <input type=hidden name=what value=forget>\
              <input type=hidden name=site value='{}'>\
              <button class=go>Stop tracking</button></form></div></div>",
-            if a.reused_password { "unique" } else { "reused" },
+            if a.reused_password {
+                "unique"
+            } else {
+                "reused"
+            },
             esc(&a.site),
             if a.reused_password {
                 "Password is unique now"

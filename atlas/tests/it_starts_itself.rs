@@ -48,7 +48,10 @@ fn the_program_path_is_quoted_because_real_installs_have_spaces() {
     let exe = PathBuf::from(r"C:\Program Files\Atlas\atlas.exe");
     let cmd = startup::task_command(&exe, Mode::Background);
 
-    assert!(cmd.starts_with('"'), "the program path is not quoted: {cmd}");
+    assert!(
+        cmd.starts_with('"'),
+        "the program path is not quoted: {cmd}"
+    );
     assert_eq!(
         cmd, r#""C:\Program Files\Atlas\atlas.exe" --daemon"#,
         "the quoting moved; this is the exact string schtasks is handed"
@@ -79,7 +82,11 @@ fn a_command_that_succeeds_is_reported_as_success() {
     if cfg!(windows) {
         return;
     }
-    let ok = Plan { program: "true".into(), args: vec![], what: "succeed".into() };
+    let ok = Plan {
+        program: "true".into(),
+        args: vec![],
+        what: "succeed".into(),
+    };
     assert_eq!(startup::run(&ok), Ok(true));
 }
 
@@ -92,7 +99,11 @@ fn a_command_that_refuses_is_not_reported_as_a_failure_to_run() {
     if cfg!(windows) {
         return;
     }
-    let refused = Plan { program: "false".into(), args: vec![], what: "refuse".into() };
+    let refused = Plan {
+        program: "false".into(),
+        args: vec![],
+        what: "refuse".into(),
+    };
     assert_eq!(
         startup::run(&refused),
         Ok(false),
@@ -140,17 +151,29 @@ fn the_unit_file_is_something_systemd_would_accept() {
         }
         if l.starts_with("ExecStart=") {
             assert_eq!(section, "[Service]", "ExecStart is in the wrong section");
-            assert!(l.contains("--daemon"), "the unit does not start the background mode: {l}");
-            assert!(l.contains("/opt/atlas/atlas"), "the unit starts the wrong program: {l}");
+            assert!(
+                l.contains("--daemon"),
+                "the unit does not start the background mode: {l}"
+            );
+            assert!(
+                l.contains("/opt/atlas/atlas"),
+                "the unit starts the wrong program: {l}"
+            );
             saw_exec = true;
         }
         if l.starts_with("WantedBy=") {
-            assert_eq!(section, "[Install]", "WantedBy is in the wrong section, so `enable` is a no-op");
+            assert_eq!(
+                section, "[Install]",
+                "WantedBy is in the wrong section, so `enable` is a no-op"
+            );
             saw_wanted = true;
         }
     }
     assert!(saw_exec, "no ExecStart, so the unit runs nothing:\n{back}");
-    assert!(saw_wanted, "no WantedBy, so enabling it does nothing at login:\n{back}");
+    assert!(
+        saw_wanted,
+        "no WantedBy, so enabling it does nothing at login:\n{back}"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -164,7 +187,10 @@ fn there_is_a_command_for_it_and_main_dispatches_it() {
         src.contains(r#"== Some("startup")"#),
         "`atlas startup` is not dispatched, so the module is unreachable"
     );
-    assert!(src.contains("fn run_startup("), "the startup command dispatches to nothing");
+    assert!(
+        src.contains("fn run_startup("),
+        "the startup command dispatches to nothing"
+    );
 }
 
 #[test]

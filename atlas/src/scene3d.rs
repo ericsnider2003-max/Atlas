@@ -86,18 +86,34 @@ fn default_fov() -> f64 {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "shape", rename_all = "lowercase")]
 pub enum Shape {
-    Sphere { radius: f64 },
+    Sphere {
+        radius: f64,
+    },
     /// `size` is width, height and depth; `at` is its centre.
-    Box { size: V },
+    Box {
+        size: V,
+    },
     /// Stands on `at` (its base centre).
-    Cylinder { radius: f64, height: f64 },
+    Cylinder {
+        radius: f64,
+        height: f64,
+    },
     /// Stands on `at`; its point is `height` above.
-    Cone { radius: f64, height: f64 },
+    Cone {
+        radius: f64,
+        height: f64,
+    },
     /// A cylinder with round ends, standing on `at`; `height` is overall.
-    Capsule { radius: f64, height: f64 },
+    Capsule {
+        radius: f64,
+        height: f64,
+    },
     /// A ring lying flat around `at`: `radius` to the middle of the tube,
     /// `thickness` the tube's radius.
-    Torus { radius: f64, thickness: f64 },
+    Torus {
+        radius: f64,
+        thickness: f64,
+    },
     /// A model from a file: OBJ (with its MTL colours), STL, or glTF/GLB.
     /// It stands on `at`, centred over it. `fit` sizes it so its longest side
     /// is that many metres; without it the file's own units are taken as
@@ -418,7 +434,11 @@ fn value3(v: &serde_json::Value) -> Option<V> {
 
 /// A track's value at time `t`.
 fn sample(track: &Track, t: f64) -> Option<V> {
-    let keys: Vec<(f64, V)> = track.keys.iter().filter_map(|(k, v)| value3(v).map(|v| (*k, v))).collect();
+    let keys: Vec<(f64, V)> = track
+        .keys
+        .iter()
+        .filter_map(|(k, v)| value3(v).map(|v| (*k, v)))
+        .collect();
     let first = keys.first()?;
     let last = keys.last()?;
     let mut t = t;
@@ -446,7 +466,10 @@ fn deciding(tracks: &[Track], t: f64) -> Vec<&Track> {
     let mut out: Vec<&Track> = Vec::new();
     for tr in tracks {
         let span = |tr: &Track| {
-            let (a, b) = (tr.keys.first().map(|k| k.0).unwrap_or(0.0), tr.keys.last().map(|k| k.0).unwrap_or(0.0));
+            let (a, b) = (
+                tr.keys.first().map(|k| k.0).unwrap_or(0.0),
+                tr.keys.last().map(|k| k.0).unwrap_or(0.0),
+            );
             if tr.repeat || (t >= a && t <= b) {
                 0.0
             } else if t < a {
@@ -501,7 +524,10 @@ fn camera_at(c: &Camera, duration: f64, t: f64) -> Camera {
         let a = (c.orbit * t / duration).to_radians();
         let off = sub(now.from, now.at);
         let (s, co) = a.sin_cos();
-        now.from = add(now.at, [off[0] * co - off[2] * s, off[1], off[0] * s + off[2] * co]);
+        now.from = add(
+            now.at,
+            [off[0] * co - off[2] * s, off[1], off[0] * s + off[2] * co],
+        );
     }
     now
 }
@@ -543,7 +569,11 @@ fn dot(a: V, b: V) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 fn cross(a: V, b: V) -> V {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 fn len(a: V) -> f64 {
     dot(a, a).sqrt()
@@ -611,7 +641,11 @@ fn colour(hex: &str) -> V {
     let h = named.unwrap_or(h);
     if h.len() == 6 {
         if let Ok(v) = u32::from_str_radix(h, 16) {
-            return [((v >> 16) & 255) as f64 / 255.0, ((v >> 8) & 255) as f64 / 255.0, (v & 255) as f64 / 255.0];
+            return [
+                ((v >> 16) & 255) as f64 / 255.0,
+                ((v >> 8) & 255) as f64 / 255.0,
+                (v & 255) as f64 / 255.0,
+            ];
         }
     }
     [0.6, 0.6, 0.6]
@@ -622,7 +656,10 @@ fn colour(hex: &str) -> V {
 /// as already linear.
 fn linear(s: &str) -> V {
     if let Some(rest) = s.strip_prefix("lin:") {
-        let f: Vec<f64> = rest.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+        let f: Vec<f64> = rest
+            .split(',')
+            .filter_map(|x| x.trim().parse().ok())
+            .collect();
         if f.len() == 3 {
             return [f[0], f[1], f[2]];
         }
@@ -700,18 +737,32 @@ fn painted(o: &Object) -> Option<Painted> {
 fn pattern_at(p: &Painted, q: V) -> f64 {
     let g = mul(q, 1.0 / p.size);
     match p.kind {
-        PatternKind::Checker => ((g[0].floor() + g[1].floor() + g[2].floor()) as i64).rem_euclid(2) as f64,
+        PatternKind::Checker => {
+            ((g[0].floor() + g[1].floor() + g[2].floor()) as i64).rem_euclid(2) as f64
+        }
         PatternKind::Stripes => (g[1].floor() as i64).rem_euclid(2) as f64,
         PatternKind::Grid => {
             let edge = |x: f64| {
                 let f = x - x.floor();
                 f.min(1.0 - f)
             };
-            if edge(g[0]).min(edge(g[1])).min(edge(g[2])) < 0.06 { 1.0 } else { 0.0 }
+            if edge(g[0]).min(edge(g[1])).min(edge(g[2])) < 0.06 {
+                1.0
+            } else {
+                0.0
+            }
         }
         PatternKind::Dots => {
-            let c = [g[0] - g[0].floor() - 0.5, g[1] - g[1].floor() - 0.5, g[2] - g[2].floor() - 0.5];
-            if dot(c, c) < 0.3 * 0.3 { 1.0 } else { 0.0 }
+            let c = [
+                g[0] - g[0].floor() - 0.5,
+                g[1] - g[1].floor() - 0.5,
+                g[2] - g[2].floor() - 0.5,
+            ];
+            if dot(c, c) < 0.3 * 0.3 {
+                1.0
+            } else {
+                0.0
+            }
         }
         PatternKind::Noise => {
             // Three octaves of smooth value noise.
@@ -736,7 +787,11 @@ fn value_noise(p: V, octave: u64) -> f64 {
     let s = f.map(|x| x * x * (3.0 - 2.0 * x));
     let at = |dx: f64, dy: f64, dz: f64| {
         let k = |x: f64| (x as i64) as u64;
-        rnd(k(i[0] + dx) ^ (octave << 40), k(i[1] + dy), k(i[2] + dz) ^ 0x5eed)
+        rnd(
+            k(i[0] + dx) ^ (octave << 40),
+            k(i[1] + dy),
+            k(i[2] + dz) ^ 0x5eed,
+        )
     };
     let lerp = |a: f64, b: f64, t: f64| a + (b - a) * t;
     let x00 = lerp(at(0.0, 0.0, 0.0), at(1.0, 0.0, 0.0), s[0]);
@@ -793,7 +848,11 @@ struct Placed {
 }
 
 fn place(o: &Object, base: Option<&std::path::Path>) -> Placed {
-    let scale = if o.scale.is_finite() && o.scale > 1e-6 { o.scale } else { 1.0 };
+    let scale = if o.scale.is_finite() && o.scale > 1e-6 {
+        o.scale
+    } else {
+        1.0
+    };
     let rot = M3::euler_deg(o.rotate);
     // A model that won't read is left out of the picture (check_scene says
     // why before drawing).
@@ -805,19 +864,34 @@ fn place(o: &Object, base: Option<&std::path::Path>) -> Placed {
         Shape::Mesh { .. } => model.as_ref().map(|m| {
             let (lo, hi) = (m.mesh.lo, m.mesh.hi);
             let mid = mul(add(lo, hi), 0.5);
-            (mul(sub(mid, m.centre), m.k), len(sub(hi, lo)) / 2.0 * m.k * 1.0001)
+            (
+                mul(sub(mid, m.centre), m.k),
+                len(sub(hi, lo)) / 2.0 * m.k * 1.0001,
+            )
         }),
         Shape::Sphere { radius } => Some(([0.0; 3], *radius)),
         Shape::Box { size } => Some(([0.0; 3], len(*size) / 2.0)),
-        Shape::Cylinder { radius, height } | Shape::Cone { radius, height } | Shape::Capsule { radius, height } => {
-            Some(([0.0, height / 2.0, 0.0], (radius * radius + height * height / 4.0).sqrt()))
-        }
+        Shape::Cylinder { radius, height }
+        | Shape::Cone { radius, height }
+        | Shape::Capsule { radius, height } => Some((
+            [0.0, height / 2.0, 0.0],
+            (radius * radius + height * height / 4.0).sqrt(),
+        )),
         Shape::Torus { radius, thickness } => Some(([0.0; 3], radius + thickness)),
         Shape::Ground { .. } => None,
     };
-    let glass = (o.material == Material::Glass).then(|| o.ior.filter(|i| i.is_finite()).unwrap_or(1.5).clamp(1.0, 3.0));
+    let glass = (o.material == Material::Glass).then(|| {
+        o.ior
+            .filter(|i| i.is_finite())
+            .unwrap_or(1.5)
+            .clamp(1.0, 3.0)
+    });
     // Glass left at the default grey would be smoked glass; plain glass is clear.
-    let albedo = if glass.is_some() && o.colour == grey() { [0.97; 3] } else { linear(&o.colour) };
+    let albedo = if glass.is_some() && o.colour == grey() {
+        [0.97; 3]
+    } else {
+        linear(&o.colour)
+    };
     Placed {
         shape: o.shape.clone(),
         at: o.at,
@@ -826,7 +900,14 @@ fn place(o: &Object, base: Option<&std::path::Path>) -> Placed {
         albedo,
         shine: o.shine.clamp(0.0, 1.0),
         glass,
-        glow: if o.material == Material::Glow { o.glow.filter(|g| g.is_finite()).unwrap_or(3.0).clamp(0.0, 100.0) } else { 0.0 },
+        glow: if o.material == Material::Glow {
+            o.glow
+                .filter(|g| g.is_finite())
+                .unwrap_or(3.0)
+                .clamp(0.0, 100.0)
+        } else {
+            0.0
+        },
         pattern: painted(o),
         bound: local_bound.map(|(c, r)| (add(o.at, mul(rot.apply(c), scale)), r * scale)),
         model,
@@ -851,7 +932,9 @@ fn sphere_t(o: V, d: V, c: V, r: f64) -> Option<f64> {
 /// Where a ray hits a shape in the shape's own space: (t, normal).
 fn hit_local(shape: &Shape, o: V, d: V) -> Option<(f64, V)> {
     match shape {
-        Shape::Sphere { radius } => sphere_t(o, d, [0.0; 3], *radius).map(|t| (t, unit(add(o, mul(d, t))))),
+        Shape::Sphere { radius } => {
+            sphere_t(o, d, [0.0; 3], *radius).map(|t| (t, unit(add(o, mul(d, t)))))
+        }
         Shape::Box { size } => {
             let hi = mul(*size, 0.5);
             let lo = mul(hi, -1.0);
@@ -880,7 +963,11 @@ fn hit_local(shape: &Shape, o: V, d: V) -> Option<(f64, V)> {
             if tmin > tmax || tmax < EPS {
                 return None;
             }
-            let (t, axis, sign) = if tmin > EPS { (tmin, axis_in, -d[axis_in].signum()) } else { (tmax, axis_out, d[axis_out].signum()) };
+            let (t, axis, sign) = if tmin > EPS {
+                (tmin, axis_in, -d[axis_in].signum())
+            } else {
+                (tmax, axis_out, d[axis_out].signum())
+            };
             let mut n = [0.0; 3];
             n[axis] = sign;
             Some((t, n))
@@ -1046,14 +1133,26 @@ fn hit_placed(p: &Placed, o: V, d: V, far: f64) -> Option<Hit> {
         }
         let q = add(o, mul(d, t));
         let checker = pattern.as_deref().unwrap_or("checker") == "checker";
-        let k = if checker && ((q[0].floor() + q[2].floor()) as i64).rem_euclid(2) == 1 { 0.78 } else { 1.0 };
+        let k = if checker && ((q[0].floor() + q[2].floor()) as i64).rem_euclid(2) == 1 {
+            0.78
+        } else {
+            1.0
+        };
         let albedo = match &p.pattern {
             // A pattern given to the ground replaces its checker; measured
             // from the ground's own height, as Blender's plane measures it.
             Some(pt) => mix(p.albedo, pt.other, pattern_at(pt, [q[0], q[1] - y, q[2]])),
             None => mul(p.albedo, k),
         };
-        return Some(Hit { t, normal: [0.0, 1.0, 0.0], albedo, shine: p.shine, glass: p.glass, glow: p.glow, aimed: false });
+        return Some(Hit {
+            t,
+            normal: [0.0, 1.0, 0.0],
+            albedo,
+            shine: p.shine,
+            glass: p.glass,
+            glow: p.glow,
+            aimed: false,
+        });
     }
     if matches!(p.shape, Shape::Mesh { .. }) && p.model.is_none() {
         return None;
@@ -1072,7 +1171,11 @@ fn hit_placed(p: &Placed, o: V, d: V, far: f64) -> Option<Hit> {
             // Into the file's own coordinates; t there is t here over k.
             let om = add(mul(ol, 1.0 / m.k), m.centre);
             let h = m.mesh.hit(om, dl, far / (p.scale * m.k))?;
-            (h.t * m.k, h.normal, h.colour.and_then(|i| m.mesh.colours.get(i).copied()))
+            (
+                h.t * m.k,
+                h.normal,
+                h.colour.and_then(|i| m.mesh.colours.get(i).copied()),
+            )
         }
         None => {
             let (tl, nl) = hit_local(&p.shape, ol, dl)?;
@@ -1092,7 +1195,15 @@ fn hit_placed(p: &Placed, o: V, d: V, far: f64) -> Option<Hit> {
         let q = sub(add(ol, mul(dl, tl)), mul(unit(nl), 1e-6 + pt.size * 1e-4));
         albedo = mix(albedo, pt.other, pattern_at(pt, q));
     }
-    Some(Hit { t, normal: unit(p.rot.apply(nl)), albedo, shine: p.shine, glass: p.glass, glow: p.glow, aimed: p.glow > 0.0 && p.bound.is_some() })
+    Some(Hit {
+        t,
+        normal: unit(p.rot.apply(nl)),
+        albedo,
+        shine: p.shine,
+        glass: p.glass,
+        glow: p.glow,
+        aimed: p.glow > 0.0 && p.bound.is_some(),
+    })
 }
 
 fn mix(a: V, b: V, k: f64) -> V {
@@ -1131,7 +1242,9 @@ fn transmit(world: &[Placed], o: V, d: V) -> V {
 /// A fixed, well-spread random number for (pixel, sample, which): the same
 /// every frame, so still parts of a moving scene keep the same grain.
 fn rnd(a: u64, b: u64, c: u64) -> f64 {
-    let mut x = a.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ b.wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ c.wrapping_mul(0x1656_67B1_9E37_79F9);
+    let mut x = a.wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ b.wrapping_mul(0xC2B2_AE3D_27D4_EB4F)
+        ^ c.wrapping_mul(0x1656_67B1_9E37_79F9);
     x ^= x >> 30;
     x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
     x ^= x >> 27;
@@ -1149,12 +1262,19 @@ fn spread(px: u64, s: u64, which: u64) -> (f64, f64) {
     const A1: f64 = 0.754_877_666_246_692_7;
     const A2: f64 = 0.569_840_290_998_053_2;
     let (o1, o2) = (rnd(px, which, 101), rnd(px, which, 102));
-    (((s as f64 + 1.0) * A1 + o1).fract(), ((s as f64 + 1.0) * A2 + o2).fract())
+    (
+        ((s as f64 + 1.0) * A1 + o1).fract(),
+        ((s as f64 + 1.0) * A2 + o2).fract(),
+    )
 }
 
 /// Two perpendicular directions to `n`.
 fn basis(n: V) -> (V, V) {
-    let a = if n[0].abs() > 0.9 { [0.0, 1.0, 0.0] } else { [1.0, 0.0, 0.0] };
+    let a = if n[0].abs() > 0.9 {
+        [0.0, 1.0, 0.0]
+    } else {
+        [1.0, 0.0, 0.0]
+    };
     let u = unit(cross(n, a));
     (u, cross(n, u))
 }
@@ -1195,10 +1315,22 @@ fn shade(world: &[Placed], l: &Light, o: V, d: V, depth: u32, seed: (u64, u64)) 
 }
 
 /// `shade` for a ray whose first hit is already known.
-fn shade_hit(world: &[Placed], l: &Light, o: V, d: V, first: Option<Hit>, depth: u32, seed: (u64, u64)) -> V {
+fn shade_hit(
+    world: &[Placed],
+    l: &Light,
+    o: V,
+    d: V,
+    first: Option<Hit>,
+    depth: u32,
+    seed: (u64, u64),
+) -> V {
     let Some(h) = first else { return sky(l, d) };
     let p = add(o, mul(d, h.t));
-    let n = if dot(h.normal, d) > 0.0 { mul(h.normal, -1.0) } else { h.normal };
+    let n = if dot(h.normal, d) > 0.0 {
+        mul(h.normal, -1.0)
+    } else {
+        h.normal
+    };
     let lift = add(p, mul(n, 1e-4 * (1.0 + h.t)));
     let (px, sm) = seed;
     let salt = depth as u64 * 7;
@@ -1230,7 +1362,11 @@ fn shade_hit(world: &[Placed], l: &Light, o: V, d: V, first: Option<Hit>, depth:
         let refracted = || {
             let t = unit(add(mul(d, eta), mul(n, eta * cos_i - k.sqrt())));
             let seen = shade(world, l, below, t, depth + 1, seed);
-            if entering { had(seen, h.albedo) } else { seen }
+            if entering {
+                had(seen, h.albedo)
+            } else {
+                seen
+            }
         };
         // Both ways near the camera; further in, one way picked by the odds,
         // so a pile of glass doesn't cost 2^depth rays.
@@ -1245,7 +1381,11 @@ fn shade_hit(world: &[Placed], l: &Light, o: V, d: V, first: Option<Hit>, depth:
         };
         // The sun's glint on the glass.
         let half = unit(sub(l.dir, d));
-        let glint = if entering { dot(n, half).max(0.0).powf(400.0) * 0.8 } else { 0.0 };
+        let glint = if entering {
+            dot(n, half).max(0.0).powf(400.0) * 0.8
+        } else {
+            0.0
+        };
         return hazed(add(c, mul(l.colour, glint)));
     }
 
@@ -1256,11 +1396,22 @@ fn shade_hit(world: &[Placed], l: &Light, o: V, d: V, first: Option<Hit>, depth:
     let cos_a = 1.0 - r;
     let sin_a = (1.0 - cos_a * cos_a).max(0.0).sqrt();
     let phi = std::f64::consts::TAU * q2;
-    let to_sun = unit(add(mul(l.dir, cos_a), add(mul(u, sin_a * phi.cos()), mul(v, sin_a * phi.sin()))));
+    let to_sun = unit(add(
+        mul(l.dir, cos_a),
+        add(mul(u, sin_a * phi.cos()), mul(v, sin_a * phi.sin())),
+    ));
     let lambert = dot(n, to_sun).max(0.0);
-    let through = if lambert > 0.0 { transmit(world, lift, to_sun) } else { [0.0; 3] };
+    let through = if lambert > 0.0 {
+        transmit(world, lift, to_sun)
+    } else {
+        [0.0; 3]
+    };
     let lit = through != [0.0; 3];
-    let direct = if lit { mul(had(l.colour, through), lambert) } else { [0.0; 3] };
+    let direct = if lit {
+        mul(had(l.colour, through), lambert)
+    } else {
+        [0.0; 3]
+    };
 
     // The sky: light from a random direction over the surface (cosine
     // weighted), dimmed where something close is in the way.
@@ -1268,7 +1419,10 @@ fn shade_hit(world: &[Placed], l: &Light, o: V, d: V, first: Option<Hit>, depth:
     let (r1, r2) = spread(px, sm, 3 + salt);
     let sr = r1.sqrt();
     let ph = std::f64::consts::TAU * r2;
-    let hemi = unit(add(mul(n, (1.0 - r1).sqrt()), add(mul(tu, sr * ph.cos()), mul(tv, sr * ph.sin()))));
+    let hemi = unit(add(
+        mul(n, (1.0 - r1).sqrt()),
+        add(mul(tu, sr * ph.cos()), mul(tv, sr * ph.sin())),
+    ));
     // Where the sky is blocked nearby, what's in the way lights it instead —
     // dimly, in its own colour (one bounce, roughly: the ground under a ball
     // throws its colour up onto it).
@@ -1278,7 +1432,9 @@ fn shade_hit(world: &[Placed], l: &Light, o: V, d: V, first: Option<Hit>, depth:
     // sky ray to find it, which left fireflies all over the floor.
     let mut lamps = [0.0; 3];
     for (gi, g) in world.iter().enumerate() {
-        let (true, Some((gc, gr))) = (g.glow > 0.0, g.bound) else { continue };
+        let (true, Some((gc, gr))) = (g.glow > 0.0, g.bound) else {
+            continue;
+        };
         let to = sub(gc, lift);
         let d2 = dot(to, to);
         if d2 <= gr * gr {
@@ -1292,15 +1448,23 @@ fn shade_hit(world: &[Placed], l: &Light, o: V, d: V, first: Option<Hit>, depth:
         let phi = std::f64::consts::TAU * q2;
         let axis = unit(to);
         let (a1, a2) = basis(axis);
-        let dir = unit(add(mul(axis, cos_t), add(mul(a1, sin_t * phi.cos()), mul(a2, sin_t * phi.sin()))));
+        let dir = unit(add(
+            mul(axis, cos_t),
+            add(mul(a1, sin_t * phi.cos()), mul(a2, sin_t * phi.sin())),
+        ));
         let lam = dot(n, dir);
         if lam <= 0.0 {
             continue;
         }
-        let Some(mine) = hit_placed(g, lift, dir, f64::MAX) else { continue };
+        let Some(mine) = hit_placed(g, lift, dir, f64::MAX) else {
+            continue;
+        };
         let first = nearest(world, lift, dir).map(|b| b.t).unwrap_or(f64::MAX);
         if first + 1e-9 >= mine.t {
-            lamps = add(lamps, mul(mine.albedo, mine.glow * lam * omega / std::f64::consts::PI));
+            lamps = add(
+                lamps,
+                mul(mine.albedo, mine.glow * lam * omega / std::f64::consts::PI),
+            );
         }
     }
     // A sky ray that finds a lamp adds nothing (the lamps were counted just
@@ -1330,8 +1494,14 @@ fn shade_hit(world: &[Placed], l: &Light, o: V, d: V, first: Option<Hit>, depth:
         // Shiny things tint what they reflect toward their own colour, as
         // metals do — so gold stays gold instead of mirroring a white floor.
         let top = h.albedo[0].max(h.albedo[1]).max(h.albedo[2]).max(1e-6);
-        let tint = add(mul([1.0; 3], 1.0 - 0.8 * h.shine), mul(h.albedo, 0.8 * h.shine / top));
-        c = add(mul(c, 1.0 - fres * h.shine), mul(had(seen, tint), fres * h.shine));
+        let tint = add(
+            mul([1.0; 3], 1.0 - 0.8 * h.shine),
+            mul(h.albedo, 0.8 * h.shine / top),
+        );
+        c = add(
+            mul(c, 1.0 - fres * h.shine),
+            mul(had(seen, tint), fres * h.shine),
+        );
     }
 
     // Haze: far things fade into the horizon.
@@ -1341,10 +1511,19 @@ fn shade_hit(world: &[Placed], l: &Light, o: V, d: V, first: Option<Hit>, depth:
 fn light_of(scene: &Scene) -> Light {
     let (from, softness, col, strength) = match &scene.sun {
         Sun::From(v) => (*v, default_softness(), default_sun_colour(), 1.0),
-        Sun::Full { from, softness, colour, strength } => (*from, *softness, colour.clone(), *strength),
+        Sun::Full {
+            from,
+            softness,
+            colour,
+            strength,
+        } => (*from, *softness, colour.clone(), *strength),
     };
     let sky_h = linear(&scene.sky);
-    let sky_top = scene.sky_top.as_deref().map(linear).unwrap_or_else(|| mul(sky_h, 0.72));
+    let sky_top = scene
+        .sky_top
+        .as_deref()
+        .map(linear)
+        .unwrap_or_else(|| mul(sky_h, 0.72));
     Light {
         dir: unit(from),
         colour: mul(linear(&col), 2.0 * strength.clamp(0.0, 10.0)),
@@ -1358,9 +1537,18 @@ fn light_of(scene: &Scene) -> Light {
 fn camera_frame(c: &Camera) -> (V, V, V, f64) {
     let fwd = unit(sub(c.at, c.from));
     let right = unit(cross(fwd, [0.0, 1.0, 0.0]));
-    let right = if dot(right, right) < 0.5 { [1.0, 0.0, 0.0] } else { right };
+    let right = if dot(right, right) < 0.5 {
+        [1.0, 0.0, 0.0]
+    } else {
+        right
+    };
     let up = cross(right, fwd);
-    (fwd, right, up, (c.fov.clamp(5.0, 150.0).to_radians() / 2.0).tan())
+    (
+        fwd,
+        right,
+        up,
+        (c.fov.clamp(5.0, 150.0).to_radians() / 2.0).tan(),
+    )
 }
 
 /// Where a point lands on the picture at time `t`, in pixels, if in front of
@@ -1395,7 +1583,8 @@ const ADAPT_REL: f64 = 0.08;
 
 /// Rays per pixel in the last frame drawn, times 1000: what adaptive
 /// sampling actually spent, for saying so and for measuring it.
-pub static LAST_RAYS_PER_PIXEL_X1000: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static LAST_RAYS_PER_PIXEL_X1000: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 
 pub fn render_frame(scene: &Scene, t: f64) -> Rgba {
     let (w, h) = (scene.width.clamp(1, 4096), scene.height.clamp(1, 4096));
@@ -1413,7 +1602,11 @@ pub fn render_frame(scene: &Scene, t: f64) -> Rgba {
         .iter()
         .map(|&ti| {
             let s = scene_at(scene, ti.max(0.0));
-            let world: Vec<Placed> = s.objects.iter().map(|o| place(o, scene.base.as_deref())).collect();
+            let world: Vec<Placed> = s
+                .objects
+                .iter()
+                .map(|o| place(o, scene.base.as_deref()))
+                .collect();
             let (fwd, right, up, half_h) = camera_frame(&s.camera);
             (world, (s.camera.from, fwd, right, up, half_h))
         })
@@ -1421,7 +1614,10 @@ pub fn render_frame(scene: &Scene, t: f64) -> Rgba {
     let aspect = w as f64 / h as f64;
     let adaptive = scene.adaptive.unwrap_or(false);
     let rays = std::sync::atomic::AtomicU64::new(0);
-    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(1, 32);
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(1, 32);
     let rows_each = (h as usize).div_ceil(threads);
     // Each pixel: its light (linear), and for the denoiser what the middle
     // of the pixel first sees — its surface's normal, colour and distance —
@@ -1451,22 +1647,30 @@ pub fn render_frame(scene: &Scene, t: f64) -> Rgba {
                             while s < limit {
                                 let (jx, jy) = if s < n {
                                     let (sx, sy) = ((s % side) as f64, (s / side) as f64);
-                                    ((sx + rnd(px, s as u64, 11)) / side as f64, (sy + rnd(px, s as u64, 12)) / side as f64)
+                                    (
+                                        (sx + rnd(px, s as u64, 11)) / side as f64,
+                                        (sy + rnd(px, s as u64, 12)) / side as f64,
+                                    )
                                 } else {
                                     // Extra rays are stratified too, over a grid
                                     // twice as fine as the first rays'.
                                     let (f, e) = (side * 2, s - n);
                                     let (sx, sy) = ((e % f) as f64, (e / f) as f64);
-                                    ((sx + rnd(px, s as u64, 11)) / f as f64, (sy + rnd(px, s as u64, 12)) / f as f64)
+                                    (
+                                        (sx + rnd(px, s as u64, 11)) / f as f64,
+                                        (sy + rnd(px, s as u64, 12)) / f as f64,
+                                    )
                                 };
                                 // A moment in the open shutter, spread evenly over the
                                 // pixel's rays and jittered within its share.
                                 let slot = if s < n {
-                                    (((s as f64 + rnd(px, s as u64, 13)) / n as f64) * k as f64) as usize
+                                    (((s as f64 + rnd(px, s as u64, 13)) / n as f64) * k as f64)
+                                        as usize
                                 } else {
                                     (rnd(px, s as u64, 13) * k as f64) as usize
                                 };
-                                let (world, (from, fwd, right, up, half_h)) = &states[slot.min(k - 1)];
+                                let (world, (from, fwd, right, up, half_h)) =
+                                    &states[slot.min(k - 1)];
                                 let u = ((x as f64 + jx) / w as f64 * 2.0 - 1.0) * half_h * aspect;
                                 let v = (1.0 - (y as f64 + jy) / h as f64 * 2.0) * half_h;
                                 let d = unit(add(*fwd, add(mul(*right, u), mul(*up, v))));
@@ -1477,7 +1681,13 @@ pub fn render_frame(scene: &Scene, t: f64) -> Rgba {
                                 let (fn_, fa, fd) = match &first {
                                     // Glass, mirrors and lamps show other things (or
                                     // themselves) rather than a lit colour: not divided out.
-                                    Some(hh) if hh.glass.is_some() || hh.glow > 0.0 || hh.shine > 0.5 => (hh.normal, [1.0; 3], hh.t),
+                                    Some(hh)
+                                        if hh.glass.is_some()
+                                            || hh.glow > 0.0
+                                            || hh.shine > 0.5 =>
+                                    {
+                                        (hh.normal, [1.0; 3], hh.t)
+                                    }
                                     Some(hh) => (hh.normal, hh.albedo.map(|a| a.max(0.02)), hh.t),
                                     None => ([0.0; 3], [1.0; 3], 1e4),
                                 };
@@ -1495,7 +1705,8 @@ pub fn render_frame(scene: &Scene, t: f64) -> Rgba {
                                 // again. Judged once, so the cost is bounded.
                                 if adaptive && s == n {
                                     let m = mul(acc, 1.0 / n as f64);
-                                    let v = (lum2 / n as f64 - luma(m) * luma(m)).max(0.0) / n as f64;
+                                    let v =
+                                        (lum2 / n as f64 - luma(m) * luma(m)).max(0.0) / n as f64;
                                     if v.sqrt() > ADAPT_REL * (luma(m) + 0.05) {
                                         limit = n * 5;
                                     }
@@ -1507,15 +1718,28 @@ pub fn render_frame(scene: &Scene, t: f64) -> Rgba {
                             let var = (lum2 / n as f64 - luma(c) * luma(c)).max(0.0);
                             let inv = 1.0 / n as f64;
                             let nl = len(normal);
-                            let normal = if nl > 1e-9 { mul(normal, 1.0 / nl) } else { [0.0; 3] };
-                            out.push(Texel { c, var: var * inv, normal, albedo: mul(albedo, inv), depth: depth * inv });
+                            let normal = if nl > 1e-9 {
+                                mul(normal, 1.0 / nl)
+                            } else {
+                                [0.0; 3]
+                            };
+                            out.push(Texel {
+                                c,
+                                var: var * inv,
+                                normal,
+                                albedo: mul(albedo, inv),
+                                depth: depth * inv,
+                            });
                         }
                     }
                     out
                 })
             })
             .collect();
-        handles.into_iter().map(|hd| hd.join().unwrap_or_default()).collect()
+        handles
+            .into_iter()
+            .map(|hd| hd.join().unwrap_or_default())
+            .collect()
     });
     let mut texels: Vec<Texel> = bands.into_iter().flatten().collect();
     LAST_RAYS_PER_PIXEL_X1000.store(
@@ -1530,7 +1754,12 @@ pub fn render_frame(scene: &Scene, t: f64) -> Rgba {
     }
     let mut img = Rgba::new(w, h);
     for (i, t) in texels.iter().enumerate() {
-        img.pixels[i * 4..i * 4 + 4].copy_from_slice(&[screen_byte(t.c[0]), screen_byte(t.c[1]), screen_byte(t.c[2]), 255]);
+        img.pixels[i * 4..i * 4 + 4].copy_from_slice(&[
+            screen_byte(t.c[0]),
+            screen_byte(t.c[1]),
+            screen_byte(t.c[2]),
+            255,
+        ]);
     }
     img
 }
@@ -1559,9 +1788,21 @@ fn luma(c: V) -> f64 {
 /// light on it.
 fn denoise(px: &mut [Texel], w: usize, h: usize) {
     const KERNEL: [f64; 5] = [1.0 / 16.0, 1.0 / 4.0, 3.0 / 8.0, 1.0 / 4.0, 1.0 / 16.0];
-    let mut light: Vec<V> = px.iter().map(|t| [t.c[0] / t.albedo[0], t.c[1] / t.albedo[1], t.c[2] / t.albedo[2]]).collect();
+    let mut light: Vec<V> = px
+        .iter()
+        .map(|t| {
+            [
+                t.c[0] / t.albedo[0],
+                t.c[1] / t.albedo[1],
+                t.c[2] / t.albedo[2],
+            ]
+        })
+        .collect();
     // Noise of the light (divided the same way, roughly).
-    let raw: Vec<f64> = px.iter().map(|t| t.var / luma(t.albedo).max(0.02).powi(2)).collect();
+    let raw: Vec<f64> = px
+        .iter()
+        .map(|t| t.var / luma(t.albedo).max(0.02).powi(2))
+        .collect();
     // A few rays make a shaky guess at a pixel's noise (four rays that all
     // happened to agree say "none"), so it's averaged over the 3×3 round it
     // first, as SVGF does.
@@ -1573,7 +1814,13 @@ fn denoise(px: &mut [Texel], w: usize, h: usize) {
                 for dx in -1i64..=1 {
                     let (xx, yy) = (x as i64 + dx, y as i64 + dy);
                     if xx >= 0 && yy >= 0 && xx < w as i64 && yy < h as i64 {
-                        let k = if dx == 0 && dy == 0 { 4.0 } else if dx == 0 || dy == 0 { 2.0 } else { 1.0 };
+                        let k = if dx == 0 && dy == 0 {
+                            4.0
+                        } else if dx == 0 || dy == 0 {
+                            2.0
+                        } else {
+                            1.0
+                        };
                         s += k * raw[yy as usize * w + xx as usize];
                         n += k;
                     }
@@ -1589,8 +1836,16 @@ fn denoise(px: &mut [Texel], w: usize, h: usize) {
         .map(|i| {
             let (x, y) = (i % w, i / w);
             let z = |xx: usize, yy: usize| px[yy * w + xx].depth;
-            let gx = if x + 1 < w && x > 0 { (z(x + 1, y) - z(x - 1, y)).abs() / 2.0 } else { 0.0 };
-            let gy = if y + 1 < h && y > 0 { (z(x, y + 1) - z(x, y - 1)).abs() / 2.0 } else { 0.0 };
+            let gx = if x + 1 < w && x > 0 {
+                (z(x + 1, y) - z(x - 1, y)).abs() / 2.0
+            } else {
+                0.0
+            };
+            let gy = if y + 1 < h && y > 0 {
+                (z(x, y + 1) - z(x, y - 1)).abs() / 2.0
+            } else {
+                0.0
+            };
             gx.max(gy).min(px[i].depth)
         })
         .collect();
@@ -1620,9 +1875,16 @@ fn denoise(px: &mut [Texel], w: usize, h: usize) {
                         let j = yy as usize * w + xx as usize;
                         let them = &px[j];
                         let wn = dot(me.normal, them.normal).max(0.0).powi(64);
-                        let wn = if me.normal == [0.0; 3] && them.normal == [0.0; 3] { 1.0 } else { wn };
-                        let apart = (((kx as f64 - 2.0).powi(2) + (ky as f64 - 2.0).powi(2)).sqrt()) * step as f64;
-                        let dz = (me.depth - them.depth).abs() / (slope[i] * apart + me.depth.min(1e6) * 0.005 + 1e-3);
+                        let wn = if me.normal == [0.0; 3] && them.normal == [0.0; 3] {
+                            1.0
+                        } else {
+                            wn
+                        };
+                        let apart = (((kx as f64 - 2.0).powi(2) + (ky as f64 - 2.0).powi(2))
+                            .sqrt())
+                            * step as f64;
+                        let dz = (me.depth - them.depth).abs()
+                            / (slope[i] * apart + me.depth.min(1e6) * 0.005 + 1e-3);
                         let dl = (li - luma(light[j])).abs() / (1.5 * sd + 0.01);
                         let wt = hy * hx * wn * (-dz - dl).exp();
                         sum = add(sum, mul(light[j], wt));
@@ -1644,7 +1906,10 @@ fn denoise(px: &mut [Texel], w: usize, h: usize) {
 
 /// Every frame of the scene, in order (one for a still scene).
 fn render_animation(scene: &Scene) -> Vec<Rgba> {
-    frame_times(scene).into_iter().map(|t| render_frame(scene, t)).collect()
+    frame_times(scene)
+        .into_iter()
+        .map(|t| render_frame(scene, t))
+        .collect()
 }
 
 /// The camera circling a still scene: `frames` pictures, one full turn.
@@ -1693,7 +1958,9 @@ pub fn model_files(dir: &std::path::Path) -> Vec<String> {
                 .filter_map(|e| {
                     let name = e.file_name().to_string_lossy().to_string();
                     let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
-                    ["obj", "stl", "gltf", "glb"].contains(&ext.as_str()).then_some(name)
+                    ["obj", "stl", "gltf", "glb"]
+                        .contains(&ext.as_str())
+                        .then_some(name)
                 })
                 .collect()
         })
@@ -1704,9 +1971,13 @@ pub fn model_files(dir: &std::path::Path) -> Vec<String> {
 
 /// Read a scene file. Its models are then looked for beside it.
 pub fn load_scene(path: &std::path::Path) -> Result<Scene, String> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
     let mut scene = parse_scene(&text)?;
-    let dir = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
+    let dir = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
     scene.base = Some(std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf()));
     Ok(scene)
 }
@@ -1741,19 +2012,37 @@ fn name_of(i: usize, o: &Object) -> String {
 /// Roughly where an object's middle is (for "is it in view").
 fn middle(o: &Object) -> V {
     let up = match o.shape {
-        Shape::Cylinder { height, .. } | Shape::Cone { height, .. } | Shape::Capsule { height, .. } => height / 2.0,
+        Shape::Cylinder { height, .. }
+        | Shape::Cone { height, .. }
+        | Shape::Capsule { height, .. } => height / 2.0,
         Shape::Mesh { fit: Some(f), .. } => f / 2.0,
         _ => 0.0,
     };
-    add(o.at, M3::euler_deg(o.rotate).apply([0.0, up * o.scale, 0.0]))
+    add(
+        o.at,
+        M3::euler_deg(o.rotate).apply([0.0, up * o.scale, 0.0]),
+    )
 }
 
 /// What can be said about a scene before drawing it.
 pub fn check_scene(scene: &Scene) -> Vec<Finding> {
     let mut out = Vec::new();
-    let block = |rule: &str, detail: String| Finding { severity: Severity::Blocking, rule: rule.into(), detail };
-    let advise = |rule: &str, detail: String| Finding { severity: Severity::Advisory, rule: rule.into(), detail };
-    let solid: Vec<(usize, &Object)> = scene.objects.iter().enumerate().filter(|(_, o)| !matches!(o.shape, Shape::Ground { .. })).collect();
+    let block = |rule: &str, detail: String| Finding {
+        severity: Severity::Blocking,
+        rule: rule.into(),
+        detail,
+    };
+    let advise = |rule: &str, detail: String| Finding {
+        severity: Severity::Advisory,
+        rule: rule.into(),
+        detail,
+    };
+    let solid: Vec<(usize, &Object)> = scene
+        .objects
+        .iter()
+        .enumerate()
+        .filter(|(_, o)| !matches!(o.shape, Shape::Ground { .. }))
+        .collect();
     if solid.is_empty() {
         out.push(block("has something in it", "the scene has nothing to look at — no sphere, box, cylinder, cone, capsule, torus or model".into()));
     }
@@ -1780,44 +2069,107 @@ pub fn check_scene(scene: &Scene) -> Vec<Finding> {
         }
     }
     if scene.width < 16 || scene.height < 16 || scene.width > 4096 || scene.height > 4096 {
-        out.push(block("a sensible size", format!("{}×{} isn't a size to draw at (16 to 4096 a side)", scene.width, scene.height)));
+        out.push(block(
+            "a sensible size",
+            format!(
+                "{}×{} isn't a size to draw at (16 to 4096 a side)",
+                scene.width, scene.height
+            ),
+        ));
     }
     if !(0.0..=60.0).contains(&scene.duration) || !scene.duration.is_finite() {
-        out.push(block("a sensible length", format!("{} s isn't a length to animate (0 to 60)", scene.duration)));
+        out.push(block(
+            "a sensible length",
+            format!("{} s isn't a length to animate (0 to 60)", scene.duration),
+        ));
     }
     if scene.duration > 0.0 && !(1..=60).contains(&scene.fps) {
-        out.push(block("a sensible frame rate", format!("{} frames a second isn't one to animate at (1 to 60)", scene.fps)));
+        out.push(block(
+            "a sensible frame rate",
+            format!(
+                "{} frames a second isn't one to animate at (1 to 60)",
+                scene.fps
+            ),
+        ));
     }
-    let tracks = scene.objects.iter().flat_map(|o| o.animate.iter()).chain(scene.camera.animate.iter());
+    let tracks = scene
+        .objects
+        .iter()
+        .flat_map(|o| o.animate.iter())
+        .chain(scene.camera.animate.iter());
     for tr in tracks {
         let good = tr.keys.iter().filter(|(_, v)| value3(v).is_some()).count();
         if good == 0 {
-            out.push(block("keyframes read", format!("the \"{}\" track has no keys that read as a number, [x, y, z] or a colour", tr.prop)));
+            out.push(block(
+                "keyframes read",
+                format!(
+                    "the \"{}\" track has no keys that read as a number, [x, y, z] or a colour",
+                    tr.prop
+                ),
+            ));
             continue;
         }
         if tr.keys.windows(2).any(|w| w[1].0 < w[0].0) {
-            out.push(block("keyframes in order", format!("the \"{}\" track's keys aren't in time order", tr.prop)));
+            out.push(block(
+                "keyframes in order",
+                format!("the \"{}\" track's keys aren't in time order", tr.prop),
+            ));
         }
-        if scene.duration > 0.0 && tr.keys.iter().any(|(t, _)| *t > scene.duration + 1e-9 || *t < 0.0) {
-            out.push(advise("keyframes in the timeline", format!("the \"{}\" track has keys outside 0–{} s; those moments are never shown", tr.prop, scene.duration)));
+        if scene.duration > 0.0
+            && tr
+                .keys
+                .iter()
+                .any(|(t, _)| *t > scene.duration + 1e-9 || *t < 0.0)
+        {
+            out.push(advise(
+                "keyframes in the timeline",
+                format!(
+                    "the \"{}\" track has keys outside 0–{} s; those moments are never shown",
+                    tr.prop, scene.duration
+                ),
+            ));
         }
-        let known = ["at", "position", "rotate", "rotation", "scale", "size", "colour", "color", "from", "target", "fov"];
+        let known = [
+            "at", "position", "rotate", "rotation", "scale", "size", "colour", "color", "from",
+            "target", "fov",
+        ];
         if !known.contains(&tr.prop.as_str()) {
-            out.push(advise("keyframes do something", format!("\"{}\" isn't something that can be animated, so that track does nothing", tr.prop)));
+            out.push(advise(
+                "keyframes do something",
+                format!(
+                    "\"{}\" isn't something that can be animated, so that track does nothing",
+                    tr.prop
+                ),
+            ));
         }
     }
     let moves = scene.camera.orbit != 0.0
         || !scene.camera.animate.is_empty()
-        || scene.objects.iter().any(|o| !o.animate.is_empty() || o.spin != [0.0; 3]);
+        || scene
+            .objects
+            .iter()
+            .any(|o| !o.animate.is_empty() || o.spin != [0.0; 3]);
     if scene.duration > 0.0 && !moves {
-        out.push(block("something moves", format!("it's {} s long but nothing in it is animated — no keyframes, spin or orbit", scene.duration)));
+        out.push(block(
+            "something moves",
+            format!(
+                "it's {} s long but nothing in it is animated — no keyframes, spin or orbit",
+                scene.duration
+            ),
+        ));
     }
     if moves && scene.duration <= 0.0 {
-        out.push(advise("a length to move in", "things are set to move but the duration is 0, so it's drawn as a still".into()));
+        out.push(advise(
+            "a length to move in",
+            "things are set to move but the duration is 0, so it's drawn as a still".into(),
+        ));
     }
     let c = &scene.camera;
     if len(sub(c.at, c.from)) < 1e-9 {
-        out.push(block("camera looks somewhere", "the camera stands on the point it's looking at, so it has no direction".into()));
+        out.push(block(
+            "camera looks somewhere",
+            "the camera stands on the point it's looking at, so it has no direction".into(),
+        ));
         return out;
     }
     // In view, all the way through (sampled at up to 24 moments).
@@ -1828,7 +2180,9 @@ pub fn check_scene(scene: &Scene) -> Vec<Finding> {
         for &t in times.iter().step_by(step) {
             let now = object_at(o, t);
             let inside = project(scene, t, middle(&now))
-                .map(|(x, y)| x >= 0.0 && y >= 0.0 && x <= scene.width as f64 && y <= scene.height as f64)
+                .map(|(x, y)| {
+                    x >= 0.0 && y >= 0.0 && x <= scene.width as f64 && y <= scene.height as f64
+                })
                 .unwrap_or(false);
             if !inside {
                 gone.push(t);
@@ -1840,9 +2194,16 @@ pub fn check_scene(scene: &Scene) -> Vec<Finding> {
             } else if gone.len() * step >= times.len() {
                 " the whole time".into()
             } else {
-                format!(" from about {:.1} s to {:.1} s", gone[0], gone[gone.len() - 1])
+                format!(
+                    " from about {:.1} s to {:.1} s",
+                    gone[0],
+                    gone[gone.len() - 1]
+                )
             };
-            out.push(advise("in view", format!("{} is out of the picture{when}", name_of(*i, o))));
+            out.push(advise(
+                "in view",
+                format!("{} is out of the picture{when}", name_of(*i, o)),
+            ));
         }
     }
     out
@@ -1862,7 +2223,11 @@ fn picture_findings(scene: &Scene, img: &Rgba) -> Vec<Finding> {
             let v = (1.0 - (y as f64 + 0.5) / img.height as f64 * 2.0) * half_h;
             let d = unit(add(fwd, add(mul(right, u), mul(up, v))));
             let s = sky(&light, d);
-            let want = [screen_byte(s[0]) as i32, screen_byte(s[1]) as i32, screen_byte(s[2]) as i32];
+            let want = [
+                screen_byte(s[0]) as i32,
+                screen_byte(s[1]) as i32,
+                screen_byte(s[2]) as i32,
+            ];
             let got = img.at(x, y);
             if (0..3).any(|c| (got[c] as i32 - want[c]).abs() > 10) {
                 surface += 1;
@@ -1929,7 +2294,10 @@ pub fn blender_script(scene: &Scene, out: &std::path::Path) -> String {
     s.push_str("        if frames_moving:\n");
     s.push_str("            for path in ('location', 'rotation_euler', 'scale'):\n");
     s.push_str("                obj.keyframe_insert(data_path=path, frame=f)\n");
-    s.push_str(&format!("frames_moving = {}\n", if moving { "True" } else { "False" }));
+    s.push_str(&format!(
+        "frames_moving = {}\n",
+        if moving { "True" } else { "False" }
+    ));
     for (i, o) in scene.objects.iter().enumerate() {
         let geometry = match &o.shape {
             Shape::Sphere { radius } => format!("bpy.ops.mesh.primitive_uv_sphere_add(radius={radius:.5}, segments=64, ring_count=32)\nbpy.ops.object.shade_smooth()\n"),
@@ -1982,7 +2350,10 @@ pub fn blender_script(scene: &Scene, out: &std::path::Path) -> String {
         } else {
             s.push_str(&format!("obj_{i} = bpy.context.object\n"));
         }
-        s.push_str(&format!("bsdf_{i} = {}\n", blender_paint(i, o, scene.base.as_deref())));
+        s.push_str(&format!(
+            "bsdf_{i} = {}\n",
+            blender_paint(i, o, scene.base.as_deref())
+        ));
         if matches!(o.shape, Shape::Ground { .. }) {
             continue;
         }
@@ -1991,11 +2362,21 @@ pub fn blender_script(scene: &Scene, out: &std::path::Path) -> String {
             .enumerate()
             .map(|(f, &t)| {
                 let now = object_at(o, t);
-                format!("({}, {}, {}, {:.5})", f + 1, bv(now.at), mat(conv(M3::euler_deg(now.rotate))), now.scale)
+                format!(
+                    "({}, {}, {}, {:.5})",
+                    f + 1,
+                    bv(now.at),
+                    mat(conv(M3::euler_deg(now.rotate))),
+                    now.scale
+                )
             })
             .collect();
         s.push_str(&format!("pose(obj_{i}, [{}])\n", frames.join(", ")));
-        if moving && o.animate.iter().any(|t| t.prop == "colour" || t.prop == "color") {
+        if moving
+            && o.animate
+                .iter()
+                .any(|t| t.prop == "colour" || t.prop == "color")
+        {
             for (f, &t) in times.iter().enumerate() {
                 let c = linear(&object_at(o, t).colour);
                 s.push_str(&format!(
@@ -2008,7 +2389,12 @@ pub fn blender_script(scene: &Scene, out: &std::path::Path) -> String {
     }
     let (sun_from, softness, sun_col, strength) = match &scene.sun {
         Sun::From(v) => (*v, default_softness(), default_sun_colour(), 1.0),
-        Sun::Full { from, softness, colour, strength } => (*from, *softness, colour.clone(), *strength),
+        Sun::Full {
+            from,
+            softness,
+            colour,
+            strength,
+        } => (*from, *softness, colour.clone(), *strength),
     };
     s.push_str(&format!(
         "bpy.ops.object.light_add(type='SUN', location=(0, 0, 10))\nsun = bpy.context.object\nsun.data.energy = {:.3}\nsun.data.angle = math.radians({:.3})\nsun.data.color = {}\nsun.rotation_euler = mathutils.Vector({}).to_track_quat('Z', 'Y').to_euler()\n",
@@ -2042,7 +2428,9 @@ pub fn blender_script(scene: &Scene, out: &std::path::Path) -> String {
         "world = bpy.data.worlds.new('w')\nworld.use_nodes = True\nworld.node_tree.nodes['Background'].inputs['Color'].default_value = ({:.4}, {:.4}, {:.4}, 1.0)\nscene.world = world\n",
         sky[0], sky[1], sky[2]
     ));
-    s.push_str("scene.render.engine = 'CYCLES'\nscene.cycles.device = 'CPU'\nscene.cycles.samples = 32\n");
+    s.push_str(
+        "scene.render.engine = 'CYCLES'\nscene.cycles.device = 'CPU'\nscene.cycles.samples = 32\n",
+    );
     s.push_str("scene.view_settings.view_transform = 'Filmic' if 'Filmic' in [i.identifier for i in scene.view_settings.bl_rna.properties['view_transform'].enum_items] else scene.view_settings.view_transform\n");
     s.push_str(&format!(
         "scene.render.resolution_x = {}\nscene.render.resolution_y = {}\nscene.render.resolution_percentage = 100\n",
@@ -2075,7 +2463,13 @@ fn blender_paint(i: usize, o: &Object, base: Option<&std::path::Path>) -> String
     let p = place(o, base);
     let rgba = |c: V| format!("({:.5}, {:.5}, {:.5}, 1.0)", c[0], c[1], c[2]);
     // A model's own colours stay when nothing asks for another look.
-    let keep = p.model.as_ref().map(|m| !m.mesh.colours.is_empty()).unwrap_or(false) && o.material == Material::Solid && p.pattern.is_none();
+    let keep = p
+        .model
+        .as_ref()
+        .map(|m| !m.mesh.colours.is_empty())
+        .unwrap_or(false)
+        && o.material == Material::Solid
+        && p.pattern.is_none();
     let pat = match &p.pattern {
         Some(pt) => format!("('{:?}', {}, {:.6})", pt.kind, rgba(pt.other), pt.size).to_lowercase(),
         None => "None".into(),
@@ -2084,8 +2478,14 @@ fn blender_paint(i: usize, o: &Object, base: Option<&std::path::Path>) -> String
         "paint(obj_{i}, {}, {:.3}, ior={}, glow={}, pat={pat}, keep={})",
         rgba(p.albedo),
         p.shine,
-        p.glass.map(|g| format!("{g:.4}")).unwrap_or_else(|| "None".into()),
-        if p.glow > 0.0 { format!("{:.4}", p.glow) } else { "None".into() },
+        p.glass
+            .map(|g| format!("{g:.4}"))
+            .unwrap_or_else(|| "None".into()),
+        if p.glow > 0.0 {
+            format!("{:.4}", p.glow)
+        } else {
+            "None".into()
+        },
         if keep { "True" } else { "False" }
     )
 }
@@ -2205,14 +2605,22 @@ def bring(path, kind, centre, k):
 /// Blender, if it's installed: the tools setting (`vars.blender`), else where
 /// Blender's Windows installer puts it (newest version first), else the PATH.
 pub fn find_blender(configured: Option<&str>) -> Option<std::path::PathBuf> {
-    if let Some(p) = configured.filter(|c| !c.trim().is_empty()).and_then(crate::tools::which) {
+    if let Some(p) = configured
+        .filter(|c| !c.trim().is_empty())
+        .and_then(crate::tools::which)
+    {
         return Some(p.into());
     }
     if cfg!(windows) {
         if let Ok(pf) = std::env::var("ProgramFiles") {
             let root = std::path::Path::new(&pf).join("Blender Foundation");
             let mut found: Vec<std::path::PathBuf> = std::fs::read_dir(&root)
-                .map(|rd| rd.flatten().map(|e| e.path().join("blender.exe")).filter(|p| p.is_file()).collect())
+                .map(|rd| {
+                    rd.flatten()
+                        .map(|e| e.path().join("blender.exe"))
+                        .filter(|p| p.is_file())
+                        .collect()
+                })
                 .unwrap_or_default();
             found.sort();
             if let Some(p) = found.pop() {
@@ -2225,11 +2633,21 @@ pub fn find_blender(configured: Option<&str>) -> Option<std::path::PathBuf> {
 
 /// Render with Blender and check what came out. `Err` when Blender couldn't
 /// be run at all. A moving scene's frames land as `<stem>.blender.0001.png` …
-fn render_in_blender(scene: &Scene, blender: &std::path::Path, dir: &std::path::Path, stem: &str) -> Result<(std::path::PathBuf, Vec<Finding>), String> {
+fn render_in_blender(
+    scene: &Scene,
+    blender: &std::path::Path,
+    dir: &std::path::Path,
+    stem: &str,
+) -> Result<(std::path::PathBuf, Vec<Finding>), String> {
     let moving = scene.duration > 0.0;
-    let out = if moving { dir.join(format!("{stem}.blender.")) } else { dir.join(format!("{stem}.blender.png")) };
+    let out = if moving {
+        dir.join(format!("{stem}.blender."))
+    } else {
+        dir.join(format!("{stem}.blender.png"))
+    };
     let script = dir.join(format!(".{stem}.blender.py"));
-    std::fs::write(&script, blender_script(scene, &out)).map_err(|e| format!("couldn't write the Blender script: {e}"))?;
+    std::fs::write(&script, blender_script(scene, &out))
+        .map_err(|e| format!("couldn't write the Blender script: {e}"))?;
     let status = crate::tools::command(blender)
         .arg("-b")
         .arg("--factory-startup")
@@ -2243,7 +2661,11 @@ fn render_in_blender(scene: &Scene, blender: &std::path::Path, dir: &std::path::
     if !status.success() {
         return Err(format!("Blender stopped with {status}"));
     }
-    let expect = crate::motion::Expect { kind: crate::motion::RenderKind::Png, width: scene.width, height: scene.height };
+    let expect = crate::motion::Expect {
+        kind: crate::motion::RenderKind::Png,
+        width: scene.width,
+        height: scene.height,
+    };
     if !moving {
         return Ok((out.clone(), crate::motion::verify_render(&out, &expect)));
     }
@@ -2276,12 +2698,19 @@ fn render_in_blender(scene: &Scene, blender: &std::path::Path, dir: &std::path::
 /// has something in view, up to `rounds` fixes. `Err` carries why it never got
 /// there.
 /// `models` is the folder its model files are found in.
-pub fn draft_scene(idea: &str, llm: &dyn crate::brain::Llm, rounds: u32, models: Option<&std::path::Path>) -> Result<Scene, String> {
+pub fn draft_scene(
+    idea: &str,
+    llm: &dyn crate::brain::Llm,
+    rounds: u32,
+    models: Option<&std::path::Path>,
+) -> Result<Scene, String> {
     // Room to finish the JSON: a cabin with trees is a few hundred lines,
     // and the model's ordinary reply length cut it off mid-list (self-test,
     // 3-4 Oct 2026: "EOF while parsing a list at line 58").
     const SCENE_TOKENS: u32 = 3500;
-    let first = llm.complete_long(SCENE_SYSTEM, idea, SCENE_TOKENS).map_err(|e| e.to_string())?;
+    let first = llm
+        .complete_long(SCENE_SYSTEM, idea, SCENE_TOKENS)
+        .map_err(|e| e.to_string())?;
     let (mut reply, mut cut_off) = (first.text, first.cut_off);
     let mut tries = 0;
     let moving = asks_for_motion(idea);
@@ -2300,12 +2729,18 @@ pub fn draft_scene(idea: &str, llm: &dyn crate::brain::Llm, rounds: u32, models:
                 // 4 Oct 2026: 41 seconds of fix rounds, then "I tried").
                 let anything_moves = scene.camera.orbit != 0.0
                     || !scene.camera.animate.is_empty()
-                    || scene.objects.iter().any(|o| !o.animate.is_empty() || o.spin != [0.0; 3]);
+                    || scene
+                        .objects
+                        .iter()
+                        .any(|o| !o.animate.is_empty() || o.spin != [0.0; 3]);
                 if !moving && !anything_moves && scene.duration > 0.0 {
                     scene.duration = 0.0;
                 }
-                let mut blocking: Vec<String> =
-                    check_scene(&scene).into_iter().filter(|f| f.severity == Severity::Blocking).map(|f| f.detail).collect();
+                let mut blocking: Vec<String> = check_scene(&scene)
+                    .into_iter()
+                    .filter(|f| f.severity == Severity::Blocking)
+                    .map(|f| f.detail)
+                    .collect();
                 if moving && scene.duration <= 0.0 {
                     blocking.push("you were asked for something that moves, but the duration is 0 — give it a duration and animate it".into());
                 }
@@ -2327,7 +2762,9 @@ pub fn draft_scene(idea: &str, llm: &dyn crate::brain::Llm, rounds: u32, models:
         } else {
             format!("{idea}\n\nYour last scene had a problem: {problem}. Return the whole corrected JSON.\n\n{reply}")
         };
-        let next = llm.complete_long(SCENE_SYSTEM, &ask, SCENE_TOKENS).map_err(|e| e.to_string())?;
+        let next = llm
+            .complete_long(SCENE_SYSTEM, &ask, SCENE_TOKENS)
+            .map_err(|e| e.to_string())?;
         (reply, cut_off) = (next.text, next.cut_off);
     }
 }
@@ -2337,8 +2774,9 @@ pub fn draft_scene(idea: &str, llm: &dyn crate::brain::Llm, rounds: u32, models:
 fn asks_for_motion(idea: &str) -> bool {
     let low = idea.to_lowercase();
     let words = [
-        "animat", "moving", "moves", "move ", "spin", "rotat", "turning", "bounc", "roll", "orbit", "fly", "flying",
-        "falling", "drop", "swing", "slide", "sliding", "grow", "shrink", "pulse", "wobbl", "dance", "second",
+        "animat", "moving", "moves", "move ", "spin", "rotat", "turning", "bounc", "roll", "orbit",
+        "fly", "flying", "falling", "drop", "swing", "slide", "sliding", "grow", "shrink", "pulse",
+        "wobbl", "dance", "second",
     ];
     words.iter().any(|w| low.contains(w))
 }
@@ -2365,8 +2803,17 @@ pub struct SceneMade {
 impl SceneMade {
     pub fn say(&self) -> String {
         let mut s = match (&self.gif, &self.mp4) {
-            (Some(g), Some(m)) => format!("Animated it: {} frames, as a GIF ({}) and an MP4 ({}).", self.frames, g.display(), m.display()),
-            (Some(g), None) => format!("Animated it: {} frames, as a GIF ({}).", self.frames, g.display()),
+            (Some(g), Some(m)) => format!(
+                "Animated it: {} frames, as a GIF ({}) and an MP4 ({}).",
+                self.frames,
+                g.display(),
+                m.display()
+            ),
+            (Some(g), None) => format!(
+                "Animated it: {} frames, as a GIF ({}).",
+                self.frames,
+                g.display()
+            ),
             _ => format!("Drew it: {}.", self.still.display()),
         };
         if let Some(t) = &self.turntable {
@@ -2394,8 +2841,15 @@ impl SceneMade {
 /// `turn_frames` (0 for none). A moving one: every frame, `<stem>.gif`,
 /// `<stem>.mp4` when ffmpeg is there, and the first frame as `<stem>.png`.
 /// Blender renders it too when `blender` is given.
-pub fn make(scene: &Scene, dir: &std::path::Path, stem: &str, turn_frames: usize, blender: Option<&std::path::Path>) -> Result<SceneMade, String> {
-    let dir = &std::path::absolute(dir).map_err(|e| format!("couldn't place {}: {e}", dir.display()))?;
+pub fn make(
+    scene: &Scene,
+    dir: &std::path::Path,
+    stem: &str,
+    turn_frames: usize,
+    blender: Option<&std::path::Path>,
+) -> Result<SceneMade, String> {
+    let dir =
+        &std::path::absolute(dir).map_err(|e| format!("couldn't place {}: {e}", dir.display()))?;
     std::fs::create_dir_all(dir).map_err(|e| format!("couldn't make {}: {e}", dir.display()))?;
     let started = std::time::Instant::now();
     let mut findings = check_scene(scene);
@@ -2403,8 +2857,12 @@ pub fn make(scene: &Scene, dir: &std::path::Path, stem: &str, turn_frames: usize
     let first = frames.first().ok_or("no frames were drawn")?;
     findings.extend(picture_findings(scene, first));
     let still = dir.join(format!("{stem}.png"));
-    std::fs::write(&still, crate::pngcodec::write_png(first)).map_err(|e| format!("couldn't save the picture: {e}"))?;
-    let changed = frames.windows(2).filter(|w| w[0].pixels != w[1].pixels).count();
+    std::fs::write(&still, crate::pngcodec::write_png(first))
+        .map_err(|e| format!("couldn't save the picture: {e}"))?;
+    let changed = frames
+        .windows(2)
+        .filter(|w| w[0].pixels != w[1].pixels)
+        .count();
     let mut made = SceneMade {
         still,
         turntable: None,
@@ -2422,20 +2880,34 @@ pub fn make(scene: &Scene, dir: &std::path::Path, stem: &str, turn_frames: usize
             made.findings.push(Finding {
                 severity: Severity::Blocking,
                 rule: "moves when played".into(),
-                detail: format!("all {} frames came out the same picture — nothing moved", frames.len()),
+                detail: format!(
+                    "all {} frames came out the same picture — nothing moved",
+                    frames.len()
+                ),
             });
         }
         let delay = ((100.0 / scene.fps.clamp(1, 60) as f64).round() as u16).max(2);
-        let gif_frames: Vec<crate::gifenc::Frame> = frames.iter().map(|f| crate::gifenc::Frame { image: f, delay_cs: delay }).collect();
+        let gif_frames: Vec<crate::gifenc::Frame> = frames
+            .iter()
+            .map(|f| crate::gifenc::Frame {
+                image: f,
+                delay_cs: delay,
+            })
+            .collect();
         let gif = crate::gifenc::encode_gif_dithered(&gif_frames)?;
         let path = dir.join(format!("{stem}.gif"));
         std::fs::write(&path, gif).map_err(|e| format!("couldn't save the GIF: {e}"))?;
         made.gif = Some(path);
         let work = dir.join(format!(".{stem}.frames"));
         crate::heard!(std::fs::remove_dir_all(&work));
-        std::fs::create_dir_all(&work).map_err(|e| format!("couldn't make a frames folder: {e}"))?;
+        std::fs::create_dir_all(&work)
+            .map_err(|e| format!("couldn't make a frames folder: {e}"))?;
         for (i, f) in frames.iter().enumerate() {
-            std::fs::write(work.join(format!("frame{i:04}.png")), crate::pngcodec::write_png(f)).map_err(|e| format!("couldn't save a frame: {e}"))?;
+            std::fs::write(
+                work.join(format!("frame{i:04}.png")),
+                crate::pngcodec::write_png(f),
+            )
+            .map_err(|e| format!("couldn't save a frame: {e}"))?;
         }
         match crate::tools::which("ffmpeg") {
             Some(ff) => {
@@ -2446,26 +2918,48 @@ pub fn make(scene: &Scene, dir: &std::path::Path, stem: &str, turn_frames: usize
                     .arg(scene.fps.clamp(1, 60).to_string())
                     .arg("-i")
                     .arg(work.join("frame%04d.png"))
-                    .args(["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-pix_fmt", "yuv420p", "-crf", "18", "-movflags", "+faststart"])
+                    .args([
+                        "-vf",
+                        "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+                        "-pix_fmt",
+                        "yuv420p",
+                        "-crf",
+                        "18",
+                        "-movflags",
+                        "+faststart",
+                    ])
                     .arg(&mp4)
                     .stdin(std::process::Stdio::null())
                     .status()
                     .map(|s| s.success())
                     .unwrap_or(false);
                 if ok {
-                    let expect = crate::motion::Expect { kind: crate::motion::RenderKind::Mp4, width: scene.width, height: scene.height };
-                    made.findings.extend(crate::motion::verify_render(&mp4, &expect));
+                    let expect = crate::motion::Expect {
+                        kind: crate::motion::RenderKind::Mp4,
+                        width: scene.width,
+                        height: scene.height,
+                    };
+                    made.findings
+                        .extend(crate::motion::verify_render(&mp4, &expect));
                     made.mp4 = Some(mp4);
                 } else {
                     made.notes.push("no MP4: ffmpeg didn't finish it".into());
                 }
             }
-            None => made.notes.push("no MP4: that needs ffmpeg, and it isn't installed".into()),
+            None => made
+                .notes
+                .push("no MP4: that needs ffmpeg, and it isn't installed".into()),
         }
         crate::heard!(std::fs::remove_dir_all(&work));
     } else if turn_frames > 1 {
         let frames = turntable(scene, turn_frames);
-        let gif_frames: Vec<crate::gifenc::Frame> = frames.iter().map(|f| crate::gifenc::Frame { image: f, delay_cs: 8 }).collect();
+        let gif_frames: Vec<crate::gifenc::Frame> = frames
+            .iter()
+            .map(|f| crate::gifenc::Frame {
+                image: f,
+                delay_cs: 8,
+            })
+            .collect();
         let gif = crate::gifenc::encode_gif_dithered(&gif_frames)?;
         let path = dir.join(format!("{stem}.turntable.gif"));
         std::fs::write(&path, gif).map_err(|e| format!("couldn't save the turntable: {e}"))?;
@@ -2479,7 +2973,10 @@ pub fn make(scene: &Scene, dir: &std::path::Path, stem: &str, turn_frames: usize
             }
             Err(e) => made.notes.push(format!("Blender didn't render: {e}")),
         },
-        None => made.notes.push("no Blender render: Blender isn't installed, and the in-house one stands on its own".into()),
+        None => made.notes.push(
+            "no Blender render: Blender isn't installed, and the in-house one stands on its own"
+                .into(),
+        ),
     }
     made.seconds_to_draw = started.elapsed().as_secs_f64();
     Ok(made)
@@ -2490,25 +2987,55 @@ mod tests {
     use super::*;
 
     fn obj(shape: Shape, at: V) -> Object {
-        Object { shape, at, rotate: [0.0; 3], scale: 1.0, colour: grey(), shine: 0.0, name: None, spin: [0.0; 3], animate: vec![], material: Material::Solid, ior: None, glow: None, pattern: None }
+        Object {
+            shape,
+            at,
+            rotate: [0.0; 3],
+            scale: 1.0,
+            colour: grey(),
+            shine: 0.0,
+            name: None,
+            spin: [0.0; 3],
+            animate: vec![],
+            material: Material::Solid,
+            ior: None,
+            glow: None,
+            pattern: None,
+        }
     }
 
     #[test]
     fn every_easing_starts_at_zero_and_ends_at_one() {
-        for e in [Ease::Linear, Ease::EaseIn, Ease::EaseOut, Ease::EaseInOut, Ease::Bounce, Ease::Back, Ease::Elastic] {
+        for e in [
+            Ease::Linear,
+            Ease::EaseIn,
+            Ease::EaseOut,
+            Ease::EaseInOut,
+            Ease::Bounce,
+            Ease::Back,
+            Ease::Elastic,
+        ] {
             assert!(eased(e, 0.0).abs() < 1e-9, "{e:?} at 0");
             assert!((eased(e, 1.0) - 1.0).abs() < 1e-9, "{e:?} at 1");
         }
         assert_eq!(eased(Ease::Step, 0.99), 0.0);
         assert!((eased(Ease::EaseInOut, 0.5) - 0.5).abs() < 1e-9);
         // Back overshoots on the way; bounce comes back down after its first landing.
-        assert!((0..100).map(|i| eased(Ease::Back, i as f64 / 100.0)).fold(0.0, f64::max) > 1.0);
+        assert!(
+            (0..100)
+                .map(|i| eased(Ease::Back, i as f64 / 100.0))
+                .fold(0.0, f64::max)
+                > 1.0
+        );
         assert!(eased(Ease::Bounce, 0.5) < eased(Ease::Bounce, 1.0 / 2.75));
     }
 
     #[test]
     fn a_key_track_lands_on_its_keys_and_loops_when_asked() {
-        let tr: Track = serde_json::from_str(r#"{"prop":"at","keys":[[0,[0,0,0]],[2,[4,0,0]]],"ease":"linear"}"#).unwrap();
+        let tr: Track = serde_json::from_str(
+            r#"{"prop":"at","keys":[[0,[0,0,0]],[2,[4,0,0]]],"ease":"linear"}"#,
+        )
+        .unwrap();
         assert_eq!(sample(&tr, 0.0), Some([0.0, 0.0, 0.0]));
         assert_eq!(sample(&tr, 1.0), Some([2.0, 0.0, 0.0]));
         assert_eq!(sample(&tr, 3.0), Some([4.0, 0.0, 0.0]));
@@ -2519,7 +3046,12 @@ mod tests {
 
     #[test]
     fn a_turned_box_is_hit_on_its_turned_face() {
-        let mut b = obj(Shape::Box { size: [2.0, 2.0, 2.0] }, [0.0; 3]);
+        let mut b = obj(
+            Shape::Box {
+                size: [2.0, 2.0, 2.0],
+            },
+            [0.0; 3],
+        );
         b.rotate = [0.0, 45.0, 0.0];
         let p = place(&b, None);
         let h = hit_placed(&p, [0.0, 0.0, 5.0], [0.0, 0.0, -1.0], f64::MAX).unwrap();
@@ -2529,7 +3061,13 @@ mod tests {
 
     #[test]
     fn the_torus_is_found_by_sphere_tracing_where_it_is() {
-        let t = obj(Shape::Torus { radius: 1.0, thickness: 0.25 }, [0.0; 3]);
+        let t = obj(
+            Shape::Torus {
+                radius: 1.0,
+                thickness: 0.25,
+            },
+            [0.0; 3],
+        );
         let p = place(&t, None);
         // Straight down through the tube at x = 1.
         let h = hit_placed(&p, [1.0, 5.0, 0.0], [0.0, -1.0, 0.0], f64::MAX).unwrap();
@@ -2540,17 +3078,29 @@ mod tests {
 
     #[test]
     fn a_cone_is_wide_at_the_base_and_nothing_at_the_tip() {
-        let c = obj(Shape::Cone { radius: 1.0, height: 2.0 }, [0.0; 3]);
+        let c = obj(
+            Shape::Cone {
+                radius: 1.0,
+                height: 2.0,
+            },
+            [0.0; 3],
+        );
         let p = place(&c, None);
         let low = hit_placed(&p, [0.0, 0.1, 5.0], [0.0, 0.0, -1.0], f64::MAX).unwrap();
         let high = hit_placed(&p, [0.0, 1.9, 5.0], [0.0, 0.0, -1.0], f64::MAX).unwrap();
-        assert!(low.t < high.t, "the base sticks out further than near the tip");
+        assert!(
+            low.t < high.t,
+            "the base sticks out further than near the tip"
+        );
         assert!((low.t - (5.0 - 0.95)).abs() < 1e-6);
     }
 
     #[test]
     fn projecting_the_point_the_camera_looks_at_lands_in_the_middle() {
-        let s = parse_scene(r#"{"width":200,"height":100,"camera":{"from":[0,1,5],"at":[0,1,0]},"objects":[]}"#).unwrap();
+        let s = parse_scene(
+            r#"{"width":200,"height":100,"camera":{"from":[0,1,5],"at":[0,1,0]},"objects":[]}"#,
+        )
+        .unwrap();
         let (x, y) = project(&s, 0.0, [0.0, 1.0, 0.0]).unwrap();
         assert!((x - 100.0).abs() < 1e-9 && (y - 50.0).abs() < 1e-9);
     }

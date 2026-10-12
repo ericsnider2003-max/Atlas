@@ -47,7 +47,9 @@ pub fn area_of(path: &str) -> &'static str {
     let p = path.to_lowercase();
     let name = p.rsplit('/').next().unwrap_or(&p);
     match name.trim_end_matches(".rs") {
-        "voice" | "tts" | "endpoint" | "hearing" | "audio" | "language" => "how it hears and speaks",
+        "voice" | "tts" | "endpoint" | "hearing" | "audio" | "language" => {
+            "how it hears and speaks"
+        }
         "persona" | "register" | "brain" | "certainty" => "how it talks to you",
         "panel" | "look" | "overlay" | "hub" | "mind" => "what you see",
         "workspace" | "layout" | "platform" | "win" => "arranging your windows",
@@ -109,12 +111,21 @@ pub fn diff_of(before: &[(String, String)], after: &[(String, String)]) -> Diff 
     let mut lines_added = 0;
     let mut lines_removed = 0;
     for (path, after_content) in after {
-        let before_content =
-            before.iter().find(|(p, _)| p == path).map(|(_, c)| c.as_str()).unwrap_or("");
+        let before_content = before
+            .iter()
+            .find(|(p, _)| p == path)
+            .map(|(_, c)| c.as_str())
+            .unwrap_or("");
         let before_lines: Vec<&str> = before_content.lines().collect();
         let after_lines: Vec<&str> = after_content.lines().collect();
-        lines_added += after_lines.iter().filter(|l| !before_lines.contains(l)).count();
-        lines_removed += before_lines.iter().filter(|l| !after_lines.contains(l)).count();
+        lines_added += after_lines
+            .iter()
+            .filter(|l| !before_lines.contains(l))
+            .count();
+        lines_removed += before_lines
+            .iter()
+            .filter(|l| !after_lines.contains(l))
+            .count();
     }
 
     let files: Vec<String> = after.iter().map(|(p, _)| p.clone()).collect();
@@ -159,8 +170,16 @@ fn test_names(content: &str) -> Vec<String> {
 
 /// Read a change the way a person would want it read.
 pub fn explain(d: &Diff, goal: &str) -> Effect {
-    let now_does: Vec<String> = d.tests_added.iter().map(|t| sentence_from_test(t)).collect();
-    let no_longer: Vec<String> = d.tests_removed.iter().map(|t| sentence_from_test(t)).collect();
+    let now_does: Vec<String> = d
+        .tests_added
+        .iter()
+        .map(|t| sentence_from_test(t))
+        .collect();
+    let no_longer: Vec<String> = d
+        .tests_removed
+        .iter()
+        .map(|t| sentence_from_test(t))
+        .collect();
 
     let mut areas: Vec<String> = d.files.iter().map(|f| area_of(f).to_string()).collect();
     areas.sort();
@@ -197,12 +216,22 @@ pub fn explain(d: &Diff, goal: &str) -> Effect {
     let headline = if !now_does.is_empty() {
         format!("{goal}. The difference: {}", now_does[0].to_lowercase())
     } else if !areas.is_empty() {
-        format!("{goal}. It touched {}, but nothing about the behaviour is testably different.", areas.join(" and "))
+        format!(
+            "{goal}. It touched {}, but nothing about the behaviour is testably different.",
+            areas.join(" and ")
+        )
     } else {
         goal.to_string()
     };
 
-    Effect { headline, now_does, no_longer, areas, watch_out, certain }
+    Effect {
+        headline,
+        now_does,
+        no_longer,
+        areas,
+        watch_out,
+        certain,
+    }
 }
 
 /// The spoken version. Short — this is the bit you hear before deciding.
@@ -212,8 +241,11 @@ pub fn spoken(e: &Effect) -> String {
         s.push('.');
     }
     if e.now_does.len() > 1 {
-        s.push_str(&format!(" And {} other change{}.", e.now_does.len() - 1,
-            if e.now_does.len() == 2 { "" } else { "s" }));
+        s.push_str(&format!(
+            " And {} other change{}.",
+            e.now_does.len() - 1,
+            if e.now_does.len() == 2 { "" } else { "s" }
+        ));
     }
     if let Some(first) = e.watch_out.first() {
         s.push_str(&format!(" Worth knowing: {first}."));

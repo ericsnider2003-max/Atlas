@@ -7,85 +7,89 @@
 //!
 //! Voice in, voice out. Typing is a debugging affordance, not the interface.
 
+use crate::activity::{Journal, Kind as Act};
+use crate::addressing::{assess, respond, Response as Addressed, Situation};
+use crate::anticipate::{Anticipator, Moment};
+use crate::attention::{hear, Attention, Heard};
 use crate::awareness::{Awareness, Signals};
+use crate::backlog::{Backlog, Blocker, Conditions};
 use crate::brain::{self, Brain, Llm};
 use crate::config::Config;
+use crate::connectivity::{need_of, Connectivity, Reach};
+use crate::crew::{self, Crew};
+use crate::delivery;
 use crate::error::Result;
+use crate::flow::Library;
+use crate::grants::Permissions;
+use crate::health::{
+    assess as assess_machine, summary as health_summary, HealthConfig, Readings, Reporter,
+};
 use crate::index::Index;
+use crate::input::{Keyboard, Tier, Tiers};
 use crate::intent::{Intent, Parser};
+use crate::lanes::{lane_for, LaneConfig, Queue};
+use crate::log::Log;
 use crate::memory::Memory;
+use crate::modes::Modes;
+use crate::perf::{Power, Throttle};
+use crate::persona::Persona;
 use crate::platform::Platform;
 use crate::policy::Decision;
 use crate::proactive::{Offer, Proactive};
+use crate::probe::Probe;
+use crate::publish::{Channel, Publisher};
+use crate::references::Referents;
+use crate::references::{resolve, Resolution};
+use crate::safety::{due_for_backup, prune_backups, BackupConfig, Trash};
 use crate::scheduler::Scheduler;
 use crate::session::{is_no, is_yes, kind_of, Pending, Session};
-use crate::addressing::{assess, respond, Response as Addressed, Situation};
-use crate::attention::{hear, Attention, Heard};
-use crate::backlog::{Backlog, Blocker, Conditions};
-use crate::connectivity::{need_of, Connectivity, Reach};
-use crate::delivery;
-use crate::input::{Keyboard, Tier, Tiers};
-use crate::activity::{Journal, Kind as Act};
-use crate::anticipate::{Anticipator, Moment};
-use crate::flow::Library;
-use crate::health::{assess as assess_machine, summary as health_summary, HealthConfig, Readings, Reporter};
-use crate::lanes::{lane_for, LaneConfig, Queue};
-use crate::modes::Modes;
-use crate::persona::Persona;
-use crate::safety::{due_for_backup, prune_backups, BackupConfig, Trash};
+use crate::store::Store;
 use crate::thread::{Thread, ThreadConfig};
 use crate::watch::Watcher;
-use crate::crew::{self, Crew};
 use crate::watching;
-use crate::publish::{Channel, Publisher};
-use crate::references::{resolve, Resolution};
-use crate::grants::Permissions;
-use crate::references::Referents;
-use crate::log::Log;
-use crate::perf::{Power, Throttle};
-use crate::probe::Probe;
-use crate::store::Store;
 use crate::workspace;
 
 // --- the `impl Daemon` split by what it does (29 Sep 2026, docs/refactor-plan-daemon-split.md).
 // Each child is `impl<'a> Daemon<'a>` and nothing else; the struct, `new`
 // and the free functions stay here.
-mod late;
-mod conversation;
-mod running;
-mod on_itself;
-mod model;
-mod errands;
-mod helping;
-mod messages;
-mod hands;
 mod camera;
-pub use hands::{phone_retry_wait, PHONE_RETRY_EVERY_SECS, PHONE_RETRY_MOST, SAID_FOR_APPS_KEPT};
-use hands::PHONE_RETRY_FILE;
+mod conversation;
+mod errands;
+mod hands;
+mod helping;
+mod late;
+mod messages;
+mod model;
+mod on_itself;
+mod running;
 pub use errands::CONNECTED_ACCOUNTS;
+use hands::PHONE_RETRY_FILE;
+pub use hands::{phone_retry_wait, PHONE_RETRY_EVERY_SECS, PHONE_RETRY_MOST, SAID_FOR_APPS_KEPT};
 pub use tick::moment_clock;
 mod away;
 mod brief_prep;
 mod file_moves;
 // The workday collector needs this bounded snapshot entry point outside the
 // daemon's child modules; its implementation remains internal.
-pub(crate) fn brief_snapshot_value<T: serde::Serialize>(value: &T) -> std::result::Result<serde_json::Value, String> {
+pub(crate) fn brief_snapshot_value<T: serde::Serialize>(
+    value: &T,
+) -> std::result::Result<serde_json::Value, String> {
     brief_prep::snapshot_value(value)
 }
 mod tick;
 pub use tick::AUTO_SYNC_EVERY_SECS;
 mod inbox;
 pub use inbox::{one_message_asked, OneMessage};
-mod making;
-mod calendar_delivery;
-mod reading;
-mod execute;
-mod turn;
-mod tasks;
-mod operating;
-mod learning;
 mod askthelaptop;
+mod calendar_delivery;
+mod execute;
+mod learning;
+mod making;
 mod onethread;
+mod operating;
+mod reading;
+mod tasks;
+mod turn;
 
 /// What Atlas is allowed to do on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,7 +185,6 @@ pub enum Arrival {
     OpenMic,
 }
 
-
 /// Whether an errand's ending is something to say, or a chore that only
 /// earns a mention when `long_work`'s own "was this worth interrupting for"
 /// rule says so.
@@ -206,7 +209,10 @@ enum SpeakPolicy {
 /// topic is keyed, so asking twice runs it once.
 /// tools.yaml with its paths resolved against this install. Run once, at
 /// start; `Daemon::tools_cfg` hands out the result.
-fn resolve_tools(tools: Option<&crate::voice::ToolsConfig>, store: &Store) -> crate::voice::ToolsConfig {
+fn resolve_tools(
+    tools: Option<&crate::voice::ToolsConfig>,
+    store: &Store,
+) -> crate::voice::ToolsConfig {
     let mut t = tools.cloned().unwrap_or_default();
     // `work_dir` used to ship as a bare relative default ("data/tmp") —
     // the same shape of bug `backup.dir` and `research.notes_dir` had.
@@ -228,7 +234,12 @@ fn resolve_tools(tools: Option<&crate::voice::ToolsConfig>, store: &Store) -> cr
     // after the ones you listed; one you listed by the same address wins.
     let connected: Vec<crate::mail::Account> = store.load(errands::CONNECTED_ACCOUNTS);
     for a in connected {
-        if !t.mail.accounts.iter().any(|b| b.address.eq_ignore_ascii_case(&a.address)) {
+        if !t
+            .mail
+            .accounts
+            .iter()
+            .any(|b| b.address.eq_ignore_ascii_case(&a.address))
+        {
             t.mail.accounts.push(a);
         }
     }
@@ -266,19 +277,25 @@ fn crew_job(name: &str, topic: Option<&str>, speak: &SpeakPolicy) -> crew::Job {
         // A picture being made keeps the graphics and every core busy.
         "make-picture" => TheWholeMachine,
         // Disk and network: copying files, talking to a mail server.
-        "backup" | "mail" | "unsubscribe" | "outlook-connect" | "outreach" | "reclaim" | "mcp" | "draft-model" => MostlyWaiting,
+        "backup" | "mail" | "unsubscribe" | "outlook-connect" | "outreach" | "reclaim" | "mcp"
+        | "draft-model" => MostlyWaiting,
         // Hub buttons that wait on the network (`hubjobs`), and the knock on
         // a friend's Atlas that `friend_upkeep` used to make inside the tick.
         "hub-send" | "addon-share" | "friend-knock" | "phone-code" => MostlyWaiting,
         // "reclaim" is the Status page's disk survey: a walk of the disk.
         _ => OneCore,
     };
-    let urgency = if *speak == SpeakPolicy::Always { crew::Urgency::Now } else { crew::Urgency::Later };
+    let urgency = if *speak == SpeakPolicy::Always {
+        crew::Urgency::Now
+    } else {
+        crew::Urgency::Later
+    };
     let job = crew::Job::new(name).needs(needs).urgency(urgency);
     match name {
         // Each of these sends or changes something per ask; two asks are two
         // pieces of work even when they look alike.
-        "outreach" | "unsubscribe" | "hub-send" | "addon-share" | "friend-knock" | "phone-code" | "mcp" => job,
+        "outreach" | "unsubscribe" | "hub-send" | "addon-share" | "friend-knock" | "phone-code"
+        | "mcp" => job,
         _ => job.keyed(match topic {
             Some(t) => format!("{name}:{}", t.trim().to_lowercase()),
             None => name.to_string(),
@@ -294,13 +311,24 @@ pub(crate) enum HubAfter {
     /// A document sent: logged on the item when it went.
     Sent { job: u64, doc: u64, to: String },
     /// A new friend knocked on from the hub.
-    FriendAdd { job: u64, keep: crate::friends::Pending },
+    FriendAdd {
+        job: u64,
+        keep: crate::friends::Pending,
+    },
     /// A friend who wasn't reachable, knocked on again by `friend_upkeep`.
     FriendRetry { keep: crate::friends::Pending },
     /// An add-on shared: the line in the group's chat.
-    AddonShare { job: u64, name: String, group: Option<(String, String)> },
+    AddonShare {
+        job: u64,
+        name: String,
+        group: Option<(String, String)>,
+    },
     /// A phone's code: its server, once it's up.
-    PhoneCode { job: u64, slot: std::sync::Arc<std::sync::Mutex<Option<crate::phoneadd::Showing>>>, stop: std::sync::Arc<std::sync::atomic::AtomicBool> },
+    PhoneCode {
+        job: u64,
+        slot: std::sync::Arc<std::sync::Mutex<Option<crate::phoneadd::Showing>>>,
+        stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    },
 }
 
 /// A new friend, ready to knock on (`Daemon::prepare_friend`).
@@ -311,7 +339,10 @@ pub(crate) struct FriendKnock {
 }
 
 /// What a knock on a new friend's Atlas came to, in words.
-pub(crate) fn knock_said(keep: &crate::friends::Pending, outcome: &crate::friends::Knock) -> String {
+pub(crate) fn knock_said(
+    keep: &crate::friends::Pending,
+    outcome: &crate::friends::Knock,
+) -> String {
     use crate::friends::Knock;
     match outcome {
         Knock::Taken => format!("You and {} are friends now -- you can message each other.", keep.name),
@@ -367,15 +398,24 @@ impl AddonShare {
         let dir = std::env::temp_dir().join(format!(
             "atlas-share-{}-{}",
             std::process::id(),
-            crate::server::new_token().map(|t| t[..12.min(t.len())].to_string()).unwrap_or_default()
+            crate::server::new_token()
+                .map(|t| t[..12.min(t.len())].to_string())
+                .unwrap_or_default()
         ));
         let named = dir.join(&self.file_name);
-        if let Err(e) = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&named, &self.bytes)) {
+        if let Err(e) =
+            std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&named, &self.bytes))
+        {
             crate::heard!(std::fs::remove_dir_all(&dir));
             return Err(format!("I couldn't get it ready to send: {e}"));
         }
         for who in &self.people {
-            let Some(contact) = self.pairings.contacts.iter().find(|c| crate::kin::same_name(&c.name, who)) else {
+            let Some(contact) = self
+                .pairings
+                .contacts
+                .iter()
+                .find(|c| crate::kin::same_name(&c.name, who))
+            else {
                 missed.push(who.clone());
                 continue;
             };
@@ -392,7 +432,12 @@ impl AddonShare {
 }
 
 /// What sharing an add-on came to, in words.
-pub(crate) fn addon_share_said(name: &str, group: Option<&(String, String)>, reached: &[String], missed: &[String]) -> String {
+pub(crate) fn addon_share_said(
+    name: &str,
+    group: Option<&(String, String)>,
+    reached: &[String],
+    missed: &[String],
+) -> String {
     let mut said = match (group, reached.is_empty()) {
         (_, true) => format!("I couldn't reach anyone to share \"{name}\" with yet."),
         (Some((_, g)), false) => format!("Shared \"{name}\" in {g} with {}.", reached.join(", ")),
@@ -403,7 +448,6 @@ pub(crate) fn addon_share_said(name: &str, group: Option<&(String, String)>, rea
     }
     said
 }
-
 
 /// One seat's model call, carried out of the crew errand so
 /// `take_crew_news` can record all five the same way the synchronous
@@ -493,7 +537,10 @@ pub struct Daemon<'a> {
     index_on_disk: Option<(usize, u64)>,
     /// The file index being written on its own thread, and what it was
     /// when the copy was taken.
-    index_saving: Option<((usize, u64), std::thread::JoinHandle<crate::error::Result<()>>)>,
+    index_saving: Option<(
+        (usize, u64),
+        std::thread::JoinHandle<crate::error::Result<()>>,
+    )>,
     /// This save is the tick's sweep: the index may be written behind it.
     index_behind: bool,
     /// Atlas testing itself (`selftest`): background work isn't started,
@@ -601,7 +648,11 @@ pub struct Daemon<'a> {
     /// A look running on its own thread (2 Oct 2026): the camera, the models
     /// and the last sight go with it and come back with the answer, so the
     /// loop never waits on a look.
-    look_in_flight: Option<(crate::gaze::Reason, std::time::Instant, std::sync::mpsc::Receiver<LookDone>)>,
+    look_in_flight: Option<(
+        crate::gaze::Reason,
+        std::time::Instant,
+        std::sync::mpsc::Receiver<LookDone>,
+    )>,
     /// The last look's thumbnail, when, and what it saw: a room that hasn't
     /// changed isn't run through the models again (`see_you`).
     last_sight: Option<(Vec<u8>, std::time::Instant, crate::vision::Sight)>,
@@ -735,7 +786,8 @@ pub struct Daemon<'a> {
     /// when its errand ends (`on_itself::finish_own_fix`).
     self_fix_done: std::sync::Arc<std::sync::Mutex<Option<on_itself::SelfFixDone>>>,
     /// The proving test's run, from the crew (`finish_proof_check`).
-    proof_check_done: std::sync::Arc<std::sync::Mutex<Option<(String, crate::selfwork::ProofToday)>>>,
+    proof_check_done:
+        std::sync::Arc<std::sync::Mutex<Option<(String, crate::selfwork::ProofToday)>>>,
     /// The piece of work Atlas is doing on itself, if any.
     ///
     /// Held rather than rebuilt: `Session::new` on every turn meant the five
@@ -814,7 +866,8 @@ pub struct Daemon<'a> {
     /// The listing in progress, off the loop (6 Oct 2026: ffmpeg's device
     /// list held the first tick 2.4 s on Windows, and again every five
     /// minutes while it failed).
-    audio_probe: Option<std::thread::JoinHandle<std::result::Result<Vec<crate::audio::Device>, String>>>,
+    audio_probe:
+        Option<std::thread::JoinHandle<std::result::Result<Vec<crate::audio::Device>, String>>>,
     /// Where a message from another Atlas would arrive, if one is open.
     /// `None` for the overwhelming majority of installs, which will never
     /// have another Atlas to hear from -- see `with_signal_listener`.
@@ -1078,7 +1131,8 @@ pub struct Daemon<'a> {
     /// When to try the microphone again, while that lasts.
     mic_probe_at: u64,
     /// That listing, running off the loop.
-    mic_listing: Option<std::sync::mpsc::Receiver<std::result::Result<Vec<crate::audio::Device>, String>>>,
+    mic_listing:
+        Option<std::sync::mpsc::Receiver<std::result::Result<Vec<crate::audio::Device>, String>>>,
     /// The voice tools weren't there at start (not a failing microphone).
     audio_tools_missing: bool,
     /// What was typed or said on the hub's Talk page, waiting for its turn:
@@ -1401,7 +1455,8 @@ pub struct Daemon<'a> {
     /// `dial_answers` to the next pass.
     pub(crate) dial_later: bool,
     pub(crate) dials: Vec<tick::Dial>,
-    pub(crate) dial_answers: Option<std::sync::mpsc::Receiver<(tick::Dial, std::result::Result<Vec<u8>, String>)>>,
+    pub(crate) dial_answers:
+        Option<std::sync::mpsc::Receiver<(tick::Dial, std::result::Result<Vec<u8>, String>)>>,
     /// A button that can't be undone, waiting for your yes: (window, name, app).
     pending_press: Option<(u64, String, String)>,
     /// A storage plan shown and waiting for your yes.
@@ -1629,7 +1684,9 @@ impl<'a> Daemon<'a> {
         store: Store,
         proactive: Proactive,
     ) -> Self {
-        Self::try_new(cfg, plat, llm, store, proactive).unwrap_or_else(|error| panic!("Atlas could not safely open its configured output roots: {error}"))
+        Self::try_new(cfg, plat, llm, store, proactive).unwrap_or_else(|error| {
+            panic!("Atlas could not safely open its configured output roots: {error}")
+        })
     }
 
     pub fn try_new(
@@ -1640,8 +1697,20 @@ impl<'a> Daemon<'a> {
         proactive: Proactive,
     ) -> crate::error::Result<Self> {
         let state_access = crate::store::begin_state_command(store.root(), false)?;
-        let notes: std::path::PathBuf = cfg.tools.as_ref().map(|tools| tools.research.clone()).unwrap_or_default().resolved(&store.install_root()).notes_dir.into();
-        let trash = cfg.tools.as_ref().map(|tools| tools.trash.clone()).unwrap_or_default().resolved(&store.install_root());
+        let notes: std::path::PathBuf = cfg
+            .tools
+            .as_ref()
+            .map(|tools| tools.research.clone())
+            .unwrap_or_default()
+            .resolved(&store.install_root())
+            .notes_dir
+            .into();
+        let trash = cfg
+            .tools
+            .as_ref()
+            .map(|tools| tools.trash.clone())
+            .unwrap_or_default()
+            .resolved(&store.install_root());
         crate::safety::check_configured_scope(&store, &notes, std::path::Path::new(&trash.dir))?;
         let store_for_load = store.clone();
         let store_for_vault = store.clone();
@@ -1651,8 +1720,15 @@ impl<'a> Daemon<'a> {
         // The clock everything is shown on: your `time_zone` if you chose one,
         // this machine's otherwise (`localclock`, `tz::home`).
         {
-            let set = cfg.tools.as_ref().map(|t| t.time_zone.trim().to_string()).unwrap_or_default();
-            crate::localclock::set_home_zone((!set.is_empty() && !set.eq_ignore_ascii_case("automatic")).then(|| crate::tz::home(&set)));
+            let set = cfg
+                .tools
+                .as_ref()
+                .map(|t| t.time_zone.trim().to_string())
+                .unwrap_or_default();
+            crate::localclock::set_home_zone(
+                (!set.is_empty() && !set.eq_ignore_ascii_case("automatic"))
+                    .then(|| crate::tz::home(&set)),
+            );
         }
         let logs_dir = store.logs_dir();
         // The crew's worker count, derived from this machine rather than a
@@ -1691,7 +1767,11 @@ impl<'a> Daemon<'a> {
         crate::brain::set_keep_warm(keep_resident);
         // The crew's rules as numbers: thinking hands from the machine, a
         // core left free, and your memory margin and battery floor.
-        let crew_cfg = cfg.tools.as_ref().map(|t| t.crew.clone()).unwrap_or_default();
+        let crew_cfg = cfg
+            .tools
+            .as_ref()
+            .map(|t| t.crew.clone())
+            .unwrap_or_default();
         let crew_limits = crew::Limits {
             slots: background_slots,
             cores: Some(here.cpu_cores.max(1) as usize),
@@ -1750,10 +1830,19 @@ impl<'a> Daemon<'a> {
             vault_recovery: store.load::<Vec<crate::recovery::Setup>>("recovery"),
             voice_id: crate::voiceid::VoiceId::load(&store),
             last_verdict: crate::voiceid::Verdict::NotEnrolled,
-            fit: crate::fit::plan_as_set(&crate::fit::measure(), &cfg.tools.as_ref().map(|t| t.fit.clone()).unwrap_or_default()),
+            fit: crate::fit::plan_as_set(
+                &crate::fit::measure(),
+                &cfg.tools
+                    .as_ref()
+                    .map(|t| t.fit.clone())
+                    .unwrap_or_default(),
+            ),
             fit_measured: (crate::fit::measure(), 0),
             eyes: crate::presence::Sensor::new(
-                cfg.tools.as_ref().map(|t| t.presence.clone()).unwrap_or_default(),
+                cfg.tools
+                    .as_ref()
+                    .map(|t| t.presence.clone())
+                    .unwrap_or_default(),
             ),
             last_sighting: None,
             looked_at: 0,
@@ -1781,9 +1870,15 @@ impl<'a> Daemon<'a> {
             earned: crate::earned::Record::load(&store),
             backends: crate::backends::Router::load(&store),
             mcp: crate::mcp::McpHub::new(
-                &cfg.tools.as_ref().map(|t| t.mcp.clone()).unwrap_or_default(),
+                &cfg.tools
+                    .as_ref()
+                    .map(|t| t.mcp.clone())
+                    .unwrap_or_default(),
                 &store.load::<Vec<String>>(crate::mcp::SWITCHED_OFF),
-                &cfg.tools.as_ref().map(|t| t.vars.clone()).unwrap_or_default(),
+                &cfg.tools
+                    .as_ref()
+                    .map(|t| t.vars.clone())
+                    .unwrap_or_default(),
             ),
             persist_failures: Vec::new(),
             persist_told: false,
@@ -1791,7 +1886,10 @@ impl<'a> Daemon<'a> {
             missed_beats: 0,
             tools_live: None,
             call_notes: crate::callnotes::Notes::new(
-                cfg.tools.as_ref().map(|t| t.call_notes.clone()).unwrap_or_default(),
+                cfg.tools
+                    .as_ref()
+                    .map(|t| t.call_notes.clone())
+                    .unwrap_or_default(),
                 store.data_dir().join("calls"),
             ),
             last_call_look: 0,
@@ -1809,14 +1907,24 @@ impl<'a> Daemon<'a> {
             // library rehydrates vectors made in an earlier session rather
             // than starting every note over as unembedded.
             meaning: crate::meaning::Remembered::load(&store_for_load),
-            search_check_due: store_for_load.load::<Vec<crate::recall::SearchCheck>>("search_checks").is_empty(),
+            search_check_due: store_for_load
+                .load::<Vec<crate::recall::SearchCheck>>("search_checks")
+                .is_empty(),
             contents: crate::contents::Contents::default(),
             trace: crate::trace::Trace::default(),
-            last_brief: brief_prep::restored_receipt(&store_for_load).map(|(source, _)| source).unwrap_or_else(|| store_for_load.load::<Option<u64>>("last_brief_source_at").unwrap_or_else(|| store_for_load.load("last_brief_at"))),
+            last_brief: brief_prep::restored_receipt(&store_for_load)
+                .map(|(source, _)| source)
+                .unwrap_or_else(|| {
+                    store_for_load
+                        .load::<Option<u64>>("last_brief_source_at")
+                        .unwrap_or_else(|| store_for_load.load("last_brief_at"))
+                }),
             // Loaded rather than zeroed: a restart would otherwise give you
             // the day's run a second time, and a brief said twice is the
             // failure `morning_brief` already documents.
-            last_brief_at: brief_prep::restored_receipt(&store_for_load).map(|(_, delivered)| delivered).unwrap_or_else(|| store_for_load.load::<u64>("last_brief_at")),
+            last_brief_at: brief_prep::restored_receipt(&store_for_load)
+                .map(|(_, delivered)| delivered)
+                .unwrap_or_else(|| store_for_load.load::<u64>("last_brief_at")),
             last_brief_attempt_at: brief_prep::restored_attempt(&store_for_load),
             pending_brief_delivery: brief_prep::restored_pending(&store_for_load),
             brief_preparation: brief_prep::Live::load(&store_for_load),
@@ -1859,7 +1967,9 @@ impl<'a> Daemon<'a> {
             store,
             _state_access: state_access,
             // Kept across a restart: "undo" the morning after is still undo.
-            history: store_for_load.load_checked("undo_history")?.unwrap_or_default(),
+            history: store_for_load
+                .load_checked("undo_history")?
+                .unwrap_or_default(),
             approved_undo: None,
             decisions: crate::why::Record::default(),
             offered_handover: false,
@@ -1887,7 +1997,11 @@ impl<'a> Daemon<'a> {
             draft_last_read: None,
             draft_last_read_identity: None,
             to_say_aloud: Vec::new(),
-            vault_home: if keeps_the_install_vault(&store_for_vault) { crate::roots::install_state() } else { store_for_vault.clone() },
+            vault_home: if keeps_the_install_vault(&store_for_vault) {
+                crate::roots::install_state()
+            } else {
+                store_for_vault.clone()
+            },
             chats: chats_at_start,
             tries: crate::courier::Tries::default(),
             // Loaded rather than defaulted, for the same reason the vault is:
@@ -2029,7 +2143,10 @@ impl<'a> Daemon<'a> {
             by_chat: false,
             model_server_trouble: None,
             helpers: crate::lifecycle::Helpers::new(crate::lifecycle::model_stays_when_it_fits(
-                cfg.tools.as_ref().map(|t| t.lifecycle.clone()).unwrap_or_default(),
+                cfg.tools
+                    .as_ref()
+                    .map(|t| t.lifecycle.clone())
+                    .unwrap_or_default(),
                 keep_resident,
             )),
             crew: Crew::with_limits(crew_limits).with_room(Box::new(plat.crew_room())),
@@ -2059,9 +2176,12 @@ impl<'a> Daemon<'a> {
                     .map(|t| t.backup.clone())
                     .unwrap_or_default()
                     .resolved(&store_for_load2.install_root());
-                let (sealed, from) = crate::activity::check_with_backups(j, store_for_load2.root(), &backup);
+                let (sealed, from) =
+                    crate::activity::check_with_backups(j, store_for_load2.root(), &backup);
                 match sealed {
-                    crate::activity::Sealed::Broken { .. } => Some(crate::activity::said_with_backups(&sealed, from)),
+                    crate::activity::Sealed::Broken { .. } => {
+                        Some(crate::activity::said_with_backups(&sealed, from))
+                    }
                     _ => None,
                 }
             },
@@ -2177,11 +2297,19 @@ impl<'a> Daemon<'a> {
             // max_spoken_sentences, wit, argues, converses -- decided
             // nothing. Setting `address: "Eric"` there changed no behaviour
             // anywhere. `voice.rs` carries the field and nothing read it.
-            persona: cfg.tools.as_ref().map(|t| t.persona.clone()).unwrap_or_default(),
+            persona: cfg
+                .tools
+                .as_ref()
+                .map(|t| t.persona.clone())
+                .unwrap_or_default(),
             modes: Modes::load(&store_for_load2),
             health: Reporter::default(),
             watcher: Watcher::load(&store_for_load2),
-            automations: crate::automation::Engine::new(Vec::new(), store_for_load2.load("automations"), 0),
+            automations: crate::automation::Engine::new(
+                Vec::new(),
+                store_for_load2.load("automations"),
+                0,
+            ),
             anticipator: Anticipator::load(&store_for_load2),
             // Was `data/state/trash` — a fourth trash location nobody
             // decided on, invisible to `atlas reclaim`, and it ignored
@@ -2245,7 +2373,6 @@ impl<'a> Daemon<'a> {
     }
 
     // ---------- one spoken turn ----------
-
 }
 
 /// Beyond the follow-up window itself, how long the words may take to be
@@ -2256,7 +2383,6 @@ const FOLLOW_UP_HEARING_SECS: u64 = 30;
 /// microphone is kept between runs (`micthread::Learned`).
 const CUT_IN_STATE: &str = "cut_in";
 
-
 /// The permission gate's answer for acting on an app: go ahead, or ask this
 /// first (and the action is parked as a pending approval).
 enum AppGate {
@@ -2264,12 +2390,10 @@ enum AppGate {
     Ask(String),
 }
 
-
 // ---------- reminders and opportunities: free helpers ----------
 // Used by `Daemon::remind_help` and `Daemon::spot_opportunity`. Free functions
 // rather than methods because they touch no daemon state — just words in, a
 // value out — which keeps them unit-testable without a whole daemon.
-
 
 /// Which picture `look_closer` takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2310,7 +2434,6 @@ pub struct WorkingForYou {
     pub ready: Option<String>,
 }
 
-
 /// What the picture reader's errand hands back: the answer, and its model
 /// call for the record.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -2337,7 +2460,6 @@ struct CountedLlm<'a> {
     inner: &'a dyn crate::brain::Llm,
     calls: std::sync::Mutex<Vec<SeatCall>>,
 }
-
 
 /// Where window jobs' ids start, well clear of the crew's own counter.
 pub const WINDOW_JOB_IDS: u64 = 1 << 62;
@@ -2372,7 +2494,6 @@ struct SignUpOutcome {
     outcome: crate::webrun::SignedUp,
 }
 
-
 // ---------------------------------------------------------------------------
 // Acting on its own (Eric's rulings E1–E4)
 // ---------------------------------------------------------------------------
@@ -2389,7 +2510,6 @@ struct SignUpOutcome {
 // Sorting your mailbox (Eric's ruling G1: yes; delete only when told)
 // ---------------------------------------------------------------------------
 
-
 // ---------------------------------------------------------------------------
 // Scheduling and sending posts (Eric's ruling G2)
 // ---------------------------------------------------------------------------
@@ -2405,7 +2525,6 @@ struct SignUpOutcome {
 // ---------------------------------------------------------------------------
 // Carrying out an undo (Eric's ruling G6)
 // ---------------------------------------------------------------------------
-
 
 // ---------------------------------------------------------------------------
 // Editing media on a copy (Eric's ruling G8)
@@ -2431,14 +2550,20 @@ enum FileJob {
 /// about.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 enum FileDone {
-    Said { said: String, ok: bool, log: Option<String> },
-    Ask { what: String, path: String, question: String },
+    Said {
+        said: String,
+        ok: bool,
+        log: Option<String>,
+    },
+    Ask {
+        what: String,
+        path: String,
+        question: String,
+    },
 }
-
 
 // ---------------------------------------------------------------------------
 // Dropping a task, and bringing back what you dropped (Eric's ruling H8)
-
 
 // ---------------------------------------------------------------------------
 // What Atlas let go of, remembered as having known it (Eric's ruling H10)
@@ -2454,11 +2579,9 @@ enum FileDone {
 // ---------------------------------------------------------------------------
 // Teaching a gesture (H6), and the languages Atlas can hear (H5)
 
-
 // ---------------------------------------------------------------------------
 // The keys, changed by saying them (Eric, 26 Sep 2026: "it needs to be
 // customizable. I don't have an Alt button")
-
 
 // ---------------------------------------------------------------------------
 // Talking freely (Eric, 27 Sep 2026: "I need to be able to freely speak with
@@ -2477,7 +2600,6 @@ pub const QUESTION_LIFETIME_SECS: u64 = 600;
 /// model is asked for fewer and stopped at a sentence's end when it reaches
 /// them; this is only the ceiling for a model that runs on.
 pub const SAFETY_SENTENCES: usize = 16;
-
 
 /// How long the floor stays open after Atlas speaks, in a conversation.
 pub const CHATTING_FOLLOWUP_SECS: u32 = 10;
@@ -2502,7 +2624,8 @@ pub const REPLIES_CHECKED: usize = 4;
 /// for (`persona::asks_for_more`).
 pub const SPOKEN_SENTENCES: usize = 3;
 /// Said to the model when a sentence reads as a request (`doing::looks_like_an_action`).
-pub const ACTION_OR_SAY_SO: &str = "This is a request: if a tool does it, call it now. If none does, say in one \
+pub const ACTION_OR_SAY_SO: &str =
+    "This is a request: if a tool does it, call it now. If none does, say in one \
 sentence what you can do instead. Don't chat around it.";
 /// 30 Sep 2026: 1200 -> 350, with `HISTORY_EXCHANGES` (the prompt diet).
 pub const HISTORY_TOKENS: usize = 350;
@@ -2557,7 +2680,6 @@ pub(crate) struct RephraseAsk {
     keep_written: bool,
 }
 
-
 /// Longest tool result handed back to the model to reword.
 const REPHRASE_INPUT_CHARS: usize = 3000;
 /// How long the reworded reply may be.
@@ -2574,7 +2696,6 @@ pub(crate) enum TurnNews {
     Done(brain::Decision),
 }
 
-
 /// How long a finding that another model server is (or isn't) up holds.
 const MODEL_SERVER_RECHECK: std::time::Duration = std::time::Duration::from_secs(60);
 
@@ -2583,7 +2704,8 @@ const MODEL_SERVER_RECHECK: std::time::Duration = std::time::Duration::from_secs
 pub const STILL_LOADING_AFTER: std::time::Duration = std::time::Duration::from_secs(4);
 
 /// What it says then.
-pub const STILL_LOADING_WORDS: &str = "One moment -- my language model is still loading. The first answer takes about a minute.";
+pub const STILL_LOADING_WORDS: &str =
+    "One moment -- my language model is still loading. The first answer takes about a minute.";
 
 /// A model server this young may still be loading its model: not judged
 /// stuck for not answering yet.
@@ -2602,7 +2724,6 @@ const THINKING_SLICE_MS: u64 = 50;
 /// How many tools beyond the core ones a sentence is offered.
 pub const RETRIEVED_TOOLS: usize = 6;
 
-
 /// How often the microphones are listed again.
 pub const MIC_LOOK_EVERY_SECS: u64 = 180;
 
@@ -2611,7 +2732,6 @@ pub const MIC_PROBE_EVERY_SECS: u64 = 20;
 
 /// Your name on its own: how long Atlas waits for the rest after "Yes?".
 pub const NAME_ALONE_WAIT_SECS: u32 = 8;
-
 
 /// What a look on its own thread hands back: its answer, and everything it
 /// took with it (`Daemon::look_in_flight`).
@@ -2642,4 +2762,3 @@ mod files_off_the_loop;
 use files_off_the_loop::*;
 mod turn_words;
 pub use turn_words::*;
-

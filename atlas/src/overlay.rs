@@ -31,11 +31,28 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Element {
     /// The Atlas mark.
-    Mark { x: i32, y: i32, size: i32, state: MarkState },
+    Mark {
+        x: i32,
+        y: i32,
+        size: i32,
+        state: MarkState,
+    },
     /// Text that types itself in.
-    Typed { x: i32, y: i32, text: String, size: i32, align: Align },
+    Typed {
+        x: i32,
+        y: i32,
+        text: String,
+        size: i32,
+        align: Align,
+    },
     /// The faint darkening behind text, so it reads over anything.
-    Shade { x: i32, y: i32, width: i32, height: i32, strength: f32 },
+    Shade {
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        strength: f32,
+    },
     /// An outline around the thing your hand is currently over.
     ///
     /// Added because a hand pointing at something with no mark on screen is a
@@ -60,7 +77,13 @@ pub enum Element {
 /// sentence being said.
 pub fn around(rect: (i32, i32, i32, i32), holding: bool) -> Element {
     let (x, y, width, height) = rect;
-    Element::Outline { x, y, width, height, holding }
+    Element::Outline {
+        x,
+        y,
+        width,
+        height,
+        holding,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,7 +148,11 @@ pub struct Typing {
 
 impl Typing {
     pub fn new(text: &str) -> Typing {
-        Typing { full: text.to_string(), shown: 0, pause_until_ms: 0 }
+        Typing {
+            full: text.to_string(),
+            shown: 0,
+            pause_until_ms: 0,
+        }
     }
 
     pub fn done(&self) -> bool {
@@ -267,7 +294,11 @@ impl Overlay {
             x: cx - mark_size / 2,
             y: cy - mark_size - 40,
             size: mark_size,
-            state: if self.phase == Phase::Arriving { MarkState::Waking } else { MarkState::Thinking },
+            state: if self.phase == Phase::Arriving {
+                MarkState::Waking
+            } else {
+                MarkState::Thinking
+            },
         }];
 
         if !text.is_empty() {

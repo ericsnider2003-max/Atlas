@@ -30,19 +30,26 @@ pub(super) fn carry_out_unsubscribes(
                 // Himalaya mode: its own account and password, never an
                 // SMTP login with the empty one this path was handed.
                 Some((program, name)) => crate::smtp::plain_address(to).and_then(|to| {
-                    let text = crate::smtp::message_text_in(&account.address, to, "unsubscribe", "", crate::store::now(), &Default::default());
+                    let text = crate::smtp::message_text_in(
+                        &account.address,
+                        to,
+                        "unsubscribe",
+                        "",
+                        crate::store::now(),
+                        &Default::default(),
+                    );
                     crate::himalaya::send(&program, &name, &text)
                 }),
                 None => match &smtp {
-                Some((h, port)) => send_unsubscribe_email(
-                    *port,
-                    h,
-                    &account.address,
-                    password,
-                    to,
-                    account.oauth.then_some(account.client_id.as_str()),
-                ),
-                None => Err("no SMTP server known for this provider".into()),
+                    Some((h, port)) => send_unsubscribe_email(
+                        *port,
+                        h,
+                        &account.address,
+                        password,
+                        to,
+                        account.oauth.then_some(account.client_id.as_str()),
+                    ),
+                    None => Err("no SMTP server known for this provider".into()),
                 },
             }
         } else {
@@ -66,8 +73,9 @@ pub(super) fn post_one_click(url: &str, body: &str) -> std::result::Result<(), S
     // network, and held to the address that was checked, https only, no
     // redirects (1 Oct 2026 security pass: `https://192.168.1.1/reboot`
     // would have been posted to from your laptop).
-    let (host, ip) = crate::research::public_address(url)
-        .ok_or_else(|| "that unsubscribe link points somewhere private, so I left it".to_string())?;
+    let (host, ip) = crate::research::public_address(url).ok_or_else(|| {
+        "that unsubscribe link points somewhere private, so I left it".to_string()
+    })?;
     let port = url
         .trim_start_matches("https://")
         .split(['/', '?', '#'])
@@ -81,11 +89,29 @@ pub(super) fn post_one_click(url: &str, body: &str) -> std::result::Result<(), S
     };
     let pin = format!("{host}:{port}:{at}");
     let out = crate::tools::command("curl")
-        .args(["-sS", "-m", "20", "--proto", "=https", "--max-redirs", "0", "--resolve", &pin, "-X", "POST", "-d", body, url])
+        .args([
+            "-sS",
+            "-m",
+            "20",
+            "--proto",
+            "=https",
+            "--max-redirs",
+            "0",
+            "--resolve",
+            &pin,
+            "-X",
+            "POST",
+            "-d",
+            body,
+            url,
+        ])
         .output()
         .map_err(|e| format!("couldn't run curl: {e}"))?;
     if !out.status.success() {
-        return Err(format!("curl failed: {}", String::from_utf8_lossy(&out.stderr).trim()));
+        return Err(format!(
+            "curl failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
     }
     Ok(())
 }
@@ -172,10 +198,23 @@ pub(super) fn send_reply_routed(
         Some((program, name)) => {
             crate::smtp::plain_address(&pending.to_address)?;
             crate::smtp::may_send(from_address, crate::store::now().saturating_mul(1000))?;
-            let text = crate::smtp::message_text_in(from_address, &pending.to_address, &pending.subject, &pending.body, crate::store::now(), &pending.thread);
+            let text = crate::smtp::message_text_in(
+                from_address,
+                &pending.to_address,
+                &pending.subject,
+                &pending.body,
+                crate::store::now(),
+                &pending.thread,
+            );
             crate::himalaya::send(program, name, &text)
         }
-        None => send_reply(pending, imap_host, from_address, from_password, oauth_client_id),
+        None => send_reply(
+            pending,
+            imap_host,
+            from_address,
+            from_password,
+            oauth_client_id,
+        ),
     }
 }
 
@@ -193,7 +232,13 @@ pub(super) fn send_reply(
     let mut session = crate::smtp::connect(&host, port)?;
     session.ehlo("atlas")?;
     authenticate_smtp(&mut session, from_address, from_password, oauth_client_id)?;
-    session.send_mail_in(from_address, &pending.to_address, &pending.subject, &pending.body, &pending.thread)?;
+    session.send_mail_in(
+        from_address,
+        &pending.to_address,
+        &pending.subject,
+        &pending.body,
+        &pending.thread,
+    )?;
     session.quit();
     Ok(())
 }
@@ -225,7 +270,12 @@ pub(super) fn draft_client_reply(
                   something to do or agree to.";
     // Quoted, not pasted (1 Oct 2026 security pass): the mail's words and
     // these instructions must never arrive in the same shape.
-    let quoted = crate::untrusted::Read::new(client_name, &format!("Subject: {subject}\n\n{body}"), crate::store::now()).quoted();
+    let quoted = crate::untrusted::Read::new(
+        client_name,
+        &format!("Subject: {subject}\n\n{body}"),
+        crate::store::now(),
+    )
+    .quoted();
     let user = format!("Reply to {client_name}.\n\n{quoted}");
     llm.complete(system, &user).map_err(|e| e.to_string())
 }
@@ -236,7 +286,13 @@ pub(super) fn connect_and_fetch_inbox(
     password: &str,
     oauth_client_id: Option<&str>,
     sent_since: Option<&str>,
-) -> std::result::Result<(Vec<crate::imap::Message>, std::result::Result<Vec<crate::imap::Message>, String>), String> {
+) -> std::result::Result<
+    (
+        Vec<crate::imap::Message>,
+        std::result::Result<Vec<crate::imap::Message>, String>,
+    ),
+    String,
+> {
     if let Some((program, account)) = crate::himalaya::route(host) {
         return crate::himalaya::fetch_inbox(&program, &account, sent_since);
     }
@@ -248,7 +304,9 @@ pub(super) fn connect_and_fetch_inbox(
     // can't be found costs the inbox nothing -- it's reported, and the
     // inbox result stands.
     let sent = match sent_since {
-        Some(since) => session.sent_mailbox().and_then(|mb| session.fetch_matching(&mb, &format!("SINCE {since}"))),
+        Some(since) => session
+            .sent_mailbox()
+            .and_then(|mb| session.fetch_matching(&mb, &format!("SINCE {since}"))),
         None => Ok(Vec::new()),
     };
     session.logout();
@@ -295,7 +353,13 @@ pub(super) fn outcome_of(ending: &crew::Ending) -> watching::Outcome {
 pub(super) fn sanitise(name: &str) -> String {
     let cleaned: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     let trimmed = cleaned.trim_matches('-').to_string();
     if trimmed.is_empty() {

@@ -104,12 +104,22 @@ pub struct Turn {
 
 impl Turn {
     pub fn say(&self) -> String {
-        let head = if self.confirmed { "turned" } else { "MAY be turning" };
+        let head = if self.confirmed {
+            "turned"
+        } else {
+            "MAY be turning"
+        };
         let where_ = match self.at {
             Some(i) => format!(" at bar {}", i),
             None => String::new(),
         };
-        format!("{} {}{} -- {}", head, self.direction.say(), where_, self.why)
+        format!(
+            "{} {}{} -- {}",
+            head,
+            self.direction.say(),
+            where_,
+            self.why
+        )
     }
 }
 
@@ -354,7 +364,12 @@ impl Structure {
             ),
             _ => return None,
         };
-        Some(Turn { direction: dir, confirmed: false, at: None, why })
+        Some(Turn {
+            direction: dir,
+            confirmed: false,
+            at: None,
+            why,
+        })
     }
 
     /// One line, for the record and for an advocate to read.
@@ -434,10 +449,17 @@ pub fn recent(view: &AsOf<'_>, n: usize, k: usize) -> Structure {
         let start = ix.len().saturating_sub(n);
         ix[start..]
             .iter()
-            .map(|&i| Pivot { at: i, price: src[i], confirmed_at: i + k })
+            .map(|&i| Pivot {
+                at: i,
+                price: src[i],
+                confirmed_at: i + k,
+            })
             .collect()
     };
-    Structure { highs: take(&hi, h), lows: take(&lo, l) }
+    Structure {
+        highs: take(&hi, h),
+        lows: take(&lo, l),
+    }
 }
 
 /// Every pivot, optionally filtered to what was KNOWABLE at a bar.
@@ -450,8 +472,16 @@ pub fn confirmed_swings(view: &AsOf<'_>, k: usize, as_at: Option<usize>) -> Vec<
     let (h, l) = (view.high(), view.low());
     let mut out: Vec<Pivot> = hi
         .iter()
-        .map(|&i| Pivot { at: i, price: h[i], confirmed_at: i + k })
-        .chain(lo.iter().map(|&i| Pivot { at: i, price: l[i], confirmed_at: i + k }))
+        .map(|&i| Pivot {
+            at: i,
+            price: h[i],
+            confirmed_at: i + k,
+        })
+        .chain(lo.iter().map(|&i| Pivot {
+            at: i,
+            price: l[i],
+            confirmed_at: i + k,
+        }))
         .collect();
     out.sort_by_key(|p| p.at);
     if let Some(bar) = as_at {
@@ -498,9 +528,9 @@ pub fn before_the_turn(view: &AsOf<'_>, n: usize, k: usize) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::bars::Bars;
     use super::super::fixtures::path;
+    use super::*;
 
     const UP_THEN_PULLBACK: [f64; 10] = [
         1.0000, 1.0100, 1.0050, 1.0200, 1.0150, 1.0300, 1.0250, 1.0280, 1.0260, 1.0290,
@@ -619,7 +649,11 @@ mod tests {
         // keep passing when it broke.
         let held = structure_of(&UP_THEN_PULLBACK);
         let broke = structure_of(&UP_THEN_REVERSAL);
-        assert_eq!(held.high_labels(), broke.high_labels(), "highs are identical");
+        assert_eq!(
+            held.high_labels(),
+            broke.high_labels(),
+            "highs are identical"
+        );
         let (hl, bl) = (held.low_labels(), broke.low_labels());
         assert_eq!(hl[..hl.len() - 1], bl[..bl.len() - 1]);
         assert_eq!(*hl.last().unwrap(), Label::Higher);
@@ -641,7 +675,11 @@ mod tests {
         // Two pivots into a fresh series there is no prior trend, and calling
         // that a reversal invents the thing it claims to have reversed.
         let s = structure_of(&[1.0000, 1.0100, 1.0050, 1.0080]);
-        assert!(s.prior_trend() == Trend::Unknown || s.reversal().is_none(), "{}", s.say());
+        assert!(
+            s.prior_trend() == Trend::Unknown || s.reversal().is_none(),
+            "{}",
+            s.say()
+        );
     }
 
     #[test]
@@ -677,12 +715,19 @@ mod tests {
         // all-true and the note points at the last pair.
         let mixed = structure_of(&UP_THEN_REVERSAL);
         assert_ne!(mixed.lower_highs(), Some(true), "{}", mixed.say());
-        assert!(mixed.say().contains("rests on the last pair"), "{}", mixed.say());
+        assert!(
+            mixed.say().contains("rests on the last pair"),
+            "{}",
+            mixed.say()
+        );
     }
 
     #[test]
     fn an_empty_structure_says_so_rather_than_pretending() {
-        let s = Structure { highs: vec![], lows: vec![] };
+        let s = Structure {
+            highs: vec![],
+            lows: vec![],
+        };
         assert_eq!(s.trend(), Trend::Unknown);
         assert!(s.reversal().is_none());
         assert!(s.say().contains("no structure"));
@@ -698,7 +743,10 @@ mod tests {
         assert!(!ps.is_empty());
         assert!(ps.iter().all(|p| p.confirmed_at == p.at + 2));
         let p = ps.last().unwrap();
-        assert!(!p.known_by(p.at), "it takes k more bars to prove nothing higher followed");
+        assert!(
+            !p.known_by(p.at),
+            "it takes k more bars to prove nothing higher followed"
+        );
         assert!(p.known_by(p.confirmed_at));
     }
 
@@ -707,7 +755,9 @@ mod tests {
         let b = super::super::fixtures::walk(400, 9);
         let v = b.latest().unwrap();
         for k in [1usize, 2, 4] {
-            assert!(confirmed_swings(&v, k, None).iter().all(|p| p.confirmed_at == p.at + k));
+            assert!(confirmed_swings(&v, k, None)
+                .iter()
+                .all(|p| p.confirmed_at == p.at + k));
         }
     }
 

@@ -15,9 +15,9 @@
 //!    you can't see.
 
 use crate::error::{AtlasError, Result};
+use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -96,7 +96,9 @@ pub fn bind_address(reachable_from: &str) -> std::result::Result<std::net::IpAdd
         }
         IpAddr::V6(v6) => {
             if v6.is_unspecified() {
-                return Err("`::` means every network. Give the one address you reach it by.".into());
+                return Err(
+                    "`::` means every network. Give the one address you reach it by.".into(),
+                );
             }
             let s = v6.segments()[0];
             // Unique-local (fc00::/7), link-local (fe80::/10), or loopback.
@@ -161,9 +163,13 @@ pub struct Request {
 
 impl std::fmt::Debug for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Request").field("method", &self.method).field("path", &self.path)
-            .field("query", &"[redacted]").field("token", &"[redacted]")
-            .field("body", &"[redacted]").finish()
+        f.debug_struct("Request")
+            .field("method", &self.method)
+            .field("path", &self.path)
+            .field("query", &"[redacted]")
+            .field("token", &"[redacted]")
+            .field("body", &"[redacted]")
+            .finish()
     }
 }
 
@@ -192,10 +198,8 @@ pub struct Reply {
     pub bytes: Option<(&'static str, Vec<u8>)>,
 }
 
-
 /// The cookie the browser carries once the URL has handed its token over.
 pub const COOKIE: &str = "atlas_hub";
-
 
 /// Something typed that must not be repeated: a passphrase, a household key.
 ///
@@ -209,11 +213,12 @@ pub struct Secret(String);
 
 /// Signing work supports ordinary local absolute paths, not UNC/device IO.
 pub(crate) fn signing_local_path(path: &str) -> bool {
-    !path.is_empty() && std::path::Path::new(path).is_absolute()
-        && !path.starts_with("\\\\") && !path.starts_with("//")
+    !path.is_empty()
+        && std::path::Path::new(path).is_absolute()
+        && !path.starts_with("\\\\")
+        && !path.starts_with("//")
         && !path.chars().any(char::is_control)
 }
-
 
 /// What the API can be asked to do.
 ///
@@ -234,14 +239,20 @@ pub enum Action {
     /// Show a hub page.
     Hub(crate::hub::Page),
     /// Change a setting from the hub.
-    HubSet { key: String, value: String },
+    HubSet {
+        key: String,
+        value: String,
+    },
     /// Your calendar as an .ics file, and your client list as a .vcf — the
     /// hub's download buttons.
     ExportCalendar,
     ExportClients,
     /// A file brought in from the hub: an .ics goes into the calendar, a .vcf
     /// into the client list, anything else to the tray to be read.
-    BringIn { name: String, base64: String },
+    BringIn {
+        name: String,
+        base64: String,
+    },
     /// Implement a queued change, by its title — the hub's implement button.
     Implement(String),
     /// A button on the sync page: make a new household key, write the
@@ -249,20 +260,40 @@ pub enum Action {
     SyncKey(String),
     /// The other half of inviting: the code typed on the device that is
     /// joining, and what to call it.
-    SyncJoin { code: String, device: String },
+    SyncJoin {
+        code: String,
+        device: String,
+    },
     /// Take Atlas's access to one site away. Immediate, and it does not touch
     /// your password — Atlas simply stops having it.
     RevokeAccess(String),
     /// Take all of it away at once.
     RevokeAllAccess,
     /// A button on the Add-ons page: approve, revoke, off, on.
-    AddOn { what: String, id: String, key: String, sha: String },
+    AddOn {
+        what: String,
+        id: String,
+        key: String,
+        sha: String,
+    },
     /// "Back to the default" on the Your edits page.
-    ForgetEdit { file: String, path: String },
+    ForgetEdit {
+        file: String,
+        path: String,
+    },
     /// A button on the Groups page: new, add, remove, role, rename.
-    GroupChange { what: String, group: String, who: String, role: String },
+    GroupChange {
+        what: String,
+        group: String,
+        who: String,
+        role: String,
+    },
     /// A button on the Friends page.
-    Friend { what: String, who: String, link: String },
+    Friend {
+        what: String,
+        who: String,
+        link: String,
+    },
     /// Rearrange the dashboard. Both the move buttons and a drop post this --
     /// one route, so the two ways of moving a card cannot disagree.
     DashMove(crate::dash::Move),
@@ -305,20 +336,47 @@ pub enum Action {
     /// The Accounts page's vault forms: set a first passphrase, change it,
     /// or make a recovery key (`what` = set | change | recovery). `nonce` is
     /// the form's one-time mark, so a refresh cannot send it twice.
-    Vault { what: String, old: Secret, new: Secret, again: Secret, nonce: String },
+    Vault {
+        what: String,
+        old: Secret,
+        new: Secret,
+        again: Secret,
+        nonce: String,
+    },
     /// Owner-selected signing file work; unlock is never a plain form/job string.
-    Signing { what: String, name: String, source: String, destination: String, unlock: Secret, recovery: bool, nonce: String },
+    Signing {
+        what: String,
+        name: String,
+        source: String,
+        destination: String,
+        unlock: Secret,
+        recovery: bool,
+        nonce: String,
+    },
     /// "Take it back" on the Accounts page, while handed over.
-    TakeBack { phrase: Secret, nonce: String },
+    TakeBack {
+        phrase: Secret,
+        nonce: String,
+    },
     /// "Use a key from another device" on the Sync page.
-    SyncKeySet { phrase: Secret, replace: bool },
+    SyncKeySet {
+        phrase: Secret,
+        replace: bool,
+    },
     /// "Start one here" on the Sync page: a household, what to call this
     /// device, and whether to make a household key with it.
-    HouseholdInit { name: String, device: String, key: bool },
+    HouseholdInit {
+        name: String,
+        device: String,
+        key: bool,
+    },
     /// A form posted to one of the hub pages the locked design added
     /// (messages, tasks, clients, sound, trusted, give, talk, help, a new
     /// project): the path, and its fields decoded.
-    HubPost { path: String, fields: Vec<(String, String)> },
+    HubPost {
+        path: String,
+        fields: Vec<(String, String)>,
+    },
     /// A file handed over from another device: the bytes, base64-encoded.
     ///
     /// Base64 rather than a multipart upload because the thing sending this is
@@ -350,7 +408,10 @@ pub enum Action {
     /// palette opened and not yet typed into.
     Find(String),
     /// One choice from the hub's appearance menu.
-    Appearance { what: String, to: String },
+    Appearance {
+        what: String,
+        to: String,
+    },
     /// Change what Atlas knows about one of your accounts. Never a password —
     /// only what kind of protection the site has, which is what the audit
     /// reads and is not itself worth stealing.
@@ -393,23 +454,20 @@ pub enum Action {
     PeerFeedbackAnswer(crate::kin::FeedbackIn),
 }
 
-
 /// Room for a few thousand calendar events: far more than six weeks of
 /// anyone's diary, and still small.
 pub const CALENDAR_BODY: usize = 2 * 1024 * 1024;
 
-
 /// No other page may show Atlas's inside a frame of its own, where a click
 /// meant for that page lands on a hub button (1 Oct 2026 security pass).
-const NOT_IN_A_FRAME: &str = "X-Frame-Options: DENY\r\nContent-Security-Policy: frame-ancestors 'none'\r\n";
-
+const NOT_IN_A_FRAME: &str =
+    "X-Frame-Options: DENY\r\nContent-Security-Policy: frame-ancestors 'none'\r\n";
 
 /// What the token is stored in, between runs.
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct HeldToken {
     token: String,
 }
-
 
 /// Failed attempts, and the delay they earn.
 ///
@@ -425,7 +483,6 @@ pub struct Failures {
     count: u32,
     last_at: u64,
 }
-
 
 /// The listener.
 ///
@@ -459,10 +516,7 @@ pub struct Server {
     id: String,
 }
 
-impl Server {
-
-
-}
+impl Server {}
 
 /// A socket read that never waits past `until`, however slowly the other
 /// end sends (28 Sep 2026). Each read's timeout is set to the time left, so
@@ -473,10 +527,8 @@ struct Deadlined {
     until: std::time::Instant,
 }
 
-
 /// The slowest a request body may arrive, in bytes a second.
 const MIN_BODY_RATE: u64 = 16 * 1024;
-
 
 /// How long a peer's request may take to arrive in full.
 const PEER_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
@@ -520,11 +572,9 @@ pub struct Waiting {
 /// "thinking".
 type LateTalk = std::sync::Arc<std::sync::Mutex<Vec<(String, bool)>>>;
 
-
 const WAITING: u8 = 0;
 const TAKEN: u8 = 1;
 const ABANDONED: u8 = 2;
-
 
 /// What answering one waiting request cost, for the log.
 #[derive(Debug, Clone)]
@@ -612,8 +662,11 @@ struct ReadOnlySnapshot {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FastCancel { pub key: String, pub worker: Option<u64>, pub files: Option<u64> }
-
+pub(crate) struct FastCancel {
+    pub key: String,
+    pub worker: Option<u64>,
+    pub files: Option<u64>,
+}
 
 /// How `open_hub` waits for a port that's taken. Production values in
 /// `Default`; the tests shorten them.
@@ -630,11 +683,9 @@ pub struct Retry {
     pub look_again_every: std::time::Duration,
 }
 
-
 /// The ports tried after the configured one, before any free port at all:
 /// the next few, so the address is still easy to find.
 pub const FALLBACK_PORTS: u16 = 10;
-
 
 /// How many connections may be being read at once. A browser opens six or
 /// so per origin; a phone and a laptop together, a few more. Past this a new
@@ -647,8 +698,8 @@ const MAX_OPEN: usize = 48;
 /// desktop out. A browser opens about six at once.
 const MAX_OPEN_PER_ADDRESS: usize = 16;
 
-type PerAddress = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<std::net::IpAddr, usize>>>;
-
+type PerAddress =
+    std::sync::Arc<std::sync::Mutex<std::collections::HashMap<std::net::IpAddr, usize>>>;
 
 /// How long a connection waits for the daemon's answer before it is told
 /// Atlas is busy. Long, because a page asked for while Atlas is in the
@@ -657,7 +708,6 @@ type PerAddress = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<std:
 /// error; but bounded, so a connection never waits forever on a daemon that
 /// has stopped.
 const ANSWER_WAIT: std::time::Duration = std::time::Duration::from_secs(90);
-
 
 // ---------------------------------------------------------------------------
 // Which Atlas answers on the hub's port (28 Sep 2026)
@@ -675,7 +725,6 @@ pub struct Door {
     pub port: u16,
     pub id: String,
 }
-
 
 // ---------------------------------------------------------------------------
 // A door that fits inside the daemon's own loop.
@@ -734,10 +783,7 @@ pub struct SignalListener {
 /// What a door said, and what (if anything) goes on to the daemon.
 type Answered = (Reply, Option<crate::kin::Arrived>);
 
-impl SignalListener {
-
-
-}
+impl SignalListener {}
 
 // The rest of this module, by what it does (audit Q6, 6 Oct 2026).
 mod requests;
@@ -746,8 +792,7 @@ mod routing;
 pub use routing::*;
 mod tokens;
 pub use tokens::*;
-mod serving;
 mod hub_door;
+mod serving;
 pub use hub_door::*;
 mod signal_door;
-

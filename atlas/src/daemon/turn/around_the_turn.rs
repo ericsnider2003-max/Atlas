@@ -25,15 +25,23 @@ impl<'a> Daemon<'a> {
         }
         if crate::growth::asks_to_set_up(said) {
             let Some(w) = crate::growth::latest_approved(&wanted) else {
-                return Some("There's no approved ability to set up. Say \"approve that ability\" first.".into());
+                return Some(
+                    "There's no approved ability to set up. Say \"approve that ability\" first."
+                        .into(),
+                );
             };
             let scfg = self.tools_cfg().self_work.clone();
             let root = crate::selfwork::source_root(&scfg).unwrap_or_default();
             if !crate::selfwork::is_a_source_checkout(&root) {
-                return Some("That needs my source code on this computer, and there isn't a copy here.".into());
+                return Some(
+                    "That needs my source code on this computer, and there isn't a copy here."
+                        .into(),
+                );
             }
             let (y, m, d) = crate::hubpages::ymd((t / 86_400) as i64);
-            const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const MONTHS: [&str; 12] = [
+                "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+            ];
             let ask = crate::scaffold::Ask {
                 id: crate::scaffold::name_for(&w.what),
                 what: w.what.clone(),
@@ -75,7 +83,10 @@ impl<'a> Daemon<'a> {
         wanted.ask(&what, t);
         let _ = self.store.save(crate::growth::STORE, &wanted);
         self.log.info(&format!("ability asked for: {what}"));
-        Some(crate::growth::noted_beside(&what, &crate::growth::already_close(&what, &crate::capability::all())))
+        Some(crate::growth::noted_beside(
+            &what,
+            &crate::growth::already_close(&what, &crate::capability::all()),
+        ))
     }
 
     /// What "this" refers to right now.
@@ -118,10 +129,14 @@ impl<'a> Daemon<'a> {
         // written for exactly this (`refers_to_clipboard`) had no caller, so
         // the setting was dead and the clipboard was silently in scope for
         // every resolution.
-        let use_clipboard = !self.clipboard_cfg().only_on_request
-            || crate::clipboard::refers_to_clipboard(arg);
+        let use_clipboard =
+            !self.clipboard_cfg().only_on_request || crate::clipboard::refers_to_clipboard(arg);
         let candidates = crate::subject::Candidates {
-            clipboard: if use_clipboard { self.clipboard_text.clone() } else { None },
+            clipboard: if use_clipboard {
+                self.clipboard_text.clone()
+            } else {
+                None
+            },
             ..Default::default()
         };
         match crate::subject::resolve(arg, &candidates) {
@@ -154,8 +169,13 @@ impl<'a> Daemon<'a> {
         if let Some(note) = crate::consolidate::dropped_note(&dropped) {
             // Said rather than done quietly — a store that silently forgets is
             // one you stop trusting.
-            self.history.note(&note, "knowledge",
-                crate::undo::Undo::Cannot("what was dropped is gone".into()), false, now);
+            self.history.note(
+                &note,
+                "knowledge",
+                crate::undo::Undo::Cannot("what was dropped is gone".into()),
+                false,
+                now,
+            );
         }
         // Trim holds settled facts and things about your own setup out of the
         // budget entirely, because they cannot be looked up again. When those
@@ -165,11 +185,16 @@ impl<'a> Daemon<'a> {
         if let Some(note) =
             crate::consolidate::over_budget_on_purpose(&self.known, cfg.keep_at_most)
         {
-            self.history.note(&note, "knowledge",
+            self.history.note(
+                &note,
+                "knowledge",
                 crate::undo::Undo::Cannot(
                     "nothing was dropped; the budget is exceeded by facts that can't be relearned"
                         .into(),
-                ), false, now);
+                ),
+                false,
+                now,
+            );
         }
         strengthened
     }
@@ -197,15 +222,18 @@ impl<'a> Daemon<'a> {
         );
         // What the last mutation run found no test catching (`mutation`).
         let survivors: Vec<crate::mutation::Survivor> = self.store.load(crate::mutation::KEPT);
-        self.signals.extend(crate::signals::from_survivors(&survivors));
+        self.signals
+            .extend(crate::signals::from_survivors(&survivors));
         // What the last self-test found broken (`regressions`).
         let cases: Vec<crate::regressions::Case> = self.store.load(crate::regressions::FILE);
-        self.signals.extend(crate::signals::from_regressions(&cases));
+        self.signals
+            .extend(crate::signals::from_regressions(&cases));
         // What a coverage run of the self-test never reached (`coverage`).
         let reports = crate::selftest::reports_dir(&self.store.install_root());
         if let Ok(json) = std::fs::read_to_string(reports.join(crate::coverage::NEVER_REACHED)) {
             if let Ok((paths, total)) = serde_json::from_str::<(Vec<String>, u32)>(&json) {
-                self.signals.extend(crate::signals::from_never_reached(&paths, total));
+                self.signals
+                    .extend(crate::signals::from_never_reached(&paths, total));
             }
         }
     }
@@ -231,9 +259,12 @@ impl<'a> Daemon<'a> {
     /// Only while something is actually running, and never with the lid shut
     /// or the battery low. Called by whatever is running rather than held
     /// open by the daemon.
-    pub fn keep_awake(&self, why: crate::awake::Because, power: &crate::awake::Power, held_mins: u32)
-        -> (crate::awake::Hold, String)
-    {
+    pub fn keep_awake(
+        &self,
+        why: crate::awake::Because,
+        power: &crate::awake::Power,
+        held_mins: u32,
+    ) -> (crate::awake::Hold, String) {
         crate::awake::decide(why, power, held_mins, &self.tools_cfg().awake)
     }
 
@@ -250,7 +281,9 @@ impl<'a> Daemon<'a> {
             .filter(|r| r.name != failed)
             .filter(|r| online || !crate::route::needs_internet(r))
             .max_by(|a, b| {
-                a.reliability.partial_cmp(&b.reliability).unwrap_or(std::cmp::Ordering::Equal)
+                a.reliability
+                    .partial_cmp(&b.reliability)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })?;
         Some(next.name)
     }
@@ -268,7 +301,12 @@ impl<'a> Daemon<'a> {
     /// apps (Discord and its kind) carry — a stray keystroke there is public
     /// and permanent, so touching one is always a question.
     pub(in crate::daemon) fn app_facts(&self, app: &str) -> crate::grants::AppFacts {
-        let spec = self.cfg.apps.apps.iter().find(|(name, _)| name.eq_ignore_ascii_case(app));
+        let spec = self
+            .cfg
+            .apps
+            .apps
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(app));
         crate::grants::AppFacts {
             known: spec.is_some(),
             confirm_each_time: spec.map(|(_, s)| s.no_input).unwrap_or(false),
@@ -283,7 +321,12 @@ impl<'a> Daemon<'a> {
     /// the answer; on a yes there, the grant is recorded (with the breadth
     /// you gave — once, this session, or always) before the action runs, so
     /// the re-check finds it and does not ask twice.
-    pub(in crate::daemon) fn gate_app(&mut self, app: &str, action: &str, intent: &Intent) -> AppGate {
+    pub(in crate::daemon) fn gate_app(
+        &mut self,
+        app: &str,
+        action: &str,
+        intent: &Intent,
+    ) -> AppGate {
         let facts = self.app_facts(app);
         match self.permissions.check(app, action, &facts) {
             crate::grants::Verdict::Allowed(_) => {
@@ -373,7 +416,11 @@ impl<'a> Daemon<'a> {
         let online = self.connectivity.cached() == crate::connectivity::Reach::Online;
         match book.for_request(asked, online) {
             Some(p) => {
-                let mut s = format!("{} -- here's how:\n{}\n", p.goal, crate::knowhow::checklist(p));
+                let mut s = format!(
+                    "{} -- here's how:\n{}\n",
+                    p.goal,
+                    crate::knowhow::checklist(p)
+                );
                 for (n, step) in crate::knowhow::as_plan(p).into_iter().enumerate() {
                     s.push_str(&format!("  {}. {}\n", n + 1, step));
                 }
@@ -387,11 +434,18 @@ impl<'a> Daemon<'a> {
                 if let Some(llm) = self.llm.clone() {
                     let system = format!(
                         "{}\n\n{}",
-                        self.persona_now().prompt_for(crate::register::Register::Working),
+                        self.persona_now()
+                            .prompt_for(crate::register::Register::Working),
                         crate::brain::TALK
                     );
                     if let Some(said) = llm
-                        .complete(&system, &format!("{}\nUser said: how do I {asked}", crate::capability::about_atlas(asked, 6)))
+                        .complete(
+                            &system,
+                            &format!(
+                                "{}\nUser said: how do I {asked}",
+                                crate::capability::about_atlas(asked, 6)
+                            ),
+                        )
                         .ok()
                         .and_then(|r| crate::brain::spoken_text(&r))
                     {
@@ -412,12 +466,17 @@ impl<'a> Daemon<'a> {
     /// The one gate everything unprompted goes through. Without it every
     /// feature politely announces itself and the sum is a system that talks
     /// constantly about nothing.
-    pub fn worth_saying(&mut self, thing: &crate::interrupt::Thing, doing: crate::interrupt::Doing) -> Option<String> {
+    pub fn worth_saying(
+        &mut self,
+        thing: &crate::interrupt::Thing,
+        doing: crate::interrupt::Doing,
+    ) -> Option<String> {
         let mut cfg = self.tools_cfg().interrupt.clone();
         // What you wrote in the config, plus what you said out loud. Two
         // lists because they come from two places and neither should silently
         // overwrite the other -- `interrupt::Muted` has the argument.
-        cfg.muted.extend(crate::interrupt::Muted::load(&self.store).topics);
+        cfg.muted
+            .extend(crate::interrupt::Muted::load(&self.store).topics);
         match self.gate.consider(thing, doing, &cfg, clock()) {
             crate::interrupt::Decision::Say(s) => Some(s),
             _ => None,
@@ -425,7 +484,11 @@ impl<'a> Daemon<'a> {
     }
 
     /// How sure is the answer, and should it say so?
-    pub(in crate::daemon) fn hedge(&self, answer: &str, grounding: crate::certainty::Grounding) -> String {
+    pub(in crate::daemon) fn hedge(
+        &self,
+        answer: &str,
+        grounding: crate::certainty::Grounding,
+    ) -> String {
         let cfg = self.tools_cfg().certainty.clone();
         let (confidence, _, why) = crate::certainty::assess(answer, &grounding, &cfg);
         crate::certainty::phrase(answer, confidence, &why)
@@ -444,7 +507,10 @@ impl<'a> Daemon<'a> {
     /// The zone you chose, or `None` for "this computer's clock": what
     /// `localclock` is told, so the hub and the calendar agree.
     pub(super) fn chosen_zone(&self) -> Option<crate::tz::Zone> {
-        let set = self.tools_ref().map(|t| t.time_zone.trim().to_string()).unwrap_or_default();
+        let set = self
+            .tools_ref()
+            .map(|t| t.time_zone.trim().to_string())
+            .unwrap_or_default();
         (!set.is_empty() && !set.eq_ignore_ascii_case("automatic")).then(|| crate::tz::home(&set))
     }
 
@@ -490,7 +556,9 @@ impl<'a> Daemon<'a> {
     /// hashed (27 Sep 2026 -- they used to be read and hashed every tick).
     /// Nothing is reloaded unless the contents differ from last time.
     pub fn pick_up_settings(&mut self) -> Vec<String> {
-        let Some((dir, seen)) = self.settings_watch.clone() else { return Vec::new() };
+        let Some((dir, seen)) = self.settings_watch.clone() else {
+            return Vec::new();
+        };
         let stamp = settings_stamp(&dir);
         if stamp == self.settings_stamp {
             return Vec::new();
@@ -506,7 +574,9 @@ impl<'a> Daemon<'a> {
                 // Half-written or hand-broken: keep running on what we have,
                 // look again next tick, and say why once.
                 self.settings_watch = Some((dir, now));
-                let line = format!("I couldn't read my changed settings, so I'm keeping the ones I had: {e}");
+                let line = format!(
+                    "I couldn't read my changed settings, so I'm keeping the ones I had: {e}"
+                );
                 self.log.warn(&line);
                 return vec![line];
             }
@@ -519,7 +589,9 @@ impl<'a> Daemon<'a> {
             self.log.warn(&line);
             return vec![line];
         }
-        let Some(mut fresh) = fresh else { return Vec::new() };
+        let Some(mut fresh) = fresh else {
+            return Vec::new();
+        };
         let before = self.tools_ref().cloned().unwrap_or_default();
         // `vars` aren't settings — nothing on the settings page changes them —
         // and some hold what Atlas worked out for itself at the start (the
@@ -530,7 +602,8 @@ impl<'a> Daemon<'a> {
             vars.entry(k).or_insert(v);
         }
         fresh.vars = vars;
-        let changed = crate::settings::registry(&before).differences(&crate::settings::registry(&fresh));
+        let changed =
+            crate::settings::registry(&before).differences(&crate::settings::registry(&fresh));
         // The three parts that keep their own copy of a setting, refreshed so
         // they read the new one.
         self.proactive.cfg = fresh.proactive.clone();
@@ -542,7 +615,8 @@ impl<'a> Daemon<'a> {
         self.tools_resolved = std::sync::Arc::new(resolve_tools(self.tools_ref(), &self.store));
         crate::localclock::set_home_zone(self.chosen_zone());
         let crew_cfg = self.tools_resolved.crew.clone();
-        self.crew.set_margins(crew_cfg.keep_free_mb, crew_cfg.battery_floor_percent);
+        self.crew
+            .set_margins(crew_cfg.keep_free_mb, crew_cfg.battery_floor_percent);
         self.mcp_configure();
         // The wake word switched on or off from the hub or the settings
         // window takes effect now, not at the next start.
@@ -661,7 +735,8 @@ impl<'a> Daemon<'a> {
                     // BM25, which scores a chunk holding several of them
                     // above one holding a single word, and that only works
                     // if it sees them together.
-                    self.index.search_content(&prepared.terms.join(" "), idx_cfg, 3)
+                    self.index
+                        .search_content(&prepared.terms.join(" "), idx_cfg, 3)
                 }
                 None => Vec::new(),
             };

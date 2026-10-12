@@ -273,7 +273,10 @@ impl Recent {
         if before == 0 || after < before + before / 2 {
             return None;
         }
-        let stage = self.worst_stage().map(|(s, _)| s.plain()).unwrap_or("something");
+        let stage = self
+            .worst_stage()
+            .map(|(s, _)| s.plain())
+            .unwrap_or("something");
         Some(crate::selfaudit::Signal {
             kind: crate::selfaudit::Kind::GotSlower,
             subject: stage.to_string(),
@@ -309,7 +312,12 @@ fn thread_cpu_us() -> u64 {
     {
         use windows::Win32::Foundation::FILETIME;
         use windows::Win32::System::Threading::{GetCurrentThread, GetThreadTimes};
-        let (mut c, mut e, mut k, mut u) = (FILETIME::default(), FILETIME::default(), FILETIME::default(), FILETIME::default());
+        let (mut c, mut e, mut k, mut u) = (
+            FILETIME::default(),
+            FILETIME::default(),
+            FILETIME::default(),
+            FILETIME::default(),
+        );
         // SAFETY: four plain structs that outlive the call.
         if unsafe { GetThreadTimes(GetCurrentThread(), &mut c, &mut e, &mut k, &mut u) }.is_err() {
             return 0;
@@ -319,7 +327,10 @@ fn thread_cpu_us() -> u64 {
     }
     #[cfg(unix)]
     {
-        let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+        let mut ts = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
         // SAFETY: `ts` outlives the call.
         if unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) } != 0 {
             return 0;
@@ -340,13 +351,21 @@ impl Default for Laps {
 
 impl Laps {
     pub fn start() -> Laps {
-        Laps { last: std::time::Instant::now(), parts: Vec::new(), cpu_last: thread_cpu_us(), cpu_parts: Vec::new() }
+        Laps {
+            last: std::time::Instant::now(),
+            parts: Vec::new(),
+            cpu_last: thread_cpu_us(),
+            cpu_parts: Vec::new(),
+        }
     }
 
     /// The part just finished, by name.
     pub fn mark(&mut self, name: &'static str) {
         let now = std::time::Instant::now();
-        let ms = now.duration_since(self.last).as_millis().min(u32::MAX as u128) as u32;
+        let ms = now
+            .duration_since(self.last)
+            .as_millis()
+            .min(u32::MAX as u128) as u32;
         self.last = now;
         match self.parts.iter_mut().find(|(n, _)| *n == name) {
             Some(p) => p.1 = p.1.saturating_add(ms),
@@ -368,7 +387,12 @@ impl Laps {
 
     /// The slowest `n` parts, slowest first, that took any time at all.
     pub fn slowest(&self, n: usize) -> Vec<(&'static str, u32)> {
-        let mut p: Vec<(&'static str, u32)> = self.parts.iter().copied().filter(|(_, ms)| *ms > 0).collect();
+        let mut p: Vec<(&'static str, u32)> = self
+            .parts
+            .iter()
+            .copied()
+            .filter(|(_, ms)| *ms > 0)
+            .collect();
         p.sort_by_key(|b| std::cmp::Reverse(b.1));
         p.truncate(n);
         p
@@ -381,7 +405,11 @@ impl Laps {
 
     /// "work_for_you 900ms, observe 400ms, health 120ms".
     pub fn plain(&self, n: usize) -> String {
-        self.slowest(n).iter().map(|(name, ms)| format!("{name} {ms}ms")).collect::<Vec<_>>().join(", ")
+        self.slowest(n)
+            .iter()
+            .map(|(name, ms)| format!("{name} {ms}ms"))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 }
 
@@ -398,12 +426,14 @@ mod laps_tests {
     }
 }
 
-
 /// The silence from the end of your speech to Atlas's first sound (Phase
 /// 0.2): speech-to-text's time plus the time from the words arriving to the
 /// first playback. `None` when either wasn't measured (a typed turn has no
 /// end of speech; a reply that never played has no first sound) -- a missing
 /// figure, never a guessed one.
-pub fn silence_before_first_sound(heard_ms: Option<u64>, first_sound_ms: Option<u64>) -> Option<u64> {
+pub fn silence_before_first_sound(
+    heard_ms: Option<u64>,
+    first_sound_ms: Option<u64>,
+) -> Option<u64> {
     Some(heard_ms? + first_sound_ms?)
 }

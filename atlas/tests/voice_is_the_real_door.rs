@@ -21,7 +21,6 @@
 //! the wiring. Running `atlas voice` for real needs a microphone, which is
 //! named in the report as unverifiable here.
 
-
 fn main_rs() -> String {
     crate::common::source_of("main")
 }
@@ -104,7 +103,10 @@ fn the_voice_door_takes_the_single_instance_lock() {
          the lock"
     );
     let lock = body_of(&main_rs(), "fn take_the_one_lock(");
-    assert!(lock.contains("OnlyOne::at(") && lock.contains("take_patiently("), "take_the_one_lock doesn't take the lock");
+    assert!(
+        lock.contains("OnlyOne::at(") && lock.contains("take_patiently("),
+        "take_the_one_lock doesn't take the lock"
+    );
 }
 
 #[test]
@@ -122,11 +124,20 @@ fn both_doors_work_out_the_model_connection_the_same_way() {
     // the other door could not reach it without copying fifty lines — and
     // so it didn't.
     let src = main_rs();
-    assert!(src.contains("fn model_connection("), "the shared helper is gone");
+    assert!(
+        src.contains("fn model_connection("),
+        "the shared helper is gone"
+    );
     let voice = body_of(&src, "fn voice_loop(");
     let daemon = body_of(&src, "fn run_daemon(");
-    assert!(voice.contains("model_connection("), "the voice door has no model");
-    assert!(daemon.contains("model_connection("), "the daemon door stopped using the helper");
+    assert!(
+        voice.contains("model_connection("),
+        "the voice door has no model"
+    );
+    assert!(
+        daemon.contains("model_connection("),
+        "the daemon door stopped using the helper"
+    );
 }
 
 #[test]
@@ -136,7 +147,10 @@ fn handle_is_only_the_no_tools_yaml_fallback_and_says_so_in_english() {
     // worse than one that can only do six things. But its fallback arm used
     // to print a Rust variant name.
     let body = body_of(&main_rs(), "fn handle(");
-    assert!(!body.contains(":?}"), "`handle` still debug-formats an intent onto the screen");
+    assert!(
+        !body.contains(":?}"),
+        "`handle` still debug-formats an intent onto the screen"
+    );
     assert!(
         body.contains("tools.yaml"),
         "`handle`'s fallback should say why it can only do a few things"
@@ -159,7 +173,10 @@ fn prompt_line_still_prefers_the_daemon() {
         body.contains("d.turn(") || body.contains("d.execute_timed("),
         "prompt_line no longer reaches the daemon at all"
     );
-    assert!(body.contains("handle(cfg, plat, parser, approver"), "the fallback is gone");
+    assert!(
+        body.contains("handle(cfg, plat, parser, approver"),
+        "the fallback is gone"
+    );
 }
 
 #[test]
@@ -169,8 +186,13 @@ fn the_daemon_covers_far_more_than_the_fallback_ever_did() {
     // should be told to stop.
     let daemon = crate::common::source_of("daemon");
     let arms = daemon.matches("Intent::").count();
-    let handle_arms = body_of(&main_rs(), "fn handle(").matches("Intent::").count();
-    assert!(arms > 60, "the daemon only handles {arms} intent references");
+    let handle_arms = body_of(&main_rs(), "fn handle(")
+        .matches("Intent::")
+        .count();
+    assert!(
+        arms > 60,
+        "the daemon only handles {arms} intent references"
+    );
     assert!(
         handle_arms < 12,
         "`handle` now names {handle_arms} intents — it is growing into a \

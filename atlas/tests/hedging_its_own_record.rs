@@ -26,7 +26,11 @@ const FROM_THE_RECORD: &str = "Your workspace is set to two monitors because you
 #[test]
 fn an_answer_read_from_its_own_record_was_being_withheld() {
     // What the single production call site did, spelled out.
-    let (level, _, _) = assess(FROM_THE_RECORD, &Grounding::default(), &CertaintyConfig::default());
+    let (level, _, _) = assess(
+        FROM_THE_RECORD,
+        &Grounding::default(),
+        &CertaintyConfig::default(),
+    );
     assert_eq!(
         level,
         Confidence::Withhold,
@@ -35,15 +39,26 @@ fn an_answer_read_from_its_own_record_was_being_withheld() {
     );
 
     // And what it turned into out loud.
-    let spoken = phrase(FROM_THE_RECORD, level, "it made a claim about your machine without checking");
+    let spoken = phrase(
+        FROM_THE_RECORD,
+        level,
+        "it made a claim about your machine without checking",
+    );
     assert!(spoken.starts_with("I don't know"), "{spoken}");
 }
 
 #[test]
 fn told_the_truth_it_simply_answers() {
-    let (level, _, why) =
-        assess(FROM_THE_RECORD, &Grounding::from_what_it_holds(), &CertaintyConfig::default());
-    assert_eq!(level, Confidence::Fine, "still doubting its own record: {why}");
+    let (level, _, why) = assess(
+        FROM_THE_RECORD,
+        &Grounding::from_what_it_holds(),
+        &CertaintyConfig::default(),
+    );
+    assert_eq!(
+        level,
+        Confidence::Fine,
+        "still doubting its own record: {why}"
+    );
     assert_eq!(
         phrase(FROM_THE_RECORD, level, &why),
         FROM_THE_RECORD,
@@ -59,10 +74,16 @@ fn a_write_up_with_nothing_behind_it_is_still_caught() {
     let thin = "I think the figure is probably around 1234.56, though it could be \
                 higher — as far as I know it might be lower.";
 
-    let (with_nothing, _, _) =
-        assess(thin, &Grounding::from_sources(0), &CertaintyConfig::default());
-    let (with_sources, _, _) =
-        assess(thin, &Grounding::from_sources(4), &CertaintyConfig::default());
+    let (with_nothing, _, _) = assess(
+        thin,
+        &Grounding::from_sources(0),
+        &CertaintyConfig::default(),
+    );
+    let (with_sources, _, _) = assess(
+        thin,
+        &Grounding::from_sources(4),
+        &CertaintyConfig::default(),
+    );
 
     assert!(
         with_nothing.severity_is_at_least_qualify(),

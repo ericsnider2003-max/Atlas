@@ -51,7 +51,10 @@ impl WebSocket {
         stream.set_write_timeout(Some(timeout))?;
         stream.set_nodelay(true)?;
 
-        let mut ws = WebSocket { stream, rng: seed() };
+        let mut ws = WebSocket {
+            stream,
+            rng: seed(),
+        };
         ws.handshake(host, path)?;
         Ok(ws)
     }
@@ -71,7 +74,9 @@ impl WebSocket {
         while !head.ends_with(b"\r\n\r\n") {
             let n = self.stream.read(&mut byte)?;
             if n == 0 {
-                return Err(AtlasError::Platform("server closed during handshake".into()));
+                return Err(AtlasError::Platform(
+                    "server closed during handshake".into(),
+                ));
             }
             head.push(byte[0]);
             if head.len() > 8192 {
@@ -81,7 +86,9 @@ impl WebSocket {
         let text = String::from_utf8_lossy(&head);
         if !text.starts_with("HTTP/1.1 101") {
             let line = text.lines().next().unwrap_or("").to_string();
-            return Err(AtlasError::Platform(format!("websocket upgrade refused: {line}")));
+            return Err(AtlasError::Platform(format!(
+                "websocket upgrade refused: {line}"
+            )));
         }
         Ok(())
     }
@@ -145,7 +152,9 @@ impl WebSocket {
             n => n as usize,
         };
         if len > 64 * 1024 * 1024 {
-            return Err(AtlasError::Platform("websocket frame absurdly large".into()));
+            return Err(AtlasError::Platform(
+                "websocket frame absurdly large".into(),
+            ));
         }
 
         let mut mask = [0u8; 4];

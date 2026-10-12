@@ -41,7 +41,6 @@ pub enum State {
     Dropped,
 }
 
-
 /// One file a change writes, relative to the project folder.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FileEdit {
@@ -83,7 +82,6 @@ pub struct Change {
     pub outdated: Option<Vec<String>>,
 }
 
-
 /// An outstanding task for a project: something you or Atlas noted needs
 /// doing, not yet turned into a proposed change.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -121,14 +119,21 @@ impl Project {
 
     /// Changes waiting on the user, newest first.
     pub fn ready(&self) -> Vec<&Change> {
-        let mut v: Vec<&Change> = self.changes.iter().filter(|c| c.state == State::Ready).collect();
+        let mut v: Vec<&Change> = self
+            .changes
+            .iter()
+            .filter(|c| c.state == State::Ready)
+            .collect();
         v.sort_by_key(|c| std::cmp::Reverse(c.ready_at));
         v
     }
 
     /// Changes still being worked.
     pub fn in_progress(&self) -> Vec<&Change> {
-        self.changes.iter().filter(|c| c.state == State::Working).collect()
+        self.changes
+            .iter()
+            .filter(|c| c.state == State::Working)
+            .collect()
     }
 
     /// Tasks not yet done.
@@ -165,7 +170,11 @@ impl Workshop {
             return None;
         }
         // Exact (case-insensitive) first.
-        if let Some(i) = self.projects.iter().position(|p| p.name.eq_ignore_ascii_case(&n)) {
+        if let Some(i) = self
+            .projects
+            .iter()
+            .position(|p| p.name.eq_ignore_ascii_case(&n))
+        {
             return Some(i);
         }
         // Then a unique substring match.
@@ -173,7 +182,9 @@ impl Workshop {
             .projects
             .iter()
             .enumerate()
-            .filter(|(_, p)| p.name.to_lowercase().contains(&n) || n.contains(&p.name.to_lowercase()))
+            .filter(|(_, p)| {
+                p.name.to_lowercase().contains(&n) || n.contains(&p.name.to_lowercase())
+            })
             .map(|(i, _)| i)
             .collect();
         if hits.len() == 1 {
@@ -186,7 +197,11 @@ impl Workshop {
     /// Register a project, or update its folder. Names are unique; registering
     /// an existing name just points it at the folder.
     pub fn register(&mut self, name: &str, folder: &str, now: u64) {
-        if let Some(i) = self.projects.iter().position(|p| p.name.eq_ignore_ascii_case(name)) {
+        if let Some(i) = self
+            .projects
+            .iter()
+            .position(|p| p.name.eq_ignore_ascii_case(name))
+        {
             if !folder.trim().is_empty() {
                 self.projects[i].folder = folder.to_string();
             }
@@ -302,16 +317,30 @@ impl Workshop {
             if moved.is_empty() {
                 Ok(plan)
             } else {
-                Err(ImplementError::Outdated { title: c.title.clone(), files: moved })
+                Err(ImplementError::Outdated {
+                    title: c.title.clone(),
+                    files: moved,
+                })
             }
         })
     }
 
     /// Record what the files looked like when a change was written, so it
     /// can tell later whether the code has moved on under it.
-    pub fn note_bases(&mut self, project: &str, change_id: u64, bases: Vec<(String, String)>) -> bool {
-        let Some(pi) = self.index_of(project) else { return false };
-        match self.projects[pi].changes.iter_mut().find(|c| c.id == change_id) {
+    pub fn note_bases(
+        &mut self,
+        project: &str,
+        change_id: u64,
+        bases: Vec<(String, String)>,
+    ) -> bool {
+        let Some(pi) = self.index_of(project) else {
+            return false;
+        };
+        match self.projects[pi]
+            .changes
+            .iter_mut()
+            .find(|c| c.id == change_id)
+        {
             Some(c) => {
                 c.bases = bases;
                 true
@@ -354,7 +383,9 @@ impl Workshop {
             .iter()
             .flat_map(|p| {
                 p.ready().into_iter().filter_map(move |c| {
-                    c.outdated.as_ref().map(|f| (p.name.clone(), c.title.clone(), f.clone()))
+                    c.outdated
+                        .as_ref()
+                        .map(|f| (p.name.clone(), c.title.clone(), f.clone()))
                 })
             })
             .collect()
@@ -362,7 +393,9 @@ impl Workshop {
 
     /// Mark a change implemented (after the caller has written its files).
     pub fn mark_implemented(&mut self, project: &str, change_id: u64, now: u64) -> bool {
-        let Some(pi) = self.index_of(project) else { return false };
+        let Some(pi) = self.index_of(project) else {
+            return false;
+        };
         let p = &mut self.projects[pi];
         if let Some(c) = p.changes.iter_mut().find(|c| c.id == change_id) {
             c.state = State::Implemented;
@@ -382,10 +415,14 @@ impl Workshop {
         let p = &mut self.projects[i];
         p.next_id += 1;
         let id = p.next_id;
-        p.tasks.push(Task { id, title: title.trim().to_string(), done: false, created: now });
+        p.tasks.push(Task {
+            id,
+            title: title.trim().to_string(),
+            done: false,
+            created: now,
+        });
         Some(id)
     }
-
 }
 
 /// A resolved plan for implementing a change: where, and what to write.
@@ -426,7 +463,10 @@ fn print_of(path: &std::path::Path) -> String {
 /// Fingerprints of these files (paths relative to `folder`), as they are now.
 pub fn bases_in(folder: &str, paths: &[String]) -> Vec<(String, String)> {
     let root = std::path::Path::new(folder);
-    paths.iter().map(|p| (p.clone(), print_of(&root.join(p)))).collect()
+    paths
+        .iter()
+        .map(|p| (p.clone(), print_of(&root.join(p))))
+        .collect()
 }
 
 /// The files of `c` that differ in `folder` from when it was written.
@@ -447,21 +487,35 @@ mod tests {
     use super::*;
 
     fn edit(path: &str) -> FileEdit {
-        FileEdit { path: path.into(), content: "// code".into() }
+        FileEdit {
+            path: path.into(),
+            content: "// code".into(),
+        }
     }
 
     #[test]
     fn a_proposed_change_lands_ready_not_implemented() {
         let mut w = Workshop::default();
         let id = w
-            .propose("Atlas", "date parser", "parses ISO dates", vec![edit("src/date.rs")], true, "checks passed", 100)
+            .propose(
+                "Atlas",
+                "date parser",
+                "parses ISO dates",
+                vec![edit("src/date.rs")],
+                true,
+                "checks passed",
+                100,
+            )
             .unwrap();
         let p = w.resolve("Atlas").unwrap();
         assert_eq!(p.ready().len(), 1, "it should be waiting on the user");
         let c = &p.changes[0];
         assert_eq!(c.id, id);
         assert_eq!(c.state, State::Ready);
-        assert!(c.implemented_at.is_none(), "nothing is applied until you say so");
+        assert!(
+            c.implemented_at.is_none(),
+            "nothing is applied until you say so"
+        );
     }
 
     #[test]
@@ -489,7 +543,15 @@ mod tests {
     fn implementing_by_title_finds_the_change_and_its_files() {
         let mut w = Workshop::default();
         w.register("Atlas", "/home/me/atlas", 1);
-        w.propose("Atlas", "date parser", "parses dates", vec![edit("src/date.rs")], true, "", 1);
+        w.propose(
+            "Atlas",
+            "date parser",
+            "parses dates",
+            vec![edit("src/date.rs")],
+            true,
+            "",
+            1,
+        );
         let plan = w.plan_implementation("date parser").unwrap();
         assert_eq!(plan.project, "Atlas");
         assert_eq!(plan.folder, "/home/me/atlas");
@@ -501,7 +563,15 @@ mod tests {
     fn implementing_without_a_folder_asks_where_the_project_lives() {
         let mut w = Workshop::default();
         // Filed before the folder was known.
-        w.propose("Newproj", "thing", "does a thing", vec![edit("x.rs")], true, "", 1);
+        w.propose(
+            "Newproj",
+            "thing",
+            "does a thing",
+            vec![edit("x.rs")],
+            true,
+            "",
+            1,
+        );
         match w.plan_implementation("thing") {
             Err(ImplementError::NoFolder(name)) => assert_eq!(name, "Newproj"),
             other => panic!("expected NoFolder, got {other:?}"),
@@ -513,7 +583,10 @@ mod tests {
         let mut w = Workshop::default();
         w.register("Atlas", "/a", 1);
         w.propose("Atlas", "date parser", "x", vec![], true, "", 1);
-        assert!(matches!(w.plan_implementation("nonexistent"), Err(ImplementError::NoMatch)));
+        assert!(matches!(
+            w.plan_implementation("nonexistent"),
+            Err(ImplementError::NoMatch)
+        ));
     }
 
     #[test]
@@ -523,7 +596,10 @@ mod tests {
         let id = w.propose("Atlas", "t", "x", vec![], true, "", 1).unwrap();
         assert!(w.mark_implemented("Atlas", id, 2));
         assert_eq!(w.resolve("Atlas").unwrap().ready().len(), 0);
-        assert_eq!(w.resolve("Atlas").unwrap().changes[0].state, State::Implemented);
+        assert_eq!(
+            w.resolve("Atlas").unwrap().changes[0].state,
+            State::Implemented
+        );
     }
 
     #[test]
@@ -531,6 +607,9 @@ mod tests {
         let mut w = Workshop::default();
         w.add_task("Atlas", "write the docs", 1);
         assert_eq!(w.resolve("Atlas").unwrap().outstanding().len(), 1);
-        assert_eq!(w.resolve("Atlas").unwrap().outstanding()[0].title, "write the docs");
+        assert_eq!(
+            w.resolve("Atlas").unwrap().outstanding()[0].title,
+            "write the docs"
+        );
     }
 }

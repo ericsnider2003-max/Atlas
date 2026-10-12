@@ -17,9 +17,9 @@ use windows::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindow, GetWindowLongW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
-    SetForegroundWindow, SetWindowPos, ShowWindow, GWL_EXSTYLE, GW_OWNER, HWND_TOP, SWP_NOZORDER,
-    SW_RESTORE, WS_EX_TOOLWINDOW,
+    EnumWindows, GetWindow, GetWindowLongW, GetWindowTextW, GetWindowThreadProcessId,
+    IsWindowVisible, SetForegroundWindow, SetWindowPos, ShowWindow, GWL_EXSTYLE, GW_OWNER,
+    HWND_TOP, SWP_NOZORDER, SW_RESTORE, WS_EX_TOOLWINDOW,
 };
 
 /// Set in MONITORINFO.dwFlags for the primary display. Defined here because
@@ -48,7 +48,9 @@ pub fn become_dpi_aware() {
     // SAFETY: SetProcessDpiAwarenessContext takes a plain context constant and touches no memory of
     // ours; a refusal is ignored on purpose.
     ONCE.call_once(|| unsafe {
-        use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
+        use windows::Win32::UI::HiDpi::{
+            SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+        };
         // Refused when the awareness was already set (by a manifest, or by
         // a window library first) -- which is as good.
         if SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2).is_err() {
@@ -79,7 +81,11 @@ unsafe extern "system" fn mon_cb(h: HMONITOR, _: HDC, _: *mut RECT, lp: LPARAM) 
     let mut info = MONITORINFOEXW::default();
     info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
     if GetMonitorInfoW(h, &mut info as *mut MONITORINFOEXW as *mut MONITORINFO).as_bool() {
-        let end = info.szDevice.iter().position(|c| *c == 0).unwrap_or(info.szDevice.len());
+        let end = info
+            .szDevice
+            .iter()
+            .position(|c| *c == 0)
+            .unwrap_or(info.szDevice.len());
         acc.0.push(WinMon {
             id: h.0 as usize as u32,
             work: info.monitorInfo.rcWork,
@@ -98,7 +104,12 @@ fn all_monitors() -> Vec<WinMon> {
     // SAFETY: `mon_cb` is called synchronously during this call only, and `acc` outlives it; the
     // LPARAM round-trips the same `&mut MonAcc`.
     unsafe {
-        let _ = EnumDisplayMonitors(None, None, Some(mon_cb), LPARAM(&mut acc as *mut MonAcc as isize));
+        let _ = EnumDisplayMonitors(
+            None,
+            None,
+            Some(mon_cb),
+            LPARAM(&mut acc as *mut MonAcc as isize),
+        );
     }
     acc.0
 }
@@ -107,10 +118,14 @@ fn all_monitors() -> Vec<WinMon> {
 /// blue, top row first.
 unsafe fn grab_rect(r: RECT) -> Option<(u32, u32, Vec<u8>)> {
     use windows::Win32::Graphics::Gdi::{
-        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC, SelectObject,
-        BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS, SRCCOPY,
+        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
+        GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT,
+        DIB_RGB_COLORS, SRCCOPY,
     };
-    let (w, h) = ((r.right - r.left).clamp(1, 16384), (r.bottom - r.top).clamp(1, 16384));
+    let (w, h) = (
+        (r.right - r.left).clamp(1, 16384),
+        (r.bottom - r.top).clamp(1, 16384),
+    );
     let screen = GetDC(None);
     let mem = CreateCompatibleDC(screen);
     let bmp = CreateCompatibleBitmap(screen, w, h);
@@ -129,7 +144,19 @@ unsafe fn grab_rect(r: RECT) -> Option<(u32, u32, Vec<u8>)> {
         ..Default::default()
     };
     let mut bgra = vec![0u8; (w as usize) * (h as usize) * 4];
-    let lines = if copied { GetDIBits(mem, bmp, 0, h as u32, Some(bgra.as_mut_ptr() as *mut _), &mut info, DIB_RGB_COLORS) } else { 0 };
+    let lines = if copied {
+        GetDIBits(
+            mem,
+            bmp,
+            0,
+            h as u32,
+            Some(bgra.as_mut_ptr() as *mut _),
+            &mut info,
+            DIB_RGB_COLORS,
+        )
+    } else {
+        0
+    };
     SelectObject(mem, old);
     let _ = DeleteObject(bmp);
     let _ = DeleteDC(mem);
@@ -137,7 +164,12 @@ unsafe fn grab_rect(r: RECT) -> Option<(u32, u32, Vec<u8>)> {
     if lines == 0 {
         return None;
     }
-    let rgb: Vec<u8> = bgra.as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0]]).collect();
+    let rgb: Vec<u8> = bgra
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .flat_map(|p| [p[2], p[1], p[0]])
+        .collect();
     Some((w as u32, h as u32, rgb))
 }
 
@@ -207,7 +239,9 @@ unsafe extern "system" fn win_cb(hwnd: HWND, lp: LPARAM) -> BOOL {
     // window and keep a helper only as a fallback.
     let mut tbuf = [0u16; 8];
     let has_title = GetWindowTextW(hwnd, &mut tbuf) > 0;
-    let owned = GetWindow(hwnd, GW_OWNER).map(|o| !o.0.is_null()).unwrap_or(false);
+    let owned = GetWindow(hwnd, GW_OWNER)
+        .map(|o| !o.0.is_null())
+        .unwrap_or(false);
     let tool = (GetWindowLongW(hwnd, GWL_EXSTYLE) as u32) & WS_EX_TOOLWINDOW.0 != 0;
     if has_title && !owned && !tool {
         acc.found = Some(hwnd);
@@ -237,9 +271,13 @@ impl Platform for WindowsPlatform {
                 let mut buf = [0u16; 512];
                 let mut len = buf.len() as u32;
                 if QueryFullProcessImageNameW(
-                    h, PROCESS_NAME_FORMAT(0),
-                    windows::core::PWSTR(buf.as_mut_ptr()), &mut len,
-                ).is_ok() {
+                    h,
+                    PROCESS_NAME_FORMAT(0),
+                    windows::core::PWSTR(buf.as_mut_ptr()),
+                    &mut len,
+                )
+                .is_ok()
+                {
                     let full = String::from_utf16_lossy(&buf[..len as usize]);
                     process = full.rsplit('\\').next().unwrap_or(&full).to_string();
                 }
@@ -311,9 +349,16 @@ impl Platform for WindowsPlatform {
         let mut r = RECT::default();
         // SAFETY: `r` is a live RECT the call writes; a stale window handle makes the call fail
         // with an error.
-        unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowRect(HWND(win.0 as *mut _), &mut r) }
-            .map_err(|e| AtlasError::Platform(format!("couldn't read where that window is: {e}")))?;
-        Ok(PixelRect { x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top })
+        unsafe {
+            windows::Win32::UI::WindowsAndMessaging::GetWindowRect(HWND(win.0 as *mut _), &mut r)
+        }
+        .map_err(|e| AtlasError::Platform(format!("couldn't read where that window is: {e}")))?;
+        Ok(PixelRect {
+            x: r.left,
+            y: r.top,
+            width: r.right - r.left,
+            height: r.bottom - r.top,
+        })
     }
 
     fn window_at(&self, x: i32, y: i32) -> Result<Option<WindowId>> {
@@ -342,7 +387,19 @@ impl Platform for WindowsPlatform {
         let mut groups: Vec<Vec<INPUT>> = Vec::new();
         let key = |vk: VIRTUAL_KEY, up: bool| INPUT {
             r#type: INPUT_KEYBOARD,
-            Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: vk, wScan: 0, dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) }, time: 0, dwExtraInfo: 0 } },
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    wScan: 0,
+                    dwFlags: if up {
+                        KEYEVENTF_KEYUP
+                    } else {
+                        KEYBD_EVENT_FLAGS(0)
+                    },
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
         };
         for line_or_break in text.replace("\r\n", "\n").split_inclusive('\n') {
             let (line, brk) = match line_or_break.strip_suffix('\n') {
@@ -354,19 +411,30 @@ impl Platform for WindowsPlatform {
                 for up in [false, true] {
                     pair.push(INPUT {
                         r#type: INPUT_KEYBOARD,
-                        Anonymous: INPUT_0 { ki: KEYBDINPUT {
-                            wVk: VIRTUAL_KEY(0),
-                            wScan: unit,
-                            dwFlags: if up { KEYEVENTF_UNICODE | KEYEVENTF_KEYUP } else { KEYEVENTF_UNICODE },
-                            time: 0,
-                            dwExtraInfo: 0,
-                        } },
+                        Anonymous: INPUT_0 {
+                            ki: KEYBDINPUT {
+                                wVk: VIRTUAL_KEY(0),
+                                wScan: unit,
+                                dwFlags: if up {
+                                    KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+                                } else {
+                                    KEYEVENTF_UNICODE
+                                },
+                                time: 0,
+                                dwExtraInfo: 0,
+                            },
+                        },
                     });
                 }
                 groups.push(pair);
             }
             if brk {
-                groups.push(vec![key(VK_SHIFT, false), key(VK_RETURN, false), key(VK_RETURN, true), key(VK_SHIFT, true)]);
+                groups.push(vec![
+                    key(VK_SHIFT, false),
+                    key(VK_RETURN, false),
+                    key(VK_RETURN, true),
+                    key(VK_SHIFT, true),
+                ]);
             }
         }
         send_groups(&groups)
@@ -377,11 +445,26 @@ impl Platform for WindowsPlatform {
         use windows::Win32::UI::Input::KeyboardAndMouse::*;
         let keys = combo
             .split('+')
-            .map(|k| vk_for(k.trim()).ok_or_else(|| AtlasError::Platform(format!("I don't know the key \"{k}\""))))
+            .map(|k| {
+                vk_for(k.trim())
+                    .ok_or_else(|| AtlasError::Platform(format!("I don't know the key \"{k}\"")))
+            })
             .collect::<Result<Vec<VIRTUAL_KEY>>>()?;
         let mk = |vk: VIRTUAL_KEY, up: bool| INPUT {
             r#type: INPUT_KEYBOARD,
-            Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: vk, wScan: 0, dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) }, time: 0, dwExtraInfo: 0 } },
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    wScan: 0,
+                    dwFlags: if up {
+                        KEYEVENTF_KEYUP
+                    } else {
+                        KEYBD_EVENT_FLAGS(0)
+                    },
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
         };
         let mut inputs: Vec<INPUT> = keys.iter().map(|k| mk(*k, false)).collect();
         inputs.extend(keys.iter().rev().map(|k| mk(*k, true)));
@@ -399,7 +482,19 @@ impl Platform for WindowsPlatform {
         if delete > 0 {
             let key = |up: bool| INPUT {
                 r#type: INPUT_KEYBOARD,
-                Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: VK_BACK, wScan: 0, dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) }, time: 0, dwExtraInfo: 0 } },
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: VK_BACK,
+                        wScan: 0,
+                        dwFlags: if up {
+                            KEYEVENTF_KEYUP
+                        } else {
+                            KEYBD_EVENT_FLAGS(0)
+                        },
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
             };
             let burst: Vec<INPUT> = (0..delete).flat_map(|_| [key(false), key(true)]).collect();
             send_groups(&[burst])?;
@@ -418,7 +513,9 @@ impl Platform for WindowsPlatform {
             let root = ua
                 .ElementFromHandle(HWND(win.0 as *mut std::ffi::c_void))
                 .map_err(|e| AtlasError::Platform(format!("couldn't read that window: {e}")))?;
-            let walker = ua.ControlViewWalker().map_err(|e| AtlasError::Platform(format!("UI Automation: {e}")))?;
+            let walker = ua
+                .ControlViewWalker()
+                .map_err(|e| AtlasError::Platform(format!("UI Automation: {e}")))?;
             let mut budget = 3000usize;
             let started = std::time::Instant::now();
             Ok(Some(uia_node(&walker, &root, 0, &mut budget, started)))
@@ -430,8 +527,8 @@ impl Platform for WindowsPlatform {
     /// window whose text box isn't selected.
     fn press_named(&self, win: WindowId, name: &str) -> Result<bool> {
         use windows::Win32::UI::Accessibility::{
-            IUIAutomationInvokePattern, PropertyConditionFlags_IgnoreCase, TreeScope_Descendants, UIA_InvokePatternId,
-            UIA_NamePropertyId,
+            IUIAutomationInvokePattern, PropertyConditionFlags_IgnoreCase, TreeScope_Descendants,
+            UIA_InvokePatternId, UIA_NamePropertyId,
         };
         // SAFETY: COM was initialised by `automation()`; every interface here is an owned smart
         // pointer, and a stale window handle makes UIA return an error.
@@ -441,9 +538,15 @@ impl Platform for WindowsPlatform {
                 .ElementFromHandle(HWND(win.0 as *mut std::ffi::c_void))
                 .map_err(|e| AtlasError::Platform(format!("couldn't read that window: {e}")))?;
             let cond = ua
-                .CreatePropertyConditionEx(UIA_NamePropertyId, &windows::core::VARIANT::from(name), PropertyConditionFlags_IgnoreCase)
+                .CreatePropertyConditionEx(
+                    UIA_NamePropertyId,
+                    &windows::core::VARIANT::from(name),
+                    PropertyConditionFlags_IgnoreCase,
+                )
                 .map_err(|e| AtlasError::Platform(format!("UI Automation: {e}")))?;
-            let Ok(el) = root.FindFirst(TreeScope_Descendants, &cond) else { return Ok(false) };
+            let Ok(el) = root.FindFirst(TreeScope_Descendants, &cond) else {
+                return Ok(false);
+            };
             if !el.CurrentIsEnabled().map(|b| b.as_bool()).unwrap_or(false) {
                 return Ok(false);
             }
@@ -461,8 +564,9 @@ impl Platform for WindowsPlatform {
     fn act_on(&self, win: WindowId, path: &[usize], act: &crate::uia::UiAct) -> Result<bool> {
         use crate::uia::UiAct;
         use windows::Win32::UI::Accessibility::{
-            IUIAutomationExpandCollapsePattern, IUIAutomationInvokePattern, IUIAutomationSelectionItemPattern,
-            IUIAutomationTogglePattern, IUIAutomationValuePattern, UIA_ExpandCollapsePatternId, UIA_InvokePatternId,
+            IUIAutomationExpandCollapsePattern, IUIAutomationInvokePattern,
+            IUIAutomationSelectionItemPattern, IUIAutomationTogglePattern,
+            IUIAutomationValuePattern, UIA_ExpandCollapsePatternId, UIA_InvokePatternId,
             UIA_SelectionItemPatternId, UIA_TogglePatternId, UIA_ValuePatternId,
         };
         // SAFETY: COM was initialised by `automation()`; every interface here is an owned smart
@@ -472,15 +576,17 @@ impl Platform for WindowsPlatform {
             let mut el = ua
                 .ElementFromHandle(HWND(win.0 as *mut std::ffi::c_void))
                 .map_err(|e| AtlasError::Platform(format!("couldn't read that window: {e}")))?;
-            let walker = ua.ControlViewWalker().map_err(|e| AtlasError::Platform(format!("UI Automation: {e}")))?;
+            let walker = ua
+                .ControlViewWalker()
+                .map_err(|e| AtlasError::Platform(format!("UI Automation: {e}")))?;
             for &i in path {
-                let mut child = walker
-                    .GetFirstChildElement(&el)
-                    .map_err(|_| AtlasError::Platform("that control isn't there any more".into()))?;
+                let mut child = walker.GetFirstChildElement(&el).map_err(|_| {
+                    AtlasError::Platform("that control isn't there any more".into())
+                })?;
                 for _ in 0..i {
-                    child = walker
-                        .GetNextSiblingElement(&child)
-                        .map_err(|_| AtlasError::Platform("that control isn't there any more".into()))?;
+                    child = walker.GetNextSiblingElement(&child).map_err(|_| {
+                        AtlasError::Platform("that control isn't there any more".into())
+                    })?;
                 }
                 el = child;
             }
@@ -488,26 +594,38 @@ impl Platform for WindowsPlatform {
                 return Err(AtlasError::Platform("that control is greyed out".into()));
             }
             let done = match act {
-                UiAct::Invoke => match el.GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId) {
+                UiAct::Invoke => match el
+                    .GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId)
+                {
                     Ok(p) => p.Invoke().is_ok(),
                     Err(_) => false,
                 },
-                UiAct::SetValue(v) => match el.GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId) {
-                    Ok(p) => p.SetValue(&windows::core::BSTR::from(v.as_str())).is_ok(),
-                    Err(_) => false,
-                },
-                UiAct::Toggle => match el.GetCurrentPatternAs::<IUIAutomationTogglePattern>(UIA_TogglePatternId) {
+                UiAct::SetValue(v) => {
+                    match el.GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId) {
+                        Ok(p) => p.SetValue(&windows::core::BSTR::from(v.as_str())).is_ok(),
+                        Err(_) => false,
+                    }
+                }
+                UiAct::Toggle => match el
+                    .GetCurrentPatternAs::<IUIAutomationTogglePattern>(UIA_TogglePatternId)
+                {
                     Ok(p) => p.Toggle().is_ok(),
                     Err(_) => false,
                 },
-                UiAct::Select => match el.GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(UIA_SelectionItemPatternId) {
+                UiAct::Select => match el.GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(
+                    UIA_SelectionItemPatternId,
+                ) {
                     Ok(p) => p.Select().is_ok(),
                     Err(_) => false,
                 },
-                UiAct::Expand => match el.GetCurrentPatternAs::<IUIAutomationExpandCollapsePattern>(UIA_ExpandCollapsePatternId) {
-                    Ok(p) => p.Expand().is_ok(),
-                    Err(_) => false,
-                },
+                UiAct::Expand => {
+                    match el.GetCurrentPatternAs::<IUIAutomationExpandCollapsePattern>(
+                        UIA_ExpandCollapsePatternId,
+                    ) {
+                        Ok(p) => p.Expand().is_ok(),
+                        Err(_) => false,
+                    }
+                }
                 UiAct::Focus => el.SetFocus().is_ok(),
             };
             Ok(done)
@@ -515,12 +633,16 @@ impl Platform for WindowsPlatform {
     }
 
     fn focused_text(&self) -> Result<Option<String>> {
-        use windows::Win32::UI::Accessibility::{IUIAutomationTextPattern, UIA_TextPatternId, UIA_ValueValuePropertyId};
+        use windows::Win32::UI::Accessibility::{
+            IUIAutomationTextPattern, UIA_TextPatternId, UIA_ValueValuePropertyId,
+        };
         // SAFETY: COM was initialised by `automation()`; every interface here is an owned smart
         // pointer that lives through the call.
         unsafe {
             let ua = automation()?;
-            let Ok(el) = ua.GetFocusedElement() else { return Ok(None) };
+            let Ok(el) = ua.GetFocusedElement() else {
+                return Ok(None);
+            };
             // A password box is never read, whatever else it is.
             if el.CurrentIsPassword().map(|b| b.as_bool()).unwrap_or(true) {
                 return Ok(None);
@@ -547,12 +669,16 @@ impl Platform for WindowsPlatform {
     }
 
     fn focused_is_editable(&self) -> Result<Option<bool>> {
-        use windows::Win32::UI::Accessibility::{UIA_DocumentControlTypeId, UIA_EditControlTypeId, UIA_ValueIsReadOnlyPropertyId};
+        use windows::Win32::UI::Accessibility::{
+            UIA_DocumentControlTypeId, UIA_EditControlTypeId, UIA_ValueIsReadOnlyPropertyId,
+        };
         // SAFETY: COM was initialised by `automation()`; every interface here is an owned smart
         // pointer that lives through the call.
         unsafe {
             let ua = automation()?;
-            let Ok(el) = ua.GetFocusedElement() else { return Ok(None) };
+            let Ok(el) = ua.GetFocusedElement() else {
+                return Ok(None);
+            };
             let kind = el.CurrentControlType().ok();
             let read_only = el
                 .GetCurrentPropertyValue(UIA_ValueIsReadOnlyPropertyId)
@@ -569,12 +695,18 @@ impl Platform for WindowsPlatform {
     fn session_locked(&self) -> Option<bool> {
         // The input desktop can't be opened for switching while the lock
         // screen owns it: the standard way to tell a locked session.
-        use windows::Win32::System::StationsAndDesktops::{CloseDesktop, OpenInputDesktop, DESKTOP_ACCESS_FLAGS, DESKTOP_CONTROL_FLAGS};
+        use windows::Win32::System::StationsAndDesktops::{
+            CloseDesktop, OpenInputDesktop, DESKTOP_ACCESS_FLAGS, DESKTOP_CONTROL_FLAGS,
+        };
         const DESKTOP_SWITCHDESKTOP: u32 = 0x0100;
         // SAFETY: the desktop handle from OpenInputDesktop is closed on the success path and not
         // used otherwise; no memory of ours is passed.
         unsafe {
-            match OpenInputDesktop(DESKTOP_CONTROL_FLAGS(0), false, DESKTOP_ACCESS_FLAGS(DESKTOP_SWITCHDESKTOP)) {
+            match OpenInputDesktop(
+                DESKTOP_CONTROL_FLAGS(0),
+                false,
+                DESKTOP_ACCESS_FLAGS(DESKTOP_SWITCHDESKTOP),
+            ) {
                 Ok(h) => {
                     let _ = CloseDesktop(h);
                     Some(false)
@@ -588,7 +720,11 @@ impl Platform for WindowsPlatform {
         let last = last_input_tick()?;
         // SAFETY: GetTickCount takes no arguments.
         let now = unsafe { windows::Win32::System::SystemInformation::GetTickCount() };
-        let own = OWN_INPUT.lock().or_else(crate::crash::unpoison).ok().and_then(|o| *o);
+        let own = OWN_INPUT
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()
+            .and_then(|o| *o);
         Some(crate::platform::idle::idle_of_yours(last, own, now))
     }
 
@@ -610,8 +746,10 @@ impl Platform for WindowsPlatform {
 
     fn built_in_screen_on(&self) -> Option<bool> {
         use windows::Win32::Devices::Display::{
-            GetDisplayConfigBufferSizes, QueryDisplayConfig, DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED,
-            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED, DISPLAYCONFIG_PATH_INFO, QDC_ALL_PATHS,
+            GetDisplayConfigBufferSizes, QueryDisplayConfig, DISPLAYCONFIG_MODE_INFO,
+            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED,
+            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED,
+            DISPLAYCONFIG_PATH_INFO, QDC_ALL_PATHS,
         };
         // SAFETY: the path and mode arrays are `Vec`s sized from GetDisplayConfigBufferSizes and
         // handed back with their counts, as QueryDisplayConfig requires; entries are read only up
@@ -623,7 +761,16 @@ impl Platform for WindowsPlatform {
             }
             let mut paths = vec![DISPLAYCONFIG_PATH_INFO::default(); np as usize];
             let mut modes = vec![DISPLAYCONFIG_MODE_INFO::default(); nm as usize];
-            if QueryDisplayConfig(QDC_ALL_PATHS, &mut np, paths.as_mut_ptr(), &mut nm, modes.as_mut_ptr(), None).is_err() {
+            if QueryDisplayConfig(
+                QDC_ALL_PATHS,
+                &mut np,
+                paths.as_mut_ptr(),
+                &mut nm,
+                modes.as_mut_ptr(),
+                None,
+            )
+            .is_err()
+            {
                 return None;
             }
             paths.truncate(np as usize);
@@ -661,19 +808,31 @@ impl Platform for WindowsPlatform {
     }
 
     fn monitor_bounds(&self, monitor: u32) -> Option<PixelRect> {
-        all_monitors().into_iter().find(|m| m.id == monitor).map(|m| PixelRect {
-            x: m.full.left,
-            y: m.full.top,
-            width: m.full.right - m.full.left,
-            height: m.full.bottom - m.full.top,
-        })
+        all_monitors()
+            .into_iter()
+            .find(|m| m.id == monitor)
+            .map(|m| PixelRect {
+                x: m.full.left,
+                y: m.full.top,
+                width: m.full.right - m.full.left,
+                height: m.full.bottom - m.full.top,
+            })
     }
 
     fn grab_screen(&self, monitor: u32) -> Result<Option<super::Grab>> {
-        let Some(m) = all_monitors().into_iter().find(|m| m.id == monitor) else { return Ok(None) };
+        let Some(m) = all_monitors().into_iter().find(|m| m.id == monitor) else {
+            return Ok(None);
+        };
         // SAFETY: `grab_rect` only needs a screen rectangle; it manages and releases its own device
         // contexts.
-        Ok(unsafe { grab_rect(m.full) }.map(|(width, height, rgb)| super::Grab { width, height, rgb, title: String::new() }))
+        Ok(
+            unsafe { grab_rect(m.full) }.map(|(width, height, rgb)| super::Grab {
+                width,
+                height,
+                rgb,
+                title: String::new(),
+            }),
+        )
     }
 
     fn active_monitor(&self) -> Option<u32> {
@@ -697,10 +856,11 @@ impl Platform for WindowsPlatform {
     /// settings give its source ("\\.\DISPLAY1").
     fn built_in_monitor(&self) -> Option<u32> {
         use windows::Win32::Devices::Display::{
-            DisplayConfigGetDeviceInfo, GetDisplayConfigBufferSizes, QueryDisplayConfig, DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,
-            DISPLAYCONFIG_DEVICE_INFO_HEADER, DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED,
-            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED, DISPLAYCONFIG_PATH_INFO,
-            DISPLAYCONFIG_SOURCE_DEVICE_NAME, QDC_ONLY_ACTIVE_PATHS,
+            DisplayConfigGetDeviceInfo, GetDisplayConfigBufferSizes, QueryDisplayConfig,
+            DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, DISPLAYCONFIG_DEVICE_INFO_HEADER,
+            DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED,
+            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED,
+            DISPLAYCONFIG_PATH_INFO, DISPLAYCONFIG_SOURCE_DEVICE_NAME, QDC_ONLY_ACTIVE_PATHS,
         };
         // SAFETY: the path and mode arrays are `Vec`s sized from GetDisplayConfigBufferSizes and
         // handed back with their counts, as QueryDisplayConfig requires; entries are read only up
@@ -712,7 +872,16 @@ impl Platform for WindowsPlatform {
             }
             let mut paths = vec![DISPLAYCONFIG_PATH_INFO::default(); np as usize];
             let mut modes = vec![DISPLAYCONFIG_MODE_INFO::default(); nm as usize];
-            if QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &mut np, paths.as_mut_ptr(), &mut nm, modes.as_mut_ptr(), None).is_err() {
+            if QueryDisplayConfig(
+                QDC_ONLY_ACTIVE_PATHS,
+                &mut np,
+                paths.as_mut_ptr(),
+                &mut nm,
+                modes.as_mut_ptr(),
+                None,
+            )
+            .is_err()
+            {
                 return None;
             }
             paths.truncate(np as usize);
@@ -737,12 +906,22 @@ impl Platform for WindowsPlatform {
                     if DisplayConfigGetDeviceInfo(&mut src.header) != 0 {
                         return None;
                     }
-                    let end = src.viewGdiDeviceName.iter().position(|c| *c == 0).unwrap_or(32);
+                    let end = src
+                        .viewGdiDeviceName
+                        .iter()
+                        .position(|c| *c == 0)
+                        .unwrap_or(32);
                     Some(String::from_utf16_lossy(&src.viewGdiDeviceName[..end]))
                 })
                 .collect()
         };
-        super::builtin_among(&all_monitors().iter().map(|m| (m.id, m.device.clone())).collect::<Vec<_>>(), &names)
+        super::builtin_among(
+            &all_monitors()
+                .iter()
+                .map(|m| (m.id, m.device.clone()))
+                .collect::<Vec<_>>(),
+            &names,
+        )
     }
 
     fn launch(&self, spec: &AppSpec) -> Result<()> {
@@ -812,7 +991,9 @@ impl Platform for WindowsPlatform {
             let fg = GetForegroundWindow();
             let fg_thread = GetWindowThreadProcessId(fg, None);
             let me = GetCurrentThreadId();
-            let joined = fg_thread != 0 && fg_thread != me && AttachThreadInput(me, fg_thread, TRUE).as_bool();
+            let joined = fg_thread != 0
+                && fg_thread != me
+                && AttachThreadInput(me, fg_thread, TRUE).as_bool();
             let _ = BringWindowToTop(hwnd);
             let _ = SetForegroundWindow(hwnd);
             if joined {
@@ -828,7 +1009,9 @@ impl Platform for WindowsPlatform {
             // WM_CLOSE per-window and is deliberately not implemented yet.
             // Through `tools::command` (no console window flashing up from the
             // windowless background Atlas; 28 Sep 2026).
-            crate::heard!(crate::tools::command("taskkill").args(["/IM", p, "/F"]).output());
+            crate::heard!(crate::tools::command("taskkill")
+                .args(["/IM", p, "/F"])
+                .output());
         }
         Ok(())
     }
@@ -864,7 +1047,8 @@ impl Platform for WindowsPlatform {
         use windows::core::w;
         use windows::Win32::Foundation::HGLOBAL;
         use windows::Win32::System::DataExchange::{
-            CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard, RegisterClipboardFormatW,
+            CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+            RegisterClipboardFormatW,
         };
         use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
         const CF_UNICODETEXT: u32 = 13;
@@ -875,7 +1059,8 @@ impl Platform for WindowsPlatform {
             // The formats a password manager sets to say "don't keep this".
             // Checked before any text is read, so a private copy never
             // enters this process's memory at all.
-            let exclude = RegisterClipboardFormatW(w!("ExcludeClipboardContentFromMonitorProcessing"));
+            let exclude =
+                RegisterClipboardFormatW(w!("ExcludeClipboardContentFromMonitorProcessing"));
             let viewer_ignore = RegisterClipboardFormatW(w!("Clipboard Viewer Ignore"));
             let history = RegisterClipboardFormatW(w!("CanIncludeInClipboardHistory"));
             if OpenClipboard(None).is_err() {
@@ -943,7 +1128,12 @@ impl Platform for WindowsPlatform {
             let title = String::from_utf16_lossy(&tbuf[..n as usize]);
             // From the screen, over the window's rectangle: what you see,
             // which is what you meant.
-            Ok(grab_rect(r).map(|(width, height, rgb)| super::Grab { width, height, rgb, title }))
+            Ok(grab_rect(r).map(|(width, height, rgb)| super::Grab {
+                width,
+                height,
+                rgb,
+                title,
+            }))
         }
     }
 
@@ -956,11 +1146,22 @@ impl Platform for WindowsPlatform {
         // with the language. None when it can't be made.
         let run = || -> windows::core::Result<String> {
             let engine = OcrEngine::TryCreateFromUserProfileLanguages()?;
-            let bgra: Vec<u8> = grab.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[2], p[1], p[0], 255]).collect();
+            let bgra: Vec<u8> = grab
+                .rgb
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .flat_map(|p| [p[2], p[1], p[0], 255])
+                .collect();
             let writer = DataWriter::new()?;
             writer.WriteBytes(&bgra)?;
             let buffer = writer.DetachBuffer()?;
-            let bitmap = SoftwareBitmap::CreateCopyFromBuffer(&buffer, BitmapPixelFormat::Bgra8, grab.width as i32, grab.height as i32)?;
+            let bitmap = SoftwareBitmap::CreateCopyFromBuffer(
+                &buffer,
+                BitmapPixelFormat::Bgra8,
+                grab.width as i32,
+                grab.height as i32,
+            )?;
             let result = engine.RecognizeAsync(&bitmap)?.get()?;
             let mut lines = Vec::new();
             for line in result.Lines()? {
@@ -970,7 +1171,9 @@ impl Platform for WindowsPlatform {
         };
         match run() {
             Ok(text) => Ok(Some(text)),
-            Err(e) => Err(AtlasError::Platform(format!("Windows' text recognition didn't run: {e}"))),
+            Err(e) => Err(AtlasError::Platform(format!(
+                "Windows' text recognition didn't run: {e}"
+            ))),
         }
     }
 
@@ -981,11 +1184,22 @@ impl Platform for WindowsPlatform {
         use windows::Storage::Streams::DataWriter;
         let run = || -> windows::core::Result<Vec<(String, super::PixelRect)>> {
             let engine = OcrEngine::TryCreateFromUserProfileLanguages()?;
-            let bgra: Vec<u8> = grab.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[2], p[1], p[0], 255]).collect();
+            let bgra: Vec<u8> = grab
+                .rgb
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .flat_map(|p| [p[2], p[1], p[0], 255])
+                .collect();
             let writer = DataWriter::new()?;
             writer.WriteBytes(&bgra)?;
             let buffer = writer.DetachBuffer()?;
-            let bitmap = SoftwareBitmap::CreateCopyFromBuffer(&buffer, BitmapPixelFormat::Bgra8, grab.width as i32, grab.height as i32)?;
+            let bitmap = SoftwareBitmap::CreateCopyFromBuffer(
+                &buffer,
+                BitmapPixelFormat::Bgra8,
+                grab.width as i32,
+                grab.height as i32,
+            )?;
             let result = engine.RecognizeAsync(&bitmap)?.get()?;
             let mut out = Vec::new();
             for line in result.Lines()? {
@@ -999,18 +1213,27 @@ impl Platform for WindowsPlatform {
                     y1 = y1.max(r.Y + r.Height);
                 }
                 if x1 > x0 && y1 > y0 {
-                    out.push((text, super::PixelRect { x: x0 as i32, y: y0 as i32, width: (x1 - x0) as i32, height: (y1 - y0) as i32 }));
+                    out.push((
+                        text,
+                        super::PixelRect {
+                            x: x0 as i32,
+                            y: y0 as i32,
+                            width: (x1 - x0) as i32,
+                            height: (y1 - y0) as i32,
+                        },
+                    ));
                 }
             }
             Ok(out)
         };
-        run().map_err(|e| AtlasError::Platform(format!("Windows' text recognition didn't run: {e}")))
+        run()
+            .map_err(|e| AtlasError::Platform(format!("Windows' text recognition didn't run: {e}")))
     }
 
     fn recognise_image_file(&self, path: &str) -> Result<Option<String>> {
         use windows::Graphics::Imaging::{
-            BitmapAlphaMode, BitmapDecoder, BitmapInterpolationMode, BitmapPixelFormat, BitmapTransform,
-            ColorManagementMode, ExifOrientationMode,
+            BitmapAlphaMode, BitmapDecoder, BitmapInterpolationMode, BitmapPixelFormat,
+            BitmapTransform, ColorManagementMode, ExifOrientationMode,
         };
         use windows::Media::Ocr::OcrEngine;
         use windows::Storage::Streams::{DataWriter, InMemoryRandomAccessStream};
@@ -1018,7 +1241,8 @@ impl Platform for WindowsPlatform {
         // screen (28 Sep 2026): Windows decodes it (JPEG, PNG, HEIC where the
         // codec is installed), turns it by its EXIF orientation, shrinks it
         // under the engine's size limit, and reads it.
-        let bytes = std::fs::read(path).map_err(|e| AtlasError::Platform(format!("couldn't open the picture: {e}")))?;
+        let bytes = std::fs::read(path)
+            .map_err(|e| AtlasError::Platform(format!("couldn't open the picture: {e}")))?;
         let run = || -> windows::core::Result<String> {
             let engine = OcrEngine::TryCreateFromUserProfileLanguages()?;
             let stream = InMemoryRandomAccessStream::new()?;
@@ -1029,7 +1253,10 @@ impl Platform for WindowsPlatform {
             writer.DetachStream()?;
             stream.Seek(0)?;
             let decoder = BitmapDecoder::CreateAsync(&stream)?.get()?;
-            let (w, h) = (decoder.OrientedPixelWidth()?, decoder.OrientedPixelHeight()?);
+            let (w, h) = (
+                decoder.OrientedPixelWidth()?,
+                decoder.OrientedPixelHeight()?,
+            );
             let most = OcrEngine::MaxImageDimension()?;
             let transform = BitmapTransform::new()?;
             if w > most || h > most {
@@ -1056,7 +1283,9 @@ impl Platform for WindowsPlatform {
         };
         match run() {
             Ok(text) => Ok(Some(text)),
-            Err(e) => Err(AtlasError::Platform(format!("Windows' text recognition didn't read it: {e}"))),
+            Err(e) => Err(AtlasError::Platform(format!(
+                "Windows' text recognition didn't read it: {e}"
+            ))),
         }
     }
 
@@ -1080,7 +1309,10 @@ impl Platform for WindowsPlatform {
             return Ok(None);
         }
         let text = String::from_utf8_lossy(&out.stdout);
-        let text = text.strip_suffix("\r\n").or_else(|| text.strip_suffix('\n')).unwrap_or(&text);
+        let text = text
+            .strip_suffix("\r\n")
+            .or_else(|| text.strip_suffix('\n'))
+            .unwrap_or(&text);
         Ok(Some(text.to_string()))
     }
 
@@ -1093,9 +1325,9 @@ impl Platform for WindowsPlatform {
             .spawn()
             .map_err(|e| AtlasError::Platform(format!("couldn't reach clip.exe: {e}")))?;
         if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(text.as_bytes())
-                .map_err(|e| AtlasError::Platform(format!("couldn't write to the clipboard: {e}")))?;
+            stdin.write_all(text.as_bytes()).map_err(|e| {
+                AtlasError::Platform(format!("couldn't write to the clipboard: {e}"))
+            })?;
         }
         match child.wait() {
             Ok(s) if s.success() => Ok(()),
@@ -1112,7 +1344,6 @@ fn expand_env(s: &str) -> String {
     }
     out
 }
-
 
 /// Random bytes from the system RNG.
 ///
@@ -1151,7 +1382,6 @@ pub fn random_bytes(n: usize) -> crate::error::Result<Vec<u8>> {
     }
     Ok(buf)
 }
-
 
 /// Encrypt with Windows' own data protection.
 ///
@@ -1215,9 +1445,18 @@ fn dpapi(input: &[u8], extra: &[u8], encrypting: bool) -> crate::error::Result<V
     // Never write the plaintext to the swap file while we hold it.
     const CRYPTPROTECT_UI_FORBIDDEN: u32 = 0x1;
 
-    let mut inp = DataBlob { cb_data: input.len() as u32, pb_data: input.as_ptr() as *mut u8 };
-    let mut ent = DataBlob { cb_data: extra.len() as u32, pb_data: extra.as_ptr() as *mut u8 };
-    let mut out = DataBlob { cb_data: 0, pb_data: core::ptr::null_mut() };
+    let mut inp = DataBlob {
+        cb_data: input.len() as u32,
+        pb_data: input.as_ptr() as *mut u8,
+    };
+    let mut ent = DataBlob {
+        cb_data: extra.len() as u32,
+        pb_data: extra.as_ptr() as *mut u8,
+    };
+    let mut out = DataBlob {
+        cb_data: 0,
+        pb_data: core::ptr::null_mut(),
+    };
 
     // SAFETY: `inp` and `ent` borrow `input` and `extra` for the call (DPAPI does not write through
     // them); `out` is a live DataBlob the call fills.
@@ -1245,22 +1484,24 @@ fn dpapi(input: &[u8], extra: &[u8], encrypting: bool) -> crate::error::Result<V
         }
     };
     if ok == 0 {
-        return Err(AtlasError::Platform(
-            if encrypting {
-                "Windows refused to encrypt that".into()
-            } else {
-                // The honest message. A wrong passphrase and a file from
-                // another machine fail identically here, and saying which
-                // would tell an attacker something.
-                "couldn't open it — wrong passphrase, or this vault came from another machine \
+        return Err(AtlasError::Platform(if encrypting {
+            "Windows refused to encrypt that".into()
+        } else {
+            // The honest message. A wrong passphrase and a file from
+            // another machine fail identically here, and saying which
+            // would tell an attacker something.
+            "couldn't open it — wrong passphrase, or this vault came from another machine \
                  or another Windows account"
-                    .to_string()
-            },
-        ));
+                .to_string()
+        }));
     }
     // SAFETY: on success `out` is a LocalAlloc block of `cb_data` bytes (null only when empty, which
     // from_raw_parts forbids); it is copied out, then freed exactly once.
-    let result = if out.pb_data.is_null() { Vec::new() } else { unsafe { std::slice::from_raw_parts(out.pb_data, out.cb_data as usize).to_vec() } };
+    let result = if out.pb_data.is_null() {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(out.pb_data, out.cb_data as usize).to_vec() }
+    };
     unsafe { LocalFree(out.pb_data as *mut core::ffi::c_void) };
     Ok(result)
 }
@@ -1274,7 +1515,10 @@ static OWN_INPUT: std::sync::Mutex<Option<super::OwnInput>> = std::sync::Mutex::
 
 fn last_input_tick() -> Option<u32> {
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
-    let mut info = LASTINPUTINFO { cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
+    let mut info = LASTINPUTINFO {
+        cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
+        dwTime: 0,
+    };
     // SAFETY: `info` is a live LASTINPUTINFO with `cbSize` set, as the call requires.
     unsafe { GetLastInputInfo(&mut info).as_bool().then_some(info.dwTime) }
 }
@@ -1294,7 +1538,9 @@ fn send_groups(groups: &[Vec<windows::Win32::UI::Input::KeyboardAndMouse::INPUT>
     sent
 }
 
-fn send_groups_now(groups: &[Vec<windows::Win32::UI::Input::KeyboardAndMouse::INPUT>]) -> Result<()> {
+fn send_groups_now(
+    groups: &[Vec<windows::Win32::UI::Input::KeyboardAndMouse::INPUT>],
+) -> Result<()> {
     use windows::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT};
     // In batches, since very long texts sent in one call can be dropped,
     // but only ever between whole groups.
@@ -1344,7 +1590,16 @@ fn mouse_input(
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
     INPUT {
         r#type: INPUT_MOUSE,
-        Anonymous: INPUT_0 { mi: MOUSEINPUT { dx: 0, dy: 0, mouseData: data as u32, dwFlags: flags, time: 0, dwExtraInfo: 0 } },
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx: 0,
+                dy: 0,
+                mouseData: data as u32,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
     }
 }
 
@@ -1361,7 +1616,15 @@ fn release_modifiers() {
         .iter()
         .map(|vk| INPUT {
             r#type: INPUT_KEYBOARD,
-            Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: *vk, wScan: 0, dwFlags: KEYEVENTF_KEYUP, time: 0, dwExtraInfo: 0 } },
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: *vk,
+                    wScan: 0,
+                    dwFlags: KEYEVENTF_KEYUP,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
         })
         .collect();
     // SAFETY: `up` is a live Vec of initialised INPUT records and the size passed is that of one
@@ -1375,14 +1638,19 @@ fn release_modifiers() {
 /// may take: an app that's hung would otherwise hang Atlas with it.
 unsafe fn automation() -> Result<windows::Win32::UI::Accessibility::IUIAutomation> {
     use windows::core::Interface;
-    use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED};
-    use windows::Win32::UI::Accessibility::{CUIAutomation, CUIAutomation8, IUIAutomation, IUIAutomation2};
-    let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-    let ua: IUIAutomation = match CoCreateInstance::<_, IUIAutomation>(&CUIAutomation8, None, CLSCTX_INPROC_SERVER) {
-        Ok(ua) => ua,
-        Err(_) => CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
-            .map_err(|e| AtlasError::Platform(format!("UI Automation isn't available: {e}")))?,
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
     };
+    use windows::Win32::UI::Accessibility::{
+        CUIAutomation, CUIAutomation8, IUIAutomation, IUIAutomation2,
+    };
+    let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+    let ua: IUIAutomation =
+        match CoCreateInstance::<_, IUIAutomation>(&CUIAutomation8, None, CLSCTX_INPROC_SERVER) {
+            Ok(ua) => ua,
+            Err(_) => CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
+                .map_err(|e| AtlasError::Platform(format!("UI Automation isn't available: {e}")))?,
+        };
     if let Ok(ua2) = ua.cast::<IUIAutomation2>() {
         crate::heard!(ua2.SetConnectionTimeout(2_000));
         crate::heard!(ua2.SetTransactionTimeout(2_000));
@@ -1415,9 +1683,18 @@ fn vk_for(name: &str) -> Option<windows::Win32::UI::Input::KeyboardAndMouse::VIR
         "pagedown" => VK_NEXT,
         _ if n.len() == 1 => {
             let c = n.chars().next()?.to_ascii_uppercase();
-            if c.is_ascii_alphanumeric() { VIRTUAL_KEY(c as u16) } else { return None }
+            if c.is_ascii_alphanumeric() {
+                VIRTUAL_KEY(c as u16)
+            } else {
+                return None;
+            }
         }
-        _ if n.starts_with('f') && n[1..].parse::<u16>().map(|k| (1..=12).contains(&k)).unwrap_or(false) => {
+        _ if n.starts_with('f')
+            && n[1..]
+                .parse::<u16>()
+                .map(|k| (1..=12).contains(&k))
+                .unwrap_or(false) =>
+        {
             VIRTUAL_KEY(VK_F1.0 + n[1..].parse::<u16>().ok()? - 1)
         }
         _ => return None,
@@ -1434,7 +1711,10 @@ unsafe fn uia_node(
 ) -> crate::uia::Node {
     use windows::Win32::UI::Accessibility::UIA_ValueValuePropertyId;
     *budget = budget.saturating_sub(1);
-    let role = el.CurrentControlType().map(|t| crate::uia::Role::from_control_type(t.0)).unwrap_or(crate::uia::Role::Other);
+    let role = el
+        .CurrentControlType()
+        .map(|t| crate::uia::Role::from_control_type(t.0))
+        .unwrap_or(crate::uia::Role::Other);
     let name = el.CurrentName().map(|b| b.to_string()).unwrap_or_default();
     let value = el
         .GetCurrentPropertyValue(UIA_ValueValuePropertyId)
@@ -1464,5 +1744,12 @@ unsafe fn uia_node(
         }
         children.reverse();
     }
-    crate::uia::Node { role, name, value, enabled, children, rect }
+    crate::uia::Node {
+        role,
+        name,
+        value,
+        enabled,
+        children,
+        rect,
+    }
 }

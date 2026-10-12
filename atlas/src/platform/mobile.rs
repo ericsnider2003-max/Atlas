@@ -98,7 +98,17 @@ mod tests {
         )
         .unwrap();
         assert!(p.launch(&spec).is_err());
-        assert!(p.place(WindowId(1), PixelRect { x: 0, y: 0, width: 10, height: 10 }).is_err());
+        assert!(p
+            .place(
+                WindowId(1),
+                PixelRect {
+                    x: 0,
+                    y: 0,
+                    width: 10,
+                    height: 10
+                }
+            )
+            .is_err());
         assert!(p.focus(WindowId(1)).is_err());
         assert!(p.close(&spec).is_err());
         // Finding another app's window is "none," not an error — there is

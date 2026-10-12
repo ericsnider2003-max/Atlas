@@ -22,7 +22,10 @@ fn paired_with(name: &str) -> Pairings {
 fn an_unlisted_name_sees_nothing_by_default() {
     let roster = Roster::default();
     let pairings = paired_with("Sarah");
-    assert!(!roster.may_see("Acme", "Sarah", &pairings), "default deny -- nobody starts with access");
+    assert!(
+        !roster.may_see("Acme", "Sarah", &pairings),
+        "default deny -- nobody starts with access"
+    );
 }
 
 #[test]
@@ -30,7 +33,11 @@ fn a_stranger_kin_has_never_heard_of_cannot_be_added() {
     let mut roster = Roster::default();
     let pairings = Pairings::default(); // nobody paired at all
     let err = roster.add("Acme", "Sarah", &pairings).unwrap_err();
-    assert_eq!(err, RosterError::NotAPeer, "a roster entry for someone unpaired would enforce nothing");
+    assert_eq!(
+        err,
+        RosterError::NotAPeer,
+        "a roster entry for someone unpaired would enforce nothing"
+    );
 }
 
 #[test]
@@ -71,7 +78,10 @@ fn removing_someone_revokes_exactly_that_business_and_nothing_else() {
 
     assert!(roster.remove("Acme", "Sarah"));
     assert!(!roster.may_see("Acme", "Sarah", &pairings));
-    assert!(roster.may_see("Widgets Inc", "Sarah", &pairings), "the other business is untouched");
+    assert!(
+        roster.may_see("Widgets Inc", "Sarah", &pairings),
+        "the other business is untouched"
+    );
 }
 
 /// The core security property Eric asked for: forgetting the underlying
@@ -87,7 +97,10 @@ fn forgetting_the_pairing_revokes_every_business_it_granted_access_to() {
 
     pairings.forget("Sarah");
 
-    assert!(!roster.may_see("Acme", "Sarah", &pairings), "no pairing, no access, regardless of the list on disk");
+    assert!(
+        !roster.may_see("Acme", "Sarah", &pairings),
+        "no pairing, no access, regardless of the list on disk"
+    );
     assert!(
         roster.standing("Sarah", &pairings).is_empty(),
         "standing() must agree with may_see -- the pairing is gone"
@@ -103,7 +116,10 @@ fn standing_lists_every_business_a_peer_currently_has_access_to() {
 
     let mut businesses = roster.standing("Sarah", &pairings);
     businesses.sort();
-    assert_eq!(businesses, vec!["Acme".to_string(), "Widgets Inc".to_string()]);
+    assert_eq!(
+        businesses,
+        vec!["Acme".to_string(), "Widgets Inc".to_string()]
+    );
 }
 
 #[test]
@@ -147,7 +163,10 @@ fn the_roster_lists_the_businesses_it_knows() {
 
     let mut names = roster.businesses();
     names.sort();
-    assert_eq!(names, vec!["Northwind".to_string(), "Riverstone".to_string()]);
+    assert_eq!(
+        names,
+        vec!["Northwind".to_string(), "Riverstone".to_string()]
+    );
 
     // Empty by default: no businesses, so scheduling stays personal.
     assert!(Roster::default().businesses().is_empty());

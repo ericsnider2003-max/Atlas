@@ -72,7 +72,10 @@ impl Editor {
 
     /// Costs money.
     fn paid(&self) -> bool {
-        matches!(self, Editor::Premiere | Editor::AfterEffects | Editor::Photoshop | Editor::FinalCut)
+        matches!(
+            self,
+            Editor::Premiere | Editor::AfterEffects | Editor::Photoshop | Editor::FinalCut
+        )
     }
 }
 
@@ -119,8 +122,13 @@ impl Job {
     fn ffmpeg_does_it_well(&self) -> bool {
         matches!(
             self,
-            Job::Trim | Job::CutSilences | Job::Captions | Job::Loudness
-                | Job::ColourCorrect | Job::Crop | Job::Thumbnail
+            Job::Trim
+                | Job::CutSilences
+                | Job::Captions
+                | Job::Loudness
+                | Job::ColourCorrect
+                | Job::Crop
+                | Job::Thumbnail
         )
     }
 }
@@ -136,7 +144,10 @@ pub fn best_for(job: Job, installed: &[Editor]) -> (Editor, String) {
         // than merely nicer.
         Job::ColourGrade => {
             if has(Editor::Resolve) {
-                (Editor::Resolve, "proper grading, and Resolve is free".into())
+                (
+                    Editor::Resolve,
+                    "proper grading, and Resolve is free".into(),
+                )
             } else if has(Editor::Premiere) {
                 (Editor::Premiere, "Lumetri will do it".into())
             } else {
@@ -152,7 +163,10 @@ pub fn best_for(job: Job, installed: &[Editor]) -> (Editor, String) {
             if has(Editor::AfterEffects) {
                 (Editor::AfterEffects, "templates with editable text".into())
             } else {
-                (Editor::Ffmpeg, "simple animated text only — nothing fancy".into())
+                (
+                    Editor::Ffmpeg,
+                    "simple animated text only — nothing fancy".into(),
+                )
             }
         }
         Job::Thumbnail => {
@@ -164,16 +178,25 @@ pub fn best_for(job: Job, installed: &[Editor]) -> (Editor, String) {
         }
         Job::HandOff => {
             if has(Editor::Premiere) {
-                (Editor::Premiere, "a sequence, cut and captioned, for you to finish".into())
+                (
+                    Editor::Premiere,
+                    "a sequence, cut and captioned, for you to finish".into(),
+                )
             } else if has(Editor::Resolve) {
                 (Editor::Resolve, "a timeline for you to finish".into())
             } else {
-                (Editor::Ffmpeg, "a finished file rather than a project".into())
+                (
+                    Editor::Ffmpeg,
+                    "a finished file rather than a project".into(),
+                )
             }
         }
         // Everything else: ffmpeg does it properly, so use it. Opening
         // Premiere to normalise audio is slower and no better.
-        _ => (Editor::Ffmpeg, "ffmpeg does this properly — no reason to open anything".into()),
+        _ => (
+            Editor::Ffmpeg,
+            "ffmpeg does this properly — no reason to open anything".into(),
+        ),
     }
 }
 
@@ -234,8 +257,13 @@ pub fn used(e: Editor, job: Job, cfg: &EditorConfig) -> String {
 /// What someone with nothing installed still gets.
 pub fn without_anything() -> Vec<Job> {
     [
-        Job::Trim, Job::CutSilences, Job::Captions, Job::Loudness,
-        Job::ColourCorrect, Job::Crop, Job::Thumbnail,
+        Job::Trim,
+        Job::CutSilences,
+        Job::Captions,
+        Job::Loudness,
+        Job::ColourCorrect,
+        Job::Crop,
+        Job::Thumbnail,
     ]
     .into_iter()
     .filter(|j| j.ffmpeg_does_it_well())

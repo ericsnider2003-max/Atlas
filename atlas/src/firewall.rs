@@ -146,9 +146,7 @@ impl Firewall {
             // Nowhere to go is not a crossing. Said rather than silently
             // allowed, because an empty space name is a caller bug and
             // treating it as "fine" would be the quietest possible hole.
-            return Some(
-                "there's no business space named, so I've not sent it anywhere".into(),
-            );
+            return Some("there's no business space named, so I've not sent it anywhere".into());
         }
         if let Space::Business(owner) = from {
             if owner.trim().eq_ignore_ascii_case(into) {

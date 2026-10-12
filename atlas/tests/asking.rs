@@ -111,7 +111,9 @@ fn an_and_inside_one_idea_is_not_a_split() {
 
 #[test]
 fn a_single_question_reports_itself_as_one() {
-    assert!(!prepare("the budget notes").unwrap().is_more_than_one_question());
+    assert!(!prepare("the budget notes")
+        .unwrap()
+        .is_more_than_one_question());
 }
 
 // --- saying what it looked for ----------------------------------------------

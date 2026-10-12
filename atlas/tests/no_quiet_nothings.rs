@@ -37,7 +37,9 @@ fn sources() -> BTreeMap<String, String> {
     let dir = Path::new("src");
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&d) else { continue };
+        let Ok(entries) = std::fs::read_dir(&d) else {
+            continue;
+        };
         for e in entries.flatten() {
             let p = e.path();
             if p.is_dir() {
@@ -90,7 +92,9 @@ fn code_lines(text: &str) -> Vec<(usize, String)> {
             match line[start..].find("*/") {
                 Some(rel) => {
                     let end = start + rel + 2;
-                    line = format!("{} {}", &line[..start], &line[end..]).trim().to_string();
+                    line = format!("{} {}", &line[..start], &line[end..])
+                        .trim()
+                        .to_string();
                 }
                 None => {
                     line = line[..start].trim().to_string();
@@ -170,7 +174,6 @@ fn default_stubs_in(module: &str, text: &str) -> Vec<String> {
     found
 }
 
-
 #[test]
 fn no_function_returns_a_bare_default_of_its_own_measurement_type() {
     // `fn x(&self) -> T { T::default() }` on a type whose job is to carry
@@ -224,7 +227,10 @@ fn nothing_new_tells_the_user_it_is_not_built() {
             let lower = l.to_lowercase();
             for phrase in atlas::hollow::ADMITS_INCOMPLETE {
                 if lower.contains(phrase) {
-                    found.push(format!("{module}:{line_no} {}", l.chars().take(70).collect::<String>()));
+                    found.push(format!(
+                        "{module}:{line_no} {}",
+                        l.chars().take(70).collect::<String>()
+                    ));
                     break;
                 }
             }
@@ -241,7 +247,11 @@ fn nothing_new_tells_the_user_it_is_not_built() {
         unexpected.is_empty(),
         "new places that tell a person something is not built. Either build it \
          or add it to HOLLOW_BASELINE on purpose:\n  {}",
-        unexpected.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        unexpected
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
 
@@ -261,10 +271,18 @@ fn no_internal_type_name_leaks_into_something_a_person_reads() {
             }
         }
     }
-    let known: Vec<&str> = HOLLOW_BASELINE.iter().map(|b| b.split(':').next().unwrap()).collect();
-    let unexpected: Vec<&String> =
-        found.iter().filter(|f| !known.iter().any(|m| f.starts_with(&format!("{m}:")))).collect();
-    assert!(unexpected.is_empty(), "debug output reaching a person: {unexpected:?}");
+    let known: Vec<&str> = HOLLOW_BASELINE
+        .iter()
+        .map(|b| b.split(':').next().unwrap())
+        .collect();
+    let unexpected: Vec<&String> = found
+        .iter()
+        .filter(|f| !known.iter().any(|m| f.starts_with(&format!("{m}:"))))
+        .collect();
+    assert!(
+        unexpected.is_empty(),
+        "debug output reaching a person: {unexpected:?}"
+    );
 }
 
 // ================= the ratchet itself =================
@@ -283,7 +301,10 @@ fn every_baseline_entry_names_a_module_that_exists() {
     let src = sources();
     for b in HOLLOW_BASELINE {
         let m = b.split(':').next().unwrap();
-        assert!(src.contains_key(m), "HOLLOW_BASELINE names '{m}', which is not a module");
+        assert!(
+            src.contains_key(m),
+            "HOLLOW_BASELINE names '{m}', which is not a module"
+        );
     }
 }
 
@@ -293,8 +314,11 @@ fn every_baseline_entry_names_a_module_that_exists() {
 fn the_judge_catches_both_bugs_that_got_through() {
     use atlas::hollow::{judge, judge_readings, Why};
     // Bug one, as it actually appeared on screen.
-    let h = judge("what's outstanding", "parsed Outstanding — not wired to an action yet")
-        .expect("the exact sentence that shipped should be caught");
+    let h = judge(
+        "what's outstanding",
+        "parsed Outstanding — not wired to an action yet",
+    )
+    .expect("the exact sentence that shipped should be caught");
     assert_eq!(h.why, Why::SaysSoItself);
     // Bug two.
     let h = judge_readings(&atlas::health::Readings::default())
@@ -305,7 +329,11 @@ fn the_judge_catches_both_bugs_that_got_through() {
 #[test]
 fn a_real_answer_is_left_alone() {
     use atlas::hollow::judge;
-    assert!(judge("how's the machine", "12 gigabytes free, memory at 44 percent.").is_none());
+    assert!(judge(
+        "how's the machine",
+        "12 gigabytes free, memory at 44 percent."
+    )
+    .is_none());
     assert!(judge("what's outstanding", "Nothing outstanding.").is_none());
 }
 
@@ -319,7 +347,11 @@ fn silence_counts_as_hollow() {
 fn a_partly_read_machine_names_which_instrument_failed() {
     use atlas::health::Readings;
     use atlas::hollow::{judge_readings, unread_instruments};
-    let r = Readings { ram_total_gb: 16.0, ram_used_gb: 8.0, ..Default::default() };
+    let r = Readings {
+        ram_total_gb: 16.0,
+        ram_used_gb: 8.0,
+        ..Default::default()
+    };
     // This used to assert `judge_readings(&r).is_none()` — "not wholly hollow,
     // something was read". That was the bug written down as a rule. It is
     // exactly the case that shipped: off Windows `read_disk` was an empty stub
@@ -327,7 +359,11 @@ fn a_partly_read_machine_names_which_instrument_failed() {
     // stayed quiet because the machine was only half broken. Half broken is
     // the normal way things break.
     let found = judge_readings(&r).expect("a machine with no disk reading was called healthy");
-    assert!(found.answer.contains("disk"), "it didn't name which one: {}", found.answer);
+    assert!(
+        found.answer.contains("disk"),
+        "it didn't name which one: {}",
+        found.answer
+    );
     // And it is named rather than glossed.
     assert_eq!(unread_instruments(&r), vec!["disk"]);
 }
@@ -338,8 +374,13 @@ fn the_audit_asks_only_questions_that_change_nothing() {
     // A self-audit with side effects is one nobody dares run on a schedule.
     for q in SELF_QUESTIONS {
         let l = q.to_lowercase();
-        for verb in ["open", "close", "send", "post", "delete", "boot", "run", "buy"] {
-            assert!(!l.contains(verb), "'{q}' does something — an audit must not");
+        for verb in [
+            "open", "close", "send", "post", "delete", "boot", "run", "buy",
+        ] {
+            assert!(
+                !l.contains(verb),
+                "'{q}' does something — an audit must not"
+            );
         }
     }
 }
@@ -381,19 +422,43 @@ fn a_clean_audit_says_so_without_hedging() {
 fn the_detector_catches_real_hollow_answers_and_leaves_real_ones_alone() {
     use atlas::hollow::judge;
     let cases: &[(&str, &str, bool)] = &[
-        ("how's the machine", "All fine. 0 gigabytes free, memory at 0 percent.", true),
-        ("how's the machine", "All fine. 300 gigabytes free, memory at 50 percent.", false),
+        (
+            "how's the machine",
+            "All fine. 0 gigabytes free, memory at 0 percent.",
+            true,
+        ),
+        (
+            "how's the machine",
+            "All fine. 300 gigabytes free, memory at 50 percent.",
+            false,
+        ),
         ("what's outstanding", "Nothing outstanding.", false),
         ("what can you do", "", true),
-        ("research tides", "Research isn't built yet, so I can't look into tides.", true),
+        (
+            "research tides",
+            "Research isn't built yet, so I can't look into tides.",
+            true,
+        ),
         ("what did you do today", "You did nothing today.", false),
         ("are the connections ok", "Everything's connected.", true),
-        ("what's queued", "0 scheduled, 0 awaiting you, 0 queued.", true),
-        ("summarise my notes", "I can't find anything about that.", false),
+        (
+            "what's queued",
+            "0 scheduled, 0 awaiting you, 0 queued.",
+            true,
+        ),
+        (
+            "summarise my notes",
+            "I can't find anything about that.",
+            false,
+        ),
         ("what's my disk", "Disk: 0 GB free of 0 GB.", true),
         ("run the checks", "Ran 0 checks.", true),
         ("who is at the desk", "Unknown", true),
-        ("what's my calendar", "You have no events. (I couldn't reach the calendar.)", false),
+        (
+            "what's my calendar",
+            "You have no events. (I couldn't reach the calendar.)",
+            false,
+        ),
     ];
     let mut wrong = Vec::new();
     for (q, a, should) in cases {
@@ -406,7 +471,11 @@ fn the_detector_catches_real_hollow_answers_and_leaves_real_ones_alone() {
             ));
         }
     }
-    assert!(wrong.is_empty(), "the detector got these wrong:\n  {}", wrong.join("\n  "));
+    assert!(
+        wrong.is_empty(),
+        "the detector got these wrong:\n  {}",
+        wrong.join("\n  ")
+    );
 }
 
 #[test]
@@ -421,7 +490,10 @@ fn a_correct_answer_of_zero_is_not_flagged() {
         "0 messages waiting.",
         "No events tomorrow.",
     ] {
-        assert!(judge("q", good).is_none(), "flagged a correct answer: {good}");
+        assert!(
+            judge("q", good).is_none(),
+            "flagged a correct answer: {good}"
+        );
     }
 }
 
@@ -433,9 +505,17 @@ fn a_half_read_machine_is_caught_not_only_a_completely_unread_one() {
     // broken cannot see a system that is half broken.
     use atlas::health::Readings;
     use atlas::hollow::judge_readings;
-    let half = Readings { ram_total_gb: 16.0, ram_used_gb: 8.0, ..Default::default() };
+    let half = Readings {
+        ram_total_gb: 16.0,
+        ram_used_gb: 8.0,
+        ..Default::default()
+    };
     let found = judge_readings(&half).expect("a machine with no disk reading was called healthy");
-    assert!(found.answer.contains("disk"), "it didn't name which one: {}", found.answer);
+    assert!(
+        found.answer.contains("disk"),
+        "it didn't name which one: {}",
+        found.answer
+    );
 
     let whole = Readings {
         ram_total_gb: 16.0,
@@ -444,7 +524,10 @@ fn a_half_read_machine_is_caught_not_only_a_completely_unread_one() {
         disk_free_gb: 200.0,
         ..Default::default()
     };
-    assert!(judge_readings(&whole).is_none(), "a fully read machine was flagged");
+    assert!(
+        judge_readings(&whole).is_none(),
+        "a fully read machine was flagged"
+    );
 }
 
 // ================= the scanner, checked against fixtures =================
@@ -473,7 +556,10 @@ fn a_multi_line_default_stub_is_still_caught() {
 fn a_function_that_actually_measures_something_is_not_flagged() {
     // The crying-wolf direction. A real body must not look like a stub.
     let text = "fn real(&self) -> Readings {\n    let mut r = Readings::default();\n    read_memory(&mut r);\n    r\n}\n";
-    assert!(default_stubs_in("probe", text).is_empty(), "flagged a real reader");
+    assert!(
+        default_stubs_in("probe", text).is_empty(),
+        "flagged a real reader"
+    );
 }
 
 #[test]
@@ -482,7 +568,11 @@ fn a_trailing_comment_is_not_read_as_code() {
     // comment was being scanned.
     let code = code_lines("let x = 1; // this is not implemented yet\n");
     assert_eq!(code.len(), 1);
-    assert_eq!(code[0].1, "let x = 1;", "the comment survived: {:?}", code[0].1);
+    assert_eq!(
+        code[0].1, "let x = 1;",
+        "the comment survived: {:?}",
+        code[0].1
+    );
 }
 
 #[test]
@@ -492,7 +582,10 @@ fn a_block_comment_is_not_read_as_code() {
     let text = "let a = 1;\n/* explaining:\n_ => \"not built yet\"\n*/\nlet b = 2;\n";
     let code = code_lines(text);
     let joined: Vec<&str> = code.iter().map(|(_, l)| l.as_str()).collect();
-    assert!(!joined.iter().any(|l| l.contains("not built yet")), "got: {joined:?}");
+    assert!(
+        !joined.iter().any(|l| l.contains("not built yet")),
+        "got: {joined:?}"
+    );
     assert_eq!(joined, vec!["let a = 1;", "let b = 2;"]);
 }
 
@@ -526,5 +619,8 @@ fn the_scanner_only_reads_rust() {
     // another language, that is a real piece of work and not a config change.
     let found = sources();
     assert!(!found.is_empty(), "no source was read at all");
-    assert!(found.contains_key("hollow"), "the tree it is pointed at is Atlas's own src/");
+    assert!(
+        found.contains_key("hollow"),
+        "the tree it is pointed at is Atlas's own src/"
+    );
 }

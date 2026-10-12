@@ -100,7 +100,11 @@ impl Found {
 /// Name and port, nothing else. Not the token, not what is on the machine,
 /// not who is using it.
 pub fn answer_for(name: &str, door: u16) -> String {
-    format!("atlas-here-1 {} {}", name.trim().replace(char::is_whitespace, "-"), door)
+    format!(
+        "atlas-here-1 {} {}",
+        name.trim().replace(char::is_whitespace, "-"),
+        door
+    )
 }
 
 /// Read an answer. `None` for anything that is not one.
@@ -114,7 +118,11 @@ pub fn answer_from(line: &str, from: SocketAddr) -> Option<Found> {
     if name.is_empty() || port == 0 {
         return None;
     }
-    Some(Found { name, host: from.ip().to_string(), port })
+    Some(Found {
+        name,
+        host: from.ip().to_string(),
+        port,
+    })
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -134,7 +142,10 @@ pub struct NearbyConfig {
 
 impl Default for NearbyConfig {
     fn default() -> Self {
-        NearbyConfig { announce: false, listen_ms: 700 }
+        NearbyConfig {
+            announce: false,
+            listen_ms: 700,
+        }
     }
 }
 
@@ -153,7 +164,8 @@ pub fn look(cfg: &NearbyConfig) -> Result<Vec<Found>, String> {
     sock.set_broadcast(true).map_err(|e| e.to_string())?;
     sock.set_read_timeout(Some(Duration::from_millis(cfg.listen_ms)))
         .map_err(|e| e.to_string())?;
-    sock.send_to(ASKING.as_bytes(), ("255.255.255.255", PORT)).map_err(|e| e.to_string())?;
+    sock.send_to(ASKING.as_bytes(), ("255.255.255.255", PORT))
+        .map_err(|e| e.to_string())?;
 
     let mut out: Vec<Found> = Vec::new();
     let mut buf = [0u8; 512];
@@ -195,11 +207,14 @@ pub fn answer_probes(
         return Ok(());
     }
     let sock = UdpSocket::bind(("0.0.0.0", PORT)).map_err(|e| e.to_string())?;
-    sock.set_read_timeout(Some(Duration::from_millis(400))).map_err(|e| e.to_string())?;
+    sock.set_read_timeout(Some(Duration::from_millis(400)))
+        .map_err(|e| e.to_string())?;
     let reply = answer_for(name, door);
     let mut buf = [0u8; 512];
     while !stop() {
-        let Ok((n, from)) = sock.recv_from(&mut buf) else { continue };
+        let Ok((n, from)) = sock.recv_from(&mut buf) else {
+            continue;
+        };
         if String::from_utf8_lossy(&buf[..n]).trim() == ASKING {
             // A failed reply is not worth stopping for: the other machine
             // asks again, and one unanswered probe is a slower discovery
@@ -223,7 +238,11 @@ pub fn spoken(found: &[Found], cfg: &NearbyConfig) -> String {
     }
     let mut s = format!(
         "{} on this network:",
-        if found.len() == 1 { "One other Atlas".to_string() } else { format!("{} Atlases", found.len()) }
+        if found.len() == 1 {
+            "One other Atlas".to_string()
+        } else {
+            format!("{} Atlases", found.len())
+        }
     );
     for f in found {
         s.push_str(&format!("\n  {} at {}:{}", f.name, f.host, f.port));

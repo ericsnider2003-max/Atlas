@@ -8,8 +8,22 @@ use std::path::{Path, PathBuf};
 
 fn plat() -> MockPlatform {
     MockPlatform::new(vec![
-        Monitor { id: 66629, x: 0, y: 0, width: 2560, height: 1392, primary: true },
-        Monitor { id: 65677, x: 2560, y: 0, width: 2560, height: 1392, primary: false },
+        Monitor {
+            id: 66629,
+            x: 0,
+            y: 0,
+            width: 2560,
+            height: 1392,
+            primary: true,
+        },
+        Monitor {
+            id: 65677,
+            x: 2560,
+            y: 0,
+            width: 2560,
+            height: 1392,
+            primary: false,
+        },
     ])
 }
 
@@ -26,7 +40,14 @@ fn tmp(tag: &str) -> PathBuf {
 fn no_shipped_config_contains_anyones_home_directory() {
     // The check that stops one person's paths reaching a friend. If this ever
     // fails, someone hard-coded a machine into the generic layer.
-    for f in ["apps.yaml", "indexing.yaml", "layouts.yaml", "commands.yaml", "tools.yaml", "policy.yaml"] {
+    for f in [
+        "apps.yaml",
+        "indexing.yaml",
+        "layouts.yaml",
+        "commands.yaml",
+        "tools.yaml",
+        "policy.yaml",
+    ] {
         let text = std::fs::read_to_string(Path::new("config").join(f)).unwrap();
         assert_eq!(
             leaks_a_username(&text),
@@ -38,18 +59,38 @@ fn no_shipped_config_contains_anyones_home_directory() {
 
 #[test]
 fn a_personal_path_is_detected_and_the_generic_form_is_not() {
-    assert_eq!(leaks_a_username("C:/Users/erics/Desktop"), Some("erics".into()));
-    assert_eq!(leaks_a_username(r"C:\Users\Someone\AppData"), Some("someone".into()));
+    assert_eq!(
+        leaks_a_username("C:/Users/erics/Desktop"),
+        Some("erics".into())
+    );
+    assert_eq!(
+        leaks_a_username(r"C:\Users\Someone\AppData"),
+        Some("someone".into())
+    );
     assert_eq!(leaks_a_username("%USERPROFILE%/Desktop"), None);
-    assert_eq!(leaks_a_username("C:/Users/Public/Documents"), None, "Public is on every machine");
+    assert_eq!(
+        leaks_a_username("C:/Users/Public/Documents"),
+        None,
+        "Public is on every machine"
+    );
 }
 
 #[test]
 fn the_dry_run_fixture_carries_nobodys_real_monitor_ids() {
     let src = crate::common::source_of("main");
     let fixture = src.split("fn fake_monitors").nth(1).unwrap();
-    for real in ["1247003", "106696887", "66629", "65677", "1508383", "17892425"] {
-        assert!(!fixture.contains(real), "a real monitor id leaked into the fixture: {real}");
+    for real in [
+        "1247003",
+        "106696887",
+        "66629",
+        "65677",
+        "1508383",
+        "17892425",
+    ] {
+        assert!(
+            !fixture.contains(real),
+            "a real monitor id leaked into the fixture: {real}"
+        );
     }
 }
 
@@ -57,8 +98,14 @@ fn the_dry_run_fixture_carries_nobodys_real_monitor_ids() {
 
 fn found(name: &str) -> Option<AppFound> {
     match name {
-        "chrome" => Some(AppFound { launch: "%PROGRAMFILES%/Google/Chrome/chrome.exe".into(), store: false }),
-        "claude" => Some(AppFound { launch: "Claude_abc!Claude".into(), store: true }),
+        "chrome" => Some(AppFound {
+            launch: "%PROGRAMFILES%/Google/Chrome/chrome.exe".into(),
+            store: false,
+        }),
+        "claude" => Some(AppFound {
+            launch: "Claude_abc!Claude".into(),
+            store: true,
+        }),
         _ => None,
     }
 }
@@ -100,7 +147,10 @@ fn the_machine_layer_overrides_the_generic_one() {
     let n = apply(&mut cfg, &machine());
     assert!(n >= 1);
     assert_ne!(cfg.apps.get("chrome").unwrap().launch, before);
-    assert!(cfg.apps.get("claude").unwrap().store, "store flag comes across too");
+    assert!(
+        cfg.apps.get("claude").unwrap().store,
+        "store flag comes across too"
+    );
 }
 
 #[test]
@@ -117,12 +167,18 @@ fn the_machine_file_warns_against_sharing_itself() {
     let d = tmp("warn");
     machine().save(&d).unwrap();
     let text = std::fs::read_to_string(d.join("machine.yaml")).unwrap();
-    assert!(text.contains("Do not share"), "it holds paths and device names");
+    assert!(
+        text.contains("Do not share"),
+        "it holds paths and device names"
+    );
     // This asserted "run setup again" until the module was wired, at which
     // point the command turned out to be `atlas adapt` -- there is no `atlas
     // setup`. The file was telling you to run something that does not exist,
     // and the test was holding it there.
-    assert!(text.contains("atlas adapt"), "the file names a command that does not exist: {text}");
+    assert!(
+        text.contains("atlas adapt"),
+        "the file names a command that does not exist: {text}"
+    );
 }
 
 #[test]
@@ -131,14 +187,26 @@ fn changing_your_monitors_is_noticed_so_setup_can_be_rerun() {
     let same = plat().monitors().unwrap();
     assert!(m.matches(&same));
 
-    let one_unplugged = vec![Monitor { id: 66629, x: 0, y: 0, width: 2560, height: 1392, primary: true }];
+    let one_unplugged = vec![Monitor {
+        id: 66629,
+        x: 0,
+        y: 0,
+        width: 2560,
+        height: 1392,
+        primary: true,
+    }];
     assert!(!m.matches(&one_unplugged));
 }
 
 #[test]
 fn partial_detection_is_measurable_so_atlas_knows_to_ask_for_help() {
     let m = machine();
-    let wanted: Vec<String> = vec!["chrome".into(), "claude".into(), "discord".into(), "notepad".into()];
+    let wanted: Vec<String> = vec![
+        "chrome".into(),
+        "claude".into(),
+        "discord".into(),
+        "notepad".into(),
+    ];
     assert_eq!(m.coverage(&wanted), 0.5);
     assert_eq!(m.coverage(&[]), 1.0);
 }
@@ -148,7 +216,10 @@ fn first_run_says_what_it_found_and_what_it_missed() {
     let wanted: Vec<String> = vec!["chrome".into(), "claude".into(), "discord".into()];
     let said = first_run_message(&machine(), &wanted);
     assert!(said.contains("2 apps") && said.contains("2 displays"));
-    assert!(said.contains("discord"), "names what it couldn't find: {said}");
+    assert!(
+        said.contains("discord"),
+        "names what it couldn't find: {said}"
+    );
 }
 
 #[test]

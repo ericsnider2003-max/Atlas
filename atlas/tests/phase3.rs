@@ -1,4 +1,6 @@
-use atlas::draft::{critique, improved, revision_brief, spoken as draft_spoken, DraftConfig, Fault};
+use atlas::draft::{
+    critique, improved, revision_brief, spoken as draft_spoken, DraftConfig, Fault,
+};
 use atlas::learned::{spoken as learned_spoken, Advice, Cause, Learned};
 use atlas::timebox::{size_of, Box_, Size, State, Stopped};
 
@@ -10,7 +12,11 @@ fn cfg() -> DraftConfig {
 
 #[test]
 fn throat_clearing_at_the_start_is_caught() {
-    let n = critique("In today's world, latency matters. We cut it to 300ms.", None, &cfg());
+    let n = critique(
+        "In today's world, latency matters. We cut it to 300ms.",
+        None,
+        &cfg(),
+    );
     assert!(n.iter().any(|n| n.fault == Fault::ThroatClearing));
 }
 
@@ -27,10 +33,18 @@ fn one_hedge_is_fine_and_three_is_a_refusal_to_commit() {
 
 #[test]
 fn words_that_sound_like_effort_and_mean_nothing_are_named() {
-    let n = critique("We leverage a robust, best-in-class approach.", None, &cfg());
+    let n = critique(
+        "We leverage a robust, best-in-class approach.",
+        None,
+        &cfg(),
+    );
     let f = n.iter().find(|n| n.fault == Fault::Filler).unwrap();
     assert!(f.evidence.contains("leverage"));
-    assert!(f.evidence.contains("robust"), "and it lists them: {}", f.evidence);
+    assert!(
+        f.evidence.contains("robust"),
+        "and it lists them: {}",
+        f.evidence
+    );
 }
 
 #[test]
@@ -38,7 +52,10 @@ fn saying_the_same_thing_twice_is_caught() {
     let text = "The endpointing change cuts the recording short when you stop talking. \
                 Recording stops short when you finish talking, thanks to endpointing.";
     let n = critique(text, None, &cfg());
-    let r = n.iter().find(|n| n.fault == Fault::Repetition).expect("should spot it");
+    let r = n
+        .iter()
+        .find(|n| n.fault == Fault::Repetition)
+        .expect("should spot it");
     assert!(r.evidence.contains("and"), "it quotes both: {}", r.evidence);
 }
 
@@ -50,7 +67,11 @@ fn a_question_tacked_on_the_end_is_caught() {
 
 #[test]
 fn a_real_question_in_the_middle_is_not() {
-    let n = critique("What actually costs the time? Transcription, mostly. We cut it to 300ms.", None, &cfg());
+    let n = critique(
+        "What actually costs the time? Transcription, mostly. We cut it to 300ms.",
+        None,
+        &cfg(),
+    );
     assert!(!n.iter().any(|n| n.fault == Fault::TackedOnQuestion));
 }
 
@@ -59,7 +80,9 @@ fn something_with_nothing_specific_in_it_is_flagged() {
     let vague = "This approach delivers value across the board and improves outcomes \
                  for everyone involved, making things better in a number of important ways \
                  that really do matter quite a lot when you consider it properly overall.";
-    assert!(critique(vague, None, &cfg()).iter().any(|n| n.fault == Fault::Vague));
+    assert!(critique(vague, None, &cfg())
+        .iter()
+        .any(|n| n.fault == Fault::Vague));
 }
 
 #[test]
@@ -67,14 +90,18 @@ fn a_draft_with_numbers_and_names_is_not_called_vague() {
     let concrete = "Atlas cut the turn from 8 seconds to 300ms by watching for silence. \
                     Whisper transcribes a third of the audio it used to, on the same laptop, \
                     with no change to the model at all and no extra memory.";
-    assert!(!critique(concrete, None, &cfg()).iter().any(|n| n.fault == Fault::Vague));
+    assert!(!critique(concrete, None, &cfg())
+        .iter()
+        .any(|n| n.fault == Fault::Vague));
 }
 
 #[test]
 fn every_sentence_being_the_same_length_reads_as_machine_output() {
     let flat = "The system works well today. The users like the new features. \
                 The team shipped it last week. The results have been quite good.";
-    assert!(critique(flat, None, &cfg()).iter().any(|n| n.fault == Fault::Monotonous));
+    assert!(critique(flat, None, &cfg())
+        .iter()
+        .any(|n| n.fault == Fault::Monotonous));
 }
 
 #[test]
@@ -94,7 +121,11 @@ fn a_good_draft_gets_left_alone() {
 
 #[test]
 fn the_rewrite_instruction_is_specific_rather_than_make_it_better() {
-    let n = critique("In today's world, we leverage robust solutions.", None, &cfg());
+    let n = critique(
+        "In today's world, we leverage robust solutions.",
+        None,
+        &cfg(),
+    );
     let brief = revision_brief(&n).unwrap();
     assert!(brief.contains("opens with a sentence that says nothing"));
     assert!(brief.contains("leverage"));
@@ -110,29 +141,50 @@ fn nothing_wrong_means_no_rewrite_at_all() {
 #[test]
 fn a_rewrite_that_introduces_more_faults_is_not_an_improvement() {
     let before = critique("In today's world, this is fine.", None, &cfg());
-    let after = critique("In today's world, we leverage robust seamless synergy.", None, &cfg());
-    assert!(!improved(&before, &after), "fixing one and adding three is not better");
+    let after = critique(
+        "In today's world, we leverage robust seamless synergy.",
+        None,
+        &cfg(),
+    );
+    assert!(
+        !improved(&before, &after),
+        "fixing one and adding three is not better"
+    );
 }
 
 #[test]
 fn you_can_switch_off_a_fault_you_disagree_with() {
-    let ignore = DraftConfig { ignore: vec![Fault::Hedging], ..cfg() };
+    let ignore = DraftConfig {
+        ignore: vec![Fault::Hedging],
+        ..cfg()
+    };
     let text = "I think this is perhaps somewhat right, maybe.";
-    assert!(!critique(text, None, &ignore).iter().any(|n| n.fault == Fault::Hedging));
+    assert!(!critique(text, None, &ignore)
+        .iter()
+        .any(|n| n.fault == Fault::Hedging));
 }
 
 // ================= remembering what didn't work =================
 
 #[test]
 fn something_never_tried_just_goes_ahead() {
-    assert_eq!(Learned::default().advise("click the export button", "acme.com", 0), Advice::Fresh);
+    assert_eq!(
+        Learned::default().advise("click the export button", "acme.com", 0),
+        Advice::Fresh
+    );
 }
 
 #[test]
 fn failing_once_because_of_the_world_is_worth_another_go() {
     // Once is bad luck.
     let mut l = Learned::default();
-    l.record("click export", "acme.com", Cause::Outside, "the site was down", 0);
+    l.record(
+        "click export",
+        "acme.com",
+        Cause::Outside,
+        "the site was down",
+        0,
+    );
     match l.advise("click export", "acme.com", 100) {
         Advice::TryAgain { because } => assert!(because.contains("may have changed")),
         o => panic!("{o:?}"),
@@ -145,9 +197,17 @@ fn failing_twice_stops_it_and_says_how_many_times() {
     // assertion.
     let mut l = Learned::default();
     l.record("click export", "acme.com", Cause::Outside, "timed out", 0);
-    l.record("click export", "acme.com", Cause::Outside, "timed out again", 100);
+    l.record(
+        "click export",
+        "acme.com",
+        Cause::Outside,
+        "timed out again",
+        100,
+    );
     match l.advise("click export", "acme.com", 200) {
-        Advice::Dont { because, .. } => assert!(because.contains("tried 2 times"), "got: {because}"),
+        Advice::Dont { because, .. } => {
+            assert!(because.contains("tried 2 times"), "got: {because}")
+        }
         o => panic!("{o:?}"),
     }
 }
@@ -155,16 +215,31 @@ fn failing_twice_stops_it_and_says_how_many_times() {
 #[test]
 fn an_approach_that_was_never_going_to_work_is_refused_the_first_time() {
     let mut l = Learned::default();
-    l.record("scrape the PDF as text", "the bank", Cause::WrongIdea, "it's a scan, not text", 0);
+    l.record(
+        "scrape the PDF as text",
+        "the bank",
+        Cause::WrongIdea,
+        "it's a scan, not text",
+        0,
+    );
     match l.advise("scrape the PDF as text", "the bank", 100) {
         Advice::Dont { because, .. } => assert!(because.contains("doesn't work here")),
         o => panic!("{o:?}"),
     }
     // Behaviour, not just wording: a wrong idea is refused on its first
     // record, where a one-off world failure gets a second go instead.
-    l.record("retry the download", "the bank", Cause::Outside, "the site was down", 0);
+    l.record(
+        "retry the download",
+        "the bank",
+        Cause::Outside,
+        "the site was down",
+        0,
+    );
     assert!(
-        matches!(l.advise("retry the download", "the bank", 100), Advice::TryAgain { .. }),
+        matches!(
+            l.advise("retry the download", "the bank", 100),
+            Advice::TryAgain { .. }
+        ),
         "a single world failure was refused like a wrong idea"
     );
 }
@@ -172,8 +247,20 @@ fn an_approach_that_was_never_going_to_work_is_refused_the_first_time() {
 #[test]
 fn it_suggests_something_that_worked_in_the_same_place() {
     let mut l = Learned::default();
-    l.record("the export button", "acme.com", Cause::WrongIdea, "there isn't one", 0);
-    l.record("the download link", "acme.com", Cause::Outside, "slow but fine", 0);
+    l.record(
+        "the export button",
+        "acme.com",
+        Cause::WrongIdea,
+        "there isn't one",
+        0,
+    );
+    l.record(
+        "the download link",
+        "acme.com",
+        Cause::Outside,
+        "slow but fine",
+        0,
+    );
     match l.advise("the export button", "acme.com", 100) {
         Advice::Dont { suggest, .. } => assert_eq!(suggest.as_deref(), Some("the download link")),
         o => panic!("{o:?}"),
@@ -186,16 +273,28 @@ fn a_lesson_about_the_world_expires_because_the_world_moves() {
     let mut l = Learned::default();
     l.record("click export", "acme.com", Cause::Outside, "blocked", 0);
     let three_months = 90 * 86_400;
-    assert_eq!(l.advise("click export", "acme.com", three_months), Advice::Fresh);
+    assert_eq!(
+        l.advise("click export", "acme.com", three_months),
+        Advice::Fresh
+    );
     assert_eq!(l.forget_stale(three_months), 1);
 }
 
 #[test]
 fn a_wrong_idea_stays_wrong_for_years() {
     let mut l = Learned::default();
-    l.record("scrape the scan", "the bank", Cause::WrongIdea, "it's an image", 0);
+    l.record(
+        "scrape the scan",
+        "the bank",
+        Cause::WrongIdea,
+        "it's an image",
+        0,
+    );
     let a_year = 365 * 86_400;
-    assert!(matches!(l.advise("scrape the scan", "the bank", a_year), Advice::Dont { .. }));
+    assert!(matches!(
+        l.advise("scrape the scan", "the bank", a_year),
+        Advice::Dont { .. }
+    ));
 }
 
 #[test]
@@ -216,7 +315,11 @@ fn a_fresh_approach_produces_no_commentary() {
 
 #[test]
 fn a_long_job_says_up_front_how_long_it_will_take() {
-    assert_eq!(Size::Quick.warn_up_front(), None, "no commentary on something instant");
+    assert_eq!(
+        Size::Quick.warn_up_front(),
+        None,
+        "no commentary on something instant"
+    );
     assert_eq!(Size::Long.warn_up_front(), Some("about ten minutes"));
 }
 

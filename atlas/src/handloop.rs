@@ -157,31 +157,60 @@ pub fn last_cost_ms() -> Option<u32> {
 /// picture size, which is exactly what the NPU wants.
 pub enum Reader {
     Here(crate::infer::Model),
-    Runtime { session: Box<crate::npu::Session>, input: String, kind: crate::infer::Kind },
+    Runtime {
+        session: Box<crate::npu::Session>,
+        input: String,
+        kind: crate::infer::Kind,
+    },
 }
 
 impl Reader {
-    pub fn open(kind: crate::infer::Kind, models: &std::path::Path, root: Option<&std::path::Path>, npu: bool) -> crate::error::Result<Reader> {
+    pub fn open(
+        kind: crate::infer::Kind,
+        models: &std::path::Path,
+        root: Option<&std::path::Path>,
+        npu: bool,
+    ) -> crate::error::Result<Reader> {
         if let Some(root) = root.filter(|r| crate::npu::runtime_ready(r)) {
             let model = models.join(kind.file());
             let shape: Vec<i64> = kind.recipe().shape().iter().map(|d| *d as i64).collect();
-            let want = if npu && crate::npu::npu_ready(root) { crate::npu::Where::Npu } else { crate::npu::Where::Cpu };
+            let want = if npu && crate::npu::npu_ready(root) {
+                crate::npu::Where::Npu
+            } else {
+                crate::npu::Where::Cpu
+            };
             let opened = crate::npu::Session::input_names(root, &model).and_then(|names| {
-                let input = names.first().cloned().ok_or_else(|| "the model has no input".to_string())?;
+                let input = names
+                    .first()
+                    .cloned()
+                    .ok_or_else(|| "the model has no input".to_string())?;
                 let shapes = [(input.clone(), shape)];
                 // An NPU that refuses the model still leaves ONNX Runtime on
                 // the processor, which is far quicker than `tract`.
-                let session = match crate::npu::Session::open_with(root, &model, &shapes, want, true) {
-                    Err(why) if want == crate::npu::Where::Npu => {
-                        crate::outln!("{} stays off the NPU: {why}", kind.plain());
-                        crate::npu::Session::open_with(root, &model, &shapes, crate::npu::Where::Cpu, true)?
-                    }
-                    other => other?,
-                };
+                let session =
+                    match crate::npu::Session::open_with(root, &model, &shapes, want, true) {
+                        Err(why) if want == crate::npu::Where::Npu => {
+                            crate::outln!("{} stays off the NPU: {why}", kind.plain());
+                            crate::npu::Session::open_with(
+                                root,
+                                &model,
+                                &shapes,
+                                crate::npu::Where::Cpu,
+                                true,
+                            )?
+                        }
+                        other => other?,
+                    };
                 Ok((session, input))
             });
             match opened {
-                Ok((session, input)) => return Ok(Reader::Runtime { session: Box::new(session), input, kind }),
+                Ok((session, input)) => {
+                    return Ok(Reader::Runtime {
+                        session: Box::new(session),
+                        input,
+                        kind,
+                    })
+                }
                 Err(why) => crate::outln!("{} stays on tract: {why}", kind.plain()),
             }
         }
@@ -191,10 +220,18 @@ impl Reader {
     pub fn run(&mut self, pixels: &[f32]) -> crate::error::Result<crate::infer::Outputs> {
         match self {
             Reader::Here(m) => m.run(pixels),
-            Reader::Runtime { session, input, kind } => {
+            Reader::Runtime {
+                session,
+                input,
+                kind,
+            } => {
                 let shape: Vec<i64> = kind.recipe().shape().iter().map(|d| *d as i64).collect();
                 let values = session
-                    .run(vec![crate::npu::In::F32(input.clone(), shape, pixels.to_vec())])
+                    .run(vec![crate::npu::In::F32(
+                        input.clone(),
+                        shape,
+                        pixels.to_vec(),
+                    )])
                     .map_err(crate::error::AtlasError::Platform)?;
                 Ok(crate::infer::Outputs::of(kind.file(), values))
             }
@@ -236,7 +273,12 @@ impl Seeing {
     /// Open the camera and both models. `root` is the install folder, where
     /// ONNX Runtime and the NPU engine live (`None` keeps both models on
     /// `tract`); `npu` is the `hands.npu` setting.
-    pub fn start(feed: &crate::frames::Feed, models: &std::path::Path, root: Option<&std::path::Path>, npu: bool) -> crate::error::Result<Seeing> {
+    pub fn start(
+        feed: &crate::frames::Feed,
+        models: &std::path::Path,
+        root: Option<&std::path::Path>,
+        npu: bool,
+    ) -> crate::error::Result<Seeing> {
         // Models first: a model that won't open should not leave a camera
         // light on for the moment it took to find out.
         let finding = Reader::open(crate::infer::Kind::HandPresence, models, root, npu)?;
@@ -300,7 +342,10 @@ impl Eyes for Seeing {
         let thumb = crate::handweight::thumbnail(&frame, w, h);
         let moved = crate::handweight::moved(&self.before, &thumb);
         self.before = thumb;
-        let since_found = self.found_at.map(|t| t.elapsed().as_millis().min(u32::MAX as u128) as u32).unwrap_or(u32::MAX);
+        let since_found = self
+            .found_at
+            .map(|t| t.elapsed().as_millis().min(u32::MAX as u128) as u32)
+            .unwrap_or(u32::MAX);
 
         // Follow the hand from where it was rather than finding it again: the
         // palm finder is the expensive model, and MediaPipe only runs it when
@@ -310,11 +355,17 @@ impl Eyes for Seeing {
             Step::Skip => None,
             Step::Follow(at) => match self.read_hand(&frame, w, h, at, 0.0) {
                 Some(m) if m.sure >= crate::handweight::STILL_A_HAND => Some(m),
-                _ => self.find(&frame, w, h).and_then(|p| self.read_hand(&frame, w, h, p, HAND_MARGIN)),
+                _ => self
+                    .find(&frame, w, h)
+                    .and_then(|p| self.read_hand(&frame, w, h, p, HAND_MARGIN)),
             },
-            Step::Find => self.find(&frame, w, h).and_then(|p| self.read_hand(&frame, w, h, p, HAND_MARGIN)),
+            Step::Find => self
+                .find(&frame, w, h)
+                .and_then(|p| self.read_hand(&frame, w, h, p, HAND_MARGIN)),
         };
-        self.following = seen.as_ref().and_then(|m| crate::handweight::follow_box(m, w, h));
+        self.following = seen
+            .as_ref()
+            .and_then(|m| crate::handweight::follow_box(m, w, h));
         self.spent = began.elapsed().as_millis().min(u32::MAX as u128) as u32;
         seen
     }
@@ -322,8 +373,14 @@ impl Eyes for Seeing {
 
 impl Seeing {
     /// Read the twenty-one joints of the hand in `hand`, widened by `margin`.
-    fn read_hand(&mut self, frame: &[u8], w: usize, h: usize, hand: crate::vision::Patch, margin: f32) -> Option<crate::handshape::Landmarks> {
-
+    fn read_hand(
+        &mut self,
+        frame: &[u8],
+        w: usize,
+        h: usize,
+        hand: crate::vision::Patch,
+        margin: f32,
+    ) -> Option<crate::handshape::Landmarks> {
         // Where are the hands? Asked first because it is the cheaper of the
         // two models, and running the expensive one on an empty room is the
         // commonest way this kind of pipeline wastes a laptop.
@@ -351,15 +408,24 @@ impl Seeing {
         if cw == 0 || ch == 0 {
             return None;
         }
-        let bigger =
-            crate::infer::prepare_crop(frame, w, h, (cx, cy, cw, ch), crate::infer::Kind::HandLandmarks);
+        let bigger = crate::infer::prepare_crop(
+            frame,
+            w,
+            h,
+            (cx, cy, cw, ch),
+            crate::infer::Kind::HandLandmarks,
+        );
         let out = self.reading.run(&bigger).ok()?;
 
         // Result zero is the joints; result one is how sure the model is that
         // this was a hand at all. Reading only the first is how every reading
         // came back perfectly certain.
         let joints = out.at(0).ok()?;
-        let sure = out.at(1).ok().and_then(|s| s.first().copied()).unwrap_or(1.0);
+        let sure = out
+            .at(1)
+            .ok()
+            .and_then(|s| s.first().copied())
+            .unwrap_or(1.0);
         let (rw, rh) = crate::infer::Kind::HandLandmarks.wants();
         crate::handshape::from_model(&crate::handshape::in_the_frame(
             joints,
@@ -462,7 +528,11 @@ pub fn start(setup: Setup) -> Tracking {
         .name("atlas-hands".into())
         .spawn(move || run(setup, mine, say))
         .ok();
-    Tracking { stop, heard, joined }
+    Tracking {
+        stop,
+        heard,
+        joined,
+    }
 }
 
 fn run(mut setup: Setup, stop: Arc<AtomicBool>, say: Sender<Said>) {
@@ -526,7 +596,12 @@ fn run(mut setup: Setup, stop: Arc<AtomicBool>, say: Sender<Said>) {
 
         let hand = match seen {
             Some(marks) => {
-                let (x, y) = track.saw(marks.points[8].x, marks.points[8].y, now_ms, &setup.smoothing);
+                let (x, y) = track.saw(
+                    marks.points[8].x,
+                    marks.points[8].y,
+                    now_ms,
+                    &setup.smoothing,
+                );
                 // Velocity is only measured when a bound gesture reads it.
                 // Everything else gets the default motion, which is exactly
                 // what every gesture got before the trail existed.
@@ -556,7 +631,13 @@ fn run(mut setup: Setup, stop: Arc<AtomicBool>, say: Sender<Said>) {
                         let _ = say.send(Said::Did(g.does.clone()));
                     }
                 }
-                Some(Hand { x, y, pinching, open, sure: marks.sure })
+                Some(Hand {
+                    x,
+                    y,
+                    pinching,
+                    open,
+                    sure: marks.sure,
+                })
             }
             None => {
                 track.lost();
@@ -575,7 +656,9 @@ fn run(mut setup: Setup, stop: Arc<AtomicBool>, say: Sender<Said>) {
         // two seconds rather than sixty milliseconds.
         // With no hand for a moment, look less often: an empty room needs a
         // few looks a second to notice a hand coming up, not twenty.
-        let wait = crate::handweight::wait_ms(pace.wait_ms(&setup.pace), quiet_ms, setup.idle_per_second).max(1);
+        let wait =
+            crate::handweight::wait_ms(pace.wait_ms(&setup.pace), quiet_ms, setup.idle_per_second)
+                .max(1);
         let step = 16u32.min(wait);
         let mut waited = 0;
         while waited < wait && !stop.load(Ordering::Relaxed) {
@@ -688,7 +771,12 @@ pub fn learn_a_shape(eyes: &mut dyn Eyes, most_frames: usize) -> crate::handshap
 
 /// The shape you held, worked out as a gesture called `name` that does
 /// `does`, or why it couldn't be.
-pub fn shape_shown(eyes: &mut dyn Eyes, name: &str, does: &str, most_frames: usize) -> std::result::Result<crate::handshape::Gesture, String> {
+pub fn shape_shown(
+    eyes: &mut dyn Eyes,
+    name: &str,
+    does: &str,
+    most_frames: usize,
+) -> std::result::Result<crate::handshape::Gesture, String> {
     let l = learn_a_shape(eyes, most_frames);
     l.worked_out(name, does).ok_or_else(|| l.why_not())
 }

@@ -43,92 +43,226 @@ pub struct Fix {
 /// Contractions people drop the apostrophe from. Every one of these has
 /// exactly one correction, which is why they can be fixed silently.
 const APOSTROPHE: &[(&str, &str)] = &[
-    ("dont", "don't"), ("doesnt", "doesn't"), ("didnt", "didn't"),
-    ("cant", "can't"), ("couldnt", "couldn't"), ("wont", "won't"),
-    ("wouldnt", "wouldn't"), ("shouldnt", "shouldn't"), ("isnt", "isn't"),
-    ("arent", "aren't"), ("wasnt", "wasn't"), ("werent", "weren't"),
-    ("hasnt", "hasn't"), ("havent", "haven't"), ("hadnt", "hadn't"),
-    ("im", "I'm"), ("ive", "I've"), ("ill", "I'll"), ("id", "I'd"),
-    ("youre", "you're"), ("youve", "you've"), ("youll", "you'll"),
-    ("theyre", "they're"), ("theyve", "they've"), ("thats", "that's"),
-    ("whats", "what's"), ("lets", "let's"), ("hes", "he's"), ("shes", "she's"),
-    ("weve", "we've"), ("wed", "we'd"), ("theres", "there's"),
+    ("dont", "don't"),
+    ("doesnt", "doesn't"),
+    ("didnt", "didn't"),
+    ("cant", "can't"),
+    ("couldnt", "couldn't"),
+    ("wont", "won't"),
+    ("wouldnt", "wouldn't"),
+    ("shouldnt", "shouldn't"),
+    ("isnt", "isn't"),
+    ("arent", "aren't"),
+    ("wasnt", "wasn't"),
+    ("werent", "weren't"),
+    ("hasnt", "hasn't"),
+    ("havent", "haven't"),
+    ("hadnt", "hadn't"),
+    ("im", "I'm"),
+    ("ive", "I've"),
+    ("ill", "I'll"),
+    ("id", "I'd"),
+    ("youre", "you're"),
+    ("youve", "you've"),
+    ("youll", "you'll"),
+    ("theyre", "they're"),
+    ("theyve", "they've"),
+    ("thats", "that's"),
+    ("whats", "what's"),
+    ("lets", "let's"),
+    ("hes", "he's"),
+    ("shes", "she's"),
+    ("weve", "we've"),
+    ("wed", "we'd"),
+    ("theres", "there's"),
 ];
 
 /// Misspellings with one plausible correction.
 const TYPOS: &[(&str, &str)] = &[
-    ("teh", "the"), ("adn", "and"), ("nad", "and"), ("thre", "there"),
-    ("recieve", "receive"), ("seperate", "separate"), ("definately", "definitely"),
-    ("occured", "occurred"), ("neccessary", "necessary"), ("accomodate", "accommodate"),
-    ("untill", "until"), ("wich", "which"), ("becuase", "because"), ("beacuse", "because"),
-    ("thier", "their"), ("freind", "friend"), ("wierd", "weird"),
-    ("diagnos", "diagnose"), ("asses", "assess"), ("wwant", "want"),
-    ("alot", "a lot"), ("infact", "in fact"), ("aswell", "as well"),
-    ("everytime", "every time"), ("atleast", "at least"),
+    ("teh", "the"),
+    ("adn", "and"),
+    ("nad", "and"),
+    ("thre", "there"),
+    ("recieve", "receive"),
+    ("seperate", "separate"),
+    ("definately", "definitely"),
+    ("occured", "occurred"),
+    ("neccessary", "necessary"),
+    ("accomodate", "accommodate"),
+    ("untill", "until"),
+    ("wich", "which"),
+    ("becuase", "because"),
+    ("beacuse", "because"),
+    ("thier", "their"),
+    ("freind", "friend"),
+    ("wierd", "weird"),
+    ("diagnos", "diagnose"),
+    ("asses", "assess"),
+    ("wwant", "want"),
+    ("alot", "a lot"),
+    ("infact", "in fact"),
+    ("aswell", "as well"),
+    ("everytime", "every time"),
+    ("atleast", "at least"),
 ];
 
 /// Pairs where which one is right depends on the sentence.
 const HOMOPHONES: &[(&str, &str, &str)] = &[
-    ("its", "it's", "\"it's\" is \"it is\"; \"its\" is possessive"),
+    (
+        "its",
+        "it's",
+        "\"it's\" is \"it is\"; \"its\" is possessive",
+    ),
     ("your", "you're", "\"you're\" is \"you are\""),
     ("their", "they're", "\"they're\" is \"they are\""),
     ("there", "their", "\"their\" is possessive"),
     ("then", "than", "\"than\" compares; \"then\" is time"),
-    ("affect", "effect", "\"affect\" is the verb; \"effect\" is the noun"),
+    (
+        "affect",
+        "effect",
+        "\"affect\" is the verb; \"effect\" is the noun",
+    ),
     ("loose", "lose", "\"lose\" is the verb"),
     ("to", "too", "\"too\" means also or excessively"),
 ];
 
 /// Words that follow "it's" but never "its".
 const AFTER_ITS_CONTRACTION: &[&str] = &[
-    "a", "an", "the", "not", "just", "been", "going", "still", "already",
-    "probably", "definitely", "always", "never", "worth", "time", "fine",
-    "good", "bad", "hard", "easy", "clear", "obvious", "important", "my",
-    "your", "our", "too", "very", "really", "quite", "only", "about",
-    "possible", "impossible", "true", "false", "done", "ready", "over",
+    "a",
+    "an",
+    "the",
+    "not",
+    "just",
+    "been",
+    "going",
+    "still",
+    "already",
+    "probably",
+    "definitely",
+    "always",
+    "never",
+    "worth",
+    "time",
+    "fine",
+    "good",
+    "bad",
+    "hard",
+    "easy",
+    "clear",
+    "obvious",
+    "important",
+    "my",
+    "your",
+    "our",
+    "too",
+    "very",
+    "really",
+    "quite",
+    "only",
+    "about",
+    "possible",
+    "impossible",
+    "true",
+    "false",
+    "done",
+    "ready",
+    "over",
 ];
 
 /// Words that follow "its" but never "it's".
 const AFTER_ITS_POSSESSIVE: &[&str] = &[
-    "own", "self", "way", "place", "name", "size", "job", "purpose",
-    "value", "use", "shape", "colour", "color", "edge", "end", "start",
-    "price", "cost", "author", "title", "contents", "output", "result",
+    "own", "self", "way", "place", "name", "size", "job", "purpose", "value", "use", "shape",
+    "colour", "color", "edge", "end", "start", "price", "cost", "author", "title", "contents",
+    "output", "result",
 ];
 
 /// A verb or adverb after "your" means "you're". You don't own a "going".
 const AFTER_YOURE: &[&str] = &[
-    "going", "doing", "being", "getting", "making", "taking", "welcome",
-    "right", "wrong", "sure", "probably", "definitely", "already", "still",
-    "not", "never", "always", "about", "just", "the", "a", "an", "in",
-    "on", "at", "so", "too", "very", "really", "trying", "looking", "working",
+    "going",
+    "doing",
+    "being",
+    "getting",
+    "making",
+    "taking",
+    "welcome",
+    "right",
+    "wrong",
+    "sure",
+    "probably",
+    "definitely",
+    "already",
+    "still",
+    "not",
+    "never",
+    "always",
+    "about",
+    "just",
+    "the",
+    "a",
+    "an",
+    "in",
+    "on",
+    "at",
+    "so",
+    "too",
+    "very",
+    "really",
+    "trying",
+    "looking",
+    "working",
 ];
 
 /// A noun after "you're" means "your".
 const AFTER_YOUR: &[&str] = &[
-    "email", "inbox", "file", "files", "laptop", "machine", "screen", "voice",
-    "notes", "project", "code", "settings", "account", "money", "time",
-    "name", "team", "work", "day", "week", "call", "meeting", "phone",
+    "email", "inbox", "file", "files", "laptop", "machine", "screen", "voice", "notes", "project",
+    "code", "settings", "account", "money", "time", "name", "team", "work", "day", "week", "call",
+    "meeting", "phone",
 ];
 
 /// After "they're" comes a verb or adjective, never a possession.
 const AFTER_THEYRE: &[&str] = &[
-    "going", "doing", "not", "all", "just", "still", "already", "being",
-    "the", "a", "an", "trying", "working", "coming", "here", "there", "on",
+    "going", "doing", "not", "all", "just", "still", "already", "being", "the", "a", "an",
+    "trying", "working", "coming", "here", "there", "on",
 ];
 
 /// "Too" means also or excessively, so it precedes these.
 const AFTER_TOO: &[&str] = &[
-    "much", "many", "long", "short", "late", "early", "big", "small",
-    "slow", "fast", "hard", "easy", "expensive", "cheap", "far", "close",
-    "old", "young", "loud", "quiet", "busy", "tired",
+    "much",
+    "many",
+    "long",
+    "short",
+    "late",
+    "early",
+    "big",
+    "small",
+    "slow",
+    "fast",
+    "hard",
+    "easy",
+    "expensive",
+    "cheap",
+    "far",
+    "close",
+    "old",
+    "young",
+    "loud",
+    "quiet",
+    "busy",
+    "tired",
 ];
 
 /// Subject-verb pairs that are always wrong. High frequency, and the fix is
 /// never ambiguous.
 const AGREEMENT: &[(&str, &str, &str)] = &[
-    ("he", "dont", "doesn't"), ("she", "dont", "doesn't"), ("it", "dont", "doesn't"),
-    ("he", "don't", "doesn't"), ("she", "don't", "doesn't"), ("it", "don't", "doesn't"),
-    ("he", "was'nt", "wasn't"), ("they", "was", "were"), ("we", "was", "were"),
+    ("he", "dont", "doesn't"),
+    ("she", "dont", "doesn't"),
+    ("it", "dont", "doesn't"),
+    ("he", "don't", "doesn't"),
+    ("she", "don't", "doesn't"),
+    ("it", "don't", "doesn't"),
+    ("he", "was'nt", "wasn't"),
+    ("they", "was", "were"),
+    ("we", "was", "were"),
     ("you", "was", "were"),
     // NOT ("there", "is", "are"): "there is a problem" is correct, and
     // "there are problems" is too -- which one depends on whether what
@@ -161,9 +295,17 @@ impl Default for ProseConfig {
             fix_certain: true,
             flag_likely: true,
             never_in: vec![
-                "code".into(), "terminal".into(), "cmd".into(), "powershell".into(),
-                "vs code".into(), "visual studio".into(), "sublime".into(), "vim".into(),
-                "password".into(), "1password".into(), "bitwarden".into(),
+                "code".into(),
+                "terminal".into(),
+                "cmd".into(),
+                "powershell".into(),
+                "vs code".into(),
+                "visual studio".into(),
+                "sublime".into(),
+                "vim".into(),
+                "password".into(),
+                "1password".into(),
+                "bitwarden".into(),
             ],
             my_words: Vec::new(),
         }
@@ -202,7 +344,12 @@ fn words(text: &str) -> Vec<(usize, usize)> {
 }
 
 fn keep_case(original: &str, replacement: &str) -> String {
-    if original.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+    if original
+        .chars()
+        .next()
+        .map(|c| c.is_uppercase())
+        .unwrap_or(false)
+    {
         let mut c = replacement.chars();
         match c.next() {
             Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
@@ -334,7 +481,9 @@ pub fn check(text: &str, cfg: &ProseConfig) -> Vec<Fix> {
         }
 
         // Homophones, resolved from the word after where that settles it.
-        let next = ws.get(idx + 1).map(|(s, l)| word_at(text, *s, *l).to_lowercase());
+        let next = ws
+            .get(idx + 1)
+            .map(|(s, l)| word_at(text, *s, *l).to_lowercase());
         if let Some(fix) = homophone(w, &lower, *start, *len, next.as_deref()) {
             fixes.push(fix);
         }
@@ -360,7 +509,9 @@ fn drop_overlaps(mut fixes: Vec<Fix>) -> Vec<Fix> {
     let mut dropped_capital_at: Vec<usize> = Vec::new();
 
     for f in fixes {
-        let clash = kept.iter().position(|k| f.at < k.at + k.len && k.at < f.at + f.len);
+        let clash = kept
+            .iter()
+            .position(|k| f.at < k.at + k.len && k.at < f.at + f.len);
         match clash {
             None => kept.push(f),
             Some(_) if f.because == "start of a sentence" => dropped_capital_at.push(f.at),
@@ -394,40 +545,59 @@ fn homophone(w: &str, lower: &str, at: usize, len: usize, next: Option<&str>) ->
     let n = next.unwrap_or("");
 
     let fix = |becomes: &str, kind: Kind, because: String| {
-        Some(Fix { at, len, was: w.into(), becomes: keep_case(w, becomes), kind, because })
+        Some(Fix {
+            at,
+            len,
+            was: w.into(),
+            becomes: keep_case(w, becomes),
+            kind,
+            because,
+        })
     };
 
     match lower {
-        "its" if AFTER_ITS_CONTRACTION.contains(&n) => {
-            fix("it's", Kind::Certain, format!("\"its {n}\" can't be possessive"))
-        }
+        "its" if AFTER_ITS_CONTRACTION.contains(&n) => fix(
+            "it's",
+            Kind::Certain,
+            format!("\"its {n}\" can't be possessive"),
+        ),
         "its" => None,
-        "it's" if AFTER_ITS_POSSESSIVE.contains(&n) => {
-            fix("its", Kind::Certain, format!("\"it's {n}\" means \"it is {n}\""))
-        }
+        "it's" if AFTER_ITS_POSSESSIVE.contains(&n) => fix(
+            "its",
+            Kind::Certain,
+            format!("\"it's {n}\" means \"it is {n}\""),
+        ),
         "it's" => None,
 
         "your" if AFTER_YOURE.contains(&n) => {
             fix("you're", Kind::Certain, format!("you can't own a \"{n}\""))
         }
         "your" => None,
-        "you're" if AFTER_YOUR.contains(&n) => {
-            fix("your", Kind::Certain, format!("\"you are {n}\" doesn't parse"))
-        }
+        "you're" if AFTER_YOUR.contains(&n) => fix(
+            "your",
+            Kind::Certain,
+            format!("\"you are {n}\" doesn't parse"),
+        ),
         "you're" => None,
 
-        "their" if AFTER_THEYRE.contains(&n) => {
-            fix("they're", Kind::Certain, format!("\"their {n}\" can't be possessive"))
-        }
+        "their" if AFTER_THEYRE.contains(&n) => fix(
+            "they're",
+            Kind::Certain,
+            format!("\"their {n}\" can't be possessive"),
+        ),
         "their" => None,
-        "there" if AFTER_THEYRE.contains(&n) && n != "the" && n != "a" && n != "an" => {
-            fix("they're", Kind::Likely, "this looks like \"they are\"".into())
-        }
+        "there" if AFTER_THEYRE.contains(&n) && n != "the" && n != "a" && n != "an" => fix(
+            "they're",
+            Kind::Likely,
+            "this looks like \"they are\"".into(),
+        ),
         "there" => None,
 
-        "to" if AFTER_TOO.contains(&n) => {
-            fix("too", Kind::Certain, format!("\"too {n}\" is the comparison"))
-        }
+        "to" if AFTER_TOO.contains(&n) => fix(
+            "too",
+            Kind::Certain,
+            format!("\"too {n}\" is the comparison"),
+        ),
         "to" => None,
 
         // The rest genuinely need the sentence, not the next word.
@@ -440,7 +610,9 @@ fn homophone(w: &str, lower: &str, at: usize, len: usize, next: Option<&str>) ->
 
 /// "He don't" and friends. Always wrong, never ambiguous.
 fn agreement(prev: &str, lower: &str, w: &str, at: usize, len: usize) -> Option<Fix> {
-    let (_, _, right) = AGREEMENT.iter().find(|(s, v, _)| *s == prev && *v == lower)?;
+    let (_, _, right) = AGREEMENT
+        .iter()
+        .find(|(s, v, _)| *s == prev && *v == lower)?;
     Some(Fix {
         at,
         len,
@@ -549,7 +721,9 @@ impl Overreach {
         self.undone
             .iter()
             .find(|(x, n)| *x == w && *n == 3)
-            .map(|_| format!("I keep changing \"{word}\" and you keep changing it back. Is it yours?"))
+            .map(|_| {
+                format!("I keep changing \"{word}\" and you keep changing it back. Is it yours?")
+            })
     }
 }
 

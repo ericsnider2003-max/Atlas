@@ -25,9 +25,16 @@ fn a_file_is_written_and_replaced_whole_with_nothing_left_beside_it() {
     write_whole(&at, b"first").unwrap();
     write_whole(&at, b"second, longer").unwrap();
     assert_eq!(std::fs::read(&at).unwrap(), b"second, longer");
-    let names: Vec<String> =
-        std::fs::read_dir(&d).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
-    assert_eq!(names, vec!["laptop.bundle".to_string()], "something was left in the shared folder");
+    let names: Vec<String> = std::fs::read_dir(&d)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["laptop.bundle".to_string()],
+        "something was left in the shared folder"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -38,9 +45,17 @@ fn a_write_that_fails_leaves_the_last_whole_file_where_it_was() {
     write_whole(&at, b"the whole of the last one").unwrap();
     // Somewhere the new one can't be written: a folder where this process's
     // own temporary name would go (`store::write_whole`).
-    std::fs::create_dir_all(d.join(format!("laptop.bundle.{}.writing", std::process::id()))).unwrap();
-    assert!(write_whole(&at, b"the new one").is_err(), "a failed write was reported as written");
-    assert_eq!(std::fs::read(&at).unwrap(), b"the whole of the last one", "the other device now reads a broken file");
+    std::fs::create_dir_all(d.join(format!("laptop.bundle.{}.writing", std::process::id())))
+        .unwrap();
+    assert!(
+        write_whole(&at, b"the new one").is_err(),
+        "a failed write was reported as written"
+    );
+    assert_eq!(
+        std::fs::read(&at).unwrap(),
+        b"the whole of the last one",
+        "the other device now reads a broken file"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -64,15 +79,27 @@ fn the_files_other_devices_read_are_all_written_whole() {
         !daemon.contains("std::fs::write(&out,"),
         "the sync bundle is written straight onto its name again"
     );
-    assert!(daemon.matches("crate::sync::write_whole(&out,").count() >= 2, "both bundle writes (sealed and plain) go through write_whole");
+    assert!(
+        daemon.matches("crate::sync::write_whole(&out,").count() >= 2,
+        "both bundle writes (sealed and plain) go through write_whole"
+    );
     let sync = crate::common::source_of("sync");
     let household = crate::common::source_of("household");
-    for (name, src, f) in [("sync", &sync, "pub fn leave_handoff("), ("household", &household, "pub fn leave_invitation(")] {
+    for (name, src, f) in [
+        ("sync", &sync, "pub fn leave_handoff("),
+        ("household", &household, "pub fn leave_invitation("),
+    ] {
         let at = src.find(f).unwrap_or_else(|| panic!("{f} in {name}"));
         let body = &src[at..];
         let body = &body[..body.find("\n}\n").unwrap_or(body.len())];
-        assert!(body.contains("write_whole("), "{name}: {f} writes straight onto the name the other device reads");
-        assert!(!body.contains("std::fs::write("), "{name}: {f} still uses fs::write");
+        assert!(
+            body.contains("write_whole("),
+            "{name}: {f} writes straight onto the name the other device reads"
+        );
+        assert!(
+            !body.contains("std::fs::write("),
+            "{name}: {f} still uses fs::write"
+        );
     }
 }
 
@@ -92,10 +119,17 @@ fn a_rename_that_meets_a_passing_lock_is_tried_again_until_it_goes() {
         |e| e.kind() == std::io::ErrorKind::PermissionDenied,
         |_, _| {
             tries += 1;
-            if tries < 3 { Err(locked()) } else { Ok(()) }
+            if tries < 3 {
+                Err(locked())
+            } else {
+                Ok(())
+            }
         },
     );
-    assert!(r.is_ok(), "a scanner holding the file for a moment lost the save");
+    assert!(
+        r.is_ok(),
+        "a scanner holding the file for a moment lost the save"
+    );
     assert_eq!(tries, 3);
 }
 
@@ -137,11 +171,30 @@ fn any_other_failure_is_not_waited_on() {
 fn every_save_that_renames_into_place_is_patient() {
     // The store and the small state files kept beside it: the places a lost
     // rename meant a lost save.
-    for name in ["store", "preferences", "trace", "speaking", "whystopped", "phases", "safety", "server"] {
+    for name in [
+        "store",
+        "preferences",
+        "trace",
+        "speaking",
+        "whystopped",
+        "phases",
+        "safety",
+        "server",
+    ] {
         let src = crate::common::source_of(name);
-        assert!(src.contains("rename_patiently("), "{name}: a save renames into place without waiting out a passing lock");
+        assert!(
+            src.contains("rename_patiently("),
+            "{name}: a save renames into place without waiting out a passing lock"
+        );
     }
-    for name in ["apns", "webpush", "applewx", "peerkey", "sync", "yourchanges"] {
+    for name in [
+        "apns",
+        "webpush",
+        "applewx",
+        "peerkey",
+        "sync",
+        "yourchanges",
+    ] {
         let src = crate::common::source_of(name);
         // `store::write_json` is `write_whole` for a JSON value (audit Q3:
         // apns and webpush had the same five lines); checked below.
@@ -153,5 +206,8 @@ fn every_save_that_renames_into_place_is_patient() {
     let store = crate::common::source_of("store");
     let json = &store[store.find("pub fn write_json").expect("store::write_json")..];
     let body = &json[..json.find("\n}").unwrap_or(json.len())];
-    assert!(body.contains("write_whole("), "store::write_json must write whole");
+    assert!(
+        body.contains("write_whole("),
+        "store::write_json must write whole"
+    );
 }

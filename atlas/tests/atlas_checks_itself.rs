@@ -10,7 +10,14 @@ use atlas::store::Store;
 use std::path::Path;
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn scratch(tag: &str) -> std::path::PathBuf {
@@ -56,14 +63,22 @@ fn a_correction_is_kept_as_a_case_the_self_test_says_again() {
     let c: &'static Config = Box::leak(Box::new(Config::load(Path::new("config")).unwrap()));
     let p = plat();
     let dir = scratch("correction");
-    let mut d = Daemon::new(c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        c,
+        &p,
+        None,
+        Store::new(dir.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let t = 1_790_000_000;
     let _ = d.turn("what's queued", t);
     let _ = d.turn("that's wrong", t + 10);
     let _ = d.turn("show me what's waiting to go out, with who it's to", t + 20);
     let cases: Vec<atlas::regressions::Case> = Store::new(dir).load(atlas::regressions::FILE);
     assert!(
-        cases.iter().any(|k| k.source == atlas::regressions::Source::Correction && k.said == "what's queued"),
+        cases.iter().any(
+            |k| k.source == atlas::regressions::Source::Correction && k.said == "what's queued"
+        ),
         "{cases:?}"
     );
 }
@@ -75,9 +90,21 @@ fn a_file_that_cant_be_read_is_never_learned_as_a_fact() {
     let c: &'static Config = Box::leak(Box::new(Config::load(Path::new("config")).unwrap()));
     let p = plat();
     let dir = scratch("learn-missing");
-    let mut d = Daemon::new(c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        c,
+        &p,
+        None,
+        Store::new(dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let before = d.facts.facts.len();
-    let said = d.execute(&atlas::intent::Intent::Learn("C:/books/missing-book.pdf".into()));
+    let said = d.execute(&atlas::intent::Intent::Learn(
+        "C:/books/missing-book.pdf".into(),
+    ));
     assert!(said.contains("couldn't read"), "{said}");
-    assert_eq!(d.facts.facts.len(), before, "the path was learned as a fact");
+    assert_eq!(
+        d.facts.facts.len(),
+        before,
+        "the path was learned as a fact"
+    );
 }

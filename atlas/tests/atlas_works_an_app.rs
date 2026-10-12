@@ -36,18 +36,30 @@ impl FormApp {
         let s = self.s.borrow();
         Node::new(Role::Window, "Order form").with(vec![
             Node::new(Role::Text, "Your name"),
-            Node::new(Role::Edit, "Name").valued(&s.name).at(10, 10, 200, 20),
+            Node::new(Role::Edit, "Name")
+                .valued(&s.name)
+                .at(10, 10, 200, 20),
             Node::new(Role::CheckBox, "Gift wrap").valued(if s.gift { "on" } else { "off" }),
             Node::new(Role::Button, "Save draft").at(10, 50, 80, 20),
             Node::new(Role::Button, "Send order").at(100, 50, 80, 20),
-            Node::new(Role::Text, if s.status.is_empty() { "Not saved" } else { &s.status }),
+            Node::new(
+                Role::Text,
+                if s.status.is_empty() {
+                    "Not saved"
+                } else {
+                    &s.status
+                },
+            ),
         ])
     }
 }
 
 impl Platform for FormApp {
     fn active_window(&self) -> atlas::error::Result<Option<ActiveWindow>> {
-        Ok(Some(ActiveWindow { process: "orders".into(), title: "Order form".into() }))
+        Ok(Some(ActiveWindow {
+            process: "orders".into(),
+            title: "Order form".into(),
+        }))
     }
     fn active_window_id(&self) -> atlas::error::Result<Option<WindowId>> {
         Ok(Some(WindowId(7)))
@@ -56,7 +68,14 @@ impl Platform for FormApp {
         Some(100)
     }
     fn monitors(&self) -> atlas::error::Result<Vec<Monitor>> {
-        Ok(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+        Ok(vec![Monitor {
+            id: 1,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1040,
+            primary: true,
+        }])
     }
     fn launch(&self, _spec: &AppSpec) -> atlas::error::Result<()> {
         Ok(())
@@ -110,7 +129,13 @@ struct Chooser {
 }
 
 fn call(name: &str, arg: &str) -> ChatReply {
-    ChatReply { text: String::new(), tool_calls: vec![ToolCall { name: name.into(), arguments: serde_json::json!({ "arg": arg }) }] }
+    ChatReply {
+        text: String::new(),
+        tool_calls: vec![ToolCall {
+            name: name.into(),
+            arguments: serde_json::json!({ "arg": arg }),
+        }],
+    }
 }
 
 impl Llm for Chooser {
@@ -120,8 +145,16 @@ impl Llm for Chooser {
     fn native_chat(&self) -> bool {
         true
     }
-    fn chat(&self, req: &ChatRequest, _on: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> {
-        let u = req.messages.last().map(|m| m.content.clone()).unwrap_or_default();
+    fn chat(
+        &self,
+        req: &ChatRequest,
+        _on: &mut dyn FnMut(&str) -> bool,
+    ) -> atlas::error::Result<ChatReply> {
+        let u = req
+            .messages
+            .last()
+            .map(|m| m.content.clone())
+            .unwrap_or_default();
         self.shown.lock().unwrap().push(u.clone());
         assert!(req.force_tool, "a step is always a tool call");
         let send = u.contains("Goal: send the order");
@@ -134,18 +167,39 @@ impl Llm for Chooser {
         } else if send && !u.contains("Order sent") {
             call("click", "4")
         } else {
-            call("done", if send { "The order is sent." } else { "Filled in and saved as a draft." })
+            call(
+                "done",
+                if send {
+                    "The order is sent."
+                } else {
+                    "Filled in and saved as a draft."
+                },
+            )
         })
     }
 }
 
 fn run(goal: &str, answers: &[&str]) -> (Form, Vec<String>, Vec<String>) {
     let c = Config::load(Path::new("config")).unwrap();
-    let app = FormApp { s: RefCell::new(Form::default()) };
-    let llm = Arc::new(Chooser { shown: Mutex::new(Vec::new()) });
-    let dir = std::env::temp_dir().join(format!("atlas-operate-{}-{}", goal.len(), std::process::id()));
+    let app = FormApp {
+        s: RefCell::new(Form::default()),
+    };
+    let llm = Arc::new(Chooser {
+        shown: Mutex::new(Vec::new()),
+    });
+    let dir = std::env::temp_dir().join(format!(
+        "atlas-operate-{}-{}",
+        goal.len(),
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
-    let mut d = Daemon::new(&c, &app, Some(llm.clone() as Arc<dyn Llm>), Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &app,
+        Some(llm.clone() as Arc<dyn Llm>),
+        Store::new(dir.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let mut said = vec![d.turn(goal, 1_790_760_000)];
     let mut answers = answers.iter();
     let mut t = 1_790_760_001;
@@ -171,27 +225,44 @@ fn run(goal: &str, answers: &[&str]) -> (Form, Vec<String>, Vec<String>) {
 
 #[test]
 fn a_form_is_filled_in_and_saved_a_step_at_a_time() {
-    let (form, said, shown) = run("fill in this form: name Eric, gift wrap on, then save a draft", &[]);
+    let (form, said, shown) = run(
+        "fill in this form: name Eric, gift wrap on, then save a draft",
+        &[],
+    );
     assert_eq!(form.name, "Eric", "{said:?}");
     assert!(form.gift, "{said:?}");
     assert_eq!(form.status, "Draft saved", "{said:?}");
     assert!(!form.sent, "nothing was sent");
     // Through the controls' own patterns, not clicks on the screen.
-    assert_eq!(form.acts, vec!["[1] SetValue(\"Eric\")", "[2] Toggle", "[3] Invoke"]);
+    assert_eq!(
+        form.acts,
+        vec!["[1] SetValue(\"Eric\")", "[2] Toggle", "[3] Invoke"]
+    );
     // Each look after a step showed the step's result.
     assert!(shown.iter().any(|s| s.contains("= \"Eric\"")), "{shown:?}");
-    assert!(said.iter().any(|s| s.contains("Filled in and saved as a draft")), "{said:?}");
+    assert!(
+        said.iter()
+            .any(|s| s.contains("Filled in and saved as a draft")),
+        "{said:?}"
+    );
 }
 
 #[test]
 fn a_press_that_cant_be_taken_back_waits_for_a_yes() {
     let (form, said, _) = run("fill in this form. Goal: send the order", &[]);
     assert!(!form.sent, "sent without asking: {said:?}");
-    assert!(said.iter().any(|s| s.contains("\"Send order\"") && s.contains("can't be taken back")), "{said:?}");
+    assert!(
+        said.iter()
+            .any(|s| s.contains("\"Send order\"") && s.contains("can't be taken back")),
+        "{said:?}"
+    );
 
     let (form, said, _) = run("fill in this form. Goal: send the order", &["yes"]);
     assert!(form.sent, "the yes didn't send it: {said:?}");
-    assert!(said.iter().any(|s| s.contains("The order is sent")), "{said:?}");
+    assert!(
+        said.iter().any(|s| s.contains("The order is sent")),
+        "{said:?}"
+    );
 
     let (form, said, _) = run("fill in this form. Goal: send the order", &["no"]);
     assert!(!form.sent, "{said:?}");
@@ -201,11 +272,21 @@ fn a_press_that_cant_be_taken_back_waits_for_a_yes() {
 #[test]
 fn stop_ends_the_job_where_it_is() {
     let c = Config::load(Path::new("config")).unwrap();
-    let app = FormApp { s: RefCell::new(Form::default()) };
-    let llm = Arc::new(Chooser { shown: Mutex::new(Vec::new()) });
+    let app = FormApp {
+        s: RefCell::new(Form::default()),
+    };
+    let llm = Arc::new(Chooser {
+        shown: Mutex::new(Vec::new()),
+    });
     let dir = std::env::temp_dir().join(format!("atlas-operate-stop-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    let mut d = Daemon::new(&c, &app, Some(llm as Arc<dyn Llm>), Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &app,
+        Some(llm as Arc<dyn Llm>),
+        Store::new(dir.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
     d.turn("fill in this form: name Eric", 1_790_760_000);
     assert!(d.operating.is_some());
     let r = d.turn("stop", 1_790_760_002);
@@ -218,7 +299,9 @@ fn stop_ends_the_job_where_it_is() {
 /// small model does with the numbered list and the step tools.
 #[test]
 fn a_real_model_fills_in_the_form() {
-    let Ok(url) = std::env::var("ATLAS_REAL_MODEL_URL") else { return };
+    let Ok(url) = std::env::var("ATLAS_REAL_MODEL_URL") else {
+        return;
+    };
     struct Real(String, Mutex<Vec<String>>);
     impl Llm for Real {
         fn complete(&self, _s: &str, _u: &str) -> atlas::error::Result<String> {
@@ -227,21 +310,45 @@ fn a_real_model_fills_in_the_form() {
         fn native_chat(&self) -> bool {
             true
         }
-        fn chat(&self, req: &ChatRequest, on: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> {
+        fn chat(
+            &self,
+            req: &ChatRequest,
+            on: &mut dyn FnMut(&str) -> bool,
+        ) -> atlas::error::Result<ChatReply> {
             let started = std::time::Instant::now();
             let r = atlas::models::chat_call(&self.0, req, on);
-            let shown = req.messages.last().map(|m| m.content.clone()).unwrap_or_default();
-            self.1.lock().unwrap().push(format!("{:?} in {:?} after:\n{}", r.as_ref().map(|r| (r.text.clone(), r.tool_calls.clone())), started.elapsed(), shown));
+            let shown = req
+                .messages
+                .last()
+                .map(|m| m.content.clone())
+                .unwrap_or_default();
+            self.1.lock().unwrap().push(format!(
+                "{:?} in {:?} after:\n{}",
+                r.as_ref().map(|r| (r.text.clone(), r.tool_calls.clone())),
+                started.elapsed(),
+                shown
+            ));
             r
         }
     }
     let c = Config::load(Path::new("config")).unwrap();
-    let app = FormApp { s: RefCell::new(Form::default()) };
+    let app = FormApp {
+        s: RefCell::new(Form::default()),
+    };
     let llm = Arc::new(Real(url, Mutex::new(Vec::new())));
     let dir = std::env::temp_dir().join(format!("atlas-operate-real-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    let mut d = Daemon::new(&c, &app, Some(llm.clone() as Arc<dyn Llm>), Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
-    let mut said = vec![d.turn("fill in this form: name Eric, tick gift wrap, then save a draft", 1_790_760_000)];
+    let mut d = Daemon::new(
+        &c,
+        &app,
+        Some(llm.clone() as Arc<dyn Llm>),
+        Store::new(dir.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let mut said = vec![d.turn(
+        "fill in this form: name Eric, tick gift wrap, then save a draft",
+        1_790_760_000,
+    )];
     let mut t = 1_790_760_001;
     let started = std::time::Instant::now();
     while d.operating.is_some() && started.elapsed() < std::time::Duration::from_secs(900) {
@@ -254,7 +361,10 @@ fn a_real_model_fills_in_the_form() {
     }
     println!("SAID {said:?}");
     let form = app.s.borrow().clone();
-    println!("FORM name={:?} gift={} status={:?} acts={:?}", form.name, form.gift, form.status, form.acts);
+    println!(
+        "FORM name={:?} gift={} status={:?} acts={:?}",
+        form.name, form.gift, form.status, form.acts
+    );
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(form.name, "Eric");
     assert!(form.gift);

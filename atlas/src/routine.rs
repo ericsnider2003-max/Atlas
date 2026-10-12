@@ -103,7 +103,12 @@ pub struct Watcher {
 
 impl Watcher {
     pub fn did(&mut self, what: &str, at: u64, hour: u32, weekday: u32) {
-        self.history.push(Did { what: what.into(), at, hour, weekday });
+        self.history.push(Did {
+            what: what.into(),
+            at,
+            hour,
+            weekday,
+        });
         if self.history.len() > 2000 {
             self.history.drain(0..500);
         }
@@ -139,11 +144,15 @@ impl Watcher {
             return Vec::new();
         }
         let sequences = self.sequences(cfg);
-        let mut counts: std::collections::BTreeMap<Vec<String>, Vec<(u32, u32)>> = Default::default();
+        let mut counts: std::collections::BTreeMap<Vec<String>, Vec<(u32, u32)>> =
+            Default::default();
 
         for seq in &sequences {
-            let steps: Vec<String> =
-                seq.iter().take(cfg.max_steps).map(|d| d.what.clone()).collect();
+            let steps: Vec<String> = seq
+                .iter()
+                .take(cfg.max_steps)
+                .map(|d| d.what.clone())
+                .collect();
             if steps.len() < 2 {
                 continue;
             }
@@ -167,7 +176,11 @@ impl Watcher {
                 steps,
                 seen: whens.len() as u32,
                 usual_hour: hour,
-                usual_weekday: if same_day { days.first().copied() } else { None },
+                usual_weekday: if same_day {
+                    days.first().copied()
+                } else {
+                    None
+                },
                 confirmed: false,
                 automatic: false,
                 asked: false,
@@ -189,7 +202,10 @@ impl Watcher {
     }
 
     pub fn due_now(&self, hour: u32, weekday: u32) -> Vec<&Routine> {
-        self.routines.iter().filter(|r| r.due(hour, weekday)).collect()
+        self.routines
+            .iter()
+            .filter(|r| r.due(hour, weekday))
+            .collect()
     }
 }
 
@@ -198,7 +214,11 @@ fn commonest(items: impl Iterator<Item = u32>) -> u32 {
     for i in items {
         *counts.entry(i).or_insert(0) += 1;
     }
-    counts.into_iter().max_by_key(|(_, n)| *n).map(|(v, _)| v).unwrap_or(0)
+    counts
+        .into_iter()
+        .max_by_key(|(_, n)| *n)
+        .map(|(v, _)| v)
+        .unwrap_or(0)
 }
 
 /// A name you'd recognise: when it happens ("morning setup"), the way you'd
@@ -221,9 +241,30 @@ fn name_for(steps: &[String], hour: u32) -> String {
 /// (E4): "if it's a normal thing like adding something to a calendar getting
 /// a report then automatic. If it's something more abstract then ask."
 const CONCRETE: &[&str] = &[
-    "schedule", "remind", "calendar", "agenda", "brief", "report", "back up", "backup",
-    "check", "how's", "hows", "what's", "whats", "show", "open", "workspace", "mode",
-    "messages", "mail", "queued", "outstanding", "recap", "health", "status",
+    "schedule",
+    "remind",
+    "calendar",
+    "agenda",
+    "brief",
+    "report",
+    "back up",
+    "backup",
+    "check",
+    "how's",
+    "hows",
+    "what's",
+    "whats",
+    "show",
+    "open",
+    "workspace",
+    "mode",
+    "messages",
+    "mail",
+    "queued",
+    "outstanding",
+    "recap",
+    "health",
+    "status",
 ];
 
 /// Is every step one of those? Anything that sends never is.
@@ -251,7 +292,10 @@ impl Watcher {
                 self.routines.push(r);
             }
         }
-        let r = self.routines.iter_mut().find(|r| r.worth_asking() && !r.asked)?;
+        let r = self
+            .routines
+            .iter_mut()
+            .find(|r| r.worth_asking() && !r.asked)?;
         r.asked = true;
         Some(r.clone())
     }
@@ -282,9 +326,11 @@ impl Watcher {
 pub fn sends_something(steps: &[String]) -> bool {
     steps.iter().any(|s| {
         let l = s.to_lowercase();
-        ["send", "post", "publish", "reply", "tweet", "email", "pay", "buy"]
-            .iter()
-            .any(|w| l.contains(w))
+        [
+            "send", "post", "publish", "reply", "tweet", "email", "pay", "buy",
+        ]
+        .iter()
+        .any(|w| l.contains(w))
     })
 }
 
@@ -311,10 +357,18 @@ pub fn ask_about(r: &Routine, cfg: &RoutineConfig) -> String {
 }
 
 fn weekday_name(d: u32) -> &'static str {
-    ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        .get(d as usize)
-        .copied()
-        .unwrap_or("that day")
+    [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ]
+    .get(d as usize)
+    .copied()
+    .unwrap_or("that day")
 }
 
 fn hour_name(h: u32) -> String {

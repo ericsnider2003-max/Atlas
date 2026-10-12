@@ -62,7 +62,12 @@ pub enum Centre {
     NewYork,
 }
 
-pub const CENTRES: [Centre; 4] = [Centre::Sydney, Centre::Tokyo, Centre::London, Centre::NewYork];
+pub const CENTRES: [Centre; 4] = [
+    Centre::Sydney,
+    Centre::Tokyo,
+    Centre::London,
+    Centre::NewYork,
+];
 
 /// Zones that are NOT trading sessions.
 ///
@@ -238,7 +243,11 @@ impl Session {
             1 => self.centres[0].name().into(),
             _ => format!(
                 "{} overlap",
-                self.centres.iter().map(|c| c.name()).collect::<Vec<_>>().join("-")
+                self.centres
+                    .iter()
+                    .map(|c| c.name())
+                    .collect::<Vec<_>>()
+                    .join("-")
             ),
         }
     }
@@ -262,7 +271,11 @@ impl Session {
 pub fn session_at(ms: i64) -> Session {
     Session {
         at: ms,
-        centres: CENTRES.iter().copied().filter(|&c| is_open(c, ms)).collect(),
+        centres: CENTRES
+            .iter()
+            .copied()
+            .filter(|&c| is_open(c, ms))
+            .collect(),
     }
 }
 
@@ -322,13 +335,21 @@ mod tests {
                 offset_hours(zone, t - 60_000),
                 before,
                 "{:?} a minute before {}-{:02}-{:02} {:02}:00Z",
-                zone, y, m, d, h
+                zone,
+                y,
+                m,
+                d,
+                h
             );
             assert_eq!(
                 offset_hours(zone, t),
                 after,
                 "{:?} at {}-{:02}-{:02} {:02}:00Z",
-                zone, y, m, d, h
+                zone,
+                y,
+                m,
+                d,
+                h
             );
         }
     }
@@ -338,10 +359,22 @@ mod tests {
         // The southern-hemisphere trap: January is INSIDE the daylight period,
         // and a rule written as `start <= t < end` makes it out to be the
         // opposite.
-        assert_eq!(offset_hours(Zone::Sydney, Utc::date(2026, 1, 15).to_ms()), 11);
-        assert_eq!(offset_hours(Zone::Sydney, Utc::date(2026, 7, 15).to_ms()), 10);
-        assert_eq!(offset_hours(Zone::Auckland, Utc::date(2026, 1, 15).to_ms()), 13);
-        assert_eq!(offset_hours(Zone::Auckland, Utc::date(2026, 7, 15).to_ms()), 12);
+        assert_eq!(
+            offset_hours(Zone::Sydney, Utc::date(2026, 1, 15).to_ms()),
+            11
+        );
+        assert_eq!(
+            offset_hours(Zone::Sydney, Utc::date(2026, 7, 15).to_ms()),
+            10
+        );
+        assert_eq!(
+            offset_hours(Zone::Auckland, Utc::date(2026, 1, 15).to_ms()),
+            13
+        );
+        assert_eq!(
+            offset_hours(Zone::Auckland, Utc::date(2026, 7, 15).to_ms()),
+            12
+        );
     }
 
     #[test]
@@ -357,8 +390,14 @@ mod tests {
         // apart in a later edit.
         for m in 1..=12 {
             let t = Utc::date(2026, m, 15).to_ms();
-            assert_eq!(offset_hours(Zone::Brussels, t), offset_hours(Zone::London, t) + 1);
-            assert_eq!(offset_hours(Zone::Zurich, t), offset_hours(Zone::Brussels, t));
+            assert_eq!(
+                offset_hours(Zone::Brussels, t),
+                offset_hours(Zone::London, t) + 1
+            );
+            assert_eq!(
+                offset_hours(Zone::Zurich, t),
+                offset_hours(Zone::Brussels, t)
+            );
         }
     }
 
@@ -366,7 +405,10 @@ mod tests {
     fn toronto_tracks_new_york() {
         for m in 1..=12 {
             let t = Utc::date(2026, m, 15).to_ms();
-            assert_eq!(offset_hours(Zone::Toronto, t), offset_hours(Zone::NewYork, t));
+            assert_eq!(
+                offset_hours(Zone::Toronto, t),
+                offset_hours(Zone::NewYork, t)
+            );
         }
     }
 
@@ -396,10 +438,26 @@ mod tests {
         // The whole reason this is not a table of UTC hours. 2026: the US
         // springs forward 8 March, the EU 29 March. Between them New York opens
         // an hour earlier in UTC while London still closes at 17:00.
-        let winter = overlap_hours(Utc::date(2026, 2, 18).to_ms(), Centre::London, Centre::NewYork);
-        let gap = overlap_hours(Utc::date(2026, 3, 18).to_ms(), Centre::London, Centre::NewYork);
-        let summer = overlap_hours(Utc::date(2026, 6, 17).to_ms(), Centre::London, Centre::NewYork);
-        let autumn = overlap_hours(Utc::date(2026, 10, 28).to_ms(), Centre::London, Centre::NewYork);
+        let winter = overlap_hours(
+            Utc::date(2026, 2, 18).to_ms(),
+            Centre::London,
+            Centre::NewYork,
+        );
+        let gap = overlap_hours(
+            Utc::date(2026, 3, 18).to_ms(),
+            Centre::London,
+            Centre::NewYork,
+        );
+        let summer = overlap_hours(
+            Utc::date(2026, 6, 17).to_ms(),
+            Centre::London,
+            Centre::NewYork,
+        );
+        let autumn = overlap_hours(
+            Utc::date(2026, 10, 28).to_ms(),
+            Centre::London,
+            Centre::NewYork,
+        );
         assert_eq!(winter, 4.0);
         assert_eq!(summer, 4.0);
         assert_eq!(gap, 5.0, "the three-week stretch is real");
@@ -412,7 +470,11 @@ mod tests {
         assert_eq!(s.centres, vec![Centre::London, Centre::NewYork]);
         assert!(s.is_overlap() && s.depth() == 2);
         assert!(s.key().contains("overlap"));
-        assert!(s.say().contains("London") && s.say().contains("14:00"), "{}", s.say());
+        assert!(
+            s.say().contains("London") && s.say().contains("14:00"),
+            "{}",
+            s.say()
+        );
     }
 
     #[test]

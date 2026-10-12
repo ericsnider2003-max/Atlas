@@ -12,20 +12,35 @@ const DAY: u64 = 86_400;
 #[test]
 fn you_can_change_what_atlas_calls_you_by_saying_so() {
     // One sentence, not a trip to settings.
-    assert_eq!(address_change("call me Eric"), Some(Address::Name("Eric".into())));
-    assert_eq!(address_change("address me as sir"), Some(Address::Title("sir".into())));
-    assert_eq!(address_change("you can call me boss"), Some(Address::Title("boss".into())));
+    assert_eq!(
+        address_change("call me Eric"),
+        Some(Address::Name("Eric".into()))
+    );
+    assert_eq!(
+        address_change("address me as sir"),
+        Some(Address::Title("sir".into()))
+    );
+    assert_eq!(
+        address_change("you can call me boss"),
+        Some(Address::Title("boss".into()))
+    );
 }
 
 #[test]
 fn a_nickname_is_a_name_not_a_title() {
-    assert_eq!(address_change("call me Mint"), Some(Address::Name("Mint".into())));
+    assert_eq!(
+        address_change("call me Mint"),
+        Some(Address::Name("Mint".into()))
+    );
 }
 
 #[test]
 fn you_can_tell_it_to_stop() {
     assert_eq!(address_change("stop calling me that"), Some(Address::None));
-    assert_eq!(address_change("don't call me anything"), Some(Address::None));
+    assert_eq!(
+        address_change("don't call me anything"),
+        Some(Address::None)
+    );
 }
 
 #[test]
@@ -36,15 +51,24 @@ fn an_ordinary_sentence_changes_nothing() {
 
 #[test]
 fn it_uses_the_new_one_immediately_so_you_can_hear_it() {
-    assert_eq!(confirm_address(&Address::Name("Eric".into())), "Got it, Eric.");
-    assert_eq!(confirm_address(&Address::Title("sir".into())), "Very good, sir.");
+    assert_eq!(
+        confirm_address(&Address::Name("Eric".into())),
+        "Got it, Eric."
+    );
+    assert_eq!(
+        confirm_address(&Address::Title("sir".into())),
+        "Very good, sir."
+    );
     assert_eq!(confirm_address(&Address::None), "Right — no name.");
 }
 
 // ================= capture, then file =================
 
 fn cfg() -> CaptureConfig {
-    CaptureConfig { projects: vec!["Homelab".into()], ..Default::default() }
+    CaptureConfig {
+        projects: vec!["Homelab".into()],
+        ..Default::default()
+    }
 }
 
 #[test]
@@ -53,7 +77,12 @@ fn capturing_asks_nothing_because_asking_is_what_stops_you() {
     // what loses the thought.
     assert!(CaptureConfig::default().never_ask_on_capture);
     let mut n = Notebook::default();
-    let id = n.capture("broker fees are 40% higher on the new tier", None, 0, &cfg());
+    let id = n.capture(
+        "broker fees are 40% higher on the new tier",
+        None,
+        0,
+        &cfg(),
+    );
     assert_eq!(n.acknowledge(id), "Got it.");
 }
 
@@ -68,9 +97,15 @@ fn a_task_lands_on_the_list_and_says_so() {
 #[test]
 fn what_sort_of_thing_it_is_comes_from_how_you_said_it() {
     assert_eq!(kind_of("need to call the broker"), Kind::Task);
-    assert_eq!(kind_of("what if we ran it on the second machine"), Kind::Idea);
+    assert_eq!(
+        kind_of("what if we ran it on the second machine"),
+        Kind::Idea
+    );
     assert_eq!(kind_of("decided to stay on the VPS"), Kind::Decision);
-    assert_eq!(kind_of("why does the certification take six weeks?"), Kind::Question);
+    assert_eq!(
+        kind_of("why does the certification take six weeks?"),
+        Kind::Question
+    );
     assert_eq!(kind_of("the fee is 40 basis points"), Kind::Fact);
 }
 
@@ -84,7 +119,11 @@ fn what_you_were_doing_is_kept_because_it_is_the_best_clue_and_free() {
 fn handles_are_what_you_would_search_for_not_a_folder() {
     // You won't remember the folder. You'll remember a word, or when, or what
     // you were doing.
-    let h = handles("Homelab fees went to 40 basis points on Tier 2", None, &["Homelab".into()]);
+    let h = handles(
+        "Homelab fees went to 40 basis points on Tier 2",
+        None,
+        &["Homelab".into()],
+    );
     assert!(h.contains(&"Homelab".to_string()));
     assert!(h.iter().any(|x| x.contains("Tier")), "proper nouns: {h:?}");
     assert!(h.iter().any(|x| x == "40"), "numbers: {h:?}");
@@ -93,7 +132,12 @@ fn handles_are_what_you_would_search_for_not_a_folder() {
 #[test]
 fn asking_where_something_is_finds_it_from_a_word_you_remember() {
     let mut n = Notebook::default();
-    n.capture("broker fees went to 40 basis points on the new tier", None, 0, &cfg());
+    n.capture(
+        "broker fees went to 40 basis points on the new tier",
+        None,
+        0,
+        &cfg(),
+    );
     n.capture("the oven runs twenty degrees hot", None, 0, &cfg());
     let hits = n.find("where's that thing about the broker fees", DAY);
     assert_eq!(hits.len(), 1);
@@ -152,7 +196,8 @@ fn weak() -> Piece {
     Piece {
         first_line: "So today I wanted to talk about trading fees".into(),
         script: "So today I wanted to talk about trading fees and how they work generally \
-                 across the industry and what you might want to think about".into(),
+                 across the industry and what you might want to think about"
+            .into(),
         seconds: 48.0,
         value_at_secs: 9.0,
         has_specifics: false,
@@ -165,7 +210,8 @@ fn strong() -> Piece {
         first_line: "Stop paying tier two fees".into(),
         script: "Stop paying tier two fees. Mine went from 40 basis points to 12 by asking one \
                  question. Here's the question, and here's what they said when I asked it. \
-                 Ask yours the same thing this week.".into(),
+                 Ask yours the same thing this week."
+            .into(),
         seconds: 24.0,
         value_at_secs: 1.5,
         has_specifics: true,
@@ -177,7 +223,10 @@ fn strong() -> Piece {
 fn the_opening_is_read_for_what_kind_it_is() {
     assert_eq!(hook_of("Stop paying tier two fees"), Hook::Contradiction);
     assert_eq!(hook_of("If you trade futures, this matters"), Hook::Called);
-    assert_eq!(hook_of("This cost me four thousand dollars to learn"), Hook::Unfinished);
+    assert_eq!(
+        hook_of("This cost me four thousand dollars to learn"),
+        Hook::Unfinished
+    );
     assert_eq!(hook_of("So today I wanted to talk about fees"), Hook::None);
 }
 
@@ -192,7 +241,9 @@ fn no_hook_at_all_is_the_first_thing_said() {
 #[test]
 fn the_advice_is_specific_enough_to_act_on() {
     assert!(Fault::SlowStart.fix().contains("2–4 seconds"));
-    assert!(Fault::LateValue.fix().contains("at 40 seconds should be at 8"));
+    assert!(Fault::LateValue
+        .fix()
+        .contains("at 40 seconds should be at 8"));
     assert!(Fault::TooGeneral.fix().contains("with numbers"));
 }
 
@@ -207,14 +258,28 @@ fn something_that_opens_well_is_left_alone() {
 fn views_are_an_outcome_not_a_signal() {
     // 40k views at 8% completion taught you nothing you can repeat.
     let vain = Performance {
-        id: "1".into(), views: 40_000, completion: 0.08, held_at_three: 0.35,
-        saves: 12, shares: 4, hook: Hook::Question, topic: "fees".into(), seconds: 50.0,
+        id: "1".into(),
+        views: 40_000,
+        completion: 0.08,
+        held_at_three: 0.35,
+        saves: 12,
+        shares: 4,
+        hook: Hook::Question,
+        topic: "fees".into(),
+        seconds: 50.0,
     };
     assert!(!vain.worth_repeating());
 
     let real = Performance {
-        id: "2".into(), views: 3_000, completion: 0.45, held_at_three: 0.72,
-        saves: 210, shares: 80, hook: Hook::Contradiction, topic: "fees".into(), seconds: 24.0,
+        id: "2".into(),
+        views: 3_000,
+        completion: 0.45,
+        held_at_three: 0.72,
+        saves: 210,
+        shares: 80,
+        hook: Hook::Contradiction,
+        topic: "fees".into(),
+        seconds: 24.0,
     };
     assert!(real.worth_repeating());
 }
@@ -223,8 +288,15 @@ fn views_are_an_outcome_not_a_signal() {
 fn under_eight_posts_any_pattern_is_noise_and_atlas_says_so() {
     let few: Vec<Performance> = (0..4)
         .map(|i| Performance {
-            id: i.to_string(), views: 1000, completion: 0.4, held_at_three: 0.7,
-            saves: 50, shares: 10, hook: Hook::Contradiction, topic: "fees".into(), seconds: 24.0,
+            id: i.to_string(),
+            views: 1000,
+            completion: 0.4,
+            held_at_three: 0.7,
+            saves: 50,
+            shares: 10,
+            hook: Hook::Contradiction,
+            topic: "fees".into(),
+            seconds: 24.0,
         })
         .collect();
     let l = learn(&few, &ContentConfig::default());
@@ -234,9 +306,18 @@ fn under_eight_posts_any_pattern_is_noise_and_atlas_says_so() {
     // How many is "enough" is yours: `content.min_posts_for_patterns` shipped
     // 8 and was read by nothing, because `learn` hardcoded `>= 8` and `atlas
     // content learn` printed a bare 8 beside it.
-    let lower = ContentConfig { min_posts_for_patterns: 4, ..ContentConfig::default() };
-    assert!(learn(&few, &lower).confident, "four posts, and four is what was asked for");
-    let higher = ContentConfig { min_posts_for_patterns: 40, ..ContentConfig::default() };
+    let lower = ContentConfig {
+        min_posts_for_patterns: 4,
+        ..ContentConfig::default()
+    };
+    assert!(
+        learn(&few, &lower).confident,
+        "four posts, and four is what was asked for"
+    );
+    let higher = ContentConfig {
+        min_posts_for_patterns: 40,
+        ..ContentConfig::default()
+    };
     assert!(!learn(&few, &higher).confident);
 }
 
@@ -245,20 +326,37 @@ fn with_enough_posted_it_names_the_opening_that_works_for_you() {
     let mut history: Vec<Performance> = Vec::new();
     for i in 0..6 {
         history.push(Performance {
-            id: format!("c{i}"), views: 5000, completion: 0.4, held_at_three: 0.78,
-            saves: 200, shares: 60, hook: Hook::Contradiction, topic: "fees".into(), seconds: 25.0,
+            id: format!("c{i}"),
+            views: 5000,
+            completion: 0.4,
+            held_at_three: 0.78,
+            saves: 200,
+            shares: 60,
+            hook: Hook::Contradiction,
+            topic: "fees".into(),
+            seconds: 25.0,
         });
     }
     for i in 0..4 {
         history.push(Performance {
-            id: format!("q{i}"), views: 5000, completion: 0.1, held_at_three: 0.3,
-            saves: 10, shares: 2, hook: Hook::Question, topic: "general".into(), seconds: 55.0,
+            id: format!("q{i}"),
+            views: 5000,
+            completion: 0.1,
+            held_at_three: 0.3,
+            saves: 10,
+            shares: 2,
+            hook: Hook::Question,
+            topic: "general".into(),
+            seconds: 55.0,
         });
     }
     let l = learn(&history, &ContentConfig::default());
     assert!(l.confident);
     let said = how_its_going(&l);
-    assert!(said.contains("sounds wrong"), "the contradiction hook: {said}");
+    assert!(
+        said.contains("sounds wrong"),
+        "the contradiction hook: {said}"
+    );
     assert!(said.contains("78%"));
     assert!(said.contains("seconds"), "and the length that works");
 }
@@ -283,7 +381,10 @@ fn atlas_never_posts_without_you_saying_so() {
     );
 
     assert!(pub_.approve(id));
-    assert!(matches!(pub_.check(id, true, None), SendCheck::Go), "approved, so it may go");
+    assert!(
+        matches!(pub_.check(id, true, None), SendCheck::Go),
+        "approved, so it may go"
+    );
 
     // The edit after the approval is the case this exists for.
     assert!(pub_.edit(id, "something else entirely"));
@@ -298,7 +399,10 @@ fn atlas_never_posts_without_you_saying_so() {
     // And an old config naming the removed key still loads.
     let parsed: ContentConfig =
         serde_yaml::from_str("enabled: true\nalways_confirm: false\n").unwrap();
-    assert!(parsed.enabled, "an unknown key must not stop the section parsing");
+    assert!(
+        parsed.enabled,
+        "an unknown key must not stop the section parsing"
+    );
 }
 
 #[test]
@@ -306,7 +410,10 @@ fn the_edits_it_offers_are_the_tedious_half_and_need_no_model() {
     let e = edits_it_can_do();
     assert!(e.iter().any(|(n, _)| n.contains("trim the dead opening")));
     assert!(e.iter().any(|(_, why)| why.contains("most watch on mute")));
-    assert!(e.iter().any(|(_, why)| why.contains("15%")), "with the actual gain");
+    assert!(
+        e.iter().any(|(_, why)| why.contains("15%")),
+        "with the actual gain"
+    );
 }
 
 #[test]
@@ -344,7 +451,11 @@ fn a_date_is_kept_as_words_rather_than_guessed_at() {
 
 #[test]
 fn assigning_it_to_someone_by_name_works() {
-    let s = read_spoken("call it the cut, assign it to Priya", &[], &["Priya".into()]);
+    let s = read_spoken(
+        "call it the cut, assign it to Priya",
+        &[],
+        &["Priya".into()],
+    );
     assert_eq!(s.assigned_to.as_deref(), Some("Priya"));
 }
 

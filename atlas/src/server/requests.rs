@@ -7,25 +7,48 @@ use super::*;
 
 impl Default for Reply {
     fn default() -> Reply {
-        Reply { status: 200, body: String::new(), kind: Body::Json, set_cookie: None, download: None, bytes: None }
+        Reply {
+            status: 200,
+            body: String::new(),
+            kind: Body::Json,
+            set_cookie: None,
+            download: None,
+            bytes: None,
+        }
     }
 }
 
 impl Reply {
     pub fn ok(body: impl Into<String>) -> Reply {
-        Reply { body: body.into(), ..Reply::default() }
+        Reply {
+            body: body.into(),
+            ..Reply::default()
+        }
     }
     pub fn html(body: impl Into<String>) -> Reply {
-        Reply { body: body.into(), kind: Body::Html, ..Reply::default() }
+        Reply {
+            body: body.into(),
+            kind: Body::Html,
+            ..Reply::default()
+        }
     }
     /// A page that sends you somewhere else — used after saving a setting, so
     /// a refresh doesn't re-submit the form.
     /// A file for the browser to save, named.
     pub fn file(name: &str, mime: &'static str, body: impl Into<String>) -> Reply {
-        Reply { body: body.into(), download: Some((name.to_string(), mime)), ..Reply::default() }
+        Reply {
+            body: body.into(),
+            download: Some((name.to_string(), mime)),
+            ..Reply::default()
+        }
     }
     pub fn redirect(to: &str) -> Reply {
-        Reply { status: 303, body: to.to_string(), kind: Body::Html, ..Reply::default() }
+        Reply {
+            status: 303,
+            body: to.to_string(),
+            kind: Body::Html,
+            ..Reply::default()
+        }
     }
     /// Take the token out of the address and put it in a cookie.
     ///
@@ -64,16 +87,25 @@ impl Reply {
     }
     /// Bytes the browser plays or shows in place (a voice's sample).
     pub fn media(mime: &'static str, bytes: Vec<u8>) -> Reply {
-        Reply { bytes: Some((mime, bytes)), ..Reply::default() }
+        Reply {
+            bytes: Some((mime, bytes)),
+            ..Reply::default()
+        }
     }
     pub fn denied() -> Reply {
         // Deliberately says nothing about why. An endpoint that distinguishes
         // "wrong token" from "no token" tells a prober it found something.
-        Reply { status: 401, body: "{\"error\":\"denied\"}".into(), ..Reply::default() }
+        Reply {
+            status: 401,
+            body: "{\"error\":\"denied\"}".into(),
+            ..Reply::default()
+        }
     }
     /// A browser asking for a page, rather than the app or a peer asking for data.
     pub(super) fn wants_a_page(method: &str, path: &str) -> bool {
-        method == "GET" && (path == "/" || path == "/hub" || path.starts_with("/hub/")) && !path.contains('.')
+        method == "GET"
+            && (path == "/" || path == "/hub" || path.starts_with("/hub/"))
+            && !path.contains('.')
     }
     /// "denied", for a person: what to do, never a bare error with no way on
     /// (27 Sep 2026: a phone showed `{"error":"denied"}` and nothing else).
@@ -120,10 +152,18 @@ impl Reply {
         }
     }
     pub(super) fn not_found() -> Reply {
-        Reply { status: 404, body: "{\"error\":\"no such endpoint\"}".into(), ..Reply::default() }
+        Reply {
+            status: 404,
+            body: "{\"error\":\"no such endpoint\"}".into(),
+            ..Reply::default()
+        }
     }
     pub(super) fn too_big() -> Reply {
-        Reply { status: 413, body: "{\"error\":\"body too large\"}".into(), ..Reply::default() }
+        Reply {
+            status: 413,
+            body: "{\"error\":\"body too large\"}".into(),
+            ..Reply::default()
+        }
     }
     /// Too much sent from the phone or another program, said so a person can
     /// act on it (30 Sep 2026: a file shared from the phone that was over the
@@ -208,7 +248,10 @@ pub fn parse_request(head: &str, body: &str) -> Option<Request> {
     // hand-typed address can carry one, so it is dropped here too.
     let (path, query) = match target.split_once('?') {
         Some((p, q)) => (p.to_string(), q.split('#').next().unwrap_or(q).to_string()),
-        None => (target.split('#').next().unwrap_or(&target).to_string(), String::new()),
+        None => (
+            target.split('#').next().unwrap_or(&target).to_string(),
+            String::new(),
+        ),
     };
 
     // Collected separately rather than assigned over each other. The old
@@ -219,7 +262,9 @@ pub fn parse_request(head: &str, body: &str) -> Option<Request> {
     let mut bearer = None;
     let mut cookie_token = None;
     for line in lines {
-        let Some((k, v)) = line.split_once(':') else { continue };
+        let Some((k, v)) = line.split_once(':') else {
+            continue;
+        };
         let k = k.trim();
         let v = v.trim();
         if k.eq_ignore_ascii_case("x-atlas-token") {
@@ -262,7 +307,9 @@ pub fn parse_request(head: &str, body: &str) -> Option<Request> {
 /// one that was generated is a token that never matches.
 pub fn query_field(query: &str, name: &str) -> Option<String> {
     for pair in query.split('&') {
-        let Some((k, v)) = pair.split_once('=') else { continue };
+        let Some((k, v)) = pair.split_once('=') else {
+            continue;
+        };
         if k != name {
             continue;
         }

@@ -63,9 +63,16 @@ impl Lang {
             Some(Lang::Go)
         } else if p.ends_with(".ts") || p.ends_with(".tsx") {
             Some(Lang::TypeScript)
-        } else if p.ends_with(".js") || p.ends_with(".mjs") || p.ends_with(".cjs") || p.ends_with(".jsx") {
+        } else if p.ends_with(".js")
+            || p.ends_with(".mjs")
+            || p.ends_with(".cjs")
+            || p.ends_with(".jsx")
+        {
             Some(Lang::JavaScript)
-        } else if [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h"].iter().any(|e| p.ends_with(e)) {
+        } else if [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h"]
+            .iter()
+            .any(|e| p.ends_with(e))
+        {
             Some(Lang::Cpp)
         } else {
             None
@@ -149,7 +156,8 @@ impl Lang {
 }
 
 /// The Python draft's test: it loads.
-const PY_SMOKE: &str = "import importlib\n\n\ndef test_it_loads():\n    importlib.import_module(\"main\")\n";
+const PY_SMOKE: &str =
+    "import importlib\n\n\ndef test_it_loads():\n    importlib.import_module(\"main\")\n";
 
 /// The JavaScript draft's test: it loads.
 const JS_SMOKE: &str = "const test = require('node:test');\n\ntest('it loads', () => {\n  require('./main.js');\n});\n";
@@ -173,7 +181,11 @@ pub fn program_in(dir: &std::path::Path, program: &str) -> String {
 
 /// What the C++ draft is built to, and run as, for its Behaviour gate.
 fn cpp_program() -> &'static str {
-    if cfg!(windows) { "atlas-check.exe" } else { "./atlas-check" }
+    if cfg!(windows) {
+        "atlas-check.exe"
+    } else {
+        "./atlas-check"
+    }
 }
 
 /// What a check tells you, which decides where it sits in the ladder.
@@ -447,7 +459,9 @@ fn missing_program(r: &Ran) -> Option<String> {
     let missing = out.starts_with("could not start")
         || out.starts_with("couldn't run")
         || out.contains("is not recognized as an internal or external command")
-        || (out.contains("not found") && out.contains(&program.to_lowercase()) && out.lines().count() <= 2);
+        || (out.contains("not found")
+            && out.contains(&program.to_lowercase())
+            && out.lines().count() <= 2);
     missing.then_some(program)
 }
 
@@ -490,11 +504,17 @@ pub fn read_ladder(lang: Lang, ran: &[Ran]) -> Next {
         if let Some(r) = ran.iter().find(|r| r.command == g.command) {
             if !r.passed && (r.tells.blocks_later() || r.tells == Tells::Behaviour) {
                 if let Some(program) = missing_program(r) {
-                    return Next::CannotCheck { program, gate: g.clone() };
+                    return Next::CannotCheck {
+                        program,
+                        gate: g.clone(),
+                    };
                 }
             }
             if !r.passed && r.tells.blocks_later() {
-                return Next::Fix { gate: g.clone(), output: r.output.clone() };
+                return Next::Fix {
+                    gate: g.clone(),
+                    output: r.output.clone(),
+                };
             }
         }
     }
@@ -503,7 +523,10 @@ pub fn read_ladder(lang: Lang, ran: &[Ran]) -> Next {
     for g in gates.iter().filter(|g| g.tells == Tells::Behaviour) {
         if let Some(r) = ran.iter().find(|r| r.command == g.command) {
             if !r.passed {
-                return Next::Fix { gate: g.clone(), output: r.output.clone() };
+                return Next::Fix {
+                    gate: g.clone(),
+                    output: r.output.clone(),
+                };
             }
         }
     }
@@ -526,9 +549,7 @@ pub fn read_ladder(lang: Lang, ran: &[Ran]) -> Next {
 /// does not compile — and, more importantly, stops that output existing at
 /// all, because a next attempt working from it is working from noise.
 pub fn still_worth_running(lang: Lang, ran: &[Ran]) -> Vec<Gate> {
-    let blocked = ran
-        .iter()
-        .any(|r| !r.passed && r.tells.blocks_later());
+    let blocked = ran.iter().any(|r| !r.passed && r.tells.blocks_later());
     ladder(lang)
         .into_iter()
         .filter(|g| !ran.iter().any(|r| r.command == g.command))
@@ -561,7 +582,13 @@ pub enum Ask {
 
 impl Ask {
     pub fn all() -> [Ask; 5] {
-        [Ask::Shape, Ask::Inputs, Ask::WhenItGoesWrong, Ask::NeverDo, Ask::DoneWhen]
+        [
+            Ask::Shape,
+            Ask::Inputs,
+            Ask::WhenItGoesWrong,
+            Ask::NeverDo,
+            Ask::DoneWhen,
+        ]
     }
 
     pub fn question(&self) -> &'static str {
@@ -602,7 +629,10 @@ pub struct Spec {
 
 impl Spec {
     pub fn new(idea: &str) -> Spec {
-        Spec { idea: idea.to_string(), ..Default::default() }
+        Spec {
+            idea: idea.to_string(),
+            ..Default::default()
+        }
     }
 
     /// The next thing worth asking, or `None` when there is enough to start.
@@ -663,7 +693,12 @@ pub fn lang_of_dir(dir: &std::path::Path) -> Option<Lang> {
     if dir.join("tsconfig.json").is_file() {
         return Some(Lang::TypeScript);
     }
-    for marker in ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt"] {
+    for marker in [
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "requirements.txt",
+    ] {
         if dir.join(marker).is_file() {
             return Some(Lang::Python);
         }
@@ -672,7 +707,10 @@ pub fn lang_of_dir(dir: &std::path::Path) -> Option<Lang> {
         return Some(Lang::JavaScript);
     }
     if dir.join("CMakeLists.txt").is_file()
-        || std::fs::read_dir(dir).ok().is_some_and(|d| d.flatten().any(|e| e.path().extension().is_some_and(|x| x == "vcxproj")))
+        || std::fs::read_dir(dir).ok().is_some_and(|d| {
+            d.flatten()
+                .any(|e| e.path().extension().is_some_and(|x| x == "vcxproj"))
+        })
     {
         return Some(Lang::Cpp);
     }
@@ -685,16 +723,40 @@ mod the_toolchains_own_fixes {
 
     #[test]
     fn each_language_names_the_fixer_its_tool_already_has() {
-        let fix = |lang: Lang, tells: Tells| ladder(lang).into_iter().filter(|g| g.tells == tells).find_map(|g| autofix_for(&g));
-        assert!(fix(Lang::Rust, Tells::Sound).unwrap().starts_with("cargo fix"));
-        assert!(fix(Lang::Rust, Tells::Style).unwrap().starts_with("cargo clippy --fix"));
-        assert_eq!(fix(Lang::Python, Tells::Style).unwrap(), "ruff check --fix .");
-        assert!(fix(Lang::Cpp, Tells::Style).unwrap().starts_with("clang-tidy --fix "));
+        let fix = |lang: Lang, tells: Tells| {
+            ladder(lang)
+                .into_iter()
+                .filter(|g| g.tells == tells)
+                .find_map(|g| autofix_for(&g))
+        };
+        assert!(fix(Lang::Rust, Tells::Sound)
+            .unwrap()
+            .starts_with("cargo fix"));
+        assert!(fix(Lang::Rust, Tells::Style)
+            .unwrap()
+            .starts_with("cargo clippy --fix"));
+        assert_eq!(
+            fix(Lang::Python, Tells::Style).unwrap(),
+            "ruff check --fix ."
+        );
+        assert!(fix(Lang::Cpp, Tells::Style)
+            .unwrap()
+            .starts_with("clang-tidy --fix "));
         // The tests and the type checker have nothing to apply: never "fixed"
         // by a tool, only by a change that's been reasoned about.
-        for lang in [Lang::Rust, Lang::Python, Lang::Go, Lang::JavaScript, Lang::TypeScript, Lang::Cpp] {
+        for lang in [
+            Lang::Rust,
+            Lang::Python,
+            Lang::Go,
+            Lang::JavaScript,
+            Lang::TypeScript,
+            Lang::Cpp,
+        ] {
             assert!(fix(lang, Tells::Behaviour).is_none(), "{lang:?}");
         }
-        assert!(fix(Lang::Python, Tells::Sound).is_none(), "mypy has no fixer");
+        assert!(
+            fix(Lang::Python, Tells::Sound).is_none(),
+            "mypy has no fixer"
+        );
     }
 }

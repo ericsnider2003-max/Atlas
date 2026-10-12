@@ -24,7 +24,6 @@
 //! errand off for good is never decided from context: that needs a name, a
 //! number, "all", or an answer to the question.
 
-
 /// What was asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verb {
@@ -86,13 +85,32 @@ pub fn verb_and_target(said: &str) -> Option<(Verb, String)> {
         return None;
     }
     // Longest first so "hold off on" beats "hold".
-    const PAUSE: &[&str] = &["hold off on", "put on hold", "stop", "pause", "hold", "freeze"];
+    const PAUSE: &[&str] = &[
+        "hold off on",
+        "put on hold",
+        "stop",
+        "pause",
+        "hold",
+        "freeze",
+    ];
     const RESUME: &[&str] = &[
-        "carry on with", "keep going with", "continue with", "pick back up", "pick up",
-        "unpause", "resume", "continue", "carry on", "keep going",
+        "carry on with",
+        "keep going with",
+        "continue with",
+        "pick back up",
+        "pick up",
+        "unpause",
+        "resume",
+        "continue",
+        "carry on",
+        "keep going",
     ];
     const CANCEL: &[&str] = &["call off", "cancel", "abandon", "scrap", "kill", "drop"];
-    for (verb, list) in [(Verb::Resume, RESUME), (Verb::Cancel, CANCEL), (Verb::Pause, PAUSE)] {
+    for (verb, list) in [
+        (Verb::Resume, RESUME),
+        (Verb::Cancel, CANCEL),
+        (Verb::Pause, PAUSE),
+    ] {
         for v in list {
             if t == *v {
                 return Some((verb, String::new()));
@@ -104,7 +122,10 @@ pub fn verb_and_target(said: &str) -> Option<(Verb, String)> {
         }
     }
     // "put the research on hold"
-    if let Some(rest) = t.strip_prefix("put ").and_then(|r| r.strip_suffix(" on hold")) {
+    if let Some(rest) = t
+        .strip_prefix("put ")
+        .and_then(|r| r.strip_suffix(" on hold"))
+    {
         return Some((Verb::Pause, rest.trim().to_string()));
     }
     None
@@ -119,7 +140,9 @@ pub fn correction(said: &str) -> Option<String> {
             return Some(String::new());
         }
         if let Some(rest) = t.strip_prefix(&format!("{lead} ")) {
-            let rest = rest.trim_start_matches("i meant ").trim_start_matches("i mean ");
+            let rest = rest
+                .trim_start_matches("i meant ")
+                .trim_start_matches("i mean ");
             return Some(rest.trim().to_string());
         }
     }
@@ -148,8 +171,10 @@ pub fn pick(
     }
     let ids_of = |v: &[&Candidate]| v.iter().map(|c| c.id).collect::<Vec<u64>>();
     let target = normalise(target);
-    let content: Vec<String> =
-        words(&target).into_iter().filter(|w| !FILLER.contains(&w.as_str())).collect();
+    let content: Vec<String> = words(&target)
+        .into_iter()
+        .filter(|w| !FILLER.contains(&w.as_str()))
+        .collect();
 
     if !content.is_empty() {
         if content.iter().all(|w| ALL.contains(&w.as_str())) {
@@ -164,15 +189,21 @@ pub fn pick(
                 None => Pick::Ask(ids_of(&pool)),
             };
         }
-        let scored: Vec<(usize, &Candidate)> =
-            pool.iter().map(|c| (score(c, &content), *c)).filter(|(s, _)| *s > 0).collect();
+        let scored: Vec<(usize, &Candidate)> = pool
+            .iter()
+            .map(|c| (score(c, &content), *c))
+            .filter(|(s, _)| *s > 0)
+            .collect();
         let Some(best) = scored.iter().map(|(s, _)| *s).max() else {
             // Words were given and none of them are about an errand: this
             // sentence is about something else.
             return Pick::Nothing;
         };
-        let top: Vec<&Candidate> =
-            scored.iter().filter(|(s, _)| *s == best).map(|(_, c)| *c).collect();
+        let top: Vec<&Candidate> = scored
+            .iter()
+            .filter(|(s, _)| *s == best)
+            .map(|(_, c)| *c)
+            .collect();
         return if top.len() == 1 {
             Pick::These(vec![top[0].id], Why::Named)
         } else {
@@ -190,8 +221,11 @@ pub fn pick(
     }
     for said in recent.iter().take(3) {
         let said_words = words(&normalise(said));
-        let hits: Vec<&Candidate> =
-            pool.iter().filter(|c| score(c, &said_words) > 0).copied().collect();
+        let hits: Vec<&Candidate> = pool
+            .iter()
+            .filter(|c| score(c, &said_words) > 0)
+            .copied()
+            .collect();
         if hits.len() == 1 {
             return Pick::These(vec![hits[0].id], Why::Conversation);
         }
@@ -267,14 +301,21 @@ pub fn describe(c: &Candidate) -> String {
 pub fn question(verb: Verb, among: &[&Candidate]) -> String {
     let mut by_age: Vec<&&Candidate> = among.iter().collect();
     by_age.sort_by_key(|c| (c.started, c.id));
-    let listed: Vec<String> =
-        by_age.iter().enumerate().map(|(i, c)| format!("{}) {}", i + 1, describe(c))).collect();
+    let listed: Vec<String> = by_age
+        .iter()
+        .enumerate()
+        .map(|(i, c)| format!("{}) {}", i + 1, describe(c)))
+        .collect();
     let doing = match verb {
         Verb::Pause => "pause",
         Verb::Resume => "pick back up",
         Verb::Cancel => "call off for good",
     };
-    let state = if verb == Verb::Resume { "paused" } else { "going" };
+    let state = if verb == Verb::Resume {
+        "paused"
+    } else {
+        "going"
+    };
     format!(
         "{} things are {state}: {}. Which should I {doing} — a number, a name, or 'all'?",
         spell(by_age.len()),
@@ -285,8 +326,9 @@ pub fn question(verb: Verb, among: &[&Candidate]) -> String {
 /// What was done, why that one, and what carries on.
 pub fn answered(verb: Verb, picked: &[&Candidate], why: Why, others: &[&Candidate]) -> String {
     let names = |v: &[&Candidate]| join_and(&v.iter().map(|c| describe(c)).collect::<Vec<_>>());
-    let (hold, cant): (Vec<&Candidate>, Vec<&Candidate>) =
-        picked.iter().partition(|c| verb != Verb::Pause || c.can_hold);
+    let (hold, cant): (Vec<&Candidate>, Vec<&Candidate>) = picked
+        .iter()
+        .partition(|c| verb != Verb::Pause || c.can_hold);
     let mut s = String::new();
     if !hold.is_empty() {
         s.push_str(&match verb {
@@ -331,7 +373,9 @@ fn aliases(label: &str) -> &'static [&'static str] {
     match label {
         "research" => &["research", "researching", "looking", "lookup", "search"],
         "council" => &["council", "room", "seats", "opinions"],
-        "build" => &["build", "building", "page", "site", "website", "code", "app"],
+        "build" => &[
+            "build", "building", "page", "site", "website", "code", "app",
+        ],
         "improve" => &["improve", "improving", "change", "project"],
         "mail" => &["mail", "email", "emails", "inbox"],
         "unsubscribe" => &["unsubscribe", "unsubscribing", "newsletters"],
@@ -343,9 +387,27 @@ fn aliases(label: &str) -> &'static [&'static str] {
         // A window Atlas is working for you (`daemon::WorkingForYou`); its
         // topic is the app, so "stop the Slack one" names it.
         "pictures" => &["looking", "look", "picture", "pictures", "screen", "webcam"],
-        "photo" => &["photo", "photos", "edit", "editing", "background", "crop", "straighten"],
+        "photo" => &[
+            "photo",
+            "photos",
+            "edit",
+            "editing",
+            "background",
+            "crop",
+            "straighten",
+        ],
         "call-notes" => &["call", "notes", "writeup", "write", "transcript"],
-        "conversation" => &["conversation", "chat", "reply", "replying", "replies", "draft", "drafting", "window", "messages"],
+        "conversation" => &[
+            "conversation",
+            "chat",
+            "reply",
+            "replying",
+            "replies",
+            "draft",
+            "drafting",
+            "window",
+            "messages",
+        ],
         _ => &[],
     }
 }
@@ -399,16 +461,34 @@ const FILLER: &[&str] = &[
     "are", "doing", "running", "i", "meant", "mean", "going",
 ];
 
-const ALL: &[&str] = &["all", "everything", "both", "every", "others", "rest", "other"];
+const ALL: &[&str] = &[
+    "all",
+    "everything",
+    "both",
+    "every",
+    "others",
+    "rest",
+    "other",
+];
 
 fn words(normalised: &str) -> Vec<String> {
-    normalised.split(|c: char| c.is_whitespace() || c == '-').filter(|w| !w.is_empty()).map(str::to_string).collect()
+    normalised
+        .split(|c: char| c.is_whitespace() || c == '-')
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 fn normalise(s: &str) -> String {
     s.to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c.is_whitespace() || c == '-' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c.is_whitespace() || c == '-' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -438,6 +518,10 @@ fn join_and(parts: &[String]) -> String {
         [] => String::new(),
         [one] => one.clone(),
         [a, b] => format!("{a} and {b}"),
-        _ => format!("{}, and {}", parts[..parts.len() - 1].join(", "), parts[parts.len() - 1]),
+        _ => format!(
+            "{}, and {}",
+            parts[..parts.len() - 1].join(", "),
+            parts[parts.len() - 1]
+        ),
     }
 }

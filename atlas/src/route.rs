@@ -45,48 +45,135 @@ pub enum Kind {
 pub fn known_routes() -> Vec<Route> {
     vec![
         // Extracting.
-        Route { name: "read the file that's already there".into(), for_what: Kind::Extract,
-            costs_secs: 1, reliability: 0.95, needs: vec!["a downloaded file".into()] },
-        Route { name: "read the window's text".into(), for_what: Kind::Extract,
-            costs_secs: 2, reliability: 0.8, needs: vec!["the app open".into()] },
-        Route { name: "use the site's own export".into(), for_what: Kind::Extract,
-            costs_secs: 20, reliability: 0.85, needs: vec!["a logged-in session".into()] },
-        Route { name: "read the page through the browser".into(), for_what: Kind::Extract,
-            costs_secs: 15, reliability: 0.7, needs: vec!["the browser".into()] },
-        Route { name: "screenshot and read the text off it".into(), for_what: Kind::Extract,
-            costs_secs: 40, reliability: 0.6, needs: vec!["OCR".into()] },
-        Route { name: "ask you to save it and point me at it".into(), for_what: Kind::Extract,
-            costs_secs: 60, reliability: 0.99, needs: vec![] },
-
+        Route {
+            name: "read the file that's already there".into(),
+            for_what: Kind::Extract,
+            costs_secs: 1,
+            reliability: 0.95,
+            needs: vec!["a downloaded file".into()],
+        },
+        Route {
+            name: "read the window's text".into(),
+            for_what: Kind::Extract,
+            costs_secs: 2,
+            reliability: 0.8,
+            needs: vec!["the app open".into()],
+        },
+        Route {
+            name: "use the site's own export".into(),
+            for_what: Kind::Extract,
+            costs_secs: 20,
+            reliability: 0.85,
+            needs: vec!["a logged-in session".into()],
+        },
+        Route {
+            name: "read the page through the browser".into(),
+            for_what: Kind::Extract,
+            costs_secs: 15,
+            reliability: 0.7,
+            needs: vec!["the browser".into()],
+        },
+        Route {
+            name: "screenshot and read the text off it".into(),
+            for_what: Kind::Extract,
+            costs_secs: 40,
+            reliability: 0.6,
+            needs: vec!["OCR".into()],
+        },
+        Route {
+            name: "ask you to save it and point me at it".into(),
+            for_what: Kind::Extract,
+            costs_secs: 60,
+            reliability: 0.99,
+            needs: vec![],
+        },
         // Acting.
-        Route { name: "keyboard shortcut".into(), for_what: Kind::Act,
-            costs_secs: 1, reliability: 0.9, needs: vec!["the app focused".into()] },
-        Route { name: "click the control by its name".into(), for_what: Kind::Act,
-            costs_secs: 3, reliability: 0.8, needs: vec!["an accessible control".into()] },
-        Route { name: "the app's own command line".into(), for_what: Kind::Act,
-            costs_secs: 5, reliability: 0.85, needs: vec!["a command line".into()] },
-        Route { name: "walk you through it".into(), for_what: Kind::Act,
-            costs_secs: 45, reliability: 0.99, needs: vec![] },
-
+        Route {
+            name: "keyboard shortcut".into(),
+            for_what: Kind::Act,
+            costs_secs: 1,
+            reliability: 0.9,
+            needs: vec!["the app focused".into()],
+        },
+        Route {
+            name: "click the control by its name".into(),
+            for_what: Kind::Act,
+            costs_secs: 3,
+            reliability: 0.8,
+            needs: vec!["an accessible control".into()],
+        },
+        Route {
+            name: "the app's own command line".into(),
+            for_what: Kind::Act,
+            costs_secs: 5,
+            reliability: 0.85,
+            needs: vec!["a command line".into()],
+        },
+        Route {
+            name: "walk you through it".into(),
+            for_what: Kind::Act,
+            costs_secs: 45,
+            reliability: 0.99,
+            needs: vec![],
+        },
         // Learning.
-        Route { name: "what I already have indexed".into(), for_what: Kind::Learn,
-            costs_secs: 1, reliability: 0.6, needs: vec![] },
-        Route { name: "the local model".into(), for_what: Kind::Learn,
-            costs_secs: 6, reliability: 0.55, needs: vec!["a model".into()] },
-        Route { name: "search the web".into(), for_what: Kind::Learn,
-            costs_secs: 20, reliability: 0.85, needs: vec!["the internet".into()] },
-        Route { name: "read the source or spec directly".into(), for_what: Kind::Learn,
-            costs_secs: 60, reliability: 0.9, needs: vec!["the document".into()] },
-
+        Route {
+            name: "what I already have indexed".into(),
+            for_what: Kind::Learn,
+            costs_secs: 1,
+            reliability: 0.6,
+            needs: vec![],
+        },
+        Route {
+            name: "the local model".into(),
+            for_what: Kind::Learn,
+            costs_secs: 6,
+            reliability: 0.55,
+            needs: vec!["a model".into()],
+        },
+        Route {
+            name: "search the web".into(),
+            for_what: Kind::Learn,
+            costs_secs: 20,
+            reliability: 0.85,
+            needs: vec!["the internet".into()],
+        },
+        Route {
+            name: "read the source or spec directly".into(),
+            for_what: Kind::Learn,
+            costs_secs: 60,
+            reliability: 0.9,
+            needs: vec!["the document".into()],
+        },
         // Fixing.
-        Route { name: "change the setting rather than the code".into(), for_what: Kind::Fix,
-            costs_secs: 2, reliability: 0.5, needs: vec![] },
-        Route { name: "the local model on the one file".into(), for_what: Kind::Fix,
-            costs_secs: 30, reliability: 0.45, needs: vec!["a model".into()] },
-        Route { name: "work it out from the failing test".into(), for_what: Kind::Fix,
-            costs_secs: 90, reliability: 0.7, needs: vec![] },
-        Route { name: "write it up and hand it over".into(), for_what: Kind::Fix,
-            costs_secs: 300, reliability: 0.95, needs: vec![] },
+        Route {
+            name: "change the setting rather than the code".into(),
+            for_what: Kind::Fix,
+            costs_secs: 2,
+            reliability: 0.5,
+            needs: vec![],
+        },
+        Route {
+            name: "the local model on the one file".into(),
+            for_what: Kind::Fix,
+            costs_secs: 30,
+            reliability: 0.45,
+            needs: vec!["a model".into()],
+        },
+        Route {
+            name: "work it out from the failing test".into(),
+            for_what: Kind::Fix,
+            costs_secs: 90,
+            reliability: 0.7,
+            needs: vec![],
+        },
+        Route {
+            name: "write it up and hand it over".into(),
+            for_what: Kind::Fix,
+            costs_secs: 300,
+            reliability: 0.95,
+            needs: vec![],
+        },
     ]
 }
 
@@ -103,7 +190,11 @@ pub struct RouteConfig {
 
 impl Default for RouteConfig {
     fn default() -> Self {
-        RouteConfig { min_reliability: 0.35, max_routes: 4, impatience: 0.5 }
+        RouteConfig {
+            min_reliability: 0.35,
+            max_routes: 4,
+            impatience: 0.5,
+        }
     }
 }
 
@@ -130,7 +221,10 @@ pub fn needs_internet(r: &Route) -> bool {
 /// Online is strictly better, never differently better — nothing is only
 /// possible offline.
 pub fn coverage(kind: Kind) -> (usize, usize) {
-    let all: Vec<Route> = known_routes().into_iter().filter(|r| r.for_what == kind).collect();
+    let all: Vec<Route> = known_routes()
+        .into_iter()
+        .filter(|r| r.for_what == kind)
+        .collect();
     let offline = all.iter().filter(|r| !needs_internet(r)).count();
     (offline, all.len())
 }
@@ -188,13 +282,22 @@ pub fn plan_with(
                 if r.costs_secs <= 5 && !learned_here {
                     "quickest thing that could work".to_string()
                 } else if r.costs_secs <= 5 {
-                    format!("quickest thing that has worked here — {:.0}% of the time",
-                        reliability * 100.0)
+                    format!(
+                        "quickest thing that has worked here — {:.0}% of the time",
+                        reliability * 100.0
+                    )
                 } else if learned_here {
-                    format!("about {}s, and it's worked {:.0}% of the time here",
-                        r.costs_secs, reliability * 100.0)
+                    format!(
+                        "about {}s, and it's worked {:.0}% of the time here",
+                        r.costs_secs,
+                        reliability * 100.0
+                    )
                 } else {
-                    format!("about {}s, works {:.0}% of the time", r.costs_secs, reliability * 100.0)
+                    format!(
+                        "about {}s, works {:.0}% of the time",
+                        r.costs_secs,
+                        reliability * 100.0
+                    )
                 }
             }
         };
@@ -215,8 +318,11 @@ pub fn plan_with(
             why: if ruled_out.is_empty() {
                 "I don't have a way to do that here".into()
             } else {
-                format!("{} way{} in, all closed", ruled_out.len(),
-                    if ruled_out.len() == 1 { "" } else { "s" })
+                format!(
+                    "{} way{} in, all closed",
+                    ruled_out.len(),
+                    if ruled_out.len() == 1 { "" } else { "s" }
+                )
             },
             tried: ruled_out,
         },
@@ -281,7 +387,9 @@ impl Record {
                     *wins += 1;
                 }
             }
-            None => self.tallies.push((route.into(), context.into(), 1, worked as u32)),
+            None => self
+                .tallies
+                .push((route.into(), context.into(), 1, worked as u32)),
         }
     }
 
@@ -306,14 +414,22 @@ impl Record {
 
     /// How much Atlas has actually learned here.
     pub fn attempts(&self, context: &str) -> u32 {
-        self.tallies.iter().filter(|(_, c, _, _)| c == context).map(|(_, _, t, _)| t).sum()
+        self.tallies
+            .iter()
+            .filter(|(_, c, _, _)| c == context)
+            .map(|(_, _, t, _)| t)
+            .sum()
     }
 }
 
 /// "I seem to be stuck on X for Y." The one sentence for being stuck, used
 /// wherever Atlas is.
 pub fn stuck_on(what: &str, why: &str) -> String {
-    format!("I seem to be stuck on {} for {}.", what.trim(), why.trim().trim_end_matches('.'))
+    format!(
+        "I seem to be stuck on {} for {}.",
+        what.trim(),
+        why.trim().trim_end_matches('.')
+    )
 }
 
 /// What Atlas says when it changes approach mid-task.

@@ -29,7 +29,7 @@
 
 use atlas::hollow::{Hollow, Why};
 use atlas::judgment::{
-    self, how_strongly, which_band, add_up, Band, JudgmentConfig, Signal, HOW_BAD,
+    self, add_up, how_strongly, which_band, Band, JudgmentConfig, Signal, HOW_BAD,
 };
 use atlas::whichone::Clarity;
 
@@ -37,15 +37,30 @@ fn cfg() -> JudgmentConfig {
     JudgmentConfig::default()
 }
 
-
 fn hollow(what: &str, why: Why, answer: &str) -> Hollow {
-    Hollow { what: what.into(), why, answer: answer.into() }
+    Hollow {
+        what: what.into(),
+        why,
+        answer: answer.into(),
+    }
 }
 
 const BANDS: &[Band] = &[
-    Band { id: "low", plain: "hardly anything", from: 1.0 },
-    Band { id: "middling", plain: "worth a look", from: 3.0 },
-    Band { id: "high", plain: "deal with this", from: 6.0 },
+    Band {
+        id: "low",
+        plain: "hardly anything",
+        from: 1.0,
+    },
+    Band {
+        id: "middling",
+        plain: "worth a look",
+        from: 3.0,
+    },
+    Band {
+        id: "high",
+        plain: "deal with this",
+        from: 6.0,
+    },
 ];
 
 // ===================== not knowing is its own answer ==================
@@ -75,9 +90,17 @@ fn a_condition_with_no_evidence_is_unmeasured_rather_than_unlikely() {
 #[test]
 fn balanced_evidence_is_said_to_be_balanced_rather_than_half_true() {
     // 0.5 means the evidence is balanced, not that the condition half-holds.
-    let h = how_strongly(&[Signal::of("for", 1.0)], &[Signal::of("against", 1.0)], &cfg());
+    let h = how_strongly(
+        &[Signal::of("for", 1.0)],
+        &[Signal::of("against", 1.0)],
+        &cfg(),
+    );
     assert_eq!(h.likely, 0.5);
-    assert_eq!(h.clarity, Clarity::Close, "a coin toss was reported as an answer");
+    assert_eq!(
+        h.clarity,
+        Clarity::Close,
+        "a coin toss was reported as an answer"
+    );
     assert_eq!(h.settled(), None);
 }
 
@@ -87,7 +110,11 @@ fn balanced_evidence_is_said_to_be_balanced_rather_than_half_true() {
 fn a_score_sitting_on_a_bands_floor_is_in_it_and_not_clearly() {
     let just_in = which_band(3.0, BANDS, &cfg());
     assert_eq!(just_in.band, "middling");
-    assert_eq!(just_in.clarity, Clarity::Close, "barely in was reported as settled");
+    assert_eq!(
+        just_in.clarity,
+        Clarity::Close,
+        "barely in was reported as settled"
+    );
     assert_eq!(just_in.settled(), None);
 
     let well_in = which_band(4.5, BANDS, &cfg());
@@ -115,10 +142,22 @@ fn the_top_band_has_no_upper_edge_to_be_near() {
 #[test]
 fn how_near_the_edge_counts_as_is_a_setting_rather_than_a_number_that_fits() {
     let on_the_line = 3.2;
-    assert_eq!(which_band(on_the_line, BANDS, &cfg()).clarity, Clarity::Close);
-    let relaxed = JudgmentConfig { past_the_edge: 0.1, ..cfg() };
-    assert_eq!(which_band(on_the_line, BANDS, &relaxed).clarity, Clarity::Clear);
-    let strict = JudgmentConfig { past_the_edge: 10.0, ..cfg() };
+    assert_eq!(
+        which_band(on_the_line, BANDS, &cfg()).clarity,
+        Clarity::Close
+    );
+    let relaxed = JudgmentConfig {
+        past_the_edge: 0.1,
+        ..cfg()
+    };
+    assert_eq!(
+        which_band(on_the_line, BANDS, &relaxed).clarity,
+        Clarity::Clear
+    );
+    let strict = JudgmentConfig {
+        past_the_edge: 10.0,
+        ..cfg()
+    };
     assert_eq!(which_band(7.0, BANDS, &strict).clarity, Clarity::Close);
 }
 
@@ -127,7 +166,10 @@ fn the_bands_may_be_given_in_any_order() {
     // Depending on the caller to list them low-to-high is the kind of
     // unwritten ordering this module exists to remove.
     let shuffled: Vec<Band> = vec![BANDS[2], BANDS[0], BANDS[1]];
-    assert_eq!(which_band(4.5, &shuffled, &cfg()), which_band(4.5, BANDS, &cfg()));
+    assert_eq!(
+        which_band(4.5, &shuffled, &cfg()),
+        which_band(4.5, BANDS, &cfg())
+    );
 }
 
 // ===================== evidence stays a list ==========================
@@ -137,7 +179,10 @@ fn what_counted_is_kept_rather_than_becoming_a_number_early() {
     // A total with no account of what went into it cannot be argued with,
     // and the reason to grade something instead of thresholding it is so a
     // person can see why.
-    let for_it = [Signal::of("said so itself", 1.0), Signal::of("nothing to judge", 0.5)];
+    let for_it = [
+        Signal::of("said so itself", 1.0),
+        Signal::of("nothing to judge", 0.5),
+    ];
     assert_eq!(add_up(&for_it), 1.5);
     let h = how_strongly(&for_it, &[], &cfg());
     // Biggest first, so the reason a person reads is the one that decided it.
@@ -148,11 +193,7 @@ fn what_counted_is_kept_rather_than_becoming_a_number_early() {
 
 #[test]
 fn evidence_against_is_counted_rather_than_ignored() {
-    let h = how_strongly(
-        &[Signal::of("a", 3.0)],
-        &[Signal::of("b", 1.0)],
-        &cfg(),
-    );
+    let h = how_strongly(&[Signal::of("a", 3.0)], &[Signal::of("b", 1.0)], &cfg());
     assert_eq!(h.likely, 0.75);
     assert_eq!(h.settled(), Some(true));
     // And enough against turns it round.
@@ -167,8 +208,16 @@ fn claiming_to_be_fine_while_empty_outranks_admitting_it_is_not_built() {
     // The two ends of `Why`. One is honest about being unfinished; the other
     // is the failure `hollow.rs` was written about, and it is worse because
     // nothing downstream can tell.
-    let honest = add_up(&judgment::severity_of(&hollow("q", Why::SaysSoItself, "not wired up")));
-    let worst = add_up(&judgment::severity_of(&hollow("q", Why::ZeroDressedAsFine, "all fine")));
+    let honest = add_up(&judgment::severity_of(&hollow(
+        "q",
+        Why::SaysSoItself,
+        "not wired up",
+    )));
+    let worst = add_up(&judgment::severity_of(&hollow(
+        "q",
+        Why::ZeroDressedAsFine,
+        "all fine",
+    )));
     assert!(worst > honest, "{worst} vs {honest}");
 
     assert_eq!(which_band(worst, HOW_BAD, &cfg()).band, "claims-it-works");
@@ -180,7 +229,11 @@ fn an_answer_with_no_text_is_worse_than_the_same_answer_with_some() {
     // A person can catch a wrong answer they can read. They cannot catch an
     // empty one.
     let silent = add_up(&judgment::severity_of(&hollow("q", Why::Silent, "")));
-    let spoke = add_up(&judgment::severity_of(&hollow("q", Why::Silent, "something")));
+    let spoke = add_up(&judgment::severity_of(&hollow(
+        "q",
+        Why::Silent,
+        "something",
+    )));
     assert!(silent > spoke, "{silent} vs {spoke}");
 }
 
@@ -188,17 +241,30 @@ fn an_answer_with_no_text_is_worse_than_the_same_answer_with_some() {
 fn worst_first_actually_puts_the_worst_first() {
     // The bug, named. In question order this list reads mild, mild, awful.
     let found = vec![
-        hollow("what's outstanding", Why::SaysSoItself, "not wired to an action yet"),
-        hollow("what's queued", Why::SaysSoItself, "not wired to an action yet"),
+        hollow(
+            "what's outstanding",
+            Why::SaysSoItself,
+            "not wired to an action yet",
+        ),
+        hollow(
+            "what's queued",
+            Why::SaysSoItself,
+            "not wired to an action yet",
+        ),
         hollow("how's the machine", Why::ZeroDressedAsFine, "all fine"),
     ];
     let ranked = judgment::worst_first(&found, &cfg());
-    assert_eq!(ranked[0].0.what, "how's the machine", "the worst one was still third");
+    assert_eq!(
+        ranked[0].0.what, "how's the machine",
+        "the worst one was still third"
+    );
     assert_eq!(ranked[0].1.band, "claims-it-works");
 
     let said = atlas::hollow::spoken(&found, &cfg());
     let awful = said.find("machine").expect("the worst one isn't mentioned");
-    let mild = said.find("outstanding").expect("the mild one isn't mentioned");
+    let mild = said
+        .find("outstanding")
+        .expect("the mild one isn't mentioned");
     assert!(awful < mild, "still in question order: {said}");
     assert!(said.contains("worst first"), "{said}");
 }
@@ -223,11 +289,18 @@ fn a_severity_it_is_unsure_of_is_left_off_rather_than_said_anyway() {
     // not sure of is worse than none, because it gets acted on.
     let on_an_edge = hollow("q", Why::Silent, "something");
     let g = which_band(add_up(&judgment::severity_of(&on_an_edge)), HOW_BAD, &cfg());
-    assert_eq!(g.clarity, Clarity::Close, "the fixture isn't on an edge any more: {g:?}");
+    assert_eq!(
+        g.clarity,
+        Clarity::Close,
+        "the fixture isn't on an edge any more: {g:?}"
+    );
 
     let said = atlas::hollow::spoken(&[on_an_edge], &cfg());
     assert!(said.contains("answered with nothing at all"), "{said}");
-    assert!(!said.contains("worst kind"), "it stated a severity it wasn't sure of: {said}");
+    assert!(
+        !said.contains("worst kind"),
+        "it stated a severity it wasn't sure of: {said}"
+    );
 }
 
 // ===================== the pass that happens without you =============
@@ -259,7 +332,10 @@ fn the_nightly_pass_runs_the_bug_detector_too() {
     // The same self-reference trap `dead_capabilities.rs` documents for its
     // own ceiling constant, and the reason `called_names` skips `//` lines.
     let needle = format!("self.{}_answers()", "hollow");
-    assert!(code.matches(&needle).count() >= 2, "the detector still runs only when asked");
+    assert!(
+        code.matches(&needle).count() >= 2,
+        "the detector still runs only when asked"
+    );
 }
 
 #[test]
@@ -267,7 +343,13 @@ fn a_backlog_of_honest_admissions_is_not_worth_waking_you_for() {
     // Six findings that all say "not wired up" are a to-do list. Read out at
     // night, they are how you learn to ignore the voice.
     let backlog: Vec<Hollow> = (0..6)
-        .map(|i| hollow(&format!("q{i}"), Why::SaysSoItself, "not wired to an action yet"))
+        .map(|i| {
+            hollow(
+                &format!("q{i}"),
+                Why::SaysSoItself,
+                "not wired to an action yet",
+            )
+        })
         .collect();
     let raise = judgment::worth_raising(&backlog, &cfg());
     assert_ne!(raise.settled(), Some(true), "{raise:?}");
@@ -320,13 +402,22 @@ fn there_is_one_word_for_being_unsure_rather_than_one_per_module() {
     // "I am not sure" is how one of them goes unused and then wrong -- which
     // is this tree's most repeated lesson, five name collisions in two days.
     let src = std::fs::read_to_string("src/judgment.rs").expect("judgment.rs");
-    assert!(src.contains("use crate::whichone::Clarity;"), "it declared its own");
-    assert!(!src.contains("pub enum Clarity"), "there are two Claritys now");
+    assert!(
+        src.contains("use crate::whichone::Clarity;"),
+        "it declared its own"
+    );
+    assert!(
+        !src.contains("pub enum Clarity"),
+        "there are two Claritys now"
+    );
 
     // And the shapes agree, so a caller can treat them the same way.
     let unsure = which_band(3.0, BANDS, &cfg());
     assert_eq!(unsure.clarity, Clarity::Close);
-    assert_eq!(how_strongly(&[Signal::of("a", 1.0)], &[Signal::of("b", 1.0)], &cfg()).clarity, Clarity::Close);
+    assert_eq!(
+        how_strongly(&[Signal::of("a", 1.0)], &[Signal::of("b", 1.0)], &cfg()).clarity,
+        Clarity::Close
+    );
 }
 
 // ===================== it is reached =================================
@@ -391,7 +482,10 @@ fn everything_here_has_a_production_caller() {
     );
 
     let yaml = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    assert!(yaml.contains("past_the_edge:"), "nowhere to set how near an edge counts");
+    assert!(
+        yaml.contains("past_the_edge:"),
+        "nowhere to set how near an edge counts"
+    );
     assert!(yaml.contains("measured_above:"));
 }
 
@@ -400,8 +494,17 @@ fn every_band_says_what_being_in_it_means() {
     // A band that can only be printed as a number tells a person something
     // scored 2.4, which is not information.
     for b in HOW_BAD {
-        assert!(b.plain.len() > 15, "{}: {:?} is not a sentence", b.id, b.plain);
-        assert!(!b.plain.contains(char::is_numeric), "{}: it just says the number", b.id);
+        assert!(
+            b.plain.len() > 15,
+            "{}: {:?} is not a sentence",
+            b.id,
+            b.plain
+        );
+        assert!(
+            !b.plain.contains(char::is_numeric),
+            "{}: it just says the number",
+            b.id
+        );
     }
     // And they are distinct, which is how a table like this rots.
     let mut said: Vec<&str> = HOW_BAD.iter().map(|b| b.plain).collect();
@@ -423,7 +526,13 @@ fn every_band_says_what_being_in_it_means() {
 use atlas::judgment::{how_unusual, only_partly_measured, weighed_together, Measured};
 
 fn measured(name: &'static str, value: f64, usually: f64, varies_by: f64, seen: usize) -> Measured {
-    Measured { name, value, usually, varies_by, seen }
+    Measured {
+        name,
+        value,
+        usually,
+        varies_by,
+        seen,
+    }
 }
 
 #[test]
@@ -434,7 +543,11 @@ fn nothing_speaks_below_the_sample_floor() {
     assert_eq!(cfg().min_seen, atlas::judgment::MIN_SAMPLE);
 
     let thin = measured("spend", 300.0, 150.0, 50.0, 12);
-    assert_eq!(how_unusual(&thin, &cfg()), None, "it spoke on twelve observations");
+    assert_eq!(
+        how_unusual(&thin, &cfg()),
+        None,
+        "it spoke on twelve observations"
+    );
 
     let enough = measured("spend", 300.0, 150.0, 50.0, 40);
     assert_eq!(how_unusual(&enough, &cfg()), Some(3.0));
@@ -453,7 +566,10 @@ fn not_measured_is_not_the_same_as_perfectly_ordinary() {
 
     // And something genuinely ordinary does say zero, which is a different
     // fact and is allowed to be one.
-    assert_eq!(how_unusual(&measured("ok", 5.0, 5.0, 2.0, 100), &cfg()), Some(0.0));
+    assert_eq!(
+        how_unusual(&measured("ok", 5.0, 5.0, 2.0, 100), &cfg()),
+        Some(0.0)
+    );
 }
 
 #[test]
@@ -503,7 +619,11 @@ fn a_dimension_with_nothing_behind_it_is_named_rather_than_counted_as_ordinary()
         (measured("thin", 4.0, 0.0, 1.0, 3), 1.0),
     ];
     let (score, missing) = weighed_together(&parts, &cfg());
-    assert_eq!(score, Some(4.0), "the unmeasured half dragged the score down");
+    assert_eq!(
+        score,
+        Some(4.0),
+        "the unmeasured half dragged the score down"
+    );
     assert_eq!(missing, vec!["thin"]);
 
     let said = only_partly_measured(&missing, 2).expect("it should say so");
@@ -520,7 +640,10 @@ fn a_composite_with_nothing_measured_at_all_is_not_a_score_of_zero() {
         (measured("b", 9.0, 0.0, 1.0, 1), 1.0),
     ];
     let (score, missing) = weighed_together(&parts, &cfg());
-    assert_eq!(score, None, "a setup nobody could measure was scored neutral");
+    assert_eq!(
+        score, None,
+        "a setup nobody could measure was scored neutral"
+    );
     assert_eq!(missing.len(), 2);
 }
 
@@ -540,8 +663,14 @@ fn your_quiet_hours_are_measured_rather_than_guessed_at() {
         }
     }
     // Asleep, and awake, in the same person's own units.
-    assert!(r.quiet_at(3, &cfg()), "three in the morning didn't read as quiet");
-    assert!(!r.quiet_at(14, &cfg()), "two in the afternoon read as quiet");
+    assert!(
+        r.quiet_at(3, &cfg()),
+        "three in the morning didn't read as quiet"
+    );
+    assert!(
+        !r.quiet_at(14, &cfg()),
+        "two in the afternoon read as quiet"
+    );
 }
 
 #[test]
@@ -560,7 +689,10 @@ fn a_fortnight_is_still_needed_before_it_will_say() {
             }
         }
     }
-    assert!(!r.quiet_at(3, &cfg()), "it decided you were asleep on five days of watching");
+    assert!(
+        !r.quiet_at(3, &cfg()),
+        "it decided you were asleep on five days of watching"
+    );
 }
 
 #[test]
@@ -626,11 +758,17 @@ fn the_two_forms_are_used_for_the_two_kinds_of_thing() {
         ("src/daily.rs", "ordinary_for_counts("),
     ] {
         let src = std::fs::read_to_string(file).unwrap_or_default();
-        assert!(src.contains(want), "{file} counts events and does not floor the spread");
+        assert!(
+            src.contains(want),
+            "{file} counts events and does not floor the spread"
+        );
     }
     // `reach` measures rates and fractions across posts, so it does not.
     let reach = std::fs::read_to_string("src/reach.rs").expect("reach.rs");
-    assert!(reach.contains("judgment::ordinary_for("), "reach lost its baseline");
+    assert!(
+        reach.contains("judgment::ordinary_for("),
+        "reach lost its baseline"
+    );
 }
 
 #[test]
@@ -649,7 +787,13 @@ fn calling_someone_late_stops_once_they_have_kept_the_hour() {
 
     let after = |nights: f64| {
         how_unusual(
-            &Measured { name: "2am", value: nights, usually, varies_by, seen: 45 },
+            &Measured {
+                name: "2am",
+                value: nights,
+                usually,
+                varies_by,
+                seen: 45,
+            },
             &cfg(),
         )
         .expect("measured")

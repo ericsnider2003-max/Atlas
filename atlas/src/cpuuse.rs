@@ -25,7 +25,12 @@ pub fn own_cpu_ms() -> Option<u64> {
     {
         use windows::Win32::Foundation::FILETIME;
         use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
-        let (mut c, mut e, mut k, mut u) = (FILETIME::default(), FILETIME::default(), FILETIME::default(), FILETIME::default());
+        let (mut c, mut e, mut k, mut u) = (
+            FILETIME::default(),
+            FILETIME::default(),
+            FILETIME::default(),
+            FILETIME::default(),
+        );
         // SAFETY: the current-process pseudo-handle is always valid, and the four FILETIMEs are
         // live locals the call writes.
         unsafe { GetProcessTimes(GetCurrentProcess(), &mut c, &mut e, &mut k, &mut u) }.ok()?;
@@ -70,11 +75,23 @@ impl Reading {
     /// "4.2% of one core over 15 min, idle; the loop's CPU: observing 61%, ...; its time: ...".
     pub fn plain(&self) -> String {
         let total: u64 = self.parts.iter().map(|p| p.1).sum::<u64>().max(1);
-        let parts: Vec<String> = self.parts.iter().take(3).map(|(n, ms)| format!("{n} {}%", ms * 100 / total)).collect();
+        let parts: Vec<String> = self
+            .parts
+            .iter()
+            .take(3)
+            .map(|(n, ms)| format!("{n} {}%", ms * 100 / total))
+            .collect();
         let cpu_total: u64 = self.cpu_parts.iter().map(|p| p.1).sum::<u64>().max(1);
-        let cpu: Vec<String> = self.cpu_parts.iter().take(3).map(|(n, us)| format!("{n} {}%", us * 100 / cpu_total)).collect();
+        let cpu: Vec<String> = self
+            .cpu_parts
+            .iter()
+            .take(3)
+            .map(|(n, us)| format!("{n} {}%", us * 100 / cpu_total))
+            .collect();
         let loop_ms = self.cpu_parts.iter().map(|p| p.1).sum::<u64>() / 1000;
-        let loop_share = (loop_ms * 100).checked_div(self.process_ms).map_or(0, |s| s.min(100));
+        let loop_share = (loop_ms * 100)
+            .checked_div(self.process_ms)
+            .map_or(0, |s| s.min(100));
         format!(
             "{:.1}% of one core over {} min{}; the main loop {}% of that, its CPU: {}; its time: {}",
             self.percent,
@@ -128,12 +145,33 @@ impl Meter {
             return None;
         }
         let percent = cpu.saturating_sub(c0) as f32 / (secs as f32 * 10.0);
-        let mut parts: Vec<(String, u64)> = self.parts.iter().map(|(n, ms)| (n.to_string(), *ms)).filter(|p| p.1 > 0).collect();
+        let mut parts: Vec<(String, u64)> = self
+            .parts
+            .iter()
+            .map(|(n, ms)| (n.to_string(), *ms))
+            .filter(|p| p.1 > 0)
+            .collect();
         parts.sort_by_key(|b| std::cmp::Reverse(b.1));
-        let mut cpu_parts: Vec<(String, u64)> = self.cpu_parts.iter().map(|(n, us)| (n.to_string(), *us)).filter(|p| p.1 > 0).collect();
+        let mut cpu_parts: Vec<(String, u64)> = self
+            .cpu_parts
+            .iter()
+            .map(|(n, us)| (n.to_string(), *us))
+            .filter(|p| p.1 > 0)
+            .collect();
         cpu_parts.sort_by_key(|b| std::cmp::Reverse(b.1));
-        let r = Reading { at: t, secs, percent, idle: !self.talked, parts, cpu_parts, process_ms: cpu.saturating_sub(c0) };
-        *self = Meter { started: Some((t, cpu)), ..Default::default() };
+        let r = Reading {
+            at: t,
+            secs,
+            percent,
+            idle: !self.talked,
+            parts,
+            cpu_parts,
+            process_ms: cpu.saturating_sub(c0),
+        };
+        *self = Meter {
+            started: Some((t, cpu)),
+            ..Default::default()
+        };
         Some(r)
     }
 }
@@ -148,11 +186,17 @@ mod tests {
     #[test]
     fn a_window_reads_the_share_of_one_core_and_the_parts() {
         let mut m = Meter::default();
-        assert!(m.read(1000, Some(5_000)).is_none(), "the first call starts the clock");
+        assert!(
+            m.read(1000, Some(5_000)).is_none(),
+            "the first call starts the clock"
+        );
         m.add(&[("machine health", 300), ("observing", 100)]);
         m.add(&[("machine health", 300)]);
         m.add_cpu(&[("observing", 3_000), ("machine health", 1_000)]);
-        assert!(m.read(1000 + 60, Some(6_000)).is_none(), "not a whole window yet");
+        assert!(
+            m.read(1000 + 60, Some(6_000)).is_none(),
+            "not a whole window yet"
+        );
         let r = m.read(1000 + WINDOW_SECS, Some(5_000 + 90_000)).unwrap();
         assert!((r.percent - 10.0).abs() < 0.01, "{}", r.percent);
         assert!(r.idle);

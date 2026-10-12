@@ -94,7 +94,9 @@ const SAYS_SO: &str = "> **STALE";
 
 fn docs() -> Vec<(String, String)> {
     let mut out = Vec::new();
-    let Ok(dir) = std::fs::read_dir("docs") else { return out };
+    let Ok(dir) = std::fs::read_dir("docs") else {
+        return out;
+    };
     for e in dir.flatten() {
         let p = e.path();
         if p.extension().and_then(|x| x.to_str()) != Some("md") {
@@ -173,7 +175,10 @@ fn a_document_called_current_carries_no_tree_size_number() {
                     // "the tests" are prose; "891 tests" is a measurement
                     // that was taken once.
                     let before: String = l[..at].chars().rev().take(12).collect();
-                    if before.trim_start().starts_with(|c: char| c.is_ascii_digit()) {
+                    if before
+                        .trim_start()
+                        .starts_with(|c: char| c.is_ascii_digit())
+                    {
                         carrying.push(format!("{name}:{}: {}", n + 1, line.trim()));
                     }
                 }

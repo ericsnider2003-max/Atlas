@@ -41,7 +41,10 @@ fn a_forming_candle_extends_its_own_high_and_low() {
     assert_eq!(f.open, 1.1000);
     assert!((f.high - 1.1020).abs() < 1e-9);
     assert!((f.low - 1.0990).abs() < 1e-9);
-    assert!((f.at - 1.1005).abs() < 1e-9, "where it is now, not where it closed");
+    assert!(
+        (f.at - 1.1005).abs() < 1e-9,
+        "where it is now, not where it closed"
+    );
 }
 
 #[test]
@@ -90,10 +93,17 @@ fn the_two_readings_are_named_apart_when_they_differ() {
     live.tick(1.0500, 1_757_000_000_000);
     let now = live.now().unwrap();
 
-    assert_eq!(now.settled, settled_before, "the closed bars did not change");
+    assert_eq!(
+        now.settled, settled_before,
+        "the closed bars did not change"
+    );
     if now.forming != Some(now.settled) && now.forming.is_some() {
         assert!(now.only_if_it_closes_here);
-        assert!(now.spoken().contains("isn't a fact yet"), "{}", now.spoken());
+        assert!(
+            now.spoken().contains("isn't a fact yet"),
+            "{}",
+            now.spoken()
+        );
         assert_ne!(
             now.at(Firmness::Settled),
             now.at(Firmness::Forming),
@@ -131,7 +141,11 @@ fn priming_goes_through_the_same_door_as_everything_else() {
     let mut live = Live::new("EURUSD", 500, 40, 2);
     let ragged = live.prime(&[1.0, 2.0], &[1.0], &[1.0], &[1.0], &[]);
     assert!(ragged.is_err(), "ragged columns are refused here too");
-    assert_eq!(live.settled_bars(), 0, "and nothing was kept from the attempt");
+    assert_eq!(
+        live.settled_bars(),
+        0,
+        "and nothing was kept from the attempt"
+    );
 
     let empty = live.prime(&[], &[], &[], &[], &[]);
     assert!(empty.is_err());
@@ -180,5 +194,8 @@ fn a_trend_reads_as_something_sayable() {
     let now = live.now().unwrap();
     assert!(!now.settled.say().is_empty());
     assert!(now.spoken().contains("closed bars"), "{}", now.spoken());
-    assert!(matches!(now.settled, Trend::Up | Trend::Down | Trend::Range | Trend::Unknown));
+    assert!(matches!(
+        now.settled,
+        Trend::Up | Trend::Down | Trend::Range | Trend::Unknown
+    ));
 }

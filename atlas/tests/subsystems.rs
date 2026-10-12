@@ -1,7 +1,7 @@
+use atlas::config::Config;
 use atlas::index::{AssetClass, Index, IndexConfig};
 use atlas::intent::Intent;
 use atlas::memory::Memory;
-use atlas::config::Config;
 use atlas::policy::{classify, classify_with_policy, Decision, PolicyConfig};
 use atlas::scheduler::{JobState, Scheduler};
 use atlas::session::{is_yes, Pending, Session};
@@ -51,10 +51,13 @@ fn saves_are_atomic_leaving_no_temp_file_behind() {
     let d = tmp("atomic");
     let s = Store::new(&d);
     Memory::default().save(&s).unwrap();
-    let names: Vec<String> = fs::read_dir(&d).unwrap()
+    let names: Vec<String> = fs::read_dir(&d)
+        .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
         // The state root's own bookkeeping files are not temp files.
-        .filter(|n| n != ".atlas-state-root" && n != ".state-operations.lock" && n != ".state-access.lock")
+        .filter(|n| {
+            n != ".atlas-state-root" && n != ".state-operations.lock" && n != ".state-access.lock"
+        })
         .collect();
     assert_eq!(names, vec!["memory.json"]);
 }
@@ -70,8 +73,17 @@ fn scan_classifies_assets_by_extension() {
     write(&d, "main.rs", "x");
     let i = Index::scan(&idx_cfg(&d));
     assert_eq!(i.entries.len(), 4);
-    for class in [AssetClass::Document, AssetClass::Image, AssetClass::Video, AssetClass::Code] {
-        assert_eq!(i.entries.values().filter(|e| e.class == class).count(), 1, "{class:?}");
+    for class in [
+        AssetClass::Document,
+        AssetClass::Image,
+        AssetClass::Video,
+        AssetClass::Code,
+    ] {
+        assert_eq!(
+            i.entries.values().filter(|e| e.class == class).count(),
+            1,
+            "{class:?}"
+        );
     }
 }
 
@@ -123,7 +135,10 @@ fn search_ranks_exact_over_prefix_over_substring() {
     write(&d, "my-notes-backup.md", "x");
     let i = Index::scan(&idx_cfg(&d));
     let hits: Vec<&str> = i.search("notes").iter().map(|e| e.name.as_str()).collect();
-    assert_eq!(hits, vec!["notes.md", "notes-archive.md", "my-notes-backup.md"]);
+    assert_eq!(
+        hits,
+        vec!["notes.md", "notes-archive.md", "my-notes-backup.md"]
+    );
 }
 
 #[test]
@@ -173,7 +188,11 @@ fn repeated_sequences_become_habits_not_duplicates() {
 #[test]
 fn approval_rate_distinguishes_no_history_from_bad_history() {
     let mut m = Memory::default();
-    assert_eq!(m.approval_rate("close_app"), None, "unknown is not the same as risky");
+    assert_eq!(
+        m.approval_rate("close_app"),
+        None,
+        "unknown is not the same as risky"
+    );
     m.record_approval("close_app", true, None);
     m.record_approval("close_app", false, Some("wrong window".into()));
     assert_eq!(m.approval_rate("close_app"), Some(0.5));
@@ -201,10 +220,16 @@ fn projects_track_folders_without_duplicating() {
 
 #[test]
 fn the_four_states_are_assigned_sensibly() {
-    assert_eq!(classify(&Intent::OpenApp("chrome".into())), Decision::AutoProceed);
+    assert_eq!(
+        classify(&Intent::OpenApp("chrome".into())),
+        Decision::AutoProceed
+    );
     assert_eq!(classify(&Intent::WorkspaceOn), Decision::ProceedAndReport);
     assert_eq!(classify(&Intent::WorkspaceOff), Decision::RequireApproval);
-    assert_eq!(classify(&Intent::Ask("which one?".into())), Decision::AskClarification);
+    assert_eq!(
+        classify(&Intent::Ask("which one?".into())),
+        Decision::AskClarification
+    );
 }
 
 #[test]
@@ -234,7 +259,10 @@ fn an_always_ask_action_is_never_relaxed_however_often_you_approve_it() {
         m.record_approval("close_app", true, None);
     }
     let cfg = PolicyConfig::default();
-    assert_eq!(classify_with_policy(&Intent::WorkspaceOff, &m, &cfg), Decision::RequireApproval);
+    assert_eq!(
+        classify_with_policy(&Intent::WorkspaceOff, &m, &cfg),
+        Decision::RequireApproval
+    );
     assert_eq!(
         classify_with_policy(&Intent::CloseApp("chrome".into()), &m, &cfg),
         Decision::RequireApproval
@@ -249,8 +277,15 @@ fn an_action_on_neither_list_is_never_relaxed_by_default() {
         m.record_approval("some_new_action", true, None);
     }
     assert_eq!(
-        classify_with_policy(&Intent::WorkspaceOff, &m,
-            &PolicyConfig { always_ask: vec![], learnable: vec![], min_samples: 5 }),
+        classify_with_policy(
+            &Intent::WorkspaceOff,
+            &m,
+            &PolicyConfig {
+                always_ask: vec![],
+                learnable: vec![],
+                min_samples: 5
+            }
+        ),
         Decision::RequireApproval
     );
 }
@@ -263,7 +298,10 @@ fn the_shipped_policy_puts_destructive_actions_on_always_ask() {
 }
 
 fn history(min_samples: usize) -> PolicyConfig {
-    PolicyConfig { min_samples, ..Default::default() }
+    PolicyConfig {
+        min_samples,
+        ..Default::default()
+    }
 }
 
 #[test]
@@ -305,10 +343,18 @@ fn atlas_never_learns_to_auto_run_things_it_did_not_understand() {
 #[test]
 fn follow_ups_can_resolve_against_the_last_app() {
     let mut s = Session::default();
-    s.record("open chrome", &Intent::OpenApp("chrome".into()), "Opening chrome.");
+    s.record(
+        "open chrome",
+        &Intent::OpenApp("chrome".into()),
+        "Opening chrome.",
+    );
     assert_eq!(s.last_app.as_deref(), Some("chrome"));
     s.record("what's on screen", &Intent::ViewDisplay, "Looking.");
-    assert_eq!(s.last_app.as_deref(), Some("chrome"), "non-app turns don't clear it");
+    assert_eq!(
+        s.last_app.as_deref(),
+        Some("chrome"),
+        "non-app turns don't clear it"
+    );
 }
 
 #[test]
@@ -392,11 +438,17 @@ fn a_failed_recurring_job_stops_instead_of_looping_forever() {
     // `FAILS_BEFORE_STOPPING` failures in a row.
     s.complete(id, 100, "exploded", false);
     assert_eq!(s.jobs[0].state, JobState::Pending);
-    assert_eq!(s.jobs[0].due, 160, "tried again at once, which is the loop this guards against");
+    assert_eq!(
+        s.jobs[0].due, 160,
+        "tried again at once, which is the loop this guards against"
+    );
     for t in [160, 220] {
         s.complete(id, t, "exploded", false);
     }
-    assert_eq!(s.jobs[0].fails_in_a_row, atlas::scheduler::FAILS_BEFORE_STOPPING);
+    assert_eq!(
+        s.jobs[0].fails_in_a_row,
+        atlas::scheduler::FAILS_BEFORE_STOPPING
+    );
     assert_eq!(s.jobs[0].state, JobState::Failed);
     assert!(s.due(9999).is_empty());
 }
@@ -406,7 +458,10 @@ fn parked_jobs_never_fire_just_because_time_passed() {
     let mut s = Scheduler::default();
     let id = s.at("close workspace", 10);
     s.park_for_approval(id);
-    assert!(s.due(999_999).is_empty(), "waiting for approval is not a timer");
+    assert!(
+        s.due(999_999).is_empty(),
+        "waiting for approval is not a timer"
+    );
     s.approve(id);
     assert_eq!(s.due(999_999), vec![id]);
 }
@@ -443,14 +498,28 @@ fn a_windows_path_in_a_quoted_yaml_string_gives_a_useful_error() {
     let d = std::env::temp_dir().join("atlas-yaml-error");
     let _ = fs::remove_dir_all(&d);
     fs::create_dir_all(&d).unwrap();
-    fs::write(d.join("indexing.yaml"), "roots: [\"C:\\Users\\erics\\Desktop\"]\n").unwrap();
-    fs::write(d.join("apps.yaml"), "apps: {}\nstartup_order: []\nshutdown_order: []\n").unwrap();
+    fs::write(
+        d.join("indexing.yaml"),
+        "roots: [\"C:\\Users\\erics\\Desktop\"]\n",
+    )
+    .unwrap();
+    fs::write(
+        d.join("apps.yaml"),
+        "apps: {}\nstartup_order: []\nshutdown_order: []\n",
+    )
+    .unwrap();
     fs::write(d.join("layouts.yaml"), "roles: []\nlayouts: {}\n").unwrap();
     fs::write(d.join("commands.yaml"), "commands: []\n").unwrap();
 
     let err = Config::load(&d).unwrap_err().to_string();
-    assert!(err.contains("forward slashes"), "should say what to do: {err}");
-    assert!(err.contains("C:/Users"), "should show the right shape: {err}");
+    assert!(
+        err.contains("forward slashes"),
+        "should say what to do: {err}"
+    );
+    assert!(
+        err.contains("C:/Users"),
+        "should show the right shape: {err}"
+    );
 }
 
 #[test]
@@ -487,7 +556,11 @@ fn installers_and_uninstallers_are_never_offered_as_the_app() {
     let d = std::env::temp_dir().join("atlas-find-noise");
     let _ = fs::remove_dir_all(&d);
     fs::create_dir_all(&d).unwrap();
-    for n in ["claude-setup.exe", "claude_updater.exe", "Uninstall claude.exe"] {
+    for n in [
+        "claude-setup.exe",
+        "claude_updater.exe",
+        "Uninstall claude.exe",
+    ] {
         fs::write(d.join(n), "x").unwrap();
     }
     assert!(atlas::doctor::find_exes(&[d.clone()], "claude.exe", "claude").is_empty());
@@ -500,19 +573,36 @@ fn environment_variables_expand_regardless_of_case() {
     // app was then reported as missing.
     // The variables are passed in: the process's environment is shared with
     // every other test in this binary. The match is the real one's.
-    let env = |n: &str| atlas::doctor::lookup_in(n, [("AtlasTestVar".to_string(), "/somewhere".to_string())]);
-    assert_eq!(atlas::doctor::expand_env_with("%ATLASTESTVAR%/app.exe", &env), "/somewhere/app.exe");
-    assert_eq!(atlas::doctor::expand_env_with("%atlastestvar%/app.exe", &env), "/somewhere/app.exe");
-    assert_eq!(atlas::doctor::expand_env_with("%AtlasTestVar%/app.exe", &env), "/somewhere/app.exe");
+    let env = |n: &str| {
+        atlas::doctor::lookup_in(n, [("AtlasTestVar".to_string(), "/somewhere".to_string())])
+    };
+    assert_eq!(
+        atlas::doctor::expand_env_with("%ATLASTESTVAR%/app.exe", &env),
+        "/somewhere/app.exe"
+    );
+    assert_eq!(
+        atlas::doctor::expand_env_with("%atlastestvar%/app.exe", &env),
+        "/somewhere/app.exe"
+    );
+    assert_eq!(
+        atlas::doctor::expand_env_with("%AtlasTestVar%/app.exe", &env),
+        "/somewhere/app.exe"
+    );
 }
 
 #[test]
 fn an_unknown_variable_is_left_visible_rather_than_blanked() {
     let out = atlas::doctor::expand_env("%NO_SUCH_VAR_HERE%/app.exe");
-    assert!(out.contains("NO_SUCH_VAR_HERE"), "a typo should be obvious, not silent: {out}");
+    assert!(
+        out.contains("NO_SUCH_VAR_HERE"),
+        "a typo should be obvious, not silent: {out}"
+    );
     // Behaviour, not just wording: an unknown variable passes through byte for
     // byte -- percent signs and all -- rather than being blanked out.
-    assert_eq!(out, "%NO_SUCH_VAR_HERE%/app.exe", "an unknown variable was altered, not left visible");
+    assert_eq!(
+        out, "%NO_SUCH_VAR_HERE%/app.exe",
+        "an unknown variable was altered, not left visible"
+    );
 }
 
 #[test]

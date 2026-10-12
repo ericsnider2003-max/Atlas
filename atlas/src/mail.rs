@@ -107,23 +107,28 @@ impl Provider {
     /// shows Atlas a password at all.
     pub fn how_to_connect(&self) -> &'static str {
         match self {
-            Provider::Gmail =>
+            Provider::Gmail => {
                 "Gmail needs an app password — turn on 2-step verification, then create one \
-                 under App passwords. It's revocable and only works for mail.",
+                 under App passwords. It's revocable and only works for mail."
+            }
             // Not an app password: Microsoft removed every password-based
             // way in. This said otherwise, and `atlas mail setup` (right)
             // disagreed with it — found when this finally got a caller.
-            Provider::Outlook =>
+            Provider::Outlook => {
                 "Outlook and Microsoft 365 need OAuth — Microsoft removed every password-based way \
                  in. You register an app once in the Azure portal and I sign in through it; I \
-                 never hold your password.",
-            Provider::Yahoo =>
-                "Yahoo needs an app password from Account Security. The main password won't work.",
-            Provider::Fastmail =>
+                 never hold your password."
+            }
+            Provider::Yahoo => {
+                "Yahoo needs an app password from Account Security. The main password won't work."
+            }
+            Provider::Fastmail => {
                 "Fastmail needs an app password with mail access, from Settings then Privacy \
-                 & Security.",
-            Provider::Other =>
-                "I'll need the IMAP server address and an app password if your provider has them.",
+                 & Security."
+            }
+            Provider::Other => {
+                "I'll need the IMAP server address and an app password if your provider has them."
+            }
         }
     }
 }
@@ -161,7 +166,6 @@ pub struct Account {
 }
 
 impl Account {
-
     /// The IMAP server to read this account from: the one set on it, or the
     /// provider's own. `Err` says why there isn't one (one place since audit
     /// Q3; the mail check and the clear-out each had a copy).
@@ -172,11 +176,20 @@ impl Account {
         Provider::from_address(&self.address)
             .imap_host()
             .map(str::to_string)
-            .ok_or_else(|| format!("{}: unrecognised provider, needs imap_host set explicitly", self.name))
+            .ok_or_else(|| {
+                format!(
+                    "{}: unrecognised provider, needs imap_host set explicitly",
+                    self.name
+                )
+            })
     }
     /// The account name to hand Himalaya.
     pub fn for_himalaya(&self) -> &str {
-        if self.himalaya_account.trim().is_empty() { &self.name } else { &self.himalaya_account }
+        if self.himalaya_account.trim().is_empty() {
+            &self.name
+        } else {
+            &self.himalaya_account
+        }
     }
 }
 
@@ -270,8 +283,12 @@ impl Default for MailConfig {
             enabled: false,
             accounts: Vec::new(),
             leave_alone: vec![
-                "Sent".into(), "Drafts".into(), "Trash".into(), "Spam".into(),
-                "Junk".into(), "Archive".into(),
+                "Sent".into(),
+                "Drafts".into(),
+                "Trash".into(),
+                "Spam".into(),
+                "Junk".into(),
+                "Archive".into(),
             ],
             actually_sort: false,
             // The safe default: you can see what Atlas thinks without it
@@ -315,7 +332,9 @@ pub fn credential_source(account: &Account) -> Result<&str, &'static str> {
 
 /// May Atlas touch this folder?
 pub fn may_touch(folder: &str, cfg: &MailConfig) -> bool {
-    !cfg.leave_alone.iter().any(|f| f.eq_ignore_ascii_case(folder))
+    !cfg.leave_alone
+        .iter()
+        .any(|f| f.eq_ignore_ascii_case(folder))
 }
 
 /// What Atlas says before doing anything to your mailbox.
@@ -375,7 +394,10 @@ pub fn trace(trails: &[Trail]) -> Vec<(String, Vec<&str>)> {
 /// What that means, said plainly.
 pub fn what_the_trail_says(alias: &str, senders: &[&str]) -> String {
     if alias == "your main address" {
-        return format!("{} of them have your main address, so there's no telling where from.", senders.len());
+        return format!(
+            "{} of them have your main address, so there's no telling where from.",
+            senders.len()
+        );
     }
     format!(
         "{} different senders are mailing {alias}, and you only gave that to one of them. \
@@ -389,9 +411,15 @@ pub fn what_the_trail_says(alias: &str, senders: &[&str]) -> String {
 /// files both as "nothing to do".
 pub fn category_of(m: &crate::imap::Message) -> &'static str {
     if crate::orders::status_from_subject(&m.subject).is_some()
-        || ["receipt", "invoice", "order confirmation", "your order", "payment received"]
-            .iter()
-            .any(|w| m.subject.to_lowercase().contains(w))
+        || [
+            "receipt",
+            "invoice",
+            "order confirmation",
+            "your order",
+            "payment received",
+        ]
+        .iter()
+        .any(|w| m.subject.to_lowercase().contains(w))
     {
         return "Receipts";
     }
@@ -433,10 +461,16 @@ impl SortPlan {
 /// noise", "bin the newsletters"). Only these words, only when said.
 pub fn category_to_delete(said: &str) -> Option<&'static str> {
     let t = said.to_lowercase();
-    if !["delete", "bin", "trash", "throw away"].iter().any(|w| t.contains(w)) {
+    if !["delete", "bin", "trash", "throw away"]
+        .iter()
+        .any(|w| t.contains(w))
+    {
         return None;
     }
-    categories().into_iter().map(|(c, _)| c).find(|c| t.contains(&c.to_lowercase()))
+    categories()
+        .into_iter()
+        .map(|(c, _)| c)
+        .find(|c| t.contains(&c.to_lowercase()))
 }
 
 /// Where this account sends from: host and port.
@@ -447,7 +481,10 @@ pub fn category_to_delete(said: &str) -> Option<&'static str> {
 /// Providers Connect an account knows are listed; any other `imap.x` sends
 /// from `smtp.x` on 465. `None` only when nothing can be told.
 pub fn smtp_for(address: &str, imap_host: &str) -> Option<(String, u16)> {
-    let host = imap_host.trim().trim_start_matches("imaps://").to_lowercase();
+    let host = imap_host
+        .trim()
+        .trim_start_matches("imaps://")
+        .to_lowercase();
     let known = |h: &str, port: u16| Some((h.to_string(), port));
     match host.as_str() {
         "" => {
@@ -462,6 +499,8 @@ pub fn smtp_for(address: &str, imap_host: &str) -> Option<(String, u16)> {
         "imap.fastmail.com" => known("smtp.fastmail.com", 465),
         "imap.zoho.com" => known("smtp.zoho.com", 465),
         "imap.gmx.com" | "imap.gmx.net" => known("mail.gmx.com", 587),
-        h => h.strip_prefix("imap.").map(|rest| (format!("smtp.{rest}"), 465)),
+        h => h
+            .strip_prefix("imap.")
+            .map(|rest| (format!("smtp.{rest}"), 465)),
     }
 }

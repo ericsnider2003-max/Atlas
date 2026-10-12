@@ -47,7 +47,10 @@ pub fn fbank(samples: &[f32]) -> Vec<[f32; BINS]> {
     }
     let n = 1 + (samples.len() - FRAME) / SHIFT;
     let window: Vec<f32> = (0..FRAME)
-        .map(|i| (0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / (FRAME - 1) as f64).cos()).powf(0.85) as f32)
+        .map(|i| {
+            (0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / (FRAME - 1) as f64).cos())
+                .powf(0.85) as f32
+        })
         .collect();
     let banks = mel_banks();
     let mut out = Vec::with_capacity(n);
@@ -66,10 +69,16 @@ pub fn fbank(samples: &[f32]) -> Vec<[f32; BINS]> {
             im[i] = 0.0;
         }
         fft(&mut re, &mut im);
-        let power: Vec<f32> = (0..=FFT / 2).map(|k| re[k] * re[k] + im[k] * im[k]).collect();
+        let power: Vec<f32> = (0..=FFT / 2)
+            .map(|k| re[k] * re[k] + im[k] * im[k])
+            .collect();
         let mut mel = [0f32; BINS];
         for (b, (start, weights)) in banks.iter().enumerate() {
-            let e: f32 = weights.iter().enumerate().map(|(j, w)| w * power[start + j]).sum();
+            let e: f32 = weights
+                .iter()
+                .enumerate()
+                .map(|(j, w)| w * power[start + j])
+                .sum();
             mel[b] = e.max(f32::EPSILON).ln();
         }
         out.push(mel);
@@ -98,7 +107,11 @@ fn mel_banks() -> Vec<(usize, Vec<f32>)> {
             for i in 0..fft_bins {
                 let m = mel(fft_bin_width * i as f64);
                 if m > left && m < right {
-                    let weight = if m <= center { (m - left) / (center - left) } else { (right - m) / (right - center) };
+                    let weight = if m <= center {
+                        (m - left) / (center - left)
+                    } else {
+                        (right - m) / (right - center)
+                    };
                     if first.is_none() {
                         first = Some(i);
                     }
@@ -171,7 +184,11 @@ fn windows(frames: &[[f32; BINS]]) -> Option<Vec<Vec<f32>>> {
                 *m += v / WINDOW as f32;
             }
         }
-        out.push(w.iter().flat_map(|row| row.iter().zip(&mean).map(|(v, m)| v - m)).collect());
+        out.push(
+            w.iter()
+                .flat_map(|row| row.iter().zip(&mean).map(|(v, m)| v - m))
+                .collect(),
+        );
         s += WINDOW / 2;
     }
     Some(out)
@@ -214,7 +231,8 @@ pub fn embed_on_processor(samples: &[f32], models_dir: &Path) -> Result<Vec<f32>
 #[cfg(feature = "onnx")]
 fn embed_where(samples: &[f32], models_dir: &Path, npu: bool) -> Result<Vec<f32>> {
     use tract_onnx::prelude::*;
-    let wins = windows(&fbank(samples)).ok_or_else(|| AtlasError::Platform("under half a second of speech in that".into()))?;
+    let wins = windows(&fbank(samples))
+        .ok_or_else(|| AtlasError::Platform("under half a second of speech in that".into()))?;
     let path = models_dir.join(FILE);
     // The NPU first, where there is one (item 20): the same windows, the
     // same averaging.
@@ -245,12 +263,16 @@ fn embed_where(samples: &[f32], models_dir: &Path, npu: bool) -> Result<Vec<f32>
         }
     }
     let plan = {
-        let mut g = LOADED.lock().map_err(|_| AtlasError::Platform("the voice model's lock broke".into()))?;
+        let mut g = LOADED
+            .lock()
+            .map_err(|_| AtlasError::Platform("the voice model's lock broke".into()))?;
         match g.as_ref() {
             Some((p, plan)) if *p == path => plan.clone(),
             _ => {
                 if !path.is_file() {
-                    return Err(AtlasError::Config(format!("the voice model isn't installed -- {FILE} should be in models/")));
+                    return Err(AtlasError::Config(format!(
+                        "the voice model isn't installed -- {FILE} should be in models/"
+                    )));
                 }
                 let plan = tract_onnx::onnx()
                     .model_for_path(&path)
@@ -268,12 +290,19 @@ fn embed_where(samples: &[f32], models_dir: &Path, npu: bool) -> Result<Vec<f32>
         let input: Tensor = tract_ndarray::Array3::from_shape_vec((1, WINDOW, BINS), w.clone())
             .map_err(|e| AtlasError::Platform(format!("couldn't shape the voice: {e}")))?
             .into();
-        let out = plan.run(tvec!(input.into())).map_err(|e| AtlasError::Platform(format!("the voice model failed: {e}")))?;
+        let out = plan
+            .run(tvec!(input.into()))
+            .map_err(|e| AtlasError::Platform(format!("the voice model failed: {e}")))?;
         let t: &Tensor = &out[0];
         let view = t.view();
-        let v = view.as_slice::<f32>().map_err(|e| AtlasError::Platform(format!("couldn't read the voice: {e}")))?;
+        let v = view
+            .as_slice::<f32>()
+            .map_err(|e| AtlasError::Platform(format!("couldn't read the voice: {e}")))?;
         if v.len() != DIMS {
-            return Err(AtlasError::Platform(format!("the voice model gave {} numbers, not {DIMS}", v.len())));
+            return Err(AtlasError::Platform(format!(
+                "the voice model gave {} numbers, not {DIMS}",
+                v.len()
+            )));
         }
         for (s, x) in sum.iter_mut().zip(normalised(v.to_vec())) {
             *s += x;
@@ -289,7 +318,8 @@ static NPU_JUDGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool
 /// The model on the NPU: opened once, `None` inside once refused (said
 /// once), so it stays on `tract`.
 #[cfg(feature = "onnx")]
-static ON_NPU: std::sync::Mutex<Option<Option<(crate::npu::Session, String)>>> = std::sync::Mutex::new(None);
+static ON_NPU: std::sync::Mutex<Option<Option<(crate::npu::Session, String)>>> =
+    std::sync::Mutex::new(None);
 
 /// The NPU's copy is being opened, on its own thread.
 #[cfg(feature = "onnx")]
@@ -312,21 +342,32 @@ fn on_npu(wins: &[Vec<f32>], models_dir: &Path) -> Option<Vec<f32>> {
         drop(g);
         if !NPU_OPENING.swap(true, std::sync::atomic::Ordering::SeqCst) {
             let (root, model) = (root.to_path_buf(), models_dir.join(FILE));
-            let spawned = std::thread::Builder::new().name("atlas-voices-npu".into()).spawn(move || {
-                let opened = crate::npu::Session::input_names(&root, &model).ok().and_then(|names| {
-                    let name = names.first()?.clone();
-                    match crate::npu::Session::open(&root, &model, &[(name.clone(), vec![1, WINDOW as i64, BINS as i64])], crate::npu::Where::Npu) {
-                        Ok(s) => Some((s, name)),
-                        Err(why) => {
-                            crate::outln!("telling voices apart stays on the processor: {why}");
-                            None
-                        }
+            let spawned = std::thread::Builder::new()
+                .name("atlas-voices-npu".into())
+                .spawn(move || {
+                    let opened = crate::npu::Session::input_names(&root, &model)
+                        .ok()
+                        .and_then(|names| {
+                            let name = names.first()?.clone();
+                            match crate::npu::Session::open(
+                                &root,
+                                &model,
+                                &[(name.clone(), vec![1, WINDOW as i64, BINS as i64])],
+                                crate::npu::Where::Npu,
+                            ) {
+                                Ok(s) => Some((s, name)),
+                                Err(why) => {
+                                    crate::outln!(
+                                        "telling voices apart stays on the processor: {why}"
+                                    );
+                                    None
+                                }
+                            }
+                        });
+                    if let Ok(mut g) = ON_NPU.lock().or_else(crate::crash::unpoison) {
+                        *g = Some(opened);
                     }
                 });
-                if let Ok(mut g) = ON_NPU.lock().or_else(crate::crash::unpoison) {
-                    *g = Some(opened);
-                }
-            });
             if spawned.is_err() {
                 NPU_OPENING.store(false, std::sync::atomic::Ordering::SeqCst);
             }
@@ -336,7 +377,13 @@ fn on_npu(wins: &[Vec<f32>], models_dir: &Path) -> Option<Vec<f32>> {
     let (s, name) = g.as_ref()?.as_ref()?;
     let mut sum = vec![0f32; DIMS];
     for w in wins {
-        let out = s.run(vec![crate::npu::In::F32(name.clone(), vec![1, WINDOW as i64, BINS as i64], w.clone())]).ok()?;
+        let out = s
+            .run(vec![crate::npu::In::F32(
+                name.clone(),
+                vec![1, WINDOW as i64, BINS as i64],
+                w.clone(),
+            )])
+            .ok()?;
         let v = out.into_iter().next()?;
         if v.len() != DIMS {
             return None;
@@ -350,12 +397,16 @@ fn on_npu(wins: &[Vec<f32>], models_dir: &Path) -> Option<Vec<f32>> {
 
 #[cfg(not(feature = "onnx"))]
 pub fn embed(_samples: &[f32], _models_dir: &Path) -> Result<Vec<f32>> {
-    Err(AtlasError::Config("this build has no ONNX engine for the voice model".into()))
+    Err(AtlasError::Config(
+        "this build has no ONNX engine for the voice model".into(),
+    ))
 }
 
 #[cfg(not(feature = "onnx"))]
 pub fn embed_on_processor(_samples: &[f32], _models_dir: &Path) -> Result<Vec<f32>> {
-    Err(AtlasError::Config("this build has no ONNX engine for the voice model".into()))
+    Err(AtlasError::Config(
+        "this build has no ONNX engine for the voice model".into(),
+    ))
 }
 
 #[cfg(test)]

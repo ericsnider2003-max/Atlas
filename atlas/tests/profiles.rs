@@ -24,9 +24,19 @@ fn a_guest_cannot_do_the_things_that_act_as_you() {
     //
     // A test can do worse than fail to catch a bug: it can certify it. This
     // one did, for as long as the role has existed.
-    for forbidden in ["draft_post", "review_post", "mail", "work_on_yourself", "back_up", "undo"] {
+    for forbidden in [
+        "draft_post",
+        "review_post",
+        "mail",
+        "work_on_yourself",
+        "back_up",
+        "undo",
+    ] {
         assert!(!Role::Guest.may(forbidden), "a guest could {forbidden}");
-        assert!(Role::Owner.may(forbidden), "the owner is blocked from {forbidden}");
+        assert!(
+            Role::Owner.may(forbidden),
+            "the owner is blocked from {forbidden}"
+        );
     }
 }
 
@@ -49,7 +59,14 @@ fn every_guest_restriction_is_a_name_that_can_actually_arrive() {
 fn a_guest_cannot_reach_your_accounts_or_hand_atlas_on() {
     // Not in the original list at all, and arguably worse than posting: the
     // vault, signing in as you, and pairing your Atlas to someone else's.
-    for forbidden in ["unlock", "sign_in", "create_account", "pair", "accept_pairing", "forget_peer"] {
+    for forbidden in [
+        "unlock",
+        "sign_in",
+        "create_account",
+        "pair",
+        "accept_pairing",
+        "forget_peer",
+    ] {
         assert!(!Role::Guest.may(forbidden), "a guest could {forbidden}");
     }
 }
@@ -58,7 +75,14 @@ fn a_guest_cannot_reach_your_accounts_or_hand_atlas_on() {
 fn a_guest_can_still_use_it_for_themselves() {
     // The other half, and the reason the list is named rather than "deny
     // everything": a guest account nobody can use is not a guest account.
-    for allowed in ["research", "outstanding", "capture", "say", "open_app", "whats_there"] {
+    for allowed in [
+        "research",
+        "outstanding",
+        "capture",
+        "say",
+        "open_app",
+        "whats_there",
+    ] {
         assert!(Role::Guest.may(allowed), "a guest couldn't {allowed}");
     }
 }
@@ -86,7 +110,10 @@ fn a_name_becomes_something_safe_to_put_in_a_path() {
 fn a_profile_with_no_usable_name_is_refused() {
     let mut p = Profiles::default();
     assert!(p.add("", Role::Owner).is_err());
-    assert!(p.add("///", Role::Owner).is_err(), "nothing left after slugging");
+    assert!(
+        p.add("///", Role::Owner).is_err(),
+        "nothing left after slugging"
+    );
 }
 
 #[test]
@@ -138,7 +165,11 @@ fn one_person_on_one_machine_never_gets_a_per_profile_directory() {
     std::fs::create_dir_all(&root).unwrap();
 
     let mut p = Profiles::default();
-    assert_eq!(p.active_state_dir(&root), None, "an empty registry named a directory");
+    assert_eq!(
+        p.active_state_dir(&root),
+        None,
+        "an empty registry named a directory"
+    );
 
     p.add("Eric", Role::Owner).unwrap();
     assert_eq!(
@@ -149,8 +180,13 @@ fn one_person_on_one_machine_never_gets_a_per_profile_directory() {
 
     let guest = p.add("Sam", Role::Guest).unwrap();
     p.switch(&guest.id, 100).unwrap();
-    let dir = p.active_state_dir(&root).expect("two profiles and no directory for either");
-    assert!(dir.starts_with(&root), "the profile directory escaped the install: {dir:?}");
+    let dir = p
+        .active_state_dir(&root)
+        .expect("two profiles and no directory for either");
+    assert!(
+        dir.starts_with(&root),
+        "the profile directory escaped the install: {dir:?}"
+    );
     assert!(
         dir.to_string_lossy().contains(&guest.id),
         "the active profile's directory is not the active profile's: {dir:?}"

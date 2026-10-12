@@ -35,10 +35,10 @@
 //! `&dyn Platform` borrowed from the daemon. So this bounds the stall and
 //! makes it survivable rather than removing it.
 
+use atlas::config::AppSpec;
 use atlas::config::Config;
 use atlas::platform::mock::MockPlatform;
-use atlas::config::AppSpec;
-use atlas::platform::{Monitor, Platform, PixelRect, WindowId};
+use atlas::platform::{Monitor, PixelRect, Platform, WindowId};
 use atlas::workspace::{workspace_on_within, BRINGUP_BUDGET_SECS};
 use std::path::Path;
 use std::time::Duration;
@@ -59,9 +59,30 @@ impl SlowToOpen {
     fn new() -> Self {
         SlowToOpen {
             inner: MockPlatform::new(vec![
-                Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true },
-                Monitor { id: 2, x: 1920, y: 0, width: 1920, height: 1040, primary: false },
-                Monitor { id: 3, x: 3840, y: 0, width: 1920, height: 1040, primary: false },
+                Monitor {
+                    id: 1,
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1040,
+                    primary: true,
+                },
+                Monitor {
+                    id: 2,
+                    x: 1920,
+                    y: 0,
+                    width: 1920,
+                    height: 1040,
+                    primary: false,
+                },
+                Monitor {
+                    id: 3,
+                    x: 3840,
+                    y: 0,
+                    width: 1920,
+                    height: 1040,
+                    primary: false,
+                },
             ]),
             slept: std::cell::RefCell::new(0),
         }
@@ -134,8 +155,7 @@ fn the_whole_bringup_has_a_budget_and_keeps_to_it() {
     home();
     let plat = SlowToOpen::new();
     let started = std::time::Instant::now();
-    let report =
-        workspace_on_within(&conf(), &plat, Duration::from_millis(300)).expect("a report");
+    let report = workspace_on_within(&conf(), &plat, Duration::from_millis(300)).expect("a report");
     let took = started.elapsed();
 
     assert!(
@@ -163,8 +183,7 @@ fn an_app_never_reached_is_not_reported_as_an_app_that_failed() {
     // "Workspace online."
     home();
     let plat = SlowToOpen::new();
-    let report =
-        workspace_on_within(&conf(), &plat, Duration::from_millis(200)).expect("a report");
+    let report = workspace_on_within(&conf(), &plat, Duration::from_millis(200)).expect("a report");
 
     assert!(
         !report.not_reached.is_empty(),
@@ -188,8 +207,7 @@ fn an_app_never_reached_is_not_reported_as_an_app_that_failed() {
 fn a_report_with_apps_left_unreached_is_not_ok() {
     home();
     let plat = SlowToOpen::new();
-    let report =
-        workspace_on_within(&conf(), &plat, Duration::from_millis(200)).expect("a report");
+    let report = workspace_on_within(&conf(), &plat, Duration::from_millis(200)).expect("a report");
     assert!(
         !report.ok(),
         "a bring-up that never reached {:?} called itself ok, which is what came \

@@ -43,7 +43,10 @@ use crate::imap::QUIET_FOR;
 
 impl<S: Read + Write> Session<S> {
     pub fn new(stream: S) -> Session<S> {
-        Session { stream, inbuf: Vec::new() }
+        Session {
+            stream,
+            inbuf: Vec::new(),
+        }
     }
 
     /// The plaintext half of STARTTLS (RFC 3207): EHLO, check the server
@@ -54,8 +57,15 @@ impl<S: Read + Write> Session<S> {
     /// are the STARTTLS command-injection hole (CVE-2011-0411 and kin).
     pub fn starttls(mut self, client_name: &str) -> Result<S, String> {
         let r = self.ehlo(client_name)?;
-        if !r.lines.iter().any(|l| l.to_ascii_uppercase().starts_with("STARTTLS")) {
-            return Err("the server doesn't offer STARTTLS, so nothing was sent over a plain connection".into());
+        if !r
+            .lines
+            .iter()
+            .any(|l| l.to_ascii_uppercase().starts_with("STARTTLS"))
+        {
+            return Err(
+                "the server doesn't offer STARTTLS, so nothing was sent over a plain connection"
+                    .into(),
+            );
         }
         let r = self.command("STARTTLS").map_err(|e| e.to_string())?;
         if r.code != 220 {
@@ -105,7 +115,10 @@ impl<S: Read + Write> Session<S> {
             // `read_greeting`, i.e. before authentication, from anything on
             // the wire that answers on 465.
             let bytes = line.as_bytes();
-            let code = std::str::from_utf8(&bytes[..3]).ok().and_then(|c| c.parse().ok()).unwrap_or(0);
+            let code = std::str::from_utf8(&bytes[..3])
+                .ok()
+                .and_then(|c| c.parse().ok())
+                .unwrap_or(0);
             let sep = bytes[3];
             // Same hazard one line down: `line[4..]` is a string slice at a
             // byte offset. Taken from the bytes and decoded, so a non-ASCII
@@ -130,7 +143,9 @@ impl<S: Read + Write> Session<S> {
     }
 
     pub fn ehlo(&mut self, client_name: &str) -> Result<Reply, String> {
-        let r = self.command(&format!("EHLO {client_name}")).map_err(|e| e.to_string())?;
+        let r = self
+            .command(&format!("EHLO {client_name}"))
+            .map_err(|e| e.to_string())?;
         if !r.ok() {
             return Err(r.text());
         }
@@ -148,11 +163,15 @@ impl<S: Read + Write> Session<S> {
         if r.code != 334 {
             return Err(format!("server didn't offer AUTH LOGIN: {}", r.text()));
         }
-        let r = self.command(&crate::b64::encode(user.as_bytes())).map_err(|e| e.to_string())?;
+        let r = self
+            .command(&crate::b64::encode(user.as_bytes()))
+            .map_err(|e| e.to_string())?;
         if r.code != 334 {
             return Err(format!("username rejected: {}", r.text()));
         }
-        let r = self.command(&crate::b64::encode(pass.as_bytes())).map_err(|e| e.to_string())?;
+        let r = self
+            .command(&crate::b64::encode(pass.as_bytes()))
+            .map_err(|e| e.to_string())?;
         if !r.ok() {
             return Err(format!("authentication failed: {}", r.text()));
         }
@@ -166,7 +185,9 @@ impl<S: Read + Write> Session<S> {
     /// the 334 and answer it with an empty line to get the real result.
     pub fn auth_xoauth2(&mut self, user: &str, access_token: &str) -> Result<(), String> {
         let initial = crate::msoauth::xoauth2_string(user, access_token);
-        let r = self.command(&format!("AUTH XOAUTH2 {initial}")).map_err(|e| e.to_string())?;
+        let r = self
+            .command(&format!("AUTH XOAUTH2 {initial}"))
+            .map_err(|e| e.to_string())?;
         // 334 is checked before the general `ok()` — a continuation is
         // technically a "3xx, keep going" code, so `ok()` alone reads it
         // as success and never gets the chance to answer it.
@@ -187,18 +208,35 @@ impl<S: Read + Write> Session<S> {
     /// terminator instead of content. `subject`/`body` are ASCII-assumed;
     /// nothing here MIME-encodes non-ASCII text, which is a real
     /// limitation for names and subjects outside it.
-    pub fn send_mail(&mut self, from: &str, to: &str, subject: &str, body: &str) -> Result<(), String> {
+    pub fn send_mail(
+        &mut self,
+        from: &str,
+        to: &str,
+        subject: &str,
+        body: &str,
+    ) -> Result<(), String> {
         self.send_mail_in(from, to, subject, body, &crate::outbox::Thread::default())
     }
 
     /// As `send_mail`, as a reply in a conversation (`message_text_in`).
-    pub fn send_mail_in(&mut self, from: &str, to: &str, subject: &str, body: &str, thread: &crate::outbox::Thread) -> Result<(), String> {
+    pub fn send_mail_in(
+        &mut self,
+        from: &str,
+        to: &str,
+        subject: &str,
+        body: &str,
+        thread: &crate::outbox::Thread,
+    ) -> Result<(), String> {
         let (from, to) = (plain_address(from)?, plain_address(to)?);
-        let r = self.command(&format!("MAIL FROM:<{from}>")).map_err(|e| e.to_string())?;
+        let r = self
+            .command(&format!("MAIL FROM:<{from}>"))
+            .map_err(|e| e.to_string())?;
         if !r.ok() {
             return Err(format!("MAIL FROM refused: {}", r.text()));
         }
-        let r = self.command(&format!("RCPT TO:<{to}>")).map_err(|e| e.to_string())?;
+        let r = self
+            .command(&format!("RCPT TO:<{to}>"))
+            .map_err(|e| e.to_string())?;
         if !r.ok() {
             return Err(format!("RCPT TO refused: {}", r.text()));
         }
@@ -206,12 +244,17 @@ impl<S: Read + Write> Session<S> {
         if r.code != 354 {
             return Err(format!("server refused to start the message: {}", r.text()));
         }
-        let message = format!("{}\r\n.\r\n", escape_dot_stuffing(&if thread.in_reply_to.is_empty() {
-            message_text(from, to, subject, body, crate::store::now())
-        } else {
-            message_text_in(from, to, subject, body, crate::store::now(), thread)
-        }));
-        self.stream.write_all(message.as_bytes()).map_err(|e| e.to_string())?;
+        let message = format!(
+            "{}\r\n.\r\n",
+            escape_dot_stuffing(&if thread.in_reply_to.is_empty() {
+                message_text(from, to, subject, body, crate::store::now())
+            } else {
+                message_text_in(from, to, subject, body, crate::store::now(), thread)
+            })
+        );
+        self.stream
+            .write_all(message.as_bytes())
+            .map_err(|e| e.to_string())?;
         self.stream.flush().map_err(|e| e.to_string())?;
         let r = self.read_reply().map_err(|e| e.to_string())?;
         if !r.ok() {
@@ -236,20 +279,51 @@ impl<S: Read + Write> Session<S> {
 /// recipient (1 Oct 2026 security pass: only the subject was cleaned).
 pub fn plain_address(a: &str) -> Result<&str, String> {
     let a = a.trim();
-    let bad = a.chars().any(|c| c.is_whitespace() || c.is_control() || "<>()[],;:\\\"".contains(c));
+    let bad = a
+        .chars()
+        .any(|c| c.is_whitespace() || c.is_control() || "<>()[],;:\\\"".contains(c));
     match a.split_once('@') {
-        Some((user, host)) if !bad && !user.is_empty() && host.contains('.') && !host.contains('@') && !host.starts_with('.') && !host.ends_with('.') => Ok(a),
-        _ => Err(format!("\"{}\" isn't an email address I'll send to", a.chars().filter(|c| !c.is_control()).take(80).collect::<String>())),
+        Some((user, host))
+            if !bad
+                && !user.is_empty()
+                && host.contains('.')
+                && !host.contains('@')
+                && !host.starts_with('.')
+                && !host.ends_with('.') =>
+        {
+            Ok(a)
+        }
+        _ => Err(format!(
+            "\"{}\" isn't an email address I'll send to",
+            a.chars()
+                .filter(|c| !c.is_control())
+                .take(80)
+                .collect::<String>()
+        )),
     }
 }
 
 pub fn message_text(from: &str, to: &str, subject: &str, body: &str, now: u64) -> String {
-    message_text_in(from, to, subject, body, now, &crate::outbox::Thread::default())
+    message_text_in(
+        from,
+        to,
+        subject,
+        body,
+        now,
+        &crate::outbox::Thread::default(),
+    )
 }
 
 /// As `message_text`, as a reply in a conversation: `In-Reply-To` and
 /// `References`, so mail programs put it under the message it answers.
-pub fn message_text_in(from: &str, to: &str, subject: &str, body: &str, now: u64, thread: &crate::outbox::Thread) -> String {
+pub fn message_text_in(
+    from: &str,
+    to: &str,
+    subject: &str,
+    body: &str,
+    now: u64,
+    thread: &crate::outbox::Thread,
+) -> String {
     // Never a header break, whatever a caller let through.
     let (from, to) = (from.replace(['\r', '\n'], ""), to.replace(['\r', '\n'], ""));
     let (from, to) = (from.as_str(), to.as_str());
@@ -266,9 +340,15 @@ pub fn message_text_in(from: &str, to: &str, subject: &str, body: &str, now: u64
     let subject_line = if subject.is_ascii() {
         subject.replace(['\r', '\n'], " ")
     } else {
-        format!("=?UTF-8?B?{}?=", crate::b64::encode(subject.replace(['\r', '\n'], " ").as_bytes()))
+        format!(
+            "=?UTF-8?B?{}?=",
+            crate::b64::encode(subject.replace(['\r', '\n'], " ").as_bytes())
+        )
     };
-    let domain = from.rsplit_once('@').map(|(_, d)| d).unwrap_or("atlas.local");
+    let domain = from
+        .rsplit_once('@')
+        .map(|(_, d)| d)
+        .unwrap_or("atlas.local");
     let id = crate::digest::sha256_hex(format!("{from}{to}{subject}{now}{body}").as_bytes());
     let body = body.replace("\r\n", "\n").replace('\n', "\r\n");
     format!(
@@ -282,7 +362,9 @@ pub fn message_text_in(from: &str, to: &str, subject: &str, body: &str, now: u64
 /// `Tue, 30 Sep 2026 18:04:05 +0000`.
 pub fn rfc2822_date(t: u64) -> String {
     const DAYS: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
-    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
     let days = (t / 86_400) as i64;
     let secs = t % 86_400;
     let z = days + 719_468;
@@ -312,7 +394,13 @@ pub fn rfc2822_date(t: u64) -> String {
 /// very start of a line is ordinary content.
 fn escape_dot_stuffing(body: &str) -> String {
     body.lines()
-        .map(|l| if l.starts_with('.') { format!(".{l}") } else { l.to_string() })
+        .map(|l| {
+            if l.starts_with('.') {
+                format!(".{l}")
+            } else {
+                l.to_string()
+            }
+        })
         .collect::<Vec<_>>()
         .join("\r\n")
 }
@@ -322,7 +410,10 @@ fn escape_dot_stuffing(body: &str) -> String {
 /// actual socket -- see `imap::connect` for why this is deliberately the one
 /// untested function here; the STARTTLS exchange itself is `Session::starttls`,
 /// which is tested. Callers EHLO again after this, as RFC 3207 requires.
-pub fn connect(host: &str, port: u16) -> Result<Session<native_tls::TlsStream<std::net::TcpStream>>, String> {
+pub fn connect(
+    host: &str,
+    port: u16,
+) -> Result<Session<native_tls::TlsStream<std::net::TcpStream>>, String> {
     let tcp = std::net::TcpStream::connect((host, port))
         .map_err(|e| format!("couldn't reach {host}:{port}: {e}"))?;
     // Before TLS, so the handshake is covered too. A server that completes
@@ -334,22 +425,36 @@ pub fn connect(host: &str, port: u16) -> Result<Session<native_tls::TlsStream<st
         .map_err(|e| format!("couldn't set a write timeout on {host}: {e}"))?;
     let tcp = if port == 587 {
         let mut plain = Session::new(tcp);
-        let greeting = plain.read_greeting().map_err(|e| format!("no greeting from {host}: {e}"))?;
+        let greeting = plain
+            .read_greeting()
+            .map_err(|e| format!("no greeting from {host}: {e}"))?;
         if !greeting.ok() {
-            return Err(format!("{host} did not say it was ready: {}", greeting.text()));
+            return Err(format!(
+                "{host} did not say it was ready: {}",
+                greeting.text()
+            ));
         }
-        plain.starttls("atlas").map_err(|e| format!("{host}: {e}"))?
+        plain
+            .starttls("atlas")
+            .map_err(|e| format!("{host}: {e}"))?
     } else {
         tcp
     };
-    let connector = native_tls::TlsConnector::new().map_err(|e| format!("couldn't set up TLS: {e}"))?;
-    let tls =
-        connector.connect(host, tcp).map_err(|e| format!("TLS handshake with {host} failed: {e}"))?;
+    let connector =
+        native_tls::TlsConnector::new().map_err(|e| format!("couldn't set up TLS: {e}"))?;
+    let tls = connector
+        .connect(host, tcp)
+        .map_err(|e| format!("TLS handshake with {host} failed: {e}"))?;
     let mut session = Session::new(tls);
     if port != 587 {
-        let greeting = session.read_greeting().map_err(|e| format!("no greeting from {host}: {e}"))?;
+        let greeting = session
+            .read_greeting()
+            .map_err(|e| format!("no greeting from {host}: {e}"))?;
         if !greeting.ok() {
-            return Err(format!("{host} did not say it was ready: {}", greeting.text()));
+            return Err(format!(
+                "{host} did not say it was ready: {}",
+                greeting.text()
+            ));
         }
     }
     Ok(session)
@@ -360,11 +465,16 @@ pub fn connect(host: &str, port: u16) -> Result<Session<native_tls::TlsStream<st
 /// send more is refused with how long to wait, instead of emailing a client
 /// thirty times. Chosen, not measured — it is a fuse, not a quota.
 pub fn may_send(account: &str, now_ms: u64) -> Result<(), String> {
-    static LIMIT: std::sync::OnceLock<std::sync::Mutex<crate::ratelimit::Gcra>> = std::sync::OnceLock::new();
-    let lim = LIMIT.get_or_init(|| std::sync::Mutex::new(crate::ratelimit::Gcra::new(30, 3_600_000, 5)));
+    static LIMIT: std::sync::OnceLock<std::sync::Mutex<crate::ratelimit::Gcra>> =
+        std::sync::OnceLock::new();
+    let lim =
+        LIMIT.get_or_init(|| std::sync::Mutex::new(crate::ratelimit::Gcra::new(30, 3_600_000, 5)));
     match lim.lock().or_else(crate::crash::unpoison) {
         Ok(mut g) => g.check(&account.to_lowercase(), now_ms).map_err(|wait| {
-            format!("sending paused: more than 5 in a row from {account} — the next can go in {}s", wait.div_ceil(1000))
+            format!(
+                "sending paused: more than 5 in a row from {account} — the next can go in {}s",
+                wait.div_ceil(1000)
+            )
         }),
         // Never taken: `unpoison` keeps the limiter (and its counts) after a
         // panic elsewhere, so the limit still holds rather than sends
@@ -389,7 +499,9 @@ mod tests {
 
     #[test]
     fn a_multi_line_reply_stops_at_the_line_with_a_space_not_a_dash() {
-        let s = Scripted::new("250-example.com at your service\r\n250-STARTTLS\r\n250 AUTH LOGIN PLAIN\r\n");
+        let s = Scripted::new(
+            "250-example.com at your service\r\n250-STARTTLS\r\n250 AUTH LOGIN PLAIN\r\n",
+        );
         let mut sess = Session::new(s);
         let r = sess.read_reply().unwrap();
         assert_eq!(r.code, 250);
@@ -399,10 +511,26 @@ mod tests {
 
     #[test]
     fn ok_is_true_for_2xx_and_3xx_but_false_for_4xx_and_5xx() {
-        assert!(Reply { code: 250, lines: vec![] }.ok());
-        assert!(Reply { code: 354, lines: vec![] }.ok());
-        assert!(!Reply { code: 450, lines: vec![] }.ok());
-        assert!(!Reply { code: 550, lines: vec![] }.ok());
+        assert!(Reply {
+            code: 250,
+            lines: vec![]
+        }
+        .ok());
+        assert!(Reply {
+            code: 354,
+            lines: vec![]
+        }
+        .ok());
+        assert!(!Reply {
+            code: 450,
+            lines: vec![]
+        }
+        .ok());
+        assert!(!Reply {
+            code: 550,
+            lines: vec![]
+        }
+        .ok());
     }
 
     #[test]
@@ -433,13 +561,25 @@ mod tests {
     fn an_address_with_a_second_command_or_recipient_in_it_is_never_sent_to() {
         let s = Scripted::new("250 OK\r\n250 OK\r\n354 go\r\n250 OK\r\n");
         let mut sess = Session::new(s);
-        let e = sess.send_mail("me@gmail.com", "a@b.com>\r\nRCPT TO:<evil@x.com", "x", "").unwrap_err();
+        let e = sess
+            .send_mail("me@gmail.com", "a@b.com>\r\nRCPT TO:<evil@x.com", "x", "")
+            .unwrap_err();
         assert!(e.contains("isn't an email address"), "{e}");
         assert!(sess.stream.sent.is_empty(), "nothing reached the server");
-        for bad in ["Sam <sam@x.com>", "a@b.com,c@d.com", "no-at-sign", "a@localhost", "a@b@c.com", "a b@c.com"] {
+        for bad in [
+            "Sam <sam@x.com>",
+            "a@b.com,c@d.com",
+            "no-at-sign",
+            "a@localhost",
+            "a@b@c.com",
+            "a b@c.com",
+        ] {
             assert!(plain_address(bad).is_err(), "{bad}");
         }
-        assert_eq!(plain_address(" sam.o'neil+tag@mail.example.co.uk "), Ok("sam.o'neil+tag@mail.example.co.uk"));
+        assert_eq!(
+            plain_address(" sam.o'neil+tag@mail.example.co.uk "),
+            Ok("sam.o'neil+tag@mail.example.co.uk")
+        );
         let m = message_text("me@x.com", "a@b.com\r\nBcc: evil@x.com", "s", "b", 0);
         assert_eq!(m.matches("\r\nBcc:").count(), 0, "{m}");
     }
@@ -449,12 +589,16 @@ mod tests {
         let script = "250 OK\r\n250 OK\r\n354 Start mail input\r\n250 OK: queued\r\n";
         let s = Scripted::new(script);
         let mut sess = Session::new(s);
-        sess.send_mail("me@gmail.com", "shop@example.com", "unsubscribe", "").unwrap();
+        sess.send_mail("me@gmail.com", "shop@example.com", "unsubscribe", "")
+            .unwrap();
         let sent = String::from_utf8_lossy(&sess.stream.sent).into_owned();
         assert!(sent.contains("MAIL FROM:<me@gmail.com>"));
         assert!(sent.contains("RCPT TO:<shop@example.com>"));
         assert!(sent.contains("DATA"));
-        assert!(sent.ends_with("\r\n.\r\n"), "the message must end with the SMTP terminator");
+        assert!(
+            sent.ends_with("\r\n.\r\n"),
+            "the message must end with the SMTP terminator"
+        );
     }
 
     #[test]
@@ -468,10 +612,15 @@ mod tests {
         let script = "550 Sender address rejected\r\n";
         let s = Scripted::new(script);
         let mut sess = Session::new(s);
-        let e = sess.send_mail("blocked@example.com", "shop@example.com", "x", "").unwrap_err();
+        let e = sess
+            .send_mail("blocked@example.com", "shop@example.com", "x", "")
+            .unwrap_err();
         assert!(e.contains("MAIL FROM refused"), "got: {e}");
         let sent = String::from_utf8_lossy(&sess.stream.sent).into_owned();
-        assert!(!sent.contains("RCPT TO"), "must not proceed to RCPT TO after MAIL FROM was refused");
+        assert!(
+            !sent.contains("RCPT TO"),
+            "must not proceed to RCPT TO after MAIL FROM was refused"
+        );
     }
 
     #[test]
@@ -479,10 +628,15 @@ mod tests {
         let script = "250 OK\r\n550 No such recipient\r\n";
         let s = Scripted::new(script);
         let mut sess = Session::new(s);
-        let e = sess.send_mail("me@gmail.com", "nobody@example.com", "x", "").unwrap_err();
+        let e = sess
+            .send_mail("me@gmail.com", "nobody@example.com", "x", "")
+            .unwrap_err();
         assert!(e.contains("RCPT TO refused"), "got: {e}");
         let sent = String::from_utf8_lossy(&sess.stream.sent).into_owned();
-        assert!(!sent.contains("\r\nDATA\r\n"), "must not proceed to DATA after RCPT TO was refused");
+        assert!(
+            !sent.contains("\r\nDATA\r\n"),
+            "must not proceed to DATA after RCPT TO was refused"
+        );
     }
 
     #[test]
@@ -501,7 +655,10 @@ mod tests {
         let err = sess.auth_xoauth2("me@outlook.com", "badtoken").unwrap_err();
         assert!(err.contains("Authentication unsuccessful"), "got: {err}");
         let sent = String::from_utf8_lossy(&sess.stream.sent).into_owned();
-        assert!(sent.ends_with("\r\n\r\n"), "the 334 continuation must be answered with an empty line");
+        assert!(
+            sent.ends_with("\r\n\r\n"),
+            "the 334 continuation must be answered with an empty line"
+        );
     }
 
     #[test]
@@ -511,23 +668,43 @@ mod tests {
         sess.auth_xoauth2("me@outlook.com", "sometoken").unwrap();
         let sent = String::from_utf8_lossy(&sess.stream.sent).into_owned();
         assert!(sent.starts_with("AUTH XOAUTH2 "));
-        assert!(sent.contains(&crate::msoauth::xoauth2_string("me@outlook.com", "sometoken")));
+        assert!(sent.contains(&crate::msoauth::xoauth2_string(
+            "me@outlook.com",
+            "sometoken"
+        )));
     }
     #[test]
     fn starttls_upgrades_only_when_offered_and_nothing_is_smuggled() {
         let s = Session::new(Scripted::new("250-smtp.office365.com\r\n250-SIZE 157286400\r\n250 STARTTLS\r\n220 2.0.0 SMTP server ready\r\n"));
         let stream = s.starttls("atlas").unwrap();
-        assert_eq!(String::from_utf8(stream.sent).unwrap(), "EHLO atlas\r\nSTARTTLS\r\n");
+        assert_eq!(
+            String::from_utf8(stream.sent).unwrap(),
+            "EHLO atlas\r\nSTARTTLS\r\n"
+        );
 
         let s = Session::new(Scripted::new("250-mx\r\n250 AUTH LOGIN\r\n"));
-        assert!(s.starttls("atlas").err().unwrap_or_default().contains("doesn't offer STARTTLS"));
+        assert!(s
+            .starttls("atlas")
+            .err()
+            .unwrap_or_default()
+            .contains("doesn't offer STARTTLS"));
 
         let s = Session::new(Scripted::new("250 STARTTLS\r\n454 TLS not available\r\n"));
-        assert!(s.starttls("atlas").err().unwrap_or_default().contains("refused STARTTLS"));
+        assert!(s
+            .starttls("atlas")
+            .err()
+            .unwrap_or_default()
+            .contains("refused STARTTLS"));
 
         // A reply pipelined behind the 220 would be read as if it came over TLS.
-        let s = Session::new(Scripted::new("250 STARTTLS\r\n220 go ahead\r\n250 injected\r\n"));
-        assert!(s.starttls("atlas").err().unwrap_or_default().contains("before encryption"));
+        let s = Session::new(Scripted::new(
+            "250 STARTTLS\r\n220 go ahead\r\n250 injected\r\n",
+        ));
+        assert!(s
+            .starttls("atlas")
+            .err()
+            .unwrap_or_default()
+            .contains("before encryption"));
     }
 }
 
@@ -536,11 +713,17 @@ mod threading {
     #[test]
     fn a_reply_names_the_message_it_answers_and_its_ancestors() {
         let t = crate::outbox::Thread::replying_to("<b@x>", &["a@x".to_string()]);
-        let m = super::message_text_in("me@y.com", "sam@x.com", "Re: plans", "Yes.", 1_790_000_000, &t);
+        let m = super::message_text_in(
+            "me@y.com",
+            "sam@x.com",
+            "Re: plans",
+            "Yes.",
+            1_790_000_000,
+            &t,
+        );
         assert!(m.contains("\r\nIn-Reply-To: <b@x>\r\n"), "{m}");
         assert!(m.contains("\r\nReferences: <a@x> <b@x>\r\n"), "{m}");
         let plain = super::message_text("me@y.com", "sam@x.com", "Hello", "Hi.", 1_790_000_000);
         assert!(!plain.contains("In-Reply-To"));
     }
-
 }

@@ -36,11 +36,24 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 /// A fresh install has no prior backup, so `due_for_backup` fires on the
@@ -69,7 +82,10 @@ fn a_due_backup_goes_through_the_crew_and_is_watched() {
     // near-empty store can copy in well under a millisecond), a job must
     // have been registered for it -- that only happens on the crew path.
     assert!(
-        d.long_work.jobs.iter().any(|j| j.name == "backup" && j.process == "crew"),
+        d.long_work
+            .jobs
+            .iter()
+            .any(|j| j.name == "backup" && j.process == "crew"),
         "a due backup must be registered with long_work, proving it went through the crew"
     );
 }
@@ -101,10 +117,18 @@ fn a_fast_successful_backup_is_logged_but_not_spoken() {
     }
     assert!(settled, "the backup should settle within the deadline");
 
-    let job = d.long_work.jobs.iter().find(|j| j.name == "backup").expect("job recorded");
+    let job = d
+        .long_work
+        .jobs
+        .iter()
+        .find(|j| j.name == "backup")
+        .expect("job recorded");
     assert_eq!(job.outcome, atlas::watching::Outcome::Finished);
     assert!(
-        d.journal.events.iter().any(|e| e.what.starts_with("backup:") && e.ok),
+        d.journal
+            .events
+            .iter()
+            .any(|e| e.what.starts_with("backup:") && e.ok),
         "the journal must carry a record of the backup even though nothing was said aloud"
     );
 }
@@ -138,6 +162,14 @@ fn a_backup_already_in_flight_is_not_started_a_second_time() {
     // ever have been created -- whether it already finished or is still
     // running, `due_for_backup` (real prior backup) and the one-hour
     // `last_backup` floor both forbid a second one this soon.
-    let backups = d.long_work.jobs.iter().filter(|j| j.name == "backup").count();
-    assert_eq!(backups, 1, "only one backup errand should exist across three immediate ticks");
+    let backups = d
+        .long_work
+        .jobs
+        .iter()
+        .filter(|j| j.name == "backup")
+        .count();
+    assert_eq!(
+        backups, 1,
+        "only one backup errand should exist across three immediate ticks"
+    );
 }

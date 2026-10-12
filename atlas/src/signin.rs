@@ -108,7 +108,10 @@ impl Default for SignInConfig {
 pub enum Refused {
     NotGranted(String),
     /// The domain doesn't match. This is the one that saves you.
-    WrongDomain { expected: String, got: String },
+    WrongDomain {
+        expected: String,
+        got: String,
+    },
     /// Not a real login page.
     NotALoginPage,
     /// The vault is locked.
@@ -130,9 +133,7 @@ impl Refused {
             ),
             Refused::NotALoginPage => "That isn't a sign-in form.".into(),
             Refused::Locked => "The vault's locked — say the passphrase.".into(),
-            Refused::YouAreNotHere => {
-                "That one only signs in while you're at the machine.".into()
-            }
+            Refused::YouAreNotHere => "That one only signs in while you're at the machine.".into(),
             Refused::ArrivedBadly => {
                 "I got to that page by following a link rather than typing the address, so I'm \
                  not filling anything into it."
@@ -205,7 +206,8 @@ impl Access {
     ) {
         let d = registered_domain(domain);
         // Replace only the same account on the same site, never the site.
-        self.grants.retain(|g| !(g.domain == d && g.account == account));
+        self.grants
+            .retain(|g| !(g.domain == d && g.account == account));
         self.grants.push(Grant {
             domain: d,
             account: account.into(),
@@ -278,7 +280,9 @@ impl Access {
 
     pub fn find_account(&self, host: &str, account: &str) -> Option<&Grant> {
         let d = registered_domain(host);
-        self.grants.iter().find(|g| g.domain == d && g.account == account)
+        self.grants
+            .iter()
+            .find(|g| g.domain == d && g.account == account)
     }
 
     /// The grant for a host, and the checks that are about the grant itself.
@@ -301,7 +305,10 @@ impl Access {
         }
         // The check that does the work. A lookalike domain fails here.
         if grant.domain != d {
-            return Err(Refused::WrongDomain { expected: grant.domain.clone(), got: d });
+            return Err(Refused::WrongDomain {
+                expected: grant.domain.clone(),
+                got: d,
+            });
         }
         Ok(grant)
     }
@@ -456,7 +463,11 @@ impl Access {
             2 => format!("{} and {}", names[0], names[1]),
             _ => format!("{}, {} and {}", names[0], names[1], names[2]),
         };
-        let rest = if more > 0 { format!(" (and {more} more)") } else { String::new() };
+        let rest = if more > 0 {
+            format!(" (and {more} more)")
+        } else {
+            String::new()
+        };
         Some(format!(
             "you haven't used your saved login for {listed}{rest} in three months or more — I'm keeping \
              them; the Access page is where to drop any you don't need"
@@ -482,7 +493,11 @@ impl Access {
     /// You changed the password. Point the grant at the new one.
     pub fn superseded_by(&mut self, host: &str, account: &str, new_entry: &str) -> bool {
         let d = registered_domain(host);
-        match self.grants.iter_mut().find(|g| g.domain == d && g.account == account) {
+        match self
+            .grants
+            .iter_mut()
+            .find(|g| g.domain == d && g.account == account)
+        {
             Some(g) => {
                 g.vault_entry = new_entry.into();
                 g.looks_superseded = false;
@@ -495,7 +510,10 @@ impl Access {
 
     /// Anything that failed, which is how you notice something is wrong.
     fn failures(&self, since: u64) -> Vec<&Use> {
-        self.log.iter().filter(|u| !u.worked && u.at >= since).collect()
+        self.log
+            .iter()
+            .filter(|u| !u.worked && u.at >= since)
+            .collect()
     }
 }
 
@@ -580,7 +598,11 @@ pub fn spoken(a: &Access, now: u64) -> String {
         s.push_str(&format!(
             " {} where the password looks like it changed: {}.",
             stale_creds.len(),
-            stale_creds.iter().map(|g| g.name.as_str()).collect::<Vec<_>>().join(", ")
+            stale_creds
+                .iter()
+                .map(|g| g.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
     let recent_failures = a.failures(now.saturating_sub(7 * 86_400)).len();

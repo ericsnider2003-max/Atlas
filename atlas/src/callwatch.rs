@@ -29,7 +29,10 @@ pub fn mic_users_from(reg_output: &str) -> Vec<MicUser> {
     let mut current: Option<(String, Option<u64>, Option<u64>)> = None;
     let finish = |c: Option<(String, Option<u64>, Option<u64>)>, out: &mut Vec<MicUser>| {
         if let Some((who, Some(start), Some(stop))) = c {
-            out.push(MicUser { who, now: start != 0 && stop == 0 });
+            out.push(MicUser {
+                who,
+                now: start != 0 && stop == 0,
+            });
         }
     };
     for line in reg_output.lines() {
@@ -40,9 +43,14 @@ pub fn mic_users_from(reg_output: &str) -> Vec<MicUser> {
             current = Some((who, None, None));
             continue;
         }
-        let Some((_, start, stop)) = current.as_mut() else { continue };
+        let Some((_, start, stop)) = current.as_mut() else {
+            continue;
+        };
         let mut parts = t.split_whitespace();
-        let (Some(name), Some(_kind), Some(value)) = (parts.next(), parts.next(), parts.next()) else { continue };
+        let (Some(name), Some(_kind), Some(value)) = (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
         let n = value
             .strip_prefix("0x")
             .and_then(|h| u64::from_str_radix(h, 16).ok())
@@ -86,7 +94,10 @@ pub fn call_from(users: &[MicUser]) -> Option<&'static str> {
         if ATLAS_OWN.iter().any(|a| who.contains(a)) {
             return None;
         }
-        CALL_APPS.iter().find(|(word, _)| who.contains(word)).map(|(_, name)| *name)
+        CALL_APPS
+            .iter()
+            .find(|(word, _)| who.contains(word))
+            .map(|(_, name)| *name)
     })
 }
 
@@ -103,7 +114,9 @@ pub fn call_now() -> Option<&'static str> {
     if let Some(users) = mic_users_direct() {
         return call_from(&users);
     }
-    let root = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    let root = std::env::var_os("SystemRoot")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
     let reg = root.join("System32").join("reg.exe");
     let out = crate::firstlaunch::run_quietly(
         &reg,
@@ -119,7 +132,10 @@ pub fn call_now() -> Option<&'static str> {
 #[cfg(windows)]
 fn mic_users_direct() -> Option<Vec<MicUser>> {
     use windows::core::{HSTRING, PWSTR};
-    use windows::Win32::System::Registry::{RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ};
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER,
+        KEY_READ,
+    };
     const MIC: &str = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone";
     struct Key(HKEY);
     impl Drop for Key {
@@ -142,7 +158,18 @@ fn mic_users_direct() -> Option<Vec<MicUser>> {
             let mut buf = [0u16; 512];
             let mut len = buf.len() as u32;
             // SAFETY: the buffer and its length are passed together.
-            let r = unsafe { RegEnumKeyExW(k.0, i, PWSTR(buf.as_mut_ptr()), &mut len, None, PWSTR::null(), None, None) };
+            let r = unsafe {
+                RegEnumKeyExW(
+                    k.0,
+                    i,
+                    PWSTR(buf.as_mut_ptr()),
+                    &mut len,
+                    None,
+                    PWSTR::null(),
+                    None,
+                    None,
+                )
+            };
             if r.is_err() {
                 break;
             }
@@ -154,18 +181,34 @@ fn mic_users_direct() -> Option<Vec<MicUser>> {
         let mut v = [0u8; 8];
         let mut len = 8u32;
         // SAFETY: an 8-byte buffer and its length.
-        let r = unsafe { RegQueryValueExW(k.0, &HSTRING::from(name), None, None, Some(v.as_mut_ptr()), Some(&mut len)) };
+        let r = unsafe {
+            RegQueryValueExW(
+                k.0,
+                &HSTRING::from(name),
+                None,
+                None,
+                Some(v.as_mut_ptr()),
+                Some(&mut len),
+            )
+        };
         (r.is_ok() && len == 8).then(|| u64::from_le_bytes(v))
     }
     fn entry(k: &Key, who: &str, out: &mut Vec<MicUser>) {
-        if let (Some(start), Some(stop)) = (qword(k, "LastUsedTimeStart"), qword(k, "LastUsedTimeStop")) {
-            out.push(MicUser { who: who.to_string(), now: start != 0 && stop == 0 });
+        if let (Some(start), Some(stop)) =
+            (qword(k, "LastUsedTimeStart"), qword(k, "LastUsedTimeStop"))
+        {
+            out.push(MicUser {
+                who: who.to_string(),
+                now: start != 0 && stop == 0,
+            });
         }
     }
     let root = open(HKEY_CURRENT_USER, MIC)?;
     let mut out = Vec::new();
     for name in children(&root) {
-        let Some(k) = open(root.0, &name) else { continue };
+        let Some(k) = open(root.0, &name) else {
+            continue;
+        };
         if name == "NonPackaged" {
             for inner in children(&k) {
                 if let Some(ik) = open(k.0, &inner) {

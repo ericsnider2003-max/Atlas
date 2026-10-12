@@ -50,9 +50,10 @@ pub const UNWIRED: &str = "tests/capability_wiring.rs";
 pub const WIRING: &str = "tests/wiring.rs";
 
 const KEYWORDS: &[&str] = &[
-    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in",
-    "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return", "self", "static", "struct", "super", "trait", "true", "type",
-    "unsafe", "use", "where", "while", "yield", "main", "lib", "tests",
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern",
+    "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+    "ref", "return", "self", "static", "struct", "super", "trait", "true", "type", "unsafe", "use",
+    "where", "while", "yield", "main", "lib", "tests",
 ];
 
 /// A name a module and a capability can both have: lower case, starting
@@ -61,7 +62,9 @@ const KEYWORDS: &[&str] = &[
 pub fn fit_name(id: &str) -> Result<(), String> {
     let ok = (3..=32).contains(&id.len())
         && id.starts_with(|c: char| c.is_ascii_lowercase())
-        && id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
         && !id.ends_with('_')
         && !id.contains("__");
     if !ok {
@@ -76,7 +79,10 @@ pub fn fit_name(id: &str) -> Result<(), String> {
 /// A name for what was asked: its first few meaningful words, joined.
 /// "read my texts out loud" -> `read_texts_out_loud`.
 pub fn name_for(what: &str) -> String {
-    const SKIP: &[&str] = &["a", "an", "the", "my", "me", "i", "you", "your", "to", "of", "for", "and", "it", "that", "this", "when", "with", "on", "in"];
+    const SKIP: &[&str] = &[
+        "a", "an", "the", "my", "me", "i", "you", "your", "to", "of", "for", "and", "it", "that",
+        "this", "when", "with", "on", "in",
+    ];
     let words: Vec<String> = what
         .to_lowercase()
         .split(|c: char| !c.is_ascii_alphanumeric())
@@ -114,12 +120,15 @@ pub fn plan(ask: &Ask, read: impl Fn(&str) -> Option<String>) -> Result<Vec<File
     }
     let lib = read(LIB).ok_or("src/lib.rs isn't there -- is this Atlas's source?")?;
     let cat = read(CATALOGUE).ok_or("src/capability.rs isn't there -- is this Atlas's source?")?;
-    let unwired = read(UNWIRED).ok_or("tests/capability_wiring.rs isn't there -- is this Atlas's source?")?;
+    let unwired =
+        read(UNWIRED).ok_or("tests/capability_wiring.rs isn't there -- is this Atlas's source?")?;
     let wiring = read(WIRING).ok_or("tests/wiring.rs isn't there -- is this Atlas's source?")?;
     if cat.contains(&format!("id: \"{}\"", ask.id)) {
         return Err(format!("there's already a capability called {}", ask.id));
     }
-    if lib.lines().any(|l| l.trim() == format!("pub mod {};", ask.id) || l.trim() == format!("mod {};", ask.id)) {
+    if lib.lines().any(|l| {
+        l.trim() == format!("pub mod {};", ask.id) || l.trim() == format!("mod {};", ask.id)
+    }) {
         return Err(format!("src/lib.rs already has a module called {}", ask.id));
     }
 
@@ -144,12 +153,22 @@ pub fn plan(ask: &Ask, read: impl Fn(&str) -> Option<String>) -> Result<Vec<File
     new_lib.insert_str(end, &format!("pub mod {};\n", ask.id));
 
     // The catalogue: an entry at the end of `all()`, and the pinned count.
-    let start = cat.find("pub fn all() -> Vec<Capability> {").ok_or("capability::all() isn't where it was")?;
-    let close = cat[start..].find("\n    ]\n").map(|i| start + i + 1).ok_or("the end of capability::all() isn't where it was")?;
+    let start = cat
+        .find("pub fn all() -> Vec<Capability> {")
+        .ok_or("capability::all() isn't where it was")?;
+    let close = cat[start..]
+        .find("\n    ]\n")
+        .map(|i| start + i + 1)
+        .ok_or("the end of capability::all() isn't where it was")?;
     let added = cat[start..close]
         .split("added: ")
         .skip(1)
-        .filter_map(|s| s.split(|c: char| !c.is_ascii_digit()).next()?.parse::<u32>().ok())
+        .filter_map(|s| {
+            s.split(|c: char| !c.is_ascii_digit())
+                .next()?
+                .parse::<u32>()
+                .ok()
+        })
         .max()
         .unwrap_or(0);
     let entry = format!(
@@ -162,32 +181,87 @@ pub fn plan(ask: &Ask, read: impl Fn(&str) -> Option<String>) -> Result<Vec<File
     let mut new_cat = cat.clone();
     new_cat.insert_str(close, &entry);
     let pin = "pub const MODULES_IN_TREE: usize = ";
-    let p = new_cat.find(pin).ok_or("MODULES_IN_TREE isn't where it was")?;
-    let num_end = new_cat[p + pin.len()..].find(';').map(|i| p + pin.len() + i).ok_or("MODULES_IN_TREE has no end")?;
-    let n: usize = new_cat[p + pin.len()..num_end].trim().parse().map_err(|_| "MODULES_IN_TREE isn't a number")?;
-    new_cat.replace_range(p..num_end + 1, &format!("// {}: + `{}` (scaffolded, planned) = {}.\n{pin}{};", ask.day, ask.id, n + 1, n + 1));
+    let p = new_cat
+        .find(pin)
+        .ok_or("MODULES_IN_TREE isn't where it was")?;
+    let num_end = new_cat[p + pin.len()..]
+        .find(';')
+        .map(|i| p + pin.len() + i)
+        .ok_or("MODULES_IN_TREE has no end")?;
+    let n: usize = new_cat[p + pin.len()..num_end]
+        .trim()
+        .parse()
+        .map_err(|_| "MODULES_IN_TREE isn't a number")?;
+    new_cat.replace_range(
+        p..num_end + 1,
+        &format!(
+            "// {}: + `{}` (scaffolded, planned) = {}.\n{pin}{};",
+            ask.day,
+            ask.id,
+            n + 1,
+            n + 1
+        ),
+    );
 
     // Why it's unwired: one line, so the honesty guard hears the reason.
     let head = "const CAPABILITY_UNWIRED: &[&str] = &[\n";
-    let u = unwired.find(head).ok_or("CAPABILITY_UNWIRED isn't where it was")? + head.len();
+    let u = unwired
+        .find(head)
+        .ok_or("CAPABILITY_UNWIRED isn't where it was")?
+        + head.len();
     let mut new_unwired = unwired.clone();
     new_unwired.insert_str(
         u,
-        &format!("    // {}: `{}` -- asked for, scaffolded, not built yet: \"{}\".\n    \"{}\",\n", ask.day, ask.id, rust_str(&what).replace('\n', " "), ask.id),
+        &format!(
+            "    // {}: `{}` -- asked for, scaffolded, not built yet: \"{}\".\n    \"{}\",\n",
+            ask.day,
+            ask.id,
+            rust_str(&what).replace('\n', " "),
+            ask.id
+        ),
     );
 
     // And for the reachability guard: a module nothing calls yet, on purpose.
     let head = "const UNWIRED_BASELINE: &[&str] = &[\n";
-    let w = wiring.find(head).ok_or("UNWIRED_BASELINE isn't where it was")? + head.len();
+    let w = wiring
+        .find(head)
+        .ok_or("UNWIRED_BASELINE isn't where it was")?
+        + head.len();
     let mut new_wiring = wiring.clone();
-    new_wiring.insert_str(w, &format!("    // {}: scaffolded, not built yet -- see its catalogue entry.\n    \"{}\",\n", ask.day, ask.id));
+    new_wiring.insert_str(
+        w,
+        &format!(
+            "    // {}: scaffolded, not built yet -- see its catalogue entry.\n    \"{}\",\n",
+            ask.day, ask.id
+        ),
+    );
 
     Ok(vec![
-        FileChange { path: module, before: None, after: file },
-        FileChange { path: WIRING.into(), before: Some(wiring), after: new_wiring },
-        FileChange { path: LIB.into(), before: Some(lib), after: new_lib },
-        FileChange { path: CATALOGUE.into(), before: Some(cat), after: new_cat },
-        FileChange { path: UNWIRED.into(), before: Some(unwired), after: new_unwired },
+        FileChange {
+            path: module,
+            before: None,
+            after: file,
+        },
+        FileChange {
+            path: WIRING.into(),
+            before: Some(wiring),
+            after: new_wiring,
+        },
+        FileChange {
+            path: LIB.into(),
+            before: Some(lib),
+            after: new_lib,
+        },
+        FileChange {
+            path: CATALOGUE.into(),
+            before: Some(cat),
+            after: new_cat,
+        },
+        FileChange {
+            path: UNWIRED.into(),
+            before: Some(unwired),
+            after: new_unwired,
+        },
     ])
 }
 
@@ -197,7 +271,10 @@ pub fn apply(root: &Path, changes: &[FileChange]) -> Result<(), String> {
     for c in changes {
         let now = std::fs::read_to_string(root.join(&c.path)).ok();
         if now != c.before {
-            return Err(format!("{} changed since I read it -- nothing written", c.path));
+            return Err(format!(
+                "{} changed since I read it -- nothing written",
+                c.path
+            ));
         }
     }
     for c in changes {
@@ -213,7 +290,16 @@ fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
         // Git for Windows' core.autocrlf=true they came out with CRLF endings,
         // the edits below look for `\n` and found nothing, and "set that
         // ability up" failed on Windows every time.
-        .args(["-c", "user.name=Atlas", "-c", "user.email=atlas@localhost", "-c", "commit.gpgsign=false", "-c", "core.autocrlf=false"])
+        .args([
+            "-c",
+            "user.name=Atlas",
+            "-c",
+            "user.email=atlas@localhost",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.autocrlf=false",
+        ])
         .args(args)
         .current_dir(dir)
         .output()
@@ -234,25 +320,57 @@ pub fn on_a_branch(repo: &Path, ask: &Ask) -> Result<String, String> {
     let inner = repo
         .canonicalize()
         .ok()
-        .and_then(|r| top.canonicalize().ok().and_then(|t| r.strip_prefix(t).ok().map(|p| p.to_path_buf())))
+        .and_then(|r| {
+            top.canonicalize()
+                .ok()
+                .and_then(|t| r.strip_prefix(t).ok().map(|p| p.to_path_buf()))
+        })
         .unwrap_or_default();
     let base = crate::roots::tmp_dir().join("selffix");
     std::fs::create_dir_all(&base).map_err(|e| format!("couldn't make room to work in: {e}"))?;
     let dir = base.join(format!("scaffold-{}", ask.id));
     if dir.exists() {
-        let _ = git(repo, &["worktree", "remove", "--force", &dir.to_string_lossy()]); // unheard-ok: a leftover from an earlier try; the add below says if it's still in the way
+        let _ = git(
+            repo,
+            &["worktree", "remove", "--force", &dir.to_string_lossy()],
+        ); // unheard-ok: a leftover from an earlier try; the add below says if it's still in the way
         let _ = std::fs::remove_dir_all(&dir); // unheard-ok: as above
     }
-    git(repo, &["worktree", "add", "-b", &branch, &dir.to_string_lossy(), "HEAD"])?;
+    git(
+        repo,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            &branch,
+            &dir.to_string_lossy(),
+            "HEAD",
+        ],
+    )?;
     let crate_dir = dir.join(&inner);
     let done = (|| {
         let changes = plan(ask, |p| std::fs::read_to_string(crate_dir.join(p)).ok())?;
         apply(&crate_dir, &changes)?;
         git(&dir, &["add", "-A"])?;
-        git(&dir, &["commit", "-q", "-m", &format!("Scaffold `{}`: {}\n\nThe bookkeeping only (scaffold): not built yet.", ask.id, one_line(&ask.what))])?;
+        git(
+            &dir,
+            &[
+                "commit",
+                "-q",
+                "-m",
+                &format!(
+                    "Scaffold `{}`: {}\n\nThe bookkeeping only (scaffold): not built yet.",
+                    ask.id,
+                    one_line(&ask.what)
+                ),
+            ],
+        )?;
         Ok::<(), String>(())
     })();
-    let _ = git(repo, &["worktree", "remove", "--force", &dir.to_string_lossy()]); // unheard-ok: the branch holds the work; the folder was only a place to write it
+    let _ = git(
+        repo,
+        &["worktree", "remove", "--force", &dir.to_string_lossy()],
+    ); // unheard-ok: the branch holds the work; the folder was only a place to write it
     if let Err(e) = done {
         let _ = git(repo, &["branch", "-D", &branch]); // unheard-ok: an empty branch from a failed try, removed so the next try can use the name
         return Err(e);
@@ -278,18 +396,31 @@ mod tests {
 
     fn tree() -> HashMap<String, String> {
         let mut t = HashMap::new();
-        t.insert(LIB.into(), "//! Atlas\npub mod alpha;\npub mod beta;\n\n#[cfg(test)]\nmod x;\n".into());
+        t.insert(
+            LIB.into(),
+            "//! Atlas\npub mod alpha;\npub mod beta;\n\n#[cfg(test)]\nmod x;\n".into(),
+        );
         t.insert(
             CATALOGUE.into(),
             "pub fn all() -> Vec<Capability> {\n    vec![\n        Capability { id: \"alpha\", added: 3, modules: &[\"alpha\"] },\n        Capability { id: \"beta\", added: 7, modules: &[\"beta\"] },\n    ]\n}\n\npub const MODULES_IN_TREE: usize = 2;\n".into(),
         );
-        t.insert(UNWIRED.into(), "const CAPABILITY_UNWIRED: &[&str] = &[\n    \"mesh\",\n];\n".into());
-        t.insert(WIRING.into(), "const UNWIRED_BASELINE: &[&str] = &[\n    \"old\",\n];\n".into());
+        t.insert(
+            UNWIRED.into(),
+            "const CAPABILITY_UNWIRED: &[&str] = &[\n    \"mesh\",\n];\n".into(),
+        );
+        t.insert(
+            WIRING.into(),
+            "const UNWIRED_BASELINE: &[&str] = &[\n    \"old\",\n];\n".into(),
+        );
         t
     }
 
     fn ask(id: &str) -> Ask {
-        Ask { id: id.into(), what: "read my \"texts\" out loud".into(), day: "6 Oct 2026".into() }
+        Ask {
+            id: id.into(),
+            what: "read my \"texts\" out loud".into(),
+            day: "6 Oct 2026".into(),
+        }
     }
 
     #[test]
@@ -298,17 +429,32 @@ mod tests {
         let p = plan(&ask("read_texts_out_loud"), |path| t.get(path).cloned()).unwrap();
         let get = |path: &str| p.iter().find(|c| c.path == path).unwrap().after.clone();
         assert!(get("src/read_texts_out_loud.rs").contains("read my \"texts\" out loud"));
-        assert!(get(LIB).contains("pub mod beta;\npub mod read_texts_out_loud;\n"), "after the last pub mod: {}", get(LIB));
+        assert!(
+            get(LIB).contains("pub mod beta;\npub mod read_texts_out_loud;\n"),
+            "after the last pub mod: {}",
+            get(LIB)
+        );
         let cat = get(CATALOGUE);
         assert!(cat.contains("id: \"read_texts_out_loud\", what: \"read my \\\"texts\\\" out loud\", area: Itself, state: Planned"), "{cat}");
         assert!(cat.contains("added: 8,"), "one past the newest: {cat}");
-        assert!(cat.contains("pub const MODULES_IN_TREE: usize = 3;"), "{cat}");
+        assert!(
+            cat.contains("pub const MODULES_IN_TREE: usize = 3;"),
+            "{cat}"
+        );
         let entry_at = cat.find("read_texts_out_loud").unwrap();
-        assert!(entry_at < cat.find("\n    ]\n").unwrap(), "inside all(): {cat}");
-        assert!(get(UNWIRED).starts_with("const CAPABILITY_UNWIRED: &[&str] = &[\n    // 6 Oct 2026: `read_texts_out_loud`"));
+        assert!(
+            entry_at < cat.find("\n    ]\n").unwrap(),
+            "inside all(): {cat}"
+        );
+        assert!(get(UNWIRED).starts_with(
+            "const CAPABILITY_UNWIRED: &[&str] = &[\n    // 6 Oct 2026: `read_texts_out_loud`"
+        ));
         assert!(get(WIRING).contains("\"read_texts_out_loud\",\n    \"old\""));
         // Nothing pretends to work.
-        assert!(!get("src/read_texts_out_loud.rs").contains("fn "), "a scaffold has no function to look alive");
+        assert!(
+            !get("src/read_texts_out_loud.rs").contains("fn "),
+            "a scaffold has no function to look alive"
+        );
     }
 
     #[test]
@@ -316,10 +462,14 @@ mod tests {
         let t = tree();
         assert!(plan(&ask("Bad-Name"), |p| t.get(p).cloned()).is_err());
         assert!(plan(&ask("type"), |p| t.get(p).cloned()).is_err());
-        assert!(plan(&ask("alpha"), |p| t.get(p).cloned()).unwrap_err().contains("already"));
+        assert!(plan(&ask("alpha"), |p| t.get(p).cloned())
+            .unwrap_err()
+            .contains("already"));
         let mut with_file = tree();
         with_file.insert("src/gamma.rs".into(), String::new());
-        assert!(plan(&ask("gamma"), |p| with_file.get(p).cloned()).unwrap_err().contains("already there"));
+        assert!(plan(&ask("gamma"), |p| with_file.get(p).cloned())
+            .unwrap_err()
+            .contains("already there"));
     }
 
     #[test]
@@ -338,12 +488,18 @@ mod tests {
             std::fs::create_dir_all(f.parent().unwrap()).unwrap();
             std::fs::write(f, text).unwrap();
         }
-        let p = plan(&ask("read_texts"), |path| std::fs::read_to_string(dir.join(path)).ok()).unwrap();
+        let p = plan(&ask("read_texts"), |path| {
+            std::fs::read_to_string(dir.join(path)).ok()
+        })
+        .unwrap();
         std::fs::write(dir.join(LIB), "changed meanwhile").unwrap();
         assert!(apply(&dir, &p).unwrap_err().contains("changed since"));
         assert!(!dir.join("src/read_texts.rs").exists(), "nothing written");
         std::fs::write(dir.join(LIB), &tree()[LIB]).unwrap();
-        let p = plan(&ask("read_texts"), |path| std::fs::read_to_string(dir.join(path)).ok()).unwrap();
+        let p = plan(&ask("read_texts"), |path| {
+            std::fs::read_to_string(dir.join(path)).ok()
+        })
+        .unwrap();
         apply(&dir, &p).unwrap();
         assert!(dir.join("src/read_texts.rs").exists());
         let _ = std::fs::remove_dir_all(&dir);

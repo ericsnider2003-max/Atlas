@@ -40,18 +40,33 @@ fn cfg() -> Config {
 /// that says "tomorrow" failed at once.
 fn daytime(mut c: Config) -> Config {
     if (atlas::store::now() / 3600) % 24 < 5 {
-        c.tools.as_mut().expect("the shipped config has tools").time_zone = "Asia/Shanghai".into();
+        c.tools
+            .as_mut()
+            .expect("the shipped config has tools")
+            .time_zone = "Asia/Shanghai".into();
     }
     c
 }
 
-
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    let mut d = Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    );
     // The day's first turn earns the day's brief, which leads its reply
     // (28 Sep 2026: at `NOON` rather than 00:01 it does). Taken here, so the
     // turns under test answer only themselves.
@@ -64,13 +79,22 @@ fn scheduling_with_a_time_puts_it_on_and_reads_back() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "add");
     let reply = d.turn("schedule dentist tomorrow at 9am", NOON);
-    assert!(reply.to_lowercase().contains("calendar"), "should confirm, got: {reply}");
-    assert!(reply.to_lowercase().contains("dentist"), "should name it, got: {reply}");
+    assert!(
+        reply.to_lowercase().contains("calendar"),
+        "should confirm, got: {reply}"
+    );
+    assert!(
+        reply.to_lowercase().contains("dentist"),
+        "should name it, got: {reply}"
+    );
     // It's actually stored.
     assert_eq!(d.calendar.len(), 1);
     // And it reads back.
     let agenda = d.turn("what's on this week", NOON);
-    assert!(agenda.to_lowercase().contains("dentist"), "agenda should list it, got: {agenda}");
+    assert!(
+        agenda.to_lowercase().contains("dentist"),
+        "agenda should list it, got: {agenda}"
+    );
 }
 
 #[test]
@@ -79,14 +103,27 @@ fn scheduling_a_repeat_stores_it_once_and_reads_it_on_each_day() {
     let mut d = daemon(&c, &p, "repeat");
     let reply = d.turn("schedule standup every weekday at 9am", NOON);
     // Confirmed, and the confirmation says it repeats.
-    assert!(reply.to_lowercase().contains("standup"), "should name it: {reply}");
-    assert!(reply.to_lowercase().contains("every weekday"), "should say it repeats: {reply}");
+    assert!(
+        reply.to_lowercase().contains("standup"),
+        "should name it: {reply}"
+    );
+    assert!(
+        reply.to_lowercase().contains("every weekday"),
+        "should say it repeats: {reply}"
+    );
     // One series stored, not one row per day.
-    assert_eq!(d.calendar.len(), 1, "a repeat is stored once, not materialised");
+    assert_eq!(
+        d.calendar.len(),
+        1,
+        "a repeat is stored once, not materialised"
+    );
     // But the week's agenda shows it on more than one day (it expands).
     let agenda = d.turn("what's on this week", NOON);
     let hits = agenda.matches("standup").count();
-    assert!(hits >= 2, "a weekday repeat should show on several days this week: {agenda}");
+    assert!(
+        hits >= 2,
+        "a weekday repeat should show on several days this week: {agenda}"
+    );
 }
 
 #[test]
@@ -100,22 +137,31 @@ fn a_reminder_is_confirmed_and_then_fires_once_as_it_comes_due() {
     // it goes the way any note does -- see the test below.
     *p.input_idle.borrow_mut() = Some(0);
     // Schedule something well ahead with a reminder.
-    let reply = d.turn("schedule dentist tomorrow at 9am, remind me 15 minutes before", NOON);
-    assert!(reply.to_lowercase().contains("remind"), "should confirm the reminder: {reply}");
+    let reply = d.turn(
+        "schedule dentist tomorrow at 9am, remind me 15 minutes before",
+        NOON,
+    );
+    assert!(
+        reply.to_lowercase().contains("remind"),
+        "should confirm the reminder: {reply}"
+    );
     assert_eq!(d.calendar.len(), 1);
 
     // Find the event's start, then tick from inside its 15-minute lead window.
     let start = d.calendar.next(0).expect("event is there").start;
     let out = d.tick(start - 600); // 10 minutes before
     assert!(
-        out.iter().any(|line| line.to_lowercase().contains("reminder") && line.contains("dentist")),
+        out.iter()
+            .any(|line| line.to_lowercase().contains("reminder") && line.contains("dentist")),
         "the reminder should fire inside its window: {out:?}"
     );
     // Queueing the line is not delivery (a reminder stays owed until it has
     // actually been said), so say it, then tick again inside the window.
     struct Speaker;
     impl atlas::daemon::Mouth for Speaker {
-        fn speak(&self, _: &str) -> atlas::error::Result<()> { Ok(()) }
+        fn speak(&self, _: &str) -> atlas::error::Result<()> {
+            Ok(())
+        }
     }
     for line in std::mem::take(&mut d.to_say_aloud) {
         d.say_volunteered_with(&Speaker, &line, &mut || None);
@@ -123,7 +169,9 @@ fn a_reminder_is_confirmed_and_then_fires_once_as_it_comes_due() {
     // It doesn't fire again on the next tick still inside the window.
     let again = d.tick(start - 300);
     assert!(
-        !again.iter().any(|line| line.to_lowercase().contains("reminder") && line.contains("dentist")),
+        !again
+            .iter()
+            .any(|line| line.to_lowercase().contains("reminder") && line.contains("dentist")),
         "a reminder must not repeat within the same occurrence: {again:?}"
     );
 }
@@ -187,7 +235,10 @@ fn a_clash_is_pointed_out_but_still_scheduled() {
     let mut d = daemon(&c, &p, "clash");
     d.turn("schedule call tomorrow at 2pm for 60 minutes", NOON);
     let reply = d.turn("schedule review tomorrow at 2:30pm for 60 minutes", NOON);
-    assert!(reply.to_lowercase().contains("runs into"), "should flag the clash, got: {reply}");
+    assert!(
+        reply.to_lowercase().contains("runs into"),
+        "should flag the clash, got: {reply}"
+    );
     // Both are still on — a clash is yours to sort out, not a refusal.
     assert_eq!(d.calendar.len(), 2);
 }
@@ -239,7 +290,10 @@ fn an_event_naming_a_business_you_have_is_filed_on_that_side() {
     );
 
     let reply = d.turn("schedule the Northwind review tomorrow at 2pm", NOON);
-    assert!(reply.contains("Northwind"), "the confirmation should name the business side, got: {reply}");
+    assert!(
+        reply.contains("Northwind"),
+        "the confirmation should name the business side, got: {reply}"
+    );
 
     let e = d.calendar.next(0).expect("the event is on the calendar");
     assert_eq!(
@@ -260,13 +314,21 @@ fn blocking_off_time_reads_as_a_block_not_a_meeting() {
         "reserving focus time should say so, got: {reply}"
     );
     let e = d.calendar.next(0).expect("the block is on the calendar");
-    assert_eq!(e.kind, EventKind::TimeBlock, "a blocked-off stretch is a time block");
+    assert_eq!(
+        e.kind,
+        EventKind::TimeBlock,
+        "a blocked-off stretch is a time block"
+    );
 
     // A plain meeting the same day stays a meeting.
     d.turn("schedule a call tomorrow at 2pm", NOON);
     let now = NOON;
-    let kinds: Vec<_> =
-        d.calendar.occurrences_between(now, now + 7 * 86_400).iter().map(|e| e.kind).collect();
+    let kinds: Vec<_> = d
+        .calendar
+        .occurrences_between(now, now + 7 * 86_400)
+        .iter()
+        .map(|e| e.kind)
+        .collect();
     assert!(
         kinds.contains(&EventKind::TimeBlock) && kinds.contains(&EventKind::Meeting),
         "the two should read differently: {kinds:?}"
@@ -280,93 +342,205 @@ fn blocking_off_time_reads_as_a_block_not_a_meeting() {
 fn a_reminder_while_you_are_away_is_not_said_to_an_empty_room() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "reminder-away");
-    let reply = d.turn("schedule dentist tomorrow at 9am, remind me 15 minutes before", NOON);
+    let reply = d.turn(
+        "schedule dentist tomorrow at 9am, remind me 15 minutes before",
+        NOON,
+    );
     assert!(reply.to_lowercase().contains("remind"), "{reply}");
     let start = d.calendar.next(0).expect("event is there").start;
     *p.input_idle.borrow_mut() = Some(3600);
     let out = d.tick(start - 600);
-    assert!(!out.iter().any(|l| l.contains("dentist")), "said into an empty room: {out:?}");
-    assert!(d.outbox.held.iter().any(|n| n.body.contains("dentist")), "not kept for you either");
+    assert!(
+        !out.iter().any(|l| l.contains("dentist")),
+        "said into an empty room: {out:?}"
+    );
+    assert!(
+        d.outbox.held.iter().any(|n| n.body.contains("dentist")),
+        "not kept for you either"
+    );
 }
 
 #[test]
 fn a_failed_schedule_never_claims_saved_or_records_undo_and_restart_has_no_event() {
-    let (c, p) = (cfg(), plat()); let root = tmp("schedule-save-fault"); let store = Store::new(&root);
-    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(Default::default()));
+    let (c, p) = (cfg(), plat());
+    let root = tmp("schedule-save-fault");
+    let store = Store::new(&root);
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(Default::default()),
+    );
     // Refuse the actual Store temp-file write after parsing and staging succeeds.
-    let fault = root.join("calendar.json").with_extension(format!("{}.json.tmp", std::process::id()));
+    let fault = root
+        .join("calendar.json")
+        .with_extension(format!("{}.json.tmp", std::process::id()));
     std::fs::create_dir(&fault).unwrap();
     let answer = d.turn("schedule dentist tomorrow at 9am", NOON);
-    assert!(answer.contains("couldn't confirm the calendar save"), "{answer}");
-    assert!(!answer.contains("On the calendar:")); assert_eq!(d.calendar.len(), 0);
+    assert!(
+        answer.contains("couldn't confirm the calendar save"),
+        "{answer}"
+    );
+    assert!(!answer.contains("On the calendar:"));
+    assert_eq!(d.calendar.len(), 0);
     assert!(!d.history.done.iter().any(|entry| entry.area == "calendar"));
-    std::fs::remove_dir(&fault).unwrap(); drop(d);
-    let mut restarted = Daemon::new(&c, &p, None, store.clone(), Proactive::new(Default::default()));
+    std::fs::remove_dir(&fault).unwrap();
+    drop(d);
+    let mut restarted = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(Default::default()),
+    );
     assert_eq!(restarted.calendar.len(), 0);
     let answer = restarted.turn("schedule dentist tomorrow at 9am", NOON);
     assert!(answer.contains("On the calendar:"), "{answer}");
     assert_eq!(atlas::calendar::Calendar::load(&store).len(), 1);
-    drop(restarted); std::fs::remove_dir_all(root).unwrap();
+    drop(restarted);
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn stale_schedule_cancel_move_and_persist_cannot_erase_an_independent_calendar_update() {
-    let (c, p) = (cfg(), plat()); let root = tmp("calendar-stale-daemon"); let store = Store::new(&root);
+    let (c, p) = (cfg(), plat());
+    let root = tmp("calendar-stale-daemon");
+    let store = Store::new(&root);
     let mut original = atlas::calendar::Calendar::default();
-    original.add("dentist", atlas::calendar::When { start: NOON + 86_400, end: NOON + 90_000, all_day: false }, None, NOON);
+    original.add(
+        "dentist",
+        atlas::calendar::When {
+            start: NOON + 86_400,
+            end: NOON + 90_000,
+            all_day: false,
+        },
+        None,
+        NOON,
+    );
     original.save(&store).unwrap();
-    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(Default::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(Default::default()),
+    );
     let mut external = atlas::calendar::Calendar::load(&store);
-    external.add("new independent appointment", atlas::calendar::When { start: NOON + 100_000, end: NOON + 102_000, all_day: false }, None, NOON);
-    external.save(&store).unwrap(); let saved = std::fs::read(root.join("calendar.json")).unwrap();
-    assert!(d.calendar.save(&store).is_err(), "cached persistence must reject the stale snapshot");
+    external.add(
+        "new independent appointment",
+        atlas::calendar::When {
+            start: NOON + 100_000,
+            end: NOON + 102_000,
+            all_day: false,
+        },
+        None,
+        NOON,
+    );
+    external.save(&store).unwrap();
+    let saved = std::fs::read(root.join("calendar.json")).unwrap();
+    assert!(
+        d.calendar.save(&store).is_err(),
+        "cached persistence must reject the stale snapshot"
+    );
     assert_eq!(std::fs::read(root.join("calendar.json")).unwrap(), saved);
     // Actual commands may refresh first; they must preserve that fresh event.
     d.turn("schedule lunch tomorrow at 12", NOON);
     assert!(atlas::calendar::Calendar::load(&store).next(NOON).is_some());
-    assert!(atlas::calendar::Calendar::load(&store).occurrences_between(NOON, NOON + 200_000).iter().any(|event| event.title == "new independent appointment"));
+    assert!(atlas::calendar::Calendar::load(&store)
+        .occurrences_between(NOON, NOON + 200_000)
+        .iter()
+        .any(|event| event.title == "new independent appointment"));
     let moved = d.turn("move the dentist to 4pm", NOON);
     assert!(moved.starts_with("Moved dentist to"), "{moved}");
     let canceled = d.turn("cancel the dentist", NOON);
-    assert!(canceled.starts_with("Taken off your calendar: dentist"), "{canceled}");
-    assert!(atlas::calendar::Calendar::load(&store).occurrences_between(NOON, NOON + 200_000).iter().any(|event| event.title == "new independent appointment"));
+    assert!(
+        canceled.starts_with("Taken off your calendar: dentist"),
+        "{canceled}"
+    );
+    assert!(atlas::calendar::Calendar::load(&store)
+        .occurrences_between(NOON, NOON + 200_000)
+        .iter()
+        .any(|event| event.title == "new independent appointment"));
     d.persist();
-    assert!(atlas::calendar::Calendar::load(&store).occurrences_between(NOON, NOON + 200_000).iter().any(|event| event.title == "new independent appointment"));
-    drop(d); std::fs::remove_dir_all(root).unwrap();
+    assert!(atlas::calendar::Calendar::load(&store)
+        .occurrences_between(NOON, NOON + 200_000)
+        .iter()
+        .any(|event| event.title == "new independent appointment"));
+    drop(d);
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn failed_calendar_move_and_cancellation_never_claim_the_change_was_saved() {
-    let (c, p) = (cfg(), plat()); let root = tmp("calendar-change-save-fault");
+    let (c, p) = (cfg(), plat());
+    let root = tmp("calendar-change-save-fault");
     let store = Store::new(&root);
-    let mut d = Daemon::new(&c, &p, None, store.clone(), Proactive::new(Default::default()));
-    assert!(d.turn("schedule dentist tomorrow at 9am", NOON).contains("On the calendar:"));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(Default::default()),
+    );
+    assert!(d
+        .turn("schedule dentist tomorrow at 9am", NOON)
+        .contains("On the calendar:"));
     let saved = std::fs::read(root.join("calendar.json")).unwrap();
-    let fault = root.join("calendar.json").with_extension(format!("{}.json.tmp", std::process::id()));
+    let fault = root
+        .join("calendar.json")
+        .with_extension(format!("{}.json.tmp", std::process::id()));
     std::fs::create_dir(&fault).unwrap();
     for request in ["move the dentist to 4pm", "cancel the dentist"] {
         let answer = d.turn(request, NOON);
         assert!(answer.contains("couldn't confirm"), "{answer}");
-        assert!(!answer.starts_with("Moved") && !answer.starts_with("Taken off"), "{answer}");
+        assert!(
+            !answer.starts_with("Moved") && !answer.starts_with("Taken off"),
+            "{answer}"
+        );
         assert_eq!(std::fs::read(root.join("calendar.json")).unwrap(), saved);
     }
-    std::fs::remove_dir(&fault).unwrap(); drop(d);
-    let mut restarted = Daemon::new(&c, &p, None, store.clone(), Proactive::new(Default::default()));
-    assert!(restarted.turn("what's on tomorrow", NOON).contains("dentist"));
-    assert!(restarted.turn("cancel the dentist", NOON).starts_with("Taken off your calendar:"));
-    drop(restarted); std::fs::remove_dir_all(root).unwrap();
+    std::fs::remove_dir(&fault).unwrap();
+    drop(d);
+    let mut restarted = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        Proactive::new(Default::default()),
+    );
+    assert!(restarted
+        .turn("what's on tomorrow", NOON)
+        .contains("dentist"));
+    assert!(restarted
+        .turn("cancel the dentist", NOON)
+        .starts_with("Taken off your calendar:"));
+    drop(restarted);
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn unreadable_calendar_is_unavailable_not_an_empty_agenda_or_a_new_calendar() {
-    let (c, p) = (cfg(), plat()); let root = tmp("calendar-unreadable");
+    let (c, p) = (cfg(), plat());
+    let root = tmp("calendar-unreadable");
     std::fs::write(root.join("calendar.json"), b"not a saved calendar").unwrap();
-    let mut d = Daemon::new(&c, &p, None, Store::new(&root), Proactive::new(Default::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&root),
+        Proactive::new(Default::default()),
+    );
     let answer = d.turn("what's on this week", NOON);
-    assert!(answer.contains("unavailable"), "{answer}"); assert!(!answer.contains("Nothing on"));
+    assert!(answer.contains("unavailable"), "{answer}");
+    assert!(!answer.contains("Nothing on"));
     let answer = d.turn("schedule dentist tomorrow at 9am", NOON);
     assert!(answer.contains("could not be safely read"), "{answer}");
-    assert_eq!(std::fs::read(root.join("calendar.json")).unwrap(), b"not a saved calendar");
+    assert_eq!(
+        std::fs::read(root.join("calendar.json")).unwrap(),
+        b"not a saved calendar"
+    );
     assert!(d.calendar.save(&Store::new(&root)).is_err());
-    drop(d); std::fs::remove_dir_all(root).unwrap();
+    drop(d);
+    std::fs::remove_dir_all(root).unwrap();
 }

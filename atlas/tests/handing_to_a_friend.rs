@@ -63,7 +63,10 @@ fn what_gets_sent_carries_nothing_about_your_household() {
     let h = share_with_friend("the spreadsheet template we talked about", "Eric");
     assert_eq!(h.what, "the spreadsheet template we talked about");
     assert_eq!(h.from, "Eric");
-    assert!(!h.carries_history, "a handoff must never carry your history");
+    assert!(
+        !h.carries_history,
+        "a handoff must never carry your history"
+    );
 }
 
 #[test]
@@ -85,9 +88,13 @@ fn a_handoff_claiming_to_carry_history_is_refused_before_it_leaves() {
         port: 1,
         token: PEER_TOKEN.into(),
     };
-    let err = link_to(&to, std::time::Duration::from_millis(50)).hand_note(&to.name, &bad, None)
+    let err = link_to(&to, std::time::Duration::from_millis(50))
+        .hand_note(&to.name, &bad, None)
         .expect_err("a handoff claiming history should not be sent");
-    assert!(err.contains("carry history"), "refused for the wrong reason: {err}");
+    assert!(
+        err.contains("carry history"),
+        "refused for the wrong reason: {err}"
+    );
 }
 
 #[test]
@@ -106,7 +113,10 @@ fn a_note_with_quotes_and_newlines_survives_being_put_on_the_wire() {
 #[test]
 fn a_token_nobody_registered_hands_over_nothing() {
     let mut d = door();
-    assert_eq!(d.receive_handoff(OTHER_TOKEN, "have this", 100), Err(Refused::UnknownPeer));
+    assert_eq!(
+        d.receive_handoff(OTHER_TOKEN, "have this", 100),
+        Err(Refused::UnknownPeer)
+    );
 }
 
 #[test]
@@ -126,7 +136,10 @@ fn the_name_recorded_is_the_one_you_gave_them_not_the_one_they_claim() {
 #[test]
 fn an_empty_note_is_refused_rather_than_filed() {
     let mut d = door();
-    assert_eq!(d.receive_handoff(PEER_TOKEN, "   ", 100), Err(Refused::Empty));
+    assert_eq!(
+        d.receive_handoff(PEER_TOKEN, "   ", 100),
+        Err(Refused::Empty)
+    );
 }
 
 #[test]
@@ -137,28 +150,44 @@ fn notes_are_rate_limited_on_their_own_counter_not_the_signal_one() {
     let mut d = door();
     for i in 0..MAX_HANDOFFS_PER_WINDOW {
         assert!(
-            d.receive_handoff(PEER_TOKEN, &format!("note {i}"), 100).is_ok(),
+            d.receive_handoff(PEER_TOKEN, &format!("note {i}"), 100)
+                .is_ok(),
             "refused note {i} of {MAX_HANDOFFS_PER_WINDOW}"
         );
     }
-    assert_eq!(d.receive_handoff(PEER_TOKEN, "one too many", 100), Err(Refused::TooMany));
+    assert_eq!(
+        d.receive_handoff(PEER_TOKEN, "one too many", 100),
+        Err(Refused::TooMany)
+    );
 
     // And having exhausted the note budget, an urgent signal still gets
     // through -- the whole point of the separate counter.
     assert!(
-        d.receive(PEER_TOKEN, "the server is down", atlas::kin::Urgency::Urgent, 100).is_ok(),
+        d.receive(
+            PEER_TOKEN,
+            "the server is down",
+            atlas::kin::Urgency::Urgent,
+            100
+        )
+        .is_ok(),
         "notes starved out a signal"
     );
-    assert!(MAX_HANDOFFS_PER_WINDOW > MAX_PER_WINDOW, "the quieter thing gets the looser cap");
+    assert!(
+        MAX_HANDOFFS_PER_WINDOW > MAX_PER_WINDOW,
+        "the quieter thing gets the looser cap"
+    );
 }
 
 #[test]
 fn the_note_budget_recovers_after_the_window() {
     let mut d = door();
     for i in 0..MAX_HANDOFFS_PER_WINDOW {
-        d.receive_handoff(PEER_TOKEN, &format!("note {i}"), 100).unwrap();
+        d.receive_handoff(PEER_TOKEN, &format!("note {i}"), 100)
+            .unwrap();
     }
-    assert!(d.receive_handoff(PEER_TOKEN, "later", 100 + atlas::kin::WINDOW_SECS).is_ok());
+    assert!(d
+        .receive_handoff(PEER_TOKEN, "later", 100 + atlas::kin::WINDOW_SECS)
+        .is_ok());
 }
 
 // ================= the boundary =================
@@ -197,7 +226,11 @@ fn a_peer_token_still_reaches_nothing_in_the_general_action_space() {
         token: Some(PEER_TOKEN.into()),
         body: r#"{"what":"open chrome","text":"open chrome"}"#.into(),
     };
-    assert_eq!(route(&say), None, "/handoff is reachable through the general router");
+    assert_eq!(
+        route(&say),
+        None,
+        "/handoff is reachable through the general router"
+    );
 }
 
 // ================= where it lands =================
@@ -219,9 +252,15 @@ fn a_note_waits_in_a_list_rather_than_going_into_the_tray() {
     let id = as_waiting(&d, &mut inbox, &dir).unwrap();
     inbox.save(&store).unwrap();
 
-    assert_eq!(inbox.get(id).map(|r| r.what.as_str()), Some("https://example.com/the-thing"));
+    assert_eq!(
+        inbox.get(id).map(|r| r.what.as_str()),
+        Some("https://example.com/the-thing")
+    );
     let tray = atlas::tray::Tray::load(&store);
-    assert!(tray.open().is_empty(), "an unasked note reached the tray on arrival");
+    assert!(
+        tray.open().is_empty(),
+        "an unasked note reached the tray on arrival"
+    );
 }
 
 #[test]
@@ -234,12 +273,21 @@ fn keeping_it_is_what_puts_it_in_the_tray() {
 
     let got = inbox.take(id).expect("it was waiting");
     let mut tray = atlas::tray::Tray::load(&store);
-    let tid = tray.hand(&got.what, &Space::Personal, &got.from, got.at).unwrap();
+    let tid = tray
+        .hand(&got.what, &Space::Personal, &got.from, got.at)
+        .unwrap();
 
     assert_eq!(tray.open().len(), 1);
     assert_eq!(tray.open()[0].id, tid);
-    assert_eq!(tray.open()[0].from, "Priya", "the tray should say who it came from");
-    assert!(inbox.get(id).is_none(), "it is still waiting as well as kept");
+    assert_eq!(
+        tray.open()[0].from,
+        "Priya",
+        "the tray should say who it came from"
+    );
+    assert!(
+        inbox.get(id).is_none(),
+        "it is still waiting as well as kept"
+    );
 }
 
 #[test]
@@ -257,7 +305,11 @@ fn the_same_words_from_a_different_friend_are_two_things() {
     let mut inbox = Inbox::default();
     inbox.add("have a look at this", "Priya", 100);
     inbox.add("have a look at this", "Sam", 100);
-    assert_eq!(inbox.items.len(), 2, "two people saying the same thing is two things");
+    assert_eq!(
+        inbox.items.len(),
+        2,
+        "two people saying the same thing is two things"
+    );
 }
 
 #[test]
@@ -270,7 +322,10 @@ fn the_waiting_list_is_bounded() {
     assert_eq!(inbox.items.len(), MAX_WAITING);
     // Oldest dropped, newest kept: what just arrived is what you have not
     // seen yet.
-    assert!(inbox.items.iter().any(|i| i.what == format!("note {}", MAX_WAITING + 19)));
+    assert!(inbox
+        .items
+        .iter()
+        .any(|i| i.what == format!("note {}", MAX_WAITING + 19)));
     assert!(!inbox.items.iter().any(|i| i.what == "note 0"));
 }
 
@@ -376,7 +431,10 @@ fn delivered_file(name: &str, bytes: &[u8]) -> Delivered {
         from: "Priya".into(),
         what: "the thing we talked about".into(),
         at: 100,
-        file: Some(DeliveredFile { name: name.into(), bytes: bytes.to_vec() }),
+        file: Some(DeliveredFile {
+            name: name.into(),
+            bytes: bytes.to_vec(),
+        }),
     }
 }
 
@@ -386,20 +444,34 @@ fn a_file_lands_on_the_doorstep_and_not_in_the_tray() {
     let store = Store::new(&dir);
     let mut inbox = Inbox::load(&store);
 
-    let id = as_waiting(&delivered_file("report.pdf", b"%PDF-1.7 pretend"), &mut inbox, &dir)
-        .expect("it should be kept");
+    let id = as_waiting(
+        &delivered_file("report.pdf", b"%PDF-1.7 pretend"),
+        &mut inbox,
+        &dir,
+    )
+    .expect("it should be kept");
     inbox.save(&store).unwrap();
 
     let got = inbox.get(id).expect("it is waiting");
     let f = got.file.as_ref().expect("the file is recorded");
     assert_eq!(f.name, "report.pdf");
     assert_eq!(f.size, 16);
-    assert!(f.stored_at.starts_with(HANDOFF_FOLDER), "stored somewhere else: {}", f.stored_at);
-    assert!(dir.join(&f.stored_at).is_file(), "the bytes were not written");
+    assert!(
+        f.stored_at.starts_with(HANDOFF_FOLDER),
+        "stored somewhere else: {}",
+        f.stored_at
+    );
+    assert!(
+        dir.join(&f.stored_at).is_file(),
+        "the bytes were not written"
+    );
 
     // The whole point. Nothing has looked at it, and it is not where Atlas
     // looks.
-    assert!(atlas::tray::Tray::load(&store).open().is_empty(), "a peer's file reached the tray");
+    assert!(
+        atlas::tray::Tray::load(&store).open().is_empty(),
+        "a peer's file reached the tray"
+    );
     assert!(!dir.join(atlas::tray::FOLDER).join("report.pdf").exists());
 }
 
@@ -452,17 +524,31 @@ fn a_filename_from_another_machine_cannot_escape_the_folder() {
     let store = Store::new(&dir);
     let mut d = door();
 
-    for nasty in ["../../etc/passwd", "..\\..\\windows\\system32\\evil.dll", "/etc/shadow"] {
+    for nasty in [
+        "../../etc/passwd",
+        "..\\..\\windows\\system32\\evil.dll",
+        "/etc/shadow",
+    ] {
         let got = d
             .receive_handoff_file(PEER_TOKEN, "here", nasty, b"x".to_vec(), 100)
             .expect("it is accepted, just renamed");
         let name = &got.file.as_ref().unwrap().name;
         assert!(!name.contains(".."), "{nasty} kept its dots: {name}");
-        assert!(!name.contains('/') && !name.contains('\\'), "{nasty} kept a separator: {name}");
+        assert!(
+            !name.contains('/') && !name.contains('\\'),
+            "{nasty} kept a separator: {name}"
+        );
 
         let mut inbox = Inbox::load(&store);
         let id = as_waiting(&got, &mut inbox, &dir).expect("kept");
-        let stored = inbox.get(id).unwrap().file.as_ref().unwrap().stored_at.clone();
+        let stored = inbox
+            .get(id)
+            .unwrap()
+            .file
+            .as_ref()
+            .unwrap()
+            .stored_at
+            .clone();
         let full = dir.join(&stored);
         assert!(
             full.starts_with(dir.join(HANDOFF_FOLDER)),
@@ -500,15 +586,27 @@ fn keeping_a_file_is_what_puts_it_where_atlas_reads() {
     let dir = tmp("file-keep");
     let store = Store::new(&dir);
     let mut inbox = Inbox::load(&store);
-    let id = as_waiting(&delivered_file("report.pdf", b"%PDF-1.7 pretend"), &mut inbox, &dir)
-        .unwrap();
+    let id = as_waiting(
+        &delivered_file("report.pdf", b"%PDF-1.7 pretend"),
+        &mut inbox,
+        &dir,
+    )
+    .unwrap();
 
     let got = inbox.take(id).expect("waiting");
     let f: ReceivedFile = got.file.clone().expect("a file");
     let bytes = std::fs::read(dir.join(&f.stored_at)).expect("the doorstep copy");
     let mut tray = atlas::tray::Tray::load(&store);
     let tid = tray
-        .hand_file(&f.name, &bytes, &Space::Personal, &got.from, None, got.at, &dir)
+        .hand_file(
+            &f.name,
+            &bytes,
+            &Space::Personal,
+            &got.from,
+            None,
+            got.at,
+            &dir,
+        )
         .expect("kept");
 
     assert_eq!(tray.open().len(), 1);
@@ -517,7 +615,11 @@ fn keeping_a_file_is_what_puts_it_where_atlas_reads() {
     // The covering line their end wrote must never land in `asked` -- that
     // field is documented as the only text on an item Atlas treats as coming
     // from you.
-    assert_eq!(tray.open()[0].asked, None, "a friend's words were filed as your instruction");
+    assert_eq!(
+        tray.open()[0].asked,
+        None,
+        "a friend's words were filed as your instruction"
+    );
 }
 
 #[test]
@@ -572,7 +674,11 @@ fn a_file_sent_by_the_real_sender_arrives_intact_at_the_real_door() {
     };
     let f = d.file.as_ref().expect("a file came with it");
     assert_eq!(f.name, "photo.bin");
-    assert_eq!(f.bytes.len(), payload.len(), "the file was truncated on the way");
+    assert_eq!(
+        f.bytes.len(),
+        payload.len(),
+        "the file was truncated on the way"
+    );
     assert_eq!(f.bytes, payload, "the bytes changed on the way");
     assert_eq!(d.what, "the photo from Saturday");
 }
@@ -590,7 +696,10 @@ fn a_body_claiming_a_file_that_does_not_decode_is_refused_outright() {
         token: Some(PEER_TOKEN.into()),
         body: r#"{"what":"here","name":"x.bin","data":"!!!not base64!!!"}"#.into(),
     };
-    assert!(route_handoff(&req, &d, PEER_TOKEN).is_none(), "a corrupt file was accepted");
+    assert!(
+        route_handoff(&req, &d, PEER_TOKEN).is_none(),
+        "a corrupt file was accepted"
+    );
 }
 
 #[test]
@@ -604,7 +713,10 @@ fn a_body_with_a_name_but_no_data_is_refused_rather_than_read_as_a_note() {
         token: Some(PEER_TOKEN.into()),
         body: r#"{"what":"here","name":"x.bin"}"#.into(),
     };
-    assert!(route_handoff(&req, &d, PEER_TOKEN).is_none(), "a headless file became a note");
+    assert!(
+        route_handoff(&req, &d, PEER_TOKEN).is_none(),
+        "a headless file became a note"
+    );
 }
 
 /// The link a paired Atlas sends through, with just this one contact.

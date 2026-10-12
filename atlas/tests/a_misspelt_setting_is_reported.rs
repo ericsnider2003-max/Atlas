@@ -8,7 +8,14 @@ use std::path::Path;
 fn copy_config(to: &Path) {
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("config");
     std::fs::create_dir_all(to).unwrap();
-    for f in ["apps.yaml", "layouts.yaml", "commands.yaml", "policy.yaml", "indexing.yaml", "tools.yaml"] {
+    for f in [
+        "apps.yaml",
+        "layouts.yaml",
+        "commands.yaml",
+        "policy.yaml",
+        "indexing.yaml",
+        "tools.yaml",
+    ] {
         std::fs::copy(from.join(f), to.join(f)).unwrap();
     }
 }
@@ -24,7 +31,11 @@ fn the_shipped_config_has_no_key_that_matches_nothing() {
     let d = scratch("shipped-keys");
     copy_config(&d);
     let cfg = atlas::config::Config::load(&d).unwrap();
-    assert!(cfg.settings_that_went_nowhere.is_empty(), "{:?}", cfg.settings_that_went_nowhere);
+    assert!(
+        cfg.settings_that_went_nowhere.is_empty(),
+        "{:?}",
+        cfg.settings_that_went_nowhere
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -37,7 +48,9 @@ fn a_misspelt_policy_key_is_reported_and_still_loads() {
     std::fs::write(&p, text.replace("min_samples:", "min_sampels:")).unwrap();
     let cfg = atlas::config::Config::load(&d).unwrap();
     assert!(
-        cfg.settings_that_went_nowhere.iter().any(|m| m.contains("min_sampels")),
+        cfg.settings_that_went_nowhere
+            .iter()
+            .any(|m| m.contains("min_sampels")),
         "{:?}",
         cfg.settings_that_went_nowhere
     );

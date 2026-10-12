@@ -70,16 +70,28 @@ pub struct Step {
 
 impl Step {
     pub fn did(what: &str) -> Step {
-        Step { what: what.into(), outcome: Outcome::Did }
+        Step {
+            what: what.into(),
+            outcome: Outcome::Did,
+        }
     }
     pub fn failed(what: &str, why: &str) -> Step {
-        Step { what: what.into(), outcome: Outcome::Failed(why.into()) }
+        Step {
+            what: what.into(),
+            outcome: Outcome::Failed(why.into()),
+        }
     }
     pub fn skipped(what: &str, why: &str) -> Step {
-        Step { what: what.into(), outcome: Outcome::Skipped(why.into()) }
+        Step {
+            what: what.into(),
+            outcome: Outcome::Skipped(why.into()),
+        }
     }
     pub fn not_checked(what: &str) -> Step {
-        Step { what: what.into(), outcome: Outcome::NotChecked }
+        Step {
+            what: what.into(),
+            outcome: Outcome::NotChecked,
+        }
     }
 }
 
@@ -103,15 +115,15 @@ pub enum Fault {
 impl Fault {
     pub fn plain(&self) -> String {
         match self {
-            Fault::BuriedTheProblem { step } => format!(
-                "\"{step}\" went wrong and the report doesn't open with it"
-            ),
-            Fault::ClaimedWithoutEvidence { word } => format!(
-                "says \"{word}\" but nothing in the run observed that working"
-            ),
-            Fault::SaidCheckedWhenItWasNot { word } => format!(
-                "says \"{word}\" but nothing was checked"
-            ),
+            Fault::BuriedTheProblem { step } => {
+                format!("\"{step}\" went wrong and the report doesn't open with it")
+            }
+            Fault::ClaimedWithoutEvidence { word } => {
+                format!("says \"{word}\" but nothing in the run observed that working")
+            }
+            Fault::SaidCheckedWhenItWasNot { word } => {
+                format!("says \"{word}\" but nothing was checked")
+            }
             Fault::NothingWorkedButItReadsFine => {
                 "every step went wrong and this reads as a success".into()
             }
@@ -121,18 +133,55 @@ impl Fault {
 
 /// Words that assert a thing is finished.
 const CLAIMS_DONE: &[&str] = &[
-    "done", "finished", "complete", "completed", "sorted", "handled",
-    "saved", "sent", "posted", "published", "delivered", "uploaded",
-    "downloaded", "installed", "created", "made", "wrote", "written",
-    "deleted", "removed", "cleaned", "updated", "fixed", "repaired",
-    "backed up", "moved", "renamed", "closed", "opened", "set up",
-    "all set", "ready", "sorted out", "taken care of",
+    "done",
+    "finished",
+    "complete",
+    "completed",
+    "sorted",
+    "handled",
+    "saved",
+    "sent",
+    "posted",
+    "published",
+    "delivered",
+    "uploaded",
+    "downloaded",
+    "installed",
+    "created",
+    "made",
+    "wrote",
+    "written",
+    "deleted",
+    "removed",
+    "cleaned",
+    "updated",
+    "fixed",
+    "repaired",
+    "backed up",
+    "moved",
+    "renamed",
+    "closed",
+    "opened",
+    "set up",
+    "all set",
+    "ready",
+    "sorted out",
+    "taken care of",
 ];
 
 /// Words that assert a thing was confirmed.
 const CLAIMS_CHECKED: &[&str] = &[
-    "verified", "confirmed", "checked", "tested", "validated", "made sure",
-    "double-checked", "proven", "certain", "definitely", "guaranteed",
+    "verified",
+    "confirmed",
+    "checked",
+    "tested",
+    "validated",
+    "made sure",
+    "double-checked",
+    "proven",
+    "certain",
+    "definitely",
+    "guaranteed",
 ];
 
 /// Words that soften a claim enough that it is no longer an assertion.
@@ -141,9 +190,24 @@ const CLAIMS_CHECKED: &[&str] = &[
 /// hedging would be reported as a fault and the module would push Atlas
 /// towards saying less rather than saying true things.
 const HEDGES: &[&str] = &[
-    "tried", "attempted", "meant to", "should have", "may have", "might have",
-    "couldn't", "could not", "didn't", "did not", "wasn't", "was not",
-    "failed to", "unable", "not sure", "think", "believe", "probably",
+    "tried",
+    "attempted",
+    "meant to",
+    "should have",
+    "may have",
+    "might have",
+    "couldn't",
+    "could not",
+    "didn't",
+    "did not",
+    "wasn't",
+    "was not",
+    "failed to",
+    "unable",
+    "not sure",
+    "think",
+    "believe",
+    "probably",
 ];
 
 fn words_of(text: &str) -> Vec<String> {
@@ -169,9 +233,8 @@ fn mentions(text: &str, needle: &str) -> bool {
 
 /// Words that turn the claim after them into its opposite.
 const NEGATORS: &[&str] = &[
-    "no", "not", "nothing", "never", "none", "nobody", "without", "un",
-    "couldn-t", "didn-t", "wasn-t", "isn-t", "hasn-t", "haven-t", "wouldn-t",
-    "cannot", "unable", "failed", "yet",
+    "no", "not", "nothing", "never", "none", "nobody", "without", "un", "couldn-t", "didn-t",
+    "wasn-t", "isn-t", "hasn-t", "haven-t", "wouldn-t", "cannot", "unable", "failed", "yet",
 ];
 
 /// Does the text actually *assert* this, rather than deny it?
@@ -276,12 +339,24 @@ pub fn check(steps: &[Step], draft: &str) -> Vec<Fault> {
             .iter()
             .filter(|w| w.len() > 3)
             .any(|w| mentions(opening, w));
-        let flagged = ["failed", "couldn't", "could not", "didn't", "did not",
-                       "skipped", "wrong", "problem", "error", "stopped"]
-            .iter()
-            .any(|w| mentions(opening, w));
+        let flagged = [
+            "failed",
+            "couldn't",
+            "could not",
+            "didn't",
+            "did not",
+            "skipped",
+            "wrong",
+            "problem",
+            "error",
+            "stopped",
+        ]
+        .iter()
+        .any(|w| mentions(opening, w));
         if !named && !flagged {
-            faults.push(Fault::BuriedTheProblem { step: s.what.clone() });
+            faults.push(Fault::BuriedTheProblem {
+                step: s.what.clone(),
+            });
         }
     }
 
@@ -291,14 +366,18 @@ pub fn check(steps: &[Step], draft: &str) -> Vec<Fault> {
     // 2. Claiming completion with nothing observed to have worked.
     if !anything_worked && !hedged {
         if let Some(word) = CLAIMS_DONE.iter().find(|w| asserts(draft, w)) {
-            faults.push(Fault::ClaimedWithoutEvidence { word: (*word).into() });
+            faults.push(Fault::ClaimedWithoutEvidence {
+                word: (*word).into(),
+            });
         }
     }
 
     // 3. Claiming verification when nothing verified anything.
     if !anything_was_checked && !hedged {
         if let Some(word) = CLAIMS_CHECKED.iter().find(|w| asserts(draft, w)) {
-            faults.push(Fault::SaidCheckedWhenItWasNot { word: (*word).into() });
+            faults.push(Fault::SaidCheckedWhenItWasNot {
+                word: (*word).into(),
+            });
         }
     }
 

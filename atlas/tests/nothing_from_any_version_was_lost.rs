@@ -39,19 +39,28 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).parent().expect("the crate sits in the repo").to_path_buf()
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("the crate sits in the repo")
+        .to_path_buf()
 }
 
 fn read(p: &Path) -> String {
-    std::fs::read_to_string(p).unwrap_or_default().replace("\r\n", "\n")
+    std::fs::read_to_string(p)
+        .unwrap_or_default()
+        .replace("\r\n", "\n")
 }
 
 fn rows(name: &str) -> Vec<Vec<String>> {
-    read(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name))
-        .lines()
-        .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
-        .map(|l| l.split('\t').map(str::to_string).collect())
-        .collect()
+    read(
+        &Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures")
+            .join(name),
+    )
+    .lines()
+    .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+    .map(|l| l.split('\t').map(str::to_string).collect())
+    .collect()
 }
 
 /// Every `.rs` file under `dir`, with its text.
@@ -77,7 +86,8 @@ fn defines(text: &str, kind: &str, name: &str) -> bool {
     text.match_indices(&needle).any(|(i, _)| {
         let after = text[i + needle.len()..].chars().next();
         let before = text[..i].chars().last();
-        !after.is_some_and(|c| c.is_alphanumeric() || c == '_') && !before.is_some_and(|c| c.is_alphanumeric() || c == '_')
+        !after.is_some_and(|c| c.is_alphanumeric() || c == '_')
+            && !before.is_some_and(|c| c.is_alphanumeric() || c == '_')
     })
 }
 
@@ -90,7 +100,11 @@ fn nothing_any_version_built_is_missing_from_the_merged_tree() {
     let root = repo();
     let crate_dir = root.join("atlas");
     let inventory = rows("what_each_version_built.tsv");
-    assert!(inventory.len() > 2000, "the inventory is {} rows; it should be about 3,150", inventory.len());
+    assert!(
+        inventory.len() > 2000,
+        "the inventory is {} rows; it should be about 3,150",
+        inventory.len()
+    );
     let dropped: Vec<Vec<String>> = rows("what_each_version_built_dropped.tsv");
     for d in &dropped {
         assert!(
@@ -102,8 +116,16 @@ fn nothing_any_version_built_is_missing_from_the_merged_tree() {
 
     let src = sources(&crate_dir.join("src"));
     let tests = sources(&crate_dir.join("tests"));
-    let all_src: String = src.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>().join("\n");
-    let all_tests: String = tests.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>().join("\n");
+    let all_src: String = src
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let all_tests: String = tests
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
     let commands = read(&crate_dir.join("config/commands.yaml"));
     let main_rs = crate::common::source_of("main").replace("\r\n", "\n");
     let hub_rs = crate::common::source_of("hub").replace("\r\n", "\n");
@@ -123,20 +145,33 @@ fn nothing_any_version_built_is_missing_from_the_merged_tree() {
             "file" => {
                 let there = here.exists();
                 // Present but never compiled is lost too.
-                if there && place.starts_with("atlas/tests/") && place.ends_with(".rs") && !place.contains("/common/") && !place.contains("/fixtures/") {
+                if there
+                    && place.starts_with("atlas/tests/")
+                    && place.ends_with(".rs")
+                    && !place.contains("/common/")
+                    && !place.contains("/fixtures/")
+                {
                     let file = place.rsplit('/').next().unwrap();
                     // Compiled if tests/all.rs or another test file includes it
                     // (`#[path = "..."]`), or it has its own [[test]] target.
-                    if !all_tests.contains(&format!("\"{file}\"")) && !cargo.contains(&format!("\"tests/{file}\"")) {
+                    if !all_tests.contains(&format!("\"{file}\""))
+                        && !cargo.contains(&format!("\"tests/{file}\""))
+                    {
                         missing.entry(version.clone()).or_default().push(format!("{place}: in the tree but not compiled (no #[path] include or [[test]] target)"));
                         continue;
                     }
                 }
                 if there && place.starts_with("atlas/src/") && place.ends_with(".rs") {
                     let stem = here.file_stem().unwrap().to_string_lossy().to_string();
-                    let special = ["main", "lib", "mod"].contains(&stem.as_str()) || place.starts_with("atlas/src/bin/");
-                    if !special && !all_src.contains(&format!("mod {stem};")) && !all_src.contains(&format!("mod {stem} ")) {
-                        missing.entry(version.clone()).or_default().push(format!("{place}: in the tree but no `mod {stem}` declares it"));
+                    let special = ["main", "lib", "mod"].contains(&stem.as_str())
+                        || place.starts_with("atlas/src/bin/");
+                    if !special
+                        && !all_src.contains(&format!("mod {stem};"))
+                        && !all_src.contains(&format!("mod {stem} "))
+                    {
+                        missing.entry(version.clone()).or_default().push(format!(
+                            "{place}: in the tree but no `mod {stem}` declares it"
+                        ));
                         continue;
                     }
                 }
@@ -163,13 +198,19 @@ fn nothing_any_version_built_is_missing_from_the_merged_tree() {
                     false
                 }
             }
-            "intent" => commands.lines().any(|l| l.trim_start().trim_start_matches('-').trim() == format!("intent: {name}")),
+            "intent" => commands.lines().any(|l| {
+                l.trim_start().trim_start_matches('-').trim() == format!("intent: {name}")
+            }),
             "command" => main_rs.contains(&format!("Some(\"{name}\")")),
             "page" => defines(&hub_rs, "", &name) || hub_rs.contains(&format!("Page::{name}")),
             other => panic!("unknown kind {other} in the inventory"),
         };
         if !found {
-            let what = if name.is_empty() { place.clone() } else { format!("{place}: {kind} {name}") };
+            let what = if name.is_empty() {
+                place.clone()
+            } else {
+                format!("{place}: {kind} {name}")
+            };
             missing.entry(version.clone()).or_default().push(what);
         }
     }

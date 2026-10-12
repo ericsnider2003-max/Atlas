@@ -6,7 +6,9 @@
 use super::*;
 
 pub fn recovery_archive_section(records: &[crate::safety::ArchivedRecovery]) -> String {
-    if records.is_empty() { return String::new(); }
+    if records.is_empty() {
+        return String::new();
+    }
     let mut body = String::from("<section><h2>Saved recovery files</h2><p>These files came from a restored backup. Return a file to its original folder only when you choose. An existing file is never replaced.</p><ul class=rows>");
     for item in records {
         body.push_str(&format!("<li class=row><p>{}</p><form method=post action='/hub/back'><input type=hidden name=what value=return-file><input type=hidden name=archive value='{}'><input type=hidden name=kind value='{}'><input type=hidden name=id value='{}'><button type=submit>Return file</button></form></li>", esc(&item.record.original), esc(&item.archive), esc(&item.kind), item.record.id));
@@ -229,7 +231,12 @@ pub fn recommendations_page(
                 ),
                 None => String::new(),
             };
-            body.push_str(&format!("<li><b>{}</b> {} <span class=note>{}</span>{act}</li>", esc(&w.what), esc(&w.worth), esc(&w.here)));
+            body.push_str(&format!(
+                "<li><b>{}</b> {} <span class=note>{}</span>{act}</li>",
+                esc(&w.what),
+                esc(&w.worth),
+                esc(&w.here)
+            ));
         }
         body.push_str("</ul>");
     }
@@ -274,12 +281,36 @@ pub fn settings_page(s: &Settings) -> String {
     // cards that open each area. The full list of switches follows.
     body.push_str("<nav class=setcards aria-label='Settings areas'>");
     for (href, title, what) in [
-        ("#how-it-looks", "Appearance & access", "Colourway, accent, text size, density, colour-blind mode."),
-        (Page::Sound.href(), "Sound & voice", "Atlas's voice, volume, the wake word, quiet hours, mute — and when it may pop up."),
-        (Page::Gestures.href(), "Gestures", "Hands-free on camera: whether it's on, and how each works."),
-        (Page::Trusted.href(), "Trusted recipients", "Who Atlas can send to without asking."),
-        (Page::Accounts.href(), "Calendars & accounts", "Connect your email and calendars, and see which are working."),
-        (Page::Help.href(), "Help & accessibility", "Using Atlas with a screen reader, keyboard or larger text; the statement."),
+        (
+            "#how-it-looks",
+            "Appearance & access",
+            "Colourway, accent, text size, density, colour-blind mode.",
+        ),
+        (
+            Page::Sound.href(),
+            "Sound & voice",
+            "Atlas's voice, volume, the wake word, quiet hours, mute — and when it may pop up.",
+        ),
+        (
+            Page::Gestures.href(),
+            "Gestures",
+            "Hands-free on camera: whether it's on, and how each works.",
+        ),
+        (
+            Page::Trusted.href(),
+            "Trusted recipients",
+            "Who Atlas can send to without asking.",
+        ),
+        (
+            Page::Accounts.href(),
+            "Calendars & accounts",
+            "Connect your email and calendars, and see which are working.",
+        ),
+        (
+            Page::Help.href(),
+            "Help & accessibility",
+            "Using Atlas with a screen reader, keyboard or larger text; the statement.",
+        ),
     ] {
         body.push_str(&format!(
             "<a class=setcard href='{href}'><b>{}</b><span>{}</span></a>",
@@ -334,11 +365,7 @@ pub fn settings_page(s: &Settings) -> String {
     body.push_str("</div>");
 
     for group in &groups {
-        body.push_str(&format!(
-            "<h2 id='{}'>{}</h2>",
-            slug(group),
-            esc(group)
-        ));
+        body.push_str(&format!("<h2 id='{}'>{}</h2>", slug(group), esc(group)));
         // A heading with nothing under it makes you open every section to
         // find out which one holds the thing you came for.
         if let Some(note) = Settings::group_note(group) {
@@ -367,7 +394,13 @@ pub fn settings_page(s: &Settings) -> String {
 /// A heading turned into something an anchor can point at.
 pub(super) fn slug(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect()
 }
 
@@ -482,7 +515,11 @@ pub(super) fn files_in_and_out() -> String {
 /// area as a word and a time block hatched as booked time. Each day is also a
 /// plain ordered list of what's on it, so a screen reader hears the day in
 /// order rather than a picture of boxes.
-pub(super) fn week_html(cal: &crate::calendar::Calendar, now: u64, zone: &crate::tz::Zone) -> String {
+pub(super) fn week_html(
+    cal: &crate::calendar::Calendar,
+    now: u64,
+    zone: &crate::tz::Zone,
+) -> String {
     const FIRST: i64 = 7; // 07:00
     const LAST: i64 = 22; // 22:00
     const HOUR_PX: i64 = 40;
@@ -494,7 +531,11 @@ pub(super) fn week_html(cal: &crate::calendar::Calendar, now: u64, zone: &crate:
     let mut out = String::from("<section class=weekwrap aria-labelledby=weekh><h2 id=weekh>This week</h2>\
         <div class=week tabindex=0 role=region aria-label='This week — scrolls sideways on a small screen'><div class=hours aria-hidden=true>");
     for h in FIRST..LAST {
-        out.push_str(&format!("<span style='top:{}px'>{:02}:00</span>", (h - FIRST) * HOUR_PX, h));
+        out.push_str(&format!(
+            "<span style='top:{}px'>{:02}:00</span>",
+            (h - FIRST) * HOUR_PX,
+            h
+        ));
     }
     out.push_str("</div>");
     for d in 0..7 {
@@ -518,8 +559,18 @@ pub(super) fn week_html(cal: &crate::calendar::Calendar, now: u64, zone: &crate:
             let local = e.start as i64 + off;
             let mins = local.rem_euclid(86_400) / 60;
             let len = ((e.end.max(e.start) - e.start) as i64 / 60).max(20);
-            let top = if e.all_day { 0 } else { ((mins - FIRST * 60) * HOUR_PX / 60).clamp(0, (LAST - FIRST) * HOUR_PX - 20) };
-            let height = if e.all_day { 22 } else { (len * HOUR_PX / 60).max(20).min((LAST - FIRST) * HOUR_PX - top) };
+            let top = if e.all_day {
+                0
+            } else {
+                ((mins - FIRST * 60) * HOUR_PX / 60).clamp(0, (LAST - FIRST) * HOUR_PX - 20)
+            };
+            let height = if e.all_day {
+                22
+            } else {
+                (len * HOUR_PX / 60)
+                    .max(20)
+                    .min((LAST - FIRST) * HOUR_PX - top)
+            };
             let area = match &e.space {
                 crate::earned::Space::Business(b) => b.clone(),
                 crate::earned::Space::Personal => "Personal".to_string(),
@@ -559,7 +610,11 @@ pub fn calendar_page(cal: &crate::calendar::Calendar, now: u64, zone: &crate::tz
         return shell_at(Some(Page::Calendar), "Calendar", &body);
     }
     for e in upcoming {
-        let place = e.place.as_deref().map(|p| format!(" · {}", esc(p))).unwrap_or_default();
+        let place = e
+            .place
+            .as_deref()
+            .map(|p| format!(" · {}", esc(p)))
+            .unwrap_or_default();
         // The firewall side, shown as a word rather than a colour alone, so a
         // business event reads as one at a glance and the personal/business
         // split is visible on the same combined calendar.
@@ -645,7 +700,12 @@ pub fn addons_page_with(
                                 "<li>“{}” — {}: {}</li>",
                                 esc(&f.name),
                                 esc(&start),
-                                esc(&f.steps.iter().map(|s| s.command.clone()).collect::<Vec<_>>().join(", then "))
+                                esc(&f
+                                    .steps
+                                    .iter()
+                                    .map(|s| s.command.clone())
+                                    .collect::<Vec<_>>()
+                                    .join(", then "))
                             )
                         })
                         .collect()
@@ -689,7 +749,11 @@ pub fn addons_page_with(
             row.push_str(&format!(
                 "<div class=cost>By {}{}</div>",
                 esc(&m.author),
-                if m.description.is_empty() { String::new() } else { format!(" — {}", esc(&m.description)) }
+                if m.description.is_empty() {
+                    String::new()
+                } else {
+                    format!(" — {}", esc(&m.description))
+                }
             ));
             row.push_str("<ul>");
             for k in &m.permissions {
@@ -697,10 +761,19 @@ pub fn addons_page_with(
                 let allowed = p.granted.contains(k);
                 row.push_str(&format!(
                     "<li>{} {}{}</li>",
-                    if allowed { "<b>allowed:</b>" } else { "asks to:" },
+                    if allowed {
+                        "<b>allowed:</b>"
+                    } else {
+                        "asks to:"
+                    },
                     esc(plain),
                     if allowed && p.status == Status::Active {
-                        button("revoke", &p.id, &format!("<input type=hidden name=key value='{}'>", esc(k)), "take this away")
+                        button(
+                            "revoke",
+                            &p.id,
+                            &format!("<input type=hidden name=key value='{}'>", esc(k)),
+                            "take this away",
+                        )
                     } else {
                         String::new()
                     }
@@ -716,7 +789,12 @@ pub fn addons_page_with(
                     "<li>“{}” — {}: {}</li>",
                     esc(&f.name),
                     esc(&starts),
-                    esc(&f.steps.iter().map(|s| s.command.clone()).collect::<Vec<_>>().join(", then "))
+                    esc(&f
+                        .steps
+                        .iter()
+                        .map(|s| s.command.clone())
+                        .collect::<Vec<_>>()
+                        .join(", then "))
                 ));
             }
             row.push_str("</ul>");
@@ -730,11 +808,19 @@ pub fn addons_page_with(
         }
         for (name, when) in &p.schedules {
             let when = match when {
-                crate::plugins::Schedule::Every(secs) if secs % 3600 == 0 => format!("every {} hours", secs / 3600),
+                crate::plugins::Schedule::Every(secs) if secs % 3600 == 0 => {
+                    format!("every {} hours", secs / 3600)
+                }
                 crate::plugins::Schedule::Every(secs) => format!("every {} minutes", secs / 60),
-                crate::plugins::Schedule::DailyAt(m) => format!("daily at {:02}:{:02}", m / 60, m % 60),
+                crate::plugins::Schedule::DailyAt(m) => {
+                    format!("daily at {:02}:{:02}", m / 60, m % 60)
+                }
             };
-            row.push_str(&format!("<div class=what>“{}” runs by itself, {}.</div>", esc(name), esc(&when)));
+            row.push_str(&format!(
+                "<div class=what>“{}” runs by itself, {}.</div>",
+                esc(name),
+                esc(&when)
+            ));
         }
         // Steps that ask first, and the choice not to be asked every time.
         // Offered only where it's safe to stop asking: a step that is the same
@@ -746,7 +832,12 @@ pub fn addons_page_with(
                     (Some(why), _, _) => format!(" — always asks: {}", esc(why)),
                     (None, true, true) => format!(
                         " — you said don't ask {}",
-                        button("untrust", &p.id, &format!("<input type=hidden name=key value='{}'>", esc(&q.command)), "ask again")
+                        button(
+                            "untrust",
+                            &p.id,
+                            &format!("<input type=hidden name=key value='{}'>", esc(&q.command)),
+                            "ask again"
+                        )
                     ),
                     (None, false, true) => button(
                         "trust",
@@ -774,12 +865,28 @@ pub fn addons_page_with(
         }
         row.push_str(&button("remove", &p.id, "", "Remove it"));
         if p.manifest.is_some() && !share_to.is_empty() {
-            let opts: String = share_to.iter().map(|t| format!("<option>{}</option>", esc(t))).collect();
-            row.push_str(&button("share", &p.id, &format!("<select name=key aria-label='Share it with'>{opts}</select>"), "Share it with"));
+            let opts: String = share_to
+                .iter()
+                .map(|t| format!("<option>{}</option>", esc(t)))
+                .collect();
+            row.push_str(&button(
+                "share",
+                &p.id,
+                &format!("<select name=key aria-label='Share it with'>{opts}</select>"),
+                "Share it with",
+            ));
         }
         if p.status == Status::Active && !groups.is_empty() {
-            let opts: String = groups.iter().map(|t| format!("<option>{}</option>", esc(t))).collect();
-            row.push_str(&button("recommend", &p.id, &format!("<select name=key aria-label='Recommend it in'>{opts}</select>"), "Recommend it in"));
+            let opts: String = groups
+                .iter()
+                .map(|t| format!("<option>{}</option>", esc(t)))
+                .collect();
+            row.push_str(&button(
+                "recommend",
+                &p.id,
+                &format!("<select name=key aria-label='Recommend it in'>{opts}</select>"),
+                "Recommend it in",
+            ));
         }
         row.push_str("</div>");
         body.push_str(&row);
@@ -799,13 +906,22 @@ pub fn edits_page(kept: &[crate::yourchanges::KeptEdit], problems: &[String]) ->
          here now.</p>",
     );
     for p in problems {
-        body.push_str(&format!("<div class='rec'><p class=cause>{}</p></div>", esc(p)));
+        body.push_str(&format!(
+            "<div class='rec'><p class=cause>{}</p></div>",
+            esc(p)
+        ));
     }
     if kept.is_empty() {
-        body.push_str(&nothing("No edits of yours. Every config file is as Atlas ships it."));
+        body.push_str(&nothing(
+            "No edits of yours. Every config file is as Atlas ships it.",
+        ));
     }
     for e in kept {
-        let yours = if e.change.removed { "you removed it".to_string() } else { shown(e.change.yours.as_ref()) };
+        let yours = if e.change.removed {
+            "you removed it".to_string()
+        } else {
+            shown(e.change.yours.as_ref())
+        };
         let mut notes = String::new();
         if e.change.unsure {
             notes.push_str(
@@ -849,7 +965,10 @@ pub fn friends_page(v: &FriendsView) -> String {
     let who = |n: &str| format!("<input type=hidden name=who value='{}'>", esc(n));
     let mut body = String::new();
     if let Some(said) = &v.said {
-        body.push_str(&format!("<div class=row><div class=what>{}</div></div>", esc(said)));
+        body.push_str(&format!(
+            "<div class=row><div class=what>{}</div></div>",
+            esc(said)
+        ));
     }
     body.push_str("<h2>Add a friend</h2>");
     match &v.link {
@@ -886,8 +1005,10 @@ pub fn friends_page(v: &FriendsView) -> String {
         }
     }
     if !v.could_ask.is_empty() {
-        body.push_str("<h2>People in your groups</h2><p class=note>Not friends yet. A request goes to them \
-                       alone, through the group's owner.</p>");
+        body.push_str(
+            "<h2>People in your groups</h2><p class=note>Not friends yet. A request goes to them \
+                       alone, through the group's owner.</p>",
+        );
         for (name, group) in &v.could_ask {
             body.push_str(&format!(
                 "<div class=row><div class=name>{}</div><div class=what>In \"{}\"</div>{}</div>",
@@ -902,7 +1023,9 @@ pub fn friends_page(v: &FriendsView) -> String {
         body.push_str(&format!("<p class=note>{}</p>", esc(&v.reach)));
     }
     if v.friends.is_empty() {
-        body.push_str(&nothing("No friends yet. Make a link above and send it to someone."));
+        body.push_str(&nothing(
+            "No friends yet. Make a link above and send it to someone.",
+        ));
     }
     for f in &v.friends {
         let waiting = if v.reaching.iter().any(|r| r.eq_ignore_ascii_case(f)) {
@@ -932,7 +1055,11 @@ pub fn groups_page(views: &[crate::groups::View], addable: &[String]) -> String 
 
 /// The same, with groups made before groups had owners (`ownerless`) and the
 /// button that gives one an owner.
-pub fn groups_page_with(views: &[crate::groups::View], addable: &[String], ownerless: &[String]) -> String {
+pub fn groups_page_with(
+    views: &[crate::groups::View],
+    addable: &[String],
+    ownerless: &[String],
+) -> String {
     use crate::groups::Role;
     let mut body = String::from(
         "<p class=note>A group you make is yours: you decide who's in it and whether each \
@@ -952,38 +1079,68 @@ pub fn groups_page_with(views: &[crate::groups::View], addable: &[String], owner
     };
     let hidden = |k: &str, v: &str| format!("<input type=hidden name={k} value='{}'>", esc(v));
     let options = |names: &[String]| {
-        names.iter().map(|n| format!("<option>{}</option>", esc(n))).collect::<String>()
+        names
+            .iter()
+            .map(|n| format!("<option>{}</option>", esc(n)))
+            .collect::<String>()
     };
     if views.is_empty() {
         body.push_str(&nothing("No groups with an owner yet. Make one below."));
     }
     for v in views {
-        let kind = if v.release_channel { " — release channel" } else { "" };
+        let kind = if v.release_channel {
+            " — release channel"
+        } else {
+            ""
+        };
         let mut row = format!(
             "<div class=row><div class=name>{}{kind}</div><div class=what>{}</div><ul>",
             esc(&v.name),
-            if v.mine { "You made this, so you decide who's in it.".to_string() } else { format!("Made by {}.", esc(&v.owner)) }
+            if v.mine {
+                "You made this, so you decide who's in it.".to_string()
+            } else {
+                format!("Made by {}.", esc(&v.owner))
+            }
         );
         for (who, role, _key) in &v.seats {
             let mut controls = String::new();
             if v.mine && *role != Role::Owner {
                 controls.push_str(&form("remove", &v.id, &hidden("who", who), "take out"));
                 if !v.release_channel {
-                    let (to, label) = if *role == Role::Reader { ("member", "let them post") } else { ("reader", "reading only") };
-                    controls.push_str(&form("role", &v.id, &format!("{}{}", hidden("who", who), hidden("role", to)), label));
+                    let (to, label) = if *role == Role::Reader {
+                        ("member", "let them post")
+                    } else {
+                        ("reader", "reading only")
+                    };
+                    controls.push_str(&form(
+                        "role",
+                        &v.id,
+                        &format!("{}{}", hidden("who", who), hidden("role", to)),
+                        label,
+                    ));
                 }
             }
-            row.push_str(&format!("<li>{} — {} {controls}</li>", esc(who), esc(role.plain())));
+            row.push_str(&format!(
+                "<li>{} — {} {controls}</li>",
+                esc(who),
+                esc(role.plain())
+            ));
         }
         row.push_str("</ul>");
         if v.mine {
-            let others: Vec<String> =
-                addable.iter().filter(|a| !v.seats.iter().any(|(w, _, _)| w.eq_ignore_ascii_case(a))).cloned().collect();
+            let others: Vec<String> = addable
+                .iter()
+                .filter(|a| !v.seats.iter().any(|(w, _, _)| w.eq_ignore_ascii_case(a)))
+                .cloned()
+                .collect();
             if !others.is_empty() {
                 row.push_str(&form(
                     "add",
                     &v.id,
-                    &format!("<select name=who aria-label='Who to add'>{}</select>", options(&others)),
+                    &format!(
+                        "<select name=who aria-label='Who to add'>{}</select>",
+                        options(&others)
+                    ),
                     "add to this group",
                 ));
             }
@@ -1054,7 +1211,15 @@ pub fn back_with(href: &str, extra: &str, said: &str) -> crate::server::Reply {
     // `Location` header: only characters an id uses, so nothing can end the
     // header or the address.
     let (path, anchor) = match href.split_once('#') {
-        Some((p, a)) => (p, format!("#{}", a.chars().filter(|c| c.is_ascii_alphanumeric() || "._-".contains(*c)).collect::<String>())),
+        Some((p, a)) => (
+            p,
+            format!(
+                "#{}",
+                a.chars()
+                    .filter(|c| c.is_ascii_alphanumeric() || "._-".contains(*c))
+                    .collect::<String>()
+            ),
+        ),
         None => (href, String::new()),
     };
     // Kept short: the hub reads at most 8 KB of request head, and a long
@@ -1089,11 +1254,17 @@ pub fn with_block_after_heading(page: String, block: &str) -> String {
 
 /// A page with a sentence saying what just happened, under its heading.
 pub fn with_said(page: String, said: Option<&str>) -> String {
-    let Some(said) = said.filter(|s| !s.trim().is_empty()) else { return page };
+    let Some(said) = said.filter(|s| !s.trim().is_empty()) else {
+        return page;
+    };
     let notice = format!("<p class=notice role=status>{}</p>", esc(said));
     match page.find("</h1>").or_else(|| page.rfind("</main>")) {
         Some(at) => {
-            let at = if page[at..].starts_with("</h1>") { at + 5 } else { at };
+            let at = if page[at..].starts_with("</h1>") {
+                at + 5
+            } else {
+                at
+            };
             format!("{}{notice}{}", &page[..at], &page[at..])
         }
         None => page,
@@ -1104,7 +1275,11 @@ pub fn with_said(page: String, said: Option<&str>) -> String {
 /// running (`hubjobs`). No script -- the hub works without one.
 pub fn with_refresh(page: String, secs: u32) -> String {
     match page.find("</head>") {
-        Some(at) => format!("{}<meta http-equiv=refresh content={secs}>{}", &page[..at], &page[at..]),
+        Some(at) => format!(
+            "{}<meta http-equiv=refresh content={secs}>{}",
+            &page[..at],
+            &page[at..]
+        ),
         None => page,
     }
 }

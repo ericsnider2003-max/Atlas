@@ -113,7 +113,9 @@ impl Machine {
     pub fn this_one() -> Machine {
         let r = crate::health::read_machine();
         Machine {
-            cores: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
+            cores: std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4),
             ram_gb: r.ram_total_gb,
             on_battery: r.on_battery,
         }
@@ -219,7 +221,11 @@ pub fn plan(cfg: &HandsConfig, m: &Machine, last_cost_ms: Option<u32>, base: &Pa
             height: feed.height,
             pace: *base,
             idle_per_second: IDLE_PER_SECOND.0,
-            why: if reasons.is_empty() { "full, because this machine has room".into() } else { format!("full, because {}", reasons.join(" and ")) },
+            why: if reasons.is_empty() {
+                "full, because this machine has room".into()
+            } else {
+                format!("full, because {}", reasons.join(" and "))
+            },
         }
     }
 }
@@ -278,7 +284,11 @@ pub fn moved(before: &[u8], now: &[u8]) -> f32 {
     if before.is_empty() || before.len() != now.len() {
         return 1.0;
     }
-    let changed = before.iter().zip(now).filter(|(a, b)| a.abs_diff(**b) > SQUARE_STEP).count();
+    let changed = before
+        .iter()
+        .zip(now)
+        .filter(|(a, b)| a.abs_diff(**b) > SQUARE_STEP)
+        .count();
     changed as f32 / now.len() as f32
 }
 
@@ -354,7 +364,12 @@ pub fn follow_box(marks: &Landmarks, w: usize, h: usize) -> Option<Patch> {
     let top = (cy - side / 2.0).max(0.0);
     let right = (cx + side / 2.0).min(fw);
     let bottom = (cy + side / 2.0).min(fh);
-    Some(Patch::new(left / fw, top / fh, (right - left) / fw, (bottom - top) / fh))
+    Some(Patch::new(
+        left / fw,
+        top / fh,
+        (right - left) / fw,
+        (bottom - top) / fh,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -377,5 +392,6 @@ pub fn wait_ms(paced: u32, quiet_ms: u32, idle_per_second: u32) -> u32 {
 
 /// Has the hand been gone long enough to stop watching?
 pub fn time_to_stop(quiet_ms: u32, cfg: &HandsConfig) -> bool {
-    cfg.stop_after_quiet_secs > 0 && quiet_ms as u64 >= cfg.stop_after_quiet_secs.saturating_mul(1000)
+    cfg.stop_after_quiet_secs > 0
+        && quiet_ms as u64 >= cfg.stop_after_quiet_secs.saturating_mul(1000)
 }

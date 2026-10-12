@@ -27,11 +27,24 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -42,7 +55,11 @@ fn a_relative_reminder_creates_a_job_and_says_when() {
     let reply = d.turn("remind me in 20 minutes to stretch", 100);
     assert!(reply.contains("20 minutes"), "should say when: {reply}");
     assert!(reply.contains("stretch"), "should carry the thing: {reply}");
-    assert_eq!(d.scheduler.active().len(), before + 1, "a scheduler job was created");
+    assert_eq!(
+        d.scheduler.active().len(),
+        before + 1,
+        "a scheduler job was created"
+    );
 }
 
 #[test]
@@ -50,7 +67,10 @@ fn a_reminder_with_no_time_is_not_dropped() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "notime");
     let reply = d.turn("remind me to call the plumber", 100);
-    assert!(reply.contains("plumber"), "a timeless reminder is still surfaced: {reply}");
+    assert!(
+        reply.contains("plumber"),
+        "a timeless reminder is still surfaced: {reply}"
+    );
 }
 
 #[test]
@@ -85,5 +105,8 @@ fn weighing_an_opportunity_names_what_it_cannot_settle() {
     let (c, p) = (cfg(), plat());
     let d = daemon(&c, &p, "weigh");
     let out = d.weigh_opportunity("turn the woodworking into a business", "a stated want");
-    assert!(!out.trim().is_empty(), "an opportunity frame should say something: {out}");
+    assert!(
+        !out.trim().is_empty(),
+        "an opportunity frame should say something: {out}"
+    );
 }

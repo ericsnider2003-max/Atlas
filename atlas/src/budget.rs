@@ -90,9 +90,18 @@ impl Default for BudgetConfig {
             ceiling: Tier::Sonnet,
             prefer_batch: true,
             use_caching: true,
-            haiku: Rate { input: 1.0, output: 5.0 },
-            sonnet: Rate { input: 2.0, output: 10.0 },
-            opus: Rate { input: 5.0, output: 25.0 },
+            haiku: Rate {
+                input: 1.0,
+                output: 5.0,
+            },
+            sonnet: Rate {
+                input: 2.0,
+                output: 10.0,
+            },
+            opus: Rate {
+                input: 5.0,
+                output: 25.0,
+            },
             cache_read_fraction: 0.10,
             cache_write_multiplier: 1.25,
             batch_multiplier: 0.50,
@@ -126,18 +135,22 @@ pub struct Job {
 
 /// What a job would cost, in dollars.
 pub fn estimate(job: &Job, tier: Tier, cfg: &BudgetConfig) -> f64 {
-    let Some(rate) = cfg.rate(tier) else { return 0.0 };
+    let Some(rate) = cfg.rate(tier) else {
+        return 0.0;
+    };
     let m = 1_000_000.0;
 
     let (cached_cost, fresh) = if cfg.use_caching && job.cached_input > 0 {
-        (job.cached_input as f64 / m * rate.input * cfg.cache_read_fraction, job.fresh_input)
+        (
+            job.cached_input as f64 / m * rate.input * cfg.cache_read_fraction,
+            job.fresh_input,
+        )
     } else {
         (0.0, job.cached_input + job.fresh_input)
     };
 
-    let cost = cached_cost
-        + fresh as f64 / m * rate.input
-        + job.expected_output as f64 / m * rate.output;
+    let cost =
+        cached_cost + fresh as f64 / m * rate.input + job.expected_output as f64 / m * rate.output;
 
     if cfg.prefer_batch && job.can_wait {
         cost * cfg.batch_multiplier
@@ -152,7 +165,9 @@ pub fn estimate(job: &Job, tier: Tier, cfg: &BudgetConfig) -> f64 {
 /// the price of the rest, and a plan that ignores that underestimates by a
 /// lot.
 pub fn first_run_estimate(job: &Job, tier: Tier, cfg: &BudgetConfig) -> f64 {
-    let Some(rate) = cfg.rate(tier) else { return 0.0 };
+    let Some(rate) = cfg.rate(tier) else {
+        return 0.0;
+    };
     let m = 1_000_000.0;
     let write = job.cached_input as f64 / m * rate.input * cfg.cache_write_multiplier;
     let cost = write
@@ -237,7 +252,12 @@ impl Ledger {
         // `{:.2}` renders that as "-0.00" — a ledger with nothing in it
         // reporting that you are owed money. Found the first time anything
         // printed this, which was the day it was wired up.
-        let total: f64 = self.spends.iter().filter(|s| s.at >= since).map(|s| s.dollars).sum();
+        let total: f64 = self
+            .spends
+            .iter()
+            .filter(|s| s.at >= since)
+            .map(|s| s.dollars)
+            .sum();
         total + 0.0
     }
 
@@ -252,7 +272,11 @@ impl Ledger {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Approval {
     /// Go ahead, and what it will cost.
-    Go { tier: Tier, dollars: f64, batched: bool },
+    Go {
+        tier: Tier,
+        dollars: f64,
+        batched: bool,
+    },
     /// Do it locally instead.
     Local(String),
     /// Stop. The cap is a stop, not a warning.
@@ -307,7 +331,11 @@ pub fn allow(job: &Job, d: Difficulty, ledger: &Ledger, cfg: &BudgetConfig, now:
             so_far(month)
         ));
     }
-    Approval::Go { tier, dollars, batched: cfg.prefer_batch && job.can_wait }
+    Approval::Go {
+        tier,
+        dollars,
+        batched: cfg.prefer_batch && job.can_wait,
+    }
 }
 
 /// What a night's work would cost, so you can decide before it happens.
@@ -317,7 +345,10 @@ pub fn overnight_estimate(jobs: &[Job], d: Difficulty, cfg: &BudgetConfig) -> (f
         return (0.0, "nothing to pay for".into());
     }
     // The first request pays to fill the cache; the rest read from it.
-    let first = jobs.first().map(|j| first_run_estimate(j, tier, cfg)).unwrap_or(0.0);
+    let first = jobs
+        .first()
+        .map(|j| first_run_estimate(j, tier, cfg))
+        .unwrap_or(0.0);
     let rest: f64 = jobs.iter().skip(1).map(|j| estimate(j, tier, cfg)).sum();
     let total = first + rest;
 
@@ -325,8 +356,16 @@ pub fn overnight_estimate(jobs: &[Job], d: Difficulty, cfg: &BudgetConfig) -> (f
         "{} tasks on {}{}{}. About ${total:.2}.",
         jobs.len(),
         tier.name(),
-        if cfg.use_caching { ", codebase cached" } else { "" },
-        if cfg.prefer_batch && jobs.iter().all(|j| j.can_wait) { ", overnight rate" } else { "" }
+        if cfg.use_caching {
+            ", codebase cached"
+        } else {
+            ""
+        },
+        if cfg.prefer_batch && jobs.iter().all(|j| j.can_wait) {
+            ", overnight rate"
+        } else {
+            ""
+        }
     );
     (total, note)
 }

@@ -57,14 +57,23 @@ pub fn classify(text: &str) -> Kind {
     // Errors first: a stack trace is also code-shaped, and the error reading
     // is the more useful one.
     const ERROR_SIGNS: &[&str] = &[
-        "error", "exception", "traceback", "panicked", "failed", "cannot",
-        "undefined", "null reference", "stack trace", "errno",
+        "error",
+        "exception",
+        "traceback",
+        "panicked",
+        "failed",
+        "cannot",
+        "undefined",
+        "null reference",
+        "stack trace",
+        "errno",
     ];
     if ERROR_SIGNS.iter().any(|s| lower.contains(s)) {
         return Kind::Error;
     }
-    const CODE_SIGNS: &[&str] =
-        &["fn ", "def ", "class ", "function", "import ", "#include", "=>", "();", "{", "};"];
+    const CODE_SIGNS: &[&str] = &[
+        "fn ", "def ", "class ", "function", "import ", "#include", "=>", "();", "{", "};",
+    ];
     let code_hits = CODE_SIGNS.iter().filter(|s| t.contains(**s)).count();
     if code_hits >= 2 {
         return Kind::Code;
@@ -72,7 +81,10 @@ pub fn classify(text: &str) -> Kind {
     // Several lines with consistent separators reads as a table.
     let lines: Vec<&str> = t.lines().filter(|l| !l.trim().is_empty()).collect();
     if lines.len() >= 3 {
-        let tabbed = lines.iter().filter(|l| l.contains('\t') || l.matches(',').count() >= 2).count();
+        let tabbed = lines
+            .iter()
+            .filter(|l| l.contains('\t') || l.matches(',').count() >= 2)
+            .count();
         if tabbed * 2 >= lines.len() {
             return Kind::Table;
         }
@@ -149,7 +161,11 @@ pub fn take(text: &str, cfg: &ClipboardConfig) -> Grab {
     } else {
         text.to_string()
     };
-    Grab { text, kind, truncated }
+    Grab {
+        text,
+        kind,
+        truncated,
+    }
 }
 
 /// The instruction for answering a clipboard request.
@@ -183,8 +199,14 @@ pub fn prompt(said: &str, grab: &Grab) -> String {
 pub fn refers_to_clipboard(said: &str) -> bool {
     let t = said.to_lowercase();
     const HINTS: &[&str] = &[
-        "this", "that", "what i copied", "what i just copied", "the clipboard",
-        "my clipboard", "copied", "pasted",
+        "this",
+        "that",
+        "what i copied",
+        "what i just copied",
+        "the clipboard",
+        "my clipboard",
+        "copied",
+        "pasted",
     ];
     HINTS.iter().any(|h| t.contains(h))
 }

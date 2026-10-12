@@ -2,7 +2,9 @@ use atlas::finance::{Source, Transaction};
 use atlas::ledger::{
     categorise, keep_for, relevant_rule, spoken, summarise, trading_rules, Category, NOT_ADVICE,
 };
-use atlas::plainchange::{area_of, ask, explain, sentence_from_test, spoken as change_spoken, written, Diff};
+use atlas::plainchange::{
+    area_of, ask, explain, sentence_from_test, spoken as change_spoken, written, Diff,
+};
 
 fn txn(desc: &str, amount: f64) -> Transaction {
     Transaction {
@@ -43,7 +45,9 @@ fn you_are_told_what_will_be_different_not_what_lines_moved() {
         ..Default::default()
     };
     let e = explain(&d, "make it stop listening sooner");
-    assert!(e.headline.contains("it stops listening when you stop talking"));
+    assert!(e
+        .headline
+        .contains("it stops listening when you stop talking"));
     assert!(!e.headline.contains("src/"), "no filenames in the headline");
     assert_eq!(e.areas, vec!["how it hears and speaks"]);
 
@@ -68,7 +72,11 @@ fn something_atlas_used_to_promise_and_no_longer_does_is_the_thing_to_stop_on() 
 #[test]
 fn a_change_with_no_test_difference_says_it_cannot_be_sure() {
     // Rather than inventing a summary of something it can't read.
-    let d = Diff { files: vec!["src/look.rs".into()], lines_added: 30, ..Default::default() };
+    let d = Diff {
+        files: vec!["src/look.rs".into()],
+        lines_added: 30,
+        ..Default::default()
+    };
     let e = explain(&d, "tidy the styling");
     assert!(!e.certain);
     assert!(change_spoken(&e).contains("can't tell you exactly what changed"));
@@ -100,17 +108,38 @@ fn the_question_is_never_apply_the_diff() {
 #[test]
 fn ordinary_spending_is_recognised() {
     assert_eq!(categorise(&txn("KROGER #442", -84.20)), Category::Groceries);
-    assert_eq!(categorise(&txn("COMCAST XFINITY", -89.99)), Category::Internet);
-    assert_eq!(categorise(&txn("NETFLIX.COM", -15.99)), Category::Subscription);
-    assert_eq!(categorise(&txn("SHELL OIL 4471", -52.00)), Category::Transport);
+    assert_eq!(
+        categorise(&txn("COMCAST XFINITY", -89.99)),
+        Category::Internet
+    );
+    assert_eq!(
+        categorise(&txn("NETFLIX.COM", -15.99)),
+        Category::Subscription
+    );
+    assert_eq!(
+        categorise(&txn("SHELL OIL 4471", -52.00)),
+        Category::Transport
+    );
 }
 
 #[test]
 fn the_things_a_trader_actually_spends_on_are_recognised() {
-    assert_eq!(categorise(&txn("CME MARKET DATA FEE", -110.00)), Category::Fees);
-    assert_eq!(categorise(&txn("TRADESTATION PLATFORM FEE", -99.00)), Category::Fees);
-    assert_eq!(categorise(&txn("INTERACTIVE BROKERS TRANSFER", -5000.00)), Category::Investment);
-    assert_eq!(categorise(&txn("JETBRAINS SUBSCRIPTION", -289.00)), Category::Software);
+    assert_eq!(
+        categorise(&txn("CME MARKET DATA FEE", -110.00)),
+        Category::Fees
+    );
+    assert_eq!(
+        categorise(&txn("TRADESTATION PLATFORM FEE", -99.00)),
+        Category::Fees
+    );
+    assert_eq!(
+        categorise(&txn("INTERACTIVE BROKERS TRANSFER", -5000.00)),
+        Category::Investment
+    );
+    assert_eq!(
+        categorise(&txn("JETBRAINS SUBSCRIPTION", -289.00)),
+        Category::Software
+    );
 }
 
 #[test]
@@ -147,7 +176,11 @@ fn things_it_cannot_place_are_counted_rather_than_guessed() {
 
 #[test]
 fn what_atlas_says_leads_with_the_shape_of_the_month() {
-    let txns = vec![txn("PAYROLL DEPOSIT", 6000.0), txn("RENT", -2200.0), txn("KROGER", -400.0)];
+    let txns = vec![
+        txn("PAYROLL DEPOSIT", 6000.0),
+        txn("RENT", -2200.0),
+        txn("KROGER", -400.0),
+    ];
     let said = spoken(&summarise(&txns));
     assert!(said.contains("In 6000") && said.contains("net 3400"));
     assert!(said.contains("Housing"), "the biggest thing is named");
@@ -181,13 +214,22 @@ fn each_rule_says_why_it_matters_to_you_not_just_what_it_is() {
 #[test]
 fn the_mark_to_market_deadline_trap_is_spelled_out() {
     // The one that costs a year if nobody mentions it.
-    let r = trading_rules().into_iter().find(|r| r.name == "mark-to-market election").unwrap();
-    assert!(r.why_you.contains("previous"), "the deadline is for last year: {}", r.why_you);
+    let r = trading_rules()
+        .into_iter()
+        .find(|r| r.name == "mark-to-market election")
+        .unwrap();
+    assert!(
+        r.why_you.contains("previous"),
+        "the deadline is for last year: {}",
+        r.why_you
+    );
 }
 
 #[test]
 fn it_volunteers_one_relevant_rule_rather_than_a_lecture() {
-    let many: Vec<Transaction> = (0..40).map(|_| txn("CME MARKET DATA FEE", -110.0)).collect();
+    let many: Vec<Transaction> = (0..40)
+        .map(|_| txn("CME MARKET DATA FEE", -110.0))
+        .collect();
     let s = summarise(&many);
     let r = relevant_rule(&s, &many).expect("frequent trading should raise something");
     assert_eq!(r.name, "wash sales");
@@ -203,21 +245,33 @@ fn a_quiet_month_gets_no_rule_at_all() {
 fn categories_carry_the_caveat_that_actually_matters() {
     assert!(Category::Meals.note().unwrap().contains("50%"));
     assert!(Category::Office.note().unwrap().contains("exclusively"));
-    assert!(Category::Internet.note().unwrap().contains("business share"));
-    assert!(Category::Investment.note().unwrap().contains("aren't income or expense"));
+    assert!(Category::Internet
+        .note()
+        .unwrap()
+        .contains("business share"));
+    assert!(Category::Investment
+        .note()
+        .unwrap()
+        .contains("aren't income or expense"));
 }
 
 #[test]
 fn it_knows_how_long_to_keep_things_and_that_basis_is_different() {
     assert!(keep_for("receipts").contains("three years"));
-    assert!(keep_for("basis records").contains("after you sell"), "the trap");
+    assert!(
+        keep_for("basis records").contains("after you sell"),
+        "the trap"
+    );
 }
 
 #[test]
 fn it_says_plainly_that_this_is_not_advice() {
     assert!(NOT_ADVICE.contains("not your situation"));
     assert!(NOT_ADVICE.contains("ask someone"));
-    assert!(!NOT_ADVICE.contains("consult a qualified"), "not boilerplate");
+    assert!(
+        !NOT_ADVICE.contains("consult a qualified"),
+        "not boilerplate"
+    );
 }
 
 #[test]

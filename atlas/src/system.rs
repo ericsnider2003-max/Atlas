@@ -17,24 +17,48 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Change {
     /// Trivially reversible — the old one is remembered.
-    Wallpaper { path: String },
-    Theme { dark: bool },
+    Wallpaper {
+        path: String,
+    },
+    Theme {
+        dark: bool,
+    },
     /// Where icons sit, which monitor is primary for the taskbar.
-    DesktopLayout { description: String },
+    DesktopLayout {
+        description: String,
+    },
     /// Moving a file goes through the trash, so it can be put back.
-    MoveFile { from: String, to: String },
-    RenameFile { from: String, to: String },
-    CreateFolder { path: String },
+    MoveFile {
+        from: String,
+        to: String,
+    },
+    RenameFile {
+        from: String,
+        to: String,
+    },
+    CreateFolder {
+        path: String,
+    },
     /// Overwriting something that already exists.
-    Replace { path: String },
-    Delete { path: String },
+    Replace {
+        path: String,
+    },
+    Delete {
+        path: String,
+    },
     /// Emptying the recycle bin, or Atlas's own trash.
     PurgeTrash,
     /// A Windows setting Atlas is allowed to touch.
-    Setting { name: String, value: String },
+    Setting {
+        name: String,
+        value: String,
+    },
     /// Something Atlas has decided it needs — a folder for its own files, a
     /// firewall rule for its own port.
-    ForItself { what: String, reversible: bool },
+    ForItself {
+        what: String,
+        reversible: bool,
+    },
 }
 
 /// How hard it is to take back.
@@ -56,18 +80,53 @@ pub enum Undo {
 /// your firewall is a worse thing to own than one that can't. Say the word and
 /// Atlas will open the settings page for you instead.
 pub const NEVER: &[&str] = &[
-    "firewall", "defender", "antivirus", "smart app control", "uac",
-    "user account control", "bitlocker", "encryption", "windows update",
-    "account", "password", "pin", "sign-in", "signin", "family", "parental",
-    "network adapter", "vpn", "proxy", "dns", "registry", "group policy",
-    "administrator", "elevation", "driver", "bios", "secure boot",
+    "firewall",
+    "defender",
+    "antivirus",
+    "smart app control",
+    "uac",
+    "user account control",
+    "bitlocker",
+    "encryption",
+    "windows update",
+    "account",
+    "password",
+    "pin",
+    "sign-in",
+    "signin",
+    "family",
+    "parental",
+    "network adapter",
+    "vpn",
+    "proxy",
+    "dns",
+    "registry",
+    "group policy",
+    "administrator",
+    "elevation",
+    "driver",
+    "bios",
+    "secure boot",
 ];
 
 /// Settings that are safe, obvious and easy to put back.
 pub const SAFE_SETTINGS: &[&str] = &[
-    "wallpaper", "background", "theme", "dark mode", "light mode", "accent colour",
-    "accent color", "night light", "volume", "brightness", "notification",
-    "focus assist", "do not disturb", "taskbar", "mouse speed", "scroll",
+    "wallpaper",
+    "background",
+    "theme",
+    "dark mode",
+    "light mode",
+    "accent colour",
+    "accent color",
+    "night light",
+    "volume",
+    "brightness",
+    "notification",
+    "focus assist",
+    "do not disturb",
+    "taskbar",
+    "mouse speed",
+    "scroll",
 ];
 
 pub fn reversibility(c: &Change) -> Undo {
@@ -198,15 +257,25 @@ fn paths_touched(c: &Change) -> Vec<String> {
 }
 
 fn within_roots(path: &str, roots: &[String]) -> bool {
-    let p = crate::doctor::expand_env(path).replace('\\', "/").to_lowercase();
+    let p = crate::doctor::expand_env(path)
+        .replace('\\', "/")
+        .to_lowercase();
     let profile = crate::doctor::lookup_env("USERPROFILE")
         .or_else(|| crate::doctor::lookup_env("HOME"))
-        .map(|h| h.replace('\\', "/").to_lowercase().trim_end_matches('/').to_string())
+        .map(|h| {
+            h.replace('\\', "/")
+                .to_lowercase()
+                .trim_end_matches('/')
+                .to_string()
+        })
         .unwrap_or_default();
     roots.iter().any(|r| {
         // `%USERPROFILE%` where Windows' own name for home isn't set (the
         // same folder, `HOME`, on the other systems).
-        let r = crate::doctor::expand_env(r).replace('\\', "/").to_lowercase().replace("%userprofile%", &profile);
+        let r = crate::doctor::expand_env(r)
+            .replace('\\', "/")
+            .to_lowercase()
+            .replace("%userprofile%", &profile);
         if r.is_empty() {
             return false;
         }
@@ -223,12 +292,35 @@ fn within_roots(path: &str, roots: &[String]) -> bool {
         // "%USERPROFILE%/Downloads" means the Downloads Windows (or XDG)
         // says, not only the one under home (`organize::user_folder`).
         let known = (!profile.is_empty())
-            .then(|| r.trim_end_matches('/').strip_prefix(&format!("{profile}/")).map(str::to_string))
+            .then(|| {
+                r.trim_end_matches('/')
+                    .strip_prefix(&format!("{profile}/"))
+                    .map(str::to_string)
+            })
             .flatten()
-            .filter(|rest| ["desktop", "documents", "downloads", "pictures", "videos", "music"].contains(&rest.as_str()))
+            .filter(|rest| {
+                [
+                    "desktop",
+                    "documents",
+                    "downloads",
+                    "pictures",
+                    "videos",
+                    "music",
+                ]
+                .contains(&rest.as_str())
+            })
             .and_then(|which| crate::organize::user_folder(&which))
-            .map(|k| k.display().to_string().replace('\\', "/").to_lowercase().trim_end_matches('/').to_string());
-        p.starts_with(&r) || onedrive.is_some_and(|o| p.starts_with(&o)) || known.is_some_and(|k| p == k || p.starts_with(&format!("{k}/")))
+            .map(|k| {
+                k.display()
+                    .to_string()
+                    .replace('\\', "/")
+                    .to_lowercase()
+                    .trim_end_matches('/')
+                    .to_string()
+            });
+        p.starts_with(&r)
+            || onedrive.is_some_and(|o| p.starts_with(&o))
+            || known.is_some_and(|k| p == k || p.starts_with(&format!("{k}/")))
     })
 }
 
@@ -243,7 +335,9 @@ pub fn describe(c: &Change, undo: Undo) -> String {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| path.clone())
         ),
-        Change::Theme { dark } => format!("switched to {} mode", if *dark { "dark" } else { "light" }),
+        Change::Theme { dark } => {
+            format!("switched to {} mode", if *dark { "dark" } else { "light" })
+        }
         Change::DesktopLayout { description } => description.clone(),
         Change::MoveFile { from, to } => format!("moved {} to {}", file_of(from), folder_of(to)),
         Change::RenameFile { from, to } => format!("renamed {} to {}", file_of(from), file_of(to)),
@@ -271,7 +365,11 @@ fn file_of(p: &str) -> String {
 
 fn folder_of(p: &str) -> String {
     let path = std::path::Path::new(p);
-    let dir = if path.extension().is_some() { path.parent() } else { Some(path) };
+    let dir = if path.extension().is_some() {
+        path.parent()
+    } else {
+        Some(path)
+    };
     dir.and_then(|d| d.file_name())
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| p.to_string())

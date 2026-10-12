@@ -76,7 +76,11 @@ pub struct TelegramConfig {
 
 impl Default for TelegramConfig {
     fn default() -> Self {
-        TelegramConfig { enabled: false, timeout_secs: 10, most_at_once: 20 }
+        TelegramConfig {
+            enabled: false,
+            timeout_secs: 10,
+            most_at_once: 20,
+        }
     }
 }
 
@@ -138,7 +142,11 @@ pub fn into_messages(raw: &str) -> Result<Vec<crate::messaging::Message>, String
         let from = from_obj
             .and_then(|f| f.get("first_name"))
             .and_then(|n| n.as_str())
-            .or_else(|| from_obj.and_then(|f| f.get("username")).and_then(|n| n.as_str()))
+            .or_else(|| {
+                from_obj
+                    .and_then(|f| f.get("username"))
+                    .and_then(|n| n.as_str())
+            })
             .unwrap_or("someone")
             .to_string();
         let chat = m.get("chat");
@@ -173,7 +181,11 @@ pub fn into_messages(raw: &str) -> Result<Vec<crate::messaging::Message>, String
 /// so without this every read returns everything since the bot was made.
 /// `+1` because the offset means "start here", not "I had this one".
 pub fn read_up_to(messages: &[crate::messaging::Message]) -> Option<u64> {
-    messages.iter().filter_map(|m| m.id.parse::<u64>().ok()).max().map(|n| n + 1)
+    messages
+        .iter()
+        .filter_map(|m| m.id.parse::<u64>().ok())
+        .max()
+        .map(|n| n + 1)
 }
 
 /// The path to ask for, given where you got to last time.
@@ -204,8 +216,8 @@ pub fn fetch(
         return Err("no token — run `atlas telegram token`".into());
     }
     let path = updates_path(token.trim(), since, cfg.most_at_once);
-    let r = crate::http::https_get(HOST, &path, Duration::from_secs(cfg.timeout_secs))
-        .map_err(|e| {
+    let r = crate::http::https_get(HOST, &path, Duration::from_secs(cfg.timeout_secs)).map_err(
+        |e| {
             // The token is in the path, so an error carrying the request
             // would put it in the log. Said without it, deliberately.
             let said = e.to_string();
@@ -214,7 +226,8 @@ pub fn fetch(
             } else {
                 format!("couldn't reach Telegram: {said}")
             }
-        })?;
+        },
+    )?;
     into_messages(&r.body)
 }
 
@@ -225,9 +238,13 @@ pub fn fetch(
 /// actually make, before it becomes "couldn't reach Telegram".
 pub fn looks_like_a_token(s: &str) -> bool {
     let s = s.trim();
-    let Some((digits, rest)) = s.split_once(':') else { return false };
+    let Some((digits, rest)) = s.split_once(':') else {
+        return false;
+    };
     !digits.is_empty()
         && digits.chars().all(|c| c.is_ascii_digit())
         && rest.len() >= 30
-        && rest.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        && rest
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }

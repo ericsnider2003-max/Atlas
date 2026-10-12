@@ -31,7 +31,6 @@ use crate::proactive::Proactive;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-
 /// Where the phone's Atlas is. One of these at a time, so one Atlas.
 ///
 /// Until 28 Sep 2026 the start waited up to 20 s for the hub -- on the phone
@@ -53,7 +52,11 @@ static PHASE: Mutex<Phase> = Mutex::new(Phase::Stopped);
 static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn phase_now() -> Phase {
-    PHASE.lock().or_else(crate::crash::unpoison).map(|p| p.clone()).unwrap_or(Phase::Stopped)
+    PHASE
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .map(|p| p.clone())
+        .unwrap_or(Phase::Stopped)
 }
 
 fn set_phase(generation: u64, p: Phase) {
@@ -94,7 +97,9 @@ pub enum Started {
 /// start is still on its way never starts a second Atlas.
 pub fn start_once(home: std::path::PathBuf, port: u16, wait: std::time::Duration) -> Started {
     let generation = {
-        let Ok(mut p) = PHASE.lock().or_else(crate::crash::unpoison) else { return Started::Failed("Atlas's own state couldn't be read".into()) };
+        let Ok(mut p) = PHASE.lock().or_else(crate::crash::unpoison) else {
+            return Started::Failed("Atlas's own state couldn't be read".into());
+        };
         match &*p {
             Phase::Running(url) if !stopping() => return Started::AlreadyRunning(url.clone()),
             Phase::Starting => return Started::Starting,
@@ -105,18 +110,28 @@ pub fn start_once(home: std::path::PathBuf, port: u16, wait: std::time::Duration
     };
     // A fresh flag for this Atlas: one being stopped keeps its own.
     let stop = Arc::new(AtomicBool::new(false));
-    if let Some(slot) = STOP_NOW.lock().or_else(crate::crash::unpoison).ok().as_mut() {
+    if let Some(slot) = STOP_NOW
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .ok()
+        .as_mut()
+    {
         **slot = Some(stop.clone());
     }
     std::thread::spawn(move || {
-        let r = serve(&home, port, stop, |url| set_phase(generation, Phase::Running(url)));
-        set_phase(generation, match r {
-            Ok(()) => Phase::Stopped,
-            Err(why) => {
-                crate::errln!("atlas: {why}");
-                Phase::Failed(why)
-            }
+        let r = serve(&home, port, stop, |url| {
+            set_phase(generation, Phase::Running(url))
         });
+        set_phase(
+            generation,
+            match r {
+                Ok(()) => Phase::Stopped,
+                Err(why) => {
+                    crate::errln!("atlas: {why}");
+                    Phase::Failed(why)
+                }
+            },
+        );
     });
     let until = std::time::Instant::now() + wait;
     loop {
@@ -144,32 +159,49 @@ pub fn stop_now() {
 
 /// Has the Atlas started last been asked to stop (and not finished yet)?
 fn stopping() -> bool {
-    STOP_NOW.lock().or_else(crate::crash::unpoison).ok().and_then(|s| s.as_ref().map(|f| f.load(Ordering::SeqCst))).unwrap_or(false)
+    STOP_NOW
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .ok()
+        .and_then(|s| s.as_ref().map(|f| f.load(Ordering::SeqCst)))
+        .unwrap_or(false)
 }
 /// Whether the phone is on wifi (or another network that isn't metered), as
 /// the app last said through `atlas_mobile_network`.
 static UNMETERED: AtomicBool = AtomicBool::new(false);
 
-
 /// Run Atlas here until `stop` is set, serving the hub on loopback at `port`
 /// (0: any free port). `ready` gets the hub's address once it's answering.
 /// Config comes from `home/config` (the app ships a copy of the default
 /// config there on first run).
-pub fn serve(home: &std::path::Path, port: u16, stop: Arc<AtomicBool>, ready: impl FnOnce(String)) -> Result<(), String> {
+pub fn serve(
+    home: &std::path::Path,
+    port: u16,
+    stop: Arc<AtomicBool>,
+    ready: impl FnOnce(String),
+) -> Result<(), String> {
     std::env::set_var("ATLAS_HOME", home);
     crate::phonemode::switch_on();
     let cfg_dir = crate::roots::config_dir();
-    let mut cfg = Config::load(&cfg_dir).map_err(|e| format!("couldn't read the config in {}: {e}", cfg_dir.display()))?;
+    let mut cfg = Config::load(&cfg_dir)
+        .map_err(|e| format!("couldn't read the config in {}: {e}", cfg_dir.display()))?;
     if let Some(t) = cfg.tools.as_mut() {
         crate::phonemode::as_a_phone(t);
     }
     let cfg: &'static Config = Box::leak(Box::new(cfg));
     let tools = cfg.tools.clone().unwrap_or_default();
-    let plat: &'static crate::platform::mobile::MobilePlatform = Box::leak(Box::new(crate::platform::mobile::MobilePlatform));
+    let plat: &'static crate::platform::mobile::MobilePlatform =
+        Box::leak(Box::new(crate::platform::mobile::MobilePlatform));
     let store = crate::roots::store();
     // Your yes to the free online models, from before (`phonemode`).
     crate::phonemode::set_online_ok(store.load::<bool>(crate::phonemode::ONLINE_ASKED));
-    let mut d = Daemon::new(cfg, plat, phone_llm(&tools), store, Proactive::new(tools.proactive.clone()));
+    let mut d = Daemon::new(
+        cfg,
+        plat,
+        phone_llm(&tools),
+        store,
+        Proactive::new(tools.proactive.clone()),
+    );
     let token = crate::server::token_for(&d.store).map_err(|e| e.to_string())?;
     let mut scfg = tools.server.clone();
     scfg.enabled = true;
@@ -190,8 +222,13 @@ pub fn serve(home: &std::path::Path, port: u16, stop: Arc<AtomicBool>, ready: im
         // is the longest this waits before looking at the clock again.
         // unheard-ok: returns `Vec<HubCost>`, not a Result
         let _ = server.wait_and_answer(30, &mut |action| {
-            crate::crash::caught("answering the hub", || crate::hublive::reply(&mut d, action)).unwrap_or_else(|why| {
-                crate::server::Reply { status: 500, body: serde_json::json!({ "error": why }).to_string(), ..Default::default() }
+            crate::crash::caught("answering the hub", || {
+                crate::hublive::reply(&mut d, action)
+            })
+            .unwrap_or_else(|why| crate::server::Reply {
+                status: 500,
+                body: serde_json::json!({ "error": why }).to_string(),
+                ..Default::default()
             })
         });
         let now = crate::store::now();
@@ -243,16 +280,23 @@ fn phone_llm(tools: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn cra
                 }
             });
         }
-        let own: std::sync::Arc<dyn crate::brain::Llm> = std::sync::Arc::new(crate::phonemodel::PhoneLlm);
-        let atlas: std::sync::Arc<dyn crate::brain::Llm> = std::sync::Arc::new(crate::brain::FallbackLlm::new(own, configured));
+        let own: std::sync::Arc<dyn crate::brain::Llm> =
+            std::sync::Arc::new(crate::phonemodel::PhoneLlm);
+        let atlas: std::sync::Arc<dyn crate::brain::Llm> =
+            std::sync::Arc::new(crate::brain::FallbackLlm::new(own, configured));
         // Apple's model first on an iPhone that has it, Atlas's own for each
         // request it can't do (decision 2, `applebrain`). Elsewhere nothing
         // registers Apple's, and every request goes straight to Atlas's.
-        return Some(std::sync::Arc::new(crate::applebrain::AppleFirst::new(atlas)));
+        return Some(std::sync::Arc::new(crate::applebrain::AppleFirst::new(
+            atlas,
+        )));
     }
     #[cfg(not(feature = "phone-llm"))]
     {
-        configured.map(|c| std::sync::Arc::new(crate::applebrain::AppleFirst::new(c)) as std::sync::Arc<dyn crate::brain::Llm>)
+        configured.map(|c| {
+            std::sync::Arc::new(crate::applebrain::AppleFirst::new(c))
+                as std::sync::Arc<dyn crate::brain::Llm>
+        })
     }
 }
 
@@ -270,7 +314,12 @@ pub unsafe extern "C" fn atlas_mobile_start(home: *const std::os::raw::c_char, p
     if home.is_null() {
         return -1;
     }
-    let Ok(home) = std::ffi::CStr::from_ptr(home).to_str().map(|s| std::path::PathBuf::from(s)) else { return -2 };
+    let Ok(home) = std::ffi::CStr::from_ptr(home)
+        .to_str()
+        .map(|s| std::path::PathBuf::from(s))
+    else {
+        return -2;
+    };
     let before = crate::mobile::starts();
     match crate::mobile::start_once(home, port, std::time::Duration::from_millis(START_WAIT_MS)) {
         Started::Running(_) => 0,

@@ -29,7 +29,10 @@ pub enum Change {
     TurnOffTwoFactor,
     TurnOnTwoFactor,
     /// Move from one method to another.
-    SwitchMethod { from: String, to: String },
+    SwitchMethod {
+        from: String,
+        to: String,
+    },
     GenerateRecoveryCodes,
     /// Anything Atlas doesn't have a specific shape for.
     Other(String),
@@ -60,8 +63,11 @@ pub fn consequence(site: &str, change: &Change) -> Option<String> {
     match change {
         Change::TurnOffTwoFactor => {
             if s.contains("instagram") || s.contains("facebook") {
-                Some("Instagram and Facebook share this if the accounts are linked, so it comes \
-                      off both.".into())
+                Some(
+                    "Instagram and Facebook share this if the accounts are linked, so it comes \
+                      off both."
+                        .into(),
+                )
             } else if s.contains("github") {
                 Some("This can also drop your SSH keys and tokens.".into())
             } else if s.contains("google") || s.contains("gmail") {
@@ -87,9 +93,26 @@ pub fn consequence(site: &str, change: &Change) -> Option<String> {
 /// doesn't understand, and it hands the click back to you rather than pick.
 pub fn labels_for(change: &Change) -> Vec<&'static str> {
     match change {
-        Change::TurnOffTwoFactor => vec!["Turn off", "Turn Off", "Disable", "Turn off 2-Step Verification", "Turn off two-factor authentication"],
-        Change::TurnOnTwoFactor => vec!["Turn on", "Turn On", "Enable", "Turn on 2-Step Verification", "Turn on two-factor authentication"],
-        Change::GenerateRecoveryCodes => vec!["Get new codes", "Generate new codes", "Regenerate", "Generate new recovery codes"],
+        Change::TurnOffTwoFactor => vec![
+            "Turn off",
+            "Turn Off",
+            "Disable",
+            "Turn off 2-Step Verification",
+            "Turn off two-factor authentication",
+        ],
+        Change::TurnOnTwoFactor => vec![
+            "Turn on",
+            "Turn On",
+            "Enable",
+            "Turn on 2-Step Verification",
+            "Turn on two-factor authentication",
+        ],
+        Change::GenerateRecoveryCodes => vec![
+            "Get new codes",
+            "Generate new codes",
+            "Regenerate",
+            "Generate new recovery codes",
+        ],
         // Switching method is several screens, and "anything else" has no
         // words Atlas can know in advance: those stay yours to click.
         Change::SwitchMethod { .. } | Change::Other(_) => Vec::new(),
@@ -261,7 +284,12 @@ pub fn saying_it_back(asked: &Asked) -> String {
         format!(" on {}", asked.account)
     };
 
-    let mut say = format!("So: {} for {}{}.", asked.change.plainly(), asked.site, account);
+    let mut say = format!(
+        "So: {} for {}{}.",
+        asked.change.plainly(),
+        asked.site,
+        account
+    );
     if let Some(c) = consequence(&asked.site, &asked.change) {
         say.push_str(&format!(" {c}"));
     }
@@ -278,34 +306,42 @@ pub fn read_back(asked: &Asked, you_are_here: bool, vault_open: bool, cfg: &Conf
         return Step::Cannot(
             "this only happens with you at the machine — it's the whole reason it's allowed at \
              all"
-                .into(),
+            .into(),
         );
     }
     if !vault_open {
         return Step::Cannot("I'd need the vault open to sign in first".into());
     }
-    Step::ReadBack { say: saying_it_back(asked) }
+    Step::ReadBack {
+        say: saying_it_back(asked),
+    }
 }
 
 /// Your answer.
 pub fn answer(said: &str, asked: &Asked) -> Step {
     let t = said.trim().to_lowercase();
-    let yes = ["yes", "yep", "yeah", "do it", "go ahead", "correct", "right", "confirm", "go"]
-        .iter()
-        .any(|w| t == *w || t.starts_with(&format!("{w} ")));
+    let yes = [
+        "yes", "yep", "yeah", "do it", "go ahead", "correct", "right", "confirm", "go",
+    ]
+    .iter()
+    .any(|w| t == *w || t.starts_with(&format!("{w} ")));
     let cleaned = t.trim_end_matches(['.', '!']).to_string();
-    let no = ["no", "nope", "stop", "cancel", "don't", "dont", "wait", "hold on", "not that"]
-        .iter()
-        .any(|w| {
-            cleaned == *w
+    let no = [
+        "no", "nope", "stop", "cancel", "don't", "dont", "wait", "hold on", "not that",
+    ]
+    .iter()
+    .any(|w| {
+        cleaned == *w
                 || cleaned.starts_with(&format!("{w} "))
                 // "no, not that one" — the comma is why a plain prefix check
                 // misses it.
                 || cleaned.starts_with(&format!("{w},"))
-        });
+    });
 
     if yes && !no {
-        Step::Go { asked: asked.clone() }
+        Step::Go {
+            asked: asked.clone(),
+        }
     } else if no {
         Step::Dropped
     } else {
@@ -330,7 +366,11 @@ pub struct Run {
 
 impl Run {
     pub fn new(items: Vec<Asked>) -> Run {
-        Run { items, at: 0, done: Vec::new() }
+        Run {
+            items,
+            at: 0,
+            done: Vec::new(),
+        }
     }
 
     pub fn current(&self) -> Option<&Asked> {
@@ -339,7 +379,8 @@ impl Run {
 
     pub fn record(&mut self, worked: bool) {
         if let Some(a) = self.items.get(self.at) {
-            self.done.push((format!("{} — {}", a.site, a.change.plainly()), worked));
+            self.done
+                .push((format!("{} — {}", a.site, a.change.plainly()), worked));
         }
         self.at += 1;
     }
@@ -365,7 +406,11 @@ impl Run {
 
         let mut s = format!("{ok} done");
         if !failed.is_empty() {
-            s.push_str(&format!(", {} didn't work: {}", failed.len(), failed.join(", ")));
+            s.push_str(&format!(
+                ", {} didn't work: {}",
+                failed.len(),
+                failed.join(", ")
+            ));
         }
         if skipped > 0 {
             s.push_str(&format!(", {skipped} skipped"));
@@ -378,7 +423,10 @@ impl Run {
 /// What Atlas says before starting a run of them.
 pub fn before_a_run(items: &[Asked]) -> String {
     let weakening = items.iter().filter(|a| a.change.weakens()).count();
-    let mut s = format!("{} changes, one at a time — I'll read each one back.", items.len());
+    let mut s = format!(
+        "{} changes, one at a time — I'll read each one back.",
+        items.len()
+    );
     if weakening > 0 {
         s.push_str(&format!(
             " {weakening} of them leave the account less protected than it is now."
@@ -422,7 +470,9 @@ pub fn how_to_undo(change: &Change) -> String {
                 .into()
         }
         Change::TurnOnTwoFactor => "Same page to turn it off again.".into(),
-        Change::SwitchMethod { from, to } => format!("Switching back from {to} to {from} is the same page."),
+        Change::SwitchMethod { from, to } => {
+            format!("Switching back from {to} to {from} is the same page.")
+        }
         Change::GenerateRecoveryCodes => {
             "The old set is gone. Generating again replaces these too.".into()
         }
@@ -437,15 +487,31 @@ pub fn site_of(host: &str) -> String {
     let host = host.trim().trim_end_matches('.').to_lowercase();
     let host = host.split(':').next().unwrap_or("").to_string();
     let parts: Vec<&str> = host.split('.').filter(|p| !p.is_empty()).collect();
-    let keep = if parts.len() >= 3 && parts[parts.len() - 2].len() <= 3 && parts[parts.len() - 1].len() == 2 { 3 } else { 2 };
+    let keep = if parts.len() >= 3
+        && parts[parts.len() - 2].len() <= 3
+        && parts[parts.len() - 1].len() == 2
+    {
+        3
+    } else {
+        2
+    };
     parts[parts.len().saturating_sub(keep)..].join(".")
 }
 
 /// The host part of a URL.
 pub fn host_of(url: &str) -> String {
     // No "://" (a data: or about: page): no host.
-    let Some((_, after)) = url.split_once("://") else { return String::new() };
-    after.split(['/', '?', '#']).next().unwrap_or("").rsplit('@').next().unwrap_or("").to_lowercase()
+    let Some((_, after)) = url.split_once("://") else {
+        return String::new();
+    };
+    after
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .rsplit('@')
+        .next()
+        .unwrap_or("")
+        .to_lowercase()
 }
 
 /// Before pressing: is the page on the site you said yes to, and not a
@@ -457,13 +523,26 @@ pub fn before_pressing(expected_url: &str, page_host: &str) -> Option<Pressed> {
     if want.is_empty() && got.is_empty() {
         return None;
     }
-    const SIGN_IN: [&str; 6] = ["accounts.google.com", "login.microsoftonline.com", "login.live.com", "appleid.apple.com", "idmsa.apple.com", "login.yahoo.com"];
+    const SIGN_IN: [&str; 6] = [
+        "accounts.google.com",
+        "login.microsoftonline.com",
+        "login.live.com",
+        "appleid.apple.com",
+        "idmsa.apple.com",
+        "login.yahoo.com",
+    ];
     let first = got.split('.').next().unwrap_or("");
-    if SIGN_IN.contains(&got.as_str()) || matches!(first, "login" | "signin" | "sign-in" | "auth" | "sso") {
+    if SIGN_IN.contains(&got.as_str())
+        || matches!(first, "login" | "signin" | "sign-in" | "auth" | "sso")
+    {
         return Some(Pressed::WantsYouToSignIn);
     }
     if site_of(&want) != site_of(&got) {
-        return Some(Pressed::SomewhereElse(if got.is_empty() { "a page with no address".into() } else { got }));
+        return Some(Pressed::SomewhereElse(if got.is_empty() {
+            "a page with no address".into()
+        } else {
+            got
+        }));
     }
     None
 }

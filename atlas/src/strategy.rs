@@ -70,40 +70,50 @@ impl Angle {
     /// The instruction handed to whichever brain is working on it.
     pub fn instruction(&self) -> &'static str {
         match self {
-            Angle::ReadTheError =>
+            Angle::ReadTheError => {
                 "Read the error text again, word for word. What does it literally say is wrong? \
-                 Do not reason from what you expect it to mean.",
-            Angle::CheckWhatChanged =>
+                 Do not reason from what you expect it to mean."
+            }
+            Angle::CheckWhatChanged => {
                 "What actually changed most recently? Check that the thing being blamed is the \
-                 thing that changed, rather than the thing that looks suspicious.",
-            Angle::TestTheAssumption =>
+                 thing that changed, rather than the thing that looks suspicious."
+            }
+            Angle::TestTheAssumption => {
                 "The previous theory rested on an assumption. Name it, then test that assumption \
-                 directly rather than testing the theory again.",
-            Angle::FindAWorkingExample =>
+                 directly rather than testing the theory again."
+            }
+            Angle::FindAWorkingExample => {
                 "Find somewhere else in this codebase that does the same kind of thing and works. \
-                 Compare the two and list every difference.",
-            Angle::Bisect =>
+                 Compare the two and list every difference."
+            }
+            Angle::Bisect => {
                 "Cut the failing path in half. Does the first half alone fail? Narrow it down \
-                 rather than guessing at the whole.",
-            Angle::Minimise =>
+                 rather than guessing at the whole."
+            }
+            Angle::Minimise => {
                 "Reduce this to the smallest thing that still fails. Remove everything that \
-                 isn't needed to reproduce it.",
-            Angle::Instrument =>
+                 isn't needed to reproduce it."
+            }
+            Angle::Instrument => {
                 "Stop reasoning and look. Add logging at each step and run it again, then report \
-                 what actually happened rather than what should have.",
-            Angle::RevertAndRethink =>
+                 what actually happened rather than what should have."
+            }
+            Angle::RevertAndRethink => {
                 "Undo every change so far and go back to the last state that worked. Then \
-                 approach it differently from there.",
-            Angle::QuestionTheTest =>
+                 approach it differently from there."
+            }
+            Angle::QuestionTheTest => {
                 "Consider that the test may be wrong rather than the code. What exactly is it \
-                 asserting, and is that assertion correct?",
-            Angle::LookUpstream =>
-                "Look at what calls this. Is it being given what it expects?",
-            Angle::LookDownstream =>
-                "Look at what this calls. Is one of those doing something unexpected?",
-            Angle::TryTheSimpleWay =>
+                 asserting, and is that assertion correct?"
+            }
+            Angle::LookUpstream => "Look at what calls this. Is it being given what it expects?",
+            Angle::LookDownstream => {
+                "Look at what this calls. Is one of those doing something unexpected?"
+            }
+            Angle::TryTheSimpleWay => {
                 "Write the obvious brute-force version. If that works, the cleverness was the \
-                 problem.",
+                 problem."
+            }
         }
     }
 
@@ -171,7 +181,10 @@ pub struct Campaign {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Next {
     /// Try this angle.
-    Try { angle: Angle, instruction: &'static str },
+    Try {
+        angle: Angle,
+        instruction: &'static str,
+    },
     /// Solved.
     Done,
     /// Out of angles. Time to write it up.
@@ -180,7 +193,10 @@ pub enum Next {
 
 impl Campaign {
     pub fn new(problem: &str) -> Campaign {
-        Campaign { problem: problem.to_string(), efforts: Vec::new() }
+        Campaign {
+            problem: problem.to_string(),
+            efforts: Vec::new(),
+        }
     }
 
     pub fn record(&mut self, e: Effort) {
@@ -229,7 +245,10 @@ impl Campaign {
             .iter()
             .find(|a| !used.contains(a) && !cfg.skip.contains(a))
         {
-            Some(a) => Next::Try { angle: *a, instruction: a.instruction() },
+            Some(a) => Next::Try {
+                angle: *a,
+                instruction: a.instruction(),
+            },
             None => Next::Exhausted("tried every angle I have".into()),
         }
     }
@@ -258,7 +277,10 @@ impl Campaign {
         format!(
             "{} approaches, none worked. Last was {}.",
             self.efforts.len(),
-            self.efforts.last().map(|e| e.angle.label()).unwrap_or_default()
+            self.efforts
+                .last()
+                .map(|e| e.angle.label())
+                .unwrap_or_default()
         )
     }
 }

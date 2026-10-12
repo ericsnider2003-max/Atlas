@@ -1,6 +1,6 @@
 //! The vault and who is who: first run, the vault, handing over, the recovery
 //! key, accounts, profiles, codes, access and after-me.
-//! 
+//!
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
@@ -20,11 +20,18 @@ fn firstrun_found(cfg: &Config, plat: &dyn Platform) -> atlas::firstrun::Found {
         }
     }
     let monitors = plat.monitors().map(|m| m.len()).unwrap_or(1);
-    let models_dir = std::path::Path::new(&cfg.tools.as_ref().map(|t| t.models.dir.clone()).unwrap_or_default()).to_path_buf();
-    let missing_tools: Vec<String> = atlas::infer::whats_missing(&models_dir, &atlas::infer::Kind::all())
-        .into_iter()
-        .map(|(k, _)| k.file().to_string())
-        .collect();
+    let models_dir = std::path::Path::new(
+        &cfg.tools
+            .as_ref()
+            .map(|t| t.models.dir.clone())
+            .unwrap_or_default(),
+    )
+    .to_path_buf();
+    let missing_tools: Vec<String> =
+        atlas::infer::whats_missing(&models_dir, &atlas::infer::Kind::all())
+            .into_iter()
+            .map(|(k, _)| k.file().to_string())
+            .collect();
     atlas::firstrun::Found {
         apps,
         missing_apps,
@@ -106,7 +113,11 @@ pub(super) fn run_firstrun(cfg: &Config, plat: &dyn Platform) {
                 let skipped = atlas::firstrun::is_skip(&line);
                 fr.record(atlas::firstrun::Step::Voice, &line, skipped);
             }
-            Move::Ask { step, question, examples } => {
+            Move::Ask {
+                step,
+                question,
+                examples,
+            } => {
                 println!("{question} ({})", examples.join(", "));
                 let mut line = String::new();
                 io::stdin().read_line(&mut line).ok();
@@ -282,9 +293,25 @@ pub(super) fn run_vault(args: &[String]) {
                         println!("Which kind? envelope, split <pieces> <needed>, person, or keyfile — then where or who.");
                         return;
                     };
-                    let skip = if matches!(route, atlas::recovery::Route::SplitBetweenPeople { .. }) { 3 } else { 1 };
-                    let with = rest.iter().skip(skip).cloned().collect::<Vec<_>>().join(" ");
-                    let s = atlas::recovery::Setup { route, with, set_up_at: now, last_checked: None, used_at: None };
+                    let skip = if matches!(route, atlas::recovery::Route::SplitBetweenPeople { .. })
+                    {
+                        3
+                    } else {
+                        1
+                    };
+                    let with = rest
+                        .iter()
+                        .skip(skip)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let s = atlas::recovery::Setup {
+                        route,
+                        with,
+                        set_up_at: now,
+                        last_checked: None,
+                        used_at: None,
+                    };
                     println!("Kept. {}", atlas::recovery::described(&s));
                     println!("{}", atlas::recovery::TEST_IT);
                     routes.push(s);
@@ -303,7 +330,10 @@ pub(super) fn run_vault(args: &[String]) {
                 }
                 _ => {
                     if routes.is_empty() {
-                        println!("No ways back in are recorded yet. {}", atlas::recovery::NOT_ATLAS);
+                        println!(
+                            "No ways back in are recorded yet. {}",
+                            atlas::recovery::NOT_ATLAS
+                        );
                     }
                     for (i, r) in routes.iter().enumerate() {
                         println!("{}. {}", i + 1, atlas::recovery::described(r));
@@ -391,7 +421,9 @@ pub(super) fn run_vault(args: &[String]) {
                 return;
             };
             if new != again {
-                println!("Those two didn't match. Nothing changed, and the recovery key still works.");
+                println!(
+                    "Those two didn't match. Nothing changed, and the recovery key still works."
+                );
                 vault.lock();
                 return;
             }
@@ -508,7 +540,10 @@ pub(super) fn run_handover(args: &[String]) {
             // Checked, counted, saved and locked again in
             // `handover::take_back_with` -- the same sequence "I'm back" and
             // the hub's Accounts page go through.
-            println!("{}", atlas::handover::take_back_with(&state, &mut vault, &phrase, &cfg, now));
+            println!(
+                "{}",
+                atlas::handover::take_back_with(&state, &mut vault, &phrase, &cfg, now)
+            );
         }
         Some(other) => {
             println!("I don't know `atlas handover {other}`.");
@@ -580,7 +615,11 @@ pub(super) fn run_accounts(args: &[String]) {
                     "  {}  — {}{}",
                     a.site,
                     a.second_factor.plain(),
-                    if a.has_recovery_codes { ", recovery codes saved" } else { "" }
+                    if a.has_recovery_codes {
+                        ", recovery codes saved"
+                    } else {
+                        ""
+                    }
                 );
             }
         }
@@ -617,13 +656,20 @@ pub(super) fn run_accounts(args: &[String]) {
         // time you asked. A missing CLI verb producing a wrong answer.
         Some("codes") => {
             let rest: Vec<&String> = args[1..].iter().collect();
-            let has = !rest.last().map(|s| s.as_str()) .is_some_and(|s| {
+            let has = !rest.last().map(|s| s.as_str()).is_some_and(|s| {
                 matches!(s.to_lowercase().as_str(), "no" | "none" | "false" | "off")
             });
             let site: String = if has {
-                rest.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ")
+                rest.iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ")
             } else {
-                rest[..rest.len() - 1].iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ")
+                rest[..rest.len() - 1]
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ")
             };
             if site.trim().is_empty() {
                 println!("Which site? `atlas accounts codes github.com`");
@@ -673,24 +719,39 @@ pub(super) fn run_profiles(args: &[String]) {
                     atlas::profiles::Role::Owner => "owner",
                     atlas::profiles::Role::Guest => "guest",
                 };
-                let active = if profiles.active.as_deref() == Some(&p.id) { " (active)" } else { "" };
+                let active = if profiles.active.as_deref() == Some(&p.id) {
+                    " (active)"
+                } else {
+                    ""
+                };
                 println!("  {} — {role}{active}", p.name);
             }
         }
         Some("add") => {
             let guest = args.iter().any(|a| a == "--guest");
-            let name: String =
-                args[1..].iter().filter(|a| a.as_str() != "--guest").cloned().collect::<Vec<_>>().join(" ");
+            let name: String = args[1..]
+                .iter()
+                .filter(|a| a.as_str() != "--guest")
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" ");
             if name.trim().is_empty() {
                 println!("atlas profiles add <name> [--guest]");
                 return;
             }
-            let role =
-                if guest { atlas::profiles::Role::Guest } else { atlas::profiles::Role::Owner };
+            let role = if guest {
+                atlas::profiles::Role::Guest
+            } else {
+                atlas::profiles::Role::Owner
+            };
             match profiles.add(name.trim(), role) {
                 Ok(p) => {
                     keep(profiles.save(&root), "the profiles");
-                    println!("Added {} as {}.", p.name, if guest { "a guest" } else { "an owner" });
+                    println!(
+                        "Added {} as {}.",
+                        p.name,
+                        if guest { "a guest" } else { "an owner" }
+                    );
                 }
                 Err(e) => println!("Couldn't add that: {e}"),
             }
@@ -703,8 +764,10 @@ pub(super) fn run_profiles(args: &[String]) {
             };
             match profiles.switch(&target, atlas::store::now()) {
                 Ok(switch) => {
-                    let display_name =
-                        profiles.get(&target).map(|p| p.name.clone()).unwrap_or(target);
+                    let display_name = profiles
+                        .get(&target)
+                        .map(|p| p.name.clone())
+                        .unwrap_or(target);
                     if !keep(profiles.save(&root), "the profiles") {
                         println!("You are still {display_name} for this session only.");
                         return;
@@ -757,7 +820,11 @@ pub(super) fn run_codes(cfg: &Config, args: &[String]) {
     use atlas::codes::{self, Set};
 
     let store = atlas::roots::store();
-    let ccfg = cfg.tools.as_ref().map(|t| t.codes.clone()).unwrap_or_default();
+    let ccfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.codes.clone())
+        .unwrap_or_default();
     let mut sets: Vec<Set> = store.load("codes");
     let book: atlas::accounts::Book = store.load(atlas::accounts::FILE);
     let now = atlas::store::now();
@@ -775,8 +842,16 @@ pub(super) fn run_codes(cfg: &Config, args: &[String]) {
                         s.site,
                         s.left(),
                         s.issued,
-                        if s.in_hand { ", printed and on you" } else { ", NOT in hand" },
-                        if s.running_low(&ccfg) { " -- running low" } else { "" }
+                        if s.in_hand {
+                            ", printed and on you"
+                        } else {
+                            ", NOT in hand"
+                        },
+                        if s.running_low(&ccfg) {
+                            " -- running low"
+                        } else {
+                            ""
+                        }
                     );
                     if let Some(w) = &s.kept_where {
                         println!("      kept: {w}");
@@ -789,7 +864,10 @@ pub(super) fn run_codes(cfg: &Config, args: &[String]) {
                 codes::logins_available(&sets)
             );
             println!();
-            println!("{}", codes::before_you_go(&sets, &account_names(&book), &ccfg));
+            println!(
+                "{}",
+                codes::before_you_go(&sets, &account_names(&book), &ccfg)
+            );
             println!();
             println!("atlas codes have <site> --issued 10 [--where \"the blue folder\"]");
             println!("atlas codes in-hand <site>        you've printed them and they're on you");
@@ -803,7 +881,9 @@ pub(super) fn run_codes(cfg: &Config, args: &[String]) {
                 println!("Which site? atlas codes have google --issued 10");
                 return;
             };
-            let issued = flag("--issued").and_then(|n| n.parse::<u32>().ok()).unwrap_or(10);
+            let issued = flag("--issued")
+                .and_then(|n| n.parse::<u32>().ok())
+                .unwrap_or(10);
             let kept = flag("--where").map(|s| s.to_string());
             sets.retain(|s| !s.site.eq_ignore_ascii_case(&site));
             sets.push(Set {
@@ -823,16 +903,17 @@ pub(super) fn run_codes(cfg: &Config, args: &[String]) {
             println!("until then they don't count towards what you could use from a hotel.");
         }
         Some("in-hand") => match site_arg() {
-            Some(site) => {
-                match sets.iter_mut().find(|s| s.site.eq_ignore_ascii_case(&site)) {
-                    Some(s) => {
-                        s.in_hand = true;
-                        keep(store.save("codes", &sets), "store");
-                        println!("{site}: printed and on you. {} logins.", codes::logins_available(&sets));
-                    }
-                    None => println!("I haven't got a set recorded for {site}."),
+            Some(site) => match sets.iter_mut().find(|s| s.site.eq_ignore_ascii_case(&site)) {
+                Some(s) => {
+                    s.in_hand = true;
+                    keep(store.save("codes", &sets), "store");
+                    println!(
+                        "{site}: printed and on you. {} logins.",
+                        codes::logins_available(&sets)
+                    );
                 }
-            }
+                None => println!("I haven't got a set recorded for {site}."),
+            },
             None => println!("Which site? atlas codes in-hand google"),
         },
         Some("used") => match site_arg() {
@@ -860,7 +941,9 @@ pub(super) fn run_codes(cfg: &Config, args: &[String]) {
                     println!("  {url}");
                     println!("  {where_to_look}");
                 }
-                None => println!("I don't know where {site} hides them -- left out rather than guessed."),
+                None => println!(
+                    "I don't know where {site} hides them -- left out rather than guessed."
+                ),
             },
             None => println!("Which site? atlas codes where google"),
         },
@@ -885,7 +968,11 @@ pub(super) fn run_access(cfg: &Config, args: &[String]) {
     let mut access = Access::load(&store);
     let now = atlas::store::now();
     let flag = |name: &str| atlas::cli::flag_value(args, name);
-    let scfg = cfg.tools.as_ref().map(|t| t.signin.clone()).unwrap_or_default();
+    let scfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.signin.clone())
+        .unwrap_or_default();
 
     let say_list = |a: &Access| {
         let rows = signin::hub_rows(a, now);
@@ -893,7 +980,10 @@ pub(super) fn run_access(cfg: &Config, args: &[String]) {
             println!("Nothing. I can't sign you into anything.");
         } else {
             for (label, detail, domain, needs_attention) in rows {
-                println!("  {}{label} — {detail}", if needs_attention { "! " } else { "  " });
+                println!(
+                    "  {}{label} — {detail}",
+                    if needs_attention { "! " } else { "  " }
+                );
                 println!("      {domain}");
             }
         }
@@ -920,7 +1010,9 @@ pub(super) fn run_access(cfg: &Config, args: &[String]) {
         }
         Some("give") => {
             let Some(site) = args.get(1).filter(|s| !s.starts_with("--")).cloned() else {
-                println!("Which site? atlas access give mybank.com --as eric --entry \"bank login\"");
+                println!(
+                    "Which site? atlas access give mybank.com --as eric --entry \"bank login\""
+                );
                 return;
             };
             let Some(entry) = flag("--entry").map(|s| s.to_string()) else {
@@ -965,7 +1057,11 @@ pub(super) fn run_access(cfg: &Config, args: &[String]) {
                     Allowed::Nothing => "nothing",
                 },
                 signin::registered_domain(&site),
-                if account.is_empty() { String::new() } else { format!(" as {account}") }
+                if account.is_empty() {
+                    String::new()
+                } else {
+                    format!(" as {account}")
+                }
             );
             println!("Take it back any time on the Access page, or `atlas access take {site}`.");
             println!();
@@ -998,11 +1094,14 @@ pub(super) fn run_access(cfg: &Config, args: &[String]) {
                 keep(access.save(&store), "store");
                 println!("Pointed at \"{entry}\". I'll stop saying the password looks changed.");
             } else {
-                println!("I haven't got a grant for {site}{}.", if account.is_empty() {
-                    String::new()
-                } else {
-                    format!(" as {account}")
-                });
+                println!(
+                    "I haven't got a grant for {site}{}.",
+                    if account.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" as {account}")
+                    }
+                );
             }
         }
         Some(other) => println!("I don't know `atlas access {other}`. Try `atlas access list`."),
@@ -1023,8 +1122,11 @@ pub(super) fn run_afterme(cfg: &Config, args: &[String]) {
     use atlas::afterme::{self, Arrangement, Instruction, When};
 
     let store = atlas::roots::store();
-    let acfg: afterme::AfterMeConfig =
-        cfg.tools.as_ref().map(|t| t.after_me.clone()).unwrap_or_default();
+    let acfg: afterme::AfterMeConfig = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.after_me.clone())
+        .unwrap_or_default();
     let mut a: Arrangement = store.load(afterme::RECORD);
     let now = atlas::store::now();
     let flag = |name: &str| atlas::cli::flag_value(args, name);
@@ -1079,12 +1181,14 @@ pub(super) fn run_afterme(cfg: &Config, args: &[String]) {
                 println!("Told who? atlas afterme told Sam --location \"the safe in the study\"");
                 return;
             };
-            let location = flag("--location").map(|s| s.to_string()).unwrap_or_else(|| {
-                // Their words, not yours: what this person is given is a
-                // place they could find, and `after_me.location` is the one
-                // you already wrote down.
-                acfg.location.clone()
-            });
+            let location = flag("--location")
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| {
+                    // Their words, not yours: what this person is given is a
+                    // place they could find, and `after_me.location` is the one
+                    // you already wrote down.
+                    acfg.location.clone()
+                });
             if location.trim().is_empty() {
                 println!("Where is it, in words they'd understand?");
                 println!("  atlas afterme told {person} --location \"the safe in the study\"");

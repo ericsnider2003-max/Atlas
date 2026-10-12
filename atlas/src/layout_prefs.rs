@@ -84,10 +84,26 @@ impl Layout {
         Layout {
             name: "Home".into(),
             blocks: vec![
-                Placed { block: Block::Now, size: Size::Full, about: None },
-                Placed { block: Block::Numbers, size: Size::Full, about: None },
-                Placed { block: Block::Board, size: Size::Full, about: None },
-                Placed { block: Block::Messages, size: Size::Half, about: None },
+                Placed {
+                    block: Block::Now,
+                    size: Size::Full,
+                    about: None,
+                },
+                Placed {
+                    block: Block::Numbers,
+                    size: Size::Full,
+                    about: None,
+                },
+                Placed {
+                    block: Block::Board,
+                    size: Size::Full,
+                    about: None,
+                },
+                Placed {
+                    block: Block::Messages,
+                    size: Size::Half,
+                    about: None,
+                },
             ],
         }
     }
@@ -120,7 +136,9 @@ pub struct LayoutConfig {
 
 impl Default for LayoutConfig {
     fn default() -> Self {
-        LayoutConfig { current: "Home".into() }
+        LayoutConfig {
+            current: "Home".into(),
+        }
     }
 }
 

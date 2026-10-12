@@ -96,7 +96,10 @@ impl Scheduler {
             job.interrupted = true;
             job.last_result = Some("Running; outcome is not confirmed yet.".into());
         }
-        if let Err(e) = self.save(store) { *self = before; return Err(e); }
+        if let Err(e) = self.save(store) {
+            *self = before;
+            return Err(e);
+        }
         Ok(())
     }
 
@@ -110,7 +113,13 @@ impl Scheduler {
 
     /// Recurring on a cron expression. Refused, with the reason, if the
     /// expression does not parse or can never fire.
-    pub fn on_cron(&mut self, command: &str, expr: &str, now: u64, zone: &crate::tz::Zone) -> std::result::Result<u64, String> {
+    pub fn on_cron(
+        &mut self,
+        command: &str,
+        expr: &str,
+        now: u64,
+        zone: &crate::tz::Zone,
+    ) -> std::result::Result<u64, String> {
         crate::cronspec::Cron::parse(expr)?;
         let on = with_zone("cron", zone, expr);
         let first = next_on(&on, now).ok_or_else(|| format!("'{expr}' never fires"))?;
@@ -123,7 +132,13 @@ impl Scheduler {
 
     /// Recurring on an RFC 5545 rule, first run at `first`, on `zone`'s wall
     /// clock.
-    pub fn on_rule(&mut self, command: &str, rule: &crate::recur::Rule, first: u64, zone: &crate::tz::Zone) -> u64 {
+    pub fn on_rule(
+        &mut self,
+        command: &str,
+        rule: &crate::recur::Rule,
+        first: u64,
+        zone: &crate::tz::Zone,
+    ) -> u64 {
         let id = self.push(command, first, None);
         if let Some(j) = self.jobs.last_mut() {
             j.on = Some(with_zone("rule", zone, &rule.to_rrule()));
@@ -176,7 +191,9 @@ impl Scheduler {
             j.interrupted = false;
             j.runs += 1;
             j.last_result = Some(result.to_string());
-            if cancelled { return; }
+            if cancelled {
+                return;
+            }
             j.fails_in_a_row = if ok { 0 } else { j.fails_in_a_row + 1 };
             let keep_going = ok || j.fails_in_a_row < FAILS_BEFORE_STOPPING;
             let next_on = j.on.as_deref().and_then(|on| next_on(on, j.due.max(t)));
@@ -215,7 +232,9 @@ impl Scheduler {
         match self.jobs.iter_mut().find(|j| j.id == id) {
             Some(j) => {
                 j.state = JobState::Cancelled;
-                if !j.in_flight { j.interrupted = false; }
+                if !j.in_flight {
+                    j.interrupted = false;
+                }
                 true
             }
             None => false,
@@ -225,14 +244,20 @@ impl Scheduler {
     pub fn active(&self) -> Vec<&Job> {
         self.jobs
             .iter()
-            .filter(|j| j.in_flight || j.interrupted || matches!(j.state, JobState::Pending | JobState::AwaitingApproval))
+            .filter(|j| {
+                j.in_flight
+                    || j.interrupted
+                    || matches!(j.state, JobState::Pending | JobState::AwaitingApproval)
+            })
             .collect()
     }
 
     /// Drop finished jobs so the file doesn't grow forever.
     pub fn prune(&mut self) {
         self.jobs.retain(|j| {
-            j.in_flight || j.interrupted || matches!(j.state, JobState::Pending | JobState::AwaitingApproval)
+            j.in_flight
+                || j.interrupted
+                || matches!(j.state, JobState::Pending | JobState::AwaitingApproval)
                 || j.every.is_some()
                 || j.on.is_some()
         });
@@ -266,8 +291,12 @@ fn next_on(on: &str, after: u64) -> Option<u64> {
     };
     let local_after = zone.to_local(after as i64);
     let local_next = match kind {
-        "cron" => crate::cronspec::Cron::parse(body).ok()?.next_after(local_after)?,
-        "rule" => crate::recur::Rule::parse(body).ok()?.first_at_or_after(local_after + 1)?,
+        "cron" => crate::cronspec::Cron::parse(body)
+            .ok()?
+            .next_after(local_after)?,
+        "rule" => crate::recur::Rule::parse(body)
+            .ok()?
+            .first_at_or_after(local_after + 1)?,
         _ => return None,
     };
     let utc = zone.to_utc(local_next);
@@ -281,7 +310,11 @@ mod execution_fence_tests {
     use super::*;
     fn store() -> Store {
         static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        Store::new(std::env::temp_dir().join(format!("atlas-scheduled-fence-{}-{}", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::Relaxed))))
+        Store::new(std::env::temp_dir().join(format!(
+            "atlas-scheduled-fence-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        )))
     }
     #[test]
     fn interrupted_recurring_run_is_held_and_never_replayed() {
@@ -296,7 +329,10 @@ mod execution_fence_tests {
         restarted.prune();
         assert_eq!(restarted.jobs.len(), 1);
         let wire: serde_json::Value = serde_json::to_value(&scheduler).unwrap();
-        assert_eq!(wire["jobs"][0]["state"], "failed", "legacy releases must not run it again");
+        assert_eq!(
+            wire["jobs"][0]["state"], "failed",
+            "legacy releases must not run it again"
+        );
     }
     #[test]
     fn failed_start_save_does_not_grant_execution() {

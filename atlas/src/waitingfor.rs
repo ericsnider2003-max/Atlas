@@ -38,7 +38,11 @@ pub struct WaitingConfig {
 
 impl Default for WaitingConfig {
     fn default() -> Self {
-        WaitingConfig { enabled: true, owed_after_days: 3, look_back_days: 30 }
+        WaitingConfig {
+            enabled: true,
+            owed_after_days: 3,
+            look_back_days: 30,
+        }
     }
 }
 
@@ -102,19 +106,53 @@ impl Taught {
 
 /// Phrasings that ask something of the other side.
 const ASKS: &[&str] = &[
-    "can you", "could you", "would you", "will you", "please send", "please let me know", "let me know",
-    "please confirm", "can i get", "could i get", "are you able to", "please share", "please review",
-    "any update", "do you have", "when can you", "waiting to hear", "get back to me",
+    "can you",
+    "could you",
+    "would you",
+    "will you",
+    "please send",
+    "please let me know",
+    "let me know",
+    "please confirm",
+    "can i get",
+    "could i get",
+    "are you able to",
+    "please share",
+    "please review",
+    "any update",
+    "do you have",
+    "when can you",
+    "waiting to hear",
+    "get back to me",
 ];
 
 /// Phrasings that commit you to something.
 const PROMISES: &[&str] = &[
-    "i'll", "i will", "i'm going to", "i am going to", "will send", "will get back", "let me check",
-    "i'll get back", "i can send", "i'll follow up", "will follow up", "i'll have it", "you'll have it",
+    "i'll",
+    "i will",
+    "i'm going to",
+    "i am going to",
+    "will send",
+    "will get back",
+    "let me check",
+    "i'll get back",
+    "i can send",
+    "i'll follow up",
+    "will follow up",
+    "i'll have it",
+    "you'll have it",
 ];
 
 /// Where a sentence says it isn't a commitment after all.
-const HEDGES: &[&str] = &["if you", "i'll be", "i will be", "i'll need", "i'll let you know if", "i'd", "i'll leave"];
+const HEDGES: &[&str] = &[
+    "if you",
+    "i'll be",
+    "i will be",
+    "i'll need",
+    "i'll let you know if",
+    "i'd",
+    "i'll leave",
+];
 
 fn sentences(text: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -164,7 +202,10 @@ fn own_words(excerpt: &str) -> &str {
 }
 
 /// The first request and the first promise in a letter you wrote.
-pub fn read_letter(l: &Letter, taught: &Taught) -> (Option<(String, String)>, Option<(String, String)>) {
+pub fn read_letter(
+    l: &Letter,
+    taught: &Taught,
+) -> (Option<(String, String)>, Option<(String, String)>) {
     if !l.mine {
         return (None, None);
     }
@@ -173,14 +214,25 @@ pub fn read_letter(l: &Letter, taught: &Taught) -> (Option<(String, String)>, Op
     for s in sentences(own_words(&l.excerpt)) {
         let low = s.to_lowercase().replace('\u{2019}', "'");
         if ask.is_none() {
-            if let Some(cue) = ASKS.iter().find(|c| low.contains(**c)).filter(|c| taught.trusts(c)) {
+            if let Some(cue) = ASKS
+                .iter()
+                .find(|c| low.contains(**c))
+                .filter(|c| taught.trusts(c))
+            {
                 ask = Some((s.clone(), cue.to_string()));
-            } else if low.ends_with('?') && low.split_whitespace().count() >= 4 && taught.trusts("?") {
+            } else if low.ends_with('?')
+                && low.split_whitespace().count() >= 4
+                && taught.trusts("?")
+            {
                 ask = Some((s.clone(), "?".to_string()));
             }
         }
         if promise.is_none() && !HEDGES.iter().any(|h| low.contains(h)) {
-            if let Some(cue) = PROMISES.iter().find(|c| low.contains(**c)).filter(|c| taught.trusts(c)) {
+            if let Some(cue) = PROMISES
+                .iter()
+                .find(|c| low.contains(**c))
+                .filter(|c| taught.trusts(c))
+            {
                 promise = Some((s.clone(), cue.to_string()));
             }
         }
@@ -215,13 +267,27 @@ fn working_days_after(from: u64, days: u64) -> u64 {
 /// answered in the conversation since, and promises you haven't closed.
 /// `offset` is your time zone's offset in seconds at `now`, so "Friday"
 /// in a promise is your Friday.
-pub fn open(book: &MailBook, taught: &Taught, cfg: &WaitingConfig, now: u64, offset: i64) -> Vec<Waiting> {
+pub fn open(
+    book: &MailBook,
+    taught: &Taught,
+    cfg: &WaitingConfig,
+    now: u64,
+    offset: i64,
+) -> Vec<Waiting> {
     let from = now.saturating_sub(cfg.look_back_days * 86_400);
     let mut out = Vec::new();
-    for l in book.letters.iter().filter(|l| l.mine && l.at >= from && !taught.closed.contains(&l.id)) {
+    for l in book
+        .letters
+        .iter()
+        .filter(|l| l.mine && l.at >= from && !taught.closed.contains(&l.id))
+    {
         let (ask, promise) = read_letter(l, taught);
         let thread = l.thread();
-        let later: Vec<&Letter> = book.conversation(&thread).into_iter().filter(|x| x.at > l.at).collect();
+        let later: Vec<&Letter> = book
+            .conversation(&thread)
+            .into_iter()
+            .filter(|x| x.at > l.at)
+            .collect();
         let with = l.others().into_iter().next().unwrap_or_default();
         if let Some((said, cue)) = ask {
             // Answered once anyone other than you has written in the
@@ -289,12 +355,27 @@ pub fn say(items: &[Waiting], now: u64) -> String {
         return "Nothing outstanding in your recent mail: nobody owes you a reply that I can see, and no promise of yours is open.".into();
     }
     let mut out = Vec::new();
-    let owed: Vec<(usize, &Waiting)> = items.iter().enumerate().filter(|(_, w)| w.side == Side::Owed).collect();
-    let promised: Vec<(usize, &Waiting)> = items.iter().enumerate().filter(|(_, w)| w.side == Side::Promised).collect();
+    let owed: Vec<(usize, &Waiting)> = items
+        .iter()
+        .enumerate()
+        .filter(|(_, w)| w.side == Side::Owed)
+        .collect();
+    let promised: Vec<(usize, &Waiting)> = items
+        .iter()
+        .enumerate()
+        .filter(|(_, w)| w.side == Side::Promised)
+        .collect();
     if !owed.is_empty() {
         out.push("Waiting on:".to_string());
         for (i, w) in owed {
-            out.push(format!("  {}. {} -- \"{}\" ({}, asked {})", i + 1, w.with, w.subject, w.said, days_ago(w.since, now)));
+            out.push(format!(
+                "  {}. {} -- \"{}\" ({}, asked {})",
+                i + 1,
+                w.with,
+                w.subject,
+                w.said,
+                days_ago(w.since, now)
+            ));
         }
     }
     if !promised.is_empty() {
@@ -302,10 +383,25 @@ pub fn say(items: &[Waiting], now: u64) -> String {
         for (i, w) in promised {
             let due = match w.due {
                 Some(d) if d < now => " -- overdue".to_string(),
-                Some(d) => format!(" -- due in {} day{}", (d - now).div_ceil(86_400), if (d - now).div_ceil(86_400) == 1 { "" } else { "s" }),
+                Some(d) => format!(
+                    " -- due in {} day{}",
+                    (d - now).div_ceil(86_400),
+                    if (d - now).div_ceil(86_400) == 1 {
+                        ""
+                    } else {
+                        "s"
+                    }
+                ),
                 None => String::new(),
             };
-            out.push(format!("  {}. {}: \"{}\" (to {}, {}){due}", i + 1, w.subject, w.said, w.with, days_ago(w.since, now)));
+            out.push(format!(
+                "  {}. {}: \"{}\" (to {}, {}){due}",
+                i + 1,
+                w.subject,
+                w.said,
+                w.with,
+                days_ago(w.since, now)
+            ));
         }
     }
     out.push("Say \"done 2\" when one is settled, or \"not a promise 3\" if I misread it -- I learn from that.".into());

@@ -1,7 +1,5 @@
 use atlas::audio::{Device, Kind};
-use atlas::hearing::{
-    calibration_args, mean_volume, short, Ear, Hearing, HearingConfig, Where,
-};
+use atlas::hearing::{calibration_args, mean_volume, short, Ear, Hearing, HearingConfig, Where};
 
 fn cfg() -> HearingConfig {
     HearingConfig::default()
@@ -29,10 +27,18 @@ fn measured() -> Hearing {
 }
 
 fn at_desk() -> Where {
-    Where { at_desk: true, headset_connected: true, ..Default::default() }
+    Where {
+        at_desk: true,
+        headset_connected: true,
+        ..Default::default()
+    }
 }
 fn away() -> Where {
-    Where { at_desk: false, headset_connected: true, ..Default::default() }
+    Where {
+        at_desk: false,
+        headset_connected: true,
+        ..Default::default()
+    }
 }
 
 // ================= it measures rather than guessing =================
@@ -90,7 +96,10 @@ fn a_flicker_in_presence_does_not_switch_ears_mid_sentence() {
     let c = h.decide(&away(), &cfg(), 5);
     assert!(matches!(c.ear, Ear::Desk(_)), "must not move on one frame");
     let back = h.decide(&at_desk(), &cfg(), 8);
-    assert!(matches!(back.ear, Ear::Desk(_)), "and the flicker resolves to no change");
+    assert!(
+        matches!(back.ear, Ear::Desk(_)),
+        "and the flicker resolves to no change"
+    );
 }
 
 #[test]
@@ -108,12 +117,18 @@ fn a_marginally_better_desk_mic_does_not_steal_the_ear_but_a_clearly_better_one_
         h.record_level("Microphone (Blue Yeti)", other_db, 100);
         h
     }
-    let desk = Where { at_desk: true, ..Default::default() };
+    let desk = Where {
+        at_desk: true,
+        ..Default::default()
+    };
 
     // Settle onto the webcam first (it is the louder of the two here).
     let mut h = two_desks(-20.0, -30.0);
     let first = h.decide(&desk, &cfg(), 0);
-    assert_eq!(first.ear, Ear::Desk("Microphone (HD Pro Webcam C920)".into()));
+    assert_eq!(
+        first.ear,
+        Ear::Desk("Microphone (HD Pro Webcam C920)".into())
+    );
 
     // The Yeti now measures a hair better -- inside the 0.15 margin. Even
     // after the settle time, Atlas stays on the webcam.
@@ -156,7 +171,12 @@ fn losing_the_current_microphone_switches_immediately() {
     // The lid is read from Windows now, and a shut lid takes the laptop mic
     // out before this is asked (`hearing::pick_microphone`; tested in
     // the_system_recovers_by_itself::at_the_desk_the_laptop_mic_beats_the_airpods_mic).
-    assert_eq!(c.ear, Ear::Desk("Microphone Array (Realtek(R) Audio)".into()), "got {:?}", c.ear);
+    assert_eq!(
+        c.ear,
+        Ear::Desk("Microphone Array (Realtek(R) Audio)".into()),
+        "got {:?}",
+        c.ear
+    );
     assert!(!c.costs_quality);
 }
 
@@ -168,14 +188,23 @@ fn a_closed_laptop_with_no_headset_and_no_webcam_says_so() {
     // working microphone read -51.6 dB, the old rule answered "no microphone
     // can hear you", and Atlas recorded from a device called "nothing".
     let mut h = Hearing::default();
-    h.observe_devices(&[Device::new("Microphone Array (Realtek(R) Audio)", Kind::Input)]);
+    h.observe_devices(&[Device::new(
+        "Microphone Array (Realtek(R) Audio)",
+        Kind::Input,
+    )]);
     h.record_level("Microphone Array (Realtek(R) Audio)", -58.0, 0);
     let c = h.decide(&at_desk(), &cfg(), 10);
-    assert_eq!(c.ear, Ear::Desk("Microphone Array (Realtek(R) Audio)".into()));
+    assert_eq!(
+        c.ear,
+        Ear::Desk("Microphone Array (Realtek(R) Audio)".into())
+    );
     assert!(c.why.contains("faintly"), "got: {}", c.why);
 
     let mut silent = Hearing::default();
-    silent.observe_devices(&[Device::new("Microphone Array (Realtek(R) Audio)", Kind::Input)]);
+    silent.observe_devices(&[Device::new(
+        "Microphone Array (Realtek(R) Audio)",
+        Kind::Input,
+    )]);
     silent.record_level("Microphone Array (Realtek(R) Audio)", -91.0, 0);
     let c = silent.decide(&at_desk(), &cfg(), 10);
     assert_eq!(c.ear, Ear::Deaf);
@@ -185,7 +214,11 @@ fn a_closed_laptop_with_no_headset_and_no_webcam_says_so() {
 #[test]
 fn away_with_nothing_to_hear_you_points_at_your_phone() {
     let mut h = measured();
-    let no_headset = Where { at_desk: false, headset_connected: false, ..Default::default() };
+    let no_headset = Where {
+        at_desk: false,
+        headset_connected: false,
+        ..Default::default()
+    };
     let c = h.decide(&no_headset, &cfg(), 10);
     assert_eq!(c.ear, Ear::Deaf);
     assert!(c.why.contains("phone"), "got: {}", c.why);
@@ -194,7 +227,10 @@ fn away_with_nothing_to_hear_you_points_at_your_phone() {
 #[test]
 fn talking_from_your_phone_makes_the_phone_the_microphone() {
     let mut h = measured();
-    let on_phone = Where { phone_active: true, ..away() };
+    let on_phone = Where {
+        phone_active: true,
+        ..away()
+    };
     let c = h.decide(&on_phone, &cfg(), 10);
     assert_eq!(c.ear, Ear::Phone);
     assert!(!c.costs_quality);
@@ -204,7 +240,12 @@ fn talking_from_your_phone_makes_the_phone_the_microphone() {
 fn a_covered_webcam_does_not_quietly_move_atlas_to_the_headset() {
     // Presence unknown must not be read as "he left".
     let mut h = measured();
-    let blind = Where { at_desk: false, presence_unknown: true, headset_connected: true, ..Default::default() };
+    let blind = Where {
+        at_desk: false,
+        presence_unknown: true,
+        headset_connected: true,
+        ..Default::default()
+    };
     let c = h.decide(&blind, &cfg(), 10);
     assert!(matches!(c.ear, Ear::Desk(_)), "got {:?}", c.ear);
 }
@@ -215,11 +256,21 @@ fn a_covered_webcam_does_not_quietly_move_atlas_to_the_headset() {
 fn a_microphone_that_keeps_producing_nonsense_loses_ground() {
     let mut h = measured();
     let webcam = "Microphone (HD Pro Webcam C920)";
-    let before = h.candidates.iter().find(|c| c.name == webcam).unwrap().score(cfg().floor_db);
+    let before = h
+        .candidates
+        .iter()
+        .find(|c| c.name == webcam)
+        .unwrap()
+        .score(cfg().floor_db);
     for _ in 0..8 {
         h.record_turn(&Ear::Desk(webcam.into()), false);
     }
-    let after = h.candidates.iter().find(|c| c.name == webcam).unwrap().score(cfg().floor_db);
+    let after = h
+        .candidates
+        .iter()
+        .find(|c| c.name == webcam)
+        .unwrap()
+        .score(cfg().floor_db);
     assert!(after < before, "repeated failures should count against it");
 }
 
@@ -248,7 +299,10 @@ fn calibration_is_needed_for_a_device_never_measured_and_periodically_after() {
     assert!(h.needs_calibration(&cfg(), 0), "nothing measured yet");
     let m = measured();
     assert!(!m.needs_calibration(&cfg(), 200));
-    assert!(m.needs_calibration(&cfg(), 100 + 7 * 3600), "rooms and setups change");
+    assert!(
+        m.needs_calibration(&cfg(), 100 + 7 * 3600),
+        "rooms and setups change"
+    );
 }
 
 // ================= the measurement itself =================
@@ -267,14 +321,20 @@ fn the_listening_test_names_the_device_exactly() {
     let a = calibration_args("Microphone (HD Pro Webcam C920)", 2);
     assert!(a.contains(&"audio=Microphone (HD Pro Webcam C920)".to_string()));
     assert!(a.contains(&"volumedetect".to_string()));
-    assert!(a.contains(&"null".to_string()), "measures without writing a file");
+    assert!(
+        a.contains(&"null".to_string()),
+        "measures without writing a file"
+    );
 }
 
 #[test]
 fn devices_are_named_the_way_you_would_say_them() {
     assert_eq!(short("Microphone (HD Pro Webcam C920)"), "the webcam");
     assert_eq!(short("Headset (AirPods Pro Hands-Free)"), "your AirPods");
-    assert_eq!(short("Microphone Array (Realtek(R) Audio)"), "the laptop mic");
+    assert_eq!(
+        short("Microphone Array (Realtek(R) Audio)"),
+        "the laptop mic"
+    );
 }
 
 #[test]
@@ -290,7 +350,11 @@ fn what_atlas_learned_about_a_device_survives_it_staying_plugged_in() {
     let mut h = measured();
     h.record_turn(&Ear::Desk("Microphone (HD Pro Webcam C920)".into()), true);
     h.observe_devices(&your_setup());
-    let c = h.candidates.iter().find(|c| c.name.contains("Webcam")).unwrap();
+    let c = h
+        .candidates
+        .iter()
+        .find(|c| c.name.contains("Webcam"))
+        .unwrap();
     assert_eq!(c.good_turns, 1, "history is not reset by a device scan");
     assert_eq!(c.measured_db, Some(-22.0));
 }

@@ -59,7 +59,11 @@ fn a_money_question_that_says_statement_is_still_a_money_question() {
 #[test]
 fn a_tax_question_that_says_statement_is_still_a_tax_question() {
     // And the other direction, so the fix is not just "money always wins".
-    let w = weigh("what do the wash sale rules say about my statement", ABOUT_MAIL, &cfg());
+    let w = weigh(
+        "what do the wash sale rules say about my statement",
+        ABOUT_MAIL,
+        &cfg(),
+    );
     assert_eq!(w.settled(), Some("rules"), "{w:?}");
 
     let w = weigh("what does HMRC want from me this year", ABOUT_MAIL, &cfg());
@@ -99,7 +103,10 @@ fn one_word_each_is_a_question_rather_than_a_guess() {
     // It names the two that were actually close, not all three -- a question
     // offering every option is one you have to read twice.
     assert_eq!(asked.matches(" or ").count(), 1, "{asked}");
-    assert!(!asked.contains("chats"), "it offered a reading that was not in contention: {asked}");
+    assert!(
+        !asked.contains("chats"),
+        "it offered a reading that was not in contention: {asked}"
+    );
 }
 
 #[test]
@@ -121,7 +128,10 @@ fn the_question_reads_as_a_sentence_for_every_pair_it_could_offer() {
                 let q = which_did_you_mean(&w, set).expect("a close call asks");
                 assert_eq!(q, format!("Did you mean {} or {}?", a.plain, b.plain));
                 assert!(!q.contains("  "), "doubled space: {q}");
-                assert!(!q.contains(".?") && !q.contains("??"), "doubled punctuation: {q}");
+                assert!(
+                    !q.contains(".?") && !q.contains("??"),
+                    "doubled punctuation: {q}"
+                );
             }
         }
     }
@@ -159,11 +169,20 @@ fn the_threshold_is_read_rather_than_a_number_that_happens_to_match() {
     // Shipped: a tie is a question.
     assert_eq!(weigh(said, ABOUT_MAIL, &cfg()).clarity, Clarity::Close);
     // Told to act on anything at all, it acts.
-    let eager = WhichOneConfig { act_above_margin: 0.0, ..cfg() };
+    let eager = WhichOneConfig {
+        act_above_margin: 0.0,
+        ..cfg()
+    };
     assert_eq!(weigh(said, ABOUT_MAIL, &eager).clarity, Clarity::Clear);
     // Told to demand a lot, a normally-clear sentence becomes a question.
-    let fussy = WhichOneConfig { act_above_margin: 99.0, ..cfg() };
-    assert_eq!(weigh("how much did I spend last month", ABOUT_MAIL, &fussy).clarity, Clarity::Close);
+    let fussy = WhichOneConfig {
+        act_above_margin: 99.0,
+        ..cfg()
+    };
+    assert_eq!(
+        weigh("how much did I spend last month", ABOUT_MAIL, &fussy).clarity,
+        Clarity::Close
+    );
 }
 
 // ===================== substring matching, which was the other half =====
@@ -175,10 +194,17 @@ fn a_word_inside_a_longer_word_is_not_that_word() {
     assert_eq!(w.clarity, Clarity::Nothing, "upgrade matched grade: {w:?}");
 
     let w = weigh("the writing is colourless", ABOUT_A_POST, &cfg());
-    assert_eq!(w.clarity, Clarity::Nothing, "colourless matched colour: {w:?}");
+    assert_eq!(
+        w.clarity,
+        Clarity::Nothing,
+        "colourless matched colour: {w:?}"
+    );
 
     // And the real words still match.
-    assert_eq!(weigh("grade this footage", ABOUT_A_POST, &cfg()).settled(), Some("grading"));
+    assert_eq!(
+        weigh("grade this footage", ABOUT_A_POST, &cfg()).settled(),
+        Some("grading")
+    );
 }
 
 #[test]
@@ -196,7 +222,10 @@ fn a_phrase_counts_for_more_than_a_word() {
     // is two words of agreement, not one.
     let phrase = weigh("is the post strong enough", ABOUT_A_POST, &cfg());
     assert_eq!(phrase.settled(), Some("stance"));
-    assert!(phrase.margin >= 2.0, "a two-word phrase scored as one: {phrase:?}");
+    assert!(
+        phrase.margin >= 2.0,
+        "a two-word phrase scored as one: {phrase:?}"
+    );
 }
 
 // ===================== the contrast half, which is the point ============
@@ -252,7 +281,11 @@ fn every_reading_has_both_halves_and_a_way_to_say_it_out_loud() {
     ] {
         for r in set {
             assert!(!r.means.is_empty(), "{name}/{}: nothing means it", r.id);
-            assert!(!r.not.is_empty(), "{name}/{}: nothing tells it from the others", r.id);
+            assert!(
+                !r.not.is_empty(),
+                "{name}/{}: nothing tells it from the others",
+                r.id
+            );
             // `plain` is read out mid-sentence, in "Did you mean X or Y?", so
             // it has to be a phrase rather than an id and it must not carry
             // its own punctuation. Capitals are fine and were wrongly banned
@@ -260,7 +293,12 @@ fn every_reading_has_both_halves_and_a_way_to_say_it_out_loud() {
             // proper nouns, and lowercasing them to satisfy a rule about
             // sentence position would have been the test making the product
             // worse.
-            assert!(r.plain.len() > 3, "{name}/{}: {:?} is not something to say", r.id, r.plain);
+            assert!(
+                r.plain.len() > 3,
+                "{name}/{}: {:?} is not something to say",
+                r.id,
+                r.plain
+            );
             assert!(
                 !r.plain.ends_with('.') && !r.plain.ends_with('?'),
                 "{name}/{}: {:?} ends a sentence, and it is used mid-one",
@@ -286,7 +324,11 @@ fn naming_a_machine_gets_that_machine() {
         ("on my iphone", "ios"),
         ("on windows", "windows"),
     ] {
-        assert_eq!(weigh(said, WHICH_MACHINE, &cfg()).settled(), Some(want), "{said}");
+        assert_eq!(
+            weigh(said, WHICH_MACHINE, &cfg()).settled(),
+            Some(want),
+            "{said}"
+        );
     }
 }
 
@@ -305,7 +347,10 @@ fn every_machine_reading_maps_to_a_platform() {
         // `ios` is the fallthrough and is named in the comment rather than as
         // an arm, so it is checked by being the documented default.
         if r.id == "ios" {
-            assert!(arm.contains("Platform::Ios"), "nothing falls through to iOS");
+            assert!(
+                arm.contains("Platform::Ios"),
+                "nothing falls through to iOS"
+            );
             continue;
         }
         assert!(
@@ -327,9 +372,18 @@ fn the_daemon_is_what_reaches_it_rather_than_this_test() {
         .collect::<Vec<_>>()
         .join("\n");
 
-    assert!(code.contains("crate::whichone::ABOUT_MAIL"), "the mail arms still order themselves");
-    assert!(code.contains("crate::whichone::ABOUT_A_POST"), "the post arms still order themselves");
-    assert!(code.contains("crate::whichone::WHICH_MACHINE"), "the machine ladder is still an if/else");
+    assert!(
+        code.contains("crate::whichone::ABOUT_MAIL"),
+        "the mail arms still order themselves"
+    );
+    assert!(
+        code.contains("crate::whichone::ABOUT_A_POST"),
+        "the post arms still order themselves"
+    );
+    assert!(
+        code.contains("crate::whichone::WHICH_MACHINE"),
+        "the machine ladder is still an if/else"
+    );
     assert!(
         code.contains("crate::whichone::which_did_you_mean"),
         "nothing asks when it cannot tell"
@@ -347,7 +401,10 @@ fn the_daemon_is_what_reaches_it_rather_than_this_test() {
     }
 
     let yaml = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    assert!(yaml.contains("act_above_margin:"), "there is nowhere to set the threshold");
+    assert!(
+        yaml.contains("act_above_margin:"),
+        "there is nowhere to set the threshold"
+    );
     assert!(yaml.contains("matched_at_all:"));
 }
 

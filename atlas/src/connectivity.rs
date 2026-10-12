@@ -81,7 +81,13 @@ impl Default for Connectivity {
 
 impl Connectivity {
     pub fn new(cfg: ConnectivityConfig) -> Self {
-        Connectivity { cfg, last_checked: 0, last_result: Reach::Unknown, pinned: None, refreshing: None }
+        Connectivity {
+            cfg,
+            last_checked: 0,
+            last_result: Reach::Unknown,
+            pinned: None,
+            refreshing: None,
+        }
     }
 
     /// Cached reachability. Cheap to call every tick.
@@ -99,7 +105,9 @@ impl Connectivity {
             self.last_checked = t;
             return Reach::Offline;
         }
-        if self.last_result != Reach::Unknown && t.saturating_sub(self.last_checked) < self.cfg.cache_secs {
+        if self.last_result != Reach::Unknown
+            && t.saturating_sub(self.last_checked) < self.cfg.cache_secs
+        {
             return self.last_result;
         }
         self.last_checked = t;
@@ -141,14 +149,22 @@ impl Connectivity {
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => self.refreshing = None,
             }
         }
-        if self.last_result != Reach::Unknown && t.saturating_sub(self.last_checked) < self.cfg.cache_secs {
+        if self.last_result != Reach::Unknown
+            && t.saturating_sub(self.last_checked) < self.cfg.cache_secs
+        {
             return self.last_result;
         }
         let (tx, rx) = std::sync::mpsc::channel();
         let (target, ms) = (self.cfg.probe.clone(), self.cfg.timeout_ms);
-        let started = std::thread::Builder::new().name("atlas-online-probe".into()).spawn(move || {
-            let _ = tx.send(if probe(&target, ms) { Reach::Online } else { Reach::Offline });
-        });
+        let started = std::thread::Builder::new()
+            .name("atlas-online-probe".into())
+            .spawn(move || {
+                let _ = tx.send(if probe(&target, ms) {
+                    Reach::Online
+                } else {
+                    Reach::Offline
+                });
+            });
         match started {
             Ok(_) => {
                 self.refreshing = Some(rx);
@@ -206,7 +222,11 @@ impl Connectivity {
 fn probe(target: &str, timeout_ms: u64) -> bool {
     let mut targets: Vec<String> = probe_targets(target);
     // Only with the shipped setting: an address you chose is asked alone.
-    let extras: &[&str] = if target.trim() == SHIPPED_PROBE { &ALSO_TRIED } else { &[] };
+    let extras: &[&str] = if target.trim() == SHIPPED_PROBE {
+        &ALSO_TRIED
+    } else {
+        &[]
+    };
     for extra in extras {
         if !targets.iter().any(|t| t == extra) {
             targets.push(extra.to_string());
@@ -216,9 +236,11 @@ fn probe(target: &str, timeout_ms: u64) -> bool {
     let mut asked = 0;
     for t in targets {
         let tx = tx.clone();
-        let spawned = std::thread::Builder::new().name("atlas-online-try".into()).spawn(move || {
-            let _ = tx.send(connects(&t, timeout_ms));
-        });
+        let spawned = std::thread::Builder::new()
+            .name("atlas-online-try".into())
+            .spawn(move || {
+                let _ = tx.send(connects(&t, timeout_ms));
+            });
         if spawned.is_ok() {
             asked += 1;
         }
@@ -245,7 +267,12 @@ pub const ALSO_TRIED: [&str; 3] = ["1.1.1.1:443", "8.8.8.8:443", "9.9.9.9:443"];
 
 /// The addresses in a `probe` setting: comma- or space-separated.
 pub fn probe_targets(target: &str) -> Vec<String> {
-    target.split(|c: char| c == ',' || c.is_whitespace()).map(str::trim).filter(|t| !t.is_empty()).map(String::from).collect()
+    target
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(String::from)
+        .collect()
 }
 
 fn connects(target: &str, timeout_ms: u64) -> bool {

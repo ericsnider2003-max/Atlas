@@ -65,7 +65,11 @@ impl ResearchConfig {
     /// belongs to this install. Left alone if already absolute.
     pub fn resolved(mut self, install_root: &Path) -> ResearchConfig {
         if self.notes_dir.trim().is_empty() {
-            self.notes_dir = install_root.join("data").join("notes").to_string_lossy().into_owned();
+            self.notes_dir = install_root
+                .join("data")
+                .join("notes")
+                .to_string_lossy()
+                .into_owned();
             return self;
         }
         let d = PathBuf::from(&self.notes_dir);
@@ -155,7 +159,11 @@ pub const SUBSTANTIAL: usize = 1_200;
 /// `Source.chars`, which was being recorded and thrown away.
 pub fn how_well_read(note: &Note) -> Vec<crate::judgment::Signal> {
     let mut out = Vec::new();
-    let solid = note.sources.iter().filter(|s| s.chars >= SUBSTANTIAL).count();
+    let solid = note
+        .sources
+        .iter()
+        .filter(|s| s.chars >= SUBSTANTIAL)
+        .count();
     let thin = note.sources.len().saturating_sub(solid);
 
     match solid {
@@ -165,7 +173,10 @@ pub fn how_well_read(note: &Note) -> Vec<crate::judgment::Signal> {
         // Past three the extra pages stop adding much: the question is
         // whether this rests on one page or several, and after several it is
         // the same answer.
-        _ => out.push(crate::judgment::Signal::of("several substantial sources", 6.0)),
+        _ => out.push(crate::judgment::Signal::of(
+            "several substantial sources",
+            6.0,
+        )),
     }
     if thin > 0 {
         // Counted against rather than left out. A run of pages that yielded
@@ -179,7 +190,10 @@ pub fn how_well_read(note: &Note) -> Vec<crate::judgment::Signal> {
         // Somebody wrote an instruction into a page Atlas read. It was quoted
         // rather than followed -- that part is structural -- but a source
         // that tried it is not a source to lean on.
-        out.push(crate::judgment::Signal::of("a source tried to give me instructions", -2.0));
+        out.push(crate::judgment::Signal::of(
+            "a source tried to give me instructions",
+            -2.0,
+        ));
     }
     out
 }
@@ -252,13 +266,33 @@ impl Research {
         llm: &dyn Llm,
         should_stop: &dyn Fn() -> bool,
     ) -> Result<Note> {
-        self.run_checked_until(topic, llm, should_stop, std::time::Instant::now() + std::time::Duration::from_secs(120))
+        self.run_checked_until(
+            topic,
+            llm,
+            should_stop,
+            std::time::Instant::now() + std::time::Duration::from_secs(120),
+        )
     }
 
-    pub fn run_checked_until(&self, topic: &str, llm: &dyn Llm, cancelled: &dyn Fn() -> bool, deadline: std::time::Instant) -> Result<Note> {
+    pub fn run_checked_until(
+        &self,
+        topic: &str,
+        llm: &dyn Llm,
+        cancelled: &dyn Fn() -> bool,
+        deadline: std::time::Instant,
+    ) -> Result<Note> {
         let should_stop = &|| cancelled() || std::time::Instant::now() >= deadline;
-        if should_stop() { return Err(AtlasError::Platform("research stopped or exceeded its deadline".into())); }
-        if !llm.supports_bounded_chat() { return Err(AtlasError::Platform("research needs a model with cancellable, bounded chat; no sources were fetched".into())); }
+        if should_stop() {
+            return Err(AtlasError::Platform(
+                "research stopped or exceeded its deadline".into(),
+            ));
+        }
+        if !llm.supports_bounded_chat() {
+            return Err(AtlasError::Platform(
+                "research needs a model with cancellable, bounded chat; no sources were fetched"
+                    .into(),
+            ));
+        }
         let fetch = self
             .cfg
             .fetch
@@ -282,7 +316,8 @@ impl Research {
         // there isn't, or it found nothing.
         let mut urls = match self.cfg.searxng_url.trim() {
             "" => Vec::new(),
-            base => searxng(base, topic, self.cfg.max_sources, &self.vars, should_stop).unwrap_or_default(),
+            base => searxng(base, topic, self.cfg.max_sources, &self.vars, should_stop)
+                .unwrap_or_default(),
         };
         let mut tried_browser = false;
         if urls.is_empty() {
@@ -297,7 +332,10 @@ impl Research {
             // HTTP 202) and no results -- every research run on Eric's
             // laptop on 30 Sep 2026 ended "no sources found". Bing, asked
             // the same way, answers; its links are decoded above.
-            if urls.is_empty() && search.args.iter().any(|a| a.contains("duckduckgo.com")) && results.contains("anomaly") {
+            if urls.is_empty()
+                && search.args.iter().any(|a| a.contains("duckduckgo.com"))
+                && results.contains("anomaly")
+            {
                 if let Ok(page) = bounded_tool(&bing_search(), &v, should_stop) {
                     urls = extract_urls(&page, self.cfg.max_sources);
                 }
@@ -317,7 +355,11 @@ impl Research {
             }
         }
         if urls.is_empty() {
-            if should_stop() { return Err(AtlasError::Platform("research stopped or exceeded its deadline".into())); }
+            if should_stop() {
+                return Err(AtlasError::Platform(
+                    "research stopped or exceeded its deadline".into(),
+                ));
+            }
             let mut msg = format!("no sources found for '{topic}'");
             if tried_browser {
                 msg.push_str(" (the headless browser found nothing either)");
@@ -343,13 +385,19 @@ impl Research {
                 }
             };
             let fetch_now = match &held {
-                Some((host, ip)) if fetch.command.contains("{browser}") || is_a_browser(&fetch.command) => fenced(fetch, host, *ip),
+                Some((host, ip))
+                    if fetch.command.contains("{browser}") || is_a_browser(&fetch.command) =>
+                {
+                    fenced(fetch, host, *ip)
+                }
                 _ => fetch.clone(),
             };
             let mut fv = v.clone();
             fv.insert("url".into(), url.clone());
             // One dead link must not sink the whole job.
-            let Ok(html) = bounded_tool(&fetch_now, &fv, should_stop) else { continue };
+            let Ok(html) = bounded_tool(&fetch_now, &fv, should_stop) else {
+                continue;
+            };
             // Kept as Markdown: a heading, a list and a code block stay what
             // they are, which a small model reads far better than one run of
             // lines (`readable::Article::markdown`).
@@ -358,7 +406,10 @@ impl Research {
             if text.len() < 200 {
                 continue;
             }
-            sources.push(Source { url: url.clone(), chars: text.len() });
+            sources.push(Source {
+                url: url.clone(),
+                chars: text.len(),
+            });
 
             // A fetched page is the canonical untrusted read, and this is the
             // module `untrusted.rs` was written for — its own doc says so:
@@ -394,10 +445,31 @@ impl Research {
         if should_stop() {
             return Err(AtlasError::Platform("stopped before finishing".into()));
         }
-        let request = crate::brain::ChatRequest { messages: vec![crate::brain::Msg::system(SYSTEM), crate::brain::Msg::user(format!("Topic: {topic}\n{corpus}"))], max_tokens: 1600, ..Default::default() };
+        let request = crate::brain::ChatRequest {
+            messages: vec![
+                crate::brain::Msg::system(SYSTEM),
+                crate::brain::Msg::user(format!("Topic: {topic}\n{corpus}")),
+            ],
+            max_tokens: 1600,
+            ..Default::default()
+        };
         let mut bytes = 0usize;
-        let body = llm.chat_until(&request, &mut |text| { bytes += text.len(); bytes <= 32_000 && !should_stop() }, &|| !should_stop())?.text;
-        if should_stop() || bytes > 32_000 || body.len() > 32_000 || body.trim().is_empty() { return Err(AtlasError::Platform("research write-up stopped, exceeded its limit, or returned no usable answer".into())); }
+        let body = llm
+            .chat_until(
+                &request,
+                &mut |text| {
+                    bytes += text.len();
+                    bytes <= 32_000 && !should_stop()
+                },
+                &|| !should_stop(),
+            )?
+            .text;
+        if should_stop() || bytes > 32_000 || body.len() > 32_000 || body.trim().is_empty() {
+            return Err(AtlasError::Platform(
+                "research write-up stopped, exceeded its limit, or returned no usable answer"
+                    .into(),
+            ));
+        }
         let spoken = first_sentences(&body, 2);
         // Numbers the topic itself carries ("the 2026 budget") aren't claims.
         let ungrounded = figures_not_in(&body, &format!("{topic}\n{corpus}"));
@@ -422,8 +494,12 @@ impl Research {
         page: &str,
         stop: &dyn Fn() -> bool,
     ) -> Result<Vec<String>> {
-        if stop() { return Err(AtlasError::Platform("research stopped".into())); }
-        let mut bounded = bcfg.clone(); bounded.timeout_ms = bounded.timeout_ms.clamp(50, 1000); bounded.startup_ms = bounded.startup_ms.min(3000);
+        if stop() {
+            return Err(AtlasError::Platform("research stopped".into()));
+        }
+        let mut bounded = bcfg.clone();
+        bounded.timeout_ms = bounded.timeout_ms.clamp(50, 1000);
+        bounded.startup_ms = bounded.startup_ms.min(3000);
         let mut b = crate::browser::Browser::start(&bounded, &self.vars)?;
         let got = read_links_until(&mut b, page, bcfg.timeout_ms.min(15_000), stop);
         b.close();
@@ -461,8 +537,15 @@ impl Research {
     }
 }
 
-fn read_links_until(b: &mut crate::browser::Browser, page: &str, timeout_ms: u64, stop: &dyn Fn() -> bool) -> Result<Vec<String>> {
-    if stop() { return Err(AtlasError::Platform("research stopped".into())); }
+fn read_links_until(
+    b: &mut crate::browser::Browser,
+    page: &str,
+    timeout_ms: u64,
+    stop: &dyn Fn() -> bool,
+) -> Result<Vec<String>> {
+    if stop() {
+        return Err(AtlasError::Platform("research stopped".into()));
+    }
     b.open(page)?;
     // Polled, not slept: a results page that renders fast is read at once,
     // and one that never shows a link is given up on after the browser's own
@@ -471,17 +554,34 @@ fn read_links_until(b: &mut crate::browser::Browser, page: &str, timeout_ms: u64
     // unheard-ok: returns `bool`, not a Result
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
     loop {
-        if stop() { return Err(AtlasError::Platform("research stopped".into())); }
-        if b.cdp.eval("Boolean(document.querySelector('a[href]'))")?.as_bool() == Some(true) || std::time::Instant::now() >= deadline { break; }
+        if stop() {
+            return Err(AtlasError::Platform("research stopped".into()));
+        }
+        if b.cdp
+            .eval("Boolean(document.querySelector('a[href]'))")?
+            .as_bool()
+            == Some(true)
+            || std::time::Instant::now() >= deadline
+        {
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
-    if stop() { return Err(AtlasError::Platform("research stopped".into())); }
+    if stop() {
+        return Err(AtlasError::Platform("research stopped".into()));
+    }
     b.links()
 }
 
 fn bounded_tool(tool: &ExternalTool, vars: &Vars, stop: &dyn Fn() -> bool) -> Result<String> {
-    let mut tool = tool.clone(); tool.timeout_secs = if tool.timeout_secs == 0 { 30 } else { tool.timeout_secs.min(30) };
-    tool.run_stoppable(vars, None, stop)?.ok_or_else(|| AtlasError::Platform("research stopped".into()))
+    let mut tool = tool.clone();
+    tool.timeout_secs = if tool.timeout_secs == 0 {
+        30
+    } else {
+        tool.timeout_secs.min(30)
+    };
+    tool.run_stoppable(vars, None, stop)?
+        .ok_or_else(|| AtlasError::Platform("research stopped".into()))
 }
 
 const SYSTEM: &str = "\
@@ -516,7 +616,10 @@ pub fn extract_urls(html: &str, max: usize) -> Vec<String> {
         let end = tail.find(['"', '\'', '<', ' ']).unwrap_or(tail.len());
         let target = unwrap_redirect(&tail[..end]);
         rest = &tail[end.max(1)..];
-        if (target.starts_with("http://") || target.starts_with("https://")) && !is_noise(&target) && target.len() <= 400 {
+        if (target.starts_with("http://") || target.starts_with("https://"))
+            && !is_noise(&target)
+            && target.len() <= 400
+        {
             let clean = target.trim_end_matches(['.', ',', ';']).to_string();
             if seen.insert(clean.clone(), ()).is_none() {
                 out.push(clean);
@@ -531,18 +634,27 @@ pub fn extract_urls(html: &str, max: usize) -> Vec<String> {
     let mut rest = html;
     while let Some(i) = rest.find("u=a1") {
         let tail = &rest[i + 4..];
-        let end = tail.find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_')).unwrap_or(tail.len());
+        let end = tail
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+            .unwrap_or(tail.len());
         let coded = tail[..end].replace('-', "+").replace('_', "/");
         rest = &tail[end.max(1).min(tail.len())..];
-        let Ok(bytes) = crate::b64::decode(&coded) else { continue };
-        let Ok(target) = String::from_utf8(bytes) else { continue };
-        if (target.starts_with("http://") || target.starts_with("https://")) && !is_noise(&target) && target.len() <= 400
-            && seen.insert(target.clone(), ()).is_none() {
-                out.push(target);
-                if out.len() >= max {
-                    return out;
-                }
+        let Ok(bytes) = crate::b64::decode(&coded) else {
+            continue;
+        };
+        let Ok(target) = String::from_utf8(bytes) else {
+            continue;
+        };
+        if (target.starts_with("http://") || target.starts_with("https://"))
+            && !is_noise(&target)
+            && target.len() <= 400
+            && seen.insert(target.clone(), ()).is_none()
+        {
+            out.push(target);
+            if out.len() >= max {
+                return out;
             }
+        }
     }
     // A page that linked through Bing gave its results above; the rest of
     // it is Bing's own furniture.
@@ -552,9 +664,7 @@ pub fn extract_urls(html: &str, max: usize) -> Vec<String> {
     let mut rest = html;
     while let Some(i) = rest.find("http") {
         let tail = &rest[i..];
-        let end = tail
-            .find(['"', '\'', '<', ' ', ')'])
-            .unwrap_or(tail.len());
+        let end = tail.find(['"', '\'', '<', ' ', ')']).unwrap_or(tail.len());
         let url = &tail[..end];
         rest = &tail[end.max(1)..];
 
@@ -645,9 +755,25 @@ fn percent_decode(s: &str) -> String {
 
 fn is_noise(url: &str) -> bool {
     const SKIP: &[&str] = &[
-        "duckduckgo.com", "google.com/search", "bing.com/", "bing.net", "go.microsoft.com", "msn.com", "w3.org",
-        "schema.org", "gstatic.com", "googleapis.com", "cdn.", "/favicon",
-        ".css", ".js", ".png", ".jpg", ".svg", ".ico", ".woff",
+        "duckduckgo.com",
+        "google.com/search",
+        "bing.com/",
+        "bing.net",
+        "go.microsoft.com",
+        "msn.com",
+        "w3.org",
+        "schema.org",
+        "gstatic.com",
+        "googleapis.com",
+        "cdn.",
+        "/favicon",
+        ".css",
+        ".js",
+        ".png",
+        ".jpg",
+        ".svg",
+        ".ico",
+        ".woff",
     ];
     SKIP.iter().any(|s| url.contains(s))
 }
@@ -655,7 +781,11 @@ fn is_noise(url: &str) -> bool {
 /// The SearXNG search address for a query: `format=json`, so what comes
 /// back is results rather than a page.
 pub fn searxng_url(base: &str, topic: &str) -> String {
-    format!("{}/search?q={}&format=json", base.trim().trim_end_matches('/'), urlencode(topic))
+    format!(
+        "{}/search?q={}&format=json",
+        base.trim().trim_end_matches('/'),
+        urlencode(topic)
+    )
 }
 
 /// Result addresses out of SearXNG's JSON, in its order, filtered like any
@@ -667,7 +797,10 @@ pub fn urls_from_searxng(json: &str, max: usize) -> Option<Vec<String>> {
     let mut out: Vec<String> = Vec::new();
     for r in results {
         let Some(u) = r["url"].as_str() else { continue };
-        if !(u.starts_with("http://") || u.starts_with("https://")) || is_noise(u) || out.iter().any(|o| o == u) {
+        if !(u.starts_with("http://") || u.starts_with("https://"))
+            || is_noise(u)
+            || out.iter().any(|o| o == u)
+        {
             continue;
         }
         out.push(u.to_string());
@@ -680,15 +813,30 @@ pub fn urls_from_searxng(json: &str, max: usize) -> Option<Vec<String>> {
 
 /// Search with a SearXNG instance. Plain http (a SearXNG on this machine or
 /// your network) is asked in-process; https goes through curl.
-fn searxng(base: &str, topic: &str, max: usize, vars: &Vars, stop: &dyn Fn() -> bool) -> Result<Vec<String>> {
+fn searxng(
+    base: &str,
+    topic: &str,
+    max: usize,
+    vars: &Vars,
+    stop: &dyn Fn() -> bool,
+) -> Result<Vec<String>> {
     let tool = ExternalTool {
         command: "curl".into(),
-        args: vec!["-s".into(), "-m".into(), "15".into(), searxng_url(base, topic)],
+        args: vec![
+            "-s".into(),
+            "-m".into(),
+            "15".into(),
+            searxng_url(base, topic),
+        ],
         ..Default::default()
     };
     let body = bounded_tool(&tool, vars, stop)?;
-    urls_from_searxng(&body, max)
-        .ok_or_else(|| AtlasError::Platform("the SearXNG address didn't answer with results -- is JSON turned on in its settings?".into()))
+    urls_from_searxng(&body, max).ok_or_else(|| {
+        AtlasError::Platform(
+            "the SearXNG address didn't answer with results -- is JSON turned on in its settings?"
+                .into(),
+        )
+    })
 }
 
 /// A fetched page as Markdown, for the research write-up: the article's
@@ -844,7 +992,9 @@ pub fn urlencode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             b' ' => out.push('+'),
             _ => out.push_str(&format!("%{b:02X}")),
         }
@@ -858,15 +1008,24 @@ mod resolved_dir_tests {
 
     #[test]
     fn a_relative_notes_dir_is_resolved_under_the_store_root() {
-        let cfg = ResearchConfig { notes_dir: "data/notes".into(), ..ResearchConfig::default() };
+        let cfg = ResearchConfig {
+            notes_dir: "data/notes".into(),
+            ..ResearchConfig::default()
+        };
         let resolved = cfg.resolved(Path::new("/tmp/some-install"));
         // Compared as paths: Windows joins with a backslash (2 Oct 2026).
-        assert_eq!(Path::new(&resolved.notes_dir), Path::new("/tmp/some-install").join("data/notes"));
+        assert_eq!(
+            Path::new(&resolved.notes_dir),
+            Path::new("/tmp/some-install").join("data/notes")
+        );
     }
 
     #[test]
     fn an_already_absolute_notes_dir_is_left_alone() {
-        let cfg = ResearchConfig { notes_dir: "/mnt/external/notes".into(), ..ResearchConfig::default() };
+        let cfg = ResearchConfig {
+            notes_dir: "/mnt/external/notes".into(),
+            ..ResearchConfig::default()
+        };
         let resolved = cfg.resolved(Path::new("/tmp/some-install"));
         assert_eq!(resolved.notes_dir, "/mnt/external/notes");
     }
@@ -875,7 +1034,10 @@ mod resolved_dir_tests {
     fn two_installs_with_different_roots_never_share_a_notes_folder() {
         let a = ResearchConfig::default().resolved(Path::new("/tmp/install-a"));
         let b = ResearchConfig::default().resolved(Path::new("/tmp/install-b"));
-        assert_ne!(a.notes_dir, b.notes_dir, "each install's notes must live under its own store root");
+        assert_ne!(
+            a.notes_dir, b.notes_dir,
+            "each install's notes must live under its own store root"
+        );
     }
 }
 
@@ -897,7 +1059,9 @@ pub fn figures_not_in(text: &str, sources: &str) -> Vec<String> {
     let have: std::collections::BTreeSet<String> = figures(sources).into_iter().collect();
     let mut out: Vec<String> = Vec::new();
     for f in figures(text) {
-        let claims = f.contains('.') || f.contains('%') || f.chars().filter(|c| c.is_ascii_digit()).count() >= 2;
+        let claims = f.contains('.')
+            || f.contains('%')
+            || f.chars().filter(|c| c.is_ascii_digit()).count() >= 2;
         let bare = f.trim_end_matches('%').to_string();
         if claims && !have.contains(&f) && !have.contains(&bare) && !out.contains(&f) {
             out.push(f);
@@ -913,7 +1077,8 @@ fn figures(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < chars.len() {
-        let starts = chars[i].is_ascii_digit() && (i == 0 || !(chars[i - 1].is_alphanumeric() || chars[i - 1] == '.'));
+        let starts = chars[i].is_ascii_digit()
+            && (i == 0 || !(chars[i - 1].is_alphanumeric() || chars[i - 1] == '.'));
         if !starts {
             i += 1;
             continue;
@@ -921,7 +1086,10 @@ fn figures(text: &str) -> Vec<String> {
         let mut f = String::new();
         while i < chars.len() {
             let c = chars[i];
-            let next_digit = chars.get(i + 1).map(|n| n.is_ascii_digit()).unwrap_or(false);
+            let next_digit = chars
+                .get(i + 1)
+                .map(|n| n.is_ascii_digit())
+                .unwrap_or(false);
             if c.is_ascii_digit() {
                 f.push(c);
             } else if (c == ',' || c == '.') && next_digit {
@@ -968,25 +1136,50 @@ pub fn public_address(url: &str) -> Option<(String, std::net::IpAddr)> {
 
 fn public_address_until(url: &str, stop: &dyn Fn() -> bool) -> Option<(String, std::net::IpAddr)> {
     public_address_with(url, &|host| {
-        if host.len() > 253 || !host.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'.' || c == b'-') || stop() { return None; }
+        if host.len() > 253
+            || !host
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'.' || c == b'-')
+            || stop()
+        {
+            return None;
+        }
         #[cfg(windows)]
         let tool = ExternalTool { command: "powershell.exe".into(), args: vec!["-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), format!("Resolve-DnsName -Name '{host}' -ErrorAction Stop | Where-Object {{ $_.Type -eq 'A' -or $_.Type -eq 'AAAA' }} | ForEach-Object {{ $_.IPAddress }}")], timeout_secs: 10, ..Default::default() };
         #[cfg(not(windows))]
-        let tool = ExternalTool { command: "getent".into(), args: vec!["ahosts".into(), host.into()], timeout_secs: 10, ..Default::default() };
+        let tool = ExternalTool {
+            command: "getent".into(),
+            args: vec!["ahosts".into(), host.into()],
+            timeout_secs: 10,
+            ..Default::default()
+        };
         let text = bounded_tool(&tool, &Vars::new(), stop).ok()?;
-        if stop() { return None; }
+        if stop() {
+            return None;
+        }
         let mut addrs = Vec::new();
         for line in text.lines().filter(|line| !line.trim().is_empty()) {
-            let ip = line.split_whitespace().next()?.parse::<std::net::IpAddr>().ok()?;
-            if !addrs.contains(&ip) { addrs.push(ip); }
+            let ip = line
+                .split_whitespace()
+                .next()?
+                .parse::<std::net::IpAddr>()
+                .ok()?;
+            if !addrs.contains(&ip) {
+                addrs.push(ip);
+            }
         }
         Some(addrs)
     })
 }
 
-fn public_address_with(url: &str, resolve: &dyn Fn(&str) -> Option<Vec<std::net::IpAddr>>) -> Option<(String, std::net::IpAddr)> {
+fn public_address_with(
+    url: &str,
+    resolve: &dyn Fn(&str) -> Option<Vec<std::net::IpAddr>>,
+) -> Option<(String, std::net::IpAddr)> {
     let lower = url.trim().to_lowercase();
-    let rest = lower.strip_prefix("https://").or_else(|| lower.strip_prefix("http://"))?;
+    let rest = lower
+        .strip_prefix("https://")
+        .or_else(|| lower.strip_prefix("http://"))?;
     let authority = rest.split(['/', '?', '#', '\\']).next().unwrap_or("");
     if authority.contains('@') {
         return None;
@@ -994,13 +1187,26 @@ fn public_address_with(url: &str, resolve: &dyn Fn(&str) -> Option<Vec<std::net:
     let host = if let Some(v6) = authority.strip_prefix('[') {
         v6.split(']').next().unwrap_or("").to_string()
     } else {
-        authority.rsplit_once(':').map(|(h, _)| h).unwrap_or(authority).to_string()
+        authority
+            .rsplit_once(':')
+            .map(|(h, _)| h)
+            .unwrap_or(authority)
+            .to_string()
     };
     if host.is_empty() {
         return None;
     }
     let local_name = host == "localhost"
-        || [".localhost", ".local", ".internal", ".lan", ".home", ".arpa"].iter().any(|s| host.ends_with(s))
+        || [
+            ".localhost",
+            ".local",
+            ".internal",
+            ".lan",
+            ".home",
+            ".arpa",
+        ]
+        .iter()
+        .any(|s| host.ends_with(s))
         || !host.contains('.') && host.parse::<std::net::Ipv6Addr>().is_err();
     if local_name {
         return None;
@@ -1011,14 +1217,19 @@ fn public_address_with(url: &str, resolve: &dyn Fn(&str) -> Option<Vec<std::net:
     // A name: every address it resolves to must be public.
     let addrs = resolve(&host)?;
     let first = *addrs.first()?;
-    addrs.iter().all(|ip| is_public(*ip)).then_some((host, first))
+    addrs
+        .iter()
+        .all(|ip| is_public(*ip))
+        .then_some((host, first))
 }
 
 /// A fetch command that is a browser (the `{browser}` placeholder, or a
 /// Chrome/Edge/Chromium program named outright).
 fn is_a_browser(command: &str) -> bool {
     let c = command.to_lowercase();
-    ["chrome", "chromium", "msedge", "brave"].iter().any(|b| c.contains(b))
+    ["chrome", "chromium", "msedge", "brave"]
+        .iter()
+        .any(|b| c.contains(b))
 }
 
 /// The headless browser held to the one page it was sent to: the page's
@@ -1027,7 +1238,11 @@ fn is_a_browser(command: &str) -> bool {
 /// another site's files -- is sent to a proxy that isn't there, so it never
 /// loads (1 Oct 2026 security pass: a public page could redirect the
 /// browser into your network and Atlas would read what came back).
-pub fn fenced(fetch: &crate::tools::ExternalTool, host: &str, ip: std::net::IpAddr) -> crate::tools::ExternalTool {
+pub fn fenced(
+    fetch: &crate::tools::ExternalTool,
+    host: &str,
+    ip: std::net::IpAddr,
+) -> crate::tools::ExternalTool {
     let mut f = fetch.clone();
     let at = match ip {
         std::net::IpAddr::V6(v) => format!("[{v}]"),
@@ -1068,11 +1283,15 @@ fn is_public(ip: std::net::IpAddr) -> bool {
             // inside: judged by that, so 64:ff9b::7f00:1 isn't a way home.
             if seg[0] == 0x64 && seg[1] == 0xff9b {
                 let o = v.octets();
-                return is_public(std::net::IpAddr::V4(std::net::Ipv4Addr::new(o[12], o[13], o[14], o[15])));
+                return is_public(std::net::IpAddr::V4(std::net::Ipv4Addr::new(
+                    o[12], o[13], o[14], o[15],
+                )));
             }
             if seg[0] == 0x2002 {
                 let o = v.octets();
-                return is_public(std::net::IpAddr::V4(std::net::Ipv4Addr::new(o[2], o[3], o[4], o[5])));
+                return is_public(std::net::IpAddr::V4(std::net::Ipv4Addr::new(
+                    o[2], o[3], o[4], o[5],
+                )));
             }
             !(v.is_loopback()
                 || v.is_unspecified()
@@ -1114,14 +1333,33 @@ mod fetching {
 
     #[test]
     fn the_browser_is_held_to_the_address_that_was_checked() {
-        let tool = crate::tools::ExternalTool { command: "{browser}".into(), args: vec!["--dump-dom".into(), "{url}".into()], ..Default::default() };
+        let tool = crate::tools::ExternalTool {
+            command: "{browser}".into(),
+            args: vec!["--dump-dom".into(), "{url}".into()],
+            ..Default::default()
+        };
         let f = super::fenced(&tool, "news.example.org", "93.184.215.14".parse().unwrap());
-        assert_eq!(f.args[0], "--host-resolver-rules=MAP news.example.org 93.184.215.14");
-        assert_eq!(f.args[2], "--proxy-bypass-list=<-loopback>;news.example.org");
-        assert_eq!(&f.args[3..], &["--dump-dom".to_string(), "{url}".to_string()]);
+        assert_eq!(
+            f.args[0],
+            "--host-resolver-rules=MAP news.example.org 93.184.215.14"
+        );
+        assert_eq!(
+            f.args[2],
+            "--proxy-bypass-list=<-loopback>;news.example.org"
+        );
+        assert_eq!(
+            &f.args[3..],
+            &["--dump-dom".to_string(), "{url}".to_string()]
+        );
         let v6 = super::fenced(&tool, "h.example", "2606:4700::1".parse().unwrap());
-        assert_eq!(v6.args[0], "--host-resolver-rules=MAP h.example [2606:4700::1]");
-        assert_eq!(super::public_address("https://8.8.8.8/x"), Some(("8.8.8.8".into(), "8.8.8.8".parse().unwrap())));
+        assert_eq!(
+            v6.args[0],
+            "--host-resolver-rules=MAP h.example [2606:4700::1]"
+        );
+        assert_eq!(
+            super::public_address("https://8.8.8.8/x"),
+            Some(("8.8.8.8".into(), "8.8.8.8".parse().unwrap()))
+        );
     }
 
     #[test]
@@ -1142,8 +1380,18 @@ pub fn mark_last(dir: &str, which: &str, path: &str) {
     crate::kept!(mark_last_until(dir, which, path, &|| false));
 }
 
-fn mark_last_until(dir: &str, which: &str, path: &str, stop: &dyn Fn() -> bool) -> std::io::Result<()> {
-    if !std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file()) { return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "the saved note is missing; its last-note pointer was left intact")); }
+fn mark_last_until(
+    dir: &str,
+    which: &str,
+    path: &str,
+    stop: &dyn Fn() -> bool,
+) -> std::io::Result<()> {
+    if !std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "the saved note is missing; its last-note pointer was left intact",
+        ));
+    }
     crate::store::write_owned_file_until(&Path::new(dir).join(which), path.as_bytes(), stop)
 }
 
@@ -1158,18 +1406,45 @@ pub fn last(dir: &str, which: &str) -> Option<std::path::PathBuf> {
 mod bounded_research {
     use super::*;
     struct Unsupported;
-    impl Llm for Unsupported { fn complete(&self, _: &str, _: &str) -> Result<String> { panic!("unsupported inference must not run") } }
+    impl Llm for Unsupported {
+        fn complete(&self, _: &str, _: &str) -> Result<String> {
+            panic!("unsupported inference must not run")
+        }
+    }
     #[test]
     fn unsupported_model_or_expired_budget_refuses_before_tool_launch() {
-        let research = Research { cfg: ResearchConfig { fetch: Some(ExternalTool { command: "fixture-must-not-launch".into(), ..Default::default() }), ..Default::default() }, vars: Vars::new(), browser: None };
-        assert!(research.run("topic", &Unsupported).unwrap_err().to_string().contains("no sources were fetched"));
-        assert!(research.run_checked_until("topic", &Unsupported, &|| false, std::time::Instant::now()).unwrap_err().to_string().contains("deadline"));
+        let research = Research {
+            cfg: ResearchConfig {
+                fetch: Some(ExternalTool {
+                    command: "fixture-must-not-launch".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            vars: Vars::new(),
+            browser: None,
+        };
+        assert!(research
+            .run("topic", &Unsupported)
+            .unwrap_err()
+            .to_string()
+            .contains("no sources were fetched"));
+        assert!(research
+            .run_checked_until("topic", &Unsupported, &|| false, std::time::Instant::now())
+            .unwrap_err()
+            .to_string()
+            .contains("deadline"));
     }
     #[test]
     fn resolver_checks_all_answers_and_refuses_private_or_unknown_names() {
-        assert!(public_address_with("https://example.test/article", &|_| Some(vec!["8.8.8.8".parse().unwrap(), "127.0.0.1".parse().unwrap()])).is_none());
+        assert!(
+            public_address_with("https://example.test/article", &|_| Some(vec![
+                "8.8.8.8".parse().unwrap(),
+                "127.0.0.1".parse().unwrap()
+            ]))
+            .is_none()
+        );
         assert!(public_address_with("https://example.test/article", &|_| None).is_none());
         assert!(public_address_until("https://example.test/article", &|| true).is_none());
     }
 }
-

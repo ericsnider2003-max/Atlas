@@ -68,14 +68,15 @@ fn areas_are_counted_separately() {
     s.sort_by(|a, b| a.subject.cmp(&b.subject));
     assert_eq!(s.len(), 2);
     assert_eq!((s[0].subject.as_str(), s[0].seen, s[0].of), ("mail", 1, 2));
-    assert_eq!((s[1].subject.as_str(), s[1].seen, s[1].of), ("windows", 2, 2));
+    assert_eq!(
+        (s[1].subject.as_str(), s[1].seen, s[1].of),
+        ("windows", 2, 2)
+    );
 }
 
 #[test]
 fn the_example_is_the_thing_you_took_back() {
-    let h = history(vec![
-        did(1, "opened YouTube unasked", "apps", true, false),
-    ]);
+    let h = history(vec![did(1, "opened YouTube unasked", "apps", true, false)]);
     assert_eq!(signals::from_undo(&h)[0].example, "opened YouTube unasked");
 }
 

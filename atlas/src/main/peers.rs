@@ -1,6 +1,6 @@
 //! Commands for other people and your other devices: invites and pairing, the
 //! gate, sharing, trust, handoffs, Telegram, nearby, the mesh and groups.
-//! 
+//!
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
@@ -51,7 +51,8 @@ pub(super) fn run_invite(cfg: &Config) {
             leave(2);
         }
     };
-    let Some(code) = kin::invite(&mut pairings, &their_name, &my_name, &my_host, port, &token) else {
+    let Some(code) = kin::invite(&mut pairings, &their_name, &my_name, &my_host, port, &token)
+    else {
         println!("Your name or host can't contain the character '|' — try again without it.");
         return;
     };
@@ -158,12 +159,21 @@ pub(super) fn run_gate(dir: &std::path::Path, gate: &atlas::craft::Gate) -> atla
     };
     // The program the C++ ladder just built, by its full path.
     let built = atlas::craft::program_in(dir, program);
-    let built = atlas::codetools::llvm_program(&built, &atlas::roots::install_root()).map(|p| p.to_string_lossy().into_owned()).unwrap_or(built);
+    let built = atlas::codetools::llvm_program(&built, &atlas::roots::install_root())
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or(built);
     let program = built.as_str();
     // npm, prettier and tsc run by the node Atlas fetched (`codetools`).
     let output = match atlas::codetools::by_node(program, &atlas::roots::install_root()) {
-        Some((node, script)) => atlas::tools::command(&node).arg(script).args(parts).current_dir(dir).output(),
-        None => atlas::tools::command(program).args(parts).current_dir(dir).output(),
+        Some((node, script)) => atlas::tools::command(&node)
+            .arg(script)
+            .args(parts)
+            .current_dir(dir)
+            .output(),
+        None => atlas::tools::command(program)
+            .args(parts)
+            .current_dir(dir)
+            .output(),
     };
     match output {
         Ok(o) => {
@@ -233,7 +243,11 @@ pub(super) fn run_share(args: &[String]) {
                 their_name.trim()
             );
         } else {
-            println!("I don't have {} — I can reach: {}", their_name.trim(), known.join(", "));
+            println!(
+                "I don't have {} — I can reach: {}",
+                their_name.trim(),
+                known.join(", ")
+            );
         }
         return;
     };
@@ -278,7 +292,13 @@ pub(super) fn run_share(args: &[String]) {
     match flag_value("--file") {
         None => {
             let handoff = atlas::household::share_with_friend(&what, &my_name);
-            match atlas::kin::PeerLink::from_state(&pairings, &atlas::chat::Chats::default()).sealing_as(atlas::peerkey::Identity::load_or_create(&atlas::kin::where_pairings_live()).ok()).hand_note(&contact.name, &handoff, None) {
+            match atlas::kin::PeerLink::from_state(&pairings, &atlas::chat::Chats::default())
+                .sealing_as(
+                    atlas::peerkey::Identity::load_or_create(&atlas::kin::where_pairings_live())
+                        .ok(),
+                )
+                .hand_note(&contact.name, &handoff, None)
+            {
                 Ok(()) => {
                     let tail = if trusted {
                         format!(" You trust {}, so I didn't ask.", contact.name)
@@ -301,12 +321,19 @@ pub(super) fn run_share(args: &[String]) {
             // its own, and making you type something as well would just get
             // you "here" every time.
             let note = if what.trim().is_empty() {
-                path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default().to_string()
+                path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default()
+                    .to_string()
             } else {
                 what.clone()
             };
             let handoff = atlas::household::share_with_friend(&note, &my_name);
-            match atlas::kin::PeerLink::from_state(&pairings, &atlas::chat::Chats::default()).sealing_as(atlas::peerkey::Identity::load_or_create(&atlas::kin::where_pairings_live()).ok())
+            match atlas::kin::PeerLink::from_state(&pairings, &atlas::chat::Chats::default())
+                .sealing_as(
+                    atlas::peerkey::Identity::load_or_create(&atlas::kin::where_pairings_live())
+                        .ok(),
+                )
                 .waiting(std::time::Duration::from_secs(120))
                 .hand_note(&contact.name, &handoff, Some(&path))
             {
@@ -318,7 +345,9 @@ pub(super) fn run_share(args: &[String]) {
                     };
                     println!(
                         "Sent {} to {}. Nothing else went with it.{tail}",
-                        path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+                        path.file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default(),
                         contact.name
                     )
                 }
@@ -380,7 +409,10 @@ pub(super) fn run_trust(args: &[String]) {
     // Trusting someone you haven't paired with is harmless but almost always a
     // typo, so say so rather than silently trusting a name that can never
     // match a contact.
-    let known = pairings.contacts.iter().any(|c| c.name.eq_ignore_ascii_case(&name));
+    let known = pairings
+        .contacts
+        .iter()
+        .any(|c| c.name.eq_ignore_ascii_case(&name));
     pairings.trust(&name);
     if let Err(e) = pairings.save(&dir) {
         eprintln!("couldn't save the trusted list: {e}");
@@ -423,7 +455,13 @@ pub(super) fn run_hand(args: &[String]) {
     let asked = flag_value("--for");
     let store = atlas::roots::store();
     let mut tray = atlas::tray::Tray::load(&store);
-    match tray.hand_local(&path, &space, "this machine", asked.as_deref(), atlas::store::now()) {
+    match tray.hand_local(
+        &path,
+        &space,
+        "this machine",
+        asked.as_deref(),
+        atlas::store::now(),
+    ) {
         Ok(id) => {
             if keep(tray.save(&store), "the tray") {
                 let name = path
@@ -501,7 +539,12 @@ pub(super) fn run_handoffs(args: &[String]) {
             // named on a list. `tray::hand_file` is what puts it where the
             // tray's normal rules apply.
             let handed = match &got.file {
-                None => tray.hand(&got.what, &atlas::earned::Space::Personal, &got.from, got.at),
+                None => tray.hand(
+                    &got.what,
+                    &atlas::earned::Space::Personal,
+                    &got.from,
+                    got.at,
+                ),
                 Some(f) => match std::fs::read(store.root().join(&f.stored_at)) {
                     Ok(bytes) => tray.hand_file(
                         &f.name,
@@ -529,7 +572,10 @@ pub(super) fn run_handoffs(args: &[String]) {
                             // own. Leaving both means the same file twice on
                             // disk and a stale one to wonder about later.
                             if let Some(f) = &got.file {
-                                atlas::heard!(atlas::store::remove_state_file(store.root(), &store.root().join(&f.stored_at)));
+                                atlas::heard!(atlas::store::remove_state_file(
+                                    store.root(),
+                                    &store.root().join(&f.stored_at)
+                                ));
                             }
                             println!("Kept it — it's in the tray as {tid}.");
                         }
@@ -551,7 +597,10 @@ pub(super) fn run_handoffs(args: &[String]) {
                         // that leaves the file on disk is a lie about what
                         // just happened.
                         if let Some(f) = &got.file {
-                            atlas::heard!(atlas::store::remove_state_file(store.root(), &store.root().join(&f.stored_at)));
+                            atlas::heard!(atlas::store::remove_state_file(
+                                store.root(),
+                                &store.root().join(&f.stored_at)
+                            ));
                         }
                         println!("Dropped the one from {}.", got.from);
                     }
@@ -582,7 +631,11 @@ pub(super) fn run_handoffs(args: &[String]) {
 /// nowhere else, and typing it as an argument to the reading command is how
 /// it ends up in a shell history.
 pub(super) fn run_telegram(cfg: &Config, args: &[String]) {
-    let tcfg = cfg.tools.as_ref().map(|t| t.telegram.clone()).unwrap_or_default();
+    let tcfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.telegram.clone())
+        .unwrap_or_default();
     let store = atlas::roots::store();
     let mut vault = atlas::vault::Vault::load(&atlas::roots::install_state());
     let now = atlas::store::now();
@@ -609,11 +662,18 @@ pub(super) fn run_telegram(cfg: &Config, args: &[String]) {
             );
             return;
         }
-        match vault.put(atlas::telegram::TOKEN, atlas::vault::Kind::ApiKey, token, now) {
+        match vault.put(
+            atlas::telegram::TOKEN,
+            atlas::vault::Kind::ApiKey,
+            token,
+            now,
+        ) {
             Ok(()) => match vault.save(&atlas::roots::install_state()) {
                 Ok(()) => println!("Kept. `atlas telegram` reads what's arrived."),
                 // Never claim it kept something it did not.
-                Err(e) => eprintln!("I took it but couldn't save it ({e}) -- it won't survive a restart."),
+                Err(e) => {
+                    eprintln!("I took it but couldn't save it ({e}) -- it won't survive a restart.")
+                }
             },
             Err(e) => eprintln!("couldn't keep it: {e}"),
         }
@@ -632,7 +692,10 @@ pub(super) fn run_telegram(cfg: &Config, args: &[String]) {
     let token = match vault.get(atlas::telegram::TOKEN, now) {
         Ok(t) => t,
         Err(_) => {
-            println!("I haven't got a bot token yet.\n\n{}", atlas::telegram::HOW_TO_SET_UP);
+            println!(
+                "I haven't got a bot token yet.\n\n{}",
+                atlas::telegram::HOW_TO_SET_UP
+            );
             return;
         }
     };
@@ -674,10 +737,16 @@ pub(super) fn run_telegram(cfg: &Config, args: &[String]) {
     if let Err(e) = store.save(atlas::telegram::KEPT, &kept) {
         // Said, because the next thing you ask is "any messages?" and the
         // answer would come back as though nothing had ever been read.
-        trouble.push(format!("I couldn't keep them ({e}), so asking me later won't find them"));
+        trouble.push(format!(
+            "I couldn't keep them ({e}), so asking me later won't find them"
+        ));
     }
 
-    let mcfg = cfg.tools.as_ref().map(|t| t.messaging.clone()).unwrap_or_default();
+    let mcfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.messaging.clone())
+        .unwrap_or_default();
     println!("{}", atlas::messaging::spoken(&fresh, &mcfg.your_names));
     for t in &trouble {
         // Before the messages rather than after: a warning under a list is a
@@ -705,7 +774,11 @@ pub(super) fn run_telegram(cfg: &Config, args: &[String]) {
 /// because an entry that only needs one more field is an invitation to paste
 /// a token in without thinking about what it lets in.
 pub(super) fn run_nearby(cfg: &Config) {
-    let ncfg = cfg.tools.as_ref().map(|t| t.nearby.clone()).unwrap_or_default();
+    let ncfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.nearby.clone())
+        .unwrap_or_default();
     println!("Asking who's on this network. Nothing is connected to.\n");
     match atlas::nearby::look(&ncfg) {
         Ok(found) => println!("{}", atlas::nearby::spoken(&found, &ncfg)),
@@ -730,7 +803,11 @@ pub(super) fn run_nearby(cfg: &Config) {
 /// is worth doing on its own terms; believing Atlas will then use it is not
 /// something this command is allowed to let you believe.
 pub(super) fn run_mesh(cfg: &Config) {
-    let mcfg = cfg.tools.as_ref().map(|t| t.mesh.clone()).unwrap_or_default();
+    let mcfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.mesh.clone())
+        .unwrap_or_default();
     for line in atlas::mesh::what_a_private_network_would_give_you(&mcfg) {
         println!("{line}");
         println!();
@@ -750,8 +827,16 @@ pub(super) fn run_mesh(cfg: &Config) {
 /// makes every ask on this path `Gate::AskAloud`, which is exactly
 /// `policy::gate`'s own spoken-yes ask -- so nothing here invents a second
 /// prompt, it only decides whether the existing one is skippable.
-pub(super) fn gate_with_identity(cfg: &Config, intent: &Intent, approver: &dyn Approver) -> atlas::error::Result<()> {
-    let id_cfg = cfg.tools.as_ref().map(|t| t.identity.clone()).unwrap_or_default();
+pub(super) fn gate_with_identity(
+    cfg: &Config,
+    intent: &Intent,
+    approver: &dyn Approver,
+) -> atlas::error::Result<()> {
+    let id_cfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.identity.clone())
+        .unwrap_or_default();
     let kind = atlas::session::kind_of(intent);
     let store = atlas::roots::store();
 

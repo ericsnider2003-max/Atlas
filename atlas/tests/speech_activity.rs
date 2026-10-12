@@ -9,14 +9,20 @@ use std::cell::RefCell;
 /// it any more -- replies go through `speakthread::Saying` -- so these tests
 /// drive `Saying` itself (on the loop, as a speaker that can't be handed to
 /// a thread is), keeping every rule they pinned.
-fn deliver(text: &str, say: &mut dyn FnMut(&str) -> bool, listen: &mut dyn FnMut() -> Option<String>) -> Delivery {
+fn deliver(
+    text: &str,
+    say: &mut dyn FnMut(&str) -> bool,
+    listen: &mut dyn FnMut() -> Option<String>,
+) -> Delivery {
     struct Say<'a>(RefCell<&'a mut dyn FnMut(&str) -> bool>);
     impl atlas::daemon::Mouth for Say<'_> {
         fn speak(&self, text: &str) -> atlas::error::Result<()> {
             if (self.0.borrow_mut())(text) {
                 Ok(())
             } else {
-                Err(atlas::error::AtlasError::Platform("the player failed".into()))
+                Err(atlas::error::AtlasError::Platform(
+                    "the player failed".into(),
+                ))
             }
         }
     }
@@ -32,7 +38,7 @@ fn deliver(text: &str, say: &mut dyn FnMut(&str) -> bool, listen: &mut dyn FnMut
     s.finish().delivery
 }
 
-fn recorder() -> (RefCell<Vec<String>>, ) {
+fn recorder() -> (RefCell<Vec<String>>,) {
     (RefCell::new(Vec::new()),)
 }
 
@@ -49,8 +55,14 @@ fn a_reply_is_broken_into_sentence_sized_chunks() {
 
 #[test]
 fn a_rambling_sentence_is_still_interruptible() {
-    let long = format!("{} , and then some more text after that.", "word ".repeat(40));
-    assert!(split(&long).len() > 1, "a 200-char sentence must not be one unstoppable chunk");
+    let long = format!(
+        "{} , and then some more text after that.",
+        "word ".repeat(40)
+    );
+    assert!(
+        split(&long).len() > 1,
+        "a 200-char sentence must not be one unstoppable chunk"
+    );
 }
 
 #[test]
@@ -71,7 +83,14 @@ fn a_cough_a_colleague_or_a_backchannel_does_not_cut_atlas_off() {
     // Pure energy detection treats "mm-hmm" as an interruption when it means
     // keep going. This is the false-barge-in case that makes assistants feel
     // twitchy.
-    for s in ["mm", "mm hmm", "yeah", "uh huh", "right", "okay so anyway I told him"] {
+    for s in [
+        "mm",
+        "mm hmm",
+        "yeah",
+        "uh huh",
+        "right",
+        "okay so anyway I told him",
+    ] {
         assert!(!is_interruption(s), "{s:?} must not interrupt");
     }
 }
@@ -81,7 +100,10 @@ fn an_uninterrupted_reply_is_spoken_in_full() {
     let (said,) = recorder();
     let d = deliver(
         "One. Two. Three.",
-        &mut |c| { said.borrow_mut().push(c.to_string()); true },
+        &mut |c| {
+            said.borrow_mut().push(c.to_string());
+            true
+        },
         &mut || None,
     );
     assert_eq!(said.borrow().len(), 3);
@@ -95,7 +117,10 @@ fn saying_stop_cuts_it_off_at_the_next_chunk_boundary() {
     let heard = RefCell::new(vec![None, Some("stop".to_string())]);
     let d = deliver(
         "One. Two. Three.",
-        &mut |c| { said.borrow_mut().push(c.to_string()); true },
+        &mut |c| {
+            said.borrow_mut().push(c.to_string());
+            true
+        },
         &mut || heard.borrow_mut().remove(0),
     );
     assert_eq!(said.borrow().len(), 1, "stopped after the first sentence");
@@ -108,9 +133,11 @@ fn what_was_cut_off_is_never_recorded_as_having_been_said() {
     // The specific bug this prevents: Atlas believing it told you something
     // you never heard, then referring back to it.
     let heard = RefCell::new(vec![None, Some("stop".to_string())]);
-    let d = deliver("First part. Second part. Third part.", &mut |_| true, &mut || {
-        heard.borrow_mut().remove(0)
-    });
+    let d = deliver(
+        "First part. Second part. Third part.",
+        &mut |_| true,
+        &mut || heard.borrow_mut().remove(0),
+    );
     assert_eq!(d.spoken, vec!["First part.".to_string()]);
     assert_eq!(d.remaining_text(), "Second part. Third part.");
 }
@@ -118,7 +145,9 @@ fn what_was_cut_off_is_never_recorded_as_having_been_said() {
 #[test]
 fn the_rest_can_be_picked_back_up() {
     let heard = RefCell::new(vec![None, Some("hold on".to_string())]);
-    let d = deliver("Alpha. Beta. Gamma.", &mut |_| true, &mut || heard.borrow_mut().remove(0));
+    let d = deliver("Alpha. Beta. Gamma.", &mut |_| true, &mut || {
+        heard.borrow_mut().remove(0)
+    });
     assert_eq!(d.remaining_text(), "Beta. Gamma.");
 }
 
@@ -133,7 +162,10 @@ fn unrelated_speech_during_a_reply_is_ignored_and_the_reply_completes() {
     ]);
     let d = deliver(
         "One. Two. Three.",
-        &mut |c| { said.borrow_mut().push(c.to_string()); true },
+        &mut |c| {
+            said.borrow_mut().push(c.to_string());
+            true
+        },
         &mut || heard.borrow_mut().remove(0),
     );
     assert_eq!(said.borrow().len(), 3, "must finish despite the noise");
@@ -143,19 +175,28 @@ fn unrelated_speech_during_a_reply_is_ignored_and_the_reply_completes() {
 #[test]
 fn stop_at_the_very_end_is_still_registered() {
     let heard = RefCell::new(vec![None, None, Some("stop".to_string())]);
-    let d = deliver("One. Two.", &mut |_| true, &mut || heard.borrow_mut().remove(0));
+    let d = deliver("One. Two.", &mut |_| true, &mut || {
+        heard.borrow_mut().remove(0)
+    });
     assert!(d.was_interrupted());
-    assert!(d.unspoken.is_empty(), "everything was said, but you still asked it to stop");
+    assert!(
+        d.unspoken.is_empty(),
+        "everything was said, but you still asked it to stop"
+    );
 }
 
 #[test]
 fn playback_failing_does_not_pretend_the_rest_was_said() {
     let n = RefCell::new(0);
-    let d = deliver("One. Two. Three.", &mut |_| {
-        let mut c = n.borrow_mut();
-        *c += 1;
-        *c < 2
-    }, &mut || None);
+    let d = deliver(
+        "One. Two. Three.",
+        &mut |_| {
+            let mut c = n.borrow_mut();
+            *c += 1;
+            *c < 2
+        },
+        &mut || None,
+    );
     assert_eq!(d.spoken.len(), 1);
     assert_eq!(d.unspoken.len(), 2);
     assert!(!d.was_interrupted(), "a failure is not an interruption");
@@ -164,7 +205,9 @@ fn playback_failing_does_not_pretend_the_rest_was_said() {
 #[test]
 fn the_acknowledgement_is_short_because_you_wanted_the_floor() {
     let heard = RefCell::new(vec![Some("stop".to_string())]);
-    let d = deliver("Long explanation here.", &mut |_| true, &mut || heard.borrow_mut().remove(0));
+    let d = deliver("Long explanation here.", &mut |_| true, &mut || {
+        heard.borrow_mut().remove(0)
+    });
     let a = acknowledge(&d);
     assert_eq!(a, "Stopped.");
     assert!(a.len() < 20);
@@ -194,7 +237,10 @@ fn housekeeping_is_never_reported() {
     let mut j = Journal::default();
     j.record_at(Kind::Upkeep, "compacted approvals", true, 100);
     j.record_at(Kind::Upkeep, "reaped a helper", true, 110);
-    assert!(j.brief(0).contains("Nothing happened"), "you don't need to hear about log rotation");
+    assert!(
+        j.brief(0).contains("Nothing happened"),
+        "you don't need to hear about log rotation"
+    );
 }
 
 #[test]
@@ -221,7 +267,10 @@ fn only_events_since_you_left_are_reported() {
     j.record_at(Kind::Published, "old post", true, 100);
     j.record_at(Kind::Published, "new post", true, 500);
     let b = j.brief(400);
-    assert!(b.contains("new post") && !b.contains("old post"), "got: {b}");
+    assert!(
+        b.contains("new post") && !b.contains("old post"),
+        "got: {b}"
+    );
 }
 
 #[test]
@@ -241,7 +290,10 @@ fn the_journal_is_bounded() {
         j.record_at(Kind::Asked, &format!("thing {i}"), true, i);
     }
     assert!(j.events.len() <= 400);
-    assert!(j.last().unwrap().what.contains("899"), "the recent end is what's kept");
+    assert!(
+        j.last().unwrap().what.contains("899"),
+        "the recent end is what's kept"
+    );
 }
 
 // ================= state surviving an upgrade =================
@@ -279,12 +331,19 @@ fn a_file_from_a_future_version_is_preserved_not_destroyed() {
     let d = std::env::temp_dir().join("atlas-schema-c");
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
-    std::fs::write(d.join("activity.json"), r#"{"schema":99,"data":{"events":[]}}"#).unwrap();
+    std::fs::write(
+        d.join("activity.json"),
+        r#"{"schema":99,"data":{"events":[]}}"#,
+    )
+    .unwrap();
 
     let s = Store::new(&d);
     let _: Journal = Journal::load(&s);
     assert_eq!(s.preserved().len(), 1, "the old file must be kept aside");
-    assert!(!d.join("activity.json").exists(), "and moved out of the way");
+    assert!(
+        !d.join("activity.json").exists(),
+        "and moved out of the way"
+    );
 }
 
 #[test]
@@ -297,5 +356,9 @@ fn a_corrupt_file_is_preserved_rather_than_clobbered() {
     let s = Store::new(&d);
     let j = Journal::load(&s);
     assert!(j.events.is_empty(), "starts clean");
-    assert_eq!(s.preserved().len(), 1, "but the damaged file is kept for you");
+    assert_eq!(
+        s.preserved().len(),
+        1,
+        "but the damaged file is kept for you"
+    );
 }

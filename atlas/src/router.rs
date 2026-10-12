@@ -55,11 +55,34 @@ pub const RELATIVE: f64 = 0.45;
 /// The sentence as its words, lowercased, without the wake word or "can
 /// you" / "please" in front: what a phrase is matched against.
 fn leading_words(said: &str) -> String {
-    let t: String = said.to_lowercase().replace('\u{2019}', "'").chars().map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' }).collect();
+    let t: String = said
+        .to_lowercase()
+        .replace('\u{2019}', "'")
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '\'' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
     let mut w: Vec<&str> = t.split_whitespace().collect();
     loop {
         let before = w.len();
-        for lead in [&["hey", "atlas"][..], &["atlas"], &["ok"], &["okay"], &["please"], &["can", "you"], &["could", "you"], &["would", "you"], &["will", "you"], &["i", "want", "you", "to"], &["i", "need", "you", "to"]] {
+        for lead in [
+            &["hey", "atlas"][..],
+            &["atlas"],
+            &["ok"],
+            &["okay"],
+            &["please"],
+            &["can", "you"],
+            &["could", "you"],
+            &["would", "you"],
+            &["will", "you"],
+            &["i", "want", "you", "to"],
+            &["i", "need", "you", "to"],
+        ] {
             if w.len() > lead.len() && w[..lead.len()] == *lead {
                 w.drain(..lead.len());
             }
@@ -75,7 +98,17 @@ fn leading_words(said: &str) -> String {
 /// count only when they are a verb-like command word, not "open" in "open
 /// question" -- so the phrase must be followed by something.
 fn starts_with_phrase(lead: &str, phrase: &str) -> bool {
-    let p: String = phrase.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' }).collect();
+    let p: String = phrase
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '\'' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
     let p = p.split_whitespace().collect::<Vec<_>>().join(" ");
     !p.is_empty() && p.len() >= 5 && (lead == p || lead.starts_with(&format!("{p} ")))
 }
@@ -85,17 +118,185 @@ fn starts_with_phrase(lead: &str, phrase: &str) -> bool {
 /// ("keep at it", "show me", "tell them"), so leaving them in offered tools
 /// to small talk.
 const CONVERSATIONAL: &[&str] = &[
-    "i", "me", "my", "mine", "you", "your", "we", "us", "our", "it", "its", "this", "that", "these", "those", "a",
-    "an", "the", "and", "or", "but", "so", "to", "of", "in", "on", "at", "for", "with", "about", "from", "up", "out",
-    "is", "are", "was", "were", "be", "been", "am", "do", "does", "did", "done", "can", "could", "would", "will",
-    "should", "shall", "may", "might", "must", "have", "has", "had", "get", "got", "go", "going", "gone", "want",
-    "wanted", "need", "needs", "like", "just", "really", "please", "now", "then", "there", "here", "what", "whats",
-    "what's", "how", "why", "when", "who", "which", "where", "some", "any", "all", "more", "less", "very", "too",
-    "also", "not", "no", "yes", "yeah", "ok", "okay", "hey", "hi", "atlas", "guess", "think", "know", "said",
-    "say", "tell", "talk", "talking", "keep", "make", "let", "lets", "let's", "thing", "things", "something",
-    "anything", "everything", "again", "still", "right", "good", "great", "thanks", "thank", "i'm", "im", "you're",
-    "youre", "don't", "dont", "can't", "cant", "it's", "that's", "thats", "come", "on", "if", "as", "be", "being",
-    "one", "way", "ways", "yourself", "myself", "mean", "means", "meant", "actually", "because", "hear", "hearing", "how's", "hows", "who's", "whos", "where's", "there's", "here's", "i've", "i'll", "you've", "you'll", "least", "asked", "care", "cares", "time", "day", "back", "into", "them", "they", "he", "she", "him", "her", "his",
+    "i",
+    "me",
+    "my",
+    "mine",
+    "you",
+    "your",
+    "we",
+    "us",
+    "our",
+    "it",
+    "its",
+    "this",
+    "that",
+    "these",
+    "those",
+    "a",
+    "an",
+    "the",
+    "and",
+    "or",
+    "but",
+    "so",
+    "to",
+    "of",
+    "in",
+    "on",
+    "at",
+    "for",
+    "with",
+    "about",
+    "from",
+    "up",
+    "out",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "am",
+    "do",
+    "does",
+    "did",
+    "done",
+    "can",
+    "could",
+    "would",
+    "will",
+    "should",
+    "shall",
+    "may",
+    "might",
+    "must",
+    "have",
+    "has",
+    "had",
+    "get",
+    "got",
+    "go",
+    "going",
+    "gone",
+    "want",
+    "wanted",
+    "need",
+    "needs",
+    "like",
+    "just",
+    "really",
+    "please",
+    "now",
+    "then",
+    "there",
+    "here",
+    "what",
+    "whats",
+    "what's",
+    "how",
+    "why",
+    "when",
+    "who",
+    "which",
+    "where",
+    "some",
+    "any",
+    "all",
+    "more",
+    "less",
+    "very",
+    "too",
+    "also",
+    "not",
+    "no",
+    "yes",
+    "yeah",
+    "ok",
+    "okay",
+    "hey",
+    "hi",
+    "atlas",
+    "guess",
+    "think",
+    "know",
+    "said",
+    "say",
+    "tell",
+    "talk",
+    "talking",
+    "keep",
+    "make",
+    "let",
+    "lets",
+    "let's",
+    "thing",
+    "things",
+    "something",
+    "anything",
+    "everything",
+    "again",
+    "still",
+    "right",
+    "good",
+    "great",
+    "thanks",
+    "thank",
+    "i'm",
+    "im",
+    "you're",
+    "youre",
+    "don't",
+    "dont",
+    "can't",
+    "cant",
+    "it's",
+    "that's",
+    "thats",
+    "come",
+    "on",
+    "if",
+    "as",
+    "be",
+    "being",
+    "one",
+    "way",
+    "ways",
+    "yourself",
+    "myself",
+    "mean",
+    "means",
+    "meant",
+    "actually",
+    "because",
+    "hear",
+    "hearing",
+    "how's",
+    "hows",
+    "who's",
+    "whos",
+    "where's",
+    "there's",
+    "here's",
+    "i've",
+    "i'll",
+    "you've",
+    "you'll",
+    "least",
+    "asked",
+    "care",
+    "cares",
+    "time",
+    "day",
+    "back",
+    "into",
+    "them",
+    "they",
+    "he",
+    "she",
+    "him",
+    "her",
+    "his",
 ];
 
 /// The words Eric actually used for a thing, which its phrases and
@@ -158,7 +359,15 @@ pub fn request_words(said: &str) -> Vec<String> {
 /// "are you smart?" is not about the smart-ass setting.
 fn compounds(text: &str) -> String {
     let mut t = text.to_string();
-    for (two, one) in [("smart ass", "smartass"), ("smart-ass", "smartass"), ("smart apps", "smartass"), ("set up", "setup"), ("set-up", "setup"), ("e-mail", "email"), ("web cam", "webcam")] {
+    for (two, one) in [
+        ("smart ass", "smartass"),
+        ("smart-ass", "smartass"),
+        ("smart apps", "smartass"),
+        ("set up", "setup"),
+        ("set-up", "setup"),
+        ("e-mail", "email"),
+        ("web cam", "webcam"),
+    ] {
         t = t.replace(two, one);
     }
     t
@@ -215,20 +424,32 @@ impl Router {
             }
             let mut body = body;
             for c in &catalogue {
-                let same = c.id == e.name || SAME_THING.iter().any(|(cap, cmd)| *cap == c.id && *cmd == e.name);
+                let same = c.id == e.name
+                    || SAME_THING
+                        .iter()
+                        .any(|(cap, cmd)| *cap == c.id && *cmd == e.name);
                 if same {
                     body.push(' ');
                     body.push_str(c.what);
                 }
             }
-            index.add(entries.len() as u64, &compounds(&title.to_lowercase()), &compounds(&body.to_lowercase()));
+            index.add(
+                entries.len() as u64,
+                &compounds(&title.to_lowercase()),
+                &compounds(&body.to_lowercase()),
+            );
             for line in meaning_lines(e) {
                 texts.push(line);
                 owner.push(entries.len());
             }
             entries.push(e.clone());
         }
-        Router { entries, index, texts, owner }
+        Router {
+            entries,
+            index,
+            texts,
+            owner,
+        }
     }
 
     /// Every line of meaning, for the encoder; `meaning_of` takes their
@@ -271,7 +492,11 @@ impl Router {
         }
         let mut out: Vec<(&ToolEntry, f64)> = Vec::new();
         let lead = leading_words(said);
-        if let Some(e) = self.entries.iter().find(|e| e.phrases.iter().any(|p| starts_with_phrase(&lead, p))) {
+        if let Some(e) = self
+            .entries
+            .iter()
+            .find(|e| e.phrases.iter().any(|p| starts_with_phrase(&lead, p)))
+        {
             out.push((e, f64::MAX));
         }
         let hits = self.index.search(&q, k + 1);
@@ -299,9 +524,16 @@ impl Router {
     /// find that document from the accountant" is `find_file`), up to `k`,
     /// each over `MEANING_FLOOR` and within `MEANING_NEAR` of the best by
     /// meaning. Small talk gets nothing from meaning either.
-    pub fn shortlist_meaning(&self, said: &str, k: usize, meaning: Option<(&[f32], &[Vec<f32>])>) -> Vec<(&ToolEntry, f64)> {
+    pub fn shortlist_meaning(
+        &self,
+        said: &str,
+        k: usize,
+        meaning: Option<(&[f32], &[Vec<f32>])>,
+    ) -> Vec<(&ToolEntry, f64)> {
         let words = self.shortlist(said, k);
-        let Some((q, lines)) = meaning else { return words };
+        let Some((q, lines)) = meaning else {
+            return words;
+        };
         if q.is_empty() || small_talk(said) || request_words(said).is_empty() {
             return words;
         }
@@ -312,8 +544,10 @@ impl Router {
         let mut by: Vec<(usize, f32)> = like.iter().copied().enumerate().collect();
         by.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         let best = by.first().map(|b| b.1).unwrap_or(0.0);
-        let meant: Vec<(usize, f32)> =
-            by.into_iter().take_while(|(_, c)| *c >= MEANING_FLOOR && *c >= best - MEANING_NEAR).collect();
+        let meant: Vec<(usize, f32)> = by
+            .into_iter()
+            .take_while(|(_, c)| *c >= MEANING_FLOOR && *c >= best - MEANING_NEAR)
+            .collect();
         // A tool both the words and the meaning point at goes first; then
         // the one a starting phrase named; then what the meaning is sure of;
         // then the rest of the words' picks, and the rest of the meaning's.
@@ -349,7 +583,10 @@ impl Router {
         for (i, c) in &meant {
             add(*i, *c as f64, &mut order);
         }
-        order.into_iter().map(|(i, s)| (&self.entries[i], s)).collect()
+        order
+            .into_iter()
+            .map(|(i, s)| (&self.entries[i], s))
+            .collect()
     }
 
     /// Does this sentence plainly ask for one of the tools: a command's
@@ -361,12 +598,20 @@ impl Router {
         // A question is a request only when it's about their own things
         // ("how did my last video do"): "wait, what do you mean" and "what
         // are volcanic islands made of" are conversation.
-        let l = format!(" {} ", said.to_lowercase().replace(['?', ',', '.', '!'], " "));
+        let l = format!(
+            " {} ",
+            said.to_lowercase().replace(['?', ',', '.', '!'], " ")
+        );
         let question = said.trim_end().ends_with('?')
-            || ["what", "why", "how", "who", "when", "where", "which", "is", "are", "do", "does", "can", "could", "would", "will", "wait"]
-                .iter()
-                .any(|w| l.trim_start().starts_with(&format!("{w} ")));
-        let theirs = [" my ", " i ", " i've ", " i'm ", " me ", " mine "].iter().any(|w| l.contains(w));
+            || [
+                "what", "why", "how", "who", "when", "where", "which", "is", "are", "do", "does",
+                "can", "could", "would", "will", "wait",
+            ]
+            .iter()
+            .any(|w| l.trim_start().starts_with(&format!("{w} ")));
+        let theirs = [" my ", " i ", " i've ", " i'm ", " me ", " mine "]
+            .iter()
+            .any(|w| l.contains(w));
         if question && !theirs {
             return false;
         }
@@ -380,7 +625,11 @@ impl Router {
             e.phrases.iter().any(|p| {
                 p.split_whitespace().count() >= 2
                     && starts_with_phrase(&lead, p)
-                    && crate::intent::fits_the_command(&e.name, p, lead.get(p.len()..).unwrap_or(""))
+                    && crate::intent::fits_the_command(
+                        &e.name,
+                        p,
+                        lead.get(p.len()..).unwrap_or(""),
+                    )
             })
         }) {
             return true;
@@ -397,14 +646,20 @@ impl Router {
             }
         }
         match meaning {
-            Some((q, lines)) => self.meaning_of(q, lines).into_iter().any(|c| c >= MEANING_SURE),
+            Some((q, lines)) => self
+                .meaning_of(q, lines)
+                .into_iter()
+                .any(|c| c >= MEANING_SURE),
             None => false,
         }
     }
 
     /// The names only.
     pub fn names_for(&self, said: &str, k: usize) -> Vec<String> {
-        self.shortlist(said, k).into_iter().map(|(e, _)| e.name.clone()).collect()
+        self.shortlist(said, k)
+            .into_iter()
+            .map(|(e, _)| e.name.clone())
+            .collect()
     }
 
     /// `shortlist` for this sentence; when it reads like no tool and there
@@ -415,8 +670,18 @@ impl Router {
     }
 
     /// `for_turn` with meaning (`shortlist_meaning`).
-    pub fn for_turn_meaning(&self, said: &str, goal: Option<&str>, k: usize, meaning: Option<(&[f32], &[Vec<f32>])>) -> Vec<&ToolEntry> {
-        let mut picked: Vec<&ToolEntry> = self.shortlist_meaning(said, k, meaning).into_iter().map(|(e, _)| e).collect();
+    pub fn for_turn_meaning(
+        &self,
+        said: &str,
+        goal: Option<&str>,
+        k: usize,
+        meaning: Option<(&[f32], &[Vec<f32>])>,
+    ) -> Vec<&ToolEntry> {
+        let mut picked: Vec<&ToolEntry> = self
+            .shortlist_meaning(said, k, meaning)
+            .into_iter()
+            .map(|(e, _)| e)
+            .collect();
         // Only for a sentence with next to nothing of its own ("that's it",
         // "do it now"): "tell me about octopuses" is its own subject.
         // Never for small talk: "hey, how's it going" has no words of its own
@@ -427,10 +692,18 @@ impl Router {
         // tools and answered "I don't have notes to put up").
         let low = said.trim().to_lowercase();
         let a_question = low.ends_with('?')
-            || ["why", "what", "how", "who", "when", "where", "which", "huh", "really"].iter().any(|w| low == *w || low.starts_with(&format!("{w} ")));
+            || [
+                "why", "what", "how", "who", "when", "where", "which", "huh", "really",
+            ]
+            .iter()
+            .any(|w| low == *w || low.starts_with(&format!("{w} ")));
         if picked.is_empty() && request_words(said).len() <= 1 && !small_talk(said) && !a_question {
             if let Some(g) = goal.filter(|g| !g.trim().is_empty()) {
-                picked = self.shortlist(g, k.min(3)).into_iter().map(|(e, _)| e).collect();
+                picked = self
+                    .shortlist(g, k.min(3))
+                    .into_iter()
+                    .map(|(e, _)| e)
+                    .collect();
             }
         }
         picked
@@ -442,7 +715,10 @@ impl Router {
 /// asking; not the sentences the test checks, so the test isn't marking its
 /// own homework.
 const SAID_FOR: &[(&str, &str)] = &[
-    ("research", "look into this for me and tell me what you find"),
+    (
+        "research",
+        "look into this for me and tell me what you find",
+    ),
     ("research", "find out everything you can about a topic"),
     ("research", "can you read up on how something works"),
     ("find_file", "where did I save that document"),
@@ -459,7 +735,10 @@ const SAID_FOR: &[(&str, &str)] = &[
     ("machine_health", "is something hogging the processor"),
     ("machine_health", "how much room is left on my drive"),
     ("pc_tune", "shut the stuff I'm not using"),
-    ("pc_tune", "which programs launch when I turn the computer on"),
+    (
+        "pc_tune",
+        "which programs launch when I turn the computer on",
+    ),
     ("self_check", "are you working properly"),
     ("self_check", "check yourself for problems"),
     ("tidy_desktop", "clean up all the icons on my desktop"),
@@ -535,9 +814,15 @@ pub fn compact_spec(e: &ToolEntry, note: Option<&str>) -> Value {
     };
     let what = one_line(&what, 110);
     let parameters = if e.takes_arg {
-        let mut doc = if arg.is_empty() { "What it's about, in the user's words.".to_string() } else { one_line(&arg, 70) };
+        let mut doc = if arg.is_empty() {
+            "What it's about, in the user's words.".to_string()
+        } else {
+            one_line(&arg, 70)
+        };
         if let Some(n) = note.filter(|n| !n.trim().is_empty()) {
-            doc = format!("{} {}", doc.trim_end_matches('.'), one_line(n, 120)).trim().to_string();
+            doc = format!("{} {}", doc.trim_end_matches('.'), one_line(n, 120))
+                .trim()
+                .to_string();
         }
         let mut p = json!({"type": "object", "properties": {"arg": {"type": "string", "description": doc}}});
         if !e.arg_optional {
@@ -565,9 +850,34 @@ pub fn meta_spec() -> Value {
 pub fn about_the_day(said: &str) -> bool {
     let words = request_words(said);
     const DAY: &[&str] = &[
-        "today", "tonight", "tomorrow", "tomorrow's", "week", "weekend", "calendar", "schedule", "agenda", "busy",
-        "free", "meeting", "meetings", "appointment", "appointments", "plans", "reminder", "reminders", "due",
-        "morning", "afternoon", "evening", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
+        "today",
+        "tonight",
+        "tomorrow",
+        "tomorrow's",
+        "week",
+        "weekend",
+        "calendar",
+        "schedule",
+        "agenda",
+        "busy",
+        "free",
+        "meeting",
+        "meetings",
+        "appointment",
+        "appointments",
+        "plans",
+        "reminder",
+        "reminders",
+        "due",
+        "morning",
+        "afternoon",
+        "evening",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
         "sunday",
     ];
     words.iter().any(|w| DAY.contains(&w.as_str()))
@@ -590,15 +900,50 @@ pub fn clip_words(text: &str, most: usize) -> String {
 /// A greeting, a thanks, a goodbye or "how's it going": said to be sociable,
 /// not about anything asked earlier.
 pub fn small_talk(said: &str) -> bool {
-    let t: String = said.to_lowercase().replace('\u{2019}', "'").chars().map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' }).collect();
+    let t: String = said
+        .to_lowercase()
+        .replace('\u{2019}', "'")
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '\'' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
     let t = format!(" {} ", t.split_whitespace().collect::<Vec<_>>().join(" "));
     [
-        " hi ", " hey ", " hello ", " morning ", " evening ", " thanks ", " thank you ", " cheers ", " bye ", " goodbye ",
-        " good night ", " goodnight ", " how's it going ", " hows it going ", " how are you ", " how's your day ",
-        " what's up ", " whats up ", " see you ", " have a good ", " you there ", " can you hear me ",
+        " hi ",
+        " hey ",
+        " hello ",
+        " morning ",
+        " evening ",
+        " thanks ",
+        " thank you ",
+        " cheers ",
+        " bye ",
+        " goodbye ",
+        " good night ",
+        " goodnight ",
+        " how's it going ",
+        " hows it going ",
+        " how are you ",
+        " how's your day ",
+        " what's up ",
+        " whats up ",
+        " see you ",
+        " have a good ",
+        " you there ",
+        " can you hear me ",
         // Reactions, not requests (30 Sep 2026: "haha fair enough" matched
         // "that's enough", the phrase that takes a panel down).
-        " haha ", " lol ", " fair enough ", " fair point ", " nice one ", " makes sense ",
+        " haha ",
+        " lol ",
+        " fair enough ",
+        " fair point ",
+        " nice one ",
+        " makes sense ",
     ]
     .iter()
     .any(|w| t.contains(w))

@@ -14,7 +14,11 @@ fn a_live_native_holder_cannot_be_replaced_after_sleep() {
     let d = Dir::new("native-sleep");
     d.lock().take(1000).unwrap();
     fs::write(d.lock().path(), "1000").unwrap();
-    assert!(d.lock().take(1000 + 8 * 3600).unwrap_err().contains("already running"));
+    assert!(d
+        .lock()
+        .take(1000 + 8 * 3600)
+        .unwrap_err()
+        .contains("already running"));
     d.lock().release();
     assert!(d.lock().take(1000 + 8 * 3600).is_ok());
     d.lock().release();
@@ -38,7 +42,7 @@ impl Dir {
     /// the thing that made the first version of this test lie.
     fn age_it(&self, secs: u64) -> u64 {
         // The lock holds `moment pid` since 29 Sep 2026: read as Atlas reads it.
-    let started = fs::read_to_string(self.lock().path())
+        let started = fs::read_to_string(self.lock().path())
             .ok()
             .and_then(|s| atlas::onlyone::moment_in(&s))
             .unwrap_or(0);
@@ -67,7 +71,10 @@ fn a_second_start_is_refused_while_the_first_is_alive() {
     d.lock().take(1000).unwrap();
     let err = d.lock().take(1010).unwrap_err();
     assert!(err.contains("already running"), "got: {err}");
-    assert!(err.contains("writing over each other"), "it didn't say why: {err}");
+    assert!(
+        err.contains("writing over each other"),
+        "it didn't say why: {err}"
+    );
 }
 
 #[test]
@@ -76,7 +83,11 @@ fn the_refusal_says_what_to_do() {
     // the lock, which is the one thing you shouldn't do while it's live.
     let d = Dir::new("what");
     d.lock().take(1000).unwrap();
-    assert!(d.lock().take(1005).unwrap_err().contains("Close the other one"));
+    assert!(d
+        .lock()
+        .take(1005)
+        .unwrap_err()
+        .contains("Close the other one"));
 }
 
 // --- crashes ----------------------------------------------------------------
@@ -127,7 +138,10 @@ fn one_missed_beat_is_not_a_death() {
 
 #[test]
 fn the_window_is_several_beats_wide() {
-    assert!(GONE_AFTER_SECS >= 3 * BEAT_EVERY_SECS, "one slow moment would look fatal");
+    assert!(
+        GONE_AFTER_SECS >= 3 * BEAT_EVERY_SECS,
+        "one slow moment would look fatal"
+    );
 }
 
 // --- staying alive ----------------------------------------------------------
@@ -139,7 +153,10 @@ fn beating_keeps_it_held() {
     let nearly_stale = d.age_it(GONE_AFTER_SECS - 1);
     d.lock().beat(nearly_stale);
     // From the refreshed moment it is fresh again.
-    assert!(matches!(d.lock().look(nearly_stale + 5), Found::Running { .. }));
+    assert!(matches!(
+        d.lock().look(nearly_stale + 5),
+        Found::Running { .. }
+    ));
 }
 
 #[test]
@@ -175,16 +192,26 @@ fn releasing_a_lock_that_is_gone_is_harmless() {
 #[test]
 fn only_a_live_holder_blocks_a_start() {
     assert!(Found::Free.can_take());
-    assert!(Found::Abandoned { silent_for_secs: 999 }.can_take());
-    assert!(!Found::Running { last_beat_secs_ago: 0 }.can_take());
+    assert!(Found::Abandoned {
+        silent_for_secs: 999
+    }
+    .can_take());
+    assert!(!Found::Running {
+        last_beat_secs_ago: 0
+    }
+    .can_take());
 }
 
 #[test]
 fn every_outcome_explains_itself_in_words() {
     for f in [
         Found::Free,
-        Found::Running { last_beat_secs_ago: 12 },
-        Found::Abandoned { silent_for_secs: 600 },
+        Found::Running {
+            last_beat_secs_ago: 12,
+        },
+        Found::Abandoned {
+            silent_for_secs: 600,
+        },
     ] {
         assert!(f.plain().len() > 20, "{f:?} explains nothing");
     }
@@ -199,7 +226,11 @@ fn every_outcome_explains_itself_in_words() {
 
 /// A holder that wakes and beats `after` from now, as the live Atlas does on
 /// its first tick after the lid opens.
-fn wakes_and_beats(lock: OnlyOne, at: u64, after: std::time::Duration) -> std::thread::JoinHandle<()> {
+fn wakes_and_beats(
+    lock: OnlyOne,
+    at: u64,
+    after: std::time::Duration,
+) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         std::thread::sleep(after);
         lock.beat(at);
@@ -217,7 +248,9 @@ fn a_lock_whose_holder_was_asleep_is_not_taken_over_when_it_wakes() {
         "the control: on one look, a slept-through lock reads abandoned"
     );
     let waking = wakes_and_beats(d.lock(), morning, std::time::Duration::from_millis(150));
-    let r = d.lock().take_patiently(std::time::Duration::from_secs(3), &|| morning);
+    let r = d
+        .lock()
+        .take_patiently(std::time::Duration::from_secs(3), &|| morning);
     waking.join().unwrap();
     let err = r.expect_err("a second Atlas took the lock from one that had only been asleep");
     assert!(err.contains("already running"), "got: {err}");
@@ -239,14 +272,27 @@ fn a_lock_whose_holder_is_really_gone_is_still_taken_after_the_wait() {
 fn a_free_or_live_lock_is_answered_without_waiting() {
     let d = Dir::new("slept-free");
     let started = std::time::Instant::now();
-    assert!(d.lock().take_patiently(std::time::Duration::from_secs(30), &|| 1000).is_ok());
-    assert!(d.lock().take_patiently(std::time::Duration::from_secs(30), &|| 1001).is_err());
-    crate::common::assert_prompt(started.elapsed(), std::time::Duration::from_secs(5), "waited on a lock that wasn't abandoned");
+    assert!(d
+        .lock()
+        .take_patiently(std::time::Duration::from_secs(30), &|| 1000)
+        .is_ok());
+    assert!(d
+        .lock()
+        .take_patiently(std::time::Duration::from_secs(30), &|| 1001)
+        .is_err());
+    crate::common::assert_prompt(
+        started.elapsed(),
+        std::time::Duration::from_secs(5),
+        "waited on a lock that wasn't abandoned",
+    );
 }
 
 #[test]
 fn the_grace_is_long_enough_for_a_tick_and_short_of_the_staleness_window() {
-    assert!(WOKE_GRACE_SECS >= 10, "a woken Atlas may need a few seconds for its first tick");
+    assert!(
+        WOKE_GRACE_SECS >= 10,
+        "a woken Atlas may need a few seconds for its first tick"
+    );
     assert!(WOKE_GRACE_SECS < GONE_AFTER_SECS);
 }
 
@@ -254,11 +300,21 @@ fn the_grace_is_long_enough_for_a_tick_and_short_of_the_staleness_window() {
 fn something_watching_the_lock_does_not_give_up_on_the_first_quiet_look() {
     // The overlay's question, asked every three seconds.
     let mut w = Watching::default();
-    let quiet = Found::Abandoned { silent_for_secs: 8 * 3600 };
-    assert!(w.still_there(&quiet, 50_000), "gave up on the first look after a sleep");
+    let quiet = Found::Abandoned {
+        silent_for_secs: 8 * 3600,
+    };
+    assert!(
+        w.still_there(&quiet, 50_000),
+        "gave up on the first look after a sleep"
+    );
     assert!(w.still_there(&quiet, 50_000 + WOKE_GRACE_SECS - 1));
     // It beat: back to normal, and the next quiet spell starts afresh.
-    assert!(w.still_there(&Found::Running { last_beat_secs_ago: 0 }, 50_000 + WOKE_GRACE_SECS));
+    assert!(w.still_there(
+        &Found::Running {
+            last_beat_secs_ago: 0
+        },
+        50_000 + WOKE_GRACE_SECS
+    ));
     assert!(w.still_there(&quiet, 60_000));
     // Quiet for the whole grace: really gone.
     assert!(!w.still_there(&quiet, 60_000 + WOKE_GRACE_SECS));
@@ -280,11 +336,18 @@ fn a_lock_a_crash_zeroed_is_taken_over_once_nobody_has_touched_it() {
     let d = Dir::new("zeroed");
     let l = d.lock();
     fs::write(l.path(), [0u8; 16]).unwrap();
-    let written = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    let written = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     // Just written: it may be a holder mid-write, so it's occupied.
     assert!(matches!(l.look(written), Found::Running { .. }));
     // Untouched for longer than a holder ever goes between beats: abandoned.
     let later = written + GONE_AFTER_SECS + 60;
-    assert!(matches!(l.look(later), Found::Abandoned { .. }), "{:?}", l.look(later));
+    assert!(
+        matches!(l.look(later), Found::Abandoned { .. }),
+        "{:?}",
+        l.look(later)
+    );
     assert!(l.take(later).is_ok());
 }

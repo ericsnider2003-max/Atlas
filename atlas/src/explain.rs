@@ -50,13 +50,29 @@ impl Depth {
     /// "in detail" / "technical" → Technical, otherwise Normal.
     pub fn from_words(low: &str) -> Depth {
         const SIMPLE: &[&str] = &[
-            "like i'm five", "like im five", "like i am five", "eli5", "simply",
-            "in simple terms", "keep it simple", "dead simple", "for a child",
-            "for a beginner", "really simple",
+            "like i'm five",
+            "like im five",
+            "like i am five",
+            "eli5",
+            "simply",
+            "in simple terms",
+            "keep it simple",
+            "dead simple",
+            "for a child",
+            "for a beginner",
+            "really simple",
         ];
         const TECHNICAL: &[&str] = &[
-            "in detail", "more detail", "in more detail", "technical", "technically",
-            "deeply", "in depth", "in-depth", "thorough", "the full picture",
+            "in detail",
+            "more detail",
+            "in more detail",
+            "technical",
+            "technically",
+            "deeply",
+            "in depth",
+            "in-depth",
+            "thorough",
+            "the full picture",
         ];
         if SIMPLE.iter().any(|p| low.contains(p)) {
             Depth::Simple
@@ -122,10 +138,32 @@ and return only the rewritten explanation, no preamble.";
 /// Deliberately the clearly-technical ones, not every computing word, so the
 /// advice is worth heeding rather than noise. Whole-word matches only.
 const JARGON: &[&str] = &[
-    "boolean", "instantiate", "instantiated", "recursion", "recursive", "asynchronous",
-    "concurrency", "pointer", "struct", "enum", "closure", "mutex", "buffer", "regex",
-    "hashmap", "iterator", "polymorphism", "dereference", "serialize", "deserialize",
-    "middleware", "idempotent", "nullable", "stdin", "stdout", "runtime",
+    "boolean",
+    "instantiate",
+    "instantiated",
+    "recursion",
+    "recursive",
+    "asynchronous",
+    "concurrency",
+    "pointer",
+    "struct",
+    "enum",
+    "closure",
+    "mutex",
+    "buffer",
+    "regex",
+    "hashmap",
+    "iterator",
+    "polymorphism",
+    "dereference",
+    "serialize",
+    "deserialize",
+    "middleware",
+    "idempotent",
+    "nullable",
+    "stdin",
+    "stdout",
+    "runtime",
 ];
 
 /// Check an explanation for how well a non-coder can read it, at the default
@@ -160,7 +198,10 @@ pub fn check_at(explanation: &str, depth: Depth) -> Vec<Finding> {
     let has_block = trimmed.contains('{') && trimmed.contains('}');
     let has_arrow = trimmed.contains("=>") || trimmed.contains("->");
     let has_semis = trimmed.matches(';').count() >= 2;
-    let punct = trimmed.chars().filter(|c| "{}[]<>;=|&".contains(*c)).count();
+    let punct = trimmed
+        .chars()
+        .filter(|c| "{}[]<>;=|&".contains(*c))
+        .count();
     let dense = punct * 12 > trimmed.chars().count(); // >~8% code punctuation
     if has_block || has_arrow || has_semis || dense {
         out.push(Finding {
@@ -198,11 +239,19 @@ pub fn check_at(explanation: &str, depth: Depth) -> Vec<Finding> {
     // rule doesn't fire.
     if depth != Depth::Technical {
         let lower = trimmed.to_lowercase();
-        let mut hit: Vec<&str> = JARGON.iter().copied().filter(|term| contains_word(&lower, term)).collect();
+        let mut hit: Vec<&str> = JARGON
+            .iter()
+            .copied()
+            .filter(|term| contains_word(&lower, term))
+            .collect();
         hit.dedup();
         if !hit.is_empty() {
             out.push(Finding {
-                severity: if depth == Depth::Simple { Severity::Blocking } else { Severity::Advisory },
+                severity: if depth == Depth::Simple {
+                    Severity::Blocking
+                } else {
+                    Severity::Advisory
+                },
                 rule: "plain words".into(),
                 detail: format!(
                     "uses technical term{} a non-coder may not know: {}",
@@ -218,12 +267,18 @@ pub fn check_at(explanation: &str, depth: Depth) -> Vec<Finding> {
 
 /// The findings that block, in order — the fix loop's cue.
 pub fn blocking(findings: &[Finding]) -> Vec<&Finding> {
-    findings.iter().filter(|f| f.severity == Severity::Blocking).collect()
+    findings
+        .iter()
+        .filter(|f| f.severity == Severity::Blocking)
+        .collect()
 }
 
 /// One honest line: what a clean check does and does not establish.
 pub fn spoken(findings: &[Finding]) -> String {
-    let blocking = findings.iter().filter(|f| f.severity == Severity::Blocking).count();
+    let blocking = findings
+        .iter()
+        .filter(|f| f.severity == Severity::Blocking)
+        .count();
     let advisory = findings.len() - blocking;
     if findings.is_empty() {
         return "Reads as a plain-English explanation — whether it's accurate about the code is for \
@@ -253,10 +308,18 @@ pub fn spoken(findings: &[Finding]) -> String {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
     /// Reads as a plain explanation. Any remaining findings are advisory notes.
-    Explained { text: String, rounds: u32, notes: Vec<Finding> },
+    Explained {
+        text: String,
+        rounds: u32,
+        notes: Vec<Finding>,
+    },
     /// A blocking problem survived the budget. The best draft comes back WITH
     /// the problems attached, never as if it worked.
-    Struggled { text: String, rounds: u32, findings: Vec<Finding> },
+    Struggled {
+        text: String,
+        rounds: u32,
+        findings: Vec<Finding>,
+    },
     /// No usable draft — no model output.
     NoDraft(String),
 }
@@ -283,11 +346,22 @@ pub fn explain_loop(
         let findings = check_fn(&text);
         let has_blocker = findings.iter().any(|f| f.severity == Severity::Blocking);
         if !has_blocker {
-            let notes = findings.into_iter().filter(|f| f.severity == Severity::Advisory).collect();
-            return Outcome::Explained { text, rounds, notes };
+            let notes = findings
+                .into_iter()
+                .filter(|f| f.severity == Severity::Advisory)
+                .collect();
+            return Outcome::Explained {
+                text,
+                rounds,
+                notes,
+            };
         }
         if rounds >= max_rounds {
-            return Outcome::Struggled { text, rounds, findings };
+            return Outcome::Struggled {
+                text,
+                rounds,
+                findings,
+            };
         }
         rounds += 1;
         let problems = findings
@@ -305,7 +379,11 @@ pub fn explain_loop(
                     rule: "fix".into(),
                     detail: format!("couldn't get a rewrite: {e}"),
                 });
-                return Outcome::Struggled { text, rounds, findings };
+                return Outcome::Struggled {
+                    text,
+                    rounds,
+                    findings,
+                };
             }
         }
     }
@@ -316,8 +394,14 @@ pub fn explain_loop(
 /// *with* its explanation, so nothing generated arrives unexplained. `None`
 /// only when the model produced nothing at all; a struggle still returns its
 /// best attempt, because a rough explanation beats none beside fresh code.
-pub fn in_plain_english(code: &str, llm: &dyn crate::brain::Llm, max_rounds: u32) -> Option<String> {
-    match explain_loop(code, llm, max_rounds, Depth::Normal, |t| check_at(t, Depth::Normal)) {
+pub fn in_plain_english(
+    code: &str,
+    llm: &dyn crate::brain::Llm,
+    max_rounds: u32,
+) -> Option<String> {
+    match explain_loop(code, llm, max_rounds, Depth::Normal, |t| {
+        check_at(t, Depth::Normal)
+    }) {
         Outcome::Explained { text, .. } | Outcome::Struggled { text, .. } => Some(text),
         Outcome::NoDraft(_) => None,
     }
@@ -325,7 +409,9 @@ pub fn in_plain_english(code: &str, llm: &dyn crate::brain::Llm, max_rounds: u32
 
 /// First draft from the model, at the chosen depth.
 fn draft(code: &str, llm: &dyn crate::brain::Llm, depth: Depth) -> Result<String, String> {
-    let reply = llm.complete(system_for(depth), code).map_err(|e| e.to_string())?;
+    let reply = llm
+        .complete(system_for(depth), code)
+        .map_err(|e| e.to_string())?;
     let text = reply.trim().to_string();
     if text.is_empty() {
         return Err("the model returned nothing to explain with".into());
@@ -336,7 +422,9 @@ fn draft(code: &str, llm: &dyn crate::brain::Llm, depth: Depth) -> Result<String
 /// One rewrite round: the explanation and the check's complaints.
 fn fix(explanation: &str, problems: &str, llm: &dyn crate::brain::Llm) -> Result<String, String> {
     let user = format!("The problems:\n{problems}\n\nYour explanation:\n{explanation}");
-    let reply = llm.complete(EXPLAIN_FIX_SYSTEM, &user).map_err(|e| e.to_string())?;
+    let reply = llm
+        .complete(EXPLAIN_FIX_SYSTEM, &user)
+        .map_err(|e| e.to_string())?;
     let text = reply.trim().to_string();
     if text.is_empty() {
         return Err("nothing came back on the rewrite".into());

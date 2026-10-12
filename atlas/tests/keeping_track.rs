@@ -23,7 +23,14 @@ fn cfg() -> atlas::config::Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 /// Wednesday 30 Sep 2026, 14:00 UTC.
@@ -33,25 +40,56 @@ const NOW: u64 = 1_790_776_800;
 fn the_words_are_read() {
     assert_eq!(read("what reminders do I have?"), Some(Ask::ListReminders));
     assert_eq!(read("list my reminders"), Some(Ask::ListReminders));
-    assert_eq!(read("cancel all my reminders"), Some(Ask::CancelReminder(Which::All)));
-    assert_eq!(read("cancel reminder 4"), Some(Ask::CancelReminder(Which::Number(4))));
-    assert_eq!(read("delete the reminder about the dentist"), Some(Ask::CancelReminder(Which::About("the dentist".into()))));
-    assert_eq!(read("cancel that timer"), Some(Ask::CancelReminder(Which::Last)));
+    assert_eq!(
+        read("cancel all my reminders"),
+        Some(Ask::CancelReminder(Which::All))
+    );
+    assert_eq!(
+        read("cancel reminder 4"),
+        Some(Ask::CancelReminder(Which::Number(4)))
+    );
+    assert_eq!(
+        read("delete the reminder about the dentist"),
+        Some(Ask::CancelReminder(Which::About("the dentist".into())))
+    );
+    assert_eq!(
+        read("cancel that timer"),
+        Some(Ask::CancelReminder(Which::Last))
+    );
     assert_eq!(read("set a timer for 10 minutes"), Some(Ask::Timer(600)));
     assert_eq!(read("set a timer for ten minutes"), Some(Ask::Timer(600)));
     assert_eq!(read("start a 25 minute timer"), Some(Ask::Timer(1500)));
     assert_eq!(read("timer for half an hour"), Some(Ask::Timer(1800)));
     assert_eq!(read("snooze"), Some(Ask::Snooze(None)));
     assert_eq!(read("snooze for 5 minutes"), Some(Ask::Snooze(Some(300))));
-    assert_eq!(read("move my 3pm to 4pm"), Some(Ask::MoveEvent { what: "3pm".into(), to: "4pm".into() }));
-    assert_eq!(read("reschedule the dentist to friday at 2pm"), Some(Ask::MoveEvent { what: "dentist".into(), to: "friday at 2pm".into() }));
+    assert_eq!(
+        read("move my 3pm to 4pm"),
+        Some(Ask::MoveEvent {
+            what: "3pm".into(),
+            to: "4pm".into()
+        })
+    );
+    assert_eq!(
+        read("reschedule the dentist to friday at 2pm"),
+        Some(Ask::MoveEvent {
+            what: "dentist".into(),
+            to: "friday at 2pm".into()
+        })
+    );
     assert_eq!(read("cancel my 3pm"), Some(Ask::CancelEvent("3pm".into())));
-    assert_eq!(read("cancel the dentist appointment"), Some(Ask::CancelEvent("dentist".into())));
+    assert_eq!(
+        read("cancel the dentist appointment"),
+        Some(Ask::CancelEvent("dentist".into()))
+    );
     // Not these.
     assert_eq!(read("cancel that"), None);
     assert_eq!(read("cancel the post"), None);
     assert_eq!(read("what time is it"), None);
-    assert_eq!(read("remind me in 20 minutes to stretch"), None, "setting one is remind_help's");
+    assert_eq!(
+        read("remind me in 20 minutes to stretch"),
+        None,
+        "setting one is remind_help's"
+    );
 }
 
 #[test]
@@ -71,8 +109,17 @@ fn an_event_answers_to_its_time_or_its_name() {
 fn reminders_are_listed_cancelled_and_timers_set() {
     let c = cfg();
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("reminders")), Proactive::new(ProactiveConfig::default()));
-    assert_eq!(d.turn("what reminders do I have", NOW), "No reminders or timers set.");
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("reminders")),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    assert_eq!(
+        d.turn("what reminders do I have", NOW),
+        "No reminders or timers set."
+    );
     let set = d.turn("remind me in 20 minutes to stretch", NOW);
     assert!(set.contains("stretch"), "{set}");
     let set2 = d.turn("remind me in 2 hours to call mom", NOW);
@@ -81,45 +128,92 @@ fn reminders_are_listed_cancelled_and_timers_set() {
     assert!(timer.starts_with("Timer set for 10 minutes"), "{timer}");
     let list = d.turn("what reminders do I have", NOW);
     assert!(list.starts_with("3:"), "{list}");
-    assert!(list.contains("stretch in 20 minutes") && list.contains("call mom") && list.contains("the 10-minute timer in 10 minutes"), "{list}");
+    assert!(
+        list.contains("stretch in 20 minutes")
+            && list.contains("call mom")
+            && list.contains("the 10-minute timer in 10 minutes"),
+        "{list}"
+    );
     let cut = d.turn("cancel the reminder to call mom", NOW);
     assert_eq!(cut, "Cancelled: call mom.");
     let last = d.turn("cancel that timer", NOW);
-    assert_eq!(last, "Cancelled: the 10-minute timer.", "the last one set was the timer");
+    assert_eq!(
+        last, "Cancelled: the 10-minute timer.",
+        "the last one set was the timer"
+    );
     let left = d.turn("list my reminders", NOW);
-    assert!(left.starts_with("One:") && left.contains("stretch"), "{left}");
+    assert!(
+        left.starts_with("One:") && left.contains("stretch"),
+        "{left}"
+    );
     assert_eq!(d.turn("cancel all reminders", NOW), "Cancelled: stretch.");
-    assert_eq!(d.turn("what reminders do I have", NOW), "No reminders or timers set.");
+    assert_eq!(
+        d.turn("what reminders do I have", NOW),
+        "No reminders or timers set."
+    );
 }
 
 #[test]
 fn a_reminder_with_no_time_asks_when_and_the_answer_sets_it() {
     let c = cfg();
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("no-time")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("no-time")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let asked = d.turn("remind me to water the plants", NOW);
-    assert!(asked.starts_with("When should I remind you to water the plants"), "{asked}");
+    assert!(
+        asked.starts_with("When should I remind you to water the plants"),
+        "{asked}"
+    );
     let set = d.turn("in 30 minutes", NOW);
-    assert!(set.contains("water the plants") && set.contains("30 minutes"), "{set}");
-    assert!(d.turn("what reminders do I have", NOW).contains("water the plants"));
+    assert!(
+        set.contains("water the plants") && set.contains("30 minutes"),
+        "{set}"
+    );
+    assert!(d
+        .turn("what reminders do I have", NOW)
+        .contains("water the plants"));
 }
 
 #[test]
 fn a_reminder_that_fired_can_be_snoozed() {
     let c = cfg();
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("snooze")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("snooze")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let _ = d.turn("remind me in 1 minutes to stretch", NOW);
     // Nothing fired yet: "snooze" isn't taken.
     let _ = d.tick(NOW + 120);
-    assert!(d.last_reminder_fired.as_ref().is_some_and(|(c, _)| c.contains("stretch")), "it fired");
+    assert!(
+        d.last_reminder_fired
+            .as_ref()
+            .is_some_and(|(c, _)| c.contains("stretch")),
+        "it fired"
+    );
     let mut snoozed = d.turn("snooze", NOW + 130);
     if snoozed.contains("Waiting for local storage") {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
             let lines = d.tick(NOW + 130);
-            if let Some(terminal) = lines.into_iter().find(|line| line.contains("I'll say it again") || line.contains("waiting reminder change")) { snoozed = terminal; break; }
-            assert!(std::time::Instant::now() < deadline, "waiting snooze never completed");
+            if let Some(terminal) = lines.into_iter().find(|line| {
+                line.contains("I'll say it again") || line.contains("waiting reminder change")
+            }) {
+                snoozed = terminal;
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "waiting snooze never completed"
+            );
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
@@ -132,7 +226,13 @@ fn a_reminder_that_fired_can_be_snoozed() {
 fn an_event_is_cancelled_and_moved_by_voice() {
     let c = cfg();
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("calendar")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("calendar")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let booked = d.turn("schedule dentist tomorrow at 3pm", NOW);
     assert!(booked.to_lowercase().contains("dentist"), "{booked}");
     let _ = d.turn("schedule gym tomorrow at 6pm", NOW);

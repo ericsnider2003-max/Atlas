@@ -67,7 +67,11 @@ impl Bucket {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Suggestion {
     /// Move it, and here is why.
-    Move { to: PathBuf, bucket: Bucket, why: String },
+    Move {
+        to: PathBuf,
+        bucket: Bucket,
+        why: String,
+    },
     /// Leave it alone, and here is why — which is the useful half.
     Leave { why: String },
 }
@@ -90,7 +94,9 @@ impl Suggestion {
 const REFERENCE: &[&str] = &["pdf", "epub", "mobi", "djvu"];
 
 /// Extensions that are almost always yours and in progress.
-const WORKING: &[&str] = &["docx", "xlsx", "pptx", "odt", "ods", "md", "txt", "psd", "fig"];
+const WORKING: &[&str] = &[
+    "docx", "xlsx", "pptx", "odt", "ods", "md", "txt", "psd", "fig",
+];
 
 /// After this long untouched, something has gone quiet whatever it is.
 pub const ARCHIVE_AFTER_DAYS: u64 = 365;
@@ -98,7 +104,9 @@ pub const ARCHIVE_AFTER_DAYS: u64 = 365;
 /// Names that say "this is a throwaway copy", which is a filing decision of its
 /// own — Atlas leaves them, because the duplicate is usually the one you are
 /// mid-way through sorting out.
-const AMBIGUOUS: &[&str] = &["copy", "final", "final2", "new", "untitled", "document", "draft"];
+const AMBIGUOUS: &[&str] = &[
+    "copy", "final", "final2", "new", "untitled", "document", "draft",
+];
 
 /// Where should this go?
 ///
@@ -114,12 +122,16 @@ pub fn suggest(root: &Path, name: &str, ext: &str, age_days: u64) -> Suggestion 
     // Anything already inside the structure is left alone. Atlas re-filing its
     // own filing is how a tidy folder becomes a shuffling folder.
     if root.join("Projects").exists() && name.contains("/Projects/") {
-        return Suggestion::Leave { why: "already filed".into() };
+        return Suggestion::Leave {
+            why: "already filed".into(),
+        };
     }
 
     // A name that says nothing is a name Atlas cannot file on. These are
     // usually the files you are part-way through sorting out yourself.
-    if AMBIGUOUS.iter().any(|a| stem == *a || stem.starts_with(&format!("{a} ")))
+    if AMBIGUOUS
+        .iter()
+        .any(|a| stem == *a || stem.starts_with(&format!("{a} ")))
         || stem.trim().is_empty()
     {
         return Suggestion::Leave {
@@ -200,7 +212,9 @@ const NOT_LOOSE: &[&str] = &["lnk", "url", "ini", "desktop", "website", "appref-
 /// counted from `now` (seconds). In name order, so the plan reads the same
 /// twice. Nothing is moved.
 pub fn plan_folder(dir: &Path, root: &Path, now: u64) -> Vec<(PathBuf, Suggestion)> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
     let mut out: Vec<(PathBuf, Suggestion)> = Vec::new();
     for e in entries.flatten() {
         let path = e.path();
@@ -209,7 +223,10 @@ pub fn plan_folder(dir: &Path, root: &Path, now: u64) -> Vec<(PathBuf, Suggestio
             continue;
         }
         let name = e.file_name().to_string_lossy().to_string();
-        let ext = path.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let ext = path
+            .extension()
+            .map(|x| x.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
         if name.starts_with('.') || NOT_LOOSE.contains(&ext.as_str()) {
             continue;
         }
@@ -232,7 +249,11 @@ pub fn plan_folder(dir: &Path, root: &Path, now: u64) -> Vec<(PathBuf, Suggestio
 /// already there, and never leaving two copies: a rename, or across drives
 /// a copy and then the original removed only once the copy is whole. Where
 /// it went, or why not.
-pub fn file_one(from: &Path, s: &Suggestion, sys: &crate::system::SystemConfig) -> Result<PathBuf, String> {
+pub fn file_one(
+    from: &Path,
+    s: &Suggestion,
+    sys: &crate::system::SystemConfig,
+) -> Result<PathBuf, String> {
     let (Some(change), Suggestion::Move { to, .. }) = (as_change(from, s), s) else {
         return Err("left where it is".into());
     };
@@ -240,16 +261,22 @@ pub fn file_one(from: &Path, s: &Suggestion, sys: &crate::system::SystemConfig) 
         return Err(why);
     }
     if let Some(parent) = to.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("couldn't make {}: {e}", parent.display()))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("couldn't make {}: {e}", parent.display()))?;
     }
     // `fs::rename` replaces its destination silently on unix, and the one
     // already there is, by definition, the one filed before.
     if to.exists() {
-        return Err(format!("{} already exists, and I won't write over it", to.display()));
+        return Err(format!(
+            "{} already exists, and I won't write over it",
+            to.display()
+        ));
     }
     let moved = match std::fs::rename(from, to) {
         Ok(()) => Ok(()),
-        Err(_) => std::fs::copy(from, to).and_then(|_| std::fs::remove_file(from)).map(|_| ()),
+        Err(_) => std::fs::copy(from, to)
+            .and_then(|_| std::fs::remove_file(from))
+            .map(|_| ()),
     };
     match moved {
         Ok(()) => Ok(to.clone()),

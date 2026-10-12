@@ -46,17 +46,44 @@ pub const LARGEST_FILE: u64 = 256 * 1024;
 const DEEPEST: usize = 10;
 /// Folders never read: build output, version control, dependencies, caches.
 const SKIP_DIRS: &[&str] = &[
-    "target", ".git", ".hg", ".svn", "node_modules", "__pycache__", ".venv", "venv", "env", "dist", "build",
-    ".mypy_cache", ".pytest_cache", ".tox", ".idea", ".vscode", "vendor", ".next", "out", "bin", "obj",
+    "target",
+    ".git",
+    ".hg",
+    ".svn",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "env",
+    "dist",
+    "build",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".tox",
+    ".idea",
+    ".vscode",
+    "vendor",
+    ".next",
+    "out",
+    "bin",
+    "obj",
 ];
 /// What counts as part of a project worth reading.
 const SOURCE_EXTS: &[&str] = &[
-    "rs", "py", "js", "mjs", "cjs", "ts", "tsx", "jsx", "go", "c", "h", "cc", "cpp", "cxx", "hpp", "hh", "java", "kt",
-    "cs", "rb", "php", "swift", "lua", "sh", "ps1", "toml", "yaml", "yml", "json", "cfg", "ini", "md", "html", "css",
-    "sql",
+    "rs", "py", "js", "mjs", "cjs", "ts", "tsx", "jsx", "go", "c", "h", "cc", "cpp", "cxx", "hpp",
+    "hh", "java", "kt", "cs", "rb", "php", "swift", "lua", "sh", "ps1", "toml", "yaml", "yml",
+    "json", "cfg", "ini", "md", "html", "css", "sql",
 ];
 /// Manifests, read whatever their extension.
-const MANIFESTS: &[&str] = &["Cargo.toml", "package.json", "pyproject.toml", "requirements.txt", "go.mod", "CMakeLists.txt", "Makefile"];
+const MANIFESTS: &[&str] = &[
+    "Cargo.toml",
+    "package.json",
+    "pyproject.toml",
+    "requirements.txt",
+    "go.mod",
+    "CMakeLists.txt",
+    "Makefile",
+];
 
 /// What was read for a request.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -102,7 +129,9 @@ fn walk(root: &Path) -> Vec<Found> {
         if dirs_seen > MOST_FILES {
             break;
         }
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         let mut entries: Vec<_> = rd.flatten().collect();
         entries.sort_by_key(|e| e.file_name());
         for e in entries {
@@ -113,7 +142,8 @@ fn walk(root: &Path) -> Vec<Found> {
             let path = e.path();
             let Ok(ft) = e.file_type() else { continue };
             if ft.is_dir() {
-                if depth < DEEPEST && !SKIP_DIRS.contains(&name.as_str()) && !name.starts_with('.') {
+                if depth < DEEPEST && !SKIP_DIRS.contains(&name.as_str()) && !name.starts_with('.')
+                {
                     stack.push((path, depth + 1));
                 }
                 continue;
@@ -121,7 +151,11 @@ fn walk(root: &Path) -> Vec<Found> {
             if !ft.is_file() {
                 continue;
             }
-            let ext = path.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
+            let ext = path
+                .extension()
+                .and_then(|x| x.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
             if !SOURCE_EXTS.contains(&ext.as_str()) && !MANIFESTS.contains(&name.as_str()) {
                 continue;
             }
@@ -129,7 +163,11 @@ fn walk(root: &Path) -> Vec<Found> {
             if name.ends_with(".lock") || name == "package-lock.json" {
                 continue;
             }
-            let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
             let size = e.metadata().map(|m| m.len()).unwrap_or(u64::MAX);
             let text = if size <= LARGEST_FILE && read + size <= MOST_BYTES {
                 read += size;
@@ -177,10 +215,22 @@ struct Pointers {
 fn pointers(request: &str) -> Pointers {
     let mut p = Pointers::default();
     let mut seen = HashSet::new();
-    for raw in request.split(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '`' | ',' | ';' | '[' | ']' | '{' | '}' | '<' | '>' | '=')) {
+    for raw in request.split(|c: char| {
+        c.is_whitespace()
+            || matches!(
+                c,
+                '"' | '\'' | '`' | ',' | ';' | '[' | ']' | '{' | '}' | '<' | '>' | '='
+            )
+    }) {
         let had_call = raw.contains('(');
-        let t = raw.trim_matches(|c: char| !c.is_alphanumeric() && c != '_' && c != '/' && c != '.' && c != ':' && c != '\\');
-        let t = t.split('(').next().unwrap_or("").trim_end_matches(['.', ':']);
+        let t = raw.trim_matches(|c: char| {
+            !c.is_alphanumeric() && c != '_' && c != '/' && c != '.' && c != ':' && c != '\\'
+        });
+        let t = t
+            .split('(')
+            .next()
+            .unwrap_or("")
+            .trim_end_matches(['.', ':']);
         if t.len() < 3 {
             continue;
         }
@@ -188,7 +238,9 @@ fn pointers(request: &str) -> Pointers {
         // "app.py:42").
         let file_part = t.split(':').next().unwrap_or(t).replace('\\', "/");
         if let Some((_, ext)) = file_part.rsplit_once('.') {
-            if SOURCE_EXTS.contains(&ext.to_ascii_lowercase().as_str()) && file_part.len() > ext.len() + 1 {
+            if SOURCE_EXTS.contains(&ext.to_ascii_lowercase().as_str())
+                && file_part.len() > ext.len() + 1
+            {
                 if seen.insert(file_part.clone()) {
                     p.files.push(file_part);
                 }
@@ -197,15 +249,27 @@ fn pointers(request: &str) -> Pointers {
         }
         // A name: snake_case, camelCase / PascalCase with a hump, a path
         // like `db::open`, or anything written as a call.
-        let last = t.rsplit("::").next().unwrap_or(t).rsplit('.').next().unwrap_or(t);
-        if last.len() < 3 || !last.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_') {
+        let last = t
+            .rsplit("::")
+            .next()
+            .unwrap_or(t)
+            .rsplit('.')
+            .next()
+            .unwrap_or(t);
+        if last.len() < 3
+            || !last
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphabetic() || c == '_')
+        {
             continue;
         }
         if !last.chars().all(|c| c.is_alphanumeric() || c == '_') {
             continue;
         }
         let snake = last.contains('_');
-        let humped = last.chars().skip(1).any(|c| c.is_uppercase()) && last.chars().any(|c| c.is_lowercase());
+        let humped = last.chars().skip(1).any(|c| c.is_uppercase())
+            && last.chars().any(|c| c.is_lowercase());
         if (snake || humped || had_call || t.contains("::")) && seen.insert(last.to_string()) {
             p.names.push(last.to_string());
         }
@@ -216,18 +280,41 @@ fn pointers(request: &str) -> Pointers {
 /// Does this piece define `name` (rather than only use it)?
 fn defines(text: &str, name: &str) -> bool {
     const BEFORE: &[&str] = &[
-        "fn ", "def ", "class ", "struct ", "enum ", "trait ", "type ", "function ", "const ", "let ", "var ", "interface ",
-        "impl ", "mod ", "static ", "func ",
+        "fn ",
+        "def ",
+        "class ",
+        "struct ",
+        "enum ",
+        "trait ",
+        "type ",
+        "function ",
+        "const ",
+        "let ",
+        "var ",
+        "interface ",
+        "impl ",
+        "mod ",
+        "static ",
+        "func ",
     ];
     text.lines().any(|l| {
         let l = l.trim_start();
-        let l = l.strip_prefix("pub ").or_else(|| l.strip_prefix("pub(crate) ")).or_else(|| l.strip_prefix("export ")).or_else(|| l.strip_prefix("async ")).unwrap_or(l);
+        let l = l
+            .strip_prefix("pub ")
+            .or_else(|| l.strip_prefix("pub(crate) "))
+            .or_else(|| l.strip_prefix("export "))
+            .or_else(|| l.strip_prefix("async "))
+            .unwrap_or(l);
         let l = l.strip_prefix("async ").unwrap_or(l);
         BEFORE.iter().any(|b| {
             l.strip_prefix(b).is_some_and(|rest| {
-                rest.strip_prefix(name).is_some_and(|after| !after.starts_with(|c: char| c.is_alphanumeric() || c == '_'))
+                rest.strip_prefix(name).is_some_and(|after| {
+                    !after.starts_with(|c: char| c.is_alphanumeric() || c == '_')
+                })
             })
-        }) || (l.starts_with(name) && l[name.len()..].trim_start().starts_with('=') && !l[name.len()..].trim_start().starts_with("=="))
+        }) || (l.starts_with(name)
+            && l[name.len()..].trim_start().starts_with('=')
+            && !l[name.len()..].trim_start().starts_with("=="))
     })
 }
 
@@ -298,15 +385,25 @@ pub fn relevant(root: &Path, request: &str, budget: usize) -> Reading {
 
     // Cut every readable file into pieces that keep their lines.
     let mut pieces: Vec<Piece> = Vec::new();
-    let cfg = crate::chunker::ChunkConfig { max: 1500, overlap: 0 };
+    let cfg = crate::chunker::ChunkConfig {
+        max: 1500,
+        overlap: 0,
+    };
     for (i, f) in files.iter().enumerate() {
         let Some(t) = &f.text else { continue };
         if t.trim().is_empty() {
             continue;
         }
-        let Ok(chunks) = crate::chunker::chunk(t, cfg) else { continue };
+        let Ok(chunks) = crate::chunker::chunk(t, cfg) else {
+            continue;
+        };
         for c in chunks {
-            pieces.push(Piece { file: i, start: c.start_line, end: c.end_line, text: c.text });
+            pieces.push(Piece {
+                file: i,
+                start: c.start_line,
+                end: c.end_line,
+                text: c.text,
+            });
         }
     }
 
@@ -323,13 +420,25 @@ pub fn relevant(root: &Path, request: &str, budget: usize) -> Reading {
                 f.rel == n || f.rel.ends_with(&format!("/{n}"))
             }) || {
                 // A file named by its stem alone: "the session module".
-                let stem = f.rel.rsplit('/').next().unwrap_or(&f.rel).split('.').next().unwrap_or("");
+                let stem = f
+                    .rel
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&f.rel)
+                    .split('.')
+                    .next()
+                    .unwrap_or("");
                 stem.len() >= 4 && ptr.names.iter().any(|n| n.eq_ignore_ascii_case(stem))
             }
         })
         .map(|(i, _)| i)
         .collect();
-    let by_file: Vec<u64> = pieces.iter().enumerate().filter(|(_, p)| named_files.contains(&p.file)).map(|(i, _)| i as u64).collect();
+    let by_file: Vec<u64> = pieces
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| named_files.contains(&p.file))
+        .map(|(i, _)| i as u64)
+        .collect();
 
     // 2. Pieces that define a name the request mentions, then those that use
     //    it.
@@ -346,7 +455,11 @@ pub fn relevant(root: &Path, request: &str, budget: usize) -> Reading {
     }
     defining.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
     using.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-    let by_name: Vec<u64> = defining.iter().chain(using.iter()).map(|(i, _)| *i).collect();
+    let by_name: Vec<u64> = defining
+        .iter()
+        .chain(using.iter())
+        .map(|(i, _)| *i)
+        .collect();
 
     // 3. BM25 over the pieces, names split into their words.
     let mut idx = crate::bm25::Index::default();
@@ -363,12 +476,26 @@ pub fn relevant(root: &Path, request: &str, budget: usize) -> Reading {
         body.push_str(&extra);
         idx.add(i as u64, &title, &body);
     }
-    let query = format!("{request_low} {}", ptr.names.iter().map(|n| split_name(n)).collect::<Vec<_>>().join(" "));
-    let by_words: Vec<u64> = idx.search(&query, 60).into_iter().map(|(id, _)| id).collect();
+    let query = format!(
+        "{request_low} {}",
+        ptr.names
+            .iter()
+            .map(|n| split_name(n))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    let by_words: Vec<u64> = idx
+        .search(&query, 60)
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
 
     // Named things lead: a piece the request points at outranks one that
     // only shares its words, so those lists are counted twice.
-    let fused = crate::bm25::rrf(&[by_file.clone(), by_file, by_name.clone(), by_name, by_words], crate::bm25::RRF_K);
+    let fused = crate::bm25::rrf(
+        &[by_file.clone(), by_file, by_name.clone(), by_name, by_words],
+        crate::bm25::RRF_K,
+    );
 
     // Take the best until the budget is spent.
     const HEADING: &str = "The parts of it that matter here:\n";
@@ -386,7 +513,11 @@ pub fn relevant(root: &Path, request: &str, budget: usize) -> Reading {
     }
     if chosen.is_empty() {
         let tokens = tokens_in(&text);
-        return Reading { text, files: vec![], tokens };
+        return Reading {
+            text,
+            files: vec![],
+            tokens,
+        };
     }
     // Which files, best first, for the caller.
     let mut order: Vec<String> = Vec::new();
@@ -426,9 +557,16 @@ pub fn relevant(root: &Path, request: &str, budget: usize) -> Reading {
         }
         runs.extend(run);
         for (start, end, body) in runs {
-            text.push_str(&format!("--- {rel} (lines {start}-{end}) ---\n{}\n", body.trim_end()));
+            text.push_str(&format!(
+                "--- {rel} (lines {start}-{end}) ---\n{}\n",
+                body.trim_end()
+            ));
         }
     }
     let tokens = tokens_in(&text);
-    Reading { text, files: order, tokens }
+    Reading {
+        text,
+        files: order,
+        tokens,
+    }
 }

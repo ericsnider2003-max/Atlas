@@ -23,8 +23,17 @@ fn the_one_shot_capture_command_is_reused_for_the_continuous_feed() {
     // machine uses. Re-deriving that would be two places to get right and one
     // of them silently rotting.
     let one_shot = args(&[
-        "-hide_banner", "-loglevel", "error", "-f", "dshow", "-i",
-        "video=Integrated Camera", "-frames:v", "1", "-y", "out.png",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "dshow",
+        "-i",
+        "video=Integrated Camera",
+        "-frames:v",
+        "1",
+        "-y",
+        "out.png",
     ]);
     let feed = from_capture_args(&one_shot);
     assert!(feed.contains(&"dshow".to_string()), "{feed:?}");
@@ -49,7 +58,9 @@ fn everything_about_writing_one_png_is_dropped() {
 #[test]
 fn a_templated_output_path_is_dropped_too() {
     let one_shot = args(&["-i", "video=cam", "-y", "{out_png}"]);
-    assert!(!from_capture_args(&one_shot).iter().any(|a| a.contains("out_png")));
+    assert!(!from_capture_args(&one_shot)
+        .iter()
+        .any(|a| a.contains("out_png")));
 }
 
 #[test]
@@ -78,7 +89,12 @@ fn the_capture_size_is_small_because_the_model_shrinks_it_anyway() {
     // Capturing at 1080p means moving several megabytes a frame in order to
     // throw almost all of it away.
     let f = Feed::default();
-    assert!(f.width <= 1280 && f.height <= 720, "{}x{}", f.width, f.height);
+    assert!(
+        f.width <= 1280 && f.height <= 720,
+        "{}x{}",
+        f.width,
+        f.height
+    );
     assert!(f.width >= 320, "too small to find a hand in");
 }
 

@@ -209,7 +209,10 @@ impl Board {
         }
         let fine = self.integrations.len() - needs.len();
         if fine > 0 {
-            lines.push(format!("{fine} other{} fine.", if fine == 1 { "" } else { "s" }));
+            lines.push(format!(
+                "{fine} other{} fine.",
+                if fine == 1 { "" } else { "s" }
+            ));
         }
         lines.join("\n")
     }
@@ -295,7 +298,10 @@ pub fn dependencies() -> Board {
 /// parser recognised the request outright, the answer is complete whether or
 /// not the model is reachable, and saying otherwise would attach a warning to
 /// an answer that has nothing missing from it.
-pub fn sources_for(need: crate::connectivity::Need, model: crate::brain::Reached) -> Vec<&'static str> {
+pub fn sources_for(
+    need: crate::connectivity::Need,
+    model: crate::brain::Reached,
+) -> Vec<&'static str> {
     use crate::connectivity::Need;
     let mut used = Vec::new();
     // Only a hard requirement. `PrefersInternet` answers offline from the
@@ -307,7 +313,10 @@ pub fn sources_for(need: crate::connectivity::Need, model: crate::brain::Reached
     if matches!(need, Need::Internet) {
         used.push(INTERNET);
     }
-    if matches!(model, crate::brain::Reached::Yes | crate::brain::Reached::No) {
+    if matches!(
+        model,
+        crate::brain::Reached::Yes | crate::brain::Reached::No
+    ) {
         used.push(MODEL);
     }
     used
@@ -341,7 +350,7 @@ pub fn mark(answer: &str, used: &[&str], board: &Board, now: u64) -> String {
         .filter_map(|name| {
             let i = board.integrations.iter().find(|i| i.name == *name)?;
             let h = i.health(now);
-(h != Health::Working).then(|| as_clause(&i.name, h))
+            (h != Health::Working).then(|| as_clause(&i.name, h))
         })
         .collect();
     if gaps.is_empty() {

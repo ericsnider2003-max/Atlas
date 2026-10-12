@@ -28,8 +28,8 @@
 use serde::{Deserialize, Serialize};
 
 pub const W: [f64; 19] = [
-    0.40255, 1.18385, 3.173, 15.69105, 7.1949, 0.5345, 1.4604, 0.0046, 1.54575, 0.1192, 1.01925, 1.9395, 0.11, 0.29605,
-    2.2698, 0.2315, 2.9898, 0.51655, 0.6621,
+    0.40255, 1.18385, 3.173, 15.69105, 7.1949, 0.5345, 1.4604, 0.0046, 1.54575, 0.1192, 1.01925,
+    1.9395, 0.11, 0.29605, 2.2698, 0.2315, 2.9898, 0.51655, 0.6621,
 ];
 const DECAY: f64 = -0.5;
 const FACTOR: f64 = 19.0 / 81.0;
@@ -46,7 +46,12 @@ pub enum Grade {
 
 impl Grade {
     pub fn read(said: &str) -> Option<Grade> {
-        match said.trim().trim_end_matches(['.', '!']).to_ascii_lowercase().as_str() {
+        match said
+            .trim()
+            .trim_end_matches(['.', '!'])
+            .to_ascii_lowercase()
+            .as_str()
+        {
             "again" | "1" | "forgot" | "no" | "wrong" => Some(Grade::Again),
             "hard" | "2" => Some(Grade::Hard),
             "good" | "3" | "yes" | "got it" | "right" => Some(Grade::Good),
@@ -106,12 +111,21 @@ impl Card {
                 } else {
                     let r = retrievability(elapsed, s);
                     self.stability = if g == Grade::Again {
-                        let f = W[11] * d.powf(-W[12]) * ((s + 1.0).powf(W[13]) - 1.0) * (W[14] * (1.0 - r)).exp();
+                        let f = W[11]
+                            * d.powf(-W[12])
+                            * ((s + 1.0).powf(W[13]) - 1.0)
+                            * (W[14] * (1.0 - r)).exp();
                         f.min(s)
                     } else {
                         let hard = if g == Grade::Hard { W[15] } else { 1.0 };
                         let easy = if g == Grade::Easy { W[16] } else { 1.0 };
-                        s * ((W[8]).exp() * (11.0 - d) * s.powf(-W[9]) * ((W[10] * (1.0 - r)).exp() - 1.0) * hard * easy + 1.0)
+                        s * ((W[8]).exp()
+                            * (11.0 - d)
+                            * s.powf(-W[9])
+                            * ((W[10] * (1.0 - r)).exp() - 1.0)
+                            * hard
+                            * easy
+                            + 1.0)
                     };
                 }
                 let delta = -W[6] * (gf - 3.0);
@@ -127,7 +141,12 @@ impl Card {
         self.last = Some(today);
         // A lapse comes back tomorrow; otherwise the interval for the
         // wanted retention.
-        self.due = today + if g == Grade::Again { 1 } else { interval(self.stability, retention) };
+        self.due = today
+            + if g == Grade::Again {
+                1
+            } else {
+                interval(self.stability, retention)
+            };
         self.due
     }
 }
@@ -160,7 +179,11 @@ pub struct SrsConfig {
 
 impl Default for SrsConfig {
     fn default() -> Self {
-        SrsConfig { enabled: true, retention: 0.9, per_session: 20 }
+        SrsConfig {
+            enabled: true,
+            retention: 0.9,
+            per_session: 20,
+        }
     }
 }
 
@@ -183,7 +206,17 @@ impl Deck {
         if self.cards.len() >= MAX_CARDS {
             return Err(Refused::Full);
         }
-        self.cards.push(Card { front: f.into(), back: b.into(), deck: deck.trim().into(), stability: 0.0, difficulty: 0.0, last: None, due: today, reps: 0, lapses: 0 });
+        self.cards.push(Card {
+            front: f.into(),
+            back: b.into(),
+            deck: deck.trim().into(),
+            stability: 0.0,
+            difficulty: 0.0,
+            last: None,
+            due: today,
+            reps: 0,
+            lapses: 0,
+        });
         Ok(())
     }
 
@@ -195,7 +228,14 @@ impl Deck {
             .iter()
             .enumerate()
             .filter(|(_, c)| c.due <= today)
-            .map(|(i, c)| (c.last.map(|l| retrievability((today - l) as f64, c.stability)).unwrap_or(2.0), i))
+            .map(|(i, c)| {
+                (
+                    c.last
+                        .map(|l| retrievability((today - l) as f64, c.stability))
+                        .unwrap_or(2.0),
+                    i,
+                )
+            })
             .collect();
         v.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         v.into_iter().take(n).map(|(_, i)| i).collect()
@@ -206,12 +246,17 @@ impl Deck {
         let i = *self.due(today, cfg.per_session.max(1)).first()?;
         self.asking = Some(i);
         let left = self.due(today, usize::MAX).len();
-        Some(format!("{} ({} due) -- say \"show\", or how well you knew it.", self.cards[i].front, left))
+        Some(format!(
+            "{} ({} due) -- say \"show\", or how well you knew it.",
+            self.cards[i].front, left
+        ))
     }
 
     /// The asked card's back.
     pub fn show(&self) -> Option<String> {
-        self.asking.and_then(|i| self.cards.get(i)).map(|c| c.back.clone())
+        self.asking
+            .and_then(|i| self.cards.get(i))
+            .map(|c| c.back.clone())
     }
 
     /// Grade the asked card and move on. Returns (answer, next due in days).
@@ -226,7 +271,15 @@ impl Deck {
 /// "card: front | back", "make a card: front | back", "flashcard front = back".
 pub fn read_card(said: &str) -> Option<(String, String)> {
     let low = said.trim().to_ascii_lowercase();
-    for lead in ["make a card:", "make a card", "new card:", "card:", "flashcard:", "flashcard", "add a card:"] {
+    for lead in [
+        "make a card:",
+        "make a card",
+        "new card:",
+        "card:",
+        "flashcard:",
+        "flashcard",
+        "add a card:",
+    ] {
         if low.starts_with(lead) {
             let rest = said.trim()[lead.len()..].trim();
             let (f, b) = rest.split_once('|').or_else(|| rest.split_once(" = "))?;

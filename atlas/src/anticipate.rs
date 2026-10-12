@@ -19,7 +19,11 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum Trigger {
     /// Every day at this hour and minute, on these weekdays (0 = Monday).
-    Daily { hour: u32, minute: u32, days: Vec<u32> },
+    Daily {
+        hour: u32,
+        minute: u32,
+        days: Vec<u32>,
+    },
     /// A file matching this appeared under a watched root.
     FileAppears { pattern: String },
     /// A calendar event starts within this many minutes.
@@ -144,9 +148,10 @@ fn fires(trigger: &Trigger, m: &Moment) -> bool {
             let p = pattern.to_lowercase();
             m.new_files.iter().any(|f| matches(&f.to_lowercase(), &p))
         }
-        Trigger::BeforeEvent { minutes } => {
-            m.minutes_to_event.map(|mins| mins <= *minutes).unwrap_or(false)
-        }
+        Trigger::BeforeEvent { minutes } => m
+            .minutes_to_event
+            .map(|mins| mins <= *minutes)
+            .unwrap_or(false),
         Trigger::OnReturn => m.returned,
         Trigger::WhenIdle { secs } => m.idle_secs >= *secs,
         Trigger::AfterTopic { keyword } => {
@@ -193,7 +198,11 @@ pub fn suggested() -> Vec<Rule> {
     vec![
         Rule {
             name: "morning brief".into(),
-            trigger: Trigger::Daily { hour: 7, minute: 0, days: vec![0, 1, 2, 3, 4] },
+            trigger: Trigger::Daily {
+                hour: 7,
+                minute: 0,
+                days: vec![0, 1, 2, 3, 4],
+            },
             command: "research overnight news".into(),
             announce: true,
             cooldown_secs: 20 * 3600,
@@ -211,7 +220,9 @@ pub fn suggested() -> Vec<Rule> {
         },
         Rule {
             name: "new document landed".into(),
-            trigger: Trigger::FileAppears { pattern: "*.pdf".into() },
+            trigger: Trigger::FileAppears {
+                pattern: "*.pdf".into(),
+            },
             command: "summarise the new document".into(),
             announce: false,
             cooldown_secs: 300,

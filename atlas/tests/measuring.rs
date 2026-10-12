@@ -136,8 +136,14 @@ fn the_rumble_threshold_sits_between_the_two_measured_cases() {
 
 #[test]
 fn the_sibilance_threshold_sits_between_the_two_measured_cases() {
-    assert!(!has_harsh_s(-21.1, -91.0), "nothing in the band is not harsh");
-    assert!(has_harsh_s(-26.1, -37.0), "a 7kHz tone in the band is harsh");
+    assert!(
+        !has_harsh_s(-21.1, -91.0),
+        "nothing in the band is not harsh"
+    );
+    assert!(
+        has_harsh_s(-26.1, -37.0),
+        "a 7kHz tone in the band is harsh"
+    );
 }
 
 #[test]
@@ -147,7 +153,10 @@ fn what_is_not_measured_is_named_with_a_reason() {
     assert!(gaps.iter().any(|(w, _)| w.contains("skin")));
     assert!(gaps.iter().any(|(w, _)| w.contains("saturation")));
     for (what, why) in gaps {
-        assert!(why.split_whitespace().count() >= 5, "{what} has no real reason");
+        assert!(
+            why.split_whitespace().count() >= 5,
+            "{what} has no real reason"
+        );
     }
 }
 

@@ -51,7 +51,11 @@ impl OutreachTargets {
             existing.name = name.trim().to_string();
             return;
         }
-        self.approved.push(Approved { address: a, name: name.trim().to_string(), approved_at: now });
+        self.approved.push(Approved {
+            address: a,
+            name: name.trim().to_string(),
+            approved_at: now,
+        });
     }
 
     /// Revoking is just as real a use of this list as approving — the

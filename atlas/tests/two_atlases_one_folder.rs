@@ -37,7 +37,14 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 /// A config for one named machine, carrying through `folder`.
@@ -51,7 +58,13 @@ fn machine(name: &str, folder: &Path) -> Config {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 // ---------- it ships ready ----------
@@ -143,7 +156,10 @@ fn reading_the_same_folder_twice_does_not_double_anything() {
     let first = desk.turn("sync", NOW + 20);
     let second = desk.turn("sync", NOW + 30);
 
-    assert!(first.contains("Took in"), "nothing arrived the first time: {first}");
+    assert!(
+        first.contains("Took in"),
+        "nothing arrived the first time: {first}"
+    );
     assert!(
         !second.contains("Took in"),
         "the same bundle was taken in twice: {second}"
@@ -178,7 +194,10 @@ fn switching_it_off_stops_it() {
     let mut d = daemon(&c, &p, "syncoff");
 
     let said = d.turn("sync", NOW);
-    assert!(said.contains("switched off"), "sync ran with the setting off: {said}");
+    assert!(
+        said.contains("switched off"),
+        "sync ran with the setting off: {said}"
+    );
     assert!(
         std::fs::read_dir(&folder).map(|d| d.count()).unwrap_or(0) == 0,
         "something was written to the folder with sync off"
@@ -198,7 +217,8 @@ fn the_backlog_is_not_what_gets_carried() {
     let c = machine("laptop", &folder);
     let mut d = daemon(&c, &p, "shape");
 
-    d.backlog.record("retry the backup", Blocker::NeedsApproval, NOW);
+    d.backlog
+        .record("retry the backup", Blocker::NeedsApproval, NOW);
     d.turn("sync", NOW + 10);
 
     let bundle = std::fs::read_dir(&folder)
@@ -272,7 +292,10 @@ fn two_machines_of_the_same_atlas_still_carry_each_other() {
     let mut desk = daemon(&desk_cfg, &p, "e-desktop");
     let said = desk.turn("sync", NOW + 20);
 
-    assert!(said.contains("Took in"), "two of your own machines stopped carrying: {said}");
+    assert!(
+        said.contains("Took in"),
+        "two of your own machines stopped carrying: {said}"
+    );
 }
 
 #[test]
@@ -294,9 +317,13 @@ fn a_cloud_folder_the_machine_already_syncs_is_found_and_a_test_never_reaches_th
     let home = std::env::temp_dir().join(format!("atlas-bestfolder-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(&home).unwrap();
-    assert!(atlas::sync::best_folder_from(Some(&home), &[], None).is_none(), "found a cloud folder in an empty home");
+    assert!(
+        atlas::sync::best_folder_from(Some(&home), &[], None).is_none(),
+        "found a cloud folder in an empty home"
+    );
     std::fs::create_dir_all(home.join("Dropbox")).unwrap();
-    let (found, _) = atlas::sync::best_folder_from(Some(&home), &[], None).expect("Dropbox is found");
+    let (found, _) =
+        atlas::sync::best_folder_from(Some(&home), &[], None).expect("Dropbox is found");
     assert_eq!(found, home.join("Dropbox").join("Atlas sync"));
     // OneDrive's own variable comes first.
     std::fs::create_dir_all(home.join("od")).unwrap();
@@ -310,6 +337,9 @@ fn a_cloud_folder_the_machine_already_syncs_is_found_and_a_test_never_reaches_th
     assert!(plat().cloud_folder().is_none());
     for module in ["daemon", "hubvault"] {
         let src = crate::common::source_of(module);
-        assert!(!src.contains("sync::best_folder()"), "{module} reaches the real machine's cloud folder directly");
+        assert!(
+            !src.contains("sync::best_folder()"),
+            "{module} reaches the real machine's cloud folder directly"
+        );
     }
 }

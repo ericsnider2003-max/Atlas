@@ -32,10 +32,22 @@ use std::path::{Path, PathBuf};
 /// production called it, so it is kept in the tests that ask (this file and tests/decide.rs).
 fn names_a_winner(text: &str) -> bool {
     const RECOMMENDS: &[&str] = &[
-        "i'd go with", "i would go with", "i recommend", "my recommendation",
-        "the best option", "the right choice", "you should pick", "you should choose",
-        "go with the", "the winner", "clearly better", "obviously better",
-        "i'd pick", "i would pick", "the answer is", "definitely the",
+        "i'd go with",
+        "i would go with",
+        "i recommend",
+        "my recommendation",
+        "the best option",
+        "the right choice",
+        "you should pick",
+        "you should choose",
+        "go with the",
+        "the winner",
+        "clearly better",
+        "obviously better",
+        "i'd pick",
+        "i would pick",
+        "the answer is",
+        "definitely the",
     ];
     let lower = text.to_lowercase();
     RECOMMENDS.iter().any(|r| lower.contains(r))
@@ -53,14 +65,27 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 #[test]
 fn a_deciding_line_is_worked_not_shrugged_off() {
     let c = cfg();
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("worked")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("worked")),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     // Not a command, so it lands as an unrecognised line -- exactly the door
     // work_a_decision's own doc pointed at.
@@ -69,7 +94,9 @@ fn a_deciding_line_is_worked_not_shrugged_off() {
     // The first move of working a decision is naming the question underneath,
     // not picking one. Match the framing question's own words.
     assert!(
-        reply.to_lowercase().contains("question you should be asking"),
+        reply
+            .to_lowercase()
+            .contains("question you should be asking"),
         "a deciding line should be worked into the framing move, got: {reply}"
     );
     // And it must not have quietly decided for you.
@@ -83,7 +110,13 @@ fn a_deciding_line_is_worked_not_shrugged_off() {
 fn a_cheap_reversible_decision_is_told_to_just_pick() {
     let c = cfg();
     let p = plat();
-    let d = Daemon::new(&c, &p, None, Store::new(tmp("cheap")), Proactive::new(ProactiveConfig::default()));
+    let d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("cheap")),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     // The one exception the module keeps: a cheap, reversible choice is not
     // worth an evening of analysis, and saying so is the useful answer.
@@ -99,7 +132,13 @@ fn an_ordinary_line_is_not_mistaken_for_a_decision() {
     // The detector is narrow on purpose: an ordinary question must not be
     // answered with "what's the question underneath".
     assert!(!atlas::decide::wants_working("what time is it in Tokyo"));
-    assert!(!atlas::decide::wants_working("remind me to call the plumber"));
-    assert!(atlas::decide::wants_working("should I take the job or stay put"));
-    assert!(atlas::decide::wants_working("help me decide whether to hire now"));
+    assert!(!atlas::decide::wants_working(
+        "remind me to call the plumber"
+    ));
+    assert!(atlas::decide::wants_working(
+        "should I take the job or stay put"
+    ));
+    assert!(atlas::decide::wants_working(
+        "help me decide whether to hire now"
+    ));
 }

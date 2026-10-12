@@ -155,14 +155,18 @@ impl Gguf {
         }
         let version = read_u32(&mut r)?;
         if !(1..=3).contains(&version) {
-            return Err(AtlasError::Platform(format!("unsupported GGUF version {version}")));
+            return Err(AtlasError::Platform(format!(
+                "unsupported GGUF version {version}"
+            )));
         }
         let tensor_count = read_u64(&mut r)?;
         let kv_count = read_u64(&mut r)?;
 
         // A corrupt header would otherwise have us allocate wildly.
         if tensor_count > 1_000_000 || kv_count > 100_000 {
-            return Err(AtlasError::Platform("GGUF header counts are implausible".into()));
+            return Err(AtlasError::Platform(
+                "GGUF header counts are implausible".into(),
+            ));
         }
 
         let mut metadata = BTreeMap::new();
@@ -186,10 +190,19 @@ impl Gguf {
             }
             let kind = QuantType(read_u32(&mut r)?);
             let offset = read_u64(&mut r)?;
-            tensors.push(TensorInfo { name, dims, kind, offset });
+            tensors.push(TensorInfo {
+                name,
+                dims,
+                kind,
+                offset,
+            });
         }
 
-        Ok(Gguf { version, metadata, tensors })
+        Ok(Gguf {
+            version,
+            metadata,
+            tensors,
+        })
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
@@ -224,7 +237,8 @@ impl Gguf {
         self.arch_key("attention.head_count")
     }
     fn head_count_kv(&self) -> Option<u64> {
-        self.arch_key("attention.head_count_kv").or_else(|| self.head_count())
+        self.arch_key("attention.head_count_kv")
+            .or_else(|| self.head_count())
     }
 
     /// The prompt template the model expects, if the file carries one.
@@ -260,13 +274,17 @@ impl Gguf {
     /// a 32k context can add several more — which is why a model that "fits"
     /// still runs out of memory partway through a long conversation.
     pub fn kv_cache_bytes(&self, context: u64) -> u64 {
-        let (Some(layers), Some(embed), Some(heads)) =
-            (self.block_count(), self.embedding_length(), self.head_count())
-        else {
+        let (Some(layers), Some(embed), Some(heads)) = (
+            self.block_count(),
+            self.embedding_length(),
+            self.head_count(),
+        ) else {
             return 0;
         };
         let kv_heads = self.head_count_kv().unwrap_or(heads).max(1);
-        let head_dim = self.arch_key("attention.key_length").unwrap_or(embed / heads.max(1));
+        let head_dim = self
+            .arch_key("attention.key_length")
+            .unwrap_or(embed / heads.max(1));
         // A hybrid model (Qwen3.5: `full_attention_interval` 4) keeps a
         // growing cache only in its attention layers, one in every
         // `interval`; the rest hold a small fixed state (30 Sep 2026: the 9B
@@ -314,9 +332,8 @@ fn read_u64<R: Read>(r: &mut R) -> Result<u64> {
 /// a file from the internet.
 fn eight<R: Read>(r: &mut R) -> Result<[u8; 8]> {
     let b = read_exact_n(r, 8)?;
-    b.try_into().map_err(|_| {
-        AtlasError::Platform("the model file ended in the middle of a number".into())
-    })
+    b.try_into()
+        .map_err(|_| AtlasError::Platform("the model file ended in the middle of a number".into()))
 }
 
 fn read_string<R: Read>(r: &mut R) -> Result<String> {
@@ -353,7 +370,10 @@ fn read_value<R: Read + Seek>(r: &mut R, ty: u32) -> Result<Value> {
             // wasteful, so long arrays are counted and skipped.
             if count > 4096 {
                 skip_array(r, elem_ty, count)?;
-                return Ok(Value::Array(vec![Value::U8(0); count.min(u32::MAX as u64) as usize]));
+                return Ok(Value::Array(vec![
+                    Value::U8(0);
+                    count.min(u32::MAX as u64) as usize
+                ]));
             }
             let mut items = Vec::with_capacity(count as usize);
             for _ in 0..count {
@@ -364,7 +384,11 @@ fn read_value<R: Read + Seek>(r: &mut R, ty: u32) -> Result<Value> {
         10 => Value::U64(read_u64(r)?),
         11 => Value::I64(read_u64(r)? as i64),
         12 => Value::F64(f64::from_le_bytes(eight(r)?)),
-        other => return Err(AtlasError::Platform(format!("unknown GGUF value type {other}"))),
+        other => {
+            return Err(AtlasError::Platform(format!(
+                "unknown GGUF value type {other}"
+            )))
+        }
     })
 }
 
@@ -382,7 +406,11 @@ fn skip_array<R: Read + Seek>(r: &mut R, elem_ty: u32, count: u64) -> Result<()>
             }
             return Ok(());
         }
-        other => return Err(AtlasError::Platform(format!("cannot skip array of type {other}"))),
+        other => {
+            return Err(AtlasError::Platform(format!(
+                "cannot skip array of type {other}"
+            )))
+        }
     };
     r.seek(SeekFrom::Current((fixed * count) as i64))?;
     Ok(())

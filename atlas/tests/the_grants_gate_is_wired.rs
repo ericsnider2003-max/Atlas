@@ -25,11 +25,24 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -62,7 +75,13 @@ fn yes_always_records_a_standing_grant_that_survives_a_restart() {
     let c = cfg();
     let p = plat();
     {
-        let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            &c,
+            &p,
+            None,
+            Store::new(dir.clone()),
+            Proactive::new(ProactiveConfig::default()),
+        );
         d.turn("open frobnicator", 100); // parks the question
         let reply = d.turn("yes, always", 101); // grant Always + act
         assert!(
@@ -73,9 +92,18 @@ fn yes_always_records_a_standing_grant_that_survives_a_restart() {
     }
     // A brand-new daemon on the same store: the Always grant survived, so the
     // app is no longer questioned.
-    let d2 = Daemon::new(&c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
+    let d2 = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     assert!(
-        d2.permissions.granted_apps().iter().any(|a| a.eq_ignore_ascii_case("frobnicator")),
+        d2.permissions
+            .granted_apps()
+            .iter()
+            .any(|a| a.eq_ignore_ascii_case("frobnicator")),
         "an 'always' grant must survive a restart"
     );
 }
@@ -86,14 +114,29 @@ fn a_session_grant_does_not_survive_a_restart() {
     let c = cfg();
     let p = plat();
     {
-        let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            &c,
+            &p,
+            None,
+            Store::new(dir.clone()),
+            Proactive::new(ProactiveConfig::default()),
+        );
         d.turn("open frobnicator", 100);
         d.turn("yes, just this session", 101);
         d.persist();
     }
-    let d2 = Daemon::new(&c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
+    let d2 = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     assert!(
-        !d2.permissions.granted_apps().iter().any(|a| a.eq_ignore_ascii_case("frobnicator")),
+        !d2.permissions
+            .granted_apps()
+            .iter()
+            .any(|a| a.eq_ignore_ascii_case("frobnicator")),
         "a session grant must be dropped on restart — only 'always' survives"
     );
 }

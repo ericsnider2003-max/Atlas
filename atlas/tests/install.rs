@@ -1,5 +1,5 @@
 use atlas::install::{
-    after, before, download_mb, pieces, what_to_fetch, required, state_of, InstallConfig, State,
+    after, before, download_mb, pieces, required, state_of, what_to_fetch, InstallConfig, State,
     Step, COSTS_NOTHING,
 };
 
@@ -13,7 +13,11 @@ fn whisper_comes_first_because_it_unblocks_the_most() {
 #[test]
 fn every_piece_says_what_stops_working_without_it() {
     for p in pieces() {
-        assert!(!p.without_it.is_empty(), "{} doesn't say why it matters", p.name);
+        assert!(
+            !p.without_it.is_empty(),
+            "{} doesn't say why it matters",
+            p.name
+        );
     }
 }
 
@@ -21,18 +25,28 @@ fn every_piece_says_what_stops_working_without_it() {
 fn the_required_set_is_small_and_the_big_model_is_optional() {
     // 4.4GB should not stand between you and a working install.
     assert!(required().len() <= 5);
-    let llm = pieces().into_iter().find(|p| p.name == "a thinking model").unwrap();
+    let llm = pieces()
+        .into_iter()
+        .find(|p| p.name == "a thinking model")
+        .unwrap();
     assert!(llm.optional);
     // Renamed from `total_mb` on 19 Sep 2026: `retention` has a `total_mb`
     // method, and the deadness scans read bare names -- a call to this one
     // made that one look as though something reached it.
-    assert!(download_mb(false) < 500, "the required set is {}MB", download_mb(false));
+    assert!(
+        download_mb(false) < 500,
+        "the required set is {}MB",
+        download_mb(false)
+    );
 }
 
 #[test]
 fn a_half_downloaded_file_is_worse_than_a_missing_one_and_is_caught() {
     // Everything downstream fails confusingly instead of clearly.
-    let model = pieces().into_iter().find(|p| p.name == "the listening model").unwrap();
+    let model = pieces()
+        .into_iter()
+        .find(|p| p.name == "the listening model")
+        .unwrap();
     assert_eq!(state_of(&model, None), State::Missing);
     assert_eq!(state_of(&model, Some(148_000_000)), State::Present);
     assert_eq!(state_of(&model, Some(2_000_000)), State::HalfDownloaded);
@@ -72,7 +86,10 @@ fn nothing_left_to_do_says_so() {
         .iter()
         .map(|p| (p.name, Some(p.mb as u64 * 1_000_000)))
         .collect();
-    assert_eq!(before(&what_to_fetch(&pieces(), &all)), "Everything's already here.");
+    assert_eq!(
+        before(&what_to_fetch(&pieces(), &all)),
+        "Everything's already here."
+    );
 }
 
 #[test]
@@ -106,11 +123,6 @@ fn nothing_needs_a_key_an_account_or_a_card() {
     assert!(COSTS_NOTHING.contains("No account, no key, no card"));
     assert!(COSTS_NOTHING.contains("something is wrong and you should stop"));
 }
-
-
-
-
-
 
 // ================= one file, not fourteen =================
 
@@ -148,7 +160,10 @@ fn the_option_you_want_is_marked_and_is_the_default() {
     let b = launcher();
     assert!(b.contains("this is the one you want"));
     assert!(b.contains("just press Enter for 1"));
-    assert!(b.contains(r#"if "%PICK%"=="" goto start"#), "Enter does nothing");
+    assert!(
+        b.contains(r#"if "%PICK%"=="" goto start"#),
+        "Enter does nothing"
+    );
 }
 
 #[test]
@@ -207,7 +222,10 @@ fn every_menu_entry_reaches_something_that_exists() {
     // from the launcher entirely, so the always-on assistant could only be
     // started by someone who already knew the flag.
     for flag in ["--daemon", "--voice"] {
-        assert!(b.contains(flag), "the launcher cannot start Atlas with {flag}");
+        assert!(
+            b.contains(flag),
+            "the launcher cannot start Atlas with {flag}"
+        );
         assert!(
             main.contains(&format!("flag(\"{flag}\")")),
             "the launcher offers {flag} and main.rs does not handle it"

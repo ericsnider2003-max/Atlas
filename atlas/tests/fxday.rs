@@ -5,8 +5,10 @@
 //! value that contradicted what I expected, which is the only reason it is
 //! right.
 
-use atlas::fxday::{close_on, day_of, day_start, days, levels, prior_day, prior_week, spoken,
-                   week_of, week_start, DayShape, CLOSE_HOUR};
+use atlas::fxday::{
+    close_on, day_of, day_start, days, levels, prior_day, prior_week, spoken, week_of, week_start,
+    DayShape, CLOSE_HOUR,
+};
 use atlas::market::bars::Bars;
 use atlas::market::time::{days_from_civil, MS_PER_DAY, MS_PER_HOUR};
 
@@ -23,18 +25,42 @@ fn the_boundary_follows_new_yorks_clock_and_not_a_fixed_utc_hour() {
     // Hard-coding either one puts every prior-day high and low an hour out for
     // roughly half the year, silently — the levels stay plausible and stay
     // near price, they are just about a different day.
-    assert_eq!(close_on(2026, 1, 15), at(2026, 1, 15, 22), "winter: EST, UTC-5");
-    assert_eq!(close_on(2026, 7, 15), at(2026, 7, 15, 21), "summer: EDT, UTC-4");
+    assert_eq!(
+        close_on(2026, 1, 15),
+        at(2026, 1, 15, 22),
+        "winter: EST, UTC-5"
+    );
+    assert_eq!(
+        close_on(2026, 7, 15),
+        at(2026, 7, 15, 21),
+        "summer: EDT, UTC-4"
+    );
     assert_eq!(CLOSE_HOUR, 17);
 }
 
 #[test]
 fn it_moves_on_the_right_day_at_both_ends_of_the_year() {
     // 2026: spring forward is Sunday 8 March, fall back is Sunday 1 November.
-    assert_eq!(close_on(2026, 3, 7), at(2026, 3, 7, 22), "the Saturday before is still EST");
-    assert_eq!(close_on(2026, 3, 9), at(2026, 3, 9, 21), "the Monday after is EDT");
-    assert_eq!(close_on(2026, 10, 30), at(2026, 10, 30, 21), "the Friday before is still EDT");
-    assert_eq!(close_on(2026, 11, 2), at(2026, 11, 2, 22), "the Monday after is EST");
+    assert_eq!(
+        close_on(2026, 3, 7),
+        at(2026, 3, 7, 22),
+        "the Saturday before is still EST"
+    );
+    assert_eq!(
+        close_on(2026, 3, 9),
+        at(2026, 3, 9, 21),
+        "the Monday after is EDT"
+    );
+    assert_eq!(
+        close_on(2026, 10, 30),
+        at(2026, 10, 30, 21),
+        "the Friday before is still EDT"
+    );
+    assert_eq!(
+        close_on(2026, 11, 2),
+        at(2026, 11, 2, 22),
+        "the Monday after is EST"
+    );
 }
 
 #[test]
@@ -76,7 +102,11 @@ fn every_trading_day_is_exactly_twenty_four_hours() {
     let mut cursor = week;
     for day in 0..5 {
         let (opens, closes) = day_of(cursor + 1);
-        assert_eq!(closes - opens, MS_PER_DAY, "day {day} of the fall-back week");
+        assert_eq!(
+            closes - opens,
+            MS_PER_DAY,
+            "day {day} of the fall-back week"
+        );
         cursor = closes;
     }
 }
@@ -97,7 +127,11 @@ fn the_weekend_is_forty_seven_or_forty_nine_hours_twice_a_year() {
     assert_eq!(ordinary / MS_PER_HOUR, 48);
 
     let spring = week_start(at(2026, 3, 11, 12)) - close_on(2026, 3, 6);
-    assert_eq!(spring / MS_PER_HOUR, 47, "an hour short when the clocks go forward");
+    assert_eq!(
+        spring / MS_PER_HOUR,
+        47,
+        "an hour short when the clocks go forward"
+    );
 
     let autumn = week_start(at(2026, 11, 4, 12)) - close_on(2026, 10, 30);
     assert_eq!(autumn / MS_PER_HOUR, 49, "an hour long when they go back");
@@ -139,7 +173,12 @@ fn bars_group_into_the_days_they_fall_in() {
     let bars = hourly(start, 72);
     let view = bars.latest().unwrap();
     let found = days(&view);
-    assert_eq!(found.len(), 3, "{:#?}", found.iter().map(|d| d.bars).collect::<Vec<_>>());
+    assert_eq!(
+        found.len(),
+        3,
+        "{:#?}",
+        found.iter().map(|d| d.bars).collect::<Vec<_>>()
+    );
     for d in &found[..2] {
         assert_eq!(d.bars, 24, "a full day is twenty-four hourly bars");
     }
@@ -152,8 +191,16 @@ fn the_day_in_progress_is_never_the_prior_day() {
     let one_day = hourly(at(2026, 7, 13, 21), 20);
     let view = one_day.latest().unwrap();
     assert_eq!(days(&view).len(), 1);
-    assert_eq!(prior_day(&view), None, "the day still running is not a prior day");
-    assert!(spoken(&view).contains("haven't got a completed day"), "{}", spoken(&view));
+    assert_eq!(
+        prior_day(&view),
+        None,
+        "the day still running is not a prior day"
+    );
+    assert!(
+        spoken(&view).contains("haven't got a completed day"),
+        "{}",
+        spoken(&view)
+    );
 
     let two_days = hourly(at(2026, 7, 13, 21), 30);
     let view = two_days.latest().unwrap();
@@ -208,7 +255,11 @@ fn a_weekend_disappears_without_this_file_knowing_what_one_is() {
     let bars = Bars::new(o, h, l, c, t).unwrap();
     let view = bars.latest().unwrap();
     let found = days(&view);
-    assert_eq!(found.len(), 2, "two days with bars, and the weekend is simply absent");
+    assert_eq!(
+        found.len(),
+        2,
+        "two days with bars, and the weekend is simply absent"
+    );
     assert_eq!(found[0].bars, 24);
     assert_eq!(found[1].bars, 6);
     // The prior day is Friday, not an empty Saturday.
@@ -279,7 +330,10 @@ fn the_levels_are_named_and_sorted_by_how_near_they_are() {
     let mut last = 0.0f64;
     for (price, _) in &found {
         let d = (price - now).abs();
-        assert!(d >= last - 1e-12, "levels are not sorted by distance: {found:?}");
+        assert!(
+            d >= last - 1e-12,
+            "levels are not sorted by distance: {found:?}"
+        );
         last = d;
     }
 }
@@ -288,7 +342,11 @@ fn the_levels_are_named_and_sorted_by_how_near_they_are() {
 fn a_prior_week_needs_a_completed_week() {
     let one = hourly(at(2026, 7, 13, 21), 100);
     let view = one.latest().unwrap();
-    assert_eq!(prior_week(&view), None, "one week in progress is not a prior week");
+    assert_eq!(
+        prior_week(&view),
+        None,
+        "one week in progress is not a prior week"
+    );
 }
 
 #[test]

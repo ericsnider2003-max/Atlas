@@ -35,7 +35,10 @@ fn tmp(tag: &str) -> PathBuf {
 /// that says "tomorrow" failed at once.
 fn daytime(mut c: Config) -> Config {
     if (atlas::store::now() / 3600) % 24 < 5 {
-        c.tools.as_mut().expect("the shipped config has tools").time_zone = "Asia/Shanghai".into();
+        c.tools
+            .as_mut()
+            .expect("the shipped config has tools")
+            .time_zone = "Asia/Shanghai".into();
     }
     c
 }
@@ -48,11 +51,24 @@ fn cfg_on() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -61,35 +77,54 @@ fn it_is_off_by_default_and_says_so() {
     let p = plat();
     let mut d = daemon(&c, &p, "off");
     let reply = d.turn("log a proposal from Sam tomorrow at 2pm for a review", NOON);
-    assert!(reply.to_lowercase().contains("switched off"), "off by default: {reply}");
+    assert!(
+        reply.to_lowercase().contains("switched off"),
+        "off by default: {reply}"
+    );
 }
 
 #[test]
 fn a_proposal_is_read_checked_and_nothing_is_booked_yet() {
     let (c, p) = (cfg_on(), plat());
     let mut d = daemon(&c, &p, "log");
-    let reply = d.turn("log a proposal from Sam tomorrow at 2pm for the review", NOON);
+    let reply = d.turn(
+        "log a proposal from Sam tomorrow at 2pm for the review",
+        NOON,
+    );
     // It names who, and — the load-bearing honesty — books nothing yet.
     assert!(reply.contains("Sam"), "should name who proposed: {reply}");
     assert!(
-        reply.to_lowercase().contains("nothing's booked") || reply.to_lowercase().contains("say yes"),
+        reply.to_lowercase().contains("nothing's booked")
+            || reply.to_lowercase().contains("say yes"),
         "must make clear nothing is booked: {reply}"
     );
     // Nothing on the calendar until you accept.
-    assert_eq!(d.calendar.len(), 0, "a proposal must not write to the calendar on its own");
+    assert_eq!(
+        d.calendar.len(),
+        0,
+        "a proposal must not write to the calendar on its own"
+    );
 }
 
 #[test]
 fn accepting_writes_it_to_the_calendar_but_sends_nothing() {
     let (c, p) = (cfg_on(), plat());
     let mut d = daemon(&c, &p, "accept");
-    d.turn("log a proposal from Sam tomorrow at 2pm for the review", NOON);
+    d.turn(
+        "log a proposal from Sam tomorrow at 2pm for the review",
+        NOON,
+    );
     let reply = d.turn("accept the meeting", NOON);
     // It's on the calendar now.
-    assert_eq!(d.calendar.len(), 1, "accepting should write the event: {reply}");
+    assert_eq!(
+        d.calendar.len(),
+        1,
+        "accepting should write the event: {reply}"
+    );
     // And it's honest that it hasn't replied for you.
     assert!(
-        reply.to_lowercase().contains("haven't replied") || reply.to_lowercase().contains("don't send"),
+        reply.to_lowercase().contains("haven't replied")
+            || reply.to_lowercase().contains("don't send"),
         "must not claim to have sent a reply: {reply}"
     );
 }
@@ -98,17 +133,30 @@ fn accepting_writes_it_to_the_calendar_but_sends_nothing() {
 fn declining_marks_it_and_writes_nothing() {
     let (c, p) = (cfg_on(), plat());
     let mut d = daemon(&c, &p, "decline");
-    d.turn("log a proposal from Sam tomorrow at 2pm for the review", NOON);
+    d.turn(
+        "log a proposal from Sam tomorrow at 2pm for the review",
+        NOON,
+    );
     let reply = d.turn("decline the meeting", NOON);
-    assert!(reply.to_lowercase().contains("declined"), "should confirm the decline: {reply}");
-    assert_eq!(d.calendar.len(), 0, "declining writes nothing to the calendar");
+    assert!(
+        reply.to_lowercase().contains("declined"),
+        "should confirm the decline: {reply}"
+    );
+    assert_eq!(
+        d.calendar.len(),
+        0,
+        "declining writes nothing to the calendar"
+    );
 }
 
 #[test]
 fn offering_another_time_lays_out_alternatives_and_books_nothing() {
     let (c, p) = (cfg_on(), plat());
     let mut d = daemon(&c, &p, "counter");
-    d.turn("log a proposal from Sam tomorrow at 2pm for the review", NOON);
+    d.turn(
+        "log a proposal from Sam tomorrow at 2pm for the review",
+        NOON,
+    );
     let reply = d.turn("offer another time", NOON);
     assert!(
         reply.to_lowercase().contains("offer") || reply.to_lowercase().contains("instead"),

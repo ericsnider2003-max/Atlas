@@ -1,12 +1,15 @@
-use atlas::handoff::Problem;
 use atlas::daily::Whereabouts;
+use atlas::handoff::Problem;
 use atlas::overnight::{
     morning_brief, morning_detail, worth_doing_overnight, Brain, Outcome, OvernightConfig, Result_,
     Session, Step,
 };
 
 fn cfg() -> OvernightConfig {
-    OvernightConfig { enabled: true, ..Default::default() }
+    OvernightConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 fn result(problem: &str, outcome: Outcome) -> Result_ {
@@ -30,7 +33,10 @@ fn nothing_is_ever_applied_unattended_and_that_is_not_configurable() {
     assert!(!OvernightConfig::default().apply_while_asleep);
     let yaml = "enabled: true\napply_while_asleep: true\n";
     let parsed: OvernightConfig = serde_yaml::from_str(yaml).unwrap();
-    assert!(!parsed.apply_while_asleep, "it cannot be switched on from config");
+    assert!(
+        !parsed.apply_while_asleep,
+        "it cannot be switched on from config"
+    );
 }
 
 #[test]
@@ -51,18 +57,33 @@ fn a_session_works_the_same_whichever_brain_it_is_given() {
     for brain in [Brain::Local, Brain::Hosted, Brain::AskYouLater] {
         let c = OvernightConfig { brain, ..cfg() };
         let s = Session::start(0);
-        assert_eq!(s.next(&["a problem".into()], &c, Whereabouts::Asleep, 10.0), Step::Work("a problem".into()));
+        assert_eq!(
+            s.next(&["a problem".into()], &c, Whereabouts::Asleep, 10.0),
+            Step::Work("a problem".into())
+        );
     }
 }
 
 #[test]
 fn only_a_paid_brain_can_run_out_of_budget() {
     let s = Session::start(0);
-    let free = OvernightConfig { brain: Brain::Local, ..cfg() };
-    assert_eq!(s.next(&["x".into()], &free, Whereabouts::Asleep, 0.0), Step::Work("x".into()));
+    let free = OvernightConfig {
+        brain: Brain::Local,
+        ..cfg()
+    };
+    assert_eq!(
+        s.next(&["x".into()], &free, Whereabouts::Asleep, 0.0),
+        Step::Work("x".into())
+    );
 
-    let paid = OvernightConfig { brain: Brain::Hosted, ..cfg() };
-    assert!(matches!(s.next(&["x".into()], &paid, Whereabouts::Asleep, 0.0), Step::Finish(_)));
+    let paid = OvernightConfig {
+        brain: Brain::Hosted,
+        ..cfg()
+    };
+    assert!(matches!(
+        s.next(&["x".into()], &paid, Whereabouts::Asleep, 0.0),
+        Step::Finish(_)
+    ));
 }
 
 // ================= knowing when to stop =================
@@ -115,7 +136,13 @@ fn a_success_resets_the_patience() {
     s.record(result("b", Outcome::Stuck));
     s.record(result("c", Outcome::Solved));
     s.record(result("d", Outcome::Stuck));
-    assert!(matches!(s.next(&["e".into()], &cfg(), Whereabouts::Asleep, 10.0), Step::Work(_)), "not abandoned");
+    assert!(
+        matches!(
+            s.next(&["e".into()], &cfg(), Whereabouts::Asleep, 10.0),
+            Step::Work(_)
+        ),
+        "not abandoned"
+    );
 }
 
 #[test]
@@ -123,7 +150,12 @@ fn it_does_not_work_through_the_same_problem_twice() {
     let mut s = Session::start(0);
     s.record(result("first", Outcome::Solved));
     assert_eq!(
-        s.next(&["first".into(), "second".into()], &cfg(), Whereabouts::Asleep, 10.0),
+        s.next(
+            &["first".into(), "second".into()],
+            &cfg(),
+            Whereabouts::Asleep,
+            10.0
+        ),
         Step::Work("second".into())
     );
 }
@@ -139,11 +171,17 @@ fn an_empty_queue_finishes_rather_than_inventing_work() {
 
 #[test]
 fn there_is_a_ceiling_on_how_much_it_takes_on_in_one_night() {
-    let c = OvernightConfig { max_problems: 2, ..cfg() };
+    let c = OvernightConfig {
+        max_problems: 2,
+        ..cfg()
+    };
     let mut s = Session::start(0);
     s.record(result("a", Outcome::Solved));
     s.record(result("b", Outcome::Solved));
-    assert!(matches!(s.next(&["c".into()], &c, Whereabouts::Asleep, 10.0), Step::Finish(_)));
+    assert!(matches!(
+        s.next(&["c".into()], &c, Whereabouts::Asleep, 10.0),
+        Step::Finish(_)
+    ));
 }
 
 // ================= what it takes on =================
@@ -156,7 +194,10 @@ fn anything_needing_a_judgement_call_is_left_for_you() {
         "delete the old captures",
         "post the draft to LinkedIn",
     ] {
-        let p = Problem { goal: goal.into(), ..Default::default() };
+        let p = Problem {
+            goal: goal.into(),
+            ..Default::default()
+        };
         assert!(!worth_doing_overnight(&p), "{goal:?} needs you");
     }
 }
@@ -201,13 +242,21 @@ fn what_it_cost_is_in_the_brief_when_it_cost_anything() {
     assert!(morning_brief(&s, Whereabouts::Asleep).contains("cost $0.03"));
 
     let mut free = Session::start(0);
-    free.record(Result_ { dollars: 0.0, ..result("b", Outcome::Solved) });
-    assert!(!morning_brief(&free, Whereabouts::Asleep).contains("cost"), "nothing to mention when it's free");
+    free.record(Result_ {
+        dollars: 0.0,
+        ..result("b", Outcome::Solved)
+    });
+    assert!(
+        !morning_brief(&free, Whereabouts::Asleep).contains("cost"),
+        "nothing to mention when it's free"
+    );
 }
 
 #[test]
 fn a_quiet_night_says_so() {
-    assert!(morning_brief(&Session::start(0), Whereabouts::Asleep).contains("didn't get to anything"));
+    assert!(
+        morning_brief(&Session::start(0), Whereabouts::Asleep).contains("didn't get to anything")
+    );
 }
 
 #[test]
@@ -233,7 +282,11 @@ fn it_is_on_and_defaults_to_the_free_brain() {
     // or drives another application, and neither should arrive by default.
     let c = OvernightConfig::default();
     assert!(c.enabled, "the night was wired and should ship on");
-    assert_eq!(c.brain, Brain::AskYouLater, "costs nothing unless you choose otherwise");
+    assert_eq!(
+        c.brain,
+        Brain::AskYouLater,
+        "costs nothing unless you choose otherwise"
+    );
     assert!(!c.apply_while_asleep, "a night must never apply anything");
 }
 
@@ -252,7 +305,9 @@ fn a_delegated_continuation_is_bounded_by_turns_not_by_your_presence() {
     // Same mechanism as stepping out of the room mid-conversation. The turn
     // budget is the bound.
     let s = Session::start(0);
-    let d = s.delegation_for("the wake word drops after a reconnect", &delegating()).unwrap();
+    let d = s
+        .delegation_for("the wake word drops after a reconnect", &delegating())
+        .unwrap();
     assert_eq!(d.app, "Claude — Atlas Project");
     assert_eq!(d.max_turns, 6);
     assert!(!d.stop_when.is_empty(), "it stops when the answer arrives");
@@ -260,7 +315,10 @@ fn a_delegated_continuation_is_bounded_by_turns_not_by_your_presence() {
 
 #[test]
 fn the_nights_total_turn_budget_is_enforced_across_problems() {
-    let c = OvernightConfig { delegate_turns_total: 10, ..delegating() };
+    let c = OvernightConfig {
+        delegate_turns_total: 10,
+        ..delegating()
+    };
     let mut s = Session::start(0);
     s.spend_turns(6);
     let d = s.delegation_for("another problem", &c).unwrap();
@@ -272,7 +330,10 @@ fn the_nights_total_turn_budget_is_enforced_across_problems() {
 
 #[test]
 fn running_out_of_turns_finishes_the_night_cleanly() {
-    let c = OvernightConfig { delegate_turns_total: 5, ..delegating() };
+    let c = OvernightConfig {
+        delegate_turns_total: 5,
+        ..delegating()
+    };
     let mut s = Session::start(0);
     s.spend_turns(5);
     match s.next(&["x".into()], &c, Whereabouts::Asleep, 0.0) {
@@ -285,16 +346,25 @@ fn running_out_of_turns_finishes_the_night_cleanly() {
 fn with_no_window_named_it_stops_rather_than_finding_one() {
     // It continues a conversation that already exists. It does not go looking
     // for somewhere to start one.
-    let c = OvernightConfig { delegate_window: String::new(), ..delegating() };
+    let c = OvernightConfig {
+        delegate_window: String::new(),
+        ..delegating()
+    };
     let s = Session::start(0);
-    assert!(matches!(s.next(&["x".into()], &c, Whereabouts::Asleep, 0.0), Step::Abandon(_)));
+    assert!(matches!(
+        s.next(&["x".into()], &c, Whereabouts::Asleep, 0.0),
+        Step::Abandon(_)
+    ));
     assert!(s.delegation_for("x", &c).is_none());
 }
 
 #[test]
 fn delegating_costs_nothing_and_needs_no_budget() {
     let s = Session::start(0);
-    assert_eq!(s.next(&["x".into()], &delegating(), Whereabouts::Asleep, 0.0), Step::Work("x".into()));
+    assert_eq!(
+        s.next(&["x".into()], &delegating(), Whereabouts::Asleep, 0.0),
+        Step::Work("x".into())
+    );
 }
 
 #[test]

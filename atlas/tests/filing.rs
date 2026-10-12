@@ -25,7 +25,13 @@ fn moved(s: &Suggestion) -> Option<(PathBuf, Bucket)> {
 fn a_name_that_says_nothing_is_left_alone() {
     // "Document.docx" and "final.docx" are usually files you are part-way
     // through sorting out yourself. Guessing at them is how filing loses things.
-    for name in ["untitled.docx", "copy.pdf", "final.docx", "document.docx", "draft.md"] {
+    for name in [
+        "untitled.docx",
+        "copy.pdf",
+        "final.docx",
+        "document.docx",
+        "draft.md",
+    ] {
         let ext = name.rsplit('.').next().unwrap();
         let s = suggest(&root(), name, ext, 10);
         assert!(
@@ -96,10 +102,19 @@ fn leaving_something_alone_produces_no_change_at_all() {
 #[test]
 fn something_untouched_for_a_year_is_archived_whatever_it_is() {
     // The one rule that needs no understanding of the file.
-    let s = suggest(&root(), "accounts-2023.xlsx", "xlsx", ARCHIVE_AFTER_DAYS + 5);
+    let s = suggest(
+        &root(),
+        "accounts-2023.xlsx",
+        "xlsx",
+        ARCHIVE_AFTER_DAYS + 5,
+    );
     let (to, bucket) = moved(&s).expect("a year-old file should be archived");
     assert_eq!(bucket, Bucket::Archive);
-    assert!(to.ends_with("Archive/accounts-2023.xlsx"), "{}", to.display());
+    assert!(
+        to.ends_with("Archive/accounts-2023.xlsx"),
+        "{}",
+        to.display()
+    );
 }
 
 #[test]
@@ -115,8 +130,16 @@ fn recency_beats_type() {
 
 #[test]
 fn a_book_is_reference_and_a_spreadsheet_is_work() {
-    assert_eq!(moved(&suggest(&root(), "manual.pdf", "pdf", 10)).unwrap().1, Bucket::Resources);
-    assert_eq!(moved(&suggest(&root(), "budget.xlsx", "xlsx", 10)).unwrap().1, Bucket::Projects);
+    assert_eq!(
+        moved(&suggest(&root(), "manual.pdf", "pdf", 10)).unwrap().1,
+        Bucket::Resources
+    );
+    assert_eq!(
+        moved(&suggest(&root(), "budget.xlsx", "xlsx", 10))
+            .unwrap()
+            .1,
+        Bucket::Projects
+    );
 }
 
 #[test]
@@ -128,14 +151,22 @@ fn every_move_says_why_in_words_you_could_disagree_with() {
     }
     let line = s.line(Path::new("/home/eric/Downloads/manual.pdf"));
     assert!(line.contains("→"), "{line}");
-    assert!(line.contains("refer back"), "the line doesn't explain the bucket: {line}");
+    assert!(
+        line.contains("refer back"),
+        "the line doesn't explain the bucket: {line}"
+    );
 }
 
 #[test]
 fn every_bucket_explains_itself() {
     // The folder names alone do not teach the scheme. "Areas" means nothing
     // until someone says "ongoing, no end date".
-    for b in [Bucket::Projects, Bucket::Areas, Bucket::Resources, Bucket::Archive] {
+    for b in [
+        Bucket::Projects,
+        Bucket::Areas,
+        Bucket::Resources,
+        Bucket::Archive,
+    ] {
         assert!(!b.what_it_means().is_empty(), "{b:?} has no explanation");
         assert!(!b.folder().is_empty());
     }
@@ -144,7 +175,10 @@ fn every_bucket_explains_itself() {
 #[test]
 fn the_summary_says_moving_is_reversible() {
     let said = spoken(4, 9);
-    assert!(said.contains("trash") || said.contains("put back"), "{said}");
+    assert!(
+        said.contains("trash") || said.contains("put back"),
+        "{said}"
+    );
     assert!(said.contains('4') && said.contains('9'), "{said}");
 }
 

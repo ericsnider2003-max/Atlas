@@ -197,18 +197,22 @@ impl Vocabulary {
         // ordinary word opening a sentence is skipped ("What", "Please") and
         // a name there still counts ("Homelab is down").
         const STARTERS: &[&str] = &[
-            "what", "when", "where", "which", "who", "whom", "whose", "why", "how", "please", "can", "could",
-            "would", "will", "should", "shall", "does", "did", "have", "has", "had", "tell", "show", "open",
-            "close", "remind", "send", "make", "find", "check", "read", "play", "find", "okay", "yeah", "thanks",
-            "thank", "hello", "hey", "also", "then", "just", "maybe", "there", "this", "that", "these", "those",
-            "they", "their", "what's", "whats", "it's", "i'm", "let's", "don't", "ask", "call", "take", "give",
-            "keep", "move", "start", "stop", "draft", "write", "schedule", "cancel", "turn", "look",
+            "what", "when", "where", "which", "who", "whom", "whose", "why", "how", "please",
+            "can", "could", "would", "will", "should", "shall", "does", "did", "have", "has",
+            "had", "tell", "show", "open", "close", "remind", "send", "make", "find", "check",
+            "read", "play", "find", "okay", "yeah", "thanks", "thank", "hello", "hey", "also",
+            "then", "just", "maybe", "there", "this", "that", "these", "those", "they", "their",
+            "what's", "whats", "it's", "i'm", "let's", "don't", "ask", "call", "take", "give",
+            "keep", "move", "start", "stop", "draft", "write", "schedule", "cancel", "turn",
+            "look",
         ];
         let mut sentence_start = true;
         for raw in text.split_whitespace() {
             let starts = sentence_start;
             sentence_start = raw.ends_with(['.', '?', '!']);
-            let bare = raw.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'').to_lowercase();
+            let bare = raw
+                .trim_matches(|c: char| !c.is_alphanumeric() && c != '\'')
+                .to_lowercase();
             if starts && STARTERS.contains(&bare.as_str()) {
                 continue;
             }
@@ -242,7 +246,11 @@ impl Vocabulary {
             if w.len() < 3 {
                 continue;
             }
-            match self.words.iter_mut().find(|(s, _)| s.eq_ignore_ascii_case(w)) {
+            match self
+                .words
+                .iter_mut()
+                .find(|(s, _)| s.eq_ignore_ascii_case(w))
+            {
                 Some((_, n)) if *n >= 4 => {}
                 Some((_, n)) => {
                     *n = 4;
@@ -264,7 +272,11 @@ impl Vocabulary {
     pub fn hints(&self, n: usize) -> Vec<String> {
         let mut v = self.words.clone();
         v.sort_by_key(|(_, c)| std::cmp::Reverse(*c));
-        v.into_iter().filter(|(_, c)| *c >= 2).take(n).map(|(w, _)| w).collect()
+        v.into_iter()
+            .filter(|(_, c)| *c >= 2)
+            .take(n)
+            .map(|(w, _)| w)
+            .collect()
     }
 }
 
@@ -278,8 +290,10 @@ pub fn progress(route_attempts: u32, snags_learned: usize, vocab: usize) -> Stri
         parts.push(format!("{route_attempts} attempts scored"));
     }
     if snags_learned > 0 {
-        parts.push(format!("{snags_learned} new failure{} understood",
-            if snags_learned == 1 { "" } else { "s" }));
+        parts.push(format!(
+            "{snags_learned} new failure{} understood",
+            if snags_learned == 1 { "" } else { "s" }
+        ));
     }
     if vocab > 0 {
         parts.push(format!("{vocab} of your words learned"));

@@ -93,9 +93,26 @@ pub const PERMISSIONS: &[Permission] = &[
         plain: "pause and resume, back up, and read what Atlas says about itself -- \
                 what's outstanding, what it did, how it's running, what it can do",
         intents: &[
-            "pause", "resume", "ready", "outstanding", "queued", "which_model", "how_am_i_doing",
-            "model_trace", "machine_health", "self_check", "capabilities", "history", "recap",
-            "act_alone", "knowledge_size", "why", "rehearse", "plain_change", "recommend", "back_up",
+            "pause",
+            "resume",
+            "ready",
+            "outstanding",
+            "queued",
+            "which_model",
+            "how_am_i_doing",
+            "model_trace",
+            "machine_health",
+            "self_check",
+            "capabilities",
+            "history",
+            "recap",
+            "act_alone",
+            "knowledge_size",
+            "why",
+            "rehearse",
+            "plain_change",
+            "recommend",
+            "back_up",
         ],
     },
     Permission {
@@ -117,15 +134,31 @@ pub const PERMISSIONS: &[Permission] = &[
         key: "desktop",
         plain: "open, close and arrange apps and windows, switch modes, and show panels",
         intents: &[
-            "workspace_on", "workspace_off", "open_app", "close_app", "focus_app", "set_mode",
-            "show_panel", "dismiss_panel",
+            "workspace_on",
+            "workspace_off",
+            "open_app",
+            "close_app",
+            "focus_app",
+            "set_mode",
+            "show_panel",
+            "dismiss_panel",
         ],
     },
-    Permission { key: "online", plain: "look things up on the internet", intents: &["research"] },
+    Permission {
+        key: "online",
+        plain: "look things up on the internet",
+        intents: &["research"],
+    },
     Permission {
         key: "thinking",
         plain: "use the language model to think something through or explain it",
-        intents: &["ask_the_room", "diagnose", "walk_through", "explain_code", "design_review"],
+        intents: &[
+            "ask_the_room",
+            "diagnose",
+            "walk_through",
+            "explain_code",
+            "design_review",
+        ],
     },
     Permission {
         key: "making",
@@ -137,7 +170,14 @@ pub const PERMISSIONS: &[Permission] = &[
     Permission {
         key: "screen",
         plain: "see your screen, your camera and your clipboard, and watch your hands",
-        intents: &["view_display", "whats_there", "whats_this", "use_clipboard", "gestures_on", "gestures_off"],
+        intents: &[
+            "view_display",
+            "whats_there",
+            "whats_this",
+            "use_clipboard",
+            "gestures_on",
+            "gestures_off",
+        ],
     },
     Permission {
         key: "files",
@@ -154,33 +194,70 @@ pub const PERMISSIONS: &[Permission] = &[
         plain: "send messages as you (each still asks you first, as it would if you said it)",
         intents: &["message"],
     },
-    Permission { key: "drafts", plain: "draft posts and check them -- never post them", intents: &["draft_post", "review_post"] },
+    Permission {
+        key: "drafts",
+        plain: "draft posts and check them -- never post them",
+        intents: &["draft_post", "review_post"],
+    },
 ];
 
 /// Commands no add-on may ever use, whatever it asks for, and why.
 pub const NEVER: &[(&str, &str)] = &[
     // Updates and feedback by voice (OPEN_GAPS 8.2, 8.14), decided when built.
-    ("update_status", "it reads out this install's update record -- the owner's to ask"),
-    ("update_install", "installing an update restarts Atlas; that's the person's decision, not an add-on's"),
-    ("update_undo", "going back a version is only ever the person at this device's decision"),
-    ("feedback_send", "feedback goes in the person's own words, read back to them and sent on their yes"),
-    ("feedback_send_bare", "feedback goes in the person's own words, read back to them and sent on their yes"),
+    (
+        "update_status",
+        "it reads out this install's update record -- the owner's to ask",
+    ),
+    (
+        "update_install",
+        "installing an update restarts Atlas; that's the person's decision, not an add-on's",
+    ),
+    (
+        "update_undo",
+        "going back a version is only ever the person at this device's decision",
+    ),
+    (
+        "feedback_send",
+        "feedback goes in the person's own words, read back to them and sent on their yes",
+    ),
+    (
+        "feedback_send_bare",
+        "feedback goes in the person's own words, read back to them and sent on their yes",
+    ),
     ("feedback_list", "it reads out what friends told you"),
     ("feedback_reply", "an answer to a friend is yours to give"),
-    ("phone_model_get", "a download of up to 1.8 GB onto your phone is yours to start"),
-    ("phone_model_status", "it's a question about your phone, yours to ask"),
-    ("undo", "it puts back whatever Atlas did last, which may not be the add-on's"),
+    (
+        "phone_model_get",
+        "a download of up to 1.8 GB onto your phone is yours to start",
+    ),
+    (
+        "phone_model_status",
+        "it's a question about your phone, yours to ask",
+    ),
+    (
+        "undo",
+        "it puts back whatever Atlas did last, which may not be the add-on's",
+    ),
     // Round 9's work log, decided when round 10 merged this (6b7e938).
-    ("time_spent", "it reads out where your day went, app by app -- yours alone"),
+    (
+        "time_spent",
+        "it reads out where your day went, app by app -- yours alone",
+    ),
     // Round 11's tools, decided when they were built.
     ("clip_history", "it reads back what you copied"),
     ("screen_text", "it reads whatever window is in front"),
-    ("market_day", "it's yours to ask; an add-on has the market module itself"),
+    (
+        "market_day",
+        "it's yours to ask; an add-on has the market module itself",
+    ),
     ("waiting_for", "it reads your sent mail"),
     ("note_review", "it reads and settles your notes"),
     ("launch", "it opens programs by name"),
     ("trade_day", "it's your trading journal"),
-    ("meeting_prep", "it reads your mail and notes about the people you meet"),
+    (
+        "meeting_prep",
+        "it reads your mail and notes about the people you meet",
+    ),
     ("snippet", "it types into whatever app is in front"),
     ("find_file", "it lists and opens your files"),
     ("pdf", "it writes files beside yours"),
@@ -192,7 +269,10 @@ pub const NEVER: &[(&str, &str)] = &[
     ("translate", "it sends your text through your model"),
     ("got_it_wrong", "it changes how Atlas behaves from now on"),
     ("apply_lesson", "it changes how Atlas behaves from now on"),
-    ("mute_topic", "it would let an add-on silence what Atlas tells you"),
+    (
+        "mute_topic",
+        "it would let an add-on silence what Atlas tells you",
+    ),
     ("address_as", "it changes who Atlas thinks it is talking to"),
     ("this_is_me", "it teaches Atlas who you are"),
     ("name_this", "it teaches Atlas what things and people are"),
@@ -209,32 +289,62 @@ pub const NEVER: &[(&str, &str)] = &[
     ("travel_prep", "it changes how your accounts are secured"),
     ("name_group", "it changes the groups you're in"),
     ("leave_group", "it changes the groups you're in"),
-    ("change_group", "it changes who is in your groups and what they may do"),
+    (
+        "change_group",
+        "it changes who is in your groups and what they may do",
+    ),
     ("friend", "it decides who can reach your Atlas"),
     ("work_on_yourself", "it changes Atlas's own code"),
     ("improve", "it changes Atlas's own code"),
     ("implement", "it changes Atlas's own code"),
     ("dictate", "it types into other apps as if it were you"),
-    ("shakedown", "it drives checks across every capability, some of them visible"),
+    (
+        "shakedown",
+        "it drives checks across every capability, some of them visible",
+    ),
     // Eric's evening on the laptop (29 Sep 2026, 9101519), decided when the
     // commands' test caught them undecided.
     ("tidy_desktop", "it moves your files into folders"),
-    ("use_mic", "it changes which microphone Atlas listens through -- one it can't hear you on silences it"),
+    (
+        "use_mic",
+        "it changes which microphone Atlas listens through -- one it can't hear you on silences it",
+    ),
     // The third chat's commands, decided when its line was merged (26 Sep
     // 2026). Every one acts as you or on other people, so none is opened.
-    ("type_code", "it types a sign-in code into whatever is in front"),
-    ("two_factor", "it turns two-factor on or off on your accounts"),
+    (
+        "type_code",
+        "it types a sign-in code into whatever is in front",
+    ),
+    (
+        "two_factor",
+        "it turns two-factor on or off on your accounts",
+    ),
     ("call_notes_on", "it starts noting a call"),
     ("call_record_everyone", "it records other people"),
-    ("call_they_agreed", "it says other people agreed to be recorded"),
-    ("call_they_declined", "it answers for other people about recording"),
-    ("call_couldnt_ask", "it answers for other people about recording"),
-    ("call_no_answer", "it answers for other people about recording"),
+    (
+        "call_they_agreed",
+        "it says other people agreed to be recorded",
+    ),
+    (
+        "call_they_declined",
+        "it answers for other people about recording",
+    ),
+    (
+        "call_couldnt_ask",
+        "it answers for other people about recording",
+    ),
+    (
+        "call_no_answer",
+        "it answers for other people about recording",
+    ),
     ("call_just_mine", "it changes what a call records"),
     ("call_status", "it reads what a call is recording"),
     ("call_what_it_does", "it's said to the people on your call"),
     ("call_notes_off", "it stops a call's notes"),
-    ("delegate", "it writes and sends replies as you in other apps"),
+    (
+        "delegate",
+        "it writes and sends replies as you in other apps",
+    ),
     ("after_me", "it's your after-me arrangement, yours alone"),
     // The Atlas Project chat's 25j commands, decided when 25j was merged in
     // (26 Sep 2026). Held back the same way the third chat's were: each one
@@ -243,18 +353,36 @@ pub const NEVER: &[(&str, &str)] = &[
     ("read_document", "it opens and reads your files"),
     ("unzip", "it writes files beside yours"),
     ("drop_task", "it changes your task list"),
-    ("suggestions", "it would let an add-on silence what Atlas tells you"),
+    (
+        "suggestions",
+        "it would let an add-on silence what Atlas tells you",
+    ),
     ("dangling", "it reads your notes"),
-    ("overnight", "it reads out what Atlas did while you were away"),
-    ("creator_advice", "it answers from what Atlas knows about your work"),
-    ("money_advice", "it answers from what Atlas knows about your money"),
+    (
+        "overnight",
+        "it reads out what Atlas did while you were away",
+    ),
+    (
+        "creator_advice",
+        "it answers from what Atlas knows about your work",
+    ),
+    (
+        "money_advice",
+        "it answers from what Atlas knows about your money",
+    ),
     ("teach_gesture", "it teaches Atlas what your hands mean"),
     ("languages", "it changes what Atlas listens for"),
     ("set_key", "it changes Atlas's keys"),
     ("edit_media", "it writes files beside yours"),
     ("move_big_files", "it moves folders between your drives"),
-    ("pc_tune", "it closes your programs and changes what starts with Windows"),
-    ("press_button", "it presses buttons in other apps as if it were you"),
+    (
+        "pc_tune",
+        "it closes your programs and changes what starts with Windows",
+    ),
+    (
+        "press_button",
+        "it presses buttons in other apps as if it were you",
+    ),
     ("schedule_post", "it decides when your posts go out"),
     ("sort_mail", "it moves your mail"),
     ("later", "it's your own list"),
@@ -262,7 +390,10 @@ pub const NEVER: &[(&str, &str)] = &[
     ("keep_at_it", "it keeps changing Atlas's own code"),
     ("run_build", "it runs a program on your computer"),
     // 25k's, decided when 25k was merged in (26 Sep 2026).
-    ("clock", "it's yours to ask; an add-on can read the time itself"),
+    (
+        "clock",
+        "it's yours to ask; an add-on can read the time itself",
+    ),
     // Round 6's four, decided when they were merged onto the split (29 Sep
     // 2026), each held back for the same reason as its nearest neighbour:
     // photo edits write files as `edit_media` does; social reads your own
@@ -270,19 +401,48 @@ pub const NEVER: &[(&str, &str)] = &[
     // for job alerts and keeps your list; wit changes how Atlas talks from
     // now on, as `got_it_wrong` does.
     ("edit_photo", "it writes files beside yours"),
-    ("make_picture", "it writes into your Pictures folder and can download 6.5 GB"),
-    ("self_test", "it copies your settings and state to test with"),
+    (
+        "make_picture",
+        "it writes into your Pictures folder and can download 6.5 GB",
+    ),
+    (
+        "self_test",
+        "it copies your settings and state to test with",
+    ),
     ("operate", "it clicks and types in your apps"),
-    ("social", "it reads your own accounts and fetches from the web as you"),
-    ("opportunities", "it reads your mail for job alerts and keeps your own list"),
+    (
+        "social",
+        "it reads your own accounts and fetches from the web as you",
+    ),
+    (
+        "opportunities",
+        "it reads your mail for job alerts and keeps your own list",
+    ),
     ("wit", "it changes how Atlas behaves from now on"),
 ];
 
 /// Said alone, these answer a question Atlas asked. An add-on may never be
 /// started by one, or a "yes" meant for Atlas could start it instead.
 const ANSWERS: &[&str] = &[
-    "yes", "no", "yeah", "yep", "nope", "ok", "okay", "sure", "cancel", "stop", "go ahead", "do it",
-    "dont", "not now", "never mind", "yes please", "no thanks", "thats fine", "that's fine",
+    "yes",
+    "no",
+    "yeah",
+    "yep",
+    "nope",
+    "ok",
+    "okay",
+    "sure",
+    "cancel",
+    "stop",
+    "go ahead",
+    "do it",
+    "dont",
+    "not now",
+    "never mind",
+    "yes please",
+    "no thanks",
+    "thats fine",
+    "that's fine",
 ];
 
 pub fn permission(key: &str) -> Option<&'static Permission> {
@@ -362,29 +522,39 @@ pub fn read_schedule(s: &str) -> Result<Schedule, String> {
     let words: Vec<&str> = t.split_whitespace().collect();
     match words.as_slice() {
         ["every", n, unit] => {
-            let n: u64 = n.parse().map_err(|_| format!("\"{s}\": {n} isn't a number"))?;
+            let n: u64 = n
+                .parse()
+                .map_err(|_| format!("\"{s}\": {n} isn't a number"))?;
             let mins = match *unit {
                 "minute" | "minutes" => n,
                 "hour" | "hours" => n * 60,
                 other => return Err(format!("\"{s}\": say minutes or hours, not {other}")),
             };
             if mins < MIN_EVERY_MINUTES {
-                return Err(format!("\"{s}\": add-ons may run at most every {MIN_EVERY_MINUTES} minutes"));
+                return Err(format!(
+                    "\"{s}\": add-ons may run at most every {MIN_EVERY_MINUTES} minutes"
+                ));
             }
             Ok(Schedule::Every(mins * 60))
         }
         ["daily", "at", hm] => {
-            let (h, m) = hm.split_once(':').ok_or_else(|| format!("\"{s}\": write the time as HH:MM"))?;
+            let (h, m) = hm
+                .split_once(':')
+                .ok_or_else(|| format!("\"{s}\": write the time as HH:MM"))?;
             let (h, m): (u32, u32) = (
-                h.parse().map_err(|_| format!("\"{s}\": write the time as HH:MM"))?,
-                m.parse().map_err(|_| format!("\"{s}\": write the time as HH:MM"))?,
+                h.parse()
+                    .map_err(|_| format!("\"{s}\": write the time as HH:MM"))?,
+                m.parse()
+                    .map_err(|_| format!("\"{s}\": write the time as HH:MM"))?,
             );
             if h > 23 || m > 59 {
                 return Err(format!("\"{s}\": that isn't a time of day"));
             }
             Ok(Schedule::DailyAt(h * 60 + m))
         }
-        _ => Err(format!("\"{s}\": write \"every N minutes\", \"every N hours\" or \"daily at HH:MM\"")),
+        _ => Err(format!(
+            "\"{s}\": write \"every N minutes\", \"every N hours\" or \"daily at HH:MM\""
+        )),
     }
 }
 
@@ -404,7 +574,9 @@ pub struct PluginStep {
 fn id_ok(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 40
-        && id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         && !id.starts_with('-')
 }
 
@@ -445,7 +617,9 @@ impl Approvals {
         store.load(APPROVALS)
     }
     fn save(&self, store: &Store) -> Result<(), String> {
-        store.keep_briefly(APPROVALS, self).map_err(|e| format!("couldn't save your decision: {e}"))
+        store
+            .keep_briefly(APPROVALS, self)
+            .map_err(|e| format!("couldn't save your decision: {e}"))
     }
 }
 
@@ -520,12 +694,18 @@ pub struct StepQuestion {
 
 impl Plugin {
     pub fn name(&self) -> String {
-        self.manifest.as_ref().map(|m| m.name.clone()).unwrap_or_else(|| self.id.clone())
+        self.manifest
+            .as_ref()
+            .map(|m| m.name.clone())
+            .unwrap_or_else(|| self.id.clone())
     }
 }
 
 /// What reading the file found, before your decision is consulted.
-#[allow(clippy::large_enum_variant, reason = "one short-lived value per plugin read; boxing buys nothing")]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "one short-lived value per plugin read; boxing buys nothing"
+)]
 enum Read {
     Ok(Checked, String),
     Off(Status, String),
@@ -545,14 +725,30 @@ fn read_file(dir: &Path, id: &str, commands: &CommandsConfig) -> Read {
     let path = dir.join(MANIFEST_FILE);
     let meta = match std::fs::metadata(&path) {
         Ok(m) => m,
-        Err(_) => return Read::Off(Status::Broken(format!("there is no {MANIFEST_FILE} in its folder")), String::new()),
+        Err(_) => {
+            return Read::Off(
+                Status::Broken(format!("there is no {MANIFEST_FILE} in its folder")),
+                String::new(),
+            )
+        }
     };
     if meta.len() > MAX_MANIFEST_BYTES {
-        return Read::Off(Status::Broken(format!("its file is larger than {} KB", MAX_MANIFEST_BYTES / 1024)), String::new());
+        return Read::Off(
+            Status::Broken(format!(
+                "its file is larger than {} KB",
+                MAX_MANIFEST_BYTES / 1024
+            )),
+            String::new(),
+        );
     }
     let bytes = match std::fs::read(&path) {
         Ok(b) => b,
-        Err(e) => return Read::Off(Status::Broken(format!("couldn't read it: {e}")), String::new()),
+        Err(e) => {
+            return Read::Off(
+                Status::Broken(format!("couldn't read it: {e}")),
+                String::new(),
+            )
+        }
     };
     let sha = fingerprint(&bytes);
     let Ok(text) = String::from_utf8(bytes) else {
@@ -566,7 +762,11 @@ fn read_file(dir: &Path, id: &str, commands: &CommandsConfig) -> Read {
 
 /// Parse an add-on file and check everything that can be checked without
 /// your decision. `Err` is why it cannot run at all.
-fn parse_and_check(text: &str, folder: Option<&str>, commands: &CommandsConfig) -> Result<Checked, Status> {
+fn parse_and_check(
+    text: &str,
+    folder: Option<&str>,
+    commands: &CommandsConfig,
+) -> Result<Checked, Status> {
     // The format number first, leniently, so a file for a newer Atlas is
     // told apart from a broken one.
     let header: Header = serde_yaml::from_str(text)
@@ -584,11 +784,17 @@ fn parse_and_check(text: &str, folder: Option<&str>, commands: &CommandsConfig) 
     if !id_ok(&m.id) {
         // Quoted as written, never `{:?}`: that shows escapes like `\u{301}`
         // and reads as code on the Add-ons page (27 Sep 2026).
-        return broken(format!("its id \u{201c}{}\u{201d} must be lowercase letters, digits and dashes", m.id));
+        return broken(format!(
+            "its id \u{201c}{}\u{201d} must be lowercase letters, digits and dashes",
+            m.id
+        ));
     }
     if let Some(f) = folder {
         if f != m.id {
-            return broken(format!("its id is \u{201c}{}\u{201d} but its folder is \u{201c}{f}\u{201d}", m.id));
+            return broken(format!(
+                "its id is \u{201c}{}\u{201d} but its folder is \u{201c}{f}\u{201d}",
+                m.id
+            ));
         }
     }
     for (what, v) in [("name", &m.name), ("author", &m.author)] {
@@ -599,7 +805,9 @@ fn parse_and_check(text: &str, folder: Option<&str>, commands: &CommandsConfig) 
     let mut seen = Vec::new();
     for p in &m.permissions {
         if permission(p).is_none() {
-            return broken(format!("it asks for a permission \"{p}\" that doesn't exist"));
+            return broken(format!(
+                "it asks for a permission \"{p}\" that doesn't exist"
+            ));
         }
         if seen.contains(&p) {
             return broken(format!("it asks for \"{p}\" twice"));
@@ -611,8 +819,11 @@ fn parse_and_check(text: &str, folder: Option<&str>, commands: &CommandsConfig) 
     }
 
     let parser = Parser::new(commands);
-    let builtin: Vec<String> =
-        commands.commands.iter().flat_map(|c| c.phrases.iter().map(|p| normalize(p))).collect();
+    let builtin: Vec<String> = commands
+        .commands
+        .iter()
+        .flat_map(|c| c.phrases.iter().map(|p| normalize(p)))
+        .collect();
     let mut trouble = Vec::new();
     let mut flows = Vec::new();
     let mut schedules = Vec::new();
@@ -625,7 +836,10 @@ fn parse_and_check(text: &str, folder: Option<&str>, commands: &CommandsConfig) 
             return broken(format!("\"{}\" must have 1 to {MAX_STEPS} steps", f.name));
         }
         if f.triggers.len() > MAX_TRIGGERS {
-            return broken(format!("\"{}\" has more than {MAX_TRIGGERS} ways to start it", f.name));
+            return broken(format!(
+                "\"{}\" has more than {MAX_TRIGGERS} ways to start it",
+                f.name
+            ));
         }
         for s in &f.steps {
             // Checked as written. A `{name}` placeholder stays in the text,
@@ -652,8 +866,13 @@ fn parse_and_check(text: &str, folder: Option<&str>, commands: &CommandsConfig) 
             // Would Atlas ask before this step? By its own baseline rules --
             // what you taught it since can only make it ask less.
             let (intent, name) = parser.parse_named(&s.command);
-            if crate::policy::classify(&intent).needs_consent() && !asks.iter().any(|(c, _)| c == &s.command) {
-                asks.push((s.command.clone(), why_always_asks(&s.command, name.as_deref())));
+            if crate::policy::classify(&intent).needs_consent()
+                && !asks.iter().any(|(c, _)| c == &s.command)
+            {
+                asks.push((
+                    s.command.clone(),
+                    why_always_asks(&s.command, name.as_deref()),
+                ));
             }
         }
         if let Some(when) = &f.schedule {
@@ -670,7 +889,10 @@ fn parse_and_check(text: &str, folder: Option<&str>, commands: &CommandsConfig) 
             }
         }
         if triggers.is_empty() && f.schedule.is_none() {
-            trouble.push(format!("\"{}\" has no way to start it that Atlas can allow", f.name));
+            trouble.push(format!(
+                "\"{}\" has no way to start it that Atlas can allow",
+                f.name
+            ));
         }
         flows.push(Workflow {
             name: f.name.clone(),
@@ -680,13 +902,23 @@ fn parse_and_check(text: &str, folder: Option<&str>, commands: &CommandsConfig) 
                 .iter()
                 .map(|s| Step {
                     command: s.command.clone(),
-                    on_fail: if s.optional { crate::flow::OnFail::Continue } else { crate::flow::OnFail::Stop },
+                    on_fail: if s.optional {
+                        crate::flow::OnFail::Continue
+                    } else {
+                        crate::flow::OnFail::Stop
+                    },
                     produces: s.produces.clone(),
                 })
                 .collect(),
         });
     }
-    Ok(Checked { manifest: m, trouble, flows, schedules, asks })
+    Ok(Checked {
+        manifest: m,
+        trouble,
+        flows,
+        schedules,
+        asks,
+    })
 }
 
 /// Commands an add-on's step asks about every time, whatever you said
@@ -696,10 +928,16 @@ pub const ALWAYS_ASKS: &[(&str, &str)] = &[("message", "it speaks to other peopl
 /// Why a step can never be "don't ask each time", if it can't.
 pub fn why_always_asks(command: &str, intent: Option<&str>) -> Option<String> {
     if command.contains('{') {
-        return Some("part of it is filled in from an earlier step, so it isn't the same thing each time".into());
+        return Some(
+            "part of it is filled in from an earlier step, so it isn't the same thing each time"
+                .into(),
+        );
     }
     let intent = intent?;
-    ALWAYS_ASKS.iter().find(|(i, _)| *i == intent).map(|(_, why)| (*why).to_string())
+    ALWAYS_ASKS
+        .iter()
+        .find(|(i, _)| *i == intent)
+        .map(|(_, why)| (*why).to_string())
 }
 
 /// Why a phrase may not start an add-on, if it may not.
@@ -710,7 +948,10 @@ fn trigger_problem(t: &str, builtin: &[String], parser: &Parser) -> Option<Strin
     }
     // Whatever Atlas would take as a yes or a no to its own question -- the
     // same reading the daemon uses -- can never start an add-on.
-    if crate::session::is_yes(&n) || crate::session::is_no(&n) || ANSWERS.iter().any(|a| normalize(a) == n) {
+    if crate::session::is_yes(&n)
+        || crate::session::is_no(&n)
+        || ANSWERS.iter().any(|a| normalize(a) == n)
+    {
         return Some("it's how you answer a question Atlas asked".into());
     }
     if builtin.contains(&n) {
@@ -718,7 +959,9 @@ fn trigger_problem(t: &str, builtin: &[String], parser: &Parser) -> Option<Strin
     }
     if let Some(intent) = parser.parse_named(&n).1 {
         if NEVER.iter().any(|(i, _)| *i == intent) {
-            return Some(format!("it reads as \"{intent}\", which add-ons may never stand in for"));
+            return Some(format!(
+                "it reads as \"{intent}\", which add-ons may never stand in for"
+            ));
         }
     }
     None
@@ -727,18 +970,28 @@ fn trigger_problem(t: &str, builtin: &[String], parser: &Parser) -> Option<Strin
 /// Every add-on in `dir`, with your decisions applied, sorted by id.
 pub fn scan(dir: &Path, commands: &CommandsConfig, approvals: &Approvals) -> Vec<Plugin> {
     let mut out: Vec<Plugin> = Vec::new();
-    let Ok(entries) = std::fs::read_dir(dir) else { return out };
-    let mut folders: Vec<PathBuf> =
-        entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return out;
+    };
+    let mut folders: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
     folders.sort();
     for folder in folders {
-        let id = folder.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let id = folder
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
         if !id_ok(&id) {
             out.push(Plugin {
                 id: id.clone(),
                 manifest: None,
                 sha256: String::new(),
-                status: Status::Broken("its folder name must be lowercase letters, digits and dashes".into()),
+                status: Status::Broken(
+                    "its folder name must be lowercase letters, digits and dashes".into(),
+                ),
                 granted: vec![],
                 trouble: vec![],
                 flows: vec![],
@@ -770,16 +1023,26 @@ pub fn scan(dir: &Path, commands: &CommandsConfig, approvals: &Approvals) -> Vec
                     Some(a) if a.disabled => (Status::Disabled, vec![]),
                     Some(a) => (
                         Status::Active,
-                        a.granted.iter().filter(|g| m.permissions.contains(g)).cloned().collect(),
+                        a.granted
+                            .iter()
+                            .filter(|g| m.permissions.contains(g))
+                            .cloned()
+                            .collect(),
                     ),
                 };
                 let trusted = |cmd: &str| {
-                    approval.is_some_and(|a| a.sha256 == sha && a.trusted_steps.iter().any(|t| t == cmd))
+                    approval.is_some_and(|a| {
+                        a.sha256 == sha && a.trusted_steps.iter().any(|t| t == cmd)
+                    })
                 };
                 let questions = c
                     .asks
                     .into_iter()
-                    .map(|(command, always_asks)| StepQuestion { trusted: trusted(&command), command, always_asks })
+                    .map(|(command, always_asks)| StepQuestion {
+                        trusted: trusted(&command),
+                        command,
+                        always_asks,
+                    })
                     .collect();
                 Plugin {
                     sent_by: approvals.sent_by.get(&id).cloned(),
@@ -813,7 +1076,10 @@ pub fn scan(dir: &Path, commands: &CommandsConfig, approvals: &Approvals) -> Vec
             for f in &mut p.flows {
                 f.triggers.retain(|x| x != t);
             }
-            p.trouble.push(format!("\"{t}\" is claimed by more than one add-on ({}), so it starts none", ids.join(", ")));
+            p.trouble.push(format!(
+                "\"{t}\" is claimed by more than one add-on ({}), so it starts none",
+                ids.join(", ")
+            ));
         }
     }
     out
@@ -838,14 +1104,15 @@ pub struct Kept {
 fn stamp(dir: &Path, store: &Store) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    let note = |p: &Path, h: &mut std::collections::hash_map::DefaultHasher| match std::fs::metadata(p) {
-        Ok(m) => {
-            p.hash(h);
-            m.len().hash(h);
-            m.modified().ok().hash(h);
-        }
-        Err(_) => 0u8.hash(h),
-    };
+    let note =
+        |p: &Path, h: &mut std::collections::hash_map::DefaultHasher| match std::fs::metadata(p) {
+            Ok(m) => {
+                p.hash(h);
+                m.len().hash(h);
+                m.modified().ok().hash(h);
+            }
+            Err(_) => 0u8.hash(h),
+        };
     note(dir, &mut h);
     note(&store.root().join(format!("{APPROVALS}.json")), &mut h);
     if let Ok(rd) = std::fs::read_dir(dir) {
@@ -873,12 +1140,19 @@ pub struct Registry {
 
 impl Registry {
     pub fn load(dir: &Path, commands: &CommandsConfig, store: &Store) -> Registry {
-        Registry { plugins: scan(dir, commands, &Approvals::load(store)) }
+        Registry {
+            plugins: scan(dir, commands, &Approvals::load(store)),
+        }
     }
 
     /// The registry, read again only when something it was read from has
     /// changed (`stamp`). See [`Kept`].
-    pub fn load_kept<'k>(kept: &'k mut Kept, dir: &Path, commands: &CommandsConfig, store: &Store) -> &'k Registry {
+    pub fn load_kept<'k>(
+        kept: &'k mut Kept,
+        dir: &Path,
+        commands: &CommandsConfig,
+        store: &Store,
+    ) -> &'k Registry {
         let now = stamp(dir, store);
         if kept.reg.is_none() || kept.stamp != now {
             kept.reg = Some(Registry::load(dir, commands, store));
@@ -893,9 +1167,15 @@ impl Registry {
     /// you wrote them; an add-on only answers to the words it declared.
     pub fn match_trigger(&self, said: &str) -> Option<(String, Workflow)> {
         let n = normalize(said);
-        self.plugins.iter().filter(|p| p.status == Status::Active).find_map(|p| {
-            p.flows.iter().find(|f| f.triggers.contains(&n)).map(|f| (p.id.clone(), f.clone()))
-        })
+        self.plugins
+            .iter()
+            .filter(|p| p.status == Status::Active)
+            .find_map(|p| {
+                p.flows
+                    .iter()
+                    .find(|f| f.triggers.contains(&n))
+                    .map(|f| (p.id.clone(), f.clone()))
+            })
     }
 }
 
@@ -927,7 +1207,9 @@ pub fn may_run(
         return Err(format!("you switched the add-on {id} off"));
     }
     let file = dir.join(id).join(MANIFEST_FILE);
-    let now = std::fs::read(&file).map(|b| fingerprint(&b)).unwrap_or_default();
+    let now = std::fs::read(&file)
+        .map(|b| fingerprint(&b))
+        .unwrap_or_default();
     if now != a.sha256 {
         return Err(format!("the add-on {id} changed since you approved it"));
     }
@@ -943,7 +1225,8 @@ pub fn may_run(
             "the add-on {id} asked for something that isn't a command Atlas knows, and add-ons may only use commands"
         ));
     };
-    let p = permission_for(intent).map_err(|why| format!("the add-on {id} tried something {why}"))?;
+    let p =
+        permission_for(intent).map_err(|why| format!("the add-on {id} tried something {why}"))?;
     if !a.granted.iter().any(|g| g == p.key) {
         return Err(format!(
             "the add-on {id} wanted to {}, which you haven't allowed it to do",
@@ -968,12 +1251,25 @@ pub fn approve(
     seen_sha256: &str,
 ) -> Result<String, String> {
     let approvals = Approvals::load(store);
-    let found = scan(dir, commands, &approvals).into_iter().find(|p| p.id == id);
-    let Some(p) = found else { return Err(format!("there's no add-on called {id}")) };
+    let found = scan(dir, commands, &approvals)
+        .into_iter()
+        .find(|p| p.id == id);
+    let Some(p) = found else {
+        return Err(format!("there's no add-on called {id}"));
+    };
     if p.sha256 != seen_sha256 {
-        return Err(format!("{} changed since you looked at it. Look again, then approve.", p.name()));
+        return Err(format!(
+            "{} changed since you looked at it. Look again, then approve.",
+            p.name()
+        ));
     }
-    let Some(m) = &p.manifest else { return Err(format!("{} can't be approved: {}", p.name(), p.status.plain())) };
+    let Some(m) = &p.manifest else {
+        return Err(format!(
+            "{} can't be approved: {}",
+            p.name(),
+            p.status.plain()
+        ));
+    };
     let mut approvals = approvals;
     // "Don't ask each time" you gave an earlier version carries over only
     // for a step that is still there word for word and still trustable --
@@ -984,7 +1280,11 @@ pub fn approve(
         .map(|a| a.trusted_steps.clone())
         .unwrap_or_default()
         .into_iter()
-        .filter(|t| p.questions.iter().any(|q| &q.command == t && q.always_asks.is_none()))
+        .filter(|t| {
+            p.questions
+                .iter()
+                .any(|q| &q.command == t && q.always_asks.is_none())
+        })
         .collect();
     approvals.plugins.insert(
         id.to_string(),
@@ -997,13 +1297,18 @@ pub fn approve(
         },
     );
     approvals.save(store)?;
-    Ok(format!("{} is on. You can take any of what it may do away on the Add-ons page.", m.name))
+    Ok(format!(
+        "{} is on. You can take any of what it may do away on the Add-ons page.",
+        m.name
+    ))
 }
 
 /// Take one permission away from an add-on.
 pub fn revoke(store: &Store, id: &str, key: &str) -> Result<String, String> {
     let mut approvals = Approvals::load(store);
-    let Some(a) = approvals.plugins.get_mut(id) else { return Err(format!("{id} isn't approved")) };
+    let Some(a) = approvals.plugins.get_mut(id) else {
+        return Err(format!("{id} isn't approved"));
+    };
     let before = a.granted.len();
     a.granted.retain(|g| g != key);
     if a.granted.len() == before {
@@ -1011,32 +1316,52 @@ pub fn revoke(store: &Store, id: &str, key: &str) -> Result<String, String> {
     }
     approvals.save(store)?;
     let what = permission(key).map(|p| p.plain).unwrap_or(key);
-    Ok(format!("{id} may no longer {what}. Anything it tries that needs it now stops."))
+    Ok(format!(
+        "{id} may no longer {what}. Anything it tries that needs it now stops."
+    ))
 }
 
 /// Switch an add-on off or back on, keeping your approval.
 pub fn set_off(store: &Store, id: &str, off: bool) -> Result<String, String> {
     let mut approvals = Approvals::load(store);
-    let Some(a) = approvals.plugins.get_mut(id) else { return Err(format!("{id} isn't approved")) };
+    let Some(a) = approvals.plugins.get_mut(id) else {
+        return Err(format!("{id} isn't approved"));
+    };
     a.disabled = off;
     approvals.save(store)?;
-    Ok(if off { format!("{id} is off.") } else { format!("{id} is back on.") })
+    Ok(if off {
+        format!("{id} is off.")
+    } else {
+        format!("{id} is back on.")
+    })
 }
 
 /// Copy an add-on file into the add-ons folder. It arrives waiting for your
 /// approval -- adding is never approving.
 pub fn add_from(source: &Path, dir: &Path, commands: &CommandsConfig) -> Result<String, String> {
-    let file = if source.is_dir() { source.join(MANIFEST_FILE) } else { source.to_path_buf() };
-    let len = std::fs::metadata(&file).map_err(|e| format!("couldn't read {}: {e}", file.display()))?.len();
+    let file = if source.is_dir() {
+        source.join(MANIFEST_FILE)
+    } else {
+        source.to_path_buf()
+    };
+    let len = std::fs::metadata(&file)
+        .map_err(|e| format!("couldn't read {}: {e}", file.display()))?
+        .len();
     if len > MAX_MANIFEST_BYTES {
-        return Err(format!("{} is larger than an add-on can be", file.display()));
+        return Err(format!(
+            "{} is larger than an add-on can be",
+            file.display()
+        ));
     }
-    let text = std::fs::read_to_string(&file).map_err(|e| format!("couldn't read {}: {e}", file.display()))?;
-    let c = parse_and_check(&text, None, commands).map_err(|s| format!("not added: {}", s.plain()))?;
+    let text = std::fs::read_to_string(&file)
+        .map_err(|e| format!("couldn't read {}: {e}", file.display()))?;
+    let c =
+        parse_and_check(&text, None, commands).map_err(|s| format!("not added: {}", s.plain()))?;
     let (m, trouble) = (c.manifest, c.trouble);
     let dest = dir.join(&m.id);
     std::fs::create_dir_all(&dest).map_err(|e| format!("couldn't make {}: {e}", dest.display()))?;
-    std::fs::write(dest.join(MANIFEST_FILE), &text).map_err(|e| format!("couldn't write it: {e}"))?;
+    std::fs::write(dest.join(MANIFEST_FILE), &text)
+        .map_err(|e| format!("couldn't write it: {e}"))?;
     let mut said = format!(
         "Added {} by {}. It does nothing until you approve it -- the hub's Add-ons page shows what it wants to do.",
         m.name, m.author
@@ -1052,14 +1377,36 @@ mod durable_synced_approval {
     use super::*;
     #[test]
     fn unreadable_existing_approval_does_not_become_a_successful_sync_replacement() {
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("atlas-plugin-approval-sync-{}-{stamp}", std::process::id()));
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "atlas-plugin-approval-sync-{}-{stamp}",
+            std::process::id()
+        ));
         let store = Store::new(root.join("state"));
         store.save(APPROVALS, &Approvals::default()).unwrap();
         let path = root.join("state").join(format!("{APPROVALS}.json"));
         std::fs::write(&path, b"{broken saved permissions").unwrap();
-        let value = serde_json::to_string(&Approval { sha256: "saved-review".into(), ..Default::default() }).unwrap();
-        let result = take_synced_versioned(&store, &root.join("addons"), &crate::config::Config::load(Path::new("config")).unwrap().commands, "addon:studio", "approval", &value, true, "phone", None);
+        let value = serde_json::to_string(&Approval {
+            sha256: "saved-review".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        let result = take_synced_versioned(
+            &store,
+            &root.join("addons"),
+            &crate::config::Config::load(Path::new("config"))
+                .unwrap()
+                .commands,
+            "addon:studio",
+            "approval",
+            &value,
+            true,
+            "phone",
+            None,
+        );
         assert!(result.is_err());
         assert_eq!(std::fs::read(path).unwrap(), b"{broken saved permissions");
         std::fs::remove_dir_all(root).unwrap();
@@ -1087,40 +1434,67 @@ pub fn may_skip_question(
         return false;
     }
     let approvals = Approvals::load(store);
-    let Some(a) = approvals.plugins.get(id) else { return false };
-    let now = std::fs::read(dir.join(id).join(MANIFEST_FILE)).map(|b| fingerprint(&b)).unwrap_or_default();
+    let Some(a) = approvals.plugins.get(id) else {
+        return false;
+    };
+    let now = std::fs::read(dir.join(id).join(MANIFEST_FILE))
+        .map(|b| fingerprint(&b))
+        .unwrap_or_default();
     !a.disabled && a.sha256 == now && a.trusted_steps.iter().any(|t| t == as_written)
 }
 
 /// "Don't ask me about this step each time." For a step of an approved add-on
 /// that would otherwise ask, and that can be trusted at all.
-pub fn trust_step(store: &Store, dir: &Path, commands: &CommandsConfig, id: &str, step: &str) -> Result<String, String> {
+pub fn trust_step(
+    store: &Store,
+    dir: &Path,
+    commands: &CommandsConfig,
+    id: &str,
+    step: &str,
+) -> Result<String, String> {
     let mut approvals = Approvals::load(store);
-    let found = scan(dir, commands, &approvals).into_iter().find(|p| p.id == id);
-    let Some(p) = found else { return Err(format!("there's no add-on called {id}")) };
+    let found = scan(dir, commands, &approvals)
+        .into_iter()
+        .find(|p| p.id == id);
+    let Some(p) = found else {
+        return Err(format!("there's no add-on called {id}"));
+    };
     if p.status != Status::Active {
-        return Err(format!("{} isn't on, so there's nothing to stop asking about", p.name()));
+        return Err(format!(
+            "{} isn't on, so there's nothing to stop asking about",
+            p.name()
+        ));
     }
     let Some(q) = p.questions.iter().find(|q| q.command == step) else {
-        return Err(format!("\"{step}\" isn't a step of {} that asks first", p.name()));
+        return Err(format!(
+            "\"{step}\" isn't a step of {} that asks first",
+            p.name()
+        ));
     };
     if let Some(why) = &q.always_asks {
         return Err(format!("I'll keep asking before \"{step}\": {why}."));
     }
     let Some(a) = approvals.plugins.get_mut(id) else {
-        return Err(format!("\"{id}\" isn't approved any more, so I'll ask before \"{step}\"."));
+        return Err(format!(
+            "\"{id}\" isn't approved any more, so I'll ask before \"{step}\"."
+        ));
     };
     if !a.trusted_steps.iter().any(|t| t == step) {
         a.trusted_steps.push(step.to_string());
     }
     approvals.save(store)?;
-    Ok(format!("I won't ask before \"{step}\" when {} runs it. The Add-ons page puts the question back.", p.name()))
+    Ok(format!(
+        "I won't ask before \"{step}\" when {} runs it. The Add-ons page puts the question back.",
+        p.name()
+    ))
 }
 
 /// Put the question back.
 pub fn untrust_step(store: &Store, id: &str, step: &str) -> Result<String, String> {
     let mut approvals = Approvals::load(store);
-    let Some(a) = approvals.plugins.get_mut(id) else { return Err(format!("{id} isn't approved")) };
+    let Some(a) = approvals.plugins.get_mut(id) else {
+        return Err(format!("{id} isn't approved"));
+    };
     a.trusted_steps.retain(|t| t != step);
     approvals.save(store)?;
     Ok(format!("I'll ask before \"{step}\" again."))
@@ -1131,7 +1505,12 @@ pub fn untrust_step(store: &Store, id: &str, step: &str) -> Result<String, Strin
 /// Remove an add-on: its folder goes to Atlas's trash (so it can be put back
 /// for the usual 30 days), and your approval of it is forgotten, so putting
 /// the same file back later means approving it again.
-pub fn remove(store: &Store, dir: &Path, id: &str, trash: &crate::safety::Trash) -> Result<String, String> {
+pub fn remove(
+    store: &Store,
+    dir: &Path,
+    id: &str,
+    trash: &crate::safety::Trash,
+) -> Result<String, String> {
     if !id_ok(id) {
         return Err(format!("{id:?} isn't an add-on id"));
     }
@@ -1139,12 +1518,16 @@ pub fn remove(store: &Store, dir: &Path, id: &str, trash: &crate::safety::Trash)
     if !folder.is_dir() {
         return Err(format!("there's no add-on called {id}"));
     }
-    trash.take(&folder, "add-on removed by you").map_err(|e| format!("couldn't move it to the trash: {e}"))?;
+    trash
+        .take(&folder, "add-on removed by you")
+        .map_err(|e| format!("couldn't move it to the trash: {e}"))?;
     let mut approvals = Approvals::load(store);
     approvals.plugins.remove(id);
     approvals.sent_by.remove(id);
     approvals.save(store)?;
-    Ok(format!("Removed {id}. It's in Atlas's trash for now if you want it back."))
+    Ok(format!(
+        "Removed {id}. It's in Atlas's trash for now if you want it back."
+    ))
 }
 
 // ------------------------------------------------------------------ shared by friends
@@ -1193,7 +1576,9 @@ impl Offers {
         store.load(OFFERS)
     }
     fn save(&self, store: &Store) -> Result<(), String> {
-        store.keep_briefly(OFFERS, self).map_err(|e| format!("couldn't save it: {e}"))
+        store
+            .keep_briefly(OFFERS, self)
+            .map_err(|e| format!("couldn't save it: {e}"))
     }
 }
 
@@ -1224,16 +1609,26 @@ pub fn offered(
         return Offer::NotAnAddOn;
     }
     if bytes.len() as u64 > MAX_MANIFEST_BYTES {
-        return Offer::Refused(format!("{from_peer} sent an add-on larger than an add-on can be"));
+        return Offer::Refused(format!(
+            "{from_peer} sent an add-on larger than an add-on can be"
+        ));
     }
     let Ok(text) = std::str::from_utf8(bytes) else {
         return Offer::Refused(format!("{from_peer} sent an add-on that isn't text"));
     };
     let c = match parse_and_check(text, None, commands) {
         Ok(c) => c,
-        Err(s) => return Offer::Refused(format!("{from_peer} sent an add-on I can't use: {}", s.plain())),
+        Err(s) => {
+            return Offer::Refused(format!(
+                "{from_peer} sent an add-on I can't use: {}",
+                s.plain()
+            ))
+        }
     };
-    let in_group = covering.strip_prefix(SHARED_IN).map(|g| g.trim().to_string()).filter(|g| !g.is_empty());
+    let in_group = covering
+        .strip_prefix(SHARED_IN)
+        .map(|g| g.trim().to_string())
+        .filter(|g| !g.is_empty());
     let sha = fingerprint(bytes);
     let mut offers = Offers::load(store);
     if offers.items.iter().any(|o| o.sha256 == sha) {
@@ -1260,7 +1655,9 @@ pub fn offered(
         offers.items.remove(0);
     }
     if let Err(e) = offers.save(store) {
-        return Offer::Refused(format!("{from_peer} shared an add-on and I couldn't keep it: {e}"));
+        return Offer::Refused(format!(
+            "{from_peer} shared an add-on and I couldn't keep it: {e}"
+        ));
     }
     Offer::Shelved(match in_group {
         Some(g) => format!("{from_peer} shared the add-on \"{}\" in {g}. It's on your Add-ons page if you want it.", m.name),
@@ -1271,13 +1668,25 @@ pub fn offered(
 /// Take an add-on off the shelf: it goes into your add-ons **and is approved
 /// in the same step**, for exactly the file and the permissions you were
 /// shown (`seen_sha256`) -- one decision, not two.
-pub fn take_offer(store: &Store, dir: &Path, commands: &CommandsConfig, offer: u64, seen_sha256: &str) -> Result<String, String> {
+pub fn take_offer(
+    store: &Store,
+    dir: &Path,
+    commands: &CommandsConfig,
+    offer: u64,
+    seen_sha256: &str,
+) -> Result<String, String> {
     let mut offers = Offers::load(store);
-    let o = offers.items.iter().find(|o| o.offer == offer).cloned().ok_or("that offer isn't there any more")?;
+    let o = offers
+        .items
+        .iter()
+        .find(|o| o.offer == offer)
+        .cloned()
+        .ok_or("that offer isn't there any more")?;
     if o.sha256 != seen_sha256 {
         return Err("that isn't the add-on you were shown".into());
     }
-    parse_and_check(&o.text, None, commands).map_err(|s| format!("I can't use it: {}", s.plain()))?;
+    parse_and_check(&o.text, None, commands)
+        .map_err(|s| format!("I can't use it: {}", s.plain()))?;
     let path = dir.join(&o.id).join(MANIFEST_FILE);
     if let Ok(mine) = std::fs::read_to_string(&path) {
         if fingerprint(mine.as_bytes()) != o.sha256 {
@@ -1287,7 +1696,9 @@ pub fn take_offer(store: &Store, dir: &Path, commands: &CommandsConfig, offer: u
             ));
         }
     }
-    std::fs::create_dir_all(dir.join(&o.id)).and_then(|_| std::fs::write(&path, &o.text)).map_err(|e| format!("couldn't save it: {e}"))?;
+    std::fs::create_dir_all(dir.join(&o.id))
+        .and_then(|_| std::fs::write(&path, &o.text))
+        .map_err(|e| format!("couldn't save it: {e}"))?;
     let said = approve(store, dir, commands, &o.id, &o.sha256)?;
     let mut approvals = Approvals::load(store);
     approvals.sent_by.insert(o.id.clone(), o.from.clone());
@@ -1315,7 +1726,8 @@ pub fn to_share(dir: &Path, id: &str) -> Result<(String, Vec<u8>, String), Strin
     if !id_ok(id) {
         return Err(format!("{id:?} isn't an add-on id"));
     }
-    let bytes = std::fs::read(dir.join(id).join(MANIFEST_FILE)).map_err(|_| format!("there's no add-on called {id}"))?;
+    let bytes = std::fs::read(dir.join(id).join(MANIFEST_FILE))
+        .map_err(|_| format!("there's no add-on called {id}"))?;
     let name = std::str::from_utf8(&bytes)
         .ok()
         .and_then(|t| serde_yaml::from_str::<Manifest>(t).ok())
@@ -1339,7 +1751,13 @@ pub struct ScheduleRuns {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SchedulePhase { Reserved, Ready, InFlight, Done, Failed }
+pub enum SchedulePhase {
+    Reserved,
+    Ready,
+    InFlight,
+    Done,
+    Failed,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScheduleClaim {
@@ -1355,8 +1773,21 @@ pub struct ScheduleClaim {
 impl ScheduleRuns {
     pub fn load_checked(store: &Store) -> crate::error::Result<Self> {
         let value: Self = store.load_checked(SCHEDULE_RUNS)?.unwrap_or_default();
-        if value.claims.iter().any(|(id, claim)| id.is_empty() || claim.schedule_key.is_empty() || claim.plugin.is_empty() || claim.approved_sha256.is_empty() || claim.run.as_ref().is_some_and(|run| run.scheduled_claim.as_deref() != Some(id.as_str()) || run.plugin.as_deref() != Some(claim.plugin.as_str()) || run.workflow != claim.workflow.name || run.steps != claim.workflow.steps)) {
-            return Err(crate::error::AtlasError::Platform("the scheduled add-on recovery record is invalid; no add-on started".into()));
+        if value.claims.iter().any(|(id, claim)| {
+            id.is_empty()
+                || claim.schedule_key.is_empty()
+                || claim.plugin.is_empty()
+                || claim.approved_sha256.is_empty()
+                || claim.run.as_ref().is_some_and(|run| {
+                    run.scheduled_claim.as_deref() != Some(id.as_str())
+                        || run.plugin.as_deref() != Some(claim.plugin.as_str())
+                        || run.workflow != claim.workflow.name
+                        || run.steps != claim.workflow.steps
+                })
+        }) {
+            return Err(crate::error::AtlasError::Platform(
+                "the scheduled add-on recovery record is invalid; no add-on started".into(),
+            ));
         }
         Ok(value)
     }
@@ -1397,7 +1828,12 @@ impl Registry {
     /// sequence, schedule key), and records the ones seen for the first time.
     /// Only for add-ons that are on. Starting one is recorded with
     /// `ScheduleRuns::ran`, so one that couldn't start yet stays due.
-    pub fn due(&self, runs: &mut ScheduleRuns, now: u64, offset_mins: i16) -> Vec<(String, Workflow, String)> {
+    pub fn due(
+        &self,
+        runs: &mut ScheduleRuns,
+        now: u64,
+        offset_mins: i16,
+    ) -> Vec<(String, Workflow, String)> {
         let mut out = Vec::new();
         for p in self.plugins.iter().filter(|p| p.status == Status::Active) {
             for (name, sch) in &p.schedules {
@@ -1417,7 +1853,9 @@ impl Registry {
         // starts fresh rather than firing on a stale record.
         runs.last.retain(|k, _| {
             let (id, name) = k.split_once('/').unwrap_or((k, ""));
-            self.plugins.iter().any(|p| p.id == id && p.schedules.iter().any(|(n, _)| n == name))
+            self.plugins
+                .iter()
+                .any(|p| p.id == id && p.schedules.iter().any(|(n, _)| n == name))
         });
         out
     }
@@ -1450,13 +1888,15 @@ struct Announced {
 /// `sync::What::Changed`.
 pub type SyncChange = (String, String, String);
 
-
-
-
-
 fn prepare_changes(store: &Store, dir: &Path) -> Result<(Vec<SyncChange>, Announced), String> {
-    let mut told: Announced = store.load_checked(ANNOUNCED).map_err(|error| error.to_string())?.unwrap_or_default();
-    let approvals: Approvals = store.load_checked(APPROVALS).map_err(|error| error.to_string())?.unwrap_or_default();
+    let mut told: Announced = store
+        .load_checked(ANNOUNCED)
+        .map_err(|error| error.to_string())?
+        .unwrap_or_default();
+    let approvals: Approvals = store
+        .load_checked(APPROVALS)
+        .map_err(|error| error.to_string())?
+        .unwrap_or_default();
     let mut out = Vec::new();
     let mut here: BTreeMap<String, (String, String)> = BTreeMap::new();
     let entries = match std::fs::read_dir(dir) {
@@ -1490,7 +1930,11 @@ fn prepare_changes(store: &Store, dir: &Path) -> Result<(Vec<SyncChange>, Announ
     }
     for id in told.files.keys().cloned().collect::<Vec<_>>() {
         if !here.contains_key(&id) {
-            out.push((format!("{SYNC_PREFIX}{id}"), "removed".into(), String::new()));
+            out.push((
+                format!("{SYNC_PREFIX}{id}"),
+                "removed".into(),
+                String::new(),
+            ));
             told.files.remove(&id);
             told.approvals.remove(&id);
         }
@@ -1498,13 +1942,21 @@ fn prepare_changes(store: &Store, dir: &Path) -> Result<(Vec<SyncChange>, Announ
     for (id, a) in &approvals.plugins {
         let json = serde_json::to_string(a).unwrap_or_default();
         if here.contains_key(id) && told.approvals.get(id) != Some(&json) {
-            out.push((format!("{SYNC_PREFIX}{id}"), "approval".into(), json.clone()));
+            out.push((
+                format!("{SYNC_PREFIX}{id}"),
+                "approval".into(),
+                json.clone(),
+            ));
             told.approvals.insert(id.clone(), json);
         }
     }
     for id in told.approvals.keys().cloned().collect::<Vec<_>>() {
         if !approvals.plugins.contains_key(&id) {
-            out.push((format!("{SYNC_PREFIX}{id}"), "revoked".into(), String::new()));
+            out.push((
+                format!("{SYNC_PREFIX}{id}"),
+                "revoked".into(),
+                String::new(),
+            ));
             told.approvals.remove(&id);
         }
     }
@@ -1513,39 +1965,75 @@ fn prepare_changes(store: &Store, dir: &Path) -> Result<(Vec<SyncChange>, Announ
 
 /// Persist outgoing events before marking their observations announced.
 /// A failure leaves them eligible for retry rather than silently losing permission changes.
-pub fn append_changes_checked(store: &Store, dir: &Path, log: &mut crate::sync::Log, now: u64) -> Result<(), String> {
+pub fn append_changes_checked(
+    store: &Store,
+    dir: &Path,
+    log: &mut crate::sync::Log,
+    now: u64,
+) -> Result<(), String> {
     let _guard = store.transaction().map_err(|error| error.to_string())?;
     let (changes, mut told) = prepare_changes(store, dir)?;
-    if changes.is_empty() { return Ok(()); }
+    if changes.is_empty() {
+        return Ok(());
+    }
     let previous = log.clone();
     for (id, field, to) in changes {
-        log.append(crate::sync::What::Changed { id: id.clone(), field: field.clone(), to }, now);
+        log.append(
+            crate::sync::What::Changed {
+                id: id.clone(),
+                field: field.clone(),
+                to,
+            },
+            now,
+        );
         let Some(event) = log.events.last() else {
             *log = previous;
             return Err("the sync log did not record the permission change".to_string());
         };
-        told.versions.insert(format!("{id}:{field}"), crate::sync::Version::of(event));
+        told.versions
+            .insert(format!("{id}:{field}"), crate::sync::Version::of(event));
     }
-    if let Err(error) = store.save("synclog", &Some(log.clone())) { *log = previous; return Err(error.to_string()); }
-    store.save(ANNOUNCED, &told).map_err(|error| error.to_string())
+    if let Err(error) = store.save("synclog", &Some(log.clone())) {
+        *log = previous;
+        return Err(error.to_string());
+    }
+    store
+        .save(ANNOUNCED, &told)
+        .map_err(|error| error.to_string())
 }
 
-
-
 pub fn take_synced_versioned(
-    store: &Store, dir: &Path, commands: &CommandsConfig,
-    subject: &str, field: &str, value: &str, sealed: bool, from_device: &str,
+    store: &Store,
+    dir: &Path,
+    commands: &CommandsConfig,
+    subject: &str,
+    field: &str,
+    value: &str,
+    sealed: bool,
+    from_device: &str,
     version: Option<crate::sync::Version>,
 ) -> Result<Option<String>, String> {
     let _transaction = store.transaction().map_err(|error| error.to_string())?;
-    let Some(id) = subject.strip_prefix(SYNC_PREFIX) else { return Ok(None) };
+    let Some(id) = subject.strip_prefix(SYNC_PREFIX) else {
+        return Ok(None);
+    };
     if !id_ok(id) {
         return Ok(None);
     }
-    let mut told: Announced = store.load_checked(ANNOUNCED).map_err(|error| error.to_string())?.unwrap_or_default();
-    if matches!(field, "approval" | "revoked" | "removed") && !sealed { return Ok(None); }
-    if field == "file" { parse_and_check(value, Some(id), commands).map_err(|status| format!("Add-on change refused: {}", status.plain()))?; }
-    if field == "approval" { let _: Approval = serde_json::from_str(value).map_err(|error| error.to_string())?; }
+    let mut told: Announced = store
+        .load_checked(ANNOUNCED)
+        .map_err(|error| error.to_string())?
+        .unwrap_or_default();
+    if matches!(field, "approval" | "revoked" | "removed") && !sealed {
+        return Ok(None);
+    }
+    if field == "file" {
+        parse_and_check(value, Some(id), commands)
+            .map_err(|status| format!("Add-on change refused: {}", status.plain()))?;
+    }
+    if field == "approval" {
+        let _: Approval = serde_json::from_str(value).map_err(|error| error.to_string())?;
+    }
     let key = format!("{subject}:{field}");
     let conflicts: &[&str] = match field {
         "approval" | "revoked" => &["approval", "revoked", "removed"],
@@ -1555,34 +2043,48 @@ pub fn take_synced_versioned(
     };
     for other in conflicts {
         if let Some(kept) = told.versions.get(&format!("{subject}:{other}")) {
-            if version.as_ref().is_none_or(|incoming| incoming < kept) { return Ok(None); }
+            if version.as_ref().is_none_or(|incoming| incoming < kept) {
+                return Ok(None);
+            }
         }
     }
     if let Some(version) = version {
         told.versions.insert(key, version);
         // Fence older arrivals before applying permission or file changes.
         // Equal-version retry remains allowed if a later write fails.
-        store.save(ANNOUNCED, &told).map_err(|error| error.to_string())?;
+        store
+            .save(ANNOUNCED, &told)
+            .map_err(|error| error.to_string())?;
     }
     let said = match field {
         "file" => {
-            let c = parse_and_check(value, Some(id), commands).map_err(|status| format!("Add-on change refused: {}", status.plain()))?;
+            let c = parse_and_check(value, Some(id), commands)
+                .map_err(|status| format!("Add-on change refused: {}", status.plain()))?;
             let path = dir.join(id).join(MANIFEST_FILE);
             if std::fs::read_to_string(&path).ok().as_deref() == Some(value) {
-                told.files.insert(id.to_string(), fingerprint(value.as_bytes()));
+                told.files
+                    .insert(id.to_string(), fingerprint(value.as_bytes()));
                 told.removed_files.remove(id);
                 None
             } else {
                 std::fs::create_dir_all(dir.join(id)).map_err(|error| error.to_string())?;
-                crate::store::write_owned_file(&path, value.as_bytes()).map_err(|error| error.to_string())?;
-                told.files.insert(id.to_string(), fingerprint(value.as_bytes()));
+                crate::store::write_owned_file(&path, value.as_bytes())
+                    .map_err(|error| error.to_string())?;
+                told.files
+                    .insert(id.to_string(), fingerprint(value.as_bytes()));
                 told.removed_files.remove(id);
-                Some(format!("The add-on \"{}\" came over from {from_device}.", c.manifest.name))
+                Some(format!(
+                    "The add-on \"{}\" came over from {from_device}.",
+                    c.manifest.name
+                ))
             }
         }
         "approval" if sealed => {
             let a: Approval = serde_json::from_str(value).map_err(|error| error.to_string())?;
-            let mut approvals: Approvals = store.load_checked(APPROVALS).map_err(|error| error.to_string())?.unwrap_or_default();
+            let mut approvals: Approvals = store
+                .load_checked(APPROVALS)
+                .map_err(|error| error.to_string())?
+                .unwrap_or_default();
             approvals.plugins.insert(id.to_string(), a);
             approvals.save(store)?;
             told.approvals.insert(id.to_string(), value.to_string());
@@ -1591,23 +2093,38 @@ pub fn take_synced_versioned(
         "revoked" | "removed" => {
             if field == "removed" {
                 if let Ok(bytes) = std::fs::read(dir.join(id).join(MANIFEST_FILE)) {
-                    told.removed_files.insert(id.to_string(), fingerprint(&bytes));
+                    told.removed_files
+                        .insert(id.to_string(), fingerprint(&bytes));
                 }
             }
             // Your other device removed it; this one switches it off and
             // forgets the approval, and leaves the file for you to delete --
             // a sync that deletes files is one bad bundle away from deleting
             // the wrong ones.
-            let mut approvals: Approvals = store.load_checked(APPROVALS).map_err(|error| error.to_string())?.unwrap_or_default();
+            let mut approvals: Approvals = store
+                .load_checked(APPROVALS)
+                .map_err(|error| error.to_string())?
+                .unwrap_or_default();
             approvals.plugins.remove(id);
             approvals.save(store)?;
-            if field == "removed" { told.files.remove(id); }
+            if field == "removed" {
+                told.files.remove(id);
+            }
             told.approvals.remove(id);
-            Some(format!("The add-on {id} was {} on {from_device}, so it's off here too.", if field == "removed" { "removed" } else { "no longer approved" }))
+            Some(format!(
+                "The add-on {id} was {} on {from_device}, so it's off here too.",
+                if field == "removed" {
+                    "removed"
+                } else {
+                    "no longer approved"
+                }
+            ))
         }
         _ => None,
     };
-    store.save(ANNOUNCED, &told).map_err(|error| error.to_string())?;
+    store
+        .save(ANNOUNCED, &told)
+        .map_err(|error| error.to_string())?;
     Ok(said)
 }
 
@@ -1643,12 +2160,27 @@ pub fn hub_action(
 
 #[cfg(test)]
 mod tests {
-    fn fixture_changes(store: &crate::store::Store, dir: &std::path::Path) -> Result<Vec<super::SyncChange>, String> {
-        let mut log: crate::sync::Log = store.load_checked::<Option<crate::sync::Log>>("synclog").map_err(|error| error.to_string())?.flatten().unwrap_or_else(|| crate::sync::Log::new("fixture-device"));
+    fn fixture_changes(
+        store: &crate::store::Store,
+        dir: &std::path::Path,
+    ) -> Result<Vec<super::SyncChange>, String> {
+        let mut log: crate::sync::Log = store
+            .load_checked::<Option<crate::sync::Log>>("synclog")
+            .map_err(|error| error.to_string())?
+            .flatten()
+            .unwrap_or_else(|| crate::sync::Log::new("fixture-device"));
         let first = log.events.len();
         // Deterministic logical time keeps later synthetic remote versions newer.
         crate::plugins::append_changes_checked(store, dir, &mut log, 1)?;
-        Ok(log.events[first..].iter().filter_map(|event| match &event.what { crate::sync::What::Changed { id, field, to } => Some((id.clone(), field.clone(), to.clone())), _ => None }).collect())
+        Ok(log.events[first..]
+            .iter()
+            .filter_map(|event| match &event.what {
+                crate::sync::What::Changed { id, field, to } => {
+                    Some((id.clone(), field.clone(), to.clone()))
+                }
+                _ => None,
+            })
+            .collect())
     }
 
     use super::*;
@@ -1695,21 +2227,37 @@ flows:
         let cmds = commands();
         let mut undecided = Vec::new();
         for c in &cmds.commands {
-            let in_perm = PERMISSIONS.iter().filter(|p| p.intents.contains(&c.intent.as_str())).count();
+            let in_perm = PERMISSIONS
+                .iter()
+                .filter(|p| p.intents.contains(&c.intent.as_str()))
+                .count();
             let never = NEVER.iter().filter(|(i, _)| *i == c.intent).count();
             if in_perm + never != 1 {
-                undecided.push(format!("{} (in {in_perm} permissions, {never} never)", c.intent));
+                undecided.push(format!(
+                    "{} (in {in_perm} permissions, {never} never)",
+                    c.intent
+                ));
             }
         }
-        assert!(undecided.is_empty(), "every command must be in exactly one permission or in NEVER: {undecided:?}");
+        assert!(
+            undecided.is_empty(),
+            "every command must be in exactly one permission or in NEVER: {undecided:?}"
+        );
         // And nothing names a command that doesn't exist.
         for p in PERMISSIONS {
             for i in p.intents {
-                assert!(cmds.commands.iter().any(|c| c.intent == *i), "{} names {i}, which isn't a command", p.key);
+                assert!(
+                    cmds.commands.iter().any(|c| c.intent == *i),
+                    "{} names {i}, which isn't a command",
+                    p.key
+                );
             }
         }
         for (i, _) in NEVER {
-            assert!(cmds.commands.iter().any(|c| c.intent == *i), "NEVER names {i}, which isn't a command");
+            assert!(
+                cmds.commands.iter().any(|c| c.intent == *i),
+                "NEVER names {i}, which isn't a command"
+            );
         }
     }
 
@@ -1719,15 +2267,24 @@ flows:
         put(&dir, "morning-markets", GOOD);
         let p = only(&dir, &store);
         assert_eq!(p.status, Status::Waiting);
-        assert!(Registry { plugins: vec![p.clone()] }.match_trigger("morning markets").is_none());
+        assert!(Registry {
+            plugins: vec![p.clone()]
+        }
+        .match_trigger("morning markets")
+        .is_none());
         assert!(may_run(&store, &dir, "morning-markets", Some("open_app"), None).is_err());
 
         approve(&store, &dir, &commands(), "morning-markets", &p.sha256).unwrap();
         let reg = Registry::load(&dir, &commands(), &store);
-        let (id, flow) = reg.match_trigger("Morning markets!").expect("exact trigger starts it");
+        let (id, flow) = reg
+            .match_trigger("Morning markets!")
+            .expect("exact trigger starts it");
         assert_eq!(id, "morning-markets");
         assert_eq!(flow.steps.len(), 2);
-        assert!(reg.match_trigger("morning markets and more").is_none(), "only the exact words start it");
+        assert!(
+            reg.match_trigger("morning markets and more").is_none(),
+            "only the exact words start it"
+        );
         assert!(may_run(&store, &dir, "morning-markets", Some("open_app"), None).is_ok());
         assert!(may_run(&store, &dir, "morning-markets", Some("research"), None).is_ok());
     }
@@ -1738,13 +2295,17 @@ flows:
         // time, so what changes it must still reach it.
         let (dir, store) = scratch("kept");
         let mut kept = Kept::default();
-        assert!(Registry::load_kept(&mut kept, &dir, &commands(), &store).plugins.is_empty());
+        assert!(Registry::load_kept(&mut kept, &dir, &commands(), &store)
+            .plugins
+            .is_empty());
         put(&dir, "morning-markets", GOOD);
         let p = Registry::load_kept(&mut kept, &dir, &commands(), &store).plugins[0].clone();
         assert_eq!(p.status, Status::Waiting, "a new add-on was not seen");
         approve(&store, &dir, &commands(), "morning-markets", &p.sha256).unwrap();
         assert!(
-            Registry::load_kept(&mut kept, &dir, &commands(), &store).match_trigger("morning markets").is_some(),
+            Registry::load_kept(&mut kept, &dir, &commands(), &store)
+                .match_trigger("morning markets")
+                .is_some(),
             "an approval was not seen"
         );
     }
@@ -1756,9 +2317,23 @@ flows:
         let p = only(&dir, &store);
         approve(&store, &dir, &commands(), "morning-markets", &p.sha256).unwrap();
         // "open {x}" filled in with anything is still an open.
-        assert!(may_run(&store, &dir, "morning-markets", Some("open_app"), Some("open_app")).is_ok());
+        assert!(may_run(
+            &store,
+            &dir,
+            "morning-markets",
+            Some("open_app"),
+            Some("open_app")
+        )
+        .is_ok());
         // "{x}" that turned into a different command -- even one it's allowed -- stops.
-        let e = may_run(&store, &dir, "morning-markets", Some("research"), Some("open_app")).unwrap_err();
+        let e = may_run(
+            &store,
+            &dir,
+            "morning-markets",
+            Some("research"),
+            Some("open_app"),
+        )
+        .unwrap_err();
         assert!(e.contains("changed what a step"), "{e}");
     }
 
@@ -1800,10 +2375,16 @@ flows:
         put(&dir, "morning-markets", GOOD);
         let p = only(&dir, &store);
         approve(&store, &dir, &commands(), "morning-markets", &p.sha256).unwrap();
-        put(&dir, "morning-markets", &GOOD.replace("open tradingview", "open notepad"));
+        put(
+            &dir,
+            "morning-markets",
+            &GOOD.replace("open tradingview", "open notepad"),
+        );
         assert!(may_run(&store, &dir, "morning-markets", Some("open_app"), None).is_err());
         assert_eq!(only(&dir, &store).status, Status::Changed);
-        assert!(Registry::load(&dir, &commands(), &store).match_trigger("morning markets").is_none());
+        assert!(Registry::load(&dir, &commands(), &store)
+            .match_trigger("morning markets")
+            .is_none());
     }
 
     #[test]
@@ -1811,7 +2392,11 @@ flows:
         let (dir, store) = scratch("toctou");
         put(&dir, "morning-markets", GOOD);
         let seen = only(&dir, &store).sha256;
-        put(&dir, "morning-markets", &GOOD.replace("[desktop, online]", "[desktop, online, send_messages]"));
+        put(
+            &dir,
+            "morning-markets",
+            &GOOD.replace("[desktop, online]", "[desktop, online, send_messages]"),
+        );
         assert!(approve(&store, &dir, &commands(), "morning-markets", &seen).is_err());
         assert_eq!(only(&dir, &store).status, Status::Waiting);
     }
@@ -1819,28 +2404,69 @@ flows:
     #[test]
     fn a_step_needing_an_undeclared_or_forbidden_permission_is_refused_on_reading() {
         let (dir, store) = scratch("undeclared");
-        put(&dir, "morning-markets", &GOOD.replace("[desktop, online]", "[desktop]"));
+        put(
+            &dir,
+            "morning-markets",
+            &GOOD.replace("[desktop, online]", "[desktop]"),
+        );
         assert!(matches!(only(&dir, &store).status, Status::Broken(ref w) if w.contains("online")));
-        put(&dir, "morning-markets", &GOOD.replace("research eurusd news", "unlock hunter2"));
+        put(
+            &dir,
+            "morning-markets",
+            &GOOD.replace("research eurusd news", "unlock hunter2"),
+        );
         assert!(matches!(only(&dir, &store).status, Status::Broken(ref w) if w.contains("never")));
-        put(&dir, "morning-markets", &GOOD.replace("research eurusd news", "do a little dance"));
-        assert!(matches!(only(&dir, &store).status, Status::Broken(ref w) if w.contains("isn't a command")));
+        put(
+            &dir,
+            "morning-markets",
+            &GOOD.replace("research eurusd news", "do a little dance"),
+        );
+        assert!(
+            matches!(only(&dir, &store).status, Status::Broken(ref w) if w.contains("isn't a command"))
+        );
     }
 
     #[test]
     fn unknown_fields_ids_and_formats_are_refused_visibly() {
         let (dir, store) = scratch("strict");
-        put(&dir, "morning-markets", &format!("{GOOD}run_this: rm -rf /\n"));
+        put(
+            &dir,
+            "morning-markets",
+            &format!("{GOOD}run_this: rm -rf /\n"),
+        );
         assert!(matches!(only(&dir, &store).status, Status::Broken(_)));
-        put(&dir, "morning-markets", &GOOD.replace("plugin_api: 1", "plugin_api: 9"));
+        put(
+            &dir,
+            "morning-markets",
+            &GOOD.replace("plugin_api: 1", "plugin_api: 9"),
+        );
         assert_eq!(only(&dir, &store).status, Status::NeedsNewerAtlas(9));
-        put(&dir, "morning-markets", &GOOD.replace("plugin_api: 1", "plugin_api: 0"));
+        put(
+            &dir,
+            "morning-markets",
+            &GOOD.replace("plugin_api: 1", "plugin_api: 0"),
+        );
         assert_eq!(only(&dir, &store).status, Status::TooOld(0));
-        put(&dir, "morning-markets", &GOOD.replace("id: morning-markets", "id: something-else"));
+        put(
+            &dir,
+            "morning-markets",
+            &GOOD.replace("id: morning-markets", "id: something-else"),
+        );
         assert!(matches!(only(&dir, &store).status, Status::Broken(ref w) if w.contains("folder")));
-        put(&dir, "morning-markets", &GOOD.replace("permissions: [desktop, online]", "permissions: [desktop, online, root]"));
+        put(
+            &dir,
+            "morning-markets",
+            &GOOD.replace(
+                "permissions: [desktop, online]",
+                "permissions: [desktop, online, root]",
+            ),
+        );
         assert!(matches!(only(&dir, &store).status, Status::Broken(_)));
-        std::fs::write(dir.join("morning-markets").join(MANIFEST_FILE), vec![b'#'; MAX_MANIFEST_BYTES as usize + 1]).unwrap();
+        std::fs::write(
+            dir.join("morning-markets").join(MANIFEST_FILE),
+            vec![b'#'; MAX_MANIFEST_BYTES as usize + 1],
+        )
+        .unwrap();
         assert!(matches!(only(&dir, &store).status, Status::Broken(ref w) if w.contains("larger")));
     }
 
@@ -1853,7 +2479,11 @@ flows:
         );
         put(&dir, "morning-markets", &t);
         let p = only(&dir, &store);
-        assert_eq!(p.status, Status::Waiting, "trouble with triggers doesn't switch the whole add-on off");
+        assert_eq!(
+            p.status,
+            Status::Waiting,
+            "trouble with triggers doesn't switch the whole add-on off"
+        );
         assert_eq!(p.flows[0].triggers, vec!["morning markets".to_string()]);
         assert_eq!(p.trouble.len(), 5, "{:?}", p.trouble);
     }
@@ -1862,16 +2492,27 @@ flows:
     fn two_add_ons_claiming_the_same_words_start_neither() {
         let (dir, store) = scratch("collide");
         put(&dir, "morning-markets", GOOD);
-        let other = GOOD.replace("id: morning-markets", "id: copycat").replace("\"markets please\"", "\"copycat please\"");
+        let other = GOOD
+            .replace("id: morning-markets", "id: copycat")
+            .replace("\"markets please\"", "\"copycat please\"");
         put(&dir, "copycat", &other);
         for p in scan(&dir, &commands(), &Approvals::default()) {
             approve(&store, &dir, &commands(), &p.id, &p.sha256).unwrap();
         }
         let reg = Registry::load(&dir, &commands(), &store);
         assert!(reg.match_trigger("morning markets").is_none());
-        assert_eq!(reg.match_trigger("markets please").map(|x| x.0), Some("morning-markets".to_string()));
-        assert_eq!(reg.match_trigger("copycat please").map(|x| x.0), Some("copycat".to_string()));
-        assert!(reg.plugins.iter().all(|p| p.trouble.iter().any(|t| t.contains("more than one"))));
+        assert_eq!(
+            reg.match_trigger("markets please").map(|x| x.0),
+            Some("morning-markets".to_string())
+        );
+        assert_eq!(
+            reg.match_trigger("copycat please").map(|x| x.0),
+            Some("copycat".to_string())
+        );
+        assert!(reg
+            .plugins
+            .iter()
+            .all(|p| p.trouble.iter().any(|t| t.contains("more than one"))));
     }
 
     #[test]
@@ -1882,7 +2523,11 @@ flows:
         let said = add_from(&src, &dir, &commands()).unwrap();
         assert!(said.contains("does nothing until you approve"));
         assert_eq!(only(&dir, &store).status, Status::Waiting);
-        std::fs::write(&src, GOOD.replace("id: morning-markets", "id: ../../escape")).unwrap();
+        std::fs::write(
+            &src,
+            GOOD.replace("id: morning-markets", "id: ../../escape"),
+        )
+        .unwrap();
         assert!(add_from(&src, &dir, &commands()).is_err());
     }
 
@@ -1935,20 +2580,58 @@ flows:
     fn the_steps_that_would_ask_are_known_and_only_safe_ones_can_stop_asking() {
         let (dir, store, p) = approved("questions", ASKS, "wind-down");
         let q = |c: &str| p.questions.iter().find(|q| q.command == c).cloned();
-        assert!(q("close chrome").is_some_and(|q| q.always_asks.is_none()), "{:?}", p.questions);
-        assert!(q("close {x}").is_some_and(|q| q.always_asks.is_some()), "a filled-in step can't be trusted");
-        assert!(q("what can you do").is_none(), "a step that never asks isn't listed");
+        assert!(
+            q("close chrome").is_some_and(|q| q.always_asks.is_none()),
+            "{:?}",
+            p.questions
+        );
+        assert!(
+            q("close {x}").is_some_and(|q| q.always_asks.is_some()),
+            "a filled-in step can't be trusted"
+        );
+        assert!(
+            q("what can you do").is_none(),
+            "a step that never asks isn't listed"
+        );
         assert!(trust_step(&store, &dir, &commands(), "wind-down", "close {x}").is_err());
         if let Some(m) = q("message sam goodnight") {
             assert!(m.always_asks.is_some(), "a message always asks");
-            assert!(trust_step(&store, &dir, &commands(), "wind-down", "message sam goodnight").is_err());
+            assert!(trust_step(
+                &store,
+                &dir,
+                &commands(),
+                "wind-down",
+                "message sam goodnight"
+            )
+            .is_err());
         }
         trust_step(&store, &dir, &commands(), "wind-down", "close chrome").unwrap();
-        assert!(may_skip_question(&store, &dir, "wind-down", "close chrome", "close chrome", Some("close_app")));
+        assert!(may_skip_question(
+            &store,
+            &dir,
+            "wind-down",
+            "close chrome",
+            "close chrome",
+            Some("close_app")
+        ));
         // Filled in from an earlier result: still asks, even if the text matches something trusted.
-        assert!(!may_skip_question(&store, &dir, "wind-down", "close {x}", "close chrome", Some("close_app")));
+        assert!(!may_skip_question(
+            &store,
+            &dir,
+            "wind-down",
+            "close {x}",
+            "close chrome",
+            Some("close_app")
+        ));
         untrust_step(&store, "wind-down", "close chrome").unwrap();
-        assert!(!may_skip_question(&store, &dir, "wind-down", "close chrome", "close chrome", Some("close_app")));
+        assert!(!may_skip_question(
+            &store,
+            &dir,
+            "wind-down",
+            "close chrome",
+            "close chrome",
+            Some("close_app")
+        ));
     }
 
     #[test]
@@ -1956,16 +2639,40 @@ flows:
         let (dir, store, _) = approved("carry", ASKS, "wind-down");
         trust_step(&store, &dir, &commands(), "wind-down", "close chrome").unwrap();
         // A changed file: nothing is skipped until it's approved again.
-        put(&dir, "wind-down", &ASKS.replace("what can you do", "whats outstanding"));
-        assert!(!may_skip_question(&store, &dir, "wind-down", "close chrome", "close chrome", Some("close_app")));
+        put(
+            &dir,
+            "wind-down",
+            &ASKS.replace("what can you do", "whats outstanding"),
+        );
+        assert!(!may_skip_question(
+            &store,
+            &dir,
+            "wind-down",
+            "close chrome",
+            "close chrome",
+            Some("close_app")
+        ));
         let p = only(&dir, &store);
         approve(&store, &dir, &commands(), "wind-down", &p.sha256).unwrap();
-        assert!(may_skip_question(&store, &dir, "wind-down", "close chrome", "close chrome", Some("close_app")));
+        assert!(may_skip_question(
+            &store,
+            &dir,
+            "wind-down",
+            "close chrome",
+            "close chrome",
+            Some("close_app")
+        ));
         // A version where the step changed: the old trust doesn't apply to the new words.
-        put(&dir, "wind-down", &ASKS.replace("close chrome", "close notepad"));
+        put(
+            &dir,
+            "wind-down",
+            &ASKS.replace("close chrome", "close notepad"),
+        );
         let p = only(&dir, &store);
         approve(&store, &dir, &commands(), "wind-down", &p.sha256).unwrap();
-        assert!(Approvals::load(&store).plugins["wind-down"].trusted_steps.is_empty());
+        assert!(Approvals::load(&store).plugins["wind-down"]
+            .trusted_steps
+            .is_empty());
     }
 
     // ---------------- removing ----------------
@@ -1974,12 +2681,20 @@ flows:
     fn removing_moves_it_to_the_trash_and_forgets_the_approval() {
         let (dir, store, _) = approved("remove", GOOD, "morning-markets");
         let trash = crate::safety::Trash::new(crate::safety::TrashConfig {
-            dir: dir.parent().unwrap().join("trash").to_string_lossy().into_owned(),
+            dir: dir
+                .parent()
+                .unwrap()
+                .join("trash")
+                .to_string_lossy()
+                .into_owned(),
             keep_days: 30,
         });
         remove(&store, &dir, "morning-markets", &trash).unwrap();
         assert!(!dir.join("morning-markets").exists());
-        assert!(trash.ledger().iter().any(|d| d.original.ends_with("morning-markets")));
+        assert!(trash
+            .ledger()
+            .iter()
+            .any(|d| d.original.ends_with("morning-markets")));
         assert!(Approvals::load(&store).plugins.is_empty());
         assert!(remove(&store, &dir, "../state", &trash).is_err());
     }
@@ -1990,20 +2705,55 @@ flows:
     fn a_shared_add_on_waits_on_the_shelf_until_you_choose_it() {
         let (dir, store) = scratch("offered");
         let name = format!("morning-markets{SENT_SUFFIX}");
-        assert_eq!(offered(&store, &commands(), "Sam", "notes.yaml", GOOD.as_bytes(), "", 1), Offer::NotAnAddOn);
-        let said = offered(&store, &commands(), "Sam", &name, GOOD.as_bytes(), &format!("{SHARED_IN}Friends"), 1);
-        assert!(matches!(&said, Offer::Shelved(m) if m.contains("in Friends")), "{said:?}");
+        assert_eq!(
+            offered(
+                &store,
+                &commands(),
+                "Sam",
+                "notes.yaml",
+                GOOD.as_bytes(),
+                "",
+                1
+            ),
+            Offer::NotAnAddOn
+        );
+        let said = offered(
+            &store,
+            &commands(),
+            "Sam",
+            &name,
+            GOOD.as_bytes(),
+            &format!("{SHARED_IN}Friends"),
+            1,
+        );
+        assert!(
+            matches!(&said, Offer::Shelved(m) if m.contains("in Friends")),
+            "{said:?}"
+        );
         // Nothing installed, nothing approved.
         assert!(scan(&dir, &commands(), &Approvals::load(&store)).is_empty());
         // The same file again is not a second offer.
-        assert_eq!(offered(&store, &commands(), "Maya", &name, GOOD.as_bytes(), "", 2), Offer::Shelved(String::new()));
+        assert_eq!(
+            offered(&store, &commands(), "Maya", &name, GOOD.as_bytes(), "", 2),
+            Offer::Shelved(String::new())
+        );
         let shelf = Offers::load(&store).items;
         assert_eq!(shelf.len(), 1);
         assert_eq!(shelf[0].in_group.as_deref(), Some("Friends"));
-        assert_eq!(shelf[0].permissions, vec!["desktop".to_string(), "online".to_string()]);
+        assert_eq!(
+            shelf[0].permissions,
+            vec!["desktop".to_string(), "online".to_string()]
+        );
 
         // Taking it is one decision: added and approved, exactly as shown.
-        assert!(take_offer(&store, &dir, &commands(), shelf[0].offer, "not-what-you-saw").is_err());
+        assert!(take_offer(
+            &store,
+            &dir,
+            &commands(),
+            shelf[0].offer,
+            "not-what-you-saw"
+        )
+        .is_err());
         take_offer(&store, &dir, &commands(), shelf[0].offer, &shelf[0].sha256).unwrap();
         let p = only(&dir, &store);
         assert_eq!(p.status, Status::Active);
@@ -2014,17 +2764,38 @@ flows:
     #[test]
     fn a_shared_add_on_never_replaces_yours_and_a_bad_one_never_reaches_the_shelf() {
         let (dir, store) = scratch("offered-clash");
-        put(&dir, "morning-markets", &GOOD.replace("Morning markets", "Mine"));
+        put(
+            &dir,
+            "morning-markets",
+            &GOOD.replace("Morning markets", "Mine"),
+        );
         let name = format!("morning-markets{SENT_SUFFIX}");
         offered(&store, &commands(), "Sam", &name, GOOD.as_bytes(), "", 1);
         let o = Offers::load(&store).items[0].clone();
         assert!(take_offer(&store, &dir, &commands(), o.offer, &o.sha256).is_err());
-        assert!(std::fs::read_to_string(dir.join("morning-markets").join(MANIFEST_FILE)).unwrap().contains("Mine"));
+        assert!(
+            std::fs::read_to_string(dir.join("morning-markets").join(MANIFEST_FILE))
+                .unwrap()
+                .contains("Mine")
+        );
         decline_offer(&store, o.offer).unwrap();
         assert!(Offers::load(&store).items.is_empty());
 
-        let bad = GOOD.replace("research eurusd news", "unlock hunter2").replace("morning-markets", "bad-one");
-        assert!(matches!(offered(&store, &commands(), "Sam", "bad-one.atlas-addon.yaml", bad.as_bytes(), "", 2), Offer::Refused(_)));
+        let bad = GOOD
+            .replace("research eurusd news", "unlock hunter2")
+            .replace("morning-markets", "bad-one");
+        assert!(matches!(
+            offered(
+                &store,
+                &commands(),
+                "Sam",
+                "bad-one.atlas-addon.yaml",
+                bad.as_bytes(),
+                "",
+                2
+            ),
+            Offer::Refused(_)
+        ));
         assert!(Offers::load(&store).items.is_empty());
     }
 
@@ -2035,7 +2806,10 @@ flows:
         assert_eq!(read_schedule("every 30 minutes"), Ok(Schedule::Every(1800)));
         assert_eq!(read_schedule("Every 2 hours"), Ok(Schedule::Every(7200)));
         assert_eq!(read_schedule("daily at 08:05"), Ok(Schedule::DailyAt(485)));
-        assert!(read_schedule("every 5 minutes").is_err(), "faster than the floor");
+        assert!(
+            read_schedule("every 5 minutes").is_err(),
+            "faster than the floor"
+        );
         assert!(read_schedule("daily at 25:00").is_err());
         assert!(read_schedule("whenever").is_err());
     }
@@ -2063,16 +2837,33 @@ flows:
 
     #[test]
     fn a_scheduled_sequence_is_due_only_when_on_and_is_first_seen_not_fired() {
-        let text = GOOD.replace("    triggers: [\"morning markets\", \"markets please\"]\n", "    schedule: every 30 minutes\n");
+        let text = GOOD.replace(
+            "    triggers: [\"morning markets\", \"markets please\"]\n",
+            "    schedule: every 30 minutes\n",
+        );
         let (dir, store) = scratch("sched");
         put(&dir, "morning-markets", &text);
         let mut runs = ScheduleRuns::default();
         let reg = Registry::load(&dir, &commands(), &store);
-        assert!(reg.plugins[0].trouble.is_empty(), "a scheduled sequence needs no words: {:?}", reg.plugins[0].trouble);
+        assert!(
+            reg.plugins[0].trouble.is_empty(),
+            "a scheduled sequence needs no words: {:?}",
+            reg.plugins[0].trouble
+        );
         assert!(reg.due(&mut runs, 1_000, 0).is_empty(), "not approved");
-        approve(&store, &dir, &commands(), "morning-markets", &reg.plugins[0].sha256).unwrap();
+        approve(
+            &store,
+            &dir,
+            &commands(),
+            "morning-markets",
+            &reg.plugins[0].sha256,
+        )
+        .unwrap();
         let reg = Registry::load(&dir, &commands(), &store);
-        assert!(reg.due(&mut runs, 1_000, 0).is_empty(), "first sight records, doesn't fire");
+        assert!(
+            reg.due(&mut runs, 1_000, 0).is_empty(),
+            "first sight records, doesn't fire"
+        );
         assert!(reg.due(&mut runs, 2_000, 0).is_empty());
         let due = reg.due(&mut runs, 2_900, 0);
         assert_eq!(due.len(), 1);
@@ -2080,7 +2871,10 @@ flows:
         assert!(reg.due(&mut runs, 3_000, 0).is_empty());
         set_off(&store, "morning-markets", true).unwrap();
         let reg = Registry::load(&dir, &commands(), &store);
-        assert!(reg.due(&mut runs, 9_000, 0).is_empty(), "switched off means off");
+        assert!(
+            reg.due(&mut runs, 9_000, 0).is_empty(),
+            "switched off means off"
+        );
     }
 
     // ---------------- your other devices ----------------
@@ -2092,36 +2886,87 @@ flows:
         let changes = fixture_changes(&laptop_store, &laptop).unwrap();
         assert!(changes.iter().any(|(_, f, _)| f == "file"));
         assert!(changes.iter().any(|(_, f, _)| f == "approval"));
-        assert!(fixture_changes(&laptop_store, &laptop).unwrap().is_empty(), "only changes travel");
+        assert!(
+            fixture_changes(&laptop_store, &laptop).unwrap().is_empty(),
+            "only changes travel"
+        );
 
         // Unsealed: the file arrives, switched off; the approval does not.
         for (sub, field, val) in &changes {
-            take_synced_versioned(&phone_store, &phone, &commands(), sub, field, val, false, "laptop", None).unwrap();
+            take_synced_versioned(
+                &phone_store,
+                &phone,
+                &commands(),
+                sub,
+                field,
+                val,
+                false,
+                "laptop",
+                None,
+            )
+            .unwrap();
         }
         assert_eq!(only(&phone, &phone_store).status, Status::Waiting);
         // Sealed: the approval comes too.
         for (sub, field, val) in &changes {
-            take_synced_versioned(&phone_store, &phone, &commands(), sub, field, val, true, "laptop", None).unwrap();
+            take_synced_versioned(
+                &phone_store,
+                &phone,
+                &commands(),
+                sub,
+                field,
+                val,
+                true,
+                "laptop",
+                None,
+            )
+            .unwrap();
         }
         assert_eq!(only(&phone, &phone_store).status, Status::Active);
         // And what arrived is not sent straight back.
-        assert!(fixture_changes(&phone_store, &phone).unwrap().is_empty(), "echoed back what it was just told");
+        assert!(
+            fixture_changes(&phone_store, &phone).unwrap().is_empty(),
+            "echoed back what it was just told"
+        );
 
         // Removed on the laptop: off on the phone, file left for you.
         let trash = crate::safety::Trash::new(crate::safety::TrashConfig {
-            dir: laptop.parent().unwrap().join("trash").to_string_lossy().into_owned(),
+            dir: laptop
+                .parent()
+                .unwrap()
+                .join("trash")
+                .to_string_lossy()
+                .into_owned(),
             keep_days: 30,
         });
         remove(&laptop_store, &laptop, "morning-markets", &trash).unwrap();
         for (sub, field, val) in fixture_changes(&laptop_store, &laptop).unwrap() {
-            take_synced_versioned(&phone_store, &phone, &commands(), &sub, &field, &val, true, "laptop", None).unwrap();
+            take_synced_versioned(
+                &phone_store,
+                &phone,
+                &commands(),
+                &sub,
+                &field,
+                &val,
+                true,
+                "laptop",
+                None,
+            )
+            .unwrap();
         }
         assert_eq!(only(&phone, &phone_store).status, Status::Waiting);
     }
 
     fn sync_version(at: u64, field: &str) -> crate::sync::Version {
         let mut log = crate::sync::Log::new("phone");
-        log.append(crate::sync::What::Changed { id: "addon:morning-markets".into(), field: field.into(), to: String::new() }, at);
+        log.append(
+            crate::sync::What::Changed {
+                id: "addon:morning-markets".into(),
+                field: field.into(),
+                to: String::new(),
+            },
+            at,
+        );
         crate::sync::Version::of(log.events.last().unwrap())
     }
 
@@ -2129,27 +2974,98 @@ flows:
     fn removed_retained_file_cannot_echo_or_receive_an_older_approval() {
         let (dir, store, _) = approved("sync-causal-remove", GOOD, "morning-markets");
         fixture_changes(&store, &dir).unwrap();
-        let approval = serde_json::to_string(&Approvals::load(&store).plugins["morning-markets"]).unwrap();
-        take_synced_versioned(&store, &dir, &commands(), "addon:morning-markets", "removed", "", true, "phone", Some(sync_version(20, "removed"))).unwrap();
+        let approval =
+            serde_json::to_string(&Approvals::load(&store).plugins["morning-markets"]).unwrap();
+        take_synced_versioned(
+            &store,
+            &dir,
+            &commands(),
+            "addon:morning-markets",
+            "removed",
+            "",
+            true,
+            "phone",
+            Some(sync_version(20, "removed")),
+        )
+        .unwrap();
         assert!(dir.join("morning-markets").join(MANIFEST_FILE).exists());
-        assert!(fixture_changes(&store, &dir).unwrap().is_empty(), "retained file must not resurrect itself");
-        take_synced_versioned(&store, &dir, &commands(), "addon:morning-markets", "approval", &approval, true, "phone", Some(sync_version(10, "approval"))).unwrap();
-        assert!(!Approvals::load(&store).plugins.contains_key("morning-markets"));
-        take_synced_versioned(&store, &dir, &commands(), "addon:morning-markets", "approval", &approval, true, "older-phone", None).unwrap();
-        assert!(!Approvals::load(&store).plugins.contains_key("morning-markets"), "unversioned permission cannot override tombstone");
+        assert!(
+            fixture_changes(&store, &dir).unwrap().is_empty(),
+            "retained file must not resurrect itself"
+        );
+        take_synced_versioned(
+            &store,
+            &dir,
+            &commands(),
+            "addon:morning-markets",
+            "approval",
+            &approval,
+            true,
+            "phone",
+            Some(sync_version(10, "approval")),
+        )
+        .unwrap();
+        assert!(!Approvals::load(&store)
+            .plugins
+            .contains_key("morning-markets"));
+        take_synced_versioned(
+            &store,
+            &dir,
+            &commands(),
+            "addon:morning-markets",
+            "approval",
+            &approval,
+            true,
+            "older-phone",
+            None,
+        )
+        .unwrap();
+        assert!(
+            !Approvals::load(&store)
+                .plugins
+                .contains_key("morning-markets"),
+            "unversioned permission cannot override tombstone"
+        );
     }
 
     #[test]
     fn revocation_travels_without_deleting_the_file_and_rejects_stale_grants() {
         let (dir, store, _) = approved("sync-causal-revoke", GOOD, "morning-markets");
         fixture_changes(&store, &dir).unwrap();
-        let approval = serde_json::to_string(&Approvals::load(&store).plugins["morning-markets"]).unwrap();
-        let mut approvals = Approvals::load(&store); approvals.plugins.clear(); approvals.save(&store).unwrap();
+        let approval =
+            serde_json::to_string(&Approvals::load(&store).plugins["morning-markets"]).unwrap();
+        let mut approvals = Approvals::load(&store);
+        approvals.plugins.clear();
+        approvals.save(&store).unwrap();
         let changes = fixture_changes(&store, &dir).unwrap();
         assert!(changes.iter().any(|(_, field, _)| field == "revoked"));
-        take_synced_versioned(&store, &dir, &commands(), "addon:morning-markets", "revoked", "", true, "phone", Some(sync_version(20, "revoked"))).unwrap();
-        take_synced_versioned(&store, &dir, &commands(), "addon:morning-markets", "approval", &approval, true, "phone", Some(sync_version(10, "approval"))).unwrap();
-        assert!(!Approvals::load(&store).plugins.contains_key("morning-markets"));
+        take_synced_versioned(
+            &store,
+            &dir,
+            &commands(),
+            "addon:morning-markets",
+            "revoked",
+            "",
+            true,
+            "phone",
+            Some(sync_version(20, "revoked")),
+        )
+        .unwrap();
+        take_synced_versioned(
+            &store,
+            &dir,
+            &commands(),
+            "addon:morning-markets",
+            "approval",
+            &approval,
+            true,
+            "phone",
+            Some(sync_version(10, "approval")),
+        )
+        .unwrap();
+        assert!(!Approvals::load(&store)
+            .plugins
+            .contains_key("morning-markets"));
         assert!(dir.join("morning-markets").join(MANIFEST_FILE).exists());
     }
 
@@ -2169,9 +3085,31 @@ flows:
     fn a_synced_file_is_checked_like_any_other() {
         let (phone, phone_store) = scratch("sync-bad");
         let bad = GOOD.replace("research eurusd news", "unlock hunter2");
-        assert!(take_synced_versioned(&phone_store, &phone, &commands(), "addon:morning-markets", "file", &bad, true, "laptop", None).is_err());
+        assert!(take_synced_versioned(
+            &phone_store,
+            &phone,
+            &commands(),
+            "addon:morning-markets",
+            "file",
+            &bad,
+            true,
+            "laptop",
+            None
+        )
+        .is_err());
         assert!(!phone.join("morning-markets").exists());
-        assert!(take_synced_versioned(&phone_store, &phone, &commands(), "addon:../x", "file", GOOD, true, "laptop", None).unwrap().is_none());
+        assert!(take_synced_versioned(
+            &phone_store,
+            &phone,
+            &commands(),
+            "addon:../x",
+            "file",
+            GOOD,
+            true,
+            "laptop",
+            None
+        )
+        .unwrap()
+        .is_none());
     }
-
 }

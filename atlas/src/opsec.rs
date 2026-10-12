@@ -54,8 +54,12 @@ impl Risk {
     pub fn fixable_in_edit(&self) -> bool {
         matches!(
             self,
-            Risk::Insignia | Risk::Markings | Risk::Credential | Risk::Documents
-                | Risk::Metadata | Risk::Others
+            Risk::Insignia
+                | Risk::Markings
+                | Risk::Credential
+                | Risk::Documents
+                | Risk::Metadata
+                | Risk::Others
         )
     }
 
@@ -89,32 +93,64 @@ pub struct Spotted {
 /// Phrases that say when you're moving. The timing is the leak, not the fact.
 /// Specific enough to rarely appear in ordinary personal speech — checked
 /// regardless of context, the same as `UNIFORM_TROUBLE` always is.
-const MOVEMENT_UNAMBIGUOUS: &[&str] =
-    &["deployment", "shipping out", "wheels up", "port call", "tdy"];
+const MOVEMENT_UNAMBIGUOUS: &[&str] = &[
+    "deployment",
+    "shipping out",
+    "wheels up",
+    "port call",
+    "tdy",
+];
 
 /// Common enough in ordinary life that alone they say nothing — "my last
 /// day" and "next week i" are how anyone talks about a new job or a
 /// holiday. Only worth flagging alongside something that actually places
 /// this in the affiliation, not on their own.
 const MOVEMENT_AMBIGUOUS: &[&str] = &[
-    "deploy", "deploying", "i leave", "i'm leaving", "im leaving", "flying out",
-    "next week i", "in two weeks", "back in", "my last day", "rotation", "pcs",
+    "deploy",
+    "deploying",
+    "i leave",
+    "i'm leaving",
+    "im leaving",
+    "flying out",
+    "next week i",
+    "in two weeks",
+    "back in",
+    "my last day",
+    "rotation",
+    "pcs",
 ];
 
 /// Places names that identify almost nothing else.
-const PLACES_UNAMBIGUOUS: &[&str] =
-    &["naval station", "air force base", "afb", "barracks", "flight line", "motor pool"];
+const PLACES_UNAMBIGUOUS: &[&str] = &[
+    "naval station",
+    "air force base",
+    "afb",
+    "barracks",
+    "flight line",
+    "motor pool",
+];
 
 /// "Base", "post" and "range" are three of the most overloaded words in
 /// ordinary English — a baseball base, a blog post, a shooting range or a
 /// product range. Flagging these alone would mean opsec firing on
 /// completely personal writing that happens to use a common word.
-const PLACES_AMBIGUOUS: &[&str] = &["base", "post", "fort ", "camp ", "the gate", "hangar", "range"];
+const PLACES_AMBIGUOUS: &[&str] = &[
+    "base", "post", "fort ", "camp ", "the gate", "hangar", "range",
+];
 
 /// Uniform next to things it shouldn't be next to.
 const UNIFORM_TROUBLE: &[&str] = &[
-    "sponsored", "use my code", "affiliate", "link in bio", "buy now",
-    "discount", "brand deal", "partnership", "vote", "campaign", "candidate",
+    "sponsored",
+    "use my code",
+    "affiliate",
+    "link in bio",
+    "buy now",
+    "discount",
+    "brand deal",
+    "partnership",
+    "vote",
+    "campaign",
+    "candidate",
     "endorse",
 ];
 
@@ -186,8 +222,12 @@ pub fn check(
     // word with one. Computed once, from the unambiguous lists only, so an
     // ambiguous term can never corroborate another ambiguous term.
     let corroborated = cfg.in_uniform
-        || MOVEMENT_UNAMBIGUOUS.iter().any(|m| t.contains(m) && !is_mine(m))
-        || PLACES_UNAMBIGUOUS.iter().any(|p| t.contains(p) && !is_mine(p));
+        || MOVEMENT_UNAMBIGUOUS
+            .iter()
+            .any(|m| t.contains(m) && !is_mine(m))
+        || PLACES_UNAMBIGUOUS
+            .iter()
+            .any(|p| t.contains(p) && !is_mine(p));
 
     // Movement is the one that matters most and the one people say without
     // thinking, because it feels like ordinary conversation.
@@ -278,7 +318,11 @@ pub fn check(
         });
     }
 
-    out.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
+    out.sort_by(|a, b| {
+        b.weight
+            .partial_cmp(&a.weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     out
 }
 
@@ -294,9 +338,18 @@ pub fn spoken(found: &[Spotted], cfg: &OpsecConfig, today: &str) -> String {
                 .at
                 .map(|s| format!(" at {:.0}s", s))
                 .unwrap_or_default();
-            let mut s = format!("{}{where_} — {}. {}", first.risk.what(), first.detail, first.risk.fix());
+            let mut s = format!(
+                "{}{where_} — {}. {}",
+                first.risk.what(),
+                first.detail,
+                first.risk.fix()
+            );
             if !rest.is_empty() {
-                s.push_str(&format!(" {} other thing{}.", rest.len(), if rest.len() == 1 { "" } else { "s" }));
+                s.push_str(&format!(
+                    " {} other thing{}.",
+                    rest.len(),
+                    if rest.len() == 1 { "" } else { "s" }
+                ));
             }
             let reshoot = found.iter().filter(|f| !f.risk.fixable_in_edit()).count();
             if reshoot > 0 {

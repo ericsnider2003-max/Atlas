@@ -105,7 +105,13 @@ pub fn suggest(query: &str, candidates: &[&str]) -> Vec<(usize, usize)> {
                 let last = qi == q.len() - 1;
                 let best = words
                     .iter()
-                    .filter_map(|w| if last { prefix_typos(qw, w) } else { typos(qw, w) })
+                    .filter_map(|w| {
+                        if last {
+                            prefix_typos(qw, w)
+                        } else {
+                            typos(qw, w)
+                        }
+                    })
                     .min()?;
                 total += best;
             }

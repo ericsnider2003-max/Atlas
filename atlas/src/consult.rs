@@ -108,8 +108,15 @@ pub fn classify(text: &str) -> Reply {
         // Requests to *see* something Atlas can paste. A plain question
         // ("which version are you on?") is a Question — it gets answered, and
         // neither kind costs an attempt.
-        "can you show", "can you paste", "could you share", "send me",
-        "let me see", "what's in", "whats in", "paste the", "show me the",
+        "can you show",
+        "can you paste",
+        "could you share",
+        "send me",
+        "let me see",
+        "what's in",
+        "whats in",
+        "paste the",
+        "show me the",
     ];
     if ASKS_FOR.iter().any(|a| lower.contains(a)) {
         return Reply::WantsMore(first_question(t).unwrap_or_else(|| t.to_string()));
@@ -161,12 +168,18 @@ pub enum Move {
 
 impl Consultation {
     pub fn new(problem: &str) -> Consultation {
-        Consultation { problem: problem.to_string(), ..Default::default() }
+        Consultation {
+            problem: problem.to_string(),
+            ..Default::default()
+        }
     }
 
     /// The opening message, with the write-up attached.
     pub fn open(&self, brief: &str, cfg: &ConsultConfig) -> Move {
-        Move::Open { message: cfg.opening.clone(), attach: brief.to_string() }
+        Move::Open {
+            message: cfg.opening.clone(),
+            attach: brief.to_string(),
+        }
     }
 
     pub fn record(&mut self, sent: &str, received: &str, was_a_solution: bool) {
@@ -190,7 +203,10 @@ impl Consultation {
         }
         // A conversation going nowhere politely is still going nowhere.
         if self.exchanges.len() as u32 >= cfg.max_exchanges {
-            return Move::Stop(format!("{} exchanges without getting there", self.exchanges.len()));
+            return Move::Stop(format!(
+                "{} exchanges without getting there",
+                self.exchanges.len()
+            ));
         }
 
         match reply {
@@ -255,5 +271,9 @@ impl Consultation {
 }
 
 fn first_line(s: &str) -> String {
-    s.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string()
+    s.lines()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim()
+        .to_string()
 }

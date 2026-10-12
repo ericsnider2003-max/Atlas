@@ -7,11 +7,18 @@ use atlas::voice::PttConfig;
 use eframe::egui::{Event, Key, Modifiers};
 
 fn ptt(key: &str) -> PttConfig {
-    PttConfig { enabled: true, key: key.into(), hold_ms: 350 }
+    PttConfig {
+        enabled: true,
+        key: key.into(),
+        hold_ms: 350,
+    }
 }
 
 fn typing(key: &str) -> QuickInputConfig {
-    QuickInputConfig { hotkey: key.into(), ..QuickInputConfig::default() }
+    QuickInputConfig {
+        hotkey: key.into(),
+        ..QuickInputConfig::default()
+    }
 }
 
 #[test]
@@ -32,17 +39,28 @@ fn the_keys_come_from_settings_and_a_bad_one_is_named() {
     assert_eq!(k.typing, Some((2 | 1, 0x20)));
     assert!(k.problems.is_empty());
     assert_eq!(
-        k.said(&ptt("capslock"), &typing("ctrl+alt+space")).as_deref(),
+        k.said(&ptt("capslock"), &typing("ctrl+alt+space"))
+            .as_deref(),
         Some("You can also hold Caps Lock to talk, or press Ctrl+Alt+Space to type.")
     );
 
     let k = Keys::from_settings(&ptt("the big red one"), &typing("a"));
     assert_eq!((k.talk, k.typing), (None, None));
     assert_eq!(k.problems.len(), 2, "{:?}", k.problems);
-    assert!(k.problems[1].contains("needs Ctrl, Shift or Win"), "a bare letter would fire while you type");
+    assert!(
+        k.problems[1].contains("needs Ctrl, Shift or Win"),
+        "a bare letter would fire while you type"
+    );
 
-    let off = PttConfig { enabled: false, ..ptt("tab") };
-    assert_eq!(Keys::from_settings(&off, &typing("ctrl+alt+a")).talk, None, "off turns only the key off");
+    let off = PttConfig {
+        enabled: false,
+        ..ptt("tab")
+    };
+    assert_eq!(
+        Keys::from_settings(&off, &typing("ctrl+alt+a")).talk,
+        None,
+        "off turns only the key off"
+    );
 }
 
 #[test]
@@ -68,26 +86,50 @@ fn a_tap_goes_back_to_your_app_and_a_hold_is_speech() {
     assert!(g.is_talking());
     // The keyboard's own repeats don't start it twice.
     assert_eq!(g.key_down(10_500), (Hook::Swallow, None));
-    assert_eq!(g.key_up(12_000), (Some(Pressed::TalkStop), false), "kept from the app");
+    assert_eq!(
+        g.key_up(12_000),
+        (Some(Pressed::TalkStop), false),
+        "kept from the app"
+    );
     assert!(!g.is_talking());
 }
 
 fn key(k: Key) -> Event {
-    Event::Key { key: k, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }
+    Event::Key {
+        key: k,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }
 }
 
 #[test]
 fn the_typing_box_sends_what_you_typed_and_closes() {
     let mut q = QuickInput::new(QuickInputConfig::default());
     q.hotkey(None, 0);
-    let a = atlas::typebox::apply_keys(&mut q, &[Event::Text("what's nexy".into()), key(Key::Backspace), Event::Text("t".into())], 1);
+    let a = atlas::typebox::apply_keys(
+        &mut q,
+        &[
+            Event::Text("what's nexy".into()),
+            key(Key::Backspace),
+            Event::Text("t".into()),
+        ],
+        1,
+    );
     assert_eq!(a, Action::Nothing);
     assert_eq!(q.buffer, "what's next");
-    assert_eq!(atlas::typebox::apply_keys(&mut q, &[key(Key::Enter)], 2), Action::Submit("what's next".into()));
+    assert_eq!(
+        atlas::typebox::apply_keys(&mut q, &[key(Key::Enter)], 2),
+        Action::Submit("what's next".into())
+    );
 
     let mut q = QuickInput::new(QuickInputConfig::default());
     q.hotkey(None, 0);
-    assert_eq!(atlas::typebox::apply_keys(&mut q, &[key(Key::Escape)], 1), Action::Hide);
+    assert_eq!(
+        atlas::typebox::apply_keys(&mut q, &[key(Key::Escape)], 1),
+        Action::Hide
+    );
     // Opened and wandered off from: it closes itself.
     let mut q = QuickInput::new(QuickInputConfig::default());
     q.hotkey(None, 0);
@@ -96,26 +138,48 @@ fn the_typing_box_sends_what_you_typed_and_closes() {
 
 #[test]
 fn only_the_box_s_own_line_is_taken_as_typed() {
-    assert_eq!(atlas::typebox::typed_line("ATLAS-TYPED:what's next").as_deref(), Some("what's next"));
+    assert_eq!(
+        atlas::typebox::typed_line("ATLAS-TYPED:what's next").as_deref(),
+        Some("what's next")
+    );
     assert_eq!(atlas::typebox::typed_line("ATLAS-TYPED:   "), None);
-    assert_eq!(atlas::typebox::typed_line("some warning from a graphics driver"), None);
+    assert_eq!(
+        atlas::typebox::typed_line("some warning from a graphics driver"),
+        None
+    );
 }
 
 #[test]
 fn the_daemon_hears_a_held_key_and_opens_the_box_on_the_other() {
     // The loop reads `hotkeys` before the wake word, so both work at once.
     let src = crate::common::source_of("daemon");
-    let keys = src.find("crate::hotkeys::Pressed::TalkStart").expect("push-to-talk is handled");
+    let keys = src
+        .find("crate::hotkeys::Pressed::TalkStart")
+        .expect("push-to-talk is handled");
     let wake = src.find("Tier::Voice => match ears.wake_once()").unwrap();
-    assert!(keys < wake, "keys are checked before waiting on the wake word");
+    assert!(
+        keys < wake,
+        "keys are checked before waiting on the wake word"
+    );
     // 28 Sep 2026: the wake word is heard on the microphone's own thread and
     // taken by `listen_pass`; the keys still come first.
-    let heard = src.find("self.listen_pass(ears, mouth, clock)").expect("the wake word is taken from its thread");
+    let heard = src
+        .find("self.listen_pass(ears, mouth, clock)")
+        .expect("the wake word is taken from its thread");
     assert!(keys < heard, "keys are checked before the wake word's news");
-    assert!(src.contains("ears.listen_while(&|| h.held())"), "it listens for as long as the key is held");
-    assert!(src.contains("crate::typebox::Standby::start("), "the other key opens the box");
+    assert!(
+        src.contains("ears.listen_while(&|| h.held())"),
+        "it listens for as long as the key is held"
+    );
+    assert!(
+        src.contains("crate::typebox::Standby::start("),
+        "the other key opens the box"
+    );
     let main = crate::common::source_of("main");
-    assert!(main.contains("atlas::hotkeys::start(&keys)") && main.contains("d.hotkeys = Some(h)"), "started for the background Atlas");
+    assert!(
+        main.contains("atlas::hotkeys::start(&keys)") && main.contains("d.hotkeys = Some(h)"),
+        "started for the background Atlas"
+    );
 }
 
 #[test]
@@ -138,35 +202,74 @@ fn keys_fed_some_other_way_arrive_in_order() {
 fn any_key_can_be_set_and_a_key_that_cannot_work_is_refused_before_it_is_kept() {
     use atlas::hotkeys::check_setting;
     assert!(check_setting("quick_input.hotkey", "ctrl+shift+space").is_ok());
-    assert!(check_setting("quick_input.hotkey", "f9").is_ok(), "no modifier needed for a key nobody types with");
-    assert!(check_setting("quick_input.hotkey", "ctrl+alt+a").is_ok(), "Alt still works for whoever has one");
-    assert!(check_setting("quick_input.hotkey", "q").unwrap_err().contains("Ctrl, Shift or Win"));
+    assert!(
+        check_setting("quick_input.hotkey", "f9").is_ok(),
+        "no modifier needed for a key nobody types with"
+    );
+    assert!(
+        check_setting("quick_input.hotkey", "ctrl+alt+a").is_ok(),
+        "Alt still works for whoever has one"
+    );
+    assert!(check_setting("quick_input.hotkey", "q")
+        .unwrap_err()
+        .contains("Ctrl, Shift or Win"));
     assert!(check_setting("push_to_talk.key", "capslock").is_ok());
-    assert!(check_setting("push_to_talk.key", "ctrl+x").unwrap_err().contains("one key you hold"));
+    assert!(check_setting("push_to_talk.key", "ctrl+x")
+        .unwrap_err()
+        .contains("one key you hold"));
     assert!(check_setting("push_to_talk.key", "the big red one").is_err());
 
     // The settings list refuses it too, so nothing unusable is ever kept.
     let t = atlas::voice::ToolsConfig::default();
     let mut s = atlas::settings::registry(&t);
     assert!(s.set("quick_input.hotkey", "q").is_err());
-    assert!(s.set("quick_input.hotkey", "ctrl+shift+k").unwrap().contains("ctrl+shift+k"));
-    assert!(atlas::settings::needs_a_restart("quick_input.hotkey"), "Windows is handed the keys at start-up");
+    assert!(s
+        .set("quick_input.hotkey", "ctrl+shift+k")
+        .unwrap()
+        .contains("ctrl+shift+k"));
+    assert!(
+        atlas::settings::needs_a_restart("quick_input.hotkey"),
+        "Windows is handed the keys at start-up"
+    );
     assert!(s.get("push_to_talk.key").is_some() && s.get("push_to_talk.enabled").is_some());
 }
 
 #[test]
 fn a_key_is_set_by_pressing_it() {
     use atlas::settingswin::key_pressed;
-    let press = |k: Key, m: Modifiers| Event::Key { key: k, physical_key: None, pressed: true, repeat: false, modifiers: m };
+    let press = |k: Key, m: Modifiers| Event::Key {
+        key: k,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: m,
+    };
     assert_eq!(key_pressed("quick_input.hotkey", &[]), None, "waiting");
     assert_eq!(
-        key_pressed("quick_input.hotkey", &[press(Key::Space, Modifiers::CTRL | Modifiers::SHIFT)]),
+        key_pressed(
+            "quick_input.hotkey",
+            &[press(Key::Space, Modifiers::CTRL | Modifiers::SHIFT)]
+        ),
         Some(Some("ctrl+shift+space".to_string()))
     );
-    assert_eq!(key_pressed("quick_input.hotkey", &[press(Key::F9, Modifiers::NONE)]), Some(Some("f9".to_string())));
-    assert_eq!(key_pressed("push_to_talk.key", &[press(Key::Tab, Modifiers::SHIFT)]), Some(Some("tab".to_string())), "one key, held");
-    assert_eq!(key_pressed("quick_input.hotkey", &[press(Key::Escape, Modifiers::NONE)]), Some(None), "Escape leaves it");
-    assert_eq!(atlas::settingswin::pretty_key("ctrl+shift+space"), "Ctrl + Shift + Space");
+    assert_eq!(
+        key_pressed("quick_input.hotkey", &[press(Key::F9, Modifiers::NONE)]),
+        Some(Some("f9".to_string()))
+    );
+    assert_eq!(
+        key_pressed("push_to_talk.key", &[press(Key::Tab, Modifiers::SHIFT)]),
+        Some(Some("tab".to_string())),
+        "one key, held"
+    );
+    assert_eq!(
+        key_pressed("quick_input.hotkey", &[press(Key::Escape, Modifiers::NONE)]),
+        Some(None),
+        "Escape leaves it"
+    );
+    assert_eq!(
+        atlas::settingswin::pretty_key("ctrl+shift+space"),
+        "Ctrl + Shift + Space"
+    );
 }
 
 #[test]
@@ -177,17 +280,35 @@ fn a_key_is_changed_by_saying_it() {
     assert_eq!(key_spoken("control plus J"), "ctrl+j");
     assert_eq!(key_spoken("F9."), "f9");
 
-    let c: &'static atlas::config::Config =
-        Box::leak(Box::new(atlas::config::Config::load(std::path::Path::new("config")).unwrap()));
-    let p = atlas::platform::mock::MockPlatform::new(vec![atlas::platform::Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let c: &'static atlas::config::Config = Box::leak(Box::new(
+        atlas::config::Config::load(std::path::Path::new("config")).unwrap(),
+    ));
+    let p = atlas::platform::mock::MockPlatform::new(vec![atlas::platform::Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     let dir = std::env::temp_dir().join(format!("atlas-setkey-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&dir);
-    let mut d = atlas::daemon::Daemon::new(c, &p, None, atlas::store::Store::new(dir),
-        atlas::proactive::Proactive::new(atlas::proactive::ProactiveConfig::default()));
+    let mut d = atlas::daemon::Daemon::new(
+        c,
+        &p,
+        None,
+        atlas::store::Store::new(dir),
+        atlas::proactive::Proactive::new(atlas::proactive::ProactiveConfig::default()),
+    );
     let said = d.execute(&atlas::intent::Intent::SetKey("what are my keys".into()));
-    assert!(said.starts_with("Hold Tab to talk, and press Ctrl + Shift + Space to type."), "{said}");
+    assert!(
+        said.starts_with("Hold Tab to talk, and press Ctrl + Shift + Space to type."),
+        "{said}"
+    );
     // Refused before anything is written.
-    let said = d.execute(&atlas::intent::Intent::SetKey("set my typing key to q".into()));
+    let said = d.execute(&atlas::intent::Intent::SetKey(
+        "set my typing key to q".into(),
+    ));
     assert!(said.starts_with("I've left it as it was"), "{said}");
 }
 
@@ -200,23 +321,48 @@ fn keys_are_named_the_way_you_would_write_them_and_each_press_is_said() {
     assert_eq!(key_word("f9"), "F9");
     assert_eq!(key_word("q"), "Q");
     let (p, t) = (ptt("tab"), typing("ctrl+shift+space"));
-    assert_eq!(heard_as(Pressed::TalkStart, &p, &t), "Tab held — Atlas would start listening now.");
-    assert_eq!(heard_as(Pressed::TypingBox, &p, &t), "Ctrl+Shift+Space pressed — the typing box would open.");
+    assert_eq!(
+        heard_as(Pressed::TalkStart, &p, &t),
+        "Tab held — Atlas would start listening now."
+    );
+    assert_eq!(
+        heard_as(Pressed::TypingBox, &p, &t),
+        "Ctrl+Shift+Space pressed — the typing box would open."
+    );
 }
 
 #[test]
 fn what_time_is_it_is_answered_from_the_clock_not_asked_which_one() {
     // 26 Sep 2026 07:56 UTC is 00:56 in California (UTC-7): a Saturday.
     let t = 1_790_409_360;
-    assert_eq!(atlas::localclock::spoken_now(t, -7 * 3600), "It's 12:56 AM on Saturday 26 September.");
-    assert_eq!(atlas::localclock::spoken_now(t, 0), "It's 7:56 AM on Saturday 26 September.");
-    let c: &'static atlas::config::Config =
-        Box::leak(Box::new(atlas::config::Config::load(std::path::Path::new("config")).unwrap()));
-    let p = atlas::platform::mock::MockPlatform::new(vec![atlas::platform::Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    assert_eq!(
+        atlas::localclock::spoken_now(t, -7 * 3600),
+        "It's 12:56 AM on Saturday 26 September."
+    );
+    assert_eq!(
+        atlas::localclock::spoken_now(t, 0),
+        "It's 7:56 AM on Saturday 26 September."
+    );
+    let c: &'static atlas::config::Config = Box::leak(Box::new(
+        atlas::config::Config::load(std::path::Path::new("config")).unwrap(),
+    ));
+    let p = atlas::platform::mock::MockPlatform::new(vec![atlas::platform::Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     let dir = std::env::temp_dir().join(format!("atlas-clock-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&dir);
-    let mut d = atlas::daemon::Daemon::new(c, &p, None, atlas::store::Store::new(dir),
-        atlas::proactive::Proactive::new(atlas::proactive::ProactiveConfig::default()));
+    let mut d = atlas::daemon::Daemon::new(
+        c,
+        &p,
+        None,
+        atlas::store::Store::new(dir),
+        atlas::proactive::Proactive::new(atlas::proactive::ProactiveConfig::default()),
+    );
     let said = d.turn("what time is it", 1_000);
     assert!(said.starts_with("It's "), "{said}");
 }

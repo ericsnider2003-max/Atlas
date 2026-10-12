@@ -138,7 +138,9 @@ pub fn with_waiting(page: String, waiting: usize) -> String {
     if page.contains("<span class=badge>") {
         return page;
     }
-    let home_tab = page.find("<nav class=tabs").and_then(|t| page[t..].find("</svg>Home</a>").map(|i| t + i));
+    let home_tab = page
+        .find("<nav class=tabs")
+        .and_then(|t| page[t..].find("</svg>Home</a>").map(|i| t + i));
     match home_tab {
         Some(i) => {
             let at = i + "</svg>Home".len();
@@ -195,15 +197,21 @@ pub fn public_file(method: &str, path: &str) -> Option<PublicFile> {
             headers: "Service-Worker-Allowed: /hub\r\nCache-Control: no-cache\r\n",
             bytes: SERVICE_WORKER.as_bytes(),
         }),
-        "/hub/icon-192.png" => {
-            Some(PublicFile { content_type: "image/png", headers: ICON_CACHE, bytes: ICON_192 })
-        }
-        "/hub/icon-512.png" => {
-            Some(PublicFile { content_type: "image/png", headers: ICON_CACHE, bytes: ICON_512 })
-        }
-        "/hub/icon-maskable-512.png" => {
-            Some(PublicFile { content_type: "image/png", headers: ICON_CACHE, bytes: ICON_MASKABLE_512 })
-        }
+        "/hub/icon-192.png" => Some(PublicFile {
+            content_type: "image/png",
+            headers: ICON_CACHE,
+            bytes: ICON_192,
+        }),
+        "/hub/icon-512.png" => Some(PublicFile {
+            content_type: "image/png",
+            headers: ICON_CACHE,
+            bytes: ICON_512,
+        }),
+        "/hub/icon-maskable-512.png" => Some(PublicFile {
+            content_type: "image/png",
+            headers: ICON_CACHE,
+            bytes: ICON_MASKABLE_512,
+        }),
         "/hub/apple-touch-icon.png" => Some(PublicFile {
             content_type: "image/png",
             headers: ICON_CACHE,
@@ -219,9 +227,7 @@ pub fn public_file(method: &str, path: &str) -> Option<PublicFile> {
 /// once as `any` and once as `maskable` rather than as `"any maskable"`,
 /// which some browsers read as one purpose they do not know.
 pub fn manifest(token: &str) -> String {
-    let icon = |src: &str, size: &str, purpose: &str| {
-        serde_json::json!({ "src": src, "sizes": size, "type": "image/png", "purpose": purpose })
-    };
+    let icon = |src: &str, size: &str, purpose: &str| serde_json::json!({ "src": src, "sizes": size, "type": "image/png", "purpose": purpose });
     serde_json::json!({
         "id": "/hub",
         "name": "Atlas",
@@ -259,7 +265,9 @@ pub fn manifest(token: &str) -> String {
 /// as it moves -- it showed the saved value, and dragging changed nothing on
 /// screen until Save.
 pub fn with_app_head(page: String, token: &str) -> String {
-    let Some(at) = page.find("</head>") else { return page };
+    let Some(at) = page.find("</head>") else {
+        return page;
+    };
     let t = esc(token);
     let tags = format!(
         "<link rel=manifest href=\"{MANIFEST_PATH}?t={t}\">\
@@ -411,7 +419,10 @@ pub(super) fn sidebar_html(here: Option<Page>, waiting: usize) -> String {
     }
     // The three things from Your devices people reach for, shown open.
     out.push_str("<p class=grp>Your devices</p>");
-    for page in [Page::Phone, Page::Updates, Page::Help].into_iter().filter(|p| p.here()) {
+    for page in [Page::Phone, Page::Updates, Page::Help]
+        .into_iter()
+        .filter(|p| p.here())
+    {
         out.push_str(&item(page, page.label(), ""));
     }
     out.push_str(BUSINESS_SLOT);
@@ -433,7 +444,11 @@ pub(super) fn sidebar_html(here: Option<Page>, waiting: usize) -> String {
                     "<a class='{}' href='{}'{}>{}</a>",
                     if here == Some(*page) { "here" } else { "" },
                     page.href(),
-                    if here == Some(*page) { " aria-current=page" } else { "" },
+                    if here == Some(*page) {
+                        " aria-current=page"
+                    } else {
+                        ""
+                    },
                     esc(page.label())
                 ));
             }
@@ -443,14 +458,55 @@ pub(super) fn sidebar_html(here: Option<Page>, waiting: usize) -> String {
     };
     out.push_str(&folded(
         "More",
-        &[("Your work", &[Page::Workspace, Page::LookingBack, Page::Give, Page::Social, Page::Opportunities]), ("Business", &[Page::Business, Page::SharedTasks, Page::Clients, Page::Partners])],
+        &[
+            (
+                "Your work",
+                &[
+                    Page::Workspace,
+                    Page::LookingBack,
+                    Page::Give,
+                    Page::Social,
+                    Page::Opportunities,
+                ],
+            ),
+            (
+                "Business",
+                &[
+                    Page::Business,
+                    Page::SharedTasks,
+                    Page::Clients,
+                    Page::Partners,
+                ],
+            ),
+        ],
     ));
     out.push_str(&folded(
         "Atlas setup",
         &[
-            ("How Atlas behaves", &[Page::Sound, Page::Permissions, Page::Gestures, Page::Access]),
-            ("What it's connected to", &[Page::Accounts, Page::AddOns, Page::Connections, Page::Sync, Page::Offline]),
-            ("About Atlas", &[Page::Status, Page::Recommendations, Page::Activity, Page::Edits, Page::Feedback]),
+            (
+                "How Atlas behaves",
+                &[Page::Sound, Page::Permissions, Page::Gestures, Page::Access],
+            ),
+            (
+                "What it's connected to",
+                &[
+                    Page::Accounts,
+                    Page::AddOns,
+                    Page::Connections,
+                    Page::Sync,
+                    Page::Offline,
+                ],
+            ),
+            (
+                "About Atlas",
+                &[
+                    Page::Status,
+                    Page::Recommendations,
+                    Page::Activity,
+                    Page::Edits,
+                    Page::Feedback,
+                ],
+            ),
         ],
     ));
     out.push_str("<span class=grow></span>");
@@ -466,13 +522,20 @@ pub(super) fn menu_html(here: Option<Page>) -> String {
         "<details class=allpages><summary class='tool icon' aria-label='Menu, every page'><svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true><path d='M4 6h16M4 12h16M4 18h16'/></svg></summary><div class=side>",
     );
     for (group, pages) in NAV {
-        out.push_str(&format!("<p class=gh>{}</p>", esc(if group.is_empty() { "Atlas" } else { group })));
+        out.push_str(&format!(
+            "<p class=gh>{}</p>",
+            esc(if group.is_empty() { "Atlas" } else { group })
+        ));
         for page in pages.iter().filter(|p| p.here()) {
             out.push_str(&format!(
                 "<a class='{}' href='{}'{}>{}</a>",
                 if here == Some(*page) { "here" } else { "" },
                 page.href(),
-                if here == Some(*page) { " aria-current=page" } else { "" },
+                if here == Some(*page) {
+                    " aria-current=page"
+                } else {
+                    ""
+                },
                 esc(page.label())
             ));
         }
@@ -526,8 +589,16 @@ pub fn with_business(page: String, businesses: &[String]) -> String {
     let mut g = String::new();
     for b in businesses {
         let q = format!("b={}", esc(&crate::research::urlencode(b)));
-        g.push_str(&format!("<p class=grp>{} <small>· business</small></p>", esc(b)));
-        for p in [Page::Business, Page::SharedTasks, Page::Clients, Page::Partners] {
+        g.push_str(&format!(
+            "<p class=grp>{} <small>· business</small></p>",
+            esc(b)
+        ));
+        for p in [
+            Page::Business,
+            Page::SharedTasks,
+            Page::Clients,
+            Page::Partners,
+        ] {
             g.push_str(&format!(
                 "<a class=nav href='{}?{q}'><svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true>{}</svg>{}</a>",
                 p.href(),

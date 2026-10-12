@@ -4,11 +4,19 @@ use atlas::returning::{
 };
 
 fn cfg() -> ReturnConfig {
-    ReturnConfig { address: "Eric".into(), ..Default::default() }
+    ReturnConfig {
+        address: "Eric".into(),
+        ..Default::default()
+    }
 }
 
 fn happened(what: &str, needs_you: bool, failed: bool) -> Happened {
-    Happened { what: what.into(), needs_you, failed, at: 0 }
+    Happened {
+        what: what.into(),
+        needs_you,
+        failed,
+        at: 0,
+    }
 }
 
 // ================= coming back =================
@@ -16,7 +24,12 @@ fn happened(what: &str, needs_you: bool, failed: bool) -> Happened {
 #[test]
 fn five_minutes_is_not_an_absence() {
     assert_eq!(how_long(300), Gone::Moment);
-    let w = welcome(300, &[happened("the index finished", false, false)], 10, &cfg());
+    let w = welcome(
+        300,
+        &[happened("the index finished", false, false)],
+        10,
+        &cfg(),
+    );
     assert_eq!(w, Welcome::Nothing, "silence");
 }
 
@@ -31,7 +44,11 @@ fn how_long_you_were_gone_changes_what_you_get() {
 fn something_wrong_or_waiting_is_said_straight_away_not_offered() {
     let w = welcome(
         20_000,
-        &[happened("the nine o'clock post missed its window", true, true)],
+        &[happened(
+            "the nine o'clock post missed its window",
+            true,
+            true,
+        )],
         9,
         &cfg(),
     );
@@ -88,8 +105,9 @@ fn the_urgent_ones_lead_and_the_rest_are_offered_after() {
 
 #[test]
 fn a_long_list_of_urgent_things_is_capped_rather_than_read_out() {
-    let many: Vec<Happened> =
-        (0..6).map(|i| happened(&format!("thing {i} failed"), false, true)).collect();
+    let many: Vec<Happened> = (0..6)
+        .map(|i| happened(&format!("thing {i} failed"), false, true))
+        .collect();
     match welcome(60_000, &many, 9, &cfg()) {
         Welcome::Straight(s) => assert!(s.contains("and 4 more"), "got: {s}"),
         o => panic!("{o:?}"),
@@ -98,7 +116,10 @@ fn a_long_list_of_urgent_things_is_capped_rather_than_read_out() {
 
 #[test]
 fn a_quiet_night_gets_one_line_and_a_quiet_hour_gets_silence() {
-    assert!(matches!(welcome(60_000, &[], 9, &cfg()), Welcome::Straight(_)));
+    assert!(matches!(
+        welcome(60_000, &[], 9, &cfg()),
+        Welcome::Straight(_)
+    ));
     assert_eq!(welcome(3600, &[], 14, &cfg()), Welcome::Nothing);
 }
 
@@ -162,7 +183,9 @@ fn having_decided_it_before_is_raised_with_what_happened() {
     let o = against(&decision());
     let prev = o.iter().find(|o| o.angle == Angle::YouTriedThis).unwrap();
     assert!(prev.case.contains("moved it back"));
-    assert!(prev.what_would_answer_it.contains("what's different this time"));
+    assert!(prev
+        .what_would_answer_it
+        .contains("what's different this time"));
 }
 
 #[test]
@@ -170,13 +193,18 @@ fn the_cost_is_weighed_against_something_rather_than_just_stated() {
     let o = against(&decision());
     let cost = o.iter().find(|o| o.angle == Angle::NotWorthIt).unwrap();
     assert!(cost.case.contains("$40 a month"));
-    assert!(cost.what_would_answer_it.contains("number on the other side"));
+    assert!(cost
+        .what_would_answer_it
+        .contains("number on the other side"));
 }
 
 #[test]
 fn what_it_rests_on_that_you_do_not_control_is_named() {
     let o = against(&decision());
-    let dep = o.iter().find(|o| o.angle == Angle::RestsOnSomethingElse).unwrap();
+    let dep = o
+        .iter()
+        .find(|o| o.angle == Angle::RestsOnSomethingElse)
+        .unwrap();
     assert!(dep.case.contains("allowlist"));
 }
 
@@ -191,7 +219,11 @@ fn the_case_for_doing_nothing_is_always_made() {
 fn a_reason_that_reads_as_found_afterwards_is_pointed_at_gently() {
     let o = against(&decision());
     let real = o.iter().find(|o| o.angle == Angle::RealReason).unwrap();
-    assert!(real.case.contains("doesn't make it wrong"), "not an accusation: {}", real.case);
+    assert!(
+        real.case.contains("doesn't make it wrong"),
+        "not an accusation: {}",
+        real.case
+    );
 }
 
 #[test]
@@ -236,6 +268,10 @@ fn it_is_framed_as_the_case_against_not_as_atlas_disagreeing() {
 fn every_objection_says_what_would_settle_it() {
     // An objection with no answer is just discouragement.
     for o in against(&decision()) {
-        assert!(!o.what_would_answer_it.is_empty(), "{:?} has no answer", o.angle);
+        assert!(
+            !o.what_would_answer_it.is_empty(),
+            "{:?} has no answer",
+            o.angle
+        );
     }
 }

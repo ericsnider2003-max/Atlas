@@ -130,12 +130,12 @@ fn a_typed_turn_lands_in_the_window() {
     let c = cfg();
     let p = plat();
     let mut d = daemon(&c, &p, "typed");
-    assert!(
-        d.timing.turns.is_empty(),
-        "precondition: nothing timed yet"
-    );
+    assert!(d.timing.turns.is_empty(), "precondition: nothing timed yet");
 
-    d.execute_timed(&Intent::Ask("what's outstanding".into()), "what's outstanding");
+    d.execute_timed(
+        &Intent::Ask("what's outstanding".into()),
+        "what's outstanding",
+    );
 
     assert_eq!(
         d.timing.turns.len(),
@@ -291,8 +291,15 @@ fn a_spoken_reply_is_not_interrupted_by_recordings_between_its_sentences() {
     let c = cfg();
     let p = plat();
     let mut d = daemon(&c, &p, "no-listen-between");
-    let ears = SplitEars { listening_ms: 10, hearing_ms: 10, followups: Cell::new(0) };
-    let mouth = SplitMouth { speaking_ms: 1, playing_ms: 1 };
+    let ears = SplitEars {
+        listening_ms: 10,
+        hearing_ms: 10,
+        followups: Cell::new(0),
+    };
+    let mouth = SplitMouth {
+        speaking_ms: 1,
+        playing_ms: 1,
+    };
 
     d.converse("what's outstanding", &ears, &mouth, &|| 1_000);
 

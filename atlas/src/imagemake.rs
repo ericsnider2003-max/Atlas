@@ -63,7 +63,12 @@ impl Default for PictureMakingConfig {
     fn default() -> Self {
         PictureMakingConfig {
             enabled: true,
-            program: if cfg!(windows) { "tools/sd/sd-cli.exe" } else { "tools/sd/sd-cli" }.into(),
+            program: if cfg!(windows) {
+                "tools/sd/sd-cli.exe"
+            } else {
+                "tools/sd/sd-cli"
+            }
+            .into(),
             model: "models/pictures/z_image_turbo-Q4_0.gguf".into(),
             encoder: "models/pictures/Qwen3-4B-Instruct-2507-Q4_K_M.gguf".into(),
             vae: "models/pictures/ae.safetensors".into(),
@@ -117,7 +122,13 @@ pub fn subject(said: &str) -> String {
     let t = said.trim().trim_end_matches(['.', '!', '?']);
     let l = t.to_lowercase();
     const LEADS: &[&str] = &[
-        "can you ", "could you ", "please ", "atlas ", "atlas, ", "i want you to ", "i'd like you to ",
+        "can you ",
+        "could you ",
+        "please ",
+        "atlas ",
+        "atlas, ",
+        "i want you to ",
+        "i'd like you to ",
     ];
     let mut s = l.as_str();
     let mut cut = 0;
@@ -134,10 +145,25 @@ pub fn subject(said: &str) -> String {
         }
     }
     const ASKS: &[&str] = &[
-        "make me a picture of ", "make a picture of ", "make me an image of ", "make an image of ",
-        "generate an image of ", "generate a picture of ", "generate me an image of ", "create an image of ",
-        "create a picture of ", "draw me a picture of ", "draw a picture of ", "paint me ", "paint a picture of ",
-        "draw me ", "draw ", "paint ", "picture of ", "an image of ", "a picture of ",
+        "make me a picture of ",
+        "make a picture of ",
+        "make me an image of ",
+        "make an image of ",
+        "generate an image of ",
+        "generate a picture of ",
+        "generate me an image of ",
+        "create an image of ",
+        "create a picture of ",
+        "draw me a picture of ",
+        "draw a picture of ",
+        "paint me ",
+        "paint a picture of ",
+        "draw me ",
+        "draw ",
+        "paint ",
+        "picture of ",
+        "an image of ",
+        "a picture of ",
     ];
     for a in ASKS {
         if s.starts_with(a) {
@@ -167,12 +193,21 @@ pub fn folder(cfg: &PictureMakingConfig) -> PathBuf {
     if !cfg.folder.trim().is_empty() {
         return PathBuf::from(cfg.folder.trim());
     }
-    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(PathBuf::from).unwrap_or_default();
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from)
+        .unwrap_or_default();
     home.join("Pictures").join("Atlas")
 }
 
 /// The program and its arguments for one picture.
-fn sd_args(cfg: &PictureMakingConfig, root: &Path, prompt: &str, out: &Path, seed: u64) -> (PathBuf, Vec<String>) {
+fn sd_args(
+    cfg: &PictureMakingConfig,
+    root: &Path,
+    prompt: &str,
+    out: &Path,
+    seed: u64,
+) -> (PathBuf, Vec<String>) {
     let s = |p: &str| at(root, p).display().to_string();
     let args = vec![
         "--diffusion-model".into(),
@@ -214,10 +249,18 @@ fn sd_args(cfg: &PictureMakingConfig, root: &Path, prompt: &str, out: &Path, see
 
 /// Make one picture: the program run to the end, or stopped when `stop`
 /// says so. The picture's path, or why not.
-pub fn make(cfg: &PictureMakingConfig, root: &Path, prompt: &str, out: &Path, seed: u64, stop: &dyn Fn() -> bool) -> Result<PathBuf, String> {
+pub fn make(
+    cfg: &PictureMakingConfig,
+    root: &Path,
+    prompt: &str,
+    out: &Path,
+    seed: u64,
+    stop: &dyn Fn() -> bool,
+) -> Result<PathBuf, String> {
     ready(cfg, root)?;
     if let Some(dir) = out.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("I couldn't make the pictures folder: {e}"))?;
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("I couldn't make the pictures folder: {e}"))?;
     }
     let (program, args) = sd_args(cfg, root, prompt, out, seed);
     let mut child = crate::tools::command(&program)
@@ -245,8 +288,16 @@ pub fn make(cfg: &PictureMakingConfig, root: &Path, prompt: &str, out: &Path, se
                 if status.success() && out.is_file() {
                     return Ok(out.to_path_buf());
                 }
-                let last = said.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("no reason given").trim().to_string();
-                return Err(format!("the picture maker stopped without a picture ({last})"));
+                let last = said
+                    .lines()
+                    .rev()
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("no reason given")
+                    .trim()
+                    .to_string();
+                return Err(format!(
+                    "the picture maker stopped without a picture ({last})"
+                ));
             }
             Ok(None) => {}
             Err(e) => return Err(format!("I lost track of the picture maker: {e}")),
@@ -259,7 +310,10 @@ pub fn make(cfg: &PictureMakingConfig, root: &Path, prompt: &str, out: &Path, se
         if started.elapsed().as_secs() > cfg.most_secs {
             let _ = child.kill();
             crate::heard!(child.wait());
-            return Err(format!("it took longer than {} minutes, so I stopped it", cfg.most_secs / 60));
+            return Err(format!(
+                "it took longer than {} minutes, so I stopped it",
+                cfg.most_secs / 60
+            ));
         }
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
@@ -271,15 +325,27 @@ mod tests {
 
     #[test]
     fn what_to_draw_is_taken_from_the_request() {
-        assert_eq!(subject("Draw me a lighthouse at dusk."), "a lighthouse at dusk");
-        assert_eq!(subject("can you make a picture of my dog wearing a hat"), "my dog wearing a hat");
-        assert_eq!(subject("Atlas, generate an image of a red bicycle"), "a red bicycle");
+        assert_eq!(
+            subject("Draw me a lighthouse at dusk."),
+            "a lighthouse at dusk"
+        );
+        assert_eq!(
+            subject("can you make a picture of my dog wearing a hat"),
+            "my dog wearing a hat"
+        );
+        assert_eq!(
+            subject("Atlas, generate an image of a red bicycle"),
+            "a red bicycle"
+        );
         assert_eq!(subject("a cat on the moon"), "a cat on the moon");
     }
 
     #[test]
     fn the_file_is_named_by_what_was_asked() {
-        assert_eq!(file_name("a lighthouse at dusk", 7), "lighthouse-at-dusk-7.png");
+        assert_eq!(
+            file_name("a lighthouse at dusk", 7),
+            "lighthouse-at-dusk-7.png"
+        );
         assert_eq!(file_name("", 7), "picture-7.png");
     }
 
@@ -287,6 +353,9 @@ mod tests {
     fn missing_pieces_are_named() {
         let root = std::env::temp_dir().join("atlas-imagemake-none");
         let why = ready(&PictureMakingConfig::default(), &root).unwrap_err();
-        assert!(why.contains("picture maker") && why.contains("6.5 GB"), "{why}");
+        assert!(
+            why.contains("picture maker") && why.contains("6.5 GB"),
+            "{why}"
+        );
     }
 }

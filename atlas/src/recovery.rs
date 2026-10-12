@@ -50,7 +50,10 @@ impl Route {
 
     /// Would you find out it had been used?
     pub fn visible_if_used(&self) -> bool {
-        matches!(self, Route::SealedEnvelope | Route::SplitBetweenPeople { .. })
+        matches!(
+            self,
+            Route::SealedEnvelope | Route::SplitBetweenPeople { .. }
+        )
     }
 
     pub fn honest_weakness(&self) -> &'static str {
@@ -164,7 +167,9 @@ pub fn gaps(setups: &[Setup], cfg: &RecoveryConfig, now: u64) -> Vec<Gap> {
         if let Some(at) = s.used_at {
             out.push(Gap {
                 what: format!("{} was used", s.with),
-                why: format!("at {at} — if that wasn't you or wasn't expected, change the passphrase"),
+                why: format!(
+                    "at {at} — if that wasn't you or wasn't expected, change the passphrase"
+                ),
                 urgency: 1.0,
             });
         }
@@ -182,7 +187,11 @@ pub fn gaps(setups: &[Setup], cfg: &RecoveryConfig, now: u64) -> Vec<Gap> {
         });
     }
 
-    out.sort_by(|a, b| b.urgency.partial_cmp(&a.urgency).unwrap_or(std::cmp::Ordering::Equal));
+    out.sort_by(|a, b| {
+        b.urgency
+            .partial_cmp(&a.urgency)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     out
 }
 
@@ -204,7 +213,10 @@ pub fn suggest(you_go_away: bool, family_reachable: bool) -> Vec<(Route, &'stati
     }
     if family_reachable {
         out.push((
-            Route::SplitBetweenPeople { pieces: 3, needed: 2 },
+            Route::SplitBetweenPeople {
+                pieces: 3,
+                needed: 2,
+            },
             "no single person can open it, and losing touch with one doesn't lock you out",
         ));
     }
@@ -223,8 +235,16 @@ pub fn described(s: &Setup) -> String {
     } else {
         "You wouldn't know if it had been used."
     };
-    let with = if s.with.trim().is_empty() { String::new() } else { format!(" ({})", s.with.trim()) };
-    format!("{}{with}: {}. {seen}", s.route.plain(), s.route.honest_weakness())
+    let with = if s.with.trim().is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", s.with.trim())
+    };
+    format!(
+        "{}{with}: {}. {seen}",
+        s.route.plain(),
+        s.route.honest_weakness()
+    )
 }
 
 /// A route from what you typed: `envelope`, `split 3 2` (three pieces, any
@@ -237,7 +257,8 @@ pub fn route_from(words: &[String]) -> Option<Route> {
         Some("split") => {
             let pieces: u8 = words.get(1)?.parse().ok()?;
             let needed: u8 = words.get(2)?.parse().ok()?;
-            (needed >= 1 && needed <= pieces).then_some(Route::SplitBetweenPeople { pieces, needed })
+            (needed >= 1 && needed <= pieces)
+                .then_some(Route::SplitBetweenPeople { pieces, needed })
         }
         _ => None,
     }
@@ -248,12 +269,20 @@ pub fn spoken(setups: &[Setup], cfg: &RecoveryConfig, now: u64) -> String {
     let g = gaps(setups, cfg, now);
     if g.is_empty() {
         let each: Vec<String> = setups.iter().map(described).collect();
-        return format!("{} ways in besides you, all checked. {}", setups.len(), each.join(" "));
+        return format!(
+            "{} ways in besides you, all checked. {}",
+            setups.len(),
+            each.join(" ")
+        );
     }
     let first = &g[0];
     let mut s = format!("{} — {}.", first.what, first.why);
     if g.len() > 1 {
-        s.push_str(&format!(" {} other thing{}.", g.len() - 1, if g.len() == 2 { "" } else { "s" }));
+        s.push_str(&format!(
+            " {} other thing{}.",
+            g.len() - 1,
+            if g.len() == 2 { "" } else { "s" }
+        ));
     }
     s
 }

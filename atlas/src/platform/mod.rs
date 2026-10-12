@@ -52,7 +52,11 @@ pub fn virtual_key(name: &str) -> Option<u16> {
         "pageup" => 0x21,
         "pagedown" => 0x22,
         _ => {
-            if let Some(f) = n.strip_prefix('f').and_then(|x| x.parse::<u16>().ok()).filter(|f| (1..=12).contains(f)) {
+            if let Some(f) = n
+                .strip_prefix('f')
+                .and_then(|x| x.parse::<u16>().ok())
+                .filter(|f| (1..=12).contains(f))
+            {
                 return Some(0x70 + f - 1);
             }
             let mut cs = n.chars();
@@ -117,8 +121,14 @@ pub fn monitor_under(monitors: &[Monitor], r: PixelRect) -> Option<u32> {
         i64::from(w.max(0)) * i64::from(h.max(0))
     };
     let apart = |m: &Monitor| {
-        let (cx, cy) = (i64::from(r.x) + i64::from(r.width) / 2, i64::from(r.y) + i64::from(r.height) / 2);
-        let (mx, my) = (i64::from(m.x) + i64::from(m.width) / 2, i64::from(m.y) + i64::from(m.height) / 2);
+        let (cx, cy) = (
+            i64::from(r.x) + i64::from(r.width) / 2,
+            i64::from(r.y) + i64::from(r.height) / 2,
+        );
+        let (mx, my) = (
+            i64::from(m.x) + i64::from(m.width) / 2,
+            i64::from(m.y) + i64::from(m.height) / 2,
+        );
         (cx - mx).pow(2) + (cy - my).pow(2)
     };
     let best = monitors.iter().max_by_key(|m| overlap(m))?;
@@ -136,7 +146,12 @@ pub fn virtual_screen(rects: &[PixelRect]) -> Option<PixelRect> {
     let top = rects.iter().map(|r| r.y).min()?;
     let right = rects.iter().map(|r| r.x + r.width).max()?;
     let bottom = rects.iter().map(|r| r.y + r.height).max()?;
-    Some(PixelRect { x: left, y: top, width: right - left, height: bottom - top })
+    Some(PixelRect {
+        x: left,
+        y: top,
+        width: right - left,
+        height: bottom - top,
+    })
 }
 
 /// Pictures of each screen, put together as the screens sit: the result is
@@ -145,7 +160,15 @@ pub fn stitch(parts: &[(PixelRect, Grab)]) -> Option<Grab> {
     if parts.len() == 1 {
         return Some(parts[0].1.clone());
     }
-    let rects: Vec<PixelRect> = parts.iter().map(|(r, g)| PixelRect { x: r.x, y: r.y, width: g.width as i32, height: g.height as i32 }).collect();
+    let rects: Vec<PixelRect> = parts
+        .iter()
+        .map(|(r, g)| PixelRect {
+            x: r.x,
+            y: r.y,
+            width: g.width as i32,
+            height: g.height as i32,
+        })
+        .collect();
     let all = virtual_screen(&rects)?;
     let (w, h) = (all.width.max(1) as usize, all.height.max(1) as usize);
     let mut rgb = vec![0u8; w * h * 3];
@@ -159,7 +182,12 @@ pub fn stitch(parts: &[(PixelRect, Grab)]) -> Option<Grab> {
             rgb[at..at + gw * 3].copy_from_slice(from);
         }
     }
-    Some(Grab { width: w as u32, height: h as u32, rgb, title: format!("all {} screens", parts.len()) })
+    Some(Grab {
+        width: w as u32,
+        height: h as u32,
+        rgb,
+        title: format!("all {} screens", parts.len()),
+    })
 }
 
 /// A screen named the way you'd name it: "your laptop screen", "the left
@@ -173,7 +201,9 @@ pub fn describe_screen(monitors: &[Monitor], id: u32, built_in: Option<u32>) -> 
     if Some(id) == built_in {
         return "your laptop screen".into();
     }
-    let Some(me) = monitors.iter().find(|m| m.id == id) else { return "a screen".into() };
+    let Some(me) = monitors.iter().find(|m| m.id == id) else {
+        return "a screen".into();
+    };
     // Placed among the others -- the laptop's own screen left out, since it
     // has its own name: with it on the right, the two monitors beside it are
     // still "left" and "right".
@@ -188,7 +218,11 @@ pub fn describe_screen(monitors: &[Monitor], id: u32, built_in: Option<u32>) -> 
     if xs.len() == 1 {
         // One above another.
         let top = others.iter().map(|m| m.y).min().unwrap_or(me.y);
-        return if me.y == top { "the top screen".into() } else { "the bottom screen".into() };
+        return if me.y == top {
+            "the top screen".into()
+        } else {
+            "the bottom screen".into()
+        };
     }
     let pos = xs.iter().position(|x| *x == my_x).unwrap_or(0);
     let n = xs.len();
@@ -209,7 +243,10 @@ pub fn describe_screen(monitors: &[Monitor], id: u32, built_in: Option<u32>) -> 
 /// internal output's source. Windows names both sides the same way; this is
 /// the matching, kept here so it's proved off Windows too.
 pub fn builtin_among(monitors: &[(u32, String)], builtin_sources: &[String]) -> Option<u32> {
-    monitors.iter().find(|(_, dev)| builtin_sources.iter().any(|s| s.eq_ignore_ascii_case(dev))).map(|(id, _)| *id)
+    monitors
+        .iter()
+        .find(|(_, dev)| builtin_sources.iter().any(|s| s.eq_ignore_ascii_case(dev)))
+        .map(|(id, _)| *id)
 }
 
 /// Which screens a request means.
@@ -228,8 +265,13 @@ pub enum ScreenPick {
 /// laptop screen" -> that one; anything else -> the one you're working on.
 pub fn screens_asked_for(said: &str, monitors: &[Monitor], built_in: Option<u32>) -> ScreenPick {
     let s = said.to_lowercase();
-    let plural = ["screens", "monitors", "displays"].iter().any(|w| s.contains(w));
-    if (plural && ["all", "both", "every", "each", "my"].iter().any(|w| s.split(|c: char| !c.is_alphanumeric()).any(|x| x == *w)))
+    let plural = ["screens", "monitors", "displays"]
+        .iter()
+        .any(|w| s.contains(w));
+    if (plural
+        && ["all", "both", "every", "each", "my"]
+            .iter()
+            .any(|w| s.split(|c: char| !c.is_alphanumeric()).any(|x| x == *w)))
         || s.contains("every screen")
         || s.contains("every monitor")
         || s.contains("whole desktop")
@@ -241,7 +283,10 @@ pub fn screens_asked_for(said: &str, monitors: &[Monitor], built_in: Option<u32>
         for m in monitors {
             let name = describe_screen(monitors, m.id, built_in);
             // "the left screen" -> "left"; "your laptop screen" -> "laptop".
-            let key = name.trim_start_matches("the ").trim_start_matches("your ").trim_end_matches(" screen");
+            let key = name
+                .trim_start_matches("the ")
+                .trim_start_matches("your ")
+                .trim_end_matches(" screen");
             if !key.is_empty() && s.split(|c: char| !c.is_alphanumeric()).any(|x| x == key) {
                 return ScreenPick::This(m.id);
             }
@@ -294,7 +339,14 @@ impl OsQuiet {
 
     /// Whether this state rules out an unasked interruption.
     pub fn holds_offers(self) -> bool {
-        matches!(self, OsQuiet::FullScreen | OsQuiet::Presenting | OsQuiet::Game | OsQuiet::Away | OsQuiet::QuietTime)
+        matches!(
+            self,
+            OsQuiet::FullScreen
+                | OsQuiet::Presenting
+                | OsQuiet::Game
+                | OsQuiet::Away
+                | OsQuiet::QuietTime
+        )
     }
 }
 
@@ -383,21 +435,29 @@ pub trait Platform {
 
     fn click(&self, x: i32, y: i32, button: Button) -> Result<()> {
         let _ = (x, y, button);
-        Err(crate::error::AtlasError::Platform("clicking is not supported here".into()))
+        Err(crate::error::AtlasError::Platform(
+            "clicking is not supported here".into(),
+        ))
     }
     /// Positive dy scrolls up, matching a wheel.
     fn scroll(&self, dx: i32, dy: i32) -> Result<()> {
         let _ = (dx, dy);
-        Err(crate::error::AtlasError::Platform("scrolling is not supported here".into()))
+        Err(crate::error::AtlasError::Platform(
+            "scrolling is not supported here".into(),
+        ))
     }
     fn type_text(&self, text: &str) -> Result<()> {
         let _ = text;
-        Err(crate::error::AtlasError::Platform("typing is not supported here".into()))
+        Err(crate::error::AtlasError::Platform(
+            "typing is not supported here".into(),
+        ))
     }
     /// A combo like "ctrl+f" or "enter".
     fn press(&self, combo: &str) -> Result<()> {
         let _ = combo;
-        Err(crate::error::AtlasError::Platform("key presses are not supported here".into()))
+        Err(crate::error::AtlasError::Platform(
+            "key presses are not supported here".into(),
+        ))
     }
     /// Take `delete` characters back from where you're typing and type
     /// `text` in their place (`astype`'s fix of the word just finished). On
@@ -489,7 +549,9 @@ pub trait Platform {
     /// move it — so nothing could point at anything, which is the first thing
     /// a hand needs to do.
     fn move_cursor(&self, _x: i32, _y: i32) -> Result<()> {
-        Err(crate::error::AtlasError::Platform("moving the pointer isn't built on this platform".into()))
+        Err(crate::error::AtlasError::Platform(
+            "moving the pointer isn't built on this platform".into(),
+        ))
     }
 
     /// Which window is under this point.
@@ -507,7 +569,9 @@ pub trait Platform {
     /// nothing could put it back. That gap is why every gesture so far had to
     /// be irreversible or refused.
     fn rect_of(&self, _win: WindowId) -> Result<PixelRect> {
-        Err(crate::error::AtlasError::Platform("reading a window's position isn't built on this platform".into()))
+        Err(crate::error::AtlasError::Platform(
+            "reading a window's position isn't built on this platform".into(),
+        ))
     }
 
     fn cursor(&self) -> Result<(i32, i32)> {
@@ -547,7 +611,16 @@ pub trait Platform {
     /// Where a monitor is on the desktop, whole (`monitors()` gives the part
     /// windows go in, without the taskbar).
     fn monitor_bounds(&self, monitor: u32) -> Option<PixelRect> {
-        self.monitors().ok()?.into_iter().find(|m| m.id == monitor).map(|m| PixelRect { x: m.x, y: m.y, width: m.width, height: m.height })
+        self.monitors()
+            .ok()?
+            .into_iter()
+            .find(|m| m.id == monitor)
+            .map(|m| PixelRect {
+                x: m.x,
+                y: m.y,
+                width: m.width,
+                height: m.height,
+            })
     }
 
     /// Every screen in one picture, laid out as they sit (`stitch`).
@@ -555,7 +628,12 @@ pub trait Platform {
         let mut parts = Vec::new();
         for m in self.monitors()? {
             if let Some(g) = self.grab_screen(m.id)? {
-                let at = self.monitor_bounds(m.id).unwrap_or(PixelRect { x: m.x, y: m.y, width: m.width, height: m.height });
+                let at = self.monitor_bounds(m.id).unwrap_or(PixelRect {
+                    x: m.x,
+                    y: m.y,
+                    width: m.width,
+                    height: m.height,
+                });
                 parts.push((at, g));
             }
         }
@@ -591,7 +669,9 @@ pub trait Platform {
     /// Start-menu shortcut). Refused here where no such opener exists.
     fn open_path(&self, path: &str) -> Result<()> {
         let _ = path;
-        Err(crate::error::AtlasError::Platform("opening files isn't supported here".into()))
+        Err(crate::error::AtlasError::Platform(
+            "opening files isn't supported here".into(),
+        ))
     }
 
     fn read_clipboard(&self) -> Result<Option<String>> {
@@ -608,7 +688,6 @@ pub trait Platform {
         ))
     }
 }
-
 
 /// The platform layer for whatever this is running on.
 ///

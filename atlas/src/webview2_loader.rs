@@ -37,7 +37,10 @@ extern "system" {
 
 /// Where the loader is written: in Atlas's own folder, with its other tools.
 pub fn place() -> PathBuf {
-    crate::roots::install_root().join("tools").join("webview2").join("WebView2Loader.dll")
+    crate::roots::install_root()
+        .join("tools")
+        .join("webview2")
+        .join("WebView2Loader.dll")
 }
 
 static MODULE: OnceLock<usize> = OnceLock::new();
@@ -91,7 +94,12 @@ unsafe extern "system" fn CreateCoreWebView2EnvironmentWithOptions(
 ) -> Hresult {
     type F = unsafe extern "system" fn(*const u16, *const u16, *mut c_void, *mut c_void) -> Hresult;
     match find(b"CreateCoreWebView2EnvironmentWithOptions\0") {
-        Some(f) => std::mem::transmute::<*mut c_void, F>(f)(browser_folder, user_data_folder, options, handler),
+        Some(f) => std::mem::transmute::<*mut c_void, F>(f)(
+            browser_folder,
+            user_data_folder,
+            options,
+            handler,
+        ),
         None => NOT_FOUND,
     }
 }
@@ -131,7 +139,11 @@ unsafe extern "system" fn GetAvailableCoreWebView2BrowserVersionStringWithOption
 }
 
 #[no_mangle]
-unsafe extern "system" fn CompareBrowserVersions(a: *const u16, b: *const u16, result: *mut i32) -> Hresult {
+unsafe extern "system" fn CompareBrowserVersions(
+    a: *const u16,
+    b: *const u16,
+    result: *mut i32,
+) -> Hresult {
     type F = unsafe extern "system" fn(*const u16, *const u16, *mut i32) -> Hresult;
     match find(b"CompareBrowserVersions\0") {
         Some(f) => std::mem::transmute::<*mut c_void, F>(f)(a, b, result),

@@ -32,7 +32,13 @@ pub enum Status {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum MailReceipt { ProgramAccepted, OwnerConfirmedSent, OwnerConfirmedAbsent, #[serde(other)] Unknown }
+pub enum MailReceipt {
+    ProgramAccepted,
+    OwnerConfirmedSent,
+    OwnerConfirmedAbsent,
+    #[serde(other)]
+    Unknown,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PendingReply {
@@ -69,14 +75,27 @@ impl Thread {
     /// Answering the message `id`, which itself followed `refs`. Angle
     /// brackets are taken off; they're written back when it's sent.
     pub fn replying_to(id: &str, refs: &[String]) -> Thread {
-        let clean = |s: &str| s.trim().trim_start_matches('<').trim_end_matches('>').trim().to_string();
+        let clean = |s: &str| {
+            s.trim()
+                .trim_start_matches('<')
+                .trim_end_matches('>')
+                .trim()
+                .to_string()
+        };
         let id = clean(id);
         if id.is_empty() {
             return Thread::default();
         }
-        let mut references: Vec<String> = refs.iter().map(|r| clean(r)).filter(|r| !r.is_empty() && *r != id).collect();
+        let mut references: Vec<String> = refs
+            .iter()
+            .map(|r| clean(r))
+            .filter(|r| !r.is_empty() && *r != id)
+            .collect();
         references.push(id.clone());
-        Thread { in_reply_to: id, references }
+        Thread {
+            in_reply_to: id,
+            references,
+        }
     }
 }
 
@@ -99,7 +118,9 @@ impl Outbox {
     pub fn load(store: &Store) -> Outbox {
         Self::load_checked(store).unwrap_or_default()
     }
-    pub fn load_checked(store: &Store) -> Result<Outbox> { Ok(store.load_checked("outbox")?.unwrap_or_default()) }
+    pub fn load_checked(store: &Store) -> Result<Outbox> {
+        Ok(store.load_checked("outbox")?.unwrap_or_default())
+    }
 
     pub fn save(&self, store: &Store) -> Result<()> {
         store.save("outbox", self)
@@ -114,8 +135,15 @@ impl Outbox {
     }
 
     pub fn add(&mut self, reply: PendingReply) {
-        if self.submissions.contains_key(&reply.id) { return; }
-        if self.get(&reply.id).is_some_and(|r| r.status != Status::Waiting) { return; }
+        if self.submissions.contains_key(&reply.id) {
+            return;
+        }
+        if self
+            .get(&reply.id)
+            .is_some_and(|r| r.status != Status::Waiting)
+        {
+            return;
+        }
         self.replies.retain(|r| r.id != reply.id);
         self.replies.push(reply);
     }
@@ -125,7 +153,9 @@ impl Outbox {
         let mut outbox = Self::load_checked(store)?;
         if let Some(current) = outbox.get(&reply.id) {
             if outbox.submissions.contains_key(&reply.id) || current.status != Status::Waiting {
-                if serde_json::to_value(current).ok() == serde_json::to_value(&reply).ok() { return Ok(()); }
+                if serde_json::to_value(current).ok() == serde_json::to_value(&reply).ok() {
+                    return Ok(());
+                }
                 return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "That draft identity already has a submitted or discarded outcome; the new draft was not kept. Create a fresh draft before approving it.").into());
             }
         }
@@ -159,7 +189,10 @@ impl Outbox {
     }
 
     pub fn waiting(&self) -> Vec<&PendingReply> {
-        self.replies.iter().filter(|r| r.status == Status::Waiting).collect()
+        self.replies
+            .iter()
+            .filter(|r| r.status == Status::Waiting)
+            .collect()
     }
 
     /// The most recently created reply still waiting for someone
@@ -176,39 +209,84 @@ impl Outbox {
 
     pub fn mark_sent(&mut self, id: &str) {
         self.submissions.remove(id);
-        self.delivery_receipts.insert(id.to_string(), MailReceipt::ProgramAccepted);
+        self.delivery_receipts
+            .insert(id.to_string(), MailReceipt::ProgramAccepted);
         if let Some(r) = self.replies.iter_mut().find(|r| r.id == id) {
             r.status = Status::Sent;
         }
     }
 
-    pub fn submission_status(&self, id: &str) -> Option<&str> { self.submissions.get(id).map(String::as_str) }
-    pub fn delivery_receipt(&self, id: &str) -> Option<MailReceipt> { self.delivery_receipts.get(id).copied() }
-    pub fn unconfirmed(&self) -> Vec<&PendingReply> { self.replies.iter().filter(|r| self.submissions.contains_key(&r.id)).collect() }
-    pub fn unconfirmed_for(&self, who: &str) -> Option<&PendingReply> { self.unconfirmed().into_iter().filter(|r| r.to_name.eq_ignore_ascii_case(who) || r.to_address.eq_ignore_ascii_case(who)).max_by_key(|r| r.created_at) }
+    pub fn submission_status(&self, id: &str) -> Option<&str> {
+        self.submissions.get(id).map(String::as_str)
+    }
+    pub fn delivery_receipt(&self, id: &str) -> Option<MailReceipt> {
+        self.delivery_receipts.get(id).copied()
+    }
+    pub fn unconfirmed(&self) -> Vec<&PendingReply> {
+        self.replies
+            .iter()
+            .filter(|r| self.submissions.contains_key(&r.id))
+            .collect()
+    }
+    pub fn unconfirmed_for(&self, who: &str) -> Option<&PendingReply> {
+        self.unconfirmed()
+            .into_iter()
+            .filter(|r| {
+                r.to_name.eq_ignore_ascii_case(who) || r.to_address.eq_ignore_ascii_case(who)
+            })
+            .max_by_key(|r| r.created_at)
+    }
     pub fn reconcile_owner_check(&mut self, who: &str, sent: bool) -> bool {
-        let matching: Vec<String> = self.unconfirmed().into_iter().filter(|r| r.to_name.eq_ignore_ascii_case(who) || r.to_address.eq_ignore_ascii_case(who)).map(|r| r.id.clone()).collect();
-        if matching.len() != 1 { return false; }
+        let matching: Vec<String> = self
+            .unconfirmed()
+            .into_iter()
+            .filter(|r| {
+                r.to_name.eq_ignore_ascii_case(who) || r.to_address.eq_ignore_ascii_case(who)
+            })
+            .map(|r| r.id.clone())
+            .collect();
+        if matching.len() != 1 {
+            return false;
+        }
         let id = &matching[0];
-        let Some(reply) = self.replies.iter_mut().find(|r| &r.id == id) else { return false; };
+        let Some(reply) = self.replies.iter_mut().find(|r| &r.id == id) else {
+            return false;
+        };
         reply.status = if sent { Status::Sent } else { Status::Waiting };
         self.submissions.remove(id);
-        self.delivery_receipts.insert(id.clone(), if sent { MailReceipt::OwnerConfirmedSent } else { MailReceipt::OwnerConfirmedAbsent });
+        self.delivery_receipts.insert(
+            id.clone(),
+            if sent {
+                MailReceipt::OwnerConfirmedSent
+            } else {
+                MailReceipt::OwnerConfirmedAbsent
+            },
+        );
         true
     }
 
     /// Persist an old-build-safe fence before any transport can accept mail.
     pub fn begin_submission(&mut self, expected: &PendingReply) -> bool {
-        if self.submissions.contains_key(&expected.id) { return false; }
-        let Some(current) = self.replies.iter_mut().find(|r| r.id == expected.id) else { return false; };
-        if current.status != Status::Waiting || serde_json::to_value(&*current).ok() != serde_json::to_value(expected).ok() { return false; }
+        if self.submissions.contains_key(&expected.id) {
+            return false;
+        }
+        let Some(current) = self.replies.iter_mut().find(|r| r.id == expected.id) else {
+            return false;
+        };
+        if current.status != Status::Waiting
+            || serde_json::to_value(&*current).ok() != serde_json::to_value(expected).ok()
+        {
+            return false;
+        }
         current.status = Status::Discarded;
         self.submissions.insert(expected.id.clone(), "Submission pending; outcome unconfirmed. Check the recipient/service before repeating.".into());
         true
     }
 
     fn uncertain_submission(&mut self, id: &str, why: &str) {
-        if let Some(status) = self.submissions.get_mut(id) { *status = format!("Submission unconfirmed: {why}. Do not repeat without checking."); }
+        if let Some(status) = self.submissions.get_mut(id) {
+            *status = format!("Submission unconfirmed: {why}. Do not repeat without checking.");
+        }
     }
 
     pub fn mark_discarded(&mut self, id: &str) {
@@ -223,32 +301,60 @@ impl Outbox {
     pub fn cold_outreach_sent_since(&self, since: u64) -> usize {
         self.replies
             .iter()
-            .filter(|r| r.kind == Kind::ColdOutreach && (r.status == Status::Sent || self.submissions.contains_key(&r.id)) && r.created_at >= since)
+            .filter(|r| {
+                r.kind == Kind::ColdOutreach
+                    && (r.status == Status::Sent || self.submissions.contains_key(&r.id))
+                    && r.created_at >= since
+            })
             .count()
     }
 }
 
-
-pub fn send_fenced_capped(store: &Store, pending: &PendingReply, cap: Option<(u64, usize)>, send: impl FnOnce() -> std::result::Result<(), String>) -> std::result::Result<(), String> {
-    let guard = store.transaction_waiting().map_err(|e| format!("Nothing submitted: could not reserve the draft state ({e})"))?;
-    let mut outbox = Outbox::load_checked(store).map_err(|e| format!("Nothing submitted: outbox state couldn't be read ({e})"))?;
-    if let Some((since, limit)) = cap { if pending.kind == Kind::ColdOutreach && outbox.cold_outreach_sent_since(since) >= limit { return Err("Nothing submitted: today's outreach cap, including unconfirmed submissions, is reached.".into()); } }
-    if outbox.get(&pending.id).is_none() { outbox.add(pending.clone()); }
-    if !outbox.begin_submission(pending) { return Err("This exact draft is no longer waiting, or its earlier submission is unconfirmed.".into()); }
-    outbox.save(store).map_err(|e| format!("Nothing submitted: couldn't save its submission fence ({e})"))?;
+pub fn send_fenced_capped(
+    store: &Store,
+    pending: &PendingReply,
+    cap: Option<(u64, usize)>,
+    send: impl FnOnce() -> std::result::Result<(), String>,
+) -> std::result::Result<(), String> {
+    let guard = store
+        .transaction_waiting()
+        .map_err(|e| format!("Nothing submitted: could not reserve the draft state ({e})"))?;
+    let mut outbox = Outbox::load_checked(store)
+        .map_err(|e| format!("Nothing submitted: outbox state couldn't be read ({e})"))?;
+    if let Some((since, limit)) = cap {
+        if pending.kind == Kind::ColdOutreach && outbox.cold_outreach_sent_since(since) >= limit {
+            return Err("Nothing submitted: today's outreach cap, including unconfirmed submissions, is reached.".into());
+        }
+    }
+    if outbox.get(&pending.id).is_none() {
+        outbox.add(pending.clone());
+    }
+    if !outbox.begin_submission(pending) {
+        return Err(
+            "This exact draft is no longer waiting, or its earlier submission is unconfirmed."
+                .into(),
+        );
+    }
+    outbox
+        .save(store)
+        .map_err(|e| format!("Nothing submitted: couldn't save its submission fence ({e})"))?;
     drop(guard);
     match send() {
         Ok(()) => {
             let _guard = store.transaction_waiting().map_err(|e| format!("The service accepted the reply, but state is busy ({e}); its persisted fence prevents repetition."))?;
             let mut outbox = Outbox::load_checked(store).map_err(|e| format!("The service accepted the reply, but its state couldn't be read ({e}); do not repeat it."))?;
-            if outbox.submission_status(&pending.id).is_none() { return Err("The service accepted the reply, but its persisted submission record could not be read; do not repeat it.".into()); }
+            if outbox.submission_status(&pending.id).is_none() {
+                return Err("The service accepted the reply, but its persisted submission record could not be read; do not repeat it.".into());
+            }
             outbox.mark_sent(&pending.id);
             outbox.save(store).map_err(|e| format!("The service accepted the reply, but its sent receipt couldn't be saved ({e}); the durable submission fence prevents another send."))
         }
         Err(e) => {
             let _guard = store.transaction_waiting().map_err(|_| format!("Submission remains unconfirmed ({e}); its persisted fence prevents repetition."))?;
             let mut outbox = Outbox::load_checked(store).map_err(|_| format!("Submission remains unconfirmed ({e}); state couldn't be read. Do not repeat it."))?;
-            if outbox.submission_status(&pending.id).is_none() { return Err(format!("Submission remains unconfirmed ({e}); its persisted record could not be read. Do not repeat it.")); }
+            if outbox.submission_status(&pending.id).is_none() {
+                return Err(format!("Submission remains unconfirmed ({e}); its persisted record could not be read. Do not repeat it."));
+            }
             outbox.uncertain_submission(&pending.id, &e);
             let _ = outbox.save(store);
             Err(format!("The reply's outcome isn't confirmed ({e}); check the service before another attempt."))
@@ -262,16 +368,34 @@ mod tests {
 
     #[test]
     fn submission_fence_blocks_retry_after_restart_and_older_load() {
-        let root = std::env::temp_dir().join(format!("atlas-mail-fence-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-mail-fence-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let store = Store::new(root.clone());
         let draft = reply("fenced", Kind::Client, 100);
         let calls = std::cell::Cell::new(0);
-        assert!(send_fenced_capped(&store, &draft, None, || { calls.set(calls.get()+1); Err("connection lost after DATA".into()) }).is_err());
+        assert!(send_fenced_capped(&store, &draft, None, || {
+            calls.set(calls.get() + 1);
+            Err("connection lost after DATA".into())
+        })
+        .is_err());
         assert_eq!(calls.get(), 1);
         let reloaded = Outbox::load(&store);
         assert!(reloaded.waiting().is_empty());
-        assert!(reloaded.submission_status("fenced").unwrap().contains("unconfirmed"));
-        assert!(send_fenced_capped(&store, &draft, None, || { calls.set(calls.get()+1); Ok(()) }).is_err());
+        assert!(reloaded
+            .submission_status("fenced")
+            .unwrap()
+            .contains("unconfirmed"));
+        assert!(send_fenced_capped(&store, &draft, None, || {
+            calls.set(calls.get() + 1);
+            Ok(())
+        })
+        .is_err());
         assert_eq!(calls.get(), 1);
         let mut legacy = serde_json::to_value(reloaded).unwrap();
         legacy.as_object_mut().unwrap().remove("submissions");
@@ -282,20 +406,40 @@ mod tests {
 
     #[test]
     fn failed_fence_save_makes_zero_provider_calls() {
-        let path = std::env::temp_dir().join(format!("atlas-mail-blocked-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let path = std::env::temp_dir().join(format!(
+            "atlas-mail-blocked-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::write(&path, b"block directory creation").unwrap();
         let store = Store::new(path.clone());
-        assert!(send_fenced_capped(&store, &reply("zero", Kind::Client, 100), None, || panic!("provider must not be called if durable fence failed")).is_err());
+        assert!(
+            send_fenced_capped(&store, &reply("zero", Kind::Client, 100), None, || panic!(
+                "provider must not be called if durable fence failed"
+            ))
+            .is_err()
+        );
         std::fs::remove_file(path).unwrap();
     }
 
     #[test]
     fn a_new_draft_cannot_claim_a_sent_identity_was_saved() {
-        let root = std::env::temp_dir().join(format!("atlas-mail-collision-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-mail-collision-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let store = Store::new(root);
         let draft = reply("same-second", Kind::Client, 100);
         send_fenced_capped(&store, &draft, None, || Ok(())).unwrap();
-        let mut collision = draft.clone(); collision.body = "different request in the same second".into();
+        let mut collision = draft.clone();
+        collision.body = "different request in the same second".into();
         assert!(Outbox::keep_draft(&store, collision).is_err());
         let current = Outbox::load_checked(&store).unwrap();
         assert_eq!(current.get("same-second").unwrap().body, draft.body);
@@ -304,70 +448,128 @@ mod tests {
     }
 
     #[test]
-    fn stale_inbox_draft_cannot_overwrite_submission_and_owner_check_requires_one_exact_recipient() {
-        let root = std::env::temp_dir().join(format!("atlas-mail-stale-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    fn stale_inbox_draft_cannot_overwrite_submission_and_owner_check_requires_one_exact_recipient()
+    {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-mail-stale-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let store = Store::new(root);
         let draft = reply("stale", Kind::ColdOutreach, 100);
         assert!(send_fenced_capped(&store, &draft, None, || Err("lost receipt".into())).is_err());
-        let mut stale = draft.clone(); stale.body = "new body from a delayed model".into();
+        let mut stale = draft.clone();
+        stale.body = "new body from a delayed model".into();
         assert!(Outbox::keep_draft(&store, stale).is_err());
         let mut current = Outbox::load(&store);
         assert_eq!(current.get("stale").unwrap().body, draft.body);
         assert!(current.waiting().is_empty());
         assert_eq!(current.cold_outreach_sent_since(0), 1);
         let next = reply("capped", Kind::ColdOutreach, 101);
-        assert!(send_fenced_capped(&store, &next, Some((0, 1)), || panic!("uncertain submissions must consume the cap before another provider call")).is_err());
+        assert!(send_fenced_capped(&store, &next, Some((0, 1)), || panic!(
+            "uncertain submissions must consume the cap before another provider call"
+        ))
+        .is_err());
         assert!(current.reconcile_owner_check(&draft.to_address, false));
         assert_eq!(current.waiting().len(), 1);
         assert_eq!(current.waiting()[0].body, draft.body);
-        assert_eq!(current.delivery_receipts["stale"], MailReceipt::OwnerConfirmedAbsent);
-        let mut second = reply("second", Kind::Client, 101); second.to_address = draft.to_address.clone();
+        assert_eq!(
+            current.delivery_receipts["stale"],
+            MailReceipt::OwnerConfirmedAbsent
+        );
+        let mut second = reply("second", Kind::Client, 101);
+        second.to_address = draft.to_address.clone();
         current.add(second.clone());
-        assert!(current.begin_submission(&draft)); assert!(current.begin_submission(&second));
+        assert!(current.begin_submission(&draft));
+        assert!(current.begin_submission(&second));
         assert!(!current.reconcile_owner_check(&draft.to_address, true));
     }
 
     #[test]
     fn accepted_mail_with_unsaved_receipt_stays_fenced() {
-        let root = std::env::temp_dir().join(format!("atlas-mail-receipt-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-mail-receipt-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let store = Store::new(root.clone());
         let draft = reply("receipt", Kind::Client, 100);
         let backup = root.with_extension("fenced-copy");
-        let result = send_fenced_capped(&store, &draft, None, || { std::fs::rename(&root, &backup).map_err(|e| e.to_string())?; std::fs::write(&root, b"state unavailable").map_err(|e| e.to_string())?; Ok(()) });
+        let result = send_fenced_capped(&store, &draft, None, || {
+            std::fs::rename(&root, &backup).map_err(|e| e.to_string())?;
+            std::fs::write(&root, b"state unavailable").map_err(|e| e.to_string())?;
+            Ok(())
+        });
         assert!(result.is_err());
         std::fs::remove_file(&root).unwrap();
         std::fs::rename(&backup, &root).unwrap();
         assert!(Outbox::load(&store).waiting().is_empty());
-        assert!(send_fenced_capped(&store, &draft, None, || panic!("accepted mail must not be repeated after a lost receipt")).is_err());
+        assert!(send_fenced_capped(&store, &draft, None, || panic!(
+            "accepted mail must not be repeated after a lost receipt"
+        ))
+        .is_err());
     }
 
     #[test]
     fn unreadable_corrupt_or_unknown_format_outbox_never_defaults_into_another_send() {
-        let root = std::env::temp_dir().join(format!("atlas-mail-checked-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-mail-checked-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let store = Store::new(root.clone());
         let draft = reply("checked", Kind::Client, 100);
         Outbox::keep_draft(&store, draft.clone()).unwrap();
-        for bytes in [b"broken JSON".as_slice(), b"{\"schema\":99,\"data\":{\"replies\":[]}}".as_slice()] {
+        for bytes in [
+            b"broken JSON".as_slice(),
+            b"{\"schema\":99,\"data\":{\"replies\":[]}}".as_slice(),
+        ] {
             std::fs::write(root.join("outbox.json"), bytes).unwrap();
-            assert!(send_fenced_capped(&store, &draft, None, || panic!("unreadable state must never become implicit approval")).is_err());
+            assert!(send_fenced_capped(&store, &draft, None, || panic!(
+                "unreadable state must never become implicit approval"
+            ))
+            .is_err());
             assert_eq!(std::fs::read(root.join("outbox.json")).unwrap(), bytes);
         }
         std::fs::remove_file(root.join("outbox.json")).unwrap();
         std::fs::create_dir(root.join("outbox.json")).unwrap();
-        assert!(send_fenced_capped(&store, &draft, None, || panic!("non-file state must not reach provider")).is_err());
+        assert!(send_fenced_capped(&store, &draft, None, || panic!(
+            "non-file state must not reach provider"
+        ))
+        .is_err());
         assert!(root.join("outbox.json").is_dir());
     }
 
     #[test]
     fn checked_state_read_preserves_unknown_fields_in_legacy_and_current_envelopes() {
-        let root = std::env::temp_dir().join(format!("atlas-mail-unknown-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-mail-unknown-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir_all(&root).unwrap();
         let store = Store::new(root.clone());
-        for input in [serde_json::json!({"replies":[],"future_field":{"keep":42}}), serde_json::json!({"schema":crate::store::SCHEMA,"data":{"replies":[],"future_field":{"keep":42}}})] {
+        for input in [
+            serde_json::json!({"replies":[],"future_field":{"keep":42}}),
+            serde_json::json!({"schema":crate::store::SCHEMA,"data":{"replies":[],"future_field":{"keep":42}}}),
+        ] {
             std::fs::write(root.join("outbox.json"), input.to_string()).unwrap();
             let checked = Outbox::load_checked(&store).unwrap();
             checked.save(&store).unwrap();
-            let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("outbox.json")).unwrap()).unwrap();
+            let saved: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(root.join("outbox.json")).unwrap()).unwrap();
             assert_eq!(saved["data"]["future_field"]["keep"], 42);
         }
     }
@@ -440,7 +642,11 @@ mod tests {
     fn waiting_for_prefers_the_most_recent_when_several_match() {
         let mut ob = Outbox::default();
         ob.add(reply("a", Kind::Client, 0));
-        ob.add(PendingReply { id: "b".into(), created_at: 100, ..reply("b", Kind::Client, 100) });
+        ob.add(PendingReply {
+            id: "b".into(),
+            created_at: 100,
+            ..reply("b", Kind::Client, 100)
+        });
         let found = ob.waiting_for("jane").unwrap();
         assert_eq!(found.id, "b");
     }
@@ -460,7 +666,11 @@ mod tests {
         ob.mark_sent("a");
         ob.add(reply("b", Kind::ColdOutreach, 0));
         ob.mark_sent("b");
-        assert_eq!(ob.cold_outreach_sent_since(0), 1, "the client reply must not count toward the cap");
+        assert_eq!(
+            ob.cold_outreach_sent_since(0),
+            1,
+            "the client reply must not count toward the cap"
+        );
     }
 
     #[test]
@@ -476,7 +686,11 @@ mod tests {
         let mut ob = Outbox::default();
         ob.add(reply("a", Kind::ColdOutreach, 100));
         ob.mark_sent("a");
-        assert_eq!(ob.cold_outreach_sent_since(200), 0, "sent before the window must not count");
+        assert_eq!(
+            ob.cold_outreach_sent_since(200),
+            0,
+            "sent before the window must not count"
+        );
         assert_eq!(ob.cold_outreach_sent_since(50), 1);
     }
 
@@ -513,24 +727,48 @@ pub fn email_asked(said: &str) -> Option<(String, String)> {
     let s = said.trim().trim_end_matches(['.', '!']);
     let low = s.to_ascii_lowercase();
     let lead = [
-        "send an email to ", "send email to ", "send a email to ", "send an e-mail to ", "write an email to ",
-        "shoot an email to ", "drop an email to ", "shoot ", "email ", "e-mail ", "can you email ", "please email ",
+        "send an email to ",
+        "send email to ",
+        "send a email to ",
+        "send an e-mail to ",
+        "write an email to ",
+        "shoot an email to ",
+        "drop an email to ",
+        "shoot ",
+        "email ",
+        "e-mail ",
+        "can you email ",
+        "please email ",
     ]
     .iter()
     .find(|p| low.starts_with(**p))?;
     let rest_low = &low[lead.len()..];
-    let (at, mark) = [" saying ", " telling them ", " that ", ": ", ", ", " to say "]
-        .iter()
-        .filter_map(|m| rest_low.find(m).map(|i| (i, *m)))
-        .min_by_key(|(i, _)| *i)?;
+    let (at, mark) = [
+        " saying ",
+        " telling them ",
+        " that ",
+        ": ",
+        ", ",
+        " to say ",
+    ]
+    .iter()
+    .filter_map(|m| rest_low.find(m).map(|i| (i, *m)))
+    .min_by_key(|(i, _)| *i)?;
     let who = s[lead.len()..lead.len() + at].trim();
     // "shoot Sam an email saying ..."
-    let who = who.strip_suffix(" an email").or_else(|| who.strip_suffix(" a message")).unwrap_or(who).trim();
+    let who = who
+        .strip_suffix(" an email")
+        .or_else(|| who.strip_suffix(" a message"))
+        .unwrap_or(who)
+        .trim();
     if *lead == "shoot " && !low[lead.len()..lead.len() + at].ends_with(" an email") {
         return None;
     }
     let message = s[lead.len() + at + mark.len()..].trim();
-    if who.is_empty() || who.split_whitespace().count() > 4 || message.split_whitespace().count() < 2 {
+    if who.is_empty()
+        || who.split_whitespace().count() > 4
+        || message.split_whitespace().count() < 2
+    {
         return None;
     }
     // "email him" with nobody named isn't something to guess at.
@@ -568,7 +806,9 @@ pub fn body_from_spoken(message: &str) -> String {
 pub fn subject_from_body(body: &str) -> String {
     let words: Vec<&str> = body.split_whitespace().collect();
     let mut s = words.iter().take(7).cloned().collect::<Vec<_>>().join(" ");
-    s = s.trim_end_matches(['.', ',', '!', '?', ';', ':']).to_string();
+    s = s
+        .trim_end_matches(['.', ',', '!', '?', ';', ':'])
+        .to_string();
     if words.len() > 7 {
         s.push_str("...");
     }

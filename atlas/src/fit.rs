@@ -216,7 +216,13 @@ pub fn plan_for(m: &Machine) -> Plan {
 
     // A better voice is 114MB against 63MB. Worth it if there's room, and
     // among the first things to drop if there isn't.
-    let voice_quality = if budget >= 1500 { "high" } else if budget >= 400 { "medium" } else { "low" };
+    let voice_quality = if budget >= 1500 {
+        "high"
+    } else if budget >= 400 {
+        "medium"
+    } else {
+        "low"
+    };
 
     // Vision needs a GPU. On integrated graphics it's a second per frame at
     // best, which makes it useless for anything continuous.
@@ -356,7 +362,10 @@ pub struct FitConfig {
 
 impl Default for FitConfig {
     fn default() -> Self {
-        FitConfig { replan_on_change: true, force_tier: String::new() }
+        FitConfig {
+            replan_on_change: true,
+            force_tier: String::new(),
+        }
     }
 }
 
@@ -376,7 +385,10 @@ pub fn plan_as_set(m: &Machine, cfg: &FitConfig) -> Plan {
         return p;
     }
     let measured = p.tier;
-    if want < Tier::Full && p.model.is_some_and(|x| x.contains("7b") || x.contains("14b")) {
+    if want < Tier::Full
+        && p.model
+            .is_some_and(|x| x.contains("7b") || x.contains("14b"))
+    {
         p.model = Some("qwen2.5-3b-instruct-q4");
     }
     if want < Tier::Thinking {
@@ -392,11 +404,20 @@ pub fn plan_as_set(m: &Machine, cfg: &FitConfig) -> Plan {
     if want >= Tier::Thinking && p.model.is_none() {
         p.model = Some("qwen2.5-1.5b-instruct-q4");
     }
-    if want == Tier::Full && !p.model.is_some_and(|x| x.contains("7b") || x.contains("14b")) {
+    if want == Tier::Full
+        && !p
+            .model
+            .is_some_and(|x| x.contains("7b") || x.contains("14b"))
+    {
         p.model = Some("qwen2.5-7b-instruct-q4");
     }
     p.tier = want;
-    p.because = format!("{} Pinned to \"{}\" by your fit.force_tier setting (measured: \"{}\").", p.because, want.name(), measured.name());
+    p.because = format!(
+        "{} Pinned to \"{}\" by your fit.force_tier setting (measured: \"{}\").",
+        p.because,
+        want.name(),
+        measured.name()
+    );
     p
 }
 
@@ -424,7 +445,11 @@ pub fn describe(m: &Machine) -> String {
     } else {
         "a modest machine"
     };
-    format!("{kind}, {gb}GB, {} cores{}", m.cpu_cores, if m.has_npu { ", with an NPU" } else { "" })
+    format!(
+        "{kind}, {gb}GB, {} cores{}",
+        m.cpu_cores,
+        if m.has_npu { ", with an NPU" } else { "" }
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -455,7 +480,9 @@ pub fn measure() -> Machine {
     Machine {
         total_ram_mb: total,
         free_ram_mb: total.saturating_sub(used),
-        cpu_cores: std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(1),
+        cpu_cores: std::thread::available_parallelism()
+            .map(|n| n.get() as u32)
+            .unwrap_or(1),
         // Integrated graphics report shared memory as VRAM, which is not extra
         // memory — `usable_vram_mb` already ignores anything under 4GB for
         // this reason. Left at zero until Atlas can tell dedicated from shared.
@@ -483,7 +510,9 @@ fn installed_here() -> Vec<(String, u64)> {
 }
 
 fn collect_into(dir: &std::path::Path, out: &mut Vec<(String, u64)>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let path = e.path();
         let Ok(meta) = e.metadata() else { continue };
@@ -505,7 +534,9 @@ fn collect_into(dir: &std::path::Path, out: &mut Vec<(String, u64)>) {
 }
 
 fn stack_size(dir: &std::path::Path, total: &mut u64) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let Ok(meta) = e.metadata() else { continue };
         if meta.is_dir() {

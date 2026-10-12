@@ -100,7 +100,10 @@ pub fn gestures_page(
         }
     }
 
-    body.push_str(&more("/hub/settings#what-it-can-see", "Turn hand control on or off"));
+    body.push_str(&more(
+        "/hub/settings#what-it-can-see",
+        "Turn hand control on or off",
+    ));
     shell_at(Some(Page::Gestures), "Hand gestures", &body)
 }
 
@@ -124,8 +127,14 @@ pub fn status_page(lines: &[(String, String)], changed: usize) -> String {
 /// The remove button for one item, or nothing. Work already running is
 /// asked to stop ("Stop it"); everything else is taken off ("Drop it").
 pub(super) fn drop_button(key: Option<&Option<String>>, what: &str) -> String {
-    let Some(Some(key)) = key else { return String::new() };
-    let label = if key.starts_with("e:") { "Stop it" } else { "Drop it" };
+    let Some(Some(key)) = key else {
+        return String::new();
+    };
+    let label = if key.starts_with("e:") {
+        "Stop it"
+    } else {
+        "Drop it"
+    };
     format!(
         "<form class=inline method=post action=/hub/outstanding><input type=hidden name=what value=drop>\
          <input type=hidden name=key value='{}'><button class=quiet aria-label='{label}: {}'>{label}</button></form>",
@@ -152,7 +161,12 @@ pub(super) fn lane_head(icon_paths: &str, colour: &str, name: &str, n: usize) ->
 pub fn outstanding_page(o: &Open) -> String {
     let mut left = String::new();
     left.push_str("<section class=lane>");
-    left.push_str(&lane_head("<path d='M12 8v4l3 2'/><circle cx=12 cy=12 r=9 />", "--accent", "Waiting on you", o.waiting.len()));
+    left.push_str(&lane_head(
+        "<path d='M12 8v4l3 2'/><circle cx=12 cy=12 r=9 />",
+        "--accent",
+        "Waiting on you",
+        o.waiting.len(),
+    ));
     if o.waiting.is_empty() {
         left.push_str("<p class=nothing>Nothing waiting on you.</p>");
     }
@@ -166,7 +180,12 @@ pub fn outstanding_page(o: &Open) -> String {
         ));
     }
     left.push_str("</section><section class=lane>");
-    left.push_str(&lane_head("<path d='M12 8v4M12 16h.01'/><circle cx=12 cy=12 r=9 />", "--hot", "Blocked", o.blocked.len()));
+    left.push_str(&lane_head(
+        "<path d='M12 8v4M12 16h.01'/><circle cx=12 cy=12 r=9 />",
+        "--hot",
+        "Blocked",
+        o.blocked.len(),
+    ));
     if o.blocked.is_empty() {
         left.push_str("<p class=nothing>Nothing is stuck.</p>");
     }
@@ -177,8 +196,16 @@ pub fn outstanding_page(o: &Open) -> String {
              <span class=k>Tried</span><span class=v>{tried}</span>\
              <span class='k stopped'>Stopped</span><span class=v>{stopped}</span>\
              <span class='k needs'>Needs</span><span class=v>{needs}</span></div>{acts}</div>",
-            acts = if drop.is_empty() { String::new() } else { format!("<div class=acts>{drop}</div>") },
-            area = b.area.as_deref().map(|a| format!("<span class=area>{}</span>", esc(a))).unwrap_or_default(),
+            acts = if drop.is_empty() {
+                String::new()
+            } else {
+                format!("<div class=acts>{drop}</div>")
+            },
+            area = b
+                .area
+                .as_deref()
+                .map(|a| format!("<span class=area>{}</span>", esc(a)))
+                .unwrap_or_default(),
             what = esc(&b.what),
             tried = esc(&b.tried),
             stopped = esc(&b.stopped),
@@ -189,7 +216,12 @@ pub fn outstanding_page(o: &Open) -> String {
 
     let mut right = String::new();
     right.push_str("<section class=lane>");
-    right.push_str(&lane_head("<circle cx=12 cy=12 r=9 /><path d='M12 7v5l3 2'/>", "--cool", "In progress", o.in_progress.len()));
+    right.push_str(&lane_head(
+        "<circle cx=12 cy=12 r=9 /><path d='M12 7v5l3 2'/>",
+        "--cool",
+        "In progress",
+        o.in_progress.len(),
+    ));
     if o.in_progress.is_empty() {
         right.push_str("<p class=nothing>Nothing running right now.</p>");
     }
@@ -199,11 +231,20 @@ pub fn outstanding_page(o: &Open) -> String {
             "<div class=item><div class=t>{}</div><div class=d>{}</div>{}</div>",
             esc(what),
             esc(how),
-            if drop.is_empty() { String::new() } else { format!("<div class=acts>{drop}</div>") }
+            if drop.is_empty() {
+                String::new()
+            } else {
+                format!("<div class=acts>{drop}</div>")
+            }
         ));
     }
     right.push_str("</section><section class=lane>");
-    right.push_str(&lane_head("<path d='M3 12a9 9 0 1 0 9-9'/><path d='M3 4v5h5'/>", "--ink-faint", "Carried over", o.carried.len()));
+    right.push_str(&lane_head(
+        "<path d='M3 12a9 9 0 1 0 9-9'/><path d='M3 4v5h5'/>",
+        "--ink-faint",
+        "Carried over",
+        o.carried.len(),
+    ));
     if o.carried.is_empty() {
         right.push_str("<p class=nothing>Nothing carried over.</p>");
     } else {
@@ -260,7 +301,11 @@ impl TaskReceipt {
     pub fn from_work(w: &crate::mind::Work, paused: bool) -> Self {
         use crate::mind::Stage;
         let total = w.steps.len();
-        let reported = w.steps.iter().filter(|s| s.reported_output.is_some()).count();
+        let reported = w
+            .steps
+            .iter()
+            .filter(|s| s.reported_output.is_some())
+            .count();
         let status = if w.stage == Stage::Stuck {
             "Stopped"
         } else if w.stage == Stage::Done {
@@ -268,45 +313,76 @@ impl TaskReceipt {
         } else if paused {
             "Paused"
         } else if w.stage == Stage::Waiting {
-            if w.blocked_on.is_some() { "Waiting" } else { "Awaiting your answer or approval" }
+            if w.blocked_on.is_some() {
+                "Waiting"
+            } else {
+                "Awaiting your answer or approval"
+            }
         } else {
             "In progress"
         };
         let status = format!("{status}; {reported} of {total} steps have recorded replies");
         // Failed does not mean skipped: a retry remains at the runner's position.
         // Old records have no cursor; their first unfinished step is the safe fallback.
-        let position = w.runner_position.filter(|p| *p < total)
+        let position = w
+            .runner_position
+            .filter(|p| *p < total)
             .or_else(|| w.steps.iter().position(|s| !s.done));
         let current = if w.stage == Stage::Done {
             "No step running.".into()
         } else {
-            position.and_then(|p| w.steps.get(p)).map(|s| s.what.clone())
+            position
+                .and_then(|p| w.steps.get(p))
+                .map(|s| s.what.clone())
                 .unwrap_or_else(|| "No planned step recorded.".into())
         };
         let dependency = if w.stage.finished() {
-            w.blocked_on.clone().unwrap_or_else(|| "No further step will run for this task.".into())
+            w.blocked_on
+                .clone()
+                .unwrap_or_else(|| "No further step will run for this task.".into())
         } else if paused {
             "Carry on when you are ready.".into()
         } else if let Some(b) = &w.blocked_on {
             b.clone()
         } else if w.stage == Stage::Waiting {
-            w.thoughts.iter().rev().find(|t| t.stage == Stage::Waiting)
-                .map(|t| t.text.clone()).unwrap_or_else(|| "Your answer or approval.".into())
+            w.thoughts
+                .iter()
+                .rev()
+                .find(|t| t.stage == Stage::Waiting)
+                .map(|t| t.text.clone())
+                .unwrap_or_else(|| "Your answer or approval.".into())
         } else {
-            position.and_then(|p| w.steps.get(p + 1))
+            position
+                .and_then(|p| w.steps.get(p + 1))
                 .map(|s| format!("Next: {} (after the current step)", s.what))
                 .unwrap_or_else(|| "Finish the current step.".into())
         };
-        let results = w.steps.iter().filter_map(|s| s.reported_output.as_ref()
-            .map(|output| (format!("Recorded reply: {}", s.what), output.clone())))
+        let results = w
+            .steps
+            .iter()
+            .filter_map(|s| {
+                s.reported_output
+                    .as_ref()
+                    .map(|output| (format!("Recorded reply: {}", s.what), output.clone()))
+            })
             .collect();
-        Self { task: w.asked.clone(), status, current, dependency, results }
+        Self {
+            task: w.asked.clone(),
+            status,
+            current,
+            dependency,
+            results,
+        }
     }
 
     fn html(&self) -> String {
         let mut results = String::new();
         for (step, output) in &self.results {
-            results.push_str(&format!("<dt>{}</dt><dd style='white-space:pre-wrap;overflow-wrap:anywhere'>{}</dd>", esc(step), esc(output)));
+            results.push_str(&format!(
+                "<dt>{}</dt><dd style='white-space:pre-wrap;overflow-wrap:anywhere'>{}</dd>",
+                esc(step),
+                esc(output)
+            ));
         }
         if results.is_empty() {
             results.push_str("<dd>No action output recorded yet.</dd>");
@@ -348,17 +424,28 @@ pub fn now_page(v: &NowView) -> String {
         None => String::new(),
     };
     // Pause turns the microphone off too (28 Sep 2026), and says so.
-    let (pause_what, pause_label) = if v.paused { ("resume", "Carry on and listen again") } else { ("pause", "Pause Atlas and stop listening") };
+    let (pause_what, pause_label) = if v.paused {
+        ("resume", "Carry on and listen again")
+    } else {
+        ("pause", "Pause Atlas and stop listening")
+    };
     let background = if v.background.is_empty() {
         String::new()
     } else {
-        format!("<div class=box><div class=lab>Also running</div><p>{}</p></div>", esc(&v.background.join(" · ")))
+        format!(
+            "<div class=box><div class=lab>Also running</div><p>{}</p></div>",
+            esc(&v.background.join(" · "))
+        )
     };
     let background = if v.held.is_empty() {
         background
     } else {
         let n = v.held.len();
-        let items: String = v.held.iter().map(|t| format!("<li>{}</li>", esc(t))).collect();
+        let items: String = v
+            .held
+            .iter()
+            .map(|t| format!("<li>{}</li>", esc(t)))
+            .collect();
         format!(
             "{background}<div class=box><div class=lab>Kept for you</div><p>{n} note{} that couldn't reach you when {} came. \
              I'll tell you {} when you're next back at the computer.</p><ul>{items}</ul></div>",
@@ -444,7 +531,10 @@ pub fn urldecode(s: &str) -> String {
                 i += 1;
             }
             b'%' if i + 2 < b.len() => {
-                match std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                match std::str::from_utf8(&b[i + 1..i + 3])
+                    .ok()
+                    .and_then(|h| u8::from_str_radix(h, 16).ok())
+                {
                     Some(v) => {
                         out.push(v);
                         i += 3;

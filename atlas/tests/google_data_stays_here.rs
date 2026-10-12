@@ -24,7 +24,10 @@ impl Llm for Counting {
         Ok(self.0.to_string())
     }
     fn complete_long(&self, s: &str, u: &str, _m: u32) -> atlas::error::Result<LongReply> {
-        self.complete(s, u).map(|text| LongReply { text, cut_off: false })
+        self.complete(s, u).map(|text| LongReply {
+            text,
+            cut_off: false,
+        })
     }
 }
 
@@ -45,7 +48,10 @@ fn the_free_online_models_are_not_asked_while_google_data_is_held() {
         }),
     );
     atlas::brain::set_google_data_held(true);
-    let e = free.complete("s", "what's on my calendar").unwrap_err().to_string();
+    let e = free
+        .complete("s", "what's on my calendar")
+        .unwrap_err()
+        .to_string();
     assert!(e.contains("Google"), "{e}");
     assert_eq!(*sent.lock().unwrap(), 0, "nothing left the machine");
     atlas::brain::set_google_data_held(false);
@@ -61,7 +67,10 @@ fn the_fallback_stays_local_unless_the_second_model_is_your_own() {
     let both = FallbackLlm::new(local.clone(), Some(online.clone()));
 
     atlas::brain::set_google_data_held(true);
-    assert!(both.complete("s", "u").is_err(), "the local model's failure stands");
+    assert!(
+        both.complete("s", "u").is_err(),
+        "the local model's failure stands"
+    );
     assert!(both.complete_hard("s", "u").is_err());
     assert!(both.complete_long("s", "u", 100).is_err());
     assert_eq!(calls(&online), 0, "a third party was never asked");
@@ -72,7 +81,11 @@ fn the_fallback_stays_local_unless_the_second_model_is_your_own() {
     assert_eq!(yours.complete_hard("s", "u").unwrap(), "own");
 
     atlas::brain::set_google_data_held(false);
-    assert_eq!(both.complete("s", "u").unwrap(), "online", "as before when nothing from Google is held");
+    assert_eq!(
+        both.complete("s", "u").unwrap(),
+        "online",
+        "as before when nothing from Google is held"
+    );
 }
 
 #[test]
@@ -88,15 +101,27 @@ fn muse_takes_no_background_work_while_google_data_is_held_but_answers_you() {
             Ok(r#"{"choices":[{"message":{"content":"muse"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}"#.to_string())
         }),
     ));
-    let first = atlas::muse::MuseFirst { muse: muse.clone(), rest: rest.clone() };
+    let first = atlas::muse::MuseFirst {
+        muse: muse.clone(),
+        rest: rest.clone(),
+    };
     atlas::muse::restore(&atlas::muse::Ledger::default(), 5.0, atlas::store::now());
     atlas::muse::set_key(Some("mk-test-key-0123456789".into()));
 
     atlas::brain::set_google_data_held(true);
     assert_eq!(first.complete_hard("s", "the week ahead").unwrap(), "local");
-    assert_eq!(*asked.lock().unwrap(), 0, "the conversation never went to Muse");
+    assert_eq!(
+        *asked.lock().unwrap(),
+        0,
+        "the conversation never went to Muse"
+    );
     // "ask Muse ..." carries only your own question.
-    assert_eq!(muse.ask("s", "what's a good pasta", 100, "low").unwrap().text, "muse");
+    assert_eq!(
+        muse.ask("s", "what's a good pasta", 100, "low")
+            .unwrap()
+            .text,
+        "muse"
+    );
 
     atlas::brain::set_google_data_held(false);
     assert_eq!(first.complete_hard("s", "u").unwrap(), "muse");
@@ -110,30 +135,56 @@ fn a_google_calendar_or_sign_in_marks_the_data_as_held() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let store = atlas::store::Store::new(dir.clone());
-    let p = atlas::platform::mock::MockPlatform::new(vec![atlas::platform::Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let p = atlas::platform::mock::MockPlatform::new(vec![atlas::platform::Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     let c = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
-    let mut d = atlas::daemon::Daemon::new(&c, &p, None, store.clone(), atlas::proactive::Proactive::new(atlas::proactive::ProactiveConfig::default()));
+    let mut d = atlas::daemon::Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        atlas::proactive::Proactive::new(atlas::proactive::ProactiveConfig::default()),
+    );
 
     atlas::brain::set_google_data_held(true);
     atlas::connecting::note_google_data(&mut d);
-    assert!(!atlas::brain::google_data_held(), "nothing from Google: the gate opens again");
+    assert!(
+        !atlas::brain::google_data_held(),
+        "nothing from Google: the gate opens again"
+    );
 
     let link = atlas::connect::CalendarLink {
         name: "Google Calendar (me@gmail.com)".into(),
         url: atlas::oauthlink::calendar_key(atlas::oauthlink::Provider::Google, "me@gmail.com"),
         ..Default::default()
     };
-    store.save(atlas::connect::CALENDAR_LINKS, &vec![link]).unwrap();
+    store
+        .save(atlas::connect::CALENDAR_LINKS, &vec![link])
+        .unwrap();
     atlas::connecting::note_google_data(&mut d);
-    assert!(atlas::brain::google_data_held(), "a Google calendar is connected");
+    assert!(
+        atlas::brain::google_data_held(),
+        "a Google calendar is connected"
+    );
 
     // An Outlook calendar is Microsoft's, not Google's.
     let ms = atlas::connect::CalendarLink {
         name: "Outlook".into(),
-        url: atlas::oauthlink::calendar_key(atlas::oauthlink::Provider::Microsoft, "me@outlook.com"),
+        url: atlas::oauthlink::calendar_key(
+            atlas::oauthlink::Provider::Microsoft,
+            "me@outlook.com",
+        ),
         ..Default::default()
     };
-    store.save(atlas::connect::CALENDAR_LINKS, &vec![ms]).unwrap();
+    store
+        .save(atlas::connect::CALENDAR_LINKS, &vec![ms])
+        .unwrap();
     atlas::connecting::note_google_data(&mut d);
     assert!(!atlas::brain::google_data_held());
     atlas::brain::set_google_data_held(false);

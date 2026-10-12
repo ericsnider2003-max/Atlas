@@ -43,9 +43,14 @@ fn fixture() -> (Vec<f32>, usize, usize) {
 fn blobs_are_found_in_a_fixed_order_with_the_boxes_around_them() {
     let (m, w, h) = fixture();
     let found = blobs(&m, w, h, 0.3);
-    let boxes: Vec<(usize, usize, usize, usize)> =
-        found.iter().map(|s| (s.x, s.y, s.width, s.height)).collect();
-    assert_eq!(boxes, vec![(1, 1, 3, 2), (6, 1, 3, 2), (10, 5, 2, 1), (2, 6, 4, 2)]);
+    let boxes: Vec<(usize, usize, usize, usize)> = found
+        .iter()
+        .map(|s| (s.x, s.y, s.width, s.height))
+        .collect();
+    assert_eq!(
+        boxes,
+        vec![(1, 1, 3, 2), (6, 1, 3, 2), (10, 5, 2, 1), (2, 6, 4, 2)]
+    );
 
     let scores: Vec<f32> = found.iter().map(|s| strength(&m, w, s)).collect();
     for (got, want) in scores.iter().zip([0.90f32, 0.80, 0.31, 0.70]) {
@@ -79,12 +84,21 @@ fn a_box_is_grown_back_out_by_the_unclip_formula() {
         .map(|s| grow(s, 2.0, w, h))
         .map(|s| (s.x, s.y, s.width, s.height))
         .collect();
-    assert_eq!(grown, vec![(0, 0, 5, 4), (5, 0, 5, 4), (9, 4, 3, 3), (1, 5, 6, 4)]);
+    assert_eq!(
+        grown,
+        vec![(0, 0, 5, 4), (5, 0, 5, 4), (9, 4, 3, 3), (1, 5, 6, 4)]
+    );
 }
 
 #[test]
 fn growing_a_box_at_the_edge_stops_at_the_edge() {
-    let s = Strip { x: 0, y: 0, width: 4, height: 4, strength: 1.0 };
+    let s = Strip {
+        x: 0,
+        y: 0,
+        width: 4,
+        height: 4,
+        strength: 1.0,
+    };
     let g = grow(&s, 2.0, 10, 10);
     assert_eq!((g.x, g.y), (0, 0), "can't grow past the picture");
     // area 16, perimeter 16, d = round(16*2/16) = 2
@@ -116,22 +130,32 @@ fn a_box_is_scored_before_it_is_grown_and_not_after() {
     // would silently throw away is fine print.
     let (m, w, h) = fixture();
     let found = find(&m, w, h, &cfg());
-    let strongest = found.strips.iter().map(|s| s.strength).fold(0.0f32, f32::max);
+    let strongest = found
+        .strips
+        .iter()
+        .map(|s| s.strength)
+        .fold(0.0f32, f32::max);
     assert!((strongest - 0.90).abs() < 1e-6, "{strongest}");
 
     // What the wrong order would have given for that same lump: the 3x2 lump
     // of 0.90 grown to 5x4, so six pixels of 0.90 and fourteen of 0.02.
     let wrong = (6.0 * 0.90 + 14.0 * 0.02) / 20.0;
     assert!(wrong < 0.5, "{wrong}");
-    assert!(wrong < strongest, "scoring after growing is strictly worse: {wrong}");
+    assert!(
+        wrong < strongest,
+        "scoring after growing is strictly worse: {wrong}"
+    );
 }
 
 #[test]
 fn everything_comes_back_in_reading_order() {
     let (m, w, h) = fixture();
     let found = find(&m, w, h, &cfg());
-    let boxes: Vec<(usize, usize, usize, usize)> =
-        found.strips.iter().map(|s| (s.x, s.y, s.width, s.height)).collect();
+    let boxes: Vec<(usize, usize, usize, usize)> = found
+        .strips
+        .iter()
+        .map(|s| (s.x, s.y, s.width, s.height))
+        .collect();
     assert_eq!(boxes, vec![(0, 0, 5, 4), (5, 0, 5, 4), (1, 5, 6, 4)]);
     assert_eq!(found.over_the_limit, 0);
 }
@@ -141,7 +165,13 @@ fn the_left_word_wins_its_row_even_when_it_sits_lower() {
     // Sorting by y alone puts the second word of a line first whenever it
     // happens to sit a pixel higher, which is most of the time — and the
     // result reads as a shuffled word list while looking like it worked.
-    let s = |x: usize, y: usize| Strip { x, y, width: 20, height: 8, strength: 0.9 };
+    let s = |x: usize, y: usize| Strip {
+        x,
+        y,
+        width: 20,
+        height: 8,
+        strength: 0.9,
+    };
     let order = reading_order(vec![s(50, 10), s(5, 11), s(5, 40)]);
     let xy: Vec<(usize, usize)> = order.iter().map(|r| (r.x, r.y)).collect();
     assert_eq!(xy, vec![(5, 11), (50, 10), (5, 40)]);
@@ -151,9 +181,26 @@ fn the_left_word_wins_its_row_even_when_it_sits_lower() {
 fn a_full_stop_joins_the_line_it_belongs_to() {
     // Matched by overlap, not by the distance between centres: a full stop and
     // the word before it have very different heights and the same line.
-    let word = Strip { x: 0, y: 10, width: 40, height: 20, strength: 0.9 };
-    let stop = Strip { x: 42, y: 26, width: 3, height: 3, strength: 0.9 };
-    assert!(shares_a_line(word.y, word.y + word.height, stop.y, stop.y + stop.height));
+    let word = Strip {
+        x: 0,
+        y: 10,
+        width: 40,
+        height: 20,
+        strength: 0.9,
+    };
+    let stop = Strip {
+        x: 42,
+        y: 26,
+        width: 3,
+        height: 3,
+        strength: 0.9,
+    };
+    assert!(shares_a_line(
+        word.y,
+        word.y + word.height,
+        stop.y,
+        stop.y + stop.height
+    ));
     let order = reading_order(vec![stop, word]);
     assert_eq!(order[0].x, 0, "the word comes first");
     assert_eq!(order.len(), 2);
@@ -162,7 +209,10 @@ fn a_full_stop_joins_the_line_it_belongs_to() {
 #[test]
 fn two_lines_are_two_lines() {
     assert!(shares_a_line(0, 10, 2, 12));
-    assert!(!shares_a_line(0, 10, 9, 20), "one pixel of overlap is not a line");
+    assert!(
+        !shares_a_line(0, 10, 9, 20),
+        "one pixel of overlap is not a line"
+    );
     assert!(!shares_a_line(0, 10, 10, 20), "touching is not overlapping");
 }
 
@@ -185,7 +235,10 @@ fn the_limit_cuts_the_weakest_and_says_how_many() {
 #[test]
 fn an_empty_map_finds_nothing_rather_than_panicking() {
     assert!(blobs(&[], 0, 0, 0.3).is_empty());
-    assert!(blobs(&[0.9, 0.9], 8, 8, 0.3).is_empty(), "too few values for the size");
+    assert!(
+        blobs(&[0.9, 0.9], 8, 8, 0.3).is_empty(),
+        "too few values for the size"
+    );
     assert!(find(&[], 0, 0, &cfg()).strips.is_empty());
 }
 
@@ -289,13 +342,19 @@ fn values_that_are_already_odds_are_not_softmaxed_a_second_time() {
     assert_eq!(got.text, "at");
     assert!((got.sure - 0.99).abs() < 1e-5, "{}", got.sure);
     // What a second softmax would have said instead, from the reference run.
-    assert!((got.sure - 0.069_539).abs() > 0.5, "that is the softmaxed-twice number");
+    assert!(
+        (got.sure - 0.069_539).abs() > 0.5,
+        "that is the softmaxed-twice number"
+    );
 }
 
 #[test]
 fn raw_scores_are_recognised_as_raw_scores() {
     let vals = steps(&[ix('a')]);
-    assert!(!looks_like_odds(&vals, 1, CLASSES), "a row of 4.0 is not a distribution");
+    assert!(
+        !looks_like_odds(&vals, 1, CLASSES),
+        "a row of 4.0 is not a distribution"
+    );
     let negative: Vec<f32> = vec![-1.0; CLASSES];
     assert!(!looks_like_odds(&negative, 1, CLASSES));
 }
@@ -317,7 +376,10 @@ fn the_alphabet_and_the_class_count_agree() {
     assert_eq!(ALPHABET.chars().count(), 36);
     assert!(ALPHABET.starts_with('0'));
     assert!(ALPHABET.ends_with('z'));
-    assert!(!ALPHABET.chars().any(|c| c.is_uppercase()), "the model has no capitals");
+    assert!(
+        !ALPHABET.chars().any(|c| c.is_uppercase()),
+        "the model has no capitals"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -325,7 +387,11 @@ fn the_alphabet_and_the_class_count_agree() {
 // ---------------------------------------------------------------------------
 
 fn said(text: &str, sure: f32) -> Lettering {
-    Lettering { at: atlas::vision::Patch::new(0.0, 0.0, 0.1, 0.05), text: text.into(), sure }
+    Lettering {
+        at: atlas::vision::Patch::new(0.0, 0.0, 0.1, 0.05),
+        text: text.into(),
+        sure,
+    }
 }
 
 #[test]
@@ -338,7 +404,10 @@ fn a_screenful_weights_its_confidence_by_how_long_each_word_is() {
     };
     let want = (1.0 * 1.0 + 0.5 * 11.0) / 12.0;
     assert!((s.sure() - want).abs() < 1e-5, "{} vs {want}", s.sure());
-    assert!(s.sure() < 0.6, "the long doubtful word dominates, as it should");
+    assert!(
+        s.sure() < 0.6,
+        "the long doubtful word dominates, as it should"
+    );
 }
 
 #[test]
@@ -346,10 +415,22 @@ fn a_half_read_screen_is_refused_rather_than_handed_on() {
     // OCR does not fail by returning an error. It fails by returning
     // confident, plausible, wrong text, and an assistant that acts on that is
     // worse than one that says it couldn't read the screen.
-    let poor = Screenful { lettering: vec![said("acount", 0.55)], unsure: 12, unread: 0 };
+    let poor = Screenful {
+        lettering: vec![said("acount", 0.55)],
+        unsure: 12,
+        unread: 0,
+    };
     assert!(!poor.worth_acting_on());
-    assert!(poor.spoken().contains("rather not act on it"), "{}", poor.spoken());
-    assert!(poor.spoken().contains("12"), "the dropped ones are said: {}", poor.spoken());
+    assert!(
+        poor.spoken().contains("rather not act on it"),
+        "{}",
+        poor.spoken()
+    );
+    assert!(
+        poor.spoken().contains("12"),
+        "the dropped ones are said: {}",
+        poor.spoken()
+    );
 
     let good = Screenful {
         lettering: vec![said("balance", 0.95), said("available", 0.92)],
@@ -364,7 +445,11 @@ fn a_half_read_screen_is_refused_rather_than_handed_on() {
 fn one_word_is_never_enough_however_sure_it_is() {
     // A single word at ninety-nine per cent is the shape a misread takes: the
     // model is certain about the one thing it found and found nothing else.
-    let one = Screenful { lettering: vec![said("send", 0.99)], unsure: 0, unread: 0 };
+    let one = Screenful {
+        lettering: vec![said("send", 0.99)],
+        unsure: 0,
+        unread: 0,
+    };
     assert!(!one.worth_acting_on());
 }
 
@@ -386,7 +471,11 @@ fn an_empty_screenful_says_nothing_was_there() {
     assert_eq!(s.sure(), 0.0);
     assert_eq!(s.words(), 0);
     assert!(!s.worth_acting_on());
-    assert!(s.spoken().contains("couldn't find any words"), "{}", s.spoken());
+    assert!(
+        s.spoken().contains("couldn't find any words"),
+        "{}",
+        s.spoken()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -397,7 +486,11 @@ fn an_empty_screenful_says_nothing_was_there() {
 fn reading_needs_both_models_and_says_so() {
     let nowhere = std::path::Path::new("/definitely/not/here");
     let missing = atlas::infer::whats_missing(nowhere, &Kind::for_reading());
-    assert_eq!(missing.len(), 2, "a finder with no reader is not half the feature");
+    assert_eq!(
+        missing.len(),
+        2,
+        "a finder with no reader is not half the feature"
+    );
     assert!(!atlas::words::Reader::installed(nowhere));
     let spoken = atlas::infer::spoken(&missing);
     assert!(spoken.contains("finding words"), "{spoken}");
@@ -414,7 +507,10 @@ fn the_reader_is_fed_one_grey_channel_and_not_three() {
     assert_eq!(r.layout.channels(), 1);
     assert_eq!(r.values(), 100 * 32);
     assert_eq!(r.shape(), [1, 1, 32, 100]);
-    assert!(r.width > r.height, "a strip of a line, not a square of picture");
+    assert!(
+        r.width > r.height,
+        "a strip of a line, not a square of picture"
+    );
 }
 
 #[test]
@@ -436,7 +532,11 @@ fn one_pixel_through_each_recipe_lands_where_the_reference_said() {
     let pixel: Vec<u8> = vec![200, 100, 50];
     let finder = Kind::TextFind.recipe();
     let fitted = atlas::infer::fit(&pixel, 1, 1, 1, 1);
-    let one = atlas::infer::Recipe { width: 1, height: 1, ..finder };
+    let one = atlas::infer::Recipe {
+        width: 1,
+        height: 1,
+        ..finder
+    };
     let out = atlas::infer::arrange(&fitted, &one);
     assert_eq!(out.len(), 3);
     for (got, want) in out.iter().zip([-1.261_666f32, -0.285_014, 1.681_394]) {
@@ -444,7 +544,11 @@ fn one_pixel_through_each_recipe_lands_where_the_reference_said() {
     }
 
     let reader = Kind::TextRead.recipe();
-    let grey = atlas::infer::Recipe { width: 1, height: 1, ..reader };
+    let grey = atlas::infer::Recipe {
+        width: 1,
+        height: 1,
+        ..reader
+    };
     let out = atlas::infer::arrange(&fitted, &grey);
     assert_eq!(out.len(), 1, "one channel out, whatever went in");
     // 200*0.299 + 100*0.587 + 50*0.114 = 124.2; (124.2 - 127.5) / 127.5
@@ -476,8 +580,14 @@ fn the_two_reading_models_do_not_collide_with_any_other() {
     assert!(files.contains(&"text_find.onnx"));
     assert!(files.contains(&"text_read.onnx"));
     for k in Kind::for_reading() {
-        assert!(!Kind::for_seeing().contains(&k), "{k:?} is in two install lists");
-        assert!(!Kind::for_hands().contains(&k), "{k:?} is in two install lists");
+        assert!(
+            !Kind::for_seeing().contains(&k),
+            "{k:?} is in two install lists"
+        );
+        assert!(
+            !Kind::for_hands().contains(&k),
+            "{k:?} is in two install lists"
+        );
     }
 }
 
@@ -496,7 +606,11 @@ fn the_screen_is_grabbed_as_raw_bytes_and_never_as_a_file() {
     assert!(joined.contains("-pix_fmt rgb24"), "{joined}");
     assert!(joined.contains("800x400"), "{joined}");
     assert!(joined.contains("-offset_x 100"), "{joined}");
-    assert_eq!(a.last().map(|s| s.as_str()), Some("-"), "to stdout, not to a file");
+    assert_eq!(
+        a.last().map(|s| s.as_str()),
+        Some("-"),
+        "to stdout, not to a file"
+    );
     assert!(!joined.contains(".png"), "no file anywhere: {joined}");
     // One frame. Without this it grabs until it is stopped.
     assert!(joined.contains("-frames:v 1"), "{joined}");
@@ -514,7 +628,10 @@ fn a_short_read_is_refused_rather_than_read_anyway() {
     let said = format!("{}", short.unwrap_err());
     assert!(said.contains("half a sentence"), "{said}");
     assert!(atlas::words::whole_picture(1, 800, 400).is_err());
-    assert!(atlas::words::whole_picture(9_999_999, 8, 8).is_err(), "too many is wrong too");
+    assert!(
+        atlas::words::whole_picture(9_999_999, 8, 8).is_err(),
+        "too many is wrong too"
+    );
 }
 
 /// A PNG header: the signature, a chunk length, IHDR, then width and height.
@@ -557,7 +674,10 @@ fn a_picture_states_its_own_size_in_its_first_few_bytes() {
     // Progressive. Checking only 0xC0 fails on exactly the pictures a phone
     // makes, and fails by returning nothing rather than by being wrong — so
     // it would look like "Atlas can't read photos from my phone".
-    assert_eq!(picture_size(&jpeg_header(2560, 1392, 0xC2)), Some((2560, 1392)));
+    assert_eq!(
+        picture_size(&jpeg_header(2560, 1392, 0xC2)),
+        Some((2560, 1392))
+    );
     assert_eq!(picture_size(&jpeg_header(300, 7, 0xC1)), Some((300, 7)));
 }
 
@@ -566,7 +686,11 @@ fn something_that_is_not_a_picture_is_not_given_a_size() {
     use atlas::words::picture_size;
     assert_eq!(picture_size(&[]), None);
     assert_eq!(picture_size(b"hello world, definitely not a picture"), None);
-    assert_eq!(picture_size(&[0xFF, 0xD8, 0x00, 0x00]), None, "jpeg start, then rubbish");
+    assert_eq!(
+        picture_size(&[0xFF, 0xD8, 0x00, 0x00]),
+        None,
+        "jpeg start, then rubbish"
+    );
     let mut sig_only = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
     sig_only.extend_from_slice(&[0u8; 16]);
     assert_eq!(picture_size(&sig_only), None, "png signature with no IHDR");

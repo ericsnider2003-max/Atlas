@@ -53,7 +53,9 @@ fn tools_fields() -> Vec<String> {
 fn read_somewhere(field: &str) -> bool {
     let needle = format!(".{field}");
     let dir = std::path::Path::new("src");
-    let Ok(entries) = fs::read_dir(dir) else { return false };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return false;
+    };
     let mut paths: Vec<std::path::PathBuf> = Vec::new();
     fn walk(d: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
         let Ok(rd) = fs::read_dir(d) else { return };
@@ -76,7 +78,9 @@ fn read_somewhere(field: &str) -> bool {
     // reported `record_seconds` as dead when voice.rs reads it a few hundred
     // lines below the struct.
     for p in paths {
-        let Ok(src) = fs::read_to_string(&p) else { continue };
+        let Ok(src) = fs::read_to_string(&p) else {
+            continue;
+        };
         // Production only. A setting read solely by its own module's tests is
         // exactly the shape this whole file exists to catch.
         let (live, _) = common::split_production_and_tests(&src);
@@ -155,7 +159,10 @@ fn every_entry_says_why() {
         );
     }
     for (key, why) in atlas::config::NO_FIELD_TO_LAND_IN {
-        assert!(why.len() > 12, "{key} is listed with no useful reason: {why:?}");
+        assert!(
+            why.len() > 12,
+            "{key} is listed with no useful reason: {why:?}"
+        );
     }
 }
 
@@ -197,5 +204,8 @@ fn the_scan_still_works() {
         !read_somewhere("a_field_that_does_not_exist_anywhere"),
         "the read-detector says yes to everything"
     );
-    assert!(tools_fields().len() > 40, "ToolsConfig's fields stopped being found");
+    assert!(
+        tools_fields().len() > 40,
+        "ToolsConfig's fields stopped being found"
+    );
 }

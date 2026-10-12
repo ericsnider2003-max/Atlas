@@ -13,9 +13,9 @@ use atlas::upgrade::{
 };
 #[cfg(unix)]
 use atlas::upgrade::{check_new_build, swap_checked, Swapped};
-use std::path::PathBuf;
 #[cfg(unix)]
 use std::path::Path;
+use std::path::PathBuf;
 #[cfg(unix)]
 use std::time::Duration;
 
@@ -53,8 +53,15 @@ fn this_build_passes_its_own_health_check_on_a_fresh_install() {
     assert!(lines.iter().any(|l| l.contains("shipped settings load")));
     assert!(lines.iter().any(|l| l.contains("state folder writes")));
     // It leaves nothing behind: no scratch settings, no probe file.
-    let left: Vec<_> = std::fs::read_dir(root.join("data/state")).unwrap().flatten().map(|e| e.file_name()).collect();
-    assert!(left.is_empty(), "the check cleans up after itself: {left:?}");
+    let left: Vec<_> = std::fs::read_dir(root.join("data/state"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name())
+        .collect();
+    assert!(
+        left.is_empty(),
+        "the check cleans up after itself: {left:?}"
+    );
 }
 
 #[test]
@@ -64,8 +71,14 @@ fn a_health_check_that_cannot_keep_state_says_so() {
     std::fs::write(root.join("state"), "not a folder").unwrap();
     let r = health_check(&root, &root.join("config"), &root.join("state"));
     let lines = r.expect_err("no state folder is not healthy");
-    assert!(lines.iter().any(|l| l.contains("can't keep state")), "{lines:?}");
-    assert!(lines.iter().any(|l| l.starts_with("(passed)")), "and says how far it got");
+    assert!(
+        lines.iter().any(|l| l.contains("can't keep state")),
+        "{lines:?}"
+    );
+    assert!(
+        lines.iter().any(|l| l.starts_with("(passed)")),
+        "and says how far it got"
+    );
 }
 
 #[test]
@@ -79,15 +92,35 @@ fn a_build_that_passes_its_check_goes_in_on_trial() {
     // file's SHA-256 -- not by version alone (every build said 0.1.0).
     let old_tag = tag_of(&running, version());
     let new_tag = tag_of(&root.join("updates/atlas"), "9.9.9");
-    let r = swap_checked(&root, &running, Duration::from_secs(20)).unwrap().unwrap();
+    let r = swap_checked(&root, &running, Duration::from_secs(20))
+        .unwrap()
+        .unwrap();
     println!("LIVE [o1] {r:?}");
-    assert_eq!(r, Swapped::Started { path: running.clone(), version: "9.9.9".into(), tag: new_tag.clone(), previous: old_tag.clone() });
-    assert!(new_tag.starts_with("9.9.9-") && new_tag.len() == "9.9.9-".len() + 12, "{new_tag}");
+    assert_eq!(
+        r,
+        Swapped::Started {
+            path: running.clone(),
+            version: "9.9.9".into(),
+            tag: new_tag.clone(),
+            previous: old_tag.clone()
+        }
+    );
+    assert!(
+        new_tag.starts_with("9.9.9-") && new_tag.len() == "9.9.9-".len() + 12,
+        "{new_tag}"
+    );
     assert!(std::fs::read_to_string(&running).unwrap().contains("9.9.9"));
-    assert!(std::fs::read_to_string(keep_old_at(&root, &old_tag)).unwrap().contains("echo old"));
+    assert!(std::fs::read_to_string(keep_old_at(&root, &old_tag))
+        .unwrap()
+        .contains("echo old"));
     let t = current_trial(&root).expect("on trial");
-    assert_eq!((t.new.as_str(), t.previous.as_str(), t.starts), (new_tag.as_str(), old_tag.as_str(), 0));
-    assert!(update_history(&root).iter().any(|l| l.contains(&format!("{new_tag} put in place")) && l.contains("on trial")));
+    assert_eq!(
+        (t.new.as_str(), t.previous.as_str(), t.starts),
+        (new_tag.as_str(), old_tag.as_str(), 0)
+    );
+    assert!(update_history(&root)
+        .iter()
+        .any(|l| l.contains(&format!("{new_tag} put in place")) && l.contains("on trial")));
 }
 
 #[test]
@@ -96,33 +129,66 @@ fn a_build_that_fails_its_check_is_set_aside_and_the_running_one_put_back() {
     let root = fresh("fail");
     let running = root.join("atlas");
     script(&running, "echo old");
-    drop_build(&root, "echo 'unhealthy: its shipped settings don'\"'\"'t load'; exit 1");
+    drop_build(
+        &root,
+        "echo 'unhealthy: its shipped settings don'\"'\"'t load'; exit 1",
+    );
     let tag = tag_of(&root.join("updates/atlas"), "9.9.9");
     let old_tag = tag_of(&running, version());
-    let r = swap_checked(&root, &running, Duration::from_secs(20)).unwrap().unwrap();
+    let r = swap_checked(&root, &running, Duration::from_secs(20))
+        .unwrap()
+        .unwrap();
     println!("LIVE [o1] {r:?}");
     match &r {
-        Swapped::RolledBack { version, tag: t, why } => {
+        Swapped::RolledBack {
+            version,
+            tag: t,
+            why,
+        } => {
             assert_eq!((version.as_str(), t), ("9.9.9", &tag));
-            assert!(why.contains("shipped settings"), "the build's own reason is kept: {why}");
+            assert!(
+                why.contains("shipped settings"),
+                "the build's own reason is kept: {why}"
+            );
         }
         other => panic!("expected a rollback, got {other:?}"),
     }
-    assert!(std::fs::read_to_string(&running).unwrap().contains("echo old"), "the running one is back");
-    assert!(std::fs::read_to_string(failed_at(&root, &tag)).unwrap().contains("9.9.9"), "the failed one kept as evidence");
+    assert!(
+        std::fs::read_to_string(&running)
+            .unwrap()
+            .contains("echo old"),
+        "the running one is back"
+    );
+    assert!(
+        std::fs::read_to_string(failed_at(&root, &tag))
+            .unwrap()
+            .contains("9.9.9"),
+        "the failed one kept as evidence"
+    );
     assert!(!keep_old_at(&root, &old_tag).exists());
     assert!(is_known_bad(&root, &tag));
-    assert!(!is_known_bad(&root, "9.9.9"), "known bad by build, not by version");
-    assert!(current_trial(&root).is_none(), "no trial for a build that never started");
+    assert!(
+        !is_known_bad(&root, "9.9.9"),
+        "known bad by build, not by version"
+    );
+    assert!(
+        current_trial(&root).is_none(),
+        "no trial for a build that never started"
+    );
     // The same build dropped in again is refused, not tried a second time.
     // The same bytes: since 28 Sep 2026 a build is known by its fingerprint,
     // so only the very build that failed is refused (a fixed one with the
     // same version is tried, `updating_without_reinstalling`).
-    drop_build(&root, "echo 'unhealthy: its shipped settings don'\"'\"'t load'; exit 1");
+    drop_build(
+        &root,
+        "echo 'unhealthy: its shipped settings don'\"'\"'t load'; exit 1",
+    );
     let again = swap_checked(&root, &running, Duration::from_secs(20)).unwrap();
     println!("LIVE [o1] dropped again: {again:?}");
     assert!(again.unwrap_err().contains("already failed here"));
-    assert!(std::fs::read_to_string(&running).unwrap().contains("echo old"));
+    assert!(std::fs::read_to_string(&running)
+        .unwrap()
+        .contains("echo old"));
 }
 
 #[test]
@@ -133,13 +199,20 @@ fn a_build_that_hangs_on_its_check_counts_as_failed() {
     script(&running, "echo old");
     drop_build(&root, "sleep 30");
     let started = std::time::Instant::now();
-    let r = swap_checked(&root, &running, Duration::from_secs(1)).unwrap().unwrap();
-    assert!(started.elapsed() < Duration::from_secs(15), "it was given up on, not waited out");
+    let r = swap_checked(&root, &running, Duration::from_secs(1))
+        .unwrap()
+        .unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(15),
+        "it was given up on, not waited out"
+    );
     match r {
         Swapped::RolledBack { why, .. } => assert!(why.contains("didn't finish"), "{why}"),
         other => panic!("expected a rollback, got {other:?}"),
     }
-    assert!(std::fs::read_to_string(&running).unwrap().contains("echo old"));
+    assert!(std::fs::read_to_string(&running)
+        .unwrap()
+        .contains("echo old"));
 }
 
 #[test]
@@ -150,7 +223,11 @@ fn a_build_that_exits_cleanly_without_saying_healthy_is_not_trusted() {
     script(&exe, "exit 0");
     let r = check_new_build(&exe, Duration::from_secs(10));
     assert!(r.unwrap_err().contains("never said it was healthy"));
-    assert!(check_new_build(&root.join("missing"), Duration::from_secs(1)).unwrap_err().contains("didn't start"));
+    assert!(
+        check_new_build(&root.join("missing"), Duration::from_secs(1))
+            .unwrap_err()
+            .contains("didn't start")
+    );
 }
 
 #[test]
@@ -166,15 +243,29 @@ fn starts_that_never_get_through_bring_the_previous_build_back() {
     }
     let step = trial_on_start(&root, &running);
     println!("LIVE [o1] start {}: {step:?}", TRIAL_STARTS + 1);
-    assert_eq!(step, TrialStep::RolledBack { failed: new.clone(), previous: "0.0.1".into() });
-    assert_eq!(std::fs::read_to_string(&running).unwrap(), "the build that worked");
-    assert_eq!(std::fs::read_to_string(failed_at(&root, &new)).unwrap(), "the new build");
+    assert_eq!(
+        step,
+        TrialStep::RolledBack {
+            failed: new.clone(),
+            previous: "0.0.1".into()
+        }
+    );
+    assert_eq!(
+        std::fs::read_to_string(&running).unwrap(),
+        "the build that worked"
+    );
+    assert_eq!(
+        std::fs::read_to_string(failed_at(&root, &new)).unwrap(),
+        "the new build"
+    );
     assert!(is_known_bad(&root, &new));
     assert!(current_trial(&root).is_none());
     for l in update_history(&root) {
         println!("LIVE [updates.log] {l}");
     }
-    assert!(update_history(&root).iter().any(|l| l.contains("never got through") && l.contains("back on 0.0.1")));
+    assert!(update_history(&root)
+        .iter()
+        .any(|l| l.contains("never got through") && l.contains("back on 0.0.1")));
 }
 
 #[test]
@@ -186,12 +277,18 @@ fn a_start_that_gets_through_ends_the_trial_and_keeps_the_build() {
     let new = tag_of(&running, version());
     begin_trial(&root, &new, "0.0.1");
     assert_eq!(trial_on_start(&root, &running), TrialStep::Trying(1));
-    assert!(!trial_passed_by(&root, "0.0.2-aaaaaaaaaaaa"), "another build's start doesn't end this trial");
+    assert!(
+        !trial_passed_by(&root, "0.0.2-aaaaaaaaaaaa"),
+        "another build's start doesn't end this trial"
+    );
     assert!(trial_passed_by(&root, &new));
     assert!(!trial_passed_by(&root, &new), "only once");
     assert_eq!(trial_on_start(&root, &running), TrialStep::Settled);
     assert_eq!(std::fs::read_to_string(&running).unwrap(), "the new build");
-    assert!(keep_old_at(&root, "0.0.1").exists(), "the previous one stays for going back by hand");
+    assert!(
+        keep_old_at(&root, "0.0.1").exists(),
+        "the previous one stays for going back by hand"
+    );
     assert!(!is_known_bad(&root, &new));
 }
 
@@ -203,7 +300,10 @@ fn a_trial_of_some_other_version_is_dropped_not_acted_on() {
     begin_trial(&root, "7.7.7", "0.0.1");
     assert_eq!(trial_on_start(&root, &running), TrialStep::Settled);
     assert!(current_trial(&root).is_none());
-    assert_eq!(std::fs::read_to_string(&running).unwrap(), "whatever was put here by hand");
+    assert_eq!(
+        std::fs::read_to_string(&running).unwrap(),
+        "whatever was put here by hand"
+    );
 }
 
 #[test]
@@ -213,7 +313,11 @@ fn going_back_without_a_kept_build_leaves_the_running_one_alone() {
     std::fs::write(&running, "only build").unwrap();
     let e = roll_back(&root, &running, "9.9.9", "0.0.1", "test").unwrap_err();
     assert!(e.contains("isn't at"), "{e}");
-    assert_eq!(std::fs::read_to_string(&running).unwrap(), "only build", "never left with nothing to start");
+    assert_eq!(
+        std::fs::read_to_string(&running).unwrap(),
+        "only build",
+        "never left with nothing to start"
+    );
     assert!(!is_known_bad(&root, "9.9.9"));
 }
 
@@ -230,7 +334,11 @@ fn deliberate_error_exits_during_a_trial_are_not_failed_starts() {
     // On trial, and already at the last start it's allowed to fail.
     // The trial names the build by tag (version + fingerprint), 28 Sep 2026.
     let new = tag_of(&running, version());
-    std::fs::write(root.join("update-trial.txt"), format!("new={new}\nprevious=0.0.1\nstarts={}\n", TRIAL_STARTS - 1)).unwrap();
+    std::fs::write(
+        root.join("update-trial.txt"),
+        format!("new={new}\nprevious=0.0.1\nstarts={}\n", TRIAL_STARTS - 1),
+    )
+    .unwrap();
     for _ in 0..TRIAL_STARTS + 1 {
         let out = std::process::Command::new(&running)
             .args(["plugins", "approve", "no-such-add-on"])
@@ -238,14 +346,28 @@ fn deliberate_error_exits_during_a_trial_are_not_failed_starts() {
             .env_remove("ATLAS_UPDATE_PROBE")
             .output()
             .expect("atlas runs");
-        assert_eq!(out.status.code(), Some(1), "the command refuses, as it should: {}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(
+            out.status.code(),
+            Some(1),
+            "the command refuses, as it should: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
     for l in update_history(&root) {
         println!("LIVE [updates.log] {l}");
     }
-    assert!(current_trial(&root).is_none(), "the first deliberate exit ended the trial");
+    assert!(
+        current_trial(&root).is_none(),
+        "the first deliberate exit ended the trial"
+    );
     assert!(!failed_at(&root, &new).exists(), "nothing was rolled back");
     assert!(!is_known_bad(&root, &new));
-    assert_eq!(std::fs::read(&running).unwrap(), std::fs::read(env!("CARGO_BIN_EXE_atlas")).unwrap(), "the new build is still the one in place");
-    assert!(update_history(&root).iter().any(|l| l.contains("got through start")));
+    assert_eq!(
+        std::fs::read(&running).unwrap(),
+        std::fs::read(env!("CARGO_BIN_EXE_atlas")).unwrap(),
+        "the new build is still the one in place"
+    );
+    assert!(update_history(&root)
+        .iter()
+        .any(|l| l.contains("got through start")));
 }

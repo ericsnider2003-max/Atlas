@@ -15,13 +15,22 @@
 //! "you only" or "everyone" — with nothing behind it that could tell one
 //! voice from another. With the encoder Atlas already uses for voice-lock,
 //! a recording becomes "You: … / Speaker 2: …", and "you only" can mean it.
-#![allow(clippy::needless_range_loop, reason = "numeric kernels step through several arrays by one index; the index loop is the clear form")]
+#![allow(
+    clippy::needless_range_loop,
+    reason = "numeric kernels step through several arrays by one index; the index loop is the clear form"
+)]
 
 /// Average-linkage clustering. Returns a cluster number per embedding,
 /// numbered in order of first appearance.
 fn cluster(embs: &[Vec<f32>], same_voice_at: f32) -> Vec<usize> {
     let n = embs.len();
-    let sim: Vec<Vec<f32>> = (0..n).map(|i| (0..n).map(|j| crate::voiceid::cosine(&embs[i], &embs[j])).collect()).collect();
+    let sim: Vec<Vec<f32>> = (0..n)
+        .map(|i| {
+            (0..n)
+                .map(|j| crate::voiceid::cosine(&embs[i], &embs[j]))
+                .collect()
+        })
+        .collect();
     let mut groups: Vec<Vec<usize>> = (0..n).map(|i| vec![i]).collect();
     loop {
         let mut best: Option<(usize, usize, f32)> = None;
@@ -68,7 +77,13 @@ pub struct Line {
 impl Line {
     pub fn say(&self) -> String {
         let s = self.start_ms / 1000;
-        format!("[{:02}:{:02}] {}: {}", s / 60, s % 60, self.speaker, self.text)
+        format!(
+            "[{:02}:{:02}] {}: {}",
+            s / 60,
+            s % 60,
+            self.speaker,
+            self.text
+        )
     }
 }
 
@@ -85,7 +100,15 @@ pub fn who_said_what(
 ) -> Vec<Line> {
     // A little below the voice-lock threshold: grouping a speaker's own
     // segments is an easier question than proving who they are.
-    who_said_what_grouped(samples, rate, embed, transcribe, you, accept, (accept - 0.1).max(0.3))
+    who_said_what_grouped(
+        samples,
+        rate,
+        embed,
+        transcribe,
+        you,
+        accept,
+        (accept - 0.1).max(0.3),
+    )
 }
 
 /// The same, with the grouping line given: embeddings centred on the
@@ -111,8 +134,17 @@ pub fn who_said_what_grouped(
     if let Some(p) = you {
         let mut best = (0usize, f32::MIN);
         for c in 0..clusters {
-            let members: Vec<&Vec<f32>> = known.iter().zip(&labels).filter(|(_, l)| **l == c).map(|(e, _)| e).collect();
-            let avg = members.iter().map(|e| crate::voiceid::cosine(e, p)).sum::<f32>() / members.len().max(1) as f32;
+            let members: Vec<&Vec<f32>> = known
+                .iter()
+                .zip(&labels)
+                .filter(|(_, l)| **l == c)
+                .map(|(e, _)| e)
+                .collect();
+            let avg = members
+                .iter()
+                .map(|e| crate::voiceid::cosine(e, p))
+                .sum::<f32>()
+                / members.len().max(1) as f32;
             if avg > best.1 {
                 best = (c, avg);
             }
@@ -122,7 +154,8 @@ pub fn who_said_what_grouped(
         }
     }
     let mut k = 0usize;
-    let mut lines: Vec<Line> = segs.iter()
+    let mut lines: Vec<Line> = segs
+        .iter()
         .zip(embs.iter())
         .map(|((s, e), emb)| {
             let speaker = match emb {
@@ -133,7 +166,10 @@ pub fn who_said_what_grouped(
                         "You".to_string()
                     } else {
                         // Numbered by appearance among the others, from 2.
-                        let rank = (0..clusters).filter(|x| Some(*x) != yours).position(|x| x == c).unwrap_or(0);
+                        let rank = (0..clusters)
+                            .filter(|x| Some(*x) != yours)
+                            .position(|x| x == c)
+                            .unwrap_or(0);
                         format!("Speaker {}", rank + 2)
                     }
                 }
@@ -158,9 +194,14 @@ pub fn who_said_what_grouped(
         }
         let near = |j: usize| -> bool {
             let (a, b) = (&lines[i], &lines[j]);
-            b.speaker != "Someone" && (a.start_ms.saturating_sub(b.end_ms) <= 1000 && b.start_ms.saturating_sub(a.end_ms) <= 1000)
+            b.speaker != "Someone"
+                && (a.start_ms.saturating_sub(b.end_ms) <= 1000
+                    && b.start_ms.saturating_sub(a.end_ms) <= 1000)
         };
-        let pick = (0..i).rev().find(|j| near(*j)).or_else(|| (i + 1..lines.len()).find(|j| near(*j)));
+        let pick = (0..i)
+            .rev()
+            .find(|j| near(*j))
+            .or_else(|| (i + 1..lines.len()).find(|j| near(*j)));
         if let Some(j) = pick {
             lines[i].speaker = lines[j].speaker.clone();
         }
@@ -177,7 +218,8 @@ pub fn read_wav(bytes: &[u8]) -> Result<(Vec<i16>, u32), String> {
     let mut i = 12;
     while i + 8 <= bytes.len() {
         let id = &bytes[i..i + 4];
-        let len = u32::from_le_bytes([bytes[i + 4], bytes[i + 5], bytes[i + 6], bytes[i + 7]]) as usize;
+        let len =
+            u32::from_le_bytes([bytes[i + 4], bytes[i + 5], bytes[i + 6], bytes[i + 7]]) as usize;
         let body = &bytes[i + 8..(i + 8 + len).min(bytes.len())];
         if id == b"fmt " && body.len() >= 16 {
             let fmt = u16::from_le_bytes([body[0], body[1]]);
@@ -185,7 +227,9 @@ pub fn read_wav(bytes: &[u8]) -> Result<(Vec<i16>, u32), String> {
             rate = u32::from_le_bytes([body[4], body[5], body[6], body[7]]);
             let bits = u16::from_le_bytes([body[14], body[15]]);
             if fmt != 1 || bits != 16 {
-                return Err(format!("only 16-bit PCM WAV is read here (this is format {fmt}, {bits}-bit)"));
+                return Err(format!(
+                    "only 16-bit PCM WAV is read here (this is format {fmt}, {bits}-bit)"
+                ));
             }
         } else if id == b"data" {
             if rate == 0 || channels == 0 {
@@ -195,7 +239,12 @@ pub fn read_wav(bytes: &[u8]) -> Result<(Vec<i16>, u32), String> {
             let frames: Vec<i16> = body
                 .chunks_exact(2 * ch)
                 .map(|f| {
-                    let sum: i32 = f.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes([b[0], b[1]]) as i32).sum();
+                    let sum: i32 = f
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
+                        .map(|b| i16::from_le_bytes([b[0], b[1]]) as i32)
+                        .sum();
                     (sum / ch as i32) as i16
                 })
                 .collect();
@@ -269,7 +318,11 @@ fn fit_voice(frames: &[&[f32; crate::mfcc::CEPS]]) -> Option<Voice> {
     // A little floor on the diagonal: a few seconds of speech is a thin
     // estimate of nineteen dimensions.
     let (l, logdet) = cholesky(&cov, |i, j| cov[i][j] + if i == j { 1e-3 } else { 0.0 })?;
-    Some(Voice { mean, chol: l, half_logdet: logdet / 2.0 })
+    Some(Voice {
+        mean,
+        chol: l,
+        half_logdet: logdet / 2.0,
+    })
 }
 
 /// How well a voice explains some frames: mean log-likelihood per frame
@@ -311,7 +364,10 @@ pub fn split_strangers(samples: &[i16], rate: u32, lines: Vec<Line>, margin: f64
         let s = (l.start_ms as usize * rate as usize / 1000).min(samples.len());
         let e = (l.end_ms as usize * rate as usize / 1000).min(samples.len());
         let all = crate::mfcc::frames(&samples[s..e], rate);
-        crate::mfcc::voiced(&all, 30.0).iter().map(|f| f.c).collect()
+        crate::mfcc::voiced(&all, 30.0)
+            .iter()
+            .map(|f| f.c)
+            .collect()
     };
     let per_line: Vec<Vec<F>> = lines.iter().map(frames_of).collect();
     let mut scores: Vec<(usize, f64)> = Vec::new();
@@ -320,7 +376,10 @@ pub fn split_strangers(samples: &[i16], rate: u32, lines: Vec<Line>, margin: f64
         if name == "Someone" || per_line[i].is_empty() {
             continue;
         }
-        let others: Vec<&F> = (0..lines.len()).filter(|&j| j != i && &lines[j].speaker == name).flat_map(|j| per_line[j].iter()).collect();
+        let others: Vec<&F> = (0..lines.len())
+            .filter(|&j| j != i && &lines[j].speaker == name)
+            .flat_map(|j| per_line[j].iter())
+            .collect();
         if let Some(v) = fit_voice(&others) {
             let own: Vec<&F> = per_line[i].iter().collect();
             scores.push((i, fits(&v, &own)));
@@ -360,7 +419,10 @@ pub fn to_count(samples: &[i16], rate: u32, lines: Vec<Line>, people: usize) -> 
         let s = (l.start_ms as usize * rate as usize / 1000).min(samples.len());
         let e = (l.end_ms as usize * rate as usize / 1000).min(samples.len());
         let all = crate::mfcc::frames(&samples[s..e], rate);
-        crate::mfcc::voiced(&all, 30.0).iter().map(|f| f.c).collect()
+        crate::mfcc::voiced(&all, 30.0)
+            .iter()
+            .map(|f| f.c)
+            .collect()
     };
     let per_line: Vec<Vec<F>> = lines.iter().map(frames_of).collect();
     let mut out = lines;
@@ -374,7 +436,10 @@ pub fn to_count(samples: &[i16], rate: u32, lines: Vec<Line>, people: usize) -> 
         v
     };
     let pooled = |out: &[Line], name: &str| -> Vec<&F> {
-        (0..out.len()).filter(|&i| out[i].speaker == name).flat_map(|i| per_line[i].iter()).collect()
+        (0..out.len())
+            .filter(|&i| out[i].speaker == name)
+            .flat_map(|i| per_line[i].iter())
+            .collect()
     };
     // Too many: merge the most alike pair.
     loop {
@@ -387,14 +452,19 @@ pub fn to_count(samples: &[i16], rate: u32, lines: Vec<Line>, people: usize) -> 
             for b in a + 1..now.len() {
                 // Too little speech for a full model: ranked last, but still
                 // mergeable so the count is always reached.
-                let d = delta_bic(&pooled(&out, &now[a]), &pooled(&out, &now[b]), 1.0).unwrap_or(f64::MAX / 2.0);
+                let d = delta_bic(&pooled(&out, &now[a]), &pooled(&out, &now[b]), 1.0)
+                    .unwrap_or(f64::MAX / 2.0);
                 if best.is_none_or(|x| d < x.2) {
                     best = Some((a, b, d));
                 }
             }
         }
         let Some((a, b, _)) = best else { break };
-        let (keep, gone) = if now[b] == "You" { (now[b].clone(), now[a].clone()) } else { (now[a].clone(), now[b].clone()) };
+        let (keep, gone) = if now[b] == "You" {
+            (now[b].clone(), now[a].clone())
+        } else {
+            (now[a].clone(), now[b].clone())
+        };
         for l in out.iter_mut().filter(|l| l.speaker == gone) {
             l.speaker = keep.clone();
         }
@@ -407,7 +477,10 @@ pub fn to_count(samples: &[i16], rate: u32, lines: Vec<Line>, people: usize) -> 
             if out[i].speaker == "Someone" || out[i].speaker == "You" || per_line[i].is_empty() {
                 continue;
             }
-            let others: Vec<&F> = (0..out.len()).filter(|&j| j != i && out[j].speaker == out[i].speaker).flat_map(|j| per_line[j].iter()).collect();
+            let others: Vec<&F> = (0..out.len())
+                .filter(|&j| j != i && out[j].speaker == out[i].speaker)
+                .flat_map(|j| per_line[j].iter())
+                .collect();
             if let Some(v) = fit_voice(&others) {
                 let own: Vec<&F> = per_line[i].iter().collect();
                 let s = fits(&v, &own);
@@ -428,7 +501,11 @@ pub fn to_count(samples: &[i16], rate: u32, lines: Vec<Line>, people: usize) -> 
 /// 1998): the likelihood lost by modelling both with one full-covariance
 /// Gaussian, less the penalty for the parameters a second Gaussian would
 /// cost. Below zero, one voice explains them better than two.
-fn delta_bic(a: &[&[f32; crate::mfcc::CEPS]], b: &[&[f32; crate::mfcc::CEPS]], lambda: f64) -> Option<f64> {
+fn delta_bic(
+    a: &[&[f32; crate::mfcc::CEPS]],
+    b: &[&[f32; crate::mfcc::CEPS]],
+    lambda: f64,
+) -> Option<f64> {
     const D: f64 = crate::mfcc::CEPS as f64;
     let both: Vec<&[f32; crate::mfcc::CEPS]> = a.iter().chain(b.iter()).copied().collect();
     let n = both.len() as f64;
@@ -464,7 +541,10 @@ pub fn merge_same_voices(samples: &[i16], rate: u32, lines: Vec<Line>, lambda: f
         let s = (l.start_ms as usize * rate as usize / 1000).min(samples.len());
         let e = (l.end_ms as usize * rate as usize / 1000).min(samples.len());
         let all = crate::mfcc::frames(&samples[s..e], rate);
-        crate::mfcc::voiced(&all, 30.0).iter().map(|f| f.c).collect()
+        crate::mfcc::voiced(&all, 30.0)
+            .iter()
+            .map(|f| f.c)
+            .collect()
     };
     let per_line: Vec<Vec<[f32; crate::mfcc::CEPS]>> = lines.iter().map(frames_of).collect();
     // Which label each label has become.
@@ -481,7 +561,13 @@ pub fn merge_same_voices(samples: &[i16], rate: u32, lines: Vec<Line>, lambda: f
             lines
                 .iter()
                 .zip(&per_line)
-                .filter(|(l, _)| labels.iter().position(|x| x == &l.speaker).map(|i| root(&into, i)) == Some(g))
+                .filter(|(l, _)| {
+                    labels
+                        .iter()
+                        .position(|x| x == &l.speaker)
+                        .map(|i| root(&into, i))
+                        == Some(g)
+                })
                 .flat_map(|(_, f)| f.iter())
                 .collect()
         };
@@ -539,7 +625,10 @@ fn number_the_speakers(out: &mut [Line]) {
 /// `entry(i, j)`, with log|Σ| (twice the sum of the log diagonal). `None`
 /// when it isn't positive definite. One copy (audit Q3): the change score and
 /// a voice's model each had one.
-fn cholesky<const D: usize>(_shape: &[[f64; D]], entry: impl Fn(usize, usize) -> f64) -> Option<(Vec<[f64; D]>, f64)> {
+fn cholesky<const D: usize>(
+    _shape: &[[f64; D]],
+    entry: impl Fn(usize, usize) -> f64,
+) -> Option<(Vec<[f64; D]>, f64)> {
     let mut l = vec![[0f64; D]; D];
     let mut logdet = 0.0;
     for i in 0..D {

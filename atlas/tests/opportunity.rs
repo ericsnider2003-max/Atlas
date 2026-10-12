@@ -3,14 +3,23 @@
 use atlas::opportunity::*;
 
 fn scored(n: u8, on: &str) -> Finding {
-    Finding::Scored { out_of_ten: n, rests_on: vec![on.into()] }
+    Finding::Scored {
+        out_of_ten: n,
+        rests_on: vec![on.into()],
+    }
 }
 
 fn full() -> Opportunity {
     let mut o = Opportunity::new("a weekend tool for traders", "a problem I hit myself");
     o.note(Axis::Work, scored(7, "about 40 hours over three weekends"));
-    o.note(Axis::Authenticity, scored(8, "three people asked me for it unprompted"));
-    o.note(Axis::Roadmap, scored(6, "first step is a prototype; unclear after that"));
+    o.note(
+        Axis::Authenticity,
+        scored(8, "three people asked me for it unprompted"),
+    );
+    o.note(
+        Axis::Roadmap,
+        scored(6, "first step is a prototype; unclear after that"),
+    );
     o.note(Axis::Money, scored(5, "no cost to start, unknown return"));
     o.note(Axis::Fit, scored(9, "it is the thing I already do"));
     o
@@ -23,7 +32,10 @@ fn a_fatal_axis_sinks_it_regardless_of_the_others() {
     // Four eights and a one averages to a respectable six and a half, and the
     // one is the thing that actually happens.
     let mut o = full();
-    o.note(Axis::Roadmap, scored(1, "no route from a prototype to anyone paying"));
+    o.note(
+        Axis::Roadmap,
+        scored(1, "no route from a prototype to anyone paying"),
+    );
     match o.verdict() {
         Verdict::SetAside { axis, why } => {
             assert_eq!(axis, Axis::Roadmap);
@@ -49,7 +61,13 @@ fn the_weakest_axis_is_what_gets_presented_first() {
 #[test]
 fn a_score_with_nothing_behind_it_is_not_a_score() {
     let mut o = full();
-    o.note(Axis::Fit, Finding::Scored { out_of_ten: 9, rests_on: vec![] });
+    o.note(
+        Axis::Fit,
+        Finding::Scored {
+            out_of_ten: 9,
+            rests_on: vec![],
+        },
+    );
     assert!(matches!(o.verdict(), Verdict::NeedFirst(_)));
 }
 
@@ -109,8 +127,17 @@ fn a_blocked_axis_is_reported_with_what_would_unblock_it() {
 fn a_fatal_axis_is_reported_before_a_missing_one() {
     // "This will never work and here is why" beats "I need three more answers".
     let mut o = Opportunity::new("x", "a video");
-    o.note(Axis::Authenticity, scored(1, "nobody has ever asked for this"));
-    assert!(matches!(o.verdict(), Verdict::SetAside { axis: Axis::Authenticity, .. }));
+    o.note(
+        Axis::Authenticity,
+        scored(1, "nobody has ever asked for this"),
+    );
+    assert!(matches!(
+        o.verdict(),
+        Verdict::SetAside {
+            axis: Axis::Authenticity,
+            ..
+        }
+    ));
 }
 
 // --- what it says -----------------------------------------------------------

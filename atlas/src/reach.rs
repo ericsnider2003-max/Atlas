@@ -52,8 +52,11 @@ pub const ENOUGH_POSTS: usize = 8;
 /// Held-at-three counts most because nothing downstream happens without it:
 /// a post nobody is still watching at three seconds is not distributed,
 /// whatever else is true of it.
-pub const WHAT_MAKES_A_POST_GOOD: &[(&str, f64)] =
-    &[("held at three seconds", 0.5), ("watched to the end", 0.3), ("worth keeping", 0.2)];
+pub const WHAT_MAKES_A_POST_GOOD: &[(&str, f64)] = &[
+    ("held at three seconds", 0.5),
+    ("watched to the end", 0.3),
+    ("worth keeping", 0.2),
+];
 
 impl Post {
     /// Views are an outcome. This is the input.
@@ -122,14 +125,25 @@ pub fn quality_against(
         crate::judgment::ordinary_for(&all.iter().map(pick).collect::<Vec<f64>>())
     };
     let parts: Vec<(fn(&Post) -> f64, &(&'static str, f64))> = vec![
-        ((|p: &Post| p.held_at_three as f64) as fn(&Post) -> f64, &WHAT_MAKES_A_POST_GOOD[0]),
-        ((|p: &Post| p.completion as f64) as fn(&Post) -> f64, &WHAT_MAKES_A_POST_GOOD[1]),
-        ((|p: &Post| p.kept() as f64) as fn(&Post) -> f64, &WHAT_MAKES_A_POST_GOOD[2]),
+        (
+            (|p: &Post| p.held_at_three as f64) as fn(&Post) -> f64,
+            &WHAT_MAKES_A_POST_GOOD[0],
+        ),
+        (
+            (|p: &Post| p.completion as f64) as fn(&Post) -> f64,
+            &WHAT_MAKES_A_POST_GOOD[1],
+        ),
+        (
+            (|p: &Post| p.kept() as f64) as fn(&Post) -> f64,
+            &WHAT_MAKES_A_POST_GOOD[2],
+        ),
     ];
 
     let mut measured = Vec::new();
     for (pick, (name, weight)) in parts {
-        let Some((usually, varies_by)) = dimension(pick) else { continue };
+        let Some((usually, varies_by)) = dimension(pick) else {
+            continue;
+        };
         measured.push((
             crate::judgment::Measured {
                 name,
@@ -264,7 +278,10 @@ pub fn findings(posts: &[Post], cfg_j: &crate::judgment::JudgmentConfig) -> Vec<
                     varies_by: rest_varies,
                     seen: rest_q.len(),
                 },
-                &crate::judgment::JudgmentConfig { min_seen: ENOUGH_POSTS, ..cfg_j.clone() },
+                &crate::judgment::JudgmentConfig {
+                    min_seen: ENOUGH_POSTS,
+                    ..cfg_j.clone()
+                },
             );
             // Below the floor there is no baseline, so the old ratio is the
             // fallback rather than a guess at a spread from four posts.
@@ -293,8 +310,13 @@ pub fn findings(posts: &[Post], cfg_j: &crate::judgment::JudgmentConfig) -> Vec<
         }
     }
 
-    out.sort_by(|a, b| b.sure.cmp(&a.sure).then(
-        b.lift.partial_cmp(&a.lift).unwrap_or(std::cmp::Ordering::Equal)));
+    out.sort_by(|a, b| {
+        b.sure.cmp(&a.sure).then(
+            b.lift
+                .partial_cmp(&a.lift)
+                .unwrap_or(std::cmp::Ordering::Equal),
+        )
+    });
     out
 }
 
@@ -362,7 +384,9 @@ pub struct ReachConfig {
 
 impl Default for ReachConfig {
     fn default() -> Self {
-        ReachConfig { min_posts_for_direction: 6 }
+        ReachConfig {
+            min_posts_for_direction: 6,
+        }
     }
 }
 
@@ -372,7 +396,10 @@ pub fn direction(
     cfg_j: &crate::judgment::JudgmentConfig,
 ) -> (Direction, String) {
     if posts.len() < cfg.min_posts_for_direction.max(2) {
-        return (Direction::Unclear, "not enough posted to see a direction".into());
+        return (
+            Direction::Unclear,
+            "not enough posted to see a direction".into(),
+        );
     }
     let mut ordered: Vec<&Post> = posts.iter().collect();
     ordered.sort_by_key(|p| p.at);
@@ -403,7 +430,10 @@ pub fn direction(
                 varies_by: varies,
                 seen: posts.len(),
             },
-            &crate::judgment::JudgmentConfig { min_seen: ENOUGH_POSTS, ..cfg_j.clone() },
+            &crate::judgment::JudgmentConfig {
+                min_seen: ENOUGH_POSTS,
+                ..cfg_j.clone()
+            },
         )
     });
     let d = match moved {
@@ -420,7 +450,10 @@ pub fn direction(
     };
 
     let why = match d {
-        Direction::Up => format!("your recent half holds {:.0}% better than your earlier half", change * 100.0),
+        Direction::Up => format!(
+            "your recent half holds {:.0}% better than your earlier half",
+            change * 100.0
+        ),
         Direction::Down => format!("your recent half holds {:.0}% worse", change.abs() * 100.0),
         Direction::Flat => "holding steady — neither building nor slipping".into(),
         Direction::Unclear => String::new(),
@@ -436,7 +469,10 @@ pub fn outlier<'a>(
     posts: &'a [Post],
     cfg: &crate::judgment::JudgmentConfig,
 ) -> Option<(&'a Post, String)> {
-    let cfg = crate::judgment::JudgmentConfig { min_seen: ENOUGH_POSTS, ..cfg.clone() };
+    let cfg = crate::judgment::JudgmentConfig {
+        min_seen: ENOUGH_POSTS,
+        ..cfg.clone()
+    };
     let views: Vec<f64> = posts.iter().map(|p| p.views as f64).collect();
     let (usually, varies_by) = crate::judgment::ordinary_for(&views)?;
     let best = posts.iter().max_by_key(|p| p.views)?;
@@ -470,8 +506,12 @@ pub fn outlier<'a>(
     // posts usually hold 0.35 has a very good one at 0.55; one whose posts
     // usually hold 0.7 has a poor one at 0.62, and a fixed line calls the
     // first a failure and the second a success.
-    let (held_usually, held_varies) =
-        crate::judgment::ordinary_for(&posts.iter().map(|p| p.held_at_three as f64).collect::<Vec<f64>>())?;
+    let (held_usually, held_varies) = crate::judgment::ordinary_for(
+        &posts
+            .iter()
+            .map(|p| p.held_at_three as f64)
+            .collect::<Vec<f64>>(),
+    )?;
     let held = crate::judgment::how_unusual(
         &crate::judgment::Measured {
             name: "held at three",
@@ -523,7 +563,8 @@ pub fn outlier<'a>(
         // your usual" -- the two are different and only one is a finding.
         None => said.push_str(". I can't say yet whether it was a better post or a luckier one"),
     }
-    if let Some(missing) = crate::judgment::only_partly_measured(&thin, WHAT_MAKES_A_POST_GOOD.len())
+    if let Some(missing) =
+        crate::judgment::only_partly_measured(&thin, WHAT_MAKES_A_POST_GOOD.len())
     {
         said.push_str(&format!(" ({missing})"));
     }

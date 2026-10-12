@@ -2,10 +2,18 @@ use atlas::backlog::{Backlog, BacklogConfig, Blocker, Conditions};
 use atlas::uia::{assess, outline, Node, Quality, Role};
 
 fn online() -> Conditions {
-    Conditions { online: true, screen_free: true, you_are_here: true, tools: vec![] }
+    Conditions {
+        online: true,
+        screen_free: true,
+        you_are_here: true,
+        tools: vec![],
+    }
 }
 fn offline() -> Conditions {
-    Conditions { online: false, ..online() }
+    Conditions {
+        online: false,
+        ..online()
+    }
 }
 fn cfg() -> BacklogConfig {
     BacklogConfig::default()
@@ -24,7 +32,10 @@ fn a_task_atlas_could_not_do_is_kept_not_dropped() {
 fn it_stays_quiet_while_the_blocker_is_still_in_the_way() {
     let mut b = Backlog::default();
     b.record("research something", Blocker::Offline, 100);
-    assert!(b.ready(&offline(), &cfg(), 100_000).is_empty(), "still offline, still quiet");
+    assert!(
+        b.ready(&offline(), &cfg(), 100_000).is_empty(),
+        "still offline, still quiet"
+    );
 }
 
 #[test]
@@ -35,8 +46,14 @@ fn it_offers_the_task_back_once_the_blocker_clears() {
     assert_eq!(item.request, "research something");
     let said = Backlog::phrase(&item);
     assert!(said.contains("research something"));
-    assert!(said.contains("no connection"), "says why it didn't happen: {said}");
-    assert!(said.ends_with("Want me to do it now?"), "asks, never just does it");
+    assert!(
+        said.contains("no connection"),
+        "says why it didn't happen: {said}"
+    );
+    assert!(
+        said.ends_with("Want me to do it now?"),
+        "asks, never just does it"
+    );
 }
 
 #[test]
@@ -93,7 +110,10 @@ fn after_enough_unanswered_offers_it_stops_bringing_it_up() {
         assert!(b.next_offer(&online(), &c, t).is_some());
     }
     t += 10_000_000;
-    assert!(b.next_offer(&online(), &c, t).is_none(), "four reminders is enough");
+    assert!(
+        b.next_offer(&online(), &c, t).is_none(),
+        "four reminders is enough"
+    );
 }
 
 #[test]
@@ -111,7 +131,11 @@ fn asking_again_revives_something_you_previously_dismissed() {
     let id = b.record("research something", Blocker::Offline, 100);
     b.dismiss(id);
     b.record("research something", Blocker::Offline, 200);
-    assert_eq!(b.outstanding().len(), 1, "you changed your mind, that's allowed");
+    assert_eq!(
+        b.outstanding().len(),
+        1,
+        "you changed your mind, that's allowed"
+    );
 }
 
 #[test]
@@ -119,15 +143,32 @@ fn different_blockers_clear_on_different_conditions() {
     let mut b = Backlog::default();
     b.record("research a thing", Blocker::Offline, 100);
     b.record("open chrome", Blocker::NoScreenGap, 100);
-    b.record("run whisper", Blocker::MissingTool("whisper-cli".into()), 100);
+    b.record(
+        "run whisper",
+        Blocker::MissingTool("whisper-cli".into()),
+        100,
+    );
 
-    let busy_offline = Conditions { online: false, screen_free: false, you_are_here: true, tools: vec![] };
+    let busy_offline = Conditions {
+        online: false,
+        screen_free: false,
+        you_are_here: true,
+        tools: vec![],
+    };
     assert!(b.ready(&busy_offline, &cfg(), 10_000).is_empty());
 
     let mut c = online();
     c.screen_free = false;
-    let ready: Vec<String> = b.ready(&c, &cfg(), 10_000).iter().map(|i| i.request.clone()).collect();
-    assert_eq!(ready, vec!["research a thing"], "only the network one cleared");
+    let ready: Vec<String> = b
+        .ready(&c, &cfg(), 10_000)
+        .iter()
+        .map(|i| i.request.clone())
+        .collect();
+    assert_eq!(
+        ready,
+        vec!["research a thing"],
+        "only the network one cleared"
+    );
 
     c.tools = vec!["whisper-cli".into()];
     c.screen_free = true;
@@ -137,9 +178,17 @@ fn different_blockers_clear_on_different_conditions() {
 #[test]
 fn something_atlas_simply_cannot_do_is_never_offered_as_if_it_could() {
     let mut b = Backlog::default();
-    b.record("edit my video", Blocker::Unsupported("edit video".into()), 100);
+    b.record(
+        "edit my video",
+        Blocker::Unsupported("edit video".into()),
+        100,
+    );
     assert!(b.next_offer(&online(), &cfg(), 10_000).is_none());
-    assert_eq!(b.outstanding().len(), 1, "still on the list, just not offered");
+    assert_eq!(
+        b.outstanding().len(),
+        1,
+        "still on the list, just not offered"
+    );
 }
 
 #[test]
@@ -148,7 +197,10 @@ fn one_task_is_raised_at_a_time_oldest_first() {
     b.record("older thing", Blocker::Offline, 100);
     b.record("newer thing", Blocker::Offline, 500);
     let item = b.next_offer(&online(), &cfg(), 10_000).unwrap();
-    assert_eq!(item.request, "older thing", "the thing that has waited longest");
+    assert_eq!(
+        item.request, "older thing",
+        "the thing that has waited longest"
+    );
 }
 
 #[test]
@@ -195,15 +247,13 @@ fn notepad_tree() -> Node {
 
 fn electron_tree() -> Node {
     // What a badly-behaved Electron app actually publishes.
-    Node::new(Role::Window, "Discord").with(vec![
-        Node::new(Role::Pane, "").with(vec![
-            Node::new(Role::Pane, ""),
-            Node::new(Role::Pane, ""),
-            Node::new(Role::Pane, ""),
-            Node::new(Role::Pane, ""),
-            Node::new(Role::Pane, ""),
-        ]),
-    ])
+    Node::new(Role::Window, "Discord").with(vec![Node::new(Role::Pane, "").with(vec![
+        Node::new(Role::Pane, ""),
+        Node::new(Role::Pane, ""),
+        Node::new(Role::Pane, ""),
+        Node::new(Role::Pane, ""),
+        Node::new(Role::Pane, ""),
+    ])])
 }
 
 #[test]
@@ -272,12 +322,19 @@ fn an_electron_blob_is_detected_so_atlas_falls_back_instead_of_lying() {
     // document would be worse than admitting UIA can't see it.
     let q = assess(&electron_tree(), 3, 0.5);
     assert!(!q.usable(), "got {q:?}");
-    assert!(q.explain().contains("screenshot"), "says what happens instead: {}", q.explain());
+    assert!(
+        q.explain().contains("screenshot"),
+        "says what happens instead: {}",
+        q.explain()
+    );
 }
 
 #[test]
 fn an_app_publishing_nothing_is_detected() {
-    assert_eq!(assess(&Node::new(Role::Window, "Game"), 3, 0.5), Quality::Empty);
+    assert_eq!(
+        assess(&Node::new(Role::Window, "Game"), 3, 0.5),
+        Quality::Empty
+    );
 }
 
 #[test]

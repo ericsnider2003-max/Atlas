@@ -89,22 +89,39 @@ pub fn spotter_piece() -> Piece {
 
 /// Is the phrase one the spotter knows?
 pub fn knows(phrase: &str) -> bool {
-    let p: String = phrase.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+    let p: String = phrase
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect::<String>()
+        .to_lowercase();
     p == "atlas" || p == "heyatlas"
 }
 
 /// The words Parakeet has written for "Atlas" when it misheard it (1 Oct
 /// 2026: "Alice", "Ellis", "Axis", "He alice"), and near spellings. Taken
 /// as the name only when the spotter heard the name too.
-const SOUNDALIKES: &[&str] = &["alice", "ellis", "axis", "atlis", "atless", "atlus", "atlass", "attlas", "adlas", "atla", "outlas", "addis"];
+const SOUNDALIKES: &[&str] = &[
+    "alice", "ellis", "axis", "atlis", "atless", "atlus", "atlass", "attlas", "adlas", "atla",
+    "outlas", "addis",
+];
 
 /// When the first word (after "hey", "ok", "okay") sounds like the name:
 /// what was said after it.
 pub fn soundalike_at_start(words: &str) -> Option<String> {
     let all: Vec<&str> = words.split_whitespace().collect();
-    let plain = |w: &str| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+    let plain = |w: &str| {
+        w.chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>()
+            .to_lowercase()
+    };
     let mut i = 0;
-    while i < all.len().min(2) && matches!(plain(all[i]).as_str(), "hey" | "hi" | "ok" | "okay" | "he" | "a") {
+    while i < all.len().min(2)
+        && matches!(
+            plain(all[i]).as_str(),
+            "hey" | "hi" | "ok" | "okay" | "he" | "a"
+        )
+    {
         i += 1;
     }
     let w = plain(all.get(i)?);
@@ -112,7 +129,11 @@ pub fn soundalike_at_start(words: &str) -> Option<String> {
         return None;
     }
     let rest = all[i + 1..].join(" ");
-    Some(rest.trim_start_matches(|c: char| !c.is_alphanumeric()).trim().to_string())
+    Some(
+        rest.trim_start_matches(|c: char| !c.is_alphanumeric())
+            .trim()
+            .to_string(),
+    )
 }
 
 /// A sentence that opens by calling Atlas by a misheard name -- "List, did
@@ -127,8 +148,17 @@ pub fn misheard_name_opening(said: &str) -> Option<String> {
         None => (t.trim_end_matches(['.', '?']), ""),
     };
     let w = first.trim().to_lowercase();
-    let w = w.strip_prefix("hey ").or_else(|| w.strip_prefix("ok ")).unwrap_or(&w).trim().to_string();
-    let named = SOUNDALIKES.contains(&w.as_str()) || matches!(w.as_str(), "list" | "eatless" | "english" | "atlas's" | "outless");
+    let w = w
+        .strip_prefix("hey ")
+        .or_else(|| w.strip_prefix("ok "))
+        .unwrap_or(&w)
+        .trim()
+        .to_string();
+    let named = SOUNDALIKES.contains(&w.as_str())
+        || matches!(
+            w.as_str(),
+            "list" | "eatless" | "english" | "atlas's" | "outless"
+        );
     named.then(|| rest.trim().to_string())
 }
 
@@ -138,15 +168,24 @@ pub fn misheard_name_opening(said: &str) -> Option<String> {
 /// (`tools/sherpa`, the hearing download) and Kokoro's (`tools/kokoro`).
 /// Either has the C library; the first with both files wins.
 fn runtime_dirs(root: &Path) -> Vec<PathBuf> {
-    vec![root.join("tools/sherpa/lib"), root.join("tools/sherpa/bin"), root.join(crate::kokoro::RUNTIME_DIR)]
+    vec![
+        root.join("tools/sherpa/lib"),
+        root.join("tools/sherpa/bin"),
+        root.join(crate::kokoro::RUNTIME_DIR),
+    ]
 }
 
 /// The library folder and the model folder, once both are here.
 fn ready(root: &Path) -> Option<(PathBuf, PathBuf)> {
     let (ort, capi) = crate::kokoro::runtime_files()?;
-    let runtime = runtime_dirs(root).into_iter().find(|d| d.join(ort).is_file() && d.join(capi).is_file())?;
+    let runtime = runtime_dirs(root)
+        .into_iter()
+        .find(|d| d.join(ort).is_file() && d.join(capi).is_file())?;
     let model = root.join(MODEL_DIR);
-    [ENCODER, DECODER, JOINER, "tokens.txt"].iter().all(|f| model.join(f).is_file()).then_some((runtime, model))
+    [ENCODER, DECODER, JOINER, "tokens.txt"]
+        .iter()
+        .all(|f| model.join(f).is_file())
+        .then_some((runtime, model))
 }
 
 // ---------------------------------------------------------------- the library
@@ -271,28 +310,42 @@ impl Drop for Spotter {
 impl Spotter {
     /// Open the library in `runtime` and the model in `model`.
     fn load(runtime: &Path, model: &Path) -> Result<Spotter, String> {
-        let (ort_name, capi_name) = crate::kokoro::runtime_files().ok_or("the wake-word spotter isn't available on this kind of computer")?;
+        let (ort_name, capi_name) = crate::kokoro::runtime_files()
+            .ok_or("the wake-word spotter isn't available on this kind of computer")?;
         // SAFETY: loading the runtime runs its initialisers; it is a file Atlas downloaded and
         // pinned to SHERPA_VERSION, opened by full path.
-        let ort = unsafe { libloading::Library::new(runtime.join(ort_name)) }.map_err(|e| format!("the wake-word spotter's engine wouldn't open ({ort_name}: {e})"))?;
+        let ort = unsafe { libloading::Library::new(runtime.join(ort_name)) }.map_err(|e| {
+            format!("the wake-word spotter's engine wouldn't open ({ort_name}: {e})")
+        })?;
         // SAFETY: as above, the pinned sherpa-onnx library opened by full path; the version is
         // checked before any other symbol is used.
-        let capi = unsafe { libloading::Library::new(runtime.join(capi_name)) }.map_err(|e| format!("the wake-word spotter's engine wouldn't open ({capi_name}: {e})"))?;
+        let capi = unsafe { libloading::Library::new(runtime.join(capi_name)) }.map_err(|e| {
+            format!("the wake-word spotter's engine wouldn't open ({capi_name}: {e})")
+        })?;
         fn sym<T: Copy>(lib: &libloading::Library, name: &[u8]) -> Result<T, String> {
             // SAFETY: each symbol is looked up with the exact C signature of that function in the
             // version-checked library, and the copied fn pointer is kept only alongside `_capi`,
             // which keeps the library loaded.
-            unsafe { lib.get::<T>(name) }.map(|s| *s).map_err(|e| format!("the wake-word spotter's engine is missing a part ({e})"))
+            unsafe { lib.get::<T>(name) }
+                .map(|s| *s)
+                .map_err(|e| format!("the wake-word spotter's engine is missing a part ({e})"))
         }
         let version: VersionFn = sym(&capi, b"SherpaOnnxGetVersionStr\0")?;
         // SAFETY: the symbol has the declared `VersionFn` signature in the sherpa-onnx C API; the
         // returned pointer is a NUL-terminated static string or null.
         let v = unsafe {
             let p = version();
-            if p.is_null() { String::new() } else { CStr::from_ptr(p).to_string_lossy().into_owned() }
+            if p.is_null() {
+                String::new()
+            } else {
+                CStr::from_ptr(p).to_string_lossy().into_owned()
+            }
         };
         if v != crate::kokoro::SHERPA_VERSION {
-            return Err(format!("the wake-word spotter's engine is version {v}, and Atlas speaks to {} only", crate::kokoro::SHERPA_VERSION));
+            return Err(format!(
+                "the wake-word spotter's engine is version {v}, and Atlas speaks to {} only",
+                crate::kokoro::SHERPA_VERSION
+            ));
         }
         let create: CreateFn = sym(&capi, b"SherpaOnnxCreateKeywordSpotter\0")?;
         let destroy: DestroyFn = sym(&capi, b"SherpaOnnxDestroyKeywordSpotter\0")?;
@@ -305,7 +358,10 @@ impl Spotter {
         let result: ResultFn = sym(&capi, b"SherpaOnnxGetKeywordResult\0")?;
         let free_result: FreeResultFn = sym(&capi, b"SherpaOnnxDestroyKeywordResult\0")?;
 
-        let c = |p: PathBuf| CString::new(p.to_string_lossy().into_owned()).map_err(|_| "a path with a zero byte in it".to_string());
+        let c = |p: PathBuf| {
+            CString::new(p.to_string_lossy().into_owned())
+                .map_err(|_| "a path with a zero byte in it".to_string())
+        };
         let enc = c(model.join(ENCODER))?;
         let dec = c(model.join(DECODER))?;
         let joi = c(model.join(JOINER))?;
@@ -317,8 +373,15 @@ impl Spotter {
         // SAFETY: SpotterConfig is plain integers, floats and raw pointers; all-zero is valid for
         // every field (null pointers, zero numbers).
         let mut cfg: SpotterConfig = unsafe { std::mem::zeroed() };
-        cfg.feat_config = FeatureConfig { sample_rate: 16000, feature_dim: 80 };
-        cfg.model_config.transducer = TransducerConfig { encoder: enc.as_ptr(), decoder: dec.as_ptr(), joiner: joi.as_ptr() };
+        cfg.feat_config = FeatureConfig {
+            sample_rate: 16000,
+            feature_dim: 80,
+        };
+        cfg.model_config.transducer = TransducerConfig {
+            encoder: enc.as_ptr(),
+            decoder: dec.as_ptr(),
+            joiner: joi.as_ptr(),
+        };
         cfg.model_config.tokens = tokens.as_ptr();
         cfg.model_config.num_threads = 1;
         cfg.model_config.provider = cpu.as_ptr();
@@ -333,7 +396,20 @@ impl Spotter {
         if kws.is_null() {
             return Err("the wake-word spotter's files are there but wouldn't load — `atlas get wakeword` fetches them again".into());
         }
-        Ok(Spotter { kws, destroy, stream, destroy_stream, accept, finished, is_ready, decode, result, free_result, _capi: capi, _ort: ort })
+        Ok(Spotter {
+            kws,
+            destroy,
+            stream,
+            destroy_stream,
+            accept,
+            finished,
+            is_ready,
+            decode,
+            result,
+            free_result,
+            _capi: capi,
+            _ort: ort,
+        })
     }
 
     /// Is the name anywhere in these 16 kHz samples?
@@ -380,7 +456,9 @@ static SPOTTER: Mutex<Option<(PathBuf, Loaded)>> = Mutex::new(None);
 /// (a failure too, so a missing model is found missing once). `None` when
 /// it isn't downloaded.
 fn spotter(root: &Path) -> Option<Loaded> {
-    let mut slot = SPOTTER.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut slot = SPOTTER
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some((at, loaded)) = slot.as_ref() {
         if at == root {
             return Some(loaded.clone());
@@ -416,9 +494,15 @@ mod tests {
 
     #[test]
     fn a_misheard_name_at_the_start() {
-        assert_eq!(soundalike_at_start("Alice, what time is it?").as_deref(), Some("what time is it?"));
+        assert_eq!(
+            soundalike_at_start("Alice, what time is it?").as_deref(),
+            Some("what time is it?")
+        );
         assert_eq!(soundalike_at_start("He alice.").as_deref(), Some(""));
-        assert_eq!(soundalike_at_start("Hey Ellis open Chrome").as_deref(), Some("open Chrome"));
+        assert_eq!(
+            soundalike_at_start("Hey Ellis open Chrome").as_deref(),
+            Some("open Chrome")
+        );
         assert_eq!(soundalike_at_start("I told Alice yesterday"), None);
         assert_eq!(soundalike_at_start("I use Atlassian at work"), None);
         assert_eq!(soundalike_at_start(""), None);

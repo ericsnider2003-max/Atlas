@@ -8,9 +8,9 @@
 
 use atlas::config::Config;
 use atlas::daemon::Daemon;
+use atlas::plainchange::{ask, diff_of, explain, spoken, written};
 use atlas::platform::mock::MockPlatform;
 use atlas::platform::Monitor;
-use atlas::plainchange::{ask, diff_of, explain, spoken, written};
 use atlas::proactive::{Proactive, ProactiveConfig};
 use atlas::store::Store;
 use std::path::Path;
@@ -39,8 +39,15 @@ fn after() -> Vec<(String, String)> {
 #[test]
 fn a_new_test_reads_as_new_behaviour() {
     let d = diff_of(&before(), &after());
-    assert_eq!(d.tests_added, vec!["a_negative_number_still_adds_correctly".to_string()]);
-    assert!(d.tests_removed.is_empty(), "nothing was removed: {:?}", d.tests_removed);
+    assert_eq!(
+        d.tests_added,
+        vec!["a_negative_number_still_adds_correctly".to_string()]
+    );
+    assert!(
+        d.tests_removed.is_empty(),
+        "nothing was removed: {:?}",
+        d.tests_removed
+    );
     assert_eq!(d.files, vec!["src/total.rs".to_string()]);
 }
 
@@ -48,10 +55,15 @@ fn a_new_test_reads_as_new_behaviour() {
 fn a_removed_test_is_a_promise_no_longer_kept() {
     // Reverse the change: the after has fewer tests than the before.
     let d = diff_of(&after(), &before());
-    assert_eq!(d.tests_removed, vec!["a_negative_number_still_adds_correctly".to_string()]);
+    assert_eq!(
+        d.tests_removed,
+        vec!["a_negative_number_still_adds_correctly".to_string()]
+    );
     let e = explain(&d, "tidy the totals");
     assert!(
-        e.watch_out.iter().any(|w| w.to_lowercase().contains("no longer")),
+        e.watch_out
+            .iter()
+            .any(|w| w.to_lowercase().contains("no longer")),
         "a dropped test must be flagged as a promise withdrawn: {:?}",
         e.watch_out
     );
@@ -62,8 +74,14 @@ fn the_summary_says_what_is_different_without_code() {
     let e = explain(&diff_of(&before(), &after()), "handle negatives");
     let s = spoken(&e);
     // It speaks the behaviour, not the diff — no braces, no fn.
-    assert!(s.to_lowercase().contains("negative"), "should name the new behaviour: {s}");
-    assert!(!s.contains('{') && !s.contains("fn "), "no code should leak into the summary: {s}");
+    assert!(
+        s.to_lowercase().contains("negative"),
+        "should name the new behaviour: {s}"
+    );
+    assert!(
+        !s.contains('{') && !s.contains("fn "),
+        "no code should leak into the summary: {s}"
+    );
     // The written form and its question are the fuller pre-decision view.
     let w = written(&e);
     assert!(w.to_lowercase().contains("it will now"), "{w}");
@@ -75,7 +93,10 @@ fn a_change_with_no_test_movement_admits_it_cannot_describe_it() {
     // Same tests before and after: nothing testably different, and it says so
     // rather than inventing a behavioural summary.
     let e = explain(&diff_of(&before(), &before()), "a refactor");
-    assert!(!e.certain, "with no test change it must not claim certainty");
+    assert!(
+        !e.certain,
+        "with no test change it must not claim certainty"
+    );
     assert!(
         spoken(&e).to_lowercase().contains("can't tell you exactly"),
         "it should admit it can't describe the behaviour: {}",
@@ -92,16 +113,35 @@ fn asking_what_a_change_does_with_nothing_staged_says_so() {
     std::fs::create_dir_all(&dir).unwrap();
 
     let c = Config::load(Path::new("config")).unwrap();
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
-    let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     // A plain string literal so the every-intent-reaches-the-daemon guard can
     // read this branch is driven end to end. Nothing is staged, so it says so
     // rather than describing a change that isn't there.
     let reply = d.turn("what will that change do", 100);
-    assert!(reply.to_lowercase().contains("nothing"), "with nothing staged it should say so: {reply}");
+    assert!(
+        reply.to_lowercase().contains("nothing"),
+        "with nothing staged it should say so: {reply}"
+    );
     // The nothing-staged answer is its own branch, not the catch-all.
     let junk = d.turn("zzqx frobnicate wibble", 100);
-    assert_ne!(reply, junk, "the nothing-staged answer is a branch of its own");
+    assert_ne!(
+        reply, junk,
+        "the nothing-staged answer is a branch of its own"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

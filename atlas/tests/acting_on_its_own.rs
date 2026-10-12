@@ -37,8 +37,21 @@ fn a_missing_scratch_folder_is_remade_without_asking_and_logged() {
     let mut cfg = Config::load(Path::new("config")).unwrap();
     cfg.tools.as_mut().unwrap().work_dir = missing.display().to_string();
     let cfg: &'static Config = Box::leak(Box::new(cfg));
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
-    let mut d = Daemon::new(cfg, &p, None, Store::new(root.join("state")), Proactive::new(ProactiveConfig::default()));
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
+    let mut d = Daemon::new(
+        cfg,
+        &p,
+        None,
+        Store::new(root.join("state")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     assert!(!missing.exists());
     let done = d.fix_my_own_things(1_000);
     assert!(done.contains(&"scratch".to_string()), "{done:?}");
@@ -62,7 +75,10 @@ fn its_own_finding_carries_its_diagnosis_into_the_work() {
     let u = atlas::selfaudit::unprompted(&cfg, &[rec]).unwrap();
     let t = u.thought.expect("the diagnosis goes with it");
     assert_eq!(t.cause, "the brevity rule is read after the draft");
-    assert!(!t.proof_fails_now, "never assumed: the pipeline runs the proof itself");
+    assert!(
+        !t.proof_fails_now,
+        "never assumed: the pipeline runs the proof itself"
+    );
 }
 
 // ------------------------------------------------------------------ E3
@@ -107,33 +123,79 @@ fn checker(code: &str) -> Check {
 
 #[test]
 fn a_long_job_keeps_going_until_it_passes_well_past_the_old_three_rounds() {
-    let llm = Fixer { calls: AtomicU32::new(0), right_on: 12, same_every_time: false };
-    let (outcome, said) = atlas::build_it::keep_building(&struggle(), &llm, &LongJobConfig::default(), checker, || false);
-    assert!(matches!(outcome, Outcome::Built { rounds: 12, .. }), "{outcome:?}");
+    let llm = Fixer {
+        calls: AtomicU32::new(0),
+        right_on: 12,
+        same_every_time: false,
+    };
+    let (outcome, said) = atlas::build_it::keep_building(
+        &struggle(),
+        &llm,
+        &LongJobConfig::default(),
+        checker,
+        || false,
+    );
+    assert!(
+        matches!(outcome, Outcome::Built { rounds: 12, .. }),
+        "{outcome:?}"
+    );
     assert!(said.contains("done, and it checks out"), "{said}");
 }
 
 #[test]
 fn a_long_job_stops_when_it_is_going_in_circles_or_out_of_attempts_or_told() {
     // The same draft twice: nothing is changing, so stop.
-    let llm = Fixer { calls: AtomicU32::new(0), right_on: 0, same_every_time: true };
-    let (outcome, said) = atlas::build_it::keep_building(&struggle(), &llm, &LongJobConfig::default(), checker, || false);
-    assert!(matches!(outcome, Outcome::Struggled { rounds: 2, .. }), "{outcome:?}");
-    assert!(said.starts_with("I seem to be stuck on rename files by date for "), "{said}");
+    let llm = Fixer {
+        calls: AtomicU32::new(0),
+        right_on: 0,
+        same_every_time: true,
+    };
+    let (outcome, said) = atlas::build_it::keep_building(
+        &struggle(),
+        &llm,
+        &LongJobConfig::default(),
+        checker,
+        || false,
+    );
+    assert!(
+        matches!(outcome, Outcome::Struggled { rounds: 2, .. }),
+        "{outcome:?}"
+    );
+    assert!(
+        said.starts_with("I seem to be stuck on rename files by date for "),
+        "{said}"
+    );
 
     // Out of attempts.
-    let llm = Fixer { calls: AtomicU32::new(0), right_on: 1_000, same_every_time: false };
-    let small = LongJobConfig { max_attempts: 5, max_hours: 8 };
+    let llm = Fixer {
+        calls: AtomicU32::new(0),
+        right_on: 1_000,
+        same_every_time: false,
+    };
+    let small = LongJobConfig {
+        max_attempts: 5,
+        max_hours: 8,
+    };
     let (_, said) = atlas::build_it::keep_building(&struggle(), &llm, &small, checker, || false);
     assert!(said.contains("gave up after 5"), "{said}");
 
     // Told to stop.
-    let llm = Fixer { calls: AtomicU32::new(0), right_on: 1_000, same_every_time: false };
+    let llm = Fixer {
+        calls: AtomicU32::new(0),
+        right_on: 1_000,
+        same_every_time: false,
+    };
     let mut asked = 0;
-    let (_, said) = atlas::build_it::keep_building(&struggle(), &llm, &LongJobConfig::default(), checker, || {
-        asked += 1;
-        asked > 3
-    });
+    let (_, said) = atlas::build_it::keep_building(
+        &struggle(),
+        &llm,
+        &LongJobConfig::default(),
+        checker,
+        || {
+            asked += 1;
+            asked > 3
+        },
+    );
     assert!(said.contains("stopped when you asked, after 3"), "{said}");
 }
 
@@ -141,14 +203,21 @@ fn a_long_job_stops_when_it_is_going_in_circles_or_out_of_attempts_or_told() {
 fn the_limit_is_not_ridiculously_small() {
     let l = LongJobConfig::default();
     assert!(l.max_attempts >= 50 && l.max_hours >= 8);
-    let shipped = Config::load(Path::new("config")).unwrap().tools.unwrap().long_jobs;
+    let shipped = Config::load(Path::new("config"))
+        .unwrap()
+        .tools
+        .unwrap()
+        .long_jobs;
     assert_eq!((shipped.max_attempts, shipped.max_hours), (50, 8));
 }
 
 // ------------------------------------------------------------------ E4
 
 fn cfg_on() -> RoutineConfig {
-    RoutineConfig { enabled: true, ..RoutineConfig::default() }
+    RoutineConfig {
+        enabled: true,
+        ..RoutineConfig::default()
+    }
 }
 
 fn three_mornings(w: &mut Watcher, steps: &[&str]) {
@@ -172,10 +241,22 @@ fn a_routine_seen_three_times_is_asked_about_once_by_a_name_you_would_use() {
 
 #[test]
 fn concrete_routines_run_on_their_own_and_abstract_ones_ask() {
-    assert!(atlas::routine::is_concrete(&["check my mail".into(), "show my agenda".into()]));
-    assert!(atlas::routine::is_concrete(&["remind me to stretch at 3".into(), "back up".into()]));
-    assert!(!atlas::routine::is_concrete(&["research solar panels".into(), "show my agenda".into()]));
-    assert!(!atlas::routine::is_concrete(&["check my mail".into(), "send the report to sam".into()]), "anything that sends asks");
+    assert!(atlas::routine::is_concrete(&[
+        "check my mail".into(),
+        "show my agenda".into()
+    ]));
+    assert!(atlas::routine::is_concrete(&[
+        "remind me to stretch at 3".into(),
+        "back up".into()
+    ]));
+    assert!(!atlas::routine::is_concrete(&[
+        "research solar panels".into(),
+        "show my agenda".into()
+    ]));
+    assert!(
+        !atlas::routine::is_concrete(&["check my mail".into(), "send the report to sam".into()]),
+        "anything that sends asks"
+    );
 }
 
 #[test]

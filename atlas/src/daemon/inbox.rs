@@ -1,12 +1,17 @@
 //! The context a turn is answered in, and mail: checking it, unsubscribing,
 //! Outlook, reading orders and drafts, and drafting outreach.
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
 
-fn keep_client_reply_for_review(store: &crate::store::Store, pending: crate::outbox::PendingReply) -> std::result::Result<String, String> {
-    if pending.kind != crate::outbox::Kind::Client || pending.status != crate::outbox::Status::Waiting {
+fn keep_client_reply_for_review(
+    store: &crate::store::Store,
+    pending: crate::outbox::PendingReply,
+) -> std::result::Result<String, String> {
+    if pending.kind != crate::outbox::Kind::Client
+        || pending.status != crate::outbox::Status::Waiting
+    {
         return Err("Client preparation must remain a draft awaiting exact approval.".into());
     }
     let notice = pending.spoken_notice();
@@ -19,14 +24,64 @@ mod client_draft_approval_tests {
     use super::*;
     #[test]
     fn automatic_client_preparation_is_durable_waiting_and_busy_save_never_claims_ready() {
-        let root = std::env::temp_dir().join(format!("atlas-client-review-{}-{}", std::process::id(), crate::store::now())); let store = crate::store::Store::new(&root);
-        let reply = crate::outbox::PendingReply { id: "synthetic-client-draft".into(), account: "personal".into(), to_address: "sam@example.com".into(), to_name: "Sam".into(), subject: "Re: Video outline".into(), body: "I can prepare an outline for your review.".into(), kind: crate::outbox::Kind::Client, critique: vec![], created_at: crate::store::now(), status: crate::outbox::Status::Waiting, thread: Default::default() };
-        let owned = store.clone(); let (ready, arrived) = std::sync::mpsc::sync_channel(1); let (release, wait) = std::sync::mpsc::sync_channel(1);
-        let holder = std::thread::spawn(move || { let _guard = owned.transaction().unwrap(); ready.send(()).unwrap(); wait.recv().unwrap(); }); arrived.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
-        let blocked = keep_client_reply_for_review(&store, reply.clone()); release.send(()).unwrap(); holder.join().unwrap(); assert!(blocked.is_err()); assert!(crate::outbox::Outbox::load_checked(&store).unwrap().waiting().is_empty());
-        assert!(keep_client_reply_for_review(&store, reply.clone()).unwrap().contains("reply"));
-        let restarted = crate::outbox::Outbox::load_checked(&crate::store::Store::new(&root)).unwrap(); let saved = restarted.waiting_for("sam@example.com").unwrap(); assert_eq!(serde_json::to_value(saved).unwrap(), serde_json::to_value(&reply).unwrap());
-        let mut invalid = reply; invalid.status = crate::outbox::Status::Sent; assert!(keep_client_reply_for_review(&store, invalid).is_err()); assert_eq!(crate::outbox::Outbox::load_checked(&store).unwrap().waiting().len(), 1);
+        let root = std::env::temp_dir().join(format!(
+            "atlas-client-review-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        let store = crate::store::Store::new(&root);
+        let reply = crate::outbox::PendingReply {
+            id: "synthetic-client-draft".into(),
+            account: "personal".into(),
+            to_address: "sam@example.com".into(),
+            to_name: "Sam".into(),
+            subject: "Re: Video outline".into(),
+            body: "I can prepare an outline for your review.".into(),
+            kind: crate::outbox::Kind::Client,
+            critique: vec![],
+            created_at: crate::store::now(),
+            status: crate::outbox::Status::Waiting,
+            thread: Default::default(),
+        };
+        let owned = store.clone();
+        let (ready, arrived) = std::sync::mpsc::sync_channel(1);
+        let (release, wait) = std::sync::mpsc::sync_channel(1);
+        let holder = std::thread::spawn(move || {
+            let _guard = owned.transaction().unwrap();
+            ready.send(()).unwrap();
+            wait.recv().unwrap();
+        });
+        arrived
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        let blocked = keep_client_reply_for_review(&store, reply.clone());
+        release.send(()).unwrap();
+        holder.join().unwrap();
+        assert!(blocked.is_err());
+        assert!(crate::outbox::Outbox::load_checked(&store)
+            .unwrap()
+            .waiting()
+            .is_empty());
+        assert!(keep_client_reply_for_review(&store, reply.clone())
+            .unwrap()
+            .contains("reply"));
+        let restarted =
+            crate::outbox::Outbox::load_checked(&crate::store::Store::new(&root)).unwrap();
+        let saved = restarted.waiting_for("sam@example.com").unwrap();
+        assert_eq!(
+            serde_json::to_value(saved).unwrap(),
+            serde_json::to_value(&reply).unwrap()
+        );
+        let mut invalid = reply;
+        invalid.status = crate::outbox::Status::Sent;
+        assert!(keep_client_reply_for_review(&store, invalid).is_err());
+        assert_eq!(
+            crate::outbox::Outbox::load_checked(&store)
+                .unwrap()
+                .waiting()
+                .len(),
+            1
+        );
         crate::heard!(std::fs::remove_dir_all(root));
     }
 }
@@ -67,13 +122,21 @@ impl<'a> Daemon<'a> {
         // Only when what was said is about the screen (`doing::refers_to_screen`,
         // 29 Sep 2026); the title is still read for orders below either way.
         if let Some(a) = &active {
-            let app = a.process.trim_end_matches(".exe").trim_end_matches(".EXE").to_string();
+            let app = a
+                .process
+                .trim_end_matches(".exe")
+                .trim_end_matches(".EXE")
+                .to_string();
             if crate::doing::refers_to_screen(&self.last_said, &app) {
                 s.push_str(&brain::focus_line(a, at));
             }
         }
-        let names: Vec<String> =
-            self.index.recent(5).iter().map(|e| e.name.clone()).collect();
+        let names: Vec<String> = self
+            .index
+            .recent(5)
+            .iter()
+            .map(|e| e.name.clone())
+            .collect();
         s.push_str(&brain::recent_files_line(&names, at));
 
         // Somebody wrote an instruction into a window title or a file name.
@@ -94,8 +157,14 @@ impl<'a> Daemon<'a> {
             let mut fed: crate::untrusted::Inbox = self.store.load("read-from-outside");
             fed.took_in(
                 crate::untrusted::Read::new(
-                    active.as_ref().map(|a| a.process.as_str()).unwrap_or("a file name"),
-                    active.as_ref().map(|a| a.title.as_str()).unwrap_or_default(),
+                    active
+                        .as_ref()
+                        .map(|a| a.process.as_str())
+                        .unwrap_or("a file name"),
+                    active
+                        .as_ref()
+                        .map(|a| a.title.as_str())
+                        .unwrap_or_default(),
                     crate::store::now(),
                 ),
                 500,
@@ -226,18 +295,24 @@ impl<'a> Daemon<'a> {
     /// Open the vault for scheduled work through the sign-in copy, when the
     /// setting is on and it is shut. Never counts as proving it's you.
     fn open_vault_for_scheduled_work(&mut self, now: u64) {
-        if self.vault.state() == crate::vault::State::Open || !self.tools_cfg().vault.open_on_this_login {
+        if self.vault.state() == crate::vault::State::Open
+            || !self.tools_cfg().vault.open_on_this_login
+        {
             return;
         }
         if !self.vault.sealed_to_this_login() {
             // An old passphrase vault: moved on, so scheduled work doesn't
             // wait on a passphrase nobody remembers.
-            if self.vault.is_brand_new() || !crate::loginseal::available() || self.move_vault_to_sign_in(now).is_err() {
+            if self.vault.is_brand_new()
+                || !crate::loginseal::available()
+                || self.move_vault_to_sign_in(now).is_err()
+            {
                 return;
             }
         }
         if let Err(why) = self.vault.open_unattended(now) {
-            self.log.warn(&format!("couldn't open the vault on your sign-in: {why}"));
+            self.log
+                .warn(&format!("couldn't open the vault on your sign-in: {why}"));
         }
     }
 
@@ -294,7 +369,8 @@ impl<'a> Daemon<'a> {
                 Ok(())
             }
             Err(why) => {
-                self.log.warn(&format!("couldn't move the vault to your sign-in: {why}"));
+                self.log
+                    .warn(&format!("couldn't move the vault to your sign-in: {why}"));
                 Err(format!("{} ({why})", crate::vault::OLD_VAULT))
             }
         }
@@ -327,8 +403,7 @@ impl<'a> Daemon<'a> {
             by_sender.entry(m.from.clone()).or_default().push(m.clone());
         }
 
-        let mut people: Vec<crate::messaging::Person> =
-            self.store.load(crate::messaging::PEOPLE);
+        let mut people: Vec<crate::messaging::Person> = self.store.load(crate::messaging::PEOPLE);
         let mut fresh_work: Vec<crate::messaging::Person> = Vec::new();
         for from in &order {
             let msgs = &by_sender[from];
@@ -370,7 +445,9 @@ impl<'a> Daemon<'a> {
         // The first new work contact is said the way you asked (F3), with the
         // offer to find the answer; saying yes starts the research. Any others
         // are named.
-        let Some(first) = fresh_work.first() else { return String::new() };
+        let Some(first) = fresh_work.first() else {
+            return String::new();
+        };
         let mut said = String::new();
         if let Some(line) = crate::messaging::filed(first) {
             let topic = first.first_about.trim().to_string();
@@ -388,7 +465,10 @@ impl<'a> Daemon<'a> {
             said.push_str(&line);
         }
         if fresh_work.len() > 1 {
-            let rest: Vec<String> = fresh_work[1..].iter().map(|p| format!("{} ({})", p.name, p.folder.name())).collect();
+            let rest: Vec<String> = fresh_work[1..]
+                .iter()
+                .map(|p| format!("{} ({})", p.name, p.folder.name()))
+                .collect();
             said.push_str(&format!(" Also new and worth a note: {}.", rest.join(", ")));
         }
         said
@@ -414,7 +494,10 @@ impl<'a> Daemon<'a> {
         // account and its password, already resolved, nothing else.
         let (jobs, setup_problems) = self.resolve_mail_jobs(&cfg, now);
         if jobs.is_empty() {
-            return format!("I couldn't get at any of your mail accounts: {}", setup_problems.join("; "));
+            return format!(
+                "I couldn't get at any of your mail accounts: {}",
+                setup_problems.join("; ")
+            );
         }
 
         let store = self.store.clone();
@@ -430,7 +513,8 @@ impl<'a> Daemon<'a> {
         let keep_days = wd.mail_keep_days;
         let work: crew::Work = Box::new(move |ctl| {
             let clients = crate::clients::ClientList::load(&store);
-            let mut mail_book: crate::mailbook::MailBook = store.load(crate::mailbook::MailBook::FILE);
+            let mut mail_book: crate::mailbook::MailBook =
+                store.load(crate::mailbook::MailBook::FILE);
             let mut orders = crate::orders::Orders::load(&store);
             let mut triaged = Vec::new();
             let mut failures = setup_problems;
@@ -445,12 +529,15 @@ impl<'a> Daemon<'a> {
             let mut for_threads: Vec<crate::mailthread::Mail> = Vec::new();
             // The domains you deal with — your clients' and your own — which
             // is exactly the list a lookalike sender is built against.
-            let mut known_domains: Vec<String> = clients
-                .all()
-                .iter()
-                .filter_map(|c| c.address.rsplit_once('@').map(|x| x.1.to_lowercase()))
-                .chain(jobs.iter().filter_map(|(a, _)| a.address.rsplit_once('@').map(|x| x.1.to_lowercase())))
-                .collect();
+            let mut known_domains: Vec<String> =
+                clients
+                    .all()
+                    .iter()
+                    .filter_map(|c| c.address.rsplit_once('@').map(|x| x.1.to_lowercase()))
+                    .chain(jobs.iter().filter_map(|(a, _)| {
+                        a.address.rsplit_once('@').map(|x| x.1.to_lowercase())
+                    }))
+                    .collect();
             known_domains.sort();
             known_domains.dedup();
             let mut careful: Vec<String> = Vec::new();
@@ -478,9 +565,18 @@ impl<'a> Daemon<'a> {
                 // password to fall back to. The server's own error comes
                 // back rather than anything guessed at.
                 let sent_since = mail_book_on.then(|| {
-                    let last = mail_book.checked.get(&account.address).copied().unwrap_or(0);
-                    let back = crate::store::now().saturating_sub(last.max(crate::store::now().saturating_sub(look_back_days * 86_400)));
-                    crate::triage::imap_date(u32::try_from(back / 86_400 + 1).unwrap_or(u32::MAX), crate::store::now())
+                    let last = mail_book
+                        .checked
+                        .get(&account.address)
+                        .copied()
+                        .unwrap_or(0);
+                    let back = crate::store::now().saturating_sub(
+                        last.max(crate::store::now().saturating_sub(look_back_days * 86_400)),
+                    );
+                    crate::triage::imap_date(
+                        u32::try_from(back / 86_400 + 1).unwrap_or(u32::MAX),
+                        crate::store::now(),
+                    )
                 });
                 match connect_and_fetch_inbox(
                     &host,
@@ -494,17 +590,25 @@ impl<'a> Daemon<'a> {
                         crate::connect::note_health(&store, &account.address, None);
                         if mail_book_on {
                             let fetched = crate::store::now();
-                            let mut letters: Vec<crate::mailbook::Letter> = msgs.iter().map(|m| crate::mailbook::Letter::from_imap(m, false, fetched)).collect();
+                            let mut letters: Vec<crate::mailbook::Letter> = msgs
+                                .iter()
+                                .map(|m| crate::mailbook::Letter::from_imap(m, false, fetched))
+                                .collect();
                             match sent {
                                 Ok(sent) => {
-                                    letters.extend(sent.iter().take(300).map(|m| crate::mailbook::Letter::from_imap(m, true, fetched)));
+                                    letters.extend(sent.iter().take(300).map(|m| {
+                                        crate::mailbook::Letter::from_imap(m, true, fetched)
+                                    }));
                                     mail_book.checked.insert(account.address.clone(), fetched);
                                 }
-                                Err(e) => failures.push(format!("{} (sent mail): {e}", account.name)),
+                                Err(e) => {
+                                    failures.push(format!("{} (sent mail): {e}", account.name))
+                                }
                             }
                             mail_book.add(letters, look_back_days.max(keep_days), fetched);
                         }
-                        for_threads.extend(msgs.iter().map(|m| crate::mailthread::Mail::from_imap(m)));
+                        for_threads
+                            .extend(msgs.iter().map(|m| crate::mailthread::Mail::from_imap(m)));
                         for m in &msgs {
                             let t: crate::triage::Message = m.into();
                             let triaged_one = crate::triage::triage(&t);
@@ -512,17 +616,29 @@ impl<'a> Daemon<'a> {
                             // A sender that only looks like someone you deal
                             // with, or that its own server says is forged,
                             // is named and gets no draft, however polite.
-                            let suspect = crate::lookalike::sender_warning(&m.from, &m.authentication_results, &known_domains);
+                            let suspect = crate::lookalike::sender_warning(
+                                &m.from,
+                                &m.authentication_results,
+                                &known_domains,
+                            );
                             if let Some(w) = &suspect {
                                 careful.push(w.clone());
                             }
                             if let Some(status) = crate::orders::status_from_subject(&m.subject) {
-                                if let Some(merchant) = crate::orders::merchant_from_address(&address) {
-                                    if let Some(order) =
-                                        orders.update(&merchant, &m.subject, status, crate::store::now())
-                                    {
-                                        order_updates
-                                            .push(format!("{}: {}", order.merchant, order.status.spoken()));
+                                if let Some(merchant) =
+                                    crate::orders::merchant_from_address(&address)
+                                {
+                                    if let Some(order) = orders.update(
+                                        &merchant,
+                                        &m.subject,
+                                        status,
+                                        crate::store::now(),
+                                    ) {
+                                        order_updates.push(format!(
+                                            "{}: {}",
+                                            order.merchant,
+                                            order.status.spoken()
+                                        ));
                                     }
                                 }
                             }
@@ -551,7 +667,9 @@ impl<'a> Daemon<'a> {
                                                     llm.as_ref(),
                                                     &draft_cfg,
                                                 ) {
-                                                    crate::draft::Outcome::Revised { text, .. } => text,
+                                                    crate::draft::Outcome::Revised {
+                                                        text, ..
+                                                    } => text,
                                                     _ => body,
                                                 };
                                                 let notes =
@@ -575,16 +693,23 @@ impl<'a> Daemon<'a> {
                                                     status: crate::outbox::Status::Waiting,
                                                     thread: crate::outbox::Thread::replying_to(
                                                         &m.message_id,
-                                                        &m.references.split_whitespace().map(String::from).collect::<Vec<_>>(),
+                                                        &m.references
+                                                            .split_whitespace()
+                                                            .map(String::from)
+                                                            .collect::<Vec<_>>(),
                                                     ),
                                                 };
-                                                match keep_client_reply_for_review(&store, pending) {
+                                                match keep_client_reply_for_review(&store, pending)
+                                                {
                                                     Ok(notice) => fresh_drafts.push(notice),
-                                                    Err(e) => failures.push(format!("Couldn't keep the client draft: {e}")),
+                                                    Err(e) => failures.push(format!(
+                                                        "Couldn't keep the client draft: {e}"
+                                                    )),
                                                 }
                                             }
-                                            Err(e) => failures
-                                                .push(format!("drafting a reply to {address}: {e}")),
+                                            Err(e) => failures.push(format!(
+                                                "drafting a reply to {address}: {e}"
+                                            )),
                                         }
                                     }
                                 }
@@ -617,8 +742,13 @@ impl<'a> Daemon<'a> {
             // Several new messages that are one conversation are said as one:
             // "the installer thread has 3 new" is the thing to know, not three
             // separate lines that happen to share a subject.
-            for (subject, n) in crate::mailthread::conversations(&for_threads).iter().take(3) {
-                said.push_str(&format!(" {n} of these are one conversation: \"{subject}\"."));
+            for (subject, n) in crate::mailthread::conversations(&for_threads)
+                .iter()
+                .take(3)
+            {
+                said.push_str(&format!(
+                    " {n} of these are one conversation: \"{subject}\"."
+                ));
             }
             // The sentence is the outbox's own, not a second copy of it.
             for notice in &fresh_drafts {
@@ -668,7 +798,10 @@ impl<'a> Daemon<'a> {
         let now = crate::store::now();
         let (jobs, setup_problems) = self.resolve_mail_jobs(&cfg, now);
         if jobs.is_empty() {
-            return format!("I couldn't get at any of your mail accounts: {}", setup_problems.join("; "));
+            return format!(
+                "I couldn't get at any of your mail accounts: {}",
+                setup_problems.join("; ")
+            );
         }
 
         let unsub_cfg = self.tools_cfg().unsub.clone();
@@ -727,7 +860,10 @@ impl<'a> Daemon<'a> {
             }
             let mut said = if unsub_cfg.bulk_without_asking {
                 format!("Unsubscribed from {total_unsubscribed}.")
-            } else if per_account_spoken.iter().all(|s| s.starts_with("Nothing worth")) {
+            } else if per_account_spoken
+                .iter()
+                .all(|s| s.starts_with("Nothing worth"))
+            {
                 "Nothing worth clearing out — you read most of what you get.".into()
             } else {
                 per_account_spoken.join(" ")
@@ -750,7 +886,9 @@ impl<'a> Daemon<'a> {
         });
 
         if self.hand_off("unsubscribe", now, work, None, SpeakPolicy::Always) {
-            format!("Looking at the last {WINDOW_DAYS} days of mail to see what's worth clearing out.")
+            format!(
+                "Looking at the last {WINDOW_DAYS} days of mail to see what's worth clearing out."
+            )
         } else {
             "I'm swamped with background work right now — ask me again in a moment.".into()
         }
@@ -777,7 +915,10 @@ impl<'a> Daemon<'a> {
             }
         }
         if todo.is_empty() {
-            return Some(format!("I couldn't get at the mailbox those came to: {}", problems.join("; ")));
+            return Some(format!(
+                "I couldn't get at the mailbox those came to: {}",
+                problems.join("; ")
+            ));
         }
         let store = self.store.clone();
         let count: usize = todo.iter().map(|(c, _, _)| c.unsubscribe.len()).sum();
@@ -791,22 +932,33 @@ impl<'a> Daemon<'a> {
             }
             // If the queue can't be cleared, the same unsubscribes would be
             // sent again next time: say so instead of claiming it's finished.
-            let cleared = store.save(crate::unsub::PENDING, &Vec::<(String, crate::unsub::Cleanup)>::new());
+            let cleared = store.save(
+                crate::unsub::PENDING,
+                &Vec::<(String, crate::unsub::Cleanup)>::new(),
+            );
             let mut said = if failed.is_empty() {
                 format!("Unsubscribed from {done}.")
             } else {
-                format!("Unsubscribed from {done}; {} didn't go: {}.", failed.len(), failed.join("; "))
+                format!(
+                    "Unsubscribed from {done}; {} didn't go: {}.",
+                    failed.len(),
+                    failed.join("; ")
+                )
             };
             if let Err(e) = cleared {
-                said.push_str(&format!(" I couldn't clear the pending list ({e}), so these may be sent again."));
+                said.push_str(&format!(
+                    " I couldn't clear the pending list ({e}), so these may be sent again."
+                ));
             }
             Ok(said)
         });
-        Some(if self.hand_off("unsubscribe", now, work, None, SpeakPolicy::Always) {
-            format!("Unsubscribing from {count} now.")
-        } else {
-            "I'm swamped with background work right now -- ask me again in a moment.".into()
-        })
+        Some(
+            if self.hand_off("unsubscribe", now, work, None, SpeakPolicy::Always) {
+                format!("Unsubscribing from {count} now.")
+            } else {
+                "I'm swamped with background work right now -- ask me again in a moment.".into()
+            },
+        )
     }
 
     /// "Connect my outlook account me@outlook.com with client id
@@ -882,7 +1034,13 @@ impl<'a> Daemon<'a> {
 
         // The client id travels with the address, so the account can be
         // added once connected (30 Sep 2026: it ended "edit tools.yaml").
-        if self.hand_off("outlook-connect", now, work, Some(format!("{address} {client_id}")), SpeakPolicy::Always) {
+        if self.hand_off(
+            "outlook-connect",
+            now,
+            work,
+            Some(format!("{address} {client_id}")),
+            SpeakPolicy::Always,
+        ) {
             dc.message
         } else {
             "I'm swamped with background work right now — try connecting that account again in a moment."
@@ -897,7 +1055,12 @@ impl<'a> Daemon<'a> {
         let orders = crate::orders::Orders::load(&self.store);
         match orders.find(what) {
             Some(order) => {
-                format!("{} — {}: {}", order.merchant, order.description, order.status.spoken())
+                format!(
+                    "{} — {}: {}",
+                    order.merchant,
+                    order.description,
+                    order.status.spoken()
+                )
             }
             None => "I don't have an order matching that.".into(),
         }
@@ -910,14 +1073,27 @@ impl<'a> Daemon<'a> {
         if who.is_empty() {
             return "Pull up the draft to who?".into();
         }
-        let outbox = match crate::outbox::Outbox::load_checked(&self.store) { Ok(outbox) => outbox, Err(e) => return format!("Draft coverage unavailable: outbox state couldn't be read ({e}); nothing changed.") };
-        if let Some(reply) = outbox.unconfirmed_for(who) { return format!("Submission to {} is unconfirmed. {} Original draft: \"{}\"", reply.to_name, outbox.submission_status(&reply.id).unwrap_or_default(), reply.body); }
-        match outbox.waiting_for(who) {
-            Some(reply) => { self.draft_last_read_identity = Some(reply.clone()); format!(
-                "Reply to {}: \"{}\"",
+        let outbox = match crate::outbox::Outbox::load_checked(&self.store) {
+            Ok(outbox) => outbox,
+            Err(e) => {
+                return format!(
+                "Draft coverage unavailable: outbox state couldn't be read ({e}); nothing changed."
+            )
+            }
+        };
+        if let Some(reply) = outbox.unconfirmed_for(who) {
+            return format!(
+                "Submission to {} is unconfirmed. {} Original draft: \"{}\"",
                 reply.to_name,
-                reply.body.trim()
-            ) },
+                outbox.submission_status(&reply.id).unwrap_or_default(),
+                reply.body
+            );
+        }
+        match outbox.waiting_for(who) {
+            Some(reply) => {
+                self.draft_last_read_identity = Some(reply.clone());
+                format!("Reply to {}: \"{}\"", reply.to_name, reply.body.trim())
+            }
             None => format!("I don't have a draft waiting for {who}."),
         }
     }
@@ -931,16 +1107,55 @@ impl<'a> Daemon<'a> {
     /// and never sent -- `Outbox::mark_sent` had no caller -- so drafts sat
     /// "waiting" for ever.
     pub(super) fn drafts_help(&mut self, said: &str) -> Option<String> {
-        let t: String = said.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == '@' || c == '.' || c == ' ' { c } else { ' ' }).collect();
+        let t: String = said
+            .to_lowercase()
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '@' || c == '.' || c == ' ' {
+                    c
+                } else {
+                    ' '
+                }
+            })
+            .collect();
         let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
         let about_drafts = t.contains("reply") || t.contains("draft");
-        let who = t.rsplit_once(" to ").map(|(_, w)| w.trim().to_string()).unwrap_or_default();
-        if t.starts_with("i checked reply was sent to ") || t.starts_with("i checked reply was not sent to ") {
-            if self.crew_links.values().any(|link| matches!(link.label, "mail" | "send reply" | "outreach")) { return Some("Mail work is still running. Wait for its result before reconciling a submission.".into()); }
+        let who = t
+            .rsplit_once(" to ")
+            .map(|(_, w)| w.trim().to_string())
+            .unwrap_or_default();
+        if t.starts_with("i checked reply was sent to ")
+            || t.starts_with("i checked reply was not sent to ")
+        {
+            if self
+                .crew_links
+                .values()
+                .any(|link| matches!(link.label, "mail" | "send reply" | "outreach"))
+            {
+                return Some("Mail work is still running. Wait for its result before reconciling a submission.".into());
+            }
             let sent = !t.starts_with("i checked reply was not sent to ");
-            let guard = match self.store.transaction() { Ok(guard) => guard, Err(e) => return Some(format!("Couldn't reserve mail state ({e}); nothing changed.")) };
-            let mut outbox = match crate::outbox::Outbox::load_checked(&self.store) { Ok(outbox) => outbox, Err(e) => return Some(format!("Outbox state couldn't be read ({e}); your check wasn't applied.")) };
-            if !outbox.reconcile_owner_check(&who, sent) { return Some("Name exactly one unconfirmed recipient or address; nothing changed.".into()); }
+            let guard = match self.store.transaction() {
+                Ok(guard) => guard,
+                Err(e) => {
+                    return Some(format!(
+                        "Couldn't reserve mail state ({e}); nothing changed."
+                    ))
+                }
+            };
+            let mut outbox = match crate::outbox::Outbox::load_checked(&self.store) {
+                Ok(outbox) => outbox,
+                Err(e) => {
+                    return Some(format!(
+                        "Outbox state couldn't be read ({e}); your check wasn't applied."
+                    ))
+                }
+            };
+            if !outbox.reconcile_owner_check(&who, sent) {
+                return Some(
+                    "Name exactly one unconfirmed recipient or address; nothing changed.".into(),
+                );
+            }
             let result = match outbox.save(&self.store) {
                 Ok(()) if sent => "Recorded your check that the reply was sent. This is owner confirmation, not an independent service receipt; Atlas won't repeat it.".into(),
                 Ok(()) => "Recorded your check that it was not sent. The exact draft is waiting for fresh approval; review it before saying send. Nothing sent.".into(),
@@ -951,22 +1166,44 @@ impl<'a> Daemon<'a> {
             self.draft_last_read_identity = None;
             return Some(result);
         }
-        if about_drafts && (t.contains("what drafts") || t.contains("my drafts") || t.contains("drafts waiting") || t.contains("any drafts")) {
+        if about_drafts
+            && (t.contains("what drafts")
+                || t.contains("my drafts")
+                || t.contains("drafts waiting")
+                || t.contains("any drafts"))
+        {
             let outbox = match crate::outbox::Outbox::load_checked(&self.store) { Ok(outbox) => outbox, Err(e) => return Some(format!("Draft coverage unavailable: outbox state couldn't be read ({e}); nothing changed.")) };
             let waiting = outbox.waiting();
-            if !outbox.unconfirmed().is_empty() { return Some(format!("Unconfirmed submissions: {}. Check those services before repeating. Waiting drafts: {}.", outbox.unconfirmed().iter().map(|r| r.to_name.as_str()).collect::<Vec<_>>().join(", "), waiting.iter().map(|r| r.to_name.as_str()).collect::<Vec<_>>().join(", "))); }
+            if !outbox.unconfirmed().is_empty() {
+                return Some(format!("Unconfirmed submissions: {}. Check those services before repeating. Waiting drafts: {}.", outbox.unconfirmed().iter().map(|r| r.to_name.as_str()).collect::<Vec<_>>().join(", "), waiting.iter().map(|r| r.to_name.as_str()).collect::<Vec<_>>().join(", ")));
+            }
             return Some(if waiting.is_empty() {
                 "No drafts waiting.".into()
             } else {
-                format!("Waiting: {}.", waiting.iter().map(|r| format!("a reply to {}", r.to_name)).collect::<Vec<_>>().join("; "))
+                format!(
+                    "Waiting: {}.",
+                    waiting
+                        .iter()
+                        .map(|r| format!("a reply to {}", r.to_name))
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                )
             });
         }
-        let sending = t.starts_with("send") && (about_drafts || t == "send it" || t == "send that" || t == "send it off");
+        let sending = t.starts_with("send")
+            && (about_drafts || t == "send it" || t == "send that" || t == "send it off");
         if sending {
-            let pick = if who.is_empty() { self.draft_last_read.clone() } else { Some(who) };
+            let pick = if who.is_empty() {
+                self.draft_last_read.clone()
+            } else {
+                Some(who)
+            };
             return Some(self.send_draft(pick.as_deref()));
         }
-        if about_drafts && (t.starts_with("read") || t.starts_with("pull up") || t.starts_with("show")) && !who.is_empty() {
+        if about_drafts
+            && (t.starts_with("read") || t.starts_with("pull up") || t.starts_with("show"))
+            && !who.is_empty()
+        {
             let reply = self.read_draft(&who);
             if reply.starts_with("Reply to") {
                 self.draft_last_read = Some(who);
@@ -974,7 +1211,12 @@ impl<'a> Daemon<'a> {
             }
             return Some(reply);
         }
-        if about_drafts && ["throw away", "discard", "scrap", "delete"].iter().any(|v| t.starts_with(v)) && !who.is_empty() {
+        if about_drafts
+            && ["throw away", "discard", "scrap", "delete"]
+                .iter()
+                .any(|v| t.starts_with(v))
+            && !who.is_empty()
+        {
             return Some(self.discard_draft(&who));
         }
         None
@@ -999,7 +1241,10 @@ impl<'a> Daemon<'a> {
         } else {
             let people = self.people_known().clone();
             let known = match people.find(&who) {
-                crate::people::Found::One(k) => people.by_key.get(k).and_then(|c| c.emails.first().map(|e| (c.name.clone(), e.clone()))),
+                crate::people::Found::One(k) => people
+                    .by_key
+                    .get(k)
+                    .and_then(|c| c.emails.first().map(|e| (c.name.clone(), e.clone()))),
                 crate::people::Found::Several(names) => {
                     return Some(format!("Which {who}? {}.", names.join(" or ")));
                 }
@@ -1033,7 +1278,9 @@ impl<'a> Daemon<'a> {
             thread: Default::default(),
         };
         if let Err(e) = crate::outbox::Outbox::keep_draft(&self.store, draft.clone()) {
-            return Some(format!("I wrote it but couldn't keep the draft ({e}), so nothing's waiting to send."));
+            return Some(format!(
+                "I wrote it but couldn't keep the draft ({e}), so nothing's waiting to send."
+            ));
         }
         self.draft_last_read = Some(address.clone());
         self.draft_last_read_identity = Some(draft);
@@ -1083,13 +1330,17 @@ impl<'a> Daemon<'a> {
         let muse = crate::muse::MuseSpark::new(self.tools_cfg().models.muse.clone());
         let effort = muse.cfg.effort.clone();
         let work: crew::Work = Box::new(move |_ctl| {
-            muse.ask(crate::contemplate::MUSE_SYSTEM, &q, 2_000, &effort).map(|r| r.text).map_err(|e| e.to_string())
+            muse.ask(crate::contemplate::MUSE_SYSTEM, &q, 2_000, &effort)
+                .map(|r| r.text)
+                .map_err(|e| e.to_string())
         });
-        Some(if self.hand_off("muse", now, work, None, SpeakPolicy::Always) {
-            "Asking Muse.".into()
-        } else {
-            "I've too much on to ask Muse right now. Ask again in a moment.".into()
-        })
+        Some(
+            if self.hand_off("muse", now, work, None, SpeakPolicy::Always) {
+                "Asking Muse.".into()
+            } else {
+                "I've too much on to ask Muse right now. Ask again in a moment.".into()
+            },
+        )
     }
 
     /// "think hard about ...": Muse at its highest effort when it's
@@ -1101,23 +1352,31 @@ impl<'a> Daemon<'a> {
         let (work, start): (crew::Work, &str) = if crate::muse::ready(now) {
             let muse = crate::muse::MuseSpark::new(self.tools_cfg().models.muse.clone());
             (
-                Box::new(move |_ctl| muse.ask(crate::contemplate::MUSE_SYSTEM, &q, 4_000, "high").map(|r| r.text).map_err(|e| e.to_string())),
+                Box::new(move |_ctl| {
+                    muse.ask(crate::contemplate::MUSE_SYSTEM, &q, 4_000, "high")
+                        .map(|r| r.text)
+                        .map_err(|e| e.to_string())
+                }),
                 "Thinking it through with Muse at its deepest. I'll tell you when it's done.",
             )
         } else {
             let Some(llm) = self.background_llm() else {
-                return Some("Thinking hard takes a model, and there isn't one running here yet.".into());
+                return Some(
+                    "Thinking hard takes a model, and there isn't one running here yet.".into(),
+                );
             };
             (
                 Box::new(move |ctl| crate::contemplate::contemplate(llm.as_ref(), &q, &|| ctl.stopping())),
                 "Thinking it through: three tries at it, then the best of them. It takes a few minutes; I'll tell you when it's done.",
             )
         };
-        Some(if self.hand_off("think-hard", now, work, None, SpeakPolicy::Always) {
-            start.into()
-        } else {
-            "I've too much on to think that through right now. Ask again in a moment.".into()
-        })
+        Some(
+            if self.hand_off("think-hard", now, work, None, SpeakPolicy::Always) {
+                start.into()
+            } else {
+                "I've too much on to think that through right now. Ask again in a moment.".into()
+            },
+        )
     }
 
     pub(super) fn one_message_help(&mut self, said: &str) -> Option<String> {
@@ -1126,17 +1385,30 @@ impl<'a> Daemon<'a> {
         let who = match &asked {
             OneMessage::Read(w) | OneMessage::Reply(w, _) => w.clone(),
         };
-        let Some(letter) = book.with(&who, 50).into_iter().find(|l| !l.mine && l.from.contains('@')).cloned() else {
+        let Some(letter) = book
+            .with(&who, 50)
+            .into_iter()
+            .find(|l| !l.mine && l.from.contains('@'))
+            .cloned()
+        else {
             return Some(format!(
                 "I haven't got an email from {who} in what I've fetched. Say \"check my email\" and ask again."
             ));
         };
-        let name = if letter.from_name.trim().is_empty() { letter.from.clone() } else { letter.from_name.clone() };
+        let name = if letter.from_name.trim().is_empty() {
+            letter.from.clone()
+        } else {
+            letter.from_name.clone()
+        };
         let when = crate::freshness::ago(crate::store::now().saturating_sub(letter.at));
         match asked {
             OneMessage::Read(_) => {
                 self.draft_last_read = Some(letter.from.clone());
-                let subject = if letter.subject.trim().is_empty() { "no subject".to_string() } else { format!("\"{}\"", letter.subject.trim()) };
+                let subject = if letter.subject.trim().is_empty() {
+                    "no subject".to_string()
+                } else {
+                    format!("\"{}\"", letter.subject.trim())
+                };
                 Some(format!(
                     "From {name}, {when}, {subject}: {} Say \"reply to {} saying\" and what to say, and I'll draft it.",
                     letter.excerpt.trim(),
@@ -1175,7 +1447,9 @@ impl<'a> Daemon<'a> {
                 }
                 self.draft_last_read = Some(letter.from.clone());
                 self.draft_last_read_identity = Some(draft);
-                Some(format!("Reply to {name}, {subject}: \"{body}\" Say \"send it\" and it goes."))
+                Some(format!(
+                    "Reply to {name}, {subject}: \"{body}\" Say \"send it\" and it goes."
+                ))
             }
         }
     }
@@ -1184,7 +1458,10 @@ impl<'a> Daemon<'a> {
     /// waiting. On the crew, because it's a network call.
     fn send_draft(&mut self, who: Option<&str>) -> String {
         let cfg = self.tools_cfg().mail.clone();
-        let outbox = match crate::outbox::Outbox::load_checked(&self.store) { Ok(outbox) => outbox, Err(e) => return format!("Nothing submitted: outbox state couldn't be read ({e}).") };
+        let outbox = match crate::outbox::Outbox::load_checked(&self.store) {
+            Ok(outbox) => outbox,
+            Err(e) => return format!("Nothing submitted: outbox state couldn't be read ({e})."),
+        };
         let pending = match who {
             Some(w) => outbox.waiting_for(w).cloned(),
             None => match outbox.waiting().as_slice() {
@@ -1193,26 +1470,44 @@ impl<'a> Daemon<'a> {
                 many => {
                     return format!(
                         "Which one? {}.",
-                        many.iter().map(|r| format!("the reply to {}", r.to_name)).collect::<Vec<_>>().join(", ")
+                        many.iter()
+                            .map(|r| format!("the reply to {}", r.to_name))
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     )
                 }
             },
         };
         let Some(pending) = pending else {
-            return format!("I don't have a draft waiting for {}.", who.unwrap_or("them"));
+            return format!(
+                "I don't have a draft waiting for {}.",
+                who.unwrap_or("them")
+            );
         };
-        if self.draft_last_read_identity.as_ref().and_then(|p| serde_json::to_value(p).ok()) != serde_json::to_value(&pending).ok() {
+        if self
+            .draft_last_read_identity
+            .as_ref()
+            .and_then(|p| serde_json::to_value(p).ok())
+            != serde_json::to_value(&pending).ok()
+        {
             self.draft_last_read = Some(pending.to_address.clone());
             self.draft_last_read_identity = Some(pending.clone());
             return format!("Review the current reply from {} to {} ({}), subject {}: \"{}\". Nothing sent. Say send it to approve these exact words and addresses.", pending.account, pending.to_name, pending.to_address, pending.subject, pending.body);
         }
-        let Some(account) = cfg.accounts.iter().find(|a| a.name == pending.account).cloned() else {
+        let Some(account) = cfg
+            .accounts
+            .iter()
+            .find(|a| a.name == pending.account)
+            .cloned()
+        else {
             return "The original mailbox for this draft is no longer connected. Nothing sent; reconnect it or review a new draft from another mailbox.".into();
         };
         let now = crate::store::now();
         // Through Himalaya when that's how your mail is read: it keeps its
         // own password, so nothing comes out of the vault for it.
-        let himalaya = cfg.by_himalaya().then(|| (cfg.himalaya.clone(), account.for_himalaya().to_string()));
+        let himalaya = cfg
+            .by_himalaya()
+            .then(|| (cfg.himalaya.clone(), account.for_himalaya().to_string()));
         let password = if himalaya.is_some() {
             String::new()
         } else {
@@ -1222,26 +1517,63 @@ impl<'a> Daemon<'a> {
                 .and_then(|n| self.vault.get(&n, now).map_err(|e| e.to_string()))
             {
                 Ok(p) => p,
-                Err(e) => return format!("I can't send from {} yet: {e}. It's still waiting.", account.name),
+                Err(e) => {
+                    return format!(
+                        "I can't send from {} yet: {e}. It's still waiting.",
+                        account.name
+                    )
+                }
             }
         };
         let store = self.store.clone();
         let to = pending.to_name.clone();
-        let cap = (pending.kind == crate::outbox::Kind::ColdOutreach).then(|| (crate::localclock::midnight_here(now), cfg.cold_outreach_daily_cap as usize));
+        let cap = (pending.kind == crate::outbox::Kind::ColdOutreach).then(|| {
+            (
+                crate::localclock::midnight_here(now),
+                cfg.cold_outreach_daily_cap as usize,
+            )
+        });
         let work: crew::Work = Box::new(move |_ctl| {
-            let sent = crate::outbox::send_fenced_capped(&store, &pending, cap, || match &himalaya {
-                Some((program, name)) => crate::smtp::plain_address(&pending.to_address).and_then(|_| crate::smtp::may_send(&account.address, crate::store::now().saturating_mul(1000))).and_then(|_| {
-                    let text = crate::smtp::message_text_in(&account.address, &pending.to_address, &pending.subject, &pending.body, crate::store::now(), &pending.thread);
-                    crate::himalaya::send(program, name, &text)
-                }),
-                None => send_reply(&pending, &account.imap_host, &account.address, &password, account.oauth.then_some(account.client_id.as_str())),
-            });
+            let sent =
+                crate::outbox::send_fenced_capped(&store, &pending, cap, || match &himalaya {
+                    Some((program, name)) => crate::smtp::plain_address(&pending.to_address)
+                        .and_then(|_| {
+                            crate::smtp::may_send(
+                                &account.address,
+                                crate::store::now().saturating_mul(1000),
+                            )
+                        })
+                        .and_then(|_| {
+                            let text = crate::smtp::message_text_in(
+                                &account.address,
+                                &pending.to_address,
+                                &pending.subject,
+                                &pending.body,
+                                crate::store::now(),
+                                &pending.thread,
+                            );
+                            crate::himalaya::send(program, name, &text)
+                        }),
+                    None => send_reply(
+                        &pending,
+                        &account.imap_host,
+                        &account.address,
+                        &password,
+                        account.oauth.then_some(account.client_id.as_str()),
+                    ),
+                });
             sent?;
             Ok(format!("Sent the reply to {}.", pending.to_name))
         });
         self.draft_last_read = None;
         self.draft_last_read_identity = None;
-        if self.hand_off("send reply", now, work, Some(to.clone()), SpeakPolicy::Always) {
+        if self.hand_off(
+            "send reply",
+            now,
+            work,
+            Some(to.clone()),
+            SpeakPolicy::Always,
+        ) {
             format!("Sending the reply to {to}.")
         } else {
             "I'm swamped with background work right now -- ask me again in a moment.".into()
@@ -1259,12 +1591,21 @@ impl<'a> Daemon<'a> {
         if who.is_empty() {
             return "Throw away the draft to who?".into();
         }
-        let _guard = match self.store.transaction() { Ok(guard) => guard, Err(e) => return format!("Couldn't reserve draft state ({e}); nothing changed.") };
-        let mut outbox = match crate::outbox::Outbox::load_checked(&self.store) { Ok(outbox) => outbox, Err(e) => return format!("Couldn't read draft state ({e}); nothing changed.") };
+        let _guard = match self.store.transaction() {
+            Ok(guard) => guard,
+            Err(e) => return format!("Couldn't reserve draft state ({e}); nothing changed."),
+        };
+        let mut outbox = match crate::outbox::Outbox::load_checked(&self.store) {
+            Ok(outbox) => outbox,
+            Err(e) => return format!("Couldn't read draft state ({e}); nothing changed."),
+        };
         let Some(id) = outbox.waiting_for(who).map(|r| r.id.clone()) else {
             return format!("I don't have a draft waiting for {who}.");
         };
-        let to_name = outbox.get(&id).map(|r| r.to_name.clone()).unwrap_or_else(|| who.to_string());
+        let to_name = outbox
+            .get(&id)
+            .map(|r| r.to_name.clone())
+            .unwrap_or_else(|| who.to_string());
         outbox.mark_discarded(&id);
         if let Err(e) = outbox.save(&self.store) {
             return format!("I couldn't set that draft aside: {e}");
@@ -1281,7 +1622,10 @@ impl<'a> Daemon<'a> {
         };
         let (address, purpose) = match rest.split_once("about ") {
             Some((a, p)) => (a.trim(), p.trim().to_string()),
-            None => (rest.trim(), "introducing yourself and exploring working together".to_string()),
+            None => (
+                rest.trim(),
+                "introducing yourself and exploring working together".to_string(),
+            ),
         };
         if address.is_empty() {
             return "Outreach to whom?".into();
@@ -1306,7 +1650,9 @@ impl<'a> Daemon<'a> {
         };
         let now = crate::store::now();
         // Himalaya keeps its own password: nothing to take from the vault.
-        let himalaya = cfg.by_himalaya().then(|| (cfg.himalaya.clone(), account.for_himalaya().to_string()));
+        let himalaya = cfg
+            .by_himalaya()
+            .then(|| (cfg.himalaya.clone(), account.for_himalaya().to_string()));
         let password = if himalaya.is_some() {
             String::new()
         } else {
@@ -1355,7 +1701,9 @@ impl<'a> Daemon<'a> {
                 thread: Default::default(),
             };
 
-            let outbox = crate::outbox::Outbox::load_checked(&store).map_err(|e| format!("Couldn't read the outreach cap and draft state ({e}); nothing submitted."))?;
+            let outbox = crate::outbox::Outbox::load_checked(&store).map_err(|e| {
+                format!("Couldn't read the outreach cap and draft state ({e}); nothing submitted.")
+            })?;
             let targets = crate::outreach::OutreachTargets::load(&store);
             let today_start = crate::localclock::midnight_here(created);
             let sent_today = outbox.cold_outreach_sent_since(today_start);
@@ -1373,15 +1721,23 @@ impl<'a> Daemon<'a> {
                      ({daily_cap}) is already reached."
                 )
             } else {
-                crate::outbox::Outbox::keep_draft_waiting(&store, pending.clone()).map_err(|e| format!("Couldn't keep the outreach draft before sending: {e}"))?;
-                let sent = crate::outbox::send_fenced_capped(&store, &pending, Some((today_start, daily_cap as usize)), || send_reply_routed(
-                    himalaya.as_ref(),
+                crate::outbox::Outbox::keep_draft_waiting(&store, pending.clone())
+                    .map_err(|e| format!("Couldn't keep the outreach draft before sending: {e}"))?;
+                let sent = crate::outbox::send_fenced_capped(
+                    &store,
                     &pending,
-                    &account.imap_host,
-                    &account.address,
-                    &password,
-                    account.oauth.then_some(account.client_id.as_str()),
-                ));
+                    Some((today_start, daily_cap as usize)),
+                    || {
+                        send_reply_routed(
+                            himalaya.as_ref(),
+                            &pending,
+                            &account.imap_host,
+                            &account.address,
+                            &password,
+                            account.oauth.then_some(account.client_id.as_str()),
+                        )
+                    },
+                );
                 match sent {
                     Ok(()) => {
                         pending.status = crate::outbox::Status::Sent;
@@ -1390,7 +1746,8 @@ impl<'a> Daemon<'a> {
                     Err(e) => format!("Tried to send the outreach to {to_address}, but: {e}"),
                 }
             };
-            crate::outbox::Outbox::keep_draft_waiting(&store, pending).map_err(|e| format!("Couldn't keep the outreach result: {e}"))?;
+            crate::outbox::Outbox::keep_draft_waiting(&store, pending)
+                .map_err(|e| format!("Couldn't keep the outreach result: {e}"))?;
             Ok(said)
         });
 
@@ -1407,7 +1764,11 @@ impl<'a> Daemon<'a> {
 fn address_in_mail(book: &crate::mailbook::MailBook, who: &str) -> Option<String> {
     let w = who.to_lowercase();
     book.letters.iter().rev().find_map(|l| {
-        if !l.mine && (l.from_name.to_lowercase() == w || l.from_name.to_lowercase().split_whitespace().next() == Some(w.as_str()) && !w.contains(' ')) {
+        if !l.mine
+            && (l.from_name.to_lowercase() == w
+                || l.from_name.to_lowercase().split_whitespace().next() == Some(w.as_str())
+                    && !w.contains(' '))
+        {
             return Some(l.from.clone());
         }
         None
@@ -1430,9 +1791,18 @@ pub fn one_message_asked(said: &str) -> Option<OneMessage> {
     // the same as "reply to Jane saying ..." (research report, Stage 1 item
     // 8: it was taken as a new email, outside the conversation).
     for lead in [
-        "reply to the email from ", "reply to the message from ", "write back to ", "reply to ", "answer the email from ",
-        "send a reply to ", "send back to ", "email back ", "respond to the email from ", "respond to ",
-        "can you reply to ", "please reply to ",
+        "reply to the email from ",
+        "reply to the message from ",
+        "write back to ",
+        "reply to ",
+        "answer the email from ",
+        "send a reply to ",
+        "send back to ",
+        "email back ",
+        "respond to the email from ",
+        "respond to ",
+        "can you reply to ",
+        "please reply to ",
     ] {
         if let Some(rest_low) = low.strip_prefix(lead) {
             let (at, mark) = [" saying ", " and say ", " telling them ", ": ", ", "]
@@ -1441,7 +1811,10 @@ pub fn one_message_asked(said: &str) -> Option<OneMessage> {
                 .min_by_key(|(i, _)| *i)?;
             let who = s[lead.len()..lead.len() + at].trim().to_string();
             let message = s[lead.len() + at + mark.len()..].trim().to_string();
-            if who.is_empty() || who.split_whitespace().count() > 4 || message.split_whitespace().count() < 2 {
+            if who.is_empty()
+                || who.split_whitespace().count() > 4
+                || message.split_whitespace().count() < 2
+            {
                 return None;
             }
             if ["him", "her", "them", "it", "that"].contains(&who.to_lowercase().as_str()) {
@@ -1451,9 +1824,16 @@ pub fn one_message_asked(said: &str) -> Option<OneMessage> {
         }
     }
     let leads = [
-        "read me the email from ", "read the email from ", "read me the last email from ", "read me the latest email from ",
-        "read the last email from ", "read the latest email from ", "what did the email from ", "read me the message from ",
-        "read my email from ", "open the email from ",
+        "read me the email from ",
+        "read the email from ",
+        "read me the last email from ",
+        "read me the latest email from ",
+        "read the last email from ",
+        "read the latest email from ",
+        "what did the email from ",
+        "read me the message from ",
+        "read my email from ",
+        "open the email from ",
     ];
     for lead in leads {
         if let Some(rest) = low.strip_prefix(lead) {
@@ -1466,12 +1846,18 @@ pub fn one_message_asked(said: &str) -> Option<OneMessage> {
     }
     // "what did Sam's email say"
     if let Some(rest) = low.strip_prefix("what did ") {
-        if let Some(who) = rest.strip_suffix("'s email say").or_else(|| rest.strip_suffix("s email say")) {
+        if let Some(who) = rest
+            .strip_suffix("'s email say")
+            .or_else(|| rest.strip_suffix("s email say"))
+        {
             if !who.trim().is_empty() && who.split_whitespace().count() <= 4 {
-                return Some(OneMessage::Read(s["what did ".len().."what did ".len() + who.len()].trim().to_string()));
+                return Some(OneMessage::Read(
+                    s["what did ".len().."what did ".len() + who.len()]
+                        .trim()
+                        .to_string(),
+                ));
             }
         }
     }
     None
 }
-

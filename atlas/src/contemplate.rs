@@ -20,7 +20,8 @@ pub const ANGLES: &[(&str, &str)] = &[
     ("step by step", "Work through it step by step, showing the reasoning briefly, then give the answer."),
 ];
 
-const DRAFT_SYSTEM: &str = "You are Atlas, a personal assistant, answering one question with care. \
+const DRAFT_SYSTEM: &str =
+    "You are Atlas, a personal assistant, answering one question with care. \
 Be specific and honest about what you don't know. No preamble. Keep it under 250 words.";
 
 /// What Muse is told when asked outright or to think hard: the same voice.
@@ -51,7 +52,11 @@ fn merge_prompt(question: &str, drafts: &[String]) -> (String, String) {
 
 /// Three drafts and a merge. `stopping` is checked between calls. With
 /// only one draft there is nothing to combine, and it is the answer.
-pub fn contemplate(llm: &dyn Llm, question: &str, stopping: &dyn Fn() -> bool) -> Result<String, String> {
+pub fn contemplate(
+    llm: &dyn Llm,
+    question: &str,
+    stopping: &dyn Fn() -> bool,
+) -> Result<String, String> {
     let mut drafts: Vec<String> = Vec::new();
     let mut why = Vec::new();
     for (system, user) in draft_prompts(question) {
@@ -72,7 +77,9 @@ pub fn contemplate(llm: &dyn Llm, question: &str, stopping: &dyn Fn() -> bool) -
                 return Err("stopped".into());
             }
             let (system, user) = merge_prompt(question, &drafts);
-            llm.complete_long(&system, &user, 900).map(|r| r.text).map_err(|e| e.to_string())
+            llm.complete_long(&system, &user, 900)
+                .map(|r| r.text)
+                .map_err(|e| e.to_string())
         }
     }
 }

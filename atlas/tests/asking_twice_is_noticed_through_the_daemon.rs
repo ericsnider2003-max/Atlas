@@ -28,7 +28,14 @@ fn tmp(tag: &str) -> PathBuf {
 
 /// The one monitor every mock daemon here is handed.
 fn one_screen() -> Vec<Monitor> {
-    vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]
+    vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]
 }
 
 /// The lead-in the wire adds. Kept here as prose so no test string is shaped

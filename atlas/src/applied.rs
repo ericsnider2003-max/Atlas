@@ -71,28 +71,51 @@ pub enum Heard {
 }
 
 fn clean(s: &str) -> String {
-    s.trim().trim_end_matches(['.', '!', '?']).trim().trim_start_matches("the ").to_string()
+    s.trim()
+        .trim_end_matches(['.', '!', '?'])
+        .trim()
+        .trim_start_matches("the ")
+        .to_string()
 }
 
 /// What `said` tells the tracker, if anything.
 pub fn heard(said: &str) -> Option<Heard> {
     let raw = said.trim().trim_end_matches(['.', '!', '?']);
-    let raw = raw.strip_prefix("Atlas, ").or_else(|| raw.strip_prefix("atlas, ")).unwrap_or(raw);
+    let raw = raw
+        .strip_prefix("Atlas, ")
+        .or_else(|| raw.strip_prefix("atlas, "))
+        .unwrap_or(raw);
     let low = raw.to_ascii_lowercase();
     if matches!(
         low.as_str(),
-        "my applications" | "where are my applications" | "show my applications" | "list my applications"
-            | "what have i applied for" | "how are my applications going" | "job applications"
+        "my applications"
+            | "where are my applications"
+            | "show my applications"
+            | "list my applications"
+            | "what have i applied for"
+            | "how are my applications going"
+            | "job applications"
     ) {
         return Some(Heard::List);
     }
-    for lead in ["i applied for ", "i applied to ", "i just applied for ", "i just applied to ", "applied for ", "applied to "] {
+    for lead in [
+        "i applied for ",
+        "i applied to ",
+        "i just applied for ",
+        "i just applied to ",
+        "applied for ",
+        "applied to ",
+    ] {
         if let Some(rest) = low.strip_prefix(lead) {
             let at = raw.len() - rest.len();
             let rest_raw = &raw[at..];
             if let Some(i) = rest.rfind(" at ") {
                 let (role, to) = (clean(&rest_raw[..i]), clean(&rest_raw[i + 4..]));
-                let role = role.trim_start_matches("a ").trim_start_matches("an ").trim_start_matches("the ").to_string();
+                let role = role
+                    .trim_start_matches("a ")
+                    .trim_start_matches("an ")
+                    .trim_start_matches("the ")
+                    .to_string();
                 if !to.is_empty() {
                     return Some(Heard::Applied { to, role });
                 }
@@ -102,7 +125,10 @@ pub fn heard(said: &str) -> Option<Heard> {
             if to.is_empty() || to.split_whitespace().count() > 5 || rest.ends_with("jobs") {
                 return None;
             }
-            return Some(Heard::Applied { to, role: String::new() });
+            return Some(Heard::Applied {
+                to,
+                role: String::new(),
+            });
         }
     }
     let moved: &[(&str, Stage)] = &[
@@ -119,12 +145,20 @@ pub fn heard(said: &str) -> Option<Heard> {
     for (tail, stage) in moved {
         if let Some(head) = low.strip_suffix(tail) {
             let to = clean(&raw[..head.len()]);
-            if !to.is_empty() && to.split_whitespace().count() <= 5 && !to.eq_ignore_ascii_case("they") {
+            if !to.is_empty()
+                && to.split_whitespace().count() <= 5
+                && !to.eq_ignore_ascii_case("they")
+            {
                 return Some(Heard::Moved { to, stage: *stage });
             }
         }
     }
-    for lead in ["i have an interview with ", "i got an interview with ", "i've got an interview with ", "interview with "] {
+    for lead in [
+        "i have an interview with ",
+        "i got an interview with ",
+        "i've got an interview with ",
+        "interview with ",
+    ] {
         if let Some(rest) = low.strip_prefix(lead) {
             let mut to = clean(&raw[raw.len() - rest.len()..]);
             // "… with Acme on Friday": the company, not the day.
@@ -134,7 +168,10 @@ pub fn heard(said: &str) -> Option<Heard> {
                 }
             }
             if !to.is_empty() {
-                return Some(Heard::Moved { to, stage: Stage::Interview });
+                return Some(Heard::Moved {
+                    to,
+                    stage: Stage::Interview,
+                });
             }
         }
     }
@@ -144,7 +181,10 @@ pub fn heard(said: &str) -> Option<Heard> {
 impl Applications {
     fn find(&mut self, to: &str) -> Option<&mut Application> {
         let want = to.to_lowercase();
-        self.all.iter_mut().rev().find(|a| a.to.to_lowercase() == want)
+        self.all
+            .iter_mut()
+            .rev()
+            .find(|a| a.to.to_lowercase() == want)
     }
 
     /// Take in what was heard; the reply to say.
@@ -187,7 +227,11 @@ impl Applications {
         let mut lines = vec![format!("{} open, {} closed.", open.len(), closed.len())];
         for a in open.iter().chain(closed.iter()) {
             let days = now.saturating_sub(a.applied_at) / 86_400;
-            let what = if a.role.is_empty() { a.to.clone() } else { format!("{} at {}", a.role, a.to) };
+            let what = if a.role.is_empty() {
+                a.to.clone()
+            } else {
+                format!("{} at {}", a.role, a.to)
+            };
             let ago = match days {
                 0 => "today".to_string(),
                 1 => "yesterday".to_string(),
@@ -197,5 +241,4 @@ impl Applications {
         }
         lines.join("\n")
     }
-
 }

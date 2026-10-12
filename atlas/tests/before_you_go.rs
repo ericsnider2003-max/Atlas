@@ -23,11 +23,21 @@ use atlas::goingaway::{self, Away, AwayConfig};
 const DAY: u64 = 86_400;
 
 fn a_set(site: &str, issued: u32, used: u32, in_hand: bool) -> Set {
-    Set { site: site.into(), issued, used, at: 0, kept_where: None, in_hand }
+    Set {
+        site: site.into(),
+        issued,
+        used,
+        at: 0,
+        kept_where: None,
+        in_hand,
+    }
 }
 
 fn on() -> AwayConfig {
-    AwayConfig { enabled: true, ..Default::default() }
+    AwayConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 // ================= the date =================
@@ -38,12 +48,21 @@ fn a_trip_is_a_date_written_the_one_way() {
     // same suite: an ISO date is the one form that means the same thing to
     // everybody.
     assert_eq!(goingaway::leaving_on("1970-01-02"), Some(DAY));
-    assert_eq!(goingaway::leaving_on("  2026-11-03  "), goingaway::leaving_on("2026-11-03"));
+    assert_eq!(
+        goingaway::leaving_on("  2026-11-03  "),
+        goingaway::leaving_on("2026-11-03")
+    );
 
     // Anything else is a question rather than a guess. "03/11/2026" is the
     // third of November to half the world and the eleventh of March to the
     // other half, and a travel reminder is the worst place to find that out.
-    for not_a_date in ["03/11/2026", "November 3rd", "2026-13-01", "2026-11-03-01", ""] {
+    for not_a_date in [
+        "03/11/2026",
+        "November 3rd",
+        "2026-13-01",
+        "2026-11-03-01",
+        "",
+    ] {
         assert_eq!(goingaway::leaving_on(not_a_date), None, "{not_a_date}");
     }
 }
@@ -51,14 +70,24 @@ fn a_trip_is_a_date_written_the_one_way() {
 #[test]
 fn how_many_days_until_you_go_is_the_number_everything_else_reads() {
     let now = 1_000 * DAY;
-    let away = Away { leaving_at: now + 10 * DAY, going_to: "Germany".into(), last_checked: 0 };
+    let away = Away {
+        leaving_at: now + 10 * DAY,
+        going_to: "Germany".into(),
+        last_checked: 0,
+    };
     assert_eq!(away.days_until(now), Some(10));
     assert!(away.on_a_trip());
 
     // A trip that has been and gone is not a trip in eleven months' time.
-    let past = Away { leaving_at: now - DAY, ..away.clone() };
+    let past = Away {
+        leaving_at: now - DAY,
+        ..away.clone()
+    };
     assert_eq!(past.days_until(now), None);
-    assert!(past.on_a_trip(), "it still happened — it just isn't ahead of you");
+    assert!(
+        past.on_a_trip(),
+        "it still happened — it just isn't ahead of you"
+    );
 
     // No trip is no answer rather than zero days, which would read as today.
     assert_eq!(Away::default().days_until(now), None);
@@ -73,8 +102,14 @@ fn when_it_starts_reminding_you_is_the_number_you_set() {
     let mut cfg = on();
     assert_eq!(cfg.remind_days_before, 14, "the shipped default");
 
-    let fortnight_out = Away { leaving_at: now + 14 * DAY, ..Default::default() };
-    let three_weeks_out = Away { leaving_at: now + 21 * DAY, ..Default::default() };
+    let fortnight_out = Away {
+        leaving_at: now + 14 * DAY,
+        ..Default::default()
+    };
+    let three_weeks_out = Away {
+        leaving_at: now + 21 * DAY,
+        ..Default::default()
+    };
     assert!(fortnight_out.time_to_get_ready(&cfg, now));
     assert!(!three_weeks_out.time_to_get_ready(&cfg, now));
 
@@ -83,7 +118,10 @@ fn when_it_starts_reminding_you_is_the_number_you_set() {
     // for a hardware key both take days, so being told the morning you leave
     // is the same as not being told.
     cfg.remind_days_before = 30;
-    assert!(three_weeks_out.time_to_get_ready(&cfg, now), "the window is hardcoded");
+    assert!(
+        three_weeks_out.time_to_get_ready(&cfg, now),
+        "the window is hardcoded"
+    );
     cfg.remind_days_before = 2;
     assert!(!fortnight_out.time_to_get_ready(&cfg, now));
 
@@ -107,7 +145,11 @@ fn it_says_where_you_are_going_and_what_would_stop_you_getting_in() {
         settings_url: None,
     };
     let now = 1_000 * DAY;
-    let away = Away { leaving_at: now + 5 * DAY, going_to: "Germany".into(), last_checked: 0 };
+    let away = Away {
+        leaving_at: now + 5 * DAY,
+        going_to: "Germany".into(),
+        last_checked: 0,
+    };
     // A code by text is the one that breaks when you travel: it needs your
     // number, your carrier and a signal.
     let stuck = vec![account("the bank", SecondFactor::Sms)];
@@ -132,7 +174,11 @@ fn the_periodic_check_has_a_last_to_count_from() {
     // the caller had no honest number to pass.
     let now = 1_000 * DAY;
     assert_eq!(
-        Away { last_checked: now - 30 * DAY, ..Default::default() }.days_since_asked(now),
+        Away {
+            last_checked: now - 30 * DAY,
+            ..Default::default()
+        }
+        .days_since_asked(now),
         30
     );
     // Never asked is a long time, not no time — otherwise the periodic check
@@ -141,7 +187,11 @@ fn the_periodic_check_has_a_last_to_count_from() {
     // A clock that moved backwards reads as overdue rather than as a
     // reminder from the future.
     assert_eq!(
-        Away { last_checked: now + DAY, ..Default::default() }.days_since_asked(now),
+        Away {
+            last_checked: now + DAY,
+            ..Default::default()
+        }
+        .days_since_asked(now),
         u32::MAX
     );
 }
@@ -150,7 +200,10 @@ fn the_periodic_check_has_a_last_to_count_from() {
 
 #[test]
 fn how_far_out_the_codes_question_gets_raised_is_yours() {
-    let mut cfg = CodesConfig { enabled: true, ..Default::default() };
+    let mut cfg = CodesConfig {
+        enabled: true,
+        ..Default::default()
+    };
     assert_eq!(cfg.check_days_before, 21, "the shipped default");
 
     // Deliberately a longer window than the accounts one: printing a fresh
@@ -160,7 +213,10 @@ fn how_far_out_the_codes_question_gets_raised_is_yours() {
     assert!(codes::worth_raising_now(&cfg, Some(21)));
     assert!(!codes::worth_raising_now(&cfg, Some(22)));
     cfg.check_days_before = 60;
-    assert!(codes::worth_raising_now(&cfg, Some(40)), "the window is hardcoded");
+    assert!(
+        codes::worth_raising_now(&cfg, Some(40)),
+        "the window is hardcoded"
+    );
 
     // Off means off, and no trip means nothing to be ahead of.
     cfg.enabled = false;
@@ -174,7 +230,11 @@ fn running_low_is_one_rule_and_warn_at_is_it() {
     // `Set::running_low` hardcoded three and had no caller, while `gaps`
     // compared against `cfg.warn_at`. Two answers to the same question, and
     // the one a person could change was not the one the named predicate gave.
-    let mut cfg = CodesConfig { enabled: true, warn_at: 3, ..Default::default() };
+    let mut cfg = CodesConfig {
+        enabled: true,
+        warn_at: 3,
+        ..Default::default()
+    };
     let three_left = a_set("google", 10, 7, true);
     let four_left = a_set("google", 10, 6, true);
     let spent = a_set("google", 10, 10, true);
@@ -186,7 +246,10 @@ fn running_low_is_one_rule_and_warn_at_is_it() {
     assert!(!spent.running_low(&cfg));
 
     cfg.warn_at = 5;
-    assert!(four_left.running_low(&cfg), "the threshold is still hardcoded");
+    assert!(
+        four_left.running_low(&cfg),
+        "the threshold is still hardcoded"
+    );
 
     // And `gaps` gives the same answer, because it asks the same question.
     cfg.warn_at = 3;
@@ -204,7 +267,10 @@ fn the_number_that_matters_counts_only_what_is_actually_on_you() {
     // comforting and wrong.
     let printed = a_set("google", 10, 2, true);
     let on_the_screen = a_set("github", 10, 0, false);
-    assert_eq!(codes::logins_available(&[printed.clone(), on_the_screen.clone()]), 8);
+    assert_eq!(
+        codes::logins_available(&[printed.clone(), on_the_screen.clone()]),
+        8
+    );
     assert_eq!(codes::logins_available(&[on_the_screen]), 0);
     assert_eq!(codes::logins_available(&[]), 0);
     assert_eq!(codes::logins_available(&[printed]), 8);
@@ -214,7 +280,11 @@ fn the_number_that_matters_counts_only_what_is_actually_on_you() {
 fn spending_one_is_something_you_can_tell_it() {
     let mut sets = vec![a_set("google", 10, 0, true)];
     assert_eq!(codes::used_one(&mut sets, "google"), Some(9));
-    assert_eq!(codes::used_one(&mut sets, "GOOGLE"), Some(8), "the site name is not case-sensitive");
+    assert_eq!(
+        codes::used_one(&mut sets, "GOOGLE"),
+        Some(8),
+        "the site name is not case-sensitive"
+    );
     assert_eq!(codes::used_one(&mut sets, "nowhere"), None);
     assert_eq!(sets[0].used, 2);
     assert_eq!(codes::logins_available(&sets), 8);
@@ -225,11 +295,26 @@ fn spending_one_is_something_you_can_tell_it() {
 #[test]
 fn the_commands_and_the_daemon_are_what_reach_it_rather_than_these_tests() {
     let main = crate::common::source_of("main");
-    assert!(main.contains("fn run_away("), "there is still no way to record a trip");
-    assert!(main.contains("fn run_codes("), "there is still no way to say you printed them");
-    assert!(main.contains("goingaway::leaving_on(d)"), "nothing reads a date");
-    assert!(main.contains("codes::used_one(&mut sets, &site)"), "nothing spends one");
-    assert!(main.contains("codes::logins_available(&sets)"), "nothing says the number");
+    assert!(
+        main.contains("fn run_away("),
+        "there is still no way to record a trip"
+    );
+    assert!(
+        main.contains("fn run_codes("),
+        "there is still no way to say you printed them"
+    );
+    assert!(
+        main.contains("goingaway::leaving_on(d)"),
+        "nothing reads a date"
+    );
+    assert!(
+        main.contains("codes::used_one(&mut sets, &site)"),
+        "nothing spends one"
+    );
+    assert!(
+        main.contains("codes::logins_available(&sets)"),
+        "nothing says the number"
+    );
 
     let daemon = crate::common::source_of("daemon");
     assert!(
@@ -250,8 +335,16 @@ fn the_commands_and_the_daemon_are_what_reach_it_rather_than_these_tests() {
     );
 
     let raw = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    for key in ["remind_days_before:", "check_days_before:", "warn_at:", "check_every_days:"] {
-        assert!(raw.contains(key), "{key} is no longer in the shipped config");
+    for key in [
+        "remind_days_before:",
+        "check_days_before:",
+        "warn_at:",
+        "check_every_days:",
+    ] {
+        assert!(
+            raw.contains(key),
+            "{key} is no longer in the shipped config"
+        );
     }
     // Both ship off: these speak unprompted, which is a thing you turn on.
     assert!(!AwayConfig::default().enabled);

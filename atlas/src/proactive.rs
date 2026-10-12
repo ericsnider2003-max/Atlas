@@ -63,14 +63,30 @@ pub struct ProactiveConfig {
     #[serde(default = "d_defer")]
     pub defer_max_secs: u64,
 }
-fn d_cooldown() -> u64 { 900 }
-fn d_max() -> u32 { 4 }
-fn d_conf() -> f32 { 0.7 }
-fn d_step() -> f32 { 0.08 }
-fn d_ceiling() -> f32 { 0.95 }
-fn d_quiet() -> u64 { 30 }
-fn d_yes() -> bool { true }
-fn d_defer() -> u64 { 1200 }
+fn d_cooldown() -> u64 {
+    900
+}
+fn d_max() -> u32 {
+    4
+}
+fn d_conf() -> f32 {
+    0.7
+}
+fn d_step() -> f32 {
+    0.08
+}
+fn d_ceiling() -> f32 {
+    0.95
+}
+fn d_quiet() -> u64 {
+    30
+}
+fn d_yes() -> bool {
+    true
+}
+fn d_defer() -> u64 {
+    1200
+}
 
 impl Default for ProactiveConfig {
     fn default() -> Self {
@@ -107,7 +123,14 @@ pub struct Proactive {
 
 impl Proactive {
     pub fn new(cfg: ProactiveConfig) -> Self {
-        Proactive { cfg, last_offer: 0, recent: Vec::new(), held_since: None, decided: None, quiet_until: 0 }
+        Proactive {
+            cfg,
+            last_offer: 0,
+            recent: Vec::new(),
+            held_since: None,
+            decided: None,
+            quiet_until: 0,
+        }
     }
 
     /// Everything that must be true before Atlas is allowed to speak first.
@@ -182,7 +205,6 @@ impl Proactive {
         true
     }
 
-
     /// Pick the best offer that clears every bar, or none.
     pub fn consider(&mut self, s: &Signals, mem: &Memory, t: u64) -> Option<Offer> {
         self.consider_with(s, mem, t, None)
@@ -190,7 +212,13 @@ impl Proactive {
 
     /// `consider`, with one more candidate from outside — a nudge — weighed
     /// against the offers on the same footing rather than always winning.
-    pub fn consider_with(&mut self, s: &Signals, mem: &Memory, t: u64, also: Option<Offer>) -> Option<Offer> {
+    pub fn consider_with(
+        &mut self,
+        s: &Signals,
+        mem: &Memory,
+        t: u64,
+        also: Option<Offer>,
+    ) -> Option<Offer> {
         if !self.may_interrupt(s, t) {
             return None;
         }
@@ -234,8 +262,7 @@ impl Proactive {
     pub fn threshold_for(&self, kind: &str, mem: &Memory) -> f32 {
         let (yes, no) = answered(kind, mem);
         let (yes, no) = (yes as i32, no as i32);
-        let adjusted =
-            self.cfg.min_confidence + (no - yes) as f32 * self.cfg.learning_step;
+        let adjusted = self.cfg.min_confidence + (no - yes) as f32 * self.cfg.learning_step;
         adjusted.clamp(0.25, self.cfg.confidence_ceiling)
     }
 

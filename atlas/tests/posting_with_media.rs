@@ -16,7 +16,10 @@ use atlas::publish::{file_to_attach, Channel, Publisher};
 use std::io::{Read, Write};
 
 fn site(name: &str) -> SiteProfile {
-    default_sites().into_iter().find(|s| s.name == name).unwrap()
+    default_sites()
+        .into_iter()
+        .find(|s| s.name == name)
+        .unwrap()
 }
 
 fn a_picture(tag: &str) -> String {
@@ -37,10 +40,23 @@ fn tidy(path: &str) {
 
 #[test]
 fn a_path_said_while_approving_is_the_file_to_attach() {
-    assert_eq!(file_to_attach(r"attach C:\Users\eric\Pictures\launch.jpg").as_deref(), Some(r"C:\Users\eric\Pictures\launch.jpg"));
-    assert_eq!(file_to_attach("Attach the video \"/home/eric/clip one.mp4\".").as_deref(), Some("/home/eric/clip one.mp4"));
-    assert_eq!(file_to_attach("add the photo /tmp/a.png").as_deref(), Some("/tmp/a.png"));
-    assert_eq!(file_to_attach("attach a nice picture"), None, "words aren't a file");
+    assert_eq!(
+        file_to_attach(r"attach C:\Users\eric\Pictures\launch.jpg").as_deref(),
+        Some(r"C:\Users\eric\Pictures\launch.jpg")
+    );
+    assert_eq!(
+        file_to_attach("Attach the video \"/home/eric/clip one.mp4\".").as_deref(),
+        Some("/home/eric/clip one.mp4")
+    );
+    assert_eq!(
+        file_to_attach("add the photo /tmp/a.png").as_deref(),
+        Some("/tmp/a.png")
+    );
+    assert_eq!(
+        file_to_attach("attach a nice picture"),
+        None,
+        "words aren't a file"
+    );
     assert_eq!(file_to_attach("yes"), None);
 }
 
@@ -50,7 +66,10 @@ fn what_you_approve_names_what_goes_with_it() {
     let id = p.draft(Channel::X, "launch day");
     p.attach(id, "/home/eric/Pictures/launch.jpg");
     let q = p.request_approval(id).unwrap();
-    assert!(q.contains("launch day") && q.contains("With: launch.jpg"), "{q}");
+    assert!(
+        q.contains("launch day") && q.contains("With: launch.jpg"),
+        "{q}"
+    );
 }
 
 // ================= before the browser =================
@@ -59,7 +78,10 @@ fn what_you_approve_names_what_goes_with_it() {
 fn a_site_with_no_way_in_for_media_holds_the_post_rather_than_sending_it_bare() {
     let pic = a_picture("linkedin");
     let why = media_problem(&site("linkedin"), &[pic.clone()], |_| true).expect("held");
-    assert!(why.contains("can't attach") && why.contains("linkedin"), "{why}");
+    assert!(
+        why.contains("can't attach") && why.contains("linkedin"),
+        "{why}"
+    );
     assert_eq!(media_problem(&site("x"), &[pic.clone()], |_| true), None);
     tidy(&pic);
 }
@@ -82,8 +104,14 @@ fn the_plan_attaches_after_the_words_and_before_the_post_button() {
     p.attach(id, &pic);
     p.approve(id);
     let steps = plan(&p, &cfg, id, true).unwrap();
-    let fill = steps.iter().position(|s| matches!(s, PostStep::Fill(_))).unwrap();
-    let attach = steps.iter().position(|s| matches!(s, PostStep::Attach(f) if f == &vec![pic.clone()])).expect("an attach step");
+    let fill = steps
+        .iter()
+        .position(|s| matches!(s, PostStep::Fill(_)))
+        .unwrap();
+    let attach = steps
+        .iter()
+        .position(|s| matches!(s, PostStep::Attach(f) if f == &vec![pic.clone()]))
+        .expect("an attach step");
     let submit = steps.iter().position(|s| *s == PostStep::Submit).unwrap();
     assert!(fill < attach && attach < submit, "{steps:?}");
     tidy(&pic);
@@ -96,14 +124,32 @@ fn attaching_changes_what_was_approved() {
     let id = p.draft(Channel::X, "launch day");
     p.approve(id);
     p.attach(id, "/home/eric/Pictures/launch.jpg");
-    assert!(matches!(plan(&p, &cfg, id, true), Err(Outcome::Blocked(_))), "approved without the picture, sent with it");
+    assert!(
+        matches!(plan(&p, &cfg, id, true), Err(Outcome::Blocked(_))),
+        "approved without the picture, sent with it"
+    );
 }
 
 #[test]
 fn a_slow_upload_is_tried_again_and_a_missing_input_is_said() {
-    assert!(matches!(classify(AtlasError::Platform("the picture or video never finished uploading to x".into())), Outcome::Retry(_)));
-    assert!(matches!(classify(AtlasError::Platform("the post button on x stayed greyed out".into())), Outcome::Retry(_)));
-    assert!(matches!(classify(AtlasError::Platform("I can't attach pictures or video on linkedin yet".into())), Outcome::Blocked(_)));
+    assert!(matches!(
+        classify(AtlasError::Platform(
+            "the picture or video never finished uploading to x".into()
+        )),
+        Outcome::Retry(_)
+    ));
+    assert!(matches!(
+        classify(AtlasError::Platform(
+            "the post button on x stayed greyed out".into()
+        )),
+        Outcome::Retry(_)
+    ));
+    assert!(matches!(
+        classify(AtlasError::Platform(
+            "I can't attach pictures or video on linkedin yet".into()
+        )),
+        Outcome::Blocked(_)
+    ));
 }
 
 // ================= in the page =================
@@ -112,8 +158,14 @@ fn a_slow_upload_is_tried_again_and_a_missing_input_is_said() {
 fn a_contenteditable_compose_box_is_typed_into_not_given_a_value() {
     let js = fill_js("div[role='textbox']", "hello");
     assert!(js.contains("isContentEditable"));
-    assert!(js.contains("insertText"), "the editors take insertText as typing");
-    assert!(js.contains("e.value = t"), "an ordinary input still gets its value");
+    assert!(
+        js.contains("insertText"),
+        "the editors take insertText as typing"
+    );
+    assert!(
+        js.contains("e.value = t"),
+        "an ordinary input still gets its value"
+    );
 }
 
 #[test]
@@ -195,8 +247,13 @@ fn stand_in_chrome(found: u64) -> (String, std::thread::JoinHandle<Vec<serde_jso
                 _ => serde_json::json!({}),
             };
             seen.push(v.clone());
-            write_frame(&mut s, &serde_json::json!({ "id": id, "result": result }).to_string());
-            if v["method"] == "DOM.setFileInputFiles" || (v["method"] == "DOM.querySelector" && found == 0) {
+            write_frame(
+                &mut s,
+                &serde_json::json!({ "id": id, "result": result }).to_string(),
+            );
+            if v["method"] == "DOM.setFileInputFiles"
+                || (v["method"] == "DOM.querySelector" && found == 0)
+            {
                 break;
             }
         }
@@ -210,11 +267,22 @@ fn the_file_is_chosen_in_the_input_the_way_the_picker_does() {
     let (url, chrome) = stand_in_chrome(42);
     let mut cdp = atlas::cdp::Cdp::connect(&url, std::time::Duration::from_secs(5)).unwrap();
     let files = vec!["C:\\Users\\eric\\Pictures\\launch.jpg".to_string()];
-    cdp.set_files("input[data-testid='fileInput']", &files).unwrap();
+    cdp.set_files("input[data-testid='fileInput']", &files)
+        .unwrap();
     let seen = chrome.join().unwrap();
     let methods: Vec<&str> = seen.iter().filter_map(|v| v["method"].as_str()).collect();
-    assert_eq!(methods, ["DOM.getDocument", "DOM.querySelector", "DOM.setFileInputFiles"]);
-    assert_eq!(seen[1]["params"]["selector"], "input[data-testid='fileInput']");
+    assert_eq!(
+        methods,
+        [
+            "DOM.getDocument",
+            "DOM.querySelector",
+            "DOM.setFileInputFiles"
+        ]
+    );
+    assert_eq!(
+        seen[1]["params"]["selector"],
+        "input[data-testid='fileInput']"
+    );
     assert_eq!(seen[1]["params"]["nodeId"], 1);
     assert_eq!(seen[2]["params"], set_files_params(42, &files));
 }
@@ -223,7 +291,9 @@ fn the_file_is_chosen_in_the_input_the_way_the_picker_does() {
 fn no_file_input_on_the_page_is_an_error_naming_it_not_a_silent_skip() {
     let (url, chrome) = stand_in_chrome(0);
     let mut cdp = atlas::cdp::Cdp::connect(&url, std::time::Duration::from_secs(5)).unwrap();
-    let e = cdp.set_files("input[type='file']", &["/tmp/a.png".to_string()]).unwrap_err();
+    let e = cdp
+        .set_files("input[type='file']", &["/tmp/a.png".to_string()])
+        .unwrap_err();
     assert!(e.to_string().contains("no file input matches"), "{e}");
     let seen = chrome.join().unwrap();
     assert!(seen.iter().all(|v| v["method"] != "DOM.setFileInputFiles"));

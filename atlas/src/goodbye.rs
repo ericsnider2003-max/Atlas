@@ -171,7 +171,11 @@ pub fn asked_by_file(state_dir: &std::path::Path) -> bool {
     if f.is_file() {
         let said = std::fs::read_to_string(&f).unwrap_or_default();
         crate::heard!(std::fs::remove_file(&f));
-        please_stop_because(if said.trim() == UPDATING { Why::Updating } else { Why::YouClosedIt });
+        please_stop_because(if said.trim() == UPDATING {
+            Why::Updating
+        } else {
+            Why::YouClosedIt
+        });
         return true;
     }
     false
@@ -213,7 +217,11 @@ pub fn listen() {
         extern "C" fn handler(sig: i32) {
             // Atomics only, as above: SIGINT is a person at a terminal;
             // SIGTERM is the system (a service manager, a shutdown).
-            mark_stop(if sig == 2 { Why::YouClosedIt } else { Why::WindowsEnding });
+            mark_stop(if sig == 2 {
+                Why::YouClosedIt
+            } else {
+                Why::WindowsEnding
+            });
         }
         signal(SIGINT, handler);
         signal(SIGTERM, handler);
@@ -235,12 +243,19 @@ pub fn listen() {
         type Bool = i32;
         const TRUE: Bool = 1;
         unsafe extern "system" {
-            fn SetConsoleCtrlHandler(handler: Option<unsafe extern "system" fn(u32) -> Bool>, add: Bool) -> Bool;
+            fn SetConsoleCtrlHandler(
+                handler: Option<unsafe extern "system" fn(u32) -> Bool>,
+                add: Bool,
+            ) -> Bool;
         }
         unsafe extern "system" fn handler(kind: u32) -> Bool {
             // CTRL_C 0, CTRL_BREAK 1, CTRL_CLOSE 2: a person. CTRL_LOGOFF 5,
             // CTRL_SHUTDOWN 6: Windows ending. Atomics only.
-            please_stop_because(if kind >= 5 { Why::WindowsEnding } else { Why::YouClosedIt });
+            please_stop_because(if kind >= 5 {
+                Why::WindowsEnding
+            } else {
+                Why::YouClosedIt
+            });
             TRUE
         }
         SetConsoleCtrlHandler(Some(handler), TRUE);

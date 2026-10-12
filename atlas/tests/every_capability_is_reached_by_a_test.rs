@@ -22,12 +22,22 @@ const UNREACHED: &[(&str, &str)] = &[];
 /// Test files that read source text instead of running behaviour; they mention
 /// every module and prove nothing about any of them.
 const GUARDS: &[&str] = &[
-    "catalogue", "capability_wiring", "dead_capabilities", "new_capabilities_are_wired", "name_collisions",
-    "dead_methods", "dead_config", "wiring", "guards", "hollowcode",
+    "catalogue",
+    "capability_wiring",
+    "dead_capabilities",
+    "new_capabilities_are_wired",
+    "name_collisions",
+    "dead_methods",
+    "dead_config",
+    "wiring",
+    "guards",
+    "hollowcode",
 ];
 
 fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in rd.flatten() {
         let p = e.path();
         if p.is_dir() {
@@ -59,8 +69,14 @@ fn every_capability_is_reached_by_some_test() {
     let mut files = Vec::new();
     rs_files(Path::new("tests"), &mut files);
     for f in files {
-        let stem = f.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        if GUARDS.contains(&stem.as_str()) || stem.starts_with("every_") && stem != "every_command_end_to_end" || stem == "mod" {
+        let stem = f
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if GUARDS.contains(&stem.as_str())
+            || stem.starts_with("every_") && stem != "every_command_end_to_end"
+            || stem == "mod"
+        {
             continue;
         }
         if let Ok(t) = std::fs::read_to_string(&f) {
@@ -69,11 +85,22 @@ fn every_capability_is_reached_by_some_test() {
     }
 
     let reached = |module: &str| -> bool {
-        let inline = files_of(module, &src)
-            .iter()
-            .any(|f| std::fs::read_to_string(f).map(|t| t.contains(concat!("#[te", "st]"))).unwrap_or(false));
-        let pats = [format!("::{module}::"), format!("::{module};"), format!("::{module}}}"), format!("::{module},"), format!("::{module} as")];
-        inline || tests.iter().any(|(_, t)| pats.iter().any(|p| t.contains(p.as_str())))
+        let inline = files_of(module, &src).iter().any(|f| {
+            std::fs::read_to_string(f)
+                .map(|t| t.contains(concat!("#[te", "st]")))
+                .unwrap_or(false)
+        });
+        let pats = [
+            format!("::{module}::"),
+            format!("::{module};"),
+            format!("::{module}}}"),
+            format!("::{module},"),
+            format!("::{module} as"),
+        ];
+        inline
+            || tests
+                .iter()
+                .any(|(_, t)| pats.iter().any(|p| t.contains(p.as_str())))
     };
 
     let mut unreached = Vec::new();
@@ -83,13 +110,22 @@ fn every_capability_is_reached_by_some_test() {
         }
     }
     let allowed: Vec<&str> = UNREACHED.iter().map(|(id, _)| *id).collect();
-    let new: Vec<&&str> = unreached.iter().filter(|id| !allowed.contains(*id)).collect();
+    let new: Vec<&&str> = unreached
+        .iter()
+        .filter(|id| !allowed.contains(*id))
+        .collect();
     assert!(
         new.is_empty(),
         "these capabilities are listed in capability::all() but no test calls into their modules and the modules have no tests of their own: {new:?}. Write the test; do not add them to UNREACHED without saying what they wait on."
     );
-    let gone: Vec<&&str> = allowed.iter().filter(|id| !unreached.contains(*id)).collect();
-    assert!(gone.is_empty(), "these are in UNREACHED but are reached now; take them off the list: {gone:?}");
+    let gone: Vec<&&str> = allowed
+        .iter()
+        .filter(|id| !unreached.contains(*id))
+        .collect();
+    assert!(
+        gone.is_empty(),
+        "these are in UNREACHED but are reached now; take them off the list: {gone:?}"
+    );
 }
 
 #[test]
@@ -97,6 +133,11 @@ fn a_capability_with_no_module_would_be_caught() {
     // The check can fail: a module nothing mentions is not "reached".
     let mut src = Vec::new();
     rs_files(Path::new("src"), &mut src);
-    assert!(files_of("claims", &src).iter().any(|p| p.to_string_lossy().contains("market")), "nested modules are found where they live");
+    assert!(
+        files_of("claims", &src)
+            .iter()
+            .any(|p| p.to_string_lossy().contains("market")),
+        "nested modules are found where they live"
+    );
     assert!(files_of("no_such_module_anywhere", &src).is_empty());
 }

@@ -74,8 +74,19 @@ pub fn ffmpeg_name_for(devices: &[Device], name: &str) -> String {
 
 fn looks_bluetooth(n: &str) -> bool {
     const HINTS: &[&str] = &[
-        "airpods", "bluetooth", "hands-free", "handsfree", "headset",
-        "buds", "beats", "wh-", "wf-", "jabra", "bose", "sony wh", "soundcore",
+        "airpods",
+        "bluetooth",
+        "hands-free",
+        "handsfree",
+        "headset",
+        "buds",
+        "beats",
+        "wh-",
+        "wf-",
+        "jabra",
+        "bose",
+        "sony wh",
+        "soundcore",
     ];
     HINTS.iter().any(|h| n.contains(h))
 }
@@ -83,13 +94,22 @@ fn looks_bluetooth(n: &str) -> bool {
 fn looks_builtin(n: &str) -> bool {
     const HINTS: &[&str] = &[
         // Windows names.
-        "microphone array", "internal", "built-in", "realtek", "intel smart sound", "laptop",
+        "microphone array",
+        "internal",
+        "built-in",
+        "realtek",
+        "intel smart sound",
+        "laptop",
         // Linux and macOS name the same hardware differently, and the list
         // was written when this only ever saw Windows dshow output. ALSA
         // reports the onboard codec as "HDA Intel PCH"; macOS says
         // "Built-in Microphone" (already covered) but also "MacBook Pro
         // Microphone".
-        "hda intel", "hda-intel", "pch", "onboard", "macbook",
+        "hda intel",
+        "hda-intel",
+        "pch",
+        "onboard",
+        "macbook",
     ];
     HINTS.iter().any(|h| n.contains(h))
 }
@@ -225,7 +245,9 @@ pub fn parse_avfoundation(text: &str) -> Vec<Device> {
             continue;
         }
         // What is left is "[0] Built-in Microphone" -- strip the index.
-        let Some(close) = after.find(']') else { continue };
+        let Some(close) = after.find(']') else {
+            continue;
+        };
         if !after.starts_with('[') {
             continue;
         }
@@ -247,18 +269,46 @@ pub fn listing_command(inputs: bool) -> (&'static str, Vec<String>) {
     if cfg!(windows) {
         // dshow lists inputs and outputs together and exits non-zero doing
         // it; the caller reads stderr regardless.
-        ("ffmpeg", ["-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"]
+        (
+            "ffmpeg",
+            [
+                "-hide_banner",
+                "-list_devices",
+                "true",
+                "-f",
+                "dshow",
+                "-i",
+                "dummy",
+            ]
             .iter()
             .map(|s| s.to_string())
-            .collect())
+            .collect(),
+        )
     } else if cfg!(target_os = "macos") {
-        ("ffmpeg", ["-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""]
+        (
+            "ffmpeg",
+            [
+                "-hide_banner",
+                "-f",
+                "avfoundation",
+                "-list_devices",
+                "true",
+                "-i",
+                "",
+            ]
             .iter()
             .map(|s| s.to_string())
-            .collect())
+            .collect(),
+        )
     } else {
         let what = if inputs { "-sources" } else { "-sinks" };
-        ("ffmpeg", ["-hide_banner", what, "alsa"].iter().map(|s| s.to_string()).collect())
+        (
+            "ffmpeg",
+            ["-hide_banner", what, "alsa"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        )
     }
 }
 
@@ -269,9 +319,17 @@ pub fn parse_listing(text: &str, inputs: bool) -> Vec<Device> {
         // dshow's own listing distinguishes audio from video but not input
         // from output, so an output request gets nothing rather than a
         // confident wrong list.
-        if inputs { parse_devices(text) } else { Vec::new() }
+        if inputs {
+            parse_devices(text)
+        } else {
+            Vec::new()
+        }
     } else if cfg!(target_os = "macos") {
-        if inputs { parse_avfoundation(text) } else { Vec::new() }
+        if inputs {
+            parse_avfoundation(text)
+        } else {
+            Vec::new()
+        }
     } else {
         parse_alsa(text, kind)
     }
@@ -338,8 +396,16 @@ pub fn choose(devices: &[Device], cfg: &AudioConfig, laptop_screen_active: bool)
     } else {
         devices.iter().filter(|d| !d.builtin).collect()
     };
-    let inputs: Vec<&Device> = reachable.iter().filter(|d| d.kind == Kind::Input).copied().collect();
-    let outputs: Vec<&Device> = reachable.iter().filter(|d| d.kind == Kind::Output).copied().collect();
+    let inputs: Vec<&Device> = reachable
+        .iter()
+        .filter(|d| d.kind == Kind::Input)
+        .copied()
+        .collect();
+    let outputs: Vec<&Device> = reachable
+        .iter()
+        .filter(|d| d.kind == Kind::Output)
+        .copied()
+        .collect();
 
     // An explicit preference always wins — you know your setup better.
     if let Some(d) = first_preferred(&inputs, &cfg.preferred_input) {
@@ -359,7 +425,8 @@ pub fn choose(devices: &[Device], cfg: &AudioConfig, laptop_screen_active: bool)
     // Whether the built-in array was actually dropped from consideration --
     // not merely whether the screen is inactive, since a lid-down laptop with
     // no built-in mic in its device list at all has nothing to explain.
-    let lid_excluded = !laptop_screen_active && devices.iter().any(|d| d.builtin && d.kind == Kind::Input);
+    let lid_excluded =
+        !laptop_screen_active && devices.iter().any(|d| d.builtin && d.kind == Kind::Input);
 
     // The lid-down reasoning has to be decided before the ordinary
     // avoid-Bluetooth logic runs, not layered on top of it -- the first
@@ -389,13 +456,19 @@ pub fn choose(devices: &[Device], cfg: &AudioConfig, laptop_screen_active: bool)
             (true, Some(w), Some(_)) => (
                 Some(w.name.clone()),
                 false,
-                "listening on the laptop mic so your headphones keep full sound quality".to_string(),
+                "listening on the laptop mic so your headphones keep full sound quality"
+                    .to_string(),
             ),
-            (_, Some(w), None) => (Some(w.name.clone()), false, "the only microphone here".to_string()),
+            (_, Some(w), None) => (
+                Some(w.name.clone()),
+                false,
+                "the only microphone here".to_string(),
+            ),
             (_, _, Some(b)) => (
                 Some(b.name.clone()),
                 true,
-                "using the headset mic — it will drop your audio quality while I listen".to_string(),
+                "using the headset mic — it will drop your audio quality while I listen"
+                    .to_string(),
             ),
             (_, None, None) => (None, false, "no microphone found".to_string()),
         }
@@ -405,26 +478,50 @@ pub fn choose(devices: &[Device], cfg: &AudioConfig, laptop_screen_active: bool)
     // when you had also named a microphone). Headphones, when preferred,
     // include wired ones, not only Bluetooth.
     let named_out = first_preferred(&outputs, &cfg.preferred_output);
-    let ears_out = outputs.iter().find(|d| d.bluetooth || looks_like_headphones(&d.name.to_lowercase()));
+    let ears_out = outputs
+        .iter()
+        .find(|d| d.bluetooth || looks_like_headphones(&d.name.to_lowercase()));
     let output = if let Some(d) = named_out {
         Some(d.name.clone())
     } else if cfg.prefer_headphones_for_output {
         ears_out.or_else(|| outputs.first()).map(|d| d.name.clone())
     } else {
-        outputs.iter().find(|d| !d.bluetooth).or_else(|| outputs.first()).map(|d| d.name.clone())
+        outputs
+            .iter()
+            .find(|d| !d.bluetooth)
+            .or_else(|| outputs.first())
+            .map(|d| d.name.clone())
     };
 
-    if named_out.is_none() && output.is_some() && ears_out.is_some() && cfg.prefer_headphones_for_output {
+    if named_out.is_none()
+        && output.is_some()
+        && ears_out.is_some()
+        && cfg.prefer_headphones_for_output
+    {
         why.push_str(", speaking through your headphones");
     }
     let _ = bt_out;
 
-    Selection { input, output, why, degrades_audio: degrades }
+    Selection {
+        input,
+        output,
+        why,
+        degrades_audio: degrades,
+    }
 }
 
 /// A speaker you wear: headphones, a headset, earbuds.
 fn looks_like_headphones(lower: &str) -> bool {
-    ["headphone", "headset", "earphone", "earbud", "buds", "airpods"].iter().any(|k| lower.contains(k))
+    [
+        "headphone",
+        "headset",
+        "earphone",
+        "earbud",
+        "buds",
+        "airpods",
+    ]
+    .iter()
+    .any(|k| lower.contains(k))
 }
 
 /// The microphone you named in `preferred_input`, if this machine has it.
@@ -461,9 +558,9 @@ pub fn announce(before: &Selection, after: &Selection) -> Option<String> {
     }
     match (&after.input, after.degrades_audio) {
         (None, _) => Some("I've lost the microphone.".into()),
-        (Some(_), true) => {
-            Some("Switched to the headset mic — your audio quality will drop while I listen.".into())
-        }
+        (Some(_), true) => Some(
+            "Switched to the headset mic — your audio quality will drop while I listen.".into(),
+        ),
         (Some(_), false) if before.input.is_none() => Some("Microphone's back.".into()),
         _ => Some(format!("Audio changed: {}.", after.why)),
     }
@@ -574,7 +671,9 @@ pub const SILENT_DB: f32 = -96.0;
 /// for speech.
 pub fn samples_from_le(bytes: &[u8]) -> Vec<i16> {
     bytes
-        .as_chunks::<2>().0.iter()
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|b| i16::from_le_bytes([b[0], b[1]]))
         .collect()
 }
@@ -679,10 +778,24 @@ pub fn pick_camera(cameras: &[String], configured: &str) -> Option<String> {
         return Some(c.clone());
     }
     let low = |c: &String| c.to_lowercase();
-    let virtual_cam = |c: &String| ["virtual", "obs", "snap camera", "droidcam", "nvidia broadcast"].iter().any(|v| low(c).contains(v));
+    let virtual_cam = |c: &String| {
+        [
+            "virtual",
+            "obs",
+            "snap camera",
+            "droidcam",
+            "nvidia broadcast",
+        ]
+        .iter()
+        .any(|v| low(c).contains(v))
+    };
     let real: Vec<&String> = cameras.iter().filter(|c| !virtual_cam(c)).collect();
     real.iter()
-        .find(|c| ["integrated", "built-in", "front", "facetime", "user facing"].iter().any(|k| low(c).contains(k)))
+        .find(|c| {
+            ["integrated", "built-in", "front", "facetime", "user facing"]
+                .iter()
+                .any(|k| low(c).contains(k))
+        })
         .or_else(|| real.first())
         .map(|c| (*c).clone())
 }
@@ -698,23 +811,65 @@ pub fn pick_camera(cameras: &[String], configured: &str) -> Option<String> {
 /// the camera inside the shut lid -- a black frame. Order: the camera that
 /// matches the microphone in use; any real camera but a built-in one when the
 /// lid is shut; then `pick_camera`.
-pub fn pick_camera_for(cameras: &[String], configured: &str, microphone: &str, lid_open: bool) -> Option<String> {
+pub fn pick_camera_for(
+    cameras: &[String],
+    configured: &str,
+    microphone: &str,
+    lid_open: bool,
+) -> Option<String> {
     let low = |c: &str| c.to_lowercase();
-    let builtin = |c: &str| ["integrated", "built-in", "internal", "front", "facetime", "user facing"].iter().any(|k| low(c).contains(k));
-    let virtual_cam = |c: &str| ["virtual", "obs", "snap camera", "droidcam", "nvidia broadcast"].iter().any(|v| low(c).contains(v));
-    let usable: Vec<&String> = cameras.iter().filter(|c| !virtual_cam(c) && (lid_open || !builtin(c))).collect();
+    let builtin = |c: &str| {
+        [
+            "integrated",
+            "built-in",
+            "internal",
+            "front",
+            "facetime",
+            "user facing",
+        ]
+        .iter()
+        .any(|k| low(c).contains(k))
+    };
+    let virtual_cam = |c: &str| {
+        [
+            "virtual",
+            "obs",
+            "snap camera",
+            "droidcam",
+            "nvidia broadcast",
+        ]
+        .iter()
+        .any(|v| low(c).contains(v))
+    };
+    let usable: Vec<&String> = cameras
+        .iter()
+        .filter(|c| !virtual_cam(c) && (lid_open || !builtin(c)))
+        .collect();
     // "Microphone (HD Pro Webcam C920)" -> the words inside the brackets
     // that name the device, matched against each camera's name.
     let mic = low(microphone);
-    let inside = mic.split_once('(').map(|(_, r)| r.trim_end_matches(')').to_string()).unwrap_or_default();
-    let tokens: Vec<&str> = inside.split_whitespace().filter(|w| w.len() >= 4 && !["microphone", "array", "audio", "webcam"].contains(w)).collect();
+    let inside = mic
+        .split_once('(')
+        .map(|(_, r)| r.trim_end_matches(')').to_string())
+        .unwrap_or_default();
+    let tokens: Vec<&str> = inside
+        .split_whitespace()
+        .filter(|w| w.len() >= 4 && !["microphone", "array", "audio", "webcam"].contains(w))
+        .collect();
     if !tokens.is_empty() {
-        if let Some(c) = usable.iter().find(|c| tokens.iter().all(|t| low(c).contains(t))) {
+        if let Some(c) = usable
+            .iter()
+            .find(|c| tokens.iter().all(|t| low(c).contains(t)))
+        {
             return Some((*c).clone());
         }
     }
     if !lid_open {
-        if let Some(c) = usable.iter().find(|c| c.as_str() == configured).or_else(|| usable.first()) {
+        if let Some(c) = usable
+            .iter()
+            .find(|c| c.as_str() == configured)
+            .or_else(|| usable.first())
+        {
             return Some((*c).clone());
         }
     }
@@ -793,7 +948,11 @@ pub const TURN_UP_BELOW_DB: f32 = -28.0;
 /// well above it. A clip too short to judge is given the benefit of the doubt.
 pub fn check_speech(samples: &[i16], rate: u32) -> SpeechCheck {
     let frame = (rate as usize * 30 / 1000).max(1);
-    let levels: Vec<f32> = samples.chunks(frame).filter(|c| c.len() == frame).map(level_db).collect();
+    let levels: Vec<f32> = samples
+        .chunks(frame)
+        .filter(|c| c.len() == frame)
+        .map(level_db)
+        .collect();
     if levels.len() < 4 {
         return SpeechCheck::Speech;
     }
@@ -811,12 +970,18 @@ pub fn check_speech(samples: &[i16], rate: u32) -> SpeechCheck {
         return SpeechCheck::Silence;
     }
     if loudest < TURN_UP_BELOW_DB {
-        let max_gain = if snr >= CLEAN_SNR_DB { crate::leveller::MAX_GAIN_DB } else { NOISY_MAX_GAIN_DB };
+        let max_gain = if snr >= CLEAN_SNR_DB {
+            crate::leveller::MAX_GAIN_DB
+        } else {
+            NOISY_MAX_GAIN_DB
+        };
         // Up to about -12 dBFS at its loudest, never more than 100x
         // (`leveller::MAX_GAIN_DB`), and never lifting the room past
         // `leveller::NOISE_CEILING_DB`. Was capped at 30x, which left a voice
         // at -65 dB still at -35 when whisper heard it (30 Sep 2026).
-        let up_db = (-12.0 - loudest).min(crate::leveller::NOISE_CEILING_DB - room).min(max_gain);
+        let up_db = (-12.0 - loudest)
+            .min(crate::leveller::NOISE_CEILING_DB - room)
+            .min(max_gain);
         let gain = 10f32.powf(up_db / 20.0).max(1.0);
         return SpeechCheck::Quiet(gain);
     }
@@ -825,5 +990,8 @@ pub fn check_speech(samples: &[i16], rate: u32) -> SpeechCheck {
 
 /// `samples` turned up by `gain`, clipped rather than wrapped.
 pub fn turned_up(samples: &[i16], gain: f32) -> Vec<i16> {
-    samples.iter().map(|s| ((*s as f32) * gain).clamp(i16::MIN as f32, i16::MAX as f32) as i16).collect()
+    samples
+        .iter()
+        .map(|s| ((*s as f32) * gain).clamp(i16::MIN as f32, i16::MAX as f32) as i16)
+        .collect()
 }

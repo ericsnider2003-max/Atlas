@@ -48,10 +48,28 @@ pub struct Rule {
 }
 
 const DAYS: [&str; 7] = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
-const DAY_NAMES: [&str; 7] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const DAY_NAMES: [&str; 7] = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+];
 const MONTH_NAMES: [&str; 12] = [
-    "January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
-    "November", "December",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 ];
 
 /// A hard ceiling on periods walked, so a rule that can never match (BYMONTHDAY=31
@@ -81,7 +99,9 @@ impl Rule {
         let mut freq = None;
         let mut r = Rule::new(Freq::Daily);
         for part in s.split(';').filter(|p| !p.is_empty()) {
-            let (k, v) = part.split_once('=').ok_or_else(|| format!("'{part}' is not NAME=VALUE"))?;
+            let (k, v) = part
+                .split_once('=')
+                .ok_or_else(|| format!("'{part}' is not NAME=VALUE"))?;
             match k.to_ascii_uppercase().as_str() {
                 "FREQ" => {
                     freq = Some(match v.to_ascii_uppercase().as_str() {
@@ -89,11 +109,17 @@ impl Rule {
                         "WEEKLY" => Freq::Weekly,
                         "MONTHLY" => Freq::Monthly,
                         "YEARLY" => Freq::Yearly,
-                        other => return Err(format!("FREQ={other} is not supported (daily/weekly/monthly/yearly only)")),
+                        other => {
+                            return Err(format!(
+                                "FREQ={other} is not supported (daily/weekly/monthly/yearly only)"
+                            ))
+                        }
                     })
                 }
                 "INTERVAL" => {
-                    r.interval = v.parse().map_err(|_| format!("INTERVAL={v} is not a number"))?;
+                    r.interval = v
+                        .parse()
+                        .map_err(|_| format!("INTERVAL={v} is not a number"))?;
                     if r.interval == 0 {
                         return Err("INTERVAL must be at least 1".into());
                     }
@@ -105,7 +131,12 @@ impl Rule {
                         return Err(format!("INTERVAL={v} is too large to be a real repeat"));
                     }
                 }
-                "COUNT" => r.count = Some(v.parse().map_err(|_| format!("COUNT={v} is not a number"))?),
+                "COUNT" => {
+                    r.count = Some(
+                        v.parse()
+                            .map_err(|_| format!("COUNT={v} is not a number"))?,
+                    )
+                }
                 "UNTIL" => r.until = Some(parse_ical_time(v)?),
                 "BYDAY" => {
                     for d in v.split(',') {
@@ -114,7 +145,9 @@ impl Rule {
                 }
                 "BYMONTHDAY" => {
                     for d in v.split(',') {
-                        let n: i32 = d.parse().map_err(|_| format!("BYMONTHDAY {d} is not a number"))?;
+                        let n: i32 = d
+                            .parse()
+                            .map_err(|_| format!("BYMONTHDAY {d} is not a number"))?;
                         if n == 0 || n.abs() > 31 {
                             return Err(format!("BYMONTHDAY {n} is out of range"));
                         }
@@ -123,7 +156,9 @@ impl Rule {
                 }
                 "BYMONTH" => {
                     for d in v.split(',') {
-                        let n: u32 = d.parse().map_err(|_| format!("BYMONTH {d} is not a number"))?;
+                        let n: u32 = d
+                            .parse()
+                            .map_err(|_| format!("BYMONTH {d} is not a number"))?;
                         if !(1..=12).contains(&n) {
                             return Err(format!("BYMONTH {n} is out of range"));
                         }
@@ -132,7 +167,9 @@ impl Rule {
                 }
                 "BYSETPOS" => {
                     for d in v.split(',') {
-                        let n: i32 = d.parse().map_err(|_| format!("BYSETPOS {d} is not a number"))?;
+                        let n: i32 = d
+                            .parse()
+                            .map_err(|_| format!("BYSETPOS {d} is not a number"))?;
                         if n == 0 || n.abs() > 366 {
                             return Err(format!("BYSETPOS {n} is out of range"));
                         }
@@ -143,17 +180,25 @@ impl Rule {
                     r.wkst = DAYS
                         .iter()
                         .position(|d| d.eq_ignore_ascii_case(v))
-                        .ok_or_else(|| format!("WKST={v} is not a weekday"))? as u32
+                        .ok_or_else(|| format!("WKST={v} is not a weekday"))?
+                        as u32
                 }
-                other => return Err(format!("{other} is not supported — refusing rather than ignoring it")),
+                other => {
+                    return Err(format!(
+                        "{other} is not supported — refusing rather than ignoring it"
+                    ))
+                }
             }
         }
         if r.count.is_some() && r.until.is_some() {
             return Err("COUNT and UNTIL together are not allowed (RFC 5545)".into());
         }
         r.freq = freq.ok_or("FREQ is required")?;
-        if matches!(r.freq, Freq::Daily | Freq::Weekly) && r.by_day.iter().any(|(o, _)| o.is_some()) {
-            return Err("an ordinal BYDAY (like 2TU) only means something MONTHLY or YEARLY".into());
+        if matches!(r.freq, Freq::Daily | Freq::Weekly) && r.by_day.iter().any(|(o, _)| o.is_some())
+        {
+            return Err(
+                "an ordinal BYDAY (like 2TU) only means something MONTHLY or YEARLY".into(),
+            );
         }
         Ok(r)
     }
@@ -182,11 +227,22 @@ impl Rule {
             let v: Vec<String> = self
                 .by_day
                 .iter()
-                .map(|(o, d)| format!("{}{}", o.map(|o| o.to_string()).unwrap_or_default(), DAYS[*d as usize]))
+                .map(|(o, d)| {
+                    format!(
+                        "{}{}",
+                        o.map(|o| o.to_string()).unwrap_or_default(),
+                        DAYS[*d as usize]
+                    )
+                })
                 .collect();
             out.push(format!("BYDAY={}", v.join(",")));
         }
-        let join = |v: &[i32]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",");
+        let join = |v: &[i32]| {
+            v.iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        };
         if !self.by_month_day.is_empty() {
             out.push(format!("BYMONTHDAY={}", join(&self.by_month_day)));
         }
@@ -232,12 +288,22 @@ impl Rule {
             let v: Vec<String> = self
                 .by_month_day
                 .iter()
-                .map(|n| if *n < 0 { format!("{} day", ordinal_word(*n)) } else { format!("the {}", nth(*n as u32)) })
+                .map(|n| {
+                    if *n < 0 {
+                        format!("{} day", ordinal_word(*n))
+                    } else {
+                        format!("the {}", nth(*n as u32))
+                    }
+                })
                 .collect();
             s.push_str(&format!(" on {}", list_words(&v)));
         }
         if !self.by_month.is_empty() {
-            let v: Vec<String> = self.by_month.iter().map(|m| MONTH_NAMES[*m as usize - 1].to_string()).collect();
+            let v: Vec<String> = self
+                .by_month
+                .iter()
+                .map(|m| MONTH_NAMES[*m as usize - 1].to_string())
+                .collect();
             s.push_str(&format!(" in {}", list_words(&v)));
         }
         if !self.by_set_pos.is_empty() {
@@ -284,22 +350,34 @@ impl Rule {
                 let c = Civil::from_local(d * 86_400);
                 let ok = (self.by_month.is_empty() || self.by_month.contains(&c.month))
                     && (self.by_month_day.is_empty() || month_day_matches(&self.by_month_day, &c))
-                    && (self.by_day.is_empty() || self.by_day.iter().any(|(_, w)| *w == c.weekday()));
-                if ok { vec![d] } else { vec![] }
+                    && (self.by_day.is_empty()
+                        || self.by_day.iter().any(|(_, w)| *w == c.weekday()));
+                if ok {
+                    vec![d]
+                } else {
+                    vec![]
+                }
             }
             Freq::Weekly => {
                 let offset = (start.weekday() + 7 - self.wkst) % 7;
                 let week0 = start.days() - offset as i64 + period * 7 * self.interval as i64;
-                let wanted: Vec<u32> =
-                    if self.by_day.is_empty() { vec![start.weekday()] } else { self.by_day.iter().map(|(_, w)| *w).collect() };
+                let wanted: Vec<u32> = if self.by_day.is_empty() {
+                    vec![start.weekday()]
+                } else {
+                    self.by_day.iter().map(|(_, w)| *w).collect()
+                };
                 (0..7)
                     .map(|i| week0 + i)
                     .filter(|d| wanted.contains(&weekday(*d)))
-                    .filter(|d| self.by_month.is_empty() || self.by_month.contains(&Civil::from_local(d * 86_400).month))
+                    .filter(|d| {
+                        self.by_month.is_empty()
+                            || self.by_month.contains(&Civil::from_local(d * 86_400).month)
+                    })
                     .collect()
             }
             Freq::Monthly => {
-                let months = start.year * 12 + (start.month as i64 - 1) + period * self.interval as i64;
+                let months =
+                    start.year * 12 + (start.month as i64 - 1) + period * self.interval as i64;
                 let (y, m) = (months.div_euclid(12), (months.rem_euclid(12) + 1) as u32);
                 if !self.by_month.is_empty() && !self.by_month.contains(&m) {
                     vec![]
@@ -309,13 +387,20 @@ impl Rule {
             }
             Freq::Yearly => {
                 let y = start.year + period * self.interval as i64;
-                if self.by_month.is_empty() && !self.by_day.is_empty() && self.by_month_day.is_empty() {
+                if self.by_month.is_empty()
+                    && !self.by_day.is_empty()
+                    && self.by_month_day.is_empty()
+                {
                     // BYDAY across the whole year: ordinals count within the year.
                     let first = crate::civil::days_from_civil(y, 1, 1);
                     let len = if crate::civil::is_leap(y) { 366 } else { 365 };
                     by_day_in_range(&self.by_day, first, len)
                 } else {
-                    let months = if self.by_month.is_empty() { vec![start.month] } else { self.by_month.clone() };
+                    let months = if self.by_month.is_empty() {
+                        vec![start.month]
+                    } else {
+                        self.by_month.clone()
+                    };
                     let mut out = vec![];
                     for m in months {
                         out.extend(self.month_days(y, m, start));
@@ -350,12 +435,17 @@ impl Rule {
             self.by_month_day
                 .iter()
                 .filter_map(|n| {
-                    let d = if *n > 0 { *n as i64 } else { len + 1 + *n as i64 };
+                    let d = if *n > 0 {
+                        *n as i64
+                    } else {
+                        len + 1 + *n as i64
+                    };
                     (1..=len).contains(&d).then(|| first + d - 1)
                 })
                 .collect()
         });
-        let from_bd: Option<Vec<i64>> = (!self.by_day.is_empty()).then(|| by_day_in_range(&self.by_day, first, len));
+        let from_bd: Option<Vec<i64>> =
+            (!self.by_day.is_empty()).then(|| by_day_in_range(&self.by_day, first, len));
         match (from_md, from_bd) {
             (Some(a), Some(b)) => a.into_iter().filter(|d| b.contains(d)).collect(),
             (Some(a), None) => a,
@@ -375,13 +465,22 @@ impl Rule {
 
 fn month_day_matches(mds: &[i32], c: &Civil) -> bool {
     let len = days_in_month(c.year, c.month) as i32;
-    mds.iter().any(|n| if *n > 0 { *n == c.day as i32 } else { len + 1 + n == c.day as i32 })
+    mds.iter().any(|n| {
+        if *n > 0 {
+            *n == c.day as i32
+        } else {
+            len + 1 + n == c.day as i32
+        }
+    })
 }
 
 fn by_day_in_range(by_day: &[(Option<i32>, u32)], first: i64, len: i64) -> Vec<i64> {
     let mut out = vec![];
     for (ord, wd) in by_day {
-        let matches: Vec<i64> = (0..len).map(|i| first + i).filter(|d| weekday(*d) == *wd).collect();
+        let matches: Vec<i64> = (0..len)
+            .map(|i| first + i)
+            .filter(|d| weekday(*d) == *wd)
+            .collect();
         match ord {
             None => out.extend(matches),
             Some(n) => {
@@ -404,11 +503,17 @@ fn parse_byday(d: &str) -> Result<(Option<i32>, u32), String> {
         return Err(format!("BYDAY {d} is not a weekday"));
     }
     let (num, day) = d.split_at(d.len() - 2);
-    let w = DAYS.iter().position(|x| x.eq_ignore_ascii_case(day)).ok_or_else(|| format!("BYDAY {d} is not a weekday"))?;
+    let w = DAYS
+        .iter()
+        .position(|x| x.eq_ignore_ascii_case(day))
+        .ok_or_else(|| format!("BYDAY {d} is not a weekday"))?;
     let ord = if num.is_empty() {
         None
     } else {
-        let n: i32 = num.trim_start_matches('+').parse().map_err(|_| format!("BYDAY {d} has a bad ordinal"))?;
+        let n: i32 = num
+            .trim_start_matches('+')
+            .parse()
+            .map_err(|_| format!("BYDAY {d} has a bad ordinal"))?;
         if n == 0 || n.abs() > 53 {
             return Err(format!("BYDAY {d} ordinal out of range"));
         }
@@ -443,12 +548,23 @@ pub fn parse_ical_time(v: &str) -> Result<i64, String> {
         mm = t[2..4].parse().map_err(|_| bad())?;
         ss = t[4..6].parse().map_err(|_| bad())?;
     }
-    Ok(Civil { year: y, month: m, day: d, hour: hh, minute: mm, second: ss }.to_local())
+    Ok(Civil {
+        year: y,
+        month: m,
+        day: d,
+        hour: hh,
+        minute: mm,
+        second: ss,
+    }
+    .to_local())
 }
 
 pub fn format_ical_time(t: i64) -> String {
     let c = Civil::from_local(t);
-    format!("{:04}{:02}{:02}T{:02}{:02}{:02}", c.year, c.month, c.day, c.hour, c.minute, c.second)
+    format!(
+        "{:04}{:02}{:02}T{:02}{:02}{:02}",
+        c.year, c.month, c.day, c.hour, c.minute, c.second
+    )
 }
 
 fn ordinal_word(n: i32) -> String {
@@ -496,7 +612,11 @@ pub struct Series {
 
 impl Series {
     pub fn new(start: i64, rule: Rule) -> Series {
-        Series { start, rule, exdates: vec![] }
+        Series {
+            start,
+            rule,
+            exdates: vec![],
+        }
     }
 
     /// Every occurrence in `[from, to)`, at most `limit`.
@@ -547,7 +667,6 @@ impl Series {
         out.truncate(limit);
         out
     }
-
 }
 
 /// Read the spoken forms people actually use. Returns `None` rather than a
@@ -563,10 +682,18 @@ pub fn from_plain(text: &str) -> Option<Rule> {
     let has = |w: &str| words.contains(&w);
     let day_of = |w: &str| -> Option<u32> {
         let w = w.trim_end_matches('s');
-        ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-            .iter()
-            .position(|d| *d == w || (w.len() >= 3 && d.starts_with(w)))
-            .map(|i| i as u32)
+        [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        ]
+        .iter()
+        .position(|d| *d == w || (w.len() >= 3 && d.starts_with(w)))
+        .map(|i| i as u32)
     };
     let ord_of = |w: &str| -> Option<i32> {
         Some(match w {
@@ -612,7 +739,10 @@ pub fn from_plain(text: &str) -> Option<Rule> {
         if let Some(n) = words.iter().find_map(|w| {
             let d = w.trim_end_matches(|c: char| c.is_ascii_alphabetic());
             let suffix = &w[d.len()..];
-            ["st", "nd", "rd", "th"].contains(&suffix).then(|| d.parse::<i32>().ok()).flatten()
+            ["st", "nd", "rd", "th"]
+                .contains(&suffix)
+                .then(|| d.parse::<i32>().ok())
+                .flatten()
         }) {
             if (1..=31).contains(&n) {
                 let mut r = Rule::new(Freq::Monthly);
@@ -644,7 +774,12 @@ pub fn from_plain(text: &str) -> Option<Rule> {
         }
     }
     // "every second tuesday" with no month is "every other tuesday".
-    let unit_given = words.iter().any(|w| matches!(*w, "day" | "days" | "week" | "weeks" | "month" | "months" | "year" | "years"));
+    let unit_given = words.iter().any(|w| {
+        matches!(
+            *w,
+            "day" | "days" | "week" | "weeks" | "month" | "months" | "year" | "years"
+        )
+    });
     let days: Vec<u32> = words.iter().filter_map(|w| day_of(w)).collect();
     if !days.is_empty() && !unit_given && has("every") {
         if let Some(o) = words.iter().find_map(|w| ord_of(w)) {
@@ -682,21 +817,36 @@ mod tests {
     use crate::civil::Civil;
 
     fn at(y: i64, m: u32, d: u32, h: u32) -> i64 {
-        Civil { year: y, month: m, day: d, hour: h, minute: 0, second: 0 }.to_local()
+        Civil {
+            year: y,
+            month: m,
+            day: d,
+            hour: h,
+            minute: 0,
+            second: 0,
+        }
+        .to_local()
     }
     fn ymd(t: i64) -> (i64, u32, u32) {
         let c = Civil::from_local(t);
         (c.year, c.month, c.day)
     }
     fn run(start: i64, rule: &str, n: usize) -> Vec<(i64, u32, u32)> {
-        Series::new(start, Rule::parse(rule).unwrap()).between(i64::MIN, i64::MAX, n).into_iter().map(ymd).collect()
+        Series::new(start, Rule::parse(rule).unwrap())
+            .between(i64::MIN, i64::MAX, n)
+            .into_iter()
+            .map(ymd)
+            .collect()
     }
 
     #[test]
     fn second_tuesday_monthly_rfc_example_shape() {
         // 2026-09-08 is the second Tuesday of September 2026.
         let got = run(at(2026, 9, 8, 9), "FREQ=MONTHLY;BYDAY=2TU;COUNT=4", 10);
-        assert_eq!(got, vec![(2026, 9, 8), (2026, 10, 13), (2026, 11, 10), (2026, 12, 8)]);
+        assert_eq!(
+            got,
+            vec![(2026, 9, 8), (2026, 10, 13), (2026, 11, 10), (2026, 12, 8)]
+        );
     }
 
     #[test]
@@ -708,21 +858,41 @@ mod tests {
     #[test]
     fn last_weekday_of_month_via_bysetpos() {
         // Oct 2026 ends on a Saturday, so the last weekday is Fri the 30th.
-        let got = run(at(2026, 9, 30, 9), "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1;COUNT=3", 10);
+        let got = run(
+            at(2026, 9, 30, 9),
+            "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1;COUNT=3",
+            10,
+        );
         assert_eq!(got, vec![(2026, 9, 30), (2026, 10, 30), (2026, 11, 30)]);
     }
 
     #[test]
     fn biweekly_on_two_days() {
         // Mon 2026-09-21 start; every 2 weeks on Mon and Thu.
-        let got = run(at(2026, 9, 21, 10), "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH;COUNT=5", 10);
-        assert_eq!(got, vec![(2026, 9, 21), (2026, 9, 24), (2026, 10, 5), (2026, 10, 8), (2026, 10, 19)]);
+        let got = run(
+            at(2026, 9, 21, 10),
+            "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH;COUNT=5",
+            10,
+        );
+        assert_eq!(
+            got,
+            vec![
+                (2026, 9, 21),
+                (2026, 9, 24),
+                (2026, 10, 5),
+                (2026, 10, 8),
+                (2026, 10, 19)
+            ]
+        );
     }
 
     #[test]
     fn thirty_first_skips_short_months_not_slides() {
         let got = run(at(2026, 1, 31, 9), "FREQ=MONTHLY;COUNT=4", 10);
-        assert_eq!(got, vec![(2026, 1, 31), (2026, 3, 31), (2026, 5, 31), (2026, 7, 31)]);
+        assert_eq!(
+            got,
+            vec![(2026, 1, 31), (2026, 3, 31), (2026, 5, 31), (2026, 7, 31)]
+        );
     }
 
     #[test]
@@ -742,7 +912,11 @@ mod tests {
         let start = at(2026, 9, 21, 9);
         let mut s = Series::new(start, Rule::parse("FREQ=DAILY;COUNT=3").unwrap());
         s.exdates.push(at(2026, 9, 22, 9));
-        let got: Vec<_> = s.between(i64::MIN, i64::MAX, 10).into_iter().map(ymd).collect();
+        let got: Vec<_> = s
+            .between(i64::MIN, i64::MAX, 10)
+            .into_iter()
+            .map(ymd)
+            .collect();
         assert_eq!(got, vec![(2026, 9, 21), (2026, 9, 23)]);
     }
 
@@ -754,7 +928,11 @@ mod tests {
 
     #[test]
     fn thanksgiving() {
-        let got = run(at(2026, 11, 26, 12), "FREQ=YEARLY;BYMONTH=11;BYDAY=4TH;COUNT=3", 10);
+        let got = run(
+            at(2026, 11, 26, 12),
+            "FREQ=YEARLY;BYMONTH=11;BYDAY=4TH;COUNT=3",
+            10,
+        );
         assert_eq!(got, vec![(2026, 11, 26), (2027, 11, 25), (2028, 11, 23)]);
     }
 
@@ -762,23 +940,49 @@ mod tests {
     fn first_at_or_after_does_not_count_the_anchor() {
         let r = Rule::parse("FREQ=MONTHLY;BYDAY=-1FR").unwrap();
         // said on Wed 2026-09-23 at 16:00 -> Fri 25th 16:00
-        assert_eq!(ymd(r.first_at_or_after(at(2026, 9, 23, 16)).unwrap()), (2026, 9, 25));
+        assert_eq!(
+            ymd(r.first_at_or_after(at(2026, 9, 23, 16)).unwrap()),
+            (2026, 9, 25)
+        );
         // said on the Friday itself, before 16:00 -> that day
-        assert_eq!(ymd(r.first_at_or_after(at(2026, 9, 25, 16)).unwrap()), (2026, 9, 25));
-        assert_eq!(Rule::parse("FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30").unwrap().first_at_or_after(0), None);
+        assert_eq!(
+            ymd(r.first_at_or_after(at(2026, 9, 25, 16)).unwrap()),
+            (2026, 9, 25)
+        );
+        assert_eq!(
+            Rule::parse("FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30")
+                .unwrap()
+                .first_at_or_after(0),
+            None
+        );
     }
 
     #[test]
     fn impossible_rule_ends_instead_of_spinning() {
-        let s = Series::new(at(2026, 1, 1, 9), Rule::parse("FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30").unwrap());
+        let s = Series::new(
+            at(2026, 1, 1, 9),
+            Rule::parse("FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30").unwrap(),
+        );
         assert_eq!(s.between(at(2026, 1, 2, 0), i64::MAX, 5), Vec::<i64>::new());
     }
 
     #[test]
     fn next_after_and_window() {
-        let s = Series::new(at(2026, 9, 21, 9), Rule::parse("FREQ=WEEKLY;BYDAY=MO,WE").unwrap());
-        assert_eq!(s.between(at(2026, 9, 21, 9) + 1, i64::MAX, 1).into_iter().map(ymd).next(), Some((2026, 9, 23)));
-        assert_eq!(s.between(at(2026, 10, 1, 0), at(2026, 10, 8, 0), 10).len(), 2);
+        let s = Series::new(
+            at(2026, 9, 21, 9),
+            Rule::parse("FREQ=WEEKLY;BYDAY=MO,WE").unwrap(),
+        );
+        assert_eq!(
+            s.between(at(2026, 9, 21, 9) + 1, i64::MAX, 1)
+                .into_iter()
+                .map(ymd)
+                .next(),
+            Some((2026, 9, 23))
+        );
+        assert_eq!(
+            s.between(at(2026, 10, 1, 0), at(2026, 10, 8, 0), 10).len(),
+            2
+        );
     }
 
     #[test]
@@ -806,9 +1010,14 @@ mod tests {
 
     #[test]
     fn describes_what_it_understood() {
-        assert_eq!(Rule::parse("FREQ=MONTHLY;BYDAY=2TU").unwrap().describe(), "every month on second Tuesday");
         assert_eq!(
-            Rule::parse("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH;COUNT=6").unwrap().describe(),
+            Rule::parse("FREQ=MONTHLY;BYDAY=2TU").unwrap().describe(),
+            "every month on second Tuesday"
+        );
+        assert_eq!(
+            Rule::parse("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH;COUNT=6")
+                .unwrap()
+                .describe(),
             "every 2 weeks on Monday and Thursday, 6 times"
         );
     }
@@ -816,16 +1025,40 @@ mod tests {
     #[test]
     fn plain_english() {
         let p = |s| from_plain(s).map(|r| r.to_rrule());
-        assert_eq!(p("every weekday").as_deref(), Some("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"));
-        assert_eq!(p("the last friday of every month").as_deref(), Some("FREQ=MONTHLY;BYDAY=-1FR"));
-        assert_eq!(p("second tuesday of the month").as_deref(), Some("FREQ=MONTHLY;BYDAY=2TU"));
-        assert_eq!(p("every 2 weeks on monday and thursday").as_deref(), Some("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH"));
-        assert_eq!(p("every other tuesday").as_deref(), Some("FREQ=WEEKLY;INTERVAL=2;BYDAY=TU"));
-        assert_eq!(p("on the 15th of every month").as_deref(), Some("FREQ=MONTHLY;BYMONTHDAY=15"));
-        assert_eq!(p("last weekday of the month").as_deref(), Some("FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1"));
+        assert_eq!(
+            p("every weekday").as_deref(),
+            Some("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR")
+        );
+        assert_eq!(
+            p("the last friday of every month").as_deref(),
+            Some("FREQ=MONTHLY;BYDAY=-1FR")
+        );
+        assert_eq!(
+            p("second tuesday of the month").as_deref(),
+            Some("FREQ=MONTHLY;BYDAY=2TU")
+        );
+        assert_eq!(
+            p("every 2 weeks on monday and thursday").as_deref(),
+            Some("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH")
+        );
+        assert_eq!(
+            p("every other tuesday").as_deref(),
+            Some("FREQ=WEEKLY;INTERVAL=2;BYDAY=TU")
+        );
+        assert_eq!(
+            p("on the 15th of every month").as_deref(),
+            Some("FREQ=MONTHLY;BYMONTHDAY=15")
+        );
+        assert_eq!(
+            p("last weekday of the month").as_deref(),
+            Some("FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1")
+        );
         assert_eq!(p("every year").as_deref(), Some("FREQ=YEARLY"));
         // a clock time is not a day of the month
-        assert_eq!(p("the last friday of every month at 4pm").as_deref(), Some("FREQ=MONTHLY;BYDAY=-1FR"));
+        assert_eq!(
+            p("the last friday of every month at 4pm").as_deref(),
+            Some("FREQ=MONTHLY;BYDAY=-1FR")
+        );
         assert_eq!(p("sometime soon"), None);
     }
 }

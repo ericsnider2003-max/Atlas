@@ -34,7 +34,11 @@ fn dot(a: V, b: V) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 fn cross(a: V, b: V) -> V {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 fn unit(a: V) -> V {
     let l = dot(a, a).sqrt();
@@ -90,7 +94,13 @@ impl Mesh {
     pub fn new(tris: Vec<Tri>, colours: Vec<V>) -> Result<Mesh, String> {
         let tris: Vec<Tri> = tris
             .into_iter()
-            .filter(|t| t.p.iter().all(|v| v.iter().all(|c| c.is_finite())) && dot(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])), cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0]))) > 0.0)
+            .filter(|t| {
+                t.p.iter().all(|v| v.iter().all(|c| c.is_finite()))
+                    && dot(
+                        cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])),
+                        cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])),
+                    ) > 0.0
+            })
             .collect();
         if tris.is_empty() {
             return Err("the model has no triangles".into());
@@ -105,7 +115,14 @@ impl Mesh {
                 }
             }
         }
-        let mut m = Mesh { tris, colours, nodes: Vec::new(), order: Vec::new(), lo, hi };
+        let mut m = Mesh {
+            tris,
+            colours,
+            nodes: Vec::new(),
+            order: Vec::new(),
+            lo,
+            hi,
+        };
         m.build();
         Ok(m)
     }
@@ -129,7 +146,12 @@ impl Mesh {
             .collect();
         self.order = (0..n as u32).collect();
         self.nodes.clear();
-        self.nodes.push(Node { lo: [0.0; 3], hi: [0.0; 3], start: 0, count: 0 });
+        self.nodes.push(Node {
+            lo: [0.0; 3],
+            hi: [0.0; 3],
+            start: 0,
+            count: 0,
+        });
         // (node index, range start, range end)
         let mut stack = vec![(0usize, 0usize, n)];
         while let Some((ni, a, b)) = stack.pop() {
@@ -147,13 +169,22 @@ impl Mesh {
                 }
             }
             let count = b - a;
-            let leaf = |nodes: &mut Vec<Node>| nodes[ni] = Node { lo, hi, start: a as u32, count: count as u32 };
+            let leaf = |nodes: &mut Vec<Node>| {
+                nodes[ni] = Node {
+                    lo,
+                    hi,
+                    start: a as u32,
+                    count: count as u32,
+                }
+            };
             if count <= 4 {
                 leaf(&mut self.nodes);
                 continue;
             }
             // Surface area heuristic over 12 bins on the widest centroid axis.
-            let axis = (0..3).max_by(|&x, &y| (chi[x] - clo[x]).total_cmp(&(chi[y] - clo[y]))).unwrap_or(0);
+            let axis = (0..3)
+                .max_by(|&x, &y| (chi[x] - clo[x]).total_cmp(&(chi[y] - clo[y])))
+                .unwrap_or(0);
             let span = chi[axis] - clo[axis];
             if span <= 1e-12 {
                 leaf(&mut self.nodes);
@@ -189,7 +220,11 @@ impl Mesh {
                     if bcount[bi] == 0 {
                         continue;
                     }
-                    let (l, h, nn) = if bi < split { (&mut l1, &mut h1, &mut n1) } else { (&mut l2, &mut h2, &mut n2) };
+                    let (l, h, nn) = if bi < split {
+                        (&mut l1, &mut h1, &mut n1)
+                    } else {
+                        (&mut l2, &mut h2, &mut n2)
+                    };
                     for k in 0..3 {
                         l[k] = l[k].min(blo[bi][k]);
                         h[k] = h[k].max(bhi[bi][k]);
@@ -222,10 +257,25 @@ impl Mesh {
             }
             let mid = a + i;
             let left = self.nodes.len();
-            self.nodes.push(Node { lo: [0.0; 3], hi: [0.0; 3], start: 0, count: 0 });
+            self.nodes.push(Node {
+                lo: [0.0; 3],
+                hi: [0.0; 3],
+                start: 0,
+                count: 0,
+            });
             let right = self.nodes.len();
-            self.nodes.push(Node { lo: [0.0; 3], hi: [0.0; 3], start: 0, count: 0 });
-            self.nodes[ni] = Node { lo, hi, start: left as u32, count: 0 };
+            self.nodes.push(Node {
+                lo: [0.0; 3],
+                hi: [0.0; 3],
+                start: 0,
+                count: 0,
+            });
+            self.nodes[ni] = Node {
+                lo,
+                hi,
+                start: left as u32,
+                count: 0,
+            };
             debug_assert_eq!(right, left + 1);
             stack.push((left, a, mid));
             stack.push((right, mid, b));
@@ -287,10 +337,16 @@ impl Mesh {
                     if tt > EPS && tt < limit {
                         limit = tt;
                         let normal = match &t.n {
-                            Some(n) => unit(add(add(mul(n[0], 1.0 - u - v), mul(n[1], u)), mul(n[2], v))),
+                            Some(n) => {
+                                unit(add(add(mul(n[0], 1.0 - u - v), mul(n[1], u)), mul(n[2], v)))
+                            }
                             None => unit(cross(e1, e2)),
                         };
-                        best = Some(MeshHit { t: tt, normal, colour: t.colour });
+                        best = Some(MeshHit {
+                            t: tt,
+                            normal,
+                            colour: t.colour,
+                        });
                     }
                 }
             } else {
@@ -327,7 +383,10 @@ pub fn read_obj(text: &str, dir: Option<&Path>) -> Result<Mesh, String> {
     let mut colours: Vec<V> = Vec::new();
     let mut named: Vec<(String, usize)> = Vec::new();
     let mut current: Option<usize> = None;
-    let num = |s: &str| s.parse::<f64>().map_err(|_| format!("\"{s}\" isn't a number"));
+    let num = |s: &str| {
+        s.parse::<f64>()
+            .map_err(|_| format!("\"{s}\" isn't a number"))
+    };
     let index = |s: &str, len: usize| -> Result<usize, String> {
         let i: i64 = s.parse().map_err(|_| format!("\"{s}\" isn't an index"))?;
         let k = if i < 0 { len as i64 + i } else { i - 1 };
@@ -343,8 +402,16 @@ pub fn read_obj(text: &str, dir: Option<&Path>) -> Result<Mesh, String> {
         let rest: Vec<&str> = parts.collect();
         let at = |e: String| format!("line {}: {e}", line_no + 1);
         match tag {
-            "v" if rest.len() >= 3 => vs.push([num(rest[0]).map_err(at)?, num(rest[1]).map_err(at)?, num(rest[2]).map_err(at)?]),
-            "vn" if rest.len() >= 3 => ns.push(unit([num(rest[0]).map_err(at)?, num(rest[1]).map_err(at)?, num(rest[2]).map_err(at)?])),
+            "v" if rest.len() >= 3 => vs.push([
+                num(rest[0]).map_err(at)?,
+                num(rest[1]).map_err(at)?,
+                num(rest[2]).map_err(at)?,
+            ]),
+            "vn" if rest.len() >= 3 => ns.push(unit([
+                num(rest[0]).map_err(at)?,
+                num(rest[1]).map_err(at)?,
+                num(rest[2]).map_err(at)?,
+            ])),
             "f" if rest.len() >= 3 => {
                 let mut corners: Vec<(usize, Option<usize>)> = Vec::new();
                 for c in &rest {
@@ -363,7 +430,11 @@ pub fn read_obj(text: &str, dir: Option<&Path>) -> Result<Mesh, String> {
                         (Some(a), Some(b), Some(d)) => Some([ns[a], ns[b], ns[d]]),
                         _ => None,
                     };
-                    tris.push(Tri { p: [vs[c[0].0], vs[c[1].0], vs[c[2].0]], n, colour: current });
+                    tris.push(Tri {
+                        p: [vs[c[0].0], vs[c[1].0], vs[c[2].0]],
+                        n,
+                        colour: current,
+                    });
                 }
             }
             "mtllib" => {
@@ -376,7 +447,10 @@ pub fn read_obj(text: &str, dir: Option<&Path>) -> Result<Mesh, String> {
                             if let Some(n) = l.strip_prefix("newmtl ") {
                                 name = Some(n.trim().to_string());
                             } else if let (Some(n), Some(kd)) = (&name, l.strip_prefix("Kd ")) {
-                                let f: Vec<f64> = kd.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+                                let f: Vec<f64> = kd
+                                    .split_whitespace()
+                                    .filter_map(|x| x.parse().ok())
+                                    .collect();
                                 if f.len() >= 3 {
                                     // Taken as linear, as Blender writes and reads them
                                     // (its exporter puts the base colour in Kd as it is).
@@ -402,20 +476,37 @@ pub fn read_obj(text: &str, dir: Option<&Path>) -> Result<Mesh, String> {
 
 /// Read an STL, binary or ASCII.
 pub fn read_stl(bytes: &[u8]) -> Result<Mesh, String> {
-    let le32 = |i: usize| -> Option<u32> { bytes.get(i..i + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])) };
-    let f32at = |i: usize| -> f64 { f32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]) as f64 };
+    let le32 = |i: usize| -> Option<u32> {
+        bytes
+            .get(i..i + 4)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    };
+    let f32at = |i: usize| -> f64 {
+        f32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]) as f64
+    };
     if let Some(n) = le32(80) {
         if bytes.len() == 84 + 50 * n as usize && n > 0 {
             let mut tris = Vec::with_capacity(n as usize);
             for k in 0..n as usize {
                 let at = 84 + 50 * k;
-                let p = |j: usize| [f32at(at + 12 + 12 * j), f32at(at + 16 + 12 * j), f32at(at + 20 + 12 * j)];
-                tris.push(Tri { p: [p(0), p(1), p(2)], n: None, colour: None });
+                let p = |j: usize| {
+                    [
+                        f32at(at + 12 + 12 * j),
+                        f32at(at + 16 + 12 * j),
+                        f32at(at + 20 + 12 * j),
+                    ]
+                };
+                tris.push(Tri {
+                    p: [p(0), p(1), p(2)],
+                    n: None,
+                    colour: None,
+                });
             }
             return Mesh::new(tris, Vec::new());
         }
     }
-    let text = std::str::from_utf8(bytes).map_err(|_| "that isn't an STL (neither binary nor text)".to_string())?;
+    let text = std::str::from_utf8(bytes)
+        .map_err(|_| "that isn't an STL (neither binary nor text)".to_string())?;
     let mut tris = Vec::new();
     let mut corners: Vec<V> = Vec::new();
     for line in text.lines() {
@@ -426,7 +517,11 @@ pub fn read_stl(bytes: &[u8]) -> Result<Mesh, String> {
                 corners.push([f[0], f[1], f[2]]);
             }
             if corners.len() == 3 {
-                tris.push(Tri { p: [corners[0], corners[1], corners[2]], n: None, colour: None });
+                tris.push(Tri {
+                    p: [corners[0], corners[1], corners[2]],
+                    n: None,
+                    colour: None,
+                });
                 corners.clear();
             }
         }
@@ -439,7 +534,12 @@ pub fn read_stl(bytes: &[u8]) -> Result<Mesh, String> {
 type M4 = [[f64; 4]; 4];
 
 fn m4_identity() -> M4 {
-    [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+    [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
 }
 
 fn m4_mul(a: &M4, b: &M4) -> M4 {
@@ -463,11 +563,27 @@ fn m4_point(m: &M4, p: V) -> V {
 /// Normals go through the inverse transpose; for rotation and uniform or
 /// axis scale, the cofactor matrix is the same direction and needs no inverse.
 fn m4_normal(m: &M4, n: V) -> V {
-    let a = [[m[0][0], m[0][1], m[0][2]], [m[1][0], m[1][1], m[1][2]], [m[2][0], m[2][1], m[2][2]]];
+    let a = [
+        [m[0][0], m[0][1], m[0][2]],
+        [m[1][0], m[1][1], m[1][2]],
+        [m[2][0], m[2][1], m[2][2]],
+    ];
     let c = [
-        [a[1][1] * a[2][2] - a[1][2] * a[2][1], a[1][2] * a[2][0] - a[1][0] * a[2][2], a[1][0] * a[2][1] - a[1][1] * a[2][0]],
-        [a[0][2] * a[2][1] - a[0][1] * a[2][2], a[0][0] * a[2][2] - a[0][2] * a[2][0], a[0][1] * a[2][0] - a[0][0] * a[2][1]],
-        [a[0][1] * a[1][2] - a[0][2] * a[1][1], a[0][2] * a[1][0] - a[0][0] * a[1][2], a[0][0] * a[1][1] - a[0][1] * a[1][0]],
+        [
+            a[1][1] * a[2][2] - a[1][2] * a[2][1],
+            a[1][2] * a[2][0] - a[1][0] * a[2][2],
+            a[1][0] * a[2][1] - a[1][1] * a[2][0],
+        ],
+        [
+            a[0][2] * a[2][1] - a[0][1] * a[2][2],
+            a[0][0] * a[2][2] - a[0][2] * a[2][0],
+            a[0][1] * a[2][0] - a[0][0] * a[2][1],
+        ],
+        [
+            a[0][1] * a[1][2] - a[0][2] * a[1][1],
+            a[0][2] * a[1][0] - a[0][0] * a[1][2],
+            a[0][0] * a[1][1] - a[0][1] * a[1][0],
+        ],
     ];
     unit([dot(c[0], n), dot(c[1], n), dot(c[2], n)])
 }
@@ -498,9 +614,21 @@ fn node_matrix(node: &serde_json::Value) -> M4 {
     let s = arr("scale", 3, &[1.0, 1.0, 1.0]);
     let (x, y, z, w) = (q[0], q[1], q[2], q[3]);
     let r = [
-        [1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y - z * w), 2.0 * (x * z + y * w)],
-        [2.0 * (x * y + z * w), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z - x * w)],
-        [2.0 * (x * z - y * w), 2.0 * (y * z + x * w), 1.0 - 2.0 * (x * x + y * y)],
+        [
+            1.0 - 2.0 * (y * y + z * z),
+            2.0 * (x * y - z * w),
+            2.0 * (x * z + y * w),
+        ],
+        [
+            2.0 * (x * y + z * w),
+            1.0 - 2.0 * (x * x + z * z),
+            2.0 * (y * z - x * w),
+        ],
+        [
+            2.0 * (x * z - y * w),
+            2.0 * (y * z + x * w),
+            1.0 - 2.0 * (x * x + y * y),
+        ],
     ];
     [
         [r[0][0] * s[0], r[0][1] * s[1], r[0][2] * s[2], t[0]],
@@ -533,11 +661,20 @@ impl Gltf {
             5121 | 5120 => 1,
             _ => return Err(format!("component type {ct} isn't read here")),
         };
-        let bv_i = a["bufferView"].as_u64().ok_or("sparse or empty accessors aren't read here")? as usize;
+        let bv_i = a["bufferView"]
+            .as_u64()
+            .ok_or("sparse or empty accessors aren't read here")? as usize;
         let bv = &self.json["bufferViews"][bv_i];
-        let buf = self.buffers.get(bv["buffer"].as_u64().unwrap_or(0) as usize).ok_or("a buffer view points at no buffer")?;
-        let start = bv["byteOffset"].as_u64().unwrap_or(0) as usize + a["byteOffset"].as_u64().unwrap_or(0) as usize;
-        let stride = bv["byteStride"].as_u64().map(|s| s as usize).unwrap_or(comps * size);
+        let buf = self
+            .buffers
+            .get(bv["buffer"].as_u64().unwrap_or(0) as usize)
+            .ok_or("a buffer view points at no buffer")?;
+        let start = bv["byteOffset"].as_u64().unwrap_or(0) as usize
+            + a["byteOffset"].as_u64().unwrap_or(0) as usize;
+        let stride = bv["byteStride"]
+            .as_u64()
+            .map(|s| s as usize)
+            .unwrap_or(comps * size);
         let normalized = a["normalized"].as_bool().unwrap_or(false);
         let mut out = Vec::with_capacity(count);
         for k in 0..count {
@@ -545,7 +682,9 @@ impl Gltf {
             let mut v = Vec::with_capacity(comps);
             for c in 0..comps {
                 let at = base + c * size;
-                let b = buf.get(at..at + size).ok_or("an accessor runs past its buffer")?;
+                let b = buf
+                    .get(at..at + size)
+                    .ok_or("an accessor runs past its buffer")?;
                 let x = match ct {
                     5126 => f32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f64,
                     5125 => u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f64,
@@ -593,7 +732,9 @@ impl Gltf {
 /// inside it as `data:` URIs.
 pub fn read_gltf(bytes: &[u8], dir: Option<&Path>) -> Result<Mesh, String> {
     let (json, bin): (serde_json::Value, Option<Vec<u8>>) = if bytes.starts_with(b"glTF") {
-        let le = |i: usize| u32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]) as usize;
+        let le = |i: usize| {
+            u32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]) as usize
+        };
         if bytes.len() < 20 {
             return Err("the GLB is cut short".into());
         }
@@ -601,31 +742,56 @@ pub fn read_gltf(bytes: &[u8], dir: Option<&Path>) -> Result<Mesh, String> {
         if le(16) != 0x4E4F_534A || bytes.len() < 20 + jlen {
             return Err("the GLB's first chunk isn't its JSON".into());
         }
-        let json = serde_json::from_slice(&bytes[20..20 + jlen]).map_err(|e| format!("the GLB's JSON doesn't read: {e}"))?;
+        let json = serde_json::from_slice(&bytes[20..20 + jlen])
+            .map_err(|e| format!("the GLB's JSON doesn't read: {e}"))?;
         let at = 20 + jlen;
         let bin = if bytes.len() >= at + 8 && le(at + 4) == 0x004E_4942 {
             let blen = le(at);
-            Some(bytes.get(at + 8..at + 8 + blen).ok_or("the GLB's BIN chunk is cut short")?.to_vec())
+            Some(
+                bytes
+                    .get(at + 8..at + 8 + blen)
+                    .ok_or("the GLB's BIN chunk is cut short")?
+                    .to_vec(),
+            )
         } else {
             None
         };
         (json, bin)
     } else {
-        (serde_json::from_slice(bytes).map_err(|e| format!("the glTF doesn't read: {e}"))?, None)
+        (
+            serde_json::from_slice(bytes).map_err(|e| format!("the glTF doesn't read: {e}"))?,
+            None,
+        )
     };
     let mut buffers = Vec::new();
-    for (i, b) in json["buffers"].as_array().cloned().unwrap_or_default().iter().enumerate() {
+    for (i, b) in json["buffers"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .enumerate()
+    {
         match b["uri"].as_str() {
             Some(uri) if uri.starts_with("data:") => {
-                let data = uri.split_once(",").map(|x| x.1).ok_or("a data URI with no data")?;
+                let data = uri
+                    .split_once(",")
+                    .map(|x| x.1)
+                    .ok_or("a data URI with no data")?;
                 buffers.push(crate::b64::decode(data).map_err(|e| format!("buffer {i}: {e}"))?);
             }
             Some(uri) => {
-                let d = dir.ok_or("the glTF names a buffer file but there's no folder to find it in")?;
+                let d =
+                    dir.ok_or("the glTF names a buffer file but there's no folder to find it in")?;
                 let path = d.join(uri.replace("%20", " "));
-                buffers.push(std::fs::read(&path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?);
+                buffers.push(
+                    std::fs::read(&path)
+                        .map_err(|e| format!("couldn't read {}: {e}", path.display()))?,
+                );
             }
-            None if i == 0 => buffers.push(bin.clone().ok_or("buffer 0 has no URI and there's no BIN chunk")?),
+            None if i == 0 => buffers.push(
+                bin.clone()
+                    .ok_or("buffer 0 has no URI and there's no BIN chunk")?,
+            ),
             None => return Err(format!("buffer {i} has no URI")),
         }
     }
@@ -641,10 +807,14 @@ pub fn read_gltf(bytes: &[u8], dir: Option<&Path>) -> Result<Mesh, String> {
     let mut tris = Vec::new();
     let scene_i = g.json["scene"].as_u64().unwrap_or(0) as usize;
     let roots: Vec<usize> = match g.json["scenes"][scene_i]["nodes"].as_array() {
-        Some(a) => a.iter().filter_map(|x| x.as_u64().map(|v| v as usize)).collect(),
+        Some(a) => a
+            .iter()
+            .filter_map(|x| x.as_u64().map(|v| v as usize))
+            .collect(),
         None => (0..g.json["nodes"].as_array().map(|a| a.len()).unwrap_or(0)).collect(),
     };
-    let mut stack: Vec<(usize, M4, usize)> = roots.into_iter().map(|n| (n, m4_identity(), 0)).collect();
+    let mut stack: Vec<(usize, M4, usize)> =
+        roots.into_iter().map(|n| (n, m4_identity(), 0)).collect();
     while let Some((ni, parent, depth)) = stack.pop() {
         if depth > 64 {
             return Err("the glTF's node tree loops or is too deep".into());
@@ -652,21 +822,35 @@ pub fn read_gltf(bytes: &[u8], dir: Option<&Path>) -> Result<Mesh, String> {
         let node = &g.json["nodes"][ni];
         let world = m4_mul(&parent, &node_matrix(node));
         if let Some(mi) = node["mesh"].as_u64() {
-            for prim in g.json["meshes"][mi as usize]["primitives"].as_array().cloned().unwrap_or_default() {
+            for prim in g.json["meshes"][mi as usize]["primitives"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+            {
                 if prim["mode"].as_u64().unwrap_or(4) != 4 {
                     continue;
                 }
-                let pos_i = prim["attributes"]["POSITION"].as_u64().ok_or("a primitive has no positions")? as usize;
+                let pos_i = prim["attributes"]["POSITION"]
+                    .as_u64()
+                    .ok_or("a primitive has no positions")? as usize;
                 let (pos, _) = g.accessor(pos_i)?;
                 let norms = match prim["attributes"]["NORMAL"].as_u64() {
                     Some(i) => Some(g.accessor(i as usize)?.0),
                     None => None,
                 };
                 let idx: Vec<usize> = match prim["indices"].as_u64() {
-                    Some(i) => g.accessor(i as usize)?.0.into_iter().map(|v| v[0] as usize).collect(),
+                    Some(i) => g
+                        .accessor(i as usize)?
+                        .0
+                        .into_iter()
+                        .map(|v| v[0] as usize)
+                        .collect(),
                     None => (0..pos.len()).collect(),
                 };
-                let colour = prim["material"].as_u64().map(|m| m as usize).filter(|m| *m < colours.len());
+                let colour = prim["material"]
+                    .as_u64()
+                    .map(|m| m as usize)
+                    .filter(|m| *m < colours.len());
                 for c in idx.chunks(3).filter(|c| c.len() == 3) {
                     if c.iter().any(|&k| k >= pos.len()) {
                         return Err("an index points past the positions".into());
@@ -678,7 +862,11 @@ pub fn read_gltf(bytes: &[u8], dir: Option<&Path>) -> Result<Mesh, String> {
                             [f(c[0]), f(c[1]), f(c[2])]
                         })
                     });
-                    tris.push(Tri { p: [p(c[0]), p(c[1]), p(c[2])], n, colour });
+                    tris.push(Tri {
+                        p: [p(c[0]), p(c[1]), p(c[2])],
+                        n,
+                        colour,
+                    });
                 }
             }
         }
@@ -693,13 +881,22 @@ pub fn read_gltf(bytes: &[u8], dir: Option<&Path>) -> Result<Mesh, String> {
 
 /// Read a model by its extension: `.obj`, `.stl`, `.gltf`, `.glb`.
 pub fn read_model(path: &Path) -> Result<Mesh, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
+    let bytes =
+        std::fs::read(path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
     let dir = path.parent();
-    match path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref() {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .as_deref()
+    {
         Some("obj") => read_obj(&String::from_utf8_lossy(&bytes), dir),
         Some("stl") => read_stl(&bytes),
         Some("gltf") | Some("glb") => read_gltf(&bytes, dir),
-        _ => Err(format!("{} isn't a model Atlas reads (OBJ, STL, glTF or GLB)", path.display())),
+        _ => Err(format!(
+            "{} isn't a model Atlas reads (OBJ, STL, glTF or GLB)",
+            path.display()
+        )),
     }
 }
 
@@ -708,16 +905,22 @@ pub fn read_model(path: &Path) -> Result<Mesh, String> {
 pub fn cached(path: &Path) -> Result<std::sync::Arc<Mesh>, String> {
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex, OnceLock};
-    static CACHE: OnceLock<Mutex<HashMap<PathBuf, (std::time::SystemTime, Arc<Mesh>)>>> = OnceLock::new();
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, (std::time::SystemTime, Arc<Mesh>)>>> =
+        OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    let stamp = std::fs::metadata(path).and_then(|m| m.modified()).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
+    let stamp = std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
     if let Some((when, m)) = cache.lock().map_err(|_| "the model cache broke")?.get(path) {
         if *when == stamp {
             return Ok(m.clone());
         }
     }
     let m = Arc::new(read_model(path)?);
-    cache.lock().map_err(|_| "the model cache broke")?.insert(path.to_path_buf(), (stamp, m.clone()));
+    cache
+        .lock()
+        .map_err(|_| "the model cache broke")?
+        .insert(path.to_path_buf(), (stamp, m.clone()));
     Ok(m)
 }
 
@@ -725,7 +928,8 @@ pub fn cached(path: &Path) -> Result<std::sync::Arc<Mesh>, String> {
 mod tests {
     use super::*;
 
-    const CUBE_OBJ: &str = "v -1 -1 -1\nv 1 -1 -1\nv 1 1 -1\nv -1 1 -1\nv -1 -1 1\nv 1 -1 1\nv 1 1 1\nv -1 1 1\n\
+    const CUBE_OBJ: &str =
+        "v -1 -1 -1\nv 1 -1 -1\nv 1 1 -1\nv -1 1 -1\nv -1 -1 1\nv 1 -1 1\nv 1 1 1\nv -1 1 1\n\
         f 1 2 3 4\nf 5 8 7 6\nf 1 5 6 2\nf 2 6 7 3\nf 3 7 8 4\nf 5 1 4 8\n";
 
     #[test]
@@ -747,7 +951,9 @@ mod tests {
     fn a_binary_stl_reads_its_facets() {
         let mut b = vec![0u8; 80];
         b.extend_from_slice(&1u32.to_le_bytes());
-        for f in [0.0f32, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
+        for f in [
+            0.0f32, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+        ] {
             b.extend_from_slice(&f.to_le_bytes());
         }
         b.extend_from_slice(&[0, 0]);
@@ -762,13 +968,26 @@ mod tests {
         let mut tris = Vec::new();
         for i in 0..40 {
             for j in 0..40 {
-                let (x, y, z) = (i as f64 * 0.1, j as f64 * 0.1, ((i * 7 + j * 13) % 11) as f64 * 0.05);
-                tris.push(Tri { p: [[x, y, z], [x + 0.09, y, z], [x, y + 0.09, z]], n: None, colour: None });
+                let (x, y, z) = (
+                    i as f64 * 0.1,
+                    j as f64 * 0.1,
+                    ((i * 7 + j * 13) % 11) as f64 * 0.05,
+                );
+                tris.push(Tri {
+                    p: [[x, y, z], [x + 0.09, y, z], [x, y + 0.09, z]],
+                    n: None,
+                    colour: None,
+                });
             }
         }
         let m = Mesh::new(tris.clone(), vec![]).unwrap();
         let brute = |o: V, d: V| {
-            let single = |t: &Tri| Mesh::new(vec![t.clone()], vec![]).unwrap().hit(o, d, f64::MAX).map(|h| h.t);
+            let single = |t: &Tri| {
+                Mesh::new(vec![t.clone()], vec![])
+                    .unwrap()
+                    .hit(o, d, f64::MAX)
+                    .map(|h| h.t)
+            };
             tris.iter().filter_map(single).fold(f64::MAX, f64::min)
         };
         for k in 0..30 {

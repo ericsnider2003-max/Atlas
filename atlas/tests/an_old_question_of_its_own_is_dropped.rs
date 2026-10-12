@@ -14,16 +14,35 @@ use std::path::Path;
 #[test]
 fn a_slot_question_left_for_ten_minutes_is_dropped() {
     let c = Config::load(Path::new("config")).unwrap();
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     let dir = std::env::temp_dir().join(format!("atlas-old-slot-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let t = 1_790_760_000u64;
     d.pending_panel = Some(atlas::panel::Panel::Tasks);
     d.tick(t);
     d.tick(t + 60);
-    assert!(d.pending_panel.is_some(), "a minute old is still a live question");
+    assert!(
+        d.pending_panel.is_some(),
+        "a minute old is still a live question"
+    );
     d.tick(t + QUESTION_LIFETIME_SECS + 5);
-    assert!(d.pending_panel.is_none(), "ten minutes on, nobody is answering it");
+    assert!(
+        d.pending_panel.is_none(),
+        "ten minutes on, nobody is answering it"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

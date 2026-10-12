@@ -186,7 +186,9 @@ pub fn against_a_normal_day(view: &AsOf<'_>) -> Option<f64> {
 /// Empty while the session is still forming: a high that can still move is not
 /// a line anybody is defending.
 pub fn levels(view: &AsOf<'_>) -> Vec<(f64, &'static str)> {
-    let Some(night) = last_night(view) else { return Vec::new() };
+    let Some(night) = last_night(view) else {
+        return Vec::new();
+    };
     if night.still_forming {
         return Vec::new();
     }
@@ -213,7 +215,11 @@ pub fn spoken(view: &AsOf<'_>) -> String {
             night.say()
         );
     }
-    let mut said = format!("Last night: {}. Price is {}.", night.say(), night.where_price_sits(view.now()));
+    let mut said = format!(
+        "Last night: {}. Price is {}.",
+        night.say(),
+        night.where_price_sits(view.now())
+    );
     match against_a_normal_day(view) {
         Some(share) if share < 0.35 => said.push_str(&format!(
             " That's {:.0}% of a normal day here, which is the tight overnight range people \
@@ -226,7 +232,10 @@ pub fn spoken(view: &AsOf<'_>) -> String {
              watching them isn't.",
             share * 100.0
         )),
-        Some(share) => said.push_str(&format!(" That's {:.0}% of a normal day here.", share * 100.0)),
+        Some(share) => said.push_str(&format!(
+            " That's {:.0}% of a normal day here.",
+            share * 100.0
+        )),
         None => said.push_str(
             " I haven't enough complete days behind it to say whether that's tight or wide, so \
              I'm not going to guess.",

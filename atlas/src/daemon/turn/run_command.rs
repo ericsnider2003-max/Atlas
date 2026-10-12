@@ -80,7 +80,14 @@ impl<'a> Daemon<'a> {
         let register = crate::register::read(
             said,
             &crate::register::Moment {
-                recent: self.thread.recent.iter().rev().take(3).map(|e| e.said.clone()).collect(),
+                recent: self
+                    .thread
+                    .recent
+                    .iter()
+                    .rev()
+                    .take(3)
+                    .map(|e| e.said.clone())
+                    .collect(),
                 after_a_failure: self.last_turn_failed,
                 busy: self.queue_is_busy(),
             },
@@ -105,7 +112,11 @@ impl<'a> Daemon<'a> {
         // register, and the config ceiling beats both.
         // Three rough turns running: stop retrying, find the wrong
         // assumption (`persona::spiral_line`).
-        self.rough_in_a_row = if register == crate::register::Register::Rough { self.rough_in_a_row + 1 } else { 0 };
+        self.rough_in_a_row = if register == crate::register::Register::Rough {
+            self.rough_in_a_row + 1
+        } else {
+            0
+        };
         let mut persona = self.persona_now();
         persona.spiral = crate::persona::spiral_line(self.rough_in_a_row).is_some();
         // Only a mode somebody actually turned on gets to cap this. See
@@ -121,8 +132,11 @@ impl<'a> Daemon<'a> {
             .verbosity_if_set()
             .map(|v| crate::modes::sentences_for(v))
             .unwrap_or(usize::MAX);
-        persona.max_spoken_sentences =
-            persona.max_spoken_sentences.min(mode_cap).min(register.length()).max(1);
+        persona.max_spoken_sentences = persona
+            .max_spoken_sentences
+            .min(mode_cap)
+            .min(register.length())
+            .max(1);
         self.this_turn_cap = Some(persona.max_spoken_sentences);
         // Timed here rather than inside `decide`, because what matters is how
         // long *you* waited, which includes reaching the model and parsing
@@ -142,7 +156,11 @@ impl<'a> Daemon<'a> {
                 _ if learned.is_some() => {
                     let i = learned.clone().unwrap_or(Intent::Unknown(said.to_string()));
                     let say = brain::default_say(&i);
-                    brain::Decision { intent: i, say, model: brain::Reached::NotNeeded }
+                    brain::Decision {
+                        intent: i,
+                        say,
+                        model: brain::Reached::NotNeeded,
+                    }
                 }
                 _ if local.is_some() => brain::Decision {
                     intent: Intent::Unknown(said.to_string()),
@@ -153,72 +171,112 @@ impl<'a> Daemon<'a> {
                     // A request of several parts (30 Sep 2026): worked side
                     // by side, or step by step, rather than one tool and the
                     // rest named as not done.
-                    let several = if !resumed && llm.native_chat() && !self.handover().stance.handed_over() {
-                        self.several_parts(said)
-                    } else {
-                        None
-                    };
-                    let needs_model = several.is_some() || beyond_the_notes || matches!(self.parser.parse(said), Intent::Unknown(_));
+                    let several =
+                        if !resumed && llm.native_chat() && !self.handover().stance.handed_over() {
+                            self.several_parts(said)
+                        } else {
+                            None
+                        };
+                    let needs_model = several.is_some()
+                        || beyond_the_notes
+                        || matches!(self.parser.parse(said), Intent::Unknown(_));
                     // Built only when the model will read it: a command the
                     // phrases settle needs none of it.
                     let mut turn = if needs_model {
-                        self.conversation_turn(said, _t, register, &persona, answering.as_deref(), &ctx)
+                        self.conversation_turn(
+                            said,
+                            _t,
+                            register,
+                            &persona,
+                            answering.as_deref(),
+                            &ctx,
+                        )
                     } else {
-                        brain::Turn { said: said.to_string(), one_prompt: ctx.clone(), ..Default::default() }
+                        brain::Turn {
+                            said: said.to_string(),
+                            one_prompt: ctx.clone(),
+                            ..Default::default()
+                        }
                     };
                     turn.skip_phrases = beyond_the_notes;
                     self.by_chat = needs_model && llm.native_chat();
                     match several {
-                        Some(tasks::Several::SideBySide(parts)) => self.work_side_by_side(llm.clone(), said, parts, _t, register, &persona),
-                        Some(tasks::Several::StepByStep) => self.work_through(llm.clone(), said, turn, _t),
+                        Some(tasks::Several::SideBySide(parts)) => {
+                            self.work_side_by_side(llm.clone(), said, parts, _t, register, &persona)
+                        }
+                        Some(tasks::Several::StepByStep) => {
+                            self.work_through(llm.clone(), said, turn, _t)
+                        }
                         None => {
-                    // The Talk page and the voice loop don't wait here: the
-                    // call runs on a worker and the turn is finished when it
-                    // comes back (`finish_pending_turn`).
-                    if std::mem::take(&mut self.may_defer) && needs_model && self.pending_turn.is_none() {
-                        self.start_pending_turn(said, _t, llm, turn, persona.clone(), register);
-                        self.this_turn_register = None;
-                        self.this_turn_cap = None;
-                        return String::new();
-                    }
-                    // A model call is already out (a Talk page turn still
-                    // thinking) and holds the conversation's slot: this one
-                    // uses the other slot rather than waiting behind it on the
-                    // loop (29 Sep 2026: both named slot 0, so this waited for
-                    // the first to finish, and the hub, the typing box and
-                    // Pause all went unanswered for minutes).
-                    if self.pending_turn.is_some() {
-                        turn.aside = true;
-                    }
-                    // The words so far are the Talk page's to show -- unless a
-                    // Talk turn is still thinking, whose words they are
-                    // (28 Sep 2026: a voice turn answered meanwhile cleared
-                    // and wrote over them).
-                    let partial = self.pending_turn.is_none().then(|| self.talk_partial.clone());
-                    if let Some(Ok(mut p)) = partial.as_ref().map(|p| p.lock()) {
-                        p.clear();
-                    }
-                    let mut also = Vec::new();
-                    let _talking = self.talking_guard();
-                    let d = Brain { llm: &*llm, fallback: &self.parser, voice: Some((&persona, register)) }.converse_noting(
-                        &turn,
-                        &mut |piece| {
-                            if let Some(Ok(mut p)) = partial.as_ref().map(|p| p.lock()) {
-                                p.push_str(piece);
+                            // The Talk page and the voice loop don't wait here: the
+                            // call runs on a worker and the turn is finished when it
+                            // comes back (`finish_pending_turn`).
+                            if std::mem::take(&mut self.may_defer)
+                                && needs_model
+                                && self.pending_turn.is_none()
+                            {
+                                self.start_pending_turn(
+                                    said,
+                                    _t,
+                                    llm,
+                                    turn,
+                                    persona.clone(),
+                                    register,
+                                );
+                                self.this_turn_register = None;
+                                self.this_turn_cap = None;
+                                return String::new();
                             }
-                            true
-                        },
-                        &mut also,
-                    );
-                    self.also_asked = also;
-                    d
+                            // A model call is already out (a Talk page turn still
+                            // thinking) and holds the conversation's slot: this one
+                            // uses the other slot rather than waiting behind it on the
+                            // loop (29 Sep 2026: both named slot 0, so this waited for
+                            // the first to finish, and the hub, the typing box and
+                            // Pause all went unanswered for minutes).
+                            if self.pending_turn.is_some() {
+                                turn.aside = true;
+                            }
+                            // The words so far are the Talk page's to show -- unless a
+                            // Talk turn is still thinking, whose words they are
+                            // (28 Sep 2026: a voice turn answered meanwhile cleared
+                            // and wrote over them).
+                            let partial = self
+                                .pending_turn
+                                .is_none()
+                                .then(|| self.talk_partial.clone());
+                            if let Some(Ok(mut p)) = partial.as_ref().map(|p| p.lock()) {
+                                p.clear();
+                            }
+                            let mut also = Vec::new();
+                            let _talking = self.talking_guard();
+                            let d = Brain {
+                                llm: &*llm,
+                                fallback: &self.parser,
+                                voice: Some((&persona, register)),
+                            }
+                            .converse_noting(
+                                &turn,
+                                &mut |piece| {
+                                    if let Some(Ok(mut p)) = partial.as_ref().map(|p| p.lock()) {
+                                        p.push_str(piece);
+                                    }
+                                    true
+                                },
+                                &mut also,
+                            );
+                            self.also_asked = also;
+                            d
                         }
                     }
                 }
                 None => {
                     let i = self.parser.parse(said);
                     let say = brain::default_say(&i);
-                    brain::Decision { intent: i, say, model: brain::Reached::NotNeeded }
+                    brain::Decision {
+                        intent: i,
+                        say,
+                        model: brain::Reached::NotNeeded,
+                    }
                 }
             },
         };
@@ -229,14 +287,21 @@ impl<'a> Daemon<'a> {
             Intent::Say(s) if decision.model == brain::Reached::Yes => {
                 let s2 = crate::backed::without_unbacked_claims(s, false);
                 if s2 != *s {
-                    brain::Decision { intent: Intent::Say(s2.clone()), say: s2, model: decision.model }
+                    brain::Decision {
+                        intent: Intent::Say(s2.clone()),
+                        say: s2,
+                        model: decision.model,
+                    }
                 } else {
                     decision
                 }
             }
             _ => decision,
         };
-        let took_ms = self.decided_in_ms.take().unwrap_or(started.elapsed().as_millis() as u64);
+        let took_ms = self
+            .decided_in_ms
+            .take()
+            .unwrap_or(started.elapsed().as_millis() as u64);
         // Only when the model was actually asked. `Reached::NotNeeded` means
         // the phrase parser settled it and nothing was sent, and recording
         // those would make the log say Atlas asks the model about everything
@@ -342,7 +407,9 @@ impl<'a> Daemon<'a> {
                 Some(w) if learned.is_some() => crate::why::Decision {
                     at: _t,
                     what: format!("took it as {}", intent.plain()),
-                    because: format!("you taught me that \"{w}\" means that -- \"forget that phrase\" undoes it"),
+                    because: format!(
+                        "you taught me that \"{w}\" means that -- \"forget that phrase\" undoes it"
+                    ),
                     instead_of: Some("asking the model to guess".into()),
                     set_by: None,
                 },
@@ -369,7 +436,8 @@ impl<'a> Daemon<'a> {
         // an unrecognised sentence has already been answered out of your
         // research notes, which is the leak this is for.
         if let Some(refusal) = self.handed_over_refusal(&intent) {
-            self.log.info(&format!("refused while handed over: {}", kind_of(&intent)));
+            self.log
+                .info(&format!("refused while handed over: {}", kind_of(&intent)));
             return refusal;
         }
 
@@ -435,7 +503,12 @@ impl<'a> Daemon<'a> {
         // 2026).
         if !matches!(
             intent,
-            Intent::Unknown(_) | Intent::Ask(_) | Intent::Say(_) | Intent::Why(_) | Intent::Overnight | Intent::Recap
+            Intent::Unknown(_)
+                | Intent::Ask(_)
+                | Intent::Say(_)
+                | Intent::Why(_)
+                | Intent::Overnight
+                | Intent::Recap
         ) && !asks_about_what_happened(said)
         {
             if let Some(blocker) = crate::backlog::asked_to_wait(said) {
@@ -463,8 +536,7 @@ impl<'a> Daemon<'a> {
         //
         // This only ever escalates: `handle` never returns permission, so the
         // worst case is being asked a question you did not need to be asked.
-        let consequential =
-            !matches!(crate::policy::classify(&intent), Decision::AutoProceed);
+        let consequential = !matches!(crate::policy::classify(&intent), Decision::AutoProceed);
         let call = match crate::voiceid::handle(
             self.last_verdict,
             consequential,
@@ -490,8 +562,7 @@ impl<'a> Daemon<'a> {
         // approved something like this before, and what is in doubt here is
         // whether you asked for it at all. Escalation only, so the worst case
         // is a question you did not need.
-        let understanding =
-            crate::understood::Understanding::from_reached(decision.model);
+        let understanding = crate::understood::Understanding::from_reached(decision.model);
         let call = crate::policy::Decision::max(
             call,
             crate::understood::grade(
@@ -511,7 +582,8 @@ impl<'a> Daemon<'a> {
             self.session.tainted_by_outside = false; // your own words, not the model's pick
         }
         let call = if decision.model == brain::Reached::Yes
-            && (brain::model_must_ask(&intent) || (after_outside_text && !brain::safe_after_outside_text(&intent)))
+            && (brain::model_must_ask(&intent)
+                || (after_outside_text && !brain::safe_after_outside_text(&intent)))
         {
             crate::policy::Decision::max(call, Decision::RequireApproval)
         } else {
@@ -519,7 +591,10 @@ impl<'a> Daemon<'a> {
         };
         // A wording learned only from a rephrase isn't sure yet: anything
         // consequential it leads to is asked about first (`phrasebook`).
-        let call = if learned.is_some() && self.routed_unsure() && !matches!(crate::policy::classify(&intent), Decision::AutoProceed) {
+        let call = if learned.is_some()
+            && self.routed_unsure()
+            && !matches!(crate::policy::classify(&intent), Decision::AutoProceed)
+        {
             crate::policy::Decision::max(call, Decision::RequireApproval)
         } else {
             call
@@ -534,8 +609,7 @@ impl<'a> Daemon<'a> {
         // enter a handover and cannot leave one. This is the whole of what an
         // unfamiliar voice is permitted to cause: a sentence, once, telling
         // whoever is there that there is a way to say so out loud.
-        if matches!(self.last_verdict, crate::voiceid::Verdict::NotYou(_))
-            && !self.offered_handover
+        if matches!(self.last_verdict, crate::voiceid::Verdict::NotYou(_)) && !self.offered_handover
         {
             let handed = crate::handover::Handover::load(&crate::roots::install_state());
             if !handed.stance.handed_over() {
@@ -560,61 +634,63 @@ impl<'a> Daemon<'a> {
             // saying it can't.
             None if matches!(intent, Intent::Unknown(_)) => self.execute(&intent),
             None => match call {
-            Decision::AutoProceed => self.execute(&intent),
-            Decision::ProceedAndReport => self.execute(&intent),
-            Decision::AskClarification => {
-                // When the reason we are asking is that the *reading* was
-                // inferred rather than matched, say the reading. The model's
-                // own `say` is what it planned to announce while doing the
-                // thing, which is the wrong sentence for a question -- and
-                // "I didn't catch that" would throw away a reading Atlas
-                // actually made and force you to start the sentence over.
-                // Naming it lets you correct one word.
-                let ask = if understanding == crate::understood::Understanding::Inferred
-                    && crate::policy::classify(&intent) == Decision::ProceedAndReport
-                {
-                    crate::understood::checking(&intent.plain())
-                } else {
-                    decision.say.clone()
-                };
-                self.session.ask(&ask);
-                ask
-            }
-            // Never ask about something that would be refused anyway: a
-            // question whose "yes" leads to "you can't" is a question wasted,
-            // and every wasted one teaches you to answer without reading.
-            Decision::RequireApproval if self.refused_before_asking(&intent).is_some() => {
-                self.refused_before_asking(&intent).unwrap_or_default()
-            }
-            Decision::RequireApproval => {
-                if self.autonomy == Autonomy::Unattended {
-                    // "I'll wait" used to be the whole of this branch, and
-                    // nothing waited: no record was kept, so the next time you
-                    // looked there was no trace you had been asked. A promise
-                    // Atlas does not keep is worse than a refusal.
-                    //
-                    // `mend`'s rule is that the question has to be answerable
-                    // without reading code, and its `parked()` is the backlog
-                    // item it becomes -- the one producer of
-                    // `Blocker::NeedsYourDecision`, which had no caller.
-                    self.park_for_you(&crate::mend::about_approval(said), said, _t)
-                } else {
-                    // What kind of thing you're approving, when it matters:
-                    // anything that leaves the machine, commits you, or
-                    // changes Atlas says so (`categories::consent_line`);
-                    // something local just asks.
-                    let cat = crate::categories::category_of(&intent);
-                    // Many commands have no stock phrase; the question still
-                    // has to say what it is asking about.
-                    let say = match brain::default_say(&intent) {
-                        s if s.trim().is_empty() => format!("Just to check -- {}.", intent.plain()),
-                        s => s,
+                Decision::AutoProceed => self.execute(&intent),
+                Decision::ProceedAndReport => self.execute(&intent),
+                Decision::AskClarification => {
+                    // When the reason we are asking is that the *reading* was
+                    // inferred rather than matched, say the reading. The model's
+                    // own `say` is what it planned to announce while doing the
+                    // thing, which is the wrong sentence for a question -- and
+                    // "I didn't catch that" would throw away a reading Atlas
+                    // actually made and force you to start the sentence over.
+                    // Naming it lets you correct one word.
+                    let ask = if understanding == crate::understood::Understanding::Inferred
+                        && crate::policy::classify(&intent) == Decision::ProceedAndReport
+                    {
+                        crate::understood::checking(&intent.plain())
+                    } else {
+                        decision.say.clone()
                     };
-                    // A message goes out as you, and pairing links two Atlases:
-                    // neither signs you up to anyone's terms, which is what the
-                    // agreement line said for both (the capability sweep, 30
-                    // Sep 2026). And one that names nothing asks what first.
-                    let q = match (&intent, cat) {
+                    self.session.ask(&ask);
+                    ask
+                }
+                // Never ask about something that would be refused anyway: a
+                // question whose "yes" leads to "you can't" is a question wasted,
+                // and every wasted one teaches you to answer without reading.
+                Decision::RequireApproval if self.refused_before_asking(&intent).is_some() => {
+                    self.refused_before_asking(&intent).unwrap_or_default()
+                }
+                Decision::RequireApproval => {
+                    if self.autonomy == Autonomy::Unattended {
+                        // "I'll wait" used to be the whole of this branch, and
+                        // nothing waited: no record was kept, so the next time you
+                        // looked there was no trace you had been asked. A promise
+                        // Atlas does not keep is worse than a refusal.
+                        //
+                        // `mend`'s rule is that the question has to be answerable
+                        // without reading code, and its `parked()` is the backlog
+                        // item it becomes -- the one producer of
+                        // `Blocker::NeedsYourDecision`, which had no caller.
+                        self.park_for_you(&crate::mend::about_approval(said), said, _t)
+                    } else {
+                        // What kind of thing you're approving, when it matters:
+                        // anything that leaves the machine, commits you, or
+                        // changes Atlas says so (`categories::consent_line`);
+                        // something local just asks.
+                        let cat = crate::categories::category_of(&intent);
+                        // Many commands have no stock phrase; the question still
+                        // has to say what it is asking about.
+                        let say = match brain::default_say(&intent) {
+                            s if s.trim().is_empty() => {
+                                format!("Just to check -- {}.", intent.plain())
+                            }
+                            s => s,
+                        };
+                        // A message goes out as you, and pairing links two Atlases:
+                        // neither signs you up to anyone's terms, which is what the
+                        // agreement line said for both (the capability sweep, 30
+                        // Sep 2026). And one that names nothing asks what first.
+                        let q = match (&intent, cat) {
                         (Intent::CreateAccount(w) | Intent::SignIn(w), _) if w.trim().is_empty() => {
                             return "Which site?".into();
                         }
@@ -628,10 +704,10 @@ impl<'a> Daemon<'a> {
                         }
                         _ => crate::categories::consent_line(cat, say.trim_end_matches('.')),
                     };
-                    self.session.await_approval(intent.clone(), &q);
-                    q
+                        self.session.await_approval(intent.clone(), &q);
+                        q
+                    }
                 }
-            }
             },
         };
         self.acting_at = None;
@@ -650,7 +726,11 @@ impl<'a> Daemon<'a> {
         // the question you need to answer, buried under news. The brief
         // waits for the next reply instead.
         let asks_back = reply.trim_end().ends_with('?');
-        let reply = match if asks_back { None } else { self.pending_brief.take() } {
+        let reply = match if asks_back {
+            None
+        } else {
+            self.pending_brief.take()
+        } {
             Some(b) => {
                 // It is now in the reply, so it has been handed over and can
                 // be dropped. This is the only place the outbox is emptied.
@@ -743,7 +823,9 @@ impl<'a> Daemon<'a> {
         // the end of a sentence, at the length it was asked for; cutting it
         // again here chopped answers mid-thought. It only loses its filler,
         // with a hard ceiling kept for safety.
-        let chatted = decision.model == brain::Reached::Yes && matches!(intent, Intent::Say(_)) && self.by_chat;
+        let chatted = decision.model == brain::Reached::Yes
+            && matches!(intent, Intent::Say(_))
+            && self.by_chat;
         let reply = if crate::workday::reads_whole(&intent) {
             reply.trim().to_string()
         } else if chatted {
@@ -768,7 +850,12 @@ impl<'a> Daemon<'a> {
         // words it was given: "now" belongs on something being done, not on
         // something being reported.
         let reply = if decision.model == brain::Reached::NotNeeded && brain::is_an_action(&intent) {
-            persona.acknowledge_in(&reply, _t, register, self.mid_flow() || crate::wit::fenced_intent(&intent))
+            persona.acknowledge_in(
+                &reply,
+                _t,
+                register,
+                self.mid_flow() || crate::wit::fenced_intent(&intent),
+            )
         } else {
             reply
         };
@@ -784,8 +871,12 @@ impl<'a> Daemon<'a> {
         // added", and the reason was thrown away).
         let failed_silent = decision.model == brain::Reached::No && reply.trim().is_empty();
         let reply = if failed_silent {
-            let why = self.model_server_trouble.clone().unwrap_or_else(|| decision.say.clone());
-            self.log.warn(&format!("the model call failed: {}", decision.say));
+            let why = self
+                .model_server_trouble
+                .clone()
+                .unwrap_or_else(|| decision.say.clone());
+            self.log
+                .warn(&format!("the model call failed: {}", decision.say));
             // Ours may be running but stuck (a graphics driver hang): the
             // next pass asks it, and restarts it if it doesn't answer.
             self.model_suspect = self.starts_model_server;
@@ -794,7 +885,11 @@ impl<'a> Daemon<'a> {
             reply
         };
         let used = crate::integrations::sources_for(need_of(&intent), decision.model);
-        let reply = if failed_silent { reply } else { crate::integrations::mark(&reply, &used, &self.connections, _t) };
+        let reply = if failed_silent {
+            reply
+        } else {
+            crate::integrations::mark(&reply, &used, &self.connections, _t)
+        };
         // The model didn't know, or it's the kind of thing that changes by
         // the day: offer to look it up, and a yes does.
         let reply = match self.offer_to_look_it_up(said, &intent, decision.model, &reply) {
@@ -804,7 +899,11 @@ impl<'a> Daemon<'a> {
         // Asked for two things in one breath, the model called two tools
         // and only the first runs: the second is named, not dropped.
         let also = std::mem::take(&mut self.also_asked);
-        let reply = if also.is_empty() { reply } else { format!("{} {}", reply.trim(), one_at_a_time(&also)) };
+        let reply = if also.is_empty() {
+            reply
+        } else {
+            format!("{} {}", reply.trim(), one_at_a_time(&also))
+        };
         self.last_register = register;
 
         // Carried to the NEXT turn, for `register::Moment::after_a_failure`.
@@ -815,11 +914,12 @@ impl<'a> Daemon<'a> {
         // Only a task can fail. A conversation that mentions failing ("the
         // launch failed because…") left the next turn Rough, with no jokes and
         // no tangents (27 Sep 2026).
-        self.last_turn_failed = !matches!(intent, Intent::Say(_) | Intent::Ask(_) | Intent::Unknown(_))
-            && (reply.to_lowercase().contains("failed")
-                || reply.to_lowercase().starts_with("error")
-                || reply.contains("I couldn't")
-                || reply.contains("unreachable"));
+        self.last_turn_failed =
+            !matches!(intent, Intent::Say(_) | Intent::Ask(_) | Intent::Unknown(_))
+                && (reply.to_lowercase().contains("failed")
+                    || reply.to_lowercase().starts_with("error")
+                    || reply.contains("I couldn't")
+                    || reply.contains("unreachable"));
         self.this_turn_register = None;
         self.this_turn_cap = None;
 
@@ -874,8 +974,16 @@ impl<'a> Daemon<'a> {
         // notes, the machine's health) answered with its fixed words; the
         // model puts them into a short natural reply next (`RephraseAsk`).
         // Actions keep their fixed acknowledgements.
-        if self.rephrase_ok && decision.model == brain::Reached::Yes && self.by_chat && reads_back(&intent) && worth_rephrasing(&reply) {
-            self.rephrase_ask = Some(RephraseAsk { written: reply.clone(), keep_written: crate::workday::reads_whole(&intent) });
+        if self.rephrase_ok
+            && decision.model == brain::Reached::Yes
+            && self.by_chat
+            && reads_back(&intent)
+            && worth_rephrasing(&reply)
+        {
+            self.rephrase_ask = Some(RephraseAsk {
+                written: reply.clone(),
+                keep_written: crate::workday::reads_whole(&intent),
+            });
         }
         // The same question, come round again. `asked_before` is asked now,
         // with this turn already appended, so it skips the turn just added and

@@ -1,6 +1,4 @@
-use atlas::opsec::{
-    check, spoken as op_spoken, OpsecConfig, Risk, NOT_ITS_BUSINESS,
-};
+use atlas::opsec::{check, spoken as op_spoken, OpsecConfig, Risk, NOT_ITS_BUSINESS};
 use atlas::recovery::{
     gaps, spoken as rec_spoken, suggest, RecoveryConfig, Route, Setup, NOT_ATLAS, TEST_IT,
 };
@@ -11,7 +9,11 @@ const DAY: u64 = 86_400;
 // ================= what's in the frame, until it isn't your problem =================
 
 fn serving() -> OpsecConfig {
-    OpsecConfig { enabled: true, applies_until: "2027-06-14".into(), ..Default::default() }
+    OpsecConfig {
+        enabled: true,
+        applies_until: "2027-06-14".into(),
+        ..Default::default()
+    }
 }
 
 // Both tests below were written before `opsec.rs` split its word lists into
@@ -35,7 +37,12 @@ fn saying_when_you_are_moving_is_the_thing_that_matters_most() {
     // People say it without thinking, because it feels like ordinary
     // conversation. "deploy" is ambiguous on its own -- it needs the rest of
     // the sentence to actually be about a movement before it counts.
-    let bare = check("Quick one before I deploy next month", &[], &serving(), "2026-09-06");
+    let bare = check(
+        "Quick one before I deploy next month",
+        &[],
+        &serving(),
+        "2026-09-06",
+    );
     assert!(
         bare.is_empty(),
         "\"deploy\" alone is what a developer says about a server: {bare:?}"
@@ -49,26 +56,51 @@ fn saying_when_you_are_moving_is_the_thing_that_matters_most() {
     );
     assert_eq!(found[0].risk, Risk::Movement);
     assert!(found[0].detail.contains("when you're moving"));
-    assert!(found.iter().any(|f| f.detail.contains("deploy")), "{found:?}");
+    assert!(
+        found.iter().any(|f| f.detail.contains("deploy")),
+        "{found:?}"
+    );
     assert!(Risk::Movement.fix().contains("say it after, not before"));
 }
 
 #[test]
 fn something_that_places_you_is_caught() {
-    let bare = check("Filmed this outside the hangar", &[], &serving(), "2026-09-06");
-    assert!(bare.is_empty(), "a hangar is also where light aircraft live: {bare:?}");
+    let bare = check(
+        "Filmed this outside the hangar",
+        &[],
+        &serving(),
+        "2026-09-06",
+    );
+    assert!(
+        bare.is_empty(),
+        "a hangar is also where light aircraft live: {bare:?}"
+    );
 
     // In uniform, the same sentence is about where you are stationed.
-    let uniformed = OpsecConfig { in_uniform: true, ..serving() };
-    let found = check("Filmed this outside the hangar", &[], &uniformed, "2026-09-06");
+    let uniformed = OpsecConfig {
+        in_uniform: true,
+        ..serving()
+    };
+    let found = check(
+        "Filmed this outside the hangar",
+        &[],
+        &uniformed,
+        "2026-09-06",
+    );
     assert!(found.iter().any(|f| f.risk == Risk::Location), "{found:?}");
-    assert!(Risk::Location.fix().contains("a blur still leaves the shape"));
+    assert!(Risk::Location
+        .fix()
+        .contains("a blur still leaves the shape"));
     assert!(!Risk::Location.fixable_in_edit());
 }
 
 #[test]
 fn a_patch_in_frame_is_reported_with_where() {
-    let visible = vec![(Risk::Insignia, 14.0, "unit patch readable on the left shoulder".to_string())];
+    let visible = vec![(
+        Risk::Insignia,
+        14.0,
+        "unit patch readable on the left shoulder".to_string(),
+    )];
     let found = check("Nothing sensitive said", &visible, &serving(), "2026-09-06");
     let said = op_spoken(&found, &serving(), "2026-09-06");
     assert!(said.contains("at 14s"));
@@ -90,7 +122,10 @@ fn uniform_next_to_a_brand_deal_is_flagged_only_when_you_are_in_uniform() {
     let plain = check("Use my code for 20% off", &[], &serving(), "2026-09-06");
     assert!(!plain.iter().any(|f| f.risk == Risk::UniformContext));
 
-    let uniformed = OpsecConfig { in_uniform: true, ..serving() };
+    let uniformed = OpsecConfig {
+        in_uniform: true,
+        ..serving()
+    };
     let found = check("Use my code for 20% off", &[], &uniformed, "2026-09-06");
     assert!(found.iter().any(|f| f.risk == Risk::UniformContext));
 }
@@ -109,14 +144,22 @@ fn after_your_date_atlas_says_nothing_about_any_of_it() {
     assert!(cfg.still_applies("2026-09-06"));
     assert!(!cfg.still_applies("2027-08-01"));
 
-    let after = check("I deploy next month from the hangar", &[], &cfg, "2027-08-01");
+    let after = check(
+        "I deploy next month from the hangar",
+        &[],
+        &cfg,
+        "2027-08-01",
+    );
     assert!(after.is_empty());
     assert_eq!(op_spoken(&after, &cfg, "2027-08-01"), "");
 }
 
 #[test]
 fn your_own_words_are_not_leaks() {
-    let mine = OpsecConfig { not_a_leak: vec!["range".into()], ..serving() };
+    let mine = OpsecConfig {
+        not_a_leak: vec!["range".into()],
+        ..serving()
+    };
     let found = check("Out at the range today", &[], &mine, "2026-09-06");
     assert!(!found.iter().any(|f| f.risk == Risk::Location));
 }
@@ -147,7 +190,10 @@ fn atlas_does_not_read_your_posts_for_opinions() {
 // ================= a way into the vault that isn't you =================
 
 fn rcfg() -> RecoveryConfig {
-    RecoveryConfig { enabled: true, ..Default::default() }
+    RecoveryConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 #[test]
@@ -187,7 +233,10 @@ fn a_route_having_been_used_is_the_loudest_thing_there_is() {
 
 #[test]
 fn a_split_route_means_no_single_person_can_open_it() {
-    let split = Route::SplitBetweenPeople { pieces: 3, needed: 2 };
+    let split = Route::SplitBetweenPeople {
+        pieces: 3,
+        needed: 2,
+    };
     assert!(split.needs_more_than_one_person());
     assert!(!Route::OnePerson.needs_more_than_one_person());
     assert!(split.plain().contains("any 2 of them"));
@@ -197,26 +246,38 @@ fn a_split_route_means_no_single_person_can_open_it() {
 fn every_route_states_its_own_weakness() {
     for r in [
         Route::SealedEnvelope,
-        Route::SplitBetweenPeople { pieces: 3, needed: 2 },
+        Route::SplitBetweenPeople {
+            pieces: 3,
+            needed: 2,
+        },
         Route::OnePerson,
         Route::SecondKeyFile,
     ] {
         assert!(!r.honest_weakness().is_empty());
     }
-    assert!(Route::OnePerson.honest_weakness().contains("any time, not only when you'd want"));
-    assert!(Route::SplitBetweenPeople { pieces: 3, needed: 2 }
+    assert!(Route::OnePerson
         .honest_weakness()
-        .contains("exactly what's hard in an emergency"));
+        .contains("any time, not only when you'd want"));
+    assert!(Route::SplitBetweenPeople {
+        pieces: 3,
+        needed: 2
+    }
+    .honest_weakness()
+    .contains("exactly what's hard in an emergency"));
 }
 
 #[test]
 fn what_is_suggested_depends_on_how_you_actually_live() {
     let away = suggest(true, false);
     assert_eq!(away[0].0, Route::SealedEnvelope);
-    assert!(away[0].1.contains("no signal, no phone and no coordination"));
+    assert!(away[0]
+        .1
+        .contains("no signal, no phone and no coordination"));
 
     let reachable = suggest(false, true);
-    assert!(reachable.iter().any(|(r, _)| r.needs_more_than_one_person()));
+    assert!(reachable
+        .iter()
+        .any(|(r, _)| r.needs_more_than_one_person()));
 }
 
 #[test]
@@ -234,16 +295,45 @@ fn atlas_is_never_one_of_the_routes() {
 #[test]
 fn two_routes_that_are_both_one_person_is_worth_mentioning() {
     let two = vec![
-        Setup { route: Route::OnePerson, with: "brother".into(), set_up_at: 0, last_checked: Some(0), used_at: None },
-        Setup { route: Route::OnePerson, with: "mum".into(), set_up_at: 0, last_checked: Some(0), used_at: None },
+        Setup {
+            route: Route::OnePerson,
+            with: "brother".into(),
+            set_up_at: 0,
+            last_checked: Some(0),
+            used_at: None,
+        },
+        Setup {
+            route: Route::OnePerson,
+            with: "mum".into(),
+            set_up_at: 0,
+            last_checked: Some(0),
+            used_at: None,
+        },
     ];
     let g = gaps(&two, &rcfg(), 10);
-    assert!(g.iter().any(|x| x.what.contains("any one of them can open it alone")));
+    assert!(g
+        .iter()
+        .any(|x| x.what.contains("any one of them can open it alone")));
     // Behaviour, not just wording: the gap is specifically about both being
     // single-person. Make one a split route and it stops firing.
     let mixed = vec![
-        Setup { route: Route::OnePerson, with: "brother".into(), set_up_at: 0, last_checked: Some(0), used_at: None },
-        Setup { route: Route::SplitBetweenPeople { pieces: 3, needed: 2 }, with: "family".into(), set_up_at: 0, last_checked: Some(0), used_at: None },
+        Setup {
+            route: Route::OnePerson,
+            with: "brother".into(),
+            set_up_at: 0,
+            last_checked: Some(0),
+            used_at: None,
+        },
+        Setup {
+            route: Route::SplitBetweenPeople {
+                pieces: 3,
+                needed: 2,
+            },
+            with: "family".into(),
+            set_up_at: 0,
+            last_checked: Some(0),
+            used_at: None,
+        },
     ];
     assert!(
         gaps(&mixed, &rcfg(), 10).len() < g.len(),
@@ -254,12 +344,30 @@ fn two_routes_that_are_both_one_person_is_worth_mentioning() {
 #[test]
 fn everything_in_order_says_so_briefly() {
     let good = vec![
-        Setup { route: Route::SealedEnvelope, with: "envelope".into(), set_up_at: 0, last_checked: Some(0), used_at: None },
-        Setup { route: Route::SplitBetweenPeople { pieces: 3, needed: 2 }, with: "family".into(), set_up_at: 0, last_checked: Some(0), used_at: None },
+        Setup {
+            route: Route::SealedEnvelope,
+            with: "envelope".into(),
+            set_up_at: 0,
+            last_checked: Some(0),
+            used_at: None,
+        },
+        Setup {
+            route: Route::SplitBetweenPeople {
+                pieces: 3,
+                needed: 2,
+            },
+            with: "family".into(),
+            set_up_at: 0,
+            last_checked: Some(0),
+            used_at: None,
+        },
     ];
     // Behaviour, not just wording: "all checked" is only honest if nothing is
     // flagged, so the gap list behind the sentence is actually empty.
-    assert!(gaps(&good, &rcfg(), 10).is_empty(), "an in-order setup still flagged a gap");
+    assert!(
+        gaps(&good, &rcfg(), 10).is_empty(),
+        "an in-order setup still flagged a gap"
+    );
     assert!(rec_spoken(&good, &rcfg(), 10).contains("2 ways in besides you, all checked"));
 }
 
@@ -267,10 +375,27 @@ fn everything_in_order_says_so_briefly() {
 
 fn history() -> History {
     let mut h = History::default();
-    h.note("moved 12 PDFs into Documents/Finance", "files",
-        Undo::Atlas("they're in the trash, I'd put them back".into()), true, 100);
-    h.note("set the wallpaper", "settings", Undo::Atlas("the old one is saved".into()), false, 200);
-    h.note("archived 40 newsletters", "mail", Undo::Atlas("they're in Archive".into()), true, 300);
+    h.note(
+        "moved 12 PDFs into Documents/Finance",
+        "files",
+        Undo::Atlas("they're in the trash, I'd put them back".into()),
+        true,
+        100,
+    );
+    h.note(
+        "set the wallpaper",
+        "settings",
+        Undo::Atlas("the old one is saved".into()),
+        false,
+        200,
+    );
+    h.note(
+        "archived 40 newsletters",
+        "mail",
+        Undo::Atlas("they're in Archive".into()),
+        true,
+        300,
+    );
     h
 }
 
@@ -279,26 +404,51 @@ fn you_do_not_have_to_remember_a_phrase() {
     // The moment you need this is the moment you're least inclined to recall
     // the right wording.
     for said in [
-        "what did you do", "what have you done", "what changed", "what just happened",
-        "did you do something", "what did I miss",
+        "what did you do",
+        "what have you done",
+        "what changed",
+        "what just happened",
+        "did you do something",
+        "what did I miss",
     ] {
-        assert!(matches!(understand(said), Asking::WhatDidYouDo { .. }), "{said}");
+        assert!(
+            matches!(understand(said), Asking::WhatDidYouDo { .. }),
+            "{said}"
+        );
     }
-    for said in ["undo", "put it back", "change it back", "no go back", "that was wrong"] {
+    for said in [
+        "undo",
+        "put it back",
+        "change it back",
+        "no go back",
+        "that was wrong",
+    ] {
         assert!(matches!(understand(said), Asking::UndoLast), "{said}");
     }
 }
 
 #[test]
 fn naming_a_part_of_your_world_narrows_it() {
-    assert_eq!(understand("undo what you did to my files"), Asking::UndoIn("files".into()));
-    assert_eq!(understand("put my wallpaper back"), Asking::UndoIn("settings".into()));
-    assert_eq!(understand("undo the email thing"), Asking::UndoIn("mail".into()));
+    assert_eq!(
+        understand("undo what you did to my files"),
+        Asking::UndoIn("files".into())
+    );
+    assert_eq!(
+        understand("put my wallpaper back"),
+        Asking::UndoIn("settings".into())
+    );
+    assert_eq!(
+        understand("undo the email thing"),
+        Asking::UndoIn("mail".into())
+    );
 }
 
 #[test]
 fn how_far_back_you_meant_is_taken_from_how_you_said_it() {
-    assert!(matches!(understand("what did you do today"), Asking::WhatDidYouDo { since_mins: 1440 }));
+    assert!(matches!(
+        understand("what did you do today"),
+        Asking::WhatDidYouDo { since_mins: 1440 }
+    ));
     assert!(matches!(
         understand("what happened while I was out"),
         Asking::WhatDidYouDo { since_mins: 720 }
@@ -354,8 +504,13 @@ fn naming_an_area_undoes_the_right_thing_rather_than_the_last_thing() {
 #[test]
 fn something_only_you_can_undo_says_where() {
     let mut h = History::default();
-    h.note("turned two-factor off on TikTok", "security",
-        Undo::You("on TikTok's own settings page — I'll open it".into()), true, 100);
+    h.note(
+        "turned two-factor off on TikTok",
+        "security",
+        Undo::You("on TikTok's own settings page — I'll open it".into()),
+        true,
+        100,
+    );
     // Behaviour, not just wording: it is classified as over-to-you, not as
     // something Atlas offers to do itself.
     assert!(
@@ -370,7 +525,13 @@ fn something_only_you_can_undo_says_where() {
 #[test]
 fn something_gone_says_why_rather_than_just_no() {
     let mut h = History::default();
-    h.note("emptied the trash", "files", Undo::Cannot("the files are gone".into()), true, 100);
+    h.note(
+        "emptied the trash",
+        "files",
+        Undo::Cannot("the files are gone".into()),
+        true,
+        100,
+    );
     assert!(say(&reverse(h.last())).contains("can't be undone: the files are gone"));
 }
 

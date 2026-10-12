@@ -3,16 +3,31 @@ use atlas::delegate::{interpret, Delegation, Reach, State, Step};
 use atlas::grants::{grant_in_instruction, span_from_answer, AppFacts, Permissions, Span};
 
 fn known() -> Vec<String> {
-    vec!["claude".into(), "chrome".into(), "discord".into(), "notepad".into(), "excel".into()]
+    vec![
+        "claude".into(),
+        "chrome".into(),
+        "discord".into(),
+        "notepad".into(),
+        "excel".into(),
+    ]
 }
 fn configured() -> AppFacts {
-    AppFacts { known: true, confirm_each_time: false }
+    AppFacts {
+        known: true,
+        confirm_each_time: false,
+    }
 }
 fn discord_facts() -> AppFacts {
-    AppFacts { known: true, confirm_each_time: true }
+    AppFacts {
+        known: true,
+        confirm_each_time: true,
+    }
 }
 fn unknown() -> AppFacts {
-    AppFacts { known: false, confirm_each_time: false }
+    AppFacts {
+        known: false,
+        confirm_each_time: false,
+    }
 }
 
 // ================= pause and resume =================
@@ -22,7 +37,13 @@ fn pause_and_resume_are_recognised_in_natural_speech() {
     for s in ["pause", "hold on", "give me a minute", "wait", "hang on"] {
         assert_eq!(hear(s), Some(Heard::Pause), "{s:?}");
     }
-    for s in ["resume", "I'm ready", "i am ready to continue", "carry on", "I'm back"] {
+    for s in [
+        "resume",
+        "I'm ready",
+        "i am ready to continue",
+        "carry on",
+        "I'm back",
+    ] {
         assert_eq!(hear(s), Some(Heard::Resume), "{s:?}");
     }
 }
@@ -39,7 +60,10 @@ fn pausing_stops_atlas_talking_but_not_listening() {
     let mut a = Attention::default();
     a.pause(None, 100);
     assert!(!a.may_speak(), "silence is the point of pausing");
-    assert!(a.allows(Some(Heard::Resume)), "must still hear you say resume");
+    assert!(
+        a.allows(Some(Heard::Resume)),
+        "must still hear you say resume"
+    );
     assert!(!a.allows(Some(Heard::Pause)), "everything else waits");
     assert!(!a.allows(None));
 }
@@ -78,7 +102,10 @@ fn you_can_ask_how_long_it_has_been_paused() {
     let mut a = Attention::default();
     a.pause(Some("the email draft".into()), 0);
     let s = a.status(600);
-    assert!(s.contains("the email draft") && s.contains("10 minutes"), "got: {s}");
+    assert!(
+        s.contains("the email draft") && s.contains("10 minutes"),
+        "got: {s}"
+    );
 }
 
 // ================= permission to use an app =================
@@ -94,7 +121,11 @@ fn an_app_atlas_does_not_know_is_asked_about_first() {
     let p = Permissions::default();
     let v = p.check("photoshop", "type", &unknown());
     assert!(!v.allowed());
-    assert!(v.message().contains("I don't know photoshop"), "got: {}", v.message());
+    assert!(
+        v.message().contains("I don't know photoshop"),
+        "got: {}",
+        v.message()
+    );
 }
 
 #[test]
@@ -112,8 +143,14 @@ fn naming_an_app_atlas_has_never_heard_of_still_counts_as_permission() {
 
 #[test]
 fn merely_mentioning_an_app_grants_nothing() {
-    assert_eq!(grant_in_instruction("chrome keeps crashing on me", &known()), None);
-    assert_eq!(grant_in_instruction("what is excel good for", &known()), None);
+    assert_eq!(
+        grant_in_instruction("chrome keeps crashing on me", &known()),
+        None
+    );
+    assert_eq!(
+        grant_in_instruction("what is excel good for", &known()),
+        None
+    );
 }
 
 #[test]
@@ -129,7 +166,10 @@ fn a_one_off_grant_is_spent_after_it_is_used() {
     p.grant("photoshop", Some("type"), Span::Once, 100);
     assert!(p.check("photoshop", "type", &unknown()).allowed());
     p.consume("photoshop", "type");
-    assert!(!p.check("photoshop", "type", &unknown()).allowed(), "asks again next time");
+    assert!(
+        !p.check("photoshop", "type", &unknown()).allowed(),
+        "asks again next time"
+    );
 }
 
 #[test]
@@ -188,11 +228,7 @@ fn a_refusal_that_mentions_always_does_not_grant_always() {
         "no thanks, not from now on",
         "don't - not every time",
     ] {
-        assert_eq!(
-            span_from_answer(said),
-            None,
-            "{said:?} was read as consent"
-        );
+        assert_eq!(span_from_answer(said), None, "{said:?} was read as consent");
     }
 }
 
@@ -242,7 +278,11 @@ fn ordinary_prose_containing_use_inside_a_word_grants_nothing() {
 #[test]
 fn being_told_not_to_use_an_app_is_not_permission_to_use_it() {
     let apps = vec!["excel".to_string()];
-    for said in ["don't use excel", "do not use excel for this", "never use excel"] {
+    for said in [
+        "don't use excel",
+        "do not use excel for this",
+        "never use excel",
+    ] {
         assert_eq!(
             grant_in_instruction(said, &apps),
             None,
@@ -270,7 +310,11 @@ fn draft_a_response_writes_but_does_not_send() {
 
 #[test]
 fn finish_the_conversation_carries_it_on() {
-    let d = interpret("finish the conversation with claude until i am back", &known()).unwrap();
+    let d = interpret(
+        "finish the conversation with claude until i am back",
+        &known(),
+    )
+    .unwrap();
     assert_eq!(d.app, "claude");
     assert_eq!(d.reach, Reach::Converse);
     assert!(d.max_turns > 1);
@@ -305,13 +349,19 @@ fn a_conversation_runs_several_turns_and_sends_them() {
     let mut d = Delegation::new("claude", "finish the conversation", Reach::Converse, 3);
     let p = Permissions::default();
     for _ in 0..3 {
-        assert!(matches!(d.advance("...", &p, &configured()), Step::Compose { .. }));
+        assert!(matches!(
+            d.advance("...", &p, &configured()),
+            Step::Compose { .. }
+        ));
         match d.composed("next reply") {
             Step::Place { send, .. } => assert!(send),
             o => panic!("{o:?}"),
         }
     }
-    assert!(matches!(d.advance("...", &p, &configured()), Step::Finished(_)));
+    assert!(matches!(
+        d.advance("...", &p, &configured()),
+        Step::Finished(_)
+    ));
     assert_eq!(d.state, State::Done);
     assert!(d.summary().contains("3 replies"));
 }
@@ -324,7 +374,10 @@ fn the_turn_budget_stops_it_looping_forever() {
     d.composed("a");
     d.advance("x", &p, &configured());
     d.composed("b");
-    assert!(matches!(d.advance("x", &p, &configured()), Step::Finished(_)));
+    assert!(matches!(
+        d.advance("x", &p, &configured()),
+        Step::Finished(_)
+    ));
     assert!(d.reason.as_ref().unwrap().contains("2-turn limit"));
 }
 
@@ -339,14 +392,20 @@ fn calling_it_off_ends_it() {
     d.composed("a reply");
     let said = d.called_off();
     assert_eq!(d.state, State::Stopped);
-    assert!(said.contains("Stopped working claude after one reply"), "got: {said}");
-    assert!(matches!(d.advance("x", &p, &configured()), Step::Finished(_)));
+    assert!(
+        said.contains("Stopped working claude after one reply"),
+        "got: {said}"
+    );
+    assert!(matches!(
+        d.advance("x", &p, &configured()),
+        Step::Finished(_)
+    ));
 }
 
 #[test]
 fn a_stop_phrase_on_screen_ends_it_early() {
-    let mut d = Delegation::new("claude", "carry on", Reach::Converse, 20)
-        .stopping_on(&["anything else?"]);
+    let mut d =
+        Delegation::new("claude", "carry on", Reach::Converse, 20).stopping_on(&["anything else?"]);
     let p = Permissions::default();
     let step = d.advance("Great, that's sorted. Anything else?", &p, &configured());
     assert!(matches!(step, Step::Finished(_)));
@@ -387,9 +446,15 @@ fn a_delegation_can_be_paused_and_resumed_with_everything_else() {
     let mut d = Delegation::new("claude", "carry on", Reach::Converse, 5);
     let p = Permissions::default();
     d.pause();
-    assert!(matches!(d.advance("x", &p, &configured()), Step::Finished(_)));
+    assert!(matches!(
+        d.advance("x", &p, &configured()),
+        Step::Finished(_)
+    ));
     d.resume();
-    assert!(matches!(d.advance("x", &p, &configured()), Step::Compose { .. }));
+    assert!(matches!(
+        d.advance("x", &p, &configured()),
+        Step::Compose { .. }
+    ));
 }
 
 #[test]
@@ -404,7 +469,10 @@ fn what_it_already_wrote_is_part_of_the_context_for_the_next_turn() {
             // not in the quoted screen text, where it would read as someone
             // else's words (audit, 24 Sep 2026).
             let system = d.system_prompt();
-            assert!(system.contains("my earlier reply"), "must not repeat itself: {system}");
+            assert!(
+                system.contains("my earlier reply"),
+                "must not repeat itself: {system}"
+            );
             assert!(context.contains("their answer"));
             assert!(!context.contains("my earlier reply"));
         }

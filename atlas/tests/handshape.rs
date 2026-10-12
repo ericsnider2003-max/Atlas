@@ -7,9 +7,8 @@
 //! limited by what a model already knows, so it's the second one.
 
 use atlas::handshape::{
-    as_demonstrated, how_to, needs_deciding, needs_holding, sketch, Gesture,
-    Holding, Landmarks, Learning, Motion, Point, Progress, Reading, Test, Vocabulary, POINTS,
-    SAMPLES,
+    as_demonstrated, how_to, needs_deciding, needs_holding, sketch, Gesture, Holding, Landmarks,
+    Learning, Motion, Point, Progress, Reading, Test, Vocabulary, POINTS, SAMPLES,
 };
 use atlas::store::Store;
 
@@ -28,7 +27,11 @@ fn fist() -> Landmarks {
     for (i, t) in [4usize, 8, 12, 16, 20].iter().enumerate() {
         points[*t] = Point::from(0.44 + i as f32 * 0.03, 0.73);
     }
-    Landmarks { points, right: Some(true), sure: 0.95 }
+    Landmarks {
+        points,
+        right: Some(true),
+        sure: 0.95,
+    }
 }
 
 /// Extend one finger straight up from its knuckle.
@@ -115,7 +118,10 @@ fn a_gesture_nobody_trained_a_model_on_still_works() {
             0,
         )],
     };
-    assert_eq!(v.recognise(&h).map(|g| g.name.as_str()), Some("ring finger up"));
+    assert_eq!(
+        v.recognise(&h).map(|g| g.name.as_str()),
+        Some("ring finger up")
+    );
 }
 
 #[test]
@@ -252,7 +258,6 @@ fn a_gesture_can_be_described_without_showing_anyone_a_joint_index() {
     assert!(!said.contains('['), "no indices on screen: {said}");
 }
 
-
 // ---------------------------------------------------------------------------
 // Learning a gesture by being shown one
 // ---------------------------------------------------------------------------
@@ -280,8 +285,13 @@ fn holding_a_shape_up_is_enough_to_define_it() {
     assert!(learned.tests.contains(&Test::Out(3)), "{:?}", learned.tests);
     assert!(learned.tests.contains(&Test::In(1)), "{:?}", learned.tests);
     // And it actually matches the hand it was taught from.
-    let v = Vocabulary { gestures: vec![learned] };
-    assert_eq!(v.recognise(&h).map(|g| g.does.as_str()), Some("mute everything"));
+    let v = Vocabulary {
+        gestures: vec![learned],
+    };
+    assert_eq!(
+        v.recognise(&h).map(|g| g.does.as_str()),
+        Some("mute everything")
+    );
 }
 
 #[test]
@@ -296,9 +306,14 @@ fn a_finger_that_wandered_is_left_out_rather_than_pinned_to_its_last_position() 
     for i in 0..SAMPLES {
         l.watch(if i % 2 == 0 { &steady } else { &wobbly });
     }
-    let learned = l.worked_out("something", "do a thing").expect("mostly steady");
+    let learned = l
+        .worked_out("something", "do a thing")
+        .expect("mostly steady");
     assert!(
-        !learned.tests.iter().any(|t| matches!(t, Test::Out(4) | Test::In(4))),
+        !learned
+            .tests
+            .iter()
+            .any(|t| matches!(t, Test::Out(4) | Test::In(4))),
         "the little finger was out half the time and should not be in the \
          definition: {:?}",
         learned.tests
@@ -356,7 +371,10 @@ fn a_new_gesture_is_checked_against_the_ones_already_bound() {
         err.contains("same shape as point"),
         "found now rather than after a week of one never firing: {err}"
     );
-    assert!(err.contains("a finger in or out is enough"), "and how to fix it");
+    assert!(
+        err.contains("a finger in or out is enough"),
+        "and how to fix it"
+    );
 }
 
 #[test]
@@ -398,7 +416,8 @@ fn a_hold_is_added_only_when_the_shape_needs_one() {
     );
 
     let mut v2 = Vocabulary::default();
-    v2.adopt(gesture("three", vec![Test::Extended(3)], 0)).unwrap();
+    v2.adopt(gesture("three", vec![Test::Extended(3)], 0))
+        .unwrap();
     assert_eq!(
         v2.gestures[0].hold_ms, 0,
         "nothing to collide with, so no delay"
@@ -413,7 +432,8 @@ fn a_gesture_invented_today_is_still_there_tomorrow() {
     let store = Store::new(&dir);
 
     let mut v = Vocabulary::load(&store);
-    v.adopt(gesture("ring finger", vec![Test::Out(3)], 0)).unwrap();
+    v.adopt(gesture("ring finger", vec![Test::Out(3)], 0))
+        .unwrap();
     v.save(&store).unwrap();
 
     let back = Vocabulary::load(&store);
@@ -424,12 +444,12 @@ fn a_gesture_invented_today_is_still_there_tomorrow() {
 #[test]
 fn a_gesture_can_be_dropped_again() {
     let mut v = Vocabulary::default();
-    v.adopt(gesture("temporary", vec![Test::Out(2)], 0)).unwrap();
+    v.adopt(gesture("temporary", vec![Test::Out(2)], 0))
+        .unwrap();
     assert!(v.forget("temporary"));
     assert!(!v.forget("temporary"), "already gone");
     assert!(v.gestures.is_empty());
 }
-
 
 // ---------------------------------------------------------------------------
 // Movement, which four of the nine recordings need
@@ -440,11 +460,19 @@ fn a_gesture_can_be_dropped_again() {
 // cannot tell those apart and would fire the wrong one about half the time.
 
 fn moving(across: f32, down: f32) -> Motion {
-    Motion { across, down, reversals: 0.0 }
+    Motion {
+        across,
+        down,
+        reversals: 0.0,
+    }
 }
 
 fn repeating(across: f32, down: f32) -> Motion {
-    Motion { across, down, reversals: 4.0 }
+    Motion {
+        across,
+        down,
+        reversals: 4.0,
+    }
 }
 
 #[test]
@@ -462,11 +490,13 @@ fn the_same_shape_moving_differently_is_a_different_gesture() {
         ],
     };
     assert_eq!(
-        v.recognise_moving(&h, moving(0.0, 0.0)).map(|g| g.name.as_str()),
+        v.recognise_moving(&h, moving(0.0, 0.0))
+            .map(|g| g.name.as_str()),
         Some("pinch")
     );
     assert_eq!(
-        v.recognise_moving(&h, moving(0.0, 3.0)).map(|g| g.name.as_str()),
+        v.recognise_moving(&h, moving(0.0, 3.0))
+            .map(|g| g.name.as_str()),
         Some("flick")
     );
 }
@@ -541,7 +571,9 @@ fn a_static_vocabulary_never_asks_about_motion() {
 fn the_demonstrated_gestures_do_not_collide_with_each_other() {
     // The check that matters before any of these ship: two that describe the
     // same hand means one silently never fires.
-    let v = Vocabulary { gestures: as_demonstrated() };
+    let v = Vocabulary {
+        gestures: as_demonstrated(),
+    };
     assert!(
         v.overlaps().is_empty(),
         "the vocabulary read off the recordings clashes with itself: {:?}",
@@ -582,11 +614,12 @@ fn what_could_not_be_read_is_reported_rather_than_guessed() {
     let unclear = needs_deciding();
     assert_eq!(unclear.len(), 1, "{unclear:?}");
     for (what, why) in &unclear {
-        assert!(why.split_whitespace().count() > 12, "{what}: too thin a reason");
         assert!(
-            why.contains("separate")
-                || why.contains("separates")
-                || why.contains("deciding"),
+            why.split_whitespace().count() > 12,
+            "{what}: too thin a reason"
+        );
+        assert!(
+            why.contains("separate") || why.contains("separates") || why.contains("deciding"),
             "each one has to say what would settle it: {why}"
         );
     }
@@ -596,7 +629,11 @@ fn what_could_not_be_read_is_reported_rather_than_guessed() {
 fn the_defaults_do_not_overwrite_anything_taught() {
     // A default that replaces what someone taught is a default nobody trusts.
     let mut mine = Vocabulary {
-        gestures: vec![gesture("my own", vec![Test::In(0), Test::Out(3), Test::In(1), Test::In(2)], 0)],
+        gestures: vec![gesture(
+            "my own",
+            vec![Test::In(0), Test::Out(3), Test::In(1), Test::In(2)],
+            0,
+        )],
     };
     let before = mine.gestures.len();
     for g in as_demonstrated() {
@@ -608,7 +645,6 @@ fn the_defaults_do_not_overwrite_anything_taught() {
     );
     assert!(mine.gestures.len() > before);
 }
-
 
 // ---------------------------------------------------------------------------
 // Doing something over and over
@@ -629,15 +665,21 @@ fn a_shape_repeated_is_a_different_gesture_from_the_same_shape_once() {
     let v = Vocabulary {
         gestures: vec![
             gesture("resize", vec![Test::Pinched, Test::Repeating], 0),
-            gesture("dismiss", vec![Test::Pinched, Test::MovingDown, Test::Once], 0),
+            gesture(
+                "dismiss",
+                vec![Test::Pinched, Test::MovingDown, Test::Once],
+                0,
+            ),
         ],
     };
     assert_eq!(
-        v.recognise_moving(&h, repeating(0.0, 2.0)).map(|g| g.name.as_str()),
+        v.recognise_moving(&h, repeating(0.0, 2.0))
+            .map(|g| g.name.as_str()),
         Some("resize")
     );
     assert_eq!(
-        v.recognise_moving(&h, moving(0.0, 3.0)).map(|g| g.name.as_str()),
+        v.recognise_moving(&h, moving(0.0, 3.0))
+            .map(|g| g.name.as_str()),
         Some("dismiss")
     );
 }
@@ -646,7 +688,11 @@ fn a_shape_repeated_is_a_different_gesture_from_the_same_shape_once() {
 fn overshooting_and_correcting_once_is_not_repeating() {
     // An ordinary gesture that overshoots and comes back would otherwise read
     // as a rhythm.
-    let one_correction = Motion { across: 0.0, down: 2.0, reversals: 1.0 };
+    let one_correction = Motion {
+        across: 0.0,
+        down: 2.0,
+        reversals: 1.0,
+    };
     assert!(!one_correction.repeating());
     assert!(repeating(0.0, 2.0).repeating());
 }
@@ -655,7 +701,11 @@ fn overshooting_and_correcting_once_is_not_repeating() {
 fn repeating_and_once_cannot_both_describe_one_hand() {
     let v = Vocabulary {
         gestures: vec![
-            gesture("scroll", vec![Test::In(0), Test::MovingDown, Test::Repeating], 0),
+            gesture(
+                "scroll",
+                vec![Test::In(0), Test::MovingDown, Test::Repeating],
+                0,
+            ),
             gesture("push", vec![Test::In(0), Test::MovingDown, Test::Once], 0),
         ],
     };
@@ -668,7 +718,10 @@ fn the_three_gaps_are_filled() {
     let v = as_demonstrated();
     let does: Vec<&str> = v.iter().map(|g| g.does.as_str()).collect();
     for wanted in ["undo that", "scroll down", "scroll up"] {
-        assert!(does.contains(&wanted), "{wanted} is still missing: {does:?}");
+        assert!(
+            does.contains(&wanted),
+            "{wanted} is still missing: {does:?}"
+        );
     }
     // Switching screens is back, resolved by making it two-handed — which
     // cannot collide with anything one-handed and needs no hold, because
@@ -686,7 +739,9 @@ fn the_three_gaps_are_filled() {
 
 #[test]
 fn the_whole_extended_vocabulary_still_does_not_collide_with_itself() {
-    let v = Vocabulary { gestures: as_demonstrated() };
+    let v = Vocabulary {
+        gestures: as_demonstrated(),
+    };
     assert!(
         v.overlaps().is_empty(),
         "fifteen recordings in and something shadows something else: {:?}",
@@ -703,7 +758,6 @@ fn undo_is_instant_because_it_is_the_recovery_from_everything_else() {
         "waiting a second to undo a mistake is the one place a hold is wrong"
     );
 }
-
 
 // ---------------------------------------------------------------------------
 // Being reminded, without a video of anybody
@@ -815,8 +869,12 @@ fn the_reference_covers_whatever_is_in_the_vocabulary_including_new_ones() {
     // Teaching a gesture has to add its card with no second step anyone has
     // to remember, or the reference goes stale the first time it is used.
     let mut v = Vocabulary::default();
-    v.adopt(gesture("mine", vec![Test::In(0), Test::Out(3), Test::In(1), Test::In(2)], 0))
-        .unwrap();
+    v.adopt(gesture(
+        "mine",
+        vec![Test::In(0), Test::Out(3), Test::In(1), Test::In(2)],
+        0,
+    ))
+    .unwrap();
     let card = sketch(&v.gestures[0]);
     assert!(card.contains("<svg"));
     assert!(!how_to(&v.gestures[0]).is_empty());
@@ -839,7 +897,10 @@ fn a_taught_gesture_carries_bands_for_what_held_steady() {
     let learned = demonstrate(&h, SAMPLES)
         .worked_out("ring", "mute")
         .expect("steady shape");
-    assert!(!learned.bands.is_empty(), "the demonstration was measured and kept");
+    assert!(
+        !learned.bands.is_empty(),
+        "the demonstration was measured and kept"
+    );
     for t in &learned.tests {
         if matches!(t, Test::Out(_) | Test::In(_) | Test::Pinched | Test::Spread) {
             assert!(
@@ -864,7 +925,9 @@ fn a_calibrated_gesture_still_matches_the_hand_that_taught_it() {
     let mut h = fist();
     extend(&mut h, 3);
     let learned = demonstrate(&h, SAMPLES).worked_out("ring", "mute").unwrap();
-    let v = Vocabulary { gestures: vec![learned] };
+    let v = Vocabulary {
+        gestures: vec![learned],
+    };
     assert_eq!(v.recognise(&h).map(|g| g.does.as_str()), Some("mute"));
 }
 
@@ -902,7 +965,13 @@ fn a_band_widens_the_gate_for_the_hand_it_measured() {
         bands: Vec::new(),
     };
     let g_calibrated = Gesture {
-        bands: vec![(Test::Out(3), Band { usually: 0.45, varies_by: 0.02 })],
+        bands: vec![(
+            Test::Out(3),
+            Band {
+                usually: 0.45,
+                varies_by: 0.02,
+            },
+        )],
         ..g_universal.clone()
     };
 
@@ -920,8 +989,14 @@ fn a_band_widens_the_gate_for_the_hand_it_measured() {
          band's ceiling to prove anything: {curl}"
     );
 
-    assert!(!g_universal.holds_for(&mut Reading::of(&h)), "fails the universal 0.4");
-    assert!(g_calibrated.holds_for(&mut Reading::of(&h)), "passes its own measured band");
+    assert!(
+        !g_universal.holds_for(&mut Reading::of(&h)),
+        "fails the universal 0.4"
+    );
+    assert!(
+        g_calibrated.holds_for(&mut Reading::of(&h)),
+        "passes its own measured band"
+    );
 }
 
 #[test]
@@ -935,7 +1010,13 @@ fn a_band_never_stretches_past_half_curled() {
         tests: vec![Test::Out(3)],
         hold_ms: 0,
         two_handed: false,
-        bands: vec![(Test::Out(3), Band { usually: 0.5, varies_by: 0.2 })],
+        bands: vec![(
+            Test::Out(3),
+            Band {
+                usually: 0.5,
+                varies_by: 0.2,
+            },
+        )],
     };
     let folded = fist(); // ring curl ~1.0
     assert!(
@@ -947,15 +1028,24 @@ fn a_band_never_stretches_past_half_curled() {
 #[test]
 fn slack_is_floored_so_an_eerily_steady_demonstration_stays_usable() {
     use atlas::handshape::Band;
-    let steady = Band { usually: 0.2, varies_by: 0.0 };
+    let steady = Band {
+        usually: 0.2,
+        varies_by: 0.0,
+    };
     assert!(
         steady.slack() >= 0.06,
         "zero observed wobble must not produce a band nothing human can stay \
          inside: {}",
         steady.slack()
     );
-    let wobbly = Band { usually: 0.2, varies_by: 0.05 };
-    assert!(wobbly.slack() > steady.slack(), "measured wobble widens the band");
+    let wobbly = Band {
+        usually: 0.2,
+        varies_by: 0.05,
+    };
+    assert!(
+        wobbly.slack() > steady.slack(),
+        "measured wobble widens the band"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -999,7 +1089,11 @@ fn waving_back_and_forth_reads_as_repeating() {
     // Four full back-and-forths in a second.
     for i in 0..20u32 {
         let phase = (i / 3) % 2; // direction flips every ~150ms
-        let x = if phase == 0 { 0.4 + (i % 3) as f32 * 0.05 } else { 0.55 - (i % 3) as f32 * 0.05 };
+        let x = if phase == 0 {
+            0.4 + (i % 3) as f32 * 0.05
+        } else {
+            0.55 - (i % 3) as f32 * 0.05
+        };
         m = t.saw(x, 0.5, i * 50);
     }
     assert!(m.repeating(), "a wave is a repetition, not a swipe: {m:?}");
@@ -1016,7 +1110,10 @@ fn losing_the_hand_forgets_the_trail() {
     // Reappearing across the frame is a new trail, not a teleport measured
     // as a swipe.
     let m = t.saw(0.9, 0.5, 400);
-    assert!(m.still(), "a jump across a gap in sight read as motion: {m:?}");
+    assert!(
+        m.still(),
+        "a jump across a gap in sight read as motion: {m:?}"
+    );
 }
 
 /// 1 Oct 2026: the look meant to catch a thumbs-up ran every seeing model

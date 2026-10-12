@@ -1,6 +1,6 @@
 //! Updating Atlas: installing and undoing an update, feedback, the update
 //! command, releases (signing and announcing) and the install page.
-//! 
+//!
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
@@ -43,10 +43,16 @@ fn update_undo(root: &std::path::Path) {
         println!("There's no previous version kept here to go back to.");
         return;
     };
-    print!("Go back from Atlas {} to {previous}? {} won't be offered again. Type yes to go back: ", atlas::upgrade::version(), atlas::upgrade::version());
+    print!(
+        "Go back from Atlas {} to {previous}? {} won't be offered again. Type yes to go back: ",
+        atlas::upgrade::version(),
+        atlas::upgrade::version()
+    );
     let _ = std::io::Write::flush(&mut std::io::stdout());
     let mut answer = String::new();
-    if std::io::stdin().read_line(&mut answer).is_err() || !answer.trim().eq_ignore_ascii_case("yes") {
+    if std::io::stdin().read_line(&mut answer).is_err()
+        || !answer.trim().eq_ignore_ascii_case("yes")
+    {
         println!("Left as it is.");
         return;
     }
@@ -56,7 +62,9 @@ fn update_undo(root: &std::path::Path) {
     };
     let yes = atlas::release::LocalApproval::given_by_the_person_at_this_device();
     match atlas::update_apply::undo_update(&atlas::roots::store(), root, &running, yes) {
-        Ok(v) => println!("Back on Atlas {v}. The background Atlas restarts itself onto it within a minute."),
+        Ok(v) => println!(
+            "Back on Atlas {v}. The background Atlas restarts itself onto it within a minute."
+        ),
         Err(why) => println!("{why}"),
     }
 }
@@ -88,8 +96,20 @@ pub(super) fn run_feedback(args: &[String]) {
             let attach = match atlas::update_apply::last_failure(&store) {
                 Some(f) => {
                     println!("\nAn update failed here earlier. This is what was written down about it (your name and home folder are already taken out):\n");
-                    println!("{}", feedback::feedback_preview(&feedback::Feedback { attached: Some(f.clone()), ..Default::default() }).lines().skip(2).collect::<Vec<_>>().join("\n"));
-                    ask_line("\nAttach it? Type yes to attach: ").eq_ignore_ascii_case("yes").then_some(f)
+                    println!(
+                        "{}",
+                        feedback::feedback_preview(&feedback::Feedback {
+                            attached: Some(f.clone()),
+                            ..Default::default()
+                        })
+                        .lines()
+                        .skip(2)
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                    );
+                    ask_line("\nAttach it? Type yes to attach: ")
+                        .eq_ignore_ascii_case("yes")
+                        .then_some(f)
                 }
                 None => None,
             };
@@ -100,19 +120,30 @@ pub(super) fn run_feedback(args: &[String]) {
                     return;
                 }
             };
-            println!("\nThis is exactly what will be sent:\n\n{}", feedback::feedback_preview(&f));
+            println!(
+                "\nThis is exactly what will be sent:\n\n{}",
+                feedback::feedback_preview(&f)
+            );
             if mine {
                 // Your own Atlas: straight into your own list.
                 // unheard-ok: returns `Option<String>`, not a Result
-                let _ = feedback::heard_feedback(&store, "you", &serde_json::to_string(&f).unwrap_or_default());
-                println!("This is your own Atlas, so it's in your own feedback list (`atlas feedback`).");
+                let _ = feedback::heard_feedback(
+                    &store,
+                    "you",
+                    &serde_json::to_string(&f).unwrap_or_default(),
+                );
+                println!(
+                    "This is your own Atlas, so it's in your own feedback list (`atlas feedback`)."
+                );
                 return;
             }
             let Some(to) = name else {
                 println!("I can't reach whoever sends you updates -- you aren't paired with them -- so nothing was sent.");
                 return;
             };
-            if !ask_line(&format!("Send this to {to}? Type yes to send: ")).eq_ignore_ascii_case("yes") {
+            if !ask_line(&format!("Send this to {to}? Type yes to send: "))
+                .eq_ignore_ascii_case("yes")
+            {
                 println!("Not sent.");
                 return;
             }
@@ -130,10 +161,22 @@ pub(super) fn run_feedback(args: &[String]) {
                 println!("atlas feedback reply <n> seen | fixing | fixed <version> | wont [a note for them]");
                 return;
             };
-            let skip = if matches!(status, FeedbackStatus::Fixed(_)) { 4 } else { 3 };
-            let note = args.iter().skip(skip).cloned().collect::<Vec<_>>().join(" ");
+            let skip = if matches!(status, FeedbackStatus::Fixed(_)) {
+                4
+            } else {
+                3
+            };
+            let note = args
+                .iter()
+                .skip(skip)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" ");
             match feedback::answer_feedback(&store, n, status.clone(), &note, now) {
-                Ok(to) => println!("Marked {}; {to} will hear it the next time Atlas reaches them.", status.plain()),
+                Ok(to) => println!(
+                    "Marked {}; {to} will hear it the next time Atlas reaches them.",
+                    status.plain()
+                ),
                 Err(why) => println!("{why}"),
             }
         }
@@ -154,7 +197,11 @@ pub(super) fn run_feedback(args: &[String]) {
                         f.version,
                         f.platform,
                         f.words,
-                        if f.attached.is_some() { " [update failure attached]" } else { "" },
+                        if f.attached.is_some() {
+                            " [update failure attached]"
+                        } else {
+                            ""
+                        },
                         f.status.plain()
                     );
                 }
@@ -206,7 +253,12 @@ fn update_failures(flag: Option<&str>, version: Option<&str>) {
         let these: Vec<_> = reports.iter().filter(|r| r.version == v).collect();
         println!("Atlas {v}: {} report(s)", these.len());
         for r in these {
-            let why: Vec<&str> = r.reasons.iter().map(|x| x.as_str()).filter(|x| !x.starts_with("(passed)")).collect();
+            let why: Vec<&str> = r
+                .reasons
+                .iter()
+                .map(|x| x.as_str())
+                .filter(|x| !x.starts_with("(passed)"))
+                .collect();
             println!(
                 "  {} ({}), at its {}: {}{}",
                 if r.from.is_empty() { "?" } else { &r.from },
@@ -214,7 +266,8 @@ fn update_failures(flag: Option<&str>, version: Option<&str>) {
                 r.stage,
                 why.join("; "),
                 match r.because {
-                    atlas::update_apply::FailedBecause::ThisMachine => "  [that machine, not the build]",
+                    atlas::update_apply::FailedBecause::ThisMachine =>
+                        "  [that machine, not the build]",
                     atlas::update_apply::FailedBecause::TheBuild => "",
                 }
             );
@@ -227,10 +280,22 @@ fn update_failures(flag: Option<&str>, version: Option<&str>) {
 fn update_auto(to: Option<&str>) {
     use atlas::update_apply::AutoUpdate;
     let (mode, said) = match to {
-        Some("on" | "automatic") => (Some(AutoUpdate::Automatic), "Updates install by themselves at a quiet moment."),
-        Some("ask") => (Some(AutoUpdate::Ask), "I'll ask before installing each update."),
-        Some("off") => (Some(AutoUpdate::Off), "Updates are off. `atlas update` still says what's out."),
-        Some("default") => (None, "Back to the default: automatic on your own devices, ask on friends'."),
+        Some("on" | "automatic") => (
+            Some(AutoUpdate::Automatic),
+            "Updates install by themselves at a quiet moment.",
+        ),
+        Some("ask") => (
+            Some(AutoUpdate::Ask),
+            "I'll ask before installing each update.",
+        ),
+        Some("off") => (
+            Some(AutoUpdate::Off),
+            "Updates are off. `atlas update` still says what's out.",
+        ),
+        Some("default") => (
+            None,
+            "Back to the default: automatic on your own devices, ask on friends'.",
+        ),
         _ => {
             println!("atlas update auto on | ask | off | default");
             return;
@@ -266,7 +331,12 @@ pub(super) fn run_update(args: &[String]) {
         Some("install") => return update_install(&root),
         Some("undo") => return update_undo(&root),
         Some("auto") => return update_auto(args.get(1).map(|s| s.as_str())),
-        Some("failures") => return update_failures(args.get(1).map(|s| s.as_str()), args.get(2).map(|s| s.as_str())),
+        Some("failures") => {
+            return update_failures(
+                args.get(1).map(|s| s.as_str()),
+                args.get(2).map(|s| s.as_str()),
+            )
+        }
         _ => {}
     }
     let report = atlas::upgrade::check(&root);
@@ -278,7 +348,10 @@ pub(super) fn run_update(args: &[String]) {
     );
     println!();
     println!("{}", report.spoken());
-    println!("\n{}", atlas::update_courier::status(&atlas::roots::store(), atlas::store::now()));
+    println!(
+        "\n{}",
+        atlas::update_courier::status(&atlas::roots::store(), atlas::store::now())
+    );
     let avail = atlas::update_courier::Available::load(&atlas::roots::store());
     if avail.notice.is_some() {
         println!(
@@ -294,7 +367,12 @@ pub(super) fn run_update(args: &[String]) {
         println!(
             "\n{} is on trial after replacing {}: {} of {} starts so far without getting through. \
              If it reaches {}, {} comes back by itself.",
-            t.new, t.previous, t.starts, atlas::upgrade::TRIAL_STARTS, atlas::upgrade::TRIAL_STARTS, t.previous
+            t.new,
+            t.previous,
+            t.starts,
+            atlas::upgrade::TRIAL_STARTS,
+            atlas::upgrade::TRIAL_STARTS,
+            t.previous
         );
     }
     let history = atlas::upgrade::update_history(&root);
@@ -302,7 +380,10 @@ pub(super) fn run_update(args: &[String]) {
         println!("\nWhat happened to updates here (latest last):");
         for line in history.iter().rev().take(5).rev() {
             let (at, what) = line.split_once(' ').unwrap_or(("", line));
-            let when = at.parse::<u64>().map(|t| atlas::freshness::ago(atlas::store::now().saturating_sub(t))).unwrap_or_default();
+            let when = at
+                .parse::<u64>()
+                .map(|t| atlas::freshness::ago(atlas::store::now().saturating_sub(t)))
+                .unwrap_or_default();
             println!("  {when}  {what}");
         }
     }
@@ -314,9 +395,14 @@ pub(super) fn run_update(args: &[String]) {
             Some(atlas::update_apply::AutoUpdate::Off) => "off (your choice)",
             None => "the default: automatic on your own devices, ask on friends'",
         };
-        println!("\nInstalling updates: {mode}. `atlas update auto on|ask|off|default` changes it.");
+        println!(
+            "\nInstalling updates: {mode}. `atlas update auto on|ask|off|default` changes it."
+        );
         if let Some(p) = atlas::update_apply::pending(&store) {
-            println!("Atlas {} is checked and waiting to go in at the next start.", p.version);
+            println!(
+                "Atlas {} is checked and waiting to go in at the next start.",
+                p.version
+            );
         }
         if let Some((v, _)) = atlas::update_apply::previous_build(&root) {
             println!("Atlas {v} is kept; `atlas update undo` goes back to it.");
@@ -366,14 +452,23 @@ pub(super) fn run_install_page(_words: &[String]) {
     use atlas::ota;
     // Read the raw arguments: `main` strips every `--flag` out of the words,
     // which would leave `--minutes 5`'s "5" looking like the file.
-    let raw: Vec<String> = std::env::args().skip_while(|a| a != "install-page").skip(1).collect();
+    let raw: Vec<String> = std::env::args()
+        .skip_while(|a| a != "install-page")
+        .skip(1)
+        .collect();
     let mut file = None;
     let (mut minutes, mut port, mut public) = (20u64, 9741u16, false);
     let mut it = raw.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--friends" => public = true,
-            "--minutes" => minutes = it.next().and_then(|v| v.parse().ok()).unwrap_or(minutes).clamp(1, 240),
+            "--minutes" => {
+                minutes = it
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(minutes)
+                    .clamp(1, 240)
+            }
             "--port" => port = it.next().and_then(|v| v.parse().ok()).unwrap_or(port),
             other if !other.starts_with("--") => file = Some(other.to_string()),
             other => println!("(ignoring {other})"),
@@ -395,30 +490,67 @@ pub(super) fn run_install_page(_words: &[String]) {
     };
     let phone = match &package {
         ota::Package::Ios(ipa) => {
-            println!("{} {} (build {}), {}", ipa.title, ipa.version, ipa.build, ipa.bundle_id);
-            println!("Installs on {} device(s); works until {}.", ipa.devices.len(), ipa.expires.as_deref().unwrap_or("an unknown date"));
+            println!(
+                "{} {} (build {}), {}",
+                ipa.title, ipa.version, ipa.build, ipa.bundle_id
+            );
+            println!(
+                "Installs on {} device(s); works until {}.",
+                ipa.devices.len(),
+                ipa.expires.as_deref().unwrap_or("an unknown date")
+            );
             if ipa.devices.is_empty() || ipa.expired(&ota::now_iso()) {
-                return println!("This build can't install on anything: {}. Make a new build first.",
-                    if ipa.devices.is_empty() { "it lists no devices" } else { "it has expired" });
+                return println!(
+                    "This build can't install on anything: {}. Make a new build first.",
+                    if ipa.devices.is_empty() {
+                        "it lists no devices"
+                    } else {
+                        "it has expired"
+                    }
+                );
             }
             "iPhone, in Safari"
         }
         ota::Package::Android(apk) => {
-            println!("Atlas for Android, {:.1} MB, signed. SHA-256 {}", apk.bytes_len as f64 / 1048576.0, apk.sha256);
+            println!(
+                "Atlas for Android, {:.1} MB, signed. SHA-256 {}",
+                apk.bytes_len as f64 / 1048576.0,
+                apk.sha256
+            );
             "Android phone, in Chrome"
         }
     };
 
     let tool = atlas::phonelink::tailscale_tool();
     let vars = atlas::tools::Vars::new();
-    let run = |a: &[String]| atlas::tools::ExternalTool { args: a.to_vec(), ..tool.clone() }.run(&vars, None).map_err(|e| e.to_string());
+    let run = |a: &[String]| {
+        atlas::tools::ExternalTool {
+            args: a.to_vec(),
+            ..tool.clone()
+        }
+        .run(&vars, None)
+        .map_err(|e| e.to_string())
+    };
     let status = run(&["status".into(), "--json".into()]);
-    let net = match status.as_ref().ok().and_then(|j| atlas::phonelink::read_status(j)) {
+    let net = match status
+        .as_ref()
+        .ok()
+        .and_then(|j| atlas::phonelink::read_status(j))
+    {
         Some(n) if n.running && !n.dns_name.is_empty() => n,
-        Some(n) if n.running => return println!("{}", atlas::phonelink::say(&atlas::phonelink::Serve::NeedsHttps)),
+        Some(n) if n.running => {
+            return println!(
+                "{}",
+                atlas::phonelink::say(&atlas::phonelink::Serve::NeedsHttps)
+            )
+        }
         _ => {
             let why = atlas::phonelink::serve_outcome(status.map(|_| String::new()), "");
-            let why = if why == atlas::phonelink::Serve::NeedsHttps { atlas::phonelink::Serve::NotRunning } else { why };
+            let why = if why == atlas::phonelink::Serve::NeedsHttps {
+                atlas::phonelink::Serve::NotRunning
+            } else {
+                why
+            };
             return println!("{}", atlas::phonelink::say(&why));
         }
     };
@@ -430,18 +562,27 @@ pub(super) fn run_install_page(_words: &[String]) {
         other => return println!("{}", atlas::phonelink::say(&other)),
     }
     println!();
-    println!("Open this on the {phone}{}:", if public { "" } else { " (the phone needs Tailscale on)" });
+    println!(
+        "Open this on the {phone}{}:",
+        if public {
+            ""
+        } else {
+            " (the phone needs Tailscale on)"
+        }
+    );
     println!("  {url}");
     if let Some((n, dark)) = atlas::phonelink::qr_modules(&url) {
         // Two rows per line with half blocks, so the code fits a terminal.
         for y in (0..n).step_by(2) {
             let line: String = (0..n)
-                .map(|x| match (dark[y * n + x], y + 1 < n && dark[(y + 1) * n + x]) {
-                    (true, true) => '█',
-                    (true, false) => '▀',
-                    (false, true) => '▄',
-                    (false, false) => ' ',
-                })
+                .map(
+                    |x| match (dark[y * n + x], y + 1 < n && dark[(y + 1) * n + x]) {
+                        (true, true) => '█',
+                        (true, false) => '▀',
+                        (false, true) => '▄',
+                        (false, false) => ' ',
+                    },
+                )
                 .collect();
             println!("  {line}");
         }
@@ -451,11 +592,21 @@ pub(super) fn run_install_page(_words: &[String]) {
     }
     println!("Waiting (Ctrl+C stops it early; the Tailscale switch then stays on until `tailscale {} --https=8443 off`).", on[0]);
     let base = format!("https://{}:{}", net.dns_name, ota::HTTPS_PORT);
-    let served = ota::serve_install(&bytes, &package, port, &token, Some(&base), minutes, &mut |s: &str| println!("  {s}"));
+    let served = ota::serve_install(
+        &bytes,
+        &package,
+        port,
+        &token,
+        Some(&base),
+        minutes,
+        &mut |s: &str| println!("  {s}"),
+    );
     atlas::heard!(run(&off));
     match served {
         Ok(0) => println!("Closed. No phone downloaded the app."),
-        Ok(n) => println!("Closed. The app was downloaded {n} time(s). Tailscale's switch is off again."),
+        Ok(n) => {
+            println!("Closed. The app was downloaded {n} time(s). Tailscale's switch is off again.")
+        }
         Err(e) => println!("The page couldn't run: {e}. Tailscale's switch is off again."),
     }
 }
@@ -469,7 +620,11 @@ use atlas::release::RELEASE_KEY_NAME;
 pub(super) fn run_release(args: &[String]) {
     use atlas::release;
     let state = atlas::roots::install_state();
-    let cfg = Config::load(&atlas::roots::config_dir()).ok().and_then(|c| c.tools).map(|t| t.vault).unwrap_or_default();
+    let cfg = Config::load(&atlas::roots::config_dir())
+        .ok()
+        .and_then(|c| c.tools)
+        .map(|t| t.vault)
+        .unwrap_or_default();
     let now = atlas::store::now();
     let open_vault = || -> Option<atlas::vault::Vault> {
         let mut vault = atlas::vault::Vault::load(&state);

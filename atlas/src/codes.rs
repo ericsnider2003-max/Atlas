@@ -127,7 +127,11 @@ pub struct CodesConfig {
 
 impl Default for CodesConfig {
     fn default() -> Self {
-        CodesConfig { enabled: false, warn_at: 3, check_days_before: 21 }
+        CodesConfig {
+            enabled: false,
+            warn_at: 3,
+            check_days_before: 21,
+        }
     }
 }
 
@@ -182,13 +186,19 @@ pub fn gaps(sets: &[Set], accounts: &[String], cfg: &CodesConfig) -> Vec<Gap> {
         }
     }
 
-    out.sort_by(|a, b| b.urgency.partial_cmp(&a.urgency).unwrap_or(std::cmp::Ordering::Equal));
+    out.sort_by(|a, b| {
+        b.urgency
+            .partial_cmp(&a.urgency)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     out
 }
 
 /// Spend one.
 pub fn used_one(sets: &mut [Set], site: &str) -> Option<u32> {
-    let s = sets.iter_mut().find(|s| s.site.eq_ignore_ascii_case(site))?;
+    let s = sets
+        .iter_mut()
+        .find(|s| s.site.eq_ignore_ascii_case(site))?;
     s.used += 1;
     Some(s.left())
 }
@@ -203,14 +213,21 @@ pub fn before_you_go(sets: &[Set], accounts: &[String], cfg: &CodesConfig) -> St
             sets.len()
         );
     }
-    let missing = g.iter().filter(|x| x.what.contains("no recovery codes")).count();
+    let missing = g
+        .iter()
+        .filter(|x| x.what.contains("no recovery codes"))
+        .count();
     let mut s = if missing > 0 {
         format!("{missing} accounts have no recovery codes at all. ")
     } else {
         String::new()
     };
-    s.push_str(&format!("{} things to sort, starting with {}: {}.",
-        g.len(), g[0].site, g[0].what));
+    s.push_str(&format!(
+        "{} things to sort, starting with {}: {}.",
+        g.len(),
+        g[0].site,
+        g[0].what
+    ));
     s.push_str(" I'll open each page — you print them and tell me they're on you.");
     s
 }

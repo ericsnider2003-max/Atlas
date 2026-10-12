@@ -60,7 +60,11 @@ fn a_call_survives_the_round_trip_to_disk() {
     assert!(append(&at, &c), "the append failed");
 
     let back = load(&at);
-    assert_eq!(back.calls, vec![c], "the call changed on its way to disk and back");
+    assert_eq!(
+        back.calls,
+        vec![c],
+        "the call changed on its way to disk and back"
+    );
 }
 
 #[test]
@@ -90,7 +94,11 @@ fn a_truncated_last_line_does_not_cost_the_rest() {
     std::fs::write(&at, text).unwrap();
 
     let back = load(&at);
-    assert_eq!(back.calls.len(), 2, "a torn line took the good ones with it");
+    assert_eq!(
+        back.calls.len(),
+        2,
+        "a torn line took the good ones with it"
+    );
 }
 
 #[test]
@@ -109,7 +117,10 @@ fn a_write_that_cannot_happen_says_so_rather_than_pretending() {
     // A path whose parent is a *file*, so the directory can never be made.
     let blocked = dir.join("a-file").join("model-calls.jsonl");
     std::fs::write(dir.join("a-file"), "not a directory").unwrap();
-    assert!(!append(&blocked, &a_call("brain", 1)), "a failed write reported success");
+    assert!(
+        !append(&blocked, &a_call("brain", 1)),
+        "a failed write reported success"
+    );
 }
 
 #[test]
@@ -123,7 +134,10 @@ fn compacting_keeps_the_newest_and_leaves_the_old_file_intact_on_failure() {
     assert_eq!(kept, 4);
     let back = load(&at);
     assert_eq!(back.calls.len(), 4);
-    assert_eq!(back.calls[0].at, 1_006, "it kept the oldest instead of the newest");
+    assert_eq!(
+        back.calls[0].at, 1_006,
+        "it kept the oldest instead of the newest"
+    );
     assert_eq!(back.calls[3].at, 1_009);
 }
 
@@ -143,7 +157,11 @@ fn the_log_belongs_to_the_install_that_wrote_it() {
     // genuinely this install's, and on a real machine it is `data/state`,
     // which `atlas update` already preserves.
     let store = tmp("belongs");
-    let (c, p, llm) = (cfg_named("llama3.1"), plat(), Arc::new(UpLlm) as Arc<dyn Llm>);
+    let (c, p, llm) = (
+        cfg_named("llama3.1"),
+        plat(),
+        Arc::new(UpLlm) as Arc<dyn Llm>,
+    );
     let d = Daemon::new(
         &c,
         &p,
@@ -151,8 +169,16 @@ fn the_log_belongs_to_the_install_that_wrote_it() {
         Store::new(store.clone()),
         Proactive::new(ProactiveConfig::default()),
     );
-    assert!(d.trace_path().starts_with(&store), "the log is outside this install: {:?}", d.trace_path());
-    assert_eq!(d.trace_path().extension().unwrap(), "jsonl", "one call per line is the design");
+    assert!(
+        d.trace_path().starts_with(&store),
+        "the log is outside this install: {:?}",
+        d.trace_path()
+    );
+    assert_eq!(
+        d.trace_path().extension().unwrap(),
+        "jsonl",
+        "one call per line is the design"
+    );
     assert_eq!(d.trace_path(), log_path(&store));
 }
 
@@ -199,8 +225,14 @@ fn the_model_name_comes_from_the_body_it_is_actually_sent_in() {
     // There is no `name` field on LlmConfig, and adding one would let the
     // config disagree with what is on the wire — the two-declarations problem
     // this codebase already removed from settings.rs.
-    assert_eq!(model_name(r#"{"model":"llama3.1","prompt":"{user}"}"#), "llama3.1");
-    assert_eq!(model_name(r#"{ "model" : "qwen2.5:14b" , "stream": false }"#), "qwen2.5:14b");
+    assert_eq!(
+        model_name(r#"{"model":"llama3.1","prompt":"{user}"}"#),
+        "llama3.1"
+    );
+    assert_eq!(
+        model_name(r#"{ "model" : "qwen2.5:14b" , "stream": false }"#),
+        "qwen2.5:14b"
+    );
 }
 
 #[test]
@@ -215,7 +247,14 @@ fn a_body_that_names_no_model_says_unnamed_rather_than_guessing() {
 // ===================== reached from the running program =================
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 /// A model that answers, and says which action to take so the reply parses.
@@ -236,7 +275,10 @@ impl Llm for DownLlm {
 
 fn cfg_named(model: &str) -> Config {
     let mut c = Config::load(Path::new("config")).unwrap();
-    let tools = c.tools.as_mut().expect("the shipped config has a tools section");
+    let tools = c
+        .tools
+        .as_mut()
+        .expect("the shipped config has a tools section");
     // A real LlmConfig, so `model_in_use` has a body to read the name out of.
     tools.llm = Some(LlmConfig {
         tool: Default::default(),
@@ -251,13 +293,23 @@ fn cfg_named(model: &str) -> Config {
 const NEEDS_THE_MODEL: &str = "ponder the nature of a wednesday";
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, llm: Arc<dyn Llm>, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, Some(llm), Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        Some(llm),
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
 fn asking_the_model_writes_the_call_down() {
     // The moment the whole module was waiting for.
-    let (c, p, llm) = (cfg_named("llama3.1"), plat(), Arc::new(UpLlm) as Arc<dyn Llm>);
+    let (c, p, llm) = (
+        cfg_named("llama3.1"),
+        plat(),
+        Arc::new(UpLlm) as Arc<dyn Llm>,
+    );
     let mut d = daemon(&c, &p, llm.clone(), "asked");
     let before = d.trace.calls.len();
 
@@ -274,7 +326,11 @@ fn asking_the_model_writes_the_call_down() {
 fn a_question_the_parser_settles_is_not_recorded_as_a_model_call() {
     // Otherwise the log says Atlas asks the model about everything, which is
     // the opposite of what it is for — and would make `busiest()` meaningless.
-    let (c, p, llm) = (cfg_named("llama3.1"), plat(), Arc::new(UpLlm) as Arc<dyn Llm>);
+    let (c, p, llm) = (
+        cfg_named("llama3.1"),
+        plat(),
+        Arc::new(UpLlm) as Arc<dyn Llm>,
+    );
     let mut d = daemon(&c, &p, llm.clone(), "parsed");
 
     d.turn("back up", atlas::store::now());
@@ -288,13 +344,20 @@ fn a_question_the_parser_settles_is_not_recorded_as_a_model_call() {
 
 #[test]
 fn a_model_that_is_down_is_recorded_as_a_failure_with_the_reason() {
-    let (c, p, llm) = (cfg_named("llama3.1"), plat(), Arc::new(DownLlm) as Arc<dyn Llm>);
+    let (c, p, llm) = (
+        cfg_named("llama3.1"),
+        plat(),
+        Arc::new(DownLlm) as Arc<dyn Llm>,
+    );
     let mut d = daemon(&c, &p, llm.clone(), "down");
 
     d.turn(NEEDS_THE_MODEL, atlas::store::now());
 
     let call = d.trace.calls.last().expect("nothing recorded");
-    assert!(!call.ok(), "a model that refused the connection was recorded as fine");
+    assert!(
+        !call.ok(),
+        "a model that refused the connection was recorded as fine"
+    );
     assert!(
         call.failed.as_deref().unwrap_or("").contains("unreachable"),
         "the reason was not kept: {:?}",
@@ -307,16 +370,29 @@ fn the_words_of_a_prompt_never_reach_the_disk() {
     // `trace::STORES_NO_CONTENT` is the promise. This is the test that would
     // notice it being broken — lengths and timings, never the text.
     let secret = "ponder my bank passphrase hunter2 and the wednesday";
-    let (c, p, llm) = (cfg_named("llama3.1"), plat(), Arc::new(UpLlm) as Arc<dyn Llm>);
+    let (c, p, llm) = (
+        cfg_named("llama3.1"),
+        plat(),
+        Arc::new(UpLlm) as Arc<dyn Llm>,
+    );
     let mut d = daemon(&c, &p, llm.clone(), "secret");
 
     d.turn(secret, atlas::store::now());
 
     let on_disk = std::fs::read_to_string(d.trace_path()).unwrap_or_default();
-    assert!(!on_disk.contains("hunter2"), "a prompt's words were written to disk");
-    assert!(!on_disk.contains("passphrase"), "a prompt's words were written to disk");
+    assert!(
+        !on_disk.contains("hunter2"),
+        "a prompt's words were written to disk"
+    );
+    assert!(
+        !on_disk.contains("passphrase"),
+        "a prompt's words were written to disk"
+    );
     let call = d.trace.calls.last().unwrap();
-    assert!(call.prompt_chars > 0, "the size was not recorded either, so nothing was measured");
+    assert!(
+        call.prompt_chars > 0,
+        "the size was not recorded either, so nothing was measured"
+    );
 }
 
 #[test]
@@ -324,7 +400,11 @@ fn the_record_outlives_the_process() {
     // Otherwise "what has the model been doing" answers "since you started
     // me, not much", which is the one question it exists to answer.
     let store = tmp("outlive-store");
-    let (c, p, llm) = (cfg_named("llama3.1"), plat(), Arc::new(UpLlm) as Arc<dyn Llm>);
+    let (c, p, llm) = (
+        cfg_named("llama3.1"),
+        plat(),
+        Arc::new(UpLlm) as Arc<dyn Llm>,
+    );
     {
         let mut d = Daemon::new(
             &c,
@@ -359,8 +439,16 @@ fn the_phrase_for_asking_parses_to_something_that_reads_the_record() {
     // stays reachable from something a person would actually say.
     let cfg = Config::load(Path::new("config")).unwrap();
     let parser = Parser::new(&cfg.commands);
-    for said in ["what have you been asking", "how's the model doing", "model trace"] {
-        assert_eq!(parser.parse(said), Intent::ModelTrace, "did not parse: {said}");
+    for said in [
+        "what have you been asking",
+        "how's the model doing",
+        "model trace",
+    ] {
+        assert_eq!(
+            parser.parse(said),
+            Intent::ModelTrace,
+            "did not parse: {said}"
+        );
     }
 }
 
@@ -378,7 +466,10 @@ fn asked_what_it_has_been_doing_it_says_so_out_loud() {
     assert!(said.contains("brain"), "it did not say who asked: {said}");
     // Behaviour, not just wording: the report is backed by a real recorded
     // call, not a fixed sentence -- the trace actually captured the turn.
-    assert!(!d.trace.calls.is_empty(), "the model call was never recorded in the trace");
+    assert!(
+        !d.trace.calls.is_empty(),
+        "the model call was never recorded in the trace"
+    );
 }
 
 #[test]
@@ -430,7 +521,10 @@ fn the_line_it_speaks_names_failures_when_there_are_any() {
     bad.failed = Some("connection refused".into());
     t.record(bad);
     let said = atlas::nudge::trace_line(&t);
-    assert!(said.contains("1 failed"), "a failure went unmentioned: {said}");
+    assert!(
+        said.contains("1 failed"),
+        "a failure went unmentioned: {said}"
+    );
 }
 
 #[test]
@@ -441,7 +535,11 @@ fn a_log_longer_than_it_keeps_rolls_the_oldest_off_and_counts_them() {
     }
     assert_eq!(t.calls.len(), KEEP);
     assert_eq!(t.dropped, 3);
-    assert!(t.spoken().contains("rolled off"), "the drop went unsaid: {}", t.spoken());
+    assert!(
+        t.spoken().contains("rolled off"),
+        "the drop went unsaid: {}",
+        t.spoken()
+    );
 }
 
 #[test]
@@ -449,8 +547,14 @@ fn a_line_of_the_log_is_json_anything_can_read() {
     // Deliberately JSON so it can be read by anything, including a person
     // with a text editor.
     let line = to_line(&a_call("brain", 7));
-    assert!(line.starts_with('{') && line.ends_with('}'), "not an object: {line}");
-    assert!(!line.contains('\n'), "a line with a newline in it breaks the format");
+    assert!(
+        line.starts_with('{') && line.ends_with('}'),
+        "not an object: {line}"
+    );
+    assert!(
+        !line.contains('\n'),
+        "a line with a newline in it breaks the format"
+    );
     assert_eq!(from_lines(&line).calls.len(), 1);
 }
 
@@ -483,7 +587,11 @@ fn the_running_atlas_opens_an_overgrown_log_cut_back() {
         KEEP,
         "the file on disk was left to grow"
     );
-    assert_eq!(t.calls.last().unwrap().id, 2 * KEEP as u64 + 1, "it kept the oldest instead of the newest");
+    assert_eq!(
+        t.calls.last().unwrap().id,
+        2 * KEEP as u64 + 1,
+        "it kept the oldest instead of the newest"
+    );
 }
 
 #[test]
@@ -492,7 +600,10 @@ fn a_log_under_twice_the_keep_is_opened_as_it_is() {
     let at = log_path(&dir);
     a_log_of(&at, KEEP + 10);
     assert_eq!(atlas::trace::open(&at).calls.len(), KEEP + 10);
-    assert_eq!(std::fs::read_to_string(&at).unwrap().lines().count(), KEEP + 10);
+    assert_eq!(
+        std::fs::read_to_string(&at).unwrap().lines().count(),
+        KEEP + 10
+    );
 }
 
 #[test]
@@ -511,7 +622,10 @@ fn a_long_running_atlas_cuts_the_file_back_as_calls_roll_off() {
     }
     assert!(cut, "a daemon that never restarts never cut the file back");
     let lines = std::fs::read_to_string(&at).unwrap().lines().count();
-    assert!(lines <= 2 * KEEP, "the file grew past twice the keep: {lines}");
+    assert!(
+        lines <= 2 * KEEP,
+        "the file grew past twice the keep: {lines}"
+    );
 }
 
 #[test]
@@ -525,7 +639,16 @@ fn cutting_the_log_back_drops_the_grades_of_calls_no_longer_kept() {
     }
     compact(&at, 4).unwrap();
     let grades = std::fs::read_to_string(atlas::trace::grades_path(&at)).unwrap();
-    assert_eq!(grades.lines().count(), 1, "grades of dropped calls were kept: {grades}");
+    assert_eq!(
+        grades.lines().count(),
+        1,
+        "grades of dropped calls were kept: {grades}"
+    );
     let back = load(&at);
-    assert!(back.calls.iter().any(|c| c.id == 9 && c.graded == Some(true)), "the kept call lost its grade");
+    assert!(
+        back.calls
+            .iter()
+            .any(|c| c.id == 9 && c.graded == Some(true)),
+        "the kept call lost its grade"
+    );
 }

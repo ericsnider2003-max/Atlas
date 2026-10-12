@@ -32,7 +32,12 @@ pub enum Source {
 /// Every way in, in the order worth trying: the ones that never hold your
 /// login first.
 pub fn sources() -> [Source; 4] {
-    [Source::LocalFile, Source::Aggregator, Source::Notification, Source::SiteExport]
+    [
+        Source::LocalFile,
+        Source::Aggregator,
+        Source::Notification,
+        Source::SiteExport,
+    ]
 }
 
 impl Source {
@@ -63,7 +68,10 @@ pub enum PageAction {
     /// Click something. The label matters enormously.
     Click(String),
     /// Type into a field.
-    Type { field: String, text: String },
+    Type {
+        field: String,
+        text: String,
+    },
     /// Submit a sign-in form — the one submit that is safe on a financial
     /// site.
     ///
@@ -73,7 +81,9 @@ pub enum PageAction {
     /// the form is checked: it may carry only credential fields. A form with
     /// an amount or an account number in it is not a sign-in form, whatever
     /// the page calls it.
-    SubmitSignIn { fields: Vec<String> },
+    SubmitSignIn {
+        fields: Vec<String>,
+    },
     /// Submit any other form.
     Submit,
     Download,
@@ -151,7 +161,9 @@ impl Default for FinanceConfig {
 impl FinanceConfig {
     pub fn is_financial(&self, url: &str) -> bool {
         let u = url.to_lowercase();
-        self.financial_domains.iter().any(|d| u.contains(&d.to_lowercase()))
+        self.financial_domains
+            .iter()
+            .any(|d| u.contains(&d.to_lowercase()))
     }
 }
 
@@ -159,20 +171,72 @@ impl FinanceConfig {
 /// costs you a manual click; a false approval costs you money.
 const MOVES_MONEY: &[&str] = &[
     // Banking
-    "transfer", "send", "pay", "payment", "wire", "zelle", "venmo", "withdraw",
-    "withdrawal", "deposit", "move money", "convert", "exchange", "remit",
-    "schedule payment", "make a payment", "bill pay", "autopay", "direct debit",
-    "standing order", "new payee", "add payee", "add recipient",
+    "transfer",
+    "send",
+    "pay",
+    "payment",
+    "wire",
+    "zelle",
+    "venmo",
+    "withdraw",
+    "withdrawal",
+    "deposit",
+    "move money",
+    "convert",
+    "exchange",
+    "remit",
+    "schedule payment",
+    "make a payment",
+    "bill pay",
+    "autopay",
+    "direct debit",
+    "standing order",
+    "new payee",
+    "add payee",
+    "add recipient",
     // Trading. A broker page is a bank page with faster ways to lose money.
-    "buy", "sell", "trade", "order", "place order", "review order",
-    "market order", "limit order", "stop order", "stop loss", "take profit",
-    "bracket", "close position", "close all", "flatten", "liquidate",
-    "exercise", "assign", "roll", "short", "cover", "margin", "borrow",
-    "leverage", "stake", "unstake", "swap", "bridge", "approve",
-    "enable trading", "fund account", "link bank",
+    "buy",
+    "sell",
+    "trade",
+    "order",
+    "place order",
+    "review order",
+    "market order",
+    "limit order",
+    "stop order",
+    "stop loss",
+    "take profit",
+    "bracket",
+    "close position",
+    "close all",
+    "flatten",
+    "liquidate",
+    "exercise",
+    "assign",
+    "roll",
+    "short",
+    "cover",
+    "margin",
+    "borrow",
+    "leverage",
+    "stake",
+    "unstake",
+    "swap",
+    "bridge",
+    "approve",
+    "enable trading",
+    "fund account",
+    "link bank",
     // Generic commit verbs. Loose on purpose.
-    "confirm", "submit", "authorize", "authorise", "continue to payment",
-    "agree and", "accept and", "place", "execute",
+    "confirm",
+    "submit",
+    "authorize",
+    "authorise",
+    "continue to payment",
+    "agree and",
+    "accept and",
+    "place",
+    "execute",
 ];
 
 /// Fields it's reasonable to type into on a bank site.
@@ -181,13 +245,52 @@ const MOVES_MONEY: &[&str] = &[
 /// Checked first and unconditionally. One of these anywhere in a field name
 /// settles it however innocent the rest of the form looks.
 const NEVER_FILL: &[&str] = &[
-    "amount", "amt", "sum", "value", "total", "balance",
-    "account", "acct", "iban", "bic", "swift", "sortcode", "routing", "aba",
-    "payee", "recipient", "beneficiary", "counterparty", "destination",
-    "transfer", "payment", "pay", "send", "wire", "withdraw", "deposit",
-    "quantity", "qty", "shares", "units", "contracts", "price", "limit",
-    "stop", "ticker", "symbol", "side", "order", "leverage", "margin",
-    "card", "cvv", "cvc", "expiry", "pan", "confirm",
+    "amount",
+    "amt",
+    "sum",
+    "value",
+    "total",
+    "balance",
+    "account",
+    "acct",
+    "iban",
+    "bic",
+    "swift",
+    "sortcode",
+    "routing",
+    "aba",
+    "payee",
+    "recipient",
+    "beneficiary",
+    "counterparty",
+    "destination",
+    "transfer",
+    "payment",
+    "pay",
+    "send",
+    "wire",
+    "withdraw",
+    "deposit",
+    "quantity",
+    "qty",
+    "shares",
+    "units",
+    "contracts",
+    "price",
+    "limit",
+    "stop",
+    "ticker",
+    "symbol",
+    "side",
+    "order",
+    "leverage",
+    "margin",
+    "card",
+    "cvv",
+    "cvc",
+    "expiry",
+    "pan",
+    "confirm",
 ];
 
 /// Field-name words a sign-in or a date filter is made of.
@@ -202,18 +305,58 @@ const NEVER_FILL: &[&str] = &[
 /// five realistic transfer and order forms passed this gate.
 const SAFE_FIELDS: &[&str] = &[
     // Who you are
-    "username", "user", "userid", "name", "email", "mail", "login", "id",
+    "username",
+    "user",
+    "userid",
+    "name",
+    "email",
+    "mail",
+    "login",
+    "id",
     // What proves it
-    "password", "passcode", "pass", "pwd", "pin", "otp", "code", "token2fa",
-    "mfa", "totp", "authenticator", "remember", "trust",
+    "password",
+    "passcode",
+    "pass",
+    "pwd",
+    "pin",
+    "otp",
+    "code",
+    "token2fa",
+    "mfa",
+    "totp",
+    "authenticator",
+    "remember",
+    "trust",
     // "Remember this device" / "keep me signed in" are ordinary parts of a
     // sign-in form. Leaving these off refuses real logins, and a guard that
     // blocks the thing you actually do gets switched off.
-    "device", "browser", "computer", "machine", "keep", "stay", "signed",
-    "logged", "in", "me", "this",
+    "device",
+    "browser",
+    "computer",
+    "machine",
+    "keep",
+    "stay",
+    "signed",
+    "logged",
+    "in",
+    "me",
+    "this",
     // Reading, not doing
-    "search", "query", "q", "filter", "from", "to", "start", "end", "date",
-    "range", "month", "year", "period", "page", "sort",
+    "search",
+    "query",
+    "q",
+    "filter",
+    "from",
+    "to",
+    "start",
+    "end",
+    "date",
+    "range",
+    "month",
+    "year",
+    "period",
+    "page",
+    "sort",
 ];
 
 /// Split a field name into words: `account_from`, `accountFrom`,
@@ -251,15 +394,10 @@ pub fn is_safe_field(field: &str) -> bool {
     if words.is_empty() {
         return false;
     }
-    if words
-        .iter()
-        .any(|w| NEVER_FILL.iter().any(|n| w == n))
-    {
+    if words.iter().any(|w| NEVER_FILL.iter().any(|n| w == n)) {
         return false;
     }
-    words
-        .iter()
-        .all(|w| SAFE_FIELDS.iter().any(|s| w == s))
+    words.iter().all(|w| SAFE_FIELDS.iter().any(|s| w == s))
 }
 
 /// Does this button label mean money moves?
@@ -285,10 +423,31 @@ pub fn is_safe_field(field: &str) -> bool {
 /// in the label let `Schedule payment` and `Limit order` through, both caught
 /// by tests already in this repo.
 const A_VIEW_OF: &[&str] = &[
-    "history", "schedule", "scheduled", "list", "statements", "statement",
-    "summary", "activity", "details", "log", "record", "records", "past",
-    "recent", "upcoming", "pending", "report", "reports", "overview",
-    "power", "settings", "preferences", "help", "about", "limits",
+    "history",
+    "schedule",
+    "scheduled",
+    "list",
+    "statements",
+    "statement",
+    "summary",
+    "activity",
+    "details",
+    "log",
+    "record",
+    "records",
+    "past",
+    "recent",
+    "upcoming",
+    "pending",
+    "report",
+    "reports",
+    "overview",
+    "power",
+    "settings",
+    "preferences",
+    "help",
+    "about",
+    "limits",
 ];
 
 pub fn moves_money(label: &str) -> bool {
@@ -331,10 +490,7 @@ pub fn allowed(url: &str, action: &PageAction, cfg: &FinanceConfig) -> Verdict {
         // Signing in is allowed, and only if every field in the form is a
         // credential field. That check is the whole safety of it.
         PageAction::SubmitSignIn { fields } => {
-            let odd: Vec<&String> = fields
-                .iter()
-                .filter(|f| !is_safe_field(f))
-                .collect();
+            let odd: Vec<&String> = fields.iter().filter(|f| !is_safe_field(f)).collect();
             if odd.is_empty() {
                 Verdict::Allowed
             } else {
@@ -390,12 +546,25 @@ pub struct Transaction {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Flag {
-    Large { t: Transaction },
+    Large {
+        t: Transaction,
+    },
     /// Same description, same amount, twice in a few days.
-    PossibleDuplicate { a: Transaction, b: Transaction },
+    PossibleDuplicate {
+        a: Transaction,
+        b: Transaction,
+    },
     /// A subscription that renewed after a long gap in use.
-    Recurring { description: String, amount: f64, times: usize },
-    CategoryJump { category: String, from: f64, to: f64 },
+    Recurring {
+        description: String,
+        amount: f64,
+        times: usize,
+    },
+    CategoryJump {
+        category: String,
+        from: f64,
+        to: f64,
+    },
 }
 
 impl Flag {
@@ -408,7 +577,11 @@ impl Flag {
             Flag::PossibleDuplicate { a, .. } => {
                 format!("{} charged twice for {:.2}.", a.description, a.amount.abs())
             }
-            Flag::Recurring { description, amount, times } => {
+            Flag::Recurring {
+                description,
+                amount,
+                times,
+            } => {
                 format!("{description} has billed {times} times at {amount:.2}.")
             }
             Flag::CategoryJump { category, from, to } => {
@@ -439,7 +612,10 @@ pub fn review(txns: &[Transaction], cfg: &FinanceConfig) -> Vec<Flag> {
                 && a.date != b.date
                 && within_days(&a.date, &b.date, 4)
             {
-                out.push(Flag::PossibleDuplicate { a: a.clone(), b: b.clone() });
+                out.push(Flag::PossibleDuplicate {
+                    a: a.clone(),
+                    b: b.clone(),
+                });
             }
         }
     }
@@ -447,7 +623,9 @@ pub fn review(txns: &[Transaction], cfg: &FinanceConfig) -> Vec<Flag> {
     // Things that bill repeatedly at the same amount.
     let mut seen: std::collections::BTreeMap<String, Vec<f64>> = Default::default();
     for t in txns.iter().filter(|t| t.amount < 0.0) {
-        seen.entry(normalise(&t.description)).or_default().push(t.amount);
+        seen.entry(normalise(&t.description))
+            .or_default()
+            .push(t.amount);
     }
     for (desc, amounts) in seen {
         if amounts.len() >= 3 {
@@ -479,7 +657,9 @@ fn normalise(s: &str) -> String {
 /// Dates as YYYY-MM-DD. Crude day arithmetic, adequate for "within a few
 /// days" and with no dependency.
 fn within_days(a: &str, b: &str, days: i64) -> bool {
-    let (Some(x), Some(y)) = (day_number(a), day_number(b)) else { return false };
+    let (Some(x), Some(y)) = (day_number(a), day_number(b)) else {
+        return false;
+    };
     (x - y).abs() <= days
 }
 
@@ -495,10 +675,18 @@ fn day_number(date: &str) -> Option<i64> {
 /// meaning rather than position.
 pub fn parse_csv(text: &str, source: Source) -> Vec<Transaction> {
     let mut lines = text.lines();
-    let Some(header) = lines.next() else { return Vec::new() };
-    let cols: Vec<String> = split_row(header).iter().map(|c| c.trim().to_lowercase()).collect();
+    let Some(header) = lines.next() else {
+        return Vec::new();
+    };
+    let cols: Vec<String> = split_row(header)
+        .iter()
+        .map(|c| c.trim().to_lowercase())
+        .collect();
 
-    let find = |names: &[&str]| cols.iter().position(|c| names.iter().any(|n| c.contains(n)));
+    let find = |names: &[&str]| {
+        cols.iter()
+            .position(|c| names.iter().any(|n| c.contains(n)))
+    };
     let (Some(date_i), Some(desc_i)) = (
         find(&["date", "posted", "transaction date"]),
         find(&["description", "payee", "name", "merchant", "memo"]),

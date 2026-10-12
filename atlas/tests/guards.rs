@@ -14,7 +14,6 @@
 //! out of Atlas's reach — but a human deleting it is still possible, and
 //! nothing here can stop that. What it can do is make the deletion deliberate.
 
-
 /// Every guard, and the string that proves it's still wired.
 ///
 /// `(file, needle, what breaks without it)`
@@ -1745,7 +1744,9 @@ fn every_guard_is_still_present() {
             None => missing.push(format!("{path} is gone entirely — {consequence}")),
             Some(text) => {
                 if !text.contains(needle) {
-                    missing.push(format!("{path} no longer contains `{needle}` — {consequence}"));
+                    missing.push(format!(
+                        "{path} no longer contains `{needle}` — {consequence}"
+                    ));
                 }
             }
         }
@@ -1900,7 +1901,9 @@ fn the_index_agrees_with_the_rule_it_replaces() {
 
     let mut files: Vec<String> = Vec::new();
     fn walk(dir: &std::path::Path, out: &mut Vec<String>) {
-        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
         for e in entries.flatten() {
             let p = e.path();
             if p.is_dir() {
@@ -1913,7 +1916,11 @@ fn the_index_agrees_with_the_rule_it_replaces() {
         }
     }
     walk(std::path::Path::new("src"), &mut files);
-    assert!(files.len() > 100, "expected the whole src tree, got {}", files.len());
+    assert!(
+        files.len() > 100,
+        "expected the whole src tree, got {}",
+        files.len()
+    );
 
     // Every name worth asking about: every function this tree defines.
     let mut names: BTreeSet<String> = BTreeSet::new();
@@ -1922,8 +1929,10 @@ fn the_index_agrees_with_the_rule_it_replaces() {
             let trimmed = line.trim_start();
             for prefix in ["pub fn ", "fn "] {
                 if let Some(rest) = trimmed.strip_prefix(prefix) {
-                    let n: String =
-                        rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+                    let n: String = rest
+                        .chars()
+                        .take_while(|c| c.is_alphanumeric() || *c == '_')
+                        .collect();
                     if !n.is_empty() {
                         names.insert(n);
                     }
@@ -1932,7 +1941,11 @@ fn the_index_agrees_with_the_rule_it_replaces() {
             }
         }
     }
-    assert!(names.len() > 500, "expected a lot of names, got {}", names.len());
+    assert!(
+        names.len() > 500,
+        "expected a lot of names, got {}",
+        names.len()
+    );
 
     // Only names that occur as a SUBSTRING of this file can possibly be
     // called in it -- both the rule and the index need the characters to be

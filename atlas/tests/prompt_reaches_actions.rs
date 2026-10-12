@@ -38,7 +38,13 @@ fn plat() -> MockPlatform {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 /// Everything the old prompt could not answer. Each of these parsed correctly
@@ -69,7 +75,10 @@ fn the_prompt_reaches_the_same_actions_the_daemon_does() {
             !out.contains("not wired to an action yet"),
             "'{line}' parsed as {intent:?} and still reports itself unwired"
         );
-        assert!(!out.trim().is_empty(), "'{line}' answered with nothing at all");
+        assert!(
+            !out.trim().is_empty(),
+            "'{line}' answered with nothing at all"
+        );
     }
 }
 
@@ -80,6 +89,9 @@ fn asking_what_is_outstanding_answers_rather_than_describing_the_parse() {
     let mut d = daemon(&c, &p, "outstanding");
     let out = d.execute(&parser.parse("what's outstanding"));
     // The failure mode is a debug print of the Intent leaking to the user.
-    assert!(!out.contains("Outstanding"), "the parse leaked into the answer: {out}");
+    assert!(
+        !out.contains("Outstanding"),
+        "the parse leaked into the answer: {out}"
+    );
     assert!(!out.contains("parsed "), "{out}");
 }

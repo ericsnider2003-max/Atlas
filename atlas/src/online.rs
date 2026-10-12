@@ -179,7 +179,11 @@ impl Delegated {
                 "A worker came back on \"{}\", but I couldn't stand behind it{}. \
                  I'd rather check it again than pass it on as is.",
                 self.task,
-                if self.note.is_empty() { String::new() } else { format!(" — {}", self.note) }
+                if self.note.is_empty() {
+                    String::new()
+                } else {
+                    format!(" — {}", self.note)
+                }
             ),
             Confidence::Qualify => {
                 if self.note.is_empty() {
@@ -216,13 +220,23 @@ pub fn dispatch_task(
     // A result from a worker that actually did the task is grounded in that
     // work — but it is not about your own machine or files, so it is graded
     // the way a research note is: by whether there is something behind it.
-    let grounding = Grounding { from_a_source: true, about_your_world: false, had_the_context: true };
+    let grounding = Grounding {
+        from_a_source: true,
+        about_your_world: false,
+        had_the_context: true,
+    };
     let (base_confidence, _score, base_note) = certainty::assess(&result, &grounding, ccfg);
 
     let (confidence, note, verified) =
         verify_result(task, &result, verify, base_confidence, base_note);
 
-    Ok(Delegated { task: task.to_string(), result, confidence, note, verified })
+    Ok(Delegated {
+        task: task.to_string(),
+        result,
+        confidence,
+        note,
+        verified,
+    })
 }
 
 /// The local accuracy pass, on its own so both a delegated task and a
@@ -343,8 +357,13 @@ mod tests {
     fn a_clean_result_comes_back_fine() {
         let remote = MockLlm("The capital of France is Paris.".into());
         let verify = MockLlm("OK".into());
-        let d = dispatch_task("capital of France?", &remote, Some(&verify), &CertaintyConfig::default())
-            .unwrap();
+        let d = dispatch_task(
+            "capital of France?",
+            &remote,
+            Some(&verify),
+            &CertaintyConfig::default(),
+        )
+        .unwrap();
         assert!(d.verified);
         assert_eq!(d.confidence, Confidence::Fine);
         assert_eq!(d.spoken(), "The capital of France is Paris.");
@@ -354,25 +373,44 @@ mod tests {
     fn a_flagged_result_is_handed_over_with_the_doubt() {
         let remote = MockLlm("The capital of France is Berlin.".into());
         let verify = MockLlm("Wrong — the capital of France is Paris, not Berlin.".into());
-        let d = dispatch_task("capital of France?", &remote, Some(&verify), &CertaintyConfig::default())
-            .unwrap();
+        let d = dispatch_task(
+            "capital of France?",
+            &remote,
+            Some(&verify),
+            &CertaintyConfig::default(),
+        )
+        .unwrap();
         assert!(!d.verified, "a flagged answer is not verified");
-        assert_ne!(d.confidence, Confidence::Fine, "a flagged answer must not read as clean");
-        assert!(d.spoken().to_lowercase().contains("flagged"), "the doubt must be attached: {}", d.spoken());
+        assert_ne!(
+            d.confidence,
+            Confidence::Fine,
+            "a flagged answer must not read as clean"
+        );
+        assert!(
+            d.spoken().to_lowercase().contains("flagged"),
+            "the doubt must be attached: {}",
+            d.spoken()
+        );
     }
 
     #[test]
     fn a_worker_that_returns_nothing_is_an_error_not_an_answer() {
         let remote = MockLlm("   ".into());
         let e = dispatch_task("do the thing", &remote, None, &CertaintyConfig::default());
-        assert!(e.is_err(), "empty output is a failure, not a silent success");
+        assert!(
+            e.is_err(),
+            "empty output is a failure, not a silent success"
+        );
     }
 
     #[test]
     fn no_verifier_means_it_runs_but_is_not_marked_verified() {
         let remote = MockLlm("A plain answer.".into());
         let d = dispatch_task("q", &remote, None, &CertaintyConfig::default()).unwrap();
-        assert!(!d.verified, "no local check ran, so it is not marked verified");
+        assert!(
+            !d.verified,
+            "no local check ran, so it is not marked verified"
+        );
         assert_eq!(d.result, "A plain answer.");
     }
 

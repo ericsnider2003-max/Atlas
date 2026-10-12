@@ -13,7 +13,13 @@ use atlas::config::Config;
 use atlas::daemon::Daemon;
 use atlas::himalaya;
 #[cfg(unix)]
-use atlas::{intent::Intent, mail::Account, platform::{mock::MockPlatform, Monitor}, proactive::{Proactive, ProactiveConfig}, store::Store};
+use atlas::{
+    intent::Intent,
+    mail::Account,
+    platform::{mock::MockPlatform, Monitor},
+    proactive::{Proactive, ProactiveConfig},
+    store::Store,
+};
 use std::path::Path;
 #[cfg(unix)]
 use std::path::PathBuf;
@@ -55,9 +61,15 @@ fn envelopes_and_a_decoded_message_become_atlas_messages() {
     assert_eq!(found[1].1.in_reply_to, "<abc@mail.example.com>");
 
     assert!(himalaya::fill_from_message(&mut m, MESSAGE));
-    assert_eq!(m.body, "Hi Eric — could we meet at the café at 3? Café crème on me.", "the plain part, decoded");
+    assert_eq!(
+        m.body, "Hi Eric — could we meet at the café at 3? Café crème on me.",
+        "the plain part, decoded"
+    );
     assert_eq!(m.cc, "Kim <kim@client.example>");
-    assert_eq!(m.references, "<root@mail.example.com> <abc@mail.example.com>");
+    assert_eq!(
+        m.references,
+        "<root@mail.example.com> <abc@mail.example.com>"
+    );
     assert_eq!(m.list_unsubscribe, "<mailto:unsub@example.com>");
     assert!(m.authentication_results.contains("dkim=pass"));
 
@@ -66,22 +78,66 @@ fn envelopes_and_a_decoded_message_become_atlas_messages() {
     let html_only = r#"{"html_body": [0], "text_body": [], "parts": [{"headers": [], "is_encoding_problem": false,
         "body": {"Html": "<html><body><p>Your order has <b>shipped</b>.</p><script>x()</script></body></html>"}}]}"#;
     assert!(himalaya::fill_from_message(&mut h, html_only));
-    assert!(h.body.contains("Your order has") && h.body.contains("shipped") && !h.body.contains("x()"), "{}", h.body);
+    assert!(
+        h.body.contains("Your order has") && h.body.contains("shipped") && !h.body.contains("x()"),
+        "{}",
+        h.body
+    );
     assert!(himalaya::envelopes("not json").is_none());
 }
 
 #[test]
 fn the_commands_it_is_given_read_without_marking_anything_read() {
     let a = himalaya::search_args("personal", "inbox", 100, &["not", "flag", "seen"]);
-    assert_eq!(a, ["--json", "--account", "personal", "envelope", "search", "--mailbox", "inbox", "--page-size", "100", "not", "flag", "seen"]);
+    assert_eq!(
+        a,
+        [
+            "--json",
+            "--account",
+            "personal",
+            "envelope",
+            "search",
+            "--mailbox",
+            "inbox",
+            "--page-size",
+            "100",
+            "not",
+            "flag",
+            "seen"
+        ]
+    );
     let r = himalaya::read_args("personal", "inbox", "4021");
-    assert_eq!(r, ["--json", "--account", "personal", "message", "read", "--mailbox", "inbox", "4021"]);
-    assert!(!r.iter().any(|x| x == "--seen"), "since Himalaya 2.0 reading leaves it unread unless told --seen");
-    assert_eq!(himalaya::iso_date("01-Sep-2026").as_deref(), Some("2026-09-01"));
-    assert_eq!(himalaya::iso_date("28-Sep-2026").as_deref(), Some("2026-09-28"));
+    assert_eq!(
+        r,
+        [
+            "--json",
+            "--account",
+            "personal",
+            "message",
+            "read",
+            "--mailbox",
+            "inbox",
+            "4021"
+        ]
+    );
+    assert!(
+        !r.iter().any(|x| x == "--seen"),
+        "since Himalaya 2.0 reading leaves it unread unless told --seen"
+    );
+    assert_eq!(
+        himalaya::iso_date("01-Sep-2026").as_deref(),
+        Some("2026-09-01")
+    );
+    assert_eq!(
+        himalaya::iso_date("28-Sep-2026").as_deref(),
+        Some("2026-09-28")
+    );
     assert_eq!(himalaya::iso_date("nonsense"), None);
     let host = himalaya::as_host("C:\\Tools\\himalaya.exe", "work");
-    assert_eq!(himalaya::route(&host), Some(("C:\\Tools\\himalaya.exe".into(), "work".into())));
+    assert_eq!(
+        himalaya::route(&host),
+        Some(("C:\\Tools\\himalaya.exe".into(), "work".into()))
+    );
     assert_eq!(himalaya::route("imap.gmail.com"), None);
 }
 
@@ -100,7 +156,12 @@ fn tmp(tag: &str) -> PathBuf {
 #[cfg(unix)]
 fn stand_in(dir: &Path) -> Option<(PathBuf, PathBuf)> {
     use std::os::unix::fs::PermissionsExt;
-    if std::process::Command::new("python3").arg("--version").output().map(|o| !o.status.success()).unwrap_or(true) {
+    if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .map(|o| !o.status.success())
+        .unwrap_or(true)
+    {
         eprintln!("skipped: no python3 for the stand-in himalaya");
         return None;
     }
@@ -129,7 +190,9 @@ fn stand_in(dir: &Path) -> Option<(PathBuf, PathBuf)> {
 #[test]
 fn a_mail_check_goes_through_himalaya_with_nothing_from_the_vault() {
     let dir = tmp("check");
-    let Some((script, log)) = stand_in(&dir) else { return };
+    let Some((script, log)) = stand_in(&dir) else {
+        return;
+    };
     let mut c = Config::load(Path::new("config")).unwrap();
     {
         let t = c.tools.as_mut().unwrap();
@@ -137,20 +200,53 @@ fn a_mail_check_goes_through_himalaya_with_nothing_from_the_vault() {
         t.mail.backend = "himalaya".into();
         t.mail.himalaya = script.display().to_string();
         // No vault entry, no server: Himalaya has its own.
-        t.mail.accounts = vec![Account { name: "personal".into(), address: "eric@example.com".into(), ..Default::default() }];
+        t.mail.accounts = vec![Account {
+            name: "personal".into(),
+            address: "eric@example.com".into(),
+            ..Default::default()
+        }];
     }
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("check-store")), Proactive::new(ProactiveConfig::default()));
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("check-store")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     d.connectivity.set(atlas::connectivity::Reach::Online, 0);
     let said = d.execute(&Intent::Mail(String::new()));
-    assert!(!said.contains("couldn't get at any"), "the vault wasn't needed: {said}");
+    assert!(
+        !said.contains("couldn't get at any"),
+        "the vault wasn't needed: {said}"
+    );
     let after = d.errands_done_for_test().join(" ");
     let calls = std::fs::read_to_string(&log).unwrap();
     assert!(calls.contains("--json --account personal envelope search --mailbox inbox --page-size 100 not flag seen"), "{calls}");
-    assert!(calls.contains("message read --mailbox inbox 4021") && calls.contains("message read --mailbox inbox 4022"), "{calls}");
+    assert!(
+        calls.contains("message read --mailbox inbox 4021")
+            && calls.contains("message read --mailbox inbox 4022"),
+        "{calls}"
+    );
     assert!(!calls.contains("--seen"), "{calls}");
-    assert!(!after.to_lowercase().contains("couldn't reach") && !after.contains("Himalaya said"), "{after}");
-    assert!(after.contains('2') || after.to_lowercase().contains("two") || after.contains("Jane") || after.contains("Café"), "the two messages were read: {after}");
+    assert!(
+        !after.to_lowercase().contains("couldn't reach") && !after.contains("Himalaya said"),
+        "{after}"
+    );
+    assert!(
+        after.contains('2')
+            || after.to_lowercase().contains("two")
+            || after.contains("Jane")
+            || after.contains("Café"),
+        "the two messages were read: {after}"
+    );
 }
 
 #[test]

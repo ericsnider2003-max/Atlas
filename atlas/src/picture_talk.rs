@@ -43,7 +43,12 @@ impl Default for PictureTalkConfig {
     fn default() -> Self {
         PictureTalkConfig {
             enabled: true,
-            program: if cfg!(windows) { "tools/llama/llama-mtmd-cli.exe" } else { "tools/llama/llama-mtmd-cli" }.into(),
+            program: if cfg!(windows) {
+                "tools/llama/llama-mtmd-cli.exe"
+            } else {
+                "tools/llama/llama-mtmd-cli"
+            }
+            .into(),
             model: "models/Qwen3VL-4B-Instruct-Q4_K_M.gguf".into(),
             projector: "models/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf".into(),
             most_words: 300,
@@ -59,7 +64,11 @@ pub const MEMORY_MB: u64 = 3_600;
 pub fn where_they_are(cfg: &PictureTalkConfig, root: &Path) -> [PathBuf; 3] {
     let at = |p: &str| {
         let p = PathBuf::from(p);
-        if p.is_absolute() { p } else { root.join(p) }
+        if p.is_absolute() {
+            p
+        } else {
+            root.join(p)
+        }
     };
     [at(&cfg.program), at(&cfg.model), at(&cfg.projector)]
 }
@@ -96,7 +105,15 @@ pub fn ready(cfg: &PictureTalkConfig, root: &Path) -> Result<(), String> {
 /// read properly if there is one. A real question is passed on as asked.
 pub fn question_for(said: &str) -> String {
     let s = said.trim().trim_end_matches(['.', '?', '!']).to_lowercase();
-    let only_looking = ["view my display", "look at my screen", "view display", "what's on my screen", "whats on my screen", "what is on my screen", ""];
+    let only_looking = [
+        "view my display",
+        "look at my screen",
+        "view display",
+        "what's on my screen",
+        "whats on my screen",
+        "what is on my screen",
+        "",
+    ];
     if only_looking.contains(&s.as_str()) {
         "Say briefly what is on this screen, in two or three plain sentences for someone who can't see it. \
          If there is a chart or graph, say what it measures, the main trend, and the highest and lowest \
@@ -112,7 +129,12 @@ pub fn question_for(said: &str) -> String {
 }
 
 /// The command line for one question about one picture.
-pub fn command_line(cfg: &PictureTalkConfig, root: &Path, image: &Path, question: &str) -> Vec<String> {
+pub fn command_line(
+    cfg: &PictureTalkConfig,
+    root: &Path,
+    image: &Path,
+    question: &str,
+) -> Vec<String> {
     let [_, model, projector] = where_they_are(cfg, root);
     vec![
         "-m".into(),
@@ -151,9 +173,15 @@ pub fn the_answer_in(stdout: &str) -> String {
         .lines()
         .filter(|l| {
             let t = l.trim_start();
-            !(t.starts_with("llama_") || t.starts_with("main:") || t.starts_with("clip_") || t.starts_with("mtmd_")
-                || t.starts_with("encoding image") || t.starts_with("image ") && t.contains("encoded")
-                || t.starts_with("decoding image") || t.starts_with("load_") || t.starts_with("ggml_"))
+            !(t.starts_with("llama_")
+                || t.starts_with("main:")
+                || t.starts_with("clip_")
+                || t.starts_with("mtmd_")
+                || t.starts_with("encoding image")
+                || t.starts_with("image ") && t.contains("encoded")
+                || t.starts_with("decoding image")
+                || t.starts_with("load_")
+                || t.starts_with("ggml_"))
         })
         .collect();
     let joined = kept.join("\n");
@@ -202,8 +230,18 @@ pub fn ask_until(
         });
         rx
     };
-    let out = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
-    let err = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let out = drain(
+        child
+            .stdout
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let err = drain(
+        child
+            .stderr
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(ASK_TIMEOUT_SECS);
     let status = loop {
         match child.try_wait() {
@@ -220,19 +258,33 @@ pub fn ask_until(
     };
     // Finished by itself: its output is all there. Stopped: a moment for
     // what's already written, and no more.
-    let wait = if status.is_some() { std::time::Duration::from_secs(30) } else { std::time::Duration::from_millis(500) };
+    let wait = if status.is_some() {
+        std::time::Duration::from_secs(30)
+    } else {
+        std::time::Duration::from_millis(500)
+    };
     let stdout = out.recv_timeout(wait).unwrap_or_default();
     let stderr = err.recv_timeout(wait).unwrap_or_default();
     let Some(status) = status else {
         if stop() {
             return Err("you asked me to stop".into());
         }
-        return Err(format!("the picture reader took longer than {} minutes, so I stopped it", ASK_TIMEOUT_SECS / 60));
+        return Err(format!(
+            "the picture reader took longer than {} minutes, so I stopped it",
+            ASK_TIMEOUT_SECS / 60
+        ));
     };
     let answer = the_answer_in(&stdout);
     if !status.success() || answer.is_empty() {
-        let last = stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it gave no answer");
-        return Err(format!("the picture reader stopped without an answer ({})", last.trim()));
+        let last = stderr
+            .lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("it gave no answer");
+        return Err(format!(
+            "the picture reader stopped without an answer ({})",
+            last.trim()
+        ));
     }
     Ok(answer)
 }
@@ -273,10 +325,17 @@ pub fn server_body(question: &str, png: &[u8], most_words: u32) -> String {
 /// The answer in a `/v1/chat/completions` reply; `Err` says what came back
 /// instead, in words.
 pub fn server_answer(raw: &str) -> Result<String, String> {
-    let v: serde_json::Value =
-        serde_json::from_str(raw.trim()).map_err(|_| format!("the model's reply wasn't readable ({})", raw.chars().take(120).collect::<String>()))?;
+    let v: serde_json::Value = serde_json::from_str(raw.trim()).map_err(|_| {
+        format!(
+            "the model's reply wasn't readable ({})",
+            raw.chars().take(120).collect::<String>()
+        )
+    })?;
     if let Some(e) = v.get("error") {
-        let msg = e.get("message").and_then(|m| m.as_str()).unwrap_or("an error");
+        let msg = e
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("an error");
         return Err(format!("the model couldn't read the picture: {msg}"));
     }
     let text = v
@@ -294,20 +353,33 @@ pub fn server_answer(raw: &str) -> Result<String, String> {
 /// Ask the running talking model about `image`. `Err` when it isn't up, has
 /// no eyes, or didn't answer -- the caller then falls back to `ask_until`
 /// if there's room for it.
-pub fn ask_server(url: &str, image: &Path, question: &str, most_words: u32) -> Result<String, String> {
-    let png = std::fs::read(image).map_err(|e| format!("I couldn't read the picture back ({e})"))?;
+pub fn ask_server(
+    url: &str,
+    image: &Path,
+    question: &str,
+    most_words: u32,
+) -> Result<String, String> {
+    let png =
+        std::fs::read(image).map_err(|e| format!("I couldn't read the picture back ({e})"))?;
     ask_server_png(url, &png, question, most_words)
 }
 
 /// `ask_server` for a picture held in memory, never written to disk -- what
 /// watching uses (`camwatch`).
-pub fn ask_server_png(url: &str, png: &[u8], question: &str, most_words: u32) -> Result<String, String> {
+pub fn ask_server_png(
+    url: &str,
+    png: &[u8],
+    question: &str,
+    most_words: u32,
+) -> Result<String, String> {
     let body = server_body(question, png, most_words);
     let mut tool = crate::models::server_post();
     tool.timeout_secs = 120;
     let mut vars = crate::tools::Vars::new();
     vars.insert("url".into(), url.to_string());
-    let raw = tool.run(&vars, Some(&body)).map_err(|e| format!("the model didn't answer ({e})"))?;
+    let raw = tool
+        .run(&vars, Some(&body))
+        .map_err(|e| format!("the model didn't answer ({e})"))?;
     server_answer(&raw)
 }
 
@@ -324,7 +396,10 @@ pub const MAX_WIDTH: u32 = 1600;
 pub fn smaller(image: &Path) -> Option<std::path::PathBuf> {
     let small = image.with_file_name(format!(
         "{}_small.png",
-        image.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default()
+        image
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default()
     ));
     let ok = crate::tools::command("ffmpeg")
         .args(["-y", "-loglevel", "error", "-i"])
@@ -353,7 +428,10 @@ mod server_tests {
         let v: serde_json::Value = serde_json::from_str(&body).unwrap();
         let parts = &v["messages"][0]["content"];
         assert_eq!(parts[0]["type"], "image_url");
-        assert!(parts[0]["image_url"]["url"].as_str().unwrap().starts_with("data:image/png;base64,iVBORw"));
+        assert!(parts[0]["image_url"]["url"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png;base64,iVBORw"));
         assert_eq!(parts[1]["text"], "Can you see me?");
         assert_eq!(v["id_slot"], 1);
     }
@@ -363,7 +441,9 @@ mod server_tests {
         let ok = r#"{"choices":[{"message":{"role":"assistant","content":"You're at your desk.<|im_end|>"}}]}"#;
         assert_eq!(server_answer(ok).unwrap(), "You're at your desk.");
         let no_eyes = r#"{"error":{"code":500,"message":"image input is not supported - hint: if this is unexpected, you may need to provide the mmproj"}}"#;
-        assert!(server_answer(no_eyes).unwrap_err().contains("not supported"));
+        assert!(server_answer(no_eyes)
+            .unwrap_err()
+            .contains("not supported"));
         assert!(server_answer("").is_err());
     }
 }

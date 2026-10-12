@@ -24,7 +24,12 @@ fn the_moment_used_here_is_what_it_says() {
 
 #[test]
 fn tomorrow_at_3_is_3pm_tomorrow_where_you_are() {
-    let w: When = resolve_when_in("remind me tomorrow at 3pm", WED_9AM_PACIFIC, &atlas::tz::Zone::fixed(PDT)).unwrap();
+    let w: When = resolve_when_in(
+        "remind me tomorrow at 3pm",
+        WED_9AM_PACIFIC,
+        &atlas::tz::Zone::fixed(PDT),
+    )
+    .unwrap();
     assert_eq!(hhmm(w.start, PDT), "15:00", "3pm on your clock");
     assert_eq!(weekday(w.start, PDT), 3, "Thursday, where you are");
     // The real moment is 22:00 UTC. On UTC's clock this used to be 15:00
@@ -42,14 +47,23 @@ fn today_means_your_today_even_late_in_the_evening() {
     let w = resolve_when_in("today at 11pm", late, &atlas::tz::Zone::fixed(PDT)).unwrap();
     assert_eq!(day(w.start, PDT), day(late, PDT), "still your Wednesday");
     assert_eq!(hhmm(w.start, PDT), "23:00");
-    assert_eq!(w.start - late, 3600, "an hour from now, not a day and an hour");
+    assert_eq!(
+        w.start - late,
+        3600,
+        "an hour from now, not a day and an hour"
+    );
 }
 
 #[test]
 fn a_named_weekday_counts_from_your_day() {
     // At 22:00 Wednesday Pacific (Thursday in UTC), "on Thursday" is tomorrow.
     let late = WED_9AM_PACIFIC + 13 * 3600;
-    let w = resolve_when_in("dentist on thursday at 9am", late, &atlas::tz::Zone::fixed(PDT)).unwrap();
+    let w = resolve_when_in(
+        "dentist on thursday at 9am",
+        late,
+        &atlas::tz::Zone::fixed(PDT),
+    )
+    .unwrap();
     assert_eq!(weekday(w.start, PDT), 3);
     assert_eq!(hhmm(w.start, PDT), "09:00");
     assert!(w.start - late < 86_400, "tomorrow, not next week");
@@ -58,15 +72,27 @@ fn a_named_weekday_counts_from_your_day() {
 #[test]
 fn an_event_says_its_time_on_your_clock() {
     let mut c = atlas::calendar::Calendar::default();
-    let w = resolve_when_in("call tomorrow at 3pm", WED_9AM_PACIFIC, &atlas::tz::Zone::fixed(PDT)).unwrap();
+    let w = resolve_when_in(
+        "call tomorrow at 3pm",
+        WED_9AM_PACIFIC,
+        &atlas::tz::Zone::fixed(PDT),
+    )
+    .unwrap();
     c.add("call", w, None, WED_9AM_PACIFIC);
     let e = &c.occurrences_between(w.start, w.end)[0];
-    assert_eq!(hhmm(e.start, PDT), "15:00", "the event is at 3 pm on your clock");
+    assert_eq!(
+        hhmm(e.start, PDT),
+        "15:00",
+        "the event is at 3 pm on your clock"
+    );
     let said = e.say_when_in(&atlas::tz::Zone::fixed(PDT));
     // Since the merge (26 Sep) the time is followed by the zone's name, so
     // it says which clock it's on.
     assert!(said.contains(" 15:00"), "{said}");
-    assert!(!said.contains('Z'), "no UTC marker on a time meant for you: {said}");
+    assert!(
+        !said.contains('Z'),
+        "no UTC marker on a time meant for you: {said}"
+    );
 }
 
 #[test]
@@ -86,7 +112,13 @@ fn nothing_left_reads_the_hour_straight_off_utc() {
     // The pattern the old code used everywhere: seconds mod a day, over an
     // hour. Market sessions and fx rollovers are defined in UTC and are
     // allowed; everything that decides something about *your* day is not.
-    let allowed = ["src/market/", "src/fxday.rs", "src/rollover.rs", "src/localclock.rs", "src/digest.rs"];
+    let allowed = [
+        "src/market/",
+        "src/fxday.rs",
+        "src/rollover.rs",
+        "src/localclock.rs",
+        "src/digest.rs",
+    ];
     let mut offenders = Vec::new();
     for entry in walk("src") {
         let path = entry.to_string_lossy().replace('\\', "/");
@@ -96,12 +128,19 @@ fn nothing_left_reads_the_hour_straight_off_utc() {
         let text = std::fs::read_to_string(&entry).unwrap_or_default();
         for (n, line) in text.lines().enumerate() {
             let code = line.split("//").next().unwrap_or("");
-            if code.contains("% 86_400) / 3600") || code.contains("% 86400) / 3600") || code.contains("/ 3600) % 24") {
+            if code.contains("% 86_400) / 3600")
+                || code.contains("% 86400) / 3600")
+                || code.contains("/ 3600) % 24")
+            {
                 offenders.push(format!("{path}:{}: {}", n + 1, line.trim()));
             }
         }
     }
-    assert!(offenders.is_empty(), "the hour read on UTC's clock:\n  {}", offenders.join("\n  "));
+    assert!(
+        offenders.is_empty(),
+        "the hour read on UTC's clock:\n  {}",
+        offenders.join("\n  ")
+    );
 }
 
 fn walk(dir: &str) -> Vec<std::path::PathBuf> {
@@ -124,5 +163,8 @@ fn the_suite_runs_on_utc_and_the_program_reads_the_machine() {
     let cfg = std::fs::read_to_string(".cargo/config.toml").unwrap();
     assert!(cfg.contains("ATLAS_CLOCK_OFFSET = \"0\""));
     let src = std::fs::read_to_string("src/localclock.rs").unwrap();
-    assert!(src.contains("GetTimeZoneInformation"), "Windows is asked directly");
+    assert!(
+        src.contains("GetTimeZoneInformation"),
+        "Windows is asked directly"
+    );
 }

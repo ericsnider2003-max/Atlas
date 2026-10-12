@@ -135,7 +135,9 @@ impl Identity {
 
     /// Is a proof still good?
     pub fn within_grace(&self, cfg: &IdentityConfig, t: u64) -> bool {
-        self.proved_at.map(|at| t.saturating_sub(at) < cfg.grace_secs).unwrap_or(false)
+        self.proved_at
+            .map(|at| t.saturating_sub(at) < cfg.grace_secs)
+            .unwrap_or(false)
     }
 
     /// Proof is void after anything that suggests you walked away.
@@ -162,7 +164,11 @@ impl Identity {
         // Your phone unlocked with your face before Atlas heard the request.
         // Asking again asks the same question twice.
         if let From::TrustedDevice(name) = from {
-            if cfg.trusted_devices.iter().any(|d| d.eq_ignore_ascii_case(name)) {
+            if cfg
+                .trusted_devices
+                .iter()
+                .any(|d| d.eq_ignore_ascii_case(name))
+            {
                 return Gate::Proceed(format!("{name} is a device you trust"));
             }
         }

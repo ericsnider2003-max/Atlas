@@ -31,7 +31,11 @@ impl Default for LifecycleConfig {
         keep_warm.insert("hidden_desktop".to_string(), 120);
         // The language model takes seconds to minutes to load.
         keep_warm.insert("model-server".to_string(), 1800);
-        LifecycleConfig { budget_mb: 600, idle_timeout_secs: 90, keep_warm_secs: keep_warm }
+        LifecycleConfig {
+            budget_mb: 600,
+            idle_timeout_secs: 90,
+            keep_warm_secs: keep_warm,
+        }
     }
 }
 
@@ -48,7 +52,8 @@ pub const MODEL_RESIDENT_SECS: u64 = 7 * 24 * 60 * 60;
 pub fn model_stays_when_it_fits(mut cfg: LifecycleConfig, fits: bool) -> LifecycleConfig {
     if fits {
         let now = cfg.keep_warm_secs.get("model-server").copied().unwrap_or(0);
-        cfg.keep_warm_secs.insert("model-server".to_string(), now.max(MODEL_RESIDENT_SECS));
+        cfg.keep_warm_secs
+            .insert("model-server".to_string(), now.max(MODEL_RESIDENT_SECS));
     }
     cfg
 }
@@ -103,7 +108,10 @@ impl Order {
 
 impl Supervisor {
     pub fn new(cfg: LifecycleConfig) -> Self {
-        Supervisor { cfg, running: Vec::new() }
+        Supervisor {
+            cfg,
+            running: Vec::new(),
+        }
     }
 
     pub fn memory_mb(&self) -> u64 {
@@ -136,9 +144,9 @@ impl Supervisor {
                 None => {
                     return (
                         Order::Refuse(format!(
-                            "{name} needs {memory_mb}MB, budget is {}MB and everything running is busy",
-                            self.cfg.budget_mb
-                        )),
+                        "{name} needs {memory_mb}MB, budget is {}MB and everything running is busy",
+                        self.cfg.budget_mb
+                    )),
                         evicted,
                     )
                 }
@@ -164,7 +172,11 @@ impl Supervisor {
     }
 
     fn timeout_for(&self, name: &str) -> u64 {
-        *self.cfg.keep_warm_secs.get(name).unwrap_or(&self.cfg.idle_timeout_secs)
+        *self
+            .cfg
+            .keep_warm_secs
+            .get(name)
+            .unwrap_or(&self.cfg.idle_timeout_secs)
     }
 
     /// Shut down anything idle past its timeout. Call every tick — it is cheap.
@@ -173,7 +185,14 @@ impl Supervisor {
         let cfg_names: Vec<(String, u64, bool, u64)> = self
             .running
             .iter()
-            .map(|h| (h.name.clone(), h.last_used, h.in_use, self.timeout_for(&h.name)))
+            .map(|h| {
+                (
+                    h.name.clone(),
+                    h.last_used,
+                    h.in_use,
+                    self.timeout_for(&h.name),
+                )
+            })
             .collect();
         for (name, last_used, in_use, timeout) in cfg_names {
             if !in_use && t.saturating_sub(last_used) >= timeout {
@@ -186,7 +205,11 @@ impl Supervisor {
 
     /// Shut everything down — on suspend, on battery, on exit.
     pub fn stop_all(&mut self) -> Vec<Order> {
-        let out = self.running.iter().map(|h| Order::Stop(h.name.clone())).collect();
+        let out = self
+            .running
+            .iter()
+            .map(|h| Order::Stop(h.name.clone()))
+            .collect();
         self.running.clear();
         out
     }
@@ -234,7 +257,10 @@ pub struct Helpers {
 
 impl Helpers {
     pub fn new(cfg: LifecycleConfig) -> Self {
-        Helpers { sup: Supervisor::new(cfg), live: Vec::new() }
+        Helpers {
+            sup: Supervisor::new(cfg),
+            live: Vec::new(),
+        }
     }
 
     /// Ask for a helper, starting it if it is not already warm.
@@ -354,7 +380,11 @@ impl Helpers {
         let mut said = Vec::new();
         let mut free = room();
         if free < memory_mb {
-            let idle_server = self.sup.running.iter().any(|h| h.name == "model-server" && !h.in_use);
+            let idle_server = self
+                .sup
+                .running
+                .iter()
+                .any(|h| h.name == "model-server" && !h.in_use);
             if idle_server {
                 self.finished("model-server");
                 said.push(format!("stopped the talking model to make room for the {name}; it starts again on the next question"));
@@ -371,7 +401,13 @@ impl Helpers {
         self.sup.running.retain(|h| h.name != name);
         // On the books at nothing, like the model server: it was judged by the
         // machine, and must not crowd the small helpers out of their budget.
-        self.sup.running.push(Helper { name: name.into(), memory_mb: 0, started: t, last_used: t, in_use: true });
+        self.sup.running.push(Helper {
+            name: name.into(),
+            memory_mb: 0,
+            started: t,
+            last_used: t,
+            in_use: true,
+        });
         Ok(said)
     }
 
@@ -389,7 +425,13 @@ impl Helpers {
                 Ok(Some(status)) => {
                     let (name, _) = self.live.remove(i);
                     self.sup.running.retain(|h| h.name != name);
-                    gone.push((name, status.code().map(|c| format!("exit code {c}")).unwrap_or_else(|| "stopped by a signal".into())));
+                    gone.push((
+                        name,
+                        status
+                            .code()
+                            .map(|c| format!("exit code {c}"))
+                            .unwrap_or_else(|| "stopped by a signal".into()),
+                    ));
                 }
                 _ => i += 1,
             }
@@ -427,7 +469,9 @@ mod heavy_tests {
     #[test]
     fn a_picture_reader_is_judged_by_free_memory_not_the_helper_budget() {
         let mut h = Helpers::new(LifecycleConfig::default());
-        assert!(h.want_heavy("picture reader", 3600, 1, &mut || 8000).is_ok());
+        assert!(h
+            .want_heavy("picture reader", 3600, 1, &mut || 8000)
+            .is_ok());
         // On the books at nothing: a camera still fits the small budget.
         assert!(h.want("camera", 60, 2, || Ok(None)).is_ok());
     }
@@ -438,13 +482,17 @@ mod heavy_tests {
         h.want("model-server", 0, 1, || Ok(None)).unwrap();
         h.done("model-server", 1);
         let mut frees = vec![2000u64, 6000].into_iter();
-        let said = h.want_heavy("picture reader", 3600, 2, &mut || frees.next().unwrap()).unwrap();
+        let said = h
+            .want_heavy("picture reader", 3600, 2, &mut || frees.next().unwrap())
+            .unwrap();
         assert_eq!(said.len(), 1);
         assert!(!h.is_running("model-server"));
 
         let mut h = Helpers::new(LifecycleConfig::default());
         h.want("model-server", 0, 1, || Ok(None)).unwrap();
-        let why = h.want_heavy("picture reader", 3600, 2, &mut || 2000).unwrap_err();
+        let why = h
+            .want_heavy("picture reader", 3600, 2, &mut || 2000)
+            .unwrap_err();
         assert!(why.contains("only 2.0 GB is free"), "{why}");
         assert!(h.is_running("model-server"));
     }

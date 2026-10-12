@@ -7,14 +7,17 @@
 //! rules that matter more than the detection does.
 
 use atlas::gaze::{
-    gesture_named, how_often, in_use, read, read_hand,
-    snags, spoken, to_screen, verdict, what_happened, why_look, GazeConfig, Hand, Move, Reason,
-    Shape, Sign, Situation, Snag, Steering, DELIBERATE_MS, GONE_AFTER, TAP_SLOP,
+    gesture_named, how_often, in_use, read, read_hand, snags, spoken, to_screen, verdict,
+    what_happened, why_look, GazeConfig, Hand, Move, Reason, Shape, Sign, Situation, Snag,
+    Steering, DELIBERATE_MS, GONE_AFTER, TAP_SLOP,
 };
 use atlas::presence::Gesture;
 
 fn cfg() -> GazeConfig {
-    GazeConfig { enabled: true, ..GazeConfig::default() }
+    GazeConfig {
+        enabled: true,
+        ..GazeConfig::default()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -56,7 +59,10 @@ fn what_the_detector_could_not_do_is_kept_and_said() {
 
 #[test]
 fn a_switched_off_camera_says_so_rather_than_reporting_an_empty_room() {
-    let off = GazeConfig { enabled: false, ..GazeConfig::default() };
+    let off = GazeConfig {
+        enabled: false,
+        ..GazeConfig::default()
+    };
     assert!(spoken(&read("", &off), &off).contains("switched off"));
 }
 
@@ -69,7 +75,10 @@ fn a_reading_below_the_floor_is_left_out_rather_than_written_down_as_no() {
     let s = read("faces: 2 0.30\ngesture: thumb_up 0.20\n", &cfg());
     assert_eq!(s.faces, None, "an unsure reading is not a negative one");
     assert_eq!(s.gesture, None);
-    assert!(!s.saw_anything(), "so nothing downstream reads a shrug as a finding");
+    assert!(
+        !s.saw_anything(),
+        "so nothing downstream reads a shrug as a finding"
+    );
 }
 
 #[test]
@@ -167,13 +176,22 @@ fn a_wave_is_a_greeting_and_not_an_answer() {
 #[test]
 fn it_distinguishes_the_three_states_a_person_would_confuse() {
     let c = cfg();
-    let off = GazeConfig { enabled: false, ..GazeConfig::default() };
+    let off = GazeConfig {
+        enabled: false,
+        ..GazeConfig::default()
+    };
     let unread = spoken(&read("", &c), &c);
     let empty = spoken(&read("faces: 0 0.99\n", &c), &c);
     let disabled = spoken(&read("", &off), &off);
 
-    assert_ne!(unread, empty, "\"couldn't look\" and \"nobody there\" differ");
-    assert_ne!(unread, disabled, "\"couldn't look\" and \"not watching\" differ");
+    assert_ne!(
+        unread, empty,
+        "\"couldn't look\" and \"nobody there\" differ"
+    );
+    assert_ne!(
+        unread, disabled,
+        "\"couldn't look\" and \"not watching\" differ"
+    );
     assert!(empty.contains("nobody"));
 }
 
@@ -219,7 +237,6 @@ fn the_camera_is_off_until_it_is_turned_on() {
     );
 }
 
-
 // ---------------------------------------------------------------------------
 // When the camera is on, and why
 // ---------------------------------------------------------------------------
@@ -240,7 +257,10 @@ fn an_idle_atlas_does_not_watch_the_room() {
 
 #[test]
 fn a_question_on_the_table_opens_the_camera() {
-    let now = Situation { question_waiting: true, ..Situation::default() };
+    let now = Situation {
+        question_waiting: true,
+        ..Situation::default()
+    };
     assert_eq!(why_look(&now, &cfg()), Some(Reason::Waiting));
 }
 
@@ -251,7 +271,10 @@ fn a_question_on_the_table_is_looked_at_often_enough_to_catch_a_hand() {
         "a hand held up for two seconds and missed is a feature that does not \
          work"
     );
-    assert!(how_often(Reason::Steering) <= 2, "steering has to feel immediate");
+    assert!(
+        how_often(Reason::Steering) <= 2,
+        "steering has to feel immediate"
+    );
 }
 
 #[test]
@@ -259,10 +282,16 @@ fn watching_while_you_talk_is_something_you_turn_on_not_the_default() {
     // "Sometimes I want Atlas to see me when talking" is not "watch every
     // conversation", and watching every conversation is a camera on for most
     // of the working day.
-    let mid = Situation { mid_conversation: true, ..Situation::default() };
+    let mid = Situation {
+        mid_conversation: true,
+        ..Situation::default()
+    };
     assert_eq!(why_look(&mid, &cfg()), None);
 
-    let opted_in = Situation { watch_while_talking: true, ..mid };
+    let opted_in = Situation {
+        watch_while_talking: true,
+        ..mid
+    };
     assert_eq!(why_look(&opted_in, &cfg()), Some(Reason::Talking));
     assert!(!GazeConfig::default().watch_while_talking);
 }
@@ -282,7 +311,10 @@ fn steering_outranks_everything_else() {
 
 #[test]
 fn a_switched_off_camera_has_no_reason_to_be_on_whatever_is_happening() {
-    let off = GazeConfig { enabled: false, ..GazeConfig::default() };
+    let off = GazeConfig {
+        enabled: false,
+        ..GazeConfig::default()
+    };
     let busy = Situation {
         steering: true,
         question_waiting: true,
@@ -314,7 +346,12 @@ fn every_reason_can_be_said_out_loud() {
 
 #[test]
 fn only_steering_lets_a_hand_command_anything() {
-    for r in [Reason::Waiting, Reason::Talking, Reason::CheckingWhoElse, Reason::YouAsked] {
+    for r in [
+        Reason::Waiting,
+        Reason::Talking,
+        Reason::CheckingWhoElse,
+        Reason::YouAsked,
+    ] {
         assert!(
             !r.hands_may_steer(),
             "a misread gesture that answers a question is a wrong answer to a \
@@ -325,12 +362,6 @@ fn only_steering_lets_a_hand_command_anything() {
     assert!(Reason::Steering.hands_may_steer());
 }
 
-
-
-
-
-
-
 #[test]
 fn steering_switches_itself_off() {
     assert!(
@@ -339,7 +370,6 @@ fn steering_switches_itself_off() {
          empty room because you walked away mid-gesture"
     );
 }
-
 
 // ---------------------------------------------------------------------------
 // Direct manipulation
@@ -351,11 +381,20 @@ fn steering_switches_itself_off() {
 // remote control is what you build when you cannot see where the hand is.
 
 fn hand(x: f32, y: f32) -> Hand {
-    Hand { x, y, pinching: false, open: false, sure: 0.9 }
+    Hand {
+        x,
+        y,
+        pinching: false,
+        open: false,
+        sure: 0.9,
+    }
 }
 
 fn pinch(x: f32, y: f32) -> Hand {
-    Hand { pinching: true, ..hand(x, y) }
+    Hand {
+        pinching: true,
+        ..hand(x, y)
+    }
 }
 
 #[test]
@@ -364,7 +403,10 @@ fn your_right_hand_moves_the_pointer_to_your_right() {
     // this backwards makes the whole thing feel broken in a way people
     // struggle to describe.
     let (x, _) = to_screen(&hand(0.1, 0.5), 1000, 500);
-    assert!(x > 800, "a hand at the left of the frame is your right hand: {x}");
+    assert!(
+        x > 800,
+        "a hand at the left of the frame is your right hand: {x}"
+    );
     let (x2, _) = to_screen(&hand(0.9, 0.5), 1000, 500);
     assert!(x2 < 200, "{x2}");
 }
@@ -459,7 +501,10 @@ fn a_hand_that_really_left_puts_down_what_it_was_carrying() {
 #[test]
 fn a_flat_palm_summons_when_empty_handed_and_stops_when_carrying() {
     let mut st = Steering::default();
-    let palm = Hand { open: true, ..hand(0.5, 0.5) };
+    let palm = Hand {
+        open: true,
+        ..hand(0.5, 0.5)
+    };
     // Held, not instant — see below for why.
     let mut got = None;
     for _ in 0..4 {
@@ -495,7 +540,15 @@ fn letting_go_of_something_does_not_summon_atlas() {
     what_happened(Some(pinch(0.5, 0.5)), &mut st, 1000, 500);
     what_happened(Some(pinch(0.2, 0.5)), &mut st, 1000, 500);
     // Fingers relax: open hand, one frame, on the way to resting.
-    let released = what_happened(Some(Hand { open: true, ..hand(0.2, 0.5) }), &mut st, 1000, 500);
+    let released = what_happened(
+        Some(Hand {
+            open: true,
+            ..hand(0.2, 0.5)
+        }),
+        &mut st,
+        1000,
+        500,
+    );
     assert_ne!(
         released,
         Some(Move::Summon),
@@ -528,10 +581,12 @@ fn a_hand_is_read_out_of_what_the_detector_printed() {
     let h = read_hand("hand: 0.25 0.60 pinch 0.9\n", &c).expect("a hand");
     assert!((h.x - 0.25).abs() < 0.01 && (h.y - 0.60).abs() < 0.01);
     assert!(h.pinching && !h.open);
-    assert!(read_hand("hand: 0.25 0.60 pinch 0.2\n", &c).is_none(), "unsure");
+    assert!(
+        read_hand("hand: 0.25 0.60 pinch 0.2\n", &c).is_none(),
+        "unsure"
+    );
     assert!(read_hand("faces: 1 0.99\n", &c).is_none());
 }
-
 
 // ---------------------------------------------------------------------------
 // Choosing gestures that won't collide later
@@ -542,7 +597,12 @@ fn a_hand_is_read_out_of_what_the_detector_printed() {
 // shape you pass through on the way to another one.
 
 fn sign(name: &'static str, means: &'static str, shape: Shape, hold_ms: u32) -> Sign {
-    Sign { name, means, shape, hold_ms }
+    Sign {
+        name,
+        means,
+        shape,
+        hold_ms,
+    }
 }
 
 #[test]
@@ -585,7 +645,12 @@ fn a_shape_you_pass_through_on_the_way_to_another_is_caught() {
 
 #[test]
 fn the_same_thing_held_is_no_longer_something_you_pass_through() {
-    let existing = vec![sign("open palm", "stopping", Shape::OpenHand, DELIBERATE_MS)];
+    let existing = vec![sign(
+        "open palm",
+        "stopping",
+        Shape::OpenHand,
+        DELIBERATE_MS,
+    )];
     let fist = sign("fist", "undo", Shape::ClosedHand, 0);
     assert!(
         snags(&fist, &existing).is_empty(),
@@ -606,14 +671,24 @@ fn two_gestures_with_the_same_shape_is_the_one_thing_that_cannot_work() {
 fn opposites_that_move_in_opposite_directions_are_fine() {
     // Movement is the easiest thing for a camera to read. Eric asked whether
     // reverses would confuse it — sweeps genuinely don't.
-    let existing = vec![sign("swipe left", "next", Shape::Sweep { rightwards: false }, 0)];
+    let existing = vec![sign(
+        "swipe left",
+        "next",
+        Shape::Sweep { rightwards: false },
+        0,
+    )];
     let other = sign("swipe right", "back", Shape::Sweep { rightwards: true }, 0);
     assert!(snags(&other, &existing).is_empty());
 }
 
 #[test]
 fn shapes_that_differ_only_slightly_are_flagged_rather_than_allowed() {
-    let existing = vec![sign("open palm", "stopping", Shape::OpenHand, DELIBERATE_MS)];
+    let existing = vec![sign(
+        "open palm",
+        "stopping",
+        Shape::OpenHand,
+        DELIBERATE_MS,
+    )];
     let pointing = sign("point", "select", Shape::Point, DELIBERATE_MS);
     let found = snags(&pointing, &existing);
     assert!(
@@ -624,7 +699,12 @@ fn shapes_that_differ_only_slightly_are_flagged_rather_than_allowed() {
 
 #[test]
 fn a_clean_gesture_is_simply_accepted() {
-    let s = sign("two hands apart", "make it bigger", Shape::TwoHanded, DELIBERATE_MS);
+    let s = sign(
+        "two hands apart",
+        "make it bigger",
+        Shape::TwoHanded,
+        DELIBERATE_MS,
+    );
     assert!(
         snags(&s, &in_use()).is_empty(),
         "nothing wrong with it: {:?}",
@@ -640,7 +720,10 @@ fn a_problem_is_explained_and_a_fix_offered_rather_than_a_refusal() {
     let said = verdict(&s, &in_use());
     assert!(said.contains("rub their eyes"), "it says why: {said}");
     assert!(said.contains("hold it"), "and what would fix it: {said}");
-    assert!(!said.to_lowercase().contains("cannot"), "not a refusal: {said}");
+    assert!(
+        !said.to_lowercase().contains("cannot"),
+        "not a refusal: {said}"
+    );
 }
 
 #[test]

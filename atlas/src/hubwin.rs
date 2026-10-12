@@ -28,7 +28,11 @@
 /// `server::hub_url`, the one place hub addresses are made, and kept to hub
 /// pages: anything that isn't one opens the hub's front page.
 pub fn page_url(port: u16, token: &str, page: &str) -> String {
-    let page = if page.starts_with("/hub") && !page.contains('?') { page } else { "/hub" };
+    let page = if page.starts_with("/hub") && !page.contains('?') {
+        page
+    } else {
+        "/hub"
+    };
     crate::server::hub_url(port, token, page)
 }
 
@@ -71,7 +75,10 @@ fn turn_away(dir: &std::path::Path, url: &str, port: u16) -> bool {
         // outright, as this did until 27 Sep 2026, left the link doing
         // nothing at all.
         open_in_browser(url);
-        note(dir, &format!("opened in the browser: {}", without_token(url)));
+        note(
+            dir,
+            &format!("opened in the browser: {}", without_token(url)),
+        );
     } else {
         note(dir, &format!("refused {}", without_token(url)));
     }
@@ -100,7 +107,14 @@ fn open_in_browser(url: &str) {
     let target = HSTRING::from(url);
     // SAFETY: every string outlives the call; no window is named.
     unsafe {
-        ShellExecuteW(HWND::default(), w!("open"), &target, PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL);
+        ShellExecuteW(
+            HWND::default(),
+            w!("open"),
+            &target,
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        );
     }
 }
 
@@ -113,7 +127,11 @@ fn open_in_browser(_url: &str) {}
 fn note(dir: &std::path::Path, what: &str) {
     use std::io::Write;
     crate::heard!(std::fs::create_dir_all(dir));
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("hub-region.log")) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("hub-region.log"))
+    {
         crate::kept!(writeln!(f, "{} {what}", crate::store::now()));
     }
 }
@@ -124,9 +142,14 @@ fn note(dir: &std::path::Path, what: &str) {
 #[cfg_attr(not(windows), allow(dead_code))]
 fn browser_args() -> String {
     let mut args = String::from("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection");
-    if let Some(port) = std::env::var("ATLAS_DEV").ok().and_then(|v| v.strip_prefix("hub-inspect:").map(str::to_string)) {
+    if let Some(port) = std::env::var("ATLAS_DEV")
+        .ok()
+        .and_then(|v| v.strip_prefix("hub-inspect:").map(str::to_string))
+    {
         if port.parse::<u16>().is_ok() {
-            args.push_str(&format!(" --remote-debugging-port={port} --remote-debugging-address=127.0.0.1"));
+            args.push_str(&format!(
+                " --remote-debugging-port={port} --remote-debugging-address=127.0.0.1"
+            ));
         }
     }
     args
@@ -144,7 +167,10 @@ pub struct Area {
 impl Area {
     /// Close enough that moving the web view would be wasted work.
     pub fn same_as(&self, o: &Area) -> bool {
-        (self.x - o.x).abs() < 0.5 && (self.y - o.y).abs() < 0.5 && (self.w - o.w).abs() < 0.5 && (self.h - o.h).abs() < 0.5
+        (self.x - o.x).abs() < 0.5
+            && (self.y - o.y).abs() < 0.5
+            && (self.w - o.w).abs() < 0.5
+            && (self.h - o.h).abs() < 0.5
     }
 }
 
@@ -203,7 +229,13 @@ impl Hub {
     /// view on first use; after that only moves it, and loads `url` only when
     /// asked to (`go`), so a page you've navigated to stays put.
     #[cfg(windows)]
-    pub fn show<W: raw_window_handle::HasWindowHandle>(&mut self, parent: &W, area: Area, url: &str, go: bool) {
+    pub fn show<W: raw_window_handle::HasWindowHandle>(
+        &mut self,
+        parent: &W,
+        area: Area,
+        url: &str,
+        go: bool,
+    ) {
         use wry::dpi::{LogicalPosition, LogicalSize};
         let rect = wry::Rect {
             position: LogicalPosition::new(area.x as f64, area.y as f64).into(),
@@ -221,7 +253,9 @@ impl Hub {
             let built = wry::WebViewBuilder::new_with_web_context(&mut ctx)
                 .with_url(url)
                 .with_bounds(rect)
-                .with_navigation_handler(move |u| stays_on_the_hub(&u, port) || turn_away(&log_dir, &u, port))
+                .with_navigation_handler(move |u| {
+                    stays_on_the_hub(&u, port) || turn_away(&log_dir, &u, port)
+                })
                 // A link that opens a new window (`target=_blank`): never a
                 // window of the hub's own; a web address goes to your browser.
                 .with_new_window_req_handler(move |u, _f| {
@@ -257,7 +291,10 @@ impl Hub {
                 Err(e) => {
                     note(&self.data_dir, &format!("the hub region didn't start: {e}"));
                     #[cfg(target_env = "gnu")]
-                    let loader = format!(" Its loader is kept at {}.", crate::webview2_loader::place().display());
+                    let loader = format!(
+                        " Its loader is kept at {}.",
+                        crate::webview2_loader::place().display()
+                    );
                     #[cfg(not(target_env = "gnu"))]
                     let loader = String::new();
                     self.problem = Some(format!(
@@ -268,7 +305,9 @@ impl Hub {
             }
             return;
         }
-        let Some((view, _)) = self.view.as_ref() else { return };
+        let Some((view, _)) = self.view.as_ref() else {
+            return;
+        };
         if self.area.map(|a| !a.same_as(&area)).unwrap_or(true) {
             crate::heard!(view.set_bounds(rect));
             self.area = Some(area);

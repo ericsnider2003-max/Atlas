@@ -71,7 +71,11 @@ impl Stage {
 /// the laptop wakes the lock reads abandoned until Atlas's first tick beats
 /// it, and the overlay used to close itself for good in that moment
 /// (`onlyone::Watching`).
-pub fn atlas_is_up(watching: &mut crate::onlyone::Watching, data_dir: &std::path::Path, now: u64) -> bool {
+pub fn atlas_is_up(
+    watching: &mut crate::onlyone::Watching,
+    data_dir: &std::path::Path,
+    now: u64,
+) -> bool {
     watching.still_there(&crate::onlyone::OnlyOne::at(data_dir).look(now), now)
 }
 
@@ -92,7 +96,11 @@ pub const HIDE_FRAMES: u8 = 5;
 /// no taskbar button and every click passing through it, so only Task
 /// Manager got rid of it. Now a window that fails to be transparent is a
 /// dark caption band for the length of a reply, then gone.
-pub fn overlay_band(screen_w: i32, screen_h: i32, cfg: &crate::overlay::OverlayConfig) -> (i32, i32, i32, i32) {
+pub fn overlay_band(
+    screen_w: i32,
+    screen_h: i32,
+    cfg: &crate::overlay::OverlayConfig,
+) -> (i32, i32, i32, i32) {
     let cy = screen_h / 2;
     let x = (screen_w as f32 * 0.18) as i32;
     let w = (screen_w as f32 * 0.64) as i32;
@@ -112,7 +120,10 @@ pub fn start_if_gone(data_dir: &std::path::Path) {
         return;
     }
     let only = crate::onlyone::OnlyOne::at(&data_dir.join("overlay"));
-    if matches!(only.look(crate::store::now()), crate::onlyone::Found::Running { .. }) {
+    if matches!(
+        only.look(crate::store::now()),
+        crate::onlyone::Found::Running { .. }
+    ) {
         return;
     }
     if let Ok(exe) = std::env::current_exe() {
@@ -133,7 +144,10 @@ pub struct Folders {
 #[cfg(feature = "desktop-ui")]
 /// Run the overlay. Blocks until the background Atlas goes away.
 pub fn run(folders: Folders) -> Result<(), String> {
-    let Folders { data: data_dir, config: config_dir } = folders;
+    let Folders {
+        data: data_dir,
+        config: config_dir,
+    } = folders;
     let only = crate::onlyone::OnlyOne::at(&data_dir.join("overlay"));
     crate::heard!(std::fs::create_dir_all(data_dir.join("overlay")));
     match only.take(crate::store::now()) {
@@ -141,7 +155,8 @@ pub fn run(folders: Folders) -> Result<(), String> {
         Err(_) => return Ok(()), // one is already showing; nothing to do
     }
     let opts = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default().with_icon(crate::mark::window_icon())
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_icon(crate::mark::window_icon())
             .with_title(OVERLAY_TITLE)
             .with_decorations(false)
             .with_transparent(true)
@@ -224,7 +239,10 @@ pub fn run(folders: Folders) -> Result<(), String> {
                         enabled = overlay_cfg(&watch_cfg).enabled;
                         looked = std::time::Instant::now();
                     }
-                    let started = voice.now().filter(|s| s.still_going(crate::speaking::now_ms())).map(|s| s.started_ms);
+                    let started = voice
+                        .now()
+                        .filter(|s| s.still_going(crate::speaking::now_ms()))
+                        .map(|s| s.started_ms);
                     if enabled && started.is_some() && started != last {
                         show_without_focus(hwnd);
                         ctx.request_repaint();
@@ -324,7 +342,9 @@ impl eframe::App for App {
             // Told for a few frames after hiding, not every frame (29 Sep
             // 2026): each command wakes the window again, and told every
             // frame the hidden overlay spun a core at 40% doing nothing.
-            egui::CentralPanel::default().frame(egui::Frame::none()).show(ctx, |_| {});
+            egui::CentralPanel::default()
+                .frame(egui::Frame::none())
+                .show(ctx, |_| {});
             // Hidden, nothing more is asked of the window's own loop once it
             // is told: a hidden window gets no paint from Windows, so eframe
             // kept its loop spinning on every "again in 100 ms" -- the idle
@@ -359,7 +379,9 @@ impl eframe::App for App {
             self.origin = (x as f32, y as f32);
             self.band_w = w as f32;
             crate::winpark::unpark(self.hwnd);
-            ctx.send_viewport_cmd(ViewportCommand::OuterPosition(egui::pos2(x as f32, y as f32)));
+            ctx.send_viewport_cmd(ViewportCommand::OuterPosition(egui::pos2(
+                x as f32, y as f32,
+            )));
             ctx.send_viewport_cmd(ViewportCommand::InnerSize(egui::vec2(w as f32, h as f32)));
             ctx.send_viewport_cmd(ViewportCommand::Visible(true));
             self.shown = true;
@@ -367,15 +389,32 @@ impl eframe::App for App {
         let (elements, opacity) = self.stage.frame(sw, sh, &self.cfg);
         let origin = egui::vec2(self.origin.0, self.origin.1);
         let wrap = self.band_w * 0.94;
-        egui::CentralPanel::default().frame(egui::Frame::none()).show(ctx, |ui| {
-            let painter = ui.painter();
-            for e in &elements {
-                draw(painter, e, origin, wrap, opacity, level, self.stage.showing.as_ref().map(|o| o.started_ms).unwrap_or(0), now);
-            }
-        });
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none())
+            .show(ctx, |ui| {
+                let painter = ui.painter();
+                for e in &elements {
+                    draw(
+                        painter,
+                        e,
+                        origin,
+                        wrap,
+                        opacity,
+                        level,
+                        self.stage
+                            .showing
+                            .as_ref()
+                            .map(|o| o.started_ms)
+                            .unwrap_or(0),
+                        now,
+                    );
+                }
+            });
 
         if alive {
-            ctx.request_repaint_after(std::time::Duration::from_millis(1000 / self.cfg.fps.clamp(10, 60) as u64));
+            ctx.request_repaint_after(std::time::Duration::from_millis(
+                1000 / self.cfg.fps.clamp(10, 60) as u64,
+            ));
         } else {
             // Nothing on screen: look for speech ten times a second, nothing more.
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
@@ -404,7 +443,8 @@ fn see_through(hwnd: isize) -> bool {
     unsafe {
         use windows::Win32::Foundation::{COLORREF, HWND};
         use windows::Win32::UI::WindowsAndMessaging::{
-            GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, GWL_EXSTYLE, LWA_COLORKEY,
+            GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, GWL_EXSTYLE,
+            LWA_COLORKEY,
         };
         if hwnd == 0 {
             return false;
@@ -412,7 +452,13 @@ fn see_through(hwnd: isize) -> bool {
         let h = HWND(hwnd as *mut core::ffi::c_void);
         let style = GetWindowLongPtrW(h, GWL_EXSTYLE) as u32 | crate::overlay::window_style();
         SetWindowLongPtrW(h, GWL_EXSTYLE, style as isize);
-        SetLayeredWindowAttributes(h, COLORREF(crate::overlay::SEE_THROUGH_KEY), 0, LWA_COLORKEY).is_ok()
+        SetLayeredWindowAttributes(
+            h,
+            COLORREF(crate::overlay::SEE_THROUGH_KEY),
+            0,
+            LWA_COLORKEY,
+        )
+        .is_ok()
     }
     #[cfg(not(windows))]
     {
@@ -441,13 +487,27 @@ fn show_without_focus(hwnd: isize) {
 
 #[cfg(feature = "desktop-ui")]
 /// Paint one element of `overlay`'s design.
-fn draw(painter: &eframe::egui::Painter, e: &Element, origin: eframe::egui::Vec2, wrap: f32, opacity: f32, level: Option<f32>, started_ms: u64, now_ms: u64) {
+fn draw(
+    painter: &eframe::egui::Painter,
+    e: &Element,
+    origin: eframe::egui::Vec2,
+    wrap: f32,
+    opacity: f32,
+    level: Option<f32>,
+    started_ms: u64,
+    now_ms: u64,
+) {
     use crate::look_paint::MarkState as Paint;
     use eframe::egui::{self, pos2, vec2, Color32, FontId, Rect};
-    let fade = |c: Color32, a: f32| Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), (a * opacity * 255.0) as u8);
+    let fade = |c: Color32, a: f32| {
+        Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), (a * opacity * 255.0) as u8)
+    };
     match e {
         Element::Mark { x, y, size, state } => {
-            let rect = Rect::from_min_size(pos2(*x as f32, *y as f32) - origin, vec2(*size as f32, *size as f32));
+            let rect = Rect::from_min_size(
+                pos2(*x as f32, *y as f32) - origin,
+                vec2(*size as f32, *size as f32),
+            );
             let paint = match state {
                 crate::overlay::MarkState::Waking => Paint::Waking,
                 crate::overlay::MarkState::Thinking => Paint::Thinking,
@@ -461,32 +521,79 @@ fn draw(painter: &eframe::egui::Painter, e: &Element, origin: eframe::egui::Vec2
         // short of it and show as a dark smudge. The letters' own halo keeps
         // them readable there.
         Element::Shade { .. } if cfg!(windows) => {}
-        Element::Shade { x, y, width, height, strength } => {
+        Element::Shade {
+            x,
+            y,
+            width,
+            height,
+            strength,
+        } => {
             // A darker region, not a box: full strength in the middle, nothing
             // at the edge.
-            let outer = Rect::from_min_size(pos2(*x as f32, *y as f32) - origin, vec2(*width as f32, *height as f32));
+            let outer = Rect::from_min_size(
+                pos2(*x as f32, *y as f32) - origin,
+                vec2(*width as f32, *height as f32),
+            );
             let inner = outer.shrink2(vec2(outer.width() * 0.3, outer.height() * 0.3));
             let dark = fade(crate::look_paint::colourway().ink, *strength);
             let clear = Color32::TRANSPARENT;
             let mut m = egui::Mesh::default();
             for (p, c) in [
-                (outer.left_top(), clear), (outer.right_top(), clear), (outer.right_bottom(), clear), (outer.left_bottom(), clear),
-                (inner.left_top(), dark), (inner.right_top(), dark), (inner.right_bottom(), dark), (inner.left_bottom(), dark),
+                (outer.left_top(), clear),
+                (outer.right_top(), clear),
+                (outer.right_bottom(), clear),
+                (outer.left_bottom(), clear),
+                (inner.left_top(), dark),
+                (inner.right_top(), dark),
+                (inner.right_bottom(), dark),
+                (inner.left_bottom(), dark),
             ] {
                 m.colored_vertex(p, c);
             }
-            for (a, b, c) in [(4, 5, 6), (4, 6, 7), (0, 1, 5), (0, 5, 4), (1, 2, 6), (1, 6, 5), (2, 3, 7), (2, 7, 6), (3, 0, 4), (3, 4, 7)] {
+            for (a, b, c) in [
+                (4, 5, 6),
+                (4, 6, 7),
+                (0, 1, 5),
+                (0, 5, 4),
+                (1, 2, 6),
+                (1, 6, 5),
+                (2, 3, 7),
+                (2, 7, 6),
+                (3, 0, 4),
+                (3, 4, 7),
+            ] {
                 m.add_triangle(a, b, c);
             }
             painter.add(egui::Shape::mesh(m));
         }
-        Element::Typed { x, y, text, size, .. } => {
+        Element::Typed {
+            x, y, text, size, ..
+        } => {
             let font = FontId::proportional(*size as f32);
-            let body = painter.layout(text.clone(), font.clone(), fade(crate::look_paint::colourway().text, 1.0), wrap);
-            let halo = painter.layout(text.clone(), font, fade(crate::look_paint::colourway().ink, 0.75), wrap);
+            let body = painter.layout(
+                text.clone(),
+                font.clone(),
+                fade(crate::look_paint::colourway().text, 1.0),
+                wrap,
+            );
+            let halo = painter.layout(
+                text.clone(),
+                font,
+                fade(crate::look_paint::colourway().ink, 0.75),
+                wrap,
+            );
             let at = pos2(*x as f32 - body.size().x / 2.0, *y as f32) - origin;
             // A soft dark halo round every letter, so they read over anything.
-            for (dx, dy) in [(-2.0, 0.0), (2.0, 0.0), (0.0, -2.0), (0.0, 2.0), (-1.5, -1.5), (1.5, 1.5), (-1.5, 1.5), (1.5, -1.5)] {
+            for (dx, dy) in [
+                (-2.0, 0.0),
+                (2.0, 0.0),
+                (0.0, -2.0),
+                (0.0, 2.0),
+                (-1.5, -1.5),
+                (1.5, 1.5),
+                (-1.5, 1.5),
+                (1.5, -1.5),
+            ] {
                 painter.galley(at + vec2(dx, dy), halo.clone(), Color32::TRANSPARENT);
             }
             painter.galley(at, body, Color32::TRANSPARENT);

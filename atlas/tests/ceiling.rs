@@ -24,7 +24,6 @@
 //! satisfiable without the thing being true. So this file enforces the
 //! *effect* rather than the presence of the code that enforces it.
 
-
 fn read(path: &str) -> Option<String> {
     crate::common::read_source_path(path)
 }
@@ -78,7 +77,9 @@ fn the_unwired_list_is_within_its_ceiling() {
 #[test]
 fn the_ceiling_has_not_drifted_above_what_is_listed() {
     // A ceiling far above the real count stops being a constraint.
-    let Some(text) = read("tests/wiring.rs") else { return };
+    let Some(text) = read("tests/wiring.rs") else {
+        return;
+    };
     let (Some(ceiling), Some(listed)) = (
         usize_const(&text, "UNWIRED_CEILING"),
         slice_len(&text, "UNWIRED_BASELINE"),
@@ -144,9 +145,14 @@ fn the_vault_actually_protects_what_it_stores() {
     let mut v = Vault::default();
     v.open("a long enough passphrase here", 0, &VaultConfig::default())
         .expect("passphrase length is fine");
-    v.put("x", Kind::Login, "secret", 0).expect("a credential must store now");
+    v.put("x", Kind::Login, "secret", 0)
+        .expect("a credential must store now");
 
-    let stored = v.secrets.iter().find(|s| s.name == "x").expect("it was stored");
+    let stored = v
+        .secrets
+        .iter()
+        .find(|s| s.name == "x")
+        .expect("it was stored");
     assert!(stored.real, "stored under the stand-in cipher");
     assert_ne!(
         stored.sealed, b"secret",
@@ -154,7 +160,10 @@ fn the_vault_actually_protects_what_it_stores() {
     );
     // Round-trips, so "encrypted" does not quietly mean "lost".
     assert_eq!(v.get("x", 0).unwrap(), "secret");
-    assert!(v.weakly_sealed().is_empty(), "a credential is only weakly sealed");
+    assert!(
+        v.weakly_sealed().is_empty(),
+        "a credential is only weakly sealed"
+    );
 }
 
 #[test]

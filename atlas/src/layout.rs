@@ -20,7 +20,11 @@ pub fn resolve_roles(cfg: &LayoutsConfig, monitors: &[Monitor]) -> RoleMap {
 /// (until 29 Sep 2026) "laptop" meant the primary display, and with an
 /// external monitor set as primary the laptop's own screen was called
 /// "main" or "side" -- or, the third of three, nothing at all.
-pub fn resolve_roles_with(cfg: &LayoutsConfig, monitors: &[Monitor], built_in: Option<u32>) -> RoleMap {
+pub fn resolve_roles_with(
+    cfg: &LayoutsConfig,
+    monitors: &[Monitor],
+    built_in: Option<u32>,
+) -> RoleMap {
     let mut unclaimed: Vec<Monitor> = monitors.to_vec();
     let mut map = RoleMap::new();
 
@@ -121,7 +125,11 @@ fn max_index<F: Fn(&Monitor) -> i32>(v: &[Monitor], f: F) -> Option<usize> {
 /// From the machine's display outputs, each (is it built in, is it active):
 /// the built-in screen's state, or `None` when there is no built-in screen.
 pub fn built_in_screen_from(outputs: &[(bool, bool)]) -> Option<bool> {
-    let built_in: Vec<bool> = outputs.iter().filter(|(internal, _)| *internal).map(|(_, active)| *active).collect();
+    let built_in: Vec<bool> = outputs
+        .iter()
+        .filter(|(internal, _)| *internal)
+        .map(|(_, active)| *active)
+        .collect();
     if built_in.is_empty() {
         None
     } else {

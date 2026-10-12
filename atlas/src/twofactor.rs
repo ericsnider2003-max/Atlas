@@ -52,16 +52,27 @@ pub enum Source {
 }
 
 const WORD_DIGITS: &[(&str, char)] = &[
-    ("zero", '0'), ("oh", '0'), ("o", '0'), ("nought", '0'),
-    ("one", '1'), ("won", '1'),
-    ("two", '2'), ("to", '2'), ("too", '2'),
-    ("three", '3'), ("tree", '3'),
-    ("four", '4'), ("for", '4'), ("fore", '4'),
+    ("zero", '0'),
+    ("oh", '0'),
+    ("o", '0'),
+    ("nought", '0'),
+    ("one", '1'),
+    ("won", '1'),
+    ("two", '2'),
+    ("to", '2'),
+    ("too", '2'),
+    ("three", '3'),
+    ("tree", '3'),
+    ("four", '4'),
+    ("for", '4'),
+    ("fore", '4'),
     ("five", '5'),
     ("six", '6'),
     ("seven", '7'),
-    ("eight", '8'), ("ate", '8'),
-    ("nine", '9'), ("niner", '9'),
+    ("eight", '8'),
+    ("ate", '8'),
+    ("nine", '9'),
+    ("niner", '9'),
 ];
 
 /// Where you said the code is, from your own words.
@@ -69,9 +80,15 @@ const WORD_DIGITS: &[(&str, char)] = &[
 /// "it's in my email" / "from my texts" / "the code is 4 8 2 9 1 7".
 pub fn source_of(said: &str) -> Source {
     let t = said.to_lowercase();
-    if ["email", "e-mail", "mail", "inbox", "gmail", "outlook"].iter().any(|w| t.contains(w)) {
+    if ["email", "e-mail", "mail", "inbox", "gmail", "outlook"]
+        .iter()
+        .any(|w| t.contains(w))
+    {
         Source::Email
-    } else if ["text", "sms", "messages", "phone"].iter().any(|w| t.contains(w)) {
+    } else if ["text", "sms", "messages", "phone"]
+        .iter()
+        .any(|w| t.contains(w))
+    {
         Source::Texts
     } else {
         Source::Spoken
@@ -103,7 +120,21 @@ pub fn code_in_words(said: &str) -> Option<String> {
         // zero and "oh, the code" doesn't become one.
         let next_is_digit = words.get(i + 1).is_some_and(|n| {
             n.chars().all(|c| c.is_ascii_digit())
-                || matches!(*n, "zero" | "one" | "two" | "three" | "four" | "five" | "six" | "seven" | "eight" | "nine" | "double" | "triple")
+                || matches!(
+                    *n,
+                    "zero"
+                        | "one"
+                        | "two"
+                        | "three"
+                        | "four"
+                        | "five"
+                        | "six"
+                        | "seven"
+                        | "eight"
+                        | "nine"
+                        | "double"
+                        | "triple"
+                )
         });
         if w == "double" {
             repeat = 2;
@@ -120,10 +151,18 @@ pub fn code_in_words(said: &str) -> Option<String> {
             repeat = 1;
             continue;
         }
-        let word_digit = WORD_DIGITS.iter().find(|(name, _)| *name == w).map(|(_, d)| *d);
-        let ambiguous = matches!(w, "o" | "oh" | "to" | "too" | "for" | "fore" | "won" | "ate" | "tree");
+        let word_digit = WORD_DIGITS
+            .iter()
+            .find(|(name, _)| *name == w)
+            .map(|(_, d)| *d);
+        let ambiguous = matches!(
+            w,
+            "o" | "oh" | "to" | "too" | "for" | "fore" | "won" | "ate" | "tree"
+        );
         match word_digit {
-            Some(d) if !ambiguous || !run.is_empty() || (matches!(w, "o" | "oh") && next_is_digit) => {
+            Some(d)
+                if !ambiguous || !run.is_empty() || (matches!(w, "o" | "oh") && next_is_digit) =>
+            {
                 for _ in 0..repeat {
                     run.push(d);
                 }
@@ -141,9 +180,25 @@ pub fn code_in_words(said: &str) -> Option<String> {
 
 /// Words that sit beside a code in the messages sites send.
 const NEAR_A_CODE: &[&str] = &[
-    "code", "verification", "verify", "one-time", "one time", "otp", "passcode",
-    "security code", "2-step", "two-step", "two-factor", "2fa", "sign-in", "sign in",
-    "login", "log in", "confirm", "authentication", "pin",
+    "code",
+    "verification",
+    "verify",
+    "one-time",
+    "one time",
+    "otp",
+    "passcode",
+    "security code",
+    "2-step",
+    "two-step",
+    "two-factor",
+    "2fa",
+    "sign-in",
+    "sign in",
+    "login",
+    "log in",
+    "confirm",
+    "authentication",
+    "pin",
 ];
 
 /// The code in one message, if it has one.
@@ -200,9 +255,13 @@ pub fn code_in_text(subject: &str, body: &str) -> Option<String> {
         }
         let before = if start > 0 { chars[start - 1] } else { ' ' };
         let after = chars.get(j).copied().unwrap_or(' ');
-        let decimal = matches!(after, '.' | ',') && chars.get(j + 1).is_some_and(|c| c.is_ascii_digit());
-        let not_money = !matches!(before, '$' | '£' | '€' | '#') && !matches!(after, '%' | ':' | '/') && !decimal;
-        let part_of_something = before.is_ascii_alphabetic() || after.is_ascii_alphabetic() || before == '/';
+        let decimal =
+            matches!(after, '.' | ',') && chars.get(j + 1).is_some_and(|c| c.is_ascii_digit());
+        let not_money = !matches!(before, '$' | '£' | '€' | '#')
+            && !matches!(after, '%' | ':' | '/')
+            && !decimal;
+        let part_of_something =
+            before.is_ascii_alphabetic() || after.is_ascii_alphabetic() || before == '/';
         let year = digits.len() == 4 && (digits.starts_with("19") || digits.starts_with("20"));
         if (4..=8).contains(&digits.len()) && not_money && !part_of_something {
             candidates.push((digits.clone(), byte_at[start]));
@@ -210,7 +269,9 @@ pub fn code_in_text(subject: &str, body: &str) -> Option<String> {
             // ("Your code: 2024"); scored below by distance, but a year far
             // from any code word is dropped here.
             if year {
-                let near = keyword_at.iter().any(|&k| byte_at[start] >= k && byte_at[start] - k < 25);
+                let near = keyword_at
+                    .iter()
+                    .any(|&k| byte_at[start] >= k && byte_at[start] - k < 25);
                 if !near {
                     candidates.pop();
                 }
@@ -231,20 +292,27 @@ pub fn code_in_text(subject: &str, body: &str) -> Option<String> {
         (0..at.min(bytes.len()))
             .filter(|&i| {
                 matches!(bytes[i], b'!' | b'?' | b'\n')
-                    || (bytes[i] == b'.' && bytes.get(i + 1).is_none_or(|c| c.is_ascii_whitespace()))
+                    || (bytes[i] == b'.'
+                        && bytes.get(i + 1).is_none_or(|c| c.is_ascii_whitespace()))
             })
             .count()
     };
     candidates
         .into_iter()
-        .filter(|(d, _)| !(has_non_year && d.len() == 4 && (d.starts_with("19") || d.starts_with("20"))))
+        .filter(|(d, _)| {
+            !(has_non_year && d.len() == 4 && (d.starts_with("19") || d.starts_with("20")))
+        })
         .map(|(d, at)| {
             let mine = sentence_of(at);
             let dist = keyword_at
                 .iter()
                 .map(|&k| {
                     let apart = at.abs_diff(k);
-                    if sentence_of(k) == mine { apart } else { 1_000 + apart }
+                    if sentence_of(k) == mine {
+                        apart
+                    } else {
+                        1_000 + apart
+                    }
                 })
                 .min()
                 .unwrap_or(usize::MAX);
@@ -271,7 +339,11 @@ pub fn newest(found: &[Found], site: Option<&str>, now: u64) -> Option<Found> {
     let from_site = |f: &&Found| {
         site.map(|s| {
             let key = s.to_lowercase();
-            let key = key.split('.').find(|p| p.len() > 2 && *p != "www").unwrap_or(&key).to_string();
+            let key = key
+                .split('.')
+                .find(|p| p.len() > 2 && *p != "www")
+                .unwrap_or(&key)
+                .to_string();
             f.from.to_lowercase().contains(&key)
         })
         .unwrap_or(false)
@@ -289,13 +361,21 @@ pub fn newest(found: &[Found], site: Option<&str>, now: u64) -> Option<Found> {
 /// message; the time isn't on screen reliably, so what's found is stamped
 /// `now`, and only the last few lines (the newest texts) are read.
 pub fn from_phone_link(window_text: &str, now: u64) -> Vec<Found> {
-    let lines: Vec<&str> = window_text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&str> = window_text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
     let mut out = Vec::new();
     let tail = lines.len().saturating_sub(40);
     for w in lines[tail..].windows(2) {
         if let Some(code) = code_in_text(w[0], w[1]) {
             if !out.iter().any(|f: &Found| f.code == code) {
-                out.push(Found { code, from: w[0].to_string(), at: now });
+                out.push(Found {
+                    code,
+                    from: w[0].to_string(),
+                    at: now,
+                });
             }
         }
     }
@@ -306,10 +386,22 @@ pub fn from_phone_link(window_text: &str, now: u64) -> Vec<Found> {
 pub fn asks_for_code(page_text: &str) -> bool {
     let t = page_text.to_lowercase();
     [
-        "enter the code", "enter code", "verification code", "security code", "one-time code",
-        "2-step verification", "two-step verification", "two-factor", "authentication code",
-        "we sent a code", "we've sent a code", "we texted", "enter the 6-digit", "enter your code",
-        "check your email for a code", "authenticator app",
+        "enter the code",
+        "enter code",
+        "verification code",
+        "security code",
+        "one-time code",
+        "2-step verification",
+        "two-step verification",
+        "two-factor",
+        "authentication code",
+        "we sent a code",
+        "we've sent a code",
+        "we texted",
+        "enter the 6-digit",
+        "enter your code",
+        "check your email for a code",
+        "authenticator app",
     ]
     .iter()
     .any(|p| t.contains(p))
@@ -382,7 +474,12 @@ pub fn read_out(code: &str) -> String {
     code.chars()
         .collect::<Vec<_>>()
         .chunks(3)
-        .map(|c| c.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(" "))
+        .map(|c| {
+            c.iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -412,16 +509,28 @@ mod tests {
 
     #[test]
     fn words_become_digits() {
-        assert_eq!(code_in_words("the code is four eight two nine one seven").as_deref(), Some("482917"));
+        assert_eq!(
+            code_in_words("the code is four eight two nine one seven").as_deref(),
+            Some("482917")
+        );
         assert_eq!(code_in_words("type 482 917").as_deref(), Some("482917"));
         assert_eq!(code_in_words("type my code for google").as_deref(), None);
-        assert_eq!(code_in_words("one two double five").as_deref(), Some("1255"));
+        assert_eq!(
+            code_in_words("one two double five").as_deref(),
+            Some("1255")
+        );
     }
 
     #[test]
     fn the_code_not_the_year() {
         let body = "Your Google verification code is 614 207. © 2026 Google LLC, 1600 Amphitheatre";
-        assert_eq!(code_in_text("Security code", body).as_deref(), Some("614207"));
-        assert_eq!(code_in_text("Your order", "Order 55512345 total $1299").as_deref(), None);
+        assert_eq!(
+            code_in_text("Security code", body).as_deref(),
+            Some("614207")
+        );
+        assert_eq!(
+            code_in_text("Your order", "Order 55512345 total $1299").as_deref(),
+            None
+        );
     }
 }

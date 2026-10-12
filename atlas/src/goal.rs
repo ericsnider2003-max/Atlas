@@ -96,7 +96,8 @@ impl NotRunnable {
             ),
             NotRunnable::NoLimit => {
                 "There's no point at which I'd stop, so this could run all night \
-                 getting nowhere.".into()
+                 getting nowhere."
+                    .into()
             }
         }
     }
@@ -128,7 +129,10 @@ pub enum Standing {
     /// Keep going.
     TryAgain { attempts_left: u32 },
     /// Attempts ran out.
-    GaveUp { after: u32, still_failing: Vec<String> },
+    GaveUp {
+        after: u32,
+        still_failing: Vec<String>,
+    },
     /// It is repeating itself without getting closer.
     ///
     /// Worth its own answer. Running the same attempt eight more times costs a
@@ -138,7 +142,11 @@ pub enum Standing {
 
 impl Goal {
     pub fn new(what: &str, give_up_after: u32) -> Goal {
-        Goal { what: what.to_string(), checks: Vec::new(), give_up_after }
+        Goal {
+            what: what.to_string(),
+            checks: Vec::new(),
+            give_up_after,
+        }
     }
 
     pub fn checking(mut self, c: Check) -> Goal {
@@ -164,7 +172,10 @@ impl Goal {
 
     /// Only the checks a loop can settle for itself.
     pub fn machine_checks(&self) -> Vec<&Check> {
-        self.checks.iter().filter(|c| c.machine_checkable()).collect()
+        self.checks
+            .iter()
+            .filter(|c| c.machine_checkable())
+            .collect()
     }
 
     /// Where the run stands after these attempts.
@@ -174,7 +185,9 @@ impl Goal {
     /// attempt is done, not exhausted.
     pub fn standing(&self, attempts: &[Attempt]) -> Standing {
         let Some(last) = attempts.last() else {
-            return Standing::TryAgain { attempts_left: self.give_up_after };
+            return Standing::TryAgain {
+                attempts_left: self.give_up_after,
+            };
         };
         if last.met_everything() {
             return Standing::Done;
@@ -189,11 +202,17 @@ impl Goal {
         // Two attempts that changed nothing means the next eight will not
         // either.
         let stuck = attempts.len() >= 2
-            && attempts.iter().rev().take(2).all(|a| a.changed.trim().is_empty());
+            && attempts
+                .iter()
+                .rev()
+                .take(2)
+                .all(|a| a.changed.trim().is_empty());
         if stuck {
             return Standing::GoingInCircles { after: used };
         }
-        Standing::TryAgain { attempts_left: self.give_up_after - used }
+        Standing::TryAgain {
+            attempts_left: self.give_up_after - used,
+        }
     }
 
     /// What to say about it in the morning.
@@ -203,7 +222,10 @@ impl Goal {
     pub fn spoken(&self, attempts: &[Attempt]) -> String {
         match self.standing(attempts) {
             Standing::Done => format!("{} — done, and it checks out.", self.what),
-            Standing::GaveUp { after, still_failing } => format!(
+            Standing::GaveUp {
+                after,
+                still_failing,
+            } => format!(
                 "{} — gave up after {after}. Still failing: {}.",
                 self.what,
                 still_failing.join("; ")
@@ -214,7 +236,10 @@ impl Goal {
                 crate::route::stuck_on(&self.what, "the same failure coming back each time")
             ),
             Standing::TryAgain { attempts_left } => {
-                format!("{} — still going, {attempts_left} attempts left.", self.what)
+                format!(
+                    "{} — still going, {attempts_left} attempts left.",
+                    self.what
+                )
             }
         }
     }
@@ -236,7 +261,10 @@ impl Default for LongJobConfig {
         // Fifty tries or a working night, whichever comes first. Big enough
         // to be worth leaving; the "going in circles" check stops it far
         // sooner when it has stopped getting anywhere.
-        LongJobConfig { max_attempts: 50, max_hours: 8 }
+        LongJobConfig {
+            max_attempts: 50,
+            max_hours: 8,
+        }
     }
 }
 
@@ -271,7 +299,13 @@ pub fn keep_at_it(
         }
         if started.elapsed() >= max_time {
             let after = attempts.len() as u32;
-            return (Ended::OutOfTime { after, hours: limits.max_hours }, attempts);
+            return (
+                Ended::OutOfTime {
+                    after,
+                    hours: limits.max_hours,
+                },
+                attempts,
+            );
         }
         let n = attempts.len() as u32 + 1;
         attempts.push(try_once(n));
@@ -285,8 +319,19 @@ pub fn ended_spoken(goal: &Goal, ended: &Ended, attempts: &[Attempt]) -> String 
         Ended::OutOfTime { after, hours } => format!(
             "{} — stopped at the {hours}-hour limit after {after} attempts. Still failing: {}.",
             goal.what,
-            attempts.last().map(|a| a.failed.iter().map(|c| c.plain()).collect::<Vec<_>>().join("; ")).unwrap_or_default()
+            attempts
+                .last()
+                .map(|a| a
+                    .failed
+                    .iter()
+                    .map(|c| c.plain())
+                    .collect::<Vec<_>>()
+                    .join("; "))
+                .unwrap_or_default()
         ),
-        Ended::Stopped { after } => format!("{} — stopped when you asked, after {after} attempts.", goal.what),
+        Ended::Stopped { after } => format!(
+            "{} — stopped when you asked, after {after} attempts.",
+            goal.what
+        ),
     }
 }

@@ -9,8 +9,8 @@
 //! Degradation is automatic and announced. You should never be standing there
 //! repeating yourself at a machine that quietly stopped listening.
 
-use crate::error::Result;
 use crate::doorbell::Sender;
+use crate::error::Result;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::Duration;
 
@@ -193,7 +193,10 @@ impl Tiers {
     /// is back on.
     pub fn try_the_wake_word_again(&mut self, now: u64) -> Option<String> {
         let dropped = self.wake_dropped_at?;
-        if self.tier != Tier::PushToTalk || !self.wake_on || now.saturating_sub(dropped) < TRY_WAKE_AGAIN_AFTER_SECS {
+        if self.tier != Tier::PushToTalk
+            || !self.wake_on
+            || now.saturating_sub(dropped) < TRY_WAKE_AGAIN_AFTER_SECS
+        {
             return None;
         }
         self.wake_dropped_at = None;
@@ -244,7 +247,12 @@ pub struct HoldToTalk {
 
 impl HoldToTalk {
     pub fn new(key: &str, hold_ms: u64) -> Self {
-        HoldToTalk { key: key.to_string(), hold_ms, down_at: None, talking: false }
+        HoldToTalk {
+            key: key.to_string(),
+            hold_ms,
+            down_at: None,
+            talking: false,
+        }
     }
 
     pub fn down(&mut self, now_ms: u64) -> KeyEvent {
@@ -268,7 +276,10 @@ impl HoldToTalk {
     }
 
     pub fn up(&mut self, now_ms: u64) -> KeyEvent {
-        let held = self.down_at.map(|t0| now_ms.saturating_sub(t0)).unwrap_or(0);
+        let held = self
+            .down_at
+            .map(|t0| now_ms.saturating_sub(t0))
+            .unwrap_or(0);
         self.down_at = None;
         if self.talking {
             self.talking = false;
@@ -302,7 +313,13 @@ impl Keyboard {
                 if t.is_empty() {
                     continue;
                 }
-                if tx2.send(Utterance { text: t, source: Source::Typed }).is_err() {
+                if tx2
+                    .send(Utterance {
+                        text: t,
+                        source: Source::Typed,
+                    })
+                    .is_err()
+                {
                     break;
                 }
             }

@@ -1,6 +1,8 @@
 use atlas::awareness::Signals;
 use atlas::cdp::{click_js, exists_js, fill_js, js_str, ws_url_from_targets};
-use atlas::connectivity::{deferral_message, need_of, Connectivity, ConnectivityConfig, Need, Reach};
+use atlas::connectivity::{
+    deferral_message, need_of, Connectivity, ConnectivityConfig, Need, Reach,
+};
 use atlas::intent::Intent;
 use atlas::lanes::{Lane, LaneConfig, Queue, TaskState};
 use atlas::ws::{encode_frame, handshake_request, unmask};
@@ -35,16 +37,25 @@ fn only_web_research_genuinely_requires_a_connection() {
 
 #[test]
 fn local_and_degradable_work_is_allowed_even_when_known_offline() {
-    let mut c = Connectivity::new(ConnectivityConfig { assume_offline: true, ..Default::default() });
+    let mut c = Connectivity::new(ConnectivityConfig {
+        assume_offline: true,
+        ..Default::default()
+    });
     assert_eq!(c.status(100), Reach::Offline);
-    assert!(c.allows(Need::Local), "local work must never consult the network");
+    assert!(
+        c.allows(Need::Local),
+        "local work must never consult the network"
+    );
     assert!(c.allows(Need::PrefersInternet), "degrade, don't block");
     assert!(!c.allows(Need::Internet));
 }
 
 #[test]
 fn an_air_gapped_machine_never_probes_at_all() {
-    let mut c = Connectivity::new(ConnectivityConfig { assume_offline: true, ..Default::default() });
+    let mut c = Connectivity::new(ConnectivityConfig {
+        assume_offline: true,
+        ..Default::default()
+    });
     for t in 0..5 {
         assert_eq!(c.status(t * 1000), Reach::Offline);
     }
@@ -63,13 +74,20 @@ fn reachability_is_cached_so_it_is_cheap_to_check_every_tick() {
     for t in 0..200 {
         c.status(1000 + t % 20);
     }
-    crate::common::assert_prompt(t0.elapsed(), std::time::Duration::from_millis(200), "cached checks must not re-probe");
+    crate::common::assert_prompt(
+        t0.elapsed(),
+        std::time::Duration::from_millis(200),
+        "cached checks must not re-probe",
+    );
 }
 
 #[test]
 fn a_failure_can_force_a_fresh_check() {
     let mut c = Connectivity::new(ConnectivityConfig {
-        probe: "127.0.0.1:1".into(), timeout_ms: 50, cache_secs: 9999, assume_offline: false,
+        probe: "127.0.0.1:1".into(),
+        timeout_ms: 50,
+        cache_secs: 9999,
+        assume_offline: false,
     });
     c.status(100);
     assert_eq!(c.cached(), Reach::Offline);
@@ -78,18 +96,26 @@ fn a_failure_can_force_a_fresh_check() {
 }
 
 fn signals() -> Signals {
-    Signals { idle_secs: 999, ..Default::default() }
+    Signals {
+        idle_secs: 999,
+        ..Default::default()
+    }
 }
 
 #[test]
 fn offline_research_waits_for_a_connection_instead_of_failing() {
     let mut q = Queue::default();
     let id = q.push_online("research IETF QUIC v1", Lane::Background);
-    assert!(q.ready_with(&signals(), &LaneConfig::default(), 100, Reach::Offline).is_empty());
+    assert!(q
+        .ready_with(&signals(), &LaneConfig::default(), 100, Reach::Offline)
+        .is_empty());
     assert_eq!(q.waiting_for_network().len(), 1);
     assert_eq!(q.tasks[0].state, TaskState::Queued, "queued, not failed");
 
-    assert_eq!(q.ready_with(&signals(), &LaneConfig::default(), 200, Reach::Online), vec![id]);
+    assert_eq!(
+        q.ready_with(&signals(), &LaneConfig::default(), 200, Reach::Online),
+        vec![id]
+    );
 }
 
 #[test]
@@ -98,7 +124,11 @@ fn local_work_still_runs_while_something_else_waits_for_the_network() {
     q.push_online("research something", Lane::Background);
     let local = q.push("open chrome", Lane::Foreground);
     let ready = q.ready_with(&signals(), &LaneConfig::default(), 100, Reach::Offline);
-    assert_eq!(ready, vec![local], "being offline must not stall the workspace");
+    assert_eq!(
+        ready,
+        vec![local],
+        "being offline must not stall the workspace"
+    );
 }
 
 #[test]
@@ -107,7 +137,12 @@ fn a_job_waiting_for_the_network_is_never_expired_for_waiting() {
     let mut q = Queue::default();
     q.push_online("research something", Lane::Foreground);
     q.ready_with(&signals(), &LaneConfig::default(), 100, Reach::Offline);
-    q.ready_with(&signals(), &LaneConfig::default(), 10_000_000, Reach::Offline);
+    q.ready_with(
+        &signals(),
+        &LaneConfig::default(),
+        10_000_000,
+        Reach::Offline,
+    );
     assert_ne!(q.tasks[0].state, TaskState::Failed);
     assert_eq!(q.waiting_for_network().len(), 1);
 }
@@ -116,7 +151,10 @@ fn a_job_waiting_for_the_network_is_never_expired_for_waiting() {
 fn atlas_says_why_and_what_happens_next_rather_than_just_failing() {
     let m = deferral_message(&Intent::Research("the quic v1 spec".into()));
     assert!(m.contains("the quic v1 spec"));
-    assert!(m.to_lowercase().contains("back online"), "must say what happens next: {m}");
+    assert!(
+        m.to_lowercase().contains("back online"),
+        "must say what happens next: {m}"
+    );
 }
 
 // ================= websocket framing =================
@@ -167,14 +205,20 @@ fn the_handshake_asks_for_the_right_upgrade() {
 #[test]
 fn selectors_are_escaped_so_a_quote_cannot_break_out() {
     let js = click_js("input[name='q']");
-    assert!(!js.contains("name='q'"), "the inner quotes must be escaped: {js}");
+    assert!(
+        !js.contains("name='q'"),
+        "the inner quotes must be escaped: {js}"
+    );
     assert!(js.contains("\\'q\\'"));
 }
 
 #[test]
 fn typed_text_cannot_inject_script_into_the_page() {
     let js = fill_js("#search", "</script><script>alert(1)</script>");
-    assert!(!js.contains("<script>"), "angle brackets must be escaped: {js}");
+    assert!(
+        !js.contains("<script>"),
+        "angle brackets must be escaped: {js}"
+    );
     assert!(js.contains("\\x3C"));
 }
 
@@ -194,7 +238,10 @@ fn a_click_reports_a_missing_element_rather_than_silently_doing_nothing() {
 #[test]
 fn filling_a_field_fires_the_events_frameworks_listen_for() {
     let js = fill_js("#email", "me@example.com");
-    assert!(js.contains("new Event('input'"), "React ignores a bare value set");
+    assert!(
+        js.contains("new Event('input'"),
+        "React ignores a bare value set"
+    );
     assert!(js.contains("new Event('change'"));
     assert!(js.contains("bubbles:true"));
 }
@@ -236,7 +283,10 @@ fn the_shipped_config_keeps_the_offline_promise() {
     // The reasoning model is Atlas's own llama-server on this machine, so
     // conversation works with the cable pulled out. (It was a local Ollama
     // until 26 Sep 2026.)
-    assert!(t.llm.is_none(), "no hand-written connection overriding the local model");
+    assert!(
+        t.llm.is_none(),
+        "no hand-written connection overriding the local model"
+    );
     assert_eq!(
         atlas::models::self_built_endpoint(&t.models),
         atlas::brain::Endpoint::ThisMachine,
@@ -246,7 +296,8 @@ fn the_shipped_config_keeps_the_offline_promise() {
     for tool in [&t.record, &t.stt, &t.tts, &t.play] {
         assert!(
             !tool.args.iter().any(|a| a.starts_with("http")),
-            "voice must not depend on a web endpoint: {:?}", tool.args
+            "voice must not depend on a web endpoint: {:?}",
+            tool.args
         );
     }
     assert!(t.connectivity.timeout_ms > 0 && t.connectivity.cache_secs > 0);
@@ -257,11 +308,22 @@ fn a_pinned_state_survives_cache_expiry() {
     // On a captive-portal network the TCP probe succeeds while nothing works.
     // Pinning has to outlast the cache, or the probe overrides you.
     let mut c = Connectivity::new(ConnectivityConfig {
-        probe: "127.0.0.1:1".into(), timeout_ms: 20, cache_secs: 1, assume_offline: false,
+        probe: "127.0.0.1:1".into(),
+        timeout_ms: 20,
+        cache_secs: 1,
+        assume_offline: false,
     });
     c.set(Reach::Online, 0);
     assert_eq!(c.status(0), Reach::Online);
-    assert_eq!(c.status(1_000_000), Reach::Online, "the probe must not override a pin");
+    assert_eq!(
+        c.status(1_000_000),
+        Reach::Online,
+        "the probe must not override a pin"
+    );
     c.unpin();
-    assert_eq!(c.status(1_000_001), Reach::Offline, "and unpinning gives the probe back");
+    assert_eq!(
+        c.status(1_000_001),
+        Reach::Offline,
+        "and unpinning gives the probe back"
+    );
 }

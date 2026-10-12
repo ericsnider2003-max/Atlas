@@ -60,7 +60,9 @@ impl ClientList {
         let mut list = Self::load_checked(store)?;
         let previous = list.clients.clone();
         let result = edit(&mut list)?;
-        if list.clients != previous { list.save(store)?; }
+        if list.clients != previous {
+            list.save(store)?;
+        }
         Ok(result)
     }
 
@@ -126,11 +128,25 @@ impl ClientList {
     /// Nothing is merged on its own: a card that looks like someone already
     /// on the list under another address is added and *named* in the
     /// returned notes, so "are these the same person?" stays your question.
-    pub fn import_vcf(&mut self, text: &str, now: u64) -> std::result::Result<(usize, usize, Vec<String>), String> {
+    pub fn import_vcf(
+        &mut self,
+        text: &str,
+        now: u64,
+    ) -> std::result::Result<(usize, usize, Vec<String>), String> {
         let (mut added, mut skipped) = (0, 0);
         let mut notes = Vec::new();
-        let model = crate::linkage::Model::measured_on(&self.clients.iter().map(|c| c.as_contact()).collect::<Vec<_>>()).0;
-        for c in crate::vformat::parse(text)?.iter().filter_map(crate::vformat::Card::from_component) {
+        let model = crate::linkage::Model::measured_on(
+            &self
+                .clients
+                .iter()
+                .map(|c| c.as_contact())
+                .collect::<Vec<_>>(),
+        )
+        .0;
+        for c in crate::vformat::parse(text)?
+            .iter()
+            .filter_map(crate::vformat::Card::from_component)
+        {
             let Some(email) = c.emails.first() else {
                 skipped += 1;
                 continue;
@@ -153,14 +169,30 @@ impl ClientList {
                         existing.name_or_address(),
                         existing.address,
                         // A word, never the enum's name (`Maybe`) on screen.
-                        if m.verdict == crate::linkage::Verdict::Same { "very likely the same" } else { "possibly the same" },
-                        if m.because.is_empty() { String::new() } else { format!(": {}", m.because.join("; ")) }
+                        if m.verdict == crate::linkage::Verdict::Same {
+                            "very likely the same"
+                        } else {
+                            "possibly the same"
+                        },
+                        if m.because.is_empty() {
+                            String::new()
+                        } else {
+                            format!(": {}", m.because.join("; "))
+                        }
                     ));
                 }
             }
-            let org = if c.org.is_empty() { String::new() } else { format!("{} ", c.org) };
+            let org = if c.org.is_empty() {
+                String::new()
+            } else {
+                format!("{} ", c.org)
+            };
             self.add(email, &c.name, format!("{org}{}", c.note).trim(), now);
-            if let Some(entry) = self.clients.iter_mut().find(|x| x.address.eq_ignore_ascii_case(email)) {
+            if let Some(entry) = self
+                .clients
+                .iter_mut()
+                .find(|x| x.address.eq_ignore_ascii_case(email))
+            {
                 if entry.phone.is_empty() {
                     entry.phone = incoming.phone.clone();
                 }
@@ -179,7 +211,11 @@ impl ClientList {
                     &crate::vformat::Card {
                         name: c.name_or_address().to_string(),
                         emails: vec![c.address.clone()],
-                        phones: if c.phone.is_empty() { vec![] } else { vec![c.phone.clone()] },
+                        phones: if c.phone.is_empty() {
+                            vec![]
+                        } else {
+                            vec![c.phone.clone()]
+                        },
                         org: String::new(),
                         note: c.notes.clone(),
                         uid: format!("atlas-client-{}", c.address),
@@ -194,32 +230,54 @@ impl ClientList {
     /// first, each with the reason — never merged here.
     /// Where the duplicate-finder's weights came from on this list, in words.
     pub fn weights_note(&self) -> String {
-        crate::linkage::Model::measured_on(&self.clients.iter().map(|c| c.as_contact()).collect::<Vec<_>>()).1
+        crate::linkage::Model::measured_on(
+            &self
+                .clients
+                .iter()
+                .map(|c| c.as_contact())
+                .collect::<Vec<_>>(),
+        )
+        .1
     }
 
     pub fn likely_duplicates(&self) -> Vec<String> {
-        let contacts: Vec<crate::linkage::Contact> = self.clients.iter().map(|c| c.as_contact()).collect();
-        crate::linkage::duplicates(&contacts, &crate::linkage::Model::measured_on(&self.clients.iter().map(|c| c.as_contact()).collect::<Vec<_>>()).0)
-            .into_iter()
-            .map(|(a, b, m)| {
-                format!(
-                    "{} <{}> and {} <{}>: {:?} ({:.0}%) — {}",
-                    self.clients[a].name_or_address(),
-                    self.clients[a].address,
-                    self.clients[b].name_or_address(),
-                    self.clients[b].address,
-                    m.verdict,
-                    m.probability * 100.0,
-                    m.because.join("; ")
-                )
-            })
-            .collect()
+        let contacts: Vec<crate::linkage::Contact> =
+            self.clients.iter().map(|c| c.as_contact()).collect();
+        crate::linkage::duplicates(
+            &contacts,
+            &crate::linkage::Model::measured_on(
+                &self
+                    .clients
+                    .iter()
+                    .map(|c| c.as_contact())
+                    .collect::<Vec<_>>(),
+            )
+            .0,
+        )
+        .into_iter()
+        .map(|(a, b, m)| {
+            format!(
+                "{} <{}> and {} <{}>: {:?} ({:.0}%) — {}",
+                self.clients[a].name_or_address(),
+                self.clients[a].address,
+                self.clients[b].name_or_address(),
+                self.clients[b].address,
+                m.verdict,
+                m.probability * 100.0,
+                m.because.join("; ")
+            )
+        })
+        .collect()
     }
 }
 
 impl Client {
     fn as_contact(&self) -> crate::linkage::Contact {
-        crate::linkage::Contact { name: self.name.clone(), email: self.address.clone(), phone: self.phone.clone() }
+        crate::linkage::Contact {
+            name: self.name.clone(),
+            email: self.address.clone(),
+            phone: self.phone.clone(),
+        }
     }
 }
 
@@ -229,7 +287,8 @@ mod tests {
 
     #[test]
     fn corrupt_client_state_refuses_edits_without_replacing_the_saved_bytes() {
-        let root = std::env::temp_dir().join(format!("atlas-client-corrupt-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("atlas-client-corrupt-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let bytes = b"owner contacts with an interrupted JSON record";
         std::fs::write(root.join("clients.json"), bytes).unwrap();
@@ -249,8 +308,16 @@ mod tests {
         let root = std::env::temp_dir().join(format!("atlas-client-fresh-{}", std::process::id()));
         let first = Store::new(&root);
         let second = Store::new(&root);
-        ClientList::change(&first, |list| { list.add("one@example.test", "One", "owner notes", 1); Ok(()) }).unwrap();
-        ClientList::change(&second, |list| { list.add("two@example.test", "Two", "second notes", 2); Ok(()) }).unwrap();
+        ClientList::change(&first, |list| {
+            list.add("one@example.test", "One", "owner notes", 1);
+            Ok(())
+        })
+        .unwrap();
+        ClientList::change(&second, |list| {
+            list.add("two@example.test", "Two", "second notes", 2);
+            Ok(())
+        })
+        .unwrap();
         let saved = ClientList::load_checked(&first).unwrap();
         assert_eq!(saved.len(), 2);
         assert_eq!(saved.get("one@example.test").unwrap().notes, "owner notes");
@@ -259,13 +326,23 @@ mod tests {
 
     #[test]
     fn a_failed_client_save_never_returns_the_editors_success() {
-        let root = std::env::temp_dir().join(format!("atlas-client-save-fail-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("atlas-client-save-fail-{}", std::process::id()));
         let store = Store::new(&root);
-        ClientList::change(&store, |list| { list.add("owner@example.test", "Owner", "keep", 1); Ok(()) }).unwrap();
+        ClientList::change(&store, |list| {
+            list.add("owner@example.test", "Owner", "keep", 1);
+            Ok(())
+        })
+        .unwrap();
         let original = std::fs::read(root.join("clients.json")).unwrap();
-        let temporary = root.join("clients.json").with_extension(format!("{}.json.tmp", std::process::id()));
+        let temporary = root
+            .join("clients.json")
+            .with_extension(format!("{}.json.tmp", std::process::id()));
         std::fs::create_dir(&temporary).unwrap();
-        let result = ClientList::change(&store, |list| { list.add("new@example.test", "New", "", 2); Ok("Added") });
+        let result = ClientList::change(&store, |list| {
+            list.add("new@example.test", "New", "", 2);
+            Ok("Added")
+        });
         assert!(result.is_err());
         assert_eq!(std::fs::read(root.join("clients.json")).unwrap(), original);
         std::fs::remove_dir(temporary).unwrap();
@@ -300,7 +377,10 @@ mod tests {
         list.add("jane@client.example", "Jane Doe", "renewing in March", 100);
         assert_eq!(list.len(), 1);
         assert_eq!(list.get("jane@client.example").unwrap().name, "Jane Doe");
-        assert_eq!(list.get("jane@client.example").unwrap().notes, "renewing in March");
+        assert_eq!(
+            list.get("jane@client.example").unwrap().notes,
+            "renewing in March"
+        );
     }
 
     #[test]
@@ -321,14 +401,20 @@ mod tests {
     fn name_or_address_falls_back_to_the_address_when_there_is_no_name() {
         let mut list = ClientList::default();
         list.add("jane@client.example", "", "", 0);
-        assert_eq!(list.get("jane@client.example").unwrap().name_or_address(), "jane@client.example");
+        assert_eq!(
+            list.get("jane@client.example").unwrap().name_or_address(),
+            "jane@client.example"
+        );
     }
 
     #[test]
     fn name_or_address_prefers_the_name_when_there_is_one() {
         let mut list = ClientList::default();
         list.add("jane@client.example", "Jane", "", 0);
-        assert_eq!(list.get("jane@client.example").unwrap().name_or_address(), "Jane");
+        assert_eq!(
+            list.get("jane@client.example").unwrap().name_or_address(),
+            "Jane"
+        );
     }
 
     #[test]
@@ -344,6 +430,9 @@ mod tests {
 
         let reloaded = ClientList::load(&store);
         assert!(reloaded.is_client("jane@client.example"));
-        assert_eq!(reloaded.get("jane@client.example").unwrap().notes, "renewing in March");
+        assert_eq!(
+            reloaded.get("jane@client.example").unwrap().notes,
+            "renewing in March"
+        );
     }
 }

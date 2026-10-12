@@ -43,7 +43,14 @@ fn scratch(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 // ---------------------------------------------------------------- a no with a way to yes
@@ -53,30 +60,52 @@ fn the_rooms_ask_a_no_for_what_would_make_it_ok() {
     let build = atlas::council::build_room();
     let safe = atlas::council::security_room();
     assert!(build.retests && safe.retests);
-    for (_, p) in build.blind_prompts("should I build it?").iter().chain(safe.blind_prompts("is it safe?").iter()) {
-        assert!(p.contains("It would be OK if"), "a seat isn't asked what would win it over: {p}");
+    for (_, p) in build
+        .blind_prompts("should I build it?")
+        .iter()
+        .chain(safe.blind_prompts("is it safe?").iter())
+    {
+        assert!(
+            p.contains("It would be OK if"),
+            "a seat isn't asked what would win it over: {p}"
+        );
     }
     // The general room is unchanged.
     let general = atlas::council::Council::new(Vec::new());
     assert!(!general.retests);
-    let rooms: Vec<&str> = atlas::council::retest_rooms().into_iter().map(|(n, _)| n).collect();
+    let rooms: Vec<&str> = atlas::council::retest_rooms()
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect();
     assert_eq!(rooms, vec!["Should it be built", "Is it safe"]);
 }
 
 #[test]
 fn a_condition_is_read_and_a_flat_no_is_named() {
     use atlas::council::{conditions, flat_noes, parse_opinion, Lean};
-    let with = parse_opinion("money", "Against. Nobody has said they'd pay. It would be OK if three people pre-paid.");
+    let with = parse_opinion(
+        "money",
+        "Against. Nobody has said they'd pay. It would be OK if three people pre-paid.",
+    );
     assert_eq!(with.lean, Lean::Against);
-    assert_eq!(with.would_change_my_mind.as_deref(), Some("three people pre-paid."));
+    assert_eq!(
+        with.would_change_my_mind.as_deref(),
+        Some("three people pre-paid.")
+    );
     let flat = parse_opinion("reach", "Against. It won't reach anyone.");
     let yes = parse_opinion("trust", "For. It keeps everything local.");
     let all = vec![with.clone(), flat, yes];
-    assert_eq!(conditions(&all), vec![("money".to_string(), "three people pre-paid".to_string())]);
+    assert_eq!(
+        conditions(&all),
+        vec![("money".to_string(), "three people pre-paid".to_string())]
+    );
     assert_eq!(flat_noes(&all), vec!["reach"]);
     let changed = atlas::council::amended("Should I build it?", &conditions(&all));
     assert!(changed.starts_with("Should I build it?"), "{changed}");
-    assert!(changed.contains("three people pre-paid") && changed.contains("asked for by money"), "{changed}");
+    assert!(
+        changed.contains("three people pre-paid") && changed.contains("asked for by money"),
+        "{changed}"
+    );
     assert!(changed.contains("Judge it as changed"), "{changed}");
 }
 
@@ -99,30 +128,71 @@ fn a_no_with_a_condition_is_changed_and_put_to_both_rooms_again() {
     let cfg: &'static Config = Box::leak(Box::new(Config::load(Path::new("config")).unwrap()));
     let p = plat();
     let seats = Arc::new(WonOver(Mutex::new(Vec::new())));
-    let mut d = Daemon::new(cfg, &p, Some(seats.clone()), Store::new(scratch("retest")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        cfg,
+        &p,
+        Some(seats.clone()),
+        Store::new(scratch("retest")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let _ = d.ask_the_room("should I build the hollow CLI as a product?");
     let deadline = Instant::now() + Duration::from_secs(10);
     let mut t = atlas::store::now() + 50;
     let mut out = Vec::new();
-    while Instant::now() < deadline && !out.iter().any(|l: &String| l.contains("Changed that way")) {
+    while Instant::now() < deadline && !out.iter().any(|l: &String| l.contains("Changed that way"))
+    {
         out.extend(d.tick(t));
         t += 1;
         std::thread::sleep(Duration::from_millis(10));
     }
     let said = out.join(" ");
     assert!(said.contains("First look"), "{said}");
-    assert!(said.contains("It would be OK if"), "the condition wasn't said: {said}");
-    assert!(said.contains("two people said they'd use it weekly"), "{said}");
-    assert!(said.contains("Should it be built?") && said.contains("Is it safe?"), "not put to both rooms: {said}");
-    assert!(!said.contains("that one's yours to decide"), "the changed proposal won them over: {said}");
+    assert!(
+        said.contains("It would be OK if"),
+        "the condition wasn't said: {said}"
+    );
+    assert!(
+        said.contains("two people said they'd use it weekly"),
+        "{said}"
+    );
+    assert!(
+        said.contains("Should it be built?") && said.contains("Is it safe?"),
+        "not put to both rooms: {said}"
+    );
+    assert!(
+        !said.contains("that one's yours to decide"),
+        "the changed proposal won them over: {said}"
+    );
     let asked = seats.0.lock().unwrap().clone();
-    let retested: Vec<&String> = asked.iter().filter(|u| u.contains("The proposal has since been changed")).collect();
-    assert_eq!(retested.len(), 10, "five build seats and five safety seats should judge the changed proposal");
-    assert!(retested.iter().any(|u| u.contains("who pays")), "the build room wasn't asked again");
+    let retested: Vec<&String> = asked
+        .iter()
+        .filter(|u| u.contains("The proposal has since been changed"))
+        .collect();
+    assert_eq!(
+        retested.len(),
+        10,
+        "five build seats and five safety seats should judge the changed proposal"
+    );
+    assert!(
+        retested.iter().any(|u| u.contains("who pays")),
+        "the build room wasn't asked again"
+    );
     // Every seat's call was recorded, and graded.
-    let council: Vec<_> = d.trace.calls.iter().filter(|c| c.asked_by == "council").collect();
-    assert!(council.len() >= 15, "{} council calls recorded", council.len());
-    assert!(council.iter().all(|c| c.graded == Some(true)), "every seat committed and gave a reason");
+    let council: Vec<_> = d
+        .trace
+        .calls
+        .iter()
+        .filter(|c| c.asked_by == "council")
+        .collect();
+    assert!(
+        council.len() >= 15,
+        "{} council calls recorded",
+        council.len()
+    );
+    assert!(
+        council.iter().all(|c| c.graded == Some(true)),
+        "every seat committed and gave a reason"
+    );
 }
 
 /// Never satisfied: each pass asks for something new.
@@ -131,7 +201,9 @@ impl Llm for NeverSatisfied {
     fn complete(&self, _s: &str, _user: &str) -> Result<String> {
         let mut n = self.0.lock().unwrap();
         *n += 1;
-        Ok(format!("Against. Still a risk. It would be OK if change number {n} were made."))
+        Ok(format!(
+            "Against. Still a risk. It would be OK if change number {n} were made."
+        ))
     }
 }
 
@@ -140,7 +212,13 @@ fn what_is_still_a_no_after_the_retests_is_yours_to_decide() {
     let cfg: &'static Config = Box::leak(Box::new(Config::load(Path::new("config")).unwrap()));
     let p = plat();
     let seats = Arc::new(NeverSatisfied(Mutex::new(0)));
-    let mut d = Daemon::new(cfg, &p, Some(seats.clone()), Store::new(scratch("never")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        cfg,
+        &p,
+        Some(seats.clone()),
+        Store::new(scratch("never")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let _ = d.ask_the_room("is it safe to open the phone link to the internet?");
     let deadline = Instant::now() + Duration::from_secs(10);
     let mut t = atlas::store::now() + 50;
@@ -162,7 +240,12 @@ fn what_is_still_a_no_after_the_retests_is_yours_to_decide() {
 fn journal(n: usize) -> Journal {
     let mut j = Journal::default();
     for i in 0..n {
-        j.record_at(Kind::Published, &format!("entry {i}"), true, 1_000 + i as u64);
+        j.record_at(
+            Kind::Published,
+            &format!("entry {i}"),
+            true,
+            1_000 + i as u64,
+        );
     }
     j
 }
@@ -196,11 +279,17 @@ fn an_edited_removed_or_reordered_entry_shows() {
 
     let mut removed = journal(5);
     removed.events.remove(2);
-    assert!(matches!(removed.check(&[]), Sealed::Broken { .. }), "a missing entry went unnoticed");
+    assert!(
+        matches!(removed.check(&[]), Sealed::Broken { .. }),
+        "a missing entry went unnoticed"
+    );
 
     let mut swapped = journal(5);
     swapped.events.swap(1, 2);
-    assert!(matches!(swapped.check(&[]), Sealed::Broken { .. }), "a reordered log went unnoticed");
+    assert!(
+        matches!(swapped.check(&[]), Sealed::Broken { .. }),
+        "a reordered log went unnoticed"
+    );
 }
 
 #[test]
@@ -212,14 +301,25 @@ fn a_log_rewritten_seals_and_all_disagrees_with_its_heads() {
     // but it isn't the log whose head was written down.
     let mut forged = Journal::default();
     for i in 0..5 {
-        forged.record_at(Kind::Published, &format!("entry {i}"), i != 3, 1_000 + i as u64);
+        forged.record_at(
+            Kind::Published,
+            &format!("entry {i}"),
+            i != 3,
+            1_000 + i as u64,
+        );
     }
     assert!(matches!(forged.check(&[]), Sealed::Intact { .. }));
-    assert!(matches!(forged.check(&heads), Sealed::Broken { .. }), "a forged log matched the recorded head");
+    assert!(
+        matches!(forged.check(&heads), Sealed::Broken { .. }),
+        "a forged log matched the recorded head"
+    );
     // A head beyond the end means entries were cut off the end.
     let mut cut = journal(5);
     cut.events.truncate(3);
-    assert!(matches!(cut.check(&heads), Sealed::Broken { .. }), "entries cut off the end went unnoticed");
+    assert!(
+        matches!(cut.check(&heads), Sealed::Broken { .. }),
+        "entries cut off the end went unnoticed"
+    );
 }
 
 #[test]
@@ -228,7 +328,11 @@ fn old_entries_rolling_off_still_leave_a_checkable_log() {
     assert_eq!(j.events.len(), 400);
     assert_eq!(j.events[0].seq, 50);
     assert_eq!(j.events[0].prev, j.base);
-    assert!(matches!(j.check(&[]), Sealed::Intact { sealed: 400, .. }), "{:?}", j.check(&[]));
+    assert!(
+        matches!(j.check(&[]), Sealed::Intact { sealed: 400, .. }),
+        "{:?}",
+        j.check(&[])
+    );
 }
 
 #[test]
@@ -244,7 +348,11 @@ fn entries_from_before_the_seal_are_skipped_not_failed() {
         hash: String::new(),
     });
     j.record_at(Kind::Published, "sealed", true, 2);
-    assert!(matches!(j.check(&[]), Sealed::Intact { sealed: 1, .. }), "{:?}", j.check(&[]));
+    assert!(
+        matches!(j.check(&[]), Sealed::Intact { sealed: 1, .. }),
+        "{:?}",
+        j.check(&[])
+    );
 }
 
 #[test]
@@ -260,7 +368,10 @@ fn saving_writes_the_head_beside_the_log_and_the_check_reads_it() {
     assert_eq!(heads.len(), 2, "{heads:?}");
     assert_eq!(heads[1].1, j.events[3].hash);
     let back = Journal::load(&store);
-    assert!(matches!(back.check(&heads), Sealed::Intact { sealed: 4, .. }));
+    assert!(matches!(
+        back.check(&heads),
+        Sealed::Intact { sealed: 4, .. }
+    ));
     assert!(atlas::activity::said_with_backups(&back.check(&heads), 0).len() > 10);
 }
 
@@ -272,21 +383,32 @@ fn a_grade_is_kept_beside_the_log_and_survives_a_reload() {
     let log = atlas::trace::log_path(&dir);
     let mut t = atlas::trace::Trace::default();
     for i in 0..3 {
-        let mut c = atlas::trace::Call::new("conversation-reply", "m", 10 + i).finished(5, "p", "r");
+        let mut c =
+            atlas::trace::Call::new("conversation-reply", "m", 10 + i).finished(5, "p", "r");
         c.id = t.next_id();
         assert!(atlas::trace::append(&log, &c));
         t.record(c);
     }
-    assert!(atlas::trace::grade_and_keep(&log, &mut t, 2, false, Some("sounded like a chatbot")));
+    assert!(atlas::trace::grade_and_keep(
+        &log,
+        &mut t,
+        2,
+        false,
+        Some("sounded like a chatbot")
+    ));
     assert!(atlas::trace::grade_and_keep(&log, &mut t, 3, true, None));
     let back = atlas::trace::load(&log);
     let two = back.calls.iter().find(|c| c.id == 2).unwrap();
     assert_eq!(two.graded, Some(false));
     assert_eq!(two.why.as_deref(), Some("sounded like a chatbot"));
-    assert_eq!(back.calls.iter().find(|c| c.id == 3).unwrap().graded, Some(true));
+    assert_eq!(
+        back.calls.iter().find(|c| c.id == 3).unwrap().graded,
+        Some(true)
+    );
     assert_eq!(back.calls.iter().find(|c| c.id == 1).unwrap().graded, None);
     // Still nothing of what was said.
-    let raw = std::fs::read_to_string(&log).unwrap() + &std::fs::read_to_string(atlas::trace::grades_path(&log)).unwrap();
+    let raw = std::fs::read_to_string(&log).unwrap()
+        + &std::fs::read_to_string(atlas::trace::grades_path(&log)).unwrap();
     assert!(!raw.contains("\"p\"") && !raw.contains("\"r\""), "{raw}");
 }
 
@@ -297,7 +419,11 @@ fn the_scorecard_says_too_few_as_too_few_and_gives_a_range() {
         let mut c = atlas::trace::Call::new("research", "m", i).finished(5, "p", "r");
         c.id = t.next_id();
         t.record(c);
-        t.grade(i + 1, i % 4 != 0, Some("stated a figure that isn't in its sources"));
+        t.grade(
+            i + 1,
+            i % 4 != 0,
+            Some("stated a figure that isn't in its sources"),
+        );
     }
     let mut few = atlas::trace::Call::new("council", "m", 0).finished(5, "p", "r");
     few.id = t.next_id();
@@ -307,11 +433,24 @@ fn the_scorecard_says_too_few_as_too_few_and_gives_a_range() {
     let card = t.scorecard();
     let research = card.iter().find(|s| s.asked_by == "research").unwrap();
     assert_eq!((research.graded, research.good), (40, 30));
-    assert!(research.low < 0.75 && research.high > 0.75 && research.low > 0.5, "{research:?}");
+    assert!(
+        research.low < 0.75 && research.high > 0.75 && research.low > 0.5,
+        "{research:?}"
+    );
     assert!(research.said().contains("75% good"), "{}", research.said());
-    assert!(research.said().contains("stated a figure that isn't in its sources (10)"), "{}", research.said());
+    assert!(
+        research
+            .said()
+            .contains("stated a figure that isn't in its sources (10)"),
+        "{}",
+        research.said()
+    );
     let council = card.iter().find(|s| s.asked_by == "council").unwrap();
-    assert!(council.said().contains("too few to call a rate"), "{}", council.said());
+    assert!(
+        council.said().contains("too few to call a rate"),
+        "{}",
+        council.said()
+    );
     assert_eq!(atlas::trace::wilson(0, 0), (0.0, 1.0));
 }
 
@@ -334,15 +473,25 @@ fn a_new_model_file_is_a_new_fingerprint() {
     let dir = scratch("fp");
     let model = dir.join("model.gguf");
     std::fs::write(&model, b"one").unwrap();
-    let cfg: atlas::meaning::MeaningConfig =
-        serde_yaml::from_str(&format!("encoder:\n  command: embed\n  args: ['{}']\n", model.display())).unwrap();
+    let cfg: atlas::meaning::MeaningConfig = serde_yaml::from_str(&format!(
+        "encoder:\n  command: embed\n  args: ['{}']\n",
+        model.display()
+    ))
+    .unwrap();
     let vars = atlas::tools::Vars::new();
     let a = atlas::meaning::fingerprint(&cfg, &vars);
     assert!(!a.is_empty());
     assert_eq!(a, atlas::meaning::fingerprint(&cfg, &vars));
     std::fs::write(&model, b"a different, larger model").unwrap();
-    assert_ne!(a, atlas::meaning::fingerprint(&cfg, &vars), "a replaced model file kept its fingerprint");
-    assert_eq!(atlas::meaning::fingerprint(&atlas::meaning::MeaningConfig::default(), &vars), "");
+    assert_ne!(
+        a,
+        atlas::meaning::fingerprint(&cfg, &vars),
+        "a replaced model file kept its fingerprint"
+    );
+    assert_eq!(
+        atlas::meaning::fingerprint(&atlas::meaning::MeaningConfig::default(), &vars),
+        ""
+    );
 }
 
 fn notes() -> atlas::recall::Library {
@@ -366,9 +515,15 @@ fn search_is_measured_against_questions_it_can_answer() {
     assert_eq!(made.len(), 3);
     for q in &made {
         assert!(!q.yours);
-        assert!(!q.ask.contains("boiler") || q.answer != "Boiler service", "a title word was left in: {}", q.ask);
+        assert!(
+            !q.ask.contains("boiler") || q.answer != "Boiler service",
+            "a title word was left in: {}",
+            q.ask
+        );
     }
-    let yours = atlas::recall::questions_written("# comments are skipped => x\nwho fixed the valve => Boiler service\nnot a question\n");
+    let yours = atlas::recall::questions_written(
+        "# comments are skipped => x\nwho fixed the valve => Boiler service\nnot a question\n",
+    );
     assert_eq!(yours.len(), 1);
     assert!(yours[0].yours);
     let mut all = yours;
@@ -378,29 +533,73 @@ fn search_is_measured_against_questions_it_can_answer() {
     assert!(scores.recall_at_5 >= 0.75, "{scores:?}");
     assert!(scores.mrr > 0.5 && scores.ndcg_at_5 > 0.5, "{scores:?}");
     // Asking for a note that isn't there scores zero rather than failing.
-    let missing = vec![atlas::recall::KnownQuestion { ask: "passport renewal".into(), answer: "Passport".into(), yours: true }];
-    assert_eq!(atlas::recall::measure(&lib, &missing, None, &Default::default(), 0).recall_at_5, 0.0);
+    let missing = vec![atlas::recall::KnownQuestion {
+        ask: "passport renewal".into(),
+        answer: "Passport".into(),
+        yours: true,
+    }];
+    assert_eq!(
+        atlas::recall::measure(&lib, &missing, None, &Default::default(), 0).recall_at_5,
+        0.0
+    );
 }
 
 #[test]
 fn a_search_check_says_whether_meaning_helps() {
     use atlas::recall::{Scores, SearchCheck};
-    let s = |r: f32| Scores { recall_at_5: r, mrr: r, ndcg_at_5: r, asked: 20 };
-    let words_only = SearchCheck { at: 1, model: String::new(), words: s(0.6), meaning: None };
-    assert!(words_only.said(None).contains("60%"), "{}", words_only.said(None));
-    let better = SearchCheck { at: 2, model: "a".into(), words: s(0.6), meaning: Some(s(0.8)) };
-    assert!(better.said(None).contains("meaning finds 20 points more"), "{}", better.said(None));
-    let worse = SearchCheck { at: 3, model: "b".into(), words: s(0.6), meaning: Some(s(0.5)) };
+    let s = |r: f32| Scores {
+        recall_at_5: r,
+        mrr: r,
+        ndcg_at_5: r,
+        asked: 20,
+    };
+    let words_only = SearchCheck {
+        at: 1,
+        model: String::new(),
+        words: s(0.6),
+        meaning: None,
+    };
+    assert!(
+        words_only.said(None).contains("60%"),
+        "{}",
+        words_only.said(None)
+    );
+    let better = SearchCheck {
+        at: 2,
+        model: "a".into(),
+        words: s(0.6),
+        meaning: Some(s(0.8)),
+    };
+    assert!(
+        better.said(None).contains("meaning finds 20 points more"),
+        "{}",
+        better.said(None)
+    );
+    let worse = SearchCheck {
+        at: 3,
+        model: "b".into(),
+        words: s(0.6),
+        meaning: Some(s(0.5)),
+    };
     let said = worse.said(Some(&better));
     assert!(said.contains("worth a look"), "{said}");
-    assert!(said.contains("Against the previous meaning model: down 30 points"), "{said}");
+    assert!(
+        said.contains("Against the previous meaning model: down 30 points"),
+        "{said}"
+    );
 }
 
 #[test]
 fn the_search_check_runs_as_an_errand_and_is_kept() {
     let cfg: &'static Config = Box::leak(Box::new(Config::load(Path::new("config")).unwrap()));
     let p = plat();
-    let mut d = Daemon::new(cfg, &p, None, Store::new(scratch("check-errand")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        cfg,
+        &p,
+        None,
+        Store::new(scratch("check-errand")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     d.library = notes();
     let said = d.start_search_check();
     assert!(said.starts_with("Measuring"), "{said}");
@@ -417,7 +616,14 @@ fn the_search_check_runs_as_an_errand_and_is_kept() {
     let kept: Vec<atlas::recall::SearchCheck> = d.store.load("search_checks");
     assert_eq!(kept.len(), 1);
     use atlas::which_errand::{describe, Candidate};
-    let c = Candidate { id: 1, label: "search-check".into(), topic: None, started: 0, paused: false, can_hold: true };
+    let c = Candidate {
+        id: 1,
+        label: "search-check".into(),
+        topic: None,
+        started: 0,
+        paused: false,
+        can_hold: true,
+    };
     assert_eq!(describe(&c), "the search check");
 }
 
@@ -428,10 +634,18 @@ fn project(tag: &str) -> (PathBuf, atlas::workshop::Workshop, u64) {
     std::fs::write(folder.join("dates.rs"), "fn parse() {}\n").unwrap();
     let mut w = atlas::workshop::Workshop::default();
     w.register("diary", &folder.display().to_string(), 1);
-    let files = vec![atlas::workshop::FileEdit { path: "dates.rs".into(), content: "fn parse() { /* better */ }\n".into() }];
-    let bases = atlas::workshop::bases_in(&folder.display().to_string(), &files.iter().map(|f| f.path.clone()).collect::<Vec<_>>());
+    let files = vec![atlas::workshop::FileEdit {
+        path: "dates.rs".into(),
+        content: "fn parse() { /* better */ }\n".into(),
+    }];
+    let bases = atlas::workshop::bases_in(
+        &folder.display().to_string(),
+        &files.iter().map(|f| f.path.clone()).collect::<Vec<_>>(),
+    );
     assert_eq!(bases[0].1.len(), 64, "a sha256");
-    let id = w.propose("diary", "date parser", "parse dates", files, true, "", 2).unwrap();
+    let id = w
+        .propose("diary", "date parser", "parse dates", files, true, "", 2)
+        .unwrap();
     assert!(w.note_bases("diary", id, bases));
     (folder, w, id)
 }
@@ -445,13 +659,27 @@ fn a_change_is_applied_while_the_code_is_as_it_was() {
 #[test]
 fn a_change_written_against_old_code_is_not_written_over_new_code() {
     let (folder, mut w, _) = project("stale-moved");
-    std::fs::write(folder.join("dates.rs"), "fn parse() {}\nfn you_added_this() {}\n").unwrap();
+    std::fs::write(
+        folder.join("dates.rs"),
+        "fn parse() {}\nfn you_added_this() {}\n",
+    )
+    .unwrap();
     assert_eq!(
         w.plan_implementation("date parser"),
-        Err(atlas::workshop::ImplementError::Outdated { title: "date parser".into(), files: vec!["dates.rs".into()] })
+        Err(atlas::workshop::ImplementError::Outdated {
+            title: "date parser".into(),
+            files: vec!["dates.rs".into()]
+        })
     );
     let newly = w.mark_outdated();
-    assert_eq!(newly, vec![("diary".to_string(), "date parser".to_string(), vec!["dates.rs".to_string()])]);
+    assert_eq!(
+        newly,
+        vec![(
+            "diary".to_string(),
+            "date parser".to_string(),
+            vec!["dates.rs".to_string()]
+        )]
+    );
     assert!(w.mark_outdated().is_empty(), "said again an hour later");
     assert_eq!(w.outdated().len(), 1);
     // Put back as it was, it's current again.
@@ -466,13 +694,24 @@ fn a_file_that_appeared_since_counts_as_the_code_moving_on() {
     let folder = scratch("stale-new");
     let mut w = atlas::workshop::Workshop::default();
     w.register("diary", &folder.display().to_string(), 1);
-    let files = vec![atlas::workshop::FileEdit { path: "new.rs".into(), content: "// new".into() }];
-    let bases = atlas::workshop::bases_in(&folder.display().to_string(), &files.iter().map(|f| f.path.clone()).collect::<Vec<_>>());
+    let files = vec![atlas::workshop::FileEdit {
+        path: "new.rs".into(),
+        content: "// new".into(),
+    }];
+    let bases = atlas::workshop::bases_in(
+        &folder.display().to_string(),
+        &files.iter().map(|f| f.path.clone()).collect::<Vec<_>>(),
+    );
     assert_eq!(bases[0].1, atlas::workshop::ABSENT);
-    let id = w.propose("diary", "new module", "", files, false, "", 2).unwrap();
+    let id = w
+        .propose("diary", "new module", "", files, false, "", 2)
+        .unwrap();
     w.note_bases("diary", id, bases);
     std::fs::write(folder.join("new.rs"), "// someone else wrote this").unwrap();
-    assert!(matches!(w.plan_implementation("new module"), Err(atlas::workshop::ImplementError::Outdated { .. })));
+    assert!(matches!(
+        w.plan_implementation("new module"),
+        Err(atlas::workshop::ImplementError::Outdated { .. })
+    ));
 }
 
 #[test]
@@ -481,7 +720,18 @@ fn a_change_queued_before_this_is_never_called_out_of_date() {
     std::fs::write(folder.join("x.rs"), "old").unwrap();
     let mut w = atlas::workshop::Workshop::default();
     w.register("p", &folder.display().to_string(), 1);
-    w.propose("p", "legacy", "", vec![atlas::workshop::FileEdit { path: "x.rs".into(), content: "new".into() }], false, "", 2);
+    w.propose(
+        "p",
+        "legacy",
+        "",
+        vec![atlas::workshop::FileEdit {
+            path: "x.rs".into(),
+            content: "new".into(),
+        }],
+        false,
+        "",
+        2,
+    );
     std::fs::write(folder.join("x.rs"), "changed").unwrap();
     assert!(w.mark_outdated().is_empty());
     assert!(w.plan_implementation("legacy").is_ok());
@@ -492,17 +742,36 @@ fn atlas_refuses_an_outdated_change_and_says_why_and_whats_queued_names_it() {
     let (folder, w, _) = project("stale-daemon");
     let cfg: &'static Config = Box::leak(Box::new(Config::load(Path::new("config")).unwrap()));
     let p = plat();
-    let mut d = Daemon::new(cfg, &p, None, Store::new(scratch("stale-daemon-store")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        cfg,
+        &p,
+        None,
+        Store::new(scratch("stale-daemon-store")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     d.workshop = w;
     let newer = "fn parse() {}\nfn you_added_this() {}\n";
     std::fs::write(folder.join("dates.rs"), newer).unwrap();
-    let said = d.execute_timed(&Intent::Implement("date parser".into()), "implement the date parser");
-    assert!(said.contains("didn't apply") && said.contains("dates.rs"), "{said}");
+    let said = d.execute_timed(
+        &Intent::Implement("date parser".into()),
+        "implement the date parser",
+    );
+    assert!(
+        said.contains("didn't apply") && said.contains("dates.rs"),
+        "{said}"
+    );
     assert!(said.contains("redo it"), "{said}");
-    assert_eq!(std::fs::read_to_string(folder.join("dates.rs")).unwrap(), newer, "newer work was overwritten");
+    assert_eq!(
+        std::fs::read_to_string(folder.join("dates.rs")).unwrap(),
+        newer,
+        "newer work was overwritten"
+    );
     d.workshop.mark_outdated();
     let queued = d.execute_timed(&Intent::Queued, "what's queued");
-    assert!(queued.contains("date parser") && queued.contains("out of date"), "{queued}");
+    assert!(
+        queued.contains("date parser") && queued.contains("out of date"),
+        "{queued}"
+    );
 }
 
 #[test]
@@ -511,27 +780,60 @@ fn search_measurement_keeps_no_success_until_its_history_is_saved() {
     cfg.tools.as_mut().unwrap().recall.semantic = false;
     let p = plat();
     for fault in [false, true] {
-        let store = Store::new(scratch(if fault { "measurement-save-fault" } else { "measurement-held" }));
-        let mut d = Daemon::new(&cfg, &p, None, store.clone(), Proactive::new(ProactiveConfig::default()));
+        let store = Store::new(scratch(if fault {
+            "measurement-save-fault"
+        } else {
+            "measurement-held"
+        }));
+        let mut d = Daemon::new(
+            &cfg,
+            &p,
+            None,
+            store.clone(),
+            Proactive::new(ProactiveConfig::default()),
+        );
         d.library = notes();
-        if fault { std::fs::create_dir(store.root().join("search_checks.json")).unwrap(); }
+        if fault {
+            std::fs::create_dir(store.root().join("search_checks.json")).unwrap();
+        }
         let guard = store.transaction().unwrap();
         assert!(d.start_search_check().starts_with("Measuring"));
         std::thread::sleep(Duration::from_millis(80));
-        assert!(!store.root().join("search_checks.json").is_file(), "refused write must not publish a measurement");
+        assert!(
+            !store.root().join("search_checks.json").is_file(),
+            "refused write must not publish a measurement"
+        );
         drop(guard);
         let deadline = Instant::now() + Duration::from_secs(3);
         let mut out = Vec::new();
-        while d.crew.errands().iter().any(|e| e.name == "search-check") && Instant::now() < deadline {
+        while d.crew.errands().iter().any(|e| e.name == "search-check") && Instant::now() < deadline
+        {
             out.extend(d.tick(atlas::store::now() + 50));
             std::thread::sleep(Duration::from_millis(10));
         }
         if fault {
-            assert!(!out.iter().any(|line| line.starts_with("Search check,")), "save failure falsely reported success: {out:?}");
-            assert!(out.iter().any(|line| line.contains("history") || line.contains("not recorded")), "save failure was hidden: {out:?}");
+            assert!(
+                !out.iter().any(|line| line.starts_with("Search check,")),
+                "save failure falsely reported success: {out:?}"
+            );
+            assert!(
+                out.iter()
+                    .any(|line| line.contains("history") || line.contains("not recorded")),
+                "save failure was hidden: {out:?}"
+            );
         } else {
-            assert_eq!(store.load::<Vec<atlas::recall::SearchCheck>>("search_checks").len(), 1);
-            assert_eq!(out.iter().filter(|line| line.starts_with("Search check,")).count(), 1);
+            assert_eq!(
+                store
+                    .load::<Vec<atlas::recall::SearchCheck>>("search_checks")
+                    .len(),
+                1
+            );
+            assert_eq!(
+                out.iter()
+                    .filter(|line| line.starts_with("Search check,"))
+                    .count(),
+                1
+            );
         }
     }
 }
@@ -545,10 +847,24 @@ fn incomplete_meaning_measurement_never_becomes_word_only_success() {
         calls.set(calls.get() + 1);
         Err("Disposable encoder failed".to_string())
     };
-    let result = atlas::recall::measure_until(&lib, &questions, Some(&encoder), &atlas::recall::RecallConfig::default(), 1, &|| false);
+    let result = atlas::recall::measure_until(
+        &lib,
+        &questions,
+        Some(&encoder),
+        &atlas::recall::RecallConfig::default(),
+        1,
+        &|| false,
+    );
     assert!(result.unwrap_err().contains("encoder failed"));
     assert_eq!(calls.get(), 1, "failure must stop the pass immediately");
-    let canceled = atlas::recall::measure_until(&lib, &questions, Some(&encoder), &atlas::recall::RecallConfig::default(), 1, &|| true);
+    let canceled = atlas::recall::measure_until(
+        &lib,
+        &questions,
+        Some(&encoder),
+        &atlas::recall::RecallConfig::default(),
+        1,
+        &|| true,
+    );
     assert!(canceled.is_err());
     assert_eq!(calls.get(), 1, "canceled work must not invoke the encoder");
 }
@@ -557,14 +873,58 @@ fn incomplete_meaning_measurement_never_becomes_word_only_success() {
 fn search_encoder_child_is_bounded_and_failed_output_is_not_a_score() {
     let vars = atlas::tools::Vars::new();
     let encoder = |script: &str| atlas::meaning::MeaningConfig {
-        encoder: Some(atlas::tools::ExternalTool { command: "powershell.exe".into(), args: vec!["-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), script.into()], timeout_secs: 20, ..Default::default() })
+        encoder: Some(atlas::tools::ExternalTool {
+            command: "powershell.exe".into(),
+            args: vec![
+                "-NoProfile".into(),
+                "-NonInteractive".into(),
+                "-Command".into(),
+                script.into(),
+            ],
+            timeout_secs: 20,
+            ..Default::default()
+        }),
     };
-    let complete = atlas::meaning::embed_stoppable(&encoder("Write-Output '[0.25,0.5,0.75,1,0.25,0.5,0.75,1,0.25,0.5,0.75,1,0.25,0.5,0.75,1]'"), &vars, "Disposable search question", &|| false).unwrap();
+    let complete = atlas::meaning::embed_stoppable(
+        &encoder(
+            "Write-Output '[0.25,0.5,0.75,1,0.25,0.5,0.75,1,0.25,0.5,0.75,1,0.25,0.5,0.75,1]'",
+        ),
+        &vars,
+        "Disposable search question",
+        &|| false,
+    )
+    .unwrap();
     assert_eq!(complete, [0.25, 0.5, 0.75, 1.0].repeat(4));
-    assert!(atlas::meaning::embed_stoppable(&encoder("Write-Output '[0.25,0.5,0.75]'"), &vars, "Disposable search question", &|| false).is_err(), "undersized vectors must be rejected");
-    assert!(atlas::meaning::embed_stoppable(&encoder("Write-Output 'no vector'"), &vars, "Disposable search question", &|| false).is_err());
+    assert!(
+        atlas::meaning::embed_stoppable(
+            &encoder("Write-Output '[0.25,0.5,0.75]'"),
+            &vars,
+            "Disposable search question",
+            &|| false
+        )
+        .is_err(),
+        "undersized vectors must be rejected"
+    );
+    assert!(atlas::meaning::embed_stoppable(
+        &encoder("Write-Output 'no vector'"),
+        &vars,
+        "Disposable search question",
+        &|| false
+    )
+    .is_err());
     let start = Instant::now();
-    let canceled = atlas::meaning::embed_stoppable(&encoder("Start-Sleep -Seconds 20; Write-Output '[1,0]'"), &vars, "Disposable search question", &|| start.elapsed() >= Duration::from_millis(100));
-    assert!(canceled.is_err(), "cancellation must not produce a meaning score");
-    assert!(start.elapsed() < Duration::from_secs(2), "owned encoder cancellation did not reach its child");
+    let canceled = atlas::meaning::embed_stoppable(
+        &encoder("Start-Sleep -Seconds 20; Write-Output '[1,0]'"),
+        &vars,
+        "Disposable search question",
+        &|| start.elapsed() >= Duration::from_millis(100),
+    );
+    assert!(
+        canceled.is_err(),
+        "cancellation must not produce a meaning score"
+    );
+    assert!(
+        start.elapsed() < Duration::from_secs(2),
+        "owned encoder cancellation did not reach its child"
+    );
 }

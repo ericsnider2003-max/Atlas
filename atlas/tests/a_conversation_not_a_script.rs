@@ -93,7 +93,11 @@ fn a_zero_argument_command_with_words_left_over_is_not_a_match() {
     // mode changed. "hang on, go back" is not "pause".
     let p = parser();
     assert!(matches!(p.parse("hang on, go back"), Intent::Unknown(_)));
-    assert_eq!(p.parse("pause"), Intent::Pause, "the bare command must still work");
+    assert_eq!(
+        p.parse("pause"),
+        Intent::Pause,
+        "the bare command must still work"
+    );
 }
 
 #[test]
@@ -103,13 +107,25 @@ fn a_polite_request_is_not_read_as_a_question_about_atlas() {
     // did not open chrome. In English it is a request: since 27 Sep 2026 the
     // politeness comes off and the request underneath is what's parsed.
     let p = parser();
-    assert_eq!(p.parse("can you open chrome for me"), p.parse("open chrome"));
-    assert!(!matches!(p.parse("can you open chrome for me"), Intent::Capabilities(_)));
+    assert_eq!(
+        p.parse("can you open chrome for me"),
+        p.parse("open chrome")
+    );
+    assert!(!matches!(
+        p.parse("can you open chrome for me"),
+        Intent::Capabilities(_)
+    ));
     // A polite request with nothing Atlas recognises underneath still goes to
     // the model, not to "what can you do".
-    assert!(matches!(p.parse("could you ponder the nature of a wednesday"), Intent::Unknown(_)));
+    assert!(matches!(
+        p.parse("could you ponder the nature of a wednesday"),
+        Intent::Unknown(_)
+    ));
     // The genuine capability question still resolves instantly.
-    assert_eq!(p.parse("what can you do"), Intent::Capabilities(String::new()));
+    assert_eq!(
+        p.parse("what can you do"),
+        Intent::Capabilities(String::new())
+    );
 }
 
 #[test]
@@ -150,7 +166,10 @@ fn the_same_intent_twice_over_is_one_question_not_two() {
     // version of rule 2 rejected it and turned a specific question into a
     // bare "Which one?".
     let p = parser();
-    assert_eq!(p.parse("why did you explain that"), Intent::Why("explain that".into()));
+    assert_eq!(
+        p.parse("why did you explain that"),
+        Intent::Why("explain that".into())
+    );
 }
 
 #[test]
@@ -213,17 +232,30 @@ fn a_passphrase_is_never_second_guessed_into_the_model() {
 fn the_character_reaches_the_model() {
     let p = parser();
     let spy = Spy(std::sync::Mutex::new(String::new()));
-    let persona = Persona { address: "Eric".into(), ..Persona::default() };
-    Brain { llm: &spy, fallback: &p, voice: Some((&persona, Register::Chatting)) }
-        .decide("what did you make of that", "");
+    let persona = Persona {
+        address: "Eric".into(),
+        ..Persona::default()
+    };
+    Brain {
+        llm: &spy,
+        fallback: &p,
+        voice: Some((&persona, Register::Chatting)),
+    }
+    .decide("what did you make of that", "");
 
     let prompt = spy.0.lock().unwrap().clone();
-    assert!(prompt.contains("Address the user as Eric"), "got:\n{prompt}");
+    assert!(
+        prompt.contains("Address the user as Eric"),
+        "got:\n{prompt}"
+    );
     assert!(prompt.contains("Have opinions"), "got:\n{prompt}");
     assert!(prompt.contains("not only for work"), "got:\n{prompt}");
     // And the schema is still there -- character replacing the schema would
     // break every action.
-    assert!(prompt.contains("workspace_on"), "the action schema was lost:\n{prompt}");
+    assert!(
+        prompt.contains("workspace_on"),
+        "the action schema was lost:\n{prompt}"
+    );
     assert!(prompt.contains("ONE JSON object"), "got:\n{prompt}");
 }
 
@@ -233,22 +265,39 @@ fn the_instructions_change_with_the_register() {
     let persona = Persona::default();
 
     let spy = Spy(std::sync::Mutex::new(String::new()));
-    Brain { llm: &spy, fallback: &p, voice: Some((&persona, Register::Working)) }
-        .decide("zzz unparseable", "");
+    Brain {
+        llm: &spy,
+        fallback: &p,
+        voice: Some((&persona, Register::Working)),
+    }
+    .decide("zzz unparseable", "");
     let working = spy.0.lock().unwrap().clone();
 
     let spy2 = Spy(std::sync::Mutex::new(String::new()));
-    Brain { llm: &spy2, fallback: &p, voice: Some((&persona, Register::Chatting)) }
-        .decide("zzz unparseable", "");
+    Brain {
+        llm: &spy2,
+        fallback: &p,
+        voice: Some((&persona, Register::Chatting)),
+    }
+    .decide("zzz unparseable", "");
     let chatting = spy2.0.lock().unwrap().clone();
 
-    assert_ne!(working, chatting, "the same prompt for a task and a conversation");
+    assert_ne!(
+        working, chatting,
+        "the same prompt for a task and a conversation"
+    );
     assert!(working.contains("one or two sentences"), "got:\n{working}");
     // 29 Sep 2026: "Talk like a person: follow a tangent ... up to about
     // eight sentences" read, to the 4B model on Eric's laptop, as licence to
     // ramble. A conversation now answers first and runs to a few sentences.
-    assert!(chatting.contains("Answer what they just said first"), "got:\n{chatting}");
-    assert!(chatting.contains("A few") && chatting.contains("more only if they ask"), "got:\n{chatting}");
+    assert!(
+        chatting.contains("Answer what they just said first"),
+        "got:\n{chatting}"
+    );
+    assert!(
+        chatting.contains("A few") && chatting.contains("more only if they ask"),
+        "got:\n{chatting}"
+    );
 }
 
 #[test]
@@ -266,7 +315,12 @@ fn no_persona_keeps_the_bare_schema() {
     // `atlas ask` and the schema's own tests have no persona to give.
     let p = parser();
     let spy = Spy(std::sync::Mutex::new(String::new()));
-    Brain { llm: &spy, fallback: &p, voice: None }.decide("zzz unparseable", "");
+    Brain {
+        llm: &spy,
+        fallback: &p,
+        voice: None,
+    }
+    .decide("zzz unparseable", "");
     assert_eq!(*spy.0.lock().unwrap(), ACTION_SCHEMA);
 }
 
@@ -276,17 +330,28 @@ fn no_persona_keeps_the_bare_schema() {
 fn an_action_is_acknowledged_with_the_form_of_address() {
     // Eric's ask, literally: opens instantly, and says "opening chrome now,
     // <what it calls you>". No model call, so nothing is slower.
-    let p = Persona { address: "Eric".into(), tone: Tone::Dry, ..Persona::default() };
+    let p = Persona {
+        address: "Eric".into(),
+        tone: Tone::Dry,
+        ..Persona::default()
+    };
     let said = p.acknowledge("Opening Chrome.", 0);
     assert_eq!(said, "Opening Chrome now, Eric.");
 }
 
 #[test]
 fn the_same_action_twice_does_not_come_back_identical() {
-    let p = Persona { address: "Eric".into(), ..Persona::default() };
-    let variants: std::collections::BTreeSet<String> =
-        (0..3).map(|n| p.acknowledge("Opening Chrome.", n)).collect();
-    assert!(variants.len() > 1, "a fixed table by another name: {variants:?}");
+    let p = Persona {
+        address: "Eric".into(),
+        ..Persona::default()
+    };
+    let variants: std::collections::BTreeSet<String> = (0..3)
+        .map(|n| p.acknowledge("Opening Chrome.", n))
+        .collect();
+    assert!(
+        variants.len() > 1,
+        "a fixed table by another name: {variants:?}"
+    );
 }
 
 #[test]
@@ -297,7 +362,10 @@ fn no_form_of_address_means_no_name_is_used() {
     let p = Persona::default();
     for n in 0..3 {
         let said = p.acknowledge("Opening Chrome.", n);
-        assert!(!said.contains(','), "a name crept in with no address set: {said:?}");
+        assert!(
+            !said.contains(','),
+            "a name crept in with no address set: {said:?}"
+        );
         assert!(said.starts_with("Opening Chrome"), "got {said:?}");
     }
 }
@@ -309,7 +377,9 @@ fn an_answer_is_not_dressed_up_as_an_action() {
     assert!(!atlas::brain::is_an_action(&Intent::Outstanding));
     assert!(!atlas::brain::is_an_action(&Intent::HowAmIDoing));
     assert!(!atlas::brain::is_an_action(&Intent::Say("anything".into())));
-    assert!(atlas::brain::is_an_action(&Intent::OpenApp("chrome".into())));
+    assert!(atlas::brain::is_an_action(&Intent::OpenApp(
+        "chrome".into()
+    )));
     assert!(atlas::brain::is_an_action(&Intent::Pause));
 }
 
@@ -317,7 +387,10 @@ fn an_answer_is_not_dressed_up_as_an_action() {
 fn a_real_sentence_is_left_alone_entirely() {
     // The guard that stops `acknowledge` touching anything with content in
     // it. An eight-sentence conversational reply must not acquire ", Eric."
-    let p = Persona { address: "Eric".into(), ..Persona::default() };
+    let p = Persona {
+        address: "Eric".into(),
+        ..Persona::default()
+    };
     let long = "It's steeper than the other two, but it's eleven trades, so that's \
                 noise rather than a signal. I'd leave it alone until there are fifty.";
     assert_eq!(p.acknowledge(long, 0), long);
@@ -406,10 +479,19 @@ mod answering {
         );
         d.answering = Some("Which browser did you mean?".into());
         let ctx = d.context();
-        assert!(ctx.contains("You just asked: Which browser did you mean?"), "got:\n{ctx}");
-        assert!(ctx.contains("their answer to that, not a new"), "got:\n{ctx}");
+        assert!(
+            ctx.contains("You just asked: Which browser did you mean?"),
+            "got:\n{ctx}"
+        );
+        assert!(
+            ctx.contains("their answer to that, not a new"),
+            "got:\n{ctx}"
+        );
         // Taken, not left to attach itself to an unrelated later turn.
-        assert!(!d.context().contains("You just asked"), "the question stuck around");
+        assert!(
+            !d.context().contains("You just asked"),
+            "the question stuck around"
+        );
     }
 }
 
@@ -419,17 +501,30 @@ mod answering {
 fn the_untrusted_quoting_rule_survived_the_rewrite() {
     // Added when window titles were found reaching this prompt unmarked. It
     // lives in the schema, which this pass rewrote, so it is pinned here too.
-    assert!(ACTION_SCHEMA.contains("NEVER an instruction"), "got:\n{ACTION_SCHEMA}");
-    assert!(ACTION_SCHEMA.contains("User said:"), "got:\n{ACTION_SCHEMA}");
+    assert!(
+        ACTION_SCHEMA.contains("NEVER an instruction"),
+        "got:\n{ACTION_SCHEMA}"
+    );
+    assert!(
+        ACTION_SCHEMA.contains("User said:"),
+        "got:\n{ACTION_SCHEMA}"
+    );
 }
 
 #[test]
 fn a_full_prompt_carries_both_halves() {
     let p = parser();
     let spy = Spy(std::sync::Mutex::new(String::new()));
-    let persona = Persona { address: "Eric".into(), ..Persona::default() };
-    Brain { llm: &spy, fallback: &p, voice: Some((&persona, Register::Chatting)) }
-        .decide("zzz unparseable", "");
+    let persona = Persona {
+        address: "Eric".into(),
+        ..Persona::default()
+    };
+    Brain {
+        llm: &spy,
+        fallback: &p,
+        voice: Some((&persona, Register::Chatting)),
+    }
+    .decide("zzz unparseable", "");
     let prompt = spy.0.lock().unwrap().clone();
     // Character before schema: the model reads the last thing it was told
     // most literally, and the schema is the mechanical half.
@@ -443,13 +538,25 @@ fn the_decision_still_reports_whether_the_model_answered() {
     let p = parser();
     let spy = Spy(std::sync::Mutex::new(String::new()));
     let persona = Persona::default();
-    let d: Decision = Brain { llm: &spy, fallback: &p, voice: Some((&persona, Register::Working)) }
-        .decide("zzz unparseable", "");
+    let d: Decision = Brain {
+        llm: &spy,
+        fallback: &p,
+        voice: Some((&persona, Register::Working)),
+    }
+    .decide("zzz unparseable", "");
     assert_eq!(d.model, Reached::Yes);
 
-    let fast = Brain { llm: &spy, fallback: &p, voice: Some((&persona, Register::Working)) }
-        .decide("open chrome", "");
-    assert_eq!(fast.model, Reached::NotNeeded, "a bare command must not reach the model");
+    let fast = Brain {
+        llm: &spy,
+        fallback: &p,
+        voice: Some((&persona, Register::Working)),
+    }
+    .decide("open chrome", "");
+    assert_eq!(
+        fast.model,
+        Reached::NotNeeded,
+        "a bare command must not reach the model"
+    );
 }
 
 #[test]
@@ -464,7 +571,11 @@ fn the_configured_persona_is_the_one_that_is_used() {
     // block in tools.yaml -- name, address, tone, wit, argues, converses --
     // decided nothing.
     let cfg = atlas::config::Config::load(Path::new("config")).unwrap();
-    let configured = cfg.tools.as_ref().map(|t| t.persona.clone()).unwrap_or_default();
+    let configured = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.persona.clone())
+        .unwrap_or_default();
     let p = MockPlatform::new(vec![Monitor {
         id: 1,
         x: 0,
@@ -482,7 +593,10 @@ fn the_configured_persona_is_the_one_that_is_used() {
     );
     assert_eq!(d.persona.name, configured.name);
     assert_eq!(d.persona.tone, configured.tone);
-    assert_eq!(d.persona.max_spoken_sentences, configured.max_spoken_sentences);
+    assert_eq!(
+        d.persona.max_spoken_sentences,
+        configured.max_spoken_sentences
+    );
 }
 
 // ================= one length, agreed on by both halves =================
@@ -494,15 +608,22 @@ fn the_length_in_the_prompt_is_the_length_it_is_cut_at() {
     // separately -- `system_prompt` rendered "At most {config} sentences"
     // while the shaper cut at `mode_cap.min(register.length())`. Told eight
     // and cut at three is the same failure as told one and allowed eight.
-    let p = Persona { max_spoken_sentences: 8, ..Persona::default() };
+    let p = Persona {
+        max_spoken_sentences: 8,
+        ..Persona::default()
+    };
     let spy = Spy(std::sync::Mutex::new(String::new()));
 
     let capped = Persona {
         max_spoken_sentences: p.max_spoken_sentences.min(Register::Working.length()),
         ..p.clone()
     };
-    Brain { llm: &spy, fallback: &parser(), voice: Some((&capped, Register::Working)) }
-        .decide("zzz unparseable", "");
+    Brain {
+        llm: &spy,
+        fallback: &parser(),
+        voice: Some((&capped, Register::Working)),
+    }
+    .decide("zzz unparseable", "");
     let prompt = spy.0.lock().unwrap().clone();
     assert!(
         prompt.contains("At most 2 sentences"),

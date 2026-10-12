@@ -42,7 +42,13 @@ fn plat() -> MockPlatform {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 fn routine(title: &str, at: u64) -> Note {
@@ -57,24 +63,36 @@ fn urgent(title: &str, at: u64) -> Note {
 
 #[test]
 fn at_the_desk_it_speaks_rather_than_popping_something_up() {
-    assert_eq!(route(Presence::AtDesk, true, true, false, false), Route::Speak);
+    assert_eq!(
+        route(Presence::AtDesk, true, true, false, false),
+        Route::Speak
+    );
 }
 
 #[test]
 fn away_it_puts_it_on_the_screen() {
-    assert_eq!(route(Presence::Away, true, true, false, false), Route::Notify);
+    assert_eq!(
+        route(Presence::Away, true, true, false, false),
+        Route::Notify
+    );
 }
 
 #[test]
 fn at_the_desk_with_no_working_speakers_still_gets_through() {
     // Being at the desk with the volume off is not the same as being away,
     // and it must not mean the message is skipped.
-    assert_eq!(route(Presence::AtDesk, false, true, false, false), Route::Notify);
+    assert_eq!(
+        route(Presence::AtDesk, false, true, false, false),
+        Route::Notify
+    );
 }
 
 #[test]
 fn with_no_way_to_reach_you_it_is_held_rather_than_dropped() {
-    assert_eq!(route(Presence::Away, false, false, false, false), Route::Hold);
+    assert_eq!(
+        route(Presence::Away, false, false, false, false),
+        Route::Hold
+    );
 }
 
 #[test]
@@ -88,8 +106,14 @@ fn something_private_knocks_rather_than_discloses() {
     let n = routine("your bank", 0).private();
     let (title, body) = n.shown();
     assert_eq!(title, "your bank", "you still get told there is something");
-    assert!(!body.contains("body"), "the private content went on screen anyway: {body}");
-    assert!(body.contains("Ask me"), "it doesn't say how to get the rest: {body}");
+    assert!(
+        !body.contains("body"),
+        "the private content went on screen anyway: {body}"
+    );
+    assert!(
+        body.contains("Ask me"),
+        "it doesn't say how to get the rest: {body}"
+    );
 }
 
 #[test]
@@ -103,15 +127,24 @@ fn an_ordinary_note_is_shown_in_full() {
 fn a_private_note_is_still_delivered_rather_than_held() {
     // The coffee-shop case. Delivery must not depend on knowing the room.
     let _n = routine("your bank", 0).private();
-    assert_eq!(route(Presence::NotAlone, true, true, false, false), Route::Speak);
-    assert_eq!(route(Presence::Away, false, true, false, false), Route::Notify);
+    assert_eq!(
+        route(Presence::NotAlone, true, true, false, false),
+        Route::Speak
+    );
+    assert_eq!(
+        route(Presence::Away, false, true, false, false),
+        Route::Notify
+    );
 }
 
 #[test]
 fn a_machine_with_no_camera_is_not_treated_as_an_empty_room() {
     // `Unknown` presence is the normal case — most machines have no sensor.
     // Treating it as "away" would mean Atlas never speaks to anyone.
-    assert_eq!(route(Presence::Unknown, true, true, false, false), Route::Speak);
+    assert_eq!(
+        route(Presence::Unknown, true, true, false, false),
+        Route::Speak
+    );
 }
 
 // --- what actually happened -------------------------------------------------
@@ -139,11 +172,20 @@ fn a_failure_keeps_the_reason_rather_than_flattening_it() {
 
 #[test]
 fn a_machine_that_cannot_notify_says_so_rather_than_claiming_it_can() {
-    let none = NotifyConfig { tool: None, ..Default::default() };
+    let none = NotifyConfig {
+        tool: None,
+        ..Default::default()
+    };
     assert!(!can_notify(&none));
-    let off = NotifyConfig { enabled: false, ..Default::default() };
+    let off = NotifyConfig {
+        enabled: false,
+        ..Default::default()
+    };
     assert!(!can_notify(&off));
-    assert!(NO_NOTIFIER.contains("held"), "it doesn't say what happens instead");
+    assert!(
+        NO_NOTIFIER.contains("held"),
+        "it doesn't say what happens instead"
+    );
 }
 
 #[test]
@@ -155,14 +197,23 @@ fn showing_something_with_no_display_fails_rather_than_quietly_succeeding() {
     // PowerShell is gone — Atlas draws its own panel. On a machine with no
     // display, which is what a test run is, that must be reported rather than
     // returning Ok for a window nobody could see.
-    let cfg = NotifyConfig { tool: None, ..Default::default() };
+    let cfg = NotifyConfig {
+        tool: None,
+        ..Default::default()
+    };
     let got = atlas::notify::show(&routine("x", 0), &cfg, &Default::default());
     if atlas::window::can_open() {
         // A real desktop: the panel is the delivery, and it opened.
-        assert!(got.is_ok(), "a machine with a display could not open a panel: {got:?}");
+        assert!(
+            got.is_ok(),
+            "a machine with a display could not open a panel: {got:?}"
+        );
     } else {
         let e = got.unwrap_err();
-        assert!(e.contains("display"), "it didn't say why it couldn't show anything: {e}");
+        assert!(
+            e.contains("display"),
+            "it didn't say why it couldn't show anything: {e}"
+        );
     }
 }
 
@@ -173,7 +224,9 @@ fn a_private_note_shown_in_a_window_only_knocks() {
     let c = atlas::window::Contents::knock("your bank");
     assert_eq!(c.title, "your bank");
     assert!(
-        c.lines.iter().all(|l| !l.contains("balance") && l.contains("Ask me")),
+        c.lines
+            .iter()
+            .all(|l| !l.contains("balance") && l.contains("Ask me")),
         "the private content reached the screen: {:?}",
         c.lines
     );
@@ -208,8 +261,12 @@ fn a_panel_survives_the_trip_to_the_child_process() {
     // through a file. A field lost in that trip is a field the window silently
     // renders empty.
     use atlas::window::{read_staged, stage, Contents, Panel};
-    let c = Contents::new(Panel::Brief, "While you were away", vec!["a".into(), "b".into()])
-        .because("shown rather than said");
+    let c = Contents::new(
+        Panel::Brief,
+        "While you were away",
+        vec!["a".into(), "b".into()],
+    )
+    .because("shown rather than said");
     let back = read_staged(&stage(&c).unwrap()).unwrap();
     assert_eq!(back.title, c.title);
     assert_eq!(back.lines, c.lines);
@@ -227,14 +284,21 @@ fn something_held_is_given_back_when_you_return() {
     assert_eq!(o.waiting(), 1);
     let back = o.collect(HOUR, &cfg);
     assert_eq!(back.len(), 1);
-    assert_eq!(o.waiting(), 0, "collecting must not leave a duplicate behind");
+    assert_eq!(
+        o.waiting(),
+        0,
+        "collecting must not leave a duplicate behind"
+    );
 }
 
 #[test]
 fn stale_routine_news_is_not_read_out_but_stale_urgent_news_is() {
     // "Your disk filled up four hours ago" is still true. "A backup finished
     // four hours ago" is not worth hearing when you sit down.
-    let cfg = NotifyConfig { stale_after_secs: HOUR, ..Default::default() };
+    let cfg = NotifyConfig {
+        stale_after_secs: HOUR,
+        ..Default::default()
+    };
     let mut o = Outbox::default();
     o.hold(routine("a backup finished", 0), &cfg);
     o.hold(urgent("disk is nearly full", 0), &cfg);
@@ -246,7 +310,10 @@ fn stale_routine_news_is_not_read_out_but_stale_urgent_news_is() {
 #[test]
 fn the_held_queue_does_not_grow_without_limit() {
     // A wall of held messages is the same as losing them.
-    let cfg = NotifyConfig { max_held: 3, ..Default::default() };
+    let cfg = NotifyConfig {
+        max_held: 3,
+        ..Default::default()
+    };
     let mut o = Outbox::default();
     for i in 0..10 {
         o.hold(routine(&format!("note {i}"), i), &cfg);
@@ -256,7 +323,10 @@ fn the_held_queue_does_not_grow_without_limit() {
 
 #[test]
 fn a_routine_note_is_dropped_before_an_urgent_one_when_full() {
-    let cfg = NotifyConfig { max_held: 2, ..Default::default() };
+    let cfg = NotifyConfig {
+        max_held: 2,
+        ..Default::default()
+    };
     let mut o = Outbox::default();
     o.hold(urgent("disk is nearly full", 0), &cfg);
     o.hold(routine("a backup finished", 1), &cfg);
@@ -278,7 +348,10 @@ fn what_you_missed_leads_with_the_urgent_ones_by_name() {
         routine("a note was saved", 0),
     ];
     let s = spoken(&notes);
-    assert!(s.contains("disk is nearly full"), "the urgent one wasn't named: {s}");
+    assert!(
+        s.contains("disk is nearly full"),
+        "the urgent one wasn't named: {s}"
+    );
     assert!(s.contains("2 other"), "the rest weren't counted: {s}");
 }
 
@@ -291,7 +364,10 @@ fn nothing_missed_says_nothing_at_all() {
 
 #[test]
 fn only_routine_news_is_said_without_alarming_you() {
-    let notes = vec![routine("a backup finished", 0), routine("a note was saved", 0)];
+    let notes = vec![
+        routine("a backup finished", 0),
+        routine("a note was saved", 0),
+    ];
     let s = spoken(&notes);
     assert!(s.contains("nothing urgent"), "{s}");
 }
@@ -325,7 +401,11 @@ fn a_note_that_could_not_be_delivered_is_waiting_rather_than_gone() {
         !sent.reached_you(),
         "the away route did not even try the notifier: {sent:?}"
     );
-    assert_eq!(d.outbox.waiting(), 1, "an undeliverable note vanished: {sent:?}");
+    assert_eq!(
+        d.outbox.waiting(),
+        1,
+        "an undeliverable note vanished: {sent:?}"
+    );
 }
 
 #[test]
@@ -339,7 +419,11 @@ fn with_no_notifier_configured_nothing_is_lost() {
     let mut d = daemon(&c, &p, "why");
     let away = atlas::store::now() + 100_000;
     let sent = d.reach_you(urgent("disk is nearly full", away), away);
-    assert_eq!(sent, Sent::Held, "an undeliverable note did something else: {sent:?}");
+    assert_eq!(
+        sent,
+        Sent::Held,
+        "an undeliverable note did something else: {sent:?}"
+    );
     assert_eq!(d.outbox.waiting(), 1, "it was neither delivered nor kept");
 }
 
@@ -380,9 +464,18 @@ fn being_at_the_desk_speaks_rather_than_holding() {
 fn the_shipped_config_is_enabled_and_holds_rather_than_drops() {
     let c = cfg();
     let n = c.tools.as_ref().expect("tools.yaml loads").notify.clone();
-    assert!(n.enabled, "notifications are switched off in the shipped config");
-    assert!(n.max_held > 0, "a hold limit of zero drops everything immediately");
-    assert!(n.stale_after_secs > 0, "everything would count as stale immediately");
+    assert!(
+        n.enabled,
+        "notifications are switched off in the shipped config"
+    );
+    assert!(
+        n.max_held > 0,
+        "a hold limit of zero drops everything immediately"
+    );
+    assert!(
+        n.stale_after_secs > 0,
+        "everything would count as stale immediately"
+    );
 }
 
 #[test]
@@ -461,7 +554,13 @@ fn held_notes_survive_a_restart() {
         d.persist();
     }
     // A second Daemon over the same store is what a restart looks like.
-    let d2 = Daemon::new(&c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
+    let d2 = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     assert_eq!(
         d2.outbox.waiting(),
         1,
@@ -503,7 +602,10 @@ fn peeking_does_not_remove_anything() {
 fn peek_and_collect_agree_on_what_is_worth_saying() {
     // If these ever disagreed, you would be told about one set of things and
     // a different set would be cleared.
-    let cfg = NotifyConfig { stale_after_secs: HOUR, ..Default::default() };
+    let cfg = NotifyConfig {
+        stale_after_secs: HOUR,
+        ..Default::default()
+    };
     let mut o = Outbox::default();
     o.hold(routine("old routine", 0), &cfg);
     o.hold(urgent("old urgent", 0), &cfg);
@@ -549,7 +651,10 @@ fn at_the_desk_with_no_headphones_it_speaks_aloud() {
 #[test]
 fn in_public_with_no_headphones_it_shows_rather_than_says() {
     let devs = vec![out("Speakers (Realtek High Definition Audio)")];
-    assert_eq!(how_to_say(Some(&devs), false, true), Say::Silent(Quiet::InPublic));
+    assert_eq!(
+        how_to_say(Some(&devs), false, true),
+        Say::Silent(Quiet::InPublic)
+    );
 }
 
 #[test]
@@ -558,7 +663,10 @@ fn a_call_beats_everything_including_headphones() {
     // make it worse rather than better — it lands in the middle of what you
     // are listening to.
     let devs = vec![out("AirPods Pro")];
-    assert_eq!(how_to_say(Some(&devs), true, false), Say::Silent(Quiet::OnACall));
+    assert_eq!(
+        how_to_say(Some(&devs), true, false),
+        Say::Silent(Quiet::OnACall)
+    );
 }
 
 #[test]
@@ -571,7 +679,10 @@ fn never_having_looked_at_the_audio_is_not_the_same_as_finding_none() {
         other => panic!("an unprobed machine was silenced: {other:?}"),
     }
     // Probed and genuinely empty is a real finding, and stays one.
-    assert_eq!(how_to_say(Some(&[]), false, false), Say::Silent(Quiet::NoOutput));
+    assert_eq!(
+        how_to_say(Some(&[]), false, false),
+        Say::Silent(Quiet::NoOutput)
+    );
 }
 
 #[test]
@@ -598,9 +709,18 @@ fn a_meeting_in_a_browser_tab_counts_as_a_call() {
 #[test]
 fn ordinary_work_is_not_mistaken_for_a_call() {
     use atlas::platform::ActiveWindow;
-    let w = ActiveWindow { process: "code.exe".into(), title: "notify.rs - atlas".into() };
-    assert!(!on_a_call(Some(&w)), "editing a file was read as being on a call");
-    assert!(!on_a_call(None), "no foreground window was read as being on a call");
+    let w = ActiveWindow {
+        process: "code.exe".into(),
+        title: "notify.rs - atlas".into(),
+    };
+    assert!(
+        !on_a_call(Some(&w)),
+        "editing a file was read as being on a call"
+    );
+    assert!(
+        !on_a_call(None),
+        "no foreground window was read as being on a call"
+    );
 }
 
 #[test]
@@ -610,7 +730,10 @@ fn a_listing_of_microphones_only_is_not_a_machine_without_speakers() {
     // "nothing here can play sound" and no notification was ever said.
     use atlas::audio::{Device, Kind};
     let devs = vec![
-        Device::new("Microphone Array (Intel\u{ae} Smart Sound Technology for Digital Microphones)", Kind::Input),
+        Device::new(
+            "Microphone Array (Intel\u{ae} Smart Sound Technology for Digital Microphones)",
+            Kind::Input,
+        ),
         Device::new("Microphone (HD Pro Webcam C920)", Kind::Input),
     ];
     match how_to_say(Some(&devs), false, false) {

@@ -35,7 +35,11 @@ fn a_process_that_never_finishes_is_killed() {
     let took = started.elapsed();
 
     assert!(r.is_err(), "a hung tool returned success");
-    crate::common::assert_prompt(took, std::time::Duration::from_secs(5), "the caller was held, the deadline did nothing");
+    crate::common::assert_prompt(
+        took,
+        std::time::Duration::from_secs(5),
+        "the caller was held, the deadline did nothing",
+    );
 }
 
 #[cfg(unix)]
@@ -59,7 +63,11 @@ fn a_quick_tool_is_untouched() {
         .run(&Vars::default(), None)
         .expect("echo should work");
     assert!(out.contains("hello"));
-    crate::common::assert_prompt(started.elapsed(), std::time::Duration::from_millis(2000), "took too long");
+    crate::common::assert_prompt(
+        started.elapsed(),
+        std::time::Duration::from_millis(2000),
+        "took too long",
+    );
 }
 
 #[cfg(unix)]
@@ -69,7 +77,11 @@ fn a_tool_that_writes_a_lot_does_not_deadlock() {
     // blocks on write, so a caller that polls without draining deadlocks
     // against the process it is trying to time out. Whisper writes progress
     // to stderr the whole way through, which is exactly this shape.
-    let big = tool("sh", &["-c", "for i in $(seq 1 20000); do echo line-$i; done"], 20);
+    let big = tool(
+        "sh",
+        &["-c", "for i in $(seq 1 20000); do echo line-$i; done"],
+        20,
+    );
     let started = Instant::now();
     let out = big.run(&Vars::default(), None).expect("should finish");
     assert!(out.lines().count() > 19_000, "output was truncated");
@@ -82,7 +94,14 @@ fn a_tool_that_writes_a_lot_does_not_deadlock() {
 #[cfg(unix)]
 #[test]
 fn stderr_filling_up_does_not_deadlock_either() {
-    let noisy = tool("sh", &["-c", "for i in $(seq 1 20000); do echo err-$i >&2; done; echo ok"], 20);
+    let noisy = tool(
+        "sh",
+        &[
+            "-c",
+            "for i in $(seq 1 20000); do echo err-$i >&2; done; echo ok",
+        ],
+        20,
+    );
     let out = noisy.run(&Vars::default(), None).expect("should finish");
     assert!(out.contains("ok"));
 }
@@ -110,11 +129,17 @@ fn a_big_piece_of_text_handed_to_a_tool_does_not_deadlock() {
     t.stdin_text = true;
 
     let started = Instant::now();
-    let out = t.run(&Vars::default(), Some(&big)).expect("cat should finish");
+    let out = t
+        .run(&Vars::default(), Some(&big))
+        .expect("cat should finish");
     let took = started.elapsed();
 
     assert_eq!(out.len(), big.len(), "the text did not come back whole");
-    crate::common::assert_prompt(took, std::time::Duration::from_secs(10), "1MB through a tool took which is the deadlock, not slowness");
+    crate::common::assert_prompt(
+        took,
+        std::time::Duration::from_secs(10),
+        "1MB through a tool took which is the deadlock, not slowness",
+    );
 }
 
 #[cfg(unix)]
@@ -133,8 +158,15 @@ fn a_tool_that_never_reads_its_input_is_still_killed_on_time() {
     let r = t.run(&Vars::default(), Some(&big));
     let took = started.elapsed();
 
-    assert!(r.is_err(), "a tool that ignored its input and hung returned success");
-    crate::common::assert_prompt(took, std::time::Duration::from_secs(8), "held for against a 2s deadline -- the write blocked outside it");
+    assert!(
+        r.is_err(),
+        "a tool that ignored its input and hung returned success"
+    );
+    crate::common::assert_prompt(
+        took,
+        std::time::Duration::from_secs(8),
+        "held for against a 2s deadline -- the write blocked outside it",
+    );
 }
 
 #[cfg(unix)]
@@ -154,7 +186,11 @@ fn zero_means_the_default_rather_than_no_limit() {
     // A config that omits the field, or sets it to 0, must not mean "wait
     // forever" — that is the behaviour being removed.
     // `echo` is a shell built-in on Windows, not a program.
-    let t = if cfg!(windows) { tool("cmd", &["/c", "echo", "x"], 0) } else { tool("echo", &["x"], 0) };
+    let t = if cfg!(windows) {
+        tool("cmd", &["/c", "echo", "x"], 0)
+    } else {
+        tool("echo", &["x"], 0)
+    };
     assert_eq!(t.timeout_secs, 0);
     // Runs and returns; the point is that it does not hang.
     assert!(t.run(&Vars::default(), None).is_ok());

@@ -1,6 +1,6 @@
 //! Moving your things between machines: carrying files, the remote laptop,
 //! sync and setting it up.
-//! 
+//!
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
@@ -39,8 +39,23 @@ fn carry_shrinkable(path: &std::path::Path) -> bool {
             .map(|e| e.to_ascii_lowercase())
             .as_deref(),
         Some(
-            "jpg" | "jpeg" | "png" | "gif" | "bmp" | "tif" | "tiff" | "webp" | "heic" | "mp4"
-                | "mov" | "mkv" | "avi" | "webm" | "wav" | "flac" | "aiff"
+            "jpg"
+                | "jpeg"
+                | "png"
+                | "gif"
+                | "bmp"
+                | "tif"
+                | "tiff"
+                | "webp"
+                | "heic"
+                | "mp4"
+                | "mov"
+                | "mkv"
+                | "avi"
+                | "webm"
+                | "wav"
+                | "flac"
+                | "aiff"
         )
     )
 }
@@ -191,7 +206,10 @@ pub(super) fn run_carry(cfg: &Config, args: &[String]) {
 
             keep(store.save("working_set", &packed.taking), "store");
             keep(store.save("working_set_left", &packed.leaving), "store");
-            keep(store.save("working_set_packed_at", &atlas::store::now()), "store");
+            keep(
+                store.save("working_set_packed_at", &atlas::store::now()),
+                "store",
+            );
             println!();
             println!("Recorded. `atlas carry back <folder>` when you get home.");
         }
@@ -242,7 +260,9 @@ pub(super) fn run_carry(cfg: &Config, args: &[String]) {
                 let Some(origin) = taking.iter().find(|c| c.name == name) else {
                     continue;
                 };
-                let Ok(meta) = std::fs::metadata(&path) else { continue };
+                let Ok(meta) = std::fs::metadata(&path) else {
+                    continue;
+                };
                 if !meta.is_file() {
                     continue;
                 }
@@ -268,10 +288,7 @@ pub(super) fn run_carry(cfg: &Config, args: &[String]) {
                 .collect();
 
             let (clean, clashes) = workingset::returning(&changed, &also_here);
-            println!(
-                "{clean} of {} land without a question.",
-                changed.len()
-            );
+            println!("{clean} of {} land without a question.", changed.len());
             if clashes.is_empty() {
                 println!("Nothing changed at both ends.");
             } else {
@@ -331,7 +348,11 @@ pub(super) fn run_remote(cfg: &Config, dir: &std::path::Path, args: &[String]) {
     use atlas::remote::{self, How, Needs, Queue, State};
 
     let store = atlas::roots::store();
-    let rcfg = cfg.tools.as_ref().map(|t| t.remote.clone()).unwrap_or_default();
+    let rcfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.remote.clone())
+        .unwrap_or_default();
     let mut q: Queue = store.load("remote_queue");
     let now = atlas::store::now();
 
@@ -370,7 +391,11 @@ pub(super) fn run_remote(cfg: &Config, dir: &std::path::Path, args: &[String]) {
                 println!("Ask for what? atlas remote ask \"render the draft\"");
                 return;
             }
-            let needs = if flagged("--anywhere") { Needs::Anything } else { Needs::TheLaptop };
+            let needs = if flagged("--anywhere") {
+                Needs::Anything
+            } else {
+                Needs::TheLaptop
+            };
             let how = if flagged("--quietly") {
                 How::Quietly
             } else if flagged("--dont-tell-me") {
@@ -385,7 +410,10 @@ pub(super) fn run_remote(cfg: &Config, dir: &std::path::Path, args: &[String]) {
             match laptop_reachable(dir, to) {
                 Some((name, up)) => {
                     println!("{}", remote::handing_off(&what, up));
-                    println!("(probed {name} just now — {}.)", if up { "up" } else { "not answering" });
+                    println!(
+                        "(probed {name} just now — {}.)",
+                        if up { "up" } else { "not answering" }
+                    );
                 }
                 None => {
                     // Honest about the gap rather than picking a branch: with
@@ -449,7 +477,9 @@ pub(super) fn run_remote(cfg: &Config, dir: &std::path::Path, args: &[String]) {
                 return;
             }
             keep(store.save("remote_queue", &q), "store");
-            let Some(r) = q.requests.iter().find(|r| r.id == id) else { return };
+            let Some(r) = q.requests.iter().find(|r| r.id == id) else {
+                return;
+            };
             match remote::finished(r, took, if result.is_empty() { "—" } else { &result }) {
                 Some(said) => println!("{said}"),
                 None => println!(
@@ -466,7 +496,9 @@ pub(super) fn run_remote(cfg: &Config, dir: &std::path::Path, args: &[String]) {
             Some(id) => println!("No request #{id}."),
             None => println!("Which one? atlas remote drop 3"),
         },
-        Some(other) => println!("I don't know \"{other}\" — try list, ask, start, done, failed or drop."),
+        Some(other) => {
+            println!("I don't know \"{other}\" — try list, ask, start, done, failed or drop.")
+        }
     }
 }
 
@@ -515,7 +547,9 @@ pub(super) fn run_sync(cfg: &Config, args: &[String]) {
                         println!("{}", keeping.at_rest_says());
                         println!();
                         println!("On your other devices:  atlas sync key set {phrase}");
-                        println!("Then turn it on:        sync.encrypt_bundles: true in tools.yaml");
+                        println!(
+                            "Then turn it on:        sync.encrypt_bundles: true in tools.yaml"
+                        );
                     }
                     Err(e) => println!("I made a key and couldn't keep it: {e}"),
                 }
@@ -524,7 +558,9 @@ pub(super) fn run_sync(cfg: &Config, args: &[String]) {
                 let typed: String = args[2..].join(" ");
                 let typed = value("--key").map(|k| k.to_string()).unwrap_or(typed);
                 if typed.trim().is_empty() {
-                    println!("atlas sync key set <phrase>   -- the phrase from `atlas sync key new`");
+                    println!(
+                        "atlas sync key set <phrase>   -- the phrase from `atlas sync key new`"
+                    );
                     return;
                 }
                 // Checked before it is kept, and an existing key kept unless
@@ -532,7 +568,10 @@ pub(super) fn run_sync(cfg: &Config, args: &[String]) {
                 let replace = args.iter().any(|a| a == "--replace");
                 let typed = typed.replace("--replace", "");
                 let kept: sync::KeptKey = store.load(sync::KEY_FILE);
-                if kept.is_set() && !replace && kept.phrase().ok().as_deref().map(str::trim) != Some(typed.trim()) {
+                if kept.is_set()
+                    && !replace
+                    && kept.phrase().ok().as_deref().map(str::trim) != Some(typed.trim())
+                {
                     println!(
                         "This device already has a household key. Using another one makes every \
                          bundle sealed under the old one unreadable here -- `--replace` if that is \
@@ -585,7 +624,11 @@ pub(super) fn run_sync(cfg: &Config, args: &[String]) {
                 println!("Sealing is {}.", if on { "on" } else { "off" });
                 println!(
                     "This device {}.",
-                    if kept.is_set() { "has a household key" } else { "has no household key" }
+                    if kept.is_set() {
+                        "has a household key"
+                    } else {
+                        "has no household key"
+                    }
                 );
                 if kept.is_set() {
                     println!("{}", kept.at_rest_says());
@@ -618,7 +661,9 @@ pub(super) fn run_sync(cfg: &Config, args: &[String]) {
             // the file rather than making you read the phrase off it and
             // type it.
             let from_card = |path: &str| -> Option<String> {
-                std::fs::read_to_string(path).ok().and_then(|t| sync::phrase_in_card(&t))
+                std::fs::read_to_string(path)
+                    .ok()
+                    .and_then(|t| sync::phrase_in_card(&t))
             };
             let phrase = value("--key")
                 .map(|k| k.to_string())
@@ -639,8 +684,10 @@ pub(super) fn run_sync(cfg: &Config, args: &[String]) {
                 None => None,
             };
             if let Some(env) = sync::peek(&raw) {
-                println!("Sealed bundle from {} ({}), written at {}.",
-                    env.from_device, env.belongs_to, env.made_at);
+                println!(
+                    "Sealed bundle from {} ({}), written at {}.",
+                    env.from_device, env.belongs_to, env.made_at
+                );
                 println!();
             }
             match sync::read_bundle_for(&raw, key.as_deref(), sync::Reader::Command) {
@@ -677,12 +724,20 @@ pub(super) fn run_sync_setup(cfg: &Config, args: &[String]) -> bool {
 
     // `atlas sync-setup compare` — the providers side by side. `compare` is
     // not a provider name, so it is handled before the provider parse.
-    if args.first().map(|a| a.eq_ignore_ascii_case("compare")).unwrap_or(false) {
+    if args
+        .first()
+        .map(|a| a.eq_ignore_ascii_case("compare"))
+        .unwrap_or(false)
+    {
         println!("{}", atlas::cloudsync::compare_providers());
         return true;
     }
 
-    let ccfg = cfg.tools.as_ref().map(|t| t.cloud.clone()).unwrap_or_default();
+    let ccfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.cloud.clone())
+        .unwrap_or_default();
 
     // `cloud.provider` ships `onedrive` and was read by nothing: this took
     // the provider from the command line or gave up, so `atlas sync-setup`
@@ -693,7 +748,12 @@ pub(super) fn run_sync_setup(cfg: &Config, args: &[String]) -> bool {
         Some(a) => a.clone(),
         None => ccfg.provider.clone(),
     };
-    let p = match name.trim().to_ascii_lowercase().replace(['-', '_'], "").as_str() {
+    let p = match name
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['-', '_'], "")
+        .as_str()
+    {
         "onedrive" => Provider::OneDrive,
         "icloud" | "iclouddrive" => Provider::ICloud,
         "dropbox" => Provider::Dropbox,
@@ -744,7 +804,11 @@ pub(super) fn run_sync_setup(cfg: &Config, args: &[String]) -> bool {
     let (fits, why) = cloudsync::free_tier_is_enough(p, needed);
     println!(
         "Space: about {needed}MB for {days_kept} days of history{}. {}{}",
-        if ccfg.carry_files { ", carrying files" } else { "" },
+        if ccfg.carry_files {
+            ", carrying files"
+        } else {
+            ""
+        },
         if fits { "" } else { "Doesn't fit: " },
         why
     );

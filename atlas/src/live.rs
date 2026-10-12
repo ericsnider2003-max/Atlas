@@ -63,7 +63,13 @@ pub struct Forming {
 
 impl Forming {
     pub fn open_at(price: f64, started: i64) -> Forming {
-        Forming { open: price, high: price, low: price, at: price, started }
+        Forming {
+            open: price,
+            high: price,
+            low: price,
+            at: price,
+            started,
+        }
     }
 
     /// Price moved. Extends the high and low the way a real candle does.
@@ -108,7 +114,11 @@ impl Now {
                 "{} on {} closed bars{}.",
                 self.settled.say(),
                 self.settled_bars,
-                if self.forming.is_some() { ", and the forming bar agrees" } else { "" }
+                if self.forming.is_some() {
+                    ", and the forming bar agrees"
+                } else {
+                    ""
+                }
             );
         }
         format!(

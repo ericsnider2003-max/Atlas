@@ -49,7 +49,11 @@ const NOW_WORDS: &[&str] = &["persona.wit"];
 
 /// Where a Settings key lives in `tools.yaml`.
 pub fn path_for(key: &str) -> &str {
-    ALIASES.iter().find(|(k, _)| *k == key).map(|(_, p)| *p).unwrap_or(key)
+    ALIASES
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, p)| *p)
+        .unwrap_or(key)
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -81,7 +85,9 @@ impl Preferences {
         // and must not be silently overwritten either — the same rule
         // `Store::load` follows for state. `save` sets it aside first.
         serde_yaml::from_str::<BTreeMap<String, Value>>(&text)
-            .map(|m| Preferences { chosen: m.into_iter().map(|(k, v)| (k, scalar_text(&v))).collect() })
+            .map(|m| Preferences {
+                chosen: m.into_iter().map(|(k, v)| (k, scalar_text(&v))).collect(),
+            })
             .map_err(|e| format!("{} won't read: {e}", Self::file(dir).display()))
     }
 
@@ -95,7 +101,10 @@ impl Preferences {
         for (k, v) in &self.chosen {
             // Quoted, so `on`, `off`, `yes` and `no` cannot be read back as
             // booleans by a YAML parser and change meaning on the way in.
-            body.push_str(&format!("{k}: {}\n", serde_yaml::to_string(v).unwrap_or_default().trim()));
+            body.push_str(&format!(
+                "{k}: {}\n",
+                serde_yaml::to_string(v).unwrap_or_default().trim()
+            ));
         }
         let file = Self::file(dir);
         // A file you'd edited by hand into something that won't read is
@@ -151,7 +160,10 @@ fn scalar_text(v: &Value) -> String {
         Value::String(s) => s.clone(),
         Value::Bool(b) => b.to_string(),
         Value::Number(n) => n.to_string(),
-        other => serde_yaml::to_string(other).unwrap_or_default().trim().to_string(),
+        other => serde_yaml::to_string(other)
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
     }
 }
 
@@ -164,7 +176,9 @@ fn scalar_text(v: &Value) -> String {
 /// nothing there at all is the type inferred from the text.
 fn set_at(root: &mut Value, path: &str, raw: &str) -> bool {
     let parts: Vec<&str> = path.split('.').collect();
-    let Some((last, parents)) = parts.split_last() else { return false };
+    let Some((last, parents)) = parts.split_last() else {
+        return false;
+    };
 
     let mut cur = root;
     for p in parents {
@@ -179,11 +193,15 @@ fn set_at(root: &mut Value, path: &str, raw: &str) -> bool {
             // hide that instead of reporting it.
             return false;
         }
-        let Some(next) = map.get_mut(&key) else { return false };
+        let Some(next) = map.get_mut(&key) else {
+            return false;
+        };
         cur = next;
     }
 
-    let Some(map) = cur.as_mapping_mut() else { return false };
+    let Some(map) = cur.as_mapping_mut() else {
+        return false;
+    };
     let key = Value::String((*last).to_string());
     let typed = match map.get(&key) {
         Some(Value::Bool(_)) => match parse_bool(raw) {
@@ -265,7 +283,10 @@ mod tests {
     fn a_string_stays_a_string_even_when_it_looks_like_something_else() {
         let mut v = yaml("voice_settings:\n  voice: \"en_US-amy-medium\"\n");
         assert!(set_at(&mut v, "voice_settings.voice", "af_bella"));
-        assert_eq!(v["voice_settings"]["voice"], Value::String("af_bella".into()));
+        assert_eq!(
+            v["voice_settings"]["voice"],
+            Value::String("af_bella".into())
+        );
         // "off" into a string field is the literal word, not `false`.
         assert!(set_at(&mut v, "voice_settings.voice", "off"));
         assert_eq!(v["voice_settings"]["voice"], Value::String("off".into()));
@@ -275,7 +296,11 @@ mod tests {
     fn nonsense_for_a_typed_field_is_refused_rather_than_guessed() {
         let mut v = yaml("wake:\n  enabled: false\n");
         assert!(!set_at(&mut v, "wake.enabled", "maybe"));
-        assert_eq!(v["wake"]["enabled"], Value::Bool(false), "it was changed anyway");
+        assert_eq!(
+            v["wake"]["enabled"],
+            Value::Bool(false),
+            "it was changed anyway"
+        );
     }
 
     #[test]
@@ -311,7 +336,11 @@ mod tests {
         p.set("ghost.setting", "true");
         let missed = p.apply_to(&mut v);
         assert_eq!(missed, vec!["ghost.setting".to_string()]);
-        assert_eq!(v["wake"]["enabled"], Value::Bool(true), "the good one still applied");
+        assert_eq!(
+            v["wake"]["enabled"],
+            Value::Bool(true),
+            "the good one still applied"
+        );
     }
 
     #[test]
@@ -329,7 +358,10 @@ mod tests {
         // And clearing puts it back to the shipped value.
         let mut back = back;
         assert!(back.clear("wake.enabled"));
-        assert!(!back.clear("wake.enabled"), "clearing twice reported a change twice");
+        assert!(
+            !back.clear("wake.enabled"),
+            "clearing twice reported a change twice"
+        );
         back.save(&dir).unwrap();
         assert!(!Preferences::load(&dir).chosen.contains_key("wake.enabled"));
         let _ = std::fs::remove_dir_all(&dir);

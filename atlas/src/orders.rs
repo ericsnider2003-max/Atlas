@@ -135,7 +135,13 @@ impl Orders {
     /// `None` when the update didn't move anything forward (an
     /// out-of-order or duplicate email), so a caller can tell "a fresh
     /// order or a real change happened" from "nothing worth mentioning".
-    pub fn update(&mut self, merchant: &str, subject: &str, status: Status, now: u64) -> Option<&Order> {
+    pub fn update(
+        &mut self,
+        merchant: &str,
+        subject: &str,
+        status: Status,
+        now: u64,
+    ) -> Option<&Order> {
         let id = Self::make_id(merchant, subject);
         if let Some(pos) = self.orders.iter().position(|o| o.id == id) {
             if self.orders[pos].status.is_progress_from(status) {
@@ -191,22 +197,34 @@ mod tests {
 
     #[test]
     fn out_for_delivery_is_recognised_ahead_of_a_bare_delivered_match() {
-        assert_eq!(status_from_subject("Your package is out for delivery"), Some(Status::OutForDelivery));
+        assert_eq!(
+            status_from_subject("Your package is out for delivery"),
+            Some(Status::OutForDelivery)
+        );
     }
 
     #[test]
     fn delivered_is_recognised() {
-        assert_eq!(status_from_subject("Your order has been delivered"), Some(Status::Delivered));
+        assert_eq!(
+            status_from_subject("Your order has been delivered"),
+            Some(Status::Delivered)
+        );
     }
 
     #[test]
     fn shipped_is_recognised() {
-        assert_eq!(status_from_subject("Your order has shipped"), Some(Status::Shipped));
+        assert_eq!(
+            status_from_subject("Your order has shipped"),
+            Some(Status::Shipped)
+        );
     }
 
     #[test]
     fn a_fresh_order_confirmation_is_recognised() {
-        assert_eq!(status_from_subject("Thanks for your order!"), Some(Status::Ordered));
+        assert_eq!(
+            status_from_subject("Thanks for your order!"),
+            Some(Status::Ordered)
+        );
     }
 
     #[test]
@@ -216,8 +234,14 @@ mod tests {
 
     #[test]
     fn merchant_is_read_from_the_senders_domain() {
-        assert_eq!(merchant_from_address("orders@amazon.com"), Some("Amazon".to_string()));
-        assert_eq!(merchant_from_address("shipment-tracking@shop.example.com"), Some("Shop".to_string()));
+        assert_eq!(
+            merchant_from_address("orders@amazon.com"),
+            Some("Amazon".to_string())
+        );
+        assert_eq!(
+            merchant_from_address("shipment-tracking@shop.example.com"),
+            Some("Shop".to_string())
+        );
     }
 
     #[test]
@@ -247,7 +271,10 @@ mod tests {
         let mut orders = Orders::default();
         orders.update("Amazon", "Thanks for your order!", Status::Delivered, 100);
         let result = orders.update("Amazon", "Thanks for your order!", Status::Shipped, 200);
-        assert!(result.is_none(), "a Shipped update after Delivered must not overwrite it");
+        assert!(
+            result.is_none(),
+            "a Shipped update after Delivered must not overwrite it"
+        );
         assert_eq!(orders.find("amazon").unwrap().status, Status::Delivered);
     }
 
@@ -273,7 +300,12 @@ mod tests {
     #[test]
     fn find_matches_by_a_word_in_the_description() {
         let mut orders = Orders::default();
-        orders.update("Amazon", "Your USB-C cable order has shipped", Status::Shipped, 0);
+        orders.update(
+            "Amazon",
+            "Your USB-C cable order has shipped",
+            Status::Shipped,
+            0,
+        );
         assert!(orders.find("cable").is_some());
     }
 

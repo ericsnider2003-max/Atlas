@@ -49,7 +49,12 @@ pub struct OsLook {
 
 impl Default for OsLook {
     fn default() -> Self {
-        OsLook { dark: None, contrast: None, text_scale: 1.0, reduce_motion: false }
+        OsLook {
+            dark: None,
+            contrast: None,
+            text_scale: 1.0,
+            reduce_motion: false,
+        }
     }
 }
 
@@ -92,7 +97,12 @@ mod imp {
 
     #[link(name = "user32")]
     extern "system" {
-        fn SystemParametersInfoW(action: u32, param: u32, pv: *mut core::ffi::c_void, win_ini: u32) -> i32;
+        fn SystemParametersInfoW(
+            action: u32,
+            param: u32,
+            pv: *mut core::ffi::c_void,
+            win_ini: u32,
+        ) -> i32;
         fn GetSysColor(index: i32) -> u32;
     }
     #[link(name = "advapi32")]
@@ -119,18 +129,43 @@ mod imp {
         // SAFETY: `p` and `n` are live NUL-terminated wide strings; `v` is a live u32 and `len` its
         // size in bytes, as the call requires.
         let rc = unsafe {
-            RegGetValueW(HKEY_CURRENT_USER, p.as_ptr(), n.as_ptr(), RRF_RT_REG_DWORD, std::ptr::null_mut(), &mut v as *mut u32 as *mut _, &mut len)
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                p.as_ptr(),
+                n.as_ptr(),
+                RRF_RT_REG_DWORD,
+                std::ptr::null_mut(),
+                &mut v as *mut u32 as *mut _,
+                &mut len,
+            )
         };
         (rc == 0).then_some(v)
     }
 
     pub fn read() -> OsLook {
-        let dark = dword(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme").map(|v| v == 0);
-        let text_scale = dword(r"Software\Microsoft\Accessibility", "TextScaleFactor").map(|p| text_scale_from_percent(p)).unwrap_or(1.0);
-        let mut hc = HighContrastW { cb_size: std::mem::size_of::<HighContrastW>() as u32, dw_flags: 0, default_scheme: std::ptr::null_mut() };
+        let dark = dword(
+            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            "AppsUseLightTheme",
+        )
+        .map(|v| v == 0);
+        let text_scale = dword(r"Software\Microsoft\Accessibility", "TextScaleFactor")
+            .map(|p| text_scale_from_percent(p))
+            .unwrap_or(1.0);
+        let mut hc = HighContrastW {
+            cb_size: std::mem::size_of::<HighContrastW>() as u32,
+            dw_flags: 0,
+            default_scheme: std::ptr::null_mut(),
+        };
         // SAFETY: `hc` is a live repr(C) HIGHCONTRAST with `cb_size` set to its size, as
         // SPI_GETHIGHCONTRAST requires.
-        let hc_on = unsafe { SystemParametersInfoW(SPI_GETHIGHCONTRAST, hc.cb_size, &mut hc as *mut _ as *mut _, 0) } != 0
+        let hc_on = unsafe {
+            SystemParametersInfoW(
+                SPI_GETHIGHCONTRAST,
+                hc.cb_size,
+                &mut hc as *mut _ as *mut _,
+                0,
+            )
+        } != 0
             && hc.dw_flags & HCF_HIGHCONTRASTON != 0;
         // SAFETY: GetSysColor takes a plain index and touches no memory of ours.
         let contrast = hc_on.then(|| unsafe {
@@ -144,8 +179,20 @@ mod imp {
         });
         let mut anim: i32 = 1;
         // SAFETY: SPI_GETCLIENTAREAANIMATION writes one BOOL, and `anim` is a live 4-byte local.
-        let got = unsafe { SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &mut anim as *mut i32 as *mut _, 0) } != 0;
-        OsLook { dark, contrast, text_scale, reduce_motion: got && anim == 0 }
+        let got = unsafe {
+            SystemParametersInfoW(
+                SPI_GETCLIENTAREAANIMATION,
+                0,
+                &mut anim as *mut i32 as *mut _,
+                0,
+            )
+        } != 0;
+        OsLook {
+            dark,
+            contrast,
+            text_scale,
+            reduce_motion: got && anim == 0,
+        }
     }
 }
 
@@ -155,7 +202,12 @@ mod imp {
     /// Nothing to ask here: no system setting is read, and it says so —
     /// `dark: None` is "couldn't tell", not "light".
     pub fn read() -> OsLook {
-        OsLook { dark: None, contrast: None, text_scale: 1.0, reduce_motion: false }
+        OsLook {
+            dark: None,
+            contrast: None,
+            text_scale: 1.0,
+            reduce_motion: false,
+        }
     }
 }
 
@@ -167,7 +219,11 @@ mod tests {
     fn windows_values_are_read_the_way_windows_writes_them() {
         assert_eq!(text_scale_from_percent(100), 1.0);
         assert_eq!(text_scale_from_percent(150), 1.5);
-        assert_eq!(text_scale_from_percent(40), 1.0, "below Windows' range is its default");
+        assert_eq!(
+            text_scale_from_percent(40),
+            1.0,
+            "below Windows' range is its default"
+        );
         assert_eq!(text_scale_from_percent(900), 2.25);
         // COLORREF is 0x00BBGGRR.
         assert_eq!(colorref_to_rgb(0x0000_00FF), 0xFF_0000);

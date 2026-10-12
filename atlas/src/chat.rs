@@ -290,7 +290,10 @@ impl Room {
     /// arrived is invisible otherwise, and "I told you on Tuesday" is exactly
     /// the argument this prevents.
     pub fn undelivered(&self) -> Vec<&Message> {
-        self.messages.iter().filter(|m| m.from == ME && !m.fully_arrived()).collect()
+        self.messages
+            .iter()
+            .filter(|m| m.from == ME && !m.fully_arrived())
+            .collect()
     }
 
     fn highest_seen(&self) -> u64 {
@@ -539,7 +542,10 @@ impl Chats {
     /// only the named person; returns whether they were there to remove.
     /// Their past messages stay — they said those while they were in it.
     pub fn member_left(&mut self, group_id: &str, who: &str) -> bool {
-        let Some(room) = self.rooms.iter_mut().find(|r| r.id == group_id && r.is_group())
+        let Some(room) = self
+            .rooms
+            .iter_mut()
+            .find(|r| r.id == group_id && r.is_group())
         else {
             return false;
         };
@@ -593,7 +599,9 @@ impl Chats {
         self.clock = self.clock.max(seen) + 1;
         let after = self.clock;
 
-        let Some(room) = self.room_mut(room_id) else { return Err(Refused::NoSuchRoom(room_id.to_string())) };
+        let Some(room) = self.room_mut(room_id) else {
+            return Err(Refused::NoSuchRoom(room_id.to_string()));
+        };
         let space = room.space.clone();
         let mut to = Vec::new();
         let mut left_out = Vec::new();
@@ -657,11 +665,17 @@ impl Chats {
                 return Err(Refused::NotInThatBusiness(msg.from.clone()));
             }
         }
-        if !room.members.iter().any(|m| crate::kin::same_name(m, &msg.from)) {
+        if !room
+            .members
+            .iter()
+            .any(|m| crate::kin::same_name(m, &msg.from))
+        {
             return Err(Refused::NotInThatBusiness(msg.from.clone()));
         }
         self.clock = self.clock.max(msg.after) + 1;
-        let Some(room) = self.room_mut(room_id) else { return Err(Refused::NoSuchRoom(room_id.to_string())) };
+        let Some(room) = self.room_mut(room_id) else {
+            return Err(Refused::NoSuchRoom(room_id.to_string()));
+        };
         if room.messages.iter().any(|m| m.id == msg.id) {
             return Ok(false);
         }
@@ -674,9 +688,15 @@ impl Chats {
     /// on by the owner from a member this Atlas isn't paired with -- so not
     /// someone `receive`'s room-membership check could find. Idempotent by id,
     /// like `receive`.
-    pub fn receive_vouched(&mut self, room_id: &str, msg: Message) -> std::result::Result<bool, Refused> {
+    pub fn receive_vouched(
+        &mut self,
+        room_id: &str,
+        msg: Message,
+    ) -> std::result::Result<bool, Refused> {
         let seen = msg.after;
-        let room = self.room_mut(room_id).ok_or_else(|| Refused::NoSuchRoom(room_id.to_string()))?;
+        let room = self
+            .room_mut(room_id)
+            .ok_or_else(|| Refused::NoSuchRoom(room_id.to_string()))?;
         if room.messages.iter().any(|m| m.id == msg.id) {
             return Ok(false);
         }
@@ -687,7 +707,9 @@ impl Chats {
 
     /// Their Atlas said it has it.
     pub fn mark_arrived(&mut self, room_id: &str, message_id: &str, who: &str, now: u64) -> bool {
-        let Some(room) = self.room_mut(room_id) else { return false };
+        let Some(room) = self.room_mut(room_id) else {
+            return false;
+        };
         let Some(msg) = room.messages.iter_mut().find(|m| m.id == message_id) else {
             return false;
         };
@@ -734,7 +756,9 @@ impl Chats {
 
     /// It is not going to arrive as things stand, and this is why.
     pub fn mark_stuck(&mut self, room_id: &str, message_id: &str, who: &str, why: &str) -> bool {
-        let Some(room) = self.room_mut(room_id) else { return false };
+        let Some(room) = self.room_mut(room_id) else {
+            return false;
+        };
         let Some(msg) = room.messages.iter_mut().find(|m| m.id == message_id) else {
             return false;
         };
@@ -780,15 +804,19 @@ impl Chats {
     pub fn read_state(&self, reachable: impl Fn(&str) -> bool) -> Vec<String> {
         let mut out = Vec::new();
         for room in &self.rooms {
-            let Some(mine) = room.last_mine() else { continue };
+            let Some(mine) = room.last_mine() else {
+                continue;
+            };
             if !mine.any_arrived() {
                 continue;
             }
             let read = mine.read_by();
             // Those who have it but haven't read it, split by whether a receipt
             // from them could ever reach you.
-            let (awaiting, no_receipt): (Vec<&str>, Vec<&str>) =
-                mine.arrived_unread().into_iter().partition(|who| reachable(who));
+            let (awaiting, no_receipt): (Vec<&str>, Vec<&str>) = mine
+                .arrived_unread()
+                .into_iter()
+                .partition(|who| reachable(who));
 
             let is_group = room.is_group();
             if !is_group {
@@ -802,7 +830,10 @@ impl Chats {
                         room.name
                     ));
                 } else if !awaiting.is_empty() {
-                    out.push(format!("{} has your last message but hasn't read it yet.", room.name));
+                    out.push(format!(
+                        "{} has your last message but hasn't read it yet.",
+                        room.name
+                    ));
                 }
                 continue;
             }
@@ -810,7 +841,10 @@ impl Chats {
             // A group where every recipient has read it — the clean summary,
             // worth saying as one thing rather than listing everyone.
             if mine.fully_read() {
-                out.push(format!("everyone in {} has read your last message.", room.name));
+                out.push(format!(
+                    "everyone in {} has read your last message.",
+                    room.name
+                ));
                 continue;
             }
 

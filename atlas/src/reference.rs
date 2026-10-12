@@ -183,7 +183,11 @@ pub fn chosen(cfg: &ReferenceConfig) -> Vec<Shelf> {
     }
     worth_having()
         .into_iter()
-        .filter(|s| cfg.shelves.iter().any(|n| n.trim().eq_ignore_ascii_case(&s.name)))
+        .filter(|s| {
+            cfg.shelves
+                .iter()
+                .any(|n| n.trim().eq_ignore_ascii_case(&s.name))
+        })
         .collect()
 }
 
@@ -276,8 +280,16 @@ pub struct Found {
 /// trusting the model is that the answer is traceable — saying it without the
 /// source throws that away.
 pub fn quoted(f: &Found) -> String {
-    format!("{} — from my {}{}.", f.text, f.from,
-        if f.as_of.is_empty() { String::new() } else { format!(", as of {}", f.as_of) })
+    format!(
+        "{} — from my {}{}.",
+        f.text,
+        f.from,
+        if f.as_of.is_empty() {
+            String::new()
+        } else {
+            format!(", as of {}", f.as_of)
+        }
+    )
 }
 
 /// Nothing on the shelf covers it.
@@ -290,9 +302,12 @@ pub fn quoted(f: &Found) -> String {
 /// Atlas says instead of inventing a number, and it was claiming to hold
 /// shelves that have never been fetched.
 pub fn nothing_found(about: &str, have: &[Shelf], say_how_old: bool, now: u64) -> String {
-    let nearest = have
-        .iter()
-        .find(|s| about.to_lowercase().split_whitespace().any(|w| s.covers.contains(w)));
+    let nearest = have.iter().find(|s| {
+        about
+            .to_lowercase()
+            .split_whitespace()
+            .any(|w| s.covers.contains(w))
+    });
     match nearest {
         Some(s) if s.held() => {
             let mut said = format!(
@@ -332,10 +347,27 @@ pub fn nothing_found(about: &str, have: &[Shelf], say_how_old: bool, now: u64) -
 pub fn needs_the_shelf(question: &str) -> bool {
     let q = question.to_lowercase();
     [
-        "how much", "how many", "what is the", "what's the", "whats the",
-        "tick", "margin", "deadline", "limit", "threshold", "rate", "size",
-        "when is", "what time", "expiry", "expires", "settlement", "rule",
-        "section", "allowed", "required",
+        "how much",
+        "how many",
+        "what is the",
+        "what's the",
+        "whats the",
+        "tick",
+        "margin",
+        "deadline",
+        "limit",
+        "threshold",
+        "rate",
+        "size",
+        "when is",
+        "what time",
+        "expiry",
+        "expires",
+        "settlement",
+        "rule",
+        "section",
+        "allowed",
+        "required",
     ]
     .iter()
     .any(|w| q.contains(w))
@@ -413,10 +445,22 @@ pub fn worth_keeping(text: &str, took_searches: u32, you_said_keep: bool) -> Opt
         return Some(Worth::YouSaidKeep);
     }
     let has_figure = text.chars().any(|c| c.is_ascii_digit())
-        && ["%", "$", "£", "bps", "basis point", "per ", "minimum", "maximum", "limit",
-            "deadline", "rate", "fee"]
-            .iter()
-            .any(|w| text.to_lowercase().contains(w));
+        && [
+            "%",
+            "$",
+            "£",
+            "bps",
+            "basis point",
+            "per ",
+            "minimum",
+            "maximum",
+            "limit",
+            "deadline",
+            "rate",
+            "fee",
+        ]
+        .iter()
+        .any(|w| text.to_lowercase().contains(w));
     if has_figure {
         return Some(Worth::HasAFigure);
     }

@@ -41,7 +41,10 @@ pub struct DelegateConfig {
 
 impl Default for DelegateConfig {
     fn default() -> Self {
-        DelegateConfig { enabled: true, max_turns: 12 }
+        DelegateConfig {
+            enabled: true,
+            max_turns: 12,
+        }
     }
 }
 
@@ -88,9 +91,14 @@ pub enum Step {
     /// Read the app. Nothing has been written yet.
     Observe,
     /// Ask the model for a reply, given this context.
-    Compose { context: String },
+    Compose {
+        context: String,
+    },
     /// Put this text in the app. `send` false means leave it as a draft.
-    Place { text: String, send: bool },
+    Place {
+        text: String,
+        send: bool,
+    },
     /// Ask this before going further.
     Confirm(String),
     Finished(String),
@@ -197,7 +205,9 @@ impl Delegation {
             return Step::Confirm(q);
         }
 
-        Step::Compose { context: self.context(screen) }
+        Step::Compose {
+            context: self.context(screen),
+        }
     }
 
     /// What goes to the model as quoted material: the screen, and nothing
@@ -211,7 +221,10 @@ impl Delegation {
     /// How the model is told to write for this job: the standing rules,
     /// what you asked for, and what's already been written.
     pub fn system_prompt(&self) -> String {
-        let mut s = format!("{SYSTEM}\n\nThe app: {}.\nWhat they asked for, in their words: {}", self.app, self.goal);
+        let mut s = format!(
+            "{SYSTEM}\n\nThe app: {}.\nWhat they asked for, in their words: {}",
+            self.app, self.goal
+        );
         if !self.transcript.is_empty() {
             s.push_str("\n\nWhat you have already written here, oldest first:\n");
             s.push_str(&self.transcript.join("\n---\n"));
@@ -234,7 +247,10 @@ impl Delegation {
             self.state = State::Done;
             self.reason = Some("draft written, not sent".into());
         }
-        Step::Place { text: text.to_string(), send }
+        Step::Place {
+            text: text.to_string(),
+            send,
+        }
     }
 
     pub fn summary(&self) -> String {
@@ -265,18 +281,33 @@ pub fn interpret(said: &str, known_apps: &[String]) -> Option<Delegation> {
                 .map(|k| k.to_string())
         })?;
 
-    let drafting = ["draft", "write a response", "write a reply", "prepare a reply", "compose"]
-        .iter()
-        .any(|k| t.contains(k));
-    let conversing = ["finish the conversation", "continue the conversation", "keep talking", "carry on with"]
-        .iter()
-        .any(|k| t.contains(k));
+    let drafting = [
+        "draft",
+        "write a response",
+        "write a reply",
+        "prepare a reply",
+        "compose",
+    ]
+    .iter()
+    .any(|k| t.contains(k));
+    let conversing = [
+        "finish the conversation",
+        "continue the conversation",
+        "keep talking",
+        "carry on with",
+    ]
+    .iter()
+    .any(|k| t.contains(k));
 
     if !drafting && !conversing {
         return None;
     }
 
-    let reach = if drafting && !conversing { Reach::Draft } else { Reach::Converse };
+    let reach = if drafting && !conversing {
+        Reach::Draft
+    } else {
+        Reach::Converse
+    };
     let max_turns = if reach == Reach::Draft { 1 } else { 12 };
     Some(Delegation::new(&app, said.trim(), reach, max_turns))
 }
@@ -295,9 +326,19 @@ around it, nothing about being an assistant, no \"I hope this helps\" or \"feel 
 /// `cfg` is your settings: the turn limit for carrying on.
 pub fn for_the_window(app: &str, said: &str, cfg: &DelegateConfig) -> Delegation {
     let t = said.to_lowercase();
-    let carry_on = ["until i'm back", "until im back", "until i get back", "finish the conversation", "keep the conversation", "keep this going", "carry on", "take over", "handle this"]
-        .iter()
-        .any(|k| t.contains(k));
+    let carry_on = [
+        "until i'm back",
+        "until im back",
+        "until i get back",
+        "finish the conversation",
+        "keep the conversation",
+        "keep this going",
+        "carry on",
+        "take over",
+        "handle this",
+    ]
+    .iter()
+    .any(|k| t.contains(k));
     if carry_on {
         Delegation::new(app, said.trim(), Reach::Converse, cfg.max_turns)
     } else {
@@ -314,16 +355,33 @@ pub fn is_screen_noise(line: &str) -> bool {
         return true;
     }
     const WORDS: [&str; 12] = [
-        "seen", "delivered", "sent", "read", "typing", "is typing", "typing…", "typing...", "just now", "now", "edited", "today",
+        "seen",
+        "delivered",
+        "sent",
+        "read",
+        "typing",
+        "is typing",
+        "typing…",
+        "typing...",
+        "just now",
+        "now",
+        "edited",
+        "today",
     ];
-    if WORDS.contains(&t.as_str()) || t.ends_with(" is typing") || t.ends_with(" is typing…") || t.ends_with(" is typing...") {
+    if WORDS.contains(&t.as_str())
+        || t.ends_with(" is typing")
+        || t.ends_with(" is typing…")
+        || t.ends_with(" is typing...")
+    {
         return true;
     }
     if t.ends_with(" ago") && t.split_whitespace().count() <= 3 {
         return true;
     }
     // "10:42", "10:42 am", "yesterday 9:05"
-    let digits_and_colons = t.chars().all(|c| c.is_ascii_digit() || c == ':' || c == ' ' || c == '.' || "apmyesterday".contains(c));
+    let digits_and_colons = t.chars().all(|c| {
+        c.is_ascii_digit() || c == ':' || c == ' ' || c == '.' || "apmyesterday".contains(c)
+    });
     digits_and_colons && t.contains(':')
 }
 
@@ -345,7 +403,10 @@ pub fn after_reply(screen: &str, reply: &str) -> Option<String> {
     let rest = &flat[at + needle.len()..];
     // What's left of the reply itself, if the app showed it whole.
     let full = squash(reply);
-    let rest = full.get(needle.len()..).and_then(|tail| rest.strip_prefix(tail)).unwrap_or(rest);
+    let rest = full
+        .get(needle.len()..)
+        .and_then(|tail| rest.strip_prefix(tail))
+        .unwrap_or(rest);
     Some(rest.to_string())
 }
 
@@ -359,11 +420,25 @@ pub fn after_reply(screen: &str, reply: &str) -> Option<String> {
 pub fn something_new(screen: &str, baseline: Option<&str>, last_reply: Option<&str>) -> bool {
     let Some(base) = baseline else { return true };
     let clean = |s: &str| -> String {
-        s.lines().filter(|l| !is_screen_noise(l)).map(squash).collect::<Vec<_>>().join(" ")
+        s.lines()
+            .filter(|l| !is_screen_noise(l))
+            .map(squash)
+            .collect::<Vec<_>>()
+            .join(" ")
     };
-    let words = |s: &str| -> String { squash(&s.split(' ').filter(|w| !is_screen_noise(w)).collect::<Vec<_>>().join(" ")) };
+    let words = |s: &str| -> String {
+        squash(
+            &s.split(' ')
+                .filter(|w| !is_screen_noise(w))
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+    };
     if let Some(reply) = last_reply {
-        if let (Some(now), Some(then)) = (after_reply(&clean(screen), reply), after_reply(&clean(base), reply)) {
+        if let (Some(now), Some(then)) = (
+            after_reply(&clean(screen), reply),
+            after_reply(&clean(base), reply),
+        ) {
             return words(&now) != words(&then);
         }
     }
@@ -399,7 +474,9 @@ pub fn type_into_window(
     }
     if plat.focused_is_editable().ok().flatten() == Some(false) {
         restore();
-        return Err("the cursor isn't in its text box — click into the reply box and ask me again".into());
+        return Err(
+            "the cursor isn't in its text box — click into the reply box and ask me again".into(),
+        );
     }
     if let Err(e) = plat.type_text(text) {
         restore();
@@ -410,7 +487,10 @@ pub fn type_into_window(
     // didn't land as written is left in the box, never sent.
     if !landed(plat, win, text) {
         restore();
-        return Err("what I typed didn't come out right in the box, so I didn't send it — have a look".into());
+        return Err(
+            "what I typed didn't come out right in the box, so I didn't send it — have a look"
+                .into(),
+        );
     }
     let sent = if send { plat.press("enter") } else { Ok(()) };
     restore();
@@ -420,7 +500,11 @@ pub fn type_into_window(
 /// Whether `text` now shows in the window, spacing aside. A window that
 /// shows nothing to other programs can't be checked and counts as landed —
 /// the same as before there was a check.
-fn landed(plat: &dyn crate::platform::Platform, win: crate::platform::WindowId, text: &str) -> bool {
+fn landed(
+    plat: &dyn crate::platform::Platform,
+    win: crate::platform::WindowId,
+    text: &str,
+) -> bool {
     let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
     match plat.read_window(win) {
         Ok(Some(tree)) => {

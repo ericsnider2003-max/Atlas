@@ -97,7 +97,10 @@ fn a_mirror_that_has_been_filled_still_reports_normally() {
 
     let cfg = CompanionConfig::default();
     let stale = p.state(1_700_000_000 + 9 * 86_400, &cfg);
-    assert!(stale.contains("snapshot"), "a nine-day-old mirror: {stale:?}");
+    assert!(
+        stale.contains("snapshot"),
+        "a nine-day-old mirror: {stale:?}"
+    );
 
     // Past `hold_days` (200 by default), the warning is the point.
     let ancient = p.state(1_700_000_000 + (cfg.hold_days as u64 + 5) * 86_400, &cfg);

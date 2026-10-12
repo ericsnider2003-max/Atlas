@@ -175,7 +175,11 @@ pub fn from_model(out: &[f32]) -> Option<Landmarks> {
         return None;
     }
     let sure = out.get(need).copied().unwrap_or(1.0).clamp(0.0, 1.0);
-    Some(Landmarks { points, right: None, sure })
+    Some(Landmarks {
+        points,
+        right: None,
+        sure,
+    })
 }
 
 /// Features computed from landmarks, on demand.
@@ -193,12 +197,22 @@ pub struct Reading<'a> {
 
 impl<'a> Reading<'a> {
     pub fn of(hand: &'a Landmarks) -> Reading<'a> {
-        Reading { hand, motion: Motion::default(), curl: [None; 5], pinch: None, spread: None }
+        Reading {
+            hand,
+            motion: Motion::default(),
+            curl: [None; 5],
+            pinch: None,
+            spread: None,
+        }
     }
 
     /// The same, knowing how the hand is moving.
     pub fn moving(hand: &'a Landmarks, motion: Motion) -> Reading<'a> {
-        Reading { hand, motion, ..Reading::of(hand) }
+        Reading {
+            hand,
+            motion,
+            ..Reading::of(hand)
+        }
     }
 
     /// How closed a finger is: 0.0 straight out, 1.0 folded into the palm.
@@ -232,7 +246,10 @@ impl<'a> Reading<'a> {
     /// Not cached: unlike the plain pinch, several fingers may be asked about
     /// and caching one of them would answer for all.
     fn pinch_with(&mut self, finger: usize) -> f32 {
-        self.hand.thumb_tip().away_from(&self.hand.tip(finger.clamp(1, 4))) / self.hand.span()
+        self.hand
+            .thumb_tip()
+            .away_from(&self.hand.tip(finger.clamp(1, 4)))
+            / self.hand.span()
     }
 
     /// How far apart the fingertips are — high when the hand is spread.
@@ -391,7 +408,11 @@ impl Trail {
             .max(1);
         let reversals = flips as f32 * 1000.0 / held_ms as f32;
 
-        Motion { across, down, reversals }
+        Motion {
+            across,
+            down,
+            reversals,
+        }
     }
 
     /// The hand went away. Forget the trail rather than measuring a jump
@@ -491,7 +512,15 @@ impl Test {
 
     /// Said the way you would describe it out loud, for explaining a clash.
     pub fn plain(self) -> String {
-        let name = |f: usize| ["thumb", "index finger", "middle finger", "ring finger", "little finger"][f.min(4)];
+        let name = |f: usize| {
+            [
+                "thumb",
+                "index finger",
+                "middle finger",
+                "ring finger",
+                "little finger",
+            ][f.min(4)]
+        };
         match self {
             Test::Out(f) => format!("{} out", name(f)),
             Test::In(f) => format!("{} folded", name(f)),
@@ -722,8 +751,12 @@ fn contradicts(a: Test, b: Test) -> bool {
         // Pinching needs the thumb reaching out to a finger, so it cannot also
         // be folded into the palm, nor can the hand be flat.
         (Test::PinchedWith(_), Test::In(0)) | (Test::In(0), Test::PinchedWith(_)) => true,
-        (Test::PinchedWith(_), Test::Extended(5)) | (Test::Extended(5), Test::PinchedWith(_)) => true,
-        (Test::PinchedWith(_), Test::Extended(0)) | (Test::Extended(0), Test::PinchedWith(_)) => true,
+        (Test::PinchedWith(_), Test::Extended(5)) | (Test::Extended(5), Test::PinchedWith(_)) => {
+            true
+        }
+        (Test::PinchedWith(_), Test::Extended(0)) | (Test::Extended(0), Test::PinchedWith(_)) => {
+            true
+        }
         // "Thumb and index apart" is exactly the denial of pinching the index.
         (Test::NotPinched, Test::PinchedWith(1)) | (Test::PinchedWith(1), Test::NotPinched) => true,
         // A fingertip held against the thumb is not hooked in mid-air.
@@ -822,8 +855,11 @@ pub fn needs_holding(g: &Gesture, others: &[Gesture]) -> bool {
     // through fires it. An open hand is the usual culprit: a pinch relaxes
     // through it.
     let passed_through = others.iter().any(|o| {
-        o.name != g.name && o.tests.iter().any(|t| matches!(t, Test::Pinched))
-            && g.tests.iter().any(|t| matches!(t, Test::NotPinched | Test::Spread))
+        o.name != g.name
+            && o.tests.iter().any(|t| matches!(t, Test::Pinched))
+            && g.tests
+                .iter()
+                .any(|t| matches!(t, Test::NotPinched | Test::Spread))
     });
     passed_through
 }
@@ -907,7 +943,10 @@ impl Learning {
     fn band_of(values: &[f32]) -> Option<Band> {
         let v: Vec<f64> = values.iter().map(|x| *x as f64).collect();
         let (usually, varies_by) = crate::judgment::ordinary_for(&v)?;
-        Some(Band { usually: usually as f32, varies_by: varies_by as f32 })
+        Some(Band {
+            usually: usually as f32,
+            varies_by: varies_by as f32,
+        })
     }
 
     pub fn enough(&self) -> bool {
@@ -1008,7 +1047,10 @@ impl Vocabulary {
             ));
         }
 
-        let clash = self.gestures.iter().find(|g| compatible(&g.tests, &fresh.tests));
+        let clash = self
+            .gestures
+            .iter()
+            .find(|g| compatible(&g.tests, &fresh.tests));
         if let Some(other) = clash {
             return Err(format!(
                 "That's the same shape as {}, which does {}. Change one of \
@@ -1099,57 +1141,145 @@ pub fn as_demonstrated() -> Vec<Gesture> {
         // describe the same hand, because a thumb held away from folded
         // fingers can still be near the index tip. Atlas's own collision check
         // caught that in this very list before any of it shipped.
-        g("thumb up", "yes",
-          vec![Test::Out(0), Test::In(1), Test::In(2), Test::NotPinched, Test::Still], 0),
-        g("thumb down", "no",
-          vec![Test::Out(0), Test::In(1), Test::In(2), Test::NotPinched, Test::MovingDown, Test::Once], 0),
-
+        g(
+            "thumb up",
+            "yes",
+            vec![
+                Test::Out(0),
+                Test::In(1),
+                Test::In(2),
+                Test::NotPinched,
+                Test::Still,
+            ],
+            0,
+        ),
+        g(
+            "thumb down",
+            "no",
+            vec![
+                Test::Out(0),
+                Test::In(1),
+                Test::In(2),
+                Test::NotPinched,
+                Test::MovingDown,
+                Test::Once,
+            ],
+            0,
+        ),
         // ---- handling things ----
         // Thumb to index, other fingers folded. The natural grabbing shape,
         // kept for the thing you do most.
-        g("pinch", "pick it up",
-          vec![Test::PinchedWith(1), Test::In(2), Test::Still, Test::Once], 0),
+        g(
+            "pinch",
+            "pick it up",
+            vec![Test::PinchedWith(1), Test::In(2), Test::Still, Test::Once],
+            0,
+        ),
         // Thumb to index with the other three OUT — the ring shape. Separated
         // from picking up by the fingers rather than by timing, so it is known
         // on the first frame.
-        g("ring", "confirm it",
-          vec![Test::PinchedWith(1), Test::Out(2), Test::Out(3), Test::Out(4), Test::Still], 0),
+        g(
+            "ring",
+            "confirm it",
+            vec![
+                Test::PinchedWith(1),
+                Test::Out(2),
+                Test::Out(3),
+                Test::Out(4),
+                Test::Still,
+            ],
+            0,
+        ),
         // Thumb to MIDDLE finger, opening and shutting. Moved off the index so
         // a single deliberate pinch that wobbles can never read as this.
-        g("middle pinch, open and shut", "resize it",
-          vec![Test::PinchedWith(2), Test::Repeating], 0),
-        g("flick away", "dismiss it",
-          vec![Test::PinchedWith(1), Test::In(2), Test::MovingDown, Test::Once], 0),
-
+        g(
+            "middle pinch, open and shut",
+            "resize it",
+            vec![Test::PinchedWith(2), Test::Repeating],
+            0,
+        ),
+        g(
+            "flick away",
+            "dismiss it",
+            vec![
+                Test::PinchedWith(1),
+                Test::In(2),
+                Test::MovingDown,
+                Test::Once,
+            ],
+            0,
+        ),
         // ---- moving about ----
         // Hooked fingers, like turning a page. Separated from a flat push by
         // shape, so the first stroke works rather than waiting for a second.
-        g("hooked stroke down", "scroll down",
-          vec![Test::In(0), Test::Curled(1), Test::Curled(2), Test::MovingDown], 0),
-        g("hooked stroke up", "scroll up",
-          vec![Test::In(0), Test::Curled(1), Test::Curled(2), Test::MovingUp], 0),
+        g(
+            "hooked stroke down",
+            "scroll down",
+            vec![
+                Test::In(0),
+                Test::Curled(1),
+                Test::Curled(2),
+                Test::MovingDown,
+            ],
+            0,
+        ),
+        g(
+            "hooked stroke up",
+            "scroll up",
+            vec![
+                Test::In(0),
+                Test::Curled(1),
+                Test::Curled(2),
+                Test::MovingUp,
+            ],
+            0,
+        ),
         // Both hands. Nobody sweeps two hands across by accident, so it needs
         // no hold, and it cannot collide with anything one-handed — which is
         // what made the single-handed sweep impossible to tell from raising a
         // hand over the eyes.
-        two("two-handed sweep", "next screen",
-            vec![Test::Extended(5), Test::MovingLeft]),
-
+        two(
+            "two-handed sweep",
+            "next screen",
+            vec![Test::Extended(5), Test::MovingLeft],
+        ),
         // ---- Atlas itself ----
         // Undo. The only one with no hold: waiting a second to undo a mistake
         // is the one place a delay is actively wrong.
         g("fist", "undo that", vec![Test::Extended(0), Test::Still], 0),
         // Held, because people rub their eyes all day.
-        g("cover eyes", "hide what's on screen",
-          vec![Test::Extended(5), Test::NotPinched, Test::MovingUp, Test::Once],
-          crate::gaze::DELIBERATE_MS),
-        g("palm out", "stop",
-          vec![Test::Extended(5), Test::NotPinched, Test::Still], crate::gaze::DELIBERATE_MS),
+        g(
+            "cover eyes",
+            "hide what's on screen",
+            vec![
+                Test::Extended(5),
+                Test::NotPinched,
+                Test::MovingUp,
+                Test::Once,
+            ],
+            crate::gaze::DELIBERATE_MS,
+        ),
+        g(
+            "palm out",
+            "stop",
+            vec![Test::Extended(5), Test::NotPinched, Test::Still],
+            crate::gaze::DELIBERATE_MS,
+        ),
         // One finger up, held. Shows every gesture — which matters most when
         // you have forgotten them and gestures are how you drive things.
-        g("one finger up", "show me the gestures",
-          vec![Test::Out(1), Test::In(0), Test::In(2), Test::In(3), Test::In(4), Test::Still],
-          crate::gaze::DELIBERATE_MS),
+        g(
+            "one finger up",
+            "show me the gestures",
+            vec![
+                Test::Out(1),
+                Test::In(0),
+                Test::In(2),
+                Test::In(3),
+                Test::In(4),
+                Test::Still,
+            ],
+            crate::gaze::DELIBERATE_MS,
+        ),
     ]
 }
 
@@ -1262,10 +1392,14 @@ pub fn sketch(g: &Gesture) -> String {
         ));
     }
     let thumb = match fingers[0] {
-        Some(true) => "<rect x='12' y='56' width='14' height='6' rx='3' \
-                       fill='none' stroke='currentColor' stroke-width='3'/>",
-        _ => "<rect x='18' y='60' width='9' height='6' rx='3' \
-              fill='none' stroke='currentColor' stroke-width='3'/>",
+        Some(true) => {
+            "<rect x='12' y='56' width='14' height='6' rx='3' \
+                       fill='none' stroke='currentColor' stroke-width='3'/>"
+        }
+        _ => {
+            "<rect x='18' y='60' width='9' height='6' rx='3' \
+              fill='none' stroke='currentColor' stroke-width='3'/>"
+        }
     };
     parts.push_str(thumb);
 
@@ -1313,7 +1447,13 @@ pub fn sketch(g: &Gesture) -> String {
 /// tests, so neither can disagree with what actually fires.
 pub fn how_to(g: &Gesture) -> String {
     let fingers = fingers_of(g);
-    let names = ["thumb", "index finger", "middle finger", "ring finger", "little finger"];
+    let names = [
+        "thumb",
+        "index finger",
+        "middle finger",
+        "ring finger",
+        "little finger",
+    ];
     let out: Vec<&str> = (0..5)
         .filter(|i| fingers[*i] == Some(true))
         .map(|i| names[i])
@@ -1338,7 +1478,10 @@ pub fn how_to(g: &Gesture) -> String {
         said.push_str(", over and over");
     }
     if g.hold_ms > 0 {
-        said.push_str(&format!(" for about {:.0} second", g.hold_ms as f32 / 1000.0));
+        said.push_str(&format!(
+            " for about {:.0} second",
+            g.hold_ms as f32 / 1000.0
+        ));
     }
     format!("{said}.")
 }
@@ -1355,7 +1498,6 @@ fn sentence_list(items: &[&str]) -> String {
         ),
     }
 }
-
 
 /// A hand answering a question, from its joints: a thumb up, a thumb down,
 /// or an open palm, with how sure. Read only when Atlas asked something, and

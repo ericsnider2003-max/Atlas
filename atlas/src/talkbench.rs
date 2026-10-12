@@ -56,7 +56,12 @@ pub fn faults_in(reply: &str, max_sentences: usize) -> Vec<String> {
     if reply.contains('*') {
         out.push("emphasis marks".to_string());
     }
-    for claim in ["i'm already on it", "i'm on it", "i'll get started", "working on it now"] {
+    for claim in [
+        "i'm already on it",
+        "i'm on it",
+        "i'll get started",
+        "working on it now",
+    ] {
         if low.contains(claim) {
             out.push(format!("claims work no tool started (\"{claim}\")"));
         }
@@ -109,12 +114,22 @@ pub fn faults_in(reply: &str, max_sentences: usize) -> Vec<String> {
             out.push(format!("invents history or work (\"{invented}\")"));
         }
     }
-    if low.contains(" am ") && (low.contains("2:5") || low.contains("3 am") || low.contains("this hour") || low.contains("this late")) {
+    if low.contains(" am ")
+        && (low.contains("2:5")
+            || low.contains("3 am")
+            || low.contains("this hour")
+            || low.contains("this late"))
+    {
         out.push("remarks on the time unasked".to_string());
     }
-    let sentences = reply.split(['.', '?', '!']).filter(|s| s.split_whitespace().count() >= 2).count();
+    let sentences = reply
+        .split(['.', '?', '!'])
+        .filter(|s| s.split_whitespace().count() >= 2)
+        .count();
     if sentences > max_sentences {
-        out.push(format!("{sentences} sentences (asked for at most {max_sentences})"));
+        out.push(format!(
+            "{sentences} sentences (asked for at most {max_sentences})"
+        ));
     }
     out
 }
@@ -126,8 +141,15 @@ pub fn faults_in(reply: &str, max_sentences: usize) -> Vec<String> {
 pub fn question_dodged(said: &str, reply: &str) -> Option<String> {
     let low = said.trim().to_lowercase();
     let asked = low.ends_with('?')
-        || ["give me", "tell me", "what ", "how ", "why ", "which ", "who ", "where ", "when "].iter().any(|w| low.starts_with(w));
-    let first = reply.split_inclusive(['.', '!', '?']).map(str::trim).find(|s| s.split_whitespace().count() >= 2)?;
+        || [
+            "give me", "tell me", "what ", "how ", "why ", "which ", "who ", "where ", "when ",
+        ]
+        .iter()
+        .any(|w| low.starts_with(w));
+    let first = reply
+        .split_inclusive(['.', '!', '?'])
+        .map(str::trim)
+        .find(|s| s.split_whitespace().count() >= 2)?;
     (asked && first.ends_with('?')).then(|| "answered a question with a question".to_string())
 }
 
@@ -136,7 +158,12 @@ pub fn report(model: &str, answers: &[Answer]) -> String {
     let mut s = format!("Model: {model}\n");
     let model_ms: Vec<u128> = answers.iter().map(|a| a.ms).collect();
     for a in answers {
-        s.push_str(&format!("\n[{} ms] you: {}\n  atlas: {}\n", a.ms, a.said, a.reply.replace('\n', " ")));
+        s.push_str(&format!(
+            "\n[{} ms] you: {}\n  atlas: {}\n",
+            a.ms,
+            a.said,
+            a.reply.replace('\n', " ")
+        ));
         for f in &a.faults {
             s.push_str(&format!("  ! {f}\n"));
         }
@@ -154,7 +181,11 @@ pub fn report(model: &str, answers: &[Answer]) -> String {
 }
 
 /// Run the script through a daemon talking to `llm`.
-pub fn run(cfg: &crate::config::Config, llm: std::sync::Arc<dyn crate::brain::Llm>, store_dir: &std::path::Path) -> Vec<Answer> {
+pub fn run(
+    cfg: &crate::config::Config,
+    llm: std::sync::Arc<dyn crate::brain::Llm>,
+    store_dir: &std::path::Path,
+) -> Vec<Answer> {
     let plat = crate::platform::mock::MockPlatform::new(vec![crate::platform::Monitor {
         id: 1,
         x: 0,
@@ -185,7 +216,12 @@ pub fn run(cfg: &crate::config::Config, llm: std::sync::Arc<dyn crate::brain::Ll
         if let Some(f) = question_dodged(said, &reply) {
             faults.push(f);
         }
-        out.push(Answer { said: said.to_string(), faults, reply, ms });
+        out.push(Answer {
+            said: said.to_string(),
+            faults,
+            reply,
+            ms,
+        });
         t += 20;
     }
     out

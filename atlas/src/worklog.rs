@@ -93,26 +93,133 @@ fn d_keep() -> u64 {
 
 impl Default for WorkLogConfig {
     fn default() -> Self {
-        WorkLogConfig { enabled: true, away_after: d_away(), pulse_secs: d_pulse(), keep_titles: true, keep_days: d_keep(), categories: Vec::new(), resume_cue: true }
+        WorkLogConfig {
+            enabled: true,
+            away_after: d_away(),
+            pulse_secs: d_pulse(),
+            keep_titles: true,
+            keep_days: d_keep(),
+            categories: Vec::new(),
+            resume_cue: true,
+        }
     }
 }
 
 /// The built-in categories: common Windows programs and the words their
 /// titles carry. Yours come first and win.
 fn built_in() -> Vec<Rule> {
-    let r = |c: &str, m: &[&str]| Rule { category: c.into(), matches: m.iter().map(|s| s.to_string()).collect() };
+    let r = |c: &str, m: &[&str]| Rule {
+        category: c.into(),
+        matches: m.iter().map(|s| s.to_string()).collect(),
+    };
     vec![
-        r("trading", &["terminal64", "metatrader", "tradingview", "ninjatrader", "thinkorswim", "ctrader"]),
-        r("meetings", &["zoom", "webex", "meet.google", "google meet", "teams meeting", "| microsoft teams call", "gotomeeting"]),
-        r("chat", &["slack", "discord", "whatsapp", "telegram", "signal", "ms-teams", "teams.exe"]),
-        r("mail", &["outlook", "thunderbird", "gmail", "- mail", "inbox", "mailbird", "hxoutlook"]),
-        r("coding", &["code.exe", "visual studio", "devenv", "rider", "idea64", "pycharm", "sublime", "notepad++", "nvim", "vim", "windowsterminal", "powershell", "cmd.exe", "wezterm", "alacritty", "github", "gitlab", "cargo"]),
-        r("writing", &["winword", "microsoft word", "notion", "obsidian", "onenote", "google docs", "typora", "notepad"]),
+        r(
+            "trading",
+            &[
+                "terminal64",
+                "metatrader",
+                "tradingview",
+                "ninjatrader",
+                "thinkorswim",
+                "ctrader",
+            ],
+        ),
+        r(
+            "meetings",
+            &[
+                "zoom",
+                "webex",
+                "meet.google",
+                "google meet",
+                "teams meeting",
+                "| microsoft teams call",
+                "gotomeeting",
+            ],
+        ),
+        r(
+            "chat",
+            &[
+                "slack",
+                "discord",
+                "whatsapp",
+                "telegram",
+                "signal",
+                "ms-teams",
+                "teams.exe",
+            ],
+        ),
+        r(
+            "mail",
+            &[
+                "outlook",
+                "thunderbird",
+                "gmail",
+                "- mail",
+                "inbox",
+                "mailbird",
+                "hxoutlook",
+            ],
+        ),
+        r(
+            "coding",
+            &[
+                "code.exe",
+                "visual studio",
+                "devenv",
+                "rider",
+                "idea64",
+                "pycharm",
+                "sublime",
+                "notepad++",
+                "nvim",
+                "vim",
+                "windowsterminal",
+                "powershell",
+                "cmd.exe",
+                "wezterm",
+                "alacritty",
+                "github",
+                "gitlab",
+                "cargo",
+            ],
+        ),
+        r(
+            "writing",
+            &[
+                "winword",
+                "microsoft word",
+                "notion",
+                "obsidian",
+                "onenote",
+                "google docs",
+                "typora",
+                "notepad",
+            ],
+        ),
         r("sheets", &["excel", "google sheets", "libreoffice calc"]),
-        r("design", &["figma", "photoshop", "illustrator", "blender", "gimp", "canva", "davinci", "premiere", "resolve"]),
-        r("video", &["youtube", "netflix", "twitch", "vlc", "prime video"]),
+        r(
+            "design",
+            &[
+                "figma",
+                "photoshop",
+                "illustrator",
+                "blender",
+                "gimp",
+                "canva",
+                "davinci",
+                "premiere",
+                "resolve",
+            ],
+        ),
+        r(
+            "video",
+            &["youtube", "netflix", "twitch", "vlc", "prime video"],
+        ),
         r("files", &["explorer.exe", "file explorer"]),
-        r("browsing", &["chrome", "msedge", "firefox", "brave", "opera", "vivaldi"]),
+        r(
+            "browsing",
+            &["chrome", "msedge", "firefox", "brave", "opera", "vivaldi"],
+        ),
     ]
 }
 
@@ -121,7 +228,10 @@ fn built_in() -> Vec<Rule> {
 pub fn category_for(app: &str, title: &str, rules: &[Rule]) -> String {
     let hay = format!("{} {}", app.to_lowercase(), title.to_lowercase());
     for r in rules.iter().chain(built_in().iter()) {
-        if r.matches.iter().any(|m| !m.is_empty() && hay.contains(&m.to_lowercase())) {
+        if r.matches
+            .iter()
+            .any(|m| !m.is_empty() && hay.contains(&m.to_lowercase()))
+        {
             return r.category.clone();
         }
     }
@@ -171,7 +281,13 @@ pub enum Beat {
 impl WorkLog {
     /// One look at the machine: the focused window and seconds since the last
     /// keyboard or mouse input (`None` when the platform can't say).
-    pub fn beat(&mut self, cfg: &WorkLogConfig, t: u64, active: Option<&ActiveWindow>, input_idle: Option<u64>) -> Beat {
+    pub fn beat(
+        &mut self,
+        cfg: &WorkLogConfig,
+        t: u64,
+        active: Option<&ActiveWindow>,
+        input_idle: Option<u64>,
+    ) -> Beat {
         if !cfg.enabled {
             return Beat::Nothing;
         }
@@ -197,11 +313,17 @@ impl WorkLog {
                 return Beat::Away { since };
             }
         }
-        let Some(w) = active else { return Beat::Nothing };
+        let Some(w) = active else {
+            return Beat::Nothing;
+        };
         if w.process.is_empty() && w.title.is_empty() {
             return Beat::Nothing;
         }
-        let title = if cfg.keep_titles { clean_title(&w.title) } else { String::new() };
+        let title = if cfg.keep_titles {
+            clean_title(&w.title)
+        } else {
+            String::new()
+        };
         let category = category_for(&w.process, &w.title, &cfg.categories);
         if let Some(last) = self.spans.last_mut() {
             let fresh = t.saturating_sub(last.end) <= cfg.pulse_secs && t >= last.end;
@@ -213,11 +335,23 @@ impl WorkLog {
             // where that one ended, so the day adds up to the time it took.
             if fresh {
                 let start = last.end;
-                self.spans.push(Span { start, end: t, app: w.process.clone(), title, category });
+                self.spans.push(Span {
+                    start,
+                    end: t,
+                    app: w.process.clone(),
+                    title,
+                    category,
+                });
                 return Beat::Active;
             }
         }
-        self.spans.push(Span { start: t, end: t, app: w.process.clone(), title, category });
+        self.spans.push(Span {
+            start: t,
+            end: t,
+            app: w.process.clone(),
+            title,
+            category,
+        });
         Beat::Active
     }
 }
@@ -235,13 +369,26 @@ pub fn effective_idle(
 ) -> Option<u64> {
     let idle = idle?;
     let on_screen = active
-        .map(|w| matches!(category_for(&w.process, &w.title, &cfg.categories).as_str(), "meetings" | "video"))
+        .map(|w| {
+            matches!(
+                category_for(&w.process, &w.title, &cfg.categories).as_str(),
+                "meetings" | "video"
+            )
+        })
         .unwrap_or(false);
     let full = matches!(
         os_quiet,
-        Some(crate::platform::OsQuiet::FullScreen | crate::platform::OsQuiet::Presenting | crate::platform::OsQuiet::Game)
+        Some(
+            crate::platform::OsQuiet::FullScreen
+                | crate::platform::OsQuiet::Presenting
+                | crate::platform::OsQuiet::Game
+        )
     );
-    Some(if (on_screen || full) && idle < WATCHING_MAX { 0 } else { idle })
+    Some(if (on_screen || full) && idle < WATCHING_MAX {
+        0
+    } else {
+        idle
+    })
 }
 
 /// The longest silence a call or a video explains: two hours.
@@ -260,7 +407,10 @@ impl WorkLog {
             if a == app && idle < pidle && pidle >= 2 && t >= pt {
                 let pause = (t - idle).saturating_sub(pt.saturating_sub(pidle));
                 if (2..PAUSE_BINS as u64).contains(&pause) {
-                    let h = self.pauses.entry(app.to_string()).or_insert_with(|| vec![0; PAUSE_BINS]);
+                    let h = self
+                        .pauses
+                        .entry(app.to_string())
+                        .or_insert_with(|| vec![0; PAUSE_BINS]);
                     h[pause as usize] = h[pause as usize].saturating_add(1);
                 }
             }
@@ -305,7 +455,11 @@ impl WorkLog {
         self.spans
             .iter()
             .filter(|s| s.end > from && s.start < to)
-            .map(|s| Span { start: s.start.max(from), end: s.end.min(to), ..s.clone() })
+            .map(|s| Span {
+                start: s.start.max(from),
+                end: s.end.min(to),
+                ..s.clone()
+            })
             .filter(|s| s.secs() > 0)
             .collect()
     }
@@ -336,7 +490,13 @@ impl WorkLog {
                 }
             }
         }
-        Some(Context { category: last.category.clone(), app: last.app.clone(), title: last.title.clone(), since: start, until: last.end.min(before) })
+        Some(Context {
+            category: last.category.clone(),
+            app: last.app.clone(),
+            title: last.title.clone(),
+            since: start,
+            until: last.end.min(before),
+        })
     }
 }
 
@@ -367,9 +527,15 @@ impl Context {
     pub fn cue(&self) -> String {
         let how_long = duration_words(self.until.saturating_sub(self.since));
         if self.title.is_empty() {
-            format!("Before the break you'd been in {} for {how_long}, in {}.", self.category, self.app)
+            format!(
+                "Before the break you'd been in {} for {how_long}, in {}.",
+                self.category, self.app
+            )
         } else {
-            format!("Before the break you'd been in {} for {how_long} — last in \"{}\".", self.category, self.title)
+            format!(
+                "Before the break you'd been in {} for {how_long} — last in \"{}\".",
+                self.category, self.title
+            )
         }
     }
 }
@@ -408,7 +574,8 @@ const LULL: u64 = 5 * 60;
 pub fn summarise(spans: &[Span]) -> Summary {
     let mut cat: Vec<(String, u64)> = Vec::new();
     let mut app: Vec<(String, u64)> = Vec::new();
-    let add = |v: &mut Vec<(String, u64)>, k: &str, n: u64| match v.iter_mut().find(|(x, _)| x == k) {
+    let add = |v: &mut Vec<(String, u64)>, k: &str, n: u64| match v.iter_mut().find(|(x, _)| x == k)
+    {
         Some(e) => e.1 += n,
         None => v.push((k.to_string(), n)),
     };
@@ -437,7 +604,14 @@ pub fn summarise(spans: &[Span]) -> Summary {
         match &mut open {
             Some(b) if s.category == b.category => {
                 if s.start.saturating_sub(b.end) > LULL {
-                    let done = std::mem::replace(b, Block { category: s.category.clone(), start: s.start, end: s.end });
+                    let done = std::mem::replace(
+                        b,
+                        Block {
+                            category: s.category.clone(),
+                            start: s.start,
+                            end: s.end,
+                        },
+                    );
                     blocks.push(done);
                 } else {
                     b.end = s.end;
@@ -448,16 +622,31 @@ pub fn summarise(spans: &[Span]) -> Summary {
                 away_from_it += s.secs();
                 if away_from_it > EXCURSION || s.start.saturating_sub(b.end) > LULL {
                     blocks.push(open.take().unwrap_or_else(|| unreachable!()));
-                    open = Some(Block { category: s.category.clone(), start: s.start, end: s.end });
+                    open = Some(Block {
+                        category: s.category.clone(),
+                        start: s.start,
+                        end: s.end,
+                    });
                     away_from_it = 0;
                 }
             }
-            None => open = Some(Block { category: s.category.clone(), start: s.start, end: s.end }),
+            None => {
+                open = Some(Block {
+                    category: s.category.clone(),
+                    start: s.start,
+                    end: s.end,
+                })
+            }
         }
     }
     blocks.extend(open);
     blocks.retain(|b| b.end.saturating_sub(b.start) >= FOCUS_MIN);
-    blocks.sort_by(|a, b| b.end.saturating_sub(b.start).cmp(&a.end.saturating_sub(a.start)).then(a.start.cmp(&b.start)));
+    blocks.sort_by(|a, b| {
+        b.end
+            .saturating_sub(b.start)
+            .cmp(&a.end.saturating_sub(a.start))
+            .then(a.start.cmp(&b.start))
+    });
 
     Summary {
         active: spans.iter().map(Span::secs).sum(),
@@ -487,7 +676,12 @@ pub fn say(s: &Summary, span_name: &str, blind: bool, clock: &dyn Fn(u64) -> Str
         return format!("I have no record of you at the machine {span_name}.");
     }
     let mut out = format!("{} at the machine {span_name}", duration_words(s.active));
-    let top: Vec<String> = s.by_category.iter().take(4).map(|(c, n)| format!("{c} {}", duration_words(*n))).collect();
+    let top: Vec<String> = s
+        .by_category
+        .iter()
+        .take(4)
+        .map(|(c, n)| format!("{c} {}", duration_words(*n)))
+        .collect();
     out.push_str(&format!(": {}.", top.join(", ")));
     match s.blocks.first() {
         Some(b) => out.push_str(&format!(
@@ -502,7 +696,10 @@ pub fn say(s: &Summary, span_name: &str, blind: bool, clock: &dyn Fn(u64) -> Str
     if s.switches == 0 {
         out.push_str(" You stayed on the one thing.");
     } else if hours >= 0.5 {
-        out.push_str(&format!(" You switched between things about {:.0} times an hour.", (s.switches as f64 / hours).max(1.0)));
+        out.push_str(&format!(
+            " You switched between things about {:.0} times an hour.",
+            (s.switches as f64 / hours).max(1.0)
+        ));
     }
     if blind {
         out.push_str(" (This machine doesn't tell me when you're away from the keyboard, so breaks may be counted in.)");
@@ -516,8 +713,31 @@ pub fn say(s: &Summary, span_name: &str, blind: bool, clock: &dyn Fn(u64) -> Str
 /// answers to any of its words, so the caller gives the whole report.
 pub fn time_on(spans: &[Span], asked: &str, span_name: &str) -> Option<String> {
     const SKIP: &[&str] = &[
-        "how", "long", "much", "time", "was", "were", "did", "spend", "spent", "have", "been", "the", "and",
-        "for", "today", "yesterday", "this", "week", "last", "what", "where", "doing", "with", "into", "about",
+        "how",
+        "long",
+        "much",
+        "time",
+        "was",
+        "were",
+        "did",
+        "spend",
+        "spent",
+        "have",
+        "been",
+        "the",
+        "and",
+        "for",
+        "today",
+        "yesterday",
+        "this",
+        "week",
+        "last",
+        "what",
+        "where",
+        "doing",
+        "with",
+        "into",
+        "about",
     ];
     let words: Vec<String> = asked
         .to_lowercase()
@@ -529,8 +749,14 @@ pub fn time_on(spans: &[Span], asked: &str, span_name: &str) -> Option<String> {
         return None;
     }
     let hit = |sp: &Span| {
-        let (c, a, t) = (sp.category.to_lowercase(), sp.app.to_lowercase(), sp.title.to_lowercase());
-        words.iter().any(|w| c == *w || a.contains(w.as_str()) || t.contains(w.as_str()))
+        let (c, a, t) = (
+            sp.category.to_lowercase(),
+            sp.app.to_lowercase(),
+            sp.title.to_lowercase(),
+        );
+        words
+            .iter()
+            .any(|w| c == *w || a.contains(w.as_str()) || t.contains(w.as_str()))
     };
     let mut total = 0;
     let mut apps: Vec<(String, u64)> = Vec::new();
@@ -544,11 +770,21 @@ pub fn time_on(spans: &[Span], asked: &str, span_name: &str) -> Option<String> {
     }
     let named = words.join(" ");
     if total == 0 {
-        return Some(format!("Nothing I recorded {span_name} matches \"{named}\"."));
+        return Some(format!(
+            "Nothing I recorded {span_name} matches \"{named}\"."
+        ));
     }
     apps.sort_by_key(|b| std::cmp::Reverse(b.1));
-    let detail: Vec<String> = apps.iter().take(3).map(|(a, d)| format!("{a} {}", duration_words(*d))).collect();
-    Some(format!("{} on \"{named}\" {span_name} ({}).", duration_words(total), detail.join(", ")))
+    let detail: Vec<String> = apps
+        .iter()
+        .take(3)
+        .map(|(a, d)| format!("{a} {}", duration_words(*d)))
+        .collect();
+    Some(format!(
+        "{} on \"{named}\" {span_name} ({}).",
+        duration_words(total),
+        detail.join(", ")
+    ))
 }
 
 #[cfg(test)]
@@ -556,7 +792,10 @@ mod tests {
     use super::*;
 
     fn w(app: &str, title: &str) -> ActiveWindow {
-        ActiveWindow { process: app.into(), title: title.into() }
+        ActiveWindow {
+            process: app.into(),
+            title: title.into(),
+        }
     }
 
     #[test]
@@ -568,7 +807,10 @@ mod tests {
         }
         assert_eq!(log.spans.len(), 1);
         // Input stops at 1700; Atlas notices at 1900 (200 s idle).
-        assert_eq!(log.beat(&cfg, 1900, Some(&w("Code.exe", "main.rs")), Some(200)), Beat::Away { since: 1700 });
+        assert_eq!(
+            log.beat(&cfg, 1900, Some(&w("Code.exe", "main.rs")), Some(200)),
+            Beat::Away { since: 1700 }
+        );
         assert_eq!(log.spans[0].end, 1700);
         assert_eq!(log.spans[0].category, "coding");
     }
@@ -577,7 +819,21 @@ mod tests {
     fn a_secret_in_a_title_never_reaches_the_record() {
         let cfg = WorkLogConfig::default();
         let mut log = WorkLog::default();
-        log.beat(&cfg, 10, Some(&w("notepad.exe", concat!("key AKIA", "IOSFODNN7EXAMPLE - Notepad"))), Some(0));
-        assert!(!log.spans[0].title.contains(concat!("AKIA", "IOSFODNN7EXAMPLE")), "{}", log.spans[0].title);
+        log.beat(
+            &cfg,
+            10,
+            Some(&w(
+                "notepad.exe",
+                concat!("key AKIA", "IOSFODNN7EXAMPLE - Notepad"),
+            )),
+            Some(0),
+        );
+        assert!(
+            !log.spans[0]
+                .title
+                .contains(concat!("AKIA", "IOSFODNN7EXAMPLE")),
+            "{}",
+            log.spans[0].title
+        );
     }
 }

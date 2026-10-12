@@ -1,6 +1,6 @@
 use atlas::fit::{describe, limits, plan_for, worth_replanning, Machine, Tier};
 use atlas::knowhow::{announce, as_plan, Knowhow};
-use atlas::route::{coverage, needs_internet, known_routes, Kind};
+use atlas::route::{coverage, known_routes, needs_internet, Kind};
 
 // ================= fitting whatever machine it lands on =================
 
@@ -63,8 +63,14 @@ fn tiny() -> Machine {
 #[test]
 fn what_is_free_matters_more_than_what_exists() {
     // Taking a share of the total is how you end up swapping.
-    let idle = Machine { free_ram_mb: 14000, ..laptop() };
-    let busy = Machine { free_ram_mb: 1200, ..laptop() };
+    let idle = Machine {
+        free_ram_mb: 14000,
+        ..laptop()
+    };
+    let busy = Machine {
+        free_ram_mb: 1200,
+        ..laptop()
+    };
     assert!(idle.budget_mb() > busy.budget_mb());
     assert!(
         idle.budget_mb() <= idle.total_ram_mb / 3,
@@ -75,7 +81,10 @@ fn what_is_free_matters_more_than_what_exists() {
 #[test]
 fn integrated_graphics_do_not_add_memory_they_share_it() {
     assert_eq!(laptop().usable_vram_mb(), 8192, "8GB is treated as real");
-    let shared = Machine { vram_mb: 2048, ..laptop() };
+    let shared = Machine {
+        vram_mb: 2048,
+        ..laptop()
+    };
     assert_eq!(shared.usable_vram_mb(), 0, "2GB shared is not a GPU budget");
 }
 
@@ -92,15 +101,25 @@ fn a_good_desktop_gets_everything() {
 fn eric_s_laptop_gets_speech_search_and_a_small_model() {
     let p = plan_for(&laptop());
     assert!(p.speech.is_some());
-    assert!(p.embedding.is_some(), "search by meaning is 90MB and pays for itself");
+    assert!(
+        p.embedding.is_some(),
+        "search by meaning is 90MB and pays for itself"
+    );
     assert!(!p.vision, "integrated graphics can't do it usefully");
-    assert!(p.because.contains("NPU"), "and it says where the NPU helps: {}", p.because);
+    assert!(
+        p.because.contains("NPU"),
+        "and it says where the NPU helps: {}",
+        p.because
+    );
 }
 
 #[test]
 fn an_old_laptop_still_hears_you() {
     let p = plan_for(&old());
-    assert!(p.speech.is_some(), "speech is the cheapest thing worth having");
+    assert!(
+        p.speech.is_some(),
+        "speech is the cheapest thing worth having"
+    );
     assert!(p.tier >= Tier::Voice);
 }
 
@@ -114,7 +133,9 @@ fn a_very_small_machine_still_hears_you_it_just_cannot_reason() {
     assert!(p.model.is_none());
     assert_eq!(p.concurrency, 1);
     let said = limits(&p);
-    assert!(said.iter().any(|l| l.contains("Most of what I do doesn't need one")));
+    assert!(said
+        .iter()
+        .any(|l| l.contains("Most of what I do doesn't need one")));
     assert!(said.iter().any(|l| l.contains("One thing at a time")));
 }
 
@@ -132,14 +153,18 @@ fn a_machine_with_nothing_spare_falls_back_to_text_and_says_so() {
     };
     let p = plan_for(&nothing);
     assert_eq!(p.tier, Tier::Bare);
-    assert!(limits(&p).iter().any(|l| l.contains("everything works typed")));
+    assert!(limits(&p)
+        .iter()
+        .any(|l| l.contains("everything works typed")));
 }
 
 #[test]
 fn what_it_cannot_do_here_is_said_up_front_not_discovered_later() {
     let l = limits(&plan_for(&old()));
     assert!(!l.is_empty());
-    assert!(l.iter().any(|x| x.contains("read text off it") || x.contains("match words")));
+    assert!(l
+        .iter()
+        .any(|x| x.contains("read text off it") || x.contains("match words")));
 }
 
 #[test]
@@ -162,7 +187,10 @@ fn the_model_is_kept_loaded_when_there_is_room_because_reloading_is_the_big_cost
     assert!(plan_for(&desktop()).keep_model_warm);
     // And on a spinning disk it's kept warm even when memory is tight, because
     // re-reading two gigabytes is worse.
-    let slow = Machine { disk_is_spinning: true, ..old() };
+    let slow = Machine {
+        disk_is_spinning: true,
+        ..old()
+    };
     let p = plan_for(&slow);
     if p.model.is_some() {
         assert!(p.keep_model_warm);
@@ -173,8 +201,14 @@ fn the_model_is_kept_loaded_when_there_is_room_because_reloading_is_the_big_cost
 fn a_machine_that_changes_gets_replanned() {
     // The plan made on a day you had forty tabs open isn't the plan you want
     // forever.
-    let busy = Machine { free_ram_mb: 1200, ..laptop() };
-    let free = Machine { free_ram_mb: 11000, ..laptop() };
+    let busy = Machine {
+        free_ram_mb: 1200,
+        ..laptop()
+    };
+    let free = Machine {
+        free_ram_mb: 11000,
+        ..laptop()
+    };
     assert!(worth_replanning(&busy, &free));
     assert!(!worth_replanning(&laptop(), &laptop()));
     assert!(worth_replanning(&laptop(), &desktop()));
@@ -208,9 +242,22 @@ fn nearly_everything_it_knows_works_offline() {
 #[test]
 fn it_finds_the_procedure_from_how_you_would_actually_ask() {
     let k = Knowhow::shipped();
-    assert_eq!(k.for_request("it's running slowly", true).unwrap().id, "free-up-memory");
-    assert_eq!(k.for_request("you're not listening to me", true).unwrap().id, "cant-hear-you");
-    assert_eq!(k.for_request("where did I put my notes on the VPS", true).unwrap().id, "find-a-file");
+    assert_eq!(
+        k.for_request("it's running slowly", true).unwrap().id,
+        "free-up-memory"
+    );
+    assert_eq!(
+        k.for_request("you're not listening to me", true)
+            .unwrap()
+            .id,
+        "cant-hear-you"
+    );
+    assert_eq!(
+        k.for_request("where did I put my notes on the VPS", true)
+            .unwrap()
+            .id,
+        "find-a-file"
+    );
 }
 
 #[test]
@@ -219,7 +266,9 @@ fn offline_it_offers_only_what_works_offline() {
     let online = k.for_request("look into the QUIC spec", true);
     assert_eq!(online.unwrap().id, "research-something");
     let offline = k.for_request("look into the QUIC spec", false);
-    assert!(offline.map(|p| p.id != "research-something").unwrap_or(true));
+    assert!(offline
+        .map(|p| p.id != "research-something")
+        .unwrap_or(true));
 }
 
 #[test]
@@ -249,16 +298,25 @@ fn the_microphone_procedure_knows_about_the_thing_that_actually_happens() {
     let k = Knowhow::shipped();
     let (_, snag) = k.for_symptom("it worked yesterday and not today").unwrap();
     assert!(snag.cause.contains("device names shifted"));
-    assert!(snag.fix.contains("re-measure"), "rather than trusting a saved name");
+    assert!(
+        snag.fix.contains("re-measure"),
+        "rather than trusting a saved name"
+    );
 }
 
 #[test]
 fn a_new_failure_is_learned_so_the_surprise_happens_once() {
     let mut k = Knowhow::shipped();
-    assert!(k.learn_snag("find-a-file", "finds the wrong file every time",
-        "two files with the same name", "say which folder each is in"));
-    assert!(!k.learn_snag("find-a-file", "finds the wrong file every time", "x", "y"),
-        "not twice");
+    assert!(k.learn_snag(
+        "find-a-file",
+        "finds the wrong file every time",
+        "two files with the same name",
+        "say which folder each is in"
+    ));
+    assert!(
+        !k.learn_snag("find-a-file", "finds the wrong file every time", "x", "y"),
+        "not twice"
+    );
     assert!(k.for_symptom("finds the wrong file every time").is_some());
 }
 
@@ -267,13 +325,19 @@ fn a_procedure_becomes_something_you_can_follow() {
     let k = Knowhow::shipped();
     let p = k.for_request("it's running slowly", true).unwrap();
     let steps = as_plan(p);
-    assert!(steps[0].contains("until"), "with how you know it worked: {}", steps[0]);
+    assert!(
+        steps[0].contains("until"),
+        "with how you know it worked: {}",
+        steps[0]
+    );
 }
 
 #[test]
 fn asking_about_something_it_has_no_procedure_for_returns_nothing() {
     // Rather than the nearest thing, which would be worse than admitting it.
-    assert!(Knowhow::shipped().for_request("book me a flight to Osaka", true).is_none());
+    assert!(Knowhow::shipped()
+        .for_request("book me a flight to Osaka", true)
+        .is_none());
 }
 
 // ================= online adds routes, it never enables them =================
@@ -283,7 +347,10 @@ fn every_kind_of_problem_has_a_way_through_with_no_internet() {
     for kind in [Kind::Extract, Kind::Act, Kind::Learn, Kind::Fix] {
         let (offline, total) = coverage(kind);
         assert!(offline > 0, "{kind:?} has no offline route at all");
-        assert!(offline < total || kind != Kind::Learn, "being online should add something");
+        assert!(
+            offline < total || kind != Kind::Learn,
+            "being online should add something"
+        );
     }
 }
 
@@ -291,8 +358,14 @@ fn every_kind_of_problem_has_a_way_through_with_no_internet() {
 fn being_online_is_strictly_better_never_differently_better() {
     // Nothing is possible only when offline.
     let all = known_routes();
-    let online_only: Vec<&str> = all.iter().filter(|r| needs_internet(r)).map(|r| r.name.as_str()).collect();
+    let online_only: Vec<&str> = all
+        .iter()
+        .filter(|r| needs_internet(r))
+        .map(|r| r.name.as_str())
+        .collect();
     assert!(!online_only.is_empty(), "some things do need it");
-    assert!(all.iter().filter(|r| !needs_internet(r)).count() > online_only.len(),
-        "but most don't");
+    assert!(
+        all.iter().filter(|r| !needs_internet(r)).count() > online_only.len(),
+        "but most don't"
+    );
 }

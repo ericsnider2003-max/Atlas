@@ -180,7 +180,9 @@ impl Used {
         if self.since == 0 {
             self.since = t;
         }
-        let Some(a) = ability_for(kind) else { return false };
+        let Some(a) = ability_for(kind) else {
+            return false;
+        };
         let e = self.by.entry(a.to_string()).or_insert((0, 0));
         e.0 = e.0.saturating_add(1);
         e.1 = t;
@@ -235,7 +237,10 @@ mod tests {
     fn every_ability_named_is_in_the_catalogue() {
         let ids: Vec<&str> = crate::capability::all().iter().map(|c| c.id).collect();
         for (k, a) in FOR_KIND {
-            assert!(ids.contains(a), "{k} -> {a}, which the catalogue doesn't have");
+            assert!(
+                ids.contains(a),
+                "{k} -> {a}, which the catalogue doesn't have"
+            );
         }
     }
 }

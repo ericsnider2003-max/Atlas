@@ -119,7 +119,13 @@ fn hkdf(salt: &[u8], ikm: &[u8], info: &[u8]) -> [u8; 32] {
 }
 
 /// The two keys for one envelope: (request, reply).
-fn keys(dh_eph: &[u8; 32], dh_static: &[u8; 32], eph: &[u8; 32], from: &str, to: &str) -> ([u8; 32], [u8; 32]) {
+fn keys(
+    dh_eph: &[u8; 32],
+    dh_static: &[u8; 32],
+    eph: &[u8; 32],
+    from: &str,
+    to: &str,
+) -> ([u8; 32], [u8; 32]) {
     let mut ikm = dh_eph.to_vec();
     ikm.extend_from_slice(dh_static);
     let mut salt = LABEL.to_vec();
@@ -138,11 +144,15 @@ fn aad(from: &str, to: &str) -> Vec<u8> {
 
 fn lock(key: &[u8; 32], aad: &[u8], plain: &[u8]) -> Option<Vec<u8>> {
     // A key is used for exactly one message, so the all-zero nonce is safe.
-    ChaCha20Poly1305::new(Key::from_slice(key)).encrypt(Nonce::from_slice(&[0u8; 12]), Payload { msg: plain, aad }).ok()
+    ChaCha20Poly1305::new(Key::from_slice(key))
+        .encrypt(Nonce::from_slice(&[0u8; 12]), Payload { msg: plain, aad })
+        .ok()
 }
 
 fn unlock(key: &[u8; 32], aad: &[u8], sealed: &[u8]) -> Option<Vec<u8>> {
-    ChaCha20Poly1305::new(Key::from_slice(key)).decrypt(Nonce::from_slice(&[0u8; 12]), Payload { msg: sealed, aad }).ok()
+    ChaCha20Poly1305::new(Key::from_slice(key))
+        .decrypt(Nonce::from_slice(&[0u8; 12]), Payload { msg: sealed, aad })
+        .ok()
 }
 
 /// Seal a request from `me` to the Atlas whose key is `to`. Returns the
@@ -153,7 +163,9 @@ pub fn seal(me: &Identity, to: &str, inner: &Inner) -> Option<(Envelope, ReplyKe
     let mut e = [0u8; 32];
     OsRng.fill_bytes(&mut e);
     let eph = curve25519_dalek::MontgomeryPoint::mul_base_clamped(e).to_bytes();
-    let dh_eph = curve25519_dalek::MontgomeryPoint(to_point).mul_clamped(e).to_bytes();
+    let dh_eph = curve25519_dalek::MontgomeryPoint(to_point)
+        .mul_clamped(e)
+        .to_bytes();
     if dh_eph == [0u8; 32] {
         return None;
     }
@@ -162,7 +174,16 @@ pub fn seal(me: &Identity, to: &str, inner: &Inner) -> Option<(Envelope, ReplyKe
     let (req, reply) = keys(&dh_eph, &dh_static, &eph, &from, to);
     let plain = serde_json::to_vec(inner).ok()?;
     let ct = lock(&req, &aad(&from, to), &plain)?;
-    Some((Envelope { v: VERSION, from, to: to.to_string(), eph: hex(&eph), ct: crate::b64::encode(&ct) }, ReplyKey(reply)))
+    Some((
+        Envelope {
+            v: VERSION,
+            from,
+            to: to.to_string(),
+            eph: hex(&eph),
+            ct: crate::b64::encode(&ct),
+        },
+        ReplyKey(reply),
+    ))
 }
 
 /// Why an envelope wasn't opened.
@@ -182,7 +203,11 @@ pub struct Seen {
 
 impl Seen {
     fn check_and_keep(&mut self, eph: &str, now: u64) -> bool {
-        while self.at.front().is_some_and(|(_, t)| now.saturating_sub(*t) > 2 * WINDOW_SECS) {
+        while self
+            .at
+            .front()
+            .is_some_and(|(_, t)| now.saturating_sub(*t) > 2 * WINDOW_SECS)
+        {
             self.at.pop_front();
         }
         if self.at.iter().any(|(e, _)| e == eph) {
@@ -198,7 +223,12 @@ impl Seen {
 
 /// Open an envelope sealed to `me`. Returns who sealed it (proven: only the
 /// holder of that key could have), what's inside, and the key to answer with.
-pub fn open(me: &Identity, env: &Envelope, now: u64, seen: &mut Seen) -> Result<(String, Inner, ReplyKey), Refused> {
+pub fn open(
+    me: &Identity,
+    env: &Envelope,
+    now: u64,
+    seen: &mut Seen,
+) -> Result<(String, Inner, ReplyKey), Refused> {
     if env.v != VERSION || env.to != me.public() {
         return Err(Refused::NotForMe);
     }
@@ -221,8 +251,14 @@ pub fn open(me: &Identity, env: &Envelope, now: u64, seen: &mut Seen) -> Result<
 
 /// Seal the answer to an opened envelope.
 pub fn seal_reply(k: &ReplyKey, status: u16, body: &str) -> String {
-    let plain = serde_json::to_vec(&Reply { status, body: body.to_string() }).unwrap_or_default();
-    lock(&k.0, LABEL, &plain).map(|c| crate::b64::encode(&c)).unwrap_or_default()
+    let plain = serde_json::to_vec(&Reply {
+        status,
+        body: body.to_string(),
+    })
+    .unwrap_or_default();
+    lock(&k.0, LABEL, &plain)
+        .map(|c| crate::b64::encode(&c))
+        .unwrap_or_default()
 }
 
 /// Open the answer to an envelope you sealed.
@@ -236,13 +272,21 @@ mod tests {
     use super::*;
 
     fn inner(path: &str, at: u64) -> Inner {
-        Inner { path: path.into(), token: "tok".into(), body: "{\"x\":1}".into(), at }
+        Inner {
+            path: path.into(),
+            token: "tok".into(),
+            body: "{\"x\":1}".into(),
+            at,
+        }
     }
 
     #[test]
     fn only_the_receiver_opens_it_and_knows_who_sent_it() {
-        let (eric, sam, maya) =
-            (Identity::from_seed_for_test([1; 32]), Identity::from_seed_for_test([2; 32]), Identity::from_seed_for_test([3; 32]));
+        let (eric, sam, maya) = (
+            Identity::from_seed_for_test([1; 32]),
+            Identity::from_seed_for_test([2; 32]),
+            Identity::from_seed_for_test([3; 32]),
+        );
         let (env, rk) = seal(&eric, &sam.public(), &inner("/chat", 1_000)).unwrap();
         let mut seen = Seen::default();
         let (from, got, k) = open(&sam, &env, 1_000, &mut seen).unwrap();
@@ -250,9 +294,18 @@ mod tests {
         assert_eq!(got, inner("/chat", 1_000));
         // The answer: only the sender reads it.
         let r = seal_reply(&k, 200, "ok");
-        assert_eq!(open_reply(&rk, &r), Some(Reply { status: 200, body: "ok".into() }));
+        assert_eq!(
+            open_reply(&rk, &r),
+            Some(Reply {
+                status: 200,
+                body: "ok".into()
+            })
+        );
         // Nobody else opens it, even with the envelope retargeted.
-        assert_eq!(open(&maya, &env, 1_000, &mut Seen::default()).err(), Some(Refused::NotForMe));
+        assert_eq!(
+            open(&maya, &env, 1_000, &mut Seen::default()).err(),
+            Some(Refused::NotForMe)
+        );
         let mut stolen = env.clone();
         stolen.to = maya.public();
         assert!(open(&maya, &stolen, 1_000, &mut Seen::default()).is_err());
@@ -260,28 +313,46 @@ mod tests {
 
     #[test]
     fn nobody_can_seal_as_someone_else() {
-        let (eric, sam, maya) =
-            (Identity::from_seed_for_test([1; 32]), Identity::from_seed_for_test([2; 32]), Identity::from_seed_for_test([3; 32]));
+        let (eric, sam, maya) = (
+            Identity::from_seed_for_test([1; 32]),
+            Identity::from_seed_for_test([2; 32]),
+            Identity::from_seed_for_test([3; 32]),
+        );
         // Maya seals, then claims it came from Eric.
         let (mut env, _) = seal(&maya, &sam.public(), &inner("/chat", 1_000)).unwrap();
         env.from = eric.public();
-        assert_eq!(open(&sam, &env, 1_000, &mut Seen::default()).err(), Some(Refused::Unreadable));
+        assert_eq!(
+            open(&sam, &env, 1_000, &mut Seen::default()).err(),
+            Some(Refused::Unreadable)
+        );
     }
 
     #[test]
     fn a_changed_or_replayed_or_stale_envelope_is_refused() {
-        let (eric, sam) = (Identity::from_seed_for_test([1; 32]), Identity::from_seed_for_test([2; 32]));
+        let (eric, sam) = (
+            Identity::from_seed_for_test([1; 32]),
+            Identity::from_seed_for_test([2; 32]),
+        );
         let (env, _) = seal(&eric, &sam.public(), &inner("/chat", 1_000)).unwrap();
         let mut seen = Seen::default();
         assert!(open(&sam, &env, 1_000, &mut seen).is_ok());
-        assert_eq!(open(&sam, &env, 1_001, &mut seen).err(), Some(Refused::Replayed));
+        assert_eq!(
+            open(&sam, &env, 1_001, &mut seen).err(),
+            Some(Refused::Replayed)
+        );
         let mut bent = env.clone();
         let mut ct = crate::b64::decode(&bent.ct).unwrap();
         ct[3] ^= 1;
         bent.ct = crate::b64::encode(&ct);
-        assert_eq!(open(&sam, &bent, 1_000, &mut Seen::default()).err(), Some(Refused::Unreadable));
+        assert_eq!(
+            open(&sam, &bent, 1_000, &mut Seen::default()).err(),
+            Some(Refused::Unreadable)
+        );
         let (late, _) = seal(&eric, &sam.public(), &inner("/chat", 1_000)).unwrap();
-        assert_eq!(open(&sam, &late, 1_000 + WINDOW_SECS + 1, &mut Seen::default()).err(), Some(Refused::TooOld));
+        assert_eq!(
+            open(&sam, &late, 1_000 + WINDOW_SECS + 1, &mut Seen::default()).err(),
+            Some(Refused::TooOld)
+        );
     }
 
     #[test]
@@ -291,6 +362,9 @@ mod tests {
         let salt: Vec<u8> = (0x00..=0x0c).collect();
         let info: Vec<u8> = (0xf0..=0xf9).collect();
         let okm = hkdf(&salt, &ikm, &info);
-        assert_eq!(hex(&okm), "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf");
+        assert_eq!(
+            hex(&okm),
+            "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf"
+        );
     }
 }

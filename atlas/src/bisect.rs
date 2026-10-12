@@ -46,7 +46,9 @@ pub enum Outcome {
     /// It passes at the newest commit: nothing is broken here.
     PassesNow,
     /// It fails as far back as was looked.
-    NeverPassed { looked_back: usize },
+    NeverPassed {
+        looked_back: usize,
+    },
     /// It broke somewhere in a run of commits none of which would build, or
     /// the newest couldn't be tested at all.
     Unclear(String),
@@ -66,7 +68,9 @@ pub fn find_first_bad(commits: &[String], mut verdict: impl FnMut(&str) -> Verdi
     };
     match ask(newest, &mut tried) {
         Verdict::Passes => return Outcome::PassesNow,
-        Verdict::CantTell(why) => return Outcome::Unclear(format!("the newest commit can't be tested: {why}")),
+        Verdict::CantTell(why) => {
+            return Outcome::Unclear(format!("the newest commit can't be tested: {why}"))
+        }
         Verdict::Fails => {}
     }
     // Back in doubling steps until it passes: the break is usually recent,
@@ -75,7 +79,9 @@ pub fn find_first_bad(commits: &[String], mut verdict: impl FnMut(&str) -> Verdi
     let mut step = 1usize;
     let good = loop {
         if bad == 0 {
-            return Outcome::NeverPassed { looked_back: commits.len() };
+            return Outcome::NeverPassed {
+                looked_back: commits.len(),
+            };
         }
         let i = bad.saturating_sub(step);
         match ask(i, &mut tried) {
@@ -85,7 +91,9 @@ pub fn find_first_bad(commits: &[String], mut verdict: impl FnMut(&str) -> Verdi
             Verdict::CantTell(_) => {}
         }
         if i == 0 {
-            return Outcome::NeverPassed { looked_back: commits.len() };
+            return Outcome::NeverPassed {
+                looked_back: commits.len(),
+            };
         }
         step = step.saturating_mul(2);
     };
@@ -122,7 +130,11 @@ pub fn find_first_bad(commits: &[String], mut verdict: impl FnMut(&str) -> Verdi
             ));
         }
     }
-    Outcome::Found(Change { commit: commits[bad].clone(), last_good: commits[good].clone(), tried })
+    Outcome::Found(Change {
+        commit: commits[bad].clone(),
+        last_good: commits[good].clone(),
+        tried,
+    })
 }
 
 fn short(c: &str) -> &str {
@@ -134,7 +146,9 @@ pub fn verdict_of_run(passed: bool, output: &str) -> Verdict {
     if passed {
         return Verdict::Passes;
     }
-    let doesnt_build = output.contains("error: could not compile") || output.contains("error[E") || output.contains("error: no test target");
+    let doesnt_build = output.contains("error: could not compile")
+        || output.contains("error[E")
+        || output.contains("error: no test target");
     if doesnt_build {
         return Verdict::CantTell("it doesn't build there".into());
     }
@@ -145,33 +159,76 @@ pub fn verdict_of_run(passed: bool, output: &str) -> Verdict {
     Verdict::Fails
 }
 
-fn git(dir: &Path, args: &[&str]) -> Result<String, String> { git_controlled(dir, args, None) }
+fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
+    git_controlled(dir, args, None)
+}
 
-fn git_controlled(dir: &Path, args: &[&str], budget: Option<&crate::tools::WorkBudget<'_>>) -> Result<String, String> {
-    if let Some(b) = budget { b.check()?; }
+fn git_controlled(
+    dir: &Path,
+    args: &[&str],
+    budget: Option<&crate::tools::WorkBudget<'_>>,
+) -> Result<String, String> {
+    if let Some(b) = budget {
+        b.check()?;
+    }
     let mut c = crate::tools::command("git");
     c.args(args).current_dir(dir);
     let cap = std::time::Duration::from_secs(30);
     let stop = || budget.is_some_and(|b| b.stopping());
-    let (passed, text) = crate::tools::run_scoped(&mut c, budget.map_or(cap, |b| b.remaining(cap)), 2 * 1024 * 1024, None, Some(&stop)).said(2 * 1024 * 1024);
-    if let Some(b) = budget { b.check()?; }
-    if passed { Ok(text.trim().to_string()) } else { Err(text) }
+    let (passed, text) = crate::tools::run_scoped(
+        &mut c,
+        budget.map_or(cap, |b| b.remaining(cap)),
+        2 * 1024 * 1024,
+        None,
+        Some(&stop),
+    )
+    .said(2 * 1024 * 1024);
+    if let Some(b) = budget {
+        b.check()?;
+    }
+    if passed {
+        Ok(text.trim().to_string())
+    } else {
+        Err(text)
+    }
 }
 
 /// Find the change in `repo` that made `test` (a program and its arguments,
 /// run in the checkout) start failing, looking back at most `look_back`
 /// commits along the first-parent line, each run stopped at `limit_secs`.
-pub fn what_broke_until(repo: &Path, test: &[String], look_back: usize, limit_secs: u64, total_limit: std::time::Duration, stop: &(dyn Fn() -> bool + Sync)) -> Result<Outcome, String> {
+pub fn what_broke_until(
+    repo: &Path,
+    test: &[String],
+    look_back: usize,
+    limit_secs: u64,
+    total_limit: std::time::Duration,
+    stop: &(dyn Fn() -> bool + Sync),
+) -> Result<Outcome, String> {
     let budget = crate::tools::WorkBudget::new(total_limit, stop);
     what_broke_controlled(repo, test, look_back, limit_secs, &budget)
 }
 
-fn what_broke_controlled(repo: &Path, test: &[String], look_back: usize, limit_secs: u64, budget: &crate::tools::WorkBudget<'_>) -> Result<Outcome, String> {
+fn what_broke_controlled(
+    repo: &Path,
+    test: &[String],
+    look_back: usize,
+    limit_secs: u64,
+    budget: &crate::tools::WorkBudget<'_>,
+) -> Result<Outcome, String> {
     budget.check()?;
     let Some((program, args)) = test.split_first() else {
         return Err("no test to run".into());
     };
-    let listed = git_controlled(repo, &["rev-list", "--first-parent", &format!("--max-count={}", look_back.max(2)), "HEAD"], Some(budget))?;
+    let listed = git_controlled(
+        repo,
+        &[
+            "rev-list",
+            "--first-parent",
+            &format!("--max-count={}", look_back.max(2)),
+            "HEAD",
+        ],
+        Some(budget),
+    )?;
     let mut commits: Vec<String> = listed.lines().map(str::to_string).collect();
     commits.reverse();
     let base = crate::roots::tmp_dir().join("selffix");
@@ -179,13 +236,37 @@ fn what_broke_controlled(repo: &Path, test: &[String], look_back: usize, limit_s
     static NEXT_WORKTREE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let unique = NEXT_WORKTREE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let dir = base.join(format!("bisect-{}-{unique}", std::process::id()));
-    let _ = git_controlled(repo, &["worktree", "remove", "--force", &dir.to_string_lossy()], Some(budget)); // unheard-ok: clearing a leftover from an earlier run; usually there is none
+    let _ = git_controlled(
+        repo,
+        &["worktree", "remove", "--force", &dir.to_string_lossy()],
+        Some(budget),
+    ); // unheard-ok: clearing a leftover from an earlier run; usually there is none
     let _ = std::fs::remove_dir_all(&dir); // unheard-ok: as above
-    git_controlled(repo, &["worktree", "add", "--detach", &dir.to_string_lossy(), "HEAD"], Some(budget))?;
+    git_controlled(
+        repo,
+        &[
+            "worktree",
+            "add",
+            "--detach",
+            &dir.to_string_lossy(),
+            "HEAD",
+        ],
+        Some(budget),
+    )?;
     // The crate may sit in a folder of the repo (Atlas's is `atlas/`): the
     // test runs where it does in the checkout you gave.
-    let top = git_controlled(repo, &["rev-parse", "--show-toplevel"], Some(budget)).map(std::path::PathBuf::from).unwrap_or_else(|_| repo.to_path_buf());
-    let inner = repo.canonicalize().ok().and_then(|r| top.canonicalize().ok().and_then(|t| r.strip_prefix(t).ok().map(|p| p.to_path_buf()))).unwrap_or_default();
+    let top = git_controlled(repo, &["rev-parse", "--show-toplevel"], Some(budget))
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| repo.to_path_buf());
+    let inner = repo
+        .canonicalize()
+        .ok()
+        .and_then(|r| {
+            top.canonicalize()
+                .ok()
+                .and_then(|t| r.strip_prefix(t).ok().map(|p| p.to_path_buf()))
+        })
+        .unwrap_or_default();
     let run_in = dir.join(&inner);
     let args: Vec<String> = args.to_vec();
     let outcome = find_first_bad(&commits, |c| {
@@ -195,19 +276,38 @@ fn what_broke_controlled(repo: &Path, test: &[String], look_back: usize, limit_s
         if let Err(e) = git_controlled(&dir, &["checkout", "-q", "--detach", c], Some(budget)) {
             return Verdict::CantTell(format!("couldn't check it out: {e}"));
         }
-        let (passed, out) = crate::sandbox::run_within_controlled(program, &args, &[], &run_in, budget.remaining(std::time::Duration::from_secs(limit_secs)).as_secs().max(1), 20_000, Some(&|| budget.stopping()));
+        let (passed, out) = crate::sandbox::run_within_controlled(
+            program,
+            &args,
+            &[],
+            &run_in,
+            budget
+                .remaining(std::time::Duration::from_secs(limit_secs))
+                .as_secs()
+                .max(1),
+            20_000,
+            Some(&|| budget.stopping()),
+        );
         verdict_of_run(passed, &out)
     });
     // Cleanup has a separate short budget: an expired/canceled investigation
     // must still remove only its own worktree, never wait indefinitely.
     let cleanup_stop = || false;
     let cleanup = crate::tools::WorkBudget::new(std::time::Duration::from_secs(30), &cleanup_stop);
-    git_controlled(repo, &["worktree", "remove", "--force", &dir.to_string_lossy()], Some(&cleanup))
-        .map_err(|why| format!("The investigation ended, but its temporary worktree remains at {}: {why}", dir.display()))?;
+    git_controlled(
+        repo,
+        &["worktree", "remove", "--force", &dir.to_string_lossy()],
+        Some(&cleanup),
+    )
+    .map_err(|why| {
+        format!(
+            "The investigation ended, but its temporary worktree remains at {}: {why}",
+            dir.display()
+        )
+    })?;
     budget.check()?;
     Ok(outcome)
 }
-
 
 /// The answer in words, with what the change was.
 pub fn told(repo: &Path, test: &str, o: &Outcome) -> String {
@@ -218,8 +318,24 @@ pub fn told(repo: &Path, test: &str, o: &Outcome) -> String {
         }
         Outcome::Unclear(why) => format!("I couldn't pin it down: {why}."),
         Outcome::Found(c) => {
-            let what = git(repo, &["log", "-1", "--format=%s (%ad)", "--date=short", &c.commit]).unwrap_or_default();
-            let files = git(repo, &["diff-tree", "--no-commit-id", "--name-only", "-r", "-m", "--first-parent", &c.commit]).unwrap_or_default();
+            let what = git(
+                repo,
+                &["log", "-1", "--format=%s (%ad)", "--date=short", &c.commit],
+            )
+            .unwrap_or_default();
+            let files = git(
+                repo,
+                &[
+                    "diff-tree",
+                    "--no-commit-id",
+                    "--name-only",
+                    "-r",
+                    "-m",
+                    "--first-parent",
+                    &c.commit,
+                ],
+            )
+            .unwrap_or_default();
             let files: Vec<&str> = files.lines().take(8).collect();
             format!(
                 "{test} broke at {} -- \"{what}\". It passed at {} just before. Files it changed: {}. (Tried {} commits.) \
@@ -242,7 +358,13 @@ mod tests {
     }
 
     fn broke_at(at: usize) -> impl FnMut(&str) -> Verdict {
-        move |c: &str| if c[1..].parse::<usize>().unwrap() >= at { Verdict::Fails } else { Verdict::Passes }
+        move |c: &str| {
+            if c[1..].parse::<usize>().unwrap() >= at {
+                Verdict::Fails
+            } else {
+                Verdict::Passes
+            }
+        }
     }
 
     #[test]
@@ -264,7 +386,10 @@ mod tests {
     fn passing_now_and_never_passing_are_said_as_such() {
         let c = line(10);
         assert_eq!(find_first_bad(&c, |_| Verdict::Passes), Outcome::PassesNow);
-        assert_eq!(find_first_bad(&c, |_| Verdict::Fails), Outcome::NeverPassed { looked_back: 10 });
+        assert_eq!(
+            find_first_bad(&c, |_| Verdict::Fails),
+            Outcome::NeverPassed { looked_back: 10 }
+        );
     }
 
     #[test]
@@ -294,13 +419,21 @@ mod tests {
                 Verdict::Passes
             }
         };
-        assert!(matches!(find_first_bad(&c, &mut w), Outcome::Unclear(why) if why.contains("between c16 and c23")));
+        assert!(
+            matches!(find_first_bad(&c, &mut w), Outcome::Unclear(why) if why.contains("between c16 and c23"))
+        );
     }
 
     #[test]
     fn a_run_that_doesnt_compile_tells_nothing() {
         assert_eq!(verdict_of_run(true, ""), Verdict::Passes);
-        assert_eq!(verdict_of_run(false, "test result: FAILED. 1 passed; 1 failed"), Verdict::Fails);
-        assert!(matches!(verdict_of_run(false, "error[E0425]: cannot find value"), Verdict::CantTell(_)));
+        assert_eq!(
+            verdict_of_run(false, "test result: FAILED. 1 passed; 1 failed"),
+            Verdict::Fails
+        );
+        assert!(matches!(
+            verdict_of_run(false, "error[E0425]: cannot find value"),
+            Verdict::CantTell(_)
+        ));
     }
 }

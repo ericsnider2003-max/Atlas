@@ -9,7 +9,12 @@ fn cfg() -> HandoffConfig {
 }
 
 fn attempt(passed: bool) -> Attempt {
-    Attempt { command: "cargo test".into(), passed, output: "…".into(), at: 0 }
+    Attempt {
+        command: "cargo test".into(),
+        passed,
+        output: "…".into(),
+        at: 0,
+    }
 }
 
 fn stuck() -> Problem {
@@ -52,7 +57,10 @@ fn atlas_works_through_every_angle_before_interrupting_you() {
     let c = cfg();
     assert!(c.attempts_before_asking >= 12);
     let few: Vec<_> = (0..3).map(|_| attempt(false)).collect();
-    assert!(!should_ask(&few, &c), "three tries is not enough to give up");
+    assert!(
+        !should_ask(&few, &c),
+        "three tries is not enough to give up"
+    );
 
     let many: Vec<_> = (0..12).map(|_| attempt(false)).collect();
     assert!(should_ask(&many, &c));
@@ -60,13 +68,21 @@ fn atlas_works_through_every_angle_before_interrupting_you() {
 
 #[test]
 fn you_can_still_shorten_it_if_you_want_it_to_ask_sooner() {
-    let impatient = HandoffConfig { attempts_before_asking: 2, ..cfg() };
+    let impatient = HandoffConfig {
+        attempts_before_asking: 2,
+        ..cfg()
+    };
     assert!(should_ask(&[attempt(false), attempt(false)], &impatient));
 }
 
 #[test]
 fn a_problem_that_solved_itself_is_not_escalated() {
-    let solved = vec![attempt(false), attempt(false), attempt(false), attempt(true)];
+    let solved = vec![
+        attempt(false),
+        attempt(false),
+        attempt(false),
+        attempt(true),
+    ];
     assert!(!should_ask(&solved, &cfg()), "the last attempt worked");
 }
 
@@ -108,7 +124,10 @@ fn only_the_code_that_matters_is_sent_not_the_whole_file() {
 #[test]
 fn a_huge_snippet_is_cut_rather_than_pasted_whole() {
     let mut p = stuck();
-    p.snippets[0].text = (0..500).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+    p.snippets[0].text = (0..500)
+        .map(|i| format!("line {i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     let b = write_brief(&p, &cfg());
     assert!(b.contains("more lines"), "it says what it cut");
     assert!(b.len() < cfg().max_chars + 200);
@@ -118,7 +137,10 @@ fn a_huge_snippet_is_cut_rather_than_pasted_whole() {
 fn a_wall_of_output_keeps_both_ends() {
     // The first error and the final summary are the useful parts.
     let mut p = stuck();
-    p.error = format!("error: the real problem\n{}\nsummary: 3 failed", "noise\n".repeat(2000));
+    p.error = format!(
+        "error: the real problem\n{}\nsummary: 3 failed",
+        "noise\n".repeat(2000)
+    );
     let b = write_brief(&p, &cfg());
     assert!(b.contains("error: the real problem"));
     assert!(b.contains("trimmed"));
@@ -127,7 +149,10 @@ fn a_wall_of_output_keeps_both_ends() {
 #[test]
 fn the_brief_asks_for_the_change_rather_than_an_explanation() {
     let b = write_brief(&stuck(), &cfg());
-    assert!(b.contains("the change itself"), "so it can be applied and tested");
+    assert!(
+        b.contains("the change itself"),
+        "so it can be applied and tested"
+    );
 }
 
 #[test]
@@ -147,7 +172,11 @@ fn code_is_pulled_out_of_a_reply() {
         Usable::Apply(blocks) => {
             assert_eq!(blocks.len(), 1);
             assert!(blocks[0].code.contains("fresh_device"));
-            assert_eq!(blocks[0].path.as_deref(), Some("src/voice.rs"), "so it knows where it goes");
+            assert_eq!(
+                blocks[0].path.as_deref(),
+                Some("src/voice.rs"),
+                "so it knows where it goes"
+            );
         }
         o => panic!("{o:?}"),
     }
@@ -185,7 +214,10 @@ fn an_explanation_with_no_code_says_what_it_still_needs() {
 
 #[test]
 fn an_empty_code_fence_is_not_mistaken_for_an_answer() {
-    assert!(matches!(read_answer("Here:\n```\n```\nthat's it."), Usable::NeedsCode(_)));
+    assert!(matches!(
+        read_answer("Here:\n```\n```\nthat's it."),
+        Usable::NeedsCode(_)
+    ));
 }
 
 #[test]

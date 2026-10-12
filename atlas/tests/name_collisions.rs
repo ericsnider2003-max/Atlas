@@ -328,7 +328,9 @@ const NAME_COLLISION_ONLY: &[&str] = &[
 
 fn read_tree(dir: &str) -> Vec<(String, String)> {
     fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
-        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
         let mut paths: Vec<_> = entries.flatten().map(|e| e.path()).collect();
         paths.sort();
         for path in paths {
@@ -339,7 +341,11 @@ fn read_tree(dir: &str) -> Vec<(String, String)> {
             if path.extension().and_then(|e| e.to_str()) != Some("rs") {
                 continue;
             }
-            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
             if let Ok(text) = std::fs::read_to_string(&path) {
                 // A split module's pieces are one module (27 Sep 2026).
                 common::push_module(out, &path, stem, text);
@@ -411,11 +417,18 @@ fn index(text: &str) -> Reach {
                 // Split modules are indexed under their parent. Keep that
                 // parent when a real caller names a nested implementation.
                 let mut start = lhs_start;
-                while start > 0 && (bytes[start - 1].is_ascii_alphanumeric()
-                    || matches!(bytes[start - 1], b'_' | b':')) { start -= 1; }
+                while start > 0
+                    && (bytes[start - 1].is_ascii_alphanumeric()
+                        || matches!(bytes[start - 1], b'_' | b':'))
+                {
+                    start -= 1;
+                }
                 let mut end = rhs_end;
-                while end < bytes.len() && (bytes[end].is_ascii_alphanumeric()
-                    || matches!(bytes[end], b'_' | b':')) { end += 1; }
+                while end < bytes.len()
+                    && (bytes[end].is_ascii_alphanumeric() || matches!(bytes[end], b'_' | b':'))
+                {
+                    end += 1;
+                }
                 let parts: Vec<_> = line[start..end].split("::").collect();
                 let root = usize::from(parts.first() == Some(&"crate"));
                 if parts.len() > root + 2 && !matches!(parts[root], "self" | "super" | "Self") {
@@ -459,8 +472,7 @@ fn index(text: &str) -> Reach {
                 }
             }
         } else {
-            let mut segs: Vec<&str> =
-                stmt.trim_start_matches("use ").trim().split("::").collect();
+            let mut segs: Vec<&str> = stmt.trim_start_matches("use ").trim().split("::").collect();
             if segs.len() >= 2 {
                 let name = segs.pop().unwrap().trim().to_string();
                 let module = segs.pop().unwrap().trim().to_string();
@@ -470,7 +482,11 @@ fn index(text: &str) -> Reach {
         from = at + 4;
     }
 
-    Reach { paths, imported, called }
+    Reach {
+        paths,
+        imported,
+        called,
+    }
 }
 
 impl Reach {
@@ -490,7 +506,12 @@ fn unwired_modules() -> BTreeSet<String> {
     std::fs::read_to_string("tests/wiring.rs")
         .expect("tests/wiring.rs")
         .lines()
-        .filter_map(|l| l.trim().strip_prefix('"').and_then(|r| r.split('"').next()).map(String::from))
+        .filter_map(|l| {
+            l.trim()
+                .strip_prefix('"')
+                .and_then(|r| r.split('"').next())
+                .map(String::from)
+        })
         .collect()
 }
 
@@ -509,8 +530,10 @@ fn current() -> BTreeSet<String> {
         .iter()
         .map(|(m, t)| (m.clone(), common::split_production_and_tests(t).0))
         .collect();
-    let indexed: Vec<(String, Reach, String)> =
-        prod.iter().map(|(m, body)| (m.clone(), index(body), body.clone())).collect();
+    let indexed: Vec<(String, Reach, String)> = prod
+        .iter()
+        .map(|(m, body)| (m.clone(), index(body), body.clone()))
+        .collect();
 
     let mut out = BTreeSet::new();
     for (module, body) in &prod {
@@ -562,15 +585,19 @@ fn current() -> BTreeSet<String> {
                     None => continue,
                 },
             };
-            let name: String =
-                rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
             if name.is_empty() || name.ends_with("_for_test") {
                 continue;
             }
             let loose = indexed.iter().any(|(m, r, _)| {
                 m != module && (r.called.contains(&name) || r.paths.iter().any(|(_, n)| n == &name))
             });
-            let strict = indexed.iter().any(|(m, r, _)| m != module && r.reaches(module, &name));
+            let strict = indexed
+                .iter()
+                .any(|(m, r, _)| m != module && r.reaches(module, &name));
             if loose && !strict {
                 out.insert(format!("{module}::{name}"));
             }
@@ -598,7 +625,11 @@ fn no_new_function_hides_behind_another_modules_name() {
         "these have no module-qualified caller, and look alive only because another module \
          defines the same bare name:\n  {}\n\nWire one, or add it to NAME_COLLISION_ONLY \
          with the reason. The list may grow; it may not grow silently.",
-        added.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        added
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
 
@@ -611,7 +642,11 @@ fn a_function_that_got_a_real_caller_comes_off_the_list() {
         cleared.is_empty(),
         "these are listed as reachable only by name collision and now have a real \
          module-qualified caller:\n  {}\n\nGood -- delete those lines.",
-        cleared.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        cleared
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
 
@@ -619,7 +654,11 @@ fn a_function_that_got_a_real_caller_comes_off_the_list() {
 fn the_list_is_sorted_and_free_of_duplicates() {
     let mut sorted = NAME_COLLISION_ONLY.to_vec();
     sorted.sort_unstable();
-    assert_eq!(NAME_COLLISION_ONLY, &sorted[..], "NAME_COLLISION_ONLY is not sorted");
+    assert_eq!(
+        NAME_COLLISION_ONLY,
+        &sorted[..],
+        "NAME_COLLISION_ONLY is not sorted"
+    );
     let unique: BTreeSet<&&str> = NAME_COLLISION_ONLY.iter().collect();
     assert_eq!(unique.len(), NAME_COLLISION_ONLY.len(), "duplicate entry");
 }

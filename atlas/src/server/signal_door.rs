@@ -17,13 +17,23 @@ impl SignalListener {
 
     /// The port the ordinary door listens on.
     pub fn port(&self) -> u16 {
-        self.listeners.iter().find(|(_, s)| !s).and_then(|(l, _)| l.local_addr().ok()).map(|a| a.port()).unwrap_or(0)
+        self.listeners
+            .iter()
+            .find(|(_, s)| !s)
+            .and_then(|(l, _)| l.local_addr().ok())
+            .map(|a| a.port())
+            .unwrap_or(0)
     }
 
     /// The port of the sealed door, on this machine only: where Tor sends
     /// what arrives at your onion address.
     pub fn sealed_port(&self) -> u16 {
-        self.listeners.iter().find(|(_, s)| *s).and_then(|(l, _)| l.local_addr().ok()).map(|a| a.port()).unwrap_or(0)
+        self.listeners
+            .iter()
+            .find(|(_, s)| *s)
+            .and_then(|(l, _)| l.local_addr().ok())
+            .map(|a| a.port())
+            .unwrap_or(0)
     }
 
     /// Hand out release files kept in this state folder to paired peers who
@@ -78,18 +88,24 @@ impl SignalListener {
                 // don't, and there a port held on IPv4 by something else
                 // left the door "open" on IPv6 only, with IPv4 visitors
                 // reaching the other program.
-                Err(e) if listeners.is_empty() || listeners.first().map(v6_only).unwrap_or(true) => {
-                    return Err(AtlasError::Platform(format!("could not open the signal door on {v4_port}: {e}")))
+                Err(e)
+                    if listeners.is_empty() || listeners.first().map(v6_only).unwrap_or(true) =>
+                {
+                    return Err(AtlasError::Platform(format!(
+                        "could not open the signal door on {v4_port}: {e}"
+                    )))
                 }
                 Err(_) => {}
             }
         }
-        let mut listeners: Vec<(TcpListener, bool)> = listeners.into_iter().map(|l| (l, false)).collect();
+        let mut listeners: Vec<(TcpListener, bool)> =
+            listeners.into_iter().map(|l| (l, false)).collect();
         let sealed = TcpListener::bind(("127.0.0.1", 0))
             .map_err(|e| AtlasError::Platform(format!("could not open the sealed door: {e}")))?;
         listeners.push((sealed, true));
         for (l, _) in &listeners {
-            l.set_nonblocking(true).map_err(|e| AtlasError::Platform(e.to_string()))?;
+            l.set_nonblocking(true)
+                .map_err(|e| AtlasError::Platform(e.to_string()))?;
         }
         Ok(SignalListener {
             listeners,
@@ -148,7 +164,9 @@ impl SignalListener {
             return self.handle_one(stream, remote, true, now);
         }
         for (l, sealed_only) in &self.listeners {
-            let Ok((stream, remote)) = l.accept() else { continue };
+            let Ok((stream, remote)) = l.accept() else {
+                continue;
+            };
             // Reading and replying still happen synchronously, but only after
             // a connection has genuinely arrived -- the wait that must never
             // happen is the wait for a peer that isn't there. A short
@@ -162,7 +180,11 @@ impl SignalListener {
 
     /// Opened against the wall clock, not the caller's: whether an envelope
     /// is fresh is a fact about real time.
-    pub(super) fn open(&self, env: &crate::wire::Envelope, _now: u64) -> Option<(String, crate::wire::Inner, crate::wire::ReplyKey)> {
+    pub(super) fn open(
+        &self,
+        env: &crate::wire::Envelope,
+        _now: u64,
+    ) -> Option<(String, crate::wire::Inner, crate::wire::ReplyKey)> {
         let now = crate::store::now();
         let me = held(&self.me);
         let me = me.as_ref()?;
@@ -185,7 +207,13 @@ impl SignalListener {
         }
     }
 
-    pub(super) fn handle_one(&self, mut stream: TcpStream, remote: std::net::SocketAddr, sealed_only: bool, now: u64) -> Option<crate::kin::Arrived> {
+    pub(super) fn handle_one(
+        &self,
+        mut stream: TcpStream,
+        remote: std::net::SocketAddr,
+        sealed_only: bool,
+        now: u64,
+    ) -> Option<crate::kin::Arrived> {
         // Bounded in total, not per read, and no line longer than the head's
         // cap (28 Sep 2026): this runs on the daemon's own loop, and a peer
         // trickling a byte at a time used to hold it for hours.
@@ -251,20 +279,33 @@ impl SignalListener {
         // Kept open for the next request only where friends arrive through
         // Tor, only when asked, and only while there's room.
         let keep = sealed_only
-            && head.to_ascii_lowercase().contains("\r\nconnection: keep-alive")
+            && head
+                .to_ascii_lowercase()
+                .contains("\r\nconnection: keep-alive")
             && held(&self.kept).len() < crate::kin::MAX_KEPT;
         let (reply, arrived) = match parse_request(&head, &body) {
-            Some(req) if req.method == "POST" && req.path == crate::wire::PATH => self.sealed(&req.body, now),
+            Some(req) if req.method == "POST" && req.path == crate::wire::PATH => {
+                self.sealed(&req.body, now)
+            }
             // In the clear: only on the ordinary door, and only from this
             // machine, your home network, or your own private network. From
             // anywhere else a request must be sealed -- refused here before
             // its token is even read.
-            Some(req) if !sealed_only && crate::onion::is_local_origin(remote.ip()) => self.answer(&req, None),
+            Some(req) if !sealed_only && crate::onion::is_local_origin(remote.ip()) => {
+                self.answer(&req, None)
+            }
             _ => (Reply::denied(), None),
         };
         let keep = keep && reply.status == 200;
-        let text = if keep { render(&reply).replacen("Connection: close\r\n", "Connection: keep-alive\r\n", 1) } else { render(&reply) };
-        let written = stream.write_all(text.as_bytes()).and_then(|_| stream.flush()).is_ok();
+        let text = if keep {
+            render(&reply).replacen("Connection: close\r\n", "Connection: keep-alive\r\n", 1)
+        } else {
+            render(&reply)
+        };
+        let written = stream
+            .write_all(text.as_bytes())
+            .and_then(|_| stream.flush())
+            .is_ok();
         if keep && written {
             {
                 let mut k = held(&self.kept);
@@ -277,11 +318,18 @@ impl SignalListener {
     /// A sealed envelope: opened, answered like any request, the answer
     /// sealed back.
     pub(super) fn sealed(&self, body: &str, now: u64) -> Answered {
-        let Ok(env) = serde_json::from_str::<crate::wire::Envelope>(body) else { return (Reply::denied(), None) };
-        let Some((from, inner, key)) = self.open(&env, now) else { return (Reply::denied(), None) };
+        let Ok(env) = serde_json::from_str::<crate::wire::Envelope>(body) else {
+            return (Reply::denied(), None);
+        };
+        let Some((from, inner, key)) = self.open(&env, now) else {
+            return (Reply::denied(), None);
+        };
         let req = inner_request(&inner);
         let (reply, arrived) = self.answer(&req, Some(&from));
-        (Reply::ok(crate::wire::seal_reply(&key, reply.status, &reply.body)), arrived)
+        (
+            Reply::ok(crate::wire::seal_reply(&key, reply.status, &reply.body)),
+            arrived,
+        )
     }
 
     /// Every door, for a request that is in the clear from somewhere local or
@@ -295,11 +343,16 @@ impl SignalListener {
         // without a token, and nothing else may be reached without one.
         if req.path == "/friend" {
             return match route_friend(req, &self.door, sealed_by) {
-                Some(Action::Befriended(b)) => (Reply::ok("{\"received\":true}"), Some(crate::kin::Arrived::Friend(b))),
+                Some(Action::Befriended(b)) => (
+                    Reply::ok("{\"received\":true}"),
+                    Some(crate::kin::Arrived::Friend(b)),
+                ),
                 _ => denied(),
             };
         }
-        let Some(token) = req.token.clone() else { return denied() };
+        let Some(token) = req.token.clone() else {
+            return denied();
+        };
         if !self.token_fits(&token, sealed_by) {
             return denied();
         }
@@ -369,13 +422,20 @@ impl SignalListener {
         let piece = (|| {
             let root = held(&self.releases).clone()?;
             let sha = field(&req.body, "sha256")?;
-            let offset = serde_json::from_str::<serde_json::Value>(&req.body).ok()?.get("offset")?.as_u64()?;
+            let offset = serde_json::from_str::<serde_json::Value>(&req.body)
+                .ok()?
+                .get("offset")?
+                .as_u64()?;
             crate::update_courier::chunk(&root, &sha, offset)
         })();
         match piece {
-            Some((bytes, total)) => {
-                (Reply::ok(format!("{{\"data\":\"{}\",\"total\":{total}}}", crate::b64::encode(&bytes))), None)
-            }
+            Some((bytes, total)) => (
+                Reply::ok(format!(
+                    "{{\"data\":\"{}\",\"total\":{total}}}",
+                    crate::b64::encode(&bytes)
+                )),
+                None,
+            ),
             None => (Reply::not_found(), None),
         }
     }
@@ -397,7 +457,10 @@ pub(super) fn inner_request(inner: &crate::wire::Inner) -> Request {
 /// is usually dual-stack). Asked of the socket rather than assumed.
 /// `only_v6` is deprecated because *setting* it after bind does nothing;
 /// reading it back is exactly right.
-#[allow(deprecated, reason = "only_v6 is deprecated for setting it after bind; this only reads it back")]
+#[allow(
+    deprecated,
+    reason = "only_v6 is deprecated for setting it after bind; this only reads it back"
+)]
 fn v6_only(l: &std::net::TcpListener) -> bool {
     l.only_v6().unwrap_or(true)
 }

@@ -6,7 +6,12 @@ fn cfg() -> StrategyConfig {
 }
 
 fn effort(angle: Angle, error: &str, solved: bool) -> Effort {
-    Effort { angle, learned: format!("nothing new from {}", angle.label()), error: error.into(), solved }
+    Effort {
+        angle,
+        learned: format!("nothing new from {}", angle.label()),
+        error: error.into(),
+        solved,
+    }
 }
 
 #[test]
@@ -23,8 +28,16 @@ fn every_angle_is_genuinely_different_from_the_others() {
     // calls it a second try. Each of these attacks the problem differently.
     let mut seen = std::collections::BTreeSet::new();
     for a in Angle::ALL {
-        assert!(seen.insert(a.instruction()), "{:?} duplicates another angle", a);
-        assert!(a.instruction().len() > 40, "{:?} is too vague to be a real approach", a);
+        assert!(
+            seen.insert(a.instruction()),
+            "{:?} duplicates another angle",
+            a
+        );
+        assert!(
+            a.instruction().len() > 40,
+            "{:?} is too vague to be a real approach",
+            a
+        );
     }
 }
 
@@ -48,8 +61,11 @@ fn no_angle_is_used_twice() {
 fn the_cheap_obvious_angles_come_first() {
     let c = Campaign::new("x");
     match c.next(&cfg()) {
-        Next::Try { angle, .. } => assert_eq!(angle, Angle::ReadTheError,
-            "the answer is often in the message and was skimmed past"),
+        Next::Try { angle, .. } => assert_eq!(
+            angle,
+            Angle::ReadTheError,
+            "the answer is often in the message and was skimmed past"
+        ),
         o => panic!("{o:?}"),
     }
 }
@@ -73,12 +89,19 @@ fn the_same_error_three_times_running_stops_it_early() {
     // The angles aren't reaching the problem. Continuing down the ladder
     // won't help, and burning eight more attempts proves nothing.
     let mut c = Campaign::new("x");
-    for a in [Angle::ReadTheError, Angle::CheckWhatChanged, Angle::TestTheAssumption] {
+    for a in [
+        Angle::ReadTheError,
+        Angle::CheckWhatChanged,
+        Angle::TestTheAssumption,
+    ] {
         c.record(effort(a, "error: identical every time", false));
     }
     // Behaviour, not just wording: three identical errors stop the campaign
     // early, where three distinct errors (the sibling test) keep it going.
-    assert!(matches!(c.next(&cfg()), Next::Exhausted(_)), "three identical errors did not stop it");
+    assert!(
+        matches!(c.next(&cfg()), Next::Exhausted(_)),
+        "three identical errors did not stop it"
+    );
     match c.next(&cfg()) {
         Next::Exhausted(why) => assert!(why.contains("same error"), "got: {why}"),
         o => panic!("{o:?}"),
@@ -88,13 +111,20 @@ fn the_same_error_three_times_running_stops_it_early() {
 #[test]
 fn different_errors_each_time_means_it_is_still_learning_something() {
     let mut c = Campaign::new("x");
-    for (i, a) in [Angle::ReadTheError, Angle::CheckWhatChanged, Angle::TestTheAssumption]
-        .iter()
-        .enumerate()
+    for (i, a) in [
+        Angle::ReadTheError,
+        Angle::CheckWhatChanged,
+        Angle::TestTheAssumption,
+    ]
+    .iter()
+    .enumerate()
     {
         c.record(effort(*a, &format!("error number {i}"), false));
     }
-    assert!(matches!(c.next(&cfg()), Next::Try { .. }), "progress, so keep going");
+    assert!(
+        matches!(c.next(&cfg()), Next::Try { .. }),
+        "progress, so keep going"
+    );
 }
 
 #[test]
@@ -111,13 +141,19 @@ fn running_out_of_angles_is_a_clean_stop_not_an_endless_loop() {
 
 #[test]
 fn you_can_shorten_the_ladder_or_skip_angles_you_do_not_want() {
-    let short = StrategyConfig { max_angles: 2, ..cfg() };
+    let short = StrategyConfig {
+        max_angles: 2,
+        ..cfg()
+    };
     let mut c = Campaign::new("x");
     c.record(effort(Angle::ReadTheError, "a", false));
     c.record(effort(Angle::CheckWhatChanged, "b", false));
     assert!(matches!(c.next(&short), Next::Exhausted(_)));
 
-    let skip = StrategyConfig { skip: vec![Angle::ReadTheError], ..cfg() };
+    let skip = StrategyConfig {
+        skip: vec![Angle::ReadTheError],
+        ..cfg()
+    };
     match Campaign::new("x").next(&skip) {
         Next::Try { angle, .. } => assert_ne!(angle, Angle::ReadTheError),
         o => panic!("{o:?}"),

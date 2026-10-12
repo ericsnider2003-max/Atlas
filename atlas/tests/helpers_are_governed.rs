@@ -46,7 +46,11 @@ fn acquire_has_callers_in_production_code() {
     // failure. Counting against the collapsed text takes formatting out of
     // the answer.
     let daemon = src("daemon.rs");
-    let flat: String = daemon.split_whitespace().collect::<Vec<_>>().join(" ").replace(" .", ".");
+    let flat: String = daemon
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace(" .", ".");
     let calls = flat.matches(".helpers.want(").count();
     assert!(
         calls >= 3,
@@ -111,13 +115,24 @@ fn nothing_atlas_starts_outlives_it() {
 fn every_wired_helper_has_a_weight_somebody_decided_on() {
     // A helper wired in without a size would silently get the fallback and
     // the budget would mean less than it says.
-    for name in ["cdp", "model-server", "camera", "hidden_desktop", "whisper", "tts"] {
+    for name in [
+        "cdp",
+        "model-server",
+        "camera",
+        "hidden_desktop",
+        "whisper",
+        "tts",
+    ] {
         assert!(
             atlas::lifecycle::typical_mb(name) > 0,
             "{name} has no weight in the budget table"
         );
     }
-    assert_eq!(atlas::lifecycle::typical_mb("something-new"), 100, "the fallback moved");
+    assert_eq!(
+        atlas::lifecycle::typical_mb("something-new"),
+        100,
+        "the fallback moved"
+    );
 }
 
 #[test]
@@ -125,14 +140,24 @@ fn a_helper_that_fails_to_start_does_not_keep_spending_the_budget() {
     // The failure mode that would make the whole thing worse than nothing:
     // book 4400MB for a server that never came up, then refuse everything
     // afterwards for lack of room.
-    let mut h = Helpers::new(LifecycleConfig { budget_mb: 500, ..LifecycleConfig::default() });
+    let mut h = Helpers::new(LifecycleConfig {
+        budget_mb: 500,
+        ..LifecycleConfig::default()
+    });
     let failed = h.want("model-server", 400, 10, || Err("no such binary".into()));
     assert!(failed.is_err());
-    assert_eq!(h.memory_mb(), 0, "a helper that never started is still on the books");
+    assert_eq!(
+        h.memory_mb(),
+        0,
+        "a helper that never started is still on the books"
+    );
 
     // And the next one is not refused because of it.
     let ok = h.want("camera", 400, 11, || Ok(None));
-    assert!(ok.is_ok(), "the budget is still being spent on something that isn't running");
+    assert!(
+        ok.is_ok(),
+        "the budget is still being spent on something that isn't running"
+    );
 }
 
 #[test]
@@ -180,15 +205,24 @@ fn the_budget_evicts_the_least_recently_used_and_says_so() {
     h.done("b", 2);
 
     let said = h.want("big", 200, 3, || Ok(None)).unwrap();
-    assert!(!said.is_empty(), "something had to go and nothing was said about it");
-    assert!(said[0].contains('a'), "the least recently used one should have gone first: {said:?}");
+    assert!(
+        !said.is_empty(),
+        "something had to go and nothing was said about it"
+    );
+    assert!(
+        said[0].contains('a'),
+        "the least recently used one should have gone first: {said:?}"
+    );
     assert!(!h.is_running("a"));
     assert!(h.is_running("big"));
 }
 
 #[test]
 fn a_refusal_is_a_sentence_a_person_can_read() {
-    let mut h = Helpers::new(LifecycleConfig { budget_mb: 100, ..LifecycleConfig::default() });
+    let mut h = Helpers::new(LifecycleConfig {
+        budget_mb: 100,
+        ..LifecycleConfig::default()
+    });
     // In use, so it cannot be evicted.
     h.want("busy", 100, 1, || Ok(None)).unwrap();
 
@@ -205,10 +239,19 @@ fn a_refusal_is_a_sentence_a_person_can_read() {
             Ok(None)
         })
         .unwrap_err();
-    assert!(!started, "the refusal still ran the thing it refused to start");
+    assert!(
+        !started,
+        "the refusal still ran the thing it refused to start"
+    );
 
-    assert!(why.contains("budget"), "the refusal does not say why: {why}");
-    assert!(!why.contains("Refuse("), "the refusal is a Debug format, not English");
+    assert!(
+        why.contains("budget"),
+        "the refusal does not say why: {why}"
+    );
+    assert!(
+        !why.contains("Refuse("),
+        "the refusal is a Debug format, not English"
+    );
 }
 
 #[test]
@@ -230,6 +273,9 @@ fn reaping_still_works_through_the_wrapper() {
     });
     sup.acquire("x", 10, 0);
     sup.release("x", 0);
-    assert!(sup.reap(5).is_empty(), "reaped something that was still inside its timeout");
+    assert!(
+        sup.reap(5).is_empty(),
+        "reaped something that was still inside its timeout"
+    );
     assert_eq!(sup.reap(20).len(), 1, "an idle helper was not reaped");
 }

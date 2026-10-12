@@ -16,7 +16,9 @@ fn slow_synth(ms: u64, log: Arc<Mutex<Vec<(String, u128, u128)>>>, t0: Instant) 
     Arc::new(move |text: &str| {
         let a = t0.elapsed().as_millis();
         std::thread::sleep(Duration::from_millis(ms));
-        log.lock().unwrap().push((text.to_string(), a, t0.elapsed().as_millis()));
+        log.lock()
+            .unwrap()
+            .push((text.to_string(), a, t0.elapsed().as_millis()));
         Ok(text.as_bytes().to_vec())
     })
 }
@@ -26,7 +28,10 @@ fn the_next_sentence_is_made_while_this_one_plays_and_no_further() {
     let t0 = Instant::now();
     let log = Arc::new(Mutex::new(Vec::new()));
     let ahead = Ahead::default();
-    let s: Vec<String> = ["One.", "Two.", "Three."].iter().map(|x| x.to_string()).collect();
+    let s: Vec<String> = ["One.", "Two.", "Three."]
+        .iter()
+        .map(|x| x.to_string())
+        .collect();
     ahead.prepare(s.clone(), slow_synth(150, log.clone(), t0));
 
     let mut waits = Vec::new();
@@ -41,13 +46,27 @@ fn the_next_sentence_is_made_while_this_one_plays_and_no_further() {
         std::thread::sleep(Duration::from_millis(300));
     }
     // The first is waited for; the rest were ready when their turn came.
-    assert!(waits[0] >= 100, "the first sentence can't be ready before it's made: {waits:?}");
-    assert!(waits[1] < 60 && waits[2] < 60, "the next sentence wasn't made during this one: {waits:?}");
+    assert!(
+        waits[0] >= 100,
+        "the first sentence can't be ready before it's made: {waits:?}"
+    );
+    assert!(
+        waits[1] < 60 && waits[2] < 60,
+        "the next sentence wasn't made during this one: {waits:?}"
+    );
     // One ahead, not all of them at once: "Three." isn't started until "Two."
     // has been taken to play.
     let log = log.lock().unwrap();
-    let three = log.iter().find(|(t, _, _)| t == "Three.").expect("Three. was made");
-    assert!(three.1 + 5 >= taken_at[1], "Three. started at {} before Two. was taken at {}", three.1, taken_at[1]);
+    let three = log
+        .iter()
+        .find(|(t, _, _)| t == "Three.")
+        .expect("Three. was made");
+    assert!(
+        three.1 + 5 >= taken_at[1],
+        "Three. started at {} before Two. was taken at {}",
+        three.1,
+        taken_at[1]
+    );
 }
 
 #[test]
@@ -56,7 +75,10 @@ fn a_sentence_that_isnt_queued_is_left_to_the_caller() {
     let t0 = Instant::now();
     ahead.prepare(vec!["Queued.".into()], slow_synth(10, Arc::default(), t0));
     assert!(ahead.take("Something else.").is_none());
-    assert!(ahead.has("Queued."), "asking about another sentence dropped the queue");
+    assert!(
+        ahead.has("Queued."),
+        "asking about another sentence dropped the queue"
+    );
     assert_eq!(ahead.take("Queued.").unwrap().unwrap(), b"Queued.");
 }
 
@@ -64,11 +86,17 @@ fn a_sentence_that_isnt_queued_is_left_to_the_caller() {
 fn a_new_reply_replaces_what_was_left_of_the_last() {
     let ahead = Ahead::default();
     let t0 = Instant::now();
-    ahead.prepare(vec!["A.".into(), "B.".into()], slow_synth(10, Arc::default(), t0));
+    ahead.prepare(
+        vec!["A.".into(), "B.".into()],
+        slow_synth(10, Arc::default(), t0),
+    );
     assert!(ahead.take("A.").is_some());
     // Interrupted after A.; the next reply starts.
     ahead.prepare(vec!["C.".into()], slow_synth(10, Arc::default(), t0));
-    assert!(ahead.take("B.").is_none(), "the old reply's sentence survived a new reply");
+    assert!(
+        ahead.take("B.").is_none(),
+        "the old reply's sentence survived a new reply"
+    );
     assert_eq!(ahead.take("C.").unwrap().unwrap(), b"C.");
 }
 
@@ -76,7 +104,10 @@ fn a_new_reply_replaces_what_was_left_of_the_last() {
 fn a_skipped_sentence_doesnt_hold_up_the_one_after_it() {
     let ahead = Ahead::default();
     let t0 = Instant::now();
-    ahead.prepare(vec!["A.".into(), "B.".into(), "C.".into()], slow_synth(20, Arc::default(), t0));
+    ahead.prepare(
+        vec!["A.".into(), "B.".into(), "C.".into()],
+        slow_synth(20, Arc::default(), t0),
+    );
     // B. asked for first: A. is dropped, B. is made and handed over.
     assert_eq!(ahead.take("B.").unwrap().unwrap(), b"B.");
     assert_eq!(ahead.take("C.").unwrap().unwrap(), b"C.");
@@ -86,15 +117,23 @@ fn a_skipped_sentence_doesnt_hold_up_the_one_after_it() {
 #[test]
 fn every_voice_on_the_shortlist_is_one_kokoro_has() {
     for (id, _) in atlas::tts::SHORTLIST {
-        assert!(kokoro::speaker_id(id).is_some(), "{id} is on the shortlist and not in Kokoro v1.0");
+        assert!(
+            kokoro::speaker_id(id).is_some(),
+            "{id} is on the shortlist and not in Kokoro v1.0"
+        );
     }
     assert_eq!(kokoro::speaker_id("af_heart"), Some(3));
     assert_eq!(kokoro::speaker_id("em_santa"), Some(53));
     assert_eq!(kokoro::VOICES.len(), 54);
     // A piper voice left in the settings from before the switch.
-    assert_eq!(kokoro::voice_or_default("en_US-amy-medium"), ("af_heart", 3));
+    assert_eq!(
+        kokoro::voice_or_default("en_US-amy-medium"),
+        ("af_heart", 3)
+    );
     assert_eq!(kokoro::voice_or_default("BM_Fable"), ("bm_fable", 25));
-    assert!(kokoro::english_voices().iter().all(|v| v.starts_with('a') || v.starts_with('b')));
+    assert!(kokoro::english_voices()
+        .iter()
+        .all(|v| v.starts_with('a') || v.starts_with('b')));
     assert_eq!(kokoro::display_name("af_heart"), "Heart");
     assert_eq!(kokoro::accent("bm_fable"), "British");
 }
@@ -108,7 +147,11 @@ fn the_download_is_pinned_and_lands_where_kokoro_looks() {
     assert!(m.key_path().starts_with(kokoro::MODEL_DIR));
     if let Some(r) = kokoro::runtime_piece() {
         assert_eq!(r.sha256.len(), 64);
-        assert!(r.url.contains(&format!("/v{}/", kokoro::SHERPA_VERSION)), "the library isn't the version the code speaks to: {}", r.url);
+        assert!(
+            r.url.contains(&format!("/v{}/", kokoro::SHERPA_VERSION)),
+            "the library isn't the version the code speaks to: {}",
+            r.url
+        );
         assert!(r.key_path().starts_with(kokoro::RUNTIME_DIR));
         let (_, capi) = kokoro::runtime_files().unwrap();
         assert!(r.key_path().ends_with(capi));
@@ -125,8 +168,13 @@ fn nothing_downloaded_is_found_missing_in_words() {
     let _ = std::fs::create_dir_all(&root);
     if kokoro::runtime_files().is_some() {
         assert_eq!(kokoro::check(&root), Err(kokoro::Missing::Runtime));
-        let why = kokoro::engine(&root).err().expect("nothing there, and it loaded");
-        assert!(why.contains("isn't downloaded yet") && why.contains("Sound & voice"), "{why}");
+        let why = kokoro::engine(&root)
+            .err()
+            .expect("nothing there, and it loaded");
+        assert!(
+            why.contains("isn't downloaded yet") && why.contains("Sound & voice"),
+            "{why}"
+        );
         // Library there, model not.
         let rt = root.join(kokoro::RUNTIME_DIR);
         std::fs::create_dir_all(&rt).unwrap();
@@ -143,7 +191,10 @@ fn falling_back_is_said_once_not_every_sentence() {
     let why = format!("a reason only this test gives {}", std::process::id());
     let first = kokoro::note_once(&why).expect("the first time is said");
     assert!(first.starts_with("Speaking in the usual voice"), "{first}");
-    assert!(kokoro::note_once(&why).is_none(), "the same reason was said twice");
+    assert!(
+        kokoro::note_once(&why).is_none(),
+        "the same reason was said twice"
+    );
 }
 
 /// Kokoro chosen and not downloaded: Atlas still speaks, through the
@@ -173,7 +224,10 @@ fn kokoro_chosen_and_missing_still_speaks_in_the_usual_voice() {
     let mut cfg = atlas::voice::ToolsConfig {
         enabled: true,
         work_dir: dir.display().to_string(),
-        tts: run("printf '%s %s ' '{voice_file}' '{speed}' > '{out_wav}'; cat >> '{out_wav}'", true),
+        tts: run(
+            "printf '%s %s ' '{voice_file}' '{speed}' > '{out_wav}'; cat >> '{out_wav}'",
+            true,
+        ),
         play: run("true", false),
         ..Default::default()
     };
@@ -181,11 +235,22 @@ fn kokoro_chosen_and_missing_still_speaks_in_the_usual_voice() {
     cfg.voice_settings.voice = "af_heart".into();
     cfg.voice_settings.speed = 1.25;
 
-    atlas::voice::Voice::new(&cfg).speak("workspace online").unwrap();
+    atlas::voice::Voice::new(&cfg)
+        .speak("workspace online")
+        .unwrap();
     let said = std::fs::read_to_string(dir.join("turn_out.wav")).unwrap();
-    assert!(said.ends_with("workspace online"), "nothing was spoken: {said}");
-    assert!(said.contains("en_US-amy-medium.onnx"), "piper was handed the Kokoro voice: {said}");
-    assert!(said.contains(" 1.25 "), "piper's length scale should be the pace as set: {said}");
+    assert!(
+        said.ends_with("workspace online"),
+        "nothing was spoken: {said}"
+    );
+    assert!(
+        said.contains("en_US-amy-medium.onnx"),
+        "piper was handed the Kokoro voice: {said}"
+    );
+    assert!(
+        said.contains(" 1.25 "),
+        "piper's length scale should be the pace as set: {said}"
+    );
     // That it was said once is `falling_back_is_said_once_not_every_sentence`
     // (the note is process-wide, so asserting its text here would race that
     // test).
@@ -231,11 +296,22 @@ fn the_sound_page_offers_the_engine_and_the_download() {
         mics: vec![],
     };
     let missing = atlas::hubpages::sound_page(
-        &view(atlas::hubpages::EngineView { kokoro_chosen: true, kokoro_here: true, kokoro_mb: 141, ..Default::default() }),
+        &view(atlas::hubpages::EngineView {
+            kokoro_chosen: true,
+            kokoro_here: true,
+            kokoro_mb: 141,
+            ..Default::default()
+        }),
         None,
     );
-    assert!(missing.contains("name=key value=engine") && missing.contains("value=kokoro checked"), "no engine choice");
-    assert!(missing.contains("value=get-kokoro") && missing.contains("Get Kokoro · 141 MB"), "no download button");
+    assert!(
+        missing.contains("name=key value=engine") && missing.contains("value=kokoro checked"),
+        "no engine choice"
+    );
+    assert!(
+        missing.contains("value=get-kokoro") && missing.contains("Get Kokoro · 141 MB"),
+        "no download button"
+    );
     assert!(missing.contains("Until Kokoro is here, Atlas speaks in piper"));
     let going = atlas::hubpages::sound_page(
         &view(atlas::hubpages::EngineView {
@@ -247,9 +323,18 @@ fn the_sound_page_offers_the_engine_and_the_download() {
         }),
         None,
     );
-    assert!(going.contains("Getting it: 34%") && !going.contains("value=get-kokoro"), "a second download offered while one runs");
+    assert!(
+        going.contains("Getting it: 34%") && !going.contains("value=get-kokoro"),
+        "a second download offered while one runs"
+    );
     let ready = atlas::hubpages::sound_page(
-        &view(atlas::hubpages::EngineView { kokoro_chosen: true, kokoro_here: true, kokoro_ready: true, kokoro_mb: 141, ..Default::default() }),
+        &view(atlas::hubpages::EngineView {
+            kokoro_chosen: true,
+            kokoro_here: true,
+            kokoro_ready: true,
+            kokoro_mb: 141,
+            ..Default::default()
+        }),
         None,
     );
     assert!(!ready.contains("value=get-kokoro") && ready.contains("Kokoro is downloaded"));
@@ -270,15 +355,24 @@ fn kokoro_really_speaks_and_is_measured() {
         use windows::Win32::System::LibraryLoader::GetModuleHandleW;
         // SAFETY: GetModuleHandleW only reads a live NUL-terminated wide string and takes no
         // reference on the module.
-        assert!(unsafe { GetModuleHandleW(w!("onnxruntime_providers_openvino_plugin.dll")) }.is_err(), "CPU voice loaded a quarantined provider");
+        assert!(
+            unsafe { GetModuleHandleW(w!("onnxruntime_providers_openvino_plugin.dll")) }.is_err(),
+            "CPU voice loaded a quarantined provider"
+        );
         // SAFETY: as above, a read-only lookup by name.
-        assert!(unsafe { GetModuleHandleW(w!("openvino_intel_npu_compiler.dll")) }.is_err(), "CPU voice loaded the NPU compiler");
+        assert!(
+            unsafe { GetModuleHandleW(w!("openvino_intel_npu_compiler.dll")) }.is_err(),
+            "CPU voice loaded the NPU compiler"
+        );
     };
     #[cfg(windows)]
     check_provider_isolation();
     let rt = std::path::PathBuf::from(std::env::var("KOKORO_RUNTIME").expect("KOKORO_RUNTIME"));
     let model = std::path::PathBuf::from(std::env::var("KOKORO_MODEL").expect("KOKORO_MODEL"));
-    let threads: i32 = std::env::var("KOKORO_THREADS").ok().and_then(|t| t.parse().ok()).unwrap_or(kokoro::thread_count());
+    let threads: i32 = std::env::var("KOKORO_THREADS")
+        .ok()
+        .and_then(|t| t.parse().ok())
+        .unwrap_or(kokoro::thread_count());
 
     let t = Instant::now();
     let k = kokoro::Kokoro::load(&rt, &model, threads).expect("load");
@@ -290,11 +384,17 @@ fn kokoro_really_speaks_and_is_measured() {
     let short = "Your nine o'clock post is over length.";
     let t = Instant::now();
     let first = k.synth(short, sid, 1.0).unwrap();
-    assert!(!first.is_empty() && first.iter().all(|sample| sample.is_finite()), "first native synthesis returned invalid samples");
+    assert!(
+        !first.is_empty() && first.iter().all(|sample| sample.is_finite()),
+        "first native synthesis returned invalid samples"
+    );
     let first_ms = t.elapsed().as_millis();
     let t = Instant::now();
     let again = k.synth(short, sid, 1.0).unwrap();
-    assert!(!again.is_empty() && again.iter().all(|sample| sample.is_finite()), "warm native synthesis returned invalid samples");
+    assert!(
+        !again.is_empty() && again.iter().all(|sample| sample.is_finite()),
+        "warm native synthesis returned invalid samples"
+    );
     let warm_ms = t.elapsed().as_millis();
     let secs = again.len() as f64 / rate as f64;
     assert!(secs > 1.0 && secs < 6.0, "{secs} s for one short sentence");
@@ -302,20 +402,29 @@ fn kokoro_really_speaks_and_is_measured() {
     assert!(peak > 0.05, "silence (peak {peak})");
     let _ = first;
 
-    let long = "Atlas speaks each reply a sentence at a time. The first one is made while you wait, \
+    let long =
+        "Atlas speaks each reply a sentence at a time. The first one is made while you wait, \
                 and every one after it is made while the one before it is playing, so there is no \
                 gap between them. This is Kokoro, running on the processor alone.";
     let t = Instant::now();
     let l = k.synth(long, sid, 1.0).unwrap();
-    assert!(!l.is_empty() && l.iter().all(|sample| sample.is_finite()), "long native synthesis returned invalid samples");
+    assert!(
+        !l.is_empty() && l.iter().all(|sample| sample.is_finite()),
+        "long native synthesis returned invalid samples"
+    );
     let long_ms = t.elapsed().as_millis() as f64;
     let long_secs = l.len() as f64 / rate as f64;
     let rtf = (long_ms / 1000.0) / long_secs;
 
     // Pace: slower is longer.
-    let slow = k.synth(short, sid, atlas::tts::Engine::Kokoro.speed_value(1.25)).unwrap();
+    let slow = k
+        .synth(short, sid, atlas::tts::Engine::Kokoro.speed_value(1.25))
+        .unwrap();
     assert!(!slow.is_empty() && slow.iter().all(|sample| sample.is_finite()));
-    assert!(slow.len() > again.len(), "a slower pace didn't make it longer");
+    assert!(
+        slow.len() > again.len(),
+        "a slower pace didn't make it longer"
+    );
     if let Ok(out) = std::env::var("KOKORO_COMMAND_OUT") {
         let command = k.synth("Pause.", sid, 1.0).unwrap();
         assert!(!command.is_empty() && command.iter().all(|sample| sample.is_finite()));
@@ -324,18 +433,42 @@ fn kokoro_really_speaks_and_is_measured() {
 
     // A file a person can listen to.
     let encoded = kokoro::to_wav(&l, rate);
-    assert_eq!(&encoded[..4], b"RIFF"); assert_eq!(&encoded[8..16], b"WAVEfmt ");
-    assert_eq!(u32::from_le_bytes(encoded[4..8].try_into().unwrap()) as usize + 8, encoded.len());
-    assert_eq!(u16::from_le_bytes(encoded[20..22].try_into().unwrap()), 1, "PCM codec");
-    assert_eq!(u16::from_le_bytes(encoded[22..24].try_into().unwrap()), 1, "mono");
-    assert_eq!(u32::from_le_bytes(encoded[24..28].try_into().unwrap()), rate);
+    assert_eq!(&encoded[..4], b"RIFF");
+    assert_eq!(&encoded[8..16], b"WAVEfmt ");
+    assert_eq!(
+        u32::from_le_bytes(encoded[4..8].try_into().unwrap()) as usize + 8,
+        encoded.len()
+    );
+    assert_eq!(
+        u16::from_le_bytes(encoded[20..22].try_into().unwrap()),
+        1,
+        "PCM codec"
+    );
+    assert_eq!(
+        u16::from_le_bytes(encoded[22..24].try_into().unwrap()),
+        1,
+        "mono"
+    );
+    assert_eq!(
+        u32::from_le_bytes(encoded[24..28].try_into().unwrap()),
+        rate
+    );
     assert_eq!(u16::from_le_bytes(encoded[34..36].try_into().unwrap()), 16);
     assert_eq!(&encoded[36..40], b"data");
-    assert_eq!(u32::from_le_bytes(encoded[40..44].try_into().unwrap()) as usize, encoded.len() - 44);
-    let decoded: Vec<f32> = encoded[44..].chunks_exact(2).map(|frame| i16::from_le_bytes(frame.try_into().unwrap()) as f32 / 32767.0).collect();
+    assert_eq!(
+        u32::from_le_bytes(encoded[40..44].try_into().unwrap()) as usize,
+        encoded.len() - 44
+    );
+    let decoded: Vec<f32> = encoded[44..]
+        .chunks_exact(2)
+        .map(|frame| i16::from_le_bytes(frame.try_into().unwrap()) as f32 / 32767.0)
+        .collect();
     assert_eq!(decoded.len(), l.len());
     assert!(decoded.iter().any(|sample| sample.abs() > 0.05));
-    assert!(decoded.iter().zip(&l).all(|(pcm, raw)| (*pcm - raw.clamp(-1.0, 1.0)).abs() <= 1.0 / 32767.0));
+    assert!(decoded
+        .iter()
+        .zip(&l)
+        .all(|(pcm, raw)| (*pcm - raw.clamp(-1.0, 1.0)).abs() <= 1.0 / 32767.0));
     assert!((decoded.len() as f64 / rate as f64 - long_secs).abs() < 1.0 / rate as f64);
     if let Ok(out) = std::env::var("KOKORO_OUT") {
         std::fs::write(&out, encoded).unwrap();
@@ -383,9 +516,13 @@ fn kokoro_really_speaks_and_is_measured() {
     );
     // Gapless is only possible when a sentence is made faster than it is said.
     if rtf < 0.8 {
-        assert!(waits.iter().skip(1).all(|w| *w < 150), "a gap between sentences on a machine fast enough for none: {waits:?}");
+        assert!(
+            waits.iter().skip(1).all(|w| *w < 150),
+            "a gap between sentences on a machine fast enough for none: {waits:?}"
+        );
     }
-    drop(ahead); drop(k);
+    drop(ahead);
+    drop(k);
     #[cfg(windows)]
     check_provider_isolation();
 }
@@ -409,7 +546,13 @@ fn a_reply_is_spoken_in_kokoro_sentence_by_sentence() {
     // The player keeps a copy of each thing it plays.
     let play = ExternalTool {
         command: "sh".into(),
-        args: vec!["-c".into(), format!("cp '{{out_wav}}' '{}'/played-$(date +%s%N).wav", dir.display())],
+        args: vec![
+            "-c".into(),
+            format!(
+                "cp '{{out_wav}}' '{}'/played-$(date +%s%N).wav",
+                dir.display()
+            ),
+        ],
         stdin_text: false,
         result_file: None,
         timeout_secs: 30,
@@ -429,19 +572,42 @@ fn a_reply_is_spoken_in_kokoro_sentence_by_sentence() {
     let mut per = Vec::new();
     for chunk in atlas::speech::split(reply) {
         let s = Instant::now();
-        voice.speak(&atlas::spoken_form::for_speech(&chunk)).expect("spoke");
+        voice
+            .speak(&atlas::spoken_form::for_speech(&chunk))
+            .expect("spoke");
         per.push((s.elapsed().as_millis(), voice.last_speak_split_ms()));
     }
-    let mut played: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "wav")).collect();
+    let mut played: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "wav"))
+        .collect();
     played.sort();
-    println!("KOKORO-REPLY total={}ms per_sentence(ms, (synth_wait, play))={per:?}", t.elapsed().as_millis());
-    assert_eq!(played.len(), 3, "three sentences, three things played: {played:?}");
+    println!(
+        "KOKORO-REPLY total={}ms per_sentence(ms, (synth_wait, play))={per:?}",
+        t.elapsed().as_millis()
+    );
+    assert_eq!(
+        played.len(),
+        3,
+        "three sentences, three things played: {played:?}"
+    );
     for p in &played {
         let wav = std::fs::read(p).unwrap();
         assert_eq!(&wav[0..4], b"RIFF");
-        assert_eq!(u32::from_le_bytes(wav[24..28].try_into().unwrap()), 24_000, "not Kokoro's audio: {}", p.display());
+        assert_eq!(
+            u32::from_le_bytes(wav[24..28].try_into().unwrap()),
+            24_000,
+            "not Kokoro's audio: {}",
+            p.display()
+        );
         let levels = atlas::speaking::levels_of_wav(&wav, 30).unwrap();
-        assert!(levels.len() > 20 && levels.iter().any(|l| *l > 200), "silent: {}", p.display());
+        assert!(
+            levels.len() > 20 && levels.iter().any(|l| *l > 200),
+            "silent: {}",
+            p.display()
+        );
     }
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -30,7 +30,14 @@ fn parser() -> Parser {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn tmp(tag: &str) -> std::path::PathBuf {
@@ -47,7 +54,13 @@ fn tmp_path(tag: &str) -> std::path::PathBuf {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -113,14 +126,20 @@ fn saying_pair_with_a_name_produces_a_pair_intent() {
 #[test]
 fn saying_forget_pairing_with_a_name_produces_a_forget_intent() {
     let p = parser();
-    assert_eq!(p.parse("forget my pairing with Sarah"), Intent::ForgetPeer("Sarah".into()));
+    assert_eq!(
+        p.parse("forget my pairing with Sarah"),
+        Intent::ForgetPeer("Sarah".into())
+    );
     assert_eq!(p.parse("unpair Sarah"), Intent::ForgetPeer("Sarah".into()));
 }
 #[test]
 fn accept_pairing_takes_the_pasted_code_as_its_argument() {
     let p = parser();
     let code = "ATLAS-KIN-1:Eric|eric-host|8788|sometoken";
-    assert_eq!(p.parse(&format!("accept invite {code}")), Intent::AcceptPairing(code.into()));
+    assert_eq!(
+        p.parse(&format!("accept invite {code}")),
+        Intent::AcceptPairing(code.into())
+    );
 }
 
 #[test]
@@ -143,26 +162,44 @@ fn pairing_with_nobody_named_does_not_match_the_phrase_at_all() {
 
 #[test]
 fn pairing_and_accepting_are_classified_as_a_commitment_made_as_you() {
-    assert_eq!(category_of(&Intent::Pair("Sarah".into())), Category::AgreementExternal);
-    assert_eq!(category_of(&Intent::AcceptPairing("code".into())), Category::AgreementExternal);
+    assert_eq!(
+        category_of(&Intent::Pair("Sarah".into())),
+        Category::AgreementExternal
+    );
+    assert_eq!(
+        category_of(&Intent::AcceptPairing("code".into())),
+        Category::AgreementExternal
+    );
 }
 
 #[test]
 fn forgetting_a_pairing_is_classified_as_ordinary_local_housekeeping() {
-    assert_eq!(category_of(&Intent::ForgetPeer("Sarah".into())), Category::LocalOperational);
+    assert_eq!(
+        category_of(&Intent::ForgetPeer("Sarah".into())),
+        Category::LocalOperational
+    );
 }
 
 #[test]
 fn pairing_and_accepting_always_require_explicit_approval() {
-    assert_eq!(classify(&Intent::Pair("Sarah".into())), Decision::RequireApproval);
-    assert_eq!(classify(&Intent::AcceptPairing("code".into())), Decision::RequireApproval);
+    assert_eq!(
+        classify(&Intent::Pair("Sarah".into())),
+        Decision::RequireApproval
+    );
+    assert_eq!(
+        classify(&Intent::AcceptPairing("code".into())),
+        Decision::RequireApproval
+    );
 }
 
 #[test]
 fn forgetting_a_pairing_only_needs_to_be_reported_not_approved() {
     // It only removes standing that already existed -- the safer direction
     // to move in, so it doesn't need the same gate as granting it.
-    assert_eq!(classify(&Intent::ForgetPeer("Sarah".into())), Decision::ProceedAndReport);
+    assert_eq!(
+        classify(&Intent::ForgetPeer("Sarah".into())),
+        Decision::ProceedAndReport
+    );
 }
 
 #[test]
@@ -170,14 +207,23 @@ fn pairing_and_accepting_are_sensitive_and_history_can_never_relax_that() {
     // Kind::Sensitive is the one bucket earned.rs never lets track record
     // move out of AskFirst -- see earned::Kind's own doc.
     assert_eq!(kind_of(&Intent::Pair("Sarah".into())), Kind::Sensitive);
-    assert_eq!(kind_of(&Intent::AcceptPairing("code".into())), Kind::Sensitive);
+    assert_eq!(
+        kind_of(&Intent::AcceptPairing("code".into())),
+        Kind::Sensitive
+    );
 }
 
 #[test]
 fn every_pairing_intent_has_a_name_session_can_log() {
     assert_eq!(session::kind_of(&Intent::Pair("Sarah".into())), "pair");
-    assert_eq!(session::kind_of(&Intent::AcceptPairing("code".into())), "accept_pairing");
-    assert_eq!(session::kind_of(&Intent::ForgetPeer("Sarah".into())), "forget_peer");
+    assert_eq!(
+        session::kind_of(&Intent::AcceptPairing("code".into())),
+        "accept_pairing"
+    );
+    assert_eq!(
+        session::kind_of(&Intent::ForgetPeer("Sarah".into())),
+        "forget_peer"
+    );
 }
 
 #[test]
@@ -209,7 +255,10 @@ fn pairing_by_voice_refuses_cleanly_when_switched_off() {
     let p = plat();
     let mut d = daemon(&c, &p, "off");
     let reply = d.execute(&Intent::Pair("Sarah".into()));
-    assert!(reply.to_lowercase().contains("switched off"), "got: {reply}");
+    assert!(
+        reply.to_lowercase().contains("switched off"),
+        "got: {reply}"
+    );
 }
 
 /// The exact gap named in the game plan: a spoken pairing can't ask Eric to
@@ -223,7 +272,10 @@ fn pairing_by_voice_refuses_cleanly_when_identity_is_unset() {
     let p = plat();
     let mut d = daemon(&c, &p, "unset");
     let reply = d.execute(&Intent::Pair("Sarah".into()));
-    assert!(reply.contains("kin.my_name") && reply.contains("kin.my_host"), "got: {reply}");
+    assert!(
+        reply.contains("kin.my_name") && reply.contains("kin.my_host"),
+        "got: {reply}"
+    );
 }
 
 #[test]
@@ -233,7 +285,10 @@ fn saying_pair_with_someone_generates_a_real_invite_they_can_use() {
     let p = plat();
     let mut d = daemon(&c, &p, "generate");
     let reply = d.execute(&Intent::Pair("Ines".into()));
-    assert!(reply.contains("ATLAS-KIN-1:"), "should hand back a real code to send: {reply}");
+    assert!(
+        reply.contains("ATLAS-KIN-1:"),
+        "should hand back a real code to send: {reply}"
+    );
     assert!(reply.contains("Ines"));
 }
 
@@ -255,7 +310,9 @@ fn accepting_a_garbled_code_by_voice_pairs_with_nobody() {
     let mut d = daemon(&c, &p, "garbled");
     // Someone without the real code cannot talk their way into a pairing --
     // there is no phrase that gets further than "couldn't accept that".
-    let reply = d.execute(&Intent::AcceptPairing("definitely not a real invite".into()));
+    let reply = d.execute(&Intent::AcceptPairing(
+        "definitely not a real invite".into(),
+    ));
     assert!(reply.starts_with("Couldn't accept that"), "got: {reply}");
 }
 
@@ -321,12 +378,20 @@ fn a_trailing_period_from_a_spoken_sentence_does_not_become_part_of_the_name() {
     assert!(
         saved.peers.iter().any(|x| x.name == "Mira"),
         "the pairing was not stored under the spoken name: {:?}",
-        saved.peers.iter().map(|x| x.name.clone()).collect::<Vec<_>>()
+        saved
+            .peers
+            .iter()
+            .map(|x| x.name.clone())
+            .collect::<Vec<_>>()
     );
     assert!(
         !saved.peers.iter().any(|x| x.name.ends_with('.')),
         "the period survived into the stored name: {:?}",
-        saved.peers.iter().map(|x| x.name.clone()).collect::<Vec<_>>()
+        saved
+            .peers
+            .iter()
+            .map(|x| x.name.clone())
+            .collect::<Vec<_>>()
     );
 }
 
@@ -342,7 +407,13 @@ fn forgetting_a_pairing_works_even_when_pairing_itself_is_switched_off() {
 
     // Same on-disk pairing, but this daemon has kin switched off.
     let off = cfg_with_kin(Some("Eric"), Some("eric-host"), false);
-    let mut d2 = Daemon::new(&off, &p, None, Store::new(tmp_path("forget-survives-off")), Proactive::new(ProactiveConfig::default()));
+    let mut d2 = Daemon::new(
+        &off,
+        &p,
+        None,
+        Store::new(tmp_path("forget-survives-off")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let reply = d2.execute(&Intent::ForgetPeer("Tomas".into()));
     assert!(reply.starts_with("Forgotten."), "got: {reply}");
 }

@@ -44,7 +44,13 @@ fn plat() -> MockPlatform {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -80,7 +86,8 @@ fn act_alone_reads_the_earned_record_through_the_daemon() {
     // A clean run of a low-cost kind: eight right answers is enough to earn the
     // top rope for `Answering`, whose cost of being wrong is lowest.
     for i in 0..8 {
-        d.earned.note(Kind::Answering, true, "answered something", 100 + i);
+        d.earned
+            .note(Kind::Answering, true, "answered something", 100 + i);
     }
 
     // The plain sentence, driven through the real parser and daemon.
@@ -117,7 +124,9 @@ fn act_alone_reflects_the_record_rather_than_a_fixed_string() {
 
     let mut earned = daemon(&c, &p, "earned");
     for i in 0..8 {
-        earned.earned.note(Kind::Answering, true, "answered something", 100 + i);
+        earned
+            .earned
+            .note(Kind::Answering, true, "answered something", 100 + i);
     }
     let filled = earned.execute(&Intent::ActAlone);
 

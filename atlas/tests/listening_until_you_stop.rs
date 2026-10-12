@@ -37,8 +37,14 @@ fn silence_reads_as_silence_and_full_scale_reads_as_zero() {
     assert_eq!(level_db(&vec![0i16; 1000]), SILENT_DB);
     // A square wave at full scale is the loudest signal there is: RMS equals
     // peak equals full scale, so 0 dBFS.
-    let square: Vec<i16> = (0..1000).map(|i| if i % 2 == 0 { i16::MAX } else { -i16::MAX }).collect();
-    assert!(level_db(&square).abs() < 0.1, "full scale should be 0 dBFS, got {}", level_db(&square));
+    let square: Vec<i16> = (0..1000)
+        .map(|i| if i % 2 == 0 { i16::MAX } else { -i16::MAX })
+        .collect();
+    assert!(
+        level_db(&square).abs() < 0.1,
+        "full scale should be 0 dBFS, got {}",
+        level_db(&square)
+    );
 }
 
 #[test]
@@ -50,8 +56,14 @@ fn quiet_speech_and_a_quiet_room_land_either_side_of_the_shipped_threshold() {
     let cfg = EndpointConfig::default();
     let speech = level_db(&tone(4000, 0.08)); // quiet-ish speech
     let room = level_db(&tone(4000, 0.002)); // a quiet room
-    assert!(speech > cfg.silence_below_db, "speech at {speech} dB reads as silence");
-    assert!(room < cfg.silence_below_db, "a quiet room at {room} dB reads as speech");
+    assert!(
+        speech > cfg.silence_below_db,
+        "speech at {speech} dB reads as silence"
+    );
+    assert!(
+        room < cfg.silence_below_db,
+        "a quiet room at {room} dB reads as speech"
+    );
 }
 
 #[test]
@@ -82,7 +94,10 @@ fn a_click_is_attenuated_by_rms_but_not_eliminated_by_it() {
     let mut window = vec![0i16; 4000];
     window[2000] = i16::MAX;
     let db = level_db(&window);
-    assert!((db - -36.0).abs() < 0.5, "a single click measured {db} dB, expected about -36");
+    assert!(
+        (db - -36.0).abs() < 0.5,
+        "a single click measured {db} dB, expected about -36"
+    );
 
     // The property that actually matters: a click cannot *finish* a turn,
     // and it cannot make a silent room look like speech for long.
@@ -115,7 +130,10 @@ fn a_measurement_does_not_drift_with_window_length() {
     // or the threshold means something different at different buffer sizes.
     let short = level_db(&tone(1000, 0.1));
     let long = level_db(&tone(16000, 0.1));
-    assert!((short - long).abs() < 1.0, "{short} vs {long} for the same signal");
+    assert!(
+        (short - long).abs() < 1.0,
+        "{short} vs {long} for the same signal"
+    );
 }
 
 // ================= turning bytes into windows =================
@@ -153,7 +171,10 @@ fn the_wav_header_says_what_the_audio_actually_is() {
     let rate = u32::from_le_bytes([wav[24], wav[25], wav[26], wav[27]]);
     let channels = u16::from_le_bytes([wav[22], wav[23]]);
     let bits = u16::from_le_bytes([wav[34], wav[35]]);
-    assert_eq!(rate, 16_000, "a wrong rate makes whisper transcribe a chipmunk");
+    assert_eq!(
+        rate, 16_000,
+        "a wrong rate makes whisper transcribe a chipmunk"
+    );
     assert_eq!(channels, 1);
     assert_eq!(bits, 16);
 
@@ -184,7 +205,10 @@ fn the_streaming_recorder_has_no_stopwatch_in_it() {
     // The one `-t` present is the stuck-microphone backstop, an order of
     // magnitude longer than a sentence -- not the eight-second turn length
     // this whole path exists to remove.
-    assert!(joined.contains("-t 20"), "no backstop against a stuck mic: {joined}");
+    assert!(
+        joined.contains("-t 20"),
+        "no backstop against a stuck mic: {joined}"
+    );
     assert!(!joined.contains("-t 8"));
 }
 
@@ -192,7 +216,10 @@ fn the_streaming_recorder_has_no_stopwatch_in_it() {
 fn each_platform_is_asked_the_way_it_answers() {
     let joined = stream_args("dev", 16_000, 20).join(" ");
     if cfg!(windows) {
-        assert!(joined.contains("dshow") && joined.contains("audio=dev"), "{joined}");
+        assert!(
+            joined.contains("dshow") && joined.contains("audio=dev"),
+            "{joined}"
+        );
     } else if cfg!(target_os = "macos") {
         assert!(joined.contains("avfoundation"), "{joined}");
     } else {
@@ -267,7 +294,10 @@ fn a_dead_microphone_gives_up_rather_than_recording_nothing_forever() {
         ep.feed(level_db(&vec![0i16; 4000]), "", t, &cfg);
     }
     assert!(ep.finished(), "a silent microphone recorded forever");
-    assert!(matches!(ep.state, atlas::endpoint::Listening::Finished(Why::Nothing)));
+    assert!(matches!(
+        ep.state,
+        atlas::endpoint::Listening::Finished(Why::Nothing)
+    ));
     assert!(t <= cfg.no_speech_after_ms + 500, "took {t}ms to give up");
 }
 
@@ -284,12 +314,17 @@ fn a_short_yes_with_no_words_yet_is_not_held_for_the_longest_gap() {
     }
     let mut finished_at = None;
     while t < 3000 {
-        if ep.feed(-60.0, "", t, &cfg) == atlas::endpoint::Listening::Finished(atlas::endpoint::Why::YouFinished) {
+        if ep.feed(-60.0, "", t, &cfg)
+            == atlas::endpoint::Listening::Finished(atlas::endpoint::Why::YouFinished)
+        {
             finished_at = Some(t);
             break;
         }
         t += 20;
     }
     let gap = finished_at.expect("it finished") - 500;
-    assert!(gap <= cfg.short_reply_ms + 40, "a short reply waited {gap} ms");
+    assert!(
+        gap <= cfg.short_reply_ms + 40,
+        "a short reply waited {gap} ms"
+    );
 }

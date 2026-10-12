@@ -15,8 +15,12 @@ struct Builder {
     n_tensors: u64,
 }
 
-fn u32b(v: u32) -> Vec<u8> { v.to_le_bytes().to_vec() }
-fn u64b(v: u64) -> Vec<u8> { v.to_le_bytes().to_vec() }
+fn u32b(v: u32) -> Vec<u8> {
+    v.to_le_bytes().to_vec()
+}
+fn u64b(v: u64) -> Vec<u8> {
+    v.to_le_bytes().to_vec()
+}
 fn strb(s: &str) -> Vec<u8> {
     let mut o = u64b(s.len() as u64);
     o.extend_from_slice(s.as_bytes());
@@ -104,7 +108,9 @@ fn a_gguf_header_round_trips() {
 
 #[test]
 fn a_file_that_is_not_a_model_is_rejected_clearly() {
-    let e = Gguf::read(Cursor::new(b"not a model at all".to_vec())).unwrap_err().to_string();
+    let e = Gguf::read(Cursor::new(b"not a model at all".to_vec()))
+        .unwrap_err()
+        .to_string();
     assert!(e.contains("GGUF"), "should name the problem: {e}");
 }
 
@@ -138,7 +144,10 @@ fn quantization_names_and_widths_are_right() {
     assert_eq!(QuantType(1).name(), "F16");
     assert_eq!(QuantType(1).bits_per_weight(), 16.0);
     assert_eq!(QuantType(12).name(), "Q4_K");
-    assert!(QuantType(12).bits_per_weight() < 5.0, "Q4 must be about 4 bits");
+    assert!(
+        QuantType(12).bits_per_weight() < 5.0,
+        "Q4 must be about 4 bits"
+    );
     assert!(QuantType(14).bits_per_weight() > QuantType(12).bits_per_weight());
 }
 
@@ -146,11 +155,15 @@ fn quantization_names_and_widths_are_right() {
 fn the_dominant_quantization_is_what_the_bulk_of_the_weights_use() {
     let bytes = Builder::default()
         .kv_str("general.architecture", "llama")
-        .tensor("big.weight", &[4096, 32000], 12, 0)   // Q4_K, huge
-        .tensor("small.norm", &[4096], 0, 100)          // F32, tiny
+        .tensor("big.weight", &[4096, 32000], 12, 0) // Q4_K, huge
+        .tensor("small.norm", &[4096], 0, 100) // F32, tiny
         .build();
     let g = Gguf::read(Cursor::new(bytes)).unwrap();
-    assert_eq!(g.dominant_quant().name(), "Q4_K", "one F32 norm doesn't make it an F32 model");
+    assert_eq!(
+        g.dominant_quant().name(),
+        "Q4_K",
+        "one F32 norm doesn't make it an F32 model"
+    );
 }
 
 #[test]
@@ -166,7 +179,11 @@ fn a_huge_vocabulary_is_counted_without_being_held_in_memory() {
         .build();
     let g = Gguf::read(Cursor::new(bytes)).unwrap();
     assert_eq!(g.get("tokenizer.ggml.tokens").map(|v| v.len()), Some(9000));
-    assert_eq!(g.context_length(), Some(4096), "parsing continued past the big array");
+    assert_eq!(
+        g.context_length(),
+        Some(4096),
+        "parsing continued past the big array"
+    );
 }
 
 #[test]
@@ -250,14 +267,20 @@ fn a_model_that_would_swap_to_disk_is_not_chosen() {
     // Bigger is better only until it doesn't fit; past that it pages and
     // becomes unusable, which is worse than a smaller model that runs.
     let r = registry();
-    assert_eq!(r.best_fit(3 * 1024 * 1024 * 1024, 4096).unwrap().id, "small-3b");
+    assert_eq!(
+        r.best_fit(3 * 1024 * 1024 * 1024, 4096).unwrap().id,
+        "small-3b"
+    );
 }
 
 #[test]
 fn nothing_fitting_is_a_clear_answer_not_a_crash() {
     let r = registry();
     assert!(r.best_fit(100 * 1024 * 1024, 4096).is_none());
-    let cfg = ModelsConfig { memory_budget_mb: 100, ..Default::default() };
+    let cfg = ModelsConfig {
+        memory_budget_mb: 100,
+        ..Default::default()
+    };
     let why = r.explain(&cfg);
     assert!(why.contains("nothing fits"), "got: {why}");
     assert!(why.contains("small-3b"), "names the closest option: {why}");
@@ -266,7 +289,11 @@ fn nothing_fitting_is_a_clear_answer_not_a_crash() {
 #[test]
 fn an_explicit_preference_wins_over_the_automatic_pick() {
     let r = registry();
-    let cfg = ModelsConfig { prefer: "small-3b".into(), memory_budget_mb: 64_000, ..Default::default() };
+    let cfg = ModelsConfig {
+        prefer: "small-3b".into(),
+        memory_budget_mb: 64_000,
+        ..Default::default()
+    };
     assert_eq!(r.choose(&cfg).unwrap().id, "small-3b");
 }
 
@@ -282,7 +309,9 @@ fn a_longer_context_can_change_which_model_fits() {
 #[test]
 fn an_empty_models_directory_says_so() {
     let r = Registry::default();
-    assert!(r.explain(&ModelsConfig::default()).contains("no GGUF models"));
+    assert!(r
+        .explain(&ModelsConfig::default())
+        .contains("no GGUF models"));
     // Contrast case, not just the phrase: a registry that actually has a
     // model must not say the directory is empty.
     let d = std::env::temp_dir().join("atlas-models-empty-contrast");
@@ -291,7 +320,9 @@ fn an_empty_models_directory_says_so() {
     std::fs::write(d.join("good.gguf"), llama7b()).unwrap();
     let with_one = Registry::scan(&d);
     assert_eq!(with_one.models.len(), 1);
-    assert!(!with_one.explain(&ModelsConfig::default()).contains("no GGUF models"));
+    assert!(!with_one
+        .explain(&ModelsConfig::default())
+        .contains("no GGUF models"));
 }
 
 #[test]
@@ -319,15 +350,30 @@ fn parameter_counts_get_a_human_label() {
 
 #[test]
 fn the_template_is_taken_from_the_model_file_when_it_has_one() {
-    assert_eq!(Template::detect(Some("<|im_start|>system"), "whatever"), Template::ChatMl);
-    assert_eq!(Template::detect(Some("<|start_header_id|>"), "whatever"), Template::Llama3);
-    assert_eq!(Template::detect(Some("[INST]"), "whatever"), Template::Mistral);
-    assert_eq!(Template::detect(Some("<start_of_turn>"), "whatever"), Template::Gemma);
+    assert_eq!(
+        Template::detect(Some("<|im_start|>system"), "whatever"),
+        Template::ChatMl
+    );
+    assert_eq!(
+        Template::detect(Some("<|start_header_id|>"), "whatever"),
+        Template::Llama3
+    );
+    assert_eq!(
+        Template::detect(Some("[INST]"), "whatever"),
+        Template::Mistral
+    );
+    assert_eq!(
+        Template::detect(Some("<start_of_turn>"), "whatever"),
+        Template::Gemma
+    );
 }
 
 #[test]
 fn the_model_name_is_the_fallback_when_the_file_carries_no_template() {
-    assert_eq!(Template::detect(None, "qwen2.5-7b-instruct"), Template::ChatMl);
+    assert_eq!(
+        Template::detect(None, "qwen2.5-7b-instruct"),
+        Template::ChatMl
+    );
     assert_eq!(Template::detect(None, "Meta-Llama-3-8B"), Template::Llama3);
     assert_eq!(Template::detect(None, "mistral-7b"), Template::Mistral);
     assert_eq!(Template::detect(None, "something-unknown"), Template::Plain);
@@ -347,7 +393,10 @@ fn each_format_produces_the_markers_its_model_was_trained_on() {
 
     let m = Template::Mistral.render("be brief", "hello");
     assert!(m.starts_with("[INST]") && m.ends_with("[/INST]"));
-    assert!(m.contains("be brief"), "mistral has no system role, so it folds in");
+    assert!(
+        m.contains("be brief"),
+        "mistral has no system role, so it folds in"
+    );
 }
 
 #[test]
@@ -359,37 +408,74 @@ fn stop_tokens_match_the_format() {
 
 #[test]
 fn the_completion_request_is_valid_json_with_the_right_stops() {
-    let body = completion_body("say \"hi\"\nnow", Template::ChatMl, 256, &Default::default());
+    let body = completion_body(
+        "say \"hi\"\nnow",
+        Template::ChatMl,
+        256,
+        &Default::default(),
+    );
     let v: serde_json::Value = serde_json::from_str(&body).expect("must be valid json");
     assert_eq!(v["n_predict"], 256);
-    assert_eq!(v["prompt"], "say \"hi\"\nnow", "quotes and newlines survive");
-    assert!(v["stop"].as_array().unwrap().iter().any(|s| s == "<|im_end|>"));
+    assert_eq!(
+        v["prompt"], "say \"hi\"\nnow",
+        "quotes and newlines survive"
+    );
+    assert!(v["stop"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|s| s == "<|im_end|>"));
 }
 
 // ================= running llama.cpp directly =================
 
 #[test]
 fn the_server_is_never_bound_to_a_public_interface() {
-    let args = server_args(&model("m", 7_000_000_000, 4 << 30), &ModelsConfig::default(), 0);
-    let host = args.iter().position(|a| a == "--host").map(|i| &args[i + 1]);
-    assert_eq!(host.map(String::as_str), Some("127.0.0.1"), "must not listen publicly");
+    let args = server_args(
+        &model("m", 7_000_000_000, 4 << 30),
+        &ModelsConfig::default(),
+        0,
+    );
+    let host = args
+        .iter()
+        .position(|a| a == "--host")
+        .map(|i| &args[i + 1]);
+    assert_eq!(
+        host.map(String::as_str),
+        Some("127.0.0.1"),
+        "must not listen publicly"
+    );
 }
 
 #[test]
 fn the_context_never_exceeds_what_the_model_supports() {
     let m = model("m", 7_000_000_000, 4 << 30); // max_context 8192
-    let cfg = ModelsConfig { context: 999_999, ..Default::default() };
+    let cfg = ModelsConfig {
+        context: 999_999,
+        ..Default::default()
+    };
     let args = server_args(&m, &cfg, 0);
-    let ctx = args.iter().position(|a| a == "-c").map(|i| args[i + 1].clone()).unwrap();
+    let ctx = args
+        .iter()
+        .position(|a| a == "-c")
+        .map(|i| args[i + 1].clone())
+        .unwrap();
     assert_eq!(ctx, "8192");
 }
 
 #[test]
 fn a_context_of_zero_means_the_models_own_maximum() {
     let m = model("m", 7_000_000_000, 4 << 30);
-    let cfg = ModelsConfig { context: 0, ..Default::default() };
+    let cfg = ModelsConfig {
+        context: 0,
+        ..Default::default()
+    };
     let args = server_args(&m, &cfg, 0);
-    let ctx = args.iter().position(|a| a == "-c").map(|i| args[i + 1].clone()).unwrap();
+    let ctx = args
+        .iter()
+        .position(|a| a == "-c")
+        .map(|i| args[i + 1].clone())
+        .unwrap();
     assert_eq!(ctx, "8192");
 }
 
@@ -411,7 +497,10 @@ fn a_model_too_big_for_vram_is_only_partly_offloaded() {
     // driver starts paging.
     let m = model("m", 70_000_000_000, 40 << 30);
     let layers = gpu_layers_for(&m, 8 << 30, 4096);
-    assert!(layers > 0 && layers < 999, "partial, not all or nothing: {layers}");
+    assert!(
+        layers > 0 && layers < 999,
+        "partial, not all or nothing: {layers}"
+    );
 }
 
 #[test]
@@ -429,7 +518,8 @@ fn the_shipped_config_can_run_without_ollama() {
     let server = t.models.server.clone().expect("a llama-server entry");
     assert!(
         !server.command.to_lowercase().contains("ollama"),
-        "the direct path must not go through Ollama: {}", server.command
+        "the direct path must not go through Ollama: {}",
+        server.command
     );
     // The budget is *measured*, not configured. This used to assert the
     // opposite -- that the shipped config carried a number greater than zero
@@ -446,8 +536,16 @@ fn the_shipped_config_can_run_without_ollama() {
     assert!(t.models.context > 0);
 
     // And the measured budget has to actually reach the chooser.
-    let plenty = atlas::fit::Machine { total_ram_mb: 64_000, free_ram_mb: 32_000, ..Default::default() };
-    let cramped = atlas::fit::Machine { total_ram_mb: 4_000, free_ram_mb: 900, ..Default::default() };
+    let plenty = atlas::fit::Machine {
+        total_ram_mb: 64_000,
+        free_ram_mb: 32_000,
+        ..Default::default()
+    };
+    let cramped = atlas::fit::Machine {
+        total_ram_mb: 4_000,
+        free_ram_mb: 900,
+        ..Default::default()
+    };
     assert!(
         atlas::models::budget_bytes(&t.models, &plenty)
             > atlas::models::budget_bytes(&t.models, &cramped),
@@ -471,5 +569,8 @@ fn a_vision_projector_is_not_offered_as_a_model_to_talk_with() {
     let r = Registry::scan(&d);
     let ids: Vec<&str> = r.models.iter().map(|m| m.id.as_str()).collect();
     assert_eq!(ids, vec!["good"], "{ids:?}");
-    assert!(model("mmproj-x", 1, 1).is_a_projector(), "named as one, whatever it says inside");
+    assert!(
+        model("mmproj-x", 1, 1).is_a_projector(),
+        "named as one, whatever it says inside"
+    );
 }

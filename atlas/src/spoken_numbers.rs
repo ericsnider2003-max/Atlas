@@ -11,10 +11,30 @@
 /// 0..999_999_999_999 as English words.
 pub fn cardinal(n: u64) -> String {
     const ONES: [&str; 20] = [
-        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
-        "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
+        "zero",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "eleven",
+        "twelve",
+        "thirteen",
+        "fourteen",
+        "fifteen",
+        "sixteen",
+        "seventeen",
+        "eighteen",
+        "nineteen",
     ];
-    const TENS: [&str; 10] = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+    const TENS: [&str; 10] = [
+        "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+    ];
     fn below_1000(n: u64) -> String {
         let (h, r) = (n / 100, n % 100);
         let mut parts = Vec::new();
@@ -36,7 +56,12 @@ pub fn cardinal(n: u64) -> String {
         return below_1000(n);
     }
     let mut parts = Vec::new();
-    for (scale, name) in [(1_000_000_000_000u64, "trillion"), (1_000_000_000, "billion"), (1_000_000, "million"), (1_000, "thousand")] {
+    for (scale, name) in [
+        (1_000_000_000_000u64, "trillion"),
+        (1_000_000_000, "billion"),
+        (1_000_000, "million"),
+        (1_000, "thousand"),
+    ] {
         if n >= scale && !(n / scale).is_multiple_of(1000) {
             parts.push(format!("{} {name}", below_1000(n / scale % 1000)));
         }
@@ -105,7 +130,11 @@ fn decimal(s: &str) -> Option<String> {
     if int.contains(',') && !int.split(',').skip(1).all(|g| g.len() == 3) {
         return None;
     }
-    let mut out = if digits.is_empty() { "zero".to_string() } else { cardinal(digits.parse().ok()?) };
+    let mut out = if digits.is_empty() {
+        "zero".to_string()
+    } else {
+        cardinal(digits.parse().ok()?)
+    };
     if let Some(f) = frac {
         if f.is_empty() || !f.chars().all(|c| c.is_ascii_digit()) {
             return None;
@@ -120,14 +149,29 @@ fn decimal(s: &str) -> Option<String> {
 }
 
 const MONTHS: [&str; 12] = [
-    "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 ];
 
 fn money(tok: &str) -> Option<String> {
     let (unit, cents, rest) = match tok.chars().next()? {
         '$' => (("dollar", "dollars"), ("cent", "cents"), &tok[1..]),
         '€' => (("euro", "euros"), ("cent", "cents"), &tok['€'.len_utf8()..]),
-        '£' => (("pound", "pounds"), ("penny", "pence"), &tok['£'.len_utf8()..]),
+        '£' => (
+            ("pound", "pounds"),
+            ("penny", "pence"),
+            &tok['£'.len_utf8()..],
+        ),
         _ => return None,
     };
     let (num, scale) = match rest.chars().last()? {
@@ -149,7 +193,11 @@ fn money(tok: &str) -> Option<String> {
     if let Some(p) = part {
         let c: u64 = p.parse().ok()?;
         if c > 0 {
-            out = format!("{out} and {} {}", cardinal(c), if c == 1 { cents.0 } else { cents.1 });
+            out = format!(
+                "{out} and {} {}",
+                cardinal(c),
+                if c == 1 { cents.0 } else { cents.1 }
+            );
         }
     }
     Some(out)
@@ -167,7 +215,11 @@ fn time(tok: &str) -> Option<String> {
         (lower.clone(), "")
     };
     let (h, m) = t.split_once(':')?;
-    if h.is_empty() || h.len() > 2 || m.len() != 2 || !h.chars().chain(m.chars()).all(|c| c.is_ascii_digit()) {
+    if h.is_empty()
+        || h.len() > 2
+        || m.len() != 2
+        || !h.chars().chain(m.chars()).all(|c| c.is_ascii_digit())
+    {
         return None;
     }
     let (h, m): (u64, u64) = (h.parse().ok()?, m.parse().ok()?);
@@ -188,7 +240,8 @@ fn date(tok: &str) -> Option<String> {
     if p.len() != 3 || p[0].len() != 4 || p[1].len() != 2 || p[2].len() != 2 {
         return None;
     }
-    let (y, mo, d): (u64, usize, u64) = (p[0].parse().ok()?, p[1].parse().ok()?, p[2].parse().ok()?);
+    let (y, mo, d): (u64, usize, u64) =
+        (p[0].parse().ok()?, p[1].parse().ok()?, p[2].parse().ok()?);
     if !(1..=12).contains(&mo) || !(1..=31).contains(&d) {
         return None;
     }
@@ -224,15 +277,28 @@ fn token(core: &str, prev: Option<&str>) -> Option<String> {
     // A range: 10–12, 3-5.
     for dash in ['–', '-'] {
         if let Some((a, b)) = core.split_once(dash) {
-            if !a.is_empty() && !b.is_empty() && a.chars().all(|c| c.is_ascii_digit()) && b.chars().all(|c| c.is_ascii_digit()) {
+            if !a.is_empty()
+                && !b.is_empty()
+                && a.chars().all(|c| c.is_ascii_digit())
+                && b.chars().all(|c| c.is_ascii_digit())
+            {
                 return Some(format!("{} to {}", decimal(a)?, decimal(b)?));
             }
         }
     }
     // 4k, 2.5M: a number with a magnitude.
-    for (suffix, said) in [("k", "thousand"), ("K", "thousand"), ("M", "million"), ("B", "billion")] {
+    for (suffix, said) in [
+        ("k", "thousand"),
+        ("K", "thousand"),
+        ("M", "million"),
+        ("B", "billion"),
+    ] {
         if let Some(n) = core.strip_suffix(suffix) {
-            if n.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+            if n.chars()
+                .next()
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false)
+            {
                 if let Some(d) = decimal(n) {
                     return Some(format!("{d} {said}"));
                 }
@@ -242,7 +308,11 @@ fn token(core: &str, prev: Option<&str>) -> Option<String> {
     // A percentage, an R-multiple, a times.
     for (suffix, said) in [("%", " percent"), ("R", " R"), ("x", " times")] {
         if let Some(n) = core.strip_suffix(suffix) {
-            if n.chars().next().map(|c| c.is_ascii_digit() || c == '-' || c == '+' || c == '.').unwrap_or(false) {
+            if n.chars()
+                .next()
+                .map(|c| c.is_ascii_digit() || c == '-' || c == '+' || c == '.')
+                .unwrap_or(false)
+            {
                 if let Some(d) = decimal(n) {
                     let sign = if n.starts_with('+') { "plus " } else { "" };
                     return Some(format!("{sign}{d}{said}"));
@@ -256,15 +326,25 @@ fn token(core: &str, prev: Option<&str>) -> Option<String> {
         let yearish = prev
             .map(|p| {
                 let p = p.to_lowercase();
-                ["in", "since", "by", "of", "from", "until", "before", "after"].contains(&p.as_str())
-                    || MONTHS.iter().any(|m| m.to_lowercase() == p.trim_end_matches(','))
+                [
+                    "in", "since", "by", "of", "from", "until", "before", "after",
+                ]
+                .contains(&p.as_str())
+                    || MONTHS
+                        .iter()
+                        .any(|m| m.to_lowercase() == p.trim_end_matches(','))
             })
             .unwrap_or(false);
         if yearish && (1900..2100).contains(&y) {
             return Some(year(y));
         }
     }
-    if core.chars().next().map(|c| c.is_ascii_digit() || ((c == '-' || c == '+') && core.len() > 1)).unwrap_or(false) {
+    if core
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_digit() || ((c == '-' || c == '+') && core.len() > 1))
+        .unwrap_or(false)
+    {
         let sign = if core.starts_with('+') { "plus " } else { "" };
         return decimal(core).map(|d| format!("{sign}{d}"));
     }
@@ -287,7 +367,9 @@ pub fn words(text: &str) -> String {
             continue;
         }
         // Split off trailing punctuation (but not a % or R that belongs).
-        let end = w.trim_end_matches([',', '.', ';', ':', '!', '?', ')']).len();
+        let end = w
+            .trim_end_matches([',', '.', ';', ':', '!', '?', ')'])
+            .len();
         let (core, tail) = w.split_at(end);
         let core = core.trim_start_matches(['(', '~']);
         let lead = &w[..w.len() - tail.len() - core.len()];
@@ -295,7 +377,9 @@ pub fn words(text: &str) -> String {
         let mut core_owned = core.to_string();
         let mut used_next = false;
         if let Some(next) = toks.get(i + 1) {
-            let n = next.trim_end_matches([',', '.', ';', '!', '?']).to_lowercase();
+            let n = next
+                .trim_end_matches([',', '.', ';', '!', '?'])
+                .to_lowercase();
             if (n == "am" || n == "pm" || n == "a.m" || n == "p.m") && time(core).is_some() {
                 core_owned = format!("{core}{}", n.replace('.', ""));
                 used_next = true;
@@ -337,12 +421,30 @@ mod tests {
 
     #[test]
     fn in_sentences() {
-        assert_eq!(words("It costs $1,250."), "It costs one thousand two hundred fifty dollars.");
-        assert_eq!(words("Only $3.50 left"), "Only three dollars and fifty cents left");
-        assert_eq!(words("Call at 14:30, or 7:30 pm."), "Call at fourteen thirty, or seven thirty p m.");
-        assert_eq!(words("due 2026-09-24"), "due September twenty-fourth, twenty twenty-six");
-        assert_eq!(words("up +0.6R, 98% done, 3x faster"), "up plus zero point six R, ninety-eight percent done, three times faster");
-        assert_eq!(words("the 3rd of 10–12 trades in 2026"), "the third of ten to twelve trades in twenty twenty-six");
+        assert_eq!(
+            words("It costs $1,250."),
+            "It costs one thousand two hundred fifty dollars."
+        );
+        assert_eq!(
+            words("Only $3.50 left"),
+            "Only three dollars and fifty cents left"
+        );
+        assert_eq!(
+            words("Call at 14:30, or 7:30 pm."),
+            "Call at fourteen thirty, or seven thirty p m."
+        );
+        assert_eq!(
+            words("due 2026-09-24"),
+            "due September twenty-fourth, twenty twenty-six"
+        );
+        assert_eq!(
+            words("up +0.6R, 98% done, 3x faster"),
+            "up plus zero point six R, ninety-eight percent done, three times faster"
+        );
+        assert_eq!(
+            words("the 3rd of 10–12 trades in 2026"),
+            "the third of ten to twelve trades in twenty twenty-six"
+        );
         assert_eq!(words("a budget of €4k"), "a budget of four thousand euros");
         assert_eq!(words("-0.090 R"), "minus zero point zero nine zero R");
         assert_eq!(words("~4k trades"), "~four thousand trades");

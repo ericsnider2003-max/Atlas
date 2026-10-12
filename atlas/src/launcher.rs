@@ -69,7 +69,12 @@ impl Uses {
         }
         if self.by_key.len() > MAX_ITEMS {
             // Forget the item used longest ago.
-            if let Some(oldest) = self.by_key.iter().min_by_key(|(_, v)| v.last().copied().unwrap_or(0)).map(|(k, _)| k.clone()) {
+            if let Some(oldest) = self
+                .by_key
+                .iter()
+                .min_by_key(|(_, v)| v.last().copied().unwrap_or(0))
+                .map(|(k, _)| k.clone())
+            {
                 self.by_key.remove(&oldest);
             }
         }
@@ -79,7 +84,11 @@ impl Uses {
     pub fn weight(&self, c: &Candidate, now: u64) -> f64 {
         self.by_key
             .get(&c.key())
-            .map(|v| v.iter().map(|t| 0.5f64.powf(now.saturating_sub(*t) as f64 / HALF_LIFE as f64)).sum())
+            .map(|v| {
+                v.iter()
+                    .map(|t| 0.5f64.powf(now.saturating_sub(*t) as f64 / HALF_LIFE as f64))
+                    .sum()
+            })
             .unwrap_or(0.0)
     }
 }
@@ -96,7 +105,10 @@ pub fn match_score(query: &str, label: &str) -> f64 {
     if l == q {
         return 1.0;
     }
-    let words: Vec<&str> = l.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    let words: Vec<&str> = l
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
     if l.starts_with(&q) {
         return 0.9;
     }
@@ -108,14 +120,22 @@ pub fn match_score(query: &str, label: &str) -> f64 {
         return 0.75;
     }
     let qwords: Vec<&str> = q.split_whitespace().collect();
-    if qwords.len() > 1 && qwords.iter().all(|qw| words.iter().any(|w| w.starts_with(qw))) {
+    if qwords.len() > 1
+        && qwords
+            .iter()
+            .all(|qw| words.iter().any(|w| w.starts_with(qw)))
+    {
         return 0.7;
     }
     if l.contains(&q) {
         return 0.6;
     }
     let allow = crate::typos::allowance(q.chars().count());
-    if allow > 0 && words.iter().any(|w| crate::typos::osa(w, &q, allow).is_some()) {
+    if allow > 0
+        && words
+            .iter()
+            .any(|w| crate::typos::osa(w, &q, allow).is_some())
+    {
         return 0.5;
     }
     0.0
@@ -133,7 +153,12 @@ pub enum Pick {
 
 /// Ranked results: match first (it must match), frecency to order the
 /// matches, a small bonus for apps (usually what's meant by a bare name).
-pub fn launch_ranking(query: &str, all: &[Candidate], uses: &Uses, now: u64) -> Vec<(f64, Candidate)> {
+pub fn launch_ranking(
+    query: &str,
+    all: &[Candidate],
+    uses: &Uses,
+    now: u64,
+) -> Vec<(f64, Candidate)> {
     let mut scored: Vec<(f64, Candidate)> = all
         .iter()
         .filter_map(|c| {
@@ -151,7 +176,11 @@ pub fn launch_ranking(query: &str, all: &[Candidate], uses: &Uses, now: u64) -> 
             })
         })
         .collect();
-    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.label.cmp(&b.1.label)));
+    scored.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.1.label.cmp(&b.1.label))
+    });
     // The same thing twice (an app and its own shortcut) is shown once.
     let mut seen: Vec<String> = Vec::new();
     scored.retain(|(_, c)| {
@@ -185,19 +214,32 @@ pub fn shortcuts(dirs: &[std::path::PathBuf]) -> Vec<Candidate> {
         if depth > 4 || out.len() > 2000 {
             return;
         }
-        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
         for e in rd.flatten() {
             let p = e.path();
             if p.is_dir() {
                 walk(&p, depth + 1, out);
-            } else if p.extension().map(|x| x.eq_ignore_ascii_case("lnk")).unwrap_or(false) {
-                let name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            } else if p
+                .extension()
+                .map(|x| x.eq_ignore_ascii_case("lnk"))
+                .unwrap_or(false)
+            {
+                let name = p
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
                 // Uninstallers and help files are never what's meant.
                 let low = name.to_lowercase();
                 if low.contains("uninstall") || low.contains("readme") || low.ends_with(" help") {
                     continue;
                 }
-                out.push(Candidate { kind: Kind::Shortcut, label: name, target: p.display().to_string() });
+                out.push(Candidate {
+                    kind: Kind::Shortcut,
+                    label: name,
+                    target: p.display().to_string(),
+                });
             }
         }
     }
@@ -235,5 +277,8 @@ pub fn say_choices(list: &[Candidate]) -> String {
             format!("{}. {} ({kind})", i + 1, c.label)
         })
         .collect();
-    format!("Which one? {} -- say \"launch 1\" or the name more fully.", parts.join("  "))
+    format!(
+        "Which one? {} -- say \"launch 1\" or the name more fully.",
+        parts.join("  ")
+    )
 }

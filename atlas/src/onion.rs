@@ -36,13 +36,34 @@ pub const CONNECT_SECS: u64 = 60;
 // ---- SHA3-256, for the address checksum -------------------------------------
 
 const RC: [u64; 24] = [
-    0x0000000000000001, 0x0000000000008082, 0x800000000000808a, 0x8000000080008000, 0x000000000000808b,
-    0x0000000080000001, 0x8000000080008081, 0x8000000000008009, 0x000000000000008a, 0x0000000000000088,
-    0x0000000080008009, 0x000000008000000a, 0x000000008000808b, 0x800000000000008b, 0x8000000000008089,
-    0x8000000000008003, 0x8000000000008002, 0x8000000000000080, 0x000000000000800a, 0x800000008000000a,
-    0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008,
+    0x0000000000000001,
+    0x0000000000008082,
+    0x800000000000808a,
+    0x8000000080008000,
+    0x000000000000808b,
+    0x0000000080000001,
+    0x8000000080008081,
+    0x8000000000008009,
+    0x000000000000008a,
+    0x0000000000000088,
+    0x0000000080008009,
+    0x000000008000000a,
+    0x000000008000808b,
+    0x800000000000008b,
+    0x8000000000008089,
+    0x8000000000008003,
+    0x8000000000008002,
+    0x8000000000000080,
+    0x000000000000800a,
+    0x800000008000000a,
+    0x8000000080008081,
+    0x8000000000008080,
+    0x0000000080000001,
+    0x8000000080008008,
 ];
-const ROT: [u32; 25] = [0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41, 45, 15, 21, 8, 18, 2, 61, 56, 14];
+const ROT: [u32; 25] = [
+    0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41, 45, 15, 21, 8, 18, 2, 61, 56, 14,
+];
 
 fn keccak_f(a: &mut [u64; 25]) {
     for rc in RC {
@@ -131,7 +152,11 @@ fn address_of(public: &[u8; 32]) -> String {
 
 /// Does this read as a v3 onion address?
 pub fn is_onion(s: &str) -> bool {
-    s.len() == 62 && s.ends_with(".onion") && s[..56].bytes().all(|b| b.is_ascii_lowercase() || (b'2'..=b'7').contains(&b))
+    s.len() == 62
+        && s.ends_with(".onion")
+        && s[..56]
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || (b'2'..=b'7').contains(&b))
 }
 
 /// The onion key for this Atlas: (the expanded secret Tor keeps, the public key).
@@ -141,7 +166,9 @@ fn onion_keys(seed: &[u8; 32]) -> ([u8; 64], [u8; 32]) {
     h[0] &= 248;
     h[31] &= 63;
     h[31] |= 64;
-    let public = ed25519_dalek::SigningKey::from_bytes(seed).verifying_key().to_bytes();
+    let public = ed25519_dalek::SigningKey::from_bytes(seed)
+        .verifying_key()
+        .to_bytes();
     (h, public)
 }
 
@@ -157,7 +184,10 @@ fn write_service(dir: &Path, me: &crate::peerkey::Identity) -> Result<String, St
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        crate::heard!(std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)));
+        crate::heard!(std::fs::set_permissions(
+            dir,
+            std::fs::Permissions::from_mode(0o700)
+        ));
     }
     let mut s = b"== ed25519v1-secret: type0 ==\0\0\0".to_vec();
     s.extend_from_slice(&secret);
@@ -181,7 +211,10 @@ pub fn find_tor(configured: Option<&str>) -> Option<PathBuf> {
         return Some(PathBuf::from(p)).filter(|p| p.is_file());
     }
     let exe = if cfg!(windows) { "tor.exe" } else { "tor" };
-    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+    if let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(Path::to_path_buf))
+    {
         for c in [dir.join("tor").join(exe), dir.join(exe)] {
             if c.is_file() {
                 return Some(c);
@@ -189,7 +222,9 @@ pub fn find_tor(configured: Option<&str>) -> Option<PathBuf> {
         }
     }
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|d| d.join(exe)).find(|p| p.is_file())
+    std::env::split_paths(&path)
+        .map(|d| d.join(exe))
+        .find(|p| p.is_file())
 }
 
 /// The configuration Atlas runs `tor` with. `extra`: lines appended as they
@@ -227,7 +262,11 @@ fn bootstrapped(log: &str) -> u8 {
 }
 
 fn free_port() -> Option<u16> {
-    std::net::TcpListener::bind("127.0.0.1:0").ok()?.local_addr().ok().map(|a| a.port())
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .ok()?
+        .local_addr()
+        .ok()
+        .map(|a| a.port())
 }
 
 /// `tor`, started by Atlas and stopped with it.
@@ -246,20 +285,30 @@ pub struct Tor {
 impl Tor {
     /// Start `tor` for this Atlas: its onion service forwarding to `door`
     /// (the door's sealed-only port), and a SOCKS port for reaching others.
-    pub fn start(binary: &Path, dir: &Path, me: &crate::peerkey::Identity, door: u16, extra: &[String]) -> Result<Tor, String> {
+    pub fn start(
+        binary: &Path,
+        dir: &Path,
+        me: &crate::peerkey::Identity,
+        door: u16,
+        extra: &[String],
+    ) -> Result<Tor, String> {
         let service = dir.join("onion");
         let address = write_service(&service, me)?;
         let socks = free_port().ok_or("couldn't find a free port for Tor")?;
         std::fs::create_dir_all(dir.join("data")).map_err(|e| e.to_string())?;
         crate::heard!(std::fs::remove_file(dir.join("tor.log")));
         let rc = dir.join("torrc");
-        std::fs::write(&rc, torrc(dir, &service, socks, door, extra)).map_err(|e| format!("couldn't write Tor's settings: {e}"))?;
+        std::fs::write(&rc, torrc(dir, &service, socks, door, extra))
+            .map_err(|e| format!("couldn't write Tor's settings: {e}"))?;
         // Absolute (without Windows' \\?\ form, which not every program reads),
         // since it's started from its own folder (below).
         let binary = std::path::absolute(binary).unwrap_or_else(|_| binary.to_path_buf());
         let rc = std::path::absolute(&rc).unwrap_or(rc);
         let mut cmd = crate::tools::command(&binary);
-        cmd.arg("-f").arg(&rc).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+        cmd.arg("-f")
+            .arg(&rc)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
         // In Tor's own folder, so the bridge programs' paths are short and
         // have no spaces in them (`bridge_lines`).
         if let Some(home) = binary.parent().filter(|p| !p.as_os_str().is_empty()) {
@@ -275,13 +324,25 @@ impl Tor {
         if let Some(pid) = stop_orphan(dir, &binary) {
             crate::errln!("atlas: stopped a Tor (process {pid}) left running by an earlier Atlas");
         }
-        let child = cmd.spawn().map_err(|e| format!("couldn't start Tor ({}): {e}", binary.display()))?;
-        crate::kept!(std::fs::write(pid_file(dir), format!("{}\n{}\n", child.id(), binary.display())));
+        let child = cmd
+            .spawn()
+            .map_err(|e| format!("couldn't start Tor ({}): {e}", binary.display()))?;
+        crate::kept!(std::fs::write(
+            pid_file(dir),
+            format!("{}\n{}\n", child.id(), binary.display())
+        ));
         // On Windows, also tied to this Atlas by a job object: when Atlas's
         // last handle closes -- however it ended -- Windows ends Tor.
         #[cfg(windows)]
         crate::childjob::tie(&child);
-        Ok(Tor { child, socks, address, dir: dir.to_path_buf(), seen: (0, 0), bridges: None })
+        Ok(Tor {
+            child,
+            socks,
+            address,
+            dir: dir.to_path_buf(),
+            seen: (0, 0),
+            bridges: None,
+        })
     }
 
     /// Start it going through one kind of bridge (`bridge_lines`), for a
@@ -294,7 +355,8 @@ impl Tor {
         kind: &str,
         extra: &[String],
     ) -> Result<Tor, String> {
-        let mut lines = bridge_lines(binary, kind).ok_or_else(|| format!("this copy of Tor has no {kind} bridges"))?;
+        let mut lines = bridge_lines(binary, kind)
+            .ok_or_else(|| format!("this copy of Tor has no {kind} bridges"))?;
         lines.extend(extra.iter().cloned());
         let mut t = Tor::start(binary, dir, me, door, &lines)?;
         t.bridges = Some(kind.to_string());
@@ -349,22 +411,33 @@ pub(crate) fn process_program(pid: u32) -> Option<PathBuf> {
         use windows::core::PWSTR;
         use windows::Win32::Foundation::CloseHandle;
         use windows::Win32::System::Threading::{
-            OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+            OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+            PROCESS_QUERY_LIMITED_INFORMATION,
         };
         // SAFETY: the handle is closed before return; the buffer outlives the call.
         unsafe {
             let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
             let mut buf = [0u16; 1024];
             let mut len = buf.len() as u32;
-            let r = QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len);
+            let r = QueryFullProcessImageNameW(
+                h,
+                PROCESS_NAME_WIN32,
+                PWSTR(buf.as_mut_ptr()),
+                &mut len,
+            );
             let _ = CloseHandle(h);
             r.ok()?;
-            Some(PathBuf::from(String::from_utf16_lossy(&buf[..len as usize])))
+            Some(PathBuf::from(String::from_utf16_lossy(
+                &buf[..len as usize],
+            )))
         }
     }
     #[cfg(not(any(target_os = "linux", windows)))]
     {
-        let out = crate::tools::command("ps").args(["-p", &pid.to_string(), "-o", "comm="]).output().ok()?;
+        let out = crate::tools::command("ps")
+            .args(["-p", &pid.to_string(), "-o", "comm="])
+            .output()
+            .ok()?;
         let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
         (!name.is_empty()).then(|| PathBuf::from(name))
     }
@@ -377,7 +450,9 @@ pub(crate) fn kill_process(pid: u32) -> bool {
         use windows::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
         // SAFETY: the handle is closed before return.
         unsafe {
-            let Ok(h) = OpenProcess(PROCESS_TERMINATE, false, pid) else { return false };
+            let Ok(h) = OpenProcess(PROCESS_TERMINATE, false, pid) else {
+                return false;
+            };
             let ok = TerminateProcess(h, 1).is_ok();
             let _ = CloseHandle(h);
             ok
@@ -385,7 +460,10 @@ pub(crate) fn kill_process(pid: u32) -> bool {
     }
     #[cfg(not(windows))]
     {
-        crate::tools::command("kill").args(["-9", &pid.to_string()]).status().is_ok_and(|s| s.success())
+        crate::tools::command("kill")
+            .args(["-9", &pid.to_string()])
+            .status()
+            .is_ok_and(|s| s.success())
     }
 }
 
@@ -402,10 +480,12 @@ pub fn stop_orphan(dir: &Path, binary: &Path) -> Option<u32> {
         return None;
     }
     let running = process_program(pid)?;
-    let same_name = running.file_name().map(|n| n.to_ascii_lowercase()) == binary.file_name().map(|n| n.to_ascii_lowercase());
+    let same_name = running.file_name().map(|n| n.to_ascii_lowercase())
+        == binary.file_name().map(|n| n.to_ascii_lowercase());
     let written = lines.next().map(PathBuf::from);
     let same_program = same_name
-        && (written.as_deref().is_none_or(|w| same_file(w, &running)) || same_file(binary, &running));
+        && (written.as_deref().is_none_or(|w| same_file(w, &running))
+            || same_file(binary, &running));
     if !same_program {
         return None;
     }
@@ -423,7 +503,12 @@ pub fn stop_orphan(dir: &Path, binary: &Path) -> Option<u32> {
 }
 
 fn same_file(a: &Path, b: &Path) -> bool {
-    let norm = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()).to_string_lossy().to_lowercase();
+    let norm = |p: &Path| {
+        std::fs::canonicalize(p)
+            .unwrap_or_else(|_| p.to_path_buf())
+            .to_string_lossy()
+            .to_lowercase()
+    };
     norm(a) == norm(b)
 }
 
@@ -434,7 +519,10 @@ pub fn connect(socks: u16, onion: &str, timeout: Duration) -> std::io::Result<Tc
     if !is_onion(onion) {
         return Err(bad("that isn't an onion address"));
     }
-    let mut s = TcpStream::connect_timeout(&SocketAddr::from(([127, 0, 0, 1], socks)), Duration::from_secs(5))?;
+    let mut s = TcpStream::connect_timeout(
+        &SocketAddr::from(([127, 0, 0, 1], socks)),
+        Duration::from_secs(5),
+    )?;
     s.set_read_timeout(Some(timeout))?;
     s.set_write_timeout(Some(timeout))?;
     s.write_all(&[5, 1, 0])?;
@@ -494,13 +582,19 @@ const STALL_WARNINGS: usize = 3;
 /// (or no transports at all, as a bare system `tor` doesn't).
 pub fn bridge_lines(tor_binary: &Path, kind: &str) -> Option<Vec<String>> {
     let pt_dir = tor_binary.parent()?.join("pluggable_transports");
-    let config: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(pt_dir.join("pt_config.json")).ok()?).ok()?;
+    let config: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(pt_dir.join("pt_config.json")).ok()?).ok()?;
     let bridges: Vec<String> = config
         .get("bridges")?
         .get(kind)?
         .as_array()?
         .iter()
-        .filter_map(|b| b.as_str().map(str::trim).filter(|b| !b.is_empty() && !b.contains('\n')).map(String::from))
+        .filter_map(|b| {
+            b.as_str()
+                .map(str::trim)
+                .filter(|b| !b.is_empty() && !b.contains('\n'))
+                .map(String::from)
+        })
         .collect();
     if bridges.is_empty() {
         return None;
@@ -542,13 +636,19 @@ pub fn bridge_lines(tor_binary: &Path, kind: &str) -> Option<Vec<String>> {
 pub fn next_bridge_kind(current: Option<&str>) -> Option<&'static str> {
     match current {
         None => BRIDGE_KINDS.first().copied(),
-        Some(c) => BRIDGE_KINDS.iter().position(|k| *k == c).and_then(|i| BRIDGE_KINDS.get(i + 1)).copied(),
+        Some(c) => BRIDGE_KINDS
+            .iter()
+            .position(|k| *k == c)
+            .and_then(|i| BRIDGE_KINDS.get(i + 1))
+            .copied(),
     }
 }
 
 /// How many times Tor has said it's having trouble getting started.
 fn bootstrap_warnings(log: &str) -> usize {
-    log.lines().filter(|l| l.contains("Problem bootstrapping")).count()
+    log.lines()
+        .filter(|l| l.contains("Problem bootstrapping"))
+        .count()
 }
 
 /// Has Tor got stuck connecting? `progress` is the last percent it reached,
@@ -609,8 +709,14 @@ mod tests {
 
     #[test]
     fn sha3_matches_the_standards_test_vectors() {
-        assert_eq!(hex(&sha3_256(b"")), "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a");
-        assert_eq!(hex(&sha3_256(b"abc")), "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532");
+        assert_eq!(
+            hex(&sha3_256(b"")),
+            "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a"
+        );
+        assert_eq!(
+            hex(&sha3_256(b"abc")),
+            "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532"
+        );
         // Longer than one block (136 bytes).
         let long = vec![b'a'; 200];
         assert_eq!(sha3_256(&long).len(), 32);
@@ -622,20 +728,44 @@ mod tests {
         let me = crate::peerkey::Identity::from_seed_for_test([7; 32]);
         let a = my_address(&me);
         assert!(is_onion(&a), "{a}");
-        assert_eq!(a, my_address(&crate::peerkey::Identity::from_seed_for_test([7; 32])));
-        assert_ne!(a, my_address(&crate::peerkey::Identity::from_seed_for_test([8; 32])));
+        assert_eq!(
+            a,
+            my_address(&crate::peerkey::Identity::from_seed_for_test([7; 32]))
+        );
+        assert_ne!(
+            a,
+            my_address(&crate::peerkey::Identity::from_seed_for_test([8; 32]))
+        );
         assert!(!is_onion("example.com"));
     }
 
     #[test]
     fn tor_is_told_where_the_door_is_and_nothing_else_is_open() {
-        let t = torrc(Path::new("/x"), Path::new("/x/onion"), 9051, 40000, &["UseBridges 1".into()]);
+        let t = torrc(
+            Path::new("/x"),
+            Path::new("/x/onion"),
+            9051,
+            40000,
+            &["UseBridges 1".into()],
+        );
         assert!(t.contains("HiddenServicePort 80 127.0.0.1:40000"));
-        assert!(t.contains("SocksPort 127.0.0.1:9051"), "Tor's SOCKS port must be this machine only");
+        assert!(
+            t.contains("SocksPort 127.0.0.1:9051"),
+            "Tor's SOCKS port must be this machine only"
+        );
         assert!(t.ends_with("UseBridges 1\n"));
         // Tor goes when this Atlas goes (28 Sep 2026).
-        assert!(t.contains(&format!("__OwningControllerProcess {}\n", std::process::id())), "{t}");
-        assert_eq!(bootstrapped("x Bootstrapped 45% (x)\ny Bootstrapped 100% (done): Done\n"), 100);
+        assert!(
+            t.contains(&format!(
+                "__OwningControllerProcess {}\n",
+                std::process::id()
+            )),
+            "{t}"
+        );
+        assert_eq!(
+            bootstrapped("x Bootstrapped 45% (x)\ny Bootstrapped 100% (done): Done\n"),
+            100
+        );
         assert_eq!(bootstrapped(""), 0);
     }
 
@@ -709,14 +839,24 @@ mod tests {
         let l = bridge_lines(&tor, "obfs4").unwrap();
         assert_eq!(l[0], "UseBridges 1");
         assert_eq!(l[1], format!("ClientTransportPlugin meek_lite,obfs2,obfs3,obfs4,scramblesuit,webtunnel exec {pt}lyrebird"));
-        assert_eq!(&l[2..], ["Bridge obfs4 192.0.2.1:443 AAAA cert=x iat-mode=0", "Bridge obfs4 192.0.2.2:443 BBBB cert=y iat-mode=0"]);
+        assert_eq!(
+            &l[2..],
+            [
+                "Bridge obfs4 192.0.2.1:443 AAAA cert=x iat-mode=0",
+                "Bridge obfs4 192.0.2.2:443 BBBB cert=y iat-mode=0"
+            ]
+        );
         // Snowflake has its own plugin line; meek's bridges are "meek_lite".
-        assert!(bridge_lines(&tor, "snowflake").unwrap()[1].starts_with("ClientTransportPlugin snowflake exec"));
+        assert!(bridge_lines(&tor, "snowflake").unwrap()[1]
+            .starts_with("ClientTransportPlugin snowflake exec"));
         assert!(bridge_lines(&tor, "meek").unwrap()[1].contains("meek_lite"));
         // A kind the bundle lacks, or whose program is missing, gives nothing
         // rather than a torrc Tor would refuse.
         assert!(bridge_lines(&tor, "webtunnel").is_none());
-        assert!(bridge_lines(&tor, "conjure").is_none(), "conjure-client isn't there, so no line for it");
+        assert!(
+            bridge_lines(&tor, "conjure").is_none(),
+            "conjure-client isn't there, so no line for it"
+        );
         assert!(bridge_lines(Path::new("/nowhere/tor"), "obfs4").is_none());
     }
 
@@ -725,7 +865,8 @@ mod tests {
         assert!(!is_stalled("", 5, 30));
         assert!(is_stalled("", 5, STALL_SECS));
         assert!(!is_stalled("", 100, 10_000), "connected is never stuck");
-        let warned = "[warn] Problem bootstrapping. Stuck at 5% (conn): Connection refused\n".repeat(3);
+        let warned =
+            "[warn] Problem bootstrapping. Stuck at 5% (conn): Connection refused\n".repeat(3);
         assert!(is_stalled(&warned, 5, 1));
         assert_eq!(next_bridge_kind(None), Some("obfs4"));
         assert_eq!(next_bridge_kind(Some("obfs4")), Some("snowflake"));
@@ -746,7 +887,11 @@ mod tests {
         let expected = my_address(&me);
         let mut t = Tor::start(&tor, &dir, &me, 1, &["DisableNetwork 1".into()]).unwrap();
         std::thread::sleep(Duration::from_secs(3));
-        assert!(!t.stopped(), "tor refused the keys: {}", std::fs::read_to_string(dir.join("tor.log")).unwrap_or_default());
+        assert!(
+            !t.stopped(),
+            "tor refused the keys: {}",
+            std::fs::read_to_string(dir.join("tor.log")).unwrap_or_default()
+        );
         let host = std::fs::read_to_string(dir.join("onion").join("hostname")).unwrap();
         assert_eq!(host.trim(), expected);
         drop(t);

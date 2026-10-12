@@ -89,9 +89,7 @@ pub fn gather(root: &Path, unwired: Vec<String>) -> Metrics {
         .into_iter()
         .flatten()
         .flatten()
-        .filter(|e| {
-            e.path().extension().and_then(|x| x.to_str()) == Some("yaml")
-        })
+        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("yaml"))
         .filter_map(|e| fs::read_to_string(e.path()).ok())
         .map(|t| t.lines().count())
         .sum();
@@ -149,7 +147,10 @@ impl Metrics {
         s.push_str(&format!("| tests | {} |\n", self.test_fns));
         s.push_str(&format!("| lines of config | {} |\n", self.config_lines));
         s.push_str(&format!("| dependencies | {} |\n", self.dependencies));
-        s.push_str(&format!("| modules not yet wired in | {} |\n", self.unwired.len()));
+        s.push_str(&format!(
+            "| modules not yet wired in | {} |\n",
+            self.unwired.len()
+        ));
 
         if self.unwired.is_empty() {
             s.push_str("\nEvery module is reachable from the entrypoint.\n");

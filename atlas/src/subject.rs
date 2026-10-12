@@ -19,7 +19,10 @@ pub enum Subject {
     /// Text highlighted in the focused app.
     Selection(String),
     /// The window you're looking at.
-    Window { app: String, title: String },
+    Window {
+        app: String,
+        title: String,
+    },
     /// A file, usually the one most recently opened or created.
     File(String),
     /// What you were last discussing.
@@ -80,7 +83,10 @@ pub enum Resolution {
     /// Confident enough to act.
     Found { subject: Subject, why: String },
     /// Two or more plausible things. Ask rather than guess.
-    Ambiguous { options: Vec<Subject>, question: String },
+    Ambiguous {
+        options: Vec<Subject>,
+        question: String,
+    },
     /// Nothing to point at.
     Nothing(String),
 }
@@ -96,25 +102,52 @@ pub enum Wants {
 
 pub fn wants(said: &str) -> Wants {
     let t = said.to_lowercase();
-    if ["read", "summarise", "summarize", "explain", "translate", "reply to", "rewrite"]
-        .iter()
-        .any(|v| t.contains(v))
-        && ["file", "document", "pdf", "doc"].iter().any(|v| t.contains(v))
+    if [
+        "read",
+        "summarise",
+        "summarize",
+        "explain",
+        "translate",
+        "reply to",
+        "rewrite",
+    ]
+    .iter()
+    .any(|v| t.contains(v))
+        && ["file", "document", "pdf", "doc"]
+            .iter()
+            .any(|v| t.contains(v))
     {
         return Wants::File;
     }
-    if ["on my screen", "on screen", "what i'm looking at", "what im looking at", "this window"]
-        .iter()
-        .any(|v| t.contains(v))
+    if [
+        "on my screen",
+        "on screen",
+        "what i'm looking at",
+        "what im looking at",
+        "this window",
+    ]
+    .iter()
+    .any(|v| t.contains(v))
     {
         return Wants::Screen;
     }
-    if ["file", "document", "pdf", "spreadsheet"].iter().any(|v| t.contains(v)) {
-        return Wants::File;
-    }
-    if ["explain", "summarise", "summarize", "translate", "reply", "rewrite", "fix"]
+    if ["file", "document", "pdf", "spreadsheet"]
         .iter()
         .any(|v| t.contains(v))
+    {
+        return Wants::File;
+    }
+    if [
+        "explain",
+        "summarise",
+        "summarize",
+        "translate",
+        "reply",
+        "rewrite",
+        "fix",
+    ]
+    .iter()
+    .any(|v| t.contains(v))
     {
         return Wants::Text;
     }
@@ -131,14 +164,24 @@ pub fn resolve(said: &str, c: &Candidates) -> Resolution {
 
     if let Some(sel) = c.selection.as_ref().filter(|s| !s.trim().is_empty()) {
         // You highlighted it. Nothing is more explicit than that.
-        scored.push((0.95, Subject::Selection(sel.clone()), "you've got it selected"));
+        scored.push((
+            0.95,
+            Subject::Selection(sel.clone()),
+            "you've got it selected",
+        ));
     }
     if let Some(clip) = c.clipboard.as_ref().filter(|s| !s.trim().is_empty()) {
         scored.push((0.75, Subject::Clipboard(clip.clone()), "you copied it"));
     }
     if let Some((path, age)) = &c.recent_file {
         // A file saved in the last couple of minutes is very likely the one.
-        let score = if *age < 120 { 0.8 } else if *age < 1800 { 0.5 } else { 0.25 };
+        let score = if *age < 120 {
+            0.8
+        } else if *age < 1800 {
+            0.5
+        } else {
+            0.25
+        };
         scored.push((score, Subject::File(path.clone()), "you just saved it"));
     }
     if let Some(app) = &c.focused_app {
@@ -158,12 +201,22 @@ pub fn resolve(said: &str, c: &Candidates) -> Resolution {
         scored.push((0.35, Subject::Topic(t.clone()), "it's what we were on"));
     }
     if let Some(cap) = &c.last_capture {
-        scored.push((0.3, Subject::Capture(cap.clone()), "it's what I last looked at"));
+        scored.push((
+            0.3,
+            Subject::Capture(cap.clone()),
+            "it's what I last looked at",
+        ));
     }
 
     // The wording pushes one kind up and the others down.
     for (score, subject, _) in scored.iter_mut() {
-        let matches_want = matches!((want, &*subject), (Wants::Text, Subject::Clipboard(_) | Subject::Selection(_)) | (Wants::File, Subject::File(_)) | (Wants::Screen, Subject::Window { .. } | Subject::Capture(_)) | (Wants::Any, _));
+        let matches_want = matches!(
+            (want, &*subject),
+            (Wants::Text, Subject::Clipboard(_) | Subject::Selection(_))
+                | (Wants::File, Subject::File(_))
+                | (Wants::Screen, Subject::Window { .. } | Subject::Capture(_))
+                | (Wants::Any, _)
+        );
         if matches_want {
             *score += 0.15;
         } else if want != Wants::Any {
@@ -189,7 +242,10 @@ pub fn resolve(said: &str, c: &Candidates) -> Resolution {
                     };
                 }
             }
-            Resolution::Found { subject: subject.clone(), why: why.to_string() }
+            Resolution::Found {
+                subject: subject.clone(),
+                why: why.to_string(),
+            }
         }
     }
 }

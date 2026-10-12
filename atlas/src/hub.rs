@@ -106,7 +106,6 @@ pub enum Page {
     Opportunities,
 }
 
-
 /// The hub's navigation, as data rather than a hardcoded string of links.
 ///
 /// It was a flat row of eleven sibling links across the top. Eleven is well
@@ -142,10 +141,27 @@ pub const NAV: &[(&str, &[Page])] = &[
     // and who may be sent to without asking.
     ("People", &[Page::Friends, Page::Groups, Page::Trusted]),
     // Your work in other shapes, and handing Atlas something.
-    ("Your work", &[Page::Workspace, Page::LookingBack, Page::Give, Page::Social, Page::Opportunities]),
+    (
+        "Your work",
+        &[
+            Page::Workspace,
+            Page::LookingBack,
+            Page::Give,
+            Page::Social,
+            Page::Opportunities,
+        ],
+    ),
     // The business section: under More until a business exists, when each
     // business also gets its own group in the sidebar.
-    ("Business", &[Page::Business, Page::SharedTasks, Page::Clients, Page::Partners]),
+    (
+        "Business",
+        &[
+            Page::Business,
+            Page::SharedTasks,
+            Page::Clients,
+            Page::Partners,
+        ],
+    ),
     // Atlas talking about itself. Under More in the sidebar.
     (
         "Atlas itself",
@@ -171,7 +187,17 @@ pub const NAV: &[(&str, &[Page])] = &[
             Page::Access,
         ],
     ),
-    ("Your devices", &[Page::Sync, Page::Phone, Page::Updates, Page::Offline, Page::Help, Page::Feedback]),
+    (
+        "Your devices",
+        &[
+            Page::Sync,
+            Page::Phone,
+            Page::Updates,
+            Page::Offline,
+            Page::Help,
+            Page::Feedback,
+        ],
+    ),
 ];
 
 impl Page {
@@ -181,7 +207,15 @@ impl Page {
     /// gestures and add-ons (`phonemode`, 2 Oct 2026).
     pub fn here(self) -> bool {
         !(crate::phonemode::on()
-            && matches!(self, Page::Phone | Page::Updates | Page::Sync | Page::Offline | Page::Gestures | Page::AddOns))
+            && matches!(
+                self,
+                Page::Phone
+                    | Page::Updates
+                    | Page::Sync
+                    | Page::Offline
+                    | Page::Gestures
+                    | Page::AddOns
+            ))
     }
 
     /// Pages whose address carries a choice: which conversation, business or
@@ -189,9 +223,23 @@ impl Page {
     pub fn reads_query(self) -> bool {
         matches!(
             self,
-            Page::Messages | Page::Business | Page::SharedTasks | Page::Clients | Page::Give | Page::Sound
-                | Page::Trusted | Page::Talk | Page::Help | Page::Workshop | Page::Updates | Page::Feedback
-                | Page::Connections | Page::Documents | Page::Phone | Page::Recommendations | Page::Accounts
+            Page::Messages
+                | Page::Business
+                | Page::SharedTasks
+                | Page::Clients
+                | Page::Give
+                | Page::Sound
+                | Page::Trusted
+                | Page::Talk
+                | Page::Help
+                | Page::Workshop
+                | Page::Updates
+                | Page::Feedback
+                | Page::Connections
+                | Page::Documents
+                | Page::Phone
+                | Page::Recommendations
+                | Page::Accounts
         )
     }
 
@@ -361,7 +409,6 @@ pub fn crumbs(here: Page) -> String {
     )
 }
 
-
 /// A list of things you can open, one per row.
 ///
 /// The shape Eric asked for and the hub did not have: an index, then the one
@@ -386,7 +433,6 @@ pub fn index_rows(rows: &[(String, String, String)]) -> String {
     out
 }
 
-
 // ---------------------------------------------------------------------------
 // The pieces a card is built from.
 //
@@ -396,7 +442,6 @@ pub fn index_rows(rows: &[(String, String, String)]) -> String {
 // has read a word of it.
 // ---------------------------------------------------------------------------
 
-
 /// How a row's dot is coloured: ember for yours to act on, blue for proposed,
 /// grey for the record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -405,7 +450,6 @@ pub enum Dot {
     Proposed,
     Record,
 }
-
 
 /// The thinking indicator.
 ///
@@ -429,7 +473,6 @@ pub const IDLE: &str = "\
 
 const STYLE: &str = include_str!("../assets/hub/hub.css");
 
-
 /// Where your appearance choices are kept.
 pub const APPEARANCE_KEY: &str = "appearance";
 
@@ -451,7 +494,6 @@ pub struct Appearance {
     pub high_contrast: bool,
     pub reduce_motion: bool,
 }
-
 
 // ---------------------------------------------------------------------------
 // The hub as an app on the phone's home screen.
@@ -500,7 +542,6 @@ pub struct PublicFile {
     pub bytes: &'static [u8],
 }
 
-
 /// The service worker.
 ///
 /// Network only, with a fallback: the hub is live state, and it stores
@@ -528,7 +569,6 @@ self.addEventListener('fetch',e=>{
 });
 "#;
 
-
 /// The presence rail: Atlas's mark, the four pages you use most, every other
 /// page one press away, and Settings. Eric's command-deck design (23 Sep 2026).
 ///
@@ -540,15 +580,12 @@ self.addEventListener('fetch',e=>{
 /// and a test holds the two together.
 pub const MARK: &str = "<svg class=mark viewBox='0 0 100 100' aria-hidden=true><path d='M13.51 92.00 L34.49 92.00 L60.49 10.00 L39.51 10.00 Z' fill='var(--ink)'/><path d='M86.49 92.00 L65.51 92.00 L39.51 10.00 L60.49 10.00 Z' fill='var(--accent)'/><path d='M60.49 10.00 L39.51 10.00 L50.00 43.09 Z' fill='color-mix(in srgb, var(--accent) 78%, #000)'/><circle cx='50' cy='79' r='6.5' fill='var(--accent)'/></svg>";
 
-
 const SEARCH_ICON: &str = "<svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true><circle cx=11 cy=11 r=7 /><path d='M21 21l-4-4'/></svg>";
 const MIC_ICON: &str = "<svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true><rect x=9 y=3 width=6 height=12 rx=3 /><path d='M6 11a6 6 0 0 0 12 0M12 17v4'/></svg>";
 const HELP_ICON: &str = "<svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true><circle cx=12 cy=12 r=9 /><path d='M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01'/></svg>";
 
-
 /// Where a business's group goes in the sidebar, until one is written in.
 const BUSINESS_SLOT: &str = "<!--atlas:business-->";
-
 
 /// One free win on the Ideas page.
 #[derive(Debug, Clone, PartialEq)]
@@ -601,7 +638,6 @@ pub const IDLE_TOGGLES: &[(&str, &str)] = &[
     ("selfwork", "self_work.enabled"),
 ];
 
-
 /// What the Friends page shows.
 #[derive(Debug, Clone, Default)]
 pub struct FriendsView {
@@ -620,7 +656,6 @@ pub struct FriendsView {
     /// Where friends can reach you, in a sentence (`friends::Reach`).
     pub reach: String,
 }
-
 
 /// Where a moment sits on today's spine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -677,7 +712,6 @@ pub struct Glance {
     pub people: Vec<(String, String)>,
 }
 
-
 /// Dragging, with a mouse or a finger.
 ///
 /// Pointer events rather than HTML5 drag-and-drop, because the HTML5 API does
@@ -686,13 +720,15 @@ pub struct Glance {
 ///
 /// It posts the same fields the buttons post, to the same address, so the two
 /// cannot drift apart. If the script never runs, the buttons still do.
-const DRAG_SCRIPT: &str = concat!("<script>", include_str!("../assets/hub/drag.js"), "</script>");
-
+const DRAG_SCRIPT: &str = concat!(
+    "<script>",
+    include_str!("../assets/hub/drag.js"),
+    "</script>"
+);
 
 // ---------------------------------------------------------------------------
 // The palette.
 // ---------------------------------------------------------------------------
-
 
 /// Opening and filtering.
 ///
@@ -700,8 +736,11 @@ const DRAG_SCRIPT: &str = concat!("<script>", include_str!("../assets/hub/drag.j
 /// and works with the network down. The ranking that decides *order* stays on
 /// the Rust side — a second ranking here would be a second set of rules that
 /// quietly disagrees with the one the plain page uses.
-const PALETTE_SCRIPT: &str = concat!("<script>", include_str!("../assets/hub/palette.js"), "</script>");
-
+const PALETTE_SCRIPT: &str = concat!(
+    "<script>",
+    include_str!("../assets/hub/palette.js"),
+    "</script>"
+);
 
 /// One thing Atlas stopped on, told the design's way: what it tried, what
 /// stopped it, and what it needs from you.
@@ -747,7 +786,6 @@ pub struct Drops {
     pub carried: Vec<Option<String>>,
 }
 
-
 /// A step in Atlas's thought process, named the way the design names them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Step {
@@ -763,7 +801,6 @@ pub enum Step {
     Now,
     Next,
 }
-
 
 /// Now — Atlas's thought process, live, as a legible stream rather than a
 /// raw log. Plan, doing, a step handed to a worker, a check, a reroute
@@ -807,15 +844,17 @@ pub struct TaskReceipt {
     pub results: Vec<(String, String)>,
 }
 
-
 /// Keeps a page live without reloading it: every few seconds, ask
 /// `/hub/changed.json` whether what the page shows has changed -- a few
 /// bytes -- and only then fetch the page and swap in the part marked
 /// `data-live`, unless paused. It used to fetch the whole page every three
 /// seconds whether or not anything had changed (28 Sep 2026). Stops by
 /// itself after ten minutes with no change (WCAG 2.2.2), and says so.
-pub const LIVE_SCRIPT: &str = concat!("<script>", include_str!("../assets/hub/live.js"), "</script>");
-
+pub const LIVE_SCRIPT: &str = concat!(
+    "<script>",
+    include_str!("../assets/hub/live.js"),
+    "</script>"
+);
 
 // ---------------------------------------------------------------------------
 // The pages that replaced terminal commands (27 Sep 2026): the vault on the
@@ -843,7 +882,6 @@ pub struct VaultView {
     pub said: Option<String>,
 }
 
-
 /// Where this device stands with its household, for the Sync page.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HouseView {
@@ -863,7 +901,6 @@ pub struct SyncView {
     /// A folder to offer when none is set (`sync::best_folder`).
     pub suggested_folder: Option<String>,
 }
-
 
 /// What the Status page's "Free up space" shows.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -892,4 +929,3 @@ mod status;
 pub use status::*;
 mod vault_sync;
 pub use vault_sync::*;
-

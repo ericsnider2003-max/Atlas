@@ -67,13 +67,21 @@ const SOURCE_TREE_PREFIX_FILES: &[&str] = &["src/selfwork.rs"];
 /// ways a path gets built, and a guard that waves those through is the sixth
 /// green-for-the-wrong-reason ratchet this tree has had.
 fn is_console_prose(line: &str) -> bool {
-    ["println!(", "eprintln!(", "print!(", "eprint!(", "writeln!("]
-        .iter()
-        .any(|m| line.contains(m))
+    [
+        "println!(",
+        "eprintln!(",
+        "print!(",
+        "eprint!(",
+        "writeln!(",
+    ]
+    .iter()
+    .any(|m| line.contains(m))
 }
 
 fn rust_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let p = e.path();
         if p.is_dir() {
@@ -101,7 +109,11 @@ fn is_ignorable(line: &str) -> bool {
 fn no_module_but_roots_and_store_spells_out_a_data_or_config_path() {
     let mut files = Vec::new();
     rust_files(Path::new("src"), &mut files);
-    assert!(files.len() > 100, "found only {} source files — the walk is wrong", files.len());
+    assert!(
+        files.len() > 100,
+        "found only {} source files — the walk is wrong",
+        files.len()
+    );
 
     let mut offenders: Vec<String> = Vec::new();
 
@@ -113,7 +125,9 @@ fn no_module_but_roots_and_store_spells_out_a_data_or_config_path() {
         {
             continue;
         }
-        let Ok(src) = fs::read_to_string(f) else { continue };
+        let Ok(src) = fs::read_to_string(f) else {
+            continue;
+        };
 
         let mut in_test_mod = false;
         let mut test_brace_depth: i32 = 0;
@@ -169,7 +183,9 @@ fn nothing_in_production_builds_a_store_from_a_relative_path() {
         if MAY_SPELL_PATHS.contains(&rel.as_str()) {
             continue;
         }
-        let Ok(src) = fs::read_to_string(f) else { continue };
+        let Ok(src) = fs::read_to_string(f) else {
+            continue;
+        };
         let mut in_test_mod = false;
         let mut test_brace_depth: i32 = 0;
         let mut depth: i32 = 0;
@@ -208,7 +224,10 @@ fn nothing_in_production_builds_a_store_from_a_relative_path() {
 fn the_resolved_root_is_absolute() {
     // If this is ever relative again, every guarantee above is decoration.
     let r = atlas::roots::install_root();
-    assert!(r.is_absolute(), "install root {r:?} is relative — the cwd bug is back");
+    assert!(
+        r.is_absolute(),
+        "install root {r:?} is relative — the cwd bug is back"
+    );
     assert!(atlas::roots::data_dir().is_absolute());
     assert!(atlas::roots::config_dir().is_absolute() || std::env::var_os("ATLAS_CONFIG").is_some());
 }
@@ -216,7 +235,11 @@ fn the_resolved_root_is_absolute() {
 #[test]
 fn an_unset_backup_or_trash_or_notes_dir_resolves_under_the_install_not_the_cwd() {
     use std::path::PathBuf;
-    let install = PathBuf::from(if cfg!(windows) { "C:\\atlas" } else { "/opt/atlas" });
+    let install = PathBuf::from(if cfg!(windows) {
+        "C:\\atlas"
+    } else {
+        "/opt/atlas"
+    });
 
     let b = atlas::safety::BackupConfig::default().resolved(&install);
     assert_eq!(PathBuf::from(&b.dir), install.join("data").join("backups"));
@@ -225,7 +248,10 @@ fn an_unset_backup_or_trash_or_notes_dir_resolves_under_the_install_not_the_cwd(
     assert_eq!(PathBuf::from(&t.dir), install.join("data").join("trash"));
 
     let r = atlas::research::ResearchConfig::default().resolved(&install);
-    assert_eq!(PathBuf::from(&r.notes_dir), install.join("data").join("notes"));
+    assert_eq!(
+        PathBuf::from(&r.notes_dir),
+        install.join("data").join("notes")
+    );
 }
 
 #[test]
@@ -244,8 +270,17 @@ fn what_atlas_promises_to_keep_includes_the_trash() {
     // trash holds the only copy of anything Atlas removed in the last 30
     // days and was not on the list, so an update destroyed it.
     let names: Vec<&str> = atlas::upgrade::YOURS.iter().map(|(p, _)| *p).collect();
-    for must in ["data/state", "data/notes", "data/backups", "data/logs", "data/trash"] {
-        assert!(names.contains(&must), "`atlas update` does not preserve {must}");
+    for must in [
+        "data/state",
+        "data/notes",
+        "data/backups",
+        "data/logs",
+        "data/trash",
+    ] {
+        assert!(
+            names.contains(&must),
+            "`atlas update` does not preserve {must}"
+        );
     }
 }
 
@@ -269,7 +304,10 @@ fn every_derived_folder_hangs_off_the_one_root() {
     assert_eq!(atlas::roots::trash_dir(), h.join("data").join("trash"));
     assert_eq!(atlas::roots::tmp_dir(), h.join("data").join("tmp"));
     assert_eq!(atlas::roots::models_dir(), r.join("models"));
-    assert_eq!(atlas::roots::data_sub("finance"), h.join("data").join("finance"));
+    assert_eq!(
+        atlas::roots::data_sub("finance"),
+        h.join("data").join("finance")
+    );
     // `models/` is a sibling of `data/`, not a child of it. The installer
     // downloads into `<install>/models`; a `data/models` would be 4GB of
     // model files somewhere nothing looks.

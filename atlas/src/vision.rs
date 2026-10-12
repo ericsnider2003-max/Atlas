@@ -86,7 +86,12 @@ pub struct Patch {
 
 impl Patch {
     pub fn new(x: f32, y: f32, width: f32, height: f32) -> Patch {
-        Patch { x, y, width, height }
+        Patch {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     pub fn holds(&self, x: f32, y: f32) -> bool {
@@ -202,9 +207,11 @@ impl Scene {
 
     /// Is one of them his?
     fn you_are_here(&self, you: &str) -> Option<&Face> {
-        self.faces
-            .iter()
-            .find(|f| f.who.as_deref().is_some_and(|w| w.eq_ignore_ascii_case(you)))
+        self.faces.iter().find(|f| {
+            f.who
+                .as_deref()
+                .is_some_and(|w| w.eq_ignore_ascii_case(you))
+        })
     }
 
     /// The most specific thing at a point.
@@ -237,8 +244,7 @@ impl Scene {
                 });
             }
             n => {
-                let named: Vec<&str> =
-                    self.faces.iter().filter_map(|f| f.who.as_deref()).collect();
+                let named: Vec<&str> = self.faces.iter().filter_map(|f| f.who.as_deref()).collect();
                 if named.is_empty() {
                     parts.push(format!("{n} people"));
                 } else {
@@ -256,7 +262,10 @@ impl Scene {
 
         if parts.is_empty() {
             return match &self.whole {
-                Some(w) => format!("It looks like {}.", w.spoken(cfg.sure_enough_to_say_plainly)),
+                Some(w) => format!(
+                    "It looks like {}.",
+                    w.spoken(cfg.sure_enough_to_say_plainly)
+                ),
                 // Not a failure, and not dressed up as one. Nothing was found
                 // and the camera worked.
                 None => "I looked, and there's nothing I can name.".into(),
@@ -356,7 +365,9 @@ fn plainly_joined(parts: &[String]) -> String {
         1 => parts[0].clone(),
         2 => format!("{} and {}", parts[0], parts[1]),
         _ => {
-            let Some((last, rest)) = parts.split_last() else { return String::new() };
+            let Some((last, rest)) = parts.split_last() else {
+                return String::new();
+            };
             format!("{}, and {}", rest.join(", "), last)
         }
     }
@@ -566,7 +577,12 @@ pub fn faces(out: &Outputs, placed: &Framing, cfg: &VisionConfig) -> Result<Vec<
                 if !area.sane() {
                     continue;
                 }
-                found.push(Face { area, sure, who: None, sure_who: 0.0 });
+                found.push(Face {
+                    area,
+                    sure,
+                    who: None,
+                    sure_who: 0.0,
+                });
             }
         }
     }
@@ -637,7 +653,11 @@ pub fn things(out: &Outputs, placed: &Framing, cfg: &VisionConfig) -> Result<Vec
         if !area.sane() {
             continue;
         }
-        found.push(Object { name: names[best].to_string(), area, sure });
+        found.push(Object {
+            name: names[best].to_string(),
+            area,
+            sure,
+        });
     }
 
     let boxes: Vec<(Patch, f32)> = found.iter().map(|t| (t.area, t.sure)).collect();
@@ -721,11 +741,19 @@ pub fn thin_out(boxes: &[(Patch, f32)], too_much: f32) -> Vec<usize> {
 }
 
 fn object_names() -> Vec<&'static str> {
-    OBJECT_NAMES.lines().map(str::trim).filter(|l| !l.is_empty()).collect()
+    OBJECT_NAMES
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect()
 }
 
 fn picture_names() -> Vec<&'static str> {
-    PICTURE_NAMES.lines().map(str::trim).filter(|l| !l.is_empty()).collect()
+    PICTURE_NAMES
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -843,7 +871,9 @@ fn put_away(shelf: &mut Vec<Shown>, name: &str, view: &[f32], when: u64) -> Resu
     })?;
     let name = name.trim();
     if name.is_empty() {
-        return Err(AtlasError::Config("I need a name to file that under".into()));
+        return Err(AtlasError::Config(
+            "I need a name to file that under".into(),
+        ));
     }
     match shelf.iter_mut().find(|s| s.name.eq_ignore_ascii_case(name)) {
         Some(existing) => existing.views.push(unit),
@@ -868,7 +898,11 @@ fn look_up(shelf: &[Shown], view: &[f32], floor: f32, margin: f32) -> Guess {
     let mut scores: Vec<(f32, &str)> = shelf
         .iter()
         .map(|s| {
-            let best = s.views.iter().map(|v| alike(&unit, v)).fold(f32::MIN, f32::max);
+            let best = s
+                .views
+                .iter()
+                .map(|v| alike(&unit, v))
+                .fold(f32::MIN, f32::max);
             (best, s.name.as_str())
         })
         .filter(|(score, _)| score.is_finite())
@@ -976,8 +1010,13 @@ impl Looking {
     /// machine without the runtime or a model it refuses. The small models
     /// -- finding a face, finding and reading a hand -- may go on the NPU
     /// when `npu` is on; the larger ones stay on the processor.
-    pub fn open_with(models_dir: &std::path::Path, root: Option<&std::path::Path>, npu: bool) -> Looking {
-        let one = |k: Kind, on_npu: bool| crate::handloop::Reader::open(k, models_dir, root, on_npu).ok();
+    pub fn open_with(
+        models_dir: &std::path::Path,
+        root: Option<&std::path::Path>,
+        npu: bool,
+    ) -> Looking {
+        let one =
+            |k: Kind, on_npu: bool| crate::handloop::Reader::open(k, models_dir, root, on_npu).ok();
         Looking {
             finding_faces: one(Kind::Faces, npu),
             telling_faces: one(Kind::FaceId, false),
@@ -1002,7 +1041,11 @@ impl Looking {
                 out.push(format!("{name} on {}", m.on()));
             }
         }
-        if out.is_empty() { "no seeing models".into() } else { out.join(", ") }
+        if out.is_empty() {
+            "no seeing models".into()
+        } else {
+            out.join(", ")
+        }
     }
 
     /// Can Atlas see at all?
@@ -1015,14 +1058,28 @@ impl Looking {
     /// Every step is allowed to fail on its own and say so. A picture where
     /// the faces could be found and the things could not is a real and useful
     /// answer; refusing the whole look because one model stumbled is not.
-    pub fn look(&mut self, rgb: &[u8], w: usize, h: usize, cfg: &VisionConfig, album: &Album) -> Sight {
+    pub fn look(
+        &mut self,
+        rgb: &[u8],
+        w: usize,
+        h: usize,
+        cfg: &VisionConfig,
+        album: &Album,
+    ) -> Sight {
         self.look_for(rgb, w, h, cfg, album, true)
     }
 
     /// A look for whether you're there and what your hand says: faces and the
     /// two small hand models only. Naming things and describing the picture
     /// are the heavy part, and nothing here needs them.
-    pub fn look_at_you(&mut self, rgb: &[u8], w: usize, h: usize, cfg: &VisionConfig, album: &Album) -> Sight {
+    pub fn look_at_you(
+        &mut self,
+        rgb: &[u8],
+        w: usize,
+        h: usize,
+        cfg: &VisionConfig,
+        album: &Album,
+    ) -> Sight {
         let mut sight = self.look_for(rgb, w, h, cfg, album, false);
         if let Some(hand) = self.hand(rgb, w, h) {
             let g = crate::handshape::hand_answer(&hand).map(|(g, s)| (g.to_string(), s));
@@ -1033,7 +1090,15 @@ impl Looking {
         sight
     }
 
-    fn look_for(&mut self, rgb: &[u8], w: usize, h: usize, cfg: &VisionConfig, album: &Album, name_things: bool) -> Sight {
+    fn look_for(
+        &mut self,
+        rgb: &[u8],
+        w: usize,
+        h: usize,
+        cfg: &VisionConfig,
+        album: &Album,
+        name_things: bool,
+    ) -> Sight {
         if w == 0 || h == 0 || rgb.len() < w * h * 3 {
             return Sight::Unread("the camera handed back a picture I couldn't read".into());
         }
@@ -1050,7 +1115,9 @@ impl Looking {
             let (pixels, placed) = letterbox(rgb, w, h, Kind::Faces);
             match model.run(&pixels).and_then(|out| faces(&out, &placed, cfg)) {
                 Ok(found) => scene.faces = found,
-                Err(e) => scene.could_not.push(format!("I couldn't look for faces: {e}")),
+                Err(e) => scene
+                    .could_not
+                    .push(format!("I couldn't look for faces: {e}")),
             }
         }
 
@@ -1065,7 +1132,9 @@ impl Looking {
                     continue;
                 }
                 let pixels = crate::infer::prepare_crop(rgb, w, h, cut, Kind::FaceId);
-                let Ok(out) = model.run(&pixels) else { continue };
+                let Ok(out) = model.run(&pixels) else {
+                    continue;
+                };
                 let Ok(reading) = out.only() else { continue };
                 match album.whose_face(reading, cfg.sure_enough_to_name_a_face, cfg.margin) {
                     Guess::Is(who, how) => {
@@ -1081,9 +1150,14 @@ impl Looking {
 
         if let (Some(model), true) = (self.naming_things.as_mut(), name_things) {
             let (pixels, placed) = letterbox(rgb, w, h, Kind::Objects);
-            match model.run(&pixels).and_then(|out| things(&out, &placed, cfg)) {
+            match model
+                .run(&pixels)
+                .and_then(|out| things(&out, &placed, cfg))
+            {
                 Ok(found) => scene.things = found,
-                Err(e) => scene.could_not.push(format!("I couldn't name what's there: {e}")),
+                Err(e) => scene
+                    .could_not
+                    .push(format!("I couldn't name what's there: {e}")),
             }
         }
 
@@ -1102,11 +1176,9 @@ impl Looking {
                         // stored, and never recognised again — accepting
                         // something and then never using it is the exact
                         // shape of failure this codebase keeps producing.
-                        if let Guess::Is(name, sure) = album.which_thing(
-                            reading,
-                            cfg.sure_enough_to_name_a_thing,
-                            cfg.margin,
-                        ) {
+                        if let Guess::Is(name, sure) =
+                            album.which_thing(reading, cfg.sure_enough_to_name_a_thing, cfg.margin)
+                        {
                             scene.whole = Some(Object {
                                 name,
                                 area: Patch::new(0.0, 0.0, 1.0, 1.0),
@@ -1144,7 +1216,11 @@ impl Looking {
         let cut = crate::infer::prepare_crop(rgb, w, h, (cx, cy, cw, ch), Kind::HandLandmarks);
         let out = reading.run(&cut).ok()?;
         let joints = out.at(0).ok()?;
-        let sure = out.at(1).ok().and_then(|s| s.first().copied()).unwrap_or(1.0);
+        let sure = out
+            .at(1)
+            .ok()
+            .and_then(|s| s.first().copied())
+            .unwrap_or(1.0);
         let (rw, rh) = Kind::HandLandmarks.wants();
         crate::handshape::from_model(&crate::handshape::in_the_frame(
             joints,

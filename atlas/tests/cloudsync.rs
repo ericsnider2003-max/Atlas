@@ -33,7 +33,10 @@ fn the_onedrive_aside_is_only_said_about_onedrive() {
         .find(|s| s.what.contains("install"))
         .expect("a not-yet-installed provider has an install step");
     let why = install.why_you.clone().unwrap_or_default();
-    assert!(!why.contains("OneDrive"), "Dropbox setup mentions OneDrive: {why:?}");
+    assert!(
+        !why.contains("OneDrive"),
+        "Dropbox setup mentions OneDrive: {why:?}"
+    );
     assert!(why.contains("don't sign into anything"));
 
     let onedrive = laptop_steps(Provider::OneDrive, false);
@@ -41,7 +44,11 @@ fn the_onedrive_aside_is_only_said_about_onedrive() {
         .iter()
         .find(|s| s.what.contains("install"))
         .expect("install step");
-    assert!(install.why_you.clone().unwrap_or_default().contains("already there"));
+    assert!(install
+        .why_you
+        .clone()
+        .unwrap_or_default()
+        .contains("already there"));
 }
 
 #[test]
@@ -76,8 +83,12 @@ fn onedrive_is_recommended_for_a_windows_laptop_with_the_reason() {
 #[test]
 fn how_each_behaves_on_windows_is_stated_honestly() {
     assert!(Provider::OneDrive.on_windows().contains("built in"));
-    assert!(Provider::ICloud.on_windows().contains("weakest of the four"));
-    assert!(Provider::Dropbox.on_windows().contains("quickest to actually push"));
+    assert!(Provider::ICloud
+        .on_windows()
+        .contains("weakest of the four"));
+    assert!(Provider::Dropbox
+        .on_windows()
+        .contains("quickest to actually push"));
 }
 
 // ================= what Atlas does and what you do =================
@@ -95,7 +106,9 @@ fn everything_on_the_laptop_side_is_atlas_including_signing_in() {
 fn with_onedrive_already_there_atlas_does_the_whole_thing() {
     let steps = laptop_steps(Provider::OneDrive, true);
     assert!(steps.iter().all(|s| s.automatic));
-    assert!(steps.iter().any(|s| s.what.contains("find the OneDrive folder")));
+    assert!(steps
+        .iter()
+        .any(|s| s.what.contains("find the OneDrive folder")));
 }
 
 #[test]
@@ -109,7 +122,9 @@ fn it_marks_the_folder_always_keep_which_is_the_failure_people_actually_hit() {
     // The file is "there" and useless offline, which is exactly when you need
     // it.
     let steps = laptop_steps(Provider::OneDrive, true);
-    assert!(steps.iter().any(|s| s.what.contains("always-keep rather than online-only")));
+    assert!(steps
+        .iter()
+        .any(|s| s.what.contains("always-keep rather than online-only")));
     assert!(Trouble::OnlineOnly.looks_like().contains("placeholder"));
     assert!(Trouble::OnlineOnly.atlas_can_fix());
 }
@@ -119,7 +134,11 @@ fn the_phone_side_is_honest_that_ios_limits_what_atlas_can_do() {
     let steps = phone_steps(Provider::OneDrive);
     let files = steps.iter().find(|s| s.what.contains("Files")).unwrap();
     assert!(!files.automatic);
-    assert!(files.why_you.as_ref().unwrap().contains("iOS only lets the app itself do that"));
+    assert!(files
+        .why_you
+        .as_ref()
+        .unwrap()
+        .contains("iOS only lets the app itself do that"));
 }
 
 #[test]
@@ -199,7 +218,10 @@ fn an_old_config_naming_the_removed_switch_still_loads() {
     // must still be able to start Atlas.
     let parsed: CloudConfig =
         serde_yaml::from_str("enabled: true\nencrypt_before_writing: false\n").unwrap();
-    assert!(parsed.enabled, "an unknown key must not stop the rest of the section parsing");
+    assert!(
+        parsed.enabled,
+        "an unknown key must not stop the rest of the section parsing"
+    );
 }
 
 #[test]
@@ -219,39 +241,77 @@ fn the_split_of_responsibility_is_stated_plainly() {
 fn comparing_providers_speaks_windows_the_phone_and_the_windows_path() {
     let s = compare_providers();
     // on_windows(), for two providers so a single shared string can't pass it
-    assert!(s.contains("built in"), "OneDrive's Windows note is missing:\n{s}");
-    assert!(s.contains("weakest of the four"), "iCloud's Windows note is missing:\n{s}");
+    assert!(
+        s.contains("built in"),
+        "OneDrive's Windows note is missing:\n{s}"
+    );
+    assert!(
+        s.contains("weakest of the four"),
+        "iCloud's Windows note is missing:\n{s}"
+    );
     // on_ios()
-    assert!(s.contains("shows up in Files"), "OneDrive's phone note is missing:\n{s}");
+    assert!(
+        s.contains("shows up in Files"),
+        "OneDrive's phone note is missing:\n{s}"
+    );
     // windows_hint()
-    assert!(s.contains("%OneDrive%"), "the Windows path hint is missing:\n{s}");
+    assert!(
+        s.contains("%OneDrive%"),
+        "the Windows path hint is missing:\n{s}"
+    );
     // free_gb(), so the comparison is quantitative too
-    assert!(s.contains("15GB free"), "Google Drive's free tier is missing:\n{s}");
+    assert!(
+        s.contains("15GB free"),
+        "Google Drive's free tier is missing:\n{s}"
+    );
 }
 
 #[test]
 fn setting_up_on_the_phone_uses_the_ios_note_and_the_trouble_readout() {
     let s = setup_guidance(Provider::ICloud, Setup::Phone);
-    assert!(s.contains("already there, nothing to install"), "iCloud on_ios missing:\n{s}");
+    assert!(
+        s.contains("already there, nothing to install"),
+        "iCloud on_ios missing:\n{s}"
+    );
     // looks_like() for a trouble
-    assert!(s.contains("placeholder"), "the online-only symptom is missing:\n{s}");
+    assert!(
+        s.contains("placeholder"),
+        "the online-only symptom is missing:\n{s}"
+    );
     // atlas_can_fix() — both branches, so the flag is actually read
-    assert!(s.contains("I fix this"), "a trouble Atlas can fix is not marked:\n{s}");
-    assert!(s.contains("needs you"), "a trouble needing the user is not marked:\n{s}");
+    assert!(
+        s.contains("I fix this"),
+        "a trouble Atlas can fix is not marked:\n{s}"
+    );
+    assert!(
+        s.contains("needs you"),
+        "a trouble needing the user is not marked:\n{s}"
+    );
     // Behavioural, not just wording: the guidance is actually provider- and
     // device-specific, not one canned block — iCloud on the phone reads
     // differently from OneDrive on the phone.
-    assert_ne!(s, setup_guidance(Provider::OneDrive, Setup::Phone), "guidance must vary by provider");
+    assert_ne!(
+        s,
+        setup_guidance(Provider::OneDrive, Setup::Phone),
+        "guidance must vary by provider"
+    );
 }
 
 #[test]
 fn setting_up_on_the_laptop_uses_the_windows_note_and_the_path_hint() {
     let s = setup_guidance(Provider::OneDrive, Setup::Laptop);
     assert!(s.contains("built in"), "OneDrive on_windows missing:\n{s}");
-    assert!(s.contains("%OneDrive%"), "OneDrive windows_hint missing:\n{s}");
+    assert!(
+        s.contains("%OneDrive%"),
+        "OneDrive windows_hint missing:\n{s}"
+    );
     // Behavioural: laptop guidance differs from the phone guidance for the
     // same provider — it reads the device, not a fixed script.
-    assert_ne!(s, setup_guidance(Provider::OneDrive, Setup::Phone), "guidance must vary by device");
+    assert_ne!(
+        s,
+        setup_guidance(Provider::OneDrive, Setup::Phone),
+        "guidance must vary by device"
+    );
 }
 
 #[test]
@@ -259,7 +319,16 @@ fn the_per_provider_notes_are_read_directly() {
     // Name on_ios and windows_hint at the call site, not only through the
     // rendered guidance, so each predicate is exercised on its own.
     use atlas::cloudsync::Provider;
-    assert!(!Provider::OneDrive.on_ios().is_empty(), "OneDrive should say something about iOS");
-    assert!(!Provider::ICloud.on_ios().is_empty(), "iCloud should say something about iOS");
-    assert!(!Provider::OneDrive.windows_hint().is_empty(), "the Windows path hint");
+    assert!(
+        !Provider::OneDrive.on_ios().is_empty(),
+        "OneDrive should say something about iOS"
+    );
+    assert!(
+        !Provider::ICloud.on_ios().is_empty(),
+        "iCloud should say something about iOS"
+    );
+    assert!(
+        !Provider::OneDrive.windows_hint().is_empty(),
+        "the Windows path hint"
+    );
 }

@@ -6,16 +6,28 @@ use atlas::tts::{Engine, EngineConfig};
 
 fn master() -> Contents {
     let mut c = Contents::new("");
-    c.add(Line::folder("areas", "projects on the go — homelab, the rack, atlas"));
-    c.add(Line::new("spain-trip", "flights booked, hotel undecided, going in May"));
-    c.add(Line::new("homelab", "the home lab — server, backups, open work"));
+    c.add(Line::folder(
+        "areas",
+        "projects on the go — homelab, the rack, atlas",
+    ));
+    c.add(Line::new(
+        "spain-trip",
+        "flights booked, hotel undecided, going in May",
+    ));
+    c.add(Line::new(
+        "homelab",
+        "the home lab — server, backups, open work",
+    ));
     c
 }
 
 #[test]
 fn boot_opens_the_index_and_nothing_else() {
     let b = boot(&master());
-    assert_eq!(b.loaded, 1, "anything above one means notes are being loaded eagerly again");
+    assert_eq!(
+        b.loaded, 1,
+        "anything above one means notes are being loaded eagerly again"
+    );
     assert_eq!(b.known_of, 3);
     assert!(b.plain().contains("know about 3"));
 }
@@ -23,7 +35,11 @@ fn boot_opens_the_index_and_nothing_else() {
 #[test]
 fn a_query_loads_the_one_note_that_holds_it_and_no_siblings() {
     let open = what_to_open(&master(), "when is the hotel booked for spain");
-    assert_eq!(open, vec!["spain-trip"], "it opened more than it needed: {open:?}");
+    assert_eq!(
+        open,
+        vec!["spain-trip"],
+        "it opened more than it needed: {open:?}"
+    );
 }
 
 #[test]
@@ -38,7 +54,10 @@ fn a_subject_the_index_has_nothing_on_opens_nothing() {
 #[test]
 fn the_same_query_twice_opens_the_same_notes_in_the_same_order() {
     let m = master();
-    assert_eq!(what_to_open(&m, "atlas homelab"), what_to_open(&m, "atlas homelab"));
+    assert_eq!(
+        what_to_open(&m, "atlas homelab"),
+        what_to_open(&m, "atlas homelab")
+    );
 }
 
 #[test]
@@ -62,9 +81,15 @@ fn useless_lines_are_findable_so_an_index_can_be_improved() {
 fn an_index_too_long_to_read_says_it_needs_splitting() {
     let mut c = Contents::new("");
     for i in 0..=MAX_LINES {
-        c.add(Line::new(&format!("note-{i:03}"), &format!("something about subject {i}")));
+        c.add(Line::new(
+            &format!("note-{i:03}"),
+            &format!("something about subject {i}"),
+        ));
     }
-    assert!(c.needs_splitting(), "past {MAX_LINES} it is a list you scroll, not a map you read");
+    assert!(
+        c.needs_splitting(),
+        "past {MAX_LINES} it is a list you scroll, not a map you read"
+    );
 }
 
 #[test]
@@ -78,7 +103,15 @@ fn adding_the_same_name_twice_updates_rather_than_duplicates() {
 
 #[test]
 fn a_note_on_disk_the_index_never_mentions_is_reported() {
-    let d = drift(&master(), &["spain-trip".into(), "areas".into(), "homelab".into(), "secret".into()]);
+    let d = drift(
+        &master(),
+        &[
+            "spain-trip".into(),
+            "areas".into(),
+            "homelab".into(),
+            "secret".into(),
+        ],
+    );
     assert_eq!(d.unlisted, vec!["secret"]);
     assert!(!d.is_clean());
     assert!(d.plain().contains("can't find"));
@@ -92,7 +125,10 @@ fn a_note_the_index_promises_and_cannot_deliver_is_reported() {
 
 #[test]
 fn an_index_that_matches_its_folder_is_clean_and_says_so_plainly() {
-    let d = drift(&master(), &["areas".into(), "homelab".into(), "spain-trip".into()]);
+    let d = drift(
+        &master(),
+        &["areas".into(), "homelab".into(), "spain-trip".into()],
+    );
     assert!(d.is_clean());
     assert_eq!(d.plain(), "The index matches what's there.");
 }
@@ -102,7 +138,11 @@ fn drift_is_raised_as_a_problem_rather_than_tidied_away_quietly() {
     let d = drift(&master(), &["spain-trip".into()]);
     let n = atlas::nudge::drifted(&d).expect("a wrong index is a fault, not a detail");
     assert!(n.relief.is_some(), "and Atlas offers to fix it");
-    assert!(atlas::nudge::drifted(&drift(&master(), &["areas".into(), "homelab".into(), "spain-trip".into()])).is_none());
+    assert!(atlas::nudge::drifted(&drift(
+        &master(),
+        &["areas".into(), "homelab".into(), "spain-trip".into()]
+    ))
+    .is_none());
 }
 
 // ========================= the flight recorder =========================
@@ -115,9 +155,18 @@ fn call(who: &str, at: u64) -> Call {
 fn the_words_of_a_prompt_are_never_written_to_disk() {
     let c = call("brief", 1);
     let line = to_line(&c);
-    assert!(!line.contains("a prompt"), "the prompt text reached the log: {line}");
-    assert!(!line.contains("a reply"), "the reply text reached the log: {line}");
-    assert!(line.contains("prompt_chars"), "but its size is kept: {line}");
+    assert!(
+        !line.contains("a prompt"),
+        "the prompt text reached the log: {line}"
+    );
+    assert!(
+        !line.contains("a reply"),
+        "the reply text reached the log: {line}"
+    );
+    assert!(
+        line.contains("prompt_chars"),
+        "but its size is kept: {line}"
+    );
     assert!(STORES_NO_CONTENT.contains("never written to disk"));
 }
 
@@ -126,7 +175,11 @@ fn a_log_survives_a_truncated_last_line_after_a_crash() {
     let good = to_line(&call("brief", 1));
     let text = format!("{good}\n{good}\n{{\"at\":3,\"asked_by\":\"br");
     let t = from_lines(&text);
-    assert_eq!(t.calls.len(), 2, "one bad line should not cost you the rest of the log");
+    assert_eq!(
+        t.calls.len(),
+        2,
+        "one bad line should not cost you the rest of the log"
+    );
 }
 
 #[test]
@@ -143,14 +196,21 @@ fn the_typical_time_is_a_median_so_one_stall_does_not_define_a_model() {
         t.record(Call::new("brief", "qwen2.5-7b", 0).finished(ms, "", ""));
     }
     let typical = t.typical_ms("qwen2.5-7b");
-    assert!(typical < 1_000, "one thirty-second stall made a fast model look slow: {typical}ms");
+    assert!(
+        typical < 1_000,
+        "one thirty-second stall made a fast model look slow: {typical}ms"
+    );
 }
 
 #[test]
 fn a_failed_call_does_not_count_towards_how_fast_a_model_is() {
     let mut t = Trace::default();
     t.record(Call::new("brief", "m", 0).finished(100, "", ""));
-    t.record(Call::new("brief", "m", 1).finished(99_999, "", "").broke("timeout"));
+    t.record(
+        Call::new("brief", "m", 1)
+            .finished(99_999, "", "")
+            .broke("timeout"),
+    );
     assert_eq!(t.typical_ms("m"), 100);
     assert_eq!(t.failure_rate("brief"), 0.5);
 }
@@ -171,7 +231,10 @@ fn a_call_can_be_tied_to_the_correction_it_caused() {
     t.record(call("draft", 1));
     assert!(t.blame("draft", "too long"));
     assert_eq!(t.caused_corrections().len(), 1);
-    assert!(!t.blame("nobody", "x"), "blaming a module that never called is a lie in the log");
+    assert!(
+        !t.blame("nobody", "x"),
+        "blaming a module that never called is a lie in the log"
+    );
 }
 
 #[test]
@@ -224,11 +287,26 @@ fn speed_is_translated_rather_than_passed_through() {
     assert!(!Engine::Piper.speed_is_inverted());
     assert!(Engine::Kokoro.speed_is_inverted());
     let faster = 0.8; // a quicker pace than normal
-    assert_eq!(Engine::Piper.speed_value(faster), 0.8, "piper's length scale is a pace already");
-    assert!(Engine::Kokoro.speed_value(faster) > 1.0, "Kokoro wants a larger multiplier to go faster");
-    let slower = atlas::tts::adjust(&atlas::tts::VoiceSettings::default(), "slower").0.speed;
-    assert!(Engine::Piper.speed_value(slower) > 1.0, "\"slower\" must reach piper as a longer length scale");
-    assert!(Engine::Kokoro.speed_value(slower) < 1.0, "\"slower\" must reach Kokoro as a smaller multiplier");
+    assert_eq!(
+        Engine::Piper.speed_value(faster),
+        0.8,
+        "piper's length scale is a pace already"
+    );
+    assert!(
+        Engine::Kokoro.speed_value(faster) > 1.0,
+        "Kokoro wants a larger multiplier to go faster"
+    );
+    let slower = atlas::tts::adjust(&atlas::tts::VoiceSettings::default(), "slower")
+        .0
+        .speed;
+    assert!(
+        Engine::Piper.speed_value(slower) > 1.0,
+        "\"slower\" must reach piper as a longer length scale"
+    );
+    assert!(
+        Engine::Kokoro.speed_value(slower) < 1.0,
+        "\"slower\" must reach Kokoro as a smaller multiplier"
+    );
 }
 
 #[test]
@@ -245,7 +323,10 @@ fn an_engine_pointed_at_the_wrong_executable_is_caught_before_it_goes_silent() {
     let mut cfg = EngineConfig::default();
     assert!(cfg.is_consistent());
     cfg.engine = Engine::Chatterbox;
-    assert!(!cfg.is_consistent(), "chatterbox pointed at piper.exe would just never speak");
+    assert!(
+        !cfg.is_consistent(),
+        "chatterbox pointed at piper.exe would just never speak"
+    );
     cfg.exe = "tools/voicebox/voicebox.exe".into();
     assert!(cfg.is_consistent());
 }

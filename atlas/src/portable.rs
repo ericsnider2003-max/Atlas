@@ -239,32 +239,54 @@ pub fn because(p: Platform, n: Needs) -> Option<&'static str> {
     use Needs::*;
     use Platform::*;
     Some(match (p, n) {
-        (Ios, WakeWord) => "an app that isn't in front of you gets no microphone. This is the \
-                            platform's decision and it isn't going to change",
-        (Ios, ReadScreen) | (Ios, ActInApps) => "one app cannot see or touch another. Shortcuts \
+        (Ios, WakeWord) => {
+            "an app that isn't in front of you gets no microphone. This is the \
+                            platform's decision and it isn't going to change"
+        }
+        (Ios, ReadScreen) | (Ios, ActInApps) => {
+            "one app cannot see or touch another. Shortcuts \
                                                  is the sanctioned way round it and it only does \
-                                                 what each app chose to expose",
+                                                 what each app chose to expose"
+        }
         (Ios, Background) => "a few minutes after you switch away, then it's suspended",
-        (Ios, Windows_) | (Android, Windows_) => "there are no windows to arrange — one app fills \
+        (Ios, Windows_) | (Android, Windows_) => {
+            "there are no windows to arrange — one app fills \
                                                   the screen, and the system decides when two \
-                                                  share it",
-        (Ios, Files) => "only what you hand it, or what it wrote itself. There is no walking your \
-                         folders",
-        (Ios, LaunchApps) => "only apps that published a way in, and only to the front of them — \
-                              nothing chosen off a list of what is installed",
-        (Mac, ReadScreen) | (Mac, ActInApps) => "needs Screen Recording and Accessibility \
-                                                 permission, granted once in System Settings",
-        (Mac, Camera) => "camera permission is granted to whatever launched Atlas, so the prompt \
-                          names that rather than Atlas",
-        (Ios, Camera) => "the camera is there, but only through the platform's capture API — the \
-                          ffmpeg line every desktop uses doesn't exist on a phone",
+                                                  share it"
+        }
+        (Ios, Files) => {
+            "only what you hand it, or what it wrote itself. There is no walking your \
+                         folders"
+        }
+        (Ios, LaunchApps) => {
+            "only apps that published a way in, and only to the front of them — \
+                              nothing chosen off a list of what is installed"
+        }
+        (Mac, ReadScreen) | (Mac, ActInApps) => {
+            "needs Screen Recording and Accessibility \
+                                                 permission, granted once in System Settings"
+        }
+        (Mac, Camera) => {
+            "camera permission is granted to whatever launched Atlas, so the prompt \
+                          names that rather than Atlas"
+        }
+        (Ios, Camera) => {
+            "the camera is there, but only through the platform's capture API — the \
+                          ffmpeg line every desktop uses doesn't exist on a phone"
+        }
         (Web, Camera) => "works with permission, and only while the page is open",
-        (Linux, Windows_) => "X11 and Wayland need different code, and Wayland deliberately \
-                              restricts what one app can do to another",
-        (Linux, RealEncryption) => "no single equivalent of DPAPI — it depends on which keyring \
-                                    is installed",
-        (Android, ReadScreen) | (Android, ActInApps) => "an accessibility service, which the \
-                                                         user turns on knowing what it means",
+        (Linux, Windows_) => {
+            "X11 and Wayland need different code, and Wayland deliberately \
+                              restricts what one app can do to another"
+        }
+        (Linux, RealEncryption) => {
+            "no single equivalent of DPAPI — it depends on which keyring \
+                                    is installed"
+        }
+        (Android, ReadScreen) | (Android, ActInApps) => {
+            "an accessibility service, which the \
+                                                         user turns on knowing what it means"
+        }
         (Web, RealEncryption) => "nothing in a browser can protect a secret from the browser",
         (Web, _) => "a page only sees itself",
         _ => return None,
@@ -277,7 +299,10 @@ pub fn because(p: Platform, n: Needs) -> Option<&'static str> {
 /// matter of time and the first isn't.
 pub fn coverage(p: Platform) -> (usize, usize) {
     let all = Needs::EVERY;
-    let allowed = all.iter().filter(|n| how(p, **n).is_effort_not_a_wall()).count();
+    let allowed = all
+        .iter()
+        .filter(|n| how(p, **n).is_effort_not_a_wall())
+        .count();
     (allowed, all.len())
 }
 
@@ -336,6 +361,8 @@ pub struct PortableConfig {
 
 impl Default for PortableConfig {
     fn default() -> Self {
-        PortableConfig { warn_up_front: true }
+        PortableConfig {
+            warn_up_front: true,
+        }
     }
 }

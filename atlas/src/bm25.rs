@@ -43,8 +43,8 @@ pub fn term_weight(tf: f64, doc_len: f64, avg_len: f64) -> f64 {
 /// Words too common to rank on. Short on purpose: BM25's IDF already
 /// down-weights common words, this only saves index space.
 const STOP: [&str; 25] = [
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "has", "in", "is", "it", "of", "on", "or", "that",
-    "the", "this", "to", "was", "were", "will", "with",
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "has", "in", "is", "it", "of",
+    "on", "or", "that", "the", "this", "to", "was", "were", "will", "with",
 ];
 
 #[derive(Debug, Default, Clone)]
@@ -57,7 +57,10 @@ pub struct Index {
 }
 
 fn terms(text: &str) -> Vec<String> {
-    stems_of(text).into_iter().filter(|w| !STOP.contains(&w.as_str())).collect()
+    stems_of(text)
+        .into_iter()
+        .filter(|w| !STOP.contains(&w.as_str()))
+        .collect()
 }
 
 impl Index {
@@ -97,7 +100,9 @@ impl Index {
         q.dedup();
         let mut acc: HashMap<u32, f64> = HashMap::new();
         for t in &q {
-            let Some(list) = self.postings.get(t) else { continue };
+            let Some(list) = self.postings.get(t) else {
+                continue;
+            };
             let idf = self.idf(list.len());
             for (d, tf) in list {
                 let tf = *tf as f64;
@@ -106,8 +111,15 @@ impl Index {
                 *acc.entry(*d).or_default() += s;
             }
         }
-        let mut out: Vec<(u64, f64)> = acc.into_iter().map(|(d, s)| (self.ids[d as usize], s)).collect();
-        out.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
+        let mut out: Vec<(u64, f64)> = acc
+            .into_iter()
+            .map(|(d, s)| (self.ids[d as usize], s))
+            .collect();
+        out.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.0.cmp(&b.0))
+        });
         out.truncate(k);
         out
     }
@@ -124,7 +136,11 @@ pub fn rrf(lists: &[Vec<u64>], k: f64) -> Vec<(u64, f64)> {
         }
     }
     let mut out: Vec<(u64, f64)> = acc.into_iter().collect();
-    out.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
+    out.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.0.cmp(&b.0))
+    });
     out
 }
 
@@ -134,7 +150,11 @@ mod tests {
 
     fn idx() -> Index {
         let mut i = Index::default();
-        i.add(1, "VPS disk", "The homelab server disk filled up overnight.");
+        i.add(
+            1,
+            "VPS disk",
+            "The homelab server disk filled up overnight.",
+        );
         i.add(
             2,
             "Long journal",
@@ -142,7 +162,11 @@ mod tests {
              called mum, looked at the garden, and at some point the disk was mentioned once \
              by someone at dinner, then we talked about holidays and weather and cars for hours.",
         );
-        i.add(3, "Trading notes", "Closed three trades early; trading was slow.");
+        i.add(
+            3,
+            "Trading notes",
+            "Closed three trades early; trading was slow.",
+        );
         i
     }
 

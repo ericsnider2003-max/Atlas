@@ -82,10 +82,12 @@ fn no_vault_yet() {
 fn a_vault_with_a_passphrase() {
     no_vault_yet();
     let mut v = Vault::default();
-    v.open(PASSPHRASE, 100, &VaultConfig::default()).expect("first open sets it");
+    v.open(PASSPHRASE, 100, &VaultConfig::default())
+        .expect("first open sets it");
     assert!(v.has_a_passphrase());
     v.lock();
-    v.open(PASSPHRASE, 100, &VaultConfig::default()).expect("second open verifies");
+    v.open(PASSPHRASE, 100, &VaultConfig::default())
+        .expect("second open verifies");
     assert!(v.proved_it(), "the fixture's vault cannot prove anything");
     v.lock();
     v.save(&install()).expect("the daemon loads this from disk");
@@ -124,7 +126,13 @@ fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
     // from the install's state (`keeps_the_install_vault`), so give it the
     // vault the fixture just saved.
     let _ = std::fs::copy(install().root().join("vault.json"), dir.join("vault.json"));
-    Daemon::new(c, p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(dir),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 /// A keyboard that types whatever it was told to, and remembers being asked.
@@ -139,10 +147,16 @@ struct Types {
 
 impl Types {
     fn nothing() -> Self {
-        Types { answer: None, asked: Arc::new(Mutex::new(Vec::new())) }
+        Types {
+            answer: None,
+            asked: Arc::new(Mutex::new(Vec::new())),
+        }
     }
     fn saying(what: &str) -> Self {
-        Types { answer: Some(what.to_string()), asked: Arc::new(Mutex::new(Vec::new())) }
+        Types {
+            answer: Some(what.to_string()),
+            asked: Arc::new(Mutex::new(Vec::new())),
+        }
     }
     fn prompts(&self) -> Vec<String> {
         self.asked.lock().unwrap().clone()
@@ -219,7 +233,11 @@ fn im_back_reaches_the_prompt_even_though_the_phrase_belongs_to_resume() {
     // the bridge deleted -- it was testing the command that does not need a
     // bridge. Caught by planting the deletion and watching this stay green.
     let said = d.turn("im back", 2_000);
-    assert_eq!(keyboard.prompts().len(), 1, "it did not ask for the passphrase: {said}");
+    assert_eq!(
+        keyboard.prompts().len(),
+        1,
+        "it did not ask for the passphrase: {said}"
+    );
     assert!(said.contains("Yours again"), "{said}");
     assert_eq!(on_disk().stance, Stance::Yours);
 }
@@ -238,8 +256,15 @@ fn resume_still_resumes_when_something_is_actually_paused() {
 
     d.turn("hold on", 2_000);
     let said = d.turn("carry on", 2_100);
-    assert!(keyboard.prompts().is_empty(), "a paused Atlas asked for the passphrase: {said}");
-    assert_eq!(on_disk().stance, Stance::HandedOver, "resuming ended the handover");
+    assert!(
+        keyboard.prompts().is_empty(),
+        "a paused Atlas asked for the passphrase: {said}"
+    );
+    assert_eq!(
+        on_disk().stance,
+        Stance::HandedOver,
+        "resuming ended the handover"
+    );
 }
 
 #[test]
@@ -252,14 +277,22 @@ fn saying_it_asks_for_the_passphrase_and_changes_nothing_by_itself() {
     let mut d = daemon(&c, &p, "nothing").with_typed_prompt(Box::new(keyboard.clone()));
 
     let said = d.turn("this is mine again", 2_000);
-    assert_eq!(keyboard.prompts().len(), 1, "it did not ask for the passphrase");
+    assert_eq!(
+        keyboard.prompts().len(),
+        1,
+        "it did not ask for the passphrase"
+    );
     assert!(said.contains("Nothing typed"), "{said}");
     assert_eq!(
         on_disk().stance,
         Stance::HandedOver,
         "the phrase ended the handover without a passphrase"
     );
-    assert_eq!(on_disk().refused, 0, "walking away from the prompt counted against someone");
+    assert_eq!(
+        on_disk().refused,
+        0,
+        "walking away from the prompt counted against someone"
+    );
 }
 
 #[test]
@@ -272,7 +305,10 @@ fn a_wrong_passphrase_leaves_it_handed_over_and_is_counted() {
         .with_typed_prompt(Box::new(Types::saying("not the passphrase at all")));
 
     let said = d.turn("this is mine again", 2_000);
-    assert!(!said.contains("Yours again"), "a wrong passphrase was accepted: {said}");
+    assert!(
+        !said.contains("Yours again"),
+        "a wrong passphrase was accepted: {said}"
+    );
     assert_eq!(on_disk().stance, Stance::HandedOver);
     assert_eq!(on_disk().refused, 1, "the attempt was not counted");
 }
@@ -308,9 +344,19 @@ fn the_prompt_explains_itself_because_nothing_can_speak_before_it() {
     let mut d = daemon(&c, &p, "wording").with_typed_prompt(Box::new(keyboard.clone()));
     d.turn("this is mine again", 2_000);
 
-    let prompt = keyboard.prompts().first().cloned().expect("nothing was put in front of anyone");
-    assert!(prompt.contains("Atlas"), "the prompt does not say who is asking: {prompt}");
-    assert!(prompt.contains("passphrase"), "the prompt does not say what it wants: {prompt}");
+    let prompt = keyboard
+        .prompts()
+        .first()
+        .cloned()
+        .expect("nothing was put in front of anyone");
+    assert!(
+        prompt.contains("Atlas"),
+        "the prompt does not say who is asking: {prompt}"
+    );
+    assert!(
+        prompt.contains("passphrase"),
+        "the prompt does not say what it wants: {prompt}"
+    );
     assert!(
         prompt.contains("won't be shown"),
         "the prompt does not say the typing is hidden, so a dead-looking screen \
@@ -338,8 +384,14 @@ fn with_nowhere_to_type_it_says_so_rather_than_appearing_to_have_asked() {
         said.contains("Accounts page") && said.contains("Vault"),
         "with nowhere to type, it did not name the way that works: {said}"
     );
-    assert!(!said.contains("atlas handover"), "a terminal command in a spoken answer: {said}");
-    assert!(!said.contains("Nothing typed"), "it claimed to have asked: {said}");
+    assert!(
+        !said.contains("atlas handover"),
+        "a terminal command in a spoken answer: {said}"
+    );
+    assert!(
+        !said.contains("Nothing typed"),
+        "it claimed to have asked: {said}"
+    );
     assert_eq!(on_disk().stance, Stance::HandedOver);
 }
 
@@ -381,8 +433,10 @@ fn with_no_passphrase_on_the_vault_it_says_so_instead_of_asking_for_one() {
     assert!(said.contains("no passphrase"), "{said}");
     // 27 Sep 2026: named `atlas vault` until the Accounts page could set a
     // passphrase; now it points there.
-    assert!(said.contains("Accounts page"), "it does not say how to fix it: {said}");
+    assert!(
+        said.contains("Accounts page"),
+        "it does not say how to fix it: {said}"
+    );
     assert!(keyboard.prompts().is_empty(), "it asked anyway");
     assert_eq!(on_disk().stance, Stance::HandedOver);
 }
-

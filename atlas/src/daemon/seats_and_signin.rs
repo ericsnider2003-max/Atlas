@@ -27,8 +27,14 @@ pub(super) fn ask_seats(
             let o = crate::council::parse_opinion(seat, reply);
             if o.lean == crate::council::Lean::Depends && o.would_change_my_mind.is_none() {
                 (false, "wouldn't commit".to_string())
-            } else if retests && o.lean == crate::council::Lean::Against && o.would_change_my_mind.is_none() {
-                (false, "said no without saying what would change it".to_string())
+            } else if retests
+                && o.lean == crate::council::Lean::Against
+                && o.would_change_my_mind.is_none()
+            {
+                (
+                    false,
+                    "said no without saying what would change it".to_string(),
+                )
             } else {
                 (true, String::new())
             }
@@ -80,12 +86,26 @@ pub(super) fn site_named_in(said: &str) -> Option<String> {
         return Some(d);
     }
     let words: Vec<&str> = said.split_whitespace().collect();
-    let at = words.iter().rposition(|w| matches!(*w, "on" | "for" | "at"))?;
+    let at = words
+        .iter()
+        .rposition(|w| matches!(*w, "on" | "for" | "at"))?;
     // "turn on two factor" — the "on" is the phrase, not the site.
     let rest: Vec<&str> = words[at + 1..]
         .iter()
         .copied()
-        .filter(|w| !matches!(*w, "my" | "the" | "account" | "accounts" | "please" | "two" | "factor" | "2fa" | "step"))
+        .filter(|w| {
+            !matches!(
+                *w,
+                "my" | "the"
+                    | "account"
+                    | "accounts"
+                    | "please"
+                    | "two"
+                    | "factor"
+                    | "2fa"
+                    | "step"
+            )
+        })
         .collect();
     let site = rest.join(" ");
     (!site.is_empty()).then_some(site)
@@ -101,7 +121,9 @@ pub(super) fn mail_host(account: &crate::mail::Account) -> Option<String> {
     if !account.imap_host.is_empty() {
         return Some(account.imap_host.clone());
     }
-    crate::mail::Provider::from_address(&account.address).imap_host().map(str::to_string)
+    crate::mail::Provider::from_address(&account.address)
+        .imap_host()
+        .map(str::to_string)
 }
 
 /// The action that takes back something Atlas did, from what was recorded.

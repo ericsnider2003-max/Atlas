@@ -12,13 +12,30 @@ use atlas::voiceover::{
 
 fn accounts() -> Vec<Account> {
     vec![
-        Account { site: "Gmail".into(), second_factor: SecondFactor::Sms, stakes: Stakes::Keystone,
-                  reused_password: false, has_recovery_codes: false,
-                  settings_url: Some("https://myaccount.google.com/security".into()) },
-        Account { site: "Chase Bank".into(), second_factor: SecondFactor::Sms, stakes: Stakes::High,
-                  reused_password: false, has_recovery_codes: false, settings_url: None },
-        Account { site: "GitHub".into(), second_factor: SecondFactor::App, stakes: Stakes::High,
-                  reused_password: false, has_recovery_codes: true, settings_url: None },
+        Account {
+            site: "Gmail".into(),
+            second_factor: SecondFactor::Sms,
+            stakes: Stakes::Keystone,
+            reused_password: false,
+            has_recovery_codes: false,
+            settings_url: Some("https://myaccount.google.com/security".into()),
+        },
+        Account {
+            site: "Chase Bank".into(),
+            second_factor: SecondFactor::Sms,
+            stakes: Stakes::High,
+            reused_password: false,
+            has_recovery_codes: false,
+            settings_url: None,
+        },
+        Account {
+            site: "GitHub".into(),
+            second_factor: SecondFactor::App,
+            stakes: Stakes::High,
+            reused_password: false,
+            has_recovery_codes: true,
+            settings_url: None,
+        },
     ]
 }
 
@@ -34,8 +51,12 @@ fn what_breaks_when_you_travel_is_sms_not_two_factor() {
 
 #[test]
 fn an_app_code_is_explained_as_working_with_no_signal_at_all() {
-    assert!(Survives::of(SecondFactor::App).plain().contains("no signal"));
-    assert!(Survives::of(SecondFactor::Sms).plain().contains("this is what breaks"));
+    assert!(Survives::of(SecondFactor::App)
+        .plain()
+        .contains("no signal"));
+    assert!(Survives::of(SecondFactor::Sms)
+        .plain()
+        .contains("this is what breaks"));
 }
 
 #[test]
@@ -44,21 +65,29 @@ fn atlas_names_exactly_which_accounts_would_lock_you_out() {
     let stuck = would_lock_you_out(&accs);
     assert_eq!(stuck.len(), 2);
     assert!(stuck.iter().any(|a| a.site == "Gmail"));
-    assert!(!stuck.iter().any(|a| a.site == "GitHub"), "app code with recovery is fine");
+    assert!(
+        !stuck.iter().any(|a| a.site == "GitHub"),
+        "app code with recovery is fine"
+    );
 }
 
 #[test]
 fn the_fix_offered_is_better_protection_not_less() {
     let p = plan(&accounts());
     assert!(p.iter().any(|x| x.what.contains("authenticator app")));
-    assert!(p.iter().any(|x| x.what.contains("print the recovery codes")));
+    assert!(p
+        .iter()
+        .any(|x| x.what.contains("print the recovery codes")));
     assert!(!p.iter().any(|x| x.what.to_lowercase().contains("turn off")));
 }
 
 #[test]
 fn recovery_codes_are_named_as_the_thing_that_actually_stops_a_lockout() {
     let p = plan(&accounts());
-    let codes = p.iter().find(|x| x.what.contains("recovery codes")).unwrap();
+    let codes = p
+        .iter()
+        .find(|x| x.what.contains("recovery codes"))
+        .unwrap();
     assert!(codes.why.contains("no phone, no signal and no battery"));
     assert!(codes.why.contains("single thing that stops a lockout"));
 }
@@ -68,7 +97,11 @@ fn a_hardware_key_is_raised_as_built_for_this_situation() {
     let p = plan(&accounts());
     let key = p.iter().find(|x| x.what.contains("hardware key")).unwrap();
     assert!(key.why.contains("no battery"));
-    assert!(key.why.contains("spare kept at home"), "and the obvious objection: {}", key.why);
+    assert!(
+        key.why.contains("spare kept at home"),
+        "and the obvious objection: {}",
+        key.why
+    );
 }
 
 #[test]
@@ -113,7 +146,10 @@ fn if_you_only_do_one_thing_it_is_the_account_everything_resets_through() {
 
 #[test]
 fn it_checks_periodically_because_dates_move_and_preparation_takes_days() {
-    let cfg = AwayConfig { enabled: true, ..Default::default() };
+    let cfg = AwayConfig {
+        enabled: true,
+        ..Default::default()
+    };
     assert!(periodic_nudge(&accounts(), 30, &cfg).is_none(), "not yet");
     let nudge = periodic_nudge(&accounts(), 120, &cfg).unwrap();
     assert!(nudge.contains("if you had to leave tomorrow"));
@@ -123,19 +159,29 @@ fn it_checks_periodically_because_dates_move_and_preparation_takes_days() {
 #[test]
 fn accounts_that_would_all_survive_get_nothing() {
     let ready = vec![Account {
-        site: "Gmail".into(), second_factor: SecondFactor::App, stakes: Stakes::Keystone,
-        reused_password: false, has_recovery_codes: true, settings_url: None,
+        site: "Gmail".into(),
+        second_factor: SecondFactor::App,
+        stakes: Stakes::Keystone,
+        reused_password: false,
+        has_recovery_codes: true,
+        settings_url: None,
     }];
     // Behaviour, not just wording: "Nothing to do" is only honest if no
     // account would actually lock you out.
-    assert!(would_lock_you_out(&ready).is_empty(), "an account that would survive was flagged");
+    assert!(
+        would_lock_you_out(&ready).is_empty(),
+        "an account that would survive was flagged"
+    );
     assert!(away_spoken(&ready).contains("Nothing to do"));
 }
 
 // ================= voiceovers =================
 
 fn cfg() -> VoiceoverConfig {
-    VoiceoverConfig { enabled: true, ..Default::default() }
+    VoiceoverConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 #[test]
@@ -155,8 +201,20 @@ fn a_faster_pace_takes_less_time() {
 fn lines_land_on_cuts_rather_than_just_after_them() {
     // A line half a second late sounds wrong in a way people notice without
     // knowing why.
-    let script = vec!["First line here.".to_string(), "Second line here.".to_string()];
-    let beats = vec![Beat { at: 0.0, strong: true }, Beat { at: 2.4, strong: true }];
+    let script = vec![
+        "First line here.".to_string(),
+        "Second line here.".to_string(),
+    ];
+    let beats = vec![
+        Beat {
+            at: 0.0,
+            strong: true,
+        },
+        Beat {
+            at: 2.4,
+            strong: true,
+        },
+    ];
     let lines = lay_out(&script, &beats, 12.0, &cfg());
     assert!(snapped_count(&lines, &beats) >= 1);
 }
@@ -164,7 +222,9 @@ fn lines_land_on_cuts_rather_than_just_after_them() {
 #[test]
 fn a_script_longer_than_the_footage_says_how_many_words_to_lose() {
     // You cut words, not seconds.
-    let script: Vec<String> = (0..8).map(|i| format!("This is line number {i} of the script.")).collect();
+    let script: Vec<String> = (0..8)
+        .map(|i| format!("This is line number {i} of the script."))
+        .collect();
     let lines = lay_out(&script, &[], 10.0, &cfg());
     match fits(&lines, 10.0, &cfg()) {
         Fit::TooLong { cut_words, .. } => assert!(cut_words > 5, "got {cut_words}"),
@@ -232,9 +292,16 @@ fn short_sentences_are_left_as_they_are() {
 #[test]
 fn what_atlas_says_covers_the_fit_and_the_cuts() {
     let script = vec!["One.".to_string(), "Two.".to_string()];
-    let beats = vec![Beat { at: 0.0, strong: true }];
+    let beats = vec![Beat {
+        at: 0.0,
+        strong: true,
+    }];
     let lines = lay_out(&script, &beats, 10.0, &cfg());
-    let said = vo_spoken(&lines, &fits(&lines, 10.0, &cfg()), snapped_count(&lines, &beats));
+    let said = vo_spoken(
+        &lines,
+        &fits(&lines, 10.0, &cfg()),
+        snapped_count(&lines, &beats),
+    );
     assert!(said.contains("2 lines"));
     assert!(said.contains("moved onto cuts") || said.contains("Fits"));
 }

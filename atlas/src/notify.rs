@@ -359,7 +359,10 @@ pub fn spoken(notes: &[Note]) -> String {
     if notes.is_empty() {
         return String::new();
     }
-    let urgent: Vec<&Note> = notes.iter().filter(|n| n.urgency == Urgency::Urgent).collect();
+    let urgent: Vec<&Note> = notes
+        .iter()
+        .filter(|n| n.urgency == Urgency::Urgent)
+        .collect();
     if urgent.is_empty() {
         return format!(
             "{} thing{} happened while you were away, nothing urgent.",
@@ -372,7 +375,15 @@ pub fn spoken(notes: &[Note]) -> String {
         "While you were away: {}{}.",
         named.join(", "),
         if notes.len() > named.len() {
-            format!(" and {} other{}", notes.len() - named.len(), if notes.len() - named.len() == 1 { "" } else { "s" })
+            format!(
+                " and {} other{}",
+                notes.len() - named.len(),
+                if notes.len() - named.len() == 1 {
+                    ""
+                } else {
+                    "s"
+                }
+            )
         } else {
             String::new()
         }
@@ -399,7 +410,11 @@ pub fn show(note: &Note, cfg: &NotifyConfig, vars: &Vars) -> Result<(), String> 
         // A Windows notification first: it waits in the Action Center if you
         // weren't looking. A private note shows its title only, as below.
         if cfg!(windows) {
-            let body = if note.private { "Ask me when you're ready.".to_string() } else { note.body.clone() };
+            let body = if note.private {
+                "Ask me when you're ready.".to_string()
+            } else {
+                note.body.clone()
+            };
             if crate::toast::show(&note.title, &body).is_ok() {
                 return Ok(());
             }
@@ -546,7 +561,10 @@ pub fn how_to_say(
     if in_public {
         return Say::Silent(Quiet::InPublic);
     }
-    match outputs.iter().find(|d| d.kind == crate::audio::Kind::Output) {
+    match outputs
+        .iter()
+        .find(|d| d.kind == crate::audio::Kind::Output)
+    {
         Some(d) => Say::Aloud(d.name.clone()),
         // Microphones listed and not one speaker: the lister can't see
         // speakers, not a machine without any. Windows' dshow listing names
@@ -572,7 +590,5 @@ pub fn on_a_call(active: Option<&crate::platform::ActiveWindow>) -> bool {
     let hay = format!("{} {}", w.process.to_lowercase(), w.title.to_lowercase());
     // A meeting held in a browser tab shows up in the title rather than the
     // process name, so both are read.
-    CALL_APPS.iter().any(|a| hay.contains(a))
-        || hay.contains("meeting")
-        || hay.contains(" call")
+    CALL_APPS.iter().any(|a| hay.contains(a)) || hay.contains("meeting") || hay.contains(" call")
 }

@@ -11,7 +11,10 @@ use p256::pkcs8::EncodePrivateKey;
 
 fn a_key() -> (String, p256::ecdsa::VerifyingKey) {
     let k = p256::ecdsa::SigningKey::from_slice(&[7u8; 32]).unwrap();
-    let pem = k.to_pkcs8_pem(p256::pkcs8::LineEnding::LF).unwrap().to_string();
+    let pem = k
+        .to_pkcs8_pem(p256::pkcs8::LineEnding::LF)
+        .unwrap()
+        .to_string();
     (pem, *k.verifying_key())
 }
 
@@ -39,7 +42,9 @@ fn the_token_is_es256_with_the_key_id_and_team_and_it_verifies() {
     let sig_bytes = unb64url(parts[2]);
     assert_eq!(sig_bytes.len(), 64);
     let sig = p256::ecdsa::Signature::from_slice(&sig_bytes).unwrap();
-    public.verify(format!("{}.{}", parts[0], parts[1]).as_bytes(), &sig).expect("Apple could check it");
+    public
+        .verify(format!("{}.{}", parts[0], parts[1]).as_bytes(), &sig)
+        .expect("Apple could check it");
     // No padding anywhere: base64url without '='.
     assert!(!jwt.contains('='));
 }
@@ -49,7 +54,11 @@ fn a_file_that_isnt_a_key_is_said_plainly() {
     let e = apns::provider_token("not a key", "G3D89YSJD4", "Z6NSM9AXB7", 1).unwrap_err();
     assert!(e.contains("isn't a key Apple gives"), "{e}");
     // While a real key signs.
-    assert_eq!(apns::provider_token(&a_key().0, "G3D89YSJD4", "Z6NSM9AXB7", 1).map(|t| t.split('.').count()), Ok(3));
+    assert_eq!(
+        apns::provider_token(&a_key().0, "G3D89YSJD4", "Z6NSM9AXB7", 1)
+            .map(|t| t.split('.').count()),
+        Ok(3)
+    );
 }
 
 #[test]
@@ -82,7 +91,12 @@ fn the_phones_address_is_only_taken_from_your_own_devices() {
 
 #[test]
 fn the_lock_screen_gets_the_title_and_never_the_detail_unless_allowed() {
-    let note = atlas::notify::Note::new("Your render finished", "card 4111 1111 1111 1111 on the invoice", atlas::notify::Urgency::Routine, 1);
+    let note = atlas::notify::Note::new(
+        "Your render finished",
+        "card 4111 1111 1111 1111 on the invoice",
+        atlas::notify::Urgency::Routine,
+        1,
+    );
     let cfg = atlas::phone::PhoneConfig::default();
     let p: serde_json::Value = serde_json::from_str(&apns::push_payload(&note, &cfg)).unwrap();
     assert_eq!(p["aps"]["alert"]["title"], "Your render finished");
@@ -92,22 +106,44 @@ fn the_lock_screen_gets_the_title_and_never_the_detail_unless_allowed() {
 
 #[test]
 fn the_signed_token_goes_in_a_header_file_not_on_the_command_line() {
-    let d = apns::Device { name: "p".into(), token: "c".repeat(64), env: "production".into(), since: 0 };
+    let d = apns::Device {
+        name: "p".into(),
+        token: "c".repeat(64),
+        env: "production".into(),
+        since: 0,
+    };
     let args = apns::push_args(std::path::Path::new("/tmp/h.txt"), &d);
     assert!(args.contains(&"--http2".to_string()));
     assert!(args.contains(&"@/tmp/h.txt".to_string()));
     assert!(!args.iter().any(|a| a.contains("bearer")));
-    assert!(args.last().unwrap().starts_with("https://api.push.apple.com/3/device/"));
-    let sandbox = apns::Device { env: "sandbox".into(), ..d };
-    assert!(apns::push_args(std::path::Path::new("h"), &sandbox).last().unwrap().starts_with(apns::SANDBOX));
+    assert!(args
+        .last()
+        .unwrap()
+        .starts_with("https://api.push.apple.com/3/device/"));
+    let sandbox = apns::Device {
+        env: "sandbox".into(),
+        ..d
+    };
+    assert!(apns::push_args(std::path::Path::new("h"), &sandbox)
+        .last()
+        .unwrap()
+        .starts_with(apns::SANDBOX));
 }
 
 #[test]
 fn apples_answers_are_read_and_a_dead_address_is_dropped() {
     assert_eq!(apns::read_outcome("\n200"), Outcome::Delivered);
-    assert_eq!(apns::read_outcome("{\"reason\":\"Unregistered\"}\n410"), Outcome::Gone);
-    assert_eq!(apns::read_outcome("{\"reason\":\"BadDeviceToken\"}\n400"), Outcome::Gone);
-    assert!(matches!(apns::read_outcome("{\"reason\":\"ExpiredProviderToken\"}\n403"), Outcome::Failed(w) if w.contains("403")));
+    assert_eq!(
+        apns::read_outcome("{\"reason\":\"Unregistered\"}\n410"),
+        Outcome::Gone
+    );
+    assert_eq!(
+        apns::read_outcome("{\"reason\":\"BadDeviceToken\"}\n400"),
+        Outcome::Gone
+    );
+    assert!(
+        matches!(apns::read_outcome("{\"reason\":\"ExpiredProviderToken\"}\n403"), Outcome::Failed(w) if w.contains("403"))
+    );
     let mut d = Devices::default();
     d.set("a", &"1".repeat(64), "production", 1);
     d.set("b", &"2".repeat(64), "production", 1);

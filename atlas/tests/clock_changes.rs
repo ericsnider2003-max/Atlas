@@ -20,11 +20,19 @@ fn new_york() -> atlas::tz::Zone {
 fn five_pm_on_a_day_after_the_change_is_five_pm_then() {
     let ny = new_york();
     let day = atlas::civil::days_from_civil(2026, 11, 10);
-    assert_eq!(utc_of_wall_in(day, 17 * 3600, &ny), utc(2026, 11, 10, 22), "17:00 EST is 22:00 UTC");
+    assert_eq!(
+        utc_of_wall_in(day, 17 * 3600, &ny),
+        utc(2026, 11, 10, 22),
+        "17:00 EST is 22:00 UTC"
+    );
     // What it was: today's (October, EDT) offset applied to November.
     let october_offset = ny.offset_at(utc(2026, 10, 5, 12) as i64);
     let old = (day * 86_400 + 17 * 3600 - october_offset) as u64;
-    assert_eq!(old, utc(2026, 11, 10, 21), "the old reading was 16:00 on the wall");
+    assert_eq!(
+        old,
+        utc(2026, 11, 10, 21),
+        "the old reading was 16:00 on the wall"
+    );
 }
 
 #[test]
@@ -43,18 +51,30 @@ fn times_on_other_days_are_not_read_with_todays_offset() {
     // The places that read a date that isn't now: a task's due day, the day a
     // mail or a work span falls on, the time a step started.
     for (name, bad) in [
-        ("workspace_view", "midnight(day, crate::localclock::offset_secs())"),
+        (
+            "workspace_view",
+            "midnight(day, crate::localclock::offset_secs())",
+        ),
         ("workspace_view", "start + 86_400"),
-        ("daemon", "midnight(created, crate::localclock::offset_secs())"),
+        (
+            "daemon",
+            "midnight(created, crate::localclock::offset_secs())",
+        ),
         ("daemon", "localclock::midnight(s.start, off)"),
         ("daemon", "localclock::hhmm(at, off)"),
-        ("daily", "midnight(shifted, crate::localclock::offset_secs())"),
+        (
+            "daily",
+            "midnight(shifted, crate::localclock::offset_secs())",
+        ),
         ("hublive", "17 * 3600 - crate::localclock::offset_secs()"),
         ("hublive", "localclock::day(d, off)"),
         ("hublive", "localclock::hhmm(e.at, off)"),
         ("hublive", "localclock::hhmm(w.started, off)"),
     ] {
         let src = crate::common::source_of(name);
-        assert!(!src.contains(bad), "{name}: `{bad}` reads another day with today's offset");
+        assert!(
+            !src.contains(bad),
+            "{name}: `{bad}` reads another day with today's offset"
+        );
     }
 }

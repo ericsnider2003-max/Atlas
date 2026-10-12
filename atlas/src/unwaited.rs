@@ -120,7 +120,11 @@ pub fn reap() -> usize {
 /// person's own windows and Atlas does not close them — but it should say
 /// they are there, because it started them and nothing else will mention it.
 pub fn still_running() -> usize {
-    LOOSE.lock().or_else(crate::crash::unpoison).map(|l| l.len()).unwrap_or(0)
+    LOOSE
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .map(|l| l.len())
+        .unwrap_or(0)
 }
 
 /// `try_wait` on each, dropping the ones that have ended.

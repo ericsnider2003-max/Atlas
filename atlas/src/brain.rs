@@ -73,13 +73,22 @@ pub struct Msg {
 
 impl Msg {
     pub fn system(s: impl Into<String>) -> Msg {
-        Msg { role: Role::System, content: s.into() }
+        Msg {
+            role: Role::System,
+            content: s.into(),
+        }
     }
     pub fn user(s: impl Into<String>) -> Msg {
-        Msg { role: Role::User, content: s.into() }
+        Msg {
+            role: Role::User,
+            content: s.into(),
+        }
     }
     pub fn assistant(s: impl Into<String>) -> Msg {
-        Msg { role: Role::Assistant, content: s.into() }
+        Msg {
+            role: Role::Assistant,
+            content: s.into(),
+        }
     }
 }
 
@@ -170,7 +179,9 @@ fn tool_call_from_json(s: &str) -> Option<ToolCall> {
         return None;
     }
     let arguments = match f.get("arguments") {
-        Some(Value::String(a)) => serde_json::from_str(a).unwrap_or(Value::Object(Default::default())),
+        Some(Value::String(a)) => {
+            serde_json::from_str(a).unwrap_or(Value::Object(Default::default()))
+        }
         Some(a) => a.clone(),
         None => Value::Object(Default::default()),
     };
@@ -182,7 +193,11 @@ fn tool_call_from_json(s: &str) -> Option<ToolCall> {
 /// then this turn. What `Llm::chat` falls back to, and exactly the shape the
 /// one-prompt path always sent.
 pub fn flatten_messages(messages: &[Msg]) -> (String, String) {
-    let system: Vec<&str> = messages.iter().filter(|m| m.role == Role::System).map(|m| m.content.as_str()).collect();
+    let system: Vec<&str> = messages
+        .iter()
+        .filter(|m| m.role == Role::System)
+        .map(|m| m.content.as_str())
+        .collect();
     let turns: Vec<&Msg> = messages.iter().filter(|m| m.role != Role::System).collect();
     let (earlier, last) = match turns.split_last() {
         Some((last, earlier)) if last.role == Role::User => (earlier, Some(*last)),
@@ -229,7 +244,9 @@ pub trait Llm: Send + Sync {
         false
     }
     /// Explicitly promises to poll the caller's stop/deadline during inference.
-    fn supports_bounded_chat(&self) -> bool { false }
+    fn supports_bounded_chat(&self) -> bool {
+        false
+    }
 
     /// A conversation as messages, with tools. `on_text` is handed the words
     /// as they arrive and returns `false` to stop generating (a sentence cap
@@ -245,7 +262,12 @@ pub trait Llm: Send + Sync {
     /// model is still reading the prompt too, when no word has come for
     /// `on_text` to stop at (30 Sep 2026, `deepbrain`: the deep model gives
     /// way to a turn). A model that can't be stopped mid-call just answers.
-    fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> Result<ChatReply> {
+    fn chat_until(
+        &self,
+        req: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        keep_going: &dyn Fn() -> bool,
+    ) -> Result<ChatReply> {
         let _ = keep_going;
         self.chat(req, on_text)
     }
@@ -277,7 +299,10 @@ pub trait Llm: Send + Sync {
     /// `cut_off` false; the caller still looks at the text itself.
     fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<LongReply> {
         let _ = max_tokens;
-        self.complete_hard(system, user).map(|text| LongReply { text, cut_off: false })
+        self.complete_hard(system, user).map(|text| LongReply {
+            text,
+            cut_off: false,
+        })
     }
 
     /// How many tokens this model reads and writes in one go, when known.
@@ -299,10 +324,19 @@ pub struct LongReply {
 /// Anthropic-shaped `max_tokens`, Ollama's `options.num_predict`. A body
 /// that isn't JSON, or names none of them, is left as it was (2 Oct 2026).
 pub fn with_max_tokens(body: &str, max_tokens: u32) -> String {
-    let Ok(mut v) = serde_json::from_str::<Value>(body) else { return body.to_string() };
-    let Some(o) = v.as_object_mut() else { return body.to_string() };
+    let Ok(mut v) = serde_json::from_str::<Value>(body) else {
+        return body.to_string();
+    };
+    let Some(o) = v.as_object_mut() else {
+        return body.to_string();
+    };
     let mut set = false;
-    for k in ["n_predict", "max_tokens", "max_new_tokens", "max_completion_tokens"] {
+    for k in [
+        "n_predict",
+        "max_tokens",
+        "max_new_tokens",
+        "max_completion_tokens",
+    ] {
         if o.contains_key(k) {
             o.insert(k.into(), serde_json::json!(max_tokens));
             set = true;
@@ -325,8 +359,15 @@ pub fn with_max_tokens(body: &str, max_tokens: u32) -> String {
 /// servers `finish_reason: "length"`; Anthropic `stop_reason:
 /// "max_tokens"`; Ollama `done_reason: "length"`.
 pub fn says_cut_off(reply: &Value) -> bool {
-    let s = |path: &str| dig(reply, path).and_then(|x| x.as_str()).map(str::to_string);
-    reply.get("stopped_limit").and_then(|b| b.as_bool()).unwrap_or(false)
+    let s = |path: &str| {
+        dig(reply, path)
+            .and_then(|x| x.as_str())
+            .map(str::to_string)
+    };
+    reply
+        .get("stopped_limit")
+        .and_then(|b| b.as_bool())
+        .unwrap_or(false)
         || s("stop_type").as_deref() == Some("limit")
         || s("choices.0.finish_reason").as_deref() == Some("length")
         || s("stop_reason").as_deref() == Some("max_tokens")
@@ -360,7 +401,10 @@ impl Llm for Scrubbed {
 
     fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<LongReply> {
         let (scrub, s, u) = Scrubbed::scrubbed(system, user);
-        self.0.complete_long(&s, &u, max_tokens).map(|r| LongReply { text: scrub.put_back(&r.text), cut_off: r.cut_off })
+        self.0.complete_long(&s, &u, max_tokens).map(|r| LongReply {
+            text: scrub.put_back(&r.text),
+            cut_off: r.cut_off,
+        })
     }
 
     fn context_tokens(&self) -> Option<u32> {
@@ -405,7 +449,8 @@ pub fn google_data_held() -> bool {
 }
 
 /// Said when a third party's model would have been asked.
-pub const GOOGLE_STAYS_HERE: &str = "a Google account is connected, and what Atlas reads from Google stays on \
+pub const GOOGLE_STAYS_HERE: &str =
+    "a Google account is connected, and what Atlas reads from Google stays on \
      this computer, so nothing goes to an online model while it is";
 
 /// A local-first model with an optional stronger fallback.
@@ -464,7 +509,12 @@ impl FallbackLlm {
             return None;
         }
         let now = now_ms();
-        let allowed = self.breaker.lock().or_else(crate::crash::unpoison).map(|mut b| b.allow(now)).unwrap_or(true);
+        let allowed = self
+            .breaker
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map(|mut b| b.allow(now))
+            .unwrap_or(true);
         if !allowed {
             return None;
         }
@@ -481,7 +531,9 @@ impl FallbackLlm {
                 "\n\n({note}; they appear as placeholders like ⟦EMAIL_1⟧. Use the placeholders exactly as written.)"
             ));
         }
-        let r = s.complete(&system_out, &user_out).map(|reply| scrub.put_back(&reply));
+        let r = s
+            .complete(&system_out, &user_out)
+            .map(|reply| scrub.put_back(&reply));
         if let Ok(mut b) = self.breaker.lock().or_else(crate::crash::unpoison) {
             match &r {
                 Ok(_) => b.success(),
@@ -495,13 +547,24 @@ impl FallbackLlm {
 impl FallbackLlm {
     /// `try_secondary` for a long answer: scrubbed the same way, through
     /// the breaker the same way.
-    fn try_secondary_long(&self, system: &str, user: &str, max_tokens: u32) -> Option<Result<LongReply>> {
+    fn try_secondary_long(
+        &self,
+        system: &str,
+        user: &str,
+        max_tokens: u32,
+    ) -> Option<Result<LongReply>> {
         let s = self.secondary.as_ref()?;
         if google_data_held() && !self.hard_first {
             return None;
         }
         let now = now_ms();
-        if !self.breaker.lock().or_else(crate::crash::unpoison).map(|mut b| b.allow(now)).unwrap_or(true) {
+        if !self
+            .breaker
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map(|mut b| b.allow(now))
+            .unwrap_or(true)
+        {
             return None;
         }
         let r = Scrubbed(s.clone()).complete_long(system, user, max_tokens);
@@ -523,9 +586,20 @@ fn now_ms() -> u64 {
 }
 
 impl Llm for FallbackLlm {
-    fn supports_bounded_chat(&self) -> bool { self.primary.supports_bounded_chat() }
-    fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> Result<ChatReply> {
-        if !self.primary.supports_bounded_chat() { return Err(AtlasError::Platform("the local model has no bounded chat interface".into())); }
+    fn supports_bounded_chat(&self) -> bool {
+        self.primary.supports_bounded_chat()
+    }
+    fn chat_until(
+        &self,
+        req: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        keep_going: &dyn Fn() -> bool,
+    ) -> Result<ChatReply> {
+        if !self.primary.supports_bounded_chat() {
+            return Err(AtlasError::Platform(
+                "the local model has no bounded chat interface".into(),
+            ));
+        }
         self.primary.chat_until(req, on_text, keep_going)
     }
     fn has_stronger(&self) -> bool {
@@ -693,10 +767,20 @@ impl LlmConfig {
             // wrong.
             let networked = words.iter().any(|w| {
                 let w = w.trim_start_matches("./").to_lowercase();
-                w == "curl" || w == "curl.exe" || w == "wget" || w == "wget.exe"
-                    || w == "http" || w == "httpie" || w == "powershell" || w == "pwsh"
+                w == "curl"
+                    || w == "curl.exe"
+                    || w == "wget"
+                    || w == "wget.exe"
+                    || w == "http"
+                    || w == "httpie"
+                    || w == "powershell"
+                    || w == "pwsh"
             });
-            return if networked { Endpoint::CannotTell } else { Endpoint::ThisMachine };
+            return if networked {
+                Endpoint::CannotTell
+            } else {
+                Endpoint::ThisMachine
+            };
         }
 
         // Every URL has to be local, not just one of them. A command that
@@ -711,7 +795,10 @@ impl LlmConfig {
 
 /// Is this URL's host this machine?
 fn host_is_loopback(url: &str) -> bool {
-    let after_scheme = url.split("://").nth(1).unwrap_or_else(|| url.trim_start_matches("//"));
+    let after_scheme = url
+        .split("://")
+        .nth(1)
+        .unwrap_or_else(|| url.trim_start_matches("//"));
     // Strip userinfo, so `http://localhost@evil.example/` is read as
     // `evil.example` — which is what a browser does with it, and what makes
     // it worth stripping rather than searching the string for "localhost".
@@ -742,7 +829,10 @@ static KEEP_WARM: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new
 
 /// Set once at start from the measured plan.
 pub fn set_keep_warm(warm: bool) {
-    KEEP_WARM.store(if warm { 1 } else { 2 }, std::sync::atomic::Ordering::Relaxed);
+    KEEP_WARM.store(
+        if warm { 1 } else { 2 },
+        std::sync::atomic::Ordering::Relaxed,
+    );
 }
 
 /// The measured answer, or `None` before anything measured.
@@ -773,7 +863,9 @@ pub const COLD_FOR: &str = "60s";
 /// fields it doesn't know. A body that already says `keep_alive` is yours
 /// and is left alone. Not measured, not touched.
 pub fn with_keep_alive(body: &str, cfg: &LlmConfig, warm: Option<bool>) -> String {
-    let Some(warm) = warm else { return body.to_string() };
+    let Some(warm) = warm else {
+        return body.to_string();
+    };
     let local = cfg
         .tool
         .args
@@ -784,9 +876,15 @@ pub fn with_keep_alive(body: &str, cfg: &LlmConfig, warm: Option<bool>) -> Strin
         return body.to_string();
     }
     let trimmed = body.trim_start();
-    let Some(rest) = trimmed.strip_prefix('{') else { return body.to_string() };
+    let Some(rest) = trimmed.strip_prefix('{') else {
+        return body.to_string();
+    };
     let hold = if warm { WARM_FOR } else { COLD_FOR };
-    let sep = if rest.trim_start().starts_with('}') { "" } else { "," };
+    let sep = if rest.trim_start().starts_with('}') {
+        ""
+    } else {
+        ","
+    };
     format!("{{\"keep_alive\":\"{hold}\"{sep}{rest}")
 }
 
@@ -802,7 +900,9 @@ impl Llm for ShellLlm {
     fn native_chat(&self) -> bool {
         crate::models::chat_url_beside(&self.cfg).is_some_and(|u| crate::models::chat_available(&u))
     }
-    fn supports_bounded_chat(&self) -> bool { crate::models::chat_url_beside(&self.cfg).is_some() }
+    fn supports_bounded_chat(&self) -> bool {
+        crate::models::chat_url_beside(&self.cfg).is_some()
+    }
 
     fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> Result<ChatReply> {
         let Some(url) = crate::models::chat_url_beside(&self.cfg) else {
@@ -811,7 +911,12 @@ impl Llm for ShellLlm {
         crate::models::chat_call(&url, req, on_text)
     }
 
-    fn chat_until(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> Result<ChatReply> {
+    fn chat_until(
+        &self,
+        req: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        keep_going: &dyn Fn() -> bool,
+    ) -> Result<ChatReply> {
         let Some(url) = crate::models::chat_url_beside(&self.cfg) else {
             return chat_by_flattening(self, req, on_text);
         };
@@ -826,7 +931,10 @@ impl Llm for ShellLlm {
 
         let raw = self.cfg.tool.run(&self.vars, Some(&body))?;
         let parsed: Value = serde_json::from_str(&raw).map_err(|e| {
-            AtlasError::Platform(format!("model returned non-JSON: {e}. Got: {}", truncate(&raw, 200)))
+            AtlasError::Platform(format!(
+                "model returned non-JSON: {e}. Got: {}",
+                truncate(&raw, 200)
+            ))
         })?;
         dig(&parsed, &self.cfg.response_path)
             .and_then(|v| v.as_str().map(str::to_string))
@@ -853,12 +961,24 @@ impl Llm for ShellLlm {
         tool.timeout_secs = tool.timeout_secs.max(60 + u64::from(max_tokens) / 8);
         let raw = tool.run(&self.vars, Some(&body))?;
         let parsed: Value = serde_json::from_str(&raw).map_err(|e| {
-            AtlasError::Platform(format!("model returned non-JSON: {e}. Got: {}", truncate(&raw, 200)))
+            AtlasError::Platform(format!(
+                "model returned non-JSON: {e}. Got: {}",
+                truncate(&raw, 200)
+            ))
         })?;
-        let text = dig(&parsed, &self.cfg.response_path).and_then(|v| v.as_str().map(str::to_string)).ok_or_else(|| {
-            AtlasError::Platform(format!("no text at response_path '{}' in model reply: {}", self.cfg.response_path, truncate(&raw, 200)))
-        })?;
-        Ok(LongReply { text, cut_off: says_cut_off(&parsed) })
+        let text = dig(&parsed, &self.cfg.response_path)
+            .and_then(|v| v.as_str().map(str::to_string))
+            .ok_or_else(|| {
+                AtlasError::Platform(format!(
+                    "no text at response_path '{}' in model reply: {}",
+                    self.cfg.response_path,
+                    truncate(&raw, 200)
+                ))
+            })?;
+        Ok(LongReply {
+            text,
+            cut_off: says_cut_off(&parsed),
+        })
     }
 }
 
@@ -960,7 +1080,11 @@ pub fn context(cfg: &Config, plat: &dyn Platform) -> String {
                     mon.height,
                     mon.x,
                     if mon.primary { " (primary)" } else { "" },
-                    if Some(mon.id) == active { " (the window in front is here)" } else { "" }
+                    if Some(mon.id) == active {
+                        " (the window in front is here)"
+                    } else {
+                        ""
+                    }
                 ));
             }
             let roles = crate::layout::resolve_roles_with(&cfg.layouts, &m, built_in);
@@ -990,7 +1114,11 @@ pub fn context(cfg: &Config, plat: &dyn Platform) -> String {
         .collect();
     s.push_str(&format!(
         "Currently open: {}\n",
-        if running.is_empty() { "nothing".into() } else { running.join(", ") }
+        if running.is_empty() {
+            "nothing".into()
+        } else {
+            running.join(", ")
+        }
     ));
     s
 }
@@ -1035,7 +1163,10 @@ pub fn focus_line(active: &crate::platform::ActiveWindow, at: Endpoint) -> Strin
         );
     }
     let quoted = crate::untrusted::Read::new(&active.process, &active.title, 0).quoted();
-    format!("Focused app: {}\nThe window's title — {quoted}\n", active.process)
+    format!(
+        "Focused app: {}\nThe window's title — {quoted}\n",
+        active.process
+    )
 }
 
 /// The same question for the names of recently-changed files.
@@ -1063,7 +1194,10 @@ pub fn recent_files_line(names: &[String], at: Endpoint) -> String {
 /// Reported, never obeyed. The protection is the quoting in `focus_line`; this
 /// is so Eric finds out somebody tried — which for a window title means a page
 /// he visited titled itself with an instruction.
-pub fn orders_in_view(active: Option<&crate::platform::ActiveWindow>, names: &[String]) -> Vec<String> {
+pub fn orders_in_view(
+    active: Option<&crate::platform::ActiveWindow>,
+    names: &[String],
+) -> Vec<String> {
     let mut found = Vec::new();
     if let Some(a) = active {
         for o in crate::untrusted::looks_like_orders(&a.title) {
@@ -1176,7 +1310,11 @@ impl<'a> Brain<'a> {
         let quick = self.fallback.parse(transcript);
         if !matches!(quick, Intent::Unknown(_)) {
             let say = default_say(&quick);
-            return Decision { intent: quick, say, model: Reached::NotNeeded };
+            return Decision {
+                intent: quick,
+                say,
+                model: Reached::NotNeeded,
+            };
         }
         self.ask_the_model(transcript, ctx)
     }
@@ -1188,7 +1326,10 @@ impl<'a> Brain<'a> {
         // line again ("what's the capital of France" got "I'm doing well,
         // thanks for asking", the answer to "how are you", 26 Sep 2026).
         // Asked once more without the conversation, it answers the question.
-        if matches!(d.intent, Intent::Say(_)) && d.model == Reached::Yes && repeats_last(&d.say, ctx) {
+        if matches!(d.intent, Intent::Say(_))
+            && d.model == Reached::Yes
+            && repeats_last(&d.say, ctx)
+        {
             return self.talk(transcript, &without_conversation(ctx), "");
         }
         // Stock closers ("What's your next move?"), and a sentence said
@@ -1196,7 +1337,11 @@ impl<'a> Brain<'a> {
         if let (Intent::Say(_), Reached::Yes) = (&d.intent, d.model) {
             let cleaned = crate::repeating::without_closers(&d.say);
             if !cleaned.trim().is_empty() && cleaned != d.say {
-                return Decision { intent: Intent::Say(cleaned.clone()), say: cleaned, model: Reached::Yes };
+                return Decision {
+                    intent: Intent::Say(cleaned.clone()),
+                    say: cleaned,
+                    model: Reached::Yes,
+                };
             }
         }
         d
@@ -1220,12 +1365,19 @@ impl<'a> Brain<'a> {
             // of those the person asked something and deserves an answer, so
             // the model is asked again, plainly, to just talk.
             Ok(reply) => match parse_decision(&reply) {
-                Ok(d) if !talk_is_missing(&d) && !made_up_action(&d, transcript) => Decision { model: Reached::Yes, ..d },
+                Ok(d) if !talk_is_missing(&d) && !made_up_action(&d, transcript) => Decision {
+                    model: Reached::Yes,
+                    ..d
+                },
                 // An action nobody asked for, but a real answer beside it:
                 // keep the answer, drop the action.
                 Ok(d) if made_up_action(&d, transcript) && spoken_text(&d.say).is_some() => {
                     let s = spoken_text(&d.say).unwrap_or_default();
-                    Decision { intent: Intent::Say(s.clone()), say: s, model: Reached::Yes }
+                    Decision {
+                        intent: Intent::Say(s.clone()),
+                        say: s,
+                        model: Reached::Yes,
+                    }
                 }
                 _ => self.talk(transcript, ctx, &reply),
             },
@@ -1309,14 +1461,25 @@ pub fn head_and_tail(text: &str, keep: usize) -> String {
     let tail = keep - head;
     let start: String = chars[..head].iter().collect();
     let end: String = chars[chars.len() - tail..].iter().collect();
-    format!("{start}\n[… the middle of this was left out to fit; it was {} characters long …]\n{end}", chars.len())
+    format!(
+        "{start}\n[… the middle of this was left out to fit; it was {} characters long …]\n{end}",
+        chars.len()
+    )
 }
 
 impl Turn {
     /// Roughly how many tokens this turn's prompt is, tools included.
     pub fn estimated_tokens(&self) -> usize {
-        let tools: usize = self.tools.iter().map(|t| estimate_tokens(&t.to_string())).sum();
-        self.messages().iter().map(|m| estimate_tokens(&m.content) + 4).sum::<usize>() + tools
+        let tools: usize = self
+            .tools
+            .iter()
+            .map(|t| estimate_tokens(&t.to_string()))
+            .sum();
+        self.messages()
+            .iter()
+            .map(|m| estimate_tokens(&m.content) + 4)
+            .sum::<usize>()
+            + tools
     }
 
     /// Make the prompt fit a context of `ctx_tokens`, leaving room for the
@@ -1335,7 +1498,11 @@ impl Turn {
         while self.estimated_tokens() > budget && !self.history.is_empty() {
             // The summary of long ago goes last: it is short, and it is all
             // that is left of everything older.
-            let i = self.history.iter().position(|m| m.role != Role::System).unwrap_or(0);
+            let i = self
+                .history
+                .iter()
+                .position(|m| m.role != Role::System)
+                .unwrap_or(0);
             self.history.remove(i);
             cut = true;
         }
@@ -1390,7 +1557,11 @@ pub struct SentenceCap {
 
 impl SentenceCap {
     pub fn new(most: Option<usize>) -> SentenceCap {
-        SentenceCap { most, seen: 0, text: String::new() }
+        SentenceCap {
+            most,
+            seen: 0,
+            text: String::new(),
+        }
     }
 
     /// Take a piece. `false` once the cap is reached.
@@ -1432,12 +1603,21 @@ impl<'a> Brain<'a> {
     /// `converse`, and `also` gets the other things the model was asked to
     /// do in the same breath and did not (only the first tool call runs),
     /// in plain words, so they can be named rather than silently dropped.
-    pub fn converse_noting(&self, turn: &Turn, on_text: &mut dyn FnMut(&str) -> bool, also: &mut Vec<String>) -> Decision {
+    pub fn converse_noting(
+        &self,
+        turn: &Turn,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        also: &mut Vec<String>,
+    ) -> Decision {
         if !turn.skip_phrases {
             let quick = self.fallback.parse(&turn.said);
             if !matches!(quick, Intent::Unknown(_)) {
                 let say = default_say(&quick);
-                return Decision { intent: quick, say, model: Reached::NotNeeded };
+                return Decision {
+                    intent: quick,
+                    say,
+                    model: Reached::NotNeeded,
+                };
             }
         }
         if self.llm.native_chat() {
@@ -1486,7 +1666,11 @@ impl<'a> Brain<'a> {
             // Ended: the rest, sentence by sentence. Failed partway: the
             // words of an unfinished sentence still count as said (they were
             // written), but not a tail that could be a tool call's start.
-            let rest = if r.is_ok() { gate.finish() } else { gate.cut_short() };
+            let rest = if r.is_ok() {
+                gate.finish()
+            } else {
+                gate.cut_short()
+            };
             if !gate.repeated && !rest.is_empty() {
                 pass(&mut gate, rest);
             }
@@ -1496,7 +1680,12 @@ impl<'a> Brain<'a> {
 
     /// The chat call. `None` when it failed before anything was passed on,
     /// and the one-prompt path should answer instead.
-    fn converse_with_tools(&self, turn: &Turn, on_text: &mut dyn FnMut(&str) -> bool, also: &mut Vec<String>) -> Option<Decision> {
+    fn converse_with_tools(
+        &self,
+        turn: &Turn,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        also: &mut Vec<String>,
+    ) -> Option<Decision> {
         // A sentence that plainly asks for one of the tools (`Turn::
         // wants_a_tool`): the call first, held to one of them, before the
         // model can talk around it (30 Sep 2026, a real 4B model: "how did my
@@ -1505,7 +1694,16 @@ impl<'a> Brain<'a> {
         // call is ~20 tokens; one that doesn't come back as a call falls
         // through to the ordinary reply.
         if turn.wants_a_tool && turn.tools.len() > turn.stable_tools {
-            let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: FORCED_TOOL_TOKENS, force_tool: true, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false, output_schema: None };
+            let req = ChatRequest {
+                messages: turn.messages(),
+                tools: turn.tools.clone(),
+                max_tokens: FORCED_TOOL_TOKENS,
+                force_tool: true,
+                stable_tools: turn.stable_tools,
+                aside: turn.aside,
+                stronger: false,
+                output_schema: None,
+            };
             if let Ok(mut first) = self.llm.chat(&req, &mut |_| true) {
                 if first.tool_calls.is_empty() {
                     if let Some(call) = crate::models::forced_call(&first.text, &req.tools) {
@@ -1515,7 +1713,11 @@ impl<'a> Brain<'a> {
                 }
                 // The capabilities tool isn't the work: asked for, it's the
                 // model not knowing which; the ordinary reply decides then.
-                if first.tool_calls.iter().any(|c| c.name != crate::router::META_TOOL) {
+                if first
+                    .tool_calls
+                    .iter()
+                    .any(|c| c.name != crate::router::META_TOOL)
+                {
                     let mut more = Vec::new();
                     let d = decision_from_chat_noting(&first, &turn.said, &turn.tools, &mut more);
                     if !matches!(d.intent, Intent::Say(_)) {
@@ -1525,16 +1727,41 @@ impl<'a> Brain<'a> {
                 }
             }
         }
-        let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens, force_tool: false, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false, output_schema: None };
+        let req = ChatRequest {
+            messages: turn.messages(),
+            tools: turn.tools.clone(),
+            max_tokens: turn.max_tokens,
+            force_tool: false,
+            stable_tools: turn.stable_tools,
+            aside: turn.aside,
+            stronger: false,
+            output_schema: None,
+        };
         // What a new reply is checked against: the last replies in full
         // (`Turn::recent_replies`), or, when the caller gave none, what the
         // history holds of them.
         let earlier: Vec<&str> = match &turn.recent_replies {
             Some(r) => r.iter().map(|s| s.as_str()).collect(),
-            None => turn.history.iter().filter(|m| m.role == Role::Assistant).map(|m| m.content.as_str()).collect(),
+            None => turn
+                .history
+                .iter()
+                .filter(|m| m.role == Role::Assistant)
+                .map(|m| m.content.as_str())
+                .collect(),
         };
-        let known = req.messages.iter().filter(|m| m.role != Role::Assistant).map(|m| m.content.as_str()).collect::<Vec<_>>().join("\n");
-        let (reply, gate) = self.chat_gated(&req, turn.max_sentences, SpeechGate::new(&earlier).knowing(known), on_text);
+        let known = req
+            .messages
+            .iter()
+            .filter(|m| m.role != Role::Assistant)
+            .map(|m| m.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let (reply, gate) = self.chat_gated(
+            &req,
+            turn.max_sentences,
+            SpeechGate::new(&earlier).knowing(known),
+            on_text,
+        );
         // A reply that is starting a loop: its first sentence repeats an
         // earlier reply (held back until checked, so never said), or every
         // sentence of it was one already said. Asked once more -- without the
@@ -1552,20 +1779,50 @@ impl<'a> Brain<'a> {
             && !gate.calling
             && (gate.filter.looping() || (gate.invented && gate.sent.trim().is_empty()));
         if gate.repeated || looped {
-            let mut fresh = Turn { history: Vec::new(), tools: Vec::new(), stable_tools: 0, ..turn.clone() };
+            let mut fresh = Turn {
+                history: Vec::new(),
+                tools: Vec::new(),
+                stable_tools: 0,
+                ..turn.clone()
+            };
             fresh.now = format!("{}\n{}", fresh.now.trim_end(), ANSWER_AFRESH);
-            let req = ChatRequest { messages: fresh.messages(), tools: Vec::new(), max_tokens: fresh.max_tokens, force_tool: false, stable_tools: 0, aside: true, stronger: true, output_schema: None };
+            let req = ChatRequest {
+                messages: fresh.messages(),
+                tools: Vec::new(),
+                max_tokens: fresh.max_tokens,
+                force_tool: false,
+                stable_tools: 0,
+                aside: true,
+                stronger: true,
+                output_schema: None,
+            };
             // What was already said of the first reply isn't said again.
             let already = gate.sent.trim().to_string();
             let mut against = earlier.clone();
             if !already.is_empty() {
                 against.push(&already);
             }
-            let known = req.messages.iter().filter(|m| m.role != Role::Assistant).map(|m| m.content.as_str()).collect::<Vec<_>>().join("\n");
-            let (again, g2) = self.chat_gated(&req, turn.max_sentences, SpeechGate::asking_again(&against).knowing(known), on_text);
+            let known = req
+                .messages
+                .iter()
+                .filter(|m| m.role != Role::Assistant)
+                .map(|m| m.content.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let (again, g2) = self.chat_gated(
+                &req,
+                turn.max_sentences,
+                SpeechGate::asking_again(&against).knowing(known),
+                on_text,
+            );
             return match again {
                 Ok(mut again) => {
-                    if g2.filter.dropped > 0 || !already.is_empty() || g2.claimed || g2.denied.is_some() || g2.invented {
+                    if g2.filter.dropped > 0
+                        || !already.is_empty()
+                        || g2.claimed
+                        || g2.denied.is_some()
+                        || g2.invented
+                    {
                         again.text = format!("{already} {}", g2.sent.trim()).trim().to_string();
                     }
                     let d = decision_from_chat_noting(&again, &turn.said, &turn.tools, also);
@@ -1583,16 +1840,35 @@ impl<'a> Brain<'a> {
         };
         // Sentences left out as repeats were never said: the reply is what
         // was (`SpeechGate::sent`), so that is what is shown and remembered.
-        if (gate.filter.dropped > 0 || gate.claimed || gate.denied.is_some() || gate.invented) && !reply.text.trim().is_empty() {
+        if (gate.filter.dropped > 0 || gate.claimed || gate.denied.is_some() || gate.invented)
+            && !reply.text.trim().is_empty()
+        {
             reply.text = gate.sent.trim().to_string();
         }
         let mut d = decision_from_chat_noting(&reply, &turn.said, &turn.tools, also);
         // Only a tool call, and not one the sentence asked for: asked again
         // without tools, so the person gets an answer rather than "I didn't
         // get a usable answer".
-        if spoken_text(&reply.text).is_none() && !reply.tool_calls.is_empty() && matches!(d.intent, Intent::Say(_)) {
-            let req = ChatRequest { messages: turn.messages(), tools: Vec::new(), max_tokens: turn.max_tokens, force_tool: false, stable_tools: 0, aside: true, stronger: false, output_schema: None };
-            let (again, g2) = self.chat_gated(&req, turn.max_sentences, SpeechGate::asking_again(&earlier), on_text);
+        if spoken_text(&reply.text).is_none()
+            && !reply.tool_calls.is_empty()
+            && matches!(d.intent, Intent::Say(_))
+        {
+            let req = ChatRequest {
+                messages: turn.messages(),
+                tools: Vec::new(),
+                max_tokens: turn.max_tokens,
+                force_tool: false,
+                stable_tools: 0,
+                aside: true,
+                stronger: false,
+                output_schema: None,
+            };
+            let (again, g2) = self.chat_gated(
+                &req,
+                turn.max_sentences,
+                SpeechGate::asking_again(&earlier),
+                on_text,
+            );
             let again = match again {
                 Ok(a) => a,
                 Err(_) => return partial_or_none(&g2.sent),
@@ -1603,7 +1879,12 @@ impl<'a> Brain<'a> {
             }
             d = decision_from_chat(&again, &turn.said);
             // Still nothing to say: the one-prompt path answers instead.
-            if spoken_text(&again.text).is_none() && matches!(d.intent, Intent::Say(_)) && g2.sent.trim().is_empty() && !g2.claimed && g2.denied.is_none() {
+            if spoken_text(&again.text).is_none()
+                && matches!(d.intent, Intent::Say(_))
+                && g2.sent.trim().is_empty()
+                && !g2.claimed
+                && g2.denied.is_none()
+            {
                 return None;
             }
             return Some(own_up(&g2, d, turn, on_text));
@@ -1619,13 +1900,25 @@ impl<'a> Brain<'a> {
         let denied_with_a_tool = gate.denied.is_some() && turn.tools.len() > turn.stable_tools;
         if reply.tool_calls.is_empty()
             && !turn.tools.is_empty()
-            && (gate.claimed || denied_with_a_tool || announces_an_action(&reply.text) || turn.wants_a_tool)
+            && (gate.claimed
+                || denied_with_a_tool
+                || announces_an_action(&reply.text)
+                || turn.wants_a_tool)
         {
             // A tool call is short: capped, so a small model that can't find
             // one doesn't write for half a minute instead (30 Sep 2026, a real
             // 0.8B model: 450 tokens, 37 s; at 120 a 2B one still wrote for 20 s on
             // this machine's processor -- a call is 20-40 tokens).
-            let req = ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: turn.max_tokens.min(FORCED_TOOL_TOKENS), force_tool: true, stable_tools: turn.stable_tools, aside: turn.aside, stronger: false, output_schema: None };
+            let req = ChatRequest {
+                messages: turn.messages(),
+                tools: turn.tools.clone(),
+                max_tokens: turn.max_tokens.min(FORCED_TOOL_TOKENS),
+                force_tool: true,
+                stable_tools: turn.stable_tools,
+                aside: turn.aside,
+                stronger: false,
+                output_schema: None,
+            };
             if let Ok(mut forced) = self.llm.chat(&req, &mut |_| true) {
                 // The call comes back as the schema's JSON (`models::chat_body`).
                 if forced.tool_calls.is_empty() {
@@ -1651,14 +1944,23 @@ impl<'a> Brain<'a> {
 /// answer; a claim that work started, with nothing started, becomes
 /// `backed::NOT_STARTED`. What is added is passed to `on_text` too, so it
 /// is said as well as shown.
-fn own_up(gate: &SpeechGate, mut d: Decision, turn: &Turn, on_text: &mut dyn FnMut(&str) -> bool) -> Decision {
+fn own_up(
+    gate: &SpeechGate,
+    mut d: Decision,
+    turn: &Turn,
+    on_text: &mut dyn FnMut(&str) -> bool,
+) -> Decision {
     // Nothing of the reply was said: it was all claims or denials, so the
     // truth is the whole of it (not "I didn't get a usable answer").
     let nothing_said = gate.sent.trim().is_empty();
     if let (Some(ability), Intent::Say(s)) = (gate.denied, &d.intent) {
         // "I'm not supposed to" names no ability: the one the question was
         // about, or -- about none -- that nothing stops it.
-        let asked = if ability.is_empty() { crate::backed::ability_asked_about(&turn.said) } else { ability };
+        let asked = if ability.is_empty() {
+            crate::backed::ability_asked_about(&turn.said)
+        } else {
+            ability
+        };
         let truth = match asked {
             "" => Some(crate::backed::NOTHING_STOPS_ME.to_string()),
             a => crate::capability::truth_about(a, turn.research_on),
@@ -1667,16 +1969,30 @@ fn own_up(gate: &SpeechGate, mut d: Decision, turn: &Turn, on_text: &mut dyn FnM
             let before = if nothing_said { "" } else { s.trim() };
             let said = format!("{before} {truth}").trim().to_string();
             on_text(&format!(" {truth}"));
-            d = Decision { intent: Intent::Say(said.clone()), say: said, model: d.model };
+            d = Decision {
+                intent: Intent::Say(said.clone()),
+                say: said,
+                model: d.model,
+            };
         }
     }
     // Still nothing started: the truth instead of the claim.
     if gate.claimed {
         if let Intent::Say(s) = &d.intent {
-            let before = if nothing_said && gate.denied.is_none() { "" } else { s.trim() };
-            let said = format!("{before} {}", crate::backed::NOT_STARTED).trim().to_string();
+            let before = if nothing_said && gate.denied.is_none() {
+                ""
+            } else {
+                s.trim()
+            };
+            let said = format!("{before} {}", crate::backed::NOT_STARTED)
+                .trim()
+                .to_string();
             on_text(&format!(" {}", crate::backed::NOT_STARTED));
-            d = Decision { intent: Intent::Say(said.clone()), say: said, model: d.model };
+            d = Decision {
+                intent: Intent::Say(said.clone()),
+                say: said,
+                model: d.model,
+            };
         }
     }
     d
@@ -1694,7 +2010,11 @@ fn partial_or_none(sent: &str) -> Option<Decision> {
         return None;
     }
     let say = format!("{sent} -- that's as far as I got; my language model stopped partway.");
-    Some(Decision { intent: Intent::Say(say.clone()), say, model: Reached::Yes })
+    Some(Decision {
+        intent: Intent::Say(say.clone()),
+        say,
+        model: Reached::Yes,
+    })
 }
 
 /// Does a reply only say it is about to do something ("I'll check your
@@ -1705,11 +2025,38 @@ pub fn announces_an_action(text: &str) -> bool {
         return false;
     }
     const OPENINGS: &[&str] = &[
-        "i'll check", "i will check", "let me check", "i'll look", "i will look", "let me look", "i'll open",
-        "let me open", "i'll find", "let me find", "i'll see", "let me see", "i'll pull up", "let me pull up",
-        "i'll search", "let me search", "checking", "looking that up", "one moment", "give me a moment",
-        "i'll get", "let me get", "i'll take a look", "let me take a look", "sure, i'll", "sure, let me",
-        "okay, i'll", "okay, let me", "ok, i'll", "ok, let me", "alright, i'll", "alright, let me",
+        "i'll check",
+        "i will check",
+        "let me check",
+        "i'll look",
+        "i will look",
+        "let me look",
+        "i'll open",
+        "let me open",
+        "i'll find",
+        "let me find",
+        "i'll see",
+        "let me see",
+        "i'll pull up",
+        "let me pull up",
+        "i'll search",
+        "let me search",
+        "checking",
+        "looking that up",
+        "one moment",
+        "give me a moment",
+        "i'll get",
+        "let me get",
+        "i'll take a look",
+        "let me take a look",
+        "sure, i'll",
+        "sure, let me",
+        "okay, i'll",
+        "okay, let me",
+        "ok, i'll",
+        "ok, let me",
+        "alright, i'll",
+        "alright, let me",
     ];
     OPENINGS.iter().any(|o| t.starts_with(o))
 }
@@ -1791,7 +2138,10 @@ impl SpeechGate {
     /// The same, for a reply that is itself the asking-again: a repeated
     /// sentence is left out, never a reason to stop.
     fn asking_again(earlier: &[&str]) -> SpeechGate {
-        SpeechGate { regenerate_on_a_repeat: false, ..SpeechGate::new(earlier) }
+        SpeechGate {
+            regenerate_on_a_repeat: false,
+            ..SpeechGate::new(earlier)
+        }
     }
 
     /// Take a piece; hand back what may be spoken now.
@@ -1809,7 +2159,11 @@ impl SpeechGate {
         // Hold back a tail that could still grow into the tag.
         let keep = (1..TOOL_TAG.len())
             .rev()
-            .find(|&k| self.held.len() >= k && self.held.is_char_boundary(self.held.len() - k) && TOOL_TAG.starts_with(&self.held[self.held.len() - k..]))
+            .find(|&k| {
+                self.held.len() >= k
+                    && self.held.is_char_boundary(self.held.len() - k)
+                    && TOOL_TAG.starts_with(&self.held[self.held.len() - k..])
+            })
             .unwrap_or(0);
         let cut = self.held.len() - keep;
         let out = self.held[..cut].to_string();
@@ -1864,7 +2218,9 @@ impl SpeechGate {
             self.first_done = true;
             if first && self.regenerate_on_a_repeat {
                 let earlier: Vec<&str> = self.earlier.iter().map(|s| s.as_str()).collect();
-                if repeats_an_earlier_line(sentence, &earlier) || starts_an_earlier_line(sentence, &earlier) {
+                if repeats_an_earlier_line(sentence, &earlier)
+                    || starts_an_earlier_line(sentence, &earlier)
+                {
                     self.repeated = true;
                 }
             }
@@ -1892,7 +2248,8 @@ impl SpeechGate {
                     crate::backed::Meant::Neither => {}
                 }
             }
-            if ok && !self.known.is_empty() && crate::backed::invents_someone(sentence, &self.known) {
+            if ok && !self.known.is_empty() && crate::backed::invents_someone(sentence, &self.known)
+            {
                 ok = false;
                 self.invented = true;
             }
@@ -1916,7 +2273,8 @@ fn first_sentence_end(text: &str) -> Option<usize> {
     let chars: Vec<(usize, char)> = text.char_indices().collect();
     for k in 0..chars.len() {
         let (i, c) = chars[k];
-        if matches!(c, '.' | '!' | '?') && chars.get(k + 1).is_some_and(|(_, n)| n.is_whitespace()) {
+        if matches!(c, '.' | '!' | '?') && chars.get(k + 1).is_some_and(|(_, n)| n.is_whitespace())
+        {
             return Some(i + c.len_utf8());
         }
     }
@@ -1926,7 +2284,12 @@ fn first_sentence_end(text: &str) -> Option<usize> {
 /// Is `first` (a first sentence) how one of the earlier lines began, long
 /// enough to be a copy and not a coincidence?
 fn starts_an_earlier_line(first: &str, earlier: &[&str]) -> bool {
-    let norm = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>();
+    let norm = |s: &str| {
+        s.to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>()
+    };
     let f = norm(first);
     if f.len() >= 25 && earlier.iter().any(|e| norm(e).starts_with(&f)) {
         return true;
@@ -1957,18 +2320,33 @@ pub fn decision_from_chat(reply: &ChatReply, said: &str) -> Decision {
 /// - Only the first call runs. The others, when they are different things,
 ///   are named in `also` so the person hears what wasn't done, rather than
 ///   it vanishing.
-fn decision_from_chat_noting(reply: &ChatReply, said: &str, tools: &[Value], also: &mut Vec<String>) -> Decision {
+fn decision_from_chat_noting(
+    reply: &ChatReply,
+    said: &str,
+    tools: &[Value],
+    also: &mut Vec<String>,
+) -> Decision {
     let spoken = spoken_text(&reply.text);
     let mut chosen: Option<Decision> = None;
     for call in &reply.tool_calls {
         if let Some(missing) = missing_required_arg(&call.name, &call.arguments, tools) {
             if chosen.is_none() {
-                chosen = Some(Decision { intent: Intent::Ask(missing.clone()), say: missing, model: Reached::Yes });
+                chosen = Some(Decision {
+                    intent: Intent::Ask(missing.clone()),
+                    say: missing,
+                    model: Reached::Yes,
+                });
             }
             continue;
         }
-        let Some(intent) = crate::intent::from_tool(&call.name, &call.arguments, said) else { continue };
-        let d = Decision { say: default_say(&intent), intent, model: Reached::Yes };
+        let Some(intent) = crate::intent::from_tool(&call.name, &call.arguments, said) else {
+            continue;
+        };
+        let d = Decision {
+            say: default_say(&intent),
+            intent,
+            model: Reached::Yes,
+        };
         if made_up_action(&d, said) {
             continue;
         }
@@ -1987,10 +2365,18 @@ fn decision_from_chat_noting(reply: &ChatReply, said: &str, tools: &[Value], als
         return d;
     }
     match spoken {
-        Some(s) => Decision { intent: Intent::Say(s.clone()), say: s, model: Reached::Yes },
+        Some(s) => Decision {
+            intent: Intent::Say(s.clone()),
+            say: s,
+            model: Reached::Yes,
+        },
         None => {
             let s = "I didn't get a usable answer out of my language model for that one. Try asking it another way.".to_string();
-            Decision { intent: Intent::Say(s.clone()), say: s, model: Reached::Yes }
+            Decision {
+                intent: Intent::Say(s.clone()),
+                say: s,
+                model: Reached::Yes,
+            }
         }
     }
 }
@@ -1998,7 +2384,9 @@ fn decision_from_chat_noting(reply: &ChatReply, said: &str, tools: &[Value], als
 /// The question to ask when a tool call left out an argument its tool
 /// requires, or `None` when nothing required is missing.
 fn missing_required_arg(name: &str, args: &Value, tools: &[Value]) -> Option<String> {
-    let spec = tools.iter().find(|t| t.pointer("/function/name").and_then(|n| n.as_str()) == Some(name.trim()))?;
+    let spec = tools
+        .iter()
+        .find(|t| t.pointer("/function/name").and_then(|n| n.as_str()) == Some(name.trim()))?;
     let required: Vec<&str> = spec
         .pointer("/function/parameters/required")
         .and_then(|r| r.as_array())
@@ -2009,14 +2397,18 @@ fn missing_required_arg(name: &str, args: &Value, tools: &[Value]) -> Option<Str
     }
     let given = match args {
         Value::String(s) => !s.trim().is_empty(),
-        Value::Object(m) => m.values().any(|v| v.as_str().is_some_and(|s| !s.trim().is_empty())),
+        Value::Object(m) => m
+            .values()
+            .any(|v| v.as_str().is_some_and(|s| !s.trim().is_empty())),
         _ => false,
     };
     if given {
         return None;
     }
     let what = name.trim().replace('_', " ");
-    Some(format!("I didn't catch the details for that -- what should I {what}?"))
+    Some(format!(
+        "I didn't catch the details for that -- what should I {what}?"
+    ))
 }
 
 impl<'a> Brain<'a> {
@@ -2025,7 +2417,11 @@ impl<'a> Brain<'a> {
     /// the schema call returned: if it was already a spoken answer, it is used
     /// rather than asking twice.
     fn talk(&self, transcript: &str, ctx: &str, first: &str) -> Decision {
-        let said = |say: String| Decision { intent: Intent::Say(say.clone()), say, model: Reached::Yes };
+        let said = |say: String| Decision {
+            intent: Intent::Say(say.clone()),
+            say,
+            model: Reached::Yes,
+        };
         if let Some(s) = spoken_text(first) {
             return said(s);
         }
@@ -2063,7 +2459,12 @@ If you don't know, say so in a sentence.";
 /// copied an old "I can't answer that here" from further up the thread in
 /// answer to a new question (26 Sep 2026).
 fn repeats_last(say: &str, ctx: &str) -> bool {
-    let norm = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>();
+    let norm = |s: &str| {
+        s.to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>()
+    };
     let said = norm(say);
     // Atlas's own "needs my language model … `atlas doctor`" line, which the
     // model sees in the conversation and rewords about the new question ("I
@@ -2079,19 +2480,26 @@ fn repeats_last(say: &str, ctx: &str) -> bool {
             .any(|earlier| {
                 let e = norm(earlier);
                 // The whole line, or a long stretch of it copied in.
-                e == said || (said.len() > 40 && (e.contains(&said) || said.contains(&e) && e.len() > 40))
+                e == said
+                    || (said.len() > 40 && (e.contains(&said) || said.contains(&e) && e.len() > 40))
             })
 }
 
 /// The chat path's `repeats_last`: is `say` one of Atlas's earlier lines, or
 /// a long stretch of one?
 fn repeats_an_earlier_line(say: &str, earlier: &[&str]) -> bool {
-    let norm = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>();
+    let norm = |s: &str| {
+        s.to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>()
+    };
     let said = norm(say);
     !said.is_empty()
         && earlier.iter().any(|e| {
             let e = norm(e);
-            e == said || (said.len() > 40 && e.len() > 40 && (e.contains(&said) || said.contains(&e)))
+            e == said
+                || (said.len() > 40 && e.len() > 40 && (e.contains(&said) || said.contains(&e)))
         })
 }
 
@@ -2104,7 +2512,10 @@ fn without_conversation(ctx: &str) -> String {
             skipping = true;
             continue;
         }
-        if skipping && (l.trim().is_empty() || !(l.starts_with("you:") || l.starts_with("atlas:") || l.starts_with(' '))) {
+        if skipping
+            && (l.trim().is_empty()
+                || !(l.starts_with("you:") || l.starts_with("atlas:") || l.starts_with(' ')))
+        {
             skipping = false;
         }
         if !skipping {
@@ -2143,8 +2554,24 @@ fn made_up_action(d: &Decision, transcript: &str) -> bool {
         // offers to look it up when it isn't sure (`worth_looking_up`).
         Intent::Research(_) => {
             const ASKED: &[&str] = &[
-                "look up", "look it up", "look into", "search", "research", "google", "find out", "latest", "news",
-                "current", "today", "tonight", "yesterday", "this week", "online", "web", "internet", "check",
+                "look up",
+                "look it up",
+                "look into",
+                "search",
+                "research",
+                "google",
+                "find out",
+                "latest",
+                "news",
+                "current",
+                "today",
+                "tonight",
+                "yesterday",
+                "this week",
+                "online",
+                "web",
+                "internet",
+                "check",
             ];
             !ASKED.iter().any(|w| t.contains(w))
                 && !matches!(
@@ -2161,10 +2588,19 @@ fn made_up_action(d: &Decision, transcript: &str) -> bool {
 /// mustn't make it one.
 fn without_the_name(t: &str) -> String {
     let t = t.trim_start();
-    for name in ["atlas,", "atlas", "hey atlas,", "hey atlas", "ok atlas,", "ok atlas"] {
+    for name in [
+        "atlas,",
+        "atlas",
+        "hey atlas,",
+        "hey atlas",
+        "ok atlas,",
+        "ok atlas",
+    ] {
         if let Some(rest) = t.strip_prefix(name) {
             if rest.is_empty() || rest.starts_with(|c: char| !c.is_alphanumeric()) {
-                return rest.trim_start_matches(|c: char| c == ',' || c.is_whitespace()).to_string();
+                return rest
+                    .trim_start_matches(|c: char| c == ',' || c.is_whitespace())
+                    .to_string();
             }
         }
     }
@@ -2178,13 +2614,38 @@ fn without_the_name(t: &str) -> String {
 pub fn asks_how_it_could_be_faster(t: &str) -> bool {
     let t = without_the_name(&t.to_lowercase().replace('\u{2019}', "'"));
     const ASKS: &[&str] = &[
-        "why are you slow", "why are you so slow", "why are you taking", "why is this slow", "why's this slow",
-        "why are you lagging", "why the lag", "what's slow", "whats slow", "what is slow", "what's making you slow",
-        "what makes you slow", "what's slowing you", "what is slowing you", "what slows you", "what would make you",
-        "what could make you", "how could you be", "how can you be", "how do i make you", "how can i make you",
-        "what would help you", "what am i missing", "what would speed you", "how do we speed you", "how can we speed you",
-        "how can you get faster", "how could you get faster", "can you be faster", "could you be faster",
-        "what would make atlas", "how could atlas be",
+        "why are you slow",
+        "why are you so slow",
+        "why are you taking",
+        "why is this slow",
+        "why's this slow",
+        "why are you lagging",
+        "why the lag",
+        "what's slow",
+        "whats slow",
+        "what is slow",
+        "what's making you slow",
+        "what makes you slow",
+        "what's slowing you",
+        "what is slowing you",
+        "what slows you",
+        "what would make you",
+        "what could make you",
+        "how could you be",
+        "how can you be",
+        "how do i make you",
+        "how can i make you",
+        "what would help you",
+        "what am i missing",
+        "what would speed you",
+        "how do we speed you",
+        "how can we speed you",
+        "how can you get faster",
+        "how could you get faster",
+        "can you be faster",
+        "could you be faster",
+        "what would make atlas",
+        "how could atlas be",
     ];
     ASKS.iter().any(|a| t.contains(a))
 }
@@ -2198,10 +2659,28 @@ pub fn complains_of_speed(t: &str) -> bool {
         return false;
     }
     const SAYS: &[&str] = &[
-        "you're slow", "youre slow", "you are slow", "you're so slow", "you are so slow", "responding slow",
-        "you're responding slowly", "you're taking forever", "taking forever", "taking so long", "taking too long",
-        "you're lagging", "you are lagging", "so laggy", "too slow", "really slow", "slow today", "slow tonight",
-        "hurry up", "speed it up", "faster please", "be quicker",
+        "you're slow",
+        "youre slow",
+        "you are slow",
+        "you're so slow",
+        "you are so slow",
+        "responding slow",
+        "you're responding slowly",
+        "you're taking forever",
+        "taking forever",
+        "taking so long",
+        "taking too long",
+        "you're lagging",
+        "you are lagging",
+        "so laggy",
+        "too slow",
+        "really slow",
+        "slow today",
+        "slow tonight",
+        "hurry up",
+        "speed it up",
+        "faster please",
+        "be quicker",
     ];
     SAYS.iter().any(|s| t.contains(s))
 }
@@ -2211,10 +2690,34 @@ fn about_atlas_itself(t: &str) -> bool {
     let t = without_the_name(t);
     let t = t.as_str();
     [
-        "what can you", "can you do", "could you do", "are you able", "what can't you", "what cant you", "your abilities",
-        "what's new", "whats new", "what are you", "who are you", "make you", "help you", "you be better", "you better",
-        "you faster", "you slow", "yourself", "atlas", "capabilit", "what do you do", "what else can you", "do you know how to",
-        "do you have", "are you", "could you use", "can you use", "is there anything you",
+        "what can you",
+        "can you do",
+        "could you do",
+        "are you able",
+        "what can't you",
+        "what cant you",
+        "your abilities",
+        "what's new",
+        "whats new",
+        "what are you",
+        "who are you",
+        "make you",
+        "help you",
+        "you be better",
+        "you better",
+        "you faster",
+        "you slow",
+        "yourself",
+        "atlas",
+        "capabilit",
+        "what do you do",
+        "what else can you",
+        "do you know how to",
+        "do you have",
+        "are you",
+        "could you use",
+        "can you use",
+        "is there anything you",
     ]
     .iter()
     .any(|p| t.contains(p))
@@ -2238,7 +2741,11 @@ pub fn spoken_text(raw: &str) -> Option<String> {
         return None;
     }
     let lower = t.to_lowercase();
-    if lower.starts_with('<') || lower.contains("<html") || lower.contains("<body") || lower.contains("</") {
+    if lower.starts_with('<')
+        || lower.contains("<html")
+        || lower.contains("<body")
+        || lower.contains("</")
+    {
         return None;
     }
     if t.starts_with('{') || t.starts_with('[') || t.starts_with("```") {
@@ -2283,7 +2790,11 @@ fn without_runaway(s: &str) -> String {
     let mut seen: Vec<String> = Vec::new();
     let mut kept: Vec<&str> = Vec::new();
     for piece in s.split_inclusive(['.', '!', '?', ',', ';']) {
-        let key: String = piece.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
+        let key: String = piece
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect();
         if key.len() > 12 && seen.contains(&key) {
             continue;
         }
@@ -2293,7 +2804,10 @@ fn without_runaway(s: &str) -> String {
     let mut out = kept.concat().trim().to_string();
     if out.chars().count() > MOST {
         let cut: String = out.chars().take(MOST).collect();
-        let end = cut.rfind(['.', '!', '?']).filter(|i| *i > MOST / 3).map(|i| i + 1)
+        let end = cut
+            .rfind(['.', '!', '?'])
+            .filter(|i| *i > MOST / 3)
+            .map(|i| i + 1)
             .or_else(|| cut.rfind(' '))
             .unwrap_or(cut.len());
         out = format!("{}…", cut[..end].trim_end_matches([',', ';', ' ']));
@@ -2306,15 +2820,29 @@ pub fn parse_decision(reply: &str) -> Result<Decision> {
     let start = reply.find('{').ok_or_else(|| {
         AtlasError::Platform(format!("no JSON in model reply: {}", truncate(reply, 120)))
     })?;
-    let end = reply.rfind('}').ok_or_else(|| {
-        AtlasError::Platform("unterminated JSON in model reply".into())
-    })?;
+    let end = reply
+        .rfind('}')
+        .ok_or_else(|| AtlasError::Platform("unterminated JSON in model reply".into()))?;
     let v: Value = serde_json::from_str(&reply[start..=end])
         .map_err(|e| AtlasError::Platform(format!("bad JSON from model: {e}")))?;
 
-    let action = v.get("action").and_then(|a| a.as_str()).unwrap_or("").to_lowercase();
-    let arg = v.get("arg").and_then(|a| a.as_str()).unwrap_or("").trim().to_string();
-    let say = v.get("say").and_then(|a| a.as_str()).unwrap_or("").trim().to_string();
+    let action = v
+        .get("action")
+        .and_then(|a| a.as_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let arg = v
+        .get("arg")
+        .and_then(|a| a.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let say = v
+        .get("say")
+        .and_then(|a| a.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
 
     // Typing into windows, the vault and the keys are never the model's to
     // choose (`intent::NEVER_FOR_THE_MODEL`); their names fall to the last
@@ -2341,7 +2869,11 @@ pub fn parse_decision(reply: &str) -> Result<Decision> {
     };
     // parse_decision is also called on text that did not come from a live
     // call, so it claims nothing about reachability; decide() overwrites this.
-    Ok(Decision { intent, say, model: Reached::NotNeeded })
+    Ok(Decision {
+        intent,
+        say,
+        model: Reached::NotNeeded,
+    })
 }
 
 /// Commands whose result is text someone else wrote: a mail, a web page or
@@ -2453,10 +2985,25 @@ pub fn model_must_ask(i: &Intent) -> bool {
 /// (`freshness::shelf_for`: prices, weather, scores, versions, news).
 pub fn worth_looking_up(said: &str, reply: &str) -> bool {
     const UNSURE: &[&str] = &[
-        "i don't know", "i dont know", "i do not know", "i'm not sure", "im not sure", "i am not sure",
-        "i don't have current", "i don't have up-to-date", "i don't have up to date", "i don't have real-time",
-        "i don't have access to real-time", "i can't check", "i cannot check", "i can't browse", "as of my last",
-        "my knowledge", "i'm not certain", "i don't have the latest", "i can't look that up",
+        "i don't know",
+        "i dont know",
+        "i do not know",
+        "i'm not sure",
+        "im not sure",
+        "i am not sure",
+        "i don't have current",
+        "i don't have up-to-date",
+        "i don't have up to date",
+        "i don't have real-time",
+        "i don't have access to real-time",
+        "i can't check",
+        "i cannot check",
+        "i can't browse",
+        "as of my last",
+        "my knowledge",
+        "i'm not certain",
+        "i don't have the latest",
+        "i can't look that up",
     ];
     let r = reply.to_lowercase().replace('’', "'");
     if UNSURE.iter().any(|u| r.contains(u)) {
@@ -2464,7 +3011,11 @@ pub fn worth_looking_up(said: &str, reply: &str) -> bool {
     }
     let q = said.trim().to_lowercase();
     let asking = q.ends_with('?')
-        || ["what", "who", "when", "where", "which", "how", "is ", "are ", "did ", "does ", "will "].iter().any(|w| q.starts_with(w));
+        || [
+            "what", "who", "when", "where", "which", "how", "is ", "are ", "did ", "does ", "will ",
+        ]
+        .iter()
+        .any(|w| q.starts_with(w));
     asking
         && matches!(
             crate::freshness::shelf_for(&q),
@@ -2489,7 +3040,9 @@ impl Sentences {
             let mut cut = None;
             for k in 0..chars.len() {
                 let (i, c) = chars[k];
-                if matches!(c, '.' | '!' | '?') && chars.get(k + 1).is_some_and(|(_, n)| n.is_whitespace()) {
+                if matches!(c, '.' | '!' | '?')
+                    && chars.get(k + 1).is_some_and(|(_, n)| n.is_whitespace())
+                {
                     cut = Some(i + c.len_utf8());
                     break;
                 }
@@ -2724,7 +3277,10 @@ mod long_answers {
         let ollama = with_max_tokens(r#"{"prompt":"x","options":{"num_predict":128}}"#, 4000);
         assert!(ollama.contains("\"num_predict\":4000"));
         // Nothing to set, or not JSON: left exactly as it was.
-        assert_eq!(with_max_tokens(r#"{"prompt":"x"}"#, 10), r#"{"prompt":"x"}"#);
+        assert_eq!(
+            with_max_tokens(r#"{"prompt":"x"}"#, 10),
+            r#"{"prompt":"x"}"#
+        );
         assert_eq!(with_max_tokens("not json", 10), "not json");
     }
 
@@ -2733,28 +3289,51 @@ mod long_answers {
         let v = |s: &str| serde_json::from_str::<Value>(s).unwrap();
         assert!(says_cut_off(&v(r#"{"content":"x","stopped_limit":true}"#)));
         assert!(says_cut_off(&v(r#"{"content":"x","stop_type":"limit"}"#)));
-        assert!(says_cut_off(&v(r#"{"choices":[{"finish_reason":"length"}]}"#)));
+        assert!(says_cut_off(&v(
+            r#"{"choices":[{"finish_reason":"length"}]}"#
+        )));
         assert!(says_cut_off(&v(r#"{"stop_reason":"max_tokens"}"#)));
         assert!(says_cut_off(&v(r#"{"done_reason":"length"}"#)));
-        assert!(!says_cut_off(&v(r#"{"content":"x","stopped_eos":true,"stop_type":"eos"}"#)));
+        assert!(!says_cut_off(&v(
+            r#"{"content":"x","stopped_eos":true,"stop_type":"eos"}"#
+        )));
     }
 }
 
 #[cfg(test)]
 mod bounded_chat_capability {
     use super::*;
-    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
     struct Unbounded(Arc<AtomicUsize>);
     impl Llm for Unbounded {
-        fn native_chat(&self) -> bool { true }
-        fn complete(&self, _: &str, _: &str) -> Result<String> { self.0.fetch_add(1, Ordering::SeqCst); Ok("unbounded".into()) }
+        fn native_chat(&self) -> bool {
+            true
+        }
+        fn complete(&self, _: &str, _: &str) -> Result<String> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok("unbounded".into())
+        }
     }
     struct Cooperative;
     impl Llm for Cooperative {
-        fn complete(&self, _: &str, _: &str) -> Result<String> { panic!("bounded work must not call complete") }
-        fn supports_bounded_chat(&self) -> bool { true }
-        fn chat_until(&self, _: &ChatRequest, _: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> Result<ChatReply> {
-            while keep() { std::thread::sleep(std::time::Duration::from_millis(1)); }
+        fn complete(&self, _: &str, _: &str) -> Result<String> {
+            panic!("bounded work must not call complete")
+        }
+        fn supports_bounded_chat(&self) -> bool {
+            true
+        }
+        fn chat_until(
+            &self,
+            _: &ChatRequest,
+            _: &mut dyn FnMut(&str) -> bool,
+            keep: &dyn Fn() -> bool,
+        ) -> Result<ChatReply> {
+            while keep() {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
             Err(AtlasError::Platform("caller stopped inference".into()))
         }
     }
@@ -2762,17 +3341,26 @@ mod bounded_chat_capability {
     fn native_protocol_alone_does_not_allow_a_synchronous_bounded_job() {
         let calls = Arc::new(AtomicUsize::new(0));
         let model = FallbackLlm::new(Arc::new(Unbounded(calls.clone())), None);
-        assert!(model.native_chat()); assert!(!model.supports_bounded_chat());
-        assert!(model.chat_until(&ChatRequest::default(), &mut |_| true, &|| true).is_err());
+        assert!(model.native_chat());
+        assert!(!model.supports_bounded_chat());
+        assert!(model
+            .chat_until(&ChatRequest::default(), &mut |_| true, &|| true)
+            .is_err());
         assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
     #[test]
     fn bounded_primary_deadline_does_not_start_an_online_or_synchronous_fallback() {
         let calls = Arc::new(AtomicUsize::new(0));
-        let model = FallbackLlm::new(Arc::new(Cooperative), Some(Arc::new(Unbounded(calls.clone()))));
+        let model = FallbackLlm::new(
+            Arc::new(Cooperative),
+            Some(Arc::new(Unbounded(calls.clone()))),
+        );
         assert!(model.supports_bounded_chat());
         let start = std::time::Instant::now();
-        assert!(model.chat_until(&ChatRequest::default(), &mut |_| true, &|| start.elapsed() < std::time::Duration::from_millis(20)).is_err());
+        assert!(model
+            .chat_until(&ChatRequest::default(), &mut |_| true, &|| start.elapsed()
+                < std::time::Duration::from_millis(20))
+            .is_err());
         assert!(start.elapsed() < std::time::Duration::from_millis(300));
         assert_eq!(calls.load(Ordering::SeqCst), 0);
     }

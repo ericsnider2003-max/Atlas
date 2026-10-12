@@ -8,7 +8,7 @@ use atlas::market::bars::Bars;
 use atlas::market::events::{Event, Tier};
 use atlas::market::fixtures::path;
 use atlas::market::structure::{before_the_turn, recent};
-use atlas::otherside::{argued, decision_from, not_raised, against, Angle};
+use atlas::otherside::{against, argued, decision_from, not_raised, Angle};
 use atlas::platform::mock::MockPlatform;
 use atlas::platform::Monitor;
 use atlas::proactive::{Proactive, ProactiveConfig};
@@ -28,11 +28,24 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 // ================= argue the other side =================
@@ -46,7 +59,10 @@ fn the_decision_is_heard_in_what_was_said() {
     .expect("a strong trigger with a decision");
     assert_eq!(d.what, "I'm selling the car for good");
     assert!(d.because.contains("everyone says"));
-    assert!(!d.reversible, "'for good' is the speaker saying it can't be undone");
+    assert!(
+        !d.reversible,
+        "'for good' is the speaker saying it can't be undone"
+    );
 
     let d = decision_from(
         "talk me out of the new laptop, it costs £1400 and it only works as long as the contract renews",
@@ -55,7 +71,10 @@ fn the_decision_is_heard_in_what_was_said() {
     .unwrap();
     assert_eq!(d.costs.as_deref(), Some("£1400"));
     assert_eq!(d.depends_on, vec!["the contract renews".to_string()]);
-    assert!(d.reversible, "nothing said makes it permanent, so nothing is assumed");
+    assert!(
+        d.reversible,
+        "nothing said makes it permanent, so nothing is assumed"
+    );
     assert!(d.previously.is_none(), "history is never invented");
 }
 
@@ -72,27 +91,38 @@ fn a_fault_report_is_not_a_request_to_argue() {
 fn on_its_own_it_argues_the_last_thing_said() {
     let d = decision_from("argue the other side", Some("I'm going to quit the gym")).unwrap();
     assert_eq!(d.what, "I'm going to quit the gym");
-    assert!(decision_from("argue the other side", None).is_none(), "nothing to argue against");
+    assert!(
+        decision_from("argue the other side", None).is_none(),
+        "nothing to argue against"
+    );
 }
 
 #[test]
 fn angles_without_evidence_are_named_not_hidden() {
-    let d = decision_from("make the case against moving to Leeds because the rent is lower", None)
-        .unwrap();
+    let d = decision_from(
+        "make the case against moving to Leeds because the rent is lower",
+        None,
+    )
+    .unwrap();
     let objections = against(&d);
     let missing = not_raised(&objections);
-    assert!(missing.contains(&Angle::YouTriedThis), "no history, so not argued");
+    assert!(
+        missing.contains(&Angle::YouTriedThis),
+        "no history, so not argued"
+    );
     assert!(missing.iter().all(|a| a.needs_evidence()));
     assert!(Angle::YouTriedThis.needs_evidence());
-    assert!(!Angle::NothingIsFine.needs_evidence(), "doing nothing needs no evidence to ask");
+    assert!(
+        !Angle::NothingIsFine.needs_evidence(),
+        "doing nothing needs no evidence to ask"
+    );
     let said = argued(&d);
     assert!(said.starts_with("The strongest case against"), "{said}");
     assert!(said.contains("I didn't argue"), "{said}");
     assert!(said.contains("tried this before"), "{said}");
 
     // With a stated cost the cost angle IS raised, so it drops out of the gaps.
-    let costed =
-        decision_from("make the case against the course, it costs $900", None).unwrap();
+    let costed = decision_from("make the case against the course, it costs $900", None).unwrap();
     let raised = against(&costed);
     assert!(raised.iter().any(|o| o.angle == Angle::NotWorthIt));
     assert!(!not_raised(&raised).contains(&Angle::NotWorthIt));
@@ -108,7 +138,10 @@ fn asking_through_the_daemon_gets_the_case_against() {
         100,
     );
     assert!(reply.contains("strongest case against"), "{reply}");
-    assert!(reply.contains("can't be undone"), "irreversible is the heaviest angle: {reply}");
+    assert!(
+        reply.contains("can't be undone"),
+        "irreversible is the heaviest angle: {reply}"
+    );
 }
 
 // ================= before the turn (AsOf::back_to) =================
@@ -140,7 +173,10 @@ fn a_break_is_shown_against_what_could_be_read_before_it() {
     // Before the break the low still held, so it read as a warning -- the
     // reading a person had in front of them when the break came.
     assert!(before.contains("MAY be turning"), "{before}");
-    assert!(!before.contains("turned DOWN"), "the before cannot contain the break: {before}");
+    assert!(
+        !before.contains("turned DOWN"),
+        "the before cannot contain the break: {before}"
+    );
     // And a bounded view can't be widened.
     assert!(earlier.back_to(v.len()).is_err());
 }
@@ -149,7 +185,10 @@ fn a_break_is_shown_against_what_could_be_read_before_it() {
 fn nothing_turned_means_no_before() {
     let b = bars(&UP_THEN_PULLBACK);
     let v = b.latest().unwrap();
-    assert!(before_the_turn(&v, 5, 2).is_none(), "an unconfirmed warning has no break bar");
+    assert!(
+        before_the_turn(&v, 5, 2).is_none(),
+        "an unconfirmed warning has no break bar"
+    );
 }
 
 // ================= a release with no fixed time (Event::is_window) =================
@@ -173,9 +212,17 @@ fn a_banded_release_is_read_as_the_band() {
     assert!(!fixed.is_window());
     let banded = Blackout::Now(vec![boj.clone()]).plain();
     assert!(banded.contains("has no fixed time"), "{banded}");
-    assert!(banded.contains("BoJ Policy Rate has no fixed time"), "{banded}");
+    assert!(
+        banded.contains("BoJ Policy Rate has no fixed time"),
+        "{banded}"
+    );
     let point = Blackout::Now(vec![fixed.clone()]).plain();
-    assert!(!point.contains("no fixed time"), "a timed release is a point: {point}");
+    assert!(
+        !point.contains("no fixed time"),
+        "a timed release is a point: {point}"
+    );
     // Both readings, bar and now, carry it.
-    assert!(Blackout::InsideTheBar(vec![fixed, boj]).plain().contains("no fixed time"));
+    assert!(Blackout::InsideTheBar(vec![fixed, boj])
+        .plain()
+        .contains("no fixed time"));
 }

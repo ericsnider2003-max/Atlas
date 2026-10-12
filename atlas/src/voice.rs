@@ -457,11 +457,17 @@ impl Default for VideoConfig {
         VideoConfig {
             work_dir: String::new(),
             ffmpeg: ExternalTool {
-                command: "ffmpeg".into(), args: vec![], stdin_text: false, result_file: None,
+                command: "ffmpeg".into(),
+                args: vec![],
+                stdin_text: false,
+                result_file: None,
                 timeout_secs: 120,
             },
             ffprobe: ExternalTool {
-                command: "ffprobe".into(), args: vec![], stdin_text: false, result_file: None,
+                command: "ffprobe".into(),
+                args: vec![],
+                stdin_text: false,
+                result_file: None,
                 timeout_secs: 120,
             },
         }
@@ -477,7 +483,10 @@ pub struct UiaConfig {
 
 impl Default for UiaConfig {
     fn default() -> Self {
-        UiaConfig { min_nodes: 4, min_named_ratio: 0.4 }
+        UiaConfig {
+            min_nodes: 4,
+            min_named_ratio: 0.4,
+        }
     }
 }
 
@@ -496,7 +505,11 @@ pub struct PttConfig {
 
 impl Default for PttConfig {
     fn default() -> Self {
-        PttConfig { enabled: true, key: "tab".into(), hold_ms: 350 }
+        PttConfig {
+            enabled: true,
+            key: "tab".into(),
+            hold_ms: 350,
+        }
     }
 }
 
@@ -599,11 +612,13 @@ impl ToolsConfig {
         if self.work_dir.trim().is_empty() {
             self.work_dir = crate::roots::tmp_dir().to_string_lossy().into_owned();
         } else {
-            self.work_dir =
-                crate::roots::under_install(&self.work_dir).to_string_lossy().into_owned();
+            self.work_dir = crate::roots::under_install(&self.work_dir)
+                .to_string_lossy()
+                .into_owned();
         }
-        self.models.dir =
-            crate::roots::under_install(&self.models.dir).to_string_lossy().into_owned();
+        self.models.dir = crate::roots::under_install(&self.models.dir)
+            .to_string_lossy()
+            .into_owned();
         // The tools and model files named in `vars` too (29 Sep 2026):
         // "tools/whisper/whisper-cli.exe", "models/ggml-base.en.bin" and the
         // rest were relative to whatever folder Atlas was started from. The
@@ -612,7 +627,9 @@ impl ToolsConfig {
         for v in self.vars.values_mut() {
             let rel = v.replace('\\', "/");
             if rel.starts_with("tools/") || rel.starts_with("models/") {
-                *v = crate::roots::under_install(&*v).to_string_lossy().into_owned();
+                *v = crate::roots::under_install(&*v)
+                    .to_string_lossy()
+                    .into_owned();
             }
         }
         self
@@ -624,11 +641,18 @@ impl<'a> Voice<'a> {
         if cfg.enabled && cfg.tts_engine.engine == crate::tts::Engine::Kokoro {
             // Loaded on a thread of its own, then the lines Atlas says most
             // are made ahead (Phase 0.8), so "Yes?" never waits on synthesis.
-            let (voice, pace, volume) = (cfg.voice_settings.voice.clone(), cfg.voice_settings.speed, cfg.sound.volume);
+            let (voice, pace, volume) = (
+                cfg.voice_settings.voice.clone(),
+                cfg.voice_settings.speed,
+                cfg.sound.volume,
+            );
             if crate::kokoro::check(&crate::roots::install_root()).is_ok() {
                 std::thread::spawn(move || {
                     if let Ok(synth) = kokoro_synth_for(&voice, pace, volume) {
-                        crate::kokoro::prepare_stock(synth, crate::kokoro::made_for(&voice, pace, volume));
+                        crate::kokoro::prepare_stock(
+                            synth,
+                            crate::kokoro::made_for(&voice, pace, volume),
+                        );
                     }
                 });
             }
@@ -653,7 +677,13 @@ impl<'a> Voice<'a> {
         if let Some(w) = cfg.wake.as_mut() {
             w.enabled = true;
         }
-        VoiceWork { cfg, last_listen: self.last_listen.clone(), watch: None, said_with_wake: None, warm: None }
+        VoiceWork {
+            cfg,
+            last_listen: self.last_listen.clone(),
+            watch: None,
+            said_with_wake: None,
+            warm: None,
+        }
     }
 
     /// Speech-to-text for the clip at `{in_wav}`, only when someone is
@@ -662,7 +692,9 @@ impl<'a> Voice<'a> {
     /// whisper hears it best, and what whisper writes for
     /// a quiet room ("you", "Thanks for watching") is dropped
     /// (`not_really_said`). 29 Sep 2026.
-    fn transcribe_heard(&self, vars: &Vars) -> Result<String> { self.transcribe_heard_until(vars, &|| false) }
+    fn transcribe_heard(&self, vars: &Vars) -> Result<String> {
+        self.transcribe_heard_until(vars, &|| false)
+    }
 
     fn transcribe_heard_until(&self, vars: &Vars, stop: &dyn Fn() -> bool) -> Result<String> {
         use crate::voicelat::{note_asr, AsrDecision};
@@ -671,12 +703,27 @@ impl<'a> Voice<'a> {
         let canceled = || stop() || crate::parakeet::cancellation_epoch() != epoch;
         let decide = |engine: &str, why: String, audio_ms: u32, rms: f32, text: &str| -> String {
             // A known quiet-room phrase on a quiet or very short clip is no speech.
-            let dropped = !text.is_empty() && crate::voicelat::is_quiet_hallucination(text, rms, audio_ms);
-            note_asr(AsrDecision { engine: engine.into(), why, asr_ms: began.elapsed().as_millis().min(u32::MAX as u128) as u32, audio_ms, dropped_hallucination: dropped });
-            if dropped || not_really_said(text) { String::new() } else { text.to_string() }
+            let dropped =
+                !text.is_empty() && crate::voicelat::is_quiet_hallucination(text, rms, audio_ms);
+            note_asr(AsrDecision {
+                engine: engine.into(),
+                why,
+                asr_ms: began.elapsed().as_millis().min(u32::MAX as u128) as u32,
+                audio_ms,
+                dropped_hallucination: dropped,
+            });
+            if dropped || not_really_said(text) {
+                String::new()
+            } else {
+                text.to_string()
+            }
         };
         if stop() {
-            note_asr(AsrDecision { engine: "none".into(), why: "canceled before recognition".into(), ..Default::default() });
+            note_asr(AsrDecision {
+                engine: "none".into(),
+                why: "canceled before recognition".into(),
+                ..Default::default()
+            });
             return Ok(String::new());
         }
         let in_wav = vars.get("in_wav").cloned().unwrap_or_default();
@@ -684,7 +731,8 @@ impl<'a> Voice<'a> {
         if let Ok(bytes) = std::fs::read(&in_wav) {
             if let Ok((samples, rate)) = crate::diarize::read_wav(&bytes) {
                 if rate > 0 {
-                    audio_ms = (samples.len() as u64 * 1000 / rate as u64).min(u32::MAX as u64) as u32;
+                    audio_ms =
+                        (samples.len() as u64 * 1000 / rate as u64).min(u32::MAX as u64) as u32;
                 }
                 // Measured before levelling: levelling lifts a quiet clip, and
                 // it is the quiet clip whisper invents words for.
@@ -694,12 +742,21 @@ impl<'a> Voice<'a> {
                 let mic = microphone_now(self.cfg).0;
                 match crate::leveller::prepare(&samples, rate, &mic) {
                     None => {
-                        note_asr(AsrDecision { engine: "none".into(), why: "no speech in the clip".into(), asr_ms: 0, audio_ms, dropped_hallucination: false });
+                        note_asr(AsrDecision {
+                            engine: "none".into(),
+                            why: "no speech in the clip".into(),
+                            asr_ms: 0,
+                            audio_ms,
+                            dropped_hallucination: false,
+                        });
                         return Ok(String::new());
                     }
                     Some(ready) => {
                         if ready != samples {
-                            crate::kept!(std::fs::write(&in_wav, crate::audio::wav_bytes(&ready, rate)));
+                            crate::kept!(std::fs::write(
+                                &in_wav,
+                                crate::audio::wav_bytes(&ready, rate)
+                            ));
                         }
                     }
                 }
@@ -709,38 +766,68 @@ impl<'a> Voice<'a> {
         // base.en's mistakes up close, a third across the room); whisper for
         // anything it can't do, so hearing never depends on it. Which one
         // heard each turn, and why, is recorded (`voicelat`).
-        let english = vars.get("lang_val").is_none_or(|l| l.trim().is_empty() || l.trim().eq_ignore_ascii_case("en"))
+        let english = vars
+            .get("lang_val")
+            .is_none_or(|l| l.trim().is_empty() || l.trim().eq_ignore_ascii_case("en"))
             && vars.get("task_opt").is_none_or(|t| t.trim().is_empty());
         let why_whisper = if !english {
             "whisper: not English".to_string()
         } else if self.cfg.stt_engine.trim().eq_ignore_ascii_case("whisper") {
             "whisper: chosen in settings".to_string()
         } else {
-            match crate::parakeet::transcribe_file_until(&crate::roots::install_root(), std::path::Path::new(&in_wav), &canceled) {
+            match crate::parakeet::transcribe_file_until(
+                &crate::roots::install_root(),
+                std::path::Path::new(&in_wav),
+                &canceled,
+            ) {
                 Some(Ok(Some(text))) => {
                     let text = clean_transcript(&text);
-                    return Ok(decide("parakeet", "parakeet installed".into(), audio_ms, level, &text));
+                    return Ok(decide(
+                        "parakeet",
+                        "parakeet installed".into(),
+                        audio_ms,
+                        level,
+                        &text,
+                    ));
                 }
                 Some(Ok(None)) => {
-                    note_asr(AsrDecision { engine: "none".into(), why: "canceled during parakeet".into(), asr_ms: began.elapsed().as_millis() as u32, audio_ms, dropped_hallucination: false });
+                    note_asr(AsrDecision {
+                        engine: "none".into(),
+                        why: "canceled during parakeet".into(),
+                        asr_ms: began.elapsed().as_millis() as u32,
+                        audio_ms,
+                        dropped_hallucination: false,
+                    });
                     return Ok(String::new());
                 }
-                Some(Err(e)) => format!("parakeet failed ({}) -> whisper", e.to_string().chars().take(120).collect::<String>()),
+                Some(Err(e)) => format!(
+                    "parakeet failed ({}) -> whisper",
+                    e.to_string().chars().take(120).collect::<String>()
+                ),
                 None => "whisper: parakeet not installed".to_string(),
             }
         };
         if canceled() {
-            note_asr(AsrDecision { engine: "none".into(), why: "canceled before whisper".into(), audio_ms, ..Default::default() });
+            note_asr(AsrDecision {
+                engine: "none".into(),
+                why: "canceled before whisper".into(),
+                audio_ms,
+                ..Default::default()
+            });
             return Ok(String::new());
         }
-        let Some(raw) = self.cfg.stt.run_stoppable(vars, None, &canceled)? else { return Ok(String::new()); };
+        let Some(raw) = self.cfg.stt.run_stoppable(vars, None, &canceled)? else {
+            return Ok(String::new());
+        };
         let text = clean_transcript(&raw);
         Ok(decide("whisper", why_whisper, audio_ms, level, &text))
     }
 
     /// Words for audio already recorded: written where speech-to-text reads
     /// and transcribed. Used for what you said over Atlas while it spoke.
-    fn transcribe_samples(&self, samples: &[i16]) -> Result<String> { self.transcribe_samples_until(samples, &|| false) }
+    fn transcribe_samples(&self, samples: &[i16]) -> Result<String> {
+        self.transcribe_samples_until(samples, &|| false)
+    }
 
     fn transcribe_samples_until(&self, samples: &[i16], stop: &dyn Fn() -> bool) -> Result<String> {
         let vars = self.vars()?;
@@ -788,7 +875,10 @@ impl<'a> Voice<'a> {
         // every other engine takes a speed multiplier, where larger is faster.
         // Passing one to the other silently inverts every speed you have ever
         // chosen — `tts.rs` warned about exactly this and nothing applied it.
-        v.insert("speed".into(), format!("{:.2}", eng.engine.speed_value(vs.speed)));
+        v.insert(
+            "speed".into(),
+            format!("{:.2}", eng.engine.speed_value(vs.speed)),
+        );
         v.insert("variation".into(), format!("{:.3}", vs.variation));
         v.insert("sentence_gap".into(), format!("{:.2}", vs.sentence_gap));
         // The language flags whisper's command carries. Without these every
@@ -799,7 +889,8 @@ impl<'a> Voice<'a> {
             &crate::roots::install_root(),
         );
         v.insert("stt_model".into(), chosen);
-        let model = crate::language::model_facts(v.get("stt_model").map(String::as_str).unwrap_or(""));
+        let model =
+            crate::language::model_facts(v.get("stt_model").map(String::as_str).unwrap_or(""));
         crate::language::insert_whisper_vars(&self.cfg.language, &model, &mut v);
         // Your own words as the speech model's hints (H11): names, projects,
         // jargon it would otherwise guess at -- after the few every install
@@ -839,7 +930,9 @@ impl<'a> Voice<'a> {
         if !cfg.enabled || device.trim().is_empty() {
             return Ok(None);
         }
-        let hard_stop_secs = u32::try_from(cfg.hard_stop_ms / 1000).unwrap_or(u32::MAX / 2).max(1);
+        let hard_stop_secs = u32::try_from(cfg.hard_stop_ms / 1000)
+            .unwrap_or(u32::MAX / 2)
+            .max(1);
         let mut stream = self.open_pcm(device, hard_stop_secs + 5)?;
         let started = std::time::Instant::now();
         // Cut by `utterance`: speech told from the room by the detector that
@@ -848,10 +941,13 @@ impl<'a> Voice<'a> {
         // (29 Sep 2026: this loop fed the endpointer itself and threw away
         // everything before the detector was sure, so the first syllable of
         // an answer said promptly was lost.)
-        let got = crate::utterance::next_utterance(&mut stream, cfg, cfg.no_speech_after_ms, &|| false);
+        let got =
+            crate::utterance::next_utterance(&mut stream, cfg, cfg.no_speech_after_ms, &|| false);
         let Some(kept) = got else {
             if let Some(why) = crate::micthread::MicStream::why_stopped(&mut stream) {
-                return Err(AtlasError::Platform(format!("the microphone \"{device}\" couldn't be opened: {why}")));
+                return Err(AtlasError::Platform(format!(
+                    "the microphone \"{device}\" couldn't be opened: {why}"
+                )));
             }
             return Ok(None);
         };
@@ -898,7 +994,12 @@ impl<'a> Voice<'a> {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-            .map_err(|e| AtlasError::Platform(format!("could not start '{}' to listen: {e}", self.cfg.record.command)))?;
+            .map_err(|e| {
+                AtlasError::Platform(format!(
+                    "could not start '{}' to listen: {e}",
+                    self.cfg.record.command
+                ))
+            })?;
         crate::childjob::tie(&child);
         let mut out = child
             .stdout
@@ -925,7 +1026,9 @@ impl<'a> Voice<'a> {
         let said = complaint.and_then(|h| h.join().ok()).unwrap_or_default();
         if bytes.is_empty() {
             if let Some(why) = recorder_could_not_open(&said) {
-                return Err(AtlasError::Platform(format!("the microphone \"{device}\" couldn't be opened: {why}")));
+                return Err(AtlasError::Platform(format!(
+                    "the microphone \"{device}\" couldn't be opened: {why}"
+                )));
             }
         }
         let kept = crate::audio::samples_from_le(&bytes[..bytes.len() / 2 * 2]);
@@ -938,7 +1041,10 @@ impl<'a> Voice<'a> {
         let recorded = started.elapsed().as_millis();
         let t1 = std::time::Instant::now();
         let raw = self.transcribe_heard(&vars)?;
-        self.last_listen.store(pack(recorded, t1.elapsed().as_millis()), std::sync::atomic::Ordering::Relaxed);
+        self.last_listen.store(
+            pack(recorded, t1.elapsed().as_millis()),
+            std::sync::atomic::Ordering::Relaxed,
+        );
         let text = clean_transcript(&raw);
         Ok((!text.is_empty()).then_some(text))
     }
@@ -1002,10 +1108,17 @@ impl<'a> Voice<'a> {
         if self.cfg.endpoint.enabled && !device.trim().is_empty() {
             if let Ok(mut stream) = self.open_pcm(&device, secs + 30) {
                 let t0 = std::time::Instant::now();
-                let got = crate::utterance::next_utterance(&mut stream, &self.cfg.endpoint, u64::from(secs) * 1000, stop);
+                let got = crate::utterance::next_utterance(
+                    &mut stream,
+                    &self.cfg.endpoint,
+                    u64::from(secs) * 1000,
+                    stop,
+                );
                 let Some(kept) = got else {
                     if let Some(why) = crate::micthread::MicStream::why_stopped(&mut stream) {
-                        return Err(AtlasError::Platform(format!("the microphone \"{device}\" couldn't be opened: {why}")));
+                        return Err(AtlasError::Platform(format!(
+                            "the microphone \"{device}\" couldn't be opened: {why}"
+                        )));
                     }
                     return Ok(None);
                 };
@@ -1013,7 +1126,10 @@ impl<'a> Voice<'a> {
                 let recorded = t0.elapsed().as_millis();
                 let t1 = std::time::Instant::now();
                 let text = self.transcribe_samples_until(&kept, stop)?;
-                self.last_listen.store(pack(recorded, t1.elapsed().as_millis()), std::sync::atomic::Ordering::Relaxed);
+                self.last_listen.store(
+                    pack(recorded, t1.elapsed().as_millis()),
+                    std::sync::atomic::Ordering::Relaxed,
+                );
                 return Ok((!text.is_empty()).then_some(text));
             }
         }
@@ -1053,7 +1169,10 @@ impl<'a> Voice<'a> {
     pub fn say_as(&self, voice_id: &str, text: &str) -> Result<()> {
         let mut vars = self.vars()?;
         vars.insert("voice_id".into(), voice_id.to_string());
-        vars.insert("voice_file".into(), self.cfg.tts_engine.voice_file_for(voice_id));
+        vars.insert(
+            "voice_file".into(),
+            self.cfg.tts_engine.voice_file_for(voice_id),
+        );
         self.cfg.tts.run(&vars, Some(text))?;
         self.cfg.play.run(&vars, None)?;
         Ok(())
@@ -1084,7 +1203,8 @@ impl<'a> Voice<'a> {
         if cfg!(windows) && crate::playout::plays_inside(&self.cfg.play.command) {
             if let Some(bytes) = vars.get("out_wav").and_then(|p| std::fs::read(p).ok()) {
                 let speaker = crate::playout::speaker_now(&self.cfg.audio);
-                let played = crate::playout::parse_wav(&bytes).and_then(|wav| crate::playout::play(&wav, speaker.as_deref(), stop));
+                let played = crate::playout::parse_wav(&bytes)
+                    .and_then(|wav| crate::playout::play(&wav, speaker.as_deref(), stop));
                 match played {
                     Ok(()) => return Ok(if stop() { None } else { Some(String::new()) }),
                     Err(why) => {
@@ -1122,7 +1242,12 @@ impl<'a> Voice<'a> {
         // a line that doesn't move is no reason not to speak.
         let data = crate::roots::data_dir();
         if let Some(wav) = vars.get("out_wav").and_then(|p| std::fs::read(p).ok()) {
-            crate::heard!(crate::speaking::begin(&data, text, &wav, crate::speaking::now_ms() + crate::speaking::PLAYBACK_LAG_MS));
+            crate::heard!(crate::speaking::begin(
+                &data,
+                text,
+                &wav,
+                crate::speaking::now_ms() + crate::speaking::PLAYBACK_LAG_MS
+            ));
             crate::overlaywin::start_if_gone(&data);
         }
         let t1 = std::time::Instant::now();
@@ -1155,8 +1280,13 @@ impl<'a> Voice<'a> {
     fn speech_command_vars(&self) -> Result<Vars> {
         let mut vars = self.vars()?;
         let eng = &self.cfg.tts_engine;
-        if eng.engine == crate::tts::Engine::Kokoro && self.cfg.tts.command.to_lowercase().contains("piper") {
-            let piper = crate::tts::EngineConfig { engine: crate::tts::Engine::Piper, ..eng.clone() };
+        if eng.engine == crate::tts::Engine::Kokoro
+            && self.cfg.tts.command.to_lowercase().contains("piper")
+        {
+            let piper = crate::tts::EngineConfig {
+                engine: crate::tts::Engine::Piper,
+                ..eng.clone()
+            };
             let vs = &self.cfg.voice_settings;
             let voice = if crate::kokoro::speaker_id(&vs.voice).is_some() {
                 crate::tts::VoiceSettings::default().voice
@@ -1165,7 +1295,10 @@ impl<'a> Voice<'a> {
             };
             vars.insert("voice_file".into(), piper.voice_file_for(&voice));
             vars.insert("voice_id".into(), voice);
-            vars.insert("speed".into(), format!("{:.2}", crate::tts::Engine::Piper.speed_value(vs.speed)));
+            vars.insert(
+                "speed".into(),
+                format!("{:.2}", crate::tts::Engine::Piper.speed_value(vs.speed)),
+            );
         }
         Ok(vars)
     }
@@ -1173,31 +1306,45 @@ impl<'a> Voice<'a> {
     /// How one sentence becomes Kokoro audio: the voice, your pace and your
     /// volume. `Err` (with why, in words) when Kokoro can't be had.
     fn kokoro_synth(&self) -> std::result::Result<crate::kokoro::Synth, String> {
-        kokoro_synth_for(&self.cfg.voice_settings.voice, self.cfg.voice_settings.speed, self.cfg.sound.volume)
+        kokoro_synth_for(
+            &self.cfg.voice_settings.voice,
+            self.cfg.voice_settings.speed,
+            self.cfg.sound.volume,
+        )
     }
 
     /// What the stock lines are made with, for these settings.
     fn stock_made_for(&self) -> String {
-        crate::kokoro::made_for(&self.cfg.voice_settings.voice, self.cfg.voice_settings.speed, self.cfg.sound.volume)
+        crate::kokoro::made_for(
+            &self.cfg.voice_settings.voice,
+            self.cfg.voice_settings.speed,
+            self.cfg.sound.volume,
+        )
     }
 }
 
 /// Kokoro saying text in `voice` at `pace` and `volume` -- loaded the first
 /// time (`kokoro::engine`), so this can wait seconds; call it off the loop.
-fn kokoro_synth_for(voice: &str, pace: f32, volume: u8) -> std::result::Result<crate::kokoro::Synth, String> {
-        let root = crate::roots::install_root();
-        let engine = crate::kokoro::engine(&root)?;
-        let (_, sid) = crate::kokoro::voice_or_default(voice);
-        let speed = crate::tts::Engine::Kokoro.speed_value(pace);
-        Ok(std::sync::Arc::new(move |text: &str| {
-            let k = engine.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            let mut wav = k.synth_wav(text, sid, speed)?;
-            // Speaking volume (Sound & voice), applied to the audio itself.
-            if volume < 100 {
-                crate::sound::scale_wav(&mut wav, volume);
-            }
-            Ok(wav)
-        }))
+fn kokoro_synth_for(
+    voice: &str,
+    pace: f32,
+    volume: u8,
+) -> std::result::Result<crate::kokoro::Synth, String> {
+    let root = crate::roots::install_root();
+    let engine = crate::kokoro::engine(&root)?;
+    let (_, sid) = crate::kokoro::voice_or_default(voice);
+    let speed = crate::tts::Engine::Kokoro.speed_value(pace);
+    Ok(std::sync::Arc::new(move |text: &str| {
+        let k = engine
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut wav = k.synth_wav(text, sid, speed)?;
+        // Speaking volume (Sound & voice), applied to the audio itself.
+        if volume < 100 {
+            crate::sound::scale_wav(&mut wav, volume);
+        }
+        Ok(wav)
+    }))
 }
 
 impl Voice<'_> {
@@ -1209,10 +1356,17 @@ impl Voice<'_> {
         if self.cfg.tts_engine.engine != crate::tts::Engine::Kokoro {
             return;
         }
-        let Ok(synth) = self.kokoro_synth() else { return };
+        let Ok(synth) = self.kokoro_synth() else {
+            return;
+        };
         let sentences: Vec<String> = crate::speech::playback_chunks(reply)
             .iter()
-            .map(|c| crate::pronounce::for_speech(&crate::spoken_form::for_speech(c), &self.cfg.pronounce))
+            .map(|c| {
+                crate::pronounce::for_speech(
+                    &crate::spoken_form::for_speech(c),
+                    &self.cfg.pronounce,
+                )
+            })
             .collect();
         self.ahead.prepare(sentences, synth);
     }
@@ -1223,10 +1377,17 @@ impl Voice<'_> {
         if self.cfg.tts_engine.engine != crate::tts::Engine::Kokoro {
             return;
         }
-        let Ok(synth) = self.kokoro_synth() else { return };
+        let Ok(synth) = self.kokoro_synth() else {
+            return;
+        };
         let sentences: Vec<String> = crate::speech::playback_chunks(more)
             .iter()
-            .map(|c| crate::pronounce::for_speech(&crate::spoken_form::for_speech(c), &self.cfg.pronounce))
+            .map(|c| {
+                crate::pronounce::for_speech(
+                    &crate::spoken_form::for_speech(c),
+                    &self.cfg.pronounce,
+                )
+            })
             .collect();
         self.ahead.extend(sentences, synth);
     }
@@ -1235,7 +1396,11 @@ impl Voice<'_> {
     /// owned copy of the settings, and this voice's timings and Kokoro queue
     /// shared -- so what `prepare` queues here is what the thread plays.
     pub fn speaker(&self) -> VoiceSpeaker {
-        VoiceSpeaker { cfg: self.cfg.clone(), last_speak: self.last_speak.clone(), ahead: self.ahead.clone() }
+        VoiceSpeaker {
+            cfg: self.cfg.clone(),
+            last_speak: self.last_speak.clone(),
+            ahead: self.ahead.clone(),
+        }
     }
 
     /// Speak in Kokoro. `None` when it isn't available -- said once, in
@@ -1254,7 +1419,11 @@ impl Voice<'_> {
         let spoken = crate::pronounce::for_speech(text, &self.cfg.pronounce);
         // Preserve the prepared chunk as the same queue key. Re-splitting a
         // balanced multi-sentence opening would discard its one-ahead audio.
-        let sentences = if self.ahead.has(&spoken) { vec![spoken] } else { crate::speech::playback_chunks(&spoken) };
+        let sentences = if self.ahead.has(&spoken) {
+            vec![spoken]
+        } else {
+            crate::speech::playback_chunks(&spoken)
+        };
         // A reply `prepare` was given is already queued. Anything else of
         // more than one sentence (a line from `Daemon::say`) is queued here,
         // so its second sentence is made while its first plays. A single
@@ -1273,7 +1442,12 @@ impl Voice<'_> {
         for (i, s) in sentences.iter().enumerate() {
             let t0 = std::time::Instant::now();
             let made_for = self.stock_made_for();
-            let wav = match self.ahead.take(s).or_else(|| crate::kokoro::stock(s, &made_for).map(Ok)).unwrap_or_else(|| synth(s)) {
+            let wav = match self
+                .ahead
+                .take(s)
+                .or_else(|| crate::kokoro::stock(s, &made_for).map(Ok))
+                .unwrap_or_else(|| synth(s))
+            {
                 Ok(w) => w,
                 Err(why) => {
                     // Fails mid-reply: say why once, and piper says the rest
@@ -1290,7 +1464,12 @@ impl Voice<'_> {
                 return Kokoro::Done(Err(e.into()));
             }
             // The mark moves with the voice, sentence by sentence.
-            crate::heard!(crate::speaking::begin(&data, s, &wav, crate::speaking::now_ms() + crate::speaking::PLAYBACK_LAG_MS));
+            crate::heard!(crate::speaking::begin(
+                &data,
+                s,
+                &wav,
+                crate::speaking::now_ms() + crate::speaking::PLAYBACK_LAG_MS
+            ));
             let t1 = std::time::Instant::now();
             // Ended mid-way when you speak over it or hold the talk key, as
             // piper's is (28 Sep 2026: Kokoro's player couldn't be stopped,
@@ -1306,7 +1485,10 @@ impl Voice<'_> {
                 return Kokoro::Done(Err(e));
             }
         }
-        self.last_speak.store(pack(synth_ms, play_ms), std::sync::atomic::Ordering::Relaxed);
+        self.last_speak.store(
+            pack(synth_ms, play_ms),
+            std::sync::atomic::Ordering::Relaxed,
+        );
         Kokoro::Done(Ok(()))
     }
 
@@ -1321,8 +1503,8 @@ impl Voice<'_> {
     }
 
     fn snap(&self, tool: Option<&ExternalTool>, kind: &str) -> Result<String> {
-        let tool = tool
-            .ok_or_else(|| AtlasError::Config(format!("no {kind} capture tool configured")))?;
+        let tool =
+            tool.ok_or_else(|| AtlasError::Config(format!("no {kind} capture tool configured")))?;
         // The working folder has to exist before anything writes into it.
         // `listen` created it and this didn't, so a capture on a fresh install
         // failed with whatever the capture tool says when a directory is
@@ -1457,7 +1639,11 @@ impl Voice<'_> {
     /// nothing). `Ok(Some(None))`: listened until `stop` or the stream's end
     /// without the name. `Ok(None)`: can't listen this way here (no
     /// streaming microphone, endpointing off) -- use clips.
-    fn wake_by_speech(&self, phrase: &str, stop: &dyn Fn() -> bool) -> Result<Option<Option<String>>> {
+    fn wake_by_speech(
+        &self,
+        phrase: &str,
+        stop: &dyn Fn() -> bool,
+    ) -> Result<Option<Option<String>>> {
         use std::io::Read;
         let cfg = &self.cfg.endpoint;
         let device = microphone_now(self.cfg).1;
@@ -1475,9 +1661,17 @@ impl Voice<'_> {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .spawn()
-            .map_err(|e| AtlasError::Platform(format!("could not start '{}' to listen: {e}", self.cfg.record.command)))?;
+            .map_err(|e| {
+                AtlasError::Platform(format!(
+                    "could not start '{}' to listen: {e}",
+                    self.cfg.record.command
+                ))
+            })?;
         crate::childjob::tie(&child);
-        let mut out = child.stdout.take().ok_or_else(|| AtlasError::Platform("the recorder gave nothing to read".into()))?;
+        let mut out = child
+            .stdout
+            .take()
+            .ok_or_else(|| AtlasError::Platform("the recorder gave nothing to read".into()))?;
         // Time by the sound itself, not the clock: what's heard is measured in
         // what was recorded, however late it's read.
         let mut heard_ms: u64 = 0;
@@ -1501,7 +1695,8 @@ impl Voice<'_> {
                 kept.extend_from_slice(&samples);
                 heard_ms += 250;
                 let now_ms = heard_ms;
-                let level = crate::vad::level_for_endpoint(db, vad.window(&samples), cfg.silence_below_db);
+                let level =
+                    crate::vad::level_for_endpoint(db, vad.window(&samples), cfg.silence_below_db);
                 ep.feed(level, "", now_ms, cfg);
                 if !ep.finished() {
                     continue;
@@ -1556,7 +1751,9 @@ impl Voice<'_> {
         }
         let name_alone = |heard: bool| heard.then(String::new);
         if let Some(det) = &wake.detector {
-            return Ok(name_alone(det.run_stoppable(&self.vars()?, None, stop)?.is_some()));
+            return Ok(name_alone(
+                det.run_stoppable(&self.vars()?, None, stop)?.is_some(),
+            ));
         }
         // Listening the whole time, by what you say rather than by clips,
         // when Parakeet is here to hear each thing said quickly.
@@ -1627,7 +1824,9 @@ pub fn words_after_name(heard: &str, phrase: &str) -> Option<String> {
             acc.push_str(&loose(words[j]));
             if acc == want {
                 let rest = words[j + 1..].join(" ");
-                let rest = rest.trim_start_matches(|c: char| !c.is_alphanumeric()).trim();
+                let rest = rest
+                    .trim_start_matches(|c: char| !c.is_alphanumeric())
+                    .trim();
                 return Some(rest.to_string());
             }
             if !want.starts_with(&acc) {
@@ -1669,7 +1868,13 @@ pub fn not_really_said(text: &str) -> bool {
     let plain: String = text
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c.is_whitespace() || c == '\'' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c.is_whitespace() || c == '\'' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect();
     let plain = plain.split_whitespace().collect::<Vec<_>>().join(" ");
     plain.is_empty() || WHISPER_SILENCE.contains(&plain.as_str())
@@ -1714,7 +1919,10 @@ impl crate::daemon::Ears for Voice<'_> {
         // Taken, not read (Phase 0.2): about 60 of 107 turns on 30 Sep
         // carried the listening and hearing figures of an earlier turn,
         // because a typed or follow-up turn left the last ones in place.
-        unpack(self.last_listen.swap(UNMEASURED, std::sync::atomic::Ordering::Relaxed))
+        unpack(
+            self.last_listen
+                .swap(UNMEASURED, std::sync::atomic::Ordering::Relaxed),
+        )
     }
     fn voiceprint(&self) -> Option<Vec<f32>> {
         Voice::voiceprint(self)
@@ -1767,14 +1975,21 @@ impl crate::micthread::MicWork for VoiceWork {
         }
         // Ten minutes is longer than any reply; listening for the wake word
         // opens it again when it runs out.
-        PcmStream::open(&self.cfg.record.command, &device, 600).ok().map(|p| Box::new(p) as Box<dyn crate::micthread::MicStream>)
+        PcmStream::open(&self.cfg.record.command, &device, 600)
+            .ok()
+            .map(|p| Box::new(p) as Box<dyn crate::micthread::MicStream>)
     }
     /// The wake word from what you said, when it's heard by speech-to-text
     /// (with or without your taught phrase) rather than by a program of its
     /// own, and the microphone can be streamed.
     fn hears_name_in_audio(&self) -> bool {
-        let Some(wake) = self.cfg.wake.as_ref() else { return false };
-        wake.enabled && wake.detector.is_none() && self.cfg.endpoint.enabled && !microphone_now(&self.cfg).1.trim().is_empty()
+        let Some(wake) = self.cfg.wake.as_ref() else {
+            return false;
+        };
+        wake.enabled
+            && wake.detector.is_none()
+            && self.cfg.endpoint.enabled
+            && !microphone_now(&self.cfg).1.trim().is_empty()
     }
     fn name_by_sound(&mut self, samples: &[i16]) -> Option<bool> {
         let wake = self.cfg.wake.as_ref()?;
@@ -1785,7 +2000,12 @@ impl crate::micthread::MicWork for VoiceWork {
     }
     fn name_in(&mut self, samples: &[i16]) -> Result<crate::micthread::NameCheck> {
         use crate::micthread::NameCheck;
-        let phrase = self.cfg.wake.as_ref().map(|w| w.phrase.clone()).unwrap_or_else(|| "atlas".into());
+        let phrase = self
+            .cfg
+            .wake
+            .as_ref()
+            .map(|w| w.phrase.clone())
+            .unwrap_or_else(|| "atlas".into());
         // Your own phrase, taught with `atlas wake-word`, is matched on the
         // sound first: speech-to-text only runs when it's there.
         let taught = crate::wakeword::load(&crate::roots::store());
@@ -1810,7 +2030,13 @@ impl crate::micthread::MicWork for VoiceWork {
             // after the phrase's own number of words.
             None if taught.is_some() => {
                 let n = phrase.split_whitespace().count().max(1);
-                NameCheck::Named(words.split_whitespace().skip(n).collect::<Vec<_>>().join(" "))
+                NameCheck::Named(
+                    words
+                        .split_whitespace()
+                        .skip(n)
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                )
             }
             None => NameCheck::NotNamed(words),
         })
@@ -1831,14 +2057,22 @@ impl crate::micthread::MicWork for VoiceWork {
         if let Some(mut warm) = self.warm.take().filter(|w| w.alive()) {
             warm.claim();
             let t0 = std::time::Instant::now();
-            let got = crate::utterance::next_utterance(&mut warm, &self.cfg.endpoint, u64::from(secs) * 1000, stop);
+            let got = crate::utterance::next_utterance(
+                &mut warm,
+                &self.cfg.endpoint,
+                u64::from(secs) * 1000,
+                stop,
+            );
             drop(warm);
             let Some(kept) = got else { return Ok(None) };
             let recorded = t0.elapsed().as_millis();
             let t1 = std::time::Instant::now();
             let voice = self.voice();
             let text = voice.transcribe_samples(&kept)?;
-            voice.last_listen.store(pack(recorded, t1.elapsed().as_millis()), std::sync::atomic::Ordering::Relaxed);
+            voice.last_listen.store(
+                pack(recorded, t1.elapsed().as_millis()),
+                std::sync::atomic::Ordering::Relaxed,
+            );
             return Ok((!text.is_empty()).then_some(text));
         }
         self.voice().listen_for_until(secs, stop)
@@ -1851,10 +2085,14 @@ impl crate::micthread::MicWork for VoiceWork {
         if device.trim().is_empty() {
             return;
         }
-        self.warm = PcmStream::open(&self.cfg.record.command, &device, 600).ok().map(WarmMic::start);
+        self.warm = PcmStream::open(&self.cfg.record.command, &device, 600)
+            .ok()
+            .map(WarmMic::start);
     }
     fn playing_level(&mut self) -> Option<f32> {
-        self.watch.get_or_insert_with(|| crate::speaking::Watch::new(crate::roots::data_dir())).level()
+        self.watch
+            .get_or_insert_with(|| crate::speaking::Watch::new(crate::roots::data_dir()))
+            .level()
     }
     fn models_dir(&self) -> PathBuf {
         PathBuf::from(&self.cfg.models.dir)
@@ -1883,32 +2121,42 @@ impl WarmMic {
         let claimed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let (c, st) = (claimed.clone(), stop.clone());
-        let reader_thread = std::thread::Builder::new().name("atlas-warm-mic".into()).spawn(move || {
-            let started = std::time::Instant::now();
-            // 20 ms at a time.
-            while !st.load(Ordering::SeqCst) {
-                let Some(chunk) = stream.read((RECORD_RATE_HZ / 50) as usize) else { break };
-                if c.load(Ordering::SeqCst) {
-                    if tx.send(chunk).is_err() {
+        let reader_thread = std::thread::Builder::new()
+            .name("atlas-warm-mic".into())
+            .spawn(move || {
+                let started = std::time::Instant::now();
+                // 20 ms at a time.
+                while !st.load(Ordering::SeqCst) {
+                    let Some(chunk) = stream.read((RECORD_RATE_HZ / 50) as usize) else {
+                        break;
+                    };
+                    if c.load(Ordering::SeqCst) {
+                        if tx.send(chunk).is_err() {
+                            break;
+                        }
+                    } else if started.elapsed().as_secs() >= WARM_UNCLAIMED_SECS {
                         break;
                     }
-                } else if started.elapsed().as_secs() >= WARM_UNCLAIMED_SECS {
-                    break;
                 }
-            }
-            st.store(true, Ordering::SeqCst);
-        });
+                st.store(true, Ordering::SeqCst);
+            });
         if reader_thread.is_err() {
             // Nothing will ever read the mic: `alive()` must say so.
             stop.store(true, Ordering::SeqCst);
         }
-        WarmMic { rx, claimed, stop, pending: std::collections::VecDeque::new() }
+        WarmMic {
+            rx,
+            claimed,
+            stop,
+            pending: std::collections::VecDeque::new(),
+        }
     }
     fn alive(&self) -> bool {
         !self.stop.load(std::sync::atomic::Ordering::SeqCst)
     }
     fn claim(&mut self) {
-        self.claimed.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.claimed
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -1951,9 +2199,14 @@ impl PcmStream {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-            .map_err(|e| AtlasError::Platform(format!("could not start '{command}' to listen: {e}")))?;
+            .map_err(|e| {
+                AtlasError::Platform(format!("could not start '{command}' to listen: {e}"))
+            })?;
         crate::childjob::tie(&child);
-        let out = child.stdout.take().ok_or_else(|| AtlasError::Platform("the recorder gave nothing to read".into()))?;
+        let out = child
+            .stdout
+            .take()
+            .ok_or_else(|| AtlasError::Platform("the recorder gave nothing to read".into()))?;
         let said = child.stderr.take().map(|mut e| {
             std::thread::spawn(move || {
                 let mut s = String::new();
@@ -1977,7 +2230,11 @@ impl crate::micthread::MicStream for PcmStream {
         // complaint is all written.
         let _ = self.child.kill();
         crate::heard!(self.child.wait());
-        let said = self.said.take().and_then(|h| h.join().ok()).unwrap_or_default();
+        let said = self
+            .said
+            .take()
+            .and_then(|h| h.join().ok())
+            .unwrap_or_default();
         recorder_could_not_open(&said)
     }
 }
@@ -2022,10 +2279,12 @@ impl crate::daemon::Mouth for Voice<'_> {
         Some(Box::new(self.speaker()))
     }
     fn last_speak_split_ms(&self) -> Option<(u32, u32)> {
-        unpack(self.last_speak.swap(UNMEASURED, std::sync::atomic::Ordering::Relaxed))
+        unpack(
+            self.last_speak
+                .swap(UNMEASURED, std::sync::atomic::Ordering::Relaxed),
+        )
     }
 }
-
 
 /// Everything about reading a market that is still config.
 ///
@@ -2096,7 +2355,11 @@ pub fn microphone_now(cfg: &ToolsConfig) -> (String, String) {
         return m;
     }
     let device = cfg.vars.get("mic_device").cloned().unwrap_or_default();
-    let name = cfg.vars.get("mic_name").cloned().unwrap_or_else(|| device.clone());
+    let name = cfg
+        .vars
+        .get("mic_name")
+        .cloned()
+        .unwrap_or_else(|| device.clone());
     (name, device)
 }
 
@@ -2132,8 +2395,20 @@ mod recognition_cancel_tests {
         let vars = Vars::new();
         assert_eq!(voice.transcribe_heard_until(&vars, &|| true).unwrap(), "");
         let checks = std::cell::Cell::new(0);
-        let cancel_before_fallback = || { let n = checks.get(); checks.set(n + 1); n > 0 };
-        assert_eq!(voice.transcribe_heard_until(&vars, &cancel_before_fallback).unwrap(), "");
-        assert!(voice.transcribe_heard_until(&vars, &|| false).is_err(), "next request must reach its own configured engine rather than inherit cancellation");
+        let cancel_before_fallback = || {
+            let n = checks.get();
+            checks.set(n + 1);
+            n > 0
+        };
+        assert_eq!(
+            voice
+                .transcribe_heard_until(&vars, &cancel_before_fallback)
+                .unwrap(),
+            ""
+        );
+        assert!(
+            voice.transcribe_heard_until(&vars, &|| false).is_err(),
+            "next request must reach its own configured engine rather than inherit cancellation"
+        );
     }
 }

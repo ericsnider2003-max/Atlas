@@ -44,7 +44,11 @@ fn every_source_file_is_declared_in_lib() {
         let children = std::path::Path::new("src").join(stem);
         if children.is_dir() {
             let parent_text = fs::read_to_string(&parent).expect("readable parent module");
-            let mut kids: Vec<_> = fs::read_dir(&children).expect("readable child folder").flatten().map(|e| e.path()).collect();
+            let mut kids: Vec<_> = fs::read_dir(&children)
+                .expect("readable child folder")
+                .flatten()
+                .map(|e| e.path())
+                .collect();
             kids.sort();
             for kid in kids {
                 if kid.extension().and_then(|e| e.to_str()) != Some("rs") {
@@ -79,7 +83,9 @@ fn every_source_file_is_declared_in_lib() {
 #[test]
 fn every_file_of_the_binary_is_declared_in_main() {
     let main = fs::read_to_string("src/main.rs").expect("src/main.rs");
-    let Ok(dir) = fs::read_dir("src/main") else { return };
+    let Ok(dir) = fs::read_dir("src/main") else {
+        return;
+    };
     let mut undeclared = Vec::new();
     for entry in dir.flatten() {
         let p = entry.path();
@@ -96,7 +102,10 @@ fn every_file_of_the_binary_is_declared_in_main() {
         }
     }
     undeclared.sort();
-    assert!(undeclared.is_empty(), "files in src/main/ that main.rs never declares: {undeclared:?}");
+    assert!(
+        undeclared.is_empty(),
+        "files in src/main/ that main.rs never declares: {undeclared:?}"
+    );
 }
 
 #[test]
@@ -108,10 +117,15 @@ fn every_declared_module_has_a_file() {
     let mut missing = Vec::new();
     for line in lib.lines() {
         let t = line.trim();
-        let Some(rest) = t.strip_prefix("pub mod ").or_else(|| t.strip_prefix("mod ")) else {
+        let Some(rest) = t
+            .strip_prefix("pub mod ")
+            .or_else(|| t.strip_prefix("mod "))
+        else {
             continue;
         };
-        let Some(name) = rest.strip_suffix(';') else { continue };
+        let Some(name) = rest.strip_suffix(';') else {
+            continue;
+        };
         let name = name.trim();
         let as_file = std::path::Path::new("src").join(format!("{name}.rs"));
         let as_dir = std::path::Path::new("src").join(name).join("mod.rs");
@@ -119,7 +133,10 @@ fn every_declared_module_has_a_file() {
             missing.push(name.to_string());
         }
     }
-    assert!(missing.is_empty(), "lib.rs declares modules with no file: {missing:?}");
+    assert!(
+        missing.is_empty(),
+        "lib.rs declares modules with no file: {missing:?}"
+    );
 }
 
 /// True when `lib.rs` actually names this module, which is the only thing
@@ -143,17 +160,23 @@ fn every_test_file_names_a_module_that_is_declared() {
     // came with them, and this guard reported nothing while the suite could
     // not build. An absence of a finding was not an absence of a problem.
     let lib = fs::read_to_string("src/lib.rs").expect("src/lib.rs");
-    let Ok(dir) = fs::read_dir("tests") else { return };
+    let Ok(dir) = fs::read_dir("tests") else {
+        return;
+    };
     let mut broken = Vec::new();
     for entry in dir.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("rs") {
             continue;
         }
-        let Ok(text) = fs::read_to_string(&path) else { continue };
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
         for line in text.lines() {
             let t = line.trim();
-            let Some(rest) = t.strip_prefix("use atlas::") else { continue };
+            let Some(rest) = t.strip_prefix("use atlas::") else {
+                continue;
+            };
             let module: String = rest
                 .chars()
                 .take_while(|c| c.is_alphanumeric() || *c == '_')

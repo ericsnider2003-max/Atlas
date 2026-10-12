@@ -121,7 +121,12 @@ fn a_model(embed: u64, blocks: u32, ctx: u32) -> Vec<u8> {
             ("ffn_up", [embed, ff]),
             ("ffn_down", [ff, embed]),
         ] {
-            b = b.tensor(&format!("blk.{i}.{name}.weight"), &dims, 12, 1_000 + i as u64);
+            b = b.tensor(
+                &format!("blk.{i}.{name}.weight"),
+                &dims,
+                12,
+                1_000 + i as u64,
+            );
         }
     }
     b.build()
@@ -143,7 +148,11 @@ fn a_folder(tag: &str) -> PathBuf {
 }
 
 fn cfg_at(dir: &Path) -> ModelsConfig {
-    ModelsConfig { dir: dir.display().to_string(), context: 4096, ..Default::default() }
+    ModelsConfig {
+        dir: dir.display().to_string(),
+        context: 4096,
+        ..Default::default()
+    }
 }
 
 fn machine(free_mb: u64, vram_mb: u64) -> Machine {
@@ -175,27 +184,59 @@ fn a_configured_budget_may_only_lower_what_was_measured() {
     // want. "Use more than the machine has" produces a model that will not
     // load, which is the failure `fit.rs` exists to prevent.
     let m = machine(32_000, 0);
-    let measured = budget_bytes(&ModelsConfig { memory_budget_mb: 0, ..Default::default() }, &m);
+    let measured = budget_bytes(
+        &ModelsConfig {
+            memory_budget_mb: 0,
+            ..Default::default()
+        },
+        &m,
+    );
 
-    let capped =
-        budget_bytes(&ModelsConfig { memory_budget_mb: 1_000, ..Default::default() }, &m);
+    let capped = budget_bytes(
+        &ModelsConfig {
+            memory_budget_mb: 1_000,
+            ..Default::default()
+        },
+        &m,
+    );
     assert_eq!(capped, 1_000 * 1024 * 1024, "the cap was ignored");
 
-    let greedy =
-        budget_bytes(&ModelsConfig { memory_budget_mb: 999_999, ..Default::default() }, &m);
-    assert_eq!(greedy, measured, "a config raised the budget past the machine");
+    let greedy = budget_bytes(
+        &ModelsConfig {
+            memory_budget_mb: 999_999,
+            ..Default::default()
+        },
+        &m,
+    );
+    assert_eq!(
+        greedy, measured,
+        "a config raised the budget past the machine"
+    );
 
     // 1 Oct 2026: `memory_budget_mb: '2'` in the settings left Atlas with no
     // model ("there is 2MB spare", 5 GB free). Up to 64 can only mean GB.
-    let gb = budget_bytes(&ModelsConfig { memory_budget_mb: 2, ..Default::default() }, &m);
+    let gb = budget_bytes(
+        &ModelsConfig {
+            memory_budget_mb: 2,
+            ..Default::default()
+        },
+        &m,
+    );
     assert_eq!(gb, 2 * 1024 * 1024 * 1024);
-    assert_eq!(atlas::models::budget_set_mb(256), 256, "a real MB figure stays one");
+    assert_eq!(
+        atlas::models::budget_set_mb(256),
+        256,
+        "a real MB figure stays one"
+    );
 }
 
 #[test]
 fn zero_means_whatever_this_machine_can_spare() {
     let m = machine(16_000, 0);
-    let cfg = ModelsConfig { memory_budget_mb: 0, ..Default::default() };
+    let cfg = ModelsConfig {
+        memory_budget_mb: 0,
+        ..Default::default()
+    };
     assert_eq!(budget_bytes(&cfg, &m), m.budget_mb() * 1024 * 1024);
 }
 
@@ -205,9 +246,15 @@ fn zero_means_whatever_this_machine_can_spare() {
 fn a_folder_of_real_gguf_files_is_read() {
     let dir = a_folder("scan");
     let (registry, trouble) = Registry::scan_reporting(&dir);
-    assert!(trouble.is_none(), "a good folder reported trouble: {trouble:?}");
+    assert!(
+        trouble.is_none(),
+        "a good folder reported trouble: {trouble:?}"
+    );
     assert_eq!(registry.models.len(), 2, "the scan did not read both files");
-    assert!(registry.get("small-1b").is_some(), "ids come from the filename stem");
+    assert!(
+        registry.get("small-1b").is_some(),
+        "ids come from the filename stem"
+    );
 }
 
 #[test]
@@ -217,7 +264,10 @@ fn a_missing_folder_is_reported_rather_than_read_as_no_models_installed() {
     // reported anything to anyone.
     let (registry, trouble) = Registry::scan_reporting(Path::new("/definitely/not/here"));
     assert!(registry.models.is_empty());
-    assert!(trouble.is_some(), "a missing folder was read as an empty one");
+    assert!(
+        trouble.is_some(),
+        "a missing folder was read as an empty one"
+    );
 }
 
 #[test]
@@ -225,7 +275,11 @@ fn one_bad_download_does_not_hide_the_good_models() {
     let dir = a_folder("corrupt");
     std::fs::write(dir.join("half-downloaded.gguf"), b"GGUF\x03\x00\x00").unwrap();
     let (registry, _) = Registry::scan_reporting(&dir);
-    assert_eq!(registry.models.len(), 2, "a truncated file took the others with it");
+    assert_eq!(
+        registry.models.len(),
+        2,
+        "a truncated file took the others with it"
+    );
 }
 
 // ===================== what fits ========================================
@@ -236,18 +290,26 @@ fn a_roomy_machine_gets_the_larger_model_and_a_cramped_one_gets_the_smaller() {
     // 27 Sep 2026: with no ceiling. The default now stops at the talk
     // ceiling (`a_conversation_gets_the_quick_model_not_the_biggest`); what
     // this test protects -- the choice follows the machine -- is unchanged.
-    let cfg = ModelsConfig { talk_ceiling_b: 0, ..cfg_at(&dir) };
+    let cfg = ModelsConfig {
+        talk_ceiling_b: 0,
+        ..cfg_at(&dir)
+    };
     let (registry, _) = Registry::scan_reporting(&dir);
 
     let roomy = machine(64_000, 0);
-    let big = registry.choose_for(&cfg, budget_bytes(&cfg, &roomy)).expect("nothing fit a big machine");
+    let big = registry
+        .choose_for(&cfg, budget_bytes(&cfg, &roomy))
+        .expect("nothing fit a big machine");
 
     let tight = machine(3_000, 0);
     let small = registry.choose_for(&cfg, budget_bytes(&cfg, &tight));
 
     assert_eq!(big.id, "large-7b");
     match small {
-        Some(m) => assert_eq!(m.id, "small-1b", "a cramped machine was given the large model"),
+        Some(m) => assert_eq!(
+            m.id, "small-1b",
+            "a cramped machine was given the large model"
+        ),
         None => {}
     }
     assert!(
@@ -266,7 +328,10 @@ fn a_machine_too_small_for_anything_says_so_rather_than_choosing_badly() {
     assert!(registry.choose_for(&cfg, budget_bytes(&cfg, &m)).is_none());
     let said = registry.explain_for(&cfg, &m, budget_bytes(&cfg, &m));
     assert!(said.starts_with("Nothing fits"), "got: {said}");
-    assert!(said.contains("smallest"), "it did not say how close it got: {said}");
+    assert!(
+        said.contains("smallest"),
+        "it did not say how close it got: {said}"
+    );
 }
 
 #[test]
@@ -278,8 +343,13 @@ fn asking_for_a_model_by_name_gets_that_one() {
     let m = machine(64_000, 0);
 
     let chosen = registry.choose_for(&cfg, budget_bytes(&cfg, &m)).unwrap();
-    assert_eq!(chosen.id, "small-1b", "a preference was overruled by what fits");
-    assert!(registry.explain_for(&cfg, &m, budget_bytes(&cfg, &m)).contains("you asked for this one"));
+    assert_eq!(
+        chosen.id, "small-1b",
+        "a preference was overruled by what fits"
+    );
+    assert!(registry
+        .explain_for(&cfg, &m, budget_bytes(&cfg, &m))
+        .contains("you asked for this one"));
 }
 
 #[test]
@@ -290,8 +360,14 @@ fn the_explanation_names_the_number_it_was_deciding_against() {
     let (registry, _) = Registry::scan_reporting(&dir);
     let m = machine(64_000, 0);
     let said = registry.explain_for(&cfg, &m, budget_bytes(&cfg, &m));
-    assert!(said.contains("MB spare"), "the budget was not stated: {said}");
-    assert!(said.contains("needs ~"), "what it costs was not stated: {said}");
+    assert!(
+        said.contains("MB spare"),
+        "the budget was not stated: {said}"
+    );
+    assert!(
+        said.contains("needs ~"),
+        "what it costs was not stated: {said}"
+    );
 }
 
 #[test]
@@ -302,7 +378,10 @@ fn an_empty_folder_says_what_machine_it_was_looking_at() {
     let m = machine(16_000, 0);
     let said = registry.explain_for(&cfg, &m, budget_bytes(&cfg, &m));
     assert!(said.contains("No models"), "got: {said}");
-    assert!(said.contains("spare"), "it did not say what it had to work with: {said}");
+    assert!(
+        said.contains("spare"),
+        "it did not say what it had to work with: {said}"
+    );
 }
 
 // ===================== graphics =========================================
@@ -335,19 +414,38 @@ fn a_conversation_gets_the_quick_model_not_the_biggest() {
     let cfg = cfg_at(&dir);
     let (registry, _) = Registry::scan_reporting(&dir);
     let roomy = machine(64_000, 0);
-    let chosen = registry.choose_for(&cfg, budget_bytes(&cfg, &roomy)).unwrap();
-    assert_eq!(chosen.id, "small-1b", "a roomy machine talked through the big model by default");
+    let chosen = registry
+        .choose_for(&cfg, budget_bytes(&cfg, &roomy))
+        .unwrap();
+    assert_eq!(
+        chosen.id, "small-1b",
+        "a roomy machine talked through the big model by default"
+    );
 
     let only_big = tmp("talk-ceiling-only-big");
     std::fs::write(only_big.join("large-7b.gguf"), a_model(4096, 32, 8192)).unwrap();
     std::fs::write(only_big.join("larger.gguf"), a_model(4096, 48, 8192)).unwrap();
     let (big_ones, _) = Registry::scan_reporting(&only_big);
     let cfg_big = cfg_at(&only_big);
-    let chosen = big_ones.choose_for(&cfg_big, budget_bytes(&cfg_big, &roomy)).unwrap();
-    assert_eq!(chosen.id, "large-7b", "nothing under the ceiling: the smallest over it, not the largest");
+    let chosen = big_ones
+        .choose_for(&cfg_big, budget_bytes(&cfg_big, &roomy))
+        .unwrap();
+    assert_eq!(
+        chosen.id, "large-7b",
+        "nothing under the ceiling: the smallest over it, not the largest"
+    );
 
-    let named = ModelsConfig { prefer: "large-7b".into(), ..cfg_at(&dir) };
-    assert_eq!(registry.choose_for(&named, budget_bytes(&named, &roomy)).unwrap().id, "large-7b");
+    let named = ModelsConfig {
+        prefer: "large-7b".into(),
+        ..cfg_at(&dir)
+    };
+    assert_eq!(
+        registry
+            .choose_for(&named, budget_bytes(&named, &roomy))
+            .unwrap()
+            .id,
+        "large-7b"
+    );
 }
 
 #[test]
@@ -364,14 +462,31 @@ fn a_graphics_build_of_the_server_puts_the_model_on_the_graphics() {
     std::fs::write(&server, b"").unwrap();
     std::fs::write(tools.join("ggml-vulkan.dll"), b"").unwrap();
     let with_server = |gpu: &str| ModelsConfig {
-        server: Some(atlas::tools::ExternalTool { command: server.display().to_string(), ..Default::default() }),
+        server: Some(atlas::tools::ExternalTool {
+            command: server.display().to_string(),
+            ..Default::default()
+        }),
         gpu_layers: gpu.into(),
         ..cfg_at(&dir)
     };
-    assert!(atlas::models::is_graphics_build(&server), "the Vulkan library beside it was not noticed");
-    assert_eq!(layers_here(model, &with_server("auto"), &machine(16_000, 0)), atlas::models::ALL_LAYERS);
-    assert_eq!(layers_here(model, &with_server("off"), &machine(16_000, 0)), 0, "off was not honoured");
-    assert_eq!(layers_here(model, &with_server("20"), &machine(16_000, 0)), 20, "a number was not honoured");
+    assert!(
+        atlas::models::is_graphics_build(&server),
+        "the Vulkan library beside it was not noticed"
+    );
+    assert_eq!(
+        layers_here(model, &with_server("auto"), &machine(16_000, 0)),
+        atlas::models::ALL_LAYERS
+    );
+    assert_eq!(
+        layers_here(model, &with_server("off"), &machine(16_000, 0)),
+        0,
+        "off was not honoured"
+    );
+    assert_eq!(
+        layers_here(model, &with_server("20"), &machine(16_000, 0)),
+        20,
+        "a number was not honoured"
+    );
 
     // A processor-only build beside no graphics library gets none.
     let plain = tmp("cpu-build-tools");
@@ -380,7 +495,10 @@ fn a_graphics_build_of_the_server_puts_the_model_on_the_graphics() {
     std::fs::write(plain.join("ggml-cpu.dll"), b"").unwrap();
     assert!(!atlas::models::is_graphics_build(&cpu_server));
     let cpu_cfg = ModelsConfig {
-        server: Some(atlas::tools::ExternalTool { command: cpu_server.display().to_string(), ..Default::default() }),
+        server: Some(atlas::tools::ExternalTool {
+            command: cpu_server.display().to_string(),
+            ..Default::default()
+        }),
         ..cfg_at(&dir)
     };
     assert_eq!(layers_here(model, &cpu_cfg, &machine(16_000, 0)), 0);
@@ -400,11 +518,24 @@ fn a_real_graphics_card_gets_layers() {
 // ===================== reached from the running program =================
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon_with<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -412,7 +543,11 @@ fn the_phrases_for_asking_reach_the_registry() {
     let cfg = Config::load(Path::new("config")).unwrap();
     let parser = Parser::new(&cfg.commands);
     for said in ["which model", "what can you run", "what models do i have"] {
-        assert_eq!(parser.parse(said), Intent::WhichModel, "did not reach it: {said}");
+        assert_eq!(
+            parser.parse(said),
+            Intent::WhichModel,
+            "did not reach it: {said}"
+        );
     }
 }
 
@@ -429,7 +564,10 @@ fn a_real_daemon_scans_a_real_folder_and_says_what_it_found() {
         said.contains("small-1b") || said.contains("large-7b") || said.starts_with("Nothing fits"),
         "the daemon did not read the folder: {said}"
     );
-    assert!(!said.contains("can't read"), "a good folder was reported unreadable: {said}");
+    assert!(
+        !said.contains("can't read"),
+        "a good folder was reported unreadable: {said}"
+    );
 }
 
 #[test]
@@ -455,7 +593,11 @@ fn having_a_model_but_no_server_is_said_rather_than_implied() {
     models.server = None;
     // A port nothing answers on: on a machine where Atlas is installed, its
     // own llama-server is up on the shipped port and answers "running".
-    models.port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    models.port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
     let p = plat();
     let mut d = daemon_with(&c, &p, "noserver-store");
 
@@ -488,7 +630,13 @@ fn the_chooser_and_the_supervisor_size_the_same_model_the_same_way() {
 /// request — one way of doing it, configured once.
 fn http() -> atlas::tools::ExternalTool {
     let c = Config::load(Path::new("config")).unwrap();
-    c.tools.as_ref().unwrap().research.fetch.clone().expect("a fetch tool in the shipped config")
+    c.tools
+        .as_ref()
+        .unwrap()
+        .research
+        .fetch
+        .clone()
+        .expect("a fetch tool in the shipped config")
 }
 
 #[test]
@@ -508,7 +656,10 @@ fn the_derived_connection_points_at_llama_server_not_ollama() {
         joined.contains(&format!("127.0.0.1:{}", cfg.port)),
         "the endpoint was not resolved into the request: {joined}"
     );
-    assert!(!joined.contains("{url}"), "an unresolved placeholder was left in: {joined}");
+    assert!(
+        !joined.contains("{url}"),
+        "an unresolved placeholder was left in: {joined}"
+    );
     assert!(!joined.to_lowercase().contains("ollama"));
 }
 
@@ -531,11 +682,20 @@ fn the_prompt_is_wrapped_the_way_this_model_expects() {
 
     let cfg = cfg_at(&dir);
     let (registry, _) = Registry::scan_reporting(&dir);
-    let model = registry.get("chatml-model").expect("the model was not read");
+    let model = registry
+        .get("chatml-model")
+        .expect("the model was not read");
     let lc = atlas::models::llm_config_for(model, &cfg, &http());
 
-    assert!(lc.request.contains("im_start"), "the model's own template was ignored: {}", lc.request);
-    assert!(lc.request.contains("{system}"), "the placeholders ShellLlm fills were lost");
+    assert!(
+        lc.request.contains("im_start"),
+        "the model's own template was ignored: {}",
+        lc.request
+    );
+    assert!(
+        lc.request.contains("{system}"),
+        "the placeholders ShellLlm fills were lost"
+    );
     assert!(lc.request.contains("{user}"));
 }
 
@@ -556,13 +716,23 @@ fn a_hand_written_connection_is_never_silently_overridden() {
     // Since 27 Sep 2026 the helper is the library's `models::connection`, so
     // the phone core builds the same one (it had none: OPEN_GAPS P.7); main's
     // `model_connection` hands straight to it.
-    let at = src.find("fn model_connection").expect("the derived connection is gone");
-    assert!(src[at..at + 400].contains("atlas::models::connection(tc)"), "main's doors no longer use the library's connection");
+    let at = src
+        .find("fn model_connection")
+        .expect("the derived connection is gone");
+    assert!(
+        src[at..at + 400].contains("atlas::models::connection(tc)"),
+        "main's doors no longer use the library's connection"
+    );
     let lib = std::fs::read_to_string("src/models.rs").expect("models.rs");
-    let at = lib.find("pub fn connection(").expect("models::connection is gone");
+    let at = lib
+        .find("pub fn connection(")
+        .expect("models::connection is gone");
     let body = &lib[at..at + 1600];
     let mobile = std::fs::read_to_string("src/mobile.rs").expect("mobile.rs");
-    assert!(mobile.contains("crate::models::connection(tools)"), "the phone core builds no model connection again");
+    assert!(
+        mobile.contains("crate::models::connection(tools)"),
+        "the phone core builds no model connection again"
+    );
     assert!(
         body.contains("if tc.llm.is_some() {") && body.contains("None"),
         "a hand-written tools.llm no longer wins over the derived one"
@@ -599,9 +769,15 @@ fn both_endpoints_are_on_the_loopback_and_never_a_public_interface() {
     // have to agree with that binding or Atlas is reaching for an address the
     // server was deliberately not given.
     let port = 8123;
-    for url in [atlas::models::health_url(port), atlas::models::completion_url(port)] {
+    for url in [
+        atlas::models::health_url(port),
+        atlas::models::completion_url(port),
+    ] {
         assert!(url.starts_with("http://127.0.0.1:"), "not loopback: {url}");
-        assert!(url.contains(&port.to_string()), "the configured port was ignored: {url}");
+        assert!(
+            url.contains(&port.to_string()),
+            "the configured port was ignored: {url}"
+        );
     }
     assert!(atlas::models::health_url(port).ends_with("/health"));
     assert!(atlas::models::completion_url(port).ends_with("/completion"));
@@ -614,16 +790,46 @@ fn both_endpoints_are_on_the_loopback_and_never_a_public_interface() {
 #[test]
 fn a_busy_minute_doesnt_shrink_atlas_to_its_smallest_model() {
     let dir = a_folder("busy-minute");
-    let cfg = ModelsConfig { talk_ceiling_b: 0, ..cfg_at(&dir) };
+    let cfg = ModelsConfig {
+        talk_ceiling_b: 0,
+        ..cfg_at(&dir)
+    };
     let (registry, _) = Registry::scan_reporting(&dir);
-    let large = registry.models.iter().map(|m| estimate_memory(m, cfg.context)).max().unwrap() / (1024 * 1024);
-    let small = registry.models.iter().map(|m| estimate_memory(m, cfg.context)).min().unwrap() / (1024 * 1024);
+    let large = registry
+        .models
+        .iter()
+        .map(|m| estimate_memory(m, cfg.context))
+        .max()
+        .unwrap()
+        / (1024 * 1024);
+    let small = registry
+        .models
+        .iter()
+        .map(|m| estimate_memory(m, cfg.context))
+        .min()
+        .unwrap()
+        / (1024 * 1024);
     // Free right now: room for the small one only. The machine: room for both.
-    let busy = Machine { total_ram_mb: large * 4, free_ram_mb: small * 2 + 10, ..machine(0, 0) };
+    let busy = Machine {
+        total_ram_mb: large * 4,
+        free_ram_mb: small * 2 + 10,
+        ..machine(0, 0)
+    };
     let chosen = atlas::models::pick(&registry, &cfg, &busy).unwrap();
-    assert_eq!(chosen.parameters, registry.models.iter().map(|m| m.parameters).max().unwrap(), "{}", chosen.id);
+    assert_eq!(
+        chosen.parameters,
+        registry.models.iter().map(|m| m.parameters).max().unwrap(),
+        "{}",
+        chosen.id
+    );
     // A limit you set yourself is still a limit.
-    let capped = ModelsConfig { memory_budget_mb: small + 10, ..cfg.clone() };
+    let capped = ModelsConfig {
+        memory_budget_mb: small + 10,
+        ..cfg.clone()
+    };
     let chosen = atlas::models::pick(&registry, &capped, &busy).unwrap();
-    assert_eq!(chosen.parameters, registry.models.iter().map(|m| m.parameters).min().unwrap());
+    assert_eq!(
+        chosen.parameters,
+        registry.models.iter().map(|m| m.parameters).min().unwrap()
+    );
 }

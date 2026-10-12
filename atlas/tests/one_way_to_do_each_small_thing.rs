@@ -13,7 +13,14 @@ use atlas::config::AppSpec;
 
 #[test]
 fn a_window_spec_takes_any_process_name_literally() {
-    for name in ["notepad.exe", "say \"hi\".exe", "a: b", "[x]", "it's.exe", "back\\slash.exe"] {
+    for name in [
+        "notepad.exe",
+        "say \"hi\".exe",
+        "a: b",
+        "[x]",
+        "it's.exe",
+        "back\\slash.exe",
+    ] {
         let spec = AppSpec::for_process(name);
         assert_eq!(spec.process_names, vec![name.to_string()], "{name}");
         assert!(!spec.store && spec.args.is_empty() && spec.title_hints.is_empty());
@@ -41,7 +48,8 @@ fn the_old_yaml_route_really_broke_on_a_quote() {
     let yaml = format!("launch: x\nprocess_names: [\"{name}\"]\nrole: main\nlayout: full\n");
     let old: Result<AppSpec, _> = serde_yaml::from_str(&yaml);
     assert!(
-        old.map(|s| s.process_names != vec![name.to_string()]).unwrap_or(true),
+        old.map(|s| s.process_names != vec![name.to_string()])
+            .unwrap_or(true),
         "the YAML route handled a quote after all -- the constructor's reason is gone"
     );
 }
@@ -65,7 +73,10 @@ fn the_install_manifest_escapes_and_reads_back_an_apostrophe() {
         expires: None,
     };
     let m = atlas::ota::manifest_plist(&ipa, "https://x.example/a.ipa?x=1&y=2");
-    assert!(m.contains("<string>Eric&#39;s &quot;Atlas&quot; &amp; &lt;more&gt;</string>"), "{m}");
+    assert!(
+        m.contains("<string>Eric&#39;s &quot;Atlas&quot; &amp; &lt;more&gt;</string>"),
+        "{m}"
+    );
     assert!(m.contains("a.ipa?x=1&amp;y=2"), "{m}");
 
     // What this escapes, the plist reader reads back -- `&#39;` as well as

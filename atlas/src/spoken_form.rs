@@ -71,13 +71,24 @@ pub fn without_technical_detail(text: &str) -> String {
         .map(|w| {
             let core = w.trim_end_matches(['.', ',', ';', ':', ')', '"', '\'']);
             let tail = &w[core.len()..];
-            if let Some(rest) = core.strip_prefix("https://").or_else(|| core.strip_prefix("http://")) {
-                let host = rest.split('/').next().unwrap_or(rest).trim_start_matches("www.");
+            if let Some(rest) = core
+                .strip_prefix("https://")
+                .or_else(|| core.strip_prefix("http://"))
+            {
+                let host = rest
+                    .split('/')
+                    .next()
+                    .unwrap_or(rest)
+                    .trim_start_matches("www.");
                 return format!("{host}{tail}");
             }
-            let pathy = (core.contains('\\') && core.len() > 3) || (core.starts_with('/') && core[1..].contains('/'));
+            let pathy = (core.contains('\\') && core.len() > 3)
+                || (core.starts_with('/') && core[1..].contains('/'));
             if pathy {
-                let name = core.rsplit(['\\', '/']).find(|p| !p.is_empty()).unwrap_or(core);
+                let name = core
+                    .rsplit(['\\', '/'])
+                    .find(|p| !p.is_empty())
+                    .unwrap_or(core);
                 return format!("{name}{tail}");
             }
             w.to_string()
@@ -86,14 +97,27 @@ pub fn without_technical_detail(text: &str) -> String {
     let mut out = words.join(" ");
     // A failure's reason that is mostly codes.
     let low = out.to_lowercase();
-    let failed = ["couldn't", "could not", "didn't", "did not", "failed", "wasn't able", "can't"].iter().any(|w| low.contains(w));
+    let failed = [
+        "couldn't",
+        "could not",
+        "didn't",
+        "did not",
+        "failed",
+        "wasn't able",
+        "can't",
+    ]
+    .iter()
+    .any(|w| low.contains(w));
     if failed {
         if let Some(at) = out.find(": ") {
             let (head, reason) = (&out[..at], &out[at + 2..]);
             let sentence_end = reason.find(". ").map(|e| e + 1).unwrap_or(reason.len());
             let (why, after) = reason.split_at(sentence_end);
             if looks_technical(why) {
-                out = format!("{head} -- the details are on the screen.{}", after.trim_start_matches('.'));
+                out = format!(
+                    "{head} -- the details are on the screen.{}",
+                    after.trim_start_matches('.')
+                );
             }
         }
     }
@@ -107,13 +131,30 @@ fn looks_technical(s: &str) -> bool {
         return false;
     }
     let low = t.to_lowercase();
-    if ["os error", "errno", "exit code", "exit status", "status code", "http/", "0x", "stack", "panicked", "traceback", "hresult"]
-        .iter()
-        .any(|m| low.contains(m))
+    if [
+        "os error",
+        "errno",
+        "exit code",
+        "exit status",
+        "status code",
+        "http/",
+        "0x",
+        "stack",
+        "panicked",
+        "traceback",
+        "hresult",
+    ]
+    .iter()
+    .any(|m| low.contains(m))
     {
         return true;
     }
-    if t.contains('=') || t.contains('{') || t.contains("::") || t.contains('\\') || !t.contains(' ') && t.matches('/').count() >= 2 {
+    if t.contains('=')
+        || t.contains('{')
+        || t.contains("::")
+        || t.contains('\\')
+        || !t.contains(' ') && t.matches('/').count() >= 2
+    {
         return true;
     }
     let words: Vec<&str> = t.split_whitespace().collect();
@@ -124,8 +165,10 @@ fn looks_technical(s: &str) -> bool {
             // Letters and digits mixed ("E0599", "10054ms"), dotted codes
             // ("5.7.8"), or a shouted constant ("ECONNREFUSED"). Plain
             // numbers, money and percentages are words to a listener.
-            let mixed = w.chars().any(|c| c.is_ascii_digit()) && w.chars().any(|c| c.is_ascii_alphabetic());
-            let dotted = w.matches('.').count() >= 2 && w.chars().all(|c| c.is_ascii_digit() || c == '.');
+            let mixed =
+                w.chars().any(|c| c.is_ascii_digit()) && w.chars().any(|c| c.is_ascii_alphabetic());
+            let dotted =
+                w.matches('.').count() >= 2 && w.chars().all(|c| c.is_ascii_digit() || c == '.');
             let constant = w.len() >= 6 && w.chars().all(|c| c.is_ascii_uppercase() || c == '_');
             !w.is_empty() && (mixed || dotted || constant)
         })
@@ -308,9 +351,7 @@ fn symbols(text: &str) -> String {
         }
         // "number x number" -> "number by number", only with spaces so a word
         // like "box" is safe and "3x4" is left for the eye.
-        if (c == 'x' || c == '×')
-            && between_numbers(&chars, i)
-        {
+        if (c == 'x' || c == '×') && between_numbers(&chars, i) {
             out.push_str("by");
             i += 1;
             continue;
@@ -385,7 +426,11 @@ fn take_number(s: &str) -> Option<(Amount, usize)> {
 }
 
 fn plural(n: u64, one: &str, many: &str) -> String {
-    if n == 1 { one.to_string() } else { many.to_string() }
+    if n == 1 {
+        one.to_string()
+    } else {
+        many.to_string()
+    }
 }
 
 /// Walk `text`, and wherever `marker` appears, hand what follows to `f`. If it
@@ -426,7 +471,10 @@ mod tests {
 
     #[test]
     fn money_is_spoken_as_words() {
-        assert_eq!(for_speech("It's $2.35 today"), "It's 2 dollars and 35 cents today");
+        assert_eq!(
+            for_speech("It's $2.35 today"),
+            "It's 2 dollars and 35 cents today"
+        );
         assert_eq!(for_speech("$5 flat"), "5 dollars flat");
         assert_eq!(for_speech("$1 each"), "1 dollar each");
         assert_eq!(for_speech("$1.01"), "1 dollar and 1 cent");
@@ -481,6 +529,10 @@ mod tests {
     #[test]
     fn it_is_idempotent() {
         let once = for_speech("$2.35 at 35% over 5mph");
-        assert_eq!(for_speech(&once), once, "running it twice must not change it again");
+        assert_eq!(
+            for_speech(&once),
+            once,
+            "running it twice must not change it again"
+        );
     }
 }

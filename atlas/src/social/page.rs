@@ -73,7 +73,11 @@ pub struct View {
 }
 
 fn tick(name: &str, label: &str, on: bool) -> String {
-    format!("<label><input type=checkbox name={name} value=on{}> {}</label> ", if on { " checked" } else { "" }, esc(label))
+    format!(
+        "<label><input type=checkbox name={name} value=on{}> {}</label> ",
+        if on { " checked" } else { "" },
+        esc(label)
+    )
 }
 
 fn form(what: &str, inner: &str, button: &str) -> String {
@@ -86,7 +90,10 @@ pub fn render_social(v: &View) -> String {
         b.push_str(&format!("<p class=notice role=status>{}</p>", esc(n)));
     }
     if let Some(l) = &v.lapsing {
-        b.push_str(&format!("<div class='banner wait' role=status>{}</div>", esc(l)));
+        b.push_str(&format!(
+            "<div class='banner wait' role=status>{}</div>",
+            esc(l)
+        ));
     }
     b.push_str("<p class=lead>Your accounts' numbers, kept every day so the history outlives the platforms' 28 to 90 days, and what's working for the people and topics you watch. Every figure here came out of the data; where there's none, it says so.</p>");
     let posts: usize = v.rows.iter().map(|r| r.posts).sum();
@@ -109,7 +116,11 @@ pub fn render_social(v: &View) -> String {
                 Some(what) => format!("{action}{}", form(what, "", "Disconnect")),
                 None => action,
             };
-            let note = if sv.note.is_empty() { String::new() } else { format!("<span class=meta>{}</span>", esc(&sv.note)) };
+            let note = if sv.note.is_empty() {
+                String::new()
+            } else {
+                format!("<span class=meta>{}</span>", esc(&sv.note))
+            };
             b.push_str(&format!(
                 "<li><span><b>{}</b> <span class='{}'>{}</span></span>{note}{action}</li>",
                 esc(&sv.name),
@@ -131,7 +142,11 @@ pub fn render_social(v: &View) -> String {
                 "<tr><th scope=row>{}</th><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
                 esc(&r.name),
                 r.posts,
-                if r.followers.is_empty() { "not in the data".to_string() } else { esc(&r.followers) },
+                if r.followers.is_empty() {
+                    "not in the data".to_string()
+                } else {
+                    esc(&r.followers)
+                },
                 esc(&r.latest),
                 esc(&r.source)
             ));
@@ -139,9 +154,16 @@ pub fn render_social(v: &View) -> String {
         b.push_str("</tbody></table>");
     }
     if !v.nothing_from.is_empty() {
-        b.push_str(&format!("<p class=meta>Nothing from {} yet.</p>", esc(&v.nothing_from.join(", "))));
+        b.push_str(&format!(
+            "<p class=meta>Nothing from {} yet.</p>",
+            esc(&v.nothing_from.join(", "))
+        ));
     }
-    for (h, text) in [("Your last video", &v.last_video), ("What worked this month", &v.worked), ("Followers", &v.followers)] {
+    for (h, text) in [
+        ("Your last video", &v.last_video),
+        ("What worked this month", &v.worked),
+        ("Followers", &v.followers),
+    ] {
         if !text.is_empty() {
             b.push_str(&format!("<h3>{h}</h3><p>{}</p>", esc(text)));
         }
@@ -154,7 +176,11 @@ pub fn render_social(v: &View) -> String {
     ));
     b.push_str(&form("refresh", "", "Refresh my numbers now"));
     b.push_str("<h3>Import an export</h3><p>Give the path of the zip, folder or file the platform sent you: the X archive, TikTok's or Instagram's data download (JSON), LinkedIn's analytics .xlsx, or YouTube Studio's Table data.csv.</p>");
-    b.push_str(&form("import", "<label>File or folder <input name=path required size=48></label>", "Import it"));
+    b.push_str(&form(
+        "import",
+        "<label>File or folder <input name=path required size=48></label>",
+        "Import it",
+    ));
     b.push_str("</section>");
 
     // -- for developers: keys, your own apps, one site at a time
@@ -196,9 +222,18 @@ pub fn render_social(v: &View) -> String {
             _ => None,
         };
         let button = take_away
-            .map(|n| form("token-disconnect", &format!("<input type=hidden name=name value={n}>"), "Disconnect"))
+            .map(|n| {
+                form(
+                    "token-disconnect",
+                    &format!("<input type=hidden name=name value={n}>"),
+                    "Disconnect",
+                )
+            })
             .unwrap_or_default();
-        b.push_str(&format!("<li><span>{}</span><span class=meta>{state}</span> {button}</li>", esc(what)));
+        b.push_str(&format!(
+            "<li><span>{}</span><span class=meta>{state}</span> {button}</li>",
+            esc(what)
+        ));
     }
     b.push_str("</ul>");
     b.push_str(&form(
@@ -207,7 +242,11 @@ pub fn render_social(v: &View) -> String {
         "Keep it",
     ));
     if crate::oauthlink::google_secret().is_some() {
-        b.push_str(&form("google", "", "Sign in with Google for YouTube Analytics"));
+        b.push_str(&form(
+            "google",
+            "",
+            "Sign in with Google for YouTube Analytics",
+        ));
         b.push_str("<details><summary>Use your own Google app instead</summary>");
     }
     b.push_str(&form(
@@ -232,7 +271,11 @@ pub fn render_social(v: &View) -> String {
     // stays here.
     b.push_str("<h3>Sign in one site at a time</h3><div class=signins>");
     for (name, domain) in super::SIGN_IN_SITES {
-        b.push_str(&form("browser-signin", &format!("<input type=hidden name=site value='{}'>", esc(domain)), &format!("Sign in to {name}")));
+        b.push_str(&form(
+            "browser-signin",
+            &format!("<input type=hidden name=site value='{}'>", esc(domain)),
+            &format!("Sign in to {name}"),
+        ));
     }
     b.push_str("</div>");
     b.push_str("<h3>How to set each one up</h3>");
@@ -256,13 +299,20 @@ pub fn render_social(v: &View) -> String {
                 "<li><span>{}</span><span class=meta>{}</span>{}</li>",
                 esc(label),
                 esc(how),
-                form("unwatch", &format!("<input type=hidden name=which value='{}'>", esc(label)), "Stop watching")
+                form(
+                    "unwatch",
+                    &format!("<input type=hidden name=which value='{}'>", esc(label)),
+                    "Stop watching"
+                )
             ));
         }
         b.push_str("</ul>");
     }
     b.push_str(&form("watch", "<label>Watch <input name=target required size=32 placeholder='@channel, #tag, r/sub, a topic'></label>", "Add"));
-    b.push_str(&format!("<p class=meta>YouTube searches left today: {}.</p>", v.searches_left));
+    b.push_str(&format!(
+        "<p class=meta>YouTube searches left today: {}.</p>",
+        v.searches_left
+    ));
     if v.digest.is_empty() {
         b.push_str("<p class=nothing>Nothing read yet.</p>");
     } else {
@@ -278,7 +328,10 @@ pub fn render_social(v: &View) -> String {
         }
     }
     if !v.digest.gaps.is_empty() {
-        b.push_str(&format!("<p class=meta>Not read: {}</p>", esc(&v.digest.gaps.join("; "))));
+        b.push_str(&format!(
+            "<p class=meta>Not read: {}</p>",
+            esc(&v.digest.gaps.join("; "))
+        ));
     }
     b.push_str(&form("scan", "", "Read them now"));
     b.push_str(&form("summarise", "", "Sum it up"));

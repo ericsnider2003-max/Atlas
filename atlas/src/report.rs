@@ -56,14 +56,22 @@ pub fn write_up_blocks(md: &str) -> Vec<Block> {
         }
         if let Some(h) = l.strip_prefix("# ") {
             flush(&mut para, &mut out);
-            out.push(if out.is_empty() { Block::Title(h.trim().to_string()) } else { Block::Heading(h.trim().to_string()) });
+            out.push(if out.is_empty() {
+                Block::Title(h.trim().to_string())
+            } else {
+                Block::Heading(h.trim().to_string())
+            });
             in_sources = false;
         } else if l.starts_with("##") {
             flush(&mut para, &mut out);
             let h = l.trim_start_matches('#').trim().to_string();
             in_sources = h.eq_ignore_ascii_case("sources");
             out.push(Block::Heading(h));
-        } else if let Some(item) = l.strip_prefix("- ").or_else(|| l.strip_prefix("* ")).or_else(|| l.strip_prefix("• ")) {
+        } else if let Some(item) = l
+            .strip_prefix("- ")
+            .or_else(|| l.strip_prefix("* "))
+            .or_else(|| l.strip_prefix("• "))
+        {
             flush(&mut para, &mut out);
             let item = item.trim();
             if in_sources && (item.starts_with("http://") || item.starts_with("https://")) {
@@ -91,7 +99,9 @@ fn numbered(l: &str) -> Option<(String, String)> {
     if digits.is_empty() || digits.len() > 3 {
         return None;
     }
-    let rest = l[digits.len()..].strip_prefix(". ").or_else(|| l[digits.len()..].strip_prefix(") "))?;
+    let rest = l[digits.len()..]
+        .strip_prefix(". ")
+        .or_else(|| l[digits.len()..].strip_prefix(") "))?;
     Some((format!("{digits}."), rest.trim().to_string()))
 }
 
@@ -143,10 +153,18 @@ fn strip_emphasis(s: &str) -> String {
     s.split(' ')
         .map(|w| {
             let starts = w.starts_with(['*', '_']);
-            let core = w.trim_end_matches(|c: char| c.is_ascii_punctuation() && c != '*' && c != '_');
+            let core =
+                w.trim_end_matches(|c: char| c.is_ascii_punctuation() && c != '*' && c != '_');
             let ends = core.ends_with(['*', '_']);
             if starts || ends {
-                w.chars().filter(|c| *c != '*').collect::<String>().trim_start_matches('_').replace("_.", ".").replace("_,", ",").trim_end_matches('_').to_string()
+                w.chars()
+                    .filter(|c| *c != '*')
+                    .collect::<String>()
+                    .trim_start_matches('_')
+                    .replace("_.", ".")
+                    .replace("_,", ",")
+                    .trim_end_matches('_')
+                    .to_string()
             } else {
                 w.to_string()
             }
@@ -179,7 +197,13 @@ fn xml_text(s: &str) -> String {
 fn w_runs(text: &str) -> String {
     runs(text)
         .into_iter()
-        .map(|(t, bold)| format!("<w:r>{}<w:t xml:space=\"preserve\">{}</w:t></w:r>", if bold { "<w:rPr><w:b/></w:rPr>" } else { "" }, xml_text(&t)))
+        .map(|(t, bold)| {
+            format!(
+                "<w:r>{}<w:t xml:space=\"preserve\">{}</w:t></w:r>",
+                if bold { "<w:rPr><w:b/></w:rPr>" } else { "" },
+                xml_text(&t)
+            )
+        })
         .collect()
 }
 
@@ -327,10 +351,11 @@ fn stored_zip(files: &[(&str, &[u8])]) -> Vec<u8> {
 /// Helvetica's widths (thousandths of the type size), ' ' to '~', from
 /// Adobe's published metrics.
 const HELVETICA: [u16; 95] = [
-    278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278,
-    278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722,
-    667, 944, 667, 667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556,
-    556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+    278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556,
+    556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667,
+    611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667,
+    667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500,
+    222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
 ];
 
 /// A character as a Windows-1252 byte (the standard fonts' encoding), and
@@ -393,21 +418,39 @@ struct Layout {
 
 impl Layout {
     fn new() -> Layout {
-        Layout { pages: vec![Page { ops: String::new(), links: Vec::new() }], y: PAGE_H - MARGIN }
+        Layout {
+            pages: vec![Page {
+                ops: String::new(),
+                links: Vec::new(),
+            }],
+            y: PAGE_H - MARGIN,
+        }
     }
     fn room(&mut self, needed: f64) {
         if self.y - needed < MARGIN {
-            self.pages.push(Page { ops: String::new(), links: Vec::new() });
+            self.pages.push(Page {
+                ops: String::new(),
+                links: Vec::new(),
+            });
             self.y = PAGE_H - MARGIN;
         }
     }
     /// Words wrapped to the width from `left`, each line `size` high.
-    fn text(&mut self, text_runs: &[(String, bool)], size: f64, left: f64, lead: Option<&str>, link: Option<&str>) {
+    fn text(
+        &mut self,
+        text_runs: &[(String, bool)],
+        size: f64,
+        left: f64,
+        lead: Option<&str>,
+        link: Option<&str>,
+    ) {
         let line_h = size * 1.35;
         let right = PAGE_W - MARGIN;
         // (word, bold) in order, spaces between.
-        let words: Vec<(String, bool)> =
-            text_runs.iter().flat_map(|(t, b)| t.split_whitespace().map(move |w| (w.to_string(), *b))).collect();
+        let words: Vec<(String, bool)> = text_runs
+            .iter()
+            .flat_map(|(t, b)| t.split_whitespace().map(move |w| (w.to_string(), *b)))
+            .collect();
         let mut lines: Vec<Vec<(String, bool)>> = vec![Vec::new()];
         let mut x = left;
         let space = width(" ", size, false);
@@ -425,7 +468,10 @@ impl Layout {
                 let mut piece = String::new();
                 for c in w.chars() {
                     if width(&format!("{piece}{c}"), size, b) > right - x && !piece.is_empty() {
-                        lines.last_mut().unwrap_or(&mut Vec::new()).push((std::mem::take(&mut piece), b));
+                        lines
+                            .last_mut()
+                            .unwrap_or(&mut Vec::new())
+                            .push((std::mem::take(&mut piece), b));
                         lines.push(Vec::new());
                         x = left;
                     }
@@ -447,10 +493,16 @@ impl Layout {
             self.y -= line_h;
             let base = self.y + size * 0.3;
             // `room` above always leaves a page to draw on.
-            let Some(page) = self.pages.last_mut() else { continue };
+            let Some(page) = self.pages.last_mut() else {
+                continue;
+            };
             if i == 0 {
                 if let Some(lead) = lead {
-                    page.ops.push_str(&format!("BT /F1 {size} Tf {:.2} {base:.2} Td {} Tj ET\n", left - 18.0, pdf_str(lead)));
+                    page.ops.push_str(&format!(
+                        "BT /F1 {size} Tf {:.2} {base:.2} Td {} Tj ET\n",
+                        left - 18.0,
+                        pdf_str(lead)
+                    ));
                 }
             }
             let mut x = left;
@@ -460,12 +512,21 @@ impl Layout {
                     x += space;
                 }
                 first = false;
-                let colour = if link.is_some() { "0.02 0.39 0.76 rg " } else { "" };
-                page.ops.push_str(&format!("BT {colour}/{} {size} Tf {x:.2} {base:.2} Td {} Tj ET\n", if *b { "F2" } else { "F1" }, pdf_str(w)));
+                let colour = if link.is_some() {
+                    "0.02 0.39 0.76 rg "
+                } else {
+                    ""
+                };
+                page.ops.push_str(&format!(
+                    "BT {colour}/{} {size} Tf {x:.2} {base:.2} Td {} Tj ET\n",
+                    if *b { "F2" } else { "F1" },
+                    pdf_str(w)
+                ));
                 x += width(w, size, *b);
             }
             if let Some(url) = link {
-                page.links.push((left, base - size * 0.25, x, base + size, url.to_string()));
+                page.links
+                    .push((left, base - size * 0.25, x, base + size, url.to_string()));
             }
         }
     }
@@ -502,7 +563,13 @@ pub fn pdf(md: &str) -> Result<Vec<u8>, String> {
                 l.gap(3.0);
             }
             Block::Source(n, url) => {
-                l.text(&[(url.clone(), false)], 10.0, MARGIN + 22.0, Some(&format!("[{n}]")), Some(&url));
+                l.text(
+                    &[(url.clone(), false)],
+                    10.0,
+                    MARGIN + 22.0,
+                    Some(&format!("[{n}]")),
+                    Some(&url),
+                );
                 l.gap(3.0);
             }
         }
@@ -514,7 +581,8 @@ pub fn pdf(md: &str) -> Result<Vec<u8>, String> {
         "<< /Type /Catalog /Pages 2 0 R >>".into(),
         String::new(),
         "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>".into(),
-        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>".into(),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"
+            .into(),
     ];
     let mut kids = Vec::new();
     for (i, page) in l.pages.iter().enumerate() {
@@ -540,11 +608,17 @@ pub fn pdf(md: &str) -> Result<Vec<u8>, String> {
             "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PAGE_W} {PAGE_H}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents {contents_no} 0 R{} >>",
             if annots.is_empty() { String::new() } else { format!(" /Annots [{}]", annots.join(" ")) }
         ));
-        objs.push(format!("<< /Length {} >>\nstream\n{ops}endstream", ops.len()));
+        objs.push(format!(
+            "<< /Length {} >>\nstream\n{ops}endstream",
+            ops.len()
+        ));
         objs.extend(link_objs);
         kids.push(format!("{page_no} 0 R"));
     }
-    objs[1] = format!("<< /Type /Pages /Kids [{}] /Count {count} >>", kids.join(" "));
+    objs[1] = format!(
+        "<< /Type /Pages /Kids [{}] /Count {count} >>",
+        kids.join(" ")
+    );
     let mut out = b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n".to_vec();
     let mut offsets = Vec::new();
     for (i, o) in objs.iter().enumerate() {
@@ -556,7 +630,13 @@ pub fn pdf(md: &str) -> Result<Vec<u8>, String> {
     for o in offsets {
         out.extend(format!("{o:010} 00000 n \n").as_bytes());
     }
-    out.extend(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objs.len() + 1).as_bytes());
+    out.extend(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            objs.len() + 1
+        )
+        .as_bytes(),
+    );
     crate::pdfkit::check_written(&out, count)?;
     Ok(out)
 }
@@ -581,24 +661,51 @@ impl Kind {
 /// "export the brief to Word", "send me the report as a pdf": the kind.
 pub fn file_asked(said: &str) -> Option<Kind> {
     let t = said.trim().to_lowercase();
-    let words: Vec<&str> = t.split(|c: char| !c.is_alphanumeric() && c != '-').filter(|w| !w.is_empty()).collect();
+    let words: Vec<&str> = t
+        .split(|c: char| !c.is_alphanumeric() && c != '-')
+        .filter(|w| !w.is_empty())
+        .collect();
     let has = |w: &str| words.contains(&w);
     // A file of yours ("convert invoice.docx to a pdf", "merge these pdfs",
     // "this photo as a pdf") is the file tools' job, not this.
-    if t.split_whitespace().any(|w| w.trim_end_matches(['.', '?', '!', ',']).contains('.'))
-        || ["file", "files", "pdfs", "photo", "photos", "picture", "image", "scan", "page", "pages", "folder"].iter().any(|w| has(w))
+    if t.split_whitespace()
+        .any(|w| w.trim_end_matches(['.', '?', '!', ',']).contains('.'))
+        || [
+            "file", "files", "pdfs", "photo", "photos", "picture", "image", "scan", "page",
+            "pages", "folder",
+        ]
+        .iter()
+        .any(|w| has(w))
     {
         return None;
     }
-    let writeup = ["report", "research", "brief", "write-up", "writeup", "summary", "letter", "essay", "memo"].iter().any(|w| has(w))
+    let writeup = [
+        "report", "research", "brief", "write-up", "writeup", "summary", "letter", "essay", "memo",
+    ]
+    .iter()
+    .any(|w| has(w))
         || t.contains("write up");
-    let that = ["save", "export", "make", "turn", "convert", "put", "send", "give"].iter().any(|w| words.first() == Some(w) || (words.first().is_some_and(|f| ["can", "could", "please", "atlas"].contains(f)) && words.iter().take(4).any(|x| x == w)))
-        && (has("that") || has("it"));
+    let that = [
+        "save", "export", "make", "turn", "convert", "put", "send", "give",
+    ]
+    .iter()
+    .any(|w| {
+        words.first() == Some(w)
+            || (words
+                .first()
+                .is_some_and(|f| ["can", "could", "please", "atlas"].contains(f))
+                && words.iter().take(4).any(|x| x == w))
+    }) && (has("that") || has("it"));
     if !writeup && !that {
         return None;
     }
     let pdf = has("pdf");
-    let word = has("docx") || t.contains("word doc") || t.contains("word file") || ["to word", "in word", "as word", "for word", "a word"].iter().any(|p| t.contains(p));
+    let word = has("docx")
+        || t.contains("word doc")
+        || t.contains("word file")
+        || ["to word", "in word", "as word", "for word", "a word"]
+            .iter()
+            .any(|p| t.contains(p));
     match (word, pdf) {
         (true, false) => Some(Kind::Word),
         (false, true) => Some(Kind::Pdf),
@@ -609,7 +716,8 @@ pub fn file_asked(said: &str) -> Option<Kind> {
 /// Write the write-up at `md_path` beside itself as the asked kind, and
 /// say where.
 pub fn export(md_path: &std::path::Path, kind: Kind) -> Result<std::path::PathBuf, String> {
-    let md = std::fs::read_to_string(md_path).map_err(|e| format!("I couldn't read the write-up ({e})"))?;
+    let md = std::fs::read_to_string(md_path)
+        .map_err(|e| format!("I couldn't read the write-up ({e})"))?;
     let bytes = match kind {
         Kind::Word => docx(&md),
         Kind::Pdf => pdf(&md)?,
@@ -625,9 +733,19 @@ mod tests {
 
     #[test]
     fn emphasis_marks_go_and_bold_stays() {
-        assert_eq!(runs("a **big** deal"), vec![("a ".into(), false), ("big".into(), true), (" deal".into(), false)]);
+        assert_eq!(
+            runs("a **big** deal"),
+            vec![
+                ("a ".into(), false),
+                ("big".into(), true),
+                (" deal".into(), false)
+            ]
+        );
         assert_eq!(plain("an *odd* `code` and_snake"), "an odd code and_snake");
-        assert_eq!(plain("see [the site](https://x.org) now"), "see the site (https://x.org) now");
+        assert_eq!(
+            plain("see [the site](https://x.org) now"),
+            "see the site (https://x.org) now"
+        );
     }
 
     #[test]

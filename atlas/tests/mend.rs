@@ -27,13 +27,21 @@ fn deleting_the_failing_test_is_not_a_fix() {
 fn moving_a_test_is_not_deleting_it() {
     // A change that removes and re-adds a test is a refactor, not a cheat.
     let attr = concat!("#[", "test]");
-    let p = change("moved it", &[attr, "assert_eq!(a, b);"], &[attr, "assert_eq!(a, b);"]);
+    let p = change(
+        "moved it",
+        &[attr, "assert_eq!(a, b);"],
+        &[attr, "assert_eq!(a, b);"],
+    );
     assert!(!paper_overs(&p).contains(&Cheat::DeletedTheTest));
 }
 
 #[test]
 fn silencing_the_warning_is_not_a_fix() {
-    for line in [concat!("#[", "allow(dead_code)]"), "# type: ignore", "x = 1  # noqa"] {
+    for line in [
+        concat!("#[", "allow(dead_code)]"),
+        "# type: ignore",
+        "x = 1  # noqa",
+    ] {
         let p = change("t", &[line], &[]);
         assert!(
             paper_overs(&p).contains(&Cheat::SilencedIt),
@@ -69,7 +77,11 @@ fn turning_a_failure_into_a_zero_is_not_a_fix() {
 
 #[test]
 fn skipping_the_test_is_not_a_fix() {
-    for line in [concat!("#[", "ignore]"), "@pytest.mark.skip", "@unittest.skip"] {
+    for line in [
+        concat!("#[", "ignore]"),
+        "@pytest.mark.skip",
+        "@unittest.skip",
+    ] {
         assert!(paper_overs(&change("t", &[line], &[])).contains(&Cheat::SkippedIt));
     }
 }
@@ -155,7 +167,9 @@ fn a_question_full_of_jargon_is_sent_back() {
     };
     let missed = q.answerable_without_code().unwrap_err();
     assert!(!missed.is_empty(), "jargon got through");
-    assert!(missed.iter().any(|w| w == "function" || w == "return value" || w == "exception"));
+    assert!(missed
+        .iter()
+        .any(|w| w == "function" || w == "return value" || w == "exception"));
 }
 
 #[test]
@@ -197,7 +211,10 @@ fn nothing_is_guessed_when_you_dont_answer() {
     // decision guessed at is a confident wrong answer with everything else
     // built on top of it. The whole point of asking is that Atlas doesn't know.
     let q = good_question();
-    assert!(!q.set_aside.trim().is_empty(), "nothing was named as set aside");
+    assert!(
+        !q.set_aside.trim().is_empty(),
+        "nothing was named as set aside"
+    );
     let said = q.spoken("Eric");
     assert!(said.contains("carry on with the rest"), "got: {said}");
     assert!(
@@ -228,7 +245,10 @@ fn only_one_thing_is_set_aside_and_the_rest_carries_on() {
 fn the_question_becomes_an_item_on_your_list() {
     use atlas::backlog::Blocker;
     match good_question().parked() {
-        Blocker::NeedsYourDecision { question, set_aside } => {
+        Blocker::NeedsYourDecision {
+            question,
+            set_aside,
+        } => {
             assert!(question.contains("What should happen"));
             assert_eq!(set_aside, "the sorting");
         }
@@ -252,8 +272,16 @@ fn being_back_at_the_machine_is_not_a_decision() {
         dismissed: false,
         done: false,
     };
-    let here = Conditions { online: true, screen_free: true, you_are_here: true, tools: vec![] };
-    assert!(b.is_blocked(&item, &here), "your presence was read as an answer");
+    let here = Conditions {
+        online: true,
+        screen_free: true,
+        you_are_here: true,
+        tools: vec![],
+    };
+    assert!(
+        b.is_blocked(&item, &here),
+        "your presence was read as an answer"
+    );
     assert!(!matches!(item.blocker, Blocker::NeedsApproval));
 }
 

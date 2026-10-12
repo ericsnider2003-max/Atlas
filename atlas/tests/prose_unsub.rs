@@ -4,7 +4,10 @@ use atlas::prose::{
 use atlas::unsub::{judge, one_click, plan, spoken as unsub_spoken, Sender, UnsubConfig, Verdict};
 
 fn cfg() -> ProseConfig {
-    ProseConfig { enabled: true, ..Default::default() }
+    ProseConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 // ================= fixing what you type =================
@@ -31,8 +34,12 @@ fn a_doubled_word_is_removed() {
 #[test]
 fn typos_you_actually_make_are_caught() {
     for (wrong, right) in [
-        ("teh", "the"), ("recieve", "receive"), ("seperate", "separate"),
-        ("definately", "definitely"), ("diagnos", "diagnose"), ("alot", "a lot"),
+        ("teh", "the"),
+        ("recieve", "receive"),
+        ("seperate", "separate"),
+        ("definately", "definitely"),
+        ("diagnos", "diagnose"),
+        ("alot", "a lot"),
     ] {
         let text = format!("we should {wrong} it");
         let (out, _) = apply_certain(&text, &check(&text, &cfg()));
@@ -61,7 +68,10 @@ fn something_the_next_word_cannot_settle_is_flagged_not_changed() {
     // next word, so it stays a flag.
     let text = "the delay will affect the launch";
     let fixes = check(text, &cfg());
-    let f = fixes.iter().find(|f| f.was == "affect").expect("should notice");
+    let f = fixes
+        .iter()
+        .find(|f| f.was == "affect")
+        .expect("should notice");
     assert_ne!(f.kind, Kind::Certain, "never silently changed");
     let (out, _) = apply_certain(text, &fixes);
     assert!(out.contains("affect"), "left alone: {out}");
@@ -71,7 +81,10 @@ fn something_the_next_word_cannot_settle_is_flagged_not_changed() {
 fn its_before_a_possessive_word_is_left_entirely_alone() {
     let text = "the system found its own way";
     let fixes = check(text, &cfg());
-    assert!(!fixes.iter().any(|f| f.was == "its"), "\"its own\" is correct");
+    assert!(
+        !fixes.iter().any(|f| f.was == "its"),
+        "\"its own\" is correct"
+    );
 }
 
 #[test]
@@ -82,12 +95,18 @@ fn a_comparison_wanting_than_is_caught_by_reading_the_phrase() {
     assert_eq!(fixes[0].becomes, "than");
     assert!(fixes[0].because.contains("comparing"));
 
-    assert!(check_phrases("first we do this then that").is_empty(), "\"then\" is fine there");
+    assert!(
+        check_phrases("first we do this then that").is_empty(),
+        "\"then\" is fine there"
+    );
 }
 
 #[test]
 fn your_own_words_are_not_mistakes() {
-    let mine = ProseConfig { my_words: vec!["asses".into()], ..cfg() };
+    let mine = ProseConfig {
+        my_words: vec!["asses".into()],
+        ..cfg()
+    };
     let text = "the asses in the field";
     assert!(check(text, &mine).iter().all(|f| f.was != "asses"));
 }
@@ -98,7 +117,10 @@ fn nothing_is_corrected_in_code_or_a_terminal() {
     let c = cfg();
     assert!(!may_correct_in("Visual Studio Code", &c));
     assert!(!may_correct_in("Windows PowerShell", &c));
-    assert!(!may_correct_in("1Password", &c), "and never near a password field");
+    assert!(
+        !may_correct_in("1Password", &c),
+        "and never near a password field"
+    );
     assert!(may_correct_in("Notepad", &c));
     assert!(may_correct_in("Outlook", &c));
 }
@@ -129,7 +151,10 @@ fn correcting_is_off_until_you_turn_it_on() {
 // ================= clearing out a personal inbox =================
 
 fn ucfg() -> UnsubConfig {
-    UnsubConfig { enabled: true, ..Default::default() }
+    UnsubConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 fn newsletter() -> Sender {
@@ -191,7 +216,10 @@ fn a_header_that_is_not_the_real_standard_is_not_trusted() {
 
 #[test]
 fn something_you_actually_read_is_kept() {
-    let read = Sender { opened: 30, ..newsletter() };
+    let read = Sender {
+        opened: 30,
+        ..newsletter()
+    };
     match judge(&read, &ucfg()) {
         Verdict::Keep { why } => assert!(why.contains("you open about")),
         o => panic!("{o:?}"),
@@ -201,21 +229,48 @@ fn something_you_actually_read_is_kept() {
 #[test]
 fn some_senders_are_kept_whatever_the_numbers_say() {
     // Missing one of these costs you something the numbers don't capture.
-    for name in ["Chase Bank", "IRS", "State Farm Insurance", "your broker", "Invoice from X"] {
-        let s = Sender { name: name.into(), opened: 0, ..newsletter() };
-        assert!(matches!(judge(&s, &ucfg()), Verdict::Keep { .. }), "{name} should be kept");
+    for name in [
+        "Chase Bank",
+        "IRS",
+        "State Farm Insurance",
+        "your broker",
+        "Invoice from X",
+    ] {
+        let s = Sender {
+            name: name.into(),
+            opened: 0,
+            ..newsletter()
+        };
+        assert!(
+            matches!(judge(&s, &ucfg()), Verdict::Keep { .. }),
+            "{name} should be kept"
+        );
     }
 }
 
 #[test]
 fn a_sender_with_only_a_couple_of_messages_is_not_judged_yet() {
-    let new = Sender { count: 2, opened: 0, ..newsletter() };
+    let new = Sender {
+        count: 2,
+        opened: 0,
+        ..newsletter()
+    };
     assert!(matches!(judge(&new, &ucfg()), Verdict::Keep { .. }));
 }
 
 #[test]
 fn the_plan_separates_the_two_kinds_and_says_why() {
-    let c = plan(&[newsletter(), spam(), Sender { opened: 25, ..newsletter() }], &ucfg());
+    let c = plan(
+        &[
+            newsletter(),
+            spam(),
+            Sender {
+                opened: 25,
+                ..newsletter()
+            },
+        ],
+        &ucfg(),
+    );
     assert_eq!(c.unsubscribe.len(), 1);
     assert_eq!(c.block.len(), 1);
     assert_eq!(c.keep, 1);
@@ -233,7 +288,10 @@ fn it_says_how_much_quieter_the_year_gets() {
 
 #[test]
 fn a_clean_inbox_gets_left_alone() {
-    let good = Sender { opened: 35, ..newsletter() };
+    let good = Sender {
+        opened: 35,
+        ..newsletter()
+    };
     assert!(unsub_spoken(&plan(&[good], &ucfg())).contains("Nothing worth clearing out"));
 }
 
@@ -248,12 +306,25 @@ fn one_click_unsubscribe_posts_rather_than_opening_a_browser() {
     assert!(mail.starts_with("mailto:"));
     assert!(body.is_empty());
 
-    assert!(one_click("click here to unsubscribe").is_none(), "not a header, not used");
+    assert!(
+        one_click("click here to unsubscribe").is_none(),
+        "not a header, not used"
+    );
 
     // 1 Oct 2026: a list is read as a list, the web link first; a comma
     // inside a link stays in it; a link with a space in it isn't one.
-    assert_eq!(one_click("<mailto:u@s.com>, <https://s.com/u?a=1,2>").unwrap().0, "https://s.com/u?a=1,2");
-    assert_eq!(one_click("<https://a.com/x y>, <mailto:u@s.com>").unwrap().0, "mailto:u@s.com");
+    assert_eq!(
+        one_click("<mailto:u@s.com>, <https://s.com/u?a=1,2>")
+            .unwrap()
+            .0,
+        "https://s.com/u?a=1,2"
+    );
+    assert_eq!(
+        one_click("<https://a.com/x y>, <mailto:u@s.com>")
+            .unwrap()
+            .0,
+        "mailto:u@s.com"
+    );
     assert!(one_click("<mailto:>").is_none());
     // And the link is never one into this machine or your network.
     assert!(atlas::research::public_address("https://192.168.1.1/cgi-bin/reboot").is_none());

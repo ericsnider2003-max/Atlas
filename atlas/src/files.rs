@@ -40,7 +40,9 @@ impl Sort {
         let f = filename.to_lowercase();
         let ext = f.rsplit('.').next().unwrap_or("");
         match ext {
-            "txt" | "md" | "csv" | "tsv" | "json" | "yaml" | "yml" | "rs" | "py" | "js" | "log" => Sort::Text,
+            "txt" | "md" | "csv" | "tsv" | "json" | "yaml" | "yml" | "rs" | "py" | "js" | "log" => {
+                Sort::Text
+            }
             "docx" | "doc" | "odt" | "rtf" | "pages" => Sort::Document,
             "xlsx" | "xls" | "ods" | "numbers" => Sort::Sheet,
             "pdf" => Sort::Pdf,
@@ -144,9 +146,15 @@ impl Default for FilesConfig {
 /// Turning one thing into another.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Convert {
-    Can { how: String, loses: Option<String> },
+    Can {
+        how: String,
+        loses: Option<String>,
+    },
     /// Possible, but you'd lose something worth knowing about.
-    CanWithLoss { how: String, loses: String },
+    CanWithLoss {
+        how: String,
+        loses: String,
+    },
     Cannot(String),
 }
 
@@ -178,7 +186,10 @@ pub fn convert(from: Sort, to: Sort) -> Convert {
             how: "take the sound out".into(),
             loses: None,
         },
-        _ => Convert::Can { how: format!("{from:?} to {to:?}"), loses: None },
+        _ => Convert::Can {
+            how: format!("{from:?} to {to:?}"),
+            loses: None,
+        },
     }
 }
 
@@ -187,7 +198,10 @@ pub fn convert(from: Sort, to: Sort) -> Convert {
 pub enum Join {
     Can(String),
     /// They aren't the same kind of thing.
-    Mixed { kinds: Vec<Sort>, suggestion: String },
+    Mixed {
+        kinds: Vec<Sort>,
+        suggestion: String,
+    },
     Cannot(String),
 }
 
@@ -205,9 +219,14 @@ pub fn join(files: &[String]) -> Join {
             Sort::Picture => Join::Can("one PDF, a page each".into()),
             Sort::Text => Join::Can("one file, with a line between each".into()),
             Sort::Audio => Join::Can("end to end, levels matched".into()),
-            Sort::Video => Join::Can("end to end — same size and frame rate or it re-encodes".into()),
+            Sort::Video => {
+                Join::Can("end to end — same size and frame rate or it re-encodes".into())
+            }
             Sort::Sheet => Join::Can("one workbook, a sheet each".into()),
-            _ => Join::Cannot(format!("{:?} files don't join into anything useful", kinds[0])),
+            _ => Join::Cannot(format!(
+                "{:?} files don't join into anything useful",
+                kinds[0]
+            )),
         };
     }
 
@@ -224,7 +243,8 @@ pub fn join(files: &[String]) -> Join {
     }
     Join::Mixed {
         kinds,
-        suggestion: "those aren't the same sort of thing. Which did you want them to become?".into(),
+        suggestion: "those aren't the same sort of thing. Which did you want them to become?"
+            .into(),
     }
 }
 
@@ -265,7 +285,10 @@ impl Scanned {
 
     /// Worth cleaning up before reading?
     fn needs_straightening(&self) -> bool {
-        matches!(self, Scanned::Page | Scanned::Receipt | Scanned::Form | Scanned::Whiteboard)
+        matches!(
+            self,
+            Scanned::Page | Scanned::Receipt | Scanned::Form | Scanned::Whiteboard
+        )
     }
 }
 
@@ -299,16 +322,21 @@ pub fn what_was_scanned(text: &str) -> Scanned {
         return Scanned::Unclear;
     }
     let money = t.matches(['$', '£', '€']).count();
-    if (t.contains("total") || t.contains("subtotal")) && (money > 0 || t.contains("tax") || t.contains("change")) {
+    if (t.contains("total") || t.contains("subtotal"))
+        && (money > 0 || t.contains("tax") || t.contains("change"))
+    {
         return Scanned::Receipt;
     }
     if t.contains('@') && words < 40 && t.chars().filter(|c| c.is_ascii_digit()).count() >= 7 {
         return Scanned::Card;
     }
-    let labelled = text.lines().filter(|l| {
-        let l = l.trim();
-        l.ends_with(':') || l.contains(": ") && l.len() < 60 || l.contains("____")
-    }).count();
+    let labelled = text
+        .lines()
+        .filter(|l| {
+            let l = l.trim();
+            l.ends_with(':') || l.contains(": ") && l.len() < 60 || l.contains("____")
+        })
+        .count();
     if labelled >= 4 {
         return Scanned::Form;
     }
@@ -333,7 +361,8 @@ pub fn path_in(said: &str, exts: &[&str]) -> Option<String> {
         .map(|w| w.trim_end_matches('.'))
         .find(|w| {
             let l = w.to_lowercase();
-            exts.iter().any(|e| l.ends_with(&format!(".{e}")) && l.len() > e.len() + 1)
+            exts.iter()
+                .any(|e| l.ends_with(&format!(".{e}")) && l.len() > e.len() + 1)
         })
         .map(String::from)
 }
@@ -344,8 +373,7 @@ pub fn path_in(said: &str, exts: &[&str]) -> Option<String> {
 /// files a receipt as a page of notes.
 pub fn after_scan(what: Scanned, words: usize) -> String {
     if words < 5 {
-        return "I couldn't get much off that — try again with more light, or flatter."
-            .to_string();
+        return "I couldn't get much off that — try again with more light, or flatter.".to_string();
     }
     format!(
         "Looks like {}. I'd get you {}. Want it as a document, a PDF, or just the text?",
@@ -363,7 +391,12 @@ pub fn after_scan(what: Scanned, words: usize) -> String {
 }
 
 /// Things worth refusing to unpack.
-pub fn safe_to_unpack(compressed_mb: u64, claims_uncompressed_mb: u64, depth: u32, cfg: &FilesConfig) -> Result<(), String> {
+pub fn safe_to_unpack(
+    compressed_mb: u64,
+    claims_uncompressed_mb: u64,
+    depth: u32,
+    cfg: &FilesConfig,
+) -> Result<(), String> {
     if depth > cfg.max_archive_depth {
         return Err(format!(
             "that's {depth} archives deep — either a mistake or something trying to be clever"

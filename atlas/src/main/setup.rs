@@ -2,7 +2,7 @@
 //! and enrolment, adapting, the walkthrough, quick input, startup, backends,
 //! WireGuard, home, getting pieces, add-ons, edits, refusals, reclaiming space
 //! and the call check.
-//! 
+//!
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
@@ -32,7 +32,11 @@ pub(super) fn run_craft() {
         return;
     };
 
-    println!("Running the {} ladder in {} — cheapest checks first.\n", lang.plain(), dir.display());
+    println!(
+        "Running the {} ladder in {} — cheapest checks first.\n",
+        lang.plain(),
+        dir.display()
+    );
 
     let mut ran: Vec<craft::Ran> = Vec::new();
     loop {
@@ -49,7 +53,11 @@ pub(super) fn run_craft() {
         // loop, but there is no point paying for a gate whose result cannot
         // change what happens next.
         if let Next::Fix { .. } = craft::read_ladder(lang, &ran) {
-            if ran.last().map(|r| !r.passed && r.tells.blocks_later()).unwrap_or(false) {
+            if ran
+                .last()
+                .map(|r| !r.passed && r.tells.blocks_later())
+                .unwrap_or(false)
+            {
                 break;
             }
         }
@@ -90,7 +98,12 @@ pub(super) fn run_doctor(cfg: &Config, plat: &dyn Platform) {
     findings.push(doctor::voice_latency_finding());
     let mut bad = 0;
     for f in &findings {
-        let mark = if f.ok { "  ok " } else { bad += 1; "FAIL " };
+        let mark = if f.ok {
+            "  ok "
+        } else {
+            bad += 1;
+            "FAIL "
+        };
         println!("{mark}{:<18} {}", f.label, f.detail);
     }
     println!();
@@ -119,14 +132,30 @@ pub(super) fn run_fix(cfg: &Config, args: &[String]) {
     };
     let land = args.iter().any(|a| a == "--land");
     let head: Vec<&String> = args[..split].iter().filter(|a| *a != "--land").collect();
-    let test: Vec<String> = args[split + 1..].iter().filter(|a| *a != "--land").cloned().collect();
-    let Some(folder) = head.first() else { return println!("which folder?") };
-    let goal = head[1..].iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ");
-    let Some(tc) = cfg.tools.as_ref() else { return println!("no config/tools.yaml") };
+    let test: Vec<String> = args[split + 1..]
+        .iter()
+        .filter(|a| *a != "--land")
+        .cloned()
+        .collect();
+    let Some(folder) = head.first() else {
+        return println!("which folder?");
+    };
+    let goal = head[1..]
+        .iter()
+        .map(|s| s.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let Some(tc) = cfg.tools.as_ref() else {
+        return println!("no config/tools.yaml");
+    };
     let Some(llm) = model_connection(tc) else {
         return println!("There's no model to work it with. Set one up (the models folder, or `llm:` in tools.yaml) and try again.");
     };
-    let job = atlas::fixloop::Job { folder: std::path::PathBuf::from(folder.as_str()), test, goal };
+    let job = atlas::fixloop::Job {
+        folder: std::path::PathBuf::from(folder.as_str()),
+        test,
+        goal,
+    };
     let mut counsel = atlas::fixloop::ModelCounsel::new(llm.as_ref());
     match atlas::fixloop::run(&job, &mut counsel, &atlas::roots::tmp_dir().join("fix"), &tc.strategy, &tc.handoff, &tc.consult) {
         Ok(o) => {
@@ -157,7 +186,10 @@ pub(super) fn run_fix(cfg: &Config, args: &[String]) {
 pub(super) fn run_voice_lab(cfg: &Config, words: &[String]) {
     let store = atlas::roots::store();
     let read = |p: &String| -> Option<(Vec<i16>, u32)> {
-        match std::fs::read(p).map_err(|e| e.to_string()).and_then(|b| atlas::diarize::read_wav(&b)) {
+        match std::fs::read(p)
+            .map_err(|e| e.to_string())
+            .and_then(|b| atlas::diarize::read_wav(&b))
+        {
             Ok(x) => Some(x),
             Err(e) => {
                 println!("{p}: {e}");
@@ -167,15 +199,28 @@ pub(super) fn run_voice_lab(cfg: &Config, words: &[String]) {
     };
     match (words[0].as_str(), words.get(1).map(|s| s.as_str())) {
         ("wake-word", Some("forget")) => match atlas::wakeword::forget(&store) {
-            Ok(()) => println!("Forgotten. I'm back to listening for the phrase through speech-to-text."),
+            Ok(()) => {
+                println!("Forgotten. I'm back to listening for the phrase through speech-to-text.")
+            }
             Err(e) => println!("couldn't forget it: {e}"),
         },
         ("wake-word", Some("test")) => {
-            let Some(m) = atlas::wakeword::load(&store) else { return println!("No phrase taught yet: atlas wake-word <take.wav> (three times).") };
+            let Some(m) = atlas::wakeword::load(&store) else {
+                return println!("No phrase taught yet: atlas wake-word <take.wav> (three times).");
+            };
             for p in &words[2..] {
                 if let Some((s, r)) = read(p) {
                     let c = atlas::wakeword::closest(&s, r, &m);
-                    println!("{p}: {} (closest {:.2}, heard at or under {:.2})", if atlas::wakeword::heard(&s, r, &m) { "heard" } else { "not heard" }, c.map(|x| x.0).unwrap_or(f32::INFINITY), m.threshold);
+                    println!(
+                        "{p}: {} (closest {:.2}, heard at or under {:.2})",
+                        if atlas::wakeword::heard(&s, r, &m) {
+                            "heard"
+                        } else {
+                            "not heard"
+                        },
+                        c.map(|x| x.0).unwrap_or(f32::INFINITY),
+                        m.threshold
+                    );
                 }
             }
         }
@@ -190,8 +235,14 @@ pub(super) fn run_voice_lab(cfg: &Config, words: &[String]) {
             }
         }
         ("hearing", Some(room)) if words.len() >= 3 => {
-            let current = cfg.tools.as_ref().map(|t| t.endpoint.vad_params()).unwrap_or_default();
-            let (Ok(a), Ok(b)) = (std::fs::read(room), std::fs::read(&words[2])) else { return println!("I couldn't open one of those files.") };
+            let current = cfg
+                .tools
+                .as_ref()
+                .map(|t| t.endpoint.vad_params())
+                .unwrap_or_default();
+            let (Ok(a), Ok(b)) = (std::fs::read(room), std::fs::read(&words[2])) else {
+                return println!("I couldn't open one of those files.");
+            };
             match atlas::vadcal::from_recordings(&a, &b, current, &atlas::roots::config_dir()) {
                 Ok(o) => println!("{}", atlas::vadcal::Outcome::say(&o)),
                 Err(e) => println!("{e}"),
@@ -201,13 +252,24 @@ pub(super) fn run_voice_lab(cfg: &Config, words: &[String]) {
             for p in &words[1..] {
                 if let Some((s, r)) = read(p) {
                     match atlas::speaker::learn_background(&s, r, &store) {
-                        Ok(n) => println!("{p}: learned from {n} stretch{} of speech. {}", if n == 1 { "" } else { "es" }, if atlas::speaker::background(&store).ready() { "That's enough to tell voices apart." } else { "" }),
+                        Ok(n) => println!(
+                            "{p}: learned from {n} stretch{} of speech. {}",
+                            if n == 1 { "" } else { "es" },
+                            if atlas::speaker::background(&store).ready() {
+                                "That's enough to tell voices apart."
+                            } else {
+                                ""
+                            }
+                        ),
                         Err(e) => println!("{p}: {e}"),
                     }
                 }
             }
             if !atlas::speaker::background(&store).ready() {
-                println!("{}", atlas::speaker::still_learning(&atlas::speaker::background(&store)));
+                println!(
+                    "{}",
+                    atlas::speaker::still_learning(&atlas::speaker::background(&store))
+                );
             }
         }
         _ => {
@@ -215,7 +277,9 @@ pub(super) fn run_voice_lab(cfg: &Config, words: &[String]) {
             println!("atlas wake-word test <clip.wav>      would that have woken me?");
             println!("atlas wake-word forget               back to speech-to-text");
             println!("atlas hearing <room.wav> <you.wav>   tune the speech detector to your room");
-            println!("atlas voices <recording.wav> [...]   learn what voices that aren't you sound like");
+            println!(
+                "atlas voices <recording.wav> [...]   learn what voices that aren't you sound like"
+            );
         }
     }
 }
@@ -299,8 +363,12 @@ pub(super) fn run_reclaim(cfg: &Config, go: bool) {
             println!("  {}", c.line());
         }
     }
-    let all: Vec<atlas::reclaim::Candidate> =
-        found.iter().chain(looked.iter()).chain(apps.iter()).cloned().collect();
+    let all: Vec<atlas::reclaim::Candidate> = found
+        .iter()
+        .chain(looked.iter())
+        .chain(apps.iter())
+        .cloned()
+        .collect();
     println!();
     println!("{}", atlas::reclaim::report(&all));
     // Atlas's own folder, counted in the same breath as everybody else's.
@@ -309,22 +377,29 @@ pub(super) fn run_reclaim(cfg: &Config, go: bool) {
     if !go {
         // The list on its own is the useful part. Acting is a separate
         // decision, made by typing something different.
-        println!("
-Nothing has been moved. `atlas reclaim --do-it` moves these to Atlas's");
+        println!(
+            "
+Nothing has been moved. `atlas reclaim --do-it` moves these to Atlas's"
+        );
         println!("trash, where they stay for 30 days and can be put back.");
         return;
     }
 
     let tc = cfg.tools.as_ref();
     let trash = atlas::safety::Trash::new(
-        tc.map(|t| t.trash.clone()).unwrap_or_default().resolved(&atlas::roots::install_root()),
+        tc.map(|t| t.trash.clone())
+            .unwrap_or_default()
+            .resolved(&atlas::roots::install_root()),
     );
     // Only ever the list Atlas may move. The reported half never reaches
     // here, and `reclaim` re-checks every entry regardless.
     found.retain(|c| c.kind.atlas_may_move());
     let (moved, refused) = atlas::reclaim::reclaim(&found, &trash);
-    println!("
-Moved {} to the trash. They can be put back for 30 days.", moved.len());
+    println!(
+        "
+Moved {} to the trash. They can be put back for 30 days.",
+        moved.len()
+    );
     // Never reported as a whole success: a partial reclaim announced as a
     // complete one sends you looking for space that was never freed.
     for (path, why) in &refused {
@@ -390,7 +465,11 @@ fn report_own_footprint(cfg: &Config) {
         return;
     }
     let usage = atlas::retention::usage(&items);
-    let rcfg = cfg.tools.as_ref().map(|t| t.retention.clone()).unwrap_or_default();
+    let rcfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.retention.clone())
+        .unwrap_or_default();
 
     println!();
     println!(
@@ -419,10 +498,16 @@ fn report_own_footprint(cfg: &Config) {
         // Its own line rather than folded into a total, because this is the
         // part Atlas will never delete: a file it cannot date is a file it
         // has no basis for evicting.
-        println!("  and {} MB I can't date, so I leave it alone", mb(usage.unknown));
+        println!(
+            "  and {} MB I can't date, so I leave it alone",
+            mb(usage.unknown)
+        );
     }
     if usage.not_ours > 0 {
-        println!("  plus {} MB in my trash and backups, which I don't prune here", mb(usage.not_ours));
+        println!(
+            "  plus {} MB in my trash and backups, which I don't prune here",
+            mb(usage.not_ours)
+        );
     }
     if atlas::retention::irreducible(&usage, &rcfg) {
         println!(
@@ -479,7 +564,10 @@ pub(super) fn run_enrol_voice(cfg: &Config, plat: &dyn Platform) {
     if !atlas::speaker::available(&tc.speaker, &vars) {
         // Said before anything is recorded, rather than after three samples.
         eprintln!("{}", atlas::speaker::NO_ENCODER);
-        eprintln!("{}", atlas::speaker::still_learning(&atlas::speaker::background(&atlas::roots::store())));
+        eprintln!(
+            "{}",
+            atlas::speaker::still_learning(&atlas::speaker::background(&atlas::roots::store()))
+        );
         return;
     }
     // The microphone this machine has, as the other doors pick it (29 Sep
@@ -493,7 +581,10 @@ pub(super) fn run_enrol_voice(cfg: &Config, plat: &dyn Platform) {
 
     println!("Teaching Atlas your voice. {needed} short recordings.\n");
     while id.enrolled() < needed {
-        println!("{}", atlas::voiceid::enrollment_prompt(id.enrolled(), needed));
+        println!(
+            "{}",
+            atlas::voiceid::enrollment_prompt(id.enrolled(), needed)
+        );
         print!("[enter when ready] ");
         atlas::heard!(io::stdout().flush());
         let mut l = String::new();
@@ -513,9 +604,14 @@ pub(super) fn run_enrol_voice(cfg: &Config, plat: &dyn Platform) {
         }
     }
     match id.save(&store) {
-        Ok(()) => println!("\n{}", atlas::voiceid::enrollment_prompt(id.enrolled(), needed)),
+        Ok(()) => println!(
+            "\n{}",
+            atlas::voiceid::enrollment_prompt(id.enrolled(), needed)
+        ),
         // Never claim it learned something it did not keep.
-        Err(e) => eprintln!("\nI learned it but couldn't save it ({e}) — it won't survive a restart."),
+        Err(e) => {
+            eprintln!("\nI learned it but couldn't save it ({e}) — it won't survive a restart.")
+        }
     }
 }
 
@@ -536,7 +632,11 @@ pub(super) fn run_adapt(cfg: &Config, plat: &dyn Platform, args: &[String]) {
             Some(m) => {
                 println!("{}", m.summary());
                 let wanted: Vec<String> = cfg.apps.apps.keys().cloned().collect();
-                println!("Apps found: {:.0}% of the {} configured.", m.coverage(&wanted) * 100.0, wanted.len());
+                println!(
+                    "Apps found: {:.0}% of the {} configured.",
+                    m.coverage(&wanted) * 100.0,
+                    wanted.len()
+                );
                 match plat.monitors() {
                     Ok(mons) if !m.matches(&mons) => println!(
                         "The displays have changed since this was written — run `atlas adapt` again."
@@ -574,7 +674,10 @@ pub(super) fn run_adapt(cfg: &Config, plat: &dyn Platform, args: &[String]) {
         if spec.store {
             // A Store app id is not a path and cannot be checked by looking
             // for a file. Taken as given rather than reported missing.
-            return Some(atlas::adapt::AppFound { launch: spec.launch.clone(), store: true });
+            return Some(atlas::adapt::AppFound {
+                launch: spec.launch.clone(),
+                store: true,
+            });
         }
         let expanded = atlas::doctor::expand_env(&spec.launch);
         if std::path::Path::new(&expanded).is_file() {
@@ -684,14 +787,22 @@ pub(super) fn run_walkthrough(cfg: &Config, args: &[String]) {
     use atlas::walkthrough::{self, Walk};
 
     let store = atlas::roots::store();
-    let wcfg = cfg.tools.as_ref().map(|t| t.walkthrough.clone()).unwrap_or_default();
+    let wcfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.walkthrough.clone())
+        .unwrap_or_default();
     // `confirmed.rs` was a complete, tested module nothing could reach. It
     // was written for Atlas making a security change itself, which nothing
     // here does -- but the read-back is the half that does the work, and it
     // is worth exactly as much when you are the one about to click. This is
     // the one place in the tree where a security change actually gets
     // started, and until 19 Sep 2026 it started with no read-back and no yes.
-    let ccfg = cfg.tools.as_ref().map(|t| t.confirmed.clone()).unwrap_or_default();
+    let ccfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.confirmed.clone())
+        .unwrap_or_default();
     if !wcfg.enabled {
         println!("Walkthroughs are switched off (walkthrough.enabled: false in tools.yaml).");
         return;
@@ -726,7 +837,9 @@ pub(super) fn run_walkthrough(cfg: &Config, args: &[String]) {
                 println!();
             }
             if skipped > 0 {
-                println!("{skipped} I don't have an exact page for -- left out rather than guessed.");
+                println!(
+                    "{skipped} I don't have an exact page for -- left out rather than guessed."
+                );
             }
             // Read back first, one at a time, when you've asked for that.
             // Six accounts picked in one command is still six yeses -- a
@@ -786,9 +899,19 @@ pub(super) fn run_walkthrough(cfg: &Config, args: &[String]) {
                     // typed. Anything else comes back to you with the page.
                     let mut worked = true;
                     if wcfg.atlas_clicks {
-                        let url = atlas::walkthrough::where_2fa_lives(&asked.site).map(|(u, _)| u).unwrap_or("");
-                        let bcfg = cfg.tools.as_ref().map(|t| t.browser.clone()).unwrap_or_default();
-                        let vars = cfg.tools.as_ref().map(|t| t.vars.clone()).unwrap_or_default();
+                        let url = atlas::walkthrough::where_2fa_lives(&asked.site)
+                            .map(|(u, _)| u)
+                            .unwrap_or("");
+                        let bcfg = cfg
+                            .tools
+                            .as_ref()
+                            .map(|t| t.browser.clone())
+                            .unwrap_or_default();
+                        let vars = cfg
+                            .tools
+                            .as_ref()
+                            .map(|t| t.vars.clone())
+                            .unwrap_or_default();
                         let outcome = if url.is_empty() {
                             Ok(atlas::confirmed::Pressed::NoWordsForIt)
                         } else {
@@ -855,7 +978,8 @@ pub(super) fn run_walkthrough(cfg: &Config, args: &[String]) {
             // Only the ones you actually said yes to. A walk that still
             // visited the pages you declined would make the question
             // decorative.
-            w.stops.retain(|stop| confirmed_sites.iter().any(|s| s == &stop.site));
+            w.stops
+                .retain(|stop| confirmed_sites.iter().any(|s| s == &stop.site));
             if w.stops.is_empty() {
                 println!("Nothing left to walk through.");
                 return;
@@ -952,7 +1076,11 @@ pub(super) fn run_walkthrough(cfg: &Config, args: &[String]) {
 pub(super) fn run_quickinput(cfg: &Config, args: &[String]) {
     use atlas::quickinput::{Action, QuickInput, Surface};
 
-    let qcfg = cfg.tools.as_ref().map(|t| t.quick_input.clone()).unwrap_or_default();
+    let qcfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.quick_input.clone())
+        .unwrap_or_default();
     if !qcfg.enabled {
         println!("The typing surface is switched off (quick_input.enabled: false in tools.yaml).");
         return;
@@ -1012,7 +1140,10 @@ pub(super) fn run_quickinput(cfg: &Config, args: &[String]) {
                         _ => println!("Nothing typed. Closed."),
                     }
                 }
-                debug_assert!(!q.is_open(), "the box must not be left open behind a finished turn");
+                debug_assert!(
+                    !q.is_open(),
+                    "the box must not be left open behind a finished turn"
+                );
             }
         }
         other => println!("{}", other.plain()),
@@ -1066,7 +1197,10 @@ pub(super) fn run_startup(args: &[String]) {
             match startup::run(&plan) {
                 Ok(true) => {
                     atlas::heard!(startup::remember(&atlas::roots::state_dir(), true));
-                    println!("Done. Atlas will start when you log in, and {}.", mode.plainly());
+                    println!(
+                        "Done. Atlas will start when you log in, and {}.",
+                        mode.plainly()
+                    );
                     println!("Turn it off again with `atlas startup off`.");
                 }
                 Ok(false) => {
@@ -1157,7 +1291,9 @@ pub(super) fn run_backends(args: &[String]) {
         }
         Some("forget") => {
             let Some(app) = args.get(1) else {
-                println!("Which app should I forget what I learned about? atlas backends forget <app>");
+                println!(
+                    "Which app should I forget what I learned about? atlas backends forget <app>"
+                );
                 return;
             };
             let mut router = atlas::backends::Router::load(&store);
@@ -1211,7 +1347,9 @@ pub(super) fn run_wireguard(cfg: &Config, args: &[String]) {
             println!("{}", atlas::wireguard::ONE_TUNNEL_ON_A_PHONE);
             println!();
             if plan.endpoint.is_empty() {
-                println!("I don't have the server's outside address yet (mesh.wireguard.endpoint).");
+                println!(
+                    "I don't have the server's outside address yet (mesh.wireguard.endpoint)."
+                );
             } else {
                 println!("Your devices will find the server at {}.", plan.endpoint);
             }
@@ -1239,8 +1377,10 @@ pub(super) fn run_wireguard(cfg: &Config, args: &[String]) {
                     return;
                 }
             };
-            let laptop_conf = atlas::wireguard::device_conf(&plan, Device::Laptop, &laptop, &server.public);
-            let phone_conf = atlas::wireguard::device_conf(&plan, Device::Phone, &phone, &server.public);
+            let laptop_conf =
+                atlas::wireguard::device_conf(&plan, Device::Laptop, &laptop, &server.public);
+            let phone_conf =
+                atlas::wireguard::device_conf(&plan, Device::Phone, &phone, &server.public);
             let (Ok(laptop_conf), Ok(phone_conf)) = (laptop_conf, phone_conf) else {
                 println!("I couldn't write the device configs.");
                 return;
@@ -1249,12 +1389,21 @@ pub(super) fn run_wireguard(cfg: &Config, args: &[String]) {
                 "server": server.public, "laptop": laptop.public, "phone": phone.public,
             });
             let files = [
-                ("server.conf", atlas::wireguard::server_conf(&plan, &server, &laptop.public, &phone.public)),
+                (
+                    "server.conf",
+                    atlas::wireguard::server_conf(&plan, &server, &laptop.public, &phone.public),
+                ),
                 ("laptop.conf", laptop_conf),
                 ("phone.conf", phone_conf),
                 ("fence-linux.nft", atlas::wireguard::nftables(&plan, "wg0")),
-                ("fence-windows.txt", atlas::wireguard::windows_rules(&plan).join("\n") + "\n"),
-                ("public-keys.json", serde_json::to_string_pretty(&public).unwrap_or_default()),
+                (
+                    "fence-windows.txt",
+                    atlas::wireguard::windows_rules(&plan).join("\n") + "\n",
+                ),
+                (
+                    "public-keys.json",
+                    serde_json::to_string_pretty(&public).unwrap_or_default(),
+                ),
             ];
             if let Err(e) = std::fs::create_dir_all(&dir) {
                 println!("I couldn't make {}: {e}", dir.display());
@@ -1268,11 +1417,15 @@ pub(super) fn run_wireguard(cfg: &Config, args: &[String]) {
             }
             println!("Made in {}:", dir.display());
             println!("  server.conf, laptop.conf, phone.conf — one for each WireGuard");
-            println!("  the server's fence, for Linux and for Windows — your devices reach its model");
+            println!(
+                "  the server's fence, for Linux and for Windows — your devices reach its model"
+            );
             println!("  server on port {} and nothing else", plan.model_port);
             println!();
             println!("The three .conf files hold private keys. Import each one, then run");
-            println!("`atlas wireguard tidy` and I'll delete them. The phone's goes over by AirDrop or");
+            println!(
+                "`atlas wireguard tidy` and I'll delete them. The phone's goes over by AirDrop or"
+            );
             println!("Files into the WireGuard app — not by email or a chat.");
         }
         Some("check") => {
@@ -1306,7 +1459,10 @@ pub(super) fn run_wireguard(cfg: &Config, args: &[String]) {
             let seen = atlas::wireguard::handshakes(&out);
             let now = atlas::store::now();
             for name in ["laptop", "phone"] {
-                let key = names.iter().find(|(_, n)| n.as_str() == name).map(|(k, _)| k.clone());
+                let key = names
+                    .iter()
+                    .find(|(_, n)| n.as_str() == name)
+                    .map(|(k, _)| k.clone());
                 let last = key.and_then(|k| seen.iter().find(|(p, _)| *p == k).map(|(_, t)| *t));
                 println!("{}", atlas::wireguard::connection(name, last, now));
             }
@@ -1325,7 +1481,9 @@ pub(super) fn run_wireguard(cfg: &Config, args: &[String]) {
             );
         }
         Some(other) => {
-            println!("I don't know `atlas wireguard {other}`. Try: atlas wireguard [configs|check|tidy]");
+            println!(
+                "I don't know `atlas wireguard {other}`. Try: atlas wireguard [configs|check|tidy]"
+            );
         }
     }
 }
@@ -1346,7 +1504,9 @@ pub(super) fn run_home(double_clicked: bool, first: atlas::firstlaunch::First) {
         }
     };
     let exe_dir = exe.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-    let told = std::env::var_os("ATLAS_HOME").map(|v| !v.is_empty()).unwrap_or(false);
+    let told = std::env::var_os("ATLAS_HOME")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
     let home = atlas::firstlaunch::standard_home();
     match atlas::firstlaunch::where_to_live(
         &exe_dir,
@@ -1360,7 +1520,10 @@ pub(super) fn run_home(double_clicked: bool, first: atlas::firstlaunch::First) {
             let installed = home.join(atlas::firstlaunch::INSTALLED_NAME);
             let open_installed = || match atlas::firstlaunch::spawn_quietly(&installed, &args) {
                 Ok(child) => atlas::unwaited::dont_wait(child),
-                Err(e) => atlas::firstlaunch::show_problem(&format!("I couldn't open the Atlas in {}: {e}", home.display())),
+                Err(e) => atlas::firstlaunch::show_problem(&format!(
+                    "I couldn't open the Atlas in {}: {e}",
+                    home.display()
+                )),
             };
             match atlas::firstlaunch::replacing_in(&exe, &home) {
                 // Already there, byte for byte: just open it.
@@ -1369,7 +1532,10 @@ pub(super) fn run_home(double_clicked: bool, first: atlas::firstlaunch::First) {
                     return;
                 }
                 // Never a silent downgrade.
-                atlas::firstlaunch::Replacing::Older { installed: newer, mine } => {
+                atlas::firstlaunch::Replacing::Older {
+                    installed: newer,
+                    mine,
+                } => {
                     let q = format!(
                         "The Atlas already on this computer is version {newer}, which is newer than this one ({mine}). \
                          Replace it with this older version? Your notes and settings are kept either way."
@@ -1400,7 +1566,10 @@ pub(super) fn run_home(double_clicked: bool, first: atlas::firstlaunch::First) {
     if atlas::firstlaunch::settings_missing(&dir) {
         atlas::heard!(atlas::firstlaunch::write_default_config(&dir));
     }
-    let configured = Config::load(&dir).ok().and_then(|c| c.tools.map(|t| t.server.port)).unwrap_or(8787);
+    let configured = Config::load(&dir)
+        .ok()
+        .and_then(|c| c.tools.map(|t| t.server.port))
+        .unwrap_or(8787);
     // Opening Atlas once it's set up makes sure the background Atlas is
     // running (no console: it's started with no window of its own), then
     // opens the hub. Closing the window never stops it (Eric, 28 Sep 2026).
@@ -1496,9 +1665,14 @@ pub(super) fn run_kokoro_check(words: &[String]) -> i32 {
         println!("Kokoro loaded but said nothing ({secs:.2} s of audio).");
         return 1;
     }
-    let out = atlas::roots::data_dir().join("tmp").join("kokoro-check.wav");
+    let out = atlas::roots::data_dir()
+        .join("tmp")
+        .join("kokoro-check.wav");
     atlas::heard!(std::fs::create_dir_all(out.parent().unwrap_or(&root)));
-    atlas::kept!(std::fs::write(&out, atlas::kokoro::to_wav(&samples, k.sample_rate())));
+    atlas::kept!(std::fs::write(
+        &out,
+        atlas::kokoro::to_wav(&samples, k.sample_rate())
+    ));
     println!(
         "Kokoro ({voice}, {threads} threads): loaded in {load_ms} ms; {secs:.2} s of speech made in {synth_ms:.0} ms \
          ({:.2}x its own length). Saved to {}.",
@@ -1521,7 +1695,9 @@ pub(super) fn run_get(which: Option<&str>) {
     println!("Getting {what}. Safe to run again —");
     println!("it picks up where it stopped and skips what's already here.");
     println!();
-    if let Err(why) = atlas::getpieces::room_for(&pieces, &root, atlas::getpieces::free_bytes(&root)) {
+    if let Err(why) =
+        atlas::getpieces::room_for(&pieces, &root, atlas::getpieces::free_bytes(&root))
+    {
         println!("{why}");
         return;
     }
@@ -1678,22 +1854,40 @@ fn send_plugin(dir: &std::path::Path, id: &str, to: &str) -> Result<String, Stri
     let key = to.trim().strip_prefix("the ").unwrap_or(to.trim());
     let key = key.strip_suffix(" group").unwrap_or(key).trim();
     let (people, covering) = match chats.group_named(key) {
-        Some(g) => (g.members.clone(), format!("{}{}", atlas::plugins::SHARED_IN, g.name)),
+        Some(g) => (
+            g.members.clone(),
+            format!("{}{}", atlas::plugins::SHARED_IN, g.name),
+        ),
         None => (vec![key.to_string()], format!("the add-on {name}")),
     };
     let named = std::env::temp_dir().join(&file_name);
     std::fs::write(&named, &bytes).map_err(|e| format!("couldn't prepare it: {e}"))?;
     let mut reached = Vec::new();
     for who in &people {
-        let Some(contact) = pairings.contacts.iter().find(|c| c.name.eq_ignore_ascii_case(who)).cloned() else { continue };
+        let Some(contact) = pairings
+            .contacts
+            .iter()
+            .find(|c| c.name.eq_ignore_ascii_case(who))
+            .cloned()
+        else {
+            continue;
+        };
         let h = atlas::household::share_with_friend(&covering, "me");
-        if atlas::kin::PeerLink::from_state(&pairings, &atlas::chat::Chats::default()).sealing_as(atlas::peerkey::Identity::load_or_create(&atlas::kin::where_pairings_live()).ok()).hand_note(&contact.name, &h, Some(&named)).is_ok() {
+        if atlas::kin::PeerLink::from_state(&pairings, &atlas::chat::Chats::default())
+            .sealing_as(
+                atlas::peerkey::Identity::load_or_create(&atlas::kin::where_pairings_live()).ok(),
+            )
+            .hand_note(&contact.name, &h, Some(&named))
+            .is_ok()
+        {
             reached.push(who.clone());
         }
     }
     atlas::heard!(std::fs::remove_file(&named));
     if reached.is_empty() {
-        return Err(format!("couldn't reach anyone in {to} to share \"{name}\" with"));
+        return Err(format!(
+            "couldn't reach anyone in {to} to share \"{name}\" with"
+        ));
     }
     Ok(format!(
         "Shared \"{name}\" with {}. It waits on their Add-ons page until they choose to add it.",
@@ -1704,17 +1898,33 @@ fn send_plugin(dir: &std::path::Path, id: &str, to: &str) -> Result<String, Stri
 fn describe_plugin(p: &atlas::plugins::Plugin) {
     println!("\n{} ({}) -- {}", p.name(), p.id, p.status.plain());
     if let Some(m) = &p.manifest {
-        println!("  by {}{}", m.author, if m.description.is_empty() { String::new() } else { format!(": {}", m.description) });
+        println!(
+            "  by {}{}",
+            m.author,
+            if m.description.is_empty() {
+                String::new()
+            } else {
+                format!(": {}", m.description)
+            }
+        );
         if m.permissions.is_empty() {
             println!("  asks to do nothing beyond talking back");
         }
         for k in &m.permissions {
             let plain = atlas::plugins::permission(k).map(|x| x.plain).unwrap_or("");
-            let mark = if p.granted.contains(k) { "allowed" } else { "asks" };
+            let mark = if p.granted.contains(k) {
+                "allowed"
+            } else {
+                "asks"
+            };
             println!("  [{mark}] {k}: {plain}");
         }
         for f in &p.flows {
-            let starts = if f.triggers.is_empty() { "nothing starts it".to_string() } else { format!("say \"{}\"", f.triggers.join("\" or \"")) };
+            let starts = if f.triggers.is_empty() {
+                "nothing starts it".to_string()
+            } else {
+                format!("say \"{}\"", f.triggers.join("\" or \""))
+            };
             println!("  \"{}\" -- {starts}", f.name);
             for s in &f.steps {
                 println!("      {}", s.command);
@@ -1727,8 +1937,14 @@ fn describe_plugin(p: &atlas::plugins::Plugin) {
     for q in &p.questions {
         match (&q.always_asks, q.trusted) {
             (Some(why), _) => println!("  asks before \"{}\" every time: {why}", q.command),
-            (None, true) => println!("  won't ask before \"{}\" (you said) -- `atlas plugins untrust {} {}`", q.command, p.id, q.command),
-            (None, false) => println!("  asks before \"{}\" -- `atlas plugins trust {} {}` to stop that", q.command, p.id, q.command),
+            (None, true) => println!(
+                "  won't ask before \"{}\" (you said) -- `atlas plugins untrust {} {}`",
+                q.command, p.id, q.command
+            ),
+            (None, false) => println!(
+                "  asks before \"{}\" -- `atlas plugins trust {} {}` to stop that",
+                q.command, p.id, q.command
+            ),
         }
     }
     for t in &p.trouble {
@@ -1753,7 +1969,11 @@ pub(super) fn run_edits(args: &[String]) {
                 return;
             }
             for e in &kept {
-                let yours = if e.change.removed { "(you removed it)".to_string() } else { shown(e.change.yours.as_ref()) };
+                let yours = if e.change.removed {
+                    "(you removed it)".to_string()
+                } else {
+                    shown(e.change.yours.as_ref())
+                };
                 let mut line = format!("{} {}: {}", e.file, e.change.dotted(), yours);
                 if e.change.unsure {
                     line.push_str("  [unsure it was you]");
@@ -1770,10 +1990,17 @@ pub(super) fn run_edits(args: &[String]) {
             println!("\n`atlas edits revert <file> <setting>` goes back to the shipped default.");
         }
         "revert" => {
-            let (file, path) = (args.get(1).cloned().unwrap_or_default(), args.get(2).cloned().unwrap_or_default());
+            let (file, path) = (
+                args.get(1).cloned().unwrap_or_default(),
+                args.get(2).cloned().unwrap_or_default(),
+            );
             match forget(&dir, &file, &path) {
-                Ok(true) => println!("{file} {path} is back to what Atlas ships, from the next start."),
-                Ok(false) => println!("There's no edit of yours at {file} {path}. `atlas edits` lists them."),
+                Ok(true) => {
+                    println!("{file} {path} is back to what Atlas ships, from the next start.")
+                }
+                Ok(false) => {
+                    println!("There's no edit of yours at {file} {path}. `atlas edits` lists them.")
+                }
                 Err(e) => {
                     eprintln!("{e}");
                     leave(1);
@@ -1803,12 +2030,18 @@ pub(super) fn run_call_check(args: &[String]) {
         println!("`atlas call check` records a few seconds of both sides to check they work.");
         return;
     }
-    let secs: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(5).clamp(1, 60);
+    let secs: u64 = args
+        .get(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(5)
+        .clamp(1, 60);
     // The same microphone and the same transcriber a real call uses, so
     // a pass here means call notes would hear and write the same (5 Oct
     // 2026: this checked only loudness, while every real call's notes
     // failed further along).
-    let tools = atlas::config::Config::load(&atlas::roots::config_dir()).ok().and_then(|c| c.tools.map(|t| t.anchored()));
+    let tools = atlas::config::Config::load(&atlas::roots::config_dir())
+        .ok()
+        .and_then(|c| c.tools.map(|t| t.anchored()));
     if let Some(t) = &tools {
         let (name, _) = atlas::voice::microphone_now(t);
         atlas::callrec::use_microphone(&name);
@@ -1822,7 +2055,10 @@ pub(super) fn run_call_check(args: &[String]) {
     let a = atlas::callrec::start(atlas::callrec::Side::Yours, &mine, false);
     let b = atlas::callrec::start(atlas::callrec::Side::Theirs, &theirs, false);
     std::thread::sleep(std::time::Duration::from_secs(secs));
-    for (what, r, path) in [("Your microphone", a, &mine), ("What the laptop plays", b, &theirs)] {
+    for (what, r, path) in [
+        ("Your microphone", a, &mine),
+        ("What the laptop plays", b, &theirs),
+    ] {
         match r {
             Err(e) => println!("  {what}: couldn't record — {e}"),
             Ok(rec) => match rec.finish() {
@@ -1831,23 +2067,48 @@ pub(super) fn run_call_check(args: &[String]) {
                     // Loudest moment, against a floor above hiss: about 3%.
                     let peak = std::fs::read(path)
                         .ok()
-                        .map(|b| b.get(44..).unwrap_or(&[]).as_chunks::<2>().0.iter().map(|c| i16::from_le_bytes([c[0], c[1]]).unsigned_abs()).max().unwrap_or(0))
+                        .map(|b| {
+                            b.get(44..)
+                                .unwrap_or(&[])
+                                .as_chunks::<2>()
+                                .0
+                                .iter()
+                                .map(|c| i16::from_le_bytes([c[0], c[1]]).unsigned_abs())
+                                .max()
+                                .unwrap_or(0)
+                        })
                         .unwrap_or(0);
                     let peak = if peak > 1000 { 1 } else { 0 };
                     println!(
                         "  {what}: {got:.1} seconds recorded, {}",
-                        if peak > 0 { "and there was sound in it." } else { "but it was silent." }
+                        if peak > 0 {
+                            "and there was sound in it."
+                        } else {
+                            "but it was silent."
+                        }
                     );
-                    match tools.as_ref().and_then(|t| t.stt_timed.clone().map(|s| (s, t.vars.clone()))) {
-                        None => println!("    (no transcriber set up, so the words weren't checked)"),
-                        Some((timed, vars)) => match atlas::callnotes::transcribe_side(path, &timed, &vars) {
-                            Err(e) => println!("    Transcribing it failed: {e}"),
-                            Ok(said) if said.is_empty() => println!("    Transcribed: no words."),
-                            Ok(said) => println!(
-                                "    Transcribed: \u{201c}{}\u{201d}",
-                                said.iter().map(|s| s.words.trim()).collect::<Vec<_>>().join(" ")
-                            ),
-                        },
+                    match tools
+                        .as_ref()
+                        .and_then(|t| t.stt_timed.clone().map(|s| (s, t.vars.clone())))
+                    {
+                        None => {
+                            println!("    (no transcriber set up, so the words weren't checked)")
+                        }
+                        Some((timed, vars)) => {
+                            match atlas::callnotes::transcribe_side(path, &timed, &vars) {
+                                Err(e) => println!("    Transcribing it failed: {e}"),
+                                Ok(said) if said.is_empty() => {
+                                    println!("    Transcribed: no words.")
+                                }
+                                Ok(said) => println!(
+                                    "    Transcribed: \u{201c}{}\u{201d}",
+                                    said.iter()
+                                        .map(|s| s.words.trim())
+                                        .collect::<Vec<_>>()
+                                        .join(" ")
+                                ),
+                            }
+                        }
                     }
                 }
             },

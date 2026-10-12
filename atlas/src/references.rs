@@ -72,7 +72,10 @@ fn kind_hint(text: &str) -> Kind {
     {
         return Kind::File;
     }
-    if ["research", "look into", "more on", "tell me about"].iter().any(|v| t.contains(v)) {
+    if ["research", "look into", "more on", "tell me about"]
+        .iter()
+        .any(|v| t.contains(v))
+    {
         return Kind::Topic;
     }
     Kind::Any
@@ -128,10 +131,27 @@ pub fn argument_leans_on_earlier(arg: &str) -> bool {
 /// the research" -- rather than naming a topic?
 pub fn starts_the_research(said: &str) -> bool {
     let t = format!(" {} ", words(said).join(" "));
-    let about_research = [" research ", " the research ", " that research ", " researching "].iter().any(|w| t.contains(w));
-    let get_going = [" start", " do the ", " do that ", " get started", " begin", " go ahead", " kick off", " get on with", " carry on with"]
-        .iter()
-        .any(|w| t.contains(w));
+    let about_research = [
+        " research ",
+        " the research ",
+        " that research ",
+        " researching ",
+    ]
+    .iter()
+    .any(|w| t.contains(w));
+    let get_going = [
+        " start",
+        " do the ",
+        " do that ",
+        " get started",
+        " begin",
+        " go ahead",
+        " kick off",
+        " get on with",
+        " carry on with",
+    ]
+    .iter()
+    .any(|w| t.contains(w));
     about_research && get_going
 }
 
@@ -158,7 +178,11 @@ pub fn resolve(text: &str, refs: &Referents) -> Resolution {
     let mut out = Vec::new();
     let mut replaced = false;
     for w in words_keep_case(text) {
-        let bare: String = w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+        let bare: String = w
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>()
+            .to_lowercase();
         if !replaced && PRONOUNS.contains(&bare.as_str()) {
             // "there" is a place, not a thing — "move it there" means the
             // destination, which Atlas cannot infer. Leave it alone.
@@ -176,7 +200,10 @@ pub fn resolve(text: &str, refs: &Referents) -> Resolution {
     if !replaced {
         return Resolution::Unchanged(text.to_string());
     }
-    Resolution::Resolved { text: out.join(" "), referent }
+    Resolution::Resolved {
+        text: out.join(" "),
+        referent,
+    }
 }
 
 fn ambiguity_question(text: &str) -> String {
@@ -190,7 +217,12 @@ fn ambiguity_question(text: &str) -> String {
 
 fn words(text: &str) -> Vec<String> {
     text.split_whitespace()
-        .map(|w| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase())
+        .map(|w| {
+            w.chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect::<String>()
+                .to_lowercase()
+        })
         .collect()
 }
 

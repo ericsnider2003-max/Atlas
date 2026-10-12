@@ -73,7 +73,12 @@ pub struct Rules {
 
 impl Default for Rules {
     fn default() -> Self {
-        Rules { base_unit: 4, colours_from_tokens: true, accessibility: true, prefer_classes: true }
+        Rules {
+            base_unit: 4,
+            colours_from_tokens: true,
+            accessibility: true,
+            prefer_classes: true,
+        }
     }
 }
 
@@ -206,13 +211,19 @@ pub fn review(html: &str, rules: &Rules) -> Vec<Finding> {
 
 /// The findings that block, in order. The build loop's cue to iterate.
 pub fn blocking(findings: &[Finding]) -> Vec<&Finding> {
-    findings.iter().filter(|f| f.severity == Severity::Blocking).collect()
+    findings
+        .iter()
+        .filter(|f| f.severity == Severity::Blocking)
+        .collect()
 }
 
 /// One line summarising a review, in the tool's honest voice: what it can say,
 /// and no more.
 pub fn spoken(findings: &[Finding]) -> String {
-    let blocking = findings.iter().filter(|f| f.severity == Severity::Blocking).count();
+    let blocking = findings
+        .iter()
+        .filter(|f| f.severity == Severity::Blocking)
+        .count();
     let advisory = findings.len() - blocking;
     if findings.is_empty() {
         return "Consistent and accessible against the house style — which is the checkable part, \
@@ -280,10 +291,18 @@ that already worked; change only what the problems name.";
 pub enum Outcome {
     /// It clears every blocking rule. Any remaining findings are advisory notes
     /// — worth a look, not reasons it was held back.
-    Built { html: String, rounds: u32, notes: Vec<Finding> },
+    Built {
+        html: String,
+        rounds: u32,
+        notes: Vec<Finding>,
+    },
     /// A blocking problem survived the fix budget. The best draft is handed back
     /// WITH the problems attached, so it is never mistaken for a clean page.
-    Struggled { html: String, rounds: u32, findings: Vec<Finding> },
+    Struggled {
+        html: String,
+        rounds: u32,
+        findings: Vec<Finding>,
+    },
     /// No usable first draft — the model returned nothing, or nothing shaped
     /// like a page.
     NoDraft(String),
@@ -310,7 +329,10 @@ impl Outcome {
                      the checkable part, not whether it's the right design.",
                 );
                 if *rounds > 0 {
-                    s.push_str(&format!(" It took {rounds} pass{} to get there.", if *rounds == 1 { "" } else { "es" }));
+                    s.push_str(&format!(
+                        " It took {rounds} pass{} to get there.",
+                        if *rounds == 1 { "" } else { "es" }
+                    ));
                 }
                 if !notes.is_empty() {
                     s.push_str("\nWorth a look:");
@@ -320,7 +342,9 @@ impl Outcome {
                 }
                 s
             }
-            Outcome::Struggled { rounds, findings, .. } => {
+            Outcome::Struggled {
+                rounds, findings, ..
+            } => {
                 let mut s = format!(
                     "I drafted a page but couldn't get it past the house style in {rounds} pass{} — \
                      here's the best draft, with what's still wrong so you can see it:",
@@ -359,11 +383,22 @@ pub fn build_web(
         let findings = check(&html);
         let has_blocker = findings.iter().any(|f| f.severity == Severity::Blocking);
         if !has_blocker {
-            let notes = findings.into_iter().filter(|f| f.severity == Severity::Advisory).collect();
-            return Outcome::Built { html, rounds, notes };
+            let notes = findings
+                .into_iter()
+                .filter(|f| f.severity == Severity::Advisory)
+                .collect();
+            return Outcome::Built {
+                html,
+                rounds,
+                notes,
+            };
         }
         if rounds >= max_rounds {
-            return Outcome::Struggled { html, rounds, findings };
+            return Outcome::Struggled {
+                html,
+                rounds,
+                findings,
+            };
         }
         rounds += 1;
         let problems = findings
@@ -381,7 +416,11 @@ pub fn build_web(
                     rule: "fix".into(),
                     detail: format!("couldn't get a fix: {e}"),
                 });
-                return Outcome::Struggled { html, rounds, findings };
+                return Outcome::Struggled {
+                    html,
+                    rounds,
+                    findings,
+                };
             }
         }
     }
@@ -399,7 +438,9 @@ fn draft_page(brief: &str, llm: &dyn crate::brain::Llm) -> Result<String, String
 fn fix_page(html: &str, problems: &str, llm: &dyn crate::brain::Llm) -> Result<String, String> {
     let user =
         format!("The problems:\n{problems}\n\nThe page:\n```\n{html}\n```\n\nReturn the complete corrected page.");
-    let reply = llm.complete(WEB_FIX_SYSTEM, &user).map_err(|e| e.to_string())?;
+    let reply = llm
+        .complete(WEB_FIX_SYSTEM, &user)
+        .map_err(|e| e.to_string())?;
     let fixed = crate::build_it::extract_code(&reply);
     if !looks_like_page(&fixed) {
         return Err("no page came back on the fix round".into());
@@ -412,7 +453,12 @@ fn fix_page(html: &str, problems: &str, llm: &dyn crate::brain::Llm) -> Result<S
 /// against an empty reply or a paragraph of prose.
 fn looks_like_page(s: &str) -> bool {
     let l = s.to_lowercase();
-    !s.trim().is_empty() && l.contains('<') && (l.contains("<html") || l.contains("<body") || l.contains("<div") || l.contains("<!doctype"))
+    !s.trim().is_empty()
+        && l.contains('<')
+        && (l.contains("<html")
+            || l.contains("<body")
+            || l.contains("<div")
+            || l.contains("<!doctype"))
 }
 
 /// Does this build request want a web page, rather than a script or program?
@@ -424,8 +470,18 @@ fn looks_like_page(s: &str) -> bool {
 pub fn wants_web_page(description: &str) -> bool {
     let d = description.to_lowercase();
     const WEB_WORDS: &[&str] = &[
-        "web page", "webpage", "web site", "website", "html page", "landing page",
-        "a page", "html", "a site", "microsite", "home page", "homepage",
+        "web page",
+        "webpage",
+        "web site",
+        "website",
+        "html page",
+        "landing page",
+        "a page",
+        "html",
+        "a site",
+        "microsite",
+        "home page",
+        "homepage",
     ];
     WEB_WORDS.iter().any(|w| contains_phrase(&d, w))
 }
@@ -439,7 +495,10 @@ fn contains_phrase(haystack: &str, phrase: &str) -> bool {
         let at = from + rel;
         let before_ok = at == 0 || !bytes[at - 1].is_ascii_alphanumeric();
         let after = at + phrase.len();
-        let after_ok = bytes.get(after).map(|c| !c.is_ascii_alphanumeric()).unwrap_or(true);
+        let after_ok = bytes
+            .get(after)
+            .map(|c| !c.is_ascii_alphanumeric())
+            .unwrap_or(true);
         if before_ok && after_ok {
             return true;
         }
@@ -467,7 +526,10 @@ fn tags(lower_html: &str, name: &str) -> Vec<String> {
         // Must be followed by whitespace, '>' or '/', so `<input` doesn't match
         // `<inputs` and `<a` doesn't match `<article`.
         let after = start + open.len();
-        let ok = bytes.get(after).map(|c| *c == b' ' || *c == b'>' || *c == b'/' || *c == b'\n' || *c == b'\t').unwrap_or(false);
+        let ok = bytes
+            .get(after)
+            .map(|c| *c == b' ' || *c == b'>' || *c == b'/' || *c == b'\n' || *c == b'\t')
+            .unwrap_or(false);
         if let Some(end_rel) = lower_html[start..].find('>') {
             if ok {
                 out.push(lower_html[start..start + end_rel + 1].to_string());

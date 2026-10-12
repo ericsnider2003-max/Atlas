@@ -47,7 +47,10 @@ impl Presence {
     }
     /// Is it worth talking out loud at all?
     pub fn worth_speaking(&self) -> bool {
-        matches!(self, Presence::AtDesk | Presence::NotAlone | Presence::Unknown)
+        matches!(
+            self,
+            Presence::AtDesk | Presence::NotAlone | Presence::Unknown
+        )
     }
 }
 

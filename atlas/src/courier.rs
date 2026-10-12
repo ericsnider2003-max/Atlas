@@ -203,7 +203,11 @@ impl Round {
             parts.push(format!(
                 "{} message{} been undelivered for days now.",
                 self.gone_stuck.len(),
-                if self.gone_stuck.len() == 1 { " has" } else { "s have" }
+                if self.gone_stuck.len() == 1 {
+                    " has"
+                } else {
+                    "s have"
+                }
             ));
         }
         parts.join(" ")
@@ -266,7 +270,9 @@ pub fn run(
             room_blocked.push((room_id.clone(), who.clone()));
             continue;
         }
-        let Some(msg) = chats.room(&room_id).and_then(|r| r.messages.iter().find(|m| m.id == msg_id))
+        let Some(msg) = chats
+            .room(&room_id)
+            .and_then(|r| r.messages.iter().find(|m| m.id == msg_id))
         else {
             continue;
         };
@@ -358,7 +364,10 @@ pub fn send_receipts<R: Receipts>(chats: &mut Chats, link: &R, now: u64) -> usiz
             std::collections::BTreeMap::new();
         for m in &room.messages {
             if m.from != ME && m.after > room.receipt_through && m.after <= room.read_through {
-                by_sender.entry(m.from.clone()).or_default().push(m.id.clone());
+                by_sender
+                    .entry(m.from.clone())
+                    .or_default()
+                    .push(m.id.clone());
             }
         }
         if by_sender.is_empty() {
@@ -411,7 +420,6 @@ impl Tries {
     pub fn forget(&mut self, key: &(String, String)) {
         self.seen.remove(key);
     }
-
 }
 
 /// What this install has today: no way to reach anybody else's Atlas.

@@ -22,10 +22,30 @@ pub struct Picked<T> {
 /// Filter, score, and take the top `n`. Ties keep the later one first —
 /// the newer of two equally important things is the one more likely still
 /// to matter.
-pub fn top<T: Clone>(candidates: &[T], keep: impl Fn(&T) -> bool, score: impl Fn(&T) -> f64, n: usize) -> Picked<T> {
-    let mut kept: Vec<(usize, f64, &T)> =
-        candidates.iter().enumerate().filter(|(_, c)| keep(c)).map(|(i, c)| (i, score(c), c)).collect();
-    kept.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.cmp(&a.0)));
+pub fn top<T: Clone>(
+    candidates: &[T],
+    keep: impl Fn(&T) -> bool,
+    score: impl Fn(&T) -> f64,
+    n: usize,
+) -> Picked<T> {
+    let mut kept: Vec<(usize, f64, &T)> = candidates
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| keep(c))
+        .map(|(i, c)| (i, score(c), c))
+        .collect();
+    kept.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(b.0.cmp(&a.0))
+    });
     let passed_over = kept.len().saturating_sub(n);
-    Picked { chosen: kept.into_iter().take(n).map(|(_, _, c)| c.clone()).collect(), passed_over }
+    Picked {
+        chosen: kept
+            .into_iter()
+            .take(n)
+            .map(|(_, _, c)| c.clone())
+            .collect(),
+        passed_over,
+    }
 }

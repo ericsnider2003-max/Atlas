@@ -22,7 +22,11 @@ fn install(tag: &str) -> PathBuf {
     atlas::firstlaunch::write_default_config(&dir).unwrap();
     // First start records what was shipped.
     let first = keep_hand_edits_with(&dir, &shipped(), &[], "1");
-    assert!(first.notices.is_empty(), "a fresh install had something to say: {:?}", first.notices);
+    assert!(
+        first.notices.is_empty(),
+        "a fresh install had something to say: {:?}",
+        first.notices
+    );
     dir
 }
 
@@ -37,7 +41,16 @@ fn release_2() -> Vec<(&'static str, &'static str)> {
             .replacen("record_seconds: 8", "record_seconds: 9", 1)
             .into_boxed_str(),
     );
-    shipped().into_iter().map(|(n, t)| if n == "tools.yaml" { (n, tools2) } else { (n, t) }).collect()
+    shipped()
+        .into_iter()
+        .map(|(n, t)| {
+            if n == "tools.yaml" {
+                (n, tools2)
+            } else {
+                (n, t)
+            }
+        })
+        .collect()
 }
 
 #[test]
@@ -45,19 +58,44 @@ fn a_hand_edit_is_what_atlas_runs_with_after_an_update() {
     let dir = install("runs");
     let tools = dir.join("tools.yaml");
     let text = fs::read_to_string(&tools).unwrap();
-    assert!(text.contains("work_dir: \"data/tmp\""), "the test's anchor moved; pick another key");
-    fs::write(&tools, text.replacen("work_dir: \"data/tmp\"", "work_dir: \"data/mine\"", 1)).unwrap();
+    assert!(
+        text.contains("work_dir: \"data/tmp\""),
+        "the test's anchor moved; pick another key"
+    );
+    fs::write(
+        &tools,
+        text.replacen("work_dir: \"data/tmp\"", "work_dir: \"data/mine\"", 1),
+    )
+    .unwrap();
 
     let k = keep_hand_edits_with(&dir, &release_2(), &[], "2");
-    assert!(k.notices.iter().any(|n| n.contains("work_dir")), "{:?}", k.notices);
+    assert!(
+        k.notices.iter().any(|n| n.contains("work_dir")),
+        "{:?}",
+        k.notices
+    );
     // The shipped file on disk is exactly release 2.
-    assert_eq!(fs::read_to_string(&tools).unwrap(), release_2().iter().find(|(n, _)| *n == "tools.yaml").unwrap().1);
+    assert_eq!(
+        fs::read_to_string(&tools).unwrap(),
+        release_2()
+            .iter()
+            .find(|(n, _)| *n == "tools.yaml")
+            .unwrap()
+            .1
+    );
 
     let cfg = Config::load(&dir).expect("loads");
-    assert!(cfg.edits_that_went_nowhere.is_empty(), "{:?}", cfg.edits_that_went_nowhere);
+    assert!(
+        cfg.edits_that_went_nowhere.is_empty(),
+        "{:?}",
+        cfg.edits_that_went_nowhere
+    );
     let t = cfg.tools.unwrap();
     assert_eq!(t.work_dir, "data/mine", "your edit was lost");
-    assert_eq!(t.record_seconds, 9, "the release's new default did not arrive");
+    assert_eq!(
+        t.record_seconds, 9,
+        "the release's new default did not arrive"
+    );
 }
 
 #[test]
@@ -65,7 +103,11 @@ fn a_settings_page_choice_beats_a_hand_edit_to_the_same_key() {
     let dir = install("order");
     let tools = dir.join("tools.yaml");
     let text = fs::read_to_string(&tools).unwrap();
-    fs::write(&tools, text.replacen("record_seconds: 8", "record_seconds: 4", 1)).unwrap();
+    fs::write(
+        &tools,
+        text.replacen("record_seconds: 8", "record_seconds: 4", 1),
+    )
+    .unwrap();
     keep_hand_edits_with(&dir, &shipped(), &[], "1");
     let mut p = atlas::preferences::Preferences::default();
     p.set("record_seconds", "6");
@@ -85,8 +127,18 @@ fn an_edit_that_breaks_a_file_does_not_stop_atlas_starting() {
     )
     .unwrap();
     let cfg = Config::load(&dir).expect("a bad edit must not stop startup");
-    assert_eq!(cfg.tools.unwrap().record_seconds, 8, "fell back to the shipped value");
-    assert!(cfg.edits_that_went_nowhere.iter().any(|e| e.contains("cannot be read")), "{:?}", cfg.edits_that_went_nowhere);
+    assert_eq!(
+        cfg.tools.unwrap().record_seconds,
+        8,
+        "fell back to the shipped value"
+    );
+    assert!(
+        cfg.edits_that_went_nowhere
+            .iter()
+            .any(|e| e.contains("cannot be read")),
+        "{:?}",
+        cfg.edits_that_went_nowhere
+    );
 }
 
 #[test]
@@ -99,7 +151,10 @@ fn an_edit_to_a_section_the_release_removed_is_reported() {
     )
     .unwrap();
     let cfg = Config::load(&dir).unwrap();
-    assert!(cfg.edits_that_went_nowhere.iter().any(|e| e.contains("a_section_that_was_removed.x")));
+    assert!(cfg
+        .edits_that_went_nowhere
+        .iter()
+        .any(|e| e.contains("a_section_that_was_removed.x")));
 }
 
 #[test]
@@ -108,7 +163,11 @@ fn an_update_reports_the_edits_it_is_keeping() {
     assert_eq!(yourchanges::kept_count(&dir), 0);
     let tools = dir.join("tools.yaml");
     let text = fs::read_to_string(&tools).unwrap();
-    fs::write(&tools, text.replacen("record_seconds: 8", "record_seconds: 4", 1)).unwrap();
+    fs::write(
+        &tools,
+        text.replacen("record_seconds: 8", "record_seconds: 4", 1),
+    )
+    .unwrap();
     keep_hand_edits_with(&dir, &release_2(), &[], "2");
     assert_eq!(yourchanges::kept_count(&dir), 1);
 }

@@ -19,7 +19,10 @@
 //! compiler, the precompiled `windows/atlas.res` / `atlas-res.o` (icon, and a
 //! version block saying 0.1.0) are linked as before, with a warning, so a
 //! build never fails for want of one. Nothing happens for any other system.
-#![allow(clippy::expect_used, reason = "a build script: a variable cargo always sets that is missing fails the build, which is the right outcome")]
+#![allow(
+    clippy::expect_used,
+    reason = "a build script: a variable cargo always sets that is missing fails the build, which is the right outcome"
+)]
 
 use std::path::{Path, PathBuf};
 
@@ -32,7 +35,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=RC");
     println!("cargo:rerun-if-env-changed=WINDRES");
 
-    let number = std::env::var("ATLAS_BUILD_NUMBER").ok().and_then(|n| n.trim().parse::<u32>().ok());
+    let number = std::env::var("ATLAS_BUILD_NUMBER")
+        .ok()
+        .and_then(|n| n.trim().parse::<u32>().ok());
     let version = match number {
         Some(n) => format!("0.1.{n}"),
         None => "0.1.0-dev".to_string(),
@@ -90,13 +95,23 @@ fn rc_text(icon: &Path, version: &str, number: u32) -> String {
     )
 }
 
-fn compile_resource(manifest: &Path, out: &Path, version: &str, number: u32, msvc: bool) -> Result<PathBuf, String> {
+fn compile_resource(
+    manifest: &Path,
+    out: &Path,
+    version: &str,
+    number: u32,
+    msvc: bool,
+) -> Result<PathBuf, String> {
     let rc = out.join("atlas-version.rc");
-    std::fs::write(&rc, rc_text(&manifest.join("assets").join("atlas.ico"), version, number))
-        .map_err(|e| format!("couldn't write {}: {e}", rc.display()))?;
+    std::fs::write(
+        &rc,
+        rc_text(&manifest.join("assets").join("atlas.ico"), version, number),
+    )
+    .map_err(|e| format!("couldn't write {}: {e}", rc.display()))?;
     if msvc {
         let compiled = out.join("atlas-version.res");
-        let tool = find_rc_exe().ok_or("no rc.exe (the Windows SDK's resource compiler) was found")?;
+        let tool =
+            find_rc_exe().ok_or("no rc.exe (the Windows SDK's resource compiler) was found")?;
         let status = std::process::Command::new(&tool)
             .arg("/nologo")
             .arg("/fo")
@@ -116,7 +131,10 @@ fn compile_resource(manifest: &Path, out: &Path, version: &str, number: u32, msv
             .ok()
             .into_iter()
             .chain([
-                format!("{}-w64-mingw32-windres", target.split('-').next().unwrap_or("x86_64")),
+                format!(
+                    "{}-w64-mingw32-windres",
+                    target.split('-').next().unwrap_or("x86_64")
+                ),
                 "x86_64-w64-mingw32-windres".to_string(),
                 "windres".to_string(),
             ])
@@ -149,7 +167,10 @@ fn find_rc_exe() -> Option<PathBuf> {
         }
     }
     if let Some(path) = std::env::var_os("PATH") {
-        if let Some(p) = std::env::split_paths(&path).map(|d| d.join("rc.exe")).find(|p| p.is_file()) {
+        if let Some(p) = std::env::split_paths(&path)
+            .map(|d| d.join("rc.exe"))
+            .find(|p| p.is_file())
+        {
             return Some(p);
         }
     }

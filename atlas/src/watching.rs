@@ -111,7 +111,10 @@ impl Watcher {
     }
 
     pub fn running(&self) -> Vec<&Job> {
-        self.jobs.iter().filter(|j| j.outcome == Outcome::Running).collect()
+        self.jobs
+            .iter()
+            .filter(|j| j.outcome == Outcome::Running)
+            .collect()
     }
 
     /// What's worth telling you about, now.

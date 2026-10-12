@@ -1,7 +1,5 @@
 use atlas::pipeline::Thought;
-use atlas::selfaudit::{
-    as_thought, recommend, spoken, Kind, SelfAuditConfig, Signal, WHY_IT_ASKS,
-};
+use atlas::selfaudit::{as_thought, recommend, spoken, Kind, SelfAuditConfig, Signal, WHY_IT_ASKS};
 
 fn signal(kind: Kind, subject: &str, seen: u32, of: u32) -> Signal {
     Signal {
@@ -24,7 +22,11 @@ fn the_bar_differs_by_signal_because_the_cost_of_being_wrong_does() {
     // Acting on one correction makes Atlas skittish; ignoring eleven failures
     // makes it useless.
     assert!(Kind::YouKeepCorrecting.enough() < Kind::NotUnderstood.enough());
-    assert_eq!(Kind::NeverFailed.enough(), 1, "a test that never failed needs one look");
+    assert_eq!(
+        Kind::NeverFailed.enough(),
+        1,
+        "a test that never failed needs one look"
+    );
 }
 
 #[test]
@@ -43,8 +45,14 @@ fn a_signal_becomes_a_diagnosis_rather_than_a_complaint() {
     let slow = recommend(&[signal(Kind::GotSlower, "the export route", 9, 10)], 1);
 
     assert_eq!(route.len(), 1);
-    assert_ne!(route[0].cause, slow[0].cause, "same cause for two different faults");
-    assert_ne!(route[0].proof, slow[0].proof, "same proof for two different faults");
+    assert_ne!(
+        route[0].cause, slow[0].cause,
+        "same cause for two different faults"
+    );
+    assert_ne!(
+        route[0].proof, slow[0].proof,
+        "same proof for two different faults"
+    );
     assert!(!route[0].where_.is_empty());
 }
 
@@ -82,7 +90,11 @@ fn a_capability_that_says_it_works_and_never_ran_is_noticed_but_never_leads() {
 fn a_test_that_has_never_failed_is_something_atlas_can_see_about_itself() {
     let recs = recommend(&[signal(Kind::NeverFailed, "the panel width", 1, 1)], 3);
     assert!(recs[0].cause.contains("always true"));
-    assert!(recs[0].proof.contains("break"), "and the proof is to break it: {}", recs[0].proof);
+    assert!(
+        recs[0].proof.contains("break"),
+        "and the proof is to break it: {}",
+        recs[0].proof
+    );
 }
 
 #[test]
@@ -163,7 +175,9 @@ fn atlas_does_not_act_on_its_own_diagnosis_by_default() {
     // outside check on either half.
     assert!(!SelfAuditConfig::default().act_without_asking);
     assert!(WHY_IT_ASKS.contains("no outside check on either half"));
-    assert!(WHY_IT_ASKS.contains("I'm worse than you at knowing whether fixing one is worth the risk"));
+    assert!(
+        WHY_IT_ASKS.contains("I'm worse than you at knowing whether fixing one is worth the risk")
+    );
 }
 
 // ================= the page =================
@@ -195,7 +209,10 @@ fn certainty_is_a_word_because_a_percentage_on_a_self_assessment_is_false_precis
     assert!(a.contains("fairly sure"));
     assert!(b.contains("not certain"));
     // The number itself never reaches the page.
-    assert!(!a.contains(&format!("{:.2}", sure[0].certainty)), "no false precision");
+    assert!(
+        !a.contains(&format!("{:.2}", sure[0].certainty)),
+        "no false precision"
+    );
 }
 
 #[test]

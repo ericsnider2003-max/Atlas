@@ -209,7 +209,6 @@ impl Tf {
         let weeks = market_hours / TRADING_HOURS_PER_WEEK;
         (weeks * 7.0 * 24.0 * 3_600_000.0) as i64
     }
-
 }
 
 /// The smallest range worth trading, in pips, from the round-trip cost.
@@ -293,14 +292,16 @@ pub fn window(view: &AsOf<'_>, h: Horizon, default: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::bars::Bars;
     use super::super::time::{Utc, MS_PER_HOUR};
+    use super::*;
 
     fn stamped(n: usize, every_min: i64) -> Bars {
         let closes: Vec<f64> = (0..n).map(|i| 1.1 + (i % 7) as f64 * 1e-4).collect();
         let start = Utc::at(2026, 6, 1, 0, 0).to_ms();
-        let time: Vec<i64> = (0..n).map(|i| start + i as i64 * every_min * MS_PER_MIN).collect();
+        let time: Vec<i64> = (0..n)
+            .map(|i| start + i as i64 * every_min * MS_PER_MIN)
+            .collect();
         let b = Bars::from_closes(&closes, 0.0006).unwrap();
         let v = b.latest().unwrap();
         Bars::new(
@@ -328,7 +329,12 @@ mod tests {
         for tf in [Tf::M1, Tf::M5, Tf::M15, Tf::M30, Tf::H1] {
             let n = tf.bars_for(Horizon::Recent);
             let hours = tf.span_ms(n) as f64 / MS_PER_HOUR as f64;
-            assert!((23.9..=24.1 + tf.hours()).contains(&hours), "{} {}", tf.name(), hours);
+            assert!(
+                (23.9..=24.1 + tf.hours()).contains(&hours),
+                "{} {}",
+                tf.name(),
+                hours
+            );
             assert!(stretched(tf, Horizon::Recent).is_none(), "{}", tf.name());
         }
     }
@@ -385,11 +391,20 @@ mod tests {
         let release = Utc::at(2026, 10, 2, 14, 0).to_ms();
         let (from, to) = (release - 30 * MS_PER_MIN, release + 120 * MS_PER_MIN);
         let opens = Utc::at(2026, 10, 2, 12, 0).to_ms();
-        assert!(Tf::H4.spans(opens, from, to), "the H4 bar containing the release was missed");
-        assert!(!(from..=to).contains(&opens), "and a stamp-only check would call it clean");
+        assert!(
+            Tf::H4.spans(opens, from, to),
+            "the H4 bar containing the release was missed"
+        );
+        assert!(
+            !(from..=to).contains(&opens),
+            "and a stamp-only check would call it clean"
+        );
         // The M5 bar opening at the same instant is over by 12:05, two and a
         // half hours before the window opens.
-        assert!(!Tf::M5.spans(opens, from, to), "on M5 that same stamp really is clear");
+        assert!(
+            !Tf::M5.spans(opens, from, to),
+            "on M5 that same stamp really is clear"
+        );
         // And the H4 bar that opens at 16:00 starts after the window closes.
         assert!(
             !Tf::H4.spans(Utc::at(2026, 10, 2, 16, 0).to_ms(), from, to),
@@ -454,7 +469,11 @@ mod tests {
         let time: Vec<i64> = (0..n)
             .map(|i| {
                 let base = start + i as i64 * MS_PER_HOUR;
-                if i >= 60 { base + 65 * MS_PER_HOUR } else { base }
+                if i >= 60 {
+                    base + 65 * MS_PER_HOUR
+                } else {
+                    base
+                }
             })
             .collect();
         let b0 = Bars::from_closes(&closes, 0.0006).unwrap();

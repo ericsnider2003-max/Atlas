@@ -49,7 +49,10 @@ fn recording_the_codes_changes_the_travel_answer() {
     let mut book = book_with("Chase");
 
     let before = atlas::goingaway::spoken(&book.accounts);
-    assert!(before.contains("Chase"), "an SMS account with no codes should be named: {before}");
+    assert!(
+        before.contains("Chase"),
+        "an SMS account with no codes should be named: {before}"
+    );
 
     assert_eq!(book.record_codes(&store, "Chase", true), Recorded::Changed);
 
@@ -74,7 +77,10 @@ fn recording_the_codes_survives_a_restart() {
 
     let reloaded = Book::load(&Store::new(dir));
     assert!(
-        reloaded.accounts.iter().any(|a| a.site == "Chase" && a.has_recovery_codes),
+        reloaded
+            .accounts
+            .iter()
+            .any(|a| a.site == "Chase" && a.has_recovery_codes),
         "the flag was accepted and not written down, so it is gone on restart"
     );
 }
@@ -139,9 +145,18 @@ fn set_recovery_codes_reports_whether_it_changed_anything() {
     // directly because a helper whose caller is well tested is still a helper
     // nothing has pinned down.
     let mut book = book_with("Chase");
-    assert!(book.set_recovery_codes("Chase", true), "first set should report a change");
-    assert!(!book.set_recovery_codes("Chase", true), "setting it again is not a change");
-    assert!(book.set_recovery_codes("Chase", false), "clearing it is a change");
+    assert!(
+        book.set_recovery_codes("Chase", true),
+        "first set should report a change"
+    );
+    assert!(
+        !book.set_recovery_codes("Chase", true),
+        "setting it again is not a change"
+    );
+    assert!(
+        book.set_recovery_codes("Chase", false),
+        "clearing it is a change"
+    );
     assert!(
         !book.set_recovery_codes("Chsae", true),
         "an unknown site must report no change rather than silently adding one"

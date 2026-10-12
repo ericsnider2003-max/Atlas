@@ -56,7 +56,9 @@ pub struct Jobs {
 
 impl Jobs {
     fn held(&self) -> std::sync::MutexGuard<'_, (u64, BTreeMap<u64, Job>)> {
-        self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// A new job, running. Returns its number.
@@ -64,7 +66,16 @@ impl Jobs {
         let mut g = self.held();
         g.0 += 1;
         let id = g.0;
-        g.1.insert(id, Job { page, label: label.to_string(), state: State::Running, seen: false, finished: None });
+        g.1.insert(
+            id,
+            Job {
+                page,
+                label: label.to_string(),
+                state: State::Running,
+                seen: false,
+                finished: None,
+            },
+        );
         forget_old(&mut g.1);
         id
     }
@@ -144,7 +155,13 @@ impl Jobs {
 fn forget_old(jobs: &mut BTreeMap<u64, Job>) {
     jobs.retain(|_, j| !j.finished.is_some_and(|f| f.elapsed() > KEEP_FINISHED));
     while jobs.len() > MOST {
-        let Some(oldest_finished) = jobs.iter().find(|(_, j)| j.state != State::Running).map(|(k, _)| *k) else { break };
+        let Some(oldest_finished) = jobs
+            .iter()
+            .find(|(_, j)| j.state != State::Running)
+            .map(|(k, _)| *k)
+        else {
+            break;
+        };
         jobs.remove(&oldest_finished);
     }
 }
@@ -153,7 +170,13 @@ fn forget_old(jobs: &mut BTreeMap<u64, Job>) {
 /// should refresh itself to look again.
 pub fn notice_for(job: &Job) -> (String, bool) {
     match &job.state {
-        State::Running => (format!("{}… (this page refreshes by itself)", job.label.trim_end_matches(['.', '…'])), true),
+        State::Running => (
+            format!(
+                "{}… (this page refreshes by itself)",
+                job.label.trim_end_matches(['.', '…'])
+            ),
+            true,
+        ),
         State::Done(s) | State::Failed(s) => (s.clone(), false),
     }
 }
@@ -168,7 +191,11 @@ pub enum Flash {
     FriendLink(String),
     /// A release key just made: its card, and the recovery key shown this
     /// once.
-    ReleaseKey { card: String, recovery: String, said: String },
+    ReleaseKey {
+        card: String,
+        recovery: String,
+        said: String,
+    },
 }
 
 /// How long a flash waits for its page.
@@ -203,15 +230,26 @@ mod tests {
         jobs.finish(id, Err("late".into()), false);
         assert_eq!(jobs.unseen_for(Page::Documents), vec!["Sent.".to_string()]);
         assert!(jobs.unseen_for(Page::Documents).is_empty(), "shown twice");
-        assert_eq!(notice_for(&jobs.look(id).unwrap()), ("Sent.".to_string(), false));
+        assert_eq!(
+            notice_for(&jobs.look(id).unwrap()),
+            ("Sent.".to_string(), false)
+        );
     }
 
     #[test]
     fn a_flash_is_for_its_page_once_and_runs_out() {
         let mut l = Vec::new();
-        keep_flash(&mut l, Page::Friends, Flash::FriendLink("atlas:x".into()), 100);
+        keep_flash(
+            &mut l,
+            Page::Friends,
+            Flash::FriendLink("atlas:x".into()),
+            100,
+        );
         assert!(take_flash(&mut l, Page::Sync, 101).is_none());
-        assert_eq!(take_flash(&mut l, Page::Friends, 101), Some(Flash::FriendLink("atlas:x".into())));
+        assert_eq!(
+            take_flash(&mut l, Page::Friends, 101),
+            Some(Flash::FriendLink("atlas:x".into()))
+        );
         assert!(take_flash(&mut l, Page::Friends, 102).is_none());
         keep_flash(&mut l, Page::Sync, Flash::Said("code".into()), 100);
         assert!(take_flash(&mut l, Page::Sync, 100 + FLASH_SECS + 1).is_none());

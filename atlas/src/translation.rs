@@ -42,22 +42,52 @@ pub struct TranslateConfig {
 
 impl Default for TranslateConfig {
     fn default() -> Self {
-        TranslateConfig { enabled: true, back_check_up_to: 600 }
+        TranslateConfig {
+            enabled: true,
+            back_check_up_to: 600,
+        }
     }
 }
 
 const LANGUAGES: &[(&str, &str)] = &[
-    ("english", "English"), ("spanish", "Spanish"), ("español", "Spanish"), ("french", "French"), ("german", "German"),
-    ("italian", "Italian"), ("portuguese", "Portuguese"), ("dutch", "Dutch"), ("polish", "Polish"), ("russian", "Russian"),
-    ("ukrainian", "Ukrainian"), ("chinese", "Chinese"), ("mandarin", "Chinese"), ("japanese", "Japanese"), ("korean", "Korean"),
-    ("arabic", "Arabic"), ("hindi", "Hindi"), ("turkish", "Turkish"), ("vietnamese", "Vietnamese"), ("greek", "Greek"),
-    ("swedish", "Swedish"), ("norwegian", "Norwegian"), ("danish", "Danish"), ("finnish", "Finnish"), ("czech", "Czech"),
-    ("romanian", "Romanian"), ("hungarian", "Hungarian"), ("hebrew", "Hebrew"), ("indonesian", "Indonesian"), ("thai", "Thai"),
+    ("english", "English"),
+    ("spanish", "Spanish"),
+    ("español", "Spanish"),
+    ("french", "French"),
+    ("german", "German"),
+    ("italian", "Italian"),
+    ("portuguese", "Portuguese"),
+    ("dutch", "Dutch"),
+    ("polish", "Polish"),
+    ("russian", "Russian"),
+    ("ukrainian", "Ukrainian"),
+    ("chinese", "Chinese"),
+    ("mandarin", "Chinese"),
+    ("japanese", "Japanese"),
+    ("korean", "Korean"),
+    ("arabic", "Arabic"),
+    ("hindi", "Hindi"),
+    ("turkish", "Turkish"),
+    ("vietnamese", "Vietnamese"),
+    ("greek", "Greek"),
+    ("swedish", "Swedish"),
+    ("norwegian", "Norwegian"),
+    ("danish", "Danish"),
+    ("finnish", "Finnish"),
+    ("czech", "Czech"),
+    ("romanian", "Romanian"),
+    ("hungarian", "Hungarian"),
+    ("hebrew", "Hebrew"),
+    ("indonesian", "Indonesian"),
+    ("thai", "Thai"),
     ("tagalog", "Tagalog"),
 ];
 
 pub fn language_named(word: &str) -> Option<&'static str> {
-    let w = word.trim().trim_end_matches(['.', '?', '!', ',']).to_lowercase();
+    let w = word
+        .trim()
+        .trim_end_matches(['.', '?', '!', ','])
+        .to_lowercase();
     LANGUAGES.iter().find(|(k, _)| *k == w).map(|(_, v)| *v)
 }
 
@@ -66,7 +96,10 @@ pub fn language_named(word: &str) -> Option<&'static str> {
 pub fn read(said: &str) -> Option<(&'static str, Option<String>)> {
     let s = said.trim();
     let low = s.to_ascii_lowercase();
-    if !(low.starts_with("translate") || low.starts_with("what does this say in") || low.starts_with("say this in")) {
+    if !(low.starts_with("translate")
+        || low.starts_with("what does this say in")
+        || low.starts_with("say this in"))
+    {
         return None;
     }
     // "…into X: text" or "…to X: text"
@@ -81,8 +114,17 @@ pub fn read(said: &str) -> Option<(&'static str, Option<String>)> {
                 // "translate <text> to French": the text sits before the sep.
                 let before = s[..at].trim();
                 let inline = text.or_else(|| {
-                    let b = before.strip_prefix("translate").or_else(|| before.strip_prefix("Translate")).unwrap_or("").trim();
-                    (!b.is_empty() && !matches!(b.to_lowercase().as_str(), "this" | "that" | "it" | "the selection" | "what's selected")).then(|| b.trim_matches('"').to_string())
+                    let b = before
+                        .strip_prefix("translate")
+                        .or_else(|| before.strip_prefix("Translate"))
+                        .unwrap_or("")
+                        .trim();
+                    (!b.is_empty()
+                        && !matches!(
+                            b.to_lowercase().as_str(),
+                            "this" | "that" | "it" | "the selection" | "what's selected"
+                        ))
+                    .then(|| b.trim_matches('"').to_string())
                 });
                 return Some((lang, inline));
             }
@@ -103,7 +145,8 @@ pub fn translation_pieces(text: &str) -> Vec<String> {
         let mut start = 0;
         let b = para.as_bytes();
         for (i, &c) in b.iter().enumerate() {
-            let end = matches!(c, b'.' | b'?' | b'!') && b.get(i + 1).is_none_or(|n| n.is_ascii_whitespace());
+            let end = matches!(c, b'.' | b'?' | b'!')
+                && b.get(i + 1).is_none_or(|n| n.is_ascii_whitespace());
             if end || i + 1 == b.len() {
                 let sentence = &para[start..=i];
                 if cur.chars().count() + sentence.chars().count() > MAX_PIECE && !cur.is_empty() {
@@ -115,7 +158,11 @@ pub fn translation_pieces(text: &str) -> Vec<String> {
         }
         // A single sentence longer than a piece is cut at a space.
         while cur.chars().count() > MAX_PIECE {
-            let cut = cur.char_indices().nth(MAX_PIECE).map(|(i, _)| i).unwrap_or(cur.len());
+            let cut = cur
+                .char_indices()
+                .nth(MAX_PIECE)
+                .map(|(i, _)| i)
+                .unwrap_or(cur.len());
             let at = cur[..cut].rfind(' ').filter(|p| *p > 0).unwrap_or(cut);
             out.push(cur[..at].to_string());
             cur = cur[at..].to_string();
@@ -132,7 +179,9 @@ pub fn translation_pieces(text: &str) -> Vec<String> {
 pub fn fixed_tokens(text: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for w in text.split_whitespace() {
-        let w = w.trim_matches(|c: char| matches!(c, ',' | ';' | ')' | '(' | '"' | '\'' | '!' | '?') || (c == '.'));
+        let w = w.trim_matches(|c: char| {
+            matches!(c, ',' | ';' | ')' | '(' | '"' | '\'' | '!' | '?') || (c == '.')
+        });
         if w.contains("://") || (w.contains('@') && w.contains('.')) {
             out.insert(w.to_string());
             continue;
@@ -170,12 +219,21 @@ pub fn check_translation(original: &str, translated: &str) -> Vec<String> {
     }
     let (a, b) = (original.chars().count() as f64, t.chars().count() as f64);
     if a >= 40.0 && (b < a / 3.0 || b > a * 3.0) {
-        issues.push(format!("the length is off ({} characters from {}) -- something may be missing or added", b as u64, a as u64));
+        issues.push(format!(
+            "the length is off ({} characters from {}) -- something may be missing or added",
+            b as u64, a as u64
+        ));
     }
     let have_digits = digit_runs(t);
     let missing: Vec<String> = fixed_tokens(original)
         .into_iter()
-        .filter(|tok| if tok.chars().all(|c| c.is_ascii_digit()) { !have_digits.contains(tok) } else { !t.contains(tok.as_str()) })
+        .filter(|tok| {
+            if tok.chars().all(|c| c.is_ascii_digit()) {
+                !have_digits.contains(tok)
+            } else {
+                !t.contains(tok.as_str())
+            }
+        })
         .collect();
     if !missing.is_empty() {
         issues.push(format!("these didn't come through: {}", missing.join(", ")));
@@ -187,11 +245,18 @@ pub fn check_translation(original: &str, translated: &str) -> Vec<String> {
 /// words of three letters or more, so "the" and "a" don't count).
 pub fn word_overlap(original: &str, back: &str) -> f64 {
     let words = |s: &str| -> BTreeSet<String> {
-        s.split(|c: char| !c.is_alphanumeric()).filter(|w| w.chars().count() >= 3).map(|w| w.to_lowercase()).collect()
+        s.split(|c: char| !c.is_alphanumeric())
+            .filter(|w| w.chars().count() >= 3)
+            .map(|w| w.to_lowercase())
+            .collect()
     };
     let (a, b) = (words(original), words(back));
     if a.is_empty() || b.is_empty() {
-        return if a.is_empty() && b.is_empty() { 1.0 } else { 0.0 };
+        return if a.is_empty() && b.is_empty() {
+            1.0
+        } else {
+            0.0
+        };
     }
     2.0 * a.intersection(&b).count() as f64 / (a.len() + b.len()) as f64
 }
@@ -216,7 +281,10 @@ impl Translated {
         let mut out = vec![self.text.clone()];
         if let Some((score, back)) = &self.back {
             if *score < 0.35 {
-                out.push(format!("(The meaning may have drifted -- translated back it reads: \"{}\")", back.chars().take(300).collect::<String>()));
+                out.push(format!(
+                    "(The meaning may have drifted -- translated back it reads: \"{}\")",
+                    back.chars().take(300).collect::<String>()
+                ));
             }
         }
         for i in &self.issues {
@@ -230,7 +298,13 @@ impl Translated {
 }
 
 /// Translate with the model, piece by piece, checked.
-pub fn translate(llm: &dyn crate::brain::Llm, text: &str, to: &str, from: &str, cfg: &TranslateConfig) -> crate::error::Result<Translated> {
+pub fn translate(
+    llm: &dyn crate::brain::Llm,
+    text: &str,
+    to: &str,
+    from: &str,
+    cfg: &TranslateConfig,
+) -> crate::error::Result<Translated> {
     let text: String = text.chars().take(MAX_TEXT).collect();
     let mut outs = Vec::new();
     let mut issues = Vec::new();
@@ -244,16 +318,27 @@ pub fn translate(llm: &dyn crate::brain::Llm, text: &str, to: &str, from: &str, 
         let t = llm.complete(SYSTEM, &translation_prompt(p, to))?;
         let t = t.trim().trim_matches('"').to_string();
         for i in check_translation(p, &t) {
-            issues.push(if single { i } else { format!("part {}: {i}", n + 1) });
+            issues.push(if single {
+                i
+            } else {
+                format!("part {}: {i}", n + 1)
+            });
         }
         outs.push(t);
     }
     let joined = outs.join("\n\n");
-    let back = if cfg.back_check_up_to > 0 && text.chars().count() <= cfg.back_check_up_to && !from.is_empty() {
+    let back = if cfg.back_check_up_to > 0
+        && text.chars().count() <= cfg.back_check_up_to
+        && !from.is_empty()
+    {
         let b = llm.complete(SYSTEM, &translation_prompt(&joined, from))?;
         Some((word_overlap(&text, &b), b.trim().to_string()))
     } else {
         None
     };
-    Ok(Translated { text: joined, issues, back })
+    Ok(Translated {
+        text: joined,
+        issues,
+        back,
+    })
 }

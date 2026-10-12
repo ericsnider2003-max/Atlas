@@ -42,7 +42,13 @@ fn plat() -> MockPlatform {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -67,7 +73,9 @@ fn walk_through_reads_the_steps_out_through_the_daemon() {
     // numbered layout, so the front-door check is on the step text that
     // survives it, lower-cased; the numbered structure is asserted on
     // `execute` below, which returns the handler's own words.
-    let reply = d.turn("walk me through freeing up memory", 100).to_lowercase();
+    let reply = d
+        .turn("walk me through freeing up memory", 100)
+        .to_lowercase();
 
     assert!(
         reply.contains("room when memory is tight"),

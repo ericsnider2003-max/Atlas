@@ -134,7 +134,10 @@ impl Default for WhichOneConfig {
         // Asking is cheap and being wrong is not, so the shipped numbers are
         // set where a genuinely ambiguous sentence gets a question. They are
         // settable because what counts as ambiguous depends on how you talk.
-        WhichOneConfig { act_above_margin: 1.0, matched_at_all: 1.0 }
+        WhichOneConfig {
+            act_above_margin: 1.0,
+            matched_at_all: 1.0,
+        }
     }
 }
 
@@ -226,14 +229,24 @@ pub fn weigh(said: &str, readings: &[Reading], cfg: &WhichOneConfig) -> Weighed 
     // Was the sentence about this set at all? Asked of the gross evidence,
     // before any reading has argued another one down.
     if loudest < cfg.matched_at_all {
-        return Weighed { clarity: Clarity::Nothing, best: None, behind: None, margin: 0.0 };
+        return Weighed {
+            clarity: Clarity::Nothing,
+            best: None,
+            behind: None,
+            margin: 0.0,
+        };
     }
 
     let (best, top) = match scored.first() {
         Some(&(id, s)) => (id, s),
         // An empty set of readings. Nothing to be about.
         None => {
-            return Weighed { clarity: Clarity::Nothing, best: None, behind: None, margin: 0.0 }
+            return Weighed {
+                clarity: Clarity::Nothing,
+                best: None,
+                behind: None,
+                margin: 0.0,
+            }
         }
     };
     let (behind, second) = match scored.get(1) {
@@ -242,8 +255,17 @@ pub fn weigh(said: &str, readings: &[Reading], cfg: &WhichOneConfig) -> Weighed 
     };
 
     let margin = top - second;
-    let clarity = if margin >= cfg.act_above_margin { Clarity::Clear } else { Clarity::Close };
-    Weighed { clarity, best: Some(best), behind, margin }
+    let clarity = if margin >= cfg.act_above_margin {
+        Clarity::Clear
+    } else {
+        Clarity::Close
+    };
+    Weighed {
+        clarity,
+        best: Some(best),
+        behind,
+        margin,
+    }
 }
 
 /// The question to ask when two readings were too close to call.
@@ -281,7 +303,14 @@ pub const ABOUT_MAIL: &[Reading] = &[
     Reading {
         id: "rules",
         plain: "the tax and trading rules",
-        means: &["tax", "hmrc", "irs", "trading rule", "wash sale", "allowance"],
+        means: &[
+            "tax",
+            "hmrc",
+            "irs",
+            "trading rule",
+            "wash sale",
+            "allowance",
+        ],
         // "Statement" belongs to both and is the word the two fought over, so
         // neither claims it alone: the rest of the sentence decides.
         not: &["how much", "spend", "spent", "budget", "category"],
@@ -289,13 +318,24 @@ pub const ABOUT_MAIL: &[Reading] = &[
     Reading {
         id: "statements",
         plain: "the money side — what you actually spent",
-        means: &["how much", "spend", "spent", "spending", "statement", "month", "budget", "category"],
+        means: &[
+            "how much",
+            "spend",
+            "spent",
+            "spending",
+            "statement",
+            "month",
+            "budget",
+            "category",
+        ],
         not: &["tax", "hmrc", "irs", "trading rule", "wash sale"],
     },
     Reading {
         id: "messages",
         plain: "your chats rather than your email",
-        means: &["message", "messages", "chat", "telegram", "whatsapp", "signal", "discord", "slack"],
+        means: &[
+            "message", "messages", "chat", "telegram", "whatsapp", "signal", "discord", "slack",
+        ],
         not: &["tax", "spend", "statement", "inbox", "email"],
     },
 ];
@@ -305,16 +345,39 @@ pub const ABOUT_A_POST: &[Reading] = &[
     Reading {
         id: "stance",
         plain: "whether it actually says anything",
-        means: &["say anything", "says anything", "position", "strong enough", "argument", "point", "wishy washy"],
+        means: &[
+            "say anything",
+            "says anything",
+            "position",
+            "strong enough",
+            "argument",
+            "point",
+            "wishy washy",
+        ],
         not: &["colour", "color", "grade", "grading", "footage", "exposure"],
     },
     Reading {
         id: "grading",
         plain: "the colour of the footage",
-        means: &["colour", "color", "grade", "grading", "footage", "exposure", "skin tone", "white balance"],
+        means: &[
+            "colour",
+            "color",
+            "grade",
+            "grading",
+            "footage",
+            "exposure",
+            "skin tone",
+            "white balance",
+        ],
         // "Strong" is a colour word too ("too strong"), so the stance reading
         // claims the whole phrase "strong enough" and this one disclaims it.
-        not: &["say anything", "says anything", "position", "strong enough", "argument"],
+        not: &[
+            "say anything",
+            "says anything",
+            "position",
+            "strong enough",
+            "argument",
+        ],
     },
 ];
 

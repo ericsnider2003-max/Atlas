@@ -114,7 +114,10 @@ fn a_still_hand_is_predicted_to_stay_still() {
         t.saw(500.0, 300.0, i * 100, &cfg());
     }
     let (x, y) = t.where_now(850).expect("predicting");
-    assert!((x - 500.0).abs() < 8.0 && (y - 300.0).abs() < 8.0, "{x},{y}");
+    assert!(
+        (x - 500.0).abs() < 8.0 && (y - 300.0).abs() < 8.0,
+        "{x},{y}"
+    );
 }
 
 #[test]

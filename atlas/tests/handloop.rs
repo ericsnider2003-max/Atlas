@@ -46,7 +46,12 @@ impl Pointer for Hand {
         Ok(None)
     }
     fn rect_of(&self, _w: WindowId) -> Result<PixelRect> {
-        Ok(PixelRect { x: 0, y: 0, width: 100, height: 100 })
+        Ok(PixelRect {
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 100,
+        })
     }
     fn place(&self, _w: WindowId, _r: PixelRect) -> Result<()> {
         self.0.placed.fetch_add(1, Ordering::Relaxed);
@@ -98,12 +103,21 @@ fn hand_at(x: f32, y: f32, pinching: bool) -> Landmarks {
         points[4] = Point::from(x, y - 0.18);
         points[8] = Point::from(x, y - 0.18);
     }
-    Landmarks { points, right: Some(true), sure: 0.95 }
+    Landmarks {
+        points,
+        right: Some(true),
+        sure: 0.95,
+    }
 }
 
 fn setup(frames: Vec<Option<Landmarks>>, looks: Arc<AtomicUsize>, noted: Arc<Noted>) -> Setup {
     Setup {
-        eyes: Box::new(Scripted { frames, at: 0, looks, costs_ms: 0 }),
+        eyes: Box::new(Scripted {
+            frames,
+            at: 0,
+            looks,
+            costs_ms: 0,
+        }),
         pointer: Box::new(Hand(noted)),
         vocabulary: Vocabulary::default(),
         smoothing: SmoothConfig::default(),
@@ -161,7 +175,10 @@ fn the_pointer_moves_far_more_often_than_the_detector_runs() {
 
     let seen = looks.load(Ordering::Relaxed);
     let moved = noted.moves.load(Ordering::Relaxed);
-    assert!(seen > 0 && moved > seen, "{moved} pointer moves for {seen} looks");
+    assert!(
+        seen > 0 && moved > seen,
+        "{moved} pointer moves for {seen} looks"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -250,7 +267,8 @@ fn a_bound_gesture_is_reported_by_what_it_does_not_by_its_shape() {
     t.stop();
 
     assert!(
-        said.iter().any(|s| *s == Said::Did("mute everything".into())),
+        said.iter()
+            .any(|s| *s == Said::Did("mute everything".into())),
         "{said:?}"
     );
 }
@@ -275,20 +293,31 @@ fn a_machine_that_cannot_keep_up_says_so_once_and_not_every_frame() {
     // the problem.
     let looks = Arc::new(AtomicUsize::new(0));
     let noted = Arc::new(Noted::default());
-    let mut s = setup(vec![Some(hand_at(0.5, 0.5, false)); 200], looks.clone(), noted);
+    let mut s = setup(
+        vec![Some(hand_at(0.5, 0.5, false)); 200],
+        looks.clone(),
+        noted,
+    );
     s.eyes = Box::new(Scripted {
         frames: vec![Some(hand_at(0.5, 0.5, false)); 200],
         at: 0,
         looks,
         costs_ms: 120,
     });
-    s.pace = PaceConfig { want_per_second: 20, floor_per_second: 6, share_of_a_core: 0.2 };
+    s.pace = PaceConfig {
+        want_per_second: 20,
+        floor_per_second: 6,
+        share_of_a_core: 0.2,
+    };
     let mut t = start(s);
     std::thread::sleep(std::time::Duration::from_millis(2500));
     let said = t.heard();
     t.stop();
 
-    let complaints = said.iter().filter(|s| matches!(s, Said::Trouble(_))).count();
+    let complaints = said
+        .iter()
+        .filter(|s| matches!(s, Said::Trouble(_)))
+        .count();
     assert!(complaints <= 1, "complained {complaints} times");
 }
 
@@ -300,7 +329,11 @@ fn asking_what_it_said_never_blocks() {
     // Nothing to report yet — this must return immediately rather than wait.
     let began = std::time::Instant::now();
     let _ = t.heard();
-    crate::common::assert_prompt(began.elapsed(), std::time::Duration::from_millis(50), "began too slowly");
+    crate::common::assert_prompt(
+        began.elapsed(),
+        std::time::Duration::from_millis(50),
+        "began too slowly",
+    );
     t.stop();
 }
 
@@ -322,7 +355,8 @@ fn losing_the_hand_does_not_kill_the_loop() {
     // 250 ms: on a busy Windows laptop that wasn't enough to be scheduled
     // four times (6 Oct 2026). A loop that died stays at its count and
     // still fails, after the deadline.
-    let deadline = std::time::Instant::now() + crate::common::allowed(std::time::Duration::from_secs(10));
+    let deadline =
+        std::time::Instant::now() + crate::common::allowed(std::time::Duration::from_secs(10));
     while looks.load(Ordering::Relaxed) <= 3 && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
@@ -337,8 +371,16 @@ fn two_trackers_do_not_share_anything() {
     let a = Arc::new(Noted::default());
     let b = Arc::new(Noted::default());
     let looks = Arc::new(AtomicUsize::new(0));
-    let mut one = start(setup(vec![Some(hand_at(0.4, 0.4, false)); 40], looks.clone(), a.clone()));
-    let mut two = start(setup(vec![Some(hand_at(0.6, 0.6, false)); 40], looks, b.clone()));
+    let mut one = start(setup(
+        vec![Some(hand_at(0.4, 0.4, false)); 40],
+        looks.clone(),
+        a.clone(),
+    ));
+    let mut two = start(setup(
+        vec![Some(hand_at(0.6, 0.6, false)); 40],
+        looks,
+        b.clone(),
+    ));
     std::thread::sleep(std::time::Duration::from_millis(180));
     one.stop();
     two.stop();
@@ -351,7 +393,11 @@ fn the_reporting_channel_survives_a_daemon_that_never_listens() {
     // The daemon might be busy for a long time. The thread must not wedge.
     let looks = Arc::new(AtomicUsize::new(0));
     let noted = Arc::new(Noted::default());
-    let mut s = setup(vec![Some(hand_at(0.5, 0.5, true)); 300], looks.clone(), noted);
+    let mut s = setup(
+        vec![Some(hand_at(0.5, 0.5, true)); 300],
+        looks.clone(),
+        noted,
+    );
     s.vocabulary = Vocabulary {
         gestures: vec![Gesture {
             name: "pinch".into(),
@@ -366,7 +412,10 @@ fn the_reporting_channel_survives_a_daemon_that_never_listens() {
     std::thread::sleep(std::time::Duration::from_millis(300));
     let kept_going = looks.load(Ordering::Relaxed);
     drop(t);
-    assert!(kept_going > 2, "it kept looking with nobody reading: {kept_going}");
+    assert!(
+        kept_going > 2,
+        "it kept looking with nobody reading: {kept_going}"
+    );
 }
 
 /// Guards against the loop being quietly moved back onto the daemon tick.
@@ -408,13 +457,21 @@ fn with_no_hand_for_the_quiet_spell_it_stops_itself_and_says_so() {
     let said = t.heard();
     assert!(!t.running(), "a thread that ended is not still watching");
     assert!(
-        said.iter().any(|s| matches!(s, Said::Trouble(w) if w.contains("stopped watching your hands"))),
+        said.iter()
+            .any(|s| matches!(s, Said::Trouble(w) if w.contains("stopped watching your hands"))),
         "{said:?}"
     );
-    assert!(said.contains(&Said::HandsGone), "so the daemon leaves steering too: {said:?}");
+    assert!(
+        said.contains(&Said::HandsGone),
+        "so the daemon leaves steering too: {said:?}"
+    );
     let after = looks.load(Ordering::Relaxed);
     std::thread::sleep(std::time::Duration::from_millis(200));
-    assert_eq!(looks.load(Ordering::Relaxed), after, "and the camera really is off");
+    assert_eq!(
+        looks.load(Ordering::Relaxed),
+        after,
+        "and the camera really is off"
+    );
 }
 
 #[test]
@@ -437,5 +494,8 @@ fn an_empty_room_is_looked_at_far_less_often_than_a_hand() {
     let empty = window(vec![None; 10_000]);
     // Four a second for two seconds, with a look's slack either side.
     assert!(empty <= 10, "{empty} looks at an empty room in two seconds");
-    assert!(empty * 2 < with_hand, "{empty} looks at an empty room against {with_hand} at a hand");
+    assert!(
+        empty * 2 < with_hand,
+        "{empty} looks at an empty room against {with_hand} at a hand"
+    );
 }

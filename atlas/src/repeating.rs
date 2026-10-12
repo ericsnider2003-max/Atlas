@@ -117,7 +117,8 @@ pub fn sentences(text: &str) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();
     for (i, &c) in chars.iter().enumerate() {
         cur.push(c);
-        if matches!(c, '.' | '!' | '?' | '…') && chars.get(i + 1).is_none_or(|n| n.is_whitespace()) {
+        if matches!(c, '.' | '!' | '?' | '…') && chars.get(i + 1).is_none_or(|n| n.is_whitespace())
+        {
             let s = cur.trim().to_string();
             if !s.is_empty() {
                 out.push(s);
@@ -149,7 +150,11 @@ fn likeness(a: &str, b: &str) -> f32 {
     let (ta, tb) = (trigrams(&wa), trigrams(&wb));
     let common = ta.intersection(&tb).count() as f32;
     let all = ta.union(&tb).count() as f32;
-    if all == 0.0 { 0.0 } else { common / all }
+    if all == 0.0 {
+        0.0
+    } else {
+        common / all
+    }
 }
 
 /// The longest run of words the two texts share, in order.
@@ -190,7 +195,8 @@ pub fn said_before(sentence: &str, earlier: &[&str]) -> bool {
     }
     earlier.iter().flat_map(|e| sentences(e)).any(|s| {
         let ws = words(&s);
-        ws.len() >= 4 && (ws == w || likeness(sentence, &s) >= 0.6 || longest_shared_run(sentence, &s) >= 8)
+        ws.len() >= 4
+            && (ws == w || likeness(sentence, &s) >= 0.6 || longest_shared_run(sentence, &s) >= 8)
     })
 }
 
@@ -239,7 +245,10 @@ pub struct SentenceFilter {
 
 impl SentenceFilter {
     pub fn new(earlier: &[&str]) -> SentenceFilter {
-        SentenceFilter { earlier: earlier.iter().map(|s| s.to_string()).collect(), ..Default::default() }
+        SentenceFilter {
+            earlier: earlier.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        }
     }
 
     /// May this sentence be said?

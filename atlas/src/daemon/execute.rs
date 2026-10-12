@@ -1,6 +1,6 @@
 //! Carrying out an understood intent: `execute`, its timing, and `execute_inner`,
 //! the one `match` over every intent.
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
@@ -24,7 +24,11 @@ impl<'a> Daemon<'a> {
         // A settings file that won't read is said with this answer: the
         // loop's tick says it too, but the typed console never ticks, and
         // dropping it here also marked it seen (30 Sep 2026: lost).
-        let warned: Vec<String> = self.pick_up_settings().into_iter().filter(|l| l.starts_with("I couldn't read")).collect();
+        let warned: Vec<String> = self
+            .pick_up_settings()
+            .into_iter()
+            .filter(|l| l.starts_with("I couldn't read"))
+            .collect();
         // Also set here, not only in `turn_from`: the one-shot CLI path
         // (`atlas "..."`) parses and executes without going through a turn at
         // all, and a correction typed at the command line is still a
@@ -72,8 +76,12 @@ impl<'a> Daemon<'a> {
         // about something that was never going to happen, and about not
         // answering out of your notes on the way past.
         if let Some(refusal) = self.handed_over_refusal(intent) {
-            self.log.info(&format!("refused while handed over: {}", kind_of(intent)));
-            self.execution_receipt = Some((intent.clone(), crate::taskloop::Outcome::Failed(refusal.clone())));
+            self.log
+                .info(&format!("refused while handed over: {}", kind_of(intent)));
+            self.execution_receipt = Some((
+                intent.clone(),
+                crate::taskloop::Outcome::Failed(refusal.clone()),
+            ));
             return refusal;
         }
 
@@ -82,13 +90,18 @@ impl<'a> Daemon<'a> {
         // line — and when two candidates are equally likely it asks rather
         // than picking.
         if let Some(question) = self.resolve_subject(intent) {
-            self.execution_receipt = Some((intent.clone(), crate::taskloop::Outcome::NeedsYou(question.clone())));
+            self.execution_receipt = Some((
+                intent.clone(),
+                crate::taskloop::Outcome::NeedsYou(question.clone()),
+            ));
             return question;
         }
         self.last_executed = Some(kind_of(intent).to_string());
         // Testing itself: what would touch real files, the network or the
         // install is said, not done (`selftest`).
-        if self.rehearsal && crate::selftest::tier(kind_of(intent)) == crate::selftest::Tier::Rehearse {
+        if self.rehearsal
+            && crate::selftest::tier(kind_of(intent)) == crate::selftest::Tier::Rehearse
+        {
             let plain = intent.plain();
             self.rehearsed.push(plain.clone());
             return format!("[rehearsed] would be {plain}");
@@ -154,8 +167,12 @@ impl<'a> Daemon<'a> {
                 .unwrap_or(0);
             self.history.note(&what, area, undo, true, now);
             if let Err(error) = self.history.save_merged(&self.store) {
-                self.log.info(&format!("history acknowledgment retained for retry: {error}"));
-                said.push_str(" The history record is pending a durable save; I retained it for retry.");
+                self.log.info(&format!(
+                    "history acknowledgment retained for retry: {error}"
+                ));
+                said.push_str(
+                    " The history record is pending a durable save; I retained it for retry.",
+                );
             }
         }
         said
@@ -178,7 +195,6 @@ impl<'a> Daemon<'a> {
         note("disk", r.disk_total_gb > 0.0);
         steps
     }
-
 
     fn execute_inner(&mut self, intent: &Intent) -> String {
         match intent {
@@ -762,7 +778,11 @@ impl<'a> Daemon<'a> {
         if !facts.is_empty() {
             let lines: Vec<String> = facts.iter().take(3).map(|f| f.summary.clone()).collect();
             let more = facts.len().saturating_sub(lines.len());
-            let tail = if more > 0 { format!(" (and {more} more I've got on that)") } else { String::new() };
+            let tail = if more > 0 {
+                format!(" (and {more} more I've got on that)")
+            } else {
+                String::new()
+            };
             let mut out = format!("{}{}", lines.join("; "), tail);
             // Associative recall: what else it knows that connects to the
             // answer — the neighbours by shared topic or explicit link —
@@ -790,7 +810,11 @@ impl<'a> Daemon<'a> {
                 _ => {
                     let named: Vec<String> = open.iter().take(3).cloned().collect();
                     let more = open.len().saturating_sub(named.len());
-                    let tail = if more > 0 { format!(" (and {more} more)") } else { String::new() };
+                    let tail = if more > 0 {
+                        format!(" (and {more} more)")
+                    } else {
+                        String::new()
+                    };
                     // Led with words rather than the name, because the
                     // phrasing layer capitalises the first letter of a
                     // reply and a note's name is a filename, not a
@@ -803,13 +827,18 @@ impl<'a> Daemon<'a> {
 
     pub(super) fn on_open_app(&mut self, intent: &Intent, a: &String) -> String {
         match self.gate_app(a, "open", intent) {
-        AppGate::Ask(q) => q,
-        // Not one of your configured apps: found by name among the
-        // Start menu's shortcuts instead (round 11, `launcher`) --
-        // after the gate, so an unknown app is still asked about.
-        AppGate::Go if !self.cfg.apps.apps.contains_key(a.as_str()) => self.wd_launch(&format!("start up {a}"), clock()),
-        AppGate::Go => act(workspace::open_app(self.cfg, self.plat, a), &format!("{a} is up.")),
-    }
+            AppGate::Ask(q) => q,
+            // Not one of your configured apps: found by name among the
+            // Start menu's shortcuts instead (round 11, `launcher`) --
+            // after the gate, so an unknown app is still asked about.
+            AppGate::Go if !self.cfg.apps.apps.contains_key(a.as_str()) => {
+                self.wd_launch(&format!("start up {a}"), clock())
+            }
+            AppGate::Go => act(
+                workspace::open_app(self.cfg, self.plat, a),
+                &format!("{a} is up."),
+            ),
+        }
     }
 
     fn on_ask_the_shelf(&mut self, q: &str) -> String {
@@ -822,26 +851,19 @@ impl<'a> Daemon<'a> {
         // more than it looks: this sentence is what Atlas says
         // instead of inventing a number, and it was claiming to hold
         // shelves nothing has ever fetched.
-        crate::reference::nothing_found(
-            q,
-            &shelves,
-            cfg.warn_when_stale,
-            crate::store::now(),
-        )
+        crate::reference::nothing_found(q, &shelves, cfg.warn_when_stale, crate::store::now())
     }
 
     fn on_ask_plain(&mut self, q: &str) -> String {
         match self.answer_from_notes(q, crate::store::now()) {
-        // Came out of the library, so it is grounded and says so.
-        Some(answer) => {
-            self.hedge(&answer, crate::certainty::Grounding::from_what_it_holds())
+            // Came out of the library, so it is grounded and says so.
+            Some(answer) => self.hedge(&answer, crate::certainty::Grounding::from_what_it_holds()),
+            // Nothing matched. What goes back is the question itself, for
+            // the layer above to carry on with — hedging that produced
+            // "What's the capital of France? I'm not certain", which is
+            // Atlas casting doubt on your own sentence.
+            None => q.to_owned(),
         }
-        // Nothing matched. What goes back is the question itself, for
-        // the layer above to carry on with — hedging that produced
-        // "What's the capital of France? I'm not certain", which is
-        // Atlas casting doubt on your own sentence.
-        None => q.to_owned(),
-    }
     }
 
     fn on_after_me(&mut self) -> String {
@@ -861,7 +883,10 @@ impl<'a> Daemon<'a> {
             _ => {}
         }
         let arrangement: crate::afterme::Arrangement = self.store.load(crate::afterme::RECORD);
-        arrangement.spoken(&self.tools_cfg().after_me, crate::store::now()).trim().to_string()
+        arrangement
+            .spoken(&self.tools_cfg().after_me, crate::store::now())
+            .trim()
+            .to_string()
     }
 
     fn on_recommend(&mut self) -> String {
@@ -910,30 +935,29 @@ impl<'a> Daemon<'a> {
 
     fn on_address_as(&mut self, said: &str) -> String {
         match crate::returning::address_change(said) {
-        Some(new_address) => {
-            let reply = crate::returning::confirm_address(&new_address);
-            if let Err(e) = new_address.save(&self.store) {
-                return format!("{reply} (though I couldn't save that: {e})");
-            }
-            // The same fact lands in memory's preference store,
-            // which is what `called()` reads. `memory.prefer` had
-            // no production writer, so `preference("called")` could
-            // only ever return None and the parked-question flow
-            // addressed you as nobody — a third notion of your name
-            // beside `ReturnConfig` and `Persona`, and the only one
-            // nothing set. Cleared means empty, not left stale.
-            match &new_address {
-                crate::returning::Address::None => self.memory.prefer("called", ""),
-                crate::returning::Address::Name(n)
-                | crate::returning::Address::Title(n) => {
-                    self.memory.prefer("called", n)
+            Some(new_address) => {
+                let reply = crate::returning::confirm_address(&new_address);
+                if let Err(e) = new_address.save(&self.store) {
+                    return format!("{reply} (though I couldn't save that: {e})");
                 }
+                // The same fact lands in memory's preference store,
+                // which is what `called()` reads. `memory.prefer` had
+                // no production writer, so `preference("called")` could
+                // only ever return None and the parked-question flow
+                // addressed you as nobody — a third notion of your name
+                // beside `ReturnConfig` and `Persona`, and the only one
+                // nothing set. Cleared means empty, not left stale.
+                match &new_address {
+                    crate::returning::Address::None => self.memory.prefer("called", ""),
+                    crate::returning::Address::Name(n) | crate::returning::Address::Title(n) => {
+                        self.memory.prefer("called", n)
+                    }
+                }
+                let _ = self.memory.save(&self.store);
+                reply
             }
-            let _ = self.memory.save(&self.store);
-            reply
+            None => "I didn't catch a name or title in that.".into(),
         }
-        None => "I didn't catch a name or title in that.".into(),
-    }
     }
 
     fn on_dictate(&mut self, first: &str) -> String {
@@ -959,11 +983,19 @@ impl<'a> Daemon<'a> {
         for id in running {
             self.attention.suspend(id);
         }
-        self.drop_pending_turn(crate::store::now(), "Paused before I answered -- nothing was done.");
+        self.drop_pending_turn(
+            crate::store::now(),
+            "Paused before I answered -- nothing was done.",
+        );
         self.hold_task_loop(true);
         self.pause_files(true);
-        let mut said = self.attention.pause(self.current_work(), crate::store::now());
-        if let Some(status) = self.file_pause_status() { said.push(' '); said.push_str(status); }
+        let mut said = self
+            .attention
+            .pause(self.current_work(), crate::store::now());
+        if let Some(status) = self.file_pause_status() {
+            said.push(' ');
+            said.push_str(status);
+        }
         said
     }
 
@@ -985,9 +1017,7 @@ impl<'a> Daemon<'a> {
         // the mistake; the other ordering would leave the owner
         // saying "I'm back" to an assistant that answers "Wasn't
         // paused." and keeps holding their things.
-        if !self.attention.is_paused()
-            && self.handover().stance.handed_over()
-        {
+        if !self.attention.is_paused() && self.handover().stance.handed_over() {
             self.take_it_back()
         } else {
             let msg = self.attention.resume(crate::store::now());
@@ -1029,8 +1059,7 @@ impl<'a> Daemon<'a> {
         // first — the list you're about to see is a new one.
         if crate::daily::has_rolled(self.last_seen, now, &cfg) {
             let day = crate::daily::day_of(self.last_seen, &cfg);
-            let (closed, carried) =
-                crate::daily::close(&self.workspace, day, &self.carried, &cfg);
+            let (closed, carried) = crate::daily::close(&self.workspace, day, &self.carried, &cfg);
             said.push_str(&crate::daily::opening(&closed, &carried, &cfg));
             said.push(' ');
             self.carried = carried.into_iter().map(|(t, c)| (t, c.0)).collect();
@@ -1074,7 +1103,11 @@ impl<'a> Daemon<'a> {
         self.brief_requested_panel = true;
         match self.request_brief(crate::store::now()) {
             Ok(()) => "I'm preparing your brief. I'll show it when it's ready.".into(),
-            Err(why) => { self.brief_requested_explicitly = false; self.brief_requested_panel = false; why }
+            Err(why) => {
+                self.brief_requested_explicitly = false;
+                self.brief_requested_panel = false;
+                why
+            }
         }
     }
 
@@ -1089,16 +1122,21 @@ impl<'a> Daemon<'a> {
         // them. Work held for a connection or for a gap in your day
         // was invisible in this answer before.
         let mut parked: Vec<String> = Vec::new();
-        let offline: Vec<&str> =
-            self.queue.waiting_for_network().iter().map(|w| w.command.as_str()).collect();
+        let offline: Vec<&str> = self
+            .queue
+            .waiting_for_network()
+            .iter()
+            .map(|w| w.command.as_str())
+            .collect();
         if !offline.is_empty() {
-            parked.push(format!(
-                "waiting for a connection: {}",
-                offline.join(", ")
-            ));
+            parked.push(format!("waiting for a connection: {}", offline.join(", ")));
         }
-        let gapped: Vec<&str> =
-            self.queue.waiting_for_gap().iter().map(|w| w.command.as_str()).collect();
+        let gapped: Vec<&str> = self
+            .queue
+            .waiting_for_gap()
+            .iter()
+            .map(|w| w.command.as_str())
+            .collect();
         if !gapped.is_empty() {
             parked.push(format!("waiting for a quiet moment: {}", gapped.join(", ")));
         }
@@ -1146,12 +1184,21 @@ impl<'a> Daemon<'a> {
             .errands()
             .into_iter()
             .filter_map(|e| {
-                let c = self.errand_candidates().into_iter().find(|c| c.id == e.id)?;
+                let c = self
+                    .errand_candidates()
+                    .into_iter()
+                    .find(|c| c.id == e.id)?;
                 let name = crate::which_errand::describe(&c);
                 match e.state {
-                    crew::State::Holding => Some(format!("{name} is paused, holding with nothing lost")),
-                    crew::State::Pausing => Some(format!("{name} is pausing — it holds at its next safe point")),
-                    crew::State::WaitingPaused => Some(format!("{name} is paused before it started")),
+                    crew::State::Holding => {
+                        Some(format!("{name} is paused, holding with nothing lost"))
+                    }
+                    crew::State::Pausing => Some(format!(
+                        "{name} is pausing — it holds at its next safe point"
+                    )),
+                    crew::State::WaitingPaused => {
+                        Some(format!("{name} is paused before it started"))
+                    }
                     _ => None,
                 }
             })
@@ -1159,7 +1206,10 @@ impl<'a> Daemon<'a> {
         let posts = if on_hold.is_empty() {
             posts
         } else {
-            format!("{posts} {}. Say 'carry on with …' to pick one back up.", on_hold.join("; "))
+            format!(
+                "{posts} {}. Say 'carry on with …' to pick one back up.",
+                on_hold.join("; ")
+            )
         };
         let waiting = self.crew.queued();
         if waiting == 0 {
@@ -1198,31 +1248,45 @@ impl<'a> Daemon<'a> {
         // "linkedin about finishing a project": the channel, and what it's
         // about when that was said too.
         let (channel, about) = match channel.split_once(" about ") {
-            Some((c, a)) if !a.trim().is_empty() => (c.trim().to_string(), Some(a.trim().to_string())),
+            Some((c, a)) if !a.trim().is_empty() => {
+                (c.trim().to_string(), Some(a.trim().to_string()))
+            }
             _ => (channel.trim().to_string(), None),
         };
         let ch = channel_named(&channel);
         let previous_publisher = self.publisher.clone();
         let Some(about) = about else {
             let id = self.publisher.draft(ch, "");
-            if let Err(e) = self.publisher.save(&self.store) { self.publisher = previous_publisher; return format!("I couldn't keep a new draft ({e}); nothing was posted."); }
+            if let Err(e) = self.publisher.save(&self.store) {
+                self.publisher = previous_publisher;
+                return format!("I couldn't keep a new draft ({e}); nothing was posted.");
+            }
             return format!("Drafting for {channel}. What should it say? (#{id})");
         };
         // Written by the model when there is one; never posted -- a draft
         // waits for you (`publish`).
         let written = self.llm.clone().and_then(|llm| {
             let prompt = format!("Channel: {channel}\nWhat it's about: {about}");
-            llm.complete(DRAFT_SYSTEM, &prompt).ok().map(|t| t.trim().trim_matches('"').trim().to_string()).filter(|t| !t.is_empty())
+            llm.complete(DRAFT_SYSTEM, &prompt)
+                .ok()
+                .map(|t| t.trim().trim_matches('"').trim().to_string())
+                .filter(|t| !t.is_empty())
         });
         match written {
             Some(text) => {
                 let id = self.publisher.draft(ch, &text);
-                if let Err(e) = self.publisher.save(&self.store) { self.publisher = previous_publisher; return format!("I wrote the proposed words but couldn't keep the draft ({e}); nothing was posted."); }
+                if let Err(e) = self.publisher.save(&self.store) {
+                    self.publisher = previous_publisher;
+                    return format!("I wrote the proposed words but couldn't keep the draft ({e}); nothing was posted.");
+                }
                 format!("A draft for {channel} (#{id}), not posted:\n\n{text}\n\nIt waits in your drafts; nothing goes out until you say so.")
             }
             None => {
                 let id = self.publisher.draft(ch, "");
-                if let Err(e) = self.publisher.save(&self.store) { self.publisher = previous_publisher; return format!("I couldn't keep a new draft ({e}); nothing was posted."); }
+                if let Err(e) = self.publisher.save(&self.store) {
+                    self.publisher = previous_publisher;
+                    return format!("I couldn't keep a new draft ({e}); nothing was posted.");
+                }
                 format!("Drafting for {channel} about {about}. What should it say? (#{id})")
             }
         }
@@ -1254,40 +1318,54 @@ impl<'a> Daemon<'a> {
             }
         }
         match crate::undo::reverse(self.history.last()) {
-        // Asked first, then actually done (Eric, G6): this used to
-        // stop at the question.
-        crate::undo::Reversal::CanDo { id, confirm, .. } => {
-            self.session.ask(&confirm);
-            self.pending_undo = Some(id);
-            confirm
-        }
-        crate::undo::Reversal::Nothing => match self.trash.undo_last() {
-        Ok(d) => {
-            let name = std::path::Path::new(&d.original)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or(d.original);
-            format!("Put {name} back.")
-        }
-            // The reason in words, not "platform: there's nothing
-            // to undo" (the capability sweep, 30 Sep 2026).
-            Err(crate::error::AtlasError::Platform(why)) => {
-                let mut c = why.chars();
-                match c.next() {
-                    Some(f) => format!("{}{}.", f.to_uppercase(), c.as_str().trim_end_matches('.')),
-                    None => "There's nothing to undo.".into(),
-                }
+            // Asked first, then actually done (Eric, G6): this used to
+            // stop at the question.
+            crate::undo::Reversal::CanDo { id, confirm, .. } => {
+                self.session.ask(&confirm);
+                self.pending_undo = Some(id);
+                confirm
             }
-            Err(e) => format!("I couldn't undo that: {e}."),
-        },
-        other => crate::undo::say(&other),
+            crate::undo::Reversal::Nothing => match self.trash.undo_last() {
+                Ok(d) => {
+                    let name = std::path::Path::new(&d.original)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or(d.original);
+                    format!("Put {name} back.")
+                }
+                // The reason in words, not "platform: there's nothing
+                // to undo" (the capability sweep, 30 Sep 2026).
+                Err(crate::error::AtlasError::Platform(why)) => {
+                    let mut c = why.chars();
+                    match c.next() {
+                        Some(f) => {
+                            format!("{}{}.", f.to_uppercase(), c.as_str().trim_end_matches('.'))
+                        }
+                        None => "There's nothing to undo.".into(),
+                    }
+                }
+                Err(e) => format!("I couldn't undo that: {e}."),
+            },
+            other => crate::undo::say(&other),
         }
     }
 
     fn on_back_up(&mut self) -> String {
         let cfg = self.backup_cfg();
-        if let Err(error) = crate::safety::check_configured_scope(&self.store, &self.notes_dir(), std::path::Path::new(&self.trash.cfg.dir)) { return format!("I couldn't back up: {error}"); }
-        match crate::safety::back_up_with_inputs(self.store.root(), &cfg, crate::store::now(), &self.notes_dir(), std::path::Path::new(&self.trash.cfg.dir)) {
+        if let Err(error) = crate::safety::check_configured_scope(
+            &self.store,
+            &self.notes_dir(),
+            std::path::Path::new(&self.trash.cfg.dir),
+        ) {
+            return format!("I couldn't back up: {error}");
+        }
+        match crate::safety::back_up_with_inputs(
+            self.store.root(),
+            &cfg,
+            crate::store::now(),
+            &self.notes_dir(),
+            std::path::Path::new(&self.trash.cfg.dir),
+        ) {
             Ok(b) => {
                 prune_backups(&cfg);
                 // back_up() just wrote every file itself and counted as it went, so
@@ -1312,8 +1390,15 @@ impl<'a> Daemon<'a> {
         // genuinely built a mode named "normal" can still turn it on.
         let leaving = matches!(
             n.to_lowercase().as_str(),
-            "off" | "leave" | "exit" | "normal" | "none" | "nothing"
-                | "standard" | "default" | "out"
+            "off"
+                | "leave"
+                | "exit"
+                | "normal"
+                | "none"
+                | "nothing"
+                | "standard"
+                | "default"
+                | "out"
         );
         if leaving && self.modes.active().is_some() {
             return match self.modes.leave() {
@@ -1332,7 +1417,10 @@ impl<'a> Daemon<'a> {
                 if have.is_empty() {
                     format!("I don't have a {n} mode. You haven't made any yet: a mode is kept in modes.json in my data folder -- which apps open, which close, and what's said.")
                 } else {
-                    format!("I don't have a {n} mode. The ones you have: {}.", have.join(", "))
+                    format!(
+                        "I don't have a {n} mode. The ones you have: {}.",
+                        have.join(", ")
+                    )
                 }
             }
         }
@@ -1350,7 +1438,8 @@ impl<'a> Daemon<'a> {
         // still waited on before the sample began, so the answer took the
         // two in turn, 3.5 to 6 s; started first, everything below runs
         // inside those two seconds.
-        let sampling = std::thread::spawn(|| crate::tune::sample_machine(std::time::Duration::from_secs(2)));
+        let sampling =
+            std::thread::spawn(|| crate::tune::sample_machine(std::time::Duration::from_secs(2)));
         let r = self.readings();
         let f = assess_machine(&r, &self.health_cfg());
         let watched = self.watcher.summary();
@@ -1363,7 +1452,13 @@ impl<'a> Daemon<'a> {
         // items, disposable folders and other drives aren't measured
         // yet, and are left empty rather than guessed.
         let models_mb = std::fs::read_dir(self.store.install_root().join("models"))
-            .map(|rd| rd.flatten().filter_map(|e| e.metadata().ok()).map(|m| m.len()).sum::<u64>() / 1_000_000)
+            .map(|rd| {
+                rd.flatten()
+                    .filter_map(|e| e.metadata().ok())
+                    .map(|m| m.len())
+                    .sum::<u64>()
+                    / 1_000_000
+            })
             .unwrap_or(0);
         // Measured now (1 Oct 2026): memory by program, and the temporary
         // folder. "Used today" is what the work log saw in front of you
@@ -1371,17 +1466,26 @@ impl<'a> Daemon<'a> {
         // forgotten.
         let now = crate::store::now();
         let since = crate::localclock::midnight(now, crate::localclock::offset_secs());
-        let used: Vec<String> = self.worklog.between(since, now).iter().map(|sp| sp.app.to_lowercase()).collect();
+        let used: Vec<String> = self
+            .worklog
+            .between(since, now)
+            .iter()
+            .map(|sp| sp.app.to_lowercase())
+            .collect();
         let used_today = |app: &str| {
             let a = app.to_lowercase();
-            used.iter().any(|u| u.contains(&a) || a.contains(u.as_str()))
+            used.iter()
+                .any(|u| u.contains(&a) || a.contains(u.as_str()))
         };
         let memory_by_app: Vec<(String, u64, bool)> = by_app
             .join()
             .unwrap_or_default()
             .into_iter()
             .take(15)
-            .filter(|(app, _)| !app.to_lowercase().starts_with("atlas") && !app.to_lowercase().starts_with("llama-server"))
+            .filter(|(app, _)| {
+                !app.to_lowercase().starts_with("atlas")
+                    && !app.to_lowercase().starts_with("llama-server")
+            })
             .map(|(app, mb)| {
                 let u = used_today(&app);
                 (app, mb, u)
@@ -1408,7 +1512,20 @@ impl<'a> Daemon<'a> {
         top.sort_by_key(|b| std::cmp::Reverse(b.1));
         // (On Windows the sampled reading below says this, with CPU.)
         if !top.is_empty() && !cfg!(windows) {
-            let named: Vec<String> = top.iter().take(4).map(|(a, mb, _)| format!("{a} {}", if *mb >= 1024 { format!("{:.1} GB", *mb as f32 / 1024.0) } else { format!("{mb} MB") })).collect();
+            let named: Vec<String> = top
+                .iter()
+                .take(4)
+                .map(|(a, mb, _)| {
+                    format!(
+                        "{a} {}",
+                        if *mb >= 1024 {
+                            format!("{:.1} GB", *mb as f32 / 1024.0)
+                        } else {
+                            format!("{mb} MB")
+                        }
+                    )
+                })
+                .collect();
             s.push_str(&format!(" Using the most memory: {}.", named.join(", ")));
         }
         // And what to do about it, on one yes (1 Oct 2026, Eric: "closing
@@ -1435,7 +1552,11 @@ impl<'a> Daemon<'a> {
             s.push_str(&offer);
             self.session.ask(&offer);
             self.pending_optimize = Some(plan);
-        } else if let Some(f) = crate::tune::actionable(&findings).first().copied().or(findings.first()) {
+        } else if let Some(f) = crate::tune::actionable(&findings)
+            .first()
+            .copied()
+            .or(findings.first())
+        {
             let (mb, _) = crate::tune::worth_it(&findings);
             s.push_str(&format!(" {}", f.what));
             if mb > 0 {
@@ -1455,7 +1576,8 @@ impl<'a> Daemon<'a> {
             // sayable to someone who heard no progress at all.
             let (said, leaks) = self.run.close(&self.health_steps(&r), &s);
             for l in &leaks {
-                self.log.info(&format!("result leans on progress: {}", l.plain()));
+                self.log
+                    .info(&format!("result leans on progress: {}", l.plain()));
             }
             said
         }
@@ -1478,7 +1600,8 @@ impl<'a> Daemon<'a> {
         };
         match copied {
             None => "I can't reach the clipboard on this machine — there's no clipboard tool \
-                     available for me to read it.".into(),
+                     available for me to read it."
+                .into(),
             Some(text) => {
                 let grab = crate::clipboard::take(&text, &cfg);
                 if grab.kind == crate::clipboard::Kind::Empty {
@@ -1536,9 +1659,8 @@ impl<'a> Daemon<'a> {
     fn on_rehearse(&mut self, command: &str) -> String {
         // Runs against the same fake operating system the tests use,
         // so there is no path from here to your real windows.
-        let mock = crate::platform::mock::MockPlatform::new(
-            self.plat.monitors().unwrap_or_default(),
-        );
+        let mock =
+            crate::platform::mock::MockPlatform::new(self.plat.monitors().unwrap_or_default());
         let inner = self.parser.parse(command);
         let reply = match &inner {
             Intent::WorkspaceOn => {
@@ -1572,8 +1694,7 @@ impl<'a> Daemon<'a> {
         // back. `touches_anything_irreversible` answers exactly that,
         // and now the warning reaches your ear, not just the stored
         // walk-through.
-        let mut spoken =
-            format!("{} {}", crate::rehearse::preamble(command), r.summary());
+        let mut spoken = format!("{} {}", crate::rehearse::preamble(command), r.summary());
         if r.touches_anything_irreversible() {
             spoken.push_str(" Heads up: some of these can't be undone.");
         }
@@ -1601,7 +1722,10 @@ impl<'a> Daemon<'a> {
         } else {
             // "I don't have a the budget" (the capability sweep): the
             // thing named as it was said, and what can be shown.
-            let w = w.trim_start_matches("the ").trim_start_matches("my ").trim_start_matches("a ");
+            let w = w
+                .trim_start_matches("the ")
+                .trim_start_matches("my ")
+                .trim_start_matches("a ");
             // "pull up spotify for me" (1 Oct 2026: "I can't put spotify for
             // me on screen"): the politeness off the end.
             let tidied = crate::intent::without_fillers(w);
@@ -1613,7 +1737,14 @@ impl<'a> Daemon<'a> {
             // "pull up chrome" is an app, not a panel (30 Sep 2026: "pull up
             // TradingView" got "I don't have tradingview to put up").
             let squashed: String = w.chars().filter(|c| c.is_alphanumeric()).collect();
-            if let Some(app) = self.cfg.apps.apps.keys().find(|k| k.eq_ignore_ascii_case(w) || k.eq_ignore_ascii_case(&squashed)).cloned() {
+            if let Some(app) = self
+                .cfg
+                .apps
+                .apps
+                .keys()
+                .find(|k| k.eq_ignore_ascii_case(w) || k.eq_ignore_ascii_case(&squashed))
+                .cloned()
+            {
                 return match crate::workspace::focus_app(self.cfg, self.plat, &app) {
                     Ok(()) => format!("There's {app}."),
                     Err(e) => format!("I couldn't bring up {app}: {e}"),
@@ -1633,7 +1764,12 @@ impl<'a> Daemon<'a> {
             let shortcut_found = !w.is_empty()
                 && w.split_whitespace().count() <= 3
                 && matches!(
-                    crate::launcher::pick(w, &crate::launcher::shortcuts(&crate::launcher::start_menu_dirs()), &Default::default(), clock()),
+                    crate::launcher::pick(
+                        w,
+                        &crate::launcher::shortcuts(&crate::launcher::start_menu_dirs()),
+                        &Default::default(),
+                        clock()
+                    ),
                     crate::launcher::Pick::Open(_)
                 );
             if shortcut_found {
@@ -1679,18 +1815,21 @@ impl<'a> Daemon<'a> {
                     // now — its Settings and Hub pages, not a panel
                     // that listed nothing.
                     _ if w.contains("hub") => {
-                        match crate::firstlaunch::open_atlas_window(&crate::firstlaunch::First::Hub("/hub".into())) {
+                        match crate::firstlaunch::open_atlas_window(
+                            &crate::firstlaunch::First::Hub("/hub".into()),
+                        ) {
                             Ok(()) => "The hub is open.".into(),
                             Err(e) => format!("I couldn't open the hub: {e}"),
                         }
                     }
-                    _ => match crate::firstlaunch::open_atlas_window(&crate::firstlaunch::First::Settings) {
+                    _ => match crate::firstlaunch::open_atlas_window(
+                        &crate::firstlaunch::First::Settings,
+                    ) {
                         Ok(()) => "Settings are open.".into(),
                         Err(e) => format!("I couldn't open my settings: {e}"),
                     },
                 };
-                crate::panel::narration(panel, &content, &self.panel_cfg())
-                    .unwrap_or_default()
+                crate::panel::narration(panel, &content, &self.panel_cfg()).unwrap_or_default()
             }
             crate::panel::Decision::AskFirst(q) => {
                 self.session.ask(&q);
@@ -1711,7 +1850,11 @@ impl<'a> Daemon<'a> {
         let was_up = self.wants_panel.is_some() || self.pending_panel.is_some();
         self.wants_panel = None;
         self.pending_panel = None;
-        if was_up { String::new() } else { "There's nothing up to put away.".into() }
+        if was_up {
+            String::new()
+        } else {
+            "There's nothing up to put away.".into()
+        }
     }
 
     fn on_capabilities_settled(&mut self, what: &str) -> String {
@@ -1816,24 +1959,32 @@ impl<'a> Daemon<'a> {
                 // list nobody could follow, heard or read.
                 let mut parts: Vec<String> = Vec::new();
                 for area in crate::capability::EVERY_AREA {
-                    let names: Vec<&str> =
-                        working.iter().filter(|c| c.area == *area).map(|c| c.what).collect();
+                    let names: Vec<&str> = working
+                        .iter()
+                        .filter(|c| c.area == *area)
+                        .map(|c| c.what)
+                        .collect();
                     if !names.is_empty() {
-                        parts.push(format!("{} ({}): {}", area.plain(), names.len(), names.join("; ")));
+                        parts.push(format!(
+                            "{} ({}): {}",
+                            area.plain(),
+                            names.len(),
+                            names.join("; ")
+                        ));
                     }
                 }
-                format!("{} things work right now: {}.", working.len(), parts.join(". "))
+                format!(
+                    "{} things work right now: {}.",
+                    working.len(),
+                    parts.join(". ")
+                )
             }
         } else if w.is_empty() || w.contains("what can you") || w.contains("everything") {
             crate::capability::summary()
         } else if w.contains("new") {
             let recent = crate::capability::since(17);
             match recent.first() {
-                Some(c) => format!(
-                    "{} new things, most recently: {}.",
-                    recent.len(),
-                    c.what
-                ),
+                Some(c) => format!("{} new things, most recently: {}.", recent.len(), c.what),
                 None => "Nothing new.".into(),
             }
         } else if w.contains("can't") || w.contains("cant") || w.contains("waiting") {
@@ -1866,7 +2017,11 @@ impl<'a> Daemon<'a> {
 
     fn on_history(&mut self, what: &str) -> String {
         use crate::undo::{reverse, say, tell, understand, Asking};
-        match understand(if what.trim().is_empty() { "what did you do" } else { what }) {
+        match understand(if what.trim().is_empty() {
+            "what did you do"
+        } else {
+            what
+        }) {
             Asking::WhatDidYouDo { since_mins } => {
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -1903,9 +2058,7 @@ impl<'a> Daemon<'a> {
             }
             Asking::UndoLast => say(&reverse(self.history.last())),
             Asking::UndoIn(area) => say(&reverse(self.history.last_in(&area))),
-            Asking::SomethingElse => {
-                "Did you mean what I've done, or undoing something?".into()
-            }
+            Asking::SomethingElse => "Did you mean what I've done, or undoing something?".into(),
         }
     }
 
@@ -1939,11 +2092,7 @@ impl<'a> Daemon<'a> {
                     .map(|th| th.text.clone())
                     .collect();
                 if !recent.is_empty() {
-                    return format!(
-                        "Right now, {}: {}. {account}",
-                        w.asked,
-                        recent.join("; ")
-                    );
+                    return format!("Right now, {}: {}. {account}", w.asked, recent.join("; "));
                 }
             }
             return account;
@@ -1964,13 +2113,15 @@ impl<'a> Daemon<'a> {
     }
 
     fn on_create_account(&mut self, where_: &str) -> String {
-        let money = self.tools_ref()
+        let money = self
+            .tools_ref()
             .map(|t| t.finance.clone())
             .unwrap_or_default();
         match crate::enrol::domain_from(where_) {
             None => "I couldn't tell which site you meant.".into(),
             Some(domain) => {
-                let cfg = self.tools_ref()
+                let cfg = self
+                    .tools_ref()
                     .map(|t| t.enrol.clone())
                     .unwrap_or_default();
                 // One gate, not a hand-rolled subset of it. This
@@ -1984,8 +2135,11 @@ impl<'a> Daemon<'a> {
                 match crate::enrol::Enrolment::permitted(&domain, &cfg, &money) {
                     // `permitted`'s own wording for this one is terse;
                     // keep the line that tells you where the switch is.
-                    Err(why) if why == "account creation is switched off" => "Signing up is switched off. Turn on \"Make accounts\" in \
-                         settings if you want me doing that.".to_string(),
+                    Err(why) if why == "account creation is switched off" => {
+                        "Signing up is switched off. Turn on \"Make accounts\" in \
+                         settings if you want me doing that."
+                            .to_string()
+                    }
                     Err(why) => why,
                     // Eric, B6: Atlas may make accounts. It
                     // stops for good at payment or ID, and hands
@@ -2027,8 +2181,7 @@ impl<'a> Daemon<'a> {
                     // address — belong to a browser, and nothing
                     // here has one open, so `may_start` is the
                     // honest half rather than two invented `true`s.
-                    let vault_open =
-                        self.vault.state() == crate::vault::State::Open;
+                    let vault_open = self.vault.state() == crate::vault::State::Open;
                     // A credential that has stopped working is worth
                     // saying before the attempt, not after: "sign-in
                     // failed" sends you to check the site, and the
@@ -2093,7 +2246,8 @@ impl<'a> Daemon<'a> {
                                 // Autofill, for real (Eric, B4): the
                                 // login goes in on the site's own
                                 // domain, in Atlas's browser.
-                                let started = self.start_sign_in(where_, &account, crate::store::now());
+                                let started =
+                                    self.start_sign_in(where_, &account, crate::store::now());
                                 format!("{started}{care}")
                             }
                         }
@@ -2136,7 +2290,11 @@ impl<'a> Daemon<'a> {
 
     fn on_this_is_me(&mut self) -> String {
         let who = self.tools_cfg().vision.your_face.clone();
-        let who = if who.trim().is_empty() { "me".to_string() } else { who };
+        let who = if who.trim().is_empty() {
+            "me".to_string()
+        } else {
+            who
+        };
         self.name_this(&who, crate::store::now())
     }
 
@@ -2200,8 +2358,7 @@ impl<'a> Daemon<'a> {
         if !kin_cfg.enabled {
             return "Pairing is switched off. Turn on kin in settings first.".into();
         }
-        let (Some(my_name), Some(my_host)) =
-            (kin_cfg.my_name.clone(), kin_cfg.my_host.clone())
+        let (Some(my_name), Some(my_host)) = (kin_cfg.my_name.clone(), kin_cfg.my_host.clone())
         else {
             return "I need your name and Tailscale address set in config first -- \
                     kin.my_name and kin.my_host -- before I can pair with anyone."
@@ -2215,7 +2372,14 @@ impl<'a> Daemon<'a> {
             Ok(t) => t,
             Err(e) => return format!("Couldn't generate a secure token: {e}"),
         };
-        match crate::kin::invite(&mut pairings, their_name, &my_name, &my_host, kin_cfg.port, &token) {
+        match crate::kin::invite(
+            &mut pairings,
+            their_name,
+            &my_name,
+            &my_host,
+            kin_cfg.port,
+            &token,
+        ) {
             None => "Your name or host can't contain '|' -- fix that in config and try \
                      again."
                 .into(),
@@ -2258,8 +2422,7 @@ impl<'a> Daemon<'a> {
         if !kin_cfg.enabled {
             return "Pairing is switched off. Turn on kin in settings first.".into();
         }
-        let (Some(my_name), Some(my_host)) =
-            (kin_cfg.my_name.clone(), kin_cfg.my_host.clone())
+        let (Some(my_name), Some(my_host)) = (kin_cfg.my_name.clone(), kin_cfg.my_host.clone())
         else {
             return "I need your name and Tailscale address set in config first -- \
                     kin.my_name and kin.my_host -- before I can accept a pairing."
@@ -2362,7 +2525,13 @@ impl<'a> Daemon<'a> {
             // unless the project was one the workshop tracks).
             let id = self.notebook.capture(text, None, now, &cfg);
             self.wd_date_note(id, now);
-            self.synclog.append(crate::sync::What::Captured { id: id.to_string(), text: text.to_owned() }, now);
+            self.synclog.append(
+                crate::sync::What::Captured {
+                    id: id.to_string(),
+                    text: text.to_owned(),
+                },
+                now,
+            );
             if let Err(e) = self.notebook.save(&self.store) {
                 return format!("I couldn't write that down ({e}). Say it again once that's sorted, because I haven't kept it.");
             }
@@ -2425,8 +2594,7 @@ impl<'a> Daemon<'a> {
             // offered back (`is_blocked` returns true for it
             // unconditionally). That is the honest shape: your task on
             // your list, not Atlas volunteering to phone the dentist.
-            if cfg.tasks_become_work
-                && crate::capture::kind_of(text) == crate::capture::Kind::Task
+            if cfg.tasks_become_work && crate::capture::kind_of(text) == crate::capture::Kind::Task
             {
                 self.backlog.record(
                     text,
@@ -2483,15 +2651,13 @@ impl<'a> Daemon<'a> {
             // statement rather than that there was nothing in it.
             // Same shape as `goingaway::spoken(&[])` and
             // `messaging::spoken(&[], ..)` before it.
-            let this: Vec<crate::money::Entry> =
-                self.store.load(crate::money::THIS_MONTH);
+            let this: Vec<crate::money::Entry> = self.store.load(crate::money::THIS_MONTH);
             if this.is_empty() {
                 "I haven't read a statement yet. Hand me your bank's export (.csv) \
                  on the Give page and I'll sort it."
                     .into()
             } else {
-                let last: Vec<crate::money::Entry> =
-                    self.store.load(crate::money::LAST_MONTH);
+                let last: Vec<crate::money::Entry> = self.store.load(crate::money::LAST_MONTH);
                 let jump = self.tools_cfg().finance.category_jump as f32;
                 let mut changes = crate::money::new_or_grown(&this, &last, jump);
                 changes.extend(crate::money::buckets_that_jumped(&this, &last, jump));
@@ -2524,8 +2690,7 @@ impl<'a> Daemon<'a> {
             // still refuses to give a count: "nothing read yet" and
             // "nothing in it" are different facts and the old code
             // could only ever state the second.
-            let kept: Vec<crate::messaging::Message> =
-                self.store.load(crate::telegram::KEPT);
+            let kept: Vec<crate::messaging::Message> = self.store.load(crate::telegram::KEPT);
             if kept.is_empty() {
                 crate::messaging::what_you_asked_for(&cfg.platforms)
             } else {
@@ -2546,7 +2711,9 @@ impl<'a> Daemon<'a> {
 
     fn on_mail_plain(&mut self, what: &str) -> String {
         let cfg = self.tools_cfg().mail.clone();
-        if what.contains("outlook setup") || what.contains("connect outlook") && what.contains("help") {
+        if what.contains("outlook setup")
+            || what.contains("connect outlook") && what.contains("help")
+        {
             crate::msoauth::SETUP.to_string()
         } else if what.contains("connect") && what.contains("outlook") {
             self.connect_outlook_from_request(what)
@@ -2554,7 +2721,8 @@ impl<'a> Daemon<'a> {
             "Reading your email is switched off.".into()
         } else if crate::unsub::go_ahead(what) || crate::unsub::go_ahead(&self.last_said.clone()) {
             // The go-ahead after the report, not another look.
-            self.unsubscribe_help("unsubscribe from those").unwrap_or_default()
+            self.unsubscribe_help("unsubscribe from those")
+                .unwrap_or_default()
         } else if what.contains("clear") || what.contains("unsubscribe") {
             self.check_unsubscribe()
         } else if what.contains("outreach") {
@@ -2697,8 +2865,10 @@ impl<'a> Daemon<'a> {
                 if fixed_count == 1 { "" } else { "s" }
             ));
         }
-        let unsure: Vec<&crate::prose::Fix> =
-            fixes.iter().filter(|f| f.kind != crate::prose::Kind::Certain).collect();
+        let unsure: Vec<&crate::prose::Fix> = fixes
+            .iter()
+            .filter(|f| f.kind != crate::prose::Kind::Certain)
+            .collect();
         if let Some(first) = unsure.first() {
             if !said.is_empty() {
                 said.push(' ');
@@ -2733,11 +2903,17 @@ impl<'a> Daemon<'a> {
             .next_back();
         if let Some(id) = open_draft {
             let previous_publisher = self.publisher.clone();
-            let final_text =
-                if fixed_count > 0 { corrected.as_str() } else { what };
+            let final_text = if fixed_count > 0 {
+                corrected.as_str()
+            } else {
+                what
+            };
             if self.publisher.edit(id, final_text) {
                 if let Some(q) = self.publisher.request_approval(id) {
-                    if let Err(e) = self.publisher.save(&self.store) { self.publisher = previous_publisher; return format!("The edited draft couldn't be saved ({e}); its previous words remain and no new approval was recorded."); }
+                    if let Err(e) = self.publisher.save(&self.store) {
+                        self.publisher = previous_publisher;
+                        return format!("The edited draft couldn't be saved ({e}); its previous words remain and no new approval was recorded.");
+                    }
                     // The question now waits for its answer (G2):
                     // before this, a yes went nowhere and no post
                     // could ever be approved.
@@ -2768,18 +2944,17 @@ impl<'a> Daemon<'a> {
             // is no comfort with no codes printed, and the codes
             // count is no comfort for the account that has none --
             // and this is the question you ask at an airport.
-            let names: Vec<String> =
-                self.accounts.accounts.iter().map(|a| a.site.clone()).collect();
+            let names: Vec<String> = self
+                .accounts
+                .accounts
+                .iter()
+                .map(|a| a.site.clone())
+                .collect();
             let ccfg = self.tools_cfg().codes.clone();
-            let away: crate::goingaway::Away =
-                self.store.load(crate::goingaway::AWAY_RECORD);
+            let away: crate::goingaway::Away = self.store.load(crate::goingaway::AWAY_RECORD);
             let mut said = crate::goingaway::spoken(&self.accounts.accounts);
             said.push(' ');
-            said.push_str(&crate::codes::before_you_go(
-                &self.code_sets,
-                &names,
-                &ccfg,
-            ));
+            said.push_str(&crate::codes::before_you_go(&self.code_sets, &names, &ccfg));
             if let Some(days) = away.days_until(crate::store::now()) {
                 said.push_str(&format!(" You're going in {days} days."));
             }
@@ -2837,10 +3012,7 @@ impl<'a> Daemon<'a> {
     fn on_work_on_yourself_go_on(&mut self) -> String {
         let grants = self.tools_cfg().self_grant.clone();
         match grants.granted() {
-            None => crate::selfgrant::asking_for(
-                crate::selfgrant::Reach::WhatItSays,
-                &grants,
-            ),
+            None => crate::selfgrant::asking_for(crate::selfgrant::Reach::WhatItSays, &grants),
             Some(reach) => format!(
                 "Right — I'll fix {} on my own and tell you after. Anything past that \
                  still comes to you.",
@@ -2851,36 +3023,46 @@ impl<'a> Daemon<'a> {
 
     fn on_unknown(&mut self, raw: &str) -> String {
         match self.known_procedure(raw) {
-        Some(how) => how,
-        None => match self.answer_from_notes(raw, crate::store::now()) {
-            Some(answer) => answer,
-            // A question Atlas has no way to answer here is said to
-            // be one, rather than "I didn't catch that" -- which tells
-            // a person who spoke clearly that they didn't.
-            // The reason as far as it's known (29 Sep 2026): this
-            // said "there isn't one on this machine yet" whenever no
-            // model was loaded -- also when one was there and hadn't
-            // started, or didn't fit the memory free at that moment.
-            None if self.llm.is_none() && crate::wanted::is_a_question(raw) => {
-                let why = self.model_server_trouble.clone().unwrap_or_else(|| {
-                    "it isn't loaded yet".to_string()
-                });
-                format!(
+            Some(how) => how,
+            None => match self.answer_from_notes(raw, crate::store::now()) {
+                Some(answer) => answer,
+                // A question Atlas has no way to answer here is said to
+                // be one, rather than "I didn't catch that" -- which tells
+                // a person who spoke clearly that they didn't.
+                // The reason as far as it's known (29 Sep 2026): this
+                // said "there isn't one on this machine yet" whenever no
+                // model was loaded -- also when one was there and hadn't
+                // started, or didn't fit the memory free at that moment.
+                None if self.llm.is_none() && crate::wanted::is_a_question(raw) => {
+                    let why = self
+                        .model_server_trouble
+                        .clone()
+                        .unwrap_or_else(|| "it isn't loaded yet".to_string());
+                    format!(
                     "I can't answer that one yet: general questions need my language model, and {why}. \
                      The hub's Health page says where it stands."
                 )
-            }
-            None => "I didn't catch that.".into(),
-        },
-    }
+                }
+                None => "I didn't catch that.".into(),
+            },
+        }
     }
 
     /// Errand kinds that call `crew::Control::checkpoint` at safe points, so
     /// a pause actually holds them. The rest run as one step and can only
     /// finish or be called off — said so, rather than claimed paused.
     pub(super) const HOLDS_AT_A_SAFE_POINT: &'static [&'static str] = &[
-        "research", "council", "build", "improve", "mail", "unsubscribe", "outreach",
-        "outlook-connect", "search-check", "video", "signing protection",
+        "research",
+        "council",
+        "build",
+        "improve",
+        "mail",
+        "unsubscribe",
+        "outreach",
+        "outlook-connect",
+        "search-check",
+        "video",
+        "signing protection",
     ];
 }
 

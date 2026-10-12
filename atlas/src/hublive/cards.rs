@@ -47,13 +47,21 @@ impl Daemon<'_> {
             .workshop
             .projects
             .iter()
-            .flat_map(|p| p.ready().into_iter().map(move |c| (c.title.clone(), p.name.clone())))
+            .flat_map(|p| {
+                p.ready()
+                    .into_iter()
+                    .map(move |c| (c.title.clone(), p.name.clone()))
+            })
             .collect();
         if lines.is_empty() && proposed.is_empty() {
             return hub::nothing("Nothing waiting on you. Genuinely, not just unread.");
         }
         let mut s = hub::deck_figures(&[
-            ("To act", o.needs_you + o.overdue + stopped.len(), hub::Dot::Act),
+            (
+                "To act",
+                o.needs_you + o.overdue + stopped.len(),
+                hub::Dot::Act,
+            ),
             ("Proposed", proposed.len(), hub::Dot::Proposed),
         ]);
         let mut rows: Vec<(hub::Dot, String, String)> = lines
@@ -61,8 +69,15 @@ impl Daemon<'_> {
             .take(4)
             .map(|l| (hub::Dot::Act, l.clone(), String::new()))
             .collect();
-        for (title, project) in proposed.iter().take(4usize.saturating_sub(rows.len()).max(1)) {
-            rows.push((hub::Dot::Proposed, format!("Approve {title}"), project.clone()));
+        for (title, project) in proposed
+            .iter()
+            .take(4usize.saturating_sub(rows.len()).max(1))
+        {
+            rows.push((
+                hub::Dot::Proposed,
+                format!("Approve {title}"),
+                project.clone(),
+            ));
         }
         s.push_str(&hub::rows(&rows));
         s.push_str(&hub::more("/hub/outstanding", "Everything outstanding"));
@@ -137,7 +152,11 @@ impl Daemon<'_> {
         if let Some(b) = r.battery_percent {
             s.push_str(&hub::gauge(
                 &format!("{b}%"),
-                if r.on_battery { "battery, on battery" } else { "battery, plugged in" },
+                if r.on_battery {
+                    "battery, on battery"
+                } else {
+                    "battery, plugged in"
+                },
                 1.0 - (b as f32 / 100.0),
             ));
         }
@@ -155,7 +174,13 @@ impl Daemon<'_> {
             .rev()
             .filter(|e| e.kind != crate::activity::Kind::Upkeep)
             .take(5)
-            .map(|e| (hub::Dot::Record, e.what.clone(), crate::localclock::hhmm_here(e.at)))
+            .map(|e| {
+                (
+                    hub::Dot::Record,
+                    e.what.clone(),
+                    crate::localclock::hhmm_here(e.at),
+                )
+            })
             .collect();
         if rows.is_empty() {
             return hub::nothing("I haven't done anything on my own today.");
@@ -211,9 +236,7 @@ impl Daemon<'_> {
     pub(super) fn card_handed(&self) -> String {
         let open = self.tray.open();
         if open.is_empty() {
-            return hub::nothing(
-                "Nothing waiting. Send a link from your phone and I'll read it.",
-            );
+            return hub::nothing("Nothing waiting. Send a link from your phone and I'll read it.");
         }
         let mut s = String::from("<ul class=tight>");
         for item in open.iter().take(5) {
@@ -265,7 +288,10 @@ impl Daemon<'_> {
             // Named even when it is the only one. "Your own work" being a
             // heading is what makes a business appearing beneath it read as a
             // separate record rather than more of the same.
-            s.push_str(&format!("<h4 class=spacename>{}</h4>", hub::esc(&space.title())));
+            s.push_str(&format!(
+                "<h4 class=spacename>{}</h4>",
+                hub::esc(&space.title())
+            ));
             s.push_str(&self.trust_rows(&space));
         }
         s
@@ -279,7 +305,10 @@ impl Daemon<'_> {
                 hub::esc(kind.title()),
                 hub::esc(rope.plain()),
                 hub::esc(&if total == 0 {
-                    format!("Nothing yet. {}", self.earned.what_would_earn_more_in(space, kind))
+                    format!(
+                        "Nothing yet. {}",
+                        self.earned.what_would_earn_more_in(space, kind)
+                    )
                 } else {
                     format!(
                         "{good} right out of {total}. {}",

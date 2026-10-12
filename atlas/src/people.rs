@@ -55,7 +55,11 @@ pub struct Contact {
 impl Contact {
     /// The latest contact from what you said and the mail cache.
     pub fn last_contact(&self, book: &crate::mailbook::MailBook) -> Option<u64> {
-        let mut mail = self.emails.iter().filter_map(|e| book.last_contact(e).map(|x| x.0)).max();
+        let mut mail = self
+            .emails
+            .iter()
+            .filter_map(|e| book.last_contact(e).map(|x| x.0))
+            .max();
         // No address known: a full name ("Sam Lee", not "Sam") matched on
         // the sender's display name is specific enough to count.
         if self.emails.is_empty() && self.name.split_whitespace().count() >= 2 {
@@ -90,7 +94,10 @@ pub enum Refused {
 }
 
 fn key(name: &str) -> String {
-    name.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    name.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 impl People {
@@ -105,16 +112,28 @@ impl People {
             return Found::One(kk);
         }
         if k.contains('@') {
-            if let Some((kk, _)) = self.by_key.iter().find(|(_, c)| c.emails.iter().any(|e| e.eq_ignore_ascii_case(&k))) {
+            if let Some((kk, _)) = self
+                .by_key
+                .iter()
+                .find(|(_, c)| c.emails.iter().any(|e| e.eq_ignore_ascii_case(&k)))
+            {
                 return Found::One(kk);
             }
             return Found::None;
         }
-        let first: Vec<&String> = self.by_key.keys().filter(|kk| kk.split(' ').next() == Some(k.as_str())).collect();
+        let first: Vec<&String> = self
+            .by_key
+            .keys()
+            .filter(|kk| kk.split(' ').next() == Some(k.as_str()))
+            .collect();
         match first.as_slice() {
             [one] => Found::One(one),
             [] => Found::None,
-            many => Found::Several(many.iter().map(|kk| self.by_key[*kk].name.clone()).collect()),
+            many => Found::Several(
+                many.iter()
+                    .map(|kk| self.by_key[*kk].name.clone())
+                    .collect(),
+            ),
         }
     }
 
@@ -143,7 +162,15 @@ impl People {
                 let is_email = tidy.contains('@');
                 self.by_key.insert(
                     k.clone(),
-                    Contact { name: tidy.clone(), emails: if is_email { vec![tidy.to_lowercase()] } else { vec![] }, ..Default::default() },
+                    Contact {
+                        name: tidy.clone(),
+                        emails: if is_email {
+                            vec![tidy.to_lowercase()]
+                        } else {
+                            vec![]
+                        },
+                        ..Default::default()
+                    },
                 );
                 k
             }
@@ -204,7 +231,8 @@ impl People {
     }
 
     pub fn birthday(&mut self, name: &str, month: u32, day: u32) -> Result<(), Refused> {
-        if !(1..=12).contains(&month) || day == 0 || day > crate::civil::days_in_month(2024, month) {
+        if !(1..=12).contains(&month) || day == 0 || day > crate::civil::days_in_month(2024, month)
+        {
             return Err(Refused::Empty);
         }
         self.entry(name)?.birthday = Some((month, day));
@@ -226,7 +254,11 @@ impl People {
     /// (name, days since, cadence). Someone never contacted counts from
     /// when the cadence was set -- which isn't kept -- so they're listed as
     /// "no contact on record" with `None`.
-    pub fn due(&self, book: &crate::mailbook::MailBook, now: u64) -> Vec<(String, Option<u64>, u32)> {
+    pub fn due(
+        &self,
+        book: &crate::mailbook::MailBook,
+        now: u64,
+    ) -> Vec<(String, Option<u64>, u32)> {
         let mut out: Vec<(String, Option<u64>, u32)> = self
             .by_key
             .values()
@@ -243,7 +275,8 @@ impl People {
             .collect();
         // Most overdue relative to their cadence first; never-contacted last.
         out.sort_by(|a, b| {
-            let r = |x: &(String, Option<u64>, u32)| x.1.map(|d| d as f64 / x.2 as f64).unwrap_or(-1.0);
+            let r =
+                |x: &(String, Option<u64>, u32)| x.1.map(|d| d as f64 / x.2 as f64).unwrap_or(-1.0);
             r(b).partial_cmp(&r(a)).unwrap_or(std::cmp::Ordering::Equal)
         });
         out
@@ -277,7 +310,9 @@ impl People {
         let c = match self.find(name) {
             Found::One(k) => &self.by_key[k],
             Found::Several(names) => return format!("Which one -- {}?", names.join(" or ")),
-            Found::None => return format!("I've nothing on {name} yet. \"Remember {name} …\" starts it."),
+            Found::None => {
+                return format!("I've nothing on {name} yet. \"Remember {name} …\" starts it.")
+            }
         };
         let mut out = vec![c.name.clone()];
         match c.last_contact(book) {
@@ -300,7 +335,20 @@ impl People {
     }
 }
 
-const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTHS: [&str; 12] = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
 
 fn ago(now: u64, t: u64) -> String {
     match now.saturating_sub(t) / 86_400 {
@@ -342,7 +390,11 @@ pub fn phone_number(said: &str) -> Option<String> {
     if !(7..=15).contains(&digits.len()) {
         return None;
     }
-    Some(if t.starts_with('+') { format!("+{digits}") } else { digits })
+    Some(if t.starts_with('+') {
+        format!("+{digits}")
+    } else {
+        digits
+    })
 }
 
 fn cadence(words: &str) -> Option<u32> {
@@ -380,7 +432,10 @@ fn cadence(words: &str) -> Option<u32> {
 
 fn month_no(w: &str) -> Option<u32> {
     let w = w.to_ascii_lowercase();
-    MONTHS.iter().position(|m| w.len() >= 3 && m.to_ascii_lowercase().starts_with(&w)).map(|i| i as u32 + 1)
+    MONTHS
+        .iter()
+        .position(|m| w.len() >= 3 && m.to_ascii_lowercase().starts_with(&w))
+        .map(|i| i as u32 + 1)
 }
 
 /// Read one sentence. ASCII lower-casing keeps byte offsets, so names and
@@ -388,7 +443,13 @@ fn month_no(w: &str) -> Option<u32> {
 pub fn read(said: &str) -> Option<Asked> {
     let s = said.trim().trim_end_matches(['.', '?', '!']);
     let low = s.to_ascii_lowercase();
-    for lead in ["who should i catch up with", "who haven't i talked to", "who have i not talked to", "who's due a catch up", "who am i out of touch with"] {
+    for lead in [
+        "who should i catch up with",
+        "who haven't i talked to",
+        "who have i not talked to",
+        "who's due a catch up",
+        "who am i out of touch with",
+    ] {
         if low.starts_with(lead) {
             return Some(Asked::Due);
         }
@@ -398,26 +459,53 @@ pub fn read(said: &str) -> Option<Asked> {
             if lead == "tell me about " && rest.split_whitespace().count() > 3 {
                 return None;
             }
-            return Some(Asked::About { who: s[lead.len()..].trim().to_string() });
+            return Some(Asked::About {
+                who: s[lead.len()..].trim().to_string(),
+            });
         }
     }
     if let Some(rest) = low.strip_prefix("keep in touch with ") {
         let start = "keep in touch with ".len();
-        if let Some(at) = rest.find(" every ").or_else(|| rest.find(" weekly")).or_else(|| rest.find(" monthly")) {
+        if let Some(at) = rest
+            .find(" every ")
+            .or_else(|| rest.find(" weekly"))
+            .or_else(|| rest.find(" monthly"))
+        {
             let who = s[start..start + at].trim().to_string();
             return cadence(&rest[at..]).map(|d| Asked::Every { who, days: Some(d) });
         }
         return None;
     }
     if let Some(rest) = low.strip_prefix("stop keeping in touch with ") {
-        return Some(Asked::Every { who: s[s.len() - rest.len()..].trim().to_string(), days: None });
+        return Some(Asked::Every {
+            who: s[s.len() - rest.len()..].trim().to_string(),
+            days: None,
+        });
     }
-    for lead in ["i talked to ", "i spoke to ", "i spoke with ", "i called ", "i met ", "i saw ", "caught up with ", "i caught up with "] {
+    for lead in [
+        "i talked to ",
+        "i spoke to ",
+        "i spoke with ",
+        "i called ",
+        "i met ",
+        "i saw ",
+        "caught up with ",
+        "i caught up with ",
+    ] {
         if let Some(rest) = low.strip_prefix(lead) {
             let who = s[lead.len()..lead.len() + rest.len()].trim();
-            let who = who.split(" today").next().unwrap_or(who).split(" yesterday").next().unwrap_or(who).trim();
+            let who = who
+                .split(" today")
+                .next()
+                .unwrap_or(who)
+                .split(" yesterday")
+                .next()
+                .unwrap_or(who)
+                .trim();
             if !who.is_empty() && who.split_whitespace().count() <= 3 {
-                return Some(Asked::Talked { who: who.to_string() });
+                return Some(Asked::Talked {
+                    who: who.to_string(),
+                });
             }
         }
     }
@@ -432,11 +520,22 @@ pub fn read(said: &str) -> Option<Asked> {
         }
     }
     // "Sam's number is 555 123 4567", "Sam's cell is ...".
-    for key in ["'s number is ", "'s phone number is ", "'s phone is ", "'s cell is ", "'s cell number is ", "'s mobile is ", "'s mobile number is "] {
+    for key in [
+        "'s number is ",
+        "'s phone number is ",
+        "'s phone is ",
+        "'s cell is ",
+        "'s cell number is ",
+        "'s mobile is ",
+        "'s mobile number is ",
+    ] {
         if let Some(at) = low.find(key) {
             let who = s[..at].trim().to_string();
             let number = s[at + key.len()..].trim().to_string();
-            if !who.is_empty() && who.split_whitespace().count() <= 3 && phone_number(&number).is_some() {
+            if !who.is_empty()
+                && who.split_whitespace().count() <= 3
+                && phone_number(&number).is_some()
+            {
                 return Some(Asked::Phone { who, number });
             }
         }
@@ -444,32 +543,62 @@ pub fn read(said: &str) -> Option<Asked> {
     // "Sam's birthday is March 4" / "Sam's birthday is 4 March".
     if let Some(at) = low.find("'s birthday is ") {
         let who = s[..at].trim().to_string();
-        let rest: Vec<&str> = low[at + "'s birthday is ".len()..].split_whitespace().collect();
+        let rest: Vec<&str> = low[at + "'s birthday is ".len()..]
+            .split_whitespace()
+            .collect();
         let (m, d) = match rest.as_slice() {
-            [a, b, ..] => match (month_no(a), b.trim_end_matches(|c: char| c.is_alphabetic()).parse::<u32>().ok()) {
+            [a, b, ..] => match (
+                month_no(a),
+                b.trim_end_matches(|c: char| c.is_alphabetic())
+                    .parse::<u32>()
+                    .ok(),
+            ) {
                 (Some(m), Some(d)) => (m, d),
-                _ => (month_no(b)?, a.trim_end_matches(|c: char| c.is_alphabetic()).parse().ok()?),
+                _ => (
+                    month_no(b)?,
+                    a.trim_end_matches(|c: char| c.is_alphabetic())
+                        .parse()
+                        .ok()?,
+                ),
             },
             _ => return None,
         };
-        return Some(Asked::Birthday { who, month: m, day: d });
+        return Some(Asked::Birthday {
+            who,
+            month: m,
+            day: d,
+        });
     }
     // "note about Sam: …" / "note on Sam: …"
     // 30 Sep 2026: spoken, there's no colon -- "note about Sam that he's
     // moving in June" -- so "that" (or a comma) does the same job.
-    for lead in ["note about ", "note on ", "remember about ", "make a note about ", "add a note about "] {
+    for lead in [
+        "note about ",
+        "note on ",
+        "remember about ",
+        "make a note about ",
+        "add a note about ",
+    ] {
         if let Some(rest) = low.strip_prefix(lead) {
             let (at, skip) = match rest.find(':') {
                 Some(c) => (c, 1),
                 None => {
-                    let m = [" that ", ", "].iter().filter_map(|m| rest.find(m).map(|i| (i, m.len()))).min_by_key(|(i, _)| *i)?;
+                    let m = [" that ", ", "]
+                        .iter()
+                        .filter_map(|m| rest.find(m).map(|i| (i, m.len())))
+                        .min_by_key(|(i, _)| *i)?;
                     m
                 }
             };
             let who = s[lead.len()..lead.len() + at].trim().to_string();
             let text = s[lead.len() + at + skip..].trim().to_string();
             let lw = who.to_ascii_lowercase();
-            if who.split_whitespace().count() > 3 || ["the ", "a ", "an ", "this ", "that "].iter().any(|p| lw.starts_with(p)) || lw == "it" {
+            if who.split_whitespace().count() > 3
+                || ["the ", "a ", "an ", "this ", "that "]
+                    .iter()
+                    .any(|p| lw.starts_with(p))
+                || lw == "it"
+            {
                 return None;
             }
             return (!who.is_empty() && !text.is_empty()).then_some(Asked::Note { who, text });
@@ -481,12 +610,16 @@ pub fn read(said: &str) -> Option<Asked> {
         let name = &s["remember ".len().."remember ".len() + at];
         // "remember that Sam's" -> "Sam".
         let name = name.strip_prefix("that ").unwrap_or(name).trim();
-        if name.is_empty() || name.split_whitespace().count() > 3 || name.eq_ignore_ascii_case("it") {
+        if name.is_empty() || name.split_whitespace().count() > 3 || name.eq_ignore_ascii_case("it")
+        {
             return None;
         }
         let text = s["remember ".len()..].trim();
         let text = text.strip_prefix("that ").unwrap_or(text).to_string();
-        return Some(Asked::Note { who: name.to_string(), text });
+        return Some(Asked::Note {
+            who: name.to_string(),
+            text,
+        });
     }
     None
 }

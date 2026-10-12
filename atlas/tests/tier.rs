@@ -54,7 +54,10 @@ fn a_question_covered_by_a_fresh_report_is_answered_from_it() {
     match tier_for("what was the big news", &[], &reports(0), HOUR) {
         Tier::FromReport { report, as_of } => {
             assert_eq!(report, "morning intel");
-            assert!(!as_of.is_empty(), "the answer must be able to carry its age");
+            assert!(
+                !as_of.is_empty(),
+                "the answer must be able to carry its age"
+            );
         }
         other => panic!("it went off to think: {other:?}"),
     }
@@ -122,14 +125,22 @@ fn thinking_is_the_slow_one_and_says_so() {
     let t = tier_for("something unfamiliar", &[], &[], 0);
     assert!(t.slow(), "the caller can't know to say 'working on it'");
     assert!(!Tier::RunNamed("x".into()).slow());
-    assert!(!Tier::FromReport { report: "r".into(), as_of: "an hour ago".into() }.slow());
+    assert!(!Tier::FromReport {
+        report: "r".into(),
+        as_of: "an hour ago".into()
+    }
+    .slow());
 }
 
 #[test]
 fn every_fall_through_records_why() {
     // A tier-three answer that should have been tier two is the thing worth
     // noticing, and it is invisible unless the reason is kept.
-    for q in ["the price right now", "something nobody covered", "the news"] {
+    for q in [
+        "the price right now",
+        "something nobody covered",
+        "the news",
+    ] {
         if let Tier::Think { why } = tier_for(q, &[], &reports(0), 900 * DAY) {
             assert!(why.len() > 15, "{q:?} fell through with no reason: {why}");
         }
@@ -142,7 +153,10 @@ fn every_fall_through_records_why() {
 fn an_ordinary_mix_says_nothing() {
     let mut m = Mix::default();
     for _ in 0..8 {
-        m.note(&Tier::FromReport { report: "r".into(), as_of: "an hour ago".into() });
+        m.note(&Tier::FromReport {
+            report: "r".into(),
+            as_of: "an hour ago".into(),
+        });
     }
     for _ in 0..4 {
         m.note(&Tier::Think { why: "x".into() });
@@ -164,6 +178,9 @@ fn never_using_a_report_is_worth_mentioning() {
 fn a_quiet_day_is_not_evidence_of_anything() {
     let mut m = Mix::default();
     m.note(&Tier::Think { why: "x".into() });
-    assert!(m.worth_saying().is_none(), "three questions is not a pattern");
+    assert!(
+        m.worth_saying().is_none(),
+        "three questions is not a pattern"
+    );
     assert_eq!(m.total(), 1);
 }

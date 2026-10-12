@@ -44,7 +44,12 @@ impl Default for SelfWorkConfig {
     fn default() -> Self {
         SelfWorkConfig {
             enabled: false,
-            may_touch: vec!["src/".into(), "tests/".into(), "config/".into(), "docs/".into()],
+            may_touch: vec![
+                "src/".into(),
+                "tests/".into(),
+                "config/".into(),
+                "docs/".into(),
+            ],
             never_touch: vec![
                 // The things that would let it widen its own permissions or
                 // hide what it did.
@@ -134,7 +139,11 @@ pub fn may_edit(path: &str, cfg: &SelfWorkConfig) -> Verdict {
             ));
         }
     }
-    if !cfg.may_touch.iter().any(|allowed| p.starts_with(allowed.trim_start_matches("./"))) {
+    if !cfg
+        .may_touch
+        .iter()
+        .any(|allowed| p.starts_with(allowed.trim_start_matches("./")))
+    {
         return Verdict::Refused(format!("{p} isn't in the parts of the project I work on"));
     }
     Verdict::Allowed
@@ -206,7 +215,10 @@ pub struct Session {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Step {
     /// Try this approach.
-    Attempt { angle: Angle, instruction: &'static str },
+    Attempt {
+        angle: Angle,
+        instruction: &'static str,
+    },
     /// It works. Explain what will be different — in behaviour, not in code —
     /// and wait.
     Propose { summary: String },
@@ -224,7 +236,10 @@ impl Session {
     /// 29 Sep 2026: the hub handed it the symptom again first, which made the
     /// symptom the cause, and every idea was refused as "the cause is a
     /// restatement of the symptom".
-    pub fn from_recommendation(r: &crate::selfaudit::Recommendation, tests_before: usize) -> Session {
+    pub fn from_recommendation(
+        r: &crate::selfaudit::Recommendation,
+        tests_before: usize,
+    ) -> Session {
         let thought = crate::selfaudit::as_thought(r);
         let mut session = Session::new(&thought.symptom, tests_before);
         for answer in [&thought.cause, &thought.where_, &thought.proof] {
@@ -268,9 +283,7 @@ impl Session {
     /// that kept asking its next question would be indistinguishable from one
     /// that was never dropped.
     pub fn still_needs(&self) -> Option<&'static str> {
-        if self.work.thought.is_some()
-            || self.work.stage == crate::pipeline::Stage::Abandoned
-        {
+        if self.work.thought.is_some() || self.work.stage == crate::pipeline::Stage::Abandoned {
             return None;
         }
         self.diagnosing.next_question()
@@ -323,7 +336,9 @@ impl Session {
     /// again, and a proving test that fails today.
     pub fn may_start(&self) -> Result<(), String> {
         match &self.work.thought {
-            None => Err("no diagnosis — what's actually wrong, and what would prove it fixed?".into()),
+            None => {
+                Err("no diagnosis — what's actually wrong, and what would prove it fixed?".into())
+            }
             Some(t) => t.is_thought_through(),
         }
     }
@@ -351,7 +366,13 @@ impl Session {
     }
 
     /// Take in a result and decide what happens next.
-    pub fn after(&mut self, tried: Tried, learned: &str, cfg: &SelfWorkConfig, scfg: &StrategyConfig) -> Step {
+    pub fn after(
+        &mut self,
+        tried: Tried,
+        learned: &str,
+        cfg: &SelfWorkConfig,
+        scfg: &StrategyConfig,
+    ) -> Step {
         for e in &tried.edits {
             if let Verdict::Refused(why) = may_edit(&e.path, cfg) {
                 return Step::Refuse(why);
@@ -376,11 +397,15 @@ impl Session {
         match acceptable {
             Ok(()) => {
                 self.best = Some(tried.clone());
-                Step::Propose { summary: self.summarise(&tried, cfg) }
+                Step::Propose {
+                    summary: self.summarise(&tried, cfg),
+                }
             }
             Err(_) => match self.campaign.next(scfg) {
                 Next::Try { angle, instruction } => Step::Attempt { angle, instruction },
-                Next::Done => Step::Propose { summary: self.summarise(&tried, cfg) },
+                Next::Done => Step::Propose {
+                    summary: self.summarise(&tried, cfg),
+                },
                 Next::Exhausted(why) => Step::HandOff(why),
             },
         }
@@ -408,9 +433,15 @@ impl Session {
         if t.is_large(cfg) {
             s.push_str(" That's a big change for one go — worth reading before you take it.");
         }
-        s.push_str(&format!(" Took {} attempt{}.",
+        s.push_str(&format!(
+            " Took {} attempt{}.",
             self.campaign.efforts.len(),
-            if self.campaign.efforts.len() == 1 { "" } else { "s" }));
+            if self.campaign.efforts.len() == 1 {
+                ""
+            } else {
+                "s"
+            }
+        ));
         s
     }
 
@@ -441,10 +472,15 @@ pub fn files_named(where_: &str, root: &std::path::Path) -> Vec<Edit> {
 
     // 1. An explicit path to a file that exists.
     for token in where_.split_whitespace() {
-        let t = token.trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != '.' && c != '_');
+        let t =
+            token.trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != '.' && c != '_');
         if t.ends_with(".rs") && root.join(t).is_file() {
             if let Ok(content) = std::fs::read_to_string(root.join(t)) {
-                out.push(Edit { path: t.to_string(), content, reason: String::new() });
+                out.push(Edit {
+                    path: t.to_string(),
+                    content,
+                    reason: String::new(),
+                });
             }
         }
     }
@@ -460,7 +496,11 @@ pub fn files_named(where_: &str, root: &std::path::Path) -> Vec<Edit> {
         let rel = format!("src/{word}.rs");
         if root.join(&rel).is_file() {
             if let Ok(content) = std::fs::read_to_string(root.join(&rel)) {
-                out.push(Edit { path: rel, content, reason: String::new() });
+                out.push(Edit {
+                    path: rel,
+                    content,
+                    reason: String::new(),
+                });
             }
         }
         if out.len() >= 3 {
@@ -500,33 +540,55 @@ explanation.";
 pub(crate) fn recipe_candidates(current: &[Edit]) -> Vec<(String, Vec<Edit>)> {
     let mut candidates = Vec::new();
     for file in current.iter().take(16) {
-        if file.content.len() > 512 * 1024 { continue; }
+        if file.content.len() > 512 * 1024 {
+            continue;
+        }
         if file.path.ends_with(".rs") {
             for (start, _) in file.content.match_indices(".take(").take(8) {
                 let rest = &file.content[start + 6..];
-                let Some(end) = rest.find(".len() - 1)") else { continue };
+                let Some(end) = rest.find(".len() - 1)") else {
+                    continue;
+                };
                 let name = &rest[..end];
-                if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') { continue; }
-                if let Ok(content) = apply_edit_blocks(&file.content, &[(format!(".take({name}.len() - 1)"), format!(".take({name}.len())"))]) {
+                if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                    continue;
+                }
+                if let Ok(content) = apply_edit_blocks(
+                    &file.content,
+                    &[(
+                        format!(".take({name}.len() - 1)"),
+                        format!(".take({name}.len())"),
+                    )],
+                ) {
                     candidates.push(("Include the omitted iterator endpoint".into(), vec![Edit { path: file.path.clone(), content, reason: "Local recipe: test whether the omitted iterator endpoint caused the failure.".into() }]));
-                    if candidates.len() >= 8 { return candidates; }
+                    if candidates.len() >= 8 {
+                        return candidates;
+                    }
                 }
             }
         }
-        if !file.path.ends_with(".py") { continue; }
+        if !file.path.ends_with(".py") {
+            continue;
+        }
         for suffix in ["[:-1]", "[1:]"] {
             for (start, _) in file.content.match_indices("sum(").take(8) {
                 let rest = &file.content[start + 4..];
-                let Some(end) = rest.find(&format!("{suffix})")) else { continue };
+                let Some(end) = rest.find(&format!("{suffix})")) else {
+                    continue;
+                };
                 let name = &rest[..end];
-                if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') { continue; }
+                if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                    continue;
+                }
                 let before = format!("sum({name}{suffix})");
                 let after = format!("sum({name})");
                 let blocks = vec![(before, after)];
                 if let Ok(content) = apply_edit_blocks(&file.content, &blocks) {
                     let edit = Edit { path: file.path.clone(), content, reason: "Local recipe: check whether the omitted endpoint caused the failing total.".into() };
                     candidates.push(("Include the omitted endpoint in a sum".into(), vec![edit]));
-                    if candidates.len() >= 8 { return candidates; }
+                    if candidates.len() >= 8 {
+                        return candidates;
+                    }
                 }
             }
         }
@@ -535,18 +597,51 @@ pub(crate) fn recipe_candidates(current: &[Edit]) -> Vec<(String, Vec<Edit>)> {
 }
 
 /// Bounded repair calls never fall back to a synchronous model adapter.
-pub(crate) struct BoundedModel<'a, 'b> { pub model: &'a dyn crate::brain::Llm, pub budget: &'a crate::tools::WorkBudget<'b> }
+pub(crate) struct BoundedModel<'a, 'b> {
+    pub model: &'a dyn crate::brain::Llm,
+    pub budget: &'a crate::tools::WorkBudget<'b>,
+}
 impl crate::brain::Llm for BoundedModel<'_, '_> {
     fn complete(&self, system: &str, user: &str) -> crate::error::Result<String> {
-        self.budget.check().map_err(crate::error::AtlasError::Platform)?;
-        if !self.model.supports_bounded_chat() { return Err(crate::error::AtlasError::Platform("this model connection cannot guarantee bounded cancellation for repair".into())); }
-        let req = crate::brain::ChatRequest { messages: vec![crate::brain::Msg::system(system), crate::brain::Msg::user(user)], tools: Vec::new(), max_tokens: 4096, force_tool: false, stable_tools: 0, aside: true, stronger: false, output_schema: None };
+        self.budget
+            .check()
+            .map_err(crate::error::AtlasError::Platform)?;
+        if !self.model.supports_bounded_chat() {
+            return Err(crate::error::AtlasError::Platform(
+                "this model connection cannot guarantee bounded cancellation for repair".into(),
+            ));
+        }
+        let req = crate::brain::ChatRequest {
+            messages: vec![
+                crate::brain::Msg::system(system),
+                crate::brain::Msg::user(user),
+            ],
+            tools: Vec::new(),
+            max_tokens: 4096,
+            force_tool: false,
+            stable_tools: 0,
+            aside: true,
+            stronger: false,
+            output_schema: None,
+        };
         let mut bytes = 0usize;
         let mut over = false;
-        let mut on_text = |text: &str| { bytes = bytes.saturating_add(text.len()); over |= bytes > 2 * 1024 * 1024; !over && !self.budget.stopping() };
-        let reply = self.model.chat_until(&req, &mut on_text, &|| !self.budget.stopping())?;
-        self.budget.check().map_err(crate::error::AtlasError::Platform)?;
-        if over || reply.text.len() > 2 * 1024 * 1024 { return Err(crate::error::AtlasError::Platform("the repair draft exceeded its safe response budget".into())); }
+        let mut on_text = |text: &str| {
+            bytes = bytes.saturating_add(text.len());
+            over |= bytes > 2 * 1024 * 1024;
+            !over && !self.budget.stopping()
+        };
+        let reply = self
+            .model
+            .chat_until(&req, &mut on_text, &|| !self.budget.stopping())?;
+        self.budget
+            .check()
+            .map_err(crate::error::AtlasError::Platform)?;
+        if over || reply.text.len() > 2 * 1024 * 1024 {
+            return Err(crate::error::AtlasError::Platform(
+                "the repair draft exceeded its safe response budget".into(),
+            ));
+        }
         Ok(reply.text)
     }
 }
@@ -584,7 +679,9 @@ pub fn draft_fix(
             );
             // Drafting a self-fix is the hard task this whole subsystem exists
             // for: escalate to the stronger model when one is configured.
-            let reply = llm.complete_hard(MEND_SYSTEM, &user).map_err(|e| e.to_string())?;
+            let reply = llm
+                .complete_hard(MEND_SYSTEM, &user)
+                .map_err(|e| e.to_string())?;
             crate::build_it::extract_code(&reply)
         } else {
             let (from, excerpt) = excerpt_for(&file.content, &thought.where_, &thought.cause);
@@ -593,20 +690,30 @@ pub fn draft_fix(
                 file.path,
                 from + 1,
             );
-            let reply = llm.complete_hard(MEND_BY_EDITS_SYSTEM, &user).map_err(|e| e.to_string())?;
+            let reply = llm
+                .complete_hard(MEND_BY_EDITS_SYSTEM, &user)
+                .map_err(|e| e.to_string())?;
             let blocks = edit_blocks(&reply);
             if blocks.is_empty() {
                 return Err(format!("the model returned no edits for {}", file.path));
             }
-            apply_edit_blocks(&file.content, &blocks).map_err(|why| format!("{} in {}", why, file.path))?
+            apply_edit_blocks(&file.content, &blocks)
+                .map_err(|why| format!("{} in {}", why, file.path))?
         };
         if fixed.trim().is_empty() {
             return Err(format!("the model returned no code for {}", file.path));
         }
         if fixed.trim() == file.content.trim() {
-            return Err(format!("the model returned {} unchanged -- no fix to try", file.path));
+            return Err(format!(
+                "the model returned {} unchanged -- no fix to try",
+                file.path
+            ));
         }
-        out.push(Edit { path: file.path.clone(), content: fixed, reason: thought.cause.clone() });
+        out.push(Edit {
+            path: file.path.clone(),
+            content: fixed,
+            reason: thought.cause.clone(),
+        });
     }
     Ok(out)
 }
@@ -642,16 +749,33 @@ pub fn excerpt_for(content: &str, where_: &str, cause: &str) -> (usize, String) 
     let lines: Vec<&str> = content.lines().collect();
     let names: Vec<String> = format!("{where_} {cause}")
         .split(|c: char| !(c.is_alphanumeric() || c == '_'))
-        .filter(|w| w.len() >= 4 && (w.contains('_') || w.chars().any(|c| c.is_uppercase()) && w.chars().any(|c| c.is_lowercase())))
+        .filter(|w| {
+            w.len() >= 4
+                && (w.contains('_')
+                    || w.chars().any(|c| c.is_uppercase()) && w.chars().any(|c| c.is_lowercase()))
+        })
         .map(str::to_string)
         .collect();
-    let hit = lines.iter().position(|l| {
-        let t = l.trim_start();
-        (t.starts_with("fn ") || t.starts_with("pub ") || t.starts_with("const ") || t.starts_with("struct ") || t.starts_with("enum ") || t.starts_with("impl"))
-            && names.iter().any(|n| l.contains(n.as_str()))
-    })
-    .or_else(|| lines.iter().position(|l| names.iter().any(|n| l.contains(n.as_str()))));
-    let from = hit.map(|h| h.saturating_sub(EXCERPT_LINES / 4)).unwrap_or(0);
+    let hit = lines
+        .iter()
+        .position(|l| {
+            let t = l.trim_start();
+            (t.starts_with("fn ")
+                || t.starts_with("pub ")
+                || t.starts_with("const ")
+                || t.starts_with("struct ")
+                || t.starts_with("enum ")
+                || t.starts_with("impl"))
+                && names.iter().any(|n| l.contains(n.as_str()))
+        })
+        .or_else(|| {
+            lines
+                .iter()
+                .position(|l| names.iter().any(|n| l.contains(n.as_str())))
+        });
+    let from = hit
+        .map(|h| h.saturating_sub(EXCERPT_LINES / 4))
+        .unwrap_or(0);
     let to = (from + EXCERPT_LINES).min(lines.len());
     (from, lines[from..to].join("\n"))
 }
@@ -662,13 +786,26 @@ pub fn edit_blocks(reply: &str) -> Vec<(String, String)> {
     let mut rest = reply;
     while let Some(a) = rest.find("<<<<<<< SEARCH") {
         let after = &rest[a + "<<<<<<< SEARCH".len()..];
-        let Some(mid) = after.find("\n=======") else { break };
+        let Some(mid) = after.find("\n=======") else {
+            break;
+        };
         let search = after[..mid].trim_start_matches(['\r', '\n']).to_string();
         let after_mid = &after[mid + "\n=======".len()..];
-        let Some(end) = after_mid.find(">>>>>>> REPLACE") else { break };
-        let replace = after_mid[..end].trim_start_matches(['\r', '\n']).trim_end_matches([' ', '\t']).to_string();
-        let replace = replace.strip_suffix('\n').map(str::to_string).unwrap_or(replace);
-        let replace = replace.strip_suffix('\r').map(str::to_string).unwrap_or(replace);
+        let Some(end) = after_mid.find(">>>>>>> REPLACE") else {
+            break;
+        };
+        let replace = after_mid[..end]
+            .trim_start_matches(['\r', '\n'])
+            .trim_end_matches([' ', '\t'])
+            .to_string();
+        let replace = replace
+            .strip_suffix('\n')
+            .map(str::to_string)
+            .unwrap_or(replace);
+        let replace = replace
+            .strip_suffix('\r')
+            .map(str::to_string)
+            .unwrap_or(replace);
         out.push((search.trim_end_matches(['\r', '\n']).to_string(), replace));
         rest = &after_mid[end + ">>>>>>> REPLACE".len()..];
     }
@@ -697,7 +834,11 @@ pub fn apply_edit_blocks(content: &str, blocks: &[(String, String)]) -> Result<S
         let want: Vec<&str> = search.lines().map(str::trim).collect();
         let have: Vec<&str> = text.lines().collect();
         let starts: Vec<usize> = (0..=have.len().saturating_sub(want.len()))
-            .filter(|&s| want.iter().enumerate().all(|(k, w)| have.get(s + k).is_some_and(|h| h.trim() == *w)))
+            .filter(|&s| {
+                want.iter()
+                    .enumerate()
+                    .all(|(k, w)| have.get(s + k).is_some_and(|h| h.trim() == *w))
+            })
             .collect();
         match starts.len() {
             0 => return Err(format!("edit {} doesn't match the file", i + 1)),
@@ -729,7 +870,11 @@ pub fn lines_touched(before: &[Edit], after: &[Edit]) -> usize {
     after
         .iter()
         .map(|a| {
-            let was = before.iter().find(|b| b.path == a.path).map(|b| b.content.as_str()).unwrap_or("");
+            let was = before
+                .iter()
+                .find(|b| b.path == a.path)
+                .map(|b| b.content.as_str())
+                .unwrap_or("");
             crate::diff::lines_changed(was, &a.content)
         })
         .sum()
@@ -780,18 +925,25 @@ pub const SUITE_LIMIT_SECS: u64 = 45 * 60;
 /// something already changed in it.
 ///
 /// The heartbeat is refreshed while waiting, for the reason above.
-pub fn run_the_proof(
-    test_name: &str,
-    cfg: &SelfWorkConfig,
-    root: &std::path::Path,
-) -> ProofToday {
+pub fn run_the_proof(test_name: &str, cfg: &SelfWorkConfig, root: &std::path::Path) -> ProofToday {
     run_the_proof_controlled(test_name, cfg, root, None)
 }
 
-pub(crate) fn run_the_proof_controlled(test_name: &str, cfg: &SelfWorkConfig, root: &std::path::Path, budget: Option<&crate::tools::WorkBudget<'_>>) -> ProofToday {
+pub(crate) fn run_the_proof_controlled(
+    test_name: &str,
+    cfg: &SelfWorkConfig,
+    root: &std::path::Path,
+    budget: Option<&crate::tools::WorkBudget<'_>>,
+) -> ProofToday {
     let filter = test_name.trim();
-    if filter.is_empty() { return ProofToday::CouldNotRun("no test was named".into()); }
-    if let Some(budget) = budget { if let Err(why) = budget.check() { return ProofToday::CouldNotRun(why); } }
+    if filter.is_empty() {
+        return ProofToday::CouldNotRun("no test was named".into());
+    }
+    if let Some(budget) = budget {
+        if let Err(why) = budget.check() {
+            return ProofToday::CouldNotRun(why);
+        }
+    }
     let mut parts = cfg.test_command.split_whitespace();
     let program = parts.next().unwrap_or("cargo");
     let mut cmd = crate::tools::command(program);
@@ -801,17 +953,25 @@ pub(crate) fn run_the_proof_controlled(test_name: &str, cfg: &SelfWorkConfig, ro
     let limit = budget.map_or(cap, |b| b.remaining(cap));
     let stopping = || budget.is_some_and(|b| b.stopping());
     let run = crate::tools::run_scoped(&mut cmd, limit, 8 * 1024 * 1024, None, Some(&stopping));
-    if let Some(b) = budget { if let Err(why) = b.check() { return ProofToday::CouldNotRun(why); } }
+    if let Some(b) = budget {
+        if let Err(why) = b.check() {
+            return ProofToday::CouldNotRun(why);
+        }
+    }
     let succeeded = matches!(run.end, crate::tools::ProcessEnd::Exited(status) if status.success());
     let exited = matches!(run.end, crate::tools::ProcessEnd::Exited(_));
     let complete = !run.truncated;
     let (_, output) = run.said(8 * 1024 * 1024);
-    if !exited || !complete { return ProofToday::CouldNotRun(output); }
+    if !exited || !complete {
+        return ProofToday::CouldNotRun(output);
+    }
     let proof = read_a_proof_run(&output);
-    if proof == ProofToday::PassesAlready && !succeeded { ProofToday::CouldNotRun("the test text reported success but the process failed".into()) }
-    else { proof }
+    if proof == ProofToday::PassesAlready && !succeeded {
+        ProofToday::CouldNotRun("the test text reported success but the process failed".into())
+    } else {
+        proof
+    }
 }
-
 
 /// Read a test run's output. Separated from running it so the reading is
 /// testable without a compiler.
@@ -825,7 +985,11 @@ pub fn read_a_proof_run(text: &str) -> ProofToday {
             "the tree doesn't build, so the test couldn't tell me anything".into(),
         );
     }
-    let RunRead { passed, failed, crashed } = read_run(text);
+    let RunRead {
+        passed,
+        failed,
+        crashed,
+    } = read_run(text);
     if crashed {
         return ProofToday::Fails;
     }
@@ -865,10 +1029,19 @@ pub fn read_run(text: &str) -> RunRead {
     let mut suites_started = 0usize;
     let mut suites_ended = 0usize;
     let count = |rest: &str, r: &mut RunRead| {
-        let words: Vec<&str> = rest.split(|c: char| c.is_whitespace() || c == ',').filter(|w| !w.is_empty()).collect();
+        let words: Vec<&str> = rest
+            .split(|c: char| c.is_whitespace() || c == ',')
+            .filter(|w| !w.is_empty())
+            .collect();
         for pair in words.windows(2) {
-            let Ok(n) = pair[0].trim_end_matches([';', '.', ':']).parse::<usize>() else { continue };
-            match pair[1].trim_end_matches([';', '.', ',']).to_lowercase().as_str() {
+            let Ok(n) = pair[0].trim_end_matches([';', '.', ':']).parse::<usize>() else {
+                continue;
+            };
+            match pair[1]
+                .trim_end_matches([';', '.', ','])
+                .to_lowercase()
+                .as_str()
+            {
                 "passed" | "passing" => r.passed += n,
                 "failed" | "failing" | "errors" | "error" => r.failed += n,
                 _ => {}
@@ -877,7 +1050,9 @@ pub fn read_run(text: &str) -> RunRead {
     };
     for line in text.lines() {
         let l = line.trim();
-        if l.starts_with("Running ") && (l.contains("target/") || l.contains("target\\") || l.contains("deps")) {
+        if l.starts_with("Running ")
+            && (l.contains("target/") || l.contains("target\\") || l.contains("deps"))
+        {
             suites_started += 1;
         }
         if let Some(rest) = l.strip_prefix("test result:") {
@@ -886,7 +1061,12 @@ pub fn read_run(text: &str) -> RunRead {
         }
         // A test binary killed by a signal, or that exited without its
         // summary: cargo says so in its own words.
-        if l.contains("process didn't exit successfully") && (l.contains("signal:") || l.contains("SIGSEGV") || l.contains("SIGABRT") || l.contains("SIGKILL")) {
+        if l.contains("process didn't exit successfully")
+            && (l.contains("signal:")
+                || l.contains("SIGSEGV")
+                || l.contains("SIGABRT")
+                || l.contains("SIGKILL"))
+        {
             r.crashed = true;
         }
         if l.contains("has overflowed its stack") {
@@ -905,15 +1085,26 @@ pub fn read_run(text: &str) -> RunRead {
     for line in text.lines() {
         let l = line.trim();
         let lower = l.to_lowercase();
-        let pytest = l.starts_with('=') && l.ends_with('=') && (lower.contains(" passed") || lower.contains(" failed")) && lower.contains(" in ");
+        let pytest = l.starts_with('=')
+            && l.ends_with('=')
+            && (lower.contains(" passed") || lower.contains(" failed"))
+            && lower.contains(" in ");
         let jest = lower.starts_with("tests:") && lower.contains("total");
         if pytest || jest {
             found = true;
             count(l.trim_matches('='), &mut r);
-        } else if let Some(n) = lower.strip_prefix("# pass ").or_else(|| lower.strip_prefix("ℹ pass ")).and_then(|n| n.trim().parse::<usize>().ok()) {
+        } else if let Some(n) = lower
+            .strip_prefix("# pass ")
+            .or_else(|| lower.strip_prefix("ℹ pass "))
+            .and_then(|n| n.trim().parse::<usize>().ok())
+        {
             found = true;
             r.passed += n;
-        } else if let Some(n) = lower.strip_prefix("# fail ").or_else(|| lower.strip_prefix("ℹ fail ")).and_then(|n| n.trim().parse::<usize>().ok()) {
+        } else if let Some(n) = lower
+            .strip_prefix("# fail ")
+            .or_else(|| lower.strip_prefix("ℹ fail "))
+            .and_then(|n| n.trim().parse::<usize>().ok())
+        {
             found = true;
             r.failed += n;
         } else if l.starts_with("--- FAIL:") {
@@ -924,7 +1115,12 @@ pub fn read_run(text: &str) -> RunRead {
             r.passed += 1;
         }
     }
-    if !found && text.lines().any(|l| l.starts_with("ok  \t") || l.starts_with("ok  	")) && !text.lines().any(|l| l.starts_with("FAIL")) {
+    if !found
+        && text
+            .lines()
+            .any(|l| l.starts_with("ok  \t") || l.starts_with("ok  	"))
+        && !text.lines().any(|l| l.starts_with("FAIL"))
+    {
         // `go test` without -v: a package line per package, no counts.
         r.passed = text.lines().filter(|l| l.starts_with("ok ")).count();
     }
@@ -932,18 +1128,41 @@ pub fn read_run(text: &str) -> RunRead {
 }
 
 /// Run the test suite in the sandbox and read the result.
-pub(crate) fn run_tests_controlled(sandbox: &mut Sandbox, cfg: &SelfWorkConfig, budget: Option<&crate::tools::WorkBudget<'_>>) -> Tried {
+pub(crate) fn run_tests_controlled(
+    sandbox: &mut Sandbox,
+    cfg: &SelfWorkConfig,
+    budget: Option<&crate::tools::WorkBudget<'_>>,
+) -> Tried {
     let tool = crate::tools::ExternalTool {
-        command: cfg.test_command.split_whitespace().next().unwrap_or("cargo").into(),
-        args: cfg.test_command.split_whitespace().skip(1).map(String::from).collect(),
+        command: cfg
+            .test_command
+            .split_whitespace()
+            .next()
+            .unwrap_or("cargo")
+            .into(),
+        args: cfg
+            .test_command
+            .split_whitespace()
+            .skip(1)
+            .map(String::from)
+            .collect(),
         // A cold build of the whole tree plus the suite, on a laptop. Past
         // this it is stuck, and is stopped rather than waited on for ever.
-        timeout_secs: budget.map_or(SUITE_LIMIT_SECS, |b| b.remaining(std::time::Duration::from_secs(SUITE_LIMIT_SECS)).as_secs().max(1)),
+        timeout_secs: budget.map_or(SUITE_LIMIT_SECS, |b| {
+            b.remaining(std::time::Duration::from_secs(SUITE_LIMIT_SECS))
+                .as_secs()
+                .max(1)
+        }),
         ..Default::default()
     };
     let stop = || budget.is_some_and(|b| b.stopping());
     let mut attempt = sandbox.run_controlled(&tool, &Default::default(), 20_000, Some(&stop));
-    if let Some(b) = budget { if let Err(why) = b.check() { attempt.passed = false; attempt.output = format!("error: {why}"); } }
+    if let Some(b) = budget {
+        if let Err(why) = b.check() {
+            attempt.passed = false;
+            attempt.output = format!("error: {why}");
+        }
+    }
     from_attempt(&attempt)
 }
 
@@ -966,7 +1185,11 @@ pub fn count_passing(output: &str) -> usize {
     if !output.contains("test result:") {
         // Another runner's summary (`read_run`): its passes, when none failed.
         let r = read_run(output);
-        return if r.failed == 0 && !r.crashed { r.passed } else { 0 };
+        return if r.failed == 0 && !r.crashed {
+            r.passed
+        } else {
+            0
+        };
     }
     output
         .lines()
@@ -1120,7 +1343,9 @@ pub fn what_holds_it_back(
 
         // The shapes that make a check pass without fixing anything. Read from
         // what would land, against what is there now.
-        let Ok(after) = std::fs::read_to_string(&c.source) else { continue };
+        let Ok(after) = std::fs::read_to_string(&c.source) else {
+            continue;
+        };
         let before = std::fs::read_to_string(&c.target).unwrap_or_default();
         let proposed = crate::mend::Proposed {
             theory: String::new(),
@@ -1152,7 +1377,9 @@ pub fn what_holds_it_back(
     // every file it overwrites into `landed-over/` first.
     if !rel_paths.is_empty() {
         // Grants stand until you take them back (Eric, B3).
-        let granted = grant.granted().map(|up_to| crate::selfgrant::Granted { up_to, at: 0 });
+        let granted = grant
+            .granted()
+            .map(|up_to| crate::selfgrant::Granted { up_to, at: 0 });
         match crate::selfgrant::may_land(
             &rel_paths,
             true,
@@ -1189,7 +1416,10 @@ fn added_lines(before: &str, after: &str) -> Vec<String> {
 /// Only ever called with an empty `what_holds_it_back`. The old version of
 /// each file goes to `keep` first -- a fix Atlas landed on its own has to be
 /// something you can put back without asking it.
-pub fn land(changes: &[crate::sandbox::Change], keep: &std::path::Path) -> crate::error::Result<usize> {
+pub fn land(
+    changes: &[crate::sandbox::Change],
+    keep: &std::path::Path,
+) -> crate::error::Result<usize> {
     let root = crate::store::state_root_for(keep)?.unwrap_or_else(|| keep.to_path_buf());
     let _state = crate::store::state_transaction(&root)?;
     std::fs::create_dir_all(keep)?;
@@ -1223,16 +1453,17 @@ pub fn land(changes: &[crate::sandbox::Change], keep: &std::path::Path) -> crate
     // held above, and delete the new files we created. A half-landed change can
     // never be left on the machine, which is what makes an unattended land safe.
     let mut applied: Vec<&crate::sandbox::Change> = Vec::new();
-    let fail = |applied: &[&crate::sandbox::Change], e: std::io::Error| -> crate::error::Result<usize> {
-        for c in applied {
-            if c.new_file {
-                crate::heard!(std::fs::remove_file(&c.target));
-            } else if let Some((_, old)) = old_bytes.iter().find(|(t, _)| t == &c.target) {
-                crate::kept!(std::fs::write(&c.target, old));
+    let fail =
+        |applied: &[&crate::sandbox::Change], e: std::io::Error| -> crate::error::Result<usize> {
+            for c in applied {
+                if c.new_file {
+                    crate::heard!(std::fs::remove_file(&c.target));
+                } else if let Some((_, old)) = old_bytes.iter().find(|(t, _)| t == &c.target) {
+                    crate::kept!(std::fs::write(&c.target, old));
+                }
             }
-        }
-        Err(e.into())
-    };
+            Err(e.into())
+        };
     for c in changes {
         if let Some(parent) = c.target.parent() {
             if let Err(e) = std::fs::create_dir_all(parent) {
@@ -1302,13 +1533,20 @@ impl ProjectProof {
                 self.tests_run
             )
         } else {
-            format!("It doesn't hold up inside {project}: {}", first_line_of(&self.output))
+            format!(
+                "It doesn't hold up inside {project}: {}",
+                first_line_of(&self.output)
+            )
         }
     }
 }
 
 fn first_line_of(s: &str) -> String {
-    s.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("no output").to_string()
+    s.lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("no output")
+        .to_string()
 }
 
 /// How long a project's own suite may run before Atlas stops waiting. Larger
@@ -1334,8 +1572,16 @@ pub fn prove_in_project(
     prove_in_project_controlled(root, test_command, edits, base, None)
 }
 
-pub(crate) fn prove_in_project_controlled(root: &std::path::Path, test_command: &str, edits: &[Edit], base: &std::path::Path, budget: Option<&crate::tools::WorkBudget<'_>>) -> Result<ProjectProof, String> {
-    if let Some(b) = budget { b.check()?; }
+pub(crate) fn prove_in_project_controlled(
+    root: &std::path::Path,
+    test_command: &str,
+    edits: &[Edit],
+    base: &std::path::Path,
+    budget: Option<&crate::tools::WorkBudget<'_>>,
+) -> Result<ProjectProof, String> {
+    if let Some(b) = budget {
+        b.check()?;
+    }
     if !root.is_dir() {
         return Err(format!("{} isn't a folder I can reach", root.display()));
     }
@@ -1354,7 +1600,8 @@ pub(crate) fn prove_in_project_controlled(root: &std::path::Path, test_command: 
     // and dependency caches.
     let dst = base.join(format!("projfix-{}", crate::store::now()));
     crate::heard!(std::fs::remove_dir_all(&dst));
-    copy_project_controlled(root, &dst, budget, &mut (0usize, 0u64)).map_err(|e| format!("couldn't copy the project to work in: {e}"))?;
+    copy_project_controlled(root, &dst, budget, &mut (0usize, 0u64))
+        .map_err(|e| format!("couldn't copy the project to work in: {e}"))?;
 
     // Apply the edits in the copy.
     for e in edits {
@@ -1368,23 +1615,45 @@ pub(crate) fn prove_in_project_controlled(root: &std::path::Path, test_command: 
     }
 
     // Run the project's own suite in the copy, bounded.
-    let (exited_successfully, output) = run_bounded_controlled(cmd, &dst, PROJECT_PROOF_BUDGET_SECS, budget)?;
+    let (exited_successfully, output) =
+        run_bounded_controlled(cmd, &dst, PROJECT_PROOF_BUDGET_SECS, budget)?;
     crate::heard!(std::fs::remove_dir_all(&dst));
 
     let read = read_a_proof_run(&output);
     let built_and_passed = exited_successfully && read == ProofToday::PassesAlready;
     let tests_run = count_passing(&output);
-    Ok(ProjectProof { built_and_passed, tests_run, output, replaced_existing })
+    Ok(ProjectProof {
+        built_and_passed,
+        tests_run,
+        output,
+        replaced_existing,
+    })
 }
 
-
-fn copy_project_controlled(from: &std::path::Path, to: &std::path::Path, budget: Option<&crate::tools::WorkBudget<'_>>, copied: &mut (usize, u64)) -> std::io::Result<()> {
-    if let Some(b) = budget { b.check().map_err(std::io::Error::other)?; }
-    const SKIP: &[&str] =
-        &["target", ".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"];
+fn copy_project_controlled(
+    from: &std::path::Path,
+    to: &std::path::Path,
+    budget: Option<&crate::tools::WorkBudget<'_>>,
+    copied: &mut (usize, u64),
+) -> std::io::Result<()> {
+    if let Some(b) = budget {
+        b.check().map_err(std::io::Error::other)?;
+    }
+    const SKIP: &[&str] = &[
+        "target",
+        ".git",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "dist",
+        "build",
+    ];
     std::fs::create_dir_all(to)?;
     for entry in std::fs::read_dir(from)? {
-        if let Some(b) = budget { b.check().map_err(std::io::Error::other)?; }
+        if let Some(b) = budget {
+            b.check().map_err(std::io::Error::other)?;
+        }
         let entry = entry?;
         let name = entry.file_name();
         if SKIP.iter().any(|s| *s == name) {
@@ -1396,18 +1665,40 @@ fn copy_project_controlled(from: &std::path::Path, to: &std::path::Path, budget:
             copy_project_controlled(&src, &dst, budget, copied)?;
         } else if src.is_file() {
             use std::io::{Read, Write};
-            copied.0 = copied.0.saturating_add(1); copied.1 = copied.1.saturating_add(entry.metadata()?.len());
-            if copied.0 > 8192 || copied.1 > 128 * 1024 * 1024 { return Err(std::io::Error::other("project repair exceeds the bounded copy budget; no complete copy was made")); }
-            let mut input = std::fs::File::open(&src)?; let mut output = std::fs::File::create(&dst)?; let mut bytes = [0u8; 64 * 1024];
-            loop { if let Some(b) = budget { b.check().map_err(std::io::Error::other)?; } let n = input.read(&mut bytes)?; if n == 0 { break; } output.write_all(&bytes[..n])?; }
+            copied.0 = copied.0.saturating_add(1);
+            copied.1 = copied.1.saturating_add(entry.metadata()?.len());
+            if copied.0 > 8192 || copied.1 > 128 * 1024 * 1024 {
+                return Err(std::io::Error::other(
+                    "project repair exceeds the bounded copy budget; no complete copy was made",
+                ));
+            }
+            let mut input = std::fs::File::open(&src)?;
+            let mut output = std::fs::File::create(&dst)?;
+            let mut bytes = [0u8; 64 * 1024];
+            loop {
+                if let Some(b) = budget {
+                    b.check().map_err(std::io::Error::other)?;
+                }
+                let n = input.read(&mut bytes)?;
+                if n == 0 {
+                    break;
+                }
+                output.write_all(&bytes[..n])?;
+            }
         }
     }
     Ok(())
 }
 
-
-fn run_bounded_controlled(command: &str, dir: &std::path::Path, budget_secs: u64, budget: Option<&crate::tools::WorkBudget<'_>>) -> Result<(bool, String), String> {
-    if let Some(b) = budget { b.check()?; }
+fn run_bounded_controlled(
+    command: &str,
+    dir: &std::path::Path,
+    budget_secs: u64,
+    budget: Option<&crate::tools::WorkBudget<'_>>,
+) -> Result<(bool, String), String> {
+    if let Some(b) = budget {
+        b.check()?;
+    }
     let mut parts = command.split_whitespace();
     let program = parts.next().unwrap_or("cargo");
     let mut cmd = crate::tools::command(program);
@@ -1415,25 +1706,39 @@ fn run_bounded_controlled(command: &str, dir: &std::path::Path, budget_secs: u64
     crate::sandbox::warm_cargo(&mut cmd, program, &[]);
     let cap = std::time::Duration::from_secs(budget_secs);
     let stop = || budget.is_some_and(|b| b.stopping());
-    let run = crate::tools::run_scoped(&mut cmd, budget.map_or(cap, |b| b.remaining(cap)), 8 * 1024 * 1024, None, Some(&stop));
+    let run = crate::tools::run_scoped(
+        &mut cmd,
+        budget.map_or(cap, |b| b.remaining(cap)),
+        8 * 1024 * 1024,
+        None,
+        Some(&stop),
+    );
     let completed = matches!(run.end, crate::tools::ProcessEnd::Exited(_)) && !run.truncated;
     let (passed, text) = run.said(8 * 1024 * 1024);
-    if let Some(b) = budget { b.check()?; }
-    if completed { Ok((passed, text)) }
-    else { Err(format!("the verification command did not complete successfully: {text}")) }
+    if let Some(b) = budget {
+        b.check()?;
+    }
+    if completed {
+        Ok((passed, text))
+    } else {
+        Err(format!(
+            "the verification command did not complete successfully: {text}"
+        ))
+    }
 }
 
 /// Is this folder Atlas's own source -- a `Cargo.toml` naming the `atlas`
 /// package -- rather than wherever an installed copy was started from?
 pub fn is_a_source_checkout(root: &std::path::Path) -> bool {
     std::fs::read_to_string(root.join("Cargo.toml"))
-        .map(|t| t.lines().any(|l| {
-            let l = l.replace(' ', "");
-            l == "name=\"atlas\""
-        }))
+        .map(|t| {
+            t.lines().any(|l| {
+                let l = l.replace(' ', "");
+                l == "name=\"atlas\""
+            })
+        })
         .unwrap_or(false)
 }
-
 
 /// Where Atlas's own source is on this computer, if anywhere: the folder set
 /// in settings, then `ATLAS_SOURCE`, then the folder it was started in and
@@ -1456,7 +1761,8 @@ pub fn source_root(cfg: &SelfWorkConfig) -> Option<std::path::PathBuf> {
             return Some(p);
         }
     }
-    if let Some(p) = crate::doctor::lookup_env("ATLAS_SOURCE").and_then(|e| here(PathBuf::from(e))) {
+    if let Some(p) = crate::doctor::lookup_env("ATLAS_SOURCE").and_then(|e| here(PathBuf::from(e)))
+    {
         return Some(p);
     }
     if let Some(p) = std::env::current_dir().ok().and_then(here) {
@@ -1469,14 +1775,19 @@ pub fn source_root(cfg: &SelfWorkConfig) -> Option<std::path::PathBuf> {
             }
         }
     }
-    let home = crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME"))?;
+    let home =
+        crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME"))?;
     // The walk below reads up to 4000 folders. Its answer is kept for ten
     // minutes (2 Oct 2026: asked every tick, it was most of the daemon's
     // idle CPU), and is checked still to be a checkout before it's reused.
-    static WALKED: std::sync::Mutex<Option<(String, std::time::Instant, Option<PathBuf>)>> = std::sync::Mutex::new(None);
+    static WALKED: std::sync::Mutex<Option<(String, std::time::Instant, Option<PathBuf>)>> =
+        std::sync::Mutex::new(None);
     if let Ok(w) = WALKED.lock().or_else(crate::crash::unpoison) {
         if let Some((h, at, found)) = w.as_ref() {
-            if *h == home && at.elapsed() < std::time::Duration::from_secs(600) && found.as_ref().is_none_or(|p| is_a_source_checkout(p)) {
+            if *h == home
+                && at.elapsed() < std::time::Duration::from_secs(600)
+                && found.as_ref().is_none_or(|p| is_a_source_checkout(p))
+            {
                 return found.clone();
             }
         }
@@ -1490,20 +1801,37 @@ pub fn source_root(cfg: &SelfWorkConfig) -> Option<std::path::PathBuf> {
 
 fn walk_home_for_source(home: &str) -> Option<std::path::PathBuf> {
     use std::path::PathBuf;
-    const SKIP: &[&str] = &["appdata", "library", "pictures", "music", "videos", "node_modules", "target", "onedrive", "dropbox", "google drive", "icloud drive"];
+    const SKIP: &[&str] = &[
+        "appdata",
+        "library",
+        "pictures",
+        "music",
+        "videos",
+        "node_modules",
+        "target",
+        "onedrive",
+        "dropbox",
+        "google drive",
+        "icloud drive",
+    ];
     let mut level = vec![PathBuf::from(home)];
     let mut seen = 0usize;
     for _ in 0..3 {
         let mut next = Vec::new();
         for d in &level {
-            let Ok(rd) = std::fs::read_dir(d) else { continue };
+            let Ok(rd) = std::fs::read_dir(d) else {
+                continue;
+            };
             for e in rd.flatten() {
                 seen += 1;
                 if seen > 4000 {
                     return None;
                 }
                 let name = e.file_name().to_string_lossy().to_lowercase();
-                if name.starts_with('.') || SKIP.contains(&name.as_str()) || !e.file_type().is_ok_and(|t| t.is_dir()) {
+                if name.starts_with('.')
+                    || SKIP.contains(&name.as_str())
+                    || !e.file_type().is_ok_and(|t| t.is_dir())
+                {
                     continue;
                 }
                 if is_a_source_checkout(&e.path()) {
@@ -1527,21 +1855,34 @@ mod edits_for_a_big_file {
         let reply = "<<<<<<< SEARCH\nfn b() {\n    2\n=======\nfn b() {\n    3\n>>>>>>> REPLACE\n";
         let blocks = edit_blocks(reply);
         assert_eq!(blocks.len(), 1);
-        assert_eq!(apply_edit_blocks(file, &blocks).unwrap(), "fn a() {\n    1\n}\nfn b() {\n    3\n}\n");
+        assert_eq!(
+            apply_edit_blocks(file, &blocks).unwrap(),
+            "fn a() {\n    1\n}\nfn b() {\n    3\n}\n"
+        );
     }
 
     #[test]
     fn indentation_a_small_model_got_wrong_still_matches() {
         let file = "impl X {\n        fn go(&self) -> u32 {\n            7\n        }\n}\n";
-        let blocks = vec![("fn go(&self) -> u32 {\n    7".to_string(), "        fn go(&self) -> u32 {\n            8".to_string())];
-        assert_eq!(apply_edit_blocks(file, &blocks).unwrap(), "impl X {\n        fn go(&self) -> u32 {\n            8\n        }\n}\n");
+        let blocks = vec![(
+            "fn go(&self) -> u32 {\n    7".to_string(),
+            "        fn go(&self) -> u32 {\n            8".to_string(),
+        )];
+        assert_eq!(
+            apply_edit_blocks(file, &blocks).unwrap(),
+            "impl X {\n        fn go(&self) -> u32 {\n            8\n        }\n}\n"
+        );
     }
 
     #[test]
     fn a_block_that_matches_nowhere_or_twice_fails_rather_than_guessing() {
         let file = "x = 1\nx = 1\n";
-        assert!(apply_edit_blocks(file, &[("x = 1".into(), "x = 2".into())]).unwrap_err().contains("2 places"));
-        assert!(apply_edit_blocks(file, &[("y = 1".into(), "y = 2".into())]).unwrap_err().contains("doesn't match"));
+        assert!(apply_edit_blocks(file, &[("x = 1".into(), "x = 2".into())])
+            .unwrap_err()
+            .contains("2 places"));
+        assert!(apply_edit_blocks(file, &[("y = 1".into(), "y = 2".into())])
+            .unwrap_err()
+            .contains("doesn't match"));
     }
 
     #[test]
@@ -1564,13 +1905,28 @@ mod bounded_repair_tests {
     use super::*;
     use crate::brain::Llm;
     struct UnsafeModel;
-    impl Llm for UnsafeModel { fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> { panic!("an unbounded model must never be called") } }
+    impl Llm for UnsafeModel {
+        fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> {
+            panic!("an unbounded model must never be called")
+        }
+    }
     struct WaitingModel;
     impl Llm for WaitingModel {
-        fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> { panic!("bounded repair must use chat_until") }
-        fn supports_bounded_chat(&self) -> bool { true }
-        fn chat_until(&self, _: &crate::brain::ChatRequest, _: &mut dyn FnMut(&str) -> bool, keep: &dyn Fn() -> bool) -> crate::error::Result<crate::brain::ChatReply> {
-            while keep() { std::thread::sleep(std::time::Duration::from_millis(5)); }
+        fn complete(&self, _: &str, _: &str) -> crate::error::Result<String> {
+            panic!("bounded repair must use chat_until")
+        }
+        fn supports_bounded_chat(&self) -> bool {
+            true
+        }
+        fn chat_until(
+            &self,
+            _: &crate::brain::ChatRequest,
+            _: &mut dyn FnMut(&str) -> bool,
+            keep: &dyn Fn() -> bool,
+        ) -> crate::error::Result<crate::brain::ChatReply> {
+            while keep() {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
             Ok(crate::brain::ChatReply::from_text("unfinished"))
         }
     }
@@ -1578,27 +1934,57 @@ mod bounded_repair_tests {
     fn unbounded_model_is_refused_and_bounded_model_deadline_is_real() {
         let stop = || false;
         let budget = crate::tools::WorkBudget::new(std::time::Duration::from_millis(40), &stop);
-        let unsafe_model = BoundedModel { model: &UnsafeModel, budget: &budget };
-        assert!(unsafe_model.complete("repair", "source").unwrap_err().to_string().contains("cannot guarantee"));
-        let model = BoundedModel { model: &WaitingModel, budget: &budget };
+        let unsafe_model = BoundedModel {
+            model: &UnsafeModel,
+            budget: &budget,
+        };
+        assert!(unsafe_model
+            .complete("repair", "source")
+            .unwrap_err()
+            .to_string()
+            .contains("cannot guarantee"));
+        let model = BoundedModel {
+            model: &WaitingModel,
+            budget: &budget,
+        };
         let start = std::time::Instant::now();
-        assert!(model.complete("repair", "source").unwrap_err().to_string().contains("time budget"));
+        assert!(model
+            .complete("repair", "source")
+            .unwrap_err()
+            .to_string()
+            .contains("time budget"));
         assert!(start.elapsed() < std::time::Duration::from_secs(1));
     }
     #[test]
     fn exhausted_shared_budget_refuses_a_later_command_before_action() {
         let stop = || false;
         let budget = crate::tools::WorkBudget::new(std::time::Duration::ZERO, &stop);
-        let result = run_bounded_controlled("a-program-that-must-never-start", std::path::Path::new("."), 60, Some(&budget));
+        let result = run_bounded_controlled(
+            "a-program-that-must-never-start",
+            std::path::Path::new("."),
+            60,
+            Some(&budget),
+        );
         assert!(result.unwrap_err().contains("time budget"));
     }
     #[test]
     fn ambiguous_recipe_is_not_guessed_and_rust_endpoint_candidate_is_structured() {
-        let edit = Edit { path: "pricing.py".into(), content: "sum(prices[:-1]) + sum(prices[:-1])".into(), reason: String::new() };
+        let edit = Edit {
+            path: "pricing.py".into(),
+            content: "sum(prices[:-1]) + sum(prices[:-1])".into(),
+            reason: String::new(),
+        };
         assert!(recipe_candidates(&[edit]).is_empty());
-        let rust = Edit { path: "pricing.rs".into(), content: "values.iter().take(values.len() - 1).sum::<i32>()".into(), reason: String::new() };
+        let rust = Edit {
+            path: "pricing.rs".into(),
+            content: "values.iter().take(values.len() - 1).sum::<i32>()".into(),
+            reason: String::new(),
+        };
         let candidates = recipe_candidates(&[rust]);
         assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].1[0].content, "values.iter().take(values.len()).sum::<i32>()");
+        assert_eq!(
+            candidates[0].1[0].content,
+            "values.iter().take(values.len()).sum::<i32>()"
+        );
     }
 }

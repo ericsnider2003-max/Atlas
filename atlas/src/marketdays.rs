@@ -86,7 +86,10 @@ pub fn holidays(y: i32) -> Vec<((i32, u32, u32), &'static str)> {
     if weekday(y, 1, 1) != 5 {
         out.push((observed(y, 1, 1), "New Year's Day"));
     }
-    out.push(((y, 1, nth_weekday(y, 1, 0, 3)), "Martin Luther King Jr. Day"));
+    out.push((
+        (y, 1, nth_weekday(y, 1, 0, 3)),
+        "Martin Luther King Jr. Day",
+    ));
     out.push(((y, 2, nth_weekday(y, 2, 0, 3)), "Washington's Birthday"));
     let (em, ed) = easter(y);
     let gf = crate::market::time::civil_from_days(days_from_civil(y, em, ed) - 2);
@@ -145,14 +148,28 @@ pub fn open_now(now: i64) -> String {
     };
     let at = |mm: u32| {
         let (h, mi) = (mm / 60, mm % 60);
-        let (h12, ap) = if h >= 12 { (if h > 12 { h - 12 } else { h }, "pm") } else { (h, "am") };
-        if mi == 0 { format!("{h12} {ap}") } else { format!("{h12}:{mi:02} {ap}") }
+        let (h12, ap) = if h >= 12 {
+            (if h > 12 { h - 12 } else { h }, "pm")
+        } else {
+            (h, "am")
+        };
+        if mi == 0 {
+            format!("{h12} {ap}")
+        } else {
+            format!("{h12}:{mi:02} {ap}")
+        }
     };
     match today {
         Day::Open | Day::EarlyClose(_) if mins >= open && mins < close_today => {
-            format!("Yes -- US markets are open until {} New York time.", at(close_today))
+            format!(
+                "Yes -- US markets are open until {} New York time.",
+                at(close_today)
+            )
         }
-        Day::Open | Day::EarlyClose(_) if mins < open => format!("Not yet -- US markets open at 9:30 am New York time, in {} minutes.", open - mins),
+        Day::Open | Day::EarlyClose(_) if mins < open => format!(
+            "Not yet -- US markets open at 9:30 am New York time, in {} minutes.",
+            open - mins
+        ),
         _ => {
             let why = match today {
                 Day::Weekend => "it's the weekend".to_string(),
@@ -168,15 +185,28 @@ pub fn open_now(now: i64) -> String {
                     break (yy, mm, dd);
                 }
             };
-            format!("No -- {why}. They open next on {}-{:02}-{:02} at 9:30 am New York time.", next.0, next.1, next.2)
+            format!(
+                "No -- {why}. They open next on {}-{:02}-{:02} at 9:30 am New York time.",
+                next.0, next.1, next.2
+            )
         }
     }
 }
 
 /// CPI release dates, 8:30 am New York: hand-entered, with an expiry.
 const CPI: &[(i32, u32, u32)] = &[
-    (2026, 1, 13), (2026, 2, 13), (2026, 3, 11), (2026, 4, 10), (2026, 5, 12), (2026, 6, 10),
-    (2026, 7, 14), (2026, 8, 12), (2026, 9, 11), (2026, 10, 14), (2026, 11, 10), (2026, 12, 10),
+    (2026, 1, 13),
+    (2026, 2, 13),
+    (2026, 3, 11),
+    (2026, 4, 10),
+    (2026, 5, 12),
+    (2026, 6, 10),
+    (2026, 7, 14),
+    (2026, 8, 12),
+    (2026, 9, 11),
+    (2026, 10, 14),
+    (2026, 11, 10),
+    (2026, 12, 10),
 ];
 /// The last date the CPI table covers. Past it, CPI is reported as a gap.
 pub const CPI_GOOD_UNTIL: (i32, u32) = (2026, 12);
@@ -209,17 +239,32 @@ pub fn market_marks(y: i32, m: u32, d: u32) -> (Vec<Mark>, Vec<String>) {
     let mut out = Vec::new();
     let mut gaps = Vec::new();
     match day(y, m, d) {
-        Day::Closed(name) => out.push(Mark { at: ny_at(y, m, d, 0, 0), what: format!("US stock markets closed ({name})"), whole_day: true }),
-        Day::EarlyClose(why) => out.push(Mark { at: ny_at(y, m, d, 13, 0), what: format!("US stock markets close early, 1:00 pm New York ({why})"), whole_day: false }),
+        Day::Closed(name) => out.push(Mark {
+            at: ny_at(y, m, d, 0, 0),
+            what: format!("US stock markets closed ({name})"),
+            whole_day: true,
+        }),
+        Day::EarlyClose(why) => out.push(Mark {
+            at: ny_at(y, m, d, 13, 0),
+            what: format!("US stock markets close early, 1:00 pm New York ({why})"),
+            whole_day: false,
+        }),
         _ => {}
     }
     if y > CHECKED_THROUGH {
         gaps.push(format!("NYSE's holidays for {y} are worked out by its rules, not checked against its published list"));
     }
     if (y, m) > CPI_GOOD_UNTIL {
-        gaps.push(format!("CPI dates after {}-{:02} aren't in yet", CPI_GOOD_UNTIL.0, CPI_GOOD_UNTIL.1));
+        gaps.push(format!(
+            "CPI dates after {}-{:02} aren't in yet",
+            CPI_GOOD_UNTIL.0, CPI_GOOD_UNTIL.1
+        ));
     } else if CPI.contains(&(y, m, d)) {
-        out.push(Mark { at: ny_at(y, m, d, 8, 30), what: "US CPI release".into(), whole_day: false });
+        out.push(Mark {
+            at: ny_at(y, m, d, 8, 30),
+            what: "US CPI release".into(),
+            whole_day: false,
+        });
     }
     match events::month(y, m) {
         Ok(list) => {
@@ -228,7 +273,11 @@ pub fn market_marks(y: i32, m: u32, d: u32) -> (Vec<Mark>, Vec<String>) {
                 let local = ny().to_local(at);
                 let day_of = crate::market::time::civil_from_days(local.div_euclid(86_400));
                 if day_of == (y, m, d) {
-                    out.push(Mark { at, what: e.name.clone(), whole_day: false });
+                    out.push(Mark {
+                        at,
+                        what: e.name.clone(),
+                        whole_day: false,
+                    });
                 }
             }
         }
@@ -252,7 +301,14 @@ pub fn marks_spoken(marks: &[Mark], home: &crate::tz::Zone) -> Vec<String> {
             if mine == theirs {
                 format!("{} at {:02}:{:02}", k.what, mine / 3600, mine % 3600 / 60)
             } else {
-                format!("{} at {:02}:{:02} ({}:{:02} New York)", k.what, mine / 3600, mine % 3600 / 60, theirs / 3600, theirs % 3600 / 60)
+                format!(
+                    "{} at {:02}:{:02} ({}:{:02} New York)",
+                    k.what,
+                    mine / 3600,
+                    mine % 3600 / 60,
+                    theirs / 3600,
+                    theirs % 3600 / 60
+                )
             }
         })
         .collect()
@@ -288,10 +344,12 @@ pub fn today_and_tomorrow(now: i64, home: &crate::tz::Zone) -> Vec<String> {
 /// early, from UTC `now`, within a year: (date, kind).
 pub fn next_closure(now: i64) -> Option<((i32, u32, u32), Day)> {
     let start = ny().to_local(now).div_euclid(86_400);
-    (0..370).map(|k| crate::market::time::civil_from_days(start + k)).find_map(|(y, m, d)| match day(y, m, d) {
-        k @ (Day::Closed(_) | Day::EarlyClose(_)) => Some(((y, m, d), k)),
-        _ => None,
-    })
+    (0..370)
+        .map(|k| crate::market::time::civil_from_days(start + k))
+        .find_map(|(y, m, d)| match day(y, m, d) {
+            k @ (Day::Closed(_) | Day::EarlyClose(_)) => Some(((y, m, d), k)),
+            _ => None,
+        })
 }
 
 #[cfg(test)]
@@ -321,7 +379,11 @@ mod open_now_tests {
     fn open_closed_and_the_weekend() {
         // Wed 30 Sep 2026, 14:00 UTC = 10:00 New York (EDT): open.
         let wed_10am = days_from_civil(2026, 9, 30) * 86_400 + 14 * 3600;
-        assert!(open_now(wed_10am).starts_with("Yes"), "{}", open_now(wed_10am));
+        assert!(
+            open_now(wed_10am).starts_with("Yes"),
+            "{}",
+            open_now(wed_10am)
+        );
         // 23:00 UTC = 7 pm New York: closed, opens Thursday.
         let wed_7pm = days_from_civil(2026, 9, 30) * 86_400 + 23 * 3600;
         let s = open_now(wed_7pm);
@@ -332,6 +394,10 @@ mod open_now_tests {
         assert!(s.contains("weekend") && s.contains("2026-10-05"), "{s}");
         // Before the bell.
         let early = days_from_civil(2026, 9, 30) * 86_400 + 12 * 3600;
-        assert!(open_now(early).starts_with("Not yet"), "{}", open_now(early));
+        assert!(
+            open_now(early).starts_with("Not yet"),
+            "{}",
+            open_now(early)
+        );
     }
 }

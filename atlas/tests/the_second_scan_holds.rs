@@ -49,7 +49,14 @@ fn cfg() -> atlas::config::Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 /// A model with a chat endpoint whose answers the test scripts by what was
@@ -62,7 +69,10 @@ struct Scripted {
 }
 
 impl Scripted {
-    fn new(hold: &str, answer: impl Fn(&ChatRequest) -> ChatReply + Send + Sync + 'static) -> Arc<Scripted> {
+    fn new(
+        hold: &str,
+        answer: impl Fn(&ChatRequest) -> ChatReply + Send + Sync + 'static,
+    ) -> Arc<Scripted> {
         Arc::new(Scripted {
             asked: Mutex::new(Vec::new()),
             answer: Box::new(answer),
@@ -75,7 +85,12 @@ impl Scripted {
         self.gate.1.notify_all();
     }
     fn times_asked_about(&self, word: &str) -> usize {
-        self.asked.lock().unwrap().iter().filter(|r| last_user(r).contains(word)).count()
+        self.asked
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| last_user(r).contains(word))
+            .count()
     }
     fn requests(&self) -> Vec<ChatRequest> {
         self.asked.lock().unwrap().clone()
@@ -83,15 +98,26 @@ impl Scripted {
 }
 
 fn last_user(r: &ChatRequest) -> String {
-    r.messages.iter().rev().find(|m| m.role == Role::User).map(|m| m.content.clone()).unwrap_or_default()
+    r.messages
+        .iter()
+        .rev()
+        .find(|m| m.role == Role::User)
+        .map(|m| m.content.clone())
+        .unwrap_or_default()
 }
 
 fn text(t: &str) -> ChatReply {
-    ChatReply { text: t.into(), tool_calls: vec![] }
+    ChatReply {
+        text: t.into(),
+        tool_calls: vec![],
+    }
 }
 
 fn call(name: &str, args: serde_json::Value) -> ToolCall {
-    ToolCall { name: name.into(), arguments: args }
+    ToolCall {
+        name: name.into(),
+        arguments: args,
+    }
 }
 
 impl Llm for Scripted {
@@ -101,7 +127,11 @@ impl Llm for Scripted {
     fn native_chat(&self) -> bool {
         true
     }
-    fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> {
+    fn chat(
+        &self,
+        req: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+    ) -> atlas::error::Result<ChatReply> {
         self.asked.lock().unwrap().push(req.clone());
         if !self.hold.is_empty() && last_user(req).contains(&self.hold) {
             let (m, c) = &self.gate;
@@ -121,13 +151,30 @@ impl Llm for Scripted {
     }
 }
 
-fn daemon<'a>(c: &'a atlas::config::Config, p: &'a MockPlatform, llm: Arc<Scripted>, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, Some(llm), Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+fn daemon<'a>(
+    c: &'a atlas::config::Config,
+    p: &'a MockPlatform,
+    llm: Arc<Scripted>,
+    tag: &str,
+) -> Daemon<'a> {
+    Daemon::new(
+        c,
+        p,
+        Some(llm),
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 fn post_talk(d: &mut Daemon, text: &str) {
     let fields = vec![("text".to_string(), text.to_string())];
-    let _ = atlas::hublive::reply(d, Action::HubPost { path: "/hub/talk".into(), fields });
+    let _ = atlas::hublive::reply(
+        d,
+        Action::HubPost {
+            path: "/hub/talk".into(),
+            fields,
+        },
+    );
 }
 
 fn tick_until_quiet(d: &mut Daemon, t: u64) {
@@ -171,7 +218,8 @@ impl Mouth for Quiet {
 }
 
 const STORY: &str = "tell me a short story about a lighthouse";
-const STORY_REPLY: &str = "Once upon a time a lighthouse kept its light. The keeper slept. The ships came home.";
+const STORY_REPLY: &str =
+    "Once upon a time a lighthouse kept its light. The keeper slept. The ships came home.";
 
 fn story_or_islands() -> Arc<Scripted> {
     Scripted::new("lighthouse", |r| {
@@ -192,7 +240,10 @@ fn a_voice_turn_leaves_a_talk_turn_that_is_still_thinking_alone() {
     let mut d = daemon(&c, &p, llm.clone(), "hijack");
     post_talk(&mut d, STORY);
     let _ = d.tick(100);
-    assert!(d.talk_is_thinking(), "the Talk turn should be waiting on the model");
+    assert!(
+        d.talk_is_thinking(),
+        "the Talk turn should be waiting on the model"
+    );
 
     // Should the voice turn wait on the Talk turn (the old defect), this lets
     // it go after four seconds rather than hang the test.
@@ -205,9 +256,21 @@ fn a_voice_turn_leaves_a_talk_turn_that_is_still_thinking_alone() {
     let started = Instant::now();
     d.converse("what are volcanic islands made of", &ears, &mouth, &|| 110);
     let took = started.elapsed();
-    crate::common::assert_prompt(took, Duration::from_secs(3), "the voice turn waited for the Talk turn");
-    assert!(d.talk_is_thinking(), "the voice turn took the Talk turn over");
-    let islands = d.thread.recent.iter().find(|e| e.said.contains("volcanic")).expect("the voice turn was answered");
+    crate::common::assert_prompt(
+        took,
+        Duration::from_secs(3),
+        "the voice turn waited for the Talk turn",
+    );
+    assert!(
+        d.talk_is_thinking(),
+        "the voice turn took the Talk turn over"
+    );
+    let islands = d
+        .thread
+        .recent
+        .iter()
+        .find(|e| e.said.contains("volcanic"))
+        .expect("the voice turn was answered");
     assert!(islands.reply.contains("basalt"), "{}", islands.reply);
 
     rescue.join().unwrap();
@@ -219,7 +282,11 @@ fn a_voice_turn_leaves_a_talk_turn_that_is_still_thinking_alone() {
     for _ in 0..3 {
         let _ = d.tick(130);
     }
-    assert_eq!(llm.times_asked_about("lighthouse"), 1, "the Talk turn ran twice");
+    assert_eq!(
+        llm.times_asked_about("lighthouse"),
+        1,
+        "the Talk turn ran twice"
+    );
 }
 
 #[test]
@@ -228,7 +295,10 @@ fn the_talk_reply_is_written_even_when_another_turn_grew_the_thread() {
     t.append("a", "b", None, 1);
     let before = t.len();
     t.append("something typed elsewhere", "its answer", None, 2);
-    assert!(!t.said_since(before, STORY), "a different exchange counted as the Talk turn's");
+    assert!(
+        !t.said_since(before, STORY),
+        "a different exchange counted as the Talk turn's"
+    );
     t.append(STORY, "the story", None, 3);
     assert!(t.said_since(before, STORY));
 }
@@ -251,9 +321,24 @@ fn pausing_drops_a_model_turn_that_is_still_thinking() {
     for _ in 0..3 {
         let _ = d.tick(110);
     }
-    let story = d.thread.recent.iter().find(|e| e.said == STORY).expect("the Talk page says what happened");
-    assert!(story.reply.contains("Paused before I answered"), "{}", story.reply);
-    assert!(!d.thread.recent.iter().any(|e| e.reply.contains("keeper slept")), "the answer was used after the pause");
+    let story = d
+        .thread
+        .recent
+        .iter()
+        .find(|e| e.said == STORY)
+        .expect("the Talk page says what happened");
+    assert!(
+        story.reply.contains("Paused before I answered"),
+        "{}",
+        story.reply
+    );
+    assert!(
+        !d.thread
+            .recent
+            .iter()
+            .any(|e| e.reply.contains("keeper slept")),
+        "the answer was used after the pause"
+    );
 }
 
 #[test]
@@ -267,8 +352,20 @@ fn an_answer_that_arrives_after_a_pause_is_not_acted_on() {
     d.attention.pause(None, 105);
     llm.open();
     tick_until_quiet(&mut d, 110);
-    assert!(!d.thread.recent.iter().any(|e| e.reply.contains("keeper slept")), "{:#?}", d.thread.recent);
-    let story = d.thread.recent.iter().find(|e| e.said == STORY).expect("the Talk page says what happened");
+    assert!(
+        !d.thread
+            .recent
+            .iter()
+            .any(|e| e.reply.contains("keeper slept")),
+        "{:#?}",
+        d.thread.recent
+    );
+    let story = d
+        .thread
+        .recent
+        .iter()
+        .find(|e| e.said == STORY)
+        .expect("the Talk page says what happened");
     assert!(story.reply.contains("Paused"), "{}", story.reply);
 }
 
@@ -280,12 +377,19 @@ fn stop_everything_drops_it_too() {
     post_talk(&mut d, STORY);
     let _ = d.tick(100);
     let said = d.turn("stop everything", 105);
-    assert!(said.contains("stopped") || said.contains("Stopped"), "{said}");
+    assert!(
+        said.contains("stopped") || said.contains("Stopped"),
+        "{said}"
+    );
     assert!(!d.talk_is_thinking());
     llm.open();
     std::thread::sleep(Duration::from_millis(200));
     let _ = d.tick(110);
-    assert!(!d.thread.recent.iter().any(|e| e.reply.contains("keeper slept")));
+    assert!(!d
+        .thread
+        .recent
+        .iter()
+        .any(|e| e.reply.contains("keeper slept")));
 }
 
 // ================= 5: streaming speech records nothing unless asked =================
@@ -297,7 +401,12 @@ fn a_streamed_voice_reply_records_nothing_between_its_sentences() {
     let mut d = daemon(&c, &p, llm.clone(), "norecord");
     let (ears, mouth) = (CountingEars::default(), Quiet::default());
     d.converse("what are volcanic islands made of", &ears, &mouth, &|| 100);
-    let islands = d.thread.recent.iter().find(|e| e.said.contains("volcanic")).expect("answered");
+    let islands = d
+        .thread
+        .recent
+        .iter()
+        .find(|e| e.said.contains("volcanic"))
+        .expect("answered");
     assert!(islands.reply.contains("basalt"), "{}", islands.reply);
     // Four sentences. It used to record a second before each one; now only
     // the talk key starts a recording, plus at most the one follow-up window.
@@ -310,7 +419,11 @@ fn a_streamed_voice_reply_records_nothing_between_its_sentences() {
 const TOKEN: &str = "abcdef-ghjkmn-pqrstu-vwxyz2";
 
 fn a_server() -> Server {
-    let cfg = ServerConfig { enabled: true, port: 0, ..ServerConfig::default() };
+    let cfg = ServerConfig {
+        enabled: true,
+        port: 0,
+        ..ServerConfig::default()
+    };
     Server::bind(&cfg, TOKEN).expect("bind")
 }
 
@@ -330,14 +443,22 @@ fn a_click_answered_busy_is_never_run_afterwards() {
     let door = server.threaded().unwrap();
     let got = ask(port, &format!("POST /hub/pause HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Atlas-Token: {TOKEN}\r\nContent-Length: 10\r\n\r\nwhat=pause"));
     // Told it didn't happen (a busy answer, shown as the failed-page error).
-    assert!(got.starts_with("HTTP/1.1 5"), "{}", &got[..got.len().min(200)]);
+    assert!(
+        got.starts_with("HTTP/1.1 5"),
+        "{}",
+        &got[..got.len().min(200)]
+    );
     // The daemon gets round to it after the browser was told it was busy.
     let ran = AtomicUsize::new(0);
     let done = door.answer_waiting(&mut |_a| {
         ran.fetch_add(1, Ordering::SeqCst);
         Reply::ok("{}")
     });
-    assert_eq!(ran.load(Ordering::SeqCst), 0, "a request answered busy was run anyway");
+    assert_eq!(
+        ran.load(Ordering::SeqCst),
+        0,
+        "a request answered busy was run anyway"
+    );
     assert!(done.is_empty());
     // One answered in time still runs.
     let server = a_server();
@@ -347,12 +468,23 @@ fn a_click_answered_busy_is_never_run_afterwards() {
         let until = Instant::now() + crate::common::allowed(Duration::from_secs(5));
         let mut n = 0;
         while n == 0 && Instant::now() < until {
-            n += d2.wait_and_answer(50, &mut |_a| Reply::ok("{\"ok\":true}")).len();
+            n += d2
+                .wait_and_answer(50, &mut |_a| Reply::ok("{\"ok\":true}"))
+                .len();
         }
         n
     });
-    let got = ask(port, &format!("GET /hub/live.json HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Atlas-Token: {TOKEN}\r\n\r\n"));
-    assert!(got.starts_with("HTTP/1.1 200"), "{}", &got[..got.len().min(200)]);
+    let got = ask(
+        port,
+        &format!(
+            "GET /hub/live.json HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Atlas-Token: {TOKEN}\r\n\r\n"
+        ),
+    );
+    assert!(
+        got.starts_with("HTTP/1.1 200"),
+        "{}",
+        &got[..got.len().min(200)]
+    );
     assert_eq!(lp.join().unwrap(), 1);
 }
 
@@ -362,7 +494,8 @@ fn a_client_sending_a_byte_at_a_time_runs_out_of_time() {
     let port = server.port();
     let _door = server.threaded().unwrap();
     let mut c = TcpStream::connect(("127.0.0.1", port)).unwrap();
-    c.set_read_timeout(Some(Duration::from_millis(100))).unwrap();
+    c.set_read_timeout(Some(Duration::from_millis(100)))
+        .unwrap();
     let started = Instant::now();
     let head = b"GET /hub HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Filler: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     let mut closed = false;
@@ -378,7 +511,11 @@ fn a_client_sending_a_byte_at_a_time_runs_out_of_time() {
                 break;
             }
             Ok(_) => {}
-            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) => {}
             Err(_) => {
                 closed = true;
                 break;
@@ -389,7 +526,11 @@ fn a_client_sending_a_byte_at_a_time_runs_out_of_time() {
         }
         std::thread::sleep(Duration::from_millis(150));
     }
-    assert!(closed, "a trickling client was still connected after {:?}", started.elapsed());
+    assert!(
+        closed,
+        "a trickling client was still connected after {:?}",
+        started.elapsed()
+    );
     crate::common::assert_prompt(started.elapsed(), Duration::from_secs(9), "held for");
 }
 
@@ -399,21 +540,33 @@ fn one_address_cannot_take_every_place_at_the_door() {
     let port = server.port();
     let _door = server.threaded().unwrap();
     // Sixteen connections that say nothing.
-    let idle: Vec<TcpStream> = (0..16).map(|_| TcpStream::connect(("127.0.0.1", port)).unwrap()).collect();
+    let idle: Vec<TcpStream> = (0..16)
+        .map(|_| TcpStream::connect(("127.0.0.1", port)).unwrap())
+        .collect();
     std::thread::sleep(Duration::from_millis(200));
     // The seventeenth from the same address is closed unread.
     let mut extra = TcpStream::connect(("127.0.0.1", port)).unwrap();
-    extra.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    extra
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
     let _ = extra.write_all(b"GET /hub/sw.js HTTP/1.1\r\nHost: x\r\n\r\n");
     let mut buf = Vec::new();
     let started = Instant::now();
     let _ = extra.read_to_end(&mut buf);
-    assert!(buf.is_empty() && started.elapsed() < Duration::from_secs(2), "the seventeenth was served: {}", String::from_utf8_lossy(&buf));
+    assert!(
+        buf.is_empty() && started.elapsed() < Duration::from_secs(2),
+        "the seventeenth was served: {}",
+        String::from_utf8_lossy(&buf)
+    );
     drop(idle);
     std::thread::sleep(Duration::from_millis(300));
     // Places given back: served again.
     let got = ask(port, "GET /hub/sw.js HTTP/1.1\r\nHost: x\r\n\r\n");
-    assert!(got.starts_with("HTTP/1.1 200"), "{}", &got[..got.len().min(120)]);
+    assert!(
+        got.starts_with("HTTP/1.1 200"),
+        "{}",
+        &got[..got.len().min(120)]
+    );
 }
 
 // ================= 22: settings-only mode is threaded =================
@@ -423,8 +576,14 @@ fn the_settings_only_hub_is_served_from_threads() {
     let src = crate::common::read_source_path("src/main.rs").unwrap();
     let start = src.find("fn run_hub(").expect("run_hub");
     let body = &src[start..start + src[start..].find("\n}\n").unwrap()];
-    assert!(body.contains(".threaded()"), "settings-only mode no longer uses the threaded door");
-    assert!(!body.contains("serve_once("), "settings-only mode takes one connection at a time again");
+    assert!(
+        body.contains(".threaded()"),
+        "settings-only mode no longer uses the threaded door"
+    );
+    assert!(
+        !body.contains("serve_once("),
+        "settings-only mode takes one connection at a time again"
+    );
 }
 
 // ================= 6: what an error from the model server means =================
@@ -452,14 +611,20 @@ fn fake_model_server(replies: Vec<String>) -> (String, Arc<Mutex<Vec<String>>>) 
                 if let Some(i) = t.find("\r\n\r\n") {
                     let len: usize = t
                         .lines()
-                        .find_map(|l| l.to_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse().unwrap_or(0)))
+                        .find_map(|l| {
+                            l.to_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse().unwrap_or(0))
+                        })
                         .unwrap_or(0);
                     if buf.len() >= i + 4 + len {
                         break;
                     }
                 }
             }
-            s2.lock().unwrap().push(String::from_utf8_lossy(&buf).to_string());
+            s2.lock()
+                .unwrap()
+                .push(String::from_utf8_lossy(&buf).to_string());
             let _ = c.write_all(r.as_bytes());
         }
     });
@@ -487,36 +652,79 @@ fn a_request(n_history: usize) -> ChatRequest {
     messages.push(Msg::user("User said: hello"));
     // `stable_tools` and `aside` since 28 Sep 2026 (the every-turn tools, and
     // a call beside the conversation); neither here.
-    ChatRequest { messages, tools: vec![], max_tokens: 50, force_tool: false, stable_tools: 0, aside: false, stronger: false, output_schema: None }
+    ChatRequest {
+        messages,
+        tools: vec![],
+        max_tokens: 50,
+        force_tool: false,
+        stable_tools: 0,
+        aside: false,
+        stronger: false,
+        output_schema: None,
+    }
 }
 
 #[test]
 fn only_a_server_that_cannot_chat_is_left_alone() {
     use atlas::models::{judge_chat_failure, ChatFail};
-    assert!(matches!(judge_chat_failure(404, "Not Found"), ChatFail::NoChat(_)));
-    assert!(matches!(judge_chat_failure(500, "tools param requires --jinja flag"), ChatFail::NoChat(_)));
-    assert!(matches!(judge_chat_failure(503, "{\"error\":{\"message\":\"Loading model\"}}"), ChatFail::Loading(_)));
     assert!(matches!(
-        judge_chat_failure(400, "the request exceeds the available context size, try increasing it"),
+        judge_chat_failure(404, "Not Found"),
+        ChatFail::NoChat(_)
+    ));
+    assert!(matches!(
+        judge_chat_failure(500, "tools param requires --jinja flag"),
+        ChatFail::NoChat(_)
+    ));
+    assert!(matches!(
+        judge_chat_failure(503, "{\"error\":{\"message\":\"Loading model\"}}"),
+        ChatFail::Loading(_)
+    ));
+    assert!(matches!(
+        judge_chat_failure(
+            400,
+            "the request exceeds the available context size, try increasing it"
+        ),
         ChatFail::TooLong(_)
     ));
-    assert!(matches!(judge_chat_failure(500, "out of memory"), ChatFail::Other(_)));
-    assert!(matches!(judge_chat_failure(502, "bad gateway"), ChatFail::Other(_)));
+    assert!(matches!(
+        judge_chat_failure(500, "out of memory"),
+        ChatFail::Other(_)
+    ));
+    assert!(matches!(
+        judge_chat_failure(502, "bad gateway"),
+        ChatFail::Other(_)
+    ));
 
     // A 500 about something else: this turn fails, chat stays on.
-    let (url, _) = fake_model_server(vec![answer("500 Internal Server Error", "{\"error\":\"out of memory\"}")]);
+    let (url, _) = fake_model_server(vec![answer(
+        "500 Internal Server Error",
+        "{\"error\":\"out of memory\"}",
+    )]);
     assert!(atlas::models::chat_call(&url, &a_request(0), &mut |_| true).is_err());
-    assert!(atlas::models::chat_available(&url), "one unrelated error turned chat off");
+    assert!(
+        atlas::models::chat_available(&url),
+        "one unrelated error turned chat off"
+    );
     // No --jinja: left alone.
-    let (url, _) = fake_model_server(vec![answer("500 Internal Server Error", "{\"error\":\"tools param requires --jinja flag\"}")]);
+    let (url, _) = fake_model_server(vec![answer(
+        "500 Internal Server Error",
+        "{\"error\":\"tools param requires --jinja flag\"}",
+    )]);
     assert!(atlas::models::chat_call(&url, &a_request(0), &mut |_| true).is_err());
     assert!(!atlas::models::chat_available(&url));
 }
 
 #[test]
 fn a_model_still_loading_is_waited_for() {
-    let loading = answer("503 Service Unavailable", "{\"error\":{\"code\":503,\"message\":\"Loading model\"}}");
-    let (url, seen) = fake_model_server(vec![loading.clone(), loading, streamed("Hello there.", true)]);
+    let loading = answer(
+        "503 Service Unavailable",
+        "{\"error\":{\"code\":503,\"message\":\"Loading model\"}}",
+    );
+    let (url, seen) = fake_model_server(vec![
+        loading.clone(),
+        loading,
+        streamed("Hello there.", true),
+    ]);
     let mut heard = String::new();
     let r = atlas::models::chat_call(&url, &a_request(0), &mut |w| {
         heard.push_str(w);
@@ -524,7 +732,10 @@ fn a_model_still_loading_is_waited_for() {
     })
     .expect("answered once it had loaded");
     assert_eq!(r.text, "Hello there.");
-    assert_eq!(heard, "Hello there.", "words from a failed try were passed on");
+    assert_eq!(
+        heard, "Hello there.",
+        "words from a failed try were passed on"
+    );
     assert_eq!(seen.lock().unwrap().len(), 3);
     assert!(atlas::models::chat_available(&url));
 }
@@ -532,14 +743,21 @@ fn a_model_still_loading_is_waited_for() {
 #[test]
 fn a_prompt_too_long_is_shortened_and_asked_once_more() {
     let (url, seen) = fake_model_server(vec![
-        answer("400 Bad Request", "{\"error\":{\"message\":\"the request exceeds the available context size\"}}"),
+        answer(
+            "400 Bad Request",
+            "{\"error\":{\"message\":\"the request exceeds the available context size\"}}",
+        ),
         streamed("Short answer.", true),
     ]);
-    let r = atlas::models::chat_call(&url, &a_request(4), &mut |_| true).expect("answered after shortening");
+    let r = atlas::models::chat_call(&url, &a_request(4), &mut |_| true)
+        .expect("answered after shortening");
     assert_eq!(r.text, "Short answer.");
     let asked = seen.lock().unwrap().clone();
     assert_eq!(asked.len(), 2);
-    assert!(asked[0].contains("earlier 0") && !asked[1].contains("earlier 0"), "the retry still carried the old conversation");
+    assert!(
+        asked[0].contains("earlier 0") && !asked[1].contains("earlier 0"),
+        "the retry still carried the old conversation"
+    );
     assert!(asked[1].contains("User said: hello"));
     assert!(atlas::models::chat_available(&url));
 }
@@ -574,23 +792,47 @@ fn the_prompt_is_cut_to_fit_the_context_history_first_then_tools_then_what_was_s
     assert!(turn.fit(before, core), "it fitted already?");
     assert!(turn.estimated_tokens() <= before - 200 - 64);
     assert!(turn.history.len() < 21, "the history wasn't cut first");
-    assert_eq!(turn.said, "and what about the food?", "what was said was cut before the history");
+    assert_eq!(
+        turn.said, "and what about the food?",
+        "what was said was cut before the history"
+    );
 
     // A pasted page alone bigger than the context: said is cut, head and
     // tail kept, and it says so.
     let page = format!("START {} END", "lorem ipsum ".repeat(4000));
-    let mut turn = Turn { said: page.clone(), system: "S".into(), tools: book.for_sentence("", 0), max_tokens: 200, ..Default::default() };
+    let mut turn = Turn {
+        said: page.clone(),
+        system: "S".into(),
+        tools: book.for_sentence("", 0),
+        max_tokens: 200,
+        ..Default::default()
+    };
     assert!(turn.fit(4096, core));
-    assert!(turn.estimated_tokens() <= 4096 - 264, "{}", turn.estimated_tokens());
+    assert!(
+        turn.estimated_tokens() <= 4096 - 264,
+        "{}",
+        turn.estimated_tokens()
+    );
     assert!(turn.said.starts_with("START") && turn.said.ends_with("END"));
-    assert!(turn.said.contains("left out"), "it doesn't say it was shortened");
+    assert!(
+        turn.said.contains("left out"),
+        "it doesn't say it was shortened"
+    );
     assert_eq!(turn.tools.len(), core, "the core tools went");
 }
 
 // ================= 8 and 9: what reaches the speaker =================
 
 fn brain_turn(said: &str, history: Vec<Msg>, tools: Vec<serde_json::Value>) -> Turn {
-    Turn { said: said.into(), history, tools, max_tokens: 200, skip_phrases: true, one_prompt: "Now: noon.".into(), ..Default::default() }
+    Turn {
+        said: said.into(),
+        history,
+        tools,
+        max_tokens: 200,
+        skip_phrases: true,
+        one_prompt: "Now: noon.".into(),
+        ..Default::default()
+    }
 }
 
 /// A model that streams set pieces, then answers with a set reply or fails.
@@ -604,7 +846,11 @@ impl Pieces {
     fn new(plan: Vec<(Vec<&str>, Option<ChatReply>)>) -> Pieces {
         Pieces {
             calls: Mutex::new(Vec::new()),
-            plan: Mutex::new(plan.into_iter().map(|(p, r)| (p.into_iter().map(String::from).collect(), r)).collect()),
+            plan: Mutex::new(
+                plan.into_iter()
+                    .map(|(p, r)| (p.into_iter().map(String::from).collect(), r))
+                    .collect(),
+            ),
             completed: AtomicUsize::new(0),
         }
     }
@@ -618,7 +864,11 @@ impl Llm for Pieces {
     fn native_chat(&self) -> bool {
         true
     }
-    fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> {
+    fn chat(
+        &self,
+        req: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+    ) -> atlas::error::Result<ChatReply> {
         self.calls.lock().unwrap().push(req.clone());
         let (pieces, reply) = {
             let mut p = self.plan.lock().unwrap();
@@ -641,7 +891,11 @@ fn converse(llm: &Pieces, turn: &Turn) -> (atlas::brain::Decision, String, Vec<S
     let c = cfg();
     let parser = Parser::new(&c.commands);
     let persona = atlas::persona::Persona::default();
-    let brain = Brain { llm, fallback: &parser, voice: Some((&persona, atlas::register::Register::Chatting)) };
+    let brain = Brain {
+        llm,
+        fallback: &parser,
+        voice: Some((&persona, atlas::register::Register::Chatting)),
+    };
     let mut heard = String::new();
     let mut also = Vec::new();
     let d = brain.converse_noting(
@@ -659,10 +913,19 @@ fn converse(llm: &Pieces, turn: &Turn) -> (atlas::brain::Decision, String, Vec<S
 fn a_stream_that_fails_partway_is_finished_with_what_was_said_not_answered_again() {
     let llm = Pieces::new(vec![(vec!["Part one. ", "Part two"], None)]);
     let (d, heard, _) = converse(&llm, &brain_turn("tell me something long", vec![], vec![]));
-    assert_eq!(llm.completed.load(Ordering::SeqCst), 0, "asked again the other way after words were said");
+    assert_eq!(
+        llm.completed.load(Ordering::SeqCst),
+        0,
+        "asked again the other way after words were said"
+    );
     assert!(!heard.contains("SECOND"), "{heard}");
-    let Intent::Say(s) = &d.intent else { panic!("{d:?}") };
-    assert!(s.starts_with("Part one. Part two") && s.contains("as far as I got"), "{s}");
+    let Intent::Say(s) = &d.intent else {
+        panic!("{d:?}")
+    };
+    assert!(
+        s.starts_with("Part one. Part two") && s.contains("as far as I got"),
+        "{s}"
+    );
     // Nothing said yet: the other way answers, as before.
     let llm = Pieces::new(vec![(vec![], None)]);
     let (d, _, _) = converse(&llm, &brain_turn("tell me something long", vec![], vec![]));
@@ -674,29 +937,63 @@ fn a_repeat_of_an_earlier_line_is_caught_before_it_is_said() {
     let earlier = "I can't help with that one from here, I'm afraid.";
     let history = vec![Msg::user("something old"), Msg::assistant(earlier)];
     let llm = Pieces::new(vec![
-        (vec!["I can't help ", "with that one from here, ", "I'm afraid. ", "Sorry."], Some(text("I can't help with that one from here, I'm afraid. Sorry."))),
-        (vec!["Paris is ", "the capital of France."], Some(text("Paris is the capital of France."))),
+        (
+            vec![
+                "I can't help ",
+                "with that one from here, ",
+                "I'm afraid. ",
+                "Sorry.",
+            ],
+            Some(text(
+                "I can't help with that one from here, I'm afraid. Sorry.",
+            )),
+        ),
+        (
+            vec!["Paris is ", "the capital of France."],
+            Some(text("Paris is the capital of France.")),
+        ),
     ]);
-    let (d, heard, _) = converse(&llm, &brain_turn("what's the capital of France", history, vec![]));
-    assert_eq!(heard, "Paris is the capital of France.", "the repeat was said before the answer");
-    assert_eq!(d.intent, Intent::Say("Paris is the capital of France.".into()));
+    let (d, heard, _) = converse(
+        &llm,
+        &brain_turn("what's the capital of France", history, vec![]),
+    );
+    assert_eq!(
+        heard, "Paris is the capital of France.",
+        "the repeat was said before the answer"
+    );
+    assert_eq!(
+        d.intent,
+        Intent::Say("Paris is the capital of France.".into())
+    );
     let calls = llm.calls.lock().unwrap();
     assert_eq!(calls.len(), 2);
-    assert!(!calls[1].messages.iter().any(|m| m.content == earlier), "the fresh ask still had the conversation");
+    assert!(
+        !calls[1].messages.iter().any(|m| m.content == earlier),
+        "the fresh ask still had the conversation"
+    );
 }
 
 #[test]
 fn a_tool_call_tag_split_across_pieces_is_never_read_out() {
     let full = "Sure thing. <tool_call>{\"name\":\"open_app\",\"arguments\":{\"arg\":\"chrome\"}}</tool_call>";
     let llm = Pieces::new(vec![(
-        vec!["Sure thing. ", "<to", "ol_ca", "ll>{\"name\":\"open_app\",", "\"arguments\":{\"arg\":\"chrome\"}}</tool_call>"],
+        vec![
+            "Sure thing. ",
+            "<to",
+            "ol_ca",
+            "ll>{\"name\":\"open_app\",",
+            "\"arguments\":{\"arg\":\"chrome\"}}</tool_call>",
+        ],
         Some(ChatReply::from_text(full)),
     )]);
     let (d, heard, _) = converse(&llm, &brain_turn("could you get chrome up", vec![], vec![]));
     assert_eq!(heard, "Sure thing. ", "{heard:?}");
     assert_eq!(d.intent, Intent::OpenApp("chrome".into()));
     // A "<" that turns out not to be a tag is said, at the end.
-    let llm = Pieces::new(vec![(vec!["Three ", "<", " five."], Some(text("Three < five.")))]);
+    let llm = Pieces::new(vec![(
+        vec!["Three ", "<", " five."],
+        Some(text("Three < five.")),
+    )]);
     let (_, heard, _) = converse(&llm, &brain_turn("is three less than five", vec![], vec![]));
     assert_eq!(heard, "Three < five.");
 }
@@ -706,10 +1003,19 @@ fn a_call_missing_what_it_needs_is_asked_about_not_run_with_nothing() {
     let c = cfg();
     let book = ToolBook::new(&c.commands);
     let spec = book.get("research").expect("research is a tool").spec();
-    assert!(spec.pointer("/function/parameters/required").is_some(), "research needs its argument: {spec}");
-    let broken = ChatReply { text: String::new(), tool_calls: vec![call("research", serde_json::json!({}))] };
+    assert!(
+        spec.pointer("/function/parameters/required").is_some(),
+        "research needs its argument: {spec}"
+    );
+    let broken = ChatReply {
+        text: String::new(),
+        tool_calls: vec![call("research", serde_json::json!({}))],
+    };
     let llm = Pieces::new(vec![(vec![], Some(broken))]);
-    let (d, _, _) = converse(&llm, &brain_turn("look up the latest on that", vec![], vec![spec]));
+    let (d, _, _) = converse(
+        &llm,
+        &brain_turn("look up the latest on that", vec![], vec![spec]),
+    );
     assert!(matches!(d.intent, Intent::Ask(_)), "{:?}", d.intent);
     assert!(!matches!(d.intent, Intent::Research(_)));
 }
@@ -718,10 +1024,16 @@ fn a_call_missing_what_it_needs_is_asked_about_not_run_with_nothing() {
 fn a_second_tool_call_is_named_not_dropped() {
     let two = ChatReply {
         text: String::new(),
-        tool_calls: vec![call("open_app", serde_json::json!({"arg": "chrome"})), call("open_app", serde_json::json!({"arg": "notepad"}))],
+        tool_calls: vec![
+            call("open_app", serde_json::json!({"arg": "chrome"})),
+            call("open_app", serde_json::json!({"arg": "notepad"})),
+        ],
     };
     let llm = Pieces::new(vec![(vec![], Some(two))]);
-    let (d, _, also) = converse(&llm, &brain_turn("get chrome and notepad up", vec![], vec![]));
+    let (d, _, also) = converse(
+        &llm,
+        &brain_turn("get chrome and notepad up", vec![], vec![]),
+    );
     assert_eq!(d.intent, Intent::OpenApp("chrome".into()));
     assert_eq!(also.len(), 1, "{also:?}");
     assert!(also[0].contains("notepad"), "{also:?}");
@@ -733,19 +1045,38 @@ fn an_announced_tool_is_called_rather_than_promised() {
     let book = ToolBook::new(&c.commands);
     let tools = book.for_sentence("what's on my calendar tomorrow", 6);
     let llm = Pieces::new(vec![
-        (vec!["I'll check ", "your calendar."], Some(text("I'll check your calendar."))),
-        (vec![], Some(ChatReply { text: String::new(), tool_calls: vec![call("agenda", serde_json::json!({"arg": "tomorrow"}))] })),
+        (
+            vec!["I'll check ", "your calendar."],
+            Some(text("I'll check your calendar.")),
+        ),
+        (
+            vec![],
+            Some(ChatReply {
+                text: String::new(),
+                tool_calls: vec![call("agenda", serde_json::json!({"arg": "tomorrow"}))],
+            }),
+        ),
     ]);
     let (d, _, _) = converse(&llm, &brain_turn("anything on for tomorrow", vec![], tools));
     assert_eq!(d.intent, Intent::Agenda("tomorrow".into()));
     let calls = llm.calls.lock().unwrap();
     assert_eq!(calls.len(), 2);
-    assert!(!calls[0].force_tool && calls[1].force_tool, "the second ask didn't require a tool");
-    assert!(atlas::brain::announces_an_action("Let me check that for you."));
-    assert!(!atlas::brain::announces_an_action("You've got the dentist at nine."));
+    assert!(
+        !calls[0].force_tool && calls[1].force_tool,
+        "the second ask didn't require a tool"
+    );
+    assert!(atlas::brain::announces_an_action(
+        "Let me check that for you."
+    ));
+    assert!(!atlas::brain::announces_an_action(
+        "You've got the dentist at nine."
+    ));
     // The chat body asks the server for it.
     let persona = atlas::persona::Persona::default();
-    assert!(persona.character().contains("call the tool"), "the prompt doesn't say to call tools");
+    assert!(
+        persona.character().contains("call the tool"),
+        "the prompt doesn't say to call tools"
+    );
 }
 
 /// 30 Sep 2026: when the forced ask still called nothing, "I'll check your
@@ -756,7 +1087,10 @@ fn an_announced_tool_that_never_runs_is_owned_up_to() {
     let book = ToolBook::new(&c.commands);
     let tools = book.for_sentence("what's on my calendar tomorrow", 6);
     let llm = Pieces::new(vec![
-        (vec!["I'll check ", "your calendar."], Some(text("I'll check your calendar."))),
+        (
+            vec!["I'll check ", "your calendar."],
+            Some(text("I'll check your calendar.")),
+        ),
         (vec![], Some(text("Sure."))),
     ]);
     let (d, _, _) = converse(&llm, &brain_turn("anything on for tomorrow", vec![], tools));
@@ -772,9 +1106,13 @@ fn a_time_after_the_clocks_change_is_read_with_that_days_offset() {
     // Friday 30 Oct 2026, noon UTC -- summer time, UTC-4. The clocks go back
     // on Sunday 1 Nov.
     let friday_noon = 1_793_361_600;
-    let w = atlas::calendar::resolve_when_in("dentist monday at 9am", friday_noon, &ny).expect("read");
+    let w =
+        atlas::calendar::resolve_when_in("dentist monday at 9am", friday_noon, &ny).expect("read");
     // 9 am on Monday 2 Nov is 14:00 UTC (UTC-5), not 13:00.
-    assert_eq!(w.start, 1_793_628_000, "read with the offset of the day it was said");
+    assert_eq!(
+        w.start, 1_793_628_000,
+        "read with the offset of the day it was said"
+    );
 }
 
 #[test]
@@ -803,7 +1141,11 @@ fn a_file_that_is_briefly_unreadable_is_waited_for_not_set_aside() {
     fixer.join().unwrap();
     assert_eq!(got, vec![1, 2, 3], "it gave up before the file came free");
     assert!(atlas::store::tell_set_aside(&store).is_none());
-    assert!(!std::fs::read_dir(&dir).unwrap().any(|e| e.unwrap().file_name().to_string_lossy().contains("unreadable")));
+    assert!(!std::fs::read_dir(&dir).unwrap().any(|e| e
+        .unwrap()
+        .file_name()
+        .to_string_lossy()
+        .contains("unreadable")));
 }
 
 #[test]
@@ -814,11 +1156,20 @@ fn a_file_set_aside_is_said_once_on_the_next_turn_and_on_the_hub() {
     let started = Instant::now();
     let got: Vec<u32> = store.load("notes_index");
     assert!(got.is_empty());
-    assert!(started.elapsed() >= Duration::from_millis(350), "it wasn't tried again first");
+    assert!(
+        started.elapsed() >= Duration::from_millis(350),
+        "it wasn't tried again first"
+    );
     let said = atlas::store::tell_set_aside(&store).expect("said");
-    assert!(said.contains("notes index") && said.contains("nothing was deleted"), "{said}");
+    assert!(
+        said.contains("notes index") && said.contains("nothing was deleted"),
+        "{said}"
+    );
     assert!(atlas::store::tell_set_aside(&store).is_none(), "said twice");
-    assert!(!atlas::store::set_aside_since(&store, 0).is_empty(), "the hub can't show it");
+    assert!(
+        !atlas::store::set_aside_since(&store, 0).is_empty(),
+        "the hub can't show it"
+    );
     // Another store in the same process hears nothing of it.
     assert!(atlas::store::tell_set_aside(&Store::new(tmp("setaside-other"))).is_none());
 }
@@ -831,16 +1182,28 @@ fn the_next_turn_says_a_file_was_set_aside() {
     let store = Store::new(&dir);
     let _: Vec<u32> = store.load("oddments");
     let llm = story_or_islands();
-    let mut d = Daemon::new(&c, &p, Some(llm), store, Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(llm),
+        store,
+        Proactive::new(ProactiveConfig::default()),
+    );
     let reply = d.turn("what time is it", 100);
-    assert!(reply.contains("oddments") && reply.contains("put the file aside"), "{reply}");
+    assert!(
+        reply.contains("oddments") && reply.contains("put the file aside"),
+        "{reply}"
+    );
     let again = d.turn("what time is it", 110);
     assert!(!again.contains("oddments"), "{again}");
     // And the file really was moved aside, not overwritten.
-    let kept = std::fs::read_dir(&dir).unwrap().filter_map(|e| e.ok()).any(|e| {
-        let n = e.file_name().to_string_lossy().to_string();
-        n.starts_with("oddments.unreadable.") && n.ends_with(".json.bak")
-    });
+    let kept = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .any(|e| {
+            let n = e.file_name().to_string_lossy().to_string();
+            n.starts_with("oddments.unreadable.") && n.ends_with(".json.bak")
+        });
     assert!(kept, "the unreadable file is gone");
 }
 
@@ -856,7 +1219,11 @@ fn the_calls_of_a_turn_are_found_after_the_oldest_roll_off() {
     t.record(atlas::trace::Call::new("brain", "m", 1).finished(700, "p", "r"));
     t.record(atlas::trace::Call::new("brain", "m", 1).finished(300, "p", "r"));
     let since = t.recorded_since(before);
-    assert_eq!(since.len(), 2, "the turn's calls were lost once the list was full");
+    assert_eq!(
+        since.len(),
+        2,
+        "the turn's calls were lost once the list was full"
+    );
     assert_eq!(since.iter().map(|c| c.took_ms).sum::<u64>(), 1000);
     assert_eq!(t.calls.len(), atlas::trace::KEEP);
 }
@@ -871,7 +1238,10 @@ fn a_finished_job_nobody_came_back_for_is_forgotten_and_a_running_one_never_is()
     jobs.finish(done, Ok("Answered.".into()), false);
     jobs.age_finished(done, Duration::from_secs(11 * 60));
     let _ = jobs.start(Page::Friends, "Another");
-    assert!(jobs.look(done).is_none(), "an unseen answer was kept past its time");
+    assert!(
+        jobs.look(done).is_none(),
+        "an unseen answer was kept past its time"
+    );
 
     let jobs = atlas::hubjobs::Jobs::default();
     let first = jobs.start(Page::Friends, "The first, still going");
@@ -909,7 +1279,15 @@ fn a_runs_temp_folder_goes_with_it_and_old_ones_are_cleared() {
     assert!(other.exists(), "a folder of another name was cleared");
     // With the real age, fresh ones stay.
     std::fs::create_dir_all(&fresh).unwrap();
-    assert_eq!(atlas::roots::sweep_run_scratch(&temp, "atlas-notes", mine, atlas::roots::RUN_SCRATCH_STALE_SECS), 0);
+    assert_eq!(
+        atlas::roots::sweep_run_scratch(
+            &temp,
+            "atlas-notes",
+            mine,
+            atlas::roots::RUN_SCRATCH_STALE_SECS
+        ),
+        0
+    );
 
     let path = {
         let s = atlas::roots::RunScratch::new("atlas-second-scan-scratch");
@@ -929,7 +1307,11 @@ fn the_iphone_app_is_read_off_the_loop() {
     let started = Instant::now();
     let first = atlas::hublive::ipa_facts(&f);
     assert!(first.is_none());
-    crate::common::assert_prompt(started.elapsed(), Duration::from_millis(100), "the first look read the file");
+    crate::common::assert_prompt(
+        started.elapsed(),
+        Duration::from_millis(100),
+        "the first look read the file",
+    );
     let until = Instant::now() + Duration::from_secs(20);
     while !atlas::hublive::ipa_facts_ready(&f) && Instant::now() < until {
         std::thread::sleep(Duration::from_millis(20));
@@ -945,33 +1327,67 @@ fn a_calendar_read_is_put_into_words_by_the_model() {
     let (c, p) = (cfg(), plat());
     let parser = Parser::new(&c.commands);
     let said = "am I busy with anything after lunch tomorrow";
-    assert!(matches!(parser.parse(said), Intent::Unknown(_)), "the phrases answer this one: pick another");
+    assert!(
+        matches!(parser.parse(said), Intent::Unknown(_)),
+        "the phrases answer this one: pick another"
+    );
     let llm = Scripted::new("", |r| {
         let u = last_user(r);
         if u.contains("What your tool found") {
             text("Tomorrow's full: the dentist at nine, then two calls after lunch.")
         } else {
-            ChatReply { text: String::new(), tool_calls: vec![call("agenda", serde_json::json!({"arg": "tomorrow"}))] }
+            ChatReply {
+                text: String::new(),
+                tool_calls: vec![call("agenda", serde_json::json!({"arg": "tomorrow"}))],
+            }
         }
     });
     let mut d = daemon(&c, &p, llm.clone(), "reword");
     let t = 1_793_361_600; // noon UTC
     let tomorrow = t + 86_400 - 12 * 3600;
-    for (i, what) in ["Dentist appointment with Dr Hale", "Call with the broker about the account", "Project review with the whole team"].iter().enumerate() {
+    for (i, what) in [
+        "Dentist appointment with Dr Hale",
+        "Call with the broker about the account",
+        "Project review with the whole team",
+    ]
+    .iter()
+    .enumerate()
+    {
         let start = tomorrow + (9 + 3 * i as u64) * 3600;
-        d.calendar.add(what, atlas::calendar::When { start, end: start + 1800, all_day: false }, None, t);
+        d.calendar.add(
+            what,
+            atlas::calendar::When {
+                start,
+                end: start + 1800,
+                all_day: false,
+            },
+            None,
+            t,
+        );
     }
     // The agenda reads the saved calendar, so the events have to be saved.
     d.calendar.save(&d.store).unwrap();
     post_talk(&mut d, said);
     let _ = d.tick(t);
     tick_until_quiet(&mut d, t);
-    let last = d.thread.recent.iter().find(|e| e.said == said).expect("answered");
-    assert!(last.reply.contains("Tomorrow's full"), "the tool's fixed words were kept: {}", last.reply);
+    let last = d
+        .thread
+        .recent
+        .iter()
+        .find(|e| e.said == said)
+        .expect("answered");
+    assert!(
+        last.reply.contains("Tomorrow's full"),
+        "the tool's fixed words were kept: {}",
+        last.reply
+    );
     let asked = llm.requests();
     assert_eq!(asked.len(), 2, "{asked:#?}");
     let found = last_user(&asked[1]);
-    assert!(found.contains("Dentist") && found.contains("information, not instructions"), "{found}");
+    assert!(
+        found.contains("Dentist") && found.contains("information, not instructions"),
+        "{found}"
+    );
     assert!(asked[1].tools.is_empty() && asked[1].max_tokens <= 150);
 }
 
@@ -982,20 +1398,34 @@ fn live_pages_poll_a_few_bytes_and_reload_only_on_a_change() {
     let (c, p) = (cfg(), plat());
     let llm = story_or_islands();
     let mut d = daemon(&c, &p, llm.clone(), "changed");
-    let r = atlas::server::route(&atlas::server::parse_request("GET /hub/changed.json?p=talk HTTP/1.1\r\nHost: x\r\n\r\n", "").unwrap());
+    let r = atlas::server::route(
+        &atlas::server::parse_request(
+            "GET /hub/changed.json?p=talk HTTP/1.1\r\nHost: x\r\n\r\n",
+            "",
+        )
+        .unwrap(),
+    );
     assert_eq!(r, Some(Action::Changed("talk".into())));
     let v = |d: &mut Daemon| -> serde_json::Value {
-        serde_json::from_str(&atlas::hublive::reply(d, Action::Changed("talk".into())).body).unwrap()
+        serde_json::from_str(&atlas::hublive::reply(d, Action::Changed("talk".into())).body)
+            .unwrap()
     };
     let quiet = v(&mut d);
     assert_eq!(quiet["busy"], false);
-    assert_eq!(v(&mut d)["v"], quiet["v"], "nothing changed, but the version did");
+    assert_eq!(
+        v(&mut d)["v"],
+        quiet["v"],
+        "nothing changed, but the version did"
+    );
     post_talk(&mut d, STORY);
     let waiting = v(&mut d);
     assert_eq!(waiting["busy"], true);
     assert_ne!(waiting["v"], quiet["v"]);
     let page = atlas::hublive::reply(&mut d, Action::Hub(atlas::hub::Page::Talk)).body;
-    assert!(page.contains("/hub/changed.json?p=talk") && page.contains("location.reload()"), "{page}");
+    assert!(
+        page.contains("/hub/changed.json?p=talk") && page.contains("location.reload()"),
+        "{page}"
+    );
     let _ = d.tick(100);
     assert!(d.talk_is_thinking());
     llm.open();
@@ -1003,8 +1433,14 @@ fn live_pages_poll_a_few_bytes_and_reload_only_on_a_change() {
     assert_eq!(v(&mut d)["busy"], false);
     // The Now page carries the version it was drawn at, for its script.
     let now = atlas::hublive::reply(&mut d, Action::Hub(atlas::hub::Page::Now)).body;
-    let nv = serde_json::from_str::<serde_json::Value>(&atlas::hublive::reply(&mut d, Action::Changed("now".into())).body).unwrap();
-    assert!(now.contains(&format!("data-v='{}'", nv["v"].as_str().unwrap())), "the page and the endpoint disagree");
+    let nv = serde_json::from_str::<serde_json::Value>(
+        &atlas::hublive::reply(&mut d, Action::Changed("now".into())).body,
+    )
+    .unwrap();
+    assert!(
+        now.contains(&format!("data-v='{}'", nv["v"].as_str().unwrap())),
+        "the page and the endpoint disagree"
+    );
     assert!(atlas::hub::LIVE_SCRIPT.contains("/hub/changed.json"));
 }
 
@@ -1018,16 +1454,29 @@ fn another_model_server_is_asked_about_off_the_turn_and_at_most_once_a_minute() 
     let src = crate::common::read_source_path("src/daemon.rs").unwrap();
     // The work moved into `keep_model_server_waiting` (29 Sep 2026: the loop
     // calls it with no wait); `keep_model_server` only passes the usual wait.
-    let start = src.find("fn keep_model_server_waiting(").expect("keep_model_server_waiting");
+    let start = src
+        .find("fn keep_model_server_waiting(")
+        .expect("keep_model_server_waiting");
     let body = &src[start..start + src[start..].find("\n    }\n").unwrap()];
     let cached = body.find("model_server_seen").expect("the finding is kept");
-    let scan = body.find("scan_reporting").expect("the folder is still scanned when starting one");
+    let scan = body
+        .find("scan_reporting")
+        .expect("the folder is still scanned when starting one");
     let measure = body.find("fit::measure").expect("and the machine measured");
-    assert!(cached < scan && cached < measure, "the folder is scanned before the kept finding is read");
-    assert!(!body.contains("models::is_running("), "the HTTP check is back on the turn");
+    assert!(
+        cached < scan && cached < measure,
+        "the folder is scanned before the kept finding is read"
+    );
+    assert!(
+        !body.contains("models::is_running("),
+        "the HTTP check is back on the turn"
+    );
     let probe = src.find("fn probe_model_server(").expect("probe");
     let probe = &src[probe..probe + src[probe..].find("\n    }\n").unwrap()];
-    assert!(probe.contains("spawn(") && probe.contains("is_running("), "the check isn't on its own thread");
+    assert!(
+        probe.contains("spawn(") && probe.contains("is_running("),
+        "the check isn't on its own thread"
+    );
 }
 
 #[test]
@@ -1040,15 +1489,27 @@ fn a_talk_message_given_up_on_is_kept_and_answered_later() {
     let door = server.threaded().unwrap();
     let body = "text=what+is+on+my+calendar+today";
     let got = ask(port, &format!("POST /hub/talk HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Atlas-Token: {TOKEN}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{body}", body.len()));
-    assert!(got.starts_with("HTTP/1.1 5"), "{}", &got[..got.len().min(200)]);
+    assert!(
+        got.starts_with("HTTP/1.1 5"),
+        "{}",
+        &got[..got.len().min(200)]
+    );
     let ran = AtomicUsize::new(0);
     door.answer_waiting(&mut |_a| {
         ran.fetch_add(1, Ordering::SeqCst);
         Reply::ok("{}")
     });
-    assert_eq!(ran.load(Ordering::SeqCst), 0, "a request answered busy was run as a request");
+    assert_eq!(
+        ran.load(Ordering::SeqCst),
+        0,
+        "a request answered busy was run as a request"
+    );
     let kept = door.take_late_talk();
-    assert_eq!(kept, vec![("what is on my calendar today".to_string(), false)], "the message was dropped");
+    assert_eq!(
+        kept,
+        vec![("what is on my calendar today".to_string(), false)],
+        "the message was dropped"
+    );
     assert!(door.take_late_talk().is_empty(), "kept twice");
 }
 
@@ -1056,21 +1517,30 @@ fn a_talk_message_given_up_on_is_kept_and_answered_later() {
 fn the_friends_door_opens_once_its_port_is_free() {
     // 29 Sep 2026: a port busy at start kept the door friends reach you on
     // shut for the whole session. It is tried again once a minute.
-    let blocker = std::net::TcpListener::bind(("::", 0)).or_else(|_| std::net::TcpListener::bind(("0.0.0.0", 0))).unwrap();
+    let blocker = std::net::TcpListener::bind(("::", 0))
+        .or_else(|_| std::net::TcpListener::bind(("0.0.0.0", 0)))
+        .unwrap();
     let port = blocker.local_addr().unwrap().port();
     // The IPv4 side too: on Windows an IPv6 socket holds only IPv6, and the
     // door rightly opened on the free IPv4 side (6 Oct 2026). Where IPv6
     // already holds both (Linux), this second bind fails and isn't needed.
     let blocker_v4 = std::net::TcpListener::bind(("0.0.0.0", port)).ok();
     let (c, p) = (cfg(), plat());
-    let mut d = daemon(&c, &p, story_or_islands(), "friends-door").with_signal_door_later(port, Vec::new());
+    let mut d =
+        daemon(&c, &p, story_or_islands(), "friends-door").with_signal_door_later(port, Vec::new());
     d.open_signal_door_again(100);
     drop(blocker);
     drop(blocker_v4);
     d.open_signal_door_again(120);
-    assert!(TcpStream::connect(("127.0.0.1", port)).is_err(), "tried again before a minute was up");
+    assert!(
+        TcpStream::connect(("127.0.0.1", port)).is_err(),
+        "tried again before a minute was up"
+    );
     d.open_signal_door_again(161);
-    assert!(TcpStream::connect(("127.0.0.1", port)).is_ok(), "the door never opened once the port was free");
+    assert!(
+        TcpStream::connect(("127.0.0.1", port)).is_ok(),
+        "the door never opened once the port was free"
+    );
 }
 
 #[test]
@@ -1081,18 +1551,39 @@ fn a_reminder_that_fires_is_said() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, story_or_islands(), "reminder-said");
     let set = d.turn("remind me in 2 minutes to stretch", 1_000);
-    assert!(set.to_lowercase().contains("set") || set.to_lowercase().contains("remind"), "{set}");
+    assert!(
+        set.to_lowercase().contains("set") || set.to_lowercase().contains("remind"),
+        "{set}"
+    );
     let mut heard = Vec::new();
     for t in [1_060, 1_130, 1_200] {
         heard.extend(d.tick(t));
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while !heard.iter().any(|line| line.to_lowercase().contains("stretch") && !line.contains("couldn't")) && std::time::Instant::now() < deadline {
+    while !heard
+        .iter()
+        .any(|line| line.to_lowercase().contains("stretch") && !line.contains("couldn't"))
+        && std::time::Instant::now() < deadline
+    {
         heard.extend(d.tick(1_200));
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    assert!(heard.iter().any(|l| l.to_lowercase().contains("stretch")), "the reminder fired and wasn't said: {heard:?}");
-    for _ in 0..30 { heard.extend(d.tick(1_200)); std::thread::sleep(std::time::Duration::from_millis(5)); }
-    let delivered = heard.iter().filter(|line| line.trim().eq_ignore_ascii_case("stretch") || line.contains("Reminder: stretch")).count();
-    assert_eq!(delivered, 1, "the reminder must actually be delivered once: {heard:?}");
+    assert!(
+        heard.iter().any(|l| l.to_lowercase().contains("stretch")),
+        "the reminder fired and wasn't said: {heard:?}"
+    );
+    for _ in 0..30 {
+        heard.extend(d.tick(1_200));
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let delivered = heard
+        .iter()
+        .filter(|line| {
+            line.trim().eq_ignore_ascii_case("stretch") || line.contains("Reminder: stretch")
+        })
+        .count();
+    assert_eq!(
+        delivered, 1,
+        "the reminder must actually be delivered once: {heard:?}"
+    );
 }

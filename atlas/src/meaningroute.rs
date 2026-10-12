@@ -65,7 +65,10 @@ impl Resident {
 
     /// Start the configured encoder with `--lines`. `None` when there is no
     /// encoder, it isn't installed, or it can't be started.
-    pub fn start(cfg: &crate::meaning::MeaningConfig, vars: &crate::tools::Vars) -> Option<Resident> {
+    pub fn start(
+        cfg: &crate::meaning::MeaningConfig,
+        vars: &crate::tools::Vars,
+    ) -> Option<Resident> {
         #[cfg(any(target_os = "ios", target_os = "android"))]
         {
             let _ = (cfg, vars);
@@ -105,7 +108,11 @@ impl Resident {
                             .and_then(|_| stdout.read_line(&mut line));
                         match got {
                             Ok(n) if n > 0 => {
-                                let v = if line.starts_with('!') { None } else { crate::speaker::parse_embedding(&line).ok() };
+                                let v = if line.starts_with('!') {
+                                    None
+                                } else {
+                                    crate::speaker::parse_embedding(&line).ok()
+                                };
                                 let _ = back.send(v);
                             }
                             // Gone: every later ask gets nothing, straight away.
@@ -141,31 +148,43 @@ impl Route {
     /// Start the encoder and embed `texts` (the router's lines) behind it:
     /// the one inside Atlas when its files are installed under `root`, else
     /// a configured encoder program.
-    pub fn start(cfg: &crate::meaning::MeaningConfig, vars: &crate::tools::Vars, root: Option<&std::path::Path>, texts: Vec<String>) -> Option<Route> {
-        let enc = root.and_then(|r| Resident::native(r)).or_else(|| Resident::start(cfg, vars))?;
+    pub fn start(
+        cfg: &crate::meaning::MeaningConfig,
+        vars: &crate::tools::Vars,
+        root: Option<&std::path::Path>,
+        texts: Vec<String>,
+    ) -> Option<Route> {
+        let enc = root
+            .and_then(|r| Resident::native(r))
+            .or_else(|| Resident::start(cfg, vars))?;
         let enc = Arc::new(enc);
         let tools: Arc<OnceLock<Vec<Vec<f32>>>> = Arc::new(OnceLock::new());
         let (e, t) = (enc.clone(), tools.clone());
-        crate::heard!(std::thread::Builder::new().name("meaning-tools".into()).spawn(move || {
-            let mut all = Vec::with_capacity(texts.len());
-            for text in &texts {
-                // The first one also waits for the model to load.
-                match e.embed(text, Duration::from_secs(20)) {
-                    Some(v) => all.push(v),
-                    None => return, // no encoder after all: words alone
+        crate::heard!(std::thread::Builder::new()
+            .name("meaning-tools".into())
+            .spawn(move || {
+                let mut all = Vec::with_capacity(texts.len());
+                for text in &texts {
+                    // The first one also waits for the model to load.
+                    match e.embed(text, Duration::from_secs(20)) {
+                        Some(v) => all.push(v),
+                        None => return, // no encoder after all: words alone
+                    }
                 }
-            }
-            // unheard-ok: a OnceLock already set keeps its first value, which is the one wanted
-            let _ = t.set(all);
-            // Then the reply check's examples, and the check goes live.
-            let denials: Option<Vec<(Vec<f32>, &'static str)>> = crate::backed::DENIAL_EXAMPLES
-                .iter()
-                .map(|(x, topic)| e.embed(x, Duration::from_secs(5)).map(|v| (v, *topic)))
-                .collect();
-            if let Some(denials) = denials {
-                crate::backed::install(Box::new(Checks { enc: e.clone(), ex: crate::backed::Examples { denials } }));
-            }
-        }));
+                // unheard-ok: a OnceLock already set keeps its first value, which is the one wanted
+                let _ = t.set(all);
+                // Then the reply check's examples, and the check goes live.
+                let denials: Option<Vec<(Vec<f32>, &'static str)>> = crate::backed::DENIAL_EXAMPLES
+                    .iter()
+                    .map(|(x, topic)| e.embed(x, Duration::from_secs(5)).map(|v| (v, *topic)))
+                    .collect();
+                if let Some(denials) = denials {
+                    crate::backed::install(Box::new(Checks {
+                        enc: e.clone(),
+                        ex: crate::backed::Examples { denials },
+                    }));
+                }
+            }));
         Some(Route { enc, tools })
     }
 

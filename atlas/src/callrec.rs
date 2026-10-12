@@ -42,7 +42,14 @@ pub const RATE: u32 = 16_000;
 
 impl To16k {
     pub fn new(rate_in: u32, channels: u16) -> To16k {
-        To16k { step: RATE as f64 / rate_in.max(1) as f64, channels: channels.max(1) as usize, at: 0.0, sum: 0.0, count: 0, last: 0.0 }
+        To16k {
+            step: RATE as f64 / rate_in.max(1) as f64,
+            channels: channels.max(1) as usize,
+            at: 0.0,
+            sum: 0.0,
+            count: 0,
+            last: 0.0,
+        }
     }
 
     /// Feed interleaved samples (−1..1); get 16 kHz mono ones back.
@@ -59,7 +66,11 @@ impl To16k {
             // at double speed.
             while self.at >= 1.0 {
                 self.at -= 1.0;
-                let v = if self.count > 0 { (self.sum / self.count as f64).clamp(-1.0, 1.0) } else { self.last };
+                let v = if self.count > 0 {
+                    (self.sum / self.count as f64).clamp(-1.0, 1.0)
+                } else {
+                    self.last
+                };
                 self.last = v;
                 out.push((v * i16::MAX as f64) as i16);
                 self.sum = 0.0;
@@ -80,14 +91,26 @@ pub struct WavOut {
 impl WavOut {
     pub fn create(path: &Path) -> std::io::Result<WavOut> {
         let root = crate::store::state_root_for(path.parent().unwrap_or(Path::new(".")))?;
-        let lease = root.as_ref().map(|_| crate::store::owned_output_lease(path.parent().unwrap_or(Path::new(".")), false)).transpose()?;
-        let _state = root.as_ref().map(|root| crate::store::state_transaction(root)).transpose()?;
+        let lease = root
+            .as_ref()
+            .map(|_| {
+                crate::store::owned_output_lease(path.parent().unwrap_or(Path::new(".")), false)
+            })
+            .transpose()?;
+        let _state = root
+            .as_ref()
+            .map(|root| crate::store::state_transaction(root))
+            .transpose()?;
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d)?;
         }
         let mut file = std::fs::File::create(path)?;
         file.write_all(&wav_header(0))?;
-        Ok(WavOut { file, samples: 0, _output_lease: lease })
+        Ok(WavOut {
+            file,
+            samples: 0,
+            _output_lease: lease,
+        })
     }
 
     /// How many samples are in the file so far.
@@ -172,10 +195,12 @@ pub fn microphone_named(want: &str, names: &[String]) -> Option<usize> {
     names
         .iter()
         .position(|n| n.trim().to_lowercase() == w)
-        .or_else(|| names.iter().position(|n| {
-            let n = n.trim().to_lowercase();
-            !n.is_empty() && (n.contains(&w) || w.contains(&n))
-        }))
+        .or_else(|| {
+            names.iter().position(|n| {
+                let n = n.trim().to_lowercase();
+                !n.is_empty() && (n.contains(&w) || w.contains(&n))
+            })
+        })
 }
 
 /// One side of a call being recorded. Stops and closes its file when
@@ -244,7 +269,13 @@ pub fn start(side: Side, path: &Path, held: bool) -> Result<Recording, String> {
         })
         .map_err(|e| format!("couldn't start recording: {e}"))?;
     match ready_rx.recv_timeout(std::time::Duration::from_secs(10)) {
-        Ok(Ok(())) => Ok(Recording { side, path: path.to_path_buf(), held, stop: Some(stop_tx), done: Some(done_rx) }),
+        Ok(Ok(())) => Ok(Recording {
+            side,
+            path: path.to_path_buf(),
+            held,
+            stop: Some(stop_tx),
+            done: Some(done_rx),
+        }),
         Ok(Err(e)) => Err(e),
         Err(_) => Err("the sound device didn't answer".into()),
     }
@@ -257,7 +288,8 @@ pub fn silent(side: Side, path: &Path, held: bool) -> Result<Recording, String> 
     let held = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(held));
     let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
     let (done_tx, done_rx) = std::sync::mpsc::channel::<Result<u64, String>>();
-    let mut wav = WavOut::create(path).map_err(|e| format!("couldn't write {}: {e}", path.display()))?;
+    let mut wav =
+        WavOut::create(path).map_err(|e| format!("couldn't write {}: {e}", path.display()))?;
     std::thread::Builder::new()
         .name(format!("call-{side:?}-silent"))
         .spawn(move || {
@@ -277,7 +309,13 @@ pub fn silent(side: Side, path: &Path, held: bool) -> Result<Recording, String> 
             let _ = done_tx.send(r);
         })
         .map_err(|e| format!("couldn't start recording: {e}"))?;
-    Ok(Recording { side, path: path.to_path_buf(), held, stop: Some(stop_tx), done: Some(done_rx) })
+    Ok(Recording {
+        side,
+        path: path.to_path_buf(),
+        held,
+        stop: Some(stop_tx),
+        done: Some(done_rx),
+    })
 }
 
 #[cfg(windows)]
@@ -292,9 +330,19 @@ fn capture(
     let host = cpal::default_host();
     let (device, config) = match side {
         Side::Yours => {
-            let want = WANT_MIC.read().ok().and_then(|m| m.clone()).unwrap_or_default();
-            let mut inputs: Vec<cpal::Device> = host.input_devices().map(|d| d.collect()).unwrap_or_default();
-            let names: Vec<String> = inputs.iter().map(|d| d.name().unwrap_or_default()).collect();
+            let want = WANT_MIC
+                .read()
+                .ok()
+                .and_then(|m| m.clone())
+                .unwrap_or_default();
+            let mut inputs: Vec<cpal::Device> = host
+                .input_devices()
+                .map(|d| d.collect())
+                .unwrap_or_default();
+            let names: Vec<String> = inputs
+                .iter()
+                .map(|d| d.name().unwrap_or_default())
+                .collect();
             let d = match microphone_named(&want, &names) {
                 Some(i) => inputs.swap_remove(i),
                 None => {
@@ -304,14 +352,20 @@ fn capture(
                     host.default_input_device().ok_or("there's no microphone")?
                 }
             };
-            let c = d.default_input_config().map_err(|e| format!("the microphone won't say how it records: {e}"))?;
+            let c = d
+                .default_input_config()
+                .map_err(|e| format!("the microphone won't say how it records: {e}"))?;
             (d, c)
         }
         // Loopback: an input stream on the output device is what WASAPI
         // calls capturing what the machine plays.
         Side::Theirs => {
-            let d = host.default_output_device().ok_or("there's no speaker or headset to listen to")?;
-            let c = d.default_output_config().map_err(|e| format!("the speakers won't say how they play: {e}"))?;
+            let d = host
+                .default_output_device()
+                .ok_or("there's no speaker or headset to listen to")?;
+            let c = d
+                .default_output_config()
+                .map_err(|e| format!("the speakers won't say how they play: {e}"))?;
             (d, c)
         }
     };
@@ -330,25 +384,41 @@ fn capture(
     let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => {
             let tx = tx.clone();
-            device.build_input_stream(&config.config(), move |d: &[f32], _: &_| { let _ = tx.send(d.to_vec()); }, err, None)
+            device.build_input_stream(
+                &config.config(),
+                move |d: &[f32], _: &_| {
+                    let _ = tx.send(d.to_vec());
+                },
+                err,
+                None,
+            )
         }
         cpal::SampleFormat::I16 => {
             let tx = tx.clone();
             device.build_input_stream(
                 &config.config(),
-                move |d: &[i16], _: &_| { let _ = tx.send(d.iter().map(|s| *s as f32 / i16::MAX as f32).collect()); },
+                move |d: &[i16], _: &_| {
+                    let _ = tx.send(d.iter().map(|s| *s as f32 / i16::MAX as f32).collect());
+                },
                 err,
                 None,
             )
         }
-        other => return Err(format!("the sound device records in a form I don't read ({other:?})")),
+        other => {
+            return Err(format!(
+                "the sound device records in a form I don't read ({other:?})"
+            ))
+        }
     }
     .map_err(|e| format!("couldn't open the sound device: {e}"))?;
     // Only the stream's callback holds a sender now, so when the stream goes
     // the channel says so.
     drop(tx);
-    stream.play().map_err(|e| format!("couldn't start the sound device: {e}"))?;
-    let mut wav = WavOut::create(path).map_err(|e| format!("couldn't write {}: {e}", path.display()))?;
+    stream
+        .play()
+        .map_err(|e| format!("couldn't start the sound device: {e}"))?;
+    let mut wav =
+        WavOut::create(path).map_err(|e| format!("couldn't write {}: {e}", path.display()))?;
     let mut down = To16k::new(config.sample_rate().0, config.channels());
     let _ = ready.send(Ok(()));
     let began = std::time::Instant::now();
@@ -411,9 +481,18 @@ mod picking_the_microphone {
 
     #[test]
     fn the_microphone_atlas_listens_through_is_the_one_recorded() {
-        let have = names(&["Microphone Array (Realtek(R) Audio)", "Microphone (HD Pro Webcam C920)"]);
-        assert_eq!(microphone_named("Microphone (HD Pro Webcam C920)", &have), Some(1));
-        assert_eq!(microphone_named("microphone array (realtek(r) audio)", &have), Some(0));
+        let have = names(&[
+            "Microphone Array (Realtek(R) Audio)",
+            "Microphone (HD Pro Webcam C920)",
+        ]);
+        assert_eq!(
+            microphone_named("Microphone (HD Pro Webcam C920)", &have),
+            Some(1)
+        );
+        assert_eq!(
+            microphone_named("microphone array (realtek(r) audio)", &have),
+            Some(0)
+        );
         // ffmpeg's name and Windows' can differ by the "Microphone (...)" wrapper.
         assert_eq!(microphone_named("HD Pro Webcam C920", &have), Some(1));
     }

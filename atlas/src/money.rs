@@ -85,18 +85,82 @@ pub struct Entry {
     pub account: String,
 }
 
-const ROOF: &[&str] = &["rent", "mortgage", "council tax", "electric", "gas ", "water", "internet", "broadband"];
-const FOOD: &[&str] = &["tesco", "sainsbury", "aldi", "lidl", "asda", "waitrose", "grocer", "supermarket",
-                        "kroger", "safeway", "whole foods", "trader joe", "restaurant", "cafe", "coffee",
-                        "deliveroo", "uber eats", "doordash", "just eat"];
-const TRAVEL: &[&str] = &["uber", "lyft", "petrol", "fuel", "shell", "bp ", "chevron", "parking",
-                          "train", "rail", "transit", "airline", "flight"];
-const STANDING: &[&str] = &["insurance", "netflix", "spotify", "subscription", "membership",
-                            "phone", "mobile", "gym", "icloud", "adobe", "microsoft 365"];
-const WORK: &[&str] = &["adobe", "hosting", "domain", "aws", "camera", "lens", "microphone",
-                        "software", "vps", "server"];
-const KEPT: &[&str] = &["transfer to savings", "isa", "pension", "401k", "vanguard", "investment"];
-const OWN_ACCOUNTS: &[&str] = &["transfer", "internal", "to savings", "from savings", "own account", "payment to card"];
+const ROOF: &[&str] = &[
+    "rent",
+    "mortgage",
+    "council tax",
+    "electric",
+    "gas ",
+    "water",
+    "internet",
+    "broadband",
+];
+const FOOD: &[&str] = &[
+    "tesco",
+    "sainsbury",
+    "aldi",
+    "lidl",
+    "asda",
+    "waitrose",
+    "grocer",
+    "supermarket",
+    "kroger",
+    "safeway",
+    "whole foods",
+    "trader joe",
+    "restaurant",
+    "cafe",
+    "coffee",
+    "deliveroo",
+    "uber eats",
+    "doordash",
+    "just eat",
+];
+const TRAVEL: &[&str] = &[
+    "uber", "lyft", "petrol", "fuel", "shell", "bp ", "chevron", "parking", "train", "rail",
+    "transit", "airline", "flight",
+];
+const STANDING: &[&str] = &[
+    "insurance",
+    "netflix",
+    "spotify",
+    "subscription",
+    "membership",
+    "phone",
+    "mobile",
+    "gym",
+    "icloud",
+    "adobe",
+    "microsoft 365",
+];
+const WORK: &[&str] = &[
+    "adobe",
+    "hosting",
+    "domain",
+    "aws",
+    "camera",
+    "lens",
+    "microphone",
+    "software",
+    "vps",
+    "server",
+];
+const KEPT: &[&str] = &[
+    "transfer to savings",
+    "isa",
+    "pension",
+    "401k",
+    "vanguard",
+    "investment",
+];
+const OWN_ACCOUNTS: &[&str] = &[
+    "transfer",
+    "internal",
+    "to savings",
+    "from savings",
+    "own account",
+    "payment to card",
+];
 
 /// Where the month being answered about is kept.
 ///
@@ -140,7 +204,10 @@ pub struct KeptMonth {
 /// File one more month into the retained series, oldest out first.
 pub fn remember_month(months: &mut Vec<KeptMonth>, entries: &[Entry], at: u64) {
     let month = summarise(entries);
-    months.push(KeptMonth { at, by_bucket: month.by_bucket });
+    months.push(KeptMonth {
+        at,
+        by_bucket: month.by_bucket,
+    });
     if months.len() > MONTHS_KEPT {
         let drop = months.len() - MONTHS_KEPT;
         months.drain(0..drop);
@@ -296,7 +363,10 @@ pub fn summarise(entries: &[Entry]) -> Month {
             .map(|(_, t)| *t)
             .unwrap_or(0.0),
         by_bucket: by,
-        unsorted: entries.iter().filter(|e| e.bucket == Bucket::Unknown).count(),
+        unsorted: entries
+            .iter()
+            .filter(|e| e.bucket == Bucket::Unknown)
+            .count(),
     }
 }
 
@@ -324,7 +394,10 @@ pub fn new_or_grown(this_month: &[Entry], last_month: &[Entry], rose_by: f32) ->
             .iter()
             .find(|p| p.description.to_lowercase() == e.description.to_lowercase());
         match before {
-            None => out.push(format!("{} is new — {:.2} a month", e.description, -e.amount)),
+            None => out.push(format!(
+                "{} is new — {:.2} a month",
+                e.description, -e.amount
+            )),
             Some(p) if -e.amount > -p.amount * (1.0 + rose_by) => out.push(format!(
                 "{} went from {:.2} to {:.2}",
                 e.description, -p.amount, -e.amount
@@ -345,7 +418,11 @@ pub fn new_or_grown(this_month: &[Entry], last_month: &[Entry], rose_by: f32) ->
 /// time. Neither is the check the setting describes, and a threshold for a
 /// check nobody wrote is the worst kind of dead setting — the file reads as
 /// though the check exists.
-pub fn buckets_that_jumped(this_month: &[Entry], last_month: &[Entry], rose_by: f32) -> Vec<String> {
+pub fn buckets_that_jumped(
+    this_month: &[Entry],
+    last_month: &[Entry],
+    rose_by: f32,
+) -> Vec<String> {
     let this = summarise(this_month);
     let last = summarise(last_month);
     let mut out = Vec::new();
@@ -436,7 +513,6 @@ pub struct MoneyConfig {
 fn never() -> bool {
     false
 }
-
 
 /// The line Atlas holds.
 pub const NOT_ADVICE: &str =

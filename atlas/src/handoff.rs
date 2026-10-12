@@ -126,7 +126,10 @@ pub fn write_brief(p: &Problem, cfg: &HandoffConfig) -> String {
     if !p.ruled_out.is_empty() {
         // Saves the reader suggesting something already eliminated, which is
         // most of what a bad bug report wastes.
-        s.push_str(&format!("**Already ruled out:** {}\n\n", p.ruled_out.join("; ")));
+        s.push_str(&format!(
+            "**Already ruled out:** {}\n\n",
+            p.ruled_out.join("; ")
+        ));
     }
 
     if let Some(t) = &p.theory {
@@ -141,7 +144,10 @@ pub fn write_brief(p: &Problem, cfg: &HandoffConfig) -> String {
 
     for sn in &p.snippets {
         let text = first_lines(&sn.text, cfg.max_snippet_lines);
-        s.push_str(&format!("**{}** (from line {}):\n```rust\n{}\n```\n\n", sn.path, sn.from_line, text));
+        s.push_str(&format!(
+            "**{}** (from line {}):\n```rust\n{}\n```\n\n",
+            sn.path, sn.from_line, text
+        ));
     }
 
     s.push_str(
@@ -205,7 +211,11 @@ pub fn extract_blocks(reply: &str) -> Vec<Block> {
         if code.trim().is_empty() {
             continue;
         }
-        out.push(Block { language, code, path: last_path.clone() });
+        out.push(Block {
+            language,
+            code,
+            path: last_path.clone(),
+        });
     }
     out
 }
@@ -218,9 +228,12 @@ fn mentions_a_path(line: &str) -> Option<String> {
             // A bare file name counts too ("calc.py" on its own line above
             // the block is how most answers name the file).
             w.len() > 3
-                && [".rs", ".yaml", ".yml", ".toml", ".md", ".bat", ".py", ".js", ".ts", ".json", ".sh", ".ps1", ".txt", ".csv"]
-                    .iter()
-                    .any(|e| w.ends_with(e))
+                && [
+                    ".rs", ".yaml", ".yml", ".toml", ".md", ".bat", ".py", ".js", ".ts", ".json",
+                    ".sh", ".ps1", ".txt", ".csv",
+                ]
+                .iter()
+                .any(|e| w.ends_with(e))
         })
         .map(|w| w.to_string())
 }
@@ -270,5 +283,9 @@ fn first_lines(s: &str, n: usize) -> String {
     if lines.len() <= n {
         return s.to_string();
     }
-    format!("{}\n// …{} more lines", lines[..n].join("\n"), lines.len() - n)
+    format!(
+        "{}\n// …{} more lines",
+        lines[..n].join("\n"),
+        lines.len() - n
+    )
 }

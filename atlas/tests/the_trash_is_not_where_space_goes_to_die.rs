@@ -73,14 +73,22 @@ fn files_under(p: &Path) -> Vec<String> {
     let mut out = Vec::new();
     let mut stack = vec![p.to_path_buf()];
     while let Some(d) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
         for e in rd.flatten() {
             let path = e.path();
             if path.is_dir() {
                 stack.push(path);
             } else {
                 // Forward slashes on every system, so the expected lists hold on Windows too.
-                out.push(path.strip_prefix(p).unwrap_or(&path).display().to_string().replace('\\', "/"));
+                out.push(
+                    path.strip_prefix(p)
+                        .unwrap_or(&path)
+                        .display()
+                        .to_string()
+                        .replace('\\', "/"),
+                );
             }
         }
     }
@@ -94,11 +102,20 @@ fn a_folder_can_be_moved_to_the_trash_at_all() {
     let t = trash_at(&dir, 30);
     let folder = a_cache_folder(&dir);
 
-    let d = t.take(&folder, "reclaimed").expect("a folder could not be put in the trash");
-    assert!(!folder.exists(), "it reported moving the folder and the folder is still there");
+    let d = t
+        .take(&folder, "reclaimed")
+        .expect("a folder could not be put in the trash");
+    assert!(
+        !folder.exists(),
+        "it reported moving the folder and the folder is still there"
+    );
 
     let held = PathBuf::from(&d.held);
-    assert!(held.is_dir(), "what landed in the trash is not a folder: {}", held.display());
+    assert!(
+        held.is_dir(),
+        "what landed in the trash is not a folder: {}",
+        held.display()
+    );
     assert_eq!(
         files_under(&held),
         vec!["index.js", "left/a.js", "left/deep/b.js", "right/c.js"],
@@ -113,15 +130,22 @@ fn a_folder_comes_back_out_with_everything_in_it() {
     let folder = a_cache_folder(&dir);
 
     let d = t.take(&folder, "reclaimed").expect("take");
-    t.undo(d.id).expect("a folder could not be restored from the trash");
+    t.undo(d.id)
+        .expect("a folder could not be restored from the trash");
 
-    assert!(folder.is_dir(), "undo reported success and the folder is not back");
+    assert!(
+        folder.is_dir(),
+        "undo reported success and the folder is not back"
+    );
     assert_eq!(
         files_under(&folder),
         vec!["index.js", "left/a.js", "left/deep/b.js", "right/c.js"],
         "the folder came back and its contents did not"
     );
-    assert!(t.ledger().is_empty(), "the entry stayed on the ledger after being restored");
+    assert!(
+        t.ledger().is_empty(),
+        "the entry stayed on the ledger after being restored"
+    );
 }
 
 #[test]
@@ -146,7 +170,10 @@ fn a_folder_that_expires_actually_leaves_the_disk() {
          never freed, and the ledger entry that could have put it back is gone",
         held.display()
     );
-    assert!(t.ledger().is_empty(), "the ledger still lists something that is gone");
+    assert!(
+        t.ledger().is_empty(),
+        "the ledger still lists something that is gone"
+    );
 }
 
 #[test]
@@ -186,8 +213,15 @@ fn nothing_still_inside_the_keep_window_is_touched() {
     let folder = a_cache_folder(&dir);
     let d = t.take(&folder, "reclaimed").expect("take");
 
-    assert_eq!(t.expire(d.at + 86_400), 0, "it expired something one day old");
-    assert!(PathBuf::from(&d.held).is_dir(), "a folder one day old was deleted");
+    assert_eq!(
+        t.expire(d.at + 86_400),
+        0,
+        "it expired something one day old"
+    );
+    assert!(
+        PathBuf::from(&d.held).is_dir(),
+        "a folder one day old was deleted"
+    );
     assert_eq!(t.ledger().len(), 1);
 }
 
@@ -207,10 +241,19 @@ fn a_partial_copy_never_deletes_the_original() {
     let folder = a_cache_folder(&dir);
     let before = files_under(&folder);
 
-    let err = t.take(&folder, "reclaimed").expect_err("it moved a folder into a file");
+    let err = t
+        .take(&folder, "reclaimed")
+        .expect_err("it moved a folder into a file");
     assert!(!err.to_string().is_empty());
-    assert!(folder.is_dir(), "a failed move deleted the folder it could not copy");
-    assert_eq!(before, files_under(&folder), "a failed move damaged the folder");
+    assert!(
+        folder.is_dir(),
+        "a failed move deleted the folder it could not copy"
+    );
+    assert_eq!(
+        before,
+        files_under(&folder),
+        "a failed move damaged the folder"
+    );
 }
 
 #[test]
@@ -226,11 +269,16 @@ fn what_the_ledger_cannot_account_for_is_reportable() {
     // cannot be undone.
     let dir = tmp("unaccounted");
     let t = trash_at(&dir, 30);
-    let kept = t.take(&{
-        let f = dir.join("kept.txt");
-        std::fs::write(&f, b"still on the ledger").unwrap();
-        f
-    }, "on the books").expect("take");
+    let kept = t
+        .take(
+            &{
+                let f = dir.join("kept.txt");
+                std::fs::write(&f, b"still on the ledger").unwrap();
+                f
+            },
+            "on the books",
+        )
+        .expect("take");
 
     // A stray, exactly as the old `expire` would have left it.
     let stray = PathBuf::from(&t.cfg.dir).join("99-node_modules");
@@ -247,8 +295,15 @@ fn what_the_ledger_cannot_account_for_is_reportable() {
         !names.iter().any(|n| n.contains(&kept.held)),
         "something the ledger does account for was reported as a stray: {names:?}"
     );
-    let bytes = found.iter().find(|(p, _)| p.ends_with("99-node_modules")).map(|(_, b)| *b);
-    assert_eq!(bytes, Some(4096), "it did not say how much space the stray is holding");
+    let bytes = found
+        .iter()
+        .find(|(p, _)| p.ends_with("99-node_modules"))
+        .map(|(_, b)| *b);
+    assert_eq!(
+        bytes,
+        Some(4096),
+        "it did not say how much space the stray is holding"
+    );
 
     // And it does not delete it. Reporting is the whole job.
     assert!(stray.exists(), "`unaccounted` removed something");
@@ -263,6 +318,13 @@ fn the_ledger_and_its_half_written_copy_are_not_strays() {
     t.take(&f, "why").expect("take");
     std::fs::write(PathBuf::from(&t.cfg.dir).join("ledger.json.writing"), b"{}").unwrap();
 
-    let names: Vec<String> = t.unaccounted().iter().map(|(p, _)| p.display().to_string()).collect();
-    assert!(names.is_empty(), "the ledger's own files were reported as strays: {names:?}");
+    let names: Vec<String> = t
+        .unaccounted()
+        .iter()
+        .map(|(p, _)| p.display().to_string())
+        .collect();
+    assert!(
+        names.is_empty(),
+        "the ledger's own files were reported as strays: {names:?}"
+    );
 }

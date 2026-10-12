@@ -84,7 +84,10 @@ fn touches_the_long_way(
         if !inside {
             continue;
         }
-        let continues = visits.last().map(|prev| i - prev <= separation).unwrap_or(false);
+        let continues = visits
+            .last()
+            .map(|prev| i - prev <= separation)
+            .unwrap_or(false);
         if !continues {
             visits.push(i);
         } else {
@@ -93,7 +96,11 @@ fn touches_the_long_way(
     }
     // `visits` now holds one entry per separate visit, updated to its last
     // bar -- so the count is its length and the last touch is its tail.
-    let last = if visits.is_empty() { None } else { Some(*visits.last().unwrap()) };
+    let last = if visits.is_empty() {
+        None
+    } else {
+        Some(*visits.last().unwrap())
+    };
     (visits.len(), last)
 }
 
@@ -104,7 +111,9 @@ fn wandering(n: usize) -> Bars {
     let mut px = 1.1000f64;
     let mut seed = 0x2545_F491_4F6C_DD1Du64;
     for i in 0..n {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let step = ((seed >> 33) as f64 / (1u64 << 31) as f64 - 1.0) * 4e-4;
         px = (px + step).max(1.0500).min(1.1500);
         o.push(px);
@@ -151,7 +160,11 @@ fn asking_again_gives_the_same_answer_as_asking_once() {
     let tol = view.gamma();
     let first = view.touches(1.1000, tol, TOUCH_SEPARATION, 0);
     for _ in 0..5 {
-        assert_eq!(view.touches(1.1000, tol, TOUCH_SEPARATION, 0), first, "the count moved");
+        assert_eq!(
+            view.touches(1.1000, tol, TOUCH_SEPARATION, 0),
+            first,
+            "the count moved"
+        );
     }
 }
 
@@ -238,7 +251,10 @@ fn a_level_far_from_price_is_not_returned_as_a_nearby_level() {
             (lv.price - now).abs() / pip
         );
     }
-    assert!(!out.is_empty(), "the band filtered out everything, which proves nothing");
+    assert!(
+        !out.is_empty(),
+        "the band filtered out everything, which proves nothing"
+    );
 }
 
 #[test]
@@ -327,7 +343,11 @@ fn atr_the_long_way(high: &[f64], low: &[f64], close: &[f64], n: usize) -> f64 {
     let mut trs = Vec::with_capacity(len);
     for i in 0..len {
         let prev = if i == 0 { close[0] } else { close[i - 1] };
-        trs.push((high[i] - low[i]).max((high[i] - prev).abs()).max((low[i] - prev).abs()));
+        trs.push(
+            (high[i] - low[i])
+                .max((high[i] - prev).abs())
+                .max((low[i] - prev).abs()),
+        );
     }
     let take = if trs.len() < n { trs.len() } else { n };
     if take == 0 {
@@ -404,8 +424,14 @@ fn the_bounded_pivot_query_is_the_tail_of_the_unbounded_one() {
         let (hi, lo) = v.swings_since(2, since);
         let want_hi: Vec<usize> = all_hi.iter().copied().filter(|i| *i >= since).collect();
         let want_lo: Vec<usize> = all_lo.iter().copied().filter(|i| *i >= since).collect();
-        assert_eq!(hi, want_hi, "swings_since(2, {since}) highs are not the tail");
-        assert_eq!(lo, want_lo, "swings_since(2, {since}) lows are not the tail");
+        assert_eq!(
+            hi, want_hi,
+            "swings_since(2, {since}) highs are not the tail"
+        );
+        assert_eq!(
+            lo, want_lo,
+            "swings_since(2, {since}) lows are not the tail"
+        );
     }
 }
 
@@ -421,7 +447,10 @@ fn the_structure_window_start_moves_in_steps_and_never_backwards() {
     for visible in 0..6_000usize {
         let s = window_start(visible);
         assert!(s <= visible, "the window starts after the bars it covers");
-        assert!(s >= last, "the window start went backwards at {visible} bars");
+        assert!(
+            s >= last,
+            "the window start went backwards at {visible} bars"
+        );
         if s != last {
             distinct += 1;
             last = s;

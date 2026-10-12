@@ -37,11 +37,24 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 fn tmp(tag: &str) -> std::path::PathBuf {
@@ -60,7 +73,10 @@ fn the_three_sentences_reach_something() {
     assert_eq!(p.parse("finish setting up"), Intent::FinishSetup);
     assert_eq!(p.parse("this is me"), Intent::ThisIsMe);
     assert!(
-        matches!(p.parse("stop telling me about the backups"), Intent::MuteTopic(_)),
+        matches!(
+            p.parse("stop telling me about the backups"),
+            Intent::MuteTopic(_)
+        ),
         "muting by saying so still reaches nothing"
     );
 }
@@ -75,7 +91,10 @@ fn the_way_back_from_a_mute_is_a_sentence_too() {
         p.parse("start telling me about the backups again"),
         Intent::MuteTopic(_)
     ));
-    assert!(matches!(p.parse("unmute the backups"), Intent::MuteTopic(_)));
+    assert!(matches!(
+        p.parse("unmute the backups"),
+        Intent::MuteTopic(_)
+    ));
 }
 
 #[test]
@@ -85,7 +104,10 @@ fn a_muted_topic_keeps_the_whole_sentence_so_the_subject_survives() {
     // no way to tell muting from unmuting.
     match parser().parse("stop telling me about the backups") {
         Intent::MuteTopic(said) => {
-            assert!(said.contains("stop telling me about"), "the lead-in was trimmed off: {said}");
+            assert!(
+                said.contains("stop telling me about"),
+                "the lead-in was trimmed off: {said}"
+            );
             assert!(said.contains("backups"), "the subject was lost: {said}");
         }
         other => panic!("{other:?}"),
@@ -102,7 +124,10 @@ fn unmuting_is_read_before_muting_or_it_would_never_happen() {
     // valid mute. Read in the wrong order it silences the topic instead, and
     // reports that it has -- the failure nobody catches, because the reply is
     // the one you'd get either way.
-    assert_eq!(unmute_from("unmute the backups"), Some("the backups".into()));
+    assert_eq!(
+        unmute_from("unmute the backups"),
+        Some("the backups".into())
+    );
     assert_eq!(
         mute_from("unmute the backups"),
         Some("the backups".into()),
@@ -123,10 +148,16 @@ fn a_mute_survives_a_restart_without_touching_your_config() {
     // they hand-edit -- comments, ordering and all -- is not where to start.
     let store = Store::new(tmp("muted"));
     let mut muted = Muted::load(&store);
-    assert!(muted.topics.is_empty(), "a fresh install starts quiet about nothing");
+    assert!(
+        muted.topics.is_empty(),
+        "a fresh install starts quiet about nothing"
+    );
 
     assert!(muted.mute("the backups"));
-    assert!(!muted.mute("the backups"), "muting twice reported as a change");
+    assert!(
+        !muted.mute("the backups"),
+        "muting twice reported as a change"
+    );
     muted.save(&store).unwrap();
 
     let back = Muted::load(&store);
@@ -144,14 +175,21 @@ fn unmuting_something_that_was_never_muted_says_so() {
     muted.mute("the backups");
     assert!(muted.unmute("the backups"));
     assert!(muted.topics.is_empty());
-    assert!(muted.spoken().contains("not keeping quiet"), "{}", muted.spoken());
+    assert!(
+        muted.spoken().contains("not keeping quiet"),
+        "{}",
+        muted.spoken()
+    );
 }
 
 #[test]
 fn muting_is_case_and_space_insensitive_because_speech_is() {
     let mut muted = Muted::default();
     assert!(muted.mute("  The Backups  "));
-    assert!(!muted.mute("the backups"), "the same topic went in twice in two spellings");
+    assert!(
+        !muted.mute("the backups"),
+        "the same topic went in twice in two spellings"
+    );
     assert!(muted.unmute("THE BACKUPS"));
 }
 
@@ -181,7 +219,9 @@ fn the_daemon_reads_an_unmute_as_an_unmute() {
     let p = plat();
     let mut d = daemon(&c, &p, "mute-order");
 
-    let muted = d.execute(&Intent::MuteTopic("stop telling me about the backups".into()));
+    let muted = d.execute(&Intent::MuteTopic(
+        "stop telling me about the backups".into(),
+    ));
     assert!(muted.contains("stop mentioning the backups"), "{muted}");
 
     let back = d.execute(&Intent::MuteTopic("unmute the backups".into()));
@@ -191,8 +231,13 @@ fn the_daemon_reads_an_unmute_as_an_unmute() {
     );
 
     // And it really is un-muted, not merely spoken about.
-    let quiet = d.execute(&Intent::MuteTopic("what are you keeping quiet about".into()));
-    assert!(quiet.contains("not keeping quiet about anything"), "{quiet}");
+    let quiet = d.execute(&Intent::MuteTopic(
+        "what are you keeping quiet about".into(),
+    ));
+    assert!(
+        quiet.contains("not keeping quiet about anything"),
+        "{quiet}"
+    );
 }
 
 #[test]
@@ -202,7 +247,9 @@ fn the_daemon_says_the_way_back_when_it_mutes() {
     let c = cfg();
     let p = plat();
     let mut d = daemon(&c, &p, "mute-wayback");
-    let said = d.execute(&Intent::MuteTopic("stop telling me about the backups".into()));
+    let said = d.execute(&Intent::MuteTopic(
+        "stop telling me about the backups".into(),
+    ));
     assert!(
         said.contains("start telling me about the backups"),
         "the reply does not say how to undo it: {said}"
@@ -224,7 +271,9 @@ fn a_mute_said_out_loud_is_still_muted_after_a_restart() {
     let p = plat();
     {
         let mut d = daemon(&c, &p, "mute-restart");
-        d.execute(&Intent::MuteTopic("stop telling me about the backups".into()));
+        d.execute(&Intent::MuteTopic(
+            "stop telling me about the backups".into(),
+        ));
     }
     let store = Store::new(std::env::temp_dir().join("atlas-three-mute-restart"));
     let back = Muted::load(&store);
@@ -255,7 +304,10 @@ fn finishing_setup_comes_back_to_what_was_skipped() {
     );
     // And it says what it is in words rather than as a variant name.
     assert!(!step.plain().is_empty());
-    assert!(!step.plain().contains("Step"), "a Rust name reached the sentence");
+    assert!(
+        !step.plain().contains("Step"),
+        "a Rust name reached the sentence"
+    );
 }
 
 #[test]
@@ -290,7 +342,10 @@ fn nothing_here_is_still_listed_as_a_gap() {
     // reach nothing. All three of these were on it. A built thing that stays
     // on a list of what is owed is how the list stops being read.
     let text = std::fs::read_to_string("tests/it_can_do_what_it_says.rs").expect("the guard");
-    let after = text.split("NOT_A_COMMAND_ON_ITS_OWN").nth(1).expect("the list");
+    let after = text
+        .split("NOT_A_COMMAND_ON_ITS_OWN")
+        .nth(1)
+        .expect("the list");
     let body = &after[..after.find("];").unwrap_or(after.len())];
     // Comment lines are not entries. The block that held these three still
     // names them, in the note explaining why it is empty -- which is the
@@ -300,7 +355,11 @@ fn nothing_here_is_still_listed_as_a_gap() {
         .filter(|l| !l.trim_start().starts_with("//"))
         .collect::<Vec<_>>()
         .join("\n");
-    for phrase in ["finish setting up", "stop telling me about the backups", "this is me"] {
+    for phrase in [
+        "finish setting up",
+        "stop telling me about the backups",
+        "this is me",
+    ] {
         assert!(
             !entries.contains(&format!("\"{phrase}\"")),
             "\"{phrase}\" is built and still listed as an unbuilt gap"

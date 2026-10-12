@@ -292,7 +292,11 @@ pub fn summary(r: &Readings, findings: &[Finding]) -> String {
         return format!(
             "All fine. {:.0} gigabytes free, memory at {:.0} percent.",
             r.disk_free_gb,
-            if r.ram_total_gb > 0.0 { r.ram_used_gb / r.ram_total_gb * 100.0 } else { 0.0 }
+            if r.ram_total_gb > 0.0 {
+                r.ram_used_gb / r.ram_total_gb * 100.0
+            } else {
+                0.0
+            }
         );
     }
     // The numbers come first whether or not anything is wrong. The old
@@ -352,7 +356,8 @@ fn read_power(r: &mut Readings) {
     if unsafe { GetSystemPowerStatus(&mut s) }.is_err() {
         return;
     }
-    let (on_battery, percent) = power_from_status(s.ACLineStatus, s.BatteryFlag, s.BatteryLifePercent);
+    let (on_battery, percent) =
+        power_from_status(s.ACLineStatus, s.BatteryFlag, s.BatteryLifePercent);
     r.on_battery = on_battery;
     r.battery_percent = percent;
 }
@@ -376,7 +381,12 @@ fn read_power(r: &mut Readings) {
             let status = std::fs::read_to_string(p.join("status")).unwrap_or_default();
             let online = std::fs::read_to_string(p.join("online")).unwrap_or_default();
             let cap = std::fs::read_to_string(p.join("capacity")).unwrap_or_default();
-            Some((kind.trim().to_string(), status.trim().to_string(), online.trim().to_string(), cap.trim().to_string()))
+            Some((
+                kind.trim().to_string(),
+                status.trim().to_string(),
+                online.trim().to_string(),
+                cap.trim().to_string(),
+            ))
         }));
         r.on_battery = on_battery;
         r.battery_percent = percent;
@@ -397,7 +407,9 @@ fn read_power(r: &mut Readings) {
 
 /// Linux power supplies, read: on battery when a battery says
 /// "Discharging" and no mains supply says it's online.
-pub fn power_from_sysfs(supplies: impl Iterator<Item = (String, String, String, String)>) -> (bool, Option<u8>) {
+pub fn power_from_sysfs(
+    supplies: impl Iterator<Item = (String, String, String, String)>,
+) -> (bool, Option<u8>) {
     let mut discharging = false;
     let mut mains = false;
     let mut percent = None;
@@ -438,7 +450,11 @@ fn read_disk(r: &mut Readings) {
     // this from a second drive should get numbers about that drive.
     let root: Vec<u16> = std::env::current_dir()
         .ok()
-        .and_then(|p| p.components().next().map(|c| c.as_os_str().to_string_lossy().to_string()))
+        .and_then(|p| {
+            p.components()
+                .next()
+                .map(|c| c.as_os_str().to_string_lossy().to_string())
+        })
         .map(|c| format!("{c}\\"))
         .unwrap_or_else(|| "C:\\".into())
         .encode_utf16()
@@ -446,8 +462,15 @@ fn read_disk(r: &mut Readings) {
         .collect();
     let (mut free, mut total) = (0u64, 0u64);
     // SAFETY: `root` is NUL-terminated and outlives the call.
-    if unsafe { GetDiskFreeSpaceExW(PCWSTR(root.as_ptr()), None, Some(&mut total), Some(&mut free)) }
-        .is_ok()
+    if unsafe {
+        GetDiskFreeSpaceExW(
+            PCWSTR(root.as_ptr()),
+            None,
+            Some(&mut total),
+            Some(&mut free),
+        )
+    }
+    .is_ok()
     {
         r.disk_total_gb = total as f32 / BYTES_PER_GB;
         r.disk_free_gb = free as f32 / BYTES_PER_GB;
@@ -488,12 +511,26 @@ fn read_memory(r: &mut Readings) {
 /// `MemAvailable` makes on Linux.
 #[cfg(not(windows))]
 fn read_memory_bsd(r: &mut Readings) {
-    let Ok(o) = crate::tools::command("sysctl").args(["-n", "hw.memsize"]).output() else { return };
-    let Some(total) = String::from_utf8_lossy(&o.stdout).trim().parse::<f64>().ok().filter(|f| f.is_finite()) else { return };
+    let Ok(o) = crate::tools::command("sysctl")
+        .args(["-n", "hw.memsize"])
+        .output()
+    else {
+        return;
+    };
+    let Some(total) = String::from_utf8_lossy(&o.stdout)
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|f| f.is_finite())
+    else {
+        return;
+    };
     const B_PER_GB: f64 = 1024.0 * 1024.0 * 1024.0;
     r.ram_total_gb = (total / B_PER_GB) as f32;
 
-    let Ok(o) = crate::tools::command("vm_stat").output() else { return };
+    let Ok(o) = crate::tools::command("vm_stat").output() else {
+        return;
+    };
     let text = String::from_utf8_lossy(&o.stdout);
     let page = text
         .lines()
@@ -527,7 +564,9 @@ fn read_memory_bsd(r: &mut Readings) {
 /// program is actually running from.
 #[cfg(not(windows))]
 fn read_disk(r: &mut Readings) {
-    let Ok(o) = crate::tools::command("df").args(["-k", "."]).output() else { return };
+    let Ok(o) = crate::tools::command("df").args(["-k", "."]).output() else {
+        return;
+    };
     let text = String::from_utf8_lossy(&o.stdout);
     // Skip the header; the figures are the second line. Long device names wrap
     // on some systems, so take the last line with enough columns rather than

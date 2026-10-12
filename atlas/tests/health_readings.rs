@@ -83,7 +83,10 @@ fn a_real_reading_produces_a_summary_that_mentions_the_machine() {
     let r = read_machine();
     let findings = assess(&r, &HealthConfig::default());
     let s = summary(&r, &findings);
-    assert!(!s.trim().is_empty(), "a machine that was read should have something said about it");
+    assert!(
+        !s.trim().is_empty(),
+        "a machine that was read should have something said about it"
+    );
 }
 
 #[test]

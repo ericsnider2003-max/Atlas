@@ -40,7 +40,9 @@ pub struct Cron {
     source: String,
 }
 
-const MONTHS: [&str; 12] = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+const MONTHS: [&str; 12] = [
+    "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+];
 const DOWS: [&str; 7] = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 
 impl Cron {
@@ -56,7 +58,10 @@ impl Cron {
         };
         let f: Vec<&str> = expanded.split_whitespace().collect();
         if f.len() != 5 {
-            return Err(format!("'{expr}' needs 5 fields (minute hour day month weekday), has {}", f.len()));
+            return Err(format!(
+                "'{expr}' needs 5 fields (minute hour day month weekday), has {}",
+                f.len()
+            ));
         }
         let mut c = Cron {
             minutes: [false; 60],
@@ -212,7 +217,9 @@ fn field(spec: &str, lo: u32, hi: u32, names: &[&str]) -> Result<Vec<u32>, Strin
     for part in spec.split(',') {
         let (range, step) = match part.split_once('/') {
             Some((r, s)) => {
-                let s: u32 = s.parse().map_err(|_| format!("step '{s}' is not a number"))?;
+                let s: u32 = s
+                    .parse()
+                    .map_err(|_| format!("step '{s}' is not a number"))?;
                 if s == 0 {
                     return Err("a step of 0 never advances".into());
                 }
@@ -245,7 +252,15 @@ fn field(spec: &str, lo: u32, hi: u32, names: &[&str]) -> Result<Vec<u32>, Strin
 mod tests {
     use super::*;
     fn at(y: i64, mo: u32, d: u32, h: u32, mi: u32) -> i64 {
-        Civil { year: y, month: mo, day: d, hour: h, minute: mi, second: 0 }.to_local()
+        Civil {
+            year: y,
+            month: mo,
+            day: d,
+            hour: h,
+            minute: mi,
+            second: 0,
+        }
+        .to_local()
     }
     fn show(t: i64) -> (i64, u32, u32, u32, u32) {
         let c = Civil::from_local(t);
@@ -256,8 +271,14 @@ mod tests {
     fn every_fifteen_in_market_hours_on_weekdays() {
         let c = Cron::parse("*/15 9-16 * * MON-FRI").unwrap();
         // Fri 2026-09-25 16:50 -> next is Mon 09:00
-        assert_eq!(show(c.next_after(at(2026, 9, 25, 16, 50)).unwrap()), (2026, 9, 28, 9, 0));
-        assert_eq!(show(c.next_after(at(2026, 9, 28, 9, 0)).unwrap()), (2026, 9, 28, 9, 15));
+        assert_eq!(
+            show(c.next_after(at(2026, 9, 25, 16, 50)).unwrap()),
+            (2026, 9, 28, 9, 0)
+        );
+        assert_eq!(
+            show(c.next_after(at(2026, 9, 28, 9, 0)).unwrap()),
+            (2026, 9, 28, 9, 15)
+        );
     }
 
     #[test]
@@ -265,8 +286,14 @@ mod tests {
         let or = Cron::parse("0 9 1 * MON").unwrap();
         let and = Cron::parse("0 9 1 * +MON").unwrap();
         // From Wed 2026-09-23: OR fires Monday 28th; AND waits for a Monday the 1st (Feb 1 2027).
-        assert_eq!(show(or.next_after(at(2026, 9, 23, 12, 0)).unwrap()), (2026, 9, 28, 9, 0));
-        assert_eq!(show(and.next_after(at(2026, 9, 23, 12, 0)).unwrap()), (2027, 2, 1, 9, 0));
+        assert_eq!(
+            show(or.next_after(at(2026, 9, 23, 12, 0)).unwrap()),
+            (2026, 9, 28, 9, 0)
+        );
+        assert_eq!(
+            show(and.next_after(at(2026, 9, 23, 12, 0)).unwrap()),
+            (2027, 2, 1, 9, 0)
+        );
         assert!(or.describe().contains("EITHER"));
         assert!(and.describe().contains("AND"));
     }
@@ -274,11 +301,20 @@ mod tests {
     #[test]
     fn last_day_and_nth_weekday() {
         let l = Cron::parse("0 18 L * *").unwrap();
-        assert_eq!(show(l.next_after(at(2026, 2, 1, 0, 0)).unwrap()), (2026, 2, 28, 18, 0));
+        assert_eq!(
+            show(l.next_after(at(2026, 2, 1, 0, 0)).unwrap()),
+            (2026, 2, 28, 18, 0)
+        );
         let second_fri = Cron::parse("30 8 * * 5#2").unwrap();
-        assert_eq!(show(second_fri.next_after(at(2026, 9, 23, 0, 0)).unwrap()), (2026, 10, 9, 8, 30));
+        assert_eq!(
+            show(second_fri.next_after(at(2026, 9, 23, 0, 0)).unwrap()),
+            (2026, 10, 9, 8, 30)
+        );
         let last_fri = Cron::parse("0 17 * * FRIL").unwrap();
-        assert_eq!(show(last_fri.next_after(at(2026, 9, 1, 0, 0)).unwrap()), (2026, 9, 25, 17, 0));
+        assert_eq!(
+            show(last_fri.next_after(at(2026, 9, 1, 0, 0)).unwrap()),
+            (2026, 9, 25, 17, 0)
+        );
     }
 
     #[test]
@@ -300,7 +336,14 @@ mod tests {
 
     #[test]
     fn bad_expressions_are_errors() {
-        for bad in ["* * * *", "60 * * * *", "*/0 * * * *", "5-1 * * * *", "0 0 * * 8", "0 0 * * FRI#6"] {
+        for bad in [
+            "* * * *",
+            "60 * * * *",
+            "*/0 * * * *",
+            "5-1 * * * *",
+            "0 0 * * 8",
+            "0 0 * * FRI#6",
+        ] {
             assert!(Cron::parse(bad).is_err(), "{bad}");
         }
     }

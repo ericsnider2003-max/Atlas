@@ -30,11 +30,24 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon_at<'a>(c: &'a Config, p: &'a MockPlatform, root: PathBuf) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(root), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(root),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 fn write_note_in(root: &Path, name: &str, body: &str) {
@@ -64,8 +77,16 @@ fn the_conversation_settles_a_question_the_notes_answer_two_ways() {
 
     // Without context: near-equal scores, and the honest answer is to say so.
     let root2 = tmp("settles-control");
-    write_note_in(&root2, "test-ctx-harvest.md", "# Harvest log\n\nThe apples came off the east rows this week.\n");
-    write_note_in(&root2, "test-ctx-cider.md", "# Cider batch\n\nThe apples went through the press on Sunday.\n");
+    write_note_in(
+        &root2,
+        "test-ctx-harvest.md",
+        "# Harvest log\n\nThe apples came off the east rows this week.\n",
+    );
+    write_note_in(
+        &root2,
+        "test-ctx-cider.md",
+        "# Cider batch\n\nThe apples went through the press on Sunday.\n",
+    );
     let mut control = daemon_at(&c, &p, root2);
     let cold = control.turn("what do I know about apples", 100);
     assert!(
@@ -112,19 +133,55 @@ fn talking_about_a_topic_does_not_make_it_the_answer_to_everything() {
 fn a_fact_tie_breaks_toward_the_conversation_and_nothing_new_appears() {
     let mut b = Book::default();
     let now = 1_000_000;
-    b.learn(Fact::new("garage code", "the garage keypad code", "garage keypad opens with 4417", Kind::Reference, now), now);
-    b.learn(Fact::new("garage rent", "the garage rent", "garage rent is due monthly to the keypad landlord", Kind::Reference, now), now);
-    b.learn(Fact::new("dentist", "the dentist", "the dentist is on maple street", Kind::Reference, now), now);
+    b.learn(
+        Fact::new(
+            "garage code",
+            "the garage keypad code",
+            "garage keypad opens with 4417",
+            Kind::Reference,
+            now,
+        ),
+        now,
+    );
+    b.learn(
+        Fact::new(
+            "garage rent",
+            "the garage rent",
+            "garage rent is due monthly to the keypad landlord",
+            Kind::Reference,
+            now,
+        ),
+        now,
+    );
+    b.learn(
+        Fact::new(
+            "dentist",
+            "the dentist",
+            "the dentist is on maple street",
+            Kind::Reference,
+            now,
+        ),
+        now,
+    );
 
-    let ctx = context_terms_from(&["I can't remember the keypad number".into()], "what do I know about the garage");
-    assert!(ctx.contains(&"keypad".to_string()), "context should carry 'keypad': {ctx:?}");
+    let ctx = context_terms_from(
+        &["I can't remember the keypad number".into()],
+        "what do I know about the garage",
+    );
+    assert!(
+        ctx.contains(&"keypad".to_string()),
+        "context should carry 'keypad': {ctx:?}"
+    );
 
     let hits = b.recall_in_context("garage", &ctx, now);
     assert!(!hits.is_empty());
     // Both garage facts mention "keypad" in body or summary — the CODE fact
     // carries it in the summary too, so the keypad conversation pulls the
     // code fact ahead of the rent fact.
-    assert_eq!(hits[0].name, "garage-code", "the keypad conversation should pick the code fact");
+    assert_eq!(
+        hits[0].name, "garage-code",
+        "the keypad conversation should pick the code fact"
+    );
     assert!(
         hits.iter().all(|f| f.name != "dentist"),
         "a fact the question never matched must not appear because of context"
@@ -152,11 +209,19 @@ fn the_nudge_reorders_equals_and_cannot_overturn_a_better_match() {
 
     let ctx = vec!["ferry".to_string()];
     let hits = lib.search_in_context("shipment tuesday", None, &ctx, None, &cfg, now);
-    assert_eq!(hits.first().map(|h| h.title.as_str()), Some("beta"), "the ferry context should pick beta");
+    assert_eq!(
+        hits.first().map(|h| h.title.as_str()),
+        Some("beta"),
+        "the ferry context should pick beta"
+    );
 
     // A decisively better match stays on top whatever the context says: the
     // multiplier is capped well below the gap two extra matching words make.
-    lib.add(mk(3, "gamma", "shipment shipment tuesday tuesday arrives on the dot"));
+    lib.add(mk(
+        3,
+        "gamma",
+        "shipment shipment tuesday tuesday arrives on the dot",
+    ));
     let hits = lib.search_in_context("shipment tuesday", None, &ctx, None, &cfg, now);
     assert_eq!(
         hits.first().map(|h| h.title.as_str()),
@@ -189,7 +254,10 @@ fn a_context_vector_breaks_a_tie_by_meaning_with_no_shared_words() {
     b[1] = 1.0;
     lib.add(mk(1, "alpha", "the shipment arrives tuesday", a));
     lib.add(mk(2, "beta", "the shipment arrives tuesday", b));
-    let cfg = RecallConfig { semantic: true, ..RecallConfig::default() };
+    let cfg = RecallConfig {
+        semantic: true,
+        ..RecallConfig::default()
+    };
     let now = 1_000_100;
 
     // A context vector aligned with beta's, sharing NO words with either piece.
@@ -208,7 +276,10 @@ fn a_context_vector_breaks_a_tie_by_meaning_with_no_shared_words() {
     // two pieces are not themselves perfectly tied — their titles differ and
     // freshness reads the title — so the invariant is "the vector had no
     // effect", checked piece-by-piece, not "the two are equal".)
-    let off = RecallConfig { semantic: false, ..RecallConfig::default() };
+    let off = RecallConfig {
+        semantic: false,
+        ..RecallConfig::default()
+    };
     let with_vec = lib.search_in_context("shipment tuesday", None, &[], Some(&ctx_vec), &off, now);
     let without = lib.search_in_context("shipment tuesday", None, &[], None, &off, now);
     assert_eq!(with_vec.len(), without.len());

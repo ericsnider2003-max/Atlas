@@ -17,7 +17,11 @@ const OWN_INPUT_SLACK_MS: u32 = 250;
 /// Whether `tick` falls inside Atlas's own typing, allowing for the clock
 /// wrapping every 49 days.
 fn during(tick: u32, own: OwnInput) -> bool {
-    tick.wrapping_sub(own.from) <= own.to.wrapping_add(OWN_INPUT_SLACK_MS).wrapping_sub(own.from)
+    tick.wrapping_sub(own.from)
+        <= own
+            .to
+            .wrapping_add(OWN_INPUT_SLACK_MS)
+            .wrapping_sub(own.from)
 }
 
 /// Seconds since *you* last touched the keyboard or mouse.
@@ -43,6 +47,9 @@ pub fn own_input_starts(last_input: u32, before: Option<OwnInput>, now: u32) -> 
         Some(o) if during(last_input, o) => o.yours_before,
         _ => last_input,
     };
-    OwnInput { yours_before, from: now, to: now }
+    OwnInput {
+        yours_before,
+        from: now,
+        to: now,
+    }
 }
-

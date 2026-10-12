@@ -58,7 +58,14 @@ fn unwired() -> BTreeSet<String> {
 /// Capability ids that deliberately do not map to a module of the same name.
 /// Kept short and explicit — a long list here would defeat the check.
 const NOT_A_MODULE: &[&str] = &[
-    "wake", "speak", "apps", "panels", "accents", "translate", "tax", "backup",
+    "wake",
+    "speak",
+    "apps",
+    "panels",
+    "accents",
+    "translate",
+    "tax",
+    "backup",
     // Umbrella entries covering several modules rather than one.
     "reason",
     // Named for the action, not the file: its module is `online`.
@@ -129,7 +136,10 @@ fn unreachable_capabilities_are_marked_planned() {
 fn capability_unwired() -> BTreeSet<String> {
     let text =
         fs::read_to_string("tests/capability_wiring.rs").expect("capability_wiring.rs must exist");
-    let after = text.split("CAPABILITY_UNWIRED").nth(1).expect("CAPABILITY_UNWIRED must exist");
+    let after = text
+        .split("CAPABILITY_UNWIRED")
+        .nth(1)
+        .expect("CAPABILITY_UNWIRED must exist");
     let body = after
         .split_once("= &[")
         .and_then(|(_, rest)| rest.split_once("];"))
@@ -182,16 +192,16 @@ fn a_planned_capability_says_why_it_is_planned() {
     // entries were wired, and nothing here looked.
     let mut accounted = unwired();
     accounted.extend(capability_unwired());
-    let named: BTreeSet<&str> =
-        PLANNED_FOR_A_REASON_OF_ITS_OWN.iter().map(|(id, _)| *id).collect();
+    let named: BTreeSet<&str> = PLANNED_FOR_A_REASON_OF_ITS_OWN
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
 
     let unexplained: Vec<String> = capability::all()
         .into_iter()
         .filter(|c| c.state == State::Planned)
         .filter(|c| !named.contains(c.id))
-        .filter(|c| {
-            !accounted.contains(c.id) && !c.modules.iter().any(|m| accounted.contains(*m))
-        })
+        .filter(|c| !accounted.contains(c.id) && !c.modules.iter().any(|m| accounted.contains(*m)))
         .map(|c| format!("{} — \"{}\"", c.id, c.what))
         .collect();
 
@@ -213,7 +223,10 @@ fn every_reason_of_its_own_is_a_real_one() {
     let ids: BTreeSet<&str> = capability::all().into_iter().map(|c| c.id).collect();
     for (id, why) in PLANNED_FOR_A_REASON_OF_ITS_OWN {
         assert!(ids.contains(id), "{id} is not a capability");
-        assert!(why.len() > 60, "{id} is listed with no real explanation: {why:?}");
+        assert!(
+            why.len() > 60,
+            "{id} is listed with no real explanation: {why:?}"
+        );
     }
 }
 
@@ -229,9 +242,7 @@ fn nothing_still_claims_it_is_waiting_to_be_wired_while_something_calls_it() {
     let lying: Vec<String> = capability::all()
         .into_iter()
         .filter(|c| c.needs.is_some_and(|n| n.contains("wiring in")))
-        .filter(|c| {
-            !accounted.contains(c.id) && !c.modules.iter().any(|m| accounted.contains(*m))
-        })
+        .filter(|c| !accounted.contains(c.id) && !c.modules.iter().any(|m| accounted.contains(*m)))
         .map(|c| format!("{} says it is waiting to be wired in", c.id))
         .collect();
 
@@ -283,16 +294,16 @@ fn capability_ids_mostly_name_a_real_module() {
             return true;
         }
         fn search(dir: &std::path::Path, want: &str) -> bool {
-            let Ok(entries) = std::fs::read_dir(dir) else { return false };
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return false;
+            };
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
                     if search(&path, want) {
                         return true;
                     }
-                } else if path.file_name().and_then(|n| n.to_str())
-                    == Some(&format!("{want}.rs"))
-                {
+                } else if path.file_name().and_then(|n| n.to_str()) == Some(&format!("{want}.rs")) {
                     return true;
                 }
             }

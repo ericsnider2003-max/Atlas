@@ -30,8 +30,14 @@ pub fn understand(said: &str) -> Option<Reading> {
     let has = |words: &[&str]| words.iter().any(|w| t.contains(w));
 
     // Voice too quiet — the most common one, and it has two causes.
-    if has(&["not loud enough", "too quiet", "can't hear me", "cant hear me", "sounds quiet",
-             "hard to hear"]) {
+    if has(&[
+        "not loud enough",
+        "too quiet",
+        "can't hear me",
+        "cant hear me",
+        "sounds quiet",
+        "hard to hear",
+    ]) {
         return Some(Reading {
             measure: "your dialogue loudness against the music, and against what the platform normalises to",
             target: "voice at -14 LUFS, music about 12dB below it",
@@ -40,16 +46,28 @@ pub fn understand(said: &str) -> Option<Reading> {
         });
     }
 
-    if has(&["music is too loud", "music too loud", "backing track", "music drowns"]) {
+    if has(&[
+        "music is too loud",
+        "music too loud",
+        "backing track",
+        "music drowns",
+    ]) {
         return Some(Reading {
             measure: "the gap between your voice and the music",
             target: "music 12dB under the voice, ducking to 18dB while you speak",
             fix: "sidechain the music to your voice so it drops when you talk",
-            or_maybe: Some("your voice being quiet, which sounds the same and needs the opposite fix"),
+            or_maybe: Some(
+                "your voice being quiet, which sounds the same and needs the opposite fix",
+            ),
         });
     }
 
-    if has(&["music is too quiet", "music too quiet", "can't hear the music", "cant hear the music"]) {
+    if has(&[
+        "music is too quiet",
+        "music too quiet",
+        "can't hear the music",
+        "cant hear the music",
+    ]) {
         return Some(Reading {
             measure: "the music level in the gaps where you aren't talking",
             target: "music comes up to about 6dB under the voice between lines",
@@ -95,7 +113,13 @@ pub fn understand(said: &str) -> Option<Reading> {
     }
 
     // Picture.
-    if has(&["too dark", "can't see me", "cant see me", "underexposed", "dim"]) {
+    if has(&[
+        "too dark",
+        "can't see me",
+        "cant see me",
+        "underexposed",
+        "dim",
+    ]) {
         return Some(Reading {
             measure: "average brightness and how much of the frame is pure black",
             target: "around 50% average, nothing crushed to zero",
@@ -113,8 +137,15 @@ pub fn understand(said: &str) -> Option<Reading> {
         });
     }
 
-    if has(&["too orange", "too warm", "too blue", "too cold", "colour looks", "color looks",
-             "skin looks"]) {
+    if has(&[
+        "too orange",
+        "too warm",
+        "too blue",
+        "too cold",
+        "colour looks",
+        "color looks",
+        "skin looks",
+    ]) {
         return Some(Reading {
             measure: "the colour temperature of your skin tones",
             target: "between 4800 and 6200K",
@@ -123,7 +154,13 @@ pub fn understand(said: &str) -> Option<Reading> {
         });
     }
 
-    if has(&["too much colour", "too much color", "oversaturated", "looks fake", "cartoonish"]) {
+    if has(&[
+        "too much colour",
+        "too much color",
+        "oversaturated",
+        "looks fake",
+        "cartoonish",
+    ]) {
         return Some(Reading {
             measure: "overall saturation",
             target: "about 1.1x, no more",

@@ -45,7 +45,12 @@ fn anything_that_cannot_be_undone_says_what_it_costs() {
 fn read_only_checks_change_nothing_and_so_need_no_cost_but_may_declare_one() {
     for c in read_only() {
         assert_eq!(c.undo, Undo::ReadOnly);
-        assert_eq!(c.kind, Kind::Diagnose, "{} reads but is not a diagnostic", c.id);
+        assert_eq!(
+            c.kind,
+            Kind::Diagnose,
+            "{} reads but is not a diagnostic",
+            c.id
+        );
     }
 }
 
@@ -54,11 +59,19 @@ fn read_only_checks_change_nothing_and_so_need_no_cost_but_may_declare_one() {
 #[test]
 fn one_way_and_judgement_calls_both_wait_for_you() {
     let gated = needs_approval();
-    for id in ["component-cleanup", "winget-upgrade", "fast-startup", "dns-override"] {
+    for id in [
+        "component-cleanup",
+        "winget-upgrade",
+        "fast-startup",
+        "dns-override",
+    ] {
         assert!(gated.iter().any(|c| c.id == id), "{id} should be gated");
     }
     for id in ["keyboard-repeat", "startup-items", "netstat"] {
-        assert!(!gated.iter().any(|c| c.id == id), "{id} should not be gated");
+        assert!(
+            !gated.iter().any(|c| c.id == id),
+            "{id} should not be gated"
+        );
     }
 }
 
@@ -85,8 +98,16 @@ fn credentials_are_not_an_optimisation() {
     // And it is not quietly in the catalogue under another name.
     for c in CHECKS {
         let h = c.how.to_lowercase();
-        assert!(!h.contains("key=clear"), "{} would dump saved passwords", c.id);
-        assert!(!h.contains("show profiles"), "{} enumerates saved networks", c.id);
+        assert!(
+            !h.contains("key=clear"),
+            "{} would dump saved passwords",
+            c.id
+        );
+        assert!(
+            !h.contains("show profiles"),
+            "{} enumerates saved networks",
+            c.id
+        );
     }
 }
 
@@ -116,7 +137,11 @@ fn every_refusal_gives_a_reason_so_it_can_be_argued_with() {
 #[test]
 fn nothing_on_the_no_list_survives_into_a_pass() {
     for c in first_pass() {
-        assert!(!is_refused(c.how), "{} is on the no-list and still ran", c.id);
+        assert!(
+            !is_refused(c.how),
+            "{} is on the no-list and still ran",
+            c.id
+        );
     }
 }
 
@@ -139,7 +164,10 @@ fn a_first_pass_diagnoses_before_it_acts() {
         .iter()
         .position(|c| c.undo == Undo::Reversible && c.id != "system-restore")
         .unwrap();
-    assert!(last_readonly < first_change, "it changes things before it looks");
+    assert!(
+        last_readonly < first_change,
+        "it changes things before it looks"
+    );
 }
 
 #[test]
@@ -170,7 +198,9 @@ fn a_finding_can_name_the_mechanism_that_fixes_it() {
         what: "costs 4s at boot".into(),
         frees_mb: 0,
         saves_boot_secs: 4.0,
-        fix: Fix::Reversible { action: "disable".into() },
+        fix: Fix::Reversible {
+            action: "disable".into(),
+        },
     };
     let m = mechanism_for(&f).expect("a startup finding should point at the startup mechanism");
     assert_eq!(m.id, "startup-items");
@@ -180,10 +210,16 @@ fn a_finding_can_name_the_mechanism_that_fixes_it() {
 #[test]
 fn admin_is_declared_rather_than_discovered_when_it_fails() {
     for id in ["sfc", "dism-restore", "component-cleanup", "system-restore"] {
-        assert!(by_id(id).unwrap().needs_admin, "{id} needs elevation and should say so");
+        assert!(
+            by_id(id).unwrap().needs_admin,
+            "{id} needs elevation and should say so"
+        );
     }
     for id in ["keyboard-repeat", "netstat", "clipboard-history"] {
-        assert!(!by_id(id).unwrap().needs_admin, "{id} does not need elevation");
+        assert!(
+            !by_id(id).unwrap().needs_admin,
+            "{id} does not need elevation"
+        );
     }
 }
 

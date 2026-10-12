@@ -37,8 +37,13 @@ fn your_own_work_does_not_go_out() {
 #[test]
 fn a_business_own_material_crosses_into_its_own_space_freely() {
     let mut wall = Firewall::default();
-    assert!(wall.check(&business("Homelab"), "Homelab", "signals.csv", 100).allowed());
-    assert!(wall.waiting().is_empty(), "nothing was stopped, so nothing is held");
+    assert!(wall
+        .check(&business("Homelab"), "Homelab", "signals.csv", 100)
+        .allowed());
+    assert!(
+        wall.waiting().is_empty(),
+        "nothing was stopped, so nothing is held"
+    );
 }
 
 #[test]
@@ -56,7 +61,9 @@ fn one_business_cannot_reach_another() {
 #[test]
 fn the_space_name_is_matched_without_fussing_about_capitals() {
     let mut wall = Firewall::default();
-    assert!(wall.check(&business("Homelab"), "  homelab ", "signals.csv", 100).allowed());
+    assert!(wall
+        .check(&business("Homelab"), "  homelab ", "signals.csv", 100)
+        .allowed());
 }
 
 // ---------------------------------------------------------------------------
@@ -68,8 +75,12 @@ fn nowhere_in_particular_is_stopped_rather_than_waved_through() {
     // An empty destination is a caller bug, and treating it as fine would be
     // the quietest possible hole in this.
     let mut wall = Firewall::default();
-    assert!(!wall.check(&Space::Personal, "   ", "notes.md", 100).allowed());
-    assert!(!wall.check(&business("Homelab"), "", "signals.csv", 100).allowed());
+    assert!(!wall
+        .check(&Space::Personal, "   ", "notes.md", 100)
+        .allowed());
+    assert!(!wall
+        .check(&business("Homelab"), "", "signals.csv", 100)
+        .allowed());
 }
 
 // ---------------------------------------------------------------------------
@@ -98,8 +109,16 @@ fn he_is_told_and_the_telling_does_not_read_it_out() {
     let n = note(wall.waiting()[0]);
     assert!(n.private, "it has to knock rather than disclose");
     assert!(n.body.contains("tax-return.pdf"), "{}", n.body);
-    assert!(n.body.contains("release"), "and say what to do about it: {}", n.body);
-    assert!(!n.title.contains("tax-return"), "the title is what a stranger sees: {}", n.title);
+    assert!(
+        n.body.contains("release"),
+        "and say what to do about it: {}",
+        n.body
+    );
+    assert!(
+        !n.title.contains("tax-return"),
+        "the title is what a stranger sees: {}",
+        n.title
+    );
 }
 
 #[test]
@@ -152,7 +171,12 @@ fn the_held_list_keeps_a_name_and_never_a_path() {
     // The folders above a file are themselves personal. "Tax/2025/settlement"
     // says a great deal more than "settlement".
     let mut wall = Firewall::default();
-    wall.check(&Space::Personal, "Homelab", "C:/Users/erics/Tax/2025/settlement.pdf", 100);
+    wall.check(
+        &Space::Personal,
+        "Homelab",
+        "C:/Users/erics/Tax/2025/settlement.pdf",
+        100,
+    );
     let held = wall.waiting()[0];
     assert_eq!(held.what, "settlement.pdf");
     assert!(!held.what.contains("Tax"), "{}", held.what);
@@ -167,7 +191,11 @@ fn contents_pasted_in_by_mistake_are_cut_rather_than_stored() {
                         outstanding settlement and the associated schedule of payments";
     wall.check(&Space::Personal, "Homelab", whole_letter, 100);
     let held = wall.waiting()[0];
-    assert!(held.what.chars().count() <= 61, "{} chars", held.what.chars().count());
+    assert!(
+        held.what.chars().count() <= 61,
+        "{} chars",
+        held.what.chars().count()
+    );
     assert!(held.what.ends_with('…'), "{}", held.what);
 }
 
@@ -184,7 +212,13 @@ fn nothing_in_here_stores_what_was_in_the_thing() {
     // not exist yet: the moment `Held` gains a body, the firewall's own log
     // has carried the content across the boundary it exists to hold.
     let source = include_str!("../src/firewall.rs");
-    for field in ["pub body:", "pub contents:", "pub text:", "pub bytes:", "pub path:"] {
+    for field in [
+        "pub body:",
+        "pub contents:",
+        "pub text:",
+        "pub bytes:",
+        "pub path:",
+    ] {
         assert!(!source.contains(field), "firewall must not keep {field}");
     }
     assert!(
@@ -201,7 +235,10 @@ fn nothing_in_here_stores_what_was_in_the_thing() {
 fn an_empty_line_says_so_plainly_rather_than_reporting_a_count_of_zero() {
     let said = Firewall::default().spoken();
     assert!(said.contains("Nothing's waiting"), "{said}");
-    assert!(!said.contains('0'), "a count of zero is not an answer: {said}");
+    assert!(
+        !said.contains('0'),
+        "a count of zero is not an answer: {said}"
+    );
 }
 
 #[test]
@@ -213,15 +250,24 @@ fn one_thing_waiting_is_named_and_several_are_counted() {
     wall.check(&Space::Personal, "Homelab", "budget.xlsx", 200);
     let said = wall.spoken();
     assert!(said.contains('2'), "{said}");
-    assert!(said.contains("budget.xlsx"), "the most recent is named: {said}");
+    assert!(
+        said.contains("budget.xlsx"),
+        "the most recent is named: {said}"
+    );
 }
 
 #[test]
 fn the_way_in_still_exists() {
     let main: &str = &crate::common::source_of("main");
     let shared_task = include_str!("../src/shared_task.rs");
-    assert!(main.contains("Some(\"shared\")"), "nothing dispatches `atlas shared`");
-    assert!(main.contains("atlas::firewall::Firewall::load"), "the held list is never read");
+    assert!(
+        main.contains("Some(\"shared\")"),
+        "nothing dispatches `atlas shared`"
+    );
+    assert!(
+        main.contains("atlas::firewall::Firewall::load"),
+        "the held list is never read"
+    );
 
     // The boundary is asked where something actually crosses, which is
     // `shared_task::share_into_business`. It used to be asserted against
@@ -251,7 +297,9 @@ fn the_way_in_still_exists() {
          check it against",
     );
     let check_arm = main.find("wall.would_stop(").unwrap_or(0);
-    let share_arm = main.find("tasks.share_into_business(").unwrap_or(usize::MAX);
+    let share_arm = main
+        .find("tasks.share_into_business(")
+        .unwrap_or(usize::MAX);
     assert!(
         notify_at > share_arm.min(check_arm),
         "the notification is still built somewhere other than the real share"
@@ -277,7 +325,10 @@ fn asking_whether_something_would_cross_holds_nothing() {
 
     for _ in 0..3 {
         let why = wall.would_stop(&Space::Personal, "acme");
-        assert!(why.is_some(), "personal work into a business space should stop");
+        assert!(
+            why.is_some(),
+            "personal work into a business space should stop"
+        );
     }
 
     assert_eq!(
@@ -294,10 +345,15 @@ fn the_answer_says_the_same_thing_the_act_would() {
     // `would_stop` plus the recording. If they ever disagree, the dry run
     // stops predicting the real thing, which is the only reason to have one.
     let mut wall = Firewall::default();
-    let predicted = wall.would_stop(&Space::Personal, "acme").expect("it would stop");
+    let predicted = wall
+        .would_stop(&Space::Personal, "acme")
+        .expect("it would stop");
     match wall.check(&Space::Personal, "acme", "notes.txt", 1000) {
         Crossing::Stopped { why, held } => {
-            assert_eq!(why, predicted, "the dry run and the real thing gave different reasons");
+            assert_eq!(
+                why, predicted,
+                "the dry run and the real thing gave different reasons"
+            );
             assert!(held > 0, "a real crossing has an id you can release");
         }
         o => panic!("the real thing allowed what the dry run said would stop: {o:?}"),
@@ -307,12 +363,17 @@ fn the_answer_says_the_same_thing_the_act_would() {
 #[test]
 fn a_businesss_own_work_is_allowed_by_both() {
     let mut wall = Firewall::default();
-    assert!(wall.would_stop(&Space::Business("acme".into()), "acme").is_none());
+    assert!(wall
+        .would_stop(&Space::Business("acme".into()), "acme")
+        .is_none());
     assert!(matches!(
         wall.check(&Space::Business("acme".into()), "acme", "invoice.pdf", 1000),
         Crossing::Allowed
     ));
-    assert!(wall.waiting().is_empty(), "an allowed crossing was recorded as held");
+    assert!(
+        wall.waiting().is_empty(),
+        "an allowed crossing was recorded as held"
+    );
 }
 
 #[test]
@@ -324,7 +385,10 @@ fn a_crossing_that_really_happens_is_still_recorded() {
         panic!("a real crossing was allowed");
     };
     assert_eq!(wall.waiting().len(), 1);
-    assert!(wall.get(held).is_some(), "the hold cannot be found by the id it reported");
+    assert!(
+        wall.get(held).is_some(),
+        "the hold cannot be found by the id it reported"
+    );
 }
 
 #[test]
@@ -334,11 +398,19 @@ fn what_it_would_say_names_the_thing_without_an_id_it_does_not_have() {
     let wall = Firewall::default();
     let why = wall.would_stop(&Space::Personal, "acme").expect("stops");
     let n = wall.would_say("acme", "Tax/2025/settlement-letter.pdf", &why, 1000);
-    assert!(n.body.contains("settlement-letter.pdf"), "it did not name the thing: {}", n.body);
+    assert!(
+        n.body.contains("settlement-letter.pdf"),
+        "it did not name the thing: {}",
+        n.body
+    );
     assert!(
         !n.body.contains("Tax/2025"),
         "the folders above a file are themselves personal information: {}",
         n.body
     );
-    assert!(n.body.contains("acme"), "it did not say where it was going: {}", n.body);
+    assert!(
+        n.body.contains("acme"),
+        "it did not say where it was going: {}",
+        n.body
+    );
 }

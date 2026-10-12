@@ -55,12 +55,30 @@ pub struct Voice {
 /// benchmark**, and its publishers say so. They narrow 54 options; they do not
 /// rank quality. This is a starting point to listen to, not an answer.
 pub const SHORTLIST: &[(&str, &str)] = &[
-    ("af_heart", "warmest of the American voices, and the highest graded. Start here."),
-    ("af_bella", "similar warmth, a little more body. The obvious second."),
-    ("af_jessica", "more personality — carries a dry line better than most."),
-    ("am_liam", "casual and young. The closest male voice to the brief."),
-    ("am_puck", "lighter and more playful; the one with mischief in it."),
-    ("bm_fable", "British, warm, storytelling. Calmer than the rest."),
+    (
+        "af_heart",
+        "warmest of the American voices, and the highest graded. Start here.",
+    ),
+    (
+        "af_bella",
+        "similar warmth, a little more body. The obvious second.",
+    ),
+    (
+        "af_jessica",
+        "more personality — carries a dry line better than most.",
+    ),
+    (
+        "am_liam",
+        "casual and young. The closest male voice to the brief.",
+    ),
+    (
+        "am_puck",
+        "lighter and more playful; the one with mischief in it.",
+    ),
+    (
+        "bm_fable",
+        "British, warm, storytelling. Calmer than the rest.",
+    ),
 ];
 
 /// Said plainly, because it is the gap between the brief and the engine.
@@ -192,7 +210,10 @@ impl VoiceSettings {
 
     pub fn describe(&self) -> String {
         let v = find(&self.voice);
-        let name = v.as_ref().map(|v| v.name.clone()).unwrap_or_else(|| self.voice.clone());
+        let name = v
+            .as_ref()
+            .map(|v| v.name.clone())
+            .unwrap_or_else(|| self.voice.clone());
         let accent = v.map(|v| v.accent).unwrap_or_default();
         let pace = if self.speed < 0.92 {
             "quick"
@@ -228,23 +249,39 @@ pub fn interpret(said: &str, now: &VoiceSettings) -> Change {
 
     // Pace.
     if t.contains("slower") || t.contains("slow down") || t.contains("too fast") {
-        return Change::Adjust { what: "slower".into() };
+        return Change::Adjust {
+            what: "slower".into(),
+        };
     }
     if t.contains("faster") || t.contains("speed up") || t.contains("too slow") {
-        return Change::Adjust { what: "faster".into() };
+        return Change::Adjust {
+            what: "faster".into(),
+        };
     }
     // Delivery.
-    if t.contains("robotic") || t.contains("flat") || t.contains("monotone") || t.contains("boring") {
-        return Change::Adjust { what: "more variation".into() };
+    if t.contains("robotic") || t.contains("flat") || t.contains("monotone") || t.contains("boring")
+    {
+        return Change::Adjust {
+            what: "more variation".into(),
+        };
     }
-    if t.contains("dramatic") || t.contains("too much") || t.contains("calm down") || t.contains("steadier") {
-        return Change::Adjust { what: "less variation".into() };
+    if t.contains("dramatic")
+        || t.contains("too much")
+        || t.contains("calm down")
+        || t.contains("steadier")
+    {
+        return Change::Adjust {
+            what: "less variation".into(),
+        };
     }
 
     // A named voice.
     for v in catalogue() {
         if t.contains(&v.name.to_lowercase()) {
-            return Change::Switch { to: v.clone(), why: format!("{} it is", v.name) };
+            return Change::Switch {
+                to: v.clone(),
+                why: format!("{} it is", v.name),
+            };
         }
     }
 
@@ -258,7 +295,11 @@ pub fn interpret(said: &str, now: &VoiceSettings) -> Change {
     if want_better {
         if let Some(v) = catalogue().into_iter().find(|v| v.quality == Quality::High) {
             return Change::Switch {
-                why: format!("{} is the most natural, but it's {}MB and a bit slower", v.name, v.quality.megabytes()),
+                why: format!(
+                    "{} is the most natural, but it's {}MB and a bit slower",
+                    v.name,
+                    v.quality.megabytes()
+                ),
                 to: v,
             };
         }
@@ -279,17 +320,25 @@ pub fn interpret(said: &str, now: &VoiceSettings) -> Change {
 
     if want_british || want_american || want_deeper || want_warmer {
         return match pool.first() {
-            Some(v) => Change::Switch { to: v.clone(), why: v.character.clone() },
+            Some(v) => Change::Switch {
+                to: v.clone(),
+                why: v.character.clone(),
+            },
             None => Change::Unclear("I haven't got one like that".into()),
         };
     }
 
     // "A different voice", with nothing else to go on.
-    if t.contains("different voice") || t.contains("another voice") || t.contains("change your voice")
+    if t.contains("different voice")
+        || t.contains("another voice")
+        || t.contains("change your voice")
         || t.contains("new voice")
     {
-        let choices: Vec<Voice> =
-            catalogue().into_iter().filter(|v| v.id != now.voice).take(3).collect();
+        let choices: Vec<Voice> = catalogue()
+            .into_iter()
+            .filter(|v| v.id != now.voice)
+            .take(3)
+            .collect();
         return Change::Audition(choices);
     }
 
@@ -336,7 +385,10 @@ fn pace_word(speed: f32) -> String {
 /// Deliberately a real sentence rather than "testing one two three" — you're
 /// choosing how it will sound saying the things it actually says.
 pub fn audition_line(v: &Voice) -> String {
-    format!("This is {}. Your nine o'clock post is over length by twelve characters.", v.name)
+    format!(
+        "This is {}. Your nine o'clock post is over length by twelve characters.",
+        v.name
+    )
 }
 
 // ---------------------------------------------------------------------------

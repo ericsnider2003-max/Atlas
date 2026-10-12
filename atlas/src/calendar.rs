@@ -119,7 +119,9 @@ pub fn repeat_from(text: &str) -> Repeat {
     }
     // Checked before the plain "every day"/"every week" readers, which would
     // otherwise take "every 2 weeks" or "every other week" as every week.
-    let says_repeat = ["every ", "each ", "monthly", "yearly", "annually"].iter().any(|c| t.contains(c));
+    let says_repeat = ["every ", "each ", "monthly", "yearly", "annually"]
+        .iter()
+        .any(|c| t.contains(c));
     // Only the words that make a repeat something other than daily/weekly
     // hand it to the general rule: a count right after "every" ("every 2
     // weeks"), "other", an ordinal, or a month/year cadence. A clock time
@@ -127,16 +129,23 @@ pub fn repeat_from(text: &str) -> Repeat {
     let ws: Vec<&str> = t.split_whitespace().collect();
     let counted = ws.windows(2).any(|p| {
         matches!(p[0], "every" | "each")
-            && (p[1].parse::<u32>().is_ok_and(|n| n > 1) || ["two", "three", "four", "other"].contains(&p[1]))
+            && (p[1].parse::<u32>().is_ok_and(|n| n > 1)
+                || ["two", "three", "four", "other"].contains(&p[1]))
     });
-    let ordinal = ws.iter().any(|w| ["first", "second", "third", "fourth", "last"].contains(w));
+    let ordinal = ws
+        .iter()
+        .any(|w| ["first", "second", "third", "fourth", "last"].contains(w));
     let simple_every = !counted && !ordinal && !t.contains("month") && !t.contains("year");
     if says_repeat && !simple_every {
         if let Some(rule) = crate::recur::from_plain(&t) {
             return Repeat::Rule(rule.to_rrule());
         }
     }
-    if t.contains("every day") || t.contains("everyday") || t.contains("each day") || t.contains("daily") {
+    if t.contains("every day")
+        || t.contains("everyday")
+        || t.contains("each day")
+        || t.contains("daily")
+    {
         return Repeat::Daily;
     }
     if t.contains("every week") || t.contains("weekly") {
@@ -144,7 +153,15 @@ pub fn repeat_from(text: &str) -> Repeat {
     }
     // "every Monday", "each Friday" — a named weekday means weekly on that day,
     // and `resolve_when` already lands the first one on it.
-    for d in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] {
+    for d in [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+    ] {
         if t.contains(&format!("every {d}")) || t.contains(&format!("each {d}")) {
             return Repeat::Weekly;
         }
@@ -261,11 +278,21 @@ impl Event {
         let theirs = match self.zone.as_deref().and_then(crate::tz::Zone::named) {
             Some(z) if z.offset_at(at) != home.offset_at(at) => {
                 let t = crate::civil::Civil::from_local(z.to_local(at));
-                format!(" ({:02}:{:02} {} there)", t.hour, t.minute, z.abbreviation_at(at))
+                format!(
+                    " ({:02}:{:02} {} there)",
+                    t.hour,
+                    t.minute,
+                    z.abbreviation_at(at)
+                )
             }
             _ => String::new(),
         };
-        format!("{date} {:02}:{:02} {}{theirs}{rep}", c.hour, c.minute, home.abbreviation_at(at))
+        format!(
+            "{date} {:02}:{:02} {}{theirs}{rep}",
+            c.hour,
+            c.minute,
+            home.abbreviation_at(at)
+        )
     }
 }
 
@@ -302,10 +329,21 @@ pub fn resolve_when(text: &str, now: u64) -> Option<When> {
         return None;
     }
     if p.all_day {
-        return Some(When { start: p.start, end: p.start + DAY_SECS, all_day: true });
+        return Some(When {
+            start: p.start,
+            end: p.start + DAY_SECS,
+            all_day: true,
+        });
     }
-    let mins = p.mins.or_else(|| duration_mins(&text.to_lowercase())).unwrap_or(DEFAULT_MINS);
-    Some(When { start: p.start, end: p.start + mins * 60, all_day: false })
+    let mins = p
+        .mins
+        .or_else(|| duration_mins(&text.to_lowercase()))
+        .unwrap_or(DEFAULT_MINS);
+    Some(When {
+        start: p.start,
+        end: p.start + mins * 60,
+        all_day: false,
+    })
 }
 
 /// `resolve_when` for a real moment `now` on a clock `offset` seconds east
@@ -321,7 +359,11 @@ pub fn resolve_when_in(text: &str, now: u64, zone: &crate::tz::Zone) -> Option<W
     let local_now = zone.to_local(now as i64).max(0) as u64;
     let w = resolve_when(text, local_now)?;
     let back = |t: u64| zone.to_utc(t as i64).max(0) as u64;
-    Some(When { start: back(w.start), end: back(w.end), all_day: w.all_day })
+    Some(When {
+        start: back(w.start),
+        end: back(w.end),
+        all_day: w.all_day,
+    })
 }
 
 /// Read a reminder lead-time from a scheduling request, in minutes, or `None`.
@@ -385,11 +427,23 @@ fn without_length(t: &str) -> String {
             let n = w.get(i + 1).copied().unwrap_or("");
             let skip = if n == "half" && w.get(i + 3).map(|u| unit(u)).unwrap_or(false) {
                 4
-            } else if (n.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) || n == "an" || n == "a")
+            } else if (n
+                .chars()
+                .next()
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false)
+                || n == "an"
+                || n == "a")
                 && w.get(i + 2).map(|u| unit(u)).unwrap_or(false)
             {
                 3
-            } else if n.contains('-') && n.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) && unit(n.split('-').next_back().unwrap_or("")) {
+            } else if n.contains('-')
+                && n.chars()
+                    .next()
+                    .map(|c| c.is_ascii_digit())
+                    .unwrap_or(false)
+                && unit(n.split('-').next_back().unwrap_or(""))
+            {
                 2
             } else {
                 0
@@ -443,10 +497,18 @@ pub fn resolve_recurring_when(text: &str, now: u64, repeat: &Repeat) -> Option<W
         let t = text.to_lowercase();
         let minute_of_day = clock_minute(&t)?;
         let anchor = start_of_day(now) + minute_of_day as u64 * 60;
-        let anchor = if anchor < now { anchor + DAY_SECS } else { anchor };
+        let anchor = if anchor < now {
+            anchor + DAY_SECS
+        } else {
+            anchor
+        };
         let first = rule.first_at_or_after(anchor as i64)? as u64;
         let mins = duration_mins(&t).unwrap_or(DEFAULT_MINS);
-        return Some(When { start: first, end: first + mins * 60, all_day: false });
+        return Some(When {
+            start: first,
+            end: first + mins * 60,
+            all_day: false,
+        });
     }
     if let Some(w) = resolve_when(text, now) {
         return Some(w);
@@ -465,7 +527,11 @@ pub fn resolve_recurring_when(text: &str, now: u64, repeat: &Repeat) -> Option<W
     }
     let start = day_start + minute_of_day as u64 * 60;
     let mins = duration_mins(&t).unwrap_or(DEFAULT_MINS);
-    Some(When { start, end: start + mins * 60, all_day: false })
+    Some(When {
+        start,
+        end: start + mins * 60,
+        all_day: false,
+    })
 }
 
 /// A clean title from a scheduling request: the leading verb and the trailing
@@ -479,7 +545,11 @@ pub fn event_title(request: &str) -> String {
         "reserve", "hold",
     ];
     while let Some(first) = words.first() {
-        if VERBS.contains(&first.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric())) {
+        if VERBS.contains(
+            &first
+                .to_lowercase()
+                .trim_matches(|c: char| !c.is_alphanumeric()),
+        ) {
             words.remove(0);
         } else {
             break;
@@ -487,8 +557,21 @@ pub fn event_title(request: &str) -> String {
     }
     // Trailing time phrase: drop from the first time-word to the end.
     const TIME_WORDS: &[&str] = &[
-        "today", "tonight", "tomorrow", "monday", "tuesday", "wednesday", "thursday", "friday",
-        "saturday", "sunday", "at", "on", "for", "this", "next",
+        "today",
+        "tonight",
+        "tomorrow",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+        "at",
+        "on",
+        "for",
+        "this",
+        "next",
     ];
     // Also where the time is said some other way: "in 3 days", "from 2 to
     // 4", "oct 3", "3pm", "10/15", "the 14th" -- found by asking `when`
@@ -499,29 +582,43 @@ pub fn event_title(request: &str) -> String {
         if TIME_WORDS.contains(&w) {
             return true;
         }
-        let digit_led = w.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false);
+        let digit_led = w
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false);
         let lead = matches!(w, "in" | "from" | "between" | "tmrw" | "tmr" | "noon" | "midnight" | "eod" | "end")
             || digit_led
             // A day or a month name: "friday", "oct" (read as "oct 1").
             // ("the 1" is the 1st, so "the" is left to the check above.)
             || (w != "the" && crate::when::parse(&format!("{w} 1"), 20_000 * DAY_SECS).map(|p| p.all_day && p.day_said).unwrap_or(false));
-        lead && crate::when::parse(&words[i..words.len().min(i + 4)].join(" "), 20_000 * DAY_SECS).is_some()
+        lead && crate::when::parse(
+            &words[i..words.len().min(i + 4)].join(" "),
+            20_000 * DAY_SECS,
+        )
+        .is_some()
     };
     // The first place a time starts -- but never the very first word, which
     // would leave no title ("3d print session tomorrow" is not about "3d").
     if let Some(cut) = (1..words.len()).find(|&i| starts_time(i)) {
         words.truncate(cut);
     } else if let Some(cut) = words.iter().position(|w| {
-        TIME_WORDS.contains(&w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()))
+        TIME_WORDS.contains(
+            &w.to_lowercase()
+                .trim_matches(|c: char| !c.is_alphanumeric()),
+        )
     }) {
         words.truncate(cut);
     }
     // "team sync the last Friday of every month" cuts at "Friday" and would
     // leave "team sync the last"; the words that only introduce a repeat go too.
-    const REPEAT_LEAD: &[&str] =
-        &["the", "every", "each", "other", "last", "first", "second", "third", "fourth", "fifth"];
+    const REPEAT_LEAD: &[&str] = &[
+        "the", "every", "each", "other", "last", "first", "second", "third", "fourth", "fifth",
+    ];
     while words.len() > 1
-        && words.last().is_some_and(|w| REPEAT_LEAD.contains(&w.to_lowercase().as_str()))
+        && words
+            .last()
+            .is_some_and(|w| REPEAT_LEAD.contains(&w.to_lowercase().as_str()))
     {
         words.pop();
     }
@@ -546,7 +643,8 @@ pub fn space_for_request(request: &str, businesses: &[String]) -> crate::earned:
     let low = request.to_lowercase();
     let mut best: Option<&String> = None;
     for b in businesses {
-        if names_it(&low, &b.to_lowercase()) && best.map(|cur| b.len() > cur.len()).unwrap_or(true) {
+        if names_it(&low, &b.to_lowercase()) && best.map(|cur| b.len() > cur.len()).unwrap_or(true)
+        {
             best = Some(b);
         }
     }
@@ -603,8 +701,14 @@ fn names_it(haystack: &str, needle: &str) -> bool {
     while let Some(pos) = haystack[from..].find(needle) {
         let start = from + pos;
         let end = start + needle.len();
-        let before_ok = haystack[..start].chars().next_back().is_none_or(|c| !c.is_alphanumeric());
-        let after_ok = haystack[end..].chars().next().is_none_or(|c| !c.is_alphanumeric());
+        let before_ok = haystack[..start]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_alphanumeric());
+        let after_ok = haystack[end..]
+            .chars()
+            .next()
+            .is_none_or(|c| !c.is_alphanumeric());
         if before_ok && after_ok {
             return true;
         }
@@ -618,9 +722,6 @@ pub fn start_of_day(secs: u64) -> u64 {
     let days = (secs as i64 * 1000).div_euclid(MS_PER_DAY);
     (days * MS_PER_DAY / 1000) as u64
 }
-
-
-
 
 /// Read a clock time out of the words: "at 3", "3pm", "15:00", "9:30am".
 /// Returns minutes past midnight.
@@ -639,7 +740,9 @@ fn take_number(bytes: &[u8], start: usize) -> (u32, usize) {
     let mut n = 0u32;
     let mut i = start;
     while i < bytes.len() && bytes[i].is_ascii_digit() {
-        n = n.saturating_mul(10).saturating_add((bytes[i] - b'0') as u32);
+        n = n
+            .saturating_mul(10)
+            .saturating_add((bytes[i] - b'0') as u32);
         i += 1;
     }
     (n, i)
@@ -679,22 +782,37 @@ pub struct CalendarConfig {
 
 impl Default for CalendarConfig {
     fn default() -> Self {
-        CalendarConfig { enabled: true, sync_native: true, horizon_days: 7 }
+        CalendarConfig {
+            enabled: true,
+            sync_native: true,
+            horizon_days: 7,
+        }
     }
 }
 
 /// Your calendar.
 #[derive(Clone, Default)]
-enum CalendarIdentity { #[default] Missing, Known([u8; 32]), Unusable }
+enum CalendarIdentity {
+    #[default]
+    Missing,
+    Known([u8; 32]),
+    Unusable,
+}
 
 #[derive(Default)]
 struct CalendarBaseline(std::sync::Mutex<CalendarIdentity>);
 impl std::fmt::Debug for CalendarBaseline {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("CalendarBaseline(redacted)") }
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CalendarBaseline(redacted)")
+    }
 }
 impl Clone for CalendarBaseline {
     fn clone(&self) -> Self {
-        let value = self.0.lock().map(|value| value.clone()).unwrap_or(CalendarIdentity::Unusable);
+        let value = self
+            .0
+            .lock()
+            .map(|value| value.clone())
+            .unwrap_or(CalendarIdentity::Unusable);
         Self(std::sync::Mutex::new(value))
     }
 }
@@ -702,7 +820,11 @@ impl Clone for CalendarBaseline {
 #[derive(Debug, Default)]
 struct CalendarRefresh(std::sync::atomic::AtomicBool);
 impl Clone for CalendarRefresh {
-    fn clone(&self) -> Self { Self(std::sync::atomic::AtomicBool::new(self.0.load(std::sync::atomic::Ordering::SeqCst))) }
+    fn clone(&self) -> Self {
+        Self(std::sync::atomic::AtomicBool::new(
+            self.0.load(std::sync::atomic::Ordering::SeqCst),
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -718,13 +840,27 @@ pub struct Calendar {
 }
 
 impl<'de> Deserialize<'de> for Calendar {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
         #[derive(Deserialize)]
-        struct Wire { events: Vec<Event>, next_id: u64 }
+        struct Wire {
+            events: Vec<Event>,
+            next_id: u64,
+        }
         let wire = Wire::deserialize(deserializer)?;
-        let calendar = Self { events: wire.events, next_id: wire.next_id, baseline: CalendarBaseline::default(), read_error: None, refresh: CalendarRefresh::default() };
+        let calendar = Self {
+            events: wire.events,
+            next_id: wire.next_id,
+            baseline: CalendarBaseline::default(),
+            read_error: None,
+            refresh: CalendarRefresh::default(),
+        };
         let identity = calendar.identity().map_err(serde::de::Error::custom)?;
-        Ok(Self { baseline: CalendarBaseline(std::sync::Mutex::new(CalendarIdentity::Known(identity))), ..calendar })
+        Ok(Self {
+            baseline: CalendarBaseline(std::sync::Mutex::new(CalendarIdentity::Known(identity))),
+            ..calendar
+        })
     }
 }
 
@@ -734,46 +870,101 @@ impl Calendar {
     /// Is anything here read from Google (`oauthlink::calendar_ics_selected` gives
     /// those events uids starting `google-`)?
     pub fn holds_google_events(&self) -> bool {
-        self.events.iter().any(|e| e.phone_key.as_deref().is_some_and(|k| k.starts_with("ics:google-") || (k.starts_with("ics:connection:") && k.contains(":google-"))))
+        self.events.iter().any(|e| {
+            e.phone_key.as_deref().is_some_and(|k| {
+                k.starts_with("ics:google-")
+                    || (k.starts_with("ics:connection:") && k.contains(":google-"))
+            })
+        })
     }
 
     pub fn load(store: &crate::store::Store) -> Calendar {
         match store.load_checked::<Calendar>(FILE) {
             Ok(Some(calendar)) => calendar,
             Ok(None) => Self::default(),
-            Err(error) => Self { baseline: CalendarBaseline(std::sync::Mutex::new(CalendarIdentity::Unusable)), read_error: Some(error.to_string()), refresh: CalendarRefresh(std::sync::atomic::AtomicBool::new(true)), ..Self::default() },
+            Err(error) => Self {
+                baseline: CalendarBaseline(std::sync::Mutex::new(CalendarIdentity::Unusable)),
+                read_error: Some(error.to_string()),
+                refresh: CalendarRefresh(std::sync::atomic::AtomicBool::new(true)),
+                ..Self::default()
+            },
         }
     }
 
-    pub(crate) fn mark_unavailable(&mut self, error: String) { self.read_error = Some(error); }
-    pub fn availability_error(&self) -> Option<&str> { self.read_error.as_deref() }
+    pub(crate) fn mark_unavailable(&mut self, error: String) {
+        self.read_error = Some(error);
+    }
+    pub fn availability_error(&self) -> Option<&str> {
+        self.read_error.as_deref()
+    }
 
-    pub(crate) fn refresh_requested(&self) -> bool { self.refresh.0.load(std::sync::atomic::Ordering::SeqCst) }
-    pub(crate) fn request_refresh(&self) { self.refresh.0.store(true, std::sync::atomic::Ordering::SeqCst); }
+    pub(crate) fn refresh_requested(&self) -> bool {
+        self.refresh.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    pub(crate) fn request_refresh(&self) {
+        self.refresh
+            .0
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
 
     // Validation reads can update Store's shared stamp without adopting a
     // snapshot. Recover from that independently, without discarding local edits.
-    pub(crate) fn refresh_saved(&mut self, store: &crate::store::Store) -> crate::error::Result<()> {
+    pub(crate) fn refresh_saved(
+        &mut self,
+        store: &crate::store::Store,
+    ) -> crate::error::Result<()> {
         let saved: Option<Self> = store.load_checked(FILE)?;
-        let own = self.identity().map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?;
-        let disk = saved.as_ref().map(Self::identity).transpose().map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?;
-        let expected = self.baseline.0.lock().map_err(|_| crate::error::AtlasError::Platform("The calendar snapshot cannot be verified; its cached view was retained.".into()))?.clone();
+        let own = self
+            .identity()
+            .map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?;
+        let disk = saved
+            .as_ref()
+            .map(Self::identity)
+            .transpose()
+            .map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?;
+        let expected = self
+            .baseline
+            .0
+            .lock()
+            .map_err(|_| {
+                crate::error::AtlasError::Platform(
+                    "The calendar snapshot cannot be verified; its cached view was retained."
+                        .into(),
+                )
+            })?
+            .clone();
         let clean = match expected {
             CalendarIdentity::Known(expected) => {
                 if disk == Some(expected) {
-                    self.read_error = None; self.refresh.0.store(false, std::sync::atomic::Ordering::SeqCst); return Ok(());
+                    self.read_error = None;
+                    self.refresh
+                        .0
+                        .store(false, std::sync::atomic::Ordering::SeqCst);
+                    return Ok(());
                 }
-                if disk.is_none() { return Err(crate::error::AtlasError::Platform("The saved calendar is missing; its last known view was retained.".into())); }
+                if disk.is_none() {
+                    return Err(crate::error::AtlasError::Platform(
+                        "The saved calendar is missing; its last known view was retained.".into(),
+                    ));
+                }
                 own == expected
             }
             CalendarIdentity::Missing => {
-                if disk.is_none() { self.read_error = None; self.refresh.0.store(false, std::sync::atomic::Ordering::SeqCst); return Ok(()); }
+                if disk.is_none() {
+                    self.read_error = None;
+                    self.refresh
+                        .0
+                        .store(false, std::sync::atomic::Ordering::SeqCst);
+                    return Ok(());
+                }
                 self.events.is_empty() && self.next_id == 0
             }
             CalendarIdentity::Unusable => {
-                if disk.is_none() { return Err(crate::error::AtlasError::Platform("The previously unavailable calendar is still missing; an empty calendar cannot be confirmed.".into())); }
+                if disk.is_none() {
+                    return Err(crate::error::AtlasError::Platform("The previously unavailable calendar is still missing; an empty calendar cannot be confirmed.".into()));
+                }
                 self.events.is_empty() && self.next_id == 0
-            },
+            }
         };
         if !clean && disk != Some(own) {
             return Err(crate::error::AtlasError::Platform("The saved calendar changed while this view has unsaved local changes. Both were retained; refresh needs reconciliation before editing.".into()));
@@ -791,26 +982,53 @@ impl Calendar {
         self.save_with(store, |store, calendar| store.save(FILE, calendar))
     }
 
-    fn save_with(&self, store: &crate::store::Store, write: impl FnOnce(&crate::store::Store, &Calendar) -> crate::error::Result<()>) -> crate::error::Result<()> {
-        if self.read_error.is_some() { return Err(crate::error::AtlasError::Platform("The saved calendar is unavailable; refresh it before making changes.".into())); }
+    fn save_with(
+        &self,
+        store: &crate::store::Store,
+        write: impl FnOnce(&crate::store::Store, &Calendar) -> crate::error::Result<()>,
+    ) -> crate::error::Result<()> {
+        if self.read_error.is_some() {
+            return Err(crate::error::AtlasError::Platform(
+                "The saved calendar is unavailable; refresh it before making changes.".into(),
+            ));
+        }
         let _transaction = store.transaction()?;
-        let mut baseline = self.baseline.0.lock().map_err(|_| crate::error::AtlasError::Platform("The calendar snapshot cannot be verified; nothing was overwritten.".into()))?;
+        let mut baseline = self.baseline.0.lock().map_err(|_| {
+            crate::error::AtlasError::Platform(
+                "The calendar snapshot cannot be verified; nothing was overwritten.".into(),
+            )
+        })?;
         let saved: Option<Self> = match store.load_checked(FILE) {
             Ok(saved) => saved,
-            Err(error) => { self.request_refresh(); return Err(error); }
+            Err(error) => {
+                self.request_refresh();
+                return Err(error);
+            }
         };
         let matches = match (&*baseline, saved.as_ref()) {
             (CalendarIdentity::Missing, None) => true,
-            (CalendarIdentity::Known(expected), Some(saved)) => saved.identity().map_err(|error| crate::error::AtlasError::Platform(error.to_string()))? == *expected,
+            (CalendarIdentity::Known(expected), Some(saved)) => {
+                saved
+                    .identity()
+                    .map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?
+                    == *expected
+            }
             _ => false,
         };
         if !matches {
             self.request_refresh();
             return Err(crate::error::AtlasError::Platform("The saved calendar changed after this snapshot. Nothing was overwritten; refresh before trying again.".into()));
         }
-        let identity = self.identity().map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?;
-        if let Err(error) = write(store, self) { self.request_refresh(); return Err(error); }
-        self.refresh.0.store(false, std::sync::atomic::Ordering::SeqCst);
+        let identity = self
+            .identity()
+            .map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?;
+        if let Err(error) = write(store, self) {
+            self.request_refresh();
+            return Err(error);
+        }
+        self.refresh
+            .0
+            .store(false, std::sync::atomic::Ordering::SeqCst);
         *baseline = CalendarIdentity::Known(identity);
         Ok(())
     }
@@ -831,7 +1049,15 @@ impl Calendar {
         space: crate::earned::Space,
         now: u64,
     ) -> u64 {
-        self.add_full(title, when, place, space, EventKind::Meeting, Repeat::Once, now)
+        self.add_full(
+            title,
+            when,
+            place,
+            space,
+            EventKind::Meeting,
+            Repeat::Once,
+            now,
+        )
     }
 
     /// The full form: firewall side, whether it's a meeting or a time block you
@@ -911,7 +1137,9 @@ impl Calendar {
         self.occurrences_between(now.saturating_sub(Self::REMIND_LATE_SECS), window_end)
             .into_iter()
             .filter(|e| {
-                let Some(mins) = e.remind_before_mins else { return false };
+                let Some(mins) = e.remind_before_mins else {
+                    return false;
+                };
                 let lead = mins as u64 * 60;
                 e.start + Self::REMIND_LATE_SECS > now && e.start.saturating_sub(lead) <= now
             })
@@ -957,7 +1185,10 @@ impl Calendar {
     }
 
     pub fn next(&self, now: u64) -> Option<&Event> {
-        self.events.iter().filter(|e| e.end > now).min_by_key(|e| e.start)
+        self.events
+            .iter()
+            .filter(|e| e.end > now)
+            .min_by_key(|e| e.start)
     }
 
     /// Every actual occurrence in a window, repeating events expanded. A
@@ -984,14 +1215,24 @@ impl Calendar {
             // A series that keeps a wall clock: expand it on that clock, then
             // bring each occurrence back to UTC. The window is widened by a
             // day each side for the shift and trimmed again afterwards.
-            if let (false, Some(z)) = (e.repeat == Repeat::Once, e.zone.as_deref().and_then(crate::tz::Zone::named)) {
+            if let (false, Some(z)) = (
+                e.repeat == Repeat::Once,
+                e.zone.as_deref().and_then(crate::tz::Zone::named),
+            ) {
                 let dur = e.end.saturating_sub(e.start);
                 let mut local = e.clone();
                 local.zone = None;
                 local.start = z.to_local(e.start as i64).max(0) as u64;
                 local.end = local.start + dur;
-                local.except = e.except.iter().map(|x| z.to_local(*x as i64).max(0) as u64).collect();
-                let one = Calendar { events: vec![local], ..Default::default() };
+                local.except = e
+                    .except
+                    .iter()
+                    .map(|x| z.to_local(*x as i64).max(0) as u64)
+                    .collect();
+                let one = Calendar {
+                    events: vec![local],
+                    ..Default::default()
+                };
                 for mut occ in one.occurrences_on(from.saturating_sub(DAY_SECS), to + DAY_SECS, 0) {
                     occ.start = z.to_utc(occ.start as i64).max(0) as u64;
                     occ.end = occ.start + dur;
@@ -1083,8 +1324,14 @@ impl Calendar {
         let mut changed = 0;
         for mut ev in incoming {
             ev.source = Source::Phone;
-            let Some(key) = ev.phone_key.clone() else { continue };
-            match self.events.iter_mut().find(|e| e.phone_key.as_deref() == Some(&key)) {
+            let Some(key) = ev.phone_key.clone() else {
+                continue;
+            };
+            match self
+                .events
+                .iter_mut()
+                .find(|e| e.phone_key.as_deref() == Some(&key))
+            {
                 Some(existing) => {
                     if existing.start != ev.start
                         || existing.end != ev.end
@@ -1115,8 +1362,17 @@ impl Calendar {
     /// deleted it there). Only `Phone` events inside the window are ever
     /// removed, so a phone reading a narrower window, or an Atlas-made or
     /// `.ics` event, is never lost to it. Returns (added or changed, removed).
-    pub fn sync_from_phone(&mut self, incoming: Vec<Event>, from: u64, to: u64, now: u64) -> (usize, usize) {
-        let keys: std::collections::BTreeSet<String> = incoming.iter().filter_map(|e| e.phone_key.clone()).collect();
+    pub fn sync_from_phone(
+        &mut self,
+        incoming: Vec<Event>,
+        from: u64,
+        to: u64,
+        now: u64,
+    ) -> (usize, usize) {
+        let keys: std::collections::BTreeSet<String> = incoming
+            .iter()
+            .filter_map(|e| e.phone_key.clone())
+            .collect();
         let before = self.events.len();
         self.events.retain(|e| {
             !(e.source == Source::Phone
@@ -1132,7 +1388,10 @@ impl Calendar {
     /// everything born here that hasn't come from the phone. The phone app
     /// writes these through EventKit / CalendarProvider.
     pub fn for_phone(&self) -> Vec<&Event> {
-        self.events.iter().filter(|e| e.source == Source::Atlas).collect()
+        self.events
+            .iter()
+            .filter(|e| e.source == Source::Atlas)
+            .collect()
     }
 
     // ----- files other calendars read -----
@@ -1149,13 +1408,29 @@ impl Calendar {
     /// and a floating time (or a TZID nothing knows) as `home`, your zone.
     /// The TZIDs that had to fall back to `home` come back so they can be
     /// said, not silently assumed.
-    pub fn import_ics(&mut self, text: &str, now: u64, home: &crate::tz::Zone) -> std::result::Result<(usize, Vec<String>), String> {
+    pub fn import_ics(
+        &mut self,
+        text: &str,
+        now: u64,
+        home: &crate::tz::Zone,
+    ) -> std::result::Result<(usize, Vec<String>), String> {
         let mut changed = 0;
         let (events, zones) = crate::vformat::events_in(text, home)?;
         for ev in events {
-            let key = format!("ics:{}", if ev.uid.is_empty() { &ev.summary } else { &ev.uid });
+            let key = format!(
+                "ics:{}",
+                if ev.uid.is_empty() {
+                    &ev.summary
+                } else {
+                    &ev.uid
+                }
+            );
             let start = ev.start.max(0) as u64;
-            let end = ev.end.map(|e| e.max(0) as u64).unwrap_or(if ev.all_day { start + DAY_SECS } else { start + DEFAULT_MINS * 60 });
+            let end = ev.end.map(|e| e.max(0) as u64).unwrap_or(if ev.all_day {
+                start + DAY_SECS
+            } else {
+                start + DEFAULT_MINS * 60
+            });
             let repeat = match &ev.rule {
                 Some(r) => Repeat::Rule(r.to_rrule()),
                 None => Repeat::Once,
@@ -1163,7 +1438,11 @@ impl Calendar {
             let place = (!ev.location.is_empty()).then(|| ev.location.clone());
             let note = (!ev.description.is_empty()).then(|| ev.description.clone());
             let except: Vec<u64> = ev.exdates.iter().map(|x| (*x).max(0) as u64).collect();
-            match self.events.iter_mut().find(|e| e.phone_key.as_deref() == Some(key.as_str())) {
+            match self
+                .events
+                .iter_mut()
+                .find(|e| e.phone_key.as_deref() == Some(key.as_str()))
+            {
                 Some(existing) => {
                     let before = existing.clone();
                     existing.title = ev.summary.clone();
@@ -1209,28 +1488,76 @@ impl Calendar {
     /// Replace only a connection's complete, successfully read snapshot.
     /// A private link is hashed before it is used as an event identity.
     /// Failed reads never call this, and parsing happens before mutation.
-    pub fn reconcile_ics_window(&mut self, source: &str, text: &str, now: u64, home: &crate::tz::Zone, window: Option<(u64, u64)>) -> std::result::Result<(usize, Vec<String>), String> {
+    pub fn reconcile_ics_window(
+        &mut self,
+        source: &str,
+        text: &str,
+        now: u64,
+        home: &crate::tz::Zone,
+        window: Option<(u64, u64)>,
+    ) -> std::result::Result<(usize, Vec<String>), String> {
         let mut roots = crate::vformat::parse(text)?;
-        if roots.len() != 1 || roots[0].name != "VCALENDAR" { return Err("not a complete calendar; cached events kept".into()); }
-        roots[0].children.retain(|c| !(c.name == "VEVENT" && c.props.iter().any(|p| p.name == "STATUS" && p.value.eq_ignore_ascii_case("CANCELLED"))));
-        if roots[0].children.iter().filter(|c| c.name == "VEVENT").any(|c| !c.props.iter().any(|p| p.name == "UID" && !p.value.is_empty())) { return Err("calendar event has no identity; cached events kept".into()); }
+        if roots.len() != 1 || roots[0].name != "VCALENDAR" {
+            return Err("not a complete calendar; cached events kept".into());
+        }
+        roots[0].children.retain(|c| {
+            !(c.name == "VEVENT"
+                && c.props
+                    .iter()
+                    .any(|p| p.name == "STATUS" && p.value.eq_ignore_ascii_case("CANCELLED")))
+        });
+        if roots[0]
+            .children
+            .iter()
+            .filter(|c| c.name == "VEVENT")
+            .any(|c| {
+                !c.props
+                    .iter()
+                    .any(|p| p.name == "UID" && !p.value.is_empty())
+            })
+        {
+            return Err("calendar event has no identity; cached events kept".into());
+        }
         let text = crate::vformat::write(&roots[0]);
-        let prefix = format!("ics:connection:{}:", crate::digest::sha256_hex(source.as_bytes()));
+        let prefix = format!(
+            "ics:connection:{}:",
+            crate::digest::sha256_hex(source.as_bytes())
+        );
         let mut incoming = Calendar::default();
         let (_, zones) = incoming.import_ics(&text, now, home)?;
         for event in &mut incoming.events {
-            let uid = event.phone_key.as_deref().and_then(|k| k.strip_prefix("ics:")).ok_or("calendar event has no identity")?;
+            let uid = event
+                .phone_key
+                .as_deref()
+                .and_then(|k| k.strip_prefix("ics:"))
+                .ok_or("calendar event has no identity")?;
             event.phone_key = Some(format!("{prefix}{uid}"));
         }
-        let keys: std::collections::BTreeSet<_> = incoming.events.iter().filter_map(|e| e.phone_key.clone()).collect();
+        let keys: std::collections::BTreeSet<_> = incoming
+            .events
+            .iter()
+            .filter_map(|e| e.phone_key.clone())
+            .collect();
         let before = self.events.len();
-        self.events.retain(|e| !(window.is_none_or(|(from, to)| e.end > from && e.start < to) && e.phone_key.as_deref().is_some_and(|k| k.starts_with(&prefix) && !keys.contains(k))));
+        self.events.retain(|e| {
+            !(window.is_none_or(|(from, to)| e.end > from && e.start < to)
+                && e.phone_key
+                    .as_deref()
+                    .is_some_and(|k| k.starts_with(&prefix) && !keys.contains(k)))
+        });
         let mut changed = before - self.events.len();
         for mut event in incoming.events {
-            if let Some(existing) = self.events.iter_mut().find(|e| e.phone_key == event.phone_key) {
+            if let Some(existing) = self
+                .events
+                .iter_mut()
+                .find(|e| e.phone_key == event.phone_key)
+            {
                 event.id = existing.id;
                 event.created = existing.created;
-                if *existing != event { *existing = event; changed += 1; }
+                if *existing != event {
+                    *existing = event;
+                    changed += 1;
+                }
             } else {
                 self.next_id += 1;
                 event.id = self.next_id;
@@ -1252,7 +1579,9 @@ impl Calendar {
                 let rule = match &e.repeat {
                     Repeat::Once => None,
                     Repeat::Daily => crate::recur::Rule::parse("FREQ=DAILY").ok(),
-                    Repeat::Weekdays => crate::recur::Rule::parse("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR").ok(),
+                    Repeat::Weekdays => {
+                        crate::recur::Rule::parse("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR").ok()
+                    }
                     Repeat::Weekly => crate::recur::Rule::parse("FREQ=WEEKLY").ok(),
                     Repeat::Rule(_) => e.repeat.rule(),
                 };
@@ -1336,7 +1665,11 @@ mod tests {
         let mut c = Calendar::default();
         let w = resolve_when("meeting today at 2pm", THU).unwrap();
         let id = c.add("Meeting", w, Some("office".into()), THU);
-        assert_eq!(c.occurrences_between(start_of_day(THU), start_of_day(THU) + DAY_SECS).len(), 1);
+        assert_eq!(
+            c.occurrences_between(start_of_day(THU), start_of_day(THU) + DAY_SECS)
+                .len(),
+            1
+        );
         assert_eq!(c.next(THU).unwrap().title, "Meeting");
         assert!(c.remove(id));
         assert!(c.is_empty());
@@ -1358,8 +1691,18 @@ mod tests {
     #[test]
     fn upcoming_respects_the_horizon() {
         let mut c = Calendar::default();
-        c.add("soon", resolve_when("today at 5pm", THU).unwrap(), None, THU);
-        c.add("far", resolve_when("today at 5pm", THU + 30 * DAY_SECS).unwrap(), None, THU);
+        c.add(
+            "soon",
+            resolve_when("today at 5pm", THU).unwrap(),
+            None,
+            THU,
+        );
+        c.add(
+            "far",
+            resolve_when("today at 5pm", THU + 30 * DAY_SECS).unwrap(),
+            None,
+            THU,
+        );
         assert_eq!(c.occurrences_between(THU, THU + 7 * DAY_SECS).len(), 1);
     }
 
@@ -1398,7 +1741,12 @@ mod tests {
     #[test]
     fn only_atlas_events_go_out_to_the_phone() {
         let mut c = Calendar::default();
-        c.add("mine", resolve_when("today at 1pm", THU).unwrap(), None, THU);
+        c.add(
+            "mine",
+            resolve_when("today at 1pm", THU).unwrap(),
+            None,
+            THU,
+        );
         c.merge_from_phone(
             vec![Event {
                 id: 0,
@@ -1432,9 +1780,18 @@ mod tests {
     #[test]
     fn a_plain_event_is_personal() {
         let mut c = Calendar::default();
-        let id = c.add("lunch", resolve_when("today at 1pm", THU).unwrap(), None, THU);
+        let id = c.add(
+            "lunch",
+            resolve_when("today at 1pm", THU).unwrap(),
+            None,
+            THU,
+        );
         let e = c.events.iter().find(|e| e.id == id).unwrap();
-        assert_eq!(e.space, Space::Personal, "an ordinary event is yours by default");
+        assert_eq!(
+            e.space,
+            Space::Personal,
+            "an ordinary event is yours by default"
+        );
     }
 
     #[test]
@@ -1467,8 +1824,10 @@ mod tests {
         assert_eq!(day.len(), 2);
         // Filtering is the deliberate act.
         assert_eq!(day.iter().filter(|e| e.space == Space::Personal).count(), 1);
-        let biz: Vec<_> =
-            day.iter().filter(|e| e.space == Space::Business("Northwind".into())).collect();
+        let biz: Vec<_> = day
+            .iter()
+            .filter(|e| e.space == Space::Business("Northwind".into()))
+            .collect();
         assert_eq!(biz.len(), 1);
         assert_eq!(biz[0].title, "client call");
     }
@@ -1522,7 +1881,12 @@ mod tests {
     #[test]
     fn a_plain_event_is_a_meeting() {
         let mut c = Calendar::default();
-        let id = c.add("lunch", resolve_when("today at 1pm", THU).unwrap(), None, THU);
+        let id = c.add(
+            "lunch",
+            resolve_when("today at 1pm", THU).unwrap(),
+            None,
+            THU,
+        );
         let e = c.events.iter().find(|e| e.id == id).unwrap();
         assert_eq!(e.kind, EventKind::Meeting, "an ordinary event is a meeting");
     }
@@ -1554,7 +1918,11 @@ mod tests {
             "focus time tomorrow at 3",
             "no meetings friday at 1",
         ] {
-            assert_eq!(kind_for_request(r), EventKind::TimeBlock, "{r} should be a time block");
+            assert_eq!(
+                kind_for_request(r),
+                EventKind::TimeBlock,
+                "{r} should be a time block"
+            );
         }
     }
 
@@ -1566,7 +1934,11 @@ mod tests {
             // "focus" alone must not trigger it.
             "schedule a focus group monday at 10",
         ] {
-            assert_eq!(kind_for_request(r), EventKind::Meeting, "{r} should stay a meeting");
+            assert_eq!(
+                kind_for_request(r),
+                EventKind::Meeting,
+                "{r} should stay a meeting"
+            );
         }
     }
 
@@ -1574,10 +1946,22 @@ mod tests {
 
     #[test]
     fn a_reminder_lead_is_read_from_the_words() {
-        assert_eq!(reminder_from("dentist tomorrow at 9, remind me 15 minutes before"), Some(15));
-        assert_eq!(reminder_from("call at 3pm with a 30-minute reminder"), Some(30));
-        assert_eq!(reminder_from("meeting at 2, remind me an hour before"), Some(60));
-        assert_eq!(reminder_from("flight friday, remind me a day before"), Some(24 * 60));
+        assert_eq!(
+            reminder_from("dentist tomorrow at 9, remind me 15 minutes before"),
+            Some(15)
+        );
+        assert_eq!(
+            reminder_from("call at 3pm with a 30-minute reminder"),
+            Some(30)
+        );
+        assert_eq!(
+            reminder_from("meeting at 2, remind me an hour before"),
+            Some(60)
+        );
+        assert_eq!(
+            reminder_from("flight friday, remind me a day before"),
+            Some(24 * 60)
+        );
         assert_eq!(reminder_from("standup at 9, remind me"), Some(10));
         // A plain duration is not a reminder.
         assert_eq!(reminder_from("lunch at noon for 30 minutes"), None);
@@ -1601,7 +1985,9 @@ mod tests {
         // says "started a minute ago" and the `reminded` set says it once).
         assert_eq!(c.due_reminders(start + 60).len(), 1);
         // Once the late window is over: not due.
-        assert!(c.due_reminders(start + Calendar::REMIND_LATE_SECS).is_empty());
+        assert!(c
+            .due_reminders(start + Calendar::REMIND_LATE_SECS)
+            .is_empty());
         // An event with no reminder set never comes due.
         let mut c2 = Calendar::default();
         c2.add("no reminder", w, None, THU);
@@ -1612,7 +1998,15 @@ mod tests {
     fn a_repeat_reminds_on_each_occurrence() {
         let mut c = Calendar::default();
         let w = resolve_when("today at 9am", THU).unwrap();
-        let id = c.add_full("standup", w, None, Space::Personal, EventKind::Meeting, Repeat::Daily, THU);
+        let id = c.add_full(
+            "standup",
+            w,
+            None,
+            Space::Personal,
+            EventKind::Meeting,
+            Repeat::Daily,
+            THU,
+        );
         assert!(c.set_reminder(id, Some(10)));
         // Five minutes before today's 9am: due.
         assert_eq!(c.due_reminders(w.start - 300).len(), 1);
@@ -1627,14 +2021,26 @@ mod tests {
         assert_eq!(repeat_from("standup every weekday at 9"), Repeat::Weekdays);
         assert_eq!(repeat_from("gym every day at 7am"), Repeat::Daily);
         assert_eq!(repeat_from("daily review at 5"), Repeat::Daily);
-        assert_eq!(repeat_from("one to one every week on monday"), Repeat::Weekly);
+        assert_eq!(
+            repeat_from("one to one every week on monday"),
+            Repeat::Weekly
+        );
         assert_eq!(repeat_from("book club every thursday at 6"), Repeat::Weekly);
         // Nothing repeating named — a one-off, never guessed into a series.
         assert_eq!(repeat_from("lunch with Sam tomorrow at noon"), Repeat::Once);
         // Past the four: a general rule, only when "every"/"each" is said.
-        assert_eq!(repeat_from("team sync the last friday of every month at 4"), Repeat::Rule("FREQ=MONTHLY;BYDAY=-1FR".into()));
-        assert_eq!(repeat_from("gym every other tuesday at 7"), Repeat::Rule("FREQ=WEEKLY;INTERVAL=2;BYDAY=TU".into()));
-        assert_eq!(repeat_from("rent on the 1st of each month at 9"), Repeat::Rule("FREQ=MONTHLY;BYMONTHDAY=1".into()));
+        assert_eq!(
+            repeat_from("team sync the last friday of every month at 4"),
+            Repeat::Rule("FREQ=MONTHLY;BYDAY=-1FR".into())
+        );
+        assert_eq!(
+            repeat_from("gym every other tuesday at 7"),
+            Repeat::Rule("FREQ=WEEKLY;INTERVAL=2;BYDAY=TU".into())
+        );
+        assert_eq!(
+            repeat_from("rent on the 1st of each month at 9"),
+            Repeat::Rule("FREQ=MONTHLY;BYMONTHDAY=1".into())
+        );
         assert_eq!(repeat_from("dinner the last friday at 7"), Repeat::Once);
     }
 
@@ -1642,10 +2048,22 @@ mod tests {
     fn a_general_rule_starts_on_its_own_first_day_and_expands() {
         // THU 2021-01-07. "the last friday of every month at 4" -> Fri 2021-01-29 16:00.
         let r = repeat_from("team sync the last friday of every month at 4pm");
-        let w = resolve_recurring_when("team sync the last friday of every month at 4pm", THU, &r).unwrap();
-        assert_eq!(Utc::from_ms(w.start as i64 * 1000).say_date(), Utc::from_ms((THU + 22 * DAY_SECS) as i64 * 1000).say_date());
+        let w = resolve_recurring_when("team sync the last friday of every month at 4pm", THU, &r)
+            .unwrap();
+        assert_eq!(
+            Utc::from_ms(w.start as i64 * 1000).say_date(),
+            Utc::from_ms((THU + 22 * DAY_SECS) as i64 * 1000).say_date()
+        );
         let mut c = Calendar::default();
-        c.add_full(&event_title("team sync the last friday of every month at 4pm"), w, None, crate::earned::Space::Personal, EventKind::Meeting, r, THU);
+        c.add_full(
+            &event_title("team sync the last friday of every month at 4pm"),
+            w,
+            None,
+            crate::earned::Space::Personal,
+            EventKind::Meeting,
+            r,
+            THU,
+        );
         assert_eq!(c.events[0].title, "team sync");
         let occ = c.occurrences_between(THU, THU + 100 * DAY_SECS);
         assert_eq!(occ.len(), 3); // Jan 29, Feb 26, Mar 26 (Apr 30 is past the window)
@@ -1657,9 +2075,21 @@ mod tests {
         let mut c = Calendar::default();
         // THU at 9am, every day. Over a 3-day window from THU, three occurrences.
         let w = resolve_when("today at 9am", THU).unwrap();
-        c.add_full("standup", w, None, Space::Personal, EventKind::Meeting, Repeat::Daily, THU);
+        c.add_full(
+            "standup",
+            w,
+            None,
+            Space::Personal,
+            EventKind::Meeting,
+            Repeat::Daily,
+            THU,
+        );
         let occ = c.occurrences_between(start_of_day(THU), start_of_day(THU) + 3 * DAY_SECS);
-        assert_eq!(occ.len(), 3, "a daily event should appear on each of the three days");
+        assert_eq!(
+            occ.len(),
+            3,
+            "a daily event should appear on each of the three days"
+        );
         // Each occurrence is a day apart, same title.
         assert!(occ.iter().all(|e| e.title == "standup"));
         assert_eq!(occ[1].start - occ[0].start, DAY_SECS);
@@ -1671,18 +2101,40 @@ mod tests {
         // THU is a weekday. Over a 7-day window from THU: Thu, Fri, (skip Sat,
         // Sun), Mon, Tue, Wed = 5 occurrences.
         let w = resolve_when("today at 9am", THU).unwrap();
-        c.add_full("standup", w, None, Space::Personal, EventKind::Meeting, Repeat::Weekdays, THU);
+        c.add_full(
+            "standup",
+            w,
+            None,
+            Space::Personal,
+            EventKind::Meeting,
+            Repeat::Weekdays,
+            THU,
+        );
         let occ = c.occurrences_between(start_of_day(THU), start_of_day(THU) + 7 * DAY_SECS);
-        assert_eq!(occ.len(), 5, "five weekdays in the seven-day window from Thursday");
+        assert_eq!(
+            occ.len(),
+            5,
+            "five weekdays in the seven-day window from Thursday"
+        );
         // None of them falls on a Saturday or Sunday.
-        assert!(occ.iter().all(|e| Utc::from_ms(e.start as i64 * 1000).weekday() < 5));
+        assert!(occ
+            .iter()
+            .all(|e| Utc::from_ms(e.start as i64 * 1000).weekday() < 5));
     }
 
     #[test]
     fn a_weekly_event_lands_on_the_same_weekday_only() {
         let mut c = Calendar::default();
         let w = resolve_when("today at 9am", THU).unwrap();
-        c.add_full("review", w, None, Space::Personal, EventKind::Meeting, Repeat::Weekly, THU);
+        c.add_full(
+            "review",
+            w,
+            None,
+            Space::Personal,
+            EventKind::Meeting,
+            Repeat::Weekly,
+            THU,
+        );
         // Two weeks: exactly two occurrences, seven days apart, both on THU's
         // weekday.
         let occ = c.occurrences_between(start_of_day(THU), start_of_day(THU) + 14 * DAY_SECS);
@@ -1695,7 +2147,15 @@ mod tests {
         let mut c = Calendar::default();
         // A daily 9–10 standup.
         let w = resolve_when("today at 9am for 60 minutes", THU).unwrap();
-        c.add_full("standup", w, None, Space::Personal, EventKind::Meeting, Repeat::Daily, THU);
+        c.add_full(
+            "standup",
+            w,
+            None,
+            Space::Personal,
+            EventKind::Meeting,
+            Repeat::Daily,
+            THU,
+        );
         // Book something at 9:30 THREE days later — the single stored slot
         // wouldn't overlap, but that day's occurrence does.
         let later = resolve_when("today at 9:30am for 30 minutes", THU + 3 * DAY_SECS).unwrap();
@@ -1710,9 +2170,21 @@ mod tests {
     fn a_repeat_says_how_it_repeats_when_read_back() {
         let mut c = Calendar::default();
         let w = resolve_when("today at 9am", THU).unwrap();
-        c.add_full("standup", w, None, Space::Personal, EventKind::Meeting, Repeat::Weekdays, THU);
+        c.add_full(
+            "standup",
+            w,
+            None,
+            Space::Personal,
+            EventKind::Meeting,
+            Repeat::Weekdays,
+            THU,
+        );
         let e = &c.events[0];
-        assert!(e.say_when().contains("every weekday"), "the recurrence must show: {}", e.say_when());
+        assert!(
+            e.say_when().contains("every weekday"),
+            "the recurrence must show: {}",
+            e.say_when()
+        );
     }
 
     #[test]
@@ -1725,8 +2197,16 @@ mod tests {
         }"#;
         let e: Event = serde_json::from_str(json).unwrap();
         assert_eq!(e.space, Space::Personal);
-        assert_eq!(e.kind, EventKind::Meeting, "an event with no kind loads as a meeting");
-        assert_eq!(e.repeat, Repeat::Once, "an event with no repeat loads as a one-off");
+        assert_eq!(
+            e.kind,
+            EventKind::Meeting,
+            "an event with no kind loads as a meeting"
+        );
+        assert_eq!(
+            e.repeat,
+            Repeat::Once,
+            "an event with no repeat loads as a one-off"
+        );
     }
 }
 
@@ -1796,39 +2276,93 @@ mod phone_sync_tests {
     use super::*;
 
     fn ev(key: &str, title: &str, start: u64) -> PhoneEvent {
-        PhoneEvent { key: key.into(), title: title.into(), start, end: start + 3600, ..PhoneEvent::default() }
+        PhoneEvent {
+            key: key.into(),
+            title: title.into(),
+            start,
+            end: start + 3600,
+            ..PhoneEvent::default()
+        }
     }
 
     #[test]
     fn a_phone_window_adds_changes_and_removes_only_its_own() {
         let mut c = Calendar::default();
-        let mine = c.add("Atlas-made", When { start: 5_000, end: 6_000, all_day: false }, None, 1);
-        let b = PhoneBatch { from: 0, to: 100_000, events: vec![ev("a", "Dentist", 10_000), ev("b", "Gym", 20_000)] };
+        let mine = c.add(
+            "Atlas-made",
+            When {
+                start: 5_000,
+                end: 6_000,
+                all_day: false,
+            },
+            None,
+            1,
+        );
+        let b = PhoneBatch {
+            from: 0,
+            to: 100_000,
+            events: vec![ev("a", "Dentist", 10_000), ev("b", "Gym", 20_000)],
+        };
         assert_eq!(c.sync_from_phone(b.events(1), b.from, b.to, 1), (2, 0));
         // Again, with Gym moved and Dentist deleted on the phone.
-        let b = PhoneBatch { from: 0, to: 100_000, events: vec![ev("b", "Gym", 30_000)] };
+        let b = PhoneBatch {
+            from: 0,
+            to: 100_000,
+            events: vec![ev("b", "Gym", 30_000)],
+        };
         assert_eq!(c.sync_from_phone(b.events(2), b.from, b.to, 2), (1, 1));
         let titles: Vec<&str> = c.events.iter().map(|e| e.title.as_str()).collect();
-        assert!(titles.contains(&"Gym") && !titles.contains(&"Dentist"), "{titles:?}");
-        assert!(c.events.iter().any(|e| e.id == mine), "an Atlas-made event was taken out by a phone sync");
+        assert!(
+            titles.contains(&"Gym") && !titles.contains(&"Dentist"),
+            "{titles:?}"
+        );
+        assert!(
+            c.events.iter().any(|e| e.id == mine),
+            "an Atlas-made event was taken out by a phone sync"
+        );
         // A narrower window leaves a phone event outside it alone.
-        let b = PhoneBatch { from: 0, to: 10, events: vec![] };
+        let b = PhoneBatch {
+            from: 0,
+            to: 10,
+            events: vec![],
+        };
         assert_eq!(c.sync_from_phone(b.events(3), b.from, b.to, 3), (0, 0));
         assert!(c.events.iter().any(|e| e.title == "Gym"));
-        assert_eq!(c.for_phone().len(), 1, "only Atlas-made events go back to the phone");
+        assert_eq!(
+            c.for_phone().len(),
+            1,
+            "only Atlas-made events go back to the phone"
+        );
     }
 
     #[test]
     fn nonsense_from_a_phone_is_dropped() {
-        let b = PhoneBatch { from: 100, to: 50, events: vec![ev("a", "x", 1)] };
-        assert!(b.events(1).is_empty(), "a window that ends before it starts");
+        let b = PhoneBatch {
+            from: 100,
+            to: 50,
+            events: vec![ev("a", "x", 1)],
+        };
+        assert!(
+            b.events(1).is_empty(),
+            "a window that ends before it starts"
+        );
         let mut bad = ev("", "no key", 1);
-        let b = PhoneBatch { from: 0, to: 100, events: vec![bad.clone()] };
+        let b = PhoneBatch {
+            from: 0,
+            to: 100,
+            events: vec![bad.clone()],
+        };
         assert!(b.events(1).is_empty());
         bad.key = "k".into();
         bad.end = 0;
         bad.start = 10;
-        assert!(PhoneBatch { from: 0, to: 100, events: vec![bad] }.events(1).is_empty());
+        assert!(PhoneBatch {
+            from: 0,
+            to: 100,
+            events: vec![bad]
+        }
+        .events(1)
+        .is_empty());
     }
 }
 
@@ -1836,92 +2370,176 @@ mod phone_sync_tests {
 mod snapshot_save_tests {
     use super::*;
     fn root(tag: &str) -> std::path::PathBuf {
-        let root = std::env::temp_dir().join(format!("atlas-calendar-snapshot-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root); std::fs::create_dir_all(&root).unwrap(); root
+        let root = std::env::temp_dir().join(format!(
+            "atlas-calendar-snapshot-{tag}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
     }
-    fn when() -> When { When { start: 100, end: 200, all_day: false } }
+    fn when() -> When {
+        When {
+            start: 100,
+            end: 200,
+            all_day: false,
+        }
+    }
     #[test]
     fn independent_snapshot_and_clone_cannot_erase_newer_provider_events() {
-        let root = root("independent"); let store = crate::store::Store::new(&root);
-        let mut initial = Calendar::default(); initial.add("original", when(), None, 1); initial.save(&store).unwrap();
-        let old = Calendar::load(&store); let mut cloned = old.clone();
+        let root = root("independent");
+        let store = crate::store::Store::new(&root);
+        let mut initial = Calendar::default();
+        initial.add("original", when(), None, 1);
+        initial.save(&store).unwrap();
+        let old = Calendar::load(&store);
+        let mut cloned = old.clone();
         let mut provider = Calendar::load(&store);
-        let mut event = provider.event(1).unwrap().clone(); event.id = 0; event.title = "phone appointment".into(); event.phone_key = Some("phone:fixture".into()); event.source = Source::Phone;
-        provider.merge_from_phone(vec![event], 2); provider.save(&store).unwrap();
+        let mut event = provider.event(1).unwrap().clone();
+        event.id = 0;
+        event.title = "phone appointment".into();
+        event.phone_key = Some("phone:fixture".into());
+        event.source = Source::Phone;
+        provider.merge_from_phone(vec![event], 2);
+        provider.save(&store).unwrap();
         let saved = std::fs::read(root.join("calendar.json")).unwrap();
         cloned.add("stale local edit", when(), None, 3);
-        assert!(cloned.save(&store).is_err()); assert!(old.save(&store).is_err());
+        assert!(cloned.save(&store).is_err());
+        assert!(old.save(&store).is_err());
         assert_eq!(std::fs::read(root.join("calendar.json")).unwrap(), saved);
-        assert!(Calendar::load(&store).events.iter().any(|event| event.title == "phone appointment"));
+        assert!(Calendar::load(&store)
+            .events
+            .iter()
+            .any(|event| event.title == "phone appointment"));
         // Updating one clone's baseline must never authorize its older sibling.
-        let original = Calendar::load(&store); let mut changed = original.clone(); changed.add("fresh local edit", when(), None, 4); changed.save(&store).unwrap();
+        let original = Calendar::load(&store);
+        let mut changed = original.clone();
+        changed.add("fresh local edit", when(), None, 4);
+        changed.save(&store).unwrap();
         assert!(original.save(&store).is_err());
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn missing_corrupt_and_default_snapshots_fail_closed_without_wire_changes() {
-        let root = root("strict"); let store = crate::store::Store::new(&root);
-        let calendar = Calendar::default(); calendar.save(&store).unwrap();
+        let root = root("strict");
+        let store = crate::store::Store::new(&root);
+        let calendar = Calendar::default();
+        calendar.save(&store).unwrap();
         assert!(Calendar::default().save(&store).is_err());
-        let wire: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("calendar.json")).unwrap()).unwrap();
-        let data = wire.get("data").unwrap(); assert_eq!(data.as_object().unwrap().len(), 2);
+        let wire: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(root.join("calendar.json")).unwrap()).unwrap();
+        let data = wire.get("data").unwrap();
+        assert_eq!(data.as_object().unwrap().len(), 2);
         assert!(data.get("events").is_some() && data.get("next_id").is_some());
-        std::fs::remove_file(root.join("calendar.json")).unwrap(); assert!(calendar.save(&store).is_err());
+        std::fs::remove_file(root.join("calendar.json")).unwrap();
+        assert!(calendar.save(&store).is_err());
         std::fs::write(root.join("calendar.json"), b"broken saved calendar").unwrap();
-        let unavailable = Calendar::load(&store); assert!(unavailable.availability_error().is_some()); assert!(unavailable.save(&store).is_err());
-        assert_eq!(std::fs::read(root.join("calendar.json")).unwrap(), b"broken saved calendar");
+        let unavailable = Calendar::load(&store);
+        assert!(unavailable.availability_error().is_some());
+        assert!(unavailable.save(&store).is_err());
+        assert_eq!(
+            std::fs::read(root.join("calendar.json")).unwrap(),
+            b"broken saved calendar"
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn postpublication_error_never_advances_the_snapshot_acknowledgment() {
-        let root = root("postpublish"); let store = crate::store::Store::new(&root);
-        let mut calendar = Calendar::default(); calendar.add("uncertain save", when(), None, 1);
+        let root = root("postpublish");
+        let store = crate::store::Store::new(&root);
+        let mut calendar = Calendar::default();
+        calendar.add("uncertain save", when(), None, 1);
         let result = calendar.save_with(&store, |store, calendar| {
             store.save(FILE, calendar)?;
-            Err(std::io::Error::other("injected failure after publication before acknowledgment").into())
+            Err(
+                std::io::Error::other("injected failure after publication before acknowledgment")
+                    .into(),
+            )
         });
-        assert!(result.is_err()); assert!(calendar.save(&store).is_err(), "an unacknowledged write cannot update the snapshot baseline");
-        let restarted = Calendar::load(&store); assert_eq!(restarted.len(), 1); restarted.save(&store).unwrap();
+        assert!(result.is_err());
+        assert!(
+            calendar.save(&store).is_err(),
+            "an unacknowledged write cannot update the snapshot baseline"
+        );
+        let restarted = Calendar::load(&store);
+        assert_eq!(restarted.len(), 1);
+        restarted.save(&store).unwrap();
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn root_contention_refuses_quickly_before_any_calendar_write() {
-        let root = root("busy"); let store = crate::store::Store::new(&root);
+        let root = root("busy");
+        let store = crate::store::Store::new(&root);
         let calendar = Calendar::default();
-        let (held, got) = std::sync::mpsc::channel(); let (release, wait) = std::sync::mpsc::channel(); let worker_store = store.clone();
-        let worker = std::thread::spawn(move || { let _guard = worker_store.transaction().unwrap(); held.send(()).unwrap(); wait.recv().unwrap(); });
-        got.recv().unwrap(); let started = std::time::Instant::now();
-        assert!(calendar.save(&store).is_err()); assert!(started.elapsed() < std::time::Duration::from_millis(100));
-        assert!(!root.join("calendar.json").exists()); release.send(()).unwrap(); worker.join().unwrap();
+        let (held, got) = std::sync::mpsc::channel();
+        let (release, wait) = std::sync::mpsc::channel();
+        let worker_store = store.clone();
+        let worker = std::thread::spawn(move || {
+            let _guard = worker_store.transaction().unwrap();
+            held.send(()).unwrap();
+            wait.recv().unwrap();
+        });
+        got.recv().unwrap();
+        let started = std::time::Instant::now();
+        assert!(calendar.save(&store).is_err());
+        assert!(started.elapsed() < std::time::Duration::from_millis(100));
+        assert!(!root.join("calendar.json").exists());
+        release.send(()).unwrap();
+        worker.join().unwrap();
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn validation_read_cannot_consume_the_calendar_refresh_signal() {
-        let root = root("refresh-cue"); let store = crate::store::Store::new(&root);
-        let mut initial = Calendar::default(); initial.add("original", when(), None, 1); initial.save(&store).unwrap();
-        let mut cached = Calendar::load(&store); let mut independent = Calendar::load(&store);
-        independent.add("external appointment", when(), None, 2); independent.save(&store).unwrap();
+        let root = root("refresh-cue");
+        let store = crate::store::Store::new(&root);
+        let mut initial = Calendar::default();
+        initial.add("original", when(), None, 1);
+        initial.save(&store).unwrap();
+        let mut cached = Calendar::load(&store);
+        let mut independent = Calendar::load(&store);
+        independent.add("external appointment", when(), None, 2);
+        independent.save(&store).unwrap();
         assert!(cached.save(&store).is_err());
-        assert!(!store.changed_elsewhere(FILE), "the CAS validation read consumes the shared Store cue");
-        assert!(cached.refresh_requested(), "the per-snapshot cue must survive that read");
-        cached.refresh_saved(&store).unwrap(); assert!(!cached.refresh_requested());
+        assert!(
+            !store.changed_elsewhere(FILE),
+            "the CAS validation read consumes the shared Store cue"
+        );
+        assert!(
+            cached.refresh_requested(),
+            "the per-snapshot cue must survive that read"
+        );
+        cached.refresh_saved(&store).unwrap();
+        assert!(!cached.refresh_requested());
         assert_eq!(cached.len(), 2);
-        cached.add("new local appointment", when(), None, 3); cached.save(&store).unwrap();
+        cached.add("new local appointment", when(), None, 3);
+        cached.save(&store).unwrap();
         assert_eq!(Calendar::load(&store).len(), 3);
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn refresh_retains_unsaved_local_edits_when_external_state_also_changed() {
-        let root = root("refresh-conflict"); let store = crate::store::Store::new(&root);
-        let mut initial = Calendar::default(); initial.add("original", when(), None, 1); initial.save(&store).unwrap();
-        let mut local = Calendar::load(&store); local.add("unsaved local appointment", when(), None, 2);
-        let mut external = Calendar::load(&store); external.add("external appointment", when(), None, 3); external.save(&store).unwrap();
+        let root = root("refresh-conflict");
+        let store = crate::store::Store::new(&root);
+        let mut initial = Calendar::default();
+        initial.add("original", when(), None, 1);
+        initial.save(&store).unwrap();
+        let mut local = Calendar::load(&store);
+        local.add("unsaved local appointment", when(), None, 2);
+        let mut external = Calendar::load(&store);
+        external.add("external appointment", when(), None, 3);
+        external.save(&store).unwrap();
         let saved = std::fs::read(root.join("calendar.json")).unwrap();
-        assert!(local.save(&store).is_err()); assert!(local.refresh_saved(&store).is_err());
-        assert!(local.events.iter().any(|event| event.title == "unsaved local appointment"));
-        assert!(!local.events.iter().any(|event| event.title == "external appointment"));
+        assert!(local.save(&store).is_err());
+        assert!(local.refresh_saved(&store).is_err());
+        assert!(local
+            .events
+            .iter()
+            .any(|event| event.title == "unsaved local appointment"));
+        assert!(!local
+            .events
+            .iter()
+            .any(|event| event.title == "external appointment"));
         assert_eq!(std::fs::read(root.join("calendar.json")).unwrap(), saved);
         std::fs::remove_dir_all(root).unwrap();
     }
-
 }

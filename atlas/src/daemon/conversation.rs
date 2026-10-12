@@ -1,7 +1,7 @@
 //! A spoken or typed turn in progress: the question that expires, notes as hints,
 //! the pending turn on the model and its rephrase, the talk queue the hub shows,
 //! speaking while thinking; and the tools and MCP servers a turn is offered.
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
@@ -14,7 +14,13 @@ impl<'a> Daemon<'a> {
         crate::intent::KnownNames {
             apps: self.cfg.apps.apps.keys().cloned().collect(),
             modes: self.modes.modes.iter().map(|m| m.name.clone()).collect(),
-            peers: self.tools_cfg().elsewhere.names().iter().map(|n| n.to_string()).collect(),
+            peers: self
+                .tools_cfg()
+                .elsewhere
+                .names()
+                .iter()
+                .map(|n| n.to_string())
+                .collect(),
         }
     }
 
@@ -45,7 +51,8 @@ impl<'a> Daemon<'a> {
         match &self.pending_stamp {
             Some((at, k)) if *k == which => {
                 if t.saturating_sub(*at) > QUESTION_LIFETIME_SECS {
-                    self.log.info("a question went unanswered for ten minutes -- dropped it");
+                    self.log
+                        .info("a question went unanswered for ten minutes -- dropped it");
                     self.drop_open_questions();
                 }
             }
@@ -55,7 +62,28 @@ impl<'a> Daemon<'a> {
 
     /// Is a question Atlas asked still waiting in one of its slots?
     pub(super) fn a_slot_is_open(&self) -> bool {
-        self.pending_job.is_some() || self.pending_offer.is_some() || self.pending_wanted.is_some() || self.pending_backlog.is_some() || self.pending_bring_back.is_some() || self.pending_unscanned.is_some() || self.pending_media_keep.is_some() || self.pending_media_original.is_some() || self.pending_undo.is_some() || self.pending_storage.is_some() || self.pending_optimize.is_some() || self.pending_desktop.is_some() || self.pending_press.is_some() || self.pending_post_approval.is_some() || self.pending_post_when.is_some() || self.pending_security.is_some() || self.pending_signin.is_some() || self.pending_window_confirm.is_some() || self.pending_panel.is_some() || self.pending_correction.is_some() || self.pending_decision.is_some() || self.pending_mail_sort
+        self.pending_job.is_some()
+            || self.pending_offer.is_some()
+            || self.pending_wanted.is_some()
+            || self.pending_backlog.is_some()
+            || self.pending_bring_back.is_some()
+            || self.pending_unscanned.is_some()
+            || self.pending_media_keep.is_some()
+            || self.pending_media_original.is_some()
+            || self.pending_undo.is_some()
+            || self.pending_storage.is_some()
+            || self.pending_optimize.is_some()
+            || self.pending_desktop.is_some()
+            || self.pending_press.is_some()
+            || self.pending_post_approval.is_some()
+            || self.pending_post_when.is_some()
+            || self.pending_security.is_some()
+            || self.pending_signin.is_some()
+            || self.pending_window_confirm.is_some()
+            || self.pending_panel.is_some()
+            || self.pending_correction.is_some()
+            || self.pending_decision.is_some()
+            || self.pending_mail_sort
     }
 
     /// Every open question dropped, in one place: the session's and each
@@ -98,12 +126,16 @@ impl<'a> Daemon<'a> {
     /// nothing on -- worth the model's answer rather than "Nothing in my
     /// notes on …".
     pub(super) fn notes_have_nothing_on(&self, said: &str) -> bool {
-        let Intent::WhatIHave(q) = self.parser.parse(said) else { return false };
+        let Intent::WhatIHave(q) = self.parser.parse(said) else {
+            return false;
+        };
         if q.trim().is_empty() || self.handover().stance.handed_over() {
             return false;
         }
         let now = crate::store::now();
-        self.facts.recall_in_context(&q, &self.context_terms(&q), now).is_empty()
+        self.facts
+            .recall_in_context(&q, &self.context_terms(&q), now)
+            .is_empty()
             && crate::contents::what_to_open(&self.contents, &q).is_empty()
     }
 
@@ -120,24 +152,59 @@ impl<'a> Daemon<'a> {
         }
         let clip = |s: &str, n: usize| -> String {
             let s = s.split_whitespace().collect::<Vec<_>>().join(" ");
-            if s.chars().count() <= n { s } else { format!("{}…", s.chars().take(n).collect::<String>()) }
+            if s.chars().count() <= n {
+                s
+            } else {
+                format!("{}…", s.chars().take(n).collect::<String>())
+            }
         };
         let mut out: Vec<String> = Vec::new();
-        for f in self.facts.recall_in_context(question, &self.context_terms(question), now).into_iter().take(3) {
+        for f in self
+            .facts
+            .recall_in_context(question, &self.context_terms(question), now)
+            .into_iter()
+            .take(3)
+        {
             if crate::facts::answers(f, question) {
                 out.push(clip(&f.answer(now), 240));
                 // "What was it before?": what a correction replaced (item 20).
                 let low = question.to_lowercase();
-                if ["before", "used to", "previously", "originally", "was it", "changed"].iter().any(|w| low.contains(w)) {
+                if [
+                    "before",
+                    "used to",
+                    "previously",
+                    "originally",
+                    "was it",
+                    "changed",
+                ]
+                .iter()
+                .any(|w| low.contains(w))
+                {
                     if let Some((until, was)) = f.history.last() {
-                        out.push(clip(&format!("Before that (until {}): {was}", crate::freshness::ago(now.saturating_sub(*until))), 240));
+                        out.push(clip(
+                            &format!(
+                                "Before that (until {}): {was}",
+                                crate::freshness::ago(now.saturating_sub(*until))
+                            ),
+                            240,
+                        ));
                     }
                 }
             }
         }
         if !self.library.is_empty() {
-            let cfg = self.tools_ref().map(|t| t.recall.clone()).unwrap_or_default();
-            let hits = self.library.search_in_context(question, None, &self.context_terms(question), None, &cfg, now);
+            let cfg = self
+                .tools_ref()
+                .map(|t| t.recall.clone())
+                .unwrap_or_default();
+            let hits = self.library.search_in_context(
+                question,
+                None,
+                &self.context_terms(question),
+                None,
+                &cfg,
+                now,
+            );
             for h in hits.iter().filter(|h| h.score >= NOTE_HINT_FLOOR).take(3) {
                 out.push(clip(&format!("{}: {}", h.title, h.quote), 300));
             }
@@ -197,9 +264,19 @@ impl<'a> Daemon<'a> {
                 .filter(|s| !s.is_empty())
                 .collect();
             if !told.is_empty() {
-                about.push(format!("Who they are and what they've told you: {}.", told.join("; ")));
+                about.push(format!(
+                    "Who they are and what they've told you: {}.",
+                    told.join("; ")
+                ));
             }
-            let goals: Vec<String> = self.nudger.goals.iter().filter(|g| !g.muted).map(|g| clip_words(&g.what, 80)).take(3).collect();
+            let goals: Vec<String> = self
+                .nudger
+                .goals
+                .iter()
+                .filter(|g| !g.muted)
+                .map(|g| clip_words(&g.what, 80))
+                .take(3)
+                .collect();
             if !goals.is_empty() {
                 about.push(format!("Their goals: {}.", goals.join("; ")));
             }
@@ -217,7 +294,12 @@ impl<'a> Daemon<'a> {
         }
         let (year, _, _) = crate::hubpages::ymd(crate::localclock::day(t, off));
         let date = crate::localclock::spoken_now(t, off);
-        let date = date.split(" on ").nth(1).unwrap_or(&date).trim_end_matches('.').to_string();
+        let date = date
+            .split(" on ")
+            .nth(1)
+            .unwrap_or(&date)
+            .trim_end_matches('.')
+            .to_string();
         system.push_str(&format!("\nToday is {date} {year}."));
 
         // What changes every turn: short, and only what bears on what was said.
@@ -225,7 +307,9 @@ impl<'a> Daemon<'a> {
         now.push_str(&crate::localclock::spoken_now(t, off));
         now.push('\n');
         if let Some(q) = answering {
-            now.push_str(&format!("You just asked: {q}\nWhat follows is their answer to that, not a new request.\n"));
+            now.push_str(&format!(
+                "You just asked: {q}\nWhat follows is their answer to that, not a new request.\n"
+            ));
         }
         let at = match self.tools_ref() {
             Some(tc) => match &tc.llm {
@@ -251,14 +335,22 @@ impl<'a> Daemon<'a> {
             .filter(|g| g.trim() != said.trim())
             .filter(|_| leans_on_it)
         {
-            now.push_str(&format!("Lately they've been asking you: \"{}\"\n", clip_words(&goal, 100)));
+            now.push_str(&format!(
+                "Lately they've been asking you: \"{}\"\n",
+                clip_words(&goal, 100)
+            ));
         }
         // What was said long ago, only the lines of the summary that bear on
         // this (30 Sep 2026: the whole summary went in front of every turn,
         // and a small model's own invention -- "the freaky man" -- came back
         // turn after turn from it).
         if !handed_over {
-            let replies: Vec<&str> = self.thread.recent.iter().map(|e| e.reply.as_str()).collect();
+            let replies: Vec<&str> = self
+                .thread
+                .recent
+                .iter()
+                .map(|e| e.reply.as_str())
+                .collect();
             let summary = crate::thread::clean_summary(&self.thread.summary, &replies);
             let earlier = crate::thread::summary_bearing_on(&summary, said, SUMMARY_LINES);
             if !earlier.is_empty() {
@@ -267,11 +359,19 @@ impl<'a> Daemon<'a> {
         }
         // The calendar and today's reminders, only when the day is the topic.
         if !handed_over && crate::router::about_the_day(said) {
-            let mut coming: Vec<crate::calendar::Event> = self.calendar.occurrences_between(t, t + 7 * 86_400);
+            let mut coming: Vec<crate::calendar::Event> =
+                self.calendar.occurrences_between(t, t + 7 * 86_400);
             coming.sort_by_key(|e| e.start);
-            let coming: Vec<String> = coming.iter().take(3).map(|e| format!("{} ({})", e.title, e.say_when())).collect();
+            let coming: Vec<String> = coming
+                .iter()
+                .take(3)
+                .map(|e| format!("{} ({})", e.title, e.say_when()))
+                .collect();
             if !coming.is_empty() {
-                now.push_str(&format!("Coming up on their calendar: {}.\n", coming.join("; ")));
+                now.push_str(&format!(
+                    "Coming up on their calendar: {}.\n",
+                    coming.join("; ")
+                ));
             }
             let midnight = crate::localclock::midnight(t, off);
             let due: Vec<String> = self
@@ -279,14 +379,23 @@ impl<'a> Daemon<'a> {
                 .active()
                 .into_iter()
                 .filter(|j| j.due >= t && j.due < midnight + 86_400)
-                .filter_map(|j| j.command.strip_prefix("reminder ").map(|c| c.trim_start_matches("Reminder:").trim().to_string()))
+                .filter_map(|j| {
+                    j.command
+                        .strip_prefix("reminder ")
+                        .map(|c| c.trim_start_matches("Reminder:").trim().to_string())
+                })
                 .take(3)
                 .collect();
             // Your other devices' reminders: known here, rung there.
             let there = self.where_it_rings();
             let due: Vec<String> = due
                 .into_iter()
-                .chain(self.reminders_elsewhere().into_iter().filter(|e| e.due < midnight + 86_400).map(|e| format!("{} ({there})", e.words())))
+                .chain(
+                    self.reminders_elsewhere()
+                        .into_iter()
+                        .filter(|e| e.due < midnight + 86_400)
+                        .map(|e| format!("{} ({there})", e.words())),
+                )
                 .take(3)
                 .collect();
             if !due.is_empty() {
@@ -296,7 +405,11 @@ impl<'a> Daemon<'a> {
         // The window in front only when what was said is about the screen
         // (29 Sep 2026). Labelled as background when it does go in.
         if let Ok(Some(active)) = self.plat.active_window() {
-            let app = active.process.trim_end_matches(".exe").trim_end_matches(".EXE").to_string();
+            let app = active
+                .process
+                .trim_end_matches(".exe")
+                .trim_end_matches(".EXE")
+                .to_string();
             if crate::doing::refers_to_screen(said, &app) {
                 now.push_str("Background, only because they mentioned the screen -- never the topic unless they ask:\n");
                 now.push_str(&brain::focus_line(&active, at));
@@ -305,18 +418,34 @@ impl<'a> Daemon<'a> {
         // What else they told you that bears on this (relevance, importance
         // and recency), beyond the core above.
         if !handed_over {
-            let core: Vec<String> = self.facts.core(FACTS_IN_PROMPT).iter().map(|f| f.name.clone()).collect();
+            let core: Vec<String> = self
+                .facts
+                .core(FACTS_IN_PROMPT)
+                .iter()
+                .map(|f| f.name.clone())
+                .collect();
             let skip: Vec<&str> = core.iter().map(|s| s.as_str()).collect();
-            let bearing: Vec<String> = self.facts.bearing_on(said, t, &skip, 3).iter().map(|f| clip_words(&f.summary, 120)).collect();
+            let bearing: Vec<String> = self
+                .facts
+                .bearing_on(said, t, &skip, 3)
+                .iter()
+                .map(|f| clip_words(&f.summary, 120))
+                .collect();
             if !bearing.is_empty() {
-                now.push_str(&format!("They've also told you, on this: {}.\n", bearing.join("; ")));
+                now.push_str(&format!(
+                    "They've also told you, on this: {}.\n",
+                    bearing.join("; ")
+                ));
             }
             // What Atlas said without being asked (finished research, an
             // errand done): the history sent to the model holds turns only,
             // so these go here (30 Sep 2026).
             let told = self.thread.told_unprompted(2);
             if !told.is_empty() {
-                now.push_str(&format!("You told them without being asked: {}\n", told.join(" | ")));
+                now.push_str(&format!(
+                    "You told them without being asked: {}\n",
+                    told.join(" | ")
+                ));
             }
         }
         // The people and the project this names, and a wording of theirs it
@@ -341,7 +470,11 @@ impl<'a> Daemon<'a> {
         let about_atlas = crate::capability::is_about_atlas(said);
         if about_atlas {
             let research = self.tools_ref().is_some_and(|tc| tc.research.enabled);
-            now.push_str(&crate::capability::abilities_for_prompt(said, research, ABILITY_LINES));
+            now.push_str(&crate::capability::abilities_for_prompt(
+                said,
+                research,
+                ABILITY_LINES,
+            ));
         }
         // A request the phrases didn't recognise: do it with a tool, or say
         // what can be done instead -- never chat around it.
@@ -352,16 +485,26 @@ impl<'a> Daemon<'a> {
         }
         // Out loud, one to three short sentences unless more was asked for.
         let short_spoken = self.reply_is_spoken() && !crate::persona::asks_for_more(said);
-        let sentences = if short_spoken { persona.max_spoken_sentences.min(SPOKEN_SENTENCES) } else { persona.max_spoken_sentences };
+        let sentences = if short_spoken {
+            persona.max_spoken_sentences.min(SPOKEN_SENTENCES)
+        } else {
+            persona.max_spoken_sentences
+        };
         now.push_str(&persona.for_this_turn_on(register, sentences, said, self.mid_flow()));
         // Three rough turns running: stop retrying, find the wrong assumption
         // (counted where the register is read, in `turn.rs`).
-        if let Some(line) = crate::persona::spiral_line(self.rough_in_a_row).filter(|_| register == crate::register::Register::Rough) {
+        if let Some(line) = crate::persona::spiral_line(self.rough_in_a_row)
+            .filter(|_| register == crate::register::Register::Rough)
+        {
             now.push(' ');
             now.push_str(line);
         }
 
-        let tools = if handed_over { Vec::new() } else { self.turn_tools(said) };
+        let tools = if handed_over {
+            Vec::new()
+        } else {
+            self.turn_tools(said)
+        };
         // One tool is the same every turn: the capabilities tool (`turn_tools`).
         let core_tools = if handed_over { 0 } else { 1 };
         let mut turn = brain::Turn {
@@ -370,7 +513,12 @@ impl<'a> Daemon<'a> {
             system,
             // The last few exchanges; the summary of older ones went into
             // `now`, only where it bears on this (`summary_bearing_on`).
-            history: self.thread.messages(HISTORY_EXCHANGES, HISTORY_TOKENS).into_iter().filter(|m| m.role != brain::Role::System).collect(),
+            history: self
+                .thread
+                .messages(HISTORY_EXCHANGES, HISTORY_TOKENS)
+                .into_iter()
+                .filter(|m| m.role != brain::Role::System)
+                .collect(),
             now,
             // The core tools lead, in the same order every turn (`mcp::merge`).
             stable_tools: core_tools.min(tools.len()),
@@ -389,7 +537,9 @@ impl<'a> Daemon<'a> {
             // (`asks_for_length`).
             max_sentences: Some(if short_spoken {
                 sentences.max(1) + 1
-            } else if register == crate::register::Register::Chatting && crate::register::asks_for_length(said) {
+            } else if register == crate::register::Register::Chatting
+                && crate::register::asks_for_length(said)
+            {
                 SAFETY_SENTENCES
             } else if register == crate::register::Register::Chatting {
                 crate::register::CHAT_SENTENCES
@@ -415,7 +565,11 @@ impl<'a> Daemon<'a> {
             recent_replies: Some(match self.thread.said_earlier(said) {
                 Some(e) => {
                     let same = e.reply.clone();
-                    self.thread.recent_replies(REPLIES_CHECKED).into_iter().filter(|r| *r != same).collect()
+                    self.thread
+                        .recent_replies(REPLIES_CHECKED)
+                        .into_iter()
+                        .filter(|r| *r != same)
+                        .collect()
                 }
                 None => self.thread.recent_replies(REPLIES_CHECKED),
             }),
@@ -423,7 +577,8 @@ impl<'a> Daemon<'a> {
         // The whole prompt inside the model's context, with room for the
         // reply (`Turn::fit`).
         if turn.fit(self.model_context_tokens(), core_tools) {
-            self.log.info("the prompt was more than the model's context -- shortened to fit");
+            self.log
+                .info("the prompt was more than the model's context -- shortened to fit");
         }
         turn
     }
@@ -431,7 +586,8 @@ impl<'a> Daemon<'a> {
     /// Will this turn's reply be said out loud (not only shown)? The same
     /// reading `start_saying` makes.
     fn reply_is_spoken(&self) -> bool {
-        let typed = (self.tiers.tier == Tier::Typed && !crate::input::can_speak(self.tools_ref())) || !self.sound_allows_speaking();
+        let typed = (self.tiers.tier == Tier::Typed && !crate::input::can_speak(self.tools_ref()))
+            || !self.sound_allows_speaking();
         !typed
     }
 
@@ -454,10 +610,29 @@ impl<'a> Daemon<'a> {
             return None;
         }
         let persona = self.persona_now();
-        let turn = self.conversation_turn("", t, crate::register::Register::Chatting, &persona, None, "");
-        let req = brain::ChatRequest { messages: turn.messages(), tools: turn.tools.clone(), max_tokens: 1, force_tool: false, stable_tools: turn.stable_tools, aside: false, stronger: false, output_schema: None };
+        let turn = self.conversation_turn(
+            "",
+            t,
+            crate::register::Register::Chatting,
+            &persona,
+            None,
+            "",
+        );
+        let req = brain::ChatRequest {
+            messages: turn.messages(),
+            tools: turn.tools.clone(),
+            max_tokens: 1,
+            force_tool: false,
+            stable_tools: turn.stable_tools,
+            aside: false,
+            stronger: false,
+            output_schema: None,
+        };
         let said = self.model_warmed.clone();
-        let server = self.tools_ref().filter(|t| self.starts_model_server && t.llm.is_none() && t.models.server.is_some()).map(|t| (t.models.clone(), t.vars.clone()));
+        let server = self
+            .tools_ref()
+            .filter(|t| self.starts_model_server && t.llm.is_none() && t.models.server.is_some())
+            .map(|t| (t.models.clone(), t.vars.clone()));
         std::thread::Builder::new()
             .name("atlas-warm".into())
             .spawn(move || {
@@ -519,31 +694,39 @@ impl<'a> Daemon<'a> {
         let spawn_failure_tx = tx.clone();
         // A turn is being answered: the deep model gives way until it is.
         let talking = self.talking_guard();
-        let spawned = std::thread::Builder::new().name("atlas-talk".into()).spawn(move || {
-            let _talking = talking;
-            let brain = Brain { llm: &*llm, fallback: &parser, voice: Some((&persona, register)) };
-            let mut sentences = brain::Sentences::default();
-            let mut also = Vec::new();
-            let d = brain.converse_noting(
-                &turn,
-                &mut |piece| {
-                    if let Ok(mut p) = partial.lock().or_else(crate::crash::unpoison) {
-                        p.push_str(piece);
-                    }
-                    for s in sentences.push(piece) {
-                        let _ = tx.send(TurnNews::Sentence(s));
-                    }
-                    true
-                },
-                &mut also,
-            );
-            if !also.is_empty() {
-                let _ = tx.send(TurnNews::Also(also));
-            }
-            let _ = tx.send(TurnNews::Done(d));
-        });
+        let spawned = std::thread::Builder::new()
+            .name("atlas-talk".into())
+            .spawn(move || {
+                let _talking = talking;
+                let brain = Brain {
+                    llm: &*llm,
+                    fallback: &parser,
+                    voice: Some((&persona, register)),
+                };
+                let mut sentences = brain::Sentences::default();
+                let mut also = Vec::new();
+                let d = brain.converse_noting(
+                    &turn,
+                    &mut |piece| {
+                        if let Ok(mut p) = partial.lock().or_else(crate::crash::unpoison) {
+                            p.push_str(piece);
+                        }
+                        for s in sentences.push(piece) {
+                            let _ = tx.send(TurnNews::Sentence(s));
+                        }
+                        true
+                    },
+                    &mut also,
+                );
+                if !also.is_empty() {
+                    let _ = tx.send(TurnNews::Also(also));
+                }
+                let _ = tx.send(TurnNews::Done(d));
+            });
         if let Err(e) = spawned {
-            self.log.warn(&format!("couldn't start the model call on its own thread: {e}"));
+            self.log.warn(&format!(
+                "couldn't start the model call on its own thread: {e}"
+            ));
             // A failed spawn must still complete the channel.  Recording a
             // pending turn after this point would leave the request stuck
             // forever because no worker exists to send its terminal message.
@@ -584,35 +767,57 @@ impl<'a> Daemon<'a> {
              Answer what I asked from this, out loud, in one to three short sentences. Say what matters \
              first. No lists, no markdown. If items are numbered, keep the numbers I'd use to pick one."
         )));
-        let req = brain::ChatRequest { messages, tools: Vec::new(), max_tokens: REPHRASE_TOKENS, force_tool: false, stable_tools: 0, aside: true, stronger: false, output_schema: None };
+        let req = brain::ChatRequest {
+            messages,
+            tools: Vec::new(),
+            max_tokens: REPHRASE_TOKENS,
+            force_tool: false,
+            stable_tools: 0,
+            aside: true,
+            stronger: false,
+            output_schema: None,
+        };
         let llm = p.llm.clone();
         let spawn_failure_tx = tx.clone();
         let talking = self.talking_guard();
-        let spawned = std::thread::Builder::new().name("atlas-talk".into()).spawn(move || {
-            let _talking = talking;
-            let mut sentences = brain::Sentences::default();
-            let r = llm.chat(&req, &mut |piece| {
-                if let Ok(mut pp) = partial.lock().or_else(crate::crash::unpoison) {
-                    pp.push_str(piece);
-                }
-                for s in sentences.push(piece) {
-                    let _ = tx.send(TurnNews::Sentence(s));
-                }
-                true
+        let spawned = std::thread::Builder::new()
+            .name("atlas-talk".into())
+            .spawn(move || {
+                let _talking = talking;
+                let mut sentences = brain::Sentences::default();
+                let r = llm.chat(&req, &mut |piece| {
+                    if let Ok(mut pp) = partial.lock().or_else(crate::crash::unpoison) {
+                        pp.push_str(piece);
+                    }
+                    for s in sentences.push(piece) {
+                        let _ = tx.send(TurnNews::Sentence(s));
+                    }
+                    true
+                });
+                let d = match r.ok().and_then(|r| brain::spoken_text(&r.text)) {
+                    Some(text) => brain::Decision {
+                        intent: Intent::Say(text.clone()),
+                        say: text,
+                        model: brain::Reached::Yes,
+                    },
+                    None => no_answer_came_back(),
+                };
+                let _ = tx.send(TurnNews::Done(d));
             });
-            let d = match r.ok().and_then(|r| brain::spoken_text(&r.text)) {
-                Some(text) => brain::Decision { intent: Intent::Say(text.clone()), say: text, model: brain::Reached::Yes },
-                None => no_answer_came_back(),
-            };
-            let _ = tx.send(TurnNews::Done(d));
-        });
         if let Err(e) = spawned {
-            self.log.warn(&format!("couldn't start the model call on its own thread: {e}"));
+            self.log.warn(&format!(
+                "couldn't start the model call on its own thread: {e}"
+            ));
             // Keep the rephrase path terminal too; otherwise the original
             // tool request remains pending indefinitely after a spawn error.
             let _ = spawn_failure_tx.send(TurnNews::Done(no_answer_came_back()));
         }
-        self.pending_turn = Some(PendingTurn { rx, started: std::time::Instant::now(), rephrasing: Some(ask), ..p });
+        self.pending_turn = Some(PendingTurn {
+            rx,
+            started: std::time::Instant::now(),
+            rephrasing: Some(ask),
+            ..p
+        });
     }
 
     /// Finish the rewording of a tool's result: the model's words, or the
@@ -632,13 +837,24 @@ impl<'a> Daemon<'a> {
         };
         // The rewording may only say what the result said: a claim of work
         // that the written result doesn't make is the model's invention.
-        let claims = |t: &str| crate::repeating::sentences(t).iter().any(|s| crate::backed::claims_work_started(s));
+        let claims = |t: &str| {
+            crate::repeating::sentences(t)
+                .iter()
+                .any(|s| crate::backed::claims_work_started(s))
+        };
         if claims(&worded) && !claims(&ask.written) {
-            self.log.info("the reworded reply claimed work the result didn't -- said as written");
+            self.log
+                .info("the reworded reply claimed work the result didn't -- said as written");
             return ask.written;
         }
         if !ask.keep_written {
-            if let Some(e) = self.thread.recent.iter_mut().rev().find(|e| e.reply == ask.written) {
+            if let Some(e) = self
+                .thread
+                .recent
+                .iter_mut()
+                .rev()
+                .find(|e| e.reply == ask.written)
+            {
                 e.reply = worded.clone();
                 self.persist();
             }
@@ -665,7 +881,9 @@ impl<'a> Daemon<'a> {
     /// same id, and what this returns is the tool's own words -- the caller
     /// waits on and says the reworded reply instead.
     fn finish_pending_turn(&mut self, d: brain::Decision) -> String {
-        let Some(mut p) = self.pending_turn.take() else { return String::new() };
+        let Some(mut p) = self.pending_turn.take() else {
+            return String::new();
+        };
         if let Some(ask) = p.rephrasing.take() {
             return self.finish_rephrase(p, ask, d);
         }
@@ -673,7 +891,8 @@ impl<'a> Daemon<'a> {
             partial.clear();
         }
         if !self.attention.allows(crate::attention::hear(&p.said)) {
-            self.log.info("a reply came back after a pause -- set aside, nothing done with it");
+            self.log
+                .info("a reply came back after a pause -- set aside, nothing done with it");
             return String::new();
         }
         self.decided_in_ms = Some(p.started.elapsed().as_millis() as u64);
@@ -718,7 +937,9 @@ impl<'a> Daemon<'a> {
     /// its answer: a pause, "stop everything", or Atlas closing. A Talk page
     /// turn is taken off the queue and says why on the page.
     pub(super) fn drop_pending_turn(&mut self, t: u64, why: &str) -> bool {
-        let Some(p) = self.pending_turn.take() else { return false };
+        let Some(p) = self.pending_turn.take() else {
+            return false;
+        };
         if let Ok(mut partial) = self.talk_partial.lock().or_else(crate::crash::unpoison) {
             partial.clear();
         }
@@ -733,7 +954,11 @@ impl<'a> Daemon<'a> {
     /// once. It is normally at the front; looked for by its words in case it
     /// is not.
     fn take_talk_entry(&mut self, said: &str, aloud: bool) {
-        if let Some(i) = self.talk_queue.iter().position(|(s, a)| s == said && *a == aloud) {
+        if let Some(i) = self
+            .talk_queue
+            .iter()
+            .position(|(s, a)| s == said && *a == aloud)
+        {
             self.talk_queue.remove(i);
         }
     }
@@ -742,9 +967,14 @@ impl<'a> Daemon<'a> {
     /// start the next ones.
     pub(super) fn talk_queue_turns(&mut self, t: u64) {
         // What the Talk page sent while Atlas was too busy to take it.
-        let late = self.hub_server.as_ref().map(|d| d.take_late_talk()).unwrap_or_default();
+        let late = self
+            .hub_server
+            .as_ref()
+            .map(|d| d.take_late_talk())
+            .unwrap_or_default();
         for late in late {
-            self.log.info("a Talk message that waited too long is answered now");
+            self.log
+                .info("a Talk message that waited too long is answered now");
             self.talk_queue.push(late);
         }
         self.poll_pending_talk(t);
@@ -769,8 +999,12 @@ impl<'a> Daemon<'a> {
 
     /// Finish the Talk page's turn if its model call has come back.
     fn poll_pending_talk(&mut self, t: u64) {
-        let Some(p) = self.pending_turn.as_ref() else { return };
-        let Some((said, aloud, before)) = p.talk.clone() else { return };
+        let Some(p) = self.pending_turn.as_ref() else {
+            return;
+        };
+        let Some((said, aloud, before)) = p.talk.clone() else {
+            return;
+        };
         let mut done = None;
         let mut also = Vec::new();
         loop {
@@ -819,7 +1053,11 @@ impl<'a> Daemon<'a> {
 
     /// What the model has written so far for the turn in flight.
     pub fn talk_so_far(&self) -> String {
-        self.talk_partial.lock().or_else(crate::crash::unpoison).map(|p| p.clone()).unwrap_or_default()
+        self.talk_partial
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map(|p| p.clone())
+            .unwrap_or_default()
     }
 
     /// Every Talk page turn ends with a reply on the page.
@@ -884,7 +1122,9 @@ impl<'a> Daemon<'a> {
             let mut talk_key = self.hotkeys.take();
             let decision = loop {
                 let news = match self.pending_turn.as_ref() {
-                    Some(p) if p.id == id => p.rx.recv_timeout(std::time::Duration::from_millis(THINKING_SLICE_MS)),
+                    Some(p) if p.id == id => {
+                        p.rx.recv_timeout(std::time::Duration::from_millis(THINKING_SLICE_MS))
+                    }
                     // Dropped by a pause or a stop answered on the hub.
                     _ => {
                         self.hotkeys = talk_key;
@@ -903,7 +1143,11 @@ impl<'a> Daemon<'a> {
                         if cut_off {
                             continue;
                         }
-                        let s = if spoken.is_empty() { crate::persona::strip_filler(&s) } else { s };
+                        let s = if spoken.is_empty() {
+                            crate::persona::strip_filler(&s)
+                        } else {
+                            s
+                        };
                         if s.trim().is_empty() {
                             continue;
                         }
@@ -914,7 +1158,8 @@ impl<'a> Daemon<'a> {
                         // own thread while the model writes the next.
                         if spoken.is_empty() {
                             if let Some(p) = self.pending_turn.as_ref() {
-                                self.first_words_ms.set(Some(p.started.elapsed().as_millis() as u64));
+                                self.first_words_ms
+                                    .set(Some(p.started.elapsed().as_millis() as u64));
                             }
                         }
                         let sp = saying.get_or_insert_with(|| self.start_saying(mouth));
@@ -951,14 +1196,23 @@ impl<'a> Daemon<'a> {
                     Err(RecvTimeoutError::Disconnected) => break no_answer_came_back(),
                     Err(RecvTimeoutError::Timeout) => {
                         if crate::goodbye::asked_to_stop() {
-                            self.drop_pending_turn(clock(), "Stopped before I answered -- Atlas is closing.");
+                            self.drop_pending_turn(
+                                clock(),
+                                "Stopped before I answered -- Atlas is closing.",
+                            );
                             continue;
                         }
-                        let waited = self.pending_turn.as_ref().map(|p| p.started.elapsed()).unwrap_or_default();
+                        let waited = self
+                            .pending_turn
+                            .as_ref()
+                            .map(|p| p.started.elapsed())
+                            .unwrap_or_default();
                         if !told_loading
                             && spoken.is_empty()
                             && waited >= STILL_LOADING_AFTER
-                            && crate::models::probably_still_loading(crate::models::launched_secs_ago())
+                            && crate::models::probably_still_loading(
+                                crate::models::launched_secs_ago(),
+                            )
                         {
                             told_loading = true;
                             self.say(mouth, STILL_LOADING_WORDS);
@@ -978,15 +1232,26 @@ impl<'a> Daemon<'a> {
                             // Held down while the model is still thinking
                             // (and nothing is being said): what you say now
                             // replaces the question.
-                            let words = ears.listen_while(&|| keys.held()).ok().flatten().unwrap_or_default();
+                            let words = ears
+                                .listen_while(&|| keys.held())
+                                .ok()
+                                .flatten()
+                                .unwrap_or_default();
                             if !words.trim().is_empty() {
-                                self.drop_pending_turn(clock(), "Set aside -- you said something else.");
+                                self.drop_pending_turn(
+                                    clock(),
+                                    "Set aside -- you said something else.",
+                                );
                                 self.hotkeys = talk_key;
                                 if let Some(sp) = saying.take() {
                                     // unheard-ok: returns `Said`, not a Result
                                     let _ = sp.finish();
                                 }
-                                let next = if crate::speech::is_interruption(&words) { None } else { Some(words) };
+                                let next = if crate::speech::is_interruption(&words) {
+                                    None
+                                } else {
+                                    Some(words)
+                                };
                                 return (String::new(), !spoken.is_empty(), next);
                             }
                         } else if let Some(sp) = saying.as_mut() {
@@ -1008,15 +1273,25 @@ impl<'a> Daemon<'a> {
                             talk_key = self.hotkeys.take();
                         }
                         if self.attention.is_paused() {
-                            self.drop_pending_turn(clock(), "Paused before I answered -- nothing was done.");
+                            self.drop_pending_turn(
+                                clock(),
+                                "Paused before I answered -- nothing was done.",
+                            );
                         }
                     }
                 }
             };
             self.hotkeys = talk_key;
-            let acted = !matches!(decision.intent, Intent::Say(_) | Intent::Ask(_) | Intent::Unknown(_));
+            let acted = !matches!(
+                decision.intent,
+                Intent::Say(_) | Intent::Ask(_) | Intent::Unknown(_)
+            );
             let stock = brain::default_say(&decision.intent);
-            let reply = if self.still_pending(id) { self.finish_pending_turn(decision) } else { String::new() };
+            let reply = if self.still_pending(id) {
+                self.finish_pending_turn(decision)
+            } else {
+                String::new()
+            };
             if self.still_pending(id) {
                 rewording = true;
                 continue;
@@ -1030,7 +1305,10 @@ impl<'a> Daemon<'a> {
         if acted && !rewording && !spoken.is_empty() && only_acknowledges(&rest, &stock) {
             rest.clear();
         }
-        let next = cut_in.into_inner().or(self.cut_in_by_voice.take()).filter(|w| !w.trim().is_empty());
+        let next = cut_in
+            .into_inner()
+            .or(self.cut_in_by_voice.take())
+            .filter(|w| !w.trim().is_empty());
         if cut_off {
             // What wasn't said joins what was cut off, for "carry on".
             if !rest.is_empty() {
@@ -1047,14 +1325,26 @@ impl<'a> Daemon<'a> {
     /// The model didn't know, or the question is about something that
     /// changes by the day: answer, and offer to look it up. A yes runs the
     /// research (`pending_offer`).
-    pub(super) fn offer_to_look_it_up(&mut self, said: &str, intent: &Intent, reached: brain::Reached, reply: &str) -> Option<String> {
-        if reached != brain::Reached::Yes || !matches!(intent, Intent::Say(_)) || reply.trim().is_empty() {
+    pub(super) fn offer_to_look_it_up(
+        &mut self,
+        said: &str,
+        intent: &Intent,
+        reached: brain::Reached,
+        reply: &str,
+    ) -> Option<String> {
+        if reached != brain::Reached::Yes
+            || !matches!(intent, Intent::Say(_))
+            || reply.trim().is_empty()
+        {
             return None;
         }
         if !self.tools_ref().is_some_and(|tc| tc.research.enabled) {
             return None;
         }
-        if self.handover().stance.handed_over() || self.pending_offer.is_some() || self.session.is_waiting() {
+        if self.handover().stance.handed_over()
+            || self.pending_offer.is_some()
+            || self.session.is_waiting()
+        {
             return None;
         }
         if !brain::worth_looking_up(said, reply) {
@@ -1109,7 +1399,9 @@ impl<'a> Daemon<'a> {
             .for_turn_meaning(said, goal.as_deref(), crate::router::SHORTLIST, meaning)
             .into_iter()
             .map(|e| {
-                let note = matches!(e.name.as_str(), "open_app" | "close_app" | "focus_app").then(|| apps_note.as_deref()).flatten();
+                let note = matches!(e.name.as_str(), "open_app" | "close_app" | "focus_app")
+                    .then(|| apps_note.as_deref())
+                    .flatten();
                 crate::router::compact_spec(e, note)
             })
             .collect();
@@ -1134,7 +1426,9 @@ impl<'a> Daemon<'a> {
     /// in `allow`. Escalation only: a voice or a reading Atlas was unsure of
     /// has already made it a question, and that stands.
     pub(super) fn mcp_gate(&self, intent: &Intent, call: Decision) -> Decision {
-        let Intent::McpTool(p) = intent else { return call };
+        let Intent::McpTool(p) = intent else {
+            return call;
+        };
         let asks = match crate::mcp::read_payload(p) {
             Some((name, _)) => self.mcp.must_ask(&name),
             None => true,
@@ -1142,7 +1436,10 @@ impl<'a> Daemon<'a> {
         // Allowed to run unasked -- by you. A voice Atlas isn't sure is yours
         // is asked all the same.
         let voice_in_doubt = self.tools_cfg().voice_id.enabled
-            && matches!(self.last_verdict, crate::voiceid::Verdict::NotYou(_) | crate::voiceid::Verdict::Unsure(_));
+            && matches!(
+                self.last_verdict,
+                crate::voiceid::Verdict::NotYou(_) | crate::voiceid::Verdict::Unsure(_)
+            );
         let asks = asks || voice_in_doubt;
         if asks {
             Decision::max(call, Decision::RequireApproval)
@@ -1169,10 +1466,15 @@ impl<'a> Daemon<'a> {
         let hub = self.mcp.clone();
         let llm = self.llm.clone();
         let said = self.last_said.clone();
-        let work: crew::Work = Box::new(move |_ctl| {
-            crate::mcp::answer(&hub, &name, &args, &said, llm.as_deref())
-        });
-        if self.hand_off("mcp", crate::store::now(), work, Some(format!("{server} {tool}")), SpeakPolicy::Always) {
+        let work: crew::Work =
+            Box::new(move |_ctl| crate::mcp::answer(&hub, &name, &args, &said, llm.as_deref()));
+        if self.hand_off(
+            "mcp",
+            crate::store::now(),
+            work,
+            Some(format!("{server} {tool}")),
+            SpeakPolicy::Always,
+        ) {
             format!("Asking {server}'s {tool} tool.")
         } else {
             "I've too much going on to start that now. Try again in a minute.".into()
@@ -1190,28 +1492,33 @@ impl<'a> Daemon<'a> {
         }
         let built_in = self.plat.built_in_monitor();
         let one = |id: u32| {
-            self.plat.grab_screen(id).ok().flatten().map(|g| (crate::platform::describe_screen(&monitors, id, built_in), g))
+            self.plat
+                .grab_screen(id)
+                .ok()
+                .flatten()
+                .map(|g| (crate::platform::describe_screen(&monitors, id, built_in), g))
         };
-        let ids: Vec<u32> = match crate::platform::screens_asked_for(&self.last_said, &monitors, built_in) {
-            crate::platform::ScreenPick::All => monitors.iter().map(|m| m.id).collect(),
-            crate::platform::ScreenPick::This(id) => vec![id],
-            crate::platform::ScreenPick::Active => {
-                // Where the platform can't say which monitor the window in
-                // front is on, it's found from where the window is.
-                let id = self
-                    .plat
-                    .active_monitor()
-                    .or_else(|| {
-                        let win = self.plat.active_window_id().ok().flatten()?;
-                        let r = self.plat.rect_of(win).ok()?;
-                        crate::platform::monitor_under(&monitors, r)
-                    })
-                    .filter(|id| monitors.iter().any(|m| m.id == *id))
-                    .or_else(|| monitors.iter().find(|m| m.primary).map(|m| m.id))
-                    .unwrap_or(monitors[0].id);
-                vec![id]
-            }
-        };
+        let ids: Vec<u32> =
+            match crate::platform::screens_asked_for(&self.last_said, &monitors, built_in) {
+                crate::platform::ScreenPick::All => monitors.iter().map(|m| m.id).collect(),
+                crate::platform::ScreenPick::This(id) => vec![id],
+                crate::platform::ScreenPick::Active => {
+                    // Where the platform can't say which monitor the window in
+                    // front is on, it's found from where the window is.
+                    let id = self
+                        .plat
+                        .active_monitor()
+                        .or_else(|| {
+                            let win = self.plat.active_window_id().ok().flatten()?;
+                            let r = self.plat.rect_of(win).ok()?;
+                            crate::platform::monitor_under(&monitors, r)
+                        })
+                        .filter(|id| monitors.iter().any(|m| m.id == *id))
+                        .or_else(|| monitors.iter().find(|m| m.primary).map(|m| m.id))
+                        .unwrap_or(monitors[0].id);
+                    vec![id]
+                }
+            };
         let got: Vec<(String, crate::platform::Grab)> = ids.into_iter().filter_map(one).collect();
         (!got.is_empty()).then_some(got)
     }
@@ -1222,7 +1529,8 @@ impl<'a> Daemon<'a> {
         let monitors = self.plat.monitors().ok()?;
         let built_in = self.plat.built_in_monitor();
         if monitors.len() > 1
-            && crate::platform::screens_asked_for(&self.last_said, &monitors, built_in) == crate::platform::ScreenPick::All
+            && crate::platform::screens_asked_for(&self.last_said, &monitors, built_in)
+                == crate::platform::ScreenPick::All
         {
             let all = self.plat.grab_all_screens().ok().flatten()?;
             return Some((format!("all {} of your screens", monitors.len()), all));
@@ -1243,12 +1551,20 @@ impl<'a> Daemon<'a> {
     /// one, and reads each screen when asked about all of them. Where the
     /// platform can't capture a screen, the window in front, as before.
     pub(super) fn screen_words_instead(&mut self) -> Option<String> {
-        let front = self.plat.active_window().ok().flatten().map(|w| w.title).unwrap_or_default();
+        let front = self
+            .plat
+            .active_window()
+            .ok()
+            .flatten()
+            .map(|w| w.title)
+            .unwrap_or_default();
         let mut parts: Vec<(String, String)> = Vec::new();
         match self.screens_asked() {
             Some(screens) => {
                 for (named, grab) in screens {
-                    let Some(raw) = self.plat.recognise_text(&grab).ok().flatten() else { continue };
+                    let Some(raw) = self.plat.recognise_text(&grab).ok().flatten() else {
+                        continue;
+                    };
                     let text = crate::screentext::tidy_lines(&raw);
                     if crate::screentext::plausible(&text) {
                         parts.push((named, text));
@@ -1274,15 +1590,26 @@ impl<'a> Daemon<'a> {
         }
         let (from, text) = crate::screentext::screens_read(&parts, &front);
         let Some(llm) = self.llm.clone() else {
-            return Some(format!("{} {}", crate::screentext::WORDS_ONLY, crate::screentext::said_without_a_model(&text, &from)));
+            return Some(format!(
+                "{} {}",
+                crate::screentext::WORDS_ONLY,
+                crate::screentext::said_without_a_model(&text, &from)
+            ));
         };
         let (system, user) = crate::screentext::question_prompt(&self.last_said, &from, &text);
         let work: crew::Work = Box::new(move |_ctl| {
             let answer = llm.complete(&system, &user).map_err(|e| e.to_string())?;
-            let answer = crate::brain::spoken_text(&answer).unwrap_or_else(|| crate::screentext::said_without_a_model(&text, &from));
+            let answer = crate::brain::spoken_text(&answer)
+                .unwrap_or_else(|| crate::screentext::said_without_a_model(&text, &from));
             Ok(format!("{} {answer}", crate::screentext::WORDS_ONLY))
         });
-        if self.hand_off("screen-words", crate::store::now(), work, None, SpeakPolicy::Always) {
+        if self.hand_off(
+            "screen-words",
+            crate::store::now(),
+            work,
+            None,
+            SpeakPolicy::Always,
+        ) {
             Some("Reading your screen -- one moment.".into())
         } else {
             None
@@ -1321,21 +1648,42 @@ impl<'a> Daemon<'a> {
     /// machine.
     pub(crate) fn get_draft_model(&mut self) -> String {
         if self.handover().stance.handed_over() {
-            return "Not while this is handed over -- downloads onto this machine are the owner's.".into();
+            return "Not while this is handed over -- downloads onto this machine are the owner's."
+                .into();
         }
         let piece = crate::getpieces::draft_model();
         let root = self.store.install_root();
         let work: crew::Work = Box::new(move |_ctl| {
-            crate::getpieces::fetch(&piece, &root, &crate::getpieces::Tools::default(), &|_, _| {})?;
+            crate::getpieces::fetch(
+                &piece,
+                &root,
+                &crate::getpieces::Tools::default(),
+                &|_, _| {},
+            )?;
             let path = root.join(piece.key_path());
             let dir = crate::roots::config_dir();
-            let mut prefs = crate::preferences::Preferences::load_checked(&dir).map_err(|e| format!("I fetched it but couldn't turn it on: {e}"))?;
+            let mut prefs = crate::preferences::Preferences::load_checked(&dir)
+                .map_err(|e| format!("I fetched it but couldn't turn it on: {e}"))?;
             prefs.set("models.draft", &path.display().to_string());
-            prefs.save(&dir).map_err(|e| format!("I fetched it but couldn't turn it on: {e}"))?;
-            Ok("The helper model is here and checked. It's used from the next time I start.".into())
+            prefs
+                .save(&dir)
+                .map_err(|e| format!("I fetched it but couldn't turn it on: {e}"))?;
+            Ok(
+                "The helper model is here and checked. It's used from the next time I start."
+                    .into(),
+            )
         });
-        if self.hand_off("draft-model", crate::store::now(), work, None, SpeakPolicy::Always) {
-            format!("Fetching the helper model ({} MB) -- I'll say when it's ready.", crate::getpieces::draft_model().megabytes())
+        if self.hand_off(
+            "draft-model",
+            crate::store::now(),
+            work,
+            None,
+            SpeakPolicy::Always,
+        ) {
+            format!(
+                "Fetching the helper model ({} MB) -- I'll say when it's ready.",
+                crate::getpieces::draft_model().megabytes()
+            )
         } else {
             "I've too much going on to start that download now. Try again in a minute.".into()
         }
@@ -1363,7 +1711,13 @@ impl<'a> Daemon<'a> {
     /// store, over what `tools.yaml` says, and applied at once.
     pub(crate) fn mcp_switch(&mut self, server: &str, on: bool) -> String {
         let server = server.trim();
-        if !self.tools_cfg().mcp.servers.iter().any(|s| s.name.trim() == server) {
+        if !self
+            .tools_cfg()
+            .mcp
+            .servers
+            .iter()
+            .any(|s| s.name.trim() == server)
+        {
             return "There's no program by that name in your settings.".into();
         }
         let mut off: Vec<String> = self.store.load(crate::mcp::SWITCHED_OFF);

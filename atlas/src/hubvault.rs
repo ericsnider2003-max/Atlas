@@ -53,14 +53,25 @@ pub struct ShownOnce {
 impl ShownOnce {
     pub fn mark_signing(&mut self, what: &str) -> String {
         let mark = crate::server::new_token().unwrap_or_default();
-        if !mark.is_empty() { self.signing_marks.push((mark.clone(), what.into())); }
-        if self.signing_marks.len() > MARKS { self.signing_marks.remove(0); }
+        if !mark.is_empty() {
+            self.signing_marks.push((mark.clone(), what.into()));
+        }
+        if self.signing_marks.len() > MARKS {
+            self.signing_marks.remove(0);
+        }
         mark
     }
     pub fn spend_signing(&mut self, nonce: &str, what: &str) -> bool {
-        if let Some(i) = self.signing_marks.iter().position(|(mark, action)| !nonce.is_empty() && mark == nonce && action == what) {
-            self.signing_marks.remove(i); true
-        } else { false }
+        if let Some(i) = self
+            .signing_marks
+            .iter()
+            .position(|(mark, action)| !nonce.is_empty() && mark == nonce && action == what)
+        {
+            self.signing_marks.remove(i);
+            true
+        } else {
+            false
+        }
     }
     /// A fresh mark for one form.
     pub fn mark(&mut self) -> String {
@@ -103,7 +114,8 @@ pub struct Survey {
 }
 
 /// The two that are said the same way from every form on the vault section.
-const ALREADY_SENT: &str = "That form had already been sent, so I didn't act on it again. Nothing changed.";
+const ALREADY_SENT: &str =
+    "That form had already been sent, so I didn't act on it again. Nothing changed.";
 
 #[cfg(test)]
 mod signing_form_tests {
@@ -112,20 +124,38 @@ mod signing_form_tests {
     fn legacy_receipt_and_retained_unknown_attempts_are_displayed_without_claiming_resolution() {
         let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
         let platform = crate::platform::mock::MockPlatform::new(vec![]);
-        let root = std::env::temp_dir().join(format!("atlas-signing-receipt-ui-{}-{}", std::process::id(), crate::store::now()));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-signing-receipt-ui-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
         let store = crate::store::Store::new(root.clone());
-        let mut d = Daemon::new(&cfg, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
         d.vault_home = store.clone();
         store.save("signing_protection_receipt", &serde_json::json!({"operation":"protect","status":"pending","message":"Original retained; no final receipt."})).unwrap();
         let legacy = d.vault_section_live();
-        assert!(legacy.contains("Outcome unconfirmed") && !legacy.contains("Verified saved result"));
+        assert!(
+            legacy.contains("Outcome unconfirmed") && !legacy.contains("Verified saved result")
+        );
         assert!(legacy.contains("Selected file was not recorded"));
         store.save("signing_protection_receipt", &serde_json::json!({"operation":"export","status":"verified","message":"Current recovery copy verified.","target":"C:/synthetic/<script>recovery.json","prior_unconfirmed":[{"operation_id":"opaque-old","operation":"protect","message":"Earlier <attempt> still needs inspection.","target":"Owner (C:/synthetic/<script>owner.key)"}]})).unwrap();
         let html = d.vault_section_live();
-        assert!(html.contains("Verified saved result") && html.contains("Earlier outcomes still unconfirmed"));
+        assert!(
+            html.contains("Verified saved result")
+                && html.contains("Earlier outcomes still unconfirmed")
+        );
         assert!(html.contains("Earlier &lt;attempt&gt;") && !html.contains("Earlier <attempt>"));
         assert!(!html.contains("opaque-old"));
-        assert!(html.contains("C:/synthetic/&lt;script&gt;recovery.json") && html.contains("C:/synthetic/&lt;script&gt;owner.key"));
+        assert!(
+            html.contains("C:/synthetic/&lt;script&gt;recovery.json")
+                && html.contains("C:/synthetic/&lt;script&gt;owner.key")
+        );
         assert!(!html.contains("<script>"));
         assert!(html.contains("does not resolve these earlier attempts"));
         drop(d);
@@ -136,16 +166,41 @@ mod signing_form_tests {
         let mut cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
         cfg.tools.as_mut().unwrap().vault.open_on_this_login = false;
         let platform = crate::platform::mock::MockPlatform::new(vec![]);
-        let root = std::env::temp_dir().join(format!("atlas-vault-form-ack-{}-{}", std::process::id(), crate::store::now()));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-vault-form-ack-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
         let state = crate::store::Store::new(root.clone());
-        let mut d = Daemon::new(&cfg, &platform, None, state.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            state.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
         d.vault_home = state.clone();
         let phrase = "synthetic violet lantern orbit canyon willow";
-        crate::vault::set_passphrase(&mut d.vault, "", phrase, phrase, &cfg.tools.as_ref().unwrap().vault, crate::store::now()).unwrap();
+        crate::vault::set_passphrase(
+            &mut d.vault,
+            "",
+            phrase,
+            phrase,
+            &cfg.tools.as_ref().unwrap().vault,
+            crate::store::now(),
+        )
+        .unwrap();
         d.vault.save(&state).unwrap();
         let html = d.vault_section_live();
-        assert!(html.contains("action='/hub/signing'") && html.contains("for='signing-protect-path'") && html.contains("for='signing-export-unlock'"));
-        assert!(html.contains("all protected signing copies") && html.contains("No file is selected by default"));
+        assert!(
+            html.contains("action='/hub/signing'")
+                && html.contains("for='signing-protect-path'")
+                && html.contains("for='signing-export-unlock'")
+        );
+        assert!(
+            html.contains("all protected signing copies")
+                && html.contains("No file is selected by default")
+        );
         assert!(!html.contains(phrase));
         let before = serde_json::to_value(&d.vault).unwrap();
         let path = root.join("vault.json");
@@ -155,10 +210,20 @@ mod signing_form_tests {
         for what in ["change", "recovery"] {
             let nonce = d.shown_once.mark();
             let new = "synthetic cedar galaxy river meadow planet";
-            d.vault_post(what, &Secret::new(phrase), &Secret::new(new), &Secret::new(new), &nonce);
+            d.vault_post(
+                what,
+                &Secret::new(phrase),
+                &Secret::new(new),
+                &Secret::new(new),
+                &nonce,
+            );
             assert_eq!(serde_json::to_value(&d.vault).unwrap(), before);
             assert!(d.shown_once.key.is_none());
-            assert!(d.shown_once.said_vault.as_ref().is_some_and(|said| said.contains("couldn't confirm the saved")));
+            assert!(d
+                .shown_once
+                .said_vault
+                .as_ref()
+                .is_some_and(|said| said.contains("couldn't confirm the saved")));
         }
         std::fs::remove_dir(&path).unwrap();
         std::fs::write(&path, &disk).unwrap();
@@ -169,18 +234,38 @@ mod signing_form_tests {
         let holder = std::thread::spawn(move || {
             let _guard = locked.transaction().unwrap();
             held_tx.send(()).unwrap();
-            release_rx.recv_timeout(std::time::Duration::from_secs(10)).expect("release fixture root lock");
+            release_rx
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .expect("release fixture root lock");
         });
-        held_rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        held_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
         let nonce = d.shown_once.mark();
-        d.vault_post("recovery", &Secret::new(phrase), &Secret::default(), &Secret::default(), &nonce);
+        d.vault_post(
+            "recovery",
+            &Secret::new(phrase),
+            &Secret::default(),
+            &Secret::default(),
+            &nonce,
+        );
         release_tx.send(()).unwrap();
         holder.join().unwrap();
         assert_eq!(serde_json::to_value(&d.vault).unwrap(), before);
-        assert_eq!(std::fs::read(&path).unwrap(), disk, "a busy root must preserve the actual saved owner vault");
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            disk,
+            "a busy root must preserve the actual saved owner vault"
+        );
         assert!(d.shown_once.key.is_none());
         let mut restarted = crate::vault::Vault::load(&state);
-        assert!(restarted.open(phrase, crate::store::now(), &cfg.tools.as_ref().unwrap().vault).is_ok());
+        assert!(restarted
+            .open(
+                phrase,
+                crate::store::now(),
+                &cfg.tools.as_ref().unwrap().vault
+            )
+            .is_ok());
         drop(d);
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -200,8 +285,18 @@ mod signing_form_tests {
     fn an_uninitialized_owner_vault_never_offers_signing_file_actions() {
         let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
         let platform = crate::platform::mock::MockPlatform::new(vec![]);
-        let root = std::env::temp_dir().join(format!("atlas-signing-page-owner-{}-{}", std::process::id(), crate::store::now()));
-        let mut d = Daemon::new(&cfg, &platform, None, crate::store::Store::new(root.clone()), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-signing-page-owner-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        let mut d = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            crate::store::Store::new(root.clone()),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
         let html = d.vault_section_live();
         assert!(!d.vault.has_a_passphrase());
         assert!(!html.contains("action='/hub/signing'"));
@@ -277,10 +372,33 @@ impl Daemon<'_> {
             page.push_str("<p role=status>Signing file actions require the established owner's vault passphrase. Opening on this Windows login alone is insufficient. No file action is available here yet.</p></section>");
             return page;
         }
-        for (what, title, path_name, path_label, button) in [("protect", "Protect a local file", "source", "Source file — full local path", "Protect selected file"), ("export", "Export a recovery copy", "destination", "Destination file — full local path", "Export and verify recovery copy")] {
+        for (what, title, path_name, path_label, button) in [
+            (
+                "protect",
+                "Protect a local file",
+                "source",
+                "Source file — full local path",
+                "Protect selected file",
+            ),
+            (
+                "export",
+                "Export a recovery copy",
+                "destination",
+                "Destination file — full local path",
+                "Export and verify recovery copy",
+            ),
+        ] {
             let nonce = self.shown_once.mark_signing(what);
-            let selection = if what == "protect" { "<label for='signing-protect-name'>Signing file name — letters, numbers, dot, underscore or hyphen</label><input id='signing-protect-name' name=name required maxlength=80 pattern='[A-Za-z0-9._-]+'>" } else { "<p>This exports all protected signing copies. Keep the recovery copy somewhere you control; Atlas does not move it off this laptop for you.</p>" };
-            let path_help = if what == "protect" { "In File Explorer, select your source file and paste its full local path here." } else { "Choose a local folder you control and enter its full path with a new recovery file name." };
+            let selection = if what == "protect" {
+                "<label for='signing-protect-name'>Signing file name — letters, numbers, dot, underscore or hyphen</label><input id='signing-protect-name' name=name required maxlength=80 pattern='[A-Za-z0-9._-]+'>"
+            } else {
+                "<p>This exports all protected signing copies. Keep the recovery copy somewhere you control; Atlas does not move it off this laptop for you.</p>"
+            };
+            let path_help = if what == "protect" {
+                "In File Explorer, select your source file and paste its full local path here."
+            } else {
+                "Choose a local folder you control and enter its full path with a new recovery file name."
+            };
             page.push_str(&format!("<form method=post action='/hub/signing' autocomplete=off><h3>{title}</h3><input type=hidden name=what value='{what}'><input type=hidden name=nonce value='{}'>{selection}<label for='signing-{what}-path'>{path_label}</label><input id='signing-{what}-path' name='{path_name}' required spellcheck=false aria-describedby='signing-{what}-help'><p id='signing-{what}-help'>{path_help} No file is selected by default; existing destination files are never overwritten. Network and device paths are unsupported.</p><label for='signing-{what}-unlock'>Vault passphrase or recovery key — required for this action</label><input id='signing-{what}-unlock' type=password name=unlock required autocomplete=off><label><input type=checkbox name=recovery value=true> I am using the vault recovery key</label><p>Fresh verification is required for each action. Review the selected file before continuing.</p><button>{button}</button></form>", hub::esc(&nonce)));
         }
         page.push_str("</section>");
@@ -316,7 +434,14 @@ impl Daemon<'_> {
     }
 
     /// POST /hub/vault: set, change, recovery, and "I've written it down".
-    pub(crate) fn vault_post(&mut self, what: &str, old: &Secret, new: &Secret, again: &Secret, nonce: &str) -> Reply {
+    pub(crate) fn vault_post(
+        &mut self,
+        what: &str,
+        old: &Secret,
+        new: &Secret,
+        again: &Secret,
+        nonce: &str,
+    ) -> Reply {
         if what == "written" {
             self.shown_once.key = None;
             return Reply::redirect("/hub/accounts#vault");
@@ -338,7 +463,8 @@ impl Daemon<'_> {
         let said = match what {
             "set" | "change" => {
                 if what == "set" && has {
-                    "There's a passphrase already — change it below, with the current one.".to_string()
+                    "There's a passphrase already — change it below, with the current one."
+                        .to_string()
                 } else {
                     let mut prepared = self.vault.clone();
                     match crate::vault::set_passphrase(&mut prepared, old.reveal(), new.reveal(), again.reveal(), &cfg, now) {
@@ -372,13 +498,20 @@ impl Daemon<'_> {
                     Err(e) => format!("I couldn't confirm the saved recovery-key change ({e}). The previous in-memory vault is retained and the new key is not shown. Check the saved vault before trying again."),
                 },
                 Err(why) => why,
-            }},
+            }
+            }
             "unlock" => {
                 // Once, for a vault made before it opened on your sign-in:
                 // the passphrase, or failing that the recovery key, and then
                 // the sign-in copy that means never again.
                 let typed = old.reveal();
-                let opened = self.vault.open(typed, now, &cfg).or_else(|e| if self.vault.has_a_recovery_key() { self.vault.open_with_recovery_key(typed, now, &cfg) } else { Err(e) });
+                let opened = self.vault.open(typed, now, &cfg).or_else(|e| {
+                    if self.vault.has_a_recovery_key() {
+                        self.vault.open_with_recovery_key(typed, now, &cfg)
+                    } else {
+                        Err(e)
+                    }
+                });
                 match opened {
                     Ok(()) => {
                         let sealed = self.keep_sign_in_copy(now);
@@ -397,11 +530,26 @@ impl Daemon<'_> {
                 } else if let Err(e) = self.vault_ready(now) {
                     e
                 } else {
-                    match crate::vault::bring_in_set_aside(&self.vault_home, &mut self.vault, old.reveal(), &cfg, now) {
-                        Ok(names) if names.is_empty() => "Opened. There was nothing in it that could come across.".to_string(),
+                    match crate::vault::bring_in_set_aside(
+                        &self.vault_home,
+                        &mut self.vault,
+                        old.reveal(),
+                        &cfg,
+                        now,
+                    ) {
+                        Ok(names) if names.is_empty() => {
+                            "Opened. There was nothing in it that could come across.".to_string()
+                        }
                         Ok(names) => {
-                            self.log.info(&format!("brought {} across from the old vault", names.len()));
-                            let left = if self.vault.set_aside.is_empty() { "" } else { " Authenticator and recovery codes stay in the old one: they never open on a sign-in alone." };
+                            self.log.info(&format!(
+                                "brought {} across from the old vault",
+                                names.len()
+                            ));
+                            let left = if self.vault.set_aside.is_empty() {
+                                ""
+                            } else {
+                                " Authenticator and recovery codes stay in the old one: they never open on a sign-in alone."
+                            };
                             format!("Brought across: {}. Your vault holds them now, and opens with your Windows sign-in.{left}", names.join(", "))
                         }
                         Err(why) => why,
@@ -432,8 +580,15 @@ impl Daemon<'_> {
         }
         let cfg = self.tools_cfg().vault.clone();
         let state = crate::roots::install_state();
-        let said = crate::handover::take_back_with(&state, &mut self.vault, phrase.reveal(), &cfg, crate::store::now());
-        self.log.info("handover: taking it back was tried from the hub");
+        let said = crate::handover::take_back_with(
+            &state,
+            &mut self.vault,
+            phrase.reveal(),
+            &cfg,
+            crate::store::now(),
+        );
+        self.log
+            .info("handover: taking it back was tried from the hub");
         self.back_to_vault(said)
     }
 
@@ -443,7 +598,12 @@ impl Daemon<'_> {
         if !self.handed_over_now() {
             return None;
         }
-        crate::hubjobs::keep_flash(&mut self.flash_once, crate::hub::Page::Sync, crate::hubjobs::Flash::Said(crate::handover::refusal(what)), crate::store::now());
+        crate::hubjobs::keep_flash(
+            &mut self.flash_once,
+            crate::hub::Page::Sync,
+            crate::hubjobs::Flash::Said(crate::handover::refusal(what)),
+            crate::store::now(),
+        );
         Some(Reply::redirect(Page::Sync.href()))
     }
 
@@ -452,7 +612,12 @@ impl Daemon<'_> {
         if let Some(r) = self.sync_refused_while_handed_over("changing the household key") {
             return r;
         }
-        let said = match crate::sync::set_key(&self.store, phrase.reveal(), replace, crate::store::now()) {
+        let said = match crate::sync::set_key(
+            &self.store,
+            phrase.reveal(),
+            replace,
+            crate::store::now(),
+        ) {
             Ok(said) => {
                 crate::heard!(crate::sync::write_card(phrase.reveal().trim()));
                 self.log.info("household key set from the hub");
@@ -460,7 +625,12 @@ impl Daemon<'_> {
             }
             Err(why) => why,
         };
-        crate::hubjobs::keep_flash(&mut self.flash_once, crate::hub::Page::Sync, crate::hubjobs::Flash::Said(said), crate::store::now());
+        crate::hubjobs::keep_flash(
+            &mut self.flash_once,
+            crate::hub::Page::Sync,
+            crate::hubjobs::Flash::Said(said),
+            crate::store::now(),
+        );
         Reply::redirect(Page::Sync.href())
     }
 
@@ -478,7 +648,8 @@ impl Daemon<'_> {
         let said = match crate::household::init(&self.store, name, &device, now) {
             Err(why) => why,
             Ok(h) => {
-                self.log.info(&format!("household {} started from the hub", h.name));
+                self.log
+                    .info(&format!("household {} started from the hub", h.name));
                 let mut said = format!("Started {}. Invite your other devices below.", h.name);
                 if key {
                     let kept: crate::sync::KeptKey = self.store.load(crate::sync::KEY_FILE);
@@ -486,15 +657,24 @@ impl Daemon<'_> {
                         said.push_str(" This device's household key goes with each invitation.");
                     } else {
                         match crate::sync::new_key(&self.store, now) {
-                            Ok(_) => said.push_str(" A household key is made too, and it goes with each invitation."),
-                            Err(why) => said.push_str(&format!(" I couldn't make a household key: {why}")),
+                            Ok(_) => said.push_str(
+                                " A household key is made too, and it goes with each invitation.",
+                            ),
+                            Err(why) => {
+                                said.push_str(&format!(" I couldn't make a household key: {why}"))
+                            }
                         }
                     }
                 }
                 said
             }
         };
-        crate::hubjobs::keep_flash(&mut self.flash_once, crate::hub::Page::Sync, crate::hubjobs::Flash::Said(said), crate::store::now());
+        crate::hubjobs::keep_flash(
+            &mut self.flash_once,
+            crate::hub::Page::Sync,
+            crate::hubjobs::Flash::Said(said),
+            crate::store::now(),
+        );
         Reply::redirect(Page::Sync.href())
     }
 
@@ -507,10 +687,17 @@ impl Daemon<'_> {
         let card = card.exists().then(|| card.display().to_string());
         let house = crate::household::Household::load(&self.store);
         let named = self.tools_cfg().household.device_name.trim().to_string();
-        let this_device = if named.is_empty() { crate::household::this_device_name() } else { named };
+        let this_device = if named.is_empty() {
+            crate::household::this_device_name()
+        } else {
+            named
+        };
         let view = hub::SyncView {
             house: if house.is_set() {
-                hub::HouseView::Named { name: house.name.clone(), devices: house.devices.clone() }
+                hub::HouseView::Named {
+                    name: house.name.clone(),
+                    devices: house.devices.clone(),
+                }
             } else {
                 hub::HouseView::NoneYet
             },
@@ -546,19 +733,29 @@ impl Daemon<'_> {
     /// The forms these pages post as plain fields: the sync folder, and
     /// "Free up space".
     pub(crate) fn pages_post(&mut self, path: &str, f: &[(String, String)]) -> Reply {
-        let get = |k: &str| f.iter().find(|(n, _)| n == k).map(|(_, v)| v.trim().to_string()).unwrap_or_default();
+        let get = |k: &str| {
+            f.iter()
+                .find(|(n, _)| n == k)
+                .map(|(_, v)| v.trim().to_string())
+                .unwrap_or_default()
+        };
         match path {
             "/hub/sync-setup" => {
                 let folder = get("folder");
                 let device = get("device");
                 let said = if folder.is_empty() {
-                    "Say where your devices should meet first — a folder both of them can see.".to_string()
+                    "Say where your devices should meet first — a folder both of them can see."
+                        .to_string()
                 } else {
                     // Through the one path every settings form uses, so it is
                     // validated, kept in settings.yaml and taken up at once.
                     let mut said = self.apply_setting("sync.folder", &folder);
-                    if !device.is_empty() && device != self.tools_cfg().household.device_name.trim() {
-                        said = format!("{said}. {}", self.apply_setting("household.device_name", &device));
+                    if !device.is_empty() && device != self.tools_cfg().household.device_name.trim()
+                    {
+                        said = format!(
+                            "{said}. {}",
+                            self.apply_setting("household.device_name", &device)
+                        );
                     }
                     if self.tools_cfg().sync.folder.trim() == folder {
                         crate::heard!(std::fs::create_dir_all(&folder));
@@ -567,15 +764,23 @@ impl Daemon<'_> {
                         said
                     }
                 };
-                crate::hubjobs::keep_flash(&mut self.flash_once, crate::hub::Page::Sync, crate::hubjobs::Flash::Said(said), crate::store::now());
+                crate::hubjobs::keep_flash(
+                    &mut self.flash_once,
+                    crate::hub::Page::Sync,
+                    crate::hubjobs::Flash::Said(said),
+                    crate::store::now(),
+                );
                 Reply::redirect(Page::Sync.href())
             }
             "/hub/reclaim" => {
                 let said = match get("what").as_str() {
                     "look" => self.look_for_space(),
                     "move" => {
-                        let picked: Vec<String> =
-                            f.iter().filter(|(n, _)| n == "pick").map(|(_, v)| v.clone()).collect();
+                        let picked: Vec<String> = f
+                            .iter()
+                            .filter(|(n, _)| n == "pick")
+                            .map(|(_, v)| v.clone())
+                            .collect();
                         self.move_chosen(&picked)
                     }
                     _ => "That isn't something this section does.".to_string(),
@@ -595,7 +800,8 @@ impl Daemon<'_> {
         }
         let roots = crate::reclaim::roots_from_env();
         if roots.is_empty() {
-            return "I couldn't work out where your home folder is, so I haven't looked anywhere.".into();
+            return "I couldn't work out where your home folder is, so I haven't looked anywhere."
+                .into();
         }
         let t = crate::store::now();
         let work: crate::crew::Work = Box::new(move |_c: &crate::crew::Control| {
@@ -621,7 +827,12 @@ impl Daemon<'_> {
             crate::crew::Ending::Done(Ok(json)) => match serde_json::from_str::<Survey>(json) {
                 Ok(mut s) => {
                     s.at = t;
-                    let mb: u64 = s.found.iter().filter(|c| c.kind.atlas_may_move()).map(|c| c.size_mb).sum();
+                    let mb: u64 = s
+                        .found
+                        .iter()
+                        .filter(|c| c.kind.atlas_may_move())
+                        .map(|c| c.size_mb)
+                        .sum();
                     let kept = self.store.keep_briefly(SURVEY, &s);
                     let said = match kept {
                         Ok(()) => format!(
@@ -633,7 +844,9 @@ impl Daemon<'_> {
                     self.shown_once.said_space = Some(said.clone());
                     Some(said)
                 }
-                Err(e) => Some(format!("I looked for space and couldn't read my own list: {e}")),
+                Err(e) => Some(format!(
+                    "I looked for space and couldn't read my own list: {e}"
+                )),
             },
             crate::crew::Ending::Done(Err(e)) => {
                 let said = format!("I couldn't finish looking for space: {e}");
@@ -660,11 +873,20 @@ impl Daemon<'_> {
         if chosen.is_empty() {
             return "Nothing I can move was ticked, so nothing moved.".into();
         }
-        let trash = crate::safety::Trash::new(self.tools_cfg().trash.clone().resolved(&crate::roots::install_root()));
+        let trash = crate::safety::Trash::new(
+            self.tools_cfg()
+                .trash
+                .clone()
+                .resolved(&crate::roots::install_root()),
+        );
         let (moved, refused) = crate::reclaim::reclaim(&chosen, &trash);
         s.found.retain(|c| !moved.contains(&c.path));
         let _ = self.store.save(SURVEY, &s);
-        self.log.info(&format!("reclaim from the hub: moved {}, refused {}", moved.len(), refused.len()));
+        self.log.info(&format!(
+            "reclaim from the hub: moved {}, refused {}",
+            moved.len(),
+            refused.len()
+        ));
         // Never reported as a whole success when it wasn't: a partial reclaim
         // announced as a complete one sends you looking for space that was
         // never freed.
@@ -673,8 +895,10 @@ impl Daemon<'_> {
             moved.len()
         );
         if !refused.is_empty() {
-            let why: Vec<String> =
-                refused.iter().map(|(p, w)| format!("{} ({w})", p.display())).collect();
+            let why: Vec<String> = refused
+                .iter()
+                .map(|(p, w)| format!("{} ({w})", p.display()))
+                .collect();
             said.push_str(&format!(" Couldn't move {}.", why.join("; ")));
         }
         said

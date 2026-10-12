@@ -13,9 +13,19 @@ use atlas::backed::{self, Meant};
 /// `(best claim, best denial)` likeness of a sentence to the examples.
 fn likeness(route: &atlas::meaningroute::Route, sentence: &str) -> Option<(f32, f32)> {
     let v = route.text(sentence)?;
-    let ex: Vec<Vec<f32>> = backed::CLAIM_EXAMPLES.iter().filter_map(|x| route.text(x)).collect();
-    let dx: Vec<Vec<f32>> = backed::DENIAL_EXAMPLES.iter().filter_map(|(x, _)| route.text(x)).collect();
-    let best = |all: &[Vec<f32>]| all.iter().map(|c| atlas::router::cosine(&v, c)).fold(0.0f32, f32::max);
+    let ex: Vec<Vec<f32>> = backed::CLAIM_EXAMPLES
+        .iter()
+        .filter_map(|x| route.text(x))
+        .collect();
+    let dx: Vec<Vec<f32>> = backed::DENIAL_EXAMPLES
+        .iter()
+        .filter_map(|(x, _)| route.text(x))
+        .collect();
+    let best = |all: &[Vec<f32>]| {
+        all.iter()
+            .map(|c| atlas::router::cosine(&v, c))
+            .fold(0.0f32, f32::max)
+    };
     Some((best(&ex), best(&dx)))
 }
 
@@ -68,7 +78,9 @@ const FINE: &[&str] = &[
 
 #[test]
 fn with_the_real_encoder() {
-    let Some(dir) = std::env::var_os("ATLAS_EMBED_DIR") else { return };
+    let Some(dir) = std::env::var_os("ATLAS_EMBED_DIR") else {
+        return;
+    };
     let dir = std::path::PathBuf::from(dir);
     let enc = serde_json::json!({ "encoder": {
         "command": dir.join("embed").to_string_lossy(),
@@ -76,7 +88,9 @@ fn with_the_real_encoder() {
         "stdin_text": true
     }});
     let cfg: atlas::meaning::MeaningConfig = serde_json::from_value(enc).unwrap();
-    let route = atlas::meaningroute::Route::start(&cfg, &atlas::tools::Vars::new(), None, vec!["x".into()]).unwrap();
+    let route =
+        atlas::meaningroute::Route::start(&cfg, &atlas::tools::Vars::new(), None, vec!["x".into()])
+            .unwrap();
     let mut bad = Vec::new();
     for s in CLAIMS {
         let (c, d) = likeness(&route, s).unwrap();

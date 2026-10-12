@@ -60,8 +60,10 @@ impl Provider {
     /// How well it behaves on Windows, which is where you are.
     pub fn on_windows(&self) -> &'static str {
         match self {
-            Provider::OneDrive => "built in — nothing to install, and it's already signed in if \
-                                   you use a Microsoft account",
+            Provider::OneDrive => {
+                "built in — nothing to install, and it's already signed in if \
+                                   you use a Microsoft account"
+            }
             Provider::ICloud => "works, but the Windows client is the weakest of the four",
             Provider::Dropbox => "reliable, and the quickest to actually push a change",
             Provider::GoogleDrive => "fine, though it mounts as a drive rather than a folder",
@@ -111,9 +113,23 @@ pub fn free_tier_is_enough(p: Provider, needed_mb: u64) -> (bool, String) {
             ),
         )
     } else if needed_mb < free_mb {
-        (true, format!("{}MB against {}GB free — fine, but keep an eye on it", needed_mb, p.free_gb()))
+        (
+            true,
+            format!(
+                "{}MB against {}GB free — fine, but keep an eye on it",
+                needed_mb,
+                p.free_gb()
+            ),
+        )
     } else {
-        (false, format!("{}MB needs more than the {}GB free tier", needed_mb, p.free_gb()))
+        (
+            false,
+            format!(
+                "{}MB needs more than the {}GB free tier",
+                needed_mb,
+                p.free_gb()
+            ),
+        )
     }
 }
 
@@ -322,7 +338,11 @@ pub fn compare_providers() -> String {
 /// troubles worth knowing about — each with what it looks like, the fix, and
 /// whether Atlas can do that fix itself.
 pub fn setup_guidance(p: Provider, device: Setup) -> String {
-    let mut out = format!("Setting up sync through {} ({}GB free)\n", p.name(), p.free_gb());
+    let mut out = format!(
+        "Setting up sync through {} ({}GB free)\n",
+        p.name(),
+        p.free_gb()
+    );
     match device {
         Setup::Laptop => {
             out.push_str(&format!("  On Windows: {}\n", p.on_windows()));
@@ -347,7 +367,11 @@ pub fn setup_guidance(p: Provider, device: Setup) -> String {
     }
     out.push_str("  If it stops working:\n");
     for t in TROUBLES {
-        let who = if t.atlas_can_fix() { "I fix this" } else { "needs you" };
+        let who = if t.atlas_can_fix() {
+            "I fix this"
+        } else {
+            "needs you"
+        };
         out.push_str(&format!("    {} — {} ({who})\n", t.looks_like(), t.fix()));
     }
     out
@@ -394,13 +418,28 @@ impl Default for CloudConfig {
 /// lately. `mine` is this device's own bundle name, which doesn't count;
 /// `expect_others` is whether any other device has ever been seen (a folder
 /// with one device in it has nothing to arrive).
-pub fn still_syncing(folder: &std::path::Path, mine: &str, expect_others: bool, now: u64, cfg: &CloudConfig) -> Option<(Trouble, String)> {
+pub fn still_syncing(
+    folder: &std::path::Path,
+    mine: &str,
+    expect_others: bool,
+    now: u64,
+    cfg: &CloudConfig,
+) -> Option<(Trouble, String)> {
     if !folder.is_dir() {
-        return Some((Trouble::Moved, format!("the sync folder {} isn't there any more", folder.display())));
+        return Some((
+            Trouble::Moved,
+            format!("the sync folder {} isn't there any more", folder.display()),
+        ));
     }
     let probe = folder.join(".atlas-can-write");
     if std::fs::write(&probe, now.to_string()).is_err() {
-        return Some((Trouble::OutOfSpace, format!("I can't write into {} — full, or its permissions changed", folder.display())));
+        return Some((
+            Trouble::OutOfSpace,
+            format!(
+                "I can't write into {} — full, or its permissions changed",
+                folder.display()
+            ),
+        ));
     }
     crate::heard!(std::fs::remove_file(&probe));
     if !expect_others {
@@ -409,18 +448,31 @@ pub fn still_syncing(folder: &std::path::Path, mine: &str, expect_others: bool, 
     let newest = std::fs::read_dir(folder)
         .ok()?
         .flatten()
-        .filter(|e| e.path().extension().is_some_and(|x| x == "bundle") && e.file_name().to_string_lossy() != mine)
+        .filter(|e| {
+            e.path().extension().is_some_and(|x| x == "bundle")
+                && e.file_name().to_string_lossy() != mine
+        })
         .filter_map(|e| e.metadata().ok()?.modified().ok())
-        .filter_map(|t| t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs()))
+        .filter_map(|t| {
+            t.duration_since(std::time::UNIX_EPOCH)
+                .ok()
+                .map(|d| d.as_secs())
+        })
         .max();
     // Twice the check interval, so one quiet stretch on the other machine
     // (asleep, on a plane) isn't reported as a broken folder.
     let window = 2 * cfg.check_every_hours.max(1) as u64 * 3600;
     match newest {
-        None => Some((Trouble::NotActuallySyncing, "nothing from your other devices has ever arrived in the folder".into())),
+        None => Some((
+            Trouble::NotActuallySyncing,
+            "nothing from your other devices has ever arrived in the folder".into(),
+        )),
         Some(t) if now.saturating_sub(t) > window => Some((
             Trouble::NotActuallySyncing,
-            format!("nothing new from your other devices in {} hours", now.saturating_sub(t) / 3600),
+            format!(
+                "nothing new from your other devices in {} hours",
+                now.saturating_sub(t) / 3600
+            ),
         )),
         _ => None,
     }
@@ -450,7 +502,10 @@ pub fn result(worked: bool, seconds: u64, p: Provider) -> String {
             p.name()
         )
     } else {
-        format!("The test file didn't come back. {}", Trouble::NotActuallySyncing.fix())
+        format!(
+            "The test file didn't come back. {}",
+            Trouble::NotActuallySyncing.fix()
+        )
     }
 }
 

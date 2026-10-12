@@ -37,7 +37,6 @@
 
 use serde::{Deserialize, Serialize};
 
-
 /// Whose work this was.
 ///
 /// The record is kept per space as well as per kind, because a track record
@@ -56,7 +55,6 @@ pub enum Space {
     /// A named business, shared with somebody.
     Business(String),
 }
-
 
 impl Space {
     pub fn title(&self) -> String {
@@ -496,9 +494,7 @@ pub fn kind_of(intent: &crate::intent::Intent) -> Kind {
 
     // Money, accounts and secrets first, whatever category they fall in.
     match intent {
-        Intent::Unlock(_) | Intent::CreateAccount(_) | Intent::SignIn(_) => {
-            return Kind::Sensitive
-        }
+        Intent::Unlock(_) | Intent::CreateAccount(_) | Intent::SignIn(_) => return Kind::Sensitive,
         Intent::Ask(_) | Intent::Why(_) => return Kind::Answering,
         Intent::WhatsThere | Intent::WhatsThis => return Kind::Answering,
         Intent::Files(_) | Intent::Show(_) => return Kind::Finding,

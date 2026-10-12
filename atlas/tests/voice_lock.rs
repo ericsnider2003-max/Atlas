@@ -20,7 +20,10 @@ use atlas::speaker::{available, parse_embedding, SpeakerConfig, NO_ENCODER};
 use atlas::voiceid::{handle, Handling, Verdict, VoiceId, VoiceIdConfig};
 
 fn on() -> VoiceIdConfig {
-    VoiceIdConfig { enabled: true, ..Default::default() }
+    VoiceIdConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 // --- the policy, which is the part that matters -----------------------------
@@ -36,7 +39,10 @@ fn a_voice_that_is_not_yours_cannot_make_atlas_go_quiet() {
     // embedding to a centroid and returns a number; which side of the
     // threshold your own voice lands on is a matter of your throat and your
     // hardware. So the reading may escalate and may not subtract.
-    assert_eq!(handle(Verdict::NotYou(0.1), false, &on()), Handling::Proceed);
+    assert_eq!(
+        handle(Verdict::NotYou(0.1), false, &on()),
+        Handling::Proceed
+    );
     assert_eq!(handle(Verdict::NotYou(0.1), true, &on()), Handling::Confirm);
 }
 
@@ -67,7 +73,12 @@ fn a_voice_reading_can_only_ever_escalate() {
     // added later is covered by it. `Handling` has no variant that grants and
     // none that refuses -- and that is enforced here rather than trusted,
     // because the refusing variant is exactly what was removed.
-    for v in [Verdict::You(0.99), Verdict::Unsure(0.6), Verdict::NotYou(0.0), Verdict::NotEnrolled] {
+    for v in [
+        Verdict::You(0.99),
+        Verdict::Unsure(0.6),
+        Verdict::NotYou(0.0),
+        Verdict::NotEnrolled,
+    ] {
         for consequential in [true, false] {
             let h = handle(v, consequential, &on());
             assert!(
@@ -94,7 +105,10 @@ fn an_unsure_verdict_asks_rather_than_guessing_either_way() {
     // than silently picking a side.
     assert_eq!(handle(Verdict::Unsure(0.6), true, &on()), Handling::Confirm);
     // And on something harmless it does not nag.
-    assert_eq!(handle(Verdict::Unsure(0.6), false, &on()), Handling::Proceed);
+    assert_eq!(
+        handle(Verdict::Unsure(0.6), false, &on()),
+        Handling::Proceed
+    );
 }
 
 #[test]
@@ -103,13 +117,19 @@ fn a_machine_that_was_never_taught_your_voice_does_not_gate_anything() {
     // ignores everyone. Voice-lock unavailable must never behave as if
     // voice-lock were on.
     for consequential in [true, false] {
-        assert_eq!(handle(Verdict::NotEnrolled, consequential, &on()), Handling::Proceed);
+        assert_eq!(
+            handle(Verdict::NotEnrolled, consequential, &on()),
+            Handling::Proceed
+        );
     }
 }
 
 #[test]
 fn switching_it_off_switches_it_off() {
-    let off = VoiceIdConfig { enabled: false, ..Default::default() };
+    let off = VoiceIdConfig {
+        enabled: false,
+        ..Default::default()
+    };
     assert_eq!(handle(Verdict::NotYou(0.0), true, &off), Handling::Proceed);
 }
 
@@ -120,11 +140,23 @@ fn an_embedding_is_read_from_whatever_the_encoder_printed() {
     // Every speaker encoder prints something slightly different, and demanding
     // one exact format means the first one you try fails for a reason that has
     // nothing to do with your voice.
-    let json: String = format!("[{}]", (0..32).map(|i| format!("{}.5", i)).collect::<Vec<_>>().join(","));
-    let plain: String = (0..32).map(|i| format!("{}.5", i)).collect::<Vec<_>>().join(" ");
+    let json: String = format!(
+        "[{}]",
+        (0..32)
+            .map(|i| format!("{}.5", i))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    let plain: String = (0..32)
+        .map(|i| format!("{}.5", i))
+        .collect::<Vec<_>>()
+        .join(" ");
     let a = parse_embedding(&json).expect("json array");
     let b = parse_embedding(&plain).expect("plain numbers");
-    assert_eq!(a, b, "the same numbers read differently depending on punctuation");
+    assert_eq!(
+        a, b,
+        "the same numbers read differently depending on punctuation"
+    );
     assert_eq!(a.len(), 32);
 }
 
@@ -133,8 +165,14 @@ fn a_nan_is_refused_rather_than_poisoning_the_voiceprint() {
     // A NaN in the centroid makes every later comparison return 0, which reads
     // as "not you" forever — Atlas would silently stop listening to you and
     // the reason would be unrecoverable from the outside.
-    let bad: String = format!("NaN {}", (0..32).map(|_| "0.5").collect::<Vec<_>>().join(" "));
-    assert!(parse_embedding(&bad).is_err(), "a NaN was accepted into a voiceprint");
+    let bad: String = format!(
+        "NaN {}",
+        (0..32).map(|_| "0.5").collect::<Vec<_>>().join(" ")
+    );
+    assert!(
+        parse_embedding(&bad).is_err(),
+        "a NaN was accepted into a voiceprint"
+    );
 }
 
 #[test]
@@ -142,7 +180,10 @@ fn something_that_is_not_numbers_is_refused_with_what_it_saw() {
     let e = parse_embedding("Traceback (most recent call last):").unwrap_err();
     let msg = format!("{e}");
     assert!(msg.contains("isn't a number"), "got: {msg}");
-    assert!(msg.contains("Traceback"), "it didn't show what it choked on: {msg}");
+    assert!(
+        msg.contains("Traceback"),
+        "it didn't show what it choked on: {msg}"
+    );
 }
 
 #[test]
@@ -182,7 +223,10 @@ fn enrolling_takes_several_samples_before_it_will_judge_anything() {
     );
     id.enroll(&a).unwrap();
     id.enroll(&a).unwrap();
-    assert!(matches!(id.check(&a, &cfg), Verdict::You(_)), "three samples should be enough");
+    assert!(
+        matches!(id.check(&a, &cfg), Verdict::You(_)),
+        "three samples should be enough"
+    );
 }
 
 #[test]
@@ -209,8 +253,18 @@ fn changing_encoder_is_refused_rather_than_silently_compared() {
     id.enroll(&vec![0.5f32; 64]).unwrap();
     // A new encoder's sample starts the print again; the old ones are gone,
     // never averaged in.
-    assert_eq!(id.enroll(&vec![0.5f32; 128]).unwrap(), 1, "mismatched sizes were mixed");
-    assert!(id.print.as_ref().unwrap().samples.iter().all(|s| s.len() == 128));
+    assert_eq!(
+        id.enroll(&vec![0.5f32; 128]).unwrap(),
+        1,
+        "mismatched sizes were mixed"
+    );
+    assert!(id
+        .print
+        .as_ref()
+        .unwrap()
+        .samples
+        .iter()
+        .all(|s| s.len() == 128));
 }
 
 #[test]
@@ -250,7 +304,13 @@ fn the_daemon_holds_a_verdict_and_starts_with_no_opinion() {
     let dir = std::env::temp_dir().join("atlas-vl-default");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let d = Daemon::new(&c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
+    let d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     assert_eq!(d.last_verdict, Verdict::NotEnrolled);
 }
 
@@ -279,8 +339,14 @@ fn the_shipped_config_leaves_voice_lock_off_until_it_can_work() {
     // and the setting is a lie in the direction of safety, which is still a lie.
     let c = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
     let t = c.tools.as_ref().expect("tools.yaml loads");
-    assert!(!t.voice_id.enabled, "voice-lock ships on without an encoder to back it");
-    assert!(t.voice_id.min_samples >= 2, "one sample is not an enrollment");
+    assert!(
+        !t.voice_id.enabled,
+        "voice-lock ships on without an encoder to back it"
+    );
+    assert!(
+        t.voice_id.min_samples >= 2,
+        "one sample is not an enrollment"
+    );
     assert!(
         t.voice_id.reject < t.voice_id.accept,
         "the grey band is inverted, so every verdict is decided"
@@ -302,7 +368,10 @@ fn accepted_scores_are_kept_bounded_and_never_move_the_thresholds() {
     for i in 0..100 {
         id.note_accepted(0.80 + (i % 5) as f32 * 0.01);
     }
-    assert!(id.accepted.len() <= 60, "the score history is a distribution, not a diary");
+    assert!(
+        id.accepted.len() <= 60,
+        "the score history is a distribution, not a diary"
+    );
     // The config is untouched by anything voiceid does with the history.
     assert_eq!(cfg.accept, VoiceIdConfig::default().accept);
     assert_eq!(cfg.reject, VoiceIdConfig::default().reject);
@@ -329,9 +398,17 @@ fn the_report_says_where_the_accept_line_sits_in_your_own_variations() {
     for i in 0..30 {
         id.note_accepted(0.78 + (i % 5) as f32 * 0.01);
     }
-    let report = id.thresholds_report(&cfg).expect("thirty scores is a distribution");
-    assert!(report.contains("0.80"), "the middle of the scores is named: {report}");
-    assert!(report.contains("0.72"), "the accept line is named: {report}");
+    let report = id
+        .thresholds_report(&cfg)
+        .expect("thirty scores is a distribution");
+    assert!(
+        report.contains("0.80"),
+        "the middle of the scores is named: {report}"
+    );
+    assert!(
+        report.contains("0.72"),
+        "the accept line is named: {report}"
+    );
 }
 
 #[test]
@@ -343,5 +420,8 @@ fn forgetting_a_voice_forgets_its_score_history_too() {
     id.note_accepted(0.8);
     id.forget();
     assert_eq!(id.enrolled(), 0);
-    assert!(id.accepted.is_empty(), "forget left the score history behind");
+    assert!(
+        id.accepted.is_empty(),
+        "forget left the score history behind"
+    );
 }

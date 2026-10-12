@@ -87,7 +87,10 @@ fn the_sorting_that_could_never_be_reached_now_runs_on_something_real() {
 
     let said = messaging::spoken(&msgs, &[]);
     assert!(said.contains("Priya"), "{said}");
-    assert!(!said.contains("all group chat"), "the empty-slice answer is back: {said}");
+    assert!(
+        !said.contains("all group chat"),
+        "the empty-slice answer is back: {said}"
+    );
 }
 
 #[test]
@@ -102,14 +105,20 @@ fn nothing_read_is_still_said_differently_from_nothing_in_it() {
         .filter(|l| !l.trim_start().starts_with("//"))
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(!code.contains("messaging::spoken(&[]"), "the empty-slice count is back");
+    assert!(
+        !code.contains("messaging::spoken(&[]"),
+        "the empty-slice count is back"
+    );
     assert!(
         code.contains("self.store.load(crate::telegram::KEPT)"),
         "nothing reads the messages that were kept"
     );
     // And with nothing read, it still says what it can honestly say about the
     // platforms rather than counting.
-    assert!(code.contains("if kept.is_empty() {"), "it counts an inbox it hasn't read");
+    assert!(
+        code.contains("if kept.is_empty() {"),
+        "it counts an inbox it hasn't read"
+    );
 }
 
 // ===================== what Telegram sends that is not a message =======
@@ -133,7 +142,12 @@ fn an_ok_with_no_result_list_is_a_shape_change_rather_than_an_empty_inbox() {
     let odd = r#"{"ok": true}"#;
     assert!(telegram::into_messages(odd).is_err());
     // An actually-empty result is an actually-empty inbox.
-    assert_eq!(telegram::into_messages(r#"{"ok": true, "result": []}"#).unwrap().len(), 0);
+    assert_eq!(
+        telegram::into_messages(r#"{"ok": true, "result": []}"#)
+            .unwrap()
+            .len(),
+        0
+    );
 }
 
 #[test]
@@ -192,8 +206,12 @@ fn how_far_it_got_is_written_before_anything_that_could_fail() {
         .nth(1)
         .and_then(|r| r.split("\n}\n").next())
         .expect("run_telegram");
-    let saved = body.find("telegram::READ_UP_TO, &Some(n)").expect("it never records progress");
-    let printed = body.find("messaging::spoken(&fresh").expect("it never says anything");
+    let saved = body
+        .find("telegram::READ_UP_TO, &Some(n)")
+        .expect("it never records progress");
+    let printed = body
+        .find("messaging::spoken(&fresh")
+        .expect("it never says anything");
     assert!(saved < printed, "it prints before recording how far it got");
 }
 
@@ -204,8 +222,17 @@ fn the_token_never_goes_in_a_settings_file() {
     // A token in `tools.yaml` is a token in your backups, your sync folder,
     // and any screenshot of your settings.
     let yaml = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    let block = yaml.split("\ntelegram:").nth(1).expect("no telegram block").split("\n\n").next().unwrap();
-    assert!(!block.contains("token"), "there is a token field in the config: {block}");
+    let block = yaml
+        .split("\ntelegram:")
+        .nth(1)
+        .expect("no telegram block")
+        .split("\n\n")
+        .next()
+        .unwrap();
+    assert!(
+        !block.contains("token"),
+        "there is a token field in the config: {block}"
+    );
 
     let raw = crate::common::source_of("main");
     // To the closing brace at the function's own depth (29 Sep 2026): cutting at the next plain `fn` at that depth ran on past `pub(super) fn`s once main.rs and daemon.rs were split.
@@ -214,8 +241,14 @@ fn the_token_never_goes_in_a_settings_file() {
         .nth(1)
         .and_then(|r| r.split("\n}\n").next())
         .expect("run_telegram");
-    assert!(body.contains("vault.put(atlas::telegram::TOKEN"), "the token isn't kept in the vault");
-    assert!(body.contains("vault.get(atlas::telegram::TOKEN"), "it isn't read from the vault");
+    assert!(
+        body.contains("vault.put(atlas::telegram::TOKEN"),
+        "the token isn't kept in the vault"
+    );
+    assert!(
+        body.contains("vault.get(atlas::telegram::TOKEN"),
+        "it isn't read from the vault"
+    );
 
     // And the behaviour rather than the wording: the token goes into the
     // request path, so anything that quotes a failed request quotes the
@@ -227,11 +260,13 @@ fn the_token_never_goes_in_a_settings_file() {
 
 #[test]
 fn a_paste_of_the_wrong_half_is_caught_before_it_becomes_a_network_error() {
-    assert!(telegram::looks_like_a_token("123456789:AAEhBOweik6ad9r_QXbKZ5cP1FZ0Zx9abcd"));
+    assert!(telegram::looks_like_a_token(
+        "123456789:AAEhBOweik6ad9r_QXbKZ5cP1FZ0Zx9abcd"
+    ));
     for wrong in [
         "",
         "AAEhBOweik6ad9r_QXbKZ5cP1FZ0Zx9abcd", // the half after the colon
-        "123456789",                            // the half before it
+        "123456789",                           // the half before it
         "123456789:short",
         "notdigits:AAEhBOweik6ad9r_QXbKZ5cP1FZ0Zx9abcd",
         "123456789:has spaces in it and is long enough otherwise",
@@ -258,19 +293,31 @@ fn it_is_off_until_you_turn_it_on_and_the_catalogue_says_it_needs_the_network() 
         .into_iter()
         .find(|c| c.id == "telegram")
         .expect("telegram is not in the catalogue");
-    assert!(!cap.offline, "an online capability is catalogued as working unplugged");
+    assert!(
+        !cap.offline,
+        "an online capability is catalogued as working unplugged"
+    );
 
     let setup = telegram::HOW_TO_SET_UP;
     assert!(setup.contains("BotFather"), "{setup}");
     // The thing worth knowing before you spend the two minutes.
-    assert!(setup.contains("cannot see your existing conversations"), "{setup}");
-    assert!(setup.contains("logging in as you, which I won't do"), "{setup}");
+    assert!(
+        setup.contains("cannot see your existing conversations"),
+        "{setup}"
+    );
+    assert!(
+        setup.contains("logging in as you, which I won't do"),
+        "{setup}"
+    );
 }
 
 #[test]
 fn the_ones_that_cannot_work_are_still_said_to_be_unable() {
     // Building a reader for one platform must not quietly imply the others.
     let said = messaging::what_you_asked_for(&["whatsapp".into(), "signal".into()]);
-    assert!(said.contains("no way to do this for a personal account"), "{said}");
+    assert!(
+        said.contains("no way to do this for a personal account"),
+        "{said}"
+    );
     assert!(said.contains("that's the point of Signal"), "{said}");
 }

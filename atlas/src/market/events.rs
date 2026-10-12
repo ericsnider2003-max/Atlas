@@ -175,7 +175,10 @@ impl Event {
             }
             None => t.say(),
         };
-        format!("{} [{}] {} impact {} ({:?})", self.name, self.currency, when, self.impact, self.tier)
+        format!(
+            "{} [{}] {} impact {} ({:?})",
+            self.name, self.currency, when, self.impact, self.tier
+        )
     }
 }
 
@@ -227,7 +230,10 @@ const NFP_EXCEPTIONS: [((i32, u32), (i32, u32, u32)); 3] = [
 
 /// The Employment Situation release date for reference month (y, m).
 pub fn nfp_date(y: i32, m: u32) -> (i32, u32, u32) {
-    if let Some((_, d)) = NFP_EXCEPTIONS.iter().find(|((ey, em), _)| *ey == y && *em == m) {
+    if let Some((_, d)) = NFP_EXCEPTIONS
+        .iter()
+        .find(|((ey, em), _)| *ey == y && *em == m)
+    {
         return *d;
     }
     let twelfth = Utc::date(y, m, 12);
@@ -236,7 +242,11 @@ pub fn nfp_date(y: i32, m: u32) -> (i32, u32, u32) {
     let sat = Utc::from_ms(sat_ms);
     let to_fri = {
         let step = (4 + 7 - sat.weekday()) % 7;
-        if step == 0 { 7 } else { step }
+        if step == 0 {
+            7
+        } else {
+            step
+        }
     };
     let mut out = Utc::from_ms(sat_ms + (to_fri as i64 + 14) * 86_400_000);
     // Releases move EARLIER on a holiday, never later.
@@ -283,20 +293,76 @@ fn r_third_bd_plain(y: i32, m: u32) -> Option<(i32, u32, u32)> {
 /// indicators, money supply and the GDP revisions are deliberately absent: each
 /// was measured and found to have no effect on FX.
 const RULES: [Rule; 7] = [
-    Rule { name: "Non-Farm Payrolls", currency: "USD", impact: 3, tier: Tier::Rule,
-           zone: Zone::NewYork, hour: 8, minute: 30, when: r_nfp },
-    Rule { name: "ISM Manufacturing", currency: "USD", impact: 2, tier: Tier::Rule,
-           zone: Zone::NewYork, hour: 10, minute: 0, when: r_first_bd },
-    Rule { name: "ISM Services", currency: "USD", impact: 2, tier: Tier::Rule,
-           zone: Zone::NewYork, hour: 10, minute: 0, when: r_third_bd },
-    Rule { name: "Euro area flash HICP", currency: "EUR", impact: 3, tier: Tier::Semi,
-           zone: Zone::Brussels, hour: 11, minute: 0, when: r_first_bd_plain },
-    Rule { name: "Euro area services PMI", currency: "EUR", impact: 2, tier: Tier::Rule,
-           zone: Zone::Brussels, hour: 10, minute: 0, when: r_third_bd_plain },
-    Rule { name: "UK manufacturing PMI", currency: "GBP", impact: 2, tier: Tier::Rule,
-           zone: Zone::London, hour: 9, minute: 30, when: r_first_bd_plain },
-    Rule { name: "UK services PMI", currency: "GBP", impact: 2, tier: Tier::Rule,
-           zone: Zone::London, hour: 9, minute: 30, when: r_third_bd_plain },
+    Rule {
+        name: "Non-Farm Payrolls",
+        currency: "USD",
+        impact: 3,
+        tier: Tier::Rule,
+        zone: Zone::NewYork,
+        hour: 8,
+        minute: 30,
+        when: r_nfp,
+    },
+    Rule {
+        name: "ISM Manufacturing",
+        currency: "USD",
+        impact: 2,
+        tier: Tier::Rule,
+        zone: Zone::NewYork,
+        hour: 10,
+        minute: 0,
+        when: r_first_bd,
+    },
+    Rule {
+        name: "ISM Services",
+        currency: "USD",
+        impact: 2,
+        tier: Tier::Rule,
+        zone: Zone::NewYork,
+        hour: 10,
+        minute: 0,
+        when: r_third_bd,
+    },
+    Rule {
+        name: "Euro area flash HICP",
+        currency: "EUR",
+        impact: 3,
+        tier: Tier::Semi,
+        zone: Zone::Brussels,
+        hour: 11,
+        minute: 0,
+        when: r_first_bd_plain,
+    },
+    Rule {
+        name: "Euro area services PMI",
+        currency: "EUR",
+        impact: 2,
+        tier: Tier::Rule,
+        zone: Zone::Brussels,
+        hour: 10,
+        minute: 0,
+        when: r_third_bd_plain,
+    },
+    Rule {
+        name: "UK manufacturing PMI",
+        currency: "GBP",
+        impact: 2,
+        tier: Tier::Rule,
+        zone: Zone::London,
+        hour: 9,
+        minute: 30,
+        when: r_first_bd_plain,
+    },
+    Rule {
+        name: "UK services PMI",
+        currency: "GBP",
+        impact: 2,
+        tier: Tier::Rule,
+        zone: Zone::London,
+        hour: 9,
+        minute: 30,
+        when: r_third_bd_plain,
+    },
 ];
 
 fn to_utc(zone: Zone, y: i32, m: u32, d: u32, hour: u32, minute: u32) -> i64 {
@@ -336,46 +402,211 @@ struct Bank {
 }
 
 const BANKS: [Bank; 8] = [
-    Bank { name: "FOMC", currency: "USD", zone: Zone::NewYork, hour: 14, minute: 0, window: 0,
-        dates: &[(2026,1,28),(2026,3,18),(2026,4,29),(2026,6,17),(2026,7,29),(2026,9,16),(2026,10,28),(2026,12,9),
-                 (2027,1,27),(2027,3,17),(2027,4,28),(2027,6,9),(2027,7,28),(2027,9,15),(2027,10,27),(2027,12,8)],
-        provisional: &[] },
-    Bank { name: "ECB", currency: "EUR", zone: Zone::Brussels, hour: 14, minute: 15, window: 0,
-        dates: &[(2026,2,5),(2026,3,19),(2026,4,30),(2026,6,11),(2026,7,23),(2026,9,10),(2026,10,29),(2026,12,17),
-                 (2027,2,4),(2027,3,18),(2027,4,29),(2027,6,10),(2027,7,22),(2027,9,9),(2027,10,28),(2027,12,16)],
-        provisional: &[] },
+    Bank {
+        name: "FOMC",
+        currency: "USD",
+        zone: Zone::NewYork,
+        hour: 14,
+        minute: 0,
+        window: 0,
+        dates: &[
+            (2026, 1, 28),
+            (2026, 3, 18),
+            (2026, 4, 29),
+            (2026, 6, 17),
+            (2026, 7, 29),
+            (2026, 9, 16),
+            (2026, 10, 28),
+            (2026, 12, 9),
+            (2027, 1, 27),
+            (2027, 3, 17),
+            (2027, 4, 28),
+            (2027, 6, 9),
+            (2027, 7, 28),
+            (2027, 9, 15),
+            (2027, 10, 27),
+            (2027, 12, 8),
+        ],
+        provisional: &[],
+    },
+    Bank {
+        name: "ECB",
+        currency: "EUR",
+        zone: Zone::Brussels,
+        hour: 14,
+        minute: 15,
+        window: 0,
+        dates: &[
+            (2026, 2, 5),
+            (2026, 3, 19),
+            (2026, 4, 30),
+            (2026, 6, 11),
+            (2026, 7, 23),
+            (2026, 9, 10),
+            (2026, 10, 29),
+            (2026, 12, 17),
+            (2027, 2, 4),
+            (2027, 3, 18),
+            (2027, 4, 29),
+            (2027, 6, 10),
+            (2027, 7, 22),
+            (2027, 9, 9),
+            (2027, 10, 28),
+            (2027, 12, 16),
+        ],
+        provisional: &[],
+    },
     // The Bank publishes 2027 under the heading "2027 provisional dates" while
     // showing 2026 as confirmed. Flattening that would present a date the
     // issuer hedged at the same confidence as one it did not.
-    Bank { name: "BoE", currency: "GBP", zone: Zone::London, hour: 12, minute: 0, window: 0,
-        dates: &[(2026,2,5),(2026,3,19),(2026,4,30),(2026,6,18),(2026,7,30),(2026,9,17),(2026,11,5),(2026,12,17),
-                 (2027,2,4),(2027,3,18),(2027,4,29),(2027,6,17),(2027,7,29),(2027,9,16),(2027,11,4),(2027,12,16)],
-        provisional: &[2027] },
+    Bank {
+        name: "BoE",
+        currency: "GBP",
+        zone: Zone::London,
+        hour: 12,
+        minute: 0,
+        window: 0,
+        dates: &[
+            (2026, 2, 5),
+            (2026, 3, 19),
+            (2026, 4, 30),
+            (2026, 6, 18),
+            (2026, 7, 30),
+            (2026, 9, 17),
+            (2026, 11, 5),
+            (2026, 12, 17),
+            (2027, 2, 4),
+            (2027, 3, 18),
+            (2027, 4, 29),
+            (2027, 6, 17),
+            (2027, 7, 29),
+            (2027, 9, 16),
+            (2027, 11, 4),
+            (2027, 12, 16),
+        ],
+        provisional: &[2027],
+    },
     // The one entry with a window rather than a time.
-    Bank { name: "BoJ", currency: "JPY", zone: Zone::Tokyo, hour: 11, minute: 30, window: 60,
-        dates: &[(2026,1,23),(2026,3,19),(2026,4,28),(2026,6,16),(2026,7,31),(2026,9,18),(2026,10,30),(2026,12,18),
-                 (2027,1,22),(2027,3,18),(2027,4,28),(2027,6,11),(2027,7,22),(2027,9,22),(2027,10,29),(2027,12,17)],
-        provisional: &[] },
-    Bank { name: "RBA", currency: "AUD", zone: Zone::Sydney, hour: 14, minute: 30, window: 0,
-        dates: &[(2026,2,3),(2026,3,17),(2026,5,5),(2026,6,16),(2026,8,11),(2026,9,29),(2026,11,3),(2026,12,8),
-                 (2027,2,9),(2027,3,23),(2027,5,4),(2027,6,22),(2027,8,10),(2027,9,28),(2027,11,2),(2027,12,14)],
-        provisional: &[] },
+    Bank {
+        name: "BoJ",
+        currency: "JPY",
+        zone: Zone::Tokyo,
+        hour: 11,
+        minute: 30,
+        window: 60,
+        dates: &[
+            (2026, 1, 23),
+            (2026, 3, 19),
+            (2026, 4, 28),
+            (2026, 6, 16),
+            (2026, 7, 31),
+            (2026, 9, 18),
+            (2026, 10, 30),
+            (2026, 12, 18),
+            (2027, 1, 22),
+            (2027, 3, 18),
+            (2027, 4, 28),
+            (2027, 6, 11),
+            (2027, 7, 22),
+            (2027, 9, 22),
+            (2027, 10, 29),
+            (2027, 12, 17),
+        ],
+        provisional: &[],
+    },
+    Bank {
+        name: "RBA",
+        currency: "AUD",
+        zone: Zone::Sydney,
+        hour: 14,
+        minute: 30,
+        window: 0,
+        dates: &[
+            (2026, 2, 3),
+            (2026, 3, 17),
+            (2026, 5, 5),
+            (2026, 6, 16),
+            (2026, 8, 11),
+            (2026, 9, 29),
+            (2026, 11, 3),
+            (2026, 12, 8),
+            (2027, 2, 9),
+            (2027, 3, 23),
+            (2027, 5, 4),
+            (2027, 6, 22),
+            (2027, 8, 10),
+            (2027, 9, 28),
+            (2027, 11, 2),
+            (2027, 12, 14),
+        ],
+        provisional: &[],
+    },
     // SEVEN scheduled decisions a year becomes EIGHT in 2027. Code that assumed
     // the 2026 shape would be wrong about a whole extra decision.
-    Bank { name: "RBNZ", currency: "NZD", zone: Zone::Auckland, hour: 14, minute: 0, window: 0,
-        dates: &[(2026,9,2),(2026,10,28),(2026,12,9),
-                 (2027,2,10),(2027,3,17),(2027,5,5),(2027,6,16),(2027,8,4),(2027,9,15),(2027,10,27),(2027,12,8)],
-        provisional: &[] },
-    Bank { name: "BoC", currency: "CAD", zone: Zone::Toronto, hour: 9, minute: 45, window: 0,
-        dates: &[(2026,9,2),(2026,10,28),(2026,12,9),
-                 (2027,1,27),(2027,3,3),(2027,4,28),(2027,6,2),(2027,7,21),(2027,9,8),(2027,10,27),(2027,12,8)],
-        provisional: &[] },
+    Bank {
+        name: "RBNZ",
+        currency: "NZD",
+        zone: Zone::Auckland,
+        hour: 14,
+        minute: 0,
+        window: 0,
+        dates: &[
+            (2026, 9, 2),
+            (2026, 10, 28),
+            (2026, 12, 9),
+            (2027, 2, 10),
+            (2027, 3, 17),
+            (2027, 5, 5),
+            (2027, 6, 16),
+            (2027, 8, 4),
+            (2027, 9, 15),
+            (2027, 10, 27),
+            (2027, 12, 8),
+        ],
+        provisional: &[],
+    },
+    Bank {
+        name: "BoC",
+        currency: "CAD",
+        zone: Zone::Toronto,
+        hour: 9,
+        minute: 45,
+        window: 0,
+        dates: &[
+            (2026, 9, 2),
+            (2026, 10, 28),
+            (2026, 12, 9),
+            (2027, 1, 27),
+            (2027, 3, 3),
+            (2027, 4, 28),
+            (2027, 6, 2),
+            (2027, 7, 21),
+            (2027, 9, 8),
+            (2027, 10, 27),
+            (2027, 12, 8),
+        ],
+        provisional: &[],
+    },
     // Only March and June 2027 could be confirmed from the SNB's own pages;
     // two reads of its event schedule disagreed on September and December.
     // Those two are ABSENT rather than carried on one unconfirmed reading.
-    Bank { name: "SNB", currency: "CHF", zone: Zone::Zurich, hour: 9, minute: 30, window: 0,
-        dates: &[(2026,3,19),(2026,6,18),(2026,9,24),(2026,12,10),(2027,3,18),(2027,6,24)],
-        provisional: &[] },
+    Bank {
+        name: "SNB",
+        currency: "CHF",
+        zone: Zone::Zurich,
+        hour: 9,
+        minute: 30,
+        window: 0,
+        dates: &[
+            (2026, 3, 19),
+            (2026, 6, 18),
+            (2026, 9, 24),
+            (2026, 12, 10),
+            (2027, 3, 18),
+            (2027, 6, 24),
+        ],
+        provisional: &[],
+    },
 ];
 
 /// Canada's Labour Force Survey. Here for one reason: it releases at 08:30
@@ -384,9 +615,18 @@ const BANKS: [Bank; 8] = [
 /// once on those days, and sizing risk for one of them is sizing for half the
 /// event.
 const CANADA_LFS: [(i32, u32, u32); 12] = [
-    (2026, 1, 9), (2026, 2, 6), (2026, 3, 13), (2026, 4, 10),
-    (2026, 5, 8), (2026, 6, 5), (2026, 7, 10), (2026, 8, 7),
-    (2026, 9, 4), (2026, 10, 9), (2026, 11, 6), (2026, 12, 4),
+    (2026, 1, 9),
+    (2026, 2, 6),
+    (2026, 3, 13),
+    (2026, 4, 10),
+    (2026, 5, 8),
+    (2026, 6, 5),
+    (2026, 7, 10),
+    (2026, 8, 7),
+    (2026, 9, 4),
+    (2026, 10, 9),
+    (2026, 11, 6),
+    (2026, 12, 4),
 ];
 
 /// The last date the hand-entered tables are known good for.
@@ -446,8 +686,16 @@ pub fn bank_events(year: i32) -> Vec<Event> {
                 at,
                 currency: b.currency,
                 impact: 3,
-                tier: if b.provisional.contains(&year) { Tier::Provisional } else { Tier::Fixed },
-                window_end: if b.window > 0 { Some(at + b.window * MS_PER_MIN) } else { None },
+                tier: if b.provisional.contains(&year) {
+                    Tier::Provisional
+                } else {
+                    Tier::Fixed
+                },
+                window_end: if b.window > 0 {
+                    Some(at + b.window * MS_PER_MIN)
+                } else {
+                    None
+                },
             });
         }
     }
@@ -589,12 +837,18 @@ mod tests {
     /// Release dates from the BLS Employment Situation schedule itself, keyed by
     /// the month they describe. Ground truth, not a reconstruction.
     const PUBLISHED: [((i32, u32), (i32, u32, u32)); 13] = [
-        ((2025, 11), (2025, 12, 16)), ((2025, 12), (2026, 1, 9)),
-        ((2026, 1), (2026, 2, 11)),   ((2026, 2), (2026, 3, 6)),
-        ((2026, 3), (2026, 4, 3)),    ((2026, 4), (2026, 5, 8)),
-        ((2026, 5), (2026, 6, 5)),    ((2026, 6), (2026, 7, 2)),
-        ((2026, 7), (2026, 8, 7)),    ((2026, 8), (2026, 9, 4)),
-        ((2026, 9), (2026, 10, 2)),   ((2026, 10), (2026, 11, 6)),
+        ((2025, 11), (2025, 12, 16)),
+        ((2025, 12), (2026, 1, 9)),
+        ((2026, 1), (2026, 2, 11)),
+        ((2026, 2), (2026, 3, 6)),
+        ((2026, 3), (2026, 4, 3)),
+        ((2026, 4), (2026, 5, 8)),
+        ((2026, 5), (2026, 6, 5)),
+        ((2026, 6), (2026, 7, 2)),
+        ((2026, 7), (2026, 8, 7)),
+        ((2026, 8), (2026, 9, 4)),
+        ((2026, 9), (2026, 10, 2)),
+        ((2026, 10), (2026, 11, 6)),
         ((2026, 11), (2026, 12, 4)),
     ];
 
@@ -613,9 +867,19 @@ mod tests {
         // including the holiday shift in July -- so the exceptions are one event
         // in history, not a pattern the rule missed.
         assert_eq!(NFP_EXCEPTIONS.len(), 3);
-        let odd = PUBLISHED.iter().find(|((y, m), _)| (*y, *m) == (2026, 1)).unwrap().1;
-        assert_eq!(Utc::date(odd.0, odd.1, odd.2).weekday(), 2, "February 2026 was a Wednesday");
-        let clean = PUBLISHED.iter().filter(|(r, _)| !NFP_EXCEPTIONS.iter().any(|(e, _)| e == r));
+        let odd = PUBLISHED
+            .iter()
+            .find(|((y, m), _)| (*y, *m) == (2026, 1))
+            .unwrap()
+            .1;
+        assert_eq!(
+            Utc::date(odd.0, odd.1, odd.2).weekday(),
+            2,
+            "February 2026 was a Wednesday"
+        );
+        let clean = PUBLISHED
+            .iter()
+            .filter(|(r, _)| !NFP_EXCEPTIONS.iter().any(|(e, _)| e == r));
         assert_eq!(clean.clone().count(), 10);
         for ((y, m), want) in clean {
             assert_eq!(nfp_date(*y, *m), *want);
@@ -646,8 +910,14 @@ mod tests {
         // whole reason a rule stores a zone and not a UTC hour.
         let summer = month(2026, 7).unwrap();
         let winter = month(2026, 1).unwrap();
-        let s = summer.iter().find(|e| e.name.starts_with("Non-Farm")).unwrap();
-        let w = winter.iter().find(|e| e.name.starts_with("Non-Farm")).unwrap();
+        let s = summer
+            .iter()
+            .find(|e| e.name.starts_with("Non-Farm"))
+            .unwrap();
+        let w = winter
+            .iter()
+            .find(|e| e.name.starts_with("Non-Farm"))
+            .unwrap();
         assert_eq!(Utc::from_ms(s.at).hour, 12, "{}", s.say());
         assert_eq!(Utc::from_ms(w.at).hour, 13, "{}", w.say());
     }
@@ -668,7 +938,10 @@ mod tests {
         let ev = month(2026, 10).unwrap();
         let nfp = ev.iter().find(|e| e.name.starts_with("Non-Farm")).unwrap();
         let measured = nfp.blackout(Purpose::Volatility).1 - nfp.at;
-        assert!(measured > 10 * 2 * MS_PER_MIN, "the industry's two minutes is nothing like it");
+        assert!(
+            measured > 10 * 2 * MS_PER_MIN,
+            "the industry's two minutes is nothing like it"
+        );
     }
 
     #[test]
@@ -676,8 +949,10 @@ mod tests {
         let ev = month(2026, 10).unwrap();
         let nfp = ev.iter().find(|e| e.name.starts_with("Non-Farm")).unwrap();
         let other = ev.iter().find(|e| e.name.starts_with("ISM")).unwrap();
-        assert!(nfp.blackout(Purpose::Volatility).1 - nfp.at
-                > other.blackout(Purpose::Volatility).1 - other.at);
+        assert!(
+            nfp.blackout(Purpose::Volatility).1 - nfp.at
+                > other.blackout(Purpose::Volatility).1 - other.at
+        );
     }
 
     #[test]
@@ -700,19 +975,35 @@ mod tests {
 
     #[test]
     fn the_boj_is_a_window_because_it_has_no_fixed_time() {
-        let boj: Vec<Event> = bank_events(2026).into_iter().filter(|e| e.name.starts_with("BoJ")).collect();
+        let boj: Vec<Event> = bank_events(2026)
+            .into_iter()
+            .filter(|e| e.name.starts_with("BoJ"))
+            .collect();
         assert!(!boj.is_empty());
         assert!(boj.iter().all(|e| e.is_window()));
         assert!(boj[0].say().contains("the delay is itself a signal"));
-        let fomc: Vec<Event> = bank_events(2026).into_iter().filter(|e| e.name.starts_with("FOMC")).collect();
-        assert!(fomc.iter().all(|e| !e.is_window()), "only the BoJ lacks a fixed time");
+        let fomc: Vec<Event> = bank_events(2026)
+            .into_iter()
+            .filter(|e| e.name.starts_with("FOMC"))
+            .collect();
+        assert!(
+            fomc.iter().all(|e| !e.is_window()),
+            "only the BoJ lacks a fixed time"
+        );
     }
 
     #[test]
     fn all_eight_central_banks_are_in_the_calendar() {
-        let mut got: Vec<&str> = bank_events(2026).iter().map(|e| {
-            BANKS.iter().find(|b| e.name.starts_with(b.name)).unwrap().name
-        }).collect();
+        let mut got: Vec<&str> = bank_events(2026)
+            .iter()
+            .map(|e| {
+                BANKS
+                    .iter()
+                    .find(|b| e.name.starts_with(b.name))
+                    .unwrap()
+                    .name
+            })
+            .collect();
         got.sort();
         got.dedup();
         assert_eq!(got.len(), 8, "{:?}", got);
@@ -728,16 +1019,28 @@ mod tests {
     fn the_rbnz_gained_a_meeting_in_2027() {
         // Seven scheduled decisions a year became eight. A rule derived from
         // the 2026 shape would have been wrong about an entire decision.
-        let n26 = bank_events(2026).iter().filter(|e| e.name.starts_with("RBNZ")).count();
-        let n27 = bank_events(2027).iter().filter(|e| e.name.starts_with("RBNZ")).count();
+        let n26 = bank_events(2026)
+            .iter()
+            .filter(|e| e.name.starts_with("RBNZ"))
+            .count();
+        let n27 = bank_events(2027)
+            .iter()
+            .filter(|e| e.name.starts_with("RBNZ"))
+            .count();
         assert_eq!(n27, 8);
         assert!(n27 > n26);
     }
 
     #[test]
     fn a_banks_own_provisional_label_survives_onto_the_record() {
-        let boe27: Vec<Event> = bank_events(2027).into_iter().filter(|e| e.name.starts_with("BoE")).collect();
-        let boe26: Vec<Event> = bank_events(2026).into_iter().filter(|e| e.name.starts_with("BoE")).collect();
+        let boe27: Vec<Event> = bank_events(2027)
+            .into_iter()
+            .filter(|e| e.name.starts_with("BoE"))
+            .collect();
+        let boe26: Vec<Event> = bank_events(2026)
+            .into_iter()
+            .filter(|e| e.name.starts_with("BoE"))
+            .collect();
         assert!(boe27.iter().all(|e| e.tier == Tier::Provisional));
         assert!(boe26.iter().all(|e| e.tier == Tier::Fixed));
     }
@@ -747,7 +1050,10 @@ mod tests {
         // Carrying them on one unconfirmed reading would make the calendar
         // confidently wrong; dropping them silently would make a missing
         // assessment look like a quiet quarter. So they are absent AND named.
-        let snb = bank_events(2027).into_iter().filter(|e| e.name.starts_with("SNB")).count();
+        let snb = bank_events(2027)
+            .into_iter()
+            .filter(|e| e.name.starts_with("SNB"))
+            .count();
         assert_eq!(snb, 2);
         let g = gaps(2027);
         assert!(g.iter().any(|(w, _)| w.contains("SNB")));
@@ -760,8 +1066,12 @@ mod tests {
         // Third, third, fourth and second Thursday in 2026. A "third Thursday
         // of the quarter-end month" rule would be wrong half the time.
         let snb = BANKS.iter().find(|b| b.name == "SNB").unwrap();
-        let nths: Vec<u32> = snb.dates.iter().filter(|(y, _, _)| *y == 2026)
-            .map(|(_, _, d)| (d - 1) / 7 + 1).collect();
+        let nths: Vec<u32> = snb
+            .dates
+            .iter()
+            .filter(|(y, _, _)| *y == 2026)
+            .map(|(_, _, d)| (d - 1) / 7 + 1)
+            .collect();
         assert!(nths.windows(2).any(|w| w[0] != w[1]), "{:?}", nths);
     }
 
@@ -803,19 +1113,29 @@ mod tests {
             .map(|&(y, m, _)| (y, m))
             .min()
             .expect("some bank dates");
-        let first_lfs = CANADA_LFS.iter().map(|&(y, m, _)| (y, m)).min().expect("some LFS dates");
+        let first_lfs = CANADA_LFS
+            .iter()
+            .map(|&(y, m, _)| (y, m))
+            .min()
+            .expect("some LFS dates");
         assert_eq!(
             TABLE_GOOD_FROM,
             first_bank.min(first_lfs),
             "TABLE_GOOD_FROM does not match the earliest hand-entered date"
         );
-        assert!(month(TABLE_GOOD_FROM.0, TABLE_GOOD_FROM.1).is_ok(), "the floor itself refuses");
+        assert!(
+            month(TABLE_GOOD_FROM.0, TABLE_GOOD_FROM.1).is_ok(),
+            "the floor itself refuses"
+        );
         let before = if TABLE_GOOD_FROM.1 == 1 {
             (TABLE_GOOD_FROM.0 - 1, 12)
         } else {
             (TABLE_GOOD_FROM.0, TABLE_GOOD_FROM.1 - 1)
         };
-        assert!(month(before.0, before.1).is_err(), "the month below the floor is answered");
+        assert!(
+            month(before.0, before.1).is_err(),
+            "the month below the floor is answered"
+        );
     }
 
     #[test]
@@ -827,8 +1147,11 @@ mod tests {
         let (inside, _) = inside_blackout(at, "EURUSD", Purpose::Volatility).unwrap();
         assert!(!inside, "the instant check should see nothing here");
         let span = overlapping(at - 4 * MS_PER_HOUR, at, "EURUSD", Purpose::Volatility).unwrap();
-        assert!(span.iter().any(|e| e.name.starts_with("Non-Farm")),
-                "{:?}", span.iter().map(|e| e.name.clone()).collect::<Vec<_>>());
+        assert!(
+            span.iter().any(|e| e.name.starts_with("Non-Farm")),
+            "{:?}",
+            span.iter().map(|e| e.name.clone()).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -851,7 +1174,8 @@ mod tests {
         let (inside, why) = inside_blackout(nfp.at, "EURUSD", Purpose::Volatility).unwrap();
         assert!(inside);
         assert!(why.iter().any(|e| e.name == nfp.name));
-        let (clear, none) = inside_blackout(nfp.at + 5 * 86_400_000, "EURUSD", Purpose::Volatility).unwrap();
+        let (clear, none) =
+            inside_blackout(nfp.at + 5 * 86_400_000, "EURUSD", Purpose::Volatility).unwrap();
         assert!(!clear && none.is_empty());
     }
 
@@ -860,7 +1184,10 @@ mod tests {
         let ev = month(2026, 10).unwrap();
         let nfp = ev.iter().find(|e| e.name.starts_with("Non-Farm")).unwrap();
         let (inside, _) = inside_blackout(nfp.at, "EURGBP", Purpose::Volatility).unwrap();
-        assert!(!inside, "EURGBP has no dollar in it and is not a carry pair");
+        assert!(
+            !inside,
+            "EURGBP has no dollar in it and is not a carry pair"
+        );
     }
 
     #[test]
@@ -870,17 +1197,18 @@ mod tests {
         // for half the event.
         let months = (1..=12u32)
             .filter(|&m| {
-                collisions(2026, m, 5)
-                    .unwrap()
-                    .iter()
-                    .any(|(a, b)| {
-                        let mut s = [a.currency, b.currency];
-                        s.sort();
-                        s == ["CAD", "USD"]
-                    })
+                collisions(2026, m, 5).unwrap().iter().any(|(a, b)| {
+                    let mut s = [a.currency, b.currency];
+                    s.sort();
+                    s == ["CAD", "USD"]
+                })
             })
             .count();
-        assert!(months >= 5, "found the USD/CAD double in only {} months", months);
+        assert!(
+            months >= 5,
+            "found the USD/CAD double in only {} months",
+            months
+        );
     }
 
     #[test]
@@ -889,9 +1217,23 @@ mod tests {
         // each measured and found to have no significant effect on FX, and they
         // sit on nearly every vendor's high-impact list. Carrying them would
         // mean blacking out trading for events that do not move.
-        let names: String = RULES.iter().map(|r| r.name.to_lowercase()).collect::<Vec<_>>().join(" ");
-        for dud in ["ppi", "producer price", "housing start", "leading indicator", "money supply"] {
-            assert!(!names.contains(dud), "{} was measured to have no effect", dud);
+        let names: String = RULES
+            .iter()
+            .map(|r| r.name.to_lowercase())
+            .collect::<Vec<_>>()
+            .join(" ");
+        for dud in [
+            "ppi",
+            "producer price",
+            "housing start",
+            "leading indicator",
+            "money supply",
+        ] {
+            assert!(
+                !names.contains(dud),
+                "{} was measured to have no effect",
+                dud
+            );
         }
     }
 }

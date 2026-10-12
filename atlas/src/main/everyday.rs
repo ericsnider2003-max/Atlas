@@ -1,7 +1,7 @@
 //! The everyday commands: files, pictures and the screen, shared and client
 //! lists, notes, documents, the calendar, tasks, the household, the index,
 //! backups, mail, watching, being away, the catalogue and the budget.
-//! 
+//!
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
@@ -18,8 +18,8 @@ pub(super) fn run_file(cfg: &Config, go: bool) {
         return;
     };
     let sys = tc.system.clone();
-    let Some(home) = atlas::doctor::lookup_env("USERPROFILE")
-        .or_else(|| atlas::doctor::lookup_env("HOME"))
+    let Some(home) =
+        atlas::doctor::lookup_env("USERPROFILE").or_else(|| atlas::doctor::lookup_env("HOME"))
     else {
         eprintln!("I couldn't work out where your home folder is.");
         return;
@@ -150,7 +150,10 @@ pub(super) fn run_picture(cfg: &Config, args: &[String]) {
         Ok(a) => println!("{a}"),
         Err(e) => println!("I couldn't read it: {e}"),
     }
-    println!("({:.0} s, asked: {question})", started.elapsed().as_secs_f32());
+    println!(
+        "({:.0} s, asked: {question})",
+        started.elapsed().as_secs_f32()
+    );
 }
 
 pub(super) fn run_screen(cfg: &Config, args: &[String]) {
@@ -185,11 +188,12 @@ pub(super) fn run_screen(cfg: &Config, args: &[String]) {
             let (w, h) = (nums[2] as usize, nums[3] as usize);
             let grab =
                 atlas::words::capture_args(nums[0] as i32, nums[1] as i32, w as u32, h as u32);
-            match atlas::words::pixels_from(&tools.video.ffmpeg, &tools.vars, &grab)
-                .and_then(|px| {
+            match atlas::words::pixels_from(&tools.video.ffmpeg, &tools.vars, &grab).and_then(
+                |px| {
                     atlas::words::whole_picture(px.len(), w, h)?;
                     reader.look(&px, w, h, &wcfg)
-                }) {
+                },
+            ) {
                 Ok(r) => r,
                 Err(e) => {
                     println!("{e}");
@@ -198,8 +202,13 @@ pub(super) fn run_screen(cfg: &Config, args: &[String]) {
             }
         }
         Some(path) => {
-            match atlas::words::read_file(&mut reader, &tools.video.ffmpeg, &tools.vars, path, &wcfg)
-            {
+            match atlas::words::read_file(
+                &mut reader,
+                &tools.video.ffmpeg,
+                &tools.vars,
+                path,
+                &wcfg,
+            ) {
                 Ok(r) => r,
                 Err(e) => {
                     println!("{e}");
@@ -307,14 +316,28 @@ pub(super) fn run_clients(args: &[String]) {
     let store = atlas::roots::store();
     let list = match atlas::clients::ClientList::load_checked(&store) {
         Ok(list) => list,
-        Err(error) => { println!("Your client list could not be read: {error}. Saved contacts were left untouched."); return; }
+        Err(error) => {
+            println!(
+                "Your client list could not be read: {error}. Saved contacts were left untouched."
+            );
+            return;
+        }
     };
     let now = atlas::store::now();
     match args.first().map(|s| s.to_lowercase()).as_deref() {
         None | Some("list") => {
             println!("Your clients ({}):", list.len());
             for c in list.all() {
-                println!("  {} <{}>{}", c.name_or_address(), c.address, if c.phone.is_empty() { String::new() } else { format!("  {}", c.phone) });
+                println!(
+                    "  {} <{}>{}",
+                    c.name_or_address(),
+                    c.address,
+                    if c.phone.is_empty() {
+                        String::new()
+                    } else {
+                        format!("  {}", c.phone)
+                    }
+                );
             }
             println!();
             println!("atlas clients add <address> [name]     add one");
@@ -330,10 +353,17 @@ pub(super) fn run_clients(args: &[String]) {
                     Ok(current.clone())
                 }) {
                     Ok(saved) => saved,
-                    Err(error) => { println!("That client was not added: {error}"); return; }
+                    Err(error) => {
+                        println!("That client was not added: {error}");
+                        return;
+                    }
                 };
                 println!("Added {address}.");
-                for d in saved.likely_duplicates().iter().filter(|d| d.contains(&address.to_lowercase())) {
+                for d in saved
+                    .likely_duplicates()
+                    .iter()
+                    .filter(|d| d.contains(&address.to_lowercase()))
+                {
                     println!("  Worth a look: {d}");
                 }
             }
@@ -341,10 +371,15 @@ pub(super) fn run_clients(args: &[String]) {
         },
         Some("import") => match args.get(1).map(|p| std::fs::read_to_string(p)) {
             Some(Ok(text)) => match atlas::clients::ClientList::change(&store, |current| {
-                current.import_vcf(&text, now).map_err(atlas::error::AtlasError::Platform)
+                current
+                    .import_vcf(&text, now)
+                    .map_err(atlas::error::AtlasError::Platform)
             }) {
                 Ok((added, skipped, notes)) => {
-                    println!("Brought in {added} client{}.", if added == 1 { "" } else { "s" });
+                    println!(
+                        "Brought in {added} client{}.",
+                        if added == 1 { "" } else { "s" }
+                    );
                     if skipped > 0 {
                         println!("Skipped {skipped} card{} with no email address — a client is recognised by address.", if skipped == 1 { "" } else { "s" });
                     }
@@ -359,7 +394,11 @@ pub(super) fn run_clients(args: &[String]) {
         },
         Some("export") => match args.get(1) {
             Some(path) => match std::fs::write(path, list.to_vcf()) {
-                Ok(()) => println!("Wrote {} client{} to {path}.", list.len(), if list.len() == 1 { "" } else { "s" }),
+                Ok(()) => println!(
+                    "Wrote {} client{} to {path}.",
+                    list.len(),
+                    if list.len() == 1 { "" } else { "s" }
+                ),
                 Err(e) => println!("I couldn't write {path}: {e}"),
             },
             None => println!("atlas clients export <file.vcf>"),
@@ -388,14 +427,20 @@ pub(super) fn run_agefile(words: &[String]) {
     let store = atlas::roots::store();
     let state = atlas::roots::install_state();
     let now = atlas::store::now();
-    let vcfg = Config::load(&atlas::roots::config_dir()).ok().and_then(|c| c.tools).map(|t| t.vault).unwrap_or_default();
+    let vcfg = Config::load(&atlas::roots::config_dir())
+        .ok()
+        .and_then(|c| c.tools)
+        .map(|t| t.vault)
+        .unwrap_or_default();
     const NAME: &str = "age identity";
     let unlock = |vault: &mut atlas::vault::Vault| -> bool {
         if !vault.has_a_passphrase() {
             println!("Your key is kept in the vault, and the vault has no passphrase yet — `atlas vault passphrase` first.");
             return false;
         }
-        let Some(phrase) = ask_quietly("Vault passphrase: ") else { return false };
+        let Some(phrase) = ask_quietly("Vault passphrase: ") else {
+            return false;
+        };
         match vault.open(&phrase, now, &vcfg) {
             Ok(()) => true,
             Err(why) => {
@@ -432,7 +477,9 @@ pub(super) fn run_agefile(words: &[String]) {
             if let Err(why) = vault.put(NAME, atlas::vault::Kind::Note, &identity, now) {
                 return println!("I couldn't keep the key: {why}");
             }
-            if keep(vault.save(&state), "the vault") && keep(store.save("age-recipient", &recipient), "your public key") {
+            if keep(vault.save(&state), "the vault")
+                && keep(store.save("age-recipient", &recipient), "your public key")
+            {
                 println!("{recipient}");
                 println!("Made you a key. That line is the public half — give it out freely. The secret half is in your vault.");
             }
@@ -443,7 +490,11 @@ pub(super) fn run_agefile(words: &[String]) {
             let (Some(path), rest) = (words.get(1), &words[2.min(words.len())..]) else {
                 return println!("atlas seal-file <file> to <age1… key> [more keys]");
             };
-            let mut to: Vec<String> = rest.iter().filter(|w| *w != "to" && *w != "and").cloned().collect();
+            let mut to: Vec<String> = rest
+                .iter()
+                .filter(|w| *w != "to" && *w != "and")
+                .cloned()
+                .collect();
             let mine: String = store.load("age-recipient");
             if !mine.is_empty() && !to.contains(&mine) {
                 to.push(mine); // so you can open what you sent
@@ -477,13 +528,24 @@ pub(super) fn run_agefile(words: &[String]) {
             }
             let identity = match vault.get(NAME, now) {
                 Ok(i) => i,
-                Err(_) => return println!("There's no key of yours in the vault yet — `atlas my-key` makes one."),
+                Err(_) => {
+                    return println!(
+                        "There's no key of yours in the vault yet — `atlas my-key` makes one."
+                    )
+                }
             };
             vault.lock();
             match atlas::agefile::open(&sealed, &identity) {
                 Ok(plain) => {
-                    let out = path.strip_suffix(".age").map(String::from).unwrap_or_else(|| format!("{path}.opened"));
-                    let out = if std::path::Path::new(&out).exists() { format!("{out}.opened") } else { out };
+                    let out = path
+                        .strip_suffix(".age")
+                        .map(String::from)
+                        .unwrap_or_else(|| format!("{path}.opened"));
+                    let out = if std::path::Path::new(&out).exists() {
+                        format!("{out}.opened")
+                    } else {
+                        out
+                    };
                     match std::fs::write(&out, plain) {
                         Ok(()) => println!("Opened: {out}"),
                         Err(e) => println!("I couldn't write {out}: {e}"),
@@ -527,10 +589,14 @@ pub(super) fn run_notes(cfg: &Config, args: &[String], merge_voices: bool, peopl
     let own: Vec<Option<Vec<f32>>> = if external {
         Vec::new()
     } else {
-        atlas::speaker::recording_embeddings(&samples, rate, &atlas::speaker::background(&atlas::roots::store()))
-            .into_iter()
-            .map(|(_, e)| e)
-            .collect()
+        atlas::speaker::recording_embeddings(
+            &samples,
+            rate,
+            &atlas::speaker::background(&atlas::roots::store()),
+        )
+        .into_iter()
+        .map(|(_, e)| e)
+        .collect()
     };
     let can_embed = external || own.iter().flatten().count() >= 2;
     let can_hear = tc.stt.available(&vars);
@@ -548,22 +614,52 @@ pub(super) fn run_notes(cfg: &Config, args: &[String], merge_voices: bool, peopl
     let mut next = own.into_iter();
     let mut embed = |s: &[i16]| -> Option<Vec<f32>> {
         if external {
-            (write(s)).then(|| atlas::speaker::embed(&tc.speaker, &vars).ok()).flatten()
+            (write(s))
+                .then(|| atlas::speaker::embed(&tc.speaker, &vars).ok())
+                .flatten()
         } else {
             next.next().flatten()
         }
     };
     let mut hear = |s: &[i16]| -> Option<String> {
-        (can_hear && write(s)).then(|| tc.stt.run(&vars, None).ok().map(|raw| atlas::voice::clean_transcript(&raw))).flatten()
+        (can_hear && write(s))
+            .then(|| {
+                tc.stt
+                    .run(&vars, None)
+                    .ok()
+                    .map(|raw| atlas::voice::clean_transcript(&raw))
+            })
+            .flatten()
     };
     // Your print is only comparable when it came from the same encoder
     // against the same background; a per-recording background is not the
     // machine's, so with the built-in encoder "You" is not claimed here.
-    let you = if external { atlas::voiceid::VoiceId::load(&atlas::roots::store()).print.map(|p| p.centroid) } else { None };
-    let lines = if external {
-        atlas::diarize::who_said_what(&samples, rate, &mut embed, &mut hear, you.as_deref(), tc.voice_id.accept)
+    let you = if external {
+        atlas::voiceid::VoiceId::load(&atlas::roots::store())
+            .print
+            .map(|p| p.centroid)
     } else {
-        atlas::diarize::who_said_what_grouped(&samples, rate, &mut embed, &mut hear, None, tc.voice_id.builtin_accept, atlas::speaker::GROUP_CENTRED_AT)
+        None
+    };
+    let lines = if external {
+        atlas::diarize::who_said_what(
+            &samples,
+            rate,
+            &mut embed,
+            &mut hear,
+            you.as_deref(),
+            tc.voice_id.accept,
+        )
+    } else {
+        atlas::diarize::who_said_what_grouped(
+            &samples,
+            rate,
+            &mut embed,
+            &mut hear,
+            None,
+            tc.voice_id.builtin_accept,
+            atlas::speaker::GROUP_CENTRED_AT,
+        )
     };
     // A second look on each speaker's pooled speech (`diarize::
     // merge_same_voices`), only when asked for: measured on sixty calls it
@@ -578,7 +674,8 @@ pub(super) fn run_notes(cfg: &Config, args: &[String], merge_voices: bool, peopl
     // Someone who spoke once, swallowed by the nearest voice, is given back a
     // name of their own (`diarize::split_strangers`) — on by default, because
     // on calls it wasn't tuned on it mixed fewer people and split no more.
-    let lines = atlas::diarize::split_strangers(&samples, rate, lines, atlas::diarize::STRANGER_MARGIN);
+    let lines =
+        atlas::diarize::split_strangers(&samples, rate, lines, atlas::diarize::STRANGER_MARGIN);
     // Told how many people there were: that settles it (`diarize::to_count`).
     let lines = match people {
         Some(n) => atlas::diarize::to_count(&samples, rate, lines, n),
@@ -603,8 +700,16 @@ pub(super) fn run_doc(args: &[String]) {
     // its next tick.
     let log: atlas::sync::Log = store.load("synclog");
     let site = if log.device.trim().is_empty() {
-        let named = Config::load(&atlas::roots::config_dir()).ok().and_then(|c| c.tools).map(|t| t.sync.name).unwrap_or_default();
-        if named.trim().is_empty() { "this device".to_string() } else { named.trim().to_string() }
+        let named = Config::load(&atlas::roots::config_dir())
+            .ok()
+            .and_then(|c| c.tools)
+            .map(|t| t.sync.name)
+            .unwrap_or_default();
+        if named.trim().is_empty() {
+            "this device".to_string()
+        } else {
+            named.trim().to_string()
+        }
     } else {
         log.device.clone()
     };
@@ -614,22 +719,31 @@ pub(super) fn run_doc(args: &[String]) {
             let d = atlas::yata::current(name, &site, &log.events, &inbox);
             print!("{}", d.text());
             if d.waiting() > 0 {
-                println!("\n({} edits are waiting on others that haven't arrived yet.)", d.waiting());
+                println!(
+                    "\n({} edits are waiting on others that haven't arrived yet.)",
+                    d.waiting()
+                );
             }
         }
         (Some("set"), Some(name)) | (Some("add"), Some(name)) => {
             let adding = args[0] == "add";
             let new_text = match args.get(2) {
-                Some(path) if std::path::Path::new(path).is_file() => match std::fs::read_to_string(path) {
-                    Ok(t) => t,
-                    Err(e) => return println!("I couldn't read {path}: {e}"),
-                },
+                Some(path) if std::path::Path::new(path).is_file() => {
+                    match std::fs::read_to_string(path) {
+                        Ok(t) => t,
+                        Err(e) => return println!("I couldn't read {path}: {e}"),
+                    }
+                }
                 _ => args[2..].join(" "),
             };
             let mut d = atlas::yata::current(name, &site, &log.events, &inbox);
             let target = if adding {
                 let now_text = d.text();
-                let sep = if now_text.is_empty() || now_text.ends_with('\n') { "" } else { "\n" };
+                let sep = if now_text.is_empty() || now_text.ends_with('\n') {
+                    ""
+                } else {
+                    "\n"
+                };
                 format!("{now_text}{sep}{}\n", new_text.trim_end())
             } else {
                 new_text
@@ -676,13 +790,19 @@ pub(super) fn run_doc(args: &[String]) {
                 println!("{n} — {} lines", t.lines().count());
             }
         }
-        _ => println!("atlas doc list | show <name> | set <name> <text or file> | add <name> <line>"),
+        _ => {
+            println!("atlas doc list | show <name> | set <name> <text or file> | add <name> <line>")
+        }
     }
 }
 
 /// Your `time_zone` setting as a zone; UTC when unset.
 fn your_zone() -> atlas::tz::Zone {
-    let set = Config::load(&atlas::roots::config_dir()).ok().and_then(|c| c.tools).map(|t| t.time_zone).unwrap_or_default();
+    let set = Config::load(&atlas::roots::config_dir())
+        .ok()
+        .and_then(|c| c.tools)
+        .map(|t| t.time_zone)
+        .unwrap_or_default();
     atlas::tz::home(&set)
 }
 
@@ -710,11 +830,18 @@ pub(super) fn run_calendar(args: &[String]) {
                         println!("I couldn't confirm saving your calendar: {error}. The import is not confirmed; refresh before trying again.");
                         return;
                     }
-                    println!("{n} event{} added or updated.", if n == 1 { "" } else { "s" });
+                    println!(
+                        "{n} event{} added or updated.",
+                        if n == 1 { "" } else { "s" }
+                    );
                     for id in &unknown {
                         println!("  (The file names a time zone I don't know, \"{id}\"; those times were read as {}.)", zone.name);
                     }
-                    for e in cal.occurrences_between(now, now + 14 * 86_400).iter().take(5) {
+                    for e in cal
+                        .occurrences_between(now, now + 14 * 86_400)
+                        .iter()
+                        .take(5)
+                    {
                         println!("  {} — {}", e.title, e.say_when_in(&zone));
                     }
                 }
@@ -725,7 +852,11 @@ pub(super) fn run_calendar(args: &[String]) {
         },
         Some("export") => match args.get(1) {
             Some(path) => match std::fs::write(path, cal.to_ics(now)) {
-                Ok(()) => println!("Wrote {} event{} to {path}.", cal.len(), if cal.len() == 1 { "" } else { "s" }),
+                Ok(()) => println!(
+                    "Wrote {} event{} to {path}.",
+                    cal.len(),
+                    if cal.len() == 1 { "" } else { "s" }
+                ),
                 Err(e) => println!("I couldn't write {path}: {e}"),
             },
             None => println!("atlas calendar export <file.ics>"),
@@ -744,7 +875,11 @@ pub(super) fn run_tasks(args: &[String]) {
 
     let print_task = |t: &atlas::shared_task::Task| {
         let mark = if t.done { "x" } else { " " };
-        let shared = if t.shared_from_personal { "  (shared from personal)" } else { "" };
+        let shared = if t.shared_from_personal {
+            "  (shared from personal)"
+        } else {
+            ""
+        };
         println!("  [{mark}] {}  {}{shared}", t.id, t.description);
     };
 
@@ -915,7 +1050,12 @@ pub(super) fn run_household(args: &[String]) {
                 println!("No household yet. atlas household init <name>");
                 return;
             }
-            println!("{} — {} device(s), made {}", h.name, h.devices.len(), h.made_at);
+            println!(
+                "{} — {} device(s), made {}",
+                h.name,
+                h.devices.len(),
+                h.made_at
+            );
             for d in &h.devices {
                 println!("  {d}");
             }
@@ -1070,7 +1210,9 @@ pub(super) fn run_household(args: &[String]) {
                         );
                     }
                 }
-                None => println!("Couldn't build a pairing code -- the household name has a '|' in it."),
+                None => {
+                    println!("Couldn't build a pairing code -- the household name has a '|' in it.")
+                }
             }
         }
         Some("join") => {
@@ -1144,17 +1286,15 @@ pub(super) fn run_household(args: &[String]) {
                 }
             };
 
-            let Some((their_id, their_name, pairing)) = atlas::household::decode_pairing(code) else {
+            let Some((their_id, their_name, pairing)) = atlas::household::decode_pairing(code)
+            else {
                 // The short path's reason is the useful one here: a mistyped
                 // ten-character code is far more likely than a mangled block.
                 println!("{short_failed}");
                 return;
             };
-            let meeting = atlas::household::meets(
-                &mine.id,
-                &their_id,
-                mine.is_set() && mine.id == their_id,
-            );
+            let meeting =
+                atlas::household::meets(&mine.id, &their_id, mine.is_set() && mine.id == their_id);
             println!("{}", atlas::household::saw_another(&meeting));
             match meeting {
                 atlas::household::Meeting::Mine => {
@@ -1216,18 +1356,13 @@ pub(super) fn run_household(args: &[String]) {
                                                      sealed bundles from your other machine will \
                                                      open here."
                                                 );
-                                                if let Ok(card) =
-                                                    atlas::sync::write_card(&phrase)
-                                                {
-                                                    println!(
-                                                        "Written down in {}.",
-                                                        card.display()
-                                                    );
+                                                if let Ok(card) = atlas::sync::write_card(&phrase) {
+                                                    println!("Written down in {}.", card.display());
                                                 }
                                             }
-                                            Err(e) => println!(
-                                                "I got the key and couldn't keep it: {e}"
-                                            ),
+                                            Err(e) => {
+                                                println!("I got the key and couldn't keep it: {e}")
+                                            }
                                         }
                                     }
                                     // Not an error worth alarming anyone
@@ -1242,7 +1377,9 @@ pub(super) fn run_household(args: &[String]) {
                 }
             }
         }
-        Some(other) => println!("I don't know \"{other}\" — try status, proof, init, pair or join."),
+        Some(other) => {
+            println!("I don't know \"{other}\" — try status, proof, init, pair or join.")
+        }
     }
 }
 
@@ -1261,8 +1398,15 @@ pub(super) fn run_household(args: &[String]) {
 /// made with the current model, so this never runs the encoder over the lot.
 pub(super) fn run_search_check() {
     let store = atlas::roots::store();
-    let tools = Config::load(&atlas::roots::config_dir()).ok().and_then(|c| c.tools).unwrap_or_default();
-    let notes = tools.research.clone().resolved(&store.install_root()).notes_dir;
+    let tools = Config::load(&atlas::roots::config_dir())
+        .ok()
+        .and_then(|c| c.tools)
+        .unwrap_or_default();
+    let notes = tools
+        .research
+        .clone()
+        .resolved(&store.install_root())
+        .notes_dir;
     let mut lib = atlas::recall::library_from_dir(std::path::Path::new(&notes));
     if lib.is_empty() {
         println!("There are no notes in {notes} to search, so there's nothing to measure.");
@@ -1288,12 +1432,18 @@ pub(super) fn run_search_check() {
             have += p.embedding.is_some() as usize;
         }
     }
-    let usable = tools.recall.semantic && have > 0 && atlas::meaning::available(&tools.meaning, &tools.vars);
+    let usable =
+        tools.recall.semantic && have > 0 && atlas::meaning::available(&tools.meaning, &tools.vars);
     let meaning = usable.then(|| {
         let embed = |q: &str| atlas::meaning::embed(&tools.meaning, &tools.vars, q).ok();
         atlas::recall::measure(&lib, &questions, Some(&embed), &tools.recall, now)
     });
-    let check = atlas::recall::SearchCheck { at: now, model: if usable { fp } else { String::new() }, words, meaning };
+    let check = atlas::recall::SearchCheck {
+        at: now,
+        model: if usable { fp } else { String::new() },
+        words,
+        meaning,
+    };
     let kept: Vec<atlas::recall::SearchCheck> = store.load("search_checks");
     println!("{}", check.said(kept.last()));
     if !usable {
@@ -1386,14 +1536,20 @@ pub(super) fn run_trace(args: &[String]) {
             let mut by: std::collections::BTreeMap<&str, (usize, usize)> = Default::default();
             for e in &all {
                 let n = by.entry(e.asked_by.as_str()).or_default();
-                if e.good { n.0 += 1 } else { n.1 += 1 }
+                if e.good {
+                    n.0 += 1
+                } else {
+                    n.1 += 1
+                }
             }
             for (who, (good, bad)) in by {
                 println!("  {who}: {good} good, {bad} bad");
             }
-            println!("Kept in {}. Emails, phone numbers, long numbers, web-address queries and \
+            println!(
+                "Kept in {}. Emails, phone numbers, long numbers, web-address queries and \
                       anything after \"password\" are taken out; names and addresses are not.",
-                     atlas::trace::examples_path(&path).display());
+                atlas::trace::examples_path(&path).display()
+            );
         }
         Some("compact") => {
             let before = t.calls.len();
@@ -1418,7 +1574,9 @@ pub(super) fn run_trace(args: &[String]) {
                 );
             }
         }
-        Some(other) => println!("Don't know `atlas trace {other}`. Try status, failures or compact."),
+        Some(other) => {
+            println!("Don't know `atlas trace {other}`. Try status, failures or compact.")
+        }
     }
 }
 
@@ -1507,8 +1665,12 @@ pub(super) fn run_index(args: &[String]) {
 pub(super) fn run_backups(args: &[String]) {
     let store = atlas::roots::store();
     let cfg = Config::load(&atlas::roots::config_dir()).ok();
-    let backup_cfg =
-        cfg.as_ref().and_then(|c| c.tools.as_ref()).map(|t| t.backup.clone()).unwrap_or_default().resolved(&store.install_root());
+    let backup_cfg = cfg
+        .as_ref()
+        .and_then(|c| c.tools.as_ref())
+        .map(|t| t.backup.clone())
+        .unwrap_or_default()
+        .resolved(&store.install_root());
 
     match args.first().map(|s| s.to_lowercase()).as_deref() {
         None | Some("list") => {
@@ -1557,8 +1719,22 @@ pub(super) fn run_backups(args: &[String]) {
                 .unwrap_or_default();
             let trash =
                 atlas::safety::Trash::new(trash_cfg.resolved(&atlas::roots::install_root()));
-            let notes: std::path::PathBuf = cfg.as_ref().and_then(|config| config.tools.as_ref()).map(|tools| tools.research.clone()).unwrap_or_default().resolved(&store.install_root()).notes_dir.into();
-            if let Err(error) = atlas::safety::check_configured_scope(&store, &notes, std::path::Path::new(&trash.cfg.dir)) { println!("Couldn't restore that: {error}"); return; }
+            let notes: std::path::PathBuf = cfg
+                .as_ref()
+                .and_then(|config| config.tools.as_ref())
+                .map(|tools| tools.research.clone())
+                .unwrap_or_default()
+                .resolved(&store.install_root())
+                .notes_dir
+                .into();
+            if let Err(error) = atlas::safety::check_configured_scope(
+                &store,
+                &notes,
+                std::path::Path::new(&trash.cfg.dir),
+            ) {
+                println!("Couldn't restore that: {error}");
+                return;
+            }
             match atlas::safety::restore_with_notes(&b.path, store.root(), &trash, &mine, &notes) {
                 Ok(count) => println!("Restored {count} file(s)."),
                 Err(e) => println!("Couldn't restore that: {e}"),
@@ -1586,10 +1762,16 @@ pub(super) fn run_mail(args: &[String]) {
                 println!("Mail is switched off. Turn it on with `mail.enabled: true` in config/tools.yaml.");
             }
             if cfg.accounts.is_empty() {
-                println!("No mailboxes configured yet. `atlas mail setup` walks through adding one.");
+                println!(
+                    "No mailboxes configured yet. `atlas mail setup` walks through adding one."
+                );
                 return;
             }
-            println!("{} mailbox{}:", cfg.accounts.len(), if cfg.accounts.len() == 1 { "" } else { "es" });
+            println!(
+                "{} mailbox{}:",
+                cfg.accounts.len(),
+                if cfg.accounts.len() == 1 { "" } else { "es" }
+            );
             for a in &cfg.accounts {
                 let provider = atlas::mail::Provider::from_address(&a.address);
                 let how = match atlas::mail::credential_source(a) {
@@ -1670,8 +1852,11 @@ pub(super) fn run_watching(args: &[String]) {
                 return;
             };
             let last_line = args[2..].join(" ");
-            let outcome =
-                if failed { atlas::watching::Outcome::Failed } else { atlas::watching::Outcome::Finished };
+            let outcome = if failed {
+                atlas::watching::Outcome::Failed
+            } else {
+                atlas::watching::Outcome::Finished
+            };
             w.update(id, outcome, &last_line, now);
             if let Err(e) = w.save(&store) {
                 println!("Couldn't save that: {e}");
@@ -1717,8 +1902,16 @@ pub(super) fn run_away(cfg: &Config, args: &[String]) {
     use atlas::goingaway::{self, Away};
 
     let store = atlas::roots::store();
-    let acfg = cfg.tools.as_ref().map(|t| t.going_away.clone()).unwrap_or_default();
-    let ccfg = cfg.tools.as_ref().map(|t| t.codes.clone()).unwrap_or_default();
+    let acfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.going_away.clone())
+        .unwrap_or_default();
+    let ccfg = cfg
+        .tools
+        .as_ref()
+        .map(|t| t.codes.clone())
+        .unwrap_or_default();
     let mut away: Away = store.load(goingaway::AWAY_RECORD);
     let book: atlas::accounts::Book = store.load(atlas::accounts::FILE);
     let sets: Vec<atlas::codes::Set> = store.load("codes");
@@ -1744,7 +1937,10 @@ pub(super) fn run_away(cfg: &Config, args: &[String]) {
                 println!("Getting your accounts ready is switched off, so I won't raise it");
                 println!("on my own -- `going_away.enabled: true` in tools.yaml.");
             } else {
-                println!("I'll start raising it {} days out.", acfg.remind_days_before);
+                println!(
+                    "I'll start raising it {} days out.",
+                    acfg.remind_days_before
+                );
             }
         }
         Some("clear") => {
@@ -1778,7 +1974,10 @@ pub(super) fn run_away(cfg: &Config, args: &[String]) {
                 println!("{}", goingaway::spoken(&book.accounts));
             }
             println!();
-            println!("{}", atlas::codes::before_you_go(&sets, &account_names(&book), &ccfg));
+            println!(
+                "{}",
+                atlas::codes::before_you_go(&sets, &account_names(&book), &ccfg)
+            );
             println!();
             println!("{}", goingaway::WHY_NOT_OFF);
         }
@@ -1858,13 +2057,21 @@ pub(super) fn run_catalog(args: &[String]) {
             // Mac, Linux, an iPhone and an Android phone, and until now
             // nothing said how much of it each of those would get.
             let tally: Vec<String> = [
-                Platform::Windows, Platform::Mac, Platform::Linux,
-                Platform::Ios, Platform::Android, Platform::Web,
+                Platform::Windows,
+                Platform::Mac,
+                Platform::Linux,
+                Platform::Ios,
+                Platform::Android,
+                Platform::Web,
             ]
             .iter()
             .map(|p| format!("{} {}", p.bare(), capability::on(*p).len()))
             .collect();
-            println!("\nOf {} things, possible on: {}", capability::all().len(), tally.join(" · "));
+            println!(
+                "\nOf {} things, possible on: {}",
+                capability::all().len(),
+                tally.join(" · ")
+            );
 
             let (claimed, modules) = capability::module_coverage();
             println!(
@@ -1887,7 +2094,11 @@ pub(super) fn run_selftest(args: &[String]) {
     if args.iter().any(|a| a == "--coverage") {
         return selftest_under_coverage(no_model);
     }
-    let out = args.iter().position(|a| a == "--out").and_then(|i| args.get(i + 1)).map(std::path::PathBuf::from);
+    let out = args
+        .iter()
+        .position(|a| a == "--out")
+        .and_then(|i| args.get(i + 1))
+        .map(std::path::PathBuf::from);
     if !args.iter().any(|a| a == "--inside") {
         let real = atlas::roots::install_root();
         let reports = atlas::selftest::reports_dir(&real);
@@ -1909,7 +2120,13 @@ pub(super) fn run_selftest(args: &[String]) {
         println!("Testing every command on this machine, on a copy of your install. Nothing is sent, moved or approved.");
         let exe = std::env::current_exe().unwrap_or_else(|_| "atlas".into());
         let mut cmd = std::process::Command::new(exe);
-        cmd.arg("selftest").arg("--inside").arg("--out").arg(&reports).env("ATLAS_HOME", &tmp).env(atlas::selftest::IN_A_TEST, "1").env_remove("ATLAS_CONFIG");
+        cmd.arg("selftest")
+            .arg("--inside")
+            .arg("--out")
+            .arg(&reports)
+            .env("ATLAS_HOME", &tmp)
+            .env(atlas::selftest::IN_A_TEST, "1")
+            .env_remove("ATLAS_CONFIG");
         if no_model {
             cmd.arg("--no-model");
         }
@@ -1918,13 +2135,18 @@ pub(super) fn run_selftest(args: &[String]) {
         // The test's failures become this install's cases (`regressions`):
         // read by self-repair as signals, and fixed ones taken off.
         if matches!(status, Ok(s) if s.success()) {
-            if let Ok(json) = std::fs::read_to_string(reports.join(atlas::regressions::FROM_SELFTEST)) {
+            if let Ok(json) =
+                std::fs::read_to_string(reports.join(atlas::regressions::FROM_SELFTEST))
+            {
                 if let Ok(failing) = serde_json::from_str::<Vec<atlas::regressions::Case>>(&json) {
                     let store = atlas::store::Store::new(atlas::roots::state_dir());
-                    let mut cases: Vec<atlas::regressions::Case> = store.load(atlas::regressions::FILE);
+                    let mut cases: Vec<atlas::regressions::Case> =
+                        store.load(atlas::regressions::FILE);
                     atlas::regressions::settle_selftest(&mut cases, &failing);
                     if let Err(e) = store.save(atlas::regressions::FILE, &cases) {
-                        eprintln!("note: couldn't keep what the test found broken for self-repair: {e}");
+                        eprintln!(
+                            "note: couldn't keep what the test found broken for self-repair: {e}"
+                        );
                     }
                 }
             }
@@ -1932,7 +2154,10 @@ pub(super) fn run_selftest(args: &[String]) {
         match status {
             Ok(s) if s.success() => {}
             Ok(s) => {
-                eprintln!("The test stopped early ({s}). What it got through is in {}.", reports.display());
+                eprintln!(
+                    "The test stopped early ({s}). What it got through is in {}.",
+                    reports.display()
+                );
                 leave(1);
             }
             Err(e) => {
@@ -1969,7 +2194,11 @@ pub(super) fn run_selftest(args: &[String]) {
         None => cfg,
     };
     let plat = atlas::selftest::SafePlatform::wrapping(real_plat.as_ref());
-    let llm = if no_model { None } else { cfg.tools.as_ref().and_then(model_connection) };
+    let llm = if no_model {
+        None
+    } else {
+        cfg.tools.as_ref().and_then(model_connection)
+    };
     let with_model = llm.is_some();
     let started = atlas::store::now();
     let state = atlas::roots::state_dir();
@@ -1978,19 +2207,39 @@ pub(super) fn run_selftest(args: &[String]) {
     let rows = atlas::selftest::run_all(&cfg, &plat, llm, &state, started, &mut |r| {
         n += 1;
         let mark = if r.verdict.is_a_fault() { "!!" } else { "  " };
-        println!("{mark} {n:>3}/{total} {:<22} {}", r.command, r.verdict.plain());
+        println!(
+            "{mark} {n:>3}/{total} {:<22} {}",
+            r.command,
+            r.verdict.plain()
+        );
     });
     atlas::heard!(std::fs::create_dir_all(&out));
     let stamp = atlas::hubpages::ymd((started / 86_400) as i64);
-    let name = format!("report-{}-{:02}-{:02}-{}", stamp.0, stamp.1, stamp.2, started % 86_400);
-    let md = atlas::selftest::report(&rows, &format!("{}-{:02}-{:02}", stamp.0, stamp.1, stamp.2), with_model);
+    let name = format!(
+        "report-{}-{:02}-{:02}-{}",
+        stamp.0,
+        stamp.1,
+        stamp.2,
+        started % 86_400
+    );
+    let md = atlas::selftest::report(
+        &rows,
+        &format!("{}-{:02}-{:02}", stamp.0, stamp.1, stamp.2),
+        with_model,
+    );
     atlas::kept!(std::fs::write(out.join(format!("{name}.md")), &md));
     atlas::kept!(std::fs::write(out.join("latest.md"), &md));
-    atlas::kept!(std::fs::write(out.join(format!("{name}.json")), serde_json::to_string_pretty(&rows).unwrap_or_default()));
+    atlas::kept!(std::fs::write(
+        out.join(format!("{name}.json")),
+        serde_json::to_string_pretty(&rows).unwrap_or_default()
+    ));
     // What failed, for the install's own regressions -- taken in by the
     // process that started this one (this one's store is the test copy's).
     let failing = atlas::selftest::failing_cases(&rows, started);
-    atlas::kept!(std::fs::write(out.join(atlas::regressions::FROM_SELFTEST), serde_json::to_string(&failing).unwrap_or_default()));
+    atlas::kept!(std::fs::write(
+        out.join(atlas::regressions::FROM_SELFTEST),
+        serde_json::to_string(&failing).unwrap_or_default()
+    ));
     println!();
     println!("{}", atlas::selftest::summary(&rows));
     println!("The report: {}", out.join("latest.md").display());
@@ -2006,7 +2255,14 @@ fn selftest_under_coverage(no_model: bool) {
         eprintln!("Run this from Atlas's source folder (the one with Cargo.toml): it builds Atlas with coverage counting.");
         leave(1);
     }
-    let (ok, _) = atlas::sandbox::run_within("cargo", &["llvm-cov".into(), "--version".into()], &[], &here, 60, 400);
+    let (ok, _) = atlas::sandbox::run_within(
+        "cargo",
+        &["llvm-cov".into(), "--version".into()],
+        &[],
+        &here,
+        60,
+        400,
+    );
     if !ok {
         eprintln!("cargo-llvm-cov isn't installed. `cargo install cargo-llvm-cov` (and `rustup component add llvm-tools-preview`), then run this again.");
         leave(1);
@@ -2014,7 +2270,17 @@ fn selftest_under_coverage(no_model: bool) {
     let reports = atlas::selftest::reports_dir(&atlas::roots::install_root());
     atlas::heard!(std::fs::create_dir_all(&reports));
     let json = reports.join("coverage.json");
-    let mut a: Vec<String> = ["llvm-cov", "run", "--bin", "atlas", "--json", "--output-path"].iter().map(|s| s.to_string()).collect();
+    let mut a: Vec<String> = [
+        "llvm-cov",
+        "run",
+        "--bin",
+        "atlas",
+        "--json",
+        "--output-path",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
     a.push(json.display().to_string());
     a.push("--".into());
     a.push("selftest".into());
@@ -2030,7 +2296,10 @@ fn selftest_under_coverage(no_model: bool) {
     let counts = atlas::coverage::fn_counts(&std::fs::read_to_string(&json).unwrap_or_default());
     let never = atlas::coverage::never_reached(&counts);
     let total = counts.keys().filter(|p| p.starts_with("atlas::")).count() as u32;
-    atlas::kept!(std::fs::write(reports.join(atlas::coverage::NEVER_REACHED), serde_json::to_string(&(never.clone(), total)).unwrap_or_default()));
+    atlas::kept!(std::fs::write(
+        reports.join(atlas::coverage::NEVER_REACHED),
+        serde_json::to_string(&(never.clone(), total)).unwrap_or_default()
+    ));
     println!(
         "The self-test reached {} of Atlas's {total} functions; {} it never reached are listed in {}.",
         total as usize - never.len(),
@@ -2039,13 +2308,17 @@ fn selftest_under_coverage(no_model: bool) {
     );
 }
 
-
 /// `atlas scaffold "<what it should do>" [--name <id>] [--source <dir>]`:
 /// the bookkeeping for a new ability, written into Atlas's source
 /// (`scaffold`) -- the module, its catalogue entry marked not built yet, its
 /// reason for being unwired, the module count, and docs/CAPABILITIES.md.
 pub(super) fn run_scaffold(args: &[String]) {
-    let value = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
+    let value = |name: &str| {
+        args.iter()
+            .position(|a| a == name)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
     let mut skip = false;
     let what: Vec<&str> = args
         .iter()
@@ -2064,7 +2337,9 @@ pub(super) fn run_scaffold(args: &[String]) {
         .collect();
     let what = what.join(" ");
     if what.trim().is_empty() {
-        eprintln!("Say what it should do: atlas scaffold \"read my texts out loud\" [--name read_texts]");
+        eprintln!(
+            "Say what it should do: atlas scaffold \"read my texts out loud\" [--name read_texts]"
+        );
         std::process::exit(2);
     }
     let here = std::env::current_dir().unwrap_or_default();
@@ -2075,7 +2350,9 @@ pub(super) fn run_scaffold(args: &[String]) {
     };
     let t = atlas::store::now();
     let (y, m, d) = atlas::hubpages::ymd((t / 86_400) as i64);
-    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
     let ask = atlas::scaffold::Ask {
         id: value("--name").unwrap_or_else(|| atlas::scaffold::name_for(&what)),
         what: what.clone(),
@@ -2093,13 +2370,23 @@ pub(super) fn run_scaffold(args: &[String]) {
         std::process::exit(1);
     }
     for c in &plan {
-        println!("{} {}", if c.before.is_none() { "new    " } else { "changed" }, c.path);
+        println!(
+            "{} {}",
+            if c.before.is_none() {
+                "new    "
+            } else {
+                "changed"
+            },
+            c.path
+        );
     }
     // The document is the catalogue's own answer, so it's regenerated from
     // the source as it is now -- which takes a build of it. Said, not
     // pretended, when there's no cargo to build with.
     let mut regen = std::process::Command::new("cargo");
-    regen.args(["run", "-q", "--bin", "atlas", "--", "catalog", "--markdown"]).current_dir(&root);
+    regen
+        .args(["run", "-q", "--bin", "atlas", "--", "catalog", "--markdown"])
+        .current_dir(&root);
     match regen.output() {
         Ok(o) if o.status.success() && !o.stdout.is_empty() => match std::fs::write(root.join("docs/CAPABILITIES.md"), &o.stdout) {
             Ok(()) => println!("changed docs/CAPABILITIES.md (regenerated)"),

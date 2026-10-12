@@ -25,7 +25,10 @@ fn a_card_moves_up_and_the_rest_close_the_gap() {
     assert!(l.move_up(third));
     let after = order(&l);
     assert_eq!(after[1], third);
-    assert_eq!(after[2], before[1], "the one it passed moved down, not away");
+    assert_eq!(
+        after[2], before[1],
+        "the one it passed moved down, not away"
+    );
     assert_eq!(after.len(), before.len(), "nothing was lost in the move");
 }
 
@@ -164,7 +167,11 @@ fn a_card_you_arranged_keeps_its_place_when_others_are_added() {
         }],
     };
     let fixed = partial.reconciled();
-    assert_eq!(fixed.cards[0].card, Card::Machine, "your choice comes first");
+    assert_eq!(
+        fixed.cards[0].card,
+        Card::Machine,
+        "your choice comes first"
+    );
     assert_eq!(fixed.cards[0].span, Span::Full, "and keeps its width");
 }
 
@@ -172,12 +179,24 @@ fn a_card_you_arranged_keeps_its_place_when_others_are_added() {
 fn the_same_card_listed_twice_is_collapsed_rather_than_shown_twice() {
     let doubled = Layout {
         cards: vec![
-            atlas::dash::Placed { card: Card::Machine, span: Span::Half, hidden: false },
-            atlas::dash::Placed { card: Card::Machine, span: Span::Full, hidden: true },
+            atlas::dash::Placed {
+                card: Card::Machine,
+                span: Span::Half,
+                hidden: false,
+            },
+            atlas::dash::Placed {
+                card: Card::Machine,
+                span: Span::Full,
+                hidden: true,
+            },
         ],
     };
     let fixed = doubled.reconciled();
-    let n = fixed.cards.iter().filter(|p| p.card == Card::Machine).count();
+    let n = fixed
+        .cards
+        .iter()
+        .filter(|p| p.card == Card::Machine)
+        .count();
     assert_eq!(n, 1, "two entries would make 'move it up' ambiguous");
     assert!(!fixed.cards[0].hidden, "the first one wins, not the last");
 }
@@ -282,5 +301,9 @@ fn every_card_has_a_distinct_key() {
     let mut sorted = keys.clone();
     sorted.sort_unstable();
     sorted.dedup();
-    assert_eq!(sorted.len(), keys.len(), "two cards sharing a key: {keys:?}");
+    assert_eq!(
+        sorted.len(),
+        keys.len(),
+        "two cards sharing a key: {keys:?}"
+    );
 }

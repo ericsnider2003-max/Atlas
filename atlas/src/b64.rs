@@ -10,8 +10,16 @@ pub fn encode(data: &[u8]) -> String {
         let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
         out.push(A[(n >> 18 & 63) as usize] as char);
         out.push(A[(n >> 12 & 63) as usize] as char);
-        out.push(if c.len() > 1 { A[(n >> 6 & 63) as usize] as char } else { '=' });
-        out.push(if c.len() > 2 { A[(n & 63) as usize] as char } else { '=' });
+        out.push(if c.len() > 1 {
+            A[(n >> 6 & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if c.len() > 2 {
+            A[(n & 63) as usize] as char
+        } else {
+            '='
+        });
     }
     out
 }
@@ -31,7 +39,10 @@ pub fn decode(s: &str) -> Result<Vec<u8>, &'static str> {
         for (i, &c) in chunk.iter().enumerate() {
             vals[i] = val(c).ok_or("invalid base64 character")?;
         }
-        let n = (vals[0] as u32) << 18 | (vals[1] as u32) << 12 | (vals[2] as u32) << 6 | vals[3] as u32;
+        let n = (vals[0] as u32) << 18
+            | (vals[1] as u32) << 12
+            | (vals[2] as u32) << 6
+            | vals[3] as u32;
         out.push((n >> 16 & 0xff) as u8);
         if chunk.len() > 2 {
             out.push((n >> 8 & 0xff) as u8);
@@ -49,7 +60,14 @@ mod tests {
 
     #[test]
     fn decode_is_the_real_inverse_of_encode_for_arbitrary_bytes() {
-        for sample in [b"".as_slice(), b"a", b"ab", b"abc", b"hello, world!", &[0, 1, 2, 255, 254]] {
+        for sample in [
+            b"".as_slice(),
+            b"a",
+            b"ab",
+            b"abc",
+            b"hello, world!",
+            &[0, 1, 2, 255, 254],
+        ] {
             let encoded = encode(sample);
             let decoded = decode(&encoded).unwrap();
             assert_eq!(decoded, sample, "round-trip failed for {sample:?}");

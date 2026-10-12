@@ -32,7 +32,12 @@ impl Kind {
     /// The shape this kind of writing wants.
     pub fn wants(&self) -> &'static [&'static str] {
         match self {
-            Kind::Case => &["a claim", "reasons", "the strongest objection", "what follows"],
+            Kind::Case => &[
+                "a claim",
+                "reasons",
+                "the strongest objection",
+                "what follows",
+            ],
             Kind::Account => &["what happened", "when", "what it means"],
             Kind::Request => &["the ask", "why you", "what happens next"],
             Kind::Explanation => &["the point", "how it works", "an example"],
@@ -102,9 +107,13 @@ impl Missing {
     pub fn fix(&self) -> &'static str {
         match self {
             Missing::NoClaim => "Say the thing you actually believe, in one sentence, early.",
-            Missing::NothingBehindIt => "Take the two strongest assertions and give a reason for each.",
+            Missing::NothingBehindIt => {
+                "Take the two strongest assertions and give a reason for each."
+            }
             Missing::NoEvidence => "Put one real number, name or example in. One is enough.",
-            Missing::NoCounterCase => "Name the best argument against, then answer it in a sentence.",
+            Missing::NoCounterCase => {
+                "Name the best argument against, then answer it in a sentence."
+            }
             Missing::NoConclusion => "End with what should happen, not with a summary.",
             Missing::OutOfOrder => "Move the claim to the front and the support behind it.",
             Missing::BuriedLead => "The best sentence is in the middle. Move it to the top.",
@@ -158,22 +167,56 @@ impl SupportKind {
 
 /// Words that mark a sentence as taking a position rather than describing.
 const CLAIM_MARKERS: &[&str] = &[
-    "should", "shouldn't", "must", "the answer is", "the problem is", "wrong",
-    "right", "better", "worse", "worth", "not worth", "matters", "doesn't matter",
-    "the point is", "i'd", "i would", "the case for", "beats", "instead of",
+    "should",
+    "shouldn't",
+    "must",
+    "the answer is",
+    "the problem is",
+    "wrong",
+    "right",
+    "better",
+    "worse",
+    "worth",
+    "not worth",
+    "matters",
+    "doesn't matter",
+    "the point is",
+    "i'd",
+    "i would",
+    "the case for",
+    "beats",
+    "instead of",
 ];
 
 /// Words that mark a sentence as support rather than assertion.
 const SUPPORT_MARKERS: &[&str] = &[
-    "because", "since", "which means", "for example", "in practice", "measured",
-    "we found", "the data", "according to", "when we", "it turned out", "that's why",
+    "because",
+    "since",
+    "which means",
+    "for example",
+    "in practice",
+    "measured",
+    "we found",
+    "the data",
+    "according to",
+    "when we",
+    "it turned out",
+    "that's why",
 ];
 
 /// Words that mark taking on the other side.
 const COUNTER_MARKERS: &[&str] = &[
-    "the obvious objection", "you could argue", "the case against", "admittedly",
-    "the counter", "it's true that", "against that", "the risk is", "what this misses",
-    "the honest problem", "where this falls down",
+    "the obvious objection",
+    "you could argue",
+    "the case against",
+    "admittedly",
+    "the counter",
+    "it's true that",
+    "against that",
+    "the risk is",
+    "what this misses",
+    "the honest problem",
+    "where this falls down",
 ];
 
 fn sentences(text: &str) -> Vec<&str> {
@@ -210,15 +253,22 @@ pub fn assess(text: &str, kind: Kind) -> Vec<Gap> {
     if !claims.is_empty() && supports.is_empty() {
         gaps.push(Gap {
             missing: Missing::NothingBehindIt,
-            evidence: format!("{} assertion{}, no reasons", claims.len(),
-                if claims.len() == 1 { "" } else { "s" }),
+            evidence: format!(
+                "{} assertion{}, no reasons",
+                claims.len(),
+                if claims.len() == 1 { "" } else { "s" }
+            ),
         });
     }
 
     // Anything checkable at all?
     let has_number = text.chars().any(|c| c.is_ascii_digit());
-    let has_example = marks(text, &["for example", "for instance", "such as", "in one case"]);
-    let has_source = text.contains("http") || marks(text, &["according to", "the docs", "the spec"]);
+    let has_example = marks(
+        text,
+        &["for example", "for instance", "such as", "in one case"],
+    );
+    let has_source =
+        text.contains("http") || marks(text, &["according to", "the docs", "the spec"]);
     if !has_number && !has_example && !has_source && ss.len() > 3 {
         gaps.push(Gap {
             missing: Missing::NoEvidence,
@@ -246,7 +296,18 @@ pub fn assess(text: &str, kind: Kind) -> Vec<Gap> {
 
     // Ending.
     if let Some(last) = ss.last() {
-        let ends_well = marks(last, &["so ", "which means", "next", "i'd", "let's", "worth", "should"]);
+        let ends_well = marks(
+            last,
+            &[
+                "so ",
+                "which means",
+                "next",
+                "i'd",
+                "let's",
+                "worth",
+                "should",
+            ],
+        );
         if kind.needs_a_position() && !ends_well && ss.len() > 3 {
             gaps.push(Gap {
                 missing: Missing::NoConclusion,
@@ -312,10 +373,18 @@ pub fn brief(gaps: &[Gap], kind: Kind) -> Option<String> {
         Missing::Relentless => 7,
     });
 
-    let mut s = format!("Rewrite it as {}. It wants: {}.\n\n", 
-        kind.formality(), kind.wants().join(", then "));
+    let mut s = format!(
+        "Rewrite it as {}. It wants: {}.\n\n",
+        kind.formality(),
+        kind.wants().join(", then ")
+    );
     for g in &ordered {
-        s.push_str(&format!("- It {} ({}). {}\n", g.missing.what(), g.evidence, g.missing.fix()));
+        s.push_str(&format!(
+            "- It {} ({}). {}\n",
+            g.missing.what(),
+            g.evidence,
+            g.missing.fix()
+        ));
     }
     s.push_str("\nKeep the voice. Don't pad it to cover the gaps.");
     Some(s)
@@ -329,7 +398,10 @@ pub fn spoken(gaps: &[Gap]) -> String {
             let more = gaps.len() - 1;
             let mut s = format!("It {}. {}", g.missing.what(), g.missing.fix());
             if more > 0 {
-                s.push_str(&format!(" {more} other thing{}.", if more == 1 { "" } else { "s" }));
+                s.push_str(&format!(
+                    " {more} other thing{}.",
+                    if more == 1 { "" } else { "s" }
+                ));
             }
             s
         }
@@ -339,19 +411,42 @@ pub fn spoken(gaps: &[Gap]) -> String {
 /// Work out what kind of thing you're writing, so the standard fits.
 pub fn kind_of(request: &str) -> Kind {
     let t = request.to_lowercase();
-    if ["argue", "make the case", "convince", "why we should", "pitch", "position"]
-        .iter()
-        .any(|w| t.contains(w))
+    if [
+        "argue",
+        "make the case",
+        "convince",
+        "why we should",
+        "pitch",
+        "position",
+    ]
+    .iter()
+    .any(|w| t.contains(w))
     {
         return Kind::Case;
     }
-    if ["ask", "request", "can you", "would you", "invite", "follow up"].iter().any(|w| t.contains(w)) {
+    if [
+        "ask",
+        "request",
+        "can you",
+        "would you",
+        "invite",
+        "follow up",
+    ]
+    .iter()
+    .any(|w| t.contains(w))
+    {
         return Kind::Request;
     }
-    if ["explain", "how does", "teach", "walk through", "guide"].iter().any(|w| t.contains(w)) {
+    if ["explain", "how does", "teach", "walk through", "guide"]
+        .iter()
+        .any(|w| t.contains(w))
+    {
         return Kind::Explanation;
     }
-    if ["note", "jot", "remind", "for myself"].iter().any(|w| t.contains(w)) {
+    if ["note", "jot", "remind", "for myself"]
+        .iter()
+        .any(|w| t.contains(w))
+    {
         return Kind::Note;
     }
     Kind::Account

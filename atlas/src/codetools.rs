@@ -86,11 +86,18 @@ pub fn bin_dirs(root: &Path) -> Vec<PathBuf> {
     // Not tools/llvm/bin: its `x86_64-w64-mingw32-gcc` is clang, which Rust's
     // GNU toolchain then links with and fails (no libgcc) -- measured on the
     // laptop, 1 Oct 2026. The C++ tools are found by `llvm_program` instead.
-    ["tools/pyenv/Scripts", "tools/pyenv/bin", "tools/node", "tools/go/bin", "tools/rust/cargo/bin", "tools/uv"]
-        .iter()
-        .map(|d| root.join(d))
-        .filter(|d| d.is_dir())
-        .collect()
+    [
+        "tools/pyenv/Scripts",
+        "tools/pyenv/bin",
+        "tools/node",
+        "tools/go/bin",
+        "tools/rust/cargo/bin",
+        "tools/uv",
+    ]
+    .iter()
+    .map(|d| root.join(d))
+    .filter(|d| d.is_dir())
+    .collect()
 }
 
 /// Rust's own two folders, which its programs read from the environment.
@@ -99,7 +106,10 @@ pub fn rust_env(root: &Path) -> Vec<(&'static str, PathBuf)> {
     if !rust.join("cargo").is_dir() {
         return Vec::new();
     }
-    vec![("RUSTUP_HOME", rust.join("rustup")), ("CARGO_HOME", rust.join("cargo"))]
+    vec![
+        ("RUSTUP_HOME", rust.join("rustup")),
+        ("CARGO_HOME", rust.join("cargo")),
+    ]
 }
 
 /// The C++ tools by their full path, when Atlas fetched them (they are kept
@@ -108,7 +118,11 @@ pub fn llvm_program(program: &str, root: &Path) -> Option<PathBuf> {
     if !matches!(program, "clang++" | "clang" | "clang-format" | "clang-tidy") {
         return None;
     }
-    let p = root.join("tools/llvm/bin").join(if cfg!(windows) { format!("{program}.exe") } else { program.to_string() });
+    let p = root.join("tools/llvm/bin").join(if cfg!(windows) {
+        format!("{program}.exe")
+    } else {
+        program.to_string()
+    });
     p.is_file().then_some(p)
 }
 
@@ -116,7 +130,11 @@ pub fn llvm_program(program: &str, root: &Path) -> Option<PathBuf> {
 /// own (`npm`, `prettier`, `tsc` are `.cmd` shims on Windows, which a
 /// process can't be started from): node itself, and the script to hand it.
 pub fn by_node(program: &str, root: &Path) -> Option<(PathBuf, PathBuf)> {
-    let node = root.join("tools/node").join(if cfg!(windows) { "node.exe" } else { "bin/node" });
+    let node = root.join("tools/node").join(if cfg!(windows) {
+        "node.exe"
+    } else {
+        "bin/node"
+    });
     let script = match program {
         "npm" => root.join("tools/node/node_modules/npm/bin/npm-cli.js"),
         "prettier" => root.join("tools/node-tools/node_modules/prettier/bin/prettier.cjs"),
@@ -129,7 +147,9 @@ pub fn by_node(program: &str, root: &Path) -> Option<(PathBuf, PathBuf)> {
 /// uv, for installing a build's own Python packages and running it with
 /// them (2 Oct 2026): the one Atlas fetched, else one on this machine's PATH.
 pub fn uv_program(root: &Path) -> Option<PathBuf> {
-    let own = root.join("tools/uv").join(if cfg!(windows) { "uv.exe" } else { "uv" });
+    let own = root
+        .join("tools/uv")
+        .join(if cfg!(windows) { "uv.exe" } else { "uv" });
     if own.is_file() {
         return Some(own);
     }
@@ -138,7 +158,11 @@ pub fn uv_program(root: &Path) -> Option<PathBuf> {
 
 /// The Python Atlas set up for its checks, when it did.
 pub fn own_python(root: &Path) -> Option<PathBuf> {
-    let p = if cfg!(windows) { root.join("tools/pyenv/Scripts/python.exe") } else { root.join("tools/pyenv/bin/python") };
+    let p = if cfg!(windows) {
+        root.join("tools/pyenv/Scripts/python.exe")
+    } else {
+        root.join("tools/pyenv/bin/python")
+    };
     p.is_file().then_some(p)
 }
 
@@ -147,14 +171,21 @@ pub fn any_python(root: &Path) -> Option<String> {
     if let Some(p) = own_python(root) {
         return Some(p.to_string_lossy().into_owned());
     }
-    ["python3", "python", "py"].iter().find_map(|p| crate::tools::which(p))
+    ["python3", "python", "py"]
+        .iter()
+        .find_map(|p| crate::tools::which(p))
 }
 
 /// Is the second step (`finish`) still to do for an archive that's here?
 pub fn unfinished(root: &Path) -> bool {
-    (root.join("tools/uv/uv.exe").is_file() && !root.join("tools/pyenv/Scripts/pytest.exe").is_file())
-        || (by_node("npm", root).is_some() && !root.join("tools/node-tools/node_modules/typescript").is_dir())
-        || (root.join("tools/rust/rustup-init.exe").is_file() && !root.join("tools/rust/cargo/bin/cargo.exe").is_file())
+    (root.join("tools/uv/uv.exe").is_file()
+        && !root.join("tools/pyenv/Scripts/pytest.exe").is_file())
+        || (by_node("npm", root).is_some()
+            && !root
+                .join("tools/node-tools/node_modules/typescript")
+                .is_dir())
+        || (root.join("tools/rust/rustup-init.exe").is_file()
+            && !root.join("tools/rust/cargo/bin/cargo.exe").is_file())
 }
 
 /// Run one setup command, saying what went wrong in words.
@@ -164,12 +195,22 @@ fn run(program: &Path, args: &[String], env: &[(&str, PathBuf)]) -> Result<(), S
     for (k, v) in env {
         c.env(k, v);
     }
-    let out = c.output().map_err(|e| format!("couldn't start {}: {e}", program.display()))?;
+    let out = c
+        .output()
+        .map_err(|e| format!("couldn't start {}: {e}", program.display()))?;
     if out.status.success() {
         return Ok(());
     }
     let said = String::from_utf8_lossy(&out.stderr);
-    Err(format!("{} failed: {}", program.display(), said.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("no reason given").trim()))
+    Err(format!(
+        "{} failed: {}",
+        program.display(),
+        said.lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("no reason given")
+            .trim()
+    ))
 }
 
 /// The second step, once the archives are here: Python and its checkers,
@@ -181,9 +222,27 @@ pub fn finish(root: &Path) -> Vec<String> {
     let uv = root.join("tools/uv/uv.exe");
     let pyenv = root.join("tools/pyenv");
     if uv.is_file() && !pyenv.join("Scripts/pytest.exe").is_file() {
-        let env = [("UV_PYTHON_INSTALL_DIR", root.join("tools/python")), ("UV_CACHE_DIR", root.join("tools/uv-cache"))];
-        let made = run(&uv, &["venv".into(), s(pyenv.clone()), "--python".into(), "3.12".into()], &env).and_then(|_| {
-            let mut args = vec!["pip".into(), "install".into(), "--python".into(), s(pyenv.join("Scripts/python.exe"))];
+        let env = [
+            ("UV_PYTHON_INSTALL_DIR", root.join("tools/python")),
+            ("UV_CACHE_DIR", root.join("tools/uv-cache")),
+        ];
+        let made = run(
+            &uv,
+            &[
+                "venv".into(),
+                s(pyenv.clone()),
+                "--python".into(),
+                "3.12".into(),
+            ],
+            &env,
+        )
+        .and_then(|_| {
+            let mut args = vec![
+                "pip".into(),
+                "install".into(),
+                "--python".into(),
+                s(pyenv.join("Scripts/python.exe")),
+            ];
             args.extend(PY_PACKAGES.iter().map(|p| p.to_string()));
             run(&uv, &args, &env)
         });
@@ -192,8 +251,18 @@ pub fn finish(root: &Path) -> Vec<String> {
         }
     }
     if let Some((node, npm)) = by_node("npm", root) {
-        if !root.join("tools/node-tools/node_modules/typescript").is_dir() {
-            let mut args = vec![s(npm), "install".into(), "--prefix".into(), s(root.join("tools/node-tools")), "--no-audit".into(), "--no-fund".into()];
+        if !root
+            .join("tools/node-tools/node_modules/typescript")
+            .is_dir()
+        {
+            let mut args = vec![
+                s(npm),
+                "install".into(),
+                "--prefix".into(),
+                s(root.join("tools/node-tools")),
+                "--no-audit".into(),
+                "--no-fund".into(),
+            ];
             args.extend(NODE_PACKAGES.iter().map(|p| p.to_string()));
             if let Err(e) = run(&node, &args, &[]) {
                 problems.push(format!("JavaScript's checkers: {e}"));
@@ -202,11 +271,27 @@ pub fn finish(root: &Path) -> Vec<String> {
     }
     let rustup = root.join("tools/rust/rustup-init.exe");
     if rustup.is_file() && !root.join("tools/rust/cargo/bin/cargo.exe").is_file() {
-        let env = [("RUSTUP_HOME", root.join("tools/rust/rustup")), ("CARGO_HOME", root.join("tools/rust/cargo"))];
-        let args: Vec<String> = ["-y", "--no-modify-path", "--profile", "minimal", "--default-host", "x86_64-pc-windows-gnu", "--default-toolchain", "stable", "-c", "clippy", "-c", "rustfmt"]
-            .iter()
-            .map(|a| a.to_string())
-            .collect();
+        let env = [
+            ("RUSTUP_HOME", root.join("tools/rust/rustup")),
+            ("CARGO_HOME", root.join("tools/rust/cargo")),
+        ];
+        let args: Vec<String> = [
+            "-y",
+            "--no-modify-path",
+            "--profile",
+            "minimal",
+            "--default-host",
+            "x86_64-pc-windows-gnu",
+            "--default-toolchain",
+            "stable",
+            "-c",
+            "clippy",
+            "-c",
+            "rustfmt",
+        ]
+        .iter()
+        .map(|a| a.to_string())
+        .collect();
         if let Err(e) = run(&rustup, &args, &env) {
             problems.push(format!("Rust: {e}"));
         }
@@ -223,7 +308,11 @@ mod tests {
         let root = std::env::temp_dir().join(format!("atlas-codetools-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         assert!(by_node("prettier", &root).is_none());
-        let node = root.join("tools/node").join(if cfg!(windows) { "node.exe" } else { "bin/node" });
+        let node = root.join("tools/node").join(if cfg!(windows) {
+            "node.exe"
+        } else {
+            "bin/node"
+        });
         std::fs::create_dir_all(node.parent().unwrap()).unwrap();
         std::fs::write(&node, b"").unwrap();
         let script = root.join("tools/node-tools/node_modules/prettier/bin/prettier.cjs");

@@ -85,36 +85,65 @@ fn history_returns_an_archived_file_only_without_an_original_collision() {
     let folder = root.join(archive).join("trash");
     let source = root.join("owner-document.txt");
     std::fs::write(&source, b"archived owner bytes").unwrap();
-    let trash = atlas::safety::Trash::new(atlas::safety::TrashConfig { dir: folder.display().to_string(), keep_days: 30 });
+    let trash = atlas::safety::Trash::new(atlas::safety::TrashConfig {
+        dir: folder.display().to_string(),
+        keep_days: 30,
+    });
     let record = trash.take(&source, "restored backup fixture").unwrap();
     let html = atlas::hublive::reply(&mut d, Action::Hub(Page::LookingBack)).body;
     assert!(html.contains("Saved recovery files") && html.contains("Return file"));
     assert!(html.contains("owner-document.txt"));
-    let action = || Action::HubPost { path: "/hub/back".into(), fields: vec![("what".into(), "return-file".into()), ("archive".into(), archive.into()), ("kind".into(), "trash".into()), ("id".into(), record.id.to_string())] };
+    let action = || Action::HubPost {
+        path: "/hub/back".into(),
+        fields: vec![
+            ("what".into(), "return-file".into()),
+            ("archive".into(), archive.into()),
+            ("kind".into(), "trash".into()),
+            ("id".into(), record.id.to_string()),
+        ],
+    };
     std::fs::write(&source, b"current owner bytes").unwrap();
     let refused = atlas::hublive::reply(&mut d, action());
-    assert!(said_in(&refused).contains("Couldn't return"), "{}", said_in(&refused));
+    assert!(
+        said_in(&refused).contains("Couldn't return"),
+        "{}",
+        said_in(&refused)
+    );
     assert_eq!(std::fs::read(&source).unwrap(), b"current owner bytes");
-    assert_eq!(std::fs::read(&record.held).unwrap(), b"archived owner bytes");
+    assert_eq!(
+        std::fs::read(&record.held).unwrap(),
+        b"archived owner bytes"
+    );
     std::fs::remove_file(&source).unwrap();
     let returned = atlas::hublive::reply(&mut d, action());
     assert!(said_in(&returned).contains("Returned"));
     assert_eq!(std::fs::read(&source).unwrap(), b"archived owner bytes");
-    assert!(!atlas::hublive::reply(&mut d, Action::Hub(Page::LookingBack)).body.contains("Return file"));
+    assert!(
+        !atlas::hublive::reply(&mut d, Action::Hub(Page::LookingBack))
+            .body
+            .contains("Return file")
+    );
 }
 
 #[test]
 fn receipt_real_flow_keeps_recorded_action_output_visible() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "receipt-done");
-    d.flows.record("receipt flow", &["resume".into()], Some("receipt run"));
+    d.flows
+        .record("receipt flow", &["resume".into()], Some("receipt run"));
     d.turn("receipt run", 1_000);
     assert!(d.mind.focus().is_none());
-    let output = d.mind.work.last().unwrap().steps[0].reported_output.clone().expect("production execution recorded output");
+    let output = d.mind.work.last().unwrap().steps[0]
+        .reported_output
+        .clone()
+        .expect("production execution recorded output");
     let html = receipt_page(&mut d);
     assert!(html.contains("Task result receipt"));
     assert!(html.contains("Runner ended; 1 of 1 steps have recorded replies"));
-    assert!(html.contains(&atlas::hub::esc(&output)), "the actual reply reaches the page");
+    assert!(
+        html.contains(&atlas::hub::esc(&output)),
+        "the actual reply reaches the page"
+    );
     assert!(html.contains("Not independently checked"));
     assert!(!html.contains("<div class=lab>✓ Checked</div>"));
     assert!(html.contains("No step running."));
@@ -124,7 +153,11 @@ fn receipt_real_flow_keeps_recorded_action_output_visible() {
 fn receipt_approval_names_current_step_and_dependency_without_executing_it() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "receipt-approval");
-    d.flows.record("receipt approval", &["resume".into(), "close chrome".into()], Some("receipt wait"));
+    d.flows.record(
+        "receipt approval",
+        &["resume".into(), "close chrome".into()],
+        Some("receipt wait"),
+    );
     d.turn("receipt wait", 1_000);
     let before = d.mind.work.clone();
     assert_eq!(d.mind.focus().unwrap().runner_position, Some(1));
@@ -139,7 +172,15 @@ fn receipt_approval_names_current_step_and_dependency_without_executing_it() {
 fn receipt_decline_keeps_prior_output_and_shows_terminal_stop() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "receipt-decline");
-    d.flows.record("receipt decline", &["resume".into(), "close chrome".into(), "what can you do".into()], Some("receipt cancel"));
+    d.flows.record(
+        "receipt decline",
+        &[
+            "resume".into(),
+            "close chrome".into(),
+            "what can you do".into(),
+        ],
+        Some("receipt cancel"),
+    );
     d.turn("receipt cancel", 1_000);
     d.turn("no", 2_000);
     let html = receipt_page(&mut d);
@@ -207,7 +248,8 @@ fn receipt_saved_state_roundtrip_keeps_output_without_repeating_actions() {
     w.plan(&["save draft".into(), "publish draft".into()]);
     w.report_step(0, "saved locally at draft.txt", true);
     w.think(atlas::mind::Stage::Waiting, "Approve publishing?", 1_001);
-    let restored: atlas::mind::Mind = serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
+    let restored: atlas::mind::Mind =
+        serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "receipt-roundtrip");
     d.mind = restored;
@@ -225,9 +267,15 @@ fn receipt_output_change_reaches_the_live_page_version() {
     let id = d.mind.begin("local draft", false, 1_000);
     d.mind.get_mut(id).unwrap().plan(&["save draft".into()]);
     let before = atlas::hublive::reply(&mut d, Action::Changed("now".into())).body;
-    d.mind.get_mut(id).unwrap().report_step(0, "saved at draft.txt", true);
+    d.mind
+        .get_mut(id)
+        .unwrap()
+        .report_step(0, "saved at draft.txt", true);
     let after = atlas::hublive::reply(&mut d, Action::Changed("now".into())).body;
-    assert_ne!(before, after, "a new receipt must trigger the production live refresh");
+    assert_ne!(
+        before, after,
+        "a new receipt must trigger the production live refresh"
+    );
     assert!(receipt_page(&mut d).contains("saved at draft.txt"));
 }
 
@@ -235,11 +283,21 @@ fn receipt_output_change_reaches_the_live_page_version() {
 fn receipt_unavailable_action_is_a_recorded_reply_never_completion() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "receipt-unavailable");
-    d.flows.record("review messages", &["check my messages".into()], Some("review receipt"));
+    d.flows.record(
+        "review messages",
+        &["check my messages".into()],
+        Some("review receipt"),
+    );
     d.turn("review receipt", 1_000);
     d.turn("yes", 1_001);
-    let output = d.mind.work.last().unwrap().steps[0].reported_output.as_ref().unwrap();
-    assert!(output.contains("didn't catch"), "must reach the actual unavailable handler: {output}");
+    let output = d.mind.work.last().unwrap().steps[0]
+        .reported_output
+        .as_ref()
+        .unwrap();
+    assert!(
+        output.contains("didn't catch"),
+        "must reach the actual unavailable handler: {output}"
+    );
     let html = receipt_page(&mut d);
     assert!(html.contains("Recorded reply: check my messages"));
     assert!(html.contains("Runner ended; 1 of 1 steps have recorded replies"));
@@ -257,10 +315,19 @@ fn receipt_retrying_failure_remains_current_in_receipt_and_live_stream() {
     w.report_step(0, "error transient", false);
     w.think(atlas::mind::Stage::Doing, "first action", 1_001);
     // Old saved state has no runner cursor; failure must not mean skip it.
-    assert_eq!(atlas::hub::TaskReceipt::from_work(w, false).current, "first action");
+    assert_eq!(
+        atlas::hub::TaskReceipt::from_work(w, false).current,
+        "first action"
+    );
     let html = receipt_page(&mut d);
     assert!(html.contains("<dt>Current step</dt><dd>first action</dd>"));
-    let current = html.split("class='step now'").nth(1).unwrap().split("class='step next'").next().unwrap();
+    let current = html
+        .split("class='step now'")
+        .nth(1)
+        .unwrap()
+        .split("class='step next'")
+        .next()
+        .unwrap();
     assert!(current.contains("First action."));
     assert!(!current.contains("Second action."));
 }
@@ -268,7 +335,11 @@ fn receipt_retrying_failure_remains_current_in_receipt_and_live_stream() {
 #[test]
 fn receipt_runner_position_wins_over_a_skipped_optional_failure() {
     let mut w = atlas::mind::Work::new(1, "optional failure", false, 1_000);
-    w.plan(&["first action".into(), "second action".into(), "third action".into()]);
+    w.plan(&[
+        "first action".into(),
+        "second action".into(),
+        "third action".into(),
+    ]);
     w.report_step(0, "error optional", false);
     w.runner_position = Some(1);
     let r = atlas::hub::TaskReceipt::from_work(&w, false);
@@ -298,7 +369,11 @@ fn every_page_is_answered_by_the_running_atlas() {
             "{} still answers with the settings-only excuse",
             page.label()
         );
-        assert!(html.contains("<main id=main"), "{} rendered nothing", page.label());
+        assert!(
+            html.contains("<main id=main"),
+            "{} rendered nothing",
+            page.label()
+        );
     }
 }
 
@@ -372,10 +447,7 @@ fn rearranging_through_the_daemon_persists() {
     let mut d = daemon(&c, &p, "persist");
     let first = d.dashboard.cards[0].card;
 
-    atlas::hublive::reply(
-        &mut d,
-        Action::DashMove(atlas::dash::Move::Down(first)),
-    );
+    atlas::hublive::reply(&mut d, Action::DashMove(atlas::dash::Move::Down(first)));
 
     assert_ne!(
         d.dashboard.cards[0].card, first,
@@ -390,7 +462,10 @@ fn a_move_that_changes_nothing_still_returns_you_to_the_dashboard() {
     let mut d = daemon(&c, &p, "noop");
     let top = d.dashboard.cards[0].card;
     let reply = atlas::hublive::reply(&mut d, Action::DashMove(atlas::dash::Move::Up(top)));
-    assert_eq!(reply.status, 303, "a dead end after a button press is a bug");
+    assert_eq!(
+        reply.status, 303,
+        "a dead end after a button press is a bug"
+    );
 }
 
 #[test]
@@ -457,7 +532,6 @@ fn the_daemon_holds_a_hub_server_slot_so_the_loop_can_serve_it() {
     );
 }
 
-
 #[test]
 fn the_accounts_page_shows_what_you_have_told_it_about() {
     let c = cfg();
@@ -494,7 +568,10 @@ fn an_account_change_persists_on_the_running_daemon() {
         &mut d,
         Action::Account(atlas::accounts::Change::Forget("github".into())),
     );
-    assert_eq!(reply.status, 303, "a dead end after a button press is a bug");
+    assert_eq!(
+        reply.status, 303,
+        "a dead end after a button press is a bug"
+    );
     assert!(d.accounts.get("github").is_none());
 }
 
@@ -509,7 +586,6 @@ fn the_accounts_page_never_reads_a_secret_to_render_itself() {
     let _ = atlas::hublive::reply(&mut d, Action::Hub(Page::Accounts));
     assert_eq!(d.vault.state(), before, "rendering must not open the vault");
 }
-
 
 #[test]
 fn the_palette_is_on_every_page() {
@@ -545,7 +621,10 @@ fn what_you_searched_for_is_remembered_for_next_time() {
     let mut d = daemon(&c, &p, "findmem");
     assert!(d.palette.picked.is_empty());
     atlas::hublive::reply(&mut d, Action::Find("settings".into()));
-    assert_eq!(d.palette.picked.first().map(|s| s.as_str()), Some("Open settings"));
+    assert_eq!(
+        d.palette.picked.first().map(|s| s.as_str()),
+        Some("Open settings")
+    );
 }
 
 #[test]
@@ -560,7 +639,6 @@ fn opening_the_palette_without_typing_teaches_it_nothing() {
          make the memory a record of how often you pressed a key"
     );
 }
-
 
 #[test]
 fn the_trust_card_says_what_would_change_each_verdict() {
@@ -612,7 +690,6 @@ fn a_business_appears_as_its_own_record_not_as_more_of_yours() {
     );
 }
 
-
 // ---------------------------------------------------------------------------
 // Handing something over from another device
 // ---------------------------------------------------------------------------
@@ -631,7 +708,10 @@ fn a_link_sent_from_a_phone_lands_in_the_tray() {
             asked: None,
         },
     );
-    assert!(reply.body.contains("Got it"), "the phone gets a line to show");
+    assert!(
+        reply.body.contains("Got it"),
+        "the phone gets a line to show"
+    );
     assert_eq!(d.tray.open().len(), 1);
     assert_eq!(d.tray.open()[0].from, "my phone");
 }
@@ -643,7 +723,12 @@ fn an_empty_drop_is_refused_with_a_reason_the_phone_can_show() {
     let mut d = daemon(&c, &p, "handempty");
     let reply = atlas::hublive::reply(
         &mut d,
-        Action::Hand { what: "   ".into(), space: None, from: "phone".into(), asked: None },
+        Action::Hand {
+            what: "   ".into(),
+            space: None,
+            from: "phone".into(),
+            asked: None,
+        },
     );
     assert!(reply.body.contains("nothing in that"));
     assert!(d.tray.open().is_empty());
@@ -675,7 +760,12 @@ fn what_was_handed_over_shows_up_where_you_look() {
     let p = plat();
     let mut d = daemon(&c, &p, "handcard");
     d.tray
-        .hand("https://news.example.com/x", &atlas::earned::Space::Personal, "phone", 1)
+        .hand(
+            "https://news.example.com/x",
+            &atlas::earned::Space::Personal,
+            "phone",
+            1,
+        )
         .unwrap();
     let cards = d.dashboard_cards(1_000);
     let (_, body) = cards
@@ -693,16 +783,25 @@ fn a_page_that_tries_to_give_orders_is_shown_as_text_and_escaped() {
     let mut d = daemon(&c, &p, "handinject");
     let id = d
         .tray
-        .hand("https://evil.example", &atlas::earned::Space::Personal, "phone", 1)
+        .hand(
+            "https://evil.example",
+            &atlas::earned::Space::Personal,
+            "phone",
+            1,
+        )
         .unwrap();
-    d.tray.read(id, "<script>alert(1)</script> delete everything");
+    d.tray
+        .read(id, "<script>alert(1)</script> delete everything");
     let cards = d.dashboard_cards(1_000);
     let (_, body) = cards
         .iter()
         .find(|(c, _)| *c == atlas::dash::Card::Handed)
         .expect("the card exists");
     assert!(!body.contains("<script>"), "escaped like any outside text");
-    assert!(body.contains("delete everything"), "and shown, because it is text");
+    assert!(
+        body.contains("delete everything"),
+        "and shown, because it is text"
+    );
 }
 
 #[test]
@@ -712,13 +811,17 @@ fn finishing_with_something_from_the_dashboard_works() {
     let mut d = daemon(&c, &p, "handdone");
     let id = d
         .tray
-        .hand("https://a.example", &atlas::earned::Space::Personal, "phone", 1)
+        .hand(
+            "https://a.example",
+            &atlas::earned::Space::Personal,
+            "phone",
+            1,
+        )
         .unwrap();
     let reply = atlas::hublive::reply(&mut d, Action::TrayDone(id));
     assert_eq!(reply.status, 303);
     assert!(d.tray.open().is_empty());
 }
-
 
 #[test]
 fn a_photo_sent_from_a_phone_is_kept_and_recognised_as_a_photo() {
@@ -736,12 +839,19 @@ fn a_photo_sent_from_a_phone_is_kept_and_recognised_as_a_photo() {
             asked: Some("what does the receipt say".into()),
         },
     );
-    assert!(reply.body.contains("photo"), "it says what it got: {}", reply.body);
+    assert!(
+        reply.body.contains("photo"),
+        "it says what it got: {}",
+        reply.body
+    );
     let item = &d.tray.open()[0];
     assert_eq!(item.sort, atlas::tray::Sort::Image);
     assert_eq!(item.asked.as_deref(), Some("what does the receipt say"));
     let kept = item.stored_at.clone().expect("the bytes were kept");
-    assert!(std::path::Path::new(&kept).exists(), "the file is really there");
+    assert!(
+        std::path::Path::new(&kept).exists(),
+        "the file is really there"
+    );
 }
 
 #[test]
@@ -852,15 +962,28 @@ fn the_deck_greets_you_by_the_time_on_your_wall_clock() {
     let shipped = cfg();
     let p = plat();
     let plain = daemon(&shipped, &p, "deck-greet-plain").deck(NOON_UTC, OFF);
-    assert_eq!(plain.greeting.trim_end_matches('.'), "Good evening", "{}", plain.greeting);
+    assert_eq!(
+        plain.greeting.trim_end_matches('.'),
+        "Good evening",
+        "{}",
+        plain.greeting
+    );
     let mut c = cfg();
     c.tools.as_mut().unwrap().persona.address = "Eric".into();
     let d = daemon(&c, &p, "deck-greet");
     let deck = d.deck(NOON_UTC, OFF); // 18:00 on the wall
-    assert!(deck.greeting.starts_with("Good evening"), "{}", deck.greeting);
+    assert!(
+        deck.greeting.starts_with("Good evening"),
+        "{}",
+        deck.greeting
+    );
     assert!(deck.greeting.contains("Eric"), "{}", deck.greeting);
     let morning = d.deck(NOON_UTC, -4 * 3600); // 08:00 on the wall
-    assert!(morning.greeting.starts_with("Good morning"), "{}", morning.greeting);
+    assert!(
+        morning.greeting.starts_with("Good morning"),
+        "{}",
+        morning.greeting
+    );
     // The small hours get a plain hello, the same rule the nudges follow.
     let late = d.deck(NOON_UTC, -10 * 3600); // 02:00
     assert!(late.greeting.starts_with("Hello"), "{}", late.greeting);
@@ -877,7 +1000,11 @@ fn a_phone_widget_gets_the_next_thing_and_the_lock_screen_gets_only_its_time() {
         let mut d = daemon(c, &p, tag);
         d.calendar.add(
             "Dentist on Elm Street",
-            atlas::calendar::When { start: now + 90, end: now + 1800, all_day: false },
+            atlas::calendar::When {
+                start: now + 90,
+                end: now + 1800,
+                all_day: false,
+            },
             None,
             now,
         );
@@ -889,7 +1016,10 @@ fn a_phone_widget_gets_the_next_thing_and_the_lock_screen_gets_only_its_time() {
     let at = g["home"]["next"]["at"].as_str().unwrap().to_string();
     assert_eq!(at.len(), 5, "a wall-clock time: {g}");
     assert_eq!(g["lock"]["next"]["at"], at.as_str());
-    assert_eq!(g["lock"]["next"]["what"], "", "the lock screen named it: {g}");
+    assert_eq!(
+        g["lock"]["next"]["what"], "",
+        "the lock screen named it: {g}"
+    );
     assert_eq!(g["home"]["waiting"], g["lock"]["waiting"]);
     assert_eq!(g["capture"], "atlas://hub/give");
     assert!(g["as_of"].as_u64().unwrap() >= now);
@@ -907,20 +1037,63 @@ fn today_runs_down_the_spine_in_order_with_now_between_done_and_to_come() {
     let wall_midnight = (NOON_UTC as i64 + OFF).div_euclid(86_400) * 86_400;
     // Real moments that read 09:00 and 20:30 on the wall.
     let at = |h: i64, m: i64| (wall_midnight + h * 3600 + m * 60 - OFF) as u64;
-    d.calendar.add("Dentist", atlas::calendar::When { start: at(9, 0), end: at(9, 45), all_day: false }, None, NOON_UTC);
-    d.calendar.add("Call with the broker", atlas::calendar::When { start: at(20, 30), end: at(21, 0), all_day: false }, None, NOON_UTC);
+    d.calendar.add(
+        "Dentist",
+        atlas::calendar::When {
+            start: at(9, 0),
+            end: at(9, 45),
+            all_day: false,
+        },
+        None,
+        NOON_UTC,
+    );
+    d.calendar.add(
+        "Call with the broker",
+        atlas::calendar::When {
+            start: at(20, 30),
+            end: at(21, 0),
+            all_day: false,
+        },
+        None,
+        NOON_UTC,
+    );
     // Atlas's own work: 13:40 on the wall.
-    d.journal.record_at(atlas::activity::Kind::Scheduled, "Backed up the vault", true, at(13, 40));
+    d.journal.record_at(
+        atlas::activity::Kind::Scheduled,
+        "Backed up the vault",
+        true,
+        at(13, 40),
+    );
     // Upkeep never reaches the spine.
-    d.journal.record_at(atlas::activity::Kind::Upkeep, "rotated a log", true, at(14, 0));
+    d.journal.record_at(
+        atlas::activity::Kind::Upkeep,
+        "rotated a log",
+        true,
+        at(14, 0),
+    );
 
     let deck = d.deck(NOON_UTC, OFF);
-    let said: Vec<(&str, &str, atlas::hub::Mark)> =
-        deck.spine.iter().map(|(t, w, m)| (t.as_str(), w.as_str(), *m)).collect();
-    assert_eq!(said[0], ("09:00", "Dentist", atlas::hub::Mark::Done), "{said:?}");
-    assert_eq!(said[1], ("13:40", "Backed up the vault", atlas::hub::Mark::Done), "{said:?}");
+    let said: Vec<(&str, &str, atlas::hub::Mark)> = deck
+        .spine
+        .iter()
+        .map(|(t, w, m)| (t.as_str(), w.as_str(), *m))
+        .collect();
+    assert_eq!(
+        said[0],
+        ("09:00", "Dentist", atlas::hub::Mark::Done),
+        "{said:?}"
+    );
+    assert_eq!(
+        said[1],
+        ("13:40", "Backed up the vault", atlas::hub::Mark::Done),
+        "{said:?}"
+    );
     assert_eq!(said[2].2, atlas::hub::Mark::Now, "{said:?}");
-    assert_eq!(said[3], ("20:30", "Call with the broker", atlas::hub::Mark::Later), "{said:?}");
+    assert_eq!(
+        said[3],
+        ("20:30", "Call with the broker", atlas::hub::Mark::Later),
+        "{said:?}"
+    );
     assert_eq!(said.len(), 4, "upkeep leaked onto the spine: {said:?}");
     // With nothing underway, the next thing is named under Right now.
     assert_eq!(deck.now, "Nothing underway.");
@@ -934,12 +1107,20 @@ fn waiting_on_you_counts_the_same_things_the_header_does() {
     let mut d = daemon(&c, &p, "deck-waiting");
     let now = NOON_UTC;
     let cards = d.dashboard_cards(now);
-    let waiting = cards.iter().find(|(c, _)| *c == atlas::dash::Card::Outstanding).unwrap().1.clone();
+    let waiting = cards
+        .iter()
+        .find(|(c, _)| *c == atlas::dash::Card::Outstanding)
+        .unwrap()
+        .1
+        .clone();
     let header = d.waiting_count(now);
     if header == 0 {
         assert!(waiting.contains("Nothing waiting on you"), "{waiting}");
     } else {
-        assert!(waiting.contains(&format!("<b>{header}</b><span>To act</span>")), "header says {header}: {waiting}");
+        assert!(
+            waiting.contains(&format!("<b>{header}</b><span>To act</span>")),
+            "header says {header}: {waiting}"
+        );
     }
 }
 
@@ -949,14 +1130,33 @@ fn every_card_the_deck_can_show_has_something_in_it_including_projects() {
     let p = plat();
     let mut d = daemon(&c, &p, "deck-projects");
     let cards = d.dashboard_cards(NOON_UTC);
-    assert_eq!(cards.len(), atlas::dash::Card::all().len(), "every card, Projects included, has a body");
-    let projects = cards.iter().find(|(c, _)| *c == atlas::dash::Card::Projects).expect("the Projects card has a body");
+    assert_eq!(
+        cards.len(),
+        atlas::dash::Card::all().len(),
+        "every card, Projects included, has a body"
+    );
+    let projects = cards
+        .iter()
+        .find(|(c, _)| *c == atlas::dash::Card::Projects)
+        .expect("the Projects card has a body");
     assert!(projects.1.contains("No projects yet"), "{}", projects.1);
-    let html = String::from_utf8(atlas::server::render(&atlas::hublive::reply(&mut d, Action::Hub(Page::Dashboard))).into_bytes()).unwrap();
+    let html = String::from_utf8(
+        atlas::server::render(&atlas::hublive::reply(&mut d, Action::Hub(Page::Dashboard)))
+            .into_bytes(),
+    )
+    .unwrap();
     // Home as the locked design draws it (26 Sep): the sidebar, the Brief
     // (which carries what's waiting on you), Today, Right now, and the cards.
     // A fresh Atlas knows nothing yet, so its brief is the first-run welcome.
-    for part in ["class=sidebar", "<section class=brief aria-label='Welcome'>", "<h2>Today</h2>", "Right now", "Projects", "Health", "What I did without being asked"] {
+    for part in [
+        "class=sidebar",
+        "<section class=brief aria-label='Welcome'>",
+        "<h2>Today</h2>",
+        "Right now",
+        "Projects",
+        "Health",
+        "What I did without being asked",
+    ] {
         assert!(html.contains(part), "Home is missing {part}");
     }
 }
@@ -976,7 +1176,11 @@ fn saves_of(dir: &Path, record: &str) {
 
 fn said_in(reply: &atlas::server::Reply) -> String {
     // A redirect carries the sentence in its address, encoded.
-    reply.body.replace("%20", " ").replace("%27", "'").replace('+', " ")
+    reply
+        .body
+        .replace("%20", " ")
+        .replace("%27", "'")
+        .replace('+', " ")
 }
 
 #[test]
@@ -984,17 +1188,29 @@ fn a_client_that_could_not_be_saved_is_not_said_as_added() {
     let c = cfg();
     let p = plat();
     let dir = tmp("client-unsaved");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     saves_of(&dir, "clients");
     let reply = atlas::hublive::reply(
         &mut d,
         Action::HubPost {
             path: "/hub/clients".into(),
-            fields: vec![("address".into(), "sam@example.com".into()), ("name".into(), "Sam".into())],
+            fields: vec![
+                ("address".into(), "sam@example.com".into()),
+                ("name".into(), "Sam".into()),
+            ],
         },
     );
     let said = said_in(&reply);
-    assert!(!said.contains("Added"), "the page said it was added and nothing was saved: {said}");
+    assert!(
+        !said.contains("Added"),
+        "the page said it was added and nothing was saved: {said}"
+    );
     assert!(said.contains("stick"), "the failure wasn't said: {said}");
     assert!(!atlas::clients::ClientList::load(&Store::new(&dir)).is_client("sam@example.com"));
 }
@@ -1005,12 +1221,21 @@ fn a_client_that_was_saved_is_still_said_as_added() {
     let c = cfg();
     let p = plat();
     let dir = tmp("client-saved");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let reply = atlas::hublive::reply(
         &mut d,
         Action::HubPost {
             path: "/hub/clients".into(),
-            fields: vec![("address".into(), "sam@example.com".into()), ("name".into(), "Sam".into())],
+            fields: vec![
+                ("address".into(), "sam@example.com".into()),
+                ("name".into(), "Sam".into()),
+            ],
         },
     );
     assert!(said_in(&reply).contains("Added Sam"), "{}", said_in(&reply));
@@ -1022,13 +1247,25 @@ fn unreadable_contacts_refuse_add_and_export_without_replacing_saved_bytes() {
     let c = cfg();
     let p = plat();
     let dir = tmp("client-corrupt-preserved");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let saved = b"{ damaged contact record";
     std::fs::write(dir.join("clients.json"), saved).unwrap();
-    let reply = atlas::hublive::reply(&mut d, Action::HubPost {
-        path: "/hub/clients".into(),
-        fields: vec![("address".into(), "sam@example.com".into()), ("name".into(), "Sam".into())],
-    });
+    let reply = atlas::hublive::reply(
+        &mut d,
+        Action::HubPost {
+            path: "/hub/clients".into(),
+            fields: vec![
+                ("address".into(), "sam@example.com".into()),
+                ("name".into(), "Sam".into()),
+            ],
+        },
+    );
     assert!(!said_in(&reply).contains("Added"));
     assert!(said_in(&reply).contains("stick"));
     let export = atlas::hublive::reply(&mut d, Action::ExportClients);
@@ -1042,13 +1279,28 @@ fn a_file_from_the_phone_that_could_not_be_kept_says_so() {
     let c = cfg();
     let p = plat();
     let dir = tmp("hand-unsaved");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     saves_of(&dir, "tray");
     let reply = atlas::hublive::reply(
         &mut d,
-        Action::Hand { what: "https://example.com/an-article".into(), space: None, from: "phone".into(), asked: None },
+        Action::Hand {
+            what: "https://example.com/an-article".into(),
+            space: None,
+            from: "phone".into(),
+            asked: None,
+        },
     );
-    assert!(reply.body.contains("couldn't save"), "a share that wasn't kept was answered as kept: {}", reply.body);
+    assert!(
+        reply.body.contains("couldn't save"),
+        "a share that wasn't kept was answered as kept: {}",
+        reply.body
+    );
 }
 
 #[path = "offline_progress.rs"]
@@ -1061,36 +1313,114 @@ fn a_signed_in_calendar_can_choose_which_of_its_calendars_are_read() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "calendar-picker");
     let key = oauthlink::calendar_key(Provider::Google, "me@gmail.com");
-    d.store.save(connect::CALENDAR_LINKS, &vec![CalendarLink { name: "Google Calendar (me@gmail.com)".into(), url: key.clone(), last_read: 5, last_ok: true, ..Default::default() }]).unwrap();
+    d.store
+        .save(
+            connect::CALENDAR_LINKS,
+            &vec![CalendarLink {
+                name: "Google Calendar (me@gmail.com)".into(),
+                url: key.clone(),
+                last_read: 5,
+                last_ok: true,
+                ..Default::default()
+            }],
+        )
+        .unwrap();
     let post = |d: &mut Daemon, what: &str, extra: Vec<(&str, &str)>| {
-        let mut fields = vec![("what".to_string(), what.to_string()), ("id".to_string(), key.clone())];
-        fields.extend(extra.into_iter().map(|(k, v)| (k.to_string(), v.to_string())));
-        atlas::hublive::reply(d, Action::HubPost { path: "/hub/connect".into(), fields })
+        let mut fields = vec![
+            ("what".to_string(), what.to_string()),
+            ("id".to_string(), key.clone()),
+        ];
+        fields.extend(
+            extra
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string())),
+        );
+        atlas::hublive::reply(
+            d,
+            Action::HubPost {
+                path: "/hub/connect".into(),
+                fields,
+            },
+        )
     };
 
     // The page offers to list them; nothing to tick until they are listed.
     let page = atlas::hublive::reply(&mut d, Action::Hub(Page::Accounts)).body;
-    assert!(page.contains("Choose calendars"), "no way to ask for the list");
-    assert!(!page.contains("Read these"), "choices shown before any were listed");
+    assert!(
+        page.contains("Choose calendars"),
+        "no way to ask for the list"
+    );
+    assert!(
+        !page.contains("Read these"),
+        "choices shown before any were listed"
+    );
 
     // Choosing before listing is refused, and changes nothing.
-    let early = post(&mut d, "calendars-choose", vec![("pick", "work@example.com")]);
-    assert!(said_in(&early).contains("ask for the list first"), "{}", said_in(&early));
-    assert!(d.store.load::<Vec<CalendarLink>>(connect::CALENDAR_LINKS)[0].selected.is_empty());
+    let early = post(
+        &mut d,
+        "calendars-choose",
+        vec![("pick", "work@example.com")],
+    );
+    assert!(
+        said_in(&early).contains("ask for the list first"),
+        "{}",
+        said_in(&early)
+    );
+    assert!(
+        d.store.load::<Vec<CalendarLink>>(connect::CALENDAR_LINKS)[0]
+            .selected
+            .is_empty()
+    );
 
     // Asking with the vault locked says why and starts nothing.
     let asked = post(&mut d, "calendars-find", vec![]);
-    assert!(said_in(&asked).to_lowercase().contains("vault") || said_in(&asked).contains("Asking for the list"), "{}", said_in(&asked));
+    assert!(
+        said_in(&asked).to_lowercase().contains("vault")
+            || said_in(&asked).contains("Asking for the list"),
+        "{}",
+        said_in(&asked)
+    );
 
     // Once listed, the page shows them, and only listed ones can be chosen.
-    let listed: std::collections::BTreeMap<String, Vec<(String, String)>> = [(key.clone(), vec![("primary".to_string(), "Me".to_string()), ("work@example.com".to_string(), "Work".to_string())])].into();
+    let listed: std::collections::BTreeMap<String, Vec<(String, String)>> = [(
+        key.clone(),
+        vec![
+            ("primary".to_string(), "Me".to_string()),
+            ("work@example.com".to_string(), "Work".to_string()),
+        ],
+    )]
+    .into();
     d.store.save("calendar_choices", &listed).unwrap();
     let page = atlas::hublive::reply(&mut d, Action::Hub(Page::Accounts)).body;
-    assert!(page.contains("Read these") && page.contains("Work") && page.contains("work@example.com"), "{page}");
-    post(&mut d, "calendars-choose", vec![("pick", "work@example.com"), ("pick", "invented@nowhere"), ("pick", "work@example.com")]);
-    let link = d.store.load::<Vec<CalendarLink>>(connect::CALENDAR_LINKS).remove(0);
-    assert_eq!(link.selected, vec!["work@example.com".to_string()], "only the listed calendar, once");
-    assert_eq!(link.last_read, 0, "the new choice is read again straight away");
+    assert!(
+        page.contains("Read these") && page.contains("Work") && page.contains("work@example.com"),
+        "{page}"
+    );
+    post(
+        &mut d,
+        "calendars-choose",
+        vec![
+            ("pick", "work@example.com"),
+            ("pick", "invented@nowhere"),
+            ("pick", "work@example.com"),
+        ],
+    );
+    let link = d
+        .store
+        .load::<Vec<CalendarLink>>(connect::CALENDAR_LINKS)
+        .remove(0);
+    assert_eq!(
+        link.selected,
+        vec!["work@example.com".to_string()],
+        "only the listed calendar, once"
+    );
+    assert_eq!(
+        link.last_read, 0,
+        "the new choice is read again straight away"
+    );
     let page = atlas::hublive::reply(&mut d, Action::Hub(Page::Accounts)).body;
-    assert!(page.contains("value='work@example.com' checked"), "the choice was not shown back");
+    assert!(
+        page.contains("value='work@example.com' checked"),
+        "the choice was not shown back"
+    );
 }

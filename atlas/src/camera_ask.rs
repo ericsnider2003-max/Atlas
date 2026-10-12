@@ -15,7 +15,17 @@
 //! "stop using my camera").
 
 /// Words that make a sentence about the camera a refusal, not a request.
-const REFUSALS: &[&str] = &["don't", "dont", "do not", "stop", "never", "turn off", "switch off", "not allowed", "no camera"];
+const REFUSALS: &[&str] = &[
+    "don't",
+    "dont",
+    "do not",
+    "stop",
+    "never",
+    "turn off",
+    "switch off",
+    "not allowed",
+    "no camera",
+];
 
 /// Ways of asking to be looked at, or to have the camera used.
 const LOOK: &[&str] = &[
@@ -53,7 +63,13 @@ const LOOK: &[&str] = &[
 fn plain(s: &str) -> String {
     let s = s.to_lowercase().replace('\u{2019}', "'");
     s.chars()
-        .map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '\'' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -82,15 +98,30 @@ pub fn asks_to_look(said: &str) -> bool {
 pub fn names_the_camera(said: &str) -> bool {
     let t = plain(said);
     asks_to_look(said)
-        && ["use my", "use the", "use your", "turn on my", "turn on the", "turn on your", "open my", "open the"]
-            .iter()
-            .any(|lead| ["camera", "webcam"].iter().any(|c| has(&t, &format!("{lead} {c}"))))
+        && [
+            "use my",
+            "use the",
+            "use your",
+            "turn on my",
+            "turn on the",
+            "turn on your",
+            "open my",
+            "open the",
+        ]
+        .iter()
+        .any(|lead| {
+            ["camera", "webcam"]
+                .iter()
+                .any(|c| has(&t, &format!("{lead} {c}")))
+        })
 }
 
 /// Is it about something being held up rather than about you?
 fn about_something_held(said: &str) -> bool {
     let t = plain(said);
-    ["holding", "in my hand", "showing you", "this thing"].iter().any(|p| t.contains(p))
+    ["holding", "in my hand", "showing you", "this thing"]
+        .iter()
+        .any(|p| t.contains(p))
 }
 
 /// The question for the picture reader about a frame from the camera, from
@@ -112,22 +143,43 @@ pub fn question(said: &str) -> String {
 /// "allow" beside the camera, count; anything that takes it back doesn't.
 pub fn allows(said: &str) -> bool {
     let t = plain(said);
-    if t.is_empty() || REFUSALS.iter().any(|r| has(&t, r)) || has(&t, "no") || has(&t, "not") || has(&t, "won't") {
+    if t.is_empty()
+        || REFUSALS.iter().any(|r| has(&t, r))
+        || has(&t, "no")
+        || has(&t, "not")
+        || has(&t, "won't")
+    {
         return false;
     }
     if crate::session::is_yes(&t) || crate::grants::span_from_answer(&t).is_some() {
         return true;
     }
     let grants = [
-        "i allow", "allow it", "allow that", "allow the camera", "allow the webcam", "allow you", "allowed",
-        "you can", "you may", "you have permission", "permission granted", "i give you permission",
-        "go on", "go for it", "that's fine", "thats fine", "fine by me",
+        "i allow",
+        "allow it",
+        "allow that",
+        "allow the camera",
+        "allow the webcam",
+        "allow you",
+        "allowed",
+        "you can",
+        "you may",
+        "you have permission",
+        "permission granted",
+        "i give you permission",
+        "go on",
+        "go for it",
+        "that's fine",
+        "thats fine",
+        "fine by me",
     ];
     if grants.iter().any(|g| has(&t, g)) {
         return true;
     }
     // "allow" misheard, next to the thing being allowed.
-    let about_it = ["camera", "webcam", "it", "that"].iter().any(|w| has(&t, w));
+    let about_it = ["camera", "webcam", "it", "that"]
+        .iter()
+        .any(|w| has(&t, w));
     let heard_as = ["love", "a low", "aloud", "hallow", "i low"];
     about_it && heard_as.iter().any(|h| has(&t, h)) && t.split_whitespace().count() <= 6
 }
@@ -144,10 +196,27 @@ mod tests {
 
     #[test]
     fn erics_answers_to_allow_the_camera_are_yes() {
-        for s in ["I allow the camera.", "I Allow The Camera.", "I love the camera.", "yes", "yes, always", "allow it", "you can", "go on then"] {
+        for s in [
+            "I allow the camera.",
+            "I Allow The Camera.",
+            "I love the camera.",
+            "yes",
+            "yes, always",
+            "allow it",
+            "you can",
+            "go on then",
+        ] {
             assert!(allows(s), "{s}");
         }
-        for s in ["no", "don't", "not now", "I don't allow the camera", "stop", "what's the weather", "I love pizza"] {
+        for s in [
+            "no",
+            "don't",
+            "not now",
+            "I don't allow the camera",
+            "stop",
+            "what's the weather",
+            "I love pizza",
+        ] {
             assert!(!allows(s), "{s}");
         }
     }
@@ -163,7 +232,13 @@ mod tests {
         ] {
             assert!(asks_to_look(s), "{s}");
         }
-        for s in ["don't look at me", "stop using my camera", "can you see my screen", "look at my messages", "what time is it"] {
+        for s in [
+            "don't look at me",
+            "stop using my camera",
+            "can you see my screen",
+            "look at my messages",
+            "what time is it",
+        ] {
             assert!(!asks_to_look(s), "{s}");
         }
         assert!(names_the_camera("Please use my camera and look at me."));

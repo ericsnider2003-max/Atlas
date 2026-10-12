@@ -200,8 +200,7 @@ fn every_field_a_decision_reads_has_a_method_that_writes_it() {
 /// `record_refinement` got its writer on 25 Sep 2026 (Eric's ruling E2):
 /// `refine_own_fix` answers a review with a fixable concern by taking another
 /// pass, so every advance has a writer now.
-const STILL_WAITING_ON_A_CODE_WRITER: &[(&str, &str)] = &[
-];
+const STILL_WAITING_ON_A_CODE_WRITER: &[(&str, &str)] = &[];
 
 #[test]
 fn the_advancing_methods_are_actually_called_from_somewhere_else() {
@@ -225,7 +224,10 @@ fn the_advancing_methods_are_actually_called_from_somewhere_else() {
 
     let mut uncalled = Vec::new();
     for w in &writers {
-        if STILL_WAITING_ON_A_CODE_WRITER.iter().any(|(name, _)| name == w) {
+        if STILL_WAITING_ON_A_CODE_WRITER
+            .iter()
+            .any(|(name, _)| name == w)
+        {
             continue;
         }
         if called_from(w).is_empty() {
@@ -262,7 +264,10 @@ fn the_list_of_what_is_still_waiting_is_still_true() {
             .map(|(file, n, _)| format!("{file}:{n}"))
             .collect();
         if !callers.is_empty() {
-            now_wired.push(format!("{w} (listed as: {why}) is now called from {}", callers.join(", ")));
+            now_wired.push(format!(
+                "{w} (listed as: {why}) is now called from {}",
+                callers.join(", ")
+            ));
         }
     }
     assert!(
@@ -306,7 +311,8 @@ fn the_diagnosis_can_actually_be_supplied() {
         let found: Vec<String> = lines
             .iter()
             .filter(|(file, _, line)| {
-                !file.ends_with("selfwork.rs") && !file.ends_with("pipeline.rs")
+                !file.ends_with("selfwork.rs")
+                    && !file.ends_with("pipeline.rs")
                     && line.contains(needle)
             })
             .map(|(file, n, _)| format!("{file}:{n}"))
@@ -372,22 +378,38 @@ use atlas::pipeline::{Build, Concern, Diagnosing, Note, Review, Stage, Work};
 
 fn a_real_diagnosis() -> Diagnosing {
     let mut d = Diagnosing::default();
-    assert!(d.answer("the settings panel takes eight seconds to open").is_some());
-    assert!(d.answer("every row re-reads the whole config file from disk").is_some());
+    assert!(d
+        .answer("the settings panel takes eight seconds to open")
+        .is_some());
+    assert!(d
+        .answer("every row re-reads the whole config file from disk")
+        .is_some());
     assert!(d.answer("src/panel.rs").is_some());
-    assert!(d.answer("the_panel_opens_without_rereading_the_config").is_none());
+    assert!(d
+        .answer("the_panel_opens_without_rereading_the_config")
+        .is_none());
     d
 }
 
 #[test]
 fn four_answers_and_a_failing_proof_gets_past_stage_one() {
     let mut w = Work::new("the settings panel is slow");
-    assert_eq!(w.stage, Stage::Thought, "a new piece of work starts at the thinking");
+    assert_eq!(
+        w.stage,
+        Stage::Thought,
+        "a new piece of work starts at the thinking"
+    );
 
-    let t = a_real_diagnosis().into_thought(true, Vec::new()).expect("all four parts");
+    let t = a_real_diagnosis()
+        .into_thought(true, Vec::new())
+        .expect("all four parts");
     w.record_thought(t).expect("a real diagnosis was refused");
 
-    assert_eq!(w.stage, Stage::Build, "a diagnosis that holds up did not advance the stage");
+    assert_eq!(
+        w.stage,
+        Stage::Build,
+        "a diagnosis that holds up did not advance the stage"
+    );
     assert!(w.thought.is_some(), "the diagnosis was not kept");
 }
 
@@ -396,9 +418,16 @@ fn a_proof_that_passes_already_does_not_get_past_stage_one() {
     // The single most valuable check in the loop: a proving test that passes
     // before the change is testing something else.
     let mut w = Work::new("the settings panel is slow");
-    let t = a_real_diagnosis().into_thought(false, Vec::new()).expect("all four parts");
-    let err = w.record_thought(t).expect_err("a proof that already passes was accepted");
-    assert!(err.contains("passes already"), "the refusal doesn't say why: {err}");
+    let t = a_real_diagnosis()
+        .into_thought(false, Vec::new())
+        .expect("all four parts");
+    let err = w
+        .record_thought(t)
+        .expect_err("a proof that already passes was accepted");
+    assert!(
+        err.contains("passes already"),
+        "the refusal doesn't say why: {err}"
+    );
     assert_eq!(w.stage, Stage::Thought, "it advanced anyway");
     assert!(w.thought.is_none(), "a refused diagnosis was kept");
 }
@@ -420,7 +449,8 @@ fn a_cause_that_restates_the_symptom_does_not_get_past_stage_one() {
 #[test]
 fn the_whole_ladder_can_be_climbed_and_ends_somewhere_that_lands() {
     let mut w = Work::new("the settings panel is slow");
-    w.record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap()).unwrap();
+    w.record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap())
+        .unwrap();
 
     // Build.
     let good = Build {
@@ -430,12 +460,16 @@ fn the_whole_ladder_can_be_climbed_and_ends_somewhere_that_lands() {
         proof_passes: true,
         nothing_else_broke: true,
     };
-    w.record_build(good.clone()).expect("a good build was refused");
+    w.record_build(good.clone())
+        .expect("a good build was refused");
     assert_eq!(w.stage, Stage::Review);
 
     // Review, using the real reviewer against the real thought.
     let r = atlas::pipeline::review(w.thought.as_ref().unwrap(), &good, &[]);
-    assert!(r.clean(), "a fix in the place the cause was said to be was not clean: {r:?}");
+    assert!(
+        r.clean(),
+        "a fix in the place the cause was said to be was not clean: {r:?}"
+    );
     w.record_review(r).expect("a clean review was refused");
     assert_eq!(w.stage, Stage::Implement);
 
@@ -446,13 +480,15 @@ fn the_whole_ladder_can_be_climbed_and_ends_somewhere_that_lands() {
         "the end of the ladder is not a landing: {:?}",
         w.what_next(&cfg)
     );
-    w.may_land().expect("every stage has an artefact and it still refused");
+    w.may_land()
+        .expect("every stage has an artefact and it still refused");
 }
 
 #[test]
 fn a_build_whose_proof_still_fails_does_not_reach_review() {
     let mut w = Work::new("the settings panel is slow");
-    w.record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap()).unwrap();
+    w.record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap())
+        .unwrap();
     let err = w
         .record_build(Build {
             touched: vec!["src/panel.rs".into()],
@@ -469,7 +505,8 @@ fn a_build_whose_proof_still_fails_does_not_reach_review() {
 #[test]
 fn a_build_that_broke_something_else_does_not_reach_review() {
     let mut w = Work::new("the settings panel is slow");
-    w.record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap()).unwrap();
+    w.record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap())
+        .unwrap();
     let err = w
         .record_build(Build {
             touched: vec!["src/panel.rs".into()],
@@ -487,7 +524,8 @@ fn a_blocking_review_goes_round_and_counts_the_round() {
     // `max_rounds` was compared against a number that was always zero, so the
     // hand-over that stops a loop repeating for ever could never fire.
     let mut w = Work::new("the settings panel is slow");
-    w.record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap()).unwrap();
+    w.record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap())
+        .unwrap();
     w.record_build(Build {
         touched: vec!["src/elsewhere.rs".into()],
         tests_before: 100,
@@ -503,10 +541,18 @@ fn a_blocking_review_goes_round_and_counts_the_round() {
             what: "the cause was in src/panel.rs and nothing there changed".into(),
         }],
     };
-    let err = w.record_review(blocked).expect_err("a blocking review was treated as clean");
-    assert!(err.contains("src/panel.rs"), "the reason isn't the blocker: {err}");
+    let err = w
+        .record_review(blocked)
+        .expect_err("a blocking review was treated as clean");
+    assert!(
+        err.contains("src/panel.rs"),
+        "the reason isn't the blocker: {err}"
+    );
     assert_eq!(w.stage, Stage::Refine, "a blocking review did not go round");
-    assert_eq!(w.rounds, 1, "the round was not counted, so `max_rounds` means nothing");
+    assert_eq!(
+        w.rounds, 1,
+        "the round was not counted, so `max_rounds` means nothing"
+    );
 }
 
 #[test]
@@ -515,7 +561,8 @@ fn a_refinement_sends_it_back_to_build_rather_than_to_the_old_review() {
     // Refining into a review written about different code is how a loop like
     // this launders a second fault past a first review.
     let mut w = Work::new("the settings panel is slow");
-    w.record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap()).unwrap();
+    w.record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap())
+        .unwrap();
     w.record_build(Build {
         touched: vec!["src/elsewhere.rs".into()],
         tests_before: 100,
@@ -536,14 +583,22 @@ fn a_refinement_sends_it_back_to_build_rather_than_to_the_old_review() {
         what_changed: "moved the fix into src/panel.rs".into(),
     })
     .expect("a refinement answering a real review note was refused");
-    assert_eq!(w.stage, Stage::Build, "it went somewhere other than back to building");
-    assert!(w.review.is_none(), "the old review survived a change it was not written about");
+    assert_eq!(
+        w.stage,
+        Stage::Build,
+        "it went somewhere other than back to building"
+    );
+    assert!(
+        w.review.is_none(),
+        "the old review survived a change it was not written about"
+    );
 }
 
 #[test]
 fn a_refinement_that_answers_nothing_in_the_review_is_refused() {
     let mut w = Work::new("the settings panel is slow");
-    w.record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap()).unwrap();
+    w.record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap())
+        .unwrap();
     w.record_build(Build {
         touched: vec!["src/elsewhere.rs".into()],
         tests_before: 100,
@@ -570,9 +625,15 @@ fn a_refinement_that_answers_nothing_in_the_review_is_refused() {
     // The behaviour, not the sentence: nothing was recorded and nothing
     // moved. A refusal that still stores the refinement and still advances
     // the stage is a refusal in name only.
-    assert!(w.refinements.is_empty(), "a refused refinement was recorded anyway");
+    assert!(
+        w.refinements.is_empty(),
+        "a refused refinement was recorded anyway"
+    );
     assert_eq!(w.stage, before, "a refused refinement moved the work on");
-    assert!(w.review.is_some(), "a refused refinement cleared the review it did not answer");
+    assert!(
+        w.review.is_some(),
+        "a refused refinement cleared the review it did not answer"
+    );
 
     // And one that DOES answer the note still works afterwards, so the
     // refusal is not just "refuse everything".
@@ -592,19 +653,24 @@ fn an_artefact_cannot_be_recorded_for_a_stage_it_is_not_at() {
     // and a second `record_thought` would overwrite a diagnosis the review
     // was written against.
     let mut w = Work::new("x");
-    assert!(w.record_build(Build {
-        touched: vec![],
-        tests_before: 0,
-        tests_after: 0,
-        proof_passes: true,
-        nothing_else_broke: true,
-    }).is_err(), "a build was recorded before anything said what was wrong");
+    assert!(
+        w.record_build(Build {
+            touched: vec![],
+            tests_before: 0,
+            tests_after: 0,
+            proof_passes: true,
+            nothing_else_broke: true,
+        })
+        .is_err(),
+        "a build was recorded before anything said what was wrong"
+    );
     assert!(
         w.record_review(Review { notes: vec![] }).is_err(),
         "a review was recorded before there was anything to review"
     );
 
-    w.record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap()).unwrap();
+    w.record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap())
+        .unwrap();
     let err = w
         .record_thought(a_real_diagnosis().into_thought(true, Vec::new()).unwrap())
         .expect_err("a second diagnosis replaced the first");
@@ -617,12 +683,20 @@ fn an_artefact_cannot_be_recorded_for_a_stage_it_is_not_at() {
 fn it_asks_for_all_four_parts_and_stops_asking() {
     let mut d = Diagnosing::default();
     let mut asked = Vec::new();
-    for answer in ["a symptom", "a different cause", "src/somewhere.rs", "a_named_test"] {
+    for answer in [
+        "a symptom",
+        "a different cause",
+        "src/somewhere.rs",
+        "a_named_test",
+    ] {
         asked.push(d.next_question().expect("it stopped asking too early"));
         d.answer(answer);
     }
     assert_eq!(asked.len(), 4);
-    assert!(d.next_question().is_none(), "it kept asking after four answers");
+    assert!(
+        d.next_question().is_none(),
+        "it kept asking after four answers"
+    );
     // Four different questions, not one repeated.
     let unique: BTreeSet<&&str> = asked.iter().collect();
     assert_eq!(unique.len(), 4, "it asked the same thing twice: {asked:?}");
@@ -636,7 +710,11 @@ fn a_blank_turn_does_not_fill_a_part_with_nothing() {
     // the review compare the change against an empty location.
     let mut d = Diagnosing::default();
     let first = d.next_question().expect("a question");
-    assert_eq!(d.answer("   "), Some(first), "a blank answer was taken as the symptom");
+    assert_eq!(
+        d.answer("   "),
+        Some(first),
+        "a blank answer was taken as the symptom"
+    );
     assert!(d.symptom.is_none());
 }
 
@@ -709,23 +787,45 @@ fn many_targets_are_added_up_rather_than_last_one_wins() {
 fn every_runner_is_read_and_a_crash_is_never_a_pass() {
     use atlas::selfwork::{count_passing, read_run};
     // pytest
-    assert_eq!(read_a_proof_run("tests/test_a.py .F\n===== 1 failed, 1 passed in 0.12s ====="), ProofToday::Fails);
-    assert_eq!(read_a_proof_run("===== 4 passed in 0.10s ====="), ProofToday::PassesAlready);
+    assert_eq!(
+        read_a_proof_run("tests/test_a.py .F\n===== 1 failed, 1 passed in 0.12s ====="),
+        ProofToday::Fails
+    );
+    assert_eq!(
+        read_a_proof_run("===== 4 passed in 0.10s ====="),
+        ProofToday::PassesAlready
+    );
     // Jest / Vitest
-    assert_eq!(read_a_proof_run("Tests:       1 failed, 5 passed, 6 total"), ProofToday::Fails);
+    assert_eq!(
+        read_a_proof_run("Tests:       1 failed, 5 passed, 6 total"),
+        ProofToday::Fails
+    );
     assert_eq!(count_passing("Tests:       5 passed, 5 total"), 5);
     // node --test / TAP
-    assert_eq!(read_a_proof_run("# tests 3\n# pass 3\n# fail 0\n"), ProofToday::PassesAlready);
-    assert_eq!(read_a_proof_run("ℹ tests 3\nℹ pass 2\nℹ fail 1\n"), ProofToday::Fails);
+    assert_eq!(
+        read_a_proof_run("# tests 3\n# pass 3\n# fail 0\n"),
+        ProofToday::PassesAlready
+    );
+    assert_eq!(
+        read_a_proof_run("ℹ tests 3\nℹ pass 2\nℹ fail 1\n"),
+        ProofToday::Fails
+    );
     // go
-    assert_eq!(read_a_proof_run("--- FAIL: TestThing (0.00s)\nFAIL\n"), ProofToday::Fails);
+    assert_eq!(
+        read_a_proof_run("--- FAIL: TestThing (0.00s)\nFAIL\n"),
+        ProofToday::Fails
+    );
     // A cargo test program killed part way: one summary for two programs.
     let crashed = "     Running unittests src/lib.rs (target/debug/deps/atlas-1)\n\
                    test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n\
                         Running tests/all.rs (target/debug/deps/all-2)\n\
                    thread 'main' has overflowed its stack\n";
     assert!(read_run(crashed).crashed);
-    assert_eq!(read_a_proof_run(crashed), ProofToday::Fails, "ten passes and a crash is not passing");
+    assert_eq!(
+        read_a_proof_run(crashed),
+        ProofToday::Fails,
+        "ten passes and a crash is not passing"
+    );
     assert_eq!(read_run(crashed).passed, 10);
     // Nothing anyone recognises is still "no test yet", never a pass.
     assert_eq!(read_a_proof_run("all good!"), ProofToday::NotWrittenYet);
@@ -779,8 +879,14 @@ fn the_wait_for_a_proof_is_bounded_and_long_enough_for_a_build() {
     for (i, _) in src.match_indices("selfwork::run_the_proof(") {
         let before = &src[..i];
         let work = before.rfind("crew::Work").unwrap_or(0);
-        let fn_start = before.rfind("\nfn ").max(before.rfind("    fn ")).unwrap_or(0);
-        assert!(work > fn_start || before[fn_start..].contains("fn prove_in("), "run_the_proof called outside crew work at byte {i}");
+        let fn_start = before
+            .rfind("\nfn ")
+            .max(before.rfind("    fn "))
+            .unwrap_or(0);
+        assert!(
+            work > fn_start || before[fn_start..].contains("fn prove_in("),
+            "run_the_proof called outside crew work at byte {i}"
+        );
     }
 }
 
@@ -791,8 +897,14 @@ fn the_assignment_check_can_tell_an_assignment_from_a_comparison() {
     // every read of the stage was reported as a bypass of the machinery.
     assert!(assigns("    self.work.stage = Stage::Done;", "work.stage"));
     assert!(assigns("s.work.stage=Stage::Done;", "work.stage"));
-    assert!(!assigns("if s.work.stage == Stage::Abandoned {", "work.stage"));
-    assert!(!assigns("if s.work.stage != Stage::Abandoned {", "work.stage"));
+    assert!(!assigns(
+        "if s.work.stage == Stage::Abandoned {",
+        "work.stage"
+    ));
+    assert!(!assigns(
+        "if s.work.stage != Stage::Abandoned {",
+        "work.stage"
+    ));
     assert!(!assigns("            s.work.stage,", "work.stage"));
     // Comments are not this function's job — `production_lines` drops them
     // before anything gets here, which is why the note in `selfwork.rs`
@@ -802,5 +914,7 @@ fn the_assignment_check_can_tell_an_assignment_from_a_comparison() {
         "if this stops being true, the comment filter in `production_lines` is the \
          only thing keeping prose out of the report — check it is still there"
     );
-    assert!(production_lines().iter().all(|(_, _, l)| !l.trim_start().starts_with("//")));
+    assert!(production_lines()
+        .iter()
+        .all(|(_, _, l)| !l.trim_start().starts_with("//")));
 }

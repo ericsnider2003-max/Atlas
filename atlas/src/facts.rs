@@ -57,16 +57,36 @@ mod sync_fact_recovery {
     use super::*;
     #[test]
     fn interrupted_shard_migration_preserves_missing_facts_without_resurrection() {
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("atlas-fact-migration-{}-{stamp}", std::process::id()));
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "atlas-fact-migration-{}-{stamp}",
+            std::process::id()
+        ));
         let store = crate::store::Store::new(root.clone());
         let first = Fact::new("studio", "Old studio", "Old studio", Kind::Project, 100);
-        let other_name = (0..100).map(|n| format!("subject-{n}")).find(|name| shard_of(name) != shard_of(&first.name)).unwrap();
-        let other = Fact::new(&other_name, "Keep this fact", "Keep this fact", Kind::Project, 100);
+        let other_name = (0..100)
+            .map(|n| format!("subject-{n}"))
+            .find(|name| shard_of(name) != shard_of(&first.name))
+            .unwrap();
+        let other = Fact::new(
+            &other_name,
+            "Keep this fact",
+            "Keep this fact",
+            Kind::Project,
+            100,
+        );
         let mut legacy = Book::default();
         legacy.facts = vec![first.clone(), other.clone()];
         store.save("facts", &legacy).unwrap();
-        store.save(&format!("facts-{}", shard_of(&first.name)), &Vec::<Fact>::new()).unwrap();
+        store
+            .save(
+                &format!("facts-{}", shard_of(&first.name)),
+                &Vec::<Fact>::new(),
+            )
+            .unwrap();
         let mut recovered = Book::load_checked(&store).unwrap();
         assert!(recovered.get(&first.name).is_none());
         assert_eq!(recovered.get(&other.name).unwrap().body, other.body);
@@ -81,15 +101,26 @@ mod sync_fact_recovery {
     fn event(device: &str, body: &str) -> crate::sync::Event {
         let fact = Fact::new("studio", body, body, Kind::Project, 100);
         let mut log = crate::sync::Log::new(device);
-        log.append(crate::sync::What::Changed { id: "fact:studio".into(), field: "fact".into(), to: serde_json::to_string(&fact).unwrap() }, 100);
+        log.append(
+            crate::sync::What::Changed {
+                id: "fact:studio".into(),
+                field: "fact".into(),
+                to: serde_json::to_string(&fact).unwrap(),
+            },
+            100,
+        );
         log.events.remove(0)
     }
     #[test]
     fn equal_fact_dates_converge_in_opposite_orders_and_survive_restart() {
         let a = event("laptop", "Use the small studio");
         let b = event("phone", "Use the large studio");
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("atlas-fact-sync-{}-{stamp}", std::process::id()));
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("atlas-fact-sync-{}-{stamp}", std::process::id()));
         let store = crate::store::Store::new(root.clone());
         let mut left = Book::default();
         assert!(left.apply_synced(&a));
@@ -101,23 +132,43 @@ mod sync_fact_recovery {
         assert!(right.apply_synced(&b));
         assert!(!right.apply_synced(&a));
         assert_eq!(restarted.get("studio"), right.get("studio"));
-        assert_eq!(restarted.get("studio").unwrap().body, "Use the large studio");
+        assert_eq!(
+            restarted.get("studio").unwrap().body,
+            "Use the large studio"
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn a_mismatched_fact_identity_cannot_replace_another_subject() {
         let mut bad = event("phone", "An unrelated fact");
-        if let crate::sync::What::Changed { id, .. } = &mut bad.what { *id = "fact:other-subject".into(); }
+        if let crate::sync::What::Changed { id, .. } = &mut bad.what {
+            *id = "fact:other-subject".into();
+        }
         let mut book = Book::default();
         assert!(!book.apply_synced(&bad));
         assert!(book.facts.is_empty());
     }
     #[test]
     fn a_corrupt_fact_shard_is_refused_without_rebuilding_or_overwriting_it() {
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("atlas-fact-corrupt-{}-{stamp}", std::process::id()));
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("atlas-fact-corrupt-{}-{stamp}", std::process::id()));
         let store = crate::store::Store::new(root.clone());
-        store.save("facts-0", &vec![Fact::new("studio", "Use the studio", "Use the studio", Kind::Project, 100)]).unwrap();
+        store
+            .save(
+                "facts-0",
+                &vec![Fact::new(
+                    "studio",
+                    "Use the studio",
+                    "Use the studio",
+                    Kind::Project,
+                    100,
+                )],
+            )
+            .unwrap();
         let path = root.join("facts-0.json");
         assert!(path.is_file());
         std::fs::write(&path, b"{broken fact shard").unwrap();
@@ -242,9 +293,23 @@ pub struct Fact {
 fn reads_as_secret(text: &str) -> bool {
     let low = text.to_lowercase();
     !crate::redact::secrets_in(text).is_empty()
-        || ["password", "passcode", "passphrase", "pin is", "pin number", "api key", "secret", "token", "access code", "recovery key", "seed phrase", "account number", "card number"]
-            .iter()
-            .any(|w| low.contains(w))
+        || [
+            "password",
+            "passcode",
+            "passphrase",
+            "pin is",
+            "pin number",
+            "api key",
+            "secret",
+            "token",
+            "access code",
+            "recovery key",
+            "seed phrase",
+            "account number",
+            "card number",
+        ]
+        .iter()
+        .any(|w| low.contains(w))
 }
 
 /// Earlier wordings kept per fact.
@@ -258,7 +323,13 @@ pub const HISTORY_KEPT: usize = 5;
 pub fn slug(title: &str) -> String {
     let s: String = title
         .chars()
-        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect();
     let mut out = String::new();
     let mut last_dash = true;
@@ -373,8 +444,12 @@ fn split_once_word(text: &str, word: &str) -> Option<(String, String)> {
 pub fn triple(text: &str) -> Option<(String, String, String)> {
     let t = text.trim().trim_end_matches(['.', '!', '?', ',']).trim();
     let low = t.to_lowercase();
-    let norm =
-        |s: &str| s.split_whitespace().map(|w| w.to_ascii_lowercase()).collect::<Vec<_>>().join(" ");
+    let norm = |s: &str| {
+        s.split_whitespace()
+            .map(|w| w.to_ascii_lowercase())
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
     let strip_lead = |s: &str| -> String {
         let s = s.trim();
         for lead in ["my ", "the ", "our ", "your ", "a ", "an "] {
@@ -392,11 +467,15 @@ pub fn triple(text: &str) -> Option<(String, String, String)> {
     // The value, minus a leading article or hedge. An article ("a"/"an") marks a
     // type, which is a different slot from a bare adjective: "my car is a Honda"
     // (type) must not clobber "my car is fast" (a plain quality).
-    let (article_attr, value) = if let Some(r) =
-        after.strip_prefix("a ").or_else(|| after.strip_prefix("an "))
+    let (article_attr, value) = if let Some(r) = after
+        .strip_prefix("a ")
+        .or_else(|| after.strip_prefix("an "))
     {
         (Some("type"), r.trim())
-    } else if let Some(r) = after.strip_prefix("now ").or_else(|| after.strip_prefix("currently ")) {
+    } else if let Some(r) = after
+        .strip_prefix("now ")
+        .or_else(|| after.strip_prefix("currently "))
+    {
         (None, r.trim())
     } else {
         (None, after.as_str())
@@ -487,21 +566,51 @@ impl Fact {
         let low = t.to_lowercase();
         let is = |words: &[&str]| words.iter().any(|w| low.contains(w));
         let kind = if is(&[
-            "always", "never", "stop ", "don't", "dont ", "prefer", "call me", "from now on",
-            "make sure", "remind me to", "please don", "no longer",
+            "always",
+            "never",
+            "stop ",
+            "don't",
+            "dont ",
+            "prefer",
+            "call me",
+            "from now on",
+            "make sure",
+            "remind me to",
+            "please don",
+            "no longer",
         ]) {
             Kind::Instruction
         } else if is(&[
-            "password", "passcode", "api key", "key is", "token", "access code", "account number",
-            "serial number", "license key", "the path", "located at", "lives at", " live at ", "stored at", "saved in", "ip is", "http",
-            "www.", "my address",
+            "password",
+            "passcode",
+            "api key",
+            "key is",
+            "token",
+            "access code",
+            "account number",
+            "serial number",
+            "license key",
+            "the path",
+            "located at",
+            "lives at",
+            " live at ",
+            "stored at",
+            "saved in",
+            "ip is",
+            "http",
+            "www.",
+            "my address",
         ]) {
             Kind::Reference
         } else {
             Kind::You
         };
         let key: String = terms(t).into_iter().take(4).collect::<Vec<_>>().join(" ");
-        let name = if key.is_empty() { format!("note-{now}") } else { key };
+        let name = if key.is_empty() {
+            format!("note-{now}")
+        } else {
+            key
+        };
         Fact::new(&name, t, t, kind, now)
     }
 
@@ -537,7 +646,10 @@ impl Fact {
         let base = self.known().spoken(now);
         match (self.kind, self.confirmed) {
             (Kind::Noticed, 0) => {
-                format!("I think {} — that's my own read, not something you told me.", lower_first(&base))
+                format!(
+                    "I think {} — that's my own read, not something you told me.",
+                    lower_first(&base)
+                )
             }
             (Kind::Noticed, _) => {
                 format!("{base} (I worked that out rather than being told, but it's held up.)")
@@ -648,7 +760,11 @@ fn tags_from(text: &str) -> Vec<String> {
     // Explicit hashtags win — a person tagging a fact on purpose.
     for w in text.split_whitespace() {
         if let Some(rest) = w.strip_prefix('#') {
-            let t: String = rest.chars().take_while(|c| c.is_alphanumeric()).collect::<String>().to_ascii_lowercase();
+            let t: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric())
+                .collect::<String>()
+                .to_ascii_lowercase();
             if t.len() >= 2 && !out.contains(&t) {
                 out.push(t);
             }
@@ -739,8 +855,16 @@ fn split_sentences(text: &str) -> Vec<String> {
 /// you stated about yourself and not a guess it made, so it is kept (never an
 /// evictable guess) and decays slowly the way looked-up knowledge should.
 pub fn reference_fact(text: &str, now: u64) -> Fact {
-    let key: String = terms(text).into_iter().take(4).collect::<Vec<_>>().join(" ");
-    let name = if key.is_empty() { format!("ref-{now}") } else { key };
+    let key: String = terms(text)
+        .into_iter()
+        .take(4)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let name = if key.is_empty() {
+        format!("ref-{now}")
+    } else {
+        key
+    };
     let summary: String = text.chars().take(140).collect();
     Fact::new(&name, &summary, text, Kind::Reference, now)
 }
@@ -771,7 +895,8 @@ impl Book {
     /// immediately. Falls back to the pre-sharding single `facts` file the
     /// first time, then writes shards from then on.
     pub fn load(store: &crate::store::Store) -> Book {
-        Self::load_checked(store).unwrap_or_else(|error| panic!("Atlas could not safely read its saved facts: {error}"))
+        Self::load_checked(store)
+            .unwrap_or_else(|error| panic!("Atlas could not safely read its saved facts: {error}"))
     }
 
     pub fn load_checked(store: &crate::store::Store) -> crate::error::Result<Book> {
@@ -780,16 +905,29 @@ impl Book {
         let mut present = [false; SHARDS];
         for (s, here) in present.iter_mut().enumerate() {
             let shard: Option<Vec<Fact>> = store.load_checked(&format!("facts-{s}"))?;
-            if let Some(shard) = shard { *here = true; facts.extend(shard); }
+            if let Some(shard) = shard {
+                *here = true;
+                facts.extend(shard);
+            }
         }
-        let mut b = Book { facts, ..Book::default() };
+        let mut b = Book {
+            facts,
+            ..Book::default()
+        };
         if present.iter().any(|exists| !exists) {
             // Resume interrupted migration only for absent shards. A present
             // empty shard is authoritative and must not resurrect old facts.
             let legacy: Book = store.load_checked("facts")?.unwrap_or_default();
             if !legacy.facts.is_empty() {
-                b.facts.extend(legacy.facts.into_iter().filter(|fact| !present[shard_of(&fact.name)]));
-                for (dirty, here) in b.dirty.iter_mut().zip(present) { *dirty = !here; }
+                b.facts.extend(
+                    legacy
+                        .facts
+                        .into_iter()
+                        .filter(|fact| !present[shard_of(&fact.name)]),
+                );
+                for (dirty, here) in b.dirty.iter_mut().zip(present) {
+                    *dirty = !here;
+                }
             }
         }
         b.aliases = store.load_checked("fact-aliases")?.unwrap_or_default();
@@ -807,7 +945,11 @@ impl Book {
             if !self.dirty[s] {
                 continue;
             }
-            let shard: Vec<&Fact> = self.facts.iter().filter(|f| shard_of(&f.name) == s).collect();
+            let shard: Vec<&Fact> = self
+                .facts
+                .iter()
+                .filter(|f| shard_of(&f.name) == s)
+                .collect();
             if let Err(e) = store.save(&format!("facts-{s}"), &shard) {
                 result = Err(e);
             } else {
@@ -945,8 +1087,14 @@ impl Book {
                 (total, i)
             })
             .collect();
-        hits.sort_by(|a, b| b.0.cmp(&a.0).then(self.facts[b.1].as_of.cmp(&self.facts[a.1].as_of)));
-        hits.into_iter().take(limit).map(|(_, i)| &self.facts[i]).collect()
+        hits.sort_by(|a, b| {
+            b.0.cmp(&a.0)
+                .then(self.facts[b.1].as_of.cmp(&self.facts[a.1].as_of))
+        });
+        hits.into_iter()
+            .take(limit)
+            .map(|(_, i)| &self.facts[i])
+            .collect()
     }
 
     pub fn get(&self, name: &str) -> Option<&Fact> {
@@ -970,28 +1118,55 @@ impl Book {
     }
 
     pub fn note_sync_version(&mut self, event: &crate::sync::Event) -> bool {
-        let crate::sync::What::Changed { id, field, to } = &event.what else { return false };
-        let Some(name) = id.strip_prefix("fact:").filter(|_| field == "fact") else { return false };
+        let crate::sync::What::Changed { id, field, to } = &event.what else {
+            return false;
+        };
+        let Some(name) = id.strip_prefix("fact:").filter(|_| field == "fact") else {
+            return false;
+        };
         let version = crate::sync::Version::of(event);
-        let Some(fact) = self.facts.iter_mut().find(|fact| fact.name == name) else { return false };
-        let Ok(mut observed) = serde_json::from_str::<Fact>(to) else { return false };
+        let Some(fact) = self.facts.iter_mut().find(|fact| fact.name == name) else {
+            return false;
+        };
+        let Ok(mut observed) = serde_json::from_str::<Fact>(to) else {
+            return false;
+        };
         observed.sync_version = fact.sync_version.clone();
-        if observed != *fact { return false; }
-        if fact.sync_version.as_ref().is_some_and(|old| old >= &version) { return false; }
+        if observed != *fact {
+            return false;
+        }
+        if fact
+            .sync_version
+            .as_ref()
+            .is_some_and(|old| old >= &version)
+        {
+            return false;
+        }
         fact.sync_version = Some(version);
         self.dirty[shard_of(name)] = true;
         true
     }
 
     pub fn apply_synced(&mut self, event: &crate::sync::Event) -> bool {
-        let crate::sync::What::Changed { id, field, to } = &event.what else { return false };
-        let Some(name) = id.strip_prefix("fact:").filter(|_| field == "fact") else { return false };
-        let Ok(mut fact) = serde_json::from_str::<Fact>(to) else { return false };
-        if fact.name != name || name != slug(name) { return false; }
+        let crate::sync::What::Changed { id, field, to } = &event.what else {
+            return false;
+        };
+        let Some(name) = id.strip_prefix("fact:").filter(|_| field == "fact") else {
+            return false;
+        };
+        let Ok(mut fact) = serde_json::from_str::<Fact>(to) else {
+            return false;
+        };
+        if fact.name != name || name != slug(name) {
+            return false;
+        }
         let version = crate::sync::Version::of(event);
         if let Some(old) = self.get(name) {
             if old.sync_version.as_ref().is_some_and(|old| old >= &version)
-                || (old.sync_version.is_none() && old.as_of > fact.as_of) { return false; }
+                || (old.sync_version.is_none() && old.as_of > fact.as_of)
+            {
+                return false;
+            }
         }
         fact.sync_version = Some(version);
         self.put(fact);
@@ -1027,11 +1202,15 @@ impl Book {
         // overlap — it is what makes a correction replace the old value instead
         // of contradicting it — so it is tried before `same_fact`.
         let slot_hit = f.subject.as_ref().and_then(|_| {
+            self.facts.iter().position(|x| {
+                x.subject.is_some() && x.subject == f.subject && x.attribute == f.attribute
+            })
+        });
+        let hit = slot_hit.or_else(|| {
             self.facts
                 .iter()
-                .position(|x| x.subject.is_some() && x.subject == f.subject && x.attribute == f.attribute)
+                .position(|x| x.name == f.name || same_fact(x, &f))
         });
-        let hit = slot_hit.or_else(|| self.facts.iter().position(|x| x.name == f.name || same_fact(x, &f)));
         match hit {
             Some(i) => {
                 // Which statement wins (Eric, H13c): what you told it beats
@@ -1055,7 +1234,9 @@ impl Book {
                 // shrink when a fact is updated.
                 if new_wins {
                     // A different statement replaces it; the old one is kept.
-                    if existing.summary.trim() != f.summary.trim() && !existing.summary.trim().is_empty() {
+                    if existing.summary.trim() != f.summary.trim()
+                        && !existing.summary.trim().is_empty()
+                    {
                         let was = (existing.as_of, existing.summary.clone());
                         existing.history.push(was);
                         let extra = existing.history.len().saturating_sub(HISTORY_KEPT);
@@ -1117,8 +1298,12 @@ impl Book {
     /// were dropped whole.
     pub fn trim(&mut self, budget_bytes: usize, now: u64) -> usize {
         use crate::freshness::State;
-        let footprint =
-            |facts: &[Fact]| facts.iter().map(|f| f.summary.len() + f.body.len()).sum::<usize>();
+        let footprint = |facts: &[Fact]| {
+            facts
+                .iter()
+                .map(|f| f.summary.len() + f.body.len())
+                .sum::<usize>()
+        };
         if footprint(&self.facts) <= budget_bytes {
             return 0;
         }
@@ -1261,7 +1446,10 @@ impl Book {
             })
             .collect();
         // Highest score first; ties broken by most recent.
-        hits.sort_by(|a, b| b.0.cmp(&a.0).then(self.facts[b.1].as_of.cmp(&self.facts[a.1].as_of)));
+        hits.sort_by(|a, b| {
+            b.0.cmp(&a.0)
+                .then(self.facts[b.1].as_of.cmp(&self.facts[a.1].as_of))
+        });
         hits.into_iter().map(|(_, i)| &self.facts[i]).collect()
     }
 
@@ -1284,7 +1472,10 @@ impl Book {
         let mut names_for: std::collections::BTreeMap<&str, Vec<&str>> =
             std::collections::BTreeMap::new();
         for (alias, canon) in &self.aliases {
-            names_for.entry(canon.as_str()).or_default().push(alias.as_str());
+            names_for
+                .entry(canon.as_str())
+                .or_default()
+                .push(alias.as_str());
         }
         let mut best: Option<(i64, usize)> = None;
         for (i, f) in self.facts.iter().enumerate() {
@@ -1428,7 +1619,8 @@ impl Book {
                     return None;
                 }
                 let relevance = hits as f64 / words.len() as f64;
-                let importance = 1.0 + f.kind.weight() as f64 / 4.0 + (f.confirmed.min(5) as f64) / 10.0;
+                let importance =
+                    1.0 + f.kind.weight() as f64 / 4.0 + (f.confirmed.min(5) as f64) / 10.0;
                 let days = now.saturating_sub(f.as_of) as f64 / 86_400.0;
                 let recency = match f.kind.shelf() {
                     crate::freshness::Shelf::Yours => 1.0,
@@ -1438,7 +1630,11 @@ impl Book {
             })
             .filter(|(s, _)| *s >= 0.3)
             .collect();
-        scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.name.cmp(&b.1.name)));
+        scored.sort_by(|a, b| {
+            b.0.partial_cmp(&a.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.1.name.cmp(&b.1.name))
+        });
         scored.into_iter().take(most).map(|(_, f)| f).collect()
     }
 

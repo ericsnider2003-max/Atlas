@@ -202,8 +202,14 @@ pub fn social_day(t: u64) -> i64 {
 /// "28 Sep" for a day number.
 pub fn day_label(day: i64) -> String {
     let c = crate::civil::Civil::from_local(day * 86_400);
-    const M: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    format!("{} {}", c.day, M[(c.month as usize).saturating_sub(1).min(11)])
+    const M: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    format!(
+        "{} {}",
+        c.day,
+        M[(c.month as usize).saturating_sub(1).min(11)]
+    )
 }
 
 /// A count as a person says it: 1,234 and 1.2M.

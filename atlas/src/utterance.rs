@@ -87,7 +87,10 @@ pub struct ConversationConfig {
 
 impl Default for ConversationConfig {
     fn default() -> Self {
-        ConversationConfig { hands_free: true, quiet_secs: 25 }
+        ConversationConfig {
+            hands_free: true,
+            quiet_secs: 25,
+        }
     }
 }
 
@@ -157,11 +160,14 @@ impl Segmenter {
         let db = crate::audio::level_db(w);
         let share = self.vad.window(w);
         if share.is_none() {
-            let above_room = self.quietest.is_some_and(|q| f64::from(db - q) >= self.cfg.vad_loud_db);
+            let above_room = self
+                .quietest
+                .is_some_and(|q| f64::from(db - q) >= self.cfg.vad_loud_db);
             self.quietest = Some(self.quietest.map_or(db, |q| q.min(db)));
             return above_room;
         }
-        crate::vad::level_for_endpoint(db, share, self.cfg.silence_below_db) > self.cfg.silence_below_db
+        crate::vad::level_for_endpoint(db, share, self.cfg.silence_below_db)
+            > self.cfg.silence_below_db
     }
 
     pub fn feed(&mut self, w: &[i16]) -> Seg {
@@ -174,7 +180,11 @@ impl Segmenter {
             }
             // A miss costs one window of progress, not all of it: soft speech
             // flickers around the detector's line and must still start.
-            self.run = if speech { self.run + 1 } else { self.run.saturating_sub(1) };
+            self.run = if speech {
+                self.run + 1
+            } else {
+                self.run.saturating_sub(1)
+            };
             if self.run < START_WINDOWS {
                 return Seg::Quiet;
             }
@@ -186,7 +196,8 @@ impl Segmenter {
             // the windows that started this.
             self.ep = Endpointer::start(0);
             self.at_ms = ms_of(self.cur.len()).max(self.cfg.warmup_ms);
-            self.ep.feed(self.cfg.silence_below_db + 1.0, "", self.at_ms, &self.cfg);
+            self.ep
+                .feed(self.cfg.silence_below_db + 1.0, "", self.at_ms, &self.cfg);
             return Seg::Speaking;
         }
         self.cur.extend_from_slice(w);
@@ -246,7 +257,12 @@ impl Segmenter {
 /// Wait up to `wait_ms` (of audio) for you to start, then take what you say
 /// until you stop. `None`: nobody spoke, `stop` said stop, or the stream
 /// ended with nothing said.
-pub fn next_utterance(stream: &mut dyn MicStream, cfg: &EndpointConfig, wait_ms: u64, stop: &dyn Fn() -> bool) -> Option<Vec<i16>> {
+pub fn next_utterance(
+    stream: &mut dyn MicStream,
+    cfg: &EndpointConfig,
+    wait_ms: u64,
+    stop: &dyn Fn() -> bool,
+) -> Option<Vec<i16>> {
     let mut seg = Segmenter::new(cfg);
     let mut waited = 0u64;
     loop {
@@ -316,7 +332,9 @@ pub fn wait_for_name(
         }
         let Some(w) = stream.read(WINDOW) else {
             if windows == 0 {
-                return Err(stream.why_stopped().unwrap_or_else(|| "the microphone gave no sound".into()));
+                return Err(stream
+                    .why_stopped()
+                    .unwrap_or_else(|| "the microphone gave no sound".into()));
             }
             return Ok(None);
         };
@@ -372,12 +390,15 @@ pub fn wait_for_name(
                 }
                 match rest {
                     None => continue,
-                    Some(r) if r.chars().any(|c| c.is_alphanumeric()) => return Ok(Some(Woke::Request(r))),
+                    Some(r) if r.chars().any(|c| c.is_alphanumeric()) => {
+                        return Ok(Some(Woke::Request(r)))
+                    }
                     Some(_) => {
                         // The name on its own. People pause after it: a
                         // moment more on the same stream, so "Atlas ...
                         // what's the time" is one request, not a "Yes?".
-                        let Some(more) = next_utterance(stream, cfg, AFTER_THE_NAME_MS, stop) else {
+                        let Some(more) = next_utterance(stream, cfg, AFTER_THE_NAME_MS, stop)
+                        else {
                             return Ok(if stop() { None } else { Some(Woke::NameOnly) });
                         };
                         let words = match work.name_in(&more) {
@@ -386,7 +407,11 @@ pub fn wait_for_name(
                             Err(e) => return Err(e.to_string()),
                         };
                         let words = words.trim().to_string();
-                        return Ok(Some(if words.chars().any(|c| c.is_alphanumeric()) { Woke::Request(words) } else { Woke::NameOnly }));
+                        return Ok(Some(if words.chars().any(|c| c.is_alphanumeric()) {
+                            Woke::Request(words)
+                        } else {
+                            Woke::NameOnly
+                        }));
                     }
                 }
             }
@@ -412,29 +437,36 @@ pub fn pumped(mut inner: Box<dyn MicStream>) -> Pumped {
     let stop = Arc::new(AtomicBool::new(false));
     let why = Arc::new(Mutex::new(None));
     let (stop2, why2) = (stop.clone(), why.clone());
-    let spawned = std::thread::Builder::new().name("atlas-mic-pump".into()).spawn(move || {
-        while !stop2.load(Ordering::SeqCst) {
-            match inner.read(WINDOW) {
-                Some(w) => {
-                    if tx.send(w).is_err() {
+    let spawned = std::thread::Builder::new()
+        .name("atlas-mic-pump".into())
+        .spawn(move || {
+            while !stop2.load(Ordering::SeqCst) {
+                match inner.read(WINDOW) {
+                    Some(w) => {
+                        if tx.send(w).is_err() {
+                            break;
+                        }
+                    }
+                    None => {
+                        if let Ok(mut y) = why2.lock().or_else(crate::crash::unpoison) {
+                            *y = inner.why_stopped();
+                        }
                         break;
                     }
                 }
-                None => {
-                    if let Ok(mut y) = why2.lock().or_else(crate::crash::unpoison) {
-                        *y = inner.why_stopped();
-                    }
-                    break;
-                }
             }
-        }
-    });
+        });
     if spawned.is_err() {
         if let Ok(mut y) = why.lock().or_else(crate::crash::unpoison) {
             *y = Some("couldn't start reading the microphone".into());
         }
     }
-    Pumped { rx, stop, why, left: Vec::new() }
+    Pumped {
+        rx,
+        stop,
+        why,
+        left: Vec::new(),
+    }
 }
 
 impl MicStream for Pumped {
@@ -461,7 +493,11 @@ impl MicStream for Pumped {
         Some(self.left.drain(..n).collect())
     }
     fn why_stopped(&mut self) -> Option<String> {
-        self.why.lock().or_else(crate::crash::unpoison).ok().and_then(|y| y.clone())
+        self.why
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()
+            .and_then(|y| y.clone())
     }
 }
 
@@ -478,11 +514,20 @@ impl Drop for Pumped {
 pub fn is_goodbye(said: &str) -> bool {
     let words: Vec<String> = said
         .split_whitespace()
-        .map(|w| w.chars().filter(|c| c.is_alphanumeric() || *c == '\'').collect::<String>().to_lowercase().replace('\u{2019}', "'"))
+        .map(|w| {
+            w.chars()
+                .filter(|c| c.is_alphanumeric() || *c == '\'')
+                .collect::<String>()
+                .to_lowercase()
+                .replace('\u{2019}', "'")
+        })
         .filter(|w| !w.is_empty())
         .collect();
     let s = words.join(" ");
-    let s = s.trim_end_matches(" atlas").trim_start_matches("ok ").trim_start_matches("okay ");
+    let s = s
+        .trim_end_matches(" atlas")
+        .trim_start_matches("ok ")
+        .trim_start_matches("okay ");
     const ENDINGS: &[&str] = &[
         "that's all",
         "thats all",
@@ -519,10 +564,16 @@ mod tests {
     use super::*;
 
     fn tone(ms: u64, amp: f32) -> Vec<i16> {
-        (0..samples_of(ms)).map(|i| ((i as f32 * 0.07).sin() * amp * 32767.0 + ((i * 7919) % 97) as f32 - 48.0) as i16).collect()
+        (0..samples_of(ms))
+            .map(|i| {
+                ((i as f32 * 0.07).sin() * amp * 32767.0 + ((i * 7919) % 97) as f32 - 48.0) as i16
+            })
+            .collect()
     }
     fn room(ms: u64) -> Vec<i16> {
-        (0..samples_of(ms)).map(|i| ((i * 7919) % 41) as i16 - 20).collect()
+        (0..samples_of(ms))
+            .map(|i| ((i * 7919) % 41) as i16 - 20)
+            .collect()
     }
 
     #[test]
@@ -550,6 +601,10 @@ mod tests {
             }
         }
         assert_eq!(done.len(), 2, "{done:?}");
-        assert!(ms_of(done[0]) >= 900 && ms_of(done[0]) <= 900 + PRE_ROLL_MS + TAIL_MS + 100, "{}", ms_of(done[0]));
+        assert!(
+            ms_of(done[0]) >= 900 && ms_of(done[0]) <= 900 + PRE_ROLL_MS + TAIL_MS + 100,
+            "{}",
+            ms_of(done[0])
+        );
     }
 }

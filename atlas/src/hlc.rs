@@ -80,10 +80,16 @@ impl Stamp {
     /// caller has to think about the 1-in-4-billion carry.
     fn stepped(self) -> Stamp {
         match self.count.checked_add(1) {
-            Some(count) => Stamp { wall: self.wall, count },
+            Some(count) => Stamp {
+                wall: self.wall,
+                count,
+            },
             // Four billion events in one second is unreachable in practice;
             // handled anyway because "can't happen" is how clocks break.
-            None => Stamp { wall: self.wall.saturating_add(1), count: 0 },
+            None => Stamp {
+                wall: self.wall.saturating_add(1),
+                count: 0,
+            },
         }
     }
 }
@@ -95,7 +101,9 @@ impl PartialOrd for Stamp {
 }
 impl Ord for Stamp {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.wall.cmp(&other.wall).then(self.count.cmp(&other.count))
+        self.wall
+            .cmp(&other.wall)
+            .then(self.count.cmp(&other.count))
     }
 }
 
@@ -175,7 +183,10 @@ impl Clock {
     /// retreats.
     pub fn tick(&mut self, physical: u64) -> Stamp {
         let stamp = if physical > self.last.wall {
-            Stamp { wall: physical, count: 0 }
+            Stamp {
+                wall: physical,
+                count: 0,
+            }
         } else {
             // Same second, or the OS clock went backwards: hold `wall` at the
             // high-water mark and let the counter carry the order.
@@ -198,8 +209,13 @@ impl Clock {
         let cap = physical.saturating_add(MAX_AHEAD_SECS);
         let (adopt, skew) = if incoming.wall > cap {
             (
-                Stamp { wall: cap, count: 0 },
-                Some(Skew { ahead_secs: incoming.wall.saturating_sub(physical) }),
+                Stamp {
+                    wall: cap,
+                    count: 0,
+                },
+                Some(Skew {
+                    ahead_secs: incoming.wall.saturating_sub(physical),
+                }),
             )
         } else {
             (incoming, None)
@@ -209,7 +225,11 @@ impl Clock {
         let wall = physical.max(last.wall).max(adopt.wall);
         let stamp = if wall == last.wall && wall == adopt.wall {
             // Same second as both: step past the higher of the two counters.
-            Stamp { wall, count: last.count.max(adopt.count) }.stepped()
+            Stamp {
+                wall,
+                count: last.count.max(adopt.count),
+            }
+            .stepped()
         } else if wall == last.wall {
             last.stepped()
         } else if wall == adopt.wall {
@@ -244,7 +264,10 @@ mod tests {
         let a = c.tick(100);
         let b = c.tick(100);
         let d = c.tick(100);
-        assert!(a < b && b < d, "same-second ticks must still order: {a} {b} {d}");
+        assert!(
+            a < b && b < d,
+            "same-second ticks must still order: {a} {b} {d}"
+        );
         assert_eq!(a.wall, 100);
         assert_eq!((a.count, b.count, d.count), (0, 1, 2));
     }
@@ -254,7 +277,10 @@ mod tests {
         let mut c = Clock::new();
         let a = c.tick(1_000);
         let b = c.tick(990);
-        assert!(b > a, "a backwards OS clock must not produce a smaller stamp");
+        assert!(
+            b > a,
+            "a backwards OS clock must not produce a smaller stamp"
+        );
         assert_eq!(b.wall, 1_000, "wall holds at the high-water mark");
         assert_eq!(b.count, 1);
     }
@@ -265,10 +291,19 @@ mod tests {
         phone.tick(50);
         let from_laptop = Stamp { wall: 70, count: 3 };
         let recv = phone.receive(from_laptop, 50);
-        assert!(recv.stamp > from_laptop, "receive sorts after the incoming event");
-        assert!(recv.skew.is_none(), "20 seconds is ordinary skew, not a wrong clock");
+        assert!(
+            recv.stamp > from_laptop,
+            "receive sorts after the incoming event"
+        );
+        assert!(
+            recv.skew.is_none(),
+            "20 seconds is ordinary skew, not a wrong clock"
+        );
         let next = phone.tick(50);
-        assert!(next > from_laptop, "local work after a receive sorts after it");
+        assert!(
+            next > from_laptop,
+            "local work after a receive sorts after it"
+        );
         assert!(next > recv.stamp);
     }
 
@@ -291,7 +326,10 @@ mod tests {
         // A device whose clock is set ten years ahead. Ours must not chase it.
         let mut c = Clock::new();
         c.tick(1_000);
-        let from_the_future = Stamp { wall: 1_000 + 10 * 365 * 86_400, count: 0 };
+        let from_the_future = Stamp {
+            wall: 1_000 + 10 * 365 * 86_400,
+            count: 0,
+        };
         let recv = c.receive(from_the_future, 1_000);
         let skew = recv.skew.expect("a decade ahead must be flagged as skew");
         assert!(skew.ahead_secs > 9 * 365 * 86_400);
@@ -301,7 +339,9 @@ mod tests {
             "the clock must not be dragged past the cap: {}",
             c.peek()
         );
-        assert!(skew.plain("the spare laptop").contains("ordered them by their own time"));
+        assert!(skew
+            .plain("the spare laptop")
+            .contains("ordered them by their own time"));
     }
 
     #[test]
@@ -309,7 +349,13 @@ mod tests {
         let mut c = Clock::new();
         c.tick(1_000);
         // Half an hour ahead — under the hour bound, so adopted silently.
-        let recv = c.receive(Stamp { wall: 1_000 + 1_800, count: 0 }, 1_000);
+        let recv = c.receive(
+            Stamp {
+                wall: 1_000 + 1_800,
+                count: 0,
+            },
+            1_000,
+        );
         assert!(recv.skew.is_none());
         assert_eq!(c.peek().wall, 1_000 + 1_800, "an in-bound stamp is adopted");
     }
@@ -323,17 +369,40 @@ mod tests {
         let mut c: Clock =
             serde_json::from_str(r#"{"last":{"wall":42,"count":4294967295}}"#).unwrap();
         let next = c.tick(42); // same second, counter already full
-        assert_eq!(next, Stamp { wall: 43, count: 0 }, "a full counter carries the second");
-        assert!(next > Stamp { wall: 42, count: u32::MAX });
+        assert_eq!(
+            next,
+            Stamp { wall: 43, count: 0 },
+            "a full counter carries the second"
+        );
+        assert!(
+            next > Stamp {
+                wall: 42,
+                count: u32::MAX
+            }
+        );
     }
 
     #[test]
     fn observe_advances_without_minting_an_event_and_reports_skew() {
         let mut c = Clock::new();
         c.tick(10);
-        assert!(c.observe(Stamp { wall: 500, count: 9 }, 10).is_none());
+        assert!(c
+            .observe(
+                Stamp {
+                    wall: 500,
+                    count: 9
+                },
+                10
+            )
+            .is_none());
         let next = c.tick(10);
-        assert!(next > Stamp { wall: 500, count: 9 }, "after observing, next is past it");
+        assert!(
+            next > Stamp {
+                wall: 500,
+                count: 9
+            },
+            "after observing, next is past it"
+        );
         // Observing a stamp we're already past is a no-op.
         assert!(c.observe(Stamp { wall: 1, count: 0 }, 10).is_none());
     }
@@ -351,9 +420,15 @@ mod tests {
         // a stamp it already used before it went down. Atlas persists the clock
         // by serializing it with the log, so this restores it the same way —
         // serde in, then tick — rather than through a synthetic constructor.
-        let used = Stamp { wall: 300, count: 5 };
+        let used = Stamp {
+            wall: 300,
+            count: 5,
+        };
         let saved = serde_json::to_string(&Clock { last: used }).unwrap();
         let mut c: Clock = serde_json::from_str(&saved).unwrap();
-        assert!(c.tick(300) > used, "a restart must not hand out a stamp at or before the last used");
+        assert!(
+            c.tick(300) > used,
+            "a restart must not hand out a stamp at or before the last used"
+        );
     }
 }

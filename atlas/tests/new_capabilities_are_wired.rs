@@ -457,12 +457,11 @@ use std::collections::BTreeSet;
 mod common;
 use common::{called_names, calls};
 
-
-
-
 fn read_tree(dir: &str) -> Vec<(String, String)> {
     fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
-        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
         let mut paths: Vec<_> = entries.flatten().map(|e| e.path()).collect();
         paths.sort();
         for path in paths {
@@ -495,7 +494,11 @@ fn read_tree(dir: &str) -> Vec<(String, String)> {
 /// them. Counting a comment explaining why something is dead as a caller is
 /// enough to make it look alive, which happened the first time this was
 /// written.
-const META: &[&str] = &["dead_capabilities.rs", "bug_sweep.rs", "new_capabilities_are_wired.rs"];
+const META: &[&str] = &[
+    "dead_capabilities.rs",
+    "bug_sweep.rs",
+    "new_capabilities_are_wired.rs",
+];
 
 fn current() -> BTreeSet<String> {
     let src = read_tree("src");
@@ -505,16 +508,19 @@ fn current() -> BTreeSet<String> {
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("rs"))
-        .filter(|p| {
-            !META.contains(&p.file_name().unwrap_or_default().to_string_lossy().as_ref())
-        })
+        .filter(|p| !META.contains(&p.file_name().unwrap_or_default().to_string_lossy().as_ref()))
         .filter_map(|p| std::fs::read_to_string(p).ok())
         .collect();
 
     let unwired: BTreeSet<String> = std::fs::read_to_string("tests/wiring.rs")
         .expect("tests/wiring.rs")
         .lines()
-        .filter_map(|l| l.trim().strip_prefix('"').and_then(|r| r.split('"').next()).map(String::from))
+        .filter_map(|l| {
+            l.trim()
+                .strip_prefix('"')
+                .and_then(|r| r.split('"').next())
+                .map(String::from)
+        })
         .collect();
 
     // Indexed once per file instead of rescanned per candidate. This guard
@@ -536,8 +542,10 @@ fn current() -> BTreeSet<String> {
         .filter(|t| !t.trim().is_empty())
         .collect();
 
-    let src_index: Vec<(String, std::collections::HashSet<String>)> =
-        prod.iter().map(|(m, b)| (m.clone(), called_names(b))).collect();
+    let src_index: Vec<(String, std::collections::HashSet<String>)> = prod
+        .iter()
+        .map(|(m, b)| (m.clone(), called_names(b)))
+        .collect();
     let test_index: std::collections::HashSet<String> = tests
         .iter()
         .chain(inline_tests.iter())
@@ -564,12 +572,17 @@ fn current() -> BTreeSet<String> {
                     None => continue,
                 },
             };
-            let name: String =
-                rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
             if name.is_empty() || name.ends_with("_for_test") {
                 continue;
             }
-            if src_index.iter().any(|(o, c)| o != module && c.contains(&name)) {
+            if src_index
+                .iter()
+                .any(|(o, c)| o != module && c.contains(&name))
+            {
                 continue;
             }
             let defined_on = format!("pub fn {name}(");
@@ -606,7 +619,11 @@ fn no_new_capability_is_built_without_a_caller() {
          cannot be wired yet (needs a ruling, hardware, or a caller that does \
          not exist), add it to KNOWN in this file and say why in the handover. \
          The list may grow; it may not grow silently.",
-        added.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        added
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
 
@@ -626,7 +643,11 @@ fn a_capability_that_got_wired_is_taken_off_the_list() {
          something. If you wired a whole module, check UNWIRED_BASELINE \
          (tests/wiring.rs) and CAPABILITY_UNWIRED (tests/capability_wiring.rs) \
          for its name in the SAME change.",
-        cleared.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        cleared
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
 

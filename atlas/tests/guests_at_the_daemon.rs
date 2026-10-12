@@ -31,7 +31,9 @@ fn alone() -> MutexGuard<'static, ()> {
         std::fs::create_dir_all(p.join("data").join("state")).unwrap();
         std::env::set_var("ATLAS_HOME", &p);
     });
-    atlas::handover::Handover::default().save(&atlas::roots::install_state()).unwrap();
+    atlas::handover::Handover::default()
+        .save(&atlas::roots::install_state())
+        .unwrap();
     g
 }
 
@@ -43,7 +45,14 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn cfg() -> Config {
@@ -51,7 +60,13 @@ fn cfg() -> Config {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 fn knows_homelab() -> Config {
@@ -76,7 +91,11 @@ fn the_guest_phrase_really_hands_it_over() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "really");
     let _ = d.turn("you're talking to someone else now", NOW);
-    assert!(atlas::handover::Handover::load(&atlas::roots::install_state()).stance.handed_over());
+    assert!(
+        atlas::handover::Handover::load(&atlas::roots::install_state())
+            .stance
+            .handed_over()
+    );
 }
 
 #[test]
@@ -120,7 +139,10 @@ fn sync_will_not_carry_your_notes_while_somebody_else_is_at_the_machine() {
     let said = d.turn("sync", NOW + 10);
 
     let wrote_anything = std::fs::read_dir(&folder)
-        .map(|it| it.flatten().any(|e| e.path().extension().is_some_and(|x| x == "bundle")))
+        .map(|it| {
+            it.flatten()
+                .any(|e| e.path().extension().is_some_and(|x| x == "bundle"))
+        })
         .unwrap_or(false);
     assert!(
         !wrote_anything,

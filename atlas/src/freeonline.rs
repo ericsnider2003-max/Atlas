@@ -34,9 +34,21 @@ pub struct Provider {
 
 /// In the order they are asked.
 pub const PROVIDERS: &[Provider] = &[
-    Provider { name: "Kilo", url: "https://api.kilo.ai/api/gateway/chat/completions", model: "kilo-auto/free" },
-    Provider { name: "Pollinations", url: "https://text.pollinations.ai/openai", model: "openai" },
-    Provider { name: "OVHcloud", url: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions", model: "gpt-oss-20b" },
+    Provider {
+        name: "Kilo",
+        url: "https://api.kilo.ai/api/gateway/chat/completions",
+        model: "kilo-auto/free",
+    },
+    Provider {
+        name: "Pollinations",
+        url: "https://text.pollinations.ai/openai",
+        model: "openai",
+    },
+    Provider {
+        name: "OVHcloud",
+        url: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions",
+        model: "gpt-oss-20b",
+    },
 ];
 
 /// How long a service that said "too many requests" is left alone, seconds.
@@ -67,7 +79,8 @@ pub fn reply_from(raw: &str) -> std::result::Result<String, (bool, String)> {
         Ok(v) => v,
         Err(_) => {
             let low = raw.to_lowercase();
-            let refused = low.contains("429") || low.contains("too many") || low.contains("rate limit");
+            let refused =
+                low.contains("429") || low.contains("too many") || low.contains("rate limit");
             let short: String = raw.chars().take(160).collect();
             return Err((refused, format!("not an answer: {short}")));
         }
@@ -82,10 +95,17 @@ pub fn reply_from(raw: &str) -> std::result::Result<String, (bool, String)> {
     let why = dig(&v, "error.message")
         .or_else(|| dig(&v, "message"))
         .or_else(|| dig(&v, "error"))
-        .map(|m| m.as_str().map(str::to_string).unwrap_or_else(|| m.to_string()))
+        .map(|m| {
+            m.as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| m.to_string())
+        })
         .unwrap_or_else(|| "no answer in the reply".into());
     let low = why.to_lowercase();
-    Err((low.contains("rate limit") || low.contains("too many") || low.contains("429"), why))
+    Err((
+        low.contains("rate limit") || low.contains("too many") || low.contains("429"),
+        why,
+    ))
 }
 
 /// The free services, asked in turn.
@@ -106,7 +126,10 @@ impl FreeOnline {
         FreeOnline::with_sender(PROVIDERS.to_vec(), Box::new(send_with_curl))
     }
 
-    pub fn with_sender(providers: Vec<Provider>, send: Box<dyn Fn(&str, &str) -> Result<String> + Send + Sync>) -> FreeOnline {
+    pub fn with_sender(
+        providers: Vec<Provider>,
+        send: Box<dyn Fn(&str, &str) -> Result<String> + Send + Sync>,
+    ) -> FreeOnline {
         FreeOnline {
             providers,
             resting: std::sync::Mutex::new(Vec::new()),
@@ -125,7 +148,11 @@ impl FreeOnline {
 
     fn is_resting(&self, name: &str) -> bool {
         let now = crate::store::now();
-        self.resting.lock().or_else(crate::crash::unpoison).map(|r| r.iter().any(|(n, until)| *n == name && *until > now)).unwrap_or(false)
+        self.resting
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map(|r| r.iter().any(|(n, until)| *n == name && *until > now))
+            .unwrap_or(false)
     }
 
     /// Ask each service that isn't resting, in order, until one answers.
@@ -140,10 +167,14 @@ impl FreeOnline {
         // The phone app sends nothing to these until you've said yes
         // (`phonemode`): the question goes back to you instead.
         if crate::phonemode::on() && !crate::phonemode::online_ok() {
-            return Err(crate::error::AtlasError::Platform(crate::phonemode::ASK_ONLINE.into()));
+            return Err(crate::error::AtlasError::Platform(
+                crate::phonemode::ASK_ONLINE.into(),
+            ));
         }
         if crate::brain::google_data_held() {
-            return Err(crate::error::AtlasError::Platform(crate::brain::GOOGLE_STAYS_HERE.into()));
+            return Err(crate::error::AtlasError::Platform(
+                crate::brain::GOOGLE_STAYS_HERE.into(),
+            ));
         }
         // Scrubbed here as well as in `FallbackLlm`: with no model on this
         // machine this is the only model, and nothing else scrubs for it.
@@ -159,15 +190,25 @@ impl FreeOnline {
             if self.is_resting(p.name) {
                 continue;
             }
-            match (self.send)(p.url, &body(p, &system, &user, max_tokens)).map(|raw| (reply_from(&raw), cut_off_in(&raw))) {
+            match (self.send)(p.url, &body(p, &system, &user, max_tokens))
+                .map(|raw| (reply_from(&raw), cut_off_in(&raw)))
+            {
                 Ok((Ok(text), cut)) => {
-                    if let Ok(mut l) = self.last_answered_by.lock().or_else(crate::crash::unpoison) {
+                    if let Ok(mut l) = self.last_answered_by.lock().or_else(crate::crash::unpoison)
+                    {
                         *l = Some(p.name);
                     }
                     return Ok((scrub.put_back(&text), cut));
                 }
                 Ok((Err((refused, w)), _)) => {
-                    self.rest(p.name, if refused { REST_AFTER_REFUSAL_SECS } else { REST_AFTER_FAILURE_SECS });
+                    self.rest(
+                        p.name,
+                        if refused {
+                            REST_AFTER_REFUSAL_SECS
+                        } else {
+                            REST_AFTER_FAILURE_SECS
+                        },
+                    );
                     why.push(format!("{}: {w}", p.name));
                 }
                 Err(e) => {
@@ -195,8 +236,14 @@ impl Llm for FreeOnline {
         self.ask(system, user)
     }
 
-    fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<crate::brain::LongReply> {
-        self.ask_for(system, user, max_tokens).map(|(text, cut_off)| crate::brain::LongReply { text, cut_off })
+    fn complete_long(
+        &self,
+        system: &str,
+        user: &str,
+        max_tokens: u32,
+    ) -> Result<crate::brain::LongReply> {
+        self.ask_for(system, user, max_tokens)
+            .map(|(text, cut_off)| crate::brain::LongReply { text, cut_off })
     }
 
     /// What these services take in at least; each says more of its own.
@@ -207,7 +254,9 @@ impl Llm for FreeOnline {
 
 /// Did a service's raw reply say it stopped for want of room?
 fn cut_off_in(raw: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(raw.trim()).map(|v| crate::brain::says_cut_off(&v)).unwrap_or(false)
+    serde_json::from_str::<serde_json::Value>(raw.trim())
+        .map(|v| crate::brain::says_cut_off(&v))
+        .unwrap_or(false)
 }
 
 /// One POST through `curl`: the body on stdin, three minutes at most (a
@@ -215,10 +264,22 @@ fn cut_off_in(raw: &str) -> bool {
 fn send_with_curl(url: &str, body: &str) -> Result<String> {
     let tool = crate::tools::ExternalTool {
         command: "curl".into(),
-        args: ["-s", "-S", "-m", "180", "-X", "POST", "-H", "Content-Type: application/json", "--data-binary", "@-", url]
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
+        args: [
+            "-s",
+            "-S",
+            "-m",
+            "180",
+            "-X",
+            "POST",
+            "-H",
+            "Content-Type: application/json",
+            "--data-binary",
+            "@-",
+            url,
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect(),
         stdin_text: true,
         result_file: None,
         timeout_secs: 190,

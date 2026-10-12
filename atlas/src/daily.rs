@@ -461,8 +461,8 @@ pub fn arriving(
 ) -> Arrival {
     // A first ever turn has no previous one to be a gap from, and is
     // unambiguously an arrival.
-    let been_away = last_turn == 0
-        || now.saturating_sub(last_turn) >= cfg.back_after_minutes as u64 * 60;
+    let been_away =
+        last_turn == 0 || now.saturating_sub(last_turn) >= cfg.back_after_minutes as u64 * 60;
     if !been_away {
         return Arrival::StillGoing;
     }
@@ -599,8 +599,8 @@ pub fn find_dropped<'a>(dropped: &'a [Dropped], asked: &str) -> Vec<&'a Dropped>
     // Common words match everything, so searching for "the fee thing" would
     // return every dropped item on the strength of "the".
     const NOISE: &[&str] = &[
-        "the", "that", "this", "thing", "about", "one", "and", "for", "with",
-        "was", "were", "from", "what", "when", "some", "any", "old",
+        "the", "that", "this", "thing", "about", "one", "and", "for", "with", "was", "were",
+        "from", "what", "when", "some", "any", "old",
     ];
     let words: Vec<String> = asked
         .to_lowercase()
@@ -637,7 +637,10 @@ pub fn picking_back_up(d: &Dropped) -> String {
         ));
     }
     if !d.thinking.is_empty() {
-        s.push_str(&format!(" I've still got {} notes on it.", d.thinking.len()));
+        s.push_str(&format!(
+            " I've still got {} notes on it.",
+            d.thinking.len()
+        ));
     }
     s
 }
@@ -711,10 +714,31 @@ pub enum WrapAsked {
 }
 
 pub fn wrap_asked(said: &str) -> Option<WrapAsked> {
-    let t = said.trim().trim_end_matches(['?', '.', '!']).to_ascii_lowercase();
+    let t = said
+        .trim()
+        .trim_end_matches(['?', '.', '!'])
+        .to_ascii_lowercase();
     let t = t.trim_start_matches("atlas, ").trim_start_matches("atlas ");
-    const WEEK: &[&str] = &["how did my week go", "how was my week", "weekly review", "review my week", "wrap up my week", "my week in review", "friday review"];
-    const DAY: &[&str] = &["wrap up my day", "wrap up the day", "how did today go", "how did my day go", "end of day", "end of day wrap up", "day wrap up", "what did i get done today", "wrap up today"];
+    const WEEK: &[&str] = &[
+        "how did my week go",
+        "how was my week",
+        "weekly review",
+        "review my week",
+        "wrap up my week",
+        "my week in review",
+        "friday review",
+    ];
+    const DAY: &[&str] = &[
+        "wrap up my day",
+        "wrap up the day",
+        "how did today go",
+        "how did my day go",
+        "end of day",
+        "end of day wrap up",
+        "day wrap up",
+        "what did i get done today",
+        "wrap up today",
+    ];
     if WEEK.contains(&t) {
         Some(WrapAsked::Week)
     } else if DAY.contains(&t) {
@@ -733,7 +757,9 @@ pub const WRAP_AFTER_ACTIVE_SECS: u64 = 3600;
 /// Whether to offer the wrap-up now, unasked: evening, you're here, there
 /// was a real day, and it hasn't been said today.
 pub fn wrap_due(hour: u8, today: u64, wrapped_on: u64, active_today: u64, here: bool) -> bool {
-    here && (WRAP_FROM_HOUR..WRAP_UNTIL_HOUR).contains(&hour) && wrapped_on != today && active_today >= WRAP_AFTER_ACTIVE_SECS
+    here && (WRAP_FROM_HOUR..WRAP_UNTIL_HOUR).contains(&hour)
+        && wrapped_on != today
+        && active_today >= WRAP_AFTER_ACTIVE_SECS
 }
 
 fn hm(secs: u64) -> String {
@@ -745,7 +771,12 @@ fn hm(secs: u64) -> String {
 pub fn wrap_said(w: &Wrap) -> String {
     let mut out: Vec<String> = Vec::new();
     if w.active_secs > 0 {
-        let top: Vec<String> = w.top.iter().take(3).map(|(c, s)| format!("{c} {}", hm(*s))).collect();
+        let top: Vec<String> = w
+            .top
+            .iter()
+            .take(3)
+            .map(|(c, s)| format!("{c} {}", hm(*s)))
+            .collect();
         let mut s = format!("Today: {} at the machine", hm(w.active_secs));
         if !top.is_empty() {
             s.push_str(&format!(" -- {}", top.join(", ")));
@@ -759,10 +790,17 @@ pub fn wrap_said(w: &Wrap) -> String {
     match w.finished.len() {
         0 => {}
         1 => out.push(format!("Done: {}.", w.finished[0])),
-        n => out.push(format!("Done: {n} things, including {}.", w.finished[..2.min(n)].join(" and "))),
+        n => out.push(format!(
+            "Done: {n} things, including {}.",
+            w.finished[..2.min(n)].join(" and ")
+        )),
     }
     if w.handled > 0 {
-        out.push(format!("I ran {} job{} for you.", w.handled, if w.handled == 1 { "" } else { "s" }));
+        out.push(format!(
+            "I ran {} job{} for you.",
+            w.handled,
+            if w.handled == 1 { "" } else { "s" }
+        ));
     }
     // What slipped: the one carried longest, named; the rest counted.
     let mut carried = w.carried.clone();
@@ -772,7 +810,11 @@ pub fn wrap_said(w: &Wrap) -> String {
             let more = carried.len() - 1;
             out.push(format!(
                 "Slipping: {title}, carried {days} days{}.",
-                if more > 0 { format!(", and {more} more still open") } else { String::new() }
+                if more > 0 {
+                    format!(", and {more} more still open")
+                } else {
+                    String::new()
+                }
             ));
         }
         Some(_) => out.push(format!("{} still open.", carried.len())),
@@ -791,8 +833,16 @@ pub fn wrap_said(w: &Wrap) -> String {
             wk.days_worked,
             if wk.days_worked == 1 { "" } else { "s" }
         );
-        s.push_str(&format!(", {} long stretch{} of focus", wk.focus_blocks, if wk.focus_blocks == 1 { "" } else { "es" }));
-        s.push_str(&format!(", {} thing{} finished.", wk.finished, if wk.finished == 1 { "" } else { "s" }));
+        s.push_str(&format!(
+            ", {} long stretch{} of focus",
+            wk.focus_blocks,
+            if wk.focus_blocks == 1 { "" } else { "es" }
+        ));
+        s.push_str(&format!(
+            ", {} thing{} finished.",
+            wk.finished,
+            if wk.finished == 1 { "" } else { "s" }
+        ));
         out.push(s);
     }
     if out.is_empty() {
@@ -830,9 +880,14 @@ pub fn one_thing_noticed(days: &[DayLog]) -> Option<String> {
     let week = &days[days.len() - 7..];
     // Late nights: three or more of the last seven with a quarter of an hour
     // or more after midnight.
-    let late = week.iter().filter(|d| d.small_hours_secs >= 15 * 60).count();
+    let late = week
+        .iter()
+        .filter(|d| d.small_hours_secs >= 15 * 60)
+        .count();
     if late >= 3 {
-        return Some(format!("You've been at the machine after midnight on {late} of the last seven nights."));
+        return Some(format!(
+            "You've been at the machine after midnight on {late} of the last seven nights."
+        ));
     }
     let (today, before) = week.split_last()?;
     let worked: Vec<&DayLog> = before.iter().filter(|d| d.active_secs >= 1800).collect();
@@ -852,7 +907,17 @@ pub fn one_thing_noticed(days: &[DayLog]) -> Option<String> {
         if *secs < 3600 {
             continue;
         }
-        let usual: u64 = worked.iter().map(|d| d.by_category.iter().find(|(c, _)| c == cat).map(|(_, s)| *s).unwrap_or(0)).sum::<u64>() / worked.len() as u64;
+        let usual: u64 = worked
+            .iter()
+            .map(|d| {
+                d.by_category
+                    .iter()
+                    .find(|(c, _)| c == cat)
+                    .map(|(_, s)| *s)
+                    .unwrap_or(0)
+            })
+            .sum::<u64>()
+            / worked.len() as u64;
         if usual > 0 && *secs >= usual * 2 {
             return Some(format!(
                 "{} on {cat} today -- about twice your usual {}.",
@@ -861,7 +926,10 @@ pub fn one_thing_noticed(days: &[DayLog]) -> Option<String> {
             ));
         }
         if usual == 0 {
-            return Some(format!("{} on {cat} today, which you hadn't done all week.", crate::worklog::duration_words(*secs)));
+            return Some(format!(
+                "{} on {cat} today, which you hadn't done all week.",
+                crate::worklog::duration_words(*secs)
+            ));
         }
     }
     None

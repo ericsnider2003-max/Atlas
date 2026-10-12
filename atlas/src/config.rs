@@ -322,8 +322,9 @@ fn load_layered<T: for<'de> Deserialize<'de>>(
     };
     let to_t = |v: serde_yaml::Value| -> Result<(T, Vec<String>)> {
         let mut unknown = Vec::new();
-        let t = serde_ignored::deserialize(v, |p| unknown.push(p.to_string()))
-            .map_err(|e: serde_yaml::Error| AtlasError::Config(format!("{}: {e}", path.display())))?;
+        let t = serde_ignored::deserialize(v, |p| unknown.push(p.to_string())).map_err(
+            |e: serde_yaml::Error| AtlasError::Config(format!("{}: {e}", path.display())),
+        )?;
         Ok((t, keys_that_match_nothing(file, unknown)))
     };
 
@@ -379,7 +380,9 @@ fn keys_that_match_nothing(file: &str, paths: Vec<String>) -> Vec<String> {
         .into_iter()
         .filter(|p| !known(p))
         .map(|p| {
-            let msg = format!("{file}: `{p}` is not a setting Atlas has, so it changes nothing (a misspelt key?)");
+            let msg = format!(
+                "{file}: `{p}` is not a setting Atlas has, so it changes nothing (a misspelt key?)"
+            );
             crate::heard!(Err::<(), _>(msg.clone()));
             msg
         })
@@ -390,9 +393,22 @@ impl Config {
     pub fn load(dir: &Path) -> Result<Self> {
         let mut unplaced: Vec<String> = Vec::new();
         let mut edits_unplaced: Vec<String> = Vec::new();
-        let apps: AppsConfig = load_layered(dir, "apps.yaml", None, &mut unplaced, &mut edits_unplaced)?;
-        let layouts: LayoutsConfig = load_layered(dir, "layouts.yaml", None, &mut unplaced, &mut edits_unplaced)?;
-        let commands: CommandsConfig = load_layered(dir, "commands.yaml", None, &mut unplaced, &mut edits_unplaced)?;
+        let apps: AppsConfig =
+            load_layered(dir, "apps.yaml", None, &mut unplaced, &mut edits_unplaced)?;
+        let layouts: LayoutsConfig = load_layered(
+            dir,
+            "layouts.yaml",
+            None,
+            &mut unplaced,
+            &mut edits_unplaced,
+        )?;
+        let commands: CommandsConfig = load_layered(
+            dir,
+            "commands.yaml",
+            None,
+            &mut unplaced,
+            &mut edits_unplaced,
+        )?;
         apps.validate(&layouts)?;
 
         // The settings layer, over the shipped one.
@@ -412,7 +428,13 @@ impl Config {
         // what you chose in Settings -- the most deliberate choice last.
         let tools = if dir.join("tools.yaml").is_file() {
             let prefs = crate::preferences::Preferences::load(dir);
-            Some(load_layered(dir, "tools.yaml", Some(&prefs), &mut unplaced, &mut edits_unplaced)?)
+            Some(load_layered(
+                dir,
+                "tools.yaml",
+                Some(&prefs),
+                &mut unplaced,
+                &mut edits_unplaced,
+            )?)
         } else {
             None
         };
@@ -424,7 +446,13 @@ impl Config {
         };
 
         let indexing = if dir.join("indexing.yaml").is_file() {
-            Some(load_layered(dir, "indexing.yaml", None, &mut unplaced, &mut edits_unplaced)?)
+            Some(load_layered(
+                dir,
+                "indexing.yaml",
+                None,
+                &mut unplaced,
+                &mut edits_unplaced,
+            )?)
         } else {
             None
         };
@@ -496,23 +524,41 @@ pub const NO_FIELD_TO_LAND_IN: &[(&str, &str)] = &[
     // the vault has ignored since it moved to Argon2id, whose cost is memory
     // rather than rounds. The field is deleted; anyone whose file still sets
     // it is told rather than left with the comment.
-    ("vault.kdf_rounds", "the vault uses Argon2id, whose cost is memory and passes \
+    (
+        "vault.kdf_rounds",
+        "the vault uses Argon2id, whose cost is memory and passes \
 rather than a round count. The number in your file has not done anything since that \
-change, and the comment beside it in the shipped file was wrong about what it bought"),
-    ("files.look_inside_archives", "nothing here opens an archive. The index \
+change, and the comment beside it in the shipped file was wrong about what it bought",
+    ),
+    (
+        "files.look_inside_archives",
+        "nothing here opens an archive. The index \
 classifies a .zip and stops, and the unpacking guard beside this setting has no caller \
 -- so a switch shipped on read as a behaviour you had. It comes back when something \
-unpacks"),
-    ("household.household", "the household's id lives in the store, made once at \
+unpacks",
+    ),
+    (
+        "household.household",
+        "the household's id lives in the store, made once at \
 first run. A copy of it in a text file is a thing people move between machines, which is \
 how two devices claim the same household without either having been invited -- so there \
-is one place it can come from, and this is not it"),
-    ("household.discoverable", "nothing here announces itself on a local network. \
+is one place it can come from, and this is not it",
+    ),
+    (
+        "household.discoverable",
+        "nothing here announces itself on a local network. \
 `mesh` is unwired and says so, and `server.reachable_from` is the opposite approach, \
 where you give the address yourself. A switch for a behaviour that does not exist reads \
-as one you have turned off"),
-    ("cdp", "duplicated by the live `browser:` block, which is the one that works"),
-    ("chain", "carries `confirm_before_sending: true`, which reads as a guarantee and is not one"),
+as one you have turned off",
+    ),
+    (
+        "cdp",
+        "duplicated by the live `browser:` block, which is the one that works",
+    ),
+    (
+        "chain",
+        "carries `confirm_before_sending: true`, which reads as a guarantee and is not one",
+    ),
     ("freshness", "no FreshnessConfig type exists"),
     ("improve", "no ImproveConfig type exists"),
     ("knowhow", "no KnowhowConfig type exists"),
@@ -522,7 +568,10 @@ as one you have turned off"),
     ("publishing", "no PublishingConfig type exists"),
     ("stance", "no StanceConfig type exists"),
     ("timebox", "no TimeboxConfig type exists"),
-    ("triage", "the block you would reach for to turn inbox triage on, now that imap.rs exists"),
+    (
+        "triage",
+        "the block you would reach for to turn inbox triage on, now that imap.rs exists",
+    ),
     ("undo", "no UndoConfig type exists"),
 ];
 
@@ -538,7 +587,10 @@ pub const PARSED_AND_NEVER_READ: &[(&str, &str)] = &[
     // checks `editcraft.enabled`, and a build handed to a bigger model (D)
     // writes its brief to `handoff`'s limits.
     ("ios", "IosConfig is loaded and never consulted"),
-    ("layout_prefs", "LayoutPrefsConfig is loaded and never consulted"),
+    (
+        "layout_prefs",
+        "LayoutPrefsConfig is loaded and never consulted",
+    ),
     // `push_to_talk` came off this list on 25 Sep 2026 (Eric, H1): a
     // low-level keyboard hook on Windows (`hotkeys`) feeds the hold-to-talk
     // state machine, and the key and hold time are read at start-up.
@@ -594,7 +646,10 @@ pub fn settings_that_do_nothing(tools_yaml: &str) -> Vec<(&'static str, &'static
         .flatten()
         .collect();
 
-    for (key, why) in NO_FIELD_TO_LAND_IN.iter().chain(PARSED_AND_NEVER_READ.iter()) {
+    for (key, why) in NO_FIELD_TO_LAND_IN
+        .iter()
+        .chain(PARSED_AND_NEVER_READ.iter())
+    {
         let there = if key.contains('.') {
             nested.iter().any(|n| n == key)
         } else {

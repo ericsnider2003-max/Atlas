@@ -426,7 +426,11 @@ impl Model {
             .into_runnable()
             .map_err(|e| AtlasError::Config(format!("couldn't prepare {}: {e}", kind.file())))?;
 
-        Ok(Model { kind, plan, last_ms: 0 })
+        Ok(Model {
+            kind,
+            plan,
+            last_ms: 0,
+        })
     }
 
     pub fn kind(&self) -> Kind {
@@ -456,9 +460,10 @@ impl Model {
 
         let s = r.shape();
         let began = std::time::Instant::now();
-        let input: Tensor = tract_ndarray::Array4::from_shape_vec((s[0], s[1], s[2], s[3]), pixels.to_vec())
-            .map_err(|e| AtlasError::Platform(format!("couldn't shape the picture: {e}")))?
-            .into();
+        let input: Tensor =
+            tract_ndarray::Array4::from_shape_vec((s[0], s[1], s[2], s[3]), pixels.to_vec())
+                .map_err(|e| AtlasError::Platform(format!("couldn't shape the picture: {e}")))?
+                .into();
         let out = self
             .plan
             .run(tvec!(input.into()))
@@ -480,7 +485,10 @@ impl Model {
                 self.kind.file()
             )));
         }
-        Ok(Outputs { model: self.kind.file(), values })
+        Ok(Outputs {
+            model: self.kind.file(),
+            values,
+        })
     }
 }
 
@@ -534,7 +542,11 @@ pub fn spoken(missing: &[(Kind, PathBuf)]) -> String {
          download into models/.",
         what.join(" or "),
         if missing.len() == 1 { "" } else { "s" },
-        if missing.len() == 1 { "isn't" } else { "aren't" }
+        if missing.len() == 1 {
+            "isn't"
+        } else {
+            "aren't"
+        }
     )
 }
 
@@ -650,7 +662,8 @@ pub fn arrange(fitted: &[f32], r: &Recipe) -> Vec<f32> {
         // channels is a different picture, and the model has never seen one.
         Layout::Grey => {
             for p in 0..pixels {
-                let grey = fitted[p * 3] * 0.299 + fitted[p * 3 + 1] * 0.587 + fitted[p * 3 + 2] * 0.114;
+                let grey =
+                    fitted[p * 3] * 0.299 + fitted[p * 3 + 1] * 0.587 + fitted[p * 3 + 2] * 0.114;
                 out[p] = (grey * r.top - r.mean[0]) / r.deviation[0];
             }
         }

@@ -1,6 +1,6 @@
 //! A turn: `turn` and `turn_from`, answering before the model, `run_command`,
 //! and the small helpers they lean on, down to finding files.
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
@@ -23,7 +23,12 @@ impl<'a> Daemon<'a> {
         self.cpu_meter.talked();
         // The parser needs your project names to tell "fix the parser in
         // Homelab" (project work) from "change the volume" (not).
-        let names: Vec<String> = self.workshop.projects.iter().map(|p| p.name.clone()).collect();
+        let names: Vec<String> = self
+            .workshop
+            .projects
+            .iter()
+            .map(|p| p.name.clone())
+            .collect();
         self.parser.know_projects(names);
         // The people and habits you have, and the list a number would
         // refer to -- so "open 2" and "I called Sam" read right.
@@ -52,7 +57,6 @@ impl<'a> Daemon<'a> {
         self.watching_turn = false;
         self.turn_watched(watch, heard, reply, t)
     }
-
 
     /// The helpers both `answer_locally` and `answer_before_the_model` ask
     /// first, in this order. One list (audit Q3): it was written out twice,
@@ -121,8 +125,20 @@ impl<'a> Daemon<'a> {
         self.asked_of_a_helper(raw, t)
             .or_else(|| self.learn_stated(raw))
             .or_else(|| self.exact_fact(raw, t))
-            .or_else(|| if opens_with_ways(raw) { self.ways_in_help(raw) } else { None })
-            .or_else(|| if opens_with_deciding(raw) { self.decision_help(raw) } else { None })
+            .or_else(|| {
+                if opens_with_ways(raw) {
+                    self.ways_in_help(raw)
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                if opens_with_deciding(raw) {
+                    self.decision_help(raw)
+                } else {
+                    None
+                }
+            })
     }
 
     /// A fact asked for by its exact slot: "what kind of car do I have".
@@ -159,8 +175,6 @@ impl<'a> Daemon<'a> {
             "",
         )
     }
-
-
 }
 
 /// The first letter a capital.
@@ -176,14 +190,16 @@ fn capital_first(s: &str) -> String {
 /// something, not asking for it later. "Can you back up tonight?" is a
 /// request, and still waits.
 fn asks_about_what_happened(said: &str) -> bool {
-    const ASKING: &[&str] = &["what", "what's", "whats", "who", "why", "how", "where", "which", "did", "was", "were", "is", "are", "has", "have"];
+    const ASKING: &[&str] = &[
+        "what", "what's", "whats", "who", "why", "how", "where", "which", "did", "was", "were",
+        "is", "are", "has", "have",
+    ];
     let first = said.split_whitespace().next().unwrap_or("").to_lowercase();
     let first = first.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'');
     ASKING.contains(&first)
 }
 
 // The rest of this module, by what it does (audit Q6, 6 Oct 2026).
-mod unwatched;
-mod run_command;
 mod around_the_turn;
-
+mod run_command;
+mod unwatched;

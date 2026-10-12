@@ -61,11 +61,14 @@ impl Identity {
         let path = dir.join(FILE);
         match std::fs::read_to_string(&path) {
             Ok(text) => {
-                let s: Stored = serde_json::from_str(&text)
-                    .map_err(|e| format!("{} doesn't read ({e}); I won't replace it", path.display()))?;
+                let s: Stored = serde_json::from_str(&text).map_err(|e| {
+                    format!("{} doesn't read ({e}); I won't replace it", path.display())
+                })?;
                 let seed = unhex::<32>(&s.seed)
                     .ok_or_else(|| format!("{} is damaged; I won't replace it", path.display()))?;
-                Ok(Identity { key: SigningKey::from_bytes(&seed) })
+                Ok(Identity {
+                    key: SigningKey::from_bytes(&seed),
+                })
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 use chacha20poly1305::aead::rand_core::RngCore;
@@ -76,7 +79,9 @@ impl Identity {
                     .map_err(std::io::Error::other)
                     .and_then(|body| crate::store::write_whole(&path, &body))
                     .map_err(|e| format!("couldn't save this Atlas's identity: {e}"))?;
-                Ok(Identity { key: SigningKey::from_bytes(&seed) })
+                Ok(Identity {
+                    key: SigningKey::from_bytes(&seed),
+                })
             }
             Err(e) => Err(format!("couldn't read {}: {e}", path.display())),
         }
@@ -84,7 +89,9 @@ impl Identity {
 
     /// From a known seed. For tests, and nothing else.
     pub fn from_seed_for_test(seed: [u8; 32]) -> Identity {
-        Identity { key: SigningKey::from_bytes(&seed) }
+        Identity {
+            key: SigningKey::from_bytes(&seed),
+        }
     }
 
     /// The public half, hex -- what other Atlases pin and check against.
@@ -101,7 +108,9 @@ impl Identity {
     /// based KEM", 2021) -- and it's what lets the key a friend pinned be the
     /// key they encrypt to, with nothing more to exchange.
     pub fn agree_point(&self, their_point: [u8; 32]) -> Option<[u8; 32]> {
-        let out = curve25519_dalek::MontgomeryPoint(their_point).mul_clamped(self.key.to_scalar_bytes()).to_bytes();
+        let out = curve25519_dalek::MontgomeryPoint(their_point)
+            .mul_clamped(self.key.to_scalar_bytes())
+            .to_bytes();
         (out != [0u8; 32]).then_some(out)
     }
 
@@ -143,13 +152,21 @@ pub struct Delegation {
 impl Identity {
     /// Vouch for another device of yours.
     pub fn delegate(&self, device: &str) -> Delegation {
-        Delegation { device: device.to_string(), signature: self.sign(DELEGATION_DOMAIN, device.as_bytes()) }
+        Delegation {
+            device: device.to_string(),
+            signature: self.sign(DELEGATION_DOMAIN, device.as_bytes()),
+        }
     }
 }
 
 /// An Atlas public key (hex) in the form X25519 agrees with.
 pub fn exchange_point(public_hex: &str) -> Option<[u8; 32]> {
-    Some(VerifyingKey::from_bytes(&unhex::<32>(public_hex)?).ok()?.to_montgomery().to_bytes())
+    Some(
+        VerifyingKey::from_bytes(&unhex::<32>(public_hex)?)
+            .ok()?
+            .to_montgomery()
+            .to_bytes(),
+    )
 }
 
 /// Did `owner` vouch for this device?
@@ -172,8 +189,12 @@ pub fn is_public_key(public_hex: &str) -> bool {
 /// Did the holder of `public_hex` sign `message` under `domain`? Strict
 /// verification; anything malformed is simply "no".
 pub fn verify(public_hex: &str, domain: &[u8], message: &[u8], signature_hex: &str) -> bool {
-    let (Some(k), Some(s)) = (unhex::<32>(public_hex), unhex::<64>(signature_hex)) else { return false };
-    let Ok(key) = VerifyingKey::from_bytes(&k) else { return false };
+    let (Some(k), Some(s)) = (unhex::<32>(public_hex), unhex::<64>(signature_hex)) else {
+        return false;
+    };
+    let Ok(key) = VerifyingKey::from_bytes(&k) else {
+        return false;
+    };
     let mut m = domain.to_vec();
     m.extend_from_slice(message);
     key.verify_strict(&m, &Signature::from_bytes(&s)).is_ok()
@@ -190,7 +211,10 @@ mod tests {
         let sig = me.sign(b"d1\n", b"hello");
         assert!(verify(&me.public(), b"d1\n", b"hello", &sig));
         assert!(!verify(&other.public(), b"d1\n", b"hello", &sig));
-        assert!(!verify(&me.public(), b"d2\n", b"hello", &sig), "replayed across purposes");
+        assert!(
+            !verify(&me.public(), b"d2\n", b"hello", &sig),
+            "replayed across purposes"
+        );
         assert!(!verify(&me.public(), b"d1\n", b"hellO", &sig));
         assert!(!verify("zz", b"d1\n", b"hello", &sig));
         assert!(!verify(&me.public(), b"d1\n", b"hello", "00"));
@@ -206,6 +230,9 @@ mod tests {
         assert!(is_public_key(&a.public()));
         assert_eq!(fingerprint(&a.public()).unwrap().len(), 32);
         std::fs::write(dir.join(FILE), "garbage").unwrap();
-        assert!(Identity::load_or_create(&dir).is_err(), "a damaged identity must not be replaced by a new one");
+        assert!(
+            Identity::load_or_create(&dir).is_err(),
+            "a damaged identity must not be replaced by a new one"
+        );
     }
 }

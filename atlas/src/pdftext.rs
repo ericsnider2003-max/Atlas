@@ -70,14 +70,20 @@ pub fn read(bytes: &[u8]) -> Result<Pdf, String> {
         page_ids = ids;
     }
 
-    let mut pdf = Pdf { pages: page_ids.len(), ..Default::default() };
+    let mut pdf = Pdf {
+        pages: page_ids.len(),
+        ..Default::default()
+    };
     let mut pages_text = Vec::new();
     for id in &page_ids {
         let Some(page) = objs.get(id) else { continue };
         let fonts = fonts_of(&page.dict, &objs, *id);
         let mut text = String::new();
         for c in contents_of(&page.dict) {
-            if let Some(Obj { stream: Some(s), .. }) = objs.get(&c) {
+            if let Some(Obj {
+                stream: Some(s), ..
+            }) = objs.get(&c)
+            {
                 text.push_str(&text_of(s, &fonts));
             }
         }
@@ -85,9 +91,16 @@ pub fn read(bytes: &[u8]) -> Result<Pdf, String> {
     }
     pdf.text = pages_text.join("\n\n").trim().to_string();
 
-    let mut img_ids: Vec<u32> = objs.iter().filter(|(_, o)| o.jpeg).map(|(id, _)| *id).collect();
+    let mut img_ids: Vec<u32> = objs
+        .iter()
+        .filter(|(_, o)| o.jpeg)
+        .map(|(id, _)| *id)
+        .collect();
     img_ids.sort();
-    pdf.images = img_ids.into_iter().filter_map(|id| objs.get(&id).and_then(|o| o.stream.clone())).collect();
+    pdf.images = img_ids
+        .into_iter()
+        .filter_map(|id| objs.get(&id).and_then(|o| o.stream.clone()))
+        .collect();
     Ok(pdf)
 }
 
@@ -97,7 +110,10 @@ pub fn looks_like_words(text: &str) -> bool {
     if total == 0 {
         return false;
     }
-    let good = text.chars().filter(|c| c.is_alphanumeric() || ".,;:!?'\"()-%$€£/&@".contains(*c)).count();
+    let good = text
+        .chars()
+        .filter(|c| c.is_alphanumeric() || ".,;:!?'\"()-%$€£/&@".contains(*c))
+        .count();
     good * 100 / total >= 85
 }
 
@@ -123,9 +139,13 @@ fn objects(bytes: &[u8]) -> HashMap<u32, Obj> {
     while let Some(k) = find(&bytes[i..], b" obj") {
         let at = i + k;
         i = at + 4;
-        let Some(id) = number_before(bytes, at) else { continue };
+        let Some(id) = number_before(bytes, at) else {
+            continue;
+        };
         let body_start = at + 4;
-        let Some(end) = find(&bytes[body_start..], b"endobj") else { break };
+        let Some(end) = find(&bytes[body_start..], b"endobj") else {
+            break;
+        };
         let body = &bytes[body_start..body_start + end];
         out.insert(id, parse_obj(body));
         i = body_start + end + 6;
@@ -141,13 +161,23 @@ fn number_before(bytes: &[u8], at: usize) -> Option<u32> {
     let gen = parts.next()?;
     let id = parts.next()?;
     gen.parse::<u32>().ok()?;
-    let id: String = id.chars().rev().take_while(|c| c.is_ascii_digit()).collect::<Vec<_>>().into_iter().rev().collect();
+    let id: String = id
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
     id.parse().ok()
 }
 
 fn parse_obj(body: &[u8]) -> Obj {
     let Some(s) = find(body, b"stream") else {
-        return Obj { dict: spaced(&String::from_utf8_lossy(body)), ..Default::default() };
+        return Obj {
+            dict: spaced(&String::from_utf8_lossy(body)),
+            ..Default::default()
+        };
     };
     // `endstream` also contains `stream`; the first match is the start.
     let dict = spaced(&String::from_utf8_lossy(&body[..s]));
@@ -158,7 +188,9 @@ fn parse_obj(body: &[u8]) -> Obj {
     if body.get(start) == Some(&b'\n') {
         start += 1;
     }
-    let end = find(&body[start..], b"endstream").map(|e| start + e).unwrap_or(body.len());
+    let end = find(&body[start..], b"endstream")
+        .map(|e| start + e)
+        .unwrap_or(body.len());
     let mut raw = &body[start..end];
     if let Some(n) = direct_int(&dict, "/Length") {
         if n <= raw.len() {
@@ -174,21 +206,39 @@ fn parse_obj(body: &[u8]) -> Obj {
 /// A dictionary with a space around every delimiter, so `<</F1 5 0 R/F2 6 0 R>>`
 /// splits into the same tokens as the tidily written kind.
 fn spaced(dict: &str) -> String {
-    dict.replace("<<", " << ").replace(">>", " >> ").replace('/', " /").replace('[', " [ ").replace(']', " ] ")
+    dict.replace("<<", " << ")
+        .replace(">>", " >> ")
+        .replace('/', " /")
+        .replace('[', " [ ")
+        .replace(']', " ] ")
 }
 
 fn filters_of(dict: &str) -> Vec<String> {
-    let Some(i) = dict.find("/Filter") else { return vec![] };
+    let Some(i) = dict.find("/Filter") else {
+        return vec![];
+    };
     let rest = &dict[i + 7..];
     let rest = rest.trim_start();
     // By character: `/Filter` last in the dictionary left nothing to skip,
     // and a byte the lossy decoding turned into a 3-byte replacement
     // character split mid-character (both panicked; found 5 Oct 2026).
-    let span = if rest.starts_with('[') { &rest[..rest.find(']').unwrap_or(rest.len())] } else {
-        let n = rest.char_indices().skip(1).find(|&(_, c)| c == '/' || c == '>' || c.is_whitespace()).map_or(rest.len(), |(i, _)| i);
+    let span = if rest.starts_with('[') {
+        &rest[..rest.find(']').unwrap_or(rest.len())]
+    } else {
+        let n = rest
+            .char_indices()
+            .skip(1)
+            .find(|&(_, c)| c == '/' || c == '>' || c.is_whitespace())
+            .map_or(rest.len(), |(i, _)| i);
         &rest[..n]
     };
-    span.split('/').skip(1).map(|f| f.trim_matches(|c: char| c.is_whitespace() || c == ']').to_string()).collect()
+    span.split('/')
+        .skip(1)
+        .map(|f| {
+            f.trim_matches(|c: char| c.is_whitespace() || c == ']')
+                .to_string()
+        })
+        .collect()
 }
 
 fn decode(raw: &[u8], filters: &[String]) -> Option<Vec<u8>> {
@@ -275,7 +325,9 @@ fn ref_of(dict: &str, key: &str) -> Option<u32> {
 
 fn is_type(dict: &str, t: &str) -> bool {
     let d = dict.replace(char::is_whitespace, "");
-    d.contains(&format!("/Type/{t}/")) || d.contains(&format!("/Type/{t}>")) || d.ends_with(&format!("/Type/{t}"))
+    d.contains(&format!("/Type/{t}/"))
+        || d.contains(&format!("/Type/{t}>"))
+        || d.ends_with(&format!("/Type/{t}"))
 }
 
 /// Objects packed inside `/Type /ObjStm` streams, which modern PDFs use for
@@ -287,26 +339,39 @@ fn unpack_object_streams(objs: &mut HashMap<u32, Obj>) {
         .filter_map(|o| o.stream.clone().map(|s| (o.dict.clone(), s)))
         .collect();
     for (dict, data) in packed {
-        let (Some(n), Some(first)) = (direct_int(&dict, "/N"), direct_int(&dict, "/First")) else { continue };
+        let (Some(n), Some(first)) = (direct_int(&dict, "/N"), direct_int(&dict, "/First")) else {
+            continue;
+        };
         let head = String::from_utf8_lossy(&data[..first.min(data.len())]).into_owned();
-        let nums: Vec<usize> = head.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+        let nums: Vec<usize> = head
+            .split_whitespace()
+            .filter_map(|x| x.parse().ok())
+            .collect();
         for k in 0..n {
-            let (Some(&id), Some(&off)) = (nums.get(2 * k), nums.get(2 * k + 1)) else { break };
+            let (Some(&id), Some(&off)) = (nums.get(2 * k), nums.get(2 * k + 1)) else {
+                break;
+            };
             let start = first + off;
             let end = nums.get(2 * k + 3).map_or(data.len(), |o| first + o);
             if start >= data.len() || end > data.len() || start > end {
                 continue;
             }
             let Ok(id) = u32::try_from(id) else { continue };
-            objs.entry(id)
-                .or_insert_with(|| Obj { dict: spaced(&String::from_utf8_lossy(&data[start..end])), ..Default::default() });
+            objs.entry(id).or_insert_with(|| Obj {
+                dict: spaced(&String::from_utf8_lossy(&data[start..end])),
+                ..Default::default()
+            });
         }
     }
 }
 
 /// Pages in reading order, walking the page tree from the catalogue.
 fn page_order(objs: &HashMap<u32, Obj>) -> Vec<u32> {
-    let Some(root) = objs.iter().find(|(_, o)| is_type(&o.dict, "Catalog")).and_then(|(_, o)| ref_of(&o.dict, "/Pages")) else {
+    let Some(root) = objs
+        .iter()
+        .find(|(_, o)| is_type(&o.dict, "Catalog"))
+        .and_then(|(_, o)| ref_of(&o.dict, "/Pages"))
+    else {
         return vec![];
     };
     let mut out = Vec::new();
@@ -331,7 +396,9 @@ fn page_order(objs: &HashMap<u32, Obj>) -> Vec<u32> {
 
 /// `/Kids [3 0 R 4 0 R]` → [3, 4].
 fn refs_in_array(dict: &str, key: &str) -> Vec<u32> {
-    let Some(i) = dict.find(key) else { return vec![] };
+    let Some(i) = dict.find(key) else {
+        return vec![];
+    };
     let rest = dict[i + key.len()..].trim_start();
     if !rest.starts_with('[') {
         return ref_of(dict, key).into_iter().collect();
@@ -373,7 +440,9 @@ fn fonts_of(page: &str, objs: &HashMap<u32, Obj>, page_id: u32) -> HashMap<Strin
         }
     }
     let _ = page_id;
-    let Some(res) = res else { return HashMap::new() };
+    let Some(res) = res else {
+        return HashMap::new();
+    };
     let font_dict = match ref_of(&res, "/Font") {
         Some(r) => objs.get(&r).map(|o| o.dict.clone()).unwrap_or_default(),
         None => inline_dict_after(&res, "/Font").unwrap_or_default(),
@@ -427,10 +496,17 @@ fn inline_dict_after(dict: &str, key: &str) -> Option<String> {
 }
 
 fn font_from(dict: &str, objs: &HashMap<u32, Obj>) -> Font {
-    let two_byte = dict.contains("/Type0") || dict.contains("Identity-H") || dict.contains("Identity-V");
-    let mut font = Font { two_byte, ..Default::default() };
+    let two_byte =
+        dict.contains("/Type0") || dict.contains("Identity-H") || dict.contains("Identity-V");
+    let mut font = Font {
+        two_byte,
+        ..Default::default()
+    };
     if let Some(r) = ref_of(dict, "/ToUnicode") {
-        if let Some(Obj { stream: Some(s), .. }) = objs.get(&r) {
+        if let Some(Obj {
+            stream: Some(s), ..
+        }) = objs.get(&r)
+        {
             let (map, two) = cmap(&String::from_utf8_lossy(s));
             font.map = map;
             font.two_byte = font.two_byte || two;
@@ -494,7 +570,12 @@ fn hex_tokens(s: &str) -> Vec<String> {
     let mut rest = s;
     while let Some(a) = rest.find('<') {
         let Some(b) = rest[a..].find('>') else { break };
-        out.push(rest[a + 1..a + b].chars().filter(|c| c.is_ascii_hexdigit()).collect());
+        out.push(
+            rest[a + 1..a + b]
+                .chars()
+                .filter(|c| c.is_ascii_hexdigit())
+                .collect(),
+        );
         rest = &rest[a + b + 1..];
     }
     out
@@ -509,7 +590,11 @@ fn hex_bytes(h: &str) -> Vec<u8> {
     digits
         .chunks(2)
         .map(|p| {
-            let s = if p.len() == 2 { format!("{}{}", p[0] as char, p[1] as char) } else { format!("{}0", p[0] as char) };
+            let s = if p.len() == 2 {
+                format!("{}{}", p[0] as char, p[1] as char)
+            } else {
+                format!("{}0", p[0] as char)
+            };
             u8::from_str_radix(&s, 16).unwrap_or(0)
         })
         .collect()
@@ -517,7 +602,16 @@ fn hex_bytes(h: &str) -> Vec<u8> {
 
 fn utf16_hex(h: &str) -> String {
     let b = hex_bytes(h);
-    let units: Vec<u16> = b.chunks(2).map(|p| if p.len() == 2 { u16::from_be_bytes([p[0], p[1]]) } else { p[0] as u16 }).collect();
+    let units: Vec<u16> = b
+        .chunks(2)
+        .map(|p| {
+            if p.len() == 2 {
+                u16::from_be_bytes([p[0], p[1]])
+            } else {
+                p[0] as u16
+            }
+        })
+        .collect();
     String::from_utf16_lossy(&units)
 }
 
@@ -535,7 +629,9 @@ fn text_of(stream: &[u8], fonts: &HashMap<String, Font>) -> String {
             Tok::Op(op) => {
                 match op.as_str() {
                     "Tf" => {
-                        if let Some(Tok::Name(n)) = operands.iter().rev().find(|t| matches!(t, Tok::Name(_))) {
+                        if let Some(Tok::Name(n)) =
+                            operands.iter().rev().find(|t| matches!(t, Tok::Name(_)))
+                        {
                             font = fonts.get(n);
                         }
                     }
@@ -552,7 +648,9 @@ fn text_of(stream: &[u8], fonts: &HashMap<String, Font>) -> String {
                             for it in items {
                                 match it {
                                     Tok::Str(s) => out.push_str(&decode_str(s, font)),
-                                    Tok::Num(n) if *n < -200.0 && !out.ends_with(' ') => out.push(' '),
+                                    Tok::Num(n) if *n < -200.0 && !out.ends_with(' ') => {
+                                        out.push(' ')
+                                    }
                                     _ => {}
                                 }
                             }
@@ -580,10 +678,9 @@ fn text_of(stream: &[u8], fonts: &HashMap<String, Font>) -> String {
                         }
                     }
                     "T*" => newline(&mut out),
-                    "ET"
-                        if !out.ends_with('\n') && !out.ends_with(' ') && !out.is_empty() => {
-                            out.push(' ');
-                        }
+                    "ET" if !out.ends_with('\n') && !out.ends_with(' ') && !out.is_empty() => {
+                        out.push(' ');
+                    }
                     _ => {}
                 }
                 operands.clear();
@@ -609,7 +706,11 @@ fn decode_str(bytes: &[u8], font: Option<&Font>) -> String {
             let mut s = String::new();
             if f.two_byte {
                 for p in bytes.chunks(2) {
-                    let code = if p.len() == 2 { u16::from_be_bytes([p[0], p[1]]) as u32 } else { p[0] as u32 };
+                    let code = if p.len() == 2 {
+                        u16::from_be_bytes([p[0], p[1]]) as u32
+                    } else {
+                        p[0] as u32
+                    };
                     s.push_str(f.map.get(&code).map(|x| x.as_str()).unwrap_or(""));
                 }
             } else {
@@ -680,8 +781,15 @@ fn tokens(s: &[u8]) -> Vec<Tok> {
                 }
             }
             b'<' => {
-                let end = s[i..].iter().position(|&b| b == b'>').map_or(s.len(), |p| i + p);
-                push(Tok::Str(hex_bytes(&String::from_utf8_lossy(&s[i + 1..end]))), &mut out, &mut stack);
+                let end = s[i..]
+                    .iter()
+                    .position(|&b| b == b'>')
+                    .map_or(s.len(), |p| i + p);
+                push(
+                    Tok::Str(hex_bytes(&String::from_utf8_lossy(&s[i + 1..end]))),
+                    &mut out,
+                    &mut stack,
+                );
                 i = end + 1;
             }
             b'[' => {
@@ -695,7 +803,11 @@ fn tokens(s: &[u8]) -> Vec<Tok> {
             }
             b'/' => {
                 let j = word_end(s, i + 1);
-                push(Tok::Name(String::from_utf8_lossy(&s[i + 1..j]).into_owned()), &mut out, &mut stack);
+                push(
+                    Tok::Name(String::from_utf8_lossy(&s[i + 1..j]).into_owned()),
+                    &mut out,
+                    &mut stack,
+                );
                 i = j;
             }
             b'0'..=b'9' | b'-' | b'+' | b'.' => {

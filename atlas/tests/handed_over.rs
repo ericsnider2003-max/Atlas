@@ -37,7 +37,8 @@ const PHRASE: &str = "a long enough passphrase";
 /// anything.
 fn a_real_vault(state: &Store) -> Vault {
     let mut v = Vault::default();
-    v.open(PHRASE, 100, &VaultConfig::default()).expect("the first unlock sets the passphrase");
+    v.open(PHRASE, 100, &VaultConfig::default())
+        .expect("the first unlock sets the passphrase");
     v.put("something", Kind::ApiKey, "sk-test", 100).unwrap();
     v.save(state).expect("the vault should write");
     Vault::load(state)
@@ -57,7 +58,11 @@ fn anyone_can_hand_it_over_and_it_survives_a_restart() {
     h.save(&state).unwrap();
 
     let again = Handover::load(&state);
-    assert_eq!(again.stance, Stance::HandedOver, "it forgot on the way to disk");
+    assert_eq!(
+        again.stance,
+        Stance::HandedOver,
+        "it forgot on the way to disk"
+    );
     assert_eq!(again.note, "Sam is borrowing it");
 }
 
@@ -74,17 +79,29 @@ fn getting_it_back_costs_the_passphrase_and_nothing_else_will_do() {
     locked.lock();
     let why = h.take_back(&locked, 1100).unwrap_err();
     assert!(why.contains("Unlock the vault"), "{why}");
-    assert!(h.stance.handed_over(), "it came back without the passphrase");
+    assert!(
+        h.stance.handed_over(),
+        "it came back without the passphrase"
+    );
 
     // Wrong passphrase: the vault refuses to open at all, so there is nothing
     // to take it back with. This is the case that was live until the check
     // value existed -- `open` returned `Ok` for any twelve characters.
     let mut wrong = vault.clone();
     assert!(
-        wrong.open("the wrong passphrase entirely", 1100, &VaultConfig::default()).is_err(),
+        wrong
+            .open(
+                "the wrong passphrase entirely",
+                1100,
+                &VaultConfig::default()
+            )
+            .is_err(),
         "a wrong passphrase opened the vault"
     );
-    assert!(h.take_back(&wrong, 1100).is_err(), "a wrong passphrase took the machine back");
+    assert!(
+        h.take_back(&wrong, 1100).is_err(),
+        "a wrong passphrase took the machine back"
+    );
     assert!(h.stance.handed_over());
 
     // Right passphrase: back.
@@ -104,15 +121,23 @@ fn a_vault_that_has_never_had_a_passphrase_proves_nothing() {
     // having passed a check is.
     let state = Store::new(tmp("virgin"));
     let mut fresh = Vault::load(&state);
-    fresh.open("twelve characters at least", 100, &VaultConfig::default()).unwrap();
+    fresh
+        .open("twelve characters at least", 100, &VaultConfig::default())
+        .unwrap();
     assert_eq!(fresh.state(), atlas::vault::State::Open, "it did not open");
-    assert!(!fresh.proved_it(), "setting a passphrase was reported as passing a check");
+    assert!(
+        !fresh.proved_it(),
+        "setting a passphrase was reported as passing a check"
+    );
 
     let mut h = Handover::default();
     h.hand_over("", 100);
     let why = h.take_back(&fresh, 200).unwrap_err();
     assert!(why.contains("no passphrase"), "{why}");
-    assert!(h.stance.handed_over(), "an unverifiable unlock took the machine back");
+    assert!(
+        h.stance.handed_over(),
+        "an unverifiable unlock took the machine back"
+    );
 }
 
 // --- sensors may speak, and may not act -------------------------------------
@@ -192,7 +217,9 @@ fn the_one_gate_every_action_passes_through_asks_about_the_handover() {
     let handed = body
         .find("stance.handed_over()")
         .expect("the gate no longer checks whether it is handed over");
-    let gate = body.find("policy::gate").expect("gate_with_identity no longer calls policy::gate");
+    let gate = body
+        .find("policy::gate")
+        .expect("gate_with_identity no longer calls policy::gate");
 
     assert!(refuses < gate, "the handover check sits below policy::gate, where a standing grant has already returned Ok");
     assert!(handed < gate, "the stance is read below policy::gate");
@@ -241,16 +268,29 @@ fn everything_a_handover_refuses_is_something_atlas_can_actually_be_asked() {
     // Checked through the public API rather than against a copy of the list,
     // so a name added to `NEVER_AS_A_GUEST` is covered the day it is added.
     let every_kind = every_kind_atlas_can_produce();
-    assert!(every_kind.len() > 50, "the parse found {} kinds -- it broke", every_kind.len());
+    assert!(
+        every_kind.len() > 50,
+        "the parse found {} kinds -- it broke",
+        every_kind.len()
+    );
     for name in atlas::profiles::NEVER_AS_A_GUEST {
         assert!(
             every_kind.contains(&name.to_string()),
             "a handover refuses `{name}`, which no intent ever produces -- so it refuses nothing"
         );
-        assert!(refuses(name), "the list and the check disagree about {name}");
+        assert!(
+            refuses(name),
+            "the list and the check disagree about {name}"
+        );
     }
-    assert!(!refuses("say"), "answering a question is refused while handed over");
-    assert!(!refuses("whats_there"), "looking at the screen is refused while handed over");
+    assert!(
+        !refuses("say"),
+        "answering a question is refused while handed over"
+    );
+    assert!(
+        !refuses("whats_there"),
+        "looking at the screen is refused while handed over"
+    );
 
     // And what gets said when one of them arrives. Folded in here rather
     // than kept as its own test, because on its own it asserted nothing but
@@ -258,15 +298,20 @@ fn everything_a_handover_refuses_is_something_atlas_can_actually_be_asked() {
     // caught this one.
     for name in atlas::profiles::NEVER_AS_A_GUEST {
         let said = refusal(name);
-        assert!(!said.contains('_'), "an identifier reached the sentence: {said}");
-        assert!(said.contains("vault"), "the refusal does not name the way back: {said}");
+        assert!(
+            !said.contains('_'),
+            "an identifier reached the sentence: {said}"
+        );
+        assert!(
+            said.contains("vault"),
+            "the refusal does not name the way back: {said}"
+        );
         assert!(
             said.contains(&name.replace('_', " ")),
             "the refusal does not say what it refused: {said}"
         );
     }
 }
-
 
 /// Every name `session::kind_of` can return, read from its match arms.
 ///
@@ -285,8 +330,12 @@ fn every_kind_atlas_can_produce() -> Vec<String> {
     let mut out = Vec::new();
     for line in body.lines() {
         let code = line.split("//").next().unwrap_or("");
-        let Some((_, rest)) = code.split_once("=> \"") else { continue };
-        let Some((name, _)) = rest.split_once('"') else { continue };
+        let Some((_, rest)) = code.split_once("=> \"") else {
+            continue;
+        };
+        let Some((name, _)) = rest.split_once('"') else {
+            continue;
+        };
         out.push(name.to_string());
         if code.contains("Intent::Unknown") {
             break;
@@ -390,7 +439,11 @@ fn every_action_atlas_has_is_decided_one_way_or_the_other() {
     // complete set of actions, and requires the leftovers to have been
     // written down as deliberately allowed.
     let every = every_kind_atlas_can_produce();
-    assert!(every.len() > 50, "the parse found {} kinds -- it broke", every.len());
+    assert!(
+        every.len() > 50,
+        "the parse found {} kinds -- it broke",
+        every.len()
+    );
 
     let mut undecided = Vec::new();
     for kind in &every {
@@ -419,7 +472,10 @@ fn every_action_atlas_has_is_decided_one_way_or_the_other() {
             every.contains(&name.to_string()),
             "a handover refuses `{name}`, which no intent ever produces -- so it refuses nothing"
         );
-        assert!(refuses(name), "the list and the check disagree about {name}");
+        assert!(
+            refuses(name),
+            "the list and the check disagree about {name}"
+        );
     }
 }
 
@@ -430,12 +486,25 @@ fn a_stranger_cannot_read_back_what_atlas_holds_for_you() {
     // against it alone stopped your friend sending an email as you and let
     // them ask what was on your mind today. Your outstanding list, your
     // brief, your notes index and your history were all one sentence away.
-    for reading in ["outstanding", "ready", "what_i_have", "history", "why", "queued"] {
-        assert!(refuses(reading), "somebody else holding your laptop can ask for {reading}");
+    for reading in [
+        "outstanding",
+        "ready",
+        "what_i_have",
+        "history",
+        "why",
+        "queued",
+    ] {
+        assert!(
+            refuses(reading),
+            "somebody else holding your laptop can ask for {reading}"
+        );
     }
     // And writing into what Atlas remembers about you.
     for writing in ["capture", "got_it_wrong", "apply_lesson", "address_as"] {
-        assert!(refuses(writing), "a stranger can teach your Atlas by saying {writing}");
+        assert!(
+            refuses(writing),
+            "a stranger can teach your Atlas by saying {writing}"
+        );
     }
 }
 
@@ -451,7 +520,10 @@ fn a_guest_profile_is_not_held_to_the_second_list() {
     // Except what only the owner may even ask: Eric, 25 Sep 2026, on the
     // envelope — "no one else can ask Atlas", not even from a profile of
     // their own.
-    for theirs in atlas::profiles::THE_OWNERS_OWN.iter().filter(|a| !atlas::profiles::ONLY_YOU_MAY_ASK.contains(a)) {
+    for theirs in atlas::profiles::THE_OWNERS_OWN
+        .iter()
+        .filter(|a| !atlas::profiles::ONLY_YOU_MAY_ASK.contains(a))
+    {
         assert!(
             Role::Guest.may(theirs),
             "a guest profile cannot {theirs} in their own state directory"

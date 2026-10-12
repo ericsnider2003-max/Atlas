@@ -119,7 +119,11 @@ fn saying_yes_still_lets_the_work_through() {
 fn ordinary_local_work_is_not_newly_gated() {
     // Applying a floor must not start asking about things that never needed
     // asking, or the prompt becomes noise and gets clicked through.
-    for i in [Intent::WorkspaceOn, Intent::ViewDisplay, Intent::Outstanding] {
+    for i in [
+        Intent::WorkspaceOn,
+        Intent::ViewDisplay,
+        Intent::Outstanding,
+    ] {
         assert!(
             policy::gate(&i, &SaysNo).is_ok(),
             "{i:?} started needing approval"

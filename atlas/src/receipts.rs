@@ -51,7 +51,11 @@ pub enum Total {
     /// No label; the largest amount near the end. Ask before keeping.
     Probably(i64),
     /// Subtotal and tax don't make the total: both said.
-    Disagrees { total: i64, subtotal: i64, tax: i64 },
+    Disagrees {
+        total: i64,
+        subtotal: i64,
+        tax: i64,
+    },
     None,
 }
 
@@ -85,7 +89,11 @@ pub fn amounts(line: &str) -> Vec<i64> {
             Some(p) if tok.len() - p - 1 == 2 => {
                 let whole: String = tok[..p].chars().filter(|c| c.is_ascii_digit()).collect();
                 let frac = &tok[p + 1..];
-                whole.parse::<i64>().ok().zip(frac.parse::<i64>().ok()).map(|(w, f)| w * 100 + f)
+                whole
+                    .parse::<i64>()
+                    .ok()
+                    .zip(frac.parse::<i64>().ok())
+                    .map(|(w, f)| w * 100 + f)
             }
             _ => None,
         };
@@ -101,8 +109,23 @@ pub fn amounts(line: &str) -> Vec<i64> {
 }
 
 const NOT_THE_TOTAL: &[&str] = &[
-    "subtotal", "sub total", "sub-total", "total savings", "you saved", "savings", "total items", "items sold", "item count",
-    "change", "tendered", "cash", "tip suggestion", "points", "discount", "total tax", "before tax",
+    "subtotal",
+    "sub total",
+    "sub-total",
+    "total savings",
+    "you saved",
+    "savings",
+    "total items",
+    "items sold",
+    "item count",
+    "change",
+    "tendered",
+    "cash",
+    "tip suggestion",
+    "points",
+    "discount",
+    "total tax",
+    "before tax",
 ];
 
 fn day_of(text: &str) -> Option<i64> {
@@ -114,27 +137,59 @@ fn day_of(text: &str) -> Option<i64> {
         if parts.len() != 3 || parts.iter().any(|p| p.is_empty() || p.len() > 4) {
             continue;
         }
-        let n: Vec<i64> = match parts.iter().map(|p| p.parse::<i64>()).collect::<Result<Vec<_>, _>>() {
+        let n: Vec<i64> = match parts
+            .iter()
+            .map(|p| p.parse::<i64>())
+            .collect::<Result<Vec<_>, _>>()
+        {
             Ok(n) => n,
             Err(_) => continue,
         };
         let (y, m, d) = if parts[0].len() == 4 {
             (n[0], n[1], n[2])
         } else {
-            let y = if parts[2].len() == 2 { 2000 + n[2] } else { n[2] };
+            let y = if parts[2].len() == 2 {
+                2000 + n[2]
+            } else {
+                n[2]
+            };
             // US order unless the first can't be a month.
-            if n[0] > 12 { (y, n[1], n[0]) } else { (y, n[0], n[1]) }
+            if n[0] > 12 {
+                (y, n[1], n[0])
+            } else {
+                (y, n[0], n[1])
+            }
         };
-        if (2000..=2100).contains(&y) && (1..=12).contains(&m) && d >= 1 && d <= crate::civil::days_in_month(y, m as u32) as i64 {
+        if (2000..=2100).contains(&y)
+            && (1..=12).contains(&m)
+            && d >= 1
+            && d <= crate::civil::days_in_month(y, m as u32) as i64
+        {
             return Some(crate::civil::days_from_civil(y, m as u32, d as u32));
         }
     }
-    const MON: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-    let words: Vec<String> = text.split(|c: char| c.is_whitespace() || c == ',').filter(|w| !w.is_empty()).map(|w| w.to_ascii_lowercase()).collect();
+    const MON: [&str; 12] = [
+        "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+    ];
+    let words: Vec<String> = text
+        .split(|c: char| c.is_whitespace() || c == ',')
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_ascii_lowercase())
+        .collect();
     for i in 0..words.len() {
-        let Some(m) = MON.iter().position(|m| words[i].starts_with(m)) else { continue };
-        let num = |s: &str| s.trim_end_matches(|c: char| c.is_alphabetic()).parse::<i64>().ok();
-        let (d, y) = match (i.checked_sub(1).and_then(|j| num(&words[j])), words.get(i + 1).and_then(|w| num(w)), words.get(i + 2).and_then(|w| num(w))) {
+        let Some(m) = MON.iter().position(|m| words[i].starts_with(m)) else {
+            continue;
+        };
+        let num = |s: &str| {
+            s.trim_end_matches(|c: char| c.is_alphabetic())
+                .parse::<i64>()
+                .ok()
+        };
+        let (d, y) = match (
+            i.checked_sub(1).and_then(|j| num(&words[j])),
+            words.get(i + 1).and_then(|w| num(w)),
+            words.get(i + 2).and_then(|w| num(w)),
+        ) {
             (Some(d), Some(y), _) if y >= 2000 => (d, y),
             (_, Some(d), Some(y)) if y >= 2000 => (d, y),
             _ => continue,
@@ -147,7 +202,16 @@ fn day_of(text: &str) -> Option<i64> {
 }
 
 fn currency_of(text: &str) -> String {
-    for (sym, code) in [("€", "EUR"), ("£", "GBP"), ("¥", "JPY"), ("₹", "INR"), ("CAD", "CAD"), ("AUD", "AUD"), ("$", "USD"), ("USD", "USD")] {
+    for (sym, code) in [
+        ("€", "EUR"),
+        ("£", "GBP"),
+        ("¥", "JPY"),
+        ("₹", "INR"),
+        ("CAD", "CAD"),
+        ("AUD", "AUD"),
+        ("$", "USD"),
+        ("USD", "USD"),
+    ] {
         if text.contains(sym) {
             return code.into();
         }
@@ -157,7 +221,11 @@ fn currency_of(text: &str) -> String {
 
 /// Read OCR'd receipt text.
 pub fn read(text: &str) -> Reading {
-    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
     let merchant = lines
         .iter()
         .take(6)
@@ -166,7 +234,12 @@ pub fn read(text: &str) -> Reading {
             let low = l.to_lowercase();
             letters >= 3
                 && letters * 2 >= l.chars().filter(|c| !c.is_whitespace()).count()
-                && !["receipt", "welcome", "thank", "invoice", "order", "tel", "phone", "www", "http", "store #", "sale"].iter().any(|w| low.starts_with(w))
+                && ![
+                    "receipt", "welcome", "thank", "invoice", "order", "tel", "phone", "www",
+                    "http", "store #", "sale",
+                ]
+                .iter()
+                .any(|w| low.starts_with(w))
         })
         .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
         .unwrap_or_default();
@@ -182,7 +255,13 @@ pub fn read(text: &str) -> Reading {
             subtotal = Some(last);
             continue;
         }
-        if (low.starts_with("tax") || low.contains(" tax") || low.contains("vat") || low.contains("gst") || low.contains("hst")) && !low.contains("total") {
+        if (low.starts_with("tax")
+            || low.contains(" tax")
+            || low.contains("vat")
+            || low.contains("gst")
+            || low.contains("hst"))
+            && !low.contains("total")
+        {
             tax = Some(tax.unwrap_or(0) + last);
             continue;
         }
@@ -192,9 +271,15 @@ pub fn read(text: &str) -> Reading {
         // Rank the label: "grand total" / "amount due" beat a plain total,
         // which beats a bare "balance"; among equals the last one wins (a
         // running TOTAL before tax is followed by the real one).
-        let rank = if ["grand total", "amount due", "balance due", "total due"].iter().any(|w| low.contains(w)) {
+        let rank = if ["grand total", "amount due", "balance due", "total due"]
+            .iter()
+            .any(|w| low.contains(w))
+        {
             3
-        } else if ["total", "amount paid", "to pay"].iter().any(|w| low.contains(w)) {
+        } else if ["total", "amount paid", "to pay"]
+            .iter()
+            .any(|w| low.contains(w))
+        {
             2
         } else if low.contains("balance") {
             1
@@ -207,7 +292,11 @@ pub fn read(text: &str) -> Reading {
     }
     let labelled = labelled.map(|(_, t)| t);
     let total = match (labelled, subtotal, tax) {
-        (Some(t), Some(s), Some(x)) if (s + x - t).abs() > 2 && t != s => Total::Disagrees { total: t, subtotal: s, tax: x },
+        (Some(t), Some(s), Some(x)) if (s + x - t).abs() > 2 && t != s => Total::Disagrees {
+            total: t,
+            subtotal: s,
+            tax: x,
+        },
         (Some(t), _, _) => Total::Labelled(t),
         (None, Some(s), Some(x)) => Total::Probably(s + x),
         (None, _, _) => {
@@ -218,7 +307,12 @@ pub fn read(text: &str) -> Reading {
             }
         }
     };
-    Reading { merchant, total, currency: currency_of(text), day: day_of(text) }
+    Reading {
+        merchant,
+        total,
+        currency: currency_of(text),
+        day: day_of(text),
+    }
 }
 
 pub fn money(cents: i64, currency: &str) -> String {
@@ -229,17 +323,28 @@ pub fn money(cents: i64, currency: &str) -> String {
         _ => "",
     };
     let s = format!("{sym}{}.{:02}", cents.abs() / 100, cents.abs() % 100);
-    if sym.is_empty() { format!("{s} {currency}") } else { s }
+    if sym.is_empty() {
+        format!("{s} {currency}")
+    } else {
+        s
+    }
 }
 
 impl Reading {
     /// Said back, with the question when there is one.
     pub fn said(&self) -> String {
-        let at = if self.merchant.is_empty() { "a receipt".to_string() } else { self.merchant.clone() };
-        let day = self.day.map(|d| {
-            let c = crate::civil::Civil::from_local(d * 86_400);
-            format!(" on {:04}-{:02}-{:02}", c.year, c.month, c.day)
-        }).unwrap_or_default();
+        let at = if self.merchant.is_empty() {
+            "a receipt".to_string()
+        } else {
+            self.merchant.clone()
+        };
+        let day = self
+            .day
+            .map(|d| {
+                let c = crate::civil::Civil::from_local(d * 86_400);
+                format!(" on {:04}-{:02}-{:02}", c.year, c.month, c.day)
+            })
+            .unwrap_or_default();
         match &self.total {
             Total::Labelled(t) => format!("{at}{day}: {}. Kept.", money(*t, &self.currency)),
             Total::Probably(t) => format!("{at}{day}: probably {} -- there's no TOTAL line I can read. Say \"yes\" to keep it, or the right amount.", money(*t, &self.currency)),
@@ -259,14 +364,44 @@ pub struct Receipts {
 
 impl Receipts {
     /// Keep one. False when it's already here.
-    pub fn keep(&mut self, r: Reading, total_cents: i64, guessed: bool, source_text: &str, now: u64) -> bool {
-        if self.kept.iter().any(|k| k.merchant.eq_ignore_ascii_case(&r.merchant) && k.total_cents == total_cents && k.day == r.day) {
+    pub fn keep(
+        &mut self,
+        r: Reading,
+        total_cents: i64,
+        guessed: bool,
+        source_text: &str,
+        now: u64,
+    ) -> bool {
+        if self.kept.iter().any(|k| {
+            k.merchant.eq_ignore_ascii_case(&r.merchant)
+                && k.total_cents == total_cents
+                && k.day == r.day
+        }) {
             return false;
         }
         let scrubbed = crate::redact::Scrubber::default().scrub(source_text);
-        let text: String = scrubbed.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(600).collect();
-        let bucket = Some(crate::money::sort_one(&r.merchant, -(total_cents as f32 / 100.0), &[]));
-        self.kept.push(Receipt { merchant: r.merchant, total_cents, currency: r.currency, day: r.day, kept: now, text, guessed, bucket });
+        let text: String = scrubbed
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .take(600)
+            .collect();
+        let bucket = Some(crate::money::sort_one(
+            &r.merchant,
+            -(total_cents as f32 / 100.0),
+            &[],
+        ));
+        self.kept.push(Receipt {
+            merchant: r.merchant,
+            total_cents,
+            currency: r.currency,
+            day: r.day,
+            kept: now,
+            text,
+            guessed,
+            bucket,
+        });
         if self.kept.len() > MAX_RECEIPTS {
             self.kept.remove(0);
         }
@@ -299,6 +434,11 @@ impl Receipts {
             *by.entry(r.currency.as_str()).or_default() += r.total_cents;
         }
         let sums: Vec<String> = by.iter().map(|(c, t)| money(*t, c)).collect();
-        format!("{} receipt{}, {}.", found.len(), if found.len() == 1 { "" } else { "s" }, sums.join(" + "))
+        format!(
+            "{} receipt{}, {}.",
+            found.len(),
+            if found.len() == 1 { "" } else { "s" },
+            sums.join(" + ")
+        )
     }
 }

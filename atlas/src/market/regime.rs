@@ -138,8 +138,15 @@ pub fn r_squared(view: &AsOf<'_>, n: usize) -> Answer<(f64, f64)> {
 /// Chande & Kroll's 95% critical R² by sample size, interpolated.
 pub fn r2_critical(n: usize) -> f64 {
     const TABLE: [(usize, f64); 9] = [
-        (5, 0.77), (10, 0.40), (14, 0.27), (20, 0.20), (25, 0.16),
-        (30, 0.13), (50, 0.08), (60, 0.06), (120, 0.03),
+        (5, 0.77),
+        (10, 0.40),
+        (14, 0.27),
+        (20, 0.20),
+        (25, 0.16),
+        (30, 0.13),
+        (50, 0.08),
+        (60, 0.06),
+        (120, 0.03),
     ];
     if n <= TABLE[0].0 {
         return TABLE[0].1;
@@ -186,7 +193,9 @@ pub fn choppiness(view: &AsOf<'_>, n: usize) -> Answer<f64> {
     let mut sum_tr = 0.0;
     for i in len - n..len {
         let prev = c[i - 1];
-        sum_tr += (h[i] - l[i]).max((h[i] - prev).abs()).max((l[i] - prev).abs());
+        sum_tr += (h[i] - l[i])
+            .max((h[i] - prev).abs())
+            .max((l[i] - prev).abs());
     }
     let hi = h[len - n..].iter().cloned().fold(f64::MIN, f64::max);
     let lo = l[len - n..].iter().cloned().fold(f64::MAX, f64::min);
@@ -207,7 +216,9 @@ pub fn chop_baseline(view: &AsOf<'_>, n: usize) -> Answer<f64> {
     let mut tr_sum = 0.0;
     for i in 1..c.len() {
         let prev = c[i - 1];
-        tr_sum += (h[i] - l[i]).max((h[i] - prev).abs()).max((l[i] - prev).abs());
+        tr_sum += (h[i] - l[i])
+            .max((h[i] - prev).abs())
+            .max((l[i] - prev).abs());
     }
     let tr_mean = tr_sum / (c.len() - 1) as f64;
     let dc_mean: f64 =
@@ -278,7 +289,8 @@ impl Regime {
         // This used to inline `COST_MULTIPLE * self.cost_pips`, a second copy
         // of the same rule; it now calls the shared function so the two can
         // never drift.
-        self.width_pips >= crate::market::timeframe::viable_range_pips(self.cost_pips, COST_MULTIPLE)
+        self.width_pips
+            >= crate::market::timeframe::viable_range_pips(self.cost_pips, COST_MULTIPLE)
     }
 
     pub fn label(&self) -> String {
@@ -340,13 +352,23 @@ pub fn read(
     let chop_rw = chop_baseline(view, 14)?;
     let coiled = squeeze(view, 20, 1.5)?;
 
-    let was_trending = previous.map(|p| p.direction != Direction::Flat).unwrap_or(false);
-    let gate = if was_trending { EXIT_TREND } else { ENTER_TREND };
+    let was_trending = previous
+        .map(|p| p.direction != Direction::Flat)
+        .unwrap_or(false);
+    let gate = if was_trending {
+        EXIT_TREND
+    } else {
+        ENTER_TREND
+    };
 
     let direction = if let Some(p) = previous.filter(|_| held_for < MIN_DWELL) {
         p.direction // too soon to change its mind
     } else if strength >= gate && r2 >= r2_critical(n) {
-        if slope > 0.0 { Direction::Up } else { Direction::Down }
+        if slope > 0.0 {
+            Direction::Up
+        } else {
+            Direction::Down
+        }
     } else {
         Direction::Flat
     };
@@ -386,13 +408,20 @@ pub fn read(
 
 /// The common case: default costs, no previous reading.
 pub fn read_plain(view: &AsOf<'_>) -> Answer<Regime> {
-    read(view, None, DEFAULT_SPREAD_PIPS, DEFAULT_SLIPPAGE_PIPS, None, 0)
+    read(
+        view,
+        None,
+        DEFAULT_SPREAD_PIPS,
+        DEFAULT_SLIPPAGE_PIPS,
+        None,
+        0,
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::fixtures::{box_range, ramp, walk, walk_with};
+    use super::*;
 
     #[test]
     fn the_er_baseline_is_one_over_root_n() {
@@ -416,7 +445,11 @@ mod tests {
             vals.push(trend_strength(&walk(300, seed).latest().unwrap(), 20).unwrap());
         }
         let m: f64 = vals.iter().sum::<f64>() / vals.len() as f64;
-        assert!((0.6..1.5).contains(&m), "random walk scored {:.2}x its baseline", m);
+        assert!(
+            (0.6..1.5).contains(&m),
+            "random walk scored {:.2}x its baseline",
+            m
+        );
     }
 
     #[test]
@@ -547,8 +580,15 @@ mod tests {
             }
         }
         let rate = fired as f64 / trials as f64;
-        assert!(rate < 0.35, "noise was called a trend {:.0}% of the time", rate * 100.0);
-        assert!(rate > 0.005, "a gate that never fires on noise never fires at all");
+        assert!(
+            rate < 0.35,
+            "noise was called a trend {:.0}% of the time",
+            rate * 100.0
+        );
+        assert!(
+            rate > 0.005,
+            "a gate that never fires on noise never fires at all"
+        );
     }
 
     #[test]

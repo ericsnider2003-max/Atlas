@@ -110,7 +110,10 @@ fn reaping_does_not_wait_for_something_still_running() {
 
     // Put the count back, so the other test measuring it is not racing this
     // one through a list they both share.
-    assert!(until_collected(before), "the sleeping child was never collected");
+    assert!(
+        until_collected(before),
+        "the sleeping child was never collected"
+    );
 }
 
 #[test]
@@ -123,7 +126,12 @@ fn every_fire_and_forget_spawn_hands_its_child_over() {
     // whose `Child` is kept (`let mut child = ..`), returned, or waited for
     // is correct as it is.
     let mut offenders = Vec::new();
-    for file in ["src/window.rs", "src/platform/posix.rs", "src/browser.rs", "src/platform/win.rs"] {
+    for file in [
+        "src/window.rs",
+        "src/platform/posix.rs",
+        "src/browser.rs",
+        "src/platform/win.rs",
+    ] {
         let src = std::fs::read_to_string(file).unwrap_or_default();
         if src.is_empty() {
             continue;
@@ -138,7 +146,12 @@ fn every_fire_and_forget_spawn_hands_its_child_over() {
             if line.contains(".map(|_| ())") {
                 // Is this a spawn? Look at the few lines above it.
                 let start = i.saturating_sub(8);
-                let near: String = src.lines().take(i).skip(start).collect::<Vec<_>>().join("\n");
+                let near: String = src
+                    .lines()
+                    .take(i)
+                    .skip(start)
+                    .collect::<Vec<_>>()
+                    .join("\n");
                 if near.contains(".spawn()") {
                     offenders.push(format!("{file}:{}  {}", i + 1, line.trim()));
                 }

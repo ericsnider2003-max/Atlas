@@ -9,12 +9,23 @@ use std::process::Command;
 
 fn git(dir: &Path, args: &[&str]) -> String {
     let o = Command::new("git")
-        .args(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"])
+        .args([
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "commit.gpgsign=false",
+        ])
         .args(args)
         .current_dir(dir)
         .output()
         .unwrap();
-    assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
+    assert!(
+        o.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&o.stderr)
+    );
     String::from_utf8_lossy(&o.stdout).trim().to_string()
 }
 
@@ -40,12 +51,22 @@ fn an_approved_ability_is_set_up_on_its_own_branch_and_your_checkout_doesnt_move
     git(&repo, &["init", "-q", "-b", "main"]);
     git(&repo, &["add", "-A"]);
     git(&repo, &["commit", "-q", "-m", "start"]);
-    let ask = atlas::scaffold::Ask { id: "read_texts_out_loud".into(), what: "read my texts out loud".into(), day: "6 Oct 2026".into() };
+    let ask = atlas::scaffold::Ask {
+        id: "read_texts_out_loud".into(),
+        what: "read my texts out loud".into(),
+        day: "6 Oct 2026".into(),
+    };
     let branch = atlas::scaffold::on_a_branch(&krate, &ask).expect("set up");
     assert_eq!(branch, "atlas-ability-read-texts-out-loud");
     // On the branch: the module and the bookkeeping.
     let files = git(&repo, &["show", "--name-only", "--format=", &branch]);
-    for f in ["atlas/src/read_texts_out_loud.rs", "atlas/src/lib.rs", "atlas/src/capability.rs", "atlas/tests/capability_wiring.rs", "atlas/tests/wiring.rs"] {
+    for f in [
+        "atlas/src/read_texts_out_loud.rs",
+        "atlas/src/lib.rs",
+        "atlas/src/capability.rs",
+        "atlas/tests/capability_wiring.rs",
+        "atlas/tests/wiring.rs",
+    ] {
         assert!(files.contains(f), "{f} not in the commit: {files}");
     }
     // Your checkout: still on main, unchanged, no worktree left behind.

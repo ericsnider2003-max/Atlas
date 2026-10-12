@@ -49,7 +49,11 @@ impl Mail {
     /// arrival order, without parsing an RFC 2822 date that is sometimes wrong.
     pub fn from_imap(m: &crate::imap::Message) -> Mail {
         Mail {
-            message_id: m.message_id.trim().trim_matches(|c| c == '<' || c == '>').to_string(),
+            message_id: m
+                .message_id
+                .trim()
+                .trim_matches(|c| c == '<' || c == '>')
+                .to_string(),
             in_reply_to: parse_ids(&m.in_reply_to).into_iter().next(),
             references: parse_ids(&m.references),
             subject: m.subject.clone(),
@@ -71,7 +75,11 @@ pub fn conversations(mails: &[Mail]) -> Vec<(String, usize)> {
         .filter_map(|t| {
             let i = first_mail(t)?;
             let subject = base_subject(&mails[i].subject).0;
-            let shown = if subject.is_empty() { "(no subject)".to_string() } else { mails[i].subject.trim().to_string() };
+            let shown = if subject.is_empty() {
+                "(no subject)".to_string()
+            } else {
+                mails[i].subject.trim().to_string()
+            };
             Some((shown, t.count()))
         })
         .collect();
@@ -180,7 +188,11 @@ pub fn threads(mails: &[Mail]) -> Vec<Node> {
 
     // Step 1: containers and parent links.
     for (i, m) in mails.iter().enumerate() {
-        let mut id = m.message_id.trim().trim_matches(|c| c == '<' || c == '>').to_string();
+        let mut id = m
+            .message_id
+            .trim()
+            .trim_matches(|c| c == '<' || c == '>')
+            .to_string();
         if id.is_empty() || by_id.get(&id).is_some_and(|c| ar.c[*c].mail.is_some()) {
             id = format!("\u{0}synthetic-{i}"); // missing or duplicate id
         }
@@ -196,7 +208,10 @@ pub fn threads(mails: &[Mail]) -> Vec<Node> {
 
         let mut refs: Vec<String> = m.references.clone();
         if let Some(irt) = &m.in_reply_to {
-            let irt = irt.trim().trim_matches(|c| c == '<' || c == '>').to_string();
+            let irt = irt
+                .trim()
+                .trim_matches(|c| c == '<' || c == '>')
+                .to_string();
             if !irt.is_empty() && refs.last() != Some(&irt) {
                 refs.push(irt);
             }
@@ -226,7 +241,9 @@ pub fn threads(mails: &[Mail]) -> Vec<Node> {
     }
 
     // Step 2: root set.
-    let mut roots: Vec<usize> = (0..ar.c.len()).filter(|i| ar.c[*i].parent.is_none()).collect();
+    let mut roots: Vec<usize> = (0..ar.c.len())
+        .filter(|i| ar.c[*i].parent.is_none())
+        .collect();
 
     // Step 3: prune empty containers.
     fn prune(ar: &mut Arena, id: usize, is_root: bool) -> Vec<usize> {
@@ -264,8 +281,11 @@ pub fn threads(mails: &[Mail]) -> Vec<Node> {
 
     // Step 5: gather roots by subject.
     let subj_of = |ar: &Arena, r: usize| -> (String, bool) {
-        let m = ar.c[r].mail.or_else(|| ar.c[r].children.first().and_then(|k| ar.c[*k].mail));
-        m.map(|i| base_subject(&mails[i].subject)).unwrap_or_default()
+        let m = ar.c[r]
+            .mail
+            .or_else(|| ar.c[r].children.first().and_then(|k| ar.c[*k].mail));
+        m.map(|i| base_subject(&mails[i].subject))
+            .unwrap_or_default()
     };
     let mut table: HashMap<String, usize> = HashMap::new();
     for &r in &roots {
@@ -326,21 +346,40 @@ pub fn threads(mails: &[Mail]) -> Vec<Node> {
     }
     final_roots.sort();
     final_roots.dedup();
-    let final_roots: Vec<usize> = final_roots.into_iter().filter(|r| ar.c[*r].parent.is_none()).collect();
+    let final_roots: Vec<usize> = final_roots
+        .into_iter()
+        .filter(|r| ar.c[*r].parent.is_none())
+        .collect();
 
     // Build output, children by date.
     fn build(ar: &Arena, mails: &[Mail], id: usize) -> (Node, i64) {
-        let mut kids: Vec<(Node, i64)> = ar.c[id].children.iter().map(|k| build(ar, mails, *k)).collect();
+        let mut kids: Vec<(Node, i64)> = ar.c[id]
+            .children
+            .iter()
+            .map(|k| build(ar, mails, *k))
+            .collect();
         kids.sort_by_key(|(_, d)| *d);
         let own = ar.c[id].mail.map(|i| mails[i].date);
         let first = own.unwrap_or_else(|| kids.first().map(|k| k.1).unwrap_or(0));
-        (Node { mail: ar.c[id].mail, children: kids.into_iter().map(|k| k.0).collect() }, first)
+        (
+            Node {
+                mail: ar.c[id].mail,
+                children: kids.into_iter().map(|k| k.0).collect(),
+            },
+            first,
+        )
     }
     fn latest(n: &Node, mails: &[Mail]) -> i64 {
         let own = n.mail.map(|i| mails[i].date).unwrap_or(i64::MIN);
-        n.children.iter().map(|c| latest(c, mails)).fold(own, i64::max)
+        n.children
+            .iter()
+            .map(|c| latest(c, mails))
+            .fold(own, i64::max)
     }
-    let mut out: Vec<Node> = final_roots.iter().map(|r| build(&ar, mails, *r).0).collect();
+    let mut out: Vec<Node> = final_roots
+        .iter()
+        .map(|r| build(&ar, mails, *r).0)
+        .collect();
     out.sort_by_key(|n| std::cmp::Reverse(latest(n, mails)));
     out
 }
@@ -377,15 +416,24 @@ mod tests {
 
     #[test]
     fn parses_headers_and_subjects() {
-        assert_eq!(parse_ids("<a@x> <b@y>\r\n <c@z>"), vec!["a@x", "b@y", "c@z"]);
-        assert_eq!(base_subject("Re: Fwd: [team] RE: Budget"), ("budget".into(), true));
+        assert_eq!(
+            parse_ids("<a@x> <b@y>\r\n <c@z>"),
+            vec!["a@x", "b@y", "c@z"]
+        );
+        assert_eq!(
+            base_subject("Re: Fwd: [team] RE: Budget"),
+            ("budget".into(), true)
+        );
         assert_eq!(base_subject("Budget"), ("budget".into(), false));
     }
 
     #[test]
     fn a_missing_middle_message_keeps_one_thread() {
         // b is never seen; c references a and b.
-        let mails = vec![m("a", &[], "Installer", 1), m("c", &["a", "b"], "Re: Installer", 3)];
+        let mails = vec![
+            m("a", &[], "Installer", 1),
+            m("c", &["a", "b"], "Re: Installer", 3),
+        ];
         let t = threads(&mails);
         assert_eq!(t.len(), 1);
         assert_eq!(t[0].count(), 2);
@@ -412,7 +460,13 @@ mod tests {
             m("q1", &[], "Quick question", 1),
             m("q2", &[], "Quick question", 2),
             // a reply whose parent we never had, same subject: joins the original
-            Mail { message_id: "r".into(), in_reply_to: None, references: vec![], subject: "Re: Budget".into(), date: 4 },
+            Mail {
+                message_id: "r".into(),
+                in_reply_to: None,
+                references: vec![],
+                subject: "Re: Budget".into(),
+                date: 4,
+            },
             m("b0", &[], "Budget", 3),
         ];
         let t = threads(&mails);
@@ -427,7 +481,11 @@ mod tests {
             m("a", &["b"], "x", 1),
             m("b", &["a"], "x", 2),
             m("a", &[], "dup", 3),
-            Mail { message_id: String::new(), subject: "no id".into(), ..Default::default() },
+            Mail {
+                message_id: String::new(),
+                subject: "no id".into(),
+                ..Default::default()
+            },
         ];
         let t = threads(&mails);
         let total: usize = t.iter().map(|n| n.count()).sum();
@@ -452,12 +510,24 @@ mod tests {
             ..Default::default()
         };
         let got = Mail::from_imap(&im);
-        assert_eq!((got.message_id.as_str(), got.in_reply_to.as_deref(), got.references.len(), got.date), ("c@x", Some("b@x"), 2, 7));
+        assert_eq!(
+            (
+                got.message_id.as_str(),
+                got.in_reply_to.as_deref(),
+                got.references.len(),
+                got.date
+            ),
+            ("c@x", Some("b@x"), 2, 7)
+        );
     }
 
     #[test]
     fn newest_activity_first() {
-        let mails = vec![m("old", &[], "Old", 1), m("new", &[], "New", 10), m("old2", &["old"], "Re: Old", 20)];
+        let mails = vec![
+            m("old", &[], "Old", 1),
+            m("new", &[], "New", 10),
+            m("old2", &["old"], "Re: Old", 20),
+        ];
         let t = threads(&mails);
         assert_eq!(t[0].mail, Some(0));
     }

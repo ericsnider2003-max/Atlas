@@ -97,7 +97,8 @@ fn the_command_list_was_actually_read() {
     let all = phrases();
     assert!(all.len() > 150, "only found {} phrases", all.len());
     assert!(
-        all.iter().any(|(p, i)| p == "boot workspace" && i == "workspace_on"),
+        all.iter()
+            .any(|(p, i)| p == "boot workspace" && i == "workspace_on"),
         "the parsing is wrong: a known phrase is missing"
     );
     assert!(

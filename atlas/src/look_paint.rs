@@ -120,7 +120,10 @@ pub mod palette {
     /// - "Follow this computer" is Ember Dark when the computer is set to
     ///   dark apps, Warm Paper when it's light or can't be read.
     /// - Colour-blind mode is the colour-blind-safe set, whatever the theme.
-    pub fn for_appearance_on(a: &crate::appearance::Appearance, os: &crate::oslook::OsLook) -> Palette {
+    pub fn for_appearance_on(
+        a: &crate::appearance::Appearance,
+        os: &crate::oslook::OsLook,
+    ) -> Palette {
         if let Some(c) = os.contrast {
             return from_contrast(&c);
         }
@@ -153,7 +156,8 @@ pub mod palette {
         }
     }
 
-    static CHOSEN: std::sync::Mutex<Option<(Palette, crate::oslook::OsLook)>> = std::sync::Mutex::new(None);
+    static CHOSEN: std::sync::Mutex<Option<(Palette, crate::oslook::OsLook)>> =
+        std::sync::Mutex::new(None);
     static READ_AT: AtomicU64 = AtomicU64::new(0);
 
     /// The colourway in use now, and what the computer asks for: the stored
@@ -161,7 +165,8 @@ pub mod palette {
     /// seconds so a change in either reaches an open window without a restart.
     pub(super) fn current_with_os() -> (Palette, crate::oslook::OsLook) {
         let now = crate::store::now();
-        let stale = now.saturating_sub(READ_AT.load(Ordering::Relaxed)) >= 2 || READ_AT.load(Ordering::Relaxed) == 0;
+        let stale = now.saturating_sub(READ_AT.load(Ordering::Relaxed)) >= 2
+            || READ_AT.load(Ordering::Relaxed) == 0;
         let mut g = CHOSEN.lock().unwrap_or_else(|p| p.into_inner());
         if stale || g.is_none() {
             let os = crate::oslook::read();
@@ -187,7 +192,11 @@ pub fn colourway() -> palette::Palette {
 /// dark grey. Set at the top of every Atlas window's frame.
 pub fn visuals() -> eframe::egui::Visuals {
     let p = colourway();
-    let mut v = if p.dark { eframe::egui::Visuals::dark() } else { eframe::egui::Visuals::light() };
+    let mut v = if p.dark {
+        eframe::egui::Visuals::dark()
+    } else {
+        eframe::egui::Visuals::light()
+    };
     v.panel_fill = p.ink;
     v.window_fill = p.ink;
     v.extreme_bg_color = p.raised;
@@ -219,7 +228,9 @@ pub fn dress(ctx: &eframe::egui::Context) {
     let want = if p.dark { 2 } else { 1 };
     let had = ICON.swap(want, std::sync::atomic::Ordering::Relaxed);
     if had != 0 && had != want {
-        ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Icon(Some(crate::mark::window_icon_for(p.dark))));
+        ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Icon(Some(
+            crate::mark::window_icon_for(p.dark),
+        )));
     }
     ctx.set_visuals(visuals());
     if (ctx.zoom_factor() - os.text_scale).abs() > 0.01 {
@@ -284,7 +295,9 @@ mod tests {
 
     fn parse_hex(css: &str, var: &str) -> Color32 {
         // find `--name:#RRGGBB`
-        let at = css.find(var).unwrap_or_else(|| panic!("{var} not in TOKENS"));
+        let at = css
+            .find(var)
+            .unwrap_or_else(|| panic!("{var} not in TOKENS"));
         let rest = &css[at + var.len()..];
         let hash = rest.find('#').expect("a hex colour");
         let hex = &rest[hash + 1..hash + 7];

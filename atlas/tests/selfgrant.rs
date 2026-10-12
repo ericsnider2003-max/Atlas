@@ -2,7 +2,6 @@ use atlas::selfgrant::{
     asking_for, may_land, reach_of, reach_of_change, Granted, Reach, SelfGrantConfig, Verdict,
 };
 
-
 fn granted(up_to: Reach) -> Granted {
     Granted { up_to, at: 0 }
 }
@@ -20,7 +19,10 @@ fn asking_before_every_change_is_not_safety_it_is_a_stop() {
         false,
         &SelfGrantConfig::default(),
     );
-    assert!(matches!(nothing, Verdict::AskFirst(_)), "a typo fix, stopped");
+    assert!(
+        matches!(nothing, Verdict::AskFirst(_)),
+        "a typo fix, stopped"
+    );
 
     let granted_says = may_land(
         &["config/commands.yaml".into()],
@@ -30,7 +32,10 @@ fn asking_before_every_change_is_not_safety_it_is_a_stop() {
         false,
         &SelfGrantConfig::default(),
     );
-    assert!(matches!(granted_says, Verdict::GoAhead { .. }), "same change, now it lands");
+    assert!(
+        matches!(granted_says, Verdict::GoAhead { .. }),
+        "same change, now it lands"
+    );
 }
 
 #[test]
@@ -56,7 +61,10 @@ fn permission_is_by_what_a_change_touches_not_by_how_sure_atlas_is() {
         &SelfGrantConfig::default(),
     );
     assert_eq!(once, again);
-    assert!(matches!(once, Verdict::AskFirst(_)), "however sure it might be");
+    assert!(
+        matches!(once, Verdict::AskFirst(_)),
+        "however sure it might be"
+    );
 }
 
 #[test]
@@ -64,7 +72,11 @@ fn atlas_can_never_widen_its_own_limits_however_this_is_set() {
     assert!(!Reach::ItsOwnLimits.ever_grantable());
     assert_eq!(reach_of("src/policy.rs"), Reach::ItsOwnLimits);
     assert_eq!(reach_of("Cargo.toml"), Reach::ItsOwnLimits);
-    assert_eq!(reach_of("src/selfgrant.rs"), Reach::ItsOwnLimits, "including this file");
+    assert_eq!(
+        reach_of("src/selfgrant.rs"),
+        Reach::ItsOwnLimits,
+        "including this file"
+    );
 
     let v = may_land(
         &["src/policy.rs".into()],
@@ -82,13 +94,14 @@ fn atlas_can_never_widen_its_own_limits_however_this_is_set() {
 
 #[test]
 fn writing_a_bigger_grant_in_the_config_does_not_make_it_true() {
-    let over: SelfGrantConfig =
-        serde_yaml::from_str("may_change: its_own_limits\n").unwrap();
+    let over: SelfGrantConfig = serde_yaml::from_str("may_change: its_own_limits\n").unwrap();
     assert!(over.granted().is_none());
 
-    let touches: SelfGrantConfig =
-        serde_yaml::from_str("may_change: what_it_touches\n").unwrap();
-    assert!(touches.granted().is_none(), "your machine and accounts always need you");
+    let touches: SelfGrantConfig = serde_yaml::from_str("may_change: what_it_touches\n").unwrap();
+    assert!(
+        touches.granted().is_none(),
+        "your machine and accounts always need you"
+    );
 }
 
 #[test]
@@ -199,7 +212,10 @@ fn failing_tests_stop_it_before_the_grant_is_even_considered() {
 fn a_grant_never_lapses_on_its_own() {
     // Eric, 25 Sep 2026 (B3): he steps away for long stretches, and Atlas
     // mustn't break in that time. A grant stands until he takes it back.
-    let g = Granted { up_to: Reach::HowItDecides, at: 0 };
+    let g = Granted {
+        up_to: Reach::HowItDecides,
+        at: 0,
+    };
     let v = may_land(
         &["config/commands.yaml".into()],
         true,
@@ -217,7 +233,10 @@ fn a_grant_never_lapses_on_its_own() {
 fn the_default_lets_it_fix_how_it_decides_things() {
     // The old default of nothing was the wrong way round: a self-improving
     // system that couldn't improve anything.
-    assert_eq!(SelfGrantConfig::default().granted(), Some(Reach::HowItDecides));
+    assert_eq!(
+        SelfGrantConfig::default().granted(),
+        Some(Reach::HowItDecides)
+    );
 }
 
 #[test]
@@ -307,7 +326,10 @@ fn it_raises_a_recommendation_without_making_it_a_demand() {
     // A system that interrupts with "I need a decision" about its own
     // internals is one you learn to dread.
     use atlas::selfgrant::raise_it;
-    let decides = raise_it("the route picker keeps choosing a dead route", Reach::HowItDecides);
+    let decides = raise_it(
+        "the route picker keeps choosing a dead route",
+        Reach::HowItDecides,
+    );
     let new = raise_it("a module for reading receipts", Reach::SomethingNew);
 
     // It names what the change would touch, so the two differ.
@@ -362,14 +384,26 @@ fn a_test_not_known_to_be_ordinary_is_treated_as_a_guard() {
     // Fails closed. The failure directions aren't symmetric: over-restricting
     // costs a question, under-restricting costs the limit.
     assert_eq!(reach_of("tests/something-new.rs"), Reach::ItsOwnLimits);
-    assert_eq!(reach_of("tests/prose.rs"), Reach::WhatItTouches, "an ordinary one is still shown to you");
+    assert_eq!(
+        reach_of("tests/prose.rs"),
+        Reach::WhatItTouches,
+        "an ordinary one is still shown to you"
+    );
 }
 
 #[test]
 fn an_ordinary_test_is_never_one_that_guards_a_limit() {
     // A guard can't be allowlisted by accident.
-    for t in ["prose.rs", "look.rs", "grading.rs", "layout.rs", "metrics.rs",
-              "language.rs", "voiceover.rs", "plainchange.rs"] {
+    for t in [
+        "prose.rs",
+        "look.rs",
+        "grading.rs",
+        "layout.rs",
+        "metrics.rs",
+        "language.rs",
+        "voiceover.rs",
+        "plainchange.rs",
+    ] {
         let stem = t.trim_end_matches(".rs");
         assert!(
             !LIMIT_MODULES.contains(&stem),

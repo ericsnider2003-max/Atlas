@@ -162,7 +162,10 @@ fn no_function_becomes_ambiguous_without_being_listed() {
          reached only by an unqualified call, so the deadness scan cannot tell \
          whether they are alive:\n  {}\n\nEither qualify the call site \
          (`module::name(...)`), rename one of them, or add it here.",
-        new.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        new.iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 
     let gone: Vec<&String> = listed.difference(&found).collect();
@@ -170,7 +173,10 @@ fn no_function_becomes_ambiguous_without_being_listed() {
         gone.is_empty(),
         "these are listed as ambiguous and no longer are:\n  {}\n\nGood -- \
          delete those lines so the list keeps meaning something.",
-        gone.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        gone.iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
 

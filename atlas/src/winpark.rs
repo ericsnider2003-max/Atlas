@@ -58,7 +58,9 @@ fn set_minimized_bit(hwnd: isize, on: bool) {
     // instead of touching memory.
     unsafe {
         use windows::Win32::Foundation::HWND;
-        use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, SetWindowLongPtrW, GWL_STYLE};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongPtrW, SetWindowLongPtrW, GWL_STYLE,
+        };
         if hwnd == 0 {
             return;
         }

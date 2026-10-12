@@ -130,7 +130,10 @@ impl Blocker {
             Blocker::NotWhileYouAreHere => "you asked me to wait until you were out".into(),
             // Leads with what is waiting rather than with the question, so a
             // list of these reads as a list of work rather than a quiz.
-            Blocker::NeedsYourDecision { question, set_aside } => {
+            Blocker::NeedsYourDecision {
+                question,
+                set_aside,
+            } => {
                 format!("{set_aside} is waiting on you: {question}")
             }
         }
@@ -211,7 +214,11 @@ impl Backlog {
     /// twenty and Atlas offers each of them separately.
     pub fn record(&mut self, request: &str, blocker: Blocker, t: u64) -> u64 {
         let key = normalize(request);
-        if let Some(i) = self.items.iter_mut().find(|i| normalize(&i.request) == key && !i.done) {
+        if let Some(i) = self
+            .items
+            .iter_mut()
+            .find(|i| normalize(&i.request) == key && !i.done)
+        {
             i.blocker = blocker;
             i.dismissed = false; // asking again un-dismisses it
             return i.id;
@@ -239,7 +246,7 @@ impl Backlog {
             Blocker::NoScreenGap => !c.screen_free,
             Blocker::NeedsApproval => !c.you_are_here,
             Blocker::MissingTool(t) => !c.tools.iter().any(|x| x == t),
-            Blocker::Failed(_) => false, // worth another go
+            Blocker::Failed(_) => false,     // worth another go
             Blocker::Unsupported(_) => true, // nothing has changed
             // Blocked precisely while you are here.
             Blocker::NotWhileYouAreHere => c.you_are_here,
@@ -309,7 +316,10 @@ impl Backlog {
 
     /// Everything still outstanding, for "what's on your list?".
     pub fn outstanding(&self) -> Vec<&Item> {
-        self.items.iter().filter(|i| !i.done && !i.dismissed).collect()
+        self.items
+            .iter()
+            .filter(|i| !i.done && !i.dismissed)
+            .collect()
     }
 
     pub fn summary(&self) -> String {
@@ -353,21 +363,60 @@ pub enum Removal {
 pub fn removal_asked(said: &str) -> Option<Removal> {
     let t = format!(" {} ", normalize(said));
     const VERBS: &[&str] = &[
-        " remove ", " removed ", " delete ", " drop ", " clear ", " cross off ", " cross ", " take off ", " take ",
-        " scratch ", " get rid of ", " mark done ", " mark as done ", " is done ", " are done ", " dismiss ",
+        " remove ",
+        " removed ",
+        " delete ",
+        " drop ",
+        " clear ",
+        " cross off ",
+        " cross ",
+        " take off ",
+        " take ",
+        " scratch ",
+        " get rid of ",
+        " mark done ",
+        " mark as done ",
+        " is done ",
+        " are done ",
+        " dismiss ",
     ];
-    const LIST: &[&str] = &[" outstanding ", " outstanding list", " my list ", " your list ", " the list ", " off my ", " off the list", " off your list"];
+    const LIST: &[&str] = &[
+        " outstanding ",
+        " outstanding list",
+        " my list ",
+        " your list ",
+        " the list ",
+        " off my ",
+        " off the list",
+        " off your list",
+    ];
     let verb = VERBS.iter().any(|v| t.contains(v));
     let list = LIST.iter().any(|l| t.contains(l)) || t.trim_end().ends_with(" outstanding");
     if !verb || !list {
         return None;
     }
-    if [" all ", " everything ", " the whole ", " entire "].iter().any(|w| t.contains(w)) || t.trim() == "clear outstanding" || t.trim() == "clear my outstanding list" {
+    if [" all ", " everything ", " the whole ", " entire "]
+        .iter()
+        .any(|w| t.contains(w))
+        || t.trim() == "clear outstanding"
+        || t.trim() == "clear my outstanding list"
+    {
         return Some(Removal::All);
     }
     const ORD: &[(&str, usize)] = &[
-        ("first", 1), ("second", 2), ("third", 3), ("fourth", 4), ("fifth", 5), ("sixth", 6), ("seventh", 7), ("eighth", 8),
-        ("1st", 1), ("2nd", 2), ("3rd", 3), ("4th", 4), ("5th", 5),
+        ("first", 1),
+        ("second", 2),
+        ("third", 3),
+        ("fourth", 4),
+        ("fifth", 5),
+        ("sixth", 6),
+        ("seventh", 7),
+        ("eighth", 8),
+        ("1st", 1),
+        ("2nd", 2),
+        ("3rd", 3),
+        ("4th", 4),
+        ("5th", 5),
     ];
     let words: Vec<&str> = t.split_whitespace().collect();
     for w in &words {
@@ -381,13 +430,69 @@ pub fn removal_asked(said: &str) -> Option<Removal> {
         }
     }
     const NOT_A_TARGET: &[&str] = &[
-        "remove", "removed", "delete", "drop", "clear", "cross", "take", "scratch", "get", "rid", "mark", "done", "dismiss",
-        "off", "from", "my", "your", "the", "list", "outstanding", "item", "items", "thing", "things", "one", "on", "of",
-        "a", "an", "please", "atlas", "should", "be", "is", "are", "as", "it", "that", "this", "can", "you", "could", "i",
-        "want", "to", "need", "now", "and", "out", "entry", "task", "job",
+        "remove",
+        "removed",
+        "delete",
+        "drop",
+        "clear",
+        "cross",
+        "take",
+        "scratch",
+        "get",
+        "rid",
+        "mark",
+        "done",
+        "dismiss",
+        "off",
+        "from",
+        "my",
+        "your",
+        "the",
+        "list",
+        "outstanding",
+        "item",
+        "items",
+        "thing",
+        "things",
+        "one",
+        "on",
+        "of",
+        "a",
+        "an",
+        "please",
+        "atlas",
+        "should",
+        "be",
+        "is",
+        "are",
+        "as",
+        "it",
+        "that",
+        "this",
+        "can",
+        "you",
+        "could",
+        "i",
+        "want",
+        "to",
+        "need",
+        "now",
+        "and",
+        "out",
+        "entry",
+        "task",
+        "job",
     ];
-    let left: Vec<String> = words.iter().filter(|w| !NOT_A_TARGET.contains(w) && w.len() > 1).map(|w| w.to_string()).collect();
-    Some(if left.is_empty() { Removal::Unsaid } else { Removal::Words(left) })
+    let left: Vec<String> = words
+        .iter()
+        .filter(|w| !NOT_A_TARGET.contains(w) && w.len() > 1)
+        .map(|w| w.to_string())
+        .collect();
+    Some(if left.is_empty() {
+        Removal::Unsaid
+    } else {
+        Removal::Words(left)
+    })
 }
 
 /// Which of `titles` a removal names: their places in the list, or what to
@@ -400,24 +505,45 @@ pub fn pick_for_removal(r: &Removal, titles: &[String]) -> std::result::Result<V
     if titles.is_empty() {
         return Err("There's nothing on your outstanding list.".into());
     }
-    let listed = || titles.iter().enumerate().map(|(i, t)| format!("{}. {}", i + 1, t)).collect::<Vec<_>>().join("; ");
+    let listed = || {
+        titles
+            .iter()
+            .enumerate()
+            .map(|(i, t)| format!("{}. {}", i + 1, t))
+            .collect::<Vec<_>>()
+            .join("; ")
+    };
     match r {
         Removal::All => Ok((0..titles.len()).collect()),
         Removal::Number(n) if (1..=titles.len()).contains(n) => Ok(vec![n - 1]),
-        Removal::Number(_) => Err(format!("There are only {} on the list: {}.", titles.len(), listed())),
+        Removal::Number(_) => Err(format!(
+            "There are only {} on the list: {}.",
+            titles.len(),
+            listed()
+        )),
         Removal::Unsaid if titles.len() == 1 => Ok(vec![0]),
-        Removal::Unsaid => Err(format!("Which one? {}. Say its number, or some of its words.", listed())),
+        Removal::Unsaid => Err(format!(
+            "Which one? {}. Say its number, or some of its words.",
+            listed()
+        )),
         Removal::Words(w) => {
             let score = |t: &str| {
                 let t = normalize(t);
-                w.iter().filter(|x| t.split_whitespace().any(|y| y == x.as_str())).count()
+                w.iter()
+                    .filter(|x| t.split_whitespace().any(|y| y == x.as_str()))
+                    .count()
             };
             let best = titles.iter().map(|t| score(t)).max().unwrap_or(0);
-            let hits: Vec<usize> = (0..titles.len()).filter(|n| best > 0 && score(&titles[*n]) == best).collect();
+            let hits: Vec<usize> = (0..titles.len())
+                .filter(|n| best > 0 && score(&titles[*n]) == best)
+                .collect();
             match hits.len() {
                 0 => Err(format!("I couldn't find that on the list: {}.", listed())),
                 1 => Ok(hits),
-                _ => Err(format!("More than one matches. {}. Say its number.", listed())),
+                _ => Err(format!(
+                    "More than one matches. {}. Say its number.",
+                    listed()
+                )),
             }
         }
     }

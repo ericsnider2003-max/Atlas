@@ -1,7 +1,7 @@
 //! Keeping the daemon alive: saving state, the main loop (`run`), waking on the
 //! hotkey, tray or hub, the microphone, shutting down, the conversation loop, and
 //! saying things out loud (and stopping). Also the `Drop` that saves on the way out.
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
@@ -13,8 +13,14 @@ impl<'a> Daemon<'a> {
         let until = std::time::Instant::now() + std::time::Duration::from_secs(2);
         loop {
             self.persist();
-            if !self.persist_failures.iter().any(|(what, _)| *what == "state snapshot busy")
-                || std::time::Instant::now() >= until { break; }
+            if !self
+                .persist_failures
+                .iter()
+                .any(|(what, _)| *what == "state snapshot busy")
+                || std::time::Instant::now() >= until
+            {
+                break;
+            }
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
     }
@@ -56,7 +62,9 @@ impl<'a> Daemon<'a> {
                     let already_unavailable = self.calendar.availability_error().is_some();
                     self.calendar.request_refresh();
                     self.calendar.mark_unavailable(error.to_string());
-                    if !already_unavailable { self.log.warn("The saved calendar is unavailable or conflicts with unsaved changes; its cached view was retained and cannot be edited."); }
+                    if !already_unavailable {
+                        self.log.warn("The saved calendar is unavailable or conflicts with unsaved changes; its cached view was retained and cannot be edited.");
+                    }
                 }
             }
         }
@@ -81,7 +89,9 @@ impl<'a> Daemon<'a> {
             took.push("person");
         }
         for what in &took {
-            self.log.info(&format!("{what} was changed outside Atlas; read it again before going on"));
+            self.log.info(&format!(
+                "{what} was changed outside Atlas; read it again before going on"
+            ));
         }
         took
     }
@@ -96,7 +106,14 @@ impl<'a> Daemon<'a> {
         ) {
             if let Err(e) = r {
                 let transient = matches!(&e, crate::error::AtlasError::Io(error) if error.kind() == std::io::ErrorKind::WouldBlock);
-                failed.push((if transient { "state snapshot busy" } else { what }, format!("{what}: {e}")));
+                failed.push((
+                    if transient {
+                        "state snapshot busy"
+                    } else {
+                        what
+                    },
+                    format!("{what}: {e}"),
+                ));
             }
         }
 
@@ -104,14 +121,37 @@ impl<'a> Daemon<'a> {
         let _transaction = match self.store.transaction() {
             Ok(guard) => guard,
             Err(error) => {
-                if self.persist_failures.is_empty() { self.log.warn(&format!("state has not been saved yet: {error}")); }
-                let what = if matches!(&error, crate::error::AtlasError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock) { "state snapshot busy" } else { "state transaction" };
-                let mut failures: Vec<_> = self.persist_failures.iter().filter(|(name, _)| *name != "state snapshot busy").cloned().collect();
-                for (name, error, transient) in crate::store::take_failed_saves_detailed(self.store.root()) {
-                    let name = if transient { "state snapshot busy" } else { crate::store::intern_record_name(&name) };
-                    if !failures.iter().any(|(known, _)| *known == name) { failures.push((name, error)); }
+                if self.persist_failures.is_empty() {
+                    self.log
+                        .warn(&format!("state has not been saved yet: {error}"));
                 }
-                if !failures.iter().any(|(known, _)| *known == what) { failures.push((what, error.to_string())); }
+                let what = if matches!(&error, crate::error::AtlasError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock)
+                {
+                    "state snapshot busy"
+                } else {
+                    "state transaction"
+                };
+                let mut failures: Vec<_> = self
+                    .persist_failures
+                    .iter()
+                    .filter(|(name, _)| *name != "state snapshot busy")
+                    .cloned()
+                    .collect();
+                for (name, error, transient) in
+                    crate::store::take_failed_saves_detailed(self.store.root())
+                {
+                    let name = if transient {
+                        "state snapshot busy"
+                    } else {
+                        crate::store::intern_record_name(&name)
+                    };
+                    if !failures.iter().any(|(known, _)| *known == name) {
+                        failures.push((name, error));
+                    }
+                }
+                if !failures.iter().any(|(known, _)| *known == what) {
+                    failures.push((what, error.to_string()));
+                }
                 self.persist_failures = failures;
                 return;
             }
@@ -120,7 +160,11 @@ impl<'a> Daemon<'a> {
         note(&mut failed, "thread", self.thread.save(&self.store));
         note(&mut failed, "modes", self.modes.save(&self.store));
         note(&mut failed, "watcher", self.watcher.save(&self.store));
-        note(&mut failed, "anticipator", self.anticipator.save(&self.store));
+        note(
+            &mut failed,
+            "anticipator",
+            self.anticipator.save(&self.store),
+        );
         note(&mut failed, "flows", self.flows.save(&self.store));
         note(&mut failed, "journal", self.journal.save(&self.store));
         note(&mut failed, "backlog", self.backlog.save(&self.store));
@@ -129,7 +173,11 @@ impl<'a> Daemon<'a> {
         // App permissions. Only `Always` grants are ever in here at rest
         // (`new_session` drops the rest at startup), so this persists exactly
         // the "always allow X" decisions and nothing narrower.
-        note(&mut failed, "permissions", self.store.save("permissions", &self.permissions));
+        note(
+            &mut failed,
+            "permissions",
+            self.store.save("permissions", &self.permissions),
+        );
         note(&mut failed, "publisher", self.publisher.save(&self.store));
         note(&mut failed, "workshop", self.workshop.save(&self.store));
         note(&mut failed, "calendar", self.calendar.save(&self.store));
@@ -137,19 +185,47 @@ impl<'a> Daemon<'a> {
         // Absent from this list at first, which made it a memory that forgot
         // everything on restart.
         note(&mut failed, "facts", self.facts.save(&self.store));
-        note(&mut failed, "reminded", self.store.save("reminded", &self.reminded));
+        note(
+            &mut failed,
+            "reminded",
+            self.store.save("reminded", &self.reminded),
+        );
         match self.reconcile_proposals() {
-            Ok(()) => note(&mut failed, "proposals", self.store.save("proposals", &self.proposals)),
+            Ok(()) => note(
+                &mut failed,
+                "proposals",
+                self.store.save("proposals", &self.proposals),
+            ),
             Err(error) => failed.push(("proposals", error)),
         }
         note(&mut failed, "memory", self.memory.save(&self.store));
         note(&mut failed, "scheduler", self.scheduler.save(&self.store));
         note(&mut failed, "queue", self.queue.save(&self.store));
-        note(&mut failed, "routines", self.store.save("routines", &self.routines));
-        note(&mut failed, "goals", self.store.save(crate::nudge::GOALS, &self.nudger.goals));
-        note(&mut failed, "worklog", self.store.save("worklog", &self.worklog));
-        note(&mut failed, "work_session", self.store.save("work_session", &self.work_session));
-        note(&mut failed, "undo_history", self.history.save_merged(&self.store));
+        note(
+            &mut failed,
+            "routines",
+            self.store.save("routines", &self.routines),
+        );
+        note(
+            &mut failed,
+            "goals",
+            self.store.save(crate::nudge::GOALS, &self.nudger.goals),
+        );
+        note(
+            &mut failed,
+            "worklog",
+            self.store.save("worklog", &self.worklog),
+        );
+        note(
+            &mut failed,
+            "work_session",
+            self.store.save("work_session", &self.work_session),
+        );
+        note(
+            &mut failed,
+            "undo_history",
+            self.history.save_merged(&self.store),
+        );
         note(&mut failed, "long_work", self.long_work.save(&self.store));
         // What a restart would cut off while it waits on you: questions not
         // yet answered and a request being worked through. Until 1 Oct 2026
@@ -161,21 +237,41 @@ impl<'a> Daemon<'a> {
                 .session
                 .all_approvals()
                 .into_iter()
-                .map(|(_, d)| LeftWaiting { what: d, asked: true, at: crate::store::now() })
+                .map(|(_, d)| LeftWaiting {
+                    what: d,
+                    asked: true,
+                    at: crate::store::now(),
+                })
                 .collect();
             if self.current_flow.is_none() {
                 if let Pending::Clarification(q) = &self.session.pending {
-                    waiting.push(LeftWaiting { what: q.clone(), asked: true, at: crate::store::now() });
+                    waiting.push(LeftWaiting {
+                        what: q.clone(),
+                        asked: true,
+                        at: crate::store::now(),
+                    });
                 }
             }
             if let Some(l) = &self.task_loop {
-                waiting.push(LeftWaiting { what: l.in_words(), asked: false, at: crate::store::now() });
+                waiting.push(LeftWaiting {
+                    what: l.in_words(),
+                    asked: false,
+                    at: crate::store::now(),
+                });
             }
-            note(&mut failed, "left_waiting", self.store.save(LEFT_WAITING, &waiting));
+            note(
+                &mut failed,
+                "left_waiting",
+                self.store.save(LEFT_WAITING, &waiting),
+            );
             // A workflow, whole, so one waiting on your yes is asked again
             // after a restart rather than lost (research report, Stage 1
             // item 6: `current_flow` was never saved).
-            note(&mut failed, "current_flow", self.store.save(FLOW_LEFT, &self.current_flow));
+            note(
+                &mut failed,
+                "current_flow",
+                self.store.save(FLOW_LEFT, &self.current_flow),
+            );
         }
         // What research taught it. Absent from this list when `learned`
         // gained its first caller, which would have made the knowledge
@@ -188,10 +284,26 @@ impl<'a> Daemon<'a> {
         // Work in progress on itself. Without this the pipeline restarts at
         // Thought every time Atlas is restarted, which is the same fault as
         // rebuilding the session every turn, one level up.
-        note(&mut failed, "selfwork", self.store.save("selfwork", &self.selfwork));
-        note(&mut failed, "overnight", self.store.save("overnight", &self.overnight));
-        note(&mut failed, "synclog", self.store.save("synclog", &Some(self.synclog.clone())));
-        note(&mut failed, "sync_seen", self.store.save("sync_seen", &self.seen_up_to));
+        note(
+            &mut failed,
+            "selfwork",
+            self.store.save("selfwork", &self.selfwork),
+        );
+        note(
+            &mut failed,
+            "overnight",
+            self.store.save("overnight", &self.overnight),
+        );
+        note(
+            &mut failed,
+            "synclog",
+            self.store.save("synclog", &Some(self.synclog.clone())),
+        );
+        note(
+            &mut failed,
+            "sync_seen",
+            self.store.save("sync_seen", &self.seen_up_to),
+        );
         // What's been learned about which backend can read which app.
         note(&mut failed, "backends", self.backends.save(&self.store));
         // Index serialization runs separately; its worker must never wait on
@@ -207,7 +319,13 @@ impl<'a> Daemon<'a> {
             match h.1.join() {
                 Ok(Ok(())) => self.index_on_disk = Some(h.0),
                 Ok(Err(e)) => note(&mut failed, "index", Err(e)),
-                Err(_) => note(&mut failed, "index", Err(crate::error::AtlasError::Platform("writing the file index stopped unexpectedly".into()))),
+                Err(_) => note(
+                    &mut failed,
+                    "index",
+                    Err(crate::error::AtlasError::Platform(
+                        "writing the file index stopped unexpectedly".into(),
+                    )),
+                ),
             }
         }
         // Anything but the sweep: wait for a write still going, so what's on
@@ -219,11 +337,17 @@ impl<'a> Daemon<'a> {
                 }
             }
         }
-        if self.index_behind && self.index_saving.is_none() && self.index_on_disk != Some(self.index.written_as()) {
+        if self.index_behind
+            && self.index_saving.is_none()
+            && self.index_on_disk != Some(self.index.written_as())
+        {
             let snapshot = self.index.clone();
             let store = self.store.clone();
             let mark = snapshot.written_as();
-            match std::thread::Builder::new().name("atlas-index-save".into()).spawn(move || snapshot.save(&store)) {
+            match std::thread::Builder::new()
+                .name("atlas-index-save".into())
+                .spawn(move || snapshot.save(&store))
+            {
                 Ok(h) => self.index_saving = Some((mark, h)),
                 // No thread to be had: written here, as it always was.
                 Err(_) => {
@@ -247,7 +371,11 @@ impl<'a> Daemon<'a> {
         // (`store::take_failed_saves`). Its own records above are already
         // counted, so they aren't listed twice.
         for (name, e, transient) in crate::store::take_failed_saves_detailed(self.store.root()) {
-            let name = if transient { "state snapshot busy" } else { crate::store::intern_record_name(&name) };
+            let name = if transient {
+                "state snapshot busy"
+            } else {
+                crate::store::intern_record_name(&name)
+            };
             if !failed.iter().any(|(w, _)| *w == name) {
                 failed.push((name, e));
             }
@@ -258,7 +386,14 @@ impl<'a> Daemon<'a> {
         for u in crate::unheard::take() {
             match u.cost {
                 crate::unheard::Cost::NotKept => {
-                    let name = if u.error.contains("Atlas state is busy in another operation; no state was changed") { "state snapshot busy" } else { crate::store::intern_record_name(u.part()) };
+                    let name = if u
+                        .error
+                        .contains("Atlas state is busy in another operation; no state was changed")
+                    {
+                        "state snapshot busy"
+                    } else {
+                        crate::store::intern_record_name(u.part())
+                    };
                     self.log.warn(&u.line());
                     if !failed.iter().any(|(w, _)| *w == name) {
                         failed.push((name, u.error));
@@ -304,7 +439,14 @@ impl<'a> Daemon<'a> {
         // A cooperating backup temporarily owns the snapshot barrier. Memory
         // remains pending and persist retries each tick; this is not a disk
         // failure and must not replace the answer just delivered to the owner.
-        if self.persist_failures.iter().all(|(what, _)| *what == "state snapshot busy") && !self.persist_failures.is_empty() { return None; }
+        if self
+            .persist_failures
+            .iter()
+            .all(|(what, _)| *what == "state snapshot busy")
+            && !self.persist_failures.is_empty()
+        {
+            return None;
+        }
         let failing = !self.persist_failures.is_empty();
         if failing == self.persist_told {
             return None;
@@ -369,7 +511,8 @@ impl<'a> Daemon<'a> {
             }
             let args: Vec<String> = std::env::args().skip(1).collect();
             if crate::whystopped::come_back_after_updates(&args.join(" ")) {
-                self.log.info("Windows will start me again after an update restart");
+                self.log
+                    .info("Windows will start me again after an update restart");
             }
         }
         self.tiers.set_wake(self.wake_on());
@@ -405,7 +548,10 @@ impl<'a> Daemon<'a> {
         let _ = self.warm_the_model(clock());
         // The hearing model too, when it's here and chosen (`parakeet`):
         // loading it takes seconds, and the first thing you say shouldn't.
-        let engine = self.tools_ref().map(|t| t.stt_engine.trim().to_lowercase()).unwrap_or_default();
+        let engine = self
+            .tools_ref()
+            .map(|t| t.stt_engine.trim().to_lowercase())
+            .unwrap_or_default();
         if engine != "whisper" {
             crate::parakeet::warm(&crate::roots::install_root());
         }
@@ -446,7 +592,8 @@ impl<'a> Daemon<'a> {
             match crate::hotkey::spawn(&pc.key, pc.hold_ms) {
                 Ok(rx) => Some(rx),
                 Err(why) => {
-                    self.log.warn(&format!("push-to-talk key not available: {why}"));
+                    self.log
+                        .warn(&format!("push-to-talk key not available: {why}"));
                     None
                 }
             }
@@ -456,7 +603,9 @@ impl<'a> Daemon<'a> {
 
         // A stop request left from before this start (Atlas wasn't running
         // to take it) must not end this run the moment it begins.
-        crate::heard!(std::fs::remove_file(crate::goodbye::stop_file(&crate::roots::state_dir())));
+        crate::heard!(std::fs::remove_file(crate::goodbye::stop_file(
+            &crate::roots::state_dir()
+        )));
         // Correcting as you type (Eric, H4): its own thread, polling the box
         // you're typing in. Only in the running Atlas, and only when on.
         let prose = self.tools_cfg().prose.clone();
@@ -473,13 +622,17 @@ impl<'a> Daemon<'a> {
         if self.hotkeys.is_some() && self.typebox.is_none() {
             let tx = keyboard.sender();
             self.typebox = match crate::typebox::Standby::start(move |text| {
-                let _ = tx.send(crate::input::Utterance { text, source: crate::input::Source::Typed });
+                let _ = tx.send(crate::input::Utterance {
+                    text,
+                    source: crate::input::Source::Typed,
+                });
             }) {
                 Ok(b) => Some(b),
                 // Said in the log, not dropped: the key then starts one
                 // itself, and says so if that fails too.
                 Err(e) => {
-                    self.log.warn(&format!("couldn't keep the typing box ready: {e}"));
+                    self.log
+                        .warn(&format!("couldn't keep the typing box ready: {e}"));
                     None
                 }
             };
@@ -519,18 +672,26 @@ impl<'a> Daemon<'a> {
             let held: u32 = between
                 .parts()
                 .iter()
-                .filter(|(n, _)| !matches!(*n, "between ticks: listening and turns" | "napping, answering the hub"))
+                .filter(|(n, _)| {
+                    !matches!(
+                        *n,
+                        "between ticks: listening and turns" | "napping, answering the hub"
+                    )
+                })
                 .map(|(_, ms)| *ms)
                 .sum();
             if held >= SLOW_BETWEEN_MS {
-                self.log.info(&format!("timing: between ticks took {held}ms ({})", between.plain(3)));
+                self.log.info(&format!(
+                    "timing: between ticks took {held}ms ({})",
+                    between.plain(3)
+                ));
             }
             let tick_started = std::time::Instant::now();
-            let lines = match crate::crash::caught("thinking about what to do next", || self.tick(t))
-            {
-                Ok(lines) => lines,
-                Err(why) => vec![why],
-            };
+            let lines =
+                match crate::crash::caught("thinking about what to do next", || self.tick(t)) {
+                    Ok(lines) => lines,
+                    Err(why) => vec![why],
+                };
             // A tick is time the hub and the typing box wait: a slow one is
             // written down, so where the time goes can be seen.
             let tick_ms = tick_started.elapsed().as_millis() as u64;
@@ -558,7 +719,10 @@ impl<'a> Daemon<'a> {
             if tick_ms >= SLOW_TICK_MS {
                 // Which parts took it, so the next look at a log says where
                 // the time went (30 Sep 2026: the laptop's said only "1777ms").
-                self.log.info(&format!("timing: tick took {tick_ms}ms ({})", self.tick_laps.plain(3)));
+                self.log.info(&format!(
+                    "timing: tick took {tick_ms}ms ({})",
+                    self.tick_laps.plain(3)
+                ));
             }
             // A tick that ran long (a render, a sweep) is Atlas busy, not
             // you gone: the next break check measures from when it finished.
@@ -574,7 +738,8 @@ impl<'a> Daemon<'a> {
             for (i, line) in lines.iter().enumerate() {
                 if let Some(words) = self.say_volunteered(mouth, ears, line) {
                     if i + 1 < n {
-                        self.log.info(&format!("cut in: {} more line(s) not said", n - i - 1));
+                        self.log
+                            .info(&format!("cut in: {} more line(s) not said", n - i - 1));
                         // On the screen and in the log still: not said is
                         // not lost.
                         for rest in &lines[i + 1..] {
@@ -586,8 +751,15 @@ impl<'a> Daemon<'a> {
                     break;
                 }
             }
-            if let Some(words) = over_it.filter(|w| !w.trim().is_empty() && !crate::speech::is_interruption(w) && w != crate::speech::YOUR_TURN) {
-                typed_meanwhile = Some(crate::input::Utterance { text: words, source: crate::input::Source::Voice });
+            if let Some(words) = over_it.filter(|w| {
+                !w.trim().is_empty()
+                    && !crate::speech::is_interruption(w)
+                    && w != crate::speech::YOUR_TURN
+            }) {
+                typed_meanwhile = Some(crate::input::Utterance {
+                    text: words,
+                    source: crate::input::Source::Voice,
+                });
                 continue;
             }
             // The typing watcher: which windows Atlas is typing in itself
@@ -596,7 +768,12 @@ impl<'a> Daemon<'a> {
                 if let Ok(mut b) = self.typing_busy.lock().or_else(crate::crash::unpoison) {
                     *b = self.working_for_you.iter().map(|w| w.win.0).collect();
                 }
-                let said: Vec<String> = self.typing_said.lock().or_else(crate::crash::unpoison).map(|mut s| std::mem::take(&mut *s)).unwrap_or_default();
+                let said: Vec<String> = self
+                    .typing_said
+                    .lock()
+                    .or_else(crate::crash::unpoison)
+                    .map(|mut s| std::mem::take(&mut *s))
+                    .unwrap_or_default();
                 for line in said {
                     self.say(mouth, &line);
                 }
@@ -658,7 +835,9 @@ impl<'a> Daemon<'a> {
                             // second or more that came back with no words is
                             // said, not swallowed (29 Sep 2026: Eric held the
                             // key four times and Atlas never answered).
-                            Ok(None) if held_from.elapsed() >= std::time::Duration::from_secs(1) => {
+                            Ok(None)
+                                if held_from.elapsed() >= std::time::Duration::from_secs(1) =>
+                            {
                                 self.log.info(&format!(
                                     "push-to-talk: no words in {:.1}s of recording",
                                     held_from.elapsed().as_secs_f32()
@@ -678,7 +857,10 @@ impl<'a> Daemon<'a> {
                             self.typebox = None;
                             let tx = keyboard.sender();
                             match crate::typebox::Standby::start(move |text| {
-                                let _ = tx.send(crate::input::Utterance { text, source: crate::input::Source::Typed });
+                                let _ = tx.send(crate::input::Utterance {
+                                    text,
+                                    source: crate::input::Source::Typed,
+                                });
                             }) {
                                 Ok(mut b) => {
                                     // Its window needs a moment to exist before
@@ -695,7 +877,9 @@ impl<'a> Daemon<'a> {
                                         }
                                     }
                                     if !shown {
-                                        self.log.warn("the typing box started but its window didn't appear");
+                                        self.log.warn(
+                                            "the typing box started but its window didn't appear",
+                                        );
                                     }
                                     self.typebox = Some(b);
                                 }
@@ -733,10 +917,9 @@ impl<'a> Daemon<'a> {
 
             // The wake word, heard on the microphone's own thread: taken
             // here if it has news, never waited for.
-            if self.mic.is_some()
-                && self.listen_pass(ears, mouth, clock) {
-                    continue;
-                }
+            if self.mic.is_some() && self.listen_pass(ears, mouth, clock) {
+                continue;
+            }
 
             match self.tiers.tier {
                 // Done above, on its own thread.
@@ -850,7 +1033,11 @@ impl<'a> Daemon<'a> {
             // is not a reason to spin.
             // And while a request of several steps is under way: its worker
             // waits on the tick for each step (`take_task_loop_news`).
-            let nap_ms = if self.crew.wants_attention() || self.working_through_steps() { CREW_NAP_MS } else { nap.min(MAX_SLEEP_SECS) * 1000 };
+            let nap_ms = if self.crew.wants_attention() || self.working_through_steps() {
+                CREW_NAP_MS
+            } else {
+                nap.min(MAX_SLEEP_SECS) * 1000
+            };
             // Not asleep, though (27 Sep 2026): the nap is spent answering
             // the hub the moment a request arrives, and watching for typing,
             // which ends it. Two seconds with the hub unanswered and the
@@ -878,10 +1065,16 @@ impl<'a> Daemon<'a> {
                 line.push_str(&format!(" {}={ms}ms", stage.key()));
             }
         }
-        line.push_str(&format!(" model={model_ms}ms/{} call(s) delivering={speaking_ms}ms", calls.len()));
+        line.push_str(&format!(
+            " model={model_ms}ms/{} call(s) delivering={speaking_ms}ms",
+            calls.len()
+        ));
         // When the first sentence went to be spoken, counted from when the
         // model was asked (30 Sep 2026): the target is under 3 s.
-        let first_words = self.first_words_ms.get().map(|m| m.min(u32::MAX as u64) as u32);
+        let first_words = self
+            .first_words_ms
+            .get()
+            .map(|m| m.min(u32::MAX as u64) as u32);
         if let Some(ms) = self.first_words_ms.take() {
             line.push_str(&format!(" first_words={ms}ms"));
         }
@@ -902,21 +1095,28 @@ impl<'a> Daemon<'a> {
             line.push_str(&format!("; {}", a.line()));
         }
         self.log.info(&line);
-        crate::voicelat::record(&crate::roots::store(), crate::voicelat::TurnRecord {
-            at: crate::store::now(),
-            asr,
-            listening_ms: t.get(crate::timing::Stage::Listening),
-            hearing_ms: t.get(crate::timing::Stage::Hearing),
-            first_words_ms: first_words,
-            first_audio_ms: silence,
-            speaking_ms: t.get(crate::timing::Stage::Speaking),
-            playing_ms: t.get(crate::timing::Stage::Playing),
-        });
+        crate::voicelat::record(
+            &crate::roots::store(),
+            crate::voicelat::TurnRecord {
+                at: crate::store::now(),
+                asr,
+                listening_ms: t.get(crate::timing::Stage::Listening),
+                hearing_ms: t.get(crate::timing::Stage::Hearing),
+                first_words_ms: first_words,
+                first_audio_ms: silence,
+                speaking_ms: t.get(crate::timing::Stage::Speaking),
+                playing_ms: t.get(crate::timing::Stage::Playing),
+            },
+        );
     }
 
     /// Whether the wake word is switched on in your settings.
     pub fn wake_on(&self) -> bool {
-        self.tools_cfg().wake.as_ref().map(|w| w.enabled).unwrap_or(false)
+        self.tools_cfg()
+            .wake
+            .as_ref()
+            .map(|w| w.enabled)
+            .unwrap_or(false)
     }
 
     /// Answer every hub request waiting, waiting up to `wait_ms` for one if
@@ -947,7 +1147,9 @@ impl<'a> Daemon<'a> {
         }
         if self.attention.is_paused() {
             self.cancel_brief_preparation();
-            if let Some(speaker) = self.announcements.get() { speaker.cancel(); }
+            if let Some(speaker) = self.announcements.get() {
+                speaker.cancel();
+            }
         }
         crate::notifyicon::tray_paused_now(self.attention.is_paused());
     }
@@ -967,27 +1169,68 @@ impl<'a> Daemon<'a> {
     fn publish_hub_pause(&self, server: &crate::server::HubDoor) {
         let hands = self.crew.pause_handles();
         let pause_files = self.file_pause_handle();
-        let speech = self.announcements.get().map(|speaker| speaker.cancellation());
+        let speech = self
+            .announcements
+            .get()
+            .map(|speaker| speaker.cancellation());
         server.publish_pause(std::sync::Arc::new(move |on| {
-            for hand in &hands { hand.set_paused(on); }
-            if let Some(pause_files) = &pause_files { pause_files(on); }
-            if on { if let Some(speech) = &speech { speech(); } }
+            for hand in &hands {
+                hand.set_paused(on);
+            }
+            if let Some(pause_files) = &pause_files {
+                pause_files(on);
+            }
+            if on {
+                if let Some(speech) = &speech {
+                    speech();
+                }
+            }
         }));
-        let bindings = self.queue.tasks.iter().filter(|task| task.state == crate::lanes::TaskState::Running).map(|task| crate::server::FastCancel {
-            key: format!("t:{}", task.id), worker: task.worker_id, files: task.file_move_id,
-        }).chain(self.scheduler.jobs.iter().filter(|job| job.in_flight).map(|job| crate::server::FastCancel {
-            key: format!("s:{}", job.id), worker: job.worker_id, files: job.file_move_id,
-        })).chain(self.crew.errands().into_iter().map(|errand| crate::server::FastCancel {
-            key: format!("e:{}", errand.id), worker: Some(errand.id), files: None,
-        }));
+        let bindings = self
+            .queue
+            .tasks
+            .iter()
+            .filter(|task| task.state == crate::lanes::TaskState::Running)
+            .map(|task| crate::server::FastCancel {
+                key: format!("t:{}", task.id),
+                worker: task.worker_id,
+                files: task.file_move_id,
+            })
+            .chain(
+                self.scheduler
+                    .jobs
+                    .iter()
+                    .filter(|job| job.in_flight)
+                    .map(|job| crate::server::FastCancel {
+                        key: format!("s:{}", job.id),
+                        worker: job.worker_id,
+                        files: job.file_move_id,
+                    }),
+            )
+            .chain(
+                self.crew
+                    .errands()
+                    .into_iter()
+                    .map(|errand| crate::server::FastCancel {
+                        key: format!("e:{}", errand.id),
+                        worker: Some(errand.id),
+                        files: None,
+                    }),
+            );
         let mut cancellations = Vec::new();
         for binding in bindings {
             let hand = binding.worker.and_then(|id| self.crew.control_handle(id));
             let stop_files = binding.files.and_then(|id| self.file_stop_handle(id));
-            if hand.is_none() && stop_files.is_none() { continue; }
+            if hand.is_none() && stop_files.is_none() {
+                continue;
+            }
             let stop: std::sync::Arc<dyn Fn() + Send + Sync> = std::sync::Arc::new(move || {
-                if let Some(hand) = &hand { hand.request_stop(); }
-                if let Some(stop_files) = &stop_files { stop_files(); }
+                if let Some(hand) = &hand {
+                    hand.request_stop();
+                }
+                if let Some(stop_files) = &stop_files {
+                    stop_files();
+                }
             });
             cancellations.push((binding, stop));
         }
@@ -995,43 +1238,89 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn apply_fast_hub_pause(&mut self) {
-        let Some(server) = self.hub_server.as_ref() else { return };
+        let Some(server) = self.hub_server.as_ref() else {
+            return;
+        };
         let pause = server.take_pause_requested();
         let cancellations = server.take_cancel_requested();
-        if pause.is_none() && cancellations.is_empty() { return; }
+        if pause.is_none() && cancellations.is_empty() {
+            return;
+        }
         let install = crate::roots::state_dir();
-        if self.handed_over_now() || crate::profiles::active_dir(&install).unwrap_or_else(|| install.clone()) != self.store.root() { return; }
+        if self.handed_over_now()
+            || crate::profiles::active_dir(&install).unwrap_or_else(|| install.clone())
+                != self.store.root()
+        {
+            return;
+        }
         if let Some(on) = pause {
             if on || self.attention.is_paused() {
                 // unheard-ok: the fast HTTP route already returned its requested-status text; only control effects are applied here.
                 let _ = self.turn(if on { "pause" } else { "carry on" }, crate::store::now());
             }
             self.pause_files(self.attention.is_paused());
-            if on { self.cancel_brief_preparation(); }
+            if on {
+                self.cancel_brief_preparation();
+            }
         }
         for request in cancellations {
-            let exact = if let Some(id) = request.key.strip_prefix("t:").and_then(|id| id.parse::<u64>().ok()) {
-                self.queue.tasks.iter().any(|task| task.id == id && task.state == crate::lanes::TaskState::Running && task.worker_id == request.worker && task.file_move_id == request.files)
-            } else if let Some(id) = request.key.strip_prefix("s:").and_then(|id| id.parse::<u64>().ok()) {
-                self.scheduler.jobs.iter().any(|job| job.id == id && job.in_flight && job.worker_id == request.worker && job.file_move_id == request.files)
-            } else if let Some(id) = request.key.strip_prefix("e:").and_then(|id| id.parse::<u64>().ok()) {
-                request.worker == Some(id) && request.files.is_none() && self.crew.control_handle(id).is_some()
-            } else { false };
+            let exact = if let Some(id) = request
+                .key
+                .strip_prefix("t:")
+                .and_then(|id| id.parse::<u64>().ok())
+            {
+                self.queue.tasks.iter().any(|task| {
+                    task.id == id
+                        && task.state == crate::lanes::TaskState::Running
+                        && task.worker_id == request.worker
+                        && task.file_move_id == request.files
+                })
+            } else if let Some(id) = request
+                .key
+                .strip_prefix("s:")
+                .and_then(|id| id.parse::<u64>().ok())
+            {
+                self.scheduler.jobs.iter().any(|job| {
+                    job.id == id
+                        && job.in_flight
+                        && job.worker_id == request.worker
+                        && job.file_move_id == request.files
+                })
+            } else if let Some(id) = request
+                .key
+                .strip_prefix("e:")
+                .and_then(|id| id.parse::<u64>().ok())
+            {
+                request.worker == Some(id)
+                    && request.files.is_none()
+                    && self.crew.control_handle(id).is_some()
+            } else {
+                false
+            };
             if exact {
-                if let Err(error) = self.drop_outstanding(&request.key, crate::store::now()) { self.log.warn(&error); }
+                if let Err(error) = self.drop_outstanding(&request.key, crate::store::now()) {
+                    self.log.warn(&error);
+                }
             }
         }
     }
 
-    fn reply_hub_for_owner(&mut self, install: &std::path::Path, action: crate::server::Action) -> crate::server::Reply {
+    fn reply_hub_for_owner(
+        &mut self,
+        install: &std::path::Path,
+        action: crate::server::Action,
+    ) -> crate::server::Reply {
         let active = crate::profiles::active_dir(install).unwrap_or_else(|| install.to_path_buf());
         if active != self.store.root() {
             return crate::server::Reply { status: 503, ..crate::server::Reply::html("<p>The active profile changed. Atlas must finish switching profiles before showing private state or handling actions.</p>") };
         }
         // Handover and take-back keep their existing public access boundary.
-        crate::crash::caught("answering the hub", || crate::hublive::reply(self, action)).unwrap_or_else(|why| {
-            crate::server::Reply { status: 500, body: serde_json::json!({ "error": why }).to_string(), ..Default::default() }
-        })
+        crate::crash::caught("answering the hub", || crate::hublive::reply(self, action))
+            .unwrap_or_else(|why| crate::server::Reply {
+                status: 500,
+                body: serde_json::json!({ "error": why }).to_string(),
+                ..Default::default()
+            })
     }
 
     fn answer_hub_saying(&mut self, mouth: Option<&dyn Mouth>, wait_ms: u64) -> usize {
@@ -1043,31 +1332,51 @@ impl<'a> Daemon<'a> {
             return 0;
         };
         let install_state = crate::roots::state_dir();
-        let active = crate::profiles::active_dir(&install_state).unwrap_or_else(|| install_state.clone());
+        let active =
+            crate::profiles::active_dir(&install_state).unwrap_or_else(|| install_state.clone());
         // Switching profiles takes effect at restart. Until then, do not
         // publish the previous person's private status as the new profile.
         if self.handed_over_now() || active != self.store.root() {
             server.invalidate_readonly();
         } else if server.readonly_due() {
-            server.publish_readonly(crate::hublive::readonly_pages(self), install_state.clone(), self.store.root().to_path_buf());
+            server.publish_readonly(
+                crate::hublive::readonly_pages(self),
+                install_state.clone(),
+                self.store.root().to_path_buf(),
+            );
             self.publish_hub_pause(&server);
         }
-        if !self.handed_over_now() && active == self.store.root() { self.publish_hub_pause(&server); }
+        if !self.handed_over_now() && active == self.store.root() {
+            self.publish_hub_pause(&server);
+        }
         let mut handle = |action| {
             // Caught: a panic answering the hub would otherwise take the
             // whole of Atlas down with the page.
             let reply = self.reply_hub_for_owner(&install_state, action);
             server.invalidate_readonly();
             if self.attention.is_paused() || !self.sound_allows_speaking() {
-                if self.attention.is_paused() { self.cancel_brief_preparation(); }
-                if let Some(speaker) = self.announcements.get() { speaker.cancel(); }
+                if self.attention.is_paused() {
+                    self.cancel_brief_preparation();
+                }
+                if let Some(speaker) = self.announcements.get() {
+                    speaker.cancel();
+                }
             }
             reply
         };
-        let done = if wait_ms > 0 { server.wait_and_answer(wait_ms, &mut handle) } else { server.answer_waiting(&mut handle) };
-        let active = crate::profiles::active_dir(&install_state).unwrap_or_else(|| install_state.clone());
+        let done = if wait_ms > 0 {
+            server.wait_and_answer(wait_ms, &mut handle)
+        } else {
+            server.answer_waiting(&mut handle)
+        };
+        let active =
+            crate::profiles::active_dir(&install_state).unwrap_or_else(|| install_state.clone());
         if !done.is_empty() && !self.handed_over_now() && active == self.store.root() {
-            server.publish_readonly(crate::hublive::readonly_pages(self), install_state, self.store.root().to_path_buf());
+            server.publish_readonly(
+                crate::hublive::readonly_pages(self),
+                install_state,
+                self.store.root().to_path_buf(),
+            );
             self.publish_hub_pause(&server);
         }
         // The door's own news (its port taken, where it opened instead:
@@ -1100,7 +1409,10 @@ impl<'a> Daemon<'a> {
     pub(super) fn hub_timing(&mut self, a: &crate::server::HubCost) {
         let total = a.waited_ms + a.took_ms;
         if total >= SLOW_HUB_MS {
-            self.log.info(&format!("timing: hub {} waited {}ms, answered in {}ms", a.what, a.waited_ms, a.took_ms));
+            self.log.info(&format!(
+                "timing: hub {} waited {}ms, answered in {}ms",
+                a.what, a.waited_ms, a.took_ms
+            ));
         }
         let t = &mut self.hub_times;
         t.count += 1;
@@ -1119,12 +1431,20 @@ impl<'a> Daemon<'a> {
                 t.slowest_ms
             );
             self.log.info(&line);
-            self.hub_times = HubTimes { since: now, ..HubTimes::default() };
+            self.hub_times = HubTimes {
+                since: now,
+                ..HubTimes::default()
+            };
         }
     }
 
     /// Typing, waited for in slices with the hub answered between them.
-    fn wait_for_typing(&mut self, keyboard: &Keyboard, mouth: &dyn Mouth, ms: u64) -> Option<crate::input::Utterance> {
+    fn wait_for_typing(
+        &mut self,
+        keyboard: &Keyboard,
+        mouth: &dyn Mouth,
+        ms: u64,
+    ) -> Option<crate::input::Utterance> {
         let until = std::time::Instant::now() + std::time::Duration::from_millis(ms);
         while std::time::Instant::now() < until {
             if let Some(u) = keyboard.wait(20) {
@@ -1138,7 +1458,12 @@ impl<'a> Daemon<'a> {
     /// The loop's rest between passes, spent answering the hub as requests
     /// arrive and ended early by typing, Ctrl-C or a stop request. Returns
     /// what was typed, for the next pass to take.
-    fn nap_awake(&mut self, keyboard: &Keyboard, mouth: &dyn Mouth, ms: u64) -> Option<crate::input::Utterance> {
+    fn nap_awake(
+        &mut self,
+        keyboard: &Keyboard,
+        mouth: &dyn Mouth,
+        ms: u64,
+    ) -> Option<crate::input::Utterance> {
         let until = std::time::Instant::now() + std::time::Duration::from_millis(ms);
         loop {
             // Read before looking (`doorbell`): news that lands between the
@@ -1153,7 +1478,11 @@ impl<'a> Daemon<'a> {
             // The wake word heard mid-nap ends the nap: it waits for the
             // next pass, not for two seconds.
             if self.mic_heard.is_none() {
-                self.mic_heard = self.mic.as_ref().and_then(|m| m.poll()).filter(|h| !matches!(h, crate::micthread::Heard::FollowUp(..)));
+                self.mic_heard = self
+                    .mic
+                    .as_ref()
+                    .and_then(|m| m.poll())
+                    .filter(|h| !matches!(h, crate::micthread::Heard::FollowUp(..)));
             }
             if self.mic_heard.is_some() {
                 return None;
@@ -1189,7 +1518,10 @@ impl<'a> Daemon<'a> {
     /// stopped, the lock let go -- last), and only then is the new copy
     /// started. If it can't be started, this Atlas takes its lock back and
     /// carries on rather than leave nothing running.
-    pub fn restart_as(&mut self, relaunch: impl FnOnce() -> std::result::Result<(), String>) -> std::result::Result<(), String> {
+    pub fn restart_as(
+        &mut self,
+        relaunch: impl FnOnce() -> std::result::Result<(), String>,
+    ) -> std::result::Result<(), String> {
         for line in self.shut_down() {
             self.log.info(&line);
         }
@@ -1203,7 +1535,9 @@ impl<'a> Daemon<'a> {
                 crate::notifyicon::bring_icon_back();
                 // Still here after all: hold the lock again and keep going.
                 // Helpers start again when next wanted.
-                crate::heard!(crate::onlyone::OnlyOne::at(&self.store.data_dir()).take(crate::store::now()));
+                crate::heard!(
+                    crate::onlyone::OnlyOne::at(&self.store.data_dir()).take(crate::store::now())
+                );
                 self.stopped = false;
                 Err(why)
             }
@@ -1218,7 +1552,11 @@ impl<'a> Daemon<'a> {
             // How late and how loud Atlas reaches the microphone, as the
             // last run learned it: the first cut-in needn't wait for it to
             // be learned again.
-            if let (Some(m), Some(l)) = (self.mic.as_ref(), self.store.load::<Option<crate::micthread::Learned>>(CUT_IN_STATE)) {
+            if let (Some(m), Some(l)) = (
+                self.mic.as_ref(),
+                self.store
+                    .load::<Option<crate::micthread::Learned>>(CUT_IN_STATE),
+            ) {
                 m.seed(l);
             }
         }
@@ -1228,13 +1566,19 @@ impl<'a> Daemon<'a> {
     /// not listening at all: no wake word, no watching while Atlas speaks.
     pub(super) fn steer_mic(&mut self) {
         self.pause_files(self.attention.is_paused());
-        if self.attention.is_paused() { self.cancel_brief_preparation(); }
+        if self.attention.is_paused() {
+            self.cancel_brief_preparation();
+        }
         if let Some(speaker) = self.announcements.get() {
             if self.attention.is_paused() || !self.sound_allows_speaking() {
                 speaker.cancel();
             }
         }
-        let failures = self.announcements.get().map(|s| s.take_failures()).unwrap_or_default();
+        let failures = self
+            .announcements
+            .get()
+            .map(|s| s.take_failures())
+            .unwrap_or_default();
         for notice in &failures {
             crate::outln!("{notice}");
             self.log.warn(notice);
@@ -1244,10 +1588,15 @@ impl<'a> Daemon<'a> {
         let Some(m) = self.mic.as_ref() else { return };
         let cfg = self.tools_cfg();
         m.set_paused(self.attention.is_paused());
-        m.set_wake(self.tiers.tier == Tier::Voice && cfg.wake.as_ref().map(|w| w.enabled).unwrap_or(false));
+        m.set_wake(
+            self.tiers.tier == Tier::Voice && cfg.wake.as_ref().map(|w| w.enabled).unwrap_or(false),
+        );
         // Cutting in by voice on for a headset even when it's off in
         // settings: its microphone doesn't hear Atlas (`for_microphone`).
-        m.set_barge(&cfg.barge_in.for_microphone(&crate::voice::microphone_now(&cfg).0));
+        m.set_barge(
+            &cfg.barge_in
+                .for_microphone(&crate::voice::microphone_now(&cfg).0),
+        );
         for n in m.take_notes() {
             self.log.info(&n);
         }
@@ -1270,14 +1619,23 @@ impl<'a> Daemon<'a> {
     ///
     /// Public so the test can show a pass returns at once while the thread
     /// is mid-recording.
-    pub fn listen_pass(&mut self, ears: &dyn Ears, mouth: &dyn Mouth, clock: &dyn Fn() -> u64) -> bool {
+    pub fn listen_pass(
+        &mut self,
+        ears: &dyn Ears,
+        mouth: &dyn Mouth,
+        clock: &dyn Fn() -> u64,
+    ) -> bool {
         if let Some(back) = self.tiers.try_the_wake_word_again(clock()) {
-            self.log.info(&format!("trying the wake word again by itself: {back}"));
+            self.log
+                .info(&format!("trying the wake word again by itself: {back}"));
         }
         self.ensure_mic(ears);
         self.steer_mic();
         self.call_mute_setting();
-        let heard = self.mic_heard.take().or_else(|| self.mic.as_ref().and_then(|m| m.poll()));
+        let heard = self
+            .mic_heard
+            .take()
+            .or_else(|| self.mic.as_ref().and_then(|m| m.poll()));
         let Some(heard) = heard else { return false };
         // A follow-up nobody is waiting for any more (`follow_up` gave up).
         if matches!(heard, crate::micthread::Heard::FollowUp(..)) {
@@ -1298,11 +1656,14 @@ impl<'a> Daemon<'a> {
             // name was found in. That is fixed in `utterance`; this is only
             // for the name said on its own.)
             crate::micthread::Heard::Named => self.answer_the_name(ears, mouth, clock),
-            crate::micthread::Heard::Wake(Err(why)) if why.contains(crate::voice::HEARD_NOTHING) => {
+            crate::micthread::Heard::Wake(Err(why))
+                if why.contains(crate::voice::HEARD_NOTHING) =>
+            {
                 self.answer_the_name(ears, mouth, clock)
             }
             crate::micthread::Heard::Wake(Err(why)) | crate::micthread::Heard::Trouble(why) => {
-                self.log.info(&format!("listening for the wake word: {why}"));
+                self.log
+                    .info(&format!("listening for the wake word: {why}"));
                 self.degrade(mouth);
             }
             crate::micthread::Heard::FollowUp(..) => {}
@@ -1320,7 +1681,9 @@ impl<'a> Daemon<'a> {
                     // A tap is not a question; a key held a second or more
                     // with no words is said, not swallowed.
                     Ok(None) if held_secs >= 1.0 => {
-                        self.log.info(&format!("push-to-talk: no words in {held_secs:.1}s of recording"));
+                        self.log.info(&format!(
+                            "push-to-talk: no words in {held_secs:.1}s of recording"
+                        ));
                         self.say(mouth, "I didn't catch anything that time. Hold the key while you talk, and I'll listen until you let go.");
                     }
                     Ok(None) => {}
@@ -1335,8 +1698,14 @@ impl<'a> Daemon<'a> {
         let muted = crate::callmute::muted_now();
         crate::callmute::release();
         if !muted.is_empty() {
-            let names: Vec<&str> = muted.iter().map(|m| m.exe.rsplit(['\\', '/']).next().unwrap_or(&m.exe)).collect();
-            self.log.info(&format!("call: unmuted {} after talking with Atlas", names.join(", ")));
+            let names: Vec<&str> = muted
+                .iter()
+                .map(|m| m.exe.rsplit(['\\', '/']).next().unwrap_or(&m.exe))
+                .collect();
+            self.log.info(&format!(
+                "call: unmuted {} after talking with Atlas",
+                names.join(", ")
+            ));
         }
         if let Some(m) = self.mic.as_ref() {
             m.rearm();
@@ -1361,7 +1730,9 @@ impl<'a> Daemon<'a> {
             }
             return;
         }
-        if self.attention.is_paused() || crate::goodbye::asked_to_stop() { return; }
+        if self.attention.is_paused() || crate::goodbye::asked_to_stop() {
+            return;
+        }
         match self.follow_up(ears, NAME_ALONE_WAIT_SECS) {
             Some(said) => {
                 self.heard_through_this_ear(&said);
@@ -1470,7 +1841,8 @@ impl<'a> Daemon<'a> {
         // The hearing server Atlas started goes with it.
         crate::parakeet::stop();
         // The typing watcher saves what it learned on the way out.
-        self.typing_stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.typing_stop
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         if let Some(h) = self.typing_thread.take() {
             let _ = h.join();
         }
@@ -1571,7 +1943,13 @@ impl<'a> Daemon<'a> {
     /// work, and the speaking of the reply — so it is the only place that can
     /// divide the time up honestly. `timing::Recent` was added holding a
     /// window and nothing filled it, which reads exactly like a fast machine.
-    pub fn converse(&mut self, first: &str, ears: &dyn Ears, mouth: &dyn Mouth, clock: &dyn Fn() -> u64) {
+    pub fn converse(
+        &mut self,
+        first: &str,
+        ears: &dyn Ears,
+        mouth: &dyn Mouth,
+        clock: &dyn Fn() -> u64,
+    ) {
         // The wake word's recorder off the microphone for the whole exchange:
         // the follow-up listens are this turn's, and two recorders on one
         // microphone is one too many.
@@ -1579,14 +1957,22 @@ impl<'a> Daemon<'a> {
         // Caught, as `tick` is. A panic on the conversation path used to
         // unwind out of the run loop and end the process (prose.rs recorded
         // one such crash); now it costs that exchange and a sentence.
-        if let Err(why) = crate::crash::caught("answering you", || self.converse_inner(first, ears, mouth, clock)) {
+        if let Err(why) = crate::crash::caught("answering you", || {
+            self.converse_inner(first, ears, mouth, clock)
+        }) {
             self.say(mouth, &why);
         }
         self.mic_busy(false);
         self.done_working(clock());
     }
 
-    fn converse_inner(&mut self, first: &str, ears: &dyn Ears, mouth: &dyn Mouth, clock: &dyn Fn() -> u64) {
+    fn converse_inner(
+        &mut self,
+        first: &str,
+        ears: &dyn Ears,
+        mouth: &dyn Mouth,
+        clock: &dyn Fn() -> u64,
+    ) {
         let mut said = first.to_string();
         // The first utterance came through the wake word or push-to-talk, so
         // it is unambiguously for Atlas. Follow-ups do not: the floor is left
@@ -1698,8 +2084,15 @@ impl<'a> Daemon<'a> {
             // "Doing" ends when the answer came back, not after it was
             // played: before Phase 0.2 the queued sentences were waited out
             // first, so the 30 Sep "17.5 s of thinking" was mostly speech.
-            let doing = self.model_done_at.take().map(|at| at.saturating_duration_since(started)).unwrap_or_else(|| started.elapsed());
-            timed.note(crate::timing::Stage::Doing, doing.as_millis().min(u32::MAX as u128) as u32);
+            let doing = self
+                .model_done_at
+                .take()
+                .map(|at| at.saturating_duration_since(started))
+                .unwrap_or_else(|| started.elapsed());
+            timed.note(
+                crate::timing::Stage::Doing,
+                doing.as_millis().min(u32::MAX as u128) as u32,
+            );
             how = Arrival::OpenMic;
             if let Some(words) = cut_while_thinking {
                 // Set aside for what you said instead.
@@ -1760,12 +2153,21 @@ impl<'a> Daemon<'a> {
                 timed.note(crate::timing::Stage::Speaking, synth);
                 timed.note(crate::timing::Stage::Playing, playback);
             }
-            let first_sound = crate::speaking::take_first_sound().map(|at| at.saturating_duration_since(started).as_millis() as u64);
-            self.silence_ms.set(crate::timing::silence_before_first_sound(heard_ms, first_sound));
+            let first_sound = crate::speaking::take_first_sound()
+                .map(|at| at.saturating_duration_since(started).as_millis() as u64);
+            self.silence_ms
+                .set(crate::timing::silence_before_first_sound(
+                    heard_ms,
+                    first_sound,
+                ));
             self.log_turn_timing(&timed, calls_before, speaking_ms);
             self.timing.add(timed);
             self.last_spoke_at = clock();
-            if let Some(words) = cut_in.into_inner().or(self.cut_in_by_voice.take()).filter(|w| !w.trim().is_empty()) {
+            if let Some(words) = cut_in
+                .into_inner()
+                .or(self.cut_in_by_voice.take())
+                .filter(|w| !w.trim().is_empty())
+            {
                 said = words;
                 continue;
             }
@@ -1809,7 +2211,10 @@ impl<'a> Daemon<'a> {
             match self.follow_up(ears, window) {
                 // "That's all", "bye", "thanks Atlas": said back briefly, the
                 // floor closes, and Atlas goes back to listening for its name.
-                Some(next) if crate::utterance::is_goodbye(&next) || crate::session::ends_the_conversation(&next) => {
+                Some(next)
+                    if crate::utterance::is_goodbye(&next)
+                        || crate::session::ends_the_conversation(&next) =>
+                {
                     self.log.info("the conversation ended: you said so");
                     self.thread.append(&next, "Anytime.", None, clock());
                     self.say(mouth, "Anytime.");
@@ -1818,7 +2223,9 @@ impl<'a> Daemon<'a> {
                 Some(next) => said = next,
                 None => {
                     if talk.hands_free {
-                        self.log.info(&format!("the conversation ended: nothing said for {window}s"));
+                        self.log.info(&format!(
+                            "the conversation ended: nothing said for {window}s"
+                        ));
                     }
                     break;
                 }
@@ -1836,24 +2243,32 @@ impl<'a> Daemon<'a> {
     /// Ears that can't be handed to a thread (test stand-ins) listen here,
     /// as before.
     pub(super) fn follow_up(&mut self, ears: &dyn Ears, secs: u32) -> Option<String> {
-        let Some(id) = self.mic.as_ref().filter(|m| !m.is_stopped()).map(|m| m.follow_up(secs)) else {
+        let Some(id) = self
+            .mic
+            .as_ref()
+            .filter(|m| !m.is_stopped())
+            .map(|m| m.follow_up(secs))
+        else {
             return match ears.listen_briefly(secs) {
                 Ok(got) => got.filter(|n| !n.trim().is_empty()),
                 Err(e) => {
-                    self.log.warn(&format!("listening after a reply failed: {e}"));
+                    self.log
+                        .warn(&format!("listening after a reply failed: {e}"));
                     None
                 }
             };
         };
         // The window, then time for the words to be made out.
-        let until = std::time::Instant::now() + std::time::Duration::from_secs(u64::from(secs) + FOLLOW_UP_HEARING_SECS);
+        let until = std::time::Instant::now()
+            + std::time::Duration::from_secs(u64::from(secs) + FOLLOW_UP_HEARING_SECS);
         loop {
             match self.mic.as_ref().and_then(|m| m.poll()) {
                 Some(crate::micthread::Heard::FollowUp(n, got)) if n == id => {
                     return match got {
                         Ok(got) => got.filter(|n| !n.trim().is_empty()),
                         Err(e) => {
-                            self.log.warn(&format!("listening after a reply failed: {e}"));
+                            self.log
+                                .warn(&format!("listening after a reply failed: {e}"));
                             None
                         }
                     };
@@ -1866,7 +2281,10 @@ impl<'a> Daemon<'a> {
                 }
                 None => {}
             }
-            if crate::goodbye::asked_to_stop() || self.attention.is_paused() || std::time::Instant::now() >= until {
+            if crate::goodbye::asked_to_stop()
+                || self.attention.is_paused()
+                || std::time::Instant::now() >= until
+            {
                 if let Some(m) = self.mic.as_ref() {
                     m.cancel_follow_up();
                 }
@@ -1911,7 +2329,9 @@ impl<'a> Daemon<'a> {
     pub(crate) fn sound_allows_speaking(&self) -> bool {
         let now = crate::store::now() as i64 + crate::localclock::offset_secs();
         let minute = (now.rem_euclid(86_400) / 60) as u32;
-        self.tools_cfg().sound.may_speak_now(minute, !self.turn_was_typed)
+        self.tools_cfg()
+            .sound
+            .may_speak_now(minute, !self.turn_was_typed)
     }
 
     pub(super) fn say(&self, mouth: &dyn Mouth, line: &str) {
@@ -1936,7 +2356,9 @@ impl<'a> Daemon<'a> {
                             }
                         }
                         Err(e) => {
-                            self.log.warn(&format!("couldn't start announcement speaker: {e}; text only"));
+                            self.log.warn(&format!(
+                                "couldn't start announcement speaker: {e}; text only"
+                            ));
                             return;
                         }
                     }
@@ -1963,7 +2385,12 @@ impl<'a> Daemon<'a> {
     /// "stop" cuts it off. `Some` when you cut in, with what you said (empty
     /// for a key pressed and nothing said); `None` when it was said to the
     /// end, or a cough cut it and the rest was said anyway.
-    pub(super) fn say_volunteered(&mut self, mouth: &dyn Mouth, ears: &dyn Ears, line: &str) -> Option<String> {
+    pub(super) fn say_volunteered(
+        &mut self,
+        mouth: &dyn Mouth,
+        ears: &dyn Ears,
+        line: &str,
+    ) -> Option<String> {
         let cut_in: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
         let talk_key = self.hotkeys.take();
         let said = {
@@ -1977,7 +2404,12 @@ impl<'a> Daemon<'a> {
 
     /// `say_volunteered` with the listening handed in -- the talk key in
     /// Atlas, a stand-in in the tests.
-    pub fn say_volunteered_with(&mut self, mouth: &dyn Mouth, line: &str, listen: &mut dyn FnMut() -> Option<String>) -> Option<String> {
+    pub fn say_volunteered_with(
+        &mut self,
+        mouth: &dyn Mouth,
+        line: &str,
+        listen: &mut dyn FnMut() -> Option<String>,
+    ) -> Option<String> {
         self.cut_in_by_voice = None;
         self.unsaid = None;
         let d = self.say_interruptibly(mouth, line, listen);
@@ -1989,7 +2421,12 @@ impl<'a> Daemon<'a> {
         // A volunteered line isn't parked for "carry on": you talked over it
         // because you didn't want it.
         self.unsaid = None;
-        Some(self.cut_in_by_voice.take().or(d.interrupted_by.clone()).unwrap_or_default())
+        Some(
+            self.cut_in_by_voice
+                .take()
+                .or(d.interrupted_by.clone())
+                .unwrap_or_default(),
+        )
     }
 
     /// Speak a reply that you can cut off.
@@ -2008,14 +2445,19 @@ impl<'a> Daemon<'a> {
         line: &str,
         listen: &mut dyn FnMut() -> Option<String>,
     ) -> crate::speech::Delivery {
-        let (ids,render_only) = self.bind_calendar_deliveries(line);
+        let (ids, render_only) = self.bind_calendar_deliveries(line);
         if !self.calendar_delivery_current(&ids) {
-            self.unsaid=None;
-            return crate::speech::Delivery {spoken:Vec::new(),unspoken:Vec::new(),
-                interrupted_by:Some("Calendar delivery stopped because ownership or the event changed.".into())};
+            self.unsaid = None;
+            return crate::speech::Delivery {
+                spoken: Vec::new(),
+                unspoken: Vec::new(),
+                interrupted_by: Some(
+                    "Calendar delivery stopped because ownership or the event changed.".into(),
+                ),
+            };
         }
         self.calendar_active_delivery_ids = ids.clone();
-        let mut s = self.start_saying_mode(mouth,render_only);
+        let mut s = self.start_saying_mode(mouth, render_only);
         s.bind_calendar_deliveries(ids);
         s.add(line);
 
@@ -2026,14 +2468,20 @@ impl<'a> Daemon<'a> {
     /// sound says not now; the microphone watched for your voice when
     /// cutting in by voice is on and Atlas isn't paused (`micthread`).
     pub(super) fn start_saying<'m>(&self, mouth: &'m dyn Mouth) -> crate::speakthread::Saying<'m> {
-        self.start_saying_mode(mouth,false)
+        self.start_saying_mode(mouth, false)
     }
 
-    fn start_saying_mode<'m>(&self,mouth:&'m dyn Mouth,render_only:bool)->crate::speakthread::Saying<'m> {
+    fn start_saying_mode<'m>(
+        &self,
+        mouth: &'m dyn Mouth,
+        render_only: bool,
+    ) -> crate::speakthread::Saying<'m> {
         if let Some(speaker) = self.announcements.get() {
             speaker.cancel();
         }
-        let typed = render_only || (self.tiers.tier == Tier::Typed && !crate::input::can_speak(self.tools_ref())) || !self.sound_allows_speaking();
+        let typed = render_only
+            || (self.tiers.tier == Tier::Typed && !crate::input::can_speak(self.tools_ref()))
+            || !self.sound_allows_speaking();
         let watching = if typed || self.attention.is_paused() {
             None
         } else {
@@ -2055,7 +2503,11 @@ impl<'a> Daemon<'a> {
     }
 
     /// The reply is over, as far as it got.
-    pub(super) fn stop_saying(&mut self, s: crate::speakthread::Saying, mouth: &dyn Mouth) -> crate::speech::Delivery {
+    pub(super) fn stop_saying(
+        &mut self,
+        s: crate::speakthread::Saying,
+        mouth: &dyn Mouth,
+    ) -> crate::speech::Delivery {
         let said = s.finish();
         self.calendar_active_delivery_ids.clear();
         let over_it = said.words.clone();
@@ -2064,11 +2516,20 @@ impl<'a> Daemon<'a> {
         }
         let d = said.delivery;
         let delivered = d.spoken.join(" ");
-        self.calendar_reminder_receipt(&said.calendar_delivery_ids, !d.was_interrupted(), crate::store::now());
+        self.calendar_reminder_receipt(
+            &said.calendar_delivery_ids,
+            !d.was_interrupted(),
+            crate::store::now(),
+        );
         let effect_receipt = self.acknowledge_prepared_effects(&delivered, crate::store::now());
-        let opportunity_receipt = crate::hunting::acknowledge_delivered(self, &delivered, crate::store::now());
-        if effect_receipt && opportunity_receipt { self.acknowledge_brief_delivery(&delivered, crate::store::now()); }
-        if !said.calendar_delivery_ids.is_empty() && !self.calendar_delivery_current(&said.calendar_delivery_ids) {
+        let opportunity_receipt =
+            crate::hunting::acknowledge_delivered(self, &delivered, crate::store::now());
+        if effect_receipt && opportunity_receipt {
+            self.acknowledge_brief_delivery(&delivered, crate::store::now());
+        }
+        if !said.calendar_delivery_ids.is_empty()
+            && !self.calendar_delivery_current(&said.calendar_delivery_ids)
+        {
             self.unsaid = None;
             return d;
         }
@@ -2076,7 +2537,10 @@ impl<'a> Daemon<'a> {
             // Cut by a sound that wasn't words -- a cough, a door, Atlas's own
             // voice coming back -- is no reason to stop: the rest is said
             // (29 Sep 2026: "Paused." and then nothing, over and over).
-            if over_it.as_deref().is_some_and(|w| crate::voice::not_really_said(w)) {
+            if over_it
+                .as_deref()
+                .is_some_and(|w| crate::voice::not_really_said(w))
+            {
                 self.cut_in_by_voice = None;
                 self.unsaid = None;
                 let rest = d.remaining_text();
@@ -2149,32 +2613,61 @@ mod closing_checkpoint {
     use super::*;
     #[test]
     fn live_hub_refuses_old_profile_state_and_actions_after_switch() {
-        let root = std::env::temp_dir().join(format!("atlas-live-hub-owner-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("atlas-live-hub-owner-{}", std::process::id()));
         let store = Store::new(root.clone());
         let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
         cfg.tools.as_mut().unwrap().backup.enabled = false;
         let platform = crate::platform::mock::MockPlatform::new(vec![]);
-        let mut daemon = Daemon::new(&cfg, &platform, None, store, crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
-        assert_eq!(daemon.reply_hub_for_owner(&root, crate::server::Action::Hub(crate::hub::Page::Now)).status, 200);
+        let mut daemon = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            store,
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        assert_eq!(
+            daemon
+                .reply_hub_for_owner(&root, crate::server::Action::Hub(crate::hub::Page::Now))
+                .status,
+            200
+        );
         let mut profiles = crate::profiles::Profiles::default();
         profiles.add("Owner", crate::profiles::Role::Owner).unwrap();
         profiles.add("Guest", crate::profiles::Role::Guest).unwrap();
-        profiles.switch("guest", 1).unwrap(); profiles.save(&root).unwrap();
-        let page = daemon.reply_hub_for_owner(&root, crate::server::Action::Hub(crate::hub::Page::Now));
-        assert_eq!(page.status, 503); assert!(page.body.contains("profile changed"));
+        profiles.switch("guest", 1).unwrap();
+        profiles.save(&root).unwrap();
+        let page =
+            daemon.reply_hub_for_owner(&root, crate::server::Action::Hub(crate::hub::Page::Now));
+        assert_eq!(page.status, 503);
+        assert!(page.body.contains("profile changed"));
         let action = daemon.reply_hub_for_owner(&root, crate::server::Action::Pause(true));
-        assert_eq!(action.status, 503); assert!(!daemon.attention.is_paused(), "wrong-owner action reached the old daemon");
+        assert_eq!(action.status, 503);
+        assert!(
+            !daemon.attention.is_paused(),
+            "wrong-owner action reached the old daemon"
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn closing_waits_for_a_short_snapshot_and_keeps_the_pending_decision() {
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("atlas-closing-save-{}-{stamp}", std::process::id()));
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("atlas-closing-save-{}-{stamp}", std::process::id()));
         let store = Store::new(root.clone());
         let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
         cfg.tools.as_mut().unwrap().backup.enabled = false;
         let platform = crate::platform::mock::MockPlatform::new(vec![]);
-        let mut daemon = Daemon::new(&cfg, &platform, None, store.clone(), crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()));
+        let mut daemon = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
         daemon.left_waiting_read = true;
         daemon.session.ask("Keep this reviewed clip?");
         let (ready, received) = std::sync::mpsc::channel();
@@ -2186,7 +2679,10 @@ mod closing_checkpoint {
         });
         received.recv().unwrap();
         daemon.persist();
-        assert!(daemon.persist_failures.iter().any(|(what, _)| *what == "state snapshot busy"));
+        assert!(daemon
+            .persist_failures
+            .iter()
+            .any(|(what, _)| *what == "state snapshot busy"));
         let started = std::time::Instant::now();
         let said = daemon.shut_down().join(" ");
         snapshot.join().unwrap();
@@ -2209,8 +2705,6 @@ pub(super) struct LeftWaiting {
     pub asked: bool,
     pub at: u64,
 }
-
-
 
 /// Upkeep between two ticks that's worth a line in the log, in milliseconds.
 const SLOW_BETWEEN_MS: u32 = 3000;

@@ -22,7 +22,13 @@ fn hourly(n: usize, shape: impl Fn(usize) -> (f64, f64)) -> Bars {
 }
 
 fn long_trade() -> Open {
-    Open { side: Side::Buy, entry: 1.1000, stop: 1.0980, target: 1.1040, opened_at: START }
+    Open {
+        side: Side::Buy,
+        entry: 1.1000,
+        stop: 1.0980,
+        target: 1.1040,
+        opened_at: START,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -36,7 +42,11 @@ fn how_long_it_ought_to_take_comes_off_the_bars_and_not_out_of_the_air() {
     // called an implied pace and not a prediction.
     let t = long_trade();
     let near = |a: Option<f64>, b: f64| a.map(|x| (x - b).abs() < 1e-9) == Some(true);
-    assert!(near(implied_bars(&t, Some(0.0010)), 4.0), "{:?}", implied_bars(&t, Some(0.0010)));
+    assert!(
+        near(implied_bars(&t, Some(0.0010)), 4.0),
+        "{:?}",
+        implied_bars(&t, Some(0.0010))
+    );
     // Half the movement, twice as long.
     assert!(near(implied_bars(&t, Some(0.0005)), 8.0));
     // And no answer at all when there is nothing to divide by, rather than a
@@ -66,7 +76,11 @@ fn a_trade_that_goes_nowhere_for_long_enough_is_named_as_going_nowhere() {
     let view = bars.latest().unwrap();
     let v = how_its_going(&long_trade(), &view, Some(0.0010), &StaleConfig::default()).unwrap();
     match v {
-        Going::Stale { bars, implied, best } => {
+        Going::Stale {
+            bars,
+            implied,
+            best,
+        } => {
             assert_eq!(bars, 40);
             assert!((implied - 4.0).abs() < 1e-9);
             assert!(best < 0.25, "best was {best:.2}");
@@ -74,21 +88,47 @@ fn a_trade_that_goes_nowhere_for_long_enough_is_named_as_going_nowhere() {
         other => panic!("{other:?}"),
     }
     assert!(v.is_stale());
-    assert!(spoken(&long_trade(), &view, Some(0.0010), &StaleConfig::default())
-        .contains("choices rather than findings"));
+    assert!(
+        spoken(&long_trade(), &view, Some(0.0010), &StaleConfig::default())
+            .contains("choices rather than findings")
+    );
 }
 
 #[test]
 fn the_stop_and_the_target_settle_it_and_neither_is_ever_called_stale() {
-    let stopped = hourly(40, |i| if i < 3 { (1.1001, 1.0999) } else { (1.1001, 1.0970) });
-    let reached = hourly(40, |i| if i < 3 { (1.1001, 1.0999) } else { (1.1050, 1.0999) });
+    let stopped = hourly(40, |i| {
+        if i < 3 {
+            (1.1001, 1.0999)
+        } else {
+            (1.1001, 1.0970)
+        }
+    });
+    let reached = hourly(40, |i| {
+        if i < 3 {
+            (1.1001, 1.0999)
+        } else {
+            (1.1050, 1.0999)
+        }
+    });
     let cfg = StaleConfig::default();
     assert_eq!(
-        how_its_going(&long_trade(), &stopped.latest().unwrap(), Some(0.0010), &cfg).unwrap(),
+        how_its_going(
+            &long_trade(),
+            &stopped.latest().unwrap(),
+            Some(0.0010),
+            &cfg
+        )
+        .unwrap(),
         Going::Stopped
     );
     assert_eq!(
-        how_its_going(&long_trade(), &reached.latest().unwrap(), Some(0.0010), &cfg).unwrap(),
+        how_its_going(
+            &long_trade(),
+            &reached.latest().unwrap(),
+            Some(0.0010),
+            &cfg
+        )
+        .unwrap(),
         Going::Reached
     );
 }
@@ -97,10 +137,21 @@ fn the_stop_and_the_target_settle_it_and_neither_is_ever_called_stale() {
 fn a_bar_that_spans_both_is_read_as_the_stop() {
     // There is no way to know from a bar which side it touched first, and
     // assuming the good one is how a backtest invents money.
-    let both = hourly(40, |i| if i < 3 { (1.1001, 1.0999) } else { (1.1050, 1.0970) });
+    let both = hourly(40, |i| {
+        if i < 3 {
+            (1.1001, 1.0999)
+        } else {
+            (1.1050, 1.0970)
+        }
+    });
     assert_eq!(
-        how_its_going(&long_trade(), &both.latest().unwrap(), Some(0.0010), &StaleConfig::default())
-            .unwrap(),
+        how_its_going(
+            &long_trade(),
+            &both.latest().unwrap(),
+            Some(0.0010),
+            &StaleConfig::default()
+        )
+        .unwrap(),
         Going::Stopped
     );
 }
@@ -145,7 +196,10 @@ fn the_best_it_has_been_is_what_counts_not_where_it_sits_now() {
     });
     let view = bars.latest().unwrap();
     let v = how_its_going(&long_trade(), &view, Some(0.0010), &StaleConfig::default()).unwrap();
-    assert!(!v.is_stale(), "a trade that got 87% of the way was called stale: {v:?}");
+    assert!(
+        !v.is_stale(),
+        "a trade that got 87% of the way was called stale: {v:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -154,13 +208,27 @@ fn the_best_it_has_been_is_what_counts_not_where_it_sits_now() {
 
 #[test]
 fn a_short_is_read_the_same_way_upside_down() {
-    let short = Open { side: Side::Sell, entry: 1.1000, stop: 1.1020, target: 1.0960, opened_at: START };
+    let short = Open {
+        side: Side::Sell,
+        entry: 1.1000,
+        stop: 1.1020,
+        target: 1.0960,
+        opened_at: START,
+    };
     let nowhere = hourly(40, |_| (1.1001, 1.0999));
     let cfg = StaleConfig::default();
-    assert!(how_its_going(&short, &nowhere.latest().unwrap(), Some(0.0010), &cfg)
-        .unwrap()
-        .is_stale());
-    let good = hourly(40, |i| if i < 3 { (1.1001, 1.0999) } else { (1.1001, 1.0950) });
+    assert!(
+        how_its_going(&short, &nowhere.latest().unwrap(), Some(0.0010), &cfg)
+            .unwrap()
+            .is_stale()
+    );
+    let good = hourly(40, |i| {
+        if i < 3 {
+            (1.1001, 1.0999)
+        } else {
+            (1.1001, 1.0950)
+        }
+    });
     assert_eq!(
         how_its_going(&short, &good.latest().unwrap(), Some(0.0010), &cfg).unwrap(),
         Going::Reached
@@ -173,7 +241,10 @@ fn a_window_that_starts_after_the_trade_did_is_refused_rather_than_flattered() {
     // the last few bars as the best of the trade.
     let bars = hourly(40, |_| (1.1001, 1.0999));
     let view = bars.latest().unwrap();
-    let late = Open { opened_at: START - 10 * MS_PER_HOUR, ..long_trade() };
+    let late = Open {
+        opened_at: START - 10 * MS_PER_HOUR,
+        ..long_trade()
+    };
     let e = how_its_going(&late, &view, Some(0.0010), &StaleConfig::default()).unwrap_err();
     assert!(e.contains("flatters"));
 }
@@ -208,8 +279,13 @@ fn the_two_judgements_are_reachable_and_named_as_judgements() {
     // gets one, and the same fixture stops being stale.
     let bars = hourly(40, |_| (1.1001, 1.0999));
     let view = bars.latest().unwrap();
-    let patient = StaleConfig { patience: 50.0, ..cfg };
-    assert!(!how_its_going(&long_trade(), &view, Some(0.0010), &patient).unwrap().is_stale());
+    let patient = StaleConfig {
+        patience: 50.0,
+        ..cfg
+    };
+    assert!(!how_its_going(&long_trade(), &view, Some(0.0010), &patient)
+        .unwrap()
+        .is_stale());
 }
 
 // ---------------------------------------------------------------------------
@@ -223,5 +299,9 @@ fn nothing_here_can_be_mistaken_for_moving_a_stop() {
     // a stop being moved, which it is not.
     let src = include_str!("../src/stale.rs");
     let fields = "pub stop: f64";
-    assert_eq!(src.matches(fields).count(), 1, "the stop is read, never written");
+    assert_eq!(
+        src.matches(fields).count(),
+        1,
+        "the stop is read, never written"
+    );
 }

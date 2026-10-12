@@ -146,7 +146,10 @@ pub fn check(m: &Measured) -> Vec<(Node, String)> {
     if m.clipped_white > 0.01 {
         out.push((
             Node::Contrast,
-            format!("{:.0}% is clipped white and there's no detail in it.", m.clipped_white * 100.0),
+            format!(
+                "{:.0}% is clipped white and there's no detail in it.",
+                m.clipped_white * 100.0
+            ),
         ));
     }
     // The one that matters most and is invisible without the scope.
@@ -157,7 +160,11 @@ pub fn check(m: &Measured) -> Vec<(Node, String)> {
                 "skin is {:.0}° off the line — {} on the vectorscope. Move the global colour \
                  wheel until the cluster sits on it.",
                 m.skin_off_line,
-                if m.skin_off_line > 0.0 { "too red" } else { "too green" }
+                if m.skin_off_line > 0.0 {
+                    "too red"
+                } else {
+                    "too green"
+                }
             ),
         ));
     }
@@ -184,7 +191,10 @@ pub fn spoken(notes: &[(Node, String)]) -> String {
         Some((node, why)) => {
             let mut s = format!("On the {} node: {why}", node_name(*node));
             if notes.len() > 1 {
-                s.push_str(&format!(" {} more, further down the tree.", notes.len() - 1));
+                s.push_str(&format!(
+                    " {} more, further down the tree.",
+                    notes.len() - 1
+                ));
             }
             s
         }
@@ -221,6 +231,10 @@ pub struct GradingConfig {
 
 impl Default for GradingConfig {
     fn default() -> Self {
-        GradingConfig { enabled: false, skin_tolerance_degrees: 6.0, crush_limit: 0.02 }
+        GradingConfig {
+            enabled: false,
+            skin_tolerance_degrees: 6.0,
+            crush_limit: 0.02,
+        }
     }
 }

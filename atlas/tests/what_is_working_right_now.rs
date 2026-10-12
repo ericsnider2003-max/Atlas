@@ -43,7 +43,13 @@ fn plat() -> MockPlatform {
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -70,7 +76,10 @@ fn asking_what_works_right_now_names_the_usable_set() {
     // It leads with the count of usable things, then names them -- the same
     // list `working` builds. Every usable capability's `what` must appear.
     let working = capability::working();
-    assert!(!working.is_empty(), "the tree should have some usable capabilities");
+    assert!(
+        !working.is_empty(),
+        "the tree should have some usable capabilities"
+    );
     assert!(
         reply.starts_with(&format!("{} things work right now:", working.len())),
         "the answer should lead with the usable count and a colon, got: {reply}"
@@ -99,8 +108,14 @@ fn what_works_is_neither_the_summary_nor_the_full_list() {
     let summary = d.execute(&Intent::Capabilities(String::new()));
     let full = d.execute(&Intent::Capabilities("list them all".into()));
 
-    assert_ne!(works, summary, "the working list must not be the summary tally");
-    assert_ne!(works, full, "the working list must not be the full catalogue");
+    assert_ne!(
+        works, summary,
+        "the working list must not be the summary tally"
+    );
+    assert_ne!(
+        works, full,
+        "the working list must not be the full catalogue"
+    );
     // The full listing carries its own legend line; the working answer does not.
     assert!(
         !works.contains("never run for real"),

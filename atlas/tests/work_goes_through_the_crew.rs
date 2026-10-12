@@ -32,7 +32,14 @@ fn scratch(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn show(p: &MockPlatform, id: u64, process: &str, text: &str) {
@@ -42,7 +49,13 @@ fn show(p: &MockPlatform, id: u64, process: &str, text: &str) {
 }
 
 fn typed(p: &MockPlatform) -> Vec<String> {
-    p.actions().into_iter().filter_map(|a| match a { Action::Type(t) => Some(t), _ => None }).collect()
+    p.actions()
+        .into_iter()
+        .filter_map(|a| match a {
+            Action::Type(t) => Some(t),
+            _ => None,
+        })
+        .collect()
 }
 
 /// A model that takes its time, the way a local one on a laptop does.
@@ -56,7 +69,13 @@ impl atlas::brain::Llm for Slow {
 
 fn daemon<'a>(p: &'a MockPlatform, cfg: Config, tag: &str) -> Daemon<'a> {
     let cfg: &'static Config = Box::leak(Box::new(cfg));
-    Daemon::new(cfg, p, None, Store::new(scratch(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        cfg,
+        p,
+        None,
+        Store::new(scratch(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 /// Ticks until `done`, or a few seconds.
@@ -75,7 +94,8 @@ fn until(d: &mut Daemon, from: u64, done: impl Fn(&Daemon, &[String]) -> bool) -
 #[test]
 fn a_slow_model_writing_a_reply_never_holds_up_the_tick() {
     let p = plat();
-    let mut quiet = Config::load(Path::new("config")).unwrap(); quiet.indexing = None; // the person's real folders are not what this times
+    let mut quiet = Config::load(Path::new("config")).unwrap();
+    quiet.indexing = None; // the person's real folders are not what this times
     let mut d = daemon(&p, quiet, "slow-model");
     d.llm = Some(Arc::new(Slow(Duration::from_millis(800), "Friday works.")));
     // The first tick of a fresh daemon does its start-up looking around
@@ -84,13 +104,24 @@ fn a_slow_model_writing_a_reply_never_holds_up_the_tick() {
     let _ = d.tick(atlas::store::now() + 40);
     show(&p, 7, "SomeChat.exe", "Sam: Friday?");
     let began = Instant::now();
-    let said = d.execute_timed(&Intent::Delegate("draft a reply to this".into()), "draft a reply to this");
-    crate::common::assert_prompt(began.elapsed(), Duration::from_millis(400), "asking waited for the model");
+    let said = d.execute_timed(
+        &Intent::Delegate("draft a reply to this".into()),
+        "draft a reply to this",
+    );
+    crate::common::assert_prompt(
+        began.elapsed(),
+        Duration::from_millis(400),
+        "asking waited for the model",
+    );
     assert!(said.starts_with("Drafting a reply in SomeChat"), "{said}");
     let t = atlas::store::now() + 50;
     let one = Instant::now();
     let _ = d.tick(t);
-    crate::common::assert_prompt(one.elapsed(), Duration::from_millis(400), "a tick waited for the model");
+    crate::common::assert_prompt(
+        one.elapsed(),
+        Duration::from_millis(400),
+        "a tick waited for the model",
+    );
     let _ = until(&mut d, t + 1, |d, _| d.working_for_you.is_empty());
     assert_eq!(typed(&p), vec!["Friday works.".to_string()]);
 }
@@ -101,9 +132,18 @@ fn a_reply_sent_as_you_is_on_the_record() {
     let mut d = daemon(&p, Config::load(Path::new("config")).unwrap(), "journal");
     d.llm = Some(Arc::new(Slow(Duration::from_millis(1), "On my way.")));
     show(&p, 7, "SomeChat.exe", "Sam: where are you?");
-    let _ = d.execute_timed(&Intent::Delegate("take over this conversation".into()), "take over this conversation");
-    let _ = until(&mut d, atlas::store::now() + 50, |_, _| !typed(&p).is_empty());
-    let sent = d.journal.events.iter().find(|e| e.what.starts_with("replied in SomeChat"));
+    let _ = d.execute_timed(
+        &Intent::Delegate("take over this conversation".into()),
+        "take over this conversation",
+    );
+    let _ = until(&mut d, atlas::store::now() + 50, |_, _| {
+        !typed(&p).is_empty()
+    });
+    let sent = d
+        .journal
+        .events
+        .iter()
+        .find(|e| e.what.starts_with("replied in SomeChat"));
     let sent = sent.expect("a message went out as you and nothing recorded it");
     assert_eq!(sent.kind, atlas::activity::Kind::Published);
     assert!(sent.what.contains("On my way."));
@@ -112,15 +152,24 @@ fn a_reply_sent_as_you_is_on_the_record() {
 #[test]
 fn working_your_apps_has_a_switch_and_off_means_off() {
     let mut cfg = Config::load(Path::new("config")).unwrap();
-    assert!(cfg.tools.as_ref().unwrap().delegate.enabled, "Eric said yes; it ships on");
+    assert!(
+        cfg.tools.as_ref().unwrap().delegate.enabled,
+        "Eric said yes; it ships on"
+    );
     let s = atlas::settings::registry(cfg.tools.as_ref().unwrap());
-    assert!(s.get("delegate.enabled").is_some(), "no switch for writing as you");
+    assert!(
+        s.get("delegate.enabled").is_some(),
+        "no switch for writing as you"
+    );
     cfg.tools.as_mut().unwrap().delegate.enabled = false;
     let p = plat();
     let mut d = daemon(&p, cfg, "switch-off");
     d.llm = Some(Arc::new(Slow(Duration::from_millis(1), "x")));
     show(&p, 7, "SomeChat.exe", "Sam: hi");
-    let said = d.execute_timed(&Intent::Delegate("take over this conversation".into()), "take over this conversation");
+    let said = d.execute_timed(
+        &Intent::Delegate("take over this conversation".into()),
+        "take over this conversation",
+    );
     assert!(said.contains("switched off"), "{said}");
     assert!(d.working_for_you.is_empty());
 }
@@ -133,7 +182,10 @@ fn the_turn_limit_comes_from_your_settings() {
     let mut d = daemon(&p, cfg, "turns");
     d.llm = Some(Arc::new(Slow(Duration::from_millis(1), "ok")));
     show(&p, 7, "SomeChat.exe", "Sam: hi");
-    let _ = d.execute_timed(&Intent::Delegate("take over this conversation".into()), "take over this conversation");
+    let _ = d.execute_timed(
+        &Intent::Delegate("take over this conversation".into()),
+        "take over this conversation",
+    );
     assert_eq!(d.working_for_you[0].job.max_turns, 3);
 }
 
@@ -150,7 +202,11 @@ fn a_finished_call_is_written_up_by_the_crew_and_its_summary_recorded() {
             // Windows has no sh or printf: cmd copies a ready transcript.
             let line = dir.join("line.srt");
             std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(&line, "1\n00:00:00,000 --> 00:00:01,000\nShall we ship Friday?\n").unwrap();
+            std::fs::write(
+                &line,
+                "1\n00:00:00,000 --> 00:00:01,000\nShall we ship Friday?\n",
+            )
+            .unwrap();
             serde_yaml::from_str(&format!(
                 "command: cmd\nargs: [\"/c\", \"copy /y {} {{srt}} >nul\"]\nresult_file: \"{{srt}}\"\n",
                 line.display().to_string().replace('\\', "\\\\")
@@ -165,10 +221,16 @@ fn a_finished_call_is_written_up_by_the_crew_and_its_summary_recorded() {
     }
     let p = plat();
     let mut d = daemon(&p, cfg, "call-crew-store");
-    d.llm = Some(Arc::new(Slow(Duration::from_millis(1), "Agreed to ship Friday.")));
+    d.llm = Some(Arc::new(Slow(
+        Duration::from_millis(1),
+        "Agreed to ship Friday.",
+    )));
     d.call_notes.starter = atlas::callrec::silent;
     d.call_notes.dir = dir.join("calls");
-    let _ = d.execute_timed(&Intent::CallNotes("start".into()), "take notes on this call");
+    let _ = d.execute_timed(
+        &Intent::CallNotes("start".into()),
+        "take notes on this call",
+    );
     std::thread::sleep(Duration::from_millis(1_300));
     let stop = d.execute_timed(&Intent::CallNotes("stop".into()), "stop taking notes");
     assert!(stop.contains("writing up"), "{stop}");
@@ -176,12 +238,32 @@ fn a_finished_call_is_written_up_by_the_crew_and_its_summary_recorded() {
         d.crew.errands().iter().any(|e| e.name == "call-notes"),
         "the write-up isn't one of the errands Atlas can name and stop"
     );
-    let out = until(&mut d, atlas::store::now() + 50, |_, out| out.iter().any(|l| l.contains("call notes are written")));
-    assert!(out.iter().any(|l| l.contains("call notes are written")), "{out:?}");
-    let notes = std::fs::read_dir(dir.join("notes")).unwrap().flatten().find(|entry| entry.path().extension().is_some_and(|extension| extension == "md")).expect("no notes document");
+    let out = until(&mut d, atlas::store::now() + 50, |_, out| {
+        out.iter().any(|l| l.contains("call notes are written"))
+    });
+    assert!(
+        out.iter().any(|l| l.contains("call notes are written")),
+        "{out:?}"
+    );
+    let notes = std::fs::read_dir(dir.join("notes"))
+        .unwrap()
+        .flatten()
+        .find(|entry| {
+            entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "md")
+        })
+        .expect("no notes document");
     let text = std::fs::read_to_string(notes.path()).unwrap();
     assert!(text.contains("Agreed to ship Friday."), "{text}");
-    assert!(d.journal.events.iter().any(|e| e.what.starts_with("call notes:")), "not on the record");
+    assert!(
+        d.journal
+            .events
+            .iter()
+            .any(|e| e.what.starts_with("call notes:")),
+        "not on the record"
+    );
 }
 
 #[test]
@@ -195,13 +277,34 @@ fn the_new_errands_can_be_named_when_you_say_stop() {
         paused: false,
         can_hold: false,
     };
-    assert_eq!(describe(&c("pictures", "screen")), "the look at your screen");
-    assert_eq!(describe(&c("call-notes", "Zoom")), "the write-up of the Zoom call");
-    assert_eq!(describe(&c("conversation", "Slack")), "the conversation in Slack");
-    let cands = vec![c("pictures", "screen"), Candidate { id: 2, ..c("call-notes", "Zoom") }];
+    assert_eq!(
+        describe(&c("pictures", "screen")),
+        "the look at your screen"
+    );
+    assert_eq!(
+        describe(&c("call-notes", "Zoom")),
+        "the write-up of the Zoom call"
+    );
+    assert_eq!(
+        describe(&c("conversation", "Slack")),
+        "the conversation in Slack"
+    );
+    let cands = vec![
+        c("pictures", "screen"),
+        Candidate {
+            id: 2,
+            ..c("call-notes", "Zoom")
+        },
+    ];
     use atlas::which_errand::{pick, Pick, Verb};
-    assert_eq!(pick(Verb::Cancel, "the looking", &cands, &[], 0), Pick::These(vec![1], atlas::which_errand::Why::Named));
-    assert_eq!(pick(Verb::Cancel, "the call write-up", &cands, &[], 0), Pick::These(vec![2], atlas::which_errand::Why::Named));
+    assert_eq!(
+        pick(Verb::Cancel, "the looking", &cands, &[], 0),
+        Pick::These(vec![1], atlas::which_errand::Why::Named)
+    );
+    assert_eq!(
+        pick(Verb::Cancel, "the call write-up", &cands, &[], 0),
+        Pick::These(vec![2], atlas::which_errand::Why::Named)
+    );
 }
 
 #[cfg(unix)]
@@ -239,6 +342,9 @@ fn the_picture_reader_can_be_stopped_while_it_looks() {
         });
         assert_eq!(r, Err("you asked me to stop".to_string()));
     });
-    crate::common::assert_prompt(asked.elapsed(), Duration::from_secs(5), "stop didn't reach it");
+    crate::common::assert_prompt(
+        asked.elapsed(),
+        Duration::from_secs(5),
+        "stop didn't reach it",
+    );
 }
-

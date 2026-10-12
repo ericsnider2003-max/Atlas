@@ -13,7 +13,10 @@
 //! One copy, two readers. Nothing here knows about lists or ceilings — it
 //! answers one question and the callers decide what it means.
 
-#![allow(dead_code, reason = "shared helpers; each test crate that includes this module uses only some of them")]
+#![allow(
+    dead_code,
+    reason = "shared helpers; each test crate that includes this module uses only some of them"
+)]
 
 /// Does this text use `name` — call it, or pass it by name?
 ///
@@ -40,7 +43,12 @@ pub fn calls(text: &str, name: &str) -> bool {
         }
         if let Some(rest) = after(line, &referenced) {
             // `::name` followed by an identifier character is a longer name.
-            if !rest.chars().next().map(|c| c.is_alphanumeric() || c == '_').unwrap_or(false) {
+            if !rest
+                .chars()
+                .next()
+                .map(|c| c.is_alphanumeric() || c == '_')
+                .unwrap_or(false)
+            {
                 return true;
             }
         }
@@ -236,8 +244,13 @@ pub fn calls_invocation(text: &str, name: &str) -> bool {
 pub fn split_production_and_tests(text: &str) -> (String, String) {
     // An inner file attribute applies to the whole module, including a
     // private test module loaded through #[path] by its production parent.
-    if text.lines().take_while(|line| line.trim().is_empty() || line.starts_with("//") || line.starts_with("#!"))
-        .any(|line| line.trim_end() == "#![cfg(test)]") {
+    if text
+        .lines()
+        .take_while(|line| {
+            line.trim().is_empty() || line.starts_with("//") || line.starts_with("#!")
+        })
+        .any(|line| line.trim_end() == "#![cfg(test)]")
+    {
         return (String::new(), text.to_string());
     }
     let lines: Vec<&str> = text.split('\n').collect();
@@ -290,7 +303,9 @@ pub fn ambiguous_free_functions() -> std::collections::BTreeSet<String> {
 
     fn read(dir: &str) -> Vec<(String, String)> {
         fn walk(d: &std::path::Path, base: &std::path::Path, out: &mut Vec<(String, String)>) {
-            let Ok(entries) = std::fs::read_dir(d) else { return };
+            let Ok(entries) = std::fs::read_dir(d) else {
+                return;
+            };
             let mut paths: Vec<_> = entries.flatten().map(|e| e.path()).collect();
             paths.sort();
             for p in paths {
@@ -310,7 +325,11 @@ pub fn ambiguous_free_functions() -> std::collections::BTreeSet<String> {
             }
         }
         let mut out = Vec::new();
-        walk(std::path::Path::new(dir), std::path::Path::new(dir), &mut out);
+        walk(
+            std::path::Path::new(dir),
+            std::path::Path::new(dir),
+            &mut out,
+        );
         // A split module's pieces are one module (27 Sep 2026); none yet.
         fold_split_modules(out)
     }
@@ -321,7 +340,10 @@ pub fn ambiguous_free_functions() -> std::collections::BTreeSet<String> {
         .map(|(m, t)| {
             (
                 m.clone(),
-                t.lines().map(|l| l.split("//").next().unwrap_or("")).collect::<Vec<_>>().join("\n"),
+                t.lines()
+                    .map(|l| l.split("//").next().unwrap_or(""))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
             )
         })
         .collect();
@@ -339,8 +361,10 @@ pub fn ambiguous_free_functions() -> std::collections::BTreeSet<String> {
             if impl_at.is_none() {
                 for pre in ["pub fn ", "pub(crate) fn "] {
                     if let Some(rest) = t.strip_prefix(pre) {
-                        let n: String =
-                            rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+                        let n: String = rest
+                            .chars()
+                            .take_while(|c| c.is_alphanumeric() || *c == '_')
+                            .collect();
                         if !n.is_empty() {
                             defs.entry(n).or_default().insert(module.clone());
                         }
@@ -441,7 +465,9 @@ pub fn source_files_of(name: &str) -> Vec<std::path::PathBuf> {
 }
 
 fn collect_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for p in entries.flatten().map(|e| e.path()) {
         if p.is_dir() {
             collect_rs(&p, out);
@@ -483,8 +509,8 @@ pub fn source_of(name: &str) -> String {
     );
     let mut out = String::new();
     for f in &files {
-        let text = std::fs::read_to_string(f)
-            .unwrap_or_else(|e| panic!("reading {}: {e}", f.display()));
+        let text =
+            std::fs::read_to_string(f).unwrap_or_else(|e| panic!("reading {}: {e}", f.display()));
         if !out.is_empty() && !out.ends_with('\n') {
             out.push('\n');
         }
@@ -542,7 +568,10 @@ pub fn split_parent(path: &std::path::Path) -> Option<String> {
     let mut parts = rel.components();
     let first = parts.next()?.as_os_str().to_str()?.to_string();
     parts.next()?; // must be inside a folder
-    if std::path::Path::new("src").join(format!("{first}.rs")).is_file() {
+    if std::path::Path::new("src")
+        .join(format!("{first}.rs"))
+        .is_file()
+    {
         Some(first)
     } else {
         None
@@ -598,8 +627,11 @@ pub fn is_fn_definition(t: &str) -> bool {
 /// file of their own (`platform/`, `market/`) are left exactly as they are.
 /// The first entry keeps its position; the texts are joined with a newline.
 pub fn fold_split_modules(entries: Vec<(String, String)>) -> Vec<(String, String)> {
-    let tops: std::collections::HashSet<String> =
-        entries.iter().filter(|(m, _)| !m.contains('/')).map(|(m, _)| m.clone()).collect();
+    let tops: std::collections::HashSet<String> = entries
+        .iter()
+        .filter(|(m, _)| !m.contains('/'))
+        .map(|(m, _)| m.clone())
+        .collect();
     let mut out: Vec<(String, String)> = Vec::new();
     for (m, text) in entries {
         let key = match m.split_once('/') {
@@ -619,11 +651,15 @@ pub fn fold_split_modules(entries: Vec<(String, String)>) -> Vec<(String, String
 /// The `assets/...` files a source file builds in with `include_str!`,
 /// resolved against the crate root, in the order they appear.
 pub fn included_assets(file: &std::path::Path) -> Vec<std::path::PathBuf> {
-    let Ok(text) = std::fs::read_to_string(file) else { return Vec::new() };
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return Vec::new();
+    };
     let dir = file.parent().unwrap_or(std::path::Path::new("."));
     let mut out = Vec::new();
     for part in text.split("include_str!(\"").skip(1) {
-        let Some(rel) = part.split('"').next() else { continue };
+        let Some(rel) = part.split('"').next() else {
+            continue;
+        };
         // Normalise `src/../assets/hub/hub.css` to `assets/hub/hub.css`.
         let mut path = std::path::PathBuf::new();
         for c in dir.join(rel).components() {
@@ -653,10 +689,15 @@ pub fn push_module(
     name: String,
     text: String,
 ) {
-    let top_of_split = path.parent() == Some(std::path::Path::new("src"))
-        && path.with_extension("").is_dir();
+    let top_of_split =
+        path.parent() == Some(std::path::Path::new("src")) && path.with_extension("").is_dir();
     let key = split_parent(path).or_else(|| {
-        top_of_split.then(|| path.file_stem().unwrap_or_default().to_string_lossy().to_string())
+        top_of_split.then(|| {
+            path.file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        })
     });
     match key {
         Some(k) => match out.iter_mut().find(|(m, _)| *m == k) {
@@ -687,9 +728,17 @@ pub fn printing(text: &str) -> atlas::tools::ExternalTool {
     std::fs::write(&file, format!("{text}\n")).expect("the stand-in's text");
     let file = file.display().to_string();
     if cfg!(windows) {
-        atlas::tools::ExternalTool { command: "cmd".into(), args: vec!["/C".into(), "type".into(), file], ..Default::default() }
+        atlas::tools::ExternalTool {
+            command: "cmd".into(),
+            args: vec!["/C".into(), "type".into(), file],
+            ..Default::default()
+        }
     } else {
-        atlas::tools::ExternalTool { command: "cat".into(), args: vec![file], ..Default::default() }
+        atlas::tools::ExternalTool {
+            command: "cat".into(),
+            args: vec![file],
+            ..Default::default()
+        }
     }
 }
 

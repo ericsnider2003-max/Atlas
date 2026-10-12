@@ -31,7 +31,14 @@ pub fn search_args(account: &str, mailbox: &str, most: u32, query: &[&str]) -> V
         a.push("--account".into());
         a.push(account.trim().into());
     }
-    a.extend(["envelope".into(), "search".into(), "--mailbox".into(), mailbox.into(), "--page-size".into(), most.to_string()]);
+    a.extend([
+        "envelope".into(),
+        "search".into(),
+        "--mailbox".into(),
+        mailbox.into(),
+        "--page-size".into(),
+        most.to_string(),
+    ]);
     a.extend(query.iter().map(|q| q.to_string()));
     a
 }
@@ -43,14 +50,22 @@ pub fn read_args(account: &str, mailbox: &str, id: &str) -> Vec<String> {
         a.push("--account".into());
         a.push(account.trim().into());
     }
-    a.extend(["message".into(), "read".into(), "--mailbox".into(), mailbox.into(), id.into()]);
+    a.extend([
+        "message".into(),
+        "read".into(),
+        "--mailbox".into(),
+        mailbox.into(),
+        id.into(),
+    ]);
     a
 }
 
 /// `01-Sep-2026` (IMAP's form, `triage::imap_date`) as `2026-09-01`, the
 /// form Himalaya's `after` takes.
 pub fn iso_date(imap_date: &str) -> Option<String> {
-    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
     let mut it = imap_date.trim().split('-');
     let d: u32 = it.next()?.parse().ok()?;
     let month = it.next()?;
@@ -85,9 +100,21 @@ fn envelope(e: &Value) -> Option<(String, Message)> {
         .as_array()
         .into_iter()
         .flatten()
-        .filter_map(|f| f["iana"].as_str().or(f["raw"].as_str()).or(f.as_str()).map(|s| s.trim_start_matches(['\\', '$']).to_lowercase()))
+        .filter_map(|f| {
+            f["iana"]
+                .as_str()
+                .or(f["raw"].as_str())
+                .or(f.as_str())
+                .map(|s| s.trim_start_matches(['\\', '$']).to_lowercase())
+        })
         .collect();
-    let bracket = |s: &str| if s.is_empty() || s.starts_with('<') { s.to_string() } else { format!("<{s}>") };
+    let bracket = |s: &str| {
+        if s.is_empty() || s.starts_with('<') {
+            s.to_string()
+        } else {
+            format!("<{s}>")
+        }
+    };
     let m = Message {
         uid: id.parse().unwrap_or(0),
         from: addresses(&e["from"]),
@@ -127,7 +154,12 @@ fn header_text(v: &Value) -> String {
                 return t.to_string();
             }
             if let Some(l) = o.get("TextList").and_then(|l| l.as_array()) {
-                return l.iter().filter_map(|s| s.as_str()).map(|s| format!("<{}>", s.trim_matches(['<', '>']))).collect::<Vec<_>>().join(" ");
+                return l
+                    .iter()
+                    .filter_map(|s| s.as_str())
+                    .map(|s| format!("<{}>", s.trim_matches(['<', '>'])))
+                    .collect::<Vec<_>>()
+                    .join(" ");
             }
             String::new()
         }
@@ -140,13 +172,20 @@ fn header_text(v: &Value) -> String {
 /// (the plain parts, or the HTML one made text when there are none), and
 /// the headers Atlas reads that an envelope doesn't carry.
 pub fn fill_from_message(m: &mut Message, json: &str) -> bool {
-    let Ok(v) = serde_json::from_str::<Value>(json) else { return false };
+    let Ok(v) = serde_json::from_str::<Value>(json) else {
+        return false;
+    };
     let parts = v["parts"].as_array().cloned().unwrap_or_default();
     let part_text = |i: &Value, key: &str| -> Option<String> {
         let p = parts.get(i.as_u64()? as usize)?;
         p["body"][key].as_str().map(str::to_string)
     };
-    let mut body: Vec<String> = v["text_body"].as_array().into_iter().flatten().filter_map(|i| part_text(i, "Text")).collect();
+    let mut body: Vec<String> = v["text_body"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|i| part_text(i, "Text"))
+        .collect();
     if body.is_empty() {
         body = v["html_body"]
             .as_array()
@@ -161,14 +200,23 @@ pub fn fill_from_message(m: &mut Message, json: &str) -> bool {
         for h in headers {
             let name = match &h["name"] {
                 Value::String(s) => s.to_lowercase(),
-                Value::Object(o) => o.get("other").or_else(|| o.get("Other")).and_then(|s| s.as_str()).unwrap_or_default().to_lowercase(),
+                Value::Object(o) => o
+                    .get("other")
+                    .or_else(|| o.get("Other"))
+                    .and_then(|s| s.as_str())
+                    .unwrap_or_default()
+                    .to_lowercase(),
                 _ => continue,
             };
             let value = header_text(&h["value"]);
             match name.as_str() {
                 "references" if m.references.is_empty() => m.references = value,
-                "list_unsubscribe" | "list-unsubscribe" if m.list_unsubscribe.is_empty() => m.list_unsubscribe = value,
-                "authentication-results" if m.authentication_results.is_empty() => m.authentication_results = value,
+                "list_unsubscribe" | "list-unsubscribe" if m.list_unsubscribe.is_empty() => {
+                    m.list_unsubscribe = value
+                }
+                "authentication-results" if m.authentication_results.is_empty() => {
+                    m.authentication_results = value
+                }
                 "cc" if m.cc.is_empty() => m.cc = addresses(&h["value"]["Address"]["List"]),
                 _ => {}
             }
@@ -187,16 +235,29 @@ fn run(program: &str, args: &[String]) -> Result<String, String> {
         .map_err(|e| format!("couldn't start Himalaya ({program}): {e}"))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
-        let line = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it stopped with an error").trim().to_string();
+        let line = err
+            .lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("it stopped with an error")
+            .trim()
+            .to_string();
         return Err(format!("Himalaya said: {line}"));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// Messages in one mailbox matching a query, each read (and left unread).
-fn fetch(program: &str, account: &str, mailbox: &str, query: &[&str], most: u32) -> Result<Vec<Message>, String> {
+fn fetch(
+    program: &str,
+    account: &str,
+    mailbox: &str,
+    query: &[&str],
+    most: u32,
+) -> Result<Vec<Message>, String> {
     let listed = run(program, &search_args(account, mailbox, most, query))?;
-    let found = envelopes(&listed).ok_or_else(|| "Himalaya's list wasn't the JSON it should be".to_string())?;
+    let found = envelopes(&listed)
+        .ok_or_else(|| "Himalaya's list wasn't the JSON it should be".to_string())?;
     let mut out = Vec::with_capacity(found.len());
     for (id, mut m) in found {
         // A message that won't read is kept with its envelope: the sender
@@ -212,7 +273,11 @@ fn fetch(program: &str, account: &str, mailbox: &str, query: &[&str], most: u32)
 /// The inbox's unread mail, and what you sent since `sent_since` (IMAP's
 /// date form) -- the same pair `connect_and_fetch_inbox` gives back. The
 /// mailboxes are Himalaya's `inbox` and `sent` aliases.
-pub fn fetch_inbox(program: &str, account: &str, sent_since: Option<&str>) -> Result<(Vec<Message>, Result<Vec<Message>, String>), String> {
+pub fn fetch_inbox(
+    program: &str,
+    account: &str,
+    sent_since: Option<&str>,
+) -> Result<(Vec<Message>, Result<Vec<Message>, String>), String> {
     let unread = fetch(program, account, "inbox", &["not", "flag", "seen"], 100)?;
     let sent = match sent_since.and_then(iso_date) {
         Some(day) => fetch(program, account, "sent", &["after", &day], 300),
@@ -223,7 +288,8 @@ pub fn fetch_inbox(program: &str, account: &str, sent_since: Option<&str>) -> Re
 
 /// Everything in the inbox since a day (IMAP's date form), read or not.
 pub fn fetch_since(program: &str, account: &str, since: &str) -> Result<Vec<Message>, String> {
-    let day = iso_date(since).ok_or_else(|| format!("{since} isn't a date I can hand to Himalaya"))?;
+    let day =
+        iso_date(since).ok_or_else(|| format!("{since} isn't a date I can hand to Himalaya"))?;
     fetch(program, account, "inbox", &["after", &day], 500)
 }
 
@@ -254,12 +320,22 @@ pub(crate) fn send(program: &str, account: &str, message: &str) -> Result<(), St
         .map_err(|e| format!("couldn't start Himalaya ({program}): {e}"))?;
     crate::childjob::tie(&child);
     if let Some(mut input) = child.stdin.take() {
-        input.write_all(message.as_bytes()).map_err(|e| format!("couldn't hand Himalaya the message: {e}"))?;
+        input
+            .write_all(message.as_bytes())
+            .map_err(|e| format!("couldn't hand Himalaya the message: {e}"))?;
     }
-    let out = child.wait_with_output().map_err(|e| format!("lost track of Himalaya: {e}"))?;
+    let out = child
+        .wait_with_output()
+        .map_err(|e| format!("lost track of Himalaya: {e}"))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
-        let line = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it stopped with an error").trim().to_string();
+        let line = err
+            .lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("it stopped with an error")
+            .trim()
+            .to_string();
         return Err(format!("Himalaya said: {line}"));
     }
     Ok(())

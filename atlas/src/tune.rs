@@ -133,7 +133,9 @@ pub fn examine(s: &Survey, cfg: &TuneConfig) -> Vec<Finding> {
             what: format!("{app} is holding {mb} MB and you haven't touched it today."),
             frees_mb: *mb,
             saves_boot_secs: 0.0,
-            fix: Fix::Reversible { action: format!("close {app}") },
+            fix: Fix::Reversible {
+                action: format!("close {app}"),
+            },
         });
     }
 
@@ -173,7 +175,9 @@ pub fn examine(s: &Survey, cfg: &TuneConfig) -> Vec<Finding> {
             what: format!("{mb} MB of temporary files in {folder}."),
             frees_mb: *mb,
             saves_boot_secs: 0.0,
-            fix: Fix::OneWay { action: format!("clear {folder}") },
+            fix: Fix::OneWay {
+                action: format!("clear {folder}"),
+            },
         });
     }
 
@@ -208,7 +212,9 @@ pub fn examine(s: &Survey, cfg: &TuneConfig) -> Vec<Finding> {
                         "point my models and captures at {drive}, which has {free:.0} GB free"
                     ),
                 },
-                None => Fix::Yours { action: "free up space on C".into() },
+                None => Fix::Yours {
+                    action: "free up space on C".into(),
+                },
             },
         });
     }
@@ -244,7 +250,10 @@ pub fn examine(s: &Survey, cfg: &TuneConfig) -> Vec<Finding> {
 
 /// What Atlas can do without asking twice — reversible things only.
 pub fn actionable(findings: &[Finding]) -> Vec<&Finding> {
-    findings.iter().filter(|f| f.fix.atlas_can_do_it()).collect()
+    findings
+        .iter()
+        .filter(|f| f.fix.atlas_can_do_it())
+        .collect()
 }
 
 /// The total on offer, so you can decide whether it's worth bothering.
@@ -347,7 +356,9 @@ pub fn mechanism_for(f: &Finding) -> Option<&'static crate::checks::Check> {
 /// Megabytes under a folder, counted.
 fn dir_mb(path: &std::path::Path) -> u64 {
     fn walk(p: &std::path::Path) -> u64 {
-        let Ok(rd) = std::fs::read_dir(p) else { return 0 };
+        let Ok(rd) = std::fs::read_dir(p) else {
+            return 0;
+        };
         rd.flatten()
             .map(|e| match e.file_type() {
                 Ok(t) if t.is_dir() => walk(&e.path()),
@@ -366,7 +377,11 @@ pub fn other_drives() -> Vec<(String, f32)> {
     use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
     let here = std::env::current_dir()
         .ok()
-        .and_then(|p| p.components().next().map(|c| c.as_os_str().to_string_lossy().to_uppercase()))
+        .and_then(|p| {
+            p.components()
+                .next()
+                .map(|c| c.as_os_str().to_string_lossy().to_uppercase())
+        })
         .unwrap_or_else(|| "C:".into());
     let mut out = Vec::new();
     for letter in 'D'..='Z' {
@@ -377,7 +392,11 @@ pub fn other_drives() -> Vec<(String, f32)> {
         let w: Vec<u16> = root.encode_utf16().chain(std::iter::once(0)).collect();
         let (mut free, mut total) = (0u64, 0u64);
         // SAFETY: `w` is NUL-terminated and outlives the call.
-        if unsafe { GetDiskFreeSpaceExW(PCWSTR(w.as_ptr()), None, Some(&mut total), Some(&mut free)) }.is_ok() {
+        if unsafe {
+            GetDiskFreeSpaceExW(PCWSTR(w.as_ptr()), None, Some(&mut total), Some(&mut free))
+        }
+        .is_ok()
+        {
             out.push((format!("{letter}:"), free as f32 / 1_073_741_824.0));
         }
     }
@@ -388,7 +407,9 @@ pub fn other_drives() -> Vec<(String, f32)> {
 /// /media, /mnt, /run/media or /Volumes, from `df`.
 #[cfg(not(windows))]
 pub fn other_drives() -> Vec<(String, f32)> {
-    let Ok(o) = crate::tools::command("df").args(["-k"]).output() else { return Vec::new() };
+    let Ok(o) = crate::tools::command("df").args(["-k"]).output() else {
+        return Vec::new();
+    };
     String::from_utf8_lossy(&o.stdout)
         .lines()
         .skip(1)
@@ -428,38 +449,74 @@ pub struct RuntimeMoveIntent {
 }
 
 #[cfg(windows)]
-struct RuntimeFolderCohort { files: Vec<std::fs::File>, directories: Vec<std::fs::File> }
+struct RuntimeFolderCohort {
+    files: Vec<std::fs::File>,
+    directories: Vec<std::fs::File>,
+}
 
 #[cfg(windows)]
 impl RuntimeFolderCohort {
     fn hold(root: &std::path::Path, stop: &dyn Fn() -> bool) -> Result<Self, String> {
         use std::os::windows::fs::OpenOptionsExt;
-        fn visit(path: &std::path::Path, cohort: &mut RuntimeFolderCohort, stop: &dyn Fn() -> bool) -> Result<(), String> {
-            if stop() { return Err("Runtime movement stopped before reservation".into()); }
-            if cohort.files.len() + cohort.directories.len() >= 100_000 { return Err("Runtime folder has too many objects to reserve safely".into()); }
+        fn visit(
+            path: &std::path::Path,
+            cohort: &mut RuntimeFolderCohort,
+            stop: &dyn Fn() -> bool,
+        ) -> Result<(), String> {
+            if stop() {
+                return Err("Runtime movement stopped before reservation".into());
+            }
+            if cohort.files.len() + cohort.directories.len() >= 100_000 {
+                return Err("Runtime folder has too many objects to reserve safely".into());
+            }
             let metadata = std::fs::symlink_metadata(path).map_err(|e| e.to_string())?;
-            if metadata.file_type().is_symlink() { return Err("Runtime folders containing symbolic links cannot be reserved".into()); }
+            if metadata.file_type().is_symlink() {
+                return Err("Runtime folders containing symbolic links cannot be reserved".into());
+            }
             // DELETE access supports rename/disposition of this exact object.
             // Denying WRITE sharing refuses existing writers and future writes
             // for the entire copy/verification/deletion lifetime.
             let handle = std::fs::OpenOptions::new().read(true).access_mode(0x8000_0000 | 0x0001_0000).share_mode(1 | 4).custom_flags(0x0020_0000 | if metadata.is_dir() { 0x0200_0000 } else { 0 }).open(path)
                 .map_err(|e| format!("Runtime folder has an active writer or cannot be reserved ({}: {e}); no file moved", path.display()))?;
             let held = handle.metadata().map_err(|e| e.to_string())?;
-            if held.file_type().is_symlink() || held.is_dir() != metadata.is_dir() || held.is_file() != metadata.is_file() { return Err("Runtime object changed type while being reserved; no file moved".into()); }
+            if held.file_type().is_symlink()
+                || held.is_dir() != metadata.is_dir()
+                || held.is_file() != metadata.is_file()
+            {
+                return Err(
+                    "Runtime object changed type while being reserved; no file moved".into(),
+                );
+            }
             if metadata.is_dir() {
                 cohort.directories.push(handle);
-                for entry in std::fs::read_dir(path).map_err(|e| e.to_string())? { visit(&entry.map_err(|e| e.to_string())?.path(), cohort, stop)?; }
-            } else if metadata.is_file() { cohort.files.push(handle); }
-            else { return Err("Runtime folder contains an unsupported object".into()); }
+                for entry in std::fs::read_dir(path).map_err(|e| e.to_string())? {
+                    visit(&entry.map_err(|e| e.to_string())?.path(), cohort, stop)?;
+                }
+            } else if metadata.is_file() {
+                cohort.files.push(handle);
+            } else {
+                return Err("Runtime folder contains an unsupported object".into());
+            }
             Ok(())
         }
-        let mut cohort = Self { files: Vec::new(), directories: Vec::new() };
-        visit(root, &mut cohort, stop)?; Ok(cohort)
+        let mut cohort = Self {
+            files: Vec::new(),
+            directories: Vec::new(),
+        };
+        visit(root, &mut cohort, stop)?;
+        Ok(cohort)
     }
 
-    fn reserve(self, destination: &std::path::Path, stop: &dyn Fn() -> bool) -> Result<Self, String> {
+    fn reserve(
+        self,
+        destination: &std::path::Path,
+        stop: &dyn Fn() -> bool,
+    ) -> Result<Self, String> {
         use std::os::windows::io::AsRawHandle;
-        use windows::Win32::{Foundation::HANDLE, Storage::FileSystem::{BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle}};
+        use windows::Win32::{
+            Foundation::HANDLE,
+            Storage::FileSystem::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION},
+        };
         let mut directories = self.directories;
         let root = directories.remove(0);
         // Windows refuses parent-directory rename while children are open.
@@ -467,92 +524,199 @@ impl RuntimeFolderCohort {
         // rename before reacquiring write-denying child handles. A writer that
         // opens during this interval either prevents rename or fails the new
         // cohort/hash check; neither route removes any source bytes.
-        drop(self.files); drop(directories);
-        if stop() { return Err("Runtime movement stopped before reservation; original retained".into()); }
+        drop(self.files);
+        drop(directories);
+        if stop() {
+            return Err("Runtime movement stopped before reservation; original retained".into());
+        }
         Self::quarantine(&root, destination)?;
         let mut reserved = Self::hold(destination, stop)?;
         fn identity(file: &std::fs::File) -> Result<(u32, u32, u32), String> {
             let mut info = BY_HANDLE_FILE_INFORMATION::default();
             // SAFETY: the handle is borrowed from the live `file` and `info` is a live local the
             // call writes.
-            unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), &mut info) }.map_err(|e| e.to_string())?;
-            Ok((info.dwVolumeSerialNumber, info.nFileIndexHigh, info.nFileIndexLow))
+            unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), &mut info) }
+                .map_err(|e| e.to_string())?;
+            Ok((
+                info.dwVolumeSerialNumber,
+                info.nFileIndexHigh,
+                info.nFileIndexLow,
+            ))
         }
-        if identity(&root)? != identity(&reserved.directories[0])? { return Err("The quarantined runtime root was replaced; all bytes were retained".into()); }
+        if identity(&root)? != identity(&reserved.directories[0])? {
+            return Err(
+                "The quarantined runtime root was replaced; all bytes were retained".into(),
+            );
+        }
         reserved.directories[0] = root;
         Ok(reserved)
     }
 
     fn quarantine(root: &std::fs::File, destination: &std::path::Path) -> Result<(), String> {
-        if crate::safety::rename_held_no_replace(root, destination).map_err(|e| e.to_string())? { Ok(()) }
-        else { Err("Runtime folder reservation failed without replacing another folder; original retained".into()) }
+        if crate::safety::rename_held_no_replace(root, destination).map_err(|e| e.to_string())? {
+            Ok(())
+        } else {
+            Err("Runtime folder reservation failed without replacing another folder; original retained".into())
+        }
     }
 
-    fn remove_verified_objects(self, quarantine: &std::path::Path, stop: &dyn Fn() -> bool) -> Result<(), String> {
+    fn remove_verified_objects(
+        self,
+        quarantine: &std::path::Path,
+        stop: &dyn Fn() -> bool,
+    ) -> Result<(), String> {
         use std::os::windows::io::AsRawHandle;
-        use windows::Win32::{Foundation::{BOOLEAN, HANDLE}, Storage::FileSystem::{FileDispositionInfo, FILE_DISPOSITION_INFO, SetFileInformationByHandle, GetFinalPathNameByHandleW, GETFINALPATHNAMEBYHANDLE_FLAGS}};
-        fn dispose(file: std::fs::File, quarantine: &std::path::Path, stop: &dyn Fn() -> bool) -> Result<(), String> {
-            if stop() { return Err("Runtime movement stopped; remaining reserved originals are retained".into()); }
+        use windows::Win32::{
+            Foundation::{BOOLEAN, HANDLE},
+            Storage::FileSystem::{
+                FileDispositionInfo, GetFinalPathNameByHandleW, SetFileInformationByHandle,
+                FILE_DISPOSITION_INFO, GETFINALPATHNAMEBYHANDLE_FLAGS,
+            },
+        };
+        fn dispose(
+            file: std::fs::File,
+            quarantine: &std::path::Path,
+            stop: &dyn Fn() -> bool,
+        ) -> Result<(), String> {
+            if stop() {
+                return Err(
+                    "Runtime movement stopped; remaining reserved originals are retained".into(),
+                );
+            }
             let mut buffer = vec![0u16; 32_768];
             // SAFETY: `buffer` is a live slice the call writes; the handle is borrowed from the
             // live `file`.
-            let length = unsafe { GetFinalPathNameByHandleW(HANDLE(file.as_raw_handle()), &mut buffer, GETFINALPATHNAMEBYHANDLE_FLAGS(0)) } as usize;
-            if length == 0 || length >= buffer.len() { return Err("A reserved object no longer has a verifiable location; it was retained".into()); }
-            let actual = String::from_utf16(&buffer[..length]).map_err(|_| "A reserved object location cannot be decoded safely")?.to_lowercase();
+            let length = unsafe {
+                GetFinalPathNameByHandleW(
+                    HANDLE(file.as_raw_handle()),
+                    &mut buffer,
+                    GETFINALPATHNAMEBYHANDLE_FLAGS(0),
+                )
+            } as usize;
+            if length == 0 || length >= buffer.len() {
+                return Err(
+                    "A reserved object no longer has a verifiable location; it was retained".into(),
+                );
+            }
+            let actual = String::from_utf16(&buffer[..length])
+                .map_err(|_| "A reserved object location cannot be decoded safely")?
+                .to_lowercase();
             let root = quarantine.to_string_lossy().to_lowercase();
-            if actual != root && !actual.starts_with(&(root + "\\")) { return Err("A reserved runtime object was moved outside quarantine; it was retained".into()); }
-            let disposition = FILE_DISPOSITION_INFO { DeleteFile: BOOLEAN(1) };
+            if actual != root && !actual.starts_with(&(root + "\\")) {
+                return Err(
+                    "A reserved runtime object was moved outside quarantine; it was retained"
+                        .into(),
+                );
+            }
+            let disposition = FILE_DISPOSITION_INFO {
+                DeleteFile: BOOLEAN(1),
+            };
             // Delete the held object, never a pathname that another program
             // could replace. A directory with any new child refuses deletion.
             // SAFETY: `disposition` is a live FILE_DISPOSITION_INFO of the size passed; the handle
             // is borrowed from the live `file`.
-            unsafe { SetFileInformationByHandle(HANDLE(file.as_raw_handle()), FileDispositionInfo, (&disposition as *const FILE_DISPOSITION_INFO).cast(), std::mem::size_of::<FILE_DISPOSITION_INFO>() as u32) }
-                .map_err(|e| format!("New or changed runtime entries remain in the reserved source folder: {e}"))?;
-            drop(file); Ok(())
+            unsafe {
+                SetFileInformationByHandle(
+                    HANDLE(file.as_raw_handle()),
+                    FileDispositionInfo,
+                    (&disposition as *const FILE_DISPOSITION_INFO).cast(),
+                    std::mem::size_of::<FILE_DISPOSITION_INFO>() as u32,
+                )
+            }
+            .map_err(|e| {
+                format!("New or changed runtime entries remain in the reserved source folder: {e}")
+            })?;
+            drop(file);
+            Ok(())
         }
-        for file in self.files { dispose(file, quarantine, stop)?; }
-        for directory in self.directories.into_iter().rev() { dispose(directory, quarantine, stop)?; }
+        for file in self.files {
+            dispose(file, quarantine, stop)?;
+        }
+        for directory in self.directories.into_iter().rev() {
+            dispose(directory, quarantine, stop)?;
+        }
         Ok(())
     }
 }
 
-pub(crate) fn folder_fingerprint(folder: &std::path::Path, stopped: &dyn Fn() -> bool) -> Result<(String, u64), String> {
+pub(crate) fn folder_fingerprint(
+    folder: &std::path::Path,
+    stopped: &dyn Fn() -> bool,
+) -> Result<(String, u64), String> {
     use sha2::{Digest, Sha256};
-    fn visit(path: &std::path::Path, hash: &mut Sha256, bytes: &mut u64, count: &mut usize, stop: &dyn Fn() -> bool) -> Result<(), String> {
+    fn visit(
+        path: &std::path::Path,
+        hash: &mut Sha256,
+        bytes: &mut u64,
+        count: &mut usize,
+        stop: &dyn Fn() -> bool,
+    ) -> Result<(), String> {
         use std::io::Read;
-        if stop() { return Err("Folder movement stopped; original retained".into()); }
+        if stop() {
+            return Err("Folder movement stopped; original retained".into());
+        }
         *count += 1;
-        if *count > 100_000 { return Err("Folder contains too many entries to verify safely".into()); }
+        if *count > 100_000 {
+            return Err("Folder contains too many entries to verify safely".into());
+        }
         let metadata = std::fs::symlink_metadata(path).map_err(|e| e.to_string())?;
-        if metadata.file_type().is_symlink() { return Err("Symbolic links cannot be moved as a runtime folder".into()); }
+        if metadata.file_type().is_symlink() {
+            return Err("Symbolic links cannot be moved as a runtime folder".into());
+        }
         if metadata.is_dir() {
             hash.update(b"directory");
-            let mut entries = std::fs::read_dir(path).map_err(|e| e.to_string())?.collect::<std::io::Result<Vec<_>>>().map_err(|e| e.to_string())?;
+            let mut entries = std::fs::read_dir(path)
+                .map_err(|e| e.to_string())?
+                .collect::<std::io::Result<Vec<_>>>()
+                .map_err(|e| e.to_string())?;
             entries.sort_by_key(|entry| entry.file_name());
             hash.update((entries.len() as u64).to_le_bytes());
             for entry in entries {
-                let name = entry.file_name().into_string().map_err(|_| "Folder has a file name that cannot be recorded safely")?;
-                hash.update((name.len() as u64).to_le_bytes()); hash.update(name.as_bytes());
+                let name = entry
+                    .file_name()
+                    .into_string()
+                    .map_err(|_| "Folder has a file name that cannot be recorded safely")?;
+                hash.update((name.len() as u64).to_le_bytes());
+                hash.update(name.as_bytes());
                 visit(&entry.path(), hash, bytes, count, stop)?;
             }
         } else if metadata.is_file() {
-            hash.update(b"file"); hash.update(metadata.len().to_le_bytes());
+            hash.update(b"file");
+            hash.update(metadata.len().to_le_bytes());
             let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
             let mut buffer = [0u8; 64 * 1024];
             let mut read = 0u64;
             loop {
-                if stop() { return Err("Folder movement stopped; original retained".into()); }
+                if stop() {
+                    return Err("Folder movement stopped; original retained".into());
+                }
                 let n = file.read(&mut buffer).map_err(|e| e.to_string())?;
-                if n == 0 { break; }
-                hash.update(&buffer[..n]); read += n as u64;
+                if n == 0 {
+                    break;
+                }
+                hash.update(&buffer[..n]);
+                read += n as u64;
             }
-            if read != metadata.len() { return Err("A runtime file changed while being verified".into()); }
-            *bytes = bytes.checked_add(read).ok_or("Runtime folder byte count overflowed")?;
-        } else { return Err("Runtime folder contains an unsupported file type".into()); }
+            if read != metadata.len() {
+                return Err("A runtime file changed while being verified".into());
+            }
+            *bytes = bytes
+                .checked_add(read)
+                .ok_or("Runtime folder byte count overflowed")?;
+        } else {
+            return Err("Runtime folder contains an unsupported file type".into());
+        }
         Ok(())
     }
-    if !std::fs::symlink_metadata(folder).map_err(|e| e.to_string())?.is_dir() { return Err("The runtime folder is not a directory".into()); }
-    let mut hash = Sha256::new(); let mut bytes = 0; let mut count = 0;
+    if !std::fs::symlink_metadata(folder)
+        .map_err(|e| e.to_string())?
+        .is_dir()
+    {
+        return Err("The runtime folder is not a directory".into());
+    }
+    let mut hash = Sha256::new();
+    let mut bytes = 0;
+    let mut count = 0;
     visit(folder, &mut hash, &mut bytes, &mut count, stopped)?;
     Ok((format!("{:x}", hash.finalize()), bytes))
 }
@@ -560,90 +724,195 @@ pub(crate) fn folder_fingerprint(folder: &std::path::Path, stopped: &dyn Fn() ->
 /// Reserve a recovery identity before any file mutation. An incomplete intent
 /// is never replayed automatically: its original and destination remain known.
 #[cfg(not(windows))]
-pub fn move_folder_durably(_store: &crate::store::Store, _from: &std::path::Path, _to: &std::path::Path, _now: u64, _stopped: &dyn Fn() -> bool) -> Result<Moved, String> {
+pub fn move_folder_durably(
+    _store: &crate::store::Store,
+    _from: &std::path::Path,
+    _to: &std::path::Path,
+    _now: u64,
+    _stopped: &dyn Fn() -> bool,
+) -> Result<Moved, String> {
     Err("Runtime-folder reservation is unavailable on this platform; original retained".into())
 }
 
 #[cfg(windows)]
-pub fn move_folder_durably(store: &crate::store::Store, from: &std::path::Path, to: &std::path::Path, now: u64, stopped: &dyn Fn() -> bool) -> Result<Moved, String> {
+pub fn move_folder_durably(
+    store: &crate::store::Store,
+    from: &std::path::Path,
+    to: &std::path::Path,
+    now: u64,
+    stopped: &dyn Fn() -> bool,
+) -> Result<Moved, String> {
     let cohort = RuntimeFolderCohort::hold(from, stopped)?;
     let source_root = std::fs::canonicalize(from).map_err(|e| e.to_string())?;
-    let destination_parent = prepare_move_parent(to.parent().ok_or("The destination has no parent folder")?, &source_root)?;
-    if destination_parent.starts_with(&source_root) { return Err("A runtime folder cannot be moved inside itself; original retained".into()); }
+    let destination_parent = prepare_move_parent(
+        to.parent().ok_or("The destination has no parent folder")?,
+        &source_root,
+    )?;
+    if destination_parent.starts_with(&source_root) {
+        return Err("A runtime folder cannot be moved inside itself; original retained".into());
+    }
     let (fingerprint, bytes) = folder_fingerprint(from, stopped)?;
-    let moved = Moved { from: from.display().to_string(), to: to.display().to_string(), mb: bytes / 1_000_000, at: now };
-    let guard = store.transaction().map_err(|e| format!("Recovery storage was unavailable before movement; no file moved: {e}"))?;
-    let _: Vec<Moved> = store.load_checked(MOVED_RECORD).map_err(|e| format!("Saved movement destinations cannot be read; no file moved: {e}"))?.unwrap_or_default();
-    let mut intents: Vec<RuntimeMoveIntent> = store.load_checked(RUNTIME_MOVE_INTENTS).map_err(|e| e.to_string())?.unwrap_or_default();
-    if intents.iter().any(|intent| !intent.completed && (intent.moved.from == moved.from || intent.moved.to == moved.to)) { return Err("An earlier movement has an unresolved recovery intent; inspect its original and destination before trying again".into()); }
-    let mut history: crate::undo::History = store.load_checked("undo_history").map_err(|e| e.to_string())?.unwrap_or_default();
+    let moved = Moved {
+        from: from.display().to_string(),
+        to: to.display().to_string(),
+        mb: bytes / 1_000_000,
+        at: now,
+    };
+    let guard = store.transaction().map_err(|e| {
+        format!("Recovery storage was unavailable before movement; no file moved: {e}")
+    })?;
+    let _: Vec<Moved> = store
+        .load_checked(MOVED_RECORD)
+        .map_err(|e| format!("Saved movement destinations cannot be read; no file moved: {e}"))?
+        .unwrap_or_default();
+    let mut intents: Vec<RuntimeMoveIntent> = store
+        .load_checked(RUNTIME_MOVE_INTENTS)
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+    if intents.iter().any(|intent| {
+        !intent.completed && (intent.moved.from == moved.from || intent.moved.to == moved.to)
+    }) {
+        return Err("An earlier movement has an unresolved recovery intent; inspect its original and destination before trying again".into());
+    }
+    let mut history: crate::undo::History = store
+        .load_checked("undo_history")
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
     let history_id = history.note(&format!("Reserved runtime folder move from {} to {}; completion is recorded separately", from.display(), to.display()), "files", crate::undo::Undo::You(format!("Inspect {} and {}. Return the saved folder only after verifying its contents; Atlas never retries this move automatically.", from.display(), to.display())), true, now);
     history.save_merged(store).map_err(|e| e.to_string())?;
-    let quarantine = std::fs::canonicalize(from.parent().ok_or("Runtime source has no parent")?).map_err(|e| e.to_string())?.join(format!(".atlas-reserved-runtime-{}-{history_id}", std::process::id()));
-    intents.push(RuntimeMoveIntent { history_id, moved: moved.clone(), fingerprint: fingerprint.clone(), completed: false, quarantine: quarantine.display().to_string() });
-    store.save(RUNTIME_MOVE_INTENTS, &intents).map_err(|e| format!("The movement intent could not be saved; no file moved: {e}"))?;
+    let quarantine = std::fs::canonicalize(from.parent().ok_or("Runtime source has no parent")?)
+        .map_err(|e| e.to_string())?
+        .join(format!(
+            ".atlas-reserved-runtime-{}-{history_id}",
+            std::process::id()
+        ));
+    intents.push(RuntimeMoveIntent {
+        history_id,
+        moved: moved.clone(),
+        fingerprint: fingerprint.clone(),
+        completed: false,
+        quarantine: quarantine.display().to_string(),
+    });
+    store
+        .save(RUNTIME_MOVE_INTENTS, &intents)
+        .map_err(|e| format!("The movement intent could not be saved; no file moved: {e}"))?;
     drop(guard);
     #[cfg(windows)]
     {
-        if stopped() { return Err("Runtime movement stopped before source reservation; original retained".into()); }
+        if stopped() {
+            return Err(
+                "Runtime movement stopped before source reservation; original retained".into(),
+            );
+        }
         match std::fs::symlink_metadata(to) {
-            Ok(_) => return Err("The runtime destination already exists; original and destination retained".into()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+            Ok(_) => {
+                return Err(
+                    "The runtime destination already exists; original and destination retained"
+                        .into(),
+                )
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.to_string()),
         }
         let cohort = cohort.reserve(&quarantine, stopped).map_err(|error| format!("Runtime reservation may need inspection at {}: {error}; its durable intent is retained", quarantine.display()))?;
         let transfer = (|| -> Result<(), String> {
             let verify = |copy: &std::path::Path| -> crate::error::Result<()> {
-                let source = folder_fingerprint(&quarantine, stopped).map_err(crate::error::AtlasError::Platform)?;
-                let copied = folder_fingerprint(copy, stopped).map_err(crate::error::AtlasError::Platform)?;
-                if source.0 != fingerprint || copied != source { return Err(crate::error::AtlasError::Platform("Runtime source changed after reservation; all reserved bytes are retained".into())); }
+                let source = folder_fingerprint(&quarantine, stopped)
+                    .map_err(crate::error::AtlasError::Platform)?;
+                let copied = folder_fingerprint(copy, stopped)
+                    .map_err(crate::error::AtlasError::Platform)?;
+                if source.0 != fingerprint || copied != source {
+                    return Err(crate::error::AtlasError::Platform(
+                        "Runtime source changed after reservation; all reserved bytes are retained"
+                            .into(),
+                    ));
+                }
                 Ok(())
             };
-            crate::safety::copy_without_overwrite_verified(&quarantine, to, &|| stopped(), &verify).map_err(|e| e.to_string())?;
+            crate::safety::copy_without_overwrite_verified(&quarantine, to, &|| stopped(), &verify)
+                .map_err(|e| e.to_string())?;
             cohort.remove_verified_objects(&quarantine, stopped)?;
             save_location_note(from, to)
         })();
         transfer.map_err(|error| format!("Runtime move requires inspection of {} and {}: {error}. Its durable recovery intent is retained", quarantine.display(), to.display()))?;
     }
     let _guard = store.transaction().map_err(|e| format!("Folder reached {}; its recovery intent remains pending because its completion receipt could not be saved: {e}", to.display()))?;
-    let mut current: Vec<RuntimeMoveIntent> = store.load_checked(RUNTIME_MOVE_INTENTS).map_err(|e| e.to_string())?.unwrap_or_default();
-    let intent = current.iter_mut().find(|intent| intent.history_id == history_id && intent.fingerprint == fingerprint && intent.moved == moved).ok_or("Folder moved but its recovery identity changed; inspect the saved intent")?;
-    let mut record: Vec<Moved> = store.load_checked(MOVED_RECORD).map_err(|e| e.to_string())?.unwrap_or_default();
-    if !record.contains(&moved) { record.push(moved.clone()); }
+    let mut current: Vec<RuntimeMoveIntent> = store
+        .load_checked(RUNTIME_MOVE_INTENTS)
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+    let intent = current
+        .iter_mut()
+        .find(|intent| {
+            intent.history_id == history_id
+                && intent.fingerprint == fingerprint
+                && intent.moved == moved
+        })
+        .ok_or("Folder moved but its recovery identity changed; inspect the saved intent")?;
+    let mut record: Vec<Moved> = store
+        .load_checked(MOVED_RECORD)
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+    if !record.contains(&moved) {
+        record.push(moved.clone());
+    }
     store.save(MOVED_RECORD, &record).map_err(|e| format!("Folder moved, but its destination receipt could not be saved; the pending recovery intent is retained: {e}"))?;
     intent.completed = true;
-    store.save(RUNTIME_MOVE_INTENTS, &current).map_err(|e| format!("Folder moved and its destination is saved, but its intent remains pending: {e}"))?;
+    store.save(RUNTIME_MOVE_INTENTS, &current).map_err(|e| {
+        format!("Folder moved and its destination is saved, but its intent remains pending: {e}")
+    })?;
     Ok(moved)
 }
 
-
-
-
 #[cfg(windows)]
-fn prepare_move_parent(parent: &std::path::Path, source: &std::path::Path) -> Result<std::path::PathBuf, String> {
-    let mut missing = Vec::new(); let mut existing = parent;
+fn prepare_move_parent(
+    parent: &std::path::Path,
+    source: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    let mut missing = Vec::new();
+    let mut existing = parent;
     loop {
         match std::fs::symlink_metadata(existing) {
             Ok(metadata) => {
-                if metadata.file_type().is_symlink() || !metadata.is_dir() { return Err("The destination parent is not an ordinary directory; original retained".into()); }
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err(
+                        "The destination parent is not an ordinary directory; original retained"
+                            .into(),
+                    );
+                }
                 break;
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let name = existing.file_name().ok_or("The destination has no existing parent")?;
-                missing.push(name.to_os_string()); existing = existing.parent().ok_or("The destination has no existing parent")?;
+                let name = existing
+                    .file_name()
+                    .ok_or("The destination has no existing parent")?;
+                missing.push(name.to_os_string());
+                existing = existing
+                    .parent()
+                    .ok_or("The destination has no existing parent")?;
             }
             Err(error) => return Err(error.to_string()),
         }
     }
     let mut resolved = std::fs::canonicalize(existing).map_err(|e| e.to_string())?;
-    if resolved.starts_with(source) { return Err("A runtime folder cannot be moved inside itself; original retained".into()); }
+    if resolved.starts_with(source) {
+        return Err("A runtime folder cannot be moved inside itself; original retained".into());
+    }
     for name in missing.into_iter().rev() {
         resolved.push(name);
-        match std::fs::create_dir(&resolved) { Ok(()) => {}, Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}, Err(error) => return Err(error.to_string()) }
+        match std::fs::create_dir(&resolved) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error.to_string()),
+        }
         let metadata = std::fs::symlink_metadata(&resolved).map_err(|e| e.to_string())?;
-        if metadata.file_type().is_symlink() || !metadata.is_dir() { return Err("The destination parent changed type; original retained".into()); }
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err("The destination parent changed type; original retained".into());
+        }
         resolved = std::fs::canonicalize(&resolved).map_err(|e| e.to_string())?;
-        if resolved.starts_with(source) { return Err("A runtime folder cannot be moved inside itself; original retained".into()); }
+        if resolved.starts_with(source) {
+            return Err("A runtime folder cannot be moved inside itself; original retained".into());
+        }
     }
     Ok(resolved)
 }
@@ -654,13 +923,14 @@ fn save_location_note(from: &std::path::Path, to: &std::path::Path) -> Result<()
     use std::io::Write;
     let note_path = from.with_extension("MOVED.txt");
     let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&note_path).map_err(|e| format!("Folder moved to {}, but its old-location note could not be created without overwriting: {e}", to.display()))?;
-    file.write_all(note.as_bytes()).and_then(|_| file.sync_all()).map_err(|e| format!("Folder moved, but its old-location note could not be saved: {e}"))?;
+    file.write_all(note.as_bytes())
+        .and_then(|_| file.sync_all())
+        .map_err(|e| format!("Folder moved, but its old-location note could not be saved: {e}"))?;
     Ok(())
 }
 
 /// Compatibility helper: no overwrite, content verification, and a checked
 /// location note. Daemon moves use move_folder_durably for recovery receipts.
-
 
 #[cfg(test)]
 mod runtime_folder_recovery_tests {
@@ -668,127 +938,296 @@ mod runtime_folder_recovery_tests {
     #[cfg(windows)]
     #[test]
     fn missing_destination_parents_are_created_without_moving_inside_the_source() {
-        let (area, store, _existing_source, _existing_destination) = fixture(); let from = area.join("source");
-        std::fs::create_dir(&from).unwrap(); std::fs::write(from.join("file"), b"original").unwrap();
+        let (area, store, _existing_source, _existing_destination) = fixture();
+        let from = area.join("source");
+        std::fs::create_dir(&from).unwrap();
+        std::fs::write(from.join("file"), b"original").unwrap();
         let inside = from.join("new").join("destination");
         assert!(super::move_folder_durably(&store, &from, &inside, 1, &|| false).is_err());
-        assert!(!from.join("new").exists()); assert_eq!(std::fs::read(from.join("file")).unwrap(), b"original");
+        assert!(!from.join("new").exists());
+        assert_eq!(std::fs::read(from.join("file")).unwrap(), b"original");
         let destination = area.join("new-parent").join("nested").join("destination");
         super::move_folder_durably(&store, &from, &destination, 2, &|| false).unwrap();
-        assert!(!from.exists()); assert_eq!(std::fs::read(destination.join("file")).unwrap(), b"original");
-        assert!(std::fs::read_to_string(from.with_extension("MOVED.txt")).unwrap().contains(&destination.display().to_string()));
+        assert!(!from.exists());
+        assert_eq!(
+            std::fs::read(destination.join("file")).unwrap(),
+            b"original"
+        );
+        assert!(std::fs::read_to_string(from.with_extension("MOVED.txt"))
+            .unwrap()
+            .contains(&destination.display().to_string()));
         crate::heard!(std::fs::remove_dir_all(&area));
     }
     use super::*;
-    fn fixture() -> (std::path::PathBuf, crate::store::Store, std::path::PathBuf, std::path::PathBuf) {
+    fn fixture() -> (
+        std::path::PathBuf,
+        crate::store::Store,
+        std::path::PathBuf,
+        std::path::PathBuf,
+    ) {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let area = std::env::temp_dir().join(format!("atlas-runtime-move-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
-        let store = crate::store::Store::new(area.join("state")); store.save("fixture", &1).unwrap();
-        let from = area.join("models"); let to = area.join("destination");
-        std::fs::create_dir(&from).unwrap(); std::fs::create_dir(from.join("empty")).unwrap(); std::fs::write(from.join("model.bin"), b"owner model bytes").unwrap();
+        let area = std::env::temp_dir().join(format!(
+            "atlas-runtime-move-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let store = crate::store::Store::new(area.join("state"));
+        store.save("fixture", &1).unwrap();
+        let from = area.join("models");
+        let to = area.join("destination");
+        std::fs::create_dir(&from).unwrap();
+        std::fs::create_dir(from.join("empty")).unwrap();
+        std::fs::write(from.join("model.bin"), b"owner model bytes").unwrap();
         (area, store, from, to)
     }
-    #[test] fn failed_intent_save_keeps_every_original_byte() {
+    #[test]
+    fn failed_intent_save_keeps_every_original_byte() {
         let (area, store, from, to) = fixture();
-        std::fs::create_dir(store.root().join(format!("{RUNTIME_MOVE_INTENTS}.{}.json.tmp", std::process::id()))).unwrap();
+        std::fs::create_dir(store.root().join(format!(
+            "{RUNTIME_MOVE_INTENTS}.{}.json.tmp",
+            std::process::id()
+        )))
+        .unwrap();
         assert!(move_folder_durably(&store, &from, &to, 10, &|| false).is_err());
-        assert_eq!(std::fs::read(from.join("model.bin")).unwrap(), b"owner model bytes"); assert!(!to.exists());
+        assert_eq!(
+            std::fs::read(from.join("model.bin")).unwrap(),
+            b"owner model bytes"
+        );
+        assert!(!to.exists());
         let _ = std::fs::remove_dir_all(area);
     }
-    #[test] fn destination_collision_preserves_both_folders_and_the_pending_intent() {
-        let (area, store, from, to) = fixture(); std::fs::create_dir(&to).unwrap(); std::fs::write(to.join("model.bin"), b"other owner bytes").unwrap();
+    #[test]
+    fn destination_collision_preserves_both_folders_and_the_pending_intent() {
+        let (area, store, from, to) = fixture();
+        std::fs::create_dir(&to).unwrap();
+        std::fs::write(to.join("model.bin"), b"other owner bytes").unwrap();
         assert!(move_folder_durably(&store, &from, &to, 10, &|| false).is_err());
-        assert_eq!(std::fs::read(from.join("model.bin")).unwrap(), b"owner model bytes"); assert_eq!(std::fs::read(to.join("model.bin")).unwrap(), b"other owner bytes");
-        let intents: Vec<RuntimeMoveIntent> = store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap(); assert_eq!(intents.len(), 1); assert!(!intents[0].completed);
-        assert!(move_folder_durably(&store, &from, &to, 11, &|| false).unwrap_err().contains("unresolved"));
+        assert_eq!(
+            std::fs::read(from.join("model.bin")).unwrap(),
+            b"owner model bytes"
+        );
+        assert_eq!(
+            std::fs::read(to.join("model.bin")).unwrap(),
+            b"other owner bytes"
+        );
+        let intents: Vec<RuntimeMoveIntent> =
+            store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap();
+        assert_eq!(intents.len(), 1);
+        assert!(!intents[0].completed);
+        assert!(move_folder_durably(&store, &from, &to, 11, &|| false)
+            .unwrap_err()
+            .contains("unresolved"));
         let _ = std::fs::remove_dir_all(area);
     }
-    #[test] fn complete_move_has_durable_history_destination_and_empty_directories() {
-        let (area, store, from, to) = fixture(); move_folder_durably(&store, &from, &to, 10, &|| false).unwrap();
-        assert!(!from.exists()); assert_eq!(std::fs::read(to.join("model.bin")).unwrap(), b"owner model bytes"); assert!(to.join("empty").is_dir());
+    #[test]
+    fn complete_move_has_durable_history_destination_and_empty_directories() {
+        let (area, store, from, to) = fixture();
+        move_folder_durably(&store, &from, &to, 10, &|| false).unwrap();
+        assert!(!from.exists());
+        assert_eq!(
+            std::fs::read(to.join("model.bin")).unwrap(),
+            b"owner model bytes"
+        );
+        assert!(to.join("empty").is_dir());
         let reopened = crate::store::Store::new(store.root());
-        let intents: Vec<RuntimeMoveIntent> = reopened.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap(); assert!(intents[0].completed);
-        let destinations: Vec<Moved> = reopened.load_checked(MOVED_RECORD).unwrap().unwrap(); assert_eq!(destinations, vec![intents[0].moved.clone()]);
-        let history: crate::undo::History = reopened.load_checked("undo_history").unwrap().unwrap(); assert!(history.done.iter().any(|row| row.id == intents[0].history_id));
+        let intents: Vec<RuntimeMoveIntent> = reopened
+            .load_checked(RUNTIME_MOVE_INTENTS)
+            .unwrap()
+            .unwrap();
+        assert!(intents[0].completed);
+        let destinations: Vec<Moved> = reopened.load_checked(MOVED_RECORD).unwrap().unwrap();
+        assert_eq!(destinations, vec![intents[0].moved.clone()]);
+        let history: crate::undo::History = reopened.load_checked("undo_history").unwrap().unwrap();
+        assert!(history
+            .done
+            .iter()
+            .any(|row| row.id == intents[0].history_id));
         let _ = std::fs::remove_dir_all(area);
     }
-    #[test] fn failed_location_note_keeps_existing_note_and_recovery_intent_after_move() {
-        let (area, store, from, to) = fixture(); std::fs::write(from.with_extension("MOVED.txt"), b"owner note").unwrap();
-        let error = move_folder_durably(&store, &from, &to, 10, &|| false).unwrap_err(); assert!(error.contains("Folder moved"));
-        assert_eq!(std::fs::read(from.with_extension("MOVED.txt")).unwrap(), b"owner note"); assert_eq!(std::fs::read(to.join("model.bin")).unwrap(), b"owner model bytes");
-        let intents: Vec<RuntimeMoveIntent> = store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap(); assert!(!intents[0].completed); assert_eq!(intents[0].moved.to, to.display().to_string());
+    #[test]
+    fn failed_location_note_keeps_existing_note_and_recovery_intent_after_move() {
+        let (area, store, from, to) = fixture();
+        std::fs::write(from.with_extension("MOVED.txt"), b"owner note").unwrap();
+        let error = move_folder_durably(&store, &from, &to, 10, &|| false).unwrap_err();
+        assert!(error.contains("Folder moved"));
+        assert_eq!(
+            std::fs::read(from.with_extension("MOVED.txt")).unwrap(),
+            b"owner note"
+        );
+        assert_eq!(
+            std::fs::read(to.join("model.bin")).unwrap(),
+            b"owner model bytes"
+        );
+        let intents: Vec<RuntimeMoveIntent> =
+            store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap();
+        assert!(!intents[0].completed);
+        assert_eq!(intents[0].moved.to, to.display().to_string());
         let _ = std::fs::remove_dir_all(area);
     }
-    #[test] fn same_length_changed_contents_fail_verification_before_removal() {
-        let (area, _store, from, to) = fixture(); let (identity, _) = folder_fingerprint(&from, &|| false).unwrap();
+    #[test]
+    fn same_length_changed_contents_fail_verification_before_removal() {
+        let (area, _store, from, to) = fixture();
+        let (identity, _) = folder_fingerprint(&from, &|| false).unwrap();
         std::fs::write(from.join("model.bin"), b"changed model !!!").unwrap();
         let verify = |copy: &std::path::Path| {
-            let copied = folder_fingerprint(copy, &|| false).map_err(crate::error::AtlasError::Platform)?;
-            if copied.0 != identity { return Err(crate::error::AtlasError::Platform("The approved folder bytes changed".into())); }
+            let copied =
+                folder_fingerprint(copy, &|| false).map_err(crate::error::AtlasError::Platform)?;
+            if copied.0 != identity {
+                return Err(crate::error::AtlasError::Platform(
+                    "The approved folder bytes changed".into(),
+                ));
+            }
             Ok(())
         };
-        assert!(crate::safety::copy_without_overwrite_verified(&from, &to, &|| false, &verify).is_err()); assert!(from.exists()); assert!(!to.exists());
+        assert!(
+            crate::safety::copy_without_overwrite_verified(&from, &to, &|| false, &verify).is_err()
+        );
+        assert!(from.exists());
+        assert!(!to.exists());
         let _ = std::fs::remove_dir_all(area);
     }
-    #[test] fn failed_destination_receipt_retains_pending_recovery_after_files_arrive() {
+    #[test]
+    fn failed_destination_receipt_retains_pending_recovery_after_files_arrive() {
         let (area, store, from, to) = fixture();
-        std::fs::create_dir(store.root().join(format!("{MOVED_RECORD}.{}.json.tmp", std::process::id()))).unwrap();
-        let error = move_folder_durably(&store, &from, &to, 10, &|| false).unwrap_err(); assert!(error.contains("destination receipt could not be saved"));
-        assert!(!from.exists()); assert_eq!(std::fs::read(to.join("model.bin")).unwrap(), b"owner model bytes");
+        std::fs::create_dir(
+            store
+                .root()
+                .join(format!("{MOVED_RECORD}.{}.json.tmp", std::process::id())),
+        )
+        .unwrap();
+        let error = move_folder_durably(&store, &from, &to, 10, &|| false).unwrap_err();
+        assert!(error.contains("destination receipt could not be saved"));
+        assert!(!from.exists());
+        assert_eq!(
+            std::fs::read(to.join("model.bin")).unwrap(),
+            b"owner model bytes"
+        );
         let reopened = crate::store::Store::new(store.root());
-        let intents: Vec<RuntimeMoveIntent> = reopened.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap(); assert!(!intents[0].completed); assert_eq!(intents[0].moved.to, to.display().to_string());
-        assert!(reopened.load_checked::<Vec<Moved>>(MOVED_RECORD).unwrap().is_none());
+        let intents: Vec<RuntimeMoveIntent> = reopened
+            .load_checked(RUNTIME_MOVE_INTENTS)
+            .unwrap()
+            .unwrap();
+        assert!(!intents[0].completed);
+        assert_eq!(intents[0].moved.to, to.display().to_string());
+        assert!(reopened
+            .load_checked::<Vec<Moved>>(MOVED_RECORD)
+            .unwrap()
+            .is_none());
         let _ = std::fs::remove_dir_all(area);
     }
-    #[test] fn an_active_writer_refuses_reservation_without_moving_or_deleting() {
+    #[test]
+    fn an_active_writer_refuses_reservation_without_moving_or_deleting() {
         let (area, store, from, to) = fixture();
-        let writer = std::fs::OpenOptions::new().write(true).open(from.join("model.bin")).unwrap();
-        assert!(move_folder_durably(&store, &from, &to, 10, &|| false).unwrap_err().contains("active writer"));
-        assert!(from.exists()); assert!(!to.exists()); assert_eq!(std::fs::read(from.join("model.bin")).unwrap(), b"owner model bytes");
-        assert!(store.load_checked::<Vec<RuntimeMoveIntent>>(RUNTIME_MOVE_INTENTS).unwrap().is_none());
-        drop(writer); let _ = std::fs::remove_dir_all(area);
+        let writer = std::fs::OpenOptions::new()
+            .write(true)
+            .open(from.join("model.bin"))
+            .unwrap();
+        assert!(move_folder_durably(&store, &from, &to, 10, &|| false)
+            .unwrap_err()
+            .contains("active writer"));
+        assert!(from.exists());
+        assert!(!to.exists());
+        assert_eq!(
+            std::fs::read(from.join("model.bin")).unwrap(),
+            b"owner model bytes"
+        );
+        assert!(store
+            .load_checked::<Vec<RuntimeMoveIntent>>(RUNTIME_MOVE_INTENTS)
+            .unwrap()
+            .is_none());
+        drop(writer);
+        let _ = std::fs::remove_dir_all(area);
     }
-    #[test] fn new_owner_files_in_reserved_source_are_retained_after_publication() {
-        let (area, store, from, to) = fixture(); let added = std::cell::Cell::new(false);
+    #[test]
+    fn new_owner_files_in_reserved_source_are_retained_after_publication() {
+        let (area, store, from, to) = fixture();
+        let added = std::cell::Cell::new(false);
         let stop = || {
             if to.exists() && !added.replace(true) {
-                let intents: Vec<RuntimeMoveIntent> = store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap();
-                std::fs::write(std::path::Path::new(&intents[0].quarantine).join("new-owner.txt"), b"later owner bytes").unwrap();
+                let intents: Vec<RuntimeMoveIntent> =
+                    store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap();
+                std::fs::write(
+                    std::path::Path::new(&intents[0].quarantine).join("new-owner.txt"),
+                    b"later owner bytes",
+                )
+                .unwrap();
             }
             false
         };
-        assert!(move_folder_durably(&store, &from, &to, 10, &stop).is_err()); assert!(added.get());
-        let intents: Vec<RuntimeMoveIntent> = store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap(); assert!(!intents[0].completed);
-        assert_eq!(std::fs::read(std::path::Path::new(&intents[0].quarantine).join("new-owner.txt")).unwrap(), b"later owner bytes");
-        assert_eq!(std::fs::read(to.join("model.bin")).unwrap(), b"owner model bytes");
+        assert!(move_folder_durably(&store, &from, &to, 10, &stop).is_err());
+        assert!(added.get());
+        let intents: Vec<RuntimeMoveIntent> =
+            store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap();
+        assert!(!intents[0].completed);
+        assert_eq!(
+            std::fs::read(std::path::Path::new(&intents[0].quarantine).join("new-owner.txt"))
+                .unwrap(),
+            b"later owner bytes"
+        );
+        assert_eq!(
+            std::fs::read(to.join("model.bin")).unwrap(),
+            b"owner model bytes"
+        );
         let _ = std::fs::remove_dir_all(area);
     }
-    #[test] fn a_new_folder_at_the_old_location_is_never_removed() {
-        let (area, store, from, to) = fixture(); let added = std::cell::Cell::new(false);
+    #[test]
+    fn a_new_folder_at_the_old_location_is_never_removed() {
+        let (area, store, from, to) = fixture();
+        let added = std::cell::Cell::new(false);
         let stop = || {
-            if !from.exists() && !added.replace(true) { std::fs::create_dir(&from).unwrap(); std::fs::write(from.join("new-owner.txt"), b"later owner bytes").unwrap(); }
+            if !from.exists() && !added.replace(true) {
+                std::fs::create_dir(&from).unwrap();
+                std::fs::write(from.join("new-owner.txt"), b"later owner bytes").unwrap();
+            }
             false
         };
-        move_folder_durably(&store, &from, &to, 10, &stop).unwrap(); assert!(added.get());
-        assert_eq!(std::fs::read(from.join("new-owner.txt")).unwrap(), b"later owner bytes"); assert_eq!(std::fs::read(to.join("model.bin")).unwrap(), b"owner model bytes");
+        move_folder_durably(&store, &from, &to, 10, &stop).unwrap();
+        assert!(added.get());
+        assert_eq!(
+            std::fs::read(from.join("new-owner.txt")).unwrap(),
+            b"later owner bytes"
+        );
+        assert_eq!(
+            std::fs::read(to.join("model.bin")).unwrap(),
+            b"owner model bytes"
+        );
         let _ = std::fs::remove_dir_all(area);
     }
-    #[test] fn a_writer_opened_between_preflight_and_reservation_keeps_original_bytes() {
+    #[test]
+    fn a_writer_opened_between_preflight_and_reservation_keeps_original_bytes() {
         let (area, store, from, to) = fixture();
         let writer = std::cell::RefCell::new(None::<std::fs::File>);
         let stop = || {
-            if store.root().join(format!("{RUNTIME_MOVE_INTENTS}.json")).exists() && writer.borrow().is_none() {
-                if let Ok(opened) = std::fs::OpenOptions::new().write(true).open(from.join("model.bin")) { *writer.borrow_mut() = Some(opened); }
+            if store
+                .root()
+                .join(format!("{RUNTIME_MOVE_INTENTS}.json"))
+                .exists()
+                && writer.borrow().is_none()
+            {
+                if let Ok(opened) = std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(from.join("model.bin"))
+                {
+                    *writer.borrow_mut() = Some(opened);
+                }
             }
             false
         };
-        assert!(move_folder_durably(&store, &from, &to, 10, &stop).is_err()); assert!(writer.borrow().is_some());
-        assert!(from.exists()); assert!(!to.exists()); assert_eq!(std::fs::read(from.join("model.bin")).unwrap(), b"owner model bytes");
-        let intents: Vec<RuntimeMoveIntent> = store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap(); assert!(!intents[0].completed);
-        drop(writer); let _ = std::fs::remove_dir_all(area);
+        assert!(move_folder_durably(&store, &from, &to, 10, &stop).is_err());
+        assert!(writer.borrow().is_some());
+        assert!(from.exists());
+        assert!(!to.exists());
+        assert_eq!(
+            std::fs::read(from.join("model.bin")).unwrap(),
+            b"owner model bytes"
+        );
+        let intents: Vec<RuntimeMoveIntent> =
+            store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap();
+        assert!(!intents[0].completed);
+        drop(writer);
+        let _ = std::fs::remove_dir_all(area);
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Measuring, so there is something to find (1 Oct 2026: "optimise my PC"
@@ -805,8 +1244,16 @@ pub fn parse_tasklist(csv: &str) -> Vec<(String, u64)> {
         if cells.len() < 5 {
             continue;
         }
-        let name = cells[0].trim_end_matches(".exe").trim_end_matches(".EXE").to_string();
-        let kb: u64 = cells[4].chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(0);
+        let name = cells[0]
+            .trim_end_matches(".exe")
+            .trim_end_matches(".EXE")
+            .to_string();
+        let kb: u64 = cells[4]
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .collect::<String>()
+            .parse()
+            .unwrap_or(0);
         *by.entry(name).or_default() += kb / 1024;
     }
     let mut v: Vec<(String, u64)> = by.into_iter().collect();
@@ -819,7 +1266,9 @@ pub fn parse_ps(text: &str) -> Vec<(String, u64)> {
     let mut by: std::collections::BTreeMap<String, u64> = Default::default();
     for line in text.lines() {
         let mut parts = line.split_whitespace().collect::<Vec<_>>();
-        let Some(kb) = parts.pop().and_then(|k| k.parse::<u64>().ok()) else { continue };
+        let Some(kb) = parts.pop().and_then(|k| k.parse::<u64>().ok()) else {
+            continue;
+        };
         if parts.is_empty() {
             continue;
         }
@@ -857,7 +1306,9 @@ pub fn folder_mb(dir: &std::path::Path, budget: std::time::Duration) -> u64 {
         if std::time::Instant::now() > until {
             break;
         }
-        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
         for e in rd.flatten() {
             let Ok(m) = e.metadata() else { continue };
             if m.is_dir() {
@@ -888,7 +1339,9 @@ pub fn clear_old_files(dir: &std::path::Path, older_than: u64) -> Cleared {
     let mut dirs = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
         for e in rd.flatten() {
             let Ok(m) = e.metadata() else { continue };
             if m.file_type().is_symlink() {
@@ -921,7 +1374,6 @@ pub fn clear_old_files(dir: &std::path::Path, older_than: u64) -> Cleared {
     c
 }
 
-
 /// Programs with a window of their own, from `tasklist /V /FO CSV /NH` (its
 /// last column is the window title, "N/A" for background processes). Only
 /// these are ever offered for closing: a program you can see is one you
@@ -934,10 +1386,14 @@ pub fn parse_windowed(csv: &str) -> Vec<String> {
             continue;
         }
         let title = cells[cells.len() - 1].trim();
-        if title.is_empty() || title == "N/A" || title.eq_ignore_ascii_case("OleMainThreadWndName") {
+        if title.is_empty() || title == "N/A" || title.eq_ignore_ascii_case("OleMainThreadWndName")
+        {
             continue;
         }
-        let name = cells[0].trim_end_matches(".exe").trim_end_matches(".EXE").to_string();
+        let name = cells[0]
+            .trim_end_matches(".exe")
+            .trim_end_matches(".EXE")
+            .to_string();
         if !out.contains(&name) {
             out.push(name);
         }
@@ -964,28 +1420,100 @@ fn windowed_programs() -> Vec<String> {
 /// (indexing, updates, installers mid-install, the print spooler, driver
 /// hosts) are here by name, so no reading of a process list can offer them.
 pub const NEVER_CLOSE: &[&str] = &[
-    "explorer", "dwm", "csrss", "winlogon", "svchost", "sihost", "ctfmon", "fontdrvhost", "runtimebroker",
-    "searchhost", "startmenuexperiencehost", "textinputhost", "shellexperiencehost", "applicationframehost",
-    "securityhealth", "msmpeng", "audiodg", "memory compression", "system", "registry", "lsass", "smss",
-    "wininit", "services", "taskhostw", "dllhost", "conhost", "atlas", "llama-server", "claude", "taskmgr",
-    "systemsettings", "lockapp", "widgets", "nissrv", "mpdefendercoreservice",
-    "idle", "secure system", "lsaiso", "userinit", "wudfhost", "spoolsv", "searchindexer", "searchprotocolhost",
-    "searchfilterhost", "wmiprvse", "backgroundtaskhost", "smartscreen", "sgrmbroker", "dashost", "unsecapp",
-    "wlanext", "msiexec", "trustedinstaller", "tiworker", "mousocoreworker", "usocoreworker", "wuauclt",
-    "vmmem", "vmcompute", "wslservice", "ntoskrnl", "searchapp", "securityhealthsystray",
-    "openconsole", "windowsterminal", "powershell", "pwsh", "cmd",
+    "explorer",
+    "dwm",
+    "csrss",
+    "winlogon",
+    "svchost",
+    "sihost",
+    "ctfmon",
+    "fontdrvhost",
+    "runtimebroker",
+    "searchhost",
+    "startmenuexperiencehost",
+    "textinputhost",
+    "shellexperiencehost",
+    "applicationframehost",
+    "securityhealth",
+    "msmpeng",
+    "audiodg",
+    "memory compression",
+    "system",
+    "registry",
+    "lsass",
+    "smss",
+    "wininit",
+    "services",
+    "taskhostw",
+    "dllhost",
+    "conhost",
+    "atlas",
+    "llama-server",
+    "claude",
+    "taskmgr",
+    "systemsettings",
+    "lockapp",
+    "widgets",
+    "nissrv",
+    "mpdefendercoreservice",
+    "idle",
+    "secure system",
+    "lsaiso",
+    "userinit",
+    "wudfhost",
+    "spoolsv",
+    "searchindexer",
+    "searchprotocolhost",
+    "searchfilterhost",
+    "wmiprvse",
+    "backgroundtaskhost",
+    "smartscreen",
+    "sgrmbroker",
+    "dashost",
+    "unsecapp",
+    "wlanext",
+    "msiexec",
+    "trustedinstaller",
+    "tiworker",
+    "mousocoreworker",
+    "usocoreworker",
+    "wuauclt",
+    "vmmem",
+    "vmcompute",
+    "wslservice",
+    "ntoskrnl",
+    "searchapp",
+    "securityhealthsystray",
+    "openconsole",
+    "windowsterminal",
+    "powershell",
+    "pwsh",
+    "cmd",
 ];
 
 /// Atlas's own helpers, by name, for when one has outlived the process that
 /// started it (so it is no longer found as Atlas's child): the language
 /// model's server, speech in and out, the video tools, mail, Tor.
-pub const ATLAS_HELPERS: &[&str] =
-    &["atlas", "llama-server", "whisper", "piper", "ffmpeg", "ffprobe", "ffplay", "himalaya", "tor", "tesseract"];
+pub const ATLAS_HELPERS: &[&str] = &[
+    "atlas",
+    "llama-server",
+    "whisper",
+    "piper",
+    "ffmpeg",
+    "ffprobe",
+    "ffplay",
+    "himalaya",
+    "tor",
+    "tesseract",
+];
 
 pub fn may_close(name: &str, keep: &[String]) -> bool {
     let n = name.to_lowercase();
     !NEVER_CLOSE.iter().any(|k| n == *k || n.starts_with(k))
-        && !keep.iter().filter(|k| !k.trim().is_empty()).any(|k| n.contains(&k.to_lowercase()))
+        && !keep
+            .iter()
+            .filter(|k| !k.trim().is_empty())
+            .any(|k| n.contains(&k.to_lowercase()))
 }
 
 /// Every value `reg query` printed: (name, data). The data is what follows
@@ -1000,7 +1528,8 @@ pub fn parse_reg_values(text: &str) -> Vec<(String, String)> {
             let name = parts.next()?.trim();
             let kind = parts.next()?.trim();
             let data = parts.next().unwrap_or("").trim();
-            kind.starts_with("REG_").then(|| (name.to_string(), data.to_string()))
+            kind.starts_with("REG_")
+                .then(|| (name.to_string(), data.to_string()))
         })
         .filter(|(n, _)| !n.is_empty() && !n.eq_ignore_ascii_case("(Default)"))
         .collect()
@@ -1009,10 +1538,14 @@ pub fn parse_reg_values(text: &str) -> Vec<(String, String)> {
 const RUN: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 const RUN_MACHINE: &str = r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run";
 const RUN_MACHINE_32: &str = r"HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run";
-const APPROVED: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
-const APPROVED_FOLDER: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder";
-const APPROVED_MACHINE: &str = r"HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
-const APPROVED_MACHINE_32: &str = r"HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run32";
+const APPROVED: &str =
+    r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+const APPROVED_FOLDER: &str =
+    r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder";
+const APPROVED_MACHINE: &str =
+    r"HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+const APPROVED_MACHINE_32: &str =
+    r"HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run32";
 const APPROVED_MACHINE_FOLDER: &str =
     r"HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder";
 
@@ -1032,7 +1565,10 @@ pub struct Plan {
 
 impl Plan {
     pub fn is_empty(&self) -> bool {
-        self.close.is_empty() && self.stop_starting.is_empty() && self.temp.is_none() && self.moves.is_none()
+        self.close.is_empty()
+            && self.stop_starting.is_empty()
+            && self.temp.is_none()
+            && self.moves.is_none()
     }
 
     /// The offer, said with the numbers.
@@ -1056,10 +1592,16 @@ impl Plan {
             ));
         }
         if let Some((_, mb)) = &self.temp {
-            parts.push(format!("clear {mb} MB of temporary files, leaving anything in use"));
+            parts.push(format!(
+                "clear {mb} MB of temporary files, leaving anything in use"
+            ));
         }
         if let Some((files, to)) = &self.moves {
-            let mb: u64 = files.iter().filter_map(|f| std::fs::metadata(f).ok()).map(|m| m.len() / 1_048_576).sum();
+            let mb: u64 = files
+                .iter()
+                .filter_map(|f| std::fs::metadata(f).ok())
+                .map(|m| m.len() / 1_048_576)
+                .sum();
             parts.push(format!(
                 "move {} file{} ({}) into {} -- \"undo\" moves them back",
                 files.len(),
@@ -1155,7 +1697,9 @@ pub fn cpu_share(used_ms: u64, wall_ms: u64, cores: u32) -> f32 {
 }
 
 /// Names whose children are Windows' own, whatever they're called.
-const SYSTEM_PARENTS: &[&str] = &["services", "svchost", "wininit", "winlogon", "smss", "csrss", "lsass", "system"];
+const SYSTEM_PARENTS: &[&str] = &[
+    "services", "svchost", "wininit", "winlogon", "smss", "csrss", "lsass", "system",
+];
 
 /// Two readings of the process list, `wall_ms` apart, made into each
 /// program's load. A process in both readings counts the CPU it used in
@@ -1164,7 +1708,8 @@ const SYSTEM_PARENTS: &[&str] = &["services", "svchost", "wininit", "winlogon", 
 /// matched to itself if its name is the same in both, so a number Windows
 /// reused for something else isn't read as one process's work.
 pub fn sample_load(before: &[Proc], after: &[Proc], wall_ms: u64, cores: u32) -> Vec<Load> {
-    let earlier: std::collections::HashMap<u32, &Proc> = before.iter().map(|p| (p.pid, p)).collect();
+    let earlier: std::collections::HashMap<u32, &Proc> =
+        before.iter().map(|p| (p.pid, p)).collect();
     let by_pid: std::collections::HashMap<u32, &Proc> = after.iter().map(|p| (p.pid, p)).collect();
     let mut by: Vec<(String, Load, u64)> = Vec::new();
     for p in after {
@@ -1176,7 +1721,10 @@ pub fn sample_load(before: &[Proc], after: &[Proc], wall_ms: u64, cores: u32) ->
         let parent_name = parent.map(|q| q.name.to_lowercase());
         let system = p.session == 0
             || p.pid <= 4
-            || parent_name.as_deref().map(|n| SYSTEM_PARENTS.contains(&n)).unwrap_or(false);
+            || parent_name
+                .as_deref()
+                .map(|n| SYSTEM_PARENTS.contains(&n))
+                .unwrap_or(false);
         let alone = p.windowed
             || match parent_name.as_deref() {
                 None => true,
@@ -1195,7 +1743,15 @@ pub fn sample_load(before: &[Proc], after: &[Proc], wall_ms: u64, cores: u32) ->
             }
             None => by.push((
                 key,
-                Load { name: p.name.clone(), pids: vec![p.pid], cpu_pct: 0.0, mem_mb: p.mem_mb, windowed: p.windowed, system, alone },
+                Load {
+                    name: p.name.clone(),
+                    pids: vec![p.pid],
+                    cpu_pct: 0.0,
+                    mem_mb: p.mem_mb,
+                    windowed: p.windowed,
+                    system,
+                    alone,
+                },
                 used,
             )),
         }
@@ -1211,7 +1767,10 @@ pub fn sample_load(before: &[Proc], after: &[Proc], wall_ms: u64, cores: u32) ->
         })
         .collect();
     out.sort_by(|a, b| {
-        b.cpu_pct.partial_cmp(&a.cpu_pct).unwrap_or(std::cmp::Ordering::Equal).then(b.mem_mb.cmp(&a.mem_mb))
+        b.cpu_pct
+            .partial_cmp(&a.cpu_pct)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(b.mem_mb.cmp(&a.mem_mb))
     });
     out
 }
@@ -1239,7 +1798,12 @@ pub fn atlas_family(procs: &[Proc], me: u32) -> Vec<u32> {
 /// "Discord.exe" are; a name of fewer than three letters matches nothing,
 /// so an empty or one-letter entry in the work log can't match everything.
 fn same_program(a: &str, b: &str) -> bool {
-    let norm = |s: &str| s.trim().trim_end_matches(".exe").trim_end_matches(".EXE").to_lowercase();
+    let norm = |s: &str| {
+        s.trim()
+            .trim_end_matches(".exe")
+            .trim_end_matches(".EXE")
+            .to_lowercase()
+    };
     let (a, b) = (norm(a), norm(b));
     if a.len() < 3 || b.len() < 3 {
         return false;
@@ -1284,8 +1848,15 @@ pub fn pick_to_close(load: &[Load], spare: &Spare) -> Vec<Load> {
                 && !l.pids.iter().any(|p| spare.own_pids.contains(p))
         })
         .filter(|l| {
-            !spare.foreground.as_deref().map(|f| same_program(f, &l.name)).unwrap_or(false)
-                && !spare.foreground_pid.map(|p| l.pids.contains(&p)).unwrap_or(false)
+            !spare
+                .foreground
+                .as_deref()
+                .map(|f| same_program(f, &l.name))
+                .unwrap_or(false)
+                && !spare
+                    .foreground_pid
+                    .map(|p| l.pids.contains(&p))
+                    .unwrap_or(false)
         })
         .filter(|l| !l.system && l.alone)
         .filter(|l| !spare.in_use.iter().any(|u| same_program(u, &l.name)))
@@ -1305,22 +1876,36 @@ pub fn pick_to_close(load: &[Load], spare: &Spare) -> Vec<Load> {
 pub fn slowest_words(load: &[Load]) -> String {
     let busy: Vec<String> = load
         .iter()
-        .filter(|l| l.cpu_pct >= 1.0 && !l.name.eq_ignore_ascii_case("idle") && !l.name.eq_ignore_ascii_case("system idle process"))
+        .filter(|l| {
+            l.cpu_pct >= 1.0
+                && !l.name.eq_ignore_ascii_case("idle")
+                && !l.name.eq_ignore_ascii_case("system idle process")
+        })
         .take(4)
         .map(|l| format!("{} {:.0}%", l.name, l.cpu_pct))
         .collect();
     let mut by_mem: Vec<&Load> = load.iter().collect();
     by_mem.sort_by_key(|b| std::cmp::Reverse(b.mem_mb));
-    let heavy: Vec<String> = by_mem.iter().take(4).map(|l| format!("{} {}", l.name, mb_words(l.mem_mb))).collect();
+    let heavy: Vec<String> = by_mem
+        .iter()
+        .take(4)
+        .map(|l| format!("{} {}", l.name, mb_words(l.mem_mb)))
+        .collect();
     let total: f32 = load
         .iter()
-        .filter(|l| !l.name.eq_ignore_ascii_case("idle") && !l.name.eq_ignore_ascii_case("system idle process"))
+        .filter(|l| {
+            !l.name.eq_ignore_ascii_case("idle")
+                && !l.name.eq_ignore_ascii_case("system idle process")
+        })
         .map(|l| l.cpu_pct)
         .sum();
     let mut s = if busy.is_empty() {
         format!("Over the last few seconds the processor was barely used ({total:.0}% in all).")
     } else {
-        format!("Over the last few seconds, busiest: {} ({total:.0}% of the processor in all).", busy.join(", "))
+        format!(
+            "Over the last few seconds, busiest: {} ({total:.0}% of the processor in all).",
+            busy.join(", ")
+        )
     };
     if !heavy.is_empty() {
         s.push_str(&format!(" Holding the most memory: {}.", heavy.join(", ")));
@@ -1334,7 +1919,8 @@ pub fn slowest_words(load: &[Load]) -> String {
 fn snapshot() -> Vec<Proc> {
     use windows::Win32::Foundation::{CloseHandle, BOOL, FILETIME, HWND, LPARAM, TRUE};
     use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
     };
     use windows::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
     use windows::Win32::System::RemoteDesktop::ProcessIdToSessionId;
@@ -1342,13 +1928,16 @@ fn snapshot() -> Vec<Proc> {
         GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsWindowVisible, GW_OWNER,
+        EnumWindows, GetWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsWindowVisible,
+        GW_OWNER,
     };
 
     unsafe extern "system" fn each(hwnd: HWND, lp: LPARAM) -> BOOL {
         let pids = &mut *(lp.0 as *mut Vec<u32>);
         // A visible, unowned window with a title: one you could click on.
-        let owned = GetWindow(hwnd, GW_OWNER).map(|o| !o.0.is_null()).unwrap_or(false);
+        let owned = GetWindow(hwnd, GW_OWNER)
+            .map(|o| !o.0.is_null())
+            .unwrap_or(false);
         if IsWindowVisible(hwnd).as_bool() && !owned && GetWindowTextLengthW(hwnd) > 0 {
             let mut pid = 0u32;
             GetWindowThreadProcessId(hwnd, Some(&mut pid));
@@ -1369,34 +1958,68 @@ fn snapshot() -> Vec<Proc> {
     // SAFETY: the snapshot handle is closed below; the entry is sized as
     // the API requires.
     unsafe {
-        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return out };
-        let mut e = PROCESSENTRY32W { dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
+            return out;
+        };
+        let mut e = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
         let mut more = Process32FirstW(snap, &mut e).is_ok();
         while more {
-            let end = e.szExeFile.iter().position(|c| *c == 0).unwrap_or(e.szExeFile.len());
+            let end = e
+                .szExeFile
+                .iter()
+                .position(|c| *c == 0)
+                .unwrap_or(e.szExeFile.len());
             let exe = String::from_utf16_lossy(&e.szExeFile[..end]);
-            let name = exe.strip_suffix(".exe").or_else(|| exe.strip_suffix(".EXE")).unwrap_or(&exe).to_string();
+            let name = exe
+                .strip_suffix(".exe")
+                .or_else(|| exe.strip_suffix(".EXE"))
+                .unwrap_or(&exe)
+                .to_string();
             let pid = e.th32ProcessID;
             let mut session = 0u32;
             let _ = ProcessIdToSessionId(pid, &mut session);
             let (mut mem_mb, mut cpu_ms) = (0u64, 0u64);
-            let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, false, pid)
-                .or_else(|_| OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid));
+            let h = OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ,
+                false,
+                pid,
+            )
+            .or_else(|_| OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid));
             if let Ok(h) = h {
                 let cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
-                let mut m = PROCESS_MEMORY_COUNTERS { cb, ..Default::default() };
+                let mut m = PROCESS_MEMORY_COUNTERS {
+                    cb,
+                    ..Default::default()
+                };
                 if K32GetProcessMemoryInfo(h, &mut m, cb).as_bool() {
                     mem_mb = m.WorkingSetSize as u64 / 1_048_576;
                 }
-                let (mut c, mut x, mut k, mut u) =
-                    (FILETIME::default(), FILETIME::default(), FILETIME::default(), FILETIME::default());
+                let (mut c, mut x, mut k, mut u) = (
+                    FILETIME::default(),
+                    FILETIME::default(),
+                    FILETIME::default(),
+                    FILETIME::default(),
+                );
                 if GetProcessTimes(h, &mut c, &mut x, &mut k, &mut u).is_ok() {
-                    let t = |f: FILETIME| ((f.dwHighDateTime as u64) << 32 | f.dwLowDateTime as u64) / 10_000;
+                    let t = |f: FILETIME| {
+                        ((f.dwHighDateTime as u64) << 32 | f.dwLowDateTime as u64) / 10_000
+                    };
                     cpu_ms = t(k) + t(u);
                 }
                 let _ = CloseHandle(h);
             }
-            out.push(Proc { pid, parent: e.th32ParentProcessID, name, session, mem_mb, cpu_ms, windowed: windowed.contains(&pid) });
+            out.push(Proc {
+                pid,
+                parent: e.th32ParentProcessID,
+                name,
+                session,
+                mem_mb,
+                cpu_ms,
+                windowed: windowed.contains(&pid),
+            });
             more = Process32NextW(snap, &mut e).is_ok();
         }
         let _ = CloseHandle(snap);
@@ -1445,10 +2068,20 @@ pub fn sample_machine(wait: std::time::Duration) -> Option<Sampled> {
                 ..Default::default()
             })
             .collect();
-        return Some(Sampled { load, procs: Vec::new(), foreground_pid: foreground_pid() });
+        return Some(Sampled {
+            load,
+            procs: Vec::new(),
+            foreground_pid: foreground_pid(),
+        });
     }
-    let cores = std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(1);
-    Some(Sampled { load: sample_load(&before, &after, wall_ms, cores), procs: after, foreground_pid: foreground_pid() })
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(1);
+    Some(Sampled {
+        load: sample_load(&before, &after, wall_ms, cores),
+        procs: after,
+        foreground_pid: foreground_pid(),
+    })
 }
 
 #[cfg(windows)]
@@ -1493,18 +2126,28 @@ pub enum Closed {
 /// still running with no window of its own is then ended.
 pub fn close_loads(loads: &[Load], wait: std::time::Duration) -> Vec<Closed> {
     if !cfg!(windows) {
-        return loads.iter().map(|_| Closed::Failed("closing programs is only done on Windows".into())).collect();
+        return loads
+            .iter()
+            .map(|_| Closed::Failed("closing programs is only done on Windows".into()))
+            .collect();
     }
     let still = |l: &Load, now: &[Proc]| -> Vec<u32> {
         if l.pids.is_empty() {
             // Measured without process numbers (`sample_machine`'s
             // fallback): every process of that name.
-            return now.iter().filter(|q| q.name.eq_ignore_ascii_case(&l.name)).map(|q| q.pid).collect();
+            return now
+                .iter()
+                .filter(|q| q.name.eq_ignore_ascii_case(&l.name))
+                .map(|q| q.pid)
+                .collect();
         }
         l.pids
             .iter()
             .copied()
-            .filter(|p| now.iter().any(|q| q.pid == *p && q.name.eq_ignore_ascii_case(&l.name)))
+            .filter(|p| {
+                now.iter()
+                    .any(|q| q.pid == *p && q.name.eq_ignore_ascii_case(&l.name))
+            })
             .collect()
     };
     let taskkill = |force: bool, l: &Load, pids: &[u32]| -> Result<(), String> {
@@ -1520,7 +2163,10 @@ pub fn close_loads(loads: &[Load], wait: std::time::Duration) -> Vec<Closed> {
                 args.extend(["/PID".into(), p.to_string()]);
             }
         }
-        let out = crate::tools::command("taskkill").args(&args).output().map_err(|e| e.to_string())?;
+        let out = crate::tools::command("taskkill")
+            .args(&args)
+            .output()
+            .map_err(|e| e.to_string())?;
         if out.status.success() {
             Ok(())
         } else {
@@ -1545,7 +2191,9 @@ pub fn close_loads(loads: &[Load], wait: std::time::Duration) -> Vec<Closed> {
         if now.is_empty() {
             // Nothing to check against: said, not assumed closed.
             for r in result.iter_mut().filter(|r| r.is_none()) {
-                *r = Some(Closed::Failed("I asked it to close but couldn't read the process list to check".into()));
+                *r = Some(Closed::Failed(
+                    "I asked it to close but couldn't read the process list to check".into(),
+                ));
             }
             break;
         }
@@ -1575,7 +2223,10 @@ pub fn close_loads(loads: &[Load], wait: std::time::Duration) -> Vec<Closed> {
         }
         std::thread::sleep(std::time::Duration::from_millis(250));
     }
-    result.into_iter().map(|r| r.unwrap_or(Closed::Gone)).collect()
+    result
+        .into_iter()
+        .map(|r| r.unwrap_or(Closed::Gone))
+        .collect()
 }
 
 // ---------- what starts with Windows, from everywhere it can ----------
@@ -1596,7 +2247,10 @@ pub enum StartupFrom {
 
 impl StartupFrom {
     fn atlas_may_change(&self) -> bool {
-        matches!(self, StartupFrom::YourRunKey | StartupFrom::YourStartupFolder | StartupFrom::LogonTask)
+        matches!(
+            self,
+            StartupFrom::YourRunKey | StartupFrom::YourStartupFolder | StartupFrom::LogonTask
+        )
     }
 
     fn plain(&self) -> &'static str {
@@ -1631,7 +2285,10 @@ pub fn startup_switched_off(reg_text: &str) -> Vec<String> {
     parse_reg_values(reg_text)
         .into_iter()
         .filter(|(_, data)| {
-            data.get(..2).and_then(|b| u8::from_str_radix(b, 16).ok()).map(|b| b & 1 == 1).unwrap_or(false)
+            data.get(..2)
+                .and_then(|b| u8::from_str_radix(b, 16).ok())
+                .map(|b| b & 1 == 1)
+                .unwrap_or(false)
         })
         .map(|(name, _)| name)
         .collect()
@@ -1651,7 +2308,14 @@ pub fn parse_logon_tasks(text: &str) -> Vec<StartupEntry> {
             if name.is_empty() || path.to_lowercase().starts_with("\\microsoft\\") {
                 return None;
             }
-            let key = format!("{}{name}", if path.ends_with('\\') { path.to_string() } else { format!("{path}\\") });
+            let key = format!(
+                "{}{name}",
+                if path.ends_with('\\') {
+                    path.to_string()
+                } else {
+                    format!("{path}\\")
+                }
+            );
             Some(StartupEntry {
                 name: name.to_string(),
                 from: StartupFrom::LogonTask,
@@ -1676,14 +2340,22 @@ fn startup_exe(command: &str) -> String {
         }
     };
     let leaf = path.rsplit(['\\', '/']).next().unwrap_or(path);
-    leaf.trim_end_matches(".exe").trim_end_matches(".EXE").trim_end_matches(".lnk").to_string()
+    leaf.trim_end_matches(".exe")
+        .trim_end_matches(".EXE")
+        .trim_end_matches(".lnk")
+        .to_string()
 }
 
 /// The startup entries worth switching off, at most five: on, changeable by
 /// Atlas without an administrator, not on either never-close list, not Atlas
 /// itself (by name, or by running Atlas's own program), and not opened this
 /// week by its name or by the program it runs.
-pub fn pick_startup_to_stop(entries: &[StartupEntry], used_this_week: &[String], keep: &[String], own_exe: &str) -> Vec<StartupEntry> {
+pub fn pick_startup_to_stop(
+    entries: &[StartupEntry],
+    used_this_week: &[String],
+    keep: &[String],
+    own_exe: &str,
+) -> Vec<StartupEntry> {
     entries
         .iter()
         .filter(|e| e.on && e.from.atlas_may_change())
@@ -1691,8 +2363,11 @@ pub fn pick_startup_to_stop(entries: &[StartupEntry], used_this_week: &[String],
             let exe = startup_exe(&e.command);
             may_close(&e.name, keep)
                 && (exe.is_empty() || may_close(&exe, keep))
-                && !used_this_week.iter().any(|u| same_program(u, &e.name) || (!exe.is_empty() && same_program(u, &exe)))
-                && !(own_exe.len() > 2 && e.command.to_lowercase().contains(&own_exe.to_lowercase()))
+                && !used_this_week
+                    .iter()
+                    .any(|u| same_program(u, &e.name) || (!exe.is_empty() && same_program(u, &exe)))
+                && !(own_exe.len() > 2
+                    && e.command.to_lowercase().contains(&own_exe.to_lowercase()))
         })
         .take(5)
         .cloned()
@@ -1710,13 +2385,18 @@ static KEPT_STARTUP: std::sync::Mutex<KeptStartup> = std::sync::Mutex::new(None)
 /// here rather than reading every key again (4 Oct 2026: "how's the
 /// machine" took 8 seconds on the laptop, most of it waiting in turn).
 pub fn startup_entries_kept(with_tasks: bool) -> Vec<StartupEntry> {
-    if let Some((at, tasks, v)) = KEPT_STARTUP.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
+    if let Some((at, tasks, v)) = KEPT_STARTUP
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_ref()
+    {
         if at.elapsed() < std::time::Duration::from_secs(30) && *tasks == with_tasks {
             return v.clone();
         }
     }
     let v = startup_entries(with_tasks);
-    *KEPT_STARTUP.lock().unwrap_or_else(|p| p.into_inner()) = Some((std::time::Instant::now(), with_tasks, v.clone()));
+    *KEPT_STARTUP.lock().unwrap_or_else(|p| p.into_inner()) =
+        Some((std::time::Instant::now(), with_tasks, v.clone()));
     v
 }
 
@@ -1732,36 +2412,88 @@ pub fn startup_entries(with_tasks: bool) -> Vec<StartupEntry> {
             .unwrap_or_default()
     };
     let mut out = Vec::new();
-    let from_key = |key: &str, approved: &[&str], from: StartupFrom, out: &mut Vec<StartupEntry>| {
-        let off: Vec<String> = approved.iter().flat_map(|a| startup_switched_off(&reg(a))).collect();
-        for (name, command) in parse_reg_values(&reg(key)) {
-            let on = !off.iter().any(|o| o.eq_ignore_ascii_case(&name));
-            out.push(StartupEntry { name: name.clone(), from, command, key: name, on });
-        }
-    };
+    let from_key =
+        |key: &str, approved: &[&str], from: StartupFrom, out: &mut Vec<StartupEntry>| {
+            let off: Vec<String> = approved
+                .iter()
+                .flat_map(|a| startup_switched_off(&reg(a)))
+                .collect();
+            for (name, command) in parse_reg_values(&reg(key)) {
+                let on = !off.iter().any(|o| o.eq_ignore_ascii_case(&name));
+                out.push(StartupEntry {
+                    name: name.clone(),
+                    from,
+                    command,
+                    key: name,
+                    on,
+                });
+            }
+        };
     from_key(RUN, &[APPROVED], StartupFrom::YourRunKey, &mut out);
-    from_key(RUN_MACHINE, &[APPROVED_MACHINE], StartupFrom::MachineRunKey, &mut out);
-    from_key(RUN_MACHINE_32, &[APPROVED_MACHINE_32], StartupFrom::MachineRunKey, &mut out);
-    let folder = |dir: Option<std::path::PathBuf>, approved: &str, from: StartupFrom, out: &mut Vec<StartupEntry>| {
+    from_key(
+        RUN_MACHINE,
+        &[APPROVED_MACHINE],
+        StartupFrom::MachineRunKey,
+        &mut out,
+    );
+    from_key(
+        RUN_MACHINE_32,
+        &[APPROVED_MACHINE_32],
+        StartupFrom::MachineRunKey,
+        &mut out,
+    );
+    let folder = |dir: Option<std::path::PathBuf>,
+                  approved: &str,
+                  from: StartupFrom,
+                  out: &mut Vec<StartupEntry>| {
         let Some(dir) = dir else { return };
-        let Ok(rd) = std::fs::read_dir(&dir) else { return };
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            return;
+        };
         let off = startup_switched_off(&reg(approved));
         for e in rd.flatten() {
             let file = e.file_name().to_string_lossy().to_string();
             if file.eq_ignore_ascii_case("desktop.ini") || e.path().is_dir() {
                 continue;
             }
-            let name = std::path::Path::new(&file).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or(file.clone());
+            let name = std::path::Path::new(&file)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or(file.clone());
             let on = !off.iter().any(|o| o.eq_ignore_ascii_case(&file));
-            out.push(StartupEntry { name, from, command: e.path().display().to_string(), key: file, on });
+            out.push(StartupEntry {
+                name,
+                from,
+                command: e.path().display().to_string(),
+                key: file,
+                on,
+            });
         }
     };
-    let under = |var: &str, rest: &str| crate::doctor::lookup_env(var).map(|v| std::path::PathBuf::from(v).join(rest));
-    folder(under("APPDATA", r"Microsoft\Windows\Start Menu\Programs\Startup"), APPROVED_FOLDER, StartupFrom::YourStartupFolder, &mut out);
-    folder(under("ProgramData", r"Microsoft\Windows\Start Menu\Programs\StartUp"), APPROVED_MACHINE_FOLDER, StartupFrom::MachineStartupFolder, &mut out);
+    let under = |var: &str, rest: &str| {
+        crate::doctor::lookup_env(var).map(|v| std::path::PathBuf::from(v).join(rest))
+    };
+    folder(
+        under("APPDATA", r"Microsoft\Windows\Start Menu\Programs\Startup"),
+        APPROVED_FOLDER,
+        StartupFrom::YourStartupFolder,
+        &mut out,
+    );
+    folder(
+        under(
+            "ProgramData",
+            r"Microsoft\Windows\Start Menu\Programs\StartUp",
+        ),
+        APPROVED_MACHINE_FOLDER,
+        StartupFrom::MachineStartupFolder,
+        &mut out,
+    );
     if with_tasks {
         let ps = "Get-ScheduledTask | Where-Object { $_.TaskPath -notlike '\\Microsoft\\*' -and ($_.Triggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger' }) } | ForEach-Object { \"{0}`t{1}`t{2}`t{3}\" -f $_.TaskPath, $_.TaskName, $_.State, (($_.Actions | Select-Object -First 1).Execute) }";
-        if let Ok(o) = crate::tools::command("powershell").args(["-NoProfile", "-NonInteractive", "-Command", ps]).output() {
+        if let Ok(o) = crate::tools::command("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", ps])
+            .output()
+        {
             out.extend(parse_logon_tasks(&String::from_utf8_lossy(&o.stdout)));
         }
     }
@@ -1778,7 +2510,11 @@ pub fn set_startup(e: &StartupEntry, on: bool) -> Result<(), String> {
     if !cfg!(windows) {
         return Err("startup programs are only changed on Windows".into());
     }
-    let mark = if on { "020000000000000000000000" } else { "030000000000000000000000" };
+    let mark = if on {
+        "020000000000000000000000"
+    } else {
+        "030000000000000000000000"
+    };
     let out = match e.from {
         StartupFrom::YourRunKey => crate::tools::command("reg")
             .args(["add", APPROVED, "/v", e.key.as_str(), "/t", "REG_BINARY", "/d", mark, "/f"])
@@ -1802,7 +2538,11 @@ pub fn set_startup(e: &StartupEntry, on: bool) -> Result<(), String> {
         Ok(())
     } else {
         let why = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        Err(if why.is_empty() { format!("Windows refused to change {}", e.name) } else { why })
+        Err(if why.is_empty() {
+            format!("Windows refused to change {}", e.name)
+        } else {
+            why
+        })
     }
 }
 
@@ -1822,14 +2562,26 @@ pub fn startup_words(entries: &[StartupEntry]) -> String {
         StartupFrom::MachineRunKey,
         StartupFrom::MachineStartupFolder,
     ] {
-        let names: Vec<String> = on.iter().filter(|e| e.from == from).map(|e| e.name.clone()).collect();
+        let names: Vec<String> = on
+            .iter()
+            .filter(|e| e.from == from)
+            .map(|e| e.name.clone())
+            .collect();
         if !names.is_empty() {
             groups.push(format!("from {}: {}", from.plain(), names.join(", ")));
         }
     }
-    let mut s = format!("{} start{} with Windows -- {}.", on.len(), if on.len() == 1 { "s" } else { "" }, groups.join("; "));
+    let mut s = format!(
+        "{} start{} with Windows -- {}.",
+        on.len(),
+        if on.len() == 1 { "s" } else { "" },
+        groups.join("; ")
+    );
     if off > 0 {
-        s.push_str(&format!(" {off} more {} switched off already.", if off == 1 { "is" } else { "are" }));
+        s.push_str(&format!(
+            " {off} more {} switched off already.",
+            if off == 1 { "is" } else { "are" }
+        ));
     }
     if on.iter().any(|e| !e.from.atlas_may_change()) {
         s.push_str(" The machine-wide ones need an administrator, so those are yours to change in Task Manager.");
@@ -1858,7 +2610,10 @@ pub struct SpaceLook {
 impl SpaceLook {
     /// Every copy after the first, for moving somewhere.
     pub fn extra_copies(&self) -> Vec<std::path::PathBuf> {
-        self.duplicates.iter().flat_map(|set| set.iter().skip(1).cloned()).collect()
+        self.duplicates
+            .iter()
+            .flat_map(|set| set.iter().skip(1).cloned())
+            .collect()
     }
 }
 
@@ -1866,13 +2621,16 @@ impl SpaceLook {
 /// under 64 MB, otherwise its first and last 4 MB with its length -- two
 /// different files that size agreeing at both ends is not a real case.
 fn content_print(path: &std::path::Path, len: u64) -> Option<u64> {
-    use std::io::{Read, Seek, SeekFrom};
     use std::hash::Hasher;
+    use std::io::{Read, Seek, SeekFrom};
     let mut f = std::fs::File::open(path).ok()?;
     let mut h = std::collections::hash_map::DefaultHasher::new();
     h.write_u64(len);
     let mut buf = vec![0u8; 1 << 20];
-    let mut read_some = |f: &mut std::fs::File, limit: u64, h: &mut std::collections::hash_map::DefaultHasher| -> Option<()> {
+    let mut read_some = |f: &mut std::fs::File,
+                         limit: u64,
+                         h: &mut std::collections::hash_map::DefaultHasher|
+     -> Option<()> {
         let mut left = limit;
         while left > 0 {
             let n = f.read(&mut buf[..(left.min(1 << 20)) as usize]).ok()?;
@@ -1899,7 +2657,11 @@ fn content_print(path: &std::path::Path, len: u64) -> Option<u64> {
 /// Look through `downloads` (and size `temp`) for at most `budget`. Copies
 /// are only compared between files of exactly the same size, a megabyte or
 /// more, so the cost is reading the few that could be copies.
-pub fn look_at_space(downloads: &std::path::Path, temp: &std::path::Path, budget: std::time::Duration) -> SpaceLook {
+pub fn look_at_space(
+    downloads: &std::path::Path,
+    temp: &std::path::Path,
+    budget: std::time::Duration,
+) -> SpaceLook {
     let until = std::time::Instant::now() + budget;
     let mut files: Vec<(std::path::PathBuf, u64, std::time::SystemTime)> = Vec::new();
     let mut complete = true;
@@ -1909,22 +2671,33 @@ pub fn look_at_space(downloads: &std::path::Path, temp: &std::path::Path, budget
             complete = false;
             break;
         }
-        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
         for e in rd.flatten() {
-            let Ok(m) = std::fs::symlink_metadata(e.path()) else { continue };
+            let Ok(m) = std::fs::symlink_metadata(e.path()) else {
+                continue;
+            };
             if m.file_type().is_symlink() {
                 continue;
             }
             if m.is_dir() {
                 stack.push(e.path());
             } else {
-                files.push((e.path(), m.len(), m.modified().unwrap_or(std::time::UNIX_EPOCH)));
+                files.push((
+                    e.path(),
+                    m.len(),
+                    m.modified().unwrap_or(std::time::UNIX_EPOCH),
+                ));
             }
         }
     }
     let downloads_mb = files.iter().map(|f| f.1).sum::<u64>() / 1_048_576;
-    let mut biggest: Vec<(std::path::PathBuf, u64)> =
-        files.iter().filter(|f| f.1 >= 50 * 1_048_576).map(|f| (f.0.clone(), f.1 / 1_048_576)).collect();
+    let mut biggest: Vec<(std::path::PathBuf, u64)> = files
+        .iter()
+        .filter(|f| f.1 >= 50 * 1_048_576)
+        .map(|f| (f.0.clone(), f.1 / 1_048_576))
+        .collect();
     biggest.sort_by_key(|b| std::cmp::Reverse(b.1));
     biggest.truncate(10);
 
@@ -1950,10 +2723,16 @@ pub fn look_at_space(downloads: &std::path::Path, temp: &std::path::Path, budget
         for (_, mut same) in by_print.into_iter().filter(|(_, v)| v.len() > 1) {
             same.sort_by_key(|i| files[*i].2);
             duplicate_bytes += len * (same.len() as u64 - 1);
-            duplicates.push(same.into_iter().map(|i| files[i].0.clone()).collect::<Vec<_>>());
+            duplicates.push(
+                same.into_iter()
+                    .map(|i| files[i].0.clone())
+                    .collect::<Vec<_>>(),
+            );
         }
     }
-    let left = until.saturating_duration_since(std::time::Instant::now()).max(std::time::Duration::from_millis(200));
+    let left = until
+        .saturating_duration_since(std::time::Instant::now())
+        .max(std::time::Duration::from_millis(200));
     SpaceLook {
         downloads_mb,
         biggest,
@@ -1972,7 +2751,15 @@ pub fn space_words(s: &SpaceLook) -> String {
             .biggest
             .iter()
             .take(5)
-            .map(|(p, mb)| format!("{} {}", p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), mb_words(*mb)))
+            .map(|(p, mb)| {
+                format!(
+                    "{} {}",
+                    p.file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default(),
+                    mb_words(*mb)
+                )
+            })
             .collect();
         out.push_str(&format!(" The biggest: {}.", names.join(", ")));
     }
@@ -1999,15 +2786,25 @@ pub fn space_words(s: &SpaceLook) -> String {
 /// "to my archive" names no folder, and guessing one is how files get lost.
 pub fn move_destination(said: &str) -> Option<std::path::PathBuf> {
     let lower = said.to_ascii_lowercase();
-    let at = [" into ", " to "].iter().filter_map(|w| lower.rfind(w).map(|i| i + w.len())).max()?;
-    let raw = said[at..].trim().trim_end_matches(['.', '?', '!', ',']).trim().trim_matches(['"', '\'']).trim();
+    let at = [" into ", " to "]
+        .iter()
+        .filter_map(|w| lower.rfind(w).map(|i| i + w.len()))
+        .max()?;
+    let raw = said[at..]
+        .trim()
+        .trim_end_matches(['.', '?', '!', ','])
+        .trim()
+        .trim_matches(['"', '\''])
+        .trim();
     if raw.is_empty() {
         return None;
     }
     let p = std::path::PathBuf::from(raw);
     // "D:\Archive" is absolute on Windows only; it's recognised everywhere,
     // so a test on any machine reads it the same way.
-    let windows_abs = raw.len() >= 3 && raw.as_bytes()[1] == b':' && (raw.as_bytes()[2] == b'\\' || raw.as_bytes()[2] == b'/');
+    let windows_abs = raw.len() >= 3
+        && raw.as_bytes()[1] == b':'
+        && (raw.as_bytes()[2] == b'\\' || raw.as_bytes()[2] == b'/');
     // And "/mnt/big/archive" the other way round: Windows doesn't call it
     // absolute (no drive), but it is a folder named in full (6 Oct 2026).
     let unix_abs = raw.starts_with('/');
@@ -2022,17 +2819,39 @@ pub fn may_move_into(dest: &std::path::Path, from_dir: &std::path::Path) -> Resu
     let d = d.trim_end_matches('\\');
     let parts: Vec<&str> = d.split('\\').filter(|p| !p.is_empty()).collect();
     let second = parts.get(1).copied().unwrap_or("");
-    let windows_system = ["windows", "program files", "program files (x86)", "programdata", "$recycle.bin", "system volume information"];
-    let unix_system = ["etc", "usr", "bin", "sbin", "lib", "lib64", "boot", "proc", "sys", "dev", "var", "opt", "root"];
+    let windows_system = [
+        "windows",
+        "program files",
+        "program files (x86)",
+        "programdata",
+        "$recycle.bin",
+        "system volume information",
+    ];
+    let unix_system = [
+        "etc", "usr", "bin", "sbin", "lib", "lib64", "boot", "proc", "sys", "dev", "var", "opt",
+        "root",
+    ];
     let first = parts.first().copied().unwrap_or("");
     let drive_rooted = first.len() == 2 && first.ends_with(':');
-    if (drive_rooted && windows_system.contains(&second)) || (!drive_rooted && unix_system.contains(&first)) {
-        return Err(format!("{} is where the system keeps its own files, so nothing of yours goes there", dest.display()));
+    if (drive_rooted && windows_system.contains(&second))
+        || (!drive_rooted && unix_system.contains(&first))
+    {
+        return Err(format!(
+            "{} is where the system keeps its own files, so nothing of yours goes there",
+            dest.display()
+        ));
     }
     if parts.contains(&"appdata") {
-        return Err(format!("{} is inside a program's settings folder, so nothing of yours goes there", dest.display()));
+        return Err(format!(
+            "{} is inside a program's settings folder, so nothing of yours goes there",
+            dest.display()
+        ));
     }
-    let from = from_dir.display().to_string().replace('/', "\\").to_lowercase();
+    let from = from_dir
+        .display()
+        .to_string()
+        .replace('/', "\\")
+        .to_lowercase();
     if d == from.trim_end_matches('\\') {
         return Err("that's the folder they're already in".into());
     }
@@ -2054,7 +2873,9 @@ fn move_one_controlled(
     let mut to = dest_dir.join(name);
     let mut n = 2;
     while std::fs::symlink_metadata(&to).is_ok() {
-        if stopped() { return Err("Stopped before the next file move.".into()); }
+        if stopped() {
+            return Err("Stopped before the next file move.".into());
+        }
         let stem = std::path::Path::new(name)
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
@@ -2066,13 +2887,12 @@ fn move_one_controlled(
         to = dest_dir.join(format!("{stem} ({n}){ext}"));
         n += 1;
     }
-    crate::safety::move_without_overwrite_recorded(from, &to, stopped, &mut || before(from, &to).map_err(crate::error::AtlasError::Platform)).map_err(|e| e.to_string())?;
+    crate::safety::move_without_overwrite_recorded(from, &to, stopped, &mut || {
+        before(from, &to).map_err(crate::error::AtlasError::Platform)
+    })
+    .map_err(|e| e.to_string())?;
     Ok(to)
 }
-
-
-
-
 
 /// The exact collision-free destination is durably recorded before each move.
 /// A rejected record leaves that file in its original location.
@@ -2089,7 +2909,12 @@ pub fn move_files_into_controlled(
 ) -> (Vec<(std::path::PathBuf, std::path::PathBuf)>, Vec<String>) {
     let mut done = Vec::new();
     let mut not = Vec::new();
-    if stopped() { return (done, vec!["Stopped before creating the destination; files were left in place.".into()]); }
+    if stopped() {
+        return (
+            done,
+            vec!["Stopped before creating the destination; files were left in place.".into()],
+        );
+    }
     let mut missing = Vec::new();
     let mut next = dest;
     while !next.exists() {
@@ -2099,8 +2924,15 @@ pub fn move_files_into_controlled(
     }
     missing.reverse();
     if !missing.is_empty() {
-        if let Err(why) = before_dirs(&missing) { return (done, vec![why]); }
-        if stopped() { return (done, vec!["Stopped after recording folder intent; files were left in place.".into()]); }
+        if let Err(why) = before_dirs(&missing) {
+            return (done, vec![why]);
+        }
+        if stopped() {
+            return (
+                done,
+                vec!["Stopped after recording folder intent; files were left in place.".into()],
+            );
+        }
     }
     if let Err(e) = std::fs::create_dir_all(dest) {
         return (
@@ -2109,7 +2941,10 @@ pub fn move_files_into_controlled(
         );
     }
     for f in files {
-        if stopped() { not.push("Stopped; remaining files were left in place.".into()); break; }
+        if stopped() {
+            not.push("Stopped; remaining files were left in place.".into());
+            break;
+        }
         match move_one_controlled(f, dest, before, stopped) {
             Ok(to) => done.push((f.clone(), to)),
             Err(e) => not.push(e),
@@ -2117,8 +2952,6 @@ pub fn move_files_into_controlled(
     }
     (done, not)
 }
-
-
 
 // ---------- reading the request, and taking things back ----------
 
@@ -2234,8 +3067,16 @@ impl RecordedMove {
         })
     }
 
-    pub(crate) fn new_controlled(from: &std::path::Path, to: &std::path::Path, stopped: &impl Fn() -> bool) -> Result<Self, String> {
-        Ok(Self { from: from.into(), to: to.into(), fingerprint: Some(file_fingerprint_controlled(from, stopped)?) })
+    pub(crate) fn new_controlled(
+        from: &std::path::Path,
+        to: &std::path::Path,
+        stopped: &impl Fn() -> bool,
+    ) -> Result<Self, String> {
+        Ok(Self {
+            from: from.into(),
+            to: to.into(),
+            fingerprint: Some(file_fingerprint_controlled(from, stopped)?),
+        })
     }
 }
 
@@ -2243,7 +3084,10 @@ fn file_fingerprint(path: &std::path::Path) -> Result<String, String> {
     file_fingerprint_controlled(path, &|| false)
 }
 
-pub(crate) fn file_fingerprint_controlled(path: &std::path::Path, stopped: &impl Fn() -> bool) -> Result<String, String> {
+pub(crate) fn file_fingerprint_controlled(
+    path: &std::path::Path,
+    stopped: &impl Fn() -> bool,
+) -> Result<String, String> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
     let meta = std::fs::symlink_metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -2257,7 +3101,9 @@ pub(crate) fn file_fingerprint_controlled(path: &std::path::Path, stopped: &impl
     let mut hash = Sha256::new();
     let mut buffer = [0u8; 64 * 1024];
     loop {
-        if stopped() { return Err("Stopped while checking the file; it was left in place.".into()); }
+        if stopped() {
+            return Err("Stopped while checking the file; it was left in place.".into());
+        }
         let n = input
             .read(&mut buffer)
             .map_err(|e| format!("{}: {e}", path.display()))?;
@@ -2267,15 +3113,16 @@ pub(crate) fn file_fingerprint_controlled(path: &std::path::Path, stopped: &impl
         hash.update(&buffer[..n]);
     }
     let after = std::fs::symlink_metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    if after.len() != meta.len() || after.modified().ok() != meta.modified().ok() || after.file_type().is_symlink() {
+    if after.len() != meta.len()
+        || after.modified().ok() != meta.modified().ok()
+        || after.file_type().is_symlink()
+    {
         return Err("The file changed while it was being checked; it was left in place.".into());
     }
     Ok(format!("{:x}", hash.finalize()))
 }
 
 pub const TUNE_UNDO_RECORD: &str = "tune_undo";
-
-
 
 /// Persist identity before undo, and each completion afterward. Failed or
 /// interrupted saves can be reconciled using the saved fingerprint on retry.
@@ -2313,7 +3160,9 @@ pub(crate) fn undo_tune_change_controlled(
             };
             (records, made)
         }
-        TuneUndo::Startup(_) => return Err("The startup recovery record couldn't be prepared.".into()),
+        TuneUndo::Startup(_) => {
+            return Err("The startup recovery record couldn't be prepared.".into())
+        }
     };
     let total = moves.len();
     let mut next = TuneUndo::RecordedMoves { moves, made };
@@ -2322,7 +3171,9 @@ pub(crate) fn undo_tune_change_controlled(
     let mut not = Vec::new();
     let mut i = 0;
     loop {
-        if stopped() { return Err(format!("Stopped undo after returning {back} of {total}; remaining recovery entries are retained.")); }
+        if stopped() {
+            return Err(format!("Stopped undo after returning {back} of {total}; remaining recovery entries are retained."));
+        }
         let current = match &next {
             TuneUndo::RecordedMoves { moves, .. } => moves.get(i).cloned(),
             _ => None,
@@ -2355,22 +3206,34 @@ pub(crate) fn undo_tune_change_controlled(
         } else {
             // Editing the moved file is fine. Persist its current identity
             // before returning it so a crash afterward remains recognizable.
-            let fingerprint = file_fingerprint_controlled(is, stopped)
-                .map_err(|e| format!("Put {back} of {total} back; the rest remain pending ({e})."))?;
+            let fingerprint = file_fingerprint_controlled(is, stopped).map_err(|e| {
+                format!("Put {back} of {total} back; the rest remain pending ({e}).")
+            })?;
             if let TuneUndo::RecordedMoves { moves, .. } = &mut next {
                 moves[i].fingerprint = Some(fingerprint.clone());
             }
             checkpoint(&next)
                 .map_err(|e| format!("Put {back} of {total} back; couldn't save the next recovery intent ({e}). The rest were left in place."))?;
-            if stopped() || file_fingerprint_controlled(is, stopped).as_ref() != Ok(&fingerprint) { return Err(format!("Undo stopped because {} changed while recovery was acknowledged; no next file moved.", is.display())); }
+            if stopped() || file_fingerprint_controlled(is, stopped).as_ref() != Ok(&fingerprint) {
+                return Err(format!("Undo stopped because {} changed while recovery was acknowledged; no next file moved.", is.display()));
+            }
             if let Some(parent) = was.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("Put {back} of {total} back; the rest remain pending ({}: {e}).", parent.display()))?;
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    format!(
+                        "Put {back} of {total} back; the rest remain pending ({}: {e}).",
+                        parent.display()
+                    )
+                })?;
             }
             crate::safety::move_without_overwrite_recorded(is, was, stopped, &mut || {
-                if file_fingerprint_controlled(is, stopped).as_ref() != Ok(&fingerprint) { return Err(crate::error::AtlasError::Platform("Undo source changed before its native reservation; file retained".into())); }
+                if file_fingerprint_controlled(is, stopped).as_ref() != Ok(&fingerprint) {
+                    return Err(crate::error::AtlasError::Platform(
+                        "Undo source changed before its native reservation; file retained".into(),
+                    ));
+                }
                 Ok(())
-            }).map_err(|e| e.to_string())
+            })
+            .map_err(|e| e.to_string())
         };
         match result {
             Ok(()) => {
@@ -2389,7 +3252,9 @@ pub(crate) fn undo_tune_change_controlled(
     if not.is_empty() {
         if let TuneUndo::RecordedMoves { made, .. } = &next {
             for dir in made.iter().rev() {
-                if stopped() { return Err("Undo stopped before removing another empty folder; recovery remains available".into()); }
+                if stopped() {
+                    return Err("Undo stopped before removing another empty folder; recovery remains available".into());
+                }
                 crate::heard!(std::fs::remove_dir(dir));
             }
         }
@@ -2401,4 +3266,4 @@ pub(crate) fn undo_tune_change_controlled(
     } else {
         Err(format!("Put {back} of {total} back. Still pending: {}. Retry undo after clearing these obstructions.", not.join("; ")))
     }
-        }
+}

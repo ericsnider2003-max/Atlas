@@ -51,9 +51,7 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
              from decides what I remember -- put atlas.exe in this folder, or \
              set ATLAS_HOME."
         }
-        crate::roots::Chosen::FreshBesideTheProgram => {
-            "Nothing here looks like an install yet."
-        }
+        crate::roots::Chosen::FreshBesideTheProgram => "Nothing here looks like an install yet.",
     };
     f.push(Finding {
         label: "install".into(),
@@ -96,7 +94,8 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
                     ),
                 });
             }
-            let roles = crate::layout::resolve_roles_with(&cfg.layouts, &m, plat.built_in_monitor());
+            let roles =
+                crate::layout::resolve_roles_with(&cfg.layouts, &m, plat.built_in_monitor());
             for (role, mon) in &roles {
                 f.push(Finding {
                     label: format!("role '{role}'"),
@@ -186,7 +185,11 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
         ] {
             let (cmd, _) = tool.resolved(&vars);
             match which(&cmd) {
-                Some(p) => f.push(Finding { label: label.into(), ok: true, detail: p }),
+                Some(p) => f.push(Finding {
+                    label: label.into(),
+                    ok: true,
+                    detail: p,
+                }),
                 None => f.push(Finding {
                     label: label.into(),
                     ok: false,
@@ -219,7 +222,11 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
             f.push(Finding {
                 label: format!("model '{k}'"),
                 ok: exists,
-                detail: if exists { v.clone() } else { format!("missing: {v}") },
+                detail: if exists {
+                    v.clone()
+                } else {
+                    format!("missing: {v}")
+                },
             });
         }
     } else {
@@ -243,7 +250,10 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
     let n = tools.map(|t| t.notify.clone()).unwrap_or_default();
     let vars = tools.map(|t| t.vars.clone()).unwrap_or_default();
     let (ok, detail) = match (&n.enabled, n.tool.as_ref()) {
-        (false, _) => (false, "notifications are switched off in your settings".to_string()),
+        (false, _) => (
+            false,
+            "notifications are switched off in your settings".to_string(),
+        ),
         // No external command is the shipped default now that PowerShell is
         // gone: Atlas draws its own panel. That is working, not missing — this
         // reported FAIL for the normal healthy configuration until the window
@@ -253,7 +263,10 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
         }
         (true, None) => (
             false,
-            format!("{} There's no display here to draw one on.", crate::notify::NO_NOTIFIER),
+            format!(
+                "{} There's no display here to draw one on.",
+                crate::notify::NO_NOTIFIER
+            ),
         ),
         (true, Some(t)) if t.available(&vars) => {
             (true, format!("on-screen alerts via {}", t.command))
@@ -268,7 +281,11 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
             ),
         ),
     };
-    f.push(Finding { label: "notify".into(), ok, detail });
+    f.push(Finding {
+        label: "notify".into(),
+        ok,
+        detail,
+    });
 
     // Can Atlas see?
     //
@@ -282,7 +299,8 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
     // the install folder reported every vision model missing when they were
     // all present -- a check that fails for a reason that has nothing to do
     // with what it is checking.
-    let models = crate::models::Registry::dir_for(&tools.map(|t| t.models.clone()).unwrap_or_default());
+    let models =
+        crate::models::Registry::dir_for(&tools.map(|t| t.models.clone()).unwrap_or_default());
     let seeing_missing = crate::infer::whats_missing(&models, &crate::infer::Kind::for_seeing());
     let (vok, vdetail) = match (v.enabled, seeing_missing.len()) {
         (false, _) => (
@@ -305,7 +323,11 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
         ),
         (true, _) => (false, crate::infer::spoken(&seeing_missing)),
     };
-    f.push(Finding { label: "vision".into(), ok: vok, detail: vdetail });
+    f.push(Finding {
+        label: "vision".into(),
+        ok: vok,
+        detail: vdetail,
+    });
 
     // Reading the screen. A third separate install, and the one that used to
     // report itself as "waiting on tesseract" — a wait that could never end,
@@ -339,7 +361,10 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
     // nothing here reported: every question got "I can't answer that here"
     // and this list said nothing about why.
     let (lok, ldetail) = match tools {
-        Some(t) if t.llm.is_some() => (true, "using the model connection written in your settings".to_string()),
+        Some(t) if t.llm.is_some() => (
+            true,
+            "using the model connection written in your settings".to_string(),
+        ),
         _ => {
             let mcfg = tools.map(|t| t.models.clone()).unwrap_or_default();
             let (registry, _) = crate::models::Registry::scan_reporting(&models);
@@ -362,7 +387,11 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
             }
         }
     };
-    f.push(Finding { label: "talking".into(), ok: lok, detail: ldetail });
+    f.push(Finding {
+        label: "talking".into(),
+        ok: lok,
+        detail: ldetail,
+    });
 
     // And whether you can be reached away from the machine at all.
     let ph = tools.map(|t| t.phone.clone()).unwrap_or_default();
@@ -373,7 +402,11 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
         Err(crate::phone::NotSet::Disabled) => (true, crate::phone::NO_PHONE.to_string()),
         Err(e) => (false, e.plain()),
     };
-    f.push(Finding { label: "phone".into(), ok: pok, detail: pdetail });
+    f.push(Finding {
+        label: "phone".into(),
+        ok: pok,
+        detail: pdetail,
+    });
 
     // Can Atlas tell your voice from anyone else's?
     //
@@ -406,7 +439,10 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
             ),
         )
     } else if crate::speaker::which(&sp, &vars) == crate::speaker::Encoder::Neural
-        && voice_record.print.as_ref().is_some_and(|p| p.centroid.len() != crate::speakernet::DIMS)
+        && voice_record
+            .print
+            .as_ref()
+            .is_some_and(|p| p.centroid.len() != crate::speakernet::DIMS)
     {
         (
             true,
@@ -415,7 +451,10 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
                 .into(),
         )
     } else if !vid.enabled {
-        (true, "I know your voice, but voice-lock is switched off in your settings".into())
+        (
+            true,
+            "I know your voice, but voice-lock is switched off in your settings".into(),
+        )
     } else {
         // With the lock on and in use, say where the fixed thresholds sit
         // against this voice's own accepted scores — the evidence the
@@ -426,11 +465,23 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
             crate::speaker::Encoder::Neural => vid.neural_reject,
             crate::speaker::Encoder::External => vid.reject,
         };
-        let reports: Vec<String> = [voice_record.thresholds_report(&vid), voice_record.calibration_report(reject)].into_iter().flatten().collect();
+        let reports: Vec<String> = [
+            voice_record.thresholds_report(&vid),
+            voice_record.calibration_report(reject),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         if reports.is_empty() {
             (true, format!("voice-lock on, {enrolled} samples enrolled"))
         } else {
-            (true, format!("voice-lock on, {enrolled} samples enrolled; {}", reports.join("; ")))
+            (
+                true,
+                format!(
+                    "voice-lock on, {enrolled} samples enrolled; {}",
+                    reports.join("; ")
+                ),
+            )
         }
     };
     let vdetail = if builtin && crate::speaker::available(&sp, &vars) {
@@ -438,7 +489,11 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
     } else {
         vdetail
     };
-    f.push(Finding { label: "voice-lock".into(), ok: vok, detail: vdetail });
+    f.push(Finding {
+        label: "voice-lock".into(),
+        ok: vok,
+        detail: vdetail,
+    });
 
     // The vault on your sign-in (`loginseal`): off, on and made, or on and
     // waiting for the next passphrase unlock to make the copy.
@@ -451,16 +506,28 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
     } else if sealed {
         (true, "sealed to your Windows sign-in: scheduled mail checks can open logins and API keys while you're signed in".to_string())
     } else {
-        (true, "switched on; the sign-in copy is made the next time you unlock with your passphrase".to_string())
+        (
+            true,
+            "switched on; the sign-in copy is made the next time you unlock with your passphrase"
+                .to_string(),
+        )
     };
-    f.push(Finding { label: "vault on sign-in".into(), ok: sok, detail: sdetail });
+    f.push(Finding {
+        label: "vault on sign-in".into(),
+        ok: sok,
+        detail: sdetail,
+    });
 
     // --- a typed passphrase stays off the screen ---
     //
     // On Windows this really switches the console's echo off and back on to
     // find out (round 10: the in-process read replaced a PowerShell pipe).
     let (hok, how) = crate::typed::how_typing_is_hidden();
-    f.push(Finding { label: "typed passphrase".into(), ok: hok, detail: how.to_string() });
+    f.push(Finding {
+        label: "typed passphrase".into(),
+        ok: hok,
+        detail: how.to_string(),
+    });
 
     // Can recall search by meaning, or only by words?
     //
@@ -474,13 +541,23 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
     let rc = tools.map(|t| t.recall.clone()).unwrap_or_default();
     let mc = tools.map(|t| t.meaning.clone()).unwrap_or_default();
     let (mok, mdetail) = if !crate::recall::needs_a_model(&rc) {
-        (true, "searching notes by words; meaning search is switched off in your settings".into())
+        (
+            true,
+            "searching notes by words; meaning search is switched off in your settings".into(),
+        )
     } else if !crate::meaning::available(&mc, &vars) {
         (true, crate::meaning::NO_ENCODER.to_string())
     } else {
-        (true, "meaning search is on and the encoder is installed".into())
+        (
+            true,
+            "meaning search is on and the encoder is installed".into(),
+        )
     };
-    f.push(Finding { label: "meaning-search".into(), ok: mok, detail: mdetail });
+    f.push(Finding {
+        label: "meaning-search".into(),
+        ok: mok,
+        detail: mdetail,
+    });
 
     // Your own server over WireGuard: is the tunnel laid out, and do the model
     // slots stay inside the fence? Doc 13 §1 — personal Atlas uses the server
@@ -505,7 +582,10 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
                 }
                 let slots = [
                     ("your model", tools.and_then(|t| t.llm.as_ref())),
-                    ("your second model", tools.and_then(|t| t.llm_secondary.as_ref())),
+                    (
+                        "your second model",
+                        tools.and_then(|t| t.llm_secondary.as_ref()),
+                    ),
                 ];
                 for (slot, llm) in slots {
                     if let Some(l) = llm {
@@ -540,7 +620,11 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
                 }
             }
         };
-        f.push(Finding { label: "own-server".into(), ok, detail });
+        f.push(Finding {
+            label: "own-server".into(),
+            ok,
+            detail,
+        });
     }
 
     // Which engine is driving speech, and does the config agree with itself?
@@ -573,7 +657,10 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
             // (Phase 0.8: Kokoro is what friends get, piper behind it).
             Err(m) => (
                 have_exe,
-                format!("Kokoro, as {voice}, is chosen, but {}; until it is, Atlas speaks in piper", m.plain()),
+                format!(
+                    "Kokoro, as {voice}, is chosen, but {}; until it is, Atlas speaks in piper",
+                    m.plain()
+                ),
             ),
         }
     } else if !eng.is_consistent() {
@@ -599,18 +686,38 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
             ),
         )
     } else if !have_voice {
-        (false, format!("{}, but the voice file is missing: {voice_file}", eng.engine.name()))
+        (
+            false,
+            format!(
+                "{}, but the voice file is missing: {voice_file}",
+                eng.engine.name()
+            ),
+        )
     } else {
-        (true, format!("{}, speaking as {}", eng.engine.name(), vset.voice))
+        (
+            true,
+            format!("{}, speaking as {}", eng.engine.name(), vset.voice),
+        )
     };
-    f.push(Finding { label: "speech engine".into(), ok: eok, detail: edetail });
+    f.push(Finding {
+        label: "speech engine".into(),
+        ok: eok,
+        detail: edetail,
+    });
 
     // How Atlas last stopped (item 33): a run that ended without warning is
     // worth seeing; one you closed, or Windows ending, is fine.
     let runs = crate::whystopped::Runs::load(&crate::roots::state_dir());
     if let Some(detail) = runs.last_stop(crate::store::now()) {
-        let ok = !matches!(runs.past.last().and_then(|r| r.ended.as_ref()), Some(crate::whystopped::Ended::EndedWithoutWarning));
-        f.push(Finding { label: "last stop".into(), ok, detail });
+        let ok = !matches!(
+            runs.past.last().and_then(|r| r.ended.as_ref()),
+            Some(crate::whystopped::Ended::EndedWithoutWarning)
+        );
+        f.push(Finding {
+            label: "last stop".into(),
+            ok,
+            detail,
+        });
     }
 
     // What this machine can actually run, and what Atlas decided because of it.
@@ -627,7 +734,8 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
     // does not tidy the rest of your disk and is not trying to be a disk
     // cleaner. A tool that offers to delete from folders it does not own is a
     // tool you cannot leave running unattended.
-    let cfg_text = std::fs::read_to_string(crate::roots::config_file("tools.yaml")).unwrap_or_default();
+    let cfg_text =
+        std::fs::read_to_string(crate::roots::config_file("tools.yaml")).unwrap_or_default();
 
     // --- settings you changed that went nowhere ---
     //
@@ -643,7 +751,11 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
                 "you changed {} in Settings, and there is no such setting any more: {}. \
                  They are still in config/settings.yaml doing nothing -- delete those \
                  lines, or say so and I will.",
-                if cfg.settings_that_went_nowhere.len() == 1 { "something" } else { "some things" },
+                if cfg.settings_that_went_nowhere.len() == 1 {
+                    "something"
+                } else {
+                    "some things"
+                },
                 cfg.settings_that_went_nowhere.join(", ")
             ),
         });
@@ -677,15 +789,24 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
         .filter(|p| {
             !matches!(
                 p.status,
-                crate::plugins::Status::Active | crate::plugins::Status::Disabled | crate::plugins::Status::Waiting
+                crate::plugins::Status::Active
+                    | crate::plugins::Status::Disabled
+                    | crate::plugins::Status::Waiting
             )
         })
         .map(|p| format!("{}: {}", p.name(), p.status.plain()))
         .collect();
     if !off.is_empty() {
-        f.push(Finding { label: "add-ons that are off".into(), ok: false, detail: off.join("; ") });
+        f.push(Finding {
+            label: "add-ons that are off".into(),
+            ok: false,
+            detail: off.join("; "),
+        });
     }
-    let waiting = addons.iter().filter(|p| p.status == crate::plugins::Status::Waiting).count();
+    let waiting = addons
+        .iter()
+        .filter(|p| p.status == crate::plugins::Status::Waiting)
+        .count();
     if waiting > 0 {
         f.push(Finding {
             label: "add-ons waiting for you".into(),
@@ -706,8 +827,11 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
     // than that the block was discarded before anything saw it.
     let dead = crate::config::settings_that_do_nothing(&cfg_text);
     if !dead.is_empty() {
-        let named: Vec<String> =
-            dead.iter().take(6).map(|(k, why)| format!("{k} ({why})")).collect();
+        let named: Vec<String> = dead
+            .iter()
+            .take(6)
+            .map(|(k, why)| format!("{k} ({why})"))
+            .collect();
         f.push(Finding {
             label: "settings that do nothing".into(),
             ok: false,
@@ -763,13 +887,22 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
         Ok(d) => (true, d),
         Err(why) => (false, why),
     };
-    f.push(Finding { label: "activity record".into(), ok, detail });
+    f.push(Finding {
+        label: "activity record".into(),
+        ok,
+        detail,
+    });
 
     // --- the log, as the few things that happened (`drain`) ---
-    let log_text = std::fs::read_to_string(crate::roots::logs_dir().join("atlas.log")).unwrap_or_default();
+    let log_text =
+        std::fs::read_to_string(crate::roots::logs_dir().join("atlas.log")).unwrap_or_default();
     let (d, lines) = crate::drain::read_log(&log_text);
     if lines > 0 {
-        let warnings: Vec<&crate::drain::Template> = d.by_count().into_iter().filter(|t| t.words.first().is_some_and(|w| w == "WARN")).collect();
+        let warnings: Vec<&crate::drain::Template> = d
+            .by_count()
+            .into_iter()
+            .filter(|t| t.words.first().is_some_and(|w| w == "WARN"))
+            .collect();
         let detail = match warnings.first() {
             Some(w) => format!(
                 "{lines} lines, {} kinds; the commonest warning ({}x): {}. `atlas logs --warn` lists them.",
@@ -779,7 +912,11 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
             ),
             None => format!("{lines} lines, {} kinds, no warnings.", d.templates.len()),
         };
-        f.push(Finding { label: "log".into(), ok: true, detail });
+        f.push(Finding {
+            label: "log".into(),
+            ok: true,
+            detail,
+        });
     }
 
     // --- your clock: is a time zone set, and does it read? ---
@@ -791,24 +928,56 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
             // 2026). The doctor still said "UTC" until 4 Oct 2026, which was
             // wrong: times were already local.
             let z = crate::tz::machine();
-            (true, format!("automatic: this computer's clock ({}), {} now.", z.name, z.abbreviation_at(now)))
+            (
+                true,
+                format!(
+                    "automatic: this computer's clock ({}), {} now.",
+                    z.name,
+                    z.abbreviation_at(now)
+                ),
+            )
         } else {
             match crate::tz::Zone::named(set) {
-                Some(z) => (true, format!("{} — {} now, {:+.1} hours from UTC.", z.name, z.abbreviation_at(now), z.offset_at(now) as f64 / 3600.0)),
-                None => (false, format!("\"{set}\" isn't a zone I know, so times are UTC until it's fixed.")),
+                Some(z) => (
+                    true,
+                    format!(
+                        "{} — {} now, {:+.1} hours from UTC.",
+                        z.name,
+                        z.abbreviation_at(now),
+                        z.offset_at(now) as f64 / 3600.0
+                    ),
+                ),
+                None => (
+                    false,
+                    format!("\"{set}\" isn't a zone I know, so times are UTC until it's fixed."),
+                ),
             }
         };
-        f.push(Finding { label: "time zone".into(), ok, detail });
+        f.push(Finding {
+            label: "time zone".into(),
+            ok,
+            detail,
+        });
     }
 
     // --- your standing watches: does each one read? ---
     if let Some(t) = tools {
         for spec in &t.automations {
             let (ok, detail) = match crate::automation::Automation::from_spec(spec) {
-                Ok(a) => (true, format!("\"{}\" — watching: {}", a.name, spec.when.trim())),
-                Err(why) => (false, format!("\"{}\" is ignored until fixed: {why}", spec.name.trim())),
+                Ok(a) => (
+                    true,
+                    format!("\"{}\" — watching: {}", a.name, spec.when.trim()),
+                ),
+                Err(why) => (
+                    false,
+                    format!("\"{}\" is ignored until fixed: {why}", spec.name.trim()),
+                ),
             };
-            f.push(Finding { label: "watch".into(), ok, detail });
+            f.push(Finding {
+                label: "watch".into(),
+                ok,
+                detail,
+            });
         }
     }
 
@@ -821,7 +990,11 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
             "{} — {} at a time, model {} between turns. {}",
             plan.tier.name(),
             plan.concurrency,
-            if plan.keep_model_warm { "stays loaded" } else { "unloads" },
+            if plan.keep_model_warm {
+                "stays loaded"
+            } else {
+                "unloads"
+            },
             plan.because
         ),
     });
@@ -838,11 +1011,19 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
         if let Ok(rd) = std::fs::read_dir(&dir) {
             for e in rd.flatten() {
                 let path = e.path();
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
                 if !name.ends_with(".yaml") || name == "machine.yaml" {
                     continue;
                 }
-                if let Some(who) = std::fs::read_to_string(&path).ok().as_deref().and_then(crate::adapt::leaks_a_username) {
+                if let Some(who) = std::fs::read_to_string(&path)
+                    .ok()
+                    .as_deref()
+                    .and_then(crate::adapt::leaks_a_username)
+                {
                     leaks.push(format!("{name} has {who}'s own folder in it"));
                 }
             }
@@ -853,7 +1034,10 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
             detail: if leaks.is_empty() {
                 "No one's own folders in the settings that would go to someone else.".into()
             } else {
-                format!("{} — that belongs in machine.yaml, or as %USERPROFILE%.", leaks.join("; "))
+                format!(
+                    "{} — that belongs in machine.yaml, or as %USERPROFILE%.",
+                    leaks.join("; ")
+                )
             },
         });
     }
@@ -898,15 +1082,25 @@ pub fn machine_findings() -> Vec<Finding> {
         let (ok, detail) = match name {
             "memory" if r.ram_total_gb > 0.0 => (
                 true,
-                format!("{:.1} GB installed, {:.1} GB in use", r.ram_total_gb, r.ram_used_gb),
+                format!(
+                    "{:.1} GB installed, {:.1} GB in use",
+                    r.ram_total_gb, r.ram_used_gb
+                ),
             ),
             "disk" if r.disk_total_gb > 0.0 => (
                 true,
                 format!("{:.0} GB free of {:.0} GB", r.disk_free_gb, r.disk_total_gb),
             ),
-            _ => (false, "read came back empty — the instrument is not wired".to_string()),
+            _ => (
+                false,
+                "read came back empty — the instrument is not wired".to_string(),
+            ),
         };
-        out.push(Finding { label: name.to_string(), ok, detail });
+        out.push(Finding {
+            label: name.to_string(),
+            ok,
+            detail,
+        });
     }
     out
 }
@@ -938,17 +1132,29 @@ fn store_package(app: &str) -> Option<String> {
 fn looks_like_a_path(v: &str) -> bool {
     v.contains('/')
         || v.contains('\\')
-        || v.rsplit('.').next().map(|e| {
-            matches!(e, "bin" | "gguf" | "onnx" | "safetensors" | "pt" | "exe" | "dll")
-        }).unwrap_or(false)
+        || v.rsplit('.')
+            .next()
+            .map(|e| {
+                matches!(
+                    e,
+                    "bin" | "gguf" | "onnx" | "safetensors" | "pt" | "exe" | "dll"
+                )
+            })
+            .unwrap_or(false)
 }
 
 fn search_roots() -> Vec<PathBuf> {
-    let mut roots: Vec<PathBuf> = ["LOCALAPPDATA", "APPDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "ProgramData"]
-        .iter()
-        .filter_map(|k| std::env::var(k).ok())
-        .map(PathBuf::from)
-        .collect();
+    let mut roots: Vec<PathBuf> = [
+        "LOCALAPPDATA",
+        "APPDATA",
+        "PROGRAMFILES",
+        "PROGRAMFILES(X86)",
+        "ProgramData",
+    ]
+    .iter()
+    .filter_map(|k| std::env::var(k).ok())
+    .map(PathBuf::from)
+    .collect();
 
     // Two places installers hide things that the roots above miss at shallow
     // depth: per-user program installs, and Store app aliases.
@@ -995,7 +1201,9 @@ fn walk(
     if depth > max || exacts.len() > 4 {
         return;
     }
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     let mut subdirs = Vec::new();
     for e in entries.flatten() {
         let p = e.path();
@@ -1011,7 +1219,11 @@ fn walk(
             }
             continue;
         }
-        let Some(name) = p.file_name().and_then(|n| n.to_str()).map(|n| n.to_lowercase()) else {
+        let Some(name) = p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.to_lowercase())
+        else {
             continue;
         };
         if !name.ends_with(".exe") {
@@ -1029,11 +1241,27 @@ fn walk(
 }
 
 /// Directories that are large, irrelevant, and slow to walk.
-const SKIP_DIRS: &[&str] =
-    &["cache", "caches", "temp", "tmp", "logs", "node_modules", "packages", "cache2", "crashpad"];
+const SKIP_DIRS: &[&str] = &[
+    "cache",
+    "caches",
+    "temp",
+    "tmp",
+    "logs",
+    "node_modules",
+    "packages",
+    "cache2",
+    "crashpad",
+];
 
 /// Names that match an app key but are never the app itself.
-const IGNORE: &[&str] = &["uninstall", "crashpad", "setup", "updater", "installer", "helper"];
+const IGNORE: &[&str] = &[
+    "uninstall",
+    "crashpad",
+    "setup",
+    "updater",
+    "installer",
+    "helper",
+];
 
 pub fn expand_env(s: &str) -> String {
     expand_env_with(s, &lookup_env)
@@ -1076,21 +1304,29 @@ pub fn lookup_env(name: &str) -> Option<String> {
 /// variables: Windows reports `ProgramFiles` where a config says `%PROGRAMFILES%`.
 pub fn lookup_in(name: &str, vars: impl IntoIterator<Item = (String, String)>) -> Option<String> {
     let want = name.to_lowercase();
-    vars.into_iter().find(|(k, _)| k.to_lowercase() == want).map(|(_, v)| v)
+    vars.into_iter()
+        .find(|(k, _)| k.to_lowercase() == want)
+        .map(|(_, v)| v)
 }
 
 /// Real voice latency from past sessions (`voicelat`): per-stage median and
 /// worst, and which speech-to-text engine heard each turn. Informational.
 pub fn voice_latency_finding() -> Finding {
     let ledger: crate::voicelat::Ledger = crate::roots::store().load(crate::voicelat::RECORD);
-    Finding { label: "voice latency".into(), ok: true, detail: crate::voicelat::summary(&ledger) }
+    Finding {
+        label: "voice latency".into(),
+        ok: true,
+        detail: crate::voicelat::summary(&ledger),
+    }
 }
 
 /// Which ear is live: the speech-to-text that will hear you, by the setting
 /// and what's installed (research report, Stage 1 item 11: nothing said which
 /// one was in use). Parakeet's licence asks for its credit to travel with it.
 pub fn hearing_finding(tools: Option<&ToolsConfig>) -> Finding {
-    let engine = tools.map(|t| t.stt_engine.trim().to_lowercase()).unwrap_or_default();
+    let engine = tools
+        .map(|t| t.stt_engine.trim().to_lowercase())
+        .unwrap_or_default();
     let parakeet = crate::parakeet::installed(&crate::roots::install_root()).is_some();
     let (ok, detail) = match (engine.as_str(), parakeet) {
         ("whisper", _) => (true, "whisper (chosen in settings)".to_string()),
@@ -1101,6 +1337,9 @@ pub fn hearing_finding(tools: Option<&ToolsConfig>) -> Finding {
         ("parakeet", false) => (false, "Parakeet is chosen but isn't downloaded -- run `atlas get hearing`; whisper hears you until then".to_string()),
         _ => (true, "whisper (Parakeet isn't downloaded; `atlas get hearing` fetches it)".to_string()),
     };
-    Finding { label: "hearing".into(), ok, detail }
+    Finding {
+        label: "hearing".into(),
+        ok,
+        detail,
+    }
 }
-

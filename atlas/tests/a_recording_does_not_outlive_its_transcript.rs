@@ -49,11 +49,17 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn on() -> RetentionConfig {
-    RetentionConfig { delete_audio_after_transcribing: true, ..Default::default() }
+    RetentionConfig {
+        delete_audio_after_transcribing: true,
+        ..Default::default()
+    }
 }
 
 fn off() -> RetentionConfig {
-    RetentionConfig { delete_audio_after_transcribing: false, ..Default::default() }
+    RetentionConfig {
+        delete_audio_after_transcribing: false,
+        ..Default::default()
+    }
 }
 
 #[test]
@@ -117,7 +123,10 @@ fn a_panic_does_not_leave_the_recording_behind_either() {
         panic!("the transcriber fell over");
     }));
 
-    assert!(!wav.exists(), "a panic mid-transcription left the recording on disk");
+    assert!(
+        !wav.exists(),
+        "a panic mid-transcription left the recording on disk"
+    );
 }
 
 #[test]
@@ -137,7 +146,10 @@ fn what_the_transcriber_writes_beside_it_goes_too() {
         r.and_also(&srt).and_also(&txt);
     }
     assert!(!wav.exists(), "the audio stayed");
-    assert!(!srt.exists(), "the subtitles stayed — the same words in another file");
+    assert!(
+        !srt.exists(),
+        "the subtitles stayed — the same words in another file"
+    );
     assert!(!txt.exists(), "the transcript file stayed");
 }
 
@@ -153,7 +165,10 @@ fn turning_the_setting_off_actually_keeps_it() {
     {
         let _r = Recording::new(&wav, &off());
     }
-    assert!(wav.exists(), "it deleted a recording the setting said to keep");
+    assert!(
+        wav.exists(),
+        "it deleted a recording the setting said to keep"
+    );
 }
 
 #[test]
@@ -162,13 +177,19 @@ fn discard_audio_itself_still_answers_honestly() {
     let wav = dir.join("heard.wav");
     std::fs::write(&wav, b"RIFF....").unwrap();
 
-    assert!(!discard_audio(&wav, &off()), "it reported deleting something the setting keeps");
+    assert!(
+        !discard_audio(&wav, &off()),
+        "it reported deleting something the setting keeps"
+    );
     assert!(wav.exists());
     assert!(discard_audio(&wav, &on()));
     assert!(!wav.exists());
     // A second go has nothing to remove, and says so rather than claiming it
     // did something.
-    assert!(!discard_audio(&wav, &on()), "it reported deleting a file that was not there");
+    assert!(
+        !discard_audio(&wav, &on()),
+        "it reported deleting a file that was not there"
+    );
 }
 
 #[test]

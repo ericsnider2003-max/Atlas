@@ -19,8 +19,12 @@ fn msg(id: &str, from: &str, subject: &str, body: &str) -> Message {
 #[test]
 fn a_question_with_a_date_on_it_sorts_highest() {
     // The only thing that can go wrong by being ignored.
-    let m = msg("1", "marta@vendor.com", "Certification",
-        "Can you confirm the entity details by Friday? We can't submit without them.");
+    let m = msg(
+        "1",
+        "marta@vendor.com",
+        "Certification",
+        "Can you confirm the entity details by Friday? We can't submit without them.",
+    );
     let t = triage(&m);
     assert_eq!(t.needs, Needs::Deadline);
     assert_eq!(t.by_when.as_deref(), Some("by friday"));
@@ -28,18 +32,32 @@ fn a_question_with_a_date_on_it_sorts_highest() {
 
 #[test]
 fn something_only_you_can_decide_is_told_apart_from_a_question() {
-    let m = msg("2", "dev@team.com", "Two options",
-        "Both work. Your call which one we go with.");
+    let m = msg(
+        "2",
+        "dev@team.com",
+        "Two options",
+        "Both work. Your call which one we go with.",
+    );
     assert_eq!(triage(&m).needs, Needs::Decision);
 }
 
 #[test]
 fn atlas_will_draft_a_reply_but_never_a_decision() {
     // The decision is the part only you can make.
-    let question = msg("3", "marta@vendor.com", "Quick one", "Could you send the account number?");
+    let question = msg(
+        "3",
+        "marta@vendor.com",
+        "Quick one",
+        "Could you send the account number?",
+    );
     assert!(triage(&question).draftable);
 
-    let decision = msg("4", "dev@team.com", "Sign off?", "Need you to approve the new schema.");
+    let decision = msg(
+        "4",
+        "dev@team.com",
+        "Sign off?",
+        "Need you to approve the new schema.",
+    );
     assert!(!triage(&decision).draftable, "it can't decide for you");
 }
 
@@ -47,7 +65,12 @@ fn atlas_will_draft_a_reply_but_never_a_decision() {
 fn being_one_of_eight_recipients_means_it_probably_is_not_yours() {
     let m = Message {
         to_many: true,
-        ..msg("5", "boss@co.com", "Thoughts?", "Can you let me know what you think of this?")
+        ..msg(
+            "5",
+            "boss@co.com",
+            "Thoughts?",
+            "Can you let me know what you think of this?",
+        )
     };
     let t = triage(&m);
     assert_eq!(t.needs, Needs::Reading);
@@ -56,19 +79,37 @@ fn being_one_of_eight_recipients_means_it_probably_is_not_yours() {
 
 #[test]
 fn something_that_says_it_needs_nothing_is_believed() {
-    let m = msg("6", "ops@co.com", "Deploy done", "FYI, the deploy went out. No action needed.");
+    let m = msg(
+        "6",
+        "ops@co.com",
+        "Deploy done",
+        "FYI, the deploy went out. No action needed.",
+    );
     assert_eq!(triage(&m).needs, Needs::Reading);
 }
 
 #[test]
 fn automated_mail_is_recognised_and_dropped() {
-    let m = msg("7", "no-reply@shop.com", "50% off everything!", "Shop now. Unsubscribe here.");
+    let m = msg(
+        "7",
+        "no-reply@shop.com",
+        "50% off everything!",
+        "Shop now. Unsubscribe here.",
+    );
     assert_eq!(triage(&m).needs, Needs::Nothing);
 }
 
 #[test]
 fn something_you_have_already_answered_is_with_them() {
-    let m = Message { answered: true, ..msg("8", "marta@vendor.com", "Re: docs", "Thanks — can you also send the other one?") };
+    let m = Message {
+        answered: true,
+        ..msg(
+            "8",
+            "marta@vendor.com",
+            "Re: docs",
+            "Thanks — can you also send the other one?",
+        )
+    };
     let t = triage(&m);
     assert_eq!(t.needs, Needs::TheirMove);
     assert!(t.because.contains("it's with them"));
@@ -78,7 +119,11 @@ fn something_you_have_already_answered_is_with_them() {
 fn the_gist_comes_from_the_body_because_subjects_are_written_to_be_opened() {
     let m = msg("9", "marta@vendor.com", "Update",
         "Hi Eric,\nThe compliance team came back and the certification will take six weeks from submission.");
-    assert!(triage(&m).gist.contains("six weeks"), "got: {}", triage(&m).gist);
+    assert!(
+        triage(&m).gist.contains("six weeks"),
+        "got: {}",
+        triage(&m).gist
+    );
 }
 
 #[test]
@@ -97,11 +142,30 @@ fn every_message_says_why_it_was_sorted_that_way() {
 fn inbox() -> Vec<Message> {
     vec![
         msg("1", "no-reply@shop.com", "Sale", "50% off. Unsubscribe."),
-        msg("2", "ops@co.com", "Deploy", "FYI, deploy went out. No action needed."),
-        msg("3", "marta@vendor.com", "Certification",
-            "Can you confirm the entity details by Friday?"),
-        msg("4", "dev@team.com", "Schema", "Your call which option we go with."),
-        msg("5", "sam@co.com", "Quick one", "Could you send the account number?"),
+        msg(
+            "2",
+            "ops@co.com",
+            "Deploy",
+            "FYI, deploy went out. No action needed.",
+        ),
+        msg(
+            "3",
+            "marta@vendor.com",
+            "Certification",
+            "Can you confirm the entity details by Friday?",
+        ),
+        msg(
+            "4",
+            "dev@team.com",
+            "Schema",
+            "Your call which option we go with.",
+        ),
+        msg(
+            "5",
+            "sam@co.com",
+            "Quick one",
+            "Could you send the account number?",
+        ),
     ]
 }
 
@@ -154,7 +218,12 @@ fn a_single_message_that_can_wait_is_spoken_in_the_singular() {
     // One that needs you, one that doesn't -- so the tail is reached and its
     // count is one.
     let mixed = vec![
-        msg("1", "sam@co.com", "Quick one", "Could you send the account number?"),
+        msg(
+            "1",
+            "sam@co.com",
+            "Quick one",
+            "Could you send the account number?",
+        ),
         msg("2", "no-reply@shop.com", "Sale", "50% off. Unsubscribe."),
     ];
     let said = spoken(&sort_all(&mixed));
@@ -167,18 +236,36 @@ fn an_inbox_where_nothing_can_wait_does_not_claim_any_can() {
     // Every message needs you, so there is no "can wait" tail to speak -- the
     // guard against an off-by-one that would announce a pile that isn't there.
     let all_urgent = vec![
-        msg("1", "sam@co.com", "One", "Could you send the account number?"),
-        msg("2", "dev@team.com", "Two", "Your call which option we go with."),
+        msg(
+            "1",
+            "sam@co.com",
+            "One",
+            "Could you send the account number?",
+        ),
+        msg(
+            "2",
+            "dev@team.com",
+            "Two",
+            "Your call which option we go with.",
+        ),
     ];
     let said = spoken(&sort_all(&all_urgent));
-    assert!(!said.contains("can wait"), "nothing can, so it should not say so: {said}");
+    assert!(
+        !said.contains("can wait"),
+        "nothing can, so it should not say so: {said}"
+    );
 }
 
 #[test]
 fn disagreeing_with_the_sorting_is_learned_per_sender() {
     let mut c = Corrections::default();
     c.note("newsletter@substack.com", Needs::Reading);
-    let m = msg("1", "newsletter@substack.com", "Weekly", "Unsubscribe at the bottom.");
+    let m = msg(
+        "1",
+        "newsletter@substack.com",
+        "Weekly",
+        "Unsubscribe at the bottom.",
+    );
     let adjusted = c.adjust(&m, triage(&m));
     assert_eq!(adjusted.needs, Needs::Reading);
     assert!(adjusted.because.contains("you've told me"));
@@ -225,24 +312,41 @@ fn the_whole_chain_is_checked_before_any_of_it_runs() {
     assert!(e.contains("needs figures"));
     assert!(e.contains("nothing before it makes one"));
 
-    assert!(Chain::new("send the report", vec![export(), write(), send()]).check().is_ok());
+    assert!(
+        Chain::new("send the report", vec![export(), write(), send()])
+            .check()
+            .is_ok()
+    );
 }
 
 #[test]
 fn nothing_irreversible_is_allowed_after_the_send() {
     // A valid chain in every other respect, so the only complaint is the
     // ordering.
-    let send_figures = Step { needs: Some("figures".into()), ..send() };
+    let send_figures = Step {
+        needs: Some("figures".into()),
+        ..send()
+    };
     let bad = Chain::new(
         "send then delete",
         vec![
             export(),
             send_figures,
-            Step { what: "delete the working copy".into(), reversible: false, goes_out: false,
-                   needs: None, produces: None, app: "explorer".into() },
+            Step {
+                what: "delete the working copy".into(),
+                reversible: false,
+                goes_out: false,
+                needs: None,
+                produces: None,
+                app: "explorer".into(),
+            },
         ],
     );
-    assert!(bad.check().unwrap_err().contains("can't be undone"), "got: {:?}", bad.check());
+    assert!(
+        bad.check().unwrap_err().contains("can't be undone"),
+        "got: {:?}",
+        bad.check()
+    );
 }
 
 #[test]
@@ -255,7 +359,10 @@ fn the_step_that_leaves_the_machine_asks_first_with_what_led_there() {
         Next::Confirm { what, context, .. } => {
             assert!(what.contains("send it to Marta"));
             assert!(context.contains("Q3: 412k"));
-            assert!(context.contains("Q3 summary.docx"), "everything that led here: {context}");
+            assert!(
+                context.contains("Q3 summary.docx"),
+                "everything that led here: {context}"
+            );
         }
         o => panic!("{o:?}"),
     }
@@ -300,13 +407,22 @@ fn a_failure_undoes_what_can_be_undone_in_reverse() {
 
 #[test]
 fn anything_that_could_not_be_undone_is_named_plainly() {
-    let mut c = Chain::new("post and file", vec![
-        Step { reversible: false, ..export() },
-        write(),
-    ]);
+    let mut c = Chain::new(
+        "post and file",
+        vec![
+            Step {
+                reversible: false,
+                ..export()
+            },
+            write(),
+        ],
+    );
     c.done(Some(("figures".into(), "Q3".into())));
     c.failed("the document was locked");
-    assert_eq!(what_stands(&c), vec!["pull the figures out of the spreadsheet"]);
+    assert_eq!(
+        what_stands(&c),
+        vec!["pull the figures out of the spreadsheet"]
+    );
 }
 
 #[test]

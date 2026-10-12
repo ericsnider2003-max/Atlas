@@ -53,7 +53,11 @@ const TOKEN: &str = "abcdef-ghjkmn-pqrstu-vwxyz2";
 fn a_server() -> (Server, u16) {
     // Port 0: the OS picks a free one, so these tests never collide with a
     // running Atlas or with each other.
-    let cfg = ServerConfig { enabled: true, port: 0, ..ServerConfig::default() };
+    let cfg = ServerConfig {
+        enabled: true,
+        port: 0,
+        ..ServerConfig::default()
+    };
     let s = Server::bind(&cfg, TOKEN).expect("bind");
     let port = s.port();
     (s, port)
@@ -62,7 +66,8 @@ fn a_server() -> (Server, u16) {
 /// Send one raw request and return the whole response.
 fn ask(port: u16, raw: &str) -> String {
     let mut c = TcpStream::connect(("127.0.0.1", port)).expect("connect");
-    c.set_read_timeout(Some(std::time::Duration::from_secs(10))).expect("timeout");
+    c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .expect("timeout");
     c.write_all(raw.as_bytes()).expect("write");
     c.flush().expect("flush");
     let mut out = String::new();
@@ -84,7 +89,11 @@ fn one_exchange(server: Server, port: u16, raw: String) -> (String, Option<Actio
 
 /// What a browser sends, given an address — and nothing a browser would not.
 fn as_a_browser_would(url: &str) -> String {
-    let target = url.split_once("127.0.0.1").and_then(|(_, r)| r.split_once('/')).map(|(_, p)| format!("/{p}")).expect("a url with a path");
+    let target = url
+        .split_once("127.0.0.1")
+        .and_then(|(_, r)| r.split_once('/'))
+        .map(|(_, p)| format!("/{p}"))
+        .expect("a url with a path");
     format!(
         "GET {target} HTTP/1.1\r\nHost: 127.0.0.1\r\n\
          User-Agent: Mozilla/5.0\r\n\
@@ -178,7 +187,10 @@ fn the_cookie_alone_opens_the_hub_on_the_next_request() {
         response.starts_with("HTTP/1.1 200"),
         "the cookie this server set does not open the page it set it for:\n{response}"
     );
-    assert!(action.is_some(), "the request authenticated and routed to nothing");
+    assert!(
+        action.is_some(),
+        "the request authenticated and routed to nothing"
+    );
 }
 
 #[test]
@@ -216,7 +228,10 @@ fn a_wrong_token_in_the_address_is_still_refused() {
         response.starts_with("HTTP/1.1 401"),
         "a wrong token in the query string was accepted:\n{response}"
     );
-    assert!(action.is_none(), "a refused request reached a handler: {action:?}");
+    assert!(
+        action.is_none(),
+        "a refused request reached a handler: {action:?}"
+    );
 }
 
 #[test]
@@ -236,9 +251,7 @@ fn a_header_still_works_for_the_phone_client() {
     // The phone and the peer door send a header deliberately. Adding the
     // query and the cookie must not have taken that away.
     let (server, port) = a_server();
-    let raw = format!(
-        "GET /status HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Atlas-Token: {TOKEN}\r\n\r\n"
-    );
+    let raw = format!("GET /status HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Atlas-Token: {TOKEN}\r\n\r\n");
     let (response, action) = one_exchange(server, port, raw);
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(matches!(action, Some(Action::Status)));
@@ -293,7 +306,9 @@ fn an_endless_header_line_is_cut_off_rather_than_buffered() {
     let (response, action) = one_exchange(server, port, raw);
 
     assert!(
-        response.is_empty() || response.starts_with("HTTP/1.1 413") || response.starts_with("HTTP/1.1 401"),
+        response.is_empty()
+            || response.starts_with("HTTP/1.1 413")
+            || response.starts_with("HTTP/1.1 401"),
         "an oversized header block was neither refused nor cut off:\n{}",
         &response[..response.len().min(120)]
     );
@@ -346,7 +361,8 @@ fn an_unauthenticated_upload_does_not_get_a_28mb_buffer() {
 
     let client = std::thread::spawn(move || {
         let mut c = TcpStream::connect(("127.0.0.1", port)).expect("connect");
-        c.set_read_timeout(Some(std::time::Duration::from_secs(10))).expect("t");
+        c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+            .expect("t");
         c.write_all(raw.as_bytes()).expect("write");
         c.flush().expect("flush");
         let mut out = String::new();
@@ -403,7 +419,12 @@ fn a_browser_without_the_token_is_told_what_to_do() {
     let (response, action) = one_exchange(server, port, raw);
     assert!(action.is_none(), "an unsigned browser reached the hub");
     assert!(response.starts_with("HTTP/1.1 401"), "{response}");
-    assert!(response.contains("text/html") && response.contains("isn't signed in") && response.contains("Your phone"), "{response}");
+    assert!(
+        response.contains("text/html")
+            && response.contains("isn't signed in")
+            && response.contains("Your phone"),
+        "{response}"
+    );
     // The app and peers still get the bare answer, which says nothing more.
     let (server, port) = a_server();
     let raw = "GET /hub/live.json HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n".to_string();
@@ -434,10 +455,20 @@ fn nothing_answering_a_page_or_a_form_still_leaves_a_way_back() {
 fn every_form_in_the_hub_posts_somewhere_that_answers() {
     let server_src = crate::common::source_of("server");
     let mut missing = Vec::new();
-    for f in ["src/hub.rs", "src/hubpages.rs", "src/hublive.rs", "src/appearance.rs", "src/palette.rs"] {
+    for f in [
+        "src/hub.rs",
+        "src/hubpages.rs",
+        "src/hublive.rs",
+        "src/appearance.rs",
+        "src/palette.rs",
+    ] {
         let src = crate::common::read_source_path(f).unwrap_or_default();
         for part in src.split("action=").skip(1) {
-            let p: String = part.trim_start_matches(['\'', '"', '\\']).chars().take_while(|c| c.is_ascii_alphanumeric() || "/-_.".contains(*c)).collect();
+            let p: String = part
+                .trim_start_matches(['\'', '"', '\\'])
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || "/-_.".contains(*c))
+                .collect();
             if !p.starts_with('/') {
                 continue;
             }
@@ -448,5 +479,9 @@ fn every_form_in_the_hub_posts_somewhere_that_answers() {
     }
     missing.sort();
     missing.dedup();
-    assert!(missing.is_empty(), "forms post where the server answers nothing:\n{}", missing.join("\n"));
+    assert!(
+        missing.is_empty(),
+        "forms post where the server answers nothing:\n{}",
+        missing.join("\n")
+    );
 }

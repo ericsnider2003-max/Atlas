@@ -33,8 +33,17 @@ fn fresh(dir: &Path) -> PathBuf {
 /// A copy of the shipped config, so a test can change it under a running
 /// daemon.
 fn install(tag: &str) -> PathBuf {
-    let dir = fresh(&std::env::temp_dir().join(format!("atlas-live-settings-{tag}-{}", std::process::id())));
-    for f in ["tools.yaml", "apps.yaml", "layouts.yaml", "commands.yaml", "policy.yaml", "indexing.yaml"] {
+    let dir = fresh(
+        &std::env::temp_dir().join(format!("atlas-live-settings-{tag}-{}", std::process::id())),
+    );
+    for f in [
+        "tools.yaml",
+        "apps.yaml",
+        "layouts.yaml",
+        "commands.yaml",
+        "policy.yaml",
+        "indexing.yaml",
+    ] {
         let from = Path::new("config").join(f);
         if from.is_file() {
             fs::copy(&from, dir.join(f)).unwrap();
@@ -44,11 +53,20 @@ fn install(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn store(tag: &str) -> Store {
-    Store::new(fresh(&std::env::temp_dir().join(format!("atlas-live-store-{tag}-{}", std::process::id()))))
+    Store::new(fresh(
+        &std::env::temp_dir().join(format!("atlas-live-store-{tag}-{}", std::process::id())),
+    ))
 }
 
 fn change(dir: &Path, key: &str, raw: &str) {
@@ -62,19 +80,44 @@ fn a_switch_moved_while_atlas_runs_applies_without_a_restart() {
     let dir = install("switch");
     let cfg = Config::load(&dir).unwrap();
     let p = plat();
-    let mut d = Daemon::new(&cfg, &p, None, store("switch"), Proactive::new(ProactiveConfig::default()))
-        .watch_settings(dir.clone());
-    assert!(d.tools_cfg().research.enabled, "the shipped config ships web lookup on");
-    assert!(!d.proactive.cfg.enabled, "the shipped config ships speaking first off");
+    let mut d = Daemon::new(
+        &cfg,
+        &p,
+        None,
+        store("switch"),
+        Proactive::new(ProactiveConfig::default()),
+    )
+    .watch_settings(dir.clone());
+    assert!(
+        d.tools_cfg().research.enabled,
+        "the shipped config ships web lookup on"
+    );
+    assert!(
+        !d.proactive.cfg.enabled,
+        "the shipped config ships speaking first off"
+    );
 
     change(&dir, "research.enabled", "off");
     change(&dir, "proactive.enabled", "on");
     let said = d.pick_up_settings();
 
-    assert!(!d.tools_cfg().research.enabled, "a setting read at the moment of use didn't change");
-    assert!(d.proactive.cfg.enabled, "the part that keeps its own copy of a setting wasn't refreshed");
-    assert_eq!(said.len(), 2, "one line per changed setting, and only those: {said:?}");
-    assert!(said.iter().any(|l| l == "Web research is now off."), "{said:?}");
+    assert!(
+        !d.tools_cfg().research.enabled,
+        "a setting read at the moment of use didn't change"
+    );
+    assert!(
+        d.proactive.cfg.enabled,
+        "the part that keeps its own copy of a setting wasn't refreshed"
+    );
+    assert_eq!(
+        said.len(),
+        2,
+        "one line per changed setting, and only those: {said:?}"
+    );
+    assert!(
+        said.iter().any(|l| l == "Web research is now off."),
+        "{said:?}"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -83,8 +126,14 @@ fn the_tone_it_talks_in_changes_mid_run() {
     let dir = install("tone");
     let cfg = Config::load(&dir).unwrap();
     let p = plat();
-    let mut d = Daemon::new(&cfg, &p, None, store("tone"), Proactive::new(ProactiveConfig::default()))
-        .watch_settings(dir.clone());
+    let mut d = Daemon::new(
+        &cfg,
+        &p,
+        None,
+        store("tone"),
+        Proactive::new(ProactiveConfig::default()),
+    )
+    .watch_settings(dir.clone());
     let before = format!("{:?}", d.persona.tone).to_lowercase();
     let other = if before == "warm" { "dry" } else { "warm" };
 
@@ -99,12 +148,21 @@ fn the_next_tick_or_request_picks_it_up_on_its_own() {
     let dir = install("tick");
     let cfg = Config::load(&dir).unwrap();
     let p = plat();
-    let mut d = Daemon::new(&cfg, &p, None, store("tick"), Proactive::new(ProactiveConfig::default()))
-        .watch_settings(dir.clone());
+    let mut d = Daemon::new(
+        &cfg,
+        &p,
+        None,
+        store("tick"),
+        Proactive::new(ProactiveConfig::default()),
+    )
+    .watch_settings(dir.clone());
 
     change(&dir, "research.enabled", "off");
     d.tick(1_700_000_000);
-    assert!(!d.tools_cfg().research.enabled, "the heartbeat tick didn't look");
+    assert!(
+        !d.tools_cfg().research.enabled,
+        "the heartbeat tick didn't look"
+    );
 
     // The voice loop and the typed prompt don't tick; a request looks instead.
     change(&dir, "research.enabled", "on");
@@ -119,15 +177,24 @@ fn one_that_needs_a_restart_is_kept_and_says_so() {
     let dir = install("restart");
     let cfg = Config::load(&dir).unwrap();
     let p = plat();
-    let mut d = Daemon::new(&cfg, &p, None, store("restart"), Proactive::new(ProactiveConfig::default()))
-        .watch_settings(dir.clone());
+    let mut d = Daemon::new(
+        &cfg,
+        &p,
+        None,
+        store("restart"),
+        Proactive::new(ProactiveConfig::default()),
+    )
+    .watch_settings(dir.clone());
 
     // 30 Sep 2026: was `wake.enabled`, which now applies live; the voice is
     // still one that waits for a restart.
     change(&dir, "voice.enabled", "on");
     let said = d.pick_up_settings();
     assert_eq!(said.len(), 1, "{said:?}");
-    assert!(said[0].ends_with("will be on when I next start."), "{said:?}");
+    assert!(
+        said[0].ends_with("will be on when I next start."),
+        "{said:?}"
+    );
     // And the wake word -- which ships on (29 Sep 2026) -- switched off and
     // on again applies now, said as such.
     change(&dir, "wake.enabled", "off");
@@ -146,8 +213,14 @@ fn nothing_changed_means_nothing_said_and_nothing_reloaded() {
     let dir = install("quiet");
     let cfg = Config::load(&dir).unwrap();
     let p = plat();
-    let mut d = Daemon::new(&cfg, &p, None, store("quiet"), Proactive::new(ProactiveConfig::default()))
-        .watch_settings(dir.clone());
+    let mut d = Daemon::new(
+        &cfg,
+        &p,
+        None,
+        store("quiet"),
+        Proactive::new(ProactiveConfig::default()),
+    )
+    .watch_settings(dir.clone());
     assert!(d.pick_up_settings().is_empty());
     assert!(d.pick_up_settings().is_empty());
     let _ = fs::remove_dir_all(&dir);
@@ -160,7 +233,13 @@ fn a_daemon_not_told_where_its_settings_are_watches_nothing() {
     let dir = install("unwatched");
     let cfg = Config::load(&dir).unwrap();
     let p = plat();
-    let mut d = Daemon::new(&cfg, &p, None, store("unwatched"), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &cfg,
+        &p,
+        None,
+        store("unwatched"),
+        Proactive::new(ProactiveConfig::default()),
+    );
     change(&dir, "research.enabled", "off");
     assert!(d.pick_up_settings().is_empty());
     assert!(d.tools_cfg().research.enabled);
@@ -172,16 +251,28 @@ fn a_broken_settings_file_keeps_the_settings_it_had() {
     let dir = install("broken");
     let cfg = Config::load(&dir).unwrap();
     let p = plat();
-    let mut d = Daemon::new(&cfg, &p, None, store("broken"), Proactive::new(ProactiveConfig::default()))
-        .watch_settings(dir.clone());
+    let mut d = Daemon::new(
+        &cfg,
+        &p,
+        None,
+        store("broken"),
+        Proactive::new(ProactiveConfig::default()),
+    )
+    .watch_settings(dir.clone());
     change(&dir, "research.enabled", "on");
     d.pick_up_settings();
 
     fs::write(dir.join("tools.yaml"), "enabled: [this is not\n").unwrap();
     let said = d.pick_up_settings();
     assert_eq!(said.len(), 1);
-    assert!(said[0].starts_with("I couldn't read my changed settings"), "{said:?}");
-    assert!(d.tools_cfg().research.enabled, "a broken file threw away the working settings");
+    assert!(
+        said[0].starts_with("I couldn't read my changed settings"),
+        "{said:?}"
+    );
+    assert!(
+        d.tools_cfg().research.enabled,
+        "a broken file threw away the working settings"
+    );
     // Said once, not on every tick while it stays broken.
     assert!(d.pick_up_settings().is_empty());
     let _ = fs::remove_dir_all(&dir);
@@ -194,13 +285,26 @@ fn what_atlas_worked_out_at_the_start_survives_a_reload() {
     // daemon disagreeing about which microphone is in use.
     let dir = install("mic");
     let mut cfg = Config::load(&dir).unwrap();
-    cfg.tools.as_mut().unwrap().vars.insert("mic_device".into(), "Desk Mic".into());
+    cfg.tools
+        .as_mut()
+        .unwrap()
+        .vars
+        .insert("mic_device".into(), "Desk Mic".into());
     let p = plat();
-    let mut d = Daemon::new(&cfg, &p, None, store("mic"), Proactive::new(ProactiveConfig::default()))
-        .watch_settings(dir.clone());
+    let mut d = Daemon::new(
+        &cfg,
+        &p,
+        None,
+        store("mic"),
+        Proactive::new(ProactiveConfig::default()),
+    )
+    .watch_settings(dir.clone());
     change(&dir, "research.enabled", "on");
     d.pick_up_settings();
-    assert_eq!(d.tools_cfg().vars.get("mic_device").map(String::as_str), Some("Desk Mic"));
+    assert_eq!(
+        d.tools_cfg().vars.get("mic_device").map(String::as_str),
+        Some("Desk Mic")
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -208,7 +312,10 @@ fn what_atlas_worked_out_at_the_start_survives_a_reload() {
 fn every_setting_that_waits_for_a_restart_is_a_real_setting() {
     let all = settings::registry(&Default::default());
     for key in settings::NEEDS_A_RESTART {
-        assert!(all.get(key).is_some(), "{key} is listed as needing a restart and isn't a setting");
+        assert!(
+            all.get(key).is_some(),
+            "{key} is listed as needing a restart and isn't a setting"
+        );
     }
     // 30 Sep 2026: was `wake.enabled`, which is switched live
     // (`pick_up_settings` -> `tiers.set_wake`, and the microphone's thread
@@ -238,6 +345,9 @@ fn differences_names_only_what_moved() {
     let mut b = a.clone();
     b.set("research.enabled", "off").unwrap();
     let d = a.differences(&b);
-    assert_eq!(d.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), vec!["research.enabled"]);
+    assert_eq!(
+        d.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(),
+        vec!["research.enabled"]
+    );
     assert!(a.differences(&a).is_empty());
 }

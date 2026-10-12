@@ -18,7 +18,10 @@ fn parses(phrase: &str) -> Intent {
 fn asking_what_it_did_reaches_the_history_rather_than_a_stub() {
     assert!(matches!(parses("what did you do"), Intent::History(_)));
     assert!(matches!(parses("what changed"), Intent::History(_)));
-    assert!(matches!(parses("put it back"), Intent::History(_) | Intent::Undo));
+    assert!(matches!(
+        parses("put it back"),
+        Intent::History(_) | Intent::Undo
+    ));
 }
 
 #[test]
@@ -33,7 +36,10 @@ fn there_is_only_one_intent_for_how_the_machine_is_doing() {
     // ways to ask one thing is how the answers drift apart.
     let health = parses("how's the machine");
     assert!(matches!(health, Intent::MachineHealth));
-    assert!(!matches!(parses("what's slowing this down"), Intent::Unknown(_)));
+    assert!(!matches!(
+        parses("what's slowing this down"),
+        Intent::Unknown(_)
+    ));
 }
 
 /// Commands whose opening word is shared with ordinary speech ("add", "make",
@@ -89,7 +95,22 @@ fn every_phrase_in_the_command_file_parses_to_something_real() {
                 // only with a project named (round 10: "change the volume"
                 // was being asked which project it was for).
                 format!("{p} parser on the atlas project")
-            } else if c.intent == "build_it" && matches!(p.as_str(), "write a" | "write an" | "create a" | "create an" | "create me a" | "make me a" | "make me an" | "code a" | "program a" | "build a" | "build an") {
+            } else if c.intent == "build_it"
+                && matches!(
+                    p.as_str(),
+                    "write a"
+                        | "write an"
+                        | "create a"
+                        | "create an"
+                        | "create me a"
+                        | "make me a"
+                        | "make me an"
+                        | "code a"
+                        | "program a"
+                        | "build a"
+                        | "build an"
+                )
+            {
                 // These reach a build only when what follows is code (2 Oct
                 // 2026, d2e62e9): "write a letter" must stay a letter.
                 format!("{p} python script that renames files")
@@ -122,7 +143,9 @@ fn every_intent_the_parser_can_produce_has_somewhere_to_go() {
     let mut missing = Vec::new();
 
     for c in &cfg.commands.commands {
-        let Some(phrase) = c.phrases.first() else { continue };
+        let Some(phrase) = c.phrases.first() else {
+            continue;
+        };
         let said = example(phrase, c.takes_argument, c.argument_optional);
         // Ask the parser what this really becomes rather than guessing the
         // variant name from the intent name — show_panel is Intent::Show, and
@@ -138,7 +161,10 @@ fn every_intent_the_parser_can_produce_has_somewhere_to_go() {
             missing.push(format!("{} -> Intent::{name} has no arm", c.intent));
         }
     }
-    assert!(missing.is_empty(), "intents with no arm in the daemon: {missing:?}");
+    assert!(
+        missing.is_empty(),
+        "intents with no arm in the daemon: {missing:?}"
+    );
 }
 
 #[test]
@@ -149,7 +175,10 @@ fn a_phrase_with_an_apostrophe_actually_matches() {
     // which hid it.
     assert!(!matches!(parses("what's new"), Intent::Unknown(_)));
     assert!(!matches!(parses("how's the machine"), Intent::Unknown(_)));
-    assert!(!matches!(parses("what couldn't you do"), Intent::Unknown(_)));
+    assert!(!matches!(
+        parses("what couldn't you do"),
+        Intent::Unknown(_)
+    ));
 }
 
 #[test]
@@ -206,7 +235,10 @@ fn asking_about_this_with_nothing_to_point_at_asks_rather_than_guessing() {
     // question, not a coin toss.
     use atlas::subject::{resolve, Candidates, Resolution};
     let nothing = Candidates::default();
-    assert!(matches!(resolve("summarise this", &nothing), Resolution::Nothing(_)));
+    assert!(matches!(
+        resolve("summarise this", &nothing),
+        Resolution::Nothing(_)
+    ));
 
     let both = Candidates {
         clipboard: Some("a paragraph of text".into()),
@@ -214,17 +246,26 @@ fn asking_about_this_with_nothing_to_point_at_asks_rather_than_guessing() {
         ..Default::default()
     };
     // Selection is the more explicit of the two, so this one is decidable.
-    assert!(matches!(resolve("summarise this", &both), Resolution::Found { .. }));
+    assert!(matches!(
+        resolve("summarise this", &both),
+        Resolution::Found { .. }
+    ));
 }
 
 #[test]
 fn an_answer_that_hedges_a_lot_is_flagged_as_uncertain() {
     use atlas::certainty::{assess, phrase, CertaintyConfig, Confidence, Grounding};
-    let cfg = CertaintyConfig { enabled: true, ..Default::default() };
+    let cfg = CertaintyConfig {
+        enabled: true,
+        ..Default::default()
+    };
     let waffle = "It might possibly be that this could perhaps be the case, I think.";
     let (level, _, why) = assess(waffle, &Grounding::default(), &cfg);
     assert_ne!(level, Confidence::Fine, "three hedges is not confidence");
-    assert!(phrase(waffle, level, &why).len() > waffle.len(), "it says so");
+    assert!(
+        phrase(waffle, level, &why).len() > waffle.len(),
+        "it says so"
+    );
 }
 
 #[test]
@@ -248,8 +289,14 @@ fn a_failed_route_leads_to_another_one_rather_than_a_failure_report() {
     // Reporting a failure is what a program does. Trying the next route is
     // what an assistant does.
     use atlas::route::{known_routes, needs_internet, Kind};
-    let extract: Vec<_> = known_routes().into_iter().filter(|r| r.for_what == Kind::Extract).collect();
-    assert!(extract.len() > 1, "there has to be another way for this to mean anything");
+    let extract: Vec<_> = known_routes()
+        .into_iter()
+        .filter(|r| r.for_what == Kind::Extract)
+        .collect();
+    assert!(
+        extract.len() > 1,
+        "there has to be another way for this to mean anything"
+    );
 
     // And at least one of them works with the network unplugged.
     assert!(extract.iter().any(|r| !needs_internet(r)));
@@ -270,5 +317,8 @@ fn the_trading_rule_that_leads_says_why_it_applies_to_you() {
 fn a_draft_that_says_nothing_is_told_so_and_one_that_does_is_left_alone() {
     use atlas::stance::{assess, brief, Kind};
     let empty = "There are many perspectives on this and it depends on your situation.";
-    assert!(brief(&assess(empty, Kind::Case), Kind::Case).is_some(), "should have something to say");
+    assert!(
+        brief(&assess(empty, Kind::Case), Kind::Case).is_some(),
+        "should have something to say"
+    );
 }

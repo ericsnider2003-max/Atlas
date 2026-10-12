@@ -33,11 +33,21 @@ fn network_refs(html: &str) -> Vec<String> {
             continue;
         }
         // Grab the URL up to the first quote, space or bracket, for the message.
-        let end = rest.find(['"', '\'', ' ', ')', '>', '<']).unwrap_or(rest.len().min(60));
+        let end = rest
+            .find(['"', '\'', ' ', ')', '>', '<'])
+            .unwrap_or(rest.len().min(60));
         hits.push(rest[..end].to_string());
     }
     // The other ways a page pulls something in, none of which the hub uses.
-    for needle in ["cdn", "unpkg", "jsdelivr", "googleapis", "gstatic", "@import", "//fonts."] {
+    for needle in [
+        "cdn",
+        "unpkg",
+        "jsdelivr",
+        "googleapis",
+        "gstatic",
+        "@import",
+        "//fonts.",
+    ] {
         if html.contains(needle) {
             hits.push(format!("uses '{needle}'"));
         }
@@ -47,9 +57,18 @@ fn network_refs(html: &str) -> Vec<String> {
 
 fn every_page() -> Vec<(&'static str, String)> {
     let mut out = vec![
-        ("dashboard", hub::dashboard_page(&Layout::default(), &[], false)),
-        ("dashboard-arranging", hub::dashboard_page(&Layout::default(), &[], true)),
-        ("shell", hub::shell_at(Some(Page::Settings), "Settings", "<p>body</p>")),
+        (
+            "dashboard",
+            hub::dashboard_page(&Layout::default(), &[], false),
+        ),
+        (
+            "dashboard-arranging",
+            hub::dashboard_page(&Layout::default(), &[], true),
+        ),
+        (
+            "shell",
+            hub::shell_at(Some(Page::Settings), "Settings", "<p>body</p>"),
+        ),
     ];
     // The shell is what carries the fonts, styles and scripts, so a page
     // rendered through it is the real test. One is enough to cover the frame,
@@ -77,8 +96,14 @@ fn the_fonts_are_the_ones_already_on_the_machine() {
     // invisible or wrong until the font arrives, and it never arrives. The hub
     // asks only for the system stack.
     let html = hub::shell("Atlas", "<p>x</p>");
-    assert!(html.contains("system-ui"), "the system font stack should be named");
-    assert!(!html.contains("font-face"), "no bundled or fetched font faces");
+    assert!(
+        html.contains("system-ui"),
+        "the system font stack should be named"
+    );
+    assert!(
+        !html.contains("font-face"),
+        "no bundled or fetched font faces"
+    );
     assert!(!html.contains("fonts.google"), "no Google Fonts");
 }
 
@@ -88,8 +113,17 @@ fn light_dark_and_contrast_follow_the_system_with_no_script() {
     // stored round-trip, no network. The hooks for a stored override are in the
     // CSS, applied server-side, so the manual switch stays script-free too.
     let html = hub::shell_at(Some(Page::Dashboard), "Dashboard", "<p>x</p>");
-    assert!(!html.to_lowercase().contains("<script"), "appearance needs no script");
-    assert!(html.contains("prefers-color-scheme"), "it follows the system light/dark");
-    assert!(html.contains("prefers-contrast"), "and the system's contrast preference");
+    assert!(
+        !html.to_lowercase().contains("<script"),
+        "appearance needs no script"
+    );
+    assert!(
+        html.contains("prefers-color-scheme"),
+        "it follows the system light/dark"
+    );
+    assert!(
+        html.contains("prefers-contrast"),
+        "and the system's contrast preference"
+    );
     assert!(network_refs(&html).is_empty(), "and pulls nothing in");
 }

@@ -106,7 +106,10 @@ fn the_shipped_voice_is_a_file_the_installer_fetches() {
     let cfg = shipped();
     let tools = cfg.tools.as_ref().expect("tools.yaml");
     let id = &tools.voice_settings.voice;
-    assert!(!id.is_empty(), "no voice is chosen, so speech has nothing to load");
+    assert!(
+        !id.is_empty(),
+        "no voice is chosen, so speech has nothing to load"
+    );
 
     // `voice_file_for` applies the engine's own extension — .onnx for piper,
     // .pt for kokoro, .wav for chatterbox. Getting that pairing wrong is the
@@ -115,11 +118,23 @@ fn the_shipped_voice_is_a_file_the_installer_fetches() {
     // which setup fetches, and piper's default voice -- what speaks until
     // Kokoro is here -- must be fetched too.
     if tools.tts_engine.engine == atlas::tts::Engine::Kokoro {
-        assert!(atlas::kokoro::speaker_id(id).is_some(), "{id:?} isn't one of Kokoro's voices");
-        let pieces: Vec<String> = atlas::getpieces::setup_pieces().iter().map(|p| p.key_path().to_string()).collect();
-        assert!(pieces.iter().any(|k| k.contains("kokoro")), "setup doesn't fetch Kokoro: {pieces:?}");
+        assert!(
+            atlas::kokoro::speaker_id(id).is_some(),
+            "{id:?} isn't one of Kokoro's voices"
+        );
+        let pieces: Vec<String> = atlas::getpieces::setup_pieces()
+            .iter()
+            .map(|p| p.key_path().to_string())
+            .collect();
+        assert!(
+            pieces.iter().any(|k| k.contains("kokoro")),
+            "setup doesn't fetch Kokoro: {pieces:?}"
+        );
         let fallback = atlas::tts::VoiceSettings::default().voice;
-        assert!(what_setup_downloads().contains(fallback.as_str()), "piper's voice {fallback:?} isn't fetched");
+        assert!(
+            what_setup_downloads().contains(fallback.as_str()),
+            "piper's voice {fallback:?} isn't fetched"
+        );
         return;
     }
     let file = tools.tts_engine.voice_file_for(id);
@@ -184,7 +199,11 @@ fn every_engine_can_still_be_chosen_and_says_what_it_needs() {
             exe: exe.into(),
             voices_dir: "models".into(),
         };
-        assert!(cfg.is_consistent(), "{} no longer accepts its own executable", engine.name());
+        assert!(
+            cfg.is_consistent(),
+            "{} no longer accepts its own executable",
+            engine.name()
+        );
         assert!(
             cfg.voice_file_for("some-voice").ends_with(ext),
             "{} stopped asking for .{ext} voice files",

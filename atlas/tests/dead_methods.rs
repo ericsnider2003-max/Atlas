@@ -72,9 +72,8 @@ const TEST_ONLY_METHODS: &[&str] = &[
     // uncalled, not newly dead: they are the `delegate` brain's half of the
     // night, and that brain drives another application on your behalf. It is
     // a decision, not a default, and it is named in OUTSTANDING_TASKS.
-
     "asking::query",
-        // `attention::halt` was here until 17 Sep. It is now called from
+    // `attention::halt` was here until 17 Sep. It is now called from
     // `daemon.rs`'s `hear` match, on `Heard::Panic`.
     //
     // Worth recording why it sat here: `firstrun.rs` ends setup by telling
@@ -211,10 +210,10 @@ const TEST_ONLY_METHODS: &[&str] = &[
     "live::closed",
     "live::is_forming",
     "live::settled_bars",
-                    // mend::atlas_can_fix came off 22 Sep 2026 by bare-name collision, not
-                    // by being wired: cloudsync::atlas_can_fix now has a caller (setup_guidance)
-                    // and the reachability scan matches the bare name `atlas_can_fix(` in mend too.
-                    // mend::atlas_can_fix is still reached by nothing in production.
+    // mend::atlas_can_fix came off 22 Sep 2026 by bare-name collision, not
+    // by being wired: cloudsync::atlas_can_fix now has a caller (setup_guidance)
+    // and the reachability scan matches the bare name `atlas_can_fix(` in mend too.
+    // mend::atlas_can_fix is still reached by nothing in production.
     "mesh::free",
     // mock::clipboard_now and mock::set_clipboard are test scaffolding for the
     // mock's real in-memory clipboard: seed what was "copied" and read back what
@@ -330,7 +329,6 @@ const TEST_ONLY_METHODS: &[&str] = &[
     // thread::asked_before came off on 21 Sep: run_command now calls it after
     // appending the turn, so a question asked again gets a "you asked this a
     // little earlier" lead-in instead of the reply replayed verbatim.
-
     "tier::slow",
     // time::say_date came off on 20 Sep: calendar::Event::say_when calls it to
     // print an event's date, so it has a real caller now.
@@ -464,7 +462,9 @@ const ORPHAN_METHODS: &[&str] = &[
 
 fn read_tree(dir: &str) -> Vec<(String, String)> {
     fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
-        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
         let mut paths: Vec<_> = entries.flatten().map(|e| e.path()).collect();
         paths.sort();
         for path in paths {
@@ -475,7 +475,11 @@ fn read_tree(dir: &str) -> Vec<(String, String)> {
             if path.extension().and_then(|e| e.to_str()) != Some("rs") {
                 continue;
             }
-            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
             if let Ok(text) = std::fs::read_to_string(&path) {
                 // A child of a split module (`src/daemon/late.rs` beside
                 // `src/daemon.rs`) is part of that module: its methods keep the
@@ -556,7 +560,12 @@ fn unwired_modules() -> BTreeSet<String> {
     std::fs::read_to_string("tests/wiring.rs")
         .expect("tests/wiring.rs")
         .lines()
-        .filter_map(|l| l.trim().strip_prefix('"').and_then(|r| r.split('"').next()).map(String::from))
+        .filter_map(|l| {
+            l.trim()
+                .strip_prefix('"')
+                .and_then(|r| r.split('"').next())
+                .map(String::from)
+        })
         .collect()
 }
 
@@ -566,10 +575,14 @@ struct Found {
 }
 
 fn current() -> Found {
-    let src: Vec<(String, String)> =
-        read_tree("src").into_iter().map(|(m, b)| (m, without_test_blocks(&b))).collect();
-    let calls_by_module: Vec<(String, HashSet<String>)> =
-        src.iter().map(|(m, b)| (m.clone(), called_names(b))).collect();
+    let src: Vec<(String, String)> = read_tree("src")
+        .into_iter()
+        .map(|(m, b)| (m, without_test_blocks(&b)))
+        .collect();
+    let calls_by_module: Vec<(String, HashSet<String>)> = src
+        .iter()
+        .map(|(m, b)| (m.clone(), called_names(b)))
+        .collect();
 
     let test_text: Vec<String> = std::fs::read_dir("tests")
         .into_iter()
@@ -579,11 +592,13 @@ fn current() -> Found {
         .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("rs"))
         .filter_map(|p| std::fs::read_to_string(p).ok())
         .collect();
-    let test_calls: HashSet<String> =
-        test_text.iter().flat_map(|t| called_names(t)).collect();
+    let test_calls: HashSet<String> = test_text.iter().flat_map(|t| called_names(t)).collect();
 
     let unwired = unwired_modules();
-    let mut found = Found { test_only: BTreeSet::new(), orphans: BTreeSet::new() };
+    let mut found = Found {
+        test_only: BTreeSet::new(),
+        orphans: BTreeSet::new(),
+    };
 
     for (module, body) in &src {
         if unwired.contains(module) || module == "main" || module == "lib" {
@@ -597,13 +612,20 @@ fn current() -> Found {
                 continue;
             }
             let trimmed = line.trim_start();
-            let Some(rest) = trimmed.strip_prefix("pub fn ") else { continue };
-            let name: String =
-                rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            let Some(rest) = trimmed.strip_prefix("pub fn ") else {
+                continue;
+            };
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
             if name.is_empty() || name.ends_with("_for_test") {
                 continue;
             }
-            if calls_by_module.iter().any(|(m, c)| m != module && c.contains(&name)) {
+            if calls_by_module
+                .iter()
+                .any(|(m, c)| m != module && c.contains(&name))
+            {
                 continue;
             }
             let own = own_calls.contains(&name);
@@ -643,7 +665,11 @@ fn no_method_gains_or_loses_dead_status_silently() {
         "these methods are built, tested, and called by nothing:\n  {}\n\nWire one in the same \
          change, or add it to TEST_ONLY_METHODS with the reason. The list may grow; it may not \
          grow silently.",
-        added.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        added
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 
     let cleared: Vec<&String> = known.difference(&found.test_only).collect();
@@ -651,7 +677,11 @@ fn no_method_gains_or_loses_dead_status_silently() {
         cleared.is_empty(),
         "these are listed as having no caller and now have one:\n  {}\n\nGood -- delete those \
          lines so the list keeps meaning something.",
-        cleared.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        cleared
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
 
@@ -666,20 +696,31 @@ fn no_orphan_method_appears_or_disappears_silently() {
         "these methods are public, called by nothing, and tested by nothing -- so nothing here \
          has ever shown they work:\n  {}\n\nWire one, delete it, or add it to ORPHAN_METHODS \
          with the reason.",
-        added.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        added
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 
     let cleared: Vec<&String> = known.difference(&found.orphans).collect();
     assert!(
         cleared.is_empty(),
         "these orphans now have a caller or a test:\n  {}\n\nGood -- delete those lines.",
-        cleared.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        cleared
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
 
 #[test]
 fn both_lists_are_sorted_and_free_of_duplicates() {
-    for (list, name) in [(TEST_ONLY_METHODS, "TEST_ONLY_METHODS"), (ORPHAN_METHODS, "ORPHAN_METHODS")] {
+    for (list, name) in [
+        (TEST_ONLY_METHODS, "TEST_ONLY_METHODS"),
+        (ORPHAN_METHODS, "ORPHAN_METHODS"),
+    ] {
         let mut sorted = list.to_vec();
         sorted.sort_unstable();
         assert_eq!(list, &sorted[..], "{name} is not sorted");

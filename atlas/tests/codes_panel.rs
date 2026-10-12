@@ -4,11 +4,21 @@ use atlas::codes::{
 };
 
 fn cfg() -> CodesConfig {
-    CodesConfig { enabled: true, ..Default::default() }
+    CodesConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 fn set(site: &str, issued: u32, used: u32, in_hand: bool) -> Set {
-    Set { site: site.into(), issued, used, at: 0, kept_where: None, in_hand }
+    Set {
+        site: site.into(),
+        issued,
+        used,
+        at: 0,
+        kept_where: None,
+        in_hand,
+    }
 }
 
 // ================= codes are built for exactly this =================
@@ -29,13 +39,22 @@ fn atlas_knows_what_each_service_calls_them_and_where_they_hide() {
 #[test]
 fn the_services_that_only_give_one_code_are_flagged_as_such() {
     // Ten is a deployment. One is a single login.
-    assert!(where_to_get("x.com").unwrap().2.contains("single code rather than ten"));
-    assert!(where_to_get("Microsoft").unwrap().2.contains("one long code, not a list"));
+    assert!(where_to_get("x.com")
+        .unwrap()
+        .2
+        .contains("single code rather than ten"));
+    assert!(where_to_get("Microsoft")
+        .unwrap()
+        .2
+        .contains("one long code, not a list"));
 }
 
 #[test]
 fn apples_permanent_lockout_warning_is_passed_on() {
-    assert!(where_to_get("Apple").unwrap().2.contains("lock you out permanently"));
+    assert!(where_to_get("Apple")
+        .unwrap()
+        .2
+        .contains("lock you out permanently"));
 }
 
 #[test]
@@ -65,8 +84,14 @@ fn generated_but_not_printed_is_treated_as_not_done() {
     // Codes on a screen you won't have with you are not codes.
     let sets = vec![set("Gmail", 10, 0, false)];
     let g = gaps(&sets, &["Gmail".into()], &cfg());
-    assert!(g.iter().any(|x| x.what.contains("haven't said they're printed")));
-    assert_eq!(logins_available(&sets), 0, "not counted until they're on you");
+    assert!(g
+        .iter()
+        .any(|x| x.what.contains("haven't said they're printed")));
+    assert_eq!(
+        logins_available(&sets),
+        0,
+        "not counted until they're on you"
+    );
 }
 
 #[test]
@@ -113,7 +138,11 @@ fn atlas_never_stores_the_codes_themselves() {
         .lines()
         .map(str::trim)
         .filter_map(|l| l.strip_prefix("pub "))
-        .map(|f| f.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect())
+        .map(|f| {
+            f.chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect()
+        })
         .collect();
     assert_eq!(
         fields,
@@ -125,7 +154,10 @@ fn atlas_never_stores_the_codes_themselves() {
     // And an old config naming the removed key still loads.
     let parsed: CodesConfig =
         serde_yaml::from_str("enabled: true\nstores_the_codes: true\n").unwrap();
-    assert!(parsed.enabled, "an unknown key must not stop the section parsing");
+    assert!(
+        parsed.enabled,
+        "an unknown key must not stop the section parsing"
+    );
 }
 
 #[test]

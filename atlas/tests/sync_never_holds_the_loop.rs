@@ -42,7 +42,14 @@ fn asleep() -> (u16, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
 #[test]
 fn a_device_that_never_answers_doesnt_stop_atlas() {
     let (port, dialled) = asleep();
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     let mut c = Config::load(Path::new("config")).unwrap();
     let tools = c.tools.as_mut().unwrap();
     tools.sync.enabled = true;
@@ -55,19 +62,32 @@ fn a_device_that_never_answers_doesnt_stop_atlas() {
         sync_port: Some(port),
         ..Default::default()
     }];
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("asleep")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("asleep")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let t = 1_000 + atlas::daemon::AUTO_SYNC_EVERY_SECS;
     let started = Instant::now();
     d.tick(t);
     let took = started.elapsed();
-    crate::common::assert_prompt(took, Duration::from_secs(2), "the automatic sync held the tick waiting on a device");
+    crate::common::assert_prompt(
+        took,
+        Duration::from_secs(2),
+        "the automatic sync held the tick waiting on a device",
+    );
 
     // The send was still made, off the loop.
     let until = Instant::now() + crate::common::allowed(Duration::from_secs(5));
     while dialled.load(std::sync::atomic::Ordering::SeqCst) == 0 && Instant::now() < until {
         std::thread::sleep(Duration::from_millis(20));
     }
-    assert!(dialled.load(std::sync::atomic::Ordering::SeqCst) >= 1, "the named device was never dialled");
+    assert!(
+        dialled.load(std::sync::atomic::Ordering::SeqCst) >= 1,
+        "the named device was never dialled"
+    );
 
     // Later passes take the (missing) answer without waiting either.
     let started = Instant::now();
@@ -80,7 +100,9 @@ fn saying_sync_yourself_still_waits_for_the_answer() {
     // You asked, so the answer is in the reply -- only the automatic pass
     // sends off the loop.
     let src = std::fs::read_to_string("src/daemon/tick.rs").unwrap();
-    let auto = &src[src.find("self.last_auto_sync = t;").expect("the automatic pass")..];
+    let auto = &src[src
+        .find("self.last_auto_sync = t;")
+        .expect("the automatic pass")..];
     let auto = &auto[..auto.find("take_dial_answers").unwrap()];
     assert!(auto.contains("self.dial_later = true;") && auto.contains("self.dial_later = false;"));
     assert!(auto.contains("dial_off_the_loop("));

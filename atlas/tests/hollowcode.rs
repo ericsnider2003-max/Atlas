@@ -114,19 +114,15 @@ fn a_return_in_the_middle_of_real_work_is_left_alone() {
 
 #[test]
 fn code_that_can_never_run_is_found() {
-    assert!(shapes("if false:\n    launch()\n", Tongue::Python)
-        .contains(&Shape::NeverRuns));
-    assert!(shapes("if (false) { launch(); }\n", Tongue::JavaScript)
-        .contains(&Shape::NeverRuns));
+    assert!(shapes("if false:\n    launch()\n", Tongue::Python).contains(&Shape::NeverRuns));
+    assert!(shapes("if (false) { launch(); }\n", Tongue::JavaScript).contains(&Shape::NeverRuns));
 }
 
 #[test]
 fn a_todo_in_a_comment_is_found_and_one_in_a_string_is_not() {
-    assert!(shapes("# TODO: wire this up\nx = 1\n", Tongue::Python)
-        .contains(&Shape::SaysSoItself));
+    assert!(shapes("# TODO: wire this up\nx = 1\n", Tongue::Python).contains(&Shape::SaysSoItself));
     assert!(
-        !shapes("print(\"TODO list is empty\")\n", Tongue::Python)
-            .contains(&Shape::SaysSoItself),
+        !shapes("print(\"TODO list is empty\")\n", Tongue::Python).contains(&Shape::SaysSoItself),
         "the word TODO in something a program shows a user is that program \
          working, not that program unfinished"
     );
@@ -134,10 +130,8 @@ fn a_todo_in_a_comment_is_found_and_one_in_a_string_is_not() {
 
 #[test]
 fn comment_markers_differ_by_language() {
-    assert!(shapes("-- TODO: index this\nSELECT 1;\n", Tongue::Sql)
-        .contains(&Shape::SaysSoItself));
-    assert!(shapes("// TODO: index this\nint x = 1;\n", Tongue::C)
-        .contains(&Shape::SaysSoItself));
+    assert!(shapes("-- TODO: index this\nSELECT 1;\n", Tongue::Sql).contains(&Shape::SaysSoItself));
+    assert!(shapes("// TODO: index this\nint x = 1;\n", Tongue::C).contains(&Shape::SaysSoItself));
 }
 
 #[test]
@@ -153,7 +147,11 @@ pub fn total(items: &[u32]) -> u32 {
     sum
 }
 ";
-    assert!(read(code, Tongue::Rust).is_empty(), "{:?}", read(code, Tongue::Rust));
+    assert!(
+        read(code, Tongue::Rust).is_empty(),
+        "{:?}",
+        read(code, Tongue::Rust)
+    );
 }
 
 #[test]
@@ -259,7 +257,11 @@ fn it_names_the_parts_that_would_not_come_across() {
     );
     // Each one is named because it was actually spotted in the code, not
     // recited as a general fact about porting.
-    for (present, absent) in [("libraries", "import"), ("asynchronous", "async"), ("classes", "class")] {
+    for (present, absent) in [
+        ("libraries", "import"),
+        ("asynchronous", "async"),
+        ("classes", "class"),
+    ] {
         assert!(said.contains(present), "{present} missing: {said}");
         let without = porting_notes(Tongue::Python, "x = 1\n");
         assert!(

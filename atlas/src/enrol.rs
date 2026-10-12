@@ -85,8 +85,14 @@ fn mentions(hay: &str, needle: &str) -> bool {
         return hay.contains(needle);
     }
     hay.match_indices(needle).any(|(i, _)| {
-        let before = hay[..i].chars().next_back().is_none_or(|c| !c.is_alphanumeric());
-        let after = hay[i + needle.len()..].chars().next().is_none_or(|c| !c.is_alphanumeric());
+        let before = hay[..i]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_alphanumeric());
+        let after = hay[i + needle.len()..]
+            .chars()
+            .next()
+            .is_none_or(|c| !c.is_alphanumeric());
         before && after
     })
 }
@@ -121,7 +127,9 @@ pub fn domain_from(raw: &str) -> Option<String> {
         if w.len() < 4 || !w.contains('.') {
             continue;
         }
-        let Some((_, tld)) = w.rsplit_once('.') else { continue };
+        let Some((_, tld)) = w.rsplit_once('.') else {
+            continue;
+        };
         if tld.len() < 2 || !tld.chars().all(|c| c.is_ascii_alphabetic()) {
             continue;
         }
@@ -203,70 +211,215 @@ pub enum Verdict {
 /// signup you finish by hand. A false carry costs you a card on file.
 const PAYMENT: &[&str] = &[
     // The card itself
-    "card number", "credit card", "debit card", "cardholder", "name on card",
-    "card details", "cvv", "cvc", "cvn", "security code", "expiry", "expiration",
-    "exp date", "mm/yy", "mm / yy", "postal code for card", "zip for card",
+    "card number",
+    "credit card",
+    "debit card",
+    "cardholder",
+    "name on card",
+    "card details",
+    "cvv",
+    "cvc",
+    "cvn",
+    "security code",
+    "expiry",
+    "expiration",
+    "exp date",
+    "mm/yy",
+    "mm / yy",
+    "postal code for card",
+    "zip for card",
     // Bank rails
-    "sort code", "account number", "routing number", "iban", "bic", "swift",
-    "ach", "direct debit", "bank transfer", "wire transfer", "e-check", "echeck",
+    "sort code",
+    "account number",
+    "routing number",
+    "iban",
+    "bic",
+    "swift",
+    "ach",
+    "direct debit",
+    "bank transfer",
+    "wire transfer",
+    "e-check",
+    "echeck",
     // Wallets and processors
-    "paypal", "venmo", "cash app", "apple pay", "google pay", "shop pay",
-    "klarna", "afterpay", "affirm", "stripe", "braintree", "adyen", "square",
-    "crypto payment", "pay with",
+    "paypal",
+    "venmo",
+    "cash app",
+    "apple pay",
+    "google pay",
+    "shop pay",
+    "klarna",
+    "afterpay",
+    "affirm",
+    "stripe",
+    "braintree",
+    "adyen",
+    "square",
+    "crypto payment",
+    "pay with",
     // Billing surfaces
-    "billing address", "billing details", "billing information", "billing cycle",
-    "payment method", "payment details", "add a card", "add payment",
-    "add a payment method", "save card", "card on file",
+    "billing address",
+    "billing details",
+    "billing information",
+    "billing cycle",
+    "payment method",
+    "payment details",
+    "add a card",
+    "add payment",
+    "add a payment method",
+    "save card",
+    "card on file",
     // Plans and trials
-    "start free trial", "free trial", "start trial", "trial ends",
-    "subscribe", "subscription", "choose a plan", "select a plan", "pick a plan",
-    "upgrade to", "go premium", "go pro", "paid plan", "billed annually",
-    "billed monthly", "per month", "per year", "/mo", "/yr", "a month", "a year",
+    "start free trial",
+    "free trial",
+    "start trial",
+    "trial ends",
+    "subscribe",
+    "subscription",
+    "choose a plan",
+    "select a plan",
+    "pick a plan",
+    "upgrade to",
+    "go premium",
+    "go pro",
+    "paid plan",
+    "billed annually",
+    "billed monthly",
+    "per month",
+    "per year",
+    "/mo",
+    "/yr",
+    "a month",
+    "a year",
     // Checkout language
-    "checkout", "place order", "complete purchase", "confirm and pay",
-    "pay now", "total due", "amount due", "order summary", "promo code",
-    "coupon code", "discount code",
+    "checkout",
+    "place order",
+    "complete purchase",
+    "confirm and pay",
+    "pay now",
+    "total due",
+    "amount due",
+    "order summary",
+    "promo code",
+    "coupon code",
+    "discount code",
 ];
 
 /// A person is being asked for. Detected so Atlas can step aside, never so it
 /// can respond.
 const HUMAN_CHECK: &[&str] = &[
     // Plain wording
-    "are you a robot", "are you human", "i'm not a robot", "i am not a robot",
-    "not a robot", "im not a robot",
-    "verify you are human", "verify you're human", "verify youre human",
-    "verify that you are human", "prove you are human", "confirm you are human",
-    "confirm you're human", "human verification", "humanity check",
+    "are you a robot",
+    "are you human",
+    "i'm not a robot",
+    "i am not a robot",
+    "not a robot",
+    "im not a robot",
+    "verify you are human",
+    "verify you're human",
+    "verify youre human",
+    "verify that you are human",
+    "prove you are human",
+    "confirm you are human",
+    "confirm you're human",
+    "human verification",
+    "humanity check",
     // Product names and generic labels
-    "captcha", "recaptcha", "hcaptcha", "turnstile", "funcaptcha", "arkose",
-    "challenge", "security check", "quick check", "one more step",
-    "checking your browser", "verifying you are human", "additional verification",
+    "captcha",
+    "recaptcha",
+    "hcaptcha",
+    "turnstile",
+    "funcaptcha",
+    "arkose",
+    "challenge",
+    "security check",
+    "quick check",
+    "one more step",
+    "checking your browser",
+    "verifying you are human",
+    "additional verification",
     // Puzzle instructions
-    "puzzle", "select all images", "select each image", "click each image",
-    "pick the", "drag the slider", "slide to verify", "press and hold",
-    "hold to confirm", "rotate the image", "type the characters",
-    "enter the characters", "what do you see", "solve the",
+    "puzzle",
+    "select all images",
+    "select each image",
+    "click each image",
+    "pick the",
+    "drag the slider",
+    "slide to verify",
+    "press and hold",
+    "hold to confirm",
+    "rotate the image",
+    "type the characters",
+    "enter the characters",
+    "what do you see",
+    "solve the",
 ];
 
 const IDENTITY: &[&str] = &[
-    "passport", "driver's licence", "drivers licence", "driver's license",
-    "drivers license", "national insurance", "social security", "ssn",
-    "sin number", "government id", "government-issued", "photo id",
-    "id document", "identity document", "identity verification", "verify your identity",
-    "date of birth", "birthdate", "selfie", "take a photo of yourself",
-    "liveness check", "proof of address", "utility bill", "tax id", "tin",
-    "ein", "kyc", "know your customer", "beneficial owner", "employment status",
-    "annual income", "net worth", "source of funds", "accredited investor",
+    "passport",
+    "driver's licence",
+    "drivers licence",
+    "driver's license",
+    "drivers license",
+    "national insurance",
+    "social security",
+    "ssn",
+    "sin number",
+    "government id",
+    "government-issued",
+    "photo id",
+    "id document",
+    "identity document",
+    "identity verification",
+    "verify your identity",
+    "date of birth",
+    "birthdate",
+    "selfie",
+    "take a photo of yourself",
+    "liveness check",
+    "proof of address",
+    "utility bill",
+    "tax id",
+    "tin",
+    "ein",
+    "kyc",
+    "know your customer",
+    "beneficial owner",
+    "employment status",
+    "annual income",
+    "net worth",
+    "source of funds",
+    "accredited investor",
 ];
 
 const CODE_ELSEWHERE: &[&str] = &[
-    "check your email", "check your inbox", "sent you a code", "we sent a code",
-    "code we sent", "verification code", "confirmation code", "one-time code",
-    "one time passcode", "otp", "six-digit code", "6-digit code",
-    "confirm your email", "verify your email", "activation link",
-    "confirmation link", "click the link we sent",
-    "text message", "sent a text", "sms", "we called", "phone number to verify",
-    "authenticator", "authenticator app", "two-factor", "2fa", "scan the qr",
+    "check your email",
+    "check your inbox",
+    "sent you a code",
+    "we sent a code",
+    "code we sent",
+    "verification code",
+    "confirmation code",
+    "one-time code",
+    "one time passcode",
+    "otp",
+    "six-digit code",
+    "6-digit code",
+    "confirm your email",
+    "verify your email",
+    "activation link",
+    "confirmation link",
+    "click the link we sent",
+    "text message",
+    "sent a text",
+    "sms",
+    "we called",
+    "phone number to verify",
+    "authenticator",
+    "authenticator app",
+    "two-factor",
+    "2fa",
+    "scan the qr",
 ];
 
 /// Look at a page and say whether Atlas may still be the one acting.
@@ -484,23 +637,66 @@ pub struct Enrolment {
 pub const SIGNUP_ATTEMPTS: &str = "signup_attempts";
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SignupState { Pending, Unconfirmed, Confirmed, OwnerConfirmed, OwnerAbsent, NotSubmitted, Blocked, #[serde(other)] Unknown }
+pub enum SignupState {
+    Pending,
+    Unconfirmed,
+    Confirmed,
+    OwnerConfirmed,
+    OwnerAbsent,
+    NotSubmitted,
+    Blocked,
+    #[serde(other)]
+    Unknown,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SignupAttempt { pub domain: String, pub username: String, pub vault_entry: String, pub started_at: u64, pub state: SignupState, pub detail: String }
+pub struct SignupAttempt {
+    pub domain: String,
+    pub username: String,
+    pub vault_entry: String,
+    pub started_at: u64,
+    pub state: SignupState,
+    pub detail: String,
+}
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SignupAttempts { pub all: Vec<SignupAttempt> }
+pub struct SignupAttempts {
+    pub all: Vec<SignupAttempt>,
+}
 impl SignupAttempts {
-    pub fn find(&self, domain: &str, username: &str) -> Option<&SignupAttempt> { self.all.iter().find(|a| a.domain.eq_ignore_ascii_case(domain) && a.username.eq_ignore_ascii_case(username)) }
-    pub fn may_start(&self, domain: &str, username: &str) -> bool { self.find(domain, username).is_none_or(|a| matches!(a.state, SignupState::OwnerAbsent | SignupState::NotSubmitted)) }
+    pub fn find(&self, domain: &str, username: &str) -> Option<&SignupAttempt> {
+        self.all.iter().find(|a| {
+            a.domain.eq_ignore_ascii_case(domain) && a.username.eq_ignore_ascii_case(username)
+        })
+    }
+    pub fn may_start(&self, domain: &str, username: &str) -> bool {
+        self.find(domain, username).is_none_or(|a| {
+            matches!(
+                a.state,
+                SignupState::OwnerAbsent | SignupState::NotSubmitted
+            )
+        })
+    }
     pub fn begin(&mut self, enrolment: &Enrolment) -> bool {
-        if !self.may_start(&enrolment.domain, &enrolment.username) || self.all.len() >= 1000 { return false; }
-        self.all.retain(|a| !a.domain.eq_ignore_ascii_case(&enrolment.domain) || !a.username.eq_ignore_ascii_case(&enrolment.username));
+        if !self.may_start(&enrolment.domain, &enrolment.username) || self.all.len() >= 1000 {
+            return false;
+        }
+        self.all.retain(|a| {
+            !a.domain.eq_ignore_ascii_case(&enrolment.domain)
+                || !a.username.eq_ignore_ascii_case(&enrolment.username)
+        });
         self.all.push(SignupAttempt { domain: enrolment.domain.clone(), username: enrolment.username.clone(), vault_entry: enrolment.vault_entry.clone(), started_at: enrolment.started_at, state: SignupState::Pending, detail: "Signup worker pending; account creation is not confirmed. Do not repeat before checking.".into() });
         true
     }
     pub fn settle(&mut self, enrolment: &Enrolment, state: SignupState, detail: &str) -> bool {
-        let Some(attempt) = self.all.iter_mut().find(|a| a.domain.eq_ignore_ascii_case(&enrolment.domain) && a.username.eq_ignore_ascii_case(&enrolment.username) && a.started_at == enrolment.started_at) else { return false; };
-        attempt.state = state; attempt.detail = detail.into(); true
+        let Some(attempt) = self.all.iter_mut().find(|a| {
+            a.domain.eq_ignore_ascii_case(&enrolment.domain)
+                && a.username.eq_ignore_ascii_case(&enrolment.username)
+                && a.started_at == enrolment.started_at
+        }) else {
+            return false;
+        };
+        attempt.state = state;
+        attempt.detail = detail.into();
+        true
     }
 }
 
@@ -515,10 +711,16 @@ mod signup_attempt_fences {
         let bytes = serde_json::to_vec(&attempts).unwrap();
         let mut restored: SignupAttempts = serde_json::from_slice(&bytes).unwrap();
         assert!(!restored.may_start("EXAMPLE.TEST", "OWNER"));
-        assert!(!restored.settle(&Enrolment::new("example.test", "owner", 13), SignupState::OwnerAbsent, "stale receipt"));
+        assert!(!restored.settle(
+            &Enrolment::new("example.test", "owner", 13),
+            SignupState::OwnerAbsent,
+            "stale receipt"
+        ));
         assert!(restored.settle(&e, SignupState::OwnerAbsent, "Owner checked the service"));
         assert!(restored.may_start("example.test", "owner"));
-        let future = String::from_utf8(bytes).unwrap().replace("pending", "future_unknown_state");
+        let future = String::from_utf8(bytes)
+            .unwrap()
+            .replace("pending", "future_unknown_state");
         let unknown: SignupAttempts = serde_json::from_str(&future).unwrap();
         assert!(!unknown.may_start("example.test", "owner"));
     }
@@ -606,10 +808,7 @@ impl Enrolment {
                 self.phase = Phase::Filling;
                 Ok(())
             }
-            Phase::Abandoned(s) => Err(format!(
-                "that one stopped for good: {}",
-                s.spoken()
-            )),
+            Phase::Abandoned(s) => Err(format!("that one stopped for good: {}", s.spoken())),
             Phase::Done => Err("that one's finished".into()),
             _ => Err("nothing is waiting".into()),
         }

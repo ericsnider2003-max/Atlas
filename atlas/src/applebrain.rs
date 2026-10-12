@@ -60,7 +60,8 @@ pub mod code {
 
 /// The shell's function: request JSON in, answer JSON out (into `out`, at
 /// most `out_len` bytes, NUL-terminated), returning one of `code`.
-pub type AppleFn = unsafe extern "C" fn(req: *const c_char, out: *mut c_char, out_len: usize) -> i32;
+pub type AppleFn =
+    unsafe extern "C" fn(req: *const c_char, out: *mut c_char, out_len: usize) -> i32;
 
 static APPLE: Mutex<Option<AppleFn>> = Mutex::new(None);
 
@@ -79,7 +80,11 @@ pub unsafe extern "C" fn atlas_mobile_apple_model(f: Option<AppleFn>) {
 
 /// Is Apple's model there to ask?
 pub(crate) fn registered() -> bool {
-    APPLE.lock().or_else(crate::crash::unpoison).map(|g| g.is_some()).unwrap_or(false)
+    APPLE
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .map(|g| g.is_some())
+        .unwrap_or(false)
 }
 
 /// Why a request went to Atlas's own model rather than Apple's.
@@ -111,7 +116,12 @@ fn tokens_in(req: &ChatRequest) -> usize {
 
 /// The last thing said, which decides what kind of request this is.
 fn last_said(req: &ChatRequest) -> &str {
-    req.messages.iter().rev().find(|m| m.role == Role::User).map(|m| m.content.as_str()).unwrap_or("")
+    req.messages
+        .iter()
+        .rev()
+        .find(|m| m.role == Role::User)
+        .map(|m| m.content.as_str())
+        .unwrap_or("")
 }
 
 /// Should this request skip Apple's model? `None`: ask it first.
@@ -138,13 +148,33 @@ pub fn skip_apple(req: &ChatRequest, apple_here: bool) -> Option<Skip> {
 fn needs_world_knowledge(said: &str) -> bool {
     use crate::freshness::Shelf;
     let s = said.to_lowercase();
-    if matches!(crate::freshness::shelf_for(&s), Shelf::Volatile | Shelf::Quick) {
+    if matches!(
+        crate::freshness::shelf_for(&s),
+        Shelf::Volatile | Shelf::Quick
+    ) {
         return true;
     }
     const ASKS_ABOUT_THE_WORLD: &[&str] = &[
-        "who is ", "who was ", "who's the ", "when did ", "when was ", "what year", "how many people", "capital of",
-        "population of", "history of", "how tall is", "how far is", "what happened", "the news", "price of",
-        "how much does", "how much is", "worth it", "better than", "compare ",
+        "who is ",
+        "who was ",
+        "who's the ",
+        "when did ",
+        "when was ",
+        "what year",
+        "how many people",
+        "capital of",
+        "population of",
+        "history of",
+        "how tall is",
+        "how far is",
+        "what happened",
+        "the news",
+        "price of",
+        "how much does",
+        "how much is",
+        "worth it",
+        "better than",
+        "compare ",
     ];
     ASKS_ABOUT_THE_WORLD.iter().any(|w| s.contains(w))
 }
@@ -153,18 +183,37 @@ fn needs_world_knowledge(said: &str) -> bool {
 fn soft_refusal(text: &str) -> bool {
     let t = text.trim().to_lowercase().replace('\u{2019}', "'");
     const SAYS_NO: &[&str] = &[
-        "i can't help with", "i cannot help with", "i can't assist with", "i cannot assist with", "i'm not able to help",
-        "i am not able to help", "i'm unable to help", "i can't provide", "i cannot provide", "i'm sorry, but i can't",
-        "i'm sorry, but i cannot", "i can't do that", "i won't be able to", "as an ai", "i'm not able to provide",
+        "i can't help with",
+        "i cannot help with",
+        "i can't assist with",
+        "i cannot assist with",
+        "i'm not able to help",
+        "i am not able to help",
+        "i'm unable to help",
+        "i can't provide",
+        "i cannot provide",
+        "i'm sorry, but i can't",
+        "i'm sorry, but i cannot",
+        "i can't do that",
+        "i won't be able to",
+        "as an ai",
+        "i'm not able to provide",
     ];
-    SAYS_NO.iter().any(|p| t.starts_with(p) || t.contains(&format!(". {p}")) || t.contains(&format!("! {p}")))
+    SAYS_NO
+        .iter()
+        .any(|p| t.starts_with(p) || t.contains(&format!(". {p}")) || t.contains(&format!("! {p}")))
         || crate::backed::denies_an_ability(&t).is_some()
 }
 
 /// The request as the shell reads it: instructions (the system messages),
 /// the conversation, and the most to say.
 pub fn request_json(req: &ChatRequest) -> String {
-    let instructions: Vec<&str> = req.messages.iter().filter(|m| m.role == Role::System).map(|m| m.content.as_str()).collect();
+    let instructions: Vec<&str> = req
+        .messages
+        .iter()
+        .filter(|m| m.role == Role::System)
+        .map(|m| m.content.as_str())
+        .collect();
     let turns: Vec<serde_json::Value> = req
         .messages
         .iter()
@@ -193,20 +242,35 @@ pub fn read_apple_answer(code: i32, out: &str) -> Apple {
         code::REFUSED => Apple::Refused,
         code::TOO_LONG => Apple::TooLong,
         code::UNAVAILABLE => Apple::Unavailable,
-        _ => Apple::Failed(if out.is_empty() { "Apple's model failed".into() } else { out.to_string() }),
+        _ => Apple::Failed(if out.is_empty() {
+            "Apple's model failed".into()
+        } else {
+            out.to_string()
+        }),
     }
 }
 
 /// Ask Apple's model through the shell's function.
 fn ask_apple(req: &ChatRequest) -> Apple {
-    let Some(f) = APPLE.lock().or_else(crate::crash::unpoison).ok().and_then(|g| *g) else { return Apple::Unavailable };
-    let Ok(body) = CString::new(request_json(req)) else { return Apple::Failed("the request had a NUL in it".into()) };
+    let Some(f) = APPLE
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .ok()
+        .and_then(|g| *g)
+    else {
+        return Apple::Unavailable;
+    };
+    let Ok(body) = CString::new(request_json(req)) else {
+        return Apple::Failed("the request had a NUL in it".into());
+    };
     let mut buf = vec![0u8; ANSWER_BYTES];
     // SAFETY: `f` is the host's registered callback; `body` is a live NUL-terminated string and
     // `buf` a live writable buffer of `buf.len()` bytes, both outliving the call.
     let rc = unsafe { f(body.as_ptr(), buf.as_mut_ptr().cast(), buf.len()) };
     // Bounded by the buffer: a callback that filled it without a NUL reads as empty, not past the end.
-    let out = CStr::from_bytes_until_nul(&buf).map(|c| c.to_string_lossy().into_owned()).unwrap_or_default();
+    let out = CStr::from_bytes_until_nul(&buf)
+        .map(|c| c.to_string_lossy().into_owned())
+        .unwrap_or_default();
     read_apple_answer(rc, &out)
 }
 
@@ -220,7 +284,10 @@ pub struct AppleFirst {
 
 impl AppleFirst {
     pub fn new(own: std::sync::Arc<dyn Llm>) -> AppleFirst {
-        AppleFirst { own, last: Mutex::new(None) }
+        AppleFirst {
+            own,
+            last: Mutex::new(None),
+        }
     }
 
     fn answered_by(&self, who: &'static str) {
@@ -231,14 +298,21 @@ impl AppleFirst {
 
     /// Who answered the last request: "apple" or "atlas".
     pub fn last_answered_by_for_test(&self) -> Option<&'static str> {
-        self.last.lock().or_else(crate::crash::unpoison).ok().and_then(|g| *g)
+        self.last
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()
+            .and_then(|g| *g)
     }
 }
 
 impl Llm for AppleFirst {
     fn complete(&self, system: &str, user: &str) -> Result<String> {
         let req = ChatRequest {
-            messages: vec![crate::brain::Msg::system(system), crate::brain::Msg::user(user)],
+            messages: vec![
+                crate::brain::Msg::system(system),
+                crate::brain::Msg::user(user),
+            ],
             max_tokens: 512,
             ..Default::default()
         };
@@ -262,18 +336,24 @@ impl Llm for AppleFirst {
                 Apple::Answered(t) => {
                     self.answered_by("apple");
                     on_text(&t);
-                    return Ok(ChatReply { text: t, tool_calls: Vec::new() });
+                    return Ok(ChatReply {
+                        text: t,
+                        tool_calls: Vec::new(),
+                    });
                 }
                 // Refused, too long after all, gone, or failed: this one
                 // request goes to Atlas's own model -- said in the log, so
                 // how often Apple's model hands over can be seen.
-                other => crate::outln!("phone: Apple's model {}; Atlas's own model answers this one", match other {
-                    Apple::Refused => "refused".to_string(),
-                    Apple::TooLong => "found it too long".to_string(),
-                    Apple::Unavailable => "isn't available right now".to_string(),
-                    Apple::Failed(why) => format!("failed ({why})"),
-                    Apple::Answered(_) => unreachable!(),
-                }),
+                other => crate::outln!(
+                    "phone: Apple's model {}; Atlas's own model answers this one",
+                    match other {
+                        Apple::Refused => "refused".to_string(),
+                        Apple::TooLong => "found it too long".to_string(),
+                        Apple::Unavailable => "isn't available right now".to_string(),
+                        Apple::Failed(why) => format!("failed ({why})"),
+                        Apple::Answered(_) => unreachable!(),
+                    }
+                ),
             }
         }
         self.answered_by("atlas");
@@ -289,7 +369,12 @@ impl Llm for AppleFirst {
         self.own.complete_hard(system, user)
     }
 
-    fn complete_long(&self, system: &str, user: &str, max_tokens: u32) -> Result<crate::brain::LongReply> {
+    fn complete_long(
+        &self,
+        system: &str,
+        user: &str,
+        max_tokens: u32,
+    ) -> Result<crate::brain::LongReply> {
         self.own.complete_long(system, user, max_tokens)
     }
 }

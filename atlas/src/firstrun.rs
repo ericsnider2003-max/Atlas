@@ -80,9 +80,16 @@ pub enum Move {
     /// Say this; nothing is expected back.
     Say(String),
     /// Ask this and wait.
-    Ask { step: Step, question: String, examples: Vec<String> },
+    Ask {
+        step: Step,
+        question: String,
+        examples: Vec<String>,
+    },
     /// Go and find something out, then carry on.
-    Look { step: Step, what: String },
+    Look {
+        step: Step,
+        what: String,
+    },
     /// Play the voices so you can choose.
     Audition,
     Finished(String),
@@ -114,7 +121,11 @@ impl FirstRun {
 
     pub fn record(&mut self, step: Step, value: &str, skipped: bool) {
         self.answers.retain(|a| a.step != step);
-        self.answers.push(Answer { step, value: value.into(), skipped });
+        self.answers.push(Answer {
+            step,
+            value: value.into(),
+            skipped,
+        });
         if skipped {
             self.deferred.push(step);
         }
@@ -166,12 +177,19 @@ impl FirstRun {
                     what: format!(
                         "testing {} microphone{} — say something when I ask",
                         found.microphones.len(),
-                        if found.microphones.len() == 1 { "" } else { "s" }
+                        if found.microphones.len() == 1 {
+                            ""
+                        } else {
+                            "s"
+                        }
                     ),
                 }
             }
             Step::Voice => Move::Audition,
-            Step::Missing => Move::Look { step, what: "checking what still needs installing".into() },
+            Step::Missing => Move::Look {
+                step,
+                what: "checking what still needs installing".into(),
+            },
             Step::HowToUse => Move::Say(
                 "That's it. Say \"call me\" and your name if you'd like me to use it, \"what can \
                  you do\" any time, \"stop everything\" if I get something wrong, and open \
@@ -252,7 +270,12 @@ impl Found {
             (n, 0) => format!("found all {n}"),
             (n, _) => format!(
                 "found {n}, but not {}",
-                self.missing_apps.iter().take(2).cloned().collect::<Vec<_>>().join(" or ")
+                self.missing_apps
+                    .iter()
+                    .take(2)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(" or ")
             ),
         }
     }
@@ -268,9 +291,18 @@ impl Found {
 /// Answers that mean "not now".
 pub fn is_skip(said: &str) -> bool {
     let t = said.trim().to_lowercase();
-    ["skip", "not now", "later", "next", "pass", "move on", "don't care", "dont care"]
-        .iter()
-        .any(|s| t == *s || t.starts_with(s))
+    [
+        "skip",
+        "not now",
+        "later",
+        "next",
+        "pass",
+        "move on",
+        "don't care",
+        "dont care",
+    ]
+    .iter()
+    .any(|s| t == *s || t.starts_with(s))
 }
 
 /// Which screen you meant.

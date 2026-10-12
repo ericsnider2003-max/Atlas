@@ -133,10 +133,20 @@ fn new_id() -> String {
 /// you're paired, whether that's you). From your release channel's signed
 /// list -- the same answer for `atlas feedback send`, the voice, and the
 /// window's button.
-pub fn release_sender(store: &Store, peer_dir: &std::path::Path) -> Option<(String, Option<String>, bool)> {
+pub fn release_sender(
+    store: &Store,
+    peer_dir: &std::path::Path,
+) -> Option<(String, Option<String>, bool)> {
     let groups = crate::groups::Groups::load(store);
-    let channel = groups.held.values().map(|h| &h.state).find(|g| g.release_channel)?;
-    let me = crate::peerkey::Identity::load_or_create(peer_dir).ok().map(|i| i.public()).unwrap_or_default();
+    let channel = groups
+        .held
+        .values()
+        .map(|h| &h.state)
+        .find(|g| g.release_channel)?;
+    let me = crate::peerkey::Identity::load_or_create(peer_dir)
+        .ok()
+        .map(|i| i.public())
+        .unwrap_or_default();
     let mine = !me.is_empty() && (channel.owner == me || channel.is_delegate(&me));
     let name = crate::kin::Pairings::load(peer_dir).name_of_key(&channel.owner);
     Some((channel.owner.clone(), name, mine))
@@ -162,9 +172,14 @@ impl Sending {
 
 /// Send (or, on your own Atlas, file) a piece of feedback the person has
 /// already seen and said yes to.
-pub fn send_decided(store: &Store, peer_dir: &std::path::Path, f: Feedback) -> Result<Sending, String> {
-    let (_, name, mine) = release_sender(store, peer_dir)
-        .ok_or("This Atlas isn't in anyone's release channel, so there's no one to send feedback to.")?;
+pub fn send_decided(
+    store: &Store,
+    peer_dir: &std::path::Path,
+    f: Feedback,
+) -> Result<Sending, String> {
+    let (_, name, mine) = release_sender(store, peer_dir).ok_or(
+        "This Atlas isn't in anyone's release channel, so there's no one to send feedback to.",
+    )?;
     if mine {
         // unheard-ok: returns `Option<String>`, not a Result
         let _ = heard_feedback(store, "you", &serde_json::to_string(&f).unwrap_or_default());
@@ -185,12 +200,19 @@ pub fn spoken_list(store: &Store) -> String {
     }
     let mut out = Vec::new();
     if !got.is_empty() {
-        let new = got.iter().filter(|f| f.status == FeedbackStatus::New).count();
+        let new = got
+            .iter()
+            .filter(|f| f.status == FeedbackStatus::New)
+            .count();
         out.push(format!(
             "{} piece{} of feedback from your friends{}.",
             got.len(),
             if got.len() == 1 { "" } else { "s" },
-            if new > 0 { format!(", {new} not answered") } else { String::new() }
+            if new > 0 {
+                format!(", {new} not answered")
+            } else {
+                String::new()
+            }
         ));
         for (i, f) in got.iter().enumerate().rev().take(3) {
             out.push(format!(
@@ -199,7 +221,11 @@ pub fn spoken_list(store: &Store) -> String {
                 f.from,
                 f.version,
                 f.words,
-                if f.attached.is_some() { ", with an update failure attached" } else { "" },
+                if f.attached.is_some() {
+                    ", with an update failure attached"
+                } else {
+                    ""
+                },
                 f.status.plain()
             ));
         }
@@ -208,7 +234,12 @@ pub fn spoken_list(store: &Store) -> String {
         }
     }
     for f in sent.iter().rev().take(2) {
-        let mut line = format!("You told {}: \"{}\" -- {}.", f.to, f.words, f.status.plain());
+        let mut line = format!(
+            "You told {}: \"{}\" -- {}.",
+            f.to,
+            f.words,
+            f.status.plain()
+        );
         if let Some((_, note)) = f.replies.last() {
             line.push_str(&format!(" They said: {note}"));
         }
@@ -220,28 +251,47 @@ pub fn spoken_list(store: &Store) -> String {
 /// "2 fixing", "1 fixed 1.3.0 thanks", "3 wont not a bug": the same words
 /// `atlas feedback reply` takes, read from a sentence.
 pub fn read_reply(words: &str) -> Option<(usize, FeedbackStatus, String)> {
-    let w: Vec<&str> = words.split_whitespace().filter(|w| !["number", "as", "to", "is"].contains(&w.to_lowercase().as_str())).collect();
+    let w: Vec<&str> = words
+        .split_whitespace()
+        .filter(|w| !["number", "as", "to", "is"].contains(&w.to_lowercase().as_str()))
+        .collect();
     let n = w.first()?.trim_start_matches('#').parse::<usize>().ok()?;
     let word = w.get(1)?.to_lowercase().replace('\'', "");
     let version = w.get(2).copied();
     let status = FeedbackStatus::from_words(&word, version)?;
-    let skip = if matches!(status, FeedbackStatus::Fixed(_)) { 3 } else { 2 };
-    Some((n, status, w.iter().skip(skip).cloned().collect::<Vec<_>>().join(" ")))
+    let skip = if matches!(status, FeedbackStatus::Fixed(_)) {
+        3
+    } else {
+        2
+    };
+    Some((
+        n,
+        status,
+        w.iter().skip(skip).cloned().collect::<Vec<_>>().join(" "),
+    ))
 }
 
-pub fn compose_feedback(words: &str, attach: Option<FailureReport>, now: u64) -> Result<Feedback, String> {
+pub fn compose_feedback(
+    words: &str,
+    attach: Option<FailureReport>,
+    now: u64,
+) -> Result<Feedback, String> {
     let words = words.trim();
     if words.is_empty() {
         return Err("There's nothing written to send.".into());
     }
     if words.chars().count() > MAX_WORDS_CHARS {
-        return Err(format!("That's longer than {MAX_WORDS_CHARS} characters; say it in fewer words."));
+        return Err(format!(
+            "That's longer than {MAX_WORDS_CHARS} characters; say it in fewer words."
+        ));
     }
     Ok(Feedback {
         id: new_id(),
         words: words.to_string(),
         version: crate::upgrade::version().to_string(),
-        platform: crate::release::this_platform().unwrap_or("unknown").to_string(),
+        platform: crate::release::this_platform()
+            .unwrap_or("unknown")
+            .to_string(),
         attached: attach,
         at: now,
         ..Default::default()
@@ -250,9 +300,15 @@ pub fn compose_feedback(words: &str, attach: Option<FailureReport>, now: u64) ->
 
 /// Exactly what would be sent, for the person to read before saying yes.
 pub fn feedback_preview(f: &Feedback) -> String {
-    let mut s = format!("From Atlas {} on {}:\n  \"{}\"\n", f.version, f.platform, f.words);
+    let mut s = format!(
+        "From Atlas {} on {}:\n  \"{}\"\n",
+        f.version, f.platform, f.words
+    );
     if let Some(a) = &f.attached {
-        s.push_str(&format!("Attached: Atlas {} failed at its {} here.\n", a.version, a.stage));
+        s.push_str(&format!(
+            "Attached: Atlas {} failed at its {} here.\n",
+            a.version, a.stage
+        ));
         for r in a.reasons.iter().filter(|r| !r.starts_with("(passed)")) {
             s.push_str(&format!("  - {r}\n"));
         }
@@ -274,7 +330,9 @@ pub fn queue_feedback(store: &Store, mut f: Feedback, to: &str) -> Result<(), St
     f.to = to.to_string();
     let mut out: Vec<Feedback> = store.load(OUTBOX);
     out.push(f.clone());
-    store.save(OUTBOX, &out).map_err(|e| format!("couldn't queue the feedback ({e}); nothing was sent"))?;
+    store
+        .save(OUTBOX, &out)
+        .map_err(|e| format!("couldn't queue the feedback ({e}); nothing was sent"))?;
     let mut sent: Vec<Feedback> = store.load(SENT);
     sent.push(f);
     // unheard-ok: failure is recorded centrally (store::record_failed_save)
@@ -287,7 +345,17 @@ pub fn feedback_outbox(store: &Store) -> Vec<(String, String, String)> {
     store
         .load::<Vec<Feedback>>(OUTBOX)
         .into_iter()
-        .map(|f| (f.to.clone(), serde_json::to_string(&Feedback { to: String::new(), ..f.clone() }).unwrap_or_default(), f.id))
+        .map(|f| {
+            (
+                f.to.clone(),
+                serde_json::to_string(&Feedback {
+                    to: String::new(),
+                    ..f.clone()
+                })
+                .unwrap_or_default(),
+                f.id,
+            )
+        })
         .collect()
 }
 
@@ -311,7 +379,11 @@ pub fn heard_feedback(store: &Store, from: &str, body: &str) -> Option<String> {
         return None;
     }
     let mut f: Feedback = serde_json::from_str(body).ok()?;
-    if f.id.is_empty() || f.id.len() > 64 || f.words.trim().is_empty() || f.words.chars().count() > MAX_WORDS_CHARS {
+    if f.id.is_empty()
+        || f.id.len() > 64
+        || f.words.trim().is_empty()
+        || f.words.chars().count() > MAX_WORDS_CHARS
+    {
         return None;
     }
     // A phone to add to the next iPhone build rides this channel too
@@ -338,7 +410,11 @@ pub fn heard_feedback(store: &Store, from: &str, body: &str) -> Option<String> {
         "{from} sent feedback about Atlas {}: \"{}\"{}. It's number {n} on your Feedback page.",
         f.version,
         short(&f.words),
-        if f.attached.is_some() { ", with the details of an update that failed" } else { "" }
+        if f.attached.is_some() {
+            ", with the details of an update that failed"
+        } else {
+            ""
+        }
     );
     inbox.push(f);
     let _ = store.save(INBOX, &inbox);
@@ -361,14 +437,28 @@ pub fn feedback_inbox(store: &Store) -> Vec<Feedback> {
 
 /// Answer feedback number `n` (from `inbox`): its new status and a note.
 /// Queued back to whoever sent it. Returns their name.
-pub fn answer_feedback(store: &Store, n: usize, status: FeedbackStatus, note: &str, now: u64) -> Result<String, String> {
+pub fn answer_feedback(
+    store: &Store,
+    n: usize,
+    status: FeedbackStatus,
+    note: &str,
+    now: u64,
+) -> Result<String, String> {
     let mut inbox: Vec<Feedback> = store.load(INBOX);
-    let f = n.checked_sub(1).and_then(|i| inbox.get_mut(i)).ok_or_else(|| format!("There's no feedback number {n}."))?;
+    let f = n
+        .checked_sub(1)
+        .and_then(|i| inbox.get_mut(i))
+        .ok_or_else(|| format!("There's no feedback number {n}."))?;
     f.status = status.clone();
     if !note.trim().is_empty() {
         f.replies.push((now, note.trim().to_string()));
     }
-    let a = Answer { id: f.id.clone(), status, note: note.trim().to_string(), at: now };
+    let a = Answer {
+        id: f.id.clone(),
+        status,
+        note: note.trim().to_string(),
+        at: now,
+    };
     let to = f.from.clone();
     let _ = store.save(INBOX, &inbox);
     let mut out: Vec<(String, Answer)> = store.load(REPLIES_OUT);
@@ -403,7 +493,9 @@ pub fn heard_answer(store: &Store, from: &str, body: &str) -> Option<String> {
     }
     let a: Answer = serde_json::from_str(body).ok()?;
     let mut sent: Vec<Feedback> = store.load(SENT);
-    let f = sent.iter_mut().find(|f| f.id == a.id && f.to.eq_ignore_ascii_case(from))?;
+    let f = sent
+        .iter_mut()
+        .find(|f| f.id == a.id && f.to.eq_ignore_ascii_case(from))?;
     if f.replies.iter().any(|(at, _)| *at == a.at) && f.status == a.status {
         return None; // the same answer twice
     }
@@ -415,7 +507,11 @@ pub fn heard_answer(store: &Store, from: &str, body: &str) -> Option<String> {
         "{from} answered your feedback (\"{}\"): {}{}",
         short(&f.words),
         a.status.plain(),
-        if a.note.is_empty() { ".".to_string() } else { format!(" -- \"{}\"", a.note) }
+        if a.note.is_empty() {
+            ".".to_string()
+        } else {
+            format!(" -- \"{}\"", a.note)
+        }
     );
     let _ = store.save(SENT, &sent);
     Some(said)

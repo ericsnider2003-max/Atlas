@@ -44,7 +44,11 @@ fn hidden_tag(inner: &str) -> bool {
         return true;
     }
     if let Some(style) = attr(inner, "style") {
-        let s: String = style.to_ascii_lowercase().chars().filter(|c| !c.is_whitespace()).collect();
+        let s: String = style
+            .to_ascii_lowercase()
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
         if s.contains("display:none") || s.contains("visibility:hidden") {
             return true;
         }
@@ -66,8 +70,13 @@ fn hidden_tag(inner: &str) -> bool {
         .any(|t| t.eq_ignore_ascii_case("hidden") || t.to_ascii_lowercase().starts_with("hidden="))
 }
 
-const VOID: [&str; 14] = ["br", "hr", "img", "input", "meta", "link", "area", "base", "col", "embed", "source", "track", "wbr", "param"];
-const DROP: [&str; 8] = ["script", "style", "noscript", "svg", "iframe", "template", "canvas", "object"];
+const VOID: [&str; 14] = [
+    "br", "hr", "img", "input", "meta", "link", "area", "base", "col", "embed", "source", "track",
+    "wbr", "param",
+];
+const DROP: [&str; 8] = [
+    "script", "style", "noscript", "svg", "iframe", "template", "canvas", "object",
+];
 
 fn decode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -94,7 +103,9 @@ fn decode(s: &str) -> String {
                     "rdquo" => Some('”'),
                     "ldquo" => Some('“'),
                     _ if ent.starts_with("#x") || ent.starts_with("#X") => {
-                        u32::from_str_radix(&ent[2..], 16).ok().and_then(char::from_u32)
+                        u32::from_str_radix(&ent[2..], 16)
+                            .ok()
+                            .and_then(char::from_u32)
                     }
                     _ if ent.starts_with('#') => ent[1..].parse().ok().and_then(char::from_u32),
                     _ => None,
@@ -133,7 +144,11 @@ fn attr(tag_src: &str, name: &str) -> Option<String> {
             let raw = &tag_src[off..];
             return Some(match raw.chars().next() {
                 Some(q @ ('"' | '\'')) => raw[1..].split(q).next().unwrap_or("").to_string(),
-                _ => raw.split(|c: char| c.is_whitespace() || c == '>').next().unwrap_or("").to_string(),
+                _ => raw
+                    .split(|c: char| c.is_whitespace() || c == '>')
+                    .next()
+                    .unwrap_or("")
+                    .to_string(),
             });
         }
         from = at + name.len();
@@ -147,7 +162,10 @@ struct Doc {
 }
 
 fn parse(html: &str) -> Doc {
-    let mut els = vec![El { tag: "#root".into(), ..Default::default() }];
+    let mut els = vec![El {
+        tag: "#root".into(),
+        ..Default::default()
+    }];
     let mut stack = vec![0usize];
     let mut title = String::new();
     let mut i = 0;
@@ -158,7 +176,9 @@ fn parse(html: &str) -> Doc {
                 i = html[i..].find("-->").map(|e| i + e + 3).unwrap_or(b.len());
                 continue;
             }
-            let Some(end) = html[i..].find('>').map(|e| i + e) else { break };
+            let Some(end) = html[i..].find('>').map(|e| i + e) else {
+                break;
+            };
             let inner = &html[i + 1..end];
             i = end + 1;
             if inner.starts_with('!') || inner.starts_with('?') {
@@ -188,11 +208,17 @@ fn parse(html: &str) -> Doc {
                 if name == "title" && title.is_empty() {
                     title = decode(html[i..stop].trim());
                 }
-                i = html[stop..].find('>').map(|e| stop + e + 1).unwrap_or(b.len());
+                i = html[stop..]
+                    .find('>')
+                    .map(|e| stop + e + 1)
+                    .unwrap_or(b.len());
                 continue;
             }
             // implicit close: a new block closes an open <p>
-            if matches!(name.as_str(), "p" | "div" | "ul" | "ol" | "table" | "h1" | "h2" | "h3" | "section" | "article") {
+            if matches!(
+                name.as_str(),
+                "p" | "div" | "ul" | "ol" | "table" | "h1" | "h2" | "h3" | "section" | "article"
+            ) {
                 if let Some(&top) = stack.last() {
                     if els[top].tag == "p" {
                         stack.pop();
@@ -200,18 +226,37 @@ fn parse(html: &str) -> Doc {
                 }
             }
             // The root is never popped, so there is always a parent.
-            let Some(&parent) = stack.last() else { continue };
-            let class_id = format!("{} {}", attr(inner, "class").unwrap_or_default(), attr(inner, "id").unwrap_or_default())
-                .to_lowercase();
+            let Some(&parent) = stack.last() else {
+                continue;
+            };
+            let class_id = format!(
+                "{} {}",
+                attr(inner, "class").unwrap_or_default(),
+                attr(inner, "id").unwrap_or_default()
+            )
+            .to_lowercase();
             let id = els.len();
-            let hidden = hidden_tag(inner) && !matches!(name.as_str(), "html" | "body" | "main" | "article");
-            els.push(El { tag: name.clone(), class_id, parent: Some(parent), href: name == "a", hidden, ..Default::default() });
+            let hidden =
+                hidden_tag(inner) && !matches!(name.as_str(), "html" | "body" | "main" | "article");
+            els.push(El {
+                tag: name.clone(),
+                class_id,
+                parent: Some(parent),
+                href: name == "a",
+                hidden,
+                ..Default::default()
+            });
             els[parent].children.push(id);
             if !VOID.contains(&name.as_str()) && !inner.ends_with('/') {
                 stack.push(id);
             } else if name == "br" {
                 let t = els.len();
-                els.push(El { tag: "#text".into(), text: "\n".into(), parent: Some(parent), ..Default::default() });
+                els.push(El {
+                    tag: "#text".into(),
+                    text: "\n".into(),
+                    parent: Some(parent),
+                    ..Default::default()
+                });
                 els[parent].children.push(t);
             }
         } else {
@@ -222,12 +267,23 @@ fn parse(html: &str) -> Doc {
             // inside <pre>, where lines are the point.
             if text.trim().is_empty() && !text.is_empty() {
                 let in_pre = stack.iter().any(|x| els[*x].tag == "pre");
-                text = if in_pre && text.contains('\n') { "\n".into() } else { " ".into() };
+                text = if in_pre && text.contains('\n') {
+                    "\n".into()
+                } else {
+                    " ".into()
+                };
             }
             if !text.is_empty() {
-                let Some(&parent) = stack.last() else { continue };
+                let Some(&parent) = stack.last() else {
+                    continue;
+                };
                 let id = els.len();
-                els.push(El { tag: "#text".into(), text, parent: Some(parent), ..Default::default() });
+                els.push(El {
+                    tag: "#text".into(),
+                    text,
+                    parent: Some(parent),
+                    ..Default::default()
+                });
                 els[parent].children.push(id);
             }
             i = end;
@@ -240,7 +296,10 @@ fn parse(html: &str) -> Doc {
 const MD_DEPTH: usize = 64;
 
 /// Tags that sit inside a line of text rather than making a new one.
-const INLINE: [&str; 17] = ["span", "a", "code", "em", "strong", "b", "i", "u", "sub", "sup", "small", "mark", "abbr", "kbd", "var", "samp", "q"];
+const INLINE: [&str; 17] = [
+    "span", "a", "code", "em", "strong", "b", "i", "u", "sub", "sup", "small", "mark", "abbr",
+    "kbd", "var", "samp", "q",
+];
 
 impl Doc {
     /// Does this subtree hold the page's own `<main>` or `<article>`? Then it
@@ -248,7 +307,10 @@ impl Doc {
     /// `layout__2-sidebars-inline`, and "sidebar" used to throw the article
     /// away with the sidebars.
     fn holds_main(&self, id: usize) -> bool {
-        self.els[id].children.iter().any(|c| matches!(self.els[*c].tag.as_str(), "main" | "article") || self.holds_main(*c))
+        self.els[id]
+            .children
+            .iter()
+            .any(|c| matches!(self.els[*c].tag.as_str(), "main" | "article") || self.holds_main(*c))
     }
     /// Inside the page's `<main>` or `<article>`, a class word like "header"
     /// names the article's own header (MDN's intro lives in
@@ -271,7 +333,21 @@ impl Doc {
         let mut s = String::new();
         for c in &e.children {
             s.push_str(&self.text(*c));
-            if matches!(self.els[*c].tag.as_str(), "p" | "div" | "li" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "tr" | "pre" | "blockquote" | "section") {
+            if matches!(
+                self.els[*c].tag.as_str(),
+                "p" | "div"
+                    | "li"
+                    | "h1"
+                    | "h2"
+                    | "h3"
+                    | "h4"
+                    | "h5"
+                    | "h6"
+                    | "tr"
+                    | "pre"
+                    | "blockquote"
+                    | "section"
+            ) {
                 s.push('\n');
             } else if self.els[*c].tag != "#text" && !INLINE.contains(&self.els[*c].tag.as_str()) {
                 // A space between blocks, so "cell" and "cell" don't glue —
@@ -286,7 +362,10 @@ impl Doc {
     /// One line of inline Markdown: everything under `id`, line breaks
     /// taken out.
     fn md_line(&self, id: usize, depth: usize) -> String {
-        self.md_at(id, depth).split_whitespace().collect::<Vec<_>>().join(" ")
+        self.md_at(id, depth)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     /// The children of `id` as one line of inline Markdown: a heading's or
@@ -372,7 +451,16 @@ impl Doc {
             }
             "blockquote" => {
                 let body = tidy_md(&inner("\n"));
-                let quoted: Vec<String> = body.lines().map(|l| if l.is_empty() { ">".to_string() } else { format!("> {l}") }).collect();
+                let quoted: Vec<String> = body
+                    .lines()
+                    .map(|l| {
+                        if l.is_empty() {
+                            ">".to_string()
+                        } else {
+                            format!("> {l}")
+                        }
+                    })
+                    .collect();
                 format!("\n\n{}\n\n", quoted.join("\n"))
             }
             "tr" => {
@@ -385,8 +473,10 @@ impl Doc {
                 format!("{}\n", cells.join(" | "))
             }
             "table" | "thead" | "tbody" | "tfoot" => format!("\n\n{}\n\n", inner("")),
-            "p" | "div" | "section" | "article" | "main" | "header" | "figure" | "figcaption" | "dl" | "dd" | "dt"
-            | "address" | "details" | "summary" => format!("\n\n{}\n\n", inner(" ")),
+            "p" | "div" | "section" | "article" | "main" | "header" | "figure" | "figcaption"
+            | "dl" | "dd" | "dt" | "address" | "details" | "summary" => {
+                format!("\n\n{}\n\n", inner(" "))
+            }
             "img" | "hr" => String::new(),
             _ => inner(" "),
         }
@@ -412,22 +502,51 @@ impl Doc {
             return false;
         }
         const UNLIKELY: [&str; 26] = [
-            "-ad-", "banner", "breadcrumb", "combx", "comment", "community", "cookie", "disqus", "extra", "footer", "gdpr",
-            "header", "legends", "menu", "related", "remark", "replies", "rss", "shoutbox", "sidebar", "skyscraper",
-            "social", "sponsor", "popup", "pagination", "newsletter",
+            "-ad-",
+            "banner",
+            "breadcrumb",
+            "combx",
+            "comment",
+            "community",
+            "cookie",
+            "disqus",
+            "extra",
+            "footer",
+            "gdpr",
+            "header",
+            "legends",
+            "menu",
+            "related",
+            "remark",
+            "replies",
+            "rss",
+            "shoutbox",
+            "sidebar",
+            "skyscraper",
+            "social",
+            "sponsor",
+            "popup",
+            "pagination",
+            "newsletter",
         ];
         const MAYBE: [&str; 6] = ["and", "article", "body", "column", "content", "main"];
         UNLIKELY.iter().any(|w| ci.contains(w)) && !MAYBE.iter().any(|w| ci.contains(w))
-            || matches!(self.els[id].tag.as_str(), "nav" | "footer" | "aside" | "form")
+            || matches!(
+                self.els[id].tag.as_str(),
+                "nav" | "footer" | "aside" | "form"
+            )
     }
     fn class_weight(&self, id: usize) -> f64 {
         let ci = &self.els[id].class_id;
         let mut w = 0.0;
         const NEG: [&str; 16] = [
-            "-ad-", "hidden", "banner", "combx", "comment", "com-", "contact", "footer", "gdpr", "masthead", "meta",
-            "promo", "related", "share", "sidebar", "widget",
+            "-ad-", "hidden", "banner", "combx", "comment", "com-", "contact", "footer", "gdpr",
+            "masthead", "meta", "promo", "related", "share", "sidebar", "widget",
         ];
-        const POS: [&str; 12] = ["article", "body", "content", "entry", "hentry", "h-entry", "main", "page", "post", "text", "blog", "story"];
+        const POS: [&str; 12] = [
+            "article", "body", "content", "entry", "hentry", "h-entry", "main", "page", "post",
+            "text", "blog", "story",
+        ];
         if NEG.iter().any(|x| ci.contains(x)) {
             w -= 25.0;
         }
@@ -476,7 +595,9 @@ fn extract_with(html: &str, strip_unlikely: bool) -> Article {
         let furniture = matches!(d.els[id].tag.as_str(), "nav" | "footer" | "aside" | "form");
         let by_class_only = !furniture && (!strip_unlikely || d.inside_main(id));
         let unseen = d.els[id].hidden;
-        if d.els[id].tag != "#text" && (unseen || (d.unlikely(id) && !by_class_only && !d.holds_main(id))) {
+        if d.els[id].tag != "#text"
+            && (unseen || (d.unlikely(id) && !by_class_only && !d.holds_main(id)))
+        {
             if let Some(p) = d.els[id].parent {
                 d.els[p].children.retain(|c| *c != id);
             }
@@ -502,7 +623,10 @@ fn extract_with(html: &str, strip_unlikely: bool) -> Article {
         st.extend(d.els[n].children.iter().copied());
     }
     for &id in &reach {
-        if !matches!(d.els[id].tag.as_str(), "p" | "td" | "pre" | "section" | "h2" | "h3" | "h4" | "h5" | "h6") {
+        if !matches!(
+            d.els[id].tag.as_str(),
+            "p" | "td" | "pre" | "section" | "h2" | "h3" | "h4" | "h5" | "h6"
+        ) {
             continue;
         }
         let t = d.text(id);
@@ -511,7 +635,8 @@ fn extract_with(html: &str, strip_unlikely: bool) -> Article {
         if len < 25 {
             continue;
         }
-        let s = 1.0 + (t.matches([',', '，', '、']).count() + 1) as f64 + ((len / 100).min(3)) as f64;
+        let s =
+            1.0 + (t.matches([',', '，', '、']).count() + 1) as f64 + ((len / 100).min(3)) as f64;
         let mut anc = d.els[id].parent;
         let mut level = 0;
         while let Some(a) = anc {
@@ -532,16 +657,29 @@ fn extract_with(html: &str, strip_unlikely: bool) -> Article {
     let best = score
         .iter()
         .map(|(id, s)| (*id, s * (1.0 - d.link_density(*id))))
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.cmp(&a.0)));
+        .max_by(|a, b| {
+            a.1.partial_cmp(&b.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(b.0.cmp(&a.0))
+        });
     let title = if d.title.is_empty() {
-        reach.iter().find(|i| d.els[**i].tag == "h1").map(|i| d.text(*i).trim().to_string()).unwrap_or_default()
+        reach
+            .iter()
+            .find(|i| d.els[**i].tag == "h1")
+            .map(|i| d.text(*i).trim().to_string())
+            .unwrap_or_default()
     } else {
         d.title.clone()
     };
     let Some((top, top_score)) = best else {
         let text = tidy(&d.text(0));
         let markdown = tidy_md(&d.md(0));
-        return Article { title, kept_share: 1.0, text, markdown };
+        return Article {
+            title,
+            kept_share: 1.0,
+            text,
+            markdown,
+        };
     };
     // siblings
     let parent = d.els[top].parent.unwrap_or(0);
@@ -569,7 +707,12 @@ fn extract_with(html: &str, strip_unlikely: bool) -> Article {
     let text = tidy(&parts.join("\n"));
     let markdown = tidy_md(&md_parts.join("\n\n"));
     let kept_share = text.split_whitespace().count() as f64 / total_text as f64;
-    Article { title, text, markdown, kept_share }
+    Article {
+        title,
+        text,
+        markdown,
+        kept_share,
+    }
 }
 
 /// Markdown lines tidied: spaces collapsed outside code fences, at most one
@@ -592,7 +735,10 @@ fn tidy_md(s: &str) -> String {
             continue;
         }
         // A marker with nothing after it ("-", "#", ">") is an empty block.
-        if matches!(l.as_str(), "-" | ">" | "#" | "##" | "###" | "####" | "#####" | "######") {
+        if matches!(
+            l.as_str(),
+            "-" | ">" | "#" | "##" | "###" | "####" | "#####" | "######"
+        ) {
             continue;
         }
         out.push(l);
@@ -604,7 +750,11 @@ fn tidy_md(s: &str) -> String {
 }
 
 fn tidy(s: &str) -> String {
-    s.lines().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n")
+    s.lines()
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]
@@ -634,7 +784,15 @@ mod tests {
         assert_eq!(a.title, "Fed holds rates & signals patience");
         assert!(a.text.contains("kept its policy rate unchanged"));
         assert!(a.text.contains("the dollar slipped against the yen"));
-        for junk in ["cookies", "Home", "Sport", "Ten stocks", "celebrity chef", "rights reserved", "tracking"] {
+        for junk in [
+            "cookies",
+            "Home",
+            "Sport",
+            "Ten stocks",
+            "celebrity chef",
+            "rights reserved",
+            "tracking",
+        ] {
             assert!(!a.text.contains(junk), "kept '{junk}':\n{}", a.text);
         }
         assert!(a.kept_share < 0.9);
@@ -655,8 +813,14 @@ mod tests {
 
     #[test]
     fn attribute_reader() {
-        assert_eq!(attr(r#"div class="a b" id='main'"#, "class").as_deref(), Some("a b"));
-        assert_eq!(attr(r#"div data-class="x" class=y"#, "class").as_deref(), Some("y"));
+        assert_eq!(
+            attr(r#"div class="a b" id='main'"#, "class").as_deref(),
+            Some("a b")
+        );
+        assert_eq!(
+            attr(r#"div data-class="x" class=y"#, "class").as_deref(),
+            Some("y")
+        );
         assert_eq!(attr("div", "id"), None);
     }
 }

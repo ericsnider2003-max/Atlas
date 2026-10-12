@@ -37,11 +37,24 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon_at<'a>(c: &'a Config, p: &'a MockPlatform, root: PathBuf) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(root), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(root),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 fn write_note_in(root: &Path, name: &str, body: &str) -> PathBuf {
@@ -72,7 +85,10 @@ fn fake_encoder() -> ExternalTool {
 #[cfg(unix)]
 fn semantic_cfg() -> Config {
     let mut c = cfg();
-    let t = c.tools.as_mut().expect("the shipped config has a tools section");
+    let t = c
+        .tools
+        .as_mut()
+        .expect("the shipped config has a tools section");
     t.recall.semantic = true;
     t.meaning.encoder = Some(fake_encoder());
     c
@@ -140,12 +156,19 @@ fn the_same_question_with_meaning_off_falls_through() {
 #[test]
 fn vectors_made_in_one_session_survive_into_the_next() {
     let root = tmp("survives");
-    write_note_in(&root, "test-meaning-keep.md", "# Kept note\n\nSomething worth remembering.\n");
+    write_note_in(
+        &root,
+        "test-meaning-keep.md",
+        "# Kept note\n\nSomething worth remembering.\n",
+    );
     {
         let (c, p) = (semantic_cfg(), plat());
         let mut d = daemon_at(&c, &p, root.clone());
         d.tick(100);
-        assert!(d.library.unembedded().is_empty(), "first session never embedded the note");
+        assert!(
+            d.library.unembedded().is_empty(),
+            "first session never embedded the note"
+        );
     }
     // Same root, no encoder: rehydration is the only way this can be embedded.
     let mut c2 = cfg();
@@ -165,7 +188,11 @@ fn vectors_made_in_one_session_survive_into_the_next() {
 #[test]
 fn an_installed_encoder_does_nothing_while_meaning_search_is_off() {
     let root = tmp("respectsoff");
-    write_note_in(&root, "test-meaning-off.md", "# Quiet note\n\nNothing should touch this.\n");
+    write_note_in(
+        &root,
+        "test-meaning-off.md",
+        "# Quiet note\n\nNothing should touch this.\n",
+    );
     let mut c = cfg();
     c.tools.as_mut().unwrap().meaning.encoder = Some(fake_encoder());
     // recall.semantic stays at the shipped default: false.
@@ -185,7 +212,11 @@ fn an_installed_encoder_does_nothing_while_meaning_search_is_off() {
 #[test]
 fn an_edited_note_loses_its_stale_vector_and_gets_a_fresh_one() {
     let root = tmp("edited");
-    let note = write_note_in(&root, "test-meaning-edit.md", "# Editable\n\nFirst version.\n");
+    let note = write_note_in(
+        &root,
+        "test-meaning-edit.md",
+        "# Editable\n\nFirst version.\n",
+    );
     let (c, p) = (semantic_cfg(), plat());
     let mut d = daemon_at(&c, &p, root);
     d.tick(100);
@@ -199,5 +230,8 @@ fn an_edited_note_loses_its_stale_vector_and_gets_a_fresh_one() {
         "an edited note kept a vector describing text that no longer exists"
     );
     d.tick(200);
-    assert!(d.library.unembedded().is_empty(), "the edited note was never re-embedded");
+    assert!(
+        d.library.unembedded().is_empty(),
+        "the edited note was never re-embedded"
+    );
 }

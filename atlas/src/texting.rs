@@ -45,14 +45,19 @@ impl Texts {
     /// Add one, dropping any older than `KEPT_SECS` and keeping the last few.
     pub fn add(&mut self, w: Waiting) {
         let now = w.at;
-        self.waiting.retain(|x| now.saturating_sub(x.at) < KEPT_SECS);
+        self.waiting
+            .retain(|x| now.saturating_sub(x.at) < KEPT_SECS);
         self.waiting.push(w);
         let extra = self.waiting.len().saturating_sub(5);
         self.waiting.drain(..extra);
     }
     /// The ones still worth offering at `now`, newest first.
     pub fn current(&self, now: u64) -> Vec<&Waiting> {
-        self.waiting.iter().rev().filter(|w| now.saturating_sub(w.at) < KEPT_SECS).collect()
+        self.waiting
+            .iter()
+            .rev()
+            .filter(|w| now.saturating_sub(w.at) < KEPT_SECS)
+            .collect()
     }
 }
 
@@ -62,8 +67,16 @@ pub fn text_asked(said: &str) -> Option<(String, String)> {
     let s = said.trim().trim_end_matches(['.', '!']);
     let low = s.to_ascii_lowercase();
     let leads = [
-        "send a text message to ", "send a text to ", "send text to ", "shoot a text to ", "text message ", "can you text ",
-        "please text ", "send ", "shoot ", "text ",
+        "send a text message to ",
+        "send a text to ",
+        "send text to ",
+        "shoot a text to ",
+        "text message ",
+        "can you text ",
+        "please text ",
+        "send ",
+        "shoot ",
+        "text ",
     ];
     let lead = leads.iter().find(|p| low.starts_with(**p))?;
     let rest_low = &low[lead.len()..];
@@ -74,10 +87,16 @@ pub fn text_asked(said: &str) -> Option<(String, String)> {
     let mut who = s[lead.len()..lead.len() + at].trim();
     // "send Sam a text saying ...", "shoot Sam a text ..."
     if matches!(*lead, "send " | "shoot ") {
-        who = who.strip_suffix(" a text").or_else(|| who.strip_suffix(" a text message"))?.trim();
+        who = who
+            .strip_suffix(" a text")
+            .or_else(|| who.strip_suffix(" a text message"))?
+            .trim();
     }
     let message = s[lead.len() + at + mark.len()..].trim();
-    if who.is_empty() || who.split_whitespace().count() > 4 || message.split_whitespace().count() < 2 {
+    if who.is_empty()
+        || who.split_whitespace().count() > 4
+        || message.split_whitespace().count() < 2
+    {
         return None;
     }
     if ["him", "her", "them", "it", "me", "everyone"].contains(&who.to_lowercase().as_str()) {
@@ -96,7 +115,9 @@ fn percent(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }
@@ -108,7 +129,9 @@ pub fn card(waiting: &[&Waiting]) -> String {
     if waiting.is_empty() {
         return String::new();
     }
-    let mut out = String::from("<section class=card aria-label='Texts to send'><h2>Texts to send</h2><ul class=plain>");
+    let mut out = String::from(
+        "<section class=card aria-label='Texts to send'><h2>Texts to send</h2><ul class=plain>",
+    );
     for w in waiting {
         out.push_str(&format!(
             "<li><p><strong>{}</strong> ({}): {}</p><p><a class='button primary' href=\"{}\">Open in Messages</a></p></li>",

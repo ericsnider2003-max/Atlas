@@ -14,7 +14,10 @@ use atlas::walkthrough::{
 };
 
 fn cfg() -> VaultConfig {
-    VaultConfig { enabled: true, ..Default::default() }
+    VaultConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 // ================= a stolen laptop is worth nothing =================
@@ -34,7 +37,8 @@ fn it_opens_with_a_passphrase_and_round_trips() {
     let mut v = Vault::default();
     v.open("correct horse battery staple", 0, &cfg()).unwrap();
     assert_eq!(v.state(), State::Open);
-    v.put("gmail totp", Kind::Note, "JBSWY3DPEHPK3PXP", 0).unwrap();
+    v.put("gmail totp", Kind::Note, "JBSWY3DPEHPK3PXP", 0)
+        .unwrap();
     assert_eq!(v.get("gmail totp", 0).unwrap(), "JBSWY3DPEHPK3PXP");
 }
 
@@ -85,7 +89,9 @@ fn the_key_never_being_written_down_is_not_configurable() {
     // itself, so it is not in what gets written, and `lock` overwrites it
     // before dropping it.
     let src = std::fs::read_to_string("src/vault.rs").expect("src/vault.rs");
-    let at = src.find("    key: Option<Vec<u8>>").expect("the vault's key field is gone");
+    let at = src
+        .find("    key: Option<Vec<u8>>")
+        .expect("the vault's key field is gone");
     let before = &src[at.saturating_sub(200)..at];
     assert!(
         before.contains("#[serde(skip)]"),
@@ -100,7 +106,10 @@ fn the_key_never_being_written_down_is_not_configurable() {
     // And an old config naming the removed key still loads.
     let parsed: VaultConfig =
         serde_yaml::from_str("enabled: true\nkey_stays_in_memory: false\n").unwrap();
-    assert!(parsed.enabled, "an unknown key must not stop the section parsing");
+    assert!(
+        parsed.enabled,
+        "an unknown key must not stop the section parsing"
+    );
 }
 
 #[test]
@@ -129,19 +138,34 @@ fn a_config_that_still_names_the_old_cost_knob_loads_and_is_told_about_it() {
     // honest if the person is told rather than left to assume.
     let old = "enabled: true\nlock_after_mins: 5\nkdf_rounds: 600000\n";
     let parsed: VaultConfig = serde_yaml::from_str(old).expect("an old file must still load");
-    assert!(parsed.enabled, "a key with no field must not stop the section parsing");
-    assert_eq!(parsed.lock_after_mins, 5, "and must not take the rest of it down");
+    assert!(
+        parsed.enabled,
+        "a key with no field must not stop the section parsing"
+    );
+    assert_eq!(
+        parsed.lock_after_mins, 5,
+        "and must not take the rest of it down"
+    );
 
     // And `atlas doctor` says so, by the nested key rather than by writing
     // off the whole `vault:` section, which is read and works.
-    let said = atlas::config::settings_that_do_nothing(
-        "vault:\n  enabled: true\n  kdf_rounds: 600000\n",
-    );
+    let said =
+        atlas::config::settings_that_do_nothing("vault:\n  enabled: true\n  kdf_rounds: 600000\n");
     let named: Vec<&str> = said.iter().map(|(k, _)| *k).collect();
     assert!(named.contains(&"vault.kdf_rounds"), "{named:?}");
-    assert!(!named.contains(&"vault"), "the section itself is alive: {named:?}");
-    let why = said.iter().find(|(k, _)| *k == "vault.kdf_rounds").unwrap().1;
-    assert!(why.contains("Argon2id"), "it doesn't say what replaced it: {why}");
+    assert!(
+        !named.contains(&"vault"),
+        "the section itself is alive: {named:?}"
+    );
+    let why = said
+        .iter()
+        .find(|(k, _)| *k == "vault.kdf_rounds")
+        .unwrap()
+        .1;
+    assert!(
+        why.contains("Argon2id"),
+        "it doesn't say what replaced it: {why}"
+    );
 
     // A file that never set it hears nothing about it.
     let quiet = atlas::config::settings_that_do_nothing("vault:\n  enabled: true\n");
@@ -181,7 +205,10 @@ fn atlas_knows_exactly_where_the_setting_is_not_just_the_site() {
     // "Google security settings" is something you can find yourself. The
     // reason this is tedious is that every site buries it differently.
     let (url, where_to) = where_2fa_lives("Gmail").unwrap();
-    assert!(url.contains("two-step-verification"), "the exact page, not the homepage");
+    assert!(
+        url.contains("two-step-verification"),
+        "the exact page, not the homepage"
+    );
     assert!(where_to.contains("2-Step Verification"));
 
     let (url, _) = where_2fa_lives("TikTok").unwrap();
@@ -225,7 +252,9 @@ fn the_warnings_are_specific_and_actually_differ() {
 #[test]
 fn gmail_gets_the_one_warning_that_matters_most() {
     let w = to_turn_off(&["Gmail".into()]);
-    assert!(w.say().contains("the account everything else resets through"));
+    assert!(w
+        .say()
+        .contains("the account everything else resets through"));
 }
 
 #[test]
@@ -249,7 +278,10 @@ fn finishing_says_so() {
 fn atlas_makes_its_case_once_then_offers_both_runs() {
     let said = before_turning_off(6);
     assert!(said.contains("6 accounts, and I'll open every one"));
-    assert!(said.contains("then I'll stop saying it"), "once, not repeatedly");
+    assert!(
+        said.contains("then I'll stop saying it"),
+        "once, not repeatedly"
+    );
     assert!(said.contains("having it off wouldn't have helped"));
     assert!(said.contains("say prepare and I'll do that run instead"));
 }
@@ -275,7 +307,6 @@ fn atlas_presses_the_control_only_when_you_have_let_it() {
     // Eric, 24 Sep 2026: yes, Atlas may make a security change itself after
     // the read-back and his yes. Off until he turns it on.
     assert!(!WalkConfig::default().atlas_clicks);
-    let parsed: WalkConfig =
-        serde_yaml::from_str("enabled: true\natlas_clicks: true\n").unwrap();
+    let parsed: WalkConfig = serde_yaml::from_str("enabled: true\natlas_clicks: true\n").unwrap();
     assert!(parsed.atlas_clicks);
 }

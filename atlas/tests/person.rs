@@ -35,7 +35,10 @@ fn an_old_pattern_confidently_applied_is_worse_than_none() {
         p.notice("starts with email", Kind::Rhythm, i * DAY);
     }
     assert_eq!(p.known(4 * DAY).len(), 1);
-    assert!(p.known(60 * DAY).is_empty(), "six weeks on, it's not safe to assume");
+    assert!(
+        p.known(60 * DAY).is_empty(),
+        "six weeks on, it's not safe to assume"
+    );
 }
 
 #[test]
@@ -53,7 +56,10 @@ fn what_you_change_about_its_output_is_the_strongest_signal() {
 fn adding_detail_is_learned_as_readily_as_cutting_it() {
     let terse = "Done.";
     let fuller = "Done — the index finished at 4pm, 12,000 files, nothing failed.";
-    assert!(learn_from_edit(terse, fuller).unwrap().0.contains("adds detail"));
+    assert!(learn_from_edit(terse, fuller)
+        .unwrap()
+        .0
+        .contains("adds detail"));
 }
 
 #[test]
@@ -110,8 +116,15 @@ fn everything_it_thinks_it_knows_can_be_read() {
     // Behaviour, not just wording: what is shown is the real stored state --
     // one trait, its count the true number of times it was noticed.
     let known = p.known(3 * DAY);
-    assert_eq!(known.len(), 1, "more or fewer traits are known than are shown");
-    assert_eq!(known[0].seen, 3, "the shown count does not match the stored one");
+    assert_eq!(
+        known.len(),
+        1,
+        "more or fewer traits are known than are shown"
+    );
+    assert_eq!(
+        known[0].seen, 3,
+        "the shown count does not match the stored one"
+    );
 }
 
 #[test]
@@ -126,7 +139,9 @@ fn forgetting_is_immediate_and_not_argued_with() {
 
 #[test]
 fn nothing_learned_yet_says_so_rather_than_inventing_something() {
-    assert!(Person::default().show(0).contains("haven't worked anything out"));
+    assert!(Person::default()
+        .show(0)
+        .contains("haven't worked anything out"));
 }
 
 // ================= noticing without diagnosing =================
@@ -136,29 +151,49 @@ fn everything_it_notices_is_checkable_against_a_clock() {
     // "You've been at this since six" is an observation. "You seem stressed"
     // is a guess dressed as insight, and a wrong one is worse than silence.
     let late = Noticed::LateRun { nights: 4 };
-    assert!(late.spoken().contains("4 nights running past your usual hours"));
+    assert!(late
+        .spoken()
+        .contains("4 nights running past your usual hours"));
     assert!(!late.spoken().contains("stressed"));
     assert!(!late.spoken().contains("burn"));
 }
 
 #[test]
 fn an_observation_comes_with_an_offer_not_with_advice() {
-    assert!(Noticed::NoBreak { hours: 7 }.spoken().contains("if you want to stop"));
-    assert!(Noticed::LateRun { nights: 3 }.spoken().contains("Want me to take anything off"));
+    assert!(Noticed::NoBreak { hours: 7 }
+        .spoken()
+        .contains("if you want to stop"));
+    assert!(Noticed::LateRun { nights: 3 }
+        .spoken()
+        .contains("Want me to take anything off"));
     // Never "you should".
     for n in [
         Noticed::LateRun { nights: 3 },
         Noticed::NoBreak { hours: 7 },
-        Noticed::Scattered { started: 9, finished: 2 },
+        Noticed::Scattered {
+            started: 9,
+            finished: 2,
+        },
     ] {
-        assert!(!n.spoken().to_lowercase().contains("you should"), "{}", n.spoken());
+        assert!(
+            !n.spoken().to_lowercase().contains("you should"),
+            "{}",
+            n.spoken()
+        );
     }
 }
 
 #[test]
 fn a_stalled_project_is_asked_about_rather_than_assumed_to_be_forgotten() {
-    let s = Noticed::Stalled { project: "Homelab".into(), weeks: 5 };
-    assert!(s.spoken().contains("parked on purpose?"), "got: {}", s.spoken());
+    let s = Noticed::Stalled {
+        project: "Homelab".into(),
+        weeks: 5,
+    };
+    assert!(
+        s.spoken().contains("parked on purpose?"),
+        "got: {}",
+        s.spoken()
+    );
     assert!(s.say_once(), "and not raised every week after that");
 }
 
@@ -170,7 +205,10 @@ fn a_project_quiet_for_a_week_is_normal_and_not_mentioned() {
     // How long, as well as what: "hasn't moved in 5 weeks" is worth saying
     // and "has gone quiet" is not.
     assert_eq!(p.gone_quiet(40 * DAY), vec![("Atlas", 5)]);
-    assert!(p.gone_quiet(200 * DAY).is_empty(), "and after long enough, it's just over");
+    assert!(
+        p.gone_quiet(200 * DAY).is_empty(),
+        "and after long enough, it's just over"
+    );
 }
 
 #[test]
@@ -187,8 +225,14 @@ fn the_defaults_wait_a_while_before_saying_anything() {
 fn atlas_says_plainly_when_something_is_beyond_it() {
     assert!(NOT_A_THERAPIST.contains("not the right thing for this"));
     assert!(NOT_A_THERAPIST.contains("a person is better than me"));
-    assert!(NOT_A_THERAPIST.contains("isn't me deflecting"), "and it doesn't just hang up");
-    assert!(NOT_A_THERAPIST.contains("take things off your plate"), "it still offers what it can");
+    assert!(
+        NOT_A_THERAPIST.contains("isn't me deflecting"),
+        "and it doesn't just hang up"
+    );
+    assert!(
+        NOT_A_THERAPIST.contains("take things off your plate"),
+        "it still offers what it can"
+    );
 }
 
 #[test]
@@ -238,7 +282,9 @@ fn nine_to_five() -> Person {
 #[test]
 fn a_late_night_is_one_outside_the_hours_you_actually_keep() {
     let mut p = nine_to_five();
-    let (from, to) = p.usual_hours(&jc()).expect("five days is enough to have hours");
+    let (from, to) = p
+        .usual_hours(&jc())
+        .expect("five days is enough to have hours");
     assert!(from <= 9 && to >= 17, "{from}-{to}");
 
     // Two in the morning, three nights running.
@@ -251,16 +297,28 @@ fn a_late_night_is_one_outside_the_hours_you_actually_keep() {
     // hour — at four nights running you work nights, and a laptop that went
     // on remarking on it every evening would be wrong as well as annoying.
     p.working_now(2, 4 * day + 2 * 3600, &jc());
-    assert_eq!(p.late_run(4 * day + 2 * 3600), 0, "it never stops calling you late");
+    assert_eq!(
+        p.late_run(4 * day + 2 * 3600),
+        0,
+        "it never stops calling you late"
+    );
     // Counted in nights rather than in sessions: twice in one night is one.
     p.working_now(3, 3 * day + 3 * 3600, &jc());
-    assert_eq!(p.late_run(3 * day + 3 * 3600), 3, "two stretches in one night counted twice");
+    assert_eq!(
+        p.late_run(3 * day + 3 * 3600),
+        3,
+        "two stretches in one night counted twice"
+    );
 
     // A gap breaks the run.
     let mut q = nine_to_five();
     q.working_now(2, 1 * day, &jc());
     q.working_now(2, 5 * day, &jc());
-    assert_eq!(q.late_run(5 * day), 1, "a run with a gap in it is not a run");
+    assert_eq!(
+        q.late_run(5 * day),
+        1,
+        "a run with a gap in it is not a run"
+    );
 
     // An hour inside your usual range is not a late night, however many times.
     let mut r = nine_to_five();
@@ -314,16 +372,30 @@ fn how_long_at_it_before_it_says_anything_is_also_yours() {
     let p = Person::default();
     assert_eq!(cfg.hours_before_saying, 6);
     assert_eq!(person::noticing(&p, &cfg, 5, 0), None);
-    assert_eq!(person::noticing(&p, &cfg, 6, 0), Some(Noticed::NoBreak { hours: 6 }));
+    assert_eq!(
+        person::noticing(&p, &cfg, 6, 0),
+        Some(Noticed::NoBreak { hours: 6 })
+    );
 
     let mut longer = PersonConfig::default();
     longer.hours_before_saying = 12;
-    assert_eq!(person::noticing(&p, &longer, 6, 0), None, "the threshold is hardcoded");
-    assert_eq!(person::noticing(&p, &longer, 12, 0), Some(Noticed::NoBreak { hours: 12 }));
+    assert_eq!(
+        person::noticing(&p, &longer, 6, 0),
+        None,
+        "the threshold is hardcoded"
+    );
+    assert_eq!(
+        person::noticing(&p, &longer, 12, 0),
+        Some(Noticed::NoBreak { hours: 12 })
+    );
 
     let mut never = PersonConfig::default();
     never.hours_before_saying = 0;
-    assert_eq!(person::noticing(&p, &never, 99, 0), None, "zero must mean never");
+    assert_eq!(
+        person::noticing(&p, &never, 99, 0),
+        None,
+        "zero must mean never"
+    );
 }
 
 #[test]
@@ -378,11 +450,17 @@ fn how_often_it_can_repeat_itself_is_the_number_you_set() {
     // The number is read.
     let mut chatty = PersonConfig::default();
     chatty.quiet_days = 1;
-    assert!(said.may_say(&seen, &chatty, day), "the quiet period is hardcoded");
+    assert!(
+        said.may_say(&seen, &chatty, day),
+        "the quiet period is hardcoded"
+    );
 
     // Some things are worth saying once and then dropping: a project has not
     // moved in a month, and saying so again next month adds nothing.
-    let once = Noticed::Stalled { project: "the tax return".into(), weeks: 5 };
+    let once = Noticed::Stalled {
+        project: "the tax return".into(),
+        weeks: 5,
+    };
     assert!(once.say_once());
     let mut s2 = Said::default();
     assert!(s2.may_say(&once, &cfg, 0));
@@ -418,7 +496,15 @@ fn the_daemon_is_what_notices_rather_than_these_tests() {
     );
 
     let raw = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    for key in ["notice_patterns:", "late_nights_before_saying:", "hours_before_saying:", "quiet_days:"] {
-        assert!(raw.contains(key), "{key} is no longer in the shipped config");
+    for key in [
+        "notice_patterns:",
+        "late_nights_before_saying:",
+        "hours_before_saying:",
+        "quiet_days:",
+    ] {
+        assert!(
+            raw.contains(key),
+            "{key} is no longer in the shipped config"
+        );
     }
 }

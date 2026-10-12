@@ -80,8 +80,16 @@ impl Reach {
 
 /// Files whose whole purpose is to say what Atlas may not do.
 const ITS_OWN_LIMITS: &[&str] = &[
-    "policy.rs", "consent.rs", "finance.rs", "grants.rs", "selfgrant.rs",
-    "categories.rs", "confirmed.rs", "pipeline.rs", "cargo.toml", "policy.yaml",
+    "policy.rs",
+    "consent.rs",
+    "finance.rs",
+    "grants.rs",
+    "selfgrant.rs",
+    "categories.rs",
+    "confirmed.rs",
+    "pipeline.rs",
+    "cargo.toml",
+    "policy.yaml",
     // tools.yaml holds `self_grant:` and `financial_domains:` — the settings
     // that decide what Atlas may do to itself and which sites it must never
     // act on. It looks like ordinary config and isn't.
@@ -95,15 +103,26 @@ const ITS_OWN_LIMITS: &[&str] = &[
     // limit, `selftest.rs` is what reports how it's doing. A self-fix that
     // could edit any of these could weaken the check on itself (research
     // report, 30 Sep 2026, Stage 1 item 2).
-    "mend.rs", "selfwork.rs", "sandbox.rs", "selftest.rs",
+    "mend.rs",
+    "selfwork.rs",
+    "sandbox.rs",
+    "selftest.rs",
     // The rest of the fences (1 Oct 2026 security pass): `uia.rs` decides
     // what can't be undone, `research.rs` what may be fetched, `untrusted.rs`
     // how outside text is kept from being obeyed, `operate.rs` the app
     // worker's guard, `smtp.rs` the send limit, `unsub.rs` which links are
     // followed, `transport.rs` and `server.rs` who is answered, `lookalike.rs`
     // which mail is trusted, `vault.rs` the passwords.
-    "uia.rs", "research.rs", "untrusted.rs", "operate.rs", "smtp.rs", "unsub.rs",
-    "transport.rs", "server.rs", "lookalike.rs", "vault.rs",
+    "uia.rs",
+    "research.rs",
+    "untrusted.rs",
+    "operate.rs",
+    "smtp.rs",
+    "unsub.rs",
+    "transport.rs",
+    "server.rs",
+    "lookalike.rs",
+    "vault.rs",
 ];
 
 /// Tests Atlas may edit.
@@ -112,8 +131,14 @@ const ITS_OWN_LIMITS: &[&str] = &[
 /// not symmetric: over-restricting costs a question, under-restricting costs
 /// the limit. Anything not on this list is treated as a guard.
 const ORDINARY_TESTS: &[&str] = &[
-    "prose.rs", "look.rs", "grading.rs", "layout.rs", "metrics.rs",
-    "language.rs", "voiceover.rs", "plainchange.rs",
+    "prose.rs",
+    "look.rs",
+    "grading.rs",
+    "layout.rs",
+    "metrics.rs",
+    "language.rs",
+    "voiceover.rs",
+    "plainchange.rs",
 ];
 
 /// The modules that limits are enforced by.
@@ -122,8 +147,16 @@ const ORDINARY_TESTS: &[&str] = &[
 /// `ORDINARY_TESTS`. There's a test asserting exactly that, so a guard can't
 /// be allowlisted by accident.
 pub const LIMIT_MODULES: &[&str] = &[
-    "policy", "selfgrant", "categories", "consent", "finance", "confirmed",
-    "vault", "signin", "enrol", "pipeline",
+    "policy",
+    "selfgrant",
+    "categories",
+    "consent",
+    "finance",
+    "confirmed",
+    "vault",
+    "signin",
+    "enrol",
+    "pipeline",
 ];
 
 /// Which files sit at which reach.
@@ -145,8 +178,11 @@ pub fn reach_of(path: &str) -> Reach {
     }
     // Anything that runs before, or instead of, the tests. A build script or
     // a CI config can make the whole suite vacuous without touching a test.
-    if p.starts_with(".cargo/") || p.starts_with(".github/") || p.contains("/.cargo/")
-        || file == "build.rs" || file == "rust-toolchain.toml"
+    if p.starts_with(".cargo/")
+        || p.starts_with(".github/")
+        || p.contains("/.cargo/")
+        || file == "build.rs"
+        || file == "rust-toolchain.toml"
     {
         return Reach::ItsOwnLimits;
     }
@@ -160,14 +196,34 @@ pub fn reach_of(path: &str) -> Reach {
         return Reach::ItsOwnLimits;
     }
 
-    if ["system.rs", "workspace.rs", "publish.rs", "signin.rs", "vault.rs", "mail.rs",
-        "browser.rs", "enrol.rs", "cdp.rs", "server.rs", "install.rs", "selfwork.rs",
-        "selfaudit.rs"].contains(&file)
+    if [
+        "system.rs",
+        "workspace.rs",
+        "publish.rs",
+        "signin.rs",
+        "vault.rs",
+        "mail.rs",
+        "browser.rs",
+        "enrol.rs",
+        "cdp.rs",
+        "server.rs",
+        "install.rs",
+        "selfwork.rs",
+        "selfaudit.rs",
+    ]
+    .contains(&file)
     {
         return Reach::WhatItTouches;
     }
 
-    if ["commands.yaml", "persona.rs", "plainchange.rs", "voiceover.rs", "language.rs"].contains(&file)
+    if [
+        "commands.yaml",
+        "persona.rs",
+        "plainchange.rs",
+        "voiceover.rs",
+        "language.rs",
+    ]
+    .contains(&file)
     {
         return Reach::WhatItSays;
     }
@@ -301,7 +357,11 @@ pub fn may_land(
         )),
         Some(_) => Verdict::GoAhead {
             // Said after, never asked before — but never silent either.
-            say_after: format!("Changed {} on my own. {}", reach.plain(), "Say undo if not."),
+            say_after: format!(
+                "Changed {} on my own. {}",
+                reach.plain(),
+                "Say undo if not."
+            ),
         },
     }
 }
@@ -325,7 +385,9 @@ pub fn raise_it(what: &str, reach: Reach) -> String {
 /// times is nagging about something that was never urgent.
 pub fn raised_again(what: &str, times_asked: u32) -> Option<String> {
     match times_asked {
-        0 | 1 => Some(format!("Still got that recommendation about {what}, whenever suits.")),
+        0 | 1 => Some(format!(
+            "Still got that recommendation about {what}, whenever suits."
+        )),
         _ => None,
     }
 }

@@ -11,7 +11,7 @@ use atlas::intent::Intent;
 use atlas::platform::mock::MockPlatform;
 use atlas::platform::Monitor;
 use atlas::proactive::{Proactive, ProactiveConfig};
-use atlas::resume::{Unfinished, SavedWindow};
+use atlas::resume::{SavedWindow, Unfinished};
 use atlas::store::Store;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -25,7 +25,14 @@ fn scratch(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn cfg() -> &'static Config {
@@ -60,23 +67,40 @@ impl Llm for Slow {
 fn work_you_asked_for_is_written_down_until_it_ends() {
     let root = scratch("record");
     let p = plat();
-    let mut d = Daemon::new(cfg(), &p, Some(Arc::new(Slow(Mutex::new(0)))), Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        cfg(),
+        &p,
+        Some(Arc::new(Slow(Mutex::new(0)))),
+        Store::new(root.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let _ = d.turn("ask the room: should I build the hollow CLI?", 100);
     let written: Vec<Unfinished> = Store::new(root.clone()).load(atlas::resume::RECORD);
     assert_eq!(written.len(), 1, "{written:?}");
     assert_eq!(written[0].label, "council");
-    assert_eq!(written[0].asked, "ask the room: should I build the hollow CLI?");
+    assert_eq!(
+        written[0].asked,
+        "ask the room: should I build the hollow CLI?"
+    );
     // Once it ends, it's crossed off.
     let mut t = 101;
     for _ in 0..600 {
         let _ = d.tick(t);
         t += 1;
-        if Store::new(root.clone()).load::<Vec<Unfinished>>(atlas::resume::RECORD).is_empty() {
+        if Store::new(root.clone())
+            .load::<Vec<Unfinished>>(atlas::resume::RECORD)
+            .is_empty()
+        {
             break;
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    assert!(Store::new(root).load::<Vec<Unfinished>>(atlas::resume::RECORD).is_empty(), "a finished errand stayed on the list");
+    assert!(
+        Store::new(root)
+            .load::<Vec<Unfinished>>(atlas::resume::RECORD)
+            .is_empty(),
+        "a finished errand stayed on the list"
+    );
 }
 
 #[test]
@@ -84,25 +108,65 @@ fn what_a_restart_cut_off_is_redone_once_or_named() {
     let root = scratch("cut-off");
     let store = Store::new(root.clone());
     let left = vec![
-        Unfinished { label: "council".into(), topic: Some("the hollow CLI".into()), asked: "ask the room: should I build the hollow CLI?".into(), started: 1, redone: 0 },
-        Unfinished { label: "mail".into(), topic: None, asked: "check my mail".into(), started: 1, redone: 0 },
+        Unfinished {
+            label: "council".into(),
+            topic: Some("the hollow CLI".into()),
+            asked: "ask the room: should I build the hollow CLI?".into(),
+            started: 1,
+            redone: 0,
+        },
+        Unfinished {
+            label: "mail".into(),
+            topic: None,
+            asked: "check my mail".into(),
+            started: 1,
+            redone: 0,
+        },
         // Already redone once after an earlier restart: named, not tried again.
-        Unfinished { label: "research".into(), topic: Some("tides".into()), asked: "research tides".into(), started: 1, redone: 1 },
+        Unfinished {
+            label: "research".into(),
+            topic: Some("tides".into()),
+            asked: "research tides".into(),
+            started: 1,
+            redone: 1,
+        },
     ];
     store.save(atlas::resume::RECORD, &left).unwrap();
     let p = plat();
     let seats = Arc::new(VerySlow);
-    let mut d = Daemon::new(cfg(), &p, Some(seats.clone()), Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        cfg(),
+        &p,
+        Some(seats.clone()),
+        Store::new(root.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let out = d.tick(200).join(" ");
-    assert!(out.contains("I stopped in the middle of the council"), "{out}");
+    assert!(
+        out.contains("I stopped in the middle of the council"),
+        "{out}"
+    );
     assert!(out.contains("started it again"), "{out}");
-    assert!(out.contains("the mail check") && out.contains("research"), "{out}");
+    assert!(
+        out.contains("the mail check") && out.contains("research"),
+        "{out}"
+    );
     assert!(out.contains("haven't redone"), "{out}");
-    assert!(d.crew.errands().iter().any(|e| e.name == "council"), "the council wasn't redone: {out}");
-    assert!(!d.crew.errands().iter().any(|e| e.name == "mail" || e.name == "research"));
+    assert!(
+        d.crew.errands().iter().any(|e| e.name == "council"),
+        "the council wasn't redone: {out}"
+    );
+    assert!(!d
+        .crew
+        .errands()
+        .iter()
+        .any(|e| e.name == "mail" || e.name == "research"));
     let now: Vec<Unfinished> = Store::new(root).load(atlas::resume::RECORD);
     assert_eq!(now.len(), 1);
-    assert_eq!(now[0].redone, 1, "the redo isn't marked as one, so a crash loop would go on");
+    assert_eq!(
+        now[0].redone, 1,
+        "the redo isn't marked as one, so a crash loop would go on"
+    );
     // Said once, not every tick.
     let again = d.tick(201).join(" ");
     assert!(!again.contains("I stopped in the middle"), "{again}");
@@ -139,8 +203,17 @@ fn a_window_being_worked_is_picked_back_up_after_a_restart() {
     let p = plat();
     show(&p, 7, "Sam: where are you?");
     {
-        let mut d = Daemon::new(cfg(), &p, Some(Arc::new(Replies)), Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
-        let _ = d.execute_timed(&Intent::Delegate("take over this conversation".into()), "take over this conversation");
+        let mut d = Daemon::new(
+            cfg(),
+            &p,
+            Some(Arc::new(Replies)),
+            Store::new(root.clone()),
+            Proactive::new(ProactiveConfig::default()),
+        );
+        let _ = d.execute_timed(
+            &Intent::Delegate("take over this conversation".into()),
+            "take over this conversation",
+        );
         let _ = d.tick(atlas::store::now() + 50);
         assert_eq!(d.working_for_you.len(), 1);
     }
@@ -148,9 +221,18 @@ fn a_window_being_worked_is_picked_back_up_after_a_restart() {
     assert_eq!(saved.len(), 1, "the window job wasn't written down");
     assert_eq!(saved[0].job.app, "SomeChat");
     // Atlas starts again; the window is still open.
-    let mut d = Daemon::new(cfg(), &p, Some(Arc::new(Replies)), Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        cfg(),
+        &p,
+        Some(Arc::new(Replies)),
+        Store::new(root.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let out = d.tick(atlas::store::now() + 60).join(" ");
-    assert!(out.contains("picked the conversation in SomeChat back up"), "{out}");
+    assert!(
+        out.contains("picked the conversation in SomeChat back up"),
+        "{out}"
+    );
     assert_eq!(d.working_for_you.len(), 1);
     assert_eq!(d.working_for_you[0].win, atlas::platform::WindowId(7));
 }
@@ -159,12 +241,29 @@ fn a_window_being_worked_is_picked_back_up_after_a_restart() {
 fn a_window_that_closed_while_atlas_was_down_is_left_and_said_so() {
     let root = scratch("window-gone");
     let store = Store::new(root.clone());
-    let job = atlas::delegate::Delegation::new("SomeChat", "reply", atlas::delegate::Reach::Converse, 12);
+    let job =
+        atlas::delegate::Delegation::new("SomeChat", "reply", atlas::delegate::Reach::Converse, 12);
     store
-        .save(atlas::resume::WINDOWS, &vec![SavedWindow { id: 1 << 62, job, win: 99, after_mine: None, started: 1, held: false }])
+        .save(
+            atlas::resume::WINDOWS,
+            &vec![SavedWindow {
+                id: 1 << 62,
+                job,
+                win: 99,
+                after_mine: None,
+                started: 1,
+                held: false,
+            }],
+        )
         .unwrap();
     let p = plat();
-    let mut d = Daemon::new(cfg(), &p, Some(Arc::new(Replies)), Store::new(root), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        cfg(),
+        &p,
+        Some(Arc::new(Replies)),
+        Store::new(root),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let out = d.tick(atlas::store::now() + 60).join(" ");
     assert!(out.contains("that window's gone now"), "{out}");
     assert!(d.working_for_you.is_empty());
@@ -181,7 +280,11 @@ fn atlas_typing_doesnt_count_as_you_typing() {
     let own = own_input_starts(10_000, None, 40_000);
     let own = atlas::platform::OwnInput { to: 42_000, ..own };
     assert_eq!(own.yours_before, 10_000);
-    assert_eq!(idle_of_yours(42_000, Some(own), 45_000), 35, "Atlas's own keys counted as yours");
+    assert_eq!(
+        idle_of_yours(42_000, Some(own), 45_000),
+        35,
+        "Atlas's own keys counted as yours"
+    );
     // You typed after it: that's you.
     assert_eq!(idle_of_yours(44_000, Some(own), 45_000), 1);
     // Atlas typed, then pressed Enter a moment later: still measured from you.
@@ -190,7 +293,11 @@ fn atlas_typing_doesnt_count_as_you_typing() {
     // Nothing of Atlas's: as Windows says.
     assert_eq!(idle_of_yours(30_000, None, 45_000), 15);
     // The clock wraps every 49 days.
-    let wrap = atlas::platform::OwnInput { yours_before: u32::MAX - 5_000, from: u32::MAX - 1_000, to: 500 };
+    let wrap = atlas::platform::OwnInput {
+        yours_before: u32::MAX - 5_000,
+        from: u32::MAX - 1_000,
+        to: 500,
+    };
     assert_eq!(idle_of_yours(400, Some(wrap), 2_000), 7);
 }
 
@@ -203,10 +310,17 @@ fn a_phase_written_down_is_found_again_and_a_half_written_one_isnt() {
     assert_eq!(ph.done::<String>("1-draft"), None);
     assert!(ph.finished("1-draft", &"fn parse() {}".to_string()));
     let again = atlas::phases::Phases::for_work(&root, "improve", "diary\nadd a parser");
-    assert_eq!(again.done::<String>("1-draft").as_deref(), Some("fn parse() {}"));
+    assert_eq!(
+        again.done::<String>("1-draft").as_deref(),
+        Some("fn parse() {}")
+    );
     assert_eq!(again.finished_phases(), vec!["1-draft".to_string()]);
     // Different work, different folder.
-    assert_eq!(atlas::phases::Phases::for_work(&root, "improve", "diary\nsomething else").done::<String>("1-draft"), None);
+    assert_eq!(
+        atlas::phases::Phases::for_work(&root, "improve", "diary\nsomething else")
+            .done::<String>("1-draft"),
+        None
+    );
     again.close();
     assert_eq!(ph.done::<String>("1-draft"), None);
 }
@@ -229,17 +343,38 @@ fn project_work_carries_on_from_its_last_finished_phase() {
     let ph = atlas::phases::Phases::for_work(&root, "improve", &format!("diary\n{what}"));
     ph.finished(
         "1-draft",
-        &atlas::build_it::Outcome::Built { code: "fn parse() {}".into(), rounds: 0, notes: vec![] },
+        &atlas::build_it::Outcome::Built {
+            code: "fn parse() {}".into(),
+            rounds: 0,
+            notes: vec![],
+        },
     );
-    ph.finished("2-checked", &(false, "Queued \"date parser\" on diary.".to_string(), vec![atlas::workshop::FileEdit { path: "dates.rs".into(), content: "fn parse() {}".into() }]));
+    ph.finished(
+        "2-checked",
+        &(
+            false,
+            "Queued \"date parser\" on diary.".to_string(),
+            vec![atlas::workshop::FileEdit {
+                path: "dates.rs".into(),
+                content: "fn parse() {}".into(),
+            }],
+        ),
+    );
     ph.finished("3-explained", &Some("It reads dates.".to_string()));
     let p = plat();
     let model = Arc::new(Counting(Mutex::new(0)));
-    let mut d = Daemon::new(cfg(), &p, Some(model.clone()), Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        cfg(),
+        &p,
+        Some(model.clone()),
+        Store::new(root.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
     // No coding agent, whatever this machine has installed: with Claude Code
     // on the PATH the work is offered to it instead (2 Oct 2026).
     d.find_coding_agents_with_for_test(|_| None);
-    d.workshop.register("diary", &folder.display().to_string(), 1);
+    d.workshop
+        .register("diary", &folder.display().to_string(), 1);
     let said = d.execute_timed(&Intent::Improve(what.into()), what);
     assert!(said.starts_with("On it"), "{said}");
     assert!(said.contains("Carrying on from where it stopped — the draft, checking it, explaining it already done."), "{said}");
@@ -247,16 +382,30 @@ fn project_work_carries_on_from_its_last_finished_phase() {
     for _ in 0..500 {
         let _ = d.tick(t);
         t += 1;
-        if !d.workshop.projects.iter().flat_map(|p| p.ready()).collect::<Vec<_>>().is_empty() {
+        if !d
+            .workshop
+            .projects
+            .iter()
+            .flat_map(|p| p.ready())
+            .collect::<Vec<_>>()
+            .is_empty()
+        {
             break;
         }
         std::thread::sleep(Duration::from_millis(10));
     }
     let ready: Vec<_> = d.workshop.projects.iter().flat_map(|p| p.ready()).collect();
     assert_eq!(ready.len(), 1, "the change wasn't filed");
-    assert!(ready[0].note.contains("It reads dates."), "{}", ready[0].note);
+    assert!(
+        ready[0].note.contains("It reads dates."),
+        "{}",
+        ready[0].note
+    );
     assert_eq!(*model.0.lock().unwrap(), 0, "finished phases were redone");
-    assert!(ph.finished_phases().is_empty(), "the phases outlived the filed change");
+    assert!(
+        ph.finished_phases().is_empty(),
+        "the phases outlived the filed change"
+    );
 }
 
 #[test]
@@ -268,15 +417,35 @@ fn a_question_left_unanswered_is_named_after_a_restart_and_never_acted_on() {
     let p = plat();
     let t = 1_790_000_000;
     {
-        let mut d = Daemon::new(cfg(), &p, None, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            cfg(),
+            &p,
+            None,
+            Store::new(root.clone()),
+            Proactive::new(ProactiveConfig::default()),
+        );
         let _ = d.tick(t);
-        d.session.await_approval(Intent::TidyDesktop, "Tidy your desktop into folders?");
+        d.session
+            .await_approval(Intent::TidyDesktop, "Tidy your desktop into folders?");
         d.persist();
     }
-    let mut d = Daemon::new(cfg(), &p, None, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        cfg(),
+        &p,
+        None,
+        Store::new(root.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let said = d.tick(t + 60).join(" ");
-    assert!(said.contains("waiting on your answer") && said.contains("Tidy your desktop into folders"), "{said}");
-    assert_eq!(d.session.approvals_waiting(), 0, "nothing is carried out or re-armed from before");
+    assert!(
+        said.contains("waiting on your answer") && said.contains("Tidy your desktop into folders"),
+        "{said}"
+    );
+    assert_eq!(
+        d.session.approvals_waiting(),
+        0,
+        "nothing is carried out or re-armed from before"
+    );
     // Said once.
     let again = d.tick(t + 120).join(" ");
     assert!(!again.contains("waiting on your answer"), "{again}");
@@ -290,20 +459,53 @@ fn a_workflow_waiting_on_your_yes_is_asked_again_after_a_restart() {
     let p = plat();
     let t = 1_790_000_000;
     {
-        let mut d = Daemon::new(cfg(), &p, None, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            cfg(),
+            &p,
+            None,
+            Store::new(root.clone()),
+            Proactive::new(ProactiveConfig::default()),
+        );
         let _ = d.tick(t);
-        d.flows.record("close up", &["shutdown workspace".into()], Some("close up shop"));
+        d.flows.record(
+            "close up",
+            &["shutdown workspace".into()],
+            Some("close up shop"),
+        );
         let asked = d.turn("close up shop", t + 1);
         assert!(asked.contains('?'), "the step should ask first: {asked}");
         d.persist();
     }
-    let mut d = Daemon::new(cfg(), &p, None, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        cfg(),
+        &p,
+        None,
+        Store::new(root.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let said = d.tick(t + 60).join(" ");
-    assert!(said.contains("waiting for your yes") && said.contains("close up"), "{said}");
-    assert_eq!(said.matches("waiting for your yes").count(), 1, "asked once, not per tick: {said}");
-    assert_eq!(d.tick(t + 65).join(" ").matches("waiting for your yes").count(), 0, "not asked again before you answer");
+    assert!(
+        said.contains("waiting for your yes") && said.contains("close up"),
+        "{said}"
+    );
+    assert_eq!(
+        said.matches("waiting for your yes").count(),
+        1,
+        "asked once, not per tick: {said}"
+    );
+    assert_eq!(
+        d.tick(t + 65)
+            .join(" ")
+            .matches("waiting for your yes")
+            .count(),
+        0,
+        "not asked again before you answer"
+    );
     let reply = d.turn("yes", t + 70);
-    assert!(!reply.to_lowercase().contains("nothing to") && !reply.is_empty(), "the yes didn't reach the workflow: {reply}");
+    assert!(
+        !reply.to_lowercase().contains("nothing to") && !reply.is_empty(),
+        "the yes didn't reach the workflow: {reply}"
+    );
 }
 
 #[test]
@@ -312,14 +514,32 @@ fn a_clarification_question_survives_a_restart_as_an_interruption() {
     let p = plat();
     let t = atlas::store::now();
     {
-        let mut d = Daemon::new(cfg(), &p, None, Store::new(root.clone()), Proactive::new(ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            cfg(),
+            &p,
+            None,
+            Store::new(root.clone()),
+            Proactive::new(ProactiveConfig::default()),
+        );
         d.tick(t);
         d.session.ask("Edited clip is ready. Keep it?");
         d.persist();
     }
-    let mut d = Daemon::new(cfg(), &p, None, Store::new(root), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        cfg(),
+        &p,
+        None,
+        Store::new(root),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let said = d.tick(t + 60).join(" ");
-    assert!(said.contains("Edited clip is ready. Keep it"), "the restart lost the pending decision: {said}");
-    assert!(matches!(d.session.pending, atlas::session::Pending::Nothing), "old consent must not be rearmed");
+    assert!(
+        said.contains("Edited clip is ready. Keep it"),
+        "the restart lost the pending decision: {said}"
+    );
+    assert!(
+        matches!(d.session.pending, atlas::session::Pending::Nothing),
+        "old consent must not be rearmed"
+    );
     assert!(!d.tick(t + 120).join(" ").contains("Edited clip is ready"));
 }

@@ -48,7 +48,9 @@ impl Size {
 pub enum State {
     Running,
     /// Over budget but making progress — worth asking rather than killing.
-    Overrunning { by_secs: u64 },
+    Overrunning {
+        by_secs: u64,
+    },
     /// Stopped, with whatever it had.
     Stopped(Stopped),
 }
@@ -57,10 +59,14 @@ pub enum State {
 pub enum Stopped {
     Finished,
     /// Out of time, and here's what there is.
-    OutOfTime { got: String },
+    OutOfTime {
+        got: String,
+    },
     /// Not getting anywhere — stopping early is better than spending the rest
     /// of the budget proving it.
-    Stalled { since_secs: u64 },
+    Stalled {
+        since_secs: u64,
+    },
     YouStopped,
 }
 
@@ -126,9 +132,13 @@ impl Box_ {
         if elapsed > self.size.budget_secs() {
             // Over budget once: ask. Over budget having already asked: stop.
             if self.asked {
-                self.state = State::Stopped(Stopped::OutOfTime { got: self.partial.clone() });
+                self.state = State::Stopped(Stopped::OutOfTime {
+                    got: self.partial.clone(),
+                });
             } else {
-                self.state = State::Overrunning { by_secs: elapsed - self.size.budget_secs() };
+                self.state = State::Overrunning {
+                    by_secs: elapsed - self.size.budget_secs(),
+                };
             }
         }
         &self.state
@@ -161,7 +171,10 @@ impl Box_ {
             }
             State::Stopped(Stopped::OutOfTime { got }) => {
                 if got.is_empty() {
-                    format!("Stopped on {} — out of time and I had nothing to show.", self.what)
+                    format!(
+                        "Stopped on {} — out of time and I had nothing to show.",
+                        self.what
+                    )
                 } else {
                     // Something beats nothing, and you can decide whether it's
                     // enough.
@@ -180,19 +193,37 @@ impl Box_ {
 /// Guess how big a job is from what was asked.
 pub fn size_of(request: &str) -> Size {
     let t = request.to_lowercase();
-    if ["research", "look into", "go through all", "everything", "compare all", "dig into"]
-        .iter()
-        .any(|w| t.contains(w))
+    if [
+        "research",
+        "look into",
+        "go through all",
+        "everything",
+        "compare all",
+        "dig into",
+    ]
+    .iter()
+    .any(|w| t.contains(w))
     {
         return Size::Long;
     }
-    if ["read", "summarise", "summarize", "check", "find", "look for", "tidy"]
-        .iter()
-        .any(|w| t.contains(w))
+    if [
+        "read",
+        "summarise",
+        "summarize",
+        "check",
+        "find",
+        "look for",
+        "tidy",
+    ]
+    .iter()
+    .any(|w| t.contains(w))
     {
         return Size::Small;
     }
-    if ["overnight", "while i sleep", "take your time", "no rush"].iter().any(|w| t.contains(w)) {
+    if ["overnight", "while i sleep", "take your time", "no rush"]
+        .iter()
+        .any(|w| t.contains(w))
+    {
         return Size::Open;
     }
     Size::Quick
@@ -213,12 +244,19 @@ pub fn usual_secs(past: &[u64]) -> Option<u64> {
 /// "yes but not annoyingly"). Only for work that usually takes five minutes
 /// or more (quick things get no warning), and not again for the same kind
 /// within two hours of the last time it was said.
-pub fn estimate_worth_saying(usual: Option<u64>, open_ended: bool, said_last: Option<u64>, now: u64) -> Option<String> {
+pub fn estimate_worth_saying(
+    usual: Option<u64>,
+    open_ended: bool,
+    said_last: Option<u64>,
+    now: u64,
+) -> Option<String> {
     if said_last.is_some_and(|at| now.saturating_sub(at) < 2 * 3600) {
         return None;
     }
     if open_ended {
-        return Size::Open.warn_up_front().map(|s| format!("This one takes {s}."));
+        return Size::Open
+            .warn_up_front()
+            .map(|s| format!("This one takes {s}."));
     }
     let secs = usual?;
     if secs < 300 {

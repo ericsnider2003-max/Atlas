@@ -1,6 +1,6 @@
 use atlas::consolidate::{
     dropped_note, learn, over_budget_on_purpose, same_claim, size_note, trim, worth_keeping, Claim,
-    ConsolidateConfig, Confirmation,
+    Confirmation, ConsolidateConfig,
 };
 use atlas::freshness::Shelf;
 
@@ -13,7 +13,11 @@ fn claim(says: &str, shelf: Shelf, sources: &[&str], first_at: u64, asked: u32) 
         confirmations: sources
             .iter()
             .enumerate()
-            .map(|(i, s)| Confirmation { source: (*s).into(), at: first_at + i as u64 * DAY, as_worded: says.into() })
+            .map(|(i, s)| Confirmation {
+                source: (*s).into(),
+                at: first_at + i as u64 * DAY,
+                as_worded: says.into(),
+            })
             .collect(),
         first_at,
         asked_about: asked,
@@ -53,10 +57,13 @@ fn re_reading_something_does_not_make_atlas_less_sure_of_it() {
         Shelf::Slow,
         &["irs.gov", "a broker's guide"],
         0,
-    // asked twice
+        // asked twice
         2,
     );
-    assert!(old_but_reconfirmed.as_of() > 0, "as_of follows the newest confirmation");
+    assert!(
+        old_but_reconfirmed.as_of() > 0,
+        "as_of follows the newest confirmation"
+    );
     assert_eq!(old_but_reconfirmed.as_of(), DAY);
 }
 
@@ -66,14 +73,24 @@ fn two_sources_agreeing_raises_confidence_and_the_same_source_twice_does_not() {
     let same_twice = claim("x", Shelf::Slow, &["a.com", "a.com"], 0, 0);
     let two = claim("x", Shelf::Slow, &["a.com", "b.com"], 0, 0);
 
-    assert_eq!(one.standing(), same_twice.standing(), "the same source twice is one source");
+    assert_eq!(
+        one.standing(),
+        same_twice.standing(),
+        "the same source twice is one source"
+    );
     assert!(two.standing() > one.standing());
 }
 
 #[test]
 fn agreement_caps_so_a_popular_wrong_answer_is_not_unassailable() {
     let three = claim("x", Shelf::Slow, &["a", "b", "c"], 0, 0);
-    let ten = claim("x", Shelf::Slow, &["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"], 0, 0);
+    let ten = claim(
+        "x",
+        Shelf::Slow,
+        &["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"],
+        0,
+        0,
+    );
     assert_eq!(three.standing(), ten.standing());
     assert!(ten.standing() < 1.0);
 }
@@ -97,7 +114,13 @@ fn something_settled_never_needs_checking_again_however_old() {
 
 #[test]
 fn something_about_your_own_setup_never_needs_checking_either() {
-    let yours = claim("panels go on the right of the primary screen", Shelf::Yours, &["you"], 0, 0);
+    let yours = claim(
+        "panels go on the right of the primary screen",
+        Shelf::Yours,
+        &["you"],
+        0,
+        0,
+    );
     assert!(!yours.worth_rechecking(3650 * DAY));
 }
 
@@ -148,14 +171,26 @@ fn nothing_settled_is_dropped_even_when_that_breaks_the_budget() {
     known.push(claim("a stale quote", Shelf::Volatile, &["x"], 0, 0));
 
     let dropped = trim(&mut known, 5, 400 * DAY);
-    assert_eq!(known.len(), 20, "all twenty settled facts survived a budget of five");
+    assert_eq!(
+        known.len(),
+        20,
+        "all twenty settled facts survived a budget of five"
+    );
     assert_eq!(dropped, vec!["a stale quote"]);
 }
 
 #[test]
 fn nothing_about_you_is_dropped_either() {
     let mut known: Vec<Claim> = (0..10)
-        .map(|i| claim(&format!("your preference {i}"), Shelf::Yours, &["you"], 0, 0))
+        .map(|i| {
+            claim(
+                &format!("your preference {i}"),
+                Shelf::Yours,
+                &["you"],
+                0,
+                0,
+            )
+        })
         .collect();
     let dropped = trim(&mut known, 2, 400 * DAY);
     assert_eq!(known.len(), 10);
@@ -216,10 +251,22 @@ fn the_protection_is_not_configurable_away() {
     // is allowed to be exceeded rather than drop one.
     let mut known: Vec<Claim> = Vec::new();
     for i in 0..6 {
-        known.push(claim(&format!("settled thing {i}"), Shelf::Settled, &["a"], 100, 0));
+        known.push(claim(
+            &format!("settled thing {i}"),
+            Shelf::Settled,
+            &["a"],
+            100,
+            0,
+        ));
     }
     for i in 0..6 {
-        known.push(claim(&format!("ordinary thing {i}"), Shelf::Slow, &["a"], 100, 0));
+        known.push(claim(
+            &format!("ordinary thing {i}"),
+            Shelf::Slow,
+            &["a"],
+            100,
+            0,
+        ));
     }
 
     // A budget far below the number of protected claims.
@@ -237,14 +284,22 @@ fn the_protection_is_not_configurable_away() {
     // And an old config naming the removed key still loads.
     let parsed: ConsolidateConfig =
         serde_yaml::from_str("enabled: true\nprotects_settled_and_yours: false\n").unwrap();
-    assert!(parsed.enabled, "an unknown key must not stop the section parsing");
+    assert!(
+        parsed.enabled,
+        "an unknown key must not stop the section parsing"
+    );
 }
 
 #[test]
 fn learning_the_same_thing_twice_strengthens_rather_than_duplicates() {
     // The whole point, end to end.
     let mut known: Vec<Claim> = Vec::new();
-    assert!(!learn(&mut known, "the wash sale window is 30 days", "irs.gov", 0));
+    assert!(!learn(
+        &mut known,
+        "the wash sale window is 30 days",
+        "irs.gov",
+        0
+    ));
     assert_eq!(known.len(), 1);
 
     // Same fact, your words, months later, a different source.
@@ -260,14 +315,22 @@ fn learning_the_same_thing_twice_strengthens_rather_than_duplicates() {
 
     // And it's now dated from the newer confirmation, not the older one.
     assert_eq!(known[0].as_of(), 200 * DAY);
-    assert!(known[0].standing() > 0.7, "two sources agreeing is worth more than one");
+    assert!(
+        known[0].standing() > 0.7,
+        "two sources agreeing is worth more than one"
+    );
 }
 
 #[test]
 fn a_genuinely_different_fact_is_added_rather_than_merged() {
     let mut known: Vec<Claim> = Vec::new();
     learn(&mut known, "the wash sale window is 30 days", "irs.gov", 0);
-    learn(&mut known, "section 1256 contracts are taxed sixty forty", "irs.gov", 0);
+    learn(
+        &mut known,
+        "section 1256 contracts are taxed sixty forty",
+        "irs.gov",
+        0,
+    );
     assert_eq!(known.len(), 2);
 }
 
@@ -281,7 +344,13 @@ fn dropping_a_claim_loses_the_claim_but_not_that_you_knew_it() {
     // have to lose is the knowledge that you once knew — much smaller, and
     // the part that actually hurts.
     let mut known = vec![
-        claim("the tier two fee is forty basis points", Shelf::Quick, &["the broker's site"], 0, 0),
+        claim(
+            "the tier two fee is forty basis points",
+            Shelf::Quick,
+            &["the broker's site"],
+            0,
+            0,
+        ),
         claim("a settled fact worth keeping", Shelf::Settled, &["x"], 0, 5),
     ];
     let mut stones: Vec<Tombstone> = Vec::new();
@@ -296,7 +365,13 @@ fn dropping_a_claim_loses_the_claim_but_not_that_you_knew_it() {
 fn a_search_that_would_have_hit_a_dropped_claim_says_so_rather_than_nothing() {
     // Silently returning nothing is the failure that makes you stop trusting
     // the store.
-    let c = claim("the tier two fee is forty basis points", Shelf::Quick, &["the broker's site"], 0, 0);
+    let c = claim(
+        "the tier two fee is forty basis points",
+        Shelf::Quick,
+        &["the broker's site"],
+        0,
+        0,
+    );
     let stones = vec![tombstone(&c, DAY)];
 
     let found = once_knew(&stones, "what was the tier two fee").unwrap();
@@ -309,7 +384,13 @@ fn a_search_that_would_have_hit_a_dropped_claim_says_so_rather_than_nothing() {
 
 #[test]
 fn something_it_never_knew_does_not_match_a_tombstone() {
-    let c = claim("the tier two fee is forty basis points", Shelf::Quick, &["x"], 0, 0);
+    let c = claim(
+        "the tier two fee is forty basis points",
+        Shelf::Quick,
+        &["x"],
+        0,
+        0,
+    );
     let stones = vec![tombstone(&c, DAY)];
     assert!(once_knew(&stones, "what is the melting point of gallium").is_none());
 }
@@ -325,18 +406,35 @@ fn a_tombstone_is_a_fraction_of_the_size_of_the_claim() {
         0,
     );
     let t = tombstone(&c, DAY);
-    assert!(t.about.len() * 3 < c.says.len(), "{} vs {}", t.about.len(), c.says.len());
+    assert!(
+        t.about.len() * 3 < c.says.len(),
+        "{} vs {}",
+        t.about.len(),
+        c.says.len()
+    );
 }
 
 #[test]
 fn tombstones_do_not_grow_forever_either() {
     // The whole point is that nothing does.
     let mut known: Vec<Claim> = (0..500)
-        .map(|i| claim(&format!("volatile thing {i}"), Shelf::Volatile, &["x"], 0, 0))
+        .map(|i| {
+            claim(
+                &format!("volatile thing {i}"),
+                Shelf::Volatile,
+                &["x"],
+                0,
+                0,
+            )
+        })
         .collect();
     let mut stones: Vec<Tombstone> = Vec::new();
     trim_with_stones(&mut known, &mut stones, 10, 400 * DAY);
-    assert!(stones.len() <= 40, "{} tombstones against a cap of 40", stones.len());
+    assert!(
+        stones.len() <= 40,
+        "{} tombstones against a cap of 40",
+        stones.len()
+    );
 }
 
 // ================= squeeze before dropping =================
@@ -350,7 +448,10 @@ fn a_claim_loses_its_elaboration_before_it_loses_its_fact() {
     let long = "a wash sale disallows the loss if you rebuy within 30 days, which means the \
                 loss is added to the cost basis of the new position instead";
     let short = compact(long);
-    assert!(short.contains("rebuy within 30 days"), "the fact survived: {short}");
+    assert!(
+        short.contains("rebuy within 30 days"),
+        "the fact survived: {short}"
+    );
     assert!(!short.contains("cost basis"), "the elaboration went");
     assert!(short.len() * 2 < long.len());
 }
@@ -386,7 +487,10 @@ fn squeezing_happens_before_anything_is_dropped() {
 
     assert_eq!(squeezed, 1);
     assert!(dropped.is_empty(), "nothing needed to go");
-    let kept = known.iter().find(|c| c.says.contains("forty basis points")).unwrap();
+    let kept = known
+        .iter()
+        .find(|c| c.says.contains("forty basis points"))
+        .unwrap();
     assert_eq!(kept.density, Density::Compact);
     assert!(kept.says.len() * 2 < long.len());
 }
@@ -397,13 +501,24 @@ fn a_compacted_claim_still_answers_the_question() {
     let long = "the tier two fee is forty basis points, which applies once you pass the \
                 monthly volume threshold";
     let short = compact(long);
-    assert!(short.contains("forty basis points"), "still an answer, not a pointer");
+    assert!(
+        short.contains("forty basis points"),
+        "still an answer, not a pointer"
+    );
 }
 
 #[test]
 fn dropping_only_happens_when_squeezing_was_not_enough() {
     let mut known: Vec<Claim> = (0..10)
-        .map(|i| claim(&format!("short volatile {i}"), Shelf::Volatile, &["x"], 0, 0))
+        .map(|i| {
+            claim(
+                &format!("short volatile {i}"),
+                Shelf::Volatile,
+                &["x"],
+                0,
+                0,
+            )
+        })
         .collect();
     let mut stones: Vec<Tombstone> = Vec::new();
     let (squeezed, dropped) = make_room(&mut known, &mut stones, 3, 400 * DAY);

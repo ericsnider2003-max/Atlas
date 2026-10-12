@@ -1,8 +1,8 @@
 use atlas::attention::{hear, Attention, Heard};
 use atlas::certainty::{assess, phrase, CertaintyConfig, Confidence, Grounding};
+use atlas::policy::Decision;
 use atlas::subject::{confirm, resolve, Candidates, Resolution, Subject};
 use atlas::system::{describe, judge, reversibility, Change, SystemConfig, Undo, Verdict};
-use atlas::policy::Decision;
 
 // ================= what is "this"? =================
 
@@ -77,7 +77,10 @@ fn a_file_from_yesterday_is_a_weak_one() {
         _ => None,
     };
     assert!(matches!(pick(&recent), Some(Subject::File(_))));
-    assert!(!matches!(pick(&stale), Some(Subject::File(_))), "an old file is not what you meant");
+    assert!(
+        !matches!(pick(&stale), Some(Subject::File(_))),
+        "an old file is not what you meant"
+    );
 }
 
 #[test]
@@ -124,7 +127,10 @@ fn with_genuinely_nothing_to_point_at_it_says_so() {
 
 #[test]
 fn atlas_names_what_it_took_so_a_wrong_guess_is_obvious_immediately() {
-    let c = Candidates { clipboard: Some("x".into()), ..nothing() };
+    let c = Candidates {
+        clipboard: Some("x".into()),
+        ..nothing()
+    };
     let said = confirm(&resolve("explain this", &c));
     assert!(said.contains("what you copied"));
     assert!(said.contains("you copied it"), "and why: {said}");
@@ -133,12 +139,18 @@ fn atlas_names_what_it_took_so_a_wrong_guess_is_obvious_immediately() {
 // ================= changing the machine =================
 
 fn on() -> SystemConfig {
-    SystemConfig { enabled: true, file_roots: vec!["/home/user".into()], ..Default::default() }
+    SystemConfig {
+        enabled: true,
+        file_roots: vec!["/home/user".into()],
+        ..Default::default()
+    }
 }
 
 #[test]
 fn a_wallpaper_is_nothing_and_is_treated_as_nothing() {
-    let c = Change::Wallpaper { path: "/anywhere/nice.jpg".into() };
+    let c = Change::Wallpaper {
+        path: "/anywhere/nice.jpg".into(),
+    };
     assert_eq!(reversibility(&c), Undo::Instant);
     match judge(&c, &on()) {
         Verdict::Go { decision, .. } => assert_eq!(decision, Decision::ProceedAndReport),
@@ -149,7 +161,10 @@ fn a_wallpaper_is_nothing_and_is_treated_as_nothing() {
 
 #[test]
 fn moving_a_file_is_done_and_reported_because_it_can_be_undone() {
-    let c = Change::MoveFile { from: "/home/user/a.pdf".into(), to: "/home/user/docs/a.pdf".into() };
+    let c = Change::MoveFile {
+        from: "/home/user/a.pdf".into(),
+        to: "/home/user/docs/a.pdf".into(),
+    };
     assert_eq!(reversibility(&c), Undo::FromTrash);
     match judge(&c, &on()) {
         Verdict::Go { decision, .. } => assert_eq!(decision, Decision::ProceedAndReport),
@@ -160,7 +175,10 @@ fn moving_a_file_is_done_and_reported_because_it_can_be_undone() {
 
 #[test]
 fn files_outside_the_folders_atlas_works_in_are_refused() {
-    let c = Change::MoveFile { from: "/etc/passwd".into(), to: "/home/user/x".into() };
+    let c = Change::MoveFile {
+        from: "/etc/passwd".into(),
+        to: "/home/user/x".into(),
+    };
     assert!(matches!(judge(&c, &on()), Verdict::Refuse(_)));
 }
 
@@ -169,12 +187,23 @@ fn security_settings_are_never_touched_however_they_are_asked_for() {
     // Not because they're hard. A voice assistant that can turn off your
     // firewall is a worse thing to own than one that can't.
     for name in [
-        "firewall", "Windows Defender", "Smart App Control", "UAC",
-        "BitLocker encryption", "account password", "DNS server", "registry",
+        "firewall",
+        "Windows Defender",
+        "Smart App Control",
+        "UAC",
+        "BitLocker encryption",
+        "account password",
+        "DNS server",
+        "registry",
     ] {
-        let c = Change::Setting { name: name.into(), value: "off".into() };
+        let c = Change::Setting {
+            name: name.into(),
+            value: "off".into(),
+        };
         match judge(&c, &on()) {
-            Verdict::Refuse(why) => assert!(why.contains("open the settings page"), "{name}: {why}"),
+            Verdict::Refuse(why) => {
+                assert!(why.contains("open the settings page"), "{name}: {why}")
+            }
             o => panic!("{name} should have been refused, got {o:?}"),
         }
     }
@@ -182,10 +211,17 @@ fn security_settings_are_never_touched_however_they_are_asked_for() {
 
 #[test]
 fn appearance_settings_are_allowed_but_asked_about_first() {
-    let c = Change::Setting { name: "dark mode".into(), value: "on".into() };
+    let c = Change::Setting {
+        name: "dark mode".into(),
+        value: "on".into(),
+    };
     match judge(&c, &on()) {
         Verdict::Go { decision, undo } => {
-            assert_eq!(decision, Decision::RequireApproval, "you'd have to undo it by hand");
+            assert_eq!(
+                decision,
+                Decision::RequireApproval,
+                "you'd have to undo it by hand"
+            );
             assert_eq!(undo, Undo::ByHand);
         }
         o => panic!("{o:?}"),
@@ -194,7 +230,10 @@ fn appearance_settings_are_allowed_but_asked_about_first() {
 
 #[test]
 fn an_unrecognised_setting_fails_closed() {
-    let c = Change::Setting { name: "some obscure toggle".into(), value: "x".into() };
+    let c = Change::Setting {
+        name: "some obscure toggle".into(),
+        value: "x".into(),
+    };
     match judge(&c, &on()) {
         Verdict::Refuse(why) => assert!(why.contains("only change appearance")),
         o => panic!("{o:?}"),
@@ -213,7 +252,10 @@ fn emptying_the_trash_is_the_one_thing_that_cannot_be_taken_back() {
 
 #[test]
 fn atlas_may_set_up_what_it_needs_for_itself() {
-    let c = Change::ForItself { what: "made my own data folder".into(), reversible: true };
+    let c = Change::ForItself {
+        what: "made my own data folder".into(),
+        reversible: true,
+    };
     match judge(&c, &on()) {
         Verdict::Go { decision, .. } => assert_eq!(decision, Decision::ProceedAndReport),
         o => panic!("{o:?}"),
@@ -222,19 +264,43 @@ fn atlas_may_set_up_what_it_needs_for_itself() {
 
 #[test]
 fn with_the_feature_off_nothing_is_changed_at_all() {
-    let c = Change::Wallpaper { path: "/x.jpg".into() };
-    assert!(matches!(judge(&c, &SystemConfig::default()), Verdict::Refuse(_)));
+    let c = Change::Wallpaper {
+        path: "/x.jpg".into(),
+    };
+    assert!(matches!(
+        judge(&c, &SystemConfig::default()),
+        Verdict::Refuse(_)
+    ));
 }
 
 #[test]
 fn every_change_says_how_to_take_it_back() {
     for (c, u) in [
-        (Change::Wallpaper { path: "/x.jpg".into() }, Undo::Instant),
-        (Change::Delete { path: "/home/user/a".into() }, Undo::FromTrash),
-        (Change::Setting { name: "theme".into(), value: "dark".into() }, Undo::ByHand),
+        (
+            Change::Wallpaper {
+                path: "/x.jpg".into(),
+            },
+            Undo::Instant,
+        ),
+        (
+            Change::Delete {
+                path: "/home/user/a".into(),
+            },
+            Undo::FromTrash,
+        ),
+        (
+            Change::Setting {
+                name: "theme".into(),
+                value: "dark".into(),
+            },
+            Undo::ByHand,
+        ),
     ] {
         let said = describe(&c, u);
-        assert!(said.len() > 10, "\"done\" on its own leaves you wondering what changed");
+        assert!(
+            said.len() > 10,
+            "\"done\" on its own leaves you wondering what changed"
+        );
     }
 }
 
@@ -245,7 +311,11 @@ fn a_panic_word_is_heard_and_is_not_the_same_as_stop() {
     assert_eq!(hear("stop everything"), Some(Heard::Panic));
     assert_eq!(hear("halt"), Some(Heard::Panic));
     assert_eq!(hear("drop everything"), Some(Heard::Panic));
-    assert_eq!(hear("stop"), Some(Heard::Cancel), "plain stop is still just stop");
+    assert_eq!(
+        hear("stop"),
+        Some(Heard::Cancel),
+        "plain stop is still just stop"
+    );
 }
 
 #[test]
@@ -270,12 +340,19 @@ fn resuming_after_a_panic_does_not_quietly_restart_what_was_dropped() {
 // ================= not knowing =================
 
 fn grounded() -> Grounding {
-    Grounding { from_a_source: true, ..Default::default() }
+    Grounding {
+        from_a_source: true,
+        ..Default::default()
+    }
 }
 
 #[test]
 fn a_grounded_answer_is_said_as_it_is() {
-    let (level, _, _) = assess("The file is 4.2 megabytes.", &grounded(), &CertaintyConfig::default());
+    let (level, _, _) = assess(
+        "The file is 4.2 megabytes.",
+        &grounded(),
+        &CertaintyConfig::default(),
+    );
     assert_eq!(level, Confidence::Fine);
 }
 
@@ -292,7 +369,11 @@ fn a_claim_about_your_machine_made_without_looking_is_withheld() {
     // This is the one that matters. A model will say "your Documents folder
     // has 40 files" with no idea whether that's true.
     let answer = "Your Documents folder has the report you're after.";
-    let g = Grounding { about_your_world: true, had_the_context: false, from_a_source: false };
+    let g = Grounding {
+        about_your_world: true,
+        had_the_context: false,
+        from_a_source: false,
+    };
     let (level, _, why) = assess(answer, &g, &CertaintyConfig::default());
     assert_eq!(level, Confidence::Withhold);
     assert!(why.contains("without checking"), "got: {why}");
@@ -301,16 +382,31 @@ fn a_claim_about_your_machine_made_without_looking_is_withheld() {
 #[test]
 fn the_same_claim_is_fine_when_atlas_actually_looked() {
     let answer = "Your Documents folder has the report you're after.";
-    let g = Grounding { about_your_world: true, had_the_context: true, from_a_source: true };
+    let g = Grounding {
+        about_your_world: true,
+        had_the_context: true,
+        from_a_source: true,
+    };
     let (level, _, _) = assess(answer, &g, &CertaintyConfig::default());
     assert_eq!(level, Confidence::Fine);
 }
 
 #[test]
 fn invented_exact_figures_count_against_an_ungrounded_answer() {
-    let with = assess("It's about 1234.56 per month.", &Grounding::default(), &CertaintyConfig::default());
-    let without = assess("It's roughly a thousand a month.", &Grounding::default(), &CertaintyConfig::default());
-    assert!(with.1 < without.1, "precision without a source is suspicious");
+    let with = assess(
+        "It's about 1234.56 per month.",
+        &Grounding::default(),
+        &CertaintyConfig::default(),
+    );
+    let without = assess(
+        "It's roughly a thousand a month.",
+        &Grounding::default(),
+        &CertaintyConfig::default(),
+    );
+    assert!(
+        with.1 < without.1,
+        "precision without a source is suspicious"
+    );
 }
 
 #[test]
@@ -330,7 +426,14 @@ fn a_middling_answer_is_given_with_the_doubt_attached() {
 
 #[test]
 fn the_check_can_be_switched_off() {
-    let off = CertaintyConfig { enabled: false, ..Default::default() };
-    let (level, _, _) = assess("total nonsense with i think and probably", &Grounding::default(), &off);
+    let off = CertaintyConfig {
+        enabled: false,
+        ..Default::default()
+    };
+    let (level, _, _) = assess(
+        "total nonsense with i think and probably",
+        &Grounding::default(),
+        &off,
+    );
     assert_eq!(level, Confidence::Fine);
 }

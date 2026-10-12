@@ -33,7 +33,11 @@ pub struct CertaintyConfig {
 
 impl Default for CertaintyConfig {
     fn default() -> Self {
-        CertaintyConfig { enabled: true, qualify_below: 0.62, withhold_below: 0.38 }
+        CertaintyConfig {
+            enabled: true,
+            qualify_below: 0.62,
+            withhold_below: 0.38,
+        }
     }
 }
 
@@ -60,7 +64,11 @@ impl Grounding {
     /// "claim about your machine without checking" rule for containing the
     /// word "your". The module was right; nothing ever told it the truth.
     pub fn from_what_it_holds() -> Self {
-        Grounding { from_a_source: true, about_your_world: true, had_the_context: true }
+        Grounding {
+            from_a_source: true,
+            about_your_world: true,
+            had_the_context: true,
+        }
     }
 
     /// A research note, graded by whether it actually read anything.
@@ -79,17 +87,45 @@ impl Grounding {
 
 /// Phrases that mean the model is hedging rather than answering.
 const HEDGES: &[&str] = &[
-    "i think", "i believe", "probably", "might be", "could be", "as far as i know",
-    "if i recall", "i'm not sure", "im not sure", "it seems", "possibly", "perhaps",
-    "generally", "typically", "usually", "i would guess", "presumably",
+    "i think",
+    "i believe",
+    "probably",
+    "might be",
+    "could be",
+    "as far as i know",
+    "if i recall",
+    "i'm not sure",
+    "im not sure",
+    "it seems",
+    "possibly",
+    "perhaps",
+    "generally",
+    "typically",
+    "usually",
+    "i would guess",
+    "presumably",
 ];
 
 /// Claims about your machine that Atlas can only know by having looked.
 const ABOUT_YOUR_WORLD: &[&str] = &[
-    "your file", "your folder", "your document", "your desktop", "your download",
-    "your picture", "you have", "you installed", "your setting", "your app",
-    "on your machine", "in your documents", "your last", "you said earlier",
-    "your calendar", "your email", "your account", "your project",
+    "your file",
+    "your folder",
+    "your document",
+    "your desktop",
+    "your download",
+    "your picture",
+    "you have",
+    "you installed",
+    "your setting",
+    "your app",
+    "on your machine",
+    "in your documents",
+    "your last",
+    "you said earlier",
+    "your calendar",
+    "your email",
+    "your account",
+    "your project",
 ];
 
 pub fn assess(answer: &str, g: &Grounding, cfg: &CertaintyConfig) -> (Confidence, f32, String) {
@@ -150,7 +186,10 @@ pub fn assess(answer: &str, g: &Grounding, cfg: &CertaintyConfig) -> (Confidence
 
 fn has_precise_numbers(s: &str) -> bool {
     s.split_whitespace().any(|w| {
-        let cleaned: String = w.chars().filter(|c| c.is_ascii_digit() || *c == '.').collect();
+        let cleaned: String = w
+            .chars()
+            .filter(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
         cleaned.contains('.') && cleaned.len() >= 4
     })
 }
@@ -189,14 +228,11 @@ pub fn aged(
     }
     // The weakest thing an answer rests on decides it. Averaging would let
     // nine fresh notes hide one that is two years out of date.
-    let Some(worst) = basis
-        .iter()
-        .min_by(|a, b| {
-            a.weight(now)
-                .partial_cmp(&b.weight(now))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
-    else {
+    let Some(worst) = basis.iter().min_by(|a, b| {
+        a.weight(now)
+            .partial_cmp(&b.weight(now))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    }) else {
         return (level, None);
     };
 

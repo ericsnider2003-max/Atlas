@@ -50,7 +50,14 @@ pub fn post_json_with_token(
     token: &str,
     timeout: Duration,
 ) -> Result<Response> {
-    with_header("POST", host, path, Some(body), Some(("Authorization", &format!("Bearer {token}"))), timeout)
+    with_header(
+        "POST",
+        host,
+        path,
+        Some(body),
+        Some(("Authorization", &format!("Bearer {token}"))),
+        timeout,
+    )
 }
 
 pub fn request(
@@ -68,13 +75,15 @@ pub fn request(
 /// `elsewhere.rs` asks another Atlas for its brief over the hub API, which
 /// authenticates every request. Added with its caller, not ahead of one --
 /// the note below is about entry points that exist to be counted.
-pub fn get_with_token(
-    host: &str,
-    path: &str,
-    token: &str,
-    timeout: Duration,
-) -> Result<Response> {
-    with_header("GET", host, path, None, Some(("Authorization", &format!("Bearer {token}"))), timeout)
+pub fn get_with_token(host: &str, path: &str, token: &str, timeout: Duration) -> Result<Response> {
+    with_header(
+        "GET",
+        host,
+        path,
+        None,
+        Some(("Authorization", &format!("Bearer {token}"))),
+        timeout,
+    )
 }
 
 /// Private on purpose. `request` and `post_json_with_token` are the two
@@ -93,7 +102,10 @@ fn with_header(
         .parse()
         .or_else(|_| {
             use std::net::ToSocketAddrs;
-            host.to_socket_addrs().ok().and_then(|mut a| a.next()).ok_or(())
+            host.to_socket_addrs()
+                .ok()
+                .and_then(|mut a| a.next())
+                .ok_or(())
         })
         .map_err(|_| AtlasError::Platform(format!("cannot resolve {host}")))?;
 
@@ -131,7 +143,13 @@ fn with_header(
 /// A POST over a connection someone else already opened -- a stream Tor
 /// carried to a friend's Atlas (`onion::connect`). `host` is only what goes
 /// in the Host line.
-pub fn post_over(stream: &mut TcpStream, host: &str, path: &str, body: &str, timeout: Duration) -> Result<Response> {
+pub fn post_over(
+    stream: &mut TcpStream,
+    host: &str,
+    path: &str,
+    body: &str,
+    timeout: Duration,
+) -> Result<Response> {
     stream.set_read_timeout(Some(timeout))?;
     stream.set_write_timeout(Some(timeout))?;
     stream.write_all(build_request("POST", host, path, Some(body)).as_bytes())?;
@@ -153,24 +171,47 @@ pub enum KeptReply {
 /// A POST that asks to keep the connection open for the next one (Atlas's
 /// Tor connections to friends, gap AN): the reply is read by its length,
 /// not by the connection closing.
-pub fn post_kept(stream: &mut TcpStream, host: &str, path: &str, body: &str, timeout: Duration) -> Result<KeptReply> {
+pub fn post_kept(
+    stream: &mut TcpStream,
+    host: &str,
+    path: &str,
+    body: &str,
+    timeout: Duration,
+) -> Result<KeptReply> {
     stream.set_read_timeout(Some(timeout))?;
     stream.set_write_timeout(Some(timeout))?;
-    let req = build_request("POST", host, path, Some(body)).replacen("Connection: close\r\n", "Connection: keep-alive\r\n", 1);
+    let req = build_request("POST", host, path, Some(body)).replacen(
+        "Connection: close\r\n",
+        "Connection: keep-alive\r\n",
+        1,
+    );
     if stream.write_all(req.as_bytes()).is_err() {
         return Ok(KeptReply::Closed);
     }
     let raw = match read_bounded(stream, MAX_RESPONSE) {
         Ok(raw) if raw.is_empty() => return Ok(KeptReply::Closed),
         Ok(raw) => raw,
-        Err(AtlasError::Io(e)) if matches!(e.kind(), std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::BrokenPipe) => {
+        Err(AtlasError::Io(e))
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::BrokenPipe
+            ) =>
+        {
             return Ok(KeptReply::Closed)
         }
         Err(e) => return Err(e),
     };
-    let head_end = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap_or(raw.len());
-    let again = String::from_utf8_lossy(&raw[..head_end]).to_ascii_lowercase().contains("\r\nconnection: keep-alive");
-    Ok(KeptReply::Answered(parse_response(&raw)?, again && whole_reply(&raw)))
+    let head_end = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .unwrap_or(raw.len());
+    let again = String::from_utf8_lossy(&raw[..head_end])
+        .to_ascii_lowercase()
+        .contains("\r\nconnection: keep-alive");
+    Ok(KeptReply::Answered(
+        parse_response(&raw)?,
+        again && whole_reply(&raw),
+    ))
 }
 
 /// A GET over TLS.
@@ -201,17 +242,26 @@ fn tls_to(name: &str, port: u16, timeout: Duration) -> Result<native_tls::TlsStr
         .ok()
         .and_then(|mut a| a.next())
         .ok_or_else(|| AtlasError::Platform(format!("cannot resolve {name}")))?;
-    let tcp = TcpStream::connect_timeout(&addr, timeout).map_err(|e| AtlasError::Platform(format!("connect {name}: {e}")))?;
+    let tcp = TcpStream::connect_timeout(&addr, timeout)
+        .map_err(|e| AtlasError::Platform(format!("connect {name}: {e}")))?;
     tcp.set_read_timeout(Some(timeout))?;
     tcp.set_write_timeout(Some(timeout))?;
-    let connector = native_tls::TlsConnector::new().map_err(|e| AtlasError::Platform(format!("couldn't set up TLS: {e}")))?;
-    connector.connect(name, tcp).map_err(|e| AtlasError::Platform(format!("TLS to {name}: {e}")))
+    let connector = native_tls::TlsConnector::new()
+        .map_err(|e| AtlasError::Platform(format!("couldn't set up TLS: {e}")))?;
+    connector
+        .connect(name, tcp)
+        .map_err(|e| AtlasError::Platform(format!("TLS to {name}: {e}")))
 }
 
 /// `https_get` with extra request headers -- a `User-Agent` that says who is
 /// asking, which Reddit answers and a bare request gets refused with 429
 /// (the opportunity hunter, 29 Sep 2026). Same verification rules.
-pub fn https_get_with(host: &str, path: &str, headers: &[(&str, &str)], timeout: Duration) -> Result<Response> {
+pub fn https_get_with(
+    host: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    timeout: Duration,
+) -> Result<Response> {
     let mut s = tls_to(host, 443, timeout)?;
 
     let mut req = build_request("GET", host, path, None);
@@ -220,7 +270,9 @@ pub fn https_get_with(host: &str, path: &str, headers: &[(&str, &str)], timeout:
         // A header is one line: anything that could start another is refused
         // rather than sent.
         if k.contains(['\r', '\n', ':']) || v.contains(['\r', '\n']) {
-            return Err(AtlasError::Platform(format!("a request header for {host} had a line break in it")));
+            return Err(AtlasError::Platform(format!(
+                "a request header for {host} had a line break in it"
+            )));
         }
         req.insert_str(at, &format!("{k}: {v}\r\n"));
     }
@@ -232,9 +284,17 @@ pub fn https_get_with(host: &str, path: &str, headers: &[(&str, &str)], timeout:
 /// A POST over TLS, with an optional bearer token. For a push server that
 /// only speaks https (a public ntfy, or your own behind a certificate). Same
 /// verification rules as `https_get`: the system's, never turned down.
-pub fn https_post_json(host: &str, path: &str, body: &str, token: Option<&str>, timeout: Duration) -> Result<Response> {
+pub fn https_post_json(
+    host: &str,
+    path: &str,
+    body: &str,
+    token: Option<&str>,
+    timeout: Duration,
+) -> Result<Response> {
     let (name, port) = match host.rsplit_once(':') {
-        Some((h, p)) if p.chars().all(|c| c.is_ascii_digit()) => (h, p.parse::<u16>().unwrap_or(443)),
+        Some((h, p)) if p.chars().all(|c| c.is_ascii_digit()) => {
+            (h, p.parse::<u16>().unwrap_or(443))
+        }
         _ => (host, 443),
     };
     let mut s = tls_to(name, port, timeout)?;
@@ -264,7 +324,14 @@ pub fn https_call(
     body: Option<(&str, &str)>,
     timeout: Duration,
 ) -> Result<(Response, Vec<(String, String)>)> {
-    https_call_bytes(method, host, path, headers, body.map(|(kind, text)| (kind, text.as_bytes())), timeout)
+    https_call_bytes(
+        method,
+        host,
+        path,
+        headers,
+        body.map(|(kind, text)| (kind, text.as_bytes())),
+        timeout,
+    )
 }
 
 /// `https_call` with a body of any bytes: a picture uploaded as itself
@@ -278,36 +345,53 @@ pub fn https_call_bytes(
     timeout: Duration,
 ) -> Result<(Response, Vec<(String, String)>)> {
     let mut s = tls_to(host, 443, timeout)?;
-    let mut req = format!("{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nAccept: */*\r\n");
+    let mut req =
+        format!("{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nAccept: */*\r\n");
     for (k, v) in headers {
         // A header value with a line break in it is a second header someone
         // else wrote; refused rather than sent.
         if k.contains(['\r', '\n']) || v.contains(['\r', '\n']) {
-            return Err(AtlasError::Platform("a header with a line break in it".into()));
+            return Err(AtlasError::Platform(
+                "a header with a line break in it".into(),
+            ));
         }
         req.push_str(&format!("{k}: {v}\r\n"));
     }
     if let Some((kind, _)) = body {
         if kind.contains(['\r', '\n']) {
-            return Err(AtlasError::Platform("a header with a line break in it".into()));
+            return Err(AtlasError::Platform(
+                "a header with a line break in it".into(),
+            ));
         }
     }
     let mut wire = req.into_bytes();
     match body {
         Some((kind, bytes)) => {
-            wire.extend_from_slice(format!("Content-Type: {kind}\r\nContent-Length: {}\r\n\r\n", bytes.len()).as_bytes());
+            wire.extend_from_slice(
+                format!(
+                    "Content-Type: {kind}\r\nContent-Length: {}\r\n\r\n",
+                    bytes.len()
+                )
+                .as_bytes(),
+            );
             wire.extend_from_slice(bytes);
         }
         None => wire.extend_from_slice(b"\r\n"),
     }
     s.write_all(&wire)?;
     let raw = read_bounded(&mut s, MAX_RESPONSE)?;
-    let head_end = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap_or(raw.len());
+    let head_end = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .unwrap_or(raw.len());
     let head = String::from_utf8_lossy(&raw[..head_end]).into_owned();
     let got: Vec<(String, String)> = head
         .lines()
         .skip(1)
-        .filter_map(|l| l.split_once(':').map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string())))
+        .filter_map(|l| {
+            l.split_once(':')
+                .map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string()))
+        })
         .collect();
     Ok((parse_response(&raw)?, got))
 }
@@ -365,12 +449,18 @@ fn read_bounded<R: std::io::Read>(s: &mut R, max: usize) -> Result<Vec<u8>> {
 /// answer already in hand. The reply says its own length — `Content-Length`,
 /// or the zero-size last chunk of a chunked body — and that's when it's done.
 pub fn whole_reply(raw: &[u8]) -> bool {
-    let Some(end) = raw.windows(4).position(|w| w == b"\r\n\r\n") else { return false };
+    let Some(end) = raw.windows(4).position(|w| w == b"\r\n\r\n") else {
+        return false;
+    };
     let head = String::from_utf8_lossy(&raw[..end]).to_ascii_lowercase();
     let body = &raw[end + 4..];
     for line in head.lines() {
         if let Some(v) = line.strip_prefix("content-length:") {
-            return v.trim().parse::<usize>().map(|n| body.len() >= n).unwrap_or(false);
+            return v
+                .trim()
+                .parse::<usize>()
+                .map(|n| body.len() >= n)
+                .unwrap_or(false);
         }
         if line.starts_with("transfer-encoding:") && line.contains("chunked") {
             // The last chunk is a line holding only "0". Matched with the
@@ -383,9 +473,8 @@ pub fn whole_reply(raw: &[u8]) -> bool {
 }
 
 pub fn build_request(method: &str, host: &str, path: &str, body: Option<&str>) -> String {
-    let mut r = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nAccept: */*\r\n"
-    );
+    let mut r =
+        format!("{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nAccept: */*\r\n");
     match body {
         Some(b) => {
             r.push_str("Content-Type: application/json\r\n");
@@ -432,13 +521,13 @@ pub fn parse_response(raw: &[u8]) -> Result<Response> {
         .and_then(|c| c.parse::<u16>().ok())
         .ok_or_else(|| AtlasError::Platform("no HTTP status line".into()))?;
 
-    let chunked = head
-        .to_lowercase()
-        .contains("transfer-encoding: chunked");
+    let chunked = head.to_lowercase().contains("transfer-encoding: chunked");
 
-    let location = head
-        .lines()
-        .find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case("location")).map(|(_, v)| v.trim().to_string()));
+    let location = head.lines().find_map(|l| {
+        l.split_once(':')
+            .filter(|(k, _)| k.trim().eq_ignore_ascii_case("location"))
+            .map(|(_, v)| v.trim().to_string())
+    });
 
     Ok(Response {
         status,
@@ -475,7 +564,9 @@ fn dechunk(src: &[u8]) -> String {
         let line = &src[i..eol];
         let text = String::from_utf8_lossy(line);
         let size_part = text.trim().split(';').next().unwrap_or("").trim();
-        let Ok(n) = usize::from_str_radix(size_part, 16) else { break };
+        let Ok(n) = usize::from_str_radix(size_part, 16) else {
+            break;
+        };
 
         let start = eol + 2;
         if n == 0 {
@@ -490,7 +581,9 @@ fn dechunk(src: &[u8]) -> String {
         // A size the sender chose: checked, so a huge one can't wrap round to
         // a small number (fuzzed, Q20: it panicked; a release build
         // would have wrapped and read the wrong bytes).
-        let Some(end) = start.checked_add(n).filter(|end| *end <= src.len()) else { break };
+        let Some(end) = start.checked_add(n).filter(|end| *end <= src.len()) else {
+            break;
+        };
         out.extend_from_slice(&src[start..end]);
         i = end;
         // Skip the CRLF that follows the chunk data.

@@ -137,7 +137,8 @@ fn strip_config_only(name: &str, src: &str) -> String {
     src.lines()
         .filter(|l| {
             let t = l.trim();
-            !(t.starts_with("pub ") && t.contains(&format!("crate::{name}::"))
+            !(t.starts_with("pub ")
+                && t.contains(&format!("crate::{name}::"))
                 && t.contains("Config"))
         })
         .collect::<Vec<_>>()
@@ -151,7 +152,11 @@ fn module_sources() -> HashMap<String, String> {
         if path.extension().and_then(|e| e.to_str()) != Some("rs") {
             continue;
         }
-        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap().to_string();
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap()
+            .to_string();
         if stem == "lib" {
             continue;
         }
@@ -189,9 +194,7 @@ fn references(text: &str, module: &str) -> bool {
         let after = at + needle.len();
         let next_ok = bytes
             .get(after)
-            .is_some_and(|c| {
-                c.is_ascii_alphanumeric() || matches!(c, b'_' | b'<' | b'{' | b'*')
-            });
+            .is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'<' | b'{' | b'*'));
         if prev_ok && next_ok {
             return true;
         }
@@ -317,5 +320,9 @@ fn the_ceiling_tracks_reality_rather_than_drifting_above_it() {
         UNWIRED_BASELINE.len()
     );
     let slack = UNWIRED_CEILING.saturating_sub(UNWIRED_BASELINE.len());
-    assert!(slack <= 5, "lower the ceiling to {} so it means something", UNWIRED_BASELINE.len());
+    assert!(
+        slack <= 5,
+        "lower the ceiling to {} so it means something",
+        UNWIRED_BASELINE.len()
+    );
 }

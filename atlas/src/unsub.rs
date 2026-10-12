@@ -54,7 +54,9 @@ impl Sender {
                 let l = u.to_lowercase();
                 // One-click unsubscribe is either a mailto: or an https URL.
                 // Anything else is not the standard and isn't trusted.
-                (l.starts_with("<mailto:") || l.starts_with("<https://") || l.starts_with("mailto:")
+                (l.starts_with("<mailto:")
+                    || l.starts_with("<https://")
+                    || l.starts_with("mailto:")
                     || l.starts_with("https://"))
                     && !l.contains("http://")
             }
@@ -69,7 +71,8 @@ impl Sender {
 /// a real verdict, because the server already remembers what you did
 /// with each message.
 pub fn senders_from(messages: &[crate::imap::Message], now: u64) -> Vec<Sender> {
-    let mut by_address: std::collections::BTreeMap<String, Sender> = std::collections::BTreeMap::new();
+    let mut by_address: std::collections::BTreeMap<String, Sender> =
+        std::collections::BTreeMap::new();
     for m in messages {
         let (name, address) = split_from(&m.from);
         if address.is_empty() {
@@ -170,10 +173,19 @@ impl Default for UnsubConfig {
             min_messages: 4,
             never: vec![
                 // The ones where missing a message costs you something real.
-                "bank".into(), "hmrc".into(), "irs".into(), "gov".into(),
-                "insurance".into(), "landlord".into(), "school".into(),
-                "doctor".into(), "pharmacy".into(), "broker".into(),
-                "invoice".into(), "receipt".into(), "security".into(),
+                "bank".into(),
+                "hmrc".into(),
+                "irs".into(),
+                "gov".into(),
+                "insurance".into(),
+                "landlord".into(),
+                "school".into(),
+                "doctor".into(),
+                "pharmacy".into(),
+                "broker".into(),
+                "invoice".into(),
+                "receipt".into(),
+                "security".into(),
             ],
             bulk_without_asking: false,
         }
@@ -186,11 +198,15 @@ pub fn judge(s: &Sender, cfg: &UnsubConfig) -> Verdict {
     // Some senders you don't unsubscribe from however dead the engagement,
     // because the cost of missing one is not symmetrical.
     if let Some(word) = cfg.never.iter().find(|n| a.contains(n.as_str())) {
-        return Verdict::Keep { why: format!("anything with \"{word}\" in it stays") };
+        return Verdict::Keep {
+            why: format!("anything with \"{word}\" in it stays"),
+        };
     }
 
     if s.count < cfg.min_messages {
-        return Verdict::Keep { why: "not enough of them to judge".into() };
+        return Verdict::Keep {
+            why: "not enough of them to judge".into(),
+        };
     }
 
     let engagement = s.engagement();
@@ -309,25 +325,41 @@ pub fn one_click(header: &str) -> Option<(String, &'static str)> {
     // The web link is preferred; an entry with a space, a quote or a bracket
     // inside it is not a link at all.
     let entries: Vec<&str> = if header.contains('<') {
-        header.split('<').skip(1).filter_map(|e| e.split_once('>').map(|(inside, _)| inside.trim())).collect()
+        header
+            .split('<')
+            .skip(1)
+            .filter_map(|e| e.split_once('>').map(|(inside, _)| inside.trim()))
+            .collect()
     } else {
         vec![header.trim()]
     };
     let entries: Vec<&str> = entries
         .into_iter()
-        .filter(|e| !e.chars().any(|c| c.is_whitespace() || c.is_control() || "<>\"'".contains(c)))
+        .filter(|e| {
+            !e.chars()
+                .any(|c| c.is_whitespace() || c.is_control() || "<>\"'".contains(c))
+        })
         .collect();
     if let Some(web) = entries.iter().find(|e| e.starts_with("https://")) {
         return Some((web.to_string(), "List-Unsubscribe=One-Click"));
     }
-    entries.iter().find(|e| e.starts_with("mailto:") && e.len() > 7).map(|m| (m.to_string(), ""))
+    entries
+        .iter()
+        .find(|e| e.starts_with("mailto:") && e.len() > 7)
+        .map(|m| (m.to_string(), ""))
 }
 
 #[cfg(test)]
 mod senders_from_tests {
     use super::*;
 
-    fn msg(from: &str, date: &str, seen: bool, answered: bool, list_unsub: &str) -> crate::imap::Message {
+    fn msg(
+        from: &str,
+        date: &str,
+        seen: bool,
+        answered: bool,
+        list_unsub: &str,
+    ) -> crate::imap::Message {
         crate::imap::Message {
             from: from.into(),
             date: date.into(),
@@ -348,7 +380,10 @@ mod senders_from_tests {
 
     #[test]
     fn split_from_handles_a_bare_address_with_no_display_name() {
-        assert_eq!(split_from("news@shop.example"), (String::new(), "news@shop.example".to_string()));
+        assert_eq!(
+            split_from("news@shop.example"),
+            (String::new(), "news@shop.example".to_string())
+        );
     }
 
     #[test]
@@ -367,8 +402,20 @@ mod senders_from_tests {
     fn messages_from_the_same_address_are_grouped_into_one_sender() {
         let now = 1_700_000_000;
         let messages = vec![
-            msg("Shop <news@shop.example>", "Mon, 1 Jan 2026 09:00:00 +0000", true, false, "<mailto:unsub@shop.example>"),
-            msg("Shop <news@shop.example>", "Tue, 2 Jan 2026 09:00:00 +0000", false, false, ""),
+            msg(
+                "Shop <news@shop.example>",
+                "Mon, 1 Jan 2026 09:00:00 +0000",
+                true,
+                false,
+                "<mailto:unsub@shop.example>",
+            ),
+            msg(
+                "Shop <news@shop.example>",
+                "Tue, 2 Jan 2026 09:00:00 +0000",
+                false,
+                false,
+                "",
+            ),
         ];
         let senders = senders_from(&messages, now);
         assert_eq!(senders.len(), 1);
@@ -379,7 +426,13 @@ mod senders_from_tests {
     #[test]
     fn a_reply_is_counted_as_replied_not_just_opened() {
         let now = 1_700_000_000;
-        let messages = vec![msg("Boss <boss@work.example>", "Mon, 1 Jan 2026 09:00:00 +0000", true, true, "")];
+        let messages = vec![msg(
+            "Boss <boss@work.example>",
+            "Mon, 1 Jan 2026 09:00:00 +0000",
+            true,
+            true,
+            "",
+        )];
         let senders = senders_from(&messages, now);
         assert_eq!(senders[0].opened, 1);
         assert_eq!(senders[0].replied, 1);
@@ -396,15 +449,30 @@ mod senders_from_tests {
             "<https://shop.example/unsub>",
         )];
         let senders = senders_from(&messages, now);
-        assert_eq!(senders[0].list_unsubscribe.as_deref(), Some("<https://shop.example/unsub>"));
+        assert_eq!(
+            senders[0].list_unsubscribe.as_deref(),
+            Some("<https://shop.example/unsub>")
+        );
     }
 
     #[test]
     fn two_different_addresses_produce_two_separate_senders() {
         let now = 1_700_000_000;
         let messages = vec![
-            msg("Shop A <a@shop.example>", "Mon, 1 Jan 2026 09:00:00 +0000", true, false, ""),
-            msg("Shop B <b@shop.example>", "Mon, 1 Jan 2026 09:00:00 +0000", true, false, ""),
+            msg(
+                "Shop A <a@shop.example>",
+                "Mon, 1 Jan 2026 09:00:00 +0000",
+                true,
+                false,
+                "",
+            ),
+            msg(
+                "Shop B <b@shop.example>",
+                "Mon, 1 Jan 2026 09:00:00 +0000",
+                true,
+                false,
+                "",
+            ),
         ];
         let senders = senders_from(&messages, now);
         assert_eq!(senders.len(), 2);
@@ -416,11 +484,26 @@ mod senders_from_tests {
         let jan_6_2026 = 1_767_657_600; // date -u -d "2026-01-06" +%s
         let now = jan_6_2026 + 5 * 86400;
         let messages = vec![
-            msg("Shop <news@shop.example>", "Mon, 1 Jan 2026 00:00:00 +0000", true, false, ""),
-            msg("Shop <news@shop.example>", "Tue, 6 Jan 2026 00:00:00 +0000", true, false, ""),
+            msg(
+                "Shop <news@shop.example>",
+                "Mon, 1 Jan 2026 00:00:00 +0000",
+                true,
+                false,
+                "",
+            ),
+            msg(
+                "Shop <news@shop.example>",
+                "Tue, 6 Jan 2026 00:00:00 +0000",
+                true,
+                false,
+                "",
+            ),
         ];
         let senders = senders_from(&messages, now);
-        assert_eq!(senders[0].last_seen_days, 5, "should reflect the newer message, not the older one");
+        assert_eq!(
+            senders[0].last_seen_days, 5,
+            "should reflect the newer message, not the older one"
+        );
     }
 
     #[test]
@@ -437,11 +520,28 @@ pub const PENDING: &str = "unsub_pending";
 
 /// "Unsubscribe from those": the go-ahead after the report.
 pub fn go_ahead(said: &str) -> bool {
-    let t: String = said.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == ' ' { c } else { ' ' }).collect();
+    let t: String = said
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
     let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
     [
-        "unsubscribe from those", "unsubscribe from them", "unsubscribe from all of them", "unsubscribe me from those",
-        "unsubscribe me from them", "go ahead and unsubscribe", "yes unsubscribe", "do the unsubscribes", "unsubscribe from all those",
+        "unsubscribe from those",
+        "unsubscribe from them",
+        "unsubscribe from all of them",
+        "unsubscribe me from those",
+        "unsubscribe me from them",
+        "go ahead and unsubscribe",
+        "yes unsubscribe",
+        "do the unsubscribes",
+        "unsubscribe from all those",
     ]
     .iter()
     .any(|p| t.starts_with(p) || t == *p)

@@ -1,4 +1,6 @@
-use atlas::categories::{category_of, consent_line, media_category, media_decision, Category, MediaOp};
+use atlas::categories::{
+    category_of, consent_line, media_category, media_decision, Category, MediaOp,
+};
 use atlas::config::Config;
 use atlas::flow::{expand, Library, Next, OnFail, Run, RunState, Step, Workflow};
 use atlas::intent::Intent;
@@ -10,12 +12,18 @@ use std::path::Path;
 // ================= follow-ups =================
 
 fn refs() -> Referents {
-    Referents { last_app: Some("chrome".into()), ..Default::default() }
+    Referents {
+        last_app: Some("chrome".into()),
+        ..Default::default()
+    }
 }
 
 #[test]
 fn text_that_names_its_target_is_left_alone() {
-    assert_eq!(resolve("close chrome", &refs()), Resolution::Unchanged("close chrome".into()));
+    assert_eq!(
+        resolve("close chrome", &refs()),
+        Resolution::Unchanged("close chrome".into())
+    );
 }
 
 #[test]
@@ -84,7 +92,10 @@ fn punctuation_and_case_do_not_defeat_pronoun_detection() {
 
 #[test]
 fn the_active_window_is_a_fallback_when_atlas_has_not_acted_yet() {
-    let r = Referents { active_app: Some("notepad".into()), ..Default::default() };
+    let r = Referents {
+        active_app: Some("notepad".into()),
+        ..Default::default()
+    };
     match resolve("close it", &r) {
         Resolution::Resolved { referent, .. } => assert_eq!(referent, "notepad"),
         o => panic!("{o:?}"),
@@ -95,8 +106,14 @@ fn the_active_window_is_a_fallback_when_atlas_has_not_acted_yet() {
 
 #[test]
 fn ordinary_workspace_work_is_local() {
-    assert_eq!(category_of(&Intent::OpenApp("chrome".into())), Category::LocalOperational);
-    assert_eq!(category_of(&Intent::WorkspaceOn), Category::LocalOperational);
+    assert_eq!(
+        category_of(&Intent::OpenApp("chrome".into())),
+        Category::LocalOperational
+    );
+    assert_eq!(
+        category_of(&Intent::WorkspaceOn),
+        Category::LocalOperational
+    );
 }
 
 #[test]
@@ -107,25 +124,43 @@ fn research_leaves_the_machine_but_does_not_upload_your_content() {
 
 #[test]
 fn where_media_work_runs_decides_its_category_not_what_it_does() {
-    assert_eq!(media_category(MediaOp::Edit, false), Category::LocalCreative);
-    assert_eq!(media_category(MediaOp::Edit, true), Category::ExternalAiCreative);
+    assert_eq!(
+        media_category(MediaOp::Edit, false),
+        Category::LocalCreative
+    );
+    assert_eq!(
+        media_category(MediaOp::Edit, true),
+        Category::ExternalAiCreative
+    );
 }
 
 #[test]
 fn sending_your_content_to_an_outside_ai_always_needs_approval() {
-    assert_eq!(media_decision(MediaOp::Generate, true, false), Decision::RequireApproval);
+    assert_eq!(
+        media_decision(MediaOp::Generate, true, false),
+        Decision::RequireApproval
+    );
 }
 
 #[test]
 fn local_media_work_is_done_and_reported_not_gated() {
-    assert_eq!(media_decision(MediaOp::Edit, false, false), Decision::ProceedAndReport);
+    assert_eq!(
+        media_decision(MediaOp::Edit, false, false),
+        Decision::ProceedAndReport
+    );
 }
 
 #[test]
 fn overwriting_an_original_needs_approval_wherever_it_ran() {
     // That is about destroying a file, not about where the compute happened.
-    assert_eq!(media_decision(MediaOp::Edit, false, true), Decision::RequireApproval);
-    assert_eq!(media_decision(MediaOp::Export, false, false), Decision::RequireApproval);
+    assert_eq!(
+        media_decision(MediaOp::Edit, false, true),
+        Decision::RequireApproval
+    );
+    assert_eq!(
+        media_decision(MediaOp::Export, false, false),
+        Decision::RequireApproval
+    );
 }
 
 #[test]
@@ -226,7 +261,11 @@ fn a_chain_can_pause_for_approval_without_losing_its_place() {
     r.needs_approval();
     assert_eq!(r.next(), Next::Approve("save note note.md".into()));
     r.approve();
-    assert_eq!(r.next(), Next::Run("save note note.md".into()), "resumes exactly where it was");
+    assert_eq!(
+        r.next(),
+        Next::Run("save note note.md".into()),
+        "resumes exactly where it was"
+    );
 }
 
 #[test]
@@ -271,13 +310,20 @@ fn a_sequence_you_performed_becomes_a_named_chain() {
 #[test]
 fn a_specific_trigger_is_not_shadowed_by_a_general_one() {
     let mut lib = Library::default();
-    lib.add(Workflow { name: "general".into(), triggers: vec!["brief".into()], steps: vec![] });
+    lib.add(Workflow {
+        name: "general".into(),
+        triggers: vec!["brief".into()],
+        steps: vec![],
+    });
     lib.add(Workflow {
         name: "specific".into(),
         triggers: vec!["morning brief".into()],
         steps: vec![],
     });
-    assert_eq!(lib.match_trigger("give me the morning brief").unwrap().name, "specific");
+    assert_eq!(
+        lib.match_trigger("give me the morning brief").unwrap().name,
+        "specific"
+    );
 }
 
 #[test]

@@ -25,7 +25,12 @@ fn settled_facts_never_decay() {
 fn your_own_preferences_do_not_expire_on_a_clock() {
     // A preference from two years ago is still your preference until you say
     // otherwise. Ageing it would make Atlas re-ask things you already settled.
-    let k = Known::new("prefers Chrome on the left", Shelf::Yours, Checkable::YouSaid, 0);
+    let k = Known::new(
+        "prefers Chrome on the left",
+        Shelf::Yours,
+        Checkable::YouSaid,
+        0,
+    );
     assert_eq!(k.state(700 * DAY), State::Fresh);
     assert!(!k.should_recheck(700 * DAY));
 }
@@ -51,7 +56,10 @@ fn confidence_halves_rather_than_falling_off_a_cliff() {
     // is the behaviour a hard expiry gives you.
     let k = page("x", Shelf::Quick, 0);
     let at_one_half_life = k.weight(14 * DAY);
-    assert!((at_one_half_life - 0.5).abs() < 0.05, "got {at_one_half_life}");
+    assert!(
+        (at_one_half_life - 0.5).abs() < 0.05,
+        "got {at_one_half_life}"
+    );
     let at_two = k.weight(28 * DAY);
     assert!((at_two - 0.25).abs() < 0.05, "got {at_two}");
 }
@@ -77,7 +85,10 @@ fn an_ageing_fact_carries_its_age() {
     let k = page("the latest release is 1.4.2", Shelf::Quick, 0);
     let said = k.spoken(20 * DAY);
     assert!(said.contains("1.4.2"));
-    assert!(said.contains("days ago") || said.contains("weeks ago"), "got: {said}");
+    assert!(
+        said.contains("days ago") || said.contains("weeks ago"),
+        "got: {said}"
+    );
 }
 
 #[test]
@@ -94,7 +105,10 @@ fn a_stale_fact_is_offered_with_a_recheck_rather_than_withheld() {
 fn a_stale_fact_it_cannot_check_says_so_instead_of_offering() {
     let m = Known::new("they moved to Leeds", Shelf::Slow, Checkable::ModelAlone, 0);
     let said = m.spoken(900 * DAY);
-    assert!(said.contains("they moved to Leeds"), "the claim was withheld: {said}");
+    assert!(
+        said.contains("they moved to Leeds"),
+        "the claim was withheld: {said}"
+    );
     assert!(said.contains("can't check it myself"), "got: {said}");
 
     // The shelf decides decay, not the source: a Slow claim ages even when
@@ -137,7 +151,10 @@ fn wording_places_a_claim_on_the_right_shelf() {
     assert_eq!(shelf_for("the price is $12"), Shelf::Volatile);
     assert_eq!(shelf_for("the latest version is 3.1"), Shelf::Quick);
     assert_eq!(shelf_for("the CEO is Jane Doe"), Shelf::Slow);
-    assert_eq!(shelf_for("HTTP stands for hypertext transfer protocol"), Shelf::Settled);
+    assert_eq!(
+        shelf_for("HTTP stands for hypertext transfer protocol"),
+        Shelf::Settled
+    );
 }
 
 #[test]
@@ -183,7 +200,10 @@ fn freshness_breaks_ties_without_overruling_relevance() {
 #[test]
 fn a_settled_fact_takes_no_ranking_penalty_ever() {
     let k = page("how TCP works", Shelf::Settled, 0);
-    assert_eq!(ranking_multiplier(&k, 0), ranking_multiplier(&k, 9999 * DAY));
+    assert_eq!(
+        ranking_multiplier(&k, 0),
+        ranking_multiplier(&k, 9999 * DAY)
+    );
 }
 
 // --- how it changes what Atlas says -----------------------------------------

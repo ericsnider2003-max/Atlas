@@ -31,10 +31,23 @@ fn cfg() -> Config {
     Config::load(Path::new("config")).unwrap()
 }
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 /// Save a chain of benign steps under a trigger phrase.
@@ -47,11 +60,19 @@ fn save_flow(d: &mut Daemon, name: &str, steps: &[&str], trigger: &str) {
 fn a_benign_flow_runs_to_done_in_the_triggering_turn() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "done");
-    save_flow(&mut d, "morning", &["resume", "what can you do"], "start the morning");
+    save_flow(
+        &mut d,
+        "morning",
+        &["resume", "what can you do"],
+        "start the morning",
+    );
 
     let reply = d.turn("start the morning", 1_000);
     assert!(reply.contains("Running morning, 2 steps"), "{reply}");
-    assert!(reply.contains("done"), "a two-step benign flow should finish in the turn: {reply}");
+    assert!(
+        reply.contains("done"),
+        "a two-step benign flow should finish in the turn: {reply}"
+    );
     // Finished means finished: nothing left in flight for the tick to move.
     assert!(
         d.mind.focus().is_none(),
@@ -68,9 +89,15 @@ fn the_mind_finally_has_something_true_to_say_while_a_flow_runs() {
     save_flow(&mut d, "shutdown", &["resume", "close chrome"], "wind down");
 
     let reply = d.turn("wind down", 1_000);
-    assert!(reply.contains("go ahead?"), "should have paused to ask: {reply}");
+    assert!(
+        reply.contains("go ahead?"),
+        "should have paused to ask: {reply}"
+    );
 
-    let w = d.mind.focus().expect("a flow in flight is work the mind knows about");
+    let w = d
+        .mind
+        .focus()
+        .expect("a flow in flight is work the mind knows about");
     assert_eq!(w.asked, "shutdown");
     let (done, total) = w.progress();
     assert_eq!(total, 2, "the plan is the flow's own steps");
@@ -85,10 +112,18 @@ fn the_mind_finally_has_something_true_to_say_while_a_flow_runs() {
 fn a_consequential_step_pauses_the_chain_and_yes_resumes_it() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "yes");
-    save_flow(&mut d, "shutdown", &["resume", "close chrome", "what can you do"], "wind down");
+    save_flow(
+        &mut d,
+        "shutdown",
+        &["resume", "close chrome", "what can you do"],
+        "wind down",
+    );
 
     let asked = d.turn("wind down", 1_000);
-    assert!(asked.contains("close chrome"), "the question names the step: {asked}");
+    assert!(
+        asked.contains("close chrome"),
+        "the question names the step: {asked}"
+    );
 
     let after = d.turn("yes", 2_000);
     assert!(
@@ -101,7 +136,12 @@ fn a_consequential_step_pauses_the_chain_and_yes_resumes_it() {
 fn no_abandons_the_rest_rather_than_half_doing_it() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "no");
-    save_flow(&mut d, "shutdown", &["resume", "close chrome", "what can you do"], "wind down");
+    save_flow(
+        &mut d,
+        "shutdown",
+        &["resume", "close chrome", "what can you do"],
+        "wind down",
+    );
 
     let asked = d.turn("wind down", 1_000);
     assert!(asked.contains("go ahead?"), "{asked}");
@@ -146,7 +186,12 @@ fn what_are_you_doing_reports_background_work_from_the_panel() {
     // still active work the mind is holding, and `take_on` records the
     // hand-over rather than losing it.
     save_flow(&mut d, "first", &["close chrome"], "do the first thing");
-    save_flow(&mut d, "second", &["resume", "close chrome"], "do the second thing");
+    save_flow(
+        &mut d,
+        "second",
+        &["resume", "close chrome"],
+        "do the second thing",
+    );
 
     let one = d.turn("do the first thing", 1_000);
     assert!(one.contains("go ahead?"), "{one}");
@@ -156,6 +201,10 @@ fn what_are_you_doing_reports_background_work_from_the_panel() {
     assert!(
         d.mind.active().len() >= 2,
         "both jobs are live work: {:?}",
-        d.mind.active().iter().map(|w| w.asked.clone()).collect::<Vec<_>>()
+        d.mind
+            .active()
+            .iter()
+            .map(|w| w.asked.clone())
+            .collect::<Vec<_>>()
     );
 }

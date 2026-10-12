@@ -79,12 +79,17 @@ fn state_dir(tag: &str) -> PathBuf {
 /// Every file under `dir`, recursively, that contains `needle`.
 fn files_containing(dir: &Path, needle: &str) -> Vec<String> {
     let mut hits = Vec::new();
-    let Ok(rd) = std::fs::read_dir(dir) else { return hits };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return hits;
+    };
     for e in rd.flatten() {
         let p = e.path();
         if p.is_dir() {
             hits.extend(files_containing(&p, needle));
-        } else if std::fs::read_to_string(&p).map(|t| t.contains(needle)).unwrap_or(false) {
+        } else if std::fs::read_to_string(&p)
+            .map(|t| t.contains(needle))
+            .unwrap_or(false)
+        {
             hits.push(p.display().to_string());
         }
     }
@@ -105,7 +110,13 @@ fn saying_the_passphrase_does_not_write_it_to_disk() {
         primary: true,
     }]);
     let dir = state_dir("unlock");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     let reply = d.turn(&format!("the passphrase is {SECRET}"), 1000);
     d.persist();
@@ -142,7 +153,13 @@ fn the_thread_still_says_that_you_unlocked_it() {
         primary: true,
     }]);
     let dir = state_dir("readable");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     d.turn(&format!("the passphrase is {SECRET}"), 1000);
     d.persist();
@@ -175,7 +192,13 @@ fn an_ordinary_turn_is_still_recorded_word_for_word() {
         primary: true,
     }]);
     let dir = state_dir("ordinary");
-    let mut d = Daemon::new(&c, &p, None, Store::new(&dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
 
     d.turn("what's outstanding", 1000);
     d.persist();

@@ -65,7 +65,10 @@ pub fn independent_parts(said: &str) -> Option<Vec<String>> {
         return None;
     }
     // Each must ask for something, not be a remark beside the request.
-    if !ps.iter().all(|p| crate::doing::looks_like_an_action(p) || crate::taskloop::starts_with_verb(p)) {
+    if !ps
+        .iter()
+        .all(|p| crate::doing::looks_like_an_action(p) || crate::taskloop::starts_with_verb(p))
+    {
         return None;
     }
     Some(ps)
@@ -117,11 +120,28 @@ fn capitalised(s: &str) -> String {
 
 /// "What are you working on", "what are you busy with".
 pub fn asks_what_youre_working_on(said: &str) -> bool {
-    let t: String = said.to_lowercase().replace('\u{2019}', "'").chars().map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' }).collect();
+    let t: String = said
+        .to_lowercase()
+        .replace('\u{2019}', "'")
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '\'' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
     let t = format!(" {} ", t.split_whitespace().collect::<Vec<_>>().join(" "));
     [
-        " what are you working on ", " what're you working on ", " what are you busy with ", " what are you doing for me ",
-        " what's in progress ", " whats in progress ", " what have you got going ", " what are you running ",
+        " what are you working on ",
+        " what're you working on ",
+        " what are you busy with ",
+        " what are you doing for me ",
+        " what's in progress ",
+        " whats in progress ",
+        " what have you got going ",
+        " what are you running ",
     ]
     .iter()
     .any(|p| t.contains(p))
@@ -131,11 +151,17 @@ pub fn asks_what_youre_working_on(said: &str) -> bool {
 /// running or waiting, and every errand the crew has in hand.
 pub fn working_on(streams: &[Stream], errands: &[String]) -> String {
     let mut lines: Vec<String> = Vec::new();
-    for s in streams.iter().filter(|s| matches!(s.state, State::Running | State::NeedsYou)) {
+    for s in streams
+        .iter()
+        .filter(|s| matches!(s.state, State::Running | State::NeedsYou))
+    {
         lines.push(format!("{} -- {}", s.part, s.state.plain()));
     }
     for e in errands {
-        if !lines.iter().any(|l| l.to_lowercase().contains(&e.to_lowercase())) {
+        if !lines
+            .iter()
+            .any(|l| l.to_lowercase().contains(&e.to_lowercase()))
+        {
             lines.push(format!("{e} -- running"));
         }
     }

@@ -42,7 +42,11 @@ pub struct EndpointConfig {
 
 impl EndpointConfig {
     pub fn vad_params(&self) -> crate::vad::VadParams {
-        crate::vad::VadParams { energy_db: self.vad_energy_db, flatness_db: self.vad_flatness_db, loud_db: self.vad_loud_db }
+        crate::vad::VadParams {
+            energy_db: self.vad_energy_db,
+            flatness_db: self.vad_flatness_db,
+            loud_db: self.vad_loud_db,
+        }
     }
 }
 
@@ -113,9 +117,9 @@ pub const SHORT_SPEECH_MS: u64 = 600;
 
 /// Words that mean more is coming, however long the pause.
 const HANGING: &[&str] = &[
-    "and", "but", "or", "so", "then", "because", "which", "that", "the", "a", "an",
-    "to", "for", "with", "of", "in", "on", "at", "if", "when", "my", "your",
-    "is", "was", "will", "can", "could", "would", "should", "i", "we",
+    "and", "but", "or", "so", "then", "because", "which", "that", "the", "a", "an", "to", "for",
+    "with", "of", "in", "on", "at", "if", "when", "my", "your", "is", "was", "will", "can",
+    "could", "would", "should", "i", "we",
 ];
 
 pub fn shape_of(text: &str) -> Shape {
@@ -134,7 +138,11 @@ pub fn shape_of(text: &str) -> Shape {
         return Shape::MidPhrase;
     }
     if t.ends_with('.') || t.ends_with('?') || t.ends_with('!') {
-        return if words.len() <= 3 { Shape::Short } else { Shape::Complete };
+        return if words.len() <= 3 {
+            Shape::Short
+        } else {
+            Shape::Complete
+        };
     }
     if words.len() <= 3 {
         return Shape::Short;
@@ -183,7 +191,11 @@ impl Default for Endpointer {
 
 impl Endpointer {
     pub fn start(now_ms: u64) -> Endpointer {
-        Endpointer { started_ms: now_ms, last_ms: now_ms, ..Default::default() }
+        Endpointer {
+            started_ms: now_ms,
+            last_ms: now_ms,
+            ..Default::default()
+        }
     }
 
     /// Feed in one short window of audio.
@@ -246,7 +258,11 @@ impl Endpointer {
         // (research report, Stage 1 item 9). With no words to go on, how long
         // you spoke is the shape: a breath of speech is a short reply.
         let needed = if text_so_far.trim().is_empty() {
-            if self.speech_ms <= SHORT_SPEECH_MS { Shape::Short } else { Shape::Sentence }
+            if self.speech_ms <= SHORT_SPEECH_MS {
+                Shape::Short
+            } else {
+                Shape::Sentence
+            }
         } else {
             shape_of(text_so_far)
         }

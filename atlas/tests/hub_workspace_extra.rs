@@ -5,17 +5,28 @@ use atlas::messaging::{
     WHY_NOT_WHATSAPP,
 };
 use atlas::workspace_view::{
-    apply, day_of, day_spoken, shipped, why_this_took_so_long, Item, Kind, Origin, Status, Thinking,
-    Thought,
+    apply, day_of, day_spoken, shipped, why_this_took_so_long, Item, Kind, Origin, Status,
+    Thinking, Thought,
 };
 
 const DAY: u64 = 86_400;
 
 fn thought(at: u64, kind: Thinking, what: &str) -> Thought {
-    Thought { at, kind, what: what.into() }
+    Thought {
+        at,
+        kind,
+        what: what.into(),
+    }
 }
 
-fn item(title: &str, status: Status, client: Option<&str>, at: u64, closed: Option<u64>, thinking: Vec<Thought>) -> Item {
+fn item(
+    title: &str,
+    status: Status,
+    client: Option<&str>,
+    at: u64,
+    closed: Option<u64>,
+    thinking: Vec<Thought>,
+) -> Item {
     Item {
         id: title.into(),
         title: title.into(),
@@ -41,14 +52,45 @@ fn item(title: &str, status: Status, client: Option<&str>, at: u64, closed: Opti
 
 fn history() -> Vec<Item> {
     vec![
-        item("file the quarterly", Status::Done, None, 3 * DAY, Some(5 * DAY), vec![
-            thought(5 * DAY + 100, Thinking::Tried, "the export, which timed out"),
-            thought(5 * DAY + 200, Thinking::Chose, "the CSV route instead, since it needs no session"),
-        ]),
-        item("chase the certification", Status::Blocked, Some("Marta"), 2 * DAY, None, vec![
-            thought(5 * DAY + 300, Thinking::Stuck, "no reply for six days"),
-        ]),
-        item("cut the fee video", Status::Doing, None, 5 * DAY + 400, None, vec![]),
+        item(
+            "file the quarterly",
+            Status::Done,
+            None,
+            3 * DAY,
+            Some(5 * DAY),
+            vec![
+                thought(
+                    5 * DAY + 100,
+                    Thinking::Tried,
+                    "the export, which timed out",
+                ),
+                thought(
+                    5 * DAY + 200,
+                    Thinking::Chose,
+                    "the CSV route instead, since it needs no session",
+                ),
+            ],
+        ),
+        item(
+            "chase the certification",
+            Status::Blocked,
+            Some("Marta"),
+            2 * DAY,
+            None,
+            vec![thought(
+                5 * DAY + 300,
+                Thinking::Stuck,
+                "no reply for six days",
+            )],
+        ),
+        item(
+            "cut the fee video",
+            Status::Doing,
+            None,
+            5 * DAY + 400,
+            None,
+            vec![],
+        ),
     ]
 }
 
@@ -63,13 +105,18 @@ fn a_past_day_says_what_finished_not_what_was_on_the_list() {
 #[test]
 fn what_was_already_open_and_still_is_says_whether_it_was_a_good_day() {
     let d = day_of(&history(), 5 * DAY);
-    assert!(d.carried_over.contains(&"chase the certification".to_string()));
+    assert!(d
+        .carried_over
+        .contains(&"chase the certification".to_string()));
     assert!(day_spoken(&d).contains("already open and still are"));
 }
 
 #[test]
 fn a_day_where_nothing_moved_says_so() {
-    assert_eq!(day_spoken(&day_of(&history(), 40 * DAY)), "Nothing moved that day.");
+    assert_eq!(
+        day_spoken(&day_of(&history(), 40 * DAY)),
+        "Nothing moved that day."
+    );
 }
 
 #[test]
@@ -92,7 +139,10 @@ fn the_day_page_shows_the_thinking_grouped_by_item() {
     let d = day_of(&history(), 5 * DAY);
     let html = looking_back_page(&d, "Five days ago");
     assert!(html.contains("What I was thinking"));
-    assert!(html.contains("thought-item"), "grouped by item, not a flat stream");
+    assert!(
+        html.contains("thought-item"),
+        "grouped by item, not a flat stream"
+    );
     assert!(html.contains("timed out"));
 }
 
@@ -107,7 +157,10 @@ fn looking_back_is_reachable() {
 fn the_same_work_for_two_clients_is_two_different_pieces_of_work() {
     // Mixing them is how you bill the wrong person.
     let items = history();
-    let mut view = shipped().into_iter().find(|v| v.name == "Everything live").unwrap();
+    let mut view = shipped()
+        .into_iter()
+        .find(|v| v.name == "Everything live")
+        .unwrap();
     view.only_client = Some("Marta".into());
     let showing = apply(&items, &view, 0);
     assert_eq!(showing.len(), 1);
@@ -118,10 +171,16 @@ fn the_same_work_for_two_clients_is_two_different_pieces_of_work() {
 fn a_past_view_shows_the_state_as_it_was_not_todays_state_filtered_by_date() {
     // Different questions, and only the first is useful.
     let items = history();
-    let mut view = shipped().into_iter().find(|v| v.name == "Everything live").unwrap();
+    let mut view = shipped()
+        .into_iter()
+        .find(|v| v.name == "Everything live")
+        .unwrap();
     view.as_of = Some(3 * DAY);
     let showing = apply(&items, &view, 3 * DAY);
-    assert!(!showing.iter().any(|i| i.title == "cut the fee video"), "it didn't exist yet");
+    assert!(
+        !showing.iter().any(|i| i.title == "cut the fee video"),
+        "it didn't exist yet"
+    );
 }
 
 // ================= layouts you arrange yourself =================
@@ -137,13 +196,20 @@ fn the_order_is_the_layout_and_nothing_is_pinned_to_pixels() {
     // about — there is nowhere for a coordinate to go, and the order of
     // `Layout::blocks` is the whole layout.
     let src = std::fs::read_to_string("src/layout_prefs.rs").expect("src/layout_prefs.rs");
-    let placed = src.split("pub struct Placed").nth(1).expect("Placed is gone");
+    let placed = src
+        .split("pub struct Placed")
+        .nth(1)
+        .expect("Placed is gone");
     let placed = &placed[..placed.find("\n}").expect("unterminated Placed")];
     let fields: Vec<String> = placed
         .lines()
         .map(str::trim)
         .filter_map(|l| l.strip_prefix("pub "))
-        .map(|f| f.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect())
+        .map(|f| {
+            f.chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect()
+        })
         .collect();
     assert_eq!(
         fields,
@@ -155,7 +221,10 @@ fn the_order_is_the_layout_and_nothing_is_pinned_to_pixels() {
     // And an old config naming the removed key still loads.
     let parsed: LayoutConfig =
         serde_yaml::from_str("current: Home\nstores_pixel_positions: true\n").unwrap();
-    assert_eq!(parsed.current, "Home", "an unknown key must not stop the section parsing");
+    assert_eq!(
+        parsed.current, "Home",
+        "an unknown key must not stop the section parsing"
+    );
 }
 
 #[test]
@@ -200,7 +269,12 @@ fn msg(from: &str, group: Option<&str>, text: &str, mentions: bool) -> Message {
 #[test]
 fn a_message_from_a_brand_is_told_apart_from_group_chat() {
     // The thing you actually wanted.
-    let brand = msg("Nadia", None, "We'd love to work with you on a paid partnership", false);
+    let brand = msg(
+        "Nadia",
+        None,
+        "We'd love to work with you on a paid partnership",
+        false,
+    );
     assert_eq!(sort(&brand, &[]), Sort::Business);
 
     let chat = msg("Dave", Some("Sunday football"), "anyone in for 6pm", false);
@@ -219,7 +293,12 @@ fn group_chatter_never_interrupts_and_that_is_not_configurable() {
 
 #[test]
 fn a_group_message_that_names_you_is_for_you() {
-    let named = msg("Dave", Some("Sunday football"), "Eric can you bring the ball?", false);
+    let named = msg(
+        "Dave",
+        Some("Sunday football"),
+        "Eric can you bring the ball?",
+        false,
+    );
     assert_eq!(sort(&named, &["Eric".into()]), Sort::NeedsReply);
 }
 

@@ -17,7 +17,14 @@ use atlas::store::Store;
 use std::path::{Path, PathBuf};
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn tmp(tag: &str) -> PathBuf {
@@ -51,14 +58,23 @@ fn cfg_on() -> Config {
     // and is the path these tests want. The parsing itself is covered
     // directly, against real `cargo test` output, in
     // `tests/a_stage_that_cannot_be_reached.rs`.
-    tools.self_work.test_command =
-        if cfg!(windows) { "cmd /c rem".into() } else { "/bin/true".into() };
+    tools.self_work.test_command = if cfg!(windows) {
+        "cmd /c rem".into()
+    } else {
+        "/bin/true".into()
+    };
     c.tools = Some(tools);
     c
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -88,7 +104,10 @@ fn a_new_goal_is_answered_with_a_question_rather_than_a_refusal() {
         !said.contains("no diagnosis"),
         "it still refuses with the sentence nobody could answer: {said}"
     );
-    assert!(said.contains("the settings panel is slow"), "it dropped the goal: {said}");
+    assert!(
+        said.contains("the settings panel is slow"),
+        "it dropped the goal: {said}"
+    );
     assert!(said.contains('?'), "it did not ask for anything: {said}");
     // And what it asks for is the CAUSE. The goal is the symptom: asking
     // "what did you notice?" of someone who has just told you is a question
@@ -114,8 +133,14 @@ fn each_answer_is_taken_as_an_answer_and_not_as_a_new_goal() {
     let q2 = d.execute(&Intent::WorkOnYourself(
         "every row re-reads the whole config file from disk".into(),
     ));
-    assert_ne!(q1, q2, "the same question came back, so the answer was taken as a new goal");
-    assert!(q2.to_lowercase().contains("which part"), "it did not ask where: {q2}");
+    assert_ne!(
+        q1, q2,
+        "the same question came back, so the answer was taken as a new goal"
+    );
+    assert!(
+        q2.to_lowercase().contains("which part"),
+        "it did not ask where: {q2}"
+    );
 
     let q3 = d.execute(&Intent::WorkOnYourself("src/panel.rs".into()));
     assert_ne!(q2, q3, "it asked the same question twice");
@@ -133,14 +158,22 @@ fn a_cause_that_restates_the_symptom_is_sent_back_rather_than_accepted() {
     let p = plat();
     let mut d = daemon(&c, &p, "restated");
 
-    d.execute(&Intent::WorkOnYourself("the settings panel is too slow to open".into()));
-    d.execute(&Intent::WorkOnYourself("the settings panel takes too long to open".into()));
+    d.execute(&Intent::WorkOnYourself(
+        "the settings panel is too slow to open".into(),
+    ));
+    d.execute(&Intent::WorkOnYourself(
+        "the settings panel takes too long to open".into(),
+    ));
     d.execute(&Intent::WorkOnYourself("src/panel.rs".into()));
-    let said = d.execute(&Intent::WorkOnYourself("a_test_that_does_not_exist_anywhere".into()));
+    let said = d.execute(&Intent::WorkOnYourself(
+        "a_test_that_does_not_exist_anywhere".into(),
+    ));
     let said = if said.to_lowercase().contains("prove") {
         // If it is still collecting, one more turn finishes it. Written this
         // way so the test does not silently pass by never reaching the check.
-        d.execute(&Intent::WorkOnYourself("a_test_that_does_not_exist_anywhere".into()))
+        d.execute(&Intent::WorkOnYourself(
+            "a_test_that_does_not_exist_anywhere".into(),
+        ))
     } else {
         said
     };
@@ -165,7 +198,9 @@ fn the_proving_test_is_actually_run_rather_than_taken_on_trust() {
     let mut d = daemon(&c, &p, "proof-run");
 
     d.execute(&Intent::WorkOnYourself("the settings panel is slow".into()));
-    d.execute(&Intent::WorkOnYourself("every row re-reads the config from disk".into()));
+    d.execute(&Intent::WorkOnYourself(
+        "every row re-reads the config from disk".into(),
+    ));
     d.execute(&Intent::WorkOnYourself("src/panel.rs".into()));
     let said = d.execute(&Intent::WorkOnYourself(
         "a_proving_test_nobody_has_written_yet_xyzzy".into(),
@@ -206,7 +241,9 @@ fn at_the_build_stage_it_reaches_for_the_fix_rather_than_punting() {
     // It got as far as the file and now wants a model to draft with — the loop
     // is closed, so it no longer punts with "nothing writes a candidate fix".
     assert!(
-        said.contains("Working on a fix") && said.contains("background") && said.contains("nothing lands without your yes"),
+        said.contains("Working on a fix")
+            && said.contains("background")
+            && said.contains("nothing lands without your yes"),
         "Build must start the bounded local-recipe path and retain approval before changes: {said}"
     );
     assert!(
@@ -232,11 +269,17 @@ fn a_piece_of_work_can_be_dropped_and_stays_dropped() {
     d.execute(&Intent::WorkOnYourself("the settings panel is slow".into()));
     let dropped = d.execute(&Intent::WorkOnYourself("never mind".into()));
     assert!(dropped.contains("Dropped"), "got: {dropped}");
-    assert!(dropped.contains("Nothing was changed"), "it did not say nothing happened: {dropped}");
+    assert!(
+        dropped.contains("Nothing was changed"),
+        "it did not say nothing happened: {dropped}"
+    );
 
     // And it does not come back with its next question.
     let after = d.execute(&Intent::WorkOnYourself("stop".into()));
-    assert!(after.contains("wasn't working on anything"), "it was still holding it: {after}");
+    assert!(
+        after.contains("wasn't working on anything"),
+        "it was still holding it: {after}"
+    );
 }
 
 #[test]
@@ -253,7 +296,10 @@ fn the_same_goal_after_dropping_it_starts_over_rather_than_resuming() {
     d.execute(&Intent::WorkOnYourself("never mind".into()));
     let again = d.execute(&Intent::WorkOnYourself("the settings panel is slow".into()));
 
-    assert_eq!(again, first, "asking again for a dropped goal did not start it over: {again}");
+    assert_eq!(
+        again, first,
+        "asking again for a dropped goal did not start it over: {again}"
+    );
 }
 
 #[test]
@@ -284,8 +330,13 @@ fn a_blank_turn_does_not_answer_a_question() {
     );
 
     // And the real answer still lands afterwards.
-    let q3 = d.execute(&Intent::WorkOnYourself("it re-reads the config on every row".into()));
-    assert!(q3.to_lowercase().contains("which part"), "the flow did not recover: {q3}");
+    let q3 = d.execute(&Intent::WorkOnYourself(
+        "it re-reads the config on every row".into(),
+    ));
+    assert!(
+        q3.to_lowercase().contains("which part"),
+        "the flow did not recover: {q3}"
+    );
 }
 
 /// A self-audit that has measurably slowed says so, in plain words.
@@ -314,12 +365,18 @@ fn a_self_audit_that_has_slowed_down_says_why() {
     // `got_slower` fire (later half's median is well over half again the
     // earlier half's) and `slow_ones` non-empty.
     for _ in 0..6 {
-        let mut t = Turn { about: "a quick one".into(), ..Default::default() };
+        let mut t = Turn {
+            about: "a quick one".into(),
+            ..Default::default()
+        };
         t.note(Stage::Doing, 1000);
         d.timing.add(t);
     }
     for _ in 0..6 {
-        let mut t = Turn { about: "a slow one".into(), ..Default::default() };
+        let mut t = Turn {
+            about: "a slow one".into(),
+            ..Default::default()
+        };
         t.note(Stage::Doing, 3000);
         d.timing.add(t);
     }
@@ -355,7 +412,10 @@ fn a_self_audit_that_is_fine_does_not_volunteer_a_speed_line() {
 
     // Twelve steady, quick turns: nothing has slowed, so `got_slower` is None.
     for _ in 0..12 {
-        let mut t = Turn { about: "a quick one".into(), ..Default::default() };
+        let mut t = Turn {
+            about: "a quick one".into(),
+            ..Default::default()
+        };
         t.note(Stage::Doing, 1000);
         d.timing.add(t);
     }

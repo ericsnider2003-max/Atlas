@@ -66,7 +66,11 @@ fn with_args(tool: &ExternalTool, args: &[&str]) -> ExternalTool {
     ExternalTool {
         command: tool.command.clone(),
         args: args.iter().map(|a| a.to_string()).collect(),
-        timeout_secs: if tool.timeout_secs == 0 { TIMEOUT_SECS } else { tool.timeout_secs },
+        timeout_secs: if tool.timeout_secs == 0 {
+            TIMEOUT_SECS
+        } else {
+            tool.timeout_secs
+        },
         ..ExternalTool::default()
     }
 }
@@ -128,7 +132,11 @@ pub fn serving(json: &str, port: u16) -> bool {
 
 /// The one link the phone needs.
 pub fn phone_url(dns_name: &str, token: &str) -> String {
-    format!("https://{}/hub?t={}", dns_name.trim().trim_end_matches('.'), token)
+    format!(
+        "https://{}/hub?t={}",
+        dns_name.trim().trim_end_matches('.'),
+        token
+    )
 }
 
 /// How publishing went.
@@ -207,7 +215,9 @@ pub fn serve_outcome(result: Result<String, String>, url: &str) -> Serve {
         return Serve::NeedsHttps;
     }
     match result {
-        Ok(_) => Serve::Published { url: url.to_string() },
+        Ok(_) => Serve::Published {
+            url: url.to_string(),
+        },
         Err(e) => {
             if NOT_RUNNING.iter().any(|m| low.contains(m)) {
                 Serve::NotRunning
@@ -234,7 +244,7 @@ pub fn publish(port: u16, token: &str, tool: &ExternalTool, vars: &Vars) -> Serv
                 // HTTPS can't be the problem before anything was served.
                 Serve::NeedsHttps => Serve::NotRunning,
                 other => other,
-            }
+            };
         }
         Ok(json) => match read_status(&json) {
             Some(n) => n,
@@ -357,6 +367,4 @@ pub fn qr_svg(text: &str) -> Option<String> {
          <rect width=\"{w}\" height=\"{w}\" fill=\"#fff\"/>\
          <path fill=\"#000\" d=\"{d}\"/></svg>"
     ))
-
 }
-

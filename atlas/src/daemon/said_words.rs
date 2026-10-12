@@ -21,7 +21,11 @@ pub(super) fn key_cut_in(
     }
     // Stopped now, not at the end of the sentence playing.
     crate::micthread::cut_playback();
-    let words = ears.listen_while(&|| keys.held()).ok().flatten().unwrap_or_default();
+    let words = ears
+        .listen_while(&|| keys.held())
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     if crate::speech::is_interruption(&words) {
         return Some(words);
     }
@@ -44,7 +48,9 @@ impl crate::speakthread::Host for Daemon<'_> {
     }
     fn hush(&mut self) -> Option<String> {
         if !self.calendar_delivery_current(&self.calendar_active_delivery_ids) {
-            return Some("Calendar delivery stopped because ownership or the event changed.".into());
+            return Some(
+                "Calendar delivery stopped because ownership or the event changed.".into(),
+            );
         }
         // Paused on the hub or the icon mid-reply (possible now that the hub
         // is answered while a sentence plays): quiet at once, the rest kept
@@ -68,9 +74,19 @@ impl crate::speakthread::Host for Daemon<'_> {
 pub(super) fn command_needs_connection(command: &str) -> bool {
     let c = command.to_lowercase();
     const ONLINE: &[&str] = &[
-        "research", "look into", "look up", "search the web", "fetch", "download",
-        "check mail", "check my mail", "check the mail", "unsubscribe", "sync",
-        "post ", "publish",
+        "research",
+        "look into",
+        "look up",
+        "search the web",
+        "fetch",
+        "download",
+        "check mail",
+        "check my mail",
+        "check the mail",
+        "unsubscribe",
+        "sync",
+        "post ",
+        "publish",
     ];
     ONLINE.iter().any(|k| c.contains(k))
 }
@@ -83,8 +99,17 @@ pub(super) fn command_needs_connection(command: &str) -> bool {
 pub(super) fn strip_correction_lead(raw: &str) -> String {
     let mut s = raw.trim();
     const LEADS: &[&str] = &[
-        "actually,", "actually", "correction:", "correction,", "correction",
-        "i meant", "no,", "scratch that,", "scratch that", "update:", "just so you know,",
+        "actually,",
+        "actually",
+        "correction:",
+        "correction,",
+        "correction",
+        "i meant",
+        "no,",
+        "scratch that,",
+        "scratch that",
+        "update:",
+        "just so you know,",
         "for the record,",
     ];
     loop {
@@ -183,7 +208,10 @@ pub(super) fn convert_answer(what: &str) -> Option<String> {
     let to = sort_named(after)?;
     let said = match convert(from, to) {
         Convert::Can { how, loses: None } => format!("Yes -- I'd {how}."),
-        Convert::Can { how, loses: Some(l) } => format!("I'd {how}, though you'd lose {l}."),
+        Convert::Can {
+            how,
+            loses: Some(l),
+        } => format!("I'd {how}, though you'd lose {l}."),
         Convert::CanWithLoss { how, loses } => format!("I can {how}, but you'd lose {loses}."),
         Convert::Cannot(why) => format!("I can't -- {why}."),
     };
@@ -251,7 +279,9 @@ pub(super) fn words_after(said: &str, phrases: &[&str]) -> String {
 /// "a gesture called thumbs up that opens spotify" → ("thumbs up", "open spotify").
 pub fn gesture_asked(said: &str) -> Option<(String, String)> {
     let l = said.to_lowercase();
-    let after = ["called ", "named "].iter().find_map(|k| l.find(k).map(|i| &l[i + k.len()..]))?;
+    let after = ["called ", "named "]
+        .iter()
+        .find_map(|k| l.find(k).map(|i| &l[i + k.len()..]))?;
     let (name, rest) = [" that ", " to ", " for ", " which "]
         .iter()
         .find_map(|sep| after.split_once(sep))
@@ -259,7 +289,9 @@ pub fn gesture_asked(said: &str) -> Option<(String, String)> {
     let does = rest.trim().trim_end_matches(['.', '!']);
     // "opens spotify" is the command "open spotify".
     let does = match does.split_once(' ') {
-        Some((verb, obj)) if verb.ends_with('s') && !verb.ends_with("ss") => format!("{} {obj}", &verb[..verb.len() - 1]),
+        Some((verb, obj)) if verb.ends_with('s') && !verb.ends_with("ss") => {
+            format!("{} {obj}", &verb[..verb.len() - 1])
+        }
         _ => does.to_string(),
     };
     let name = name.trim().trim_matches('"').to_string();
@@ -268,7 +300,11 @@ pub fn gesture_asked(said: &str) -> Option<(String, String)> {
 
 /// "control shift space" → "ctrl+shift+space"; "caps lock" → "capslock".
 pub fn key_spoken(words: &str) -> String {
-    let w = words.to_lowercase().replace(" plus ", "+").replace(" and ", "+").replace('-', "+");
+    let w = words
+        .to_lowercase()
+        .replace(" plus ", "+")
+        .replace(" and ", "+")
+        .replace('-', "+");
     let w = w
         .replace("caps lock", "capslock")
         .replace("scroll lock", "scrolllock")

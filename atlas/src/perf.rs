@@ -46,7 +46,10 @@ pub struct Power {
 
 impl Default for Power {
     fn default() -> Self {
-        Power { on_battery: false, percent: 100 }
+        Power {
+            on_battery: false,
+            percent: 100,
+        }
     }
 }
 

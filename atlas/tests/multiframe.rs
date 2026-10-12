@@ -94,13 +94,26 @@ fn one_directional_and_one_range_read_is_mixed_not_full_agreement() {
     // timeframe agrees: DOWN" -- true only of the reads that had an
     // opinion, and a real, live-caught overstatement.
     let reads = vec![
-        FrameRead { timeframe: "H1".into(), trend: Trend::Down },
-        FrameRead { timeframe: "H4".into(), trend: Trend::Range },
+        FrameRead {
+            timeframe: "H1".into(),
+            trend: Trend::Down,
+        },
+        FrameRead {
+            timeframe: "H4".into(),
+            trend: Trend::Range,
+        },
     ];
-    assert_eq!(agreement(&reads), Agreement::Mixed(Trend::Down), "{reads:?}");
+    assert_eq!(
+        agreement(&reads),
+        Agreement::Mixed(Trend::Down),
+        "{reads:?}"
+    );
     let said = atlas::market::multiframe::spoken(&reads);
     assert!(!said.contains("Every timeframe checked agrees"), "{said}");
-    assert!(said.contains("not the same as every timeframe agreeing"), "{said}");
+    assert!(
+        said.contains("not the same as every timeframe agreeing"),
+        "{said}"
+    );
 }
 
 #[test]

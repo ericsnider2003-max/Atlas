@@ -142,7 +142,9 @@ pub const CONTEXT_ASSUMED: u32 = 8192;
 pub fn code_budget(context: Option<u32>, prompt_chars: usize) -> u32 {
     let ctx = context.unwrap_or(CONTEXT_ASSUMED);
     let prompt = (prompt_chars / 3) as u32 + 64;
-    ctx.saturating_sub(prompt).saturating_sub(64).clamp(CODE_TOKENS_LEAST, CODE_TOKENS_MOST)
+    ctx.saturating_sub(prompt)
+        .saturating_sub(64)
+        .clamp(CODE_TOKENS_LEAST, CODE_TOKENS_MOST)
 }
 
 /// Does this reply look like the model stopped mid-file? A code fence opened
@@ -160,7 +162,11 @@ pub fn looks_cut_off(reply: &str, code: &str, lang: Lang) -> bool {
 
 /// A ``` that opens a block with no ``` to close it.
 fn unclosed_fence(text: &str) -> bool {
-    text.lines().filter(|l| l.trim_start().starts_with("```")).count() % 2 == 1
+    text.lines()
+        .filter(|l| l.trim_start().starts_with("```"))
+        .count()
+        % 2
+        == 1
 }
 
 /// Brackets or a string left open at the end of the code. Read roughly --
@@ -193,7 +199,8 @@ fn still_open(code: &str, lang: Lang) -> bool {
         }
         // Python's triple-quoted strings.
         if python && (c == '"' || c == '\'') && next == Some(c) && b.get(i + 2) == Some(&c) {
-            let close = (i + 3..b.len().saturating_sub(2)).find(|&k| b[k] == c && b[k + 1] == c && b[k + 2] == c);
+            let close = (i + 3..b.len().saturating_sub(2))
+                .find(|&k| b[k] == c && b[k + 1] == c && b[k + 2] == c);
             match close {
                 Some(k) => {
                     i = k + 3;
@@ -270,16 +277,28 @@ pub struct Draft {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, Deserialize)]
 pub enum Outcome {
     /// Passed the whole ladder. The code is verified against the toolchain.
-    Built { code: String, rounds: u32, notes: Vec<String> },
+    Built {
+        code: String,
+        rounds: u32,
+        notes: Vec<String>,
+    },
     /// The fix loop ran out before it passed. The best draft is handed over
     /// WITH the failure attached — never as if it worked.
-    Struggled { code: String, rounds: u32, last_failure: String },
+    Struggled {
+        code: String,
+        rounds: u32,
+        last_failure: String,
+    },
     /// Could not even get a first draft (no model, or the model errored).
     NoDraft(String),
     /// Written, but a check that decides whether it works couldn't run: its
     /// program isn't on this computer. Handed over as unchecked, never as
     /// built, and never "fixed" for a missing tool.
-    Unchecked { code: String, rounds: u32, missing: String },
+    Unchecked {
+        code: String,
+        rounds: u32,
+        missing: String,
+    },
     /// The model ran out of room before the file was finished (2 Oct 2026).
     /// Not a failing check -- nothing the compiler said about half a file is
     /// worth fixing -- and never handed over or queued as code: `partial`
@@ -367,7 +386,9 @@ impl Outcome {
             ),
             Outcome::NoDraft(_) => detail,
             Outcome::TooLong { .. } => format!("Nothing queued on {project}: {detail}"),
-            Outcome::Unchecked { .. } => format!("Queued \"{title}\" on {project} as an unchecked draft. {detail}"),
+            Outcome::Unchecked { .. } => {
+                format!("Queued \"{title}\" on {project} as an unchecked draft. {detail}")
+            }
         }
     }
 
@@ -375,7 +396,9 @@ impl Outcome {
     /// produces a best draft worth keeping.
     pub fn code(&self) -> Option<&str> {
         match self {
-            Outcome::Built { code, .. } | Outcome::Struggled { code, .. } | Outcome::Unchecked { code, .. } => Some(code),
+            Outcome::Built { code, .. }
+            | Outcome::Struggled { code, .. }
+            | Outcome::Unchecked { code, .. } => Some(code),
             Outcome::NoDraft(_) | Outcome::TooLong { .. } => None,
         }
     }
@@ -428,7 +451,10 @@ pub fn build_loop(
         Err(e) => return Outcome::NoDraft(e),
     };
     if first.cut_off {
-        return Outcome::TooLong { partial: first.code, rounds: 0 };
+        return Outcome::TooLong {
+            partial: first.code,
+            rounds: 0,
+        };
     }
     let mut code = first.code;
     let mut rounds = 0u32;
@@ -438,11 +464,27 @@ pub fn build_loop(
     loop {
         match check(&code).settle(&mut code) {
             Check::Rewrote(..) => unreachable!("settle takes every rewrite into the code"),
-            Check::Passed(notes) => return Outcome::Built { code, rounds, notes },
-            Check::CannotCheck(missing) => return Outcome::Unchecked { code, rounds, missing },
+            Check::Passed(notes) => {
+                return Outcome::Built {
+                    code,
+                    rounds,
+                    notes,
+                }
+            }
+            Check::CannotCheck(missing) => {
+                return Outcome::Unchecked {
+                    code,
+                    rounds,
+                    missing,
+                }
+            }
             Check::Failed(output) => {
                 if rounds >= max_rounds {
-                    return Outcome::Struggled { code, rounds, last_failure: output };
+                    return Outcome::Struggled {
+                        code,
+                        rounds,
+                        last_failure: output,
+                    };
                 }
                 rounds += 1;
                 // The lines that say what's wrong, not the whole log: a
@@ -453,7 +495,12 @@ pub fn build_loop(
                     // Edits apply to a whole draft, so only a full rewrite
                     // can come back cut off: the draft before it is still
                     // whole, and still failing, so that is the struggle.
-                    Ok(d) if d.cut_off => return Outcome::TooLong { partial: d.code, rounds },
+                    Ok(d) if d.cut_off => {
+                        return Outcome::TooLong {
+                            partial: d.code,
+                            rounds,
+                        }
+                    }
                     Ok(d) => code = d.code,
                     Err(e) => {
                         return Outcome::Struggled {
@@ -478,9 +525,31 @@ pub const FAILURE_MOST: usize = 2400;
 fn says_what_failed(line: &str) -> bool {
     let t = line.trim_start();
     const MARKS: &[&str] = &[
-        "error", "Error", "ERROR", "panicked", "FAILED", "FAIL", "failed", "Traceback", "Exception", "assert",
-        "--> ", "File \"", "E   ", "expected", "undefined", "not found", "cannot find", "No module named",
-        "SyntaxError", "TypeError", "NameError", "fatal", "test result:", "Segmentation", "Uncaught",
+        "error",
+        "Error",
+        "ERROR",
+        "panicked",
+        "FAILED",
+        "FAIL",
+        "failed",
+        "Traceback",
+        "Exception",
+        "assert",
+        "--> ",
+        "File \"",
+        "E   ",
+        "expected",
+        "undefined",
+        "not found",
+        "cannot find",
+        "No module named",
+        "SyntaxError",
+        "TypeError",
+        "NameError",
+        "fatal",
+        "test result:",
+        "Segmentation",
+        "Uncaught",
     ];
     MARKS.iter().any(|m| t.contains(m)) && !t.starts_with("warning: unused")
 }
@@ -558,7 +627,9 @@ pub fn trim_failure(output: &str, most: usize) -> String {
     }
     let mut tail_used = 0;
     for l in kept.iter().rev() {
-        if used + tail_used + l.len() + 1 > most.saturating_sub(4) || head.len() + tail.len() >= kept.len() {
+        if used + tail_used + l.len() + 1 > most.saturating_sub(4)
+            || head.len() + tail.len() >= kept.len()
+        {
             break;
         }
         tail_used += l.len() + 1;
@@ -596,9 +667,15 @@ fn packages_note(lang: Lang) -> &'static str {
 /// Turn a description into a first draft, with room for a whole file, and
 /// whether the model ran out of that room.
 pub fn draft_with_room(description: &str, lang: Lang, llm: &dyn Llm) -> Result<Draft, String> {
-    let user = format!("Language: {}\n\nWhat to build:\n{description}{}", lang.plain(), packages_note(lang));
+    let user = format!(
+        "Language: {}\n\nWhat to build:\n{description}{}",
+        lang.plain(),
+        packages_note(lang)
+    );
     let room = code_budget(llm.context_tokens(), GENERATE_SYSTEM.len() + user.len());
-    let reply = llm.complete_long(GENERATE_SYSTEM, &user, room).map_err(|e| e.to_string())?;
+    let reply = llm
+        .complete_long(GENERATE_SYSTEM, &user, room)
+        .map_err(|e| e.to_string())?;
     let code = extract_code(&reply.text);
     if code.trim().is_empty() {
         return Err("the model returned no code".into());
@@ -609,7 +686,12 @@ pub fn draft_with_room(description: &str, lang: Lang, llm: &dyn Llm) -> Result<D
 
 /// One fix round: targeted edits to the draft first; the whole file again
 /// only when the edits don't apply (or the model sent a whole file anyway).
-pub fn fix_round(code: &str, failure_output: &str, lang: Lang, llm: &dyn Llm) -> Result<Draft, String> {
+pub fn fix_round(
+    code: &str,
+    failure_output: &str,
+    lang: Lang,
+    llm: &dyn Llm,
+) -> Result<Draft, String> {
     let user = format!("The tool said:\n{failure_output}\n\nThe current code:\n```\n{code}\n```");
     let room = code_budget(llm.context_tokens(), EDIT_SYSTEM.len() + user.len());
     if let Ok(reply) = llm.complete_long(EDIT_SYSTEM, &user, room) {
@@ -618,7 +700,10 @@ pub fn fix_round(code: &str, failure_output: &str, lang: Lang, llm: &dyn Llm) ->
             if !unfinished && !reply.cut_off {
                 if let Ok(fixed) = apply_edits(code, &edits) {
                     if fixed != code {
-                        return Ok(Draft { code: fixed, cut_off: false });
+                        return Ok(Draft {
+                            code: fixed,
+                            cut_off: false,
+                        });
                     }
                 }
             }
@@ -627,7 +712,10 @@ pub fn fix_round(code: &str, failure_output: &str, lang: Lang, llm: &dyn Llm) ->
             let whole = extract_code(&reply.text);
             if !whole.trim().is_empty() {
                 let cut_off = reply.cut_off || looks_cut_off(&reply.text, &whole, lang);
-                return Ok(Draft { code: whole, cut_off });
+                return Ok(Draft {
+                    code: whole,
+                    cut_off,
+                });
             }
         }
     }
@@ -638,24 +726,37 @@ pub fn fix_round(code: &str, failure_output: &str, lang: Lang, llm: &dyn Llm) ->
 fn whole_fix(code: &str, failure_output: &str, lang: Lang, llm: &dyn Llm) -> Result<Draft, String> {
     let user = format!(
         "The tool said:\n{failure_output}\n\nThe code was:\n```\n{code}\n```\n\n\
-         Return the complete corrected file.");
+         Return the complete corrected file."
+    );
     let room = code_budget(llm.context_tokens(), FIX_SYSTEM.len() + user.len());
-    let reply = llm.complete_long(FIX_SYSTEM, &user, room).map_err(|e| e.to_string())?;
+    let reply = llm
+        .complete_long(FIX_SYSTEM, &user, room)
+        .map_err(|e| e.to_string())?;
     let fixed = extract_code(&reply.text);
     if fixed.trim().is_empty() {
         return Err("the model returned no code on the fix round".into());
     }
     let cut_off = reply.cut_off || looks_cut_off(&reply.text, &fixed, lang);
-    Ok(Draft { code: fixed, cut_off })
+    Ok(Draft {
+        code: fixed,
+        cut_off,
+    })
 }
 
 /// One fix round, as code: hand the model its code and the tool's exact
 /// words, take back the corrected file. A fix that came back cut off is an
 /// error, never code.
-pub fn fix_draft(code: &str, failure_output: &str, lang: Lang, llm: &dyn Llm) -> Result<String, String> {
+pub fn fix_draft(
+    code: &str,
+    failure_output: &str,
+    lang: Lang,
+    llm: &dyn Llm,
+) -> Result<String, String> {
     let d = fix_round(code, failure_output, lang, llm)?;
     if d.cut_off {
-        return Err("the fix came back cut off -- it's longer than this model can write in one go".into());
+        return Err(
+            "the fix came back cut off -- it's longer than this model can write in one go".into(),
+        );
     }
     Ok(d.code)
 }
@@ -719,14 +820,21 @@ pub fn apply_edits(code: &str, edits: &[(String, String)]) -> Result<String, Str
         let lines: Vec<&str> = out.lines().collect();
         let want: Vec<&str> = search.lines().map(str::trim).collect();
         let fits: Vec<usize> = (0..lines.len().saturating_sub(want.len()) + 1)
-            .filter(|&i| i + want.len() <= lines.len() && lines[i..i + want.len()].iter().zip(&want).all(|(a, b)| a.trim() == *b))
+            .filter(|&i| {
+                i + want.len() <= lines.len()
+                    && lines[i..i + want.len()]
+                        .iter()
+                        .zip(&want)
+                        .all(|(a, b)| a.trim() == *b)
+            })
             .collect();
         match fits.as_slice() {
             [i] => {
                 // Indented as the code is: the replacement moves by however
                 // far the search was out (models drop the leading spaces).
                 let indent = |l: &str| l.len() - l.trim_start().len();
-                let shift = indent(lines[*i]) as isize - search.lines().next().map_or(0, indent) as isize;
+                let shift =
+                    indent(lines[*i]) as isize - search.lines().next().map_or(0, indent) as isize;
                 let moved = replace.lines().map(|l| {
                     if l.trim().is_empty() {
                         l.to_string()
@@ -871,7 +979,10 @@ pub fn build_with(
     }
     match best {
         Some((o, w)) => (o, Some(w)),
-        None => (Outcome::NoDraft("there's no model to write it with".into()), None),
+        None => (
+            Outcome::NoDraft("there's no model to write it with".into()),
+            None,
+        ),
     }
 }
 
@@ -921,7 +1032,11 @@ fn fenced_blocks(text: &str) -> Vec<String> {
 }
 
 fn first_line(s: &str) -> String {
-    s.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string()
+    s.lines()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim()
+        .to_string()
 }
 
 /// How to phrase the goal for the generating model when the description names
@@ -933,14 +1048,23 @@ pub fn lang_from_words(description: &str, default: Lang) -> Lang {
     // and "js" are close), and the compiled languages by their unambiguous
     // names. "script" alone still means Python, the way it did before — that
     // is the common "write me a script" case.
-    let cpp = d.contains("c++") || d.contains("cpp") || d.contains(".hpp") || d.contains(".cc ") || d.split(|c: char| !c.is_alphanumeric() && c != '+').any(|w| w == "c++");
+    let cpp = d.contains("c++")
+        || d.contains("cpp")
+        || d.contains(".hpp")
+        || d.contains(".cc ")
+        || d.split(|c: char| !c.is_alphanumeric() && c != '+')
+            .any(|w| w == "c++");
     if cpp {
         Lang::Cpp
     } else if d.contains("typescript") || d.contains(".ts") || d.contains(".tsx") {
         Lang::TypeScript
     } else if d.contains("javascript") || d.contains(".js") || d.contains("node") {
         Lang::JavaScript
-    } else if d.contains("golang") || d.contains(".go") || d.contains(" go ") || d.starts_with("go ") {
+    } else if d.contains("golang")
+        || d.contains(".go")
+        || d.contains(" go ")
+        || d.starts_with("go ")
+    {
         Lang::Go
     } else if d.contains("python") || d.contains(".py") || d.contains("script") {
         Lang::Python
@@ -965,7 +1089,10 @@ mod tests {
     #[test]
     fn extract_code_takes_the_largest_block_over_a_stray_snippet() {
         let reply = "Use `foo`:\n```\nfoo\n```\nThe file:\n```rust\nfn main() {\n    crate::outln!(\"hi\");\n}\n```";
-        assert_eq!(extract_code(reply), "fn main() {\n    crate::outln!(\"hi\");\n}");
+        assert_eq!(
+            extract_code(reply),
+            "fn main() {\n    crate::outln!(\"hi\");\n}"
+        );
     }
 
     #[test]
@@ -990,8 +1117,12 @@ mod tests {
     #[test]
     fn fix_draft_returns_the_corrected_code_from_a_model() {
         let llm = MockLlm("```rust\nfn add(a: i32, b: i32) -> i32 { a + b }\n```".into());
-        let fixed = fix_draft("fn add(a,b){a+b}", "error: expected type", Lang::Rust, &llm).unwrap();
-        assert!(fixed.contains("i32"), "the fix round returns the corrected file: {fixed}");
+        let fixed =
+            fix_draft("fn add(a,b){a+b}", "error: expected type", Lang::Rust, &llm).unwrap();
+        assert!(
+            fixed.contains("i32"),
+            "the fix round returns the corrected file: {fixed}"
+        );
     }
 
     #[test]
@@ -1002,7 +1133,11 @@ mod tests {
 
     #[test]
     fn a_built_outcome_leads_with_success() {
-        let o = Outcome::Built { code: "fn main(){}".into(), rounds: 2, notes: vec![] };
+        let o = Outcome::Built {
+            code: "fn main(){}".into(),
+            rounds: 2,
+            notes: vec![],
+        };
         assert!(o.is_built());
         assert!(o.spoken(Lang::Rust).contains("2 fixes"));
     }
@@ -1011,14 +1146,24 @@ mod tests {
     fn a_project_change_never_claims_an_isolated_check_is_project_verified() {
         // The integrity line for someone's livelihood: "it compiled on its own"
         // must not read as "it works inside your project".
-        let built = Outcome::Built { code: "fn f(){}".into(), rounds: 0, notes: vec![] };
+        let built = Outcome::Built {
+            code: "fn f(){}".into(),
+            rounds: 0,
+            notes: vec![],
+        };
         let said = built.in_project("Homelab", "backup rotation", Lang::Rust);
-        assert!(said.contains("isolated"), "must name the check as isolated: {said}");
+        assert!(
+            said.contains("isolated"),
+            "must name the check as isolated: {said}"
+        );
         assert!(
             said.contains("proposal") || said.contains("read"),
             "must ask to be read, not claim proven: {said}"
         );
-        assert!(said.contains("backup"), "must promise a reversible write: {said}");
+        assert!(
+            said.contains("backup"),
+            "must promise a reversible write: {said}"
+        );
 
         // A struggle is a draft, never a finished change.
         let stuck = Outcome::Struggled {
@@ -1027,7 +1172,10 @@ mod tests {
             last_failure: "error: expected `}`".into(),
         };
         let said = stuck.in_project("Homelab", "backup rotation", Lang::Rust);
-        assert!(said.contains("draft"), "a struggle is handed over as a draft: {said}");
+        assert!(
+            said.contains("draft"),
+            "a struggle is handed over as a draft: {said}"
+        );
     }
 
     #[test]
@@ -1068,7 +1216,11 @@ mod tests {
             Check::Failed("error: expected `)`".into())
         });
         match o {
-            Outcome::Struggled { rounds, last_failure, .. } => {
+            Outcome::Struggled {
+                rounds,
+                last_failure,
+                ..
+            } => {
                 assert_eq!(rounds, 2, "tried the whole budget");
                 assert!(last_failure.contains("expected"), "carries the real error");
             }
@@ -1094,7 +1246,15 @@ mod tests {
     impl Scripted {
         fn new(replies: &[(&str, bool)]) -> Scripted {
             Scripted {
-                replies: std::sync::Mutex::new(replies.iter().map(|(t, c)| crate::brain::LongReply { text: t.to_string(), cut_off: *c }).collect()),
+                replies: std::sync::Mutex::new(
+                    replies
+                        .iter()
+                        .map(|(t, c)| crate::brain::LongReply {
+                            text: t.to_string(),
+                            cut_off: *c,
+                        })
+                        .collect(),
+                ),
                 asked_for: std::sync::Mutex::new(Vec::new()),
                 systems: std::sync::Mutex::new(Vec::new()),
             }
@@ -1105,10 +1265,19 @@ mod tests {
         fn complete(&self, system: &str, user: &str) -> crate::error::Result<String> {
             self.complete_long(system, user, 512).map(|r| r.text)
         }
-        fn complete_long(&self, system: &str, _: &str, max_tokens: u32) -> crate::error::Result<crate::brain::LongReply> {
+        fn complete_long(
+            &self,
+            system: &str,
+            _: &str,
+            max_tokens: u32,
+        ) -> crate::error::Result<crate::brain::LongReply> {
             self.asked_for.lock().unwrap().push(max_tokens);
             self.systems.lock().unwrap().push(system.to_string());
-            self.replies.lock().unwrap().pop_front().ok_or_else(|| crate::error::AtlasError::Platform("no more replies".into()))
+            self.replies
+                .lock()
+                .unwrap()
+                .pop_front()
+                .ok_or_else(|| crate::error::AtlasError::Platform("no more replies".into()))
         }
         fn context_tokens(&self) -> Option<u32> {
             Some(16_384)
@@ -1126,23 +1295,55 @@ mod tests {
         assert_eq!(code_budget(Some(1024), 50_000), CODE_TOKENS_LEAST);
         let llm = Scripted::new(&[("```python\nprint(1)\n```", false)]);
         draft_with_room("print one", Lang::Python, &llm).unwrap();
-        assert_eq!(llm.asked_for.lock().unwrap()[0], CODE_TOKENS_MOST, "512 was the old cap");
+        assert_eq!(
+            llm.asked_for.lock().unwrap()[0],
+            CODE_TOKENS_MOST,
+            "512 was the old cap"
+        );
     }
 
     #[test]
     fn a_reply_cut_off_mid_file_is_seen_as_cut_off() {
         // An unclosed fence.
-        assert!(looks_cut_off("```python\ndef f():\n    return 1\n", "def f():\n    return 1", Lang::Python));
+        assert!(looks_cut_off(
+            "```python\ndef f():\n    return 1\n",
+            "def f():\n    return 1",
+            Lang::Python
+        ));
         // Brackets left open.
-        assert!(looks_cut_off("", "fn main() {\n    let v = vec![1, 2,", Lang::Rust));
+        assert!(looks_cut_off(
+            "",
+            "fn main() {\n    let v = vec![1, 2,",
+            Lang::Rust
+        ));
         assert!(looks_cut_off("", "items = [\n  1,\n  2,", Lang::Python));
         // A Python string left open in a triple quote.
-        assert!(looks_cut_off("", "x = 1\nDOC = \"\"\"starts here", Lang::Python));
+        assert!(looks_cut_off(
+            "",
+            "x = 1\nDOC = \"\"\"starts here",
+            Lang::Python
+        ));
         // Whole code is not.
-        assert!(!looks_cut_off("```rust\nfn main() { let s = \"{\"; }\n```", "fn main() { let s = \"{\"; let c = '{'; }", Lang::Rust));
-        assert!(!looks_cut_off("", "def f(x: 'int') -> str:\n    return f\"{x}\"  # (", Lang::Python));
-        assert!(!looks_cut_off("", "fn f<'a>(s: &'a str) -> &'a str { s }", Lang::Rust));
-        assert!(!looks_cut_off("", "const s = 'it is (fine';\nconsole.log(s);", Lang::JavaScript));
+        assert!(!looks_cut_off(
+            "```rust\nfn main() { let s = \"{\"; }\n```",
+            "fn main() { let s = \"{\"; let c = '{'; }",
+            Lang::Rust
+        ));
+        assert!(!looks_cut_off(
+            "",
+            "def f(x: 'int') -> str:\n    return f\"{x}\"  # (",
+            Lang::Python
+        ));
+        assert!(!looks_cut_off(
+            "",
+            "fn f<'a>(s: &'a str) -> &'a str { s }",
+            Lang::Rust
+        ));
+        assert!(!looks_cut_off(
+            "",
+            "const s = 'it is (fine';\nconsole.log(s);",
+            Lang::JavaScript
+        ));
         // More closed than opened is the reading confused, not a cut-off.
         assert!(!looks_cut_off("", "}\n{", Lang::Rust));
     }
@@ -1157,25 +1358,46 @@ mod tests {
         });
         assert!(matches!(o, Outcome::TooLong { .. }), "{o:?}");
         assert_eq!(checked, 0, "half a file is never handed to the compiler");
-        assert!(o.code().is_none(), "a cut-off file is never handed over as code");
+        assert!(
+            o.code().is_none(),
+            "a cut-off file is never handed over as code"
+        );
         assert!(o.spoken(Lang::Python).contains("cut off"));
-        assert!(o.in_project("Homelab", "x", Lang::Python).contains("Nothing queued"));
+        assert!(o
+            .in_project("Homelab", "x", Lang::Python)
+            .contains("Nothing queued"));
         // The server's own word counts too, whatever the text looks like.
         let llm = Scripted::new(&[("```python\nprint(1)\n```", true)]);
-        assert!(matches!(build_loop("x", Lang::Python, &llm, 1, |_| Check::Passed(vec![])), Outcome::TooLong { .. }));
+        assert!(matches!(
+            build_loop("x", Lang::Python, &llm, 1, |_| Check::Passed(vec![])),
+            Outcome::TooLong { .. }
+        ));
     }
 
     #[test]
     fn search_replace_edits_are_read_and_applied_to_the_draft() {
-        let reply = "Here:\n<<<<<<< SEARCH\n    return a - b\n=======\n    return a + b\n>>>>>>> REPLACE\n";
+        let reply =
+            "Here:\n<<<<<<< SEARCH\n    return a - b\n=======\n    return a + b\n>>>>>>> REPLACE\n";
         let (edits, open) = read_edits(reply);
         assert!(!open);
-        assert_eq!(edits, vec![("    return a - b".to_string(), "    return a + b".to_string())]);
+        assert_eq!(
+            edits,
+            vec![(
+                "    return a - b".to_string(),
+                "    return a + b".to_string()
+            )]
+        );
         let code = "def add(a, b):\n    return a - b\n";
-        assert_eq!(apply_edits(code, &edits).unwrap(), "def add(a, b):\n    return a + b\n");
+        assert_eq!(
+            apply_edits(code, &edits).unwrap(),
+            "def add(a, b):\n    return a + b\n"
+        );
         // Indented differently in the reply: still placed, line by line.
         let loose = vec![("return a - b".to_string(), "return a + b".to_string())];
-        assert_eq!(apply_edits(code, &loose).unwrap(), "def add(a, b):\n    return a + b\n");
+        assert_eq!(
+            apply_edits(code, &loose).unwrap(),
+            "def add(a, b):\n    return a + b\n"
+        );
         // Not there, or there twice: refused, not guessed.
         assert!(apply_edits(code, &[("nope".into(), "x".into())]).is_err());
         assert!(apply_edits("a\na\n", &[("a".into(), "b".into())]).is_err());
@@ -1188,13 +1410,22 @@ mod tests {
     fn a_fix_round_edits_the_draft_and_only_rewrites_when_the_edits_dont_apply() {
         let code = "def add(a, b):\n    return a - b\n";
         // Edits that apply: one call, the edit system prompt.
-        let llm = Scripted::new(&[("<<<<<<< SEARCH\n    return a - b\n=======\n    return a + b\n>>>>>>> REPLACE", false)]);
+        let llm = Scripted::new(&[(
+            "<<<<<<< SEARCH\n    return a - b\n=======\n    return a + b\n>>>>>>> REPLACE",
+            false,
+        )]);
         let d = fix_round(code, "assert 3 == -1", Lang::Python, &llm).unwrap();
         assert_eq!(d.code, "def add(a, b):\n    return a + b\n");
-        assert_eq!(llm.systems.lock().unwrap().as_slice(), &[EDIT_SYSTEM.to_string()]);
+        assert_eq!(
+            llm.systems.lock().unwrap().as_slice(),
+            &[EDIT_SYSTEM.to_string()]
+        );
         // Edits that don't apply: the whole file, asked for second.
         let llm = Scripted::new(&[
-            ("<<<<<<< SEARCH\nnot in the code\n=======\nx\n>>>>>>> REPLACE", false),
+            (
+                "<<<<<<< SEARCH\nnot in the code\n=======\nx\n>>>>>>> REPLACE",
+                false,
+            ),
             ("```python\ndef add(a, b):\n    return a + b\n```", false),
         ]);
         let d = fix_round(code, "assert", Lang::Python, &llm).unwrap();
@@ -1217,47 +1448,96 @@ mod tests {
 
     #[test]
     fn your_own_stronger_models_write_first_and_free_online_only_after_the_local_one() {
-        let all = Available { coder: false, your_second: true, worker: true, local: true, free_online: true, online: true, private: false };
-        assert_eq!(writers(&all), vec![Writer::YourSecond, Writer::Worker, Writer::Local, Writer::FreeOnline]);
+        let all = Available {
+            coder: false,
+            your_second: true,
+            worker: true,
+            local: true,
+            free_online: true,
+            online: true,
+            private: false,
+        };
+        assert_eq!(
+            writers(&all),
+            vec![
+                Writer::YourSecond,
+                Writer::Worker,
+                Writer::Local,
+                Writer::FreeOnline
+            ]
+        );
         // Offline: no worker, no free online.
-        let offline = Available { online: false, ..all };
+        let offline = Available {
+            online: false,
+            ..all
+        };
         assert_eq!(writers(&offline), vec![Writer::YourSecond, Writer::Local]);
         // Something private in the request never goes to a free service.
-        let private = Available { your_second: false, worker: false, private: true, ..all };
+        let private = Available {
+            your_second: false,
+            worker: false,
+            private: true,
+            ..all
+        };
         assert_eq!(writers(&private), vec![Writer::Local]);
         // The free online ones only when allowed.
-        let not_allowed = Available { your_second: false, worker: false, free_online: false, ..all };
+        let not_allowed = Available {
+            your_second: false,
+            worker: false,
+            free_online: false,
+            ..all
+        };
         assert_eq!(writers(&not_allowed), vec![Writer::Local]);
     }
 
     #[test]
     fn a_struggle_on_the_local_model_is_tried_once_more_on_the_stronger_one() {
-        let local = Scripted::new(&[("```python\nbroken(\n```", false), ("```python\nbroken(\n```", false), ("```python\nbroken(\n```", false)]);
+        let local = Scripted::new(&[
+            ("```python\nbroken(\n```", false),
+            ("```python\nbroken(\n```", false),
+            ("```python\nbroken(\n```", false),
+        ]);
         let strong = Scripted::new(&[("```python\nprint('ok')\n```", false)]);
-        let refs: Vec<(Writer, &dyn Llm)> = vec![(Writer::Local, &local), (Writer::FreeOnline, &strong)];
+        let refs: Vec<(Writer, &dyn Llm)> =
+            vec![(Writer::Local, &local), (Writer::FreeOnline, &strong)];
         let (o, by) = build_with("print ok", Lang::Python, &refs, 1, |code: &str| {
-            if code.contains("print") { Check::Passed(vec![]) } else { Check::Failed("SyntaxError".into()) }
+            if code.contains("print") {
+                Check::Passed(vec![])
+            } else {
+                Check::Failed("SyntaxError".into())
+            }
         });
         assert!(o.is_built(), "{o:?}");
         assert_eq!(by, Some(Writer::FreeOnline));
         // The first that passes is kept; nothing after it is asked.
         let strong = Scripted::new(&[("```python\nprint('ok')\n```", false)]);
         let never = Scripted::new(&[]);
-        let refs: Vec<(Writer, &dyn Llm)> = vec![(Writer::YourSecond, &strong), (Writer::Local, &never)];
-        let (o, by) = build_with("print ok", Lang::Python, &refs, 1, |_| Check::Passed(vec![]));
+        let refs: Vec<(Writer, &dyn Llm)> =
+            vec![(Writer::YourSecond, &strong), (Writer::Local, &never)];
+        let (o, by) = build_with("print ok", Lang::Python, &refs, 1, |_| {
+            Check::Passed(vec![])
+        });
         assert!(o.is_built() && by == Some(Writer::YourSecond));
         assert!(never.asked_for.lock().unwrap().is_empty());
         // One that can't be reached hands on, and a struggle beats it.
         let down = Scripted::new(&[]);
         let local = Scripted::new(&[("```python\nx(\n```", false), ("```python\nx(\n```", false)]);
-        let refs: Vec<(Writer, &dyn Llm)> = vec![(Writer::YourSecond, &down), (Writer::Local, &local)];
-        let (o, by) = build_with("x", Lang::Python, &refs, 1, |_| Check::Failed("SyntaxError".into()));
-        assert!(matches!(o, Outcome::Struggled { .. }) && by == Some(Writer::Local), "{o:?}");
+        let refs: Vec<(Writer, &dyn Llm)> =
+            vec![(Writer::YourSecond, &down), (Writer::Local, &local)];
+        let (o, by) = build_with("x", Lang::Python, &refs, 1, |_| {
+            Check::Failed("SyntaxError".into())
+        });
+        assert!(
+            matches!(o, Outcome::Struggled { .. }) && by == Some(Writer::Local),
+            "{o:?}"
+        );
     }
 
     #[test]
     fn a_folder_in_the_sentence_is_where_the_work_goes() {
-        let (d, rest) = folder_named(r"write a python script that renames photos and save it to C:\code\tools").unwrap();
+        let (d, rest) =
+            folder_named(r"write a python script that renames photos and save it to C:\code\tools")
+                .unwrap();
         assert_eq!(d, std::path::PathBuf::from(r"C:\code\tools"));
         assert_eq!(rest, "write a python script that renames photos");
         let (d, rest) = folder_named("in /home/sam/site, add a dark mode toggle").unwrap();
@@ -1285,9 +1565,16 @@ mod tests {
 
     #[test]
     fn declared_python_packages_are_read_and_nothing_else() {
-        let pep = "# /// script\n# dependencies = [\"requests>=2\", \"rich\"]\n# ///\nimport requests\n";
-        assert_eq!(python_deps(pep), vec!["requests>=2".to_string(), "rich".to_string()]);
-        assert_eq!(python_deps("# requires: httpx, bs4\n"), vec!["httpx".to_string(), "bs4".to_string()]);
+        let pep =
+            "# /// script\n# dependencies = [\"requests>=2\", \"rich\"]\n# ///\nimport requests\n";
+        assert_eq!(
+            python_deps(pep),
+            vec!["requests>=2".to_string(), "rich".to_string()]
+        );
+        assert_eq!(
+            python_deps("# requires: httpx, bs4\n"),
+            vec!["httpx".to_string(), "bs4".to_string()]
+        );
         // An address or a command is not a package name.
         assert!(python_deps("# requires: git+https://evil/x, ; rm -rf /\n").is_empty());
         assert!(python_deps("import os\n").is_empty());
@@ -1297,24 +1584,40 @@ mod tests {
     fn running_a_build_uses_uv_only_for_one_that_needs_packages() {
         let f = std::path::Path::new("/b/tool.py");
         let uv = std::path::Path::new("/t/uv");
-        let (p, a) = run_command(Lang::Python, f, &["rich".into()], Some(uv), Some("python3")).unwrap();
+        let (p, a) =
+            run_command(Lang::Python, f, &["rich".into()], Some(uv), Some("python3")).unwrap();
         assert_eq!(p, "/t/uv");
         assert!(a.contains(&"--with".to_string()) && a.contains(&"rich".to_string()));
         let (p, a) = run_command(Lang::Python, f, &[], Some(uv), Some("python3")).unwrap();
         assert_eq!((p.as_str(), a.len()), ("python3", 1));
-        assert!(run_command(Lang::Rust, f, &[], None, None).is_none(), "a Rust draft is a library");
-        assert!(run_command(Lang::Python, f, &[], None, None).is_none(), "no Python, nothing to run with");
+        assert!(
+            run_command(Lang::Rust, f, &[], None, None).is_none(),
+            "a Rust draft is a library"
+        );
+        assert!(
+            run_command(Lang::Python, f, &[], None, None).is_none(),
+            "no Python, nothing to run with"
+        );
     }
 
     #[test]
     fn python_is_the_language_when_none_is_named() {
         assert_eq!(BuildConfig::default().default_language, Lang::Python);
-        assert_eq!(lang_from_words("a tool that totals my receipts", BuildConfig::default().default_language), Lang::Python);
+        assert_eq!(
+            lang_from_words(
+                "a tool that totals my receipts",
+                BuildConfig::default().default_language
+            ),
+            Lang::Python
+        );
     }
 
     #[test]
     fn language_is_read_from_the_description() {
-        assert_eq!(lang_from_words("write a python script to sort files", Lang::Rust), Lang::Python);
+        assert_eq!(
+            lang_from_words("write a python script to sort files", Lang::Rust),
+            Lang::Python
+        );
         assert_eq!(lang_from_words("a rust function", Lang::Python), Lang::Rust);
         assert_eq!(lang_from_words("something", Lang::Rust), Lang::Rust);
     }
@@ -1361,22 +1664,42 @@ pub fn keep_building(
             if let Ok(next) = fix_draft(&code, &failure, s.lang, llm) {
                 code = next;
             }
-            let changed = if code == before { String::new() } else { "a new draft".to_string() };
+            let changed = if code == before {
+                String::new()
+            } else {
+                "a new draft".to_string()
+            };
             match check(&code).settle(&mut code) {
                 Check::Rewrote(..) => unreachable!("settle takes every rewrite into the code"),
                 Check::Passed(n) => {
                     notes = n;
-                    Attempt { n: 0, passed: vec![ladder.clone()], failed: vec![], changed }
+                    Attempt {
+                        n: 0,
+                        passed: vec![ladder.clone()],
+                        failed: vec![],
+                        changed,
+                    }
                 }
                 Check::Failed(out) => {
                     failure = out;
-                    Attempt { n: 0, passed: vec![], failed: vec![ladder.clone()], changed }
+                    Attempt {
+                        n: 0,
+                        passed: vec![],
+                        failed: vec![ladder.clone()],
+                        changed,
+                    }
                 }
                 // Nothing to fix in the code: the checker isn't here. Kept
                 // as the failure so it's what gets said, not a compiler error.
                 Check::CannotCheck(missing) => {
-                    failure = format!("couldn't check it: {missing} isn't installed on this computer");
-                    Attempt { n: 0, passed: vec![], failed: vec![ladder.clone()], changed }
+                    failure =
+                        format!("couldn't check it: {missing} isn't installed on this computer");
+                    Attempt {
+                        n: 0,
+                        passed: vec![],
+                        failed: vec![ladder.clone()],
+                        changed,
+                    }
                 }
             }
         },
@@ -1386,15 +1709,24 @@ pub fn keep_building(
     let said = crate::goal::ended_spoken(&goal, &ended, &attempts);
     let rounds = attempts.len() as u32;
     let outcome = if attempts.last().is_some_and(|a| a.met_everything()) {
-        Outcome::Built { code, rounds, notes }
+        Outcome::Built {
+            code,
+            rounds,
+            notes,
+        }
     } else {
-        Outcome::Struggled { code, rounds, last_failure: failure }
+        Outcome::Struggled {
+            code,
+            rounds,
+            last_failure: failure,
+        }
     };
     (outcome, said)
 }
 
 /// How a bigger model is asked for help with a build Atlas couldn't finish.
-pub const HELP_PROMPT: &str = "You're helping another assistant that got stuck. Read its write-up, find \
+pub const HELP_PROMPT: &str =
+    "You're helping another assistant that got stuck. Read its write-up, find \
 what's actually wrong, and reply with the complete corrected program in one fenced code block. If \
 something is missing that you'd need to know, ask one question instead.";
 
@@ -1410,7 +1742,11 @@ pub fn write_up(s: &Struggle, rounds: u32, cfg: &crate::handoff::HandoffConfig) 
             outcome: "still failing the same checks".into(),
             worked: false,
         }],
-        snippets: vec![crate::handoff::Snippet { path: format!("draft.{}", s.lang.plain().to_lowercase()), from_line: 1, text: s.code.clone() }],
+        snippets: vec![crate::handoff::Snippet {
+            path: format!("draft.{}", s.lang.plain().to_lowercase()),
+            from_line: 1,
+            text: s.code.clone(),
+        }],
         test_output: s.failure.clone(),
         theory: None,
         ruled_out: Vec::new(),
@@ -1432,7 +1768,11 @@ pub fn ask_for_help(
         Ok(r) => r,
         Err(e) => {
             return (
-                Outcome::Struggled { code: s.code.clone(), rounds, last_failure: s.failure.clone() },
+                Outcome::Struggled {
+                    code: s.code.clone(),
+                    rounds,
+                    last_failure: s.failure.clone(),
+                },
                 format!("I asked the bigger model for help and couldn't reach it ({e})."),
             )
         }
@@ -1457,34 +1797,52 @@ pub fn ask_for_help(
             }
         }
         crate::handoff::Usable::Asked(q) => (
-            Outcome::Struggled { code: s.code.clone(), rounds, last_failure: s.failure.clone() },
+            Outcome::Struggled {
+                code: s.code.clone(),
+                rounds,
+                last_failure: s.failure.clone(),
+            },
             format!("I asked the bigger model for help and it asked back: {q}"),
         ),
         crate::handoff::Usable::NeedsCode(_) => (
-            Outcome::Struggled { code: s.code.clone(), rounds, last_failure: s.failure.clone() },
+            Outcome::Struggled {
+                code: s.code.clone(),
+                rounds,
+                last_failure: s.failure.clone(),
+            },
             "I asked the bigger model for help and it explained without giving a fix.".into(),
         ),
     }
 }
 
-
 /// A checker's note as a sentence: its first line, without the rule code
 /// and the tool's markers (1 Oct 2026: a whole ruff report, arrows and
 /// ASCII art included, was read out as the result).
 pub fn plain_note(note: &str) -> String {
-    let first = note.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    let first = note
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
     let mut words: Vec<&str> = first.split_whitespace().collect();
     // A leading rule code: F401, E501, W0611, clippy::foo, TS2345:, C4996...
     if let Some(w) = words.first() {
         let w = w.trim_end_matches(':');
         let code = w.len() <= 40
-            && (w.contains("::") || (w.chars().next().is_some_and(|c| c.is_ascii_uppercase()) && w.chars().skip(1).any(|c| c.is_ascii_digit()) && w.chars().all(|c| c.is_ascii_alphanumeric())));
+            && (w.contains("::")
+                || (w.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+                    && w.chars().skip(1).any(|c| c.is_ascii_digit())
+                    && w.chars().all(|c| c.is_ascii_alphanumeric())));
         if code {
             words.remove(0);
         }
     }
     words.retain(|w| *w != "[*]" && *w != "-->" && *w != "|");
-    words.join(" ").replace('`', "").trim_end_matches('.').to_string()
+    words
+        .join(" ")
+        .replace('`', "")
+        .trim_end_matches('.')
+        .to_string()
 }
 
 /// A file name for what was built, from its description: a few of its words,
@@ -1502,7 +1860,35 @@ pub fn file_name_for(dir: &std::path::Path, description: &str, ext: &str) -> std
 
 /// A few words of a description, joined for a file or folder name.
 pub fn slug_for(description: &str) -> String {
-    const SKIP: &[&str] = &["a", "an", "the", "me", "my", "that", "which", "to", "in", "of", "for", "and", "write", "build", "make", "create", "script", "program", "code", "python", "rust", "go", "javascript", "typescript", "it", "save", "put"];
+    const SKIP: &[&str] = &[
+        "a",
+        "an",
+        "the",
+        "me",
+        "my",
+        "that",
+        "which",
+        "to",
+        "in",
+        "of",
+        "for",
+        "and",
+        "write",
+        "build",
+        "make",
+        "create",
+        "script",
+        "program",
+        "code",
+        "python",
+        "rust",
+        "go",
+        "javascript",
+        "typescript",
+        "it",
+        "save",
+        "put",
+    ];
     let words: Vec<String> = description
         .to_lowercase()
         .split(|c: char| !c.is_ascii_alphanumeric())
@@ -1545,7 +1931,9 @@ pub fn folder_named(text: &str) -> Option<(std::path::PathBuf, String)> {
     let mut i = 0;
     while i < words.len() {
         let w = words[i];
-        if (w.starts_with('"') || w.starts_with('\'')) && !(w.len() > 1 && (w.ends_with('"') || w.ends_with('\''))) {
+        if (w.starts_with('"') || w.starts_with('\''))
+            && !(w.len() > 1 && (w.ends_with('"') || w.ends_with('\'')))
+        {
             let q = &w[..1];
             let mut joined = w.to_string();
             let mut k = i + 1;
@@ -1568,16 +1956,24 @@ pub fn folder_named(text: &str) -> Option<(std::path::PathBuf, String)> {
     }
     for (n, tok) in toks.iter().enumerate() {
         let trailing_comma = tok.ends_with(',');
-        let bare = tok.trim_end_matches(['.', ',', ';', '!', '?', ')']).trim_matches(['"', '\'']);
+        let bare = tok
+            .trim_end_matches(['.', ',', ';', '!', '?', ')'])
+            .trim_matches(['"', '\'']);
         if !looks_like_a_folder(bare) {
             continue;
         }
         let before: Vec<String> = toks[..n].iter().map(|t| t.to_lowercase()).collect();
         let lead = before.last().map(String::as_str).unwrap_or("");
-        let said_it = before.len() >= 3 && matches!(before[before.len() - 3].as_str(), "save" | "put" | "write" | "store" | "keep" | "place") && before[before.len() - 2] == "it";
+        let said_it = before.len() >= 3
+            && matches!(
+                before[before.len() - 3].as_str(),
+                "save" | "put" | "write" | "store" | "keep" | "place"
+            )
+            && before[before.len() - 2] == "it";
         let ends = n + 1 == toks.len() || trailing_comma;
         let lead_word = matches!(lead, "in" | "into" | "inside" | "to" | "under" | "at");
-        let lead_ok = (said_it && lead_word) || (matches!(lead, "in" | "into" | "inside" | "folder" | "directory") && ends);
+        let lead_ok = (said_it && lead_word)
+            || (matches!(lead, "in" | "into" | "inside" | "folder" | "directory") && ends);
         if !lead_ok {
             continue;
         }
@@ -1588,7 +1984,12 @@ pub fn folder_named(text: &str) -> Option<(std::path::PathBuf, String)> {
             if cut_from > 0 && toks[cut_from - 1].eq_ignore_ascii_case("and") {
                 cut_from -= 1;
             }
-        } else if cut_from >= 1 && matches!(before[cut_from - 1].as_str(), "the" | "folder" | "directory") {
+        } else if cut_from >= 1
+            && matches!(
+                before[cut_from - 1].as_str(),
+                "the" | "folder" | "directory"
+            )
+        {
             cut_from -= 1;
             if cut_from >= 1 && before[cut_from - 1] == "the" {
                 cut_from -= 1;
@@ -1599,7 +2000,12 @@ pub fn folder_named(text: &str) -> Option<(std::path::PathBuf, String)> {
         }
         let mut rest: Vec<String> = toks[..cut_from].to_vec();
         rest.extend(toks[n + 1..].iter().cloned());
-        let rest = rest.join(" ").trim().trim_end_matches([',', ';']).trim().to_string();
+        let rest = rest
+            .join(" ")
+            .trim()
+            .trim_end_matches([',', ';'])
+            .trim()
+            .to_string();
         return Some((expand_home(bare), rest));
     }
     None
@@ -1609,7 +2015,10 @@ pub fn folder_named(text: &str) -> Option<(std::path::PathBuf, String)> {
 /// home (`~/x`), or an absolute path with at least two parts (`/home/me`).
 fn looks_like_a_folder(w: &str) -> bool {
     let b = w.as_bytes();
-    let drive = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/');
+    let drive = b.len() >= 3
+        && b[0].is_ascii_alphabetic()
+        && b[1] == b':'
+        && (b[2] == b'\\' || b[2] == b'/');
     let share = w.starts_with("\\\\") && w.len() > 3;
     let home = w.starts_with("~/") || w.starts_with("~\\");
     let unix = w.starts_with('/') && w.len() > 2 && w[1..].contains('/') && !w.contains("//");
@@ -1649,7 +2058,10 @@ pub fn python_deps(code: &str) -> Vec<String> {
             block.push('\n');
             continue;
         }
-        if let Some(r) = t.strip_prefix("# requires:").or_else(|| t.strip_prefix("# Requires:")) {
+        if let Some(r) = t
+            .strip_prefix("# requires:")
+            .or_else(|| t.strip_prefix("# Requires:"))
+        {
             found.extend(r.split(',').map(|x| x.trim().to_string()));
         }
     }
@@ -1666,7 +2078,8 @@ pub fn python_deps(code: &str) -> Vec<String> {
     let ok = |d: &str| {
         !d.is_empty()
             && d.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
-            && d.chars().all(|c| c.is_ascii_alphanumeric() || "-_.[]<>=!~,".contains(c))
+            && d.chars()
+                .all(|c| c.is_ascii_alphanumeric() || "-_.[]<>=!~,".contains(c))
     };
     let mut out: Vec<String> = Vec::new();
     for d in found {
@@ -1726,7 +2139,13 @@ pub const RUN_FOR_SECS: u64 = 120;
 /// is source). Python with packages runs through uv, which fetches them for
 /// that run only; without uv it runs on the plain Python and may not find
 /// them, which the reply says (2 Oct 2026).
-pub fn run_command(lang: Lang, file: &std::path::Path, deps: &[String], uv: Option<&std::path::Path>, python: Option<&str>) -> Option<(String, Vec<String>)> {
+pub fn run_command(
+    lang: Lang,
+    file: &std::path::Path,
+    deps: &[String],
+    uv: Option<&std::path::Path>,
+    python: Option<&str>,
+) -> Option<(String, Vec<String>)> {
     let f = file.to_string_lossy().into_owned();
     match lang {
         Lang::Python => match (uv, deps.is_empty()) {

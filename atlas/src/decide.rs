@@ -59,7 +59,9 @@ impl Move {
     pub fn asks(&self) -> &'static str {
         match self {
             Move::Framing => "What's the question you should be asking that you haven't?",
-            Move::Default => "What's the boring default here, and what would have to be true to beat it?",
+            Move::Default => {
+                "What's the boring default here, and what would have to be true to beat it?"
+            }
             Move::Options => "What are the options, and what does each one cost you?",
             Move::Evidence => "What is each of these resting on, and what would change it?",
             Move::Reversal => "What's the strongest case against the way this is leaning?",
@@ -234,7 +236,10 @@ impl Decision {
 
     /// Options that are still candidates.
     pub fn standing(&self) -> Vec<&Option_> {
-        self.options.iter().filter(|o| o.set_aside.is_none()).collect()
+        self.options
+            .iter()
+            .filter(|o| o.set_aside.is_none())
+            .collect()
     }
 
     /// Set one aside, with the reason.
@@ -254,7 +259,13 @@ impl Decision {
         if let Some(q) = self.needs_from_you.first() {
             return Err(CannotLean::NeedsSomethingFromYou(q.clone()));
         }
-        for m in [Move::Framing, Move::Options, Move::Evidence, Move::Reversal, Move::Stakes] {
+        for m in [
+            Move::Framing,
+            Move::Options,
+            Move::Evidence,
+            Move::Reversal,
+            Move::Stakes,
+        ] {
             if self.gaps().contains(&m) {
                 return Err(CannotLean::StillWorking(m));
             }
@@ -264,16 +275,26 @@ impl Decision {
             return Err(CannotLean::NothingLeftToCompare);
         }
         // Fewest unsupported assumptions, then cheapest to be wrong about.
-        let Some(best) = standing.iter().min_by_key(|o| (o.rests_on.len(), o.costs.len())) else {
+        let Some(best) = standing
+            .iter()
+            .min_by_key(|o| (o.rests_on.len(), o.costs.len()))
+        else {
             return Err(CannotLean::NothingLeftToCompare);
         };
-        let mut because = vec![format!("it rests on the fewest unstated things: {}", best.rests_on.join("; "))];
+        let mut because = vec![format!(
+            "it rests on the fewest unstated things: {}",
+            best.rests_on.join("; ")
+        )];
         because.push(format!("what it costs you: {}", best.costs));
         if let Some(w) = &self.if_wrong {
             because.push(format!("if it's wrong: {w}"));
         }
         for o in self.options.iter().filter(|o| o.set_aside.is_some()) {
-            because.push(format!("{} was set aside: {}", o.what, o.set_aside.clone().unwrap_or_default()));
+            because.push(format!(
+                "{} was set aside: {}",
+                o.what,
+                o.set_aside.clone().unwrap_or_default()
+            ));
         }
         Ok(Lean {
             option: best.what.clone(),
@@ -353,7 +374,9 @@ impl Decision {
             }
         }
         if let Some((boring, beats)) = &self.boring {
-            out.push(format!("The boring answer is {boring}. To beat it: {beats}"));
+            out.push(format!(
+                "The boring answer is {boring}. To beat it: {beats}"
+            ));
         }
         for o in &self.options {
             let rests = if o.rests_on.is_empty() {
@@ -361,7 +384,10 @@ impl Decision {
             } else {
                 o.rests_on.join("; ")
             };
-            out.push(format!("{} — costs you {}. Rests on: {}", o.what, o.costs, rests));
+            out.push(format!(
+                "{} — costs you {}. Rests on: {}",
+                o.what, o.costs, rests
+            ));
         }
         if !self.against.is_empty() {
             out.push(format!("Against: {}", self.against.join("; ")));
@@ -440,34 +466,78 @@ impl Decision {
     /// Take your answer to a move and put it where that move keeps it.
     pub fn take_answer(&mut self, m: Move, answer: &str) {
         let a = answer.trim();
-        let nothing = matches!(a.to_lowercase().as_str(), "no" | "none" | "nothing" | "same" | "no idea" | "dunno" | "not sure");
+        let nothing = matches!(
+            a.to_lowercase().as_str(),
+            "no" | "none" | "nothing" | "same" | "no idea" | "dunno" | "not sure"
+        );
         match m {
-            Move::Framing => self.real_question = Some(if nothing || a.is_empty() { self.about.clone() } else { a.to_string() }),
-            Move::Default => self.boring = Some((if nothing { "doing nothing".into() } else { a.to_string() }, String::new())),
+            Move::Framing => {
+                self.real_question = Some(if nothing || a.is_empty() {
+                    self.about.clone()
+                } else {
+                    a.to_string()
+                })
+            }
+            Move::Default => {
+                self.boring = Some((
+                    if nothing {
+                        "doing nothing".into()
+                    } else {
+                        a.to_string()
+                    },
+                    String::new(),
+                ))
+            }
             Move::Options => {
                 for part in split_options(a) {
-                    if !self.options.iter().any(|o| o.what.eq_ignore_ascii_case(&part)) {
-                        self.options.push(Option_ { what: part, costs: String::new(), rests_on: Vec::new(), set_aside: None });
+                    if !self
+                        .options
+                        .iter()
+                        .any(|o| o.what.eq_ignore_ascii_case(&part))
+                    {
+                        self.options.push(Option_ {
+                            what: part,
+                            costs: String::new(),
+                            rests_on: Vec::new(),
+                            set_aside: None,
+                        });
                     }
                 }
             }
             Move::Evidence => {
                 if let Some(o) = self.options.iter_mut().find(|o| o.rests_on.is_empty()) {
-                    o.rests_on = if nothing { vec!["nothing you could name".into()] } else {
-                        a.split(';').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()
+                    o.rests_on = if nothing {
+                        vec!["nothing you could name".into()]
+                    } else {
+                        a.split(';')
+                            .map(|x| x.trim().to_string())
+                            .filter(|x| !x.is_empty())
+                            .collect()
                     };
                     if o.costs.is_empty() {
                         o.costs = "not said".into();
                     }
                 }
             }
-            Move::Reversal => self.against.push(if nothing { "nothing anyone could think of".into() } else { a.to_string() }),
+            Move::Reversal => self.against.push(if nothing {
+                "nothing anyone could think of".into()
+            } else {
+                a.to_string()
+            }),
             Move::Stakes => self.if_wrong = Some(a.to_string()),
             Move::Confidence => {
-                let n: u8 = a.split(|c: char| !c.is_ascii_digit()).find_map(|w| w.parse().ok()).unwrap_or(5).clamp(1, 10);
+                let n: u8 = a
+                    .split(|c: char| !c.is_ascii_digit())
+                    .find_map(|w| w.parse().ok())
+                    .unwrap_or(5)
+                    .clamp(1, 10);
                 self.confidence = Some((n, a.to_string()));
             }
-            Move::Ownership => self.open_questions.push(if nothing { "nothing left".into() } else { a.to_string() }),
+            Move::Ownership => self.open_questions.push(if nothing {
+                "nothing left".into()
+            } else {
+                a.to_string()
+            }),
         }
     }
 
@@ -476,11 +546,17 @@ impl Decision {
         let m = self.next_move()?;
         Some(match m {
             Move::Evidence => match self.options.iter().find(|o| o.rests_on.is_empty()) {
-                Some(o) => format!("What is \"{}\" resting on — what has to be true for it to work?", o.what),
+                Some(o) => format!(
+                    "What is \"{}\" resting on — what has to be true for it to work?",
+                    o.what
+                ),
                 None => m.asks().to_string(),
             },
             Move::Options if !self.options.is_empty() => {
-                format!("Besides \"{}\", what else could you do?", self.options[0].what)
+                format!(
+                    "Besides \"{}\", what else could you do?",
+                    self.options[0].what
+                )
             }
             _ => m.asks().to_string(),
         })
@@ -494,17 +570,35 @@ impl Decision {
         }
         let each: Vec<String> = standing
             .iter()
-            .map(|o| if o.costs.is_empty() || o.costs == "not said" { o.what.clone() } else { format!("{} (costs you {})", o.what, o.costs) })
+            .map(|o| {
+                if o.costs.is_empty() || o.costs == "not said" {
+                    o.what.clone()
+                } else {
+                    format!("{} (costs you {})", o.what, o.costs)
+                }
+            })
             .collect();
-        Some(format!("There are {} ways to get there: {}.", each.len(), each.join("; ")))
+        Some(format!(
+            "There are {} ways to get there: {}.",
+            each.len(),
+            each.join("; ")
+        ))
     }
 }
 
 /// "the contract or the retainer, or neither" → three options.
 fn split_options(a: &str) -> Vec<String> {
-    a.replace(", or ", ",").replace(" or ", ",").replace(" versus ", ",").replace(" vs ", ",")
+    a.replace(", or ", ",")
+        .replace(" or ", ",")
+        .replace(" versus ", ",")
+        .replace(" vs ", ",")
         .split(',')
-        .map(|x| x.trim().trim_start_matches("either ").trim_end_matches('.').to_string())
+        .map(|x| {
+            x.trim()
+                .trim_start_matches("either ")
+                .trim_end_matches('.')
+                .to_string()
+        })
         .filter(|x| !x.is_empty())
         .collect()
 }
@@ -513,8 +607,31 @@ fn split_options(a: &str) -> Vec<String> {
 /// isn't worked for an evening and a one-way one is said to be one.
 pub fn how_much_it_matters(about: &str) -> Weight {
     let l = about.to_lowercase();
-    const ONE_WAY: &[&str] = &["quit", "resign", "sell the house", "sell my house", "divorce", "tattoo", "sign the", "delete my", "move country", "move abroad", "have surgery"];
-    const CHEAP: &[&str] = &["which shirt", "what to eat", "for dinner", "for lunch", "which colour", "which color", "what to watch", "which phone case", "pizza or", "tea or coffee"];
+    const ONE_WAY: &[&str] = &[
+        "quit",
+        "resign",
+        "sell the house",
+        "sell my house",
+        "divorce",
+        "tattoo",
+        "sign the",
+        "delete my",
+        "move country",
+        "move abroad",
+        "have surgery",
+    ];
+    const CHEAP: &[&str] = &[
+        "which shirt",
+        "what to eat",
+        "for dinner",
+        "for lunch",
+        "which colour",
+        "which color",
+        "what to watch",
+        "which phone case",
+        "pizza or",
+        "tea or coffee",
+    ];
     if ONE_WAY.iter().any(|w| l.contains(w)) {
         Weight::OneWay
     } else if CHEAP.iter().any(|w| l.contains(w)) {
@@ -543,7 +660,9 @@ NEEDS: only if it turns on a preference only they can state, the question to ask
 pub fn from_draft(about: &str, weight: Weight, text: &str) -> Decision {
     let mut d = Decision::new(about, weight);
     for line in text.lines() {
-        let Some((key, rest)) = line.split_once(':') else { continue };
+        let Some((key, rest)) = line.split_once(':') else {
+            continue;
+        };
         let parts: Vec<String> = rest.split('|').map(|p| p.trim().to_string()).collect();
         let first = parts.first().cloned().unwrap_or_default();
         if first.is_empty() {
@@ -555,13 +674,25 @@ pub fn from_draft(about: &str, weight: Weight, text: &str) -> Decision {
             "OPTION" => d.options.push(Option_ {
                 what: first,
                 costs: parts.get(1).cloned().unwrap_or_else(|| "not said".into()),
-                rests_on: parts.get(2).map(|r| r.split(';').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()).unwrap_or_default(),
+                rests_on: parts
+                    .get(2)
+                    .map(|r| {
+                        r.split(';')
+                            .map(|x| x.trim().to_string())
+                            .filter(|x| !x.is_empty())
+                            .collect()
+                    })
+                    .unwrap_or_default(),
                 set_aside: None,
             }),
             "AGAINST" => d.against.push(first),
             "IF WRONG" => d.if_wrong = Some(first),
             "CONFIDENCE" => {
-                let n: u8 = first.split(|c: char| !c.is_ascii_digit()).find_map(|w| w.parse().ok()).unwrap_or(5).clamp(1, 10);
+                let n: u8 = first
+                    .split(|c: char| !c.is_ascii_digit())
+                    .find_map(|w| w.parse().ok())
+                    .unwrap_or(5)
+                    .clamp(1, 10);
                 d.confidence = Some((n, parts.get(1).cloned().unwrap_or_default()));
             }
             "OPEN" => d.open_questions.push(first),
@@ -581,8 +712,16 @@ pub fn said(d: &Decision) -> String {
     }
     match d.lean() {
         Ok(l) => {
-            let why = l.because.get(1).or(l.because.first()).cloned().unwrap_or_default();
-            let mut s = format!("I'd lean toward {} — {why}.", l.option.trim_end_matches('.'));
+            let why = l
+                .because
+                .get(1)
+                .or(l.because.first())
+                .cloned()
+                .unwrap_or_default();
+            let mut s = format!(
+                "I'd lean toward {} — {why}.",
+                l.option.trim_end_matches('.')
+            );
             if d.weight == Weight::OneWay {
                 s.push_str(" It can't be undone, so it's your call.");
             }
@@ -613,9 +752,19 @@ pub fn said(d: &Decision) -> String {
 /// shapes that mark such a question so the assistant can reach for
 /// `Decision` instead of guessing an answer.
 const DECIDING: &[&str] = &[
-    "should i ", "should we ", "help me decide", "cant decide", "can't decide",
-    "which should ", "is it worth ", "worth it", "better to ", "or should ",
-    "torn between", "do i go with", "which one should",
+    "should i ",
+    "should we ",
+    "help me decide",
+    "cant decide",
+    "can't decide",
+    "which should ",
+    "is it worth ",
+    "worth it",
+    "better to ",
+    "or should ",
+    "torn between",
+    "do i go with",
+    "which one should",
 ];
 
 /// Is this the kind of question that wants working rather than answering?

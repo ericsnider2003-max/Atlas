@@ -66,9 +66,9 @@ impl SecondFactor {
     pub fn concern(&self) -> Option<&'static str> {
         match self {
             SecondFactor::None => Some("anyone with the password is in"),
-            SecondFactor::Sms => {
-                Some("a SIM swap gets past this without touching your phone — it's the weakest kind")
-            }
+            SecondFactor::Sms => Some(
+                "a SIM swap gets past this without touching your phone — it's the weakest kind",
+            ),
             SecondFactor::Email => {
                 Some("this is only as strong as your email account, so it's really one factor")
             }
@@ -107,24 +107,57 @@ pub struct Account {
 /// through it, so it's the account that owns all the others.
 pub fn stakes_for(site: &str) -> Stakes {
     let s = site.to_lowercase();
-    if ["gmail", "outlook", "icloud", "proton", "yahoo mail", "fastmail"].iter().any(|m| s.contains(m)) {
+    if [
+        "gmail",
+        "outlook",
+        "icloud",
+        "proton",
+        "yahoo mail",
+        "fastmail",
+    ]
+    .iter()
+    .any(|m| s.contains(m))
+    {
         return Stakes::Keystone;
     }
-    if ["bank", "chase", "wells", "paypal", "coinbase", "broker", "schwab", "fidelity",
-        "interactive brokers", "tradestation"]
-        .iter()
-        .any(|m| s.contains(m))
+    if [
+        "bank",
+        "chase",
+        "wells",
+        "paypal",
+        "coinbase",
+        "broker",
+        "schwab",
+        "fidelity",
+        "interactive brokers",
+        "tradestation",
+    ]
+    .iter()
+    .any(|m| s.contains(m))
     {
         return Stakes::High;
     }
-    if ["instagram", "tiktok", "youtube", "facebook", "x.com", "twitter", "linkedin",
-        "github", "domain", "cloudflare"]
-        .iter()
-        .any(|m| s.contains(m))
+    if [
+        "instagram",
+        "tiktok",
+        "youtube",
+        "facebook",
+        "x.com",
+        "twitter",
+        "linkedin",
+        "github",
+        "domain",
+        "cloudflare",
+    ]
+    .iter()
+    .any(|m| s.contains(m))
     {
         return Stakes::High;
     }
-    if ["amazon", "ebay", "spotify", "netflix"].iter().any(|m| s.contains(m)) {
+    if ["amazon", "ebay", "spotify", "netflix"]
+        .iter()
+        .any(|m| s.contains(m))
+    {
         return Stakes::Medium;
     }
     Stakes::Low
@@ -191,15 +224,20 @@ pub fn audit(accounts: &[Account]) -> Vec<Advice> {
             out.push(Advice {
                 site: a.site.clone(),
                 what: "save the recovery codes somewhere you could reach without your phone".into(),
-                why: "strong two-factor with no recovery is how a lost phone becomes a lost account"
-                    .into(),
+                why:
+                    "strong two-factor with no recovery is how a lost phone becomes a lost account"
+                        .into(),
                 urgency: weight * 0.6,
                 can_open: a.settings_url.clone(),
             });
         }
     }
 
-    out.sort_by(|a, b| b.urgency.partial_cmp(&a.urgency).unwrap_or(std::cmp::Ordering::Equal));
+    out.sort_by(|a, b| {
+        b.urgency
+            .partial_cmp(&a.urgency)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     out
 }
 
@@ -209,8 +247,13 @@ pub fn spoken(accounts: &[Account], advice: &[Advice]) -> String {
         return format!("{} accounts, all reasonably protected.", accounts.len());
     }
     let first = &advice[0];
-    let mut s = format!("{} of {} accounts could be better. Start with {}: {}.",
-        advice.len(), accounts.len(), first.site, first.what);
+    let mut s = format!(
+        "{} of {} accounts could be better. Start with {}: {}.",
+        advice.len(),
+        accounts.len(),
+        first.site,
+        first.what
+    );
 
     // Naming the keystone is the single most useful thing here — most people
     // haven't thought about it.
@@ -244,16 +287,26 @@ pub fn asked_to_weaken(said: &str) -> bool {
     let off = ["turn off", "disable", "remove", "get rid of", "switch off"]
         .iter()
         .any(|w| t.contains(w));
-    let what = ["two factor", "2fa", "two-factor", "authentication", "verification",
-                "security", "passkey"]
-        .iter()
-        .any(|w| t.contains(w));
+    let what = [
+        "two factor",
+        "2fa",
+        "two-factor",
+        "authentication",
+        "verification",
+        "security",
+        "passkey",
+    ]
+    .iter()
+    .any(|w| t.contains(w));
     off && what
 }
 
 /// What Atlas offers instead, which is most of what was wanted.
 pub fn instead(accounts: &[Account]) -> String {
-    let weak = accounts.iter().filter(|a| a.second_factor.strength() < 4).count();
+    let weak = accounts
+        .iter()
+        .filter(|a| a.second_factor.strength() < 4)
+        .count();
     format!(
         "What I can do: tell you where two-factor is on and where it isn't — {weak} of your {} \
          accounts are on something weaker than an app — and open any of those pages for you.",
@@ -275,7 +328,6 @@ pub struct AccountsConfig {
 fn never() -> bool {
     false
 }
-
 
 // ===========================================================================
 // The book: which accounts Atlas actually knows about.
@@ -358,7 +410,8 @@ impl Book {
             has_recovery_codes: false,
             settings_url: settings_page_for(site),
         });
-        self.accounts.sort_by(|a, b| b.stakes.cmp(&a.stakes).then(a.site.cmp(&b.site)));
+        self.accounts
+            .sort_by(|a, b| b.stakes.cmp(&a.stakes).then(a.site.cmp(&b.site)));
         true
     }
 
@@ -410,12 +463,7 @@ impl Book {
     /// Setting and saving are one operation here because they were two things
     /// a caller had to remember to do in order. A flag that records nothing is
     /// worse than a flag nobody sets -- the person watched Atlas accept it.
-    pub fn record_codes(
-        &mut self,
-        store: &crate::store::Store,
-        site: &str,
-        has: bool,
-    ) -> Recorded {
+    pub fn record_codes(&mut self, store: &crate::store::Store, site: &str, has: bool) -> Recorded {
         if self.index_of(site).is_none() {
             return Recorded::NoSuchSite;
         }
@@ -466,9 +514,7 @@ impl Book {
         self.accounts
             .iter()
             .filter(|a| {
-                a.second_factor == SecondFactor::None
-                    && !a.reused_password
-                    && !a.has_recovery_codes
+                a.second_factor == SecondFactor::None && !a.reused_password && !a.has_recovery_codes
             })
             .collect()
     }

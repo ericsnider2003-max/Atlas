@@ -65,7 +65,10 @@ fn config(tag: &str) -> PathBuf {
     std::fs::create_dir_all(&dir).unwrap();
     for e in std::fs::read_dir("config").unwrap().flatten() {
         let p = e.path();
-        if p.is_file() && p.extension().and_then(|x| x.to_str()) == Some("yaml") && p.file_name().unwrap() != "settings.yaml" {
+        if p.is_file()
+            && p.extension().and_then(|x| x.to_str()) == Some("yaml")
+            && p.file_name().unwrap() != "settings.yaml"
+        {
             std::fs::copy(&p, dir.join(p.file_name().unwrap())).unwrap();
         }
     }
@@ -74,7 +77,14 @@ fn config(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str, dir: &Path) -> Daemon<'a> {
@@ -83,8 +93,18 @@ fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str, dir: &Path) -> Daem
     std::fs::create_dir_all(&store).unwrap();
     // A daemon on its own profile directory keeps its vault there, not in the
     // install's state, so start it with the one the fixture just saved.
-    let _ = std::fs::copy(install().root().join("vault.json"), store.join("vault.json"));
-    Daemon::new(c, p, None, Store::new(store), Proactive::new(ProactiveConfig::default())).watch_settings(dir.to_path_buf())
+    let _ = std::fs::copy(
+        install().root().join("vault.json"),
+        store.join("vault.json"),
+    );
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(store),
+        Proactive::new(ProactiveConfig::default()),
+    )
+    .watch_settings(dir.to_path_buf())
 }
 
 fn empty_vault() {
@@ -142,16 +162,35 @@ fn page(d: &mut Daemon, p: atlas::hub::Page) -> String {
 
 /// The one-time mark in the vault section's forms.
 fn mark(html: &str) -> String {
-    let at = html.find("name=nonce value=\"").expect("the vault form carries no one-time mark") + 18;
+    let at = html
+        .find("name=nonce value=\"")
+        .expect("the vault form carries no one-time mark")
+        + 18;
     html[at..].split('"').next().unwrap().to_string()
 }
 
 /// Every reply in these journeys, checked for the thing this work removed.
 fn no_command(r: &Reply) {
-    assert!(!r.body.contains("atlas household"), "a command in a hub answer: {}", r.body);
-    assert!(!r.body.contains("atlas vault"), "a command in a hub answer: {}", r.body);
-    assert!(!r.body.contains("atlas handover"), "a command in a hub answer: {}", r.body);
-    assert!(!r.body.contains("atlas sync"), "a command in a hub answer: {}", r.body);
+    assert!(
+        !r.body.contains("atlas household"),
+        "a command in a hub answer: {}",
+        r.body
+    );
+    assert!(
+        !r.body.contains("atlas vault"),
+        "a command in a hub answer: {}",
+        r.body
+    );
+    assert!(
+        !r.body.contains("atlas handover"),
+        "a command in a hub answer: {}",
+        r.body
+    );
+    assert!(
+        !r.body.contains("atlas sync"),
+        "a command in a hub answer: {}",
+        r.body
+    );
 }
 
 // ---------- the vault ----------
@@ -171,37 +210,64 @@ fn a_first_passphrase_set_in_the_hub_shows_its_recovery_key_once_and_never_in_an
     let mut d = daemon(&c, &p, "first", &dir);
 
     let html = page(&mut d, atlas::hub::Page::Accounts);
-    assert!(html.contains("id=vault"), "no vault section on the Accounts page");
+    assert!(
+        html.contains("id=vault"),
+        "no vault section on the Accounts page"
+    );
     assert!(html.contains("Set the passphrase"));
     assert!(html.contains("type=password") && html.contains("autocomplete=new-password"));
     no_command(&Reply::html(html.clone()));
     let n = mark(&html);
 
-    let body = format!("what=set&new={}&again={}&nonce={n}", enc(PASSPHRASE), enc(PASSPHRASE));
+    let body = format!(
+        "what=set&new={}&again={}&nonce={n}",
+        enc(PASSPHRASE),
+        enc(PASSPHRASE)
+    );
     let r = atlas::hublive::reply(&mut d, post("/hub/vault", &body));
-    assert_eq!(r.status, 303, "a form that changes something answers with a redirect: {}", r.body);
+    assert_eq!(
+        r.status, 303,
+        "a form that changes something answers with a redirect: {}",
+        r.body
+    );
     let location = r.body.clone();
 
     // Set, kept, and shut again.
     let on_disk = Vault::load(&d.vault_home);
     assert!(on_disk.has_a_passphrase(), "nothing was set");
-    assert!(on_disk.has_a_recovery_key(), "no recovery key was made with it");
+    assert!(
+        on_disk.has_a_recovery_key(),
+        "no recovery key was made with it"
+    );
     assert_eq!(d.vault.state(), State::Sealed, "the vault was left open");
 
     // The key, on the page, once.
     let shown = page(&mut d, atlas::hub::Page::Accounts);
-    let at = shown.find("write this down now").expect("the recovery key was not shown");
+    let at = shown
+        .find("write this down now")
+        .expect("the recovery key was not shown");
     let code_at = shown[at..].find("<code>").unwrap() + at + 6;
-    let code = shown[code_at..].split("</code>").next().unwrap().to_string();
+    let code = shown[code_at..]
+        .split("</code>")
+        .next()
+        .unwrap()
+        .to_string();
     assert!(code.len() >= 24, "that isn't a recovery key: {code}");
-    assert!(!location.contains(&code), "the recovery key went into an address: {location}");
+    assert!(
+        !location.contains(&code),
+        "the recovery key went into an address: {location}"
+    );
     assert!(shown.contains("I've written it down"));
     let again = page(&mut d, atlas::hub::Page::Accounts);
-    assert!(!again.contains(&code), "the recovery key was shown a second time");
+    assert!(
+        !again.contains(&code),
+        "the recovery key was shown a second time"
+    );
 
     // And it is a real key: it opens the vault.
     let mut v = Vault::load(&d.vault_home);
-    v.open_with_recovery_key(&code, 200, &VaultConfig::default()).expect("the key shown does not open the vault");
+    v.open_with_recovery_key(&code, 200, &VaultConfig::default())
+        .expect("the key shown does not open the vault");
 
     // A refresh re-sends the same form: answered, not acted on.
     let r = atlas::hublive::reply(&mut d, post("/hub/vault", &body));
@@ -210,11 +276,22 @@ fn a_first_passphrase_set_in_the_hub_shows_its_recovery_key_once_and_never_in_an
 
     // Changing it takes the current one.
     let html = page(&mut d, atlas::hub::Page::Accounts);
-    assert!(html.contains("Change the passphrase") && html.contains("autocomplete=current-password"));
-    let wrong = format!("what=change&old={}&new={}&again={}&nonce={}", enc("not the passphrase at all"), enc("a brand new sentence to keep"), enc("a brand new sentence to keep"), mark(&html));
+    assert!(
+        html.contains("Change the passphrase") && html.contains("autocomplete=current-password")
+    );
+    let wrong = format!(
+        "what=change&old={}&new={}&again={}&nonce={}",
+        enc("not the passphrase at all"),
+        enc("a brand new sentence to keep"),
+        enc("a brand new sentence to keep"),
+        mark(&html)
+    );
     atlas::hublive::reply(&mut d, post("/hub/vault", &wrong));
     let mut v = Vault::load(&d.vault_home);
-    assert!(v.open(PASSPHRASE, 300, &VaultConfig::default()).is_ok(), "a wrong current passphrase changed it");
+    assert!(
+        v.open(PASSPHRASE, 300, &VaultConfig::default()).is_ok(),
+        "a wrong current passphrase changed it"
+    );
 }
 
 #[test]
@@ -228,27 +305,50 @@ fn a_first_passphrase_cannot_be_set_in_the_hub_while_handed_over() {
     let mut d = daemon(&c, &p, "refused", &dir);
 
     let html = page(&mut d, atlas::hub::Page::Accounts);
-    assert!(!html.contains("Set the passphrase"), "the form that hands out the way back is offered");
+    assert!(
+        !html.contains("Set the passphrase"),
+        "the form that hands out the way back is offered"
+    );
     assert!(html.contains("Not while this is handed over"), "{html}");
 
     // Posted anyway, as someone who knows the form would: first with a mark
     // nobody handed out, then with a real one -- refused by the rule, not
     // just by the mark.
-    let body = format!("what=set&new={}&again={}&nonce=made-up", enc(PASSPHRASE), enc(PASSPHRASE));
+    let body = format!(
+        "what=set&new={}&again={}&nonce=made-up",
+        enc(PASSPHRASE),
+        enc(PASSPHRASE)
+    );
     atlas::hublive::reply(&mut d, post("/hub/vault", &body));
-    assert!(!Vault::load(&install()).has_a_passphrase(), "a made-up mark set a passphrase");
+    assert!(
+        !Vault::load(&install()).has_a_passphrase(),
+        "a made-up mark set a passphrase"
+    );
     let real = d.shown_once.mark();
-    let body = format!("what=set&new={}&again={}&nonce={real}", enc(PASSPHRASE), enc(PASSPHRASE));
+    let body = format!(
+        "what=set&new={}&again={}&nonce={real}",
+        enc(PASSPHRASE),
+        enc(PASSPHRASE)
+    );
     atlas::hublive::reply(&mut d, post("/hub/vault", &body));
-    assert!(!Vault::load(&install()).has_a_passphrase(), "the hub set the first passphrase while handed over");
+    assert!(
+        !Vault::load(&install()).has_a_passphrase(),
+        "the hub set the first passphrase while handed over"
+    );
     assert!(page(&mut d, atlas::hub::Page::Accounts).contains("Not while this is handed over"));
 
     // Every page says it is handed over and where it is taken back.
     let status = page(&mut d, atlas::hub::Page::Status);
-    assert!(status.contains("/hub/accounts#vault"), "no way back from the Status page");
+    assert!(
+        status.contains("/hub/accounts#vault"),
+        "no way back from the Status page"
+    );
     handed_over(false);
     let status = page(&mut d, atlas::hub::Page::Status);
-    assert!(!status.contains("This is handed over"), "the banner stayed after it was taken back");
+    assert!(
+        !status.contains("This is handed over"),
+        "the banner stayed after it was taken back"
+    );
 }
 
 #[test]
@@ -267,39 +367,79 @@ fn taking_it_back_in_the_hub_needs_the_right_passphrase_and_leaves_the_vault_loc
 
     // The owner had the vault open before handing it over. A wrong passphrase
     // must not ride on that earlier proof.
-    d.vault.open(PASSPHRASE, 500, &VaultConfig::default()).unwrap();
+    d.vault
+        .open(PASSPHRASE, 500, &VaultConfig::default())
+        .unwrap();
     assert!(d.vault.proved_it());
-    let wrong = format!("what=back&phrase={}&nonce={}", enc("somebody else's guess here"), mark(&html));
+    let wrong = format!(
+        "what=back&phrase={}&nonce={}",
+        enc("somebody else's guess here"),
+        mark(&html)
+    );
     let r = atlas::hublive::reply(&mut d, post("/hub/vault", &wrong));
     assert_eq!(r.status, 303);
-    assert!(!r.body.contains("guess"), "the passphrase went into the address: {}", r.body);
-    assert_eq!(Handover::load(&install()).stance, Stance::HandedOver, "a wrong passphrase took it back");
+    assert!(
+        !r.body.contains("guess"),
+        "the passphrase went into the address: {}",
+        r.body
+    );
+    assert_eq!(
+        Handover::load(&install()).stance,
+        Stance::HandedOver,
+        "a wrong passphrase took it back"
+    );
     assert_eq!(d.vault.state(), State::Sealed);
 
     let html = page(&mut d, atlas::hub::Page::Accounts);
-    assert!(html.contains("isn't the passphrase") || html.contains("that isn't"), "the refusal was not said: {html}");
+    assert!(
+        html.contains("isn't the passphrase") || html.contains("that isn't"),
+        "the refusal was not said: {html}"
+    );
     let right = format!("what=back&phrase={}&nonce={}", enc(PASSPHRASE), mark(&html));
     atlas::hublive::reply(&mut d, post("/hub/vault", &right));
-    assert_eq!(Handover::load(&install()).stance, Stance::Yours, "the right passphrase did not take it back");
-    assert_eq!(d.vault.state(), State::Sealed, "the vault was left open after proving who typed");
+    assert_eq!(
+        Handover::load(&install()).stance,
+        Stance::Yours,
+        "the right passphrase did not take it back"
+    );
+    assert_eq!(
+        d.vault.state(),
+        State::Sealed,
+        "the vault was left open after proving who typed"
+    );
     let html = page(&mut d, atlas::hub::Page::Accounts);
     assert!(html.contains("Yours again"), "{html}");
-    assert!(html.contains("tried and refused 1 time"), "the wrong try was not reported: {html}");
+    assert!(
+        html.contains("tried and refused 1 time"),
+        "the wrong try was not reported: {html}"
+    );
 }
 
 #[test]
 fn a_secret_never_prints_itself() {
     let actions = vec![
-        post("/hub/vault", "what=set&new=hunter2-hunter2-x&again=hunter2-hunter2-x&nonce=n"),
+        post(
+            "/hub/vault",
+            "what=set&new=hunter2-hunter2-x&again=hunter2-hunter2-x&nonce=n",
+        ),
         post("/hub/vault", "what=back&phrase=hunter2-hunter2-x&nonce=n"),
         post("/hub/vault", "what=recovery&old=hunter2-hunter2-x&nonce=n"),
-        post("/hub/sync", "what=set-key&phrase=hunter2-hunter2-x&replace=yes"),
+        post(
+            "/hub/sync",
+            "what=set-key&phrase=hunter2-hunter2-x&replace=yes",
+        ),
     ];
     for a in &actions {
         let shown = format!("{a:?}");
-        assert!(!shown.contains("hunter2"), "a secret printed itself: {shown}");
+        assert!(
+            !shown.contains("hunter2"),
+            "a secret printed itself: {shown}"
+        );
         assert!(shown.contains("Secret("), "{shown}");
-        assert!(a.carries_a_secret(), "{shown} is not held to the private line");
+        assert!(
+            a.carries_a_secret(),
+            "{shown} is not held to the private line"
+        );
     }
     assert!(format!("{:?}", Secret::new("hunter2")) == "Secret(\u{2026})");
     // And they are what the forms send.
@@ -341,9 +481,16 @@ fn passphrases_only_travel_on_this_machine_or_tailscale() {
     // checked in `read_asked`, which hands the action on as `Asked`.
     let at = src.find("fn read_asked(").expect("read_asked");
     let body = &src[at..];
-    let check = body.find("action.carries_a_secret()").expect("the connection handler never asks");
-    let handed = body.find("Some(action) => {\n                return Ok(Some(Asked {").expect("handed on");
-    assert!(check < handed, "the check comes after the action was handled");
+    let check = body
+        .find("action.carries_a_secret()")
+        .expect("the connection handler never asks");
+    let handed = body
+        .find("Some(action) => {\n                return Ok(Some(Asked {")
+        .expect("handed on");
+    assert!(
+        check < handed,
+        "the check comes after the action was handled"
+    );
     assert!(body[check..handed].contains("private_line(a.ip())"));
 }
 
@@ -357,30 +504,57 @@ fn a_fresh_install_goes_folder_then_household_then_pairing_entirely_in_the_hub()
     let c = Config::load(&dir).unwrap();
     let p = plat();
     let mut d = daemon(&c, &p, "fresh", &dir);
-    assert!(d.tools_cfg().sync.folder.trim().is_empty(), "the shipped config has a sync folder");
+    assert!(
+        d.tools_cfg().sync.folder.trim().is_empty(),
+        "the shipped config has a sync folder"
+    );
 
     let mut all: Vec<Reply> = Vec::new();
     let sync = atlas::hub::Page::Sync;
     let html = page(&mut d, sync);
-    assert!(html.contains("Where your devices meet"), "no way to choose a folder");
+    assert!(
+        html.contains("Where your devices meet"),
+        "no way to choose a folder"
+    );
     all.push(Reply::html(html));
 
     // 1. The folder, through the settings the hub keeps.
     let meet = home().join("meet");
-    let r = atlas::hublive::reply(&mut d, post("/hub/sync-setup", &format!("folder={}&device={}", enc(&meet.display().to_string()), enc("study laptop"))));
+    let r = atlas::hublive::reply(
+        &mut d,
+        post(
+            "/hub/sync-setup",
+            &format!(
+                "folder={}&device={}",
+                enc(&meet.display().to_string()),
+                enc("study laptop")
+            ),
+        ),
+    );
     assert_eq!(r.status, 303);
     all.push(r);
-    assert_eq!(d.tools_cfg().sync.folder, meet.display().to_string(), "the folder did not take");
+    assert_eq!(
+        d.tools_cfg().sync.folder,
+        meet.display().to_string(),
+        "the folder did not take"
+    );
     assert_eq!(d.tools_cfg().household.device_name, "study laptop");
     // Kept, not just held: a fresh read of the config has it.
     let reread = Config::load(&dir).unwrap().tools.unwrap();
-    assert_eq!(reread.sync.folder, meet.display().to_string(), "settings.yaml did not keep the folder");
+    assert_eq!(
+        reread.sync.folder,
+        meet.display().to_string(),
+        "settings.yaml did not keep the folder"
+    );
     assert_eq!(reread.household.device_name, "study laptop");
 
     // 2. A household, started here.
     let html = page(&mut d, sync);
     assert!(html.contains("Start one here"), "{html}");
-    assert!(html.contains("value=\"study laptop\""), "the device name is not offered");
+    assert!(
+        html.contains("value=\"study laptop\""),
+        "the device name is not offered"
+    );
     assert!(html.contains("name=code"), "the join form is gone");
     all.push(Reply::html(html));
 
@@ -391,20 +565,33 @@ fn a_fresh_install_goes_folder_then_household_then_pairing_entirely_in_the_hub()
     assert!(html.contains("Give the household a name"), "{html}");
     assert!(!atlas::household::Household::load(&d.store).is_set());
 
-    let r = atlas::hublive::reply(&mut d, post("/hub/sync", "what=init&name=Home&device=&key=yes"));
+    let r = atlas::hublive::reply(
+        &mut d,
+        post("/hub/sync", "what=init&name=Home&device=&key=yes"),
+    );
     all.push(r);
     let house = atlas::household::Household::load(&d.store);
     assert!(house.is_set());
-    assert_eq!(house.devices, vec!["study laptop".to_string()], "the device name was not used");
+    assert_eq!(
+        house.devices,
+        vec!["study laptop".to_string()],
+        "the device name was not used"
+    );
     let kept: atlas::sync::KeptKey = d.store.load(atlas::sync::KEY_FILE);
     assert!(kept.is_set(), "\"make a household key too\" made none");
     let html = page(&mut d, sync);
-    assert!(html.contains("Started Home. Invite your other devices below."), "{html}");
+    assert!(
+        html.contains("Started Home. Invite your other devices below."),
+        "{html}"
+    );
     assert!(html.contains("Invite a device") && html.contains("Use a key from another device"));
     all.push(Reply::html(html));
 
     // A second household on the same device is refused.
-    atlas::hublive::reply(&mut d, post("/hub/sync", "what=init&name=Other&device=&key=yes"));
+    atlas::hublive::reply(
+        &mut d,
+        post("/hub/sync", "what=init&name=Other&device=&key=yes"),
+    );
     assert!(page(&mut d, sync).contains("already belongs to Home"));
     assert_eq!(atlas::household::Household::load(&d.store).id, house.id);
 
@@ -415,20 +602,38 @@ fn a_fresh_install_goes_folder_then_household_then_pairing_entirely_in_the_hub()
     // 30 Sep 2026: fifteen minutes (`household::INVITE_WAIT_SECS`).
     let lead = "Type this on the other machine within fifteen minutes: ";
     let at = html.find(lead).expect("no code") + lead.len();
-    let code: String = html[at..].chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+    let code: String = html[at..]
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .collect();
     assert!(code.len() >= 8, "{code}");
     all.push(Reply::html(html));
 
     // The other device joins with it, also through its own hub.
     let c2 = Config::load(&dir).unwrap();
     let mut other = daemon(&c2, &p, "fresh-other", &dir);
-    let r = atlas::hublive::reply(&mut other, post("/hub/sync", &format!("what=join&code={}&device=phone", enc(&code))));
+    let r = atlas::hublive::reply(
+        &mut other,
+        post(
+            "/hub/sync",
+            &format!("what=join&code={}&device=phone", enc(&code)),
+        ),
+    );
     all.push(r);
     let joined = atlas::household::Household::load(&other.store);
     let said = page(&mut other, sync);
-    assert_eq!(joined.id, house.id, "the other device did not join the same household (code {code}): {}", &said[said.find("<main").unwrap_or(0)..]);
+    assert_eq!(
+        joined.id,
+        house.id,
+        "the other device did not join the same household (code {code}): {}",
+        &said[said.find("<main").unwrap_or(0)..]
+    );
     let theirs: atlas::sync::KeptKey = other.store.load(atlas::sync::KEY_FILE);
-    assert_eq!(theirs.phrase().unwrap(), kept.phrase().unwrap(), "the key did not come with it");
+    assert_eq!(
+        theirs.phrase().unwrap(),
+        kept.phrase().unwrap(),
+        "the key did not come with it"
+    );
     all.push(Reply::html(page(&mut other, sync)));
 
     for r in &all {
@@ -444,12 +649,24 @@ fn nothing_about_the_household_changes_while_handed_over() {
     let c = Config::load(&dir).unwrap();
     let p = plat();
     let mut d = daemon(&c, &p, "hh-handed", &dir);
-    atlas::hublive::reply(&mut d, post("/hub/sync", "what=init&name=Mine&device=x&key=yes"));
-    assert!(!atlas::household::Household::load(&d.store).is_set(), "a household was started while handed over");
+    atlas::hublive::reply(
+        &mut d,
+        post("/hub/sync", "what=init&name=Mine&device=x&key=yes"),
+    );
+    assert!(
+        !atlas::household::Household::load(&d.store).is_set(),
+        "a household was started while handed over"
+    );
     assert!(page(&mut d, atlas::hub::Page::Sync).contains("Not while this is handed over"));
 
     let phrase = atlas::sync::new_key_phrase();
-    atlas::hublive::reply(&mut d, post("/hub/sync", &format!("what=set-key&phrase={}", enc(&phrase))));
+    atlas::hublive::reply(
+        &mut d,
+        post(
+            "/hub/sync",
+            &format!("what=set-key&phrase={}", enc(&phrase)),
+        ),
+    );
     let kept: atlas::sync::KeptKey = d.store.load(atlas::sync::KEY_FILE);
     assert!(!kept.is_set(), "a household key was set while handed over");
 
@@ -475,20 +692,43 @@ fn a_key_from_another_device_is_checked_and_does_not_replace_one_unasked() {
     assert!(page(&mut d, atlas::hub::Page::Sync).contains("isn't a household key"));
 
     let first = atlas::sync::new_key_phrase();
-    atlas::hublive::reply(&mut d, post("/hub/sync", &format!("what=set-key&phrase={}", enc(&first))));
+    atlas::hublive::reply(
+        &mut d,
+        post("/hub/sync", &format!("what=set-key&phrase={}", enc(&first))),
+    );
     let kept: atlas::sync::KeptKey = d.store.load(atlas::sync::KEY_FILE);
     assert_eq!(kept.phrase().unwrap(), first);
 
     // Another one, unticked: kept as it was.
     let second = atlas::sync::new_key_phrase();
-    atlas::hublive::reply(&mut d, post("/hub/sync", &format!("what=set-key&phrase={}", enc(&second))));
+    atlas::hublive::reply(
+        &mut d,
+        post(
+            "/hub/sync",
+            &format!("what=set-key&phrase={}", enc(&second)),
+        ),
+    );
     let kept: atlas::sync::KeptKey = d.store.load(atlas::sync::KEY_FILE);
-    assert_eq!(kept.phrase().unwrap(), first, "an existing key was replaced without \"replace my key\"");
+    assert_eq!(
+        kept.phrase().unwrap(),
+        first,
+        "an existing key was replaced without \"replace my key\""
+    );
     assert!(page(&mut d, atlas::hub::Page::Sync).contains("replace my key"));
 
-    atlas::hublive::reply(&mut d, post("/hub/sync", &format!("what=set-key&phrase={}&replace=yes", enc(&second))));
+    atlas::hublive::reply(
+        &mut d,
+        post(
+            "/hub/sync",
+            &format!("what=set-key&phrase={}&replace=yes", enc(&second)),
+        ),
+    );
     let kept: atlas::sync::KeptKey = d.store.load(atlas::sync::KEY_FILE);
-    assert_eq!(kept.phrase().unwrap(), second, "ticking replace did not replace it");
+    assert_eq!(
+        kept.phrase().unwrap(),
+        second,
+        "ticking replace did not replace it"
+    );
 }
 
 // ---------- Free up space ----------
@@ -516,17 +756,44 @@ fn only_what_was_ticked_and_atlas_may_move_goes_to_the_trash() {
     let survey = atlas::hubvault::Survey {
         at: atlas::store::now(),
         found: vec![
-            Candidate { path: ticked.clone(), size_mb: 900, kind: Kind::PackageCache, age_days: 90 },
-            Candidate { path: unticked.clone(), size_mb: 800, kind: Kind::Temp, age_days: 30 },
-            Candidate { path: yours.clone(), size_mb: 5000, kind: Kind::BigFolder, age_days: 0 },
+            Candidate {
+                path: ticked.clone(),
+                size_mb: 900,
+                kind: Kind::PackageCache,
+                age_days: 90,
+            },
+            Candidate {
+                path: unticked.clone(),
+                size_mb: 800,
+                kind: Kind::Temp,
+                age_days: 30,
+            },
+            Candidate {
+                path: yours.clone(),
+                size_mb: 5000,
+                kind: Kind::BigFolder,
+                age_days: 0,
+            },
         ],
     };
     d.store.save(atlas::hubvault::SURVEY, &survey).unwrap();
 
     let html = page(&mut d, atlas::hub::Page::Status);
     assert!(html.contains("Free up space") && html.contains("Move chosen to the trash"));
-    assert!(html.contains(&format!("value=\"{}\"", atlas::hub::esc(&ticked.display().to_string()))), "no box for what I may move");
-    assert!(!html.contains(&format!("value=\"{}\"", atlas::hub::esc(&yours.display().to_string()))), "a box for what is yours to judge");
+    assert!(
+        html.contains(&format!(
+            "value=\"{}\"",
+            atlas::hub::esc(&ticked.display().to_string())
+        )),
+        "no box for what I may move"
+    );
+    assert!(
+        !html.contains(&format!(
+            "value=\"{}\"",
+            atlas::hub::esc(&yours.display().to_string())
+        )),
+        "a box for what is yours to judge"
+    );
 
     // Ticked: one of mine, one of yours (a hand-made form), and a path the
     // survey never found.
@@ -576,12 +843,21 @@ fn looking_for_space_runs_on_the_crew_and_lands_on_the_status_page() {
     }
     if !landed {
         let html = page(&mut d, atlas::hub::Page::Status);
-        let at = html.find("Looking through").or_else(|| html.find("space")).unwrap_or(0);
-        panic!("the survey never came back from the crew; said meanwhile: {said_meanwhile:?} ...{}", &html[at.saturating_sub(300)..(at + 300).min(html.len())]);
+        let at = html
+            .find("Looking through")
+            .or_else(|| html.find("space"))
+            .unwrap_or(0);
+        panic!(
+            "the survey never came back from the crew; said meanwhile: {said_meanwhile:?} ...{}",
+            &html[at.saturating_sub(300)..(at + 300).min(html.len())]
+        );
     }
     let html = page(&mut d, atlas::hub::Page::Status);
     assert!(html.contains("Last looked"), "{html}");
-    assert!(html.contains("Look for space"), "the button did not come back");
+    assert!(
+        html.contains("Look for space"),
+        "the button did not come back"
+    );
 }
 
 // ---------- said everywhere else ----------
@@ -589,18 +865,30 @@ fn looking_for_space_runs_on_the_crew_and_lands_on_the_status_page() {
 #[test]
 fn nothing_the_hub_says_about_these_names_a_command() {
     let src = with_split_children("src/hublive.rs");
-    assert!(!src.contains("`atlas household init"), "the Sync page still answers with a command");
+    assert!(
+        !src.contains("`atlas household init"),
+        "the Sync page still answers with a command"
+    );
     let hub = with_split_children("src/hub.rs");
-    assert!(!hub.contains("<code>atlas household join</code>"), "the invite text still names a command");
+    assert!(
+        !hub.contains("<code>atlas household join</code>"),
+        "the invite text still names a command"
+    );
     let page = sync_page_unplaced(true, "D:/atlas", None, None, None, "");
     assert!(!page.contains("atlas household"));
 }
 
-
 /// The Sync page drawn without knowing where this device stands -- what
 /// `hub::sync_page` did before the running Atlas moved to `sync_page_with`
 /// and the wrapper, called by nothing else, was folded in (28 Sep 2026).
-fn sync_page_unplaced(sealing: bool, folder: &str, phrase: Option<&str>, card: Option<&str>, last: Option<&str>, this_device: &str) -> String {
+fn sync_page_unplaced(
+    sealing: bool,
+    folder: &str,
+    phrase: Option<&str>,
+    card: Option<&str>,
+    last: Option<&str>,
+    this_device: &str,
+) -> String {
     atlas::hub::sync_page_with(
         sealing,
         folder,
@@ -608,7 +896,10 @@ fn sync_page_unplaced(sealing: bool, folder: &str, phrase: Option<&str>, card: O
         card,
         last,
         this_device,
-        &atlas::hub::SyncView { house: atlas::hub::HouseView::Unknown, suggested_folder: None },
+        &atlas::hub::SyncView {
+            house: atlas::hub::HouseView::Unknown,
+            suggested_folder: None,
+        },
     )
 }
 
@@ -617,7 +908,9 @@ fn sync_page_unplaced(sealing: bool, folder: &str, phrase: Option<&str>, card: O
 /// without changing what the module is.
 fn with_split_children(path: &str) -> String {
     fn walk(dir: &Path, out: &mut String) {
-        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
         let mut entries: Vec<PathBuf> = rd.flatten().map(|e| e.path()).collect();
         entries.sort();
         for p in entries {

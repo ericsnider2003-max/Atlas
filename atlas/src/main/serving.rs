@@ -1,6 +1,6 @@
 //! `atlas` with no command: the daemon, the voice loop, and the hub's answers
 //! while it runs (`handle`, looking, the dashboard cards).
-//! 
+//!
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
@@ -95,15 +95,23 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     // Somewhere to type a passphrase, so that "I'm back" has a prompt to
     // summon. Without it the phrase is answered honestly and names
     // `atlas handover back` instead -- see `daemon::take_it_back`.
-    let daemon = match Daemon::try_new(cfg, plat, llm, store, Proactive::new(tc.proactive.clone())) {
+    let daemon = match Daemon::try_new(cfg, plat, llm, store, Proactive::new(tc.proactive.clone()))
+    {
         Ok(daemon) => daemon,
-        Err(error) => { eprintln!("Atlas could not safely open its configured output folders: {error}"); return; }
+        Err(error) => {
+            eprintln!("Atlas could not safely open its configured output folders: {error}");
+            return;
+        }
     };
     let mut d = daemon
         .starting_the_model_server()
         .with_typed_prompt(Box::new(atlas::typed::Console))
         .watch_settings(atlas::roots::config_dir());
-    d.autonomy = if unattended { Autonomy::Unattended } else { Autonomy::Supervised };
+    d.autonomy = if unattended {
+        Autonomy::Unattended
+    } else {
+        Autonomy::Supervised
+    };
 
     // The door to another Atlas -- closed unless you have actually named
     // someone to trust. Binding failure here (port in use, etc.) is loud
@@ -119,8 +127,11 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     // a token into a config file does not carry the same built-in
     // deliberateness, so that path still asks for it explicitly.
     let auto_paired = atlas::kin::Pairings::load(&pairings_dir()).peers;
-    let manual_peers: Vec<atlas::kin::Peer> =
-        if tc.kin.enabled { tc.kin.peers.iter().cloned().map(Into::into).collect() } else { Vec::new() };
+    let manual_peers: Vec<atlas::kin::Peer> = if tc.kin.enabled {
+        tc.kin.peers.iter().cloned().map(Into::into).collect()
+    } else {
+        Vec::new()
+    };
     let mut all_peers = auto_paired;
     for p in manual_peers {
         if !all_peers.iter().any(|x| x.name == p.name) {
@@ -138,12 +149,18 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     // in -- every door on it refuses a token it doesn't know, and the friend
     // door refuses any secret you didn't make (`kin::Door::receive_friend`).
     {
-        let port = if tc.kin.port != 0 { tc.kin.port } else { atlas::kin::DEFAULT_PORT };
+        let port = if tc.kin.port != 0 {
+            tc.kin.port
+        } else {
+            atlas::kin::DEFAULT_PORT
+        };
         let names: Vec<String> = all_peers.iter().map(|p| p.name.clone()).collect();
         match atlas::server::SignalListener::bind(port, all_peers.clone()) {
             Ok(l) => {
                 if names.is_empty() {
-                    println!("The door for friends is open on port {port}, with nobody let in yet.");
+                    println!(
+                        "The door for friends is open on port {port}, with nobody let in yet."
+                    );
                 } else {
                     println!("Listening for {} on port {port} (friends reach it sealed; your own devices over your own network).", names.join(", "));
                 }
@@ -252,8 +269,15 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
 
     println!(
         "atlas running ({}). wake phrase: {}.",
-        if unattended { "unattended" } else { "supervised" },
-        tc.wake.as_ref().map(|w| w.phrase.clone()).unwrap_or_else(|| "<none>".into())
+        if unattended {
+            "unattended"
+        } else {
+            "supervised"
+        },
+        tc.wake
+            .as_ref()
+            .map(|w| w.phrase.clone())
+            .unwrap_or_else(|| "<none>".into())
     );
     if !audio_ok {
         println!("audio unavailable — run `atlas doctor`. You can still type commands here.");
@@ -276,7 +300,8 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
         }
         Err(why) => {
             println!("(no push-to-talk or typing-box key: {why})");
-            d.log.warn(&format!("no push-to-talk or typing-box key: {why}"));
+            d.log
+                .warn(&format!("no push-to-talk or typing-box key: {why}"));
         }
     }
     println!("type at any time; Ctrl-C to stop — I'll save first and let go of the lock.");
@@ -285,14 +310,16 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     // Held until the run loop ends; dropping it takes the icon away.
     let _tray = if cfg!(windows) && tc.desktop.tray_icon {
         match std::env::current_exe() {
-            Ok(exe) => match atlas::notifyicon::show_icon(exe, hub_address.clone().unwrap_or_default()) {
-                Ok(icon) => Some(icon),
-                Err(e) => {
-                    println!("(no icon by the clock: {e})");
-                    d.log.warn(&format!("no icon by the clock: {e}"));
-                    None
+            Ok(exe) => {
+                match atlas::notifyicon::show_icon(exe, hub_address.clone().unwrap_or_default()) {
+                    Ok(icon) => Some(icon),
+                    Err(e) => {
+                        println!("(no icon by the clock: {e})");
+                        d.log.warn(&format!("no icon by the clock: {e}"));
+                        None
+                    }
                 }
-            },
+            }
             Err(_) => None,
         }
     } else {
@@ -306,7 +333,14 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     // itself again, unless it keeps crashing (`crash::may_start_again`). The
     // crash note is already written; the new start says it.
     let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        d.run(&voice, &voice, &keyboard, &mut throttle, audio_ok, &atlas::store::now)
+        d.run(
+            &voice,
+            &voice,
+            &keyboard,
+            &mut throttle,
+            audio_ok,
+            &atlas::store::now,
+        )
     }));
     if ran.is_err() {
         // unheard-ok: a panic while shutting down; the process is ending either way
@@ -336,15 +370,25 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
 /// laptop whose microphone is Intel Smart Sound. Every wake-word clip
 /// failed, Atlas dropped to push-to-talk, and the held key recorded nothing
 /// and said nothing.
-pub(super) fn pick_the_microphone_impl(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::ToolsConfig) -> atlas::voice::ToolsConfig {
+pub(super) fn pick_the_microphone_impl(
+    cfg: &Config,
+    plat: &dyn Platform,
+    tc: &atlas::voice::ToolsConfig,
+) -> atlas::voice::ToolsConfig {
     pick_microphone_with(cfg, plat, tc, || atlas::audio::probe_devices("ffmpeg"))
 }
 
-fn pick_microphone_with(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::ToolsConfig,
-    probe: impl FnOnce() -> atlas::error::Result<Vec<atlas::audio::Device>>) -> atlas::voice::ToolsConfig {
+fn pick_microphone_with(
+    cfg: &Config,
+    plat: &dyn Platform,
+    tc: &atlas::voice::ToolsConfig,
+    probe: impl FnOnce() -> atlas::error::Result<Vec<atlas::audio::Device>>,
+) -> atlas::voice::ToolsConfig {
     // Disabled tools cannot enumerate or record physical microphones, including
     // the startup self-test. Keep the owner's settings intact.
-    if !tc.enabled { return tc.clone(); }
+    if !tc.enabled {
+        return tc.clone();
+    }
     // Pick the mic from what is actually there, rather than trusting the
     // guess sitting in tools.yaml -- that guess is what sent someone chasing
     // a Realtek device name on a laptop with Intel audio and a shut lid.
@@ -356,16 +400,17 @@ fn pick_microphone_with(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::To
             // existed, so a shut lid never counted as shut and the mic under
             // it stayed a candidate). The role guess stands where that can't
             // be told.
-            let laptop_active = plat.built_in_screen_on().unwrap_or_else(|| plat
-                .monitors()
-                .map(|monitors| {
-                    let roles = atlas::layout::resolve_roles(&cfg.layouts, &monitors);
-                    atlas::layout::monitor_for_role(&cfg.layouts, &roles, "laptop").is_ok()
-                })
-                // No monitors readable is not evidence the lid is down --
-                // default to trusting the built-in mic rather than silently
-                // excluding it on a guess.
-                .unwrap_or(true));
+            let laptop_active = plat.built_in_screen_on().unwrap_or_else(|| {
+                plat.monitors()
+                    .map(|monitors| {
+                        let roles = atlas::layout::resolve_roles(&cfg.layouts, &monitors);
+                        atlas::layout::monitor_for_role(&cfg.layouts, &roles, "laptop").is_ok()
+                    })
+                    // No monitors readable is not evidence the lid is down --
+                    // default to trusting the built-in mic rather than silently
+                    // excluding it on a guess.
+                    .unwrap_or(true)
+            });
             // Which ear to listen with, measured rather than guessed.
             //
             // `audio::choose` picks on the device's *name* -- is it built in,
@@ -396,14 +441,19 @@ fn pick_microphone_with(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::To
                     .clone()
                     .into_iter()
                     .map(|cand| {
-                        let args = atlas::hearing::calibration_args(&atlas::audio::ffmpeg_name_for(&devices, &cand.name), 1);
+                        let args = atlas::hearing::calibration_args(
+                            &atlas::audio::ffmpeg_name_for(&devices, &cand.name),
+                            1,
+                        );
                         let h = std::thread::spawn(move || {
                             atlas::tools::command("ffmpeg")
                                 .args(&args)
                                 .stdin(std::process::Stdio::null())
                                 .output()
                                 .ok()
-                                .and_then(|o| atlas::hearing::mean_volume(&String::from_utf8_lossy(&o.stderr)))
+                                .and_then(|o| {
+                                    atlas::hearing::mean_volume(&String::from_utf8_lossy(&o.stderr))
+                                })
                         });
                         (cand.name, h)
                     })
@@ -447,7 +497,14 @@ fn pick_microphone_with(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::To
 
             // The same pick the running Atlas makes again later
             // (`hearing::pick_microphone`, 29 Sep 2026).
-            match atlas::hearing::pick_microphone(&devices, &mut hearing, tc, &whereabouts, laptop_active, atlas::store::now()) {
+            match atlas::hearing::pick_microphone(
+                &devices,
+                &mut hearing,
+                tc,
+                &whereabouts,
+                laptop_active,
+                atlas::store::now(),
+            ) {
                 Some(p) => {
                     tc_owned.vars.insert("mic_name".into(), p.name.clone());
                     tc_owned.vars.insert("mic_device".into(), p.device.clone());
@@ -459,7 +516,10 @@ fn pick_microphone_with(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::To
                 None => eprintln!("(no usable microphone found on this machine)"),
             }
             for deaf in hearing.deaf_devices(&tc.hearing) {
-                println!("  ({} can't hear you from here.)", atlas::hearing::short(&deaf.name));
+                println!(
+                    "  ({} can't hear you from here.)",
+                    atlas::hearing::short(&deaf.name)
+                );
             }
             atlas::kept!(hearing.save_to(&hstore));
         }
@@ -468,12 +528,21 @@ fn pick_microphone_with(cfg: &Config, plat: &dyn Platform, tc: &atlas::voice::To
         }
     }
     // The camera this machine really has, not the shipped guess (29 Sep 2026).
-    let configured = tc_owned.vars.get("webcam_device").cloned().unwrap_or_default();
+    let configured = tc_owned
+        .vars
+        .get("webcam_device")
+        .cloned()
+        .unwrap_or_default();
     // The one pointed at you: matching the microphone that hears you, and
     // never the one inside a shut lid (30 Sep 2026).
     let mic_now = tc_owned.vars.get("mic_name").cloned().unwrap_or_default();
     let lid_open = plat.built_in_screen_on().unwrap_or(true);
-    if let Some(cam) = atlas::audio::pick_camera_for(&atlas::audio::probe_cameras("ffmpeg"), &configured, &mic_now, lid_open) {
+    if let Some(cam) = atlas::audio::pick_camera_for(
+        &atlas::audio::probe_cameras("ffmpeg"),
+        &configured,
+        &mic_now,
+        lid_open,
+    ) {
         if cam != configured {
             println!("Camera: \"{cam}\".");
             tc_owned.vars.insert("webcam_device".into(), cam);
@@ -544,12 +613,15 @@ pub(super) fn voice_loop(
         Proactive::new(tc_live.proactive.clone()),
     ) {
         Ok(daemon) => daemon,
-        Err(error) => { eprintln!("Atlas could not safely open its configured output folders: {error}"); return; }
+        Err(error) => {
+            eprintln!("Atlas could not safely open its configured output folders: {error}");
+            return;
+        }
     };
     let mut d = daemon
-    .starting_the_model_server()
-    .with_typed_prompt(Box::new(atlas::typed::Console))
-    .watch_settings(atlas::roots::config_dir());
+        .starting_the_model_server()
+        .with_typed_prompt(Box::new(atlas::typed::Console))
+        .watch_settings(atlas::roots::config_dir());
     d.autonomy = Autonomy::Supervised;
 
     if hands_free {
@@ -626,15 +698,27 @@ pub(super) fn handle(
             // a different program from the one you speak to. No thread to read the
             // moment from, so the register is worked out from the sentence
             // alone.
-            let persona = cfg.tools.as_ref().map(|t| t.persona.clone()).unwrap_or_default();
+            let persona = cfg
+                .tools
+                .as_ref()
+                .map(|t| t.persona.clone())
+                .unwrap_or_default();
             let register = atlas::register::read(line, &atlas::register::Moment::default());
-            Brain { llm: llm.as_ref(), fallback: parser, voice: Some((&persona, register)) }
-                .decide(line, &brain::context(cfg, plat))
+            Brain {
+                llm: llm.as_ref(),
+                fallback: parser,
+                voice: Some((&persona, register)),
+            }
+            .decide(line, &brain::context(cfg, plat))
         }
         None => {
             let i = parser.parse(line);
             let say = brain::default_say(&i);
-            brain::Decision { intent: i, say, model: brain::Reached::NotNeeded }
+            brain::Decision {
+                intent: i,
+                say,
+                model: brain::Reached::NotNeeded,
+            }
         }
     };
     let intent = decision.intent;
@@ -671,14 +755,21 @@ pub(super) fn look(cfg: &Config, what: &str, question: &str) -> String {
         return "no tools.yaml, cannot capture".into();
     };
     let v = Voice::new(tc);
-    let shot = if what == "webcam" { v.capture_webcam() } else { v.capture_screen() };
+    let shot = if what == "webcam" {
+        v.capture_webcam()
+    } else {
+        v.capture_screen()
+    };
     let path = match shot {
         Ok(p) => p,
         Err(e) => return format!("capture failed: {e}"),
     };
     match tc.llm.as_ref() {
         Some(lc) if lc.vision_request.is_some() => {
-            let llm = ShellLlm { cfg: lc.clone(), vars: tc.vars.clone() };
+            let llm = ShellLlm {
+                cfg: lc.clone(),
+                vars: tc.vars.clone(),
+            };
             match llm.look(&path, question) {
                 Ok(answer) => answer,
                 Err(e) => format!("captured {path}, but couldn't look at it: {e}"),
@@ -693,7 +784,11 @@ pub(super) fn describe(r: atlas::error::Result<workspace::Report>, ok_msg: &str)
         Ok(r) if r.ok() => format!("{ok_msg}."),
         Ok(r) => {
             let fails: Vec<String> = r.failed.iter().map(|(a, w)| format!("{a} ({w})")).collect();
-            format!("partial — placed {}; failed {}", r.placed.join(", "), fails.join(", "))
+            format!(
+                "partial — placed {}; failed {}",
+                r.placed.join(", "),
+                fails.join(", ")
+            )
         }
         Err(e) => format!("error: {e}"),
     }
@@ -705,8 +800,22 @@ pub(super) fn fake_monitors() -> Vec<Monitor> {
     // (or `atlas firstrun`, the same thing)
     // has seen the real machine. Nobody's actual monitor ids belong here.
     vec![
-        Monitor { id: 1, x: 0,    y: 0, width: 2560, height: 1392, primary: true },
-        Monitor { id: 2, x: 2560, y: 0, width: 2560, height: 1392, primary: false },
+        Monitor {
+            id: 1,
+            x: 0,
+            y: 0,
+            width: 2560,
+            height: 1392,
+            primary: true,
+        },
+        Monitor {
+            id: 2,
+            x: 2560,
+            y: 0,
+            width: 2560,
+            height: 1392,
+            primary: false,
+        },
     ]
 }
 
@@ -741,9 +850,7 @@ pub(super) fn dash_bodies() -> Vec<(atlas::dash::Card, String)> {
             };
             (
                 c,
-                format!(
-                    "<p class=note>Nothing here yet — this is settings-only mode. {why}</p>"
-                ),
+                format!("<p class=note>Nothing here yet — this is settings-only mode. {why}</p>"),
             )
         })
         .collect()
@@ -755,7 +862,10 @@ pub(super) fn dash_bodies() -> Vec<(atlas::dash::Card, String)> {
 /// had. One copy (audit Q3): the daemon and `--voice` each had one.
 fn take_the_one_lock() -> atlas::onlyone::OnlyOne {
     let only = atlas::onlyone::OnlyOne::at(&atlas::roots::data_dir());
-    match only.take_patiently(std::time::Duration::from_secs(atlas::onlyone::WOKE_GRACE_SECS), &atlas::store::now) {
+    match only.take_patiently(
+        std::time::Duration::from_secs(atlas::onlyone::WOKE_GRACE_SECS),
+        &atlas::store::now,
+    ) {
         Err(why) => {
             eprintln!("{why}");
             atlas::firstlaunch::note_start_problem(&atlas::roots::install_root(), &why);
@@ -769,7 +879,9 @@ fn take_the_one_lock() -> atlas::onlyone::OnlyOne {
     }
     // This native lease proves the prior serving process is gone. Reconcile
     // interrupted provider workers before any new daemon or worker exists.
-    if let Err(error) = atlas::connection_removal::reconcile_interrupted_provider_removals(&atlas::roots::store()) {
+    if let Err(error) =
+        atlas::connection_removal::reconcile_interrupted_provider_removals(&atlas::roots::store())
+    {
         eprintln!("Atlas could not safely reconcile interrupted account removal: {error}");
         only.release();
         leave(1);
@@ -785,13 +897,18 @@ mod microphone_settings_tests {
         let cfg = Config::load(std::path::Path::new("config")).unwrap();
         let platform = atlas::platform::mock::MockPlatform::new(Vec::new());
         let mut tc = atlas::voice::ToolsConfig::default();
-        tc.enabled = false; tc.work_dir = "disposable-disabled-tools".into(); tc.record_seconds = 7;
+        tc.enabled = false;
+        tc.work_dir = "disposable-disabled-tools".into();
+        tc.record_seconds = 7;
         let probed = std::cell::Cell::new(false);
         let result = pick_microphone_with(&cfg, &platform, &tc, || {
-            probed.set(true); panic!("disabled tools must never reach device probing");
+            probed.set(true);
+            panic!("disabled tools must never reach device probing");
         });
-        assert!(!probed.get()); assert!(!result.enabled);
-        assert_eq!(result.work_dir, tc.work_dir); assert_eq!(result.record_seconds, 7);
+        assert!(!probed.get());
+        assert!(!result.enabled);
+        assert_eq!(result.work_dir, tc.work_dir);
+        assert_eq!(result.record_seconds, 7);
         assert_eq!(result.vars, tc.vars);
     }
 }

@@ -45,12 +45,18 @@ fn a_room_that_all_thinks_alike_is_one_seat_five_times() {
 #[test]
 fn quorum_has_a_floor_and_a_ceiling() {
     let one = Council::new(vec![Seat::new("a", "one", Disposition::Bias)]);
-    assert!(!one.is_quorate(), "two people is a conversation, not a council");
+    assert!(
+        !one.is_quorate(),
+        "two people is a conversation, not a council"
+    );
     assert!(Council::default_room().is_quorate());
     let mob: Vec<Seat> = (0..MAX_SEATS + 1)
         .map(|i| Seat::new(&format!("s{i}"), "x", Disposition::Bias))
         .collect();
-    assert!(!Council::new(mob).is_quorate(), "past {MAX_SEATS} nobody reads it");
+    assert!(
+        !Council::new(mob).is_quorate(),
+        "past {MAX_SEATS} nobody reads it"
+    );
     assert!(MIN_SEATS >= 3);
 }
 
@@ -58,7 +64,10 @@ fn quorum_has_a_floor_and_a_ceiling() {
 fn the_verdict_always_names_the_split_even_when_the_room_agreed() {
     let c = Council::default_room();
     let v = c.tally(
-        &[op("mover", Lean::For, "cheap"), op("sceptic", Lean::For, "fine")],
+        &[
+            op("mover", Lean::For, "cheap"),
+            op("sceptic", Lean::For, "fine"),
+        ],
         Round::Open,
     );
     assert!(v.split.contains("2 for"), "{}", v.split);
@@ -71,12 +80,18 @@ fn the_losing_argument_survives_into_the_verdict() {
         &[
             op("mover", Lean::For, "short"),
             op("operator", Lean::For, "also short"),
-            op("steward", Lean::Against, "this commits us to maintaining it for years"),
+            op(
+                "steward",
+                Lean::Against,
+                "this commits us to maintaining it for years",
+            ),
         ],
         Round::Open,
     );
     assert_eq!(v.call, Some(Lean::For));
-    let d = v.strongest_dissent.expect("burying the dissent makes this a rubber stamp");
+    let d = v
+        .strongest_dissent
+        .expect("burying the dissent makes this a rubber stamp");
     assert!(d.contains("steward"));
     assert!(d.contains("maintaining it for years"));
 }
@@ -120,7 +135,11 @@ fn a_room_with_no_tiebreaker_is_allowed_to_have_no_answer() {
         Seat::new("c", "three", Disposition::Operator),
     ]);
     let v = c.tally(
-        &[op("a", Lean::For, "x"), op("b", Lean::Against, "y"), op("c", Lean::Depends, "z")],
+        &[
+            op("a", Lean::For, "x"),
+            op("b", Lean::Against, "y"),
+            op("c", Lean::Depends, "z"),
+        ],
         Round::Open,
     );
     assert_eq!(v.call, None);
@@ -189,7 +208,11 @@ fn a_draft_is_never_sent_and_the_separation_is_named() {
     let b = run(&[it], &[], &c);
     assert_eq!(b.drafted.len(), 1);
     for d in &b.drafted {
-        assert_eq!(d.outcome, Outcome::Drafted, "nothing in a brief is ever Sent");
+        assert_eq!(
+            d.outcome,
+            Outcome::Drafted,
+            "nothing in a brief is ever Sent"
+        );
     }
     assert!(spoken(&b).contains("waiting on your yes"));
 }
@@ -199,7 +222,11 @@ fn a_claimed_draft_with_nothing_written_becomes_yours_instead() {
     let mut c = cfg_on();
     c.draft_replies = true;
     // Outcome says Drafted, but there is no draft. That is a claim.
-    let b = run(&[item("1", "Sam", Weight::Urgent, Outcome::Drafted)], &[], &c);
+    let b = run(
+        &[item("1", "Sam", Weight::Urgent, Outcome::Drafted)],
+        &[],
+        &c,
+    );
     assert!(b.drafted.is_empty());
     assert_eq!(b.yours.len(), 1);
     assert_eq!(b.yours[0].outcome, Outcome::Yours);
@@ -212,7 +239,10 @@ fn drafting_off_means_drafts_come_to_you_rather_than_vanishing() {
     let b = run(&[it], &[], &cfg_on()); // draft_replies defaults off
     assert!(b.drafted.is_empty());
     assert_eq!(b.yours.len(), 1);
-    assert!(b.yours[0].draft.is_none(), "an unshown draft should not be carried along");
+    assert!(
+        b.yours[0].draft.is_none(),
+        "an unshown draft should not be carried along"
+    );
 }
 
 #[test]
@@ -240,18 +270,45 @@ fn urgent_comes_before_merely_informative() {
 #[test]
 fn overlapping_commitments_are_found() {
     let day = vec![
-        Commitment { id: "a".into(), what: "standup".into(), at_minute: 540, minutes: 30, needs_prep: None },
-        Commitment { id: "b".into(), what: "review".into(), at_minute: 555, minutes: 60, needs_prep: None },
+        Commitment {
+            id: "a".into(),
+            what: "standup".into(),
+            at_minute: 540,
+            minutes: 30,
+            needs_prep: None,
+        },
+        Commitment {
+            id: "b".into(),
+            what: "review".into(),
+            at_minute: 555,
+            minutes: 60,
+            needs_prep: None,
+        },
     ];
     let b = run(&[], &day, &cfg_on());
-    assert!(b.conflicts.iter().any(|c| c.contains("standup overlaps review")));
+    assert!(b
+        .conflicts
+        .iter()
+        .any(|c| c.contains("standup overlaps review")));
 }
 
 #[test]
 fn back_to_back_is_not_an_overlap() {
     let day = vec![
-        Commitment { id: "a".into(), what: "one".into(), at_minute: 540, minutes: 30, needs_prep: None },
-        Commitment { id: "b".into(), what: "two".into(), at_minute: 570, minutes: 30, needs_prep: None },
+        Commitment {
+            id: "a".into(),
+            what: "one".into(),
+            at_minute: 540,
+            minutes: 30,
+            needs_prep: None,
+        },
+        Commitment {
+            id: "b".into(),
+            what: "two".into(),
+            at_minute: 570,
+            minutes: 30,
+            needs_prep: None,
+        },
     ];
     let b = run(&[], &day, &cfg_on());
     assert!(b.conflicts.is_empty(), "{:?}", b.conflicts);
@@ -267,7 +324,10 @@ fn prep_that_has_not_happened_is_raised_before_the_meeting_is() {
         needs_prep: Some("the numbers".into()),
     }];
     let b = run(&[], &day, &cfg_on());
-    assert!(b.conflicts.iter().any(|c| c.contains("the board call needs the numbers first")));
+    assert!(b
+        .conflicts
+        .iter()
+        .any(|c| c.contains("the board call needs the numbers first")));
 }
 
 #[test]
@@ -279,7 +339,9 @@ fn the_one_thing_holding_up_several_others_is_named() {
     let mut c = item("3", "z", Weight::Info, Outcome::Yours);
     c.conflicts_with = Some("something else".into());
     let b = run(&[a, b2, c], &[], &cfg_on());
-    let bl = b.blocking.expect("two things waiting on one thing is a bottleneck");
+    let bl = b
+        .blocking
+        .expect("two things waiting on one thing is a bottleneck");
     assert!(bl.contains("the contract"));
     assert!(bl.contains("2 other things"));
 }
@@ -289,12 +351,19 @@ fn a_bottleneck_is_not_invented_when_there_is_not_one() {
     let mut a = item("1", "x", Weight::Info, Outcome::Yours);
     a.conflicts_with = Some("the contract".into());
     let b = run(&[a], &[], &cfg_on());
-    assert!(b.blocking.is_none(), "one thing waiting on one thing is not a bottleneck");
+    assert!(
+        b.blocking.is_none(),
+        "one thing waiting on one thing is not a bottleneck"
+    );
 }
 
 #[test]
 fn an_empty_morning_says_so_plainly() {
-    let b = run(&[item("1", "a", Weight::Info, Outcome::Handled)], &[], &cfg_on());
+    let b = run(
+        &[item("1", "a", Weight::Info, Outcome::Handled)],
+        &[],
+        &cfg_on(),
+    );
     assert!(b.is_empty());
     assert_eq!(spoken(&b), "Nothing needs you. I'll get on with the rest.");
 }
@@ -302,12 +371,22 @@ fn an_empty_morning_says_so_plainly() {
 #[test]
 fn the_brief_stays_short_on_the_worst_morning_of_the_year() {
     let items: Vec<Item> = (0..200)
-        .map(|i| item(&format!("{i:03}"), "someone", Weight::Urgent, Outcome::Yours))
+        .map(|i| {
+            item(
+                &format!("{i:03}"),
+                "someone",
+                Weight::Urgent,
+                Outcome::Yours,
+            )
+        })
         .collect();
     let b = run(&items, &[], &cfg_on());
     assert_eq!(b.yours.len(), 200, "nothing is dropped from the data");
     let lines = spoken(&b).split(". ").count();
-    assert!(lines <= MAX_LINES, "the brief grew to {lines} lines and stopped being read");
+    assert!(
+        lines <= MAX_LINES,
+        "the brief grew to {lines} lines and stopped being read"
+    );
 }
 
 #[test]
@@ -365,8 +444,17 @@ fn the_spoken_brief_names_more_than_the_first_thing() {
     let s = spoken(&b);
     let first = b.start_with.clone().unwrap();
     assert!(s.starts_with(&format!("Start with {first}.")), "{s}");
-    let also = s.split("Also: ").nth(1).expect("the rest named").split('.').next().unwrap();
+    let also = s
+        .split("Also: ")
+        .nth(1)
+        .expect("the rest named")
+        .split('.')
+        .next()
+        .unwrap();
     assert_eq!(also.split("; ").count(), atlas::brief::ALSO_NAMED, "{also}");
     assert!(also.ends_with(", and 2 more on the hub"), "{also}");
-    assert!(!also.contains(first.as_str()), "the first isn't named twice: {s}");
+    assert!(
+        !also.contains(first.as_str()),
+        "the first isn't named twice: {s}"
+    );
 }

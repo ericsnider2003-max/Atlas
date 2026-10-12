@@ -33,11 +33,24 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
@@ -47,7 +60,10 @@ fn a_leaving_word_routes_to_set_mode() {
     // The argument, not a standalone phrase: "mode" is the base and "off" is
     // what follows, so the parser keeps a non-empty argument to discriminate on.
     assert_eq!(parser.parse("mode off"), Intent::SetMode("off".into()));
-    assert_eq!(parser.parse("go into normal mode"), Intent::SetMode("normal mode".into()));
+    assert_eq!(
+        parser.parse("go into normal mode"),
+        Intent::SetMode("normal mode".into())
+    );
 }
 
 #[test]
@@ -93,7 +109,10 @@ fn leaving_when_no_mode_is_on_says_so_and_does_not_enter_one() {
     // must NOT invent a mode named "off" when none is on. Before, the handler
     // only ever tried `enter`, so this would have answered "I don't have a off
     // mode." Now it distinguishes leaving from entering by whether a mode is on.
-    assert!(d.modes.active().is_none(), "no mode should be on to start with");
+    assert!(
+        d.modes.active().is_none(),
+        "no mode should be on to start with"
+    );
     let reply = d.turn("mode off", 100);
     // The daemon's phrasing pass may personalise the line, so the state check
     // below is the load-bearing assertion: no mode was entered.

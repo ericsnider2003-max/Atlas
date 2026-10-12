@@ -77,7 +77,13 @@ impl Utc {
     }
 
     pub fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> Utc {
-        Utc { year, month, day, hour, minute }
+        Utc {
+            year,
+            month,
+            day,
+            hour,
+            minute,
+        }
     }
 
     pub fn date(year: i32, month: u32, day: u32) -> Utc {
@@ -116,7 +122,11 @@ pub fn nth_weekday(year: i32, month: u32, weekday: u32, n: u32) -> u32 {
 
 /// Day of the month of the last given weekday.
 pub fn last_weekday(year: i32, month: u32, weekday: u32) -> u32 {
-    let (ny, nm) = if month == 12 { (year + 1, 1) } else { (year, month + 1) };
+    let (ny, nm) = if month == 12 {
+        (year + 1, 1)
+    } else {
+        (year, month + 1)
+    };
     let last_day = civil_from_days(days_from_civil(ny, nm, 1) - 1).2;
     let wd = Utc::date(year, month, last_day).weekday();
     last_day - (wd + 7 - weekday) % 7
@@ -167,9 +177,18 @@ mod tests {
         assert_eq!(civil_from_days(days_from_civil(2024, 2, 29)), (2024, 2, 29));
         // 2000 was a leap year, 1900 and 2100 were not.
         assert_eq!(civil_from_days(days_from_civil(2000, 2, 29)), (2000, 2, 29));
-        assert_eq!(days_from_civil(1900, 3, 1) - days_from_civil(1900, 2, 28), 1);
-        assert_eq!(days_from_civil(2100, 3, 1) - days_from_civil(2100, 2, 28), 1);
-        assert_eq!(days_from_civil(2024, 3, 1) - days_from_civil(2024, 2, 28), 2);
+        assert_eq!(
+            days_from_civil(1900, 3, 1) - days_from_civil(1900, 2, 28),
+            1
+        );
+        assert_eq!(
+            days_from_civil(2100, 3, 1) - days_from_civil(2100, 2, 28),
+            1
+        );
+        assert_eq!(
+            days_from_civil(2024, 3, 1) - days_from_civil(2024, 2, 28),
+            2
+        );
     }
 
     #[test]
@@ -178,7 +197,11 @@ mod tests {
         assert_eq!(Utc::date(2026, 9, 11).weekday(), 4);
         assert_eq!(Utc::date(2026, 10, 2).weekday(), 4);
         assert_eq!(Utc::date(2026, 2, 11).weekday(), 2);
-        assert_eq!(Utc::date(1970, 1, 1).weekday(), 3, "the epoch was a Thursday");
+        assert_eq!(
+            Utc::date(1970, 1, 1).weekday(),
+            3,
+            "the epoch was a Thursday"
+        );
     }
 
     #[test]

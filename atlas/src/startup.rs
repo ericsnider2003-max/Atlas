@@ -183,7 +183,12 @@ pub fn register(exe: &Path, mode: Mode) -> Plan {
         // session.
         Plan {
             program: "systemctl".into(),
-            args: vec!["--user".into(), "enable".into(), "--now".into(), "atlas.service".into()],
+            args: vec![
+                "--user".into(),
+                "enable".into(),
+                "--now".into(),
+                "atlas.service".into(),
+            ],
             what: format!("start Atlas at login so it can {}", mode.plainly()),
         }
     }
@@ -192,20 +197,33 @@ pub fn register(exe: &Path, mode: Mode) -> Plan {
 /// Where the task's definition is written before `schtasks /XML` reads it:
 /// Atlas's own state folder, beside the program.
 pub fn task_file_path(exe: &Path) -> std::path::PathBuf {
-    exe.parent().unwrap_or_else(|| Path::new(".")).join("data").join("state").join("atlas-task.xml")
+    exe.parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("data")
+        .join("state")
+        .join("atlas-task.xml")
 }
 
 /// Who is signed in, as Task Scheduler names them (`DOMAIN\user`).
 fn signed_in_user() -> Option<String> {
-    let user = std::env::var("USERNAME").ok().filter(|u| !u.trim().is_empty())?;
-    match std::env::var("USERDOMAIN").ok().filter(|d| !d.trim().is_empty()) {
+    let user = std::env::var("USERNAME")
+        .ok()
+        .filter(|u| !u.trim().is_empty())?;
+    match std::env::var("USERDOMAIN")
+        .ok()
+        .filter(|d| !d.trim().is_empty())
+    {
         Some(domain) => Some(format!("{domain}\\{user}")),
         None => Some(user),
     }
 }
 
 fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&apos;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 /// The scheduled task, as Task Scheduler's own XML. Starts `exe` with the
@@ -218,7 +236,10 @@ pub fn task_xml(exe: &Path, mode: Mode, user: Option<&str>) -> String {
     // The folder, cut at the last separator of either kind, so the XML for a
     // Windows path is the same whichever machine writes it (and is tested).
     let whole = exe.display().to_string();
-    let dir = whole.rfind(['\\', '/']).map(|i| whole[..i].to_string()).unwrap_or_default();
+    let dir = whole
+        .rfind(['\\', '/'])
+        .map(|i| whole[..i].to_string())
+        .unwrap_or_default();
     let user_line = |indent: &str| match user {
         Some(u) => format!("{indent}<UserId>{}</UserId>\n", xml_escape(u)),
         None => String::new(),
@@ -315,10 +336,12 @@ pub fn task_file_bytes(xml: &str) -> Vec<u8> {
 pub fn write_task_file(exe: &Path, mode: Mode) -> Result<std::path::PathBuf, String> {
     let path = task_file_path(exe);
     if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("couldn't make {}: {e}", dir.display()))?;
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("couldn't make {}: {e}", dir.display()))?;
     }
     let xml = task_xml(exe, mode, signed_in_user().as_deref());
-    std::fs::write(&path, task_file_bytes(&xml)).map_err(|e| format!("couldn't write {}: {e}", path.display()))?;
+    std::fs::write(&path, task_file_bytes(&xml))
+        .map_err(|e| format!("couldn't write {}: {e}", path.display()))?;
     Ok(path)
 }
 
@@ -348,7 +371,13 @@ pub fn run_entry_add(exe: &Path, mode: Mode) -> Plan {
 pub fn run_entry_remove() -> Plan {
     Plan {
         program: "reg".into(),
-        args: vec!["delete".into(), RUN_KEY.into(), "/v".into(), TASK_NAME.into(), "/f".into()],
+        args: vec![
+            "delete".into(),
+            RUN_KEY.into(),
+            "/v".into(),
+            TASK_NAME.into(),
+            "/f".into(),
+        ],
         what: "stop Atlas starting when you sign in".into(),
     }
 }
@@ -397,8 +426,16 @@ pub fn needs_new_triggers(old_xml: &str) -> Option<Mode> {
     if old_xml.is_empty() || old_xml.contains("SessionStateChangeTrigger") {
         return None;
     }
-    let args = old_xml.split("<Arguments>").nth(1).and_then(|r| r.split("</Arguments>").next()).unwrap_or("");
-    Some(if args.contains(Mode::Listening.flag()) { Mode::Listening } else { Mode::Background })
+    let args = old_xml
+        .split("<Arguments>")
+        .nth(1)
+        .and_then(|r| r.split("</Arguments>").next())
+        .unwrap_or("");
+    Some(if args.contains(Mode::Listening.flag()) {
+        Mode::Listening
+    } else {
+        Mode::Background
+    })
 }
 
 /// Bring the start-with-Windows task up to date, when you chose to have one
@@ -410,7 +447,14 @@ pub fn bring_up_to_date(exe: &Path, state_dir: &Path) -> Option<Result<String, S
     }
     let old = std::fs::read(task_file_path(exe)).ok()?;
     // UTF-16 with its mark, as `task_file_bytes` writes it.
-    let units: Vec<u16> = old.get(2..).unwrap_or(&[]).as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    let units: Vec<u16> = old
+        .get(2..)
+        .unwrap_or(&[])
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
     let mode = needs_new_triggers(&String::from_utf16_lossy(&units))?;
     Some(turn_on(exe, mode))
 }
@@ -433,9 +477,11 @@ pub fn turn_off() -> Result<String, String> {
 /// registered (`Ok(true)`: it is).
 pub fn turned_off_says(still: Result<bool, String>) -> Result<String, String> {
     match still {
-        Ok(true) => Err("Windows didn't let me take Atlas out of what starts when you sign in -- \
+        Ok(true) => Err(
+            "Windows didn't let me take Atlas out of what starts when you sign in -- \
                          it's in Task Scheduler as \"Atlas\"; you can delete it there"
-            .into()),
+                .into(),
+        ),
         _ => Ok("Atlas won't start on its own when you sign in.".into()),
     }
 }
@@ -461,7 +507,11 @@ pub fn decided(state_dir: &Path) -> Option<bool> {
 
 /// Keep what was decided: by setup switching it on, or by you.
 pub fn remember(state_dir: &Path, on: bool) -> std::io::Result<()> {
-    crate::store::write_whole_in_state(state_dir, &decision_file(state_dir), if on { b"on\n" } else { b"off\n" })
+    crate::store::write_whole_in_state(
+        state_dir,
+        &decision_file(state_dir),
+        if on { b"on\n" } else { b"off\n" },
+    )
 }
 
 /// What finishing setup does next.
@@ -486,11 +536,23 @@ pub struct AfterSetup {
 /// window opens (`firstlaunch::what_opening_does`), so starting it here too
 /// would race that one. Nothing, elsewhere or when the settings can't be
 /// read (the background Atlas would stop at once without them).
-pub fn after_setup(on_windows: bool, settings_ok: bool, just_set_up: bool, decided: Option<bool>, running: bool) -> AfterSetup {
+pub fn after_setup(
+    on_windows: bool,
+    settings_ok: bool,
+    just_set_up: bool,
+    decided: Option<bool>,
+    running: bool,
+) -> AfterSetup {
     if !on_windows || !settings_ok {
-        return AfterSetup { register: false, start: false };
+        return AfterSetup {
+            register: false,
+            start: false,
+        };
     }
-    AfterSetup { register: decided.is_none(), start: just_set_up && !running }
+    AfterSetup {
+        register: decided.is_none(),
+        start: just_set_up && !running,
+    }
 }
 
 /// Stop Atlas starting at logon.
@@ -498,13 +560,23 @@ pub fn remove() -> Plan {
     if cfg!(windows) {
         Plan {
             program: "schtasks".into(),
-            args: vec!["/Delete".into(), "/TN".into(), TASK_NAME.into(), "/F".into()],
+            args: vec![
+                "/Delete".into(),
+                "/TN".into(),
+                TASK_NAME.into(),
+                "/F".into(),
+            ],
             what: "stop Atlas starting when you log in".into(),
         }
     } else {
         Plan {
             program: "systemctl".into(),
-            args: vec!["--user".into(), "disable".into(), "--now".into(), "atlas.service".into()],
+            args: vec![
+                "--user".into(),
+                "disable".into(),
+                "--now".into(),
+                "atlas.service".into(),
+            ],
             what: "stop Atlas starting when you log in".into(),
         }
     }
@@ -560,13 +632,18 @@ pub fn unit_file(exe: &Path, mode: Mode) -> String {
          WantedBy=default.target\n",
         exe = exe.display(),
         flag = mode.flag(),
-        dir = exe.parent().map(|p| p.display().to_string()).unwrap_or_else(|| ".".into()),
+        dir = exe
+            .parent()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| ".".into()),
     )
 }
 
 /// Where the unit file goes.
 pub fn unit_path() -> std::path::PathBuf {
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
     home.join(".config/systemd/user/atlas.service")
 }
 
@@ -579,7 +656,10 @@ pub fn unit_path() -> std::path::PathBuf {
 pub fn run(plan: &Plan) -> Result<bool, String> {
     use std::process::Stdio;
     let mut cmd = crate::tools::command(&plan.program);
-    cmd.args(&plan.args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    cmd.args(&plan.args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     // No console flashing up from the windowless Atlas (29 Sep 2026:
     // schtasks and reg each opened one when the switch was flipped).
     #[cfg(windows)]
@@ -604,7 +684,10 @@ mod tests {
         // create time and fails at logon, silently.
         let exe = PathBuf::from(r"C:\Program Files\Atlas\atlas.exe");
         let cmd = task_command(&exe, Mode::Background);
-        assert!(cmd.starts_with('"'), "the program path is not quoted: {cmd}");
+        assert!(
+            cmd.starts_with('"'),
+            "the program path is not quoted: {cmd}"
+        );
         assert!(
             cmd.contains(r#"Atlas\atlas.exe" --daemon"#),
             "the quote closes in the wrong place: {cmd}"
@@ -639,8 +722,16 @@ mod tests {
         // 28 Sep 2026: the task is made from XML now (`task_xml`), so "not
         // elevated" is the definition's RunLevel rather than `/RL LIMITED`.
         let p = register(&PathBuf::from("/opt/atlas/atlas"), Mode::Background);
-        assert!(!p.as_typed().contains("HIGHEST"), "registered as elevated: {}", p.as_typed());
-        let xml = task_xml(&PathBuf::from("/opt/atlas/atlas"), Mode::Background, Some("PC\\eric"));
+        assert!(
+            !p.as_typed().contains("HIGHEST"),
+            "registered as elevated: {}",
+            p.as_typed()
+        );
+        let xml = task_xml(
+            &PathBuf::from("/opt/atlas/atlas"),
+            Mode::Background,
+            Some("PC\\eric"),
+        );
         assert!(xml.contains("<RunLevel>LeastPrivilege</RunLevel>"), "{xml}");
         assert!(!xml.contains("HighestAvailable"), "{xml}");
     }
@@ -649,7 +740,11 @@ mod tests {
     fn registering_twice_replaces_rather_than_failing() {
         let p = register(&PathBuf::from("/opt/atlas/atlas"), Mode::Background);
         if p.program == "schtasks" {
-            assert!(p.args.iter().any(|a| a == "/F"), "a second run would fail: {:?}", p.args);
+            assert!(
+                p.args.iter().any(|a| a == "/F"),
+                "a second run would fail: {:?}",
+                p.args
+            );
         }
     }
 
@@ -669,7 +764,10 @@ mod tests {
     fn the_unit_file_starts_the_right_thing_from_the_right_place() {
         let exe = PathBuf::from("/opt/atlas/atlas");
         let unit = unit_file(&exe, Mode::Background);
-        assert!(unit.contains("ExecStart=/opt/atlas/atlas --daemon"), "{unit}");
+        assert!(
+            unit.contains("ExecStart=/opt/atlas/atlas --daemon"),
+            "{unit}"
+        );
         assert!(unit.contains("WorkingDirectory=/opt/atlas"), "{unit}");
         assert!(unit.contains("WantedBy=default.target"), "{unit}");
     }
@@ -690,7 +788,10 @@ mod tests {
         for m in [Mode::Background, Mode::Listening] {
             let said = m.plainly();
             assert!(said.len() > 30, "too vague to consent to: {said}");
-            assert!(said.contains("listen"), "does not mention the microphone: {said}");
+            assert!(
+                said.contains("listen"),
+                "does not mention the microphone: {said}"
+            );
         }
     }
 }

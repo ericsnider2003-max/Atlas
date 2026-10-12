@@ -29,7 +29,14 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon_with_group(dir: &Path) -> Config {
@@ -54,7 +61,13 @@ fn who_is_in_a_group_names_its_members() {
     let dir = tmp("whos-in");
     let c = daemon_with_group(&dir);
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let reply = d.turn("who's in the Northwind group", 100);
     assert!(
         reply.contains("Jordan") && reply.contains("Maya"),
@@ -67,7 +80,13 @@ fn naming_a_group_lets_you_reach_it_by_that_name() {
     let dir = tmp("name-grp");
     let c = daemon_with_group(&dir);
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let reply = d.turn("name the Northwind group as Roof crew", 100);
     assert!(
         reply.to_lowercase().contains("roof crew"),
@@ -84,11 +103,23 @@ fn leaving_a_group_drops_it_and_tombstones_it() {
     let dir = tmp("leave-grp");
     let c = daemon_with_group(&dir);
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let reply = d.turn("leave the Northwind group", 100);
-    assert!(reply.to_lowercase().contains("left"), "should confirm leaving, got: {reply}");
+    assert!(
+        reply.to_lowercase().contains("left"),
+        "should confirm leaving, got: {reply}"
+    );
     // The room is gone from this end...
-    assert!(d.chats.group_named("Northwind").is_none(), "the group is no longer held");
+    assert!(
+        d.chats.group_named("Northwind").is_none(),
+        "the group is no longer held"
+    );
     // ...and cannot be re-opened by a message still in flight.
     assert!(d.chats.has_left("grp-seed"), "the group id is tombstoned");
 }
@@ -97,10 +128,22 @@ fn leaving_a_group_drops_it_and_tombstones_it() {
 fn asking_about_a_group_that_isnt_there_says_so() {
     let dir = tmp("no-group");
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(dir), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let reply = d.turn("who's in the Nowhere group", 100);
-    assert!(reply.to_lowercase().contains("don't have a group"), "got: {reply}");
+    assert!(
+        reply.to_lowercase().contains("don't have a group"),
+        "got: {reply}"
+    );
     // The missing-group answer is its own branch, not the catch-all.
     let junk = d.turn("zzqx frobnicate wibble", 100);
-    assert_ne!(reply, junk, "the no-such-group answer is a branch of its own");
+    assert_ne!(
+        reply, junk,
+        "the no-such-group answer is a branch of its own"
+    );
 }

@@ -94,17 +94,24 @@ pub fn connected_rows(d: &mut Daemon) -> Vec<Row> {
     let mine: Vec<crate::mail::Account> = d.store.load(crate::daemon::CONNECTED_ACCOUNTS);
     let accounts = d.tools_cfg().mail.accounts.clone();
     for a in &accounts {
-        let ours = mine.iter().any(|m| m.address.eq_ignore_ascii_case(&a.address));
+        let ours = mine
+            .iter()
+            .any(|m| m.address.eq_ignore_ascii_case(&a.address));
         let id = if a.oauth {
             "outlook"
-        } else if a.address.to_lowercase().ends_with("@gmail.com") || a.address.to_lowercase().ends_with("@googlemail.com") {
+        } else if a.address.to_lowercase().ends_with("@gmail.com")
+            || a.address.to_lowercase().ends_with("@googlemail.com")
+        {
             "gmail"
         } else {
             "imap-mail"
         };
         let refused = a.oauth && connect::sign_in_refused(&d.store, &a.address);
         let (state, said) = if refused {
-            (State::NeedsYou, "Microsoft no longer accepts this sign-in".to_string())
+            (
+                State::NeedsYou,
+                "Microsoft no longer accepts this sign-in".to_string(),
+            )
         } else {
             health_state(connect::health_of(&d.store, &a.address), now)
         };
@@ -113,8 +120,16 @@ pub fn connected_rows(d: &mut Daemon) -> Vec<Row> {
             which: a.address.clone(),
             state,
             said,
-            fix: if refused { again(d, Provider::Microsoft) } else { String::new() },
-            take_away: if ours { disconnect("mail", &a.address) } else { "<span class=note>(listed in tools.yaml)</span>".into() },
+            fix: if refused {
+                again(d, Provider::Microsoft)
+            } else {
+                String::new()
+            },
+            take_away: if ours {
+                disconnect("mail", &a.address)
+            } else {
+                "<span class=note>(listed in tools.yaml)</span>".into()
+            },
         });
     }
 
@@ -130,20 +145,37 @@ pub fn connected_rows(d: &mut Daemon) -> Vec<Row> {
         let (state, said) = if l.needs_signin {
             (State::NeedsYou, "its sign-in was refused".to_string())
         } else {
-            health_state((l.last_read > 0).then(|| connect::Health { at: l.last_read, ok: l.last_ok, said: l.last_said.clone() }), now)
+            health_state(
+                (l.last_read > 0).then(|| connect::Health {
+                    at: l.last_read,
+                    ok: l.last_ok,
+                    said: l.last_said.clone(),
+                }),
+                now,
+            )
         };
         let fix = match parsed {
             Some((p, _)) if l.needs_signin => again(d, p),
             Some(_) => super::calendar_picker(d, l),
             None => String::new(),
         };
-        out.push(Row { connector: id.into(), which: l.name.clone(), state, said, fix, take_away: disconnect("calendar", &l.url) });
+        out.push(Row {
+            connector: id.into(),
+            which: l.name.clone(),
+            state,
+            said,
+            fix,
+            take_away: disconnect("calendar", &l.url),
+        });
     }
 
     // Kept sign-ins: the names in the vault are readable while it is sealed.
     let kept: Vec<String> = d.vault.list().iter().map(|(n, _)| n.to_string()).collect();
     let has = |n: &str| kept.iter().any(|k| k == n);
-    use crate::social::{VAULT_FACEBOOK, VAULT_INSTAGRAM, VAULT_THREADS, VAULT_TIKTOK, VAULT_YOUTUBE_KEY, VAULT_YOUTUBE_OAUTH};
+    use crate::social::{
+        VAULT_FACEBOOK, VAULT_INSTAGRAM, VAULT_THREADS, VAULT_TIKTOK, VAULT_YOUTUBE_KEY,
+        VAULT_YOUTUBE_OAUTH,
+    };
     if has(VAULT_YOUTUBE_OAUTH) || has(VAULT_YOUTUBE_KEY) {
         out.push(Row {
             connector: "youtube".into(),
@@ -175,7 +207,12 @@ pub fn connected_rows(d: &mut Daemon) -> Vec<Row> {
             });
         }
     }
-    let handle = d.social_cfg().bluesky_handle.trim().trim_start_matches('@').to_string();
+    let handle = d
+        .social_cfg()
+        .bluesky_handle
+        .trim()
+        .trim_start_matches('@')
+        .to_string();
     if !handle.is_empty() {
         out.push(Row {
             connector: "bluesky".into(),
@@ -240,16 +277,26 @@ pub fn the_one_list(d: &mut Daemon) -> String {
             None => "",
         };
         let name = match def {
-            Some(c) if !r.which.contains(&c.name) => format!("{} <span class=note>({})</span>", esc(&r.which), esc(&c.name)),
+            Some(c) if !r.which.contains(&c.name) => format!(
+                "{} <span class=note>({})</span>",
+                esc(&r.which),
+                esc(&c.name)
+            ),
             _ => esc(&r.which),
         };
-        out.push_str(&format!("<li><b>{name}</b> {may}<span class='{class}'>{word}</span>"));
+        out.push_str(&format!(
+            "<li><b>{name}</b> {may}<span class='{class}'>{word}</span>"
+        ));
         if !r.said.is_empty() {
             out.push_str(&format!(" <span class=note>{}</span>", esc(&r.said)));
         }
         out.push_str(&format!(" {} {}", r.fix, r.take_away));
         if let Some(c) = def {
-            out.push_str(&format!("<br><span class=note>{}. {}</span>", esc(&c.for_what), esc(&c.if_it_breaks)));
+            out.push_str(&format!(
+                "<br><span class=note>{}. {}</span>",
+                esc(&c.for_what),
+                esc(&c.if_it_breaks)
+            ));
         }
         out.push_str("</li>");
     }

@@ -110,7 +110,10 @@ fn score(t: &Item, now: i64, k: &Coefficients) -> (f64, Vec<(String, f64)>) {
         add(why, k.due * due_term(d, now));
     }
     if t.blocking > 0 {
-        add(format!("it blocks {} other task(s)", t.blocking), k.blocking);
+        add(
+            format!("it blocks {} other task(s)", t.blocking),
+            k.blocking,
+        );
     }
     match t.priority.map(|c| c.to_ascii_uppercase()) {
         Some('H') => add("it's high priority".into(), k.priority_h),
@@ -125,7 +128,11 @@ fn score(t: &Item, now: i64, k: &Coefficients) -> (f64, Vec<(String, f64)>) {
         add("its scheduled time has passed".into(), k.scheduled);
     }
     let age_days = ((now - t.created).max(0)) as f64 / 86_400.0;
-    let age = if k.age_max_days <= 0.0 { 1.0 } else { (age_days / k.age_max_days).min(1.0) };
+    let age = if k.age_max_days <= 0.0 {
+        1.0
+    } else {
+        (age_days / k.age_max_days).min(1.0)
+    };
     add(format!("it's {age_days:.0} day(s) old"), k.age * age);
     // Taskwarrior: 1 item → 0.8, 2 → 0.9, 3+ → 1.0
     let count_term = |n: usize| match n {
@@ -134,7 +141,10 @@ fn score(t: &Item, now: i64, k: &Coefficients) -> (f64, Vec<(String, f64)>) {
         2 => 0.9,
         _ => 1.0,
     };
-    add(format!("it has {} note(s)", t.annotations), k.annotations * count_term(t.annotations));
+    add(
+        format!("it has {} note(s)", t.annotations),
+        k.annotations * count_term(t.annotations),
+    );
     let real_tags = t.tags.iter().filter(|x| *x != "next").count();
     add("it has tags".into(), k.tags * count_term(real_tags));
     if t.project.is_some() {
@@ -147,21 +157,38 @@ fn score(t: &Item, now: i64, k: &Coefficients) -> (f64, Vec<(String, f64)>) {
         add("it's blocked by another task".into(), k.blocked);
     }
     let total = parts.iter().map(|p| p.1).sum();
-    parts.sort_by(|a, b| b.1.abs().partial_cmp(&a.1.abs()).unwrap_or(std::cmp::Ordering::Equal));
+    parts.sort_by(|a, b| {
+        b.1.abs()
+            .partial_cmp(&a.1.abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     (total, parts)
 }
 
 /// Indices of `items`, most urgent first (ties keep input order).
 pub fn rank(items: &[Item], now: i64, k: &Coefficients) -> Vec<usize> {
-    let mut v: Vec<(usize, f64)> = items.iter().enumerate().map(|(i, t)| (i, score(t, now, k).0)).collect();
-    v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
+    let mut v: Vec<(usize, f64)> = items
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (i, score(t, now, k).0))
+        .collect();
+    v.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.0.cmp(&b.0))
+    });
     v.into_iter().map(|x| x.0).collect()
 }
 
 /// One sentence: "because it's 3 day(s) overdue and it blocks 2 other task(s)".
 pub fn why(t: &Item, now: i64, k: &Coefficients) -> String {
     let (_, parts) = score(t, now, k);
-    let top: Vec<String> = parts.iter().filter(|p| p.1 > 0.5).take(2).map(|p| p.0.clone()).collect();
+    let top: Vec<String> = parts
+        .iter()
+        .filter(|p| p.1 > 0.5)
+        .take(2)
+        .map(|p| p.0.clone())
+        .collect();
     match top.len() {
         0 => "nothing makes it pressing".into(),
         1 => format!("because {}", top[0]),
@@ -185,7 +212,11 @@ mod tests {
     #[test]
     fn a_due_today_task_scores_like_taskwarrior() {
         // due now, created now, nothing else: 12 × 0.7333… = 8.8
-        let t = Item { due: Some(100 * DAY), created: 100 * DAY, ..Default::default() };
+        let t = Item {
+            due: Some(100 * DAY),
+            created: 100 * DAY,
+            ..Default::default()
+        };
         let (u, _) = score(&t, 100 * DAY, &Coefficients::default());
         assert!((u - 8.8).abs() < 1e-6, "{u}");
     }
@@ -194,20 +225,45 @@ mod tests {
     fn overdue_blocker_beats_an_old_undated_task() {
         let now = 400 * DAY;
         let items = vec![
-            Item { created: 0, ..Default::default() }, // a year old, nothing else
-            Item { due: Some(now - 3 * DAY), blocking: 2, created: now - DAY, ..Default::default() },
-            Item { due: Some(now + 30 * DAY), created: now, ..Default::default() },
-            Item { due: Some(now - 3 * DAY), blocked: true, created: now - DAY, ..Default::default() },
+            Item {
+                created: 0,
+                ..Default::default()
+            }, // a year old, nothing else
+            Item {
+                due: Some(now - 3 * DAY),
+                blocking: 2,
+                created: now - DAY,
+                ..Default::default()
+            },
+            Item {
+                due: Some(now + 30 * DAY),
+                created: now,
+                ..Default::default()
+            },
+            Item {
+                due: Some(now - 3 * DAY),
+                blocked: true,
+                created: now - DAY,
+                ..Default::default()
+            },
         ];
         let k = Coefficients::default();
         assert_eq!(rank(&items, now, &k), vec![1, 3, 2, 0]);
-        assert_eq!(why(&items[1], now, &k), "because it's 3 day(s) overdue and it blocks 2 other task(s)");
+        assert_eq!(
+            why(&items[1], now, &k),
+            "because it's 3 day(s) overdue and it blocks 2 other task(s)"
+        );
     }
 
     #[test]
     fn waiting_and_blocked_push_down() {
         let now = 10 * DAY;
-        let t = Item { created: now, wait_until: Some(now + DAY), blocked: true, ..Default::default() };
+        let t = Item {
+            created: now,
+            wait_until: Some(now + DAY),
+            blocked: true,
+            ..Default::default()
+        };
         assert!(score(&t, now, &Coefficients::default()).0 < 0.0);
     }
 }

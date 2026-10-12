@@ -1,16 +1,24 @@
 use atlas::presence::{
     interpret, may_answer, Change, Gesture, Look, Presence, PresenceConfig, Sensor, Signal,
 };
-use atlas::voiceid::{cosine, enrollment_prompt, handle, Handling, Verdict, VoiceId, VoiceIdConfig};
+use atlas::voiceid::{
+    cosine, enrollment_prompt, handle, Handling, Verdict, VoiceId, VoiceIdConfig,
+};
 
 fn cfg() -> VoiceIdConfig {
-    VoiceIdConfig { enabled: true, ..Default::default() }
+    VoiceIdConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 fn emb(seed: f32) -> Vec<f32> {
     (0..64).map(|i| ((i as f32 * 0.37) + seed).sin()).collect()
 }
 fn near(v: &[f32], jitter: f32) -> Vec<f32> {
-    v.iter().enumerate().map(|(i, x)| x + jitter * ((i % 7) as f32 - 3.0) * 0.01).collect()
+    v.iter()
+        .enumerate()
+        .map(|(i, x)| x + jitter * ((i % 7) as f32 - 3.0) * 0.01)
+        .collect()
 }
 
 // ================= knowing your voice =================
@@ -20,7 +28,10 @@ fn nothing_is_gated_before_enrollment() {
     // A half-taught voiceprint must never start ignoring you.
     let v = VoiceId::default();
     assert_eq!(v.check(&emb(0.0), &cfg()), Verdict::NotEnrolled);
-    assert_eq!(handle(Verdict::NotEnrolled, true, &cfg()), Handling::Proceed);
+    assert_eq!(
+        handle(Verdict::NotEnrolled, true, &cfg()),
+        Handling::Proceed
+    );
 }
 
 #[test]
@@ -57,8 +68,14 @@ fn an_unfamiliar_voice_asks_rather_than_going_silent() {
     // same reading is produced by the owner with a cold. What actually tells
     // a podcast from a person is the question -- a consequential action needs
     // a spoken yes in the moment, and the podcast is not listening for it.
-    assert_eq!(handle(Verdict::NotYou(0.1), false, &cfg()), Handling::Proceed);
-    assert_eq!(handle(Verdict::NotYou(0.1), true, &cfg()), Handling::Confirm);
+    assert_eq!(
+        handle(Verdict::NotYou(0.1), false, &cfg()),
+        Handling::Proceed
+    );
+    assert_eq!(
+        handle(Verdict::NotYou(0.1), true, &cfg()),
+        Handling::Confirm
+    );
 }
 
 #[test]
@@ -73,13 +90,22 @@ fn sounding_like_you_is_never_treated_as_permission() {
 fn a_borderline_match_never_blocks_you_out_of_ordinary_work() {
     // A cold, a bad mic, sitting further away — none of that should stop you
     // opening Chrome.
-    assert_eq!(handle(Verdict::Unsure(0.6), false, &cfg()), Handling::Proceed);
-    assert_eq!(handle(Verdict::Unsure(0.6), true, &cfg()), Handling::Confirm);
+    assert_eq!(
+        handle(Verdict::Unsure(0.6), false, &cfg()),
+        Handling::Proceed
+    );
+    assert_eq!(
+        handle(Verdict::Unsure(0.6), true, &cfg()),
+        Handling::Confirm
+    );
 }
 
 #[test]
 fn turning_the_feature_off_disables_all_of_it() {
-    let off = VoiceIdConfig { enabled: false, ..Default::default() };
+    let off = VoiceIdConfig {
+        enabled: false,
+        ..Default::default()
+    };
     assert_eq!(handle(Verdict::NotYou(0.0), true, &off), Handling::Proceed);
 }
 
@@ -118,7 +144,10 @@ fn you_can_be_forgotten() {
 fn similarity_ignores_loudness() {
     let a = emb(0.0);
     let loud: Vec<f32> = a.iter().map(|x| x * 8.0).collect();
-    assert!(cosine(&a, &loud) > 0.999, "distance from the mic must not matter");
+    assert!(
+        cosine(&a, &loud) > 0.999,
+        "distance from the mic must not matter"
+    );
     assert_eq!(cosine(&a, &[]), 0.0);
 }
 
@@ -132,13 +161,22 @@ fn enrollment_talks_you_through_it() {
 // ================= knowing you're there =================
 
 fn pcfg() -> PresenceConfig {
-    PresenceConfig { enabled: true, ..Default::default() }
+    PresenceConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 fn you() -> Look {
-    Look { faces: 1, you: true }
+    Look {
+        faces: 1,
+        you: true,
+    }
 }
 fn empty() -> Look {
-    Look { faces: 0, you: false }
+    Look {
+        faces: 0,
+        you: false,
+    }
 }
 
 #[test]
@@ -169,14 +207,24 @@ fn coming_back_is_a_single_clear_event() {
     }
     assert_eq!(s.observe(you(), 100), Change::Returned);
     assert_eq!(s.state, Presence::AtDesk);
-    assert_eq!(s.observe(you(), 120), Change::None, "reported once, not every sample");
+    assert_eq!(
+        s.observe(you(), 120),
+        Change::None,
+        "reported once, not every sample"
+    );
 }
 
 #[test]
 fn someone_else_at_your_desk_is_noticed() {
     let mut s = Sensor::new(pcfg());
     s.observe(you(), 0);
-    let c = s.observe(Look { faces: 2, you: true }, 20);
+    let c = s.observe(
+        Look {
+            faces: 2,
+            you: true,
+        },
+        20,
+    );
     assert_eq!(c, Change::StrangerArrived);
     assert_eq!(s.state, Presence::NotAlone);
     assert!(s.state.should_be_discreet(), "private things stay quiet");
@@ -186,7 +234,13 @@ fn someone_else_at_your_desk_is_noticed() {
 #[test]
 fn a_face_that_is_not_yours_is_not_you_being_present() {
     let mut s = Sensor::new(pcfg());
-    s.observe(Look { faces: 1, you: false }, 0);
+    s.observe(
+        Look {
+            faces: 1,
+            you: false,
+        },
+        0,
+    );
     assert_eq!(s.state, Presence::Stranger);
     assert!(!s.state.here());
     assert!(s.state.should_be_discreet());
@@ -264,6 +318,12 @@ fn the_shipped_config_keeps_both_sensors_off_until_you_ask() {
     let t: atlas::voice::ToolsConfig = serde_yaml::from_str(&y).unwrap();
     assert!(!t.voice_id.enabled, "a microphone filter must be opt-in");
     assert!(!t.presence.enabled, "a camera must be opt-in");
-    assert!(t.voice_id.accept > t.voice_id.reject, "there must be a grey band");
-    assert!(t.presence.leave_after > 1, "one missed frame must not mean you left");
+    assert!(
+        t.voice_id.accept > t.voice_id.reject,
+        "there must be a grey band"
+    );
+    assert!(
+        t.presence.leave_after > 1,
+        "one missed frame must not mean you left"
+    );
 }

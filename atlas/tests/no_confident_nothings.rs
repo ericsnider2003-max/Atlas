@@ -11,7 +11,6 @@
 //! wrong, because the general property ("don't lie") is not testable and the
 //! specific ones are.
 
-
 fn src(name: &str) -> String {
     crate::common::read_source_path(&format!("src/{name}")).unwrap_or_else(|| panic!("src/{name}"))
 }
@@ -45,7 +44,11 @@ fn nothing_answers_a_question_from_an_empty_list_it_was_handed() {
     // your SMS codes do not arrive. The real account book was on `self` the
     // whole time — the hub already used it correctly.
     let d = code("daemon.rs");
-    for call in ["goingaway::spoken(&[])", "grading::spoken(&[])", "messaging::spoken(&[]"] {
+    for call in [
+        "goingaway::spoken(&[])",
+        "grading::spoken(&[])",
+        "messaging::spoken(&[]",
+    ] {
         assert!(
             !d.contains(call),
             "{call} answers from a list nothing filled in — that is a verdict on a \
@@ -61,7 +64,9 @@ fn asking_about_travel_uses_the_accounts_atlas_actually_holds() {
     // The arm names its handler (`execute_inner` as a table, 30 Sep 2026):
     // the body is the handler's.
     let at = match d[at..at + 200].find("self.on_travel_prep(") {
-        Some(_) => d.find("fn on_travel_prep(").expect("the travel handler is gone"),
+        Some(_) => d
+            .find("fn on_travel_prep(")
+            .expect("the travel handler is gone"),
         None => at,
     };
     let body = &d[at..(at + 1500).min(d.len())];
@@ -97,7 +102,9 @@ fn nothing_decides_a_route_from_hardcoded_literals() {
         d.contains("fn carry_to_your_other_devices"),
         "the sync answer no longer has a body to observe anything with"
     );
-    let at = d.find("fn carry_to_your_other_devices").expect("sync is gone");
+    let at = d
+        .find("fn carry_to_your_other_devices")
+        .expect("sync is gone");
     let body: String = d[at..(at + 3000).min(d.len())]
         .replace('\\', " ")
         .split_whitespace()
@@ -120,7 +127,9 @@ fn a_post_that_did_not_go_out_is_not_recorded_as_published() {
     // "Irreversible things first — that is what you most need to know". So
     // "While you were away:" reported a publication that never happened.
     let d = code("daemon.rs");
-    let at = d.find("self.publisher.due(").expect("the publish loop is gone");
+    let at = d
+        .find("self.publisher.due(")
+        .expect("the publish loop is gone");
     let body = &d[at..at + 1600];
     assert!(
         !body.contains("Act::Published"),
@@ -136,7 +145,10 @@ fn a_post_that_did_not_go_out_is_not_recorded_as_published() {
         "a due post is neither sent nor held, so it is announced every tick"
     );
     let s = &d[d.find("fn send_post(").expect("send_post is gone")..];
-    assert!(s[..600].contains("not_before"), "an in-flight post can be started again every tick");
+    assert!(
+        s[..600].contains("not_before"),
+        "an in-flight post can be started again every tick"
+    );
 }
 
 #[test]
@@ -172,14 +184,25 @@ fn on_screen_alerts_are_not_switched_off_by_a_stale_second_opinion() {
     // on-screen alert was silently routed to the phone or held, while doctor
     // reported notifications healthy.
     use atlas::notify::{can_notify, NotifyConfig};
-    let cfg = NotifyConfig { enabled: true, tool: None, ..NotifyConfig::default() };
+    let cfg = NotifyConfig {
+        enabled: true,
+        tool: None,
+        ..NotifyConfig::default()
+    };
     assert_eq!(
         can_notify(&cfg),
         atlas::window::can_open(),
         "`can_notify` and `show` disagree about whether Atlas's own window counts"
     );
-    let off = NotifyConfig { enabled: false, tool: None, ..NotifyConfig::default() };
-    assert!(!can_notify(&off), "turning notifications off no longer turns them off");
+    let off = NotifyConfig {
+        enabled: false,
+        tool: None,
+        ..NotifyConfig::default()
+    };
+    assert!(
+        !can_notify(&off),
+        "turning notifications off no longer turns them off"
+    );
 }
 
 #[test]
@@ -191,9 +214,15 @@ fn a_spoken_yes_is_not_recorded_as_proof_of_who_you_are() {
     // which nothing was asked again, on exactly the actions someone thought
     // worth watching.
     use atlas::identity::{Identity, IdentityConfig, Proof};
-    let cfg = IdentityConfig { enabled: true, ..IdentityConfig::default() };
+    let cfg = IdentityConfig {
+        enabled: true,
+        ..IdentityConfig::default()
+    };
     let mut id = Identity::default();
-    assert!(!id.record(Proof::SpokenYes, 100), "a spoken yes was accepted as proof");
+    assert!(
+        !id.record(Proof::SpokenYes, 100),
+        "a spoken yes was accepted as proof"
+    );
     assert!(
         !id.within_grace(&cfg, 101),
         "saying yes once opened the grace window — every watched action is now \
@@ -226,15 +255,28 @@ fn every_guest_restriction_names_an_action_that_exists() {
              produces — so nothing is blocked"
         );
     }
-    assert!(NEVER_AS_A_GUEST.len() >= 10, "the guest restrictions have been thinned out");
+    assert!(
+        NEVER_AS_A_GUEST.len() >= 10,
+        "the guest restrictions have been thinned out"
+    );
 }
 
 #[test]
 fn a_guest_is_blocked_from_the_things_that_speak_as_you() {
     use atlas::profiles::Role;
-    for must_block in ["draft_post", "mail", "review_post", "unlock", "sign_in", "pair"] {
+    for must_block in [
+        "draft_post",
+        "mail",
+        "review_post",
+        "unlock",
+        "sign_in",
+        "pair",
+    ] {
         assert!(!Role::Guest.may(must_block), "a guest may {must_block}");
-        assert!(Role::Owner.may(must_block), "the owner is blocked from {must_block}");
+        assert!(
+            Role::Owner.may(must_block),
+            "the owner is blocked from {must_block}"
+        );
     }
     assert!(Role::Guest.may("say"), "a guest cannot even talk");
 }
@@ -247,7 +289,10 @@ fn pairing_advertises_the_port_the_daemon_will_listen_on() {
     // `kin.port` produced pairings that completed cleanly on both ends and
     // then never connected.
     let m = code("main.rs");
-    assert!(m.contains("fn listening_port("), "the port is worked out in more than one place again");
+    assert!(
+        m.contains("fn listening_port("),
+        "the port is worked out in more than one place again"
+    );
     assert_eq!(
         m.matches("listening_port(").count(),
         3,
@@ -262,7 +307,10 @@ fn a_write_that_failed_is_not_reported_as_a_change_that_stuck() {
     // "Removed.", "Recorded." — a full disk or a read-only folder reported as
     // success, and the change gone at the next start with nothing said.
     let m = code("main.rs");
-    assert!(m.contains("fn keep<"), "the helper that reports a failed save is gone");
+    assert!(
+        m.contains("fn keep<"),
+        "the helper that reports a failed save is gone"
+    );
     let discarded = m.matches("let _ = ").filter(|_| true).count();
     let discarded_saves = m
         .lines()
@@ -285,6 +333,12 @@ fn closing_an_app_is_not_reported_before_it_is_checked() {
     // the report. The assertion is that the *shape* has not got worse.
     let win = code("platform/win.rs");
     let posix = code("platform/posix.rs");
-    assert!(win.contains("taskkill"), "the Windows close path changed shape");
-    assert!(posix.contains("pkill"), "the posix close path changed shape");
+    assert!(
+        win.contains("taskkill"),
+        "the Windows close path changed shape"
+    );
+    assert!(
+        posix.contains("pkill"),
+        "the posix close path changed shape"
+    );
 }

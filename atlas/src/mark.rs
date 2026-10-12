@@ -57,11 +57,26 @@ pub struct Colours {
 }
 
 /// Warm Paper, the lead. The icon's tile is `PAPER`.
-pub const WARM_PAPER: Colours = Colours { front: "#37352F", back: "#D9730D", fold: "#A85708", dot: "#D9730D" };
+pub const WARM_PAPER: Colours = Colours {
+    front: "#37352F",
+    back: "#D9730D",
+    fold: "#A85708",
+    dot: "#D9730D",
+};
 /// Ember Dark. The tile is `EMBER`.
-pub const EMBER_DARK: Colours = Colours { front: "#ECEFF3", back: "#EB9D4A", fold: "#C47A2C", dot: "#EB9D4A" };
+pub const EMBER_DARK: Colours = Colours {
+    front: "#ECEFF3",
+    back: "#EB9D4A",
+    fold: "#C47A2C",
+    dot: "#EB9D4A",
+};
 /// Access (colour-blind safe), on white.
-pub const ACCESS: Colours = Colours { front: "#12151A", back: "#0072B2", fold: "#005A8E", dot: "#0072B2" };
+pub const ACCESS: Colours = Colours {
+    front: "#12151A",
+    back: "#0072B2",
+    fold: "#005A8E",
+    dot: "#0072B2",
+};
 
 /// The app icon's tile on Warm Paper.
 pub const PAPER: &str = "#FBFAF7";
@@ -88,16 +103,26 @@ pub fn shapes(c: &Colours, small: bool) -> String {
         c.back
     );
     if !small {
-        s.push_str(&format!("<path d=\"{}\" fill=\"{}\"/>", path(&FOLD), c.fold));
+        s.push_str(&format!(
+            "<path d=\"{}\" fill=\"{}\"/>",
+            path(&FOLD),
+            c.fold
+        ));
     }
-    s.push_str(&format!("<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\"/>", DOT.0, DOT.1, DOT.2, c.dot));
+    s.push_str(&format!(
+        "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\"/>",
+        DOT.0, DOT.1, DOT.2, c.dot
+    ));
     s
 }
 
 /// A whole SVG file of the mark, with no tile: what `make_marks.py` writes
 /// to `design/mark/`, which a test compares against.
 pub fn svg_for_test(c: &Colours) -> String {
-    format!("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\">{}</svg>\n", shapes(c, false))
+    format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\">{}</svg>\n",
+        shapes(c, false)
+    )
 }
 
 /// The icon Atlas's own windows carry in the taskbar and title bar, in the
@@ -112,7 +137,11 @@ pub fn window_icon() -> std::sync::Arc<eframe::egui::IconData> {
 
 #[cfg(feature = "desktop-ui")]
 pub fn window_icon_for(dark: bool) -> std::sync::Arc<eframe::egui::IconData> {
-    let png: &[u8] = if dark { include_bytes!("../assets/mark-256-dark.png") } else { include_bytes!("../assets/mark-256.png") };
+    let png: &[u8] = if dark {
+        include_bytes!("../assets/mark-256-dark.png")
+    } else {
+        include_bytes!("../assets/mark-256.png")
+    };
     std::sync::Arc::new(eframe::icon_data::from_png_bytes(png).unwrap_or_default())
 }
 
@@ -145,8 +174,16 @@ pub struct Pose {
 }
 
 impl Pose {
-    pub const STILL: Pose =
-        Pose { opacity: 1.0, front_rise: 1.0, back_drop: 1.0, fold_opacity: 1.0, dot_opacity: 1.0, dot_lift: 0.0, dot_scale: 1.0, dim: false };
+    pub const STILL: Pose = Pose {
+        opacity: 1.0,
+        front_rise: 1.0,
+        back_drop: 1.0,
+        fold_opacity: 1.0,
+        dot_opacity: 1.0,
+        dot_lift: 0.0,
+        dot_scale: 1.0,
+        dim: false,
+    };
 }
 
 /// Ease-out (the enter curve), as the design's `cubic-bezier(.16,1,.3,1)`
@@ -168,16 +205,28 @@ fn step(t: f32, from: f32, dur: f32) -> f32 {
 pub fn pose(motion: Motion, t: f32, voice: Option<f32>, still: bool) -> Pose {
     use std::f32::consts::TAU;
     if still {
-        return Pose { dim: motion == Motion::Idle, opacity: if motion == Motion::Idle { 0.7 } else { 1.0 }, ..Pose::STILL };
+        return Pose {
+            dim: motion == Motion::Idle,
+            opacity: if motion == Motion::Idle { 0.7 } else { 1.0 },
+            ..Pose::STILL
+        };
     }
     match motion {
         // A breath over 4.8 s: 0.60..0.85.
-        Motion::Idle => Pose { dim: true, opacity: 0.725 - 0.125 * (t / 4.8 * TAU).cos(), ..Pose::STILL },
+        Motion::Idle => Pose {
+            dim: true,
+            opacity: 0.725 - 0.125 * (t / 4.8 * TAU).cos(),
+            ..Pose::STILL
+        },
         // 1.2 s: the dot rises 26 units toward the crease and settles; the
         // fold lightens as it rises.
         Motion::Thinking => {
             let s = 0.5 - 0.5 * (t / 1.2 * TAU).cos();
-            Pose { dot_lift: 26.0 * s, fold_opacity: 1.0 - 0.45 * s, ..Pose::STILL }
+            Pose {
+                dot_lift: 26.0 * s,
+                fold_opacity: 1.0 - 0.45 * s,
+                ..Pose::STILL
+            }
         }
         Motion::Speaking => {
             let level = voice.unwrap_or_else(|| {
@@ -187,7 +236,11 @@ pub fn pose(motion: Motion, t: f32, voice: Option<f32>, still: bool) -> Pose {
                 let b = (t / 0.43 * TAU).sin();
                 (0.5 + 0.25 * a + 0.25 * b).clamp(0.0, 1.0)
             });
-            Pose { dot_scale: 0.8 + 0.48 * level, back_drop: 1.0 - 0.035 * level, ..Pose::STILL }
+            Pose {
+                dot_scale: 0.8 + 0.48 * level,
+                back_drop: 1.0 - 0.035 * level,
+                ..Pose::STILL
+            }
         }
         // 0.95 s: rise 0-300 ms, fold 300-600, crease 600-750, dot 750-950.
         Motion::Waking => {
@@ -218,7 +271,10 @@ mod tests {
             fold: "color-mix(in srgb, var(--accent) 78%, #000)",
             dot: "var(--accent)",
         };
-        format!("<svg class=mark viewBox='0 0 100 100' aria-hidden=true>{}</svg>", shapes(&c, false).replace('"', "'"))
+        format!(
+            "<svg class=mark viewBox='0 0 100 100' aria-hidden=true>{}</svg>",
+            shapes(&c, false).replace('"', "'")
+        )
     }
 
     fn area(p: &[(f32, f32)]) -> f32 {
@@ -235,11 +291,19 @@ mod tests {
     fn the_strip_meets_itself_at_a_flat_crease_and_never_crosses() {
         // Both legs span the same stretch of the crease: one strip, folded.
         let top = |p: &[(f32, f32)]| {
-            let mut xs: Vec<f32> = p.iter().filter(|(_, y)| (*y - CREASE_Y).abs() < 1e-3).map(|(x, _)| *x).collect();
+            let mut xs: Vec<f32> = p
+                .iter()
+                .filter(|(_, y)| (*y - CREASE_Y).abs() < 1e-3)
+                .map(|(x, _)| *x)
+                .collect();
             xs.sort_by(|a, b| a.total_cmp(b));
             xs
         };
-        assert_eq!(top(&FRONT), top(&BACK), "the legs don't meet along one crease");
+        assert_eq!(
+            top(&FRONT),
+            top(&BACK),
+            "the legs don't meet along one crease"
+        );
         assert_eq!(top(&FRONT).len(), 2, "the crease is an edge, not a point");
         // Nothing sits above the crease.
         for (_, y) in FRONT.iter().chain(BACK.iter()).chain(FOLD.iter()) {
@@ -259,8 +323,14 @@ mod tests {
             let (dx, dy) = (b.0 - a.0, b.1 - a.1);
             ((dy * (DOT.0 - a.0) - dx * (DOT.1 - a.1)).abs() / (dx * dx + dy * dy).sqrt()) - DOT.2
         };
-        assert!(clear(FRONT[1], FRONT[2]) > 4.0, "the dot crowds the ink leg");
-        assert!(clear(BACK[1], BACK[2]) > 4.0, "the dot crowds the orange leg");
+        assert!(
+            clear(FRONT[1], FRONT[2]) > 4.0,
+            "the dot crowds the ink leg"
+        );
+        assert!(
+            clear(BACK[1], BACK[2]) > 4.0,
+            "the dot crowds the orange leg"
+        );
     }
 
     #[test]
@@ -275,18 +345,28 @@ mod tests {
     fn waking_arrives_in_order_and_settles_whole() {
         let at = |t| pose(Motion::Waking, t, None, false);
         assert_eq!(at(0.0).front_rise, 0.0);
-        assert!(at(0.3).front_rise > 0.99 && at(0.3).back_drop < 0.01, "the fold began before the leg had risen");
+        assert!(
+            at(0.3).front_rise > 0.99 && at(0.3).back_drop < 0.01,
+            "the fold began before the leg had risen"
+        );
         assert!(at(0.6).back_drop > 0.99 && at(0.6).fold_opacity < 0.01);
         assert!(at(0.75).dot_opacity < 0.01, "the dot came before the fold");
         let done = at(1.0);
-        assert!(done.front_rise > 0.99 && done.back_drop > 0.99 && done.fold_opacity > 0.99 && done.dot_opacity > 0.99);
+        assert!(
+            done.front_rise > 0.99
+                && done.back_drop > 0.99
+                && done.fold_opacity > 0.99
+                && done.dot_opacity > 0.99
+        );
         assert!(done.dot_lift.abs() < 0.01);
     }
 
     #[test]
     fn thinking_moves_only_the_dot_and_speaking_follows_the_voice() {
         let top = pose(Motion::Thinking, 0.6, None, false);
-        assert!((top.dot_lift - 26.0).abs() < 0.01 && top.front_rise == 1.0 && top.back_drop == 1.0);
+        assert!(
+            (top.dot_lift - 26.0).abs() < 0.01 && top.front_rise == 1.0 && top.back_drop == 1.0
+        );
         let quiet = pose(Motion::Speaking, 0.0, Some(0.0), false);
         let loud = pose(Motion::Speaking, 0.0, Some(1.0), false);
         assert!(loud.dot_scale > quiet.dot_scale && loud.back_drop < quiet.back_drop);
@@ -297,7 +377,11 @@ mod tests {
         for m in [Motion::Thinking, Motion::Speaking, Motion::Waking] {
             for t in [0.0, 0.4, 1.1] {
                 let p = pose(m, t, Some(0.9), true);
-                assert_eq!(Pose { ..p }, Pose::STILL, "{m:?} moved with Reduce Motion on");
+                assert_eq!(
+                    Pose { ..p },
+                    Pose::STILL,
+                    "{m:?} moved with Reduce Motion on"
+                );
             }
         }
         let idle = pose(Motion::Idle, 2.0, None, true);
@@ -306,14 +390,21 @@ mod tests {
 
     #[test]
     fn the_hub_draws_the_same_mark() {
-        assert_eq!(crate::hub::MARK, for_the_hub(), "hub::MARK has drifted from the mark");
+        assert_eq!(
+            crate::hub::MARK,
+            for_the_hub(),
+            "hub::MARK has drifted from the mark"
+        );
     }
 
     #[test]
     fn idle_breathes_slowly_and_dim() {
         let lo = pose(Motion::Idle, 0.0, None, false).opacity;
         let hi = pose(Motion::Idle, 2.4, None, false).opacity;
-        assert!((lo - 0.6).abs() < 0.01 && (hi - 0.85).abs() < 0.01, "{lo} {hi}");
+        assert!(
+            (lo - 0.6).abs() < 0.01 && (hi - 0.85).abs() < 0.01,
+            "{lo} {hi}"
+        );
         assert!(pose(Motion::Idle, 1.0, None, false).dim);
     }
 }

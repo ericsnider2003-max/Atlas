@@ -181,7 +181,9 @@ const NOT_A_CAPABILITY: &[(&str, &str)] = &[
 /// other three it never had the column-zero blind spot.
 fn source_files() -> Vec<(String, String)> {
     fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
-        let Ok(entries) = fs::read_dir(dir) else { return };
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
         let mut paths: Vec<_> = entries.filter_map(|e| e.ok()).map(|e| e.path()).collect();
         paths.sort();
         for p in paths {
@@ -190,9 +192,7 @@ fn source_files() -> Vec<(String, String)> {
                 continue;
             }
             if p.extension().is_some_and(|x| x == "rs") {
-                if let (Some(stem), Ok(text)) =
-                    (p.file_stem(), fs::read_to_string(&p))
-                {
+                if let (Some(stem), Ok(text)) = (p.file_stem(), fs::read_to_string(&p)) {
                     // A `mod.rs` *is* its directory, in Rust and in every
                     // other guard here. Named by its own stem it comes out as
                     // "mod", which is not a module anyone can look up and
@@ -367,8 +367,8 @@ fn named_outside(ty: &str, home: &str, files: &[(String, String)]) -> bool {
             // passed as wired while nothing referenced either — the same
             // false green this whole file was written to remove, reproduced
             // inside it.
-            let names_module = l.contains(&format!("{home}::"))
-                || l.contains(&format!("use crate::{home}"));
+            let names_module =
+                l.contains(&format!("{home}::")) || l.contains(&format!("use crate::{home}"));
             names_module && (mentions(l, ty) || l.trim_end().ends_with("::*;"))
         })
     })

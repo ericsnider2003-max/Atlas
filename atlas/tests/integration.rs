@@ -13,7 +13,14 @@ fn cfg() -> Config {
 }
 
 fn mon(id: u32, x: i32, primary: bool) -> Monitor {
-    Monitor { id, x, y: 0, width: 1920, height: 1040, primary }
+    Monitor {
+        id,
+        x,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary,
+    }
 }
 
 // ---------- config ----------
@@ -103,7 +110,15 @@ fn roles_do_not_depend_on_windows_monitor_numbering() {
 #[test]
 fn fractional_rect_maps_onto_a_negative_origin_monitor() {
     let m = mon(2, -1920, false);
-    let r = to_pixels(&m, FracRect { x: 0.5, y: 0.0, w: 0.5, h: 1.0 });
+    let r = to_pixels(
+        &m,
+        FracRect {
+            x: 0.5,
+            y: 0.0,
+            w: 0.5,
+            h: 1.0,
+        },
+    );
     assert_eq!((r.x, r.y, r.width, r.height), (-960, 0, 960, 1040));
 }
 
@@ -112,15 +127,27 @@ fn fractional_rect_maps_onto_a_negative_origin_monitor() {
 #[test]
 fn workspace_on_launches_and_places_every_app() {
     let c = cfg();
-    let p = MockPlatform::new(vec![mon(1, 0, true), mon(2, -1920, false), mon(3, 1920, false)]);
+    let p = MockPlatform::new(vec![
+        mon(1, 0, true),
+        mon(2, -1920, false),
+        mon(3, 1920, false),
+    ]);
     let r = workspace::workspace_on(&c, &p).unwrap();
     assert!(r.ok(), "failures: {:?}", r.failed);
     assert_eq!(r.placed.len(), c.apps.startup_order.len());
 
-    let launches: Vec<_> = p.actions().iter()
-        .filter_map(|a| match a { Action::Launch(n) => Some(n.clone()), _ => None })
+    let launches: Vec<_> = p
+        .actions()
+        .iter()
+        .filter_map(|a| match a {
+            Action::Launch(n) => Some(n.clone()),
+            _ => None,
+        })
         .collect();
-    assert_eq!(launches, vec!["claude.exe", "discord.exe", "chrome.exe", "notepad.exe"]);
+    assert_eq!(
+        launches,
+        vec!["claude.exe", "discord.exe", "chrome.exe", "notepad.exe"]
+    );
 }
 
 #[test]
@@ -131,23 +158,32 @@ fn a_slow_app_is_waited_for_not_skipped() {
     let r = workspace::workspace_on(&c, &p).unwrap();
     assert!(r.ok(), "failures: {:?}", r.failed);
 
-    let sleeps = p.actions().iter().filter(|a| matches!(a, Action::Sleep(_))).count();
+    let sleeps = p
+        .actions()
+        .iter()
+        .filter(|a| matches!(a, Action::Sleep(_)))
+        .count();
     assert_eq!(sleeps, 12, "should poll exactly as long as needed");
-    assert!(p.actions().iter().any(|a| matches!(a, Action::Place(n, _) if n == "discord.exe")));
+    assert!(p
+        .actions()
+        .iter()
+        .any(|a| matches!(a, Action::Place(n, _) if n == "discord.exe")));
 }
 
 #[test]
 fn one_app_never_appearing_does_not_abort_the_rest() {
     let c = cfg();
-    let p = MockPlatform::new(vec![mon(1, 0, true)])
-        .with_slow_app("chrome.exe", 9999);
+    let p = MockPlatform::new(vec![mon(1, 0, true)]).with_slow_app("chrome.exe", 9999);
     let r = workspace::workspace_on(&c, &p).unwrap();
 
     assert!(!r.ok());
     assert_eq!(r.failed.len(), 1);
     assert_eq!(r.failed[0].0, "chrome");
     assert!(r.placed.contains(&"claude".to_string()));
-    assert!(r.placed.contains(&"discord".to_string()), "apps after the failure still ran");
+    assert!(
+        r.placed.contains(&"discord".to_string()),
+        "apps after the failure still ran"
+    );
 }
 
 // ---------- running on the laptop alone ----------
@@ -163,7 +199,11 @@ fn undocked_atlas_uses_standalone_layouts_not_shrunken_docked_ones() {
         Action::Place(n, r) if n == "chrome.exe" => Some(*r),
         _ => None,
     });
-    assert_eq!(placed_chrome, Some(full), "chrome should take the whole panel");
+    assert_eq!(
+        placed_chrome,
+        Some(full),
+        "chrome should take the whole panel"
+    );
 }
 
 #[test]
@@ -171,14 +211,21 @@ fn docked_only_apps_are_skipped_on_a_single_screen() {
     let c = cfg();
     let p = MockPlatform::new(vec![mon(1, 0, true)]);
     let r = workspace::workspace_on(&c, &p).unwrap();
-    assert!(!r.placed.contains(&"notepad".to_string()), "no room for the side pad");
+    assert!(
+        !r.placed.contains(&"notepad".to_string()),
+        "no room for the side pad"
+    );
     assert!(r.ok(), "skipping is not failing: {:?}", r.failed);
 }
 
 #[test]
 fn the_same_config_still_tiles_properly_when_docked() {
     let c = cfg();
-    let p = MockPlatform::new(vec![mon(1, 0, true), mon(2, -1920, false), mon(3, 1920, false)]);
+    let p = MockPlatform::new(vec![
+        mon(1, 0, true),
+        mon(2, -1920, false),
+        mon(3, 1920, false),
+    ]);
     let r = workspace::workspace_on(&c, &p).unwrap();
     assert!(r.placed.contains(&"notepad".to_string()));
     let side = mon(2, -1920, false);
@@ -187,7 +234,11 @@ fn the_same_config_still_tiles_properly_when_docked() {
         Action::Place(n, r) if n == "chrome.exe" => Some(*r),
         _ => None,
     });
-    assert_eq!(chrome, Some(half), "docked, chrome goes back to half the side screen");
+    assert_eq!(
+        chrome,
+        Some(half),
+        "docked, chrome goes back to half the side screen"
+    );
 }
 
 #[test]
@@ -195,10 +246,18 @@ fn already_running_app_is_placed_without_relaunching() {
     let c = cfg();
     let p = MockPlatform::new(vec![mon(1, 0, true)]);
     workspace::workspace_on(&c, &p).unwrap();
-    let first = p.actions().iter().filter(|a| matches!(a, Action::Launch(_))).count();
+    let first = p
+        .actions()
+        .iter()
+        .filter(|a| matches!(a, Action::Launch(_)))
+        .count();
 
     workspace::workspace_on(&c, &p).unwrap();
-    let second = p.actions().iter().filter(|a| matches!(a, Action::Launch(_))).count();
+    let second = p
+        .actions()
+        .iter()
+        .filter(|a| matches!(a, Action::Launch(_)))
+        .count();
     assert_eq!(first, second, "second boot must not spawn duplicates");
 }
 
@@ -234,7 +293,11 @@ fn a_store_app_is_configured_by_id_not_by_path() {
     let c = cfg();
     let claude = c.apps.get("claude").unwrap();
     assert!(claude.store, "Claude is a Store app on this machine");
-    assert!(claude.launch.contains('!'), "an app id, not a path: {}", claude.launch);
+    assert!(
+        claude.launch.contains('!'),
+        "an app id, not a path: {}",
+        claude.launch
+    );
     assert!(!claude.launch.contains(":\\"), "must not be a file path");
 }
 

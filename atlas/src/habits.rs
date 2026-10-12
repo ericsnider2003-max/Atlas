@@ -88,7 +88,11 @@ impl Habit {
     /// break nor extend it; today not yet done doesn't break it.
     pub fn streak(&self, today: i64) -> u32 {
         let mut n = 0;
-        let mut d = if self.done.contains(&today) { today } else { today - 1 };
+        let mut d = if self.done.contains(&today) {
+            today
+        } else {
+            today - 1
+        };
         while d >= self.since {
             if self.is_paused(d) {
                 d -= 1;
@@ -141,7 +145,9 @@ impl Habits {
         match hits.as_slice() {
             [i] => Ok(*i),
             [] => Err(Refused::NotFound),
-            many => Err(Refused::Which(many.iter().map(|i| self.habits[*i].name.clone()).collect())),
+            many => Err(Refused::Which(
+                many.iter().map(|i| self.habits[*i].name.clone()).collect(),
+            )),
         }
     }
 
@@ -150,14 +156,25 @@ impl Habits {
         if name.is_empty() {
             return Err(Refused::Empty);
         }
-        if self.habits.iter().any(|h| h.name.eq_ignore_ascii_case(name)) {
+        if self
+            .habits
+            .iter()
+            .any(|h| h.name.eq_ignore_ascii_case(name))
+        {
             return Err(Refused::Exists);
         }
         if self.habits.len() >= MAX_HABITS {
             return Err(Refused::Full);
         }
         let days = days.clamp(1, 31);
-        self.habits.push(Habit { name: name.to_string(), times: times.clamp(1, days), days, done: BTreeSet::new(), paused: vec![], since: today });
+        self.habits.push(Habit {
+            name: name.to_string(),
+            times: times.clamp(1, days),
+            days,
+            done: BTreeSet::new(),
+            paused: vec![],
+            since: today,
+        });
         Ok(())
     }
 
@@ -198,21 +215,43 @@ impl Habits {
 
     /// Due today and allowed to be mentioned.
     pub fn due_today(&self, today: i64) -> Vec<&Habit> {
-        self.habits.iter().filter(|h| h.due(today) && !h.never_raised()).collect()
+        self.habits
+            .iter()
+            .filter(|h| h.due(today) && !h.never_raised())
+            .collect()
     }
 
     pub fn said(&self, today: i64) -> String {
         if self.habits.is_empty() {
-            return "No habits yet. \"New habit: read 20 minutes, 5 times a week\" starts one.".into();
+            return "No habits yet. \"New habit: read 20 minutes, 5 times a week\" starts one."
+                .into();
         }
         self.habits
             .iter()
             .map(|h| {
-                let freq = if h.days == 1 { "daily".to_string() } else { format!("{} in {} days", h.times, h.days) };
-                let done = if h.done.contains(&today) { ", done today" } else if h.is_paused(today) { ", paused" } else { "" };
+                let freq = if h.days == 1 {
+                    "daily".to_string()
+                } else {
+                    format!("{} in {} days", h.times, h.days)
+                };
+                let done = if h.done.contains(&today) {
+                    ", done today"
+                } else if h.is_paused(today) {
+                    ", paused"
+                } else {
+                    ""
+                };
                 let streak = h.streak(today);
-                let streak = if h.days == 1 && streak >= 2 { format!(", {streak} days running") } else { String::new() };
-                format!("{} ({freq}): {:.0}% strong{streak}{done}.", h.name, h.strength(today) * 100.0)
+                let streak = if h.days == 1 && streak >= 2 {
+                    format!(", {streak} days running")
+                } else {
+                    String::new()
+                };
+                format!(
+                    "{} ({freq}): {:.0}% strong{streak}{done}.",
+                    h.name,
+                    h.strength(today) * 100.0
+                )
             })
             .collect::<Vec<_>>()
             .join("\n")
@@ -245,21 +284,45 @@ fn number(w: &str) -> Option<u32> {
 /// "new habit: read 20 minutes, 5 times a week" / "new habit stretch daily".
 fn frequency_in(text: &str) -> (String, u32, u32) {
     let low = text.to_ascii_lowercase();
-    for (suffix, t, d) in [(" every day", 1, 1), (" daily", 1, 1), (" each day", 1, 1), (" weekly", 1, 7), (" once a week", 1, 7), (" every week", 1, 7)] {
+    for (suffix, t, d) in [
+        (" every day", 1, 1),
+        (" daily", 1, 1),
+        (" each day", 1, 1),
+        (" weekly", 1, 7),
+        (" once a week", 1, 7),
+        (" every week", 1, 7),
+    ] {
         if let Some(stripped) = low.strip_suffix(suffix) {
-            return (text[..stripped.len()].trim().trim_end_matches(',').trim().to_string(), t, d);
+            return (
+                text[..stripped.len()]
+                    .trim()
+                    .trim_end_matches(',')
+                    .trim()
+                    .to_string(),
+                t,
+                d,
+            );
         }
     }
     // "…, N times a week" / "… N times per week" / "… twice a week"
     let words: Vec<&str> = low.split_whitespace().collect();
     if words.len() >= 3 {
         let n = words.len();
-        let per_week = matches!(words[n - 1], "week" | "weekly") && matches!(words[n - 2], "a" | "per" | "each" | "every");
+        let per_week = matches!(words[n - 1], "week" | "weekly")
+            && matches!(words[n - 2], "a" | "per" | "each" | "every");
         if per_week {
-            let (count, cut) = if words[n - 3] == "times" && n >= 4 { (number(words[n - 4]), n - 4) } else { (number(words[n - 3]), n - 3) };
+            let (count, cut) = if words[n - 3] == "times" && n >= 4 {
+                (number(words[n - 4]), n - 4)
+            } else {
+                (number(words[n - 3]), n - 3)
+            };
             if let Some(c) = count {
                 let name: Vec<&str> = text.split_whitespace().take(cut).collect();
-                return (name.join(" ").trim_end_matches(',').to_string(), c.clamp(1, 7), 7);
+                return (
+                    name.join(" ").trim_end_matches(',').to_string(),
+                    c.clamp(1, 7),
+                    7,
+                );
             }
         }
     }
@@ -269,10 +332,19 @@ fn frequency_in(text: &str) -> (String, u32, u32) {
 pub fn read(said: &str) -> Option<Asked> {
     let s = said.trim().trim_end_matches(['.', '!']);
     let low = s.to_ascii_lowercase();
-    if matches!(low.as_str(), "how are my habits" | "how are my habits?" | "habits" | "my habits" | "show my habits") {
+    if matches!(
+        low.as_str(),
+        "how are my habits" | "how are my habits?" | "habits" | "my habits" | "show my habits"
+    ) {
         return Some(Asked::Show);
     }
-    for lead in ["new habit: ", "new habit ", "add a habit: ", "add habit ", "track the habit "] {
+    for lead in [
+        "new habit: ",
+        "new habit ",
+        "add a habit: ",
+        "add habit ",
+        "track the habit ",
+    ] {
         if low.starts_with(lead) {
             let (name, times, days) = frequency_in(&s[lead.len()..]);
             return (!name.is_empty()).then_some(Asked::Add { name, times, days });
@@ -280,19 +352,35 @@ pub fn read(said: &str) -> Option<Asked> {
     }
     for lead in ["stop tracking ", "delete habit ", "remove habit "] {
         if low.starts_with(lead) {
-            return Some(Asked::Remove { name: s[lead.len()..].trim().to_string() });
+            return Some(Asked::Remove {
+                name: s[lead.len()..].trim().to_string(),
+            });
         }
     }
     for lead in ["undo habit ", "i didn't do my ", "i didn't do "] {
         if low.starts_with(lead) {
-            return Some(Asked::Undo { name: s[lead.len()..].trim().trim_end_matches(" today").to_string() });
+            return Some(Asked::Undo {
+                name: s[lead.len()..]
+                    .trim()
+                    .trim_end_matches(" today")
+                    .to_string(),
+            });
         }
     }
-    for lead in ["did my ", "done my ", "i did my ", "habit done ", "tick off ", "check off "] {
+    for lead in [
+        "did my ",
+        "done my ",
+        "i did my ",
+        "habit done ",
+        "tick off ",
+        "check off ",
+    ] {
         if low.starts_with(lead) {
             let name = s[lead.len()..].trim();
             let name = name.strip_suffix(" today").unwrap_or(name).trim();
-            return (!name.is_empty()).then(|| Asked::Did { name: name.to_string() });
+            return (!name.is_empty()).then(|| Asked::Did {
+                name: name.to_string(),
+            });
         }
     }
     None

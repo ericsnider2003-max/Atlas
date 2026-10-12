@@ -87,7 +87,10 @@ pub enum PollOutcome {
 /// Step one: ask for a device code. Returns what to show the person —
 /// the code and the URL — and what to poll with next.
 pub fn request_device_code(client_id: &str) -> Result<DeviceCode, String> {
-    let body = post_form(DEVICE_CODE_URL, &[("client_id", client_id), ("scope", SCOPE)])?;
+    let body = post_form(
+        DEVICE_CODE_URL,
+        &[("client_id", client_id), ("scope", SCOPE)],
+    )?;
     serde_json::from_str(&body).map_err(|e| format!("couldn't read Microsoft's own response: {e}"))
 }
 
@@ -143,7 +146,9 @@ pub fn refresh(client_id: &str, refresh_token: &str) -> Result<Tokens, String> {
 /// same sign-in together (`connect::access_once`, N5).
 pub fn access(client_id: &str, refresh_token: &str) -> Result<String, String> {
     let key = format!("ms-mail {client_id} {refresh_token}");
-    crate::connect::access_once(&key, crate::store::now(), || refresh(client_id, refresh_token).map(|t| (t.access_token, t.expires_in)))
+    crate::connect::access_once(&key, crate::store::now(), || {
+        refresh(client_id, refresh_token).map(|t| (t.access_token, t.expires_in))
+    })
 }
 
 // ------------------------------------------------------------ rotation (Q7)
@@ -160,8 +165,15 @@ static TO_KEEP: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(
 
 /// The newest refresh token known for one first given as `original`.
 pub fn current(original: &str) -> String {
-    let latest = LATEST.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    latest.iter().rev().find(|(o, _)| o == original).map(|(_, n)| n.clone()).unwrap_or_else(|| original.to_string())
+    let latest = LATEST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    latest
+        .iter()
+        .rev()
+        .find(|(o, _)| o == original)
+        .map(|(_, n)| n.clone())
+        .unwrap_or_else(|| original.to_string())
 }
 
 /// Note a refresh that came back with a different refresh token.
@@ -169,21 +181,33 @@ pub fn rotated(original: &str, new: &str) {
     if new.is_empty() || new == original || new == current(original) {
         return;
     }
-    let mut latest = LATEST.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut latest = LATEST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     latest.retain(|(o, _)| o != original);
     latest.push((original.to_string(), new.to_string()));
     drop(latest);
-    TO_KEEP.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push((original.to_string(), new.to_string()));
+    TO_KEEP
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .push((original.to_string(), new.to_string()));
 }
 
 /// Rotations waiting to be written to the vault: (stored, newer).
 pub fn take_rotations() -> Vec<(String, String)> {
-    std::mem::take(&mut *TO_KEEP.lock().unwrap_or_else(std::sync::PoisonError::into_inner))
+    std::mem::take(
+        &mut *TO_KEEP
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    )
 }
 
 /// Put back what couldn't be kept yet (the vault was locked).
 pub fn keep_later(left: Vec<(String, String)>) {
-    TO_KEEP.lock().unwrap_or_else(std::sync::PoisonError::into_inner).extend(left);
+    TO_KEEP
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .extend(left);
 }
 
 fn parse_poll_response(body: &str) -> PollOutcome {
@@ -220,11 +244,22 @@ pub fn xoauth2_string(user: &str, access_token: &str) -> String {
 /// token on the command line, where any process on the machine can read it,
 /// and found `curl` by searching PATH (Q7, Q9).
 fn post_form(url: &str, fields: &[(&str, &str)]) -> Result<String, String> {
-    let rest = url.strip_prefix("https://").ok_or("Microsoft's address must be https")?;
-    let (host, path) = rest.split_once('/').map(|(h, p)| (h, format!("/{p}"))).unwrap_or((rest, "/".into()));
+    let rest = url
+        .strip_prefix("https://")
+        .ok_or("Microsoft's address must be https")?;
+    let (host, path) = rest
+        .split_once('/')
+        .map(|(h, p)| (h, format!("/{p}")))
+        .unwrap_or((rest, "/".into()));
     let form = fields
         .iter()
-        .map(|(k, v)| format!("{}={}", crate::research::urlencode(k), crate::research::urlencode(v)))
+        .map(|(k, v)| {
+            format!(
+                "{}={}",
+                crate::research::urlencode(k),
+                crate::research::urlencode(v)
+            )
+        })
         .collect::<Vec<_>>()
         .join("&");
     let (resp, _) = crate::http::https_call(
@@ -293,8 +328,14 @@ mod tests {
 
     #[test]
     fn expired_token_and_bad_verification_code_both_mean_start_over() {
-        assert_eq!(parse_poll_response(r#"{"error":"expired_token"}"#), PollOutcome::Expired);
-        assert_eq!(parse_poll_response(r#"{"error":"bad_verification_code"}"#), PollOutcome::Expired);
+        assert_eq!(
+            parse_poll_response(r#"{"error":"expired_token"}"#),
+            PollOutcome::Expired
+        );
+        assert_eq!(
+            parse_poll_response(r#"{"error":"bad_verification_code"}"#),
+            PollOutcome::Expired
+        );
     }
 
     #[test]

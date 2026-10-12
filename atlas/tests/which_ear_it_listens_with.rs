@@ -67,7 +67,10 @@ fn a_microphone_that_cannot_hear_you_is_not_chosen_however_good_its_name_looks()
         "picked {} over the webcam that can actually hear you",
         choice.ear.name()
     );
-    assert!(!choice.why.is_empty(), "a surprising switch has to be explainable");
+    assert!(
+        !choice.why.is_empty(),
+        "a surprising switch has to be explainable"
+    );
 }
 
 #[test]
@@ -99,7 +102,11 @@ fn a_device_that_hears_nothing_is_named_so_you_can_move_it() {
     h.record_level("Microphone Array (Realtek(R) Audio)", -80.0, 100);
     h.record_level("HD Webcam C920", -30.0, 100);
 
-    let deaf: Vec<String> = h.deaf_devices(&cfg).iter().map(|c| c.name.clone()).collect();
+    let deaf: Vec<String> = h
+        .deaf_devices(&cfg)
+        .iter()
+        .map(|c| c.name.clone())
+        .collect();
     assert!(
         deaf.iter().any(|n| n.contains("Realtek")),
         "a microphone that hears nothing was not mentioned: {deaf:?}"
@@ -135,12 +142,18 @@ fn it_asks_to_measure_when_it_has_not_and_stops_asking_when_it_has() {
     let cfg = HearingConfig::default();
     let mut h = Hearing::default();
     h.observe_devices(&devices());
-    assert!(h.needs_calibration(&cfg, 1000), "unmeasured devices should be measured");
+    assert!(
+        h.needs_calibration(&cfg, 1000),
+        "unmeasured devices should be measured"
+    );
 
     for d in devices() {
         h.record_level(&d.name, -30.0, 1000);
     }
-    assert!(!h.needs_calibration(&cfg, 1000), "kept asking after measuring everything");
+    assert!(
+        !h.needs_calibration(&cfg, 1000),
+        "kept asking after measuring everything"
+    );
     // But not forever — rooms and desks change.
     assert!(h.needs_calibration(&cfg, 1000 + cfg.recalibrate_secs + 1));
 }
@@ -160,7 +173,11 @@ fn a_microphone_that_was_unplugged_stops_being_considered() {
     assert_eq!(h.candidates.len(), 2);
     assert!(!h.candidates.iter().any(|c| c.name.contains("Webcam")));
     assert_eq!(
-        h.candidates.iter().find(|c| c.name.contains("AirPods")).unwrap().measured_db,
+        h.candidates
+            .iter()
+            .find(|c| c.name.contains("AirPods"))
+            .unwrap()
+            .measured_db,
         Some(-25.0),
         "unplugging one device forgot what was measured about another"
     );
@@ -172,9 +189,18 @@ fn a_microphone_that_was_unplugged_stops_being_considered() {
 fn the_calibration_command_measures_rather_than_recording() {
     let args = calibration_args("Some Microphone", 1);
     let joined = args.join(" ");
-    assert!(joined.contains("volumedetect"), "not measuring a level: {joined}");
-    assert!(joined.contains("-t 1"), "no time bound on the measurement: {joined}");
-    assert!(joined.contains("null"), "writing a file instead of just measuring: {joined}");
+    assert!(
+        joined.contains("volumedetect"),
+        "not measuring a level: {joined}"
+    );
+    assert!(
+        joined.contains("-t 1"),
+        "no time bound on the measurement: {joined}"
+    );
+    assert!(
+        joined.contains("null"),
+        "writing a file instead of just measuring: {joined}"
+    );
 }
 
 #[test]
@@ -200,4 +226,3 @@ fn a_device_name_is_shortened_for_saying_out_loud_but_never_for_using() {
     assert!(s.len() <= full.len());
     assert!(!s.is_empty());
 }
-

@@ -149,7 +149,9 @@ pub struct NudgeConfig {
     pub personal: bool,
 }
 
-fn d_stalled() -> u64 { 3 * 24 * 3600 }
+fn d_stalled() -> u64 {
+    3 * 24 * 3600
+}
 
 impl Default for NudgeConfig {
     fn default() -> Self {
@@ -209,11 +211,26 @@ pub const GOALS: &str = "goals";
 pub fn goal_words(said: &str) -> String {
     let t = said.trim().trim_end_matches(['.', '!']);
     let lower = t.to_ascii_lowercase();
-    for p in ["my goal is to", "my goal is", "set a goal to", "set a goal", "new goal", "i worked on my goal",
-              "made progress on", "i worked on", "drop the goal", "forget the goal", "i'm done with the goal",
-              "im done with the goal"] {
+    for p in [
+        "my goal is to",
+        "my goal is",
+        "set a goal to",
+        "set a goal",
+        "new goal",
+        "i worked on my goal",
+        "made progress on",
+        "i worked on",
+        "drop the goal",
+        "forget the goal",
+        "i'm done with the goal",
+        "im done with the goal",
+    ] {
         if let Some(i) = lower.find(p) {
-            return t[i + p.len()..].trim().trim_start_matches([':', '-', ',']).trim().to_string();
+            return t[i + p.len()..]
+                .trim()
+                .trim_start_matches([':', '-', ','])
+                .trim()
+                .to_string();
         }
     }
     t.to_string()
@@ -222,12 +239,20 @@ pub fn goal_words(said: &str) -> String {
 /// Which goal someone means: the one sharing the most words with what they
 /// said.
 pub fn which_goal<'a>(goals: &'a [Goal], words: &str) -> Option<&'a Goal> {
-    let said: Vec<String> = words.to_lowercase().split_whitespace().filter(|w| w.len() > 2).map(str::to_string).collect();
+    let said: Vec<String> = words
+        .to_lowercase()
+        .split_whitespace()
+        .filter(|w| w.len() > 2)
+        .map(str::to_string)
+        .collect();
     goals
         .iter()
         .filter(|g| !g.muted)
         .map(|g| {
-            let hits = said.iter().filter(|w| g.what.to_lowercase().contains(w.as_str())).count();
+            let hits = said
+                .iter()
+                .filter(|w| g.what.to_lowercase().contains(w.as_str()))
+                .count();
             (g, hits)
         })
         .filter(|(_, h)| *h > 0)
@@ -248,7 +273,11 @@ pub struct Nudger {
 
 impl Nudger {
     pub fn new(cfg: NudgeConfig) -> Nudger {
-        Nudger { cfg, goals: Vec::new(), last_part: None }
+        Nudger {
+            cfg,
+            goals: Vec::new(),
+            last_part: None,
+        }
     }
 
     /// The part of the day last greeted, kept across a restart: on 30 Sep
@@ -385,7 +414,9 @@ impl Nudger {
             .find(|g| !g.muted && g.relief.is_some())
             .and_then(|g| g.relief.clone());
         let message = match &relief {
-            Some(r) => format!("Looks like we've slowed down. I can take {r} off your plate so you can focus."),
+            Some(r) => format!(
+                "Looks like we've slowed down. I can take {r} off your plate so you can focus."
+            ),
             None => "Looks like we've slowed down. Want to talk through what's next?".into(),
         };
         Some(Nudge {
@@ -430,7 +461,11 @@ impl Nudger {
     /// question is still unasked, and the part-of-day greeting still ungiven.
     pub fn unsaid(&mut self, n: &Nudge) {
         if n.asking_why {
-            if let Some(g) = self.goals.iter_mut().find(|g| Some(&g.id) == n.subject.as_ref()) {
+            if let Some(g) = self
+                .goals
+                .iter_mut()
+                .find(|g| Some(&g.id) == n.subject.as_ref())
+            {
                 g.asked_why = false;
             }
         }
@@ -472,7 +507,9 @@ impl Nudger {
 
     pub fn record(&mut self, subject: Option<&str>, r: Response, t: u64) {
         let Some(id) = subject else { return };
-        let Some(g) = self.goals.iter_mut().find(|g| g.id == id) else { return };
+        let Some(g) = self.goals.iter_mut().find(|g| g.id == id) else {
+            return;
+        };
         match r {
             Response::Accepted => {
                 g.ignored = 0;
@@ -508,7 +545,10 @@ pub fn daypart_with_brief(part: Part, b: &crate::brief::Brief) -> Nudge {
         trigger: Trigger::Daypart,
         subject: None,
         message: format!("{}. {}", part.greeting(), crate::brief::spoken(b)),
-        relief: b.drafted.first().map(|i| format!("the reply to {}", i.from)),
+        relief: b
+            .drafted
+            .first()
+            .map(|i| format!("the reply to {}", i.from)),
         asking_why: false,
         confidence: 0.85,
     }

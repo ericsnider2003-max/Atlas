@@ -35,7 +35,11 @@ impl From<&crate::imap::Message> for Message {
     /// alone to answer, and that's true whether it's eight or three.
     fn from(m: &crate::imap::Message) -> Message {
         let recipients = format!("{},{}", m.to, m.cc);
-        let to_many = recipients.split(',').filter(|s| !s.trim().is_empty()).count() > 1;
+        let to_many = recipients
+            .split(',')
+            .filter(|s| !s.trim().is_empty())
+            .count()
+            > 1;
         Message {
             id: m.uid.to_string(),
             from: m.from.clone(),
@@ -75,7 +79,11 @@ pub(crate) fn parse_rfc2822(s: &str) -> Option<u64> {
     // RFC 2822 allows a two-digit year for backward compatibility with
     // RFC 822; anything below 100 is assumed to be in the current
     // century's neighbourhood the way every mail client already treats it.
-    let year = if year_raw < 100 { year_raw + 2000 } else { year_raw };
+    let year = if year_raw < 100 {
+        year_raw + 2000
+    } else {
+        year_raw
+    };
     let time = parts.next()?;
     let mut t = time.split(':');
     let hour: i64 = t.next()?.parse().ok()?;
@@ -84,7 +92,12 @@ pub(crate) fn parse_rfc2822(s: &str) -> Option<u64> {
     // Every field within a real date and time before any arithmetic: a mail
     // or feed from anywhere can say year 2022022022022026, which overflowed
     // the sum below (found by fuzzing a feed date, tests/parsers_survive_garbage.rs).
-    if !(1..=9999).contains(&year) || !(1..=31).contains(&day) || !(0..24).contains(&hour) || !(0..60).contains(&min) || !(0..=60).contains(&sec) {
+    if !(1..=9999).contains(&year)
+        || !(1..=31).contains(&day)
+        || !(0..24).contains(&hour)
+        || !(0..60).contains(&min)
+        || !(0..=60).contains(&sec)
+    {
         return None;
     }
     let tz = parts.next().unwrap_or("+0000");
@@ -141,8 +154,9 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
-const IMAP_MONTHS: [&str; 12] =
-    ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const IMAP_MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
 /// A date `days_ago` days before `now`, in the `DD-Mon-YYYY` format
 /// IMAP's own `SEARCH SINCE` wants. `now` is a Unix timestamp — the same
@@ -199,30 +213,74 @@ pub struct Triaged {
 }
 
 const ASKS_A_QUESTION: &[&str] = &[
-    "could you", "can you", "would you", "let me know", "what do you think",
-    "your thoughts", "please confirm", "need your", "waiting on your",
-    "when you get a chance", "any update",
+    "could you",
+    "can you",
+    "would you",
+    "let me know",
+    "what do you think",
+    "your thoughts",
+    "please confirm",
+    "need your",
+    "waiting on your",
+    "when you get a chance",
+    "any update",
 ];
 
 const NEEDS_DECIDING: &[&str] = &[
-    "approve", "sign off", "go ahead", "which option", "decide", "your call",
-    "yes or no", "do you want", "shall we", "either", "authorise", "authorize",
+    "approve",
+    "sign off",
+    "go ahead",
+    "which option",
+    "decide",
+    "your call",
+    "yes or no",
+    "do you want",
+    "shall we",
+    "either",
+    "authorise",
+    "authorize",
 ];
 
 const HAS_A_DATE: &[&str] = &[
-    "by friday", "by monday", "by tuesday", "by wednesday", "by thursday",
-    "deadline", "due by", "before the", "expires", "end of day", "eod",
-    "end of week", "eow", "closes on", "last chance", "final notice",
+    "by friday",
+    "by monday",
+    "by tuesday",
+    "by wednesday",
+    "by thursday",
+    "deadline",
+    "due by",
+    "before the",
+    "expires",
+    "end of day",
+    "eod",
+    "end of week",
+    "eow",
+    "closes on",
+    "last chance",
+    "final notice",
 ];
 
 const JUST_TELLING_YOU: &[&str] = &[
-    "fyi", "for your information", "no action needed", "no reply needed",
-    "just so you know", "heads up", "keeping you in the loop",
+    "fyi",
+    "for your information",
+    "no action needed",
+    "no reply needed",
+    "just so you know",
+    "heads up",
+    "keeping you in the loop",
 ];
 
 const NOT_A_PERSON: &[&str] = &[
-    "unsubscribe", "no-reply", "noreply", "newsletter", "notification@",
-    "do not reply", "marketing", "promotions", "webinar", "% off",
+    "unsubscribe",
+    "no-reply",
+    "noreply",
+    "newsletter",
+    "notification@",
+    "do not reply",
+    "marketing",
+    "promotions",
+    "webinar",
+    "% off",
 ];
 
 /// Sort one message.
@@ -231,7 +289,10 @@ pub fn triage(m: &Message) -> Triaged {
     let from = m.from.to_lowercase();
 
     // Not from a person, and nothing to do about it.
-    if NOT_A_PERSON.iter().any(|p| from.contains(p) || t.contains(p)) {
+    if NOT_A_PERSON
+        .iter()
+        .any(|p| from.contains(p) || t.contains(p))
+    {
         return Triaged {
             id: m.id.clone(),
             needs: Needs::Nothing,
@@ -254,7 +315,10 @@ pub fn triage(m: &Message) -> Triaged {
         };
     }
 
-    let date = HAS_A_DATE.iter().find(|d| t.contains(**d)).map(|d| d.to_string());
+    let date = HAS_A_DATE
+        .iter()
+        .find(|d| t.contains(**d))
+        .map(|d| d.to_string());
     let decides = NEEDS_DECIDING.iter().any(|d| t.contains(d));
     let asks = ASKS_A_QUESTION.iter().any(|a| t.contains(a)) || m.body.contains('?');
     let telling = JUST_TELLING_YOU.iter().any(|f| t.contains(f));
@@ -279,7 +343,10 @@ pub fn triage(m: &Message) -> Triaged {
     };
 
     let because = match needs {
-        Needs::Deadline => format!("asks something, and mentions {}", date.clone().unwrap_or_default()),
+        Needs::Deadline => format!(
+            "asks something, and mentions {}",
+            date.clone().unwrap_or_default()
+        ),
         Needs::Decision => "asks you to decide something".into(),
         Needs::Reply => "asks you something directly".into(),
         Needs::Reading if m.to_many => "asks something, but you're one of several".into(),
@@ -341,16 +408,9 @@ pub fn spoken(sorted: &[Triaged]) -> String {
         .collect();
 
     if needing.is_empty() {
-        return format!(
-            "{} in the inbox, none of it needs you.",
-            sorted.len()
-        );
+        return format!("{} in the inbox, none of it needs you.", sorted.len());
     }
-    let mut s = format!(
-        "{} of {} need you.",
-        needing.len(),
-        sorted.len()
-    );
+    let mut s = format!("{} of {} need you.", needing.len(), sorted.len());
     if let Some(first) = needing.first() {
         s.push_str(&format!(" First: {} — {}.", first.gist, first.needs.what()));
         if let Some(w) = &first.by_when {
@@ -359,10 +419,7 @@ pub fn spoken(sorted: &[Triaged]) -> String {
     }
     let draftable = needing.iter().filter(|t| t.draftable).count();
     if draftable > 0 {
-        s.push_str(&format!(
-            " I can draft {} of them.",
-            draftable
-        ));
+        s.push_str(&format!(" I can draft {} of them.", draftable));
     }
     // What can be safely ignored is as much the verdict as what can't. Naming
     // the rest as the pile you can leave unread is the whole point of the
@@ -382,7 +439,10 @@ pub fn spoken(sorted: &[Triaged]) -> String {
 
 /// Everything that can wait, so you can not look at it.
 pub fn can_wait(sorted: &[Triaged]) -> Vec<&Triaged> {
-    sorted.iter().filter(|t| t.needs <= Needs::TheirMove).collect()
+    sorted
+        .iter()
+        .filter(|t| t.needs <= Needs::TheirMove)
+        .collect()
 }
 
 /// You disagreed with how something was sorted. That's the correction worth
@@ -405,7 +465,11 @@ impl Corrections {
     /// Apply what you've said before.
     pub fn adjust(&self, m: &Message, t: Triaged) -> Triaged {
         let from = m.from.to_lowercase();
-        match self.by_sender.iter().find(|(f, _)| from.contains(f.as_str())) {
+        match self
+            .by_sender
+            .iter()
+            .find(|(f, _)| from.contains(f.as_str()))
+        {
             Some((_, needs)) => Triaged {
                 needs: *needs,
                 because: format!("you've told me {} is {}", m.from, needs.what()),
@@ -424,7 +488,10 @@ mod date_and_conversion_tests {
     #[test]
     fn a_normal_date_with_a_negative_offset_matches_the_real_epoch_time() {
         // date -u -d "2026-01-01 09:00:00 -0800" +%s
-        assert_eq!(parse_rfc2822("Thu, 1 Jan 2026 09:00:00 -0800"), Some(1767286800));
+        assert_eq!(
+            parse_rfc2822("Thu, 1 Jan 2026 09:00:00 -0800"),
+            Some(1767286800)
+        );
     }
 
     #[test]
@@ -436,7 +503,10 @@ mod date_and_conversion_tests {
     fn a_leap_year_date_is_handled_correctly() {
         // date -u -d "2000-03-01 00:00:00 +0000" +%s -- 2000 is a leap year
         // (divisible by 400), so this exercises the era/leap-day math.
-        assert_eq!(parse_rfc2822("Wed, 1 Mar 2000 00:00:00 +0000"), Some(951868800));
+        assert_eq!(
+            parse_rfc2822("Wed, 1 Mar 2000 00:00:00 +0000"),
+            Some(951868800)
+        );
     }
 
     #[test]
@@ -497,7 +567,10 @@ mod date_and_conversion_tests {
             ..Default::default()
         };
         let m: Message = (&raw).into();
-        assert!(m.to_many, "a recipient on To plus one on Cc is still several people");
+        assert!(
+            m.to_many,
+            "a recipient on To plus one on Cc is still several people"
+        );
     }
 
     #[test]
@@ -512,7 +585,10 @@ mod date_and_conversion_tests {
 
     #[test]
     fn the_answered_flag_carries_straight_through() {
-        let raw = crate::imap::Message { answered: true, ..Default::default() };
+        let raw = crate::imap::Message {
+            answered: true,
+            ..Default::default()
+        };
         let m: Message = (&raw).into();
         assert!(m.answered);
     }
@@ -523,7 +599,10 @@ mod date_and_conversion_tests {
         assert_eq!(days_from_civil(1970, 1, 2), 1);
         assert_eq!(days_from_civil(1969, 12, 31), -1);
         // 2000 is a leap year (divisible by 400) -- day 60 exists.
-        assert_eq!(days_from_civil(2000, 2, 29), days_from_civil(2000, 3, 1) - 1);
+        assert_eq!(
+            days_from_civil(2000, 2, 29),
+            days_from_civil(2000, 3, 1) - 1
+        );
     }
 
     #[test]

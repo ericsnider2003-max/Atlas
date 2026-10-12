@@ -41,7 +41,14 @@ fn cfg() -> atlas::config::Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 /// A model with a chat endpoint that records every request and answers with
@@ -57,7 +64,10 @@ impl ChatSpy {
     fn saying(text: &str) -> Arc<ChatSpy> {
         Arc::new(ChatSpy {
             asked: Mutex::new(Vec::new()),
-            reply: Mutex::new(ChatReply { text: text.into(), tool_calls: vec![] }),
+            reply: Mutex::new(ChatReply {
+                text: text.into(),
+                tool_calls: vec![],
+            }),
             slow_ms: 0,
         })
     }
@@ -66,7 +76,10 @@ impl ChatSpy {
             asked: Mutex::new(Vec::new()),
             reply: Mutex::new(ChatReply {
                 text: String::new(),
-                tool_calls: vec![ToolCall { name: name.into(), arguments: serde_json::json!({ "arg": arg }) }],
+                tool_calls: vec![ToolCall {
+                    name: name.into(),
+                    arguments: serde_json::json!({ "arg": arg }),
+                }],
             }),
             slow_ms: 0,
         })
@@ -75,10 +88,19 @@ impl ChatSpy {
         self.asked.lock().unwrap().len()
     }
     fn last(&self) -> ChatRequest {
-        self.asked.lock().unwrap().last().cloned().expect("the model was never asked")
+        self.asked
+            .lock()
+            .unwrap()
+            .last()
+            .cloned()
+            .expect("the model was never asked")
     }
     fn last_user(&self) -> String {
-        self.last().messages.last().map(|m| m.content.clone()).unwrap_or_default()
+        self.last()
+            .messages
+            .last()
+            .map(|m| m.content.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -89,7 +111,11 @@ impl Llm for ChatSpy {
     fn native_chat(&self) -> bool {
         true
     }
-    fn chat(&self, req: &ChatRequest, on_text: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> {
+    fn chat(
+        &self,
+        req: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+    ) -> atlas::error::Result<ChatReply> {
         self.asked.lock().unwrap().push(req.clone());
         let r = self.reply.lock().unwrap().clone();
         for word in r.text.split_inclusive(' ') {
@@ -105,8 +131,19 @@ impl Llm for ChatSpy {
     }
 }
 
-fn daemon<'a>(c: &'a atlas::config::Config, p: &'a MockPlatform, llm: Arc<ChatSpy>, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, Some(llm), Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+fn daemon<'a>(
+    c: &'a atlas::config::Config,
+    p: &'a MockPlatform,
+    llm: Arc<ChatSpy>,
+    tag: &str,
+) -> Daemon<'a> {
+    Daemon::new(
+        c,
+        p,
+        Some(llm),
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 // ================= the conversation reaches the model as a conversation =================
@@ -118,16 +155,35 @@ fn a_real_multi_turn_exchange_reaches_the_model_as_separate_messages() {
     let mut d = daemon(&c, &p, spy.clone(), "turns");
 
     let first = d.turn("what are volcanic islands made of", 100);
-    assert!(first.contains("basalt"), "the model's answer is the reply: {first}");
-    *spy.reply.lock().unwrap() = ChatReply { text: "Because the ocean cools the lava quickly.".into(), tool_calls: vec![] };
+    assert!(
+        first.contains("basalt"),
+        "the model's answer is the reply: {first}"
+    );
+    *spy.reply.lock().unwrap() = ChatReply {
+        text: "Because the ocean cools the lava quickly.".into(),
+        tool_calls: vec![],
+    };
     let _ = d.turn("why does it cool so fast", 130);
 
     let m = spy.last().messages;
     let roles: Vec<Role> = m.iter().map(|x| x.role).collect();
-    assert_eq!(roles, vec![Role::System, Role::User, Role::Assistant, Role::User], "{m:#?}");
+    assert_eq!(
+        roles,
+        vec![Role::System, Role::User, Role::Assistant, Role::User],
+        "{m:#?}"
+    );
     assert_eq!(m[1].content, "what are volcanic islands made of");
-    assert!(m[2].content.contains("basalt"), "Atlas's own last line is its own turn: {:?}", m[2]);
-    assert!(m[3].content.ends_with("User said: why does it cool so fast"), "{:?}", m[3]);
+    assert!(
+        m[2].content.contains("basalt"),
+        "Atlas's own last line is its own turn: {:?}",
+        m[2]
+    );
+    assert!(
+        m[3].content
+            .ends_with("User said: why does it cool so fast"),
+        "{:?}",
+        m[3]
+    );
     // Not pasted into the user message any more.
     assert!(!m[3].content.contains("Conversation so far"), "{:?}", m[3]);
 }
@@ -136,13 +192,27 @@ fn a_real_multi_turn_exchange_reaches_the_model_as_separate_messages() {
 fn the_folded_summary_is_one_earlier_line_in_the_system_message() {
     let mut t = atlas::thread::Thread::default();
     t.summary = "Planning a trip to Lisbon in May.".into();
-    t.append("hotels near the river?", "Alfama or Cais do Sodré.", None, 1);
+    t.append(
+        "hotels near the river?",
+        "Alfama or Cais do Sodré.",
+        None,
+        1,
+    );
     let m = t.messages(6, 1200);
     assert_eq!(m[0].role, Role::System);
     assert!(m[0].content.starts_with("Earlier: Planning a trip"));
-    let turn = atlas::brain::Turn { system: "S".into(), history: m, said: "and food?".into(), ..Default::default() };
+    let turn = atlas::brain::Turn {
+        system: "S".into(),
+        history: m,
+        said: "and food?".into(),
+        ..Default::default()
+    };
     let msgs = turn.messages();
-    assert_eq!(msgs.iter().filter(|x| x.role == Role::System).count(), 1, "one system message: {msgs:#?}");
+    assert_eq!(
+        msgs.iter().filter(|x| x.role == Role::System).count(),
+        1,
+        "one system message: {msgs:#?}"
+    );
     assert!(msgs[0].content.contains("Earlier: Planning a trip"));
 }
 
@@ -150,27 +220,51 @@ fn the_folded_summary_is_one_earlier_line_in_the_system_message() {
 fn the_history_keeps_to_its_budget_and_always_keeps_the_last_exchange() {
     let mut t = atlas::thread::Thread::default();
     for i in 0..20 {
-        t.append(&format!("question {i} {}", "x".repeat(400)), &format!("answer {i}"), None, i);
+        t.append(
+            &format!("question {i} {}", "x".repeat(400)),
+            &format!("answer {i}"),
+            None,
+            i,
+        );
     }
     let m = t.messages(6, 300);
     assert!(!m.is_empty());
     assert!(m.last().unwrap().content.starts_with("answer 19"));
     assert!(m.len() <= 12);
     let tiny = t.messages(6, 1);
-    assert_eq!(tiny.len(), 2, "the newest exchange is kept whole even over budget");
+    assert_eq!(
+        tiny.len(),
+        2,
+        "the newest exchange is kept whole even over budget"
+    );
 }
 
 // ================= conversation isn't hijacked by phrases =================
 
 #[test]
 fn conversation_reaches_the_model_rather_than_a_phrase() {
-    for said in ["how's it going", "wait, what do you mean", "what should I eat tonight", "how are you doing", "what is that supposed to mean", "continue the story"] {
+    for said in [
+        "how's it going",
+        "wait, what do you mean",
+        "what should I eat tonight",
+        "how are you doing",
+        "what is that supposed to mean",
+        "continue the story",
+    ] {
         let (c, p) = (cfg(), plat());
         let spy = ChatSpy::saying("Fair question. Here's what I think.");
         let mut d = daemon(&c, &p, spy.clone(), "convo");
         let reply = d.turn(said, 100);
-        assert_eq!(spy.calls(), 1, "{said:?} never reached the model; got {reply:?}");
-        assert!(spy.last_user().ends_with(&format!("User said: {said}")), "{said:?}: {}", spy.last_user());
+        assert_eq!(
+            spy.calls(),
+            1,
+            "{said:?} never reached the model; got {reply:?}"
+        );
+        assert!(
+            spy.last_user().ends_with(&format!("User said: {said}")),
+            "{said:?}: {}",
+            spy.last_user()
+        );
         assert!(!d.attention.is_paused(), "{said:?} paused Atlas");
     }
 }
@@ -190,14 +284,23 @@ fn the_bare_commands_still_work_without_the_model() {
 
     let mut parser = Parser::new(&c.commands);
     // As the daemon tells it before every turn: no other Atlases named.
-    parser.know_names(atlas::intent::KnownNames { apps: vec!["chrome".into()], ..Default::default() });
+    parser.know_names(atlas::intent::KnownNames {
+        apps: vec!["chrome".into()],
+        ..Default::default()
+    });
     assert_eq!(parser.parse("wait"), Intent::Pause);
     assert_eq!(parser.parse("wait please"), Intent::Pause);
     assert_eq!(parser.parse("continue"), Intent::Resume);
-    assert!(matches!(parser.parse("wait, what do you mean"), Intent::Unknown(_)));
+    assert!(matches!(
+        parser.parse("wait, what do you mean"),
+        Intent::Unknown(_)
+    ));
     assert!(matches!(parser.parse("how's it going"), Intent::Unknown(_)));
     assert!(matches!(parser.parse("what is this"), Intent::Unknown(_)));
-    assert!(matches!(parser.parse("can you tell me a joke"), Intent::Unknown(_)));
+    assert!(matches!(
+        parser.parse("can you tell me a joke"),
+        Intent::Unknown(_)
+    ));
 }
 
 #[test]
@@ -218,7 +321,10 @@ fn names_only_phrases_take_only_names_atlas_knows() {
     assert_eq!(p.parse("how is homelab"), Intent::BriefOn("homelab".into()));
     assert!(matches!(p.parse("how is your day"), Intent::Unknown(_)));
     // "open" still takes any name: an app you haven't set up is asked about.
-    assert_eq!(p.parse("open frobnicator"), Intent::OpenApp("frobnicator".into()));
+    assert_eq!(
+        p.parse("open frobnicator"),
+        Intent::OpenApp("frobnicator".into())
+    );
 }
 
 #[test]
@@ -244,9 +350,15 @@ fn a_correction_word_only_counts_at_the_start() {
     let spy = ChatSpy::saying("Mostly pork and beef trimmings.");
     let mut d = daemon(&c, &p, spy.clone(), "actually");
     let reply = d.turn("what is actually in a hot dog", 100);
-    assert!(reply.contains("pork"), "a question with 'actually' in it was filed as a fact: {reply}");
+    assert!(
+        reply.contains("pork"),
+        "a question with 'actually' in it was filed as a fact: {reply}"
+    );
     let learned = d.turn("actually my car is a Honda", 110);
-    assert!(learned.starts_with("Got it"), "a correction that opens with it is still learned: {learned}");
+    assert!(
+        learned.starts_with("Got it"),
+        "a correction that opens with it is still learned: {learned}"
+    );
 }
 
 // ================= every command is a tool =================
@@ -259,12 +371,25 @@ fn every_offered_command_round_trips_through_the_tool_parser() {
     let mut unreachable = Vec::new();
     for e in book.entries() {
         if !book.offered(&e.name) {
-            assert!(atlas::intent::from_tool(&e.name, &serde_json::json!({"arg": "x"}), "x").is_none(), "{} is offered nowhere but callable", e.name);
+            assert!(
+                atlas::intent::from_tool(&e.name, &serde_json::json!({"arg": "x"}), "x").is_none(),
+                "{} is offered nowhere but callable",
+                e.name
+            );
             continue;
         }
         // A sentence the phrases read as this command, and the tool call
         // for it, must come out as the same command.
-        let args = ["", "chrome", "homelab", "focus", "the quarterly report", "sam", "sam to family", "sam to the family group"];
+        let args = [
+            "",
+            "chrome",
+            "homelab",
+            "focus",
+            "the quarterly report",
+            "sam",
+            "sam to family",
+            "sam to the family group",
+        ];
         let mut ok = false;
         'found: for phrase in &e.phrases {
             for a in args {
@@ -273,7 +398,11 @@ fn every_offered_command_round_trips_through_the_tool_parser() {
                 if matches!(parsed, Intent::Unknown(_)) {
                     continue;
                 }
-                let arg = if a.is_empty() { serde_json::json!({}) } else { serde_json::json!({ "arg": a }) };
+                let arg = if a.is_empty() {
+                    serde_json::json!({})
+                } else {
+                    serde_json::json!({ "arg": a })
+                };
                 if let Some(called) = atlas::intent::from_tool(&e.name, &arg, &said) {
                     if std::mem::discriminant(&called) == std::mem::discriminant(&parsed) {
                         ok = true;
@@ -288,18 +417,38 @@ fn every_offered_command_round_trips_through_the_tool_parser() {
         // And its definition is valid.
         let spec = e.spec();
         assert_eq!(spec["function"]["name"], e.name.as_str());
-        assert!(!spec["function"]["description"].as_str().unwrap_or("").is_empty(), "{} has no description", e.name);
+        assert!(
+            !spec["function"]["description"]
+                .as_str()
+                .unwrap_or("")
+                .is_empty(),
+            "{} has no description",
+            e.name
+        );
     }
-    assert!(unreachable.is_empty(), "offered but not reachable by a tool call: {unreachable:?}");
+    assert!(
+        unreachable.is_empty(),
+        "offered but not reachable by a tool call: {unreachable:?}"
+    );
 }
 
 #[test]
 fn every_command_in_commands_yaml_is_described() {
     let c = cfg();
     for cmd in &c.commands.commands {
-        assert!(cmd.describe.as_deref().is_some_and(|d| !d.trim().is_empty()), "{} has no describe:", cmd.intent);
+        assert!(
+            cmd.describe
+                .as_deref()
+                .is_some_and(|d| !d.trim().is_empty()),
+            "{} has no describe:",
+            cmd.intent
+        );
         if let Some(x) = &cmd.expose {
-            assert!(["core", "retrieved", "never"].contains(&x.as_str()), "{}: expose: {x}", cmd.intent);
+            assert!(
+                ["core", "retrieved", "never"].contains(&x.as_str()),
+                "{}: expose: {x}",
+                cmd.intent
+            );
         }
     }
     let book = ToolBook::new(&c.commands);
@@ -308,8 +457,13 @@ fn every_command_in_commands_yaml_is_described() {
     }
     // The file and the code say the same thing about what the model may
     // never choose.
-    let mut in_yaml: Vec<&str> =
-        c.commands.commands.iter().filter(|x| x.expose.as_deref() == Some("never")).map(|x| x.intent.as_str()).collect();
+    let mut in_yaml: Vec<&str> = c
+        .commands
+        .commands
+        .iter()
+        .filter(|x| x.expose.as_deref() == Some("never"))
+        .map(|x| x.intent.as_str())
+        .collect();
     in_yaml.sort();
     in_yaml.dedup();
     let mut in_code: Vec<&str> = atlas::intent::NEVER_FOR_THE_MODEL.to_vec();
@@ -321,12 +475,23 @@ fn every_command_in_commands_yaml_is_described() {
 fn the_core_tools_come_first_in_a_fixed_order_and_the_rest_by_the_sentence() {
     let c = cfg();
     let book = ToolBook::new(&c.commands);
-    let names = |v: Vec<serde_json::Value>| -> Vec<String> { v.iter().map(|t| t["function"]["name"].as_str().unwrap().to_string()).collect() };
+    let names = |v: Vec<serde_json::Value>| -> Vec<String> {
+        v.iter()
+            .map(|t| t["function"]["name"].as_str().unwrap().to_string())
+            .collect()
+    };
     let a = names(book.for_sentence("remind me what's on my flashcards", 6));
     let b = names(book.for_sentence("translate this into French", 6));
-    let core = a.iter().take_while(|n| book.get(n).unwrap().exposure == atlas::intent::Exposure::Core).count();
+    let core = a
+        .iter()
+        .take_while(|n| book.get(n).unwrap().exposure == atlas::intent::Exposure::Core)
+        .count();
     assert!(core >= 10, "{a:?}");
-    assert_eq!(a[..core], b[..core], "the core tools are the same, in the same order");
+    assert_eq!(
+        a[..core],
+        b[..core],
+        "the core tools are the same, in the same order"
+    );
     assert!(a.contains(&"cards".to_string()), "{a:?}");
     assert!(b.contains(&"translate".to_string()), "{b:?}");
     assert!(a.len() <= core + 6 && b.len() <= core + 6);
@@ -334,14 +499,25 @@ fn the_core_tools_come_first_in_a_fixed_order_and_the_rest_by_the_sentence() {
 
 #[test]
 fn brief_on_works_from_the_model_and_the_schema() {
-    let d = atlas::brain::parse_decision(r#"{"action":"brief_on","arg":"homelab","say":""}"#).unwrap();
+    let d =
+        atlas::brain::parse_decision(r#"{"action":"brief_on","arg":"homelab","say":""}"#).unwrap();
     assert_eq!(d.intent, Intent::BriefOn("homelab".into()));
-    assert_eq!(atlas::intent::from_tool("brief_on", &serde_json::json!({"arg": "homelab"}), "how's homelab doing"), Some(Intent::BriefOn("homelab".into())));
+    assert_eq!(
+        atlas::intent::from_tool(
+            "brief_on",
+            &serde_json::json!({"arg": "homelab"}),
+            "how's homelab doing"
+        ),
+        Some(Intent::BriefOn("homelab".into()))
+    );
     // Any command by its name, in the one-prompt schema too.
-    let d = atlas::brain::parse_decision(r#"{"action":"agenda","arg":"tomorrow","say":""}"#).unwrap();
+    let d =
+        atlas::brain::parse_decision(r#"{"action":"agenda","arg":"tomorrow","say":""}"#).unwrap();
     assert_eq!(d.intent, Intent::Agenda("tomorrow".into()));
     // Never the vault.
-    assert!(atlas::brain::parse_decision(r#"{"action":"unlock","arg":"hunter2","say":""}"#).is_err());
+    assert!(
+        atlas::brain::parse_decision(r#"{"action":"unlock","arg":"hunter2","say":""}"#).is_err()
+    );
 }
 
 #[test]
@@ -363,9 +539,17 @@ fn a_consequential_command_the_model_chose_is_asked_about_first() {
     let mut d = daemon(&c, &p, spy.clone(), "handover");
     let reply = d.turn("my sister wants to borrow the laptop for a bit", 100);
     assert_eq!(spy.calls(), 1);
-    assert!(reply.contains("Go ahead?") || reply.to_lowercase().contains("okay?") || reply.contains('?'), "it didn't ask: {reply}");
     assert!(
-        matches!(d.session.pending, atlas::session::Pending::Approval(Intent::HandOver(_), _)),
+        reply.contains("Go ahead?")
+            || reply.to_lowercase().contains("okay?")
+            || reply.contains('?'),
+        "it didn't ask: {reply}"
+    );
+    assert!(
+        matches!(
+            d.session.pending,
+            atlas::session::Pending::Approval(Intent::HandOver(_), _)
+        ),
         "no approval is waiting: {:?}",
         d.session.pending
     );
@@ -377,7 +561,10 @@ fn a_read_tool_the_model_chose_just_runs() {
     let spy = ChatSpy::calling("agenda", "tomorrow");
     let mut d = daemon(&c, &p, spy.clone(), "agenda");
     let reply = d.turn("am I free at all tomorrow", 100);
-    assert!(!matches!(d.session.pending, atlas::session::Pending::Approval(..)), "{reply}");
+    assert!(
+        !matches!(d.session.pending, atlas::session::Pending::Approval(..)),
+        "{reply}"
+    );
     assert!(!reply.contains("Go ahead?"), "{reply}");
 }
 
@@ -388,28 +575,56 @@ fn the_prompt_prefix_is_identical_across_turns_with_different_window_titles() {
     let (c, p) = (cfg(), plat());
     let spy = ChatSpy::saying("Sounds good.");
     let mut d = daemon(&c, &p, spy.clone(), "prefix");
-    *p.active.borrow_mut() = Some(ActiveWindow { process: "chrome.exe".into(), title: "Quarterly numbers - Sheets".into() });
+    *p.active.borrow_mut() = Some(ActiveWindow {
+        process: "chrome.exe".into(),
+        title: "Quarterly numbers - Sheets".into(),
+    });
     // 29 Sep 2026: the window's name goes in only when what was said is
     // about the screen (`doing::refers_to_screen`) -- with Discord in front,
     // Eric's evening was answered as if every sentence were about Discord.
     // These two mention the page and the window.
     let _ = d.turn("what do you think of the plan on this page", 100);
     let first = spy.last().messages;
-    *p.active.borrow_mut() = Some(ActiveWindow { process: "code.exe".into(), title: "main.rs - atlas".into() });
+    *p.active.borrow_mut() = Some(ActiveWindow {
+        process: "code.exe".into(),
+        title: "main.rs - atlas".into(),
+    });
     let _ = d.turn("tell me a joke about the code in this window", 160);
     let second = spy.last().messages;
 
-    assert_eq!(first[0].content, second[0].content, "the system message changed between turns");
-    assert!(!first[0].content.contains("Quarterly numbers"), "the window title is in the stable part");
-    assert!(first.last().unwrap().content.contains("Quarterly numbers"), "the window title is missing from this turn");
-    assert!(second.last().unwrap().content.contains("main.rs"), "the window title is missing from this turn");
+    assert_eq!(
+        first[0].content, second[0].content,
+        "the system message changed between turns"
+    );
+    assert!(
+        !first[0].content.contains("Quarterly numbers"),
+        "the window title is in the stable part"
+    );
+    assert!(
+        first.last().unwrap().content.contains("Quarterly numbers"),
+        "the window title is missing from this turn"
+    );
+    assert!(
+        second.last().unwrap().content.contains("main.rs"),
+        "the window title is missing from this turn"
+    );
     // Neither the time nor a sentence count sits in the stable part.
-    assert!(!first[0].content.contains("At most"), "{}", first[0].content);
+    assert!(
+        !first[0].content.contains("At most"),
+        "{}",
+        first[0].content
+    );
     // The tools that are always offered come first, in the same order.
     // 30 Sep 2026 (the prompt diet, `router`): that is the one capabilities
     // tool now; the rest are picked for each sentence and go after the
     // conversation (`stable_tools` says how many lead).
-    let names = |r: &ChatRequest| -> Vec<String> { r.tools.iter().take(r.stable_tools).map(|t| t["function"]["name"].as_str().unwrap_or("").to_string()).collect() };
+    let names = |r: &ChatRequest| -> Vec<String> {
+        r.tools
+            .iter()
+            .take(r.stable_tools)
+            .map(|t| t["function"]["name"].as_str().unwrap_or("").to_string())
+            .collect()
+    };
     let asked = spy.asked.lock().unwrap();
     assert_eq!(names(&asked[0]), names(&asked[1]));
     assert_eq!(names(&asked[0]), vec!["capabilities".to_string()]);
@@ -421,17 +636,35 @@ fn about_atlas_goes_in_only_when_the_question_is_about_atlas() {
     let spy = ChatSpy::saying("Paris.");
     let mut d = daemon(&c, &p, spy.clone(), "aboutatlas");
     let _ = d.turn("what's the capital of France", 100);
-    assert!(!spy.last_user().contains("About Atlas (you)"), "{}", spy.last_user());
+    assert!(
+        !spy.last_user().contains("About Atlas (you)"),
+        "{}",
+        spy.last_user()
+    );
     let _ = d.turn("where do I change your voice settings", 110);
-    assert!(spy.last_user().contains("About Atlas (you)"), "{}", spy.last_user());
+    assert!(
+        spy.last_user().contains("About Atlas (you)"),
+        "{}",
+        spy.last_user()
+    );
 }
 
 #[test]
 fn a_poem_gets_room_and_a_task_gets_brevity() {
     use atlas::register::{read, Moment, Register};
-    assert_eq!(read("write me a poem about the sea", &Moment::default()), Register::Chatting);
-    assert_eq!(read("write a script to rename my photos", &Moment::default()), Register::Working);
-    assert_eq!(read("say that again", &Moment::default()), Register::Chatting, "'again' alone is not frustration");
+    assert_eq!(
+        read("write me a poem about the sea", &Moment::default()),
+        Register::Chatting
+    );
+    assert_eq!(
+        read("write a script to rename my photos", &Moment::default()),
+        Register::Working
+    );
+    assert_eq!(
+        read("say that again", &Moment::default()),
+        Register::Chatting,
+        "'again' alone is not frustration"
+    );
     assert!(Register::Chatting.max_tokens() > Register::Working.max_tokens());
 }
 
@@ -442,14 +675,23 @@ fn the_stream_stops_at_the_sentence_cap_not_mid_sentence() {
     assert!(!cap.push("That is big. And"), "two sentences in, it stops");
     let mut s = atlas::brain::Sentences::default();
     assert!(s.push("Hello there").is_empty());
-    assert_eq!(s.push(". How are you? I"), vec!["Hello there.".to_string(), "How are you?".to_string()]);
+    assert_eq!(
+        s.push(". How are you? I"),
+        vec!["Hello there.".to_string(), "How are you?".to_string()]
+    );
 }
 
 // ================= the Talk page always answers =================
 
 fn post_talk(d: &mut Daemon, text: &str) {
     let fields = vec![("text".to_string(), text.to_string())];
-    let _ = atlas::hublive::reply(d, atlas::server::Action::HubPost { path: "/hub/talk".into(), fields });
+    let _ = atlas::hublive::reply(
+        d,
+        atlas::server::Action::HubPost {
+            path: "/hub/talk".into(),
+            fields,
+        },
+    );
 }
 
 #[test]
@@ -475,7 +717,10 @@ fn a_talk_turn_does_not_hold_the_loop_while_the_model_thinks() {
     let (c, p) = (cfg(), plat());
     let spy = Arc::new(ChatSpy {
         asked: Mutex::new(Vec::new()),
-        reply: Mutex::new(ChatReply { text: "Once upon a time there was a lighthouse. It kept the light.".into(), tool_calls: vec![] }),
+        reply: Mutex::new(ChatReply {
+            text: "Once upon a time there was a lighthouse. It kept the light.".into(),
+            tool_calls: vec![],
+        }),
         slow_ms: 3_000,
     });
     let mut d = daemon(&c, &p, spy.clone(), "offloop");
@@ -483,11 +728,20 @@ fn a_talk_turn_does_not_hold_the_loop_while_the_model_thinks() {
     let started = std::time::Instant::now();
     let _ = d.tick(100);
     // The tick came back while the model was still on it.
-    assert!(d.talk_is_thinking(), "the tick waited for the model ({:?})", started.elapsed());
-    crate::common::assert_prompt(started.elapsed(), std::time::Duration::from_millis(3_000), "the tick waited for the model");
+    assert!(
+        d.talk_is_thinking(),
+        "the tick waited for the model ({:?})",
+        started.elapsed()
+    );
+    crate::common::assert_prompt(
+        started.elapsed(),
+        std::time::Duration::from_millis(3_000),
+        "the tick waited for the model",
+    );
     // The words so far are there for the Talk page while it thinks.
     let mut seen_partial = false;
-    let until = std::time::Instant::now() + crate::common::allowed(std::time::Duration::from_secs(10));
+    let until =
+        std::time::Instant::now() + crate::common::allowed(std::time::Duration::from_secs(10));
     while d.talk_is_thinking() && std::time::Instant::now() < until {
         seen_partial |= d.talk_so_far().contains("Once upon a time");
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -507,17 +761,25 @@ fn an_expired_parked_question_does_not_eat_the_next_command() {
     let (c, p) = (cfg(), plat());
     let spy = ChatSpy::saying("unused");
     let mut d = daemon(&c, &p, spy.clone(), "expired");
-    d.session.await_approval(Intent::WorkspaceOff, "Shutting down. Go ahead?");
+    d.session
+        .await_approval(Intent::WorkspaceOff, "Shutting down. Go ahead?");
     let _ = d.tick(1_000);
-    let reply = d.turn("open chrome", 1_000 + atlas::daemon::QUESTION_LIFETIME_SECS + 60);
+    let reply = d.turn(
+        "open chrome",
+        1_000 + atlas::daemon::QUESTION_LIFETIME_SECS + 60,
+    );
     assert!(!reply.contains("Left it alone"), "{reply}");
     assert!(reply.to_lowercase().contains("chrome"), "{reply}");
     assert!(
-        !matches!(d.session.pending, atlas::session::Pending::Approval(Intent::WorkspaceOff, _)),
+        !matches!(
+            d.session.pending,
+            atlas::session::Pending::Approval(Intent::WorkspaceOff, _)
+        ),
         "the old question is still waiting"
     );
     // One asked a moment ago is still answered.
-    d.session.await_approval(Intent::WorkspaceOff, "Shutting down. Go ahead?");
+    d.session
+        .await_approval(Intent::WorkspaceOff, "Shutting down. Go ahead?");
     let _ = d.tick(5_000);
     assert_eq!(d.turn("no", 5_030), "Left it alone.");
 }
@@ -527,13 +789,21 @@ fn a_new_request_instead_of_yes_or_no_is_taken_as_itself() {
     let (c, p) = (cfg(), plat());
     let spy = ChatSpy::saying("unused");
     let mut d = daemon(&c, &p, spy.clone(), "newinstead");
-    d.session.await_approval(Intent::WorkspaceOff, "Shutting down. Go ahead?");
+    d.session
+        .await_approval(Intent::WorkspaceOff, "Shutting down. Go ahead?");
     let reply = d.turn("open chrome", 100);
     assert!(!reply.contains("Left it alone"), "{reply}");
     assert!(reply.to_lowercase().contains("chrome"), "{reply}");
-    assert!(!d.session.is_waiting() || !matches!(d.session.pending, atlas::session::Pending::Approval(Intent::WorkspaceOff, _)));
+    assert!(
+        !d.session.is_waiting()
+            || !matches!(
+                d.session.pending,
+                atlas::session::Pending::Approval(Intent::WorkspaceOff, _)
+            )
+    );
     // A plain no is still a no.
-    d.session.await_approval(Intent::WorkspaceOff, "Shutting down. Go ahead?");
+    d.session
+        .await_approval(Intent::WorkspaceOff, "Shutting down. Go ahead?");
     assert_eq!(d.turn("no", 110), "Left it alone.");
 }
 
@@ -545,18 +815,34 @@ fn a_follow_up_about_someone_else_is_still_the_conversation() {
     let said = "yeah what did she say about them after that";
     let cold = Situation::default();
     assert_ne!(assess(said, &cold).directed, Directed::AtAtlas);
-    let warm = Situation { just_spoke: true, ..Default::default() };
+    let warm = Situation {
+        just_spoke: true,
+        ..Default::default()
+    };
     let a = assess(said, &warm);
-    assert_ne!(respond(&a, &warm), Response::Ignore, "a follow-up was dropped in silence: {a:?}");
+    assert_ne!(
+        respond(&a, &warm),
+        Response::Ignore,
+        "a follow-up was dropped in silence: {a:?}"
+    );
 }
 
 // ================= offering to look it up =================
 
 #[test]
 fn not_knowing_or_a_changing_fact_comes_with_an_offer_to_look_it_up() {
-    assert!(atlas::brain::worth_looking_up("who won the game last night?", "I don't know the result."));
-    assert!(atlas::brain::worth_looking_up("what's the weather today", "Probably mild."));
-    assert!(!atlas::brain::worth_looking_up("tell me a joke", "Why did the compiler cross the road?"));
+    assert!(atlas::brain::worth_looking_up(
+        "who won the game last night?",
+        "I don't know the result."
+    ));
+    assert!(atlas::brain::worth_looking_up(
+        "what's the weather today",
+        "Probably mild."
+    ));
+    assert!(!atlas::brain::worth_looking_up(
+        "tell me a joke",
+        "Why did the compiler cross the road?"
+    ));
 }
 
 #[test]
@@ -577,10 +863,17 @@ fn the_offer_is_made_and_answered_as_an_offer() {
     // Something else instead is taken as itself, and the offer dropped.
     let _ = d.turn("who won the game last night?", 200);
     assert!(d.session.is_waiting(), "offered again");
-    *spy.reply.lock().unwrap() = ChatReply { text: "Why did the compiler cross the road?".into(), tool_calls: vec![] };
+    *spy.reply.lock().unwrap() = ChatReply {
+        text: "Why did the compiler cross the road?".into(),
+        tool_calls: vec![],
+    };
     let other = d.turn("never mind that, tell me a joke", 210);
     assert!(spy.calls() > before + 1);
-    assert!(spy.last_user().ends_with("User said: never mind that, tell me a joke"), "the new request didn't reach the model: {other}");
+    assert!(
+        spy.last_user()
+            .ends_with("User said: never mind that, tell me a joke"),
+        "the new request didn't reach the model: {other}"
+    );
     assert!(other.contains("compiler"), "{other}");
 }
 
@@ -594,33 +887,61 @@ fn a_chat_that_fails_falls_back_to_the_one_prompt_path() {
         fn native_chat(&self) -> bool {
             true
         }
-        fn chat(&self, _: &ChatRequest, _: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> {
-            Err(atlas::error::AtlasError::Platform("the model server answered 500: tools not supported".into()))
+        fn chat(
+            &self,
+            _: &ChatRequest,
+            _: &mut dyn FnMut(&str) -> bool,
+        ) -> atlas::error::Result<ChatReply> {
+            Err(atlas::error::AtlasError::Platform(
+                "the model server answered 500: tools not supported".into(),
+            ))
         }
     }
     let c = cfg();
     let p = Parser::new(&c.commands);
     let persona = atlas::persona::Persona::default();
-    let brain = atlas::brain::Brain { llm: &Broken, fallback: &p, voice: Some((&persona, atlas::register::Register::Chatting)) };
-    let turn = atlas::brain::Turn { said: "tell me something interesting".into(), one_prompt: "Now: noon.".into(), ..Default::default() };
+    let brain = atlas::brain::Brain {
+        llm: &Broken,
+        fallback: &p,
+        voice: Some((&persona, atlas::register::Register::Chatting)),
+    };
+    let turn = atlas::brain::Turn {
+        said: "tell me something interesting".into(),
+        one_prompt: "Now: noon.".into(),
+        ..Default::default()
+    };
     let d = brain.converse(&turn, &mut |_| true);
     assert_eq!(d.intent, Intent::Say("Answered the old way.".into()));
 }
 
 #[test]
 fn a_model_without_chat_gets_messages_flattened_into_one_prompt() {
-    let msgs = vec![Msg::system("S"), Msg::user("hi"), Msg::assistant("hello"), Msg::user("User said: how are you")];
+    let msgs = vec![
+        Msg::system("S"),
+        Msg::user("hi"),
+        Msg::assistant("hello"),
+        Msg::user("User said: how are you"),
+    ];
     let (s, u) = atlas::brain::flatten_messages(&msgs);
     assert_eq!(s, "S");
-    assert!(u.starts_with("Conversation so far:\nyou: hi\natlas: hello\n"), "{u}");
+    assert!(
+        u.starts_with("Conversation so far:\nyou: hi\natlas: hello\n"),
+        "{u}"
+    );
     assert!(u.ends_with("User said: how are you"));
 }
 
 #[test]
 fn the_chat_stream_is_read_as_it_arrives() {
     let mut s = atlas::models::ChatStream::default();
-    assert_eq!(s.line(r#"data: {"choices":[{"delta":{"content":"Hel"}}]}"#), Some("Hel".into()));
-    assert_eq!(s.line(r#"data: {"choices":[{"delta":{"content":"lo."}}]}"#), Some("lo.".into()));
+    assert_eq!(
+        s.line(r#"data: {"choices":[{"delta":{"content":"Hel"}}]}"#),
+        Some("Hel".into())
+    );
+    assert_eq!(
+        s.line(r#"data: {"choices":[{"delta":{"content":"lo."}}]}"#),
+        Some("lo.".into())
+    );
     s.line(r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"open_app","arguments":"{\"arg\":"}}]}}]}"#);
     s.line(r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"chrome\"}"}}]}}]}"#);
     s.line("data: [DONE]");
@@ -651,11 +972,21 @@ fn the_server_is_started_for_chat_tools_and_two_slots() {
     for flag in ["--jinja", "--kv-unified", "--cache-reuse"] {
         assert!(args.iter().any(|a| a == flag), "{flag} missing: {args:?}");
     }
-    let np = args.iter().position(|a| a == "-np").map(|i| args[i + 1].clone());
+    let np = args
+        .iter()
+        .position(|a| a == "-np")
+        .map(|i| args[i + 1].clone());
     assert_eq!(np.as_deref(), Some("2"));
     // And the chat address beside Atlas's own completion address.
-    let l = atlas::models::llm_config_for(&m, &atlas::models::ModelsConfig::default(), &atlas::models::server_post());
-    assert_eq!(atlas::models::chat_url_beside(&l).as_deref(), Some("http://127.0.0.1:8080/v1/chat/completions"));
+    let l = atlas::models::llm_config_for(
+        &m,
+        &atlas::models::ModelsConfig::default(),
+        &atlas::models::server_post(),
+    );
+    assert_eq!(
+        atlas::models::chat_url_beside(&l).as_deref(),
+        Some("http://127.0.0.1:8080/v1/chat/completions")
+    );
 }
 
 // ================= against a real llama-server, when one is running =================
@@ -666,10 +997,15 @@ fn the_server_is_started_for_chat_tools_and_two_slots() {
 /// streams it, and that a command comes back as a tool call.
 #[test]
 fn live_llama_server_smoke() {
-    let Ok(port) = std::env::var("ATLAS_LIVE_LLAMA_PORT") else { return };
+    let Ok(port) = std::env::var("ATLAS_LIVE_LLAMA_PORT") else {
+        return;
+    };
     let port: u16 = port.parse().unwrap();
     let c = cfg();
-    let mcfg = atlas::models::ModelsConfig { port, ..Default::default() };
+    let mcfg = atlas::models::ModelsConfig {
+        port,
+        ..Default::default()
+    };
     let model = atlas::models::Model {
         path: "m.gguf".into(),
         id: "Qwen3-VL-4B-Instruct-Q4_K_M".into(),
@@ -681,15 +1017,28 @@ fn live_llama_server_smoke() {
         chat_template: None,
     };
     let lc = atlas::models::llm_config_for(&model, &mcfg, &atlas::models::server_post());
-    let llm = atlas::brain::ShellLlm { cfg: lc, vars: Default::default() };
+    let llm = atlas::brain::ShellLlm {
+        cfg: lc,
+        vars: Default::default(),
+    };
     assert!(llm.native_chat(), "no chat address beside {port}");
     let parser = Parser::new(&c.commands);
     let persona = atlas::persona::Persona::default();
     let book = ToolBook::new(&c.commands);
-    let brain = atlas::brain::Brain { llm: &llm, fallback: &parser, voice: Some((&persona, atlas::register::Register::Chatting)) };
+    let brain = atlas::brain::Brain {
+        llm: &llm,
+        fallback: &parser,
+        voice: Some((&persona, atlas::register::Register::Chatting)),
+    };
     for (said, history) in [
         ("tell me a fun fact about octopuses", vec![]),
-        ("why is that?", vec![Msg::user("tell me a fun fact about octopuses"), Msg::assistant("Octopuses have three hearts.")]),
+        (
+            "why is that?",
+            vec![
+                Msg::user("tell me a fun fact about octopuses"),
+                Msg::assistant("Octopuses have three hearts."),
+            ],
+        ),
         ("open chrome and put it on the left", vec![]),
         ("what's on my calendar tomorrow", vec![]),
         ("am I free tomorrow afternoon?", vec![]),
@@ -697,7 +1046,10 @@ fn live_llama_server_smoke() {
         let turn = atlas::brain::Turn {
             said: said.into(),
             aside: false,
-            system: format!("{}\n\nApps you can open, close or switch to by name: chrome, discord, notepad.", persona.character()),
+            system: format!(
+                "{}\n\nApps you can open, close or switch to by name: chrome, discord, notepad.",
+                persona.character()
+            ),
             history,
             now: persona.for_this_turn_on(atlas::register::Register::Chatting, 3, said, false),
             tools: book.for_sentence(said, 6),
@@ -732,7 +1084,10 @@ fn live_llama_server_smoke() {
 fn the_web_is_for_when_it_was_asked_for_or_changes_by_the_day() {
     let r = ChatReply {
         text: "Octopuses have three hearts.".into(),
-        tool_calls: vec![ToolCall { name: "research".into(), arguments: serde_json::json!({"arg": "octopus facts"}) }],
+        tool_calls: vec![ToolCall {
+            name: "research".into(),
+            arguments: serde_json::json!({"arg": "octopus facts"}),
+        }],
     };
     let d = atlas::brain::decision_from_chat(&r, "tell me a fun fact about octopuses");
     assert_eq!(d.intent, Intent::Say("Octopuses have three hearts.".into()));
@@ -740,10 +1095,12 @@ fn the_web_is_for_when_it_was_asked_for_or_changes_by_the_day() {
     assert_eq!(d.intent, Intent::Research("octopus facts".into()));
 }
 
-
 #[test]
 fn a_quote_marker_the_model_copied_is_not_read_out() {
     // Seen live against llama-server (Qwen3 0.6B, 27 Sep 2026): the model
     // copied the "> " Atlas marks quoted text with onto its own answer.
-    assert_eq!(atlas::brain::spoken_text("> Octopuses have three hearts.").as_deref(), Some("Octopuses have three hearts."));
+    assert_eq!(
+        atlas::brain::spoken_text("> Octopuses have three hearts.").as_deref(),
+        Some("Octopuses have three hearts.")
+    );
 }

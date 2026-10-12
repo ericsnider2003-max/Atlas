@@ -44,7 +44,11 @@ fn it_never_looks_inside_the_places_your_work_lives() {
     // *containing* the word is unaffected.
     for name in ["Documents", "Desktop", "Pictures", "OneDrive", "Dropbox"] {
         assert!(
-            forbidden(&PathBuf::from("C:\\Users\\eric").join(name).join("node_modules")),
+            forbidden(
+                &PathBuf::from("C:\\Users\\eric")
+                    .join(name)
+                    .join("node_modules")
+            ),
             "{name} was walkable"
         );
     }
@@ -55,7 +59,10 @@ fn a_build_folder_inside_documents_is_still_inside_documents() {
     // Nesting is the way an allowlist gets fooled. `node_modules` is on the
     // allowlist; its location is what disqualifies it.
     let p = PathBuf::from("/home/eric/Documents/thesis/node_modules");
-    assert!(forbidden(&p), "a known-safe name let Atlas into a forbidden folder");
+    assert!(
+        forbidden(&p),
+        "a known-safe name let Atlas into a forbidden folder"
+    );
 }
 
 #[test]
@@ -69,7 +76,10 @@ fn it_never_touches_the_recycle_bin() {
 #[test]
 fn it_never_touches_the_operating_system() {
     for name in ["Windows", "System32", "Program Files"] {
-        assert!(forbidden(&PathBuf::from("C:\\").join(name)), "{name} was walkable");
+        assert!(
+            forbidden(&PathBuf::from("C:\\").join(name)),
+            "{name} was walkable"
+        );
     }
 }
 
@@ -111,7 +121,10 @@ fn it_leaves_a_build_folder_you_are_still_using() {
     let root = tmp("recent");
     make(&root, "code/project/node_modules", 60, 0);
     let found = survey(&[root.clone()], now_plus(1));
-    assert!(found.is_empty(), "it offered up a folder from yesterday: {found:?}");
+    assert!(
+        found.is_empty(),
+        "it offered up a folder from yesterday: {found:?}"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -149,7 +162,10 @@ fn every_age_threshold_is_generous() {
     // A week at minimum, because a cache written this morning is a cache in
     // use.
     for (_, kind) in KNOWN {
-        assert!(kind.min_age_days() >= 7, "{kind:?} would offer something a few days old");
+        assert!(
+            kind.min_age_days() >= 7,
+            "{kind:?} would offer something a few days old"
+        );
     }
 }
 
@@ -175,7 +191,10 @@ fn nothing_is_deleted_outright_even_when_chosen() {
         !src.contains("remove_dir_all") && !src.contains("remove_file"),
         "reclaim.rs deletes directly instead of going through the trash"
     );
-    assert!(src.contains("trash.take("), "it no longer routes through the trash");
+    assert!(
+        src.contains("trash.take("),
+        "it no longer routes through the trash"
+    );
 }
 
 #[test]
@@ -210,7 +229,10 @@ fn it_says_the_space_is_reversible_when_it_offers() {
         age_days: 90,
     }];
     let said = spoken(&found);
-    assert!(said.contains("reversible") || said.contains("30 days"), "{said}");
+    assert!(
+        said.contains("reversible") || said.contains("30 days"),
+        "{said}"
+    );
 }
 
 #[test]
@@ -223,7 +245,10 @@ fn finding_nothing_reads_as_nothing_rather_than_as_a_failure() {
 #[test]
 fn the_never_list_covers_the_obvious_disasters() {
     for must in ["Documents", "Desktop", ".git", "Windows", "System32"] {
-        assert!(NEVER.contains(&must), "{must} fell off the never-touch list");
+        assert!(
+            NEVER.contains(&must),
+            "{must} fell off the never-touch list"
+        );
     }
 }
 
@@ -241,11 +266,28 @@ fn the_never_list_covers_the_obvious_disasters() {
 #[test]
 fn the_two_lists_are_governed_by_different_rules() {
     // The line the whole module turns on.
-    for k in [Kind::Temp, Kind::PackageCache, Kind::BuildOutput, Kind::Installer, Kind::Debris] {
-        assert!(k.atlas_may_move(), "{k:?} rebuilds itself and should be movable");
+    for k in [
+        Kind::Temp,
+        Kind::PackageCache,
+        Kind::BuildOutput,
+        Kind::Installer,
+        Kind::Debris,
+    ] {
+        assert!(
+            k.atlas_may_move(),
+            "{k:?} rebuilds itself and should be movable"
+        );
     }
-    for k in [Kind::BigAndOld, Kind::Screenshots, Kind::App, Kind::BigFolder] {
-        assert!(!k.atlas_may_move(), "{k:?} is yours to judge and Atlas must not move it");
+    for k in [
+        Kind::BigAndOld,
+        Kind::Screenshots,
+        Kind::App,
+        Kind::BigFolder,
+    ] {
+        assert!(
+            !k.atlas_may_move(),
+            "{k:?} is yours to judge and Atlas must not move it"
+        );
     }
 }
 
@@ -260,7 +302,10 @@ fn a_big_old_file_is_reported_but_never_movable() {
     let found = atlas::reclaim::whole_disk(&[root.clone()], now_plus(400));
     let big: Vec<_> = found.iter().filter(|c| c.kind == Kind::BigAndOld).collect();
     assert_eq!(big.len(), 1, "the big old file wasn't reported: {found:?}");
-    assert!(!big[0].kind.atlas_may_move(), "Atlas offered to move your video");
+    assert!(
+        !big[0].kind.atlas_may_move(),
+        "Atlas offered to move your video"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -272,7 +317,10 @@ fn a_recent_big_file_is_not_mentioned_at_all() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("current.mp4"), vec![0u8; 250 * 1024 * 1024]).unwrap();
     let found = atlas::reclaim::whole_disk(&[root.clone()], now_plus(2));
-    assert!(found.is_empty(), "it flagged a file from two days ago: {found:?}");
+    assert!(
+        found.is_empty(),
+        "it flagged a file from two days ago: {found:?}"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -282,12 +330,23 @@ fn screenshots_are_named_as_a_folder_not_four_thousand_files() {
     let dir = root.join("Pictures-x").join("Screenshots");
     std::fs::create_dir_all(&dir).unwrap();
     for i in 0..3 {
-        std::fs::write(dir.join(format!("shot{i}.png")), vec![0u8; 40 * 1024 * 1024]).unwrap();
+        std::fs::write(
+            dir.join(format!("shot{i}.png")),
+            vec![0u8; 40 * 1024 * 1024],
+        )
+        .unwrap();
     }
     let found = atlas::reclaim::whole_disk(&[root.clone()], now_plus(200));
-    let shots: Vec<_> = found.iter().filter(|c| c.kind == Kind::Screenshots).collect();
+    let shots: Vec<_> = found
+        .iter()
+        .filter(|c| c.kind == Kind::Screenshots)
+        .collect();
     assert_eq!(shots.len(), 1, "expected one folder entry, got: {found:?}");
-    assert!(shots[0].size_mb >= 100, "it didn't total the folder: {:?}", shots[0]);
+    assert!(
+        shots[0].size_mb >= 100,
+        "it didn't total the folder: {:?}",
+        shots[0]
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -302,7 +361,9 @@ fn a_private_folder_is_sized_but_not_read_into() {
     std::fs::write(docs.join("return.pdf"), vec![0u8; 600 * 1024 * 1024]).unwrap();
     let found = atlas::reclaim::whole_disk(&[root.clone()], now_plus(400));
     assert!(
-        found.iter().all(|c| !c.path.to_string_lossy().contains("return.pdf")),
+        found
+            .iter()
+            .all(|c| !c.path.to_string_lossy().contains("return.pdf")),
         "it listed a file inside Documents: {found:?}"
     );
     assert!(
@@ -355,15 +416,33 @@ fn every_line_says_whether_atlas_will_act_on_it() {
 #[test]
 fn the_summary_separates_what_atlas_can_do_from_what_it_cannot() {
     let all = vec![
-        Candidate { path: PathBuf::from("/a"), size_mb: 100, kind: Kind::BuildOutput, age_days: 90 },
-        Candidate { path: PathBuf::from("/b"), size_mb: 900, kind: Kind::BigAndOld, age_days: 900 },
+        Candidate {
+            path: PathBuf::from("/a"),
+            size_mb: 100,
+            kind: Kind::BuildOutput,
+            age_days: 90,
+        },
+        Candidate {
+            path: PathBuf::from("/b"),
+            size_mb: 900,
+            kind: Kind::BigAndOld,
+            age_days: 900,
+        },
     ];
     let said = atlas::reclaim::report(&all);
     // The numbers must be attributed to the right half. Summing them together
     // would tell you a thousand megabytes are available when only a hundred
     // are anything Atlas can act on.
-    let mine: u64 = all.iter().filter(|c| c.kind.atlas_may_move()).map(|c| c.size_mb).sum();
-    let yours: u64 = all.iter().filter(|c| !c.kind.atlas_may_move()).map(|c| c.size_mb).sum();
+    let mine: u64 = all
+        .iter()
+        .filter(|c| c.kind.atlas_may_move())
+        .map(|c| c.size_mb)
+        .sum();
+    let yours: u64 = all
+        .iter()
+        .filter(|c| !c.kind.atlas_may_move())
+        .map(|c| c.size_mb)
+        .sum();
     assert_eq!(mine, 100);
     assert_eq!(yours, 900);
     assert!(said.contains("100 MB myself"), "{said}");

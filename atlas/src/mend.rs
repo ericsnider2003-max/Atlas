@@ -224,11 +224,41 @@ pub struct Question {
 /// rephrase — and a question it cannot rephrase is one it does not understand
 /// well enough to be asking.
 const NEEDS_CODE: &[&str] = &[
-    "function", "variable", "parameter", "argument", "struct", "enum", "trait",
-    "class", "method", "module", "import", "compile", "compiler", "type error",
-    "null", "none type", "exception", "stack trace", "line ", "borrow",
-    "lifetime", "pointer", "async", "thread", "mutex", "return value",
-    "signature", "generic", "syntax", ".rs", ".py", "()", "::", "_t ", "api",
+    "function",
+    "variable",
+    "parameter",
+    "argument",
+    "struct",
+    "enum",
+    "trait",
+    "class",
+    "method",
+    "module",
+    "import",
+    "compile",
+    "compiler",
+    "type error",
+    "null",
+    "none type",
+    "exception",
+    "stack trace",
+    "line ",
+    "borrow",
+    "lifetime",
+    "pointer",
+    "async",
+    "thread",
+    "mutex",
+    "return value",
+    "signature",
+    "generic",
+    "syntax",
+    ".rs",
+    ".py",
+    "()",
+    "::",
+    "_t ",
+    "api",
 ];
 
 impl Question {
@@ -370,7 +400,6 @@ pub fn about_approval(request: &str) -> Question {
 // So it went, and the moment is written down in the outstanding list instead.
 // A function with no caller and no way to get one is the thing being counted.
 
-
 /// A request, with the things only a programmer says taken out of it.
 ///
 /// The point of `answerable_without_code` is that Atlas has to be able to
@@ -402,7 +431,11 @@ fn plainer(request: &str) -> String {
     words.dedup_by(|a, b| *a == "that" && *b == "that");
 
     let joined = words.join(" ");
-    let trimmed = joined.trim().trim_end_matches(['.', '!', '?']).trim().to_string();
+    let trimmed = joined
+        .trim()
+        .trim_end_matches(['.', '!', '?'])
+        .trim()
+        .to_string();
     if trimmed.is_empty() {
         "that".into()
     } else {

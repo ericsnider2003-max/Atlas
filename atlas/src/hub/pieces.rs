@@ -253,7 +253,9 @@ pub(super) fn opens_word(o: crate::credentials::Opens) -> &'static str {
         crate::credentials::Opens::Nothing => "nothing on its own",
         crate::credentials::Opens::OneThing => "one narrow thing",
         crate::credentials::Opens::AService => "a whole service",
-        crate::credentials::Opens::Everything => "the account and everything that resets through it",
+        crate::credentials::Opens::Everything => {
+            "the account and everything that resets through it"
+        }
     }
 }
 

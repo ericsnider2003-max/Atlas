@@ -1,7 +1,5 @@
 use atlas::awake::{decide, AwakeConfig, Because, Hold, OnWaking, Power, WHAT_THIS_DOES};
-use atlas::daily::{
-    day_of_with, find_dropped, picking_back_up, DailyConfig, Dropped, Rhythm,
-};
+use atlas::daily::{day_of_with, find_dropped, picking_back_up, DailyConfig, Dropped, Rhythm};
 
 const DAY: u64 = 86_400;
 
@@ -26,9 +24,15 @@ fn you_never_have_to_tell_it_when_you_work() {
     // setting they'll get wrong twice a year.
     let r = nine_to_six();
     let hour = r.quiet_hour().expect("it should have worked this out");
-    assert!(!(9..19).contains(&hour), "rolled at {hour}, which is during your day");
+    assert!(
+        !(9..19).contains(&hour),
+        "rolled at {hour}, which is during your day"
+    );
     assert!(r.noticed().unwrap().contains("nothing to set"));
-    assert!(r.noticed().unwrap().contains("keeps adjusting"), "adaptive (F2)");
+    assert!(
+        r.noticed().unwrap().contains("keeps adjusting"),
+        "adaptive (F2)"
+    );
 }
 
 #[test]
@@ -56,7 +60,10 @@ fn a_night_owl_gets_a_later_rollover_without_saying_so() {
         }
     }
     let hour = r.quiet_hour().unwrap();
-    assert!((3..13).contains(&hour), "rolled at {hour} for someone up until 2am");
+    assert!(
+        (3..13).contains(&hour),
+        "rolled at {hour} for someone up until 2am"
+    );
 }
 
 #[test]
@@ -70,7 +77,11 @@ fn a_fortnight_before_it_trusts_itself() {
         }
     }
     assert!(r.quiet_hour().is_none());
-    assert_eq!(r.rolls_at(&DailyConfig::default()), 0, "falls back rather than guessing");
+    assert_eq!(
+        r.rolls_at(&DailyConfig::default()),
+        0,
+        "falls back rather than guessing"
+    );
 }
 
 #[test]
@@ -85,15 +96,26 @@ fn the_rollover_hour_actually_shifts_the_day() {
 // ================= sleep =================
 
 fn plugged_in() -> Power {
-    Power { on_battery: false, battery_pct: 100, lid_closed: false,
-            lid_action: atlas::awake::LidAction::Sleep, external_display: false }
+    Power {
+        on_battery: false,
+        battery_pct: 100,
+        lid_closed: false,
+        lid_action: atlas::awake::LidAction::Sleep,
+        external_display: false,
+    }
 }
 
 #[test]
 fn it_holds_the_machine_up_only_while_something_is_running() {
     let cfg = AwakeConfig::default();
-    assert_eq!(decide(Because::YouAskedForIt, &plugged_in(), 5, &cfg).0, Hold::SystemOnly);
-    assert_eq!(decide(Because::Nothing, &plugged_in(), 0, &cfg).0, Hold::Release);
+    assert_eq!(
+        decide(Because::YouAskedForIt, &plugged_in(), 5, &cfg).0,
+        Hold::SystemOnly
+    );
+    assert_eq!(
+        decide(Because::Nothing, &plugged_in(), 0, &cfg).0,
+        Hold::Release
+    );
 }
 
 #[test]
@@ -126,13 +148,19 @@ fn the_screen_never_stays_on_and_that_is_not_configurable() {
     // And an old config naming the removed key still loads.
     let parsed: AwakeConfig =
         serde_yaml::from_str("enabled: true\nmay_keep_screen_on: true\n").unwrap();
-    assert!(parsed.enabled, "an unknown key must not stop the section parsing");
+    assert!(
+        parsed.enabled,
+        "an unknown key must not stop the section parsing"
+    );
 }
 
 #[test]
 fn a_closed_lid_is_a_decision_you_made_and_is_not_overridden() {
     // How a laptop cooks in a bag.
-    let shut = Power { lid_closed: true, ..plugged_in() };
+    let shut = Power {
+        lid_closed: true,
+        ..plugged_in()
+    };
     let (hold, why) = decide(Because::OvernightWork, &shut, 5, &AwakeConfig::default());
     assert_eq!(hold, Hold::Release);
     assert!(why.contains("running in a bag"));
@@ -140,7 +168,11 @@ fn a_closed_lid_is_a_decision_you_made_and_is_not_overridden() {
 
 #[test]
 fn a_low_battery_wins_over_finishing_the_job() {
-    let low = Power { on_battery: true, battery_pct: 12, ..plugged_in() };
+    let low = Power {
+        on_battery: true,
+        battery_pct: 12,
+        ..plugged_in()
+    };
     let (hold, why) = decide(Because::YouAskedForIt, &low, 5, &AwakeConfig::default());
     assert_eq!(hold, Hold::Release);
     assert!(why.contains("want that in the morning"));
@@ -148,7 +180,12 @@ fn a_low_battery_wins_over_finishing_the_job() {
 
 #[test]
 fn something_holding_the_machine_up_for_hours_is_stuck_not_busy() {
-    let (hold, why) = decide(Because::OvernightWork, &plugged_in(), 200, &AwakeConfig::default());
+    let (hold, why) = decide(
+        Because::OvernightWork,
+        &plugged_in(),
+        200,
+        &AwakeConfig::default(),
+    );
     assert_eq!(hold, Hold::Release);
     assert!(why.contains("Something's stuck"));
 }
@@ -237,8 +274,17 @@ fn a_shut_lid_that_does_nothing_does_not_stop_atlas() {
     assert!(!LidAction::ScreenOff.stops_the_machine());
     assert!(LidAction::Sleep.stops_the_machine());
 
-    let (hold, _) = decide(Because::OvernightWork, &on_a_stand(), 5, &AwakeConfig::default());
-    assert_eq!(hold, Hold::SystemOnly, "shut lid, set to nothing, still working");
+    let (hold, _) = decide(
+        Because::OvernightWork,
+        &on_a_stand(),
+        5,
+        &AwakeConfig::default(),
+    );
+    assert_eq!(
+        hold,
+        Hold::SystemOnly,
+        "shut lid, set to nothing, still working"
+    );
 }
 
 #[test]
@@ -257,17 +303,27 @@ fn a_shut_lid_on_a_machine_that_sleeps_still_stops() {
 fn locked_with_the_screens_off_is_not_sleep() {
     // They look identical from across the room and are completely different:
     // one is still working and one isn't.
-    assert_eq!(running_state(&on_a_stand(), true, true), Running::LockedButUp);
+    assert_eq!(
+        running_state(&on_a_stand(), true, true),
+        Running::LockedButUp
+    );
     assert!(Running::LockedButUp.work_continues());
 
-    let sleeping = Power { lid_action: LidAction::Sleep, external_display: false, ..on_a_stand() };
+    let sleeping = Power {
+        lid_action: LidAction::Sleep,
+        external_display: false,
+        ..on_a_stand()
+    };
     assert_eq!(running_state(&sleeping, true, true), Running::Asleep);
     assert!(!Running::Asleep.work_continues());
 }
 
 #[test]
 fn unlocked_and_in_front_of_you_is_plain_awake() {
-    let open = Power { lid_closed: false, ..on_a_stand() };
+    let open = Power {
+        lid_closed: false,
+        ..on_a_stand()
+    };
     assert_eq!(running_state(&open, false, false), Running::Awake);
 }
 
@@ -293,13 +349,20 @@ fn it_works_out_whether_to_carry_on_rather_than_asking_you() {
 #[test]
 fn how_long_it_slept_stops_mattering_once_the_world_has_been_checked() {
     // That rule existed only because nothing was being checked.
-    assert_eq!(on_waking_checked(&all_clear(), true, 12 * 60), OnWaking::Resume);
+    assert_eq!(
+        on_waking_checked(&all_clear(), true, 12 * 60),
+        OnWaking::Resume
+    );
 }
 
 #[test]
 fn something_that_already_sent_is_the_one_thing_worth_stopping_for() {
     // No amount of checking makes a second email un-sent.
-    let sent = Checked { already_sent_something: true, last_step_completed: false, ..all_clear() };
+    let sent = Checked {
+        already_sent_something: true,
+        last_step_completed: false,
+        ..all_clear()
+    };
     assert_eq!(on_waking_checked(&sent, true, 10), OnWaking::AskFirst);
     let said = woke_checked("the update", OnWaking::AskFirst, &sent);
     assert!(said.contains("might send it twice"));
@@ -307,7 +370,10 @@ fn something_that_already_sent_is_the_one_thing_worth_stopping_for() {
 
 #[test]
 fn something_that_changed_underneath_starts_again_when_that_is_safe() {
-    let moved = Checked { world_unchanged: false, ..all_clear() };
+    let moved = Checked {
+        world_unchanged: false,
+        ..all_clear()
+    };
     assert_eq!(on_waking_checked(&moved, true, 10), OnWaking::StartOver);
     assert_eq!(on_waking_checked(&moved, false, 10), OnWaking::AskFirst);
 }
@@ -316,7 +382,10 @@ fn something_that_changed_underneath_starts_again_when_that_is_safe() {
 fn something_whose_subject_has_gone_is_left_alone() {
     // Starting again would recreate it, which may be exactly what you didn't
     // want.
-    let gone = Checked { subject_still_there: false, ..all_clear() };
+    let gone = Checked {
+        subject_still_there: false,
+        ..all_clear()
+    };
     assert_eq!(on_waking_checked(&gone, true, 10), OnWaking::AskFirst);
     assert!(woke_checked("the export", OnWaking::AskFirst, &gone).contains("has gone"));
 }
@@ -325,7 +394,10 @@ fn something_whose_subject_has_gone_is_left_alone() {
 fn a_check_that_took_too_long_is_not_trusted() {
     // You may want your brief the second you sit down.
     assert!(BUDGET_MS <= 2000);
-    let slow = Checked { took_ms: BUDGET_MS + 1, ..all_clear() };
+    let slow = Checked {
+        took_ms: BUDGET_MS + 1,
+        ..all_clear()
+    };
     assert_eq!(on_waking_checked(&slow, true, 10), OnWaking::AskFirst);
 }
 

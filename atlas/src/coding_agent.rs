@@ -62,7 +62,13 @@ impl Agent {
     /// started in. See the module's notes for where each comes from.
     pub fn args(&self) -> Vec<String> {
         let a: &[&str] = match self {
-            Agent::ClaudeCode => &["-p", "--permission-mode", "acceptEdits", "--output-format", "text"],
+            Agent::ClaudeCode => &[
+                "-p",
+                "--permission-mode",
+                "acceptEdits",
+                "--output-format",
+                "text",
+            ],
             Agent::Codex => &["exec", "--full-auto", "--skip-git-repo-check", "-"],
         };
         a.iter().map(|s| s.to_string()).collect()
@@ -73,7 +79,9 @@ impl Agent {
 /// how a program is looked up handed in: this machine's PATH
 /// (`tools::which`) in Atlas, a stand-in in the tests.
 pub fn installed_with(find: impl Fn(&str) -> Option<String>) -> Option<(Agent, String)> {
-    Agent::ALL.iter().find_map(|a| find(a.program()).map(|p| (*a, p)))
+    Agent::ALL
+        .iter()
+        .find_map(|a| find(a.program()).map(|p| (*a, p)))
 }
 
 /// The marker on a build or change you said yes to handing over.
@@ -96,8 +104,12 @@ pub fn marked(what: &str) -> (Option<&'static str>, &str) {
 pub fn declined(intent: &crate::intent::Intent) -> Option<crate::intent::Intent> {
     use crate::intent::Intent;
     match intent {
-        Intent::Build(w) => w.strip_prefix(HAND_OVER).map(|r| Intent::Build(format!("{OWN_MODELS}{r}"))),
-        Intent::Improve(w) => w.strip_prefix(HAND_OVER).map(|r| Intent::Improve(format!("{OWN_MODELS}{r}"))),
+        Intent::Build(w) => w
+            .strip_prefix(HAND_OVER)
+            .map(|r| Intent::Build(format!("{OWN_MODELS}{r}"))),
+        Intent::Improve(w) => w
+            .strip_prefix(HAND_OVER)
+            .map(|r| Intent::Improve(format!("{OWN_MODELS}{r}"))),
         _ => None,
     }
 }
@@ -132,37 +144,98 @@ pub struct Ran {
 ///
 /// One program, with `input` on its stdin, in `folder`, stopped at the limit
 /// or when Atlas is asked to stop.
-pub(crate) fn run_controlled(agent: Agent, program: &str, folder: &Path, task_text: &str, limit_secs: u64, stop: &dyn Fn() -> bool) -> Ran {
-    run_with_stdin_controlled(program, &agent.args(), folder, task_text, limit_secs, Some(stop))
+pub(crate) fn run_controlled(
+    agent: Agent,
+    program: &str,
+    folder: &Path,
+    task_text: &str,
+    limit_secs: u64,
+    stop: &dyn Fn() -> bool,
+) -> Ran {
+    run_with_stdin_controlled(
+        program,
+        &agent.args(),
+        folder,
+        task_text,
+        limit_secs,
+        Some(stop),
+    )
 }
 
-fn run_with_stdin_controlled(program: &str, args: &[String], folder: &Path, input: &str, limit_secs: u64, stop: Option<&dyn Fn() -> bool>) -> Ran {
+fn run_with_stdin_controlled(
+    program: &str,
+    args: &[String],
+    folder: &Path,
+    input: &str,
+    limit_secs: u64,
+    stop: Option<&dyn Fn() -> bool>,
+) -> Ran {
     let mut command = crate::tools::command(program);
     command.args(args).current_dir(folder);
-    let (finished, said) = crate::tools::run_scoped(&mut command,
-        std::time::Duration::from_secs(limit_secs), 8 * 1024 * 1024, Some(input.into()), stop).said(2000);
+    let (finished, said) = crate::tools::run_scoped(
+        &mut command,
+        std::time::Duration::from_secs(limit_secs),
+        8 * 1024 * 1024,
+        Some(input.into()),
+        stop,
+    )
+    .said(2000);
     Ran { finished, said }
 }
 
 /// Folders never copied into a backup: what a build makes again.
-const NOT_COPIED: &[&str] = &[".git", "target", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".mypy_cache", ".ruff_cache"];
+const NOT_COPIED: &[&str] = &[
+    ".git",
+    "target",
+    "node_modules",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "dist",
+    "build",
+    ".mypy_cache",
+    ".ruff_cache",
+];
 
 /// Keep a copy of a project folder before an agent changes it: every source
 /// file within `most_bytes` in all, build output and `.git` left out
 /// (git has its own history). Returns where the copy is, or why there isn't
 /// one -- in which case the agent isn't run.
-pub(crate) fn keep_a_copy_controlled(folder: &Path, into: &Path, most_bytes: u64, budget: Option<&crate::tools::WorkBudget<'_>>) -> Result<PathBuf, String> {
-    fn walk(from: &Path, to: &Path, left: &mut u64, budget: Option<&crate::tools::WorkBudget<'_>>) -> Result<(), String> {
-        if let Some(b) = budget { b.check()?; }
+pub(crate) fn keep_a_copy_controlled(
+    folder: &Path,
+    into: &Path,
+    most_bytes: u64,
+    budget: Option<&crate::tools::WorkBudget<'_>>,
+) -> Result<PathBuf, String> {
+    fn walk(
+        from: &Path,
+        to: &Path,
+        left: &mut u64,
+        budget: Option<&crate::tools::WorkBudget<'_>>,
+    ) -> Result<(), String> {
+        if let Some(b) = budget {
+            b.check()?;
+        }
         std::fs::create_dir_all(to).map_err(|e| format!("couldn't make {}: {e}", to.display()))?;
-        let entries = std::fs::read_dir(from).map_err(|e| format!("couldn't read {}: {e}", from.display()))?;
+        let entries = std::fs::read_dir(from)
+            .map_err(|e| format!("couldn't read {}: {e}", from.display()))?;
         for entry in entries {
-            if let Some(b) = budget { b.check()?; }
-            let entry = entry.map_err(|error| format!("project copy could not read an entry: {error}"))?;
+            if let Some(b) = budget {
+                b.check()?;
+            }
+            let entry =
+                entry.map_err(|error| format!("project copy could not read an entry: {error}"))?;
             let name = entry.file_name();
             let path = entry.path();
-            let meta = std::fs::symlink_metadata(&path).map_err(|error| format!("project copy could not inspect {}: {error}", path.display()))?;
-            if meta.file_type().is_symlink() { return Err(format!("{} is a link; no complete recovery copy was made", path.display())); }
+            let meta = std::fs::symlink_metadata(&path).map_err(|error| {
+                format!("project copy could not inspect {}: {error}", path.display())
+            })?;
+            if meta.file_type().is_symlink() {
+                return Err(format!(
+                    "{} is a link; no complete recovery copy was made",
+                    path.display()
+                ));
+            }
             if meta.is_dir() {
                 if NOT_COPIED.iter().any(|n| name == *n) {
                     continue;
@@ -170,19 +243,30 @@ pub(crate) fn keep_a_copy_controlled(folder: &Path, into: &Path, most_bytes: u64
                 walk(&path, &to.join(&name), left, budget)?;
             } else if meta.is_file() {
                 if meta.len() > *left {
-                    return Err(format!("{} is bigger than I'll copy before letting an agent loose on it", from.display()));
+                    return Err(format!(
+                        "{} is bigger than I'll copy before letting an agent loose on it",
+                        from.display()
+                    ));
                 }
                 use std::io::{Read, Write};
                 let mut source = std::fs::File::open(&path).map_err(|error| error.to_string())?;
-                let mut copy = std::fs::File::create(to.join(&name)).map_err(|error| error.to_string())?;
+                let mut copy =
+                    std::fs::File::create(to.join(&name)).map_err(|error| error.to_string())?;
                 let mut bytes = [0u8; 64 * 1024];
                 loop {
-                    if let Some(b) = budget { b.check()?; }
+                    if let Some(b) = budget {
+                        b.check()?;
+                    }
                     let read = source.read(&mut bytes).map_err(|error| error.to_string())?;
-                    if read == 0 { break; }
-                    if read as u64 > *left { return Err("The project grew beyond its recovery copy budget; the agent was not run.".into()); }
+                    if read == 0 {
+                        break;
+                    }
+                    if read as u64 > *left {
+                        return Err("The project grew beyond its recovery copy budget; the agent was not run.".into());
+                    }
                     *left -= read as u64;
-                    copy.write_all(&bytes[..read]).map_err(|error| error.to_string())?;
+                    copy.write_all(&bytes[..read])
+                        .map_err(|error| error.to_string())?;
                 }
                 copy.sync_all().map_err(|error| error.to_string())?;
             }
@@ -207,7 +291,10 @@ pub fn files_in(folder: &Path, lang: crate::craft::Lang) -> Vec<PathBuf> {
                     stack.push(p);
                 }
             } else if crate::craft::Lang::of_path(&p.to_string_lossy()) == Some(lang) {
-                let when = e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+                let when = e
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .unwrap_or(std::time::UNIX_EPOCH);
                 found.push((p, when));
             }
         }
@@ -235,29 +322,46 @@ mod tests {
         assert!(c.contains(&"-p".to_string()) && c.contains(&"acceptEdits".to_string()));
         let x = Agent::Codex.args();
         assert_eq!(x.first().map(String::as_str), Some("exec"));
-        assert_eq!(x.last().map(String::as_str), Some("-"), "codex reads the task from stdin");
+        assert_eq!(
+            x.last().map(String::as_str),
+            Some("-"),
+            "codex reads the task from stdin"
+        );
     }
 
     #[test]
     fn a_no_to_the_hand_over_is_a_yes_to_atlas_doing_it() {
         use crate::intent::Intent;
         let asked = Intent::Build(format!("{HAND_OVER}a script that renames photos"));
-        assert_eq!(declined(&asked), Some(Intent::Build(format!("{OWN_MODELS}a script that renames photos"))));
+        assert_eq!(
+            declined(&asked),
+            Some(Intent::Build(format!(
+                "{OWN_MODELS}a script that renames photos"
+            )))
+        );
         assert_eq!(declined(&Intent::Build("plain".into())), None);
         assert_eq!(marked(&format!("{OWN_MODELS}x")), (Some(OWN_MODELS), "x"));
     }
 
     #[test]
     fn recovery_copy_includes_large_files_and_stops_before_start() {
-        let root = std::env::temp_dir().join(format!("atlas-agent-controlled-copy-{}", std::process::id()));
-        let src = root.join("source"); std::fs::create_dir_all(&src).unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "atlas-agent-controlled-copy-{}",
+            std::process::id()
+        ));
+        let src = root.join("source");
+        std::fs::create_dir_all(&src).unwrap();
         let bytes = vec![13u8; 2 * 1024 * 1024 + 17];
         std::fs::write(src.join("large.data"), &bytes).unwrap();
-        let kept = keep_a_copy_controlled(&src, &root.join("complete"), bytes.len() as u64, None).unwrap();
+        let kept =
+            keep_a_copy_controlled(&src, &root.join("complete"), bytes.len() as u64, None).unwrap();
         assert_eq!(std::fs::read(kept.join("large.data")).unwrap(), bytes);
         let stopped = || true;
         let budget = crate::tools::WorkBudget::new(std::time::Duration::from_secs(10), &stopped);
-        assert!(keep_a_copy_controlled(&src, &root.join("canceled"), 10_000_000, Some(&budget)).is_err());
+        assert!(
+            keep_a_copy_controlled(&src, &root.join("canceled"), 10_000_000, Some(&budget))
+                .is_err()
+        );
         assert!(!root.join("canceled").exists());
         assert_eq!(std::fs::read(src.join("large.data")).unwrap(), bytes);
         std::fs::remove_dir_all(root).unwrap();

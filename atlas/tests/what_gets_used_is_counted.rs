@@ -12,7 +12,10 @@ fn every_request_kind_in_the_table_is_a_real_one() {
     let start = session.find("pub fn kind_of").unwrap();
     let body = &session[start..];
     for (kind, ability) in atlas::used::FOR_KIND {
-        assert!(body.contains(&format!("=> \"{kind}\"")), "{kind} isn't a request kind");
+        assert!(
+            body.contains(&format!("=> \"{kind}\"")),
+            "{kind} isn't a request kind"
+        );
         assert_eq!(atlas::used::ability_for(kind), Some(*ability));
     }
 }
@@ -34,8 +37,21 @@ fn a_fresh_count_calls_nothing_unused() {
 #[test]
 fn a_free_win_that_is_not_on_has_its_button() {
     let wins = vec![
-        atlas::hub::FreeWin { what: "Meaning vectors".into(), worth: "fast".into(), here: "Not here yet.".into(), get: Some(("Get the meaning model (91 MB)".into(), "get-understanding".into())) },
-        atlas::hub::FreeWin { what: "Learned routes".into(), worth: "large".into(), here: "On here.".into(), get: None },
+        atlas::hub::FreeWin {
+            what: "Meaning vectors".into(),
+            worth: "fast".into(),
+            here: "Not here yet.".into(),
+            get: Some((
+                "Get the meaning model (91 MB)".into(),
+                "get-understanding".into(),
+            )),
+        },
+        atlas::hub::FreeWin {
+            what: "Learned routes".into(),
+            worth: "large".into(),
+            here: "On here.".into(),
+            get: None,
+        },
     ];
     let html = atlas::hub::recommendations_page(&[], None, &wins);
     assert!(html.contains("value='get-understanding'"), "{html}");

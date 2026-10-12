@@ -40,7 +40,13 @@ pub trait Net {
     fn get(&self, host: &str, path: &str, headers: &[(&str, &str)]) -> Result<Reply, String>;
     fn post_form(&self, host: &str, path: &str, form: &str) -> Result<Reply, String>;
     /// A JSON body (TikTok's `video.list` is a POST).
-    fn post_json(&self, host: &str, path: &str, headers: &[(&str, &str)], body: &str) -> Result<Reply, String>;
+    fn post_json(
+        &self,
+        host: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: &str,
+    ) -> Result<Reply, String>;
 }
 
 /// The real one: TLS, a descriptive User-Agent, ten seconds.
@@ -48,9 +54,12 @@ pub struct Https;
 
 /// Who Atlas says it is. Feed servers ask for a real description, and
 /// Reddit refuses the default ones outright.
-pub const USER_AGENT: &str = "PersonalAtlas/1.0 (a personal assistant reading public feeds for its owner; low volume)";
+pub const USER_AGENT: &str =
+    "PersonalAtlas/1.0 (a personal assistant reading public feeds for its owner; low volume)";
 
-fn reply_of(r: crate::error::Result<(crate::http::Response, Vec<(String, String)>)>) -> Result<Reply, String> {
+fn reply_of(
+    r: crate::error::Result<(crate::http::Response, Vec<(String, String)>)>,
+) -> Result<Reply, String> {
     let (resp, headers) = r.map_err(|e| e.to_string())?;
     let header = |k: &str| headers.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
     Ok(Reply {
@@ -65,7 +74,14 @@ impl Net for Https {
     fn get(&self, host: &str, path: &str, headers: &[(&str, &str)]) -> Result<Reply, String> {
         let mut h = vec![("User-Agent", USER_AGENT)];
         h.extend_from_slice(headers);
-        reply_of(crate::http::https_call("GET", host, path, &h, None, std::time::Duration::from_secs(10)))
+        reply_of(crate::http::https_call(
+            "GET",
+            host,
+            path,
+            &h,
+            None,
+            std::time::Duration::from_secs(10),
+        ))
     }
     fn post_form(&self, host: &str, path: &str, form: &str) -> Result<Reply, String> {
         reply_of(crate::http::https_call(
@@ -77,10 +93,23 @@ impl Net for Https {
             std::time::Duration::from_secs(10),
         ))
     }
-    fn post_json(&self, host: &str, path: &str, headers: &[(&str, &str)], body: &str) -> Result<Reply, String> {
+    fn post_json(
+        &self,
+        host: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: &str,
+    ) -> Result<Reply, String> {
         let mut h = vec![("User-Agent", USER_AGENT)];
         h.extend_from_slice(headers);
-        reply_of(crate::http::https_call("POST", host, path, &h, Some(("application/json", body)), std::time::Duration::from_secs(10)))
+        reply_of(crate::http::https_call(
+            "POST",
+            host,
+            path,
+            &h,
+            Some(("application/json", body)),
+            std::time::Duration::from_secs(10),
+        ))
     }
 }
 
@@ -107,7 +136,8 @@ fn json_of(r: Reply, what: &str) -> Result<Value, String> {
 }
 
 fn n(v: &Value) -> Option<u64> {
-    v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+    v.as_u64()
+        .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
 }
 
 /// ISO 8601 duration ("PT1M3S", "P0D") to seconds.
@@ -171,7 +201,12 @@ pub fn yt_headers(key: &str) -> Vec<(&'static str, &str)> {
 }
 
 /// Your channel and its latest videos, from the Data API. Four units.
-pub fn youtube_own(net: &dyn Net, key: &str, channel: &str, now: u64) -> Result<Vec<Record>, String> {
+pub fn youtube_own(
+    net: &dyn Net,
+    key: &str,
+    channel: &str,
+    now: u64,
+) -> Result<Vec<Record>, String> {
     let host = "www.googleapis.com";
     let who = channel.trim();
     // Signed in with no channel named: the channel is the one you signed in as.
@@ -180,38 +215,95 @@ pub fn youtube_own(net: &dyn Net, key: &str, channel: &str, now: u64) -> Result<
     } else if who.starts_with("UC") && !who.contains('@') {
         format!("id={}", enc(who))
     } else {
-        format!("forHandle={}", enc(&format!("@{}", who.trim_start_matches('@'))))
+        format!(
+            "forHandle={}",
+            enc(&format!("@{}", who.trim_start_matches('@')))
+        )
     };
     let (q, h) = (yt_query(key), yt_headers(key));
-    let ch = json_of(net.get(host, &format!("/youtube/v3/channels?part=statistics,contentDetails,snippet&{sel}{q}"), &h)?, "YouTube (your channel)")?;
-    let item = ch.pointer("/items/0").ok_or_else(|| if who.is_empty() { "your Google sign-in has no YouTube channel".to_string() } else { format!("YouTube has no channel {who}") })?;
+    let ch = json_of(
+        net.get(
+            host,
+            &format!("/youtube/v3/channels?part=statistics,contentDetails,snippet&{sel}{q}"),
+            &h,
+        )?,
+        "YouTube (your channel)",
+    )?;
+    let item = ch.pointer("/items/0").ok_or_else(|| {
+        if who.is_empty() {
+            "your Google sign-in has no YouTube channel".to_string()
+        } else {
+            format!("YouTube has no channel {who}")
+        }
+    })?;
     let stats = item.get("statistics").cloned().unwrap_or(Value::Null);
-    let handle = item.pointer("/snippet/customUrl").and_then(|v| v.as_str()).unwrap_or(who).to_string();
-    let hidden = stats.get("hiddenSubscriberCount").and_then(|v| v.as_bool()).unwrap_or(false);
+    let handle = item
+        .pointer("/snippet/customUrl")
+        .and_then(|v| v.as_str())
+        .unwrap_or(who)
+        .to_string();
+    let hidden = stats
+        .get("hiddenSubscriberCount")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let mut out = vec![Record::Account(AccountSnap {
         platform: Platform::Youtube,
         handle: handle.clone(),
         day: super::social_day(now),
         taken: now,
-        followers: if hidden { None } else { stats.get("subscriberCount").and_then(n) },
+        followers: if hidden {
+            None
+        } else {
+            stats.get("subscriberCount").and_then(n)
+        },
         following: None,
         posts: stats.get("videoCount").and_then(n),
         source: "the YouTube Data API".into(),
-        m: Metrics { views: stats.get("viewCount").and_then(n), ..Default::default() },
+        m: Metrics {
+            views: stats.get("viewCount").and_then(n),
+            ..Default::default()
+        },
     })];
-    let uploads = item.pointer("/contentDetails/relatedPlaylists/uploads").and_then(|v| v.as_str()).ok_or("YouTube didn't say where your uploads are")?;
-    let pl = json_of(net.get(host, &format!("/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId={}{q}", enc(uploads)), &h)?, "YouTube (your uploads)")?;
+    let uploads = item
+        .pointer("/contentDetails/relatedPlaylists/uploads")
+        .and_then(|v| v.as_str())
+        .ok_or("YouTube didn't say where your uploads are")?;
+    let pl = json_of(
+        net.get(
+            host,
+            &format!(
+                "/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId={}{q}",
+                enc(uploads)
+            ),
+            &h,
+        )?,
+        "YouTube (your uploads)",
+    )?;
     let ids: Vec<String> = pl
         .get("items")
         .and_then(|v| v.as_array())
         .into_iter()
         .flatten()
-        .filter_map(|i| i.pointer("/contentDetails/videoId").and_then(|v| v.as_str()).map(str::to_string))
+        .filter_map(|i| {
+            i.pointer("/contentDetails/videoId")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
         .collect();
     if ids.is_empty() {
         return Ok(out);
     }
-    let vids = json_of(net.get(host, &format!("/youtube/v3/videos?part=statistics,contentDetails,snippet&id={}{q}", ids.join(",")), &h)?, "YouTube (your videos)")?;
+    let vids = json_of(
+        net.get(
+            host,
+            &format!(
+                "/youtube/v3/videos?part=statistics,contentDetails,snippet&id={}{q}",
+                ids.join(",")
+            ),
+            &h,
+        )?,
+        "YouTube (your videos)",
+    )?;
     out.extend(youtube_videos(&vids, now, "the YouTube Data API"));
     Ok(out)
 }
@@ -231,9 +323,21 @@ pub fn youtube_videos(v: &Value, now: u64, source: &str) -> Vec<Record> {
                 id,
                 day: super::social_day(now),
                 taken: now,
-                posted: it.pointer("/snippet/publishedAt").and_then(|x| x.as_str()).and_then(rfc3339),
-                text: it.pointer("/snippet/title").and_then(|x| x.as_str()).unwrap_or("").chars().take(280).collect(),
-                seconds: it.pointer("/contentDetails/duration").and_then(|x| x.as_str()).and_then(|d| iso_duration(d)),
+                posted: it
+                    .pointer("/snippet/publishedAt")
+                    .and_then(|x| x.as_str())
+                    .and_then(rfc3339),
+                text: it
+                    .pointer("/snippet/title")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .chars()
+                    .take(280)
+                    .collect(),
+                seconds: it
+                    .pointer("/contentDetails/duration")
+                    .and_then(|x| x.as_str())
+                    .and_then(|d| iso_duration(d)),
                 source: source.into(),
                 m: Metrics {
                     views: s.get("viewCount").and_then(n),
@@ -248,7 +352,12 @@ pub fn youtube_videos(v: &Value, now: u64, source: &str) -> Vec<Record> {
 
 /// What the YouTube Analytics API says per video over a range: retention
 /// and watch time, merged into the Data API's snapshots for the same day.
-pub fn youtube_analytics(net: &dyn Net, access_token: &str, start_day: i64, end_day: i64) -> Result<Vec<(String, Metrics)>, String> {
+pub fn youtube_analytics(
+    net: &dyn Net,
+    access_token: &str,
+    start_day: i64,
+    end_day: i64,
+) -> Result<Vec<(String, Metrics)>, String> {
     let date = |d: i64| {
         let c = crate::civil::Civil::from_local(d * 86_400);
         format!("{:04}-{:02}-{:02}", c.year, c.month, c.day)
@@ -259,7 +368,14 @@ pub fn youtube_analytics(net: &dyn Net, access_token: &str, start_day: i64, end_
         date(end_day)
     );
     let bearer = format!("Bearer {access_token}");
-    let v = json_of(net.get("youtubeanalytics.googleapis.com", &path, &[("Authorization", &bearer)])?, "YouTube Analytics")?;
+    let v = json_of(
+        net.get(
+            "youtubeanalytics.googleapis.com",
+            &path,
+            &[("Authorization", &bearer)],
+        )?,
+        "YouTube Analytics",
+    )?;
     Ok(analytics_rows(&v))
 }
 
@@ -271,13 +387,25 @@ pub fn analytics_rows(v: &Value) -> Vec<(String, Metrics)> {
         .and_then(|h| h.as_array())
         .into_iter()
         .flatten()
-        .map(|h| h.get("name").and_then(|x| x.as_str()).unwrap_or("").to_string())
+        .map(|h| {
+            h.get("name")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string()
+        })
         .collect();
     let at = |name: &str| heads.iter().position(|h| h == name);
     let mut out = Vec::new();
-    for row in v.get("rows").and_then(|r| r.as_array()).into_iter().flatten() {
+    for row in v
+        .get("rows")
+        .and_then(|r| r.as_array())
+        .into_iter()
+        .flatten()
+    {
         let Some(r) = row.as_array() else { continue };
-        let Some(id) = at("video").and_then(|i| r.get(i)).and_then(|x| x.as_str()) else { continue };
+        let Some(id) = at("video").and_then(|i| r.get(i)).and_then(|x| x.as_str()) else {
+            continue;
+        };
         let f = |name: &str| at(name).and_then(|i| r.get(i)).and_then(|x| x.as_f64());
         out.push((
             id.to_string(),
@@ -348,7 +476,11 @@ pub fn google_consent_url(client_id: &str, redirect: &str, state: &str, challeng
 pub fn pkce_challenge(verifier: &str) -> String {
     use sha2::Digest;
     let d = sha2::Sha256::digest(verifier.as_bytes());
-    crate::b64::encode(&d).replace('+', "-").replace('/', "_").trim_end_matches('=').to_string()
+    crate::b64::encode(&d)
+        .replace('+', "-")
+        .replace('/', "_")
+        .trim_end_matches('=')
+        .to_string()
 }
 
 /// The code out of the request Google's redirect makes to this machine,
@@ -369,13 +501,22 @@ pub fn code_from_redirect(request_line: &str, state: &str) -> Result<String, Str
         }
     }
     if got_state.as_deref() != Some(state) {
-        return Err("that answer wasn't for this sign-in (its state didn't match), so I ignored it".into());
+        return Err(
+            "that answer wasn't for this sign-in (its state didn't match), so I ignored it".into(),
+        );
     }
-    code.filter(|c| !c.is_empty()).ok_or_else(|| "Google came back without a code".into())
+    code.filter(|c| !c.is_empty())
+        .ok_or_else(|| "Google came back without a code".into())
 }
 
 /// Swap the code for tokens. Gives back the refresh token.
-pub fn google_exchange(net: &dyn Net, s: &GoogleSignIn, code: &str, redirect: &str, verifier: &str) -> Result<String, String> {
+pub fn google_exchange(
+    net: &dyn Net,
+    s: &GoogleSignIn,
+    code: &str,
+    redirect: &str,
+    verifier: &str,
+) -> Result<String, String> {
     let form = format!(
         "grant_type=authorization_code&code={}&client_id={}&client_secret={}&redirect_uri={}&code_verifier={}",
         enc(code),
@@ -384,7 +525,10 @@ pub fn google_exchange(net: &dyn Net, s: &GoogleSignIn, code: &str, redirect: &s
         enc(redirect),
         enc(verifier)
     );
-    let v = json_of(net.post_form("oauth2.googleapis.com", "/token", &form)?, "Google sign-in")?;
+    let v = json_of(
+        net.post_form("oauth2.googleapis.com", "/token", &form)?,
+        "Google sign-in",
+    )?;
     v.get("refresh_token").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| "Google gave no refresh token (remove Atlas's access in your Google account and sign in again)".into())
 }
 
@@ -408,8 +552,15 @@ fn fetch_google_access(net: &dyn Net, s: &GoogleSignIn) -> Result<(String, u64),
         return Err("Google no longer accepts Atlas's sign-in for YouTube -- it lapses after seven days while the Google app is in Testing, or access was removed. Connect YouTube again on the Social page.".into());
     }
     let v = json_of(r, "Google sign-in")?;
-    let token = v.get("access_token").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| "Google gave no access token".to_string())?;
-    Ok((token, v.get("expires_in").and_then(|e| e.as_u64()).unwrap_or(3600)))
+    let token = v
+        .get("access_token")
+        .and_then(|t| t.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| "Google gave no access token".to_string())?;
+    Ok((
+        token,
+        v.get("expires_in").and_then(|e| e.as_u64()).unwrap_or(3600),
+    ))
 }
 
 // ---------------------------------------------------------------- Meta
@@ -426,7 +577,11 @@ const IG: &str = "graph.instagram.com";
 pub fn instagram_own(net: &dyn Net, token: &str, now: u64) -> Result<Vec<Record>, String> {
     let t = enc(token);
     let me = json_of(net.get(IG, &format!("/{GRAPH_VERSION}/me?fields=user_id,username,followers_count,follows_count,media_count&access_token={t}"), &[])?, "Instagram (your account)")?;
-    let handle = me.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let handle = me
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let mut out = vec![Record::Account(AccountSnap {
         platform: Platform::Instagram,
         handle,
@@ -442,14 +597,36 @@ pub fn instagram_own(net: &dyn Net, token: &str, now: u64) -> Result<Vec<Record>
         net.get(IG, &format!("/{GRAPH_VERSION}/me/media?fields=id,caption,media_type,media_product_type,timestamp,permalink,like_count,comments_count&limit=25&access_token={t}"), &[])?,
         "Instagram (your posts)",
     )?;
-    for m in media.get("data").and_then(|d| d.as_array()).into_iter().flatten() {
-        let Some(id) = m.get("id").and_then(|v| v.as_str()) else { continue };
+    for m in media
+        .get("data")
+        .and_then(|d| d.as_array())
+        .into_iter()
+        .flatten()
+    {
+        let Some(id) = m.get("id").and_then(|v| v.as_str()) else {
+            continue;
+        };
         let reel = m.get("media_product_type").and_then(|v| v.as_str()) == Some("REELS");
-        let metrics = if reel { "views,reach,saved,shares,ig_reels_avg_watch_time" } else { "views,reach,saved,shares" };
+        let metrics = if reel {
+            "views,reach,saved,shares,ig_reels_avg_watch_time"
+        } else {
+            "views,reach,saved,shares"
+        };
         // One post's insights failing (too new, or an old post type) costs
         // that post's insights, not the refresh.
-        let ins = net.get(IG, &format!("/{GRAPH_VERSION}/{id}/insights?metric={metrics}&access_token={t}"), &[]).ok().and_then(|r| json_of(r, "insights").ok());
-        let mut mm = Metrics { likes: m.get("like_count").and_then(n), comments: m.get("comments_count").and_then(n), ..Default::default() };
+        let ins = net
+            .get(
+                IG,
+                &format!("/{GRAPH_VERSION}/{id}/insights?metric={metrics}&access_token={t}"),
+                &[],
+            )
+            .ok()
+            .and_then(|r| json_of(r, "insights").ok());
+        let mut mm = Metrics {
+            likes: m.get("like_count").and_then(n),
+            comments: m.get("comments_count").and_then(n),
+            ..Default::default()
+        };
         if let Some(ins) = ins {
             mm.fill_from(&instagram_insights(&ins));
         }
@@ -458,9 +635,22 @@ pub fn instagram_own(net: &dyn Net, token: &str, now: u64) -> Result<Vec<Record>
             id: id.to_string(),
             day: super::social_day(now),
             taken: now,
-            posted: m.get("timestamp").and_then(|v| v.as_str()).and_then(ig_time),
-            text: m.get("caption").and_then(|v| v.as_str()).unwrap_or("").chars().take(280).collect(),
-            url: m.get("permalink").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            posted: m
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .and_then(ig_time),
+            text: m
+                .get("caption")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .chars()
+                .take(280)
+                .collect(),
+            url: m
+                .get("permalink")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             seconds: None,
             source: "the Instagram API".into(),
             m: mm,
@@ -471,16 +661,27 @@ pub fn instagram_own(net: &dyn Net, token: &str, now: u64) -> Result<Vec<Record>
 
 /// Instagram's "2024-01-02T03:04:05+0000" (no colon in the offset).
 fn ig_time(s: &str) -> Option<u64> {
-    let fixed = if s.len() > 5 && (s.ends_with("+0000") || s.ends_with("-0000")) { format!("{}Z", &s[..s.len() - 5]) } else { s.to_string() };
+    let fixed = if s.len() > 5 && (s.ends_with("+0000") || s.ends_with("-0000")) {
+        format!("{}Z", &s[..s.len() - 5])
+    } else {
+        s.to_string()
+    };
     rfc3339(&fixed)
 }
 
 /// `/{media}/insights`'s `data: [{name, values: [{value}]}]`.
 pub fn instagram_insights(v: &Value) -> Metrics {
     let mut m = Metrics::default();
-    for d in v.get("data").and_then(|d| d.as_array()).into_iter().flatten() {
+    for d in v
+        .get("data")
+        .and_then(|d| d.as_array())
+        .into_iter()
+        .flatten()
+    {
         let name = d.get("name").and_then(|x| x.as_str()).unwrap_or("");
-        let val = d.pointer("/values/0/value").or_else(|| d.pointer("/total_value/value"));
+        let val = d
+            .pointer("/values/0/value")
+            .or_else(|| d.pointer("/total_value/value"));
         let Some(val) = val else { continue };
         match name {
             "views" => m.views = n(val),
@@ -498,8 +699,21 @@ pub fn instagram_insights(v: &Value) -> Metrics {
 /// A long-lived token's refresh (it must be at least a day old, and lasts
 /// 60 days from each refresh).
 pub fn instagram_refresh(net: &dyn Net, token: &str) -> Result<String, String> {
-    let v = json_of(net.get(IG, &format!("/refresh_access_token?grant_type=ig_refresh_token&access_token={}", enc(token)), &[])?, "Instagram token refresh")?;
-    v.get("access_token").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| "Instagram gave no new token".into())
+    let v = json_of(
+        net.get(
+            IG,
+            &format!(
+                "/refresh_access_token?grant_type=ig_refresh_token&access_token={}",
+                enc(token)
+            ),
+            &[],
+        )?,
+        "Instagram token refresh",
+    )?;
+    v.get("access_token")
+        .and_then(|t| t.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| "Instagram gave no new token".into())
 }
 
 // ---------------------------------------------------------------- Bluesky
@@ -509,9 +723,25 @@ pub const BSKY: &str = "public.api.bsky.app";
 /// Your profile and your 50 latest posts, from the public AppView.
 pub fn bluesky_own(net: &dyn Net, handle: &str, now: u64) -> Result<Vec<Record>, String> {
     let h = enc(handle.trim().trim_start_matches('@'));
-    let prof = json_of(net.get(BSKY, &format!("/xrpc/app.bsky.actor.getProfile?actor={h}"), &[])?, "Bluesky (your profile)")?;
+    let prof = json_of(
+        net.get(
+            BSKY,
+            &format!("/xrpc/app.bsky.actor.getProfile?actor={h}"),
+            &[],
+        )?,
+        "Bluesky (your profile)",
+    )?;
     let mut out = vec![bluesky_profile(&prof, now)];
-    let feed = json_of(net.get(BSKY, &format!("/xrpc/app.bsky.feed.getAuthorFeed?actor={h}&limit=50&filter=posts_no_replies"), &[])?, "Bluesky (your posts)")?;
+    let feed = json_of(
+        net.get(
+            BSKY,
+            &format!(
+                "/xrpc/app.bsky.feed.getAuthorFeed?actor={h}&limit=50&filter=posts_no_replies"
+            ),
+            &[],
+        )?,
+        "Bluesky (your posts)",
+    )?;
     let me = prof.get("did").and_then(|d| d.as_str()).unwrap_or("");
     out.extend(bluesky_posts(&feed, me, now));
     Ok(out)
@@ -520,7 +750,11 @@ pub fn bluesky_own(net: &dyn Net, handle: &str, now: u64) -> Result<Vec<Record>,
 pub(super) fn bluesky_profile(p: &Value, now: u64) -> Record {
     Record::Account(AccountSnap {
         platform: Platform::Bluesky,
-        handle: p.get("handle").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        handle: p
+            .get("handle")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
         day: super::social_day(now),
         taken: now,
         followers: p.get("followersCount").and_then(n),
@@ -540,20 +774,35 @@ pub(super) fn bluesky_posts(feed: &Value, author_did: &str, now: u64) -> Vec<Rec
         .filter(|item| item.get("reason").is_none())
         .filter_map(|item| {
             let p = item.get("post")?;
-            let did = p.pointer("/author/did").and_then(|d| d.as_str()).unwrap_or("");
+            let did = p
+                .pointer("/author/did")
+                .and_then(|d| d.as_str())
+                .unwrap_or("");
             if !author_did.is_empty() && did != author_did {
                 return None;
             }
             let uri = p.get("uri")?.as_str()?;
             let rkey = uri.rsplit('/').next().unwrap_or(uri);
-            let handle = p.pointer("/author/handle").and_then(|h| h.as_str()).unwrap_or("");
+            let handle = p
+                .pointer("/author/handle")
+                .and_then(|h| h.as_str())
+                .unwrap_or("");
             Some(Record::Post(PostSnap {
                 platform: Platform::Bluesky,
                 id: uri.to_string(),
                 day: super::social_day(now),
                 taken: now,
-                posted: p.pointer("/record/createdAt").and_then(|x| x.as_str()).and_then(rfc3339),
-                text: p.pointer("/record/text").and_then(|x| x.as_str()).unwrap_or("").chars().take(280).collect(),
+                posted: p
+                    .pointer("/record/createdAt")
+                    .and_then(|x| x.as_str())
+                    .and_then(rfc3339),
+                text: p
+                    .pointer("/record/text")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .chars()
+                    .take(280)
+                    .collect(),
                 url: format!("https://bsky.app/profile/{handle}/post/{rkey}"),
                 seconds: None,
                 source: "Bluesky's public API".into(),
@@ -581,17 +830,39 @@ const THREADS: &str = "graph.threads.net";
 /// `followers_count` from `threads_insights`. 27 calls.
 pub fn threads_own(net: &dyn Net, token: &str, now: u64) -> Result<Vec<Record>, String> {
     let t = enc(token);
-    let me = json_of(net.get(THREADS, &format!("/v1.0/me?fields=id,username&access_token={t}"), &[])?, "Threads (your account)")?;
-    let uid = me.get("id").and_then(|v| v.as_str()).unwrap_or("me").to_string();
+    let me = json_of(
+        net.get(
+            THREADS,
+            &format!("/v1.0/me?fields=id,username&access_token={t}"),
+            &[],
+        )?,
+        "Threads (your account)",
+    )?;
+    let uid = me
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("me")
+        .to_string();
     // The follower count is its own insight; a failure costs only that figure.
     let followers = net
-        .get(THREADS, &format!("/v1.0/{}/threads_insights?metric=followers_count&access_token={t}", enc(&uid)), &[])
+        .get(
+            THREADS,
+            &format!(
+                "/v1.0/{}/threads_insights?metric=followers_count&access_token={t}",
+                enc(&uid)
+            ),
+            &[],
+        )
         .ok()
         .and_then(|r| json_of(r, "Threads followers").ok())
         .and_then(|v| v.pointer("/data/0/total_value/value").and_then(n));
     let mut out = vec![Record::Account(AccountSnap {
         platform: Platform::Threads,
-        handle: me.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        handle: me
+            .get("username")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
         day: super::social_day(now),
         taken: now,
         followers,
@@ -601,8 +872,15 @@ pub fn threads_own(net: &dyn Net, token: &str, now: u64) -> Result<Vec<Record>, 
         m: Metrics::default(),
     })];
     let list = json_of(net.get(THREADS, &format!("/v1.0/me/threads?fields=id,text,timestamp,permalink,media_type&limit=25&access_token={t}"), &[])?, "Threads (your posts)")?;
-    for p in list.get("data").and_then(|d| d.as_array()).into_iter().flatten() {
-        let Some(id) = p.get("id").and_then(|v| v.as_str()) else { continue };
+    for p in list
+        .get("data")
+        .and_then(|d| d.as_array())
+        .into_iter()
+        .flatten()
+    {
+        let Some(id) = p.get("id").and_then(|v| v.as_str()) else {
+            continue;
+        };
         // A repost of someone else's has no insights of yours.
         if p.get("media_type").and_then(|v| v.as_str()) == Some("REPOST_FACADE") {
             continue;
@@ -618,9 +896,22 @@ pub fn threads_own(net: &dyn Net, token: &str, now: u64) -> Result<Vec<Record>, 
             id: id.to_string(),
             day: super::social_day(now),
             taken: now,
-            posted: p.get("timestamp").and_then(|v| v.as_str()).and_then(ig_time),
-            text: p.get("text").and_then(|v| v.as_str()).unwrap_or("").chars().take(280).collect(),
-            url: p.get("permalink").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            posted: p
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .and_then(ig_time),
+            text: p
+                .get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .chars()
+                .take(280)
+                .collect(),
+            url: p
+                .get("permalink")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             seconds: None,
             source: "the Threads API".into(),
             m,
@@ -632,8 +923,16 @@ pub fn threads_own(net: &dyn Net, token: &str, now: u64) -> Result<Vec<Record>, 
 /// `/{media}/insights` on Threads: `data: [{name, values: [{value}]}]`.
 pub fn threads_insights(v: &Value) -> Metrics {
     let mut m = Metrics::default();
-    for d in v.get("data").and_then(|d| d.as_array()).into_iter().flatten() {
-        let val = d.pointer("/values/0/value").or_else(|| d.pointer("/total_value/value")).and_then(n);
+    for d in v
+        .get("data")
+        .and_then(|d| d.as_array())
+        .into_iter()
+        .flatten()
+    {
+        let val = d
+            .pointer("/values/0/value")
+            .or_else(|| d.pointer("/total_value/value"))
+            .and_then(n);
         match d.get("name").and_then(|x| x.as_str()).unwrap_or("") {
             "views" => m.views = val,
             "likes" => m.likes = val,
@@ -649,8 +948,21 @@ pub fn threads_insights(v: &Value) -> Metrics {
 
 /// A Threads long-lived token's refresh (60 days from each).
 pub fn threads_refresh(net: &dyn Net, token: &str) -> Result<String, String> {
-    let v = json_of(net.get(THREADS, &format!("/refresh_access_token?grant_type=th_refresh_token&access_token={}", enc(token)), &[])?, "Threads token refresh")?;
-    v.get("access_token").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| "Threads gave no new token".into())
+    let v = json_of(
+        net.get(
+            THREADS,
+            &format!(
+                "/refresh_access_token?grant_type=th_refresh_token&access_token={}",
+                enc(token)
+            ),
+            &[],
+        )?,
+        "Threads token refresh",
+    )?;
+    v.get("access_token")
+        .and_then(|t| t.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| "Threads gave no new token".into())
 }
 
 // ---------------------------------------------------------------- Facebook Page
@@ -663,10 +975,21 @@ const FB: &str = "graph.facebook.com";
 /// Reactions, comments and shares come from the post itself. 27 calls.
 pub fn facebook_page_own(net: &dyn Net, page_token: &str, now: u64) -> Result<Vec<Record>, String> {
     let t = enc(page_token);
-    let me = json_of(net.get(FB, &format!("/{GRAPH_VERSION}/me?fields=id,name,followers_count&access_token={t}"), &[])?, "Facebook (your Page)")?;
+    let me = json_of(
+        net.get(
+            FB,
+            &format!("/{GRAPH_VERSION}/me?fields=id,name,followers_count&access_token={t}"),
+            &[],
+        )?,
+        "Facebook (your Page)",
+    )?;
     let mut out = vec![Record::Account(AccountSnap {
         platform: Platform::Facebook,
-        handle: me.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        handle: me
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
         day: super::social_day(now),
         taken: now,
         followers: me.get("followers_count").and_then(n),
@@ -683,10 +1006,24 @@ pub fn facebook_page_own(net: &dyn Net, page_token: &str, now: u64) -> Result<Ve
         )?,
         "Facebook (your Page's posts)",
     )?;
-    for p in posts.get("data").and_then(|d| d.as_array()).into_iter().flatten() {
-        let Some(id) = p.get("id").and_then(|v| v.as_str()) else { continue };
+    for p in posts
+        .get("data")
+        .and_then(|d| d.as_array())
+        .into_iter()
+        .flatten()
+    {
+        let Some(id) = p.get("id").and_then(|v| v.as_str()) else {
+            continue;
+        };
         let views = net
-            .get(FB, &format!("/{GRAPH_VERSION}/{}/insights?metric=post_media_view&access_token={t}", enc(id)), &[])
+            .get(
+                FB,
+                &format!(
+                    "/{GRAPH_VERSION}/{}/insights?metric=post_media_view&access_token={t}",
+                    enc(id)
+                ),
+                &[],
+            )
             .ok()
             .and_then(|r| json_of(r, "insights").ok())
             .and_then(|v| v.pointer("/data/0/values/0/value").and_then(n));
@@ -695,9 +1032,22 @@ pub fn facebook_page_own(net: &dyn Net, page_token: &str, now: u64) -> Result<Ve
             id: id.to_string(),
             day: super::social_day(now),
             taken: now,
-            posted: p.get("created_time").and_then(|v| v.as_str()).and_then(ig_time),
-            text: p.get("message").and_then(|v| v.as_str()).unwrap_or("").chars().take(280).collect(),
-            url: p.get("permalink_url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            posted: p
+                .get("created_time")
+                .and_then(|v| v.as_str())
+                .and_then(ig_time),
+            text: p
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .chars()
+                .take(280)
+                .collect(),
+            url: p
+                .get("permalink_url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             seconds: None,
             source: "Facebook's Page API".into(),
             m: Metrics {
@@ -757,13 +1107,23 @@ pub fn code_from_address(address: &str, state: &str) -> Result<String, String> {
 }
 
 fn tiktok_tokens(v: &Value) -> Result<(String, String), String> {
-    let access = v.get("access_token").and_then(|t| t.as_str()).ok_or("TikTok gave no access token")?;
-    let refresh = v.get("refresh_token").and_then(|t| t.as_str()).ok_or("TikTok gave no refresh token")?;
+    let access = v
+        .get("access_token")
+        .and_then(|t| t.as_str())
+        .ok_or("TikTok gave no access token")?;
+    let refresh = v
+        .get("refresh_token")
+        .and_then(|t| t.as_str())
+        .ok_or("TikTok gave no refresh token")?;
     Ok((access.to_string(), refresh.to_string()))
 }
 
 /// Swap the code for tokens: (access token, refresh token).
-pub fn tiktok_exchange(net: &dyn Net, s: &TikTokSignIn, code: &str) -> Result<(String, String), String> {
+pub fn tiktok_exchange(
+    net: &dyn Net,
+    s: &TikTokSignIn,
+    code: &str,
+) -> Result<(String, String), String> {
     let form = format!(
         "client_key={}&client_secret={}&code={}&grant_type=authorization_code&redirect_uri={}",
         enc(&s.client_key),
@@ -771,7 +1131,10 @@ pub fn tiktok_exchange(net: &dyn Net, s: &TikTokSignIn, code: &str) -> Result<(S
         enc(code),
         enc(&s.redirect)
     );
-    tiktok_tokens(&json_of(net.post_form(TIKTOK, "/v2/oauth/token/", &form)?, "TikTok sign-in")?)
+    tiktok_tokens(&json_of(
+        net.post_form(TIKTOK, "/v2/oauth/token/", &form)?,
+        "TikTok sign-in",
+    )?)
 }
 
 /// A fresh access token (it lasts a day); TikTok may hand back a new
@@ -801,7 +1164,10 @@ pub fn tiktok_revoke(net: &dyn Net, s: &TikTokSignIn, access_token: &str) -> Res
         enc(access_token)
     );
     let r = net.post_form(TIKTOK, "/v2/oauth/revoke/", &form)?;
-    if (200..300).contains(&r.status) || r.body.contains("invalid_grant") || r.body.contains("access_token_invalid") {
+    if (200..300).contains(&r.status)
+        || r.body.contains("invalid_grant")
+        || r.body.contains("access_token_invalid")
+    {
         return Ok(());
     }
     Err(format!("TikTok answered {}", r.status))
@@ -813,7 +1179,13 @@ fn tiktok_json(r: Reply, what: &str) -> Result<Value, String> {
     let v = json_of(r, what)?;
     match v.pointer("/error/code").and_then(|c| c.as_str()) {
         None | Some("ok") => Ok(v),
-        Some(code) => Err(format!("{what}: {}", v.pointer("/error/message").and_then(|m| m.as_str()).filter(|m| !m.is_empty()).unwrap_or(code))),
+        Some(code) => Err(format!(
+            "{what}: {}",
+            v.pointer("/error/message")
+                .and_then(|m| m.as_str())
+                .filter(|m| !m.is_empty())
+                .unwrap_or(code)
+        )),
     }
 }
 
@@ -827,14 +1199,21 @@ pub fn tiktok_own(net: &dyn Net, access_token: &str, now: u64) -> Result<Vec<Rec
     let user = u.pointer("/data/user").cloned().unwrap_or(Value::Null);
     let mut out = vec![Record::Account(AccountSnap {
         platform: Platform::Tiktok,
-        handle: user.get("display_name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        handle: user
+            .get("display_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
         day: super::social_day(now),
         taken: now,
         followers: user.get("follower_count").and_then(n),
         following: user.get("following_count").and_then(n),
         posts: user.get("video_count").and_then(n),
         source: "TikTok's Display API".into(),
-        m: Metrics { likes: user.get("likes_count").and_then(n), ..Default::default() },
+        m: Metrics {
+            likes: user.get("likes_count").and_then(n),
+            ..Default::default()
+        },
     })];
     let v = tiktok_json(
         net.post_json(TIKTOK, "/v2/video/list/?fields=id,title,video_description,create_time,duration,share_url,view_count,like_count,comment_count,share_count", &h, "{\"max_count\":20}")?,
@@ -851,11 +1230,24 @@ pub fn tiktok_videos(v: &Value, now: u64) -> Vec<Record> {
         .into_iter()
         .flatten()
         .filter_map(|it| {
-            let id = it.get("id").and_then(|x| x.as_str().map(str::to_string).or_else(|| x.as_u64().map(|n| n.to_string())))?;
-            let title = it.get("title").and_then(|x| x.as_str()).filter(|t| !t.is_empty()).or_else(|| it.get("video_description").and_then(|x| x.as_str())).unwrap_or("");
+            let id = it.get("id").and_then(|x| {
+                x.as_str()
+                    .map(str::to_string)
+                    .or_else(|| x.as_u64().map(|n| n.to_string()))
+            })?;
+            let title = it
+                .get("title")
+                .and_then(|x| x.as_str())
+                .filter(|t| !t.is_empty())
+                .or_else(|| it.get("video_description").and_then(|x| x.as_str()))
+                .unwrap_or("");
             Some(Record::Post(PostSnap {
                 platform: Platform::Tiktok,
-                url: it.get("share_url").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                url: it
+                    .get("share_url")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 id,
                 day: super::social_day(now),
                 taken: now,

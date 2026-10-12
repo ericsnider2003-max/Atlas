@@ -36,36 +36,80 @@ pub fn available() -> bool {
 
 #[cfg(windows)]
 pub fn seal(data: &[u8]) -> Result<Vec<u8>, String> {
-    use windows::Win32::Security::Cryptography::{CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB};
-    let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
-    let entropy = CRYPT_INTEGER_BLOB { cbData: PURPOSE.len() as u32, pbData: PURPOSE.as_ptr() as *mut u8 };
+    use windows::Win32::Security::Cryptography::{
+        CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
+    };
+    let input = CRYPT_INTEGER_BLOB {
+        cbData: data.len() as u32,
+        pbData: data.as_ptr() as *mut u8,
+    };
+    let entropy = CRYPT_INTEGER_BLOB {
+        cbData: PURPOSE.len() as u32,
+        pbData: PURPOSE.as_ptr() as *mut u8,
+    };
     let mut out = CRYPT_INTEGER_BLOB::default();
     // SAFETY: the input and entropy blobs borrow `data` and PURPOSE for the call (DPAPI does not
     // write through them); on success `out` is a LocalAlloc block of `cbData` bytes, copied out and
     // freed exactly once.
     unsafe {
-        CryptProtectData(&input, windows::core::w!("Atlas vault"), Some(&entropy), None, None, CRYPTPROTECT_UI_FORBIDDEN, &mut out)
-            .map_err(|e| format!("Windows wouldn't seal it: {e}"))?;
-        let v = if out.pbData.is_null() { Vec::new() } else { std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec() };
-        let _ = windows::Win32::Foundation::LocalFree(windows::Win32::Foundation::HLOCAL(out.pbData as *mut _));
+        CryptProtectData(
+            &input,
+            windows::core::w!("Atlas vault"),
+            Some(&entropy),
+            None,
+            None,
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut out,
+        )
+        .map_err(|e| format!("Windows wouldn't seal it: {e}"))?;
+        let v = if out.pbData.is_null() {
+            Vec::new()
+        } else {
+            std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec()
+        };
+        let _ = windows::Win32::Foundation::LocalFree(windows::Win32::Foundation::HLOCAL(
+            out.pbData as *mut _,
+        ));
         Ok(v)
     }
 }
 
 #[cfg(windows)]
 pub fn unseal(blob: &[u8]) -> Result<Vec<u8>, String> {
-    use windows::Win32::Security::Cryptography::{CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB};
-    let input = CRYPT_INTEGER_BLOB { cbData: blob.len() as u32, pbData: blob.as_ptr() as *mut u8 };
-    let entropy = CRYPT_INTEGER_BLOB { cbData: PURPOSE.len() as u32, pbData: PURPOSE.as_ptr() as *mut u8 };
+    use windows::Win32::Security::Cryptography::{
+        CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
+    };
+    let input = CRYPT_INTEGER_BLOB {
+        cbData: blob.len() as u32,
+        pbData: blob.as_ptr() as *mut u8,
+    };
+    let entropy = CRYPT_INTEGER_BLOB {
+        cbData: PURPOSE.len() as u32,
+        pbData: PURPOSE.as_ptr() as *mut u8,
+    };
     let mut out = CRYPT_INTEGER_BLOB::default();
     // SAFETY: the input and entropy blobs borrow `blob` and PURPOSE for the call (DPAPI does not
     // write through them); on success `out` is a LocalAlloc block of `cbData` bytes, copied out and
     // freed exactly once.
     unsafe {
-        CryptUnprotectData(&input, None, Some(&entropy), None, None, CRYPTPROTECT_UI_FORBIDDEN, &mut out)
-            .map_err(|e| format!("this Windows sign-in can't open it: {e}"))?;
-        let v = if out.pbData.is_null() { Vec::new() } else { std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec() };
-        let _ = windows::Win32::Foundation::LocalFree(windows::Win32::Foundation::HLOCAL(out.pbData as *mut _));
+        CryptUnprotectData(
+            &input,
+            None,
+            Some(&entropy),
+            None,
+            None,
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut out,
+        )
+        .map_err(|e| format!("this Windows sign-in can't open it: {e}"))?;
+        let v = if out.pbData.is_null() {
+            Vec::new()
+        } else {
+            std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec()
+        };
+        let _ = windows::Win32::Foundation::LocalFree(windows::Win32::Foundation::HLOCAL(
+            out.pbData as *mut _,
+        ));
         Ok(v)
     }
 }
@@ -81,7 +125,10 @@ pub fn seal(data: &[u8]) -> Result<Vec<u8>, String> {
 #[cfg(not(windows))]
 pub fn unseal(blob: &[u8]) -> Result<Vec<u8>, String> {
     if stand_in() {
-        return blob.strip_prefix(STAND_IN).map(<[u8]>::to_vec).ok_or_else(|| "this sign-in can't open it".to_string());
+        return blob
+            .strip_prefix(STAND_IN)
+            .map(<[u8]>::to_vec)
+            .ok_or_else(|| "this sign-in can't open it".to_string());
     }
     Err(NOT_HERE.into())
 }

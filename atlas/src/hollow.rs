@@ -56,9 +56,7 @@ impl Why {
             Why::NothingMeasured => "read zero of everything, which means it read nothing",
             Why::Silent => "answered with nothing at all",
             Why::EchoedTheQuestion => "described the question instead of answering it",
-            Why::ZeroDressedAsFine => {
-                "said everything was fine while every number in it was zero"
-            }
+            Why::ZeroDressedAsFine => "said everything was fine while every number in it was zero",
             Why::NullAsAnAnswer => "gave a placeholder where the value was the whole point",
         }
     }
@@ -101,7 +99,11 @@ pub const ECHOES_THE_QUESTION: &[&str] = &["parsed ", "Intent::", "Some(", "None
 pub fn judge(what: &str, answer: &str) -> Option<Hollow> {
     let a = answer.trim();
     let hollow = |why| {
-        Some(Hollow { what: what.into(), why, answer: answer.trim().to_string() })
+        Some(Hollow {
+            what: what.into(),
+            why,
+            answer: answer.trim().to_string(),
+        })
     };
     if a.is_empty() {
         return hollow(Why::Silent);
@@ -146,8 +148,17 @@ pub const CLAIMS_A_GOOD_STATE: &[&str] = &[
 const CLAIMS_WORK_HAPPENED: &[&str] = &["ran ", "checked ", "scanned ", "processed ", "sent "];
 
 /// A whole answer that is only a placeholder.
-pub const NULL_WORDS: &[&str] =
-    &["unknown", "none", "n/a", "na", "null", "nil", "undefined", "-", "?"];
+pub const NULL_WORDS: &[&str] = &[
+    "unknown",
+    "none",
+    "n/a",
+    "na",
+    "null",
+    "nil",
+    "undefined",
+    "-",
+    "?",
+];
 
 fn is_null_word(lower: &str) -> bool {
     let t = lower.trim_end_matches(['.', '!']).trim();
@@ -163,14 +174,24 @@ fn numbers_in(text: &str) -> Vec<f64> {
             cur.push(c);
         } else {
             if !cur.is_empty() {
-                if let Some(n) = cur.trim_end_matches('.').parse::<f64>().ok().filter(|n| n.is_finite()) {
+                if let Some(n) = cur
+                    .trim_end_matches('.')
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|n| n.is_finite())
+                {
                     out.push(n);
                 }
                 cur.clear();
             }
         }
     }
-    if let Some(n) = cur.trim_end_matches('.').parse::<f64>().ok().filter(|n| n.is_finite()) {
+    if let Some(n) = cur
+        .trim_end_matches('.')
+        .parse::<f64>()
+        .ok()
+        .filter(|n| n.is_finite())
+    {
         out.push(n);
     }
     out
@@ -252,7 +273,10 @@ pub fn unread_instruments(r: &crate::health::Readings) -> Vec<&'static str> {
 /// behind a closure, so this module needs no knowledge of the daemon and can
 /// be tested with a stub.
 pub fn audit<F: FnMut(&str) -> String>(mut ask: F) -> Vec<Hollow> {
-    SELF_QUESTIONS.iter().filter_map(|q| judge(q, &ask(q))).collect()
+    SELF_QUESTIONS
+        .iter()
+        .filter_map(|q| judge(q, &ask(q)))
+        .collect()
 }
 
 /// The questions the audit asks. Every one is read-only: nothing here can move

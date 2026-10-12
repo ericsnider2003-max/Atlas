@@ -25,8 +25,21 @@ fn ticks_after_the_first_take_well_under_the_slow_line() {
     // Downloads; on a real machine that walk is hundreds of milliseconds of
     // the machine's own work, not what this test measures.
     c.indexing = None;
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
-    let mut d = Daemon::new(&c, &p, None, Store::new(dir.clone()), Proactive::new(ProactiveConfig::default()));
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let t0 = 1_790_700_000u64;
     let first = std::time::Instant::now();
     d.tick(t0);
@@ -42,9 +55,16 @@ fn ticks_after_the_first_take_well_under_the_slow_line() {
     // state under parallel load must not fail the run, but a tick that is
     // slow every time (what the laptop logged) still does.
     let median = laps[laps.len() / 2];
-    eprintln!("median of the next eleven: {median:?}, worst {:?}", laps[laps.len() - 1]);
+    eprintln!(
+        "median of the next eleven: {median:?}, worst {:?}",
+        laps[laps.len() - 1]
+    );
     // Debug build, a shared machine: generous, and still a fifth of what
     // the laptop logged.
-    crate::common::assert_prompt(median, std::time::Duration::from_millis(400), "a quiet tick (median)");
+    crate::common::assert_prompt(
+        median,
+        std::time::Duration::from_millis(400),
+        "a quiet tick (median)",
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

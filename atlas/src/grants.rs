@@ -90,13 +90,17 @@ impl Permissions {
     fn find(&self, app: &str, action: &str) -> Option<&Granted> {
         self.grants.iter().find(|g| {
             g.app.eq_ignore_ascii_case(app)
-                && g.action.as_ref().map(|a| a.eq_ignore_ascii_case(action)).unwrap_or(true)
+                && g.action
+                    .as_ref()
+                    .map(|a| a.eq_ignore_ascii_case(action))
+                    .unwrap_or(true)
                 && !(g.span == Span::Once && g.used)
         })
     }
 
     pub fn grant(&mut self, app: &str, action: Option<&str>, span: Span, t: u64) {
-        self.grants.retain(|g| !(g.app.eq_ignore_ascii_case(app) && g.span == Span::Once && g.used));
+        self.grants
+            .retain(|g| !(g.app.eq_ignore_ascii_case(app) && g.span == Span::Once && g.used));
         self.grants.push(Granted {
             app: app.to_string(),
             action: action.map(str::to_string),
@@ -111,7 +115,10 @@ impl Permissions {
         if let Some(g) = self.grants.iter_mut().find(|g| {
             g.app.eq_ignore_ascii_case(app)
                 && g.span == Span::Once
-                && g.action.as_ref().map(|a| a.eq_ignore_ascii_case(action)).unwrap_or(true)
+                && g.action
+                    .as_ref()
+                    .map(|a| a.eq_ignore_ascii_case(action))
+                    .unwrap_or(true)
         }) {
             g.used = true;
         }
@@ -144,7 +151,8 @@ pub fn grant_in_instruction(said: &str, known_apps: &[String]) -> Option<(String
 
     // A refusal is not a grant, however the app is named. "don't use excel"
     // used to grant Excel, because nothing looked for the negation.
-    if t.contains("don't ") || t.contains("dont ") || t.contains("do not ") || t.contains("never ") {
+    if t.contains("don't ") || t.contains("dont ") || t.contains("do not ") || t.contains("never ")
+    {
         return None;
     }
 
@@ -182,7 +190,10 @@ pub fn grant_in_instruction(said: &str, known_apps: &[String]) -> Option<(String
                 .collect();
             if !candidate.is_empty() {
                 // A named app in an instruction is a grant for this task.
-                if known_apps.iter().any(|a| a.eq_ignore_ascii_case(&candidate)) {
+                if known_apps
+                    .iter()
+                    .any(|a| a.eq_ignore_ascii_case(&candidate))
+                {
                     return Some((candidate, Span::Once));
                 }
                 // Something Atlas doesn't know, but you named it deliberately.
@@ -203,13 +214,78 @@ pub fn grant_in_instruction(said: &str, known_apps: &[String]) -> Option<(String
 /// the like never are.
 fn could_be_an_app(word: &str) -> bool {
     const NOT_APPS: &[&str] = &[
-        "the", "a", "an", "my", "your", "our", "their", "his", "her", "its", "it", "this", "that", "these", "those",
-        "some", "any", "all", "every", "each", "more", "less", "most", "other", "another", "what", "whatever",
-        "which", "only", "just", "them", "me", "you", "us", "him", "one", "two", "both", "less", "less", "new",
-        "free", "open", "available", "existing", "current", "local", "online", "offline", "good", "better", "best",
-        "real", "same", "different", "less", "too", "to", "and", "or", "of", "for", "in", "on", "at", "by", "with",
+        "the",
+        "a",
+        "an",
+        "my",
+        "your",
+        "our",
+        "their",
+        "his",
+        "her",
+        "its",
+        "it",
+        "this",
+        "that",
+        "these",
+        "those",
+        "some",
+        "any",
+        "all",
+        "every",
+        "each",
+        "more",
+        "less",
+        "most",
+        "other",
+        "another",
+        "what",
+        "whatever",
+        "which",
+        "only",
+        "just",
+        "them",
+        "me",
+        "you",
+        "us",
+        "him",
+        "one",
+        "two",
+        "both",
+        "less",
+        "less",
+        "new",
+        "free",
+        "open",
+        "available",
+        "existing",
+        "current",
+        "local",
+        "online",
+        "offline",
+        "good",
+        "better",
+        "best",
+        "real",
+        "same",
+        "different",
+        "less",
+        "too",
+        "to",
+        "and",
+        "or",
+        "of",
+        "for",
+        "in",
+        "on",
+        "at",
+        "by",
+        "with",
     ];
-    word.len() >= 2 && !word.ends_with("ly") && !NOT_APPS.contains(&word) && !word.chars().all(|c| c.is_ascii_digit())
+    word.len() >= 2
+        && !word.ends_with("ly")
+        && !NOT_APPS.contains(&word)
+        && !word.chars().all(|c| c.is_ascii_digit())
 }
 
 /// Did you say yes to a permission question, and how broadly?
@@ -313,8 +389,14 @@ mod using_words_tests {
 
     #[test]
     fn an_ordinary_word_after_using_is_not_an_app() {
-        assert_eq!(grant_in_instruction("research it using currently available tools", &[]), None);
+        assert_eq!(
+            grant_in_instruction("research it using currently available tools", &[]),
+            None
+        );
         assert_eq!(grant_in_instruction("use the camera", &[]), None);
-        assert_eq!(grant_in_instruction("use blender to model it", &[]).map(|g| g.0), Some("blender".into()));
+        assert_eq!(
+            grant_in_instruction("use blender to model it", &[]).map(|g| g.0),
+            Some("blender".into())
+        );
     }
 }

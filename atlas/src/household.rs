@@ -13,8 +13,7 @@
 use serde::{Deserialize, Serialize};
 
 /// One person's Atlas, across their devices.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Household {
     /// Random, made once, never derived from anything about you.
     pub id: String,
@@ -45,7 +44,9 @@ pub fn meets(my_household: &str, their_household: &str, paired: bool) -> Meeting
     if paired {
         Meeting::Mine
     } else {
-        Meeting::NeedsPairing { code: String::new() }
+        Meeting::NeedsPairing {
+            code: String::new(),
+        }
     }
 }
 
@@ -104,7 +105,9 @@ pub fn decode_pairing(code: &str) -> Option<(String, String, Pairing)> {
     let code = code.trim();
     let rest = code.strip_prefix(&format!("{PAIRING_TAG}:"))?;
     let parts: Vec<&str> = rest.split('|').collect();
-    let [id, name, challenge, made_at, valid_secs] = parts[..] else { return None };
+    let [id, name, challenge, made_at, valid_secs] = parts[..] else {
+        return None;
+    };
     if id.trim().is_empty() || name.trim().is_empty() || challenge.trim().is_empty() {
         return None;
     }
@@ -113,7 +116,12 @@ pub fn decode_pairing(code: &str) -> Option<(String, String, Pairing)> {
     Some((
         id.to_string(),
         name.to_string(),
-        Pairing { code: challenge.to_string(), made_at, valid_secs, used: false },
+        Pairing {
+            code: challenge.to_string(),
+            made_at,
+            valid_secs,
+            used: false,
+        },
     ))
 }
 
@@ -152,7 +160,12 @@ pub fn this_device_name() -> String {
 /// There is no re-init. A second household id for the same devices is exactly
 /// the confusion this file exists to prevent, so a device that already has
 /// one is told so rather than given another.
-pub fn init(store: &crate::store::Store, name: &str, device: &str, now: u64) -> Result<Household, String> {
+pub fn init(
+    store: &crate::store::Store,
+    name: &str,
+    device: &str,
+    now: u64,
+) -> Result<Household, String> {
     let have = Household::load(store);
     if have.is_set() {
         return Err(format!(
@@ -163,17 +176,29 @@ pub fn init(store: &crate::store::Store, name: &str, device: &str, now: u64) -> 
     }
     let name = name.trim();
     if name.is_empty() {
-        return Err("Give the household a name first -- anything you'd recognise, like \
+        return Err(
+            "Give the household a name first -- anything you'd recognise, like \
                     \u{201c}Sam's devices\u{201d}."
-            .into());
+                .into(),
+        );
     }
-    let device = if device.trim().is_empty() { this_device_name() } else { device.trim().to_string() };
-    let id = crate::server::new_token().map_err(|e| format!("Couldn't generate a household id: {e}"))?;
-    let h = Household { id, name: name.to_string(), made_at: now, devices: vec![device] };
-    h.save(store).map_err(|e| format!("Couldn't save that: {e}"))?;
+    let device = if device.trim().is_empty() {
+        this_device_name()
+    } else {
+        device.trim().to_string()
+    };
+    let id =
+        crate::server::new_token().map_err(|e| format!("Couldn't generate a household id: {e}"))?;
+    let h = Household {
+        id,
+        name: name.to_string(),
+        made_at: now,
+        devices: vec![device],
+    };
+    h.save(store)
+        .map_err(|e| format!("Couldn't save that: {e}"))?;
     Ok(h)
 }
-
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -202,7 +227,6 @@ pub struct HouseholdConfig {
     // Both are in `config::NO_FIELD_TO_LAND_IN`, so a file still setting
     // either is told by `atlas doctor` rather than ignored in silence.
 }
-
 
 /// A bundle that arrived from somewhere else.
 ///
@@ -334,13 +358,7 @@ impl Inbox {
     /// files from the same friend with the same covering line are two files,
     /// and collapsing them would silently drop one. Same name *and* same
     /// size is treated as a resend.
-    pub fn add_with(
-        &mut self,
-        what: &str,
-        from: &str,
-        at: u64,
-        file: Option<ReceivedFile>,
-    ) -> u64 {
+    pub fn add_with(&mut self, what: &str, from: &str, at: u64, file: Option<ReceivedFile>) -> u64 {
         let what = what.trim();
         let same = |i: &Received| match (&i.file, &file) {
             (Some(a), Some(b)) => i.from == from && a.name == b.name && a.size == b.size,
@@ -491,7 +509,9 @@ const INVITE_CONTEXT: &[u8] = b"atlas-household-invitation-v1";
 fn invite_key(code: &str) -> Result<Vec<u8>, String> {
     let tidy = crate::vault::tidy_recovery_key(code);
     if tidy.len() < CODE_LEN {
-        return Err(format!("a pairing code is {CODE_LEN} characters in two groups of five"));
+        return Err(format!(
+            "a pairing code is {CODE_LEN} characters in two groups of five"
+        ));
     }
     crate::vault::key_from_words(&tidy, INVITE_CONTEXT)
 }
@@ -535,7 +555,12 @@ pub fn leave_invitation(
     };
     std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
     let path = invite_path(folder, code);
-    crate::sync::write_whole(&path, serde_json::to_string_pretty(&env).map_err(|e| e.to_string())?.as_bytes())?;
+    crate::sync::write_whole(
+        &path,
+        serde_json::to_string_pretty(&env)
+            .map_err(|e| e.to_string())?
+            .as_bytes(),
+    )?;
     Ok(path)
 }
 
@@ -545,11 +570,7 @@ pub fn leave_invitation(
 /// the name is a fingerprint of the code, so finding the right file *is* the
 /// check, and trying them all keeps that true even if a sync client has
 /// renamed one on the way through.
-pub fn take_invitation(
-    folder: &std::path::Path,
-    code: &str,
-    now: u64,
-) -> Result<Inside, String> {
+pub fn take_invitation(folder: &std::path::Path, code: &str, now: u64) -> Result<Inside, String> {
     let key = invite_key(code)?;
     let Ok(entries) = std::fs::read_dir(folder) else {
         return Err("I can't see that folder from here".into());
@@ -559,13 +580,21 @@ pub fn take_invitation(
         if path.extension().and_then(|x| x.to_str()) != Some("invite") {
             continue;
         }
-        let Ok(raw) = std::fs::read_to_string(&path) else { continue };
-        let Ok(env) = serde_json::from_str::<Invitation>(&raw) else { continue };
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(env) = serde_json::from_str::<Invitation>(&raw) else {
+            continue;
+        };
         if env.atlas_invite > INVITE_VERSION {
             continue;
         }
-        let Ok(sealed) = crate::b64::decode(&env.body) else { continue };
-        let Ok(plain) = crate::vault::unseal_aead(&sealed, &key) else { continue };
+        let Ok(sealed) = crate::b64::decode(&env.body) else {
+            continue;
+        };
+        let Ok(plain) = crate::vault::unseal_aead(&sealed, &key) else {
+            continue;
+        };
         // It opened, so this is ours whatever the file is called. Expiry is
         // checked after opening rather than before: an invitation we cannot
         // open is not ours to have an opinion about.
@@ -590,7 +619,9 @@ pub fn take_invitation(
 
 /// Clear away invitations whose window has closed.
 pub fn sweep_invitations(folder: &std::path::Path, now: u64) -> usize {
-    let Ok(entries) = std::fs::read_dir(folder) else { return 0 };
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return 0;
+    };
     let mut gone = 0;
     for p in entries.flatten().map(|e| e.path()) {
         if p.extension().and_then(|x| x.to_str()) != Some("invite") {

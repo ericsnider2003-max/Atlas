@@ -87,8 +87,11 @@ impl Note {
     /// on a `None` value` is a sentence for whoever wrote the line, not for
     /// whoever is standing in the kitchen. The detail stays in the file.
     pub fn plain(&self) -> String {
-        let doing =
-            if self.during.trim().is_empty() { String::new() } else { format!(" while {}", self.during) };
+        let doing = if self.during.trim().is_empty() {
+            String::new()
+        } else {
+            format!(" while {}", self.during)
+        };
         format!(
             "I stopped unexpectedly{doing} last time. I've written down what happened \
              — the Activity page shows it."
@@ -100,8 +103,16 @@ impl Note {
         format!(
             "at {}\nduring: {}\nwhere: {}\nwhat: {}",
             self.at,
-            if self.during.is_empty() { "(not recorded)" } else { &self.during },
-            if self.where_.is_empty() { "(no location)" } else { &self.where_ },
+            if self.during.is_empty() {
+                "(not recorded)"
+            } else {
+                &self.during
+            },
+            if self.where_.is_empty() {
+                "(no location)"
+            } else {
+                &self.where_
+            },
             self.what
         )
     }
@@ -139,7 +150,11 @@ fn doing(what: &str) {
 }
 
 fn current_doing() -> String {
-    DOING.lock().or_else(crate::crash::unpoison).map(|g| g.clone()).unwrap_or_default()
+    DOING
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .map(|g| g.clone())
+        .unwrap_or_default()
 }
 
 /// Install the panic hook. Call once, at startup, before anything else.
@@ -158,7 +173,10 @@ pub fn watch(store_root: &Path) {
         let note = Note {
             at: crate::store::now(),
             what: message_of(info),
-            where_: info.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_default(),
+            where_: info
+                .location()
+                .map(|l| format!("{}:{}", l.file(), l.line()))
+                .unwrap_or_default(),
             during: current_doing(),
         };
         // Best effort, and silent on failure. A panic hook that panics
@@ -173,7 +191,11 @@ pub fn watch(store_root: &Path) {
             // — which is exactly the situation the hook is for — would leave
             // an empty or half-written note where the previous crash's note
             // used to be, and the previous one is the more useful of the two.
-            crate::kept!(crate::store::write_whole_in_state(path.parent().unwrap_or(Path::new(".")), &path, json.as_bytes()));
+            crate::kept!(crate::store::write_whole_in_state(
+                path.parent().unwrap_or(Path::new(".")),
+                &path,
+                json.as_bytes()
+            ));
         }
         previous(info);
     }));
@@ -202,7 +224,10 @@ pub fn last(store: &Store) -> Option<Note> {
 pub fn take(store: &Store) -> Option<Note> {
     let n = last(store);
     if n.is_some() {
-        crate::heard!(crate::store::remove_state_file(store.root(), &note_path(store.root())));
+        crate::heard!(crate::store::remove_state_file(
+            store.root(),
+            &note_path(store.root())
+        ));
     }
     n
 }
@@ -216,7 +241,9 @@ pub fn take(store: &Store) -> Option<Note> {
 /// is ordinary data, and carrying on with it beats a part of Atlas going
 /// quietly dead. Used as `m.lock().or_else(crate::crash::unpoison)`, which
 /// keeps each call site's shape and is never an `Err`.
-pub fn unpoison<G>(p: std::sync::PoisonError<G>) -> std::result::Result<G, std::sync::PoisonError<G>> {
+pub fn unpoison<G>(
+    p: std::sync::PoisonError<G>,
+) -> std::result::Result<G, std::sync::PoisonError<G>> {
     Ok(p.into_inner())
 }
 /// Run something, and turn a panic inside it into an error.
@@ -278,7 +305,9 @@ fn restarts_path(state_dir: &Path) -> PathBuf {
 /// that wasn't coming. Task Scheduler doesn't restart a program that exits
 /// with an error.
 pub fn may_start_again(state_dir: &Path, now: u64) -> bool {
-    let Ok(_state) = crate::store::state_transaction(state_dir) else { return false };
+    let Ok(_state) = crate::store::state_transaction(state_dir) else {
+        return false;
+    };
     let path = restarts_path(state_dir);
     let mut recent: Vec<u64> = std::fs::read_to_string(&path)
         .ok()
@@ -292,7 +321,9 @@ pub fn may_start_again(state_dir: &Path, now: u64) -> bool {
     crate::heard!(std::fs::create_dir_all(state_dir));
     // A restart that can't be counted isn't made: uncounted, a crash on
     // every start would restart for ever.
-    serde_json::to_string(&recent).ok().is_some_and(|json| crate::store::write_whole(&path, json.as_bytes()).is_ok())
+    serde_json::to_string(&recent)
+        .ok()
+        .is_some_and(|json| crate::store::write_whole(&path, json.as_bytes()).is_ok())
 }
 
 #[cfg(test)]
@@ -315,8 +346,14 @@ mod tests {
         };
         let said = n.plain();
         assert!(said.contains("while reading a model file"));
-        assert!(!said.contains("unwrap"), "the panic message reached the spoken line: {said}");
-        assert!(!said.contains("gguf.rs"), "a source path reached the spoken line: {said}");
+        assert!(
+            !said.contains("unwrap"),
+            "the panic message reached the spoken line: {said}"
+        );
+        assert!(
+            !said.contains("gguf.rs"),
+            "a source path reached the spoken line: {said}"
+        );
         // The detail is kept, just not said.
         assert!(n.detail().contains("src/gguf.rs:300"));
         assert!(n.detail().contains("unwrap"));
@@ -324,8 +361,16 @@ mod tests {
 
     #[test]
     fn a_note_with_nothing_recorded_still_reads_as_english() {
-        let n = Note { at: 1, what: "x".into(), where_: String::new(), during: String::new() };
-        assert!(!n.plain().contains("while "), "an empty `during` left a dangling word");
+        let n = Note {
+            at: 1,
+            what: "x".into(),
+            where_: String::new(),
+            during: String::new(),
+        };
+        assert!(
+            !n.plain().contains("while "),
+            "an empty `during` left a dangling word"
+        );
         assert!(n.detail().contains("(no location)"));
     }
 
@@ -334,7 +379,10 @@ mod tests {
         let r: std::result::Result<(), String> = caught("doing the thing", || panic!("boom"));
         let why = r.unwrap_err();
         assert!(why.contains("doing the thing"));
-        assert!(!why.contains("boom"), "the panic payload reached the person: {why}");
+        assert!(
+            !why.contains("boom"),
+            "the panic payload reached the person: {why}"
+        );
     }
 
     #[test]
@@ -345,19 +393,31 @@ mod tests {
     #[test]
     fn what_atlas_was_doing_is_cleared_afterwards_so_the_next_crash_is_not_mislabelled() {
         let _ = caught("answering you", || 1);
-        assert_eq!(current_doing(), "", "a finished job is still reported as in progress");
+        assert_eq!(
+            current_doing(),
+            "",
+            "a finished job is still reported as in progress"
+        );
     }
 
     #[test]
     fn the_note_survives_a_round_trip_through_the_file() {
         let root = temp("roundtrip");
         let store = Store::new(&root);
-        let n = Note { at: 7, what: "w".into(), where_: "f:1".into(), during: "d".into() };
+        let n = Note {
+            at: 7,
+            what: "w".into(),
+            where_: "f:1".into(),
+            during: "d".into(),
+        };
         std::fs::write(note_path(store.root()), serde_json::to_string(&n).unwrap()).unwrap();
         assert_eq!(last(&store).unwrap(), n);
         // And taking it clears it, so it is said once.
         assert_eq!(take(&store).unwrap(), n);
-        assert!(last(&store).is_none(), "the crash would be reported every start forever");
+        assert!(
+            last(&store).is_none(),
+            "the crash would be reported every start forever"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

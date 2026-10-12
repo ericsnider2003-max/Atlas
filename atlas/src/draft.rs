@@ -75,43 +75,105 @@ pub struct DraftConfig {
 
 impl Default for DraftConfig {
     fn default() -> Self {
-        DraftConfig { revise: true, max_passes: 2, ignore: Vec::new() }
+        DraftConfig {
+            revise: true,
+            max_passes: 2,
+            ignore: Vec::new(),
+        }
     }
 }
 
 const THROAT_CLEARING: &[&str] = &[
-    "in today's world", "in this day and age", "it goes without saying",
-    "as we all know", "i wanted to reach out", "i hope this finds you well",
-    "let's dive in", "let's take a look", "when it comes to", "at the end of the day",
+    "in today's world",
+    "in this day and age",
+    "it goes without saying",
+    "as we all know",
+    "i wanted to reach out",
+    "i hope this finds you well",
+    "let's dive in",
+    "let's take a look",
+    "when it comes to",
+    "at the end of the day",
 ];
 
 /// The worst tells of machine writing: said by a chatbot, never by a person
 /// writing their own message. From the P0/P1 lists of the MIT-licensed
 /// avoid-ai-writing skill in wshobson/agents (THIRD_PARTY_NOTICES.md).
 const CHATBOT: &[&str] = &[
-    "i hope this helps", "hope this helps!", "certainly!", "absolutely!", "great question",
-    "feel free to reach out", "don't hesitate to reach out", "do not hesitate to reach out",
-    "as an ai", "as a language model", "as of my last update", "as of my knowledge cutoff",
-    "i'd be happy to help", "i would be happy to help", "happy to help!", "you're absolutely right",
-    "i hope this message finds you well", "i hope this email finds you well",
-    "let me know if you have any other questions", "let me know if you have any questions",
-    "let's break this down", "let's dive into", "here's my thought process",
+    "i hope this helps",
+    "hope this helps!",
+    "certainly!",
+    "absolutely!",
+    "great question",
+    "feel free to reach out",
+    "don't hesitate to reach out",
+    "do not hesitate to reach out",
+    "as an ai",
+    "as a language model",
+    "as of my last update",
+    "as of my knowledge cutoff",
+    "i'd be happy to help",
+    "i would be happy to help",
+    "happy to help!",
+    "you're absolutely right",
+    "i hope this message finds you well",
+    "i hope this email finds you well",
+    "let me know if you have any other questions",
+    "let me know if you have any questions",
+    "let's break this down",
+    "let's dive into",
+    "here's my thought process",
 ];
 
 const HEDGES: &[&str] = &[
-    "i think", "perhaps", "maybe", "possibly", "arguably", "somewhat",
-    "fairly", "rather", "quite", "sort of", "kind of", "it could be argued",
-    "in some ways", "to some extent",
+    "i think",
+    "perhaps",
+    "maybe",
+    "possibly",
+    "arguably",
+    "somewhat",
+    "fairly",
+    "rather",
+    "quite",
+    "sort of",
+    "kind of",
+    "it could be argued",
+    "in some ways",
+    "to some extent",
 ];
 
 const FILLER: &[&str] = &[
-    "leverage", "synergy", "utilise", "utilize", "robust", "seamless",
-    "cutting-edge", "game-changing", "best-in-class", "holistic", "paradigm",
-    "delve", "tapestry", "landscape of", "realm of", "testament to",
+    "leverage",
+    "synergy",
+    "utilise",
+    "utilize",
+    "robust",
+    "seamless",
+    "cutting-edge",
+    "game-changing",
+    "best-in-class",
+    "holistic",
+    "paradigm",
+    "delve",
+    "tapestry",
+    "landscape of",
+    "realm of",
+    "testament to",
     // Tier 1 of avoid-ai-writing's word list (wshobson/agents, MIT).
-    "pivotal", "meticulous", "embark on", "underscores", "showcasing", "vibrant",
-    "thriving", "nestled", "bustling", "intricacies", "deep dive", "dive into",
-    "watershed moment", "game-changer",
+    "pivotal",
+    "meticulous",
+    "embark on",
+    "underscores",
+    "showcasing",
+    "vibrant",
+    "thriving",
+    "nestled",
+    "bustling",
+    "intricacies",
+    "deep dive",
+    "dive into",
+    "watershed moment",
+    "game-changer",
 ];
 
 /// A blank left in a draft: "[Your Name]", "[date]", "[Company]" — square
@@ -152,30 +214,57 @@ pub fn critique(text: &str, limit: Option<usize>, cfg: &DraftConfig) -> Vec<Note
     if let Some(first) = sentences.first() {
         let f = first.to_lowercase();
         if THROAT_CLEARING.iter().any(|t| f.contains(t)) {
-            notes.push(Note { fault: Fault::ThroatClearing, evidence: (*first).to_string() });
+            notes.push(Note {
+                fault: Fault::ThroatClearing,
+                evidence: (*first).to_string(),
+            });
         }
     }
 
     // A chatbot's voice.
-    let chatbot: Vec<&str> = CHATBOT.iter().filter(|c| lower.contains(**c)).copied().collect();
+    let chatbot: Vec<&str> = CHATBOT
+        .iter()
+        .filter(|c| lower.contains(**c))
+        .copied()
+        .collect();
     if !chatbot.is_empty() {
-        notes.push(Note { fault: Fault::Chatbot, evidence: chatbot.join(", ") });
+        notes.push(Note {
+            fault: Fault::Chatbot,
+            evidence: chatbot.join(", "),
+        });
     }
     let blanks = blanks(text);
     if !blanks.is_empty() {
-        notes.push(Note { fault: Fault::Blank, evidence: blanks.join(", ") });
+        notes.push(Note {
+            fault: Fault::Blank,
+            evidence: blanks.join(", "),
+        });
     }
 
     // Hedging — one is fine, three is a refusal to commit.
-    let hedges: Vec<&str> = HEDGES.iter().filter(|h| lower.contains(**h)).copied().collect();
+    let hedges: Vec<&str> = HEDGES
+        .iter()
+        .filter(|h| lower.contains(**h))
+        .copied()
+        .collect();
     if hedges.len() >= 3 {
-        notes.push(Note { fault: Fault::Hedging, evidence: hedges.join(", ") });
+        notes.push(Note {
+            fault: Fault::Hedging,
+            evidence: hedges.join(", "),
+        });
     }
 
     // Filler.
-    let filler: Vec<&str> = FILLER.iter().filter(|f| lower.contains(**f)).copied().collect();
+    let filler: Vec<&str> = FILLER
+        .iter()
+        .filter(|f| lower.contains(**f))
+        .copied()
+        .collect();
     if !filler.is_empty() {
-        notes.push(Note { fault: Fault::Filler, evidence: filler.join(", ") });
+        notes.push(Note {
+            fault: Fault::Filler,
+            evidence: filler.join(", "),
+        });
     }
 
     // Repetition: two sentences sharing most of their meaningful words.
@@ -198,11 +287,20 @@ pub fn critique(text: &str, limit: Option<usize>, cfg: &DraftConfig) -> Vec<Note
     if let Some(last) = sentences.last() {
         let l = last.to_lowercase();
         if last.ends_with('?')
-            && ["thoughts", "what do you think", "let me know", "agree", "am i wrong"]
-                .iter()
-                .any(|q| l.contains(q))
+            && [
+                "thoughts",
+                "what do you think",
+                "let me know",
+                "agree",
+                "am i wrong",
+            ]
+            .iter()
+            .any(|q| l.contains(q))
         {
-            notes.push(Note { fault: Fault::TackedOnQuestion, evidence: (*last).to_string() });
+            notes.push(Note {
+                fault: Fault::TackedOnQuestion,
+                evidence: (*last).to_string(),
+            });
         }
     }
 
@@ -233,7 +331,10 @@ pub fn critique(text: &str, limit: Option<usize>, cfg: &DraftConfig) -> Vec<Note
     // Rhythm: all sentences within a whisker of each other reads as machine
     // output, whatever the words are.
     if sentences.len() >= 4 {
-        let lengths: Vec<usize> = sentences.iter().map(|s| s.split_whitespace().count()).collect();
+        let lengths: Vec<usize> = sentences
+            .iter()
+            .map(|s| s.split_whitespace().count())
+            .collect();
         let mean = lengths.iter().sum::<usize>() as f32 / lengths.len() as f32;
         let spread = lengths
             .iter()
@@ -316,7 +417,11 @@ pub enum Outcome {
     /// Good enough as written.
     AsWritten,
     /// Rewritten, with what changed.
-    Revised { text: String, fixed: Vec<Fault>, passes: u32 },
+    Revised {
+        text: String,
+        fixed: Vec<Fault>,
+        passes: u32,
+    },
     /// Tried and the rewrite was worse, so the original stands.
     KeptOriginal(String),
 }
@@ -348,9 +453,13 @@ pub fn revise(text: &str, llm: &dyn crate::brain::Llm, cfg: &DraftConfig) -> Out
     let mut fixed: Vec<Fault> = Vec::new();
     let mut passes = 0u32;
     while passes < cfg.max_passes {
-        let Some(brief) = revision_brief(&notes) else { break };
-        let Ok(rewritten) = llm.complete(REVISE_SYSTEM, &format!("{brief}\n\nThe message:\n{current}"))
-        else {
+        let Some(brief) = revision_brief(&notes) else {
+            break;
+        };
+        let Ok(rewritten) = llm.complete(
+            REVISE_SYSTEM,
+            &format!("{brief}\n\nThe message:\n{current}"),
+        ) else {
             break;
         };
         let rewritten = rewritten.trim().to_string();
@@ -385,7 +494,11 @@ pub fn revise(text: &str, llm: &dyn crate::brain::Llm, cfg: &DraftConfig) -> Out
     } else {
         fixed.sort_by_key(|f| format!("{f:?}"));
         fixed.dedup();
-        Outcome::Revised { text: current, fixed, passes }
+        Outcome::Revised {
+            text: current,
+            fixed,
+            passes,
+        }
     }
 }
 
@@ -395,14 +508,21 @@ mod revise_tests {
     use crate::brain::MockLlm;
 
     fn cfg() -> DraftConfig {
-        DraftConfig { revise: true, max_passes: 2, ignore: Vec::new() }
+        DraftConfig {
+            revise: true,
+            max_passes: 2,
+            ignore: Vec::new(),
+        }
     }
 
     #[test]
     fn a_clean_draft_is_left_alone() {
         let llm = MockLlm("whatever".into());
         // A short, clean line has nothing to critique.
-        assert_eq!(revise("Thanks — I'll have it to you Monday.", &llm, &cfg()), Outcome::AsWritten);
+        assert_eq!(
+            revise("Thanks — I'll have it to you Monday.", &llm, &cfg()),
+            Outcome::AsWritten
+        );
     }
 
     #[test]
@@ -438,7 +558,10 @@ mod revise_tests {
         c.max_passes = 0;
         let llm = MockLlm("clean".into());
         let flawed = "I wanted to reach out about leveraging synergy.";
-        assert_eq!(revise(flawed, &llm, &c), Outcome::KeptOriginal(flawed.to_string()));
+        assert_eq!(
+            revise(flawed, &llm, &c),
+            Outcome::KeptOriginal(flawed.to_string())
+        );
     }
 }
 
@@ -451,6 +574,12 @@ pub fn for_replies() -> DraftConfig {
     DraftConfig {
         revise: true,
         max_passes: 1,
-        ignore: vec![Fault::Hedging, Fault::TackedOnQuestion, Fault::TooLong, Fault::Vague, Fault::Monotonous],
+        ignore: vec![
+            Fault::Hedging,
+            Fault::TackedOnQuestion,
+            Fault::TooLong,
+            Fault::Vague,
+            Fault::Monotonous,
+        ],
     }
 }

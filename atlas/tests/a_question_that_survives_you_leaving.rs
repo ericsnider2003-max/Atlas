@@ -47,7 +47,14 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn cfg() -> Config {
@@ -55,7 +62,13 @@ fn cfg() -> Config {
 }
 
 fn away<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    let mut d = Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    );
     d.autonomy = Autonomy::Unattended;
     d
 }
@@ -65,8 +78,15 @@ fn away<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
 #[test]
 fn an_approval_question_is_answerable_without_reading_code() {
     let q = about_approval("delete the old backups");
-    assert!(q.answerable_without_code().is_ok(), "got jargon: {:?}", q.answerable_without_code());
-    assert!(q.is_a_real_choice(), "two options, not an announcement and not a design exercise");
+    assert!(
+        q.answerable_without_code().is_ok(),
+        "got jargon: {:?}",
+        q.answerable_without_code()
+    );
+    assert!(
+        q.is_a_real_choice(),
+        "two options, not an announcement and not a design exercise"
+    );
 }
 
 #[test]
@@ -92,7 +112,10 @@ fn a_real_turn_while_you_are_away_parks_rather_than_promising_to_wait() {
         1,
         "a turn that needed your say-so left no trace: {said}"
     );
-    assert!(matches!(d.backlog.outstanding()[0].blocker, Blocker::NeedsYourDecision { .. }));
+    assert!(matches!(
+        d.backlog.outstanding()[0].blocker,
+        Blocker::NeedsYourDecision { .. }
+    ));
 }
 
 #[test]
@@ -124,11 +147,27 @@ fn a_request_full_of_paths_is_still_phrased_plainly() {
                 q.asks
             );
         }
-        assert!(!whole.contains("::"), "{shape}: a module path survived — {}", q.asks);
-        assert!(!whole.contains(".rs"), "{shape}: an extension survived — {}", q.asks);
+        assert!(
+            !whole.contains("::"),
+            "{shape}: a module path survived — {}",
+            q.asks
+        );
+        assert!(
+            !whole.contains(".rs"),
+            "{shape}: an extension survived — {}",
+            q.asks
+        );
         // Two stripped words in a row must not read as "that that".
-        assert!(!whole.contains("that that"), "{shape}: got `that that` — {}", q.asks);
-        assert!(q.answerable_without_code().is_ok(), "{shape}: {:?}", q.answerable_without_code());
+        assert!(
+            !whole.contains("that that"),
+            "{shape}: got `that that` — {}",
+            q.asks
+        );
+        assert!(
+            q.answerable_without_code().is_ok(),
+            "{shape}: {:?}",
+            q.answerable_without_code()
+        );
     }
 }
 
@@ -147,8 +186,14 @@ fn a_question_it_cannot_phrase_is_refused_rather_than_parked() {
     };
     let said = d.park_for_you(&q, "run the thing", NOW);
 
-    assert!(said.contains("can't put it in plain enough terms"), "got: {said}");
-    assert!(d.backlog.outstanding().is_empty(), "an unanswerable question was parked anyway");
+    assert!(
+        said.contains("can't put it in plain enough terms"),
+        "got: {said}"
+    );
+    assert!(
+        d.backlog.outstanding().is_empty(),
+        "an unanswerable question was parked anyway"
+    );
 }
 
 #[test]
@@ -174,10 +219,17 @@ fn nothing_is_guessed_while_it_waits() {
     // the question promises is that one thing is set aside and the rest
     // carries on.
     let q = about_approval("delete the old backups");
-    assert!(q.set_aside.contains("delete"), "it did not say what stops: {}", q.set_aside);
+    assert!(
+        q.set_aside.contains("delete"),
+        "it did not say what stops: {}",
+        q.set_aside
+    );
     let spoken = q.spoken("Eric");
     assert!(spoken.contains("carry on with the rest"), "got: {spoken}");
-    assert!(spoken.starts_with("Eric,"), "it did not address you: {spoken}");
+    assert!(
+        spoken.starts_with("Eric,"),
+        "it did not address you: {spoken}"
+    );
 }
 
 // ============ it survives you not being there ============================
@@ -219,7 +271,11 @@ fn the_parked_question_reaches_the_morning_brief() {
     // surfaces it as something needing you.
     let (c, p) = (cfg(), plat());
     let mut d = away(&c, &p, "brief");
-    d.park_for_you(&about_approval("delete the old backups"), "delete the old backups", NOW);
+    d.park_for_you(
+        &about_approval("delete the old backups"),
+        "delete the old backups",
+        NOW,
+    );
 
     let b = d.brief_now(NOW + 10);
     assert!(!b.is_empty(), "a parked decision did not reach the brief");
@@ -236,13 +292,31 @@ fn it_survives_a_restart() {
     let (c, p) = (cfg(), plat());
     {
         let mut d = Daemon::new(
-            &c, &p, None, Store::new(store.clone()), Proactive::new(ProactiveConfig::default()));
+            &c,
+            &p,
+            None,
+            Store::new(store.clone()),
+            Proactive::new(ProactiveConfig::default()),
+        );
         d.autonomy = Autonomy::Unattended;
-        d.park_for_you(&about_approval("delete the old backups"), "delete the old backups", NOW);
+        d.park_for_you(
+            &about_approval("delete the old backups"),
+            "delete the old backups",
+            NOW,
+        );
     }
     let d2 = Daemon::new(
-        &c, &p, None, Store::new(store), Proactive::new(ProactiveConfig::default()));
-    assert_eq!(d2.backlog.outstanding().len(), 1, "the question died with the process");
+        &c,
+        &p,
+        None,
+        Store::new(store),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    assert_eq!(
+        d2.backlog.outstanding().len(),
+        1,
+        "the question died with the process"
+    );
 }
 
 // ============ which failures are worth asking about ======================
@@ -253,7 +327,10 @@ fn most_failures_are_never_put_to_you() {
     // something you stop reading.
     assert!(!should_ask(Kind::Mechanical, 9));
     assert!(!should_ask(Kind::Behavioural, 9));
-    assert!(should_ask(Kind::Undecided, 0), "a decision only you can make waits for nobody");
+    assert!(
+        should_ask(Kind::Undecided, 0),
+        "a decision only you can make waits for nobody"
+    );
     assert!(should_ask(Kind::Environment, 0));
 }
 
@@ -261,7 +338,10 @@ fn most_failures_are_never_put_to_you() {
 fn an_unclear_failure_gets_a_couple_of_goes_first() {
     assert!(!should_ask(Kind::Unclear, 0));
     assert!(!should_ask(Kind::Unclear, 1));
-    assert!(should_ask(Kind::Unclear, 2), "plenty become clear once something has been tried");
+    assert!(
+        should_ask(Kind::Unclear, 2),
+        "plenty become clear once something has been tried"
+    );
 }
 
 // `about_ambiguity` and its test were deleted together. The moment is real --

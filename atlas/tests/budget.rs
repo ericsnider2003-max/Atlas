@@ -4,7 +4,10 @@ use atlas::budget::{
 };
 
 fn on() -> BudgetConfig {
-    BudgetConfig { enabled: true, ..Default::default() }
+    BudgetConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 /// A realistic night's task: the Atlas source as cached context, a short
@@ -33,8 +36,18 @@ fn everything_runs_locally_until_you_turn_hosting_on() {
 #[test]
 fn simple_work_never_reaches_a_hosted_model_at_all() {
     let cfg = on();
-    assert_eq!(route(Difficulty::Trivial, &cfg), Tier::Local, "a threshold change is free");
-    match allow(&task("bump a timeout"), Difficulty::Trivial, &Ledger::default(), &cfg, 0) {
+    assert_eq!(
+        route(Difficulty::Trivial, &cfg),
+        Tier::Local,
+        "a threshold change is free"
+    );
+    match allow(
+        &task("bump a timeout"),
+        Difficulty::Trivial,
+        &Ledger::default(),
+        &cfg,
+        0,
+    ) {
         Approval::Local(_) => {}
         o => panic!("{o:?}"),
     }
@@ -49,8 +62,15 @@ fn the_cheapest_model_that_can_do_it_is_the_one_used() {
 
 #[test]
 fn your_ceiling_wins_over_what_atlas_thinks_it_needs() {
-    let cfg = BudgetConfig { ceiling: Tier::Haiku, ..on() };
-    assert_eq!(route(Difficulty::Hard, &cfg), Tier::Haiku, "never above what you allowed");
+    let cfg = BudgetConfig {
+        ceiling: Tier::Haiku,
+        ..on()
+    };
+    assert_eq!(
+        route(Difficulty::Hard, &cfg),
+        Tier::Haiku,
+        "never above what you allowed"
+    );
 }
 
 // ================= the discounts stack =================
@@ -60,16 +80,36 @@ fn caching_the_codebase_is_where_most_of_the_saving_comes_from() {
     // The source barely changes between requests, and a cache read costs a
     // tenth of a fresh one.
     let cached = estimate(&task("x"), Tier::Sonnet, &on());
-    let uncached = estimate(&task("x"), Tier::Sonnet, &BudgetConfig { use_caching: false, ..on() });
-    assert!(cached < uncached / 2.0, "cached {cached:.4} vs uncached {uncached:.4}");
+    let uncached = estimate(
+        &task("x"),
+        Tier::Sonnet,
+        &BudgetConfig {
+            use_caching: false,
+            ..on()
+        },
+    );
+    assert!(
+        cached < uncached / 2.0,
+        "cached {cached:.4} vs uncached {uncached:.4}"
+    );
 }
 
 #[test]
 fn overnight_work_goes_at_the_batch_rate() {
     let cfg = on();
     let waits = estimate(&task("x"), Tier::Sonnet, &cfg);
-    let urgent = estimate(&Job { can_wait: false, ..task("x") }, Tier::Sonnet, &cfg);
-    assert!((waits - urgent * 0.5).abs() < 1e-9, "half price for anything that can wait");
+    let urgent = estimate(
+        &Job {
+            can_wait: false,
+            ..task("x")
+        },
+        Tier::Sonnet,
+        &cfg,
+    );
+    assert!(
+        (waits - urgent * 0.5).abs() < 1e-9,
+        "half price for anything that can wait"
+    );
 }
 
 #[test]
@@ -94,7 +134,14 @@ fn a_nights_work_is_priced_before_it_happens() {
 
 #[test]
 fn a_single_urgent_change_is_still_pennies() {
-    let one = estimate(&Job { can_wait: false, ..task("fix the parser") }, Tier::Sonnet, &on());
+    let one = estimate(
+        &Job {
+            can_wait: false,
+            ..task("fix the parser")
+        },
+        Tier::Sonnet,
+        &on(),
+    );
     assert!(one < 0.10, "${one:.4} for one change");
 }
 
@@ -102,13 +149,25 @@ fn a_single_urgent_change_is_still_pennies() {
 
 #[test]
 fn the_daily_cap_is_a_stop_not_a_warning() {
-    let cfg = BudgetConfig { daily_cap: 0.05, ..on() };
+    let cfg = BudgetConfig {
+        daily_cap: 0.05,
+        ..on()
+    };
     let mut l = Ledger::default();
-    l.record(Spend { at: 100, tier: Tier::Sonnet, dollars: 0.049, what: "x".into(), batched: true });
+    l.record(Spend {
+        at: 100,
+        tier: Tier::Sonnet,
+        dollars: 0.049,
+        what: "x".into(),
+        batched: true,
+    });
     match allow(&task("another"), Difficulty::Real, &l, &cfg, 200) {
         Approval::Refused(why) => {
             assert!(why.contains("past $0.05"), "got: {why}");
-            assert!(why.contains("Spent $0.05"), "and what's gone already: {why}");
+            assert!(
+                why.contains("Spent $0.05"),
+                "and what's gone already: {why}"
+            );
         }
         o => panic!("expected a refusal, got {o:?}"),
     }
@@ -116,9 +175,19 @@ fn the_daily_cap_is_a_stop_not_a_warning() {
 
 #[test]
 fn the_monthly_cap_holds_even_when_today_has_room() {
-    let cfg = BudgetConfig { daily_cap: 100.0, monthly_cap: 0.10, ..on() };
+    let cfg = BudgetConfig {
+        daily_cap: 100.0,
+        monthly_cap: 0.10,
+        ..on()
+    };
     let mut l = Ledger::default();
-    l.record(Spend { at: 0, tier: Tier::Sonnet, dollars: 0.099, what: "x".into(), batched: true });
+    l.record(Spend {
+        at: 0,
+        tier: Tier::Sonnet,
+        dollars: 0.099,
+        what: "x".into(),
+        batched: true,
+    });
     assert!(matches!(
         allow(&task("x"), Difficulty::Real, &l, &cfg, 1000),
         Approval::Refused(_)
@@ -127,9 +196,18 @@ fn the_monthly_cap_holds_even_when_today_has_room() {
 
 #[test]
 fn yesterdays_spending_does_not_count_against_today() {
-    let cfg = BudgetConfig { daily_cap: 0.10, ..on() };
+    let cfg = BudgetConfig {
+        daily_cap: 0.10,
+        ..on()
+    };
     let mut l = Ledger::default();
-    l.record(Spend { at: 0, tier: Tier::Sonnet, dollars: 0.09, what: "x".into(), batched: true });
+    l.record(Spend {
+        at: 0,
+        tier: Tier::Sonnet,
+        dollars: 0.09,
+        what: "x".into(),
+        batched: true,
+    });
     let tomorrow = 2 * 86_400;
     assert!(matches!(
         allow(&task("x"), Difficulty::Real, &l, &cfg, tomorrow),
@@ -140,7 +218,11 @@ fn yesterdays_spending_does_not_count_against_today() {
 #[test]
 fn an_allowed_job_says_what_it_will_cost_before_running() {
     match allow(&task("x"), Difficulty::Real, &Ledger::default(), &on(), 0) {
-        Approval::Go { tier, dollars, batched } => {
+        Approval::Go {
+            tier,
+            dollars,
+            batched,
+        } => {
             assert_eq!(tier, Tier::Sonnet);
             assert!(dollars > 0.0 && dollars < 0.05);
             assert!(batched);
@@ -154,7 +236,13 @@ fn an_allowed_job_says_what_it_will_cost_before_running() {
 #[test]
 fn what_it_has_cost_is_always_answerable() {
     let mut l = Ledger::default();
-    l.record(Spend { at: 100, tier: Tier::Sonnet, dollars: 0.42, what: "x".into(), batched: true });
+    l.record(Spend {
+        at: 100,
+        tier: Tier::Sonnet,
+        dollars: 0.42,
+        what: "x".into(),
+        batched: true,
+    });
     let said = report(&l, &on(), 200);
     assert!(said.contains("$0.42 today"));
     assert!(said.contains("Cap is"), "and what the ceiling is: {said}");
@@ -194,7 +282,13 @@ fn a_month_with_nothing_spent_says_so_plainly() {
 fn the_ledger_stays_bounded() {
     let mut l = Ledger::default();
     for i in 0..3000 {
-        l.record(Spend { at: i, tier: Tier::Haiku, dollars: 0.001, what: "x".into(), batched: true });
+        l.record(Spend {
+            at: i,
+            tier: Tier::Haiku,
+            dollars: 0.001,
+            what: "x".into(),
+            batched: true,
+        });
     }
     assert!(l.spends.len() <= 2000);
 }
@@ -205,8 +299,15 @@ fn the_shipped_defaults_are_cautious() {
     assert!(!cfg.enabled, "hosted models are opt-in");
     assert!(cfg.daily_cap <= 5.0, "a low daily cap by default");
     assert!(cfg.monthly_cap <= 50.0);
-    assert_eq!(cfg.ceiling, Tier::Sonnet, "not the most expensive tier by default");
-    assert!(cfg.prefer_batch && cfg.use_caching, "both discounts on by default");
+    assert_eq!(
+        cfg.ceiling,
+        Tier::Sonnet,
+        "not the most expensive tier by default"
+    );
+    assert!(
+        cfg.prefer_batch && cfg.use_caching,
+        "both discounts on by default"
+    );
 }
 
 #[test]

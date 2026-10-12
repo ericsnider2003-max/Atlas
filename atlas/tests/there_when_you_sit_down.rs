@@ -13,9 +13,16 @@ use std::path::Path;
 
 #[test]
 fn the_task_starts_atlas_on_unlock_and_on_waking_as_well_as_at_sign_in() {
-    let xml = task_xml(Path::new(r"C:\Users\erics\AppData\Local\Atlas\atlas.exe"), Mode::Background, Some(r"LE3O\erics"));
+    let xml = task_xml(
+        Path::new(r"C:\Users\erics\AppData\Local\Atlas\atlas.exe"),
+        Mode::Background,
+        Some(r"LE3O\erics"),
+    );
     assert!(xml.contains("<LogonTrigger>"));
-    assert!(xml.contains("<StateChange>SessionUnlock</StateChange>"), "{xml}");
+    assert!(
+        xml.contains("<StateChange>SessionUnlock</StateChange>"),
+        "{xml}"
+    );
     assert!(xml.contains("<EventTrigger>"));
     // The query is escaped once, as Task Scheduler's own exports carry it.
     assert!(xml.contains("&lt;QueryList&gt;"));
@@ -52,7 +59,10 @@ fn a_clean_stop_says_why() {
     r.stop(2_000, Why::YouClosedIt);
     let last = r.past.last().unwrap();
     assert_eq!(last.ended, Some(Ended::Clean(Why::YouClosedIt)));
-    assert_eq!(r.last_stop(2_030).unwrap(), "I last stopped just now: you closed it.");
+    assert_eq!(
+        r.last_stop(2_030).unwrap(),
+        "I last stopped just now: you closed it."
+    );
 }
 
 #[test]
@@ -71,7 +81,10 @@ fn a_run_that_never_said_goodbye_is_judged_by_whether_the_computer_restarted() {
     r.now.as_mut().unwrap().last_alive = 5_000;
     let line = r.start(9_000, Some(100)).expect("said");
     assert!(line.contains("without warning"), "{line}");
-    assert_eq!(r.past.last().unwrap().ended, Some(Ended::EndedWithoutWarning));
+    assert_eq!(
+        r.past.last().unwrap().ended,
+        Some(Ended::EndedWithoutWarning)
+    );
 }
 
 #[test]
@@ -121,5 +134,8 @@ fn the_self_check_says_how_atlas_last_stopped() {
         r.start(5_000, Some(100));
         r.last_stop(5_030).unwrap()
     };
-    assert!(line.starts_with("I last stopped an hour ago: it was ended without warning"), "{line}");
+    assert!(
+        line.starts_with("I last stopped an hour ago: it was ended without warning"),
+        "{line}"
+    );
 }

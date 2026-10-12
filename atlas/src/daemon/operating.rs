@@ -11,14 +11,22 @@ impl<'a> Daemon<'a> {
     /// opened if it isn't; with none named, the window in front is the one.
     pub(super) fn start_operating(&mut self, said: &str) -> String {
         if self.llm.is_none() {
-            return "Working an app step by step needs the language model, and it isn't running.".into();
+            return "Working an app step by step needs the language model, and it isn't running."
+                .into();
         }
         if let Some(j) = &self.operating {
-            return format!("I'm still working on \"{}\" -- say \"stop\" to end that first.", j.goal);
+            return format!(
+                "I'm still working on \"{}\" -- say \"stop\" to end that first.",
+                j.goal
+            );
         }
         let apps: Vec<String> = self.cfg.apps.apps.keys().cloned().collect();
         let (app, goal) = operate::app_and_goal(said, &apps);
-        let goal = if goal.trim().is_empty() { said.trim().to_string() } else { goal };
+        let goal = if goal.trim().is_empty() {
+            said.trim().to_string()
+        } else {
+            goal
+        };
         let t = crate::store::now();
         let mut job = Job::new(&goal, &app, t);
         if app.is_empty() {
@@ -27,7 +35,11 @@ impl<'a> Daemon<'a> {
                 _ => return "Which app? Say it with the app's name -- \"in Excel, ...\".".into(),
             }
         }
-        let where_ = if app.is_empty() { "the window in front".to_string() } else { app.clone() };
+        let where_ = if app.is_empty() {
+            "the window in front".to_string()
+        } else {
+            app.clone()
+        };
         self.log.info(&format!("operate: {goal} (in {where_})"));
         self.operating = Some(job);
         format!("Working on it in {where_}: {goal}. I'll go a step at a time and tell you when it's done -- say \"stop\" to end it.")
@@ -36,16 +48,28 @@ impl<'a> Daemon<'a> {
     /// Stopped by "stop" or "stop everything": `true` when a job was going.
     pub(super) fn stop_operating(&mut self) -> Option<String> {
         let j = self.operating.take()?;
-        self.finish_operating_step(crate::taskloop::Outcome::Failed(format!("Stopped app goal: {}.", j.goal)));
+        self.finish_operating_step(crate::taskloop::Outcome::Failed(format!(
+            "Stopped app goal: {}.",
+            j.goal
+        )));
         Some(match j.steps.len() {
             0 => format!("Stopped \"{}\" before doing anything.", j.goal),
-            n => format!("Stopped \"{}\" after {n} step{}: {}.", j.goal, if n == 1 { "" } else { "s" }, j.steps.last().cloned().unwrap_or_default()),
+            n => format!(
+                "Stopped \"{}\" after {n} step{}: {}.",
+                j.goal,
+                if n == 1 { "" } else { "s" },
+                j.steps.last().cloned().unwrap_or_default()
+            ),
         })
     }
 
     /// Your answer to what a job asked. `None` when no job is waiting on you.
     pub(super) fn operate_answer(&mut self, said: &str) -> Option<String> {
-        let waiting = self.operating.as_ref().map(|j| j.waiting_on_you).unwrap_or(false);
+        let waiting = self
+            .operating
+            .as_ref()
+            .map(|j| j.waiting_on_you)
+            .unwrap_or(false);
         if !waiting {
             return None;
         }
@@ -76,14 +100,20 @@ impl<'a> Daemon<'a> {
         if had_job && self.operating.is_none() {
             // Success already releases the goal below. Every other terminal
             // path is a failure, including window/step/model limits.
-            self.finish_operating_step(crate::taskloop::Outcome::Failed(out.last().cloned().unwrap_or_else(|| "The app job stopped without a result.".into())));
+            self.finish_operating_step(crate::taskloop::Outcome::Failed(
+                out.last()
+                    .cloned()
+                    .unwrap_or_else(|| "The app job stopped without a result.".into()),
+            ));
         }
         out
     }
 
     fn operate_tick_inner(&mut self, t: u64) -> Vec<String> {
         let mut out = Vec::new();
-        let Some(mut job) = self.operating.take() else { return out };
+        let Some(mut job) = self.operating.take() else {
+            return out;
+        };
         if job.thinking.is_some() || job.waiting_on_you || self.attention.is_paused() {
             self.operating = Some(job);
             return out;
@@ -98,12 +128,16 @@ impl<'a> Daemon<'a> {
                 }
                 None => {
                     if job.opened_at.is_none() {
-                        let said = self.on_open_app(&Intent::OpenApp(job.app.clone()), &job.app.clone());
+                        let said =
+                            self.on_open_app(&Intent::OpenApp(job.app.clone()), &job.app.clone());
                         job.steps.push(format!("opened {}", job.app));
                         job.opened_at = Some(t);
                         self.log.info(&format!("operate: {said}"));
                     } else if t.saturating_sub(job.opened_at.unwrap_or(t)) > 20 {
-                        out.push(format!("I opened {} but couldn't find its window, so I've stopped.", job.app));
+                        out.push(format!(
+                            "I opened {} but couldn't find its window, so I've stopped.",
+                            job.app
+                        ));
                         return out;
                     }
                     self.operating = Some(job);
@@ -120,11 +154,16 @@ impl<'a> Daemon<'a> {
         }
         // A step chosen: taken.
         if let Some((name, arg)) = job.next.take() {
-            let view = job.view.clone().unwrap_or_else(|| operate::view_of_text(&[], (0, 0), ""));
+            let view = job
+                .view
+                .clone()
+                .unwrap_or_else(|| operate::view_of_text(&[], (0, 0), ""));
             let action = match operate::read_call(&name, &arg) {
                 Ok(a) => a,
                 Err(why) => {
-                    job.last_result = format!("That wasn't a step ({why}); call one of the tools with a number shown.");
+                    job.last_result = format!(
+                        "That wasn't a step ({why}); call one of the tools with a number shown."
+                    );
                     self.operating = Some(job);
                     return out;
                 }
@@ -152,9 +191,20 @@ impl<'a> Daemon<'a> {
             }
             match action {
                 Action::Done(summary) => {
-                    self.journal.record_at(Act::Upkeep, &format!("in {}: {}", job.app, job.goal), true, t);
-                    out.push(if summary.trim().is_empty() { format!("Done: {}.", job.goal) } else { summary });
-                    self.finish_operating_step(crate::taskloop::Outcome::Done(out.last().cloned().unwrap_or_default()));
+                    self.journal.record_at(
+                        Act::Upkeep,
+                        &format!("in {}: {}", job.app, job.goal),
+                        true,
+                        t,
+                    );
+                    out.push(if summary.trim().is_empty() {
+                        format!("Done: {}.", job.goal)
+                    } else {
+                        summary
+                    });
+                    self.finish_operating_step(crate::taskloop::Outcome::Done(
+                        out.last().cloned().unwrap_or_default(),
+                    ));
                     return out;
                 }
                 Action::GiveUp(why) => {
@@ -209,14 +259,18 @@ impl<'a> Daemon<'a> {
         let view = match self.look_at(win) {
             Some(v) => v,
             None => {
-                out.push(format!("I can't see anything in that window to work with, so I've stopped \"{}\".", job.goal));
+                out.push(format!(
+                    "I can't see anything in that window to work with, so I've stopped \"{}\".",
+                    job.goal
+                ));
                 return out;
             }
         };
         let fp = view.fingerprint();
         if !job.steps.is_empty() && job.last_fingerprint == Some(fp) {
             job.unchanged += 1;
-            job.last_result.push_str(" Nothing changed on screen after it.");
+            job.last_result
+                .push_str(" Nothing changed on screen after it.");
             if job.unchanged >= operate::MOST_UNCHANGED {
                 out.push(format!(
                     "I've stopped \"{}\": the last {} steps changed nothing on screen. I got as far as: {}.",
@@ -239,7 +293,10 @@ impl<'a> Daemon<'a> {
         let tools = operate::tools();
         let work: crew::Work = Box::new(move |_c| {
             let req = crate::brain::ChatRequest {
-                messages: vec![crate::brain::Msg::system(&system), crate::brain::Msg::user(&user)],
+                messages: vec![
+                    crate::brain::Msg::system(&system),
+                    crate::brain::Msg::user(&user),
+                ],
                 tools: tools.clone(),
                 max_tokens: crate::brain::FORCED_TOOL_TOKENS + 40,
                 force_tool: true,
@@ -249,14 +306,31 @@ impl<'a> Daemon<'a> {
                 output_schema: None,
             };
             let r = llm.chat(&req, &mut |_| true).map_err(|e| e.to_string())?;
-            let call = r.tool_calls.into_iter().next().or_else(|| crate::models::forced_call(&r.text, &tools));
+            let call = r
+                .tool_calls
+                .into_iter()
+                .next()
+                .or_else(|| crate::models::forced_call(&r.text, &tools));
             let call = call.ok_or_else(|| "the model didn't choose a step".to_string())?;
-            let arg = call.arguments.get("arg").and_then(|a| a.as_str()).unwrap_or("").to_string();
+            let arg = call
+                .arguments
+                .get("arg")
+                .and_then(|a| a.as_str())
+                .unwrap_or("")
+                .to_string();
             Ok(serde_json::json!({ "name": call.name, "arg": arg }).to_string())
         });
-        job.thinking = self.hand_off_as("operate", t, work, Some(job.goal.clone()), SpeakPolicy::ViaWatcher);
+        job.thinking = self.hand_off_as(
+            "operate",
+            t,
+            work,
+            Some(job.goal.clone()),
+            SpeakPolicy::ViaWatcher,
+        );
         if job.thinking.is_none() {
-            out.push("I have too much on to work the app right now -- ask me again in a minute.".into());
+            out.push(
+                "I have too much on to work the app right now -- ask me again in a minute.".into(),
+            );
             return out;
         }
         self.operating = Some(job);
@@ -268,7 +342,10 @@ impl<'a> Daemon<'a> {
         let had_job = self.operating.is_some();
         let said = self.operate_news_inner(id, ending);
         if had_job && self.operating.is_none() {
-            self.finish_operating_step(crate::taskloop::Outcome::Failed(said.clone().unwrap_or_else(|| "The app job stopped without a result.".into())));
+            self.finish_operating_step(crate::taskloop::Outcome::Failed(
+                said.clone()
+                    .unwrap_or_else(|| "The app job stopped without a result.".into()),
+            ));
         }
         said
     }
@@ -282,8 +359,16 @@ impl<'a> Daemon<'a> {
         match ending {
             crew::Ending::Done(Ok(json)) => {
                 let v: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
-                let name = v.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
-                let arg = v.get("arg").and_then(|n| n.as_str()).unwrap_or("").to_string();
+                let name = v
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let arg = v
+                    .get("arg")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 job.next = Some((name, arg));
                 None
             }
@@ -293,7 +378,9 @@ impl<'a> Daemon<'a> {
                 if job.model_failures >= 2 {
                     let goal = job.goal.clone();
                     self.operating = None;
-                    return Some(format!("I stopped \"{goal}\": the model couldn't choose a step ({why})."));
+                    return Some(format!(
+                        "I stopped \"{goal}\": the model couldn't choose a step ({why})."
+                    ));
                 }
                 None
             }
@@ -308,7 +395,13 @@ impl<'a> Daemon<'a> {
     /// The window of an app by its name: one of your apps, or the window in
     /// front when its program or title has the name in it.
     fn window_for(&self, app: &str) -> Option<crate::platform::WindowId> {
-        if let Some((_, spec)) = self.cfg.apps.apps.iter().find(|(k, _)| k.eq_ignore_ascii_case(app)) {
+        if let Some((_, spec)) = self
+            .cfg
+            .apps
+            .apps
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(app))
+        {
             if let Ok(Some(w)) = self.plat.find_window(spec) {
                 return Some(w);
             }
@@ -324,9 +417,16 @@ impl<'a> Daemon<'a> {
     /// One look at the window: its controls, or, when it shows Windows
     /// none worth having, the words on its picture.
     fn look_at(&self, win: crate::platform::WindowId) -> Option<operate::View> {
-        let title = self.plat.active_window().ok().flatten().map(|a| a.title).unwrap_or_default();
+        let title = self
+            .plat
+            .active_window()
+            .ok()
+            .flatten()
+            .map(|a| a.title)
+            .unwrap_or_default();
         if let Ok(Some(tree)) = self.plat.read_window(win) {
-            let v = operate::view_of_tree(&tree, if title.is_empty() { &tree.name } else { &title });
+            let v =
+                operate::view_of_tree(&tree, if title.is_empty() { &tree.name } else { &title });
             if operate::tree_is_usable(&v) {
                 return Some(v);
             }
@@ -340,12 +440,26 @@ impl<'a> Daemon<'a> {
     }
 
     /// Take one step on the screen.
-    fn take_step(&self, win: crate::platform::WindowId, action: &Action, view: &operate::View) -> std::result::Result<(), String> {
-        let target = |n: usize| view.targets.get(n.wrapping_sub(1)).cloned().ok_or_else(|| format!("there's no [{n}]"));
+    fn take_step(
+        &self,
+        win: crate::platform::WindowId,
+        action: &Action,
+        view: &operate::View,
+    ) -> std::result::Result<(), String> {
+        let target = |n: usize| {
+            view.targets
+                .get(n.wrapping_sub(1))
+                .cloned()
+                .ok_or_else(|| format!("there's no [{n}]"))
+        };
         let click_middle = |t: &Target| -> std::result::Result<(), String> {
-            let (x, y) = t.middle().ok_or_else(|| "Windows didn't say where it is".to_string())?;
+            let (x, y) = t
+                .middle()
+                .ok_or_else(|| "Windows didn't say where it is".to_string())?;
             crate::heard!(self.plat.focus(win));
-            self.plat.click(x, y, crate::platform::Button::Left).map_err(|e| e.to_string())
+            self.plat
+                .click(x, y, crate::platform::Button::Left)
+                .map_err(|e| e.to_string())
         };
         match action {
             Action::Click(n) | Action::Choose(n) => {
@@ -362,10 +476,16 @@ impl<'a> Daemon<'a> {
             Action::Type(n, text) => {
                 let t = target(*n)?;
                 if let Target::Control { path, role, .. } = &t {
-                    if let Ok(true) = self.plat.act_on(win, path, &crate::uia::UiAct::SetValue(text.clone())) {
+                    if let Ok(true) =
+                        self.plat
+                            .act_on(win, path, &crate::uia::UiAct::SetValue(text.clone()))
+                    {
                         return Ok(());
                     }
-                    let focused = matches!(self.plat.act_on(win, path, &crate::uia::UiAct::Focus), Ok(true));
+                    let focused = matches!(
+                        self.plat.act_on(win, path, &crate::uia::UiAct::Focus),
+                        Ok(true)
+                    );
                     if !focused {
                         click_middle(&t)?;
                     }

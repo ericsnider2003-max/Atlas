@@ -43,7 +43,10 @@
 use atlas::budget::{allow, report, untracked, BudgetConfig, Difficulty, Job, Ledger, Tier};
 
 fn hosted_config() -> BudgetConfig {
-    BudgetConfig { enabled: true, ..BudgetConfig::default() }
+    BudgetConfig {
+        enabled: true,
+        ..BudgetConfig::default()
+    }
 }
 
 /// Every production reference to `Ledger::record`, ignoring comments and the
@@ -134,7 +137,16 @@ fn a_refusal_does_not_claim_a_total_it_never_measured() {
         expected_output: 50_000,
         can_wait: false,
     };
-    let said = format!("{:?}", allow(&job, Difficulty::Hard, &Ledger::default(), &cfg, 1_700_000_000));
+    let said = format!(
+        "{:?}",
+        allow(
+            &job,
+            Difficulty::Hard,
+            &Ledger::default(),
+            &cfg,
+            1_700_000_000
+        )
+    );
     if untracked().is_some() && said.contains("Refused") {
         assert!(
             !said.contains("$0.00 so far"),
@@ -148,7 +160,10 @@ fn the_local_tier_is_unaffected_by_any_of_this() {
     // So the caveat cannot be read as "the budget module is broken". Work
     // that never leaves the machine costs nothing and needs no ledger, and
     // that path is untouched.
-    let cfg = BudgetConfig { enabled: true, ..BudgetConfig::default() };
+    let cfg = BudgetConfig {
+        enabled: true,
+        ..BudgetConfig::default()
+    };
     let job = Job {
         what: "a small question".into(),
         cached_input: 100,
@@ -156,14 +171,23 @@ fn the_local_tier_is_unaffected_by_any_of_this() {
         expected_output: 100,
         can_wait: false,
     };
-    let verdict = allow(&job, Difficulty::Trivial, &Ledger::default(), &cfg, 1_700_000_000);
+    let verdict = allow(
+        &job,
+        Difficulty::Trivial,
+        &Ledger::default(),
+        &cfg,
+        1_700_000_000,
+    );
     let said = format!("{verdict:?}");
     assert!(
         said.contains("Local") || said.contains("Go"),
         "a trivial job was refused: {said}"
     );
     // And the disabled case still says the plain true thing.
-    let off = BudgetConfig { enabled: false, ..BudgetConfig::default() };
+    let off = BudgetConfig {
+        enabled: false,
+        ..BudgetConfig::default()
+    };
     assert!(report(&Ledger::default(), &off, 1_700_000_000).contains("your machine"));
 }
 
@@ -174,7 +198,9 @@ fn the_hosted_tiers_are_the_ones_that_need_a_ledger() {
     // running total is not being kept.
     assert!(!Tier::Local.is_hosted(), "the local tier is not hosted");
     assert!(
-        [Tier::Haiku, Tier::Sonnet, Tier::Opus].iter().any(|t| t.is_hosted()),
+        [Tier::Haiku, Tier::Sonnet, Tier::Opus]
+            .iter()
+            .any(|t| t.is_hosted()),
         "no tier is hosted, so a spend ledger would have nothing to record"
     );
 }

@@ -101,7 +101,11 @@ impl Report {
                 // Spikes are the one kind whose note count is capped, so
                 // reporting the notes would report the cap. Every other kind
                 // keeps one note per occurrence.
-                let n = if *k == NoteKind::Spike { spikes_in(self).max(*c) } else { *c };
+                let n = if *k == NoteKind::Spike {
+                    spikes_in(self).max(*c)
+                } else {
+                    *c
+                };
                 format!("{n} {k:?}")
             })
             .collect();
@@ -115,7 +119,12 @@ impl Report {
 /// range negative, which makes the ATR wrong, which makes **every magnitude in
 /// every verdict** wrong, quietly, for as long as that bar is in the window.
 fn check_ohlc(bars: &Bars) -> Answer<()> {
-    let (o, h, l, c) = (bars.all_open(), bars.all_high(), bars.all_low(), bars.all_close());
+    let (o, h, l, c) = (
+        bars.all_open(),
+        bars.all_high(),
+        bars.all_low(),
+        bars.all_close(),
+    );
     for i in 0..c.len() {
         if h[i] < l[i] || h[i] < o[i] || h[i] < c[i] || l[i] > o[i] || l[i] > c[i] {
             return refuse(format!(
@@ -125,7 +134,12 @@ fn check_ohlc(bars: &Bars) -> Answer<()> {
                 i, o[i], h[i], l[i], c[i]
             ));
         }
-        for (name, v) in [("open", o[i]), ("high", h[i]), ("low", l[i]), ("close", c[i])] {
+        for (name, v) in [
+            ("open", o[i]),
+            ("high", h[i]),
+            ("low", l[i]),
+            ("close", c[i]),
+        ] {
             if !v.is_finite() {
                 return refuse(format!("bar {} has a non-finite {}", i, name));
             }
@@ -202,7 +216,10 @@ fn find_gaps(bars: &Bars) -> Vec<Note> {
     if t.len() < 3 {
         return Vec::new();
     }
-    let mut mins: Vec<f64> = t.windows(2).map(|w| (w[1] - w[0]) as f64 / MS_PER_MIN as f64).collect();
+    let mut mins: Vec<f64> = t
+        .windows(2)
+        .map(|w| (w[1] - w[0]) as f64 / MS_PER_MIN as f64)
+        .collect();
     let mut sorted = mins.clone();
     sorted.sort_by(|a, b| a.total_cmp(b));
     let step = sorted[sorted.len() / 2];
@@ -217,7 +234,11 @@ fn find_gaps(bars: &Bars) -> Vec<Note> {
         let hours = gap / 60.0;
         let weekend = (WEEKEND_HOURS.0..=WEEKEND_HOURS.1).contains(&hours);
         out.push(Note {
-            kind: if weekend { NoteKind::Weekend } else { NoteKind::Gap },
+            kind: if weekend {
+                NoteKind::Weekend
+            } else {
+                NoteKind::Gap
+            },
             at: i + 1,
             detail: format!(
                 "{:.1} h between bars where {:.0} min is normal{}",
@@ -331,28 +352,46 @@ pub fn accept(bars: &Bars, now_ms: Option<i64>) -> Answer<Report> {
     let mut notes = find_gaps(bars);
     notes.extend(find_flat(bars));
     notes.extend(find_spikes(bars, 12.0));
-    Ok(Report { bars: bars.len(), notes, timeframe: tf })
+    Ok(Report {
+        bars: bars.len(),
+        notes,
+        timeframe: tf,
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::fixtures::walk;
     use super::super::time::MS_PER_HOUR;
+    use super::*;
 
     fn good(n: usize, every_min: i64) -> Bars {
         let b = walk(n, 9);
         let v = b.latest().unwrap();
         let start = Utc::at(2026, 6, 1, 0, 0).to_ms();
-        let time: Vec<i64> = (0..n).map(|i| start + i as i64 * every_min * MS_PER_MIN).collect();
-        Bars::new(v.open().to_vec(), v.high().to_vec(), v.low().to_vec(), v.close().to_vec(), time)
-            .unwrap()
+        let time: Vec<i64> = (0..n)
+            .map(|i| start + i as i64 * every_min * MS_PER_MIN)
+            .collect();
+        Bars::new(
+            v.open().to_vec(),
+            v.high().to_vec(),
+            v.low().to_vec(),
+            v.close().to_vec(),
+            time,
+        )
+        .unwrap()
     }
 
-    fn rebuild(b: &Bars, mutate: impl Fn(&mut Vec<f64>, &mut Vec<f64>, &mut Vec<f64>, &mut Vec<f64>, &mut Vec<i64>)) -> Bars {
+    fn rebuild(
+        b: &Bars,
+        mutate: impl Fn(&mut Vec<f64>, &mut Vec<f64>, &mut Vec<f64>, &mut Vec<f64>, &mut Vec<i64>),
+    ) -> Bars {
         let (mut o, mut h, mut l, mut c, mut t) = (
-            b.all_open().to_vec(), b.all_high().to_vec(),
-            b.all_low().to_vec(), b.all_close().to_vec(), b.all_time().to_vec(),
+            b.all_open().to_vec(),
+            b.all_high().to_vec(),
+            b.all_low().to_vec(),
+            b.all_close().to_vec(),
+            b.all_time().to_vec(),
         );
         mutate(&mut o, &mut h, &mut l, &mut c, &mut t);
         Bars::new(o, h, l, c, t).unwrap()
@@ -378,7 +417,11 @@ mod tests {
         let e = accept(&b, Some(LATER));
         assert!(e.is_err());
         let msg = e.unwrap_err().0;
-        assert!(msg.contains("impossible OHLC") && msg.contains("50"), "{}", msg);
+        assert!(
+            msg.contains("impossible OHLC") && msg.contains("50"),
+            "{}",
+            msg
+        );
     }
 
     #[test]
@@ -405,11 +448,20 @@ mod tests {
         );
         assert!(r.is_err(), "a NaN price was accepted into a series");
         let why = format!("{:?}", r.err().unwrap());
-        assert!(why.contains("not a number"), "the refusal does not say what is wrong: {why}");
-        assert!(why.contains("close"), "the refusal does not say which column: {why}");
+        assert!(
+            why.contains("not a number"),
+            "the refusal does not say what is wrong: {why}"
+        );
+        assert!(
+            why.contains("close"),
+            "the refusal does not say which column: {why}"
+        );
         // And which bar. Both halves matter: the column alone does not tell
         // you where to look in a 300-bar series.
-        assert!(why.contains("bar 10"), "the refusal does not say which bar: {why}");
+        assert!(
+            why.contains("bar 10"),
+            "the refusal does not say which bar: {why}"
+        );
 
         // And a clean series still passes the feed checks, so the new gate
         // has not made everything unusable.
@@ -438,7 +490,11 @@ mod tests {
         let mid = b.all_time()[150];
         let e = accept(&b, Some(mid));
         let msg = e.unwrap_err().0;
-        assert!(msg.contains("front door") && msg.contains("lookahead"), "{}", msg);
+        assert!(
+            msg.contains("front door") && msg.contains("lookahead"),
+            "{}",
+            msg
+        );
     }
 
     #[test]
@@ -449,7 +505,10 @@ mod tests {
         let b = good(300, 60);
         assert!(no_future_bars(&b, b.all_time()[299]).is_ok());
         let msg = no_future_bars(&b, b.all_time()[150]).unwrap_err().0;
-        assert!(msg.starts_with("149 bar(s)") && msg.contains("first at bar 151"), "{msg}");
+        assert!(
+            msg.starts_with("149 bar(s)") && msg.contains("first at bar 151"),
+            "{msg}"
+        );
     }
 
     #[test]
@@ -461,7 +520,10 @@ mod tests {
         for cut in [10usize, 150, 298] {
             assert!(accept(&b, Some(b.all_time()[cut])).is_err(), "cut {}", cut);
         }
-        assert!(accept(&b, Some(b.all_time()[299])).is_ok(), "the last bar is not future");
+        assert!(
+            accept(&b, Some(b.all_time()[299])).is_ok(),
+            "the last bar is not future"
+        );
     }
 
     #[test]
@@ -480,7 +542,10 @@ mod tests {
         });
         let r = accept(&b, Some(LATER)).unwrap();
         assert!(!r.of_kind(NoteKind::Weekend).is_empty(), "{}", r.say());
-        assert!(r.of_kind(NoteKind::Gap).is_empty(), "a weekend is not a fault");
+        assert!(
+            r.of_kind(NoteKind::Gap).is_empty(),
+            "a weekend is not a fault"
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Reading the command line and asking at the terminal: flags, the first bare
 //! argument, the listening port, prompts and quiet (passphrase) prompts.
-//! 
+//!
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
@@ -19,7 +19,10 @@ pub(super) fn pairings_dir() -> std::path::PathBuf {
 /// enough for a value like `--host eric-laptop`.
 pub(super) fn flag_value(name: &str) -> Option<String> {
     let argv: Vec<String> = std::env::args().collect();
-    argv.iter().position(|a| a == name).and_then(|i| argv.get(i + 1)).cloned()
+    argv.iter()
+        .position(|a| a == name)
+        .and_then(|i| argv.get(i + 1))
+        .cloned()
 }
 
 /// A bare flag with no value, e.g. `--yes`. Separate from `flag_value` because

@@ -115,22 +115,28 @@ impl FileKind {
 fn kind_for(ext: &str) -> Option<FileKind> {
     let e = ext.to_ascii_lowercase();
     let k = match e.as_str() {
-        "pdf" | "doc" | "docx" | "odt" | "rtf" | "txt" | "md" | "pages" | "wpd" | "tex" | "xps" | "oxps" => FileKind::Documents,
+        "pdf" | "doc" | "docx" | "odt" | "rtf" | "txt" | "md" | "pages" | "wpd" | "tex" | "xps"
+        | "oxps" => FileKind::Documents,
         "xls" | "xlsx" | "xlsm" | "ods" | "csv" | "tsv" | "numbers" => FileKind::Spreadsheets,
         "ppt" | "pptx" | "odp" | "key" => FileKind::Presentations,
         "epub" | "mobi" | "azw" | "azw3" | "djvu" | "fb2" | "cbz" | "cbr" => FileKind::Ebooks,
-        "jpg" | "jpeg" | "png" | "gif" | "bmp" | "tif" | "tiff" | "webp" | "heic" | "heif" | "svg" | "ico" | "raw" | "cr2"
-        | "nef" | "arw" | "dng" | "psd" | "xcf" | "avif" => FileKind::Images,
-        "mp4" | "mkv" | "mov" | "avi" | "wmv" | "webm" | "flv" | "m4v" | "mpg" | "mpeg" | "3gp" => FileKind::Video,
-        "mp3" | "wav" | "flac" | "m4a" | "aac" | "ogg" | "opus" | "wma" | "aiff" | "mid" | "midi" => FileKind::Audio,
-        "zip" | "rar" | "7z" | "tar" | "gz" | "tgz" | "bz2" | "xz" | "zst" | "cab" => FileKind::Archives,
-        "exe" | "msi" | "msix" | "msixbundle" | "appx" | "appxbundle" | "dmg" | "pkg" | "deb" | "rpm" | "appimage" | "iso" => {
-            FileKind::Installers
+        "jpg" | "jpeg" | "png" | "gif" | "bmp" | "tif" | "tiff" | "webp" | "heic" | "heif"
+        | "svg" | "ico" | "raw" | "cr2" | "nef" | "arw" | "dng" | "psd" | "xcf" | "avif" => {
+            FileKind::Images
         }
-        "py" | "rs" | "js" | "jsx" | "tsx" | "c" | "h" | "cpp" | "hpp" | "cs" | "java" | "go" | "rb" | "php" | "html"
-        | "css" | "json" | "yaml" | "yml" | "toml" | "xml" | "sql" | "sh" | "ps1" | "bat" | "ipynb" | "kt" | "swift" | "lua" => {
-            FileKind::Code
+        "mp4" | "mkv" | "mov" | "avi" | "wmv" | "webm" | "flv" | "m4v" | "mpg" | "mpeg" | "3gp" => {
+            FileKind::Video
         }
+        "mp3" | "wav" | "flac" | "m4a" | "aac" | "ogg" | "opus" | "wma" | "aiff" | "mid"
+        | "midi" => FileKind::Audio,
+        "zip" | "rar" | "7z" | "tar" | "gz" | "tgz" | "bz2" | "xz" | "zst" | "cab" => {
+            FileKind::Archives
+        }
+        "exe" | "msi" | "msix" | "msixbundle" | "appx" | "appxbundle" | "dmg" | "pkg" | "deb"
+        | "rpm" | "appimage" | "iso" => FileKind::Installers,
+        "py" | "rs" | "js" | "jsx" | "tsx" | "c" | "h" | "cpp" | "hpp" | "cs" | "java" | "go"
+        | "rb" | "php" | "html" | "css" | "json" | "yaml" | "yml" | "toml" | "xml" | "sql"
+        | "sh" | "ps1" | "bat" | "ipynb" | "kt" | "swift" | "lua" => FileKind::Code,
         _ => return None,
     };
     Some(k)
@@ -138,22 +144,69 @@ fn kind_for(ext: &str) -> Option<FileKind> {
 
 /// Files a folder like the desktop holds that aren't loose files: the
 /// shortcuts you launch things from and the folder's own settings.
-const NOT_LOOSE: &[&str] = &["lnk", "url", "ini", "desktop", "website", "appref-ms", "library-ms", "sys", "dll", "lock"];
+const NOT_LOOSE: &[&str] = &[
+    "lnk",
+    "url",
+    "ini",
+    "desktop",
+    "website",
+    "appref-ms",
+    "library-ms",
+    "sys",
+    "dll",
+    "lock",
+];
 
 /// A download that hasn't finished.
-const STILL_DOWNLOADING: &[&str] = &["crdownload", "part", "partial", "download", "opdownload", "tmp", "!ut", "aria2"];
+const STILL_DOWNLOADING: &[&str] = &[
+    "crdownload",
+    "part",
+    "partial",
+    "download",
+    "opdownload",
+    "tmp",
+    "!ut",
+    "aria2",
+];
 
 /// Folders inside which moving one file breaks the rest: a code project, a
 /// program's own folder, a library. Their presence makes a folder off limits.
 const PROJECT_MARKS: &[&str] = &[
-    ".git", ".hg", ".svn", "cargo.toml", "package.json", "pyproject.toml", "setup.py", "go.mod", "pom.xml", "build.gradle",
-    "makefile", "cmakelists.txt", ".vscode", ".idea", "unins000.exe", "uninstall.exe",
+    ".git",
+    ".hg",
+    ".svn",
+    "cargo.toml",
+    "package.json",
+    "pyproject.toml",
+    "setup.py",
+    "go.mod",
+    "pom.xml",
+    "build.gradle",
+    "makefile",
+    "cmakelists.txt",
+    ".vscode",
+    ".idea",
+    "unins000.exe",
+    "uninstall.exe",
 ];
 
 /// Folders never sorted or walked into, wherever they are.
 const NEVER_INSIDE: &[&str] = &[
-    "windows", "program files", "program files (x86)", "programdata", "appdata", "$recycle.bin", "system volume information",
-    "node_modules", "library", "applications", "system", "recovery", "$windows.~bt", "msocache", "perflogs",
+    "windows",
+    "program files",
+    "program files (x86)",
+    "programdata",
+    "appdata",
+    "$recycle.bin",
+    "system volume information",
+    "node_modules",
+    "library",
+    "applications",
+    "system",
+    "recovery",
+    "$windows.~bt",
+    "msocache",
+    "perflogs",
 ];
 
 /// Why a file is in the plan.
@@ -234,7 +287,8 @@ pub fn user_folder(which: &str) -> Option<PathBuf> {
     #[cfg(windows)]
     {
         use windows::Win32::UI::Shell::{
-            FOLDERID_Desktop, FOLDERID_Documents, FOLDERID_Downloads, FOLDERID_Music, FOLDERID_Pictures, FOLDERID_Videos,
+            FOLDERID_Desktop, FOLDERID_Documents, FOLDERID_Downloads, FOLDERID_Music,
+            FOLDERID_Pictures, FOLDERID_Videos,
         };
         let id = match which.as_str() {
             "desktop" => Some(&FOLDERID_Desktop),
@@ -249,7 +303,9 @@ pub fn user_folder(which: &str) -> Option<PathBuf> {
             return Some(p);
         }
     }
-    let home = PathBuf::from(crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME"))?);
+    let home = PathBuf::from(
+        crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME"))?,
+    );
     #[cfg(not(windows))]
     {
         let var = match which.as_str() {
@@ -261,7 +317,9 @@ pub fn user_folder(which: &str) -> Option<PathBuf> {
             "music" => "XDG_MUSIC_DIR",
             _ => "",
         };
-        let config = crate::doctor::lookup_env("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
+        let config = crate::doctor::lookup_env("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join(".config"));
         if let Ok(text) = std::fs::read_to_string(config.join("user-dirs.dirs")) {
             if let Some(p) = xdg_folder(&text, var, &home) {
                 // A folder named home itself means "not set" in that file.
@@ -280,7 +338,10 @@ pub fn user_folder(which: &str) -> Option<PathBuf> {
         "music" => "Music",
         _ => return None,
     };
-    [home.join("OneDrive").join(name), home.join(name)].into_iter().find(|d| d.is_dir()).or_else(|| Some(home.join(name)))
+    [home.join("OneDrive").join(name), home.join(name)]
+        .into_iter()
+        .find(|d| d.is_dir())
+        .or_else(|| Some(home.join(name)))
 }
 
 #[cfg(windows)]
@@ -294,7 +355,10 @@ fn xdg_folder(text: &str, var: &str, home: &Path) -> Option<PathBuf> {
     if var.is_empty() {
         return None;
     }
-    let line = text.lines().map(str::trim).find(|l| l.starts_with(var) && l[var.len()..].trim_start().starts_with('='))?;
+    let line = text
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with(var) && l[var.len()..].trim_start().starts_with('='))?;
     let v = line.split_once('=')?.1.trim().trim_matches('"');
     let v = v.replace("$HOME", &home.display().to_string());
     (!v.is_empty()).then(|| PathBuf::from(v))
@@ -303,12 +367,20 @@ fn xdg_folder(text: &str, var: &str, home: &Path) -> Option<PathBuf> {
 /// A path written out in full: "/home/x/Stuff", "D:\Photos". "D:\..." is
 /// read as a path on every system, so a test reads it the same anywhere.
 fn full_path(raw: &str) -> Option<PathBuf> {
-    let raw = raw.trim().trim_end_matches(['.', '?', '!', ',']).trim().trim_matches(['"', '\'']).trim();
+    let raw = raw
+        .trim()
+        .trim_end_matches(['.', '?', '!', ','])
+        .trim()
+        .trim_matches(['"', '\''])
+        .trim();
     if raw.is_empty() {
         return None;
     }
     let b = raw.as_bytes();
-    let windows_abs = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/');
+    let windows_abs = b.len() >= 3
+        && b[0].is_ascii_alphabetic()
+        && b[1] == b':'
+        && (b[2] == b'\\' || b[2] == b'/');
     let p = PathBuf::from(raw);
     (p.is_absolute() || windows_abs).then_some(p)
 }
@@ -320,9 +392,18 @@ fn named_folder(words: &str) -> Option<PathBuf> {
     if let Some(p) = full_path(words) {
         return Some(p);
     }
-    let w = words.trim().trim_end_matches(['.', '?', '!', ',']).to_lowercase();
-    let w = w.trim_start_matches("my ").trim_start_matches("the ").trim();
-    let w = w.trim_end_matches(" folder").trim_end_matches(" directory").trim();
+    let w = words
+        .trim()
+        .trim_end_matches(['.', '?', '!', ','])
+        .to_lowercase();
+    let w = w
+        .trim_start_matches("my ")
+        .trim_start_matches("the ")
+        .trim();
+    let w = w
+        .trim_end_matches(" folder")
+        .trim_end_matches(" directory")
+        .trim();
     for (said, which) in [
         ("desktop", "desktop"),
         ("download", "downloads"),
@@ -342,9 +423,15 @@ fn named_folder(words: &str) -> Option<PathBuf> {
     if w.is_empty() || w.contains(['/', '\\']) {
         return None;
     }
-    let home = crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME")).map(PathBuf::from);
+    let home = crate::doctor::lookup_env("USERPROFILE")
+        .or_else(|| crate::doctor::lookup_env("HOME"))
+        .map(PathBuf::from);
     let mut places: Vec<PathBuf> = home.into_iter().collect();
-    places.extend(["desktop", "documents"].iter().filter_map(|n| user_folder(n)));
+    places.extend(
+        ["desktop", "documents"]
+            .iter()
+            .filter_map(|n| user_folder(n)),
+    );
     let found: Vec<PathBuf> = places
         .iter()
         .filter_map(|p| std::fs::read_dir(p).ok())
@@ -367,7 +454,9 @@ pub fn read_sort_request(said: &str) -> SortRequest {
     // ASCII lowercase only, so a position found in it is the same position
     // in what was said (a full lowercase can change a word's length).
     let lower = said.to_ascii_lowercase();
-    let copies_only = ["duplicate", "copies", "same file"].iter().any(|w| lower.contains(w));
+    let copies_only = ["duplicate", "copies", "same file"]
+        .iter()
+        .any(|w| lower.contains(w));
     // "into X" / "to X" after the folder: where the sorted folders go.
     let mut rest = said.to_string();
     let mut into = None;
@@ -382,9 +471,14 @@ pub fn read_sort_request(said: &str) -> SortRequest {
     }
     let rl = rest.to_ascii_lowercase();
     // "... in X", "... inside X", "... from X", "... on X".
-    let at = [" in ", " inside ", " from ", " on "].iter().filter_map(|w| rl.find(w).map(|i| (i, i + w.len()))).min();
+    let at = [" in ", " inside ", " from ", " on "]
+        .iter()
+        .filter_map(|w| rl.find(w).map(|i| (i, i + w.len())))
+        .min();
     let before = at.map(|(i, _)| rl[..i].to_string()).unwrap_or_default();
-    let named = at.map(|(_, a)| rest[a..].trim().to_string()).filter(|s| !s.is_empty());
+    let named = at
+        .map(|(_, a)| rest[a..].trim().to_string())
+        .filter(|s| !s.is_empty());
     let mut folders = Vec::new();
     let mut not_found = None;
     let everyday = ["desktop", "download", "documents", "pictures", "photos"];
@@ -398,7 +492,13 @@ pub fn read_sort_request(said: &str) -> SortRequest {
         _ => {
             // A folder named without "in": "organize my downloads",
             // "clean up my desktop". Several may be named at once.
-            for (word, which) in [("desktop", "desktop"), ("download", "downloads"), ("documents", "documents"), ("pictures", "pictures"), ("photos", "pictures")] {
+            for (word, which) in [
+                ("desktop", "desktop"),
+                ("download", "downloads"),
+                ("documents", "documents"),
+                ("pictures", "pictures"),
+                ("photos", "pictures"),
+            ] {
                 if lower.contains(word) {
                     if let Some(p) = user_folder(which) {
                         if !folders.contains(&p) {
@@ -419,7 +519,12 @@ pub fn read_sort_request(said: &str) -> SortRequest {
             }
         }
     }
-    SortRequest { folders, into, copies_only, not_found }
+    SortRequest {
+        folders,
+        into,
+        copies_only,
+        not_found,
+    }
 }
 
 /// Why a folder is not one to sort, or None when it is: a system folder,
@@ -432,17 +537,35 @@ fn refuse_to_sort(dir: &Path) -> Option<String> {
     let s = dir.display().to_string().replace('\\', "/").to_lowercase();
     let parts: Vec<&str> = s.split('/').filter(|p| !p.is_empty()).collect();
     if parts.len() <= 1 {
-        return Some(format!("{} is the top of a drive -- name a folder in it", dir.display()));
+        return Some(format!(
+            "{} is the top of a drive -- name a folder in it",
+            dir.display()
+        ));
     }
-    if parts.iter().any(|p| NEVER_INSIDE.contains(p) || p.starts_with('.')) {
-        return Some(format!("{} is where the system or a program keeps its own files", dir.display()));
+    if parts
+        .iter()
+        .any(|p| NEVER_INSIDE.contains(p) || p.starts_with('.'))
+    {
+        return Some(format!(
+            "{} is where the system or a program keeps its own files",
+            dir.display()
+        ));
     }
-    let unix_system = ["etc", "usr", "bin", "sbin", "lib", "lib64", "boot", "proc", "sys", "dev", "var", "opt", "root", "snap"];
+    let unix_system = [
+        "etc", "usr", "bin", "sbin", "lib", "lib64", "boot", "proc", "sys", "dev", "var", "opt",
+        "root", "snap",
+    ];
     if parts.first().is_some_and(|p| unix_system.contains(p)) {
-        return Some(format!("{} is where the system keeps its own files", dir.display()));
+        return Some(format!(
+            "{} is where the system keeps its own files",
+            dir.display()
+        ));
     }
-    let home = crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME"));
-    if home.is_some_and(|h| h.replace('\\', "/").to_lowercase().trim_end_matches('/') == s.trim_end_matches('/')) {
+    let home =
+        crate::doctor::lookup_env("USERPROFILE").or_else(|| crate::doctor::lookup_env("HOME"));
+    if home.is_some_and(|h| {
+        h.replace('\\', "/").to_lowercase().trim_end_matches('/') == s.trim_end_matches('/')
+    }) {
         return Some("your home folder itself holds settings your programs rely on -- name one of the folders in it".into());
     }
     if let Some(mark) = project_mark(dir) {
@@ -465,7 +588,10 @@ fn project_mark(dir: &Path) -> Option<String> {
 /// Hidden or system, by the file system's own mark (Windows) or a leading
 /// dot (everywhere).
 fn hidden(path: &Path, meta: &std::fs::Metadata) -> bool {
-    if path.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')) {
+    if path
+        .file_name()
+        .is_some_and(|n| n.to_string_lossy().starts_with('.'))
+    {
         return true;
     }
     #[cfg(windows)]
@@ -488,7 +614,12 @@ fn open_elsewhere(path: &Path, modified: u64, now: u64) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt;
-        if std::fs::OpenOptions::new().read(true).share_mode(0).open(path).is_err() {
+        if std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(path)
+            .is_err()
+        {
             return true;
         }
     }
@@ -497,14 +628,30 @@ fn open_elsewhere(path: &Path, modified: u64, now: u64) -> bool {
 }
 
 fn secs(t: std::io::Result<std::time::SystemTime>) -> u64 {
-    t.ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0)
+    t.ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// An installer by its name, for a program file (.exe) outside Downloads:
 /// a portable program on the desktop is something you run from there.
 fn looks_like_installer(name: &str) -> bool {
     let n = name.to_lowercase();
-    ["setup", "install", "installer", "x64", "x86", "win64", "win32", "amd64", "update", "redist"].iter().any(|w| n.contains(w))
+    [
+        "setup",
+        "install",
+        "installer",
+        "x64",
+        "x86",
+        "win64",
+        "win32",
+        "amd64",
+        "update",
+        "redist",
+    ]
+    .iter()
+    .any(|w| n.contains(w))
 }
 
 /// One file found while looking.
@@ -518,11 +665,15 @@ struct Seen {
 /// The same bytes: compared in pieces, stopping at the first difference.
 fn same_bytes(a: &Path, b: &Path) -> bool {
     use std::io::Read;
-    let (Ok(mut fa), Ok(mut fb)) = (std::fs::File::open(a), std::fs::File::open(b)) else { return false };
+    let (Ok(mut fa), Ok(mut fb)) = (std::fs::File::open(a), std::fs::File::open(b)) else {
+        return false;
+    };
     let mut ba = vec![0u8; 1 << 16];
     let mut bb = vec![0u8; 1 << 16];
     loop {
-        let Ok(na) = fa.read(&mut ba) else { return false };
+        let Ok(na) = fa.read(&mut ba) else {
+            return false;
+        };
         if na == 0 {
             return fb.read(&mut bb[..1]).map(|n| n == 0).unwrap_or(false);
         }
@@ -575,7 +726,13 @@ fn find_copies(files: &[Seen], until: std::time::Instant) -> (Vec<(usize, usize)
                 files[*a]
                     .modified
                     .cmp(&files[*b].modified)
-                    .then(files[*a].path.as_os_str().len().cmp(&files[*b].path.as_os_str().len()))
+                    .then(
+                        files[*a]
+                            .path
+                            .as_os_str()
+                            .len()
+                            .cmp(&files[*b].path.as_os_str().len()),
+                    )
                     .then(files[*a].path.cmp(&files[*b].path))
             });
             let keep = same[0];
@@ -592,7 +749,10 @@ fn find_copies(files: &[Seen], until: std::time::Instant) -> (Vec<(usize, usize)
 /// Whether `kind`'s folder is the folder being sorted itself -- documents
 /// in Documents, pictures in Pictures -- where they're already home.
 fn already_home(root: &Path, kind: FileKind) -> bool {
-    let name = root.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let name = root
+        .file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
     let aliases: &[&str] = match kind {
         FileKind::Images => &["pictures", "photos", "images"],
         FileKind::Video => &["videos", "movies", "video"],
@@ -603,11 +763,21 @@ fn already_home(root: &Path, kind: FileKind) -> bool {
 }
 
 /// The plan for one folder, added to `plan`.
-fn plan_one(dir: &Path, into: Option<&Path>, now: u64, until: std::time::Instant, plan: &mut SortPlan) {
-    let dest_root = into.map(Path::to_path_buf).unwrap_or_else(|| dir.to_path_buf());
+fn plan_one(
+    dir: &Path,
+    into: Option<&Path>,
+    now: u64,
+    until: std::time::Instant,
+    plan: &mut SortPlan,
+) {
+    let dest_root = into
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| dir.to_path_buf());
     let review = dest_root.join(TO_REVIEW);
     let is_downloads = user_folder("downloads").is_some_and(|d| d == dir)
-        || dir.file_name().is_some_and(|n| n.to_string_lossy().to_lowercase().contains("download"));
+        || dir
+            .file_name()
+            .is_some_and(|n| n.to_string_lossy().to_lowercase().contains("download"));
     // Everything in it, a few folders deep, for copies and empty folders;
     // the loose files at the top are the ones sorted.
     let mut seen: Vec<Seen> = Vec::new();
@@ -617,12 +787,16 @@ fn plan_one(dir: &Path, into: Option<&Path>, now: u64, until: std::time::Instant
             plan.complete = false;
             break;
         }
-        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
         let mut any = false;
         for e in rd.flatten() {
             any = true;
             let path = e.path();
-            let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
+            let Ok(meta) = std::fs::symlink_metadata(&path) else {
+                continue;
+            };
             if meta.file_type().is_symlink() {
                 continue;
             }
@@ -641,15 +815,26 @@ fn plan_one(dir: &Path, into: Option<&Path>, now: u64, until: std::time::Instant
                 }
                 continue;
             }
-            let ext = path.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
+            let ext = path
+                .extension()
+                .map(|x| x.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
             let top = depth == 0;
-            if hidden(&path, &meta) || NOT_LOOSE.contains(&ext.as_str()) || STILL_DOWNLOADING.contains(&ext.as_str()) {
+            if hidden(&path, &meta)
+                || NOT_LOOSE.contains(&ext.as_str())
+                || STILL_DOWNLOADING.contains(&ext.as_str())
+            {
                 if top {
                     plan.passed_over += 1;
                 }
                 continue;
             }
-            seen.push(Seen { path, len: meta.len(), modified: secs(meta.modified()), top });
+            seen.push(Seen {
+                path,
+                len: meta.len(),
+                modified: secs(meta.modified()),
+                top,
+            });
         }
         if !any && depth > 0 {
             plan.empty_folders.push(d);
@@ -672,15 +857,25 @@ fn plan_one(dir: &Path, into: Option<&Path>, now: u64, until: std::time::Instant
             plan.moves.push(SortMove {
                 from: f.path.clone(),
                 into: review.join("Duplicates"),
-                reason: Reason::Copy { of: seen[*keep].path.clone() },
+                reason: Reason::Copy {
+                    of: seen[*keep].path.clone(),
+                },
             });
             continue;
         }
         if !f.top || plan.copies_only {
             continue;
         }
-        let name = f.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        let ext = f.path.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let name = f
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let ext = f
+            .path
+            .extension()
+            .map(|x| x.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
         let Some(mut kind) = kind_for(&ext) else {
             plan.unplaced.push(f.path.clone());
             continue;
@@ -701,27 +896,47 @@ fn plan_one(dir: &Path, into: Option<&Path>, now: u64, until: std::time::Instant
         }
         let age_days = now.saturating_sub(f.modified) / 86_400;
         if kind == FileKind::Installers && age_days >= OLD_INSTALLER_DAYS {
-            plan.moves.push(SortMove { from: f.path.clone(), into: review.join("Old installers"), reason: Reason::OldInstaller });
+            plan.moves.push(SortMove {
+                from: f.path.clone(),
+                into: review.join("Old installers"),
+                reason: Reason::OldInstaller,
+            });
             continue;
         }
         if into.is_none() && already_home(dir, kind) {
             continue;
         }
-        let year = (age_days >= OLD_FILE_DAYS).then(|| crate::civil::Civil::from_local(f.modified as i64).year);
+        let year = (age_days >= OLD_FILE_DAYS)
+            .then(|| crate::civil::Civil::from_local(f.modified as i64).year);
         let mut to = dest_root.join(kind.folder());
         if let Some(y) = year {
             to = to.join(y.to_string());
         }
-        plan.moves.push(SortMove { from: f.path.clone(), into: to, reason: Reason::Kind { kind, year } });
+        plan.moves.push(SortMove {
+            from: f.path.clone(),
+            into: to,
+            reason: Reason::Kind { kind, year },
+        });
     }
 }
 
 /// The plan for these folders: nothing is moved. `into` is a folder named
 /// to put the sorted folders in; otherwise each is sorted inside itself.
 /// `budget` bounds the look; a folder too big for it is said to be.
-pub fn plan_folders(folders: &[PathBuf], into: Option<&Path>, copies_only: bool, now: u64, budget: std::time::Duration) -> SortPlan {
+pub fn plan_folders(
+    folders: &[PathBuf],
+    into: Option<&Path>,
+    copies_only: bool,
+    now: u64,
+    budget: std::time::Duration,
+) -> SortPlan {
     let until = std::time::Instant::now() + budget;
-    let mut plan = SortPlan { folders: folders.to_vec(), complete: true, copies_only, ..Default::default() };
+    let mut plan = SortPlan {
+        folders: folders.to_vec(),
+        complete: true,
+        copies_only,
+        ..Default::default()
+    };
     if let Some(dest) = into {
         if let Some(from) = folders.first() {
             if let Err(why) = crate::tune::may_move_into(dest, from) {
@@ -745,7 +960,9 @@ pub fn plan_folders(folders: &[PathBuf], into: Option<&Path>, copies_only: bool,
 }
 
 fn name_of(p: &Path) -> String {
-    p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| p.display().to_string())
+    p.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| p.display().to_string())
 }
 
 fn examples(paths: &[&Path], n: usize) -> String {
@@ -763,15 +980,27 @@ pub fn plan_said(plan: &SortPlan) -> String {
     let mut out: Vec<String> = Vec::new();
     for (_, why) in &plan.refused {
         let mut c = why.chars();
-        let why = c.next().map(|f| format!("{}{}", f.to_uppercase(), c.as_str())).unwrap_or_default();
+        let why = c
+            .next()
+            .map(|f| format!("{}{}", f.to_uppercase(), c.as_str()))
+            .unwrap_or_default();
         out.push(format!("{why}, so I won't sort it."));
     }
     let where_ = {
-        let names: Vec<String> = plan.folders.iter().filter(|f| !plan.refused.iter().any(|(r, _)| r == *f)).map(|f| name_of(f)).collect();
+        let names: Vec<String> = plan
+            .folders
+            .iter()
+            .filter(|f| !plan.refused.iter().any(|(r, _)| r == *f))
+            .map(|f| name_of(f))
+            .collect();
         match names.len() {
             0 => String::new(),
             1 => names[0].clone(),
-            _ => format!("{} and {}", names[..names.len() - 1].join(", "), names[names.len() - 1]),
+            _ => format!(
+                "{} and {}",
+                names[..names.len() - 1].join(", "),
+                names[names.len() - 1]
+            ),
         }
     };
     if where_.is_empty() {
@@ -799,24 +1028,40 @@ pub fn plan_said(plan: &SortPlan) -> String {
             .iter()
             .map(|(k, v)| format!("{} {} ({})", v.len(), k.plural(), examples(v, 2)))
             .collect();
-        out.push(format!("In {where_} I'd sort {} into a folder for each kind: {}.", count(sorted, "file", "files"), parts.join(", ")));
+        out.push(format!(
+            "In {where_} I'd sort {} into a folder for each kind: {}.",
+            count(sorted, "file", "files"),
+            parts.join(", ")
+        ));
         if old > 0 {
-            out.push(format!("{} untouched for over a year go into a year folder inside {}.", old, if by_kind.len() == 1 { "it" } else { "each" }));
+            out.push(format!(
+                "{} untouched for over a year go into a year folder inside {}.",
+                old,
+                if by_kind.len() == 1 { "it" } else { "each" }
+            ));
         }
     } else if !plan.copies_only {
-        out.push(format!("In {where_} there are no loose files I'd sort into folders."));
+        out.push(format!(
+            "In {where_} there are no loose files I'd sort into folders."
+        ));
     }
     if !copies.is_empty() {
         let ex = copies
             .iter()
             .take(2)
             .map(|m| match &m.reason {
-                Reason::Copy { of } => format!("{} is the same as {}", name_of(&m.from), name_of(of)),
+                Reason::Copy { of } => {
+                    format!("{} is the same as {}", name_of(&m.from), name_of(of))
+                }
                 _ => String::new(),
             })
             .collect::<Vec<_>>()
             .join("; ");
-        out.push(format!("{} {} a copy of another file ({ex}).", count(copies.len(), "file", "files"), if copies.len() == 1 { "is" } else { "are" }));
+        out.push(format!(
+            "{} {} a copy of another file ({ex}).",
+            count(copies.len(), "file", "files"),
+            if copies.len() == 1 { "is" } else { "are" }
+        ));
     } else if plan.copies_only {
         out.push(format!("I found no copies of the same file in {where_}."));
     }
@@ -833,10 +1078,17 @@ pub fn plan_said(plan: &SortPlan) -> String {
     let mut left: Vec<String> = Vec::new();
     if !plan.unplaced.is_empty() && !plan.copies_only {
         let v: Vec<&Path> = plan.unplaced.iter().map(PathBuf::as_path).collect();
-        left.push(format!("{} I don't have a confident home for ({})", count(v.len(), "file", "files"), examples(&v, 2)));
+        left.push(format!(
+            "{} I don't have a confident home for ({})",
+            count(v.len(), "file", "files"),
+            examples(&v, 2)
+        ));
     }
     if !plan.in_use.is_empty() {
-        left.push(format!("{} open in another program or still being saved", count(plan.in_use.len(), "file", "files")));
+        left.push(format!(
+            "{} open in another program or still being saved",
+            count(plan.in_use.len(), "file", "files")
+        ));
     }
     if plan.passed_over > 0 && !plan.copies_only {
         left.push("hidden and system files, shortcuts and unfinished downloads".into());
@@ -846,16 +1098,28 @@ pub fn plan_said(plan: &SortPlan) -> String {
     }
     if !plan.empty_folders.is_empty() {
         let v: Vec<&Path> = plan.empty_folders.iter().map(PathBuf::as_path).collect();
-        out.push(format!("{} empty ({}) -- I leave those.", count(v.len(), "folder is", "folders are"), examples(&v, 2)));
+        out.push(format!(
+            "{} empty ({}) -- I leave those.",
+            count(v.len(), "folder is", "folders are"),
+            examples(&v, 2)
+        ));
     }
     if plan.more_next_time > 0 {
-        out.push(format!("That's the first {MOST_AT_ONCE}; {} more next time you ask.", plan.more_next_time));
+        out.push(format!(
+            "That's the first {MOST_AT_ONCE}; {} more next time you ask.",
+            plan.more_next_time
+        ));
     }
     if !plan.complete {
-        out.push("I ran out of time before comparing everything, so there may be more copies.".into());
+        out.push(
+            "I ran out of time before comparing everything, so there may be more copies.".into(),
+        );
     }
     if plan.has_moves() {
-        out.push("Nothing is deleted or written over, and \"undo that\" puts every file back. Go ahead?".into());
+        out.push(
+            "Nothing is deleted or written over, and \"undo that\" puts every file back. Go ahead?"
+                .into(),
+        );
     }
     out.join(" ")
 }
@@ -871,8 +1135,6 @@ pub struct SortDone {
     pub not: Vec<String>,
 }
 
-
-
 /// Production sorting records the actual destination before touching a file.
 pub fn carry_out_moves_controlled(
     plan: &SortPlan,
@@ -885,9 +1147,16 @@ pub fn carry_out_moves_controlled(
     let mut done = SortDone::default();
     let mut groups: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
     for m in &plan.moves {
-        if stopped() { done.not.push("Stopped; remaining files were left in place.".into()); break; }
+        if stopped() {
+            done.not
+                .push("Stopped; remaining files were left in place.".into());
+            break;
+        }
         let name = name_of(&m.from);
-        let change = crate::system::Change::MoveFile { from: m.from.display().to_string(), to: m.into.join(&name).display().to_string() };
+        let change = crate::system::Change::MoveFile {
+            from: m.from.display().to_string(),
+            to: m.into.join(&name).display().to_string(),
+        };
         if let crate::system::Verdict::Refuse(why) = crate::system::judge(&change, sys) {
             done.not.push(format!("{name} ({why})"));
             continue;
@@ -900,10 +1169,17 @@ pub fn carry_out_moves_controlled(
             done.not.push(format!("{name} (open in another program)"));
             continue;
         }
-        groups.entry(m.into.clone()).or_default().push(m.from.clone());
+        groups
+            .entry(m.into.clone())
+            .or_default()
+            .push(m.from.clone());
     }
     for (dir, files) in groups {
-        if stopped() { done.not.push("Stopped; remaining files were left in place.".into()); break; }
+        if stopped() {
+            done.not
+                .push("Stopped; remaining files were left in place.".into());
+            break;
+        }
         // Each folder this is about to make, outermost first, for undo.
         let mut missing = Vec::new();
         let mut d = dir.as_path();
@@ -914,7 +1190,8 @@ pub fn carry_out_moves_controlled(
                 None => break,
             }
         }
-        let (moved, not) = crate::tune::move_files_into_controlled(&files, &dir, before_dirs, before, stopped);
+        let (moved, not) =
+            crate::tune::move_files_into_controlled(&files, &dir, before_dirs, before, stopped);
         if !moved.is_empty() || dir.exists() {
             for m in missing.into_iter().rev() {
                 if !done.made.contains(&m) {

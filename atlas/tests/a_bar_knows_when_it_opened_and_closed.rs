@@ -73,7 +73,11 @@ fn the_close_is_one_bar_after_the_open() {
         let last_open = 1_780_675_200_000;
         let bars = series(last_open, step, 40);
         let view = bars.latest().unwrap();
-        assert_eq!(view.bar_span_ms(), Some(step), "{name}: the bar length is wrong");
+        assert_eq!(
+            view.bar_span_ms(),
+            Some(step),
+            "{name}: the bar length is wrong"
+        );
         assert_eq!(
             view.closes_at(),
             Some(last_open + step),
@@ -214,8 +218,7 @@ fn the_convention_is_written_down_where_a_reader_will_find_it() {
          the exact gap that let two modules disagree"
     );
     assert!(
-        bars_rs.contains("When the bar being decided at OPENED")
-            || bars_rs.contains("OPENED"),
+        bars_rs.contains("When the bar being decided at OPENED") || bars_rs.contains("OPENED"),
         "the doc comment stopped being explicit about the open"
     );
 }

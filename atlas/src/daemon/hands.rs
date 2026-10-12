@@ -1,6 +1,6 @@
 //! Looking and hands: gestures, looking at the room and the screen, call notes,
 //! working in your windows for you, reaching you, audio outputs and the panel.
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
@@ -27,13 +27,13 @@ impl<'a> Daemon<'a> {
         // already ranks the cost of being wrong per kind of work, and anything
         // above reversible housekeeping needs a word.
         let intent = self.parser.parse(&offer.command);
-        let consequential =
-            crate::earned::kind_of(&intent).cost_of_being_wrong() > 2;
+        let consequential = crate::earned::kind_of(&intent).cost_of_being_wrong() > 2;
         let mut q = crate::answering::Question::new(&offer.message, consequential, t);
         match q.saw(g, &cfg) {
             crate::answering::Step::Settled(answer) => {
                 let yes = answer.approved();
-                self.proactive.record_response(&offer.kind, yes, &mut self.memory);
+                self.proactive
+                    .record_response(&offer.kind, yes, &mut self.memory);
                 self.session.pending = Pending::Nothing;
                 self.pending_offer = None;
                 if yes {
@@ -127,16 +127,28 @@ impl<'a> Daemon<'a> {
         self.look_in_flight = None;
         let _ = began;
         let began = std::time::Instant::now() - std::time::Duration::from_millis(done.spent_ms);
-        self.put_back(done.camera, done.opened_camera, done.looking, done.last_sight);
+        self.put_back(
+            done.camera,
+            done.opened_camera,
+            done.looking,
+            done.last_sight,
+        );
         self.finish_a_look(reason, done.printed, began, t)
     }
 
     /// Wait for a look in flight to come back, so the camera and models are
     /// here again (anything else that wants them calls this first).
     pub(super) fn wait_for_the_look(&mut self) {
-        let Some((_, _, rx)) = self.look_in_flight.take() else { return };
+        let Some((_, _, rx)) = self.look_in_flight.take() else {
+            return;
+        };
         match rx.recv_timeout(std::time::Duration::from_secs(20)) {
-            Ok(done) => self.put_back(done.camera, done.opened_camera, done.looking, done.last_sight),
+            Ok(done) => self.put_back(
+                done.camera,
+                done.opened_camera,
+                done.looking,
+                done.last_sight,
+            ),
             Err(_) => {
                 self.helpers.finished("camera");
                 self.log.warn("camera: a look didn't come back in time");
@@ -168,7 +180,11 @@ impl<'a> Daemon<'a> {
     }
 
     /// Hand the camera, the models and the last sight to a thread that looks.
-    fn start_a_look(&mut self, reason: crate::gaze::Reason, tools: &crate::voice::ToolsConfig) -> bool {
+    fn start_a_look(
+        &mut self,
+        reason: crate::gaze::Reason,
+        tools: &crate::voice::ToolsConfig,
+    ) -> bool {
         if self.look_in_flight.is_some() {
             return true;
         }
@@ -178,17 +194,28 @@ impl<'a> Daemon<'a> {
         if !vcfg.enabled || !self.camera_allowed(crate::store::now()) {
             return false;
         }
-        let Some(capture) = tools.capture_webcam.clone() else { return false };
+        let Some(capture) = tools.capture_webcam.clone() else {
+            return false;
+        };
         let feed = crate::frames::Feed {
             open_with: crate::frames::from_capture_args(&resolved(&capture.args, &tools.vars)),
             per_second: Some(CAMERA_PER_SECOND),
             ..crate::frames::Feed::default()
         };
-        let camera = self.kept_camera.take().map(|(c, _)| c).filter(|c| c.alive());
+        let camera = self
+            .kept_camera
+            .take()
+            .map(|(c, _)| c)
+            .filter(|c| c.alive());
         if camera.is_none() {
             // A fresh camera is asked for here, on the loop, so the budget
             // can still say no.
-            if let Err(why) = self.helpers.want("camera", crate::lifecycle::typical_mb("camera"), crate::store::now(), || Ok(None)) {
+            if let Err(why) = self.helpers.want(
+                "camera",
+                crate::lifecycle::typical_mb("camera"),
+                crate::store::now(),
+                || Ok(None),
+            ) {
                 self.log.info(&format!("camera: not opened ({why})"));
                 return false;
             }
@@ -200,10 +227,14 @@ impl<'a> Daemon<'a> {
         let album = self.album.clone();
         let last_sight = self.last_sight.take();
         let (tx, rx) = std::sync::mpsc::channel();
-        let spawned = std::thread::Builder::new().name("atlas-look".into()).spawn(move || {
-            let done = look_on_its_own(camera, feed, looking, &models, npu, &vcfg, &album, last_sight);
-            let _ = tx.send(done);
-        });
+        let spawned = std::thread::Builder::new()
+            .name("atlas-look".into())
+            .spawn(move || {
+                let done = look_on_its_own(
+                    camera, feed, looking, &models, npu, &vcfg, &album, last_sight,
+                );
+                let _ = tx.send(done);
+            });
         match spawned {
             Ok(_) => {
                 self.look_in_flight = Some((reason, std::time::Instant::now(), rx));
@@ -211,14 +242,21 @@ impl<'a> Daemon<'a> {
             }
             Err(e) => {
                 self.helpers.finished("camera");
-                self.log.warn(&format!("camera: couldn't start a look: {e}"));
+                self.log
+                    .warn(&format!("camera: couldn't start a look: {e}"));
                 false
             }
         }
     }
 
     /// What the tick does with a look's answer, wherever it was taken.
-    fn finish_a_look(&mut self, reason: crate::gaze::Reason, printed: String, began: std::time::Instant, t: u64) -> Option<String> {
+    fn finish_a_look(
+        &mut self,
+        reason: crate::gaze::Reason,
+        printed: String,
+        began: std::time::Instant,
+        t: u64,
+    ) -> Option<String> {
         let tools = self.tools_cfg();
         let cfg = tools.gaze.clone();
         // What it actually costs on this machine, rather than what it was
@@ -331,8 +369,6 @@ impl<'a> Daemon<'a> {
         printed
     }
 
-
-
     /// What `diagnose` needs to check Atlas on itself.
     ///
     /// Assembled from what the daemon already knows rather than probed again —
@@ -366,7 +402,6 @@ impl<'a> Daemon<'a> {
             ..crate::diagnose::Vitals::default()
         }
     }
-
 
     /// What did that pinch actually land on?
     ///
@@ -403,7 +438,8 @@ impl<'a> Daemon<'a> {
             // pretending the click was understood -- and recorded as a failed
             // accessibility read on this app, so the router learns UIA does
             // not work here.
-            self.backends.record(crate::backends::Backend::Uia, &app, false);
+            self.backends
+                .record(crate::backends::Backend::Uia, &app, false);
             self.log.info("selected something I can't read the name of");
             return;
         };
@@ -412,7 +448,8 @@ impl<'a> Daemon<'a> {
             crate::uia::Quality::Usable => {
                 let what = crate::uia::outline(&tree, 1);
                 // A real, usable accessibility read: UIA works on this app.
-                self.backends.record(crate::backends::Backend::Uia, &app, true);
+                self.backends
+                    .record(crate::backends::Backend::Uia, &app, true);
                 self.log.info(&format!("selected: {}", what.trim()));
             }
             other => {
@@ -420,12 +457,15 @@ impl<'a> Daemon<'a> {
                 // different fixes -- one is the app, one is a setting. Recorded
                 // as a failed read: the tree came back but wasn't usable, which
                 // for the router's purpose is the same as UIA not working here.
-                self.backends.record(crate::backends::Backend::Uia, &app, false);
-                self.log.info(&format!("selected something I can't read: {}", other.plain()));
+                self.backends
+                    .record(crate::backends::Backend::Uia, &app, false);
+                self.log.info(&format!(
+                    "selected something I can't read: {}",
+                    other.plain()
+                ));
             }
         }
     }
-
 
     /// The camera and models the tracking thread will own.
     ///
@@ -451,7 +491,9 @@ impl<'a> Daemon<'a> {
         // camera, asked for or on Atlas's own initiative, needs the camera's
         // grant -- the question "Allow the camera?" answered yes once.
         if !self.camera_allowed(crate::store::now()) {
-            return Err("you haven't allowed the camera yet -- say \"look at me\" and I'll ask".into());
+            return Err(
+                "you haven't allowed the camera yet -- say \"look at me\" and I'll ask".into(),
+            );
         }
         // Written down, so "did you really look?" has an answer (the log on
         // 1 Oct showed a sight described with no picture taken at all).
@@ -464,7 +506,11 @@ impl<'a> Daemon<'a> {
             if cam.alive() {
                 *used = std::time::Instant::now();
                 let (w, h) = cam.size();
-                if let Some(f) = cam.frame(CAMERA_SETTLE, CAMERA_FRESH, std::time::Duration::from_millis(2500)) {
+                if let Some(f) = cam.frame(
+                    CAMERA_SETTLE,
+                    CAMERA_FRESH,
+                    std::time::Duration::from_millis(2500),
+                ) {
                     return Ok((f, w, h));
                 }
             }
@@ -502,7 +548,11 @@ impl<'a> Daemon<'a> {
         // The first frames off a camera that has just opened are taken while
         // it is still working out its exposure: the first one kept is one
         // that arrived a second in.
-        let frame = cam.frame(CAMERA_SETTLE, CAMERA_FRESH, std::time::Duration::from_secs(6));
+        let frame = cam.frame(
+            CAMERA_SETTLE,
+            CAMERA_FRESH,
+            std::time::Duration::from_secs(6),
+        );
         match frame {
             Some(f) => {
                 self.log.info("camera: open, kept open between looks");
@@ -529,7 +579,11 @@ impl<'a> Daemon<'a> {
     /// Once a tick: the kept camera closes once nothing has asked for a
     /// picture for `CAMERA_KEEP`.
     pub(super) fn camera_idle_check(&mut self) {
-        let idle = self.kept_camera.as_ref().map(|(c, used)| !c.alive() || used.elapsed() >= CAMERA_KEEP).unwrap_or(false);
+        let idle = self
+            .kept_camera
+            .as_ref()
+            .map(|(c, used)| !c.alive() || used.elapsed() >= CAMERA_KEEP)
+            .unwrap_or(false);
         if idle {
             self.let_go_of_the_camera("nothing has looked for a while");
         }
@@ -545,7 +599,8 @@ impl<'a> Daemon<'a> {
                 let models = std::path::Path::new(&tools.models.dir).to_path_buf();
                 // ONNX Runtime lives under the install folder that holds
                 // `models/`, the way hand tracking finds it.
-                let looking = crate::vision::Looking::open_with(&models, models.parent(), tools.hands.npu);
+                let looking =
+                    crate::vision::Looking::open_with(&models, models.parent(), tools.hands.npu);
                 self.log.info(&format!("seeing: {}", looking.engines()));
                 looking
             }
@@ -620,13 +675,17 @@ impl<'a> Daemon<'a> {
         }
         let tools = self.tools_cfg();
         let root = self.store.install_root();
-        let eyes_url = (tools.picture_talk.enabled && crate::models::talking_model_sees() && self.helpers.is_running("model-server"))
-            .then(|| crate::models::talking_chat_url(&tools.models));
+        let eyes_url = (tools.picture_talk.enabled
+            && crate::models::talking_model_sees()
+            && self.helpers.is_running("model-server"))
+        .then(|| crate::models::talking_chat_url(&tools.models));
         if eyes_url.is_none() {
             if let Err(why) = crate::picture_talk::ready(&tools.picture_talk, &root) {
                 return Some(format!("I can't watch videos yet: {why}."));
             }
-            if let Err(why) = self.room_for_heavy("picture reader", crate::picture_talk::MEMORY_MB, t) {
+            if let Err(why) =
+                self.room_for_heavy("picture reader", crate::picture_talk::MEMORY_MB, t)
+            {
                 return Some(format!("I can't watch it right now: {why}"));
             }
         }
@@ -641,29 +700,54 @@ impl<'a> Daemon<'a> {
         let work_dir = std::path::PathBuf::from(&tools.work_dir).join(format!("watching-{t}"));
         let shown = path.clone();
         let work: crew::Work = Box::new(move |c: &crew::Control| {
-            std::fs::create_dir_all(&work_dir).map_err(|e| format!("couldn't make a scratch folder: {e}"))?;
+            std::fs::create_dir_all(&work_dir)
+                .map_err(|e| format!("couldn't make a scratch folder: {e}"))?;
             let tidy = |r: std::result::Result<String, String>| {
                 crate::heard!(std::fs::remove_dir_all(&work_dir));
                 r
             };
             let src = original.display().to_string();
-            let probed = crate::tools::command(&video.ffprobe.command).args(crate::edit::probe_args(&src)).output();
-            let Some(duration) = probed.ok().and_then(|o| crate::edit::duration_from_probe(&String::from_utf8_lossy(&o.stdout))) else {
+            let probed = crate::tools::command(&video.ffprobe.command)
+                .args(crate::edit::probe_args(&src))
+                .output();
+            let Some(duration) = probed.ok().and_then(|o| {
+                crate::edit::duration_from_probe(&String::from_utf8_lossy(&o.stdout))
+            }) else {
                 return tidy(Err("I couldn't read how long the video is".into()));
             };
             let mut frames: Vec<(f64, String)> = Vec::new();
-            for (i, at) in crate::watchvideo::frame_times(duration, crate::watchvideo::FRAMES).into_iter().enumerate() {
+            for (i, at) in crate::watchvideo::frame_times(duration, crate::watchvideo::FRAMES)
+                .into_iter()
+                .enumerate()
+            {
                 if c.checkpoint() {
                     return tidy(Err("stopped".into()));
                 }
                 let png = work_dir.join(format!("frame-{i}.png"));
-                let made = crate::tools::command(&video.ffmpeg.command).args(crate::watchvideo::frame_args(&src, at, &png.display().to_string())).output();
+                let made = crate::tools::command(&video.ffmpeg.command)
+                    .args(crate::watchvideo::frame_args(
+                        &src,
+                        at,
+                        &png.display().to_string(),
+                    ))
+                    .output();
                 if !made.is_ok_and(|o| o.status.success()) || !png.is_file() {
                     continue;
                 }
                 let seen = match &eyes_url {
-                    Some(url) => crate::picture_talk::ask_server(url, &png, crate::watchvideo::FRAME_QUESTION, cfg.most_words),
-                    None => crate::picture_talk::ask_until(&cfg, &root, &png, crate::watchvideo::FRAME_QUESTION, &|| c.stopping()),
+                    Some(url) => crate::picture_talk::ask_server(
+                        url,
+                        &png,
+                        crate::watchvideo::FRAME_QUESTION,
+                        cfg.most_words,
+                    ),
+                    None => crate::picture_talk::ask_until(
+                        &cfg,
+                        &root,
+                        &png,
+                        crate::watchvideo::FRAME_QUESTION,
+                        &|| c.stopping(),
+                    ),
                 };
                 if let Ok(seen) = seen {
                     if !seen.trim().is_empty() {
@@ -671,18 +755,25 @@ impl<'a> Daemon<'a> {
                     }
                 }
             }
-            let transcript = super::late::transcript_of(&video, timed.as_ref(), &vars, &src, &work_dir, None);
+            let transcript =
+                super::late::transcript_of(&video, timed.as_ref(), &vars, &src, &work_dir, None);
             if frames.is_empty() && transcript.trim().is_empty() {
                 return tidy(Ok(crate::watchvideo::nothing_seen(&shown)));
             }
             let prompt = crate::watchvideo::answer_prompt(&question, &frames, &transcript);
-            tidy(llm.complete_long(crate::watchvideo::ANSWER_SYSTEM, &prompt, 600).map(|r| r.text).map_err(|e| e.to_string()))
+            tidy(
+                llm.complete_long(crate::watchvideo::ANSWER_SYSTEM, &prompt, 600)
+                    .map(|r| r.text)
+                    .map_err(|e| e.to_string()),
+            )
         });
-        Some(if self.hand_off("video", t, work, Some(path.clone()), SpeakPolicy::Always) {
-            format!("Watching {path}: {} frames and what's said in it. I'll tell you when I've got it.", crate::watchvideo::FRAMES)
-        } else {
-            "I'm swamped with background work right now -- ask me again in a moment.".into()
-        })
+        Some(
+            if self.hand_off("video", t, work, Some(path.clone()), SpeakPolicy::Always) {
+                format!("Watching {path}: {} frames and what's said in it. I'll tell you when I've got it.", crate::watchvideo::FRAMES)
+            } else {
+                "I'm swamped with background work right now -- ask me again in a moment.".into()
+            },
+        )
     }
 
     /// "Look at my screen", "what does this chart show?" — a picture taken
@@ -742,8 +833,18 @@ impl<'a> Daemon<'a> {
         let mut taken_here = false;
         if matches!(what, Capture::Screen) && matches!(target, crate::probe::Target::Active) {
             if let Some((named, grab)) = self.screen_picture() {
-                let rgba: Vec<u8> = grab.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect();
-                let png = crate::pngcodec::write_png(&crate::pngcodec::Rgba { width: grab.width, height: grab.height, pixels: rgba });
+                let rgba: Vec<u8> = grab
+                    .rgb
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
+                    .flat_map(|p| [p[0], p[1], p[2], 255])
+                    .collect();
+                let png = crate::pngcodec::write_png(&crate::pngcodec::Rgba {
+                    width: grab.width,
+                    height: grab.height,
+                    pixels: rgba,
+                });
                 if std::fs::write(&shot, png).is_ok() {
                     label = named;
                     taken_here = true;
@@ -783,7 +884,11 @@ impl<'a> Daemon<'a> {
             }
         }
         // Made smaller for the reader now, or on the crew once it's taken.
-        let small = if capture_later.is_some() { None } else { crate::picture_talk::smaller(&shot) };
+        let small = if capture_later.is_some() {
+            None
+        } else {
+            crate::picture_talk::smaller(&shot)
+        };
         // About 3 GB while it runs, so the memory budget gets a say first,
         // and a refusal is a sentence rather than a laptop that swaps.
         let name = "picture reader";
@@ -819,7 +924,12 @@ impl<'a> Daemon<'a> {
                 if let Err(e) = tool.run(vars, None) {
                     // A capture that failed partway can leave a half-written file.
                     crate::heard!(std::fs::remove_file(&shot));
-                    let o = PictureOutcome { took_ms: 0, prompt_chars: 0, answer: String::new(), failed: Some(format!("the camera didn't give me a picture ({e})")) };
+                    let o = PictureOutcome {
+                        took_ms: 0,
+                        prompt_chars: 0,
+                        answer: String::new(),
+                        failed: Some(format!("the camera didn't give me a picture ({e})")),
+                    };
                     return serde_json::to_string(&o).map_err(|e| e.to_string());
                 }
                 small = crate::picture_talk::smaller(&shot);
@@ -829,20 +939,30 @@ impl<'a> Daemon<'a> {
                 // The running model first. If it can't (stopped meanwhile,
                 // an old server without eyes), the one-off reader -- but only
                 // when there's room for its 3.6 GB, never a laptop that swaps.
-                Some(url) => match crate::picture_talk::ask_server(url, picture, &question, cfg.most_words) {
-                    Ok(a) => Ok(a),
-                    Err(first) if c.stopping() => Err(first),
-                    Err(first) => {
-                        if crate::fit::measure().free_ram_mb >= crate::picture_talk::MEMORY_MB
-                            && crate::picture_talk::ready(&cfg, &root).is_ok()
-                        {
-                            crate::picture_talk::ask_until(&cfg, &root, picture, &question, &|| c.stopping())
-                        } else {
-                            Err(first)
+                Some(url) => {
+                    match crate::picture_talk::ask_server(url, picture, &question, cfg.most_words) {
+                        Ok(a) => Ok(a),
+                        Err(first) if c.stopping() => Err(first),
+                        Err(first) => {
+                            if crate::fit::measure().free_ram_mb >= crate::picture_talk::MEMORY_MB
+                                && crate::picture_talk::ready(&cfg, &root).is_ok()
+                            {
+                                crate::picture_talk::ask_until(
+                                    &cfg,
+                                    &root,
+                                    picture,
+                                    &question,
+                                    &|| c.stopping(),
+                                )
+                            } else {
+                                Err(first)
+                            }
                         }
                     }
-                },
-                None => crate::picture_talk::ask_until(&cfg, &root, picture, &question, &|| c.stopping()),
+                }
+                None => crate::picture_talk::ask_until(&cfg, &root, picture, &question, &|| {
+                    c.stopping()
+                }),
             };
             crate::heard!(std::fs::remove_file(&shot));
             if let Some(p) = &small {
@@ -856,10 +976,19 @@ impl<'a> Daemon<'a> {
             };
             serde_json::to_string(&o).map_err(|e| e.to_string())
         });
-        if self.hand_off("pictures", t, work, Some(word.to_string()), SpeakPolicy::Always) {
+        if self.hand_off(
+            "pictures",
+            t,
+            work,
+            Some(word.to_string()),
+            SpeakPolicy::Always,
+        ) {
             if matches!(what, Capture::Camera) {
                 // Said as it happens: the camera is never on unannounced.
-                return format!("{} — I'll tell you what I see in a moment.", crate::camera_ask::LOOKING);
+                return format!(
+                    "{} — I'll tell you what I see in a moment.",
+                    crate::camera_ask::LOOKING
+                );
             }
             format!("Looking at {label} — I'll tell you in a moment.")
         } else {
@@ -899,7 +1028,13 @@ impl<'a> Daemon<'a> {
                 out.push(why.to_string());
                 out.extend(self.carry_out(said));
             }
-        } else if t.saturating_sub(self.last_call_look) >= if self.call_notes.call.is_some() { 5 } else { 15 } {
+        } else if t.saturating_sub(self.last_call_look)
+            >= if self.call_notes.call.is_some() {
+                5
+            } else {
+                15
+            }
+        {
             // Every 5 s in a call (its end matters); every 15 s otherwise --
             // each look runs reg.exe, and a call starting is still caught
             // within seconds (1 Oct 2026: Atlas's own cost, measured).
@@ -931,10 +1066,22 @@ impl<'a> Daemon<'a> {
                     // shutdown waits for it the way it waits for the crew.
                     let app = done.app.clone();
                     let work: crew::Work = Box::new(move |_c: &crew::Control| {
-                        let w = crate::callnotes::write_up(&done, &timed, &vars, llm.as_deref(), &notes_dir)?;
+                        let w = crate::callnotes::write_up(
+                            &done,
+                            &timed,
+                            &vars,
+                            llm.as_deref(),
+                            &notes_dir,
+                        )?;
                         serde_json::to_string(&w).map_err(|e| e.to_string())
                     });
-                    if !self.hand_off("call-notes", crate::store::now(), work, Some(app), SpeakPolicy::Always) {
+                    if !self.hand_off(
+                        "call-notes",
+                        crate::store::now(),
+                        work,
+                        Some(app),
+                        SpeakPolicy::Always,
+                    ) {
                         let mut lines = said.lines;
                         lines.push("I have too much on to write the call up right now; the audio is kept in data/calls.".into());
                         return lines;
@@ -1011,10 +1158,16 @@ impl<'a> Daemon<'a> {
         if self.llm.is_none() {
             return "I need a model set up to write replies, and there isn't one yet.".into();
         }
-        let (Ok(Some(win)), Ok(Some(front))) = (self.plat.active_window_id(), self.plat.active_window()) else {
+        let (Ok(Some(win)), Ok(Some(front))) =
+            (self.plat.active_window_id(), self.plat.active_window())
+        else {
             return "I can't tell which window you mean — put it in front and ask again.".into();
         };
-        let app = front.process.trim_end_matches(".exe").trim_end_matches(".EXE").to_string();
+        let app = front
+            .process
+            .trim_end_matches(".exe")
+            .trim_end_matches(".EXE")
+            .to_string();
         if app.is_empty() {
             return "I can't tell which app that window belongs to.".into();
         }
@@ -1074,7 +1227,11 @@ impl<'a> Daemon<'a> {
                  Say \"stop the {app} one\" to stop it.{replaced}"
             )
         };
-        if first.is_empty() { lead } else { format!("{lead} {}", first.join(" ")) }
+        if first.is_empty() {
+            lead
+        } else {
+            format!("{lead} {}", first.join(" "))
+        }
     }
 
     /// Once a tick: every window job, each at most every ten seconds.
@@ -1092,7 +1249,11 @@ impl<'a> Daemon<'a> {
         // work you didn't ask for this moment, and you've just spoken to
         // Atlas, which would otherwise count as busy.
         let hands_off = self.plat.input_idle_secs().map(|s| s >= 2).unwrap_or(true);
-        let jobs: Vec<(u64, bool)> = self.working_for_you.iter().map(|w| (w.id, w.job.turns == 0)).collect();
+        let jobs: Vec<(u64, bool)> = self
+            .working_for_you
+            .iter()
+            .map(|w| (w.id, w.job.turns == 0))
+            .collect();
         let mut out = Vec::new();
         for (id, first) in jobs {
             out.extend(self.work_one(id, t, !busy || (first && hands_off)));
@@ -1109,9 +1270,14 @@ impl<'a> Daemon<'a> {
     /// into `ready`, and is typed here once there's a gap.
     fn work_one(&mut self, id: u64, t: u64, may_type: bool) -> Vec<String> {
         let mut out = Vec::new();
-        let Some(i) = self.working_for_you.iter().position(|w| w.id == id) else { return out };
+        let Some(i) = self.working_for_you.iter().position(|w| w.id == id) else {
+            return out;
+        };
         let mut w = self.working_for_you.remove(i);
-        let keep = |me: &mut Self, w: WorkingForYou| me.working_for_you.insert(i.min(me.working_for_you.len()), w);
+        let keep = |me: &mut Self, w: WorkingForYou| {
+            me.working_for_you
+                .insert(i.min(me.working_for_you.len()), w)
+        };
         if w.held || w.composing.is_some() {
             keep(self, w);
             return out;
@@ -1121,7 +1287,10 @@ impl<'a> Daemon<'a> {
             if !may_type {
                 if !w.waiting_for_gap {
                     w.waiting_for_gap = true;
-                    self.log.info(&format!("{}: reply ready; waiting for a gap in your typing", w.job.app));
+                    self.log.info(&format!(
+                        "{}: reply ready; waiting for a gap in your typing",
+                        w.job.app
+                    ));
                 }
                 w.ready = Some(text);
                 keep(self, w);
@@ -1143,16 +1312,32 @@ impl<'a> Daemon<'a> {
                 }
                 match self.type_into(w.win, &text, send) {
                     Ok(()) if send => {
-                        out.push(format!("Replied in {} ({} so far).", w.job.app, w.job.turns));
+                        out.push(format!(
+                            "Replied in {} ({} so far).",
+                            w.job.app, w.job.turns
+                        ));
                         // Something went out as you: on the record, like a
                         // published post.
                         let gist: String = text.chars().take(80).collect();
-                        self.journal.record_at(Act::Published, &format!("replied in {}: {gist}", w.job.app), true, t);
+                        self.journal.record_at(
+                            Act::Published,
+                            &format!("replied in {}: {gist}", w.job.app),
+                            true,
+                            t,
+                        );
                     }
-                    Ok(()) => out.push(format!("The reply is in the box in {}, not sent.", w.job.app)),
+                    Ok(()) => out.push(format!(
+                        "The reply is in the box in {}, not sent.",
+                        w.job.app
+                    )),
                     Err(why) => {
                         out.push(format!("I couldn't type into {}: {why}", w.job.app));
-                        self.journal.record_at(Act::Blocked, &format!("couldn't reply in {}: {why}", w.job.app), false, t);
+                        self.journal.record_at(
+                            Act::Blocked,
+                            &format!("couldn't reply in {}: {why}", w.job.app),
+                            false,
+                            t,
+                        );
                         return out;
                     }
                 }
@@ -1160,7 +1345,12 @@ impl<'a> Daemon<'a> {
                 // has had a moment to show the reply, so Atlas doesn't
                 // answer itself.
                 self.plat.sleep_ms(2_000);
-                w.after_mine = self.plat.read_window(w.win).ok().flatten().map(|t| t.text());
+                w.after_mine = self
+                    .plat
+                    .read_window(w.win)
+                    .ok()
+                    .flatten()
+                    .map(|t| t.text());
                 w.looked = t;
             }
             if w.job.finished() {
@@ -1190,23 +1380,39 @@ impl<'a> Daemon<'a> {
         // Only when something new has arrived since Atlas wrote — judged
         // after its own reply, with times and "seen" left out.
         if w.after_mine.is_some()
-            && !crate::delegate::something_new(&screen, w.after_mine.as_deref(), w.job.transcript.last().map(|s| s.as_str()))
+            && !crate::delegate::something_new(
+                &screen,
+                w.after_mine.as_deref(),
+                w.job.transcript.last().map(|s| s.as_str()),
+            )
         {
             keep(self, w);
             return out;
         }
-        let facts = crate::grants::AppFacts { known: true, confirm_each_time: false };
+        let facts = crate::grants::AppFacts {
+            known: true,
+            confirm_each_time: false,
+        };
         match w.job.advance(&screen, &self.permissions, &facts) {
             crate::delegate::Step::Compose { context } => {
                 let Some(llm) = self.llm.clone() else {
-                    out.push(format!("There's no model to write with, so I've stopped working {}.", w.job.app));
+                    out.push(format!(
+                        "There's no model to write with, so I've stopped working {}.",
+                        w.job.app
+                    ));
                     return out;
                 };
                 let system = w.job.system_prompt();
-                let quoted = crate::untrusted::Read::new(&w.job.app, &context, crate::store::now()).quoted();
+                let quoted =
+                    crate::untrusted::Read::new(&w.job.app, &context, crate::store::now()).quoted();
                 let work: crew::Work = Box::new(move |_c: &crew::Control| {
-                    let counted = CountedLlm { inner: llm.as_ref(), calls: std::sync::Mutex::new(Vec::new()) };
-                    let reply = counted.complete(&system, &quoted).map_err(|e| e.to_string());
+                    let counted = CountedLlm {
+                        inner: llm.as_ref(),
+                        calls: std::sync::Mutex::new(Vec::new()),
+                    };
+                    let reply = counted
+                        .complete(&system, &quoted)
+                        .map_err(|e| e.to_string());
                     // Read back before it goes out as you: a chatbot's
                     // phrases, stock openers, filler or a blank get one
                     // rewrite (`draft::for_replies`), kept only if it's
@@ -1218,9 +1424,21 @@ impl<'a> Daemon<'a> {
                     let mut rewrites: Option<(bool, String)> = None;
                     let text = match &reply {
                         Ok(t) if !t.trim().is_empty() => {
-                            let found = crate::draft::critique(t.trim(), None, &crate::draft::for_replies());
-                            let why = found.iter().map(|n| n.fault.what()).collect::<Vec<_>>().join("; ");
-                            match crate::draft::revise(t.trim(), &counted, &crate::draft::for_replies()) {
+                            let found = crate::draft::critique(
+                                t.trim(),
+                                None,
+                                &crate::draft::for_replies(),
+                            );
+                            let why = found
+                                .iter()
+                                .map(|n| n.fault.what())
+                                .collect::<Vec<_>>()
+                                .join("; ");
+                            match crate::draft::revise(
+                                t.trim(),
+                                &counted,
+                                &crate::draft::for_replies(),
+                            ) {
                                 crate::draft::Outcome::Revised { text, .. } => {
                                     first = Some((false, why));
                                     rewrites = Some((true, String::new()));
@@ -1242,20 +1460,35 @@ impl<'a> Daemon<'a> {
                     };
                     let mut calls = counted.calls.into_inner().unwrap_or_default();
                     for (i, c) in calls.iter_mut().enumerate() {
-                        c.grade = if i == 0 { first.clone() } else { rewrites.clone() };
+                        c.grade = if i == 0 {
+                            first.clone()
+                        } else {
+                            rewrites.clone()
+                        };
                     }
-                    let envelope = ReplyOutcome { text, failed: reply.err(), calls };
+                    let envelope = ReplyOutcome {
+                        text,
+                        failed: reply.err(),
+                        calls,
+                    };
                     serde_json::to_string(&envelope).map_err(|e| e.to_string())
                 });
                 // The crew's id comes back from `hand`; remembered so the
                 // reply finds its way to this window.
-                if let Some(crew_id) =
-                    self.hand_off_as("conversation-reply", t, work, Some(w.job.app.clone()), SpeakPolicy::ViaWatcher)
-                {
+                if let Some(crew_id) = self.hand_off_as(
+                    "conversation-reply",
+                    t,
+                    work,
+                    Some(w.job.app.clone()),
+                    SpeakPolicy::ViaWatcher,
+                ) {
                     w.composing = Some(crew_id);
                     w.composed_from = Some(screen);
                 } else {
-                    out.push(format!("I'm too busy to write for {} right now; I'll try again in a moment.", w.job.app));
+                    out.push(format!(
+                        "I'm too busy to write for {} right now; I'll try again in a moment.",
+                        w.job.app
+                    ));
                     w.looked = t.saturating_sub(5);
                 }
             }
@@ -1290,7 +1523,11 @@ impl<'a> Daemon<'a> {
     /// taken as "wait for them".
     pub(super) fn reply_written(&mut self, crew_id: u64, ending: &crew::Ending) -> Vec<String> {
         let mut out = Vec::new();
-        let Some(i) = self.working_for_you.iter().position(|w| w.composing == Some(crew_id)) else {
+        let Some(i) = self
+            .working_for_you
+            .iter()
+            .position(|w| w.composing == Some(crew_id))
+        else {
             // Its job was called off while the model was writing.
             return out;
         };
@@ -1300,7 +1537,13 @@ impl<'a> Daemon<'a> {
         };
         if let Some(o) = &outcome {
             for c in &o.calls {
-                let id = self.record_model_call("conversation-reply", c.took_ms, c.prompt_chars, c.reply_chars, c.failed.clone());
+                let id = self.record_model_call(
+                    "conversation-reply",
+                    c.took_ms,
+                    c.prompt_chars,
+                    c.reply_chars,
+                    c.failed.clone(),
+                );
                 if let Some((good, why)) = &c.grade {
                     self.grade_call(id, *good, why);
                     self.keep_words(id, c.words.as_ref());
@@ -1315,10 +1558,14 @@ impl<'a> Daemon<'a> {
             // the screen it was shown, so it isn't asked about it again.
             Some(o) if o.failed.is_none() => w.after_mine = w.composed_from.take(),
             other => {
-                let why = other.and_then(|o| o.failed).unwrap_or_else(|| "it stopped without an answer".into());
+                let why = other
+                    .and_then(|o| o.failed)
+                    .unwrap_or_else(|| "it stopped without an answer".into());
                 let app = w.job.app.clone();
                 self.working_for_you.remove(i);
-                out.push(format!("The model couldn't write for {app} ({why}), so I've stopped working it."));
+                out.push(format!(
+                    "The model couldn't write for {app} ({why}), so I've stopped working it."
+                ));
             }
         }
         out
@@ -1326,7 +1573,12 @@ impl<'a> Daemon<'a> {
 
     /// Type into a window that may not be in front — `delegate::type_into_window`,
     /// the one path `atlas window type` also uses on the real laptop.
-    fn type_into(&mut self, win: crate::platform::WindowId, text: &str, send: bool) -> std::result::Result<(), String> {
+    fn type_into(
+        &mut self,
+        win: crate::platform::WindowId,
+        text: &str,
+        send: bool,
+    ) -> std::result::Result<(), String> {
         crate::delegate::type_into_window(self.plat, win, text, send)
     }
 
@@ -1365,7 +1617,11 @@ impl<'a> Daemon<'a> {
             // found would turn "the object model failed" into "there is
             // nothing on your desk".
             if !scene.could_not.is_empty() {
-                return format!("{looking}. {} ({})", scene.spoken(&cfg), scene.could_not.join("; "));
+                return format!(
+                    "{looking}. {} ({})",
+                    scene.spoken(&cfg),
+                    scene.could_not.join("; ")
+                );
             }
         }
         format!("{looking}. {}", sight.spoken(&cfg))
@@ -1482,7 +1738,11 @@ impl<'a> Daemon<'a> {
             .collect::<Vec<_>>()
             .windows(2)
             .find(|w| w[1].starts_with("view"))
-            .and_then(|w| w[0].trim_matches(|c: char| !c.is_ascii_digit()).parse().ok())
+            .and_then(|w| {
+                w[0].trim_matches(|c: char| !c.is_ascii_digit())
+                    .parse()
+                    .ok()
+            })
             .unwrap_or(1);
         let your_face = self.tools_cfg().vision.your_face.clone();
         let is_you = ["me", "myself", "i"].contains(&name.trim().to_lowercase().as_str())
@@ -1492,9 +1752,18 @@ impl<'a> Daemon<'a> {
         } else if face.is_some() {
             name.trim().to_string()
         } else {
-            format!("your {}", name.trim().trim_start_matches("the ").trim_start_matches("my "))
+            format!(
+                "your {}",
+                name.trim()
+                    .trim_start_matches("the ")
+                    .trim_start_matches("my ")
+            )
         };
-        let looks = if count <= 1 { "That's one look so far".to_string() } else { format!("That's {count} looks now") };
+        let looks = if count <= 1 {
+            "That's one look so far".to_string()
+        } else {
+            format!("That's {count} looks now")
+        };
         format!("Got it — I'll know {who}. {looks}; show me again from another angle and I'll be surer.")
     }
 
@@ -1510,7 +1779,11 @@ impl<'a> Daemon<'a> {
         )
     }
 
-    pub(super) fn build_eyes(&self, models: &std::path::Path, plan: &crate::handweight::Plan) -> Option<Box<dyn crate::handloop::Eyes>> {
+    pub(super) fn build_eyes(
+        &self,
+        models: &std::path::Path,
+        plan: &crate::handweight::Plan,
+    ) -> Option<Box<dyn crate::handloop::Eyes>> {
         let tools = self.tools_cfg();
         // The one-shot capture command already knows which device and backend
         // this machine uses. Re-deriving that here would be two places to get
@@ -1528,7 +1801,11 @@ impl<'a> Daemon<'a> {
         // which holds `models/` -- the same way `speakernet` finds them.
         match crate::handloop::Seeing::start(&feed, models, models.parent(), tools.hands.npu) {
             Ok(seeing) => {
-                self.log.info(&format!("hand tracking: {}, on {}", plan.why, seeing.engine_in_use()));
+                self.log.info(&format!(
+                    "hand tracking: {}, on {}",
+                    plan.why,
+                    seeing.engine_in_use()
+                ));
                 Some(Box::new(seeing))
             }
             Err(e) => {
@@ -1812,9 +2089,9 @@ impl<'a> Daemon<'a> {
                 let path = item.stored_at.clone().unwrap_or_else(|| item.what.clone());
                 match self.watch(&item, &path) {
                     Ok(account) => Ok(account),
-                    Err(why) => self.listen_to(&item).map_err(|also| {
-                        format!("{why} I couldn't hear it either: {also}")
-                    }),
+                    Err(why) => self
+                        .listen_to(&item)
+                        .map_err(|also| format!("{why} I couldn't hear it either: {also}")),
                 }
             }
             crate::tray::Sort::Video | crate::tray::Sort::Audio => self.listen_to(&item),
@@ -1835,14 +2112,22 @@ impl<'a> Daemon<'a> {
                         // checked against the project's own manifest when
                         // there's one near the file.
                         let original = std::path::Path::new(&item.what);
-                        let near = if original.exists() { original } else { std::path::Path::new(&path) };
+                        let near = if original.exists() {
+                            original
+                        } else {
+                            std::path::Path::new(&path)
+                        };
                         if let Some(manifest) = crate::hollowcode::manifest_near(near) {
-                            found.extend(crate::hollowcode::made_up_dependencies(&code, tongue, &manifest));
+                            found.extend(crate::hollowcode::made_up_dependencies(
+                                &code, tongue, &manifest,
+                            ));
                         }
                         // Public functions nothing in the whole project calls,
                         // when the file is in a project rather than pasted.
                         if original.exists() {
-                            found.extend(crate::hollowcode::never_called_in_project(original, &code, tongue));
+                            found.extend(crate::hollowcode::never_called_in_project(
+                                original, &code, tongue,
+                            ));
                         }
                         found.sort_by_key(|f| f.line);
                         let mut said = crate::hollowcode::spoken(&item.title(), tongue, &found);
@@ -1859,7 +2144,9 @@ impl<'a> Daemon<'a> {
                     Err(e) => Err(format!("I couldn't open that file: {e}")),
                 }
             }
-            crate::tray::Sort::Document | crate::tray::Sort::File if Self::read_as_document(&item) => {
+            crate::tray::Sort::Document | crate::tray::Sort::File
+                if Self::read_as_document(&item) =>
+            {
                 let path = item.stored_at.clone().unwrap_or_else(|| item.what.clone());
                 self.read_document_at(&path, false)
             }
@@ -1884,8 +2171,7 @@ impl<'a> Daemon<'a> {
                                  web research in settings."
                         .to_string()),
                     Some(fetch) => {
-                        let mut vars =
-                            self.tools_ref().map(|t| t.vars.clone()).unwrap_or_default();
+                        let mut vars = self.tools_ref().map(|t| t.vars.clone()).unwrap_or_default();
                         vars.insert("url".into(), item.what.clone());
                         match fetch.run(&vars, None) {
                             Ok(html) => {
@@ -1945,13 +2231,24 @@ impl<'a> Daemon<'a> {
         self.reach_you_retained(note, t, true).0
     }
 
-    pub(super) fn reach_you_retained(&mut self, note: crate::notify::Note, t: u64, retain: bool) -> (crate::notify::Sent, bool) {
-        let mut render_only=false;
-        let sent=self.reach_you_routed(note,t,retain,&mut render_only);
-        (sent,render_only)
+    pub(super) fn reach_you_retained(
+        &mut self,
+        note: crate::notify::Note,
+        t: u64,
+        retain: bool,
+    ) -> (crate::notify::Sent, bool) {
+        let mut render_only = false;
+        let sent = self.reach_you_routed(note, t, retain, &mut render_only);
+        (sent, render_only)
     }
 
-    fn reach_you_routed(&mut self, note: crate::notify::Note,t:u64,retain:bool,render_only:&mut bool)->crate::notify::Sent {
+    fn reach_you_routed(
+        &mut self,
+        note: crate::notify::Note,
+        t: u64,
+        retain: bool,
+        render_only: &mut bool,
+    ) -> crate::notify::Sent {
         use crate::notify::{route, Route, Sent};
         let cfg = self.notify_cfg();
         // Presence is not sensed on most machines, so `Unknown` is the honest
@@ -1999,13 +2296,19 @@ impl<'a> Daemon<'a> {
         // connected, speaking is private wherever you are. A call beats
         // everything. With neither, Atlas shows rather than says.
         let on_call = crate::notify::on_a_call(self.awareness.last_active_window());
-        let say =
-            crate::notify::how_to_say(self.audio_outputs(), on_call, self.modes.in_public());
-        let can_speak = !matches!(say, crate::notify::Say::Silent(_)) && self.sound_allows_speaking();
+        let say = crate::notify::how_to_say(self.audio_outputs(), on_call, self.modes.in_public());
+        let can_speak =
+            !matches!(say, crate::notify::Say::Silent(_)) && self.sound_allows_speaking();
         // The interrupt rule locked with Eric (Sound & voice → When Atlas may
         // pop up): what may not pop up now waits, held, in the hub and the brief.
-        if !self.tools_cfg().sound.may_pop_up(note.urgency == crate::notify::Urgency::Urgent) {
-            if retain { self.outbox.hold(note, &cfg); }
+        if !self
+            .tools_cfg()
+            .sound
+            .may_pop_up(note.urgency == crate::notify::Urgency::Urgent)
+        {
+            if retain {
+                self.outbox.hold(note, &cfg);
+            }
             return Sent::Held;
         }
 
@@ -2019,8 +2322,14 @@ impl<'a> Daemon<'a> {
 
         // Calendar's canonical queue can use the normal typed frontdoor at the desk.
         // Pop-up permission and note discretion above apply to this display too.
-        let can_render=!retain && self.tiers.tier==Tier::Typed && here.worth_speaking();
-        match route(here, can_speak || can_render, crate::notify::can_notify(&cfg), can_phone, long_gone) {
+        let can_render = !retain && self.tiers.tier == Tier::Typed && here.worth_speaking();
+        match route(
+            here,
+            can_speak || can_render,
+            crate::notify::can_notify(&cfg),
+            can_phone,
+            long_gone,
+        ) {
             Route::Phone => match crate::phone::send(&note, &phone_cfg) {
                 Ok(()) => Sent::Notified,
                 // A push that did not land must not vanish. Held, so it still
@@ -2033,12 +2342,14 @@ impl<'a> Daemon<'a> {
                         }
                         let _ = self.store.save(PHONE_RETRY_FILE, &self.phone_to_retry);
                     }
-                    if retain { self.outbox.hold(note, &cfg); }
+                    if retain {
+                        self.outbox.hold(note, &cfg);
+                    }
                     Sent::Failed(e.to_string())
                 }
             },
             Route::Speak => {
-                *render_only=can_render;
+                *render_only = can_render;
                 let through = match &say {
                     crate::notify::Say::Aloud(d) => format!(" (aloud, {d})"),
                     crate::notify::Say::InYourEar(d) => format!(" (privately, {d})"),
@@ -2051,7 +2362,11 @@ impl<'a> Daemon<'a> {
                 let (title, body) = note.shown();
                 self.log.info(&format!("{title}: {body}{through}"));
                 // Said on the next pass of the loop (`tick`), not only logged.
-                self.to_say_aloud.push(if title == "Atlas" { body.to_string() } else { format!("{title}: {body}") });
+                self.to_say_aloud.push(if title == "Atlas" {
+                    body.to_string()
+                } else {
+                    format!("{title}: {body}")
+                });
                 Sent::Spoken
             }
             Route::Notify => match crate::notify::show(&note, &cfg, &vars) {
@@ -2059,12 +2374,16 @@ impl<'a> Daemon<'a> {
                 // A failed notification must not vanish. It is held instead,
                 // so it still reaches you when you sit down.
                 Err(e) => {
-                    if retain { self.outbox.hold(note, &cfg); }
+                    if retain {
+                        self.outbox.hold(note, &cfg);
+                    }
                     Sent::Failed(e)
                 }
             },
             Route::Hold => {
-                if retain { self.outbox.hold(note, &cfg); }
+                if retain {
+                    self.outbox.hold(note, &cfg);
+                }
                 Sent::Held
             }
         }
@@ -2077,8 +2396,10 @@ impl<'a> Daemon<'a> {
     /// `SELF_QUESTIONS` is read-only by design, so this is safe to run
     /// unprompted.
     pub fn hollow_answers(&mut self) -> Vec<crate::hollow::Hollow> {
-        let questions: Vec<String> =
-            crate::hollow::SELF_QUESTIONS.iter().map(|q| q.to_string()).collect();
+        let questions: Vec<String> = crate::hollow::SELF_QUESTIONS
+            .iter()
+            .map(|q| q.to_string())
+            .collect();
         let mut found = Vec::new();
         for q in questions {
             let intent = self.parser.parse(&q);
@@ -2134,7 +2455,9 @@ impl<'a> Daemon<'a> {
             match h.join() {
                 Ok(Ok(list)) => self.audio_devices = Some(list),
                 Ok(Err(e)) => {
-                    self.log.warn(&format!("couldn't list the sound devices (trying again in five minutes): {e}"));
+                    self.log.warn(&format!(
+                        "couldn't list the sound devices (trying again in five minutes): {e}"
+                    ));
                     self.audio_devices_retry_at = now + 300;
                 }
                 Err(_) => {
@@ -2147,7 +2470,8 @@ impl<'a> Daemon<'a> {
         if now < self.audio_devices_retry_at {
             return;
         }
-        let ffmpeg = self.tools_ref()
+        let ffmpeg = self
+            .tools_ref()
             .and_then(|t| t.vars.get("ffmpeg").cloned())
             .unwrap_or_else(|| "ffmpeg".into());
         self.audio_probe = Some(std::thread::spawn(move || {
@@ -2177,7 +2501,10 @@ impl<'a> Daemon<'a> {
     /// reader faded it out. So the morning brief's waking mark never
     /// appeared on "I'm here" at all. This is the one place the decision
     /// becomes a window, with the same lines the voice just said.
-    pub fn panel_contents(&mut self, panel: crate::panel::Panel) -> Option<(crate::window::Panel, String, Vec<String>)> {
+    pub fn panel_contents(
+        &mut self,
+        panel: crate::panel::Panel,
+    ) -> Option<(crate::window::Panel, String, Vec<String>)> {
         use crate::panel::Panel as P;
         use crate::window::Panel as W;
         match panel {
@@ -2190,18 +2517,28 @@ impl<'a> Daemon<'a> {
                     // The waking mark still arrives; it just has nothing under it.
                     lines.push("Nothing needs you right now.".into());
                 }
-                let greeting = self.deck(crate::store::now(), crate::localclock::offset_secs()).greeting;
+                let greeting = self
+                    .deck(crate::store::now(), crate::localclock::offset_secs())
+                    .greeting;
                 Some((W::Brief, greeting, lines))
             }
             P::Tasks => {
                 let b = self.brief_now(crate::store::now());
-                let lines: Vec<String> =
-                    b.yours.iter().chain(b.drafted.iter()).map(|i| format!("{} — {}", i.source.plain(), i.headline())).collect();
+                let lines: Vec<String> = b
+                    .yours
+                    .iter()
+                    .chain(b.drafted.iter())
+                    .map(|i| format!("{} — {}", i.source.plain(), i.headline()))
+                    .collect();
                 Some((W::Outstanding, "Outstanding".into(), lines))
             }
             P::Mind => {
                 let w = self.mind.focus()?;
-                let lines: Vec<String> = w.recent_thinking(6).iter().map(|th| th.text.clone()).collect();
+                let lines: Vec<String> = w
+                    .recent_thinking(6)
+                    .iter()
+                    .map(|th| th.text.clone())
+                    .collect();
                 Some((W::Thinking, w.asked.clone(), lines))
             }
             // Settings and the hub open Atlas's own window; presence is a
@@ -2226,7 +2563,12 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    pub(super) fn show_panel(&mut self, panel: crate::window::Panel, title: &str, lines: Vec<String>) {
+    pub(super) fn show_panel(
+        &mut self,
+        panel: crate::window::Panel,
+        title: &str,
+        lines: Vec<String>,
+    ) {
         if lines.is_empty() || !crate::window::can_open() {
             return;
         }
@@ -2245,12 +2587,14 @@ impl<'a> Daemon<'a> {
         // `want` can reuse its reservation without calling `start`. That
         // result is not evidence that these new lines reached a window.
         let mut launched = false;
-        let opened = self.helpers.want(name, crate::lifecycle::typical_mb(name), t, || {
-            crate::window::open(&c).map(|()| {
-                launched = true;
-                None
-            })
-        });
+        let opened = self
+            .helpers
+            .want(name, crate::lifecycle::typical_mb(name), t, || {
+                crate::window::open(&c).map(|()| {
+                    launched = true;
+                    None
+                })
+            });
         match opened {
             Ok(_) => {
                 self.helpers.done(name, t);
@@ -2264,7 +2608,8 @@ impl<'a> Daemon<'a> {
             Err(e) => {
                 // Logged, never spoken. A failure to draw a window is Atlas's
                 // problem, not a thing to interrupt you with.
-                self.log.warn(&format!("couldn't open the {} panel: {e}", panel.heading()));
+                self.log
+                    .warn(&format!("couldn't open the {} panel: {e}", panel.heading()));
             }
         }
     }
@@ -2282,7 +2627,9 @@ pub(super) const PHONE_RETRY_FILE: &str = "phone_retry";
 
 /// How long to wait after `tries` failures in a row.
 pub fn phone_retry_wait(tries: u32) -> u64 {
-    PHONE_RETRY_EVERY_SECS.saturating_mul(1u64 << tries.min(10)).min(PHONE_RETRY_LONGEST_SECS)
+    PHONE_RETRY_EVERY_SECS
+        .saturating_mul(1u64 << tries.min(10))
+        .min(PHONE_RETRY_LONGEST_SECS)
 }
 /// The most notes kept for another try: past this they wait for the desk.
 pub const PHONE_RETRY_MOST: usize = 20;
@@ -2315,7 +2662,8 @@ impl Daemon<'_> {
             }
         }
         if let Err(e) = self.outbox.save(&self.store) {
-            self.log.warn(&format!("couldn't save what's held for you: {e}"));
+            self.log
+                .warn(&format!("couldn't save what's held for you: {e}"));
         }
         // Nothing got through: wait longer before the next try.
         if !still.is_empty() && still.len() == before {
@@ -2374,13 +2722,22 @@ mod camera_reuse_tests {
     fn an_unchanged_room_reuses_the_last_look_but_not_forever() {
         let a = vec![100u8; 32 * 24];
         assert!(reuse_sight(&a, &a, Duration::from_secs(3)));
-        assert!(!reuse_sight(&a, &a, Duration::from_secs(11)), "a real look at least every ten seconds");
+        assert!(
+            !reuse_sight(&a, &a, Duration::from_secs(11)),
+            "a real look at least every ten seconds"
+        );
         let mut b = a.clone();
         for v in b.iter_mut().take(200) {
             *v = 200;
         }
-        assert!(!reuse_sight(&a, &b, Duration::from_secs(1)), "a change in the room is looked at");
-        assert!(!reuse_sight(&[], &a, Duration::from_secs(1)), "nothing to compare with: look");
+        assert!(
+            !reuse_sight(&a, &b, Duration::from_secs(1)),
+            "a change in the room is looked at"
+        );
+        assert!(
+            !reuse_sight(&[], &a, Duration::from_secs(1)),
+            "nothing to compare with: look"
+        );
     }
 }
 
@@ -2399,7 +2756,14 @@ fn look_on_its_own(
 ) -> super::LookDone {
     let began = std::time::Instant::now();
     let you = vcfg.your_face.clone();
-    let mut done = super::LookDone { printed: String::new(), spent_ms: 0, camera, opened_camera: false, looking, last_sight };
+    let mut done = super::LookDone {
+        printed: String::new(),
+        spent_ms: 0,
+        camera,
+        opened_camera: false,
+        looking,
+        last_sight,
+    };
     if done.camera.is_none() {
         match crate::frames::Latest::start(&feed) {
             Ok(c) => {
@@ -2407,19 +2771,28 @@ fn look_on_its_own(
                 done.opened_camera = true;
             }
             Err(e) => {
-                done.printed = crate::vision::Sight::Unread(format!("the camera wouldn't open: {e}")).as_lines(&you);
+                done.printed =
+                    crate::vision::Sight::Unread(format!("the camera wouldn't open: {e}"))
+                        .as_lines(&you);
                 done.spent_ms = began.elapsed().as_millis() as u64;
                 return done;
             }
         }
     }
-    let Some(cam) = done.camera.as_ref() else { return done };
+    let Some(cam) = done.camera.as_ref() else {
+        return done;
+    };
     let (w, h) = cam.size();
-    let wait = if done.opened_camera { std::time::Duration::from_secs(6) } else { std::time::Duration::from_millis(2500) };
+    let wait = if done.opened_camera {
+        std::time::Duration::from_secs(6)
+    } else {
+        std::time::Duration::from_millis(2500)
+    };
     let Some(frame) = cam.frame(CAMERA_SETTLE, CAMERA_FRESH, wait) else {
         // A camera that hands back nothing is closed rather than kept.
         done.camera = None;
-        done.printed = crate::vision::Sight::Unread("the camera didn't hand back a picture".into()).as_lines(&you);
+        done.printed = crate::vision::Sight::Unread("the camera didn't hand back a picture".into())
+            .as_lines(&you);
         done.spent_ms = began.elapsed().as_millis() as u64;
         return done;
     };

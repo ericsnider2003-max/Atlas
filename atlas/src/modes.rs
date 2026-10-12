@@ -56,7 +56,6 @@ fn d_detail() -> u8 {
     2
 }
 
-
 impl Mode {
     /// May Atlas speak up unprompted right now?
     pub fn may_interrupt(&self, urgent: bool) -> bool {
@@ -119,7 +118,9 @@ impl Modes {
     }
 
     pub fn get(&self, name: &str) -> Option<&Mode> {
-        self.modes.iter().find(|m| m.name.eq_ignore_ascii_case(name))
+        self.modes
+            .iter()
+            .find(|m| m.name.eq_ignore_ascii_case(name))
     }
 
     pub fn active(&self) -> Option<&Mode> {
@@ -182,7 +183,9 @@ impl Modes {
     }
 
     pub fn may_interrupt(&self, urgent: bool) -> bool {
-        self.active().map(|m| m.may_interrupt(urgent)).unwrap_or(true)
+        self.active()
+            .map(|m| m.may_interrupt(urgent))
+            .unwrap_or(true)
     }
 
     /// The verbosity a mode actually asked for, or `None` when no mode is on.
@@ -228,7 +231,11 @@ pub fn suggested() -> Vec<Mode> {
             rules_off: vec![],
             lights: Some("bright".into()),
             verbosity: 1,
-            triggers: vec!["call mode".into(), "i'm on a call".into(), "im on a call".into()],
+            triggers: vec![
+                "call mode".into(),
+                "i'm on a call".into(),
+                "im on a call".into(),
+            ],
         },
         Mode {
             name: "research".into(),

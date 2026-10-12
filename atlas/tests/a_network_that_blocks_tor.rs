@@ -57,7 +57,13 @@ fn blocked_network_tor(dir: &Path, through_with: &str) -> PathBuf {
 }
 
 fn daemon<'a>(r: &Path, c: &'a Config, p: &'a MockPlatform, tor: &Path) -> Daemon<'a> {
-    let mut d = Daemon::new(c, p, None, Store::new(r.join("state")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(r.join("state")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     d.peer_dir = r.join("peers");
     d.plugins_dir = r.join("plugins");
     d.friend_host = Some("127.0.0.1".into());
@@ -75,14 +81,25 @@ fn a_stuck_tor_goes_through_bridges_and_the_next_start_goes_straight_there() {
     let r = root("switch");
     let tor = blocked_network_tor(&r.join("bundle"), "obfs4");
     let c = Config::load(Path::new("config")).unwrap();
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     let t0 = 1_000_000u64;
     {
         let mut d = daemon(&r, &c, &p, &tor);
         d.start_tor().unwrap();
         settle();
         d.tick(t0);
-        assert!(d.friends_view().reach.contains("connecting (5%)"), "{}", d.friends_view().reach);
+        assert!(
+            d.friends_view().reach.contains("connecting (5%)"),
+            "{}",
+            d.friends_view().reach
+        );
         // Still at 5% well past the stall time: the network is blocking Tor.
         d.tick(t0 + atlas::onion::STALL_SECS + 5);
         settle();
@@ -90,14 +107,22 @@ fn a_stuck_tor_goes_through_bridges_and_the_next_start_goes_straight_there() {
         let reach = d.friends_view().reach;
         assert!(reach.contains("using obfs4 bridges"), "{reach}");
         let store = Store::new(r.join("state"));
-        assert_eq!(store.load::<String>("tor_bridges"), "obfs4", "the kind that got through wasn't remembered");
+        assert_eq!(
+            store.load::<String>("tor_bridges"),
+            "obfs4",
+            "the kind that got through wasn't remembered"
+        );
     }
     // Atlas starting again on the same network goes straight to obfs4.
     let mut d = daemon(&r, &c, &p, &tor);
     d.start_tor().unwrap();
     settle();
     d.tick(t0 + 10_000);
-    assert!(d.friends_view().reach.contains("using obfs4 bridges"), "{}", d.friends_view().reach);
+    assert!(
+        d.friends_view().reach.contains("using obfs4 bridges"),
+        "{}",
+        d.friends_view().reach
+    );
 }
 
 #[test]
@@ -106,7 +131,14 @@ fn when_no_bridge_gets_through_it_says_so_and_goes_back_to_direct() {
     // A network nothing gets through: no kind is "through_with".
     let tor = blocked_network_tor(&r.join("bundle"), "nothing");
     let c = Config::load(Path::new("config")).unwrap();
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     let mut d = daemon(&r, &c, &p, &tor);
     d.start_tor().unwrap();
     let mut t = 2_000_000u64;
@@ -121,8 +153,14 @@ fn when_no_bridge_gets_through_it_says_so_and_goes_back_to_direct() {
     d.tick(t + 1);
     let reach = d.friends_view().reach;
     assert!(reach.contains("connecting"), "{reach}");
-    assert!(!reach.contains("bridges"), "it didn't go back to direct: {reach}");
-    assert_eq!(Store::new(r.join("state")).load::<String>("tor_bridges"), "");
+    assert!(
+        !reach.contains("bridges"),
+        "it didn't go back to direct: {reach}"
+    );
+    assert_eq!(
+        Store::new(r.join("state")).load::<String>("tor_bridges"),
+        ""
+    );
 }
 
 #[test]
@@ -130,10 +168,20 @@ fn your_own_tor_lines_are_never_switched_for_you() {
     let r = root("yours");
     let tor = blocked_network_tor(&r.join("bundle"), "nothing");
     let c = Config::load(Path::new("config")).unwrap();
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     let mut d = daemon(&r, &c, &p, &tor);
     // Lines you set yourself (`kin.tor_extra`), stuck like everything else here.
-    d.tor_instead = Some(Some((tor.clone(), vec!["Bridge obfs4 198.51.100.7:443 EEEE cert=mine iat-mode=0".into()])));
+    d.tor_instead = Some(Some((
+        tor.clone(),
+        vec!["Bridge obfs4 198.51.100.7:443 EEEE cert=mine iat-mode=0".into()],
+    )));
     d.start_tor().unwrap();
     settle();
     d.tick(3_000_000);
@@ -142,6 +190,12 @@ fn your_own_tor_lines_are_never_switched_for_you() {
     d.tick(3_000_000 + atlas::onion::STALL_SECS + 6);
     let reach = d.friends_view().reach;
     assert!(reach.contains("connecting (5%)"), "{reach}");
-    assert!(!reach.contains("bridges"), "your own Tor lines were switched: {reach}");
-    assert_eq!(Store::new(r.join("state")).load::<String>("tor_bridges"), "");
+    assert!(
+        !reach.contains("bridges"),
+        "your own Tor lines were switched: {reach}"
+    );
+    assert_eq!(
+        Store::new(r.join("state")).load::<String>("tor_bridges"),
+        ""
+    );
 }

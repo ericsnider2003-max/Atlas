@@ -74,7 +74,10 @@ fn is_white(c: u8) -> bool {
     matches!(c, 0 | 9 | 10 | 12 | 13 | 32)
 }
 fn is_delim(c: u8) -> bool {
-    matches!(c, b'(' | b')' | b'<' | b'>' | b'[' | b']' | b'{' | b'}' | b'/' | b'%')
+    matches!(
+        c,
+        b'(' | b')' | b'<' | b'>' | b'[' | b']' | b'{' | b'}' | b'/' | b'%'
+    )
 }
 
 impl<'a> Lex<'a> {
@@ -152,7 +155,14 @@ impl<'a> Lex<'a> {
                 if hex.len() % 2 == 1 {
                     hex.push(b'0');
                 }
-                Ok(Obj::Str(hex.chunks(2).map(|p| u8::from_str_radix(std::str::from_utf8(p).unwrap_or("00"), 16).unwrap_or(0)).collect()))
+                Ok(Obj::Str(
+                    hex.chunks(2)
+                        .map(|p| {
+                            u8::from_str_radix(std::str::from_utf8(p).unwrap_or("00"), 16)
+                                .unwrap_or(0)
+                        })
+                        .collect(),
+                ))
             }
             b'[' => {
                 self.i += 1;
@@ -189,7 +199,13 @@ impl<'a> Lex<'a> {
                             let g = self.word();
                             if let Ok(gen) = std::str::from_utf8(g).unwrap_or("").parse::<u16>() {
                                 self.skip_space();
-                                if self.b.get(self.i) == Some(&b'R') && self.b.get(self.i + 1).map(|c| is_white(*c) || is_delim(*c)).unwrap_or(true) {
+                                if self.b.get(self.i) == Some(&b'R')
+                                    && self
+                                        .b
+                                        .get(self.i + 1)
+                                        .map(|c| is_white(*c) || is_delim(*c))
+                                        .unwrap_or(true)
+                                {
                                     self.i += 1;
                                     return Ok(Obj::Ref(n.clamp(0, u32::MAX as i64) as u32, gen));
                                 }
@@ -199,7 +215,10 @@ impl<'a> Lex<'a> {
                         } else if let Ok(r) = s.parse::<f64>() {
                             Ok(Obj::Real(r))
                         } else {
-                            Err(format!("an unknown word \"{}\"", String::from_utf8_lossy(w)))
+                            Err(format!(
+                                "an unknown word \"{}\"",
+                                String::from_utf8_lossy(w)
+                            ))
                         }
                     }
                 }
@@ -275,7 +294,9 @@ fn unescape_name(raw: &[u8]) -> String {
     let mut i = 0;
     while i < raw.len() {
         if raw[i] == b'#' && i + 2 < raw.len() {
-            if let Ok(v) = u8::from_str_radix(std::str::from_utf8(&raw[i + 1..i + 3]).unwrap_or("zz"), 16) {
+            if let Ok(v) =
+                u8::from_str_radix(std::str::from_utf8(&raw[i + 1..i + 3]).unwrap_or("zz"), 16)
+            {
                 out.push(v);
                 i += 3;
                 continue;
@@ -300,7 +321,10 @@ fn find_from(b: &[u8], from: usize, pat: &[u8]) -> Option<usize> {
     if from >= b.len() {
         return None;
     }
-    b[from..].windows(pat.len()).position(|w| w == pat).map(|p| p + from)
+    b[from..]
+        .windows(pat.len())
+        .position(|w| w == pat)
+        .map(|p| p + from)
 }
 
 /// Decode a stream's bytes: FlateDecode (with PNG or TIFF-2 predictors) or
@@ -309,7 +333,16 @@ fn decoded(d: &Dict, raw: &[u8]) -> Result<Vec<u8>, String> {
     let filters: Vec<String> = match dict_get(d, "Filter") {
         None => Vec::new(),
         Some(Obj::Name(n)) => vec![n.clone()],
-        Some(Obj::Array(a)) => a.iter().filter_map(|o| if let Obj::Name(n) = o { Some(n.clone()) } else { None }).collect(),
+        Some(Obj::Array(a)) => a
+            .iter()
+            .filter_map(|o| {
+                if let Obj::Name(n) = o {
+                    Some(n.clone())
+                } else {
+                    None
+                }
+            })
+            .collect(),
         _ => return Err("a stream filter I can't read".into()),
     };
     let mut data = raw.to_vec();
@@ -322,12 +355,22 @@ fn decoded(d: &Dict, raw: &[u8]) -> Result<Vec<u8>, String> {
                 // zlib: two header bytes, then DEFLATE.
                 data = crate::zipread::inflate(&data[2..], 512 * 1024 * 1024)?;
             }
-            other => return Err(format!("a stream packed with {other}, which I don't unpack")),
+            other => {
+                return Err(format!(
+                    "a stream packed with {other}, which I don't unpack"
+                ))
+            }
         }
     }
     if let Some(Obj::Dict(p)) = dict_get(d, "DecodeParms") {
-        let predictor = match dict_get(p, "Predictor") { Some(Obj::Int(n)) => *n, _ => 1 };
-        let columns = match dict_get(p, "Columns") { Some(Obj::Int(n)) => (*n).max(1) as usize, _ => 1 };
+        let predictor = match dict_get(p, "Predictor") {
+            Some(Obj::Int(n)) => *n,
+            _ => 1,
+        };
+        let columns = match dict_get(p, "Columns") {
+            Some(Obj::Int(n)) => (*n).max(1) as usize,
+            _ => 1,
+        };
         if predictor >= 10 {
             data = unpredict_png(&data, columns)?;
         } else if predictor != 1 {
@@ -358,8 +401,18 @@ fn unpredict_png(data: &[u8], columns: usize) -> Result<Vec<u8>, String> {
                 3 => cur[i].wrapping_add(((left as u16 + up as u16) / 2) as u8),
                 4 => {
                     let p = left as i16 + up as i16 - ul as i16;
-                    let (pa, pb, pc) = ((p - left as i16).abs(), (p - up as i16).abs(), (p - ul as i16).abs());
-                    let pr = if pa <= pb && pa <= pc { left } else if pb <= pc { up } else { ul };
+                    let (pa, pb, pc) = (
+                        (p - left as i16).abs(),
+                        (p - up as i16).abs(),
+                        (p - ul as i16).abs(),
+                    );
+                    let pr = if pa <= pb && pa <= pc {
+                        left
+                    } else if pb <= pc {
+                        up
+                    } else {
+                        ul
+                    };
                     cur[i].wrapping_add(pr)
                 }
                 _ => return Err("a bad PNG predictor row".into()),
@@ -376,7 +429,10 @@ impl Doc {
     /// than trusts the cross-reference table.
     pub fn parse(b: &[u8]) -> Result<Doc, String> {
         if b.len() > MAX_BYTES {
-            return Err(format!("it's over {} MB, which is more than I'll open", MAX_BYTES / (1024 * 1024)));
+            return Err(format!(
+                "it's over {} MB, which is more than I'll open",
+                MAX_BYTES / (1024 * 1024)
+            ));
         }
         if !b.starts_with(b"%PDF-") && find_from(b, 0, b"%PDF-").map(|p| p > 1024).unwrap_or(true) {
             return Err("it isn't a PDF (no %PDF- header)".into());
@@ -387,9 +443,14 @@ impl Doc {
         while let Some(at) = find_from(b, i, b"obj") {
             i = at + 3;
             // "N G obj": walk back over the two numbers.
-            let Some((num, _gen)) = header_before(b, at) else { continue };
+            let Some((num, _gen)) = header_before(b, at) else {
+                continue;
+            };
             // A word that merely ends in "obj" ("endobj", "myobj") isn't one.
-            if b.get(at + 3).map(|c| !is_white(*c) && !is_delim(*c)).unwrap_or(false) {
+            if b.get(at + 3)
+                .map(|c| !is_white(*c) && !is_delim(*c))
+                .unwrap_or(false)
+            {
                 continue;
             }
             let mut lx = Lex { b, i: at + 3 };
@@ -411,7 +472,11 @@ impl Doc {
                         // Trust the length only if "endstream" follows it.
                         let mut k = Lex { b, i: end };
                         k.skip_space();
-                        if k.peek_keyword(b"endstream") { Some(end) } else { None }
+                        if k.peek_keyword(b"endstream") {
+                            Some(end)
+                        } else {
+                            None
+                        }
                     }
                     _ => None,
                 };
@@ -474,17 +539,27 @@ impl Doc {
             })
             .collect();
         for (_, d, raw) in streams {
-            let Ok(data) = decoded(&d, &raw) else { continue };
-            let n = match dict_get(&d, "N") { Some(Obj::Int(n)) => *n as usize, _ => continue };
-            let first = match dict_get(&d, "First") { Some(Obj::Int(n)) => *n as usize, _ => continue };
+            let Ok(data) = decoded(&d, &raw) else {
+                continue;
+            };
+            let n = match dict_get(&d, "N") {
+                Some(Obj::Int(n)) => *n as usize,
+                _ => continue,
+            };
+            let first = match dict_get(&d, "First") {
+                Some(Obj::Int(n)) => *n as usize,
+                _ => continue,
+            };
             let mut lx = Lex { b: &data, i: 0 };
             let mut pairs = Vec::new();
             for _ in 0..n {
                 match (lx.object(0), lx.object(0)) {
-                    (Ok(Obj::Int(num)), Ok(Obj::Int(off))) => match (u32::try_from(num), usize::try_from(off)) {
-                        (Ok(num), Ok(off)) => pairs.push((num, off)),
-                        _ => break,
-                    },
+                    (Ok(Obj::Int(num)), Ok(Obj::Int(off))) => {
+                        match (u32::try_from(num), usize::try_from(off)) {
+                            (Ok(num), Ok(off)) => pairs.push((num, off)),
+                            _ => break,
+                        }
+                    }
                     _ => break,
                 }
             }
@@ -492,7 +567,10 @@ impl Doc {
                 if objects.contains_key(&num) {
                     continue;
                 }
-                let mut ol = Lex { b: &data, i: first + off };
+                let mut ol = Lex {
+                    b: &data,
+                    i: first + off,
+                };
                 if let Ok(o) = ol.object(0) {
                     objects.insert(num, o);
                 }
@@ -508,7 +586,11 @@ impl Doc {
                 objects.iter().find(|(_, o)| matches!(o, Obj::Dict(d) if matches!(dict_get(d, "Type"), Some(Obj::Name(t)) if t == "Catalog"))).map(|(n, _)| *n)
             })
             .ok_or("I couldn't find its catalogue (the file is damaged)")?;
-        let mut doc = Doc { objects, root, pages: Vec::new() };
+        let mut doc = Doc {
+            objects,
+            root,
+            pages: Vec::new(),
+        };
         doc.pages = doc.page_list()?;
         if doc.pages.is_empty() {
             return Err("it has no pages".into());
@@ -538,8 +620,13 @@ impl Doc {
     }
 
     fn page_list(&self) -> Result<Vec<u32>, String> {
-        let cat = self.dict_of(self.root).ok_or("its catalogue isn't a dictionary")?;
-        let top = match dict_get(cat, "Pages") { Some(Obj::Ref(n, _)) => *n, _ => return Err("its catalogue names no pages".into()) };
+        let cat = self
+            .dict_of(self.root)
+            .ok_or("its catalogue isn't a dictionary")?;
+        let top = match dict_get(cat, "Pages") {
+            Some(Obj::Ref(n, _)) => *n,
+            _ => return Err("its catalogue names no pages".into()),
+        };
         let mut out = Vec::new();
         let mut seen = HashSet::new();
         self.walk(top, &mut out, &mut seen, 0);
@@ -585,7 +672,10 @@ impl Doc {
         remove(&mut d, "Parent");
         if dict_get(&d, "MediaBox").is_none() {
             // US Letter, the spec's own default when nothing says.
-            d.push(("MediaBox".into(), Obj::Array(vec![Obj::Int(0), Obj::Int(0), Obj::Int(612), Obj::Int(792)])));
+            d.push((
+                "MediaBox".into(),
+                Obj::Array(vec![Obj::Int(0), Obj::Int(0), Obj::Int(612), Obj::Int(792)]),
+            ));
         }
         d
     }
@@ -632,9 +722,17 @@ fn write_obj(o: &Obj, out: &mut Vec<u8>) {
         Obj::Bool(v) => out.extend_from_slice(if *v { b"true" } else { b"false" }),
         Obj::Int(n) => out.extend_from_slice(n.to_string().as_bytes()),
         Obj::Real(r) => {
-            let s = if r.is_finite() { format!("{r:.6}") } else { "0".into() };
+            let s = if r.is_finite() {
+                format!("{r:.6}")
+            } else {
+                "0".into()
+            };
             let s = s.trim_end_matches('0').trim_end_matches('.').to_string();
-            out.extend_from_slice(if s.is_empty() || s == "-" { b"0" } else { s.as_bytes() });
+            out.extend_from_slice(if s.is_empty() || s == "-" {
+                b"0"
+            } else {
+                s.as_bytes()
+            });
         }
         Obj::Str(s) => {
             out.push(b'<');
@@ -718,7 +816,9 @@ impl<'a> Builder<'a> {
                 if let Some(new) = self.map.get(&(di, *n)) {
                     return Obj::Ref(*new, 0);
                 }
-                let Some(target) = doc.objects.get(n) else { return Obj::Null };
+                let Some(target) = doc.objects.get(n) else {
+                    return Obj::Null;
+                };
                 let new = self.alloc();
                 self.map.insert((di, *n), new);
                 let target = target.clone();
@@ -726,10 +826,22 @@ impl<'a> Builder<'a> {
                 self.objects.insert(new, t);
                 Obj::Ref(new, 0)
             }
-            Obj::Array(a) => Obj::Array(a.iter().map(|x| self.translate(di, x, chosen, depth + 1)).collect()),
-            Obj::Dict(d) => Obj::Dict(d.iter().filter(|(k, _)| k != "Parent").map(|(k, v)| (k.clone(), self.translate(di, v, chosen, depth + 1))).collect()),
+            Obj::Array(a) => Obj::Array(
+                a.iter()
+                    .map(|x| self.translate(di, x, chosen, depth + 1))
+                    .collect(),
+            ),
+            Obj::Dict(d) => Obj::Dict(
+                d.iter()
+                    .filter(|(k, _)| k != "Parent")
+                    .map(|(k, v)| (k.clone(), self.translate(di, v, chosen, depth + 1)))
+                    .collect(),
+            ),
             Obj::Stream(d, data) => Obj::Stream(
-                d.iter().filter(|(k, _)| k != "Length").map(|(k, v)| (k.clone(), self.translate(di, v, chosen, depth + 1))).collect(),
+                d.iter()
+                    .filter(|(k, _)| k != "Length")
+                    .map(|(k, v)| (k.clone(), self.translate(di, v, chosen, depth + 1)))
+                    .collect(),
                 data.clone(),
             ),
             other => other.clone(),
@@ -756,17 +868,31 @@ pub struct Overlay {
 }
 
 /// Write a new PDF holding `pages`, in that order, from `docs`.
-pub fn write(docs: &[&Doc], pages: &[PageRef], overlay: Option<Overlay>) -> Result<Vec<u8>, String> {
+pub fn write(
+    docs: &[&Doc],
+    pages: &[PageRef],
+    overlay: Option<Overlay>,
+) -> Result<Vec<u8>, String> {
     if pages.is_empty() {
         return Err("no pages to write".into());
     }
     let mut chosen: Vec<HashSet<u32>> = vec![HashSet::new(); docs.len()];
     for p in pages {
-        let d = docs.get(p.doc).ok_or("a page from a file that isn't open")?;
-        let n = *d.pages.get(p.page).ok_or_else(|| format!("there's no page {} (it has {})", p.page + 1, d.pages.len()))?;
+        let d = docs
+            .get(p.doc)
+            .ok_or("a page from a file that isn't open")?;
+        let n = *d
+            .pages
+            .get(p.page)
+            .ok_or_else(|| format!("there's no page {} (it has {})", p.page + 1, d.pages.len()))?;
         chosen[p.doc].insert(n);
     }
-    let mut b = Builder { docs, map: HashMap::new(), objects: BTreeMap::new(), next: 0 };
+    let mut b = Builder {
+        docs,
+        map: HashMap::new(),
+        objects: BTreeMap::new(),
+        next: 0,
+    };
     let catalog = b.alloc();
     let tree = b.alloc();
     let mut kids = Vec::new();
@@ -780,7 +906,10 @@ pub fn write(docs: &[&Doc], pages: &[PageRef], overlay: Option<Overlay>) -> Resu
         let already = b.map.remove(&key);
         let new = b.alloc();
         b.map.insert(key, new);
-        if let Some(ov) = overlay.as_ref().filter(|o| o.doc == p.doc && o.page == p.page) {
+        if let Some(ov) = overlay
+            .as_ref()
+            .filter(|o| o.doc == p.doc && o.page == p.page)
+        {
             add_overlay(d, &mut dict, ov, &mut b);
         }
         let translated = match b.translate(p.doc, &Obj::Dict(dict), &chosen[p.doc], 0) {
@@ -804,7 +933,13 @@ pub fn write(docs: &[&Doc], pages: &[PageRef], overlay: Option<Overlay>) -> Resu
             ("Kids".into(), Obj::Array(kids)),
         ]),
     );
-    b.objects.insert(catalog, Obj::Dict(vec![("Type".into(), Obj::Name("Catalog".into())), ("Pages".into(), Obj::Ref(tree, 0))]));
+    b.objects.insert(
+        catalog,
+        Obj::Dict(vec![
+            ("Type".into(), Obj::Name("Catalog".into())),
+            ("Pages".into(), Obj::Ref(tree, 0)),
+        ]),
+    );
     Ok(serialise(&b.objects, catalog))
 }
 
@@ -821,7 +956,8 @@ fn add_overlay(d: &Doc, page: &mut Dict, ov: &Overlay, b: &mut Builder) {
     let img = b.alloc();
     b.objects.insert(img, image);
     let content = b.alloc();
-    b.objects.insert(content, Obj::Stream(Dict::new(), ov.content.clone()));
+    b.objects
+        .insert(content, Obj::Stream(Dict::new(), ov.content.clone()));
     // Resources: the page's own (inherited ones are already on it), made
     // direct so a shared dictionary isn't changed for other pages. The
     // image is referred to by its NEW number, which `translate` would
@@ -877,11 +1013,16 @@ fn serialise(objects: &BTreeMap<u32, Obj>, root: u32) -> Vec<u8> {
     out.extend_from_slice(format!("xref\n0 {size}\n0000000000 65535 f\r\n").as_bytes());
     for n in 1..size {
         match objects.get(&n) {
-            Some(_) => out.extend_from_slice(format!("{:010} 00000 n\r\n", offsets[n as usize]).as_bytes()),
+            Some(_) => {
+                out.extend_from_slice(format!("{:010} 00000 n\r\n", offsets[n as usize]).as_bytes())
+            }
             None => out.extend_from_slice(b"0000000000 65535 f\r\n"),
         }
     }
-    out.extend_from_slice(format!("trailer\n<</Size {size} /Root {root} 0 R>>\nstartxref\n{xref}\n%%EOF\n").as_bytes());
+    out.extend_from_slice(
+        format!("trailer\n<</Size {size} /Root {root} 0 R>>\nstartxref\n{xref}\n%%EOF\n")
+            .as_bytes(),
+    );
     out
 }
 
@@ -890,7 +1031,10 @@ fn serialise(objects: &BTreeMap<u32, Obj>, root: u32) -> Vec<u8> {
 pub fn check_written(bytes: &[u8], expect_pages: usize) -> Result<(), String> {
     let d = Doc::parse(bytes).map_err(|e| format!("what I wrote doesn't read back: {e}"))?;
     if d.pages.len() != expect_pages {
-        return Err(format!("what I wrote has {} pages, not {expect_pages}", d.pages.len()));
+        return Err(format!(
+            "what I wrote has {} pages, not {expect_pages}",
+            d.pages.len()
+        ));
     }
     Ok(())
 }
@@ -924,11 +1068,25 @@ fn zlib_stored(data: &[u8]) -> Vec<u8> {
 /// An image (RGBA, 4 bytes a pixel) placed on page `page` of document
 /// `doc`: `width_pt` wide, its bottom-left `x_pt`, `y_pt` points from the
 /// page's bottom-left corner.
-pub fn stamp(doc: usize, page: usize, rgba: &[u8], w: u32, h: u32, x_pt: f64, y_pt: f64, width_pt: f64) -> Result<Overlay, String> {
+pub fn stamp(
+    doc: usize,
+    page: usize,
+    rgba: &[u8],
+    w: u32,
+    h: u32,
+    x_pt: f64,
+    y_pt: f64,
+    width_pt: f64,
+) -> Result<Overlay, String> {
     if w == 0 || h == 0 || rgba.len() != (w * h * 4) as usize {
         return Err("the image's size and its pixels don't agree".into());
     }
-    let rgb: Vec<u8> = rgba.as_chunks::<4>().0.iter().flat_map(|p| [p[0], p[1], p[2]]).collect();
+    let rgb: Vec<u8> = rgba
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .flat_map(|p| [p[0], p[1], p[2]])
+        .collect();
     let alpha: Vec<u8> = rgba.as_chunks::<4>().0.iter().map(|p| p[3]).collect();
     let img_dict = |cs: &str, data_len: usize| -> Dict {
         let _ = data_len;
@@ -943,10 +1101,21 @@ pub fn stamp(doc: usize, page: usize, rgba: &[u8], w: u32, h: u32, x_pt: f64, y_
         ]
     };
     let image = Obj::Stream(img_dict("DeviceRGB", rgb.len()), zlib_stored(&rgb));
-    let mask = alpha.iter().any(|a| *a != 255).then(|| Obj::Stream(img_dict("DeviceGray", alpha.len()), zlib_stored(&alpha)));
+    let mask = alpha
+        .iter()
+        .any(|a| *a != 255)
+        .then(|| Obj::Stream(img_dict("DeviceGray", alpha.len()), zlib_stored(&alpha)));
     let height_pt = width_pt * h as f64 / w as f64;
-    let content = format!("q {width_pt:.2} 0 0 {height_pt:.2} {x_pt:.2} {y_pt:.2} cm /AtlasStamp Do Q\n").into_bytes();
-    Ok(Overlay { doc, page, image, mask, content })
+    let content =
+        format!("q {width_pt:.2} 0 0 {height_pt:.2} {x_pt:.2} {y_pt:.2} cm /AtlasStamp Do Q\n")
+            .into_bytes();
+    Ok(Overlay {
+        doc,
+        page,
+        image,
+        mask,
+        content,
+    })
 }
 
 /// A page's size in points (from its MediaBox), for placing a stamp.
@@ -959,7 +1128,9 @@ pub fn page_size(d: &Doc, page: usize) -> Option<(f64, f64)> {
         _ => None,
     };
     match dict_get(&dict, "MediaBox").map(|m| d.resolve(m)) {
-        Some(Obj::Array(a)) if a.len() == 4 => Some((num(&a[2])? - num(&a[0])?, num(&a[3])? - num(&a[1])?)),
+        Some(Obj::Array(a)) if a.len() == 4 => {
+            Some((num(&a[2])? - num(&a[0])?, num(&a[3])? - num(&a[1])?))
+        }
         _ => None,
     }
 }
@@ -979,7 +1150,8 @@ pub fn ranges(spec: &str, count: usize) -> Result<Vec<usize>, String> {
             if t == "last" || t == "end" {
                 return Ok(count);
             }
-            t.parse::<usize>().map_err(|_| format!("\"{t}\" isn't a page number"))
+            t.parse::<usize>()
+                .map_err(|_| format!("\"{t}\" isn't a page number"))
         };
         let (a, b) = match part.split_once('-') {
             Some((a, b)) => (num(a)?, num(b)?),
@@ -989,7 +1161,10 @@ pub fn ranges(spec: &str, count: usize) -> Result<Vec<usize>, String> {
             }
         };
         if a == 0 || b == 0 || a > count || b > count {
-            return Err(format!("page {} is out of range: it has {count}", if a == 0 || a > count { a } else { b }));
+            return Err(format!(
+                "page {} is out of range: it has {count}",
+                if a == 0 || a > count { a } else { b }
+            ));
         }
         if a <= b {
             out.extend((a - 1)..b);

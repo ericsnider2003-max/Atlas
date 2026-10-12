@@ -100,14 +100,27 @@ fn the_shipped_templates_speak_and_hear_a_whole_sentence() {
     t.tts.run(&v, Some(SAID)).expect("piper spoke");
     let spoken = v.get("out_wav").unwrap();
     let bytes = std::fs::metadata(spoken).expect("the wav exists").len();
-    assert!(bytes > 20_000, "a whole sentence is more than {bytes} bytes of audio");
+    assert!(
+        bytes > 20_000,
+        "a whole sentence is more than {bytes} bytes of audio"
+    );
 
     // 2. Resample to what the listening model was trained at. On a live
     //    install ffmpeg records at this rate directly; here it converts
     //    piper's output, standing in for the microphone.
     let rate = atlas::voice::RECORD_RATE_HZ.to_string();
     let ok = std::process::Command::new("ffmpeg")
-        .args(["-y", "-loglevel", "error", "-i", spoken, "-ar", &rate, "-ac", "1"])
+        .args([
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            spoken,
+            "-ar",
+            &rate,
+            "-ac",
+            "1",
+        ])
         .arg(v.get("in_wav").unwrap())
         .status()
         .expect("ffmpeg is on PATH")
@@ -118,7 +131,10 @@ fn the_shipped_templates_speak_and_hear_a_whole_sentence() {
     //    all, exactly the call `Voice::listen` makes.
     let heard = t.stt.run(&v, None).expect("whisper transcribed");
     let clean = |s: &str| {
-        s.to_lowercase().chars().filter(|c| c.is_alphanumeric() || *c == ' ').collect::<String>()
+        s.to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == ' ')
+            .collect::<String>()
     };
     assert!(
         clean(&heard).contains(&clean(SAID)),
@@ -141,7 +157,17 @@ fn an_empty_optional_flag_is_dropped_not_handed_to_whisper() {
     t.tts.run(&v, Some("Yes.")).expect("piper spoke");
     let rate = atlas::voice::RECORD_RATE_HZ.to_string();
     assert!(std::process::Command::new("ffmpeg")
-        .args(["-y", "-loglevel", "error", "-i", v.get("out_wav").unwrap(), "-ar", &rate, "-ac", "1"])
+        .args([
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            v.get("out_wav").unwrap(),
+            "-ar",
+            &rate,
+            "-ac",
+            "1"
+        ])
         .arg(v.get("in_wav").unwrap())
         .status()
         .unwrap()
@@ -152,5 +178,7 @@ fn an_empty_optional_flag_is_dropped_not_handed_to_whisper() {
         args.iter().all(|a| !a.is_empty()),
         "an empty argument survived resolution: {args:?}"
     );
-    t.stt.run(&v, None).expect("whisper accepted the resolved arguments");
+    t.stt
+        .run(&v, None)
+        .expect("whisper accepted the resolved arguments");
 }

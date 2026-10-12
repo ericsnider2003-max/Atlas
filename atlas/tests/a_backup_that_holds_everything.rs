@@ -36,7 +36,7 @@
 //! length and believes it fixed — arriving through `back_up`'s own temp
 //! files rather than through an empty directory.
 
-use atlas::safety::{back_up, list_backups, prune_backups, restore_with_notes, due_for_backup};
+use atlas::safety::{back_up, due_for_backup, list_backups, prune_backups, restore_with_notes};
 use atlas::safety::{BackupConfig, Trash, TrashConfig};
 use std::path::{Path, PathBuf};
 
@@ -58,7 +58,11 @@ fn a_state_folder(at: &Path) -> PathBuf {
     // What someone sent you, which the inbox record names by this path.
     std::fs::write(state.join("handoffs/1700-contract.pdf"), b"the actual file").unwrap();
     // What Atlas replaced when it landed a fix on its own.
-    std::fs::write(state.join("landed-over/panel.rs.before"), b"the version you had").unwrap();
+    std::fs::write(
+        state.join("landed-over/panel.rs.before"),
+        b"the version you had",
+    )
+    .unwrap();
     state
 }
 
@@ -76,7 +80,9 @@ fn files_under(p: &Path) -> Vec<String> {
     let mut out = Vec::new();
     let mut stack = vec![p.to_path_buf()];
     while let Some(d) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
         for e in rd.flatten() {
             let path = e.path();
             if path.is_dir() {
@@ -85,15 +91,33 @@ fn files_under(p: &Path) -> Vec<String> {
                 // These are required control records, not owner payload.
                 // Keep the exact payload assertion below and verify snapshot
                 // metadata independently at its creation site.
-                if path.file_name().and_then(|name| name.to_str()) == Some(".atlas-output-write.lock") {
+                if path.file_name().and_then(|name| name.to_str())
+                    == Some(".atlas-output-write.lock")
+                {
                     let metadata = std::fs::symlink_metadata(&path).unwrap();
                     assert!(metadata.is_file() && !metadata.file_type().is_symlink());
                     assert_eq!(metadata.len(), 0, "output lease contains no owner payload");
                     continue;
                 }
-                if matches!(path.file_name().and_then(|name| name.to_str()), Some(".atlas-backup-manifest.json" | ".atlas-state-root" | ".state-access.lock" | ".state-operations.lock")) { continue; }
+                if matches!(
+                    path.file_name().and_then(|name| name.to_str()),
+                    Some(
+                        ".atlas-backup-manifest.json"
+                            | ".atlas-state-root"
+                            | ".state-access.lock"
+                            | ".state-operations.lock"
+                    )
+                ) {
+                    continue;
+                }
                 // Forward slashes on every system, so the expected lists hold on Windows too.
-                out.push(path.strip_prefix(p).unwrap_or(&path).display().to_string().replace('\\', "/"));
+                out.push(
+                    path.strip_prefix(p)
+                        .unwrap_or(&path)
+                        .display()
+                        .to_string()
+                        .replace('\\', "/"),
+                );
             }
         }
     }
@@ -128,7 +152,12 @@ fn a_backup_holds_the_files_people_sent_you() {
         "the backup does not contain what Atlas replaced when it landed a fix — the \
          thing that makes a self-landed change undoable: {held:?}"
     );
-    assert_eq!(b.files, Some(4), "it counted {:?} files in a four-file state folder", b.files);
+    assert_eq!(
+        b.files,
+        Some(4),
+        "it counted {:?} files in a four-file state folder",
+        b.files
+    );
 }
 
 #[test]
@@ -141,7 +170,14 @@ fn restoring_puts_the_subfolders_back_too() {
     // Everything goes.
     std::fs::remove_dir_all(&state).unwrap();
 
-    let n = restore_with_notes(&b.path, &state, &trash_at(&dir), &Default::default(), &state.parent().unwrap().join("notes")).expect("restore");
+    let n = restore_with_notes(
+        &b.path,
+        &state,
+        &trash_at(&dir),
+        &Default::default(),
+        &state.parent().unwrap().join("notes"),
+    )
+    .expect("restore");
     assert_eq!(n, 4, "it restored {n} of four files");
     assert_eq!(
         files_under(&state),
@@ -186,7 +222,10 @@ fn an_existing_dated_folder_is_not_deleted_by_a_failed_attempt() {
     assert!(
         list_backups(&cfg).len() == 1,
         "the pre-existing dated folder was changed: {:?}",
-        list_backups(&cfg).iter().map(|b| (b.at, b.files)).collect::<Vec<_>>()
+        list_backups(&cfg)
+            .iter()
+            .map(|b| (b.at, b.files))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -203,7 +242,10 @@ fn a_leftover_temp_file_is_not_counted_as_a_backed_up_file() {
     std::fs::write(junk.join(".part-thread.json"), b"half a file").unwrap();
 
     let listed = list_backups(&cfg);
-    let junk_entry = listed.iter().find(|b| b.at == 2000).expect("the junk directory");
+    let junk_entry = listed
+        .iter()
+        .find(|b| b.at == 2000)
+        .expect("the junk directory");
     assert_eq!(
         junk_entry.files,
         Some(0),
@@ -306,10 +348,20 @@ fn a_restore_it_cannot_finish_leaves_your_files_alone() {
     let not_a_backup = dir.join("state-9999");
     std::fs::write(&not_a_backup, b"not a directory").unwrap();
 
-    let err = restore_with_notes(&not_a_backup, &state, &trash_at(&dir), &Default::default(), &state.parent().unwrap().join("notes"))
-        .expect_err("it restored from something that is not a backup");
+    let err = restore_with_notes(
+        &not_a_backup,
+        &state,
+        &trash_at(&dir),
+        &Default::default(),
+        &state.parent().unwrap().join("notes"),
+    )
+    .expect_err("it restored from something that is not a backup");
     assert!(err.to_string().contains("no such backup"), "got: {err}");
-    assert_eq!(before, files_under(&state), "a refused restore changed the state folder");
+    assert_eq!(
+        before,
+        files_under(&state),
+        "a refused restore changed the state folder"
+    );
 }
 
 #[test]
@@ -323,7 +375,14 @@ fn a_restore_does_not_bring_back_a_half_written_file() {
     std::fs::write(b.path.join(".part-thread.json"), b"HALF").unwrap();
 
     std::fs::remove_dir_all(&state).unwrap();
-    restore_with_notes(&b.path, &state, &trash_at(&dir), &Default::default(), &state.parent().unwrap().join("notes")).expect("restore");
+    restore_with_notes(
+        &b.path,
+        &state,
+        &trash_at(&dir),
+        &Default::default(),
+        &state.parent().unwrap().join("notes"),
+    )
+    .expect("restore");
 
     assert_eq!(
         std::fs::read_to_string(state.join("thread.json")).unwrap(),
@@ -348,7 +407,14 @@ fn restoring_still_replaces_what_is_there_and_keeps_the_old_copy() {
 
     std::fs::write(state.join("thread.json"), b"what I have now").unwrap();
     let trash = trash_at(&dir);
-    restore_with_notes(&b.path, &state, &trash, &Default::default(), &state.parent().unwrap().join("notes")).expect("restore");
+    restore_with_notes(
+        &b.path,
+        &state,
+        &trash,
+        &Default::default(),
+        &state.parent().unwrap().join("notes"),
+    )
+    .expect("restore");
 
     assert_eq!(
         std::fs::read_to_string(state.join("thread.json")).unwrap(),
@@ -393,7 +459,10 @@ fn a_backup_does_not_copy_itself_into_itself() {
     };
 
     let b = back_up(&state, &cfg, 1000).expect("a backup whose destination is inside its source");
-    assert!(b.path.join(".atlas-backup-manifest.json").is_file(), "the complete snapshot has no manifest");
+    assert!(
+        b.path.join(".atlas-backup-manifest.json").is_file(),
+        "the complete snapshot has no manifest"
+    );
     let held = files_under(&b.path);
     assert_eq!(
         held,
@@ -429,5 +498,10 @@ fn a_file_that_vanishes_mid_walk_does_not_fail_the_whole_backup() {
 
     let b = back_up(&state, &cfg_at(&dir, 7), 1000)
         .expect("one unreadable entry failed the whole backup");
-    assert_eq!(b.files, Some(4), "the real files did not all make it: {:?}", b.files);
+    assert_eq!(
+        b.files,
+        Some(4),
+        "the real files did not all make it: {:?}",
+        b.files
+    );
 }

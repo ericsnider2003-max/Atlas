@@ -49,7 +49,9 @@ impl<'a> Daemon<'a> {
         // Atlas concluded you were sitting there. Found by the night refusing
         // to run at all.
         self.last_turn_of_yours = t;
-        let _ = self.store.save("last_turn_of_yours", &self.last_turn_of_yours);
+        let _ = self
+            .store
+            .save("last_turn_of_yours", &self.last_turn_of_yours);
         // Old conversation folded on every path, not only the ones that
         // reach the end of a turn (H12).
         self.fold_if_due(t);
@@ -112,7 +114,10 @@ impl<'a> Daemon<'a> {
             // back into it (Trafton & Monk 2007: an explicit reminder of
             // where you were beats none; a subtle one does no better).
             let cue = if self.worklog_cfg().enabled && self.worklog_cfg().resume_cue {
-                self.worklog.last_context(away_since).filter(|c| c.until + 600 >= away_since).map(|c| c.cue())
+                self.worklog
+                    .last_context(away_since)
+                    .filter(|c| c.until + 600 >= away_since)
+                    .map(|c| c.cue())
             } else {
                 None
             };
@@ -193,7 +198,13 @@ impl<'a> Daemon<'a> {
         // that would act on a word inside the request ("I want you to be
         // able to send texts" sending a text), and above the phrase book,
         // which rewrote a second wording of one to "be able to send texts".
-        if let Some(reply) = (if self.handover().stance.handed_over() { None } else { self.ability_request(said, t) }).or_else(|| self.what_broke_asked(said, t)) {
+        if let Some(reply) = (if self.handover().stance.handed_over() {
+            None
+        } else {
+            self.ability_request(said, t)
+        })
+        .or_else(|| self.what_broke_asked(said, t))
+        {
             self.thread.append(said, &reply, None, t);
             self.persist();
             return reply;
@@ -203,26 +214,54 @@ impl<'a> Daemon<'a> {
         if self.operating.is_some() {
             let l = said.to_lowercase();
             let l = l.trim().trim_end_matches(['.', '!']);
-            if matches!(l, "stop" | "stop that" | "stop it" | "cancel" | "cancel that" | "never mind" | "stop working on that") {
+            if matches!(
+                l,
+                "stop"
+                    | "stop that"
+                    | "stop it"
+                    | "cancel"
+                    | "cancel that"
+                    | "never mind"
+                    | "stop working on that"
+            ) {
                 if let Some(s) = self.stop_operating() {
                     return s;
                 }
             }
         }
-        let canceled_reminder = matches!(hear(said), Some(Heard::Cancel)) && self.cancel_pending_reminder_edit();
-        let canceled_brief = matches!(hear(said), Some(Heard::Cancel | Heard::Panic)) && self.explicitly_cancel_brief_preparation(t);
+        let canceled_reminder =
+            matches!(hear(said), Some(Heard::Cancel)) && self.cancel_pending_reminder_edit();
+        let canceled_brief = matches!(hear(said), Some(Heard::Cancel | Heard::Panic))
+            && self.explicitly_cancel_brief_preparation(t);
         // Pause and resume are heard before anything else, so they work even
         // mid-task and mid-sentence.
         if self.active_file_move_id().is_some() || self.approved_undo.is_some() {
             let lower = said.to_lowercase();
             let plain = lower.trim().trim_end_matches(['.', '!']);
-            if matches!(plain, "stop" | "stop that" | "stop it" | "cancel" | "cancel that" | "never mind" | "stop working on that") {
+            if matches!(
+                plain,
+                "stop"
+                    | "stop that"
+                    | "stop it"
+                    | "cancel"
+                    | "cancel that"
+                    | "never mind"
+                    | "stop working on that"
+            ) {
                 let undo = self.cancel_approved_undo();
                 if self.active_file_move_id().is_none() && undo {
-                    return if canceled_reminder { "Canceled the waiting undo and reminder change. No restore was performed; the reminder change was not saved.".into() } else { "Canceled the waiting undo. No restore was performed.".into() };
+                    return if canceled_reminder {
+                        "Canceled the waiting undo and reminder change. No restore was performed; the reminder change was not saved.".into()
+                    } else {
+                        "Canceled the waiting undo. No restore was performed.".into()
+                    };
                 }
                 self.stop_files();
-                return if canceled_reminder { "Stopping the file moves and canceled the waiting reminder change, which was not saved. Unfinished copies keep their originals; I will report the result.".into() } else { "Stopping the file moves. Unfinished copies keep their originals, and remaining files will stay in place. I'll report the result.".into() };
+                return if canceled_reminder {
+                    "Stopping the file moves and canceled the waiting reminder change, which was not saved. Unfinished copies keep their originals; I will report the result.".into()
+                } else {
+                    "Stopping the file moves. Unfinished copies keep their originals, and remaining files will stay in place. I'll report the result.".into()
+                };
             }
         }
         if canceled_reminder {
@@ -270,7 +309,9 @@ impl<'a> Daemon<'a> {
                 self.cancel_calendar_delivery();
                 let asked = self.crew.ask_everyone_to_stop();
                 let mut halted = self.attention.halt(t);
-                if canceled_reminder { halted.push_str(" Canceled the waiting reminder change; it was not saved."); }
+                if canceled_reminder {
+                    halted.push_str(" Canceled the waiting reminder change; it was not saved.");
+                }
                 // `halt`'s own doc says "queues emptied, work abandoned" —
                 // and nothing ever emptied this queue, so a later resume
                 // quietly restarted the exact work you panicked about.
@@ -314,7 +355,10 @@ impl<'a> Daemon<'a> {
                 // "Pause" is total: the errands hold too, at their safe
                 // points, and nothing they have done is lost.
                 let mut msg = self.attention.pause(self.current_work(), t);
-                if let Some(status) = self.file_pause_status() { msg.push(' '); msg.push_str(status); }
+                if let Some(status) = self.file_pause_status() {
+                    msg.push(' ');
+                    msg.push_str(status);
+                }
                 let held = self.hold_every_errand();
                 return if held > 0 && msg != "Already paused." {
                     format!(
@@ -342,7 +386,11 @@ impl<'a> Daemon<'a> {
                 let names: Vec<String> = held
                     .iter()
                     .filter_map(|id| {
-                        self.queue.tasks.iter().find(|x| x.id == *id).map(|x| x.command.clone())
+                        self.queue
+                            .tasks
+                            .iter()
+                            .find(|x| x.id == *id)
+                            .map(|x| x.command.clone())
                     })
                     .collect();
                 let m = if names.is_empty() {
@@ -418,7 +466,8 @@ impl<'a> Daemon<'a> {
             just_spoke: how == Arrival::OpenMic
                 && self.last_spoke_at != 0
                 && t.saturating_sub(self.last_spoke_at) <= crate::addressing::STILL_TALKING_SECS,
-            other_voice: how == Arrival::OpenMic && matches!(self.last_verdict, crate::voiceid::Verdict::NotYou(_)),
+            other_voice: how == Arrival::OpenMic
+                && matches!(self.last_verdict, crate::voiceid::Verdict::NotYou(_)),
             ..Default::default()
         };
         let judged = assess(said, &situation);
@@ -471,7 +520,8 @@ impl<'a> Daemon<'a> {
                 .map(|i| i.request.trim().to_string())
                 .collect();
             let reply = crate::person::hard_day(&can_take_on);
-            self.thread.append(said, &reply, Some("hard day".to_string()), t);
+            self.thread
+                .append(said, &reply, Some("hard day".to_string()), t);
             self.persist();
             return reply;
         }
@@ -507,7 +557,8 @@ impl<'a> Daemon<'a> {
         if let Some(m) = self.modes.match_trigger(said).map(|m| m.name.clone()) {
             if self.modes.active().map(|a| a.name != m).unwrap_or(true) {
                 if let Some(tr) = self.modes.enter(&m, &[]) {
-                    self.thread.append(said, &tr.say, Some(format!("{m} mode")), t);
+                    self.thread
+                        .append(said, &tr.say, Some(format!("{m} mode")), t);
                     self.persist();
                     return tr.say;
                 }
@@ -535,8 +586,13 @@ impl<'a> Daemon<'a> {
         // start an add-on instead.
         if matches!(self.session.pending, Pending::Nothing) {
             // Kept between turns, read again only when the folder changes.
-            let found = crate::plugins::Registry::load_kept(&mut self.plugins_kept, &self.plugins_dir, &self.cfg.commands, &self.store)
-                .match_trigger(said);
+            let found = crate::plugins::Registry::load_kept(
+                &mut self.plugins_kept,
+                &self.plugins_dir,
+                &self.cfg.commands,
+                &self.store,
+            )
+            .match_trigger(said);
             if let Some((id, f)) = found {
                 return self.start_flow(f, Some(id), Some(said), t);
             }
@@ -556,7 +612,12 @@ impl<'a> Daemon<'a> {
         // `Intent::Unknown`. The word cap and exact-match lists in
         // `social_reply` are what stop a real instruction being swallowed as a
         // pleasantry.
-        if let Some(reply) = self.persona_now().social(said, crate::localclock::hour_here(t), t, self.last_turn_failed || self.mid_flow()) {
+        if let Some(reply) = self.persona_now().social(
+            said,
+            crate::localclock::hour_here(t),
+            t,
+            self.last_turn_failed || self.mid_flow(),
+        ) {
             self.thread.append(said, &reply, None, t);
             self.persist();
             return reply;
@@ -599,7 +660,10 @@ impl<'a> Daemon<'a> {
             // work a worker is in the middle of. Those are stopped by name,
             // or with their own Stop it.
             let listed: Vec<(String, String)> = match removal {
-                crate::backlog::Removal::All => listed.into_iter().filter(|(k, _)| !k.starts_with("e:")).collect(),
+                crate::backlog::Removal::All => listed
+                    .into_iter()
+                    .filter(|(k, _)| !k.starts_with("e:"))
+                    .collect(),
                 _ => listed,
             };
             let titles: Vec<String> = listed.iter().map(|(_, title)| title.clone()).collect();
@@ -642,18 +706,38 @@ impl<'a> Daemon<'a> {
             let rest: Vec<&str> = a
                 .split_whitespace()
                 .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
-                .filter(|w| !matches!(*w, "" | "again" | "more" | "further" | "please" | "up" | "on"))
+                .filter(|w| {
+                    !matches!(
+                        *w,
+                        "" | "again" | "more" | "further" | "please" | "up" | "on"
+                    )
+                })
                 .collect();
-            !rest.is_empty() && rest.iter().all(|w| matches!(*w, "it" | "that" | "this" | "them" | "those"))
+            !rest.is_empty()
+                && rest
+                    .iter()
+                    .all(|w| matches!(*w, "it" | "that" | "this" | "them" | "those"))
         };
         let parsed_now = self.parser.parse(said);
-        let research_of_it = matches!(&parsed_now, Intent::Research(a) if only_a_pronoun(&a.to_lowercase()));
-        let said = if research_of_it || (matches!(parsed_now, Intent::Unknown(_)) && crate::references::starts_the_research(said)) {
+        let research_of_it =
+            matches!(&parsed_now, Intent::Research(a) if only_a_pronoun(&a.to_lowercase()));
+        let said = if research_of_it
+            || (matches!(parsed_now, Intent::Unknown(_))
+                && crate::references::starts_the_research(said))
+        {
             match self.referents.last_topic.clone() {
                 Some(topic) => {
                     // "again" kept: it asks for a fresh look, not the
                     // answer from last time (`research_from_request`).
-                    let again = if said.to_lowercase().split_whitespace().any(|w| w.trim_matches(|c: char| !c.is_alphanumeric()) == "again") { " again" } else { "" };
+                    let again = if said
+                        .to_lowercase()
+                        .split_whitespace()
+                        .any(|w| w.trim_matches(|c: char| !c.is_alphanumeric()) == "again")
+                    {
+                        " again"
+                    } else {
+                        ""
+                    };
                     research_again = format!("research {topic}{again}");
                     research_again.as_str()
                 }
@@ -684,43 +768,47 @@ impl<'a> Daemon<'a> {
         // An answer to a question Atlas asked in its own words ("change it
         // to …", a decision's next move) is that answer, pronouns and all.
         let answering = matches!(self.session.pending, Pending::Clarification(_))
-            && (self.pending_post_approval.is_some() || self.pending_post_when.is_some() || self.pending_decision.is_some());
+            && (self.pending_post_approval.is_some()
+                || self.pending_post_when.is_some()
+                || self.pending_decision.is_some());
         let said_owned;
         let said = if already_clear || answering {
             said
         } else {
             match resolve(said, &self.referents) {
-            Resolution::Unchanged(t) => {
-                said_owned = t;
-                said_owned.as_str()
-            }
-            // Only when it makes a command of it ("close it" -> "close
-            // chrome"). Free conversation keeps your exact words (1 Oct 2026:
-            // "Why is it ..." reached the model, and the thread, as "Why is
-            // chrome ...", "say it again" as "save chrome again" -- every
-            // sentence after Atlas had once opened an app).
-            Resolution::Resolved { text, .. } if matches!(self.parser.parse(&text), Intent::Unknown(_)) => {
-                let _ = text;
-                said
-            }
-            // A long sentence's "it" is its own (1 Oct 2026: "research how an
-            // AI system can add its own features when it gets approval"
-            // reached Atlas as "... when <the last topic> gets approval").
-            // Only a short command leans on what came before: "close it",
-            // "move it to the other screen".
-            Resolution::Resolved { .. } if crate::references::word_count(said) > 6 => said,
-            Resolution::Resolved { text, .. } => {
-                said_owned = text;
-                said_owned.as_str()
-            }
-            // Not understood as a command either way: "which one?" would
-            // be a question about nothing ("I'm so tired of this" got "Which
-            // one?", 26 Sep 2026). Taken as said.
-            Resolution::Ambiguous(_) if matches!(parsed, Intent::Unknown(_)) => said,
-            Resolution::Ambiguous(q) => {
-                self.session.ask(&q);
-                return q;
-            }
+                Resolution::Unchanged(t) => {
+                    said_owned = t;
+                    said_owned.as_str()
+                }
+                // Only when it makes a command of it ("close it" -> "close
+                // chrome"). Free conversation keeps your exact words (1 Oct 2026:
+                // "Why is it ..." reached the model, and the thread, as "Why is
+                // chrome ...", "say it again" as "save chrome again" -- every
+                // sentence after Atlas had once opened an app).
+                Resolution::Resolved { text, .. }
+                    if matches!(self.parser.parse(&text), Intent::Unknown(_)) =>
+                {
+                    let _ = text;
+                    said
+                }
+                // A long sentence's "it" is its own (1 Oct 2026: "research how an
+                // AI system can add its own features when it gets approval"
+                // reached Atlas as "... when <the last topic> gets approval").
+                // Only a short command leans on what came before: "close it",
+                // "move it to the other screen".
+                Resolution::Resolved { .. } if crate::references::word_count(said) > 6 => said,
+                Resolution::Resolved { text, .. } => {
+                    said_owned = text;
+                    said_owned.as_str()
+                }
+                // Not understood as a command either way: "which one?" would
+                // be a question about nothing ("I'm so tired of this" got "Which
+                // one?", 26 Sep 2026). Taken as said.
+                Resolution::Ambiguous(_) if matches!(parsed, Intent::Unknown(_)) => said,
+                Resolution::Ambiguous(q) => {
+                    self.session.ask(&q);
+                    return q;
+                }
             }
         };
 
@@ -763,8 +851,13 @@ impl<'a> Daemon<'a> {
                 // new, nothing was kept, and the question came back on every
                 // look. The question was "may I look whenever you ask", so a
                 // yes to it is kept for good.
-                let camera_yes = matches!(intent, Intent::CaptureWebcam) && crate::camera_ask::allows(said);
-                let span = if camera_yes { Some(crate::grants::Span::Always) } else { crate::grants::span_from_answer(said) };
+                let camera_yes =
+                    matches!(intent, Intent::CaptureWebcam) && crate::camera_ask::allows(said);
+                let span = if camera_yes {
+                    Some(crate::grants::Span::Always)
+                } else {
+                    crate::grants::span_from_answer(said)
+                };
                 if let Some(span) = span {
                     self.permissions.grant(&app, Some(&action), span, t);
                     let _ = self.store.save("permissions", &self.permissions);
@@ -796,7 +889,12 @@ impl<'a> Daemon<'a> {
             // used to be "Left it alone." -- a no -- and the new request was
             // lost with the question (27 Sep 2026).
             if yes || is_no(said) {
-                if !yes { self.decline_dependent_approval(&intent, "Approval declined; dependent steps were not run."); }
+                if !yes {
+                    self.decline_dependent_approval(
+                        &intent,
+                        "Approval declined; dependent steps were not run.",
+                    );
+                }
                 self.memory.record_approval(&kind, yes, None);
                 let reply = if yes {
                     let r = self.execute_approved_step(&intent);
@@ -854,7 +952,9 @@ impl<'a> Daemon<'a> {
                 let mut trusted_note = String::new();
                 if always {
                     if let Some(run) = self.current_flow.as_ref() {
-                        if let (Some(id), Some(step)) = (run.plugin.clone(), run.current().map(|s| s.command.clone())) {
+                        if let (Some(id), Some(step)) =
+                            (run.plugin.clone(), run.current().map(|s| s.command.clone()))
+                        {
                             trusted_note = match crate::plugins::trust_step(
                                 &self.store,
                                 &self.plugins_dir,
@@ -876,8 +976,7 @@ impl<'a> Daemon<'a> {
                     // back to the policy gate would classify the same step
                     // into the same question, forever.
                     self.approved_flow_step(t);
-                    let reply =
-                        self.drive_flow(t).unwrap_or_else(|| "Carrying on.".into());
+                    let reply = self.drive_flow(t).unwrap_or_else(|| "Carrying on.".into());
                     let reply = format!("{trusted_note}{reply}");
                     self.persist();
                     return reply;
@@ -903,13 +1002,15 @@ impl<'a> Daemon<'a> {
                 self.session.pending = Pending::Nothing;
                 self.pending_offer = None;
                 if yes {
-                    self.proactive.record_response(&offer.kind, yes, &mut self.memory);
+                    self.proactive
+                        .record_response(&offer.kind, yes, &mut self.memory);
                     let reply = self.run_command(&offer.command, t);
                     self.persist();
                     return reply;
                 }
                 if is_no(said) {
-                    self.proactive.record_response(&offer.kind, false, &mut self.memory);
+                    self.proactive
+                        .record_response(&offer.kind, false, &mut self.memory);
                     self.persist();
                     return "Alright.".into();
                 }
@@ -922,11 +1023,27 @@ impl<'a> Daemon<'a> {
             if let Some(waiting) = self.pending_decision.take() {
                 self.session.pending = Pending::Nothing;
                 let l = said.trim().to_lowercase();
-                if ["stop", "cancel", "never mind", "nevermind", "forget it", "not now", "later"].iter().any(|w| l == *w || l.starts_with(&format!("{w} "))) {
+                if [
+                    "stop",
+                    "cancel",
+                    "never mind",
+                    "nevermind",
+                    "forget it",
+                    "not now",
+                    "later",
+                ]
+                .iter()
+                .any(|w| l == *w || l.starts_with(&format!("{w} ")))
+                {
                     return "Alright, I've put the decision aside. \"Back to the decision\" picks it up where we were.".into();
                 }
                 return match waiting {
-                    None if is_yes(said) => self.deciding.as_ref().and_then(|d| d.lean().ok()).map(|l| l.written()).unwrap_or_else(|| "There's no working to show yet.".into()),
+                    None if is_yes(said) => self
+                        .deciding
+                        .as_ref()
+                        .and_then(|d| d.lean().ok())
+                        .map(|l| l.written())
+                        .unwrap_or_else(|| "There's no working to show yet.".into()),
                     None => "Alright.".into(),
                     Some(m) => {
                         if let Some(d) = self.deciding.as_mut() {
@@ -956,13 +1073,19 @@ impl<'a> Daemon<'a> {
                 if !is_yes(said) {
                     crate::heard!(std::fs::remove_file(&result));
                     self.finish_media_decision(false);
-                    return "Alright — I've thrown the edit away. Your original is untouched.".into();
+                    return "Alright — I've thrown the edit away. Your original is untouched."
+                        .into();
                 }
                 // Removing an original is the consequential kind of media
                 // step whoever does it (`media_decision`), so it's asked.
-                let d = crate::categories::media_decision(crate::categories::MediaOp::Export, false, true);
+                let d = crate::categories::media_decision(
+                    crate::categories::MediaOp::Export,
+                    false,
+                    true,
+                );
                 if d.needs_consent() {
-                    let q = format!("Kept. Do you want me to get rid of the original ({original})?");
+                    let q =
+                        format!("Kept. Do you want me to get rid of the original ({original})?");
                     self.session.ask(&q);
                     self.pending_media_original = Some(original);
                     return q;
@@ -1044,16 +1167,31 @@ impl<'a> Daemon<'a> {
                 // "Change it to …": your edit of the words, asked about again,
                 // and learned from (H13g).
                 let l = said.to_ascii_lowercase();
-                if let Some(new) = ["change it to ", "make it read ", "make it ", "change the words to "]
-                    .iter()
-                    .find_map(|p| l.find(p).map(|i| said[i + p.len()..].trim().trim_matches('"').to_string()))
-                    .filter(|n| !n.is_empty())
+                if let Some(new) = [
+                    "change it to ",
+                    "make it read ",
+                    "make it ",
+                    "change the words to ",
+                ]
+                .iter()
+                .find_map(|p| {
+                    l.find(p)
+                        .map(|i| said[i + p.len()..].trim().trim_matches('"').to_string())
+                })
+                .filter(|n| !n.is_empty())
                 {
-                    let before = self.publisher.get(id).map(|p| p.body.clone()).unwrap_or_default();
+                    let before = self
+                        .publisher
+                        .get(id)
+                        .map(|p| p.body.clone())
+                        .unwrap_or_default();
                     let previous_publisher = self.publisher.clone();
                     if self.publisher.edit(id, &new) {
                         if let Some(q) = self.publisher.request_approval(id) {
-                            if let Err(e) = self.publisher.save(&self.store) { self.publisher = previous_publisher; return format!("Those edited words couldn't be saved ({e}); review the previous draft before approving it."); }
+                            if let Err(e) = self.publisher.save(&self.store) {
+                                self.publisher = previous_publisher;
+                                return format!("Those edited words couldn't be saved ({e}); review the previous draft before approving it.");
+                            }
                             self.learned_from_your_edit(&before, &new, t);
                             self.session.ask(&q);
                             self.pending_post_approval = Some(id);
@@ -1073,7 +1211,10 @@ impl<'a> Daemon<'a> {
                     let previous_publisher = self.publisher.clone();
                     self.publisher.attach(id, &path);
                     if let Some(q) = self.publisher.request_approval(id) {
-                        if let Err(e) = self.publisher.save(&self.store) { self.publisher = previous_publisher; return format!("That attachment change couldn't be saved ({e}); nothing was newly approved."); }
+                        if let Err(e) = self.publisher.save(&self.store) {
+                            self.publisher = previous_publisher;
+                            return format!("That attachment change couldn't be saved ({e}); nothing was newly approved.");
+                        }
                         self.session.ask(&q);
                         self.pending_post_approval = Some(id);
                         return q;
@@ -1084,7 +1225,8 @@ impl<'a> Daemon<'a> {
                     return "Alright — it stays a draft.".into();
                 }
                 self.pending_post_when = Some(id);
-                let q = "When should it go? Right now, or a time like at 6pm or tomorrow at 9.".to_string();
+                let q = "When should it go? Right now, or a time like at 6pm or tomorrow at 9."
+                    .to_string();
                 self.session.ask(&q);
                 return q;
             }
@@ -1167,7 +1309,8 @@ impl<'a> Daemon<'a> {
                     crate::panel::Panel::Mind => self.mind_summary(),
                     _ => String::new(),
                 };
-                return crate::panel::narration(panel, &content, &cfg).unwrap_or_else(|| "It's up.".into());
+                return crate::panel::narration(panel, &content, &cfg)
+                    .unwrap_or_else(|| "It's up.".into());
             }
             // "What should I have done instead?" -- the answer is the fix,
             // and it belongs to the correction that asked, not to whatever
@@ -1194,7 +1337,11 @@ impl<'a> Daemon<'a> {
                 self.pending_wanted = None;
                 return match crate::wanted::answer_to_ask(said) {
                     Some(crate::wanted::Wanted::Hearing) => {
-                        format!("{} {}", crate::wanted::heard(&original), crate::wanted::then_offer())
+                        format!(
+                            "{} {}",
+                            crate::wanted::heard(&original),
+                            crate::wanted::then_offer()
+                        )
                     }
                     // Not `run_command` -- the original words would parse as
                     // `Intent::Unknown` again, `wanted::read` would read the
@@ -1321,10 +1468,17 @@ impl<'a> Daemon<'a> {
         // reminder?"): then the yes or no is an answer to that, and goes to
         // the model with the question still in the conversation (30 Sep 2026:
         // it was told "Nothing to confirm.").
-        let asked_last = self.thread.recent.last().is_some_and(|e| e.reply.trim_end().ends_with('?'));
+        let asked_last = self
+            .thread
+            .recent
+            .last()
+            .is_some_and(|e| e.reply.trim_end().ends_with('?'));
         if (is_yes(said) || is_no(said))
             && !asked_last
-            && !matches!(self.parser.parse_named(said).0, Intent::Receipt(_) | Intent::TradeDay(_) | Intent::Cards(_))
+            && !matches!(
+                self.parser.parse_named(said).0,
+                Intent::Receipt(_) | Intent::TradeDay(_) | Intent::Cards(_)
+            )
         {
             return "Nothing to confirm.".into();
         }
@@ -1346,7 +1500,9 @@ impl<'a> Daemon<'a> {
         // it to use. `grant_in_instruction` is refusal-aware ("don't use
         // Discord" grants nothing) and only fires on a deliberate lead, not a
         // passing mention.
-        if let Some((app, span)) = crate::grants::grant_in_instruction(said, &self.known_app_names()) {
+        if let Some((app, span)) =
+            crate::grants::grant_in_instruction(said, &self.known_app_names())
+        {
             self.permissions.grant(&app, None, span, t);
         }
 

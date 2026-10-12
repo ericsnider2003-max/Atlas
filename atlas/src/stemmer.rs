@@ -21,11 +21,19 @@ fn is_vowel(c: u8) -> bool {
 
 fn is_double(w: &[u8]) -> bool {
     let n = w.len();
-    n >= 2 && w[n - 1] == w[n - 2] && matches!(w[n - 1], b'b' | b'd' | b'f' | b'g' | b'm' | b'n' | b'p' | b'r' | b't')
+    n >= 2
+        && w[n - 1] == w[n - 2]
+        && matches!(
+            w[n - 1],
+            b'b' | b'd' | b'f' | b'g' | b'm' | b'n' | b'p' | b'r' | b't'
+        )
 }
 
 fn is_li_ending(c: u8) -> bool {
-    matches!(c, b'c' | b'd' | b'e' | b'g' | b'h' | b'k' | b'm' | b'n' | b'r' | b't')
+    matches!(
+        c,
+        b'c' | b'd' | b'e' | b'g' | b'h' | b'k' | b'm' | b'n' | b'r' | b't'
+    )
 }
 
 /// Region after the first non-vowel following a vowel, starting at `from`.
@@ -58,7 +66,10 @@ fn contains_vowel(w: &[u8]) -> bool {
 
 /// The longest suffix from `list` that `w` ends with.
 fn longest<'a>(w: &[u8], list: &[&'a str]) -> Option<&'a str> {
-    list.iter().filter(|s| w.ends_with(s.as_bytes())).max_by_key(|s| s.len()).copied()
+    list.iter()
+        .filter(|s| w.ends_with(s.as_bytes()))
+        .max_by_key(|s| s.len())
+        .copied()
 }
 
 fn replace(w: &mut Vec<u8>, suffix_len: usize, with: &str) {
@@ -207,7 +218,11 @@ pub fn stem(word: &str) -> String {
     if let Some(s) = longest(&w, &keys) {
         let n = s.len();
         if w.len() - n >= r1 {
-            let to = S2.iter().find(|(k, _)| *k == s).map(|(_, v)| *v).unwrap_or("");
+            let to = S2
+                .iter()
+                .find(|(k, _)| *k == s)
+                .map(|(_, v)| *v)
+                .unwrap_or("");
             match s {
                 "ogi" => {
                     if w.len() >= 4 && w[w.len() - 4] == b'l' {
@@ -240,7 +255,11 @@ pub fn stem(word: &str) -> String {
     if let Some(s) = longest(&w, &keys) {
         let n = s.len();
         if w.len() - n >= r1 {
-            let to = S3.iter().find(|(k, _)| *k == s).map(|(_, v)| *v).unwrap_or("");
+            let to = S3
+                .iter()
+                .find(|(k, _)| *k == s)
+                .map(|(_, v)| *v)
+                .unwrap_or("");
             if s == "ative" {
                 if w.len() - n >= r2 {
                     w.truncate(w.len() - n);
@@ -253,8 +272,8 @@ pub fn stem(word: &str) -> String {
 
     // Step 4
     let s4 = [
-        "al", "ance", "ence", "er", "ic", "able", "ible", "ant", "ement", "ment", "ent", "ism", "ate", "iti", "ous",
-        "ive", "ize", "ion",
+        "al", "ance", "ence", "er", "ic", "able", "ible", "ant", "ement", "ment", "ent", "ism",
+        "ate", "iti", "ous", "ive", "ize", "ion",
     ];
     if let Some(s) = longest(&w, &s4) {
         let n = s.len();
@@ -343,7 +362,10 @@ mod tests {
 
     #[test]
     fn trade_family_collapses() {
-        let s: Vec<String> = ["trade", "trades", "traded", "trading"].iter().map(|w| stem(w)).collect();
+        let s: Vec<String> = ["trade", "trades", "traded", "trading"]
+            .iter()
+            .map(|w| stem(w))
+            .collect();
         assert!(s.iter().all(|x| x == "trade"), "{s:?}");
         assert_eq!(stem("invoices"), stem("invoice"));
         assert_eq!(stem("meetings"), stem("meeting"));
@@ -353,6 +375,9 @@ mod tests {
     fn short_and_non_ascii_untouched() {
         assert_eq!(stem("is"), "is");
         assert_eq!(stem("café"), "café");
-        assert_eq!(stems_of("The trades, closed early!"), vec!["the", "trade", "close", "earli"]);
+        assert_eq!(
+            stems_of("The trades, closed early!"),
+            vec!["the", "trade", "close", "earli"]
+        );
     }
 }

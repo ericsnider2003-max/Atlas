@@ -40,13 +40,30 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn on() -> SignInConfig {
-    SignInConfig { enabled: true, ..Default::default() }
+    SignInConfig {
+        enabled: true,
+        ..Default::default()
+    }
 }
 
 fn granted() -> Access {
     let mut a = Access::default();
-    a.grant("mybank.com", "eric", "the bank", Allowed::SignIn, "bank login", 1000);
-    a.grant("github.com", "esnider", "GitHub", Allowed::SignInAndUse, "gh", 1000);
+    a.grant(
+        "mybank.com",
+        "eric",
+        "the bank",
+        Allowed::SignIn,
+        "bank login",
+        1000,
+    );
+    a.grant(
+        "github.com",
+        "esnider",
+        "GitHub",
+        Allowed::SignInAndUse,
+        "gh",
+        1000,
+    );
     a
 }
 
@@ -67,11 +84,17 @@ fn what_you_granted_is_still_there_after_a_restart() {
     let back = Access::load(&store);
     assert_eq!(back.grants.len(), 2);
     assert!(back.find("mybank.com").is_some());
-    assert_eq!(back.find_account("github.com", "esnider").map(|g| g.allowed), Some(Allowed::SignInAndUse));
+    assert_eq!(
+        back.find_account("github.com", "esnider")
+            .map(|g| g.allowed),
+        Some(Allowed::SignInAndUse)
+    );
 
     // And a store that has never held one comes back empty rather than
     // failing, which is what a first run looks like.
-    assert!(Access::load(&Store::new(tmp("first-run"))).grants.is_empty());
+    assert!(Access::load(&Store::new(tmp("first-run")))
+        .grants
+        .is_empty());
 }
 
 #[test]
@@ -93,7 +116,10 @@ fn taking_one_away_leaves_the_others_exactly_as_they_were() {
     let mut a = granted();
     assert!(a.revoke("mybank.com"));
     assert!(a.find("mybank.com").is_none());
-    assert!(a.find("github.com").is_some(), "revoking one site took another with it");
+    assert!(
+        a.find("github.com").is_some(),
+        "revoking one site took another with it"
+    );
 
     // Revoking something that was never granted says so rather than
     // pretending.
@@ -123,17 +149,29 @@ fn the_access_page_lists_the_doors_that_are_open_and_a_way_to_close_each() {
     assert_eq!(rows.len(), 2);
 
     let page = atlas::hub::access_page_full(&[], &[], &rows);
-    assert!(page.contains("Signed in right now"), "the sites section is missing");
+    assert!(
+        page.contains("Signed in right now"),
+        "the sites section is missing"
+    );
     assert!(page.contains("the bank"), "{page}");
-    assert!(page.contains("mybank.com"), "the revoke form has no site to act on");
-    assert!(page.contains("/hub/access/revoke"), "there is no way to take it back");
+    assert!(
+        page.contains("mybank.com"),
+        "the revoke form has no site to act on"
+    );
+    assert!(
+        page.contains("/hub/access/revoke"),
+        "there is no way to take it back"
+    );
     assert!(page.contains("Take all of it away"));
 
     // And an empty page does not claim there is nothing to worry about by
     // rendering a section with nothing in it.
     let empty = atlas::hub::access_page_full(&[], &[], &[]);
     assert!(!empty.contains("Signed in right now"));
-    assert!(empty.contains("What Atlas never holds"), "the honest half is still there");
+    assert!(
+        empty.contains("What Atlas never holds"),
+        "the honest half is still there"
+    );
 }
 
 #[test]
@@ -194,7 +232,10 @@ fn the_hub_is_what_fills_the_page_rather_than_this_test() {
     );
 
     let main = crate::common::source_of("main");
-    assert!(main.contains("fn run_access("), "there is still no way to grant anything");
+    assert!(
+        main.contains("fn run_access("),
+        "there is still no way to grant anything"
+    );
     assert!(main.contains("access.grant(&site, &account, &name, allowed,"));
     assert!(
         main.contains("Action::RevokeAccess(_) | Action::RevokeAllAccess"),
@@ -215,13 +256,22 @@ fn a_credential_that_has_stopped_working_is_the_thing_worth_saying() {
     a.note_use("mybank.com", "eric", "mybank.com/login", false, true, 3000);
 
     let g = a.find("mybank.com").expect("granted");
-    assert!(g.looks_superseded, "two failures after it worked is the tell");
+    assert!(
+        g.looks_superseded,
+        "two failures after it worked is the tell"
+    );
     let said = signin::probably_changed(g);
     assert!(said.contains("the bank"), "{said}");
-    assert!(said.contains("password was changed somewhere else"), "{said}");
+    assert!(
+        said.contains("password was changed somewhere else"),
+        "{said}"
+    );
 
     let rows = signin::hub_rows(&a, 4000);
-    let bank = rows.iter().find(|(l, _, _, _)| l.contains("the bank")).expect("listed");
+    let bank = rows
+        .iter()
+        .find(|(l, _, _, _)| l.contains("the bank"))
+        .expect("listed");
     assert!(bank.3, "the page doesn't flag it");
     assert!(bank.1.contains("looks like it changed"), "{}", bank.1);
 
@@ -244,7 +294,14 @@ fn what_it_says_out_loud_counts_logins_and_sites_separately() {
     // Two accounts on one site is two logins across one site, and saying
     // "two sites" would be wrong in the way that matters: signing into the
     // wrong one of two accounts is hard to see and hard to undo.
-    a.grant("github.com", "work", "GitHub (work)", Allowed::SignIn, "gh-work", 1000);
+    a.grant(
+        "github.com",
+        "work",
+        "GitHub (work)",
+        Allowed::SignIn,
+        "gh-work",
+        1000,
+    );
     let said = signin::spoken(&a, 2000);
     assert!(said.contains("3 logins across 2 sites"), "{said}");
 
@@ -271,7 +328,10 @@ fn a_grant_that_exists_is_what_makes_the_refusal_mean_something() {
         a.may_start("mybank.com.evil.co", true, true, &cfg),
         Err(Refused::NotGranted(_))
     ));
-    assert_eq!(a.may_start("mybank.com", false, true, &cfg), Err(Refused::Locked));
+    assert_eq!(
+        a.may_start("mybank.com", false, true, &cfg),
+        Err(Refused::Locked)
+    );
 
     // And once taken away, the same site refuses again.
     let mut gone = granted();

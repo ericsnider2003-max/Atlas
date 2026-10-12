@@ -123,7 +123,12 @@ impl Platform {
     /// answered with the nearest match is how you end up connected to the
     /// wrong thing, and this list is short enough to read.
     pub fn named(s: &str) -> Option<Platform> {
-        match s.trim().to_lowercase().replace([' ', '-', '_'], "").as_str() {
+        match s
+            .trim()
+            .to_lowercase()
+            .replace([' ', '-', '_'], "")
+            .as_str()
+        {
             "telegram" => Some(Platform::Telegram),
             "groupme" => Some(Platform::GroupMe),
             "whatsapp" => Some(Platform::WhatsApp),
@@ -167,7 +172,12 @@ pub fn what_you_asked_for(platforms: &[String]) -> String {
 
     let mut lines = Vec::new();
     for p in known.iter().filter(|p| p.worth_setting_up()) {
-        lines.push(format!("{}: {}. Needs {}.", p.name(), p.what_it_permits(), p.to_connect()));
+        lines.push(format!(
+            "{}: {}. Needs {}.",
+            p.name(),
+            p.what_it_permits(),
+            p.to_connect()
+        ));
     }
     for p in known.iter().filter(|p| !p.worth_setting_up()) {
         // No "needs" line for these: saying a thing needs "nothing that
@@ -241,13 +251,32 @@ impl Sort {
 }
 
 const BUSINESS: &[&str] = &[
-    "collaboration", "partnership", "sponsor", "sponsored", "brand", "campaign",
-    "rate card", "invoice", "contract", "deliverable", "usage rights", "brief",
-    "budget", "paid partnership", "our client", "we'd love to work",
+    "collaboration",
+    "partnership",
+    "sponsor",
+    "sponsored",
+    "brand",
+    "campaign",
+    "rate card",
+    "invoice",
+    "contract",
+    "deliverable",
+    "usage rights",
+    "brief",
+    "budget",
+    "paid partnership",
+    "our client",
+    "we'd love to work",
 ];
 
 const URGENT: &[&str] = &[
-    "asap", "urgent", "today", "right now", "emergency", "before ", "deadline",
+    "asap",
+    "urgent",
+    "today",
+    "right now",
+    "emergency",
+    "before ",
+    "deadline",
 ];
 
 /// Sort one, the same way the inbox is sorted: by what it asks of you.
@@ -256,8 +285,7 @@ const URGENT: &[&str] = &[
 /// message in a group chat, and the words are genuinely different.
 pub fn sort(m: &Message, your_names: &[String]) -> Sort {
     let t = m.text.to_lowercase();
-    let named = m.mentions_you
-        || your_names.iter().any(|n| t.contains(&n.to_lowercase()));
+    let named = m.mentions_you || your_names.iter().any(|n| t.contains(&n.to_lowercase()));
 
     if BUSINESS.iter().any(|b| t.contains(b)) {
         return Sort::Business;
@@ -318,13 +346,31 @@ impl Folder {
 }
 
 const PERSONAL_WORDS: &[&str] = &[
-    "mate", "bro", "love you", "mum", "dad", "dinner", "pub", "weekend",
-    "birthday", "how are you", "miss you", "haha", "lol", "😂",
+    "mate",
+    "bro",
+    "love you",
+    "mum",
+    "dad",
+    "dinner",
+    "pub",
+    "weekend",
+    "birthday",
+    "how are you",
+    "miss you",
+    "haha",
+    "lol",
+    "😂",
 ];
 
 const AUTOMATED: &[&str] = &[
-    "verification code", "do not reply", "your order", "delivery", "otp",
-    "unsubscribe", "notification", "bot",
+    "verification code",
+    "do not reply",
+    "your order",
+    "delivery",
+    "otp",
+    "unsubscribe",
+    "notification",
+    "bot",
 ];
 
 /// Where a conversation goes, from what's been said in it.
@@ -475,7 +521,10 @@ pub fn spoken(messages: &[Message], names: &[String]) -> String {
         .filter(|(s, _)| *s == Sort::Business)
         .map(|(_, m)| m)
         .collect();
-    let replies = sorted.iter().filter(|(s, _)| *s == Sort::NeedsReply).count();
+    let replies = sorted
+        .iter()
+        .filter(|(s, _)| *s == Sort::NeedsReply)
+        .count();
     let chatter = sorted.iter().filter(|(s, _)| *s == Sort::Chatter).count();
 
     if business.is_empty() && replies == 0 {

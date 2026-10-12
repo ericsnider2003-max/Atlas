@@ -56,16 +56,40 @@ impl Leak {
 
 /// Phrases that hand the listener back to an earlier update.
 const POINTS_BACK: &[&str] = &[
-    "as i mentioned", "as i said", "as noted", "as above", "like i said",
-    "mentioned earlier", "said earlier", "noted earlier", "from before",
-    "the one i mentioned", "that i found", "as discussed", "per the update",
-    "which i said", "i told you", "referred to above", "see above",
+    "as i mentioned",
+    "as i said",
+    "as noted",
+    "as above",
+    "like i said",
+    "mentioned earlier",
+    "said earlier",
+    "noted earlier",
+    "from before",
+    "the one i mentioned",
+    "that i found",
+    "as discussed",
+    "per the update",
+    "which i said",
+    "i told you",
+    "referred to above",
+    "see above",
 ];
 
 /// Openers that only make sense following something.
 const MID_THOUGHT: &[&str] = &[
-    "so ", "then ", "and ", "but ", "also ", "anyway ", "however ",
-    "that done", "after that", "next ", "finally ", "meanwhile ", "otherwise ",
+    "so ",
+    "then ",
+    "and ",
+    "but ",
+    "also ",
+    "anyway ",
+    "however ",
+    "that done",
+    "after that",
+    "next ",
+    "finally ",
+    "meanwhile ",
+    "otherwise ",
 ];
 
 fn words(text: &str) -> Vec<String> {
@@ -148,7 +172,11 @@ impl Run {
         for token in self.only_said_while_working() {
             let t = token.to_lowercase();
             // A thing worth knowing that the result never repeats.
-            if !carried.contains(&t) && !out.iter().any(|l| matches!(l, Leak::OnlyMentionedInProgress(x) if *x == token)) {
+            if !carried.contains(&t)
+                && !out
+                    .iter()
+                    .any(|l| matches!(l, Leak::OnlyMentionedInProgress(x) if *x == token))
+            {
                 out.push(Leak::OnlyMentionedInProgress(token));
             }
         }
@@ -160,11 +188,7 @@ impl Run {
     /// Runs the draft through `faithful` first, so anything that went wrong
     /// leads, then reports what the result still leans on. Two separate
     /// questions: whether it is true, and whether it can be heard on its own.
-    pub fn close(
-        &self,
-        steps: &[crate::faithful::Step],
-        draft: &str,
-    ) -> (String, Vec<Leak>) {
+    pub fn close(&self, steps: &[crate::faithful::Step], draft: &str) -> (String, Vec<Leak>) {
         let ordered = crate::faithful::lead_with_the_problem(steps, draft);
         let leaks = self.check_result(&ordered);
         (ordered, leaks)

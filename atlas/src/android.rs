@@ -26,63 +26,115 @@ pub struct Ability {
 pub fn abilities() -> Vec<Ability> {
     use Can::*;
     vec![
-        Ability { what: "wake on a word with the app closed", can: Yes,
+        Ability {
+            what: "wake on a word with the app closed",
+            can: Yes,
             detail: "a foreground service can listen all day. This is the big one iOS won't do — \
                      on Android it works exactly like the laptop",
-            needs_deliberate_permission: false },
-        Ability { what: "be the assistant on the home button", can: Yes,
+            needs_deliberate_permission: false,
+        },
+        Ability {
+            what: "be the assistant on the home button",
+            can: Yes,
             detail: "Android lets you choose your default assistant, so Atlas can replace Google \
                      Assistant outright",
-            needs_deliberate_permission: true },
-        Ability { what: "hear you and transcribe", can: Yes,
-            detail: "whisper on the phone, offline", needs_deliberate_permission: false },
-        Ability { what: "talk back", can: Yes,
-            detail: "system voices, free", needs_deliberate_permission: false },
-        Ability { what: "run continuously", can: Yes,
+            needs_deliberate_permission: true,
+        },
+        Ability {
+            what: "hear you and transcribe",
+            can: Yes,
+            detail: "whisper on the phone, offline",
+            needs_deliberate_permission: false,
+        },
+        Ability {
+            what: "talk back",
+            can: Yes,
+            detail: "system voices, free",
+            needs_deliberate_permission: false,
+        },
+        Ability {
+            what: "run continuously",
+            can: Yes,
             detail: "a foreground service with a persistent notification — Android's rule is that \
                      you must be able to see it's running, which is fair",
-            needs_deliberate_permission: false },
-
-        Ability { what: "read what's on screen", can: Limited,
+            needs_deliberate_permission: false,
+        },
+        Ability {
+            what: "read what's on screen",
+            can: Limited,
             detail: "through the accessibility service. Powerful, and the permission is a serious \
                      one — Android makes you turn it on in Settings and warns you properly",
-            needs_deliberate_permission: true },
-        Ability { what: "tap and type in other apps", can: Limited,
+            needs_deliberate_permission: true,
+        },
+        Ability {
+            what: "tap and type in other apps",
+            can: Limited,
             detail: "same permission. This is how Atlas could actually drive an app on a phone, \
                      which iOS has no equivalent of at all",
-            needs_deliberate_permission: true },
-        Ability { what: "read your notifications", can: Limited,
+            needs_deliberate_permission: true,
+        },
+        Ability {
+            what: "read your notifications",
+            can: Limited,
             detail: "with the notification-access permission — so it can tell a brand email from \
                      a group chat without opening either",
-            needs_deliberate_permission: true },
-
-        Ability { what: "reach your files properly", can: Yes,
+            needs_deliberate_permission: true,
+        },
+        Ability {
+            what: "reach your files properly",
+            can: Yes,
             detail: "a real file system, not a sandbox — the same working-set idea as the laptop",
-            needs_deliberate_permission: true },
-        Ability { what: "scan a document", can: Yes,
+            needs_deliberate_permission: true,
+        },
+        Ability {
+            what: "scan a document",
+            can: Yes,
             detail: "ML Kit does the edge detection and text, free and offline. Slightly behind \
                      Apple's but not by much",
-            needs_deliberate_permission: false },
-        Ability { what: "receive anything shared to it", can: Yes,
+            needs_deliberate_permission: false,
+        },
+        Ability {
+            what: "receive anything shared to it",
+            can: Yes,
             detail: "and register as a target for specific types, so it appears where it should",
-            needs_deliberate_permission: false },
-        Ability { what: "a quick settings tile", can: Yes,
+            needs_deliberate_permission: false,
+        },
+        Ability {
+            what: "a quick settings tile",
+            can: Yes,
             detail: "pull down and tap, from any app or the lock screen",
-            needs_deliberate_permission: false },
-        Ability { what: "home screen widgets", can: Yes,
+            needs_deliberate_permission: false,
+        },
+        Ability {
+            what: "home screen widgets",
+            can: Yes,
             detail: "including buttons that do things directly",
-            needs_deliberate_permission: false },
-        Ability { what: "send a message on your behalf", can: Limited,
+            needs_deliberate_permission: false,
+        },
+        Ability {
+            what: "send a message on your behalf",
+            can: Limited,
             detail: "technically yes, and it still asks — that's a choice, not a limit",
-            needs_deliberate_permission: true },
-        Ability { what: "sync over wifi, cloud, cable or a private network", can: Yes,
-            detail: "all four, same as the laptop", needs_deliberate_permission: false },
-        Ability { what: "AirDrop", can: Never,
+            needs_deliberate_permission: true,
+        },
+        Ability {
+            what: "sync over wifi, cloud, cable or a private network",
+            can: Yes,
+            detail: "all four, same as the laptop",
+            needs_deliberate_permission: false,
+        },
+        Ability {
+            what: "AirDrop",
+            can: Never,
             detail: "Apple only. Nearby Share is the equivalent and works Android to Android",
-            needs_deliberate_permission: false },
-        Ability { what: "hold your credentials", can: Never,
+            needs_deliberate_permission: false,
+        },
+        Ability {
+            what: "hold your credentials",
+            can: Never,
             detail: "same choice as on iOS — a phone is what you lose",
-            needs_deliberate_permission: false },
+            needs_deliberate_permission: false,
+        },
     ]
 }
 

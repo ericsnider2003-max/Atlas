@@ -81,7 +81,11 @@ pub fn tray_choice(id: u32, paused: bool) -> Option<TrayAction> {
     match id {
         ID_OPEN => Some(TrayAction::OpenAtlas),
         ID_BROWSER => Some(TrayAction::OpenHubInBrowser),
-        ID_PAUSE => Some(if paused { TrayAction::Resume } else { TrayAction::Pause }),
+        ID_PAUSE => Some(if paused {
+            TrayAction::Resume
+        } else {
+            TrayAction::Pause
+        }),
         ID_QUIT => Some(TrayAction::Quit),
         _ => None,
     }
@@ -106,7 +110,9 @@ pub fn tray_tooltip(paused: bool) -> &'static str {
 /// Windows' 127 characters.
 pub fn tray_tip(paused: bool, hub_note: Option<&str>) -> String {
     let head = tray_tooltip(paused).to_string();
-    let Some(note) = hub_note.filter(|n| !n.trim().is_empty()) else { return head };
+    let Some(note) = hub_note.filter(|n| !n.trim().is_empty()) else {
+        return head;
+    };
     let mut tip = format!("{head}\n{}", note.trim());
     while tip.encode_utf16().count() > 127 {
         tip.pop();
@@ -135,7 +141,10 @@ pub fn tray_hub_address(url: &str) {
 
 /// What the icon's "Open the hub" would open now (empty: no hub yet).
 pub fn tray_hub_now() -> String {
-    HUB.lock().or_else(crate::crash::unpoison).map(|h| h.clone()).unwrap_or_default()
+    HUB.lock()
+        .or_else(crate::crash::unpoison)
+        .map(|h| h.clone())
+        .unwrap_or_default()
 }
 
 /// Say something about the hub on the icon's words, or nothing (`None`).
@@ -147,7 +156,11 @@ pub fn tray_hub_note(note: Option<String>) {
 
 #[cfg_attr(not(windows), allow(dead_code))]
 fn hub_note_now() -> Option<String> {
-    HUB_NOTE.lock().or_else(crate::crash::unpoison).ok().and_then(|n| n.clone())
+    HUB_NOTE
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .ok()
+        .and_then(|n| n.clone())
 }
 
 /// The words the icon should show now.
@@ -205,7 +218,10 @@ pub fn tray_ask(a: TrayAction) {
 
 /// What the icon has asked for since the last pass. Emptied as it is read.
 pub fn tray_asks() -> Vec<TrayAction> {
-    ASKS.lock().or_else(crate::crash::unpoison).map(|mut q| std::mem::take(&mut *q)).unwrap_or_default()
+    ASKS.lock()
+        .or_else(crate::crash::unpoison)
+        .map(|mut q| std::mem::take(&mut *q))
+        .unwrap_or_default()
 }
 
 /// The run loop saying whether Atlas is paused, for the icon's words.
@@ -271,17 +287,18 @@ mod win {
     use windows::Win32::Foundation::{HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::Shell::{
-        ShellExecuteW, Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
-        NOTIFYICONDATAW,
+        ShellExecuteW, Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE,
+        NIM_MODIFY, NOTIFYICONDATAW,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-        DispatchMessageW, GetCursorPos, GetMessageW, GetSystemMetrics, KillTimer, LoadIconW, LoadImageW,
-        PostMessageW, PostQuitMessage, RegisterClassExW, RegisterWindowMessageW, SetForegroundWindow,
-        SetMenuDefaultItem, SetTimer, TrackPopupMenu, TranslateMessage, HICON, HMENU, IDI_APPLICATION,
-        IMAGE_ICON, LR_DEFAULTCOLOR, MF_SEPARATOR, MF_STRING, MSG, SM_CXSMICON, SM_CYSMICON, SW_SHOWNORMAL,
-        TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_APP, WM_CLOSE, WM_CONTEXTMENU,
-        WM_DESTROY, WM_ENDSESSION, WM_LBUTTONDBLCLK, WM_NULL, WM_RBUTTONUP, WM_TIMER, WNDCLASSEXW, WS_EX_TOOLWINDOW,
+        DispatchMessageW, GetCursorPos, GetMessageW, GetSystemMetrics, KillTimer, LoadIconW,
+        LoadImageW, PostMessageW, PostQuitMessage, RegisterClassExW, RegisterWindowMessageW,
+        SetForegroundWindow, SetMenuDefaultItem, SetTimer, TrackPopupMenu, TranslateMessage, HICON,
+        HMENU, IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, MF_SEPARATOR, MF_STRING, MSG,
+        SM_CXSMICON, SM_CYSMICON, SW_SHOWNORMAL, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+        WINDOW_EX_STYLE, WM_APP, WM_CLOSE, WM_CONTEXTMENU, WM_DESTROY, WM_ENDSESSION,
+        WM_LBUTTONDBLCLK, WM_NULL, WM_RBUTTONUP, WM_TIMER, WNDCLASSEXW, WS_EX_TOOLWINDOW,
         WS_OVERLAPPED,
     };
 
@@ -338,7 +355,10 @@ mod win {
             })
             .map_err(|e| e.to_string())?;
         match rx.recv() {
-            Ok(Ok(hwnd)) => Ok(TrayIcon { hwnd, thread: Some(thread) }),
+            Ok(Ok(hwnd)) => Ok(TrayIcon {
+                hwnd,
+                thread: Some(thread),
+            }),
             Ok(Err(e)) => {
                 let _ = thread.join();
                 Err(e)
@@ -355,7 +375,9 @@ mod win {
     }
 
     unsafe fn instance() -> HINSTANCE {
-        GetModuleHandleW(None).map(|m| HINSTANCE(m.0)).unwrap_or_default()
+        GetModuleHandleW(None)
+            .map(|m| HINSTANCE(m.0))
+            .unwrap_or_default()
     }
 
     unsafe fn make_window() -> Result<HWND, String> {
@@ -373,7 +395,10 @@ mod win {
         // starts again (a crash, an update): the icon has to be put back
         // then. A message-only window never hears it, so this is an
         // ordinary top-level window that is simply never shown.
-        TASKBAR_CREATED.store(RegisterWindowMessageW(w!("TaskbarCreated")), Ordering::SeqCst);
+        TASKBAR_CREATED.store(
+            RegisterWindowMessageW(w!("TaskbarCreated")),
+            Ordering::SeqCst,
+        );
         let hwnd = CreateWindowExW(
             WINDOW_EX_STYLE(WS_EX_TOOLWINDOW.0),
             class,
@@ -420,7 +445,12 @@ mod win {
     }
 
     fn data(hwnd: HWND) -> NOTIFYICONDATAW {
-        NOTIFYICONDATAW { cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32, hWnd: hwnd, uID: 1, ..Default::default() }
+        NOTIFYICONDATAW {
+            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+            hWnd: hwnd,
+            uID: 1,
+            ..Default::default()
+        }
     }
 
     unsafe fn add_icon(hwnd: HWND) -> bool {
@@ -499,7 +529,15 @@ mod win {
         // Without this the menu stays up when you click elsewhere
         // (the documented TrackPopupMenu quirk for notification icons).
         let _ = SetForegroundWindow(hwnd);
-        let picked = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, None);
+        let picked = TrackPopupMenu(
+            menu,
+            TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON,
+            pt.x,
+            pt.y,
+            0,
+            hwnd,
+            None,
+        );
         let _ = PostMessageW(hwnd, WM_NULL, WPARAM(0), LPARAM(0));
         let _ = DestroyMenu(menu);
         if let Some(a) = tray_choice(picked.0 as u32, paused) {
@@ -518,12 +556,21 @@ mod win {
             }
             // No hub address (the hub couldn't open): Atlas's window instead,
             // which says why.
-            TrayAction::OpenHubInBrowser if tray_hub_now().is_empty() => act(hwnd, TrayAction::OpenAtlas),
+            TrayAction::OpenHubInBrowser if tray_hub_now().is_empty() => {
+                act(hwnd, TrayAction::OpenAtlas)
+            }
             TrayAction::OpenHubInBrowser => {
                 // The address as it is now: the hub may have opened late or
                 // on another port since the icon went up.
                 let target = HSTRING::from(tray_hub_now().as_str());
-                ShellExecuteW(HWND::default(), w!("open"), &target, PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL);
+                ShellExecuteW(
+                    HWND::default(),
+                    w!("open"),
+                    &target,
+                    PCWSTR::null(),
+                    PCWSTR::null(),
+                    SW_SHOWNORMAL,
+                );
             }
             TrayAction::Pause | TrayAction::Resume => tray_ask(a),
             // The icon goes when the way out has finished (`WM_TIMER`).
@@ -589,7 +636,8 @@ mod win {
             WM_ENDSESSION if wp.0 != 0 => {
                 let lock = crate::onlyone::OnlyOne::at(&crate::roots::data_dir());
                 // unheard-ok: says whether the other Atlas stopped; the start that follows checks again
-                let _ = crate::goodbye::stop_and_wait(lock.path(), std::time::Duration::from_secs(4));
+                let _ =
+                    crate::goodbye::stop_and_wait(lock.path(), std::time::Duration::from_secs(4));
                 LRESULT(0)
             }
             WM_DESTROY => {

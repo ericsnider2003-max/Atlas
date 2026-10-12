@@ -16,7 +16,10 @@ use atlas::config::Config;
 use std::path::Path;
 
 fn tools() -> atlas::voice::ToolsConfig {
-    Config::load(Path::new("config")).unwrap().tools.expect("tools.yaml loads")
+    Config::load(Path::new("config"))
+        .unwrap()
+        .tools
+        .expect("tools.yaml loads")
 }
 
 #[test]
@@ -26,7 +29,9 @@ fn the_disk_budget_is_read_from_your_config_not_rebuilt() {
     // one. A behavioural test would need a 500MB data directory to tell the
     // two apart.
     let d = crate::common::source_of("daemon");
-    let at = d.find("crate::retention::survey").expect("the housekeeping pass is gone");
+    let at = d
+        .find("crate::retention::survey")
+        .expect("the housekeeping pass is gone");
     let window = &d[at.saturating_sub(1200)..(at + 400).min(d.len())];
     // Comments stripped first. The note explaining this fix names the very
     // pattern it forbids, and the first version of this test failed on its
@@ -70,7 +75,10 @@ fn the_shipped_file_still_carries_both_sections() {
     let raw = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
     // 28 Sep 2026: `ladder:` left with `ladder.rs`; the other two remain.
     for section in ["retention:", "together:"] {
-        assert!(raw.contains(section), "{section} is no longer in the shipped config");
+        assert!(
+            raw.contains(section),
+            "{section} is no longer in the shipped config"
+        );
     }
 }
 
@@ -121,18 +129,25 @@ fn the_hub_can_be_turned_off_from_config() {
     // the socket rather than the switch.
     let m = crate::common::source_of("main");
     assert!(
-        (m.contains("Action::Hub(_) if !tools.hub.enabled") || m.contains("Action::Hub(_) | Action::HubQ(..) if !tools.hub.enabled")),
+        (m.contains("Action::Hub(_) if !tools.hub.enabled")
+            || m.contains("Action::Hub(_) | Action::HubQ(..) if !tools.hub.enabled")),
         "the hub serves its pages without consulting hub.enabled again"
     );
 
     // And the shipped file still offers the switch.
     let raw = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    assert!(raw.contains("hub:"), "the hub section is no longer in the shipped config");
+    assert!(
+        raw.contains("hub:"),
+        "the hub section is no longer in the shipped config"
+    );
 }
 
 #[test]
 fn the_hub_ships_on() {
     // On, as it already was. Wiring a switch must not quietly take the
     // dashboard away from anyone who never asked for it to change.
-    assert!(tools().hub.enabled, "the hub now ships off, which nobody asked for");
+    assert!(
+        tools().hub.enabled,
+        "the hub now ships off, which nobody asked for"
+    );
 }

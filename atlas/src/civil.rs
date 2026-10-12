@@ -69,7 +69,14 @@ impl Civil {
         let days = secs.div_euclid(86_400);
         let rem = secs.rem_euclid(86_400) as u32;
         let (year, month, day) = civil_from_days(days);
-        Civil { year, month, day, hour: rem / 3600, minute: rem % 3600 / 60, second: rem % 60 }
+        Civil {
+            year,
+            month,
+            day,
+            hour: rem / 3600,
+            minute: rem % 3600 / 60,
+            second: rem % 60,
+        }
     }
     pub fn to_local(&self) -> i64 {
         days_from_civil(self.year, self.month, self.day) * 86_400
@@ -97,7 +104,7 @@ mod tests {
     fn known_dates() {
         assert_eq!(days_from_civil(1970, 1, 1), 0);
         assert_eq!(weekday(0), 3); // Thursday
-        // 2026-09-23 is a Wednesday.
+                                   // 2026-09-23 is a Wednesday.
         assert_eq!(weekday(days_from_civil(2026, 9, 23)), 2);
         assert_eq!(days_in_month(2024, 2), 29);
         assert_eq!(days_in_month(2100, 2), 28);

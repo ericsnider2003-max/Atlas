@@ -98,7 +98,10 @@ impl Fingerprint {
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        Some(Fingerprint { len: md.len(), modified_secs })
+        Some(Fingerprint {
+            len: md.len(),
+            modified_secs,
+        })
     }
 }
 
@@ -112,11 +115,21 @@ impl Sandbox {
     pub fn create(base: &Path, name: &str) -> Result<Sandbox> {
         let safe: String = name
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '-'
+                }
+            })
             .collect();
         let root = base.join(format!("{safe}-{}", now()));
         std::fs::create_dir_all(&root)?;
-        Ok(Sandbox { root, name: safe, attempts: Vec::new() })
+        Ok(Sandbox {
+            root,
+            name: safe,
+            attempts: Vec::new(),
+        })
     }
 
     /// Resolve a path inside the sandbox, refusing anything that escapes.
@@ -126,7 +139,9 @@ impl Sandbox {
     pub fn resolve(&self, rel: &str) -> Result<PathBuf> {
         let p = Path::new(rel);
         if p.is_absolute() {
-            return Err(AtlasError::Platform(format!("{rel} is outside the sandbox")));
+            return Err(AtlasError::Platform(format!(
+                "{rel} is outside the sandbox"
+            )));
         }
         for c in p.components() {
             match c {
@@ -178,12 +193,34 @@ impl Sandbox {
         self.run_controlled(tool, vars, max_output, None)
     }
 
-    pub(crate) fn run_controlled(&mut self, tool: &ExternalTool, vars: &Vars, max_output: usize, stop: Option<&dyn Fn() -> bool>) -> Attempt {
+    pub(crate) fn run_controlled(
+        &mut self,
+        tool: &ExternalTool,
+        vars: &Vars,
+        max_output: usize,
+        stop: Option<&dyn Fn() -> bool>,
+    ) -> Attempt {
         let (cmd, args) = tool.resolved(vars);
-        let limit = if tool.timeout_secs == 0 { DEFAULT_LIMIT_SECS } else { tool.timeout_secs };
+        let limit = if tool.timeout_secs == 0 {
+            DEFAULT_LIMIT_SECS
+        } else {
+            tool.timeout_secs
+        };
         let command = format!("{cmd} {}", args.join(" "));
-        let attempt = match run_limited_controlled(&cmd, &args, &[], &self.root, std::time::Duration::from_secs(limit), stop) {
-            Ran::Finished { passed, text } => Attempt { command, passed, output: trim_output(&text, max_output), at: now() },
+        let attempt = match run_limited_controlled(
+            &cmd,
+            &args,
+            &[],
+            &self.root,
+            std::time::Duration::from_secs(limit),
+            stop,
+        ) {
+            Ran::Finished { passed, text } => Attempt {
+                command,
+                passed,
+                output: trim_output(&text, max_output),
+                at: now(),
+            },
             Ran::TooLong { text } => Attempt {
                 command,
                 passed: false,
@@ -193,8 +230,18 @@ impl Sandbox {
                 ),
                 at: now(),
             },
-            Ran::Stopped => Attempt { command, passed: false, output: "error: stopped because you asked me to stop".into(), at: now() },
-            Ran::NoStart(e) => Attempt { command: cmd.clone(), passed: false, output: format!("could not start {cmd}: {e}"), at: now() },
+            Ran::Stopped => Attempt {
+                command,
+                passed: false,
+                output: "error: stopped because you asked me to stop".into(),
+                at: now(),
+            },
+            Ran::NoStart(e) => Attempt {
+                command: cmd.clone(),
+                passed: false,
+                output: format!("could not start {cmd}: {e}"),
+                at: now(),
+            },
         };
         self.attempts.push(attempt.clone());
         attempt
@@ -240,7 +287,10 @@ impl Sandbox {
             .iter()
             .take(3)
             .map(|c| {
-                c.target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+                c.target
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default()
             })
             .collect();
         format!(
@@ -248,7 +298,11 @@ impl Sandbox {
             new,
             replaced,
             names.join(", "),
-            if changes.len() > 3 { format!(" and {} more", changes.len() - 3) } else { String::new() }
+            if changes.len() > 3 {
+                format!(" and {} more", changes.len() - 3)
+            } else {
+                String::new()
+            }
         )
     }
 
@@ -272,7 +326,11 @@ impl Sandbox {
                  re-run it against the file as it is now.",
                 first.target.display(),
                 if moved.len() > 1 {
-                    format!(" (and {} other{})", moved.len() - 1, if moved.len() > 2 { "s" } else { "" })
+                    format!(
+                        " (and {} other{})",
+                        moved.len() - 1,
+                        if moved.len() > 2 { "s" } else { "" }
+                    )
                 } else {
                     String::new()
                 }
@@ -301,7 +359,9 @@ impl Sandbox {
 }
 
 fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in rd.flatten() {
         let p = e.path();
         if p.is_dir() {
@@ -322,18 +382,42 @@ enum Ran {
     NoStart(String),
 }
 
-
 /// Run a program in `dir` with extra environment, for no longer than
 /// `limit`: whether it passed, and what it said (head and tail kept, with
 /// every result line). Stopped past the limit, it reads as failed and says so.
-pub fn run_within(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, limit_secs: u64, max_output: usize) -> (bool, String) {
+pub fn run_within(
+    cmd: &str,
+    args: &[String],
+    env: &[(&str, &str)],
+    dir: &Path,
+    limit_secs: u64,
+    max_output: usize,
+) -> (bool, String) {
     run_within_controlled(cmd, args, env, dir, limit_secs, max_output, None)
 }
 
-pub(crate) fn run_within_controlled(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, limit_secs: u64, max_output: usize, stop: Option<&dyn Fn() -> bool>) -> (bool, String) {
-    match run_limited_controlled(cmd, args, env, dir, std::time::Duration::from_secs(limit_secs), stop) {
+pub(crate) fn run_within_controlled(
+    cmd: &str,
+    args: &[String],
+    env: &[(&str, &str)],
+    dir: &Path,
+    limit_secs: u64,
+    max_output: usize,
+    stop: Option<&dyn Fn() -> bool>,
+) -> (bool, String) {
+    match run_limited_controlled(
+        cmd,
+        args,
+        env,
+        dir,
+        std::time::Duration::from_secs(limit_secs),
+        stop,
+    ) {
         Ran::Finished { passed, text } => (passed, trim_output(&text, max_output)),
-        Ran::TooLong { .. } => (false, format!("error: stopped after {limit_secs} seconds -- it was still running")),
+        Ran::TooLong { .. } => (
+            false,
+            format!("error: stopped after {limit_secs} seconds -- it was still running"),
+        ),
         Ran::Stopped => (false, "error: stopped because you asked me to stop".into()),
         Ran::NoStart(e) => (false, format!("couldn't run {cmd}: {e}")),
     }
@@ -344,7 +428,10 @@ pub(crate) fn run_within_controlled(cmd: &str, args: &[String], env: &[(&str, &s
 /// caller or the environment already named one. Without it every copy is a
 /// cold build, and every self-fix on a laptop ran out of time compiling.
 pub(crate) fn warm_cargo(c: &mut std::process::Command, cmd: &str, env: &[(&str, &str)]) {
-    if is_cargo(cmd) && !env.iter().any(|(k, _)| *k == "CARGO_TARGET_DIR") && std::env::var_os("CARGO_TARGET_DIR").is_none() {
+    if is_cargo(cmd)
+        && !env.iter().any(|(k, _)| *k == "CARGO_TARGET_DIR")
+        && std::env::var_os("CARGO_TARGET_DIR").is_none()
+    {
         let dir = crate::roots::build_cache();
         crate::heard!(std::fs::create_dir_all(&dir));
         c.env("CARGO_TARGET_DIR", dir);
@@ -358,16 +445,26 @@ fn is_cargo(cmd: &str) -> bool {
         .is_some_and(|s| s.to_string_lossy().eq_ignore_ascii_case("cargo"))
 }
 
-
-fn run_limited_controlled(cmd: &str, args: &[String], env: &[(&str, &str)], dir: &Path, limit: std::time::Duration, stop: Option<&dyn Fn() -> bool>) -> Ran {
+fn run_limited_controlled(
+    cmd: &str,
+    args: &[String],
+    env: &[(&str, &str)],
+    dir: &Path,
+    limit: std::time::Duration,
+    stop: Option<&dyn Fn() -> bool>,
+) -> Ran {
     let mut c = crate::tools::command(cmd);
     c.args(args).current_dir(dir);
-    for (k, v) in env { c.env(k, v); }
+    for (k, v) in env {
+        c.env(k, v);
+    }
     warm_cargo(&mut c, cmd, env);
     let run = crate::tools::run_scoped(&mut c, limit, 8 * 1024 * 1024, None, stop);
     match &run.end {
         crate::tools::ProcessEnd::Stopped => Ran::Stopped,
-        crate::tools::ProcessEnd::TimedOut => Ran::TooLong { text: String::new() },
+        crate::tools::ProcessEnd::TimedOut => Ran::TooLong {
+            text: String::new(),
+        },
         crate::tools::ProcessEnd::Failed(why) => Ran::NoStart(why.clone()),
         crate::tools::ProcessEnd::Exited(_) => {
             let (passed, text) = run.said(8 * 1024 * 1024);
@@ -389,9 +486,20 @@ pub fn trim_output(text: &str, max: usize) -> String {
         return text.to_string();
     }
     let head: String = text.chars().take(max * 2 / 3).collect();
-    let tail: String = text.chars().rev().take(max / 3).collect::<String>().chars().rev().collect();
+    let tail: String = text
+        .chars()
+        .rev()
+        .take(max / 3)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
     let (h, t) = (head.len(), text.len().saturating_sub(tail.len()));
-    let middle = if h < t { text.get(h..t).unwrap_or("") } else { "" };
+    let middle = if h < t {
+        text.get(h..t).unwrap_or("")
+    } else {
+        ""
+    };
     let kept: Vec<&str> = middle
         .lines()
         .map(str::trim)
@@ -406,8 +514,15 @@ pub fn trim_output(text: &str, max: usize) -> String {
         })
         .take(2000)
         .collect();
-    let kept = if kept.is_empty() { String::new() } else { format!("{}\n", kept.join("\n")) };
-    format!("{head}\n...[{} characters omitted; results kept]...\n{kept}{tail}", text.len() - max)
+    let kept = if kept.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", kept.join("\n"))
+    };
+    format!(
+        "{head}\n...[{} characters omitted; results kept]...\n{kept}{tail}",
+        text.len() - max
+    )
 }
 
 #[cfg(test)]
@@ -420,12 +535,23 @@ mod limits {
         let mut sb = Sandbox::create(&base, "limit").unwrap();
         // Something that takes thirty seconds on either system (Windows has
         // no `sleep` program).
-        let (command, args): (&str, Vec<String>) =
-            if cfg!(windows) { ("ping", vec!["-n".into(), "31".into(), "127.0.0.1".into()]) } else { ("sleep", vec!["30".into()]) };
-        let tool = ExternalTool { command: command.into(), args, timeout_secs: 1, ..Default::default() };
+        let (command, args): (&str, Vec<String>) = if cfg!(windows) {
+            ("ping", vec!["-n".into(), "31".into(), "127.0.0.1".into()])
+        } else {
+            ("sleep", vec!["30".into()])
+        };
+        let tool = ExternalTool {
+            command: command.into(),
+            args,
+            timeout_secs: 1,
+            ..Default::default()
+        };
         let started = std::time::Instant::now();
         let a = sb.run(&tool, &Default::default(), 1000);
-        assert!(started.elapsed() < std::time::Duration::from_secs(10), "it waited the whole run");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(10),
+            "it waited the whole run"
+        );
         assert!(!a.passed);
         assert!(a.output.contains("stopped after 1 seconds"), "{}", a.output);
     }
@@ -434,7 +560,10 @@ mod limits {
     fn every_test_result_line_survives_the_trim() {
         let mut text = String::from("Compiling atlas\n");
         for i in 0..400 {
-            text.push_str(&format!("running {i} tests\n{}\ntest result: ok. 10 passed; 0 failed\n", "x".repeat(200)));
+            text.push_str(&format!(
+                "running {i} tests\n{}\ntest result: ok. 10 passed; 0 failed\n",
+                "x".repeat(200)
+            ));
         }
         text.push_str("test something::broke ... FAILED\n");
         let trimmed = trim_output(&text, 2000);
@@ -449,6 +578,9 @@ mod limits {
         text.push_str("error[E0308]: mismatched types\n");
         text.push_str(&"y\n".repeat(3000));
         let trimmed = trim_output(&text, 1000);
-        assert!(trimmed.contains("error[E0308]: mismatched types"), "{trimmed}");
+        assert!(
+            trimmed.contains("error[E0308]: mismatched types"),
+            "{trimmed}"
+        );
     }
 }

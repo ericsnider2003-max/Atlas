@@ -85,7 +85,12 @@ impl Person {
                 t.seen += 1;
                 t.last = now;
             }
-            None => self.traits.push(Trait_ { what: what.into(), seen: 1, last: now, kind }),
+            None => self.traits.push(Trait_ {
+                what: what.into(),
+                seen: 1,
+                last: now,
+                kind,
+            }),
         }
     }
 
@@ -230,11 +235,17 @@ impl Person {
 
     /// What Atlas is confident about, and hasn't gone stale.
     pub fn known(&self, now: u64) -> Vec<&Trait_> {
-        self.traits.iter().filter(|t| t.confident() && !t.stale(now)).collect()
+        self.traits
+            .iter()
+            .filter(|t| t.confident() && !t.stale(now))
+            .collect()
     }
 
     pub fn about(&self, kind: Kind, now: u64) -> Vec<&Trait_> {
-        self.known(now).into_iter().filter(|t| t.kind == kind).collect()
+        self.known(now)
+            .into_iter()
+            .filter(|t| t.kind == kind)
+            .collect()
     }
 
     /// The hours you're usually working, as a range.
@@ -293,7 +304,9 @@ impl Person {
             .iter()
             .filter_map(|(p, t)| {
                 let days = now.saturating_sub(*t) / 86_400;
-                (21..90).contains(&days).then_some((p.as_str(), (days / 7) as u32))
+                (21..90)
+                    .contains(&days)
+                    .then_some((p.as_str(), (days / 7) as u32))
             })
             .collect()
     }
@@ -328,10 +341,14 @@ impl Person {
 /// project", "project Atlas"), or one you've named before that it mentions.
 pub fn project_named(said: &str, known: &[(String, u64)]) -> Option<String> {
     let l = said.to_lowercase();
-    let words: Vec<&str> = l.split(|c: char| !c.is_alphanumeric() && c != '-').filter(|w| !w.is_empty()).collect();
+    let words: Vec<&str> = l
+        .split(|c: char| !c.is_alphanumeric() && c != '-')
+        .filter(|w| !w.is_empty())
+        .collect();
     const NOT_NAMES: &[&str] = &[
-        "the", "a", "an", "my", "this", "that", "new", "our", "your", "which", "what", "side", "whole", "to", "for",
-        "on", "in", "of", "about", "with", "at", "from", "into", "and", "or", "is", "was", "each", "every", "same",
+        "the", "a", "an", "my", "this", "that", "new", "our", "your", "which", "what", "side",
+        "whole", "to", "for", "on", "in", "of", "about", "with", "at", "from", "into", "and", "or",
+        "is", "was", "each", "every", "same",
     ];
     for (i, w) in words.iter().enumerate() {
         if *w == "project" {
@@ -343,7 +360,9 @@ pub fn project_named(said: &str, known: &[(String, u64)]) -> Option<String> {
             }
             // "project Atlas"
             if let Some(next) = words.get(i + 1) {
-                if !NOT_NAMES.contains(next) && !["is", "was", "for", "to", "and", "about"].contains(next) {
+                if !NOT_NAMES.contains(next)
+                    && !["is", "was", "for", "to", "and", "about"].contains(next)
+                {
                     return Some(title_case(next));
                 }
             }
@@ -354,14 +373,19 @@ pub fn project_named(said: &str, known: &[(String, u64)]) -> Option<String> {
         .map(|(p, _)| p)
         .find(|p| {
             let pl = p.to_lowercase();
-            pl.len() >= 3 && words.windows(pl.split_whitespace().count().max(1)).any(|w| w.join(" ") == pl)
+            pl.len() >= 3
+                && words
+                    .windows(pl.split_whitespace().count().max(1))
+                    .any(|w| w.join(" ") == pl)
         })
         .cloned()
 }
 
 fn title_case(w: &str) -> String {
     let mut c = w.chars();
-    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+    c.next()
+        .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+        .unwrap_or_default()
 }
 
 // ---------- learning from what actually happens ----------
@@ -377,18 +401,21 @@ pub fn learn_from_edit(before: &str, after: &str) -> Option<(String, Kind)> {
     let aw = a.split_whitespace().count();
 
     if aw * 2 < bw {
-        return Some(("cuts what I write down by about half".into(), Kind::Correction));
+        return Some((
+            "cuts what I write down by about half".into(),
+            Kind::Correction,
+        ));
     }
     if aw > bw + bw / 2 {
         return Some(("adds detail to what I write".into(), Kind::Correction));
     }
     // Same length, different words: a rewrite for tone.
-    let shared = b
-        .split_whitespace()
-        .filter(|w| a.contains(*w))
-        .count();
+    let shared = b.split_whitespace().filter(|w| a.contains(*w)).count();
     if shared * 3 < bw {
-        return Some(("rewrites my wording rather than trimming it".into(), Kind::Correction));
+        return Some((
+            "rewrites my wording rather than trimming it".into(),
+            Kind::Correction,
+        ));
     }
     None
 }
@@ -490,9 +517,18 @@ pub const NOT_A_THERAPIST: &str =
 pub fn beyond_me(said: &str) -> bool {
     let t = said.to_lowercase();
     [
-        "want to die", "kill myself", "end it all", "worth living",
-        "hurt myself", "harm myself", "no reason to go on", "better off without me",
-        "end my life", "not want to be here", "cant go on", "can't go on",
+        "want to die",
+        "kill myself",
+        "end it all",
+        "worth living",
+        "hurt myself",
+        "harm myself",
+        "no reason to go on",
+        "better off without me",
+        "end my life",
+        "not want to be here",
+        "cant go on",
+        "can't go on",
     ]
     .iter()
     .any(|p| t.contains(p))
@@ -509,10 +545,23 @@ pub fn beyond_me(said: &str) -> bool {
 pub fn having_a_hard_time(said: &str) -> bool {
     let t = said.to_lowercase();
     [
-        "rough day", "hard day", "long day", "terrible day", "awful day",
-        "so stressed", "really stressed", "stressed out", "overwhelmed",
-        "burnt out", "burned out", "worn out", "at my limit", "falling apart",
-        "had it today", "so drained", "wiped out today",
+        "rough day",
+        "hard day",
+        "long day",
+        "terrible day",
+        "awful day",
+        "so stressed",
+        "really stressed",
+        "stressed out",
+        "overwhelmed",
+        "burnt out",
+        "burned out",
+        "worn out",
+        "at my limit",
+        "falling apart",
+        "had it today",
+        "so drained",
+        "wiped out today",
     ]
     .iter()
     .any(|p| t.contains(p))
@@ -530,7 +579,11 @@ pub fn hard_day(what_it_can_take_on: &[String]) -> String {
             if rest.is_empty() {
                 String::new()
             } else {
-                format!(" and {} other thing{}", rest.len(), if rest.len() == 1 { "" } else { "s" })
+                format!(
+                    " and {} other thing{}",
+                    rest.len(),
+                    if rest.len() == 1 { "" } else { "s" }
+                )
             }
         ),
     }
@@ -608,12 +661,7 @@ impl Said {
 ///
 /// One at a time, most pressing first. Four observations at once is a
 /// lecture, and nobody takes a lecture from their laptop.
-pub fn noticing(
-    p: &Person,
-    cfg: &PersonConfig,
-    hours_straight: u32,
-    now: u64,
-) -> Option<Noticed> {
+pub fn noticing(p: &Person, cfg: &PersonConfig, hours_straight: u32, now: u64) -> Option<Noticed> {
     if !cfg.enabled || !cfg.notice_patterns {
         return None;
     }
@@ -626,14 +674,19 @@ pub fn noticing(
         }
     }
     if cfg.hours_before_saying > 0 && hours_straight >= cfg.hours_before_saying {
-        return Some(Noticed::NoBreak { hours: hours_straight });
+        return Some(Noticed::NoBreak {
+            hours: hours_straight,
+        });
     }
     // Longest quiet first: the one that has been still the longest is the one
     // most likely to be genuinely parked rather than merely paused.
     let mut quiet = p.gone_quiet(now);
     quiet.sort_by_key(|(_, weeks)| std::cmp::Reverse(*weeks));
     if let Some((project, weeks)) = quiet.first() {
-        return Some(Noticed::Stalled { project: (*project).to_string(), weeks: *weeks });
+        return Some(Noticed::Stalled {
+            project: (*project).to_string(),
+            weeks: *weeks,
+        });
     }
     None
 }

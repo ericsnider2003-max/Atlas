@@ -102,7 +102,6 @@ pub enum Transition {
 }
 
 impl Transition {
-
     pub fn how(&self) -> &'static str {
         match self {
             Transition::Directional => {
@@ -119,7 +118,10 @@ impl Transition {
 
 /// Too many effects is the commonest sign of an editor who's learning.
 pub fn too_many_effects(transitions: &[Transition], seconds: f32) -> Option<String> {
-    let in_post = transitions.iter().filter(|t| **t == Transition::InPost).count();
+    let in_post = transitions
+        .iter()
+        .filter(|t| **t == Transition::InPost)
+        .count();
     if in_post == 0 || seconds <= 0.0 {
         return None;
     }
@@ -164,10 +166,16 @@ pub fn what_they_asked(text: &str) -> BrandAsks {
     if t.contains("perpetual") || t.contains("in perpetuity") || t.contains("worldwide usage") {
         return BrandAsks::HugeRightsSmallBudget;
     }
-    if t.contains("net 30") || t.contains("net 60") || t.contains("net 90") || t.contains("payment terms") {
+    if t.contains("net 30")
+        || t.contains("net 60")
+        || t.contains("net 90")
+        || t.contains("payment terms")
+    {
         return BrandAsks::LatePayment;
     }
-    if t.contains("smaller brand") || t.contains("bit less") || t.contains("our budget is")
+    if t.contains("smaller brand")
+        || t.contains("bit less")
+        || t.contains("our budget is")
         || t.contains("lower rate")
     {
         return BrandAsks::Cheaper;
@@ -282,7 +290,10 @@ pub fn what_it_is(d: &DealTerms) -> WhatItIs {
 pub fn judge_deal(d: &DealTerms) -> String {
     match what_it_is(d) {
         WhatItIs::RealAffiliate => {
-            let mut s = format!("That's a genuine affiliate arrangement — {}% and nothing owed.", d.commission_pct);
+            let mut s = format!(
+                "That's a genuine affiliate arrangement — {}% and nothing owed.",
+                d.commission_pct
+            );
             if d.you_already_use_it {
                 // The whole argument for affiliates, and the answer to
                 // "isn't that free labour".
@@ -363,7 +374,13 @@ impl Rung {
 }
 
 pub fn ladder() -> Vec<Rung> {
-    vec![Rung::Photo, Rung::NameAndNiche, Rung::WhoYouHelp, Rung::Proof, Rung::OneThingToDo]
+    vec![
+        Rung::Photo,
+        Rung::NameAndNiche,
+        Rung::WhoYouHelp,
+        Rung::Proof,
+        Rung::OneThingToDo,
+    ]
 }
 
 /// How far up you are, and the next rung.
@@ -377,11 +394,7 @@ pub fn next_rung(has: &[Rung]) -> Option<Rung> {
 pub fn profile_note(has: &[Rung]) -> String {
     match next_rung(has) {
         None => "Your profile is doing everything it can.".into(),
-        Some(r) => format!(
-            "{} of 5. The next one is {}.",
-            has.len(),
-            r.what()
-        ),
+        Some(r) => format!("{} of 5. The next one is {}.", has.len(), r.what()),
     }
 }
 
@@ -456,14 +469,48 @@ pub fn terms_from(text: &str) -> DealTerms {
         .split_whitespace()
         .collect::<Vec<_>>()
         .windows(2)
-        .find_map(|w| if w[1].starts_with("post") || w[1].starts_with("video") || w[1].starts_with("reel") { w[0].parse::<u32>().ok() } else { None })
-        .unwrap_or(if has(&["deliverable", "a post a", "one post", "a video a"]) { 1 } else { 0 });
+        .find_map(|w| {
+            if w[1].starts_with("post") || w[1].starts_with("video") || w[1].starts_with("reel") {
+                w[0].parse::<u32>().ok()
+            } else {
+                None
+            }
+        })
+        .unwrap_or(
+            if has(&["deliverable", "a post a", "one post", "a video a"]) {
+                1
+            } else {
+                0
+            },
+        );
     DealTerms {
-        exclusive: has(&["exclusive", "can't promote", "cannot promote", "not promote any other", "only promote", "competitor"]),
+        exclusive: has(&[
+            "exclusive",
+            "can't promote",
+            "cannot promote",
+            "not promote any other",
+            "only promote",
+            "competitor",
+        ]),
         deliverables,
         bio_placement: has(&["in your bio", "link in bio", "bio link"]),
-        posting_quota: has(&["per month", "a month", "per week", "a week", "minimum of", "at least"]),
-        paid_up_front: has(&["flat fee", "up front", "upfront", "paid in advance", "per post fee", "we'll pay you", "we will pay you"]),
+        posting_quota: has(&[
+            "per month",
+            "a month",
+            "per week",
+            "a week",
+            "minimum of",
+            "at least",
+        ]),
+        paid_up_front: has(&[
+            "flat fee",
+            "up front",
+            "upfront",
+            "paid in advance",
+            "per post fee",
+            "we'll pay you",
+            "we will pay you",
+        ]),
         commission_pct: pct,
         you_already_use_it: has(&["i already use", "i use it", "i own it", "i already have"]),
     }

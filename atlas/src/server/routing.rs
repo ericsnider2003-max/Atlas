@@ -19,11 +19,19 @@ pub fn route_signal(
         return None;
     }
     let what = field(&r.body, "what")?;
-    let urgent = field(&r.body, "urgency").map(|u| u == "urgent").unwrap_or(false);
-    let urgency = if urgent { crate::kin::Urgency::Urgent } else { crate::kin::Urgency::Info };
+    let urgent = field(&r.body, "urgency")
+        .map(|u| u == "urgent")
+        .unwrap_or(false);
+    let urgency = if urgent {
+        crate::kin::Urgency::Urgent
+    } else {
+        crate::kin::Urgency::Info
+    };
     let now = crate::store::now();
     let mut door = held(door);
-    door.receive(token, &what, urgency, now).ok().map(Action::Signal)
+    door.receive(token, &what, urgency, now)
+        .ok()
+        .map(Action::Signal)
 }
 
 /// The routing surface for handed-over content, and the whole of it.
@@ -64,7 +72,10 @@ pub fn route_handoff(
     };
     let mut door = held(door);
     match file {
-        None => door.receive_handoff(token, &what, now).ok().map(Action::Handed),
+        None => door
+            .receive_handoff(token, &what, now)
+            .ok()
+            .map(Action::Handed),
         Some((name, bytes)) => door
             .receive_handoff_file(token, &what, &name, bytes, now)
             .ok()
@@ -113,7 +124,8 @@ pub fn route_chat(
         .unwrap_or_default();
     // Who a relayed group message is really from, as a key. Only a group's
     // owner is believed when it says this -- decided where it's filed.
-    let on_behalf_of = field(&r.body, "on_behalf_of").filter(|s| s != "null" && crate::peerkey::is_public_key(s));
+    let on_behalf_of =
+        field(&r.body, "on_behalf_of").filter(|s| s != "null" && crate::peerkey::is_public_key(s));
     let now = crate::store::now();
     let mut door = held(door);
     door.receive_chat(
@@ -151,24 +163,36 @@ pub fn route_read(
         .unwrap_or_default();
     let now = crate::store::now();
     let mut door = held(door);
-    door.receive_read(token, ids, now).ok().map(Action::ReadReceipt)
+    door.receive_read(token, ids, now)
+        .ok()
+        .map(Action::ReadReceipt)
 }
 
 /// The introduction door: a paired Atlas's public key, and nothing else. A
 /// separate function for the same structural reason as every door here.
-pub fn route_hello(r: &Request, door: &std::sync::Mutex<crate::kin::Door>, token: &str) -> Option<Action> {
+pub fn route_hello(
+    r: &Request,
+    door: &std::sync::Mutex<crate::kin::Door>,
+    token: &str,
+) -> Option<Action> {
     if r.method != "POST" || r.path != "/hello" {
         return None;
     }
     let key = field(&r.body, "key")?;
     let now = crate::store::now();
     let mut door = held(door);
-    door.receive_hello(token, &key, now).ok().map(Action::PeerHello)
+    door.receive_hello(token, &key, now)
+        .ok()
+        .map(Action::PeerHello)
 }
 
 /// The group-list door: a signed list and its signature, nothing else. Who
 /// carried it is the token's; whether it is true is the owner's signature's.
-pub fn route_group(r: &Request, door: &std::sync::Mutex<crate::kin::Door>, token: &str) -> Option<Action> {
+pub fn route_group(
+    r: &Request,
+    door: &std::sync::Mutex<crate::kin::Door>,
+    token: &str,
+) -> Option<Action> {
     if r.method != "POST" || r.path != "/group" {
         return None;
     }
@@ -177,27 +201,41 @@ pub fn route_group(r: &Request, door: &std::sync::Mutex<crate::kin::Door>, token
     let signer = field(&r.body, "signer").unwrap_or_default();
     let now = crate::store::now();
     let mut door = held(door);
-    door.receive_group(token, &state, &signature, &signer, now).ok().map(Action::PeerGroup)
+    door.receive_group(token, &state, &signature, &signer, now)
+        .ok()
+        .map(Action::PeerGroup)
 }
 
 /// The feedback doors: a friend's feedback (`/feedback`), or the answer to
 /// feedback you sent (`/feedback-answer`). Either way, from the peer the token
 /// names, size-capped, and filed -- nothing else.
-pub fn route_feedback(r: &Request, door: &std::sync::Mutex<crate::kin::Door>, token: &str) -> Option<Action> {
+pub fn route_feedback(
+    r: &Request,
+    door: &std::sync::Mutex<crate::kin::Door>,
+    token: &str,
+) -> Option<Action> {
     if r.method != "POST" || (r.path != "/feedback" && r.path != "/feedback-answer") {
         return None;
     }
     let body = field(&r.body, "body")?;
     let now = crate::store::now();
     let got = held(door).receive_feedback(token, &body, now).ok()?;
-    Some(if r.path == "/feedback" { Action::PeerFeedback(got) } else { Action::PeerFeedbackAnswer(got) })
+    Some(if r.path == "/feedback" {
+        Action::PeerFeedback(got)
+    } else {
+        Action::PeerFeedbackAnswer(got)
+    })
 }
 
 /// The friend door: the one door with no token, because whoever knocks
 /// isn't a friend yet. What lets them in is the one-time secret from a link
 /// you made, spent by `kin::Door::receive_friend` before anything happens.
 /// It builds exactly one variant, like every door here.
-pub(super) fn route_friend(r: &Request, door: &std::sync::Mutex<crate::kin::Door>, sealed_by: Option<&str>) -> Option<Action> {
+pub(super) fn route_friend(
+    r: &Request,
+    door: &std::sync::Mutex<crate::kin::Door>,
+    sealed_by: Option<&str>,
+) -> Option<Action> {
     if r.method != "POST" || r.path != "/friend" {
         return None;
     }
@@ -228,7 +266,9 @@ pub fn route_left(
     let group_id = field(&r.body, "group_id")?;
     let now = crate::store::now();
     let mut door = held(door);
-    door.receive_left(token, &group_id, now).ok().map(Action::LeftGroup)
+    door.receive_left(token, &group_id, now)
+        .ok()
+        .map(Action::LeftGroup)
 }
 
 impl Action {
@@ -236,15 +276,18 @@ impl Action {
     /// line (`private_line`)? The one list the connection handler asks.
     pub fn carries_a_secret(&self) -> bool {
         match self {
-            Action::Vault { .. } | Action::Signing { .. } | Action::TakeBack { .. } | Action::SyncKeySet { .. } => true,
+            Action::Vault { .. }
+            | Action::Signing { .. }
+            | Action::TakeBack { .. }
+            | Action::SyncKeySet { .. } => true,
             // The Updates page's release-key forms take the vault passphrase
             // as an ordinary field.
             // The Social page's key and sign-in forms carry a `secret`.
             // Connect an account's forms carry a mail `password` (5 Oct 2026
             // audit, Q6: it crossed home Wi-Fi in plain HTTP).
-            Action::HubPost { fields, .. } => {
-                fields.iter().any(|(k, _)| k == "passphrase" || k == "again" || k == "secret" || k == "password")
-            }
+            Action::HubPost { fields, .. } => fields.iter().any(|(k, _)| {
+                k == "passphrase" || k == "again" || k == "secret" || k == "password"
+            }),
             _ => false,
         }
     }
@@ -253,19 +296,54 @@ impl Action {
 #[cfg(test)]
 mod signing_post_tests {
     use super::*;
-    fn request(body: &str) -> Request { Request { method: "POST".into(), path: "/hub/signing".into(), query: String::new(), token: None, token_from_url: false, body: body.into() } }
+    fn request(body: &str) -> Request {
+        Request {
+            method: "POST".into(),
+            path: "/hub/signing".into(),
+            query: String::new(),
+            token: None,
+            token_from_url: false,
+            body: body.into(),
+        }
+    }
     #[test]
     fn signing_posts_keep_fresh_unlock_private_and_refuse_ambiguous_selections() {
-        let path = if cfg!(windows) { "C%3A%5Csynthetic%5Cowner.key" } else { "%2Fsynthetic%2Fowner.key" };
-        let body = format!("what=protect&name=Owner&source={path}&unlock=SyntheticOnly%21&nonce=one");
+        let path = if cfg!(windows) {
+            "C%3A%5Csynthetic%5Cowner.key"
+        } else {
+            "%2Fsynthetic%2Fowner.key"
+        };
+        let body =
+            format!("what=protect&name=Owner&source={path}&unlock=SyntheticOnly%21&nonce=one");
         let action = route(&request(&body)).unwrap();
         assert!(action.carries_a_secret());
         let diagnostic = format!("{action:?}");
         assert!(!diagnostic.contains("SyntheticOnly"));
         assert!(!format!("{:?}", request(&body)).contains("SyntheticOnly"));
-        match action { Action::Signing { unlock, name, source, .. } => { assert_eq!(unlock.reveal(), "SyntheticOnly!"); assert_eq!(name, "Owner"); assert!(std::path::Path::new(&source).is_absolute()); }, _ => panic!("wrong typed action") }
-        for invalid in [format!("{body}&source={path}"), body.replace("&nonce=one", ""), body.replace(&format!("source={path}"), "source=relative.key"), format!("{body}&destination={path}"), body.replace("what=protect", "what=sign")] { assert!(route(&request(&invalid)).is_none()); }
-        let mut query = request(&body); query.query = "unlock=SyntheticOnly".into();
+        match action {
+            Action::Signing {
+                unlock,
+                name,
+                source,
+                ..
+            } => {
+                assert_eq!(unlock.reveal(), "SyntheticOnly!");
+                assert_eq!(name, "Owner");
+                assert!(std::path::Path::new(&source).is_absolute());
+            }
+            _ => panic!("wrong typed action"),
+        }
+        for invalid in [
+            format!("{body}&source={path}"),
+            body.replace("&nonce=one", ""),
+            body.replace(&format!("source={path}"), "source=relative.key"),
+            format!("{body}&destination={path}"),
+            body.replace("what=protect", "what=sign"),
+        ] {
+            assert!(route(&request(&invalid)).is_none());
+        }
+        let mut query = request(&body);
+        query.query = "unlock=SyntheticOnly".into();
         assert!(route(&query).is_none());
         assert!(!super::signing_local_path("\\\\server\\share\\owner.key"));
         assert!(!super::signing_local_path("\\\\?\\C:\\owner.key"));
@@ -554,8 +632,14 @@ pub fn from_another_page(head: &str) -> bool {
     if origin == "null" {
         return true;
     }
-    let from = origin.split("://").nth(1).unwrap_or(&origin).trim_end_matches('/');
-    let from_this_machine = ["localhost", "127.", "[::1]"].iter().any(|h| from.starts_with(h));
+    let from = origin
+        .split("://")
+        .nth(1)
+        .unwrap_or(&origin)
+        .trim_end_matches('/');
+    let from_this_machine = ["localhost", "127.", "[::1]"]
+        .iter()
+        .any(|h| from.starts_with(h));
     from_this_machine && from != host
 }
 
@@ -581,7 +665,9 @@ pub fn render(reply: &Reply) -> String {
             // Only the characters a filename needs; nothing that could end the header.
             format!(
                 "Content-Disposition: attachment; filename=\"{}\"\r\n",
-                name.chars().filter(|c| c.is_ascii_alphanumeric() || "._-".contains(*c)).collect::<String>()
+                name.chars()
+                    .filter(|c| c.is_ascii_alphanumeric() || "._-".contains(*c))
+                    .collect::<String>()
             ),
         ),
         (None, Body::Json) => ("application/json", String::new()),

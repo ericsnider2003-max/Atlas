@@ -231,11 +231,9 @@ impl Handover {
                     plainly(now.saturating_sub(s))
                 )
             }
-            (Stance::HandedOver, None) => {
-                "Handed over. Say \"I'm back\"; \
+            (Stance::HandedOver, None) => "Handed over. Say \"I'm back\"; \
                  it costs the vault passphrase, typed."
-                    .into()
-            }
+                .into(),
         }
     }
 }
@@ -309,8 +307,12 @@ pub fn would_hand_out_the_way_back(
     }
     matches!(
         command,
-        Some("passphrase") | Some("set") | Some("change") | Some("recovery")
-            | Some("recovery-key") | Some("newkey")
+        Some("passphrase")
+            | Some("set")
+            | Some("change")
+            | Some("recovery")
+            | Some("recovery-key")
+            | Some("newkey")
     )
 }
 
@@ -378,8 +380,12 @@ pub fn take_back_with(
     vault.lock();
     let h: Handover = match state.load_checked(FILE) {
         Ok(Some(h)) => h,
-        Ok(None) => return "No saved handover could be verified. Ownership was not changed.".into(),
-        Err(_) => return "The saved handover cannot be verified. Ownership was not changed.".into(),
+        Ok(None) => {
+            return "No saved handover could be verified. Ownership was not changed.".into()
+        }
+        Err(_) => {
+            return "The saved handover cannot be verified. Ownership was not changed.".into()
+        }
     };
     if !h.stance.handed_over() {
         return h.spoken(now);
@@ -401,22 +407,37 @@ pub fn take_back_with(
 }
 
 fn finish_take_back(
-    state: &crate::store::Store, cache: &mut crate::vault::Vault,
-    mut fresh: crate::vault::Vault, mut original: Handover,
-    proof: Result<(), String>, now: u64,
+    state: &crate::store::Store,
+    cache: &mut crate::vault::Vault,
+    mut fresh: crate::vault::Vault,
+    mut original: Handover,
+    proof: Result<(), String>,
+    now: u64,
 ) -> String {
     let result = (|| -> Result<String, String> {
         let _guard = state.transaction().map_err(|_| "Local storage is busy. Ownership was not changed; try taking it back again shortly.".to_string())?;
         fresh.verify_saved(state).map_err(|_| "The owner's vault changed during verification. Ownership was not changed; enter the current passphrase again.".to_string())?;
-        let current: Handover = state.load_checked(FILE).map_err(|_| "The saved handover cannot be rechecked. Ownership was not changed.".to_string())?.ok_or_else(|| "The saved handover disappeared during verification. Ownership was not changed.".to_string())?;
-        if current != original { return Err("The handover changed during verification. Nothing was overwritten; check its current status.".into()); }
+        let current: Handover = state
+            .load_checked(FILE)
+            .map_err(|_| {
+                "The saved handover cannot be rechecked. Ownership was not changed.".to_string()
+            })?
+            .ok_or_else(|| {
+                "The saved handover disappeared during verification. Ownership was not changed."
+                    .to_string()
+            })?;
+        if current != original {
+            return Err("The handover changed during verification. Nothing was overwritten; check its current status.".into());
+        }
         let said = match proof {
             Ok(()) => original.take_back(&fresh, now).unwrap_or_else(|why| why),
             Err(why) => {
                 fresh.lock();
                 // This exact current attempt is counted only with both records checked.
                 let refusal = original.take_back(&fresh, now);
-                if refusal.is_ok() { return Err("Ownership could not be verified; it is still handed over.".into()); }
+                if refusal.is_ok() {
+                    return Err("Ownership could not be verified; it is still handed over.".into());
+                }
                 why
             }
         };
@@ -424,7 +445,10 @@ fn finish_take_back(
     })();
     fresh.lock();
     match result {
-        Ok(said) => { *cache = fresh; said }
+        Ok(said) => {
+            *cache = fresh;
+            said
+        }
         Err(why) => why,
     }
 }
@@ -441,10 +465,12 @@ mod tests {
     fn vault_open() -> crate::vault::Vault {
         let cfg = crate::vault::VaultConfig::default();
         let mut v = crate::vault::Vault::default();
-        v.open("a long enough passphrase", 100, &cfg).expect("should set the passphrase");
+        v.open("a long enough passphrase", 100, &cfg)
+            .expect("should set the passphrase");
         assert!(v.has_a_passphrase());
         v.lock();
-        v.open("a long enough passphrase", 100, &cfg).expect("should verify");
+        v.open("a long enough passphrase", 100, &cfg)
+            .expect("should verify");
         assert!(v.proved_it(), "the second open verified nothing");
         v
     }
@@ -458,7 +484,10 @@ mod tests {
     fn vault_locked() -> crate::vault::Vault {
         let mut v = vault_open();
         v.lock();
-        assert!(v.has_a_passphrase(), "the passphrase did not survive the lock");
+        assert!(
+            v.has_a_passphrase(),
+            "the passphrase did not survive the lock"
+        );
         v
     }
 
@@ -478,7 +507,10 @@ mod tests {
         let mut h = Handover::default();
         h.hand_over("", 100);
         let again = h.hand_over("", 110);
-        assert!(again.contains("Already"), "the second one read as an error: {again}");
+        assert!(
+            again.contains("Already"),
+            "the second one read as an error: {again}"
+        );
         assert_eq!(h.since, Some(100), "the clock restarted on a repeat");
     }
 
@@ -490,8 +522,14 @@ mod tests {
         // A locked vault is a refusal, and it says what to do.
         let locked = vault_locked();
         let why = h.take_back(&locked, 200).unwrap_err();
-        assert!(why.contains("Unlock the vault"), "the refusal does not say the way back: {why}");
-        assert!(h.stance.handed_over(), "it was given back without the passphrase");
+        assert!(
+            why.contains("Unlock the vault"),
+            "the refusal does not say the way back: {why}"
+        );
+        assert!(
+            h.stance.handed_over(),
+            "it was given back without the passphrase"
+        );
 
         // An open vault is proof.
         let said = h.take_back(&vault_open(), 200).unwrap();
@@ -511,7 +549,10 @@ mod tests {
         assert_eq!(h.refused, 2);
 
         let said = h.take_back(&vault_open(), 130).unwrap();
-        assert!(said.contains("refused 2 times"), "it never mentioned the attempts: {said}");
+        assert!(
+            said.contains("refused 2 times"),
+            "it never mentioned the attempts: {said}"
+        );
         assert_eq!(h.refused, 0, "the count was not cleared on the way out");
     }
 
@@ -524,11 +565,20 @@ mod tests {
         let mut h = Handover::default();
         h.hand_over("", 100);
         let mut fresh = crate::vault::Vault::default();
-        fresh.open("twelve characters at least", 100, &crate::vault::VaultConfig::default()).unwrap();
+        fresh
+            .open(
+                "twelve characters at least",
+                100,
+                &crate::vault::VaultConfig::default(),
+            )
+            .unwrap();
         assert_eq!(fresh.state(), crate::vault::State::Open);
 
         let why = h.take_back(&fresh, 200).unwrap_err();
-        assert!(why.contains("no passphrase"), "an unverifiable unlock was accepted: {why}");
+        assert!(
+            why.contains("no passphrase"),
+            "an unverifiable unlock was accepted: {why}"
+        );
         assert!(h.stance.handed_over());
     }
 
@@ -546,8 +596,13 @@ mod tests {
         // only thing it produces is words.
         let mut h = Handover::default();
         for hint in [Hint::VoiceUnfamiliar, Hint::FaceUnfamiliar] {
-            let offer = hint.offer().expect("a hint with nothing to say is not a hint");
-            assert!(offer.contains("hand over"), "the offer does not name the way in: {offer}");
+            let offer = hint
+                .offer()
+                .expect("a hint with nothing to say is not a hint");
+            assert!(
+                offer.contains("hand over"),
+                "the offer does not name the way in: {offer}"
+            );
             assert!(!h.stance.handed_over(), "a sensor changed the stance");
         }
         assert!(Hint::None.offer().is_none());
@@ -562,9 +617,16 @@ mod tests {
         // Far more often than a stranger, it is you with a cold. An offer
         // that opens by accusing the room is one you turn off.
         let offer = Hint::VoiceUnfamiliar.offer().unwrap();
-        let cold = offer.find("cold").expect("it does not mention the ordinary reason");
-        let stranger = offer.find("not being you").expect("it never says the other reason");
-        assert!(cold < stranger, "it leads with the alarming reading: {offer}");
+        let cold = offer
+            .find("cold")
+            .expect("it does not mention the ordinary reason");
+        let stranger = offer
+            .find("not being you")
+            .expect("it never says the other reason");
+        assert!(
+            cold < stranger,
+            "it leads with the alarming reading: {offer}"
+        );
     }
 
     #[test]
@@ -572,7 +634,10 @@ mod tests {
         // Two lists of what a stranger may not do would drift, and the one
         // that drifted would be the one nobody read.
         for action in crate::profiles::NEVER_AS_A_GUEST {
-            assert!(refuses(action), "{action} is guest-blocked and handover allows it");
+            assert!(
+                refuses(action),
+                "{action} is guest-blocked and handover allows it"
+            );
         }
         assert!(!refuses("say"), "it refuses ordinary conversation");
         assert!(!refuses("research"), "it refuses looking something up");
@@ -581,9 +646,18 @@ mod tests {
     #[test]
     fn a_refusal_names_the_way_back() {
         let said = refusal("draft_post");
-        assert!(said.contains("draft post"), "it says the action in code: {said}");
-        assert!(said.contains("vault"), "it does not say how to take it back: {said}");
-        assert!(!said.contains('_'), "an identifier reached the sentence: {said}");
+        assert!(
+            said.contains("draft post"),
+            "it says the action in code: {said}"
+        );
+        assert!(
+            said.contains("vault"),
+            "it does not say how to take it back: {said}"
+        );
+        assert!(
+            !said.contains('_'),
+            "an identifier reached the sentence: {said}"
+        );
         // Said to whoever is holding the laptop, who may well not be the
         // owner and may not know anything about them.
         // Whole words -- "the owner" contains "he " and a substring check
@@ -606,7 +680,10 @@ mod tests {
         h.hand_over("Sam is borrowing it", 0);
         let said = h.spoken(3 * 3600);
         assert!(said.contains("3 hours"), "{said}");
-        assert!(said.contains("Sam is borrowing it"), "the reason was dropped: {said}");
+        assert!(
+            said.contains("Sam is borrowing it"),
+            "the reason was dropped: {said}"
+        );
         assert!(Handover::default().spoken(100).contains("yours"));
     }
 }
@@ -618,40 +695,80 @@ mod fresh_owner_verification_tests {
     const OLD: &str = "disposable handover owner original phrase";
     const NEW: &str = "disposable handover owner replacement phrase";
     fn fixture(tag: &str) -> (std::path::PathBuf, crate::store::Store, Vault) {
-        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("atlas-fresh-handover-{tag}-{}-{unique}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap(); let state = crate::store::Store::new(root.clone());
-        let mut vault = Vault::default(); vault.open(OLD, 100, &VaultConfig::default()).unwrap(); vault.save(&state).unwrap();
-        let mut h = Handover::default(); h.hand_over("Disposable guest", 100); h.save(&state).unwrap();
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "atlas-fresh-handover-{tag}-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let state = crate::store::Store::new(root.clone());
+        let mut vault = Vault::default();
+        vault.open(OLD, 100, &VaultConfig::default()).unwrap();
+        vault.save(&state).unwrap();
+        let mut h = Handover::default();
+        h.hand_over("Disposable guest", 100);
+        h.save(&state).unwrap();
         (root, state, vault)
     }
     #[test]
     fn independent_passphrase_change_refuses_cached_old_phrase_and_accepts_current_one() {
         let (root, state, mut cache) = fixture("rotated");
         let mut cli: Vault = state.load_checked(Vault::FILE).unwrap().unwrap();
-        cli.change_passphrase(OLD, NEW, 101, &VaultConfig::default()).unwrap(); cli.save(&state).unwrap();
+        cli.change_passphrase(OLD, NEW, 101, &VaultConfig::default())
+            .unwrap();
+        cli.save(&state).unwrap();
         let before_vault = std::fs::read(root.join("vault.json")).unwrap();
         let old = take_back_with(&state, &mut cache, OLD, &VaultConfig::default(), 102);
-        assert!(!old.contains("Yours again"), "cached proof reclaimed ownership: {old}");
+        assert!(
+            !old.contains("Yours again"),
+            "cached proof reclaimed ownership: {old}"
+        );
         let refused: Handover = state.load_checked(FILE).unwrap().unwrap();
-        assert!(refused.stance.handed_over()); assert_eq!(refused.refused, 1);
+        assert!(refused.stance.handed_over());
+        assert_eq!(refused.refused, 1);
         assert_eq!(cache.state(), State::Sealed);
-        assert_eq!(std::fs::read(root.join("vault.json")).unwrap(), before_vault);
+        assert_eq!(
+            std::fs::read(root.join("vault.json")).unwrap(),
+            before_vault
+        );
         let current = take_back_with(&state, &mut cache, NEW, &VaultConfig::default(), 103);
-        assert!(current.contains("Yours again"), "current saved proof was refused: {current}");
-        assert!(!state.load_checked::<Handover>(FILE).unwrap().unwrap().stance.handed_over());
-        assert_eq!(cache.state(), State::Sealed); cache.verify_saved(&state).unwrap();
+        assert!(
+            current.contains("Yours again"),
+            "current saved proof was refused: {current}"
+        );
+        assert!(!state
+            .load_checked::<Handover>(FILE)
+            .unwrap()
+            .unwrap()
+            .stance
+            .handed_over());
+        assert_eq!(cache.state(), State::Sealed);
+        cache.verify_saved(&state).unwrap();
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn missing_corrupt_and_busy_records_never_change_ownership_or_publish_proof() {
-        for case in ["missing-vault", "corrupt-vault", "missing-handover", "corrupt-handover", "busy"] {
+        for case in [
+            "missing-vault",
+            "corrupt-vault",
+            "missing-handover",
+            "corrupt-handover",
+            "busy",
+        ] {
             let (root, state, mut cache) = fixture(case);
             match case {
                 "missing-vault" => std::fs::remove_file(root.join("vault.json")).unwrap(),
-                "corrupt-vault" => std::fs::write(root.join("vault.json"), b"malformed disposable vault").unwrap(),
+                "corrupt-vault" => {
+                    std::fs::write(root.join("vault.json"), b"malformed disposable vault").unwrap()
+                }
                 "missing-handover" => std::fs::remove_file(root.join("handover.json")).unwrap(),
-                "corrupt-handover" => std::fs::write(root.join("handover.json"), b"malformed disposable handover").unwrap(),
+                "corrupt-handover" => {
+                    std::fs::write(root.join("handover.json"), b"malformed disposable handover")
+                        .unwrap()
+                }
                 _ => {}
             }
             let before_vault = std::fs::read(root.join("vault.json")).ok();
@@ -659,37 +776,78 @@ mod fresh_owner_verification_tests {
             let (held, ready) = std::sync::mpsc::sync_channel(0);
             let (release, waiting) = std::sync::mpsc::sync_channel(0);
             let holder = if case == "busy" {
-                let owned = state.clone(); Some(std::thread::spawn(move || { let _guard = owned.transaction().unwrap(); held.send(()).unwrap(); waiting.recv().unwrap(); }))
-            } else { None };
-            if holder.is_some() { ready.recv().unwrap(); }
+                let owned = state.clone();
+                Some(std::thread::spawn(move || {
+                    let _guard = owned.transaction().unwrap();
+                    held.send(()).unwrap();
+                    waiting.recv().unwrap();
+                }))
+            } else {
+                None
+            };
+            if holder.is_some() {
+                ready.recv().unwrap();
+            }
             let said = take_back_with(&state, &mut cache, OLD, &VaultConfig::default(), 102);
-            assert!(!said.contains("Yours again"), "{case} published ownership: {said}");
+            assert!(
+                !said.contains("Yours again"),
+                "{case} published ownership: {said}"
+            );
             assert_eq!(cache.state(), State::Sealed);
             assert_eq!(std::fs::read(root.join("vault.json")).ok(), before_vault);
-            assert_eq!(std::fs::read(root.join("handover.json")).ok(), before_handover);
-            if let Some(holder) = holder { release.send(()).unwrap(); holder.join().unwrap(); }
+            assert_eq!(
+                std::fs::read(root.join("handover.json")).ok(),
+                before_handover
+            );
+            if let Some(holder) = holder {
+                release.send(()).unwrap();
+                holder.join().unwrap();
+            }
             std::fs::remove_dir_all(root).unwrap();
         }
     }
     #[test]
     fn records_changed_after_password_proof_are_not_overwritten_or_counted() {
         for case in ["vault", "handover"] {
-            let (root, state, mut cache) = fixture(case); cache.lock();
+            let (root, state, mut cache) = fixture(case);
+            cache.lock();
             let mut fresh: Vault = state.load_checked(Vault::FILE).unwrap().unwrap();
             let original: Handover = state.load_checked(FILE).unwrap().unwrap();
-            let proof = fresh.open(OLD, 101, &VaultConfig::default()); assert!(proof.is_ok());
+            let proof = fresh.open(OLD, 101, &VaultConfig::default());
+            assert!(proof.is_ok());
             if case == "vault" {
-                let mut changed: Vault = state.load_checked(Vault::FILE).unwrap().unwrap(); changed.open(OLD, 102, &VaultConfig::default()).unwrap();
-                changed.put("Disposable independently added credential", Kind::Login, "synthetic value only", 102).unwrap(); changed.save(&state).unwrap();
+                let mut changed: Vault = state.load_checked(Vault::FILE).unwrap().unwrap();
+                changed.open(OLD, 102, &VaultConfig::default()).unwrap();
+                changed
+                    .put(
+                        "Disposable independently added credential",
+                        Kind::Login,
+                        "synthetic value only",
+                        102,
+                    )
+                    .unwrap();
+                changed.save(&state).unwrap();
             } else {
-                let mut changed = original.clone(); changed.note = "Changed guest assignment".into(); changed.refused = 7; changed.save(&state).unwrap();
+                let mut changed = original.clone();
+                changed.note = "Changed guest assignment".into();
+                changed.refused = 7;
+                changed.save(&state).unwrap();
             }
             let before_vault = std::fs::read(root.join("vault.json")).unwrap();
             let before_handover = std::fs::read(root.join("handover.json")).unwrap();
             let said = finish_take_back(&state, &mut cache, fresh, original, proof, 103);
-            assert!(!said.contains("Yours again"), "{case} stale proof published ownership: {said}");
-            assert_eq!(std::fs::read(root.join("vault.json")).unwrap(), before_vault);
-            assert_eq!(std::fs::read(root.join("handover.json")).unwrap(), before_handover);
+            assert!(
+                !said.contains("Yours again"),
+                "{case} stale proof published ownership: {said}"
+            );
+            assert_eq!(
+                std::fs::read(root.join("vault.json")).unwrap(),
+                before_vault
+            );
+            assert_eq!(
+                std::fs::read(root.join("handover.json")).unwrap(),
+                before_handover
+            );
             assert_eq!(cache.state(), State::Sealed);
             std::fs::remove_dir_all(root).unwrap();
         }

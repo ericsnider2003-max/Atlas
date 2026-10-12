@@ -57,7 +57,14 @@ pub fn add_args(exe: &Path) -> Vec<String> {
 
 /// The `netsh` arguments that look for the rule (no permission needed).
 fn show_args() -> Vec<String> {
-    vec!["advfirewall".into(), "firewall".into(), "show".into(), "rule".into(), format!("name={RULE_NAME}"), "verbose".into()]
+    vec![
+        "advfirewall".into(),
+        "firewall".into(),
+        "show".into(),
+        "rule".into(),
+        format!("name={RULE_NAME}"),
+        "verbose".into(),
+    ]
 }
 
 /// Does `netsh`'s answer to `show_args` describe our rule, for this exe?
@@ -68,7 +75,11 @@ pub fn describes_rule_for(shown: &str, exe: &Path) -> bool {
 
 /// `describes_rule_for` with the environment passed in, so a test can give it
 /// a variable without changing the whole process's environment.
-pub fn describes_rule_for_with(shown: &str, exe: &Path, var: &dyn Fn(&str) -> Option<String>) -> bool {
+pub fn describes_rule_for_with(
+    shown: &str,
+    exe: &Path,
+    var: &dyn Fn(&str) -> Option<String>,
+) -> bool {
     let want = plain_path(&exe.display().to_string());
     shown.lines().any(|l| {
         let low = l.to_lowercase();
@@ -87,7 +98,10 @@ pub fn describes_rule_for_with(shown: &str, exe: &Path, var: &dyn Fn(&str) -> Op
 
 /// A path as compared: lower case, `\\?\` dropped, one kind of slash.
 fn plain_path(p: &str) -> String {
-    p.trim().trim_start_matches(r"\\?\").replace('/', "\\").to_lowercase()
+    p.trim()
+        .trim_start_matches(r"\\?\")
+        .replace('/', "\\")
+        .to_lowercase()
 }
 
 /// `%NAME%` in `s` replaced by the value `var` gives for it, where it gives one
@@ -96,7 +110,9 @@ pub fn expand_vars_with(s: &str, var: &dyn Fn(&str) -> Option<String>) -> String
     let mut out = String::new();
     let mut rest = s;
     while let Some(a) = rest.find('%') {
-        let Some(b) = rest[a + 1..].find('%').map(|b| b + a + 1) else { break };
+        let Some(b) = rest[a + 1..].find('%').map(|b| b + a + 1) else {
+            break;
+        };
         let name = &rest[a + 1..b];
         match var(name) {
             Some(v) if !name.is_empty() => {
@@ -143,7 +159,9 @@ impl Standing {
     pub fn plain(&self) -> String {
         match self {
             Standing::Here => "already there".into(),
-            Standing::Added => "added: only Atlas, only your own networks, not on public wifi".into(),
+            Standing::Added => {
+                "added: only Atlas, only your own networks, not on public wifi".into()
+            }
             Standing::Declined(w) => w.clone(),
             Standing::NotNeeded => "nothing to do on this system".into(),
             Standing::Problem(w) => w.clone(),
@@ -160,7 +178,11 @@ fn declined_words() -> String {
 /// Make sure the rule is there, asking once. `run` runs a program and returns
 /// (succeeded, what it printed) -- Windows' `netsh` and `powershell`, or a
 /// stand-in in a test.
-pub fn ensure(state: &Path, exe: &Path, run: &dyn Fn(&str, &[String]) -> (bool, String)) -> Standing {
+pub fn ensure(
+    state: &Path,
+    exe: &Path,
+    run: &dyn Fn(&str, &[String]) -> (bool, String),
+) -> Standing {
     if !cfg!(windows) && !cfg!(test) {
         return Standing::NotNeeded;
     }
@@ -171,14 +193,23 @@ pub fn ensure(state: &Path, exe: &Path, run: &dyn Fn(&str, &[String]) -> (bool, 
     // Added by this install before, and a rule of that name is still there:
     // not asked for again because netsh words it in a way not read above.
     let added_for = std::fs::read_to_string(state.join(ADDED)).unwrap_or_default();
-    if plain_path(&added_for) == plain_path(&exe.display().to_string()) && shown.contains(RULE_NAME) {
+    if plain_path(&added_for) == plain_path(&exe.display().to_string()) && shown.contains(RULE_NAME)
+    {
         return Standing::Here;
     }
     if state.join(DECLINED).is_file() {
         return Standing::Declined(declined_words());
     }
     let ps = elevated_command(&add_args(exe));
-    let (ok, said) = run("powershell", &["-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), ps]);
+    let (ok, said) = run(
+        "powershell",
+        &[
+            "-NoProfile".into(),
+            "-NonInteractive".into(),
+            "-Command".into(),
+            ps,
+        ],
+    );
     if ok {
         let (_, shown) = run("netsh", &show_args());
         if describes_rule_for(&shown, exe) || shown.contains(RULE_NAME) {
@@ -194,10 +225,17 @@ pub fn ensure(state: &Path, exe: &Path, run: &dyn Fn(&str, &[String]) -> (bool, 
     // failure used to be written down as "you chose no", for good).
     if said_no(&said) {
         crate::heard!(std::fs::create_dir_all(state));
-        crate::kept!(std::fs::write(state.join(DECLINED), crate::store::now().to_string()));
+        crate::kept!(std::fs::write(
+            state.join(DECLINED),
+            crate::store::now().to_string()
+        ));
         return Standing::Declined(declined_words());
     }
-    let first = said.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("it didn't say why");
+    let first = said
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("it didn't say why");
     Standing::Problem(format!(
         "not added: Windows couldn't make the rule ({first}). I'll try again the next time setup runs; until \
          then Windows will ask the first time your phone connects -- answer Allow."
@@ -209,7 +247,8 @@ const NOT_IN_A_TEST: &str = "not asked: a test never asks Windows for administra
 
 /// Would running this put up Windows' "allow changes" prompt?
 fn asks_for_elevation(args: &[String]) -> bool {
-    args.iter().any(|a| a.to_lowercase().contains("-verb runas"))
+    args.iter()
+        .any(|a| a.to_lowercase().contains("-verb runas"))
 }
 
 /// Is this what Windows says when you answer No (or close) the "allow
@@ -238,7 +277,14 @@ pub fn run_program(program: &str, args: &[String]) -> (bool, String) {
         cmd.creation_flags(0x0800_0000);
     }
     match cmd.output() {
-        Ok(o) => (o.status.success(), format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr))),
+        Ok(o) => (
+            o.status.success(),
+            format!(
+                "{}{}",
+                String::from_utf8_lossy(&o.stdout),
+                String::from_utf8_lossy(&o.stderr)
+            ),
+        ),
         Err(e) => (false, e.to_string()),
     }
 }
@@ -252,7 +298,12 @@ mod tests {
         // The real runner, given exactly what `ensure` sends to add the rule:
         // refused before anything starts, and read as a No.
         let ps = elevated_command(&add_args(&exe()));
-        let args = ["-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), ps];
+        let args = [
+            "-NoProfile".into(),
+            "-NonInteractive".into(),
+            "-Command".into(),
+            ps,
+        ];
         assert!(asks_for_elevation(&args));
         let (ok, said) = run_program("powershell", &args);
         assert!(!ok);
@@ -270,27 +321,48 @@ mod tests {
     fn the_rule_is_only_atlas_only_incoming_only_your_own_networks_and_never_public_wifi() {
         let a = add_args(&exe()).join(" ");
         assert!(a.contains(r"program=C:\Users\sam\Atlas\atlas.exe"), "{a}");
-        assert!(a.contains("dir=in") && a.contains("action=allow") && a.contains("protocol=TCP"), "{a}");
-        assert!(a.contains("profile=private,domain") && !a.contains("public"), "{a}");
-        assert!(a.contains("remoteip=LocalSubnet,100.64.0.0/10,fd7a:115c:a1e0::/48"), "{a}");
-        assert!(!a.contains("localport=any") && !a.contains("remoteip=any"), "{a}");
+        assert!(
+            a.contains("dir=in") && a.contains("action=allow") && a.contains("protocol=TCP"),
+            "{a}"
+        );
+        assert!(
+            a.contains("profile=private,domain") && !a.contains("public"),
+            "{a}"
+        );
+        assert!(
+            a.contains("remoteip=LocalSubnet,100.64.0.0/10,fd7a:115c:a1e0::/48"),
+            "{a}"
+        );
+        assert!(
+            !a.contains("localport=any") && !a.contains("remoteip=any"),
+            "{a}"
+        );
     }
 
     #[test]
     fn the_elevated_line_keeps_each_argument_whole() {
         let ps = elevated_command(&add_args(&exe()));
         assert!(ps.contains("-Verb RunAs") && ps.contains("-Wait"), "{ps}");
-        assert!(ps.contains(r#"'"program=C:\Users\sam\Atlas\atlas.exe"'"#), "{ps}");
+        assert!(
+            ps.contains(r#"'"program=C:\Users\sam\Atlas\atlas.exe"'"#),
+            "{ps}"
+        );
         assert!(ps.contains(&format!("'\"name={RULE_NAME}\"'")), "{ps}");
     }
 
     #[test]
     fn a_rule_is_found_only_for_this_atlas() {
-        let shown = format!("Rule Name: {RULE_NAME}\nProgram:                              {}\n", exe().display());
+        let shown = format!(
+            "Rule Name: {RULE_NAME}\nProgram:                              {}\n",
+            exe().display()
+        );
         assert!(describes_rule_for(&shown, &exe()));
         let elsewhere = format!("Rule Name: {RULE_NAME}\nProgram: D:\\old\\atlas.exe\n");
         assert!(!describes_rule_for(&elsewhere, &exe()));
-        assert!(!describes_rule_for("No rules match the specified criteria.", &exe()));
+        assert!(!describes_rule_for(
+            "No rules match the specified criteria.",
+            &exe()
+        ));
     }
 
     #[test]
@@ -306,13 +378,20 @@ mod tests {
                 *added.borrow_mut() = true;
                 return (true, String::new());
             }
-            let shown = if *added.borrow() { format!("Program: {}", exe().display()) } else { "No rules match".into() };
+            let shown = if *added.borrow() {
+                format!("Program: {}", exe().display())
+            } else {
+                "No rules match".into()
+            };
             let _ = a;
             (true, shown)
         };
         assert_eq!(ensure(&dir, &exe(), &yes), Standing::Added);
         assert_eq!(ensure(&dir, &exe(), &yes), Standing::Here, "asked twice");
-        assert_eq!(calls.borrow().iter().filter(|c| *c == "powershell").count(), 1);
+        assert_eq!(
+            calls.borrow().iter().filter(|c| *c == "powershell").count(),
+            1
+        );
         // A no (the prompt cancelled) is remembered and not asked again.
         let dir2 = dir.join("second");
         let asked = RefCell::new(0);
@@ -333,13 +412,25 @@ mod tests {
         let broken = |p: &str, _: &[String]| {
             if p == "powershell" {
                 *tried.borrow_mut() += 1;
-                return (false, "powershell : running scripts is disabled on this system".into());
+                return (
+                    false,
+                    "powershell : running scripts is disabled on this system".into(),
+                );
             }
             (true, "No rules match".into())
         };
-        assert!(matches!(ensure(&dir3, &exe(), &broken), Standing::Problem(ref w) if w.contains("try again")));
-        assert!(matches!(ensure(&dir3, &exe(), &broken), Standing::Problem(_)));
-        assert_eq!(*tried.borrow(), 2, "a failure is retried, not taken as a no");
+        assert!(
+            matches!(ensure(&dir3, &exe(), &broken), Standing::Problem(ref w) if w.contains("try again"))
+        );
+        assert!(matches!(
+            ensure(&dir3, &exe(), &broken),
+            Standing::Problem(_)
+        ));
+        assert_eq!(
+            *tried.borrow(),
+            2,
+            "a failure is retried, not taken as a no"
+        );
         assert!(said_no("Start-Process : This command cannot be run due to the error: The operation was canceled by the user."));
         assert!(!said_no("netsh failed: access denied"));
         let _ = std::fs::remove_dir_all(&dir);

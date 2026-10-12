@@ -38,18 +38,38 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn written_at(dir: &PathBuf, name: &str) -> std::time::SystemTime {
-    std::fs::metadata(dir.join(format!("{name}.json"))).unwrap().modified().unwrap()
+    std::fs::metadata(dir.join(format!("{name}.json")))
+        .unwrap()
+        .modified()
+        .unwrap()
 }
 
 #[test]
 fn a_changed_value_is_still_written() {
     let dir = tmp("changed");
     let s = Store::new(dir.clone());
-    s.save("thing", &Thing { n: 1, what: "one".into() }).unwrap();
-    s.save("thing", &Thing { n: 2, what: "two".into() }).unwrap();
+    s.save(
+        "thing",
+        &Thing {
+            n: 1,
+            what: "one".into(),
+        },
+    )
+    .unwrap();
+    s.save(
+        "thing",
+        &Thing {
+            n: 2,
+            what: "two".into(),
+        },
+    )
+    .unwrap();
 
     let back: Thing = s.load("thing");
-    assert_eq!(back.n, 2, "the second save was skipped as if nothing changed");
+    assert_eq!(
+        back.n, 2,
+        "the second save was skipped as if nothing changed"
+    );
     assert_eq!(back.what, "two");
 }
 
@@ -58,14 +78,21 @@ fn an_unchanged_value_does_not_touch_the_file() {
     // The whole point. Not "writes the same bytes quickly" — does not write.
     let dir = tmp("unchanged");
     let s = Store::new(dir.clone());
-    let t = Thing { n: 7, what: "same".into() };
+    let t = Thing {
+        n: 7,
+        what: "same".into(),
+    };
     s.save("thing", &t).unwrap();
     let first = written_at(&dir, "thing");
 
     std::thread::sleep(std::time::Duration::from_millis(20));
     s.save("thing", &t).unwrap();
 
-    assert_eq!(written_at(&dir, "thing"), first, "an unchanged value was written again");
+    assert_eq!(
+        written_at(&dir, "thing"),
+        first,
+        "an unchanged value was written again"
+    );
 }
 
 #[test]
@@ -74,7 +101,10 @@ fn a_file_deleted_underneath_is_written_again() {
     // already wrote this, and the file is gone.
     let dir = tmp("deleted");
     let s = Store::new(dir.clone());
-    let t = Thing { n: 3, what: "three".into() };
+    let t = Thing {
+        n: 3,
+        what: "three".into(),
+    };
     s.save("thing", &t).unwrap();
     std::fs::remove_file(dir.join("thing.json")).unwrap();
 
@@ -90,10 +120,28 @@ fn two_stores_on_one_directory_do_not_confuse_each_other() {
     let a = Store::new(dir.clone());
     let b = Store::new(dir.clone());
 
-    a.save("thing", &Thing { n: 1, what: "from a".into() }).unwrap();
-    b.save("thing", &Thing { n: 2, what: "from b".into() }).unwrap();
+    a.save(
+        "thing",
+        &Thing {
+            n: 1,
+            what: "from a".into(),
+        },
+    )
+    .unwrap();
+    b.save(
+        "thing",
+        &Thing {
+            n: 2,
+            what: "from b".into(),
+        },
+    )
+    .unwrap();
 
-    assert_eq!(a.load::<Thing>("thing").what, "from b", "one store shadowed the other");
+    assert_eq!(
+        a.load::<Thing>("thing").what,
+        "from b",
+        "one store shadowed the other"
+    );
 }
 
 #[test]
@@ -105,7 +153,14 @@ fn the_first_save_creates_the_directory() {
     let deep = base.join("not").join("there").join("yet");
 
     let s = Store::new(deep.clone());
-    s.save("thing", &Thing { n: 9, what: "deep".into() }).unwrap();
+    s.save(
+        "thing",
+        &Thing {
+            n: 9,
+            what: "deep".into(),
+        },
+    )
+    .unwrap();
     assert_eq!(s.load::<Thing>("thing").n, 9);
 }
 
@@ -137,7 +192,10 @@ fn the_write_that_does_happen_is_still_atomic() {
     assert!(body.contains("json.tmp"), "the temp file is gone");
     // `rename_patiently` is `fs::rename`, tried again while Windows reports a
     // passing lock (5 Oct 2026, audit Q11).
-    assert!(body.contains("rename_patiently(&tmp"), "the rename is gone — saves are no longer atomic");
+    assert!(
+        body.contains("rename_patiently(&tmp"),
+        "the rename is gone — saves are no longer atomic"
+    );
     assert!(
         body.find("json.tmp").unwrap() < body.find("rename_patiently(&tmp").unwrap(),
         "the temp file is written after the rename"
@@ -159,8 +217,22 @@ fn the_write_that_does_happen_is_still_atomic() {
 fn nothing_is_skipped_when_only_part_of_the_value_changed() {
     let dir = tmp("partial");
     let s = Store::new(dir.clone());
-    s.save("thing", &Thing { n: 5, what: "same".into() }).unwrap();
-    s.save("thing", &Thing { n: 5, what: "different".into() }).unwrap();
+    s.save(
+        "thing",
+        &Thing {
+            n: 5,
+            what: "same".into(),
+        },
+    )
+    .unwrap();
+    s.save(
+        "thing",
+        &Thing {
+            n: 5,
+            what: "different".into(),
+        },
+    )
+    .unwrap();
     assert_eq!(s.load::<Thing>("thing").what, "different");
 }
 
@@ -175,8 +247,14 @@ fn a_real_daemon_still_keeps_everything_across_a_restart() {
 
     let dir = tmp("daemon");
     let cfg = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
-    let plat =
-        MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let plat = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     let now = atlas::store::now();
     {
         let mut d = atlas::daemon::Daemon::new(
@@ -186,7 +264,11 @@ fn a_real_daemon_still_keeps_everything_across_a_restart() {
             Store::new(dir.clone()),
             Proactive::new(ProactiveConfig::default()),
         );
-        d.backlog.record("renew the certificate", atlas::backlog::Blocker::NeedsApproval, now);
+        d.backlog.record(
+            "renew the certificate",
+            atlas::backlog::Blocker::NeedsApproval,
+            now,
+        );
         d.scheduler.at("back up", now + 3600);
         d.persist();
         // Twice, so the second is the skipping path.
@@ -211,12 +293,23 @@ fn a_real_daemon_still_keeps_everything_across_a_restart() {
 fn a_hand_edit_between_two_identical_saves_is_put_right() {
     let dir = tmp("hand-edit");
     let s = Store::new(dir.clone());
-    let t = Thing { n: 4, what: "kept".into() };
+    let t = Thing {
+        n: 4,
+        what: "kept".into(),
+    };
     s.save("thing", &t).unwrap();
     std::thread::sleep(std::time::Duration::from_millis(20));
-    std::fs::write(dir.join("thing.json"), b"{\"schema\":1,\"data\":{\"n\":4,\"what\":\"edit\"}}").unwrap();
+    std::fs::write(
+        dir.join("thing.json"),
+        b"{\"schema\":1,\"data\":{\"n\":4,\"what\":\"edit\"}}",
+    )
+    .unwrap();
     s.save("thing", &t).unwrap();
-    assert_eq!(s.load::<Thing>("thing"), t, "the save was skipped as if the file still held it");
+    assert_eq!(
+        s.load::<Thing>("thing"),
+        t,
+        "the save was skipped as if the file still held it"
+    );
 }
 
 #[test]
@@ -226,15 +319,49 @@ fn a_kept_record_follows_every_write_to_its_file() {
     let dir = tmp("load-kept");
     let a = Store::new(dir.clone());
     let b = Store::new(dir.clone());
-    assert_eq!(a.load_kept::<Thing>("thing"), Thing::default(), "a missing file is the default");
-    a.save("thing", &Thing { n: 1, what: "one".into() }).unwrap();
+    assert_eq!(
+        a.load_kept::<Thing>("thing"),
+        Thing::default(),
+        "a missing file is the default"
+    );
+    a.save(
+        "thing",
+        &Thing {
+            n: 1,
+            what: "one".into(),
+        },
+    )
+    .unwrap();
     assert_eq!(a.load_kept::<Thing>("thing").n, 1);
     std::thread::sleep(std::time::Duration::from_millis(20));
-    b.save("thing", &Thing { n: 2, what: "two".into() }).unwrap();
-    assert_eq!(a.load_kept::<Thing>("thing").n, 2, "another store's write was not seen");
+    b.save(
+        "thing",
+        &Thing {
+            n: 2,
+            what: "two".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        a.load_kept::<Thing>("thing").n,
+        2,
+        "another store's write was not seen"
+    );
     std::thread::sleep(std::time::Duration::from_millis(20));
-    std::fs::write(dir.join("thing.json"), b"{\"schema\":1,\"data\":{\"n\":3,\"what\":\"hand\"}}").unwrap();
-    assert_eq!(a.load_kept::<Thing>("thing").what, "hand", "a hand edit was not seen");
+    std::fs::write(
+        dir.join("thing.json"),
+        b"{\"schema\":1,\"data\":{\"n\":3,\"what\":\"hand\"}}",
+    )
+    .unwrap();
+    assert_eq!(
+        a.load_kept::<Thing>("thing").what,
+        "hand",
+        "a hand edit was not seen"
+    );
     std::fs::remove_file(dir.join("thing.json")).unwrap();
-    assert_eq!(a.load_kept::<Thing>("thing"), Thing::default(), "a deleted file was still answered from memory");
+    assert_eq!(
+        a.load_kept::<Thing>("thing"),
+        Thing::default(),
+        "a deleted file was still answered from memory"
+    );
 }

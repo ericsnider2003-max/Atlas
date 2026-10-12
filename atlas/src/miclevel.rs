@@ -41,7 +41,12 @@ pub fn raise_to(level: InputLevel) -> Option<f32> {
 /// are Windows' friendly names, sometimes cut short or with the "®" lost to
 /// a code page (29 Sep 2026), so letters and digits are compared.
 pub fn same_device(wanted: &str, friendly: &str) -> bool {
-    let plain = |s: &str| s.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_lowercase();
+    let plain = |s: &str| {
+        s.chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .collect::<String>()
+            .to_lowercase()
+    };
     let (a, b) = (plain(wanted), plain(friendly));
     !a.is_empty() && (a == b || (a.len() >= 12 && (b.starts_with(&a) || a.starts_with(&b))))
 }
@@ -64,7 +69,9 @@ impl Changes {
 
     /// Said within the last day? Once a day is enough.
     fn told_recently(&self, mic: &str, now: u64) -> bool {
-        self.told.iter().any(|(m, at)| m == mic && now.saturating_sub(*at) < 86_400)
+        self.told
+            .iter()
+            .any(|(m, at)| m == mic && now.saturating_sub(*at) < 86_400)
     }
 
     fn note_told(&mut self, mic: &str, now: u64) {
@@ -98,7 +105,8 @@ fn set(name: &str, scalar: f32) -> Result<f32, String> {
     // context is the documented "no context".
     win::with_endpoint(name, |v| unsafe {
         let was = v.GetMasterVolumeLevelScalar().map_err(|e| e.to_string())?;
-        v.SetMasterVolumeLevelScalar(scalar.clamp(0.0, 1.0), std::ptr::null()).map_err(|e| e.to_string())?;
+        v.SetMasterVolumeLevelScalar(scalar.clamp(0.0, 1.0), std::ptr::null())
+            .map_err(|e| e.to_string())?;
         Ok(was)
     })
     .unwrap_or_else(|| Err(format!("Windows has no recording device called \"{name}\"")))
@@ -112,7 +120,12 @@ fn set(_name: &str, _scalar: f32) -> Result<f32, String> {
 /// When the voice heard on `mic` is too quiet (`leveller::quiet_input`), and
 /// not said in the last day: the sentence to say, having raised Windows'
 /// input level once if it was low. Records what it did in `changes`.
-pub fn after_a_turn(mic: &str, lev: &crate::leveller::Leveller, changes: &mut Changes, now: u64) -> Option<String> {
+pub fn after_a_turn(
+    mic: &str,
+    lev: &crate::leveller::Leveller,
+    changes: &mut Changes,
+    now: u64,
+) -> Option<String> {
     let speech = lev.quiet_input(mic)?;
     if changes.told_recently(mic, now) {
         return None;
@@ -128,31 +141,48 @@ pub fn after_a_turn(mic: &str, lev: &crate::leveller::Leveller, changes: &mut Ch
         }
     }
     changes.note_told(mic, now);
-    Some(crate::leveller::quiet_input_line(&crate::hearing::short(mic), speech, level, raised_to))
+    Some(crate::leveller::quiet_input_line(
+        &crate::hearing::short(mic),
+        speech,
+        level,
+        raised_to,
+    ))
 }
 
 #[cfg(windows)]
 mod win {
     use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
     use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
-    use windows::Win32::Media::Audio::{eCapture, IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE_ACTIVE};
-    use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED, STGM_READ};
+    use windows::Win32::Media::Audio::{
+        eCapture, IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
+    };
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED, STGM_READ,
+    };
 
     /// Run `f` on the endpoint volume of the active capture device called
     /// `name`. `None` when there's no such device or COM refuses.
-    pub(super) fn with_endpoint<T>(name: &str, f: impl FnOnce(&IAudioEndpointVolume) -> T) -> Option<T> {
+    pub(super) fn with_endpoint<T>(
+        name: &str,
+        f: impl FnOnce(&IAudioEndpointVolume) -> T,
+    ) -> Option<T> {
         // SAFETY: COM is initialised on this thread first, and every interface used is an owned
         // smart pointer that lives through the closure `f`.
         unsafe {
             // Already initialised on this thread (in either model) is fine.
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-            let en: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).ok()?;
+            let en: IMMDeviceEnumerator =
+                CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).ok()?;
             let all = en.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE).ok()?;
             let n = all.GetCount().ok()?;
             for i in 0..n {
                 let Ok(dev) = all.Item(i) else { continue };
-                let Ok(props) = dev.OpenPropertyStore(STGM_READ) else { continue };
-                let Ok(v) = props.GetValue(&PKEY_Device_FriendlyName) else { continue };
+                let Ok(props) = dev.OpenPropertyStore(STGM_READ) else {
+                    continue;
+                };
+                let Ok(v) = props.GetValue(&PKEY_Device_FriendlyName) else {
+                    continue;
+                };
                 if !crate::miclevel::same_device(name, &v.to_string()) {
                     continue;
                 }
@@ -170,15 +200,42 @@ mod tests {
 
     #[test]
     fn only_a_low_unmuted_level_is_raised_and_only_up() {
-        assert_eq!(raise_to(InputLevel { scalar: 0.04, muted: false }), Some(RAISE_TO));
-        assert_eq!(raise_to(InputLevel { scalar: 0.04, muted: true }), None);
-        assert_eq!(raise_to(InputLevel { scalar: 0.7, muted: false }), None);
+        assert_eq!(
+            raise_to(InputLevel {
+                scalar: 0.04,
+                muted: false
+            }),
+            Some(RAISE_TO)
+        );
+        assert_eq!(
+            raise_to(InputLevel {
+                scalar: 0.04,
+                muted: true
+            }),
+            None
+        );
+        assert_eq!(
+            raise_to(InputLevel {
+                scalar: 0.7,
+                muted: false
+            }),
+            None
+        );
     }
 
     #[test]
     fn device_names_survive_a_lost_trademark_sign() {
-        assert!(same_device("Microphone Array (Intel Smart Sound Technology for Digital Microphones)", "Microphone Array (Intel® Smart Sound Technology for Digital Microphones)"));
-        assert!(same_device("Microphone (HD Pro Webcam C920)", "Microphone (HD Pro Webcam C920)"));
-        assert!(!same_device("Microphone (HD Pro Webcam C920)", "Microphone Array (Intel® Smart Sound Technology for Digital Microphones)"));
+        assert!(same_device(
+            "Microphone Array (Intel Smart Sound Technology for Digital Microphones)",
+            "Microphone Array (Intel® Smart Sound Technology for Digital Microphones)"
+        ));
+        assert!(same_device(
+            "Microphone (HD Pro Webcam C920)",
+            "Microphone (HD Pro Webcam C920)"
+        ));
+        assert!(!same_device(
+            "Microphone (HD Pro Webcam C920)",
+            "Microphone Array (Intel® Smart Sound Technology for Digital Microphones)"
+        ));
     }
 }

@@ -5,7 +5,9 @@ use atlas::files::{
 use atlas::remote::{
     finished, handing_off, never_ran, worth_waking_for, How, Needs, Queue, RemoteConfig, State,
 };
-use atlas::workingset::{not_here, pack, returning, spoken, Carried, Changed, WorkingSetConfig, Why};
+use atlas::workingset::{
+    not_here, pack, returning, spoken, Carried, Changed, Why, WorkingSetConfig,
+};
 
 const MB: u64 = 1_048_576;
 
@@ -73,7 +75,11 @@ fn reaching_for_something_that_did_not_come_gets_a_useful_answer() {
 
 #[test]
 fn a_file_changed_only_on_the_phone_just_lands() {
-    let changed = vec![Changed { path: "/docs/notes.md".into(), at: 100, bytes: 900 }];
+    let changed = vec![Changed {
+        path: "/docs/notes.md".into(),
+        at: 100,
+        bytes: 900,
+    }];
     let (clean, clashes) = returning(&changed, &[]);
     assert_eq!(clean, 1);
     assert!(clashes.is_empty());
@@ -81,7 +87,11 @@ fn a_file_changed_only_on_the_phone_just_lands() {
 
 #[test]
 fn a_file_changed_on_both_sides_needs_you() {
-    let changed = vec![Changed { path: "/docs/notes.md".into(), at: 100, bytes: 900 }];
+    let changed = vec![Changed {
+        path: "/docs/notes.md".into(),
+        at: 100,
+        bytes: 900,
+    }];
     let (clean, clashes) = returning(&changed, &["/docs/notes.md".into()]);
     assert_eq!(clean, 0);
     assert_eq!(clashes.len(), 1);
@@ -123,7 +133,10 @@ fn a_failure_is_worth_hearing_however_quick_it_was() {
     let r = q.requests.iter().find(|r| r.id == id).unwrap();
     // Behaviour, not just wording: a failure surfaces even at 3 seconds, where
     // a success that quick would be swallowed as not-news.
-    assert!(finished(r, 3, "the file was locked").is_some(), "a quick failure was swallowed");
+    assert!(
+        finished(r, 3, "the file was locked").is_some(),
+        "a quick failure was swallowed"
+    );
     let said = finished(r, 3, "the file was locked").unwrap();
     assert!(said.contains("didn't work"));
     assert!(said.contains("the file was locked"));
@@ -153,7 +166,10 @@ fn finishing_says_how_long_it_took_in_units_you_would_use() {
 fn something_that_waited_too_long_is_raised_rather_than_assumed_done() {
     let mut q = Queue::default();
     q.ask("render the video", Needs::TheLaptop, How::Quietly, 0);
-    let cfg = RemoteConfig { enabled: true, ..Default::default() };
+    let cfg = RemoteConfig {
+        enabled: true,
+        ..Default::default()
+    };
     let gone = q.given_up(60 * 86_400, &cfg);
     assert_eq!(gone.len(), 1);
     assert!(never_ran(gone[0], 60).contains("Still want it?"));
@@ -201,12 +217,18 @@ fn converting_says_what_you_lose_rather_than_just_doing_it() {
 
 #[test]
 fn a_lossless_conversion_says_nothing_about_loss() {
-    assert!(matches!(convert(Sort::Video, Sort::Audio), Convert::Can { loses: None, .. }));
+    assert!(matches!(
+        convert(Sort::Video, Sort::Audio),
+        Convert::Can { loses: None, .. }
+    ));
 }
 
 #[test]
 fn something_that_does_not_convert_says_so_plainly() {
-    assert!(matches!(convert(Sort::Archive, Sort::Pdf), Convert::Cannot(_)));
+    assert!(matches!(
+        convert(Sort::Archive, Sort::Pdf),
+        Convert::Cannot(_)
+    ));
     assert!(matches!(convert(Sort::Pdf, Sort::Pdf), Convert::Cannot(_)));
 }
 
@@ -249,7 +271,10 @@ fn straightening_happens_before_reading_because_that_is_most_of_the_accuracy() {
     // People skip it because the photo looks fine to a human eye.
     let steps = scan_steps(Scanned::Page, &FilesConfig::default());
     let straighten = steps.iter().position(|s| s.contains("straighten")).unwrap();
-    let read = steps.iter().position(|s| s.contains("read the words")).unwrap();
+    let read = steps
+        .iter()
+        .position(|s| s.contains("read the words"))
+        .unwrap();
     assert!(straighten < read);
     assert!(steps.iter().any(|s| s.contains("flatten the lighting")));
 }
@@ -266,7 +291,9 @@ fn what_gets_pulled_out_depends_on_what_it_is() {
 
 #[test]
 fn a_receipt_goes_somewhere_more_useful_than_a_text_file() {
-    assert!(Scanned::Receipt.probably_wanted().contains("into your ledger"));
+    assert!(Scanned::Receipt
+        .probably_wanted()
+        .contains("into your ledger"));
     assert!(Scanned::Card.probably_wanted().contains("as a contact"));
 }
 
@@ -299,7 +326,14 @@ fn archives_nested_too_deep_are_refused() {
 
 #[test]
 fn everything_can_be_read_without_the_internet() {
-    for s in [Sort::Pdf, Sort::Document, Sort::Sheet, Sort::Audio, Sort::Video, Sort::Archive] {
+    for s in [
+        Sort::Pdf,
+        Sort::Document,
+        Sort::Sheet,
+        Sort::Audio,
+        Sort::Video,
+        Sort::Archive,
+    ] {
         assert!(s.readable_offline(), "{s:?}");
     }
 }

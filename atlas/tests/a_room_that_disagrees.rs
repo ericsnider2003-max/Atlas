@@ -18,14 +18,13 @@
 //! gave is hardware: it is the subject Atlas has measured numbers for, so the
 //! seats can disagree about 15.7GB instead of about the word "upgrade".
 
+use atlas::brain::{Llm, LlmConfig};
 use atlas::config::Config;
 use atlas::council::{
     empty_chairs, hardware_room, is_hardware_question, parse_opinion, Council, Disposition, Lean,
     Opinion, Round, Seat, MAX_SEATS, MIN_SEATS,
 };
 use atlas::daemon::Daemon;
-use atlas::brain::{Llm, LlmConfig};
-use std::sync::Arc;
 use atlas::error::{AtlasError, Result};
 use atlas::fit::{Machine, Plan};
 use atlas::intent::{Intent, Parser};
@@ -34,6 +33,7 @@ use atlas::platform::Monitor;
 use atlas::proactive::{Proactive, ProactiveConfig};
 use atlas::store::Store;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// `ask_the_room` now hands the real work to the crew and returns an
@@ -50,7 +50,10 @@ fn wait_for_report<'a>(d: &mut Daemon<'a>, start_t: u64) -> String {
         if d.crew.active() == 0 && !said.is_empty() {
             return said.join(" ");
         }
-        assert!(Instant::now() < deadline, "no report arrived within the deadline");
+        assert!(
+            Instant::now() < deadline,
+            "no report arrived within the deadline"
+        );
         std::thread::sleep(Duration::from_millis(10));
         t += 1;
     }
@@ -99,7 +102,11 @@ fn hardware_questions_are_recognised_as_the_rooms_subject() {
 fn an_ordinary_question_is_not_mistaken_for_a_hardware_one() {
     // It still gets a room — the general one. What it must not get is five
     // seats briefed on RAM figures that have nothing to do with the question.
-    for q in ["should I take the contract", "is this worth writing up", "who should I ask"] {
+    for q in [
+        "should I take the contract",
+        "is this worth writing up",
+        "who should I ask",
+    ] {
         assert!(!is_hardware_question(q), "wrongly treated as hardware: {q}");
     }
 }
@@ -129,14 +136,20 @@ fn integrated_graphics_are_not_reported_as_spare_video_memory() {
     // argue for a model that will not load.
     let room = hardware_room(&a_laptop(), &a_plan());
     let brief = &room.seats[0].brief;
-    assert!(brief.contains("integrated graphics share system memory"), "got: {brief}");
+    assert!(
+        brief.contains("integrated graphics share system memory"),
+        "got: {brief}"
+    );
 }
 
 #[test]
 fn the_hardware_room_is_quorate_and_covers_different_ground() {
     let room = hardware_room(&a_laptop(), &a_plan());
     assert!(room.is_quorate());
-    assert!(room.covers_different_ground(), "the seats all want the same thing");
+    assert!(
+        room.covers_different_ground(),
+        "the seats all want the same thing"
+    );
     assert!((MIN_SEATS..=MAX_SEATS).contains(&room.seats.len()));
 }
 
@@ -151,7 +164,10 @@ fn exactly_one_seat_can_break_a_tie() {
 
 #[test]
 fn a_seat_that_argues_against_is_recorded_against() {
-    let o = parse_opinion("sceptic", "Against. You measured 6GB free and the 14B needs 9.");
+    let o = parse_opinion(
+        "sceptic",
+        "Against. You measured 6GB free and the 14B needs 9.",
+    );
     assert_eq!(o.lean, Lean::Against);
     assert!(o.because.contains("Against"));
 }
@@ -160,21 +176,34 @@ fn a_seat_that_argues_against_is_recorded_against() {
 fn the_word_for_inside_another_word_does_not_decide_an_opinion() {
     // "for" is a substring of "before", "form" and "therefore", and an
     // opinion decided by the word "therefore" is noise dressed as a verdict.
-    let o = parse_opinion("mover", "Therefore the performance before the upgrade is the issue.");
-    assert_eq!(o.lean, Lean::Depends, "a stray substring was read as a position");
+    let o = parse_opinion(
+        "mover",
+        "Therefore the performance before the upgrade is the issue.",
+    );
+    assert_eq!(
+        o.lean,
+        Lean::Depends,
+        "a stray substring was read as a position"
+    );
 }
 
 #[test]
 fn a_seat_naming_the_argument_on_the_other_side_still_keeps_its_own() {
     // "For, though the argument against is the heat" — the seat's own lean is
     // the one it states first; the second is nearly always a concession.
-    let o = parse_opinion("mover", "For — ship it. The case against is thermals, which are fine.");
+    let o = parse_opinion(
+        "mover",
+        "For — ship it. The case against is thermals, which are fine.",
+    );
     assert_eq!(o.lean, Lean::For);
 }
 
 #[test]
 fn an_explicit_it_depends_outranks_a_stray_for() {
-    let o = parse_opinion("operator", "It depends on whether you are paying for the power.");
+    let o = parse_opinion(
+        "operator",
+        "It depends on whether you are paying for the power.",
+    );
     assert_eq!(o.lean, Lean::Depends);
 }
 
@@ -184,7 +213,10 @@ fn what_would_change_a_seats_mind_is_kept_when_it_says() {
         "sceptic",
         "Against for now. What would change my mind: a week of headroom under real load.",
     );
-    assert_eq!(o.would_change_my_mind.as_deref(), Some("a week of headroom under real load."));
+    assert_eq!(
+        o.would_change_my_mind.as_deref(),
+        Some("a week of headroom under real load.")
+    );
 }
 
 #[test]
@@ -213,7 +245,12 @@ fn a_lean_is_never_invented_where_none_was_given() {
 // ===================== what the room produces ==========================
 
 fn op(seat: &str, lean: Lean, because: &str) -> Opinion {
-    Opinion { seat: seat.into(), lean, because: because.into(), would_change_my_mind: None }
+    Opinion {
+        seat: seat.into(),
+        lean,
+        because: because.into(),
+        would_change_my_mind: None,
+    }
 }
 
 #[test]
@@ -227,8 +264,15 @@ fn the_verdict_names_the_split_rather_than_averaging_it() {
         ],
         Round::Blind,
     );
-    assert!(v.split.contains("1 for"), "the split was not stated: {}", v.split);
-    assert!(v.strongest_dissent.is_some(), "the losing argument was buried");
+    assert!(
+        v.split.contains("1 for"),
+        "the split was not stated: {}",
+        v.split
+    );
+    assert!(
+        v.strongest_dissent.is_some(),
+        "the losing argument was buried"
+    );
 }
 
 #[test]
@@ -242,21 +286,39 @@ fn a_room_that_agreed_on_the_first_pass_says_so_rather_than_sounding_confident()
         ],
         Round::Blind,
     );
-    assert!(v.suspiciously_unanimous, "unanimity on the blind round was taken at face value");
-    assert!(room.spoken(&v).contains("usually means the question told them the answer"));
+    assert!(
+        v.suspiciously_unanimous,
+        "unanimity on the blind round was taken at face value"
+    );
+    assert!(room
+        .spoken(&v)
+        .contains("usually means the question told them the answer"));
 }
 
 #[test]
 fn the_same_agreement_after_they_have_read_each_other_is_not_suspicious() {
     let room = hardware_room(&a_laptop(), &a_plan());
-    let v = room.tally(&[op("mover", Lean::For, "yes"), op("sceptic", Lean::For, "yes")], Round::Open);
+    let v = room.tally(
+        &[
+            op("mover", Lean::For, "yes"),
+            op("sceptic", Lean::For, "yes"),
+        ],
+        Round::Open,
+    );
     assert!(!v.suspiciously_unanimous);
 }
 
 // ===================== reached from the running program =================
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 /// A model that gives each seat a different answer, so the room can split.
@@ -292,15 +354,30 @@ fn cfg_with_model() -> Config {
     c
 }
 
-fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, llm: Option<Arc<dyn Llm>>, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, llm, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+fn daemon<'a>(
+    c: &'a Config,
+    p: &'a MockPlatform,
+    llm: Option<Arc<dyn Llm>>,
+    tag: &str,
+) -> Daemon<'a> {
+    Daemon::new(
+        c,
+        p,
+        llm,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 #[test]
 fn the_phrases_for_asking_reach_the_room() {
     let cfg = Config::load(Path::new("config")).unwrap();
     let parser = Parser::new(&cfg.commands);
-    for said in ["ask the room", "what does the room think", "should I upgrade"] {
+    for said in [
+        "ask the room",
+        "what does the room think",
+        "should I upgrade",
+    ] {
         assert!(
             matches!(parser.parse(said), Intent::AskTheRoom(_)),
             "did not reach the room: {said} -> {:?}",
@@ -315,7 +392,10 @@ fn asking_the_room_produces_a_verdict_with_the_split_in_it() {
     let mut d = daemon(&c, &p, Some(llm), "verdict");
 
     let ack = d.ask_the_room("should I upgrade the RAM");
-    assert!(ack.contains("Asking the room"), "expected an immediate acknowledgment, got: {ack}");
+    assert!(
+        ack.contains("Asking the room"),
+        "expected an immediate acknowledgment, got: {ack}"
+    );
     let said = wait_for_report(&mut d, 100);
 
     assert!(said.contains("for"), "no split in the answer: {said}");
@@ -377,8 +457,16 @@ fn every_seat_is_one_recorded_model_call() {
     d.ask_the_room("should I upgrade the RAM");
     wait_for_report(&mut d, 100);
 
-    let council_calls = d.trace.calls.iter().filter(|c| c.asked_by == "council").count();
-    assert_eq!(council_calls, 5, "the room's cost was not recorded call by call");
+    let council_calls = d
+        .trace
+        .calls
+        .iter()
+        .filter(|c| c.asked_by == "council")
+        .count();
+    assert_eq!(
+        council_calls, 5,
+        "the room's cost was not recorded call by call"
+    );
 }
 
 #[test]
@@ -398,8 +486,14 @@ fn a_model_that_is_down_does_not_produce_a_verdict_out_of_nothing() {
 
     d.ask_the_room("should I upgrade the RAM");
     let said = wait_for_report(&mut d, 100);
-    assert!(said.contains("seats answered"), "it invented a verdict: {said}");
-    assert!(said.contains("model may be struggling") && !said.contains("`atlas"), "it didn't say why, or sent you to a terminal: {said}");
+    assert!(
+        said.contains("seats answered"),
+        "it invented a verdict: {said}"
+    );
+    assert!(
+        said.contains("model may be struggling") && !said.contains("`atlas"),
+        "it didn't say why, or sent you to a terminal: {said}"
+    );
 }
 
 #[test]
@@ -411,7 +505,10 @@ fn asking_the_room_nothing_asks_nothing() {
 
     let said = d.ask_the_room("   ");
     assert!(said.contains("Ask the room what"), "got: {said}");
-    assert!(d.trace.calls.is_empty(), "an empty question still spent five model calls");
+    assert!(
+        d.trace.calls.is_empty(),
+        "an empty question still spent five model calls"
+    );
 }
 
 #[test]
@@ -440,8 +537,18 @@ fn a_decisive_blind_round_never_pays_for_a_second_one() {
     d.ask_the_room("should I upgrade the RAM");
     let said = wait_for_report(&mut d, 100);
 
-    assert_eq!(d.trace.calls.iter().filter(|c| c.asked_by == "council").count(), 5);
-    assert!(!said.contains("read each other"), "a settled room still ran a second round: {said}");
+    assert_eq!(
+        d.trace
+            .calls
+            .iter()
+            .filter(|c| c.asked_by == "council")
+            .count(),
+        5
+    );
+    assert!(
+        !said.contains("read each other"),
+        "a settled room still ran a second round: {said}"
+    );
 }
 
 #[test]
@@ -486,10 +593,24 @@ fn a_genuine_tie_earns_the_second_round_and_can_be_settled_by_it() {
     d.ask_the_room("should I upgrade the RAM");
     let said = wait_for_report(&mut d, 100);
 
-    assert!(said.contains("read each other"), "the tie did not earn a second round: {said}");
-    assert!(said.contains("3 for"), "the settled count is missing: {said}");
-    let council_calls = d.trace.calls.iter().filter(|c| c.asked_by == "council").count();
-    assert_eq!(council_calls, 10, "a tie should cost the blind round plus the open one: {council_calls}");
+    assert!(
+        said.contains("read each other"),
+        "the tie did not earn a second round: {said}"
+    );
+    assert!(
+        said.contains("3 for"),
+        "the settled count is missing: {said}"
+    );
+    let council_calls = d
+        .trace
+        .calls
+        .iter()
+        .filter(|c| c.asked_by == "council")
+        .count();
+    assert_eq!(
+        council_calls, 10,
+        "a tie should cost the blind round plus the open one: {council_calls}"
+    );
 }
 
 #[test]

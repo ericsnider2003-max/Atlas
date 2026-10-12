@@ -36,7 +36,9 @@ use std::collections::BTreeSet;
 fn files_that_talk() -> Vec<(String, String)> {
     let mut out = Vec::new();
     for dir in ["src", "config"] {
-        let Ok(entries) = std::fs::read_dir(dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -48,7 +50,10 @@ fn files_that_talk() -> Vec<(String, String)> {
             }
         }
     }
-    out.push(("ATLAS.bat".into(), std::fs::read_to_string("ATLAS.bat").unwrap_or_default()));
+    out.push((
+        "ATLAS.bat".into(),
+        std::fs::read_to_string("ATLAS.bat").unwrap_or_default(),
+    ));
     out
 }
 
@@ -80,7 +85,10 @@ fn commands_that_exist() -> BTreeSet<String> {
          guard would pass for anything",
         out.len()
     );
-    assert!(out.contains("vault"), "the dispatch parse is not finding real commands");
+    assert!(
+        out.contains("vault"),
+        "the dispatch parse is not finding real commands"
+    );
     out
 }
 
@@ -124,8 +132,7 @@ const NOT_A_COMMAND: &[&str] = &[
     // Backticked prose that is genuinely not a command. Kept as short as it
     // can be: every entry is a hole, and this list is where a guard like this
     // goes to die.
-    "instance",
-    "install",
+    "instance", "install",
 ];
 
 /// A flag rather than a subcommand: `--daemon`, `--voice`, `--wake`.
@@ -392,7 +399,10 @@ fn the_phrases_that_do_not_parse_are_named_rather_than_forgotten() {
             "\"{phrase}\" is listed as unreachable and Atlas can hear it now. \
              Delete the line -- the reason given was: {why}"
         );
-        assert!(why.len() > 40, "\"{phrase}\" is exempted without a real reason");
+        assert!(
+            why.len() > 40,
+            "\"{phrase}\" is exempted without a real reason"
+        );
     }
 }
 

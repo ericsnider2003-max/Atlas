@@ -24,7 +24,14 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 /// Answers every completion with a fixed summary, regardless of what it was
@@ -32,11 +39,25 @@ fn plat() -> MockPlatform {
 /// the model call itself.
 struct StubLlm;
 impl Llm for StubLlm {
-    fn supports_bounded_chat(&self) -> bool { true }
-    fn chat_until(&self, _: &atlas::brain::ChatRequest, on_text: &mut dyn FnMut(&str) -> bool, keep_going: &dyn Fn() -> bool) -> Result<atlas::brain::ChatReply> {
+    fn supports_bounded_chat(&self) -> bool {
+        true
+    }
+    fn chat_until(
+        &self,
+        _: &atlas::brain::ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        keep_going: &dyn Fn() -> bool,
+    ) -> Result<atlas::brain::ChatReply> {
         let text = "Tide times at Ventura peak just after noon. Wear sandals.";
-        if !keep_going() || !on_text(text) || !keep_going() { return Err(atlas::error::AtlasError::Platform("research fixture stopped".into())); }
-        Ok(atlas::brain::ChatReply { text: text.into(), ..Default::default() })
+        if !keep_going() || !on_text(text) || !keep_going() {
+            return Err(atlas::error::AtlasError::Platform(
+                "research fixture stopped".into(),
+            ));
+        }
+        Ok(atlas::brain::ChatReply {
+            text: text.into(),
+            ..Default::default()
+        })
     }
     fn complete(&self, _system: &str, _user: &str) -> Result<String> {
         Ok("Tide times at Ventura peak just after noon. Wear sandals.".into())
@@ -49,13 +70,18 @@ impl Llm for StubLlm {
 /// the 200-character floor `Research::run` filters short pages with.
 fn cfg_researching_locally() -> Config {
     let mut c = Config::load(Path::new("config")).unwrap();
-    let tools = c.tools.as_mut().expect("the shipped config has a tools section");
+    let tools = c
+        .tools
+        .as_mut()
+        .expect("the shipped config has a tools section");
     tools.research.enabled = true;
     // `example.test` is never looked up for real (it can't be), and the stub
     // fetch below goes nowhere; the public-address check has its own tests.
     tools.research.pages_on_this_machine = true;
     tools.research.search = Some(crate::common::printing("http://example.test/tides"));
-    tools.research.fetch = Some(crate::common::printing(&"Ventura tide information. ".repeat(20)));
+    tools.research.fetch = Some(crate::common::printing(
+        &"Ventura tide information. ".repeat(20),
+    ));
     tools.llm = Some(LlmConfig {
         tool: Default::default(),
         request: r#"{"model":"stub","prompt":"{user}"}"#.into(),
@@ -97,7 +123,11 @@ fn asking_to_research_something_gets_an_honest_immediate_acknowledgment() {
         !reply.to_lowercase().contains("sandals"),
         "the immediate reply must not contain the answer before the lookup has run: {reply}"
     );
-    assert_eq!(d.crew.active(), 1, "the actual lookup should be running in the crew");
+    assert_eq!(
+        d.crew.active(),
+        1,
+        "the actual lookup should be running in the crew"
+    );
 }
 
 #[test]
@@ -107,7 +137,10 @@ fn the_real_answer_arrives_later_once_the_crew_actually_finishes() {
     let mut d = daemon(&c, &p, "later");
 
     let ack = d.turn("research tide times at Ventura", 100);
-    assert!(!ack.to_lowercase().contains("sandals"), "got the answer too early: {ack}");
+    assert!(
+        !ack.to_lowercase().contains("sandals"),
+        "got the answer too early: {ack}"
+    );
 
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut saw_the_answer = false;
@@ -145,7 +178,10 @@ fn a_slow_or_fast_research_answer_is_always_spoken_unlike_a_silent_chore() {
             t += 1;
         }
     }
-    assert!(!said_lines.is_empty(), "research's result must be spoken even if it finished quickly");
+    assert!(
+        !said_lines.is_empty(),
+        "research's result must be spoken even if it finished quickly"
+    );
 }
 
 #[test]
@@ -173,9 +209,18 @@ fn the_report_names_the_answer_and_source_count_but_never_the_save_mechanics() {
         }
     }
     assert!(!report.is_empty(), "never got the research report");
-    assert!(!report.contains("Saved"), "the save location must not be spoken: {report}");
-    assert!(!report.contains("couldn't save"), "a save failure must not be spoken: {report}");
-    assert!(report.contains("Read 1 source"), "the source count should still be there: {report}");
+    assert!(
+        !report.contains("Saved"),
+        "the save location must not be spoken: {report}"
+    );
+    assert!(
+        !report.contains("couldn't save"),
+        "a save failure must not be spoken: {report}"
+    );
+    assert!(
+        report.contains("Read 1 source"),
+        "the source count should still be there: {report}"
+    );
 }
 
 #[test]
@@ -203,7 +248,11 @@ fn offline_research_speaks_the_shared_deferral_message_not_a_hand_written_copy()
         "the deferral must name the topic it is holding: {reply}"
     );
     // No search errand may start while offline -- the request is deferred, not run.
-    assert_eq!(d.crew.active(), 0, "an offline research request must not start a lookup");
+    assert_eq!(
+        d.crew.active(),
+        0,
+        "an offline research request must not start a lookup"
+    );
 }
 
 /// "research it again" means the last topic, not the word "it" (30 Sep 2026
@@ -230,6 +279,9 @@ fn researching_it_again_means_the_last_topic() {
     let again = d.turn("research it again", t + 10);
     let low = again.to_lowercase();
     assert!(low.contains("tide times at ventura"), "{again}");
-    assert!(low.contains("looking into"), "a fresh run, not the cache: {again}");
+    assert!(
+        low.contains("looking into"),
+        "a fresh run, not the cache: {again}"
+    );
     assert!(!low.contains("can't tell"), "{again}");
 }

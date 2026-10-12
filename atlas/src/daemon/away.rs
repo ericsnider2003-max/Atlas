@@ -1,6 +1,6 @@
 //! Dictation, notifications, the work log and quiet time, and coming back:
 //! what happened while you were away and the brief.
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
@@ -16,12 +16,16 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn phone_cfg(&self) -> crate::phone::PhoneConfig {
-        self.tools_ref().map(|t| t.phone.clone()).unwrap_or_default()
+        self.tools_ref()
+            .map(|t| t.phone.clone())
+            .unwrap_or_default()
     }
 
     /// The dictation settings, or the type's own defaults.
     pub(super) fn dictate_cfg(&self) -> crate::dictate::DictateConfig {
-        self.tools_ref().map(|t| t.dictate.clone()).unwrap_or_default()
+        self.tools_ref()
+            .map(|t| t.dictate.clone())
+            .unwrap_or_default()
     }
 
     /// The window you are looking at: (what identifies it, what it is called).
@@ -86,7 +90,11 @@ impl<'a> Daemon<'a> {
             return "I can't tell which window you're in, so I won't start typing into it.".into();
         }
         if !self.may_dictate_into(&app, &title) {
-            return crate::dictate::refusal(if title.trim().is_empty() { &app } else { &title });
+            return crate::dictate::refusal(if title.trim().is_empty() {
+                &app
+            } else {
+                &title
+            });
         }
 
         self.dictation = Some(crate::dictate::Dictation::start(&app, t));
@@ -148,7 +156,9 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn notify_cfg(&self) -> crate::notify::NotifyConfig {
-        self.tools_ref().map(|t| t.notify.clone()).unwrap_or_default()
+        self.tools_ref()
+            .map(|t| t.notify.clone())
+            .unwrap_or_default()
     }
 
     /// The returning config, with a spoken address change layered over it.
@@ -206,7 +216,9 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn worklog_cfg(&self) -> crate::worklog::WorkLogConfig {
-        self.tools_ref().map(|t| t.worklog.clone()).unwrap_or_default()
+        self.tools_ref()
+            .map(|t| t.worklog.clone())
+            .unwrap_or_default()
     }
 
     /// How long you've given no sign of being here: since you last spoke,
@@ -246,11 +258,15 @@ impl<'a> Daemon<'a> {
         // without a word on your return.
         // A call or a video holds you without a key pressed (see
         // `worklog::effective_idle`); that silence isn't away.
-        let idle_now = crate::worklog::effective_idle(&cfg, s.active.as_ref(), s.os_quiet, s.input_idle_secs);
+        let idle_now =
+            crate::worklog::effective_idle(&cfg, s.active.as_ref(), s.os_quiet, s.input_idle_secs);
         let since = self.last_beat.max(self.worked_until);
         let gap = t.saturating_sub(since);
         if self.last_beat > 0 && gap > self.away_after {
-            let back = idle_now.map(|i| t.saturating_sub(i)).unwrap_or(t).max(since);
+            let back = idle_now
+                .map(|i| t.saturating_sub(i))
+                .unwrap_or(t)
+                .max(since);
             if back.saturating_sub(since) > self.away_after {
                 self.back_from = Some((self.input_away.take().unwrap_or(since), back));
             }
@@ -275,7 +291,8 @@ impl<'a> Daemon<'a> {
         if let Some(w) = s.active.as_ref() {
             self.worklog.note_pause(&w.process, t, s.input_idle_secs);
         }
-        if self.awareness.learned_pause.is_empty() || t.saturating_sub(self.worklog.saved_at) >= 600 {
+        if self.awareness.learned_pause.is_empty() || t.saturating_sub(self.worklog.saved_at) >= 600
+        {
             self.awareness.learned_pause = self.worklog.pause_thresholds();
         }
         if t.saturating_sub(self.worklog.saved_at) >= 600 {
@@ -292,21 +309,34 @@ impl<'a> Daemon<'a> {
         let today = crate::localclock::midnight(t, off);
         let summary = crate::worklog::summarise(&self.worklog.between(today, t));
         let done = |i: &crate::workspace_view::Item, from: u64| {
-            i.status == crate::workspace_view::Status::Done && i.closed_at.is_some_and(|c| c >= from && c <= t)
+            i.status == crate::workspace_view::Status::Done
+                && i.closed_at.is_some_and(|c| c >= from && c <= t)
         };
         let carried: Vec<(String, u32)> = self
             .workspace
             .iter()
             .filter(|i| i.status.live())
-            .map(|i| (i.title.clone(), self.carried.iter().find(|(c, _)| *c == i.title).map(|(_, n)| *n).unwrap_or(0)))
+            .map(|i| {
+                (
+                    i.title.clone(),
+                    self.carried
+                        .iter()
+                        .find(|(c, _)| *c == i.title)
+                        .map(|(_, n)| *n)
+                        .unwrap_or(0),
+                )
+            })
             .collect();
         let tomorrow = crate::localclock::day_here(t + 86_400) as u64;
         let week = (week || crate::localclock::weekday(t, off) == 4).then(|| {
             let monday = today - crate::localclock::weekday(t, off) as u64 * 86_400;
             let spans = self.worklog.between(monday, t);
-            let mut per_day: std::collections::BTreeMap<u64, u64> = std::collections::BTreeMap::new();
+            let mut per_day: std::collections::BTreeMap<u64, u64> =
+                std::collections::BTreeMap::new();
             for s in &spans {
-                *per_day.entry(crate::localclock::midnight_here(s.start)).or_default() += s.secs();
+                *per_day
+                    .entry(crate::localclock::midnight_here(s.start))
+                    .or_default() += s.secs();
             }
             let w = crate::worklog::summarise(&spans);
             crate::daily::Week {
@@ -317,13 +347,24 @@ impl<'a> Daemon<'a> {
             }
         });
         crate::daily::Wrap {
-            finished: self.workspace.iter().filter(|i| done(i, today)).map(|i| i.title.clone()).collect(),
+            finished: self
+                .workspace
+                .iter()
+                .filter(|i| done(i, today))
+                .map(|i| i.title.clone())
+                .collect(),
             carried,
             handled: crate::brief::handled_since(&self.scheduler, today),
             active_secs: summary.active,
             top: summary.by_category.clone(),
-            longest_focus: summary.blocks.first().map(|b| (b.category.clone(), b.end.saturating_sub(b.start))),
-            push: self.facts.get("push them on").and_then(|f| crate::brief::push_piece(&f.summary, tomorrow)),
+            longest_focus: summary
+                .blocks
+                .first()
+                .map(|b| (b.category.clone(), b.end.saturating_sub(b.start))),
+            push: self
+                .facts
+                .get("push them on")
+                .and_then(|f| crate::brief::push_piece(&f.summary, tomorrow)),
             week,
         }
     }
@@ -351,7 +392,11 @@ impl<'a> Daemon<'a> {
                 false => "There's no work session going.".into(),
             }),
             crate::worksession::Said::HowLong => Some(match self.work_session.as_ref() {
-                Some(s) if !s.over(t) => format!("{} left on {}.", crate::worklog::duration_words(s.left(t)), s.what),
+                Some(s) if !s.over(t) => format!(
+                    "{} left on {}.",
+                    crate::worklog::duration_words(s.left(t)),
+                    s.what
+                ),
                 _ => "There's no work session going.".into(),
             }),
         }
@@ -359,7 +404,9 @@ impl<'a> Daemon<'a> {
 
     /// End the session: how it went, said and kept in your notes.
     pub(super) fn end_work_session(&mut self, t: u64) -> String {
-        let Some(s) = self.work_session.take() else { return String::new() };
+        let Some(s) = self.work_session.take() else {
+            return String::new();
+        };
         let _ = self.store.save("work_session", &self.work_session);
         self.proactive.quiet_until = 0;
         let ended = t.min(s.until);
@@ -368,7 +415,11 @@ impl<'a> Daemon<'a> {
         // -- the same hand-over the welcome back does.
         let cfg = self.notify_cfg();
         let held = self.outbox.collect(t, &cfg);
-        let held = if held.is_empty() { String::new() } else { crate::notify::spoken(&held) };
+        let held = if held.is_empty() {
+            String::new()
+        } else {
+            crate::notify::spoken(&held)
+        };
         let said = crate::worksession::how_it_went(&s, ended, &log, &held);
         let off = crate::localclock::offset_secs();
         let clock = |u: u64| {
@@ -380,12 +431,22 @@ impl<'a> Daemon<'a> {
             let _guard = self.store.transaction()?;
             std::fs::create_dir_all(&dir)?;
             use std::io::Write;
-            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("work-sessions.md"))?;
-            writeln!(f, "{}", crate::worksession::note_line(&s, ended, &said, &clock))?;
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(dir.join("work-sessions.md"))?;
+            writeln!(
+                f,
+                "{}",
+                crate::worksession::note_line(&s, ended, &said, &clock)
+            )?;
             f.sync_all()?;
             Ok(())
         })();
-        match filed { Ok(()) => said, Err(error) => format!("{said} I couldn't save the work-session note ({error}).") }
+        match filed {
+            Ok(()) => said,
+            Err(error) => format!("{said} I couldn't save the work-session note ({error})."),
+        }
     }
 
     /// On the phone app, your answer to the free online models: "use online
@@ -397,7 +458,10 @@ impl<'a> Daemon<'a> {
         }
         let yes = crate::phonemode::online_answer(said)?;
         crate::phonemode::set_online_ok(yes);
-        let kept = self.store.save(crate::phonemode::ONLINE_ASKED, &yes).is_ok();
+        let kept = self
+            .store
+            .save(crate::phonemode::ONLINE_ASKED, &yes)
+            .is_ok();
         let mut out = if yes {
             "Done: until this phone has a model of its own, your questions go to the free online models. Ask me again.".to_string()
         } else {
@@ -416,8 +480,23 @@ impl<'a> Daemon<'a> {
         let what = crate::tradeday::why_it_moved(said)?;
         let off = crate::localclock::offset_secs();
         let (y, m, d) = crate::civil::civil_from_days(((t as i64) + off).div_euclid(86_400));
-        let month = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][(m - 1) as usize];
-        Some(self.research(&format!("why {what} moved on {d} {month} {y}: the news and figures behind the move")))
+        let month = [
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ][(m - 1) as usize];
+        Some(self.research(&format!(
+            "why {what} moved on {d} {month} {y}: the news and figures behind the move"
+        )))
     }
 
     /// The last eight days of the work log, reduced for `daily::one_thing_noticed`.
@@ -430,18 +509,37 @@ impl<'a> Daemon<'a> {
                 let from = today.saturating_sub(back * 86_400);
                 let to = if back == 0 { t } else { from + 86_400 };
                 let s = crate::worklog::summarise(&self.worklog.between(from, to));
-                let small = self.worklog.between(from, (from + 4 * 3600).min(to)).iter().map(|x| x.secs()).sum();
-                crate::daily::DayLog { active_secs: s.active, by_category: s.by_category, focus_blocks: s.blocks.len(), small_hours_secs: small }
+                let small = self
+                    .worklog
+                    .between(from, (from + 4 * 3600).min(to))
+                    .iter()
+                    .map(|x| x.secs())
+                    .sum();
+                crate::daily::DayLog {
+                    active_secs: s.active,
+                    by_category: s.by_category,
+                    focus_blocks: s.blocks.len(),
+                    small_hours_secs: small,
+                }
             })
             .collect()
     }
 
     /// "What have you noticed?" -- the one observation, asked for.
     pub(super) fn noticed_help(&mut self, said: &str, t: u64) -> Option<String> {
-        let low = said.trim().trim_end_matches(['?', '.', '!']).to_ascii_lowercase();
-        if !["what have you noticed", "noticed anything", "what did you notice", "notice anything", "anything you noticed"]
-            .iter()
-            .any(|p| low.ends_with(p))
+        let low = said
+            .trim()
+            .trim_end_matches(['?', '.', '!'])
+            .to_ascii_lowercase();
+        if ![
+            "what have you noticed",
+            "noticed anything",
+            "what did you notice",
+            "notice anything",
+            "anything you noticed",
+        ]
+        .iter()
+        .any(|p| low.ends_with(p))
         {
             return None;
         }
@@ -471,7 +569,11 @@ impl<'a> Daemon<'a> {
         let (from, to, name) = if low.contains("yesterday") {
             (today - 86_400, today, "yesterday")
         } else if low.contains("week") {
-            (today - 6 * 86_400, today + 86_400, "over the last seven days")
+            (
+                today - 6 * 86_400,
+                today + 86_400,
+                "over the last seven days",
+            )
         } else {
             (today, today + 86_400, "today")
         };
@@ -491,7 +593,10 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn returning_cfg(&self) -> crate::returning::ReturnConfig {
-        let mut cfg = self.tools_ref().map(|t| t.returning.clone()).unwrap_or_default();
+        let mut cfg = self
+            .tools_ref()
+            .map(|t| t.returning.clone())
+            .unwrap_or_default();
         if self.store.exists("address") {
             match crate::returning::Address::load(&self.store) {
                 crate::returning::Address::None => cfg.address = String::new(),
@@ -637,16 +742,26 @@ impl<'a> Daemon<'a> {
     /// Prepared text is not proof that speech finished. A canceled attempt
     /// keeps its scheduling cooldown while the receipt remains unchanged.
     pub(crate) fn acknowledge_brief_delivery(&mut self, delivered: &str, now: u64) {
-        let Some((line, _)) = self.pending_brief_delivery.as_ref() else { return };
+        let Some((line, _)) = self.pending_brief_delivery.as_ref() else {
+            return;
+        };
         let compact = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
-        if !compact(delivered).contains(&compact(line)) { return; }
-        if !self.commit_brief_receipt(now) { return; }
-        let Some((_, prepared_at)) = self.pending_brief_delivery.as_ref() else { return };
+        if !compact(delivered).contains(&compact(line)) {
+            return;
+        }
+        if !self.commit_brief_receipt(now) {
+            return;
+        }
+        let Some((_, prepared_at)) = self.pending_brief_delivery.as_ref() else {
+            return;
+        };
         self.last_brief = *prepared_at;
         self.last_brief_at = now;
         self.pending_brief_delivery = None;
         let _ = self.store.save("last_brief_at", &self.last_brief_at);
         crate::heard!(self.store.save("last_brief_source_at", &self.last_brief));
-        let _ = self.store.save("brief_prepared", &self.pending_brief_delivery);
+        let _ = self
+            .store
+            .save("brief_prepared", &self.pending_brief_delivery);
     }
 }

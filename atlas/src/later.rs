@@ -42,8 +42,12 @@ pub fn gist(said: &str) -> String {
 
 impl Later {
     pub fn note_version(&mut self, event: &crate::sync::Event) -> bool {
-        let crate::sync::What::Changed { id, field, .. } = &event.what else { return false };
-        let Some(what) = id.strip_prefix("later:").filter(|_| field == "later") else { return false };
+        let crate::sync::What::Changed { id, field, .. } = &event.what else {
+            return false;
+        };
+        let Some(what) = id.strip_prefix("later:").filter(|_| field == "later") else {
+            return false;
+        };
         let key = what.to_lowercase();
         let version = crate::sync::Version::of(event);
         if self.versions.get(&key).is_some_and(|old| *old >= version) {
@@ -56,20 +60,36 @@ impl Later {
     /// Returns true when the saved list/version changed, including a delete
     /// of an absent item: that tombstone is needed for future delayed events.
     pub fn apply_synced(&mut self, event: &crate::sync::Event) -> bool {
-        let crate::sync::What::Changed { id, field, to } = &event.what else { return false };
-        let Some(what) = id.strip_prefix("later:").filter(|_| field == "later") else { return false };
-        let added = if to.is_empty() { None } else {
-            let Ok(added) = to.parse::<u64>() else { return false };
+        let crate::sync::What::Changed { id, field, to } = &event.what else {
+            return false;
+        };
+        let Some(what) = id.strip_prefix("later:").filter(|_| field == "later") else {
+            return false;
+        };
+        let added = if to.is_empty() {
+            None
+        } else {
+            let Ok(added) = to.parse::<u64>() else {
+                return false;
+            };
             Some(added)
         };
         if !self.note_version(event) {
             return false;
         }
-        self.items.retain(|i| i.what.to_lowercase() != what.to_lowercase());
+        self.items
+            .retain(|i| i.what.to_lowercase() != what.to_lowercase());
         if let Some(added) = added {
-            self.items.push(Item { what: what.into(), added });
+            self.items.push(Item {
+                what: what.into(),
+                added,
+            });
         }
-        self.items.sort_by(|a, b| a.added.cmp(&b.added).then_with(|| a.what.to_lowercase().cmp(&b.what.to_lowercase())));
+        self.items.sort_by(|a, b| {
+            a.added
+                .cmp(&b.added)
+                .then_with(|| a.what.to_lowercase().cmp(&b.what.to_lowercase()))
+        });
         true
     }
     pub fn add(&mut self, what: &str, t: u64) -> bool {
@@ -77,18 +97,33 @@ impl Later {
         if what.is_empty() || self.items.iter().any(|i| i.what.eq_ignore_ascii_case(what)) {
             return false;
         }
-        self.items.push(Item { what: what.to_string(), added: t });
+        self.items.push(Item {
+            what: what.to_string(),
+            added: t,
+        });
         true
     }
 
     /// Take off the one matching these words best; `None` if nothing matches.
     pub fn take_off(&mut self, words: &str) -> Option<Item> {
-        let said: Vec<String> = words.to_lowercase().split_whitespace().filter(|w| w.len() > 2).map(str::to_string).collect();
+        let said: Vec<String> = words
+            .to_lowercase()
+            .split_whitespace()
+            .filter(|w| w.len() > 2)
+            .map(str::to_string)
+            .collect();
         let (i, hits) = self
             .items
             .iter()
             .enumerate()
-            .map(|(i, it)| (i, said.iter().filter(|w| it.what.to_lowercase().contains(w.as_str())).count()))
+            .map(|(i, it)| {
+                (
+                    i,
+                    said.iter()
+                        .filter(|w| it.what.to_lowercase().contains(w.as_str()))
+                        .count(),
+                )
+            })
             .max_by_key(|(_, h)| *h)?;
         (hits > 0).then(|| self.items.remove(i))
     }
@@ -97,7 +132,12 @@ impl Later {
         if self.items.is_empty() {
             return "Your later list is empty.".into();
         }
-        let each: Vec<String> = self.items.iter().enumerate().map(|(n, i)| format!("{}. {}", n + 1, i.what)).collect();
+        let each: Vec<String> = self
+            .items
+            .iter()
+            .enumerate()
+            .map(|(n, i)| format!("{}. {}", n + 1, i.what))
+            .collect();
         format!("On your later list: {}", each.join("; "))
     }
 
@@ -121,8 +161,15 @@ mod sync_recovery {
     use super::*;
     fn event(device: &str, at: u64, to: &str) -> crate::sync::Event {
         crate::sync::Event {
-            device: device.into(), seq: 1, at, hlc: crate::hlc::Stamp::ZERO,
-            what: crate::sync::What::Changed { id: "later:write the script".into(), field: "later".into(), to: to.into() },
+            device: device.into(),
+            seq: 1,
+            at,
+            hlc: crate::hlc::Stamp::ZERO,
+            what: crate::sync::What::Changed {
+                id: "later:write the script".into(),
+                field: "later".into(),
+                to: to.into(),
+            },
         }
     }
 
@@ -130,7 +177,11 @@ mod sync_recovery {
     fn distinct_items_have_the_same_order_after_opposite_delivery() {
         let first = event("phone", 10, "10");
         let mut second = event("laptop", 20, "20");
-        second.what = crate::sync::What::Changed { id: "later:record the video".into(), field: "later".into(), to: "20".into() };
+        second.what = crate::sync::What::Changed {
+            id: "later:record the video".into(),
+            field: "later".into(),
+            to: "20".into(),
+        };
         let mut a = Later::default();
         a.apply_synced(&first);
         a.apply_synced(&second);
@@ -149,7 +200,10 @@ mod sync_recovery {
         a.apply_synced(&delete);
         let saved = serde_json::to_vec(&a).unwrap();
         let mut restarted: Later = serde_json::from_slice(&saved).unwrap();
-        assert!(!restarted.apply_synced(&add), "an older add must not override the saved deletion");
+        assert!(
+            !restarted.apply_synced(&add),
+            "an older add must not override the saved deletion"
+        );
         assert!(restarted.items.is_empty());
         let mut b = Later::default();
         b.apply_synced(&delete);

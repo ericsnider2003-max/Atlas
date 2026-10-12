@@ -111,7 +111,12 @@ impl Roster {
 
     /// Add `peer_name` to `business`'s roster. Refuses a name `pairings`
     /// doesn't know, on purpose -- see the module doc.
-    pub fn add(&mut self, business: &str, peer_name: &str, pairings: &Pairings) -> Result<(), RosterError> {
+    pub fn add(
+        &mut self,
+        business: &str,
+        peer_name: &str,
+        pairings: &Pairings,
+    ) -> Result<(), RosterError> {
         if !pairings.has_peer(peer_name) {
             return Err(RosterError::NotAPeer);
         }
@@ -127,7 +132,9 @@ impl Roster {
     /// was anything to remove -- this alone does not touch the underlying
     /// pairing; see `kin::Pairings::forget` for that.
     pub fn remove(&mut self, business: &str, peer_name: &str) -> bool {
-        let Some(members) = self.businesses.get_mut(business) else { return false };
+        let Some(members) = self.businesses.get_mut(business) else {
+            return false;
+        };
         let before = members.len();
         members.retain(|m| !crate::kin::same_name(m, peer_name));
         members.len() != before

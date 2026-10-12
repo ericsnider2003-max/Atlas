@@ -59,14 +59,22 @@ fn the_h4_bar_that_closes_clear_of_payrolls_still_contains_them() {
     // The whole reason this module asks an interval question. The close sits
     // three and a half hours past the print — every window in `Purpose` has
     // shut by then — so an instant check at the close finds nothing.
-    let (inside, _) =
-        atlas::market::events::inside_blackout(H4_OPEN_CONTAINING, "EURUSD", Purpose::AdverseSelection)
-            .expect("calendar");
+    let (inside, _) = atlas::market::events::inside_blackout(
+        H4_OPEN_CONTAINING,
+        "EURUSD",
+        Purpose::AdverseSelection,
+    )
+    .expect("calendar");
     assert!(!inside, "the close really is clear — that is the trap");
 
-    let found = spanning(Tf::H4, H4_OPEN_CONTAINING, "EURUSD", Purpose::AdverseSelection)
-        .expect("calendar")
-        .expect("the bar contains payrolls");
+    let found = spanning(
+        Tf::H4,
+        H4_OPEN_CONTAINING,
+        "EURUSD",
+        Purpose::AdverseSelection,
+    )
+    .expect("calendar")
+    .expect("the bar contains payrolls");
     assert!(found.iter().any(|e| e.name.starts_with("Non-Farm")));
 }
 
@@ -86,8 +94,8 @@ fn on_m1_the_span_question_and_the_instant_question_agree() {
     // there finds something, correctly, and would have made this test assert
     // the opposite of what it says.
     let clear_instant = H4_OPEN_CONTAINING + 4 * 60 * 60 * 1000;
-    let clear = spanning(Tf::M1, clear_instant, "EURUSD", Purpose::AdverseSelection)
-        .expect("calendar");
+    let clear =
+        spanning(Tf::M1, clear_instant, "EURUSD", Purpose::AdverseSelection).expect("calendar");
     assert!(clear.is_none(), "an M1 bar opening at 16:00 holds nothing");
 
     let inside = spanning(
@@ -102,11 +110,32 @@ fn on_m1_the_span_question_and_the_instant_question_agree() {
 
 #[test]
 fn the_instrument_decides_and_a_us_print_reaches_a_pair_with_no_dollar_in_it() {
-    let euro = spanning(Tf::H4, H4_OPEN_CONTAINING, "EURUSD", Purpose::AdverseSelection).unwrap();
-    let carry = spanning(Tf::H4, H4_OPEN_CONTAINING, "AUDJPY", Purpose::AdverseSelection).unwrap();
-    let neither = spanning(Tf::H4, H4_OPEN_CONTAINING, "EURGBP", Purpose::AdverseSelection).unwrap();
+    let euro = spanning(
+        Tf::H4,
+        H4_OPEN_CONTAINING,
+        "EURUSD",
+        Purpose::AdverseSelection,
+    )
+    .unwrap();
+    let carry = spanning(
+        Tf::H4,
+        H4_OPEN_CONTAINING,
+        "AUDJPY",
+        Purpose::AdverseSelection,
+    )
+    .unwrap();
+    let neither = spanning(
+        Tf::H4,
+        H4_OPEN_CONTAINING,
+        "EURGBP",
+        Purpose::AdverseSelection,
+    )
+    .unwrap();
     assert!(euro.is_some());
-    assert!(carry.is_some(), "the carry cross-section unwinds on a US print");
+    assert!(
+        carry.is_some(),
+        "the carry cross-section unwinds on a US print"
+    );
     assert!(neither.is_none(), "but it must not reach everything");
 }
 
@@ -149,8 +178,14 @@ fn checking_only_the_close_lets_that_same_bar_through() {
     // two is a measured thing rather than a claim in a doc comment.
     let bars = h4_ending(H4_OPEN_CONTAINING, 40);
     let view = bars.latest().unwrap();
-    let close_only = StanddownConfig { check_the_bar: false, ..StanddownConfig::default() };
-    assert_eq!(standing_down(&view, "EURUSD", &close_only).expect("calendar"), None);
+    let close_only = StanddownConfig {
+        check_the_bar: false,
+        ..StanddownConfig::default()
+    };
+    assert_eq!(
+        standing_down(&view, "EURUSD", &close_only).expect("calendar"),
+        None
+    );
 }
 
 #[test]
@@ -162,8 +197,10 @@ fn a_quiet_bar_is_left_alone() {
         None,
         "a rule that refuses everything is not a rule"
     );
-    assert!(atlas::standdown::spoken(&view, "EURUSD", &StanddownConfig::default())
-        .contains("read it normally"));
+    assert!(
+        atlas::standdown::spoken(&view, "EURUSD", &StanddownConfig::default())
+            .contains("read it normally")
+    );
 }
 
 #[test]
@@ -206,7 +243,10 @@ fn a_series_with_no_timestamps_is_refused_rather_than_waved_through() {
     assert!(e.contains("timestamps"));
 
     // And it is a default, not a law — but the default is the safe one.
-    let reckless = StanddownConfig { no_clock_is_clear: true, ..StanddownConfig::default() };
+    let reckless = StanddownConfig {
+        no_clock_is_clear: true,
+        ..StanddownConfig::default()
+    };
     assert_eq!(standing_down(&view, "EURUSD", &reckless).unwrap(), None);
     assert!(!StanddownConfig::default().no_clock_is_clear);
 }
@@ -220,7 +260,10 @@ fn the_window_is_the_one_the_spread_measurement_supports() {
     // Not `Execution`. The spread is what takes the trade out, and liquidity
     // withdrawal begins thirty minutes BEFORE the print — which the narrow
     // window does not cover at all.
-    assert_eq!(StanddownConfig::default().purpose, Purpose::AdverseSelection);
+    assert_eq!(
+        StanddownConfig::default().purpose,
+        Purpose::AdverseSelection
+    );
     let (before, _) = Purpose::AdverseSelection.window();
     assert_eq!(before, 30);
 
@@ -231,10 +274,21 @@ fn the_window_is_the_one_the_spread_measurement_supports() {
         Purpose::AdverseSelection,
     )
     .unwrap();
-    assert!(ahead.is_some(), "twenty minutes ahead of payrolls is not clear");
-    let narrow =
-        spanning(Tf::M15, NFP_JUNE_2026 - 20 * 60_000, "EURUSD", Purpose::Execution).unwrap();
-    assert!(narrow.is_none(), "and the narrow window is exactly what misses it");
+    assert!(
+        ahead.is_some(),
+        "twenty minutes ahead of payrolls is not clear"
+    );
+    let narrow = spanning(
+        Tf::M15,
+        NFP_JUNE_2026 - 20 * 60_000,
+        "EURUSD",
+        Purpose::Execution,
+    )
+    .unwrap();
+    assert!(
+        narrow.is_none(),
+        "and the narrow window is exactly what misses it"
+    );
 }
 
 #[test]
@@ -243,9 +297,15 @@ fn proposing_a_trade_into_a_release_is_refused_before_any_arithmetic_happens() {
     // taken inside a window never becomes an idea with a stop on it.
     let bars = h4_ending(H4_OPEN_CONTAINING, 200);
     let view = bars.latest().unwrap();
-    let purse = atlas::levels::Purse { balance: 10_000.0, value_per_point: 1.0 };
+    let purse = atlas::levels::Purse {
+        balance: 10_000.0,
+        value_per_point: 1.0,
+    };
     let rules = atlas::levels::Rules::default();
-    assert!(rules.mind_the_calendar, "on by default, or it is not wired at all");
+    assert!(
+        rules.mind_the_calendar,
+        "on by default, or it is not wired at all"
+    );
     let out = atlas::levels::propose(
         &view,
         "EURUSD",
@@ -269,8 +329,14 @@ fn refusing_to_act_and_failing_to_read_are_different_answers() {
     // each, so nothing downstream has to guess from the wording.
     let bars = h4_ending(H4_OPEN_CONTAINING, 200);
     let view = bars.latest().unwrap();
-    let purse = atlas::levels::Purse { balance: 10_000.0, value_per_point: 1.0 };
-    let off = atlas::levels::Rules { mind_the_calendar: false, ..atlas::levels::Rules::default() };
+    let purse = atlas::levels::Purse {
+        balance: 10_000.0,
+        value_per_point: 1.0,
+    };
+    let off = atlas::levels::Rules {
+        mind_the_calendar: false,
+        ..atlas::levels::Rules::default()
+    };
     let out = atlas::levels::propose(
         &view,
         "EURUSD",
@@ -302,7 +368,10 @@ fn bars_with_no_clock_come_back_unreadable_rather_than_standing_down() {
     )
     .unwrap();
     let view = bars.latest().unwrap();
-    let purse = atlas::levels::Purse { balance: 10_000.0, value_per_point: 1.0 };
+    let purse = atlas::levels::Purse {
+        balance: 10_000.0,
+        value_per_point: 1.0,
+    };
     let out = atlas::levels::propose(
         &view,
         "EURUSD",
@@ -312,5 +381,8 @@ fn bars_with_no_clock_come_back_unreadable_rather_than_standing_down() {
         &purse,
         &atlas::levels::Rules::default(),
     );
-    assert!(matches!(out, Err(atlas::levels::NoTrade::Unreadable(_))), "got {out:?}");
+    assert!(
+        matches!(out, Err(atlas::levels::NoTrade::Unreadable(_))),
+        "got {out:?}"
+    );
 }

@@ -14,22 +14,52 @@ impl Daemon<'_> {
         let what = field_of(f, "what").unwrap_or_default();
         match path {
             "/hub/calendar/review" => {
-                let valid = f.len() == 3 && f.iter().filter(|(key, _)| key == "id").count() == 1
+                let valid = f.len() == 3
+                    && f.iter().filter(|(key, _)| key == "id").count() == 1
                     && f.iter().filter(|(key, _)| key == "what").count() == 1
                     && f.iter().filter(|(key, _)| key == "token").count() == 1
                     && matches!(what.as_str(), "retry" | "dismiss");
                 let said = if valid {
-                    self.resolve_calendar_review(&field_of(f, "id").unwrap_or_default(), &what, &field_of(f, "token").unwrap_or_default())
-                } else { "That form didn't identify one calendar outcome and one review decision; nothing changed.".into() };
+                    self.resolve_calendar_review(
+                        &field_of(f, "id").unwrap_or_default(),
+                        &what,
+                        &field_of(f, "token").unwrap_or_default(),
+                    )
+                } else {
+                    "That form didn't identify one calendar outcome and one review decision; nothing changed.".into()
+                };
                 hub::back_with(Page::Outstanding.href(), "", &said)
             }
             "/hub/back" => {
-                if what != "return-file" { return hub::back_with(Page::LookingBack.href(), "", "That button didn't identify a recovery action; nothing changed."); }
-                if self.handed_over_now() { return hub::back_with(Page::LookingBack.href(), "", "Return to your own Atlas before returning a saved file."); }
+                if what != "return-file" {
+                    return hub::back_with(
+                        Page::LookingBack.href(),
+                        "",
+                        "That button didn't identify a recovery action; nothing changed.",
+                    );
+                }
+                if self.handed_over_now() {
+                    return hub::back_with(
+                        Page::LookingBack.href(),
+                        "",
+                        "Return to your own Atlas before returning a saved file.",
+                    );
+                }
                 let archive = field_of(f, "archive").unwrap_or_default();
                 let kind = field_of(f, "kind").unwrap_or_default();
-                let Some(id) = field_of(f, "id").and_then(|id| id.parse::<u64>().ok()) else { return hub::back_with(Page::LookingBack.href(), "", "That button didn't identify a saved file; nothing changed."); };
-                let said = match crate::safety::return_archived_file(self.store.root(), &archive, &kind, id) {
+                let Some(id) = field_of(f, "id").and_then(|id| id.parse::<u64>().ok()) else {
+                    return hub::back_with(
+                        Page::LookingBack.href(),
+                        "",
+                        "That button didn't identify a saved file; nothing changed.",
+                    );
+                };
+                let said = match crate::safety::return_archived_file(
+                    self.store.root(),
+                    &archive,
+                    &kind,
+                    id,
+                ) {
                     Ok(said) => said,
                     Err(error) => format!("Couldn't return that saved file: {error}"),
                 };
@@ -46,7 +76,11 @@ impl Daemon<'_> {
             "/hub/outstanding" => {
                 let key = field_of(f, "key").unwrap_or_default();
                 if what != "drop" || key.is_empty() {
-                    return hub::back_with(Page::Outstanding.href(), "", "That button didn't say which thing, so nothing changed.");
+                    return hub::back_with(
+                        Page::Outstanding.href(),
+                        "",
+                        "That button didn't say which thing, so nothing changed.",
+                    );
                 }
                 if let Some(no) = self.handed_over_refusal(&Intent::DropTask(String::new())) {
                     return hub::back_with(Page::Outstanding.href(), "", &no);
@@ -63,7 +97,13 @@ impl Daemon<'_> {
                     let pairings = crate::kin::Pairings::load(&self.peer_dir);
                     let roster = crate::roster::Roster::load(&self.store);
                     let space = self.shared_space(std::slice::from_ref(&who), &roster, &pairings);
-                    return match self.chats.open(&who, space, std::slice::from_ref(&who), &roster, &pairings) {
+                    return match self.chats.open(
+                        &who,
+                        space,
+                        std::slice::from_ref(&who),
+                        &roster,
+                        &pairings,
+                    ) {
                         Ok(id) => {
                             if let Err(e) = self.chats.save(&self.store) {
                                 return hub::back_with(
@@ -72,7 +112,11 @@ impl Daemon<'_> {
                                     &with_keeping("Started.".into(), Err(e)),
                                 );
                             }
-                            Reply::redirect(&format!("{}?room={}", Page::Messages.href(), crate::research::urlencode(&id)))
+                            Reply::redirect(&format!(
+                                "{}?room={}",
+                                Page::Messages.href(),
+                                crate::research::urlencode(&id)
+                            ))
                         }
                         Err(e) => hub::back_with(Page::Messages.href(), "", &e.plain()),
                     };
@@ -80,22 +124,40 @@ impl Daemon<'_> {
                 let room = field_of(f, "room").unwrap_or_default();
                 let body = field_of(f, "body").unwrap_or_default();
                 if body.trim().is_empty() {
-                    return hub::back_with(Page::Messages.href(), &format!("room={}", crate::research::urlencode(&room)), "Nothing to send.");
+                    return hub::back_with(
+                        Page::Messages.href(),
+                        &format!("room={}", crate::research::urlencode(&room)),
+                        "Nothing to send.",
+                    );
                 }
                 let pairings = crate::kin::Pairings::load(&self.peer_dir);
                 let roster = crate::roster::Roster::load(&self.store);
-                let said = match self.chats.post(&room, body.trim(), now, local_offset_mins(), &roster, &pairings) {
+                let said = match self.chats.post(
+                    &room,
+                    body.trim(),
+                    now,
+                    local_offset_mins(),
+                    &roster,
+                    &pairings,
+                ) {
                     Ok((_, left_out)) => {
                         let said = if left_out.is_empty() {
                             "Sent.".to_string()
                         } else {
-                            format!("Sent. {} isn't in that business any more, so I left them out.", left_out.join(", "))
+                            format!(
+                                "Sent. {} isn't in that business any more, so I left them out.",
+                                left_out.join(", ")
+                            )
                         };
                         with_keeping(said, self.chats.save(&self.store))
                     }
                     Err(e) => e.plain(),
                 };
-                hub::back_with(Page::Messages.href(), &format!("room={}", crate::research::urlencode(&room)), &said)
+                hub::back_with(
+                    Page::Messages.href(),
+                    &format!("room={}", crate::research::urlencode(&room)),
+                    &said,
+                )
             }
             "/hub/tasks" => {
                 let b = field_of(f, "b").unwrap_or_default();
@@ -110,13 +172,22 @@ impl Daemon<'_> {
                     let roster = crate::roster::Roster::load(&self.store);
                     if text.trim().is_empty() {
                         "Nothing to add.".to_string()
-                    } else if !roster.businesses().iter().any(|x| x.eq_ignore_ascii_case(&b)) {
+                    } else if !roster
+                        .businesses()
+                        .iter()
+                        .any(|x| x.eq_ignore_ascii_case(&b))
+                    {
                         "Shared tasks belong to a business on your roster.".to_string()
                     } else {
                         let due = field_of(f, "due")
                             .and_then(|d| crate::hubpages::days_of(&d))
                             .map(|d| crate::localclock::utc_of_wall(d, 17 * 3600));
-                        tasks.add(crate::earned::Space::Business(b.clone()), text.trim(), due, now);
+                        tasks.add(
+                            crate::earned::Space::Business(b.clone()),
+                            text.trim(),
+                            due,
+                            now,
+                        );
                         format!("Added to {b}.")
                     }
                 };
@@ -126,7 +197,11 @@ impl Daemon<'_> {
                     Ok(()) => said,
                     Err(e) => didnt_stick(&e),
                 };
-                hub::back_with(Page::SharedTasks.href(), &format!("b={}", crate::research::urlencode(&b)), &said)
+                hub::back_with(
+                    Page::SharedTasks.href(),
+                    &format!("b={}", crate::research::urlencode(&b)),
+                    &said,
+                )
             }
             "/hub/clients" => {
                 let addr = field_of(f, "address").unwrap_or_default();
@@ -135,15 +210,28 @@ impl Daemon<'_> {
                     "That doesn't look like an email address.".to_string()
                 } else {
                     match crate::clients::ClientList::change(&self.store, |list| {
-                        if list.is_client(&addr) { return Ok("Already a client.".to_string()); }
+                        if list.is_client(&addr) {
+                            return Ok("Already a client.".to_string());
+                        }
                         list.add(addr.trim(), name.trim(), "", now);
-                        Ok(format!("Added {}.", if name.trim().is_empty() { addr.trim() } else { name.trim() }))
+                        Ok(format!(
+                            "Added {}.",
+                            if name.trim().is_empty() {
+                                addr.trim()
+                            } else {
+                                name.trim()
+                            }
+                        ))
                     }) {
                         Ok(said) => said,
                         Err(e) => didnt_stick(&e),
                     }
                 };
-                hub::back_with(Page::Clients.href(), &format!("c={}", crate::research::urlencode(addr.trim())), &said)
+                hub::back_with(
+                    Page::Clients.href(),
+                    &format!("c={}", crate::research::urlencode(addr.trim())),
+                    &said,
+                )
             }
             "/hub/sound" => {
                 let key = field_of(f, "key").unwrap_or_default();
@@ -164,8 +252,11 @@ impl Daemon<'_> {
                     "quiet_hours" => {
                         let from = field_of(f, "from").unwrap_or_default();
                         let to = field_of(f, "to").unwrap_or_default();
-                        if crate::sound::minutes(&from).is_none() || crate::sound::minutes(&to).is_none() {
-                            "Those times didn't read — use the hours and minutes, like 22:00.".to_string()
+                        if crate::sound::minutes(&from).is_none()
+                            || crate::sound::minutes(&to).is_none()
+                        {
+                            "Those times didn't read — use the hours and minutes, like 22:00."
+                                .to_string()
                         } else {
                             let a = self.apply_setting("sound.quiet_from", &from);
                             let b = self.apply_setting("sound.quiet_to", &to);
@@ -180,7 +271,11 @@ impl Daemon<'_> {
                 let who = field_of(f, "who").unwrap_or_default();
                 let yes = field_of(f, "trust").as_deref() == Some("yes");
                 let mut pairings = crate::kin::Pairings::load(&self.peer_dir);
-                let said = if !pairings.contacts.iter().any(|c| crate::kin::same_name(&c.name, &who)) {
+                let said = if !pairings
+                    .contacts
+                    .iter()
+                    .any(|c| crate::kin::same_name(&c.name, &who))
+                {
                     format!("{who} isn't paired with you.")
                 } else if yes {
                     pairings.trust(&who);
@@ -205,12 +300,20 @@ impl Daemon<'_> {
                 let said = if text.trim().is_empty() {
                     "Nothing to give.".to_string()
                 } else {
-                    match self.tray.hand(text.trim(), &crate::earned::Space::Personal, "the hub", now) {
+                    match self.tray.hand(
+                        text.trim(),
+                        &crate::earned::Space::Personal,
+                        "the hub",
+                        now,
+                    ) {
                         Ok(id) => {
                             if let Some(a) = asked.as_deref() {
                                 self.tray.ask_about(id, a);
                             }
-                            with_keeping("Got it. I'll look at it and tell you what's in it.".to_string(), self.tray.save(&self.store))
+                            with_keeping(
+                                "Got it. I'll look at it and tell you what's in it.".to_string(),
+                                self.tray.save(&self.store),
+                            )
                         }
                         Err(why) => why,
                     }
@@ -274,18 +377,29 @@ impl Daemon<'_> {
                 let mut name = field_of(f, "name").unwrap_or_default();
                 if name.trim().is_empty() {
                     // Named from its first few words when you didn't name it.
-                    name = task.split_whitespace().take(4).collect::<Vec<_>>().join(" ");
+                    name = task
+                        .split_whitespace()
+                        .take(4)
+                        .collect::<Vec<_>>()
+                        .join(" ");
                 }
                 let said = if name.trim().is_empty() {
                     "Say what the project should take on.".to_string()
                 } else if self.workshop.resolve(name.trim()).is_some() {
                     format!("There's already a project called {}.", name.trim())
                 } else {
-                    self.workshop.register(name.trim(), field_of(f, "folder").unwrap_or_default().trim(), now);
+                    self.workshop.register(
+                        name.trim(),
+                        field_of(f, "folder").unwrap_or_default().trim(),
+                        now,
+                    );
                     if let Some(t) = field_of(f, "task").filter(|t| !t.trim().is_empty()) {
                         self.workshop.add_task(name.trim(), t.trim(), now);
                     }
-                    with_keeping(format!("Started {}.", name.trim()), self.workshop.save(&self.store))
+                    with_keeping(
+                        format!("Started {}.", name.trim()),
+                        self.workshop.save(&self.store),
+                    )
                 };
                 hub::back_with(Page::Workshop.href(), "", &said)
             }
@@ -294,7 +408,10 @@ impl Daemon<'_> {
                 let said = match (what.as_str(), kind) {
                     ("start", Some(k)) => {
                         let which = field_of(f, "for").unwrap_or_default();
-                        return self.start_phone_code(k, if which == "install" { "install" } else { "add" });
+                        return self.start_phone_code(
+                            k,
+                            if which == "install" { "install" } else { "add" },
+                        );
                     }
                     ("stop", _) => {
                         // A code still coming up is stopped when it arrives.
@@ -313,7 +430,10 @@ impl Daemon<'_> {
                     }
                     _ => "Pick which phone you have first.".to_string(),
                 };
-                let back = kind.or(self.phone_code.as_ref().map(|s| s.kind)).map(|k| format!("kind={}", k.slug())).unwrap_or_default();
+                let back = kind
+                    .or(self.phone_code.as_ref().map(|s| s.kind))
+                    .map(|k| format!("kind={}", k.slug()))
+                    .unwrap_or_default();
                 hub::back_with(Page::Phone.href(), &back, &said)
             }
             "/hub/updates" => {
@@ -351,11 +471,15 @@ impl Daemon<'_> {
                         }
                     }
                     "hold" => {
-                        let mine = crate::feedback::release_sender(&self.store, &self.peer_dir).is_some_and(|(_, _, m)| m);
+                        let mine = crate::feedback::release_sender(&self.store, &self.peer_dir)
+                            .is_some_and(|(_, _, m)| m);
                         let sha = field_of(f, "sha").unwrap_or_default();
                         if !mine {
                             "Only the person who sends Atlas out can hold a build.".to_string()
-                        } else if !crate::update_apply::failure_reports(&self.store).iter().any(|r| r.sha256 == sha) {
+                        } else if !crate::update_apply::failure_reports(&self.store)
+                            .iter()
+                            .any(|r| r.sha256 == sha)
+                        {
                             "That isn't a build anyone has reported.".to_string()
                         } else {
                             crate::update_apply::hold_release(&self.store, &sha);
@@ -385,20 +509,28 @@ impl Daemon<'_> {
                         }
                     }
                     "send" => match self.feedback_draft.take() {
-                        Some(fb) => match crate::feedback::send_decided(&self.store, &self.peer_dir, fb) {
-                            Ok(s) => s.plain(),
-                            Err(why) => why,
-                        },
-                        None => "There's nothing waiting to send — write it and press Show first.".to_string(),
+                        Some(fb) => {
+                            match crate::feedback::send_decided(&self.store, &self.peer_dir, fb) {
+                                Ok(s) => s.plain(),
+                                Err(why) => why,
+                            }
+                        }
+                        None => "There's nothing waiting to send — write it and press Show first."
+                            .to_string(),
                     },
                     "discard" => {
                         self.feedback_draft = None;
                         "Not sent. Write it again as you'd like it.".to_string()
                     }
                     "answer" => {
-                        let n = field_of(f, "n").and_then(|n| n.parse::<usize>().ok()).unwrap_or(0);
+                        let n = field_of(f, "n")
+                            .and_then(|n| n.parse::<usize>().ok())
+                            .unwrap_or(0);
                         let version = field_of(f, "version").filter(|v| !v.trim().is_empty());
-                        let status = crate::feedback::FeedbackStatus::from_words(&field_of(f, "status").unwrap_or_default(), version.as_deref());
+                        let status = crate::feedback::FeedbackStatus::from_words(
+                            &field_of(f, "status").unwrap_or_default(),
+                            version.as_deref(),
+                        );
                         match status {
                             None => "Fixed needs the version it was fixed in.".to_string(),
                             Some(st) => {
@@ -420,7 +552,9 @@ impl Daemon<'_> {
                     // Sending waits on their Atlas, a file of up to 20 MB over
                     // Tor: on the crew, with the page showing how it's going.
                     Some(id) if what == "send" => return self.send_document(id, &who, now),
-                    Some(id) if what == "keep" || what == "drop" => self.take_handoff(id, what == "keep"),
+                    Some(id) if what == "keep" || what == "drop" => {
+                        self.take_handoff(id, what == "keep")
+                    }
                     _ => "That isn't something the Documents page does.".to_string(),
                 };
                 hub::back_with(Page::Documents.href(), "", &said)
@@ -431,13 +565,21 @@ impl Daemon<'_> {
                 hub::back_with(Page::Connections.href(), "", &said)
             }
             "/hub/draftmodel" => {
-                let said = if what == "get" { self.get_draft_model() } else { "That button isn't wired to anything, so nothing changed.".into() };
+                let said = if what == "get" {
+                    self.get_draft_model()
+                } else {
+                    "That button isn't wired to anything, so nothing changed.".into()
+                };
                 hub::back_with(Page::Connections.href(), "", &said)
             }
             // The two models: which one talks, and fetching them (`deepbrain`).
             "/hub/brains" => {
                 let said = self.brains_button(&what);
-                let back = if field_of(f, "from").as_deref() == Some("ideas") { Page::Recommendations } else { Page::Connections };
+                let back = if field_of(f, "from").as_deref() == Some("ideas") {
+                    Page::Recommendations
+                } else {
+                    Page::Connections
+                };
                 hub::back_with(back.href(), "", &said)
             }
             // Another program's tools, on or off (`mcp`). Not while handed
@@ -452,7 +594,11 @@ impl Daemon<'_> {
                 };
                 hub::back_with(Page::Connections.href(), "", &said)
             }
-            _ => hub::back_with("/hub", "", "That button isn't wired to anything, so nothing changed."),
+            _ => hub::back_with(
+                "/hub",
+                "",
+                "That button isn't wired to anything, so nothing changed.",
+            ),
         }
     }
 }

@@ -56,7 +56,10 @@ impl Angle {
 
     /// Only worth raising when there's something to point at.
     pub fn needs_evidence(&self) -> bool {
-        matches!(self, Angle::YouTriedThis | Angle::RealReason | Angle::NotWorthIt)
+        matches!(
+            self,
+            Angle::YouTriedThis | Angle::RealReason | Angle::NotWorthIt
+        )
     }
 }
 
@@ -118,7 +121,9 @@ pub fn against(d: &Decision) -> Vec<Objection> {
     if let Some(cost) = &d.costs {
         out.push(Objection {
             angle: Angle::NotWorthIt,
-            case: format!("It costs {cost}. What it saves has to beat that, and you haven't said it does."),
+            case: format!(
+                "It costs {cost}. What it saves has to beat that, and you haven't said it does."
+            ),
             what_would_answer_it: "the number on the other side".into(),
             weight: 0.7,
         });
@@ -158,7 +163,11 @@ pub fn against(d: &Decision) -> Vec<Objection> {
         });
     }
 
-    out.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
+    out.sort_by(|a, b| {
+        b.weight
+            .partial_cmp(&a.weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     out
 }
 
@@ -168,9 +177,19 @@ fn what_if_nothing(what: &str) -> String {
 
 /// Phrases that tend to appear when the reason came after the decision.
 const RATIONALISATION: &[&str] = &[
-    "everyone", "obviously", "it just makes sense", "why wouldn't", "no brainer",
-    "no-brainer", "at some point", "eventually", "might as well", "can't hurt",
-    "cant hurt", "future proof", "future-proof",
+    "everyone",
+    "obviously",
+    "it just makes sense",
+    "why wouldn't",
+    "no brainer",
+    "no-brainer",
+    "at some point",
+    "eventually",
+    "might as well",
+    "can't hurt",
+    "cant hurt",
+    "future proof",
+    "future-proof",
 ];
 
 fn reads_as_rationalisation(because: &str) -> bool {
@@ -192,9 +211,15 @@ pub fn spoken(d: &Decision, objections: &[Objection]) -> String {
     if !s.ends_with('.') {
         s.push('.');
     }
-    s.push_str(&format!(" What would answer it: {}.", first.what_would_answer_it));
+    s.push_str(&format!(
+        " What would answer it: {}.",
+        first.what_would_answer_it
+    ));
     if more > 0 {
-        s.push_str(&format!(" {more} weaker one{}.", if more == 1 { "" } else { "s" }));
+        s.push_str(&format!(
+            " {more} weaker one{}.",
+            if more == 1 { "" } else { "s" }
+        ));
     }
     s
 }
@@ -207,8 +232,12 @@ pub fn written(d: &Decision, objections: &[Objection]) -> String {
         return s;
     }
     for o in objections {
-        s.push_str(&format!("{}\n  {}\n  Answered by: {}\n\n",
-            o.angle.question(), o.case, o.what_would_answer_it));
+        s.push_str(&format!(
+            "{}\n  {}\n  Answered by: {}\n\n",
+            o.angle.question(),
+            o.case,
+            o.what_would_answer_it
+        ));
     }
     s.push_str("None of that means don't. It's the argument someone who disagreed would make.\n");
     s
@@ -221,9 +250,18 @@ pub fn written(d: &Decision, objections: &[Objection]) -> String {
 pub fn is_asked_for(said: &str) -> bool {
     let t = said.to_lowercase();
     [
-        "argue the other side", "second opinion", "talk me out of", "poke holes",
-        "what's wrong with", "whats wrong with", "devil's advocate", "devils advocate",
-        "why shouldn't i", "why shouldnt i", "make the case against", "push back on",
+        "argue the other side",
+        "second opinion",
+        "talk me out of",
+        "poke holes",
+        "what's wrong with",
+        "whats wrong with",
+        "devil's advocate",
+        "devils advocate",
+        "why shouldn't i",
+        "why shouldnt i",
+        "make the case against",
+        "push back on",
     ]
     .iter()
     .any(|p| t.contains(p))
@@ -237,18 +275,41 @@ pub fn is_asked_for(said: &str) -> bool {
 /// "What's wrong with the printer" is a fault report, not a request to be
 /// talked out of anything.
 const WEAK_TRIGGERS: &[&str] = &[
-    "what's wrong with", "whats wrong with", "push back on", "second opinion",
+    "what's wrong with",
+    "whats wrong with",
+    "push back on",
+    "second opinion",
 ];
 
 const STRONG_TRIGGERS: &[&str] = &[
-    "argue the other side", "talk me out of", "poke holes", "devil's advocate",
-    "devils advocate", "why shouldn't i", "why shouldnt i", "make the case against",
+    "argue the other side",
+    "talk me out of",
+    "poke holes",
+    "devil's advocate",
+    "devils advocate",
+    "why shouldn't i",
+    "why shouldnt i",
+    "make the case against",
 ];
 
 /// Words that make the rest of a sentence read as a decision.
 const DECISION_CUES: &[&str] = &[
-    "because", "going to", "gonna", "decided", "decide", "i'll", "i will", "plan",
-    "switch", "buying", "buy ", "quit", "moving", "signing", "i want to", "i'm ",
+    "because",
+    "going to",
+    "gonna",
+    "decided",
+    "decide",
+    "i'll",
+    "i will",
+    "plan",
+    "switch",
+    "buying",
+    "buy ",
+    "quit",
+    "moving",
+    "signing",
+    "i want to",
+    "i'm ",
 ];
 
 /// The decision in "argue the other side: X because Y".
@@ -277,7 +338,9 @@ pub fn decision_from(said: &str, earlier: Option<&str>) -> Option<Decision> {
     // lowercase copy and recover the original span by char count.
     let before_chars = lower[..at + len].chars().count();
     let rest: String = said.chars().skip(before_chars).collect();
-    let mut rest = rest.trim_matches(|c: char| c.is_whitespace() || ":,-—?.".contains(c)).to_string();
+    let mut rest = rest
+        .trim_matches(|c: char| c.is_whitespace() || ":,-—?.".contains(c))
+        .to_string();
     for lead in ["on ", "about ", "for ", "against ", "me on ", "with "] {
         if rest.to_lowercase().starts_with(lead) {
             rest = rest[lead.len()..].trim().to_string();
@@ -300,12 +363,23 @@ pub fn decision_from(said: &str, earlier: Option<&str>) -> Option<Decision> {
         Some((w, b)) => (w.trim().to_string(), b.trim().to_string()),
         None => (rest.clone(), "a reason you haven't said".to_string()),
     };
-    let what = what.trim_end_matches(|c: char| ".?!".contains(c)).to_string();
-    let because = because.trim_end_matches(|c: char| ".?!".contains(c)).to_string();
+    let what = what
+        .trim_end_matches(|c: char| ".?!".contains(c))
+        .to_string();
+    let because = because
+        .trim_end_matches(|c: char| ".?!".contains(c))
+        .to_string();
 
     let reversible = ![
-        "can't undo", "cannot undo", "can't be undone", "no going back", "for good",
-        "permanent", "irreversible", "non-refundable", "nonrefundable",
+        "can't undo",
+        "cannot undo",
+        "can't be undone",
+        "no going back",
+        "for good",
+        "permanent",
+        "irreversible",
+        "non-refundable",
+        "nonrefundable",
     ]
     .iter()
     .any(|p| rl.contains(p));
@@ -314,10 +388,22 @@ pub fn decision_from(said: &str, earlier: Option<&str>) -> Option<Decision> {
         what,
         because,
         reversible,
-        costs: phrase_after(&rest, &["it costs ", "costs ", "it'll cost ", "will cost ", "cost me "]),
-        depends_on: phrase_after(&rest, &["as long as ", "assuming ", "depends on ", "provided "])
-            .into_iter()
-            .collect(),
+        costs: phrase_after(
+            &rest,
+            &[
+                "it costs ",
+                "costs ",
+                "it'll cost ",
+                "will cost ",
+                "cost me ",
+            ],
+        ),
+        depends_on: phrase_after(
+            &rest,
+            &["as long as ", "assuming ", "depends on ", "provided "],
+        )
+        .into_iter()
+        .collect(),
         previously: None,
     })
 }
@@ -397,6 +483,10 @@ fn join_or(parts: &[&str]) -> String {
         [] => String::new(),
         [one] => one.to_string(),
         [a, b] => format!("{a} or {b}"),
-        _ => format!("{}, or {}", parts[..parts.len() - 1].join(", "), parts[parts.len() - 1]),
+        _ => format!(
+            "{}, or {}",
+            parts[..parts.len() - 1].join(", "),
+            parts[parts.len() - 1]
+        ),
     }
 }

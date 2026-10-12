@@ -26,7 +26,14 @@ fn install(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("atlas-settings-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
-    for f in ["tools.yaml", "apps.yaml", "layouts.yaml", "commands.yaml", "policy.yaml", "indexing.yaml"] {
+    for f in [
+        "tools.yaml",
+        "apps.yaml",
+        "layouts.yaml",
+        "commands.yaml",
+        "policy.yaml",
+        "indexing.yaml",
+    ] {
         let from = Path::new("config").join(f);
         if from.is_file() {
             fs::copy(&from, dir.join(f)).unwrap();
@@ -36,20 +43,34 @@ fn install(tag: &str) -> PathBuf {
 }
 
 fn tools_of(dir: &Path) -> atlas::voice::ToolsConfig {
-    Config::load(dir).expect("the config should load").tools.expect("tools.yaml")
+    Config::load(dir)
+        .expect("the config should load")
+        .tools
+        .expect("tools.yaml")
 }
 
 #[test]
 fn a_switch_you_move_is_still_moved_after_a_restart() {
     let dir = install("wake");
-    let before = tools_of(&dir).wake.as_ref().map(|w| w.enabled).unwrap_or(false);
+    let before = tools_of(&dir)
+        .wake
+        .as_ref()
+        .map(|w| w.enabled)
+        .unwrap_or(false);
 
     let mut p = Preferences::load(&dir);
     p.set("wake.enabled", if before { "off" } else { "on" });
     p.save(&dir).unwrap();
 
-    let after = tools_of(&dir).wake.as_ref().map(|w| w.enabled).unwrap_or(false);
-    assert_ne!(before, after, "the toggle reported success and changed nothing");
+    let after = tools_of(&dir)
+        .wake
+        .as_ref()
+        .map(|w| w.enabled)
+        .unwrap_or(false);
+    assert_ne!(
+        before, after,
+        "the toggle reported success and changed nothing"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -61,7 +82,10 @@ fn the_master_switch_works_too() {
     // single setting silently does nothing while the other 54 work, and it is
     // the switch for hearing you at all.
     let dir = install("master");
-    assert!(!tools_of(&dir).enabled, "the shipped config no longer ships voice off");
+    assert!(
+        !tools_of(&dir).enabled,
+        "the shipped config no longer ships voice off"
+    );
 
     let mut p = Preferences::load(&dir);
     p.set("voice.enabled", "on");
@@ -80,8 +104,14 @@ fn a_number_and_a_name_stick_as_well_as_a_toggle() {
     p.save(&dir).unwrap();
 
     let t = tools_of(&dir);
-    assert_eq!(t.models.memory_budget_mb, 4096, "a number setting did not stick");
-    assert_eq!(t.voice_settings.voice, "en_US-ryan-medium", "a name setting did not stick");
+    assert_eq!(
+        t.models.memory_budget_mb, 4096,
+        "a number setting did not stick"
+    );
+    assert_eq!(
+        t.voice_settings.voice, "en_US-ryan-medium",
+        "a name setting did not stick"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -110,7 +140,10 @@ fn every_setting_on_the_page_can_be_written_down() {
     let missing_section: Vec<&String> = unplaced
         .iter()
         .filter(|k| {
-            let path = k.rsplit_once('.').map(|(p, _)| p.to_string()).unwrap_or_default();
+            let path = k
+                .rsplit_once('.')
+                .map(|(p, _)| p.to_string())
+                .unwrap_or_default();
             !path.is_empty() && raw.get(&path).is_none() && *k != "voice.enabled"
         })
         .collect();
@@ -125,18 +158,33 @@ fn every_setting_on_the_page_can_be_written_down() {
 #[test]
 fn clearing_a_setting_puts_the_shipped_value_back() {
     let dir = install("clear");
-    let shipped = tools_of(&dir).wake.as_ref().map(|w| w.enabled).unwrap_or(false);
+    let shipped = tools_of(&dir)
+        .wake
+        .as_ref()
+        .map(|w| w.enabled)
+        .unwrap_or(false);
 
     let mut p = Preferences::load(&dir);
     p.set("wake.enabled", if shipped { "off" } else { "on" });
     p.save(&dir).unwrap();
-    assert_ne!(tools_of(&dir).wake.as_ref().map(|w| w.enabled).unwrap_or(false), shipped);
+    assert_ne!(
+        tools_of(&dir)
+            .wake
+            .as_ref()
+            .map(|w| w.enabled)
+            .unwrap_or(false),
+        shipped
+    );
 
     let mut p = Preferences::load(&dir);
     assert!(p.clear("wake.enabled"));
     p.save(&dir).unwrap();
     assert_eq!(
-        tools_of(&dir).wake.as_ref().map(|w| w.enabled).unwrap_or(false),
+        tools_of(&dir)
+            .wake
+            .as_ref()
+            .map(|w| w.enabled)
+            .unwrap_or(false),
         shipped,
         "there is no way back to the shipped value"
     );
@@ -154,7 +202,8 @@ fn a_setting_that_no_longer_exists_is_reported_rather_than_ignored() {
 
     let cfg = Config::load(&dir).expect("a stale preference must not stop Atlas starting");
     assert!(
-        cfg.settings_that_went_nowhere.contains(&"a_section_that_was_removed.enabled".to_string()),
+        cfg.settings_that_went_nowhere
+            .contains(&"a_section_that_was_removed.enabled".to_string()),
         "a preference that reaches nothing is being swallowed again"
     );
     let _ = fs::remove_dir_all(&dir);
@@ -167,7 +216,11 @@ fn a_damaged_settings_file_does_not_stop_atlas_starting() {
     let dir = install("damaged");
     fs::write(Preferences::file(&dir), "this: [is not: valid").unwrap();
     let cfg = Config::load(&dir);
-    assert!(cfg.is_ok(), "an unreadable settings file stopped Atlas: {:?}", cfg.err());
+    assert!(
+        cfg.is_ok(),
+        "an unreadable settings file stopped Atlas: {:?}",
+        cfg.err()
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -213,27 +266,48 @@ fn an_update_keeps_what_you_chose() {
 #[test]
 fn the_hub_writes_the_change_and_says_so_if_it_cannot() {
     let src = crate::common::source_of("hublive");
-    let at = src.find("Action::HubSet").expect("the settings handler is gone");
+    let at = src
+        .find("Action::HubSet")
+        .expect("the settings handler is gone");
     // Since 26 Sep the handler hands the write to `apply_setting`, which the
     // Sound & voice page's form shares, so both write the same way.
-    let arm = src[at..].find("Action::HubSet { key, value } =>").map(|i| at + i).unwrap_or(at);
-    assert!(src[arm..arm + 1400].contains("self.apply_setting("), "the settings handler no longer uses the shared writer");
-    let at = src.find("fn apply_setting(").expect("the shared writer is gone");
+    let arm = src[at..]
+        .find("Action::HubSet { key, value } =>")
+        .map(|i| at + i)
+        .unwrap_or(at);
+    assert!(
+        src[arm..arm + 1400].contains("self.apply_setting("),
+        "the settings handler no longer uses the shared writer"
+    );
+    let at = src
+        .find("fn apply_setting(")
+        .expect("the shared writer is gone");
     // Since 27 Sep 2026 the validate-then-write lives in
     // `Settings::set_and_keep`, which the settings-only window shares too (it
     // used to validate and write nothing). `apply_setting` must still go
     // through it.
-    assert!(src[at..at + 1200].contains(".set_and_keep("), "apply_setting no longer uses the shared writer");
+    assert!(
+        src[at..at + 1200].contains(".set_and_keep("),
+        "apply_setting no longer uses the shared writer"
+    );
     let settings = fs::read_to_string("src/settings.rs").expect("src/settings.rs");
-    let at = settings.find("pub fn set_and_keep(").expect("the shared writer is gone");
+    let at = settings
+        .find("pub fn set_and_keep(")
+        .expect("the shared writer is gone");
     let body = &settings[at..at + 1400];
     let main = crate::common::read_source_path("src/main.rs").expect("src/main.rs");
-    let arm = main.find("Action::HubSet { key, value } =>").expect("settings-only mode no longer answers a setting");
-    assert!(main[arm..arm + 600].contains(".set_and_keep("), "settings-only mode validates and writes nothing again");
+    let arm = main
+        .find("Action::HubSet { key, value } =>")
+        .expect("settings-only mode no longer answers a setting");
+    assert!(
+        main[arm..arm + 600].contains(".set_and_keep("),
+        "settings-only mode validates and writes nothing again"
+    );
     assert!(
         // `load_checked` since 30 Sep 2026: a file that won't read is refused,
         // not loaded as empty and saved over.
-        (body.contains("Preferences::load(") || body.contains("Preferences::load_checked(")) && body.contains("prefs.save("),
+        (body.contains("Preferences::load(") || body.contains("Preferences::load_checked("))
+            && body.contains("prefs.save("),
         "the settings handler no longer writes anything down"
     );
     assert!(
@@ -244,5 +318,8 @@ fn the_hub_writes_the_change_and_says_so_if_it_cannot() {
     // start fails on it.
     let set_at = body.find("self.set(").expect("validation is gone");
     let save_at = body.find("prefs.save(").expect("checked above");
-    assert!(set_at < save_at, "the value is written before it is validated");
+    assert!(
+        set_at < save_at,
+        "the value is written before it is validated"
+    );
 }

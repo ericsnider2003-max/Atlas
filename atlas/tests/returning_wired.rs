@@ -38,11 +38,24 @@ fn cfg() -> Config {
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
-    Daemon::new(c, p, None, Store::new(tmp(tag)), Proactive::new(ProactiveConfig::default()))
+    Daemon::new(
+        c,
+        p,
+        None,
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    )
 }
 
 /// A real command rather than a greeting: a bare "hello" is answered before
@@ -87,7 +100,12 @@ fn something_that_needs_you_is_said_straight_away_not_offered() {
     // could not do, which is not the same as the attempt failing — and with
     // `ok: false` the `failed` flag would carry this test on its own, so
     // `needs_you` would never be the thing under test.
-    d.journal.record_at(Kind::Blocked, "the certificate renewal needs a card", true, now + 10);
+    d.journal.record_at(
+        Kind::Blocked,
+        "the certificate renewal needs a card",
+        true,
+        now + 10,
+    );
 
     let said = d.turn(A_REAL_COMMAND, now + OVERNIGHT);
     assert!(said.contains("certificate renewal"), "not named: {said}");
@@ -102,8 +120,18 @@ fn ordinary_updates_are_offered_rather_than_recited() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "offer");
     let now = atlas::store::now();
-    d.journal.record_at(Kind::Scheduled, "the index rebuild finished", true, now + 10);
-    d.journal.record_at(Kind::Scheduled, "the nightly backup finished", true, now + 20);
+    d.journal.record_at(
+        Kind::Scheduled,
+        "the index rebuild finished",
+        true,
+        now + 10,
+    );
+    d.journal.record_at(
+        Kind::Scheduled,
+        "the nightly backup finished",
+        true,
+        now + 20,
+    );
 
     let said = d.turn(A_REAL_COMMAND, now + OVERNIGHT);
     assert!(
@@ -118,10 +146,14 @@ fn upkeep_never_reaches_the_brief() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "upkeep");
     let now = atlas::store::now();
-    d.journal.record_at(Kind::Upkeep, "rotated the logs", true, now + 10);
+    d.journal
+        .record_at(Kind::Upkeep, "rotated the logs", true, now + 10);
 
     let said = d.turn(A_REAL_COMMAND, now + OVERNIGHT);
-    assert!(!said.contains("rotated the logs"), "upkeep was read out: {said}");
+    assert!(
+        !said.contains("rotated the logs"),
+        "upkeep was read out: {said}"
+    );
     // And with nothing else, the absence reads as quiet rather than busy.
     assert!(said.contains("Nothing needed you"), "got: {said}");
 }
@@ -162,9 +194,19 @@ fn an_offer_that_did_not_reach_you_is_reported_once_not_twice() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "twice");
     let now = atlas::store::now();
-    d.journal.record_at(Kind::Offered, "shall I renew the certificate", false, now + 5);
+    d.journal.record_at(
+        Kind::Offered,
+        "shall I renew the certificate",
+        false,
+        now + 5,
+    );
     d.outbox.hold(
-        Note::new("shall I renew the certificate", "", Urgency::Urgent, now + 5),
+        Note::new(
+            "shall I renew the certificate",
+            "",
+            Urgency::Urgent,
+            now + 5,
+        ),
         &NotifyConfig::default(),
     );
 
@@ -185,11 +227,22 @@ fn a_held_notification_and_a_journal_entry_arrive_as_one_absence() {
         Note::new("the disk is nearly full", "", Urgency::Urgent, now + 5),
         &NotifyConfig::default(),
     );
-    d.journal.record_at(Kind::Blocked, "the invoice needs approving", false, now + 10);
+    d.journal.record_at(
+        Kind::Blocked,
+        "the invoice needs approving",
+        false,
+        now + 10,
+    );
 
     let said = d.turn(A_REAL_COMMAND, now + OVERNIGHT);
-    assert!(said.contains("disk is nearly full"), "held note missing: {said}");
-    assert!(said.contains("invoice needs approving"), "journal entry missing: {said}");
+    assert!(
+        said.contains("disk is nearly full"),
+        "held note missing: {said}"
+    );
+    assert!(
+        said.contains("invoice needs approving"),
+        "journal entry missing: {said}"
+    );
     assert_eq!(d.outbox.waiting(), 0, "handed over and also kept");
 }
 
@@ -209,7 +262,10 @@ fn a_held_note_is_still_said_when_the_absence_is_too_short_to_count() {
     );
 
     let said = d.turn(A_REAL_COMMAND, now + 120);
-    assert!(said.contains("build failed"), "a held note was dropped: {said}");
+    assert!(
+        said.contains("build failed"),
+        "a held note was dropped: {said}"
+    );
 }
 
 // ================= saying yes to an offer =================
@@ -222,11 +278,24 @@ fn saying_yes_to_an_offered_brief_gets_the_whole_list() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "yes");
     let now = atlas::store::now();
-    d.journal.record_at(Kind::Scheduled, "the index rebuild finished", true, now + 10);
-    d.journal.record_at(Kind::Scheduled, "the nightly backup finished", true, now + 20);
+    d.journal.record_at(
+        Kind::Scheduled,
+        "the index rebuild finished",
+        true,
+        now + 10,
+    );
+    d.journal.record_at(
+        Kind::Scheduled,
+        "the nightly backup finished",
+        true,
+        now + 20,
+    );
 
     let offer = d.turn(A_REAL_COMMAND, now + OVERNIGHT);
-    assert!(offer.contains("when you want") || offer.contains("when you're ready"), "{offer}");
+    assert!(
+        offer.contains("when you want") || offer.contains("when you're ready"),
+        "{offer}"
+    );
 
     let full = d.turn("yes", now + OVERNIGHT + 5);
     assert!(full.contains("index rebuild finished"), "{full}");
@@ -238,12 +307,25 @@ fn saying_no_to_an_offered_brief_leaves_it() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "no");
     let now = atlas::store::now();
-    d.journal.record_at(Kind::Scheduled, "the index rebuild finished", true, now + 10);
-    d.journal.record_at(Kind::Scheduled, "the nightly backup finished", true, now + 20);
+    d.journal.record_at(
+        Kind::Scheduled,
+        "the index rebuild finished",
+        true,
+        now + 10,
+    );
+    d.journal.record_at(
+        Kind::Scheduled,
+        "the nightly backup finished",
+        true,
+        now + 20,
+    );
 
     d.turn(A_REAL_COMMAND, now + OVERNIGHT);
     let said = d.turn("no", now + OVERNIGHT + 5);
-    assert!(!said.contains("index rebuild"), "declined and read out anyway: {said}");
+    assert!(
+        !said.contains("index rebuild"),
+        "declined and read out anyway: {said}"
+    );
 }
 
 #[test]
@@ -255,17 +337,33 @@ fn the_offer_does_not_hijack_your_next_instruction() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "hijack");
     let now = atlas::store::now();
-    d.journal.record_at(Kind::Scheduled, "the index rebuild finished", true, now + 10);
-    d.journal.record_at(Kind::Scheduled, "the nightly backup finished", true, now + 20);
+    d.journal.record_at(
+        Kind::Scheduled,
+        "the index rebuild finished",
+        true,
+        now + 10,
+    );
+    d.journal.record_at(
+        Kind::Scheduled,
+        "the nightly backup finished",
+        true,
+        now + 20,
+    );
 
     d.turn(A_REAL_COMMAND, now + OVERNIGHT);
     let next = d.turn("what's outstanding", now + OVERNIGHT + 5);
-    assert!(!next.contains("index rebuild finished"), "the offer ate the instruction: {next}");
+    assert!(
+        !next.contains("index rebuild finished"),
+        "the offer ate the instruction: {next}"
+    );
 
     // And having moved on, the offer is gone rather than lying in wait for
     // an unrelated yes later.
     let later = d.turn("yes", now + OVERNIGHT + 10);
-    assert_eq!(later, "Nothing to confirm.", "a stale brief answered a later yes: {later}");
+    assert_eq!(
+        later, "Nothing to confirm.",
+        "a stale brief answered a later yes: {later}"
+    );
 }
 
 #[test]
@@ -277,8 +375,18 @@ fn a_yes_on_the_very_turn_of_the_offer_does_not_answer_it() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "sameturn");
     let now = atlas::store::now();
-    d.journal.record_at(Kind::Scheduled, "the index rebuild finished", true, now + 10);
-    d.journal.record_at(Kind::Scheduled, "the nightly backup finished", true, now + 20);
+    d.journal.record_at(
+        Kind::Scheduled,
+        "the index rebuild finished",
+        true,
+        now + 10,
+    );
+    d.journal.record_at(
+        Kind::Scheduled,
+        "the nightly backup finished",
+        true,
+        now + 20,
+    );
 
     let said = d.turn("yes", now + OVERNIGHT);
     assert!(
@@ -306,7 +414,10 @@ fn a_spoken_address_change_is_used_by_the_next_brief() {
         said.contains(", boss."),
         "the address it confirmed was not used in the greeting: {said}"
     );
-    assert!(!said.contains("call me boss"), "your own instruction was read back: {said}");
+    assert!(
+        !said.contains("call me boss"),
+        "your own instruction was read back: {said}"
+    );
 }
 
 #[test]
@@ -318,10 +429,18 @@ fn with_no_address_set_the_brief_still_says_it_was_while_you_were_away() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "unaddressed");
     let now = atlas::store::now();
-    d.journal.record_at(Kind::Blocked, "the invoice needs approving", false, now + 10);
+    d.journal.record_at(
+        Kind::Blocked,
+        "the invoice needs approving",
+        false,
+        now + 10,
+    );
 
     let said = d.turn(A_REAL_COMMAND, now + OVERNIGHT);
-    assert!(said.contains("While you were away"), "no framing at all: {said}");
+    assert!(
+        said.contains("While you were away"),
+        "no framing at all: {said}"
+    );
 }
 
 #[test]
@@ -335,5 +454,8 @@ fn stopping_it_calling_you_that_beats_the_config_file() {
     d.turn("call me boss", now);
     d.turn("stop calling me that", now + 1);
     let said = d.turn(A_REAL_COMMAND, now + OVERNIGHT);
-    assert!(!said.contains("boss"), "an address it was told to drop came back: {said}");
+    assert!(
+        !said.contains("boss"),
+        "an address it was told to drop came back: {said}"
+    );
 }

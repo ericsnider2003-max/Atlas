@@ -132,7 +132,10 @@ impl Trace {
 
     /// The calls recorded since `recorded()` was `before`.
     pub fn recorded_since(&self, before: u64) -> &[Call] {
-        let new = self.recorded().saturating_sub(before).min(self.calls.len() as u64) as usize;
+        let new = self
+            .recorded()
+            .saturating_sub(before)
+            .min(self.calls.len() as u64) as usize;
         &self.calls[self.calls.len() - new..]
     }
 
@@ -168,12 +171,21 @@ impl Trace {
                 let good = calls.iter().filter(|c| c.graded == Some(true)).count();
                 let mut reasons: std::collections::BTreeMap<String, usize> = Default::default();
                 for c in calls.iter().filter(|c| c.graded == Some(false)) {
-                    *reasons.entry(c.why.clone().unwrap_or_else(|| "no reason given".into())).or_default() += 1;
+                    *reasons
+                        .entry(c.why.clone().unwrap_or_else(|| "no reason given".into()))
+                        .or_default() += 1;
                 }
                 let mut reasons: Vec<(String, usize)> = reasons.into_iter().collect();
                 reasons.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
                 let (low, high) = wilson(good, graded);
-                Score { asked_by: who.to_string(), graded, good, low, high, reasons }
+                Score {
+                    asked_by: who.to_string(),
+                    graded,
+                    good,
+                    low,
+                    high,
+                    reasons,
+                }
             })
             .collect()
     }
@@ -206,7 +218,11 @@ impl Trace {
 
     /// How often calls from here fail.
     pub fn failure_rate(&self, asked_by: &str) -> f32 {
-        let mine: Vec<&Call> = self.calls.iter().filter(|c| c.asked_by == asked_by).collect();
+        let mine: Vec<&Call> = self
+            .calls
+            .iter()
+            .filter(|c| c.asked_by == asked_by)
+            .collect();
         if mine.is_empty() {
             return 0.0;
         }
@@ -216,8 +232,12 @@ impl Trace {
     /// Median, not mean. One thirty-second stall should not make a fast model
     /// look slow, and with a local model on a laptop that stall happens.
     pub fn typical_ms(&self, model: &str) -> u64 {
-        let mut times: Vec<u64> =
-            self.calls.iter().filter(|c| c.model == model && c.ok()).map(|c| c.took_ms).collect();
+        let mut times: Vec<u64> = self
+            .calls
+            .iter()
+            .filter(|c| c.model == model && c.ok())
+            .map(|c| c.took_ms)
+            .collect();
         if times.is_empty() {
             return 0;
         }
@@ -232,12 +252,18 @@ impl Trace {
         for c in &self.calls {
             *counts.entry(c.asked_by.as_str()).or_default() += 1;
         }
-        counts.into_iter().max_by_key(|(_, n)| *n).map(|(k, n)| (k.to_string(), n))
+        counts
+            .into_iter()
+            .max_by_key(|(_, n)| *n)
+            .map(|(k, n)| (k.to_string(), n))
     }
 
     /// Calls that led to you correcting Atlas. The list worth reading.
     pub fn caused_corrections(&self) -> Vec<&Call> {
-        self.calls.iter().filter(|c| c.correction.is_some()).collect()
+        self.calls
+            .iter()
+            .filter(|c| c.correction.is_some())
+            .collect()
     }
 
     /// One line, for `atlas trace`.
@@ -317,7 +343,11 @@ pub fn append(path: &Path, c: &Call) -> bool {
     if let Some(dir) = path.parent() {
         crate::heard!(std::fs::create_dir_all(dir));
     }
-    let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) else {
+    let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    else {
         return false;
     };
     writeln!(f, "{}", to_line(c)).is_ok()
@@ -335,8 +365,13 @@ pub fn load(path: &Path) -> Trace {
     // grade for a call is the one that stands.
     if let Ok(text) = std::fs::read_to_string(grades_path(path)) {
         for l in text.lines() {
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(l) else { continue };
-            let (Some(id), Some(good)) = (v.get("id").and_then(|x| x.as_u64()), v.get("good").and_then(|x| x.as_bool())) else {
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(l) else {
+                continue;
+            };
+            let (Some(id), Some(good)) = (
+                v.get("id").and_then(|x| x.as_u64()),
+                v.get("good").and_then(|x| x.as_bool()),
+            ) else {
                 continue;
             };
             t.grade(id, good, v.get("why").and_then(|x| x.as_str()));
@@ -425,10 +460,14 @@ pub fn model_name(request: &str) -> String {
         return "unnamed".into();
     };
     let rest = &request[at + "\"model\"".len()..];
-    let Some(colon) = rest.find(':') else { return "unnamed".into() };
+    let Some(colon) = rest.find(':') else {
+        return "unnamed".into();
+    };
     let after = rest[colon + 1..].trim_start();
     // The value may be a placeholder like {model} rather than a literal.
-    let Some(stripped) = after.strip_prefix('"') else { return "unnamed".into() };
+    let Some(stripped) = after.strip_prefix('"') else {
+        return "unnamed".into();
+    };
     match stripped.find('"') {
         Some(end) if end > 0 => stripped[..end].to_string(),
         _ => "unnamed".into(),
@@ -453,7 +492,10 @@ pub const ENOUGH_TO_MEASURE: usize = 30;
 impl Score {
     pub fn said(&self) -> String {
         let mut s = if self.graded < ENOUGH_TO_MEASURE {
-            format!("{}: {} of {} good so far — too few to call a rate", self.asked_by, self.good, self.graded)
+            format!(
+                "{}: {} of {} good so far — too few to call a rate",
+                self.asked_by, self.good, self.graded
+            )
         } else {
             format!(
                 "{}: {:.0}% good ({:.0}–{:.0}%, {} graded)",
@@ -465,7 +507,12 @@ impl Score {
             )
         };
         if !self.reasons.is_empty() {
-            let top: Vec<String> = self.reasons.iter().take(3).map(|(r, n)| format!("{r} ({n})")).collect();
+            let top: Vec<String> = self
+                .reasons
+                .iter()
+                .take(3)
+                .map(|(r, n)| format!("{r} ({n})"))
+                .collect();
             s.push_str(&format!("; went wrong by: {}", top.join(", ")));
         }
         s
@@ -483,7 +530,10 @@ pub fn wilson(good: usize, n: usize) -> (f32, f32) {
     let denom = 1.0 + z * z / n_f;
     let centre = (p + z * z / (2.0 * n_f)) / denom;
     let half = z * ((p * (1.0 - p) / n_f) + z * z / (4.0 * n_f * n_f)).sqrt() / denom;
-    (((centre - half).max(0.0)) as f32, ((centre + half).min(1.0)) as f32)
+    (
+        ((centre - half).max(0.0)) as f32,
+        ((centre + half).min(1.0)) as f32,
+    )
 }
 
 /// Where grades are written: beside the log, one line each, never rewritten.
@@ -499,7 +549,11 @@ pub fn grade_and_keep(log: &Path, t: &mut Trace, id: u64, good: bool, why: Optio
     use std::io::Write;
     t.grade(id, good, why);
     let line = serde_json::json!({ "id": id, "good": good, "why": why }).to_string();
-    let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(grades_path(log)) else {
+    let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(grades_path(log))
+    else {
         return false;
     };
     writeln!(f, "{line}").is_ok()
@@ -533,7 +587,10 @@ pub struct TraceConfig {
 
 impl Default for TraceConfig {
     fn default() -> Self {
-        TraceConfig { keep_examples: true, examples_max: 2_000 }
+        TraceConfig {
+            keep_examples: true,
+            examples_max: 2_000,
+        }
     }
 }
 
@@ -569,7 +626,9 @@ pub fn examples_path(log: &Path) -> PathBuf {
 pub fn keep_example(log: &Path, ex: &Example, max: usize) -> bool {
     use std::io::Write;
     let path = examples_path(log);
-    let Ok(line) = serde_json::to_string(ex) else { return false };
+    let Ok(line) = serde_json::to_string(ex) else {
+        return false;
+    };
     let ok = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -600,8 +659,11 @@ pub fn examples(log: &Path) -> Vec<Example> {
 pub fn scrub(text: &str) -> String {
     let digits = |t: &str| t.chars().filter(|c| c.is_ascii_digit()).count();
     // A run of tokens that is only digits and phone punctuation.
-    let numberish =
-        |t: &str| !t.is_empty() && t.chars().all(|c| c.is_ascii_digit() || "+-().".contains(c)) && digits(t) > 0;
+    let numberish = |t: &str| {
+        !t.is_empty()
+            && t.chars().all(|c| c.is_ascii_digit() || "+-().".contains(c))
+            && digits(t) > 0
+    };
     let mut out: Vec<String> = Vec::new();
     let mut after_secret_word = false;
     let lines: Vec<&str> = text.split('\n').collect();
@@ -613,7 +675,9 @@ pub fn scrub(text: &str) -> String {
         while i < toks.len() {
             let t = toks[i];
             let bare = t.trim_matches(|c: char| ",;:!?\"'<>[]".contains(c));
-            if after_secret_word && ["is", "was", "=", "-", "it's"].contains(&bare.to_lowercase().as_str()) {
+            if after_secret_word
+                && ["is", "was", "=", "-", "it's"].contains(&bare.to_lowercase().as_str())
+            {
                 out.push(t.to_string());
                 i += 1;
                 continue;
@@ -625,7 +689,16 @@ pub fn scrub(text: &str) -> String {
                 continue;
             }
             let low = bare.to_lowercase();
-            if ["password", "passcode", "passphrase", "pin", "password:", "pin:"].contains(&low.trim_end_matches(':')) {
+            if [
+                "password",
+                "passcode",
+                "passphrase",
+                "pin",
+                "password:",
+                "pin:",
+            ]
+            .contains(&low.trim_end_matches(':'))
+            {
                 out.push(t.to_string());
                 after_secret_word = true;
                 i += 1;
@@ -666,7 +739,9 @@ pub fn scrub(text: &str) -> String {
             }
             // A long code: letters and digits mixed, the shape of a key.
             if bare.len() >= 24
-                && bare.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                && bare
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
                 && bare.chars().any(|c| c.is_ascii_digit())
                 && bare.chars().any(|c| c.is_ascii_alphabetic())
             {

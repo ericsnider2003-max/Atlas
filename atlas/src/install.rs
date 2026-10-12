@@ -156,9 +156,17 @@ pub fn state_of(p: &Piece, found_bytes: Option<u64>) -> State {
 /// What to do about each.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Step {
-    Skip { name: &'static str },
-    Fetch { name: &'static str, mb: u32 },
-    Replace { name: &'static str, why: &'static str },
+    Skip {
+        name: &'static str,
+    },
+    Fetch {
+        name: &'static str,
+        mb: u32,
+    },
+    Replace {
+        name: &'static str,
+        why: &'static str,
+    },
 }
 
 /// The plan for the pieces you actually asked for.
@@ -179,8 +187,7 @@ pub enum Step {
 /// mistake this file made once already with `total_mb` -- and that collision
 /// held `retention::total_mb` up as alive for weeks.
 pub fn what_to_fetch(want: &[Piece], found: &[(&'static str, Option<u64>)]) -> Vec<Step> {
-    want
-        .iter()
+    want.iter()
         .map(|p| {
             let bytes = found
                 .iter()
@@ -188,7 +195,10 @@ pub fn what_to_fetch(want: &[Piece], found: &[(&'static str, Option<u64>)]) -> V
                 .and_then(|(_, b)| *b);
             match state_of(p, bytes) {
                 State::Present => Step::Skip { name: p.name },
-                State::Missing => Step::Fetch { name: p.name, mb: p.mb },
+                State::Missing => Step::Fetch {
+                    name: p.name,
+                    mb: p.mb,
+                },
                 State::HalfDownloaded => Step::Replace {
                     name: p.name,
                     why: "it stopped partway last time",
@@ -207,13 +217,14 @@ pub fn before(plan: &[Step]) -> String {
         .iter()
         .filter_map(|s| match s {
             Step::Fetch { mb, .. } => Some(*mb),
-            Step::Replace { name, .. } => {
-                pieces().iter().find(|p| p.name == *name).map(|p| p.mb)
-            }
+            Step::Replace { name, .. } => pieces().iter().find(|p| p.name == *name).map(|p| p.mb),
             Step::Skip { .. } => None,
         })
         .sum();
-    let have = plan.iter().filter(|s| matches!(s, Step::Skip { .. })).count();
+    let have = plan
+        .iter()
+        .filter(|s| matches!(s, Step::Skip { .. }))
+        .count();
 
     if to_get == 0 {
         return "Everything's already here.".into();
@@ -243,11 +254,7 @@ pub fn after(results: &[(&'static str, bool)]) -> String {
 
     let blocking: Vec<&&str> = failed
         .iter()
-        .filter(|n| {
-            pieces()
-                .iter()
-                .any(|p| p.name == **n && !p.optional)
-        })
+        .filter(|n| pieces().iter().any(|p| p.name == **n && !p.optional))
         .collect();
 
     let mut s = format!("{} didn't come down: {}.", failed.len(), failed.join(", "));
@@ -330,14 +337,19 @@ pub const COSTS_NOTHING: &str =
 /// for. A relative one stays relative, so `roots::under_install` anchors it
 /// the way every other install-relative path is anchored.
 pub fn where_it_lands(p: &Piece, cfg: &InstallConfig) -> String {
-    for (prefix, replacement) in
-        [("tools/", cfg.tools_dir.trim()), ("models/", cfg.models_dir.trim())]
-    {
+    for (prefix, replacement) in [
+        ("tools/", cfg.tools_dir.trim()),
+        ("models/", cfg.models_dir.trim()),
+    ] {
         if let Some(rest) = p.path.strip_prefix(prefix) {
             if replacement.is_empty() {
                 return p.path.to_string();
             }
-            let sep = if replacement.ends_with('/') || replacement.ends_with('\\') { "" } else { "/" };
+            let sep = if replacement.ends_with('/') || replacement.ends_with('\\') {
+                ""
+            } else {
+                "/"
+            };
             return format!("{replacement}{sep}{rest}");
         }
     }
@@ -350,5 +362,8 @@ pub fn where_it_lands(p: &Piece, cfg: &InstallConfig) -> String {
 /// download and Atlas works without them. Listing them as `need` on a machine
 /// that never asked for them is how a first run looks like a failure.
 pub fn wanted(cfg: &InstallConfig) -> Vec<Piece> {
-    pieces().into_iter().filter(|p| cfg.include_optional || !p.optional).collect()
+    pieces()
+        .into_iter()
+        .filter(|p| cfg.include_optional || !p.optional)
+        .collect()
 }

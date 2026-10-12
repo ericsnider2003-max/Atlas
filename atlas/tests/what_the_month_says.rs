@@ -53,11 +53,13 @@ fn entry(description: &str, amount: f32, bucket: Bucket) -> Entry {
 fn sorted(text: &str, work_words: &[String]) -> Vec<Entry> {
     finance::parse_csv(text, Source::LocalFile)
         .iter()
-        .map(|t| entry(
-            &t.description,
-            t.amount as f32,
-            money::sort_one(&t.description, t.amount as f32, work_words),
-        ))
+        .map(|t| {
+            entry(
+                &t.description,
+                t.amount as f32,
+                money::sort_one(&t.description, t.amount as f32, work_words),
+            )
+        })
         .collect()
 }
 
@@ -74,11 +76,17 @@ fn a_bank_export_turns_into_something_that_can_be_asked_about() {
     // Moving your own money is not spending, and counting it as such is the
     // single commonest way a summary lies to you.
     assert!(
-        !month.by_bucket.iter().any(|(b, _)| *b == Bucket::MovingYourOwnMoney),
+        !month
+            .by_bucket
+            .iter()
+            .any(|(b, _)| *b == Bucket::MovingYourOwnMoney),
         "a transfer to savings was counted: {:#?}",
         month.by_bucket
     );
-    assert!(month.out_total < 1800.0, "the transfer went into the outgoings");
+    assert!(
+        month.out_total < 1800.0,
+        "the transfer went into the outgoings"
+    );
 
     // And what it says is the biggest thing you could change, not the
     // biggest thing. Telling you your rent is your largest expense is not
@@ -93,7 +101,10 @@ fn nothing_read_is_said_differently_from_nothing_in_it() {
     // The bug this file exists for. "Nothing to go on." is the right answer
     // to an empty month and the wrong answer to a statement nobody read, and
     // the daemon could only ever give the second.
-    assert_eq!(money::spoken(&money::summarise(&[]), &[]), "Nothing to go on.");
+    assert_eq!(
+        money::spoken(&money::summarise(&[]), &[]),
+        "Nothing to go on."
+    );
 
     let daemon = crate::common::source_of("daemon");
     assert!(
@@ -122,7 +133,11 @@ fn which_lines_are_the_business_is_a_list_you_write() {
         .iter()
         .find(|e| e.description.contains("ADOBE"))
         .expect("parsed");
-    assert_eq!(adobe_plain.bucket, Bucket::Standing, "a subscription, on the shipped list");
+    assert_eq!(
+        adobe_plain.bucket,
+        Bucket::Standing,
+        "a subscription, on the shipped list"
+    );
 
     // Your own word for it moves it, which is the whole point of the setting.
     let yours = sorted(A_STATEMENT, &["adobe".to_string()]);
@@ -165,7 +180,11 @@ fn a_whole_category_climbing_is_the_check_the_setting_names() {
     let jumped = money::buckets_that_jumped(&this, &last, 0.5);
     assert_eq!(jumped.len(), 1, "{jumped:#?}");
     assert!(jumped[0].contains("food"), "{}", jumped[0]);
-    assert!(jumped[0].contains("100") && jumped[0].contains("200"), "{}", jumped[0]);
+    assert!(
+        jumped[0].contains("100") && jumped[0].contains("200"),
+        "{}",
+        jumped[0]
+    );
 
     // The fraction is read, not a half that happens to equal it.
     assert!(money::buckets_that_jumped(&this, &last, 2.0).is_empty());
@@ -200,20 +219,32 @@ fn one_thing_that_climbed_is_said_once_however_often_it_billed() {
 #[test]
 fn the_command_is_what_reaches_it_rather_than_this_test() {
     let main = crate::common::source_of("main");
-    assert!(main.contains("fn run_money("), "there is no way to read a statement");
-    assert!(main.contains("finance::parse_csv(&text, source)"), "nothing parses one");
+    assert!(
+        main.contains("fn run_money("),
+        "there is no way to read a statement"
+    );
+    assert!(
+        main.contains("finance::parse_csv(&text, source)"),
+        "nothing parses one"
+    );
     assert!(
         main.contains("money::sort_one(&t.description, t.amount as f32, &mcfg.work_words)"),
         "nothing sorts one, or it sorts without your words"
     );
-    assert!(main.contains("finance::review(&txns, &fcfg)"), "nothing flags anything");
+    assert!(
+        main.contains("finance::review(&txns, &fcfg)"),
+        "nothing flags anything"
+    );
     assert!(
         main.contains("money::buckets_that_jumped(this, last, jump)"),
         "category_jump still names a check nobody wrote"
     );
     // Keeping a month is deliberate, so a statement you were only looking at
     // does not become the one Atlas answers from.
-    assert!(main.contains("Not kept -- add `--keep`"), "it keeps every statement it reads");
+    assert!(
+        main.contains("Not kept -- add `--keep`"),
+        "it keeps every statement it reads"
+    );
 
     let raw = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
     assert!(raw.contains("work_words:"));
@@ -236,6 +267,13 @@ fn a_file_that_is_not_a_statement_is_refused_rather_than_read_as_an_empty_month(
 
     // And the command says so rather than printing an empty summary.
     let main = crate::common::source_of("main");
-    assert!(main.contains("Nothing I could read in {path}"), "{}", "it prints an empty month");
-    assert!(main.contains("matched by meaning, not position"), "it doesn't say what was wrong");
+    assert!(
+        main.contains("Nothing I could read in {path}"),
+        "{}",
+        "it prints an empty month"
+    );
+    assert!(
+        main.contains("matched by meaning, not position"),
+        "it doesn't say what was wrong"
+    );
 }

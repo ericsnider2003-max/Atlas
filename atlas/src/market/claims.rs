@@ -202,10 +202,18 @@ pub struct Claim {
 
 impl Claim {
     pub fn new(kind: Kind, side: Side) -> Claim {
-        Claim { kind, side, lookback: None }
+        Claim {
+            kind,
+            side,
+            lookback: None,
+        }
     }
     pub fn over(kind: Kind, side: Side, lookback: usize) -> Claim {
-        Claim { kind, side, lookback: Some(lookback) }
+        Claim {
+            kind,
+            side,
+            lookback: Some(lookback),
+        }
     }
     pub fn say(&self) -> String {
         match self.lookback {
@@ -229,13 +237,25 @@ pub struct Verdict {
 
 impl Verdict {
     pub fn yes(magnitude: f64, detail: impl Into<String>) -> Verdict {
-        Verdict { truth: Truth::True, magnitude, detail: detail.into() }
+        Verdict {
+            truth: Truth::True,
+            magnitude,
+            detail: detail.into(),
+        }
     }
     fn no(detail: impl Into<String>) -> Verdict {
-        Verdict { truth: Truth::False, magnitude: 0.0, detail: detail.into() }
+        Verdict {
+            truth: Truth::False,
+            magnitude: 0.0,
+            detail: detail.into(),
+        }
     }
     pub fn cannot_say(detail: impl Into<String>) -> Verdict {
-        Verdict { truth: Truth::Unknown, magnitude: 0.0, detail: detail.into() }
+        Verdict {
+            truth: Truth::Unknown,
+            magnitude: 0.0,
+            detail: detail.into(),
+        }
     }
     pub fn holds(&self) -> bool {
         self.truth == Truth::True
@@ -270,7 +290,10 @@ pub fn verify(claim: &Claim, view: &AsOf<'_>) -> Verdict {
     // out evidence for something it did not confirm. Corrected rather than
     // trusted.
     if v.truth != Truth::True && v.magnitude != 0.0 {
-        return Verdict { magnitude: 0.0, ..v };
+        return Verdict {
+            magnitude: 0.0,
+            ..v
+        };
     }
     v
 }
@@ -300,12 +323,12 @@ fn bos(claim: &Claim, view: &AsOf<'_>, failed: bool) -> Verdict {
         return Verdict::cannot_say("no confirmed swing to break");
     };
     let now = c[c.len() - 1];
-    let extreme = if long {
-        h[h.len() - 1]
+    let extreme = if long { h[h.len() - 1] } else { l[l.len() - 1] };
+    let went_through = if long {
+        extreme > level
     } else {
-        l[l.len() - 1]
+        extreme < level
     };
-    let went_through = if long { extreme > level } else { extreme < level };
     let closed_beyond = if long { now > level } else { now < level };
     if !failed {
         if went_through && closed_beyond {
@@ -317,7 +340,10 @@ fn bos(claim: &Claim, view: &AsOf<'_>, failed: bool) -> Verdict {
     // A failed break: through it, then back.
     if went_through && !closed_beyond {
         let by = (extreme - level).abs() / a;
-        return Verdict::yes(by, format!("poked {:.2} ATR past {:.5} and closed back", by, level));
+        return Verdict::yes(
+            by,
+            format!("poked {:.2} ATR past {:.5} and closed back", by, level),
+        );
     }
     Verdict::no(format!("no failed break of {:.5}", level))
 }
@@ -333,12 +359,23 @@ fn velocity(claim: &Claim, view: &AsOf<'_>) -> Verdict {
         return Verdict::cannot_say("no volatility to measure against");
     }
     let moved = c[c.len() - 1] - c[c.len() - 1 - n];
-    let want = if claim.side.is_long() { moved > 0.0 } else { moved < 0.0 };
+    let want = if claim.side.is_long() {
+        moved > 0.0
+    } else {
+        moved < 0.0
+    };
     let per_bar = moved.abs() / n as f64 / a;
     if want && per_bar > 0.1 {
-        Verdict::yes(per_bar * n as f64, format!("{:.2} ATR per bar over {} bars", per_bar, n))
+        Verdict::yes(
+            per_bar * n as f64,
+            format!("{:.2} ATR per bar over {} bars", per_bar, n),
+        )
     } else {
-        Verdict::no(format!("moved {:.2} ATR over {} bars, the wrong way or not enough", moved / a, n))
+        Verdict::no(format!(
+            "moved {:.2} ATR over {} bars, the wrong way or not enough",
+            moved / a,
+            n
+        ))
     }
 }
 
@@ -374,8 +411,14 @@ fn range_position(claim: &Claim, view: &AsOf<'_>) -> Verdict {
     // how `trending`, `ranging` and `choppy` already defer to the same regime
     // read rather than firing blind. Whether the gate helps is for real bars
     // to say; nothing here claims it does.
-    let Ok(r) = regime::read(view, claim.lookback, regime::DEFAULT_SPREAD_PIPS,
-                             regime::DEFAULT_SLIPPAGE_PIPS, None, 0) else {
+    let Ok(r) = regime::read(
+        view,
+        claim.lookback,
+        regime::DEFAULT_SPREAD_PIPS,
+        regime::DEFAULT_SLIPPAGE_PIPS,
+        None,
+        0,
+    ) else {
         return Verdict::cannot_say("not enough bars to read a regime");
     };
     if r.label() != "RANGING" {
@@ -388,10 +431,21 @@ fn range_position(claim: &Claim, view: &AsOf<'_>) -> Verdict {
         return Verdict::cannot_say("the range has no width");
     }
     let pos = (c[c.len() - 1] - lo) / (hi - lo);
-    let good = if claim.side.is_long() { pos < 0.25 } else { pos > 0.75 };
+    let good = if claim.side.is_long() {
+        pos < 0.25
+    } else {
+        pos > 0.75
+    };
     if good {
-        let edge = if claim.side.is_long() { 0.25 - pos } else { pos - 0.75 } * 4.0;
-        Verdict::yes(edge, format!("{:.0}% up its own {}-bar range", pos * 100.0, n))
+        let edge = if claim.side.is_long() {
+            0.25 - pos
+        } else {
+            pos - 0.75
+        } * 4.0;
+        Verdict::yes(
+            edge,
+            format!("{:.0}% up its own {}-bar range", pos * 100.0, n),
+        )
     } else {
         Verdict::no(format!("{:.0}% up its own {}-bar range", pos * 100.0, n))
     }
@@ -406,7 +460,11 @@ fn swing_trend(claim: &Claim, view: &AsOf<'_>) -> Verdict {
         return Verdict::cannot_say("fewer than two swings on a side");
     }
     let a = view.atr(14);
-    let want = if claim.side.is_long() { Trend::Up } else { Trend::Down };
+    let want = if claim.side.is_long() {
+        Trend::Up
+    } else {
+        Trend::Down
+    };
     if s.trend() == want {
         let lows = s.low_prices();
         let step = if a > 0.0 {
@@ -414,9 +472,19 @@ fn swing_trend(claim: &Claim, view: &AsOf<'_>) -> Verdict {
         } else {
             0.0
         };
-        Verdict::yes(step, if want == Trend::Up { "higher high and higher low" } else { "lower high and lower low" })
+        Verdict::yes(
+            step,
+            if want == Trend::Up {
+                "higher high and higher low"
+            } else {
+                "lower high and lower low"
+            },
+        )
     } else {
-        Verdict::no(format!("structure is {}, not trending that way", s.trend().say()))
+        Verdict::no(format!(
+            "structure is {}, not trending that way",
+            s.trend().say()
+        ))
     }
 }
 
@@ -437,9 +505,16 @@ fn reversal(claim: &Claim, view: &AsOf<'_>) -> Verdict {
         return Verdict::cannot_say("fewer than 25 bars");
     }
     let s = structure::recent(view, 5, 2);
-    let want = if claim.side.is_long() { Trend::Up } else { Trend::Down };
+    let want = if claim.side.is_long() {
+        Trend::Up
+    } else {
+        Trend::Down
+    };
     let Some(t) = s.reversal() else {
-        return Verdict::no(format!("structure has not turned (trend {})", s.trend().say()));
+        return Verdict::no(format!(
+            "structure has not turned (trend {})",
+            s.trend().say()
+        ));
     };
     if t.direction != want {
         return Verdict::no(format!("structure {}", t.say()));
@@ -449,9 +524,15 @@ fn reversal(claim: &Claim, view: &AsOf<'_>) -> Verdict {
     }
     let a = view.atr(14);
     let (broke, now) = if want == Trend::Down {
-        (s.lows.get(s.lows.len().wrapping_sub(2)).map(|p| p.price), s.lows.last().map(|p| p.price))
+        (
+            s.lows.get(s.lows.len().wrapping_sub(2)).map(|p| p.price),
+            s.lows.last().map(|p| p.price),
+        )
     } else {
-        (s.highs.get(s.highs.len().wrapping_sub(2)).map(|p| p.price), s.highs.last().map(|p| p.price))
+        (
+            s.highs.get(s.highs.len().wrapping_sub(2)).map(|p| p.price),
+            s.highs.last().map(|p| p.price),
+        )
     };
     let through = match (broke, now, a > 0.0) {
         (Some(b), Some(n), true) => (n - b).abs() / a,
@@ -515,7 +596,10 @@ fn level_break(claim: &Claim, view: &AsOf<'_>) -> Verdict {
         })
         .collect();
     let Some(lv) = broken.into_iter().max_by_key(|x| x.touches) else {
-        return Verdict::no(format!("no level was crossed and closed beyond in {} bars", look));
+        return Verdict::no(format!(
+            "no level was crossed and closed beyond in {} bars",
+            look
+        ));
     };
     let through = (now - lv.price).abs() / a;
     // Osler's second measured prediction: after price crosses a round number,
@@ -526,7 +610,10 @@ fn level_break(claim: &Claim, view: &AsOf<'_>) -> Verdict {
     } else {
         ""
     };
-    Verdict::yes(through, format!("closed {:.2} ATR beyond {}{}", through, lv.say(), note))
+    Verdict::yes(
+        through,
+        format!("closed {:.2} ATR beyond {}{}", through, lv.say(), note),
+    )
 }
 
 /// A poke through a level that closed back — arguing for the OTHER side.
@@ -583,7 +670,13 @@ fn sweep(claim: &Claim, view: &AsOf<'_>) -> Verdict {
     };
     Verdict::yes(
         (depth / a).min(3.0),
-        format!("swept {} by {:.2} ATR at bar {} and closed back inside{}", x.say(), depth / a, i, note),
+        format!(
+            "swept {} by {:.2} ATR at bar {} and closed back inside{}",
+            x.say(),
+            depth / a,
+            i,
+            note
+        ),
     )
 }
 
@@ -618,7 +711,8 @@ fn polarity(claim: &Claim, view: &AsOf<'_>) -> Verdict {
     for x in prior {
         let crossed_up = was < x.price && now > x.price;
         let crossed_dn = was > x.price && now < x.price;
-        if claim.side.is_long() && crossed_up && (recent_lo - x.price).abs() <= tol && now > x.price {
+        if claim.side.is_long() && crossed_up && (recent_lo - x.price).abs() <= tol && now > x.price
+        {
             return Verdict::yes(
                 ((now - x.price).abs() / a).min(2.0),
                 format!(
@@ -628,7 +722,11 @@ fn polarity(claim: &Claim, view: &AsOf<'_>) -> Verdict {
                 ),
             );
         }
-        if claim.side == Side::Short && crossed_dn && (recent_hi - x.price).abs() <= tol && now < x.price {
+        if claim.side == Side::Short
+            && crossed_dn
+            && (recent_hi - x.price).abs() <= tol
+            && now < x.price
+        {
             return Verdict::yes(
                 ((now - x.price).abs() / a).min(2.0),
                 format!(
@@ -643,11 +741,21 @@ fn polarity(claim: &Claim, view: &AsOf<'_>) -> Verdict {
 }
 
 fn trending(claim: &Claim, view: &AsOf<'_>) -> Verdict {
-    let Ok(r) = regime::read(view, claim.lookback, regime::DEFAULT_SPREAD_PIPS,
-                             regime::DEFAULT_SLIPPAGE_PIPS, None, 0) else {
+    let Ok(r) = regime::read(
+        view,
+        claim.lookback,
+        regime::DEFAULT_SPREAD_PIPS,
+        regime::DEFAULT_SLIPPAGE_PIPS,
+        None,
+        0,
+    ) else {
         return Verdict::cannot_say("not enough bars to read a regime");
     };
-    let want = if claim.side.is_long() { Direction::Up } else { Direction::Down };
+    let want = if claim.side.is_long() {
+        Direction::Up
+    } else {
+        Direction::Down
+    };
     match r.direction {
         Direction::Flat => Verdict::no(format!("not trending -- {}", r.say())),
         d if d != want => Verdict::no(format!("trending the other way -- {}", r.say())),
@@ -665,8 +773,14 @@ fn trending(claim: &Claim, view: &AsOf<'_>) -> Verdict {
 /// range is not bullish or bearish, and letting it score would hand a free
 /// point to the faster typist.
 fn ranging(claim: &Claim, view: &AsOf<'_>) -> Verdict {
-    let Ok(r) = regime::read(view, claim.lookback, regime::DEFAULT_SPREAD_PIPS,
-                             regime::DEFAULT_SLIPPAGE_PIPS, None, 0) else {
+    let Ok(r) = regime::read(
+        view,
+        claim.lookback,
+        regime::DEFAULT_SPREAD_PIPS,
+        regime::DEFAULT_SLIPPAGE_PIPS,
+        None,
+        0,
+    ) else {
         return Verdict::cannot_say("not enough bars to read a regime");
     };
     if r.label() == "RANGING" {
@@ -682,8 +796,14 @@ fn ranging(claim: &Claim, view: &AsOf<'_>) -> Verdict {
 /// but a side that stakes it is telling the record that the cost gate failed —
 /// which is what makes a statistically fine range unprofitable.
 fn choppy(claim: &Claim, view: &AsOf<'_>) -> Verdict {
-    let Ok(r) = regime::read(view, claim.lookback, regime::DEFAULT_SPREAD_PIPS,
-                             regime::DEFAULT_SLIPPAGE_PIPS, None, 0) else {
+    let Ok(r) = regime::read(
+        view,
+        claim.lookback,
+        regime::DEFAULT_SPREAD_PIPS,
+        regime::DEFAULT_SLIPPAGE_PIPS,
+        None,
+        0,
+    ) else {
         return Verdict::cannot_say("not enough bars to read a regime");
     };
     if r.label() == "CHOPPY" {
@@ -695,9 +815,9 @@ fn choppy(claim: &Claim, view: &AsOf<'_>) -> Verdict {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::bars::Bars;
     use super::super::fixtures::{box_range, from_path, ramp, walk};
+    use super::*;
 
     const UP_THEN_PULLBACK: [f64; 10] = [
         1.0000, 1.0100, 1.0050, 1.0200, 1.0150, 1.0300, 1.0250, 1.0280, 1.0260, 1.0290,
@@ -730,7 +850,11 @@ mod tests {
             "a 30-bar window cannot be measured on 20 bars: {}",
             windowed.detail
         );
-        assert!(windowed.detail.contains("not enough bars"), "{}", windowed.detail);
+        assert!(
+            windowed.detail.contains("not enough bars"),
+            "{}",
+            windowed.detail
+        );
     }
 
     #[test]
@@ -770,7 +894,10 @@ mod tests {
         let v = b.latest().unwrap();
         let short = verify(&Claim::new(Kind::Reversal, Side::Short), &v);
         assert_eq!(short.truth, Truth::True, "{:?}", short);
-        assert!(short.magnitude > 0.0, "a confirmed break is worth something");
+        assert!(
+            short.magnitude > 0.0,
+            "a confirmed break is worth something"
+        );
         let long = verify(&Claim::new(Kind::Reversal, Side::Long), &v);
         assert_eq!(long.truth, Truth::False, "{:?}", long);
     }
@@ -781,7 +908,10 @@ mod tests {
         // cannot score off a lower high that came to nothing -- which is most
         // of them.
         let b = from_path(&UP_THEN_PULLBACK).unwrap();
-        let v = verify(&Claim::new(Kind::Reversal, Side::Short), &b.latest().unwrap());
+        let v = verify(
+            &Claim::new(Kind::Reversal, Side::Short),
+            &b.latest().unwrap(),
+        );
         assert_eq!(v.truth, Truth::Unknown, "{:?}", v);
         assert_eq!(v.magnitude, 0.0);
         assert!(v.detail.contains("not yet confirmed"), "{}", v.detail);
@@ -831,7 +961,12 @@ mod tests {
         let v = trending.latest().unwrap();
         for side in [Side::Long, Side::Short] {
             let out = verify(&Claim::new(Kind::RangePosition, side), &v);
-            assert_eq!(out.truth, Truth::Unknown, "should abstain while trending: {:?}", out);
+            assert_eq!(
+                out.truth,
+                Truth::Unknown,
+                "should abstain while trending: {:?}",
+                out
+            );
             assert_eq!(out.magnitude, 0.0);
         }
     }
@@ -878,7 +1013,10 @@ mod tests {
     fn polarity_admits_in_its_own_verdict_that_it_is_untested() {
         assert_eq!(Kind::Polarity.grounds(), Grounds::Untested);
         let b = from_path(&[1.1000, 1.1100, 1.1000, 1.1100, 1.1200, 1.1105, 1.1180]).unwrap();
-        let v = verify(&Claim::over(Kind::Polarity, Side::Long, 30), &b.latest().unwrap());
+        let v = verify(
+            &Claim::over(Kind::Polarity, Side::Long, 30),
+            &b.latest().unwrap(),
+        );
         if v.truth == Truth::True {
             assert!(v.detail.contains("UNTESTED"), "{}", v.detail);
         }
@@ -889,7 +1027,10 @@ mod tests {
         // Up through a level, close back below: a SHORT case. The single most
         // important distinction in the level vocabulary.
         let b = from_path(&[1.1000, 1.1100, 1.1000, 1.1100, 1.1000, 1.1130, 1.1040]).unwrap();
-        let v = verify(&Claim::over(Kind::Sweep, Side::Short, 40), &b.latest().unwrap());
+        let v = verify(
+            &Claim::over(Kind::Sweep, Side::Short, 40),
+            &b.latest().unwrap(),
+        );
         if v.truth == Truth::True {
             assert!(v.detail.contains("closed back inside"), "{}", v.detail);
         }
@@ -903,14 +1044,23 @@ mod tests {
         let v = b.latest().unwrap();
         for k in ALL_KINDS {
             let out = verify(&Claim::new(k, Side::Long), &v);
-            assert_eq!(out.truth, Truth::Unknown, "{} said {:?}", k.name(), out.truth);
+            assert_eq!(
+                out.truth,
+                Truth::Unknown,
+                "{} said {:?}",
+                k.name(),
+                out.truth
+            );
         }
     }
 
     #[test]
     fn a_claim_renders_readably() {
         assert_eq!(Claim::new(Kind::Bos, Side::Long).say(), "BOS[LONG]");
-        assert_eq!(Claim::over(Kind::Sweep, Side::Short, 5).say(), "SWEEP[SHORT](5)");
+        assert_eq!(
+            Claim::over(Kind::Sweep, Side::Short, 5).say(),
+            "SWEEP[SHORT](5)"
+        );
     }
 
     #[test]

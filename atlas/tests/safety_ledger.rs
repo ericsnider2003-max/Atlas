@@ -99,9 +99,15 @@ fn the_refusal_says_nothing_was_touched() {
     let a = Area::new("says");
     let t = a.trash();
     fs::write(a.ledger_file(), "broken").unwrap();
-    let err = t.take(&a.file("x.txt", "y"), "test").unwrap_err().to_string();
+    let err = t
+        .take(&a.file("x.txt", "y"), "test")
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("Nothing has been touched"), "got: {err}");
-    assert!(err.contains("unreadable") || err.contains("record"), "got: {err}");
+    assert!(
+        err.contains("unreadable") || err.contains("record"),
+        "got: {err}"
+    );
 }
 
 #[test]
@@ -118,7 +124,10 @@ fn what_was_already_held_survives_the_refusal() {
     let _ = t.take(&a.file("new.txt", "x"), "test");
 
     for name in held.iter().filter(|n| n.ends_with("kept.txt")) {
-        assert!(a.0.join("trash").join(name).exists(), "{name} was overwritten");
+        assert!(
+            a.0.join("trash").join(name).exists(),
+            "{name} was overwritten"
+        );
     }
 }
 
@@ -175,7 +184,8 @@ fn the_list_command_surfaces_an_unreadable_folder_instead_of_saying_none() {
     // every platform and needs no permission trickery to provoke.
     use atlas::safety::{backups, list_backups, BackupConfig};
 
-    let not_a_dir = std::env::temp_dir().join(format!("atlas-backups-not-a-dir-{}", std::process::id()));
+    let not_a_dir =
+        std::env::temp_dir().join(format!("atlas-backups-not-a-dir-{}", std::process::id()));
     fs::write(&not_a_dir, b"i am a file, not a backups folder").unwrap();
 
     let cfg = BackupConfig {
@@ -193,7 +203,10 @@ fn the_list_command_surfaces_an_unreadable_folder_instead_of_saying_none() {
     );
     // The wired path: an error the command can show.
     let err = backups(&cfg).expect_err("an unreadable folder must not read as empty");
-    assert!(err.contains("couldn't read"), "the error should say it could not read: {err}");
+    assert!(
+        err.contains("couldn't read"),
+        "the error should say it could not read: {err}"
+    );
 
     let _ = fs::remove_file(&not_a_dir);
 }
@@ -201,10 +214,23 @@ fn the_list_command_surfaces_an_unreadable_folder_instead_of_saying_none() {
 #[test]
 fn a_backup_whose_contents_cannot_be_counted_says_so() {
     use atlas::safety::Backup;
-    let unknown = Backup { path: "/x".into(), at: 0, files: None, bytes: 0 };
-    let known = Backup { path: "/x".into(), at: 0, files: Some(3), bytes: 0 };
+    let unknown = Backup {
+        path: "/x".into(),
+        at: 0,
+        files: None,
+        bytes: 0,
+    };
+    let known = Backup {
+        path: "/x".into(),
+        at: 0,
+        files: Some(3),
+        bytes: 0,
+    };
     assert!(unknown.line().contains("couldn't read"));
-    assert!(!unknown.trustworthy(), "an uncountable backup looked restorable");
+    assert!(
+        !unknown.trustworthy(),
+        "an uncountable backup looked restorable"
+    );
     assert!(known.trustworthy());
     assert!(known.line().contains("3 files"));
 }
@@ -212,6 +238,11 @@ fn a_backup_whose_contents_cannot_be_counted_says_so() {
 #[test]
 fn an_empty_backup_is_not_trustworthy_either() {
     use atlas::safety::Backup;
-    let empty = Backup { path: "/x".into(), at: 0, files: Some(0), bytes: 0 };
+    let empty = Backup {
+        path: "/x".into(),
+        at: 0,
+        files: Some(0),
+        bytes: 0,
+    };
     assert!(!empty.trustworthy());
 }

@@ -24,7 +24,12 @@ const SAMPLE: &str = r#"{
 }"#;
 
 fn here() -> Place {
-    Place { name: "Columbus".into(), lat: 39.96, lon: -83.0, country: "US".into() }
+    Place {
+        name: "Columbus".into(),
+        lat: 39.96,
+        lon: -83.0,
+        country: "US".into(),
+    }
 }
 
 #[test]
@@ -33,7 +38,10 @@ fn apples_answer_is_read_and_said_with_its_mark() {
     let now = applewx::said(&here(), &r, false, true).unwrap();
     assert_eq!(now, "In Columbus: 65°F and mostly cloudy, windy (19 mph). Today's high 70, low 53. Rain likely (70% chance) -- take an umbrella. -- Apple Weather");
     let tomorrow = applewx::said(&here(), &r, true, false).unwrap();
-    assert_eq!(tomorrow, "Tomorrow in Columbus: partly cloudy, high 19°C, low 9°C. -- Apple Weather");
+    assert_eq!(
+        tomorrow,
+        "Tomorrow in Columbus: partly cloudy, high 19°C, low 9°C. -- Apple Weather"
+    );
 }
 
 #[test]
@@ -46,8 +54,18 @@ fn apples_condition_codes_become_words() {
 #[test]
 fn the_rest_token_names_the_service_and_verifies() {
     let k = p256::ecdsa::SigningKey::from_slice(&[9u8; 32]).unwrap();
-    let pem = k.to_pkcs8_pem(p256::pkcs8::LineEnding::LF).unwrap().to_string();
-    let jwt = applewx::signed_token(&pem, "G3D89YSJD4", "Z6NSM9AXB7", "com.ericsnider.atlas", 1_000).unwrap();
+    let pem = k
+        .to_pkcs8_pem(p256::pkcs8::LineEnding::LF)
+        .unwrap()
+        .to_string();
+    let jwt = applewx::signed_token(
+        &pem,
+        "G3D89YSJD4",
+        "Z6NSM9AXB7",
+        "com.ericsnider.atlas",
+        1_000,
+    )
+    .unwrap();
     let p: Vec<&str> = jwt.split('.').collect();
     let dec = |s: &str| {
         let mut t = s.replace('-', "+").replace('_', "/");
@@ -62,7 +80,9 @@ fn the_rest_token_names_the_service_and_verifies() {
     assert_eq!(c["sub"], "com.ericsnider.atlas");
     assert_eq!(c["exp"], 4_600);
     let sig = p256::ecdsa::Signature::from_slice(&dec(p[2])).unwrap();
-    k.verifying_key().verify(format!("{}.{}", p[0], p[1]).as_bytes(), &sig).unwrap();
+    k.verifying_key()
+        .verify(format!("{}.{}", p[0], p[1]).as_bytes(), &sig)
+        .unwrap();
     assert_eq!(
         applewx::rest_path(&here(), "America/New_York"),
         "/api/v1/weather/en/39.9600/-83.0000?dataSets=currentWeather,forecastDaily&timezone=America%2FNew_York"
@@ -86,9 +106,11 @@ fn on_the_iphone_the_apps_weather_answers_first() {
     // SAFETY: registers or clears a plain fn pointer; `phone` is a valid `extern "C"` fn for the
     // whole test.
     unsafe { applewx::atlas_mobile_apple_weather(Some(phone)) };
-    let r = applewx::reading(&here(), &atlas::apns::ApnsConfig::default()).expect("the phone's weather");
+    let r = applewx::reading(&here(), &atlas::apns::ApnsConfig::default())
+        .expect("the phone's weather");
     assert_eq!(r.days.len(), 2);
-    let asked: serde_json::Value = serde_json::from_str(ASKED.lock().unwrap().as_deref().unwrap()).unwrap();
+    let asked: serde_json::Value =
+        serde_json::from_str(ASKED.lock().unwrap().as_deref().unwrap()).unwrap();
     assert_eq!(asked["lat"], 39.96);
     // SAFETY: registers or clears a plain fn pointer; `phone` is a valid `extern "C"` fn for the
     // whole test.

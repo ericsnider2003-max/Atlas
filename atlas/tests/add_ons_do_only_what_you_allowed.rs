@@ -24,7 +24,14 @@ fn cfg() -> Config {
     Config::load(Path::new("config")).unwrap()
 }
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 const ADDON: &str = "\
@@ -59,19 +66,34 @@ impl Rig {
         self.root.join("plugins")
     }
     fn daemon<'a>(&self, c: &'a Config, p: &'a MockPlatform) -> Daemon<'a> {
-        let mut d = Daemon::new(c, p, None, self.store(), Proactive::new(ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            c,
+            p,
+            None,
+            self.store(),
+            Proactive::new(ProactiveConfig::default()),
+        );
         d.plugins_dir = self.dir();
         d
     }
     fn approve(&self, c: &Config) {
         let found = plugins::scan(&self.dir(), &c.commands, &Approvals::default());
-        plugins::approve(&self.store(), &self.dir(), &c.commands, "wind-down", &found[0].sha256).unwrap();
+        plugins::approve(
+            &self.store(),
+            &self.dir(),
+            &c.commands,
+            "wind-down",
+            &found[0].sha256,
+        )
+        .unwrap();
     }
 }
 
 /// Is the add-on's sequence the work Atlas has in hand?
 fn running_wind_down(d: &Daemon) -> bool {
-    d.mind.focus().is_some_and(|w| w.asked == "wind down" && w.progress().0 < 2)
+    d.mind
+        .focus()
+        .is_some_and(|w| w.asked == "wind down" && w.progress().0 < 2)
 }
 
 #[test]
@@ -80,7 +102,10 @@ fn an_add_on_you_have_not_approved_does_nothing() {
     let rig = Rig::new("unapproved", ADDON);
     let mut d = rig.daemon(&c, &p);
     let reply = d.turn("wind things down", 1_000);
-    assert!(!reply.contains("add-on"), "an unapproved add-on ran: {reply}");
+    assert!(
+        !reply.contains("add-on"),
+        "an unapproved add-on ran: {reply}"
+    );
     assert!(!running_wind_down(&d), "an unapproved add-on is in flight");
 }
 
@@ -91,12 +116,25 @@ fn an_approved_add_on_runs_and_still_asks_before_a_consequential_step() {
     rig.approve(&c);
     let mut d = rig.daemon(&c, &p);
     let reply = d.turn("wind things down", 1_000);
-    assert!(reply.contains("Running wind down (the wind-down add-on), 2 steps"), "{reply}");
+    assert!(
+        reply.contains("Running wind down (the wind-down add-on), 2 steps"),
+        "{reply}"
+    );
     // Closing an app asks, add-on or not, and says whose step it is.
-    assert!(reply.contains("from the wind-down add-on") && reply.contains("go ahead?"), "{reply}");
-    let w = d.mind.focus().expect("the add-on's sequence is the work in hand");
+    assert!(
+        reply.contains("from the wind-down add-on") && reply.contains("go ahead?"),
+        "{reply}"
+    );
+    let w = d
+        .mind
+        .focus()
+        .expect("the add-on's sequence is the work in hand");
     assert_eq!(w.asked, "wind down");
-    assert_eq!(w.progress(), (1, 2), "the first step ran; the one that asks has not");
+    assert_eq!(
+        w.progress(),
+        (1, 2),
+        "the first step ran; the one that asks has not"
+    );
 }
 
 #[test]
@@ -109,8 +147,14 @@ fn a_permission_taken_away_while_it_waits_stops_it_even_after_your_yes() {
     assert!(asked.contains("go ahead?"), "{asked}");
     plugins::revoke(&rig.store(), "wind-down", "desktop").unwrap();
     let reply = d.turn("yes", 1_010);
-    assert!(reply.contains("haven't allowed"), "the revoked step ran anyway: {reply}");
-    assert!(!running_wind_down(&d), "a stopped add-on is still in flight");
+    assert!(
+        reply.contains("haven't allowed"),
+        "the revoked step ran anyway: {reply}"
+    );
+    assert!(
+        !running_wind_down(&d),
+        "a stopped add-on is still in flight"
+    );
 }
 
 #[test]
@@ -120,11 +164,18 @@ fn nothing_you_say_to_answer_a_question_can_start_an_add_on() {
     rig.approve(&c);
     let mut d = rig.daemon(&c, &p);
     // One of your own sequences pauses to ask.
-    d.flows.record("mine", &["resume".into(), "close notepad".into()], Some("my own wind down"));
+    d.flows.record(
+        "mine",
+        &["resume".into(), "close notepad".into()],
+        Some("my own wind down"),
+    );
     let asked = d.turn("my own wind down", 1_000);
     assert!(asked.contains("go ahead?"), "{asked}");
     let reply = d.turn("wind things down", 1_010);
-    assert!(!reply.contains("add-on"), "an add-on started while Atlas was waiting on an answer: {reply}");
+    assert!(
+        !reply.contains("add-on"),
+        "an add-on started while Atlas was waiting on an answer: {reply}"
+    );
     assert!(!running_wind_down(&d), "the add-on is in flight");
 }
 
@@ -150,7 +201,8 @@ fn your_own_sequence_wins_over_an_add_on_with_the_same_words() {
     let rig = Rig::new("yours-first", ADDON);
     rig.approve(&c);
     let mut d = rig.daemon(&c, &p);
-    d.flows.record("mine", &["resume".into()], Some("wind things down"));
+    d.flows
+        .record("mine", &["resume".into()], Some("wind things down"));
     let reply = d.turn("wind things down", 1_000);
     assert!(reply.contains("Running mine"), "{reply}");
     assert!(!reply.contains("add-on"), "{reply}");
@@ -170,9 +222,18 @@ fn the_add_ons_page_is_reachable_and_its_buttons_post_somewhere_real() {
     let rig = Rig::new("hubpage", ADDON);
     let found = plugins::scan(&rig.dir(), &c.commands, &Approvals::default());
     let html = hub::addons_page_with(&found, &[], &[], &[]);
-    assert!(html.contains("action=/hub/addons"), "no button posts to the add-ons route");
-    assert!(html.contains(&found[0].sha256), "approve must carry the fingerprint of what was shown");
-    assert!(html.contains("open, close and arrange apps"), "permissions must be shown in words");
+    assert!(
+        html.contains("action=/hub/addons"),
+        "no button posts to the add-ons route"
+    );
+    assert!(
+        html.contains(&found[0].sha256),
+        "approve must carry the fingerprint of what was shown"
+    );
+    assert!(
+        html.contains("open, close and arrange apps"),
+        "permissions must be shown in words"
+    );
 
     // The route the button posts to turns into the action that approves.
     let req = atlas::server::Request {
@@ -190,7 +251,17 @@ fn the_add_ons_page_is_reachable_and_its_buttons_post_somewhere_real() {
                 dir: rig.root.join("trash").to_string_lossy().into_owned(),
                 keep_days: 30,
             });
-            plugins::hub_action(&rig.store(), &rig.dir(), &c.commands, &trash, &what, &id, "", &sha).unwrap();
+            plugins::hub_action(
+                &rig.store(),
+                &rig.dir(),
+                &c.commands,
+                &trash,
+                &what,
+                &id,
+                "",
+                &sha,
+            )
+            .unwrap();
         }
         other => panic!("POST /hub/addons routed to {other:?}"),
     }
@@ -218,9 +289,11 @@ fn the_edits_page_offers_the_way_back_for_each_edit() {
     assert!(html.contains("action=/hub/edits") && html.contains("Back to the default"));
     assert!(html.contains("value='min_samples'") && html.contains("value='policy.yaml'"));
     assert!(html.contains("couldn't tell"), "an unsure edit must say so");
-    assert!(html.contains("The default has changed"), "a moved default must say so");
+    assert!(
+        html.contains("The default has changed"),
+        "a moved default must say so"
+    );
 }
-
 
 // ---------------------------------------------------------------- asking less
 
@@ -231,21 +304,35 @@ fn say_always_once_and_that_step_stops_asking() {
     rig.approve(&c);
     let mut d = rig.daemon(&c, &p);
     let asked = d.turn("wind things down", 1_000);
-    assert!(asked.contains("Say \"always\""), "the question should offer not asking again: {asked}");
+    assert!(
+        asked.contains("Say \"always\""),
+        "the question should offer not asking again: {asked}"
+    );
     let reply = d.turn("always", 1_010);
     assert!(reply.contains("won't ask"), "{reply}");
     assert!(!running_wind_down(&d), "the approved step should have run");
 
     // The next run goes straight through.
     let again = d.turn("wind things down", 2_000);
-    assert!(!again.contains("go ahead?"), "asked again after you said always: {again}");
-    assert!(d.mind.focus().map_or(true, |w| w.asked != "wind down" || w.progress() == (2, 2)));
+    assert!(
+        !again.contains("go ahead?"),
+        "asked again after you said always: {again}"
+    );
+    assert!(d
+        .mind
+        .focus()
+        .map_or(true, |w| w.asked != "wind down" || w.progress() == (2, 2)));
 }
 
 #[test]
 fn a_benign_add_on_never_asks_at_all() {
     let (c, p) = (cfg(), plat());
-    let rig = Rig::new("benign", &ADDON.replace("close chrome", "what can you do").replace("[basics, desktop]", "[basics]"));
+    let rig = Rig::new(
+        "benign",
+        &ADDON
+            .replace("close chrome", "what can you do")
+            .replace("[basics, desktop]", "[basics]"),
+    );
     rig.approve(&c);
     let mut d = rig.daemon(&c, &p);
     let reply = d.turn("wind things down", 1_000);
@@ -259,7 +346,10 @@ fn a_benign_add_on_never_asks_at_all() {
 fn a_scheduled_add_on_runs_itself_through_the_same_checks() {
     let (c, p) = (cfg(), plat());
     let text = ADDON
-        .replace("    triggers: [\"wind things down\"]\n", "    schedule: every 15 minutes\n")
+        .replace(
+            "    triggers: [\"wind things down\"]\n",
+            "    schedule: every 15 minutes\n",
+        )
         .replace("close chrome", "what can you do")
         .replace("[basics, desktop]", "[basics]");
     let rig = Rig::new("scheduled", &text);
@@ -267,25 +357,50 @@ fn a_scheduled_add_on_runs_itself_through_the_same_checks() {
     let mut d = rig.daemon(&c, &p);
     let first = d.tick(100_000).join(" ");
     assert!(!first.contains("add-on"), "fired on first sight: {first}");
-    assert_eq!(scheduled_actions(&d), 0, "first sight records an anchor, not an action");
+    assert_eq!(
+        scheduled_actions(&d),
+        0,
+        "first sight records an anchor, not an action"
+    );
     // A backup the first tick started may still hold the state for a moment, and
     // a due add-on then waits for the next tick rather than being dropped.
     let mut later = String::new();
     for _ in 0..200 {
         later.push_str(&d.tick(100_000 + 15 * 60).join(" "));
-        if later.contains("Running wind down (the wind-down add-on)") { break; }
+        if later.contains("Running wind down (the wind-down add-on)") {
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
-    assert!(later.contains("Running wind down (the wind-down add-on)"), "{later}");
+    assert!(
+        later.contains("Running wind down (the wind-down add-on)"),
+        "{later}"
+    );
     let completed_actions = scheduled_actions(&d);
-    assert_eq!(completed_actions, 2, "one occurrence must execute its two approved steps once");
+    assert_eq!(
+        completed_actions, 2,
+        "one occurrence must execute its two approved steps once"
+    );
     let saved = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
     assert_eq!(saved.claims.len(), 1);
-    assert!(saved.claims.values().all(|claim| claim.phase == plugins::SchedulePhase::Done));
-    assert!(saved.claims.values().all(|claim| claim.run.as_ref().is_some_and(|run| run.position == 2)));
+    assert!(saved
+        .claims
+        .values()
+        .all(|claim| claim.phase == plugins::SchedulePhase::Done));
+    assert!(saved
+        .claims
+        .values()
+        .all(|claim| claim.run.as_ref().is_some_and(|run| run.position == 2)));
     let soon = d.tick(100_000 + 16 * 60).join(" ");
-    assert!(!soon.contains("Running wind down"), "ran twice in one period: {soon}");
-    assert_eq!(scheduled_actions(&d), completed_actions, "same period must not repeat effects");
+    assert!(
+        !soon.contains("Running wind down"),
+        "ran twice in one period: {soon}"
+    );
+    assert_eq!(
+        scheduled_actions(&d),
+        completed_actions,
+        "same period must not repeat effects"
+    );
 
     // Switched off: it doesn't run itself either.
     // A tick may have launched a real backup. Await root ownership, then
@@ -296,7 +411,12 @@ fn a_scheduled_add_on_runs_itself_through_the_same_checks() {
     let guard = loop {
         match store.transaction() {
             Ok(guard) => break guard,
-            Err(atlas::error::AtlasError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock && std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(20)),
+            Err(atlas::error::AtlasError::Io(error))
+                if error.kind() == std::io::ErrorKind::WouldBlock
+                    && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
             Err(error) => panic!("could not durably switch the add-on off: {error}"),
         }
     };
@@ -304,18 +424,31 @@ fn a_scheduled_add_on_runs_itself_through_the_same_checks() {
     drop(guard);
     let off = d.tick(100_000 + 60 * 60).join(" ");
     assert!(!off.contains("Running wind down"), "{off}");
-    assert_eq!(scheduled_actions(&d), completed_actions, "disabled add-ons must not act");
+    assert_eq!(
+        scheduled_actions(&d),
+        completed_actions,
+        "disabled add-ons must not act"
+    );
 }
 
 // ---------------------------------------------------------------- from a friend
 
 fn scheduled_text() -> String {
-    ADDON.replace("    triggers: [\"wind things down\"]\n", "    schedule: every 15 minutes\n")
-        .replace("close chrome", "what can you do").replace("[basics, desktop]", "[basics]")
+    ADDON
+        .replace(
+            "    triggers: [\"wind things down\"]\n",
+            "    schedule: every 15 minutes\n",
+        )
+        .replace("close chrome", "what can you do")
+        .replace("[basics, desktop]", "[basics]")
 }
 
 fn scheduled_actions(d: &Daemon) -> usize {
-    d.journal.events.iter().filter(|event| event.kind == atlas::activity::Kind::Scheduled).count()
+    d.journal
+        .events
+        .iter()
+        .filter(|event| event.kind == atlas::activity::Kind::Scheduled)
+        .count()
 }
 
 #[test]
@@ -325,31 +458,58 @@ fn a_failed_schedule_claim_starts_no_step_and_retries_without_duplicates() {
     rig.approve(&c);
     let mut d = rig.daemon(&c, &p);
     d.tick(100_000);
-    let blocker = rig.store().root().join(format!("plugin_schedule_runs.{}.json.tmp", std::process::id()));
+    let blocker = rig.store().root().join(format!(
+        "plugin_schedule_runs.{}.json.tmp",
+        std::process::id()
+    ));
     std::fs::create_dir(&blocker).unwrap();
     let before = scheduled_actions(&d);
     let failed = d.tick(100_900).join(" ");
     assert!(!failed.contains("Running wind down"), "{failed}");
-    assert_eq!(scheduled_actions(&d), before, "no effect precedes its durable claim");
-    assert!(plugins::ScheduleRuns::load_checked(&rig.store()).unwrap().claims.is_empty());
+    assert_eq!(
+        scheduled_actions(&d),
+        before,
+        "no effect precedes its durable claim"
+    );
+    assert!(plugins::ScheduleRuns::load_checked(&rig.store())
+        .unwrap()
+        .claims
+        .is_empty());
     std::fs::remove_dir(&blocker).unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     let mut replies = Vec::new();
     loop {
         replies.extend(d.tick(100_901));
         let saved = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
-        if saved.claims.values().any(|claim| claim.phase == plugins::SchedulePhase::Done) { break; }
-        assert!(std::time::Instant::now() < deadline, "no durable completion after lock release: {}", replies.join(" "));
+        if saved
+            .claims
+            .values()
+            .any(|claim| claim.phase == plugins::SchedulePhase::Done)
+        {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "no durable completion after lock release: {}",
+            replies.join(" ")
+        );
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    assert!(replies.join(" ").contains("Running wind down"), "{}", replies.join(" "));
+    assert!(
+        replies.join(" ").contains("Running wind down"),
+        "{}",
+        replies.join(" ")
+    );
     assert!(scheduled_actions(&d) > before);
     let completed = scheduled_actions(&d);
     d.tick(100_960);
     assert_eq!(scheduled_actions(&d), completed);
     let runs = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
     assert_eq!(runs.claims.len(), 1);
-    assert!(runs.claims.values().all(|claim| claim.phase == plugins::SchedulePhase::Done));
+    assert!(runs
+        .claims
+        .values()
+        .all(|claim| claim.phase == plugins::SchedulePhase::Done));
 }
 
 #[test]
@@ -362,8 +522,18 @@ fn an_interrupted_schedule_claim_is_visible_after_restart_and_never_replayed() {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     loop {
         d.tick(100_900);
-        if plugins::ScheduleRuns::load_checked(&rig.store()).unwrap().claims.values().any(|claim| claim.phase == plugins::SchedulePhase::Done) { break; }
-        assert!(std::time::Instant::now() < deadline, "the occurrence never reached its durable terminal receipt");
+        if plugins::ScheduleRuns::load_checked(&rig.store())
+            .unwrap()
+            .claims
+            .values()
+            .any(|claim| claim.phase == plugins::SchedulePhase::Done)
+        {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the occurrence never reached its durable terminal receipt"
+        );
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     let mut runs = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
@@ -374,7 +544,13 @@ fn an_interrupted_schedule_claim_is_visible_after_restart_and_never_replayed() {
     claim.run = None;
     // The backup the first tick queued may still hold the state for a moment.
     let mut saved = runs.save(&rig.store());
-    for _ in 0..200 { if saved.is_ok() { break; } std::thread::sleep(std::time::Duration::from_millis(25)); saved = runs.save(&rig.store()); }
+    for _ in 0..200 {
+        if saved.is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        saved = runs.save(&rig.store());
+    }
     saved.unwrap();
     drop(d);
     let mut restarted = rig.daemon(&c, &p);
@@ -384,7 +560,12 @@ fn an_interrupted_schedule_claim_is_visible_after_restart_and_never_replayed() {
     assert!(!reply.contains("Running wind down"), "{reply}");
     restarted.tick(103_000);
     assert_eq!(scheduled_actions(&restarted), before);
-    assert_eq!(plugins::ScheduleRuns::load_checked(&rig.store()).unwrap().claims, runs.claims);
+    assert_eq!(
+        plugins::ScheduleRuns::load_checked(&rig.store())
+            .unwrap()
+            .claims,
+        runs.claims
+    );
 }
 
 #[test]
@@ -430,10 +611,15 @@ fn a_busy_schedule_keeps_its_first_sight_and_retries_after_the_lock_releases() {
     let mut due = String::new();
     for _ in 0..200 {
         due.push_str(&d.tick(100_900).join(" "));
-        if due.contains("Running wind down") { break; }
+        if due.contains("Running wind down") {
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
-    assert!(due.contains("Running wind down"), "original first sight was lost: {due}");
+    assert!(
+        due.contains("Running wind down"),
+        "original first sight was lost: {due}"
+    );
     assert!(scheduled_actions(&d) > before);
     let done = scheduled_actions(&d);
     d.tick(100_960);
@@ -443,31 +629,67 @@ fn a_busy_schedule_keeps_its_first_sight_and_retries_after_the_lock_releases() {
 #[test]
 fn a_step_receipt_failure_holds_the_next_effect_and_restart_never_replays() {
     let (c, p) = (cfg(), plat());
-    let text = scheduled_text().replace("permissions: [basics]", "permissions: [basics, desktop]")
+    let text = scheduled_text()
+        .replace("permissions: [basics]", "permissions: [basics, desktop]")
         .replace("command: resume", "command: close chrome");
     let rig = Rig::new("schedule-progress-failure", &text);
     rig.approve(&c);
-    plugins::trust_step(&rig.store(), &rig.dir(), &c.commands, "wind-down", "close chrome").unwrap();
-    let blocker = rig.store().root().join(format!("plugin_schedule_runs.{}.json.tmp", std::process::id()));
+    plugins::trust_step(
+        &rig.store(),
+        &rig.dir(),
+        &c.commands,
+        "wind-down",
+        "close chrome",
+    )
+    .unwrap();
+    let blocker = rig.store().root().join(format!(
+        "plugin_schedule_runs.{}.json.tmp",
+        std::process::id()
+    ));
     let injected = blocker.clone();
-    *p.after_close.borrow_mut() = Some(Box::new(move || { std::fs::create_dir(&injected).unwrap(); }));
+    *p.after_close.borrow_mut() = Some(Box::new(move || {
+        std::fs::create_dir(&injected).unwrap();
+    }));
     let mut d = rig.daemon(&c, &p);
     d.tick(100_000);
-    let closes = || p.actions().iter().filter(|action| matches!(action, atlas::platform::mock::Action::Close(_))).count();
+    let closes = || {
+        p.actions()
+            .iter()
+            .filter(|action| matches!(action, atlas::platform::mock::Action::Close(_)))
+            .count()
+    };
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     loop {
         d.tick(100_900);
         let saved = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
-        if closes() == 1 && saved.claims.values().any(|claim| claim.phase == plugins::SchedulePhase::InFlight) { break; }
-        assert!(std::time::Instant::now() < deadline, "the first effect and its durable pre-effect fence never arrived");
+        if closes() == 1
+            && saved
+                .claims
+                .values()
+                .any(|claim| claim.phase == plugins::SchedulePhase::InFlight)
+        {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the first effect and its durable pre-effect fence never arrived"
+        );
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     assert_eq!(closes(), 1, "the first effect really happened");
-    assert_eq!(scheduled_actions(&d), 1, "second step must wait for the first receipt");
+    assert_eq!(
+        scheduled_actions(&d),
+        1,
+        "second step must wait for the first receipt"
+    );
     let saved = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
     let claim = saved.claims.values().next().unwrap();
     assert_eq!(claim.phase, plugins::SchedulePhase::InFlight);
-    assert_eq!(claim.run.as_ref().unwrap().position, 0, "disk retains the unknown first outcome");
+    assert_eq!(
+        claim.run.as_ref().unwrap().position,
+        0,
+        "disk retains the unknown first outcome"
+    );
     d.tick(100_960);
     assert_eq!(closes(), 1);
     assert_eq!(scheduled_actions(&d), 1);
@@ -481,7 +703,12 @@ fn a_step_receipt_failure_holds_the_next_effect_and_restart_never_replays() {
     assert!(!reply.contains("Running wind down"), "{reply}");
     assert_eq!(closes(), 1);
     assert_eq!(scheduled_actions(&restarted), before);
-    assert_eq!(plugins::ScheduleRuns::load_checked(&rig.store()).unwrap().claims, saved.claims);
+    assert_eq!(
+        plugins::ScheduleRuns::load_checked(&rig.store())
+            .unwrap()
+            .claims,
+        saved.claims
+    );
 }
 
 #[test]
@@ -494,12 +721,24 @@ fn an_add_on_a_friend_shares_waits_for_your_choice_then_runs_as_theirs() {
         from: "Sam".into(),
         what: format!("{}Friends", plugins::SHARED_IN),
         at: 1_000,
-        file: Some(atlas::kin::DeliveredFile { name: "wind-down.atlas-addon.yaml".into(), bytes: ADDON.as_bytes().to_vec() }),
+        file: Some(atlas::kin::DeliveredFile {
+            name: "wind-down.atlas-addon.yaml".into(),
+            bytes: ADDON.as_bytes().to_vec(),
+        }),
     });
-    assert!(said.contains("Sam shared the add-on") && said.contains("Friends"), "{said}");
-    assert!(plugins::scan(&rig.dir(), &c.commands, &Approvals::load(&rig.store())).is_empty(), "installed on arrival");
+    assert!(
+        said.contains("Sam shared the add-on") && said.contains("Friends"),
+        "{said}"
+    );
+    assert!(
+        plugins::scan(&rig.dir(), &c.commands, &Approvals::load(&rig.store())).is_empty(),
+        "installed on arrival"
+    );
     let reply = d.turn("wind things down", 2_000);
-    assert!(!reply.contains("add-on"), "a shared add-on ran before you chose it: {reply}");
+    assert!(
+        !reply.contains("add-on"),
+        "a shared add-on ran before you chose it: {reply}"
+    );
     // Whatever Atlas made of that, let it go before trying again.
     d.turn("never mind", 2_100);
 
@@ -507,8 +746,18 @@ fn an_add_on_a_friend_shares_waits_for_your_choice_then_runs_as_theirs() {
     let offers = plugins::Offers::load(&rig.store()).items;
     let shelf = atlas::hub::addons_page_with(&[], &offers, &[], &[]);
     assert!(shelf.contains("Add it and allow that"));
-    assert!(shelf.contains("close chrome"), "the shelf should show what it would actually do");
-    plugins::take_offer(&rig.store(), &rig.dir(), &c.commands, offers[0].offer, &offers[0].sha256).unwrap();
+    assert!(
+        shelf.contains("close chrome"),
+        "the shelf should show what it would actually do"
+    );
+    plugins::take_offer(
+        &rig.store(),
+        &rig.dir(),
+        &c.commands,
+        offers[0].offer,
+        &offers[0].sha256,
+    )
+    .unwrap();
     let found = plugins::scan(&rig.dir(), &c.commands, &Approvals::load(&rig.store()));
     assert_eq!(found[0].status, plugins::Status::Active);
     assert_eq!(found[0].sent_by.as_deref(), Some("Sam"));
@@ -543,12 +792,19 @@ fn a_note_and_an_add_on_actually_arrive_on_your_other_device() {
     let mut ph = phone.daemon(&pc, &p);
     ph.turn("sync", 1_020);
     assert!(
-        ph.notebook.notes.iter().any(|n| n.text.contains("ten inch shelf")),
+        ph.notebook
+            .notes
+            .iter()
+            .any(|n| n.text.contains("ten inch shelf")),
         "the note crossed the folder and never reached the phone's notebook"
     );
     let found = plugins::scan(&phone.dir(), &pc.commands, &Approvals::load(&phone.store()));
     assert_eq!(found.len(), 1, "the add-on didn't follow you");
-    assert_eq!(found[0].status, plugins::Status::Waiting, "an approval came through an unsealed bundle");
+    assert_eq!(
+        found[0].status,
+        plugins::Status::Waiting,
+        "an approval came through an unsealed bundle"
+    );
 }
 
 /// `sync.automatic`: with a folder you chose, a note reaches your other
@@ -576,7 +832,10 @@ fn with_a_folder_chosen_your_devices_carry_each_other_by_themselves() {
     let mut ph = phone.daemon(&pc, &p);
     ph.tick(1_100 + atlas::daemon::AUTO_SYNC_EVERY_SECS);
     assert!(
-        ph.notebook.notes.iter().any(|n| n.text.contains("ten inch shelf")),
+        ph.notebook
+            .notes
+            .iter()
+            .any(|n| n.text.contains("ten inch shelf")),
         "nothing crossed without being asked"
     );
 }

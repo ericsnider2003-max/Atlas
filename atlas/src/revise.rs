@@ -77,7 +77,13 @@ pub struct Correction {
 
 impl Correction {
     pub fn new(about: &str, did: &str, at: u64, session: u64) -> Correction {
-        Correction { about: slug(about), did: did.into(), wanted: None, at, session }
+        Correction {
+            about: slug(about),
+            did: did.into(),
+            wanted: None,
+            at,
+            session,
+        }
     }
 
     pub fn wanting(mut self, wanted: &str) -> Correction {
@@ -162,7 +168,11 @@ impl Mending {
             .map(|h| h.session)
             .collect();
         let occasions = prior_sessions.len() as u32
-            + if prior_sessions.contains(&c.session) { 0 } else { 1 };
+            + if prior_sessions.contains(&c.session) {
+                0
+            } else {
+                1
+            };
 
         let wanted = c.wanted.clone();
         self.heard.push(c.clone());
@@ -245,8 +255,16 @@ impl Mending {
 /// real words in common with the request, and not already mentioned. Eric,
 /// 25 Sep 2026 (F9): "yes, only related to things being worked on." Each is
 /// mentioned once; `mentioned` holds the `at` of those already said.
-pub fn related_stale<'a>(m: &'a Mending, asked: &str, now: u64, mentioned: &[u64]) -> Vec<&'a Correction> {
-    const SKIP: &[&str] = &["the", "and", "that", "this", "with", "for", "you", "your", "was", "too", "about", "from", "what", "have"];
+pub fn related_stale<'a>(
+    m: &'a Mending,
+    asked: &str,
+    now: u64,
+    mentioned: &[u64],
+) -> Vec<&'a Correction> {
+    const SKIP: &[&str] = &[
+        "the", "and", "that", "this", "with", "for", "you", "your", "was", "too", "about", "from",
+        "what", "have",
+    ];
     let words: Vec<String> = asked
         .to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
@@ -257,7 +275,13 @@ pub fn related_stale<'a>(m: &'a Mending, asked: &str, now: u64, mentioned: &[u64
         .into_iter()
         .filter(|c| !mentioned.contains(&c.at) && c.wanted.is_some())
         .filter(|c| {
-            let hay = format!("{} {} {}", c.about.replace('-', " "), c.did, c.wanted.clone().unwrap_or_default()).to_lowercase();
+            let hay = format!(
+                "{} {} {}",
+                c.about.replace('-', " "),
+                c.did,
+                c.wanted.clone().unwrap_or_default()
+            )
+            .to_lowercase();
             words.iter().filter(|w| hay.contains(w.as_str())).count() >= 2
         })
         .take(1)
@@ -271,13 +295,28 @@ pub fn related_stale<'a>(m: &'a Mending, asked: &str, now: u64, mentioned: &[u64
 pub fn home_for(c: &Correction) -> Home {
     let t = format!("{} {}", c.did, c.wanted.clone().unwrap_or_default()).to_lowercase();
     const HOW: &[&str] = &[
-        "format", "order", "step", "first", "before", "after", "always", "never", "when you",
-        "each time", "every time", "instead of", "use ", "run ", "check",
+        "format",
+        "order",
+        "step",
+        "first",
+        "before",
+        "after",
+        "always",
+        "never",
+        "when you",
+        "each time",
+        "every time",
+        "instead of",
+        "use ",
+        "run ",
+        "check",
     ];
     if HOW.iter().any(|k| t.contains(k)) {
         return Home::HowTo;
     }
-    const YOU: &[&str] = &["prefer", "like", "hate", "want", "rather", "tone", "voice", "style"];
+    const YOU: &[&str] = &[
+        "prefer", "like", "hate", "want", "rather", "tone", "voice", "style",
+    ];
     if YOU.iter().any(|k| t.contains(k)) {
         return Home::AboutYou;
     }
@@ -337,8 +376,14 @@ pub const MAX_STANDING: usize = 12;
 /// instructions. Empty string when there is nothing learned, so a fresh
 /// install carries no heading for an empty list.
 pub fn standing(applied: &[Edit]) -> String {
-    let mut how: Vec<&Edit> = applied.iter().filter(|e| e.home.read_every_time()).collect();
-    let mut rest: Vec<&Edit> = applied.iter().filter(|e| !e.home.read_every_time()).collect();
+    let mut how: Vec<&Edit> = applied
+        .iter()
+        .filter(|e| e.home.read_every_time())
+        .collect();
+    let mut rest: Vec<&Edit> = applied
+        .iter()
+        .filter(|e| !e.home.read_every_time())
+        .collect();
     // Newest first within each group: a later correction about the same thing
     // has already replaced the earlier one in `applied`, so what is left is in
     // the order it was learned and the recent ones matter more.
@@ -355,7 +400,10 @@ pub fn standing(applied: &[Edit]) -> String {
     if lines.is_empty() {
         return String::new();
     }
-    format!("What you have told me, and expect me to keep doing:\n{}\n", lines.join("\n"))
+    format!(
+        "What you have told me, and expect me to keep doing:\n{}\n",
+        lines.join("\n")
+    )
 }
 
 /// What you wanted, pulled out of the sentence you said it in.
@@ -366,8 +414,16 @@ pub fn standing(applied: &[Edit]) -> String {
 /// file a rule that says only what not to do.
 pub fn wanted_in(said: &str) -> Option<String> {
     const AFTER: &[&str] = &[
-        " instead ", " instead,", "instead of that", "should have ", "should've ",
-        " i wanted ", " i want ", " just ", " next time ", " from now on ",
+        " instead ",
+        " instead,",
+        "instead of that",
+        "should have ",
+        "should've ",
+        " i wanted ",
+        " i want ",
+        " just ",
+        " next time ",
+        " from now on ",
     ];
     // Searched against a space-padded copy, so a marker written with a leading
     // space still matches a sentence that *starts* with it: "next time lead
@@ -405,10 +461,14 @@ pub fn wanted_in(said: &str) -> Option<String> {
 fn starts_imperative(t: &str) -> bool {
     const VERBS: &[&str] = &[
         "keep", "use", "put", "say", "give", "make", "do", "don't", "dont", "start", "stop",
-        "always", "never", "just", "check", "ask", "show", "send", "write", "run", "open",
-        "lead", "leave", "add", "drop", "cut", "shorten", "list",
+        "always", "never", "just", "check", "ask", "show", "send", "write", "run", "open", "lead",
+        "leave", "add", "drop", "cut", "shorten", "list",
     ];
-    let first = t.split_whitespace().next().unwrap_or("").trim_matches(|c: char| !c.is_alphanumeric());
+    let first = t
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .trim_matches(|c: char| !c.is_alphanumeric());
     VERBS.contains(&first.to_lowercase().as_str())
 }
 

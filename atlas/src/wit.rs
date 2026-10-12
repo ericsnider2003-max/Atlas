@@ -77,12 +77,21 @@ impl Wit {
 
     /// Read what a person or a config file wrote.
     pub fn parse(raw: &str) -> Option<Wit> {
-        let t: String = raw.trim().to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_ascii_digit() || *c == '.').collect();
+        let t: String = raw
+            .trim()
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphanumeric() || c.is_ascii_digit() || *c == '.')
+            .collect();
         match t.as_str() {
             "off" | "none" | "no" | "false" | "serious" | "straight" => Some(Wit::Off),
             "dry" | "some" | "default" | "on" | "true" => Some(Wit::Dry),
             "full" | "smartass" | "smartarse" | "sarcastic" | "max" | "high" => Some(Wit::Full),
-            n => n.parse::<f64>().ok().filter(|f| f.is_finite()).map(Wit::from_number),
+            n => n
+                .parse::<f64>()
+                .ok()
+                .filter(|f| f.is_finite())
+                .map(Wit::from_number),
         }
     }
 
@@ -130,7 +139,10 @@ impl<'de> Deserialize<'de> for Wit {
         match Either::deserialize(d)? {
             Either::N(n) => Ok(Wit::from_number(n)),
             Either::S(s) => Wit::parse(&s).ok_or_else(|| {
-                serde::de::Error::custom(format!("persona.wit must be one of {}, not {s:?}", LEVELS.join(", ")))
+                serde::de::Error::custom(format!(
+                    "persona.wit must be one of {}, not {s:?}",
+                    LEVELS.join(", ")
+                ))
             }),
         }
     }
@@ -154,12 +166,21 @@ pub struct Moment<'a> {
 
 impl<'a> Moment<'a> {
     pub fn new(register: Register, said: &'a str, reply: &'a str) -> Moment<'a> {
-        Moment { register, said, reply, for_someone_else: false, in_a_flow: false }
+        Moment {
+            register,
+            said,
+            reply,
+            for_someone_else: false,
+            in_a_flow: false,
+        }
     }
 
     /// The same moment, during a security, vault or confirmation step.
     pub fn during_a_flow(self, yes: bool) -> Moment<'a> {
-        Moment { in_a_flow: self.in_a_flow || yes, ..self }
+        Moment {
+            in_a_flow: self.in_a_flow || yes,
+            ..self
+        }
     }
 }
 
@@ -216,37 +237,150 @@ pub enum Held {
 /// "pain" does not fire on "painting".
 const SERIOUS: &[&str] = &[
     // security
-    "password", "passphrase", "passcode", "vault", "hacked", "breach", "breached", "scam", "scammed",
-    "phishing", "2fa", "two factor", "locked out", "virus", "malware", "ransomware", "security",
-    "stolen", "fraud", "leaked", "recovery key",
+    "password",
+    "passphrase",
+    "passcode",
+    "vault",
+    "hacked",
+    "breach",
+    "breached",
+    "scam",
+    "scammed",
+    "phishing",
+    "2fa",
+    "two factor",
+    "locked out",
+    "virus",
+    "malware",
+    "ransomware",
+    "security",
+    "stolen",
+    "fraud",
+    "leaked",
+    "recovery key",
     // money
-    "money", "pay", "paid", "payment", "payments", "invoice", "bank", "debt", "loan", "mortgage", "rent",
-    "bill", "bills", "tax", "taxes", "salary", "wage", "budget", "refund", "credit card", "overdraft",
-    "broke", "savings", "invest", "investment", "crypto", "owe", "owed", "price", "cost", "costs",
-    "spend", "spent", "expensive",
+    "money",
+    "pay",
+    "paid",
+    "payment",
+    "payments",
+    "invoice",
+    "bank",
+    "debt",
+    "loan",
+    "mortgage",
+    "rent",
+    "bill",
+    "bills",
+    "tax",
+    "taxes",
+    "salary",
+    "wage",
+    "budget",
+    "refund",
+    "credit card",
+    "overdraft",
+    "broke",
+    "savings",
+    "invest",
+    "investment",
+    "crypto",
+    "owe",
+    "owed",
+    "price",
+    "cost",
+    "costs",
+    "spend",
+    "spent",
+    "expensive",
     // health
-    "health", "doctor", "hospital", "sick", "ill", "illness", "pain", "symptom", "symptoms",
-    "medication", "medicine", "diagnosis", "diagnosed", "therapy", "surgery", "injury", "injured",
-    "hurt", "ambulance", "emergency", "pregnant", "cancer", "clinic", "prescription",
+    "health",
+    "doctor",
+    "hospital",
+    "sick",
+    "ill",
+    "illness",
+    "pain",
+    "symptom",
+    "symptoms",
+    "medication",
+    "medicine",
+    "diagnosis",
+    "diagnosed",
+    "therapy",
+    "surgery",
+    "injury",
+    "injured",
+    "hurt",
+    "ambulance",
+    "emergency",
+    "pregnant",
+    "cancer",
+    "clinic",
+    "prescription",
     // bad news
-    "died", "dead", "death", "passed away", "funeral", "divorce", "fired", "laid off", "layoff",
-    "lost my", "accident", "bad news", "grief", "grieving", "miscarriage", "breakup", "broke up",
-    "rejected", "eviction", "evicted",
+    "died",
+    "dead",
+    "death",
+    "passed away",
+    "funeral",
+    "divorce",
+    "fired",
+    "laid off",
+    "layoff",
+    "lost my",
+    "accident",
+    "bad news",
+    "grief",
+    "grieving",
+    "miscarriage",
+    "breakup",
+    "broke up",
+    "rejected",
+    "eviction",
+    "evicted",
 ];
 
 /// A reply that says something didn't work.
 const FAILURE: &[&str] = &[
-    "couldn't", "could not", "can't", "cannot", "failed", "failing", "error", "didn't work",
-    "did not work", "not found", "unable", "refused", "won't", "went wrong", "isn't working",
-    "is not working", "not working", "broken", "sorry", "no such", "timed out", "denied",
-    "blocked", "offline", "missing",
+    "couldn't",
+    "could not",
+    "can't",
+    "cannot",
+    "failed",
+    "failing",
+    "error",
+    "didn't work",
+    "did not work",
+    "not found",
+    "unable",
+    "refused",
+    "won't",
+    "went wrong",
+    "isn't working",
+    "is not working",
+    "not working",
+    "broken",
+    "sorry",
+    "no such",
+    "timed out",
+    "denied",
+    "blocked",
+    "offline",
+    "missing",
 ];
 
 fn words_of(s: &str) -> String {
     let t: String = s
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '\'' || c == '$' || c == '£' || c == '€' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '\'' || c == '$' || c == '£' || c == '€' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect();
     format!(" {} ", t.split_whitespace().collect::<Vec<_>>().join(" "))
 }
@@ -351,10 +485,39 @@ pub enum Canned {
 /// The witty tails. Each is one short clause, said after the answer; none
 /// mentions a fact, a number or the user's failings.
 const TAILS: &[(Canned, &[&str])] = &[
-    (Canned::Greeting, &["Try to look busy.", "I've been awake for ages, obviously.", "Let's make it look easy."]),
-    (Canned::Thanks, &["I'll put it on your tab.", "Try to contain your gratitude.", "Noted, framed, hung on the wall."]),
-    (Canned::Goodbye, &["Not like I've anywhere to be.", "I'll hold the fort.", "Don't do anything I'd have to log."]),
-    (Canned::Done, &["Try to act surprised.", "Another triumph.", "Hardly broke a sweat.", "You're welcome, in advance."]),
+    (
+        Canned::Greeting,
+        &[
+            "Try to look busy.",
+            "I've been awake for ages, obviously.",
+            "Let's make it look easy.",
+        ],
+    ),
+    (
+        Canned::Thanks,
+        &[
+            "I'll put it on your tab.",
+            "Try to contain your gratitude.",
+            "Noted, framed, hung on the wall.",
+        ],
+    ),
+    (
+        Canned::Goodbye,
+        &[
+            "Not like I've anywhere to be.",
+            "I'll hold the fort.",
+            "Don't do anything I'd have to log.",
+        ],
+    ),
+    (
+        Canned::Done,
+        &[
+            "Try to act surprised.",
+            "Another triumph.",
+            "Hardly broke a sweat.",
+            "You're welcome, in advance.",
+        ],
+    ),
 ];
 
 /// A tail for this kind of reply, or `None` this time.
@@ -384,7 +547,11 @@ pub fn dress(level: Wit, plain: &str, kind: Canned, m: &Moment, seed: u64) -> St
     }
     match tail(level, kind, seed) {
         Some(t) => {
-            let sep = if plain.ends_with(['.', '!', '?']) { " " } else { ". " };
+            let sep = if plain.ends_with(['.', '!', '?']) {
+                " "
+            } else {
+                ". "
+            };
             format!("{plain}{sep}{t}")
         }
         None => plain.to_string(),
@@ -413,35 +580,94 @@ pub fn level_asked(said: &str) -> Option<Asked> {
         .chars()
         .filter(|c| c.is_alphanumeric() || c.is_whitespace() || *c == '\'')
         .collect();
-    t = t.split_whitespace().filter(|w| *w != "atlas").collect::<Vec<_>>().join(" ");
-    for lead in ["please ", "can you ", "could you ", "would you ", "just ", "ok ", "okay "] {
+    t = t
+        .split_whitespace()
+        .filter(|w| *w != "atlas")
+        .collect::<Vec<_>>()
+        .join(" ");
+    for lead in [
+        "please ",
+        "can you ",
+        "could you ",
+        "would you ",
+        "just ",
+        "ok ",
+        "okay ",
+    ] {
         if let Some(r) = t.strip_prefix(lead) {
             t = r.to_string();
         }
     }
-    for end in [" please", " a bit", " a little", " a notch", " for me", " now"] {
+    for end in [
+        " please",
+        " a bit",
+        " a little",
+        " a notch",
+        " for me",
+        " now",
+    ] {
         if let Some(r) = t.strip_suffix(end) {
             t = r.to_string();
         }
     }
-    let t = t.replace("smartass", "smart ass").replace("smart arse", "smart ass");
+    let t = t
+        .replace("smartass", "smart ass")
+        .replace("smart arse", "smart ass");
     const UP: &[&str] = &[
-        "be more of a smart ass", "more of a smart ass", "be more sarcastic", "more sarcasm", "be funnier",
-        "more wit", "turn the wit up", "turn up the wit", "more jokes", "be cheekier", "sass me more",
+        "be more of a smart ass",
+        "more of a smart ass",
+        "be more sarcastic",
+        "more sarcasm",
+        "be funnier",
+        "more wit",
+        "turn the wit up",
+        "turn up the wit",
+        "more jokes",
+        "be cheekier",
+        "sass me more",
     ];
     const FULL: &[&str] = &[
-        "be a smart ass", "smart ass mode", "full smart ass", "go full smart ass", "be as sarcastic as you like",
-        "you can be a smart ass", "turn the wit all the way up",
+        "be a smart ass",
+        "smart ass mode",
+        "full smart ass",
+        "go full smart ass",
+        "be as sarcastic as you like",
+        "you can be a smart ass",
+        "turn the wit all the way up",
     ];
     const DOWN: &[&str] = &[
-        "tone it down", "less sarcasm", "be less sarcastic", "less of a smart ass", "dial it back",
-        "dial it down", "less wit", "turn the wit down", "turn down the wit", "fewer jokes", "less jokes",
+        "tone it down",
+        "less sarcasm",
+        "be less sarcastic",
+        "less of a smart ass",
+        "dial it back",
+        "dial it down",
+        "less wit",
+        "turn the wit down",
+        "turn down the wit",
+        "fewer jokes",
+        "less jokes",
     ];
     const OFF: &[&str] = &[
-        "no more jokes", "no jokes", "stop joking", "stop being a smart ass", "be serious", "no sarcasm",
-        "turn off the wit", "turn the wit off", "wit off", "just be straight with me", "straight answers",
+        "no more jokes",
+        "no jokes",
+        "stop joking",
+        "stop being a smart ass",
+        "be serious",
+        "no sarcasm",
+        "turn off the wit",
+        "turn the wit off",
+        "wit off",
+        "just be straight with me",
+        "straight answers",
     ];
-    const DRY: &[&str] = &["just be dry", "be dry", "dry wit", "dry wit only", "wit to dry"];
+    const DRY: &[&str] = &[
+        "just be dry",
+        "be dry",
+        "dry wit",
+        "dry wit only",
+        "wit to dry",
+    ];
     if FULL.contains(&t.as_str()) {
         return Some(Asked::To(Wit::Full));
     }
@@ -475,13 +701,18 @@ impl Asked {
 pub fn confirm(before: Wit, after: Wit) -> String {
     if before == after {
         return match after {
-            Wit::Full => "That's already as smart-ass as I go. Anything more and it stops being useful.".into(),
+            Wit::Full => {
+                "That's already as smart-ass as I go. Anything more and it stops being useful."
+                    .into()
+            }
             Wit::Off => "Already off. Straight answers only.".into(),
             Wit::Dry => "Already dry: the odd aside, in conversation only.".into(),
         };
     }
     match after {
-        Wit::Full => "Fine. Smart-ass it is. Answers first, and never about anything that matters.".into(),
+        Wit::Full => {
+            "Fine. Smart-ass it is. Answers first, and never about anything that matters.".into()
+        }
         Wit::Dry => "Toned down: the odd dry aside, in conversation only.".into(),
         Wit::Off => "No more jokes. Straight answers.".into(),
     }

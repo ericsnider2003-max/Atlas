@@ -125,7 +125,10 @@ pub const CORPUS: &[(&str, Option<(i64, u32, u32, u32, u32)>)] = &[
 /// honest measure. Same "now" (Wednesday 23 September 2026, 10:15).
 pub const HELD_OUT: &[(&str, Option<(i64, u32, u32, u32, u32)>)] = &[
     ("remind me tomorrow at 7:45am", Some((2026, 9, 24, 7, 45))),
-    ("book it for thursday at 1:30pm", Some((2026, 9, 24, 13, 30))),
+    (
+        "book it for thursday at 1:30pm",
+        Some((2026, 9, 24, 13, 30)),
+    ),
     ("call the broker at 4:15", Some((2026, 9, 23, 16, 15))),
     ("meeting on the 2nd at 10am", Some((2026, 10, 2, 10, 0))),
     ("dentist oct 12 at 3", Some((2026, 10, 12, 15, 0))),

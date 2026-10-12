@@ -62,7 +62,14 @@ pub struct MonitorFact {
 
 impl From<&Monitor> for MonitorFact {
     fn from(m: &Monitor) -> Self {
-        MonitorFact { id: m.id, x: m.x, y: m.y, width: m.width, height: m.height, primary: m.primary }
+        MonitorFact {
+            id: m.id,
+            x: m.x,
+            y: m.y,
+            width: m.width,
+            height: m.height,
+            primary: m.primary,
+        }
     }
 }
 
@@ -88,7 +95,10 @@ impl Machine {
         if wanted_apps.is_empty() {
             return 1.0;
         }
-        let found = wanted_apps.iter().filter(|a| self.apps.contains_key(*a)).count();
+        let found = wanted_apps
+            .iter()
+            .filter(|a| self.apps.contains_key(*a))
+            .count();
         found as f32 / wanted_apps.len() as f32
     }
 
@@ -97,9 +107,11 @@ impl Machine {
         if self.monitors.len() != monitors.len() {
             return false;
         }
-        monitors
-            .iter()
-            .all(|m| self.monitors.iter().any(|f| f.x == m.x && f.width == m.width))
+        monitors.iter().all(|m| {
+            self.monitors
+                .iter()
+                .any(|f| f.x == m.x && f.width == m.width)
+        })
     }
 
     pub fn summary(&self) -> String {
@@ -110,7 +122,11 @@ impl Machine {
             self.monitors.len(),
             if self.monitors.len() == 1 { "" } else { "s" },
             self.audio_inputs.len(),
-            if self.audio_inputs.len() == 1 { "" } else { "s" }
+            if self.audio_inputs.len() == 1 {
+                ""
+            } else {
+                "s"
+            }
         )
     }
 }
@@ -129,7 +145,10 @@ pub fn detect(
     tool_names: &[String],
     t: u64,
 ) -> Machine {
-    let mut m = Machine { detected_at: t, ..Default::default() };
+    let mut m = Machine {
+        detected_at: t,
+        ..Default::default()
+    };
 
     if let Ok(mons) = plat.monitors() {
         m.monitors = mons.iter().map(MonitorFact::from).collect();
@@ -182,8 +201,10 @@ pub fn leaks_a_username(text: &str) -> Option<String> {
     let mut from = 0;
     while let Some(i) = lower[from..].find(marker) {
         let start = from + i + marker.len();
-        let name: String =
-            lower[start..].chars().take_while(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect();
+        let name: String = lower[start..]
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+            .collect();
         // "Public" and "Default" are the same on every Windows machine.
         if !name.is_empty() && !matches!(name.as_str(), "public" | "default" | "all" | "you") {
             return Some(name);
@@ -226,7 +247,11 @@ pub fn first_run_message(m: &Machine, wanted: &[String]) -> String {
     if !missing.is_empty() {
         s.push_str(&format!(
             " I couldn't find {}.",
-            missing.iter().map(|a| a.as_str()).collect::<Vec<_>>().join(", ")
+            missing
+                .iter()
+                .map(|a| a.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
     if m.audio_inputs.is_empty() {

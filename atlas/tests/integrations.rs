@@ -23,7 +23,9 @@ fn board(now: u64) -> Board {
 fn a_failure_since_the_last_success_is_the_current_state() {
     // Forty failures in a row is not "recently active".
     let mut b = board(0);
-    b.get_mut("stripe").unwrap().failed(HOUR, "401 from the API");
+    b.get_mut("stripe")
+        .unwrap()
+        .failed(HOUR, "401 from the API");
     assert_eq!(b.get_mut("stripe").unwrap().health(HOUR), Health::Failing);
 }
 
@@ -108,7 +110,9 @@ fn the_panel_leads_with_what_is_broken() {
     // A page that opens with nine greens and one red trains you to skim past
     // the red.
     let mut b = board(0);
-    b.get_mut("stripe").unwrap().failed(HOUR, "401 from the API");
+    b.get_mut("stripe")
+        .unwrap()
+        .failed(HOUR, "401 from the API");
     b.swept(HOUR);
     let p = b.panel(HOUR);
     assert!(p.starts_with("stripe"), "got: {p}");
@@ -122,7 +126,10 @@ fn a_failure_reads_as_a_consequence_not_a_name() {
     b.swept(HOUR);
     let line = b.get_mut("mail").unwrap().line(HOUR);
     assert!(line.contains("token expired"));
-    assert!(line.contains("can't read or send"), "no consequence stated: {line}");
+    assert!(
+        line.contains("can't read or send"),
+        "no consequence stated: {line}"
+    );
 }
 
 #[test]
@@ -172,8 +179,14 @@ fn an_answer_that_needed_a_broken_source_says_so_in_the_answer() {
     let mut b = board(HOUR);
     b.get_mut("stripe").unwrap().failed(HOUR, "401");
     let out = mark("You took $40 yesterday.", &["stripe"], &b, HOUR);
-    assert!(out.starts_with("You took $40 yesterday."), "the answer survives: {out}");
-    assert!(out.contains("stripe is failing"), "names the source and its state: {out}");
+    assert!(
+        out.starts_with("You took $40 yesterday."),
+        "the answer survives: {out}"
+    );
+    assert!(
+        out.contains("stripe is failing"),
+        "names the source and its state: {out}"
+    );
     assert!(out.contains("missing"), "says what it costs you: {out}");
 }
 
@@ -199,7 +212,10 @@ fn a_source_never_checked_still_marks_the_answer() {
     let mut b = Board::default();
     b.add(Integration::new("stripe", "Payment notifications stop."));
     let out = mark("You took $40 yesterday.", &["stripe"], &b, HOUR);
-    assert!(out.contains("I've never seen stripe work"), "reads as a sentence, not a slot fill: {out}");
+    assert!(
+        out.contains("I've never seen stripe work"),
+        "reads as a sentence, not a slot fill: {out}"
+    );
 }
 
 #[test]
@@ -228,7 +244,10 @@ fn the_board_atlas_actually_runs_with_is_not_empty() {
     // `Board::default()` and nothing ever added to it, so every reader of the
     // board was reading nothing while looking perfectly healthy.
     let b = dependencies();
-    assert!(!b.integrations.is_empty(), "a board nothing registers into cannot report anything");
+    assert!(
+        !b.integrations.is_empty(),
+        "a board nothing registers into cannot report anything"
+    );
 }
 
 #[test]
@@ -250,6 +269,11 @@ fn a_registered_dependency_starts_unknown_rather_than_working() {
     // would open every run claiming health it has not observed.
     let b = dependencies();
     for i in &b.integrations {
-        assert_eq!(i.health(0), Health::Unknown, "{} started out claiming health", i.name);
+        assert_eq!(
+            i.health(0),
+            Health::Unknown,
+            "{} started out claiming health",
+            i.name
+        );
     }
 }

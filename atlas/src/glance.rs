@@ -89,15 +89,29 @@ pub struct Facts {
 pub fn for_widgets(f: &Facts, now: u64, titles_on_lock: bool) -> Glance {
     let mut scrub = crate::redact::Scrubber::default();
     let mut safe = |s: &str| short(&scrub.scrub(s));
-    let working = f.working.as_deref().filter(|w| !w.trim().is_empty()).map(&mut safe);
-    let next = f.later.first().map(|(at, what)| Next { at: at.clone(), what: safe(what) });
-    let home = View { working, next, waiting: f.waiting };
+    let working = f
+        .working
+        .as_deref()
+        .filter(|w| !w.trim().is_empty())
+        .map(&mut safe);
+    let next = f.later.first().map(|(at, what)| Next {
+        at: at.clone(),
+        what: safe(what),
+    });
+    let home = View {
+        working,
+        next,
+        waiting: f.waiting,
+    };
     let lock = if titles_on_lock {
         home.clone()
     } else {
         View {
             working: home.working.as_ref().map(|_| "Working".to_string()),
-            next: home.next.as_ref().map(|n| Next { at: n.at.clone(), what: String::new() }),
+            next: home.next.as_ref().map(|n| Next {
+                at: n.at.clone(),
+                what: String::new(),
+            }),
             waiting: home.waiting,
         }
     };
@@ -118,8 +132,14 @@ fn short(s: &str) -> String {
         return s;
     }
     let cut: String = s.chars().take(TITLE_MAX - 1).collect();
-    let at_word = cut.rfind(' ').filter(|&i| i > TITLE_MAX / 2).unwrap_or(cut.len());
-    format!("{}…", cut[..at_word].trim_end_matches([',', ';', ':', '-', ' ']))
+    let at_word = cut
+        .rfind(' ')
+        .filter(|&i| i > TITLE_MAX / 2)
+        .unwrap_or(cut.len());
+    format!(
+        "{}…",
+        cut[..at_word].trim_end_matches([',', ';', ':', '-', ' '])
+    )
 }
 
 #[cfg(test)]
@@ -131,7 +151,10 @@ mod tests {
             status: "On, listening".into(),
             tone: String::new(),
             working: Some("Drafting the reply to Priya about the lease".into()),
-            later: vec![("14:30".into(), "Dentist on Elm Street".into()), ("16:00".into(), "Call Sam".into())],
+            later: vec![
+                ("14:30".into(), "Dentist on Elm Street".into()),
+                ("16:00".into(), "Call Sam".into()),
+            ],
             waiting: 3,
         }
     }
@@ -140,11 +163,20 @@ mod tests {
     fn the_lock_screen_gets_times_and_counts_not_subjects() {
         let g = for_widgets(&facts(), 1_000, false);
         assert_eq!(g.home.next.as_ref().unwrap().what, "Dentist on Elm Street");
-        assert_eq!(g.lock.next, Some(Next { at: "14:30".into(), what: String::new() }));
+        assert_eq!(
+            g.lock.next,
+            Some(Next {
+                at: "14:30".into(),
+                what: String::new()
+            })
+        );
         assert_eq!(g.lock.working.as_deref(), Some("Working"));
         assert_eq!(g.lock.waiting, 3);
         let json = serde_json::to_string(&g.lock).unwrap();
-        assert!(!json.contains("Priya") && !json.contains("Dentist"), "{json}");
+        assert!(
+            !json.contains("Priya") && !json.contains("Dentist"),
+            "{json}"
+        );
     }
 
     #[test]
@@ -171,9 +203,27 @@ mod tests {
 
     #[test]
     fn nothing_on_means_nothing_shown() {
-        let g = for_widgets(&Facts { status: "Paused".into(), tone: "held".into(), ..Facts::default() }, 5, false);
-        assert_eq!(g.home, View { working: None, next: None, waiting: 0 });
+        let g = for_widgets(
+            &Facts {
+                status: "Paused".into(),
+                tone: "held".into(),
+                ..Facts::default()
+            },
+            5,
+            false,
+        );
+        assert_eq!(
+            g.home,
+            View {
+                working: None,
+                next: None,
+                waiting: 0
+            }
+        );
         assert_eq!(g.capture, CAPTURE_LINK);
-        assert_eq!((g.status.as_str(), g.tone.as_str(), g.as_of), ("Paused", "held", 5));
+        assert_eq!(
+            (g.status.as_str(), g.tone.as_str(), g.as_of),
+            ("Paused", "held", 5)
+        );
     }
 }

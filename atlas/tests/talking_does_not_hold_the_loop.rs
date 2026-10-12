@@ -44,7 +44,11 @@ impl MicWork for KeyMic {
     fn transcribe(&mut self, _samples: &[i16]) -> atlas::error::Result<String> {
         Ok(String::new())
     }
-    fn follow_up(&mut self, _secs: u32, _stop: &dyn Fn() -> bool) -> atlas::error::Result<Option<String>> {
+    fn follow_up(
+        &mut self,
+        _secs: u32,
+        _stop: &dyn Fn() -> bool,
+    ) -> atlas::error::Result<Option<String>> {
         Ok(None)
     }
     fn models_dir(&self) -> PathBuf {
@@ -67,16 +71,23 @@ fn wait_until(what: &str, secs: u64, mut f: impl FnMut() -> bool) {
 fn the_words_come_back_while_the_loop_carries_on() {
     let wakes = Arc::new(AtomicUsize::new(0));
     let recording = Arc::new(AtomicBool::new(false));
-    let mic = MicThread::start(Box::new(KeyMic { wakes: wakes.clone(), recording: recording.clone() }));
+    let mic = MicThread::start(Box::new(KeyMic {
+        wakes: wakes.clone(),
+        recording: recording.clone(),
+    }));
     mic.set_wake(true);
-    wait_until("the wake word to be listened for", 2, || wakes.load(Ordering::SeqCst) >= 1);
+    wait_until("the wake word to be listened for", 2, || {
+        wakes.load(Ordering::SeqCst) >= 1
+    });
 
     let down = Arc::new(AtomicBool::new(true));
     let d = down.clone();
     let t = Instant::now();
     mic.talk(Arc::new(move || d.load(Ordering::SeqCst)));
     crate::common::assert_prompt(t.elapsed(), Duration::from_millis(20), "asking took");
-    wait_until("the key's recording to start", 2, || recording.load(Ordering::SeqCst));
+    wait_until("the key's recording to start", 2, || {
+        recording.load(Ordering::SeqCst)
+    });
 
     // While you talk, the loop's look at the microphone takes no time.
     for _ in 0..10 {
@@ -98,7 +109,10 @@ fn the_words_come_back_while_the_loop_carries_on() {
             assert_eq!(said, "what's on my calendar tomorrow");
             assert!(held >= 0.09, "held for {held}s");
         }
-        other => panic!("expected the words, got {:?}", other.map(|_| "something else")),
+        other => panic!(
+            "expected the words, got {:?}",
+            other.map(|_| "something else")
+        ),
     }
     // The wake word gave way while the key was held.
     assert_eq!(wakes.load(Ordering::SeqCst), wakes_while_talking);

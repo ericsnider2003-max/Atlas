@@ -105,15 +105,76 @@ pub struct Run {
 }
 
 /// The words that join the parts of a request, turned into a break.
-const JOINS: &[&str] = &[" and then ", ", then ", ". then ", " then ", "; ", ", and also ", " and also ", ", also "];
+const JOINS: &[&str] = &[
+    " and then ",
+    ", then ",
+    ". then ",
+    " then ",
+    "; ",
+    ", and also ",
+    " and also ",
+    ", also ",
+];
 
 /// Verbs a part of a request starts with: "research X and draft Y".
 const VERBS: &[&str] = &[
-    "research", "look", "find", "check", "open", "close", "draft", "write", "edit", "send", "email", "message", "tell",
-    "remind", "put", "add", "schedule", "organize", "organise", "tidy", "read", "summarise", "summarize", "show",
-    "make", "start", "run", "set", "turn", "book", "call", "note", "take", "save", "get", "search", "compare",
-    "report", "create", "give", "list", "clean", "move", "copy", "translate", "plan", "sort", "play", "text",
-    "reply", "answer", "switch", "record", "look up", "work", "fix", "go",
+    "research",
+    "look",
+    "find",
+    "check",
+    "open",
+    "close",
+    "draft",
+    "write",
+    "edit",
+    "send",
+    "email",
+    "message",
+    "tell",
+    "remind",
+    "put",
+    "add",
+    "schedule",
+    "organize",
+    "organise",
+    "tidy",
+    "read",
+    "summarise",
+    "summarize",
+    "show",
+    "make",
+    "start",
+    "run",
+    "set",
+    "turn",
+    "book",
+    "call",
+    "note",
+    "take",
+    "save",
+    "get",
+    "search",
+    "compare",
+    "report",
+    "create",
+    "give",
+    "list",
+    "clean",
+    "move",
+    "copy",
+    "translate",
+    "plan",
+    "sort",
+    "play",
+    "text",
+    "reply",
+    "answer",
+    "switch",
+    "record",
+    "look up",
+    "work",
+    "fix",
+    "go",
 ];
 
 /// Does a part start with a verb asking for something (`VERBS`)?
@@ -168,9 +229,16 @@ pub fn parts(said: &str) -> Vec<String> {
         .map(|p| {
             let p = p.trim().trim_matches(',').trim();
             let lower = p.to_lowercase();
-            let p = ["and ", "also ", "then ", "please "].iter().fold(p.to_string(), |acc, lead| {
-                if lower.starts_with(lead) { acc[lead.len()..].trim().to_string() } else { acc }
-            });
+            let p =
+                ["and ", "also ", "then ", "please "]
+                    .iter()
+                    .fold(p.to_string(), |acc, lead| {
+                        if lower.starts_with(lead) {
+                            acc[lead.len()..].trim().to_string()
+                        } else {
+                            acc
+                        }
+                    });
             p
         })
         .filter(|p| !crate::router::request_words(p).is_empty())
@@ -181,7 +249,10 @@ pub fn parts(said: &str) -> Vec<String> {
 /// one of them asking for something to be done.
 pub fn is_multi_step(said: &str) -> bool {
     let ps = parts(said);
-    ps.len() >= 2 && ps.iter().any(|p| starts_with_verb(p) || crate::doing::looks_like_an_action(p))
+    ps.len() >= 2
+        && ps
+            .iter()
+            .any(|p| starts_with_verb(p) || crate::doing::looks_like_an_action(p))
 }
 
 /// Does a part lean on what an earlier one found ("tell me what you find",
@@ -189,16 +260,36 @@ pub fn is_multi_step(said: &str) -> bool {
 pub fn refers_back(part: &str) -> bool {
     let t = format!(" {} ", part.to_lowercase().replace('\u{2019}', "'"));
     const BACK: &[&str] = &[
-        " it ", " it.", " that ", " them ", " those ", " this ", " what you find", " what you found",
-        " the results", " the result", " your findings", " once ", " after that", " when you're done", " when done",
-        " when it's done", " when this is done", " once this is done", " report back",
+        " it ",
+        " it.",
+        " that ",
+        " them ",
+        " those ",
+        " this ",
+        " what you find",
+        " what you found",
+        " the results",
+        " the result",
+        " your findings",
+        " once ",
+        " after that",
+        " when you're done",
+        " when done",
+        " when it's done",
+        " when this is done",
+        " once this is done",
+        " report back",
     ];
     BACK.iter().any(|b| t.contains(b))
 }
 
 /// The instruction the loop adds to the turn: the plan, and how to work.
 fn plan_line(plan: &[String]) -> String {
-    let steps: Vec<String> = plan.iter().enumerate().map(|(i, p)| format!("{}) {p}", i + 1)).collect();
+    let steps: Vec<String> = plan
+        .iter()
+        .enumerate()
+        .map(|(i, p)| format!("{}) {p}", i + 1))
+        .collect();
     format!(
         "This takes more than one step. Plan: {}. Do it one step at a time: call the tool for the next step; \
          you'll be shown each result. When every step is done, or one can't be, answer in two or three short \
@@ -209,7 +300,11 @@ fn plan_line(plan: &[String]) -> String {
 
 fn arg_of(call: &ToolCall) -> String {
     match &call.arguments {
-        serde_json::Value::Object(m) => m.get("arg").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        serde_json::Value::Object(m) => m
+            .get("arg")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
         serde_json::Value::String(s) => s.clone(),
         _ => String::new(),
     }
@@ -240,7 +335,14 @@ impl Watch for Unwatched {
 /// step told to `watch` as it finishes and a stop honoured between steps.
 /// (`run` until 30 Sep 2026, when the loop moved off the daemon's loop and
 /// began saying each step as it went.)
-pub fn run_watched(llm: &dyn Llm, turn: &Turn, plan: &[String], hands: &mut dyn Hands, max_steps: usize, watch: &mut dyn Watch) -> Run {
+pub fn run_watched(
+    llm: &dyn Llm,
+    turn: &Turn,
+    plan: &[String],
+    hands: &mut dyn Hands,
+    max_steps: usize,
+    watch: &mut dyn Watch,
+) -> Run {
     let mut messages: Vec<Msg> = turn.messages();
     if let Some(last) = messages.last_mut() {
         last.content = format!("{}\n\n{}", plan_line(plan), last.content);
@@ -259,7 +361,11 @@ pub fn run_watched(llm: &dyn Llm, turn: &Turn, plan: &[String], hands: &mut dyn 
         let may_call = steps.len() < max_steps;
         let req = ChatRequest {
             messages: messages.clone(),
-            tools: if may_call { turn.tools.clone() } else { Vec::new() },
+            tools: if may_call {
+                turn.tools.clone()
+            } else {
+                Vec::new()
+            },
             max_tokens: turn.max_tokens.max(160),
             force_tool: false,
             stable_tools: if may_call { turn.stable_tools } else { 0 },
@@ -274,23 +380,37 @@ pub fn run_watched(llm: &dyn Llm, turn: &Turn, plan: &[String], hands: &mut dyn 
                 answer = if steps.is_empty() {
                     format!("My language model stopped before I could start that: {e}")
                 } else {
-                    format!("My language model stopped partway, after {}: {e}", done_so_far(&steps))
+                    format!(
+                        "My language model stopped partway, after {}: {e}",
+                        done_so_far(&steps)
+                    )
                 };
                 break;
             }
         };
         let Some(call) = reply.tool_calls.first().filter(|_| may_call).cloned() else {
             answer = crate::brain::spoken_text(&reply.text).unwrap_or_default();
-            verdict = if steps.len() >= max_steps && !reply.tool_calls.is_empty() { Verdict::OutOfSteps } else { Verdict::Finished };
+            verdict = if steps.len() >= max_steps && !reply.tool_calls.is_empty() {
+                Verdict::OutOfSteps
+            } else {
+                Verdict::Finished
+            };
             break;
         };
         // Going round in a circle: the same call again.
-        if steps.iter().any(|s| s.tool == call.name && s.arg == arg_of(&call)) {
+        if steps
+            .iter()
+            .any(|s| s.tool == call.name && s.arg == arg_of(&call))
+        {
             verdict = Verdict::OutOfSteps;
             break;
         }
         let outcome = hands.act(&call);
-        steps.push(Step { tool: call.name.clone(), arg: arg_of(&call), outcome: outcome.clone() });
+        steps.push(Step {
+            tool: call.name.clone(),
+            arg: arg_of(&call),
+            outcome: outcome.clone(),
+        });
         if let Some(step) = steps.last() {
             watch.step_done(steps.len(), plan.len().max(steps.len()), step);
         }
@@ -316,10 +436,14 @@ pub fn run_watched(llm: &dyn Llm, turn: &Turn, plan: &[String], hands: &mut dyn 
             }
             Outcome::Done(_) => {}
         }
-        messages.push(Msg::assistant(format!("(called {} {})", call.name, serde_json::Value::Object(match &call.arguments {
-            serde_json::Value::Object(m) => m.clone(),
-            _ => Default::default(),
-        }))));
+        messages.push(Msg::assistant(format!(
+            "(called {} {})",
+            call.name,
+            serde_json::Value::Object(match &call.arguments {
+                serde_json::Value::Object(m) => m.clone(),
+                _ => Default::default(),
+            })
+        )));
         let (label, text) = match &outcome {
             Outcome::Failed(t) => ("failed", t.as_str()),
             o => ("result", o.text()),
@@ -331,7 +455,12 @@ pub fn run_watched(llm: &dyn Llm, turn: &Turn, plan: &[String], hands: &mut dyn 
         )));
     }
     let reply = compose(plan, &steps, verdict, &answer);
-    Run { plan: plan.to_vec(), steps, verdict, reply }
+    Run {
+        plan: plan.to_vec(),
+        steps,
+        verdict,
+        reply,
+    }
 }
 
 fn done_so_far(steps: &[Step]) -> String {
@@ -342,12 +471,22 @@ fn done_so_far(steps: &[Step]) -> String {
 /// The reply: the model's own answer where it gave one, else built from
 /// what the steps did -- and never a claim the steps don't back.
 fn compose(plan: &[String], steps: &[Step], verdict: Verdict, answer: &str) -> String {
-    let started = steps.iter().any(|s| matches!(s.outcome, Outcome::Done(_) | Outcome::Started(_)));
-    let last = steps.last().map(|s| s.outcome.text().trim().to_string()).unwrap_or_default();
+    let started = steps
+        .iter()
+        .any(|s| matches!(s.outcome, Outcome::Done(_) | Outcome::Started(_)));
+    let last = steps
+        .last()
+        .map(|s| s.outcome.text().trim().to_string())
+        .unwrap_or_default();
     let rest: Vec<&String> = plan.iter().skip(steps.len()).collect();
     let text = match verdict {
         Verdict::Finished if !answer.trim().is_empty() => answer.trim().to_string(),
-        Verdict::Finished => steps.iter().map(|s| s.outcome.text().trim()).filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" "),
+        Verdict::Finished => steps
+            .iter()
+            .map(|s| s.outcome.text().trim())
+            .filter(|t| !t.is_empty())
+            .collect::<Vec<_>>()
+            .join(" "),
         Verdict::Blocked => last,
         Verdict::Started => {
             if rest.is_empty() {
@@ -358,20 +497,34 @@ fn compose(plan: &[String], steps: &[Step], verdict: Verdict, answer: &str) -> S
             }
         }
         Verdict::Stopped => {
-            let done: Vec<&str> = steps.iter().map(|s| s.outcome.text().trim()).filter(|t| !t.is_empty()).collect();
+            let done: Vec<&str> = steps
+                .iter()
+                .map(|s| s.outcome.text().trim())
+                .filter(|t| !t.is_empty())
+                .collect();
             let why = answer.trim();
             match (done.is_empty(), why.is_empty()) {
-                (true, _) => format!("Stopped before the first step. {why}").trim().to_string(),
+                (true, _) => format!("Stopped before the first step. {why}")
+                    .trim()
+                    .to_string(),
                 (false, true) => format!("Stopped after step {}.", steps.len()),
                 (false, false) => format!("Stopped after step {}: {why}", steps.len()),
             }
         }
         Verdict::OutOfSteps => {
-            let done: Vec<&str> = steps.iter().map(|s| s.outcome.text().trim()).filter(|t| !t.is_empty()).collect();
+            let done: Vec<&str> = steps
+                .iter()
+                .map(|s| s.outcome.text().trim())
+                .filter(|t| !t.is_empty())
+                .collect();
             if done.is_empty() {
                 "I couldn't get that going -- I kept going round in a circle. Tell me the first step and I'll do it.".to_string()
             } else {
-                format!("{} That's as far as I got in {} steps.", done.join(" "), steps.len())
+                format!(
+                    "{} That's as far as I got in {} steps.",
+                    done.join(" "),
+                    steps.len()
+                )
             }
         }
     };

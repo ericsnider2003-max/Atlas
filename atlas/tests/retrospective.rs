@@ -38,7 +38,9 @@ fn tests_in(text: &str) -> Vec<(String, String)> {
     let mut rest = text;
     while let Some(i) = rest.find("#[test]") {
         rest = &rest[i + 7..];
-        let Some(name_at) = rest.find("fn ") else { break };
+        let Some(name_at) = rest.find("fn ") else {
+            break;
+        };
         let after = &rest[name_at + 3..];
         let Some(paren) = after.find('(') else { break };
         let name = after[..paren].trim().to_string();
@@ -218,17 +220,25 @@ fn the_number_of_documentation_shaped_tests_does_not_grow() {
     // this file exists to criticise. The list stood at 41; on 22 Sep 2026 four
     // passes (six, eight, seven, then five) gave real behavioural assertions
     // and removed them, leaving 15.
-    let unexplained: Vec<&String> =
-        prose_only.iter().filter(|t| !PROSE_ONLY_BASELINE.contains(&t.as_str())).collect();
+    let unexplained: Vec<&String> = prose_only
+        .iter()
+        .filter(|t| !PROSE_ONLY_BASELINE.contains(&t.as_str()))
+        .collect();
     assert!(
         unexplained.is_empty(),
         "these assert only that a constant contains a phrase, which proves the \
          wording and not the behaviour:\n  {}\n\nGive them something real to \
          check, or add them to PROSE_ONLY_BASELINE.",
-        unexplained.iter().map(|t| t.as_str()).collect::<Vec<_>>().join("\n  ")
+        unexplained
+            .iter()
+            .map(|t| t.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
-    let improved: Vec<&&str> =
-        PROSE_ONLY_BASELINE.iter().filter(|b| !prose_only.iter().any(|t| t == *b)).collect();
+    let improved: Vec<&&str> = PROSE_ONLY_BASELINE
+        .iter()
+        .filter(|b| !prose_only.iter().any(|t| t == *b))
+        .collect();
     assert!(
         improved.is_empty(),
         "these are baselined as prose-only and now check something real. Remove \
@@ -242,7 +252,11 @@ fn the_number_of_documentation_shaped_tests_does_not_grow() {
 /// Not "has a test file" — has a test that calls into it.
 #[test]
 fn every_module_with_behaviour_is_exercised_somewhere() {
-    let all_tests: String = test_files().values().cloned().collect::<Vec<_>>().join("\n");
+    let all_tests: String = test_files()
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
     let mut untested = Vec::new();
 
     for e in fs::read_dir("src").unwrap().flatten() {
@@ -268,7 +282,10 @@ fn every_module_with_behaviour_is_exercised_somewhere() {
             untested.push(name);
         }
     }
-    assert!(untested.is_empty(), "modules with behaviour and no test that calls them: {untested:#?}");
+    assert!(
+        untested.is_empty(),
+        "modules with behaviour and no test that calls them: {untested:#?}"
+    );
 }
 
 /// A module's opening comment should describe what it does.
@@ -294,7 +311,10 @@ fn every_module_says_what_it_is_for() {
             undocumented.push(name);
         }
     }
-    assert!(undocumented.is_empty(), "modules with no real explanation: {undocumented:#?}");
+    assert!(
+        undocumented.is_empty(),
+        "modules with no real explanation: {undocumented:#?}"
+    );
 }
 
 /// Anything that claims to be non-configurable actually is.

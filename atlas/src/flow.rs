@@ -27,7 +27,6 @@ pub enum OnFail {
     Retry(u32),
 }
 
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Step {
     /// A command in the same language you would speak.
@@ -41,7 +40,11 @@ pub struct Step {
 
 impl Step {
     pub fn new(command: &str) -> Step {
-        Step { command: command.into(), on_fail: OnFail::Stop, produces: None }
+        Step {
+            command: command.into(),
+            on_fail: OnFail::Stop,
+            produces: None,
+        }
     }
     pub fn optional(mut self) -> Step {
         self.on_fail = OnFail::Continue;
@@ -130,7 +133,10 @@ impl Run {
 
     /// A run of an add-on's sequence. See `plugins`.
     pub fn start_for_plugin(w: &Workflow, id: &str) -> Run {
-        Run { plugin: Some(id.to_string()), ..Run::start(w) }
+        Run {
+            plugin: Some(id.to_string()),
+            ..Run::start(w)
+        }
     }
 
     /// Stop the whole run here, whatever the step says about failing. For a
@@ -152,7 +158,10 @@ impl Run {
             RunState::Done => return Next::Finished,
             RunState::Failed => return Next::Stopped(self.log.last().cloned().unwrap_or_default()),
             RunState::AwaitingApproval => {
-                let s = self.current().map(|s| s.command.clone()).unwrap_or_default();
+                let s = self
+                    .current()
+                    .map(|s| s.command.clone())
+                    .unwrap_or_default();
                 return Next::Approve(expand(&s, &self.outputs));
             }
             RunState::Running => {}
@@ -179,7 +188,8 @@ impl Run {
     /// Refused mid-chain. The rest is abandoned rather than half-done.
     pub fn deny(&mut self) {
         if self.state == RunState::AwaitingApproval {
-            self.log.push(format!("step {} declined", self.position + 1));
+            self.log
+                .push(format!("step {} declined", self.position + 1));
             self.state = RunState::Failed;
         }
     }
@@ -242,7 +252,12 @@ impl Run {
             ),
             RunState::AwaitingApproval => format!("{}: waiting on you.", self.workflow),
             RunState::Running => {
-                format!("{}: step {} of {}.", self.workflow, self.position + 1, self.steps.len())
+                format!(
+                    "{}: step {} of {}.",
+                    self.workflow,
+                    self.position + 1,
+                    self.steps.len()
+                )
             }
         }
     }
@@ -290,7 +305,9 @@ impl Library {
     }
 
     pub fn get(&self, name: &str) -> Option<&Workflow> {
-        self.workflows.iter().find(|w| w.name.eq_ignore_ascii_case(name))
+        self.workflows
+            .iter()
+            .find(|w| w.name.eq_ignore_ascii_case(name))
     }
 
     /// Match spoken text to a saved chain. Longest trigger wins, so a specific

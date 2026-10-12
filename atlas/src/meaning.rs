@@ -68,12 +68,23 @@ pub fn embed(cfg: &MeaningConfig, vars: &Vars, text: &str) -> Result<Vec<f32>> {
 }
 
 /// The encoder owns a scoped child; cancellation never becomes word-only success.
-pub fn embed_stoppable(cfg: &MeaningConfig, vars: &Vars, text: &str, stop: &dyn Fn() -> bool) -> Result<Vec<f32>> {
-    let tool = cfg.encoder.as_ref().ok_or_else(|| AtlasError::Platform(NO_ENCODER.into()))?;
+pub fn embed_stoppable(
+    cfg: &MeaningConfig,
+    vars: &Vars,
+    text: &str,
+    stop: &dyn Fn() -> bool,
+) -> Result<Vec<f32>> {
+    let tool = cfg
+        .encoder
+        .as_ref()
+        .ok_or_else(|| AtlasError::Platform(NO_ENCODER.into()))?;
     let mut vars = vars.clone();
     vars.insert("text".into(), text.into());
-    let output = tool.run_stoppable(&vars, Some(text), stop)?
-        .ok_or_else(|| AtlasError::Platform("Search measurement stopped before the encoder finished.".into()))?;
+    let output = tool
+        .run_stoppable(&vars, Some(text), stop)?
+        .ok_or_else(|| {
+            AtlasError::Platform("Search measurement stopped before the encoder finished.".into())
+        })?;
     crate::speaker::parse_embedding(&output)
 }
 
@@ -83,7 +94,10 @@ pub fn embed_stoppable(cfg: &MeaningConfig, vars: &Vars, text: &str, stop: &dyn 
 /// encoder that is not installed is the same as none, and reporting it as
 /// present would be a check that cannot fail.
 pub fn available(cfg: &MeaningConfig, vars: &Vars) -> bool {
-    cfg.encoder.as_ref().map(|t| t.available(vars)).unwrap_or(false)
+    cfg.encoder
+        .as_ref()
+        .map(|t| t.available(vars))
+        .unwrap_or(false)
 }
 
 /// A stable key for a note's content.
@@ -189,9 +203,21 @@ mod tests {
     #[test]
     fn the_key_is_stable_and_content_sensitive() {
         let a = key("Harbour", "silts to four metres");
-        assert_eq!(a, key("Harbour", "silts to four metres"), "same content, same key");
-        assert_ne!(a, key("Harbour", "silts to five metres"), "changed text, changed key");
-        assert_ne!(a, key("Harbor", "silts to four metres"), "changed title, changed key");
+        assert_eq!(
+            a,
+            key("Harbour", "silts to four metres"),
+            "same content, same key"
+        );
+        assert_ne!(
+            a,
+            key("Harbour", "silts to five metres"),
+            "changed text, changed key"
+        );
+        assert_ne!(
+            a,
+            key("Harbor", "silts to four metres"),
+            "changed title, changed key"
+        );
     }
 
     #[test]
@@ -200,7 +226,10 @@ mod tests {
         r.put("a", "one", vec![1.0; 16]);
         r.put("b", "two", vec![2.0; 16]);
         assert_eq!(r.get("a", "one").map(|v| v.len()), Some(16));
-        assert!(r.get("a", "edited").is_none(), "edited content is a different note");
+        assert!(
+            r.get("a", "edited").is_none(),
+            "edited content is a different note"
+        );
         r.keep_only(&[key("a", "one")]);
         assert_eq!(r.len(), 1, "the deleted note's vector went with it");
     }
@@ -217,7 +246,9 @@ mod tests {
 /// model). Change the model file and the fingerprint changes with it.
 /// Empty when there is no encoder.
 pub fn fingerprint(cfg: &MeaningConfig, vars: &Vars) -> String {
-    let Some(tool) = cfg.encoder.as_ref() else { return String::new() };
+    let Some(tool) = cfg.encoder.as_ref() else {
+        return String::new();
+    };
     let (cmd, args) = tool.resolved(vars);
     let mut parts = vec![cmd];
     for a in args {

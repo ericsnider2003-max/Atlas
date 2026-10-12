@@ -84,16 +84,47 @@ impl Kind {
 }
 
 const TASKISH: &[&str] = &[
-    "remind me", "need to", "have to", "must", "todo", "to do", "chase",
-    "follow up", "book", "order", "call", "email", "send", "fix", "check",
+    "remind me",
+    "need to",
+    "have to",
+    "must",
+    "todo",
+    "to do",
+    "chase",
+    "follow up",
+    "book",
+    "order",
+    "call",
+    "email",
+    "send",
+    "fix",
+    "check",
 ];
 const IDEAISH: &[&str] = &[
-    "what if", "idea", "maybe we", "could we", "it'd be good", "would be good",
-    "wonder if", "worth trying", "occurred to me",
+    "what if",
+    "idea",
+    "maybe we",
+    "could we",
+    "it'd be good",
+    "would be good",
+    "wonder if",
+    "worth trying",
+    "occurred to me",
 ];
-const QUESTIONISH: &[&str] = &["how do", "why does", "what is", "is there", "can you find out"];
+const QUESTIONISH: &[&str] = &[
+    "how do",
+    "why does",
+    "what is",
+    "is there",
+    "can you find out",
+];
 const DECISIONISH: &[&str] = &[
-    "decided", "going with", "we'll use", "settled on", "sticking with", "not doing",
+    "decided",
+    "going with",
+    "we'll use",
+    "settled on",
+    "sticking with",
+    "not doing",
 ];
 
 /// Work out what sort of thing it is.
@@ -167,16 +198,10 @@ pub fn read_spoken(said: &str, known_projects: &[String], known_people: &[String
     let t = said.to_ascii_lowercase();
     let mut out = Spoken::default();
 
-    for (lead, field) in [
-        ("call it ", 0u8),
-        ("called ", 0),
-        ("name it ", 0),
-    ] {
+    for (lead, field) in [("call it ", 0u8), ("called ", 0), ("name it ", 0)] {
         if let Some(i) = t.find(lead) {
             let rest = &said[i + lead.len()..];
-            let stop = rest
-                .find([',', '.'])
-                .unwrap_or(rest.len());
+            let stop = rest.find([',', '.']).unwrap_or(rest.len());
             let v = rest[..stop].trim().to_string();
             if !v.is_empty() {
                 let _ = field;
@@ -205,7 +230,15 @@ pub fn read_spoken(said: &str, known_projects: &[String], known_people: &[String
         out.assigned_to = Some("me".into());
     }
 
-    for k in ["a reel", "a short", "a post", "a video", "a doc", "a document", "a note"] {
+    for k in [
+        "a reel",
+        "a short",
+        "a post",
+        "a video",
+        "a doc",
+        "a document",
+        "a note",
+    ] {
         if t.contains(k) {
             out.kind = Some(k.trim_start_matches("a ").to_string());
             break;
@@ -226,7 +259,12 @@ pub fn read_spoken(said: &str, known_projects: &[String], known_people: &[String
         }
     }
 
-    for lead in ["in the script ", "in the script,", "note that ", "make sure "] {
+    for lead in [
+        "in the script ",
+        "in the script,",
+        "note that ",
+        "make sure ",
+    ] {
         if let Some(i) = t.find(lead) {
             let v = said[i + lead.len()..].trim();
             if !v.is_empty() {
@@ -277,7 +315,11 @@ pub fn handles(text: &str, while_in: Option<&str>, known_projects: &[String]) ->
         if clean.len() < 4 && !(is_number && clean.len() >= 2) {
             continue;
         }
-        let is_proper = clean.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+        let is_proper = clean
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false);
         let is_number = is_number || clean.chars().any(|c| c.is_ascii_digit());
         if (is_proper || is_number) && !out.iter().any(|o| o.eq_ignore_ascii_case(clean)) {
             out.push(clean.to_string());
@@ -350,16 +392,26 @@ impl Notebook {
     }
 
     pub fn capture_synced(&mut self, event: &crate::sync::Event, cfg: &CaptureConfig) -> bool {
-        let crate::sync::What::Captured { text, .. } = &event.what else { return false };
+        let crate::sync::What::Captured { text, .. } = &event.what else {
+            return false;
+        };
         let key = (event.device.clone(), event.seq);
-        if self.synced_captures.contains(&key) { return false; }
+        if self.synced_captures.contains(&key) {
+            return false;
+        }
         self.capture(text, None, event.at, cfg);
         self.synced_captures.insert(key);
         true
     }
 
     /// Save it. No questions, no folder, no title.
-    pub fn capture(&mut self, text: &str, while_in: Option<&str>, at: u64, cfg: &CaptureConfig) -> u64 {
+    pub fn capture(
+        &mut self,
+        text: &str,
+        while_in: Option<&str>,
+        at: u64,
+        cfg: &CaptureConfig,
+    ) -> u64 {
         self.next_id += 1;
         let id = self.next_id;
         self.notes.push(Note {
@@ -380,14 +432,19 @@ impl Notebook {
     /// is local seconds. Returns the due time set.
     pub fn date_it(&mut self, id: u64, local_now: u64) -> Option<u64> {
         let n = self.notes.iter_mut().find(|n| n.id == id)?;
-        let p = crate::when::parse(&n.text, local_now).filter(|p| p.sure && p.day_said && p.start >= local_now.saturating_sub(86_400))?;
+        let p = crate::when::parse(&n.text, local_now)
+            .filter(|p| p.sure && p.day_said && p.start >= local_now.saturating_sub(86_400))?;
         n.due = Some(p.start);
         n.due
     }
 
     /// Notes due between `from` and `to` (local seconds), soonest first.
     pub fn due_between(&self, from: u64, to: u64) -> Vec<&Note> {
-        let mut v: Vec<&Note> = self.notes.iter().filter(|n| n.due.map(|d| d >= from && d < to).unwrap_or(false)).collect();
+        let mut v: Vec<&Note> = self
+            .notes
+            .iter()
+            .filter(|n| n.due.map(|d| d >= from && d < to).unwrap_or(false))
+            .collect();
         v.sort_by_key(|n| n.due);
         v
     }
@@ -396,7 +453,11 @@ impl Notebook {
     /// yet looked at since, oldest first, numbered for "keep 2", "drop 3",
     /// "3 is a task". Nothing is changed by looking.
     pub fn to_review(&self) -> Vec<&Note> {
-        let mut v: Vec<&Note> = self.notes.iter().filter(|n| !n.reviewed && !n.confirmed).collect();
+        let mut v: Vec<&Note> = self
+            .notes
+            .iter()
+            .filter(|n| !n.reviewed && !n.confirmed)
+            .collect();
         v.sort_by_key(|n| n.at);
         v
     }
@@ -439,9 +500,11 @@ impl Notebook {
             .split_whitespace()
             .filter(|w| {
                 w.len() > 2
-                    && !["that", "thing", "about", "where", "what", "note", "the", "from",
-                         "last", "this", "you", "was", "one"]
-                        .contains(w)
+                    && ![
+                        "that", "thing", "about", "where", "what", "note", "the", "from", "last",
+                        "this", "you", "was", "one",
+                    ]
+                    .contains(w)
             })
             .collect();
 
@@ -534,7 +597,11 @@ pub fn review_said(notes: &[&Note]) -> String {
     if notes.is_empty() {
         return "Nothing to review: every note has been looked at.".into();
     }
-    let mut out = vec![format!("{} note{} to look at:", notes.len(), if notes.len() == 1 { "" } else { "s" })];
+    let mut out = vec![format!(
+        "{} note{} to look at:",
+        notes.len(),
+        if notes.len() == 1 { "" } else { "s" }
+    )];
     for (i, n) in notes.iter().enumerate().take(20) {
         let hint = match n.kind {
             Kind::Task => "do it, date it, or drop it",
@@ -545,10 +612,17 @@ pub fn review_said(notes: &[&Note]) -> String {
         };
         let flat: String = n.text.split_whitespace().collect::<Vec<_>>().join(" ");
         let short: String = flat.chars().take(70).collect();
-        out.push(format!("  {}. [{}] {short} -- {hint}", i + 1, n.kind.plain()));
+        out.push(format!(
+            "  {}. [{}] {short} -- {hint}",
+            i + 1,
+            n.kind.plain()
+        ));
     }
     if notes.len() > 20 {
-        out.push(format!("  … and {} more; say \"review my notes\" again after these.", notes.len() - 20));
+        out.push(format!(
+            "  … and {} more; say \"review my notes\" again after these.",
+            notes.len() - 20
+        ));
     }
     out.push("Say \"keep 1\", \"drop 2\", or \"keep all\".".into());
     out.join("\n")
@@ -574,7 +648,11 @@ pub fn found(notes: &[&Note]) -> String {
 /// Ideas saved a month ago or more and never come back to, not named before.
 /// At most three. Eric, 25 Sep 2026 (F1): yes, name them — once each.
 pub fn ideas_to_name<'a>(book: &'a Notebook, now: u64, named: &[u64]) -> Vec<&'a Note> {
-    book.never_revisited(now, 30).into_iter().filter(|n| !named.contains(&n.id)).take(3).collect()
+    book.never_revisited(now, 30)
+        .into_iter()
+        .filter(|n| !named.contains(&n.id))
+        .take(3)
+        .collect()
 }
 
 /// The line for the brief.
@@ -590,5 +668,8 @@ pub fn ideas_line(ideas: &[&Note], now: u64) -> Option<String> {
             format!("\"{short}\" ({weeks} weeks ago)")
         })
         .collect();
-    Some(format!("ideas you saved and haven't come back to: {} — worth a look, or I'll leave them be", each.join(", ")))
+    Some(format!(
+        "ideas you saved and haven't come back to: {} — worth a look, or I'll leave them be",
+        each.join(", ")
+    ))
 }

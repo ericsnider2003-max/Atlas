@@ -25,7 +25,14 @@ fn cfg() -> Config {
     Config::load(Path::new("config")).unwrap()
 }
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 #[test]
@@ -58,17 +65,24 @@ fn the_backlog_is_ordered_by_nearness_to_atlas_own_power() {
     let ranks: Vec<u8> = items.iter().map(|u| rank(u.finisher)).collect();
     let mut sorted = ranks.clone();
     sorted.sort();
-    assert_eq!(ranks, sorted, "the backlog is ordered nearest-to-finishable first");
+    assert_eq!(
+        ranks, sorted,
+        "the backlog is ordered nearest-to-finishable first"
+    );
 }
 
 #[test]
 fn the_report_names_the_split_honestly() {
     let report = capability::to_finish_report();
-    assert!(report.to_lowercase().contains("left to finish"), "it's a completion report: {report}");
+    assert!(
+        report.to_lowercase().contains("left to finish"),
+        "it's a completion report: {report}"
+    );
     // With Untested work present, it must say plainly that the rest needs a
     // real run — the honest reason Atlas can't just finish everything itself.
     assert!(
-        report.to_lowercase().contains("run on real hardware") || report.to_lowercase().contains("never run"),
+        report.to_lowercase().contains("run on real hardware")
+            || report.to_lowercase().contains("never run"),
         "it names the real-hardware gap: {report}"
     );
 }
@@ -76,14 +90,28 @@ fn the_report_names_the_split_honestly() {
 #[test]
 fn asking_whats_left_to_finish_reports_the_backlog_through_the_daemon() {
     let (c, p) = (cfg(), plat());
-    let mut d = Daemon::new(&c, &p, None, Store::new(dir("ask")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(dir("ask")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     // A plain question — a read, not an action — so it answers directly.
     let reply = d.turn("what's left to finish", 100);
-    assert!(reply.to_lowercase().contains("left to finish"), "it reports the backlog: {reply}");
     assert!(
-        reply.to_lowercase().contains("never run") || reply.to_lowercase().contains("run on real hardware"),
+        reply.to_lowercase().contains("left to finish"),
+        "it reports the backlog: {reply}"
+    );
+    assert!(
+        reply.to_lowercase().contains("never run")
+            || reply.to_lowercase().contains("run on real hardware"),
         "it names the real-hardware gap honestly: {reply}"
     );
     // And it's a real answer, not the catch-all miss.
-    assert_ne!(reply.to_lowercase(), "i don't have anything for that.", "the question routed: {reply}");
+    assert_ne!(
+        reply.to_lowercase(),
+        "i don't have anything for that.",
+        "the question routed: {reply}"
+    );
 }

@@ -63,7 +63,7 @@ pub fn report(steps: &[Step]) -> String {
         steps.len()
     );
     if failed > 0 {
-        s.push_str(&format!(", {failed} failed the check", ));
+        s.push_str(&format!(", {failed} failed the check",));
     }
     s.push('.');
     if on_go > 0 {

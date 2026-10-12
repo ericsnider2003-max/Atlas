@@ -97,8 +97,15 @@ impl Report {
 /// good answer to "what's on today" and a terrible one to "is it raining",
 /// and the difference is in the question rather than in the report.
 const ASKS_ABOUT_NOW: &[&str] = &[
-    "right now", "currently", "at the moment", "just now", "still",
-    "as of now", "this second", "live", "latest",
+    "right now",
+    "currently",
+    "at the moment",
+    "just now",
+    "still",
+    "as of now",
+    "this second",
+    "live",
+    "latest",
 ];
 
 fn words_of(s: &str) -> Vec<String> {
@@ -132,14 +139,19 @@ pub fn tier_for(said: &str, named: &[String], reports: &[Report], now: u64) -> T
 
     // 2. Are you asking about this moment? No stored answer can serve.
     if let Some(w) = ASKS_ABOUT_NOW.iter().find(|w| lower.contains(*w)) {
-        return Tier::Think { why: format!("you asked about {w}, so nothing stored will do") };
+        return Tier::Think {
+            why: format!("you asked about {w}, so nothing stored will do"),
+        };
     }
 
     // 3. Is it covered by something already worked out and still current?
     let words = words_of(said);
     let covering: Vec<&Report> = reports.iter().filter(|r| r.mentions(&words)).collect();
     if let Some(r) = covering.iter().find(|r| r.still_good(now)) {
-        return Tier::FromReport { report: r.name.clone(), as_of: r.age(now) };
+        return Tier::FromReport {
+            report: r.name.clone(),
+            as_of: r.age(now),
+        };
     }
     if let Some(stale) = covering.first() {
         // Covered, but not currently. Named rather than silently upgraded,
@@ -154,7 +166,9 @@ pub fn tier_for(said: &str, named: &[String], reports: &[Report], now: u64) -> T
         };
     }
 
-    Tier::Think { why: "nothing I've already worked out covers this".into() }
+    Tier::Think {
+        why: "nothing I've already worked out covers this".into(),
+    }
 }
 
 /// A tally of where answers came from.

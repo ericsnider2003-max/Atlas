@@ -68,7 +68,15 @@ fn default_specs() -> Vec<Spec> {
     vec![
         Spec {
             backend: Backend::Cdp,
-            can: vec![ReadText, Click, Scroll, TypeText, FillForm, Navigate, WaitForElement],
+            can: vec![
+                ReadText,
+                Click,
+                Scroll,
+                TypeText,
+                FillForm,
+                Navigate,
+                WaitForElement,
+            ],
             memory_mb: 180,
             startup_ms: 900,
             steals_focus: false,
@@ -86,7 +94,15 @@ fn default_specs() -> Vec<Spec> {
         },
         Spec {
             backend: Backend::HiddenDesktop,
-            can: vec![ReadText, Click, Scroll, TypeText, FillForm, Navigate, WaitForElement],
+            can: vec![
+                ReadText,
+                Click,
+                Scroll,
+                TypeText,
+                FillForm,
+                Navigate,
+                WaitForElement,
+            ],
             memory_mb: 300,
             startup_ms: 4000,
             steals_focus: false,
@@ -147,7 +163,10 @@ impl Learned {
     }
 
     fn tries(&self, b: Backend, app: &str) -> u32 {
-        self.outcomes.get(&Self::key(b, app)).map(|o| o.tries).unwrap_or(0)
+        self.outcomes
+            .get(&Self::key(b, app))
+            .map(|o| o.tries)
+            .unwrap_or(0)
     }
 
     /// Forget everything about one app — e.g. after it updates and its
@@ -205,7 +224,10 @@ impl Router {
     /// Load a router whose learned outcomes come from the store and whose
     /// specs/thresholds are the current defaults.
     pub fn load(store: &crate::store::Store) -> Router {
-        Router { learned: store.load::<Learned>(Self::FILE), ..Router::default() }
+        Router {
+            learned: store.load::<Learned>(Self::FILE),
+            ..Router::default()
+        }
     }
 
     /// Persist only what was learned.
@@ -297,18 +319,28 @@ impl Router {
         let (spec, rate) = viable[0];
         let tries = self.learned.tries(spec.backend, r.app);
         let why = if tries == 0 {
-            format!("{:?}: cheapest option that can {:?} on {}", spec.backend, r.capability, r.app)
+            format!(
+                "{:?}: cheapest option that can {:?} on {}",
+                spec.backend, r.capability, r.app
+            )
         } else {
             format!(
                 "{:?}: {}/{} successful on {} ({}% )",
                 spec.backend,
-                self.learned.outcomes.get(&Learned::key(spec.backend, r.app)).map(|o| o.wins).unwrap_or(0),
+                self.learned
+                    .outcomes
+                    .get(&Learned::key(spec.backend, r.app))
+                    .map(|o| o.wins)
+                    .unwrap_or(0),
                 tries,
                 r.app,
                 (rate * 100.0).round()
             )
         };
-        Some(Choice { backend: spec.backend, why })
+        Some(Choice {
+            backend: spec.backend,
+            why,
+        })
     }
 
     /// Ordered fallbacks, so a failure retries with the next best rather than

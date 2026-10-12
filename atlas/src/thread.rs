@@ -38,7 +38,12 @@ pub struct ThreadConfig {
 
 impl Default for ThreadConfig {
     fn default() -> Self {
-        ThreadConfig { verbatim: 12, fold_after: 24, context_chars: 4000, gap_secs: 3600 }
+        ThreadConfig {
+            verbatim: 12,
+            fold_after: 24,
+            context_chars: 4000,
+            gap_secs: 3600,
+        }
     }
 }
 
@@ -229,7 +234,9 @@ impl Thread {
                 .filter(|(i, _)| self.folded + i >= from)
                 .map(|(_, e)| e)
                 .filter(|e| !e.said.trim().is_empty() && !e.reply.trim().is_empty())
-                .map(|e| e.said.len() + crate::repeating::for_history(&e.reply, HISTORY_SENTENCES).len())
+                .map(|e| {
+                    e.said.len() + crate::repeating::for_history(&e.reply, HISTORY_SENTENCES).len()
+                })
                 .sum()
         };
         // The newest exchange with words on both sides: kept whatever the
@@ -240,7 +247,11 @@ impl Thread {
             .rposition(|e| !e.said.trim().is_empty() && !e.reply.trim().is_empty())
             .map(|i| self.folded + i)
             .unwrap_or(total);
-        let mut from = if total > exchanges { ((total - exchanges) / step) * step } else { 0 };
+        let mut from = if total > exchanges {
+            ((total - exchanges) / step) * step
+        } else {
+            0
+        };
         from = from.max(self.folded).min(newest);
         while from < newest && size_from(from) > budget {
             from = (from + step).min(newest);
@@ -258,7 +269,9 @@ impl Thread {
             .recent
             .iter()
             .enumerate()
-            .filter(|(i, e)| self.folded + i >= from && e.said.trim().is_empty() && !e.reply.trim().is_empty())
+            .filter(|(i, e)| {
+                self.folded + i >= from && e.said.trim().is_empty() && !e.reply.trim().is_empty()
+            })
             .map(|(_, e)| crate::repeating::for_history(&e.reply, HISTORY_SENTENCES))
             .filter(|r| !r.trim().is_empty())
             .collect();
@@ -271,7 +284,10 @@ impl Thread {
             if !earlier.is_empty() {
                 earlier.push('\n');
             }
-            earlier.push_str(&format!("You told them without being asked: {}", told.join(" | ")));
+            earlier.push_str(&format!(
+                "You told them without being asked: {}",
+                told.join(" | ")
+            ));
         }
         if !earlier.is_empty() {
             out.push(Msg::system(earlier));
@@ -301,7 +317,12 @@ impl Thread {
             // as it was, so the model server can reuse what it already read.
             out.push(Msg::user(e.said.clone()));
             let short = crate::repeating::for_history(&e.reply, HISTORY_SENTENCES);
-            if short.trim().is_empty() || shown.iter().any(|s| crate::repeating::near_copy(&short, s) || crate::repeating::near_copy(&e.reply, s)) {
+            if short.trim().is_empty()
+                || shown.iter().any(|s| {
+                    crate::repeating::near_copy(&short, s)
+                        || crate::repeating::near_copy(&e.reply, s)
+                })
+            {
                 continue;
             }
             shown.push(short.clone());
@@ -327,7 +348,11 @@ impl Thread {
     /// checked against for saying the same again (`brain::Turn::recent_replies`).
     pub fn recent_replies(&self, n: usize) -> Vec<String> {
         let start = self.recent.len().saturating_sub(n);
-        self.recent[start..].iter().map(|e| e.reply.clone()).filter(|r| !r.trim().is_empty()).collect()
+        self.recent[start..]
+            .iter()
+            .map(|e| e.reply.clone())
+            .filter(|r| !r.trim().is_empty())
+            .collect()
     }
 
     /// What the user is trying to get done, from what they said lately: the
@@ -340,10 +365,19 @@ impl Thread {
     /// Only among the requests `open` says are still open: the daemon passes
     /// "not one of my own commands", which were done when asked.
     pub fn current_goal_where(&self, open: impl Fn(&str) -> bool) -> Option<String> {
-        self.recent.iter().rev().take(GOAL_LOOKBACK).find(|e| is_a_request(&e.said) && open(&e.said)).map(|e| {
-            let s = e.said.split_whitespace().collect::<Vec<_>>().join(" ");
-            if s.chars().count() > 160 { format!("{}…", s.chars().take(160).collect::<String>()) } else { s }
-        })
+        self.recent
+            .iter()
+            .rev()
+            .take(GOAL_LOOKBACK)
+            .find(|e| is_a_request(&e.said) && open(&e.said))
+            .map(|e| {
+                let s = e.said.split_whitespace().collect::<Vec<_>>().join(" ");
+                if s.chars().count() > 160 {
+                    format!("{}…", s.chars().take(160).collect::<String>())
+                } else {
+                    s
+                }
+            })
     }
 
     /// How long since you last said anything.
@@ -380,7 +414,11 @@ impl Thread {
         if n.len() < 8 {
             return None;
         }
-        self.recent.iter().rev().skip(1).find(|e| normalize(&e.said) == n)
+        self.recent
+            .iter()
+            .rev()
+            .skip(1)
+            .find(|e| normalize(&e.said) == n)
     }
 
     /// The last time exactly this was said, before it is written down as
@@ -399,7 +437,11 @@ impl Thread {
 /// "We were on Practical ways to extend ... and what would require platform
 /// or source-code changes.." in answer to "Speak.").
 pub fn spoken_topic(topic: &str) -> String {
-    let first = topic.split(['.', ',', ';', ':', '(']).next().unwrap_or(topic).trim();
+    let first = topic
+        .split(['.', ',', ';', ':', '('])
+        .next()
+        .unwrap_or(topic)
+        .trim();
     let first = first.split(" especially ").next().unwrap_or(first).trim();
     let words: Vec<&str> = first.split_whitespace().collect();
     if words.len() > 12 {
@@ -433,16 +475,32 @@ pub fn is_a_request(said: &str) -> bool {
         return false;
     }
     const ASKS: &[&str] = &[
-        "i want you to", "i need you to", "i asked you to", "can you", "could you", "would you", "will you",
-        "please", "go and", "try to", "you need to", "i want to", "help me", "i'd like you to", "id like you to",
+        "i want you to",
+        "i need you to",
+        "i asked you to",
+        "can you",
+        "could you",
+        "would you",
+        "will you",
+        "please",
+        "go and",
+        "try to",
+        "you need to",
+        "i want to",
+        "help me",
+        "i'd like you to",
+        "id like you to",
     ];
     const DOING: &[&str] = &[
-        "organize", "organise", "tidy", "clean", "sort", "look", "check", "open", "close", "use", "set", "find",
-        "make", "do", "put", "generate", "run", "listen", "switch", "show", "tell", "fix", "install", "start",
-        "stop", "send", "write", "draft", "remind", "move", "play", "read", "search", "research", "diagnose",
+        "organize", "organise", "tidy", "clean", "sort", "look", "check", "open", "close", "use",
+        "set", "find", "make", "do", "put", "generate", "run", "listen", "switch", "show", "tell",
+        "fix", "install", "start", "stop", "send", "write", "draft", "remind", "move", "play",
+        "read", "search", "research", "diagnose",
     ];
     let first = t.split(' ').next().unwrap_or("");
-    ASKS.iter().any(|a| format!(" {t} ").contains(&format!(" {a} "))) || DOING.contains(&first)
+    ASKS.iter()
+        .any(|a| format!(" {t} ").contains(&format!(" {a} ")))
+        || DOING.contains(&first)
 }
 
 /// Lines of a summary that are not notes about the user: Atlas's own reply
@@ -463,7 +521,11 @@ pub fn clean_summary(summary: &str, replies: &[&str]) -> String {
         .filter(|l| !is_summary_noise(l, replies))
         .map(|l| l.trim_end().to_string())
         .collect();
-    let joiner = if summary.lines().filter(|l| !l.trim().is_empty()).count() > 1 { "\n" } else { " " };
+    let joiner = if summary.lines().filter(|l| !l.trim().is_empty()).count() > 1 {
+        "\n"
+    } else {
+        " "
+    };
     kept.join(joiner)
 }
 
@@ -478,7 +540,10 @@ pub fn clean_summary(summary: &str, replies: &[&str]) -> String {
 /// talk that bears on this still comes back; the rest stays folded.
 pub fn summary_bearing_on(summary: &str, said: &str, most: usize) -> Vec<String> {
     let want: std::collections::BTreeSet<String> =
-        crate::stemmer::stems_of(&crate::router::request_words(said).join(" ")).into_iter().filter(|w| w.len() > 2).collect();
+        crate::stemmer::stems_of(&crate::router::request_words(said).join(" "))
+            .into_iter()
+            .filter(|w| w.len() > 2)
+            .collect();
     if want.is_empty() || most == 0 {
         return Vec::new();
     }
@@ -491,8 +556,15 @@ pub fn summary_bearing_on(summary: &str, said: &str, most: usize) -> Vec<String>
         .into_iter()
         .enumerate()
         .filter_map(|(i, l)| {
-            let l = l.trim().trim_start_matches(['-', '*', ' ']).trim().to_string();
-            let has: std::collections::BTreeSet<String> = crate::stemmer::stems_of(&l.to_lowercase()).into_iter().collect();
+            let l = l
+                .trim()
+                .trim_start_matches(['-', '*', ' '])
+                .trim()
+                .to_string();
+            let has: std::collections::BTreeSet<String> =
+                crate::stemmer::stems_of(&l.to_lowercase())
+                    .into_iter()
+                    .collect();
             let shared: Vec<&String> = want.intersection(&has).collect();
             // One short, common word ("see", "use") is not enough: "can you
             // see me" brought back "I built you to see this freaky man".
@@ -519,15 +591,34 @@ fn is_summary_noise(line: &str, replies: &[&str]) -> bool {
         return true;
     }
     const EDITORIAL: &[&str] = &[
-        "user is frustrated", "user seems", "user was frustrated", "the user is frustrated", "user is annoyed",
-        "user is upset", "atlas responded", "atlas replied", "atlas failed", "atlas kept", "atlas was",
-        "atlas did not", "atlas didnt", "atlas could not", "atlas couldnt", "the assistant", "assistant responded",
-        "non actionable", "no task execution", "no names dates", "recorded beyond",
+        "user is frustrated",
+        "user seems",
+        "user was frustrated",
+        "the user is frustrated",
+        "user is annoyed",
+        "user is upset",
+        "atlas responded",
+        "atlas replied",
+        "atlas failed",
+        "atlas kept",
+        "atlas was",
+        "atlas did not",
+        "atlas didnt",
+        "atlas could not",
+        "atlas couldnt",
+        "the assistant",
+        "assistant responded",
+        "non actionable",
+        "no task execution",
+        "no names dates",
+        "recorded beyond",
     ];
     if EDITORIAL.iter().any(|m| l.contains(m)) {
         return true;
     }
-    replies.iter().any(|r| crate::repeating::longest_shared_run(line, r) >= 6)
+    replies
+        .iter()
+        .any(|r| crate::repeating::longest_shared_run(line, r) >= 6)
 }
 
 /// The model's new summary, if it can be trusted, else one made without it
@@ -544,11 +635,19 @@ pub fn accepted_summary(model_summary: &str, exchanges: &[Exchange], earlier: &s
     // sentences of a one-paragraph summary.
     let units = |s: &str| {
         let lines = s.lines().filter(|l| !l.trim().is_empty()).count();
-        if lines > 1 { lines } else { crate::repeating::sentences(s).len() }
+        if lines > 1 {
+            lines
+        } else {
+            crate::repeating::sentences(s).len()
+        }
     };
     let cleaned = clean_summary(model_summary, &replies);
     let before = units(model_summary);
-    let after = if cleaned.trim().is_empty() { 0 } else { units(&cleaned) };
+    let after = if cleaned.trim().is_empty() {
+        0
+    } else {
+        units(&cleaned)
+    };
     if after == 0 || after * 2 < before {
         return plain_fold(&earlier, exchanges);
     }
@@ -575,8 +674,23 @@ pub fn now_secs() -> u64 {
 /// made without a model kept none of them.
 pub fn must_keep(exchanges: &[Exchange]) -> Vec<String> {
     const MARKS: &[&str] = &[
-        "remember", "don't forget", "dont forget", "decided", "we'll go with", "let's go with", "i'll ", "promise",
-        "deadline", "due ", "by friday", "by monday", "tomorrow", "next week", "password hint", "always ", "never ",
+        "remember",
+        "don't forget",
+        "dont forget",
+        "decided",
+        "we'll go with",
+        "let's go with",
+        "i'll ",
+        "promise",
+        "deadline",
+        "due ",
+        "by friday",
+        "by monday",
+        "tomorrow",
+        "next week",
+        "password hint",
+        "always ",
+        "never ",
     ];
     let mut out = Vec::new();
     for e in exchanges {
@@ -589,8 +703,15 @@ pub fn must_keep(exchanges: &[Exchange]) -> Vec<String> {
             }
         }
     }
-    let requests: Vec<String> = exchanges.iter().filter(|e| is_a_request(&e.said)).map(|e| e.said.trim().to_string()).collect();
-    for r in requests.iter().skip(requests.len().saturating_sub(REQUESTS_KEPT)) {
+    let requests: Vec<String> = exchanges
+        .iter()
+        .filter(|e| is_a_request(&e.said))
+        .map(|e| e.said.trim().to_string())
+        .collect();
+    for r in requests
+        .iter()
+        .skip(requests.len().saturating_sub(REQUESTS_KEPT))
+    {
         if !r.is_empty() && !out.contains(r) {
             out.push(r.clone());
         }

@@ -107,7 +107,13 @@ fn nothing_on_the_access_page_reads_like_a_type_name() {
     let all = credentials::all();
     let held: Vec<&credentials::Credential> = all.iter().collect();
     let html = hub::access_page_full(&held, &credentials::misplaced(), &[]);
-    for name in ["PlainConfig", "YourBrowserSession", "AService", "Opens::", "Kept::"] {
+    for name in [
+        "PlainConfig",
+        "YourBrowserSession",
+        "AService",
+        "Opens::",
+        "Kept::",
+    ] {
         assert!(!html.contains(name), "{name} is a variable name");
     }
     // Every credential's storage and reach must actually be described, not
@@ -153,7 +159,10 @@ fn the_honesty_check_still_holds() {
     assert!(
         credentials::misplaced().is_empty(),
         "the inventory itself now breaks the rule it exists to enforce: {:?}",
-        credentials::misplaced().iter().map(|c| c.name).collect::<Vec<_>>()
+        credentials::misplaced()
+            .iter()
+            .map(|c| c.name)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -266,7 +275,6 @@ fn the_page_says_how_much_you_have_actually_changed() {
     );
 }
 
-
 // ---------------------------------------------------------------------------
 // The naming rule
 // ---------------------------------------------------------------------------
@@ -285,8 +293,13 @@ fn every_setting_is_named_rather_than_described() {
             n.split_whitespace().count() <= 3,
             "{n:?} is a sentence — that is what the description is for"
         );
-        assert!(!n.ends_with('.') && !n.contains(','), "{n:?} is punctuated like prose");
-        for opener in ["Know ", "Tell ", "Ask ", "Let ", "Stop ", "Use ", "Look ", "Get ", "Admit "] {
+        assert!(
+            !n.ends_with('.') && !n.contains(','),
+            "{n:?} is punctuated like prose"
+        );
+        for opener in [
+            "Know ", "Tell ", "Ask ", "Let ", "Stop ", "Use ", "Look ", "Get ", "Admit ",
+        ] {
             assert!(
                 !n.starts_with(opener),
                 "{n:?} starts by describing an action rather than naming a thing"
@@ -303,7 +316,11 @@ fn every_setting_still_explains_itself_underneath() {
             "{} has no real description, so the short name costs you the meaning",
             item.name
         );
-        assert_ne!(item.what, item.name, "{} explains itself with its own name", item.name);
+        assert_ne!(
+            item.what, item.name,
+            "{} explains itself with its own name",
+            item.name
+        );
     }
 }
 

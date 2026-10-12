@@ -46,11 +46,11 @@
 //! Holding the talk key still works while paused — that is you deliberately
 //! pressing a key, and it is one way to say "carry on".
 
+use crate::doorbell::{channel, Sender};
 use crate::error::Result;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use crate::doorbell::{channel, Sender};
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -242,7 +242,11 @@ thread_local! {
 }
 
 /// A worker's own cancellation survives a following reply clearing CUT.
-pub(crate) fn with_playback_generation<T>(generation: std::sync::Arc<std::sync::atomic::AtomicUsize>, expected: usize, run: impl FnOnce() -> T) -> T {
+pub(crate) fn with_playback_generation<T>(
+    generation: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    expected: usize,
+    run: impl FnOnce() -> T,
+) -> T {
     struct Restore(Option<(std::sync::Arc<std::sync::atomic::AtomicUsize>, usize)>);
     impl Drop for Restore {
         fn drop(&mut self) {
@@ -263,7 +267,12 @@ pub fn cut_playback() {
 
 /// Has the reply been cut?
 pub fn playback_cut() -> bool {
-    CUT.load(Ordering::SeqCst) || PLAYBACK_GENERATION.with(|g| g.borrow().as_ref().is_some_and(|(generation, expected)| generation.load(Ordering::SeqCst) != *expected))
+    CUT.load(Ordering::SeqCst)
+        || PLAYBACK_GENERATION.with(|g| {
+            g.borrow().as_ref().is_some_and(|(generation, expected)| {
+                generation.load(Ordering::SeqCst) != *expected
+            })
+        })
 }
 
 /// A new reply starts uncut.
@@ -342,25 +351,36 @@ impl SileroVad {
         }
         let go = || -> TractResult<SileroVad> {
             let mut m = tract_onnx::onnx().model_for_path(path)?;
-            let names: Vec<String> =
-                m.input_outlets()?.iter().map(|o| m.node(o.node).name.clone()).collect();
+            let names: Vec<String> = m
+                .input_outlets()?
+                .iter()
+                .map(|o| m.node(o.node).name.clone())
+                .collect();
             for (i, n) in names.iter().enumerate() {
                 let f: InferenceFact = match n.as_str() {
                     "input" => f32::fact([1usize, WINDOW + CONTEXT]).into(),
                     "state" => f32::fact([2usize, 1, 128]).into(),
                     "sr" => InferenceFact::from(tensor0(RATE as i64)),
-                    other => return Err(TractError::msg(format!("an input I don't know: {other}"))),
+                    other => {
+                        return Err(TractError::msg(format!("an input I don't know: {other}")))
+                    }
                 };
                 m.set_input_fact(i, f)?;
             }
             m.analyse(false)?;
             let plan = tract_onnx::tract_core::plan::SimplePlan::new(m)?;
-            Ok(SileroVad { plan, names, state: vec![0.0; 256], context: vec![0.0; CONTEXT] })
+            Ok(SileroVad {
+                plan,
+                names,
+                state: vec![0.0; 256],
+                context: vec![0.0; CONTEXT],
+            })
         };
         let mut v = go().map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
         // One window of silence, so a model that loads but can't run is
         // found now rather than while you're talking.
-        v.run(&[0i16; WINDOW]).map_err(|e| format!("{} doesn't run: {e}", path.display()))?;
+        v.run(&[0i16; WINDOW])
+            .map_err(|e| format!("{} doesn't run: {e}", path.display()))?;
         v.reset();
         Ok(v)
     }
@@ -383,9 +403,19 @@ impl SileroVad {
         }
         let out = self.plan.run(ins).map_err(|e| e.to_string())?;
         let p: &Tensor = &out[0];
-        let p = p.view().as_slice::<f32>().map_err(|e| e.to_string())?.first().copied().unwrap_or(0.0);
+        let p = p
+            .view()
+            .as_slice::<f32>()
+            .map_err(|e| e.to_string())?
+            .first()
+            .copied()
+            .unwrap_or(0.0);
         let s: &Tensor = &out[1];
-        let s = s.view().as_slice::<f32>().map_err(|e| e.to_string())?.to_vec();
+        let s = s
+            .view()
+            .as_slice::<f32>()
+            .map_err(|e| e.to_string())?
+            .to_vec();
         if s.len() == self.state.len() {
             self.state = s;
         }
@@ -412,7 +442,10 @@ impl VoiceDetector for SileroVad {
 /// used, when it wasn't.
 pub fn detector_for(model: Option<&Path>) -> (Box<dyn VoiceDetector>, Option<String>) {
     let Some(path) = model else {
-        return (Box::new(RoomVad::new()), Some("no Silero model named".into()));
+        return (
+            Box::new(RoomVad::new()),
+            Some("no Silero model named".into()),
+        );
     };
     #[cfg(feature = "onnx")]
     {
@@ -424,7 +457,10 @@ pub fn detector_for(model: Option<&Path>) -> (Box<dyn VoiceDetector>, Option<Str
     #[cfg(not(feature = "onnx"))]
     {
         let _ = path;
-        (Box::new(RoomVad::new()), Some("this build has no ONNX engine".into()))
+        (
+            Box::new(RoomVad::new()),
+            Some("this build has no ONNX engine".into()),
+        )
     }
 }
 
@@ -522,7 +558,9 @@ impl BargeGate {
     /// count).
     fn new_reply(&mut self, cfg: &BargeInConfig) {
         let keep = (self.lag, self.coupling_db, self.coupling_seen);
-        let room = (self.learned >= LEARN_WINDOWS).then_some(self.floor_db).flatten();
+        let room = (self.learned >= LEARN_WINDOWS)
+            .then_some(self.floor_db)
+            .flatten();
         *self = BargeGate::new(cfg);
         (self.lag, self.coupling_db, self.coupling_seen) = keep;
         if let Some(f) = room {
@@ -584,7 +622,10 @@ impl BargeGate {
             self.counted.remove(0);
         }
         let n = self.playing.len();
-        let lately = self.playing[n.saturating_sub(MAX_LAG + 1)..].iter().copied().fold(0f32, f32::max);
+        let lately = self.playing[n.saturating_sub(MAX_LAG + 1)..]
+            .iter()
+            .copied()
+            .fold(0f32, f32::max);
         if self.lag.is_none() && n.is_multiple_of(4) {
             self.find_lag();
         }
@@ -606,10 +647,18 @@ impl BargeGate {
         let floor = self.floor_db.unwrap_or(level_db);
         // Any of the reply audible and its echo not yet known: nothing
         // counts yet (a quiet stretch of Atlas is still Atlas).
-        let unknown = lately > AUDIBLE && (self.lag.is_none() || self.coupling_seen < COUPLING_WINDOWS);
-        let echo = if env > AUDIBLE { self.coupling_db.map(|c| c + env_db) } else { None };
-        let need = floor.max(echo.unwrap_or(f32::MIN)) + self.cfg.margin_db + self.cfg.echo_db * env;
-        let voiced = !unknown && speech.map(|p| p >= self.cfg.threshold).unwrap_or(false) && level_db >= need;
+        let unknown =
+            lately > AUDIBLE && (self.lag.is_none() || self.coupling_seen < COUPLING_WINDOWS);
+        let echo = if env > AUDIBLE {
+            self.coupling_db.map(|c| c + env_db)
+        } else {
+            None
+        };
+        let need =
+            floor.max(echo.unwrap_or(f32::MIN)) + self.cfg.margin_db + self.cfg.echo_db * env;
+        let voiced = !unknown
+            && speech.map(|p| p >= self.cfg.threshold).unwrap_or(false)
+            && level_db >= need;
         if let Some(c) = self.counted.last_mut() {
             *c = voiced;
         }
@@ -633,7 +682,9 @@ impl BargeGate {
     /// found to the nearest window).
     fn playing_at(&self, lag: usize) -> f32 {
         let n = self.playing.len();
-        let Some(i) = (n - 1).checked_sub(lag) else { return 0.0 };
+        let Some(i) = (n - 1).checked_sub(lag) else {
+            return 0.0;
+        };
         let lo = i.saturating_sub(1);
         let hi = (i + 1).min(n - 1);
         self.playing[lo..=hi].iter().copied().fold(0f32, f32::max)
@@ -672,14 +723,23 @@ impl BargeGate {
         }
         // No echo: well into the reply (past the longest lag), the
         // microphone stayed at the room while Atlas played.
-        let Some(first) = self.playing.iter().position(|e| *e > AUDIBLE) else { return };
+        let Some(first) = self.playing.iter().position(|e| *e > AUDIBLE) else {
+            return;
+        };
         let floor = self.floor_db.unwrap_or(0.0);
         let heard: Vec<f32> = (first + MAX_LAG..n)
-            .filter(|t| self.playing[t.saturating_sub(MAX_LAG)..=*t].iter().any(|e| *e > PLAYING) && !self.counted[*t])
+            .filter(|t| {
+                self.playing[t.saturating_sub(MAX_LAG)..=*t]
+                    .iter()
+                    .any(|e| *e > PLAYING)
+                    && !self.counted[*t]
+            })
             .map(|t| self.levels[t])
             .take(LAG_WINDOWS)
             .collect();
-        if heard.len() >= LAG_WINDOWS && heard.iter().filter(|l| **l < floor + 3.0).count() * 10 >= heard.len() * 8 {
+        if heard.len() >= LAG_WINDOWS
+            && heard.iter().filter(|l| **l < floor + 3.0).count() * 10 >= heard.len() * 8
+        {
             self.lag = Some(0);
             self.coupling_db = Some(NO_ECHO_DB);
             self.coupling_seen = COUPLING_WINDOWS;
@@ -794,13 +854,20 @@ impl Shared {
             || self.watching.load(Ordering::SeqCst)
     }
     fn follow_should_stop(&self) -> bool {
-        self.stop.load(Ordering::SeqCst) || self.paused.load(Ordering::SeqCst) || self.follow_cancel.load(Ordering::SeqCst)
+        self.stop.load(Ordering::SeqCst)
+            || self.paused.load(Ordering::SeqCst)
+            || self.follow_cancel.load(Ordering::SeqCst)
     }
     fn watch_should_stop(&self) -> bool {
         self.stop.load(Ordering::SeqCst)
             || self.paused.load(Ordering::SeqCst)
             || !self.watching.load(Ordering::SeqCst)
-            || !self.barge.lock().or_else(crate::crash::unpoison).map(|b| b.enabled).unwrap_or(false)
+            || !self
+                .barge
+                .lock()
+                .or_else(crate::crash::unpoison)
+                .map(|b| b.enabled)
+                .unwrap_or(false)
     }
     fn note(&self, line: String) {
         if let Ok(mut n) = self.notes.lock().or_else(crate::crash::unpoison) {
@@ -833,9 +900,15 @@ impl MicThread {
                 // thread that is gone. It is said, and the loop degrades.
                 let tx2 = tx.clone();
                 let s2 = s.clone();
-                if std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || listen_loop(s2, work, tx2))).is_err() {
+                if std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+                    listen_loop(s2, work, tx2)
+                }))
+                .is_err()
+                {
                     s.recording.store(false, Ordering::SeqCst);
-                    let _ = tx.send(Heard::Trouble("the microphone's thread stopped unexpectedly".into()));
+                    let _ = tx.send(Heard::Trouble(
+                        "the microphone's thread stopped unexpectedly".into(),
+                    ));
                 }
             })
             .ok();
@@ -848,7 +921,9 @@ impl MicThread {
     }
     /// Atlas paused: nothing is recorded until it isn't.
     pub fn set_paused(&self, on: bool) {
-        if on && !self.shared.paused.load(Ordering::SeqCst) { crate::parakeet::stop(); }
+        if on && !self.shared.paused.load(Ordering::SeqCst) {
+            crate::parakeet::stop();
+        }
         self.shared.paused.store(on, Ordering::SeqCst);
     }
     /// A turn going on elsewhere: the wake word waits.
@@ -883,7 +958,12 @@ impl MicThread {
     }
     /// Lines worth a place in the log (which detector, why not Silero).
     pub fn take_notes(&self) -> Vec<String> {
-        self.shared.notes.lock().or_else(crate::crash::unpoison).map(|mut n| std::mem::take(&mut *n)).unwrap_or_default()
+        self.shared
+            .notes
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map(|mut n| std::mem::take(&mut *n))
+            .unwrap_or_default()
     }
     /// Stop the thread and wait for it — briefly. Every recording it starts
     /// is stopped by the same flag, so this takes a few tens of
@@ -904,7 +984,10 @@ impl MicThread {
     }
     /// Has the thread ended?
     pub fn is_stopped(&self) -> bool {
-        self.handle.as_ref().map(|h| h.is_finished()).unwrap_or(true)
+        self.handle
+            .as_ref()
+            .map(|h| h.is_finished())
+            .unwrap_or(true)
     }
     /// Listen for up to `secs` in the open floor after a reply, here rather
     /// than on the loop. The words come back through `poll` as
@@ -942,7 +1025,12 @@ impl MicThread {
     /// What has been learned about them since the last look, if it has
     /// changed: for the loop to keep in Atlas's state.
     pub fn take_new_learned(&self) -> Option<Learned> {
-        self.shared.learned.lock().or_else(crate::crash::unpoison).ok().and_then(|mut l| l.take())
+        self.shared
+            .learned
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()
+            .and_then(|mut l| l.take())
     }
     /// How many recordings have given sound since the thread started. Goes
     /// up while the microphone works; stays put while it doesn't.
@@ -978,7 +1066,12 @@ impl MicLink {
     }
     /// Is cutting in by voice on?
     pub fn barge_on(&self) -> bool {
-        self.0.barge.lock().or_else(crate::crash::unpoison).map(|b| b.enabled).unwrap_or(false)
+        self.0
+            .barge
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map(|b| b.enabled)
+            .unwrap_or(false)
     }
     /// What you said over Atlas, if you did, without waiting: your voice
     /// heard and the words still being made out is `Waiting`; `Said("")`
@@ -988,7 +1081,14 @@ impl MicLink {
         if !self.0.cut_pending.load(Ordering::SeqCst) {
             return CutIn::No;
         }
-        if let Some(w) = self.0.cut_words.lock().or_else(crate::crash::unpoison).ok().and_then(|mut w| w.take()) {
+        if let Some(w) = self
+            .0
+            .cut_words
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()
+            .and_then(|mut w| w.take())
+        {
             self.0.cut_pending.store(false, Ordering::SeqCst);
             return CutIn::Said(w);
         }
@@ -1023,9 +1123,18 @@ fn idle(ms: u64) {
 }
 
 /// The detector, loaded the first time it's wanted and kept.
-fn detector<'a>(s: &Shared, work: &dyn MicWork, slot: &'a mut Option<Box<dyn VoiceDetector>>) -> &'a mut Box<dyn VoiceDetector> {
+fn detector<'a>(
+    s: &Shared,
+    work: &dyn MicWork,
+    slot: &'a mut Option<Box<dyn VoiceDetector>>,
+) -> &'a mut Box<dyn VoiceDetector> {
     slot.get_or_insert_with(|| {
-        let model = s.barge.lock().or_else(crate::crash::unpoison).map(|b| b.model.clone()).unwrap_or_default();
+        let model = s
+            .barge
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map(|b| b.model.clone())
+            .unwrap_or_default();
         let path = (!model.trim().is_empty()).then(|| work.models_dir().join(model.trim()));
         let (d, why) = detector_for(path.as_deref());
         match why {
@@ -1055,11 +1164,23 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
             idle(30);
             continue;
         }
-        if let Some(l) = s.seed.lock().or_else(crate::crash::unpoison).ok().and_then(|mut l| l.take()) {
+        if let Some(l) = s
+            .seed
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()
+            .and_then(|mut l| l.take())
+        {
             gate.seed(&l);
         }
         // The talk key first: you're holding it now.
-        if let Some(held) = s.talk.lock().or_else(crate::crash::unpoison).ok().and_then(|mut t| t.take()) {
+        if let Some(held) = s
+            .talk
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()
+            .and_then(|mut t| t.take())
+        {
             let started = Instant::now();
             let stop_s = s.clone();
             let still = move || held() && !stop_s.stop.load(Ordering::SeqCst);
@@ -1071,13 +1192,22 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
             if matches!(got, Ok(Some(_))) {
                 s.heard_audio.fetch_add(1, Ordering::SeqCst);
             }
-            if tx.send(Heard::Talk(got, started.elapsed().as_secs_f32())).is_err() {
+            if tx
+                .send(Heard::Talk(got, started.elapsed().as_secs_f32()))
+                .is_err()
+            {
                 return;
             }
             continue;
         }
         // The open floor after a reply comes first: the loop is waiting on it.
-        if let Some((id, secs)) = s.follow.lock().or_else(crate::crash::unpoison).ok().and_then(|mut f| f.take()) {
+        if let Some((id, secs)) = s
+            .follow
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()
+            .and_then(|mut f| f.take())
+        {
             let stop_s = s.clone();
             let stop = move || stop_s.follow_should_stop();
             s.recording.store(true, Ordering::SeqCst);
@@ -1091,14 +1221,21 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
             }
             continue;
         }
-        let barge = s.barge.lock().or_else(crate::crash::unpoison).map(|b| b.enabled).unwrap_or(false);
+        let barge = s
+            .barge
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map(|b| b.enabled)
+            .unwrap_or(false);
         // The room, measured while nothing is going on -- once at the start,
         // and again now and then while the wake word has the microphone
         // anyway -- so no reply spends its first moments measuring it.
         let wake_armed = s.wake.load(Ordering::SeqCst) && !s.busy.load(Ordering::SeqCst);
         let room_due = match room_at {
             None => true,
-            Some(t) => wake_armed && !s.watching.load(Ordering::SeqCst) && t.elapsed() >= ROOM_AGAIN,
+            Some(t) => {
+                wake_armed && !s.watching.load(Ordering::SeqCst) && t.elapsed() >= ROOM_AGAIN
+            }
         };
         // Not while the loop itself is recording you (a turn going on, and
         // not a reply being spoken): two recorders on one microphone.
@@ -1131,7 +1268,9 @@ fn listen_loop(s: Arc<Shared>, mut work: Box<dyn MicWork>, tx: Sender<Heard>) {
             }
             continue;
         }
-        let armed = s.wake.load(Ordering::SeqCst) && !s.busy.load(Ordering::SeqCst) && !s.taken.load(Ordering::SeqCst);
+        let armed = s.wake.load(Ordering::SeqCst)
+            && !s.busy.load(Ordering::SeqCst)
+            && !s.taken.load(Ordering::SeqCst);
         if !armed {
             // Asked whether the microphone works now: push-to-talk after
             // the wake word failed, waiting to come back (`probe`).
@@ -1241,7 +1380,9 @@ enum StreamWake {
 
 /// Listen for the name on one running stream (`utterance::wait_for_name`).
 fn wake_on_stream(s: &Arc<Shared>, work: &mut dyn MicWork) -> StreamWake {
-    let Some(raw) = work.open_stream() else { return StreamWake::NoStream };
+    let Some(raw) = work.open_stream() else {
+        return StreamWake::NoStream;
+    };
     // Read on a thread of its own: while the first seconds of a long request
     // are being transcribed, the rest of it keeps arriving.
     let mut stream = crate::utterance::pumped(raw);
@@ -1267,10 +1408,16 @@ fn wake_on_stream(s: &Arc<Shared>, work: &mut dyn MicWork) -> StreamWake {
 
 /// A third of a second from the microphone, to see whether it works.
 fn probe_once(s: &Shared, work: &mut dyn MicWork) {
-    let Some(mut stream) = work.open_stream() else { return };
+    let Some(mut stream) = work.open_stream() else {
+        return;
+    };
     s.recording.store(true, Ordering::SeqCst);
     let mut n = 0;
-    while n < ROOM_WINDOWS && !s.stop.load(Ordering::SeqCst) && !s.paused.load(Ordering::SeqCst) && !s.busy.load(Ordering::SeqCst) {
+    while n < ROOM_WINDOWS
+        && !s.stop.load(Ordering::SeqCst)
+        && !s.paused.load(Ordering::SeqCst)
+        && !s.busy.load(Ordering::SeqCst)
+    {
         if stream.read(WINDOW).is_none() {
             break;
         }
@@ -1296,8 +1443,13 @@ pub fn sentence_finished(words: &str) -> bool {
 /// can you see me?" was over, and Atlas said "I heard my name but nothing
 /// after it" five times in an evening. Now those words are the start of what
 /// you said; a listen that hears nothing more leaves them as the whole of it.
-pub fn with_wake_word(with_name: Option<String>, then: std::result::Result<String, String>) -> std::result::Result<String, String> {
-    let first = with_name.map(|w| w.trim().to_string()).filter(|w| !w.is_empty());
+pub fn with_wake_word(
+    with_name: Option<String>,
+    then: std::result::Result<String, String>,
+) -> std::result::Result<String, String> {
+    let first = with_name
+        .map(|w| w.trim().to_string())
+        .filter(|w| !w.is_empty());
     match (first, then) {
         (None, then) => then,
         (Some(w), Ok(more)) if !more.trim().is_empty() => Ok(format!("{w} {}", more.trim())),
@@ -1309,7 +1461,12 @@ pub fn with_wake_word(with_name: Option<String>, then: std::result::Result<Strin
 
 /// The room, with Atlas silent: a third of a second of it, for the gate's
 /// floor and the detector's.
-fn measure_room(s: &Shared, work: &mut dyn MicWork, det: &mut dyn VoiceDetector, gate: &mut BargeGate) {
+fn measure_room(
+    s: &Shared,
+    work: &mut dyn MicWork,
+    det: &mut dyn VoiceDetector,
+    gate: &mut BargeGate,
+) {
     let Some(mut stream) = work.open_stream() else {
         s.note("cutting in by voice: the microphone can't be streamed here (no microphone named for it)".into());
         return;
@@ -1333,7 +1490,12 @@ fn measure_room(s: &Shared, work: &mut dyn MicWork, det: &mut dyn VoiceDetector,
 /// While Atlas speaks: read the microphone a window at a time until you
 /// speak over it (then take your words) or the reply ends.
 fn watch(s: &Shared, work: &mut dyn MicWork, det: &mut dyn VoiceDetector, gate: &mut BargeGate) {
-    let cfg = s.barge.lock().or_else(crate::crash::unpoison).map(|b| b.clone()).unwrap_or_default();
+    let cfg = s
+        .barge
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .map(|b| b.clone())
+        .unwrap_or_default();
     let Some(mut stream) = work.open_stream() else {
         s.note("cutting in by voice: the microphone can't be streamed here (no microphone named for it)".into());
         return;
@@ -1363,9 +1525,13 @@ fn watch(s: &Shared, work: &mut dyn MicWork, det: &mut dyn VoiceDetector, gate: 
     if let Some(lag) = gate.lag_windows() {
         if !s.lag_said.swap(true, Ordering::SeqCst) {
             let line = if gate.coupling_db == Some(NO_ECHO_DB) {
-                "cutting in by voice: the microphone doesn't hear Atlas's own voice (a headset?)".to_string()
+                "cutting in by voice: the microphone doesn't hear Atlas's own voice (a headset?)"
+                    .to_string()
             } else {
-                format!("cutting in by voice: the microphone hears Atlas about {} ms after it plays", lag as u32 * WINDOW_MS)
+                format!(
+                    "cutting in by voice: the microphone hears Atlas about {} ms after it plays",
+                    lag as u32 * WINDOW_MS
+                )
             };
             s.note(line);
         }
@@ -1381,7 +1547,11 @@ fn watch(s: &Shared, work: &mut dyn MicWork, det: &mut dyn VoiceDetector, gate: 
     let mut kept: Vec<i16> = recent.into_iter().flatten().collect();
     let mut quiet_ms = 0u32;
     let started = Instant::now();
-    while quiet_ms < 700 && started.elapsed() < Duration::from_secs(15) && !s.stop.load(Ordering::SeqCst) && !s.paused.load(Ordering::SeqCst) {
+    while quiet_ms < 700
+        && started.elapsed() < Duration::from_secs(15)
+        && !s.stop.load(Ordering::SeqCst)
+        && !s.paused.load(Ordering::SeqCst)
+    {
         let Some(w) = stream.read(WINDOW) else { break };
         let speaking = det.speech(&w).map(|p| p >= cfg.threshold).unwrap_or(true);
         quiet_ms = if speaking { 0 } else { quiet_ms + WINDOW_MS };

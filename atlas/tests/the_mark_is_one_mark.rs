@@ -37,8 +37,14 @@ fn image_corner_alpha(png: &[u8]) -> u8 {
 
 #[test]
 fn the_mark_files_are_the_mark() {
-    assert_eq!(String::from_utf8(read("design/mark/folded-a.svg")).unwrap(), atlas::mark::svg_for_test(&atlas::mark::WARM_PAPER));
-    assert_eq!(String::from_utf8(read("design/mark/folded-a-dark.svg")).unwrap(), atlas::mark::svg_for_test(&atlas::mark::EMBER_DARK));
+    assert_eq!(
+        String::from_utf8(read("design/mark/folded-a.svg")).unwrap(),
+        atlas::mark::svg_for_test(&atlas::mark::WARM_PAPER)
+    );
+    assert_eq!(
+        String::from_utf8(read("design/mark/folded-a-dark.svg")).unwrap(),
+        atlas::mark::svg_for_test(&atlas::mark::EMBER_DARK)
+    );
 }
 
 #[test]
@@ -56,54 +62,123 @@ fn every_platform_has_its_icon_at_the_sizes_it_asks_for() {
     // The rounded tile (Eric chose it): the web app's own icons have clear
     // corners; the maskable one is square for the system to cut.
     let corner = |f: &str| image_corner_alpha(&read(f));
-    assert_eq!(corner("assets/icon-512.png"), 0, "the web app's icon lost its rounded corners");
-    assert_eq!(corner("assets/icon-maskable-512.png"), 255, "the maskable icon must be full bleed");
+    assert_eq!(
+        corner("assets/icon-512.png"),
+        0,
+        "the web app's icon lost its rounded corners"
+    );
+    assert_eq!(
+        corner("assets/icon-maskable-512.png"),
+        255,
+        "the maskable icon must be full bleed"
+    );
     let manifest = atlas::hub::manifest("t");
-    assert!(manifest.contains("icon-maskable-512.png") && manifest.contains("\"purpose\":\"maskable\""));
+    assert!(
+        manifest.contains("icon-maskable-512.png") && manifest.contains("\"purpose\":\"maskable\"")
+    );
     assert!(atlas::hub::public_file("GET", "/hub/icon-maskable-512.png").is_some());
     // iPhone and iPad: light, dark and tinted, each 1024, and the project uses them.
     let dir = "mobile/ios/Atlas/Assets.xcassets/AppIcon.appiconset";
-    let contents: serde_json::Value = serde_json::from_slice(&read(&format!("{dir}/Contents.json"))).unwrap();
-    let files: Vec<&str> = contents["images"].as_array().unwrap().iter().map(|i| i["filename"].as_str().unwrap()).collect();
+    let contents: serde_json::Value =
+        serde_json::from_slice(&read(&format!("{dir}/Contents.json"))).unwrap();
+    let files: Vec<&str> = contents["images"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["filename"].as_str().unwrap())
+        .collect();
     assert_eq!(files.len(), 3);
     for f in files {
         assert_eq!(png_size(&read(&format!("{dir}/{f}"))), (1024, 1024), "{f}");
     }
     // Eric: the colour follows each person's setting. Every appearance is a
     // whole tile (iOS rounds it), never a mark floating on nothing.
-    for f in ["icon-1024.png", "icon-1024-dark.png", "icon-1024-tinted.png"] {
+    for f in [
+        "icon-1024.png",
+        "icon-1024-dark.png",
+        "icon-1024-tinted.png",
+    ] {
         assert_eq!(corner(&format!("{dir}/{f}")), 255, "{f} isn't a whole tile");
     }
-    assert!(String::from_utf8(read("mobile/ios/project.yml")).unwrap().contains("ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon"));
+    assert!(String::from_utf8(read("mobile/ios/project.yml"))
+        .unwrap()
+        .contains("ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon"));
     // Atlas's own windows: a light and a dark icon, both the rounded tile.
     assert_eq!(png_size(&read("assets/mark-256-dark.png")), (256, 256));
-    assert_eq!(corner("assets/mark-256-dark.png"), 0, "the dark window icon lost its rounded corners");
+    assert_eq!(
+        corner("assets/mark-256-dark.png"),
+        0,
+        "the dark window icon lost its rounded corners"
+    );
     // Android: the adaptive icon, its themed layer, and the notification icon, all used.
     let res = "mobile/android/app/src/main/res";
-    let adaptive = String::from_utf8(read(&format!("{res}/mipmap-anydpi-v26/ic_launcher.xml"))).unwrap();
-    for part in ["@drawable/ic_launcher_foreground", "@drawable/ic_launcher_monochrome", "@android:color/transparent"] {
+    let adaptive =
+        String::from_utf8(read(&format!("{res}/mipmap-anydpi-v26/ic_launcher.xml"))).unwrap();
+    for part in [
+        "@drawable/ic_launcher_foreground",
+        "@drawable/ic_launcher_monochrome",
+        "@android:color/transparent",
+    ] {
         assert!(adaptive.contains(part), "{part}");
     }
     // The rounded square Eric chose, drawn in the icon itself so no launcher's
     // mask (circle, squircle) can change it: the tile, then the mark.
-    let fg = String::from_utf8(read(&format!("{res}/drawable/ic_launcher_foreground.xml"))).unwrap();
-    assert_eq!(fg.matches("android:pathData").count(), 5, "the tile, front, back, fold and the dot");
-    assert!(fg.contains(&atlas::mark::PAPER.replace('#', "#FF")), "the tile isn't paper");
-    for c in [atlas::mark::WARM_PAPER.front, atlas::mark::WARM_PAPER.back, atlas::mark::WARM_PAPER.fold] {
-        assert!(fg.contains(c), "the launcher icon isn't in the mark's colours: {c}");
+    let fg =
+        String::from_utf8(read(&format!("{res}/drawable/ic_launcher_foreground.xml"))).unwrap();
+    assert_eq!(
+        fg.matches("android:pathData").count(),
+        5,
+        "the tile, front, back, fold and the dot"
+    );
+    assert!(
+        fg.contains(&atlas::mark::PAPER.replace('#', "#FF")),
+        "the tile isn't paper"
+    );
+    for c in [
+        atlas::mark::WARM_PAPER.front,
+        atlas::mark::WARM_PAPER.back,
+        atlas::mark::WARM_PAPER.fold,
+    ] {
+        assert!(
+            fg.contains(c),
+            "the launcher icon isn't in the mark's colours: {c}"
+        );
     }
     // In dark mode Android takes the night version by the phone's own setting:
     // the Ember tile, the mark in its dark colours, still the rounded square.
-    let night = String::from_utf8(read(&format!("{res}/drawable-night/ic_launcher_foreground.xml"))).unwrap();
+    let night = String::from_utf8(read(&format!(
+        "{res}/drawable-night/ic_launcher_foreground.xml"
+    )))
+    .unwrap();
     assert_eq!(night.matches("android:pathData").count(), 5);
-    assert!(night.contains(&atlas::mark::EMBER.replace('#', "#FF")), "the night tile isn't Ember");
-    for c in [atlas::mark::EMBER_DARK.front, atlas::mark::EMBER_DARK.back, atlas::mark::EMBER_DARK.fold] {
-        assert!(night.contains(c), "the night icon isn't in the dark colours: {c}");
+    assert!(
+        night.contains(&atlas::mark::EMBER.replace('#', "#FF")),
+        "the night tile isn't Ember"
+    );
+    for c in [
+        atlas::mark::EMBER_DARK.front,
+        atlas::mark::EMBER_DARK.back,
+        atlas::mark::EMBER_DARK.fold,
+    ] {
+        assert!(
+            night.contains(c),
+            "the night icon isn't in the dark colours: {c}"
+        );
     }
-    let manifest = String::from_utf8(read("mobile/android/app/src/main/AndroidManifest.xml")).unwrap();
-    assert!(manifest.contains("android:icon=\"@mipmap/ic_launcher\"") && !manifest.contains("sym_def_app_icon"));
-    let service = String::from_utf8(read("mobile/android/app/src/main/java/app/atlas/AtlasService.kt")).unwrap();
-    assert!(!service.contains("android.R.drawable"), "a notification still wears a system icon");
+    let manifest =
+        String::from_utf8(read("mobile/android/app/src/main/AndroidManifest.xml")).unwrap();
+    assert!(
+        manifest.contains("android:icon=\"@mipmap/ic_launcher\"")
+            && !manifest.contains("sym_def_app_icon")
+    );
+    let service = String::from_utf8(read(
+        "mobile/android/app/src/main/java/app/atlas/AtlasService.kt",
+    ))
+    .unwrap();
+    assert!(
+        !service.contains("android.R.drawable"),
+        "a notification still wears a system icon"
+    );
 }
 
 #[test]
@@ -117,15 +192,34 @@ fn atlas_exe_carries_the_icon_and_its_name_for_both_windows_linkers() {
     let len = u32::from_le_bytes(ico[last + 8..last + 12].try_into().unwrap()) as usize;
     let off = u32::from_le_bytes(ico[last + 12..last + 16].try_into().unwrap()) as usize;
     let image = &ico[off..off + len];
-    let name: Vec<u8> = "Atlas".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+    let name: Vec<u8> = "Atlas"
+        .encode_utf16()
+        .flat_map(|u| u.to_le_bytes())
+        .collect();
     for f in ["windows/atlas.res", "windows/atlas-res.o"] {
         let r = read(f);
-        assert!(r.windows(image.len()).any(|w| w == image), "{f} holds an older icon: run make_marks.py");
-        assert!(r.windows(name.len()).any(|w| w == name.as_slice()), "{f} doesn't name the program Atlas");
+        assert!(
+            r.windows(image.len()).any(|w| w == image),
+            "{f} holds an older icon: run make_marks.py"
+        );
+        assert!(
+            r.windows(name.len()).any(|w| w == name.as_slice()),
+            "{f} doesn't name the program Atlas"
+        );
     }
     let build = String::from_utf8(read("build.rs")).unwrap();
-    assert!(build.contains("atlas.res") && build.contains("atlas-res.o") && build.contains("rustc-link-arg-bins"));
+    assert!(
+        build.contains("atlas.res")
+            && build.contains("atlas-res.o")
+            && build.contains("rustc-link-arg-bins")
+    );
     // The version Windows shows is the crate's.
     let rc = String::from_utf8(read("windows/atlas.rc")).unwrap();
-    assert!(rc.contains(&format!("\"FileVersion\", \"{}\"", env!("CARGO_PKG_VERSION"))), "windows/atlas.rc is for another version");
+    assert!(
+        rc.contains(&format!(
+            "\"FileVersion\", \"{}\"",
+            env!("CARGO_PKG_VERSION")
+        )),
+        "windows/atlas.rc is for another version"
+    );
 }

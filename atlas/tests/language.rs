@@ -4,7 +4,11 @@ use atlas::language::{
 };
 
 fn cfg() -> LanguageConfig {
-    LanguageConfig { my_language: "en".into(), multilingual: true, ..Default::default() }
+    LanguageConfig {
+        my_language: "en".into(),
+        multilingual: true,
+        ..Default::default()
+    }
 }
 
 // ================= what a model can actually hear =================
@@ -18,7 +22,10 @@ fn an_english_only_model_cannot_hear_other_languages_at_all() {
     match plan("es", &cfg(), &en) {
         Plan::CannotHear { why, .. } => {
             assert!(why.contains("English-only"));
-            assert!(why.contains("multilingual one of the same size"), "and the fix: {why}");
+            assert!(
+                why.contains("multilingual one of the same size"),
+                "and the fix: {why}"
+            );
         }
         o => panic!("{o:?}"),
     }
@@ -44,13 +51,22 @@ fn a_language_you_dont_speak_comes_back_in_english() {
 #[test]
 fn your_own_language_is_just_transcribed() {
     let multi = model_facts("ggml-base.bin");
-    assert!(matches!(plan("en", &cfg(), &multi), Plan::Transcribe { .. }));
-    assert!(matches!(plan("", &cfg(), &multi), Plan::Transcribe { .. }), "unknown is not foreign");
+    assert!(matches!(
+        plan("en", &cfg(), &multi),
+        Plan::Transcribe { .. }
+    ));
+    assert!(
+        matches!(plan("", &cfg(), &multi), Plan::Transcribe { .. }),
+        "unknown is not foreign"
+    );
 }
 
 #[test]
 fn you_can_ask_for_the_original_rather_than_a_translation() {
-    let no_translate = LanguageConfig { translate_others: false, ..cfg() };
+    let no_translate = LanguageConfig {
+        translate_others: false,
+        ..cfg()
+    };
     let multi = model_facts("ggml-base.bin");
     match plan("fr", &no_translate, &multi) {
         Plan::Transcribe { language } => assert_eq!(language, "fr"),
@@ -190,7 +206,10 @@ fn a_single_language_conversation_does_not_get_a_language_header() {
 #[test]
 fn a_live_line_names_the_speaker_and_the_language() {
     let turns = conversation();
-    assert_eq!(live_line(&turns[1]), "Marta (es) — I don't think that's possible this week.");
+    assert_eq!(
+        live_line(&turns[1]),
+        "Marta (es) — I don't think that's possible this week."
+    );
     assert_eq!(live_line(&turns[0]), "you: Can we push the deadline?");
 }
 
@@ -199,7 +218,10 @@ fn understanding_other_languages_is_off_until_you_turn_it_on() {
     let d = LanguageConfig::default();
     assert!(!d.multilingual, "the shipped model is English-only");
     assert_eq!(d.my_language, "auto");
-    assert!(d.translate_others, "but if you turn it on, it translates by default");
+    assert!(
+        d.translate_others,
+        "but if you turn it on, it translates by default"
+    );
 }
 
 #[test]
@@ -226,8 +248,14 @@ fn template_vars_activate_with_a_multilingual_model() {
     cfg.my_language = "auto".into();
     cfg.translate_others = true;
     let (lang, task) = template_vars(&cfg, &multi);
-    assert_eq!(lang, "auto", "a multilingual model lets whisper detect per clip");
-    assert_eq!(task, "translate", "and bring other languages back in English");
+    assert_eq!(
+        lang, "auto",
+        "a multilingual model lets whisper detect per clip"
+    );
+    assert_eq!(
+        task, "translate",
+        "and bring other languages back in English"
+    );
 }
 
 #[test]

@@ -243,7 +243,11 @@ pub struct Brief {
 
 impl Brief {
     pub fn is_empty(&self) -> bool {
-        self.yours.is_empty() && self.drafted.is_empty() && self.conflicts.is_empty() && self.push.is_none() && self.noticed.is_none()
+        self.yours.is_empty()
+            && self.drafted.is_empty()
+            && self.conflicts.is_empty()
+            && self.push.is_none()
+            && self.noticed.is_none()
     }
 
     /// Lines it would print. Used to keep it under `MAX_LINES`.
@@ -311,15 +315,18 @@ pub fn run(items: &[Item], day: &[Commitment], cfg: &BriefConfig) -> Brief {
 
     // Urgent first, then by arrival, so the order is defensible rather than
     // whatever the inbox happened to hand over.
-    b.yours.sort_by(|x, y| y.weight.cmp(&x.weight).then(x.id.cmp(&y.id)));
-    b.drafted.sort_by(|x, y| y.weight.cmp(&x.weight).then(x.id.cmp(&y.id)));
+    b.yours
+        .sort_by(|x, y| y.weight.cmp(&x.weight).then(x.id.cmp(&y.id)));
+    b.drafted
+        .sort_by(|x, y| y.weight.cmp(&x.weight).then(x.id.cmp(&y.id)));
 
     // The day: overlaps, and prep that has not happened.
     for (i, c) in day.iter().enumerate() {
         for other in day.iter().skip(i + 1) {
             let (a_end, b_end) = (c.at_minute + c.minutes, other.at_minute + other.minutes);
             if c.at_minute < b_end && other.at_minute < a_end {
-                b.conflicts.push(format!("{} overlaps {}", c.what, other.what));
+                b.conflicts
+                    .push(format!("{} overlaps {}", c.what, other.what));
             }
         }
         if let Some(p) = &c.needs_prep {
@@ -336,7 +343,11 @@ pub fn run(items: &[Item], day: &[Commitment], cfg: &BriefConfig) -> Brief {
         .first()
         .map(|i| i.headline())
         .or_else(|| b.conflicts.first().cloned())
-        .or_else(|| b.drafted.first().map(|i| format!("approve the reply to {}", i.from)));
+        .or_else(|| {
+            b.drafted
+                .first()
+                .map(|i| format!("approve the reply to {}", i.from))
+        });
 
     b
 }
@@ -376,9 +387,17 @@ pub fn spoken(b: &Brief) -> String {
         .filter(|h| b.start_with.as_deref() != Some(h.as_str()))
         .collect();
     if !rest.is_empty() {
-        let named: Vec<&str> = rest.iter().take(ALSO_NAMED).map(|s| s.trim_end_matches('.')).collect();
+        let named: Vec<&str> = rest
+            .iter()
+            .take(ALSO_NAMED)
+            .map(|s| s.trim_end_matches('.'))
+            .collect();
         let more = rest.len().saturating_sub(ALSO_NAMED);
-        let tail = if more > 0 { format!(", and {more} more on the hub") } else { String::new() };
+        let tail = if more > 0 {
+            format!(", and {more} more on the hub")
+        } else {
+            String::new()
+        };
         out.push(format!("Also: {}{tail}.", named.join("; ")));
     }
     if let Some(bl) = &b.blocking {
@@ -496,7 +515,11 @@ pub fn as_chain() -> crate::chain::Chain {
         "the morning run",
         vec![
             step("read what arrived", None, Some("mail")),
-            step("sort it by what mail would do", Some("mail"), Some("triage")),
+            step(
+                "sort it by what mail would do",
+                Some("mail"),
+                Some("triage"),
+            ),
             step("put it against the day", Some("triage"), Some("clashes")),
             step("write what can be written", Some("triage"), Some("drafts")),
         ],
@@ -506,7 +529,9 @@ pub fn as_chain() -> crate::chain::Chain {
 /// Is the run due? Answered by `routine` rather than by comparing hours here,
 /// so "every weekday morning" means the same thing everywhere in Atlas.
 pub fn due(w: &crate::routine::Watcher, hour: u32, weekday: u32) -> bool {
-    w.due_now(hour, weekday).iter().any(|r| r.name.contains("brief"))
+    w.due_now(hour, weekday)
+        .iter()
+        .any(|r| r.name.contains("brief"))
 }
 
 /// Turn the one thing that needs you into a question `answering` can settle
@@ -580,7 +605,11 @@ pub fn from_backlog(b: &crate::backlog::Backlog) -> Vec<Item> {
             subject: i.request.clone(),
             // Something waiting on *you* is urgent; something waiting on the
             // world clears itself and is information until it doesn't.
-            weight: if i.blocker.self_clearing() { Weight::Info } else { Weight::Urgent },
+            weight: if i.blocker.self_clearing() {
+                Weight::Info
+            } else {
+                Weight::Urgent
+            },
             outcome: Outcome::Yours,
             draft: None,
             conflicts_with: Some(i.blocker.explain()),
@@ -597,16 +626,38 @@ pub fn from_jobs(s: &crate::scheduler::Scheduler, now: u64) -> (Vec<Item>, Vec<C
     let mut day = Vec::new();
     for j in &s.jobs {
         if j.in_flight {
-            day.push(Commitment { id: format!("job:{}", j.id),
-                what: format!("{}: {}", if j.state == crate::scheduler::JobState::Cancelled { "Stopping" } else { "Running" }, j.command),
-                at_minute: 0, minutes: 1, needs_prep: None });
+            day.push(Commitment {
+                id: format!("job:{}", j.id),
+                what: format!(
+                    "{}: {}",
+                    if j.state == crate::scheduler::JobState::Cancelled {
+                        "Stopping"
+                    } else {
+                        "Running"
+                    },
+                    j.command
+                ),
+                at_minute: 0,
+                minutes: 1,
+                needs_prep: None,
+            });
             continue;
         }
         if j.interrupted {
-            items.push(Item { id: format!("job:{}", j.id), source: Source::Job,
-                from: "a scheduled job".into(), subject: format!("Check the previous result before retrying: {}", j.command),
-                weight: Weight::Urgent, outcome: Outcome::Yours, draft: None,
-                conflicts_with: Some(j.last_result.clone().unwrap_or_else(|| "Previous outcome is unconfirmed.".into())) });
+            items.push(Item {
+                id: format!("job:{}", j.id),
+                source: Source::Job,
+                from: "a scheduled job".into(),
+                subject: format!("Check the previous result before retrying: {}", j.command),
+                weight: Weight::Urgent,
+                outcome: Outcome::Yours,
+                draft: None,
+                conflicts_with: Some(
+                    j.last_result
+                        .clone()
+                        .unwrap_or_else(|| "Previous outcome is unconfirmed.".into()),
+                ),
+            });
             continue;
         }
         match j.state {
@@ -795,7 +846,8 @@ pub fn from_here(s: &Sources, cfg: &BriefConfig, now: u64, since: u64) -> Brief 
 /// on: habits, posting and deadlines"): one piece a day, in turn, so a
 /// list of three isn't read out every morning. `None` when there's nothing.
 pub fn push_for_day(asked: &str, day: u64) -> Option<String> {
-    push_piece(asked, day).map(|one| format!("You asked me to push you on {one} -- what's today's step?"))
+    push_piece(asked, day)
+        .map(|one| format!("You asked me to push you on {one} -- what's today's step?"))
 }
 
 /// The piece of your push for this day, on its own ("your habits").
@@ -805,13 +857,21 @@ pub fn push_piece(asked: &str, day: u64) -> Option<String> {
     // Said at length ("I need you to push me on my habits, and my projects.
     // I need you to take work off my plate..."): the first sentence, its
     // lead taken off, turned round to be said to you (1 Oct 2026).
-    let first = asked.split(['.', '!', '?']).find(|p| !p.trim().is_empty()).unwrap_or("");
+    let first = asked
+        .split(['.', '!', '?'])
+        .find(|p| !p.trim().is_empty())
+        .unwrap_or("");
     let turned = crate::getknow::said_back(&crate::getknow::without_push_lead(first));
     let asked = turned.as_str();
     let pieces: Vec<&str> = asked
         .split([',', ';'])
         .flat_map(|p| p.split(" and "))
-        .map(|p| p.trim().trim_start_matches("and ").trim_end_matches(['.', '!']).trim())
+        .map(|p| {
+            p.trim()
+                .trim_start_matches("and ")
+                .trim_end_matches(['.', '!'])
+                .trim()
+        })
         .filter(|p| p.len() > 1 && p.split_whitespace().count() <= 8)
         .collect();
     if pieces.is_empty() {
@@ -825,7 +885,11 @@ pub fn push_piece(asked: &str, day: u64) -> Option<String> {
 /// Trimmed rather than truncated mid-word, and a newline ends it — a subject
 /// that runs to three lines is the body again.
 fn first_words(text: &str, n: usize) -> String {
-    let first_line = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+    let first_line = text
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim();
     let words: Vec<&str> = first_line.split_whitespace().take(n).collect();
     let joined = words.join(" ");
     if first_line.split_whitespace().count() > n {

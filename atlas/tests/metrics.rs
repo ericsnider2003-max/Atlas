@@ -10,7 +10,11 @@ fn m() -> metrics::Metrics {
 #[test]
 fn it_counts_this_repo_not_a_hardcoded_one() {
     let m = m();
-    assert!(m.modules > 100, "expected the real module count, got {}", m.modules);
+    assert!(
+        m.modules > 100,
+        "expected the real module count, got {}",
+        m.modules
+    );
     assert!(m.src_lines > 10_000);
     assert!(m.test_fns > 1_000);
 }
@@ -154,7 +158,10 @@ fn the_unwired_list_is_reported_not_hidden() {
 #[test]
 fn a_fully_wired_repo_says_so() {
     let clean = metrics::gather(Path::new("."), Vec::new());
-    assert!(clean.modules > 0, "gathered nothing, so \"all wired\" would be vacuous");
+    assert!(
+        clean.modules > 0,
+        "gathered nothing, so \"all wired\" would be vacuous"
+    );
     assert!(clean.render().contains("Every module is reachable"));
 }
 
@@ -215,7 +222,8 @@ fn what_metrics_calls_unreachable_is_a_module_name_and_not_a_piece_of_a_comment(
         // A module name is one word. Anything with a space, a bracket or a
         // slash in it is a fragment of the comment that explains the entry.
         assert!(
-            name.chars().all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit()),
+            name.chars()
+                .all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit()),
             "{name:?} came out of UNWIRED_BASELINE and is not a module name. The \
              reader is splitting the justifying comments instead of skipping them."
         );

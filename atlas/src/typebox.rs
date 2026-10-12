@@ -12,9 +12,9 @@
 //! Its look is plain on purpose: the panels' look waits on the hub's design
 //! (H2), and this is the working part.
 
+use crate::quickinput::QuickInputConfig;
 #[cfg(feature = "desktop-ui")]
 use crate::quickinput::{Action, QuickInput};
-use crate::quickinput::QuickInputConfig;
 
 /// The line a finished box prints, so the reader can tell a submission from
 /// anything else a process might write.
@@ -37,9 +37,21 @@ pub fn apply_keys(q: &mut QuickInput, events: &[eframe::egui::Event], t: u64) ->
                     q.typed(c, t);
                 }
             }
-            Event::Key { key: Key::Backspace, pressed: true, .. } => q.backspace(t),
-            Event::Key { key: Key::Enter, pressed: true, .. } => return q.submit(),
-            Event::Key { key: Key::Escape, pressed: true, .. } => return q.escape(),
+            Event::Key {
+                key: Key::Backspace,
+                pressed: true,
+                ..
+            } => q.backspace(t),
+            Event::Key {
+                key: Key::Enter,
+                pressed: true,
+                ..
+            } => return q.submit(),
+            Event::Key {
+                key: Key::Escape,
+                pressed: true,
+                ..
+            } => return q.escape(),
             _ => {}
         }
     }
@@ -48,7 +60,9 @@ pub fn apply_keys(q: &mut QuickInput, events: &[eframe::egui::Event], t: u64) ->
 
 /// A line the box printed, as the typed words, or `None` for anything else.
 pub fn typed_line(line: &str) -> Option<String> {
-    line.strip_prefix(SENT).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    line.strip_prefix(SENT)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// The box's window title: how the background Atlas's signal finds it.
@@ -67,7 +81,8 @@ pub fn run(cfg: QuickInputConfig, standby: bool) -> Result<(), String> {
         q.hotkey(None, crate::store::now());
     }
     let opts = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default().with_icon(crate::mark::window_icon())
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_icon(crate::mark::window_icon())
             .with_title(TITLE)
             .with_decorations(false)
             .with_always_on_top()
@@ -91,8 +106,11 @@ pub fn run(cfg: QuickInputConfig, standby: bool) -> Result<(), String> {
                 touch(false);
                 std::thread::spawn(|| loop {
                     std::thread::sleep(std::time::Duration::from_secs(5));
-                    let idle = crate::store::now().saturating_sub(LAST_USED.load(std::sync::atomic::Ordering::Relaxed));
-                    if !ON_SCREEN.load(std::sync::atomic::Ordering::Relaxed) && idle >= HIDDEN_EXIT.as_secs() {
+                    let idle = crate::store::now()
+                        .saturating_sub(LAST_USED.load(std::sync::atomic::Ordering::Relaxed));
+                    if !ON_SCREEN.load(std::sync::atomic::Ordering::Relaxed)
+                        && idle >= HIDDEN_EXIT.as_secs()
+                    {
                         std::process::exit(0);
                     }
                 });
@@ -118,7 +136,16 @@ pub fn run(cfg: QuickInputConfig, standby: bool) -> Result<(), String> {
                     std::process::exit(0);
                 });
             }
-            Ok(Box::new(Box_ { q, frames: if standby { u32::MAX } else { 0 }, hidden_told: 0, hidden_since: None, standby, wake: rx, was_in: front_window(), hwnd }))
+            Ok(Box::new(Box_ {
+                q,
+                frames: if standby { u32::MAX } else { 0 },
+                hidden_told: 0,
+                hidden_since: None,
+                standby,
+                wake: rx,
+                was_in: front_window(),
+                hwnd,
+            }))
         }),
     )
     .map_err(|e| e.to_string())
@@ -170,7 +197,10 @@ impl eframe::App for Box_ {
             // again every half second kept eframe's loop spinning -- a core
             // at 75% for a box nobody could see (29 Sep 2026).
             if self.hidden_told < crate::overlaywin::HIDE_FRAMES {
-                { touch(false); ctx.send_viewport_cmd(ViewportCommand::Visible(false)); }
+                {
+                    touch(false);
+                    ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+                }
                 self.hidden_told += 1;
                 if self.hidden_told < crate::overlaywin::HIDE_FRAMES {
                     ctx.request_repaint_after(std::time::Duration::from_millis(100));
@@ -184,7 +214,13 @@ impl eframe::App for Box_ {
                 // alive hidden -- that held 40% of a core on Eric's laptop
                 // (1 Oct 2026). The key starts a fresh one (`Standby::show`
                 // finds this one gone and the daemon starts another).
-                if self.standby && self.hidden_since.get_or_insert_with(std::time::Instant::now).elapsed() >= HIDDEN_EXIT {
+                if self.standby
+                    && self
+                        .hidden_since
+                        .get_or_insert_with(std::time::Instant::now)
+                        .elapsed()
+                        >= HIDDEN_EXIT
+                {
                     std::process::exit(0);
                 }
                 std::thread::sleep(crate::winpark::IDLE_NAP);
@@ -216,7 +252,10 @@ impl eframe::App for Box_ {
             // let it have the keyboard. Put away rather than left on top of
             // everything with your typing going to the window underneath
             // (29 Sep 2026). The key brings it back.
-            { touch(false); ctx.send_viewport_cmd(ViewportCommand::Visible(false)); }
+            {
+                touch(false);
+                ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+            }
             self.frames = u32::MAX;
             return;
         }
@@ -234,7 +273,10 @@ impl eframe::App for Box_ {
         if done {
             give_back(self.was_in.take());
             if self.standby {
-                { touch(false); ctx.send_viewport_cmd(ViewportCommand::Visible(false)); }
+                {
+                    touch(false);
+                    ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+                }
                 self.frames = u32::MAX;
             } else {
                 ctx.send_viewport_cmd(ViewportCommand::Close);
@@ -244,12 +286,23 @@ impl eframe::App for Box_ {
         let fill = eframe::egui::Frame::none()
             .fill(crate::look_paint::colourway().raised)
             .inner_margin(eframe::egui::Margin::symmetric(14.0, 8.0));
-        eframe::egui::CentralPanel::default().frame(fill).show(ctx, |ui| {
-            ui.horizontal_centered(|ui| {
-                ui.label(eframe::egui::RichText::new(self.q.placeholder()).monospace().size(18.0).color(crate::look_paint::colourway().signal_text));
-                ui.label(eframe::egui::RichText::new(format!("{}|", self.q.buffer)).size(18.0).color(crate::look_paint::colourway().text));
+        eframe::egui::CentralPanel::default()
+            .frame(fill)
+            .show(ctx, |ui| {
+                ui.horizontal_centered(|ui| {
+                    ui.label(
+                        eframe::egui::RichText::new(self.q.placeholder())
+                            .monospace()
+                            .size(18.0)
+                            .color(crate::look_paint::colourway().signal_text),
+                    );
+                    ui.label(
+                        eframe::egui::RichText::new(format!("{}|", self.q.buffer))
+                            .size(18.0)
+                            .color(crate::look_paint::colourway().text),
+                    );
+                });
             });
-        });
         ctx.request_repaint_after(std::time::Duration::from_millis(250));
     }
 }
@@ -304,8 +357,14 @@ impl Standby {
             .spawn()
             .map_err(|e| format!("the typing box wouldn't start: {e}"))?;
         crate::childjob::tie(&child);
-        let out = child.stdout.take().ok_or("the typing box gave nothing to read")?;
-        let input = child.stdin.take().ok_or("the typing box can't be reached")?;
+        let out = child
+            .stdout
+            .take()
+            .ok_or("the typing box gave nothing to read")?;
+        let input = child
+            .stdin
+            .take()
+            .ok_or("the typing box can't be reached")?;
         std::thread::spawn(move || {
             use std::io::BufRead;
             for line in std::io::BufReader::new(out).lines().map_while(|l| l.ok()) {
@@ -324,7 +383,9 @@ impl Standby {
         }
         allow_to_front();
         use std::io::Write;
-        writeln!(self.input, "show").and_then(|_| self.input.flush()).is_ok()
+        writeln!(self.input, "show")
+            .and_then(|_| self.input.flush())
+            .is_ok()
     }
 }
 
@@ -369,7 +430,9 @@ fn give_back(to: Option<isize>) {
         // SAFETY: `h` is a window handle; a stale one makes SetForegroundWindow fail, which is
         // ignored.
         unsafe {
-            let _ = windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(windows::Win32::Foundation::HWND(h as *mut std::ffi::c_void));
+            let _ = windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(
+                windows::Win32::Foundation::HWND(h as *mut std::ffi::c_void),
+            );
         }
     }
     #[cfg(not(windows))]

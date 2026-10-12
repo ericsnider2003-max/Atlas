@@ -57,10 +57,17 @@ pub const FLATNESS: [f64; 7] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0];
 pub const LOUD: [f64; 7] = [4.0, 6.0, 8.0, 10.0, 12.0, 16.0, 20.0];
 
 /// Build the test mix and search the grid.
-pub fn calibrate(room: &[i16], voice: &[i16], rate: u32, current: VadParams) -> Result<Calibration, String> {
+pub fn calibrate(
+    room: &[i16],
+    voice: &[i16],
+    rate: u32,
+    current: VadParams,
+) -> Result<Calibration, String> {
     let frame = (rate as usize / 100).max(1);
     if room.len() < rate as usize * 5 {
-        return Err("the room recording needs at least five seconds of the room with nobody talking".into());
+        return Err(
+            "the room recording needs at least five seconds of the room with nobody talking".into(),
+        );
     }
     let (mix, truth) = build_mix(room, voice, rate)?;
     let score = |p: VadParams| -> (f64, f64, f64) { score(&mix, &truth, rate, frame, p) };
@@ -69,7 +76,11 @@ pub fn calibrate(room: &[i16], voice: &[i16], rate: u32, current: VadParams) -> 
     for e in ENERGY {
         for fl in FLATNESS {
             for loud in LOUD {
-                let p = VadParams { energy_db: e, flatness_db: fl, loud_db: loud };
+                let p = VadParams {
+                    energy_db: e,
+                    flatness_db: fl,
+                    loud_db: loud,
+                };
                 let (s, h, q) = score(p);
                 if s > best.0 + 1e-9 {
                     best = (s, p, h, q);
@@ -94,7 +105,11 @@ fn build_mix(room: &[i16], voice: &[i16], rate: u32) -> Result<(Vec<i16>, Vec<bo
     let frames: Vec<f64> = voice
         .chunks(frame)
         .filter(|c| c.len() == frame)
-        .map(|c| 10.0 * (c.iter().map(|x| (*x as f64).powi(2)).sum::<f64>() / frame as f64).max(1.0).log10())
+        .map(|c| {
+            10.0 * (c.iter().map(|x| (*x as f64).powi(2)).sum::<f64>() / frame as f64)
+                .max(1.0)
+                .log10()
+        })
         .collect();
     let peak = frames.iter().cloned().fold(f64::MIN, f64::max);
     let spoken: Vec<bool> = frames.iter().map(|d| *d >= peak - 35.0).collect();
@@ -108,7 +123,11 @@ fn build_mix(room: &[i16], voice: &[i16], rate: u32) -> Result<(Vec<i16>, Vec<bo
     let mut truth = Vec::with_capacity(total / frame);
     for i in 0..total {
         let r = room[i % room.len()] as i32;
-        let v = if i >= lead && i - lead < frames.len() * frame { voice[i - lead] as i32 } else { 0 };
+        let v = if i >= lead && i - lead < frames.len() * frame {
+            voice[i - lead] as i32
+        } else {
+            0
+        };
         mix.push((r + v).clamp(-32768, 32767) as i16);
     }
     for f in 0..total / frame {
@@ -142,7 +161,8 @@ fn score(mix: &[i16], truth: &[bool], rate: u32, frame: usize, p: VadParams) -> 
 /// Write the calibrated thresholds into your settings (the preferences layer
 /// the settings page writes), so they show on the page and can be moved back.
 fn keep(c: &Calibration, config_dir: &std::path::Path) -> crate::error::Result<()> {
-    let mut p = crate::preferences::Preferences::load_checked(config_dir).map_err(crate::error::AtlasError::Config)?;
+    let mut p = crate::preferences::Preferences::load_checked(config_dir)
+        .map_err(crate::error::AtlasError::Config)?;
     p.set("endpoint.vad_energy_db", &c.best.energy_db.to_string());
     p.set("endpoint.vad_flatness_db", &c.best.flatness_db.to_string());
     p.set("endpoint.vad_loud_db", &c.best.loud_db.to_string());
@@ -160,7 +180,10 @@ pub struct Outcome {
 impl Outcome {
     pub fn say(&self) -> String {
         if self.kept {
-            format!("{} Kept: they're in your settings now, where you can move them back.", self.calibration.say())
+            format!(
+                "{} Kept: they're in your settings now, where you can move them back.",
+                self.calibration.say()
+            )
         } else {
             format!("{} The thresholds you have are already as good as any on the grid, so nothing changed.", self.calibration.say())
         }
@@ -169,7 +192,12 @@ impl Outcome {
 
 /// From the two recordings as files. Keeps the result when it does better
 /// than what you had.
-pub fn from_recordings(room_wav: &[u8], voice_wav: &[u8], current: VadParams, config_dir: &std::path::Path) -> Result<Outcome, String> {
+pub fn from_recordings(
+    room_wav: &[u8],
+    voice_wav: &[u8],
+    current: VadParams,
+    config_dir: &std::path::Path,
+) -> Result<Outcome, String> {
     let (room, r1) = crate::diarize::read_wav(room_wav)?;
     let (voice, r2) = crate::diarize::read_wav(voice_wav)?;
     if r1 != r2 {
@@ -177,8 +205,14 @@ pub fn from_recordings(room_wav: &[u8], voice_wav: &[u8], current: VadParams, co
     }
     let c = calibrate(&room, &voice, r1, current)?;
     if c.best == current || c.best_score <= c.before_score + 0.005 {
-        return Ok(Outcome { calibration: c, kept: false });
+        return Ok(Outcome {
+            calibration: c,
+            kept: false,
+        });
     }
     keep(&c, config_dir).map_err(|e| e.to_string())?;
-    Ok(Outcome { calibration: c, kept: true })
+    Ok(Outcome {
+        calibration: c,
+        kept: true,
+    })
 }

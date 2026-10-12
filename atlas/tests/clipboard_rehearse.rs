@@ -15,7 +15,10 @@ fn cfg() -> ClipboardConfig {
 fn what_you_copied_is_recognised_by_its_shape() {
     assert_eq!(classify("https://example.com/thing"), Kind::Url);
     assert_eq!(classify("C:\\Users\\me\\notes.md"), Kind::Path);
-    assert_eq!(classify("thread 'main' panicked at src/lib.rs:12"), Kind::Error);
+    assert_eq!(
+        classify("thread 'main' panicked at src/lib.rs:12"),
+        Kind::Error
+    );
     assert_eq!(classify("fn main() {\n  let x = 1;\n}"), Kind::Code);
     assert_eq!(classify("Just a sentence about something."), Kind::Prose);
     assert_eq!(classify("   "), Kind::Empty);
@@ -36,7 +39,10 @@ fn a_pasted_table_is_recognised() {
 
 #[test]
 fn atlas_knows_what_to_do_with_each_kind_without_being_told() {
-    assert_eq!(Kind::Error.default_action(), "work out what that error means");
+    assert_eq!(
+        Kind::Error.default_action(),
+        "work out what that error means"
+    );
     assert_eq!(Kind::Url.default_action(), "read that page");
     assert!(Kind::Empty.default_action().contains("empty"));
 }
@@ -68,7 +74,9 @@ fn something_enormous_is_truncated_and_says_so() {
 fn atlas_tells_you_what_it_picked_up_so_you_know_it_got_the_right_thing() {
     let g = take("fn main() { let x = 1; }", &cfg());
     assert!(g.describe().contains("some code"));
-    assert!(take("", &cfg()).describe().contains("nothing on the clipboard"));
+    assert!(take("", &cfg())
+        .describe()
+        .contains("nothing on the clipboard"));
 }
 
 #[test]
@@ -80,11 +88,26 @@ fn atlas_never_watches_the_clipboard_in_the_background() {
     // and only if you turn it on: it ships off, in the code and in the file.
     assert!(!atlas::cliphist::HistoryConfig::default().enabled);
     let tools = std::fs::read_to_string("config/tools.yaml").unwrap();
-    let block = tools.split("clipboard_history:").nth(1).expect("the history's settings are in the shipped file");
-    assert!(block.lines().nth(1).map(|l| l.trim() == "enabled: false").unwrap_or(false), "clipboard history must ship off");
+    let block = tools
+        .split("clipboard_history:")
+        .nth(1)
+        .expect("the history's settings are in the shipped file");
+    assert!(
+        block
+            .lines()
+            .nth(1)
+            .map(|l| l.trim() == "enabled: false")
+            .unwrap_or(false),
+        "clipboard history must ship off"
+    );
     // And what it keeps is never written down: nothing saves the history.
     let wiring = std::fs::read_to_string("src/workday.rs").unwrap();
-    assert!(!wiring.lines().any(|l| l.contains("save(") && l.contains("clips")), "clipboard history must stay in memory");
+    assert!(
+        !wiring
+            .lines()
+            .any(|l| l.contains("save(") && l.contains("clips")),
+        "clipboard history must stay in memory"
+    );
 }
 
 #[test]
@@ -99,8 +122,22 @@ fn phrases_that_mean_use_what_i_copied_are_recognised() {
 
 fn plat() -> MockPlatform {
     MockPlatform::new(vec![
-        Monitor { id: 1, x: 0, y: 0, width: 2560, height: 1392, primary: true },
-        Monitor { id: 2, x: 2560, y: 0, width: 2560, height: 1392, primary: false },
+        Monitor {
+            id: 1,
+            x: 0,
+            y: 0,
+            width: 2560,
+            height: 1392,
+            primary: true,
+        },
+        Monitor {
+            id: 2,
+            x: 2560,
+            y: 0,
+            width: 2560,
+            height: 1392,
+            primary: false,
+        },
     ])
 }
 
@@ -124,7 +161,10 @@ fn waiting_is_not_shown_as_a_step() {
     let p = plat();
     atlas::workspace::workspace_on(&cfg, &p).unwrap();
     let r = from_actions("boot workspace", &p.actions());
-    assert!(!r.beats.iter().any(|b| b.what.contains("sleep")), "nobody wants to read a wait");
+    assert!(
+        !r.beats.iter().any(|b| b.what.contains("sleep")),
+        "nobody wants to read a wait"
+    );
 }
 
 #[test]
@@ -153,14 +193,20 @@ fn a_command_that_would_do_nothing_says_so() {
 #[test]
 fn the_walk_through_reads_as_a_list_of_plain_steps() {
     use atlas::platform::mock::Action;
-    let r = from_actions("boot workspace", &[
-        Action::Launch("chrome.exe".into()),
-        Action::Close("discord.exe".into()),
-    ]);
+    let r = from_actions(
+        "boot workspace",
+        &[
+            Action::Launch("chrome.exe".into()),
+            Action::Close("discord.exe".into()),
+        ],
+    );
     let d = r.detail();
     assert!(d.contains("If you said \"boot workspace\""));
     assert!(d.contains("open chrome"), "app names are tidied: {d}");
-    assert!(d.contains("!2. close discord"), "irreversible steps are marked: {d}");
+    assert!(
+        d.contains("!2. close discord"),
+        "irreversible steps are marked: {d}"
+    );
 }
 
 #[test]
@@ -172,5 +218,9 @@ fn a_rehearsal_is_never_mistaken_for_the_real_thing() {
 fn long_typed_text_is_shortened_in_the_walk_through() {
     use atlas::platform::mock::Action;
     let r = from_actions("write", &[Action::Type("x".repeat(200))]);
-    assert!(r.beats[0].what.chars().count() < 60, "got: {}", r.beats[0].what);
+    assert!(
+        r.beats[0].what.chars().count() < 60,
+        "got: {}",
+        r.beats[0].what
+    );
 }

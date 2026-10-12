@@ -119,11 +119,17 @@ fn the_page_you_are_on_is_marked() {
 fn a_deep_page_says_where_it_sits() {
     let html = hub::shell_at(Some(Page::Accounts), "Stored logins", "<p>x</p>");
     let group = Page::Accounts.group().expect("Accounts has a group");
-    assert!(html.contains(group), "the breadcrumb names the parent group");
+    assert!(
+        html.contains(group),
+        "the breadcrumb names the parent group"
+    );
     // The way back up is the sidebar's Home, on every page: the design's
     // breadcrumb names where you are ("What it may do / Accounts") and its
     // groups are headings, not pages, so they are not links.
-    assert!(html.contains(&format!("href='{}'>", Page::Dashboard.href())), "Home is one press away");
+    assert!(
+        html.contains(&format!("href='{}'>", Page::Dashboard.href())),
+        "Home is one press away"
+    );
 }
 
 #[test]
@@ -145,7 +151,10 @@ fn the_front_page_does_not_get_a_trail_back_to_itself() {
     // The design's top bar reads "Personal / Home": where you are, with
     // nothing in it linking back to the page you're on.
     let trail = hub::crumbs(Page::Dashboard);
-    assert_eq!(trail, "<p class=crumbs>Personal<span>/</span><b>Home</b></p>");
+    assert_eq!(
+        trail,
+        "<p class=crumbs>Personal<span>/</span><b>Home</b></p>"
+    );
     assert!(!trail.contains("href"), "nothing links to itself: {trail}");
 }
 
@@ -155,7 +164,10 @@ fn a_page_served_outside_the_routing_table_claims_no_place_in_the_tree() {
     // not pages, and pretending they sit somewhere would put a false trail on
     // screen.
     let html = hub::shell("Atlas", "<p>something went wrong</p>");
-    assert!(!html.contains("class=crumbs"), "no breadcrumb without a page");
+    assert!(
+        !html.contains("class=crumbs"),
+        "no breadcrumb without a page"
+    );
     assert!(
         html.contains("nav class=side"),
         "the navigation is still there — being lost is not a reason to strip \
@@ -217,7 +229,11 @@ fn the_dashboard_is_home_under_personal_as_the_design_files_it() {
     // first under Personal, beside the business groups that appear once a
     // business exists, and its top bar reads "Personal / Home".
     assert_eq!(Page::Dashboard.group(), Some("Personal"));
-    assert_eq!(hub::NAV[1].1[0], Page::Dashboard, "Home leads the Personal group");
+    assert_eq!(
+        hub::NAV[1].1[0],
+        Page::Dashboard,
+        "Home leads the Personal group"
+    );
 }
 
 #[test]
@@ -246,7 +262,10 @@ fn reading_is_the_default_and_shows_no_move_controls() {
         "a dashboard you rearrange by accident while reading it is worse than \
          one you cannot rearrange at all"
     );
-    assert!(html.contains("body of projects"), "it shows the actual cards");
+    assert!(
+        html.contains("body of projects"),
+        "it shows the actual cards"
+    );
     assert!(html.contains(">Arrange<"), "and offers a way in");
 }
 
@@ -313,7 +332,10 @@ fn hiding_everything_explains_the_blank_page() {
 #[test]
 fn putting_it_back_is_only_offered_once_there_is_something_to_put_back() {
     let plain = hub::dashboard_page(&Layout::default(), &bodies(), true);
-    assert!(!plain.contains("value=reset"), "nothing has been arranged yet");
+    assert!(
+        !plain.contains("value=reset"),
+        "nothing has been arranged yet"
+    );
 
     let mut l = Layout::default();
     l.move_down(Card::Outstanding);

@@ -128,21 +128,34 @@ impl Plan {
     /// same addresses is the failure people actually hit.
     pub fn from_config(cfg: &WgConfig) -> Result<Plan, String> {
         let s = cfg.subnet.trim();
-        let (net, len) = s.split_once('/').ok_or_else(|| format!("`{s}` needs a /24 on the end"))?;
+        let (net, len) = s
+            .split_once('/')
+            .ok_or_else(|| format!("`{s}` needs a /24 on the end"))?;
         if len.trim() != "24" {
-            return Err(format!("`{s}`: use a /24 — three devices need nothing bigger"));
+            return Err(format!(
+                "`{s}`: use a /24 — three devices need nothing bigger"
+            ));
         }
-        let ip: Ipv4Addr = net.trim().parse().map_err(|_| format!("`{net}` isn't an address"))?;
+        let ip: Ipv4Addr = net
+            .trim()
+            .parse()
+            .map_err(|_| format!("`{net}` isn't an address"))?;
         let o = ip.octets();
-        let private = o[0] == 10 || (o[0] == 172 && (16..=31).contains(&o[1])) || (o[0] == 192 && o[1] == 168);
+        let private = o[0] == 10
+            || (o[0] == 172 && (16..=31).contains(&o[1]))
+            || (o[0] == 192 && o[1] == 168);
         if o[0] == 100 && (64..=127).contains(&o[1]) {
-            return Err(format!("`{s}` is inside Tailscale's range, and the laptop runs both"));
+            return Err(format!(
+                "`{s}` is inside Tailscale's range, and the laptop runs both"
+            ));
         }
         if !private {
             return Err(format!("`{s}` isn't a private range"));
         }
         if o[0] == 192 && o[1] == 168 && (o[2] == 0 || o[2] == 1) {
-            return Err(format!("`{s}` is what most home routers hand out — pick something like 10.77.0.0/24"));
+            return Err(format!(
+                "`{s}` is what most home routers hand out — pick something like 10.77.0.0/24"
+            ));
         }
         Ok(Plan {
             base: [o[0], o[1], o[2]],
@@ -191,7 +204,11 @@ impl std::fmt::Debug for Keys {
 /// Is this a WireGuard key — 32 bytes of base64?
 pub fn is_key(k: &str) -> bool {
     let k = k.trim();
-    k.len() == 44 && k.ends_with('=') && crate::b64::decode(k).map(|b| b.len() == 32).unwrap_or(false)
+    k.len() == 44
+        && k.ends_with('=')
+        && crate::b64::decode(k)
+            .map(|b| b.len() == 32)
+            .unwrap_or(false)
 }
 
 /// The `wg` to run: the one you named, else WireGuard for Windows' own copy
@@ -201,17 +218,40 @@ pub fn wg_tool(cfg: &WgConfig) -> ExternalTool {
         return t.clone();
     }
     let windows = r"C:\Program Files\WireGuard\wg.exe";
-    let command = if std::path::Path::new(windows).is_file() { windows.to_string() } else { "wg".into() };
-    ExternalTool { command, ..Default::default() }
+    let command = if std::path::Path::new(windows).is_file() {
+        windows.to_string()
+    } else {
+        "wg".into()
+    };
+    ExternalTool {
+        command,
+        ..Default::default()
+    }
 }
 
 /// A fresh key pair from `wg genkey` / `wg pubkey` — WireGuard's own tool, so
 /// the key is made the way WireGuard makes them rather than by Atlas.
 pub fn make_keys(wg: &ExternalTool, vars: &Vars) -> Result<Keys, String> {
-    let gen = ExternalTool { args: vec!["genkey".into()], stdin_text: false, ..wg.clone() };
-    let private = gen.run(vars, None).map_err(|e| e.to_string())?.trim().to_string();
-    let pubk = ExternalTool { args: vec!["pubkey".into()], stdin_text: true, ..wg.clone() };
-    let public = pubk.run(vars, Some(&format!("{private}\n"))).map_err(|e| e.to_string())?.trim().to_string();
+    let gen = ExternalTool {
+        args: vec!["genkey".into()],
+        stdin_text: false,
+        ..wg.clone()
+    };
+    let private = gen
+        .run(vars, None)
+        .map_err(|e| e.to_string())?
+        .trim()
+        .to_string();
+    let pubk = ExternalTool {
+        args: vec!["pubkey".into()],
+        stdin_text: true,
+        ..wg.clone()
+    };
+    let public = pubk
+        .run(vars, Some(&format!("{private}\n")))
+        .map_err(|e| e.to_string())?
+        .trim()
+        .to_string();
     if !is_key(&private) || !is_key(&public) {
         return Err("wg answered with something that isn't a key".into());
     }
@@ -250,28 +290,42 @@ pub fn server_conf(plan: &Plan, server: &Keys, laptop_public: &str, phone_public
 /// A device's config. It routes only the tunnel's own addresses into the
 /// tunnel — never everything — so the laptop's Tailscale and the rest of
 /// its traffic are untouched.
-pub fn device_conf(plan: &Plan, device: Device, own: &Keys, server_public: &str) -> Result<String, String> {
+pub fn device_conf(
+    plan: &Plan,
+    device: Device,
+    own: &Keys,
+    server_public: &str,
+) -> Result<String, String> {
     if device == Device::Server {
         return Err("the server's config is `server_conf`".into());
     }
     if plan.endpoint.is_empty() {
-        return Err("I need the server's outside address first (mesh.wireguard.endpoint) — \
+        return Err(
+            "I need the server's outside address first (mesh.wireguard.endpoint) — \
                     the name your home address answers to, and the port"
-            .into());
+                .into(),
+        );
     }
     let mut allowed = vec![format!("{}/32", plan.address(Device::Server))];
     if plan.hub {
         // Through the server to the other device: the phone reaches the
         // laptop, and the laptop accepts the phone's replies routed back.
-        let other = if device == Device::Phone { Device::Laptop } else { Device::Phone };
+        let other = if device == Device::Phone {
+            Device::Laptop
+        } else {
+            Device::Phone
+        };
         allowed.push(format!("{}/32", plan.address(other)));
     }
     // Only when the server passes the phone through does the laptop need to
     // hold the tunnel open from its side, so the server can reach it wherever
     // it is. Otherwise both devices only ever start conversations, and
     // neither spends battery keeping one open.
-    let keepalive =
-        if device == Device::Laptop && plan.hub { "PersistentKeepalive = 25\n" } else { "" };
+    let keepalive = if device == Device::Laptop && plan.hub {
+        "PersistentKeepalive = 25\n"
+    } else {
+        ""
+    };
     Ok(format!(
         "# Atlas — the {} end.\n\
          [Interface]\n\
@@ -316,7 +370,8 @@ pub fn fence(plan: &Plan) -> Vec<Rule> {
         });
     } else {
         v.push(Rule {
-            what: "nothing else on the server is reachable from the tunnel, not even its own Atlas".into(),
+            what: "nothing else on the server is reachable from the tunnel, not even its own Atlas"
+                .into(),
         });
     }
     if plan.hub {
@@ -327,7 +382,9 @@ pub fn fence(plan: &Plan) -> Vec<Rule> {
             ),
         });
     }
-    v.push(Rule { what: "everything else arriving from the tunnel is dropped".into() });
+    v.push(Rule {
+        what: "everything else arriving from the tunnel is dropped".into(),
+    });
     v
 }
 
@@ -335,7 +392,11 @@ pub fn fence(plan: &Plan) -> Vec<Rule> {
 /// any nftables base chain is final, so no other table's accept can reopen
 /// what this closes.
 pub fn nftables(plan: &Plan, iface: &str) -> String {
-    let personal = format!("{{ {}, {} }}", plan.address(Device::Laptop), plan.address(Device::Phone));
+    let personal = format!(
+        "{{ {}, {} }}",
+        plan.address(Device::Laptop),
+        plan.address(Device::Phone)
+    );
     let ports: Vec<String> = plan.open_ports().iter().map(|p| p.to_string()).collect();
     let mut s = format!(
         "table inet atlas_wireguard {{\n\
@@ -373,12 +434,20 @@ pub fn all_but(open: &[u16]) -> String {
     for p in open {
         let p = p as u32;
         if p > from {
-            out.push(if p - 1 == from { from.to_string() } else { format!("{from}-{}", p - 1) });
+            out.push(if p - 1 == from {
+                from.to_string()
+            } else {
+                format!("{from}-{}", p - 1)
+            });
         }
         from = p + 1;
     }
     if from <= 65535 {
-        out.push(if from == 65535 { "65535".into() } else { format!("{from}-65535") });
+        out.push(if from == 65535 {
+            "65535".into()
+        } else {
+            format!("{from}-65535")
+        });
     }
     out.join(",")
 }
@@ -393,7 +462,11 @@ pub fn all_but(open: &[u16]) -> String {
 /// own Atlas door (token, bound to the tunnel address) instead.
 pub fn windows_rules(plan: &Plan) -> Vec<String> {
     let server = plan.address(Device::Server);
-    let personal = format!("{},{}", plan.address(Device::Laptop), plan.address(Device::Phone));
+    let personal = format!(
+        "{},{}",
+        plan.address(Device::Laptop),
+        plan.address(Device::Phone)
+    );
     let open = plan.open_ports();
     let listed: Vec<String> = open.iter().map(|p| p.to_string()).collect();
     let closed = all_but(&open);
@@ -422,10 +495,17 @@ pub fn windows_rules(plan: &Plan) -> Vec<String> {
 /// may point at this machine or at the server's model port, and nowhere else
 /// on the server. The firewall is what actually holds the line; this catches
 /// a setting that would only ever be refused, and says why.
-pub fn model_door_problem(plan: &Plan, slot: &str, command: &str, args: &[String]) -> Option<String> {
+pub fn model_door_problem(
+    plan: &Plan,
+    slot: &str,
+    command: &str,
+    args: &[String],
+) -> Option<String> {
     let server = plan.address(Device::Server).to_string();
     for part in std::iter::once(command).chain(args.iter().map(String::as_str)) {
-        let Some(at) = part.find(&server) else { continue };
+        let Some(at) = part.find(&server) else {
+            continue;
+        };
         // Only a whole address: "10.77.0.1" must not match "10.77.0.12".
         let after = &part[at + server.len()..];
         if after.starts_with(|c: char| c.is_ascii_digit()) {
@@ -433,7 +513,11 @@ pub fn model_door_problem(plan: &Plan, slot: &str, command: &str, args: &[String
         }
         let port: Option<u16> = after
             .strip_prefix(':')
-            .map(|p| p.chars().take_while(|c| c.is_ascii_digit()).collect::<String>())
+            .map(|p| {
+                p.chars()
+                    .take_while(|c| c.is_ascii_digit())
+                    .collect::<String>()
+            })
             .and_then(|p| p.parse().ok());
         return match port {
             Some(p) if p == plan.model_port => None,

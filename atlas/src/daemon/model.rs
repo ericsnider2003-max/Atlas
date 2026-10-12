@@ -1,25 +1,41 @@
 //! Which model answers and keeping its server up, asking the room of seats, the
 //! record of model calls, the notes index and meaning search, learning what you
 //! state, the self-check, and answering from facts and notes.
-//! 
+//!
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
 
-fn read_search_input(path: &std::path::Path, maximum: usize) -> std::result::Result<Option<Vec<u8>>, String> {
+fn read_search_input(
+    path: &std::path::Path,
+    maximum: usize,
+) -> std::result::Result<Option<Vec<u8>>, String> {
     use std::io::Read;
     let file = match std::fs::File::open(path) {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(format!("Search input could not be opened: {e}. Nothing was measured.")),
+        Err(e) => {
+            return Err(format!(
+                "Search input could not be opened: {e}. Nothing was measured."
+            ))
+        }
     };
     let before = file.metadata().map_err(|e| e.to_string())?;
-    if !before.is_file() || before.len() > maximum as u64 { return Err("Search input exceeds its safe read budget; nothing was measured.".into()); }
+    if !before.is_file() || before.len() > maximum as u64 {
+        return Err("Search input exceeds its safe read budget; nothing was measured.".into());
+    }
     let mut bytes = Vec::new();
-    file.take(maximum as u64 + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    file.take(maximum as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
     let after = path.metadata().map_err(|e| e.to_string())?;
-    if bytes.len() > maximum || before.len() != after.len() || before.modified().ok() != after.modified().ok() {
-        return Err("Search input changed or exceeded its safe read budget; nothing was measured.".into());
+    if bytes.len() > maximum
+        || before.len() != after.len()
+        || before.modified().ok() != after.modified().ok()
+    {
+        return Err(
+            "Search input changed or exceeded its safe read budget; nothing was measured.".into(),
+        );
     }
     Ok(Some(bytes))
 }
@@ -37,7 +53,8 @@ impl<'a> Daemon<'a> {
     pub fn which_model(&mut self) -> String {
         let cfg = self.tools_cfg().models.clone();
         let dir = std::path::PathBuf::from(&cfg.dir);
-        let (registry, trouble) = crate::models::Registry::scan_reporting(&crate::roots::under_install(&dir));
+        let (registry, trouble) =
+            crate::models::Registry::scan_reporting(&crate::roots::under_install(&dir));
 
         // Reported, not swallowed. An unreadable folder and an empty one both
         // produce no models, and they send you to very different places —
@@ -93,7 +110,9 @@ impl<'a> Daemon<'a> {
                             said.push_str(&format!(" I stopped {e} to make room."));
                         }
                     }
-                    Err(why) => said.push_str(&format!(" Not running, and I can't start it: {why}")),
+                    Err(why) => {
+                        said.push_str(&format!(" Not running, and I can't start it: {why}"))
+                    }
                 }
             }
         }
@@ -133,7 +152,9 @@ impl<'a> Daemon<'a> {
 
     /// A turn is being answered while this is held: the deep model gives
     /// way (`deepbrain`).
-    pub(crate) fn talking_guard(&self) -> (crate::deepbrain::TalkGuard, crate::deepbrain::TalkGuard) {
+    pub(crate) fn talking_guard(
+        &self,
+    ) -> (crate::deepbrain::TalkGuard, crate::deepbrain::TalkGuard) {
         // The coding model gives way too (2 Oct 2026, `coder`): it shares
         // the graphics the same way.
         (self.deep.gate.talk(), self.coder.brain.gate.talk())
@@ -144,7 +165,6 @@ impl<'a> Daemon<'a> {
     pub fn use_coder_for_test(&mut self, coder: crate::coder::Coder) {
         self.coder = coder;
     }
-
 
     /// The deep model, looked after once a pass: started for waiting work
     /// when there's room, stopped once idle. What it did goes in the log.
@@ -171,7 +191,10 @@ impl<'a> Daemon<'a> {
     /// The coding model and the talking model's room, together
     /// (`DaemonRoom`): borrowed apart, so the coding model can let the
     /// talking model go or bring it back.
-    fn with_chat_room<R>(&mut self, f: impl FnOnce(&mut crate::coder::Coder, &mut DaemonRoom) -> R) -> R {
+    fn with_chat_room<R>(
+        &mut self,
+        f: impl FnOnce(&mut crate::coder::Coder, &mut DaemonRoom) -> R,
+    ) -> R {
         let talking = self.deep.gate.talking();
         let mut room = DaemonRoom {
             helpers: &mut self.helpers,
@@ -218,7 +241,8 @@ impl<'a> Daemon<'a> {
         if crate::input::audio_available(self.tools_ref()).unwrap_or(false) {
             self.audio_tools_missing = false;
             if let Some(m) = self.tiers.heard_you() {
-                self.log.info(&format!("the voice tools are there now. {m}"));
+                self.log
+                    .info(&format!("the voice tools are there now. {m}"));
             }
             self.ensure_mic(ears);
             self.steer_mic();
@@ -239,7 +263,8 @@ impl<'a> Daemon<'a> {
                 }
                 Ok(Err(e)) => {
                     self.mic_listing = None;
-                    self.log.warn(&format!("couldn't list the microphones this time: {e}"));
+                    self.log
+                        .warn(&format!("couldn't list the microphones this time: {e}"));
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => self.mic_listing = None,
@@ -251,11 +276,17 @@ impl<'a> Daemon<'a> {
         }
         self.mic_look_at = t + MIC_LOOK_EVERY_SECS;
         let Some(tc) = self.tools_ref() else { return };
-        let ffmpeg = tc.vars.get("ffmpeg").cloned().unwrap_or_else(|| "ffmpeg".into());
+        let ffmpeg = tc
+            .vars
+            .get("ffmpeg")
+            .cloned()
+            .unwrap_or_else(|| "ffmpeg".into());
         let (tx, rx) = std::sync::mpsc::channel();
-        let spawned = std::thread::Builder::new().name("atlas-mic-list".into()).spawn(move || {
-            let _ = tx.send(crate::audio::probe_devices(&ffmpeg).map_err(|e| e.to_string()));
-        });
+        let spawned = std::thread::Builder::new()
+            .name("atlas-mic-list".into())
+            .spawn(move || {
+                let _ = tx.send(crate::audio::probe_devices(&ffmpeg).map_err(|e| e.to_string()));
+            });
         if spawned.is_ok() {
             self.mic_listing = Some(rx);
         }
@@ -263,12 +294,16 @@ impl<'a> Daemon<'a> {
 
     /// The pick from a fresh listing; switched to, and said, when it differs.
     fn microphone_from(&mut self, devices: &[crate::audio::Device], t: u64) {
-        let Some(tc) = self.tools_ref().cloned() else { return };
+        let Some(tc) = self.tools_ref().cloned() else {
+            return;
+        };
         let screens = self.plat.monitors();
         let w = crate::hearing::Where {
             at_desk: screens.as_ref().map(|m| !m.is_empty()).unwrap_or(true),
             presence_unknown: screens.is_err(),
-            headset_connected: devices.iter().any(|d| d.kind == crate::audio::Kind::Input && crate::hearing::Candidate::from(d).bluetooth),
+            headset_connected: devices.iter().any(|d| {
+                d.kind == crate::audio::Kind::Input && crate::hearing::Candidate::from(d).bluetooth
+            }),
             phone_active: false,
             audio_playing: false,
         };
@@ -277,7 +312,11 @@ impl<'a> Daemon<'a> {
         hearing.observe_devices(devices);
         hearing.learn_levels(&crate::leveller::remembered());
         let laptop_active = self.plat.built_in_screen_on().unwrap_or(true);
-        let Some(p) = crate::hearing::pick_microphone(devices, &mut hearing, &tc, &w, laptop_active, t) else { return };
+        let Some(p) =
+            crate::hearing::pick_microphone(devices, &mut hearing, &tc, &w, laptop_active, t)
+        else {
+            return;
+        };
         crate::kept!(hearing.save_to(&store));
         let (now_name, now_device) = crate::voice::microphone_now(&tc);
         if let Some(line) = microphone_change(&now_name, &now_device, &p) {
@@ -295,7 +334,12 @@ impl<'a> Daemon<'a> {
     /// at start-up the first check hadn't answered in time, and nothing
     /// asked again until you said something -- so with the microphone not
     /// working, the model never started at all.
-    pub(super) fn keep_model_server_waiting(&mut self, t: u64, wait: std::time::Duration, a_turn: bool) {
+    pub(super) fn keep_model_server_waiting(
+        &mut self,
+        t: u64,
+        wait: std::time::Duration,
+        a_turn: bool,
+    ) {
         // No model when Atlas started (none downloaded yet, or none judged to
         // fit): look again once a minute rather than for the rest of the
         // session. Setup fetches the model while Atlas is already running.
@@ -365,18 +409,23 @@ impl<'a> Daemon<'a> {
             // starts a fresh one (29 Sep 2026: a running process was trusted
             // however stuck it was, and every question waited out the whole
             // read timeout, twice, before failing).
-            let loading = self.model_started.is_some_and(|s| s.elapsed() < MODEL_SERVER_LOADING);
+            let loading = self
+                .model_started
+                .is_some_and(|s| s.elapsed() < MODEL_SERVER_LOADING);
             if self.model_suspect && !loading {
                 // (The finding is cleared on every pass that isn't asking,
                 // below, so what this reads is this question's answer.)
                 match self.probe_model_server(&cfg, &vars, wait) {
                     Some(false) => {
                         self.model_suspect = false;
-                        self.log.warn("my model server is running but not answering; restarting it");
+                        self.log
+                            .warn("my model server is running but not answering; restarting it");
                         self.helpers.finished("model-server");
                         self.model_started = None;
                         self.model_start_tried = None;
-                        self.model_server_trouble = Some("my language model stopped answering, so I'm restarting it".into());
+                        self.model_server_trouble = Some(
+                            "my language model stopped answering, so I'm restarting it".into(),
+                        );
                         return;
                     }
                     Some(true) => self.model_suspect = false,
@@ -385,7 +434,10 @@ impl<'a> Daemon<'a> {
                 }
             }
             // Lived through its load and some use: not dying young.
-            if self.model_started.is_some_and(|s| s.elapsed() > MODEL_SERVER_YOUNG) {
+            if self
+                .model_started
+                .is_some_and(|s| s.elapsed() > MODEL_SERVER_YOUNG)
+            {
                 self.model_started = None;
                 self.model_deaths = 0;
             }
@@ -398,7 +450,11 @@ impl<'a> Daemon<'a> {
             }
             // Ours is the one answering: once it is let go, the next turn
             // asks afresh rather than trusting a minute-old "it's up".
-            if let Ok(mut seen) = self.model_server_seen.lock().or_else(crate::crash::unpoison) {
+            if let Ok(mut seen) = self
+                .model_server_seen
+                .lock()
+                .or_else(crate::crash::unpoison)
+            {
                 *seen = None;
             }
             return;
@@ -417,7 +473,13 @@ impl<'a> Daemon<'a> {
         // waits for the answer no more than a moment (28 Sep 2026: every
         // turn scanned the model folder, measured the machine and made an
         // HTTP check of up to ten seconds, on the loop).
-        let up = match self.model_server_seen.lock().or_else(crate::crash::unpoison).ok().and_then(|g| *g) {
+        let up = match self
+            .model_server_seen
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .ok()
+            .and_then(|g| *g)
+        {
             Some((at, up)) if at.elapsed() < MODEL_SERVER_RECHECK => up,
             _ => match self.probe_model_server(&cfg, &vars, wait) {
                 Some(up) => up,
@@ -430,17 +492,22 @@ impl<'a> Daemon<'a> {
         }
         // Tried a moment ago and it didn't start: not again on every turn,
         // and longer each time one dies young.
-        if self.model_start_tried.is_some_and(|at| at.elapsed() < model_server_pause(self.model_deaths)) {
+        if self
+            .model_start_tried
+            .is_some_and(|at| at.elapsed() < model_server_pause(self.model_deaths))
+        {
             return;
         }
         self.model_start_tried = Some(std::time::Instant::now());
-        let (registry, _) = crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&cfg));
+        let (registry, _) =
+            crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&cfg));
         let machine = crate::fit::measure();
         let Some(model) = crate::models::pick(&registry, &cfg, &machine).cloned() else {
             // Said once, not silently skipped: this is why nothing answers.
             let why = "no language model in the models folder fits this machine".to_string();
             if self.model_server_trouble.as_deref() != Some(why.as_str()) {
-                self.log.warn(&format!("couldn't start the model server: {why}"));
+                self.log
+                    .warn(&format!("couldn't start the model server: {why}"));
                 self.model_server_trouble = Some(why);
             }
             return;
@@ -448,14 +515,20 @@ impl<'a> Daemon<'a> {
         // One was started before and isn't running now: why, from its own
         // log, before that log is replaced.
         if let Some(was) = &self.model_running_id {
-            let words = crate::models::model_server_last_words().unwrap_or_else(|| "its log says nothing".into());
-            self.log.warn(&format!("the model server ({was}) isn't running any more; its last words: {words}"));
+            let words = crate::models::model_server_last_words()
+                .unwrap_or_else(|| "its log says nothing".into());
+            self.log.warn(&format!(
+                "the model server ({was}) isn't running any more; its last words: {words}"
+            ));
         }
         let layers = crate::models::layers_here(&model, &cfg, &machine);
         let mb = crate::models::footprint_mb(&model, &cfg);
         let trouble = match self.start_model_server(&model, &cfg, layers, mb) {
             Ok(_) => {
-                self.log.info(&format!("started the model server: {} ({layers} layers on the graphics)", model.id));
+                self.log.info(&format!(
+                    "started the model server: {} ({layers} layers on the graphics)",
+                    model.id
+                ));
                 // The pause between tries is for a start that failed, not one
                 // that worked and was later let go (merge 28 Sep 2026). A
                 // start that dies young is caught by `model_server_died`.
@@ -467,7 +540,10 @@ impl<'a> Daemon<'a> {
             Err(why) => Some(why),
         };
         if trouble.is_some() && trouble != self.model_server_trouble {
-            self.log.warn(&format!("couldn't start the model server: {}", trouble.as_deref().unwrap_or("")));
+            self.log.warn(&format!(
+                "couldn't start the model server: {}",
+                trouble.as_deref().unwrap_or("")
+            ));
         }
         self.model_server_trouble = trouble;
     }
@@ -479,7 +555,9 @@ impl<'a> Daemon<'a> {
     /// file -- was started again on the very next pass, reading the whole
     /// model off the disk every time, and nobody was told).
     pub(super) fn model_server_died(&mut self) {
-        let Some(started) = self.model_started.take() else { return };
+        let Some(started) = self.model_started.take() else {
+            return;
+        };
         if started.elapsed() >= MODEL_SERVER_YOUNG {
             return;
         }
@@ -499,18 +577,29 @@ impl<'a> Daemon<'a> {
     /// Ask, on a thread of its own, whether a model server is answering;
     /// wait for the answer up to `MODEL_PROBE_WAIT`. `None` while it is
     /// still being asked -- the answer lands in `model_server_seen`.
-    fn probe_model_server(&mut self, cfg: &crate::models::ModelsConfig, vars: &crate::tools::Vars, wait: std::time::Duration) -> Option<bool> {
+    fn probe_model_server(
+        &mut self,
+        cfg: &crate::models::ModelsConfig,
+        vars: &crate::tools::Vars,
+        wait: std::time::Duration,
+    ) -> Option<bool> {
         use std::sync::atomic::Ordering;
         if !self.model_probe_busy.swap(true, Ordering::SeqCst) {
-            let (seen, busy, cfg, vars) =
-                (self.model_server_seen.clone(), self.model_probe_busy.clone(), cfg.clone(), vars.clone());
-            let spawned = std::thread::Builder::new().name("atlas-model-probe".into()).spawn(move || {
-                let up = crate::models::is_running(&cfg, &crate::models::server_get(), &vars);
-                if let Ok(mut g) = seen.lock().or_else(crate::crash::unpoison) {
-                    *g = Some((std::time::Instant::now(), up));
-                }
-                busy.store(false, Ordering::SeqCst);
-            });
+            let (seen, busy, cfg, vars) = (
+                self.model_server_seen.clone(),
+                self.model_probe_busy.clone(),
+                cfg.clone(),
+                vars.clone(),
+            );
+            let spawned = std::thread::Builder::new()
+                .name("atlas-model-probe".into())
+                .spawn(move || {
+                    let up = crate::models::is_running(&cfg, &crate::models::server_get(), &vars);
+                    if let Ok(mut g) = seen.lock().or_else(crate::crash::unpoison) {
+                        *g = Some((std::time::Instant::now(), up));
+                    }
+                    busy.store(false, Ordering::SeqCst);
+                });
             if spawned.is_err() {
                 self.model_probe_busy.store(false, Ordering::SeqCst);
                 return None;
@@ -518,7 +607,13 @@ impl<'a> Daemon<'a> {
         }
         let until = std::time::Instant::now() + wait;
         while std::time::Instant::now() < until {
-            if let Some((at, up)) = self.model_server_seen.lock().or_else(crate::crash::unpoison).ok().and_then(|g| *g) {
+            if let Some((at, up)) = self
+                .model_server_seen
+                .lock()
+                .or_else(crate::crash::unpoison)
+                .ok()
+                .and_then(|g| *g)
+            {
                 if at.elapsed() < MODEL_SERVER_RECHECK {
                     return Some(up);
                 }
@@ -567,7 +662,12 @@ impl<'a> Daemon<'a> {
     /// machine has free right now. When the talking model's server had to be
     /// stopped for it, its state is let go too, so the next question starts
     /// a fresh one instead of asking a port nobody is behind.
-    pub(super) fn room_for_heavy(&mut self, name: &str, memory_mb: u64, t: u64) -> std::result::Result<(), String> {
+    pub(super) fn room_for_heavy(
+        &mut self,
+        name: &str,
+        memory_mb: u64,
+        t: u64,
+    ) -> std::result::Result<(), String> {
         let was_running = self.helpers.is_running("model-server");
         let mut asked = 0;
         let mut room = || {
@@ -587,7 +687,11 @@ impl<'a> Daemon<'a> {
             self.model_running_id = None;
             self.model_started = None;
             self.model_start_tried = None;
-            if let Ok(mut seen) = self.model_server_seen.lock().or_else(crate::crash::unpoison) {
+            if let Ok(mut seen) = self
+                .model_server_seen
+                .lock()
+                .or_else(crate::crash::unpoison)
+            {
                 *seen = None;
             }
         }
@@ -691,7 +795,8 @@ impl<'a> Daemon<'a> {
                 let mut opened = false;
                 let verdict = if blind_verdict.call.is_none() {
                     let open_prompts = room.open_prompts(&q_for_closure, &opinions);
-                    let open_opinions = ask_seats(llm.as_ref(), &open_prompts, ctl, &mut calls, room.retests);
+                    let open_opinions =
+                        ask_seats(llm.as_ref(), &open_prompts, ctl, &mut calls, room.retests);
                     if open_opinions.len() >= crate::council::MIN_SEATS {
                         opened = true;
                         opinions = open_opinions;
@@ -743,9 +848,15 @@ impl<'a> Daemon<'a> {
                     let mut changes = crate::council::conditions(&opinions);
                     let mut asked_for = changes.clone();
                     let mut pass = 0;
-                    while !changes.is_empty() && pass < crate::council::MAX_RETESTS && !ctl.stopping() {
+                    while !changes.is_empty()
+                        && pass < crate::council::MAX_RETESTS
+                        && !ctl.stopping()
+                    {
                         pass += 1;
-                        let listed: Vec<String> = changes.iter().map(|(seat, c)| format!("{seat}: {c}")).collect();
+                        let listed: Vec<String> = changes
+                            .iter()
+                            .map(|(seat, c)| format!("{seat}: {c}"))
+                            .collect();
                         said.push_str(&format!(
                             "{} It would be OK if — {}.",
                             if pass == 1 { "" } else { " Still not there." },
@@ -756,7 +867,13 @@ impl<'a> Daemon<'a> {
                         let mut parts: Vec<String> = Vec::new();
                         let mut all_called = true;
                         for (name, retest_room) in crate::council::retest_rooms() {
-                            let opinions = ask_seats(llm.as_ref(), &retest_room.blind_prompts(&question), ctl, &mut calls, true);
+                            let opinions = ask_seats(
+                                llm.as_ref(),
+                                &retest_room.blind_prompts(&question),
+                                ctl,
+                                &mut calls,
+                                true,
+                            );
                             if opinions.len() < crate::council::MIN_SEATS {
                                 parts.push(format!("{name}? Too few seats answered to say."));
                                 all_called = false;
@@ -768,7 +885,10 @@ impl<'a> Daemon<'a> {
                             }
                             parts.push(format!("{name}? {}", retest_room.spoken(&v)));
                             for c in crate::council::conditions(&opinions) {
-                                if !asked_for.iter().any(|(_, have)| have.eq_ignore_ascii_case(&c.1)) {
+                                if !asked_for
+                                    .iter()
+                                    .any(|(_, have)| have.eq_ignore_ascii_case(&c.1))
+                                {
                                     next.push(c);
                                 }
                             }
@@ -779,7 +899,10 @@ impl<'a> Daemon<'a> {
                         needs_guidance = !all_called;
                     }
                     if !changes.is_empty() {
-                        let left: Vec<String> = changes.iter().map(|(seat, c)| format!("{seat}: {c}")).collect();
+                        let left: Vec<String> = changes
+                            .iter()
+                            .map(|(seat, c)| format!("{seat}: {c}"))
+                            .collect();
                         said.push_str(&format!(
                             " After {} rounds of changes some still say no unless {} — that one's yours to decide.",
                             pass,
@@ -794,12 +917,23 @@ impl<'a> Daemon<'a> {
                         crate::fit::describe(&machine)
                     ));
                 }
-                CouncilOutcome { calls, text: said, needs_guidance, technical_failure: false }
+                CouncilOutcome {
+                    calls,
+                    text: said,
+                    needs_guidance,
+                    technical_failure: false,
+                }
             };
             Ok(serde_json::to_string(&outcome).unwrap_or_default())
         });
 
-        if self.hand_off("council", crate::store::now(), work, Some(question_owned), SpeakPolicy::Always) {
+        if self.hand_off(
+            "council",
+            crate::store::now(),
+            work,
+            Some(question_owned),
+            SpeakPolicy::Always,
+        ) {
             "Asking the room. I'll let you know what they say.".into()
         } else {
             "I'm swamped with background work right now — ask the room again in a moment.".into()
@@ -828,15 +962,25 @@ impl<'a> Daemon<'a> {
     /// be compared over time (research report, Stage 1 item 4). The model
     /// the server was started with is the one answering.
     fn model_in_use(&self) -> String {
-        if let Some(named) = self.tools_ref().and_then(|t| t.llm.as_ref()).map(|l| crate::trace::model_name(&l.request)) {
+        if let Some(named) = self
+            .tools_ref()
+            .and_then(|t| t.llm.as_ref())
+            .map(|l| crate::trace::model_name(&l.request))
+        {
             return named;
         }
         if let Some(id) = &self.model_running_id {
             return id.clone();
         }
-        let Some(tc) = self.tools_ref() else { return "none".into() };
-        let (registry, _) = crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&tc.models));
-        registry.choose_for(&tc.models, u64::MAX).map(|m| m.id.clone()).unwrap_or_else(|| "none".into())
+        let Some(tc) = self.tools_ref() else {
+            return "none".into();
+        };
+        let (registry, _) =
+            crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&tc.models));
+        registry
+            .choose_for(&tc.models, u64::MAX)
+            .map(|m| m.id.clone())
+            .unwrap_or_else(|| "none".into())
     }
 
     /// Write down one model call: who asked, which model, how long, how big,
@@ -876,7 +1020,9 @@ impl<'a> Daemon<'a> {
     /// switched on (`trace::TraceConfig`, "Keep graded examples").
     pub(super) fn keep_words(&mut self, id: u64, words: Option<&crate::trace::Words>) {
         let cfg = self.tools_cfg().trace.clone();
-        let Some(words) = words.filter(|_| cfg.keep_examples) else { return };
+        let Some(words) = words.filter(|_| cfg.keep_examples) else {
+            return;
+        };
         if let Some(ex) = crate::trace::example_of(&self.trace, id, words) {
             if !crate::trace::keep_example(&self.trace_path(), &ex, cfg.examples_max) {
                 self.log.warn("couldn't keep a graded example");
@@ -934,8 +1080,11 @@ impl<'a> Daemon<'a> {
                 if self.contents.lines.is_empty() {
                     return;
                 }
-                if let Err(e) = crate::contents::save(&self.contents, &crate::contents::master_path(&dir)) {
-                    self.log.warn(&format!("couldn't write the notes index: {e}"));
+                if let Err(e) =
+                    crate::contents::save(&self.contents, &crate::contents::master_path(&dir))
+                {
+                    self.log
+                        .warn(&format!("couldn't write the notes index: {e}"));
                 }
             }
         }
@@ -943,7 +1092,10 @@ impl<'a> Daemon<'a> {
 
     /// Where the written-down index and the folder disagree, right now.
     pub fn index_drift(&self) -> crate::contents::Drift {
-        crate::contents::drift(&self.contents, &crate::contents::names_on_disk(&self.notes_dir()))
+        crate::contents::drift(
+            &self.contents,
+            &crate::contents::names_on_disk(&self.notes_dir()),
+        )
     }
 
     /// Rebuild the index from the folder and say what changed.
@@ -1024,8 +1176,14 @@ impl<'a> Daemon<'a> {
     /// thread's own away-brief reads the same window — and the question's own
     /// words are excluded so context never double-counts the query.
     pub(super) fn context_terms(&self, question: &str) -> Vec<String> {
-        let recent: Vec<String> =
-            self.thread.recent.iter().rev().take(3).map(|e| e.said.clone()).collect();
+        let recent: Vec<String> = self
+            .thread
+            .recent
+            .iter()
+            .rev()
+            .take(3)
+            .map(|e| e.said.clone())
+            .collect();
         crate::recall::context_terms_from(&recent, question)
     }
 
@@ -1041,12 +1199,22 @@ impl<'a> Daemon<'a> {
         if !cfg.semantic {
             return None;
         }
-        let recent: Vec<String> =
-            self.thread.recent.iter().rev().take(3).map(|e| e.said.clone()).collect();
+        let recent: Vec<String> = self
+            .thread
+            .recent
+            .iter()
+            .rev()
+            .take(3)
+            .map(|e| e.said.clone())
+            .collect();
         if recent.is_empty() {
             return None;
         }
-        if let Some(v) = self.meaning_route.as_ref().and_then(|m| m.text(&recent.join("\n"))) {
+        if let Some(v) = self
+            .meaning_route
+            .as_ref()
+            .and_then(|m| m.text(&recent.join("\n")))
+        {
             return Some(v);
         }
         let mcfg = self.meaning_cfg();
@@ -1066,7 +1234,9 @@ impl<'a> Daemon<'a> {
         // Tried once already: again only after the meaning model was asked
         // for and has now landed.
         if self.meaning_route_tried {
-            let landed = crate::getpieces::understanding().iter().all(|p| crate::getpieces::have(p, &self.store.install_root()));
+            let landed = crate::getpieces::understanding()
+                .iter()
+                .all(|p| crate::getpieces::have(p, &self.store.install_root()));
             if !(self.meaning_route_retry && landed) {
                 return;
             }
@@ -1075,14 +1245,23 @@ impl<'a> Daemon<'a> {
         self.meaning_route_tried = true;
         let (mcfg, vars) = (self.meaning_cfg(), self.tool_vars());
         let root = self.store.install_root();
-        self.meaning_route = crate::meaningroute::Route::start(&mcfg, &vars, Some(&root), self.router.texts().to_vec());
+        self.meaning_route = crate::meaningroute::Route::start(
+            &mcfg,
+            &vars,
+            Some(&root),
+            self.router.texts().to_vec(),
+        );
         if self.meaning_route.is_some() {
-            self.log.info("meaning: the encoder is running; tools are chosen by meaning as well as words");
+            self.log.info(
+                "meaning: the encoder is running; tools are chosen by meaning as well as words",
+            );
         }
     }
 
     fn meaning_cfg(&self) -> crate::meaning::MeaningConfig {
-        self.tools_ref().map(|t| t.meaning.clone()).unwrap_or_default()
+        self.tools_ref()
+            .map(|t| t.meaning.clone())
+            .unwrap_or_default()
     }
 
     fn tool_vars(&self) -> crate::tools::Vars {
@@ -1099,7 +1278,10 @@ impl<'a> Daemon<'a> {
     /// invisible while it happens. The vectors are remembered by content, so
     /// this work is done once per note, not once per session.
     pub(super) fn embed_backlog(&mut self) {
-        let cfg = self.tools_ref().map(|t| t.recall.clone()).unwrap_or_default();
+        let cfg = self
+            .tools_ref()
+            .map(|t| t.recall.clone())
+            .unwrap_or_default();
         if !cfg.semantic {
             return;
         }
@@ -1121,7 +1303,10 @@ impl<'a> Daemon<'a> {
         }
         let mut changed = false;
         for id in todo.into_iter().take(2) {
-            let Some((title, text)) = self.library.get(id).map(|p| (p.title.clone(), p.text.clone()))
+            let Some((title, text)) = self
+                .library
+                .get(id)
+                .map(|p| (p.title.clone(), p.text.clone()))
             else {
                 continue;
             };
@@ -1150,7 +1335,10 @@ impl<'a> Daemon<'a> {
             return "There are no notes to search yet, so there's nothing to measure.".into();
         }
         let question_path = self.store.root().join("search-questions.txt");
-        let written = match read_search_input(&question_path, 64 * 1024).and_then(|bytes| String::from_utf8(bytes.unwrap_or_default()).map_err(|e| format!("Search questions are not readable text: {e}"))) {
+        let written = match read_search_input(&question_path, 64 * 1024).and_then(|bytes| {
+            String::from_utf8(bytes.unwrap_or_default())
+                .map_err(|e| format!("Search questions are not readable text: {e}"))
+        }) {
             Ok(text) => text,
             Err(why) => return why,
         };
@@ -1159,14 +1347,29 @@ impl<'a> Daemon<'a> {
         if questions.is_empty() {
             return "The notes are too short to make questions from.".into();
         }
-        if questions.len() > 128 || self.library.len() > 4096 || self.library.pieces.iter().fold(0usize, |n, p| n.saturating_add(p.title.len()).saturating_add(p.text.len()).saturating_add(p.source.len()).saturating_add(p.embedding.as_ref().map_or(0, |v| v.len().saturating_mul(4)))) > 2 * 1024 * 1024 {
+        if questions.len() > 128
+            || self.library.len() > 4096
+            || self.library.pieces.iter().fold(0usize, |n, p| {
+                n.saturating_add(p.title.len())
+                    .saturating_add(p.text.len())
+                    .saturating_add(p.source.len())
+                    .saturating_add(
+                        p.embedding
+                            .as_ref()
+                            .map_or(0, |v| v.len().saturating_mul(4)),
+                    )
+            }) > 2 * 1024 * 1024
+        {
             return "Search measurement exceeds its bounded question or note limit; nothing was measured.".into();
         }
         let lib: crate::recall::Library = match super::brief_prep::snapshot_value(&self.library).and_then(|v| serde_json::from_value(v).map_err(|e| e.to_string())) {
             Ok(lib) => lib,
             Err(_) => return "Search measurement exceeds its bounded note snapshot budget; nothing was measured.".into(),
         };
-        let rcfg = self.tools_ref().map(|t| t.recall.clone()).unwrap_or_default();
+        let rcfg = self
+            .tools_ref()
+            .map(|t| t.recall.clone())
+            .unwrap_or_default();
         let mcfg = self.meaning_cfg();
         let vars = self.tool_vars();
         let semantic = rcfg.semantic && crate::meaning::available(&mcfg, &vars);
@@ -1174,37 +1377,81 @@ impl<'a> Daemon<'a> {
         let t = crate::store::now();
         let store = self.store.clone();
         let installed = crate::roots::state_dir();
-        let owner = if store.root().starts_with(&installed) { installed } else { store.root().into() };
-        let ownership = move || -> std::result::Result<Vec<Option<Vec<u8>>>, String> {
-            ["profiles.json", "handover.json"].iter().map(|name| {
-                let path = owner.join(name);
-                read_search_input(&path, 2 * 1024 * 1024)
-            }).collect()
+        let owner = if store.root().starts_with(&installed) {
+            installed
+        } else {
+            store.root().into()
         };
-        let expected_owner = match ownership() { Ok(owner) => owner, Err(why) => return why };
+        let ownership = move || -> std::result::Result<Vec<Option<Vec<u8>>>, String> {
+            ["profiles.json", "handover.json"]
+                .iter()
+                .map(|name| {
+                    let path = owner.join(name);
+                    read_search_input(&path, 2 * 1024 * 1024)
+                })
+                .collect()
+        };
+        let expected_owner = match ownership() {
+            Ok(owner) => owner,
+            Err(why) => return why,
+        };
         let work: crew::Work = Box::new(move |c: &crew::Control| {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
             let stop = || c.stopping() || std::time::Instant::now() >= deadline;
             let checkpoint = || c.checkpoint_until(deadline);
-            let words = crate::recall::measure_until(&lib, &questions, None, &rcfg, t, &checkpoint)?;
+            let words =
+                crate::recall::measure_until(&lib, &questions, None, &rcfg, t, &checkpoint)?;
             let meaning = if semantic {
-                let embed = |q: &str| crate::meaning::embed_stoppable(&mcfg, &vars, q, &stop).map_err(|e| format!("Meaning search could not be measured: {e}. No scores were saved."));
-                Some(crate::recall::measure_until(&lib, &questions, Some(&embed), &rcfg, t, &checkpoint)?)
-            } else { None };
-            let check = crate::recall::SearchCheck { at: t, model: if semantic { model } else { String::new() }, words, meaning };
+                let embed = |q: &str| {
+                    crate::meaning::embed_stoppable(&mcfg, &vars, q, &stop).map_err(|e| {
+                        format!("Meaning search could not be measured: {e}. No scores were saved.")
+                    })
+                };
+                Some(crate::recall::measure_until(
+                    &lib,
+                    &questions,
+                    Some(&embed),
+                    &rcfg,
+                    t,
+                    &checkpoint,
+                )?)
+            } else {
+                None
+            };
+            let check = crate::recall::SearchCheck {
+                at: t,
+                model: if semantic { model } else { String::new() },
+                words,
+                meaning,
+            };
             loop {
-                if checkpoint() { return Err("Search measurement stopped or reached its deadline before saving; no result was recorded.".into()); }
+                if checkpoint() {
+                    return Err("Search measurement stopped or reached its deadline before saving; no result was recorded.".into());
+                }
                 match store.transaction() {
                     Ok(_guard) => {
-                        if ownership()? != expected_owner { return Err("The active person changed while measuring search; no result was recorded.".into()); }
-                        let mut kept: Vec<crate::recall::SearchCheck> = store.load_checked_bounded("search_checks", 2 * 1024 * 1024).map_err(|e| format!("Search measurement could not read its history: {e}"))?.unwrap_or_default();
+                        if ownership()? != expected_owner {
+                            return Err("The active person changed while measuring search; no result was recorded.".into());
+                        }
+                        let mut kept: Vec<crate::recall::SearchCheck> = store
+                            .load_checked_bounded("search_checks", 2 * 1024 * 1024)
+                            .map_err(|e| {
+                                format!("Search measurement could not read its history: {e}")
+                            })?
+                            .unwrap_or_default();
                         let said = check.said(kept.last());
                         kept.push(check);
                         let keep_from = kept.len().saturating_sub(50);
-                        store.save("search_checks", &kept[keep_from..].to_vec()).map_err(|e| format!("Search measurement was not recorded: {e}"))?;
+                        store
+                            .save("search_checks", &kept[keep_from..].to_vec())
+                            .map_err(|e| format!("Search measurement was not recorded: {e}"))?;
                         return serde_json::to_string(&said).map_err(|e| e.to_string());
                     }
-                    Err(crate::error::AtlasError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(std::time::Duration::from_millis(20)),
+                    Err(crate::error::AtlasError::Io(e))
+                        if e.kind() == std::io::ErrorKind::WouldBlock =>
+                    {
+                        std::thread::sleep(std::time::Duration::from_millis(20))
+                    }
                     Err(e) => return Err(format!("Search measurement was not recorded: {e}")),
                 }
             }
@@ -1227,7 +1474,8 @@ impl<'a> Daemon<'a> {
         // measures search again once it has (`search_check_due`).
         let fp = crate::meaning::fingerprint(&self.meaning_cfg(), &self.tool_vars());
         if !fp.is_empty() && self.meaning.for_model(&fp) {
-            self.log.info("The meaning model changed, so every note will be re-read with the new one.");
+            self.log
+                .info("The meaning model changed, so every note will be re-read with the new one.");
             let _ = self.meaning.save(&self.store);
             self.search_check_due = true;
         }
@@ -1245,8 +1493,11 @@ impl<'a> Daemon<'a> {
         }
         // Vectors for notes that no longer exist describe nothing; without
         // this the remembered set only ever grows, one orphan per edit.
-        let keys: Vec<String> =
-            lib.pieces.iter().map(|p| crate::meaning::key(&p.title, &p.text)).collect();
+        let keys: Vec<String> = lib
+            .pieces
+            .iter()
+            .map(|p| crate::meaning::key(&p.title, &p.text))
+            .collect();
         let before = self.meaning.len();
         self.meaning.keep_only(&keys);
         if self.meaning.len() != before {
@@ -1267,7 +1518,11 @@ impl<'a> Daemon<'a> {
     pub(super) fn wanted_check(&mut self, raw: &str) -> Option<String> {
         let reading = crate::wanted::read(raw);
         if reading.wanted == crate::wanted::Wanted::Hearing && reading.confidence >= 0.7 {
-            let reply = format!("{} {}", crate::wanted::heard(raw), crate::wanted::then_offer());
+            let reply = format!(
+                "{} {}",
+                crate::wanted::heard(raw),
+                crate::wanted::then_offer()
+            );
             // `heard()`'s own template can never produce one of these
             // phrases, but the check is what actually enforces that stays
             // true if this reply is ever built from something less
@@ -1277,13 +1532,21 @@ impl<'a> Daemon<'a> {
             debug_assert!(!crate::wanted::is_empty_sympathy(&reply));
             return Some(reply);
         }
-        let may_ask = self.tools_ref().map(|t| t.wanted.ask_when_unclear).unwrap_or(true);
+        let may_ask = self
+            .tools_ref()
+            .map(|t| t.wanted.ask_when_unclear)
+            .unwrap_or(true);
         // Not for a command Atlas couldn't carry out: "close the quarterly
         // budget" starts the way a command does, and isn't something to think
         // through together or be listened to about (the capability sweep, 30
         // Sep 2026: every short unknown command got this question when the
         // model was down).
-        let a_command = self.router.shortlist(raw, 1).first().map(|(_, s)| *s == f64::MAX).unwrap_or(false);
+        let a_command = self
+            .router
+            .shortlist(raw, 1)
+            .first()
+            .map(|(_, s)| *s == f64::MAX)
+            .unwrap_or(false);
         let about_you = !a_command;
         if reading.wanted == crate::wanted::Wanted::Unclear && may_ask && about_you {
             self.pending_wanted = Some(raw.to_string());
@@ -1348,8 +1611,15 @@ impl<'a> Daemon<'a> {
         // is actually in a hot dog" is a question, not a correction, and
         // anywhere-in-the-sentence filed it as a fact.
         let opening = low.trim_start_matches(|c: char| !c.is_alphanumeric());
-        let opening = opening.strip_prefix("atlas").map(|r| r.trim_start_matches([',', ' '])).unwrap_or(opening);
-        let opening = opening.strip_prefix("no").filter(|r| r.starts_with([',', ' '])).map(|r| r.trim_start_matches([',', ' '])).unwrap_or(opening);
+        let opening = opening
+            .strip_prefix("atlas")
+            .map(|r| r.trim_start_matches([',', ' ']))
+            .unwrap_or(opening);
+        let opening = opening
+            .strip_prefix("no")
+            .filter(|r| r.starts_with([',', ' ']))
+            .map(|r| r.trim_start_matches([',', ' ']))
+            .unwrap_or(opening);
         let marked = [
             "actually",
             "correction",
@@ -1378,7 +1648,8 @@ impl<'a> Daemon<'a> {
         if !marked && !(known_slot && first_person) {
             return None;
         }
-        self.facts.learn(crate::facts::Fact::stated(&stmt, now), now);
+        self.facts
+            .learn(crate::facts::Fact::stated(&stmt, now), now);
         self.facts.trim(crate::facts::MEMORY_BUDGET_BYTES, now);
         let _ = self.facts.save(&self.store);
         Some(format!(
@@ -1402,7 +1673,10 @@ impl<'a> Daemon<'a> {
                 continue;
             }
             let outcome = self.probe_untested(&c);
-            steps.push(crate::shakedown::Step { capability: c.what, outcome });
+            steps.push(crate::shakedown::Step {
+                capability: c.what,
+                outcome,
+            });
         }
         let mut out = crate::shakedown::report(&steps);
         // A closing line drawn from whether any check actually failed, not
@@ -1410,7 +1684,9 @@ impl<'a> Daemon<'a> {
         if crate::shakedown::all_clear(&steps) {
             out.push_str("\nNothing's broken — this is a to-do list, not a fault report.");
         } else {
-            out.push_str("\nThe flagged items are real failures — worth looking at before you rely on them.");
+            out.push_str(
+                "\nThe flagged items are real failures — worth looking at before you rely on them.",
+            );
         }
         out
     }
@@ -1442,9 +1718,7 @@ impl<'a> Daemon<'a> {
                     )
                 } else {
                     match self.plat.active_window() {
-                        Ok(_) => {
-                            Outcome::Verified("read the active window off the screen".into())
-                        }
+                        Ok(_) => Outcome::Verified("read the active window off the screen".into()),
                         Err(e) => Outcome::Failed(e.to_string()),
                     }
                 }
@@ -1471,7 +1745,10 @@ impl<'a> Daemon<'a> {
                 if back == stamp {
                     checks.push(Check::pass("saving and reading state"));
                 } else {
-                    checks.push(Check::fail("saving and reading state", "what came back wasn't what went in"));
+                    checks.push(Check::fail(
+                        "saving and reading state",
+                        "what came back wasn't what went in",
+                    ));
                 }
             }
         }
@@ -1480,7 +1757,10 @@ impl<'a> Daemon<'a> {
         let facts = self.facts.facts.len();
         checks.push(Check::note(
             "memory",
-            format!("{facts} fact{} remembered", if facts == 1 { "" } else { "s" }),
+            format!(
+                "{facts} fact{} remembered",
+                if facts == 1 { "" } else { "s" }
+            ),
         ));
 
         // The phone app: no screens to arrange, nothing of a laptop's to
@@ -1490,10 +1770,14 @@ impl<'a> Daemon<'a> {
         // The screen — that it can see the displays it will arrange on.
         if !phone {
             match self.plat.monitors() {
-            Ok(m) => checks.push(Check::note(
-                "displays",
-                format!("{} screen{} it can see", m.len(), if m.len() == 1 { "" } else { "s" }),
-            )),
+                Ok(m) => checks.push(Check::note(
+                    "displays",
+                    format!(
+                        "{} screen{} it can see",
+                        m.len(),
+                        if m.len() == 1 { "" } else { "s" }
+                    ),
+                )),
                 Err(e) => checks.push(Check::fail("displays", e.to_string())),
             }
         }
@@ -1516,9 +1800,15 @@ impl<'a> Daemon<'a> {
         // How much of the first-run verification actually needs you — the
         // answer is "a short list", not "all of it".
         if !phone {
-            checks.push(Check::note("your part in setup", crate::capability::commissioning_report()));
+            checks.push(Check::note(
+                "your part in setup",
+                crate::capability::commissioning_report(),
+            ));
         } else {
-            checks.push(Check::note("models on this phone", crate::phonemode::models_said()));
+            checks.push(Check::note(
+                "models on this phone",
+                crate::phonemode::models_said(),
+            ));
         }
 
         // Setup, and the language model: what "what's outstanding in your
@@ -1533,14 +1823,22 @@ impl<'a> Daemon<'a> {
         if missing.is_empty() {
             checks.push(Check::pass("setup: everything's fetched"));
         } else {
-            checks.push(Check::fail("setup", format!("still to fetch: {} (starting Atlas again fetches them)", missing.join(", "))));
+            checks.push(Check::fail(
+                "setup",
+                format!(
+                    "still to fetch: {} (starting Atlas again fetches them)",
+                    missing.join(", ")
+                ),
+            ));
         }
         if self.llm.is_some() {
             checks.push(Check::pass("the language model"));
         } else {
-            checks.push(Check::fail("the language model", "not loaded, so only set phrases work"));
+            checks.push(Check::fail(
+                "the language model",
+                "not loaded, so only set phrases work",
+            ));
         }
-
 
         let mut out = crate::checkup::report(&checks);
         // A closing line that tells you what to do about it, drawn from whether
@@ -1565,7 +1863,9 @@ impl<'a> Daemon<'a> {
         // In context: when two facts share the question's word, the one about
         // what you were just discussing wins. Silent — the answer just gets
         // more apt; nothing is volunteered that the question did not find.
-        let hits = self.facts.recall_in_context(question, &self.context_terms(question), now);
+        let hits = self
+            .facts
+            .recall_in_context(question, &self.context_terms(question), now);
         let top = hits.first()?;
         if !crate::facts::answers(top, question) {
             return None;
@@ -1582,7 +1882,10 @@ impl<'a> Daemon<'a> {
         if self.library.is_empty() {
             return None;
         }
-        let cfg = self.tools_ref().map(|t| t.recall.clone()).unwrap_or_default();
+        let cfg = self
+            .tools_ref()
+            .map(|t| t.recall.clone())
+            .unwrap_or_default();
         // The question's own meaning vector, when meaning search is on and an
         // encoder is installed. `None` degrades to word search inside
         // `search`, so an encoder that is missing or fails costs the extra
@@ -1618,10 +1921,7 @@ impl<'a> Daemon<'a> {
                     if let Some(piece) = self.library.get(top.id) {
                         let known = crate::freshness::Known::new(
                             &piece.title,
-                            crate::freshness::shelf_for(&format!(
-                                "{} {}",
-                                piece.title, piece.text
-                            )),
+                            crate::freshness::shelf_for(&format!("{} {}", piece.title, piece.text)),
                             crate::freshness::Checkable::File(piece.source.clone()),
                             piece.at,
                         );
@@ -1683,9 +1983,22 @@ impl<'a> Daemon<'a> {
         }
         let cfg = self.tools_cfg().models.clone();
         let root = self.store.install_root();
-        let piece = if better { crate::getpieces::better_talk_model() } else { crate::getpieces::faster_talk_model() };
+        let piece = if better {
+            crate::getpieces::better_talk_model()
+        } else {
+            crate::getpieces::faster_talk_model()
+        };
         let here = crate::getpieces::have(&piece, &root)
-            || crate::models::Registry::dir_for(&cfg).join(format!("{}.gguf", if better { crate::deepbrain::BETTER_TALK } else { crate::deepbrain::FASTER_TALK })).is_file();
+            || crate::models::Registry::dir_for(&cfg)
+                .join(format!(
+                    "{}.gguf",
+                    if better {
+                        crate::deepbrain::BETTER_TALK
+                    } else {
+                        crate::deepbrain::FASTER_TALK
+                    }
+                ))
+                .is_file();
         if crate::models::talks_better(&cfg) == better && here {
             return if better {
                 "I'm already using the better model.".into()
@@ -1728,15 +2041,24 @@ impl<'a> Daemon<'a> {
     /// when the setting changed since it was started, it is stopped and the
     /// connection rebuilt, and the next pass starts it on the new one.
     pub(super) fn follow_the_talk_setting(&mut self) {
-        let Some(tc) = self.tools_ref().cloned() else { return };
+        let Some(tc) = self.tools_ref().cloned() else {
+            return;
+        };
         let asked = tc.models.talk.trim().to_ascii_lowercase();
         let before = self.talk_setting_seen.replace(asked.clone());
         // The first look only notes it: the server is started on it anyway.
-        if before.is_none() || before.as_deref() == Some(asked.as_str()) || !self.starts_model_server || tc.llm.is_some() {
+        if before.is_none()
+            || before.as_deref() == Some(asked.as_str())
+            || !self.starts_model_server
+            || tc.llm.is_some()
+        {
             return;
         }
-        let (registry, _) = crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&tc.models));
-        let wanted = registry.choose_for(&tc.models, u64::MAX).map(|m| m.id.clone());
+        let (registry, _) =
+            crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&tc.models));
+        let wanted = registry
+            .choose_for(&tc.models, u64::MAX)
+            .map(|m| m.id.clone());
         if wanted.is_none() || wanted == self.model_running_id {
             return;
         }
@@ -1745,13 +2067,19 @@ impl<'a> Daemon<'a> {
             self.log.info(&format!(
                 "switching the talking model to {} -- stopped {}",
                 wanted.as_deref().unwrap_or("?"),
-                self.model_running_id.as_deref().unwrap_or("the one running")
+                self.model_running_id
+                    .as_deref()
+                    .unwrap_or("the one running")
             ));
         }
         self.model_running_id = None;
         self.model_started = None;
         self.model_start_tried = None;
-        if let Ok(mut seen) = self.model_server_seen.lock().or_else(crate::crash::unpoison) {
+        if let Ok(mut seen) = self
+            .model_server_seen
+            .lock()
+            .or_else(crate::crash::unpoison)
+        {
             *seen = None;
         }
         // Built for the new model (its own template), once its server is up.
@@ -1775,7 +2103,11 @@ impl<'a> Daemon<'a> {
         };
         let mut buttons = String::new();
         if better_here {
-            let (what, label) = if crate::models::talks_better(&cfg) { ("faster", "Use the faster model") } else { ("better", "Use the better model") };
+            let (what, label) = if crate::models::talks_better(&cfg) {
+                ("faster", "Use the faster model")
+            } else {
+                ("better", "Use the better model")
+            };
             buttons.push_str(&format!("<button name=what value={what}>{label}</button>"));
         } else {
             buttons.push_str(&format!(
@@ -1823,11 +2155,18 @@ impl<'a> Daemon<'a> {
              you're talking."
                 .to_string()
         };
-        let bigger_line = if bigger_line.is_empty() { String::new() } else { format!("<p>{}</p>", crate::hub::esc(&bigger_line)) };
+        let bigger_line = if bigger_line.is_empty() {
+            String::new()
+        } else {
+            format!("<p>{}</p>", crate::hub::esc(&bigger_line))
+        };
         // The coding model (2 Oct 2026, `coder`): whichever this machine
         // has room for, or a line saying there's none that fits.
         let coder_piece = crate::coder::pieces_for_here().into_iter().next();
-        let coder_here = self.coder.is_set_up() || coder_piece.as_ref().is_some_and(|p| crate::getpieces::have(p, &root));
+        let coder_here = self.coder.is_set_up()
+            || coder_piece
+                .as_ref()
+                .is_some_and(|p| crate::getpieces::have(p, &root));
         let coder_line = match (&coder_piece, coder_here) {
             (_, true) if self.coder.is_set_up() => self.coder.brain.describe(),
             (_, true) => "The coding model is here; it's set up within a minute.".to_string(),
@@ -1873,7 +2212,8 @@ impl<'a> Daemon<'a> {
     pub(crate) fn free_wins(&self) -> Vec<crate::hub::FreeWin> {
         use crate::improve::Gain;
         let root = self.store.install_root();
-        let deep_here = crate::getpieces::have(&crate::getpieces::deep_model(), &root) || self.deep.is_set_up();
+        let deep_here =
+            crate::getpieces::have(&crate::getpieces::deep_model(), &root) || self.deep.is_set_up();
         let understanding = self.understanding_here();
         crate::improve::automatic()
             .into_iter()
@@ -1881,16 +2221,26 @@ impl<'a> Daemon<'a> {
                 let (here, get) = match m.gain {
                     Gain::Precomputed if !understanding => (
                         "Not here yet: it needs the meaning model.".to_string(),
-                        Some(("Get the meaning model (91 MB)".to_string(), "get-understanding".to_string())),
+                        Some((
+                            "Get the meaning model (91 MB)".to_string(),
+                            "get-understanding".to_string(),
+                        )),
                     ),
-                    Gain::WarmModel if self.llm.is_none() => ("Not here yet: no model is set up.".into(), None),
+                    Gain::WarmModel if self.llm.is_none() => {
+                        ("Not here yet: no model is set up.".into(), None)
+                    }
                     Gain::RightSizedModel if !deep_here => (
                         "Half here: the talking model is, the deep one isn't.".into(),
                         Some(("Get the deep model".into(), "get-deep".into())),
                     ),
                     _ => ("On here.".into(), None),
                 };
-                crate::hub::FreeWin { what: m.what, worth: m.worth.to_string(), here, get }
+                crate::hub::FreeWin {
+                    what: m.what,
+                    worth: m.worth.to_string(),
+                    here,
+                    get,
+                }
             })
             .collect()
     }
@@ -1899,7 +2249,9 @@ impl<'a> Daemon<'a> {
     /// configured encoder program?
     fn understanding_here(&self) -> bool {
         let root = self.store.install_root();
-        crate::getpieces::understanding().iter().all(|p| crate::getpieces::have(p, &root))
+        crate::getpieces::understanding()
+            .iter()
+            .all(|p| crate::getpieces::have(p, &root))
             || crate::meaning::available(&self.meaning_cfg(), &self.tool_vars())
     }
 
@@ -1908,7 +2260,8 @@ impl<'a> Daemon<'a> {
     /// they're here.
     fn get_understanding(&mut self) -> String {
         if self.handover().stance.handed_over() {
-            return "Not while this is handed over -- downloads onto this machine are the owner's.".into();
+            return "Not while this is handed over -- downloads onto this machine are the owner's."
+                .into();
         }
         if self.understanding_here() {
             return "The meaning model is already here.".into();
@@ -1919,12 +2272,23 @@ impl<'a> Daemon<'a> {
         let work: crew::Work = Box::new(move |_ctl| {
             for p in &pieces {
                 if !crate::getpieces::have(p, &root) {
-                    crate::getpieces::fetch(p, &root, &crate::getpieces::Tools::default(), &|_, _| {})?;
+                    crate::getpieces::fetch(
+                        p,
+                        &root,
+                        &crate::getpieces::Tools::default(),
+                        &|_, _| {},
+                    )?;
                 }
             }
             Ok("The meaning model is here and checked. I'll understand what you mean, not only the words, from now on.".into())
         });
-        if self.hand_off("model-piece", crate::store::now(), work, Some("the meaning model".into()), SpeakPolicy::Always) {
+        if self.hand_off(
+            "model-piece",
+            crate::store::now(),
+            work,
+            Some("the meaning model".into()),
+            SpeakPolicy::Always,
+        ) {
             self.meaning_route_retry = true;
             format!("Getting the meaning model ({mb} MB) -- I'll say when it's ready.")
         } else {
@@ -1937,7 +2301,8 @@ impl<'a> Daemon<'a> {
     /// would sit unused, and 5.4 GB of disk is not nothing.
     fn get_bigger_talk(&mut self) -> String {
         if self.handover().stance.handed_over() {
-            return "Not while this is handed over -- downloads onto this machine are the owner's.".into();
+            return "Not while this is handed over -- downloads onto this machine are the owner's."
+                .into();
         }
         let root = self.store.install_root();
         let pieces = crate::getpieces::bigger_talk_model();
@@ -1946,7 +2311,12 @@ impl<'a> Daemon<'a> {
         }
         let cfg = self.tools_cfg().models.clone();
         let bytes: u64 = pieces.iter().map(|p| p.bytes).sum();
-        if !crate::models::room_for_bigger_talk(&crate::fit::measure(), &cfg, crate::getpieces::helpers_resident_mb(&root), crate::models::bigger_talk_needs(&cfg, bytes)) {
+        if !crate::models::room_for_bigger_talk(
+            &crate::fit::measure(),
+            &cfg,
+            crate::getpieces::helpers_resident_mb(&root),
+            crate::models::bigger_talk_needs(&cfg, bytes),
+        ) {
             return "This machine hasn't the room to talk through the bigger model beside everything else I run, so I've left it -- the 4B stays.".into();
         }
         let label = crate::getpieces::gib_label(bytes);
@@ -1957,12 +2327,23 @@ impl<'a> Daemon<'a> {
                     continue;
                 }
                 if crate::getpieces::take_in(p, &root, &places)?.is_none() {
-                    crate::getpieces::fetch(p, &root, &crate::getpieces::Tools::default(), &|_, _| {})?;
+                    crate::getpieces::fetch(
+                        p,
+                        &root,
+                        &crate::getpieces::Tools::default(),
+                        &|_, _| {},
+                    )?;
                 }
             }
             Ok("The bigger model is here and checked. It takes over talking the next time the model starts.".into())
         });
-        if self.hand_off("model-piece", crate::store::now(), work, Some("the bigger model".into()), SpeakPolicy::Always) {
+        if self.hand_off(
+            "model-piece",
+            crate::store::now(),
+            work,
+            Some("the bigger model".into()),
+            SpeakPolicy::Always,
+        ) {
             format!("Getting the bigger model ({label}) -- I'll say when it's ready.")
         } else {
             "I've too much going on to start that download now. Try again in a minute.".into()
@@ -1975,7 +2356,8 @@ impl<'a> Daemon<'a> {
     /// handed over: it's the owner's machine.
     fn get_model_piece(&mut self, piece: crate::getpieces::Piece, name: &'static str) -> String {
         if self.handover().stance.handed_over() {
-            return "Not while this is handed over -- downloads onto this machine are the owner's.".into();
+            return "Not while this is handed over -- downloads onto this machine are the owner's."
+                .into();
         }
         let root = self.store.install_root();
         if crate::getpieces::have(&piece, &root) {
@@ -1986,7 +2368,12 @@ impl<'a> Daemon<'a> {
             let places = crate::getpieces::places_it_may_be(&root);
             let taken = crate::getpieces::take_in(&piece, &root, &places)?;
             if taken.is_none() {
-                crate::getpieces::fetch(&piece, &root, &crate::getpieces::Tools::default(), &|_, _| {})?;
+                crate::getpieces::fetch(
+                    &piece,
+                    &root,
+                    &crate::getpieces::Tools::default(),
+                    &|_, _| {},
+                )?;
             }
             Ok(match taken {
                 Some(from) => format!("{} was already on this computer ({}); I checked it and moved it into my models folder.", capital(name), from.display()),
@@ -1997,7 +2384,13 @@ impl<'a> Daemon<'a> {
         // brain" are two downloads, not one asked twice (both were
         // "model-piece" with nothing to tell them apart, so the second
         // joined the first and never ran).
-        if self.hand_off("model-piece", crate::store::now(), work, Some(name.to_string()), SpeakPolicy::Always) {
+        if self.hand_off(
+            "model-piece",
+            crate::store::now(),
+            work,
+            Some(name.to_string()),
+            SpeakPolicy::Always,
+        ) {
             format!("Getting {name} ({label}) -- I'll say when it's ready.")
         } else {
             "I've too much going on to start that download now. Try again in a minute.".into()

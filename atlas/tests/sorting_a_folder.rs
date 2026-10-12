@@ -16,7 +16,10 @@
 //! back where it was with nothing deleted.
 
 use atlas::daemon::Daemon;
-use atlas::organize::{carry_out_moves_controlled, plan_folders, plan_said, read_sort_request, FileKind, Reason, TO_REVIEW};
+use atlas::organize::{
+    carry_out_moves_controlled, plan_folders, plan_said, read_sort_request, FileKind, Reason,
+    TO_REVIEW,
+};
 use atlas::platform::mock::MockPlatform;
 use atlas::platform::Monitor;
 use atlas::proactive::{Proactive, ProactiveConfig};
@@ -28,7 +31,8 @@ use std::time::{Duration, SystemTime};
 /// Under Cargo's own scratch folder for tests, not the system's temporary
 /// folder: on Windows that is inside AppData, which is never sorted.
 fn tmp(tag: &str) -> PathBuf {
-    let d = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("atlas-sorting-{tag}-{}", std::process::id()));
+    let d = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("atlas-sorting-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -42,7 +46,12 @@ fn put(path: &Path, bytes: &[u8], days_ago: u64) {
     }
     std::fs::write(path, bytes).unwrap();
     let when = SystemTime::now() - Duration::from_secs(days_ago * 86_400 + 600);
-    std::fs::File::options().write(true).open(path).unwrap().set_modified(when).unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_modified(when)
+        .unwrap();
 }
 
 fn now() -> u64 {
@@ -59,7 +68,10 @@ fn everything(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
             if p.is_dir() {
                 stack.push(p);
             } else {
-                out.push((p.strip_prefix(dir).unwrap().to_path_buf(), std::fs::read(&p).unwrap()));
+                out.push((
+                    p.strip_prefix(dir).unwrap().to_path_buf(),
+                    std::fs::read(&p).unwrap(),
+                ));
             }
         }
     }
@@ -68,7 +80,11 @@ fn everything(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 }
 
 fn may_work_in(dir: &Path) -> SystemConfig {
-    SystemConfig { enabled: true, file_roots: vec![dir.display().to_string()], may_prepare_itself: false }
+    SystemConfig {
+        enabled: true,
+        file_roots: vec![dir.display().to_string()],
+        may_prepare_itself: false,
+    }
 }
 
 #[test]
@@ -86,7 +102,12 @@ fn the_plan_groups_by_kind_and_by_age_inside_the_same_folder() {
     // Already in a folder of yours: left.
     put(&d.join("Keep").join("inside.pdf"), b"inside", 3);
     let plan = plan_folders(&[d.clone()], None, false, now(), Duration::from_secs(10));
-    let into = |name: &str| plan.moves.iter().find(|m| m.from == d.join(name)).map(|m| m.into.clone());
+    let into = |name: &str| {
+        plan.moves
+            .iter()
+            .find(|m| m.from == d.join(name))
+            .map(|m| m.into.clone())
+    };
     assert_eq!(into("taxes.pdf"), Some(d.join("Documents")));
     assert_eq!(into("holiday.jpg"), Some(d.join("Pictures")));
     assert_eq!(into("song.mp3"), Some(d.join("Music")));
@@ -95,15 +116,40 @@ fn the_plan_groups_by_kind_and_by_age_inside_the_same_folder() {
     assert_eq!(into("clip.mp4"), Some(d.join("Videos")));
     assert_eq!(into("script.py"), Some(d.join("Code")));
     // Untouched for over a year: a year folder inside its kind.
-    let old = plan.moves.iter().find(|m| m.from == d.join("old-notes.txt")).unwrap();
-    assert!(old.into.starts_with(d.join("Documents")) && old.into != d.join("Documents"), "{:?}", old.into);
-    assert!(matches!(old.reason, Reason::Kind { kind: FileKind::Documents, year: Some(_) }));
+    let old = plan
+        .moves
+        .iter()
+        .find(|m| m.from == d.join("old-notes.txt"))
+        .unwrap();
+    assert!(
+        old.into.starts_with(d.join("Documents")) && old.into != d.join("Documents"),
+        "{:?}",
+        old.into
+    );
+    assert!(matches!(
+        old.reason,
+        Reason::Kind {
+            kind: FileKind::Documents,
+            year: Some(_)
+        }
+    ));
     assert_eq!(into("mystery.xyz"), None, "no confident home: left");
     assert!(plan.unplaced.contains(&d.join("mystery.xyz")));
-    assert!(plan.moves.iter().all(|m| !m.from.starts_with(d.join("Keep"))), "the folders inside are yours already");
+    assert!(
+        plan.moves
+            .iter()
+            .all(|m| !m.from.starts_with(d.join("Keep"))),
+        "the folders inside are yours already"
+    );
     let said = plan_said(&plan);
-    assert!(said.contains("8 files") && said.contains("taxes.pdf") && said.contains("year folder"), "{said}");
-    assert!(said.contains("mystery.xyz") && said.ends_with("Go ahead?"), "{said}");
+    assert!(
+        said.contains("8 files") && said.contains("taxes.pdf") && said.contains("year folder"),
+        "{said}"
+    );
+    assert!(
+        said.contains("mystery.xyz") && said.ends_with("Go ahead?"),
+        "{said}"
+    );
     // Nothing moved by planning.
     assert!(d.join("taxes.pdf").exists() && !d.join("Documents").exists());
 }
@@ -114,9 +160,17 @@ fn old_installers_go_to_review_and_a_program_on_the_desktop_stays() {
     put(&d.join("ToolSetup-x64.msi"), b"msi", 90);
     put(&d.join("fresh-installer.exe"), b"exe", 2);
     let plan = plan_folders(&[d.clone()], None, false, now(), Duration::from_secs(10));
-    let m = plan.moves.iter().find(|m| m.from == d.join("ToolSetup-x64.msi")).unwrap();
+    let m = plan
+        .moves
+        .iter()
+        .find(|m| m.from == d.join("ToolSetup-x64.msi"))
+        .unwrap();
     assert_eq!(m.into, d.join(TO_REVIEW).join("Old installers"));
-    let m = plan.moves.iter().find(|m| m.from == d.join("fresh-installer.exe")).unwrap();
+    let m = plan
+        .moves
+        .iter()
+        .find(|m| m.from == d.join("fresh-installer.exe"))
+        .unwrap();
     assert_eq!(m.into, d.join("Installers"));
     // A program somewhere other than Downloads that doesn't call itself an
     // installer may be one you run from there.
@@ -131,7 +185,11 @@ fn copies_are_found_by_size_then_hash_then_bytes_and_only_copies_move() {
     let d = tmp("copies");
     put(&d.join("photo.jpg"), b"the same picture", 30);
     put(&d.join("photo (1).jpg"), b"the same picture", 10);
-    put(&d.join("Trips").join("photo-again.jpg"), b"the same picture", 5);
+    put(
+        &d.join("Trips").join("photo-again.jpg"),
+        b"the same picture",
+        5,
+    );
     // The same size, different bytes: not a copy.
     put(&d.join("other.jpg"), b"the samf picture", 5);
     // Empty files are all "the same" and none of them is a copy.
@@ -141,22 +199,53 @@ fn copies_are_found_by_size_then_hash_then_bytes_and_only_copies_move() {
     let plan = plan_folders(&[d.clone()], None, true, now(), Duration::from_secs(10));
     let mut copies: Vec<PathBuf> = plan.moves.iter().map(|m| m.from.clone()).collect();
     copies.sort();
-    assert_eq!(copies, vec![d.join("Trips").join("photo-again.jpg"), d.join("photo (1).jpg")]);
+    assert_eq!(
+        copies,
+        vec![
+            d.join("Trips").join("photo-again.jpg"),
+            d.join("photo (1).jpg")
+        ]
+    );
     for m in &plan.moves {
         assert_eq!(m.into, d.join(TO_REVIEW).join("Duplicates"));
-        assert_eq!(m.reason, Reason::Copy { of: d.join("photo.jpg") }, "the oldest stays");
+        assert_eq!(
+            m.reason,
+            Reason::Copy {
+                of: d.join("photo.jpg")
+            },
+            "the oldest stays"
+        );
     }
     assert_eq!(plan.empty_folders, vec![d.join("Nothing here")]);
     let said = plan_said(&plan);
-    assert!(said.contains("2 files are a copy") && said.contains("is the same as photo.jpg"), "{said}");
-    assert!(said.contains(TO_REVIEW) && said.contains("never delete") && said.contains("empty"), "{said}");
+    assert!(
+        said.contains("2 files are a copy") && said.contains("is the same as photo.jpg"),
+        "{said}"
+    );
+    assert!(
+        said.contains(TO_REVIEW) && said.contains("never delete") && said.contains("empty"),
+        "{said}"
+    );
 
     // Carried out: the copies are in "To review", the original where it was,
     // every byte still on the disk.
     let before = everything(&d);
-    let done = carry_out_moves_controlled(&plan, &may_work_in(&d), now(), &mut |_| Ok(()), &mut |_, _| Ok(()), &|| false);
+    let done = carry_out_moves_controlled(
+        &plan,
+        &may_work_in(&d),
+        now(),
+        &mut |_| Ok(()),
+        &mut |_, _| Ok(()),
+        &|| false,
+    );
     assert_eq!(done.moved.len(), 2, "{:?}", done.not);
-    assert!(d.join("photo.jpg").exists() && d.join(TO_REVIEW).join("Duplicates").join("photo (1).jpg").exists());
+    assert!(
+        d.join("photo.jpg").exists()
+            && d.join(TO_REVIEW)
+                .join("Duplicates")
+                .join("photo (1).jpg")
+                .exists()
+    );
     let after = everything(&d);
     assert_eq!(before.len(), after.len(), "nothing deleted");
     let mut b: Vec<Vec<u8>> = before.into_iter().map(|(_, x)| x).collect();
@@ -169,13 +258,30 @@ fn copies_are_found_by_size_then_hash_then_bytes_and_only_copies_move() {
 #[test]
 fn nothing_is_ever_written_over() {
     let d = tmp("clash");
-    put(&d.join("Documents").join("report.pdf"), b"the one already filed", 50);
+    put(
+        &d.join("Documents").join("report.pdf"),
+        b"the one already filed",
+        50,
+    );
     put(&d.join("report.pdf"), b"the loose one", 3);
     let plan = plan_folders(&[d.clone()], None, false, now(), Duration::from_secs(10));
-    let done = carry_out_moves_controlled(&plan, &may_work_in(&d), now(), &mut |_| Ok(()), &mut |_, _| Ok(()), &|| false);
+    let done = carry_out_moves_controlled(
+        &plan,
+        &may_work_in(&d),
+        now(),
+        &mut |_| Ok(()),
+        &mut |_, _| Ok(()),
+        &|| false,
+    );
     assert_eq!(done.moved.len(), 1, "{:?}", done.not);
-    assert_eq!(std::fs::read(d.join("Documents").join("report.pdf")).unwrap(), b"the one already filed");
-    assert_eq!(std::fs::read(d.join("Documents").join("report (2).pdf")).unwrap(), b"the loose one");
+    assert_eq!(
+        std::fs::read(d.join("Documents").join("report.pdf")).unwrap(),
+        b"the one already filed"
+    );
+    assert_eq!(
+        std::fs::read(d.join("Documents").join("report (2).pdf")).unwrap(),
+        b"the loose one"
+    );
     assert!(!d.join("report.pdf").exists());
 }
 
@@ -195,9 +301,25 @@ fn hidden_system_and_unfinished_files_and_project_folders_are_left() {
     assert_eq!(plan.passed_over, 4);
     assert_eq!(plan.in_use, vec![d.join("being-saved.docx")]);
     let said = plan_said(&plan);
-    assert!(said.contains("hidden and system files") && said.contains("open in another program"), "{said}");
-    carry_out_moves_controlled(&plan, &may_work_in(&d), now(), &mut |_| Ok(()), &mut |_, _| Ok(()), &|| false);
-    for f in [".secret.pdf", "desktop.ini", "Atlas.lnk", "movie.mp4.crdownload", "being-saved.docx"] {
+    assert!(
+        said.contains("hidden and system files") && said.contains("open in another program"),
+        "{said}"
+    );
+    carry_out_moves_controlled(
+        &plan,
+        &may_work_in(&d),
+        now(),
+        &mut |_| Ok(()),
+        &mut |_, _| Ok(()),
+        &|| false,
+    );
+    for f in [
+        ".secret.pdf",
+        "desktop.ini",
+        "Atlas.lnk",
+        "movie.mp4.crdownload",
+        "being-saved.docx",
+    ] {
         assert!(d.join(f).exists(), "{f} was touched");
     }
 
@@ -206,15 +328,41 @@ fn hidden_system_and_unfinished_files_and_project_folders_are_left() {
     let project = tmp("project");
     put(&project.join("Cargo.toml"), b"[package]", 3);
     put(&project.join("notes.pdf"), b"notes", 3);
-    let plan = plan_folders(&[project.clone()], None, false, now(), Duration::from_secs(10));
-    assert!(plan.moves.is_empty() && plan.refused.len() == 1, "{:?}", plan.refused);
+    let plan = plan_folders(
+        &[project.clone()],
+        None,
+        false,
+        now(),
+        Duration::from_secs(10),
+    );
+    assert!(
+        plan.moves.is_empty() && plan.refused.len() == 1,
+        "{:?}",
+        plan.refused
+    );
     assert!(plan_said(&plan).contains("project"), "{}", plan_said(&plan));
-    for dir in ["C:\\Windows\\Temp", "C:\\Users\\someone\\AppData\\Local", "/usr/share"] {
-        let plan = plan_folders(&[PathBuf::from(dir)], None, false, now(), Duration::from_secs(1));
+    for dir in [
+        "C:\\Windows\\Temp",
+        "C:\\Users\\someone\\AppData\\Local",
+        "/usr/share",
+    ] {
+        let plan = plan_folders(
+            &[PathBuf::from(dir)],
+            None,
+            false,
+            now(),
+            Duration::from_secs(1),
+        );
         assert!(plan.moves.is_empty() && plan.refused.len() == 1, "{dir}");
     }
     // Nor into one.
-    let plan = plan_folders(&[d.clone()], Some(Path::new("C:\\Program Files\\Sorted")), false, now(), Duration::from_secs(1));
+    let plan = plan_folders(
+        &[d.clone()],
+        Some(Path::new("C:\\Program Files\\Sorted")),
+        false,
+        now(),
+        Duration::from_secs(1),
+    );
     assert!(plan.moves.is_empty() && !plan.refused.is_empty());
 }
 
@@ -223,12 +371,40 @@ fn the_switch_and_the_folders_atlas_may_work_in_are_kept_to() {
     let d = tmp("gate");
     put(&d.join("a.pdf"), b"a", 3);
     let plan = plan_folders(&[d.clone()], None, false, now(), Duration::from_secs(10));
-    let off = SystemConfig { enabled: false, ..may_work_in(&d) };
-    let done = carry_out_moves_controlled(&plan, &off, now(), &mut |_| Ok(()), &mut |_, _| Ok(()), &|| false);
-    assert!(done.moved.is_empty() && done.not[0].contains("switched off"), "{:?}", done.not);
-    let elsewhere = SystemConfig { file_roots: vec![tmp("gate-other").display().to_string()], ..may_work_in(&d) };
-    let done = carry_out_moves_controlled(&plan, &elsewhere, now(), &mut |_| Ok(()), &mut |_, _| Ok(()), &|| false);
-    assert!(done.moved.is_empty() && done.not[0].contains("outside the folders"), "{:?}", done.not);
+    let off = SystemConfig {
+        enabled: false,
+        ..may_work_in(&d)
+    };
+    let done = carry_out_moves_controlled(
+        &plan,
+        &off,
+        now(),
+        &mut |_| Ok(()),
+        &mut |_, _| Ok(()),
+        &|| false,
+    );
+    assert!(
+        done.moved.is_empty() && done.not[0].contains("switched off"),
+        "{:?}",
+        done.not
+    );
+    let elsewhere = SystemConfig {
+        file_roots: vec![tmp("gate-other").display().to_string()],
+        ..may_work_in(&d)
+    };
+    let done = carry_out_moves_controlled(
+        &plan,
+        &elsewhere,
+        now(),
+        &mut |_| Ok(()),
+        &mut |_, _| Ok(()),
+        &|| false,
+    );
+    assert!(
+        done.moved.is_empty() && done.not[0].contains("outside the folders"),
+        "{:?}",
+        done.not
+    );
     assert!(d.join("a.pdf").exists());
 }
 
@@ -236,19 +412,31 @@ fn the_switch_and_the_folders_atlas_may_work_in_are_kept_to() {
 fn a_batch_is_capped_and_the_rest_left_for_next_time() {
     let d = tmp("cap");
     for i in 0..(atlas::organize::MOST_AT_ONCE + 7) {
-        put(&d.join(format!("n{i:04}.txt")), format!("{i}").as_bytes(), 3);
+        put(
+            &d.join(format!("n{i:04}.txt")),
+            format!("{i}").as_bytes(),
+            3,
+        );
     }
     let plan = plan_folders(&[d.clone()], None, false, now(), Duration::from_secs(30));
     assert_eq!(plan.moves.len(), atlas::organize::MOST_AT_ONCE);
     assert_eq!(plan.more_next_time, 7);
-    assert!(plan_said(&plan).contains("7 more next time"), "{}", plan_said(&plan));
+    assert!(
+        plan_said(&plan).contains("7 more next time"),
+        "{}",
+        plan_said(&plan)
+    );
 }
 
 #[test]
 fn the_sentence_says_which_folder_where_to_and_whether_only_copies() {
     let d = tmp("asking");
     let to = tmp("asking-to");
-    let r = read_sort_request(&format!("sort the files in {} into {}", d.display(), to.display()));
+    let r = read_sort_request(&format!(
+        "sort the files in {} into {}",
+        d.display(),
+        to.display()
+    ));
     assert_eq!(r.folders, vec![d.clone()]);
     assert_eq!(r.into, Some(to.clone()));
     assert!(!r.copies_only);
@@ -256,7 +444,10 @@ fn the_sentence_says_which_folder_where_to_and_whether_only_copies() {
     assert_eq!(r.folders, vec![d.clone()]);
     assert!(r.copies_only && r.into.is_none());
     let r = read_sort_request("sort the files in my zz-no-such-folder-qq");
-    assert!(r.folders.is_empty() && r.not_found.as_deref() == Some("my zz-no-such-folder-qq"), "{r:?}");
+    assert!(
+        r.folders.is_empty() && r.not_found.as_deref() == Some("my zz-no-such-folder-qq"),
+        "{r:?}"
+    );
     // Windows paths read the same on any machine.
     let r = read_sort_request("organize the files in D:\\Photos\\2024 into E:\\Sorted.");
     assert_eq!(r.folders, vec![PathBuf::from("D:\\Photos\\2024")]);
@@ -264,9 +455,19 @@ fn the_sentence_says_which_folder_where_to_and_whether_only_copies() {
     // The named everyday folders are found the way this machine has them,
     // never by a fixed path.
     let r = read_sort_request("clean up my desktop");
-    assert_eq!(r.folders, atlas::organize::user_folder("desktop").into_iter().collect::<Vec<_>>());
+    assert_eq!(
+        r.folders,
+        atlas::organize::user_folder("desktop")
+            .into_iter()
+            .collect::<Vec<_>>()
+    );
     let r = read_sort_request("organize my downloads");
-    assert_eq!(r.folders, atlas::organize::user_folder("downloads").into_iter().collect::<Vec<_>>());
+    assert_eq!(
+        r.folders,
+        atlas::organize::user_folder("downloads")
+            .into_iter()
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -284,15 +485,29 @@ fn each_way_of_asking_reaches_the_organizer() {
         "organize the files in C:\\Users\\me\\Work",
         "tidy up my downloads folder",
     ] {
-        assert_eq!(parser.parse(said), atlas::intent::Intent::TidyDesktop, "{said}");
+        assert_eq!(
+            parser.parse(said),
+            atlas::intent::Intent::TidyDesktop,
+            "{said}"
+        );
     }
     assert_eq!(parser.parse("undo that"), atlas::intent::Intent::Undo);
     // What "Make it run well" already answered still goes there.
-    assert!(matches!(parser.parse("find duplicate files"), atlas::intent::Intent::PcTune(_)));
+    assert!(matches!(
+        parser.parse("find duplicate files"),
+        atlas::intent::Intent::PcTune(_)
+    ));
 }
 
 fn plat() -> MockPlatform {
-    MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }])
+    MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }])
 }
 
 #[test]
@@ -310,10 +525,19 @@ fn yes_sorts_it_and_undo_that_puts_every_file_back_through_the_daemon() {
     let tools = c.tools.get_or_insert_with(Default::default);
     tools.system = may_work_in(&d);
     let p = plat();
-    let mut d_ = Daemon::new(&c, &p, None, Store::new(tmp("daemon-store")), Proactive::new(ProactiveConfig::default()));
+    let mut d_ = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("daemon-store")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let t = 1_790_995_000;
     let plan = d_.turn(&format!("sort the files in {}", d.display()), t);
-    assert!(plan.contains("Go ahead?") && plan.contains("copy"), "{plan}");
+    assert!(
+        plan.contains("Go ahead?") && plan.contains("copy"),
+        "{plan}"
+    );
     assert!(d.join("taxes.pdf").exists(), "nothing moves before the yes");
 
     let started = d_.turn("yes", t + 10);
@@ -323,24 +547,46 @@ fn yes_sorts_it_and_undo_that_puts_every_file_back_through_the_daemon() {
     let mut heard = Vec::new();
     while std::time::Instant::now() < deadline {
         let lines = d_.tick(t + 11);
-        terminal = lines.iter().find(|line| line.starts_with("Finished sorting the approved files:")).cloned();
+        terminal = lines
+            .iter()
+            .find(|line| line.starts_with("Finished sorting the approved files:"))
+            .cloned();
         heard.extend(lines);
-        if terminal.is_some() { break; }
+        if terminal.is_some() {
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     let done = terminal.unwrap_or_else(|| panic!("sorting never confirmed completion: {heard:?}"));
-    assert!(done.contains("moved 5 file(s)") && done.contains("0 planned file(s) were not moved"), "{done}");
+    assert!(
+        done.contains("moved 5 file(s)") && done.contains("0 planned file(s) were not moved"),
+        "{done}"
+    );
     assert!(d.join("Documents").join("taxes.pdf").exists());
-    assert!(d.join(TO_REVIEW).join("Duplicates").join("holiday copy.jpg").exists());
-    assert!(d.join(TO_REVIEW).join("Old installers").join("Setup-x64.msi").exists());
+    assert!(d
+        .join(TO_REVIEW)
+        .join("Duplicates")
+        .join("holiday copy.jpg")
+        .exists());
+    assert!(d
+        .join(TO_REVIEW)
+        .join("Old installers")
+        .join("Setup-x64.msi")
+        .exists());
     assert_eq!(everything(&d).len(), before.len(), "nothing deleted");
 
     let asked = d_.turn("undo that", t + 20);
     assert!(asked.contains("moved 5 file(s)"), "{asked}");
     let mut undone = d_.turn("yes", t + 30);
     if undone.contains("approved undo is waiting") {
-        assert!(d.join("Documents").join("taxes.pdf").exists(), "waiting must not move any file");
-        assert!(!d.join("taxes.pdf").exists(), "waiting must not restore early");
+        assert!(
+            d.join("Documents").join("taxes.pdf").exists(),
+            "waiting must not move any file"
+        );
+        assert!(
+            !d.join("taxes.pdf").exists(),
+            "waiting must not restore early"
+        );
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         while std::time::Instant::now() < deadline {
             let lines = d_.tick(t + 31);
@@ -351,8 +597,15 @@ fn yes_sorts_it_and_undo_that_puts_every_file_back_through_the_daemon() {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
-    assert!(undone.starts_with("Undone") && undone.contains("Put 5 of 5 back"), "{undone}");
-    assert_eq!(everything(&d), before, "every file back at its own path, with its own bytes");
+    assert!(
+        undone.starts_with("Undone") && undone.contains("Put 5 of 5 back"),
+        "{undone}"
+    );
+    assert_eq!(
+        everything(&d),
+        before,
+        "every file back at its own path, with its own bytes"
+    );
     // And the folders the sorting made are gone again; yours stays.
     for made in ["Documents", "Pictures", TO_REVIEW] {
         assert!(!d.join(made).exists(), "{made} was left behind");
@@ -367,16 +620,30 @@ fn with_system_changes_off_it_says_so_and_moves_nothing() {
     let mut c = atlas::config::Config::load(Path::new("config")).unwrap();
     c.tools.get_or_insert_with(Default::default).system.enabled = false;
     let p = plat();
-    let mut d = Daemon::new(&c, &p, None, Store::new(tmp("off-store")), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(tmp("off-store")),
+        Proactive::new(ProactiveConfig::default()),
+    );
     let r = d.turn("organize my PC", 1_790_996_000);
-    assert!(r.contains("System changes") && r.contains("switched off"), "{r}");
+    assert!(
+        r.contains("System changes") && r.contains("switched off"),
+        "{r}"
+    );
 }
 
 #[test]
 fn the_status_page_has_sorting_buttons_that_go_through_talk() {
     let s = atlas::hub::sorting_section();
     assert_eq!(s.matches("action=/hub/talk").count(), 4);
-    for said in ["organize my PC", "organize my downloads", "clean up my desktop", "find duplicates in my downloads"] {
+    for said in [
+        "organize my PC",
+        "organize my downloads",
+        "clean up my desktop",
+        "find duplicates in my downloads",
+    ] {
         assert!(s.contains(said), "{said}");
     }
 }

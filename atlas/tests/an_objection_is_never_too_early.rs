@@ -40,11 +40,16 @@
 //! now so that wiring it is a decision about whether to, not a decision that
 //! also has to find these.
 
-use atlas::consent::{Recorder, ConsentConfig, Scope, Step};
+use atlas::consent::{ConsentConfig, Recorder, Scope, Step};
 
 fn on() -> ConsentConfig {
     // The announce-and-object mode, which still exists beside asking.
-    ConsentConfig { enabled: true, ask_every_call: false, ask_the_others: false, ..Default::default() }
+    ConsentConfig {
+        enabled: true,
+        ask_every_call: false,
+        ask_the_others: false,
+        ..Default::default()
+    }
 }
 
 /// Up to the moment the announcement is going out.
@@ -89,7 +94,10 @@ fn the_objection_and_the_announcement_landing_together_still_stops_it() {
     let after = c.announcement_delivered();
     match after {
         Step::AskYou(said) => {
-            assert!(said.contains("Priya"), "it did not say who objected: {said}");
+            assert!(
+                said.contains("Priya"),
+                "it did not say who objected: {said}"
+            );
             assert!(
                 said.contains("your side"),
                 "it did not say what it is doing instead: {said}"
@@ -121,7 +129,10 @@ fn objecting_once_recording_has_started_stops_and_discards() {
     // The case that already worked, so the fix cannot be satisfied by
     // handling only the new one.
     let mut c = announcing();
-    assert!(matches!(c.announcement_delivered(), Step::Start(Scope::Everyone)));
+    assert!(matches!(
+        c.announcement_delivered(),
+        Step::Start(Scope::Everyone)
+    ));
     assert!(c.capturing_others());
 
     match c.someone_objected("Priya") {
@@ -146,7 +157,10 @@ fn an_objection_before_anything_starts_is_remembered_rather_than_acted_on() {
         Step::Announce(_) => {}
         o => panic!("a stale objection blocked the next call: {o:?}"),
     }
-    assert!(matches!(c.announcement_delivered(), Step::Start(Scope::Everyone)));
+    assert!(matches!(
+        c.announcement_delivered(),
+        Step::Start(Scope::Everyone)
+    ));
 }
 
 #[test]
@@ -155,7 +169,10 @@ fn a_call_recording_nothing_but_you_is_unaffected_by_an_objection_to_it() {
     // involved — so this must not become a way for a third party to stop you
     // taking your own notes.
     let mut c = Recorder::new(on());
-    assert!(matches!(c.call_started(Scope::YouOnly), Step::Start(Scope::YouOnly)));
+    assert!(matches!(
+        c.call_started(Scope::YouOnly),
+        Step::Start(Scope::YouOnly)
+    ));
     let step = c.someone_objected("Priya");
     assert!(
         matches!(step, Step::StopAndDiscard(_)),
@@ -171,29 +188,55 @@ fn saying_yes_does_nothing_while_the_feature_is_switched_off() {
     // and the answer are separated by a person thinking about it, and a
     // spoken "yes, record it" can reach `you_approved` without
     // `call_started` having run at all.
-    let mut c = Recorder::new(ConsentConfig { enabled: false, ..on() });
-    assert!(matches!(c.you_approved(), Step::Nothing), "it started announcing with the feature off");
+    let mut c = Recorder::new(ConsentConfig {
+        enabled: false,
+        ..on()
+    });
+    assert!(
+        matches!(c.you_approved(), Step::Nothing),
+        "it started announcing with the feature off"
+    );
     assert!(!c.capturing_others());
-    assert!(c.indicator().is_none(), "it is showing a recording indicator with the feature off");
+    assert!(
+        c.indicator().is_none(),
+        "it is showing a recording indicator with the feature off"
+    );
 }
 
 #[test]
 fn saying_no_does_nothing_while_the_feature_is_switched_off() {
     // `you_declined` set `state = Recording` outright — so declining to
     // record everyone started recording your side, whatever the switch said.
-    let mut c = Recorder::new(ConsentConfig { enabled: false, ..on() });
-    assert!(matches!(c.you_declined(), Step::Nothing), "declining started a recording");
-    assert!(c.indicator().is_none(), "it is recording your side with the feature off");
+    let mut c = Recorder::new(ConsentConfig {
+        enabled: false,
+        ..on()
+    });
+    assert!(
+        matches!(c.you_declined(), Step::Nothing),
+        "declining started a recording"
+    );
+    assert!(
+        c.indicator().is_none(),
+        "it is recording your side with the feature off"
+    );
 }
 
 #[test]
 fn the_switch_being_on_still_lets_both_answers_work() {
     // So neither gate is satisfied by refusing everything.
-    let mut c = Recorder::new(ConsentConfig { enabled: true, ask_every_call: true, ..on() });
+    let mut c = Recorder::new(ConsentConfig {
+        enabled: true,
+        ask_every_call: true,
+        ..on()
+    });
     assert!(matches!(c.call_started(Scope::Everyone), Step::AskYou(_)));
     assert!(matches!(c.you_approved(), Step::Announce(_)));
 
-    let mut d = Recorder::new(ConsentConfig { enabled: true, ask_every_call: true, ..on() });
+    let mut d = Recorder::new(ConsentConfig {
+        enabled: true,
+        ask_every_call: true,
+        ..on()
+    });
     assert!(matches!(d.call_started(Scope::Everyone), Step::AskYou(_)));
     assert!(matches!(d.you_declined(), Step::Start(Scope::YouOnly)));
     assert_eq!(d.indicator().as_deref(), Some("noting your side"));
@@ -205,7 +248,14 @@ fn the_module_is_wired_and_these_fixes_are_live() {
     // 24 Sep 2026 call notes run it for real, so both fixes now guard real
     // calls: it is off the unwired baseline, and the running Atlas reaches it.
     let wiring = std::fs::read_to_string("tests/wiring.rs").expect("tests/wiring.rs");
-    assert!(!wiring.contains("\"consent\","), "consent is listed as unwired again");
+    assert!(
+        !wiring.contains("\"consent\","),
+        "consent is listed as unwired again"
+    );
     let daemon = std::fs::read_to_string("src/callnotes.rs").expect("src/callnotes.rs");
-    assert_eq!(daemon.matches("recorder.someone_objected(").count(), 1, "an objection no longer reaches the recorder");
+    assert_eq!(
+        daemon.matches("recorder.someone_objected(").count(),
+        1,
+        "an objection no longer reaches the recorder"
+    );
 }

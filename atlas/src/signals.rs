@@ -114,15 +114,26 @@ pub fn from_unused(never_used: &[String], total_capabilities: u32) -> Option<Sig
 /// mutation run is a test that never fails -- the `NeverFailed` signal, which
 /// had no producer until 1 Oct 2026. One signal per function.
 pub fn from_survivors(survivors: &[crate::mutation::Survivor]) -> Vec<Signal> {
-    let mut by_fn: std::collections::BTreeMap<String, (u32, String)> = std::collections::BTreeMap::new();
+    let mut by_fn: std::collections::BTreeMap<String, (u32, String)> =
+        std::collections::BTreeMap::new();
     for s in survivors {
-        let subject = if s.function.is_empty() { s.file.clone() } else { format!("{}::{}", s.file, s.function) };
+        let subject = if s.function.is_empty() {
+            s.file.clone()
+        } else {
+            format!("{}::{}", s.file, s.function)
+        };
         let e = by_fn.entry(subject).or_insert((0, s.said()));
         e.0 += 1;
     }
     by_fn
         .into_iter()
-        .map(|(subject, (seen, example))| Signal { kind: Kind::NeverFailed, subject, seen, of: seen, example })
+        .map(|(subject, (seen, example))| Signal {
+            kind: Kind::NeverFailed,
+            subject,
+            seen,
+            of: seen,
+            example,
+        })
         .collect()
 }
 
@@ -134,7 +145,11 @@ pub fn from_regressions(cases: &[crate::regressions::Case]) -> Vec<Signal> {
         .filter(|c| c.source == crate::regressions::Source::SelfTest)
         .map(|c| Signal {
             kind: Kind::SelfTestFails,
-            subject: if c.command.is_empty() { c.said.clone() } else { c.command.clone() },
+            subject: if c.command.is_empty() {
+                c.said.clone()
+            } else {
+                c.command.clone()
+            },
             seen: 1,
             of: 1,
             example: c.said.clone(),

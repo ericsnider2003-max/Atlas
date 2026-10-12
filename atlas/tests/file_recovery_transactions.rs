@@ -51,7 +51,8 @@ fn a_partial_undo_is_not_complete_and_can_be_retried() {
     assert_eq!(fs::read_to_string(&a).unwrap(), "first");
     assert_eq!(fs::read_to_string(&b).unwrap(), "new occupant");
     fs::remove_file(&b).unwrap();
-    undo_tune_change_with_checkpoint(&saved, &mut |_| Ok(())).expect("retry only attempts files still pending");
+    undo_tune_change_with_checkpoint(&saved, &mut |_| Ok(()))
+        .expect("retry only attempts files still pending");
     assert_eq!(fs::read_to_string(&b).unwrap(), "second");
 }
 
@@ -187,7 +188,8 @@ fn a_failed_sorting_record_prevents_the_filesystem_move() {
     let done = atlas::organize::carry_out_moves_controlled(
         &plan,
         &sys,
-        atlas::store::now(), &mut |_| Ok(()),
+        atlas::store::now(),
+        &mut |_| Ok(()),
         &mut |from, to| {
             store
                 .save(
@@ -198,7 +200,9 @@ fn a_failed_sorting_record_prevents_the_filesystem_move() {
                     )],
                 )
                 .map_err(|e| e.to_string())
-        }, &|| false);
+        },
+        &|| false,
+    );
     assert_eq!(fs::read_to_string(original).unwrap(), "keep me");
     assert!(!into.join("file.txt").exists());
     assert!(done.moved.is_empty());
@@ -243,11 +247,16 @@ fn a_destination_created_after_planning_is_never_overwritten() {
     let original = dir.path().join("file.txt");
     fs::write(&original, "source").unwrap();
     let dest = dir.path().join("dest");
-    let (moved, errors) =
-        atlas::tune::move_files_into_controlled(&[original.clone()], &dest, &mut |_| Ok(()), &mut |_, to| {
+    let (moved, errors) = atlas::tune::move_files_into_controlled(
+        &[original.clone()],
+        &dest,
+        &mut |_| Ok(()),
+        &mut |_, to| {
             fs::write(to, "new occupant").unwrap();
             Ok(())
-        }, &|| false);
+        },
+        &|| false,
+    );
     assert!(moved.is_empty());
     assert_eq!(errors.len(), 1);
     assert_eq!(fs::read_to_string(&original).unwrap(), "source");
@@ -325,7 +334,9 @@ fn a_restore_parent_failure_leaves_every_original_file_intact() {
         &backup,
         &state,
         &trash,
-        &atlas::household::Household::default(), &state.parent().unwrap().join("notes"))
+        &atlas::household::Household::default(),
+        &state.parent().unwrap().join("notes"),
+    )
     .unwrap_err()
     .to_string();
     assert!(!error.is_empty());
@@ -353,20 +364,65 @@ fn ordinary_undo_keeps_partial_file_recovery_available_for_retry() {
     let config = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
     let platform = atlas::platform::mock::MockPlatform::new(Vec::new());
     let store = atlas::store::Store::new(dir.path().join("state"));
-    let mut daemon = atlas::daemon::Daemon::new(&config, &platform, None, store, atlas::proactive::Proactive::new(Default::default()));
+    let mut daemon = atlas::daemon::Daemon::new(
+        &config,
+        &platform,
+        None,
+        store,
+        atlas::proactive::Proactive::new(Default::default()),
+    );
     let at = 1_790_991_000;
-    let id = daemon.history.note("sorted two files", "files", atlas::undo::Undo::Atlas("move them back".into()), true, at);
-    daemon.store.save(atlas::tune::TUNE_UNDO_RECORD, &vec![(id, TuneUndo::Moves(vec![(original_a.clone(), moved_a), (original_b.clone(), moved_b)]))]).unwrap();
+    let id = daemon.history.note(
+        "sorted two files",
+        "files",
+        atlas::undo::Undo::Atlas("move them back".into()),
+        true,
+        at,
+    );
+    daemon
+        .store
+        .save(
+            atlas::tune::TUNE_UNDO_RECORD,
+            &vec![(
+                id,
+                TuneUndo::Moves(vec![
+                    (original_a.clone(), moved_a),
+                    (original_b.clone(), moved_b),
+                ]),
+            )],
+        )
+        .unwrap();
     daemon.turn("undo", at + 1);
     let mut partial = daemon.turn("yes", at + 2);
-    assert!(!partial.starts_with("Undone"), "worker acceptance is not completion");
+    assert!(
+        !partial.starts_with("Undone"),
+        "worker acceptance is not completion"
+    );
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while std::time::Instant::now() < deadline {
-        if let Some(result) = daemon.tick(at + 2).into_iter().find(|line| line.contains("Still pending")) { partial = result; break; }
+        if let Some(result) = daemon
+            .tick(at + 2)
+            .into_iter()
+            .find(|line| line.contains("Still pending"))
+        {
+            partial = result;
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    assert!(partial.contains("Still pending") && !partial.starts_with("Undone"), "{partial}");
-    assert!(!daemon.history.done.iter().find(|entry| entry.id == id).unwrap().undone);
+    assert!(
+        partial.contains("Still pending") && !partial.starts_with("Undone"),
+        "{partial}"
+    );
+    assert!(
+        !daemon
+            .history
+            .done
+            .iter()
+            .find(|entry| entry.id == id)
+            .unwrap()
+            .undone
+    );
     assert_eq!(fs::read_to_string(&original_a).unwrap(), "first");
     assert_eq!(fs::read_to_string(&original_b).unwrap(), "new occupant");
     let pending: Vec<(u64, TuneUndo)> = daemon.store.load(atlas::tune::TUNE_UNDO_RECORD);
@@ -376,7 +432,14 @@ fn ordinary_undo_keeps_partial_file_recovery_available_for_retry() {
     let mut complete = daemon.turn("yes", at + 4);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while std::time::Instant::now() < deadline {
-        if let Some(result) = daemon.tick(at + 4).into_iter().find(|line| line.starts_with("Undone")) { complete = result; break; }
+        if let Some(result) = daemon
+            .tick(at + 4)
+            .into_iter()
+            .find(|line| line.starts_with("Undone"))
+        {
+            complete = result;
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     assert!(complete.starts_with("Undone"), "{complete}");
@@ -396,11 +459,18 @@ fn restore_requires_a_confirmed_stopped_instance_under_the_resolved_data_root() 
     let original = store.root().join("important.json");
     fs::create_dir_all(store.root()).unwrap();
     fs::write(&original, "keep exactly these bytes").unwrap();
-    for record in [atlas::store::now().to_string(), "unreadable contents".into(), "1".into()] {
+    for record in [
+        atlas::store::now().to_string(),
+        "unreadable contents".into(),
+        "1".into(),
+    ] {
         fs::write(singleton.path(), record).unwrap();
         let error = atlas::safety::may_restore(&store).unwrap_err().to_string();
         assert!(error.contains("hasn't changed any files"), "{error}");
-        assert_eq!(fs::read_to_string(&original).unwrap(), "keep exactly these bytes");
+        assert_eq!(
+            fs::read_to_string(&original).unwrap(),
+            "keep exactly these bytes"
+        );
     }
     fs::remove_file(singleton.path()).unwrap();
     fs::create_dir(singleton.path()).unwrap();

@@ -275,7 +275,9 @@ impl Reason {
         match self {
             Reason::Waiting => "I asked you something and I'm watching for an answer",
             Reason::Talking => "we're mid-conversation and you asked me to watch while we talk",
-            Reason::CheckingWhoElse => "I'm about to read something private and I'm checking you're alone",
+            Reason::CheckingWhoElse => {
+                "I'm about to read something private and I'm checking you're alone"
+            }
             Reason::YouAsked => "you told me to watch",
             Reason::Steering => "you're moving things around by hand",
         }

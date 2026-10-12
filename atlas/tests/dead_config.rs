@@ -445,12 +445,12 @@ const YAML_KEYS_WITH_NO_READER: &[&str] = &[
 const PROMISES_ABOUT_WHAT_IS_NOT_BUILT: &[(&str, &str)] = &[
     (
         "accounts::AccountsConfig.may_change_security",
-            "nothing here writes to a site's settings. `Change` has four variants \
+        "nothing here writes to a site's settings. `Change` has four variants \
          and all four edit Atlas's own record of what your 2FA is.",
     ),
     (
         "calendar::CalendarConfig.sync_native",
-            "the native phone calendar is read and written by the phone app \
+        "the native phone calendar is read and written by the phone app \
          through EventKit (iOS) / CalendarProvider (Android), which isn't in \
          this tree -- same boundary as the Android client. This flag is what \
          that app checks before syncing; `calendar::merge_from_phone` and \
@@ -458,7 +458,7 @@ const PROMISES_ABOUT_WHAT_IS_NOT_BUILT: &[(&str, &str)] = &[
     ),
     (
         "android::AndroidConfig.holds_credentials",
-            "there is no Android client in this tree at all -- `android.rs` \
+        "there is no Android client in this tree at all -- `android.rs` \
          describes abilities a phone app would have.",
     ),
     (
@@ -508,49 +508,49 @@ const PROMISES_ABOUT_WHAT_IS_NOT_BUILT: &[(&str, &str)] = &[
     ),
     (
         "booking::BookingConfig.may_book_alone",
-            "nothing writes to a calendar. `assess` and `could_offer` have no \
+        "nothing writes to a calendar. `assess` and `could_offer` have no \
          production caller.",
     ),
     (
         "booking::BookingConfig.may_send_alone",
-            "nothing sends anything. The same absence as the line above.",
+        "nothing sends anything. The same absence as the line above.",
     ),
     (
         "companion::CompanionConfig.mirrors_secrets",
-            "nothing writes the phone mirror -- `companion::unbuilt` says so in \
+        "nothing writes the phone mirror -- `companion::unbuilt` says so in \
          as many words.",
     ),
     (
         "editcraft::EditCraftConfig.may_send_replies",
-            "`reply_to` returns a string that `daemon` prints. There is no brand \
+        "`reply_to` returns a string that `daemon` prints. There is no brand \
          reply path to unlock.",
     ),
     (
         "enrol::EnrolConfig.never_answer_human_checks",
-            "`enrol::read` would consult it and has no production caller -- \
+        "`enrol::read` would consult it and has no production caller -- \
          nothing drives an `enrol::Run`.",
     ),
     (
         "ios::IosConfig.holds_credentials",
-            "there is no iOS client in this tree, the same as android above.",
+        "there is no iOS client in this tree, the same as android above.",
     ),
     (
         "messaging::MessagingConfig.chatter_interrupts",
-            "`messaging::interrupts` is the rule and nothing calls it, because no \
+        "`messaging::interrupts` is the rule and nothing calls it, because no \
          platform adapter produces a `Message`.",
     ),
     (
         "messaging::MessagingConfig.draft_only",
-            "there is no send path to gate, and no message source to draft from.",
+        "there is no send path to gate, and no message source to draft from.",
     ),
     (
         "money::MoneyConfig.gives_advice",
-            "every function in `money` describes what already happened. There is \
+        "every function in `money` describes what already happened. There is \
          no recommendation generator to switch off.",
     ),
     (
         "recovery::RecoveryConfig.atlas_can_use_these",
-            "nothing consumes a `recovery::Route`. The vault opens with a \
+        "nothing consumes a `recovery::Route`. The vault opens with a \
          passphrase or a recovery key, both typed by a person.",
     ),
 ];
@@ -577,8 +577,10 @@ fn pinned_fields(src: &[(String, String)]) -> Vec<(String, bool)> {
         for line in &lines {
             let t = line.trim_start();
             if let Some(rest) = t.strip_prefix("pub struct ") {
-                current_struct =
-                    rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+                current_struct = rest
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
                 skipped = false;
                 continue;
             }
@@ -587,8 +589,10 @@ fn pinned_fields(src: &[(String, String)]) -> Vec<(String, bool)> {
                 continue;
             }
             if let Some(f) = t.strip_prefix("pub ") {
-                let field: String =
-                    f.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+                let field: String = f
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
                 if !field.is_empty()
                     && f[field.len()..].trim_start().starts_with(':')
                     && current_struct.contains("Config")
@@ -619,8 +623,10 @@ fn a_pinned_invariant_is_not_counted_as_a_setting() {
     // a test where the enforcing happens -- or a promise about something not
     // built, in which case it goes on the list above with what is missing.
     let src = sources();
-    let listed: BTreeSet<&str> =
-        PROMISES_ABOUT_WHAT_IS_NOT_BUILT.iter().map(|(k, _)| *k).collect();
+    let listed: BTreeSet<&str> = PROMISES_ABOUT_WHAT_IS_NOT_BUILT
+        .iter()
+        .map(|(k, _)| *k)
+        .collect();
     let dead: BTreeSet<&str> = DEAD_IN_WIRED.iter().copied().collect();
 
     let mut unaccounted = Vec::new();
@@ -677,7 +683,9 @@ fn every_promise_says_what_is_missing() {
 
 fn sources() -> Vec<(String, String)> {
     fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
-        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
         let mut paths: Vec<_> = entries.flatten().map(|e| e.path()).collect();
         paths.sort();
         for path in paths {
@@ -688,7 +696,11 @@ fn sources() -> Vec<(String, String)> {
             if path.extension().and_then(|e| e.to_str()) != Some("rs") {
                 continue;
             }
-            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
             if let Ok(t) = std::fs::read_to_string(&path) {
                 out.push((stem, t));
             }
@@ -703,7 +715,12 @@ fn unwired_modules() -> BTreeSet<String> {
     std::fs::read_to_string("tests/wiring.rs")
         .expect("tests/wiring.rs")
         .lines()
-        .filter_map(|l| l.trim().strip_prefix('"').and_then(|r| r.split('"').next()).map(String::from))
+        .filter_map(|l| {
+            l.trim()
+                .strip_prefix('"')
+                .and_then(|r| r.split('"').next())
+                .map(String::from)
+        })
         .collect()
 }
 
@@ -714,9 +731,13 @@ fn config_fields(src: &[(String, String)]) -> Vec<(String, String, String)> {
         let mut lines = body.lines().peekable();
         while let Some(line) = lines.next() {
             let t = line.trim_start();
-            let Some(rest) = t.strip_prefix("pub struct ") else { continue };
-            let name: String =
-                rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            let Some(rest) = t.strip_prefix("pub struct ") else {
+                continue;
+            };
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
             if !name.contains("Config") {
                 continue;
             }
@@ -726,9 +747,13 @@ fn config_fields(src: &[(String, String)]) -> Vec<(String, String, String)> {
                     break;
                 }
                 let it = inner.trim_start();
-                let Some(f) = it.strip_prefix("pub ") else { continue };
-                let field: String =
-                    f.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+                let Some(f) = it.strip_prefix("pub ") else {
+                    continue;
+                };
+                let field: String = f
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
                 if field.is_empty() || !f[field.len()..].trim_start().starts_with(':') {
                     continue;
                 }
@@ -822,7 +847,11 @@ fn no_setting_in_a_running_module_quietly_stops_being_read() {
     let known: BTreeSet<String> = DEAD_IN_WIRED
         .iter()
         .map(|s| s.to_string())
-        .chain(PROMISES_ABOUT_WHAT_IS_NOT_BUILT.iter().map(|(k, _)| k.to_string()))
+        .chain(
+            PROMISES_ABOUT_WHAT_IS_NOT_BUILT
+                .iter()
+                .map(|(k, _)| k.to_string()),
+        )
         .collect();
 
     let added: Vec<&String> = found.difference(&known).collect();
@@ -831,7 +860,11 @@ fn no_setting_in_a_running_module_quietly_stops_being_read() {
         "these settings are in modules that run, and nothing reads them -- a person can change \
          them today and nothing will happen:\n  {}\n\nRead it where it was meant to be read, or \
          add it to DEAD_IN_WIRED with the reason it cannot be read yet.",
-        added.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        added
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 
     // Only the settings half is a ratchet in this direction: a promise
@@ -842,7 +875,11 @@ fn no_setting_in_a_running_module_quietly_stops_being_read() {
     assert!(
         cleared.is_empty(),
         "these settings now have a reader:\n  {}\n\nGood -- delete those lines.",
-        cleared.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        cleared
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
 
@@ -855,7 +892,11 @@ fn the_unwired_modules_settings_stay_accounted_for() {
     assert!(
         added.is_empty(),
         "new unread settings in unwired modules:\n  {}",
-        added.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        added
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 
     let cleared: Vec<&String> = known.difference(&found).collect();
@@ -863,7 +904,11 @@ fn the_unwired_modules_settings_stay_accounted_for() {
         cleared.is_empty(),
         "these are now read -- probably because their module got wired:\n  {}\n\nDelete the \
          lines, and check UNWIRED_BASELINE in the same change.",
-        cleared.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        cleared
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
 
@@ -872,8 +917,15 @@ fn no_yaml_key_is_shipped_without_a_reader() {
     // A key in a config file that no struct even has a slot for. There is no
     // typo-check that catches this: it loads, it parses, it does nothing.
     let src = sources();
-    let all: String = src.iter().map(|(_, b)| b.as_str()).collect::<Vec<_>>().join("\n");
-    let known: BTreeSet<String> = YAML_KEYS_WITH_NO_READER.iter().map(|s| s.to_string()).collect();
+    let all: String = src
+        .iter()
+        .map(|(_, b)| b.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let known: BTreeSet<String> = YAML_KEYS_WITH_NO_READER
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
 
     // The whole YAML corpus, so a key read by another config file — a `vars:`
     // entry interpolated as `{key}` into a request template, or a layout name
@@ -899,23 +951,25 @@ fn no_yaml_key_is_shipped_without_a_reader() {
     };
 
     let mut found = BTreeSet::new();
-    let Ok(dir) = std::fs::read_dir("config") else { return };
+    let Ok(dir) = std::fs::read_dir("config") else {
+        return;
+    };
     for entry in dir.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("yaml") {
             continue;
         }
         let file = path.file_name().unwrap().to_string_lossy().to_string();
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
         // The nearest section header above this line — the last line at
         // indentation zero that ends in a colon. `vars` and `layouts` are the
         // two whose children are read by value elsewhere rather than by name
         // in source.
         let mut parent = String::new();
         for line in text.lines() {
-            if !line.is_empty()
-                && !line.starts_with(|c: char| c == ' ' || c == '#')
-            {
+            if !line.is_empty() && !line.starts_with(|c: char| c == ' ' || c == '#') {
                 if let Some(c) = line.find(':') {
                     parent = line[..c].trim().to_string();
                 }
@@ -926,7 +980,11 @@ fn no_yaml_key_is_shipped_without_a_reader() {
             }
             let Some(colon) = t.find(':') else { continue };
             let key = &t[..colon];
-            if key.is_empty() || !key.chars().all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit()) {
+            if key.is_empty()
+                || !key
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit())
+            {
                 continue;
             }
             if all.contains(key) {
@@ -953,7 +1011,11 @@ fn no_yaml_key_is_shipped_without_a_reader() {
     assert!(
         added.is_empty(),
         "these keys are in a shipped config file and no source file names them at all:\n  {}",
-        added.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        added
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
 

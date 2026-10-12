@@ -15,7 +15,10 @@
 //!      per process (a `OnceLock`). Run in one process they would stomp each
 //!      other's handover/lock state and refuse each other's turns; a process
 //!      per file keeps that state to itself, exactly as before.
-#![allow(clippy::all, reason = "the consolidated suite includes many test files; CI lints the library only (`cargo clippy --lib`)")]
+#![allow(
+    clippy::all,
+    reason = "the consolidated suite includes many test files; CI lints the library only (`cargo clippy --lib`)"
+)]
 
 // Shared helpers for the included files, reached as `crate::common::...` --
 // chiefly `source_of`, which reads a module's source wherever its files live
@@ -23,20 +26,6 @@
 // still can't declare its own `mod common;`; it uses this one.
 mod common;
 
-#[path = "kokoro_voice.rs"]
-mod kokoro_voice;
-#[path = "one_way_to_do_each_small_thing.rs"]
-mod one_way_to_do_each_small_thing;
-#[path = "reading_a_module_wherever_it_lives.rs"]
-mod reading_a_module_wherever_it_lives;
-#[path = "an_update_that_fails_goes_back.rs"]
-mod an_update_that_fails_goes_back;
-#[path = "installing_a_release.rs"]
-mod installing_a_release;
-#[path = "feedback_from_friends.rs"]
-mod feedback_from_friends;
-#[path = "nothing_from_any_version_was_lost.rs"]
-mod nothing_from_any_version_was_lost;
 #[path = "a_backup_that_holds_everything.rs"]
 mod a_backup_that_holds_everything;
 #[path = "a_bar_knows_when_it_opened_and_closed.rs"]
@@ -45,20 +34,6 @@ mod a_bar_knows_when_it_opened_and_closed;
 mod a_brief_without_an_inbox;
 #[path = "a_conversation_not_a_script.rs"]
 mod a_conversation_not_a_script;
-#[path = "talking_freely.rs"]
-mod talking_freely;
-#[path = "the_second_scan_holds.rs"]
-mod the_second_scan_holds;
-#[path = "other_programs_tools.rs"]
-mod other_programs_tools;
-#[path = "reading_pages_well.rs"]
-mod reading_pages_well;
-#[path = "mail_through_himalaya.rs"]
-mod mail_through_himalaya;
-#[path = "reading_without_the_picture_reader.rs"]
-mod reading_without_the_picture_reader;
-#[path = "speculative_decoding.rs"]
-mod speculative_decoding;
 #[path = "a_document_says_when_it_stopped_being_true.rs"]
 mod a_document_says_when_it_stopped_being_true;
 #[path = "a_flow_is_a_run_not_a_pile_of_pushes.rs"]
@@ -85,10 +60,6 @@ mod a_reply_is_read_as_bytes_and_bounded;
 mod a_room_that_disagrees;
 #[path = "a_save_that_fails_is_not_silent.rs"]
 mod a_save_that_fails_is_not_silent;
-#[path = "q4_a_save_that_fails_is_not_a_success.rs"]
-mod q4_a_save_that_fails_is_not_a_success;
-#[path = "no_silent_discards.rs"]
-mod no_silent_discards;
 #[path = "a_stage_that_cannot_be_reached.rs"]
 mod a_stage_that_cannot_be_reached;
 #[path = "a_switch_that_does_nothing.rs"]
@@ -111,6 +82,8 @@ mod addressing_publish;
 mod afterme_companion;
 #[path = "an_objection_is_never_too_early.rs"]
 mod an_objection_is_never_too_early;
+#[path = "an_update_that_fails_goes_back.rs"]
+mod an_update_that_fails_goes_back;
 #[path = "android_mesh_household.rs"]
 mod android_mesh_household;
 #[path = "animation.rs"]
@@ -129,6 +102,8 @@ mod asking_twice_is_noticed_through_the_daemon;
 mod asking_which_one_you_meant;
 #[path = "atlas_can_be_told_to_stop.rs"]
 mod atlas_can_be_told_to_stop;
+#[path = "atlas_writes_real_code.rs"]
+mod atlas_writes_real_code;
 #[path = "attention_grants_delegate.rs"]
 mod attention_grants_delegate;
 #[path = "audio.rs"]
@@ -153,8 +128,6 @@ mod budget;
 mod bug_sweep;
 #[path = "build_from_a_description.rs"]
 mod build_from_a_description;
-#[path = "atlas_writes_real_code.rs"]
-mod atlas_writes_real_code;
 #[path = "capability_honesty.rs"]
 mod capability_honesty;
 #[path = "capability_routine.rs"]
@@ -193,10 +166,10 @@ mod consent_routes;
 mod consolidate;
 #[path = "consult.rs"]
 mod consult;
-#[path = "contextual_recall.rs"]
-mod contextual_recall;
 #[path = "contents_trace_voice.rs"]
 mod contents_trace_voice;
+#[path = "contextual_recall.rs"]
+mod contextual_recall;
 #[path = "council_brief.rs"]
 mod council_brief;
 #[path = "craft.rs"]
@@ -249,6 +222,8 @@ mod explaining_code;
 mod facts;
 #[path = "faithful.rs"]
 mod faithful;
+#[path = "feedback_from_friends.rs"]
+mod feedback_from_friends;
 #[path = "files_remote.rs"]
 mod files_remote;
 #[path = "filing.rs"]
@@ -343,7 +318,57 @@ mod input_identity_ocr;
 mod input_perf_probe;
 #[path = "install.rs"]
 mod install;
+#[path = "installing_a_release.rs"]
+mod installing_a_release;
+#[path = "kokoro_voice.rs"]
+mod kokoro_voice;
+#[path = "mail_through_himalaya.rs"]
+mod mail_through_himalaya;
+#[path = "no_silent_discards.rs"]
+mod no_silent_discards;
+#[path = "nothing_from_any_version_was_lost.rs"]
+mod nothing_from_any_version_was_lost;
+#[path = "one_way_to_do_each_small_thing.rs"]
+mod one_way_to_do_each_small_thing;
+#[path = "other_programs_tools.rs"]
+mod other_programs_tools;
+#[path = "q4_a_save_that_fails_is_not_a_success.rs"]
+mod q4_a_save_that_fails_is_not_a_success;
+#[path = "reading_a_module_wherever_it_lives.rs"]
+mod reading_a_module_wherever_it_lives;
+#[path = "reading_pages_well.rs"]
+mod reading_pages_well;
+#[path = "reading_without_the_picture_reader.rs"]
+mod reading_without_the_picture_reader;
+#[path = "speculative_decoding.rs"]
+mod speculative_decoding;
+#[path = "talking_freely.rs"]
+mod talking_freely;
+#[path = "the_second_scan_holds.rs"]
+mod the_second_scan_holds;
 // Unix only: it builds tiny projects driven by shell scripts.
+#[path = "a_tight_bound_still_catches_a_stall.rs"]
+mod a_tight_bound_still_catches_a_stall;
+#[path = "atlas_runs_with_nothing_open.rs"]
+mod atlas_runs_with_nothing_open;
+#[path = "clock_changes.rs"]
+mod clock_changes;
+#[path = "connections_stay_alive.rs"]
+mod connections_stay_alive;
+#[path = "decision_list_remainder.rs"]
+mod decision_list_remainder;
+#[path = "easy_setup.rs"]
+mod easy_setup;
+#[path = "errand_pause.rs"]
+mod errand_pause;
+#[path = "every_capability_is_reached_by_a_test.rs"]
+mod every_capability_is_reached_by_a_test;
+#[path = "hub_in_the_window.rs"]
+mod hub_in_the_window;
+#[path = "idle_but_on.rs"]
+mod idle_but_on;
+#[path = "idle_sleeps.rs"]
+mod idle_sleeps;
 #[cfg(unix)]
 #[path = "integrated_verification.rs"]
 mod integrated_verification;
@@ -379,6 +404,10 @@ mod lanes_research;
 mod language;
 #[path = "languages.rs"]
 mod languages;
+#[path = "launcher_line_endings.rs"]
+mod launcher_line_endings;
+#[path = "learning_how_you_talk.rs"]
+mod learning_how_you_talk;
 #[path = "leaving_a_group.rs"]
 mod leaving_a_group;
 #[path = "leaving_a_mode.rs"]
@@ -399,10 +428,10 @@ mod live;
 mod machine_detection;
 #[path = "market_feed_spikes.rs"]
 mod market_feed_spikes;
-#[path = "measuring.rs"]
-mod measuring;
 #[path = "meaning_search.rs"]
 mod meaning_search;
+#[path = "measuring.rs"]
+mod measuring;
 #[path = "mend.rs"]
 mod mend;
 #[path = "messaging_between_people.rs"]
@@ -417,6 +446,8 @@ mod model_call_over_a_real_process;
 mod money_grading;
 #[path = "multiframe.rs"]
 mod multiframe;
+#[path = "native_settings.rs"]
+mod native_settings;
 #[path = "no_confident_nothings.rs"]
 mod no_confident_nothings;
 #[path = "no_quiet_nothings.rs"]
@@ -433,6 +464,8 @@ mod nudge;
 mod off_the_tick;
 #[path = "offline_and_cdp.rs"]
 mod offline_and_cdp;
+#[path = "older_atlas_keeps_newer_fields.rs"]
+mod older_atlas_keeps_newer_fields;
 #[path = "one_name_one_record.rs"]
 mod one_name_one_record;
 #[path = "one_way_to_write_a_date.rs"]
@@ -451,16 +484,22 @@ mod opsec_recovery_undo;
 mod overlay;
 #[path = "overnight.rs"]
 mod overnight;
+#[path = "own_server_wireguard.rs"]
+mod own_server_wireguard;
 #[path = "pairing.rs"]
 mod pairing;
 #[path = "palette.rs"]
 mod palette;
 #[path = "panels.rs"]
 mod panels;
+#[path = "parsers_survive_garbage.rs"]
+mod parsers_survive_garbage;
 #[path = "person.rs"]
 mod person;
 #[path = "persona_thread.rs"]
 mod persona_thread;
+#[path = "personal_atlas_is_its_own.rs"]
+mod personal_atlas_is_its_own;
 #[path = "phase0.rs"]
 mod phase0;
 #[path = "phase1.rs"]
@@ -471,14 +510,28 @@ mod phase2;
 mod phase3;
 #[path = "phone.rs"]
 mod phone;
+#[path = "phone_app.rs"]
+mod phone_app;
+#[path = "phone_link.rs"]
+mod phone_link;
 #[path = "pipeline.rs"]
 mod pipeline;
 #[path = "plain_change.rs"]
 mod plain_change;
 #[path = "plainly_publishing.rs"]
 mod plainly_publishing;
+#[path = "poisoned_locks.rs"]
+mod poisoned_locks;
 #[path = "portable.rs"]
 mod portable;
+#[path = "ports_live.rs"]
+mod ports_live;
+#[path = "ports_round3.rs"]
+mod ports_round3;
+#[path = "posting_to_bluesky.rs"]
+mod posting_to_bluesky;
+#[path = "posting_with_media.rs"]
+mod posting_with_media;
 #[path = "profiles.rs"]
 mod profiles;
 #[path = "promised.rs"]
@@ -505,10 +558,10 @@ mod recap_reads_the_conversation_back;
 mod reclaim;
 #[path = "recommend_names_the_slowest_stage.rs"]
 mod recommend_names_the_slowest_stage;
-#[path = "refile_corrects_a_captured_note.rs"]
-mod refile_corrects_a_captured_note;
 #[path = "reference.rs"]
 mod reference;
+#[path = "refile_corrects_a_captured_note.rs"]
+mod refile_corrects_a_captured_note;
 #[path = "refusals.rs"]
 mod refusals;
 #[path = "register_character.rs"]
@@ -517,94 +570,6 @@ mod register_character;
 mod remembering;
 #[path = "reminders_and_wants.rs"]
 mod reminders_and_wants;
-#[path = "decision_list_remainder.rs"]
-mod decision_list_remainder;
-#[path = "sync_never_holds_the_loop.rs"]
-mod sync_never_holds_the_loop;
-#[path = "older_atlas_keeps_newer_fields.rs"]
-mod older_atlas_keeps_newer_fields;
-#[path = "two_writers.rs"]
-mod two_writers;
-#[path = "watching_a_video.rs"]
-mod watching_a_video;
-#[path = "connections_stay_alive.rs"]
-mod connections_stay_alive;
-#[path = "parsers_survive_garbage.rs"]
-mod parsers_survive_garbage;
-#[path = "test_scratch_is_cleared.rs"]
-mod test_scratch_is_cleared;
-#[path = "posting_to_bluesky.rs"]
-mod posting_to_bluesky;
-#[path = "posting_with_media.rs"]
-mod posting_with_media;
-#[path = "clock_changes.rs"]
-mod clock_changes;
-#[path = "poisoned_locks.rs"]
-mod poisoned_locks;
-#[path = "idle_sleeps.rs"]
-mod idle_sleeps;
-#[path = "a_tight_bound_still_catches_a_stall.rs"]
-mod a_tight_bound_still_catches_a_stall;
-#[path = "every_capability_is_reached_by_a_test.rs"]
-mod every_capability_is_reached_by_a_test;
-#[path = "errand_pause.rs"]
-mod errand_pause;
-#[path = "personal_atlas_is_its_own.rs"]
-mod personal_atlas_is_its_own;
-#[path = "learning_how_you_talk.rs"]
-mod learning_how_you_talk;
-#[path = "own_server_wireguard.rs"]
-mod own_server_wireguard;
-#[path = "launcher_line_endings.rs"]
-mod launcher_line_endings;
-#[path = "easy_setup.rs"]
-mod easy_setup;
-#[path = "atlas_runs_with_nothing_open.rs"]
-mod atlas_runs_with_nothing_open;
-#[path = "the_hub_is_always_there.rs"]
-mod the_hub_is_always_there;
-#[path = "native_settings.rs"]
-mod native_settings;
-#[path = "hub_in_the_window.rs"]
-mod hub_in_the_window;
-#[path = "the_hub_design_is_the_locked_one.rs"]
-mod the_hub_design_is_the_locked_one;
-#[path = "your_clock.rs"]
-mod your_clock;
-#[path = "phone_app.rs"]
-mod phone_app;
-#[path = "phone_link.rs"]
-mod phone_link;
-#[path = "idle_but_on.rs"]
-mod idle_but_on;
-#[path = "ports_live.rs"]
-mod ports_live;
-#[path = "ports_round3.rs"]
-mod ports_round3;
-#[path = "round4.rs"]
-mod round4;
-#[path = "round5.rs"]
-mod round5;
-#[path = "round6.rs"]
-mod round6;
-#[path = "round7.rs"]
-mod round7;
-#[path = "round8.rs"]
-mod round8;
-#[path = "round9.rs"]
-mod round9;
-#[path = "round10.rs"]
-mod round10;
-#[path = "round11.rs"]
-mod round11;
-#[path = "social.rs"]
-mod social;
-#[path = "wants.rs"]
-mod wants;
-#[path = "workday_through_the_daemon.rs"]
-mod workday_through_the_daemon;
-#[path = "round11_on_windows.rs"]
-mod round11_on_windows;
 #[path = "research_browser_fallback.rs"]
 mod research_browser_fallback;
 #[path = "research_off_the_tick.rs"]
@@ -629,6 +594,24 @@ mod revise;
 mod rollover;
 #[path = "roster.rs"]
 mod roster;
+#[path = "round10.rs"]
+mod round10;
+#[path = "round11.rs"]
+mod round11;
+#[path = "round11_on_windows.rs"]
+mod round11_on_windows;
+#[path = "round4.rs"]
+mod round4;
+#[path = "round5.rs"]
+mod round5;
+#[path = "round6.rs"]
+mod round6;
+#[path = "round7.rs"]
+mod round7;
+#[path = "round8.rs"]
+mod round8;
+#[path = "round9.rs"]
+mod round9;
 #[path = "safety_ledger.rs"]
 mod safety_ledger;
 #[path = "sandbox_lost_update.rs"]
@@ -661,6 +644,10 @@ mod signal_listener;
 mod signals;
 #[path = "signin.rs"]
 mod signin;
+#[path = "social.rs"]
+mod social;
+#[path = "speaking_off_the_loop.rs"]
+mod speaking_off_the_loop;
 #[path = "speech_activity.rs"]
 mod speech_activity;
 #[path = "stale.rs"]
@@ -683,10 +670,14 @@ mod subsystems;
 mod swings_incremental;
 #[path = "sync.rs"]
 mod sync;
+#[path = "sync_never_holds_the_loop.rs"]
+mod sync_never_holds_the_loop;
 #[path = "taking_it_back.rs"]
 mod taking_it_back;
 #[path = "telling_it_twice.rs"]
 mod telling_it_twice;
+#[path = "test_scratch_is_cleared.rs"]
+mod test_scratch_is_cleared;
 #[path = "text_that_is_not_ascii.rs"]
 mod text_that_is_not_ascii;
 #[path = "the_budget_knows_what_it_does_not_know.rs"]
@@ -705,12 +696,20 @@ mod the_grants_gate_is_wired;
 mod the_guides_tell_the_truth;
 #[path = "the_heartbeat_does_not_stop.rs"]
 mod the_heartbeat_does_not_stop;
+#[path = "the_hub_answers_every_click.rs"]
+mod the_hub_answers_every_click;
+#[path = "the_hub_design_is_the_locked_one.rs"]
+mod the_hub_design_is_the_locked_one;
+#[path = "the_hub_is_always_there.rs"]
+mod the_hub_is_always_there;
 #[path = "the_hub_is_reachable.rs"]
 mod the_hub_is_reachable;
 #[path = "the_hub_works_offline.rs"]
 mod the_hub_works_offline;
 #[path = "the_log_has_levels.rs"]
 mod the_log_has_levels;
+#[path = "the_microphone_has_its_own_thread.rs"]
+mod the_microphone_has_its_own_thread;
 #[path = "the_mirror_knows_it_was_never_filled.rs"]
 mod the_mirror_knows_it_was_never_filled;
 #[path = "the_night_actually_runs.rs"]
@@ -719,8 +718,6 @@ mod the_night_actually_runs;
 mod the_oldest_vault_still_opens;
 #[path = "the_printed_address_actually_opens.rs"]
 mod the_printed_address_actually_opens;
-#[path = "the_hub_answers_every_click.rs"]
-mod the_hub_answers_every_click;
 #[path = "the_project_workshop.rs"]
 mod the_project_workshop;
 #[path = "the_three_it_promised.rs"]
@@ -739,10 +736,6 @@ mod times_with_other_people;
 mod timing;
 #[path = "timing_wired.rs"]
 mod timing_wired;
-#[path = "the_microphone_has_its_own_thread.rs"]
-mod the_microphone_has_its_own_thread;
-#[path = "speaking_off_the_loop.rs"]
-mod speaking_off_the_loop;
 #[path = "together.rs"]
 mod together;
 #[path = "tool_timeout.rs"]
@@ -759,6 +752,8 @@ mod tts;
 mod tune;
 #[path = "two_atlases_one_folder.rs"]
 mod two_atlases_one_folder;
+#[path = "two_writers.rs"]
+mod two_writers;
 #[path = "typing_is_a_conversation_too.rs"]
 mod typing_is_a_conversation_too;
 #[path = "untrusted.rs"]
@@ -783,6 +778,10 @@ mod voice_lock;
 mod walk_me_through_the_steps;
 #[path = "wanted.rs"]
 mod wanted;
+#[path = "wants.rs"]
+mod wants;
+#[path = "watching_a_video.rs"]
+mod watching_a_video;
 #[path = "what_atlas_itself_costs.rs"]
 mod what_atlas_itself_costs;
 #[path = "what_is_working_right_now.rs"]
@@ -807,237 +806,241 @@ mod wired_behaviour;
 mod wiring;
 #[path = "words.rs"]
 mod words;
+#[path = "workday_through_the_daemon.rs"]
+mod workday_through_the_daemon;
 #[path = "working_a_decision.rs"]
 mod working_a_decision;
 #[path = "workspace_view.rs"]
 mod workspace_view;
 #[path = "writing_only_what_changed.rs"]
 mod writing_only_what_changed;
+#[path = "your_clock.rs"]
+mod your_clock;
 #[path = "your_own_calendar.rs"]
 mod your_own_calendar;
 #[path = "your_settings_reach_the_code.rs"]
 mod your_settings_reach_the_code;
 
-#[path = "settings_apply_live.rs"]
-mod settings_apply_live;
-#[path = "the_line_moves.rs"]
-mod the_line_moves;
-#[path = "seeing_real_pictures.rs"]
-mod seeing_real_pictures;
-#[path = "reading_pictures.rs"]
-mod reading_pictures;
-#[path = "asking_before_recording.rs"]
-mod asking_before_recording;
-#[path = "pressing_the_security_switch.rs"]
-mod pressing_the_security_switch;
-#[path = "call_notes.rs"]
-mod call_notes;
-#[path = "working_a_window_for_you.rs"]
-mod working_a_window_for_you;
-#[path = "the_envelope_when_asked.rs"]
-mod the_envelope_when_asked;
-#[path = "the_gaps_the_audit_found.rs"]
-mod the_gaps_the_audit_found;
-#[path = "work_goes_through_the_crew.rs"]
-mod work_goes_through_the_crew;
-#[path = "what_atlas_took_from_wshobson_agents.rs"]
-mod what_atlas_took_from_wshobson_agents;
-#[path = "a_no_comes_with_a_way_to_yes.rs"]
-mod a_no_comes_with_a_way_to_yes;
-#[path = "your_answers_of_the_25th.rs"]
-mod your_answers_of_the_25th;
-#[path = "after_a_restart.rs"]
-mod after_a_restart;
-#[path = "runbooks_and_what_comes_next.rs"]
-mod runbooks_and_what_comes_next;
-#[path = "two_factor_and_signing_in.rs"]
-mod two_factor_and_signing_in;
-#[path = "correcting_as_you_type.rs"]
-mod correcting_as_you_type;
-#[path = "acting_on_its_own.rs"]
-mod acting_on_its_own;
-#[path = "what_atlas_says_unasked.rs"]
-mod what_atlas_says_unasked;
-#[path = "acting_on_your_things.rs"]
-mod acting_on_your_things;
-#[path = "reading_documents.rs"]
-mod reading_documents;
-#[path = "keys_to_reach_atlas.rs"]
-mod keys_to_reach_atlas;
-#[path = "what_atlas_keeps_and_weighs.rs"]
-mod what_atlas_keeps_and_weighs;
-#[path = "advice_and_help.rs"]
-mod advice_and_help;
-#[path = "answers_like_a_person.rs"]
-mod answers_like_a_person;
-#[path = "asking_your_other_atlas.rs"]
-mod asking_your_other_atlas;
-#[path = "holding_it_until_youre_out.rs"]
-mod holding_it_until_youre_out;
-#[path = "tor_ships_with_atlas.rs"]
-mod tor_ships_with_atlas;
-#[path = "a_network_that_blocks_tor.rs"]
-mod a_network_that_blocks_tor;
-#[path = "updates_and_feedback_by_voice.rs"]
-mod updates_and_feedback_by_voice;
+#[path = "a_model_for_code.rs"]
+mod a_model_for_code;
 #[path = "a_model_without_curl.rs"]
 mod a_model_without_curl;
-#[path = "adding_a_phone.rs"]
-mod adding_a_phone;
-#[path = "panels_are_drawn.rs"]
-mod panels_are_drawn;
-#[path = "the_mark_is_one_mark.rs"]
-mod the_mark_is_one_mark;
-#[path = "updates_and_feedback_in_the_hub.rs"]
-mod updates_and_feedback_in_the_hub;
-#[path = "every_button_says_what_happened.rs"]
-mod every_button_says_what_happened;
-#[path = "the_other_device_reads_whole_files.rs"]
-mod the_other_device_reads_whole_files;
-#[path = "speed_measured.rs"]
-mod speed_measured;
-#[path = "the_phone_build_reaches_no_desktop_module.rs"]
-mod the_phone_build_reaches_no_desktop_module;
-#[path = "photo_editing.rs"]
-mod photo_editing;
-#[path = "opportunity_hunting.rs"]
-mod opportunity_hunting;
-#[path = "wit_setting.rs"]
-mod wit_setting;
-#[path = "the_background_atlas_hears_you.rs"]
-mod the_background_atlas_hears_you;
-#[path = "the_overlay_covers_only_its_words.rs"]
-mod the_overlay_covers_only_its_words;
-#[path = "the_system_recovers_by_itself.rs"]
-mod the_system_recovers_by_itself;
-#[path = "one_evening_on_the_laptop.rs"]
-mod one_evening_on_the_laptop;
-#[path = "the_name_and_the_request_in_one_breath.rs"]
-mod the_name_and_the_request_in_one_breath;
-#[path = "every_screen_is_seen.rs"]
-mod every_screen_is_seen;
-#[path = "the_right_tools_for_the_sentence.rs"]
-mod the_right_tools_for_the_sentence;
-#[path = "finishing_what_it_starts.rs"]
-mod finishing_what_it_starts;
-#[path = "several_approvals.rs"]
-mod several_approvals;
-#[path = "two_brains.rs"]
-mod two_brains;
-#[path = "a_real_model_answers_him.rs"]
-mod a_real_model_answers_him;
+#[path = "a_network_that_blocks_tor.rs"]
+mod a_network_that_blocks_tor;
+#[path = "a_no_comes_with_a_way_to_yes.rs"]
+mod a_no_comes_with_a_way_to_yes;
 #[path = "a_normal_voice_is_heard.rs"]
 mod a_normal_voice_is_heard;
-#[path = "a_voice_is_heard_whole_and_listening_returns.rs"]
-mod a_voice_is_heard_whole_and_listening_returns;
-#[path = "everyday_without_the_model.rs"]
-mod everyday_without_the_model;
-#[path = "atlas_looks_when_you_ask.rs"]
-mod atlas_looks_when_you_ask;
-#[path = "meaning_picks_the_tool.rs"]
-mod meaning_picks_the_tool;
-#[path = "meaning_checks_the_reply.rs"]
-mod meaning_checks_the_reply;
-#[path = "what_gets_used_is_counted.rs"]
-mod what_gets_used_is_counted;
-#[path = "talking_does_not_hold_the_loop.rs"]
-mod talking_does_not_hold_the_loop;
 #[path = "a_quiet_tick_is_quick.rs"]
 mod a_quiet_tick_is_quick;
-#[path = "pictures_are_made_here.rs"]
-mod pictures_are_made_here;
+#[path = "a_real_model_answers_him.rs"]
+mod a_real_model_answers_him;
+#[path = "a_voice_is_heard_whole_and_listening_returns.rs"]
+mod a_voice_is_heard_whole_and_listening_returns;
+#[path = "acting_on_its_own.rs"]
+mod acting_on_its_own;
+#[path = "acting_on_your_things.rs"]
+mod acting_on_your_things;
+#[path = "adding_a_phone.rs"]
+mod adding_a_phone;
+#[path = "advice_and_help.rs"]
+mod advice_and_help;
+#[path = "after_a_restart.rs"]
+mod after_a_restart;
+#[path = "after_the_call.rs"]
+mod after_the_call;
 #[path = "an_old_question_of_its_own_is_dropped.rs"]
 mod an_old_question_of_its_own_is_dropped;
+#[path = "answers_like_a_person.rs"]
+mod answers_like_a_person;
+#[path = "answers_not_timings.rs"]
+mod answers_not_timings;
+#[path = "apple_first_then_atlas.rs"]
+mod apple_first_then_atlas;
+#[path = "apple_weather_first.rs"]
+mod apple_weather_first;
+#[path = "ask_my_documents.rs"]
+mod ask_my_documents;
+#[path = "asking_before_recording.rs"]
+mod asking_before_recording;
+#[path = "asking_for_a_new_ability.rs"]
+mod asking_for_a_new_ability;
+#[path = "asking_the_laptop_from_the_phone.rs"]
+mod asking_the_laptop_from_the_phone;
+#[path = "asking_your_other_atlas.rs"]
+mod asking_your_other_atlas;
+#[path = "atlas_checks_itself.rs"]
+mod atlas_checks_itself;
+#[path = "atlas_looks_when_you_ask.rs"]
+mod atlas_looks_when_you_ask;
 #[path = "atlas_tests_itself.rs"]
 mod atlas_tests_itself;
 #[path = "atlas_works_an_app.rs"]
 mod atlas_works_an_app;
-#[path = "keeping_track.rs"]
-mod keeping_track;
-#[path = "weather_answered.rs"]
-mod weather_answered;
-#[path = "conversation_sweep.rs"]
-mod conversation_sweep;
-#[path = "getting_things_done.rs"]
-mod getting_things_done;
-mod voices_told_apart;
-#[path = "atlas_checks_itself.rs"]
-mod atlas_checks_itself;
-#[path = "wake_by_sound.rs"]
-mod wake_by_sound;
-#[path = "reports_as_files.rs"]
-mod reports_as_files;
-#[path = "mcp_server.rs"]
-mod mcp_server;
-#[path = "what_the_model_ranking_found.rs"]
-mod what_the_model_ranking_found;
-#[path = "what_eric_said_on_1_oct.rs"]
-mod what_eric_said_on_1_oct;
-#[path = "pc_tune_up.rs"]
-mod pc_tune_up;
-#[path = "taking_things_off_outstanding.rs"]
-mod taking_things_off_outstanding;
-#[path = "greet_once.rs"]
-mod greet_once;
-#[path = "selftest_examples.rs"]
-mod selftest_examples;
-#[path = "answers_not_timings.rs"]
-mod answers_not_timings;
-#[path = "the_silence_after_you_speak.rs"]
-mod the_silence_after_you_speak;
-#[path = "there_when_you_sit_down.rs"]
-mod there_when_you_sit_down;
-#[path = "writing_checked.rs"]
-mod writing_checked;
-#[path = "job_fit.rs"]
-mod job_fit;
-#[path = "ask_my_documents.rs"]
-mod ask_my_documents;
-#[path = "the_npu_engine.rs"]
-mod the_npu_engine;
-#[path = "apple_first_then_atlas.rs"]
-mod apple_first_then_atlas;
-#[path = "reminders_ring_with_the_app_closed.rs"]
-mod reminders_ring_with_the_app_closed;
-#[path = "reaching_the_iphone_with_atlas_closed.rs"]
-mod reaching_the_iphone_with_atlas_closed;
-#[path = "asking_the_laptop_from_the_phone.rs"]
-mod asking_the_laptop_from_the_phone;
-#[path = "reaching_android_with_atlas_closed.rs"]
-mod reaching_android_with_atlas_closed;
-#[path = "apple_weather_first.rs"]
-mod apple_weather_first;
-#[path = "friends_get_nothing_of_erics.rs"]
-mod friends_get_nothing_of_erics;
-#[path = "sorting_a_folder.rs"]
-mod sorting_a_folder;
-#[path = "end_of_the_day.rs"]
-mod end_of_the_day;
-#[path = "lets_work.rs"]
-mod lets_work;
-#[path = "after_the_call.rs"]
-mod after_the_call;
-#[path = "the_plain_api_answers.rs"]
-mod the_plain_api_answers;
-#[path = "market_desk.rs"]
-mod market_desk;
-#[path = "video_studio.rs"]
-mod video_studio;
-#[path = "hands_free.rs"]
-mod hands_free;
-#[path = "a_model_for_code.rs"]
-mod a_model_for_code;
-#[path = "job_applications.rs"]
-mod job_applications;
-#[path = "phone_mode.rs"]
-mod phone_mode;
+#[path = "call_notes.rs"]
+mod call_notes;
 #[path = "connecting_accounts.rs"]
 mod connecting_accounts;
-#[path = "asking_for_a_new_ability.rs"]
-mod asking_for_a_new_ability;
-#[path = "what_broke_it.rs"]
-mod what_broke_it;
-#[path = "scaffolding_an_ability.rs"]
-mod scaffolding_an_ability;
 #[path = "connectors_are_data.rs"]
 mod connectors_are_data;
+#[path = "conversation_sweep.rs"]
+mod conversation_sweep;
+#[path = "correcting_as_you_type.rs"]
+mod correcting_as_you_type;
+#[path = "end_of_the_day.rs"]
+mod end_of_the_day;
+#[path = "every_button_says_what_happened.rs"]
+mod every_button_says_what_happened;
+#[path = "every_screen_is_seen.rs"]
+mod every_screen_is_seen;
+#[path = "everyday_without_the_model.rs"]
+mod everyday_without_the_model;
+#[path = "finishing_what_it_starts.rs"]
+mod finishing_what_it_starts;
+#[path = "friends_get_nothing_of_erics.rs"]
+mod friends_get_nothing_of_erics;
+#[path = "getting_things_done.rs"]
+mod getting_things_done;
+#[path = "greet_once.rs"]
+mod greet_once;
+#[path = "hands_free.rs"]
+mod hands_free;
+#[path = "holding_it_until_youre_out.rs"]
+mod holding_it_until_youre_out;
+#[path = "job_applications.rs"]
+mod job_applications;
+#[path = "job_fit.rs"]
+mod job_fit;
+#[path = "keeping_track.rs"]
+mod keeping_track;
+#[path = "keys_to_reach_atlas.rs"]
+mod keys_to_reach_atlas;
+#[path = "lets_work.rs"]
+mod lets_work;
+#[path = "market_desk.rs"]
+mod market_desk;
+#[path = "mcp_server.rs"]
+mod mcp_server;
+#[path = "meaning_checks_the_reply.rs"]
+mod meaning_checks_the_reply;
+#[path = "meaning_picks_the_tool.rs"]
+mod meaning_picks_the_tool;
+#[path = "one_evening_on_the_laptop.rs"]
+mod one_evening_on_the_laptop;
+#[path = "opportunity_hunting.rs"]
+mod opportunity_hunting;
+#[path = "panels_are_drawn.rs"]
+mod panels_are_drawn;
+#[path = "pc_tune_up.rs"]
+mod pc_tune_up;
+#[path = "phone_mode.rs"]
+mod phone_mode;
+#[path = "photo_editing.rs"]
+mod photo_editing;
+#[path = "pictures_are_made_here.rs"]
+mod pictures_are_made_here;
+#[path = "pressing_the_security_switch.rs"]
+mod pressing_the_security_switch;
+#[path = "reaching_android_with_atlas_closed.rs"]
+mod reaching_android_with_atlas_closed;
+#[path = "reaching_the_iphone_with_atlas_closed.rs"]
+mod reaching_the_iphone_with_atlas_closed;
+#[path = "reading_documents.rs"]
+mod reading_documents;
+#[path = "reading_pictures.rs"]
+mod reading_pictures;
+#[path = "reminders_ring_with_the_app_closed.rs"]
+mod reminders_ring_with_the_app_closed;
+#[path = "reports_as_files.rs"]
+mod reports_as_files;
+#[path = "runbooks_and_what_comes_next.rs"]
+mod runbooks_and_what_comes_next;
+#[path = "scaffolding_an_ability.rs"]
+mod scaffolding_an_ability;
+#[path = "seeing_real_pictures.rs"]
+mod seeing_real_pictures;
+#[path = "selftest_examples.rs"]
+mod selftest_examples;
+#[path = "settings_apply_live.rs"]
+mod settings_apply_live;
+#[path = "several_approvals.rs"]
+mod several_approvals;
+#[path = "sorting_a_folder.rs"]
+mod sorting_a_folder;
+#[path = "speed_measured.rs"]
+mod speed_measured;
+#[path = "taking_things_off_outstanding.rs"]
+mod taking_things_off_outstanding;
+#[path = "talking_does_not_hold_the_loop.rs"]
+mod talking_does_not_hold_the_loop;
+#[path = "the_background_atlas_hears_you.rs"]
+mod the_background_atlas_hears_you;
+#[path = "the_envelope_when_asked.rs"]
+mod the_envelope_when_asked;
+#[path = "the_gaps_the_audit_found.rs"]
+mod the_gaps_the_audit_found;
+#[path = "the_line_moves.rs"]
+mod the_line_moves;
+#[path = "the_mark_is_one_mark.rs"]
+mod the_mark_is_one_mark;
+#[path = "the_name_and_the_request_in_one_breath.rs"]
+mod the_name_and_the_request_in_one_breath;
+#[path = "the_npu_engine.rs"]
+mod the_npu_engine;
+#[path = "the_other_device_reads_whole_files.rs"]
+mod the_other_device_reads_whole_files;
+#[path = "the_overlay_covers_only_its_words.rs"]
+mod the_overlay_covers_only_its_words;
+#[path = "the_phone_build_reaches_no_desktop_module.rs"]
+mod the_phone_build_reaches_no_desktop_module;
+#[path = "the_plain_api_answers.rs"]
+mod the_plain_api_answers;
+#[path = "the_right_tools_for_the_sentence.rs"]
+mod the_right_tools_for_the_sentence;
+#[path = "the_silence_after_you_speak.rs"]
+mod the_silence_after_you_speak;
+#[path = "the_system_recovers_by_itself.rs"]
+mod the_system_recovers_by_itself;
+#[path = "there_when_you_sit_down.rs"]
+mod there_when_you_sit_down;
+#[path = "tor_ships_with_atlas.rs"]
+mod tor_ships_with_atlas;
+#[path = "two_brains.rs"]
+mod two_brains;
+#[path = "two_factor_and_signing_in.rs"]
+mod two_factor_and_signing_in;
+#[path = "updates_and_feedback_by_voice.rs"]
+mod updates_and_feedback_by_voice;
+#[path = "updates_and_feedback_in_the_hub.rs"]
+mod updates_and_feedback_in_the_hub;
+#[path = "video_studio.rs"]
+mod video_studio;
+mod voices_told_apart;
+#[path = "wake_by_sound.rs"]
+mod wake_by_sound;
+#[path = "weather_answered.rs"]
+mod weather_answered;
+#[path = "what_atlas_keeps_and_weighs.rs"]
+mod what_atlas_keeps_and_weighs;
+#[path = "what_atlas_says_unasked.rs"]
+mod what_atlas_says_unasked;
+#[path = "what_atlas_took_from_wshobson_agents.rs"]
+mod what_atlas_took_from_wshobson_agents;
+#[path = "what_broke_it.rs"]
+mod what_broke_it;
+#[path = "what_eric_said_on_1_oct.rs"]
+mod what_eric_said_on_1_oct;
+#[path = "what_gets_used_is_counted.rs"]
+mod what_gets_used_is_counted;
+#[path = "what_the_model_ranking_found.rs"]
+mod what_the_model_ranking_found;
+#[path = "wit_setting.rs"]
+mod wit_setting;
+#[path = "work_goes_through_the_crew.rs"]
+mod work_goes_through_the_crew;
+#[path = "working_a_window_for_you.rs"]
+mod working_a_window_for_you;
+#[path = "writing_checked.rs"]
+mod writing_checked;
+#[path = "your_answers_of_the_25th.rs"]
+mod your_answers_of_the_25th;

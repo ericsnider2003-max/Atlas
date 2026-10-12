@@ -98,7 +98,9 @@ fn decide() -> (PathBuf, Chosen) {
         }
     }
 
-    let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf()));
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|p| p.to_path_buf()));
 
     // 2. Beside the program.
     if let Some(dir) = exe_dir.as_ref() {
@@ -215,11 +217,14 @@ pub const TEST_SCRATCH_KEPT_FOR: std::time::Duration = std::time::Duration::from
 /// were started without cargo's config) it does nothing, so it can never
 /// reach a file of yours or a running Atlas's. Answers how many went.
 pub fn sweep_old_test_scratch(dir: &Path, now: std::time::SystemTime) -> usize {
-    let is_build_scratch = dir.file_name().is_some_and(|n| n == "scratch") && dir.join(".gitkeep").is_file();
+    let is_build_scratch =
+        dir.file_name().is_some_and(|n| n == "scratch") && dir.join(".gitkeep").is_file();
     if !is_build_scratch {
         return 0;
     }
-    let Ok(rd) = std::fs::read_dir(dir) else { return 0 };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return 0;
+    };
     let mut gone = 0;
     for e in rd.flatten() {
         if e.file_name() == ".gitkeep" {
@@ -235,7 +240,11 @@ pub fn sweep_old_test_scratch(dir: &Path, now: std::time::SystemTime) -> usize {
             continue;
         }
         let p = e.path();
-        let removed = if p.is_dir() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
+        let removed = if p.is_dir() {
+            std::fs::remove_dir_all(&p)
+        } else {
+            std::fs::remove_file(&p)
+        };
         if removed.is_ok() {
             gone += 1;
         }
@@ -253,7 +262,9 @@ pub fn under_test() -> bool {
 }
 
 fn under_the_test_harness() -> bool {
-    std::env::current_exe().map(|e| is_a_test_binary(how(), &e)).unwrap_or(false)
+    std::env::current_exe()
+        .map(|e| is_a_test_binary(how(), &e))
+        .unwrap_or(false)
 }
 
 /// A test binary: run from cargo's `deps` folder, with no `ATLAS_HOME`
@@ -267,7 +278,11 @@ fn under_the_test_harness() -> bool {
 /// for every test after it (5 Oct 2026). An installed Atlas never runs from a
 /// folder called `deps`; `ATLAS_HOME` is still obeyed.
 fn is_a_test_binary(chosen: Chosen, exe: &Path) -> bool {
-    chosen != Chosen::Told && exe.parent().and_then(|d| d.file_name()).is_some_and(|n| n == "deps")
+    chosen != Chosen::Told
+        && exe
+            .parent()
+            .and_then(|d| d.file_name())
+            .is_some_and(|n| n == "deps")
 }
 
 /// `data/state` — the store root: notes, the tray, the vault, peer tokens.
@@ -405,7 +420,12 @@ impl RunScratch {
     /// runs that ended without cleaning up (killed, crashed) are cleared
     /// first (`sweep_run_scratch`).
     pub fn new(prefix: &str) -> RunScratch {
-        sweep_run_scratch(&std::env::temp_dir(), prefix, std::process::id(), RUN_SCRATCH_STALE_SECS);
+        sweep_run_scratch(
+            &std::env::temp_dir(),
+            prefix,
+            std::process::id(),
+            RUN_SCRATCH_STALE_SECS,
+        );
         let path = std::env::temp_dir().join(format!("{prefix}-{}", std::process::id()));
         crate::heard!(std::fs::create_dir_all(&path));
         RunScratch { path }
@@ -428,12 +448,16 @@ pub const RUN_SCRATCH_STALE_SECS: u64 = 3600;
 /// Remove `<prefix>-<pid>` folders under `temp` that aren't this process's
 /// (`mine`) and weren't touched for `stale_secs`. Returns how many went.
 pub fn sweep_run_scratch(temp: &Path, prefix: &str, mine: u32, stale_secs: u64) -> usize {
-    let Ok(entries) = std::fs::read_dir(temp) else { return 0 };
+    let Ok(entries) = std::fs::read_dir(temp) else {
+        return 0;
+    };
     let lead = format!("{prefix}-");
     let mut gone = 0;
     for e in entries.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
-        let Some(pid) = name.strip_prefix(&lead) else { continue };
+        let Some(pid) = name.strip_prefix(&lead) else {
+            continue;
+        };
         if pid.parse::<u32>().ok().is_none_or(|p| p == mine) {
             continue;
         }
@@ -462,7 +486,10 @@ mod tests {
         assert!(is_a_test_binary(Chosen::WhereYouAreStanding, out_of_tree));
         // ATLAS_HOME is obeyed, and an installed Atlas is not a test.
         assert!(!is_a_test_binary(Chosen::Told, out_of_tree));
-        assert!(!is_a_test_binary(Chosen::BesideTheProgram, Path::new("C:/Atlas/atlas.exe")));
+        assert!(!is_a_test_binary(
+            Chosen::BesideTheProgram,
+            Path::new("C:/Atlas/atlas.exe")
+        ));
     }
     use super::*;
 
@@ -549,7 +576,10 @@ mod tests {
         let said = where_and_why();
         assert!(said.contains(&install_root().display().to_string()));
         assert!(said.contains(how().plain()));
-        assert_eq!(first_run_here(), matches!(how(), Chosen::FreshBesideTheProgram));
+        assert_eq!(
+            first_run_here(),
+            matches!(how(), Chosen::FreshBesideTheProgram)
+        );
     }
 
     #[test]
@@ -567,12 +597,19 @@ mod tests {
 
     #[test]
     fn an_absolute_path_is_left_alone() {
-        let abs = if cfg!(windows) { "C:\\models\\x.gguf" } else { "/models/x.gguf" };
+        let abs = if cfg!(windows) {
+            "C:\\models\\x.gguf"
+        } else {
+            "/models/x.gguf"
+        };
         assert_eq!(under_install(abs), PathBuf::from(abs));
     }
 
     #[test]
     fn a_relative_path_is_anchored_to_the_install() {
-        assert_eq!(under_install("models/x.gguf"), install_root().join("models/x.gguf"));
+        assert_eq!(
+            under_install("models/x.gguf"),
+            install_root().join("models/x.gguf")
+        );
     }
 }

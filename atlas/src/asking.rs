@@ -36,10 +36,9 @@ use serde::{Deserialize, Serialize};
 /// padded with — the ones that appear in most documents and in almost every
 /// request, so they drag the score toward the middle wherever they appear.
 const SCAFFOLDING: &[&str] = &[
-    "can", "you", "please", "find", "me", "get", "show", "tell", "give",
-    "what", "whats", "was", "were", "is", "are", "the", "a", "an", "my",
-    "that", "this", "about", "for", "of", "on", "in", "to", "do", "did",
-    "have", "has", "i", "we", "it", "there", "any", "some", "thing", "things",
+    "can", "you", "please", "find", "me", "get", "show", "tell", "give", "what", "whats", "was",
+    "were", "is", "are", "the", "a", "an", "my", "that", "this", "about", "for", "of", "on", "in",
+    "to", "do", "did", "have", "has", "i", "we", "it", "there", "any", "some", "thing", "things",
     "again", "just", "like", "know", "remember", "look", "up", "search",
 ];
 
@@ -48,9 +47,23 @@ const SCAFFOLDING: &[&str] = &[
 /// A question built from these has nothing for an index to match, and the
 /// referent lives in the conversation rather than in the notes.
 const POINTS_AT_SOMETHING: &[&str] = &[
-    "that one", "this one", "the one", "it", "them", "those", "these",
-    "the thing", "that thing", "yesterday", "earlier", "last time",
-    "the other day", "before", "back then", "just now", "the last one",
+    "that one",
+    "this one",
+    "the one",
+    "it",
+    "them",
+    "those",
+    "these",
+    "the thing",
+    "that thing",
+    "yesterday",
+    "earlier",
+    "last time",
+    "the other day",
+    "before",
+    "back then",
+    "just now",
+    "the last one",
 ];
 
 /// Single words that point rather than name.
@@ -60,15 +73,42 @@ const POINTS_AT_SOMETHING: &[&str] = &[
 /// looks like a real search term and is not. The rule that matters is not
 /// "did anything survive" but "is what survived worth searching for".
 const POINTER_WORDS: &[&str] = &[
-    "one", "ones", "thing", "things", "stuff", "bit", "part", "file", "note",
-    "yesterday", "earlier", "before", "then", "other", "last", "previous",
+    "one",
+    "ones",
+    "thing",
+    "things",
+    "stuff",
+    "bit",
+    "part",
+    "file",
+    "note",
+    "yesterday",
+    "earlier",
+    "before",
+    "then",
+    "other",
+    "last",
+    "previous",
     // Bare plurals point just as hard as "that one" and survive the
     // scaffolding filter on their own.
-    "those", "these", "them", "they", "ours", "mine", "yours",
+    "those",
+    "these",
+    "them",
+    "they",
+    "ours",
+    "mine",
+    "yours",
 ];
 
 /// Words that join two questions into one.
-const JOINS: &[&str] = &[" and also ", " and then ", " and who ", " and what ", " and when ", " and where "];
+const JOINS: &[&str] = &[
+    " and also ",
+    " and then ",
+    " and who ",
+    " and what ",
+    " and when ",
+    " and where ",
+];
 
 /// A question, ready to search — or a reason it isn't.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -152,8 +192,8 @@ pub fn prepare(said: &str) -> Result<Prepared, Unsearchable> {
     // Nothing worth searching for is not the same as nothing at all: a
     // question made only of pointers leaves terms behind that look real and
     // match nothing.
-    let all_pointers = !terms.is_empty()
-        && terms.iter().all(|t| POINTER_WORDS.contains(&t.as_str()));
+    let all_pointers =
+        !terms.is_empty() && terms.iter().all(|t| POINTER_WORDS.contains(&t.as_str()));
 
     if terms.is_empty() || all_pointers {
         if let Some(p) = POINTS_AT_SOMETHING.iter().find(|p| lower.contains(**p)) {

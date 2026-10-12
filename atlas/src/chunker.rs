@@ -49,7 +49,10 @@ pub struct ChunkConfig {
 
 impl Default for ChunkConfig {
     fn default() -> Self {
-        ChunkConfig { max: 1200, overlap: 150 }
+        ChunkConfig {
+            max: 1200,
+            overlap: 150,
+        }
     }
 }
 
@@ -86,7 +89,12 @@ fn sections(text: &str) -> Vec<(String, Span)> {
     let mut body_start = 0;
     let mut pos = 0;
     let mut in_fence = false;
-    let current = |path: &Vec<(usize, String)>| path.iter().map(|(_, h)| h.as_str()).collect::<Vec<_>>().join(" > ");
+    let current = |path: &Vec<(usize, String)>| {
+        path.iter()
+            .map(|(_, h)| h.as_str())
+            .collect::<Vec<_>>()
+            .join(" > ")
+    };
     for line in text.split_inclusive('\n') {
         let t = line.trim_start();
         if t.starts_with("```") {
@@ -106,7 +114,11 @@ fn sections(text: &str) -> Vec<(String, Span)> {
     out.into_iter().filter(|(_, (a, b))| b > a).collect()
 }
 
-fn split_by(text: &str, (a, b): Span, is_break: impl Fn(&str, usize) -> Option<usize>) -> Vec<Span> {
+fn split_by(
+    text: &str,
+    (a, b): Span,
+    is_break: impl Fn(&str, usize) -> Option<usize>,
+) -> Vec<Span> {
     let mut out = vec![];
     let mut start = a;
     let mut i = a;
@@ -128,16 +140,17 @@ fn split_by(text: &str, (a, b): Span, is_break: impl Fn(&str, usize) -> Option<u
 
 fn paragraphs(text: &str, span: Span) -> Vec<Span> {
     split_by(text, span, |t, i| {
-        (t.as_bytes()[i] == b'\n').then(|| {
-            // a blank line (only whitespace) ends the paragraph
-            let rest = &t[i + 1..];
-            let line_end = rest.find('\n').map(|x| i + 1 + x);
-            match line_end {
-                Some(e) if t[i + 1..e].trim().is_empty() => Some(e + 1),
-                _ => None,
-            }
-        })
-        .flatten()
+        (t.as_bytes()[i] == b'\n')
+            .then(|| {
+                // a blank line (only whitespace) ends the paragraph
+                let rest = &t[i + 1..];
+                let line_end = rest.find('\n').map(|x| i + 1 + x);
+                match line_end {
+                    Some(e) if t[i + 1..e].trim().is_empty() => Some(e + 1),
+                    _ => None,
+                }
+            })
+            .flatten()
     })
 }
 
@@ -155,7 +168,9 @@ fn sentences(text: &str, span: Span) -> Vec<Span> {
 }
 
 fn words(text: &str, span: Span) -> Vec<Span> {
-    split_by(text, span, |t, i| (t.as_bytes()[i] == b' ').then_some(i + 1))
+    split_by(text, span, |t, i| {
+        (t.as_bytes()[i] == b' ').then_some(i + 1)
+    })
 }
 
 fn chars(text: &str, (a, b): Span, max: usize) -> Vec<Span> {
@@ -206,7 +221,10 @@ pub fn chunk(text: &str, cfg: ChunkConfig) -> Result<Vec<Chunk>, String> {
         return Err("max must be at least 1".into());
     }
     if cfg.overlap >= cfg.max {
-        return Err(format!("overlap {} must be smaller than max {}", cfg.overlap, cfg.max));
+        return Err(format!(
+            "overlap {} must be smaller than max {}",
+            cfg.overlap, cfg.max
+        ));
     }
     let starts = line_starts(text);
     let mut out = vec![];
@@ -251,7 +269,14 @@ mod tests {
 
     #[test]
     fn chunks_never_cross_headings_and_carry_the_path() {
-        let c = chunk(DOC, ChunkConfig { max: 500, overlap: 0 }).unwrap();
+        let c = chunk(
+            DOC,
+            ChunkConfig {
+                max: 500,
+                overlap: 0,
+            },
+        )
+        .unwrap();
         let heads: Vec<&str> = c.iter().map(|c| c.heading.as_str()).collect();
         assert_eq!(heads, vec!["Setup", "Setup > Windows", "Trading"]);
         assert!(c[1].text.contains("Run atlas.exe"));
@@ -260,7 +285,14 @@ mod tests {
 
     #[test]
     fn line_spans_cite_the_right_lines() {
-        let c = chunk(DOC, ChunkConfig { max: 500, overlap: 0 }).unwrap();
+        let c = chunk(
+            DOC,
+            ChunkConfig {
+                max: 500,
+                overlap: 0,
+            },
+        )
+        .unwrap();
         // "## Windows" is line 5, "It prints the command list." is line 8
         assert_eq!(c[1].cite("setup.md"), "setup.md:5-8");
         let lines: Vec<&str> = DOC.lines().collect();
@@ -270,19 +302,40 @@ mod tests {
     #[test]
     fn long_paragraph_splits_on_sentences_then_words() {
         let para = "Alpha beta gamma. ".repeat(20);
-        let c = chunk(&para, ChunkConfig { max: 60, overlap: 0 }).unwrap();
+        let c = chunk(
+            &para,
+            ChunkConfig {
+                max: 60,
+                overlap: 0,
+            },
+        )
+        .unwrap();
         assert!(c.len() > 3);
         assert!(c.iter().all(|x| x.text.len() <= 60));
         assert!(c.iter().all(|x| x.text.ends_with('.')), "{c:?}");
         let one_word = "x".repeat(130);
-        let c = chunk(&one_word, ChunkConfig { max: 50, overlap: 0 }).unwrap();
+        let c = chunk(
+            &one_word,
+            ChunkConfig {
+                max: 50,
+                overlap: 0,
+            },
+        )
+        .unwrap();
         assert_eq!(c.len(), 3);
     }
 
     #[test]
     fn overlap_repeats_the_tail() {
         let text = "One two three. Four five six. Seven eight nine. Ten eleven twelve.";
-        let c = chunk(text, ChunkConfig { max: 48, overlap: 20 }).unwrap();
+        let c = chunk(
+            text,
+            ChunkConfig {
+                max: 48,
+                overlap: 20,
+            },
+        )
+        .unwrap();
         assert!(c.len() >= 2);
         for w in c.windows(2) {
             assert!(w[1].start_byte < w[0].end_byte, "no overlap: {w:?}");
@@ -301,7 +354,14 @@ mod tests {
 
     #[test]
     fn bad_config_refused_and_utf8_safe() {
-        assert!(chunk("x", ChunkConfig { max: 10, overlap: 10 }).is_err());
+        assert!(chunk(
+            "x",
+            ChunkConfig {
+                max: 10,
+                overlap: 10
+            }
+        )
+        .is_err());
         let t = "héllo wörld ".repeat(30);
         let c = chunk(&t, ChunkConfig { max: 7, overlap: 0 }).unwrap();
         assert!(!c.is_empty());

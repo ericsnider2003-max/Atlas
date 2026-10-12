@@ -46,7 +46,11 @@ fn leaving_removes_the_room_and_remembers_the_id() {
     let mut chats = with_group("grp-1", "Roof crew", &["Ali", "Jordan"]);
     let members = chats.leave_group("grp-1");
 
-    assert_eq!(members, vec!["Ali".to_string(), "Jordan".to_string()], "leaving hands back who to tell");
+    assert_eq!(
+        members,
+        vec!["Ali".to_string(), "Jordan".to_string()],
+        "leaving hands back who to tell"
+    );
     assert!(chats.group_named("Roof crew").is_none(), "the room is gone");
     assert!(chats.has_left("grp-1"), "and the id is tombstoned");
 }
@@ -69,7 +73,10 @@ fn a_message_in_flight_cannot_reopen_a_left_group() {
         &pairings,
     );
     assert_eq!(got, Err(Refused::LeftThatGroup("grp-1".into())));
-    assert!(chats.group_named("Roof crew").is_none(), "still gone after the attempt");
+    assert!(
+        chats.group_named("Roof crew").is_none(),
+        "still gone after the attempt"
+    );
 }
 
 #[test]
@@ -81,9 +88,18 @@ fn leaving_a_fresh_group_with_the_same_people_still_works() {
 
     let roster = Roster::default();
     let pairings = Pairings::default();
-    let got =
-        chats.open_group("grp-2", "Roof crew II", Space::Personal, &["Ali".into()], &roster, &pairings);
-    assert!(got.is_ok(), "a new group id is not blocked by an old tombstone: {got:?}");
+    let got = chats.open_group(
+        "grp-2",
+        "Roof crew II",
+        Space::Personal,
+        &["Ali".into()],
+        &roster,
+        &pairings,
+    );
+    assert!(
+        got.is_ok(),
+        "a new group id is not blocked by an old tombstone: {got:?}"
+    );
 }
 
 #[test]
@@ -105,7 +121,10 @@ fn a_member_leaving_is_taken_out_of_your_copy() {
     assert!(chats.member_left("grp-1", "Jordan"));
 
     let room = chats.group_named("Roof crew").unwrap();
-    assert!(!room.members.iter().any(|m| m == "Jordan"), "Jordan is gone");
+    assert!(
+        !room.members.iter().any(|m| m == "Jordan"),
+        "Jordan is gone"
+    );
     assert_eq!(room.members.len(), 2);
     // Their past messages stay — they said those while they were in it.
     assert_eq!(room.messages.len(), 1);
