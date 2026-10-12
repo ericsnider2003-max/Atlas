@@ -96,12 +96,10 @@ pub fn record(store: &crate::store::Store, t: TurnRecord) {
     let _ = store.save(RECORD, &ledger);
 }
 
-fn median_max(v: &mut Vec<u32>) -> Option<(u32, u32)> {
-    if v.is_empty() {
-        return None;
-    }
+fn median_max(v: &mut [u32]) -> Option<(u32, u32)> {
     v.sort_unstable();
-    Some((v[v.len() / 2], *v.last().unwrap()))
+    let worst = *v.last()?;
+    Some((v[v.len() / 2], worst))
 }
 
 /// One readable line: median/worst per stage and the ASR engine mix.

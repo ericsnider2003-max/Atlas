@@ -882,7 +882,7 @@ fn keep_inner(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
     // Not `let _`: "its events appear" is false if the link was never kept.
     let linked = d.store.save(connect::CALENDAR_LINKS, &links);
     note_google_data(d);
-    let said = finish_signin_line(d, &s);
+    let said = finish_signin_line(d, s);
     match linked {
         Ok(()) => said,
         Err(e) => format!("{said} But I couldn't save the calendar link ({e}), so its events won't appear until it is saved; sign in again once the disk is writable."),

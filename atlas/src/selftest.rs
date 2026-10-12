@@ -157,7 +157,7 @@ impl Platform for SafePlatform<'_> {
             return Ok(Some(w));
         }
         // Started (in pretence) a moment ago: the window it would have opened.
-        if self.started.borrow().iter().any(|l| *l == spec.launch) {
+        if self.started.borrow().contains(&spec.launch) {
             return Ok(Some(WindowId(STAND_IN_WINDOW)));
         }
         Ok(None)
