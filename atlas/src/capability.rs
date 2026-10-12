@@ -1580,7 +1580,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 6 Oct 2026: + `muse` (Muse Spark on your own key) and `contemplate`
 // ("think hard about": several tries, the best of them) = 486.
 // 6 Oct 2026: + `watchvideo` ("watch this video", on this computer) = 487.
-pub const MODULES_IN_TREE: usize = 489;
+pub const MODULES_IN_TREE: usize = 490;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1598,6 +1598,7 @@ pub const MODULES_IN_TREE: usize = 489;
 /// a feature cannot be filed as plumbing without somebody writing down why it
 /// is not one.
 pub const PLUMBING: &[(&str, &str)] = &[
+    ("voicelat", "keeps what the voice path decided and how long each stage took, so `atlas doctor` can read real latency later; numbers and reasons, never the words"),
     ("childjob", "ties every program Atlas starts for its own work to Atlas, so it ends when Atlas ends instead of running on with the fans"),
     ("unheard", "failures nobody was waiting for (kept!/heard!): a write that failed is told like a failed save, the rest logged; nothing is discarded silently"),
     ("doorbell", "the one thing an idle Atlas waits on: typed lines, the microphone, the hub and a stop ring it, so nothing wakes on a timer to look"),
