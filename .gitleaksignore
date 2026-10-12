@@ -18,3 +18,31 @@ e5ed14e1e1270bd5c344ca901d4a360c240e9a2a:atlas/tests/opportunity_hunting.rs:gene
 093c1214e1ee976dad1b720ad64c8d801b98e5f0:atlas/tests/the_hub_is_reachable.rs:generic-api-key:211
 093c1214e1ee976dad1b720ad64c8d801b98e5f0:atlas/tests/vault_crypto.rs:generic-api-key:285
 093c1214e1ee976dad1b720ad64c8d801b98e5f0:atlas/tests/your_answers_of_the_25th.rs:stripe-access-token:118
+# Integration branch 2026-10-11: findings from merged-in histories, checked by hand: all made-up test keys,
+# prose about ChaCha20-Poly1305, a char id, a public GTM key in a saved page, or a curl example. Same reasons as above.
+e72af49ceb1ea063b5139dbc333ae35fd5005450:atlas/tests/muse_and_thinking_hard.rs:generic-api-key:73
+6557ac826532abdc0aa790de111a9bab62404ed3:records/catalogs/MODULE_REFERENCE_2026-09-27.md:generic-api-key:15342
+6557ac826532abdc0aa790de111a9bab62404ed3:removed-from-personal-atlas/atlas/docs/MODULE_REFERENCE_2026-09-26.md:generic-api-key:15016
+193819616e228b847dafd756d3016cff8cc47460:atlas/src/colony/assets.rs:generic-api-key:385
+193819616e228b847dafd756d3016cff8cc47460:catalogs/archive-2026-09-26/MODULE_REFERENCE_2026-09-26.md:generic-api-key:15401
+d1a6d7cb94a4a7765255d8fb8fb192ba503288d7:atlas/docs/MODULE_REFERENCE_2026-09-26.md:generic-api-key:15401
+d1a6d7cb94a4a7765255d8fb8fb192ba503288d7:catalogs/MODULE_REFERENCE_2026-09-26.md:generic-api-key:15401
+9bf8efc0a6ca44787db6323f501e470ccae7e475:atlas/docs/SENDING_FROM_YOUR_PHONE.md:curl-auth-header:180
+9bf8efc0a6ca44787db6323f501e470ccae7e475:atlas/docs/MODULE_REFERENCE_2026-09-26.md:generic-api-key:14959
+9bf8efc0a6ca44787db6323f501e470ccae7e475:atlas/src/tz.rs:generic-api-key:439
+9bf8efc0a6ca44787db6323f501e470ccae7e475:atlas/src/wire.rs:generic-api-key:25
+9bf8efc0a6ca44787db6323f501e470ccae7e475:atlas/tests/fixtures/crawl/go-loopvar.html:gcp-api-key:1474
+9bf8efc0a6ca44787db6323f501e470ccae7e475:atlas/tests/phone_link.rs:generic-api-key:21
+9bf8efc0a6ca44787db6323f501e470ccae7e475:atlas/tests/the_hub_is_reachable.rs:generic-api-key:206
+9bf8efc0a6ca44787db6323f501e470ccae7e475:atlas/tests/vault_crypto.rs:generic-api-key:285
+9bf8efc0a6ca44787db6323f501e470ccae7e475:atlas/tests/your_answers_of_the_25th.rs:stripe-access-token:118
+c5ba8448f4102b78c17b17c3e81c861733989c87:atlas/docs/MODULE_REFERENCE_2026-09-26.md:generic-api-key:14959
+cb745823912524403a6d784f61ee35230165b5c4:atlas/tests/your_answers_of_the_25th.rs:stripe-access-token:114
+b5b6c40ea33545f59c1f5f2ff019bc39a709895e:atlas/tests/your_answers_of_the_25th.rs:stripe-access-token:114
+24bf4b459272874fe35ca0963db6ef44f956248c:atlas/src/wire.rs:generic-api-key:25
+06e125709de0a4d2b7e1ad57baebaf73f33c77bf:atlas/tests/fixtures/crawl/go-loopvar.html:gcp-api-key:1474
+df334857d0661bba1638453c9bb54a6b906d7c46:atlas/src/tz.rs:generic-api-key:410
+4a1164a1d7246266588bfb006f54050cbecc2bc9:atlas/docs/SENDING_FROM_YOUR_PHONE.md:curl-auth-header:180
+4a1164a1d7246266588bfb006f54050cbecc2bc9:atlas/tests/phone_link.rs:generic-api-key:21
+4a1164a1d7246266588bfb006f54050cbecc2bc9:atlas/tests/the_hub_is_reachable.rs:generic-api-key:198
+4a1164a1d7246266588bfb006f54050cbecc2bc9:atlas/tests/vault_crypto.rs:generic-api-key:285
