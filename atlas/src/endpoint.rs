@@ -57,7 +57,7 @@ impl Default for EndpointConfig {
             silence_below_db: -38.0,
             // Production voice systems aim for a turn gap under half a second;
             // these are chosen against that.
-            short_reply_ms: 420,
+            short_reply_ms: 380,
             sentence_ms: 700,
             mid_phrase_ms: 1100,
             no_speech_after_ms: 2500,

@@ -22,7 +22,7 @@ fn a_short_reply_ends_almost_immediately() {
     e.feed(LOUD, "yes", 400, &ecfg());
     assert_eq!(e.feed(QUIET, "yes", 500, &ecfg()), Listening::Pausing);
     assert_eq!(
-        e.feed(QUIET, "yes", 950, &ecfg()),
+        e.feed(QUIET, "yes", 900, &ecfg()),
         Listening::Finished(Why::YouFinished)
     );
 }
@@ -90,10 +90,10 @@ fn ending_early_is_the_whole_point_on_this_hardware() {
     e.feed(LOUD, "", 200, &ecfg());
     e.feed(LOUD, "yes", 400, &ecfg());
     e.feed(QUIET, "yes", 500, &ecfg());
-    e.feed(QUIET, "yes", 950, &ecfg());
+    e.feed(QUIET, "yes", 900, &ecfg());
     assert!(e.finished());
     assert!(
-        e.clip_ms(950) < 1000,
+        e.clip_ms(900) < 1000,
         "seven seconds of audio not transcribed"
     );
 }
