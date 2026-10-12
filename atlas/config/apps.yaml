@@ -28,7 +28,7 @@ apps:
     role: side
     layout: left_half
     standalone_layout: full     # undocked: full screen, alt-tab between them
-    retries: 20
+    retries: 30      # a cold Chrome restoring tabs can take 10s+
 
   discord:
     launch: "%LOCALAPPDATA%/Discord/Update.exe"
@@ -48,7 +48,7 @@ apps:
     role: main
     layout: corner
     docked_only: true           # no room for a floating pad on one screen
-    retries: 10
+    retries: 20      # Store alias + restored tabs: slower than 5s on a cold start
 
 # Claude first so the slowest app gets a head start.
 startup_order: [claude, discord, chrome, notepad]

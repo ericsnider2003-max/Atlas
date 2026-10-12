@@ -1981,6 +1981,14 @@ impl<'a> Daemon<'a> {
                 Some(p) => p,
                 None => return "There's nothing waiting to be implemented right now.".into(),
             }
+        } else if names_the_clipboard(&low) {
+            // "explain code the clipboard": the code ON the clipboard, not an
+            // essay about what a clipboard is (self-test, 1 Oct 2026).
+            let copied = self.clipboard_text.clone().or_else(|| self.plat.read_clipboard().ok().flatten());
+            match copied.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()) {
+                Some(t) => (t, "the code on your clipboard".to_string()),
+                None => return "Your clipboard is empty, so there's no code to explain. Copy it first.".into(),
+            }
         } else {
             // A single-line, path-shaped argument that names a real file is
             // read; anything else is treated as pasted code.
@@ -2233,6 +2241,35 @@ fn opening_of(text: &str) -> String {
 
 /// Does pasted text look like code rather than words? Brackets, semicolons,
 /// operators or keywords, and more than a few of them.
+/// "the clipboard", "my clipboard", "what I copied": the argument IS the
+/// clipboard, nothing else.
+fn names_the_clipboard(low: &str) -> bool {
+    let t = low.trim().trim_end_matches(['.', '!', '?']).trim();
+    let t = t.strip_prefix("on ").unwrap_or(t).trim();
+    matches!(
+        t,
+        "the clipboard" | "my clipboard" | "clipboard" | "what i copied" | "what i just copied"
+            | "what's on the clipboard" | "what is on the clipboard" | "what's on my clipboard"
+            | "the copied code" | "the code i copied" | "the code on the clipboard"
+            | "the code on my clipboard"
+    )
+}
+
+#[cfg(test)]
+mod explain_clipboard {
+    use super::names_the_clipboard;
+
+    #[test]
+    fn the_clipboard_is_named_only_when_it_is_the_whole_argument() {
+        for yes in ["the clipboard", "My clipboard.", "what I copied", "on the clipboard", "the code on my clipboard"] {
+            assert!(names_the_clipboard(&yes.to_lowercase()), "{yes}");
+        }
+        for no in ["how a clipboard works", "src/clipboard.rs", "the quarterly budget", ""] {
+            assert!(!names_the_clipboard(no), "{no}");
+        }
+    }
+}
+
 fn looks_like_code(text: &str) -> bool {
     let marks = text.chars().filter(|c| matches!(c, '{' | '}' | '(' | ')' | ';' | '=' | '<' | '>' | '[' | ']')).count();
     let words = [" fn ", "def ", "function", "return", "import ", "class ", "let ", "const ", "var ", "#include", "=>", "->", "public ", "SELECT "];
