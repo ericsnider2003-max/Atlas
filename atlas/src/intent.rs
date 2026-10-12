@@ -825,6 +825,25 @@ impl Parser {
         self.is_a_known_name(name, &without_fillers(&normalize(arg)))
     }
 
+    /// The phrases this sentence starts with, in the table's order: "stop
+    /// suggesting the backups" starts with "stop suggesting". What the
+    /// splitter asks to tell a negation that IS the command ("don't call me
+    /// that", "stop taking notes") from one that forbids it ("don't close
+    /// chrome").
+    pub fn phrases_opening(&self, input: &str) -> Vec<String> {
+        let text = normalize(input);
+        let bare = without_fillers(&text);
+        self.table
+            .iter()
+            .filter(|row| {
+                [&text, &bare]
+                    .iter()
+                    .any(|t| **t == row.phrase || t.starts_with(&format!("{} ", row.phrase)))
+            })
+            .map(|row| row.phrase.clone())
+            .collect()
+    }
+
     /// Is `arg` a name this command may take? Always, until names are known.
     fn is_a_known_name(&self, intent: &str, arg: &str) -> bool {
         let Some(n) = &self.names else { return true };

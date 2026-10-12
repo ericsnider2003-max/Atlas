@@ -259,7 +259,11 @@ impl Daemon<'_> {
                         continue;
                     }
                     self.last_crew_handoff = None;
+                    // Judged whole by `needs_your_yes` above, so it runs
+                    // whole: not cut into parts the judgement never saw.
+                    self.relayed_from_phone = true;
                     let reply = self.turn_from(&a.what, t, Arrival::Directed);
+                    self.relayed_from_phone = false;
                     let watch = self
                         .last_crew_handoff
                         .and_then(|id| self.crew_links.get(&id).map(|link| link.watch_id));

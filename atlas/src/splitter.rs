@@ -138,6 +138,13 @@ pub fn reminder_restated(said: &str) -> Option<String> {
 /// part of it reads as nothing (and then the whole thing is the model's to
 /// work out, as before).
 pub fn spoken_steps(said: &str, parser: &Parser) -> Option<Vec<SpokenStep>> {
+    // "don't close chrome and open notepad": a negation anywhere and nothing
+    // is cut, cleaned or re-read. Working out which verb a "not" governs is
+    // exactly the kind of reading that must not be guessed at, and getting it
+    // wrong does the one thing you said not to.
+    if negated(said) {
+        return None;
+    }
     let whole = reading_of(said, parser);
     // A passphrase is never cut, cleaned or re-read.
     if matches!(whole, Some(Reading::Command(Intent::Unlock(_)))) {
@@ -281,6 +288,86 @@ pub fn spoken_steps(said: &str, parser: &Parser) -> Option<Vec<SpokenStep>> {
         }
         [one] if !corrected && whole.as_ref() == Some(&one.reading) => None,
         _ => Some(steps),
+    }
+}
+
+/// Words that forbid or negate: "don't", "do not", "never", "stop",
+/// "without", "not". Any of them anywhere in a sentence and the splitter
+/// leaves it alone (`spoken_steps`), and the turn will not carry out a
+/// destructive command read from it (`negated_destructive`).
+const NEGATIONS: &[&[&str]] = &[
+    &["don't"],
+    &["dont"],
+    &["do", "not"],
+    &["never"],
+    &["stop"],
+    &["without"],
+    &["not"],
+    &["shouldn't"],
+    &["shouldnt"],
+    &["mustn't"],
+    &["mustnt"],
+    &["won't"],
+    &["wont"],
+    &["nor"],
+];
+
+/// Does the sentence negate or forbid anything ("don't close chrome",
+/// "please don't open discord", "never send that")?
+pub fn negated(said: &str) -> bool {
+    let tokens = tokens_of(said);
+    (0..tokens.len()).any(|i| NEGATIONS.iter().any(|seq| matches_at(&tokens, i, seq)))
+}
+
+/// A command that closes, deletes, overwrites, sends, pays or otherwise
+/// cannot be taken back by saying so.
+pub fn destructive(i: &Intent) -> bool {
+    crate::brain::model_must_ask(i)
+        || matches!(
+            i,
+            Intent::CloseApp(_)
+                | Intent::WorkspaceOff
+                | Intent::Message(_)
+                | Intent::SortMail(_)
+                | Intent::SchedulePost(_)
+                | Intent::DropTask(_)
+                | Intent::Pdf(_)
+                | Intent::Files(_)
+                | Intent::Unzip(_)
+                | Intent::EditMedia(_)
+                | Intent::EditPhoto(_)
+                | Intent::PcTune(_)
+                | Intent::TidyDesktop
+                | Intent::MoveBigFiles(_)
+                | Intent::PressButton(_)
+                | Intent::Receipt(_)
+                | Intent::Booking(_)
+                | Intent::Schedule(_)
+        )
+        || crate::policy::classify(i) == crate::policy::Decision::RequireApproval
+}
+
+/// The whole sentence negates something and the phrase table still reads
+/// it as a destructive command: "don't close chrome" must never close
+/// chrome. The turn refuses these outright (`turn_unwatched`).
+pub fn negated_destructive(said: &str, parser: &Parser) -> Option<Intent> {
+    if !negated(said) {
+        return None;
+    }
+    // The negation is the command's own phrase: "stop taking notes",
+    // "close what I don't need", "don't call me that".
+    let plain = plain_request(said);
+    if [said, plain.as_str()]
+        .iter()
+        .flat_map(|t| parser.phrases_opening(t))
+        .any(|phrase| negated(&phrase))
+    {
+        return None;
+    }
+    match parser.parse(said) {
+        Intent::Unknown(_) | Intent::Say(_) | Intent::Ask(_) => None,
+        i if destructive(&i) => Some(i),
+        _ => None,
     }
 }
 
@@ -853,8 +940,6 @@ const LEAD_FILLERS: &[&[&str]] = &[
     &["go", "ahead", "and"],
     &["why", "don't", "you"],
     &["why", "dont", "you"],
-    &["don't", "forget", "to"],
-    &["dont", "forget", "to"],
     &["make", "sure", "to"],
     &["if", "you", "could"],
     &["if", "you", "can"],
@@ -1174,6 +1259,22 @@ mod tests {
             steps("set a reminder for 6 to eat and then open notepad"),
             ["set a reminder for 6 to eat", "open notepad"]
         );
+    }
+
+    #[test]
+    fn splitter_hears_a_negation_anywhere() {
+        for said in [
+            "don't close chrome",
+            "Do not delete the report and open notepad",
+            "never send that",
+            "please don\u{2019}t open discord",
+            "open chrome without closing notepad",
+            "stop, close chrome",
+        ] {
+            assert!(negated(said), "{said}");
+            assert!(spoken_steps(said, &known_parser()).is_none(), "{said}");
+        }
+        assert!(!negated("open chrome and then open notepad"));
     }
 
     #[test]

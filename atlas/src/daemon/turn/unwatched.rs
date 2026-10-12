@@ -1513,8 +1513,22 @@ impl<'a> Daemon<'a> {
         // something Atlas does; each part then goes through `run_command` on
         // its own, gates and all (`spoken_steps`). Anything else carries on
         // below exactly as before.
-        if let Some(steps) = crate::splitter::spoken_steps(said, &self.parser) {
-            return self.run_spoken_steps(said, steps, t);
+        // "don't close chrome": a sentence that says not to, which the phrase
+        // table still reads as the destructive command it forbids, is never
+        // carried out (`splitter::negated_destructive`).
+        if let Some(forbidden) = crate::splitter::negated_destructive(said, &self.parser) {
+            let reply = format!(
+                "You said not to, so I haven't -- nothing was done ({} is left alone). Say it without the \"not\" if you do want it.",
+                forbidden.plain()
+            );
+            self.thread.append(said, &reply, None, t);
+            self.persist();
+            return reply;
+        }
+        if !self.relayed_from_phone {
+            if let Some(steps) = crate::splitter::spoken_steps(said, &self.parser) {
+                return self.run_spoken_steps(said, steps, t);
+            }
         }
 
         // The Talk page and the voice loop let this turn's model call run on

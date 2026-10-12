@@ -30,9 +30,15 @@
 //!
 //! ```text
 //!                      before                 after
-//! CORPUS   (127)       27 (21%), 20 wrong     125 (98%), 1 wrong
+//! CORPUS   (133)       33 (25%), 20 wrong     130 (98%), 1 wrong
 //! HELD_OUT  (32)        6 (19%),  6 wrong      22 (69%), 1 wrong
 //! ```
+//!
+//! (13 Oct 2026, review fixes: six negated sentences added -- "don't close
+//! chrome", "do not delete the report and open notepad", ... -- which both
+//! routers leave undone, hence +6 on both sides; and the negation rule made
+//! "if it's not too much trouble open discord" a fail that was a pass, so
+//! after went 125/127 -> 130/133, not 131.)
 //!
 //! Read the two rows differently. CORPUS was written first and the rules were
 //! tuned against it, so 98% is a ceiling, not a forecast. HELD_OUT was written
@@ -52,9 +58,9 @@ use atlas::splitter::{plain_request, reading_of, spoken_steps, Reading};
 
 /// Passes at or above this many, out of the whole corpus. Raised when the
 /// router gets better; never lowered to make a change pass.
-const AFTER_AT_LEAST: usize = 125;
+const AFTER_AT_LEAST: usize = 130;
 /// What the router read before the splitter, for the record.
-const BEFORE_WAS: usize = 27;
+const BEFORE_WAS: usize = 33;
 /// The held-out set (`HELD_OUT`), measured once after the rules were fixed.
 const HELD_OUT_AFTER_AT_LEAST: usize = 22;
 /// Sentences read as the WRONG action (not "didn't catch that", but doing
@@ -420,6 +426,13 @@ const CORPUS: &[(&str, &[&str])] = &[
     ("order me a pizza", &[]),
     ("open chrome and play some music", &[]),
     ("what's the meaning of life", &[]),
+    // ---- negation: never the thing you said not to do ----
+    ("don't close chrome", &[]),
+    ("don't close chrome and open notepad", &[]),
+    ("do not delete the report and open notepad", &[]),
+    ("never send that", &[]),
+    ("please don't open discord", &[]),
+    ("do not close workspace", &[]),
 ];
 
 /// Written AFTER the rules above were tuned on `CORPUS`, and measured once,
@@ -583,6 +596,11 @@ fn before(p: &Parser, said: &str) -> Vec<Seen> {
 
 /// The router now: the splitter first, else the whole sentence as before.
 fn after(p: &Parser, said: &str) -> Vec<Seen> {
+    // As the turn does: a negated sentence the table reads as a destructive
+    // command is refused outright (`turn_unwatched`).
+    if atlas::splitter::negated_destructive(said, p).is_some() {
+        return Vec::new();
+    }
     match spoken_steps(said, p) {
         Some(steps) => steps
             .into_iter()
@@ -877,4 +895,225 @@ fn free_form_a_correction_runs_only_the_last_instruction() {
     let reply = d.turn("open notepad, no wait, chrome", NOW);
     assert!(launched(&p, "chrome"), "{reply}");
     assert!(!launched(&p, "notepad"), "the corrected step ran: {reply}");
+}
+
+fn closed(p: &MockPlatform) -> bool {
+    p.actions().iter().any(|a| matches!(a, Action::Close(_)))
+}
+
+#[test]
+fn free_form_a_negation_never_does_what_it_forbids() {
+    let c = Config::load(std::path::Path::new("config")).unwrap();
+    for (n, said) in [
+        "don't close chrome",
+        "don't close chrome and open notepad",
+        "do not delete the report and open notepad",
+        "never send that",
+        "please don't open discord",
+        "do not close workspace",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let p = two_screens();
+        let mut d = Daemon::new(
+            &c,
+            &p,
+            None,
+            store(&format!("negation-{n}")),
+            Proactive::new(ProactiveConfig::default()),
+        );
+        let _ = d.turn("open chrome", NOW);
+        let reply = d.turn(said, NOW + 10);
+        assert!(!closed(&p), "{said:?} closed something: {reply}");
+        assert!(!launched(&p, "discord"), "{said:?} opened discord: {reply}");
+        assert!(
+            !launched(&p, "notepad"),
+            "{said:?} split around the negation: {reply}"
+        );
+        assert!(
+            !matches!(d.session.pending, Pending::Approval(..)),
+            "{said:?} offered to do it: {:?}\n{reply}",
+            d.session.pending
+        );
+    }
+    // The splitter itself leaves every one of them whole.
+    let parser = parser();
+    for said in [
+        "don't close chrome and open notepad",
+        "open notepad and don't close chrome",
+        "do not delete the report and open notepad",
+        "never send that and then open chrome",
+        "please don't open discord",
+        "open chrome without closing notepad",
+    ] {
+        assert!(spoken_steps(said, &parser).is_none(), "{said}");
+    }
+    // A negation that IS the command still works.
+    assert!(atlas::splitter::negated_destructive("stop taking notes", &parser).is_none());
+    assert!(atlas::splitter::negated_destructive("close what I don't need", &parser).is_none());
+}
+
+#[test]
+fn free_form_it_is_resolved_before_anything_is_held_or_asked() {
+    let c = Config::load(std::path::Path::new("config")).unwrap();
+    let p = two_screens();
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store("it-held"),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let reply = d.turn("open notepad then close it", NOW);
+    assert!(launched(&p, "notepad"), "{reply}");
+    assert!(
+        matches!(&d.session.pending, Pending::Approval(atlas::intent::Intent::CloseApp(a), _) if a == "notepad"),
+        "held as {:?}, not as notepad\n{reply}",
+        d.session.pending
+    );
+    let yes = d.turn("yes", NOW + 5);
+    assert!(
+        p.actions()
+            .iter()
+            .any(|a| matches!(a, Action::Close(s) if s.to_lowercase().contains("notepad"))),
+        "a yes did not close notepad: {yes}\n{:?}",
+        p.actions()
+    );
+}
+
+#[test]
+fn free_form_after_outside_text_a_close_is_held_with_its_real_target() {
+    let c = Config::load(std::path::Path::new("config")).unwrap();
+    let p = two_screens();
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store("outside-close"),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let _ = d.turn("open notepad", NOW);
+    let reply = d.turn("read my messages and then close notepad", NOW + 5);
+    assert!(
+        reply.contains("someone else wrote"),
+        "not held by the outside-text gate: {reply}"
+    );
+    assert!(
+        matches!(&d.session.pending, Pending::Approval(atlas::intent::Intent::CloseApp(a), _) if a == "notepad"),
+        "{:?}\n{reply}",
+        d.session.pending
+    );
+    assert!(!closed(&p), "closed before the yes: {reply}");
+    let yes = d.turn("yes", NOW + 10);
+    assert!(
+        p.actions()
+            .iter()
+            .any(|a| matches!(a, Action::Close(s) if s.to_lowercase().contains("notepad"))),
+        "{yes}"
+    );
+}
+
+#[test]
+fn free_form_after_outside_text_a_delete_is_held() {
+    let c = Config::load(std::path::Path::new("config")).unwrap();
+    let p = two_screens();
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store("outside-delete"),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let reply = d.turn("read my messages and then delete the noise", NOW);
+    assert!(
+        matches!(
+            &d.session.pending,
+            Pending::Approval(atlas::intent::Intent::SortMail(_), _)
+        ),
+        "the delete was not held: {:?}\n{reply}",
+        d.session.pending
+    );
+    assert!(reply.contains("someone else wrote"), "{reply}");
+    // With mail as the outside text: whatever happens, nothing is deleted
+    // without a yes -- held, or stopped because the mail step didn't happen.
+    let p2 = two_screens();
+    let mut d2 = Daemon::new(
+        &c,
+        &p2,
+        None,
+        store("outside-delete-2"),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let reply = d2.turn("check my email and then delete the noise", NOW);
+    assert!(
+        matches!(
+            &d2.session.pending,
+            Pending::Nothing | Pending::Approval(atlas::intent::Intent::SortMail(_), _)
+        ),
+        "{:?}\n{reply}",
+        d2.session.pending
+    );
+    assert!(
+        reply.contains("delete the noise") || reply.contains("someone else wrote"),
+        "the delete is not named as not done: {reply}"
+    );
+}
+
+#[test]
+fn free_form_a_step_that_did_not_happen_stops_the_rest() {
+    let c = Config::load(std::path::Path::new("config")).unwrap();
+    let p = two_screens();
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store("stops"),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let _ = d.turn("open chrome", NOW);
+    // No mailbox is set up here, so the first part cannot happen; the close
+    // after it is neither run nor even asked about.
+    let reply = d.turn("check my email and then close chrome", NOW + 5);
+    assert!(!closed(&p), "{reply}");
+    assert!(
+        matches!(d.session.pending, Pending::Nothing),
+        "went on to the close after a step that didn't happen: {:?}\n{reply}",
+        d.session.pending
+    );
+    assert!(reply.contains("close chrome"), "{reply}");
+}
+
+#[test]
+fn free_form_a_compound_is_kept_once_as_said() {
+    let c = Config::load(std::path::Path::new("config")).unwrap();
+    let p = two_screens();
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store("record"),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let thread_before = d.thread.recent.len();
+    let turns_before = d.session.turns.len();
+    let said = "hey could you open chrome and then open notepad for me";
+    let reply = d.turn(said, NOW);
+    assert!(launched(&p, "chrome") && launched(&p, "notepad"), "{reply}");
+    assert_eq!(
+        d.thread.recent.len(),
+        thread_before + 1,
+        "{:?}",
+        d.thread.recent
+    );
+    assert_eq!(d.thread.recent.last().map(|e| e.said.as_str()), Some(said));
+    assert_eq!(d.session.turns.len(), turns_before + 1);
+    assert_eq!(d.session.turns.last().map(|x| x.said.as_str()), Some(said));
+    assert!(
+        !d.thread
+            .recent
+            .iter()
+            .any(|e| e.said == "open notepad" || e.said == "open chrome"),
+        "a rewritten part was kept as if said"
+    );
 }

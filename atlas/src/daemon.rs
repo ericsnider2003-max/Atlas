@@ -554,6 +554,10 @@ pub struct Daemon<'a> {
     /// Typed result for the exact intent just executed. Handlers opt in as
     /// their real completion boundary is established; words are not proof.
     execution_receipt: Option<(Intent, crate::taskloop::Outcome)>,
+    /// This turn's words were relayed from the phone's queue
+    /// (`askthelaptop`), where `remote::needs_your_yes` judged them as one
+    /// request: the free-form splitter leaves them whole (`splitter`).
+    relayed_from_phone: bool,
     /// A job being worked in an app, step by step (`operate`).
     pub operating: Option<crate::operate::Job>,
     /// The index as it is read from disk at start, off this thread
@@ -1817,6 +1821,7 @@ impl<'a> Daemon<'a> {
             rehearsed: Vec::new(),
             last_executed: None,
             execution_receipt: None,
+            relayed_from_phone: false,
             operating: None,
             index,
             index_load,
