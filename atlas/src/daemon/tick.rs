@@ -3104,7 +3104,7 @@ mod dials_have_a_deadline {
         let first = rx.recv_timeout(std::time::Duration::from_secs(4)).expect("first answer");
         let second = rx.recv_timeout(std::time::Duration::from_secs(4)).expect("second answer");
         assert!(first.1.is_err() && second.1.is_err());
-        assert!(started.elapsed() < std::time::Duration::from_secs(4), "{:?}", started.elapsed());
+        assert!(started.elapsed() < std::time::Duration::from_secs(4), "took {} ms", started.elapsed().as_millis());
     }
 }
 

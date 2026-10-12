@@ -121,6 +121,9 @@ impl<'a> SafePlatform<'a> {
     }
     /// What was asked of the screen since the last look, emptied.
     pub fn take(&self) -> Vec<String> {
+        // A pretend start belongs to the command that made it: the next
+        // command opening the same app must start it again, and say so.
+        self.started.borrow_mut().clear();
         std::mem::take(&mut *self.did.borrow_mut())
     }
     fn note(&self, what: String) -> Result<()> {

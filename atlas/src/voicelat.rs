@@ -48,14 +48,14 @@ static LAST: Mutex<Option<AsrDecision>> = Mutex::new(None);
 /// Remember the latest decision (the ears may run on another thread than the
 /// loop that logs the turn).
 pub fn note_asr(d: AsrDecision) {
-    if let Ok(mut g) = LAST.lock() {
+    if let Ok(mut g) = LAST.lock().or_else(crate::crash::unpoison) {
         *g = Some(d);
     }
 }
 
 /// Take the latest decision, once.
 pub fn take_asr() -> Option<AsrDecision> {
-    LAST.lock().ok().and_then(|mut g| g.take())
+    LAST.lock().or_else(crate::crash::unpoison).ok().and_then(|mut g| g.take())
 }
 
 /// One finished turn.
