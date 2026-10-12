@@ -48,7 +48,7 @@ fn a_friend_sends_feedback_you_get_a_report_and_they_hear_your_answer() {
     let shown = feedback_preview(&f);
     println!("LIVE [what the friend sees before sending]\n{shown}");
     assert!(shown.contains("The hub goes blank") && shown.contains("src/hub.rs:88"), "they see what goes");
-    queue_feedback(&friend, f.clone(), "Eric");
+    queue_feedback(&friend, f.clone(), "Eric").unwrap();
     let out = feedback_outbox(&friend);
     assert_eq!(out.len(), 1);
     let (to, body, id) = &out[0];
@@ -93,7 +93,7 @@ fn a_friend_sends_feedback_you_get_a_report_and_they_hear_your_answer() {
 fn an_answer_is_taken_only_from_whoever_the_feedback_went_to_and_only_about_real_feedback() {
     let (friend, _) = fresh("answers");
     let f = compose_feedback("Typing goes wrong in Notepad", None, 1).unwrap();
-    queue_feedback(&friend, f.clone(), "Eric");
+    queue_feedback(&friend, f.clone(), "Eric").unwrap();
     let answer = |id: &str| format!(r#"{{"id":"{id}","status":{{"state":"fixed","detail":"9.9.9"}},"note":"all fixed","at":5}}"#);
     assert!(heard_answer(&friend, "Mallory", &answer(&f.id)).is_none(), "someone else can't close your feedback");
     assert!(heard_answer(&friend, "Eric", &answer("not-something-you-sent")).is_none(), "nor invent one");

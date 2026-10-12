@@ -40,6 +40,15 @@ pub const SYNC_PORT: u16 = 8790;
 /// to allocate the machine's whole memory with a four-byte length.
 pub const MAX_FRAME: u32 = 64 * 1024 * 1024;
 
+/// The most a frame from a peer we have not yet authenticated may be. The
+/// listener reads a frame before the daemon can check the household key, so
+/// this is what a stranger on the same Wi-Fi can make us hold in memory
+/// (queue of 4 plus the one being read). 64 KB would be safer still but is
+/// not safe for sync itself: a bundle is every event since the last sync and
+/// a phone back from a week away sends far more than that. 8 MiB leaves real
+/// bundles room and cuts a hostile peer's reach from ~320 MB to ~40 MB.
+pub const MAX_PRE_AUTH_FRAME: u32 = 8 * 1024 * 1024;
+
 /// The first bytes of every frame. Not security — a household key is that — but
 /// it means a probe from some other protocol that lands on this port is turned
 /// away as "not Atlas" instead of read as a length.
@@ -62,6 +71,11 @@ fn write_frame(w: &mut impl Write, bytes: &[u8]) -> std::io::Result<()> {
 
 /// Read one frame, refusing a length that isn't ours or is absurd.
 fn read_frame(r: &mut impl Read) -> std::io::Result<Vec<u8>> {
+    read_frame_capped(r, MAX_FRAME)
+}
+
+/// As `read_frame`, with the largest announced length the caller will accept.
+fn read_frame_capped(r: &mut impl Read, cap: u32) -> std::io::Result<Vec<u8>> {
     let mut magic = [0u8; 4];
     r.read_exact(&mut magic)?;
     if &magic != MAGIC {
@@ -70,7 +84,7 @@ fn read_frame(r: &mut impl Read) -> std::io::Result<Vec<u8>> {
     let mut len_bytes = [0u8; 4];
     r.read_exact(&mut len_bytes)?;
     let len = u32::from_be_bytes(len_bytes);
-    if len > MAX_FRAME {
+    if len > cap.min(MAX_FRAME) {
         return Err(other("the other side announced a bundle too large to accept"));
     }
     // Read what actually arrives rather than allocating what was announced:
@@ -83,26 +97,62 @@ fn read_frame(r: &mut impl Read) -> std::io::Result<Vec<u8>> {
     Ok(buf)
 }
 
+/// A stream held to one deadline for everything done through it, not one per
+/// read: a peer trickling bytes can't hold it open.
+struct ByDeadline<'a> {
+    s: &'a mut TcpStream,
+    until: std::time::Instant,
+}
+impl ByDeadline<'_> {
+    fn left(&self) -> std::io::Result<Duration> {
+        let left = self.until.saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() {
+            return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "the other side took too long"));
+        }
+        Ok(left)
+    }
+}
+impl Read for ByDeadline<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let left = self.left()?;
+        self.s.set_read_timeout(Some(left))?;
+        self.s.read(buf)
+    }
+}
+impl Write for ByDeadline<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let left = self.left()?;
+        self.s.set_write_timeout(Some(left))?;
+        self.s.write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.s.flush()
+    }
+}
+
 /// The sending side: connect to `host:port`, hand over `outgoing`, and return
-/// what the peer sent back — its own bundle. One call is a complete two-way
-/// sync. `timeout` bounds every step, so a peer that answered the shout but
-/// then went away can't hang the turn.
+/// what the peer sent back -- its own bundle. One call is a complete two-way
+/// sync. `total` is a deadline for the whole call (connect, send and the
+/// whole reply), so a peer that went away, or one that trickles its reply,
+/// can't hold the caller past it (Q5).
 pub fn exchange(
     host: &str,
     port: u16,
     outgoing: &[u8],
-    timeout: Duration,
+    total: Duration,
 ) -> std::io::Result<Vec<u8>> {
-    // Resolve and connect with a bound wait, so a stale address from discovery
-    // fails fast instead of blocking on a dead host.
+    let until = std::time::Instant::now() + total;
     let addr = (host, port)
         .to_socket_addrs_first()
         .ok_or_else(|| other("couldn't resolve the peer's address"))?;
-    let mut stream = TcpStream::connect_timeout(&addr, timeout)?;
-    stream.set_read_timeout(Some(timeout))?;
-    stream.set_write_timeout(Some(timeout))?;
-    write_frame(&mut stream, outgoing)?;
-    read_frame(&mut stream)
+    let left = until.saturating_duration_since(std::time::Instant::now());
+    if left.is_zero() {
+        return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "ran out of time resolving the peer"));
+    }
+    let mut stream = TcpStream::connect_timeout(&addr, left)?;
+    let mut io = ByDeadline { s: &mut stream, until };
+    write_frame(&mut io, outgoing)?;
+    read_frame(&mut io)
 }
 
 /// One-shot address resolution helper, kept as a trait so `exchange` reads
@@ -132,21 +182,8 @@ struct Arrived {
 /// Read one frame with a deadline for the whole of it, not each read: a
 /// peer trickling a byte every so often used to hold the read for ever.
 fn read_frame_within(stream: &mut TcpStream, total: Duration) -> std::io::Result<Vec<u8>> {
-    struct ByDeadline<'a> {
-        s: &'a mut TcpStream,
-        until: std::time::Instant,
-    }
-    impl Read for ByDeadline<'_> {
-        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-            let left = self.until.saturating_duration_since(std::time::Instant::now());
-            if left.is_zero() {
-                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "the other side took too long to send its bundle"));
-            }
-            self.s.set_read_timeout(Some(left))?;
-            self.s.read(buf)
-        }
-    }
-    read_frame(&mut ByDeadline { s: stream, until: std::time::Instant::now() + total })
+    // Capped at the pre-auth size: the key hasn't been checked yet.
+    read_frame_capped(&mut ByDeadline { s: stream, until: std::time::Instant::now() + total }, MAX_PRE_AUTH_FRAME)
 }
 
 /// The receiving side: a bound listener the daemon polls once a tick.
@@ -364,5 +401,43 @@ mod tests {
         }
         assert!(started.elapsed() < Duration::from_secs(2), "polling waited on the slow peer: {:?}", started.elapsed());
         slow.join().unwrap();
+    }
+
+    #[test]
+    fn a_stranger_cannot_announce_more_than_the_pre_auth_cap() {
+        let mut wire = Vec::new();
+        wire.extend_from_slice(MAGIC);
+        wire.extend_from_slice(&(MAX_PRE_AUTH_FRAME + 1).to_be_bytes());
+        assert!(read_frame_capped(&mut std::io::Cursor::new(wire.clone()), MAX_PRE_AUTH_FRAME).is_err());
+        // ...and the listener path applies it: nothing is queued.
+        let server = Server::bind_local_ephemeral().unwrap();
+        let mut s = TcpStream::connect(server.local_addr().unwrap()).unwrap();
+        s.write_all(&wire).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(!server.poll(Duration::from_millis(50), |b| b).unwrap());
+    }
+
+    #[test]
+    fn a_reply_that_trickles_cannot_hold_exchange_past_its_total() {
+        // The peer reads our frame, then drips its reply a byte per 100 ms
+        // (each under any per-read timeout). The old per-step timeout let that
+        // run for ever; the total deadline ends it.
+        let l = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let addr = l.local_addr().unwrap();
+        let peer = std::thread::spawn(move || {
+            let (mut c, _) = l.accept().unwrap();
+            let _ = read_frame(&mut c);
+            for b in b"ATL1\0\0\x10\0".iter().cycle().take(60) {
+                if c.write_all(&[*b]).is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        });
+        let started = std::time::Instant::now();
+        let got = exchange("127.0.0.1", addr.port(), b"hi", Duration::from_millis(800));
+        assert!(got.is_err());
+        assert!(started.elapsed() < Duration::from_secs(3), "exchange ran past its deadline: {:?}", started.elapsed());
+        drop(peer);
     }
 }

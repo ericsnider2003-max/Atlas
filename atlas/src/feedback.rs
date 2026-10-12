@@ -171,7 +171,7 @@ pub fn send_decided(store: &Store, peer_dir: &std::path::Path, f: Feedback) -> R
         return Ok(Sending::Filed);
     }
     let to = name.ok_or("I can't reach whoever sends you updates -- you aren't paired with them -- so nothing was sent.")?;
-    queue_feedback(store, f, &to);
+    queue_feedback(store, f, &to)?;
     Ok(Sending::Queued(to))
 }
 
@@ -265,14 +265,21 @@ pub fn feedback_preview(f: &Feedback) -> String {
 
 /// Queue feedback for the person with this pairing name. The running Atlas
 /// sends it when it can reach them, and keeps it until they took it.
-pub fn queue_feedback(store: &Store, mut f: Feedback, to: &str) {
+///
+/// Returns an error when the outbox itself couldn't be written: callers say
+/// "Sent to ..." and that is false if nothing was queued. (The copy in the
+/// "sent" list is a convenience; failing to keep it is recorded centrally by
+/// `Store::save` but doesn't make the send untrue.)
+pub fn queue_feedback(store: &Store, mut f: Feedback, to: &str) -> Result<(), String> {
     f.to = to.to_string();
     let mut out: Vec<Feedback> = store.load(OUTBOX);
     out.push(f.clone());
-    let _ = store.save(OUTBOX, &out);
+    store.save(OUTBOX, &out).map_err(|e| format!("couldn't queue the feedback ({e}); nothing was sent"))?;
     let mut sent: Vec<Feedback> = store.load(SENT);
     sent.push(f);
+    // unheard-ok: failure is recorded centrally (store::record_failed_save)
     let _ = store.save(SENT, &sent);
+    Ok(())
 }
 
 /// Feedback still to be sent: (to, wire body, id).

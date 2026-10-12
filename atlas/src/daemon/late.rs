@@ -984,7 +984,11 @@ impl<'a> Daemon<'a> {
                 "That's already on your later list.".into()
             }
         };
-        let _ = self.store.save(crate::later::RECORD, &later);
+        // "On your later list" / "Cleared" / "Took off" are false if the list
+        // wasn't written.
+        if let Err(e) = self.store.save(crate::later::RECORD, &later) {
+            return format!("I couldn't save your later list ({e}), so that change didn't stick.");
+        }
         reply
     }
 

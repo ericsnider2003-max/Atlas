@@ -74,7 +74,9 @@ impl Daemon<'_> {
                 let to = crate::kin::Pairings::load(&self.peer_dir).name_of_key(&owner);
                 match to {
                     Some(to) => {
-                        crate::feedback::queue_feedback(&self.store, f, &to);
+                        if let Err(e) = crate::feedback::queue_feedback(&self.store, f, &to) {
+                            return format!("Not sent: {e}.");
+                        }
                         format!("Sent to {to}. They'll see exactly what you wrote, and nothing else.")
                     }
                     None => "I can't reach whoever gave you Atlas, so it's kept here for now.".to_string(),

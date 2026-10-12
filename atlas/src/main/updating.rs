@@ -116,7 +116,10 @@ pub(super) fn run_feedback(args: &[String]) {
                 println!("Not sent.");
                 return;
             }
-            feedback::queue_feedback(&store, f, &to);
+            if let Err(e) = feedback::queue_feedback(&store, f, &to) {
+                println!("Not sent: {e}.");
+                return;
+            }
             println!("Sending it to {to}. The running Atlas delivers it when it can reach them, and tells you when they answer.");
         }
         Some("reply") => {
