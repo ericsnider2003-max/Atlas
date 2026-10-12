@@ -162,7 +162,7 @@ pub fn keep_spans(silences: &[(f64, f64)], duration: f64) -> Vec<(f64, f64)> {
 
 /// ffmpeg arguments that keep only `spans` of `input`, picture and sound
 /// together, into `output`.
-
+///
 /// Silent footage has no audio stream to select; preserve its picture.
 pub fn cut_args_with_audio(input: &str, spans: &[(f64, f64)], output: &str, audio: bool) -> Vec<String> {
     let between: Vec<String> = spans.iter().map(|(a, b)| format!("between(t,{a:.3},{b:.3})")).collect();

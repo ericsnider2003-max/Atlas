@@ -858,9 +858,7 @@ impl<'a> Daemon<'a> {
                 let watched = if matches!(completion, Outcome::NeedsYou(_)) { crate::watching::Outcome::Finished } else { crate::watching::Outcome::Failed };
                 self.long_work.update(link.watch_id, watched, &said, t);
                 self.finish_queued_worker(news.id, &completion, t);
-                if matches!(completion, Outcome::NeedsYou(_)) && self.park_media_decision(news.id) {
-                    out.push(said);
-                } else if !self.finish_background_step(news.id, completion) { out.push(said); }
+                if (matches!(completion, Outcome::NeedsYou(_)) && self.park_media_decision(news.id)) || !self.finish_background_step(news.id, completion) { out.push(said); }
                 if let Some(j) = self.long_work.jobs.iter_mut().find(|j| j.id == link.watch_id) { j.reported = true; }
                 continue;
             }
@@ -890,9 +888,7 @@ impl<'a> Daemon<'a> {
                 self.long_work.update(link.watch_id, watched, completion.text(), t);
                 let said = completion.text().to_string();
                 self.finish_queued_worker(news.id, &completion, t);
-                if matches!(completion, Outcome::NeedsYou(_)) && self.park_scan_decision(news.id) {
-                    out.push(said);
-                } else if !self.finish_background_step(news.id, completion) {
+                if (matches!(completion, Outcome::NeedsYou(_)) && self.park_scan_decision(news.id)) || !self.finish_background_step(news.id, completion) {
                     out.push(said);
                 }
                 if let Some(j) = self.long_work.jobs.iter_mut().find(|j| j.id == link.watch_id) {

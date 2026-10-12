@@ -874,8 +874,6 @@ pub struct SortDone {
 
 
 /// Production sorting records the actual destination before touching a file.
-
-
 pub fn carry_out_moves_controlled(
     plan: &SortPlan,
     sys: &crate::system::SystemConfig,

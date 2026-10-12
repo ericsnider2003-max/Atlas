@@ -83,7 +83,7 @@ pub fn return_archived_file(state: &Path, archive: &str, kind: &str, id: u64) ->
     // caller-supplied folder path or reuse a live trash identifier.
     let selected = archived_recovery(state)?.into_iter().find(|entry| entry.archive == archive && entry.kind == kind && entry.record.id == id)
         .ok_or_else(|| AtlasError::Platform("that archived recovery file is no longer available".into()))?;
-    let folder = Path::new(&selected.record.held).parent().unwrap();
+    let folder = Path::new(&selected.record.held).parent().ok_or_else(|| AtlasError::Platform("that archived recovery file has no folder".into()))?;
     let trash = Trash::new(TrashConfig { dir: folder.display().to_string(), keep_days: u64::MAX });
     trash.undo(id).map(|record| format!("Returned {} from the saved recovery archive.", record.original))
 }
@@ -249,7 +249,7 @@ fn copy_file_durably(source: &Path, destination: &Path) -> std::io::Result<u64> 
         }
     }
     crate::heard!(std::fs::remove_file(destination));
-    Err(last.expect("three attempts were made"))
+    Err(last.unwrap_or_else(|| std::io::Error::other("the file kept changing while it was copied")))
 }
 
 thread_local! {
@@ -710,7 +710,6 @@ pub fn may_restore(store: &crate::store::Store) -> Result<()> {
 /// at all (older than this check, or never initialized) is let through: the
 /// check can only refuse a *known* mismatch, not invent one for a backup
 /// that predates it.
-
 pub fn restore_with_notes(backup: &Path, state: &Path, trash: &Trash, mine: &crate::household::Household, notes: &Path) -> Result<usize> {
     restore_transaction::restore_with_notes(backup, state, trash, mine, notes)
 }
@@ -950,8 +949,6 @@ fn move_across(from: &Path, to: &Path) -> Result<()> {
 }
 
 /// Shared no-clobber transfer for sorting and its recovery path.
-
-
 #[cfg(windows)]
 struct MoveCohort { objects: Vec<(PathBuf, std::fs::File, bool)> }
 

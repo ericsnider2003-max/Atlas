@@ -432,7 +432,6 @@ pub enum SignedUp {
 /// code hands it to you. The password was made by `enrol::PasswordPolicy`
 /// and goes into the vault by the caller before this runs, so an account
 /// made halfway is never one whose password was lost.
-
 pub fn sign_up_unless(b: &mut crate::browser::Browser, enrolment: &mut crate::enrol::Enrolment, email: &str, password: &str, cfg: &crate::enrol::EnrolConfig, start_url: Option<&str>, stop: &dyn Fn() -> bool) -> SignedUp {
     if stop() { return SignedUp::Failed("stopped before opening the signup form".into()); }
     let url = start_url.map(str::to_string).unwrap_or_else(|| signup_url(&enrolment.domain));

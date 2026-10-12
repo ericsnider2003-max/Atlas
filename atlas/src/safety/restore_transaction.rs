@@ -9,6 +9,14 @@ struct Entry { relative: PathBuf, original: Option<String>, replacement: String,
 #[derive(Serialize, Deserialize)]
 struct Journal { version: u32, staging: String, trash_dir: String, keep_days: u64, committed: bool, entries: Vec<Entry>, #[serde(default)] notes_root: Option<PathBuf> }
 
+fn parent_of(path: &Path) -> Result<&Path> {
+    path.parent().ok_or_else(|| AtlasError::Platform(format!("restore path {} has no parent folder", path.display())))
+}
+
+fn name_of(path: &Path) -> Result<&std::ffi::OsStr> {
+    path.file_name().ok_or_else(|| AtlasError::Platform(format!("restore path {} has no file name", path.display())))
+}
+
 fn save(root: &Path, journal: &Journal) -> Result<()> {
     crate::store::write_json(&root.join(JOURNAL), journal)?;
     Ok(())
@@ -58,9 +66,9 @@ fn directory_witness(root: &Path, entry: &Entry, staging: &Path, notes_root: Opt
     if let Some(folder) = &entry.output {
         let base = entry_target(root, &Entry { relative: Path::new(OWNED_OUTPUTS).join(folder), original: None, replacement: String::new(), output: Some(folder.clone()), directory_owner: None }, notes_root)?;
         let parent = base.parent().ok_or_else(|| AtlasError::Platform("restore output root has no parent".into()))?;
-        let prefix = format!("{}-directory-", staging.file_name().unwrap().to_string_lossy());
+        let prefix = format!("{}-directory-", name_of(staging)?.to_string_lossy());
         if !matches!(recorded.parent(), Some(candidate) if candidate == parent || candidate == base) || !recorded.file_name().is_some_and(|name| name.to_string_lossy().starts_with(&prefix)) { return Err(AtlasError::Platform("directory witness is outside its current output root; recovery was stopped".into())); }
-        checked_target(recorded.parent().unwrap(), Path::new(recorded.file_name().unwrap()))
+        checked_target(parent_of(recorded)?, Path::new(name_of(recorded)?))
     } else {
         if !valid_relative(recorded) || recorded.components().next().is_none_or(|component| component.as_os_str() != ".directory-witnesses") { return Err(AtlasError::Platform("directory recovery witness path is invalid".into())); }
         checked_target(staging, recorded)
@@ -114,7 +122,7 @@ fn clean_owned_directory(target: &Path, token: &str, committed: bool, recovery: 
     else {
         // Keep ownership evidence through an atomic no-clobber move back to
         // private staging. A crash cannot leave an unidentifiable empty target.
-        publish_directory(target, recovery.unwrap())?;
+        publish_directory(target, recovery.ok_or_else(|| AtlasError::Platform("an unfinished restore directory has no recovery location".into()))?)?;
     }
     Ok(())
 }
@@ -279,7 +287,7 @@ fn restore_with_notes_and_hook(backup: &Path, state: &Path, trash: &Trash, mine:
                 }
             }
             let staged = staging.join(&journal_relative);
-            std::fs::create_dir_all(staged.parent().unwrap())?;
+            std::fs::create_dir_all(parent_of(&staged)?)?;
             copy_file_durably(source, &staged)?;
             let source_hash = hash_file(&staged)?;
             if let Some(manifest) = &manifest {
@@ -288,8 +296,8 @@ fn restore_with_notes_and_hook(backup: &Path, state: &Path, trash: &Trash, mine:
             }
             if relative == &Path::new(OWNED_OUTPUTS).join("trash").join("ledger.json") || relative == &Path::new(OWNED_OUTPUTS).join("configured-trash").join("ledger.json") {
                 let mut records: Vec<Discarded> = serde_json::from_slice(&std::fs::read(&staged)?).map_err(|e| AtlasError::Platform(format!("the archived trash ledger is invalid ({e})")))?;
-                let archive = state.join(journal_relative.parent().unwrap());
-                let backup_trash = source.parent().unwrap();
+                let archive = state.join(parent_of(&journal_relative)?);
+                let backup_trash = parent_of(source)?;
                 let mut ids = std::collections::BTreeSet::new();
                 let mut names = std::collections::BTreeSet::new();
                 for record in &mut records {
@@ -326,7 +334,7 @@ fn restore_with_notes_and_hook(backup: &Path, state: &Path, trash: &Trash, mine:
                 // owner folders begin below them. Required missing output
                 // roots are still claimed from each child entry's parents.
                 if owned.components().count() < 2 { continue; }
-                let folder = owned.components().next().unwrap().as_os_str().to_str().unwrap_or("");
+                let folder = owned.components().next().and_then(|c| c.as_os_str().to_str()).unwrap_or("");
                 if matches!(folder, "trash" | "recovery" | "configured-trash") { needed.push((PathBuf::from(format!(".restored-recovery-{staging_name}")).join(owned), None)); }
                 else if matches!(folder, "notes" | "calls" | "reading" | "configured-notes") { needed.push((relative.clone(), Some(folder.into()))); }
                 else { return Err(AtlasError::Platform("backup directory root is unsupported".into())); }
@@ -352,14 +360,15 @@ fn restore_with_notes_and_hook(backup: &Path, state: &Path, trash: &Trash, mine:
         for (index, entry) in directories.iter_mut().enumerate() {
             let witness = if let Some(folder) = &entry.output {
                 let base = entry_target(state, &Entry { relative: Path::new(OWNED_OUTPUTS).join(folder), original: None, replacement: String::new(), output: Some(folder.clone()), directory_owner: None }, notes_root.as_deref())?;
-                let parent = if base.is_dir() { base.as_path() } else { base.parent().unwrap() };
+                let parent = if base.is_dir() { base.as_path() } else { parent_of(&base)? };
                 parent.join(format!("{staging_name}-directory-{index}"))
             } else { staging.join(".directory-witnesses").join(index.to_string()) };
-            std::fs::create_dir_all(witness.parent().unwrap())?;
+            std::fs::create_dir_all(parent_of(&witness)?)?;
             std::fs::create_dir(&witness)?;
-            if entry.output.is_some() { external_witnesses.push((witness.clone(), entry.directory_owner.clone().unwrap())); }
-            crate::store::write_owned_file(&witness.join(DIRECTORY_OWNER), entry.directory_owner.as_ref().unwrap().as_bytes())?;
-            entry.replacement = if entry.output.is_some() { witness.display().to_string() } else { witness.strip_prefix(&staging).unwrap().display().to_string() };
+            let owner = entry.directory_owner.clone().ok_or_else(|| AtlasError::Platform("a restore directory entry lost its ownership token".into()))?;
+            if entry.output.is_some() { external_witnesses.push((witness.clone(), owner.clone())); }
+            crate::store::write_owned_file(&witness.join(DIRECTORY_OWNER), owner.as_bytes())?;
+            entry.replacement = if entry.output.is_some() { witness.display().to_string() } else { witness.strip_prefix(&staging).map_err(|_| AtlasError::Platform("a restore directory witness is outside private staging".into()))?.display().to_string() };
         }
         directories.extend(entries);
         Ok(directories)
@@ -373,7 +382,7 @@ fn restore_with_notes_and_hook(backup: &Path, state: &Path, trash: &Trash, mine:
             before(operation)?;
             let target = entry_target(state, entry, journal.notes_root.as_deref())?;
             if entry.directory_owner.is_some() { publish_directory(&directory_witness(state, entry, &staging, journal.notes_root.as_deref())?, &target)?; continue; }
-            std::fs::create_dir_all(target.parent().unwrap())?;
+            std::fs::create_dir_all(parent_of(&target)?)?;
             if entry.original.is_some() { trash.take(&target, &format!("replaced by restore {}", journal.staging))?; }
             move_across(&staging.join(&entry.relative), &target)?;
             count += 1;

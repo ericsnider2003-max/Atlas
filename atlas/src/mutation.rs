@@ -161,7 +161,6 @@ pub enum Checked {
 }
 
 /// Mutate only the lines in `diff`, in the sandbox copy at `root`.
-
 pub(crate) fn check_diff_controlled(root: &std::path::Path, diff: &str, budget: Option<&crate::tools::WorkBudget<'_>>) -> Checked {
     if let Some(b) = budget { if let Err(why) = b.check() { return Checked::NotRun(why); } }
     if diff.trim().is_empty() {

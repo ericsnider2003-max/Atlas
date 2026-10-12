@@ -1669,10 +1669,9 @@ pub fn move_to_sign_in(state: &crate::store::Store, old: &Vault, now: u64) -> Re
             return Err("there's already an older vault set aside, so I left this one as it is".into());
         }
     }
-    let mut fresh = Vault::default();
     // This explicit replacement carries the old snapshot's compare condition.
     // Its generic save still refuses a newer disk vault.
-    fresh.disk_baseline = old.disk_baseline.clone();
+    let mut fresh = Vault { disk_baseline: old.disk_baseline.clone(), ..Vault::default() };
     fresh.start_on_this_login(now)?;
     state.save(SET_ASIDE, old).map_err(|e| format!("I couldn't set the old vault aside: {e}"))?;
     fresh.save(state).map_err(|e| format!("I couldn't write the new vault: {e}"))?;

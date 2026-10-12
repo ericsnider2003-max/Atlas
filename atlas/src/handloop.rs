@@ -157,7 +157,7 @@ pub fn last_cost_ms() -> Option<u32> {
 /// picture size, which is exactly what the NPU wants.
 pub enum Reader {
     Here(crate::infer::Model),
-    Runtime { session: crate::npu::Session, input: String, kind: crate::infer::Kind },
+    Runtime { session: Box<crate::npu::Session>, input: String, kind: crate::infer::Kind },
 }
 
 impl Reader {
@@ -181,7 +181,7 @@ impl Reader {
                 Ok((session, input))
             });
             match opened {
-                Ok((session, input)) => return Ok(Reader::Runtime { session, input, kind }),
+                Ok((session, input)) => return Ok(Reader::Runtime { session: Box::new(session), input, kind }),
                 Err(why) => crate::outln!("{} stays on tract: {why}", kind.plain()),
             }
         }

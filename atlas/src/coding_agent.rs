@@ -129,10 +129,9 @@ pub struct Ran {
 }
 
 /// Run an agent on a task in `folder`, for no longer than `limit_secs`.
-
+///
 /// One program, with `input` on its stdin, in `folder`, stopped at the limit
 /// or when Atlas is asked to stop.
-
 pub(crate) fn run_controlled(agent: Agent, program: &str, folder: &Path, task_text: &str, limit_secs: u64, stop: &dyn Fn() -> bool) -> Ran {
     run_with_stdin_controlled(program, &agent.args(), folder, task_text, limit_secs, Some(stop))
 }

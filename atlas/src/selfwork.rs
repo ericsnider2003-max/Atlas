@@ -932,7 +932,6 @@ pub fn read_run(text: &str) -> RunRead {
 }
 
 /// Run the test suite in the sandbox and read the result.
-
 pub(crate) fn run_tests_controlled(sandbox: &mut Sandbox, cfg: &SelfWorkConfig, budget: Option<&crate::tools::WorkBudget<'_>>) -> Tried {
     let tool = crate::tools::ExternalTool {
         command: cfg.test_command.split_whitespace().next().unwrap_or("cargo").into(),

@@ -1394,7 +1394,9 @@ impl<'a> Daemon<'a> {
                         let before = match brief_snapshot_value(&previous) { Ok(v)=>v, Err(e)=>return e };
                         let mut staged = previous;
                         let id = staged.add_in(&title, when, None, crate::earned::Space::Personal, now);
-                        let event = staged.event(id).expect("newly staged event").clone();
+                        let Some(event) = staged.event(id).cloned() else {
+                            return "The meeting could not be staged on your calendar, so nothing was booked.".into();
+                        };
                         self.accept_calendar_booking(p, event, before)
                     }
                     None => "None of their times actually clear against your calendar, so accepting \

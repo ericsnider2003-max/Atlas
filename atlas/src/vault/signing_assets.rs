@@ -106,8 +106,7 @@ fn decode(vault: &mut Vault, name: &str, now: u64) -> Result<Vec<u8>, String> {
 }
 
 /// Explicit copy protection only. The original file is always retained.
-
-
+///
 /// Portable ciphertext only; Windows-login wrapping is excluded. Existing
 /// destinations are never overwritten, and owner recovery keys are not copied.
 pub fn export_protected_signing_backup(vault: &Vault, destination: &Path, now: u64, config: &VaultConfig) -> Result<(), String> {

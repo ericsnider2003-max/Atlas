@@ -232,12 +232,12 @@ pub fn listen() {
         // Windows gives roughly five seconds before killing the process
         // regardless, which is ample for a persist and a lock release but is
         // the reason the shutdown does the important things first.
-        type BOOL = i32;
-        const TRUE: BOOL = 1;
+        type Bool = i32;
+        const TRUE: Bool = 1;
         unsafe extern "system" {
-            fn SetConsoleCtrlHandler(handler: Option<unsafe extern "system" fn(u32) -> BOOL>, add: BOOL) -> BOOL;
+            fn SetConsoleCtrlHandler(handler: Option<unsafe extern "system" fn(u32) -> Bool>, add: Bool) -> Bool;
         }
-        unsafe extern "system" fn handler(kind: u32) -> BOOL {
+        unsafe extern "system" fn handler(kind: u32) -> Bool {
             // CTRL_C 0, CTRL_BREAK 1, CTRL_CLOSE 2: a person. CTRL_LOGOFF 5,
             // CTRL_SHUTDOWN 6: Windows ending. Atomics only.
             please_stop_because(if kind >= 5 { Why::WindowsEnding } else { Why::YouClosedIt });

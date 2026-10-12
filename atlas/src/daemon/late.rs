@@ -1224,8 +1224,8 @@ impl<'a> Daemon<'a> {
         let before = self.publisher.clone();
         if !self.publisher.apply_approval_receipt(&receipt) { return Outcome::Failed("The post changed during approval; review it again.".into()); }
         if let Err(e) = self.publisher.save(&self.store) { self.publisher = before; return Outcome::Failed(format!("Approval could not be saved: {e}")); }
-        if receipt.approved.send_at.is_some_and(|at| at > t) {
-            Outcome::Done(format!("Approved and queued for {}. Publication will be checked separately.", crate::localclock::hhmm_here(receipt.approved.send_at.unwrap())))
+        if let Some(at) = receipt.approved.send_at.filter(|at| *at > t) {
+            Outcome::Done(format!("Approved and queued for {}. Publication will be checked separately.", crate::localclock::hhmm_here(at)))
         } else { Outcome::NeedsYou("Approval saved for the exact post and attachments. Submission is queued; publication is not confirmed.".into()) }
     }
 

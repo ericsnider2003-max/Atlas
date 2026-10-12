@@ -423,7 +423,7 @@ impl Research {
         stop: &dyn Fn() -> bool,
     ) -> Result<Vec<String>> {
         if stop() { return Err(AtlasError::Platform("research stopped".into())); }
-        let mut bounded = bcfg.clone(); bounded.timeout_ms = bounded.timeout_ms.min(1000).max(50); bounded.startup_ms = bounded.startup_ms.min(3000);
+        let mut bounded = bcfg.clone(); bounded.timeout_ms = bounded.timeout_ms.clamp(50, 1000); bounded.startup_ms = bounded.startup_ms.min(3000);
         let mut b = crate::browser::Browser::start(&bounded, &self.vars)?;
         let got = read_links_until(&mut b, page, bcfg.timeout_ms.min(15_000), stop);
         b.close();

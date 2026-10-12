@@ -89,7 +89,6 @@ pub fn plan(
 
 /// Carry out a post. Only ever called with an id the publisher already
 /// cleared, and it checks again anyway.
-
 pub fn send_unless(pub_: &mut Publisher, browser: &mut Browser, cfg: &BrowserConfig, id: u64, online: bool, stop: &dyn Fn() -> bool) -> Outcome {
     let steps = match plan(pub_, cfg, id, online) {
         Ok(s) => s,
@@ -147,7 +146,6 @@ pub fn is_bluesky(channel: &crate::publish::Channel) -> bool {
 
 /// Carry out a Bluesky post through its API, with the same gate as a
 /// browser post: only an id the publisher cleared, checked again here.
-
 pub fn send_bluesky_unless(pub_: &mut Publisher, x: &dyn crate::social::posting::Xrpc, handle: &str, app_password: &str, id: u64, online: bool, now: u64, stop: &dyn Fn() -> bool) -> Outcome {
     let Some(post) = pub_.get(id).cloned() else {
         return Outcome::Blocked("no such post".into());

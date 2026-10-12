@@ -778,19 +778,18 @@ impl Book {
         let _transaction = store.transaction()?;
         let mut facts: Vec<Fact> = Vec::new();
         let mut present = [false; SHARDS];
-        for s in 0..SHARDS {
+        for (s, here) in present.iter_mut().enumerate() {
             let shard: Option<Vec<Fact>> = store.load_checked(&format!("facts-{s}"))?;
-            if let Some(shard) = shard { present[s] = true; facts.extend(shard); }
+            if let Some(shard) = shard { *here = true; facts.extend(shard); }
         }
-        let mut b = Book::default();
-        b.facts = facts;
+        let mut b = Book { facts, ..Book::default() };
         if present.iter().any(|exists| !exists) {
             // Resume interrupted migration only for absent shards. A present
             // empty shard is authoritative and must not resurrect old facts.
             let legacy: Book = store.load_checked("facts")?.unwrap_or_default();
             if !legacy.facts.is_empty() {
                 b.facts.extend(legacy.facts.into_iter().filter(|fact| !present[shard_of(&fact.name)]));
-                for s in 0..SHARDS { b.dirty[s] = !present[s]; }
+                for (dirty, here) in b.dirty.iter_mut().zip(present) { *dirty = !here; }
             }
         }
         b.aliases = store.load_checked("fact-aliases")?.unwrap_or_default();

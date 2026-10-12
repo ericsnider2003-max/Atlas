@@ -1520,7 +1520,10 @@ pub fn append_changes_checked(store: &Store, dir: &Path, log: &mut crate::sync::
     let previous = log.clone();
     for (id, field, to) in changes {
         log.append(crate::sync::What::Changed { id: id.clone(), field: field.clone(), to }, now);
-        let event = log.events.last().expect("append records an event");
+        let Some(event) = log.events.last() else {
+            *log = previous;
+            return Err("the sync log did not record the permission change".to_string());
+        };
         told.versions.insert(format!("{id}:{field}"), crate::sync::Version::of(event));
     }
     if let Err(error) = store.save("synclog", &Some(log.clone())) { *log = previous; return Err(error.to_string()); }

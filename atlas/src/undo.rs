@@ -62,7 +62,7 @@ impl History {
     pub fn note(&mut self, what: &str, area: &str, undo: Undo, you_asked: bool, now: u64) -> u64 {
         self.next_id += 1;
         let id = self.next_id;
-        self.done.push(Did {
+        let did = Did {
             id,
             what: what.into(),
             area: area.into(),
@@ -70,11 +70,12 @@ impl History {
             undo,
             undone: false,
             you_asked,
-        });
+        };
+        self.done.push(did.clone());
         static NEXT_APPEND: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let identity = format!("{}-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos(), NEXT_APPEND.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
         self.append_identities.insert(id, identity.clone());
-        self.pending.push(HistoryDelta::Append(self.done.last().unwrap().clone(), identity));
+        self.pending.push(HistoryDelta::Append(did, identity));
         if self.done.len() > 2000 {
             self.done.drain(0..500);
         }

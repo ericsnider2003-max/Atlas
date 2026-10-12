@@ -1093,7 +1093,7 @@ pub fn offline_page(v: &OfflineView) -> String {
     } else {
         wait.push_str("<ul class=plainlist>");
         for (w, dependency, since) in &v.waiting {
-            wait.push_str(&format!("<li>{}<span>{}</span><span class=meta>{}</span></li>", word_tag("wait", "Saved locally"), esc(w), format!("{} · Saved {}", esc(dependency), esc(since))));
+            wait.push_str(&format!("<li>{}<span>{}</span><span class=meta>{} · Saved {}</span></li>", word_tag("wait", "Saved locally"), esc(w), esc(dependency), esc(since)));
         }
         wait.push_str("</ul>");
     }

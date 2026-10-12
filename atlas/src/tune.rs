@@ -2076,8 +2076,7 @@ fn move_one_controlled(
 
 /// The exact collision-free destination is durably recorded before each move.
 /// A rejected record leaves that file in its original location.
-
-
+///
 /// A worker records new folders and each exact file intent before acting.
 /// Stop/pause safe points surround each move; a cross-volume copy already
 /// running completes its current file under the existing safe move primitive.

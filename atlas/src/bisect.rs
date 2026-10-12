@@ -161,7 +161,6 @@ fn git_controlled(dir: &Path, args: &[&str], budget: Option<&crate::tools::WorkB
 /// Find the change in `repo` that made `test` (a program and its arguments,
 /// run in the checkout) start failing, looking back at most `look_back`
 /// commits along the first-parent line, each run stopped at `limit_secs`.
-
 pub fn what_broke_until(repo: &Path, test: &[String], look_back: usize, limit_secs: u64, total_limit: std::time::Duration, stop: &(dyn Fn() -> bool + Sync)) -> Result<Outcome, String> {
     let budget = crate::tools::WorkBudget::new(total_limit, stop);
     what_broke_controlled(repo, test, look_back, limit_secs, &budget)
