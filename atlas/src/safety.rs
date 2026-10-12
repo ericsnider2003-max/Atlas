@@ -1101,6 +1101,7 @@ pub(crate) fn move_without_overwrite_recorded(from: &Path, to: &Path, stopped: &
     move_controlled_checked(from, to, stopped, false, None, true, Some(before))
 }
 
+#[cfg_attr(not(windows), allow(dead_code))] // only the Windows folder move uses it
 pub(crate) fn copy_without_overwrite_verified(from: &Path, to: &Path, stopped: &impl Fn() -> bool, verify: &dyn Fn(&Path) -> Result<()>) -> Result<()> {
     move_controlled_checked(from, to, stopped, true, Some(verify), false, None)
 }

@@ -7,6 +7,7 @@
 //! work in a throwaway copy, never the project itself, (b) run the project's
 //! own command and read its real result, and (c) tell the truth about whether
 //! the change actually replaced code the tests exercise.
+#![cfg(unix)]
 
 use atlas::selfwork::{prove_in_project, Edit};
 
@@ -47,7 +48,7 @@ fn a_change_that_replaces_a_real_file_and_keeps_the_suite_green_is_verified() {
         content: "// changed\npub fn f() -> i32 { 2 }\n".into(),
         reason: String::new(),
     }];
-    let proof = prove_in_project(&root, "./run.sh", &edits, &work.join("base")).unwrap();
+    let proof = prove_in_project(&root, "sh run.sh", &edits, &work.join("base")).unwrap();
 
     assert!(proof.built_and_passed, "the stub reported all passing: {}", proof.output);
     assert!(proof.replaced_existing, "src/lib.rs already existed, so this is a real replacement");
@@ -67,7 +68,7 @@ fn a_failing_suite_is_not_a_pass() {
     tiny_project(&root, "test result: FAILED. 2 passed; 1 failed; 0 ignored");
 
     let edits = vec![Edit { path: "src/lib.rs".into(), content: "broken".into(), reason: String::new() }];
-    let proof = prove_in_project(&root, "./run.sh", &edits, &work.join("base")).unwrap();
+    let proof = prove_in_project(&root, "sh run.sh", &edits, &work.join("base")).unwrap();
 
     assert!(!proof.built_and_passed, "a failed test is not a pass");
     assert!(proof.plain("Homelab").contains("doesn't hold up"), "{}", proof.plain("Homelab"));
@@ -88,7 +89,7 @@ fn a_brand_new_file_is_not_claimed_as_exercised() {
         content: "pub fn g() {}\n".into(),
         reason: String::new(),
     }];
-    let proof = prove_in_project(&root, "./run.sh", &edits, &work.join("base")).unwrap();
+    let proof = prove_in_project(&root, "sh run.sh", &edits, &work.join("base")).unwrap();
 
     assert!(!proof.replaced_existing, "src/brand_new.rs did not exist before");
     let said = proof.plain("Homelab");
@@ -111,7 +112,7 @@ fn build_output_is_not_copied_into_the_work_area() {
     std::fs::set_permissions(root.join("run.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
 
     let edits = vec![Edit { path: "src/lib.rs".into(), content: "// x\n".into(), reason: String::new() }];
-    let proof = prove_in_project(&root, "./run.sh", &edits, &work.join("base")).unwrap();
+    let proof = prove_in_project(&root, "sh run.sh", &edits, &work.join("base")).unwrap();
     assert!(proof.built_and_passed, "target/ should have been skipped, so the run sees no marker");
     let _ = std::fs::remove_dir_all(&work);
 }
@@ -119,7 +120,7 @@ fn build_output_is_not_copied_into_the_work_area() {
 #[test]
 fn a_missing_project_or_empty_command_is_refused() {
     let work = scratch("bad");
-    assert!(prove_in_project(&work.join("nope"), "./run.sh", &[], &work.join("b")).is_err());
+    assert!(prove_in_project(&work.join("nope"), "sh run.sh", &[], &work.join("b")).is_err());
     let root = work.join("proj");
     tiny_project(&root, "test result: ok. 1 passed");
     assert!(prove_in_project(&root, "   ", &[], &work.join("b")).is_err());

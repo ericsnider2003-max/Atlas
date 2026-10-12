@@ -28,7 +28,7 @@ fn sample(name: &str) -> String {
 const NOW: u64 = 1_790_683_200;
 
 fn tmp(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("atlas-hunt-{tag}"));
+    let p = std::env::temp_dir().join(format!("atlas-hunt-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
     std::fs::create_dir_all(&p).unwrap();
     p
@@ -77,7 +77,7 @@ fn from_samples(a: &Ask) -> Result<String, String> {
 fn read_all(d: &mut Daemon, t: u64) -> HuntState {
     let none = std::time::Duration::ZERO;
     atlas::hunting::tick_with(d, t, true, from_samples, none);
-    for _ in 0..500 {
+    for _ in 0..3000 {
         std::thread::sleep(std::time::Duration::from_millis(10));
         atlas::hunting::tick_with(d, t + 1, true, from_samples, none);
         let s: HuntState = d.store.load(hunt::FILE);

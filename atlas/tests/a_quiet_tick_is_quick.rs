@@ -31,15 +31,20 @@ fn ticks_after_the_first_take_well_under_the_slow_line() {
     let first = std::time::Instant::now();
     d.tick(t0);
     eprintln!("first tick: {:?}", first.elapsed());
-    let mut worst = std::time::Duration::ZERO;
-    for i in 1..8 {
+    let mut laps = Vec::new();
+    for i in 1..12 {
         let s = std::time::Instant::now();
         d.tick(t0 + i * 2);
-        worst = worst.max(s.elapsed());
+        laps.push(s.elapsed());
     }
-    eprintln!("worst of the next seven: {worst:?}");
+    laps.sort();
+    // The median, not the worst: one scheduler hiccup or a backup holding the
+    // state under parallel load must not fail the run, but a tick that is
+    // slow every time (what the laptop logged) still does.
+    let median = laps[laps.len() / 2];
+    eprintln!("median of the next eleven: {median:?}, worst {:?}", laps[laps.len() - 1]);
     // Debug build, a shared machine: generous, and still a fifth of what
     // the laptop logged.
-    assert!(worst < std::time::Duration::from_millis(400), "a quiet tick took {worst:?}");
+    crate::common::assert_prompt(median, std::time::Duration::from_millis(400), "a quiet tick (median)");
     let _ = std::fs::remove_dir_all(&dir);
 }
