@@ -1760,7 +1760,8 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 6 Oct 2026: + `watchvideo` ("watch this video", on this computer) = 487.
 // 12 Oct 2026: + `splitter` (CONV1 phase 1, free-form speech read without a
 // model) = 491.
-pub const MODULES_IN_TREE: usize = 491;
+// 12 Oct 2026: + `ownspeech` (echo guard, merged alongside) = 492.
+pub const MODULES_IN_TREE: usize = 492;
 
 /// Every module no capability claims, and why it is not one.
 ///
