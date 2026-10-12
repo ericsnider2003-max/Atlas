@@ -46,6 +46,14 @@ impl<'a> Daemon<'a> {
         if self.watching_turn {
             return self.turn_unwatched(said, t, how);
         }
+        // Atlas's own voice coming back through the speakers is not you.
+        // Only ambient audio is judged; typed and wake-word turns never are.
+        if how == Arrival::OpenMic && self.own_speech.borrow().is_echo(said, t) {
+            self.log
+                .info("open-mic words match what Atlas just said -- its own voice, dropped");
+            crate::voicelat::note_echo_dropped(&self.store);
+            return String::new();
+        }
         self.watching_turn = true;
         self.take_outside_changes();
         let (watch, mended) = self.watch_the_turn(said);

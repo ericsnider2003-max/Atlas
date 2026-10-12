@@ -2137,6 +2137,7 @@ impl<'a> Daemon<'a> {
             match saying.take() {
                 // Started while the model wrote: the rest joins it.
                 Some(mut s) => {
+                    self.note_own_speech(&reply);
                     s.add(&reply);
                     // unheard-ok: returns `Delivery`, not a Result
                     let _ = self.end_saying(s, mouth, &mut quick_listen);
@@ -2163,6 +2164,7 @@ impl<'a> Daemon<'a> {
             self.log_turn_timing(&timed, calls_before, speaking_ms);
             self.timing.add(timed);
             self.last_spoke_at = clock();
+            self.own_speech.borrow_mut().finished(self.last_spoke_at);
             if let Some(words) = cut_in
                 .into_inner()
                 .or(self.cut_in_by_voice.take())
@@ -2334,6 +2336,15 @@ impl<'a> Daemon<'a> {
             .may_speak_now(minute, !self.turn_was_typed)
     }
 
+    /// Remember words that are about to be spoken, as the voice will say
+    /// them, so the microphone hearing them back is not taken for you.
+    pub(super) fn note_own_speech(&self, text: &str) {
+        let said = crate::spoken_form::for_speech(text);
+        if let Ok(mut ring) = self.own_speech.try_borrow_mut() {
+            ring.note(&said, clock());
+        }
+    }
+
     pub(super) fn say(&self, mouth: &dyn Mouth, line: &str) {
         crate::outln!("{line}");
         self.log.info(line);
@@ -2343,6 +2354,7 @@ impl<'a> Daemon<'a> {
         // finishing mid-pause talked over the quiet you asked for.
         let speakable = self.tiers.tier != Tier::Typed || crate::input::can_speak(self.tools_ref());
         if speakable && self.attention.may_speak() && self.sound_allows_speaking() {
+            self.note_own_speech(line);
             // The screen got the line as written; the speaker gets it as
             // said. "$2.35" reads as words, "mph" is spoken not spelled,
             // a stray markdown marker is dropped rather than pronounced.
@@ -2459,6 +2471,7 @@ impl<'a> Daemon<'a> {
         self.calendar_active_delivery_ids = ids.clone();
         let mut s = self.start_saying_mode(mouth, render_only);
         s.bind_calendar_deliveries(ids);
+        self.note_own_speech(line);
         s.add(line);
 
         self.end_saying(s, mouth, listen)

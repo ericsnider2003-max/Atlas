@@ -80,6 +80,10 @@ pub struct TurnRecord {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Ledger {
     pub turns: Vec<TurnRecord>,
+    /// Open-mic transcripts thrown away because they were Atlas's own voice
+    /// coming back through the speakers (`ownspeech`). A count, never words.
+    #[serde(default)]
+    pub echo_dropped: u32,
 }
 
 impl Ledger {
@@ -99,6 +103,13 @@ pub fn record(store: &crate::store::Store, t: TurnRecord) {
     let _ = store.save(RECORD, &ledger);
 }
 
+/// Count one transcript dropped as Atlas hearing itself (best effort).
+pub fn note_echo_dropped(store: &crate::store::Store) {
+    let mut ledger: Ledger = store.load(RECORD);
+    ledger.echo_dropped = ledger.echo_dropped.saturating_add(1);
+    let _ = store.save(RECORD, &ledger);
+}
+
 fn median_max(v: &mut [u32]) -> Option<(u32, u32)> {
     v.sort_unstable();
     let worst = *v.last()?;
@@ -108,7 +119,10 @@ fn median_max(v: &mut [u32]) -> Option<(u32, u32)> {
 /// One readable line: median/worst per stage and the ASR engine mix.
 pub fn summary(ledger: &Ledger) -> String {
     if ledger.turns.is_empty() {
-        return "no voice turns recorded yet".into();
+        return match ledger.echo_dropped {
+            0 => "no voice turns recorded yet".into(),
+            n => format!("no voice turns recorded yet; own-voice echoes dropped {n}x"),
+        };
     }
     let part = |name: &str, f: &dyn Fn(&TurnRecord) -> Option<u32>| -> Option<String> {
         let mut v: Vec<u32> = ledger.turns.iter().filter_map(f).collect();
@@ -150,6 +164,7 @@ pub fn summary(ledger: &Ledger) -> String {
         count("parakeet"),
         count("whisper")
     ));
+    parts.push(format!("own-voice echoes dropped {}x", ledger.echo_dropped));
     format!(
         "last {} turns, median/worst: {}",
         ledger.turns.len(),
@@ -271,6 +286,22 @@ mod tests {
         assert!(s.contains("parakeet=3 whisper=1"), "{s}");
         assert!(s.contains("fell back after a failure 1x"), "{s}");
         assert!(s.contains("hallucinations dropped 1x"), "{s}");
+        assert!(s.contains("own-voice echoes dropped 0x"), "{s}");
+        l.echo_dropped = 3;
+        assert!(summary(&l).contains("own-voice echoes dropped 3x"));
+    }
+
+    #[test]
+    fn echo_drops_are_counted_in_the_store() {
+        let dir = std::env::temp_dir().join(format!("atlas_echocount_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let store = crate::store::Store::new(&dir);
+        note_echo_dropped(&store);
+        note_echo_dropped(&store);
+        let l: Ledger = store.load(RECORD);
+        assert_eq!(l.echo_dropped, 2);
+        assert!(summary(&l).contains("echoes dropped 2x"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

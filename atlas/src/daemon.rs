@@ -1239,6 +1239,9 @@ pub struct Daemon<'a> {
     /// When Atlas last finished speaking to you. A follow-up soon after is
     /// the conversation carrying on, whoever it mentions.
     last_spoke_at: u64,
+    /// What Atlas recently said aloud, so an open-mic transcript that is its
+    /// own voice coming back through the speakers can be told from you.
+    own_speech: std::cell::RefCell<crate::ownspeech::Ring>,
     /// The few of them a sentence needs (`router`, 30 Sep 2026).
     router: crate::router::Router,
     /// The meaning encoder, resident, and every tool's vector (`meaningroute`).
@@ -2130,6 +2133,7 @@ impl<'a> Daemon<'a> {
             talk_partial: Default::default(),
             pending_stamp: None,
             last_spoke_at: 0,
+            own_speech: Default::default(),
             router: crate::router::Router::new(&crate::intent::ToolBook::new(&cfg.commands)),
             meaning_route: None,
             meaning_route_tried: false,

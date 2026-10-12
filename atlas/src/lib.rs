@@ -161,6 +161,7 @@ pub mod oauthlink;
 pub mod onlyone;
 pub mod onnxfix;
 pub mod operate;
+pub mod ownspeech;
 pub mod palette;
 pub mod parakeet;
 pub mod phonealarms;

@@ -1776,6 +1776,7 @@ pub const MODULES_IN_TREE: usize = 490;
 /// a feature cannot be filed as plumbing without somebody writing down why it
 /// is not one.
 pub const PLUMBING: &[(&str, &str)] = &[
+    ("ownspeech", "remembers the last few things Atlas said aloud so an open-mic transcript that is its own voice coming back through the speakers is dropped; words stay in memory only"),
     ("voicelat", "keeps what the voice path decided and how long each stage took, so `atlas doctor` can read real latency later; numbers and reasons, never the words"),
     ("childjob", "ties every program Atlas starts for its own work to Atlas, so it ends when Atlas ends instead of running on with the fans"),
     ("unheard", "failures nobody was waiting for (kept!/heard!): a write that failed is told like a failed save, the rest logged; nothing is discarded silently"),

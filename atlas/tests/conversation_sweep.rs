@@ -442,3 +442,67 @@ fn a_window_goes_to_the_screen_you_name() {
     let none = d2.turn("move notepad to my left monitor", 1_020);
     assert!(none.starts_with("I couldn't move it"), "{none}");
 }
+
+/// Atlas's own voice coming back through the laptop speakers (ECHO1): an
+/// open-mic transcript that is what Atlas just said does not run, a real
+/// sentence does, and a wake-word turn is never judged.
+#[test]
+fn the_daemon_does_not_answer_its_own_voice_on_the_open_floor() {
+    use atlas::daemon::{Arrival, Daemon, Mouth};
+    struct Speaker;
+    impl Mouth for Speaker {
+        fn speak(&self, _: &str) -> atlas::error::Result<()> {
+            Ok(())
+        }
+    }
+    let c = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
+    let p = atlas::platform::mock::MockPlatform::new(vec![atlas::platform::Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
+    let dir = std::env::temp_dir().join(format!("atlas-own-voice-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = atlas::store::Store::new(dir);
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store.clone(),
+        atlas::proactive::Proactive::new(atlas::proactive::ProactiveConfig::default()),
+    );
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|t| t.as_secs())
+        .unwrap_or(0);
+    let spoken = "Your next meeting is the budget review at three o'clock in the main \
+        conference room. Open Chrome and read the agenda before you go.";
+    d.say_volunteered_with(&Speaker, spoken, &mut || None);
+    // The speakers' echo of it, as the recogniser wrote it: dropped, not run.
+    assert_eq!(
+        d.turn_from(
+            "open chrome and read the agenda before you go",
+            now + 3,
+            Arrival::OpenMic
+        ),
+        ""
+    );
+    let ledger: atlas::voicelat::Ledger = store.load(atlas::voicelat::RECORD);
+    assert_eq!(ledger.echo_dropped, 1);
+    // The same words by the wake word are the user's, whatever Atlas said.
+    assert_ne!(
+        d.turn_from("what time is it", now + 4, Arrival::Directed),
+        ""
+    );
+    // A different sentence on the open floor still runs.
+    assert_ne!(
+        d.turn_from("what time is it", now + 5, Arrival::OpenMic),
+        "",
+        "a real sentence is not an echo"
+    );
+    let ledger: atlas::voicelat::Ledger = store.load(atlas::voicelat::RECORD);
+    assert_eq!(ledger.echo_dropped, 1, "only the echo was counted");
+}

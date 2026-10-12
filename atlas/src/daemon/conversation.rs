@@ -1163,6 +1163,7 @@ impl<'a> Daemon<'a> {
                             }
                         }
                         let sp = saying.get_or_insert_with(|| self.start_saying(mouth));
+                        self.note_own_speech(&s);
                         sp.add(&s);
                         spoken.push(s);
                         if sp.poll(self, &mut || key_cut_in(talk_key.as_ref(), ears, &cut_in)) {
