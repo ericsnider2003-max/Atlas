@@ -1117,3 +1117,97 @@ fn free_form_a_compound_is_kept_once_as_said() {
         "a rewritten part was kept as if said"
     );
 }
+
+#[test]
+fn free_form_a_harmless_part_in_between_does_not_wash_the_taint() {
+    let c = Config::load(std::path::Path::new("config")).unwrap();
+    let p = two_screens();
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store("taint-between"),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let _ = d.turn("open notepad", NOW);
+    // Messages are someone else's words; opening chrome is harmless and is
+    // your own, and its `run_command` clears the session flag -- the close
+    // after it must still be held.
+    let reply = d.turn(
+        "read my messages, then open chrome, then close notepad",
+        NOW + 5,
+    );
+    assert!(
+        launched(&p, "chrome"),
+        "the harmless part did not run: {reply}"
+    );
+    assert!(
+        matches!(&d.session.pending, Pending::Approval(atlas::intent::Intent::CloseApp(a), _) if a == "notepad"),
+        "{:?}\n{reply}",
+        d.session.pending
+    );
+    assert!(
+        reply.contains("someone else wrote"),
+        "held by the policy, not the outside-text gate: {reply}"
+    );
+    assert!(!closed(&p), "{reply}");
+    assert!(d.session.tainted_by_outside, "the run lost the taint");
+}
+
+/// Picks "open notepad" for "deal with notepad", as a model would.
+struct PicksNotepad;
+impl atlas::brain::Llm for PicksNotepad {
+    fn complete(&self, _: &str, user: &str) -> atlas::error::Result<String> {
+        let said = user.rsplit("User said:").next().unwrap_or(user);
+        Ok(if said.contains("deal with notepad") {
+            r#"{"action":"open_app","arg":"notepad","say":"Opening notepad."}"#
+        } else {
+            r#"{"action":"say","arg":null,"say":"Hello to you."}"#
+        }
+        .into())
+    }
+}
+
+#[test]
+fn free_form_outside_text_read_inside_a_compound_still_counts_after_it() {
+    let c = Config::load(std::path::Path::new("config")).unwrap();
+    let p = two_screens();
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(std::sync::Arc::new(PicksNotepad) as std::sync::Arc<dyn atlas::brain::Llm>),
+        store("taint-after"),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let reply = d.turn("read my messages and then open chrome", NOW);
+    assert!(launched(&p, "chrome"), "{reply}");
+    assert!(
+        d.session.tainted_by_outside,
+        "the compound's last part washed the taint: {reply}"
+    );
+    // The next turn is the model's pick, and is asked about.
+    let reply = d.turn("deal with notepad", NOW + 10);
+    assert!(reply.ends_with("Go ahead?"), "{reply}");
+    assert!(
+        matches!(
+            &d.session.pending,
+            Pending::Approval(atlas::intent::Intent::OpenApp(_), _)
+        ),
+        "{:?}",
+        d.session.pending
+    );
+    assert!(!launched(&p, "notepad"), "{reply}");
+}
+
+#[test]
+fn free_form_stop_commands_still_work() {
+    let parser = parser();
+    for said in ["stop the music", "stop listening", "stop taking notes"] {
+        assert!(
+            atlas::splitter::negated_destructive(said, &parser).is_none(),
+            "{said} is refused as a negation"
+        );
+        // Left exactly as the phrase table had it.
+        assert!(spoken_steps(said, &parser).is_none(), "{said}");
+    }
+}

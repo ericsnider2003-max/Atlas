@@ -292,7 +292,7 @@ pub fn spoken_steps(said: &str, parser: &Parser) -> Option<Vec<SpokenStep>> {
 }
 
 /// Words that forbid or negate: "don't", "do not", "never", "stop",
-/// "without", "not". Any of them anywhere in a sentence and the splitter
+/// "without", "not", "isn't", "can't", "avoid", "except" and the like. Any of them anywhere in a sentence and the splitter
 /// leaves it alone (`spoken_steps`), and the turn will not carry out a
 /// destructive command read from it (`negated_destructive`).
 const NEGATIONS: &[&[&str]] = &[
@@ -310,6 +310,19 @@ const NEGATIONS: &[&[&str]] = &[
     &["won't"],
     &["wont"],
     &["nor"],
+    &["isn't"],
+    &["isnt"],
+    &["doesn't"],
+    &["doesnt"],
+    &["didn't"],
+    &["didnt"],
+    &["wouldn't"],
+    &["wouldnt"],
+    &["can't"],
+    &["cant"],
+    &["cannot"],
+    &["avoid"],
+    &["except"],
 ];
 
 /// Does the sentence negate or forbid anything ("don't close chrome",

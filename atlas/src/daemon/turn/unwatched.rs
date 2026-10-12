@@ -1525,7 +1525,10 @@ impl<'a> Daemon<'a> {
             self.persist();
             return reply;
         }
-        if !self.relayed_from_phone {
+        if !self
+            .relayed_from_phone
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
             if let Some(steps) = crate::splitter::spoken_steps(said, &self.parser) {
                 return self.run_spoken_steps(said, steps, t);
             }

@@ -21,7 +21,11 @@
 //!   your own -- whatever is neither destructive nor refers back.
 //!   `run_command` clears the flag for your own words, which is right for a
 //!   sentence said on its own and wrong inside one: the part after a mail
-//!   read is still part of the sentence.
+//!   read is still part of the sentence. So the run keeps its own `tainted`,
+//!   started from the session's flag and set by any part that reads outside
+//!   text, checks that (never the session flag a harmless part in between
+//!   just cleared), and writes it back to the session after every part, so a
+//!   mail read inside a compound still counts for the turns after it.
 //! - **Stopping.** Each part ends in a `PartOutcome`, read from what the
 //!   turn actually did (an approval or question left pending, the typed
 //!   receipt `execute` leaves, whether `execute` was reached at all) and only
@@ -73,6 +77,10 @@ impl<'a> Daemon<'a> {
 
     fn carry_out_parts(&mut self, steps: &[SpokenStep], t: u64) -> String {
         let mut done: Vec<String> = Vec::new();
+        // Outside text read so far in this run (see the module comment):
+        // `run_command` clears the session flag for every part, because each
+        // is your own words, so the run cannot rely on it between parts.
+        let mut tainted = self.session.tainted_by_outside;
         for (n, step) in steps.iter().enumerate() {
             let rest: Vec<&SpokenStep> = steps.iter().skip(n + 1).collect();
             // "open notepad and then close it": the "it" is what the step
@@ -105,7 +113,7 @@ impl<'a> Daemon<'a> {
                 step.clone()
             };
             // A later part after outside text was read: asked, not run.
-            if n > 0 && self.session.tainted_by_outside && leans_on_outside_text(&resolved) {
+            if n > 0 && tainted && leans_on_outside_text(&resolved) {
                 let q = match &resolved.reading {
                     Reading::Command(intent) => {
                         let q = format!(
@@ -130,6 +138,9 @@ impl<'a> Daemon<'a> {
             self.execution_receipt = None;
             let executed_before = self.last_executed.take();
             let reply = self.run_command(&resolved.words, t);
+            tainted |= self.session.tainted_by_outside
+                || matches!(&resolved.reading, Reading::Command(i) if brain::reads_outside_text(i));
+            self.session.tainted_by_outside = tainted;
             let outcome = self.outcome_of_part(&resolved.reading, &reply);
             if self.last_executed.is_none() {
                 self.last_executed = executed_before;
@@ -161,6 +172,9 @@ impl<'a> Daemon<'a> {
         if !matches!(self.session.pending, Pending::Nothing) {
             return PartOutcome::Asked;
         }
+        if reads_as_not_done(reply) {
+            return PartOutcome::Failed;
+        }
         if let Reading::Command(_) = reading {
             if let Some((_, receipt)) = &self.execution_receipt {
                 return match receipt {
@@ -179,11 +193,15 @@ impl<'a> Daemon<'a> {
             if self.last_turn_failed {
                 return PartOutcome::Failed;
             }
+            return PartOutcome::Done;
         }
-        if reads_as_not_done(reply) {
-            PartOutcome::Failed
-        } else {
+        // A helper (reminder, window move, text, weather) leaves no receipt:
+        // it counts as done only when its reply says it was, in the words it
+        // uses when it was. Anything else stops the run.
+        if says_the_helper_did_it(reading, reply) {
             PartOutcome::Done
+        } else {
+            PartOutcome::Failed
         }
     }
 
@@ -250,6 +268,20 @@ fn leans_on_outside_text(step: &SpokenStep) -> bool {
     }
 }
 
+/// The reply a helper gives when it did the thing: "I'll remind you to ...",
+/// "Moved chrome to your left screen.", "Text to Sam: ... tap Send", a
+/// forecast with numbers in it.
+fn says_the_helper_did_it(reading: &Reading, reply: &str) -> bool {
+    let l = reply.trim().to_lowercase();
+    match reading {
+        Reading::Reminder => l.contains("i'll remind you") || l.contains("i\u{2019}ll remind you"),
+        Reading::MoveWindow => l.starts_with("moved ") || l.contains("is already on that screen"),
+        Reading::Text => l.starts_with("text to "),
+        Reading::Weather => l.chars().any(|c| c.is_ascii_digit()),
+        Reading::Command(_) => false,
+    }
+}
+
 /// A reply that says it didn't happen. A fallback only, for when nothing the
 /// turn did says so; it errs toward stopping.
 fn reads_as_not_done(reply: &str) -> bool {
@@ -267,6 +299,12 @@ fn reads_as_not_done(reply: &str) -> bool {
         "no such",
         "refuse",
         "failed",
+        "didn't",
+        "did not",
+        "no app",
+        "not found",
+        "isn't running",
+        "unreachable",
         "i don't have",
         "i haven't",
         "switched off",
@@ -344,6 +382,35 @@ mod tests {
             "what time is it",
             Reading::Command(Intent::Clock)
         )));
+    }
+
+    #[test]
+    fn splitter_a_helper_is_done_only_when_it_says_so() {
+        assert!(says_the_helper_did_it(
+            &Reading::Reminder,
+            "Right \u{2014} in 20 minutes, I'll remind you to stretch. (#3)"
+        ));
+        assert!(says_the_helper_did_it(
+            &Reading::MoveWindow,
+            "Moved chrome to your left screen."
+        ));
+        assert!(!says_the_helper_did_it(
+            &Reading::MoveWindow,
+            "I couldn't move it: no window."
+        ));
+        assert!(!says_the_helper_did_it(
+            &Reading::Reminder,
+            "When should I remind you to stretch?"
+        ));
+        for reply in [
+            "Chrome didn't move.",
+            "There's no app called that.",
+            "Not found.",
+            "Chrome isn't running.",
+            "The phone is unreachable.",
+        ] {
+            assert!(reads_as_not_done(reply), "{reply}");
+        }
     }
 
     #[test]
