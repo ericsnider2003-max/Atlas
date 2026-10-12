@@ -766,7 +766,12 @@ pub enum SpeechCheck {
 }
 
 /// How much speech a clip needs before it is transcribed.
-pub const MIN_SPEECH_MS: u32 = 250;
+pub const MIN_SPEECH_MS: u32 = 180;
+/// Loudest part must stand this far over the room, or it is noise.
+pub const MIN_SNR_DB: f32 = 15.0;
+/// Gain above this needs a clean (>= `CLEAN_SNR_DB`) signal.
+pub const NOISY_MAX_GAIN_DB: f32 = 25.0;
+pub const CLEAN_SNR_DB: f32 = 20.0;
 /// Speech stands this far above the clip's own quiet parts.
 pub const SPEECH_OVER_ROOM_DB: f32 = 9.0;
 /// Below this nothing is speech, however quiet the room: just above the
@@ -801,12 +806,17 @@ pub fn check_speech(samples: &[i16], rate: u32) -> SpeechCheck {
     if speech_frames * 30 < MIN_SPEECH_MS {
         return SpeechCheck::Silence;
     }
+    let snr = loudest - room;
+    if snr < MIN_SNR_DB {
+        return SpeechCheck::Silence;
+    }
     if loudest < TURN_UP_BELOW_DB {
+        let max_gain = if snr >= CLEAN_SNR_DB { crate::leveller::MAX_GAIN_DB } else { NOISY_MAX_GAIN_DB };
         // Up to about -12 dBFS at its loudest, never more than 100x
         // (`leveller::MAX_GAIN_DB`), and never lifting the room past
         // `leveller::NOISE_CEILING_DB`. Was capped at 30x, which left a voice
         // at -65 dB still at -35 when whisper heard it (30 Sep 2026).
-        let up_db = (-12.0 - loudest).min(crate::leveller::NOISE_CEILING_DB - room).min(crate::leveller::MAX_GAIN_DB);
+        let up_db = (-12.0 - loudest).min(crate::leveller::NOISE_CEILING_DB - room).min(max_gain);
         let gain = 10f32.powf(up_db / 20.0).max(1.0);
         return SpeechCheck::Quiet(gain);
     }
