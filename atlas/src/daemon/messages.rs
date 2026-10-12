@@ -139,7 +139,9 @@ impl<'a> Daemon<'a> {
             return format!("You don't have a group called \"{which}\".");
         };
         if self.chats.name_group(&id, name) {
-            let _ = self.chats.save(&self.store);
+            if let Err(e) = self.chats.save(&self.store) {
+                return format!("I renamed it to \"{name}\" for now, but couldn't save that ({e}), so it may go back after a restart.");
+            }
             format!("Renamed it to \"{name}\". You can say \"message the {name} group\" now.")
         } else {
             format!("\"{which}\" isn't a group I can rename.")

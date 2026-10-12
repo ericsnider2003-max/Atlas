@@ -598,9 +598,15 @@ impl<'a> Daemon<'a> {
                     }
                 }
             }
-            let _ = orders.save(&store);
+            // Said with the rest of the trouble, not dropped: without these the
+            // same mail is "new" again next check and order updates repeat.
+            if let Err(e) = orders.save(&store) {
+                failures.push(format!("couldn't save order tracking: {e}"));
+            }
             if mail_book_on {
-                let _ = store.save(crate::mailbook::MailBook::FILE, &mail_book);
+                if let Err(e) = store.save(crate::mailbook::MailBook::FILE, &mail_book) {
+                    failures.push(format!("couldn't save the mail book: {e}"));
+                }
             }
             let sorted = crate::triage::sort_all(&triaged);
             let mut said = crate::triage::spoken(&sorted);
@@ -783,12 +789,18 @@ impl<'a> Daemon<'a> {
                 done += d;
                 failed.extend(f);
             }
-            let _ = store.save(crate::unsub::PENDING, &Vec::<(String, crate::unsub::Cleanup)>::new());
-            Ok(if failed.is_empty() {
+            // If the queue can't be cleared, the same unsubscribes would be
+            // sent again next time: say so instead of claiming it's finished.
+            let cleared = store.save(crate::unsub::PENDING, &Vec::<(String, crate::unsub::Cleanup)>::new());
+            let mut said = if failed.is_empty() {
                 format!("Unsubscribed from {done}.")
             } else {
                 format!("Unsubscribed from {done}; {} didn't go: {}.", failed.len(), failed.join("; "))
-            })
+            };
+            if let Err(e) = cleared {
+                said.push_str(&format!(" I couldn't clear the pending list ({e}), so these may be sent again."));
+            }
+            Ok(said)
         });
         Some(if self.hand_off("unsubscribe", now, work, None, SpeakPolicy::Always) {
             format!("Unsubscribing from {count} now.")

@@ -879,8 +879,17 @@ fn keep_inner(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
         Provider::Microsoft => format!("Outlook Calendar ({})", s.email),
     };
     links.push(CalendarLink { name: label, url: key, ..Default::default() });
-    let _ = d.store.save(connect::CALENDAR_LINKS, &links);
+    // Not `let _`: "its events appear" is false if the link was never kept.
+    let linked = d.store.save(connect::CALENDAR_LINKS, &links);
     note_google_data(d);
+    let said = finish_signin_line(d, &s);
+    match linked {
+        Ok(()) => said,
+        Err(e) => format!("{said} But I couldn't save the calendar link ({e}), so its events won't appear until it is saved; sign in again once the disk is writable."),
+    }
+}
+
+fn finish_signin_line(d: &mut Daemon, s: &oauthlink::SignedIn) -> String {
     if s.provider == Provider::Google {
         return format!("Connected {}'s Google Calendar. Its events appear on your calendar within a minute.", s.email);
     }
@@ -1004,7 +1013,9 @@ fn set_muse_cap(d: &mut Daemon, typed: &str) -> String {
     let Some(cap) = parse_cap(typed) else {
         return "That isn't an amount -- a number of dollars, like 5 or 12.50.".into();
     };
-    let _ = d.store.save(MUSE_CAP, &Some(cap));
+    if let Err(e) = d.store.save(MUSE_CAP, &Some(cap)) {
+        return format!("I couldn't save that limit ({e}); Muse's monthly limit is unchanged.");
+    }
     let now = crate::store::now();
     let l: crate::muse::Ledger = d.store.load(crate::muse::LEDGER);
     crate::muse::restore(&crate::muse::ledger(now).max_of(&l), cap, now);
@@ -1030,7 +1041,9 @@ fn connect_muse(d: &mut Daemon, key: &str, cap: &str) -> String {
         return format!("I couldn't keep the key in the vault: {e}");
     }
     let cap = parse_cap(cap).unwrap_or_else(|| muse_cap(d));
-    let _ = d.store.save(MUSE_CAP, &Some(cap));
+    // The key is safely in the vault; only the limit may be lost, and the
+    // reply must say so rather than quote a limit that won't survive a restart.
+    let cap_kept = d.store.save(MUSE_CAP, &Some(cap));
     let l: crate::muse::Ledger = d.store.load(crate::muse::LEDGER);
     crate::muse::restore(&l, cap, now);
     crate::muse::set_key(Some(key.clone()));
@@ -1041,7 +1054,10 @@ fn connect_muse(d: &mut Daemon, key: &str, cap: &str) -> String {
         }
     });
     let _ = d.store.save(SIGNIN_SAID, &"Checking the Muse key with Meta...".to_string());
-    format!("Kept the key; checking it with Meta now. Monthly limit: ${cap:.2}.")
+    match cap_kept {
+        Ok(()) => format!("Kept the key; checking it with Meta now. Monthly limit: ${cap:.2}."),
+        Err(e) => format!("Kept the key; checking it with Meta now. The ${cap:.2} monthly limit applies for now but couldn't be saved ({e}), so set it again after a restart."),
+    }
 }
 
 /// The key into memory once the vault opens, a key check's result onto the

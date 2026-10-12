@@ -740,11 +740,16 @@ impl<'a> Daemon<'a> {
                         let name = w.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                         // What the call left behind: your follow-ups on the later list.
                         let mut later: crate::later::Later = self.store.load(crate::later::RECORD);
-                        let added = w.follow.yours.iter().filter(|y| later.add(y, t)).count();
+                        let mut added = w.follow.yours.iter().filter(|y| later.add(y, t)).count();
+                        let mut not_kept = String::new();
                         if added > 0 {
-                            let _ = self.store.save(crate::later::RECORD, &later);
+                            if let Err(e) = self.store.save(crate::later::RECORD, &later) {
+                                // Don't say they were put on the later list.
+                                added = 0;
+                                not_kept = format!(" I couldn't add your follow-ups to the later list ({e}).");
+                            }
                         }
-                        let after = crate::callnotes::follow_ups_said(&w.follow, added);
+                        let after = format!("{}{not_kept}", crate::callnotes::follow_ups_said(&w.follow, added));
                         let said = format!("Your call notes are written: {name}, in your notes folder.{}{after}", if after.is_empty() { "" } else { " " });
                         self.long_work.update(link.watch_id, outcome_of(&news.ending), &said, t);
                         self.journal.record_at(Act::Upkeep, &format!("call notes: {name}"), true, t);

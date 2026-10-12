@@ -694,7 +694,7 @@ fn feedback_travels_to_eric_and_his_answer_travels_back_over_the_pairing() {
 
     // Sam decides something's wrong, writes it, and sends it.
     let f = fb::compose_feedback("After updating, my morning brief is empty", None, 1_000).unwrap();
-    fb::queue_feedback(&sam.store(), f, "Eric");
+    fb::queue_feedback(&sam.store(), f, "Eric").unwrap();
     let (to, body, id) = fb::feedback_outbox(&sam.store()).remove(0);
     let sam_link = atlas::kin::PeerLink::from_state(&sp, &atlas::chat::Chats::default());
     let took = std::thread::scope(|sc| {

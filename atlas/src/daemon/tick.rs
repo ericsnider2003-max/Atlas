@@ -29,11 +29,33 @@ pub struct Dial {
 /// Make the sends on their own thread, one after another; each answer goes
 /// back as it comes. Nothing here touches Atlas's state.
 pub fn dial_off_the_loop(dials: Vec<Dial>) -> std::sync::mpsc::Receiver<(Dial, std::result::Result<Vec<u8>, String>)> {
+    dial_off_the_loop_within(dials, DIAL_PASS_WITHIN)
+}
+
+/// The whole of one send to one peer, off the loop: connect, send and take
+/// the full reply. A total, not a per-read figure (Q5).
+pub const DIAL_WITHIN: std::time::Duration = std::time::Duration::from_secs(15);
+/// The whole pass over every peer. Dials not started by then are dropped
+/// (the folder carries it), so the thread always ends and the next pass can
+/// start.
+pub const DIAL_PASS_WITHIN: std::time::Duration = std::time::Duration::from_secs(60);
+
+pub fn dial_off_the_loop_within(
+    dials: Vec<Dial>,
+    pass: std::time::Duration,
+) -> std::sync::mpsc::Receiver<(Dial, std::result::Result<Vec<u8>, String>)> {
     let (tx, rx) = std::sync::mpsc::channel();
+    let until = std::time::Instant::now() + pass;
     std::thread::Builder::new()
         .name("atlas-sync-dial".into())
         .spawn(move || {
-            for d in dials {
+            for mut d in dials {
+                let left = until.saturating_duration_since(std::time::Instant::now());
+                if left.is_zero() {
+                    let _ = tx.send((d, Err("the sync pass ran out of time".to_string())));
+                    continue;
+                }
+                d.timeout = d.timeout.min(left);
                 let got = crate::transport::exchange(&d.host, d.port, &d.bytes, d.timeout).map_err(|e| e.to_string());
                 if tx.send((d, got)).is_err() {
                     return;
@@ -2101,7 +2123,7 @@ impl<'a> Daemon<'a> {
             };
             let port = p.sync_port.unwrap_or(crate::transport::SYNC_PORT);
             if self.dial_later {
-                self.dials.push(Dial { name, host, port, bytes, timeout: std::time::Duration::from_secs(4), sealed_key: key.map(<[u8]>::to_vec) });
+                self.dials.push(Dial { name, host, port, bytes, timeout: DIAL_WITHIN, sealed_key: key.map(<[u8]>::to_vec) });
                 continue;
             }
             match crate::transport::exchange(
@@ -2701,7 +2723,7 @@ impl<'a> Daemon<'a> {
                                 host: host.clone(),
                                 port: *port,
                                 bytes,
-                                timeout: std::time::Duration::from_secs(3),
+                                timeout: DIAL_WITHIN,
                                 sealed_key: key.clone(),
                             });
                             synced_directly.push(name.clone());
@@ -3054,6 +3076,32 @@ impl Daemon<'_> {
     }
 }
 
+
+#[cfg(test)]
+mod dials_have_a_deadline {
+    use super::*;
+    #[test]
+    fn a_silent_peer_ends_the_whole_pass_at_its_deadline() {
+        // A peer that accepts and never answers, dialled twice with a long
+        // per-dial timeout: the pass deadline ends both, off this thread.
+        let l = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = l.local_addr().unwrap().port();
+        let _held = std::thread::spawn(move || {
+            let mut keep = Vec::new();
+            for c in l.incoming().take(2).flatten() {
+                keep.push(c);
+            }
+            std::thread::sleep(std::time::Duration::from_secs(5));
+        });
+        let dial = |n: &str| Dial { name: n.into(), host: "127.0.0.1".into(), port, bytes: b"x".to_vec(), timeout: std::time::Duration::from_secs(30), sealed_key: None };
+        let started = std::time::Instant::now();
+        let rx = dial_off_the_loop_within(vec![dial("a"), dial("b")], std::time::Duration::from_millis(600));
+        let first = rx.recv_timeout(std::time::Duration::from_secs(4)).expect("first answer");
+        let second = rx.recv_timeout(std::time::Duration::from_secs(4)).expect("second answer");
+        assert!(first.1.is_err() && second.1.is_err());
+        assert!(started.elapsed() < std::time::Duration::from_secs(4), "{:?}", started.elapsed());
+    }
+}
 
 /// How long after the model server starts its memory is still settling: the
 /// memory finding waits this out rather than reporting Atlas's own load.
