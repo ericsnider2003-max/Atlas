@@ -503,7 +503,13 @@ impl<'a> Daemon<'a> {
         // And a consequential action the MODEL chose -- a tool call, not
         // your words matching a phrase -- is always asked about first: handing
         // Atlas over, messaging someone, changing code, pressing a button.
-        let call = if decision.model == brain::Reached::Yes && brain::model_must_ask(&intent) {
+        // Q2: and if the turn before read what someone else wrote (a mail, a
+        // page), a tool the model chose now is asked about too unless it only
+        // reads or answers -- the same rule a loop applies once tainted.
+        let after_outside_text = self.session.last_intent.as_ref().is_some_and(brain::reads_outside_text);
+        let call = if decision.model == brain::Reached::Yes
+            && (brain::model_must_ask(&intent) || (after_outside_text && !brain::safe_after_outside_text(&intent)))
+        {
             crate::policy::Decision::max(call, Decision::RequireApproval)
         } else {
             call

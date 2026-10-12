@@ -2375,7 +2375,8 @@ pub fn reads_outside_text(i: &Intent) -> bool {
 
 /// What may still run without asking after outside text has been read:
 /// only things that read what's already here or say something back, never
-/// anything that sends, posts, presses, changes, opens or reaches out. An
+/// anything that sends, posts, presses, changes, opens or reaches out. Not
+/// `Mail`: its "go ahead" unsubscribes and a "send" sends a draft. An
 /// allow-list on purpose -- a command added later is asked about until
 /// someone decides it's harmless (Q2).
 pub fn safe_after_outside_text(i: &Intent) -> bool {
@@ -2391,7 +2392,6 @@ pub fn safe_after_outside_text(i: &Intent) -> bool {
             | Intent::MachineHealth
             | Intent::Explain(..)
             | Intent::Why(..)
-            | Intent::Mail(..)
             | Intent::ReadDocument(..)
             | Intent::Pdf(..)
             | Intent::Files(..)
@@ -2422,6 +2422,7 @@ pub fn model_must_ask(i: &Intent) -> bool {
             | Intent::ChangeGroup(_)
             | Intent::LeaveGroup(_)
             | Intent::Message(_)
+            | Intent::Delegate(_)
             | Intent::SortMail(_)
             | Intent::SchedulePost(_)
             | Intent::PressButton(_)

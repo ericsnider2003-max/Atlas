@@ -215,7 +215,8 @@ fn after_reading_mail_a_step_that_acts_is_asked_about_first() {
     use atlas::brain::{reads_outside_text, safe_after_outside_text};
     assert!(reads_outside_text(&Intent::Mail(String::new())));
     assert!(!safe_after_outside_text(&Intent::OpenApp("notepad".into())));
-    assert!(safe_after_outside_text(&Intent::Mail(String::new())), "reading more mail stays allowed");
+    assert!(!safe_after_outside_text(&Intent::Mail(String::new())), "mail can unsubscribe and send a draft");
+    assert!(atlas::brain::model_must_ask(&Intent::Delegate("finish this conversation".into())), "a delegation can send");
     assert!(!safe_after_outside_text(&Intent::Message("Maya: hi".into())));
 
     let (c, p) = (cfg(), plat());
@@ -245,4 +246,28 @@ fn after_reading_mail_a_step_that_acts_is_asked_about_first() {
     } else {
         panic!("the loop never reached the step after the mail: {said:?} / {asked:?}");
     }
+}
+
+/// Q2, single turn: the model's tool call right after a turn that read mail is
+/// asked about first, even an app opening.
+#[test]
+fn a_single_turn_after_reading_mail_asks_before_acting() {
+    /// One prompt, one JSON answer: the model picks `open_app`.
+    struct Opens;
+    impl Llm for Opens {
+        fn complete(&self, _: &str, _: &str) -> atlas::error::Result<String> {
+            Ok(r#"{"action":"open_app","arg":"notepad","say":"Opening notepad."}"#.into())
+        }
+    }
+    let (c, p) = (cfg(), plat());
+    let llm = Arc::new(Opens);
+    let mut d = Daemon::new(&c, &p, Some(llm as Arc<dyn Llm>), Store::new(tmp("taint1")), Proactive::new(ProactiveConfig::default()));
+    d.session.last_intent = Some(Intent::Mail(String::new()));
+    let reply = d.turn("deal with notepad", 1_790_740_000);
+    assert!(matches!(&d.session.pending, Pending::Approval(Intent::OpenApp(_), _)), "{reply} / {:?} / {:?}", d.session.pending, d.session.turns);
+    assert!(reply.ends_with("Go ahead?"), "{reply}");
+    // Control: with no mail read just before, the same tool call is not held.
+    let mut e = Daemon::new(&c, &p, Some(Arc::new(Opens) as Arc<dyn Llm>), Store::new(tmp("taint2")), Proactive::new(ProactiveConfig::default()));
+    let reply = e.turn("deal with notepad", 1_790_740_000);
+    assert!(!reply.ends_with("Go ahead?") && !matches!(e.session.pending, Pending::Approval(..)), "{reply}");
 }
