@@ -171,6 +171,7 @@ pub mod thread;
 pub mod transport;
 pub mod timebox;
 pub mod timing;
+pub mod voicelat;
 pub mod tools;
 pub mod tray;
 pub mod triage;

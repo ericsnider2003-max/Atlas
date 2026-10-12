@@ -60,17 +60,19 @@ pub fn transcribe_file_until(root: &Path, wav: &Path, stop: &dyn Fn() -> bool) -
         let bytes = std::fs::read(wav)?;
         let (samples, rate) = crate::diarize::read_wav(&bytes).map_err(AtlasError::Platform)?;
         if rate == 0 || samples.is_empty() || samples.len() > rate as usize * 60 { return Err(AtlasError::Platform("hearing needs a nonempty recording of at most 60 seconds".into())); }
+        let audio_ms = (samples.len() as u64 * 1000 / rate as u64).min(u32::MAX as u64) as u32;
+        let timeout_ms = crate::voicelat::parakeet_timeout_ms(audio_ms);
         let mut command = crate::tools::command(&cli);
         for (argument, name) in [("--encoder=", "encoder.int8.onnx"), ("--decoder=", "decoder.int8.onnx"), ("--joiner=", "joiner.int8.onnx"), ("--tokens=", "tokens.txt")] {
             let mut arg = std::ffi::OsString::from(argument); arg.push(model.join(name)); command.arg(arg);
         }
         command.args(["--model-type=nemo_transducer", "--num-threads=2", "--provider=cpu", "--lm-provider=cpu"]).arg(wav);
-        let run = crate::tools::run_scoped(&mut command, Duration::from_secs(30), 64 * 1024, None, Some(&stopped));
+        let run = crate::tools::run_scoped(&mut command, Duration::from_millis(timeout_ms), 64 * 1024, None, Some(&stopped));
         if stopped() || matches!(run.end, crate::tools::ProcessEnd::Stopped) { return Ok(None); }
         if !matches!(run.end, crate::tools::ProcessEnd::Exited(status) if status.success()) || run.truncated {
             let why = match &run.end {
                 crate::tools::ProcessEnd::Exited(status) => format!("recognizer exited with {status}"),
-                crate::tools::ProcessEnd::TimedOut => "recognizer exceeded 30 seconds".into(),
+                crate::tools::ProcessEnd::TimedOut => format!("recognizer exceeded {}s", timeout_ms / 1000),
                 crate::tools::ProcessEnd::Stopped => "recognizer stopped".into(),
                 crate::tools::ProcessEnd::Failed(message) => message.clone(),
             };

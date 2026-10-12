@@ -1079,6 +1079,13 @@ pub fn lookup_in(name: &str, vars: impl IntoIterator<Item = (String, String)>) -
     vars.into_iter().find(|(k, _)| k.to_lowercase() == want).map(|(_, v)| v)
 }
 
+/// Real voice latency from past sessions (`voicelat`): per-stage median and
+/// worst, and which speech-to-text engine heard each turn. Informational.
+pub fn voice_latency_finding() -> Finding {
+    let ledger: crate::voicelat::Ledger = crate::roots::store().load(crate::voicelat::RECORD);
+    Finding { label: "voice latency".into(), ok: true, detail: crate::voicelat::summary(&ledger) }
+}
+
 /// Which ear is live: the speech-to-text that will hear you, by the setting
 /// and what's installed (research report, Stage 1 item 11: nothing said which
 /// one was in use). Parakeet's licence asks for its credit to travel with it.

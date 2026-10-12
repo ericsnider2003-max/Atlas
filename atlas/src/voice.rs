@@ -665,17 +665,38 @@ impl<'a> Voice<'a> {
     fn transcribe_heard(&self, vars: &Vars) -> Result<String> { self.transcribe_heard_until(vars, &|| false) }
 
     fn transcribe_heard_until(&self, vars: &Vars, stop: &dyn Fn() -> bool) -> Result<String> {
+        use crate::voicelat::{note_asr, AsrDecision};
+        let began = std::time::Instant::now();
         let epoch = crate::parakeet::cancellation_epoch();
         let canceled = || stop() || crate::parakeet::cancellation_epoch() != epoch;
-        if stop() { return Ok(String::new()); }
+        let decide = |engine: &str, why: String, audio_ms: u32, rms: f32, text: &str| -> String {
+            // A known quiet-room phrase on a quiet or very short clip is no speech.
+            let dropped = !text.is_empty() && crate::voicelat::is_quiet_hallucination(text, rms, audio_ms);
+            note_asr(AsrDecision { engine: engine.into(), why, asr_ms: began.elapsed().as_millis().min(u32::MAX as u128) as u32, audio_ms, dropped_hallucination: dropped });
+            if dropped || not_really_said(text) { String::new() } else { text.to_string() }
+        };
+        if stop() {
+            note_asr(AsrDecision { engine: "none".into(), why: "canceled before recognition".into(), ..Default::default() });
+            return Ok(String::new());
+        }
         let in_wav = vars.get("in_wav").cloned().unwrap_or_default();
+        let (mut audio_ms, mut level) = (0u32, 1.0f32);
         if let Ok(bytes) = std::fs::read(&in_wav) {
             if let Ok((samples, rate)) = crate::diarize::read_wav(&bytes) {
+                if rate > 0 {
+                    audio_ms = (samples.len() as u64 * 1000 / rate as u64).min(u32::MAX as u64) as u32;
+                }
+                // Measured before levelling: levelling lifts a quiet clip, and
+                // it is the quiet clip whisper invents words for.
+                level = crate::voicelat::rms(&samples);
                 // Judged against the room and levelled by your usual voice on
                 // this microphone (`leveller`, 30 Sep 2026: "I have to yell").
                 let mic = microphone_now(self.cfg).0;
                 match crate::leveller::prepare(&samples, rate, &mic) {
-                    None => return Ok(String::new()),
+                    None => {
+                        note_asr(AsrDecision { engine: "none".into(), why: "no speech in the clip".into(), asr_ms: 0, audio_ms, dropped_hallucination: false });
+                        return Ok(String::new());
+                    }
                     Some(ready) => {
                         if ready != samples {
                             crate::kept!(std::fs::write(&in_wav, crate::audio::wav_bytes(&ready, rate)));
@@ -686,23 +707,35 @@ impl<'a> Voice<'a> {
         }
         // Parakeet first, when it's here (`parakeet`: a quarter of whisper
         // base.en's mistakes up close, a third across the room); whisper for
-        // anything it can't do, so hearing never depends on it.
+        // anything it can't do, so hearing never depends on it. Which one
+        // heard each turn, and why, is recorded (`voicelat`).
         let english = vars.get("lang_val").is_none_or(|l| l.trim().is_empty() || l.trim().eq_ignore_ascii_case("en"))
             && vars.get("task_opt").is_none_or(|t| t.trim().is_empty());
-        if english && !self.cfg.stt_engine.trim().eq_ignore_ascii_case("whisper") {
+        let why_whisper = if !english {
+            "whisper: not English".to_string()
+        } else if self.cfg.stt_engine.trim().eq_ignore_ascii_case("whisper") {
+            "whisper: chosen in settings".to_string()
+        } else {
             match crate::parakeet::transcribe_file_until(&crate::roots::install_root(), std::path::Path::new(&in_wav), &canceled) {
                 Some(Ok(Some(text))) => {
                     let text = clean_transcript(&text);
-                    return Ok(if not_really_said(&text) { String::new() } else { text });
+                    return Ok(decide("parakeet", "parakeet installed".into(), audio_ms, level, &text));
                 }
-                Some(Ok(None)) => return Ok(String::new()),
-                _ => {}
+                Some(Ok(None)) => {
+                    note_asr(AsrDecision { engine: "none".into(), why: "canceled during parakeet".into(), asr_ms: began.elapsed().as_millis() as u32, audio_ms, dropped_hallucination: false });
+                    return Ok(String::new());
+                }
+                Some(Err(e)) => format!("parakeet failed ({}) -> whisper", e.to_string().chars().take(120).collect::<String>()),
+                None => "whisper: parakeet not installed".to_string(),
             }
+        };
+        if canceled() {
+            note_asr(AsrDecision { engine: "none".into(), why: "canceled before whisper".into(), audio_ms, ..Default::default() });
+            return Ok(String::new());
         }
-        if canceled() { return Ok(String::new()); }
         let Some(raw) = self.cfg.stt.run_stoppable(vars, None, &canceled)? else { return Ok(String::new()); };
         let text = clean_transcript(&raw);
-        Ok(if not_really_said(&text) { String::new() } else { text })
+        Ok(decide("whisper", why_whisper, audio_ms, level, &text))
     }
 
     /// Words for audio already recorded: written where speech-to-text reads
