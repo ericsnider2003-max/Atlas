@@ -138,7 +138,15 @@ fn every_piece_is_pinned() {
 }
 
 fn can_run(cmd: &str, arg: &str) -> bool {
-    std::process::Command::new(cmd).arg(arg).output().is_ok()
+    // Exit status counts, not just a successful spawn: on Windows `python3` is
+    // a Microsoft Store stub that starts fine and then exits 9009 "not found".
+    std::process::Command::new(cmd).arg(arg).output().is_ok_and(|o| o.status.success())
+}
+
+/// The first Python that really runs (`python3` on Linux/macOS, often only
+/// `python` on Windows).
+fn python() -> Option<&'static str> {
+    ["python3", "python"].into_iter().find(|p| can_run(p, "--version"))
 }
 
 fn local_tools() -> Option<Tools> {
@@ -200,13 +208,11 @@ fn a_download_that_is_not_the_right_file_is_thrown_away() {
 #[test]
 fn a_zip_is_unpacked_from_its_own_folder_into_atlas_tools() {
     let Some(tools) = local_tools() else { return };
-    if !can_run("python3", "--version") {
-        return;
-    }
+    let Some(python) = python() else { return };
     let src = tmp("zip-src");
     let zip = src.join("engine.zip");
     // The shape of the real whisper zip: everything inside a `Release/` folder.
-    let made = std::process::Command::new("python3")
+    let made = std::process::Command::new(python)
         .arg("-c")
         .arg(format!(
             "import zipfile;z=zipfile.ZipFile(r'{}','w');z.writestr('Release/whisper-cli.exe','exe');z.writestr('Release/whisper.dll','dll');z.close()",
