@@ -149,6 +149,10 @@ pub struct ModelsConfig {
     /// integrated graphics share the memory the model was already sized to
     /// fit -- and none when it is a processor-only build (`layers_here`).
     pub gpu_layers: String,
+    /// Not a setting: set by Atlas for a start made in safe mode after the
+    /// graphics reset (`gpulost`), never read from your settings.
+    #[serde(skip)]
+    pub gpu_safe: bool,
     /// The largest model, in billions of parameters, chosen for talking
     /// when nobody named one (`prefer`). 0: no ceiling, the largest that
     /// fits. A conversation wants a quick answer more than the biggest
@@ -343,6 +347,7 @@ impl Default for ModelsConfig {
             port: 8080,
             listen_on: String::new(),
             gpu_layers: "auto".into(),
+            gpu_safe: false,
             talk_ceiling_b: 5,
             draft: String::new(),
             // Measured on Eric's laptop, 1 Oct 2026 (Qwen3-VL 4B, five
@@ -713,6 +718,16 @@ pub fn server_args(model: &Model, cfg: &ModelsConfig, gpu_layers: u32) -> Vec<St
         "q8_0".into(),
     ]
     .into_iter()
+    // After the graphics reset under it (`gpulost`): no graphics device at
+    // all -- `-ngl 0` alone still lets the backend take big prompt batches,
+    // which is where the laptop's resets happened -- and the picture
+    // encoder on the processor too.
+    .chain(
+        cfg.gpu_safe
+            .then(|| ["--device", "none", "--no-mmproj-offload"].map(String::from))
+            .into_iter()
+            .flatten(),
+    )
     // Speculative decoding, only when set (`models.draft`, `models.speculate`).
     .chain(speculation_args(cfg, &model.path))
     .collect()
@@ -1000,6 +1015,13 @@ pub fn model_server_last_words() -> Option<String> {
     last_words_in(&text)
 }
 
+/// Does the model server's log, as it stands, say its graphics device was
+/// lost (`gpulost`)? The log is started afresh by each launch, so what it
+/// holds is the running server's.
+pub fn model_server_log_says_device_lost() -> bool {
+    crate::gpulost::log_tail().is_some_and(|t| crate::gpulost::device_lost_in(&t))
+}
+
 /// The telling line of a model server's log (see `model_server_last_words`).
 pub fn last_words_in(text: &str) -> Option<String> {
     let lines: Vec<&str> = text
@@ -1074,6 +1096,11 @@ pub fn wait_until_up(cfg: &ModelsConfig, vars: &Vars, secs: u64) -> bool {
     let http = server_get();
     let until = std::time::Instant::now() + std::time::Duration::from_secs(secs);
     loop {
+        // A server that lost its graphics is not coming up: its replacement
+        // is the daemon's to start, not a question's to wait for.
+        if crate::gpulost::flagged() {
+            return false;
+        }
         if is_running(cfg, &http, vars) {
             return true;
         }
@@ -1094,14 +1121,38 @@ pub struct WaitsForServer {
     pub vars: Vars,
 }
 
-impl crate::brain::Llm for WaitsForServer {
-    fn complete(&self, system: &str, user: &str) -> Result<String> {
+impl WaitsForServer {
+    /// Before a call: refuse at once while the server is known to have lost
+    /// its graphics (the daemon is starting a safe one; the rules-only path
+    /// answers meanwhile), else wait for a server that is still loading.
+    fn ready(&self) -> Result<()> {
+        if crate::gpulost::flagged() {
+            return Err(crate::gpulost::unavailable());
+        }
         let launched = LAUNCHED.load(std::sync::atomic::Ordering::Relaxed);
         if launched != 0 && crate::store::now().saturating_sub(launched) < LOADING_SECS {
             // unheard-ok: returns `bool`, not a Result
             let _ = wait_until_up(&self.cfg, &self.vars, LOADING_SECS);
         }
-        self.inner.complete(system, user)
+        Ok(())
+    }
+
+    /// After a call: an answer that says the device was lost raises the flag,
+    /// so the next call doesn't wait for the same thing.
+    fn noting<T>(&self, r: Result<T>) -> Result<T> {
+        if let Err(e) = &r {
+            if crate::gpulost::device_lost_in(&e.to_string()) {
+                crate::gpulost::flag();
+            }
+        }
+        r
+    }
+}
+
+impl crate::brain::Llm for WaitsForServer {
+    fn complete(&self, system: &str, user: &str) -> Result<String> {
+        self.ready()?;
+        self.noting(self.inner.complete(system, user))
     }
 
     fn complete_long(
@@ -1110,18 +1161,19 @@ impl crate::brain::Llm for WaitsForServer {
         user: &str,
         max_tokens: u32,
     ) -> Result<crate::brain::LongReply> {
-        let launched = LAUNCHED.load(std::sync::atomic::Ordering::Relaxed);
-        if launched != 0 && crate::store::now().saturating_sub(launched) < LOADING_SECS {
-            // unheard-ok: returns `bool`, not a Result
-            let _ = wait_until_up(&self.cfg, &self.vars, LOADING_SECS);
-        }
-        self.inner.complete_long(system, user, max_tokens)
+        self.ready()?;
+        self.noting(self.inner.complete_long(system, user, max_tokens))
     }
 
     /// The server's context as the settings start it; 0 there means the
     /// model's own, which isn't known from here.
     fn context_tokens(&self) -> Option<u32> {
-        (self.cfg.context > 0).then(|| self.cfg.context.min(u64::from(u32::MAX)) as u32)
+        let ctx = match (self.cfg.context, crate::gpulost::safe_running()) {
+            (0, _) => return None,
+            (c, true) => c.min(crate::gpulost::SAFE_CONTEXT),
+            (c, false) => c,
+        };
+        Some(ctx.min(u64::from(u32::MAX)) as u32)
     }
 
     fn native_chat(&self) -> bool {
@@ -1133,12 +1185,8 @@ impl crate::brain::Llm for WaitsForServer {
         req: &crate::brain::ChatRequest,
         on_text: &mut dyn FnMut(&str) -> bool,
     ) -> Result<crate::brain::ChatReply> {
-        let launched = LAUNCHED.load(std::sync::atomic::Ordering::Relaxed);
-        if launched != 0 && crate::store::now().saturating_sub(launched) < LOADING_SECS {
-            // unheard-ok: returns `bool`, not a Result
-            let _ = wait_until_up(&self.cfg, &self.vars, LOADING_SECS);
-        }
-        self.inner.chat(req, on_text)
+        self.ready()?;
+        self.noting(self.inner.chat(req, on_text))
     }
 }
 
@@ -1464,6 +1512,9 @@ impl Registry {
 /// with no usable graphics runs on the processor anyway. `gpu_layers` in
 /// your settings overrides this either way.
 pub fn layers_here(model: &Model, cfg: &ModelsConfig, m: &Machine) -> u32 {
+    if cfg.gpu_safe {
+        return 0;
+    }
     let setting = cfg.gpu_layers.trim().to_ascii_lowercase();
     match setting.as_str() {
         "" | "auto" => {}

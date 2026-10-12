@@ -1204,6 +1204,13 @@ pub struct Daemon<'a> {
     /// Model servers that ended soon after being started, in a row: each
     /// doubles the pause before the next try (29 Sep 2026).
     model_deaths: u32,
+    /// The graphics reset under our model server and a safe one is on its
+    /// way up: turns are refused at once until it answers (`gpulost`).
+    model_recovering: bool,
+    /// The running model server was started in safe mode.
+    model_in_safe_mode: bool,
+    /// When the server's log was last read for a graphics reset.
+    model_log_looked: Option<std::time::Instant>,
     /// The model server was let go after its idle time (Phase 0.2, 1 Oct
     /// 2026): it is started again by the next thing you say, not by the
     /// loop's next pass. On 30 Sep it was stopped "idle" and started again
@@ -2119,6 +2126,9 @@ impl<'a> Daemon<'a> {
             model_start_tried: None,
             model_started: None,
             model_deaths: 0,
+            model_recovering: false,
+            model_in_safe_mode: false,
+            model_log_looked: None,
             model_rested: false,
             runs: None,
             model_done_at: std::cell::Cell::new(None),
@@ -2713,6 +2723,9 @@ const MODEL_SERVER_LOADING: std::time::Duration = std::time::Duration::from_secs
 
 /// A model server that ends within this long of being started died young.
 const MODEL_SERVER_YOUNG: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// How often the model server's log is read for a graphics reset.
+const MODEL_LOG_LOOK: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// The longest a turn waits to learn whether one is up.
 const MODEL_PROBE_WAIT: std::time::Duration = std::time::Duration::from_millis(800);

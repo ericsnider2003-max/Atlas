@@ -979,6 +979,8 @@ mod the_background_atlas_hears_you;
 mod the_envelope_when_asked;
 #[path = "the_gaps_the_audit_found.rs"]
 mod the_gaps_the_audit_found;
+#[path = "the_graphics_reset_is_survived.rs"]
+mod the_graphics_reset_is_survived;
 #[path = "the_line_moves.rs"]
 mod the_line_moves;
 #[path = "the_mark_is_one_mark.rs"]

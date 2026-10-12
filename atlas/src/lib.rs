@@ -378,6 +378,7 @@ pub mod deepbrain;
 pub mod firstlaunch;
 pub mod getpieces;
 pub mod glance;
+pub mod gpulost;
 pub mod hubwin;
 pub mod mail;
 pub mod memory;
