@@ -630,6 +630,13 @@ impl Daemon<'_> {
             // What "Have a go" or "Not worth it" did, said on the page -- the
             // same as every other page (below).
             Page::Social => self.social_page(said.as_deref()),
+            Page::Workspace => {
+                let view = field_of(&fields, "view");
+                hub::with_said(
+                    self.workspace_page_view(now, view.as_deref()),
+                    said.as_deref(),
+                )
+            }
             Page::Phone => {
                 let kind = field_of(&fields, "kind").and_then(|k| crate::phoneadd::Kind::parse(&k));
                 let v = self.phone_view(kind);

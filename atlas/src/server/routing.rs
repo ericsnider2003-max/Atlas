@@ -450,6 +450,8 @@ pub fn route(r: &Request) -> Option<Action> {
             // Outstanding's Drop it / Stop it buttons (2 Oct 2026).
             | "/hub/outstanding"
             | "/hub/calendar/review"
+            // The Workspace page's empty-state buttons (12 Oct 2026).
+            | "/hub/workspace"
             | "/hub/back"
             // Connect an account (2 Oct 2026, `connecting`).
             | "/hub/connect",

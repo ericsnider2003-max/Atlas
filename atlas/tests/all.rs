@@ -365,6 +365,8 @@ mod easy_setup;
 mod errand_pause;
 #[path = "every_capability_is_reached_by_a_test.rs"]
 mod every_capability_is_reached_by_a_test;
+#[path = "hub_every_button_works.rs"]
+mod hub_every_button_works;
 #[path = "hub_in_the_window.rs"]
 mod hub_in_the_window;
 #[path = "idle_but_on.rs"]
@@ -454,6 +456,8 @@ mod native_settings;
 mod no_confident_nothings;
 #[path = "no_quiet_nothings.rs"]
 mod no_quiet_nothings;
+#[path = "no_test_touches_the_machine.rs"]
+mod no_test_touches_the_machine;
 #[path = "not_acting_on_a_guess.rs"]
 mod not_acting_on_a_guess;
 #[path = "nothing_is_left_in_the_process_table.rs"]

@@ -73,6 +73,7 @@ impl Daemon<'_> {
             // up again in `drop_outstanding`, so a stale page (pressed twice,
             // or after the thing finished) says it's already off rather than
             // taking off something else.
+            "/hub/workspace" => self.workspace_post(&what, f, now),
             "/hub/outstanding" => {
                 let key = field_of(f, "key").unwrap_or_default();
                 if what != "drop" || key.is_empty() {
@@ -600,5 +601,62 @@ impl Daemon<'_> {
                 "That button isn't wired to anything, so nothing changed.",
             ),
         }
+    }
+}
+
+impl Daemon<'_> {
+    /// The Workspace page's two buttons when it is empty (UX8).
+    ///
+    /// "Add" files one item on the board, as something you said. "Open"
+    /// asks Atlas to do what saying "open workspace" does -- it goes in the
+    /// same queue a typed or spoken line does, so the usual rules apply (not
+    /// while handed over, one answer on the Talk page) and the hub is not
+    /// held up while the apps come up, which can take most of a minute.
+    pub(super) fn workspace_post(&mut self, what: &str, f: &[(String, String)], now: u64) -> Reply {
+        let said = match what {
+            "add" => {
+                let title = field_of(f, "title").unwrap_or_default();
+                let title = title.trim();
+                if title.is_empty() {
+                    "Type what you want to keep track of first.".to_string()
+                } else {
+                    let id = format!("w{now}-{}", self.workspace.len() + 1);
+                    self.workspace.push(crate::workspace_view::Item {
+                        id,
+                        title: title.chars().take(200).collect(),
+                        kind: crate::workspace_view::Kind::Task,
+                        status: crate::workspace_view::Status::Waiting,
+                        due: None,
+                        project: None,
+                        client: None,
+                        links: vec![],
+                        blocked_by: None,
+                        from: crate::workspace_view::Origin::YouSaid,
+                        at: now,
+                        closed_at: None,
+                        tags: vec![],
+                        thinking: vec![],
+                        estimate_mins: None,
+                        spent_mins: 0,
+                        atlas_could: crate::workspace_view::Handoff::Unknown,
+                    });
+                    match self.store.save("workspace", &self.workspace) {
+                        Ok(()) => "Added. It is on the board now.".to_string(),
+                        Err(e) => didnt_stick(&e),
+                    }
+                }
+            }
+            "open" => {
+                if let Some(no) = self.handed_over_refusal(&Intent::WorkspaceOn) {
+                    no
+                } else {
+                    self.talk_queue.push(("open workspace".to_string(), false));
+                    "Asking Atlas to open your workspace apps. What happened is on the Talk page."
+                        .to_string()
+                }
+            }
+            _ => "That button didn't say what to do, so nothing changed.".to_string(),
+        };
+        hub::back_with(Page::Workspace.href(), "", &said)
     }
 }
