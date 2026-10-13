@@ -259,7 +259,11 @@ impl Daemon<'_> {
                         continue;
                     }
                     self.last_crew_handoff = None;
+                    // Judged whole by `needs_your_yes` above, so it runs
+                    // whole: not cut into parts the judgement never saw.
+                    let relayed = RelayedGuard::set(&self.relayed_from_phone);
                     let reply = self.turn_from(&a.what, t, Arrival::Directed);
+                    drop(relayed);
                     let watch = self
                         .last_crew_handoff
                         .and_then(|id| self.crew_links.get(&id).map(|link| link.watch_id));
@@ -708,5 +712,52 @@ mod durable_phone_requests {
                 crate::remote::State::Waiting
             );
         });
+    }
+}
+
+/// Marks a turn as relayed from the phone (`Daemon::relayed_from_phone`)
+/// for as long as it lives, and puts the flag back as it was when dropped --
+/// on the way out of the turn, or while unwinding from a panic -- so a
+/// failed relay can never leave the next turn of yours unsplit, or the
+/// other way round.
+pub(super) struct RelayedGuard {
+    flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    was: bool,
+}
+
+impl RelayedGuard {
+    pub(super) fn set(flag: &std::sync::Arc<std::sync::atomic::AtomicBool>) -> RelayedGuard {
+        let was = flag.swap(true, std::sync::atomic::Ordering::SeqCst);
+        RelayedGuard {
+            flag: flag.clone(),
+            was,
+        }
+    }
+}
+
+impl Drop for RelayedGuard {
+    fn drop(&mut self) {
+        self.flag
+            .store(self.was, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+#[cfg(test)]
+mod relayed_tests {
+    use super::RelayedGuard;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    #[test]
+    fn splitter_a_relay_flag_is_put_back_even_after_a_panic() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let inner = flag.clone();
+        let caught = std::panic::catch_unwind(move || {
+            let _g = RelayedGuard::set(&inner);
+            assert!(inner.load(Ordering::SeqCst));
+            panic!("the relayed turn failed");
+        });
+        assert!(caught.is_err());
+        assert!(!flag.load(Ordering::SeqCst), "left set after a panic");
     }
 }
