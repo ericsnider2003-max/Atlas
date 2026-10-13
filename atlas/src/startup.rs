@@ -49,7 +49,7 @@ use std::path::Path;
 /// Which door Atlas comes up through at logon.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    /// `--daemon`: wake word, scheduled work, proactive offers. No window.
+    /// `--watchdog`: supervise the background daemon. No window.
     Background,
     /// `--voice`: the wake word only.
     Listening,
@@ -58,7 +58,7 @@ pub enum Mode {
 impl Mode {
     pub fn flag(self) -> &'static str {
         match self {
-            Mode::Background => "--daemon",
+            Mode::Background => "--watchdog",
             // The wake word's own loop. `--voice` is the press-Enter-to-talk
             // loop, which at sign-in has no keyboard to wait on (29 Sep 2026).
             Mode::Listening => "--wake",
@@ -697,7 +697,7 @@ mod tests {
     #[test]
     fn the_flag_matches_the_mode_asked_for() {
         let exe = PathBuf::from("/opt/atlas/atlas");
-        assert!(task_command(&exe, Mode::Background).ends_with("--daemon"));
+        assert!(task_command(&exe, Mode::Background).ends_with("--watchdog"));
         // `--wake`, the wake word's own loop (29 Sep 2026).
         assert!(task_command(&exe, Mode::Listening).ends_with("--wake"));
     }
