@@ -55,14 +55,14 @@ pub fn workspace_page(
         body.push_str(&format!(
             "<a class='{}' href='/hub/workspace?view={}'>{}</a>",
             if here { "view here" } else { "view" },
-            esc(v),
+            esc(&crate::research::urlencode(v)),
             esc(v)
         ));
     }
     body.push_str("</nav>");
 
     if groups.is_empty() {
-        body.push_str("<p class=note>Nothing here.</p>");
+        body.push_str(&empty_workspace(view, overview));
         return shell_at(Some(Page::Workspace), &view.name, &body);
     }
 
@@ -101,6 +101,40 @@ pub fn workspace_page(
         ));
     }
     shell_at(Some(Page::Workspace), &view.name, &body)
+}
+
+/// What the Workspace says when there is nothing to show (UX8, 12 Oct 2026).
+///
+/// It used to say "Nothing here." and stop -- a dead end on a page whose
+/// whole job is to be where things are. Two cases, said differently: nothing
+/// is open anywhere (so: what this page is for, and two buttons that start
+/// it), or only this view is empty while other things are open (so: say so,
+/// and go to where they are). Both buttons post to `/hub/workspace`.
+fn empty_workspace(
+    view: &crate::workspace_view::View,
+    o: &crate::workspace_view::Overview,
+) -> String {
+    let open = o.needs_you + o.doing + o.blocked + o.waiting;
+    if open > 0 {
+        return format!(
+            "<section class=empty aria-labelledby=ws-empty-h><h2 id=ws-empty-h>Nothing in \u{201c}{}\u{201d} right now</h2>\
+             <p>{open} other {} open. <a href='/hub/workspace?view=Everything%20live'>See everything that is open</a>.</p></section>",
+            esc(&view.name),
+            if open == 1 { "thing is" } else { "things are" }
+        );
+    }
+    "<section class=empty aria-labelledby=ws-empty-h><h2 id=ws-empty-h>Your workspace is empty</h2>\
+     <p>The Workspace is one board for everything you have open: what needs you, what is in hand and what is stuck.</p>\
+     <form method=post action='/hub/workspace' class=row>\
+     <input type=hidden name=what value=add>\
+     <label for=ws-new>Add the first thing to track</label>\
+     <input id=ws-new name=title autocomplete=off maxlength=200 required placeholder='For example: reply to the landlord'>\
+     <button type=submit>Add it</button></form>\
+     <form method=post action='/hub/workspace'>\
+     <input type=hidden name=what value=open>\
+     <button type=submit>Open my usual apps</button></form>\
+     <p class=note>Or <a href='/hub/talk'>tell Atlas</a> what you are working on and it will keep track.</p></section>"
+        .to_string()
 }
 
 /// A past day.

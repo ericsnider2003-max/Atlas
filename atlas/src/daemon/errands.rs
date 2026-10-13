@@ -545,6 +545,11 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// What is waiting to be answered on the Talk page, for tests.
+    pub fn talk_queue_for_test(&self) -> Vec<(String, bool)> {
+        self.talk_queue.clone()
+    }
+
     /// For a test: let every errand the crew has in hand finish, taking what
     /// each came to as the tick would. Gives up after thirty seconds.
     pub fn errands_done_for_test(&mut self) -> Vec<String> {

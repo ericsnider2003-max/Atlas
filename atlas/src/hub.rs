@@ -240,6 +240,7 @@ impl Page {
                 | Page::Phone
                 | Page::Recommendations
                 | Page::Accounts
+                | Page::Workspace
         )
     }
 

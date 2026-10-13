@@ -271,6 +271,14 @@ impl Daemon<'_> {
     }
 
     pub(super) fn workspace_page_live(&self, now: u64) -> String {
+        self.workspace_page_view(now, None)
+    }
+
+    /// The Workspace, on the view asked for in the address (`?view=`), or
+    /// the default one. Until 12 Oct 2026 the view links across the top
+    /// went to this page with a query nothing read, so every one of them
+    /// showed the same view.
+    pub(super) fn workspace_page_view(&self, now: u64, asked: Option<&str>) -> String {
         // All three of these read a setting that reached nothing until
         // 19 Sep 2026. `views.first()` happened to be "Now", which is also
         // what `default_view` ships as -- so the hardcoded behaviour and the
@@ -278,7 +286,11 @@ impl Daemon<'_> {
         // changed the setting.
         let wcfg = self.tools_cfg().workspace.clone();
         let views = crate::workspace_view::shipped();
-        let Some(view) = crate::workspace_view::pick(&views, &wcfg.default_view) else {
+        let wanted = match asked {
+            Some(a) if crate::workspace_view::is_a_view(&views, a) => a.to_string(),
+            _ => wcfg.default_view.clone(),
+        };
+        let Some(view) = crate::workspace_view::pick(&views, &wanted) else {
             return hub::list_page_at(Some(hub::Page::Workspace), "Workspace", "", &[]);
         };
         let items = crate::workspace_view::apply(&self.workspace, &view, now);
@@ -290,10 +302,10 @@ impl Daemon<'_> {
         // A name that matches nothing is said rather than ignored. Silently
         // showing a different view than the one somebody wrote down is how
         // they conclude the dashboard is broken.
-        if !crate::workspace_view::is_a_view(&views, &wcfg.default_view) {
+        if !crate::workspace_view::is_a_view(&views, &wanted) {
             others.push(format!(
                 "(there is no view called \"{}\" -- showing {})",
-                wcfg.default_view.trim(),
+                wanted.trim(),
                 view.name
             ));
         }
