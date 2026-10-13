@@ -44,7 +44,7 @@ pub struct Ring {
 }
 
 /// Lowercase words with punctuation taken out. Apostrophes join ("don't").
-pub fn words(text: &str) -> Vec<String> {
+fn words(text: &str) -> Vec<String> {
     let plain: String = text
         .chars()
         .filter(|c| *c != '\'' && *c != '\u{2019}')

@@ -2174,13 +2174,15 @@ fn rolling_items_up_into_their_project_is_a_switch_that_moves_them() {
 
 #[test]
 fn the_dashboard_is_what_reads_all_three_rather_than_these_tests() {
-    let src = live_source("src/hublive.rs");
+    let src = live_source("src/hublive/status_and_now.rs");
     assert!(
         !src.contains("views.first().cloned().unwrap_or_else"),
         "the dashboard still hardcodes the first shipped view"
     );
     for reads in [
-        "workspace_view::pick(&views, &wcfg.default_view)",
+        // The address may name a view; otherwise it is `default_view`.
+        "_ => wcfg.default_view.clone()",
+        "workspace_view::pick(&views, &wanted)",
         "still_worth_showing(&items, wcfg.keep_done_days, now)",
         "grouping(view.grouped_by, wcfg.group_by_project)",
     ] {

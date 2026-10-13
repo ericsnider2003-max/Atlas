@@ -649,7 +649,11 @@ fn free_form_the_corpus_is_big_enough_to_mean_something() {
 fn free_form_every_expected_step_reads() {
     let p = parser();
     for (_, want) in CORPUS.iter().chain(HELD_OUT) {
-        let _ = expected(&p, want);
+        assert_eq!(
+            expected(&p, want).len(),
+            want.len(),
+            "every expected step must read as something"
+        );
     }
 }
 
