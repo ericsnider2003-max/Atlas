@@ -84,7 +84,7 @@ fn the_task_runs_atlas_itself_from_its_own_folder_and_never_a_console() {
         between(&xml, "Command"),
         vec![r"C:\Users\erics\AppData\Local\Atlas\atlas.exe"]
     );
-    assert_eq!(between(&xml, "Arguments"), vec!["--daemon"]);
+    assert_eq!(between(&xml, "Arguments"), vec!["--watchdog"]);
     assert_eq!(
         between(&xml, "WorkingDirectory"),
         vec![r"C:\Users\erics\AppData\Local\Atlas"]
