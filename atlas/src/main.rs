@@ -6,6 +6,7 @@ use atlas::brain::{self, Brain, Llm, ShellLlm};
 use atlas::config::Config;
 use atlas::daemon::{Autonomy, Daemon};
 use atlas::doctor;
+use atlas::gpulost;
 use atlas::input::Keyboard;
 use atlas::intent::{Intent, Parser};
 use atlas::perf::Throttle;
@@ -71,6 +72,7 @@ const USAGE: &str = "\
 atlas — local workspace assistant
 
   atlas doctor                    inspect this machine, print config to paste
+  atlas doctor --retry-gpu        try the graphics again after a safe-mode fallback
   atlas selftest [--no-model]     try every command on this machine, safely,
                                   and write what works to data/selftest/
   atlas selftest --coverage       (in Atlas's source folder) the same, built
@@ -1278,6 +1280,20 @@ fn main() {
     }
 
     if words.first().map(|s| s.as_str()) == Some("doctor") {
+        // `--retry-gpu`: forget the model server's safe mode, so its next
+        // start uses the graphics again (`gpulost`).
+        if flag("--retry-gpu") {
+            match gpulost::retry_graphics() {
+                Ok(()) => println!(
+                    "The model server will use the graphics again the next time it starts.
+"
+                ),
+                Err(e) => println!(
+                    "Couldn't clear the safe mode: {e}
+"
+                ),
+            }
+        }
         return run_doctor(&cfg, plat.as_ref());
     }
 

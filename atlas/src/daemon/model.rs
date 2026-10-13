@@ -409,6 +409,9 @@ impl<'a> Daemon<'a> {
             // starts a fresh one (29 Sep 2026: a running process was trusted
             // however stuck it was, and every question waited out the whole
             // read timeout, twice, before failing).
+            if self.watch_for_lost_graphics(&cfg, &vars, wait) {
+                return;
+            }
             let loading = self
                 .model_started
                 .is_some_and(|s| s.elapsed() < MODEL_SERVER_LOADING);
@@ -521,13 +524,24 @@ impl<'a> Daemon<'a> {
                 "the model server ({was}) isn't running any more; its last words: {words}"
             ));
         }
+        // The graphics reset under a server before: start with the safe
+        // settings while that stands, so it doesn't happen again (`gpulost`).
+        let cfg = crate::gpulost::apply(cfg, &crate::gpulost::load(), crate::store::now());
+        let safe = cfg.gpu_safe;
         let layers = crate::models::layers_here(&model, &cfg, &machine);
         let mb = crate::models::footprint_mb(&model, &cfg);
         let trouble = match self.start_model_server(&model, &cfg, layers, mb) {
             Ok(_) => {
+                self.model_in_safe_mode = safe;
+                crate::gpulost::set_safe_running(safe);
                 self.log.info(&format!(
-                    "started the model server: {} ({layers} layers on the graphics)",
-                    model.id
+                    "started the model server: {} ({layers} layers on the graphics{})",
+                    model.id,
+                    if safe {
+                        "; safe mode, because the graphics reset before"
+                    } else {
+                        ""
+                    }
                 ));
                 // The pause between tries is for a start that failed, not one
                 // that worked and was later let go (merge 28 Sep 2026). A
@@ -555,6 +569,12 @@ impl<'a> Daemon<'a> {
     /// file -- was started again on the very next pass, reading the whole
     /// model off the disk every time, and nobody was told).
     pub(super) fn model_server_died(&mut self) {
+        // Its graphics reset and it went down with them: not a young death
+        // to wait out, a reason to start differently.
+        if crate::models::model_server_log_says_device_lost() {
+            self.graphics_were_lost();
+            return;
+        }
         let Some(started) = self.model_started.take() else {
             return;
         };
@@ -572,6 +592,103 @@ impl<'a> Daemon<'a> {
             model_server_pause(self.model_deaths).as_secs() / 60
         ));
         self.model_server_trouble = Some(why);
+    }
+
+    /// A running server of ours: has its graphics reset (`gpulost`)? The
+    /// process keeps running and `/health` keeps saying `ok` after that, so
+    /// it is found by its own log (read at most every few seconds) or by a
+    /// model call having been refused with those words. Found, it is stopped
+    /// and the next pass starts one in safe mode. Then, until the new one
+    /// answers, calls are refused at once. True when this pass is spent.
+    fn watch_for_lost_graphics(
+        &mut self,
+        cfg: &crate::models::ModelsConfig,
+        vars: &crate::tools::Vars,
+        wait: std::time::Duration,
+    ) -> bool {
+        if self.model_recovering {
+            let given_up = self
+                .model_started
+                .is_none_or(|s| s.elapsed() > MODEL_SERVER_YOUNG);
+            if given_up {
+                self.model_recovering = false;
+                crate::gpulost::clear();
+                return false;
+            }
+            if self.probe_model_server(cfg, vars, wait) == Some(true) {
+                self.model_recovering = false;
+                crate::gpulost::clear();
+                self.log
+                    .info("the model server answers again after the graphics reset");
+                return false;
+            }
+            return true;
+        }
+        let looked = self
+            .model_log_looked
+            .is_some_and(|at| at.elapsed() < MODEL_LOG_LOOK);
+        let seen = crate::gpulost::flagged()
+            || ((self.model_suspect || !looked) && {
+                self.model_log_looked = Some(std::time::Instant::now());
+                crate::models::model_server_log_says_device_lost()
+            });
+        if seen {
+            self.graphics_were_lost();
+        }
+        seen
+    }
+
+    /// The graphics reset under our model server: note it, stop what is
+    /// left, and arrange for the next start to be the safe one.
+    fn graphics_were_lost(&mut self) {
+        let now = crate::store::now();
+        let detail = crate::gpulost::log_tail()
+            .and_then(|t| crate::gpulost::lost_line_in(&t))
+            .unwrap_or_else(|| "device lost".into());
+        let mut record = crate::gpulost::load();
+        let model = self.model_running_id.clone().unwrap_or_default();
+        crate::gpulost::record_reset(&mut record, &model, &detail, now);
+        if let Err(e) = crate::gpulost::save(&record) {
+            self.log.warn(&format!(
+                "couldn't save that the graphics reset ({e}); this run still starts safely"
+            ));
+        }
+        self.log.warn(&format!(
+            "the graphics reset under the model server ({detail}); stopping it and starting it again              on the processor in safe mode. Questions use the built-in answers until it is up."
+        ));
+        self.helpers.finished("model-server");
+        let was_safe = self.model_in_safe_mode;
+        self.model_in_safe_mode = false;
+        crate::gpulost::set_safe_running(false);
+        self.model_running_id = None;
+        self.model_suspect = false;
+        self.model_started = None;
+        // The one retry is immediate. A server that was already in safe mode
+        // and lost its device anyway is a fault safe mode can't fix: the
+        // usual doubling pause applies, not an endless loop.
+        if was_safe {
+            self.model_deaths = self.model_deaths.saturating_add(1);
+            self.model_start_tried = Some(std::time::Instant::now());
+        } else {
+            self.model_start_tried = None;
+        }
+        // Until a safe server answers, calls are refused at once; one that
+        // was safe already gets no such promise.
+        self.model_recovering = !was_safe;
+        if was_safe {
+            crate::gpulost::clear();
+        } else {
+            crate::gpulost::flag();
+        }
+        if let Ok(mut seen) = self
+            .model_server_seen
+            .lock()
+            .or_else(crate::crash::unpoison)
+        {
+            *seen = None;
+        }
+        self.model_server_trouble =
+            Some("my language model's graphics reset, so I'm restarting it in safe mode".into());
     }
 
     /// Ask, on a thread of its own, whether a model server is answering;

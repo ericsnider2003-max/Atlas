@@ -392,6 +392,11 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
         ok: lok,
         detail: ldetail,
     });
+    // The graphics resetting under the model (`gpulost`): said while safe
+    // mode stands, with how to try them again.
+    if let Some(g) = gpu_finding(&crate::gpulost::load(), crate::store::now()) {
+        f.push(g);
+    }
 
     // And whether you can be reached away from the machine at all.
     let ph = tools.map(|t| t.phone.clone()).unwrap_or_default();
@@ -1065,6 +1070,16 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
     }
 
     f
+}
+
+/// The model server's graphics trouble as a doctor line; `None` when the
+/// graphics have never reset.
+pub fn gpu_finding(t: &crate::gpulost::Trouble, now: u64) -> Option<Finding> {
+    crate::gpulost::finding(t, now).map(|(ok, detail)| Finding {
+        label: "model server".into(),
+        ok,
+        detail,
+    })
 }
 
 /// Emit a paste-ready Rust literal for main.rs's dry-run fixture, so dry runs

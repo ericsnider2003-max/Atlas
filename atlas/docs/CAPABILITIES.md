@@ -366,4 +366,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-247 things, across 440 of 492 source files. The other 52 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+247 things, across 440 of 491 source files. The other 51 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
