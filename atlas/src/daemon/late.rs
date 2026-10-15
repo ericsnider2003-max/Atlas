@@ -110,7 +110,8 @@ mod approved_undo_retry_tests {
             assert!(!moved.exists());
         }
         drop(daemon);
-        let _ = std::fs::remove_dir_all(path);
+        // unheard-ok: best-effort cleanup of a disposable test fixture.
+        let _ = std::fs::remove_dir_all(path); // unheard-ok: disposable test fixture cleanup
     }
     #[test]
     fn approval_waits_without_moving_then_retries_after_backup_release() {
@@ -198,7 +199,7 @@ mod routine_durable_origin_tests {
         );
         assert!(restarted.routines.routines[0].last_day > 0);
         drop(restarted);
-        let _ = std::fs::remove_dir_all(path);
+        let _ = std::fs::remove_dir_all(path); // unheard-ok: disposable test fixture cleanup
     }
 }
 

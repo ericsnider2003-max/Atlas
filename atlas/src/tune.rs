@@ -992,6 +992,7 @@ mod runtime_folder_recovery_tests {
             b"owner model bytes"
         );
         assert!(!to.exists());
+        // unheard-ok: best-effort cleanup of a disposable test fixture.
         let _ = std::fs::remove_dir_all(area);
     }
     #[test]
@@ -1015,6 +1016,7 @@ mod runtime_folder_recovery_tests {
         assert!(move_folder_durably(&store, &from, &to, 11, &|| false)
             .unwrap_err()
             .contains("unresolved"));
+        // unheard-ok: best-effort cleanup of a disposable test fixture.
         let _ = std::fs::remove_dir_all(area);
     }
     #[test]
@@ -1040,6 +1042,7 @@ mod runtime_folder_recovery_tests {
             .done
             .iter()
             .any(|row| row.id == intents[0].history_id));
+        // unheard-ok: best-effort cleanup of a disposable test fixture.
         let _ = std::fs::remove_dir_all(area);
     }
     #[test]
@@ -1060,6 +1063,7 @@ mod runtime_folder_recovery_tests {
             store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap();
         assert!(!intents[0].completed);
         assert_eq!(intents[0].moved.to, to.display().to_string());
+        // unheard-ok: best-effort cleanup of a disposable test fixture.
         let _ = std::fs::remove_dir_all(area);
     }
     #[test]
@@ -1082,6 +1086,7 @@ mod runtime_folder_recovery_tests {
         );
         assert!(from.exists());
         assert!(!to.exists());
+        // unheard-ok: best-effort cleanup of a disposable test fixture.
         let _ = std::fs::remove_dir_all(area);
     }
     #[test]
@@ -1111,6 +1116,7 @@ mod runtime_folder_recovery_tests {
             .load_checked::<Vec<Moved>>(MOVED_RECORD)
             .unwrap()
             .is_none());
+        // unheard-ok: best-effort cleanup of a disposable test fixture.
         let _ = std::fs::remove_dir_all(area);
     }
     #[test]
@@ -1134,6 +1140,7 @@ mod runtime_folder_recovery_tests {
             .unwrap()
             .is_none());
         drop(writer);
+        // unheard-ok: best-effort cleanup of a disposable test fixture.
         let _ = std::fs::remove_dir_all(area);
     }
     #[test]
@@ -1166,6 +1173,7 @@ mod runtime_folder_recovery_tests {
             std::fs::read(to.join("model.bin")).unwrap(),
             b"owner model bytes"
         );
+        // unheard-ok: best-effort cleanup of a disposable test fixture.
         let _ = std::fs::remove_dir_all(area);
     }
     #[test]
@@ -1189,6 +1197,7 @@ mod runtime_folder_recovery_tests {
             std::fs::read(to.join("model.bin")).unwrap(),
             b"owner model bytes"
         );
+        // unheard-ok: best-effort cleanup of a disposable test fixture.
         let _ = std::fs::remove_dir_all(area);
     }
     #[test]
@@ -1223,6 +1232,7 @@ mod runtime_folder_recovery_tests {
             store.load_checked(RUNTIME_MOVE_INTENTS).unwrap().unwrap();
         assert!(!intents[0].completed);
         drop(writer);
+        // unheard-ok: best-effort cleanup of a disposable test fixture.
         let _ = std::fs::remove_dir_all(area);
     }
 }
