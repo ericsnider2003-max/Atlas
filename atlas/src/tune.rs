@@ -931,10 +931,8 @@ fn save_location_note(from: &std::path::Path, to: &std::path::Path) -> Result<()
 
 /// Compatibility helper: no overwrite, content verification, and a checked
 /// location note. Daemon moves use move_folder_durably for recovery receipts.
-
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod runtime_folder_recovery_tests {
-    #![cfg(windows)]
     #[cfg(windows)]
     #[test]
     fn missing_destination_parents_are_created_without_moving_inside_the_source() {

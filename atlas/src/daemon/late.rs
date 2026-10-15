@@ -126,9 +126,8 @@ mod approved_undo_retry_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod routine_durable_origin_tests {
-    #![cfg(windows)]
     use super::*;
     use crate::proactive::{Proactive, ProactiveConfig};
     use std::os::windows::fs::OpenOptionsExt;
