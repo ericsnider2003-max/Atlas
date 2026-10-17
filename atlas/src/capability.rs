@@ -125,6 +125,102 @@ pub struct Capability {
     pub modules: &'static [&'static str],
 }
 
+/// How much evidence supports a capability claim.
+///
+/// Source evidence is deliberately distinct from installed and owner/device
+/// evidence. A passing source test must not silently become a claim that a
+/// particular machine, microphone, model, or provider was exercised.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceLevel {
+    Source,
+    Installed,
+    OwnerDevice,
+    Unproven,
+}
+
+/// The current availability of a capability after its static catalog facts
+/// and runtime state have been considered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Availability {
+    Available,
+    Disabled,
+    NeedsDependency,
+    Planned,
+}
+
+impl Availability {
+    pub fn plain(self) -> &'static str {
+        match self {
+            Self::Available => "available",
+            Self::Disabled => "switched off",
+            Self::NeedsDependency => "waiting on a dependency",
+            Self::Planned => "not built yet",
+        }
+    }
+}
+
+/// A small, shared truth envelope for every capability consumer.
+///
+/// This is intentionally a derived record rather than a second catalog. The
+/// existing `Capability` remains the source of user-facing descriptions and
+/// module ownership; this envelope adds the evidence and resource/fallback
+/// facts that the F0 plan requires without duplicating the catalog rows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CapabilityRecord {
+    pub id: &'static str,
+    pub availability: Availability,
+    pub reason: Option<&'static str>,
+    pub evidence: EvidenceLevel,
+    pub resource_cost: &'static str,
+    pub fallback: &'static str,
+}
+
+impl Capability {
+    /// Derive one honest evidence envelope for every existing catalog entry.
+    pub fn record(&self) -> CapabilityRecord {
+        let availability = match self.state {
+            State::Working => Availability::Available,
+            State::Off => Availability::Disabled,
+            State::Blocked => Availability::NeedsDependency,
+            State::Planned => Availability::Planned,
+            State::Untested => Availability::Available,
+        };
+        let evidence = match self.state {
+            State::Untested | State::Blocked => EvidenceLevel::Unproven,
+            State::Working | State::Off | State::Planned => EvidenceLevel::Source,
+        };
+        let resource_cost = if self.runs.contains(&Needs::Audio)
+            || self.runs.contains(&Needs::Camera)
+            || self.runs.contains(&Needs::ReadScreen)
+        {
+            "device"
+        } else if self.runs.contains(&Needs::Background) {
+            "background"
+        } else {
+            "interactive"
+        };
+        let fallback = if self.offline {
+            if self.runs.contains(&Needs::Audio) {
+                "text input or queued work"
+            } else {
+                "bounded local path"
+            }
+        } else {
+            "offline explanation or queued retry"
+        };
+        CapabilityRecord {
+            id: self.id,
+            availability,
+            reason: self.needs,
+            evidence,
+            resource_cost,
+            fallback,
+        }
+    }
+}
+
 /// Everything, in the order it was built.
 ///
 /// `Planned` with `needs: "wiring in"` means the code exists, compiles and is
@@ -519,9 +615,21 @@ pub fn in_area(area: Area) -> Vec<Capability> {
     all().into_iter().filter(|c| c.area == area).collect()
 }
 
-/// What you can rely on today.
-pub fn working() -> Vec<Capability> {
-    all().into_iter().filter(|c| c.state.usable()).collect()
+/// Capabilities usable under the current evidence envelope.
+pub fn working_for(research_on: bool) -> Vec<Capability> {
+    let records = records(research_on);
+    let usable: std::collections::BTreeSet<&str> = records
+        .iter()
+        .filter(|record| {
+            record.availability == Availability::Available
+                && record.evidence != EvidenceLevel::Unproven
+        })
+        .map(|record| record.id)
+        .collect();
+    all()
+        .into_iter()
+        .filter(|capability| usable.contains(capability.id))
+        .collect()
 }
 
 /// What's waiting on something, and on what.
@@ -580,10 +688,21 @@ pub struct Unfinished {
 /// wiring backlog (the dead-method ratchet in the tests), which is a scan of
 /// the source the running daemon can't do; this is the capability-level view,
 /// which is what a person means by "what's left to finish".
-pub fn to_finish() -> Vec<Unfinished> {
+/// The self-finishing backlog using the live evidence envelope.
+pub fn to_finish_for(research_on: bool) -> Vec<Unfinished> {
+    let live_records = research_on.then(|| records(true));
     let mut out: Vec<Unfinished> = all()
         .into_iter()
         .filter_map(|c| {
+            if let Some(records) = live_records.as_ref() {
+                if records
+                    .iter()
+                    .find(|record| record.id == c.id)
+                    .is_some_and(|record| record.evidence != EvidenceLevel::Unproven)
+                {
+                    return None;
+                }
+            }
             let finisher = match c.state {
                 // Not written yet: Atlas's own to build only when it's a wiring
                 // job on existing code; if it names something external, it's
@@ -615,8 +734,9 @@ pub fn to_finish() -> Vec<Unfinished> {
 
 /// The self-finishing backlog said in plain words — the honest split of what's
 /// left and who finishes each part.
-pub fn to_finish_report() -> String {
-    let items = to_finish();
+/// The self-finishing backlog report using the live evidence envelope.
+pub fn to_finish_report_for(research_on: bool) -> String {
+    let items = to_finish_for(research_on);
     if items.is_empty() {
         return "Everything built is wired and running — there's nothing left to finish.".into();
     }
@@ -712,12 +832,25 @@ pub fn how_verified(c: &Capability) -> Verify {
 /// verifies by computing, how many by acting and reading the result back, and
 /// the few that need your eyes — named, because that short list is the only
 /// part of setup that actually costs your time.
-pub fn commissioning() -> (usize, usize, usize, Vec<&'static str>) {
+/// The commissioning split using the live evidence envelope.
+pub fn commissioning_for(research_on: bool) -> (usize, usize, usize, Vec<&'static str>) {
     let (mut computes, mut read_back) = (0usize, 0usize);
     let mut your_eyes: Vec<&'static str> = Vec::new();
+    let live_records = research_on.then(|| records(true));
     for c in all() {
         if c.state != State::Untested {
             continue;
+        }
+        if research_on {
+            let Some(record) = live_records
+                .as_ref()
+                .and_then(|records| records.iter().find(|record| record.id == c.id))
+            else {
+                continue;
+            };
+            if record.evidence != EvidenceLevel::Unproven {
+                continue;
+            }
         }
         match how_verified(&c) {
             Verify::Computes => computes += 1,
@@ -731,7 +864,12 @@ pub fn commissioning() -> (usize, usize, usize, Vec<&'static str>) {
 /// The commissioning split said in plain words — the honest answer to "how much
 /// of setting this up do I have to sit through?"
 pub fn commissioning_report() -> String {
-    let (computes, read_back, eyes_n, eyes) = commissioning();
+    commissioning_report_for(false)
+}
+
+/// The commissioning report using the live evidence envelope.
+pub fn commissioning_report_for(research_on: bool) -> String {
+    let (computes, read_back, eyes_n, eyes) = commissioning_for(research_on);
     let total = computes + read_back + eyes_n;
     if total == 0 {
         return "Nothing is waiting on a first run — it's all been exercised.".into();
@@ -762,7 +900,12 @@ pub fn commissioning_report() -> String {
 /// meet the question first, so a small model answers from facts rather than
 /// making something up.
 pub fn about_atlas(said: &str, most: usize) -> String {
-    about_atlas_lines(said, most)
+    about_atlas_for(said, false, most)
+}
+
+/// What Atlas knows about itself, using the live research setting.
+pub fn about_atlas_for(said: &str, research_on: bool, most: usize) -> String {
+    about_atlas_lines(said, research_on, most)
 }
 
 /// Is this a question about Atlas itself -- what it can do, its setup, where
@@ -847,7 +990,7 @@ pub fn is_about_atlas(said: &str) -> bool {
     ABOUT.iter().any(|a| t.contains(a))
 }
 
-fn about_atlas_lines(said: &str, most: usize) -> String {
+fn about_atlas_lines(said: &str, research_on: bool, most: usize) -> String {
     let words: Vec<String> = said
         .to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
@@ -876,13 +1019,17 @@ fn about_atlas_lines(said: &str, most: usize) -> String {
         })
         .collect();
     pages.sort_by_key(|b| std::cmp::Reverse(b.0));
+    let evidence = records(research_on);
     let mut caps: Vec<(usize, String)> = all()
         .iter()
         .filter_map(|c| {
             let n = score(&format!("{} {}", c.id, c.what));
             (n > 0).then(|| {
-                let needs = c.needs.map(|n| format!(", needs {n}")).unwrap_or_default();
-                (n, format!("- {}: {}{needs}", c.what, c.state.plain()))
+                let record = evidence.iter().find(|record| record.id == c.id);
+                let state = record
+                    .map(record_state_said)
+                    .unwrap_or_else(|| c.state.plain().to_string());
+                (n, format!("- {}: {state}", c.what))
             })
         })
         .collect();
@@ -901,6 +1048,22 @@ fn about_atlas_lines(said: &str, most: usize) -> String {
         out.push('\n');
     }
     out
+}
+
+fn record_state_said(record: &CapabilityRecord) -> String {
+    match record.availability {
+        Availability::Available if record.evidence == EvidenceLevel::Unproven => record
+            .reason
+            .map(|reason| format!("built, not tried on this machine yet (it uses {reason})"))
+            .unwrap_or_else(|| "built, not tried on this machine yet".to_string()),
+        Availability::Available => "works now".to_string(),
+        Availability::Disabled => "built, switched off -- Settings turns it on".to_string(),
+        Availability::NeedsDependency => format!(
+            "built, waiting on {}",
+            record.reason.unwrap_or("a piece that isn't installed")
+        ),
+        Availability::Planned => "not built yet".to_string(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -940,21 +1103,24 @@ const ABILITY_WORDS: &[(&str, &str)] = &[
 
 /// What turns an ability on, or that it's already there, in a clause.
 fn state_said(c: &Capability) -> String {
-    match c.state {
-        State::Working => "works now".to_string(),
-        State::Off => "built, switched off -- Settings turns it on".to_string(),
-        State::Blocked => format!(
-            "built, waiting on {} -- setup fetches it",
-            c.needs.unwrap_or("a piece that isn't installed")
-        ),
-        State::Untested => match c.needs {
-            Some(n) => {
-                format!("built, not tried on this machine yet (it uses {n}) -- ask and it will try")
-            }
-            None => "built, not tried on this machine yet -- ask and it will try".to_string(),
-        },
-        State::Planned => "not built yet".to_string(),
+    let record = c.record();
+    let mut state = record_state_said(&record);
+    if record.availability == Availability::NeedsDependency {
+        state.push_str(" -- setup fetches it");
+    } else if record.availability == Availability::Available
+        && record.evidence == EvidenceLevel::Unproven
+    {
+        state.push_str(" -- ask and it will try");
     }
+    state
+}
+
+/// The shared evidence view consumed by UI, voice, and status surfaces.
+pub fn records(research_on: bool) -> Vec<CapabilityRecord> {
+    as_set_up(research_on)
+        .iter()
+        .map(Capability::record)
+        .collect()
 }
 
 /// The catalogue as it stands on this machine: the entries whose state
@@ -1131,11 +1297,48 @@ fn hub_pages_for(said: &str, most: usize) -> Vec<String> {
 ///
 /// By area, and honest about the difference between working and built.
 pub fn summary() -> String {
+    summary_for(false)
+}
+
+/// Summarize capabilities using the current research setting.
+///
+/// The no-argument form remains the conservative offline-safe view used by
+/// callers without daemon settings; live surfaces should pass their actual
+/// setting so research is not reported as disabled when it is enabled.
+pub fn summary_for(research_on: bool) -> String {
     let all = all();
-    let working = all.iter().filter(|c| c.state.usable()).count();
-    let untested = all.iter().filter(|c| c.state == State::Untested).count();
-    let blocked = all.iter().filter(|c| c.state == State::Blocked).count();
-    let off = all.iter().filter(|c| c.state == State::Off).count();
+    // Keep the status answer on the same evidence envelope consumed by the
+    // prompt and voice paths. `all` remains the description source; records
+    // own availability/evidence semantics so a new consumer cannot silently
+    // re-interpret a state.
+    let records = records(research_on);
+    let working = records
+        .iter()
+        .filter(|r| {
+            r.availability == Availability::Available && r.evidence != EvidenceLevel::Unproven
+        })
+        .count();
+    let untested = records
+        .iter()
+        .filter(|r| {
+            r.availability == Availability::Available && r.evidence == EvidenceLevel::Unproven
+        })
+        .count();
+    let blocked = records
+        .iter()
+        .filter(|r| r.availability == Availability::NeedsDependency)
+        .count();
+    let off = records
+        .iter()
+        .filter(|r| r.availability == Availability::Disabled)
+        .count();
+    let working_ids: std::collections::BTreeSet<&str> = records
+        .iter()
+        .filter(|r| {
+            r.availability == Availability::Available && r.evidence != EvidenceLevel::Unproven
+        })
+        .map(|r| r.id)
+        .collect();
 
     // By area, the three biggest, counted (28 Sep 2026). With over two hundred
     // entries a bare "73 things work" says nothing about *what*, and a list of
@@ -1148,7 +1351,7 @@ pub fn summary() -> String {
             (
                 *a,
                 all.iter()
-                    .filter(|c| c.area == *a && c.state.usable())
+                    .filter(|c| c.area == *a && working_ids.contains(c.id))
                     .count(),
             )
         })
@@ -1189,7 +1392,17 @@ pub fn summary() -> String {
 
 /// Everything, for reading.
 pub fn full() -> String {
+    full_for(false)
+}
+
+/// Everything, for reading, using the live research setting.
+///
+/// Keep `full()` conservative for callers without daemon settings; live
+/// surfaces must use this projection so the itemised list agrees with the
+/// summary and Hub status.
+pub fn full_for(research_on: bool) -> String {
     let mut s = String::new();
+    let evidence = records(research_on);
     for area in EVERY_AREA {
         let items = in_area(*area);
         if items.is_empty() {
@@ -1197,16 +1410,23 @@ pub fn full() -> String {
         }
         s.push_str(&format!("\n{}\n", area.plain().to_uppercase()));
         for c in items {
-            let mark = match c.state {
-                State::Working => "  ",
-                State::Off => "· ",
-                State::Blocked => "! ",
-                State::Untested => "? ",
-                State::Planned => "  ",
+            let Some(record) = evidence.iter().find(|record| record.id == c.id) else {
+                continue;
             };
-            s.push_str(&format!("{mark}{:<52} {}", c.what, c.state.plain()));
-            if let Some(n) = c.needs {
-                if c.state != State::Working {
+            let (mark, state) = match (record.availability, record.evidence) {
+                (Availability::Available, EvidenceLevel::Unproven) => {
+                    ("? ", "built, never run for real")
+                }
+                (Availability::Available, _) => ("  ", "working"),
+                (Availability::Disabled, _) => ("· ", "switched off"),
+                (Availability::NeedsDependency, _) => ("! ", "waiting on something"),
+                (Availability::Planned, _) => ("  ", "not built yet"),
+            };
+            s.push_str(&format!("{mark}{:<52} {state}", c.what));
+            if let Some(n) = record.reason {
+                if record.availability != Availability::Available
+                    || record.evidence == EvidenceLevel::Unproven
+                {
                     s.push_str(&format!(" ({n})"));
                 }
             }
@@ -1225,31 +1445,57 @@ pub fn since(version: u32) -> Vec<Capability> {
 }
 
 /// Can Atlas do this, with what's actually installed?
-pub fn can(id: &str) -> Option<(bool, String)> {
-    let c = all().into_iter().find(|c| c.id == id)?;
-    Some(match c.state {
-        State::Working => (true, format!("yes — {}", c.what)),
-        State::Off => (
+/// Can Atlas do this, using the live setting-dependent evidence projection?
+pub fn can_for(id: &str, research_on: bool) -> Option<(bool, String)> {
+    let c = as_set_up(research_on).into_iter().find(|c| c.id == id)?;
+    let record = c.record();
+    Some(match record.availability {
+        Availability::Available if record.evidence != EvidenceLevel::Unproven => {
+            (true, format!("yes — {}", c.what))
+        }
+        Availability::Disabled => (
             false,
             format!("built, but switched off. Turn on \"{}\" in settings.", c.id),
         ),
-        State::Blocked => (
+        Availability::NeedsDependency => (
             false,
-            format!("not until {} is installed.", c.needs.unwrap_or("something")),
+            format!(
+                "not until {} is installed.",
+                record.reason.unwrap_or("something")
+            ),
         ),
-        State::Untested => (
+        Availability::Available => (
             false,
             "built, but it has never run on a real machine — so I can't promise it works."
                 .to_string(),
         ),
-        State::Planned => (false, "not built yet.".to_string()),
+        Availability::Planned => (false, "not built yet.".to_string()),
     })
 }
 
 /// What works with the network unplugged.
-pub fn offline_count() -> (usize, usize) {
-    let all = all();
-    (all.iter().filter(|c| c.offline).count(), all.len())
+/// Count only capabilities that are currently available with non-unproven
+/// evidence, then identify which of that usable set is offline-safe.
+pub fn offline_count_for(research_on: bool) -> (usize, usize) {
+    let offline: std::collections::BTreeSet<&str> = all()
+        .into_iter()
+        .filter(|capability| capability.offline)
+        .map(|capability| capability.id)
+        .collect();
+    let usable: Vec<_> = records(research_on)
+        .into_iter()
+        .filter(|record| {
+            record.availability == Availability::Available
+                && record.evidence != EvidenceLevel::Unproven
+        })
+        .collect();
+    (
+        usable
+            .iter()
+            .filter(|record| offline.contains(record.id))
+            .count(),
+        usable.len(),
+    )
 }
 
 // ===================== where each of these runs =====================
@@ -1762,7 +2008,9 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // model) = 491.
 // 12 Oct 2026: + `ownspeech` (echo guard, merged alongside) = 492.
 // 12 Oct 2026: + `gpulost` (graphics reset safe mode) = 493.
-pub const MODULES_IN_TREE: usize = 493;
+// 15 Oct 2026: + `evidence` and `job`, bounded foundation journals used by
+// every capability rather than user-facing capabilities themselves = 495.
+pub const MODULES_IN_TREE: usize = 496;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1780,6 +2028,9 @@ pub const MODULES_IN_TREE: usize = 493;
 /// a feature cannot be filed as plumbing without somebody writing down why it
 /// is not one.
 pub const PLUMBING: &[(&str, &str)] = &[
+    ("artifact", "bounded durable-work artifact references used to connect receipts without exposing file paths"),
+    ("evidence", "bounded immutable observation bundles and snapshot reuse shared by capability and job evidence; not a user-facing ability"),
+    ("job", "the bounded durable lifecycle and receipt envelope shared by long-running work; not a user-facing ability"),
     ("ownspeech", "remembers the last few things Atlas said aloud so an open-mic transcript that is its own voice coming back through the speakers is dropped; words stay in memory only"),
     ("gpulost", "remembers that the graphics reset under the language model, starts it in safe mode on the processor meanwhile, and says so in `atlas doctor`"),
     ("voicelat", "keeps what the voice path decided and how long each stage took, so `atlas doctor` can read real latency later; numbers and reasons, never the words"),
@@ -1852,4 +2103,107 @@ pub fn what_uses(module: &str) -> Vec<Capability> {
         .into_iter()
         .filter(|c| c.modules.contains(&module))
         .collect()
+}
+
+#[cfg(test)]
+mod evidence_tests {
+    use super::{
+        about_atlas_for, all, can_for, full_for, offline_count_for, records, summary_for,
+        to_finish_for, working_for, Availability, EvidenceLevel,
+    };
+
+    #[test]
+    fn every_catalog_entry_has_one_shared_evidence_record() {
+        let entries = all();
+        assert!(!entries.is_empty());
+        for entry in entries {
+            let record = entry.record();
+            assert_eq!(record.id, entry.id);
+            assert!(!record.resource_cost.is_empty());
+            assert!(!record.fallback.is_empty());
+        }
+    }
+
+    #[test]
+    fn untested_and_blocked_entries_never_claim_installed_proof() {
+        for entry in all() {
+            let record = entry.record();
+            if matches!(record.availability, Availability::NeedsDependency)
+                || matches!(record.evidence, EvidenceLevel::Unproven)
+            {
+                assert_eq!(record.evidence, EvidenceLevel::Unproven);
+            }
+        }
+    }
+
+    #[test]
+    fn device_work_gets_a_device_cost_and_an_offline_fallback() {
+        let wake = all().into_iter().find(|entry| entry.id == "wake").unwrap();
+        let record = wake.record();
+        assert_eq!(record.resource_cost, "device");
+        assert_eq!(record.fallback, "text input or queued work");
+    }
+
+    #[test]
+    fn records_are_the_shared_catalogue_projection() {
+        let projected = records(false);
+        assert_eq!(projected.len(), all().len());
+        assert!(projected.iter().any(|record| record.id == "wake"));
+    }
+
+    #[test]
+    fn live_research_evidence_removes_research_from_the_finish_backlog() {
+        let static_ids: std::collections::BTreeSet<_> = to_finish_for(false)
+            .into_iter()
+            .map(|item| item.what)
+            .collect();
+        let live_ids: std::collections::BTreeSet<_> = to_finish_for(true)
+            .into_iter()
+            .map(|item| item.what)
+            .collect();
+        let research = all()
+            .into_iter()
+            .find(|entry| entry.id == "research")
+            .unwrap();
+        assert!(static_ids.contains(research.what));
+        assert!(!live_ids.contains(research.what));
+    }
+
+    #[test]
+    fn summary_for_reflects_the_live_research_setting() {
+        assert_ne!(summary_for(false), summary_for(true));
+    }
+
+    #[test]
+    fn full_for_reflects_the_live_research_setting() {
+        assert_ne!(full_for(false), full_for(true));
+    }
+
+    #[test]
+    fn working_for_reflects_the_live_research_setting() {
+        assert_ne!(working_for(false), working_for(true));
+    }
+
+    #[test]
+    fn model_self_description_reflects_the_live_research_setting() {
+        let off = about_atlas_for("research", false, 6);
+        let on = about_atlas_for("research", true, 6);
+        assert!(off.contains("switched off"), "{off}");
+        assert!(on.contains("works now"), "{on}");
+    }
+
+    #[test]
+    fn direct_capability_lookup_reflects_the_live_research_setting() {
+        let off = can_for("research", false).unwrap();
+        let on = can_for("research", true).unwrap();
+        assert!(!off.0 && off.1.contains("switched off"), "{off:?}");
+        assert!(on.0 && on.1.contains("yes"), "{on:?}");
+    }
+
+    #[test]
+    fn offline_count_for_excludes_unproven_capabilities() {
+        let (offline, total) = offline_count_for(false);
+        assert!(offline <= total);
+        assert!(total < all().len());
+    }
 }

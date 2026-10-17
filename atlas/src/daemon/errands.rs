@@ -461,7 +461,7 @@ impl<'a> Daemon<'a> {
             HubAfter::Sent { job, doc, to } => {
                 if tag == "sent" {
                     self.tray.sent_to(doc, &to, t);
-                    let _ = self.tray.save(&self.store);
+                    crate::kept!(self.tray.save(&self.store));
                 }
                 self.hub_jobs.finish(job, said, false);
             }
@@ -623,7 +623,7 @@ impl<'a> Daemon<'a> {
     /// Write down the work in hand (`resume::RECORD`).
     fn keep_unfinished(&self) {
         let list: Vec<&crate::resume::Unfinished> = self.unfinished.values().collect();
-        let _ = self.store.save(crate::resume::RECORD, &list);
+        crate::kept!(self.store.save(crate::resume::RECORD, &list));
     }
 
     /// Write down the windows being worked, when they've changed.
@@ -642,7 +642,7 @@ impl<'a> Daemon<'a> {
             .collect();
         let text = serde_json::to_string(&list).unwrap_or_default();
         if text != self.saved_windows {
-            let _ = self.store.save(crate::resume::WINDOWS, &list);
+            crate::kept!(self.store.save(crate::resume::WINDOWS, &list));
             self.saved_windows = text;
         }
     }
@@ -655,12 +655,15 @@ impl<'a> Daemon<'a> {
         if self.left_waiting_read {
             return;
         }
-        self.left_waiting_read = true;
         self.last_run_left = self.store.load(super::running::LEFT_WAITING);
-        let _ = self.store.save(
+        if crate::kept!(self.store.save(
             super::running::LEFT_WAITING,
             &Vec::<super::running::LeftWaiting>::new(),
-        );
+        ))
+        .is_some()
+        {
+            self.left_waiting_read = true;
+        }
     }
 
     /// The first tick after a start: what the last run left unfinished.
@@ -672,6 +675,29 @@ impl<'a> Daemon<'a> {
         self.read_left_waiting();
         if !self.left_pickup_done {
             self.left_pickup_done = true;
+            let current_job = self
+                .task_loop
+                .as_ref()
+                .map(|loop_state| loop_state.job_id.as_str());
+            let reconciled = match current_job {
+                Some(job_id) => {
+                    crate::job::reconcile_after_restart_except(&self.store, Some(job_id))
+                }
+                None => crate::job::reconcile_after_restart(&self.store),
+            };
+            match reconciled {
+                Ok(jobs) => {
+                    for job in jobs {
+                        out.push(format!(
+                            "The {} job was interrupted by my restart; its result is uncertain, so I won't repeat it automatically.",
+                            job.stage
+                        ));
+                    }
+                }
+                Err(error) => out.push(format!(
+                    "I found unfinished job state after restart, but couldn't reconcile it safely ({error}); I won't repeat that work automatically."
+                )),
+            }
             let left = std::mem::take(&mut self.last_run_left);
             let fresh: Vec<_> = left
                 .into_iter()
@@ -706,9 +732,14 @@ impl<'a> Daemon<'a> {
             // (`approved_flow_step`); one that was running is named, not
             // carried on, since its next step may be one to ask about.
             let flow: Option<crate::flow::Run> = self.store.load(super::running::FLOW_LEFT);
-            let _ = self
+            if let Err(error) = self
                 .store
-                .save(super::running::FLOW_LEFT, &None::<crate::flow::Run>);
+                .save(super::running::FLOW_LEFT, &None::<crate::flow::Run>)
+            {
+                self.log.warn(&format!(
+                    "couldn't clear the recovered workflow marker ({error})"
+                ));
+            }
             if let Some(run) =
                 flow.filter(|r| t.saturating_sub(r.started) < 86_400 && !r.finished())
             {
@@ -782,10 +813,10 @@ impl<'a> Daemon<'a> {
         if left.is_empty() {
             return out;
         }
-        let _ = self.store.save(
+        crate::kept!(self.store.save(
             crate::resume::RECORD,
             &Vec::<crate::resume::Unfinished>::new(),
-        );
+        ));
         let (again, ask) = crate::resume::sort(left);
         let describe = |u: &crate::resume::Unfinished| {
             crate::which_errand::describe(&crate::which_errand::Candidate {
@@ -1348,7 +1379,7 @@ impl<'a> Daemon<'a> {
                             &format!("{}\n{}", o.project, o.what),
                         )
                         .close();
-                        let _ = self.workshop.save(&self.store);
+                        crate::kept!(self.workshop.save(&self.store));
                         result = o.summary;
                     }
                     Err(_) => {
@@ -1456,7 +1487,7 @@ impl<'a> Daemon<'a> {
                         None => "research".to_string(),
                     };
                     self.learned(&result, &source, now);
-                    let _ = self.store.save("known", &self.known);
+                    crate::kept!(self.store.save("known", &self.known));
                     // Immediately, not on next start — a note you cannot
                     // find until you restart is a note you will not know
                     // you have.
@@ -1488,7 +1519,7 @@ impl<'a> Daemon<'a> {
                             now,
                         );
                         self.facts.trim(crate::facts::MEMORY_BUDGET_BYTES, now);
-                        let _ = self.facts.save(&self.store);
+                        crate::kept!(self.facts.save(&self.store));
                     }
                 } else {
                     if let Some(i) = self.connections.get_mut(crate::integrations::INTERNET) {

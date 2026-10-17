@@ -881,7 +881,7 @@ impl Daemon<'_> {
         );
         let (moved, refused) = crate::reclaim::reclaim(&chosen, &trash);
         s.found.retain(|c| !moved.contains(&c.path));
-        let _ = self.store.save(SURVEY, &s);
+        crate::kept!(self.store.save(SURVEY, &s));
         self.log.info(&format!(
             "reclaim from the hub: moved {}, refused {}",
             moved.len(),

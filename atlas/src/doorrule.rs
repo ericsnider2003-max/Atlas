@@ -192,7 +192,7 @@ pub fn ensure(
     }
     // Added by this install before, and a rule of that name is still there:
     // not asked for again because netsh words it in a way not read above.
-    let added_for = std::fs::read_to_string(state.join(ADDED)).unwrap_or_default();
+    let added_for = read_added_for(&state.join(ADDED));
     if plain_path(&added_for) == plain_path(&exe.display().to_string()) && shown.contains(RULE_NAME)
     {
         return Standing::Here;
@@ -214,7 +214,10 @@ pub fn ensure(
         let (_, shown) = run("netsh", &show_args());
         if describes_rule_for(&shown, exe) || shown.contains(RULE_NAME) {
             crate::heard!(std::fs::create_dir_all(state));
-            crate::kept!(std::fs::write(state.join(ADDED), exe.display().to_string()));
+            crate::kept!(crate::store::write_whole(
+                &state.join(ADDED),
+                exe.display().to_string().as_bytes()
+            ));
             return Standing::Added;
         }
         return Standing::Problem("Windows said yes but the rule isn't there; Windows will ask the first time your phone connects.".into());
@@ -225,9 +228,9 @@ pub fn ensure(
     // failure used to be written down as "you chose no", for good).
     if said_no(&said) {
         crate::heard!(std::fs::create_dir_all(state));
-        crate::kept!(std::fs::write(
-            state.join(DECLINED),
-            crate::store::now().to_string()
+        crate::kept!(crate::store::write_whole(
+            &state.join(DECLINED),
+            crate::store::now().to_string().as_bytes()
         ));
         return Standing::Declined(declined_words());
     }
@@ -240,6 +243,32 @@ pub fn ensure(
         "not added: Windows couldn't make the rule ({first}). I'll try again the next time setup runs; until \
          then Windows will ask the first time your phone connects -- answer Allow."
     ))
+}
+
+const MAX_ADDED_FOR_BYTES: u64 = 4096;
+
+fn read_added_for(path: &Path) -> String {
+    use std::io::Read;
+    let Ok(file) = std::fs::File::open(path) else {
+        return String::new();
+    };
+    let Ok(metadata) = file.metadata() else {
+        return String::new();
+    };
+    if !metadata.is_file() || metadata.len() > MAX_ADDED_FOR_BYTES {
+        return String::new();
+    }
+    let mut text = String::new();
+    if file
+        .take(MAX_ADDED_FOR_BYTES + 1)
+        .read_to_string(&mut text)
+        .is_ok()
+        && text.len() as u64 <= MAX_ADDED_FOR_BYTES
+    {
+        text
+    } else {
+        String::new()
+    }
 }
 
 /// What a test is told instead of a prompt: a No (`said_no` reads it so).

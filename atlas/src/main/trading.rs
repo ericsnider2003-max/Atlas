@@ -4,6 +4,32 @@
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
+use std::io::Read;
+
+const MAX_MARKET_IMPORT_BYTES: u64 = 64 * 1024 * 1024;
+
+fn read_bounded_text_file(path: &str) -> std::result::Result<String, String> {
+    let file = std::fs::File::open(path).map_err(|e| format!("I couldn't read {path}: {e}"))?;
+    let metadata = file
+        .metadata()
+        .map_err(|e| format!("I couldn't inspect {path}: {e}"))?;
+    if !metadata.is_file() || metadata.len() > MAX_MARKET_IMPORT_BYTES {
+        return Err(format!(
+            "{path} is not a regular file or exceeds the {} MiB market-import limit",
+            MAX_MARKET_IMPORT_BYTES / (1024 * 1024)
+        ));
+    }
+    let mut text = String::new();
+    file.take(MAX_MARKET_IMPORT_BYTES + 1)
+        .read_to_string(&mut text)
+        .map_err(|e| format!("I couldn't read {path}: {e}"))?;
+    if text.len() as u64 > MAX_MARKET_IMPORT_BYTES {
+        return Err(format!(
+            "{path} grew past the market-import limit while reading"
+        ));
+    }
+    Ok(text)
+}
 
 /// Look for reclaimable space, show it, and act only if told to.
 ///
@@ -57,7 +83,7 @@ pub(super) fn run_read(args: &[String]) {
         println!("atlas read <where it came from> <file>");
         return;
     };
-    let text = match std::fs::read_to_string(path) {
+    let text = match read_bounded_text_file(path) {
         Ok(t) => t,
         Err(e) => {
             println!("I couldn't read {path}: {e}");
@@ -99,7 +125,7 @@ pub(super) fn run_read(args: &[String]) {
 /// the same refusals as any other source — there is no laxer path in for data
 /// that arrived as text.
 fn bars_from_file(path: &str) -> std::result::Result<atlas::market::bars::Bars, String> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("I couldn't read {path}: {e}"))?;
+    let text = read_bounded_text_file(path)?;
     let (mut o, mut h, mut l, mut c, mut t) = (vec![], vec![], vec![], vec![], vec![]);
     for (n, line) in text.lines().enumerate() {
         let line = line.trim();
@@ -772,7 +798,7 @@ pub(super) fn run_money(cfg: &Config, args: &[String]) {
         return;
     };
 
-    let Ok(text) = std::fs::read_to_string(&path) else {
+    let Ok(text) = read_bounded_text_file(&path) else {
         println!("I can't read {path}.");
         return;
     };

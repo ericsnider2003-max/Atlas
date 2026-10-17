@@ -6,6 +6,30 @@
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
+use std::io::Read;
+
+const MAX_SETUP_AUDIO_BYTES: u64 = 256 * 1024 * 1024;
+
+fn read_bounded_setup_audio(path: &str) -> std::io::Result<Vec<u8>> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_SETUP_AUDIO_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "setup audio exceeds the 256 MiB limit",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_SETUP_AUDIO_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_SETUP_AUDIO_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "setup audio grew past the 256 MiB limit while reading",
+        ));
+    }
+    Ok(bytes)
+}
 
 pub(super) fn run_craft() {
     use atlas::craft::{self, Next};
@@ -186,7 +210,7 @@ pub(super) fn run_fix(cfg: &Config, args: &[String]) {
 pub(super) fn run_voice_lab(cfg: &Config, words: &[String]) {
     let store = atlas::roots::store();
     let read = |p: &String| -> Option<(Vec<i16>, u32)> {
-        match std::fs::read(p)
+        match read_bounded_setup_audio(p)
             .map_err(|e| e.to_string())
             .and_then(|b| atlas::diarize::read_wav(&b))
         {
@@ -1860,7 +1884,12 @@ fn send_plugin(dir: &std::path::Path, id: &str, to: &str) -> Result<String, Stri
         ),
         None => (vec![key.to_string()], format!("the add-on {name}")),
     };
-    let named = std::env::temp_dir().join(&file_name);
+    // Keep the handoff private to this invocation.  The old global-temp
+    // filename could overwrite a user's file with the same add-on name, and
+    // an early return could leave the payload behind.  `RunScratch` gives us
+    // both a per-process location and cleanup on every exit path.
+    let scratch = atlas::roots::RunScratch::new("atlas-plugin-share");
+    let named = scratch.path().join(&file_name);
     std::fs::write(&named, &bytes).map_err(|e| format!("couldn't prepare it: {e}"))?;
     let mut reached = Vec::new();
     for who in &people {
@@ -1883,7 +1912,6 @@ fn send_plugin(dir: &std::path::Path, id: &str, to: &str) -> Result<String, Stri
             reached.push(who.clone());
         }
     }
-    atlas::heard!(std::fs::remove_file(&named));
     if reached.is_empty() {
         return Err(format!(
             "couldn't reach anyone in {to} to share \"{name}\" with"
@@ -2065,7 +2093,7 @@ pub(super) fn run_call_check(args: &[String]) {
                 Err(e) => println!("  {what}: {e}"),
                 Ok(got) => {
                     // Loudest moment, against a floor above hiss: about 3%.
-                    let peak = std::fs::read(path)
+                    let peak = read_bounded_setup_audio(path.to_string_lossy().as_ref())
                         .ok()
                         .map(|b| {
                             b.get(44..)

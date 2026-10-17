@@ -4,6 +4,30 @@
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
+use std::io::Read;
+
+const MAX_TRAY_TEXT_BYTES: u64 = 64 * 1024 * 1024;
+
+fn read_tray_text(path: &str) -> std::io::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_TRAY_TEXT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "tray text input exceeds the 64 MiB limit",
+        ));
+    }
+    let mut text = String::new();
+    file.take(MAX_TRAY_TEXT_BYTES + 1)
+        .read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_TRAY_TEXT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "tray text input grew past the 64 MiB limit while reading",
+        ));
+    }
+    Ok(text)
+}
 
 impl<'a> Daemon<'a> {
     /// A hand answering the question Atlas already asked.
@@ -1719,7 +1743,7 @@ impl<'a> Daemon<'a> {
         if let Err(e) = put {
             return format!("{e}");
         }
-        let _ = self.album.save(&self.store);
+        crate::kept!(self.album.save(&self.store));
         let views = self
             .album
             .everything()
@@ -2104,7 +2128,7 @@ impl<'a> Daemon<'a> {
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_default();
-                match std::fs::read_to_string(&path) {
+                match read_tray_text(&path) {
                     Ok(code) => {
                         let tongue = crate::hollowcode::Tongue::of(&name, &code);
                         let mut found = crate::hollowcode::read(&code, tongue);
@@ -2152,7 +2176,7 @@ impl<'a> Daemon<'a> {
             }
             crate::tray::Sort::Document | crate::tray::Sort::File => {
                 let path = item.stored_at.clone().unwrap_or_else(|| item.what.clone());
-                match std::fs::read_to_string(&path) {
+                match read_tray_text(&path) {
                     Ok(text) => Ok(crate::research::first_sentences(&text, 4)),
                     // Not every document is text. Saying which kind it is and
                     // that Atlas can't read it beats "couldn't open" — one of
@@ -2193,7 +2217,7 @@ impl<'a> Daemon<'a> {
         match found {
             Ok(text) => {
                 self.tray.read(item.id, &text);
-                let _ = self.tray.save(&self.store);
+                crate::kept!(self.tray.save(&self.store));
                 // What you asked for, repeated back with what was in it. The
                 // question is yours, so it is safe to treat as a request --
                 // unlike the contents, which came from outside.
@@ -2211,7 +2235,7 @@ impl<'a> Daemon<'a> {
             }
             Err(why) => {
                 self.tray.stuck(item.id, &why);
-                let _ = self.tray.save(&self.store);
+                crate::kept!(self.tray.save(&self.store));
                 Some(format!("The {title} you sent me: {why}"))
             }
         }
@@ -2340,7 +2364,7 @@ impl<'a> Daemon<'a> {
                         if self.phone_retry_at <= t {
                             self.phone_retry_at = t + phone_retry_wait(self.phone_retry_tries);
                         }
-                        let _ = self.store.save(PHONE_RETRY_FILE, &self.phone_to_retry);
+                        crate::kept!(self.store.save(PHONE_RETRY_FILE, &self.phone_to_retry));
                     }
                     if retain {
                         self.outbox.hold(note, &cfg);
@@ -2646,7 +2670,7 @@ impl Daemon<'_> {
         if self.quiet_for(t) <= self.away_after {
             self.phone_to_retry.clear();
             self.phone_retry_tries = 0;
-            let _ = self.store.save(PHONE_RETRY_FILE, &self.phone_to_retry);
+            crate::kept!(self.store.save(PHONE_RETRY_FILE, &self.phone_to_retry));
             return;
         }
         let phone_cfg = self.phone_cfg();
@@ -2672,7 +2696,7 @@ impl Daemon<'_> {
             self.phone_retry_tries = 0;
         }
         self.phone_to_retry = still;
-        let _ = self.store.save(PHONE_RETRY_FILE, &self.phone_to_retry);
+        crate::kept!(self.store.save(PHONE_RETRY_FILE, &self.phone_to_retry));
         self.phone_retry_at = t + phone_retry_wait(self.phone_retry_tries);
     }
 }

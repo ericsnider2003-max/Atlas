@@ -39,7 +39,7 @@ impl<'a> Daemon<'a> {
             self.permissions.revoke(CAMERA);
             self.permissions
                 .grant(CAMERA, Some(LOOK), crate::grants::Span::Always, t);
-            let _ = self.store.save("permissions", &self.permissions);
+            crate::kept!(self.store.save("permissions", &self.permissions));
         }
         ok
     }
@@ -56,7 +56,7 @@ impl<'a> Daemon<'a> {
         if crate::camera_ask::names_the_camera(&said) && !self.camera_allowed(t) {
             self.permissions
                 .grant(CAMERA, Some(LOOK), crate::grants::Span::Always, t);
-            let _ = self.store.save("permissions", &self.permissions);
+            crate::kept!(self.store.save("permissions", &self.permissions));
         }
         if self.camera_allowed(t) {
             return None;
@@ -269,12 +269,12 @@ impl<'a> Daemon<'a> {
             }
             crate::callmute::Ask::MuteOff => {
                 crate::callmute::set_on(false);
-                let _ = self.store.save(CALL_MUTE, &true);
+                crate::kept!(self.store.save(CALL_MUTE, &true));
                 "Okay -- I won't mute your calls when you talk to me.".into()
             }
             crate::callmute::Ask::MuteOn => {
                 crate::callmute::set_on(true);
-                let _ = self.store.save(CALL_MUTE, &false);
+                crate::kept!(self.store.save(CALL_MUTE, &false));
                 "Okay -- on a call, I'll mute you there while you talk to me, and put it back after.".into()
             }
         })

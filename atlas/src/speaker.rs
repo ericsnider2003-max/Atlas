@@ -103,7 +103,7 @@ pub fn embed(cfg: &SpeakerConfig, vars: &Vars) -> Result<Vec<f32>> {
     let store = crate::roots::store();
     let mut bg = background(&store);
     bg.add(&frames);
-    let _ = store.save(BACKGROUND, &bg);
+    crate::kept!(store.save(BACKGROUND, &bg));
     bg.embed(&frames)
         .ok_or_else(|| AtlasError::Platform(still_learning(&bg)))
 }

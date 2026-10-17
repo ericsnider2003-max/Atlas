@@ -32,3 +32,5 @@
 # export is CRLF on purpose).
 atlas/tests/fixtures/** -text
 atlas/vendor/** -text
+.filing/ledger.jsonl merge=union eol=lf
+docs/INDEX.md merge=union eol=lf

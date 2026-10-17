@@ -408,8 +408,19 @@ impl Daemon<'_> {
     pub(super) fn how_to_ask_for(&self, abilities: &[String]) -> String {
         let book = crate::intent::ToolBook::new(&self.cfg.commands);
         let caps = crate::capability::all();
+        let records = crate::capability::records(
+            self.tools_ref().is_some_and(|tools| tools.research.enabled),
+        );
         let mut lines = Vec::new();
         for a in abilities.iter().take(6) {
+            let Some(record) = records.iter().find(|record| record.id == a) else {
+                continue;
+            };
+            if record.availability != crate::capability::Availability::Available
+                || record.evidence == crate::capability::EvidenceLevel::Unproven
+            {
+                continue;
+            }
             let Some(c) = caps.iter().find(|c| c.id == a) else {
                 continue;
             };

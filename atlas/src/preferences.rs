@@ -32,7 +32,10 @@
 use crate::error::Result;
 use serde_yaml::Value;
 use std::collections::BTreeMap;
+use std::io::Read;
 use std::path::Path;
+
+const MAX_PREFERENCES_BYTES: u64 = 4 * 1024 * 1024;
 
 /// The one setting whose key is not its path in `tools.yaml`.
 ///
@@ -75,9 +78,25 @@ impl Preferences {
     /// As `load`, but a file that's there and won't read says why, so a
     /// caller can tell you rather than quietly using the defaults.
     pub fn load_checked(dir: &Path) -> std::result::Result<Preferences, String> {
-        let Ok(text) = std::fs::read_to_string(Self::file(dir)) else {
+        let Ok(file) = std::fs::File::open(Self::file(dir)) else {
             return Ok(Preferences::default());
         };
+        if file
+            .metadata()
+            .map(|m| !m.is_file() || m.len() > MAX_PREFERENCES_BYTES)
+            .unwrap_or(true)
+        {
+            return Ok(Preferences::default());
+        }
+        let mut text = String::new();
+        if file
+            .take(MAX_PREFERENCES_BYTES + 1)
+            .read_to_string(&mut text)
+            .is_err()
+            || text.len() as u64 > MAX_PREFERENCES_BYTES
+        {
+            return Ok(Preferences::default());
+        }
         if text.trim().is_empty() {
             return Ok(Preferences::default());
         }

@@ -54,6 +54,8 @@ pub(crate) struct TaskLoop {
     waiting_for_media: Option<String>,
     /// Await the entire app goal, including its questions and multiple crew turns.
     waiting_for_operating: bool,
+    /// Store-backed envelope for this multi-step request.
+    pub(crate) job_id: String,
     waiting_for_approval: Option<Intent>,
     waiting_for_question: Option<String>,
     waiting_for_scan: bool,
@@ -171,6 +173,145 @@ pub(super) enum Several {
 }
 
 impl<'a> Daemon<'a> {
+    fn start_task_job(&mut self, said: &str, plan_len: usize) -> String {
+        let job_id = format!("taskloop-{}", crate::store::now());
+        let mut record =
+            crate::job::Record::planned(job_id.clone(), format!("task loop ({plan_len} steps)"));
+        if let Ok(input) =
+            crate::artifact::ArtifactRef::new(format!("task-request:{said}"), "task_request", None)
+        {
+            record.artifacts = Some(crate::artifact::Envelope {
+                input: vec![input],
+                ..crate::artifact::Envelope::default()
+            });
+        }
+        if let Err(error) = record.transition(crate::job::State::Running, "task loop started") {
+            self.log
+                .warn(&format!("could not start task-loop job {job_id}: {error}"));
+        } else if let Err(error) = crate::job::upsert(&self.store, record) {
+            self.log.warn(&format!(
+                "could not persist task-loop job {job_id}: {error}"
+            ));
+        }
+        let _ = said;
+        job_id
+    }
+
+    fn finish_task_job(&mut self, job_id: &str, run: &crate::taskloop::Run) {
+        let outcome = match run.verdict {
+            crate::taskloop::Verdict::Finished => crate::taskloop::Outcome::Done(run.reply.clone()),
+            crate::taskloop::Verdict::Started => {
+                crate::taskloop::Outcome::Started(run.reply.clone())
+            }
+            crate::taskloop::Verdict::Blocked => {
+                crate::taskloop::Outcome::NeedsYou(run.reply.clone())
+            }
+            crate::taskloop::Verdict::OutOfSteps | crate::taskloop::Verdict::Stopped => {
+                crate::taskloop::Outcome::Failed(run.reply.clone())
+            }
+        };
+        let mut records = match crate::job::load_checked(&self.store) {
+            Ok(records) => records,
+            Err(error) => {
+                self.log.warn(&format!(
+                    "could not read durable task receipts for {job_id}: {error}"
+                ));
+                self.capture_task_evidence(job_id, &outcome);
+                return;
+            }
+        };
+        if let Some(record) = records.iter_mut().find(|record| record.job_id == job_id) {
+            if let Ok(output) = crate::artifact::ArtifactRef::new(
+                format!("task-outcome:{job_id}"),
+                "task_outcome",
+                None,
+            ) {
+                record.artifacts.get_or_insert_with(Default::default).output = vec![output];
+            }
+            let result = if run.verdict == crate::taskloop::Verdict::Stopped {
+                record
+                    .cancel(run.reply.clone(), "taskloop stopped")
+                    .map(|_| ())
+            } else {
+                record
+                    .apply_outcome(&outcome, "taskloop verdict")
+                    .map(|_| ())
+            };
+            match result {
+                Ok(_) => {
+                    if let Err(error) = crate::job::save(&self.store, &records) {
+                        self.log.warn(&format!(
+                            "could not persist task-loop job {job_id}: {error}"
+                        ));
+                    }
+                }
+                Err(error) => self.log.warn(&format!(
+                    "could not finalize task-loop job {job_id}: {error}"
+                )),
+            }
+        }
+        self.capture_task_evidence(job_id, &outcome);
+    }
+
+    fn capture_task_evidence(&self, job_id: &str, outcome: &crate::taskloop::Outcome) {
+        let Ok(bundle) = crate::evidence::task_outcome(job_id, outcome, crate::store::now()) else {
+            self.log
+                .warn(&format!("could not create task-loop evidence for {job_id}"));
+            return;
+        };
+        if let Some(previous) = crate::evidence::reusable(
+            &self.store,
+            &bundle.subject,
+            &bundle.source_revision,
+            &bundle.input_hash,
+        ) {
+            if previous.compare(&bundle).is_ok() {
+                return;
+            }
+        }
+        if let Err(error) = crate::evidence::upsert(&self.store, bundle.clone()) {
+            self.log.warn(&format!(
+                "could not persist task-loop evidence for {job_id}: {error}"
+            ));
+            return;
+        }
+        let Ok(bytes) = bundle.export_json() else {
+            self.log
+                .warn(&format!("could not export task-loop evidence for {job_id}"));
+            return;
+        };
+        let Ok(imported) = crate::evidence::Bundle::import_json(&bytes) else {
+            self.log
+                .warn(&format!("could not verify task-loop evidence for {job_id}"));
+            return;
+        };
+        if let Err(error) = bundle.compare(&imported) {
+            self.log.warn(&format!(
+                "could not compare task-loop evidence for {job_id}: {error}"
+            ));
+        }
+    }
+
+    fn heartbeat_task_job(&self, job_id: &str, detail: &str) {
+        let mut records = match crate::job::load_checked(&self.store) {
+            Ok(records) => records,
+            Err(error) => {
+                self.log.warn(&format!(
+                    "could not read durable task receipts for heartbeat {job_id}: {error}"
+                ));
+                return;
+            }
+        };
+        if let Some(record) = records.iter_mut().find(|record| record.job_id == job_id) {
+            record.heartbeat(detail);
+            if let Err(error) = crate::job::save(&self.store, &records) {
+                self.log.warn(&format!(
+                    "could not persist task-loop heartbeat {job_id}: {error}"
+                ));
+            }
+        }
+    }
+
     fn save_task_loop_checkpoint(&self, tl: &TaskLoop) -> crate::error::Result<()> {
         use super::running::{LeftWaiting, LEFT_WAITING};
         let at = crate::store::now();
@@ -598,6 +739,7 @@ impl<'a> Daemon<'a> {
             .collect();
 
         let llm = self.background_llm().unwrap_or(llm);
+        let job_id = self.start_task_job(said, plan.len());
         // Beside the conversation: you may talk with Atlas while it works.
         turn.aside = true;
         let (news_tx, news_rx) = std::sync::mpsc::channel::<LoopNews>();
@@ -651,6 +793,7 @@ impl<'a> Daemon<'a> {
             waiting_for_file_move: None,
             waiting_for_media: None,
             waiting_for_operating: false,
+            job_id,
             waiting_for_approval: None,
             waiting_for_question: None,
             waiting_for_scan: false,
@@ -748,6 +891,28 @@ impl<'a> Daemon<'a> {
     pub(super) fn finish_media_decision(&mut self, kept: bool) {
         if let Some(tl) = self.task_loop.as_mut() {
             if let Some(result) = tl.waiting_for_media.take() {
+                if kept {
+                    if let Ok(mut records) = crate::job::load_checked(&self.store) {
+                        if let Some(record) =
+                            records.iter_mut().find(|record| record.job_id == tl.job_id)
+                        {
+                            if let Ok(output) = crate::artifact::ArtifactRef::new(
+                                format!("media-result:{}", tl.job_id),
+                                "media_output",
+                                None,
+                            ) {
+                                record.artifacts.get_or_insert_with(Default::default).output =
+                                    vec![output];
+                                if let Err(error) = crate::job::save(&self.store, &records) {
+                                    self.log.warn(&format!(
+                                        "could not persist media artifact for {}: {error}",
+                                        tl.job_id
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
                 let outcome = if kept {
                     crate::taskloop::Outcome::Done(format!("Kept edited file: {result}."))
                 } else {
@@ -755,6 +920,18 @@ impl<'a> Daemon<'a> {
                         "The edit was declined. Dependent steps were not run.".into(),
                     )
                 };
+                match crate::evidence::media_outcome(&tl.job_id, &result, kept, crate::store::now())
+                    .map_err(crate::error::AtlasError::Config)
+                    .and_then(|bundle| crate::evidence::upsert(&self.store, bundle))
+                {
+                    Ok(()) => {}
+                    Err(error) => {
+                        self.log.warn(&format!(
+                            "could not persist media evidence for {}: {error}",
+                            tl.job_id
+                        ));
+                    }
+                }
                 let _ = tl.reply.send(outcome);
             }
         }
@@ -912,7 +1089,11 @@ impl<'a> Daemon<'a> {
             return out;
         };
         if tl.checkpoint_pending && !tl.stop.load(std::sync::atomic::Ordering::SeqCst) {
-            if self.save_task_loop_checkpoint(&tl).is_err() {
+            if let Err(error) = self.save_task_loop_checkpoint(&tl) {
+                self.log.warn(&format!(
+                    "could not persist pending task-loop checkpoint {}: {error}",
+                    tl.job_id
+                ));
                 self.task_loop = Some(tl);
                 return out;
             }
@@ -1035,8 +1216,13 @@ impl<'a> Daemon<'a> {
                 }
                 Ok(LoopNews::Progress(line)) => {
                     tl.completed.push(line.clone());
+                    self.heartbeat_task_job(&tl.job_id, &line);
                     out.push(line);
-                    if self.save_task_loop_checkpoint(&tl).is_err() {
+                    if let Err(error) = self.save_task_loop_checkpoint(&tl) {
+                        self.log.warn(&format!(
+                            "could not persist task-loop checkpoint {}: {error}",
+                            tl.job_id
+                        ));
                         tl.checkpoint_pending = true;
                         break;
                     }
@@ -1114,6 +1300,7 @@ impl<'a> Daemon<'a> {
             run.verdict.plain()
         ));
         self.finish_steps(&run);
+        self.finish_task_job(&tl.job_id, &run);
         // The request's line in the conversation ends with the answer, not
         // the plan it started with.
         if let Some(e) = self
@@ -1311,6 +1498,7 @@ impl<'a> Daemon<'a> {
                 at: t,
             })
             .collect();
+        let job_id = self.start_task_job(said, parts.len());
         self.task_loop = Some(TaskLoop {
             said: said.to_string(),
             plan: parts.clone(),
@@ -1325,6 +1513,7 @@ impl<'a> Daemon<'a> {
             waiting_for_file_move: None,
             waiting_for_media: None,
             waiting_for_operating: false,
+            job_id,
             waiting_for_approval: None,
             waiting_for_question: None,
             waiting_for_scan: false,

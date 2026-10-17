@@ -93,6 +93,18 @@ pub struct Device {
 pub const MINE: &str = "phones_added";
 /// On the releaser's Atlas: phones friends sent, waiting for the next build.
 pub const WAITING: &str = "phones_waiting_for_a_build";
+const MAX_DEVICE_JOURNAL_BYTES: u64 = 4 * 1_048_576;
+
+/// Read a device journal without treating malformed or oversized state as a
+/// valid list. A failed read is an empty list because callers cannot surface a
+/// `Result` without changing the existing Hub/voice boundary.
+pub fn load(store: &crate::store::Store, name: &str) -> Vec<Device> {
+    store
+        .load_checked_bounded(name, MAX_DEVICE_JOURNAL_BYTES)
+        .ok()
+        .flatten()
+        .unwrap_or_default()
+}
 
 /// Keep `d` in `list` once, newest details winning.
 pub fn keep(list: &mut Vec<Device>, d: Device) -> bool {
@@ -432,7 +444,7 @@ pub fn heard(store: &crate::store::Store, from: &str, words: &str, now: u64) -> 
         from.to_string()
     };
     d.at = now;
-    let mut list: Vec<Device> = store.load(WAITING);
+    let mut list: Vec<Device> = load(store, WAITING);
     let who = if d.from.is_empty() {
         "Your".to_string()
     } else {
@@ -440,7 +452,7 @@ pub fn heard(store: &crate::store::Store, from: &str, words: &str, now: u64) -> 
     };
     let name = d.name.clone();
     keep(&mut list, d);
-    let _ = store.save(WAITING, &list);
+    crate::kept!(store.save(WAITING, &list));
     Some(format!("{who} device \"{name}\" is waiting to be added to the next iPhone build: it's on your Updates page."))
 }
 
@@ -657,6 +669,21 @@ mod tests {
         assert!(keep(&mut list, d.clone()));
         assert!(!keep(&mut list, d), "the same phone twice");
         assert_eq!(devices_card(&list), format!("{UDID}\tSam's iPhone (Sam)"));
+    }
+
+    #[test]
+    fn corrupt_device_journal_is_not_reused_or_replaced() {
+        let root =
+            std::env::temp_dir().join(format!("atlas-phoneadd-corrupt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("state")).unwrap();
+        let store = crate::store::Store::new(&root);
+        let path = root.join("state").join(format!("{MINE}.json"));
+        std::fs::write(&path, b"{not-json").unwrap();
+
+        assert!(load(&store, MINE).is_empty());
+        assert_eq!(std::fs::read(&path).unwrap(), b"{not-json");
+        let _ = std::fs::remove_dir_all(root);
     }
 
     /// The whole round, over a real socket: the page, the profile, and the

@@ -19,6 +19,8 @@
 //! the next visit to its page, and gone after that or after five minutes.
 
 use crate::hub::Page;
+use crate::store::Store;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -27,13 +29,24 @@ use std::time::{Duration, Instant};
 const KEEP_FINISHED: Duration = Duration::from_secs(10 * 60);
 /// How many jobs are remembered at once.
 const MOST: usize = 64;
+const STORE_NAME: &str = "hub_jobs";
+const STORE_LIMIT: u64 = 256 * 1024;
 
 /// Where a job is.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum State {
     Running,
     Done(String),
     Failed(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedJob {
+    id: u64,
+    page: Page,
+    label: String,
+    state: State,
+    seen: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -49,12 +62,80 @@ pub struct Job {
 }
 
 /// Every hub job, by number. Shared with the crew threads doing them.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Jobs {
     inner: Mutex<(u64, BTreeMap<u64, Job>)>,
+    store: Option<Store>,
+}
+
+impl Default for Jobs {
+    fn default() -> Self {
+        Self {
+            inner: Mutex::new((0, BTreeMap::new())),
+            store: None,
+        }
+    }
 }
 
 impl Jobs {
+    /// Load the bounded Hub receipt cache for the daemon. A job that was
+    /// running when Atlas stopped cannot be replayed safely, so it returns as
+    /// an explicit failure rather than disappearing or claiming success.
+    pub fn from_store(store: &Store) -> Self {
+        let (persisted, can_persist) =
+            match store.load_checked_bounded::<Vec<PersistedJob>>(STORE_NAME, STORE_LIMIT) {
+                Ok(Some(value)) => (value, true),
+                Ok(None) => (Vec::new(), true),
+                Err(error) => {
+                    // A checked-read failure means the source bytes are
+                    // valuable recovery evidence. Do not turn the safe empty
+                    // view into destructive overwrite on startup.
+                    crate::kept!(Err::<Vec<PersistedJob>, _>(error));
+                    (Vec::new(), false)
+                }
+            };
+        let (active, mut terminal): (Vec<_>, Vec<_>) = persisted
+            .into_iter()
+            .partition(|item| item.state == State::Running);
+        // Running jobs are converted to explicit restart failures, but none
+        // may be evicted: losing one could hide work whose external effect is
+        // unknown. Only terminal receipts use the bounded newest window.
+        let terminal_keep = MOST.saturating_sub(active.len());
+        terminal.reverse();
+        let mut jobs = BTreeMap::new();
+        let mut next = 0;
+        for item in active
+            .into_iter()
+            .chain(terminal.into_iter().take(terminal_keep))
+        {
+            next = next.max(item.id);
+            let state = match item.state {
+                State::Running => State::Failed(
+                    "Atlas restarted before this Hub job finished; review and retry it.".into(),
+                ),
+                state => state,
+            };
+            jobs.insert(
+                item.id,
+                Job {
+                    page: item.page,
+                    label: item.label,
+                    state,
+                    seen: item.seen,
+                    finished: Some(Instant::now()),
+                },
+            );
+        }
+        let out = Self {
+            inner: Mutex::new((next, jobs)),
+            store: Some(store.clone()),
+        };
+        if can_persist {
+            out.persist();
+        }
+        out
+    }
+
     fn held(&self) -> std::sync::MutexGuard<'_, (u64, BTreeMap<u64, Job>)> {
         self.inner
             .lock()
@@ -77,6 +158,8 @@ impl Jobs {
             },
         );
         forget_old(&mut g.1);
+        drop(g);
+        self.persist();
         id
     }
 
@@ -94,6 +177,8 @@ impl Jobs {
             }
         }
         forget_old(&mut g.1);
+        drop(g);
+        self.persist();
     }
 
     /// Where one job is, for a page that asked about it by number. A
@@ -104,7 +189,13 @@ impl Jobs {
         if j.state != State::Running {
             j.seen = true;
         }
-        Some(j.clone())
+        let out = j.clone();
+        let changed = out.seen;
+        drop(g);
+        if changed {
+            self.persist();
+        }
+        Some(out)
     }
 
     /// Make a finished job look `by` older, for the tests of forgetting.
@@ -142,7 +233,43 @@ impl Jobs {
                 State::Running => {}
             }
         }
+        drop(g);
+        if !out.is_empty() {
+            self.persist();
+        }
         out
+    }
+
+    fn persist(&self) {
+        let Some(store) = &self.store else { return };
+        let g = self.held();
+        let records: Vec<PersistedJob> =
+            g.1.iter()
+                .map(|(id, job)| PersistedJob {
+                    id: *id,
+                    page: job.page,
+                    label: job.label.clone(),
+                    state: job.state.clone(),
+                    seen: job.seen,
+                })
+                .collect();
+        drop(g);
+        let encoded = match serde_json::to_vec(&records) {
+            Ok(encoded) => encoded,
+            Err(error) => {
+                crate::kept!(Err::<(), _>(crate::error::AtlasError::Config(format!(
+                    "Hub job encode: {error}"
+                ))));
+                return;
+            }
+        };
+        if encoded.len() as u64 > STORE_LIMIT {
+            crate::kept!(Err::<(), _>(crate::error::AtlasError::Config(
+                "Hub job journal exceeds the local size bound".into(),
+            )));
+            return;
+        }
+        crate::kept!(store.save(STORE_NAME, &records));
     }
 }
 
@@ -234,6 +361,98 @@ mod tests {
             notice_for(&jobs.look(id).unwrap()),
             ("Sent.".to_string(), false)
         );
+    }
+
+    #[test]
+    fn a_finished_hub_job_survives_restart_and_running_work_is_explicitly_interrupted() {
+        let dir = std::env::temp_dir().join(format!(
+            "atlas-hubjobs-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(&dir);
+        let jobs = Jobs::from_store(&store);
+        let finished = jobs.start(Page::Documents, "Sending a document");
+        jobs.finish(finished, Ok("Sent.".into()), false);
+        let running = jobs.start(Page::Friends, "Contacting a friend");
+
+        let restored = Jobs::from_store(&store);
+        assert_eq!(
+            restored.look(finished).unwrap().state,
+            State::Done("Sent.".into())
+        );
+        assert_eq!(
+            restored.look(running).unwrap().state,
+            State::Failed(
+                "Atlas restarted before this Hub job finished; review and retry it.".into()
+            )
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_corrupt_hub_receipt_is_not_overwritten_on_restart() {
+        let dir = std::env::temp_dir().join(format!(
+            "atlas-hubjobs-corrupt-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(&dir);
+        let bytes = b"{not-a-hub-receipt";
+        std::fs::write(dir.join("hub_jobs.json"), bytes).unwrap();
+
+        let restored = Jobs::from_store(&store);
+        assert!(restored.is_empty());
+        assert_eq!(std::fs::read(dir.join("hub_jobs.json")).unwrap(), bytes);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn restart_keeps_all_running_jobs_even_when_the_journal_is_over_capacity() {
+        let dir = std::env::temp_dir().join(format!(
+            "atlas-hubjobs-window-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(&dir);
+        let jobs = Jobs::from_store(&store);
+        for n in 0..(MOST + 1) {
+            jobs.start(Page::Documents, &format!("job {n}"));
+        }
+
+        let restored = Jobs::from_store(&store);
+        assert_eq!(restored.len(), MOST + 1);
+        assert!(restored.look(1).is_some(), "running job was evicted");
+        assert!(restored.look((MOST + 1) as u64).is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn restart_keeps_the_newest_terminal_receipts_when_over_capacity() {
+        let dir = std::env::temp_dir().join(format!(
+            "atlas-hubjobs-terminal-window-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(&dir);
+        let jobs = Jobs::from_store(&store);
+        for n in 0..(MOST + 1) {
+            let id = jobs.start(Page::Documents, &format!("job {n}"));
+            jobs.finish(id, Ok(format!("done {n}")), false);
+        }
+
+        let restored = Jobs::from_store(&store);
+        assert_eq!(restored.len(), MOST);
+        assert!(
+            restored.look(1).is_none(),
+            "oldest terminal receipt survived"
+        );
+        assert!(restored.look((MOST + 1) as u64).is_some());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

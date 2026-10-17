@@ -66,7 +66,7 @@ impl Available {
         store.load(AVAILABLE)
     }
     fn save(&self, store: &Store) {
-        let _ = store.save(AVAILABLE, self);
+        crate::kept!(store.save(AVAILABLE, self));
     }
 
     /// Throw the downloaded file away but keep the signed notice, so the
@@ -89,7 +89,7 @@ impl Available {
         if !a.downloaded.is_empty() {
             crate::heard!(std::fs::remove_file(&a.downloaded));
         }
-        let _ = store.save(AVAILABLE, &Available::default());
+        crate::kept!(store.save(AVAILABLE, &Available::default()));
     }
 }
 
@@ -138,7 +138,7 @@ pub fn keep_for_friends(state_root: &std::path::Path, bytes: &[u8]) -> Result<St
     let sha = crate::digest::sha256_hex(bytes);
     let dir = state_root.join(FILES);
     std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't make {}: {e}", dir.display()))?;
-    std::fs::write(dir.join(&sha), bytes)
+    crate::store::write_whole(&dir.join(&sha), bytes)
         .map_err(|e| format!("couldn't keep the file to hand out: {e}"))?;
     prune_own_files(state_root, &sha);
     Ok(sha)
@@ -236,7 +236,7 @@ pub fn fetch_step(
     pieces: usize,
     mut fetch: impl FnMut(&str, u64) -> Option<(Vec<u8>, u64)>,
 ) -> Fetched {
-    use std::io::Write;
+    use std::io::{Read, Write};
     let mut a = Available::load(store);
     if a.notice.is_none() || !a.downloaded.is_empty() || !is_fingerprint(&a.sha256) {
         return Fetched::Nothing;
@@ -247,6 +247,14 @@ pub fn fetch_step(
     }
     let part = dir.join(format!("{}.part", a.sha256));
     let mut have = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+    // Every non-final response from `chunk` is exactly CHUNK bytes. A crash
+    // during append can therefore leave a short non-final tail; continuing
+    // from that offset would splice the next chunk into the middle of the
+    // artifact. Discard only that malformed partial and restart safely.
+    if have < a.size && !have.is_multiple_of(CHUNK as u64) {
+        crate::heard!(std::fs::remove_file(&part));
+        have = 0;
+    }
     for _ in 0..pieces {
         if have >= a.size {
             break;
@@ -282,9 +290,22 @@ pub fn fetch_step(
     if have < a.size {
         return Fetched::Partway(have, a.size);
     }
-    let Ok(all) = std::fs::read(&part) else {
+    let Ok(file) = std::fs::File::open(&part) else {
         return Fetched::Waiting;
     };
+    let mut all = Vec::with_capacity(a.size as usize);
+    if file
+        .take(a.size.saturating_add(1))
+        .read_to_end(&mut all)
+        .is_err()
+        || all.len() as u64 != a.size
+    {
+        crate::heard!(std::fs::remove_file(&part));
+        return Fetched::Bad(format!(
+            "The Atlas {} file changed size while it was being finalized, so I threw it away and will fetch it again.",
+            a.version
+        ));
+    }
     if crate::digest::sha256_hex(&all) != a.sha256 {
         crate::heard!(std::fs::remove_file(&part));
         return Fetched::Bad(format!(
@@ -347,7 +368,7 @@ fn pass_on(store: &Store, a: &Available, bytes: &[u8]) {
         version: a.version.clone(),
         sequence: a.sequence,
     });
-    let _ = store.save(PASSING_ON, &list);
+    crate::kept!(store.save(PASSING_ON, &list));
     prune_passed_on(store);
 }
 
@@ -375,7 +396,7 @@ fn prune_passed_on(store: &Store) {
         ));
     }
     if !gone.is_empty() {
-        let _ = store.save(PASSING_ON, &keep);
+        crate::kept!(store.save(PASSING_ON, &keep));
     }
 }
 
@@ -495,7 +516,7 @@ pub fn fetch_from_any(
         Fetched::Ready(_) => f.helped.clear(),
         _ => {}
     }
-    let _ = store.save(FETCHING, &f);
+    crate::kept!(store.save(FETCHING, &f));
     got
 }
 
@@ -519,7 +540,7 @@ fn heard_as(store: &Store, body: &str, now: u64, platform: &str) -> Option<Strin
     let mut installed = Installed::load(store);
     if let Some(m) = release::verified_notice(&installed, &signed) {
         installed.saw(&m);
-        let _ = installed.save(store);
+        crate::kept!(installed.save(store));
     }
     match release::accept(
         &installed,
@@ -766,6 +787,28 @@ mod tests {
         assert_eq!(
             fetch_step(&s, 5, |sha, off| chunk(&owner, sha, off)),
             Fetched::Nothing
+        );
+    }
+
+    #[test]
+    fn a_crashed_non_final_partial_chunk_is_discarded_before_resuming() {
+        let bytes: Vec<u8> = (0..(CHUNK + 100)).map(|i| (i % 251) as u8).collect();
+        let (s, owner) = with_file("partial-tail", &bytes);
+        let a = Available::load(&s);
+        let part = s.root().join(DOWNLOADS).join(format!("{}.part", a.sha256));
+        std::fs::create_dir_all(part.parent().unwrap()).unwrap();
+        std::fs::write(&part, b"crashed-tail").unwrap();
+
+        let mut asked = Vec::new();
+        let result = fetch_step(&s, 1, |sha, off| {
+            asked.push(off);
+            chunk(&owner, sha, off)
+        });
+        assert_eq!(result, Fetched::Partway(CHUNK as u64, bytes.len() as u64));
+        assert_eq!(
+            asked,
+            vec![0],
+            "a malformed tail must not shift the request offset"
         );
     }
 

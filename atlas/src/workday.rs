@@ -19,6 +19,7 @@
 use crate::daemon::Daemon;
 use crate::intent::Intent;
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 
 /// How long a numbered list can be referred to by number.
 pub const FOLLOW_FOR: u64 = 600;
@@ -496,7 +497,7 @@ impl Daemon<'_> {
         let cfg = self.workday_cfg().clipboard_history;
         if low.contains("turn on") || low.contains("start keeping") || low.contains("switch on") {
             self.workday.clips_on = Some(true);
-            let _ = self.store.save(CLIPS_ON, &Some(true));
+            crate::kept!(self.store.save(CLIPS_ON, &Some(true)));
             return format!(
                 "Clipboard history is on. I'll keep what you copy for {} hours, in memory only -- never on disk -- and never anything a password manager marks private or that looks like a key. \"Turn off clipboard history\" stops it and forgets it all.",
                 cfg.keep_hours
@@ -504,7 +505,7 @@ impl Daemon<'_> {
         }
         if low.contains("turn off") || low.contains("stop keeping") || low.contains("switch off") {
             self.workday.clips_on = Some(false);
-            let _ = self.store.save(CLIPS_ON, &Some(false));
+            crate::kept!(self.store.save(CLIPS_ON, &Some(false)));
             self.workday.clips = Default::default();
             return "Clipboard history is off, and what it held is gone.".into();
         }
@@ -807,7 +808,7 @@ impl Daemon<'_> {
         let store = &self.store;
         loaded!(self.workday, store, uses, USES).picked(&c, t);
         if let Some(v) = self.workday.uses.as_ref() {
-            let _ = self.store.save(USES, v);
+            crate::kept!(self.store.save(USES, v));
         }
         match c.kind {
             crate::launcher::Kind::App => self.execute(&Intent::OpenApp(c.target.clone())),
@@ -1063,7 +1064,7 @@ impl Daemon<'_> {
                 let s = loaded!(self.workday, self.store, snippets, SNIPPETS);
                 return if s.remove(rest) {
                     if let Some(v) = self.workday.snippets.as_ref() {
-                        let _ = self.store.save(SNIPPETS, v);
+                        crate::kept!(self.store.save(SNIPPETS, v));
                     }
                     format!("Forgot \"{rest}\".")
                 } else {
@@ -1245,7 +1246,17 @@ impl Daemon<'_> {
                     crate::findfile::short_path(p)
                 ));
             }
-            let bytes = std::fs::read(p).map_err(|e| format!("{p}: {e}"))?;
+            let file = std::fs::File::open(p).map_err(|e| format!("{p}: {e}"))?;
+            let mut bytes = Vec::with_capacity(meta.len() as usize);
+            file.take(crate::pdfkit::MAX_BYTES as u64 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|e| format!("{p}: {e}"))?;
+            if bytes.len() > crate::pdfkit::MAX_BYTES {
+                return Err(format!(
+                    "{} grew past the PDF size limit while reading",
+                    crate::findfile::short_path(p)
+                ));
+            }
             crate::pdfkit::Doc::parse(&bytes)
                 .map_err(|e| format!("{}: {e}", crate::findfile::short_path(p)))
         };
@@ -1466,7 +1477,7 @@ impl Daemon<'_> {
             let feeds = loaded!(self.workday, self.store, feeds, FEEDS);
             feeds.unread.retain(|u| u.link != item.link);
             if let Some(v) = self.workday.feeds.as_ref() {
-                let _ = self.store.save(FEEDS, v);
+                crate::kept!(self.store.save(FEEDS, v));
             }
             return match verb.as_str() {
                 "skip" => "Skipped.".into(),
@@ -1476,7 +1487,7 @@ impl Daemon<'_> {
                         .hand(&item.link, &crate::earned::Space::Personal, "feeds", t)
                     {
                         Ok(_) => {
-                            let _ = self.tray.save(&self.store);
+                            crate::kept!(self.tray.save(&self.store));
                             format!("Saved for later: {}", item.title)
                         }
                         Err(e) => e,
@@ -1515,7 +1526,7 @@ impl Daemon<'_> {
                 return match feeds.unfollow(rest) {
                     Some(name) => {
                         if let Some(v) = self.workday.feeds.as_ref() {
-                            let _ = self.store.save(FEEDS, v);
+                            crate::kept!(self.store.save(FEEDS, v));
                         }
                         format!("Stopped following {name}.")
                     }
@@ -1562,7 +1573,7 @@ impl Daemon<'_> {
                     let i = feeds.feeds.len() - 1;
                     let got = feeds.took(i, parsed, &cfg, t);
                     if let Some(v) = self.workday.feeds.as_ref() {
-                        let _ = self.store.save(FEEDS, v);
+                        crate::kept!(self.store.save(FEEDS, v));
                     }
                     format!(
                         "Following {}. {} to start with; after that, only what's new.",
@@ -1628,7 +1639,7 @@ impl Daemon<'_> {
                             Err(e) => feeds.failed(i, &e, &cfg, t),
                         }
                         if let Some(v) = self.workday.feeds.as_ref() {
-                            let _ = self.store.save(FEEDS, v);
+                            crate::kept!(self.store.save(FEEDS, v));
                         }
                     }
                 }
@@ -1688,7 +1699,7 @@ impl Daemon<'_> {
                 let r = loaded!(self.workday, self.store, receipts, RECEIPTS);
                 let kept = r.keep(reading.clone(), total, true, &text, t);
                 if let Some(v) = self.workday.receipts.as_ref() {
-                    let _ = self.store.save(RECEIPTS, v);
+                    crate::kept!(self.store.save(RECEIPTS, v));
                 }
                 return if kept {
                     format!(
@@ -1803,7 +1814,7 @@ impl Daemon<'_> {
                 return "You aren't tracking any habits yet, so there's nothing to pause.".into();
             }
             if let Some(v) = self.workday.habits.as_ref() {
-                let _ = self.store.save(HABITS, v);
+                crate::kept!(self.store.save(HABITS, v));
             }
             return format!(
                 "Habits paused through {} -- those days won't count against them.",

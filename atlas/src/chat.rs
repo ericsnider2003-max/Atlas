@@ -358,7 +358,11 @@ pub const FILE: &str = "chats";
 
 impl Chats {
     pub fn load(store: &Store) -> Chats {
-        store.load(FILE)
+        store
+            .load_checked_bounded(FILE, 16 * 1_048_576)
+            .ok()
+            .flatten()
+            .unwrap_or_default()
     }
 
     pub fn save(&self, store: &Store) -> Result<()> {

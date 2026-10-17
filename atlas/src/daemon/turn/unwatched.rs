@@ -49,9 +49,9 @@ impl<'a> Daemon<'a> {
         // Atlas concluded you were sitting there. Found by the night refusing
         // to run at all.
         self.last_turn_of_yours = t;
-        let _ = self
+        crate::kept!(self
             .store
-            .save("last_turn_of_yours", &self.last_turn_of_yours);
+            .save("last_turn_of_yours", &self.last_turn_of_yours));
         // Old conversation folded on every path, not only the ones that
         // reach the end of a turn (H12).
         self.fold_if_due(t);
@@ -61,12 +61,12 @@ impl<'a> Daemon<'a> {
         // and the gone-quiet check have something real to go on.
         if let Some(p) = crate::person::project_named(said, &self.person.projects) {
             self.person.touched(&p, t);
-            let _ = self.person.save(&self.store);
+            crate::kept!(self.person.save(&self.store));
         }
         let before = self.vocab.hints(crate::improve::HINTS_GIVEN);
         self.vocab.learn(said);
         if self.vocab.hints(crate::improve::HINTS_GIVEN) != before {
-            let _ = self.store.save("vocabulary", &self.vocab);
+            crate::kept!(self.store.save("vocabulary", &self.vocab));
         }
         // Away is either a silence from you, or — where the machine says how
         // long since the keyboard and mouse were touched — a break it saw.
@@ -170,7 +170,7 @@ impl<'a> Daemon<'a> {
             // would be a second one (`returning::hello_now`).
             if self.pending_brief.is_some() {
                 self.last_greeted_at = t;
-                let _ = self.store.save("last_greeted_at", &self.last_greeted_at);
+                crate::kept!(self.store.save("last_greeted_at", &self.last_greeted_at));
             }
             if let Some(cue) = cue {
                 self.pending_brief = Some(match self.pending_brief.take() {
@@ -860,7 +860,7 @@ impl<'a> Daemon<'a> {
                 };
                 if let Some(span) = span {
                     self.permissions.grant(&app, Some(&action), span, t);
-                    let _ = self.store.save("permissions", &self.permissions);
+                    crate::kept!(self.store.save("permissions", &self.permissions));
                     // A watch was what was asked for: it starts now.
                     if matches!(intent, Intent::CaptureWebcam) {
                         if let Some((secs, until_stopped)) = self.watch_after_allow.take() {
@@ -1380,7 +1380,7 @@ impl<'a> Daemon<'a> {
                     if let Some(request) = request {
                         let reply = self.run_command(&request, t);
                         self.backlog.complete(id);
-                        let _ = self.backlog.save(&self.store);
+                        crate::kept!(self.backlog.save(&self.store));
                         self.persist();
                         return reply;
                     }
@@ -1388,7 +1388,7 @@ impl<'a> Daemon<'a> {
                     self.pending_backlog = None;
                     self.session.pending = Pending::Nothing;
                     self.backlog.dismiss(id);
-                    let _ = self.backlog.save(&self.store);
+                    crate::kept!(self.backlog.save(&self.store));
                     self.persist();
                     return "Alright, I'll leave that one off your list.".into();
                 } else {

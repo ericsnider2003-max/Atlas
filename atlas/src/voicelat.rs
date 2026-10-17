@@ -100,14 +100,14 @@ impl Ledger {
 pub fn record(store: &crate::store::Store, t: TurnRecord) {
     let mut ledger: Ledger = store.load(RECORD);
     ledger.add(t);
-    let _ = store.save(RECORD, &ledger);
+    crate::kept!(store.save(RECORD, &ledger));
 }
 
 /// Count one transcript dropped as Atlas hearing itself (best effort).
 pub fn note_echo_dropped(store: &crate::store::Store) {
     let mut ledger: Ledger = store.load(RECORD);
     ledger.echo_dropped = ledger.echo_dropped.saturating_add(1);
-    let _ = store.save(RECORD, &ledger);
+    crate::kept!(store.save(RECORD, &ledger));
 }
 
 fn median_max(v: &mut [u32]) -> Option<(u32, u32)> {

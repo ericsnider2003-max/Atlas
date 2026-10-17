@@ -28,6 +28,7 @@
 //! and decide about, exactly like everything else Atlas has ever proposed.
 
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 
 /// Distinct from the hub's port (8787) on purpose -- two different doors,
 /// two different trust levels, should never share a listener even if it
@@ -978,7 +979,7 @@ pub fn as_waiting(
     let dir = root.join(crate::household::HANDOFF_FOLDER);
     std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't keep that file: {e}"))?;
     let stored = format!("{}-{}", d.at, f.name);
-    std::fs::write(dir.join(&stored), &f.bytes)
+    crate::store::write_whole(&dir.join(&stored), &f.bytes)
         .map_err(|e| format!("couldn't keep that file: {e}"))?;
 
     Ok(inbox.add_with(
@@ -1242,12 +1243,31 @@ pub fn where_pairings_live() -> std::path::PathBuf {
     crate::roots::state_dir()
 }
 
+const MAX_PAIRINGS_BYTES: u64 = 4 * 1024 * 1024;
+
 impl Pairings {
     pub fn load(dir: &std::path::Path) -> Pairings {
-        std::fs::read_to_string(dir.join("kin_peers.yaml"))
-            .ok()
-            .and_then(|t| serde_yaml::from_str(&t).ok())
-            .unwrap_or_default()
+        let Ok(file) = std::fs::File::open(dir.join("kin_peers.yaml")) else {
+            return Pairings::default();
+        };
+        let Ok(metadata) = file.metadata() else {
+            return Pairings::default();
+        };
+        if !metadata.is_file() || metadata.len() > MAX_PAIRINGS_BYTES {
+            return Pairings::default();
+        }
+        let mut text = String::new();
+        if file
+            .take(MAX_PAIRINGS_BYTES + 1)
+            .read_to_string(&mut text)
+            .is_err()
+        {
+            return Pairings::default();
+        }
+        if text.len() as u64 > MAX_PAIRINGS_BYTES {
+            return Pairings::default();
+        }
+        serde_yaml::from_str(&text).unwrap_or_default()
     }
 
     pub fn save(&self, dir: &std::path::Path) -> std::io::Result<()> {
@@ -1256,7 +1276,10 @@ impl Pairings {
                       # edits here are safe but will be alongside, not merged into, whatever\n\
                       # you add under kin.peers in tools.yaml.\n";
         let body = serde_yaml::to_string(self).unwrap_or_default();
-        std::fs::write(dir.join("kin_peers.yaml"), format!("{header}{body}"))
+        crate::store::write_whole(
+            &dir.join("kin_peers.yaml"),
+            format!("{header}{body}").as_bytes(),
+        )
     }
 
     pub(crate) fn add_peer(&mut self, p: Peer) {
@@ -1579,10 +1602,15 @@ impl Reached {
         }
     }
 
-    pub fn save(&self, store: &crate::store::Store) {
-        if let Ok(m) = self.last.lock().or_else(crate::crash::unpoison) {
-            let _ = store.save(REACHED, &*m);
-        }
+    pub fn save(&self, store: &crate::store::Store) -> crate::error::Result<()> {
+        let m = self
+            .last
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map_err(|_| {
+                crate::error::AtlasError::Platform("peer reach state lock is poisoned".into())
+            })?;
+        store.save(REACHED, &*m)
     }
 }
 

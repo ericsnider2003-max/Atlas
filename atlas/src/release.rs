@@ -1201,7 +1201,21 @@ fn read_build(path: &std::path::Path, modified: u64) -> Result<FoundBuild, Strin
     let zip = path
         .extension()
         .is_some_and(|x| x.eq_ignore_ascii_case("zip"));
-    let bytes = std::fs::read(path).map_err(|e| format!("it couldn't be read ({e})"))?;
+    let file = std::fs::File::open(path).map_err(|e| format!("it couldn't be read ({e})"))?;
+    let metadata = file
+        .metadata()
+        .map_err(|e| format!("it couldn't be inspected ({e})"))?;
+    if !metadata.is_file() || metadata.len() > MAX {
+        return Err("it is not a regular file or is larger than 400 MiB".into());
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    use std::io::Read;
+    file.take(MAX + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("it couldn't be read ({e})"))?;
+    if bytes.len() as u64 > MAX {
+        return Err("it grew beyond the 400 MiB limit while being read".into());
+    }
     let program = if zip {
         let wanted = |n: &str| {
             let base = n.rsplit('/').next().unwrap_or(n).to_ascii_lowercase();

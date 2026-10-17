@@ -234,7 +234,11 @@ impl Daemon<'_> {
     pub(super) fn answer_requests_from_the_phone(&mut self, t: u64) {
         let asked: Vec<FromThePhone> = match self.store.load_checked(ASKED_KEY) {
             Ok(value) => value.unwrap_or_default(),
-            Err(_) => return,
+            Err(error) => {
+                self.log
+                    .warn(&format!("could not read durable phone requests ({error})"));
+                return;
+            }
         };
         let cfg = self.tools_cfg().remote.clone();
         for a in asked {
@@ -255,7 +259,11 @@ impl Daemon<'_> {
                     next.phase = PhonePhase::Pending;
                     next.reply = None;
                     next.reply_sent = false;
-                    if self.save_phone_request(&a, &next).is_err() {
+                    if let Err(error) = self.save_phone_request(&a, &next) {
+                        self.log.warn(&format!(
+                            "could not fence phone request {} before execution ({error})",
+                            a.n
+                        ));
                         continue;
                     }
                     self.last_crew_handoff = None;
@@ -288,7 +296,11 @@ impl Daemon<'_> {
                     } else {
                         reply
                     });
-                    if self.save_phone_request(&pending, &next).is_err() {
+                    if let Err(error) = self.save_phone_request(&pending, &next) {
+                        self.log.warn(&format!(
+                            "could not persist phone request {} completion state ({error})",
+                            a.n
+                        ));
                         continue;
                     }
                     if self.answer_the_phone(&next, t).is_ok() {
@@ -333,8 +345,14 @@ impl Daemon<'_> {
                 }
                 _ => {}
             }
-            if next != a && self.save_phone_request(&a, &next).is_err() {
-                continue;
+            if next != a {
+                if let Err(error) = self.save_phone_request(&a, &next) {
+                    self.log.warn(&format!(
+                        "could not persist phone request {} recovery state ({error})",
+                        a.n
+                    ));
+                    continue;
+                }
             }
             if next.reply.is_some() && !next.reply_sent && self.answer_the_phone(&next, t).is_ok() {
                 let mut sent = next.clone();
@@ -377,7 +395,12 @@ impl Daemon<'_> {
         }
         let asked: Vec<FromThePhone> = match self.store.load_checked(ASKED_KEY) {
             Ok(value) => value.unwrap_or_default(),
-            Err(_) => return,
+            Err(error) => {
+                self.log.warn(&format!(
+                    "could not read durable phone requests while settling worker {worker} ({error})"
+                ));
+                return;
+            }
         };
         for a in asked
             .into_iter()
@@ -393,12 +416,29 @@ impl Daemon<'_> {
             };
             next.reply = Some(outcome.text().to_string());
             next.reply_sent = false;
-            if self.save_phone_request(&a, &next).is_ok() && self.answer_the_phone(&next, t).is_ok()
-            {
-                let mut sent = next.clone();
-                sent.reply_sent = true;
-                if let Err(error) = self.save_phone_request(&next, &sent) {
-                    self.log.warn(&format!("phone reply delivery marker was not saved ({error}); the durable request remains fenced and its reply will be retried"));
+            let saved = match self.save_phone_request(&a, &next) {
+                Ok(()) => true,
+                Err(error) => {
+                    self.log.warn(&format!(
+                        "could not persist phone worker {} outcome ({error})",
+                        a.n
+                    ));
+                    false
+                }
+            };
+            if saved {
+                match self.answer_the_phone(&next, t) {
+                    Ok(()) => {
+                        let mut sent = next.clone();
+                        sent.reply_sent = true;
+                        if let Err(error) = self.save_phone_request(&next, &sent) {
+                            self.log.warn(&format!("phone reply delivery marker was not saved ({error}); the durable request remains fenced and its reply will be retried"));
+                        }
+                    }
+                    Err(error) => self.log.warn(&format!(
+                        "could not deliver phone worker {} outcome ({error}); the durable reply remains queued",
+                        a.n
+                    )),
                 }
             }
         }

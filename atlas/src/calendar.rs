@@ -865,6 +865,7 @@ impl<'de> Deserialize<'de> for Calendar {
 }
 
 const FILE: &str = "calendar";
+const MAX_CALENDAR_BYTES: u64 = 16 * 1_048_576;
 
 impl Calendar {
     /// Is anything here read from Google (`oauthlink::calendar_ics_selected` gives
@@ -879,7 +880,7 @@ impl Calendar {
     }
 
     pub fn load(store: &crate::store::Store) -> Calendar {
-        match store.load_checked::<Calendar>(FILE) {
+        match store.load_checked_bounded::<Calendar>(FILE, MAX_CALENDAR_BYTES) {
             Ok(Some(calendar)) => calendar,
             Ok(None) => Self::default(),
             Err(error) => Self {
@@ -913,7 +914,7 @@ impl Calendar {
         &mut self,
         store: &crate::store::Store,
     ) -> crate::error::Result<()> {
-        let saved: Option<Self> = store.load_checked(FILE)?;
+        let saved: Option<Self> = store.load_checked_bounded(FILE, MAX_CALENDAR_BYTES)?;
         let own = self
             .identity()
             .map_err(|error| crate::error::AtlasError::Platform(error.to_string()))?;
@@ -998,7 +999,7 @@ impl Calendar {
                 "The calendar snapshot cannot be verified; nothing was overwritten.".into(),
             )
         })?;
-        let saved: Option<Self> = match store.load_checked(FILE) {
+        let saved: Option<Self> = match store.load_checked_bounded(FILE, MAX_CALENDAR_BYTES) {
             Ok(saved) => saved,
             Err(error) => {
                 self.request_refresh();

@@ -496,7 +496,7 @@ impl<'a> Daemon<'a> {
                     true,
                     t,
                 );
-                let _ = self.access.save(&self.store);
+                crate::kept!(self.access.save(&self.store));
                 if o.outcome == crate::webrun::SignedIn::WantsCode {
                     self.signing_in_waiting = Some(o.site.clone());
                 }
@@ -524,7 +524,7 @@ impl<'a> Daemon<'a> {
                 let worked = p == crate::confirmed::Pressed::Done;
                 let mut trail: Vec<crate::confirmed::Record> = self.store.load("security_changes");
                 trail.push(crate::confirmed::record(&o.asked, worked, "yes", t));
-                let _ = self.store.save("security_changes", &trail);
+                crate::kept!(self.store.save("security_changes", &trail));
                 let mut said = p.say(&o.asked, &o.url);
                 if worked {
                     said.push(' ');
@@ -1153,7 +1153,9 @@ impl<'a> Daemon<'a> {
                         at: t,
                     });
                 }
-                if self.store.save(LEFT_WAITING, &pending).is_err() {
+                if let Err(error) = self.store.save(LEFT_WAITING, &pending) {
+                    self.log
+                        .warn(&format!("couldn't preserve routine question ({error})"));
                     continue;
                 }
                 self.session.ask(&question);
@@ -1161,7 +1163,7 @@ impl<'a> Daemon<'a> {
                 out.push(question);
             }
         }
-        let _ = self.store.save("routines", &self.routines);
+        crate::kept!(self.store.save("routines", &self.routines));
         out
     }
 
@@ -1247,7 +1249,7 @@ impl<'a> Daemon<'a> {
                     {
                         routine.last_day = day;
                     }
-                    let _ = self.store.save("routines", &self.routines);
+                    crate::kept!(self.store.save("routines", &self.routines));
                     if added {
                         format!("Queued your usual {name} ({} steps).", steps.len())
                     } else {
@@ -1363,7 +1365,7 @@ impl<'a> Daemon<'a> {
             last,
             t,
         )?;
-        let _ = self.store.save(&key, &Some(t));
+        crate::kept!(self.store.save(&key, &Some(t)));
         Some(line)
     }
 }
@@ -1408,7 +1410,7 @@ impl<'a> Daemon<'a> {
                 self.facts.learn(f, t);
             }
         }
-        let _ = self.facts.save(&self.store);
+        crate::kept!(self.facts.save(&self.store));
         if more {
             self.interview = Some(iv);
         }
@@ -1482,7 +1484,7 @@ impl<'a> Daemon<'a> {
     /// low-pressure wording). F8: "yes".
     pub(super) fn remind_about_staged_change(&mut self, t: u64) -> Option<String> {
         if self.pending_landing.is_empty() {
-            let _ = self.store.save("landing_asked", &(0u32, 0u64));
+            crate::kept!(self.store.save("landing_asked", &(0u32, 0u64)));
             return None;
         }
         let what = self
@@ -1504,7 +1506,7 @@ impl<'a> Daemon<'a> {
         } else {
             None
         }?;
-        let _ = self.store.save("landing_asked", &(times + 1, t));
+        crate::kept!(self.store.save("landing_asked", &(times + 1, t)));
         Some(format!(
             "{line} Say \"go ahead\" to land it, or \"add that to the later list\"."
         ))
@@ -1537,7 +1539,7 @@ impl<'a> Daemon<'a> {
             .first()
             .map(|c| (c.at, c.wanted.clone().unwrap_or_default()))?;
         mentioned.push(hit.0);
-        let _ = self.store.save("stale_notes_mentioned", &mentioned);
+        crate::kept!(self.store.save("stale_notes_mentioned", &mentioned));
         Some(format!(
             "Something like this came up before, and you wanted {} — I've kept that in mind.",
             hit.1.trim().trim_end_matches('.')
@@ -3762,13 +3764,13 @@ impl<'a> Daemon<'a> {
 
     pub(super) fn bring_back(&mut self, title: &str, t: u64) -> String {
         self.dropped.retain(|d| d.title != title);
-        let _ = self.store.save("dropped", &self.dropped);
+        crate::kept!(self.store.save("dropped", &self.dropped));
         self.backlog.record(
             title,
             crate::backlog::Blocker::Unsupported("do that one for you".into()),
             t,
         );
-        let _ = self.backlog.save(&self.store);
+        crate::kept!(self.backlog.save(&self.store));
         format!("\"{title}\" is back on your list.")
     }
 }
@@ -3888,7 +3890,7 @@ impl<'a> Daemon<'a> {
         };
         let turn_on = on.is_some();
         self.anticipator.enable(&name, turn_on);
-        let _ = self.anticipator.save(&self.store);
+        crate::kept!(self.anticipator.save(&self.store));
         if turn_on {
             format!("I'll suggest {name} again.")
         } else {
@@ -3969,7 +3971,7 @@ impl<'a> Daemon<'a> {
             &mut changes,
             crate::store::now(),
         ) {
-            let _ = store.save(crate::miclevel::Changes::RECORD, &changes);
+            crate::kept!(store.save(crate::miclevel::Changes::RECORD, &changes));
             self.log.info(&line);
             self.heard_note = Some(line);
         }
@@ -3982,7 +3984,7 @@ impl<'a> Daemon<'a> {
         }
         if let Some((what, kind)) = crate::person::learn_from_edit(before, after) {
             self.person.notice(&what, kind, t);
-            let _ = self.person.save(&self.store);
+            crate::kept!(self.person.save(&self.store));
         }
     }
 }
@@ -5238,7 +5240,7 @@ impl<'a> Daemon<'a> {
         Some(match shown {
             Ok(g) => match self.gestures.adopt(g) {
                 Ok(said) => {
-                    let _ = self.gestures.save(&self.store);
+                    crate::kept!(self.gestures.save(&self.store));
                     said
                 }
                 Err(why) => why,
@@ -5289,7 +5291,7 @@ impl<'a> Daemon<'a> {
         if said.is_some() {
             l.suggested_at = Some(crate::store::now());
         }
-        let _ = self.store.save("listening", &l);
+        crate::kept!(self.store.save("listening", &l));
         said
     }
 }

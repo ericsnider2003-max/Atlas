@@ -3,6 +3,7 @@ use super::*;
 use serde::{Deserialize, Serialize};
 
 const BOOKING_COMMIT: &str = "calendar_booking_commit";
+const BOOKING_RECEIPTS: &str = "calendar_booking_receipts";
 const REMINDER_RECEIPTS: &str = "calendar_reminder_receipts";
 const LIMIT: u64 = 2 * 1024 * 1024;
 
@@ -37,6 +38,36 @@ struct ReminderReceipt {
     explicit_retry: bool,
     #[serde(default)]
     held_reason: Option<String>,
+}
+
+fn save_reminder_receipts(
+    store: &crate::store::Store,
+    receipts: &[ReminderReceipt],
+) -> crate::error::Result<()> {
+    let encoded = serde_json::to_vec(receipts).map_err(|error| {
+        crate::error::AtlasError::Config(format!("calendar receipts encode: {error}"))
+    })?;
+    if encoded.len() as u64 > LIMIT {
+        return Err(crate::error::AtlasError::Config(
+            "calendar reminder receipts exceed the local size bound".into(),
+        ));
+    }
+    store.save(REMINDER_RECEIPTS, &receipts)
+}
+
+fn save_booking_receipts(
+    store: &crate::store::Store,
+    receipts: &[serde_json::Value],
+) -> crate::error::Result<()> {
+    let encoded = serde_json::to_vec(receipts).map_err(|error| {
+        crate::error::AtlasError::Config(format!("calendar booking receipts encode: {error}"))
+    })?;
+    if encoded.len() as u64 > LIMIT {
+        return Err(crate::error::AtlasError::Config(
+            "calendar booking receipts exceed the local size bound".into(),
+        ));
+    }
+    store.save(BOOKING_RECEIPTS, &receipts)
 }
 
 impl Daemon<'_> {
@@ -370,7 +401,7 @@ impl Daemon<'_> {
         }
         // Persist the pending identity before dispatch, then dispatch at most one per tick.
         if pending_changed {
-            if let Err(e) = store.save(REMINDER_RECEIPTS, &receipts) {
+            if let Err(e) = save_reminder_receipts(&store, &receipts) {
                 self.log
                     .warn(&format!("Calendar reminders remain unsent: {e}"));
                 return out;
@@ -390,7 +421,7 @@ impl Daemon<'_> {
         };
         receipts[index].state = ReceiptState::Dispatching;
         receipts[index].held_reason = None;
-        if let Err(e) = store.save(REMINDER_RECEIPTS, &receipts) {
+        if let Err(e) = save_reminder_receipts(&store, &receipts) {
             self.log.warn(&format!(
                 "Calendar reminder dispatch was not confirmed: {e}"
             ));
@@ -464,7 +495,7 @@ impl Daemon<'_> {
                         .into(),
                     );
                 }
-                if let Err(e) = store.save(REMINDER_RECEIPTS, &fresh) {
+                if let Err(e) = save_reminder_receipts(&store, &fresh) {
                     self.log.warn(&format!(
                         "Calendar reminder retry status is unconfirmed: {e}"
                     ));
@@ -597,7 +628,7 @@ impl Daemon<'_> {
                 receipt.state = ReceiptState::Unconfirmed;
             }
         }
-        if let Err(e) = store.save(REMINDER_RECEIPTS, &receipts) {
+        if let Err(e) = save_reminder_receipts(&store, &receipts) {
             self.log.warn(&format!(
                 "Calendar reminder delivery is unconfirmed; automatic repeat is suppressed: {e}"
             ));
@@ -662,9 +693,7 @@ impl Daemon<'_> {
             }
         }
         if changed {
-            store
-                .save(REMINDER_RECEIPTS, &receipts)
-                .map_err(|e| e.to_string())?;
+            save_reminder_receipts(&store, &receipts).map_err(|e| e.to_string())?;
         }
         self.calendar_cancel_pending = false;
         Ok(changed)
@@ -1250,7 +1279,7 @@ impl Daemon<'_> {
                 .map_err(|e| e.to_string())?;
             // Retain the complete reviewed request and partial-event evidence before retiring it.
             let mut reviewed = store
-                .load_checked_bounded::<Vec<serde_json::Value>>("calendar_booking_receipts", LIMIT)
+                .load_checked_bounded::<Vec<serde_json::Value>>(BOOKING_RECEIPTS, LIMIT)
                 .map_err(|e| e.to_string())?
                 .unwrap_or_default();
             if reviewed.len() >= 128 {
@@ -1262,9 +1291,7 @@ impl Daemon<'_> {
             {
                 reviewed.push(serde_json::json!({"id":id,"request":intent,"reviewed_by":owner,
                     "exact_event_present":calendar.as_ref().and_then(|c|c.event(intent.event.id))==Some(&intent.event)}));
-                store
-                    .save("calendar_booking_receipts", &reviewed)
-                    .map_err(|e| e.to_string())?;
+                save_booking_receipts(&store, &reviewed).map_err(|e| e.to_string())?;
             }
             store
                 .save(BOOKING_COMMIT, &Option::<BookingCommit>::None)
@@ -1324,9 +1351,7 @@ impl Daemon<'_> {
                 receipts[index].event.title,
                 receipts[index].event.say_when_in(&self.home_zone())
             );
-            store
-                .save(REMINDER_RECEIPTS, &receipts)
-                .map_err(|e| e.to_string())?;
+            save_reminder_receipts(&store, &receipts).map_err(|e| e.to_string())?;
             return Ok("Reminder retry saved at your request. It may repeat an earlier delivery; it is not marked delivered.".into());
         }
         let removed = receipts.remove(index);
@@ -1345,9 +1370,7 @@ impl Daemon<'_> {
         store
             .save("calendar_reminder_dismissed", &dismissed)
             .map_err(|e| e.to_string())?;
-        store
-            .save(REMINDER_RECEIPTS, &receipts)
-            .map_err(|e| e.to_string())?;
+        save_reminder_receipts(&store, &receipts).map_err(|e| e.to_string())?;
         self.calendar_delivery_bindings
             .retain(|(bound, _, _)| bound != &removed.delivery_id);
         Ok("Reminder dismissed after review. It was not marked delivered and will not automatically repeat.".into())

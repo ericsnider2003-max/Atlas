@@ -52,7 +52,7 @@ pub fn write_default_config(config_dir: &Path) -> std::io::Result<usize> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&path, text)?;
+        crate::store::write_whole(&path, text.as_bytes())?;
         wrote += 1;
     }
     Ok(wrote)
@@ -545,7 +545,7 @@ fn ask_atlas_to_stop_because(root: &Path, wait: std::time::Duration, why: &str) 
     }
     let state = root.join("data").join("state");
     if std::fs::create_dir_all(&state).is_err()
-        || std::fs::write(crate::goodbye::stop_file(&state), why.as_bytes()).is_err()
+        || crate::store::write_whole(&crate::goodbye::stop_file(&state), why.as_bytes()).is_err()
     {
         return false;
     }
@@ -877,7 +877,7 @@ pub fn note_start_problem(root: &Path, why: &str) {
 /// What to tell someone whose background Atlas ended straight after being
 /// started: what it wrote down, or plainly that it stopped.
 pub fn start_failed_words(root: &Path, code: Option<i32>) -> String {
-    let written = std::fs::read_to_string(start_problem_file(root)).unwrap_or_default();
+    let written = read_start_problem(&start_problem_file(root));
     let written = written.trim();
     let code = code
         .map(|c| format!(" (it ended with code {c})"))
@@ -889,6 +889,49 @@ pub fn start_failed_words(root: &Path, code: Option<i32>) -> String {
         )
     } else {
         format!("Atlas couldn't start in the background{code}:\n\n{written}")
+    }
+}
+
+const MAX_START_PROBLEM_BYTES: u64 = 1024 * 1024;
+
+fn read_start_problem(path: &Path) -> String {
+    use std::io::Read;
+    let Ok(file) = std::fs::File::open(path) else {
+        return String::new();
+    };
+    let Ok(metadata) = file.metadata() else {
+        return String::new();
+    };
+    if !metadata.is_file() || metadata.len() > MAX_START_PROBLEM_BYTES {
+        return String::new();
+    }
+    let mut text = String::new();
+    if file
+        .take(MAX_START_PROBLEM_BYTES + 1)
+        .read_to_string(&mut text)
+        .is_ok()
+        && text.len() as u64 <= MAX_START_PROBLEM_BYTES
+    {
+        text
+    } else {
+        String::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn an_oversized_startup_breadcrumb_is_treated_as_unwritten() {
+        let path =
+            std::env::temp_dir().join(format!("atlas-start-problem-{}.txt", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        std::fs::write(
+            &path,
+            vec![b'x'; (super::MAX_START_PROBLEM_BYTES + 1) as usize],
+        )
+        .unwrap();
+        assert!(super::read_start_problem(&path).is_empty());
+        let _ = std::fs::remove_file(path);
     }
 }
 

@@ -22,6 +22,21 @@
 //! it isn't installed, the check says it didn't run -- never that it passed.
 
 use serde::{Deserialize, Serialize};
+use std::io::Read;
+
+const MAX_MUTATION_REPORT_BYTES: u64 = 64 * 1024 * 1024;
+
+fn bounded_text(path: &std::path::Path) -> Option<String> {
+    let file = std::fs::File::open(path).ok()?;
+    if !file.metadata().ok()?.is_file() || file.metadata().ok()?.len() > MAX_MUTATION_REPORT_BYTES {
+        return None;
+    }
+    let mut text = String::new();
+    file.take(MAX_MUTATION_REPORT_BYTES + 1)
+        .read_to_string(&mut text)
+        .ok()?;
+    (text.len() as u64 <= MAX_MUTATION_REPORT_BYTES).then_some(text)
+}
 
 /// One mutant no test caught.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,12 +77,12 @@ fn results_dir(out: &std::path::Path) -> std::path::PathBuf {
 /// `missed.txt` otherwise.
 pub fn read_survivors(out: &std::path::Path) -> Vec<Survivor> {
     let dir = results_dir(out);
-    if let Ok(json) = std::fs::read_to_string(dir.join("outcomes.json")) {
+    if let Some(json) = bounded_text(&dir.join("outcomes.json")) {
         if let Some(s) = from_outcomes_json(&json) {
             return s;
         }
     }
-    std::fs::read_to_string(dir.join("missed.txt"))
+    bounded_text(&dir.join("missed.txt"))
         .map(|t| from_missed_txt(&t))
         .unwrap_or_default()
 }

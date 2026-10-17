@@ -30,6 +30,8 @@ use serde::{Deserialize, Serialize};
 /// never grow to a size that slows the machine down. Stated knowledge is never
 /// evicted to meet it (see `Book::trim`).
 pub const MEMORY_BUDGET_BYTES: usize = 8 * 1024 * 1024;
+const MAX_FACT_SHARD_BYTES: u64 = 8 * 1_048_576;
+const MAX_FACT_ALIAS_BYTES: u64 = 2 * 1_048_576;
 
 /// What kind of thing this is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -904,7 +906,8 @@ impl Book {
         let mut facts: Vec<Fact> = Vec::new();
         let mut present = [false; SHARDS];
         for (s, here) in present.iter_mut().enumerate() {
-            let shard: Option<Vec<Fact>> = store.load_checked(&format!("facts-{s}"))?;
+            let shard: Option<Vec<Fact>> =
+                store.load_checked_bounded(&format!("facts-{s}"), MAX_FACT_SHARD_BYTES)?;
             if let Some(shard) = shard {
                 *here = true;
                 facts.extend(shard);
@@ -917,7 +920,9 @@ impl Book {
         if present.iter().any(|exists| !exists) {
             // Resume interrupted migration only for absent shards. A present
             // empty shard is authoritative and must not resurrect old facts.
-            let legacy: Book = store.load_checked("facts")?.unwrap_or_default();
+            let legacy: Book = store
+                .load_checked_bounded("facts", MAX_FACT_SHARD_BYTES)?
+                .unwrap_or_default();
             if !legacy.facts.is_empty() {
                 b.facts.extend(
                     legacy
@@ -930,7 +935,9 @@ impl Book {
                 }
             }
         }
-        b.aliases = store.load_checked("fact-aliases")?.unwrap_or_default();
+        b.aliases = store
+            .load_checked_bounded("fact-aliases", MAX_FACT_ALIAS_BYTES)?
+            .unwrap_or_default();
         b.reindex();
         Ok(b)
     }

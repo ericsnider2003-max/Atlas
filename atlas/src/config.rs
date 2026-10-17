@@ -275,8 +275,26 @@ pub struct Config {
     pub edits_that_went_nowhere: Vec<String>,
 }
 
+const MAX_YAML_BYTES: u64 = 4 * 1024 * 1024;
+
 fn load_yaml<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
-    let text = std::fs::read_to_string(path)?;
+    use std::io::Read;
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_YAML_BYTES {
+        return Err(AtlasError::Config(format!(
+            "{}: configuration file exceeds the 4 MiB read budget",
+            path.display()
+        )));
+    }
+    let mut text = String::new();
+    file.take(MAX_YAML_BYTES + 1).read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_YAML_BYTES {
+        return Err(AtlasError::Config(format!(
+            "{}: configuration file exceeds the 4 MiB read budget",
+            path.display()
+        )));
+    }
     serde_yaml::from_str(&text).map_err(|source| {
         // A Windows path pasted into a double-quoted YAML string fails with
         // "did not find expected hexadecimal number", because \U starts a
@@ -660,4 +678,23 @@ pub fn settings_that_do_nothing(tools_yaml: &str) -> Vec<(&'static str, &'static
         }
     }
     present
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn oversized_yaml_is_rejected_before_parsing() {
+        let path = std::env::temp_dir().join(format!(
+            "atlas-config-oversized-{}.yaml",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        std::fs::write(&path, vec![b'x'; (super::MAX_YAML_BYTES + 1) as usize]).unwrap();
+
+        let result = super::load_yaml::<serde_yaml::Value>(&path);
+
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("4 MiB read budget"), "{error}");
+        let _ = std::fs::remove_file(path);
+    }
 }

@@ -243,7 +243,7 @@ impl<'a> Daemon<'a> {
                     && crate::phrasebook::meant_instead(said).is_none()
                 {
                     self.phrasebook.stood_up(wording);
-                    let _ = self.phrasebook.save(&self.store);
+                    crate::kept!(self.phrasebook.save(&self.store));
                 }
             }
         }
@@ -343,7 +343,7 @@ impl<'a> Daemon<'a> {
         if prev.missed.is_some() {
             self.misses
                 .now_known_as(&prev.said, crate::misses::Why::Corrected);
-            let _ = self.misses.save(&self.store);
+            crate::kept!(self.misses.save(&self.store));
         } else {
             self.note_a_miss(
                 &prev.said,
@@ -463,7 +463,7 @@ impl<'a> Daemon<'a> {
     /// A learned wording led to something you undid or corrected: it goes.
     fn drop_a_wrong_lesson(&mut self, wording: &str) {
         if self.phrasebook.forget_wording(wording).is_some() {
-            let _ = self.phrasebook.save(&self.store);
+            crate::kept!(self.phrasebook.save(&self.store));
             self.log.info(&format!(
                 "dropped the learned wording \"{wording}\": what it led to was undone or corrected"
             ));
@@ -569,9 +569,9 @@ impl<'a> Daemon<'a> {
             by_voice: true,
         });
         self.misses.keep_within(t);
-        let _ = self.misses.save(&self.store);
+        crate::kept!(self.misses.save(&self.store));
         if times >= crate::misses::MEND_AFTER && self.vocab.heard_wrong_as(&right) {
-            let _ = self.store.save("vocabulary", &self.vocab);
+            crate::kept!(self.store.save("vocabulary", &self.vocab));
             self.log.info(&format!("\"{right}\" heard as \"{heard}\" {times} times: given to the speech model as a hint"));
         }
         true
@@ -601,7 +601,7 @@ impl<'a> Daemon<'a> {
         }
         let intent = crate::phrasebook::phrase_route(&found.phrase, &self.parser)?;
         self.phrasebook.used_now(&found.phrase.wording, t);
-        let _ = self.phrasebook.save(&self.store);
+        crate::kept!(self.phrasebook.save(&self.store));
         self.log.info(&format!(
             "\"{}\" read as \"{}\" from what you taught me ({}, {:.2})",
             said.trim(),

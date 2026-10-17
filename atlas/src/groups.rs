@@ -858,7 +858,7 @@ pub fn changes_to_carry(store: &Store, my_key: &str) -> Vec<(String, String, Str
         told.device = my_key.to_string();
     }
     if !out.is_empty() {
-        let _ = store.save(SYNC_TOLD, &told);
+        crate::kept!(store.save(SYNC_TOLD, &told));
     }
     out
 }

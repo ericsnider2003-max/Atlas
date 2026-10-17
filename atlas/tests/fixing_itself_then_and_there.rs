@@ -30,7 +30,7 @@
 
 use atlas::pipeline::{Concern, Note, Review};
 use atlas::sandbox::{Change, Fingerprint};
-use atlas::selfwork::{land, what_holds_it_back, Held, SelfWorkConfig, Session};
+use atlas::selfwork::{land, rollback, what_holds_it_back, Held, SelfWorkConfig, Session};
 use std::path::PathBuf;
 
 fn tmp(tag: &str) -> PathBuf {
@@ -200,6 +200,49 @@ fn the_version_it_replaced_is_kept_so_you_can_put_it_back() {
 
     let back = std::fs::read_to_string(keep.join("thing.rs.before")).unwrap();
     assert_eq!(back, "the old one\n", "the previous version was not kept");
+}
+
+#[test]
+fn a_landed_batch_can_be_rolled_back_without_touching_unrelated_files() {
+    let dir = tmp("explicit-rollback");
+    let mut c1 = change(&dir, "src/one.rs", "new one\n", Some("old one\n"));
+    c1.source = dir.join("source-one.rs");
+    std::fs::write(&c1.source, "new one\n").unwrap();
+    let mut c2 = change(&dir, "other/one.rs", "new other\n", Some("old other\n"));
+    c2.source = dir.join("source-other.rs");
+    std::fs::write(&c2.source, "new other\n").unwrap();
+    let new_file = dir.join("src/new.rs");
+    let new_source = dir.join("new-source.rs");
+    std::fs::write(&new_source, "new file\n").unwrap();
+    let c3 = Change {
+        bytes: 9,
+        new_file: true,
+        target_was: None,
+        target: new_file.clone(),
+        source: new_source,
+    };
+    let unrelated = dir.join("unrelated.txt");
+    std::fs::write(&unrelated, "leave me\n").unwrap();
+    let keep = dir.join("kept");
+
+    land(&[c1.clone(), c2.clone(), c3.clone()], &keep).unwrap();
+    assert_eq!(std::fs::read_to_string(&c1.target).unwrap(), "new one\n");
+    assert_eq!(std::fs::read_to_string(&c2.target).unwrap(), "new other\n");
+    assert!(new_file.exists());
+    assert!(keep.join("one.rs.before").exists());
+    assert!(keep.join("one.rs.1.before").exists());
+
+    assert_eq!(rollback(&[c1, c2, c3], &keep).unwrap(), 3);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("src/one.rs")).unwrap(),
+        "old one\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("other/one.rs")).unwrap(),
+        "old other\n"
+    );
+    assert!(!new_file.exists());
+    assert_eq!(std::fs::read_to_string(unrelated).unwrap(), "leave me\n");
 }
 
 // ============ the constraint: it must not limit what Atlas can do ======

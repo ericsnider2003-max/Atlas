@@ -8,14 +8,29 @@ use atlas::studio::{
 
 #[cfg(windows)]
 fn installed_video_tool(name: &str) -> atlas::tools::ExternalTool {
-    let command = format!(
+    let bundled = format!(
         "{}/Atlas/tools/ffmpeg/{name}.exe",
         std::env::var("LOCALAPPDATA").unwrap()
     );
-    assert!(
-        std::path::Path::new(&command).is_file(),
-        "installed {name} is required for this proof"
-    );
+    let command = if std::path::Path::new(&bundled).is_file() {
+        bundled
+    } else {
+        // The shipped tools configuration also permits a machine-installed
+        // ffmpeg/ffprobe on PATH. The proof should exercise either supported
+        // installation, not require the bundled per-user copy specifically.
+        let found = std::process::Command::new("where")
+            .arg(name)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .and_then(|s| s.lines().next().map(str::trim).map(str::to_owned));
+        assert!(
+            found.is_some(),
+            "installed {name} is required for this proof"
+        );
+        found.unwrap()
+    };
     atlas::tools::ExternalTool {
         command,
         timeout_secs: 15,

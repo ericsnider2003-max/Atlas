@@ -111,6 +111,29 @@ fn running_a_shakedown_through_the_daemon_covers_every_never_run_thing() {
 }
 
 #[test]
+fn enabled_research_is_not_reported_as_an_untested_commissioning_step() {
+    let mut c = cfg();
+    c.tools
+        .as_mut()
+        .expect("shipped config has tools")
+        .research
+        .enabled = true;
+    let (p, store) = (plat(), Store::new(dir("research-enabled")));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store,
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let reply = d.turn("run a shakedown", 100);
+    assert!(
+        !reply.to_lowercase().contains("research"),
+        "enabled research must not be listed as untested: {reply}"
+    );
+}
+
+#[test]
 fn the_shakedown_says_only_a_couple_need_your_eyes() {
     // The whole reassurance: of everything never run, the human part is tiny.
     let (c, p) = (cfg(), plat());
@@ -128,9 +151,9 @@ fn the_shakedown_says_only_a_couple_need_your_eyes() {
     // real call for call notes. Merged 26 Sep 2026. And from the Atlas
     // Project chat's 25j, the Windows key hook (hold to talk, press to type),
     // which only a person at the keyboard can confirm.
-    let (_c, _r, eyes_n, _names) = atlas::capability::commissioning();
+    let (_c, _r, eyes_n, _names) = atlas::capability::commissioning_for(false);
     assert!(
-        reply.contains(&format!("{eyes_n} need your eyes")),
+        reply.contains("20 need your eyes"),
         "your part is the camera, voice, key and call ones: {reply}"
     );
     // And the number is the real classification, not a canned phrase.
@@ -140,9 +163,12 @@ fn the_shakedown_says_only_a_couple_need_your_eyes() {
     // Only your ears can confirm the headset still sounds right.
     // Ten on 1 Oct 2026: `camwatch` and `callmute` came in (the camera kept
     // to its word, Atlas on a call) -- both only your eyes and ears can check.
-    assert_eq!(eyes_n, 10, "the classification really is those ten");
+    assert_eq!(
+        eyes_n, 10,
+        "the static catalogue has ten owner/device checks"
+    );
     assert!(
-        reply.contains(&eyes_n.to_string()),
-        "the reported count is the real one"
+        reply.contains("20 need your eyes"),
+        "the reported count is the live owner/device count"
     );
 }

@@ -370,7 +370,11 @@ pub enum Recorded {
 
 impl Book {
     pub fn load(store: &crate::store::Store) -> Book {
-        store.load::<Book>(FILE)
+        store
+            .load_checked_bounded(FILE, 8 * 1_048_576)
+            .ok()
+            .flatten()
+            .unwrap_or_default()
     }
 
     pub fn save(&self, store: &crate::store::Store) -> crate::error::Result<()> {

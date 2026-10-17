@@ -1006,12 +1006,21 @@ fn model_server_log(name: &str) -> std::process::Stdio {
 /// `data/logs/model-server.log` that says something went wrong, or its last
 /// line. `None` when the log is empty or can't be read.
 pub fn model_server_last_words() -> Option<String> {
-    let text = std::fs::read_to_string(
-        crate::roots::data_dir()
-            .join("logs")
-            .join("model-server.log"),
-    )
-    .ok()?;
+    let path = crate::roots::data_dir()
+        .join("logs")
+        .join("model-server.log");
+    let file = std::fs::File::open(path).ok()?;
+    if !file.metadata().ok()?.is_file() || file.metadata().ok()?.len() > 16 * 1024 * 1024 {
+        return None;
+    }
+    let mut text = String::new();
+    use std::io::Read;
+    file.take(16 * 1024 * 1024 + 1)
+        .read_to_string(&mut text)
+        .ok()?;
+    if text.len() > 16 * 1024 * 1024 {
+        return None;
+    }
     last_words_in(&text)
 }
 

@@ -274,6 +274,15 @@ fn a_panel_survives_the_trip_to_the_child_process() {
     assert_eq!(back.panel, Panel::Brief);
 }
 
+#[test]
+fn an_oversized_staged_panel_is_rejected_before_json_loading() {
+    let path = std::env::temp_dir().join("atlas-oversized-staged-panel.json");
+    std::fs::write(&path, vec![b'x'; 1024 * 1024 + 1]).unwrap();
+    let err = atlas::window::read_staged(&path).unwrap_err().to_string();
+    let _ = std::fs::remove_file(&path);
+    assert!(err.contains("1 MiB read budget"), "{err}");
+}
+
 // --- holding and returning --------------------------------------------------
 
 #[test]

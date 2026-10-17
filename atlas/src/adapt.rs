@@ -20,7 +20,10 @@ use crate::error::Result;
 use crate::platform::{Monitor, Platform};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::io::Read;
 use std::path::Path;
+
+const MAX_MACHINE_YAML_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Machine {
@@ -75,7 +78,15 @@ impl From<&Monitor> for MonitorFact {
 
 impl Machine {
     pub fn load(dir: &Path) -> Option<Machine> {
-        let text = std::fs::read_to_string(dir.join("machine.yaml")).ok()?;
+        let file = std::fs::File::open(dir.join("machine.yaml")).ok()?;
+        let metadata = file.metadata().ok()?;
+        if !metadata.is_file() || metadata.len() > MAX_MACHINE_YAML_BYTES {
+            return None;
+        }
+        let mut text = String::new();
+        file.take(MAX_MACHINE_YAML_BYTES + 1)
+            .read_to_string(&mut text)
+            .ok()?;
         serde_yaml::from_str(&text).ok()
     }
 
@@ -85,7 +96,10 @@ impl Machine {
                       # Do not share this file — it holds your paths and device names.\n\
                       # Delete it and run `atlas adapt` again after changing your hardware.\n";
         let body = serde_yaml::to_string(self).unwrap_or_default();
-        std::fs::write(dir.join("machine.yaml"), format!("{header}{body}"))?;
+        crate::store::write_whole(
+            &dir.join("machine.yaml"),
+            format!("{header}{body}").as_bytes(),
+        )?;
         Ok(())
     }
 

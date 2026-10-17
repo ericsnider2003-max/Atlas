@@ -54,6 +54,7 @@
 use crate::motion::{Finding, Severity};
 use crate::pngcodec::Rgba;
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 
 type V = [f64; 3];
 
@@ -1971,8 +1972,25 @@ pub fn model_files(dir: &std::path::Path) -> Vec<String> {
 
 /// Read a scene file. Its models are then looked for beside it.
 pub fn load_scene(path: &std::path::Path) -> Result<Scene, String> {
-    let text = std::fs::read_to_string(path)
+    const MAX_SCENE_BYTES: u64 = 16 * 1024 * 1024;
+    let file =
+        std::fs::File::open(path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .map_err(|e| format!("couldn't inspect {}: {e}", path.display()))?;
+    if !metadata.is_file() || metadata.len() > MAX_SCENE_BYTES {
+        return Err(format!("{} exceeds the 16 MiB scene limit", path.display()));
+    }
+    let mut text = String::new();
+    file.take(MAX_SCENE_BYTES + 1)
+        .read_to_string(&mut text)
         .map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
+    if text.len() as u64 > MAX_SCENE_BYTES {
+        return Err(format!(
+            "{} grew past the 16 MiB scene limit while reading",
+            path.display()
+        ));
+    }
     let mut scene = parse_scene(&text)?;
     let dir = path
         .parent()

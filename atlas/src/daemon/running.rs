@@ -156,7 +156,7 @@ impl<'a> Daemon<'a> {
                 return;
             }
         };
-        self.reached.save(&self.store);
+        note(&mut failed, "reached", self.reached.save(&self.store));
         note(&mut failed, "thread", self.thread.save(&self.store));
         note(&mut failed, "modes", self.modes.save(&self.store));
         note(&mut failed, "watcher", self.watcher.save(&self.store));
@@ -714,7 +714,7 @@ impl<'a> Daemon<'a> {
                 let mut kept: Vec<crate::cpuuse::Reading> = self.store.load(crate::cpuuse::KEPT);
                 kept.push(r);
                 let from = kept.len().saturating_sub(96);
-                let _ = self.store.save(crate::cpuuse::KEPT, &kept[from..].to_vec());
+                crate::kept!(self.store.save(crate::cpuuse::KEPT, &kept[from..].to_vec()));
             }
             if tick_ms >= SLOW_TICK_MS {
                 // Which parts took it, so the next look at a log says where
@@ -1601,7 +1601,7 @@ impl<'a> Daemon<'a> {
             self.log.info(&n);
         }
         if let Some(l) = m.take_new_learned() {
-            let _ = self.store.save(CUT_IN_STATE, &Some(l));
+            crate::kept!(self.store.save(CUT_IN_STATE, &Some(l)));
         }
     }
 
@@ -1833,7 +1833,7 @@ impl<'a> Daemon<'a> {
         }
         self.stopped = true;
         // The work log keeps its own schedule; the way out is its last save.
-        let _ = self.store.save("worklog", &self.worklog);
+        crate::kept!(self.store.save("worklog", &self.worklog));
         // The microphone let go first: nothing recorded on the way out.
         if let Some(mut m) = self.mic.take() {
             m.stop();
@@ -1911,7 +1911,7 @@ impl<'a> Daemon<'a> {
         if let Some(mut runs) = self.runs.take() {
             let why = crate::goodbye::why();
             runs.stop(crate::store::now(), why);
-            let _ = runs.save(&self.store.data_dir().join("state"));
+            crate::kept!(runs.save(&self.store.data_dir().join("state")));
             self.log.info(&format!("stopping because {}", why.plain()));
         }
 
@@ -2000,7 +2000,7 @@ impl<'a> Daemon<'a> {
                         // voice actually lands. Measured, not moved — the
                         // adaptive-threshold question is an open ruling.
                         self.voice_id.note_accepted(s);
-                        let _ = self.voice_id.save(&self.store);
+                        crate::kept!(self.voice_id.save(&self.store));
                     }
                     v
                 }
@@ -2016,11 +2016,11 @@ impl<'a> Daemon<'a> {
                 (_, crate::voiceid::Verdict::NotEnrolled) => {}
                 (Arrival::Directed, v) => {
                     self.voice_id.note_after_name(v.score());
-                    let _ = self.voice_id.save(&self.store);
+                    crate::kept!(self.voice_id.save(&self.store));
                 }
                 (Arrival::OpenMic, crate::voiceid::Verdict::NotYou(s)) => {
                     self.voice_id.note_turned_away(*s);
-                    let _ = self.voice_id.save(&self.store);
+                    crate::kept!(self.voice_id.save(&self.store));
                 }
                 _ => {}
             }

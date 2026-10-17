@@ -156,7 +156,7 @@ pub fn take_synced(state_dir: &Path, id: &str, to: &str, sealed: bool, now: u64)
         return None;
     }
     d.set(device, token, env, now);
-    d.save(state_dir).ok()?;
+    crate::kept!(d.save(state_dir))?;
     Some(format!("{device} can now be reached with Atlas closed"))
 }
 

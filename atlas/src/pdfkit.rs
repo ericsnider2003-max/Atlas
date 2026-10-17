@@ -353,7 +353,7 @@ fn decoded(d: &Dict, raw: &[u8]) -> Result<Vec<u8>, String> {
                     return Err("an empty compressed stream".into());
                 }
                 // zlib: two header bytes, then DEFLATE.
-                data = crate::zipread::inflate(&data[2..], 512 * 1024 * 1024)?;
+                data = crate::zipread::inflate(&data[2..], MAX_BYTES)?;
             }
             other => {
                 return Err(format!(

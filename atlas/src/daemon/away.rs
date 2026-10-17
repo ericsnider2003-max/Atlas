@@ -298,7 +298,7 @@ impl<'a> Daemon<'a> {
         if t.saturating_sub(self.worklog.saved_at) >= 600 {
             self.worklog.prune(&cfg, t);
             self.worklog.saved_at = t;
-            let _ = self.store.save("worklog", &self.worklog);
+            crate::kept!(self.store.save("worklog", &self.worklog));
         }
     }
 
@@ -384,7 +384,7 @@ impl<'a> Daemon<'a> {
                 let said = crate::worksession::started(&s);
                 self.proactive.quiet_until = s.until;
                 self.work_session = Some(s);
-                let _ = self.store.save("work_session", &self.work_session);
+                crate::kept!(self.store.save("work_session", &self.work_session));
                 Some(said)
             }
             crate::worksession::Said::End => Some(match self.work_session.is_some() {
@@ -407,7 +407,7 @@ impl<'a> Daemon<'a> {
         let Some(s) = self.work_session.take() else {
             return String::new();
         };
-        let _ = self.store.save("work_session", &self.work_session);
+        crate::kept!(self.store.save("work_session", &self.work_session));
         self.proactive.quiet_until = 0;
         let ended = t.min(s.until);
         let log = crate::worklog::summarise(&self.worklog.between(s.started, ended));
@@ -758,10 +758,10 @@ impl<'a> Daemon<'a> {
         self.last_brief = *prepared_at;
         self.last_brief_at = now;
         self.pending_brief_delivery = None;
-        let _ = self.store.save("last_brief_at", &self.last_brief_at);
+        crate::kept!(self.store.save("last_brief_at", &self.last_brief_at));
         crate::heard!(self.store.save("last_brief_source_at", &self.last_brief));
-        let _ = self
+        crate::kept!(self
             .store
-            .save("brief_prepared", &self.pending_brief_delivery);
+            .save("brief_prepared", &self.pending_brief_delivery));
     }
 }

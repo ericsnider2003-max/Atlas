@@ -56,10 +56,32 @@ pub const PLUGINS_DIR: &str = "plugins";
 pub const MANIFEST_FILE: &str = "plugin.yaml";
 /// Larger than any honest add-on; refused before it is parsed.
 pub const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
+
+fn read_manifest_bytes(path: &Path) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_MANIFEST_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "add-on manifest exceeds the 64 KiB limit",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_MANIFEST_BYTES + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_MANIFEST_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "add-on manifest grew past the 64 KiB limit while reading",
+        ));
+    }
+    Ok(bytes)
+}
 const MAX_FLOWS: usize = 32;
 const MAX_STEPS: usize = 32;
 const MAX_TRIGGERS: usize = 8;
 const APPROVALS: &str = "plugin_approvals";
+const MAX_APPROVALS_BYTES: u64 = 4 * 1_048_576;
 
 /// SHA-256 of an add-on file, as lowercase hex: what an approval records and
 /// what every step re-checks.
@@ -614,7 +636,11 @@ impl Approvals {
     /// A missing or unreadable record means nothing is approved: an add-on
     /// that cannot prove you said yes does not run.
     pub fn load(store: &Store) -> Approvals {
-        store.load(APPROVALS)
+        store
+            .load_checked_bounded(APPROVALS, MAX_APPROVALS_BYTES)
+            .ok()
+            .flatten()
+            .unwrap_or_default()
     }
     fn save(&self, store: &Store) -> Result<(), String> {
         store
@@ -741,7 +767,7 @@ fn read_file(dir: &Path, id: &str, commands: &CommandsConfig) -> Read {
             String::new(),
         );
     }
-    let bytes = match std::fs::read(&path) {
+    let bytes = match read_manifest_bytes(&path) {
         Ok(b) => b,
         Err(e) => {
             return Read::Off(
@@ -1207,7 +1233,7 @@ pub fn may_run(
         return Err(format!("you switched the add-on {id} off"));
     }
     let file = dir.join(id).join(MANIFEST_FILE);
-    let now = std::fs::read(&file)
+    let now = read_manifest_bytes(&file)
         .map(|b| fingerprint(&b))
         .unwrap_or_default();
     if now != a.sha256 {
@@ -1353,14 +1379,16 @@ pub fn add_from(source: &Path, dir: &Path, commands: &CommandsConfig) -> Result<
             file.display()
         ));
     }
-    let text = std::fs::read_to_string(&file)
-        .map_err(|e| format!("couldn't read {}: {e}", file.display()))?;
+    let text = String::from_utf8(
+        read_manifest_bytes(&file).map_err(|e| format!("couldn't read {}: {e}", file.display()))?,
+    )
+    .map_err(|e| format!("couldn't read {} as text: {e}", file.display()))?;
     let c =
         parse_and_check(&text, None, commands).map_err(|s| format!("not added: {}", s.plain()))?;
     let (m, trouble) = (c.manifest, c.trouble);
     let dest = dir.join(&m.id);
     std::fs::create_dir_all(&dest).map_err(|e| format!("couldn't make {}: {e}", dest.display()))?;
-    std::fs::write(dest.join(MANIFEST_FILE), &text)
+    crate::store::write_whole(&dest.join(MANIFEST_FILE), text.as_bytes())
         .map_err(|e| format!("couldn't write it: {e}"))?;
     let mut said = format!(
         "Added {} by {}. It does nothing until you approve it -- the hub's Add-ons page shows what it wants to do.",
@@ -1437,7 +1465,7 @@ pub fn may_skip_question(
     let Some(a) = approvals.plugins.get(id) else {
         return false;
     };
-    let now = std::fs::read(dir.join(id).join(MANIFEST_FILE))
+    let now = read_manifest_bytes(&dir.join(id).join(MANIFEST_FILE))
         .map(|b| fingerprint(&b))
         .unwrap_or_default();
     !a.disabled && a.sha256 == now && a.trusted_steps.iter().any(|t| t == as_written)
@@ -1540,6 +1568,7 @@ pub const SHARED_IN: &str = "addon-share:";
 const OFFERS: &str = "plugin_offers";
 /// More than anyone would sift through; the oldest goes first.
 const MAX_OFFERS: usize = 50;
+const MAX_OFFERS_BYTES: u64 = 16 * 1_048_576;
 
 /// An add-on somebody shared with you, waiting on your choice.
 ///
@@ -1573,7 +1602,11 @@ pub struct Offers {
 
 impl Offers {
     pub fn load(store: &Store) -> Offers {
-        store.load(OFFERS)
+        store
+            .load_checked_bounded(OFFERS, MAX_OFFERS_BYTES)
+            .ok()
+            .flatten()
+            .unwrap_or_default()
     }
     fn save(&self, store: &Store) -> Result<(), String> {
         store
@@ -1688,8 +1721,8 @@ pub fn take_offer(
     parse_and_check(&o.text, None, commands)
         .map_err(|s| format!("I can't use it: {}", s.plain()))?;
     let path = dir.join(&o.id).join(MANIFEST_FILE);
-    if let Ok(mine) = std::fs::read_to_string(&path) {
-        if fingerprint(mine.as_bytes()) != o.sha256 {
+    if let Ok(mine) = read_manifest_bytes(&path) {
+        if fingerprint(&mine) != o.sha256 {
             return Err(format!(
                 "you already have a different add-on called {}. Remove yours first if you want theirs instead.",
                 o.id
@@ -1697,7 +1730,7 @@ pub fn take_offer(
         }
     }
     std::fs::create_dir_all(dir.join(&o.id))
-        .and_then(|_| std::fs::write(&path, &o.text))
+        .and_then(|_| crate::store::write_whole(&path, o.text.as_bytes()))
         .map_err(|e| format!("couldn't save it: {e}"))?;
     let said = approve(store, dir, commands, &o.id, &o.sha256)?;
     let mut approvals = Approvals::load(store);
@@ -1726,7 +1759,7 @@ pub fn to_share(dir: &Path, id: &str) -> Result<(String, Vec<u8>, String), Strin
     if !id_ok(id) {
         return Err(format!("{id:?} isn't an add-on id"));
     }
-    let bytes = std::fs::read(dir.join(id).join(MANIFEST_FILE))
+    let bytes = read_manifest_bytes(&dir.join(id).join(MANIFEST_FILE))
         .map_err(|_| format!("there's no add-on called {id}"))?;
     let name = std::str::from_utf8(&bytes)
         .ok()
@@ -1739,6 +1772,7 @@ pub fn to_share(dir: &Path, id: &str) -> Result<(String, Vec<u8>, String), Strin
 // ------------------------------------------------------------------ running by itself
 
 const SCHEDULE_RUNS: &str = "plugin_schedule_runs";
+const MAX_SCHEDULE_CLAIMS: usize = 1_024;
 
 /// When each scheduled add-on sequence last ran (or was first seen), keyed
 /// `id/sequence name`.
@@ -1791,16 +1825,44 @@ impl ScheduleRuns {
         }
         Ok(value)
     }
-    pub fn load(store: &Store) -> ScheduleRuns {
-        store.load(SCHEDULE_RUNS)
-    }
     pub fn save(&self, store: &Store) -> crate::error::Result<()> {
-        store.save(SCHEDULE_RUNS, self)
+        let mut value = self.clone();
+        bound_schedule_claims(&mut value)?;
+        store.save(SCHEDULE_RUNS, &value)
     }
     /// It ran (or started) now.
     pub fn ran(&mut self, key: &str, now: u64) {
         self.last.insert(key.to_string(), now);
     }
+}
+
+fn bound_schedule_claims(runs: &mut ScheduleRuns) -> crate::error::Result<()> {
+    if runs.claims.len() <= MAX_SCHEDULE_CLAIMS {
+        return Ok(());
+    }
+    let active = runs
+        .claims
+        .values()
+        .filter(|claim| !matches!(claim.phase, SchedulePhase::Done | SchedulePhase::Failed))
+        .count();
+    if active > MAX_SCHEDULE_CLAIMS {
+        return Err(crate::error::AtlasError::Platform(format!(
+            "scheduled add-on recovery history has {active} active claims; refusing to evict live state"
+        )));
+    }
+    let keep_terminal = MAX_SCHEDULE_CLAIMS - active;
+    let mut terminal = runs
+        .claims
+        .iter()
+        .filter(|(_, claim)| matches!(claim.phase, SchedulePhase::Done | SchedulePhase::Failed))
+        .map(|(key, claim)| (key.clone(), claim.reserved_at))
+        .collect::<Vec<_>>();
+    terminal.sort_by_key(|(key, reserved_at)| (*reserved_at, key.clone()));
+    let remove = terminal.len().saturating_sub(keep_terminal);
+    for (key, _) in terminal.into_iter().take(remove) {
+        runs.claims.remove(&key);
+    }
+    Ok(())
 }
 
 /// Is a schedule due, given when it last ran? `None` last run means it has
@@ -1911,8 +1973,8 @@ fn prepare_changes(store: &Store, dir: &Path) -> Result<(Vec<SyncChange>, Announ
             if !id_ok(&id) {
                 continue;
             }
-            if let Ok(text) = std::fs::read_to_string(e.path().join(MANIFEST_FILE)) {
-                if text.len() as u64 <= MAX_MANIFEST_BYTES {
+            if let Ok(bytes) = read_manifest_bytes(&e.path().join(MANIFEST_FILE)) {
+                if let Ok(text) = String::from_utf8(bytes) {
                     let sha = fingerprint(text.as_bytes());
                     if told.removed_files.get(&id) != Some(&sha) {
                         told.removed_files.remove(&id);
@@ -2061,7 +2123,12 @@ pub fn take_synced_versioned(
             let c = parse_and_check(value, Some(id), commands)
                 .map_err(|status| format!("Add-on change refused: {}", status.plain()))?;
             let path = dir.join(id).join(MANIFEST_FILE);
-            if std::fs::read_to_string(&path).ok().as_deref() == Some(value) {
+            if read_manifest_bytes(&path)
+                .ok()
+                .and_then(|bytes| String::from_utf8(bytes).ok())
+                .as_deref()
+                == Some(value)
+            {
                 told.files
                     .insert(id.to_string(), fingerprint(value.as_bytes()));
                 told.removed_files.remove(id);
@@ -2092,7 +2159,7 @@ pub fn take_synced_versioned(
         }
         "revoked" | "removed" => {
             if field == "removed" {
-                if let Ok(bytes) = std::fs::read(dir.join(id).join(MANIFEST_FILE)) {
+                if let Ok(bytes) = read_manifest_bytes(&dir.join(id).join(MANIFEST_FILE)) {
                     told.removed_files
                         .insert(id.to_string(), fingerprint(&bytes));
                 }
@@ -2532,6 +2599,27 @@ flows:
     }
 
     #[test]
+    fn corrupt_plugin_decision_journals_fail_closed_without_unbounded_loads() {
+        let (dir, store) = scratch("corrupt-decisions");
+        let state = store.root().join("state");
+        std::fs::create_dir_all(&state).unwrap();
+        std::fs::write(state.join(format!("{APPROVALS}.json")), b"{not-json").unwrap();
+        std::fs::write(state.join(format!("{OFFERS}.json")), b"{not-json").unwrap();
+
+        assert!(Approvals::load(&store).plugins.is_empty());
+        assert!(Offers::load(&store).items.is_empty());
+        assert_eq!(
+            std::fs::read(state.join(format!("{APPROVALS}.json"))).unwrap(),
+            b"{not-json"
+        );
+        assert_eq!(
+            std::fs::read(state.join(format!("{OFFERS}.json"))).unwrap(),
+            b"{not-json"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn an_unreadable_approvals_record_approves_nothing() {
         let (dir, store) = scratch("corrupt");
         put(&dir, "morning-markets", GOOD);
@@ -2812,6 +2900,38 @@ flows:
         );
         assert!(read_schedule("daily at 25:00").is_err());
         assert!(read_schedule("whenever").is_err());
+    }
+
+    #[test]
+    fn schedule_history_bound_keeps_active_claims_and_newest_receipts() {
+        let workflow = Workflow {
+            name: "work".into(),
+            triggers: Vec::new(),
+            steps: vec![crate::flow::Step::new("work")],
+        };
+        let claim = |phase: SchedulePhase, reserved_at: u64| ScheduleClaim {
+            schedule_key: "addon/work".into(),
+            plugin: "addon".into(),
+            approved_sha256: "hash".into(),
+            workflow: workflow.clone(),
+            reserved_at,
+            phase,
+            run: None,
+        };
+        let mut runs = ScheduleRuns::default();
+        for n in 0..MAX_SCHEDULE_CLAIMS {
+            runs.claims
+                .insert(format!("old-{n}"), claim(SchedulePhase::Done, n as u64));
+        }
+        runs.claims
+            .insert("active".into(), claim(SchedulePhase::InFlight, u64::MAX));
+
+        bound_schedule_claims(&mut runs).unwrap();
+
+        assert_eq!(runs.claims.len(), MAX_SCHEDULE_CLAIMS);
+        assert!(runs.claims.contains_key("active"));
+        assert!(!runs.claims.contains_key("old-0"));
+        assert!(runs.claims.contains_key("old-1022"));
     }
 
     #[test]

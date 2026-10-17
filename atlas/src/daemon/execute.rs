@@ -111,7 +111,7 @@ impl<'a> Daemon<'a> {
         let t = crate::store::now();
         if self.used.record(kind_of(intent), t) && t.saturating_sub(self.used_saved) >= 60 {
             self.used_saved = t;
-            let _ = self.store.save(crate::used::KEY, &self.used);
+            crate::kept!(self.store.save(crate::used::KEY, &self.used));
         }
         let said = self.execute_inner(intent);
         // Say how sure it is, where being wrong would matter. Answers that
@@ -158,7 +158,7 @@ impl<'a> Daemon<'a> {
             || said.contains("isn't built")
             || said.contains("switched off");
         self.earned.note(kind, !went_wrong, &said, clock());
-        let _ = self.earned.save(&self.store);
+        crate::kept!(self.earned.save(&self.store));
 
         if let Some((what, area, undo)) = worth_recording(intent, &said) {
             let now = std::time::SystemTime::now()
@@ -254,10 +254,8 @@ impl<'a> Daemon<'a> {
             // it is the only way to answer "is the local model good enough"
             // with a measurement rather than an opinion.
             Intent::ModelTrace => crate::nudge::trace_line(&self.trace),
-            // The caller `council.rs` never had. Everything in that module
-            // decided what to do with a list of opinions; nothing ever built
-            // one, so `tally`, `Verdict` and `spoken` all computed over a list
-            // only a test had filled.
+            // The council handler drives the production blind/open/retest
+            // flow and records the resulting outcome for the user.
             Intent::AskTheRoom(q) => self.ask_the_room(q),
             // The callers `revise.rs` never had.
             // The whole sentence, not the intent's argument: the parser
@@ -953,7 +951,7 @@ impl<'a> Daemon<'a> {
                         self.memory.prefer("called", n)
                     }
                 }
-                let _ = self.memory.save(&self.store);
+                crate::kept!(self.memory.save(&self.store));
                 reply
             }
             None => "I didn't catch a name or title in that.".into(),
@@ -1068,7 +1066,7 @@ impl<'a> Daemon<'a> {
             // (`Rhythm::quiet_hour` needs days to go on) — and kept,
             // since it was forgotten at every restart.
             self.rhythm.note_day();
-            let _ = self.store.save("rhythm", &self.rhythm);
+            crate::kept!(self.store.save("rhythm", &self.rhythm));
             // "You're usually done by …" — when it's first worked out,
             // and again only when your hours have really moved (F2).
             if let (Some(h), Some(line)) = (self.rhythm.quiet_hour(), self.rhythm.noticed()) {
@@ -1076,7 +1074,7 @@ impl<'a> Daemon<'a> {
                 if crate::daily::worth_saying_again(h, last, now) {
                     said.push_str(&line);
                     said.push(' ');
-                    let _ = self.store.save("rhythm_said", &Some((h, now)));
+                    crate::kept!(self.store.save("rhythm_said", &Some((h, now))));
                 }
             }
             // Archived rather than discarded, so there is finally
@@ -1084,7 +1082,7 @@ impl<'a> Daemon<'a> {
             // hourly sweep below.
             self.daily_history.retain(|c| c.day != closed.day);
             self.daily_history.push(closed);
-            let _ = self.store.save("daily_history", &self.daily_history);
+            crate::kept!(self.store.save("daily_history", &self.daily_history));
         }
 
         said.push_str(&crate::workspace_view::spoken(&self.workspace, now));
@@ -1294,7 +1292,7 @@ impl<'a> Daemon<'a> {
 
     fn on_undo(&mut self) -> String {
         self.earned.taken_back();
-        let _ = self.earned.save(&self.store);
+        crate::kept!(self.earned.save(&self.store));
         // "Undo" means the last thing that CAN be taken back.
         // `Undo::possible` existed to ask exactly that and nothing
         // asked it: when the newest action was irreversible, the
@@ -1403,7 +1401,7 @@ impl<'a> Daemon<'a> {
         if leaving && self.modes.active().is_some() {
             return match self.modes.leave() {
                 Some(t) => {
-                    let _ = self.modes.save(&self.store);
+                    crate::kept!(self.modes.save(&self.store));
                     t.say
                 }
                 None => "You're not in a mode.".into(),
@@ -1905,7 +1903,9 @@ impl<'a> Daemon<'a> {
             // capability records whether it needs the network;
             // `offline_count` is the join, and the honest answer is a
             // count rather than a promise.
-            let (offline, total) = crate::capability::offline_count();
+            let (offline, total) = crate::capability::offline_count_for(
+                self.tools_ref().is_some_and(|tools| tools.research.enabled),
+            );
             format!("{offline} of {total} things work with the network unplugged.")
         } else if w.contains("in detail")
             || w.contains("full list")
@@ -1922,7 +1922,11 @@ impl<'a> Daemon<'a> {
             // "N things work right now"; someone asking to see the list
             // wants the list, grouped by area with a legend, which is
             // exactly what `full` builds and nothing until now called.
-            crate::capability::full()
+            if self.tools_ref().is_some_and(|tools| tools.research.enabled) {
+                crate::capability::full_for(true)
+            } else {
+                crate::capability::full()
+            }
         } else if w.contains("finish")
             || w.contains("to build")
             || w.contains("still to build")
@@ -1935,7 +1939,9 @@ impl<'a> Daemon<'a> {
             // `capability::to_finish_report` is that view and nothing
             // until now called it -- the self-finishing picture a person
             // actually means by "what's left".
-            crate::capability::to_finish_report()
+            crate::capability::to_finish_report_for(
+                self.tools_ref().is_some_and(|tools| tools.research.enabled),
+            )
         } else if w.contains("right now")
             || w.contains("working")
             || w.contains("work now")
@@ -1950,7 +1956,9 @@ impl<'a> Daemon<'a> {
             // until now asked it -- the question fell through to the
             // keyword match and came back "I don't have anything for
             // that."
-            let working = crate::capability::working();
+            let working = crate::capability::working_for(
+                self.tools_ref().is_some_and(|tools| tools.research.enabled),
+            );
             if working.is_empty() {
                 "Nothing's usable right now.".into()
             } else {
@@ -1980,7 +1988,9 @@ impl<'a> Daemon<'a> {
                 )
             }
         } else if w.is_empty() || w.contains("what can you") || w.contains("everything") {
-            crate::capability::summary()
+            crate::capability::summary_for(
+                self.tools_ref().is_some_and(|tools| tools.research.enabled),
+            )
         } else if w.contains("new") {
             let recent = crate::capability::since(17);
             match recent.first() {
@@ -2002,7 +2012,7 @@ impl<'a> Daemon<'a> {
             let research = self.tools_cfg().research.enabled;
             // The capabilities tool may name an entry by its id
             // ("vision"): that entry's own state.
-            match crate::capability::can(w.trim()).filter(|_| w.trim() != "research") {
+            match crate::capability::can_for(w.trim(), research).filter(|_| w.trim() != "research") {
                 Some((_, why)) => why,
                 None => match crate::capability::answer_can(what, research) {
                     Some(a) => a,
@@ -2507,7 +2517,7 @@ impl<'a> Daemon<'a> {
         // no production writer at all before this.
         if let Some(p) = &spoken.project {
             self.memory.touch_project(p, None);
-            let _ = self.memory.save(&self.store);
+            crate::kept!(self.memory.save(&self.store));
             // If it names a project Atlas is tracking in the workshop,
             // the capture is also an outstanding task for that project
             // — so it shows up in that project's window, not just as a
@@ -2516,7 +2526,7 @@ impl<'a> Daemon<'a> {
             if self.workshop.resolve(p).is_some() {
                 let task = spoken.title.clone().unwrap_or_else(|| text.to_owned());
                 self.workshop.add_task(p, &task, now);
-                let _ = self.workshop.save(&self.store);
+                crate::kept!(self.workshop.save(&self.store));
             }
         }
         if spoken.is_a_whole_item() {
@@ -2579,7 +2589,7 @@ impl<'a> Daemon<'a> {
                 // stated. See facts::Book::trim.
                 self.facts.learn(crate::facts::Fact::stated(text, now), now);
                 self.facts.trim(crate::facts::MEMORY_BUDGET_BYTES, now);
-                let _ = self.facts.save(&self.store);
+                crate::kept!(self.facts.save(&self.store));
             }
             // "Turn tasks into outstanding items automatically" --
             // `tasks_become_work` ships `true` and was read by
@@ -2601,7 +2611,7 @@ impl<'a> Daemon<'a> {
                     crate::backlog::Blocker::Unsupported("do that one for you".into()),
                     now,
                 );
-                let _ = self.backlog.save(&self.store);
+                crate::kept!(self.backlog.save(&self.store));
             }
             match spoken.worth_asking() {
                 // One question, and only when it would turn a note
@@ -2976,6 +2986,12 @@ impl<'a> Daemon<'a> {
         } else {
             self.refresh_signals();
             let recs = crate::selfaudit::recommend(&self.signals, cfg.most_at_once);
+            crate::kept!(crate::selfaudit::record_inspection(
+                &self.store,
+                &self.signals,
+                &recs,
+                crate::store::now(),
+            ));
             let mut said = crate::selfaudit::spoken(&recs);
             // The hollow check, actually run.
             //

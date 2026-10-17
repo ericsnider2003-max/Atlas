@@ -9,6 +9,7 @@ use crate::error::Result;
 use crate::store::{now, Store};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,6 +22,46 @@ pub enum AssetClass {
     Code,
     Archive,
     Other,
+}
+
+fn read_enrichment_text(path: &Path, max_bytes: u64) -> std::io::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > max_bytes {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "indexed text exceeds the enrichment limit",
+        ));
+    }
+    let mut text = String::new();
+    file.take(max_bytes + 1).read_to_string(&mut text)?;
+    if text.len() as u64 > max_bytes {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "indexed text grew past the enrichment limit while reading",
+        ));
+    }
+    Ok(text)
+}
+
+fn read_enrichment_archive(path: &Path, max_bytes: u64) -> std::io::Result<Vec<u8>> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > max_bytes {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "indexed archive exceeds the enrichment limit",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(max_bytes + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "indexed archive grew past the enrichment limit while reading",
+        ));
+    }
+    Ok(bytes)
 }
 
 impl AssetClass {
@@ -348,7 +389,7 @@ impl Index {
         // before anything is inflated — the text files they hold.
         let mut sources: Vec<(&Entry, String, Option<String>)> = Vec::new();
         for e in candidates {
-            if let Ok(text) = std::fs::read_to_string(&e.path) {
+            if let Ok(text) = read_enrichment_text(Path::new(&e.path), cap) {
                 sources.push((e, text, None));
             }
         }
@@ -357,7 +398,7 @@ impl Index {
                 && e.name.to_lowercase().ends_with(".zip")
                 && e.size <= cap
         }) {
-            let Ok(bytes) = std::fs::read(&e.path) else {
+            let Ok(bytes) = read_enrichment_archive(Path::new(&e.path), cap) else {
                 continue;
             };
             let Ok(members) =

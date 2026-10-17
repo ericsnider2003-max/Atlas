@@ -66,7 +66,11 @@ const MAX_APPROVALS: usize = 500;
 
 impl Memory {
     pub fn load(store: &Store) -> Memory {
-        store.load("memory")
+        store
+            .load_checked_bounded("memory", 8 * 1_048_576)
+            .ok()
+            .flatten()
+            .unwrap_or_default()
     }
     pub fn save(&self, store: &Store) -> Result<()> {
         store.save("memory", self)

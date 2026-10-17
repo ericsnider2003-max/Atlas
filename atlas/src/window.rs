@@ -22,6 +22,9 @@
 //! branch. It also means a crash in the window cannot take Atlas down.
 
 use serde::{Deserialize, Serialize};
+use std::io::Read;
+
+const MAX_STAGED_PANEL_BYTES: u64 = 1024 * 1024;
 
 /// Which of the four things this is. The kind decides the styling and whether
 /// the window insists on being seen.
@@ -160,7 +163,23 @@ pub fn stage(c: &Contents) -> std::io::Result<std::path::PathBuf> {
 }
 
 pub fn read_staged(path: &std::path::Path) -> std::io::Result<Contents> {
-    let text = std::fs::read_to_string(path)?;
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_STAGED_PANEL_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "staged panel exceeds the 1 MiB read budget",
+        ));
+    }
+    let mut text = String::new();
+    file.take(MAX_STAGED_PANEL_BYTES + 1)
+        .read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_STAGED_PANEL_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "staged panel exceeds the 1 MiB read budget",
+        ));
+    }
     serde_json::from_str(&text).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 

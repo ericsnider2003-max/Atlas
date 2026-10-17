@@ -203,6 +203,67 @@ impl Daemon<'_> {
             });
             drops.blocked.push(Some(format!("t:{}", task.id)));
         }
+        // Generic durable jobs have no safe automatic retry after a process
+        // restart. Keep their uncertain receipt visible in the same blocked
+        // lane, but intentionally do not add a dismiss key: the owner must
+        // inspect the real-world outcome before it can leave the page.
+        const STALE_AFTER_SECS: u64 = 15 * 60;
+        let now = crate::store::now();
+        let durable_jobs = match crate::job::load_checked(&self.store) {
+            Ok(jobs) => jobs,
+            Err(error) => {
+                blocked.push(hub::Stopped {
+                    what: "durable job journal".into(),
+                    tried: "Read the saved job receipts.".into(),
+                    stopped: format!("The saved job state could not be read: {error}"),
+                    needs: "Inspect the preserved job file before asking Atlas to retry work."
+                        .into(),
+                    area: None,
+                });
+                Vec::new()
+            }
+        };
+        for job in durable_jobs.into_iter().filter(|job| {
+            job.state == crate::job::State::Uncertain || job.stale(now, STALE_AFTER_SECS)
+        }) {
+            let stale = job.state != crate::job::State::Uncertain;
+            let artifact_note = job
+                .artifacts
+                .as_ref()
+                .map(|envelope| {
+                    format!(
+                        " Artifact edges recorded: {} input, {} output, {} dependencies.",
+                        envelope.input.len(),
+                        envelope.output.len(),
+                        envelope.depends_on.len()
+                    )
+                })
+                .unwrap_or_default();
+            blocked.push(hub::Stopped {
+                what: format!("{} job ({})", job.stage, job.job_id),
+                tried: format!("Started the {} job.", job.stage),
+                stopped: job
+                    .receipt
+                    .as_ref()
+                    .map(|receipt| format!("{}{artifact_note}", receipt.detail))
+                    .unwrap_or_else(|| {
+                        if stale {
+                            format!(
+                                "No durable progress has been recorded recently.{artifact_note}"
+                            )
+                        } else {
+                            format!("The previous outcome is uncertain.{artifact_note}")
+                        }
+                    }),
+                needs: if stale {
+                    "Check the worker before asking Atlas to try it again; it may still be running."
+                        .into()
+                } else {
+                    "Check the previous result before asking Atlas to try it again.".into()
+                },
+                area: None,
+            });
+        }
         for t in self.queue.tasks.iter().filter(|t| {
             !matches!(
                 t.state,

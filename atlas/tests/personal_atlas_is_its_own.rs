@@ -31,7 +31,10 @@ fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
         if matches!(
             name,
             "target" | "build" | ".gradle" | ".cxx" | "rustlib" | "node_modules" | ".git"
-        ) {
+        ) || name.starts_with("target_")
+            || name.starts_with("wt-")
+            || name == ".claude"
+        {
             continue;
         }
         // The checkout's scratch (tests' and builds' temp files, ignored by
@@ -888,7 +891,14 @@ fn everything() -> Vec<std::path::PathBuf> {
         for e in entries.flatten() {
             let p = e.path();
             let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if p == crate_dir || name == ".git" || name == "target" {
+            if p == crate_dir
+                || matches!(
+                    name,
+                    ".git" | "target" | "roundtrip" | ".claude" | "wt-install-23bff923"
+                )
+                || name.starts_with("target_")
+                || name.starts_with("wt-")
+            {
                 continue;
             }
             if p.is_dir() {

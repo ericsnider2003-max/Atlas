@@ -986,13 +986,34 @@ pub fn now() -> u64 {
 /// of Atlas empty (28 Sep 2026).
 const READ_TRIES: u32 = 5;
 const READ_PAUSE_MS: u64 = 100;
+const MAX_LOAD_BYTES: u64 = 16 * 1024 * 1024;
 
 /// `read_to_string`, tried again a few times when the file is there but
 /// locked. A missing file is answered at once.
 fn read_with_patience(path: &std::path::Path) -> std::io::Result<String> {
     let mut last = None;
     for attempt in 0..READ_TRIES {
-        match std::fs::read_to_string(path) {
+        let result = (|| {
+            let file = std::fs::File::open(path)?;
+            let metadata = file.metadata()?;
+            if !metadata.is_file() || metadata.len() > MAX_LOAD_BYTES {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "state file exceeds the load budget",
+                ));
+            }
+            let mut text = String::new();
+            use std::io::Read;
+            file.take(MAX_LOAD_BYTES + 1).read_to_string(&mut text)?;
+            if text.len() as u64 > MAX_LOAD_BYTES {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "state file exceeds the load budget",
+                ));
+            }
+            Ok(text)
+        })();
+        match result {
             Ok(t) => return Ok(t),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(e),
             // Bytes that aren't text won't become text by waiting.
@@ -1309,6 +1330,8 @@ mod install_root_tests {
 
 #[cfg(test)]
 mod read_json_tests {
+    use super::Store;
+
     #[test]
     fn a_damaged_file_is_set_aside_and_a_good_one_is_read() {
         let dir = std::env::temp_dir().join(format!("atlas-damaged-json-{}", std::process::id()));
@@ -1338,6 +1361,27 @@ mod read_json_tests {
                 .any(|n| n.starts_with("list.json.corrupt.") && n.ends_with(".bak")),
             "{kept:?}"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_oversized_store_load_is_preserved_without_reading_unbounded_input() {
+        let dir = std::env::temp_dir().join(format!("atlas-oversized-load-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(&dir);
+        let path = dir.join("oversized.json");
+        let bytes = vec![b'x'; (super::MAX_LOAD_BYTES + 1) as usize];
+        std::fs::write(&path, bytes).unwrap();
+
+        let value: Vec<u8> = store.load("oversized");
+
+        assert!(value.is_empty());
+        assert!(!path.exists());
+        assert!(std::fs::read_dir(&dir).unwrap().flatten().any(|entry| entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("oversized.unreadable.")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

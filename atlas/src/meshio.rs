@@ -17,7 +17,51 @@
 //!
 //! Nothing here draws: `scene3d` places a [`Mesh`] like any other shape.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
+
+const MAX_MTL_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_MODEL_BYTES: u64 = 512 * 1024 * 1024;
+
+fn read_bounded_model(path: &Path) -> std::io::Result<Vec<u8>> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_MODEL_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "model file exceeds the 512 MiB limit",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_MODEL_BYTES + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_MODEL_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "model file grew past the 512 MiB limit while reading",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn read_bounded_mtl(path: &Path) -> std::io::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_MTL_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "MTL sidecar exceeds the 16 MiB limit",
+        ));
+    }
+    let mut text = String::new();
+    file.take(MAX_MTL_BYTES + 1).read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_MTL_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "MTL sidecar grew past the 16 MiB limit while reading",
+        ));
+    }
+    Ok(text)
+}
 
 pub type V = [f64; 3];
 
@@ -440,7 +484,7 @@ pub fn read_obj(text: &str, dir: Option<&Path>) -> Result<Mesh, String> {
             "mtllib" => {
                 if let Some(dir) = dir {
                     let file = dir.join(rest.join(" "));
-                    if let Ok(mtl) = std::fs::read_to_string(&file) {
+                    if let Ok(mtl) = read_bounded_mtl(&file) {
                         let mut name: Option<String> = None;
                         for l in mtl.lines() {
                             let l = l.trim();
@@ -784,7 +828,7 @@ pub fn read_gltf(bytes: &[u8], dir: Option<&Path>) -> Result<Mesh, String> {
                     dir.ok_or("the glTF names a buffer file but there's no folder to find it in")?;
                 let path = d.join(uri.replace("%20", " "));
                 buffers.push(
-                    std::fs::read(&path)
+                    read_bounded_model(&path)
                         .map_err(|e| format!("couldn't read {}: {e}", path.display()))?,
                 );
             }
@@ -882,7 +926,7 @@ pub fn read_gltf(bytes: &[u8], dir: Option<&Path>) -> Result<Mesh, String> {
 /// Read a model by its extension: `.obj`, `.stl`, `.gltf`, `.glb`.
 pub fn read_model(path: &Path) -> Result<Mesh, String> {
     let bytes =
-        std::fs::read(path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
+        read_bounded_model(path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
     let dir = path.parent();
     match path
         .extension()

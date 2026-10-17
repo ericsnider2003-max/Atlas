@@ -508,6 +508,7 @@ fn the_icon_and_the_hub_say_pause_turns_the_microphone_off() {
 
 // ================= 2. cutting in by voice =================
 
+#[cfg(feature = "onnx")]
 fn probs(det: &mut dyn VoiceDetector, s: &[i16]) -> Vec<f32> {
     s.chunks_exact(micthread::WINDOW)
         .map(|w| det.speech(w).unwrap_or(0.0))
@@ -515,6 +516,7 @@ fn probs(det: &mut dyn VoiceDetector, s: &[i16]) -> Vec<f32> {
 }
 
 #[test]
+#[cfg(feature = "onnx")]
 fn silero_runs_through_tract_and_tells_speech_from_noise() {
     let (mut det, why) = micthread::detector_for(Some(&silero()));
     assert_eq!(why, None, "the Silero model should load here");
@@ -536,6 +538,7 @@ fn silero_runs_through_tract_and_tells_speech_from_noise() {
 }
 
 #[test]
+#[cfg(feature = "onnx")]
 fn a_missing_or_broken_model_falls_back_to_atlas_own_detector() {
     let (det, why) =
         micthread::detector_for(Some(Path::new("tests/fixtures/silero/not-here.onnx")));

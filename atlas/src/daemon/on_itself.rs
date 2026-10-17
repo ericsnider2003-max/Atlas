@@ -169,11 +169,11 @@ impl<'a> Daemon<'a> {
                     at: t,
                 },
             );
-            let _ = self.store.save(crate::regressions::FILE, &cases);
+            crate::kept!(self.store.save(crate::regressions::FILE, &cases));
         }
         let c = crate::revise::Correction::new(about, did, t, session).wanting(wanted);
         let earned = self.mending.heard(c);
-        let _ = self.store.save("mending", &self.mending);
+        crate::kept!(self.store.save("mending", &self.mending));
 
         match earned {
             Some(edit) => {
@@ -859,7 +859,7 @@ impl<'a> Daemon<'a> {
             self.next_sweep_look = t + 3600;
             return;
         }
-        let _ = self.store.save("mutation_sweep_at", &t);
+        crate::kept!(self.store.save("mutation_sweep_at", &t));
         let mut files: Vec<String> = std::fs::read_dir(root.join("src"))
             .map(|rd| {
                 rd.flatten()
@@ -874,7 +874,7 @@ impl<'a> Daemon<'a> {
         }
         let next: usize = self.store.load("mutation_sweep_next");
         let file = format!("src/{}", files[next % files.len()]);
-        let _ = self.store.save("mutation_sweep_next", &(next + 1));
+        crate::kept!(self.store.save("mutation_sweep_next", &(next + 1)));
         let store = self.store.clone();
         let work: crate::crew::Work = Box::new(move |_c: &crate::crew::Control| {
             if !crate::mutation::available(&root) {

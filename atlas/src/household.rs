@@ -580,7 +580,7 @@ pub fn take_invitation(folder: &std::path::Path, code: &str, now: u64) -> Result
         if path.extension().and_then(|x| x.to_str()) != Some("invite") {
             continue;
         }
-        let Ok(raw) = std::fs::read_to_string(&path) else {
+        let Some(raw) = read_invitation_file(&path) else {
             continue;
         };
         let Ok(env) = serde_json::from_str::<Invitation>(&raw) else {
@@ -627,8 +627,7 @@ pub fn sweep_invitations(folder: &std::path::Path, now: u64) -> usize {
         if p.extension().and_then(|x| x.to_str()) != Some("invite") {
             continue;
         }
-        let stale = std::fs::read_to_string(&p)
-            .ok()
+        let stale = read_invitation_file(&p)
             .and_then(|raw| serde_json::from_str::<Invitation>(&raw).ok())
             .map(|env| now.saturating_sub(env.made_at) > env.valid_secs)
             .unwrap_or(true);
@@ -637,4 +636,20 @@ pub fn sweep_invitations(folder: &std::path::Path, now: u64) -> usize {
         }
     }
     gone
+}
+
+const MAX_INVITATION_BYTES: u64 = 1024 * 1024;
+
+fn read_invitation_file(path: &std::path::Path) -> Option<String> {
+    use std::io::Read;
+    let file = std::fs::File::open(path).ok()?;
+    let metadata = file.metadata().ok()?;
+    if !metadata.is_file() || metadata.len() > MAX_INVITATION_BYTES {
+        return None;
+    }
+    let mut raw = String::new();
+    file.take(MAX_INVITATION_BYTES + 1)
+        .read_to_string(&mut raw)
+        .ok()?;
+    (raw.len() as u64 <= MAX_INVITATION_BYTES).then_some(raw)
 }

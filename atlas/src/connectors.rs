@@ -6,7 +6,10 @@
 //! handshake, a bare hostname. A bank (finance) can only ever be read.
 
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 use std::path::Path;
+
+const MAX_CUSTOM_CONNECTOR_BYTES: u64 = 1024 * 1024;
 use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -180,7 +183,19 @@ pub fn your_connectors(dir: &Path) -> (Vec<Connector>, Vec<String>) {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let text = match std::fs::read_to_string(&p) {
+        let text = match std::fs::File::open(&p).and_then(|file| {
+            let metadata = file.metadata()?;
+            if !metadata.is_file() || metadata.len() > MAX_CUSTOM_CONNECTOR_BYTES {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "connector file exceeds 1 MiB",
+                ));
+            }
+            let mut text = String::new();
+            file.take(MAX_CUSTOM_CONNECTOR_BYTES + 1)
+                .read_to_string(&mut text)?;
+            Ok(text)
+        }) {
             Ok(t) => t,
             Err(e) => {
                 refused.push(format!("{name}: I couldn't open it ({e})."));

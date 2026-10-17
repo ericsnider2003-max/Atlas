@@ -18,6 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 
@@ -26,6 +27,28 @@ pub const FILE: &str = "social_snapshots.jsonl";
 /// The most lines read back. At a hundred posts a day for three years this
 /// is not reached; past it the oldest are left on disk, unread, and said.
 pub const MAX_LINES: usize = 400_000;
+const MAX_SNAPSHOT_BYTES: u64 = 64 * 1024 * 1024;
+
+fn read_snapshot(path: &Path) -> std::io::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_SNAPSHOT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "social snapshot exceeds the 64 MiB limit",
+        ));
+    }
+    let mut text = String::new();
+    file.take(MAX_SNAPSHOT_BYTES + 1)
+        .read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_SNAPSHOT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "social snapshot grew past the 64 MiB limit while reading",
+        ));
+    }
+    Ok(text)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -297,7 +320,7 @@ impl Book {
 
     pub fn load(path: &Path) -> Book {
         let mut b = Book::default();
-        let Ok(text) = std::fs::read_to_string(path) else {
+        let Ok(text) = read_snapshot(path) else {
             return b;
         };
         let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();

@@ -12,10 +12,12 @@
 //! The tokenizer is copied from `embed/src/main.rs`, tests and all.
 
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::Path;
 use tract_onnx::prelude::*;
 
 const MAX_TOKENS: usize = 256;
+const MAX_VOCAB_BYTES: u64 = 16 * 1024 * 1024;
 const CLS: &str = "[CLS]";
 const SEP: &str = "[SEP]";
 const UNK: &str = "[UNK]";
@@ -52,7 +54,18 @@ impl Native {
         if !m.exists() || !v.exists() {
             return None;
         }
-        let raw = std::fs::read_to_string(&v).ok()?;
+        let file = std::fs::File::open(&v).ok()?;
+        let metadata = file.metadata().ok()?;
+        if !metadata.is_file() || metadata.len() > MAX_VOCAB_BYTES {
+            return None;
+        }
+        let mut raw = String::new();
+        file.take(MAX_VOCAB_BYTES + 1)
+            .read_to_string(&mut raw)
+            .ok()?;
+        if raw.len() as u64 > MAX_VOCAB_BYTES {
+            return None;
+        }
         let vocab = raw
             .lines()
             .enumerate()

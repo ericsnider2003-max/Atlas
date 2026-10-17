@@ -13,6 +13,8 @@ use crate::error::Result;
 use crate::store::Store;
 use serde::{Deserialize, Serialize};
 
+const MAX_CLIENTS_BYTES: u64 = 8 * 1_048_576;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Client {
     pub address: String,
@@ -46,11 +48,17 @@ pub struct ClientList {
 
 impl ClientList {
     pub fn load(store: &Store) -> ClientList {
-        store.load("clients")
+        store
+            .load_checked_bounded("clients", MAX_CLIENTS_BYTES)
+            .ok()
+            .flatten()
+            .unwrap_or_default()
     }
 
     pub fn load_checked(store: &Store) -> Result<ClientList> {
-        Ok(store.load_checked("clients")?.unwrap_or_default())
+        Ok(store
+            .load_checked_bounded("clients", MAX_CLIENTS_BYTES)?
+            .unwrap_or_default())
     }
 
     /// Read the current list inside the state cohort and only report a

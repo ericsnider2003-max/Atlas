@@ -247,6 +247,65 @@ pub fn as_thought(r: &Recommendation) -> crate::pipeline::Thought {
     }
 }
 
+/// Persist the inspection itself, separately from any later owner-approved
+/// self-change. This makes system review observable without claiming that a
+/// recommendation was applied.
+pub fn record_inspection(
+    store: &crate::store::Store,
+    signals: &[Signal],
+    recommendations: &[Recommendation],
+    observed_at: u64,
+) -> crate::error::Result<String> {
+    let job_id = format!("self-audit-{observed_at}");
+    let inputs = signals
+        .iter()
+        .take(crate::artifact::MAX_ARTIFACTS)
+        .enumerate()
+        .map(|(index, _)| {
+            crate::artifact::ArtifactRef::new(
+                format!("self-audit-signal-{index}"),
+                "system_signal",
+                None,
+            )
+            .map_err(crate::error::AtlasError::Config)
+        })
+        .collect::<crate::error::Result<Vec<_>>>()?;
+    let output = crate::artifact::ArtifactRef::new(
+        format!("self-audit-report:{job_id}"),
+        "system_review",
+        None,
+    )
+    .map_err(crate::error::AtlasError::Config)?;
+    let mut record = crate::job::Record::planned(job_id.clone(), "system review");
+    record.artifacts = Some(crate::artifact::Envelope {
+        input: inputs,
+        output: vec![output],
+        depends_on: Vec::new(),
+    });
+    record
+        .transition(crate::job::State::Running, "system review started")
+        .map_err(crate::error::AtlasError::Config)?;
+    crate::job::upsert(store, record.clone())?;
+    let detail = format!(
+        "observed {} signal(s), produced {} recommendation(s)",
+        signals.len(),
+        recommendations.len()
+    );
+    record
+        .finish(crate::job::State::Succeeded, detail, "local self-audit")
+        .map_err(crate::error::AtlasError::Config)?;
+    crate::job::upsert(store, record)?;
+    let evidence = crate::evidence::self_audit_outcome(
+        &job_id,
+        signals.len(),
+        recommendations.len(),
+        observed_at,
+    )
+    .map_err(crate::error::AtlasError::Config)?;
+    crate::evidence::upsert(store, evidence)?;
+    Ok(job_id)
+}
+
 // ============ looking without being asked ============
 //
 // Both `every_days` and `act_without_asking` were settings a person could

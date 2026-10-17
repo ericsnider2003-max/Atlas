@@ -1,0 +1,8 @@
+[env]
+# Keep Cargo, the compiler, linker, and Atlas tests inside the checkout's
+# ignored scratch directory. The crate's own config is not discovered when
+# Cargo is invoked from this repository root with --manifest-path.
+ATLAS_CLOCK_OFFSET = "0"
+TMPDIR = { value = "atlas/scratch", relative = true, force = true }
+TMP = { value = "atlas/scratch", relative = true, force = true }
+TEMP = { value = "atlas/scratch", relative = true, force = true }

@@ -211,6 +211,10 @@ pub fn who_said_what_grouped(
 
 /// 16-bit PCM from a WAV file (mono, or the channels averaged), and its rate.
 pub fn read_wav(bytes: &[u8]) -> Result<(Vec<i16>, u32), String> {
+    const MAX_WAV_BYTES: usize = 256 * 1024 * 1024;
+    if bytes.len() > MAX_WAV_BYTES {
+        return Err("WAV file exceeds the 256 MiB input limit".into());
+    }
     if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
         return Err("not a WAV file".into());
     }

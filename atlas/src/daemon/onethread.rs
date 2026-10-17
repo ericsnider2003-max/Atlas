@@ -228,7 +228,7 @@ impl Daemon<'_> {
             }
         }
         if later_version_changed {
-            let _ = self.store.save(crate::later::RECORD, &later);
+            crate::kept!(self.store.save(crate::later::RECORD, &later));
         }
         // Saved on the next tick, not inside the turn: the log grows with
         // every exchange, and writing it out is time the reply would wait.
@@ -278,7 +278,7 @@ impl Daemon<'_> {
                         }
                 }
                 if changed {
-                    let _ = self.store.save(ELSEWHERE_KEY, &rows);
+                    crate::kept!(self.store.save(ELSEWHERE_KEY, &rows));
                 }
             }
         }

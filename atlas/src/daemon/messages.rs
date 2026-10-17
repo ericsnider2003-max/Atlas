@@ -5,6 +5,30 @@
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
+use std::io::Read;
+
+const MAX_RELEASE_NOTICE_BYTES: u64 = 4 * 1024 * 1024;
+
+fn read_release_notice(path: &std::path::Path) -> std::io::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_RELEASE_NOTICE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "release notice exceeds the 4 MiB limit",
+        ));
+    }
+    let mut text = String::new();
+    file.take(MAX_RELEASE_NOTICE_BYTES + 1)
+        .read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_RELEASE_NOTICE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "release notice grew past the 4 MiB limit while reading",
+        ));
+    }
+    Ok(text)
+}
 
 impl<'a> Daemon<'a> {
     /// Open the door this daemon will check every tick. Not called unless
@@ -196,7 +220,7 @@ impl<'a> Daemon<'a> {
             self.peer_link(&pairings)
         };
         let members = self.chats.leave_group(&id);
-        let _ = self.chats.save(&self.store);
+        crate::kept!(self.chats.save(&self.store));
 
         let mut told = Vec::new();
         let mut unreached = Vec::new();
@@ -353,7 +377,7 @@ impl<'a> Daemon<'a> {
                     r.read_through = r.read_through.max(through);
                 }
             }
-            let _ = self.chats.save(&self.store);
+            crate::kept!(self.chats.save(&self.store));
             lines.join(". ")
         };
         if !no_link.is_empty() {
@@ -401,7 +425,7 @@ impl<'a> Daemon<'a> {
             } else {
                 format!("I wasn't keeping quiet about {topic}.")
             };
-            let _ = muted.save(&self.store);
+            crate::kept!(muted.save(&self.store));
             return said_back;
         }
         if let Some(topic) = crate::interrupt::mute_from(said) {
@@ -413,7 +437,7 @@ impl<'a> Daemon<'a> {
             } else {
                 format!("I was already keeping quiet about {topic}.")
             };
-            let _ = muted.save(&self.store);
+            crate::kept!(muted.save(&self.store));
             return said_back;
         }
         muted.spoken()
@@ -610,7 +634,7 @@ impl<'a> Daemon<'a> {
                 .post(&room, &body, now, local_offset_mins(), &roster, &pairings)
             {
                 Ok((msg, left_out)) => {
-                    let _ = self.chats.save(&self.store);
+                    crate::kept!(self.chats.save(&self.store));
                     let mut said = if msg.fully_arrived() {
                         format!("Told the group ({name}).")
                     } else {
@@ -702,7 +726,7 @@ impl<'a> Daemon<'a> {
             .post(&room, &body, now, offset, &roster, &pairings)
         {
             Ok((msg, left_out)) => {
-                let _ = self.chats.save(&self.store);
+                crate::kept!(self.chats.save(&self.store));
                 let mut said = if msg.fully_arrived() {
                     format!("Told {label}.")
                 } else {
@@ -947,7 +971,7 @@ impl<'a> Daemon<'a> {
                     held_at: clock(),
                     on_behalf_of: c.on_behalf_of.clone(),
                 });
-                let _ = groups.save(&self.store);
+                crate::kept!(groups.save(&self.store));
                 return;
             };
             let pairings = crate::kin::Pairings::load(&self.peer_dir);
@@ -1019,7 +1043,7 @@ impl<'a> Daemon<'a> {
             };
             match self.chats.receive_vouched(gid, msg) {
                 Ok(fresh) => {
-                    let _ = self.chats.save(&self.store);
+                    crate::kept!(self.chats.save(&self.store));
                     // As the owner: pass a member's message on to everyone
                     // else in the group, so members who aren't paired with
                     // each other still hear each other.
@@ -1044,7 +1068,7 @@ impl<'a> Daemon<'a> {
                                         on_behalf_of: None,
                                     },
                                 );
-                                let _ = groups.save(&self.store);
+                                crate::kept!(groups.save(&self.store));
                             }
                         }
                     }
@@ -1559,7 +1583,7 @@ impl<'a> Daemon<'a> {
             if what == "get" && attached.is_none() {
                 // Your yes, kept: the phone carries on fetching it on Wi-Fi
                 // after this, and never fetched it before (`phonemode`).
-                let _ = self.store.save(crate::phonemode::MODEL_ASKED_FOR, &true);
+                crate::kept!(self.store.save(crate::phonemode::MODEL_ASKED_FOR, &true));
                 let dir = crate::models::Registry::dir_for(&self.tools_cfg().models);
                 if let Some((path, m)) = crate::phonemodel::present(&dir) {
                     std::thread::spawn(move || {
@@ -1602,7 +1626,7 @@ impl<'a> Daemon<'a> {
             let how = tor.bridges.clone().unwrap_or_default();
             let known: String = self.store.load(TOR_BRIDGES);
             if known != how {
-                let _ = self.store.save(TOR_BRIDGES, &how);
+                crate::kept!(self.store.save(TOR_BRIDGES, &how));
                 if !how.is_empty() {
                     return Some(format!(
                         "Tor got through using {how} bridges -- this network blocks Tor, and friends can reach you again."
@@ -1657,7 +1681,7 @@ impl<'a> Daemon<'a> {
                 self.peer_tries.insert("tor:round".to_string(), t);
                 self.tor = None;
                 self.tor_connections.close_all();
-                let _ = self.store.save(TOR_BRIDGES, &String::new());
+                crate::kept!(self.store.save(TOR_BRIDGES, &String::new()));
                 self.tor = crate::onion::Tor::start(&binary, &dir, &me, door, &[]).ok();
                 Some(
                     "Tor couldn't get through on this network, even through its bridges. Friends on your home network \
@@ -2171,7 +2195,7 @@ impl<'a> Daemon<'a> {
                 sent_offset_mins: 0,
                 after: 0,
             });
-            let _ = groups.save(&self.store);
+            crate::kept!(groups.save(&self.store));
         }
     }
 
@@ -2483,7 +2507,7 @@ impl<'a> Daemon<'a> {
                 .post(gid, &line, clock(), local_offset_mins(), &roster, &pairings)
                 .is_ok()
             {
-                let _ = self.chats.save(&self.store);
+                crate::kept!(self.chats.save(&self.store));
             }
         }
     }
@@ -2534,7 +2558,7 @@ impl<'a> Daemon<'a> {
             &pairings,
         );
         self.settle_owned_groups();
-        let _ = self.chats.save(&self.store);
+        crate::kept!(self.chats.save(&self.store));
         let mut said = format!("\"{}\" now has an owner: you.", old.name);
         if !unkeyed.is_empty() {
             said.push_str(&format!(
@@ -2577,7 +2601,7 @@ impl<'a> Daemon<'a> {
             .post(&g, &line, clock(), local_offset_mins(), &roster, &pairings)
         {
             Ok(_) => {
-                let _ = self.chats.save(&self.store);
+                crate::kept!(self.chats.save(&self.store));
                 format!("Told {group} you recommend \"{name}\".")
             }
             Err(e) => e.plain(),
@@ -2615,7 +2639,7 @@ impl<'a> Daemon<'a> {
         let roster = crate::roster::Roster::load(&self.store);
         let mut posted = Vec::new();
         for f in files {
-            let Ok(text) = std::fs::read_to_string(&f) else {
+            let Ok(text) = read_release_notice(&f) else {
                 continue;
             };
             // A release notice, or a change of release key (`atlas release rotate`).
@@ -2652,7 +2676,7 @@ impl<'a> Daemon<'a> {
         if posted.is_empty() {
             return None;
         }
-        let _ = self.chats.save(&self.store);
+        crate::kept!(self.chats.save(&self.store));
         Some(format!(
             "Announced {} in your release channel.",
             posted.join(", ")
@@ -2711,7 +2735,7 @@ impl<'a> Daemon<'a> {
             }
         }
         if changed {
-            let _ = self.chats.save(&self.store);
+            crate::kept!(self.chats.save(&self.store));
         }
     }
 
@@ -2785,7 +2809,7 @@ impl<'a> Daemon<'a> {
             }
         }
         if told_changed {
-            let _ = self.store.save("peer_hello_told", &told);
+            crate::kept!(self.store.save("peer_hello_told", &told));
         }
         // A release heard about: its file, a few pieces a tick, from the Atlas
         // whose channel announced it -- or from any friend who already has it
@@ -3014,7 +3038,7 @@ impl<'a> Daemon<'a> {
             }
         }
         if delivered || passed {
-            let _ = groups.save(&self.store);
+            crate::kept!(groups.save(&self.store));
         }
     }
 
@@ -3060,7 +3084,7 @@ impl<'a> Daemon<'a> {
                     .is_some_and(|h| h.state.owner == me.public())
                     && groups.remove(&me, &l.group_id, &key).is_ok()
                 {
-                    let _ = groups.save(&self.store);
+                    crate::kept!(groups.save(&self.store));
                     self.settle_owned_groups();
                 }
             }

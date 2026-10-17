@@ -721,6 +721,9 @@ fn the_brief_is_held_until_you_come_back_rather_than_missed() {
 fn a_night_owls_day_ends_when_they_stop_rather_than_at_midnight() {
     // `rolls_at` is the middle of your longest quiet stretch, which `Rhythm`
     // works out. Nobody declares their hours.
+    // This is a UTC-anchored fixture; pin the process clock so the local-zone
+    // lookup cannot move the synthetic midnight under a parallel test run.
+    atlas::localclock::pin_offset(Some(0));
     let mut r = Rhythm::default();
     for _ in 0..20 {
         r.note_day();

@@ -50,6 +50,13 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: atlas
+      - name: Capability ledger matches generated catalogue
+        run: |
+          if test -f ../../replica/ATLAS_CAPABILITY_CLASSIFICATION.csv; then
+            python docs/validate_capability_ledger.py --ledger ../../replica/ATLAS_CAPABILITY_CLASSIFICATION.csv --catalog docs/CAPABILITIES.md
+          else
+            echo "::notice::Replica capability ledger is not present in this checkout; catalog self-consistency remains covered by the Rust catalogue guard."
+          fi
       - name: The whole suite and every guard target
         # The guard targets are separate binaries `--test all` doesn't run
         # (claude/INSTALL-LOCK.md). vad_thresholds needs the recorded corpus.
@@ -61,6 +68,7 @@ jobs:
           cargo test --locked --no-fail-fast
           --test all --test name_collisions --test one_word_is_not_an_address
           --test dead_capabilities --test new_capabilities_are_wired
+          --test settings_that_do_something_now
           --test hub_settings --test atlas_on_a_friends_machine
           --test every_command_end_to_end
           -- --skip vad_thresholds_are_the_measured_best

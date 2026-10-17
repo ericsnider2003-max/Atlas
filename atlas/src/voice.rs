@@ -7,7 +7,30 @@ use crate::error::{AtlasError, Result};
 use crate::tools::{ExternalTool, Vars};
 use serde::Deserialize;
 use std::collections::BTreeMap;
+use std::io::Read;
 use std::path::PathBuf;
+
+const MAX_VOICE_WAV_BYTES: u64 = 256 * 1024 * 1024;
+
+fn read_voice_wav(path: &std::path::Path) -> std::io::Result<Vec<u8>> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_VOICE_WAV_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "voice WAV exceeds the 256 MiB limit",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_VOICE_WAV_BYTES + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_VOICE_WAV_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "voice WAV grew past the 256 MiB limit while reading",
+        ));
+    }
+    Ok(bytes)
+}
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -728,7 +751,7 @@ impl<'a> Voice<'a> {
         }
         let in_wav = vars.get("in_wav").cloned().unwrap_or_default();
         let (mut audio_ms, mut level) = (0u32, 1.0f32);
-        if let Ok(bytes) = std::fs::read(&in_wav) {
+        if let Ok(bytes) = read_voice_wav(std::path::Path::new(&in_wav)) {
             if let Ok((samples, rate)) = crate::diarize::read_wav(&bytes) {
                 if rate > 0 {
                     audio_ms =
@@ -1201,7 +1224,10 @@ impl<'a> Voice<'a> {
     fn play_out(&self, vars: &Vars) -> Result<Option<String>> {
         let stop = &crate::micthread::playback_cut;
         if cfg!(windows) && crate::playout::plays_inside(&self.cfg.play.command) {
-            if let Some(bytes) = vars.get("out_wav").and_then(|p| std::fs::read(p).ok()) {
+            if let Some(bytes) = vars
+                .get("out_wav")
+                .and_then(|p| read_voice_wav(std::path::Path::new(p)).ok())
+            {
                 let speaker = crate::playout::speaker_now(&self.cfg.audio);
                 let played = crate::playout::parse_wav(&bytes)
                     .and_then(|wav| crate::playout::play(&wav, speaker.as_deref(), stop));
@@ -1229,7 +1255,7 @@ impl<'a> Voice<'a> {
         // Speaking volume (Sound & voice), applied to the audio itself.
         if self.cfg.sound.volume < 100 {
             if let Some(p) = vars.get("out_wav") {
-                if let Ok(mut w) = std::fs::read(p) {
+                if let Ok(mut w) = read_voice_wav(std::path::Path::new(p)) {
                     if crate::sound::scale_wav(&mut w, self.cfg.sound.volume) {
                         crate::kept!(std::fs::write(p, &w));
                     }
@@ -1241,7 +1267,10 @@ impl<'a> Voice<'a> {
         // frame, and the moment playback starts (`speaking`). Best effort —
         // a line that doesn't move is no reason not to speak.
         let data = crate::roots::data_dir();
-        if let Some(wav) = vars.get("out_wav").and_then(|p| std::fs::read(p).ok()) {
+        if let Some(wav) = vars
+            .get("out_wav")
+            .and_then(|p| read_voice_wav(std::path::Path::new(p)).ok())
+        {
             crate::heard!(crate::speaking::begin(
                 &data,
                 text,
@@ -1775,7 +1804,7 @@ impl Voice<'_> {
         // against the takes directly, with no speech-to-text in the loop.
         if let Some(model) = crate::wakeword::load(&crate::roots::store()) {
             let path = vars.get("in_wav").cloned().unwrap_or_default();
-            let bytes = std::fs::read(&path)?;
+            let bytes = read_voice_wav(std::path::Path::new(&path))?;
             let (samples, rate) = crate::diarize::read_wav(&bytes).map_err(AtlasError::Platform)?;
             return Ok(name_alone(crate::wakeword::heard(&samples, rate, &model)));
         }

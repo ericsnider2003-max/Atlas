@@ -58,7 +58,7 @@ impl<'a> Daemon<'a> {
         }
         if let Some(state) = crate::growth::answer(said) {
             if let Some(what) = wanted.decide_latest(state) {
-                let _ = self.store.save(crate::growth::STORE, &wanted);
+                crate::kept!(self.store.save(crate::growth::STORE, &wanted));
                 return Some(match state {
                     crate::growth::State::Approved => format!(
                         "Approved: \"{what}\". It's on the build list now -- the next build picks it up, and I'll tell you when it's in. \
@@ -81,7 +81,7 @@ impl<'a> Daemon<'a> {
             what
         };
         wanted.ask(&what, t);
-        let _ = self.store.save(crate::growth::STORE, &wanted);
+        crate::kept!(self.store.save(crate::growth::STORE, &wanted));
         self.log.info(&format!("ability asked for: {what}"));
         Some(crate::growth::noted_beside(
             &what,
@@ -164,7 +164,7 @@ impl<'a> Daemon<'a> {
         let (_squeezed, dropped) =
             crate::consolidate::make_room(&mut self.known, &mut self.stones, cfg.keep_at_most, now);
         if !dropped.is_empty() {
-            let _ = self.store.save("known_stones", &self.stones);
+            crate::kept!(self.store.save("known_stones", &self.stones));
         }
         if let Some(note) = crate::consolidate::dropped_note(&dropped) {
             // Said rather than done quietly — a store that silently forgets is
@@ -443,7 +443,11 @@ impl<'a> Daemon<'a> {
                             &system,
                             &format!(
                                 "{}\nUser said: how do I {asked}",
-                                crate::capability::about_atlas(asked, 6)
+                                crate::capability::about_atlas_for(
+                                    asked,
+                                    self.tools_ref().is_some_and(|tc| tc.research.enabled),
+                                    6,
+                                )
                             ),
                         )
                         .ok()

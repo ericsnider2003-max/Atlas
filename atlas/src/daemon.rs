@@ -2225,7 +2225,7 @@ impl<'a> Daemon<'a> {
             pending_change_effect: None,
             reminded,
             flash_once: Vec::new(),
-            hub_jobs: Default::default(),
+            hub_jobs: std::sync::Arc::new(crate::hubjobs::Jobs::from_store(&store_for_load)),
             hub_after: std::collections::HashMap::new(),
             shown_once: Default::default(),
             pending_clipboard: None,

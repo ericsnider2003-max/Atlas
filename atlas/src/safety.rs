@@ -335,9 +335,10 @@ fn hash_file(path: &Path) -> Result<String> {
 }
 
 fn copy_file_durably(source: &Path, destination: &Path) -> std::io::Result<u64> {
-    // A file that grows while it is read is not a failed backup, just a moment
-    // to try again: Atlas writes while it runs. Three honest tries, then the
-    // refusal stands, so a file that never settles is still reported.
+    // A file that grows while it is read, or is briefly held by a Windows
+    // scanner, is not a failed backup, just a moment to try again. Three
+    // honest tries, then the refusal stands, so a file that never settles is
+    // still reported.
     let mut last = None;
     for attempt in 0..3 {
         if attempt > 0 {
@@ -345,12 +346,39 @@ fn copy_file_durably(source: &Path, destination: &Path) -> std::io::Result<u64> 
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         match copy_file_once(source, destination) {
-            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => last = Some(e),
+            Err(e)
+                if e.kind() == std::io::ErrorKind::UnexpectedEof || transient_windows_lock(&e) =>
+            {
+                last = Some(e)
+            }
             other => return other,
         }
     }
     crate::heard!(std::fs::remove_file(destination));
     Err(last.unwrap_or_else(|| std::io::Error::other("the file kept changing while it was copied")))
+}
+
+/// Windows reports a short-lived antivirus/indexer hold as ERROR_LOCK_VIOLATION
+/// (33), rather than as `WouldBlock`. It is safe to retry while copying a
+/// backup: the destination is still private staging and is removed before the
+/// next attempt. Other I/O errors remain hard failures.
+fn transient_windows_lock(error: &std::io::Error) -> bool {
+    cfg!(windows) && error.raw_os_error() == Some(33)
+}
+
+fn sync_all_patiently(file: &std::fs::File) -> std::io::Result<()> {
+    let mut last = None;
+    for attempt in 0..3 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        match file.sync_all() {
+            Ok(()) => return Ok(()),
+            Err(error) if transient_windows_lock(&error) => last = Some(error),
+            Err(error) => return Err(error),
+        }
+    }
+    Err(last.unwrap_or_else(|| std::io::Error::other("file could not be flushed")))
 }
 
 thread_local! {
@@ -375,10 +403,8 @@ impl DeferFlush {
             .with(|d| d.borrow_mut().as_mut().map(std::mem::take))
             .unwrap_or_default();
         for path in pending {
-            std::fs::OpenOptions::new()
-                .write(true)
-                .open(&path)?
-                .sync_all()?;
+            let file = std::fs::OpenOptions::new().write(true).open(&path)?;
+            sync_all_patiently(&file)?;
         }
         Ok(())
     }
@@ -412,7 +438,7 @@ fn copy_file_once(source: &Path, destination: &Path) -> std::io::Result<u64> {
     // Windows FlushFileBuffers needs the write handle, not File::open's
     // read-only handle. Keeping this handle also supports read-only sources.
     if !DEFERRED_FLUSH.with(|d| d.borrow().is_some()) {
-        output.sync_all()?;
+        sync_all_patiently(&output)?;
     }
     Ok(copied)
 }

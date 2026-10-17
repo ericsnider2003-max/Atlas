@@ -20,6 +20,8 @@ pub struct Phases {
     dir: PathBuf,
 }
 
+const MAX_PHASE_BYTES: u64 = 16 * 1024 * 1024;
+
 impl Phases {
     /// The folder for this piece of work: `root/phases/<kind>-<key hash>`.
     pub fn for_work(root: &Path, kind: &str, key: &str) -> Phases {
@@ -31,7 +33,20 @@ impl Phases {
 
     /// A finished phase's result, if it finished before.
     pub fn done<T: DeserializeOwned>(&self, phase: &str) -> Option<T> {
-        let text = std::fs::read_to_string(self.dir.join(format!("{phase}.json"))).ok()?;
+        let path = self.dir.join(format!("{phase}.json"));
+        let file = std::fs::File::open(path).ok()?;
+        let metadata = file.metadata().ok()?;
+        if !metadata.is_file() || metadata.len() > MAX_PHASE_BYTES {
+            return None;
+        }
+        use std::io::Read;
+        let mut text = String::new();
+        file.take(MAX_PHASE_BYTES + 1)
+            .read_to_string(&mut text)
+            .ok()?;
+        if text.len() as u64 > MAX_PHASE_BYTES {
+            return None;
+        }
         serde_json::from_str(&text).ok()
     }
 
@@ -86,5 +101,25 @@ impl Phases {
             return;
         };
         crate::heard!(std::fs::remove_dir_all(&self.dir));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_oversized_finished_phase_is_unavailable() {
+        let root = std::env::temp_dir().join(format!("atlas-phases-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let phases = Phases::for_work(&root, "test", "oversized");
+        std::fs::create_dir_all(&phases.dir).unwrap();
+        std::fs::write(
+            phases.dir.join("done.json"),
+            vec![b'x'; (MAX_PHASE_BYTES + 1) as usize],
+        )
+        .unwrap();
+        assert!(phases.done::<serde_json::Value>("done").is_none());
+        let _ = std::fs::remove_dir_all(root);
     }
 }

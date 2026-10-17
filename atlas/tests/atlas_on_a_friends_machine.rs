@@ -472,6 +472,7 @@ fn doctor_says_when_there_is_no_language_model() {
 /// the language model was a separate command. Setup fetches it now, with
 /// everything else.
 #[test]
+#[cfg(feature = "desktop-ui")]
 fn setup_fetches_the_language_model_itself() {
     let pieces = atlas::setupwin::setup_pieces();
     for p in atlas::getpieces::pictures() {

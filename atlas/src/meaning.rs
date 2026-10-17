@@ -134,7 +134,11 @@ pub struct Remembered {
 
 impl Remembered {
     pub fn load(store: &crate::store::Store) -> Remembered {
-        store.load("meaning")
+        store
+            .load_checked_bounded("meaning", 64 * 1_048_576)
+            .ok()
+            .flatten()
+            .unwrap_or_default()
     }
 
     pub fn save(&self, store: &crate::store::Store) -> Result<()> {

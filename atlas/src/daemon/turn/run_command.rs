@@ -480,7 +480,7 @@ impl<'a> Daemon<'a> {
                 // it does either does not change that the ask was made.
                 if answered.is_none() && raw.split_whitespace().count() >= 2 {
                     self.wants_seen.asked_for_something_missing(raw);
-                    let _ = self.store.save("wants_seen", &self.wants_seen);
+                    crate::kept!(self.store.save("wants_seen", &self.wants_seen));
                 }
                 answered
             }
@@ -513,7 +513,7 @@ impl<'a> Daemon<'a> {
         {
             if let Some(blocker) = crate::backlog::asked_to_wait(said) {
                 let id = self.backlog.record(said, blocker, _t);
-                let _ = self.backlog.save(&self.store);
+                crate::kept!(self.backlog.save(&self.store));
                 return format!(
                     "Right — I'll hold {} until you're out of the way, and \
                      pick it up then. (#{id})",

@@ -40,6 +40,16 @@ fn atlas_can_write_and_read_its_own_work() {
 }
 
 #[test]
+fn sandbox_read_rejects_an_oversized_file_before_loading_it() {
+    let b = base("read-limit");
+    let s = Sandbox::create(&b, "x").unwrap();
+    let path = s.resolve("large.txt").unwrap();
+    fs::write(path, vec![b'x'; 16 * 1024 * 1024 + 1]).unwrap();
+    let err = s.read("large.txt").unwrap_err().to_string();
+    assert!(err.contains("16 MiB read budget"), "{err}");
+}
+
+#[test]
 fn nothing_can_be_written_outside_the_sandbox() {
     // The single property the whole idea rests on.
     let b = base("escape");

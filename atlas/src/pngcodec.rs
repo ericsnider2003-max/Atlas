@@ -27,10 +27,21 @@ pub struct Rgba {
 
 impl Rgba {
     pub fn new(width: u32, height: u32) -> Rgba {
+        let pixels = match (width as u64)
+            .checked_mul(height as u64)
+            .and_then(|n| n.checked_mul(4))
+        {
+            Some(pixels) => pixels,
+            None => panic!("RGBA dimensions overflow"),
+        };
+        assert!(
+            pixels / 4 <= MAX_PIXELS,
+            "RGBA image exceeds the pixel limit"
+        );
         Rgba {
             width,
             height,
-            pixels: vec![0; (width * height * 4) as usize],
+            pixels: vec![0; pixels as usize],
         }
     }
 
@@ -328,5 +339,11 @@ mod tests {
         let n = png.len();
         png[n - 20] ^= 0xFF;
         assert!(read_png(&png).is_err());
+    }
+
+    #[test]
+    #[should_panic(expected = "RGBA image exceeds the pixel limit")]
+    fn an_unbounded_rgba_constructor_is_refused_before_allocation() {
+        let _ = Rgba::new(8_193, 8_193);
     }
 }

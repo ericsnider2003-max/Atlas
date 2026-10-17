@@ -9,7 +9,25 @@ use crate::config::Config;
 use crate::platform::{Monitor, Platform};
 use crate::tools::{which, Vars};
 use crate::voice::ToolsConfig;
+use std::io::Read;
 use std::path::{Path, PathBuf};
+
+const MAX_DOCTOR_LOG_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_DOCTOR_CONFIG_BYTES: u64 = 4 * 1024 * 1024;
+
+fn read_doctor_text(path: &Path, max_bytes: u64) -> std::io::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > max_bytes {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "doctor input exceeds read budget",
+        ));
+    }
+    let mut text = String::new();
+    file.take(max_bytes + 1).read_to_string(&mut text)?;
+    Ok(text)
+}
 
 pub struct Finding {
     pub label: String,
@@ -899,8 +917,11 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
     });
 
     // --- the log, as the few things that happened (`drain`) ---
-    let log_text =
-        std::fs::read_to_string(crate::roots::logs_dir().join("atlas.log")).unwrap_or_default();
+    let log_text = read_doctor_text(
+        &crate::roots::logs_dir().join("atlas.log"),
+        MAX_DOCTOR_LOG_BYTES,
+    )
+    .unwrap_or_default();
     let (d, lines) = crate::drain::read_log(&log_text);
     if lines > 0 {
         let warnings: Vec<&crate::drain::Template> = d
@@ -1024,7 +1045,7 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
                 if !name.ends_with(".yaml") || name == "machine.yaml" {
                     continue;
                 }
-                if let Some(who) = std::fs::read_to_string(&path)
+                if let Some(who) = read_doctor_text(&path, MAX_DOCTOR_CONFIG_BYTES)
                     .ok()
                     .as_deref()
                     .and_then(crate::adapt::leaks_a_username)

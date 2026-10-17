@@ -328,14 +328,9 @@ impl Council {
 }
 
 // ---------------------------------------------------------------------------
-// The half that was missing: a room that has seen the machine, and a way to
-// turn what a seat says back into an `Opinion`.
-//
-// Everything above decides what to do with a list of opinions. **Nothing ever
-// built one.** `tally`, `Verdict`, `strongest_dissent`, `suspiciously_unanimous`
-// and `spoken` all computed over a `&[Opinion]` that only a test had ever
-// filled, and `nudge::convene` produced five prompts that nothing sent and
-// nothing read back.
+// The machine-facing half: build a room from measured facts and turn model
+// replies back into Opinions. The daemon drives these prompts and feeds the
+// resulting opinions through the blind/open/retest rules below.
 // ---------------------------------------------------------------------------
 
 use crate::fit::{Machine, Plan};

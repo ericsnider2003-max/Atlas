@@ -18,7 +18,10 @@ use crate::safety::Trash;
 use crate::store::now;
 use crate::tools::{ExternalTool, Vars};
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
+
+const MAX_SANDBOX_READ_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Attempt {
@@ -166,7 +169,23 @@ impl Sandbox {
     }
 
     pub fn read(&self, rel: &str) -> Result<String> {
-        Ok(std::fs::read_to_string(self.resolve(rel)?)?)
+        let path = self.resolve(rel)?;
+        let file = std::fs::File::open(path)?;
+        let metadata = file.metadata()?;
+        if !metadata.is_file() || metadata.len() > MAX_SANDBOX_READ_BYTES {
+            return Err(AtlasError::Platform(
+                "sandbox file exceeds the 16 MiB read budget".into(),
+            ));
+        }
+        let mut text = String::new();
+        file.take(MAX_SANDBOX_READ_BYTES + 1)
+            .read_to_string(&mut text)?;
+        if text.len() as u64 > MAX_SANDBOX_READ_BYTES {
+            return Err(AtlasError::Platform(
+                "sandbox file exceeds the 16 MiB read budget".into(),
+            ));
+        }
+        Ok(text)
     }
 
     pub fn exists(&self, rel: &str) -> bool {

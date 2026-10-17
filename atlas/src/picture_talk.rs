@@ -21,7 +21,30 @@
 //! code, spoken to the person, and nothing looked at the screen at all.
 
 use serde::Deserialize;
+use std::io::Read;
 use std::path::{Path, PathBuf};
+
+const MAX_PICTURE_BYTES: u64 = 256 * 1024 * 1024;
+
+fn read_picture(path: &Path) -> std::io::Result<Vec<u8>> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_PICTURE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "picture exceeds the 256 MiB limit",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_PICTURE_BYTES + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_PICTURE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "picture grew past the 256 MiB limit while reading",
+        ));
+    }
+    Ok(bytes)
+}
 
 /// The picture reader's settings.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -359,8 +382,7 @@ pub fn ask_server(
     question: &str,
     most_words: u32,
 ) -> Result<String, String> {
-    let png =
-        std::fs::read(image).map_err(|e| format!("I couldn't read the picture back ({e})"))?;
+    let png = read_picture(image).map_err(|e| format!("I couldn't read the picture back ({e})"))?;
     ask_server_png(url, &png, question, most_words)
 }
 

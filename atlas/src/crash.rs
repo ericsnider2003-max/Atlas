@@ -216,7 +216,7 @@ fn message_of(info: &std::panic::PanicHookInfo<'_>) -> String {
 
 /// The note from last time, if there is one.
 pub fn last(store: &Store) -> Option<Note> {
-    let text = std::fs::read_to_string(note_path(store.root())).ok()?;
+    let text = read_small_state(&note_path(store.root()))?;
     serde_json::from_str(&text).ok()
 }
 
@@ -309,8 +309,7 @@ pub fn may_start_again(state_dir: &Path, now: u64) -> bool {
         return false;
     };
     let path = restarts_path(state_dir);
-    let mut recent: Vec<u64> = std::fs::read_to_string(&path)
-        .ok()
+    let mut recent: Vec<u64> = read_small_state(&path)
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or_default();
     recent.retain(|at| now.saturating_sub(*at) < AGAIN_WINDOW_SECS && *at <= now);
@@ -324,6 +323,22 @@ pub fn may_start_again(state_dir: &Path, now: u64) -> bool {
     serde_json::to_string(&recent)
         .ok()
         .is_some_and(|json| crate::store::write_whole(&path, json.as_bytes()).is_ok())
+}
+
+const MAX_CRASH_STATE_BYTES: u64 = 1024 * 1024;
+
+fn read_small_state(path: &Path) -> Option<String> {
+    use std::io::Read;
+    let file = std::fs::File::open(path).ok()?;
+    let metadata = file.metadata().ok()?;
+    if !metadata.is_file() || metadata.len() > MAX_CRASH_STATE_BYTES {
+        return None;
+    }
+    let mut text = String::new();
+    file.take(MAX_CRASH_STATE_BYTES + 1)
+        .read_to_string(&mut text)
+        .ok()?;
+    (text.len() as u64 <= MAX_CRASH_STATE_BYTES).then_some(text)
 }
 
 #[cfg(test)]
@@ -427,6 +442,19 @@ mod tests {
         let store = Store::new(&root);
         assert!(last(&store).is_none());
         assert!(take(&store).is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_oversized_crash_note_is_ignored_without_an_unbounded_read() {
+        let root = temp("oversized");
+        let store = Store::new(&root);
+        std::fs::write(
+            note_path(store.root()),
+            vec![b'x'; (MAX_CRASH_STATE_BYTES + 1) as usize],
+        )
+        .unwrap();
+        assert!(last(&store).is_none());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

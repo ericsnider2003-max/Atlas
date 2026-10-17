@@ -148,7 +148,8 @@ impl Daemon<'_> {
                 Err(_) => return Vec::new(),
             };
         let mut said = Vec::new();
-        let mut mine: Vec<crate::phoneadd::Device> = self.store.load(crate::phoneadd::MINE);
+        let mut mine: Vec<crate::phoneadd::Device> =
+            crate::phoneadd::load(&self.store, crate::phoneadd::MINE);
         let before = mine.clone();
         for mut d in heard {
             d.at = now;
@@ -203,7 +204,8 @@ impl Daemon<'_> {
             self.phone_code = None;
         }
         let root = self.store.install_root();
-        let mine: Vec<crate::phoneadd::Device> = self.store.load(crate::phoneadd::MINE);
+        let mine: Vec<crate::phoneadd::Device> =
+            crate::phoneadd::load(&self.store, crate::phoneadd::MINE);
         let ipa_file = app_file(&root, Kind::Apple, &self.builds_dirs());
         // A closure, not `.and_then(ipa_facts)`: the reachability guards find
         // a call by its `name(`.
@@ -237,7 +239,7 @@ impl Daemon<'_> {
             ipa,
             ipa_reading,
             apk,
-            waiting: self.store.load(crate::phoneadd::WAITING),
+            waiting: crate::phoneadd::load(&self.store, crate::phoneadd::WAITING),
         }
     }
 

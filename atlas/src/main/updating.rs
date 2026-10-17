@@ -4,6 +4,52 @@
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
+use std::io::Read;
+
+const MAX_RELEASE_NOTICE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_UPDATE_PACKAGE_BYTES: u64 = 512 * 1024 * 1024;
+
+fn read_update_file(path: &std::path::Path) -> std::io::Result<Vec<u8>> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_UPDATE_PACKAGE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "update input exceeds the 512 MiB limit",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_UPDATE_PACKAGE_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_UPDATE_PACKAGE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "update input grew past the 512 MiB limit while reading",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn read_release_notice(path: &str) -> std::io::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_RELEASE_NOTICE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "release notice exceeds the 4 MiB limit",
+        ));
+    }
+    let mut text = String::new();
+    file.take(MAX_RELEASE_NOTICE_BYTES + 1)
+        .read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_RELEASE_NOTICE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "release notice grew past the 4 MiB limit while reading",
+        ));
+    }
+    Ok(text)
+}
 
 /// `atlas update` — say what replacing the binary would do, before it does.
 ///
@@ -480,7 +526,7 @@ pub(super) fn run_install_page(_words: &[String]) {
         println!("  --friends  let a friend's iPhone (not on your tailnet) open it, until the time runs out");
         return;
     };
-    let bytes = match std::fs::read(&file) {
+    let bytes = match read_update_file(std::path::Path::new(&file)) {
         Ok(b) => b,
         Err(e) => return println!("I can't read {file}: {e}"),
     };
@@ -691,7 +737,7 @@ pub(super) fn run_release(args: &[String]) {
                     println!("{a}: write it as <platform>=<file>, e.g. windows-x86_64=atlas.exe");
                     return;
                 };
-                let bytes = match std::fs::read(path) {
+                let bytes = match read_update_file(std::path::Path::new(path)) {
                     Ok(b) => b,
                     Err(e) => {
                         println!("couldn't read {path}: {e}");
@@ -773,7 +819,7 @@ pub(super) fn run_release(args: &[String]) {
                 println!("atlas release announce <atlas-release-VERSION.json>");
                 return;
             };
-            let text = match std::fs::read_to_string(path) {
+            let text = match read_release_notice(path) {
                 Ok(t) => t,
                 Err(e) => {
                     println!("couldn't read {path}: {e}");

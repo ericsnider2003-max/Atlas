@@ -1722,18 +1722,16 @@ impl HuntState {
     }
 }
 
-fn strict_saved<T: serde::de::DeserializeOwned>(
+fn strict_saved<T: serde::de::DeserializeOwned + serde::Serialize>(
     store: &crate::store::Store,
     key: &str,
 ) -> Result<T, String> {
     let fail =
         || "A saved opportunity could not be read; its archive was left in place.".to_string();
-    let bytes = std::fs::read(store.root().join(format!("{key}.json"))).map_err(|_| fail())?;
-    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| fail())?;
-    if value.get("schema").and_then(|v| v.as_u64()) != Some(u64::from(crate::store::SCHEMA)) {
-        return Err(fail());
-    }
-    serde_json::from_value(value.get("data").cloned().ok_or_else(fail)?).map_err(|_| fail())
+    store
+        .load_checked_bounded(key, 1_048_576)
+        .map_err(|_| fail())?
+        .ok_or_else(fail)
 }
 
 fn immutable_saved<T: serde::Serialize + serde::de::DeserializeOwned + PartialEq>(

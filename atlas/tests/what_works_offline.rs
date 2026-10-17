@@ -55,7 +55,7 @@ fn asking_what_works_offline_answers_with_the_offline_count() {
     let p = plat();
     let mut d = daemon(&c, &p, "count");
 
-    let (offline, total) = capability::offline_count();
+    let (offline, total) = capability::offline_count_for(false);
     // The catalogue is not empty and not everything leaves the machine, so the
     // fixture is a real one, not a degenerate 0-of-0 that any string passes.
     assert!(offline > 0 && offline <= total && total > 0);

@@ -1435,14 +1435,9 @@ pub fn land(
     for c in changes {
         if !c.new_file {
             if let Ok(old) = std::fs::read(&c.target) {
-                let name = c
-                    .target
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "file".into());
                 // The kept copy is the promise that a landed fix can be put
                 // back. If it can't be written (a full disk), nothing lands.
-                std::fs::write(keep.join(format!("{name}.before")), &old)?;
+                std::fs::write(backup_path(changes, c, keep), &old)?;
                 old_bytes.push((c.target.clone(), old));
             }
         }
@@ -1476,6 +1471,94 @@ pub fn land(
         applied.push(c);
     }
     Ok(applied.len())
+}
+
+/// Undo a previously landed batch using the backups written by [`land`].
+///
+/// All required backups are checked before the first target is changed. New
+/// files are removed, existing files are restored, and duplicate basenames
+/// use stable numbered backup names so two directories cannot overwrite each
+/// other's recovery copy.
+pub fn rollback(
+    changes: &[crate::sandbox::Change],
+    keep: &std::path::Path,
+) -> crate::error::Result<usize> {
+    let root = crate::store::state_root_for(keep)?.unwrap_or_else(|| keep.to_path_buf());
+    let _state = crate::store::state_transaction(&root)?;
+    let mut backups = Vec::new();
+    for c in changes {
+        if c.new_file {
+            backups.push((c.target.clone(), None));
+        } else {
+            let path = backup_path(changes, c, keep);
+            let bytes = std::fs::read(&path)?;
+            backups.push((c.target.clone(), Some(bytes)));
+        }
+    }
+    let previous: Vec<(std::path::PathBuf, Option<Vec<u8>>)> = backups
+        .iter()
+        .map(|(target, _)| (target.clone(), std::fs::read(target).ok()))
+        .collect();
+    let restore_previous = |previous: &[(std::path::PathBuf, Option<Vec<u8>>)]| {
+        for (target, bytes) in previous {
+            match bytes {
+                Some(bytes) => {
+                    // unheard-ok: rollback recovery is best-effort; the original mutation error is returned below.
+                    let _ = crate::heard!(std::fs::write(target, bytes));
+                }
+                None if target.exists() => {
+                    // unheard-ok: rollback recovery is best-effort; the original mutation error is returned below.
+                    let _ = crate::heard!(std::fs::remove_file(target));
+                }
+                None => {}
+            }
+        }
+    };
+    for (target, bytes) in &backups {
+        let result = match bytes {
+            Some(bytes) => {
+                if let Some(parent) = target.parent() {
+                    std::fs::create_dir_all(parent).and_then(|_| std::fs::write(target, bytes))
+                } else {
+                    std::fs::write(target, bytes)
+                }
+            }
+            None => {
+                if target.exists() {
+                    std::fs::remove_file(target)
+                } else {
+                    Ok(())
+                }
+            }
+        };
+        if let Err(error) = result {
+            restore_previous(&previous);
+            return Err(error.into());
+        }
+    }
+    Ok(backups.len())
+}
+
+fn backup_path(
+    changes: &[crate::sandbox::Change],
+    change: &crate::sandbox::Change,
+    keep: &std::path::Path,
+) -> std::path::PathBuf {
+    let name = change
+        .target
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "file".into());
+    let index = changes
+        .iter()
+        .take_while(|candidate| !std::ptr::eq(*candidate, change))
+        .filter(|candidate| candidate.target.file_name() == change.target.file_name())
+        .count();
+    if index == 0 {
+        keep.join(format!("{name}.before"))
+    } else {
+        keep.join(format!("{name}.{index}.before"))
+    }
 }
 
 // ---------------------------------------------------------------------------

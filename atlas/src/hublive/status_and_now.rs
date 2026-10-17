@@ -110,6 +110,15 @@ impl Daemon<'_> {
                 format!("{:.0} GB free of {:.0} GB", r.disk_free_gb, r.disk_total_gb),
             ));
         }
+        // Keep the Hub's live status on the same typed evidence projection
+        // used by voice and capability answers. The Hub must not infer
+        // readiness from the static catalogue alone.
+        out.push((
+            "Capabilities".to_string(),
+            crate::capability::summary_for(
+                self.tools_ref().is_some_and(|tools| tools.research.enabled),
+            ),
+        ));
         out
     }
 

@@ -86,7 +86,15 @@ pub fn transcribe_file_until(
                 "hearing recording exceeds 8 MiB".into(),
             ));
         }
-        let bytes = std::fs::read(wav)?;
+        let file = std::fs::File::open(wav)?;
+        let mut bytes = Vec::new();
+        use std::io::Read;
+        file.take(8 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
+        if bytes.len() > 8 * 1024 * 1024 {
+            return Err(AtlasError::Platform(
+                "hearing recording grew past the 8 MiB limit".into(),
+            ));
+        }
         let (samples, rate) = crate::diarize::read_wav(&bytes).map_err(AtlasError::Platform)?;
         if rate == 0 || samples.is_empty() || samples.len() > rate as usize * 60 {
             return Err(AtlasError::Platform(

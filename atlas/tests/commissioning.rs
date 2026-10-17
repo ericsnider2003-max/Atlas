@@ -37,7 +37,7 @@ fn plat() -> MockPlatform {
 
 #[test]
 fn the_split_covers_every_never_run_capability() {
-    let (computes, read_back, eyes_n, eyes) = capability::commissioning();
+    let (computes, read_back, eyes_n, eyes) = capability::commissioning_for(false);
     assert_eq!(
         eyes_n,
         eyes.len(),
@@ -57,7 +57,7 @@ fn the_split_covers_every_never_run_capability() {
 
 #[test]
 fn the_part_that_needs_you_is_small_and_the_rest_is_atlas() {
-    let (computes, read_back, eyes_n, _eyes) = capability::commissioning();
+    let (computes, read_back, eyes_n, _eyes) = capability::commissioning_for(false);
     let auto = computes + read_back;
     // The whole point: the overwhelming majority is Atlas's to verify, not
     // yours to sit through.
@@ -147,7 +147,7 @@ fn the_self_check_tells_you_your_part_in_setup() {
     );
     // And the number it reports for "your eyes" matches the classification, so
     // the reassurance is real, not a canned phrase.
-    let (_c, _r, eyes_n, _names) = capability::commissioning();
+    let (_c, _r, eyes_n, _names) = capability::commissioning_for(false);
     // Six since the 26 Sep merge: the two camera ones, the three that need your
     // voice or your key (round 5), and one real call for call notes (the third
     // chat's line). Seven once 25j's Windows key hook came in (hold a key to

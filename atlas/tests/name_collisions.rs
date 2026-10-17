@@ -123,6 +123,11 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     // 26 Sep merge: the call write-up's transcript step (callnotes.rs), called
     // there and by tests/call_notes.rs; collides with diarize::who_said_what (ours).
     "callnotes::who_said_what",
+    // `capability::about_atlas` is the compatibility wrapper for callers that
+    // do not have a research-state argument. Production daemon paths use the
+    // research-aware `about_atlas_for`; keeping this wrapper preserves the
+    // small public API without pretending it is a separate live route.
+    "capability::about_atlas",
     // capture::kind_of came off 18 Sep 2026. It was reachable only because
     // "kind_of" is also a free function elsewhere; `Intent::Capture` now
     // calls it module-qualified to decide whether a caught thought is a task,

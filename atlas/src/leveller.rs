@@ -293,7 +293,7 @@ pub fn prepare(samples: &[i16], rate: u32, mic: &str) -> Option<Vec<i16>> {
     let before = lev.clone();
     let out = for_speech_to_text(samples, rate, mic, lev);
     if *lev != before {
-        let _ = store.save(Leveller::RECORD, &*lev);
+        crate::kept!(store.save(Leveller::RECORD, &*lev));
     }
     out
 }

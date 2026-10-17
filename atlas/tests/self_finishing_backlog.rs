@@ -37,7 +37,7 @@ fn plat() -> MockPlatform {
 
 #[test]
 fn the_backlog_separates_who_can_finish_each_thing() {
-    let items = capability::to_finish();
+    let items = capability::to_finish_for(false);
     assert!(!items.is_empty(), "there is unfinished work to report");
     // Untested capabilities (built, never run for real) exist in this tree, so
     // there must be at least one "needs a run" item.
@@ -61,7 +61,7 @@ fn the_backlog_is_ordered_by_nearness_to_atlas_own_power() {
         Finisher::NeedsARun => 1,
         Finisher::NeedsYou => 2,
     };
-    let items = capability::to_finish();
+    let items = capability::to_finish_for(false);
     let ranks: Vec<u8> = items.iter().map(|u| rank(u.finisher)).collect();
     let mut sorted = ranks.clone();
     sorted.sort();
@@ -73,7 +73,7 @@ fn the_backlog_is_ordered_by_nearness_to_atlas_own_power() {
 
 #[test]
 fn the_report_names_the_split_honestly() {
-    let report = capability::to_finish_report();
+    let report = capability::to_finish_report_for(false);
     assert!(
         report.to_lowercase().contains("left to finish"),
         "it's a completion report: {report}"

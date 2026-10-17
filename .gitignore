@@ -1,6 +1,16 @@
 # Rust build output
 target/
 **/target/
+# Disposable isolated verification target used by local gates.
+atlas/target_f1_verify/
+# Additional Cargo target roots used by serialized foundation gates. These
+# contain only compiler output and must not make the shared worktree look like
+# source changes after a verification run.
+atlas/target_after_*/
+atlas/target_*_verify/
+atlas/target_*/
+target_*_verify/
+atlas/docs/__pycache__/
 
 # Runtime state. Atlas generates everything under data/ on first run — notes,
 # state, the vault, logs, the single-instance lock, the self-work build
@@ -45,3 +55,9 @@ atlas/config/settings.yaml
 # only the placeholder that keeps the folder in every checkout is tracked.
 atlas/scratch/*
 !atlas/scratch/.gitkeep
+.filing/lease.json*
+.filing/lane.json
+.filing/journal/
+.filing/trash/
+.filing/manifest.tsv
+*.tmp-*

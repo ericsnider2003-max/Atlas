@@ -19,6 +19,7 @@
 //! spec" gate this establishes.
 
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 
 /// What was asked for, in the numbers a machine can check against.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1040,7 +1041,25 @@ pub struct Expect {
 /// (an error written to the output path, a truncated file). Advisory when it
 /// rendered at a different size than asked — it's still a real render.
 pub fn verify_render(path: &std::path::Path, expect: &Expect) -> Vec<Finding> {
-    let bytes = match std::fs::read(path) {
+    const MAX_RENDER_BYTES: u64 = 512 * 1024 * 1024;
+    let bytes = match std::fs::File::open(path).and_then(|file| {
+        let metadata = file.metadata()?;
+        if !metadata.is_file() || metadata.len() > MAX_RENDER_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "rendered output exceeds the 512 MiB limit",
+            ));
+        }
+        let mut bytes = Vec::with_capacity(metadata.len() as usize);
+        std::io::Read::take(file, MAX_RENDER_BYTES + 1).read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > MAX_RENDER_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "rendered output grew past the 512 MiB limit while reading",
+            ));
+        }
+        Ok(bytes)
+    }) {
         Ok(b) if !b.is_empty() => b,
         _ => {
             return vec![Finding {

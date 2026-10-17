@@ -5,10 +5,55 @@
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
+use std::io::Read;
 
 /// Text over this many bytes is a document, kept whole on the reading
 /// shelf, not cut into facts.
 const READING_SHELF_OVER: usize = 200_000;
+const MAX_USER_TEXT_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_USER_BINARY_BYTES: u64 = 256 * 1024 * 1024;
+
+fn read_user_text(path: &str) -> std::io::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_USER_TEXT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "user text input exceeds the 64 MiB limit",
+        ));
+    }
+    let mut text = String::new();
+    file.take(MAX_USER_TEXT_BYTES + 1)
+        .read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_USER_TEXT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "user text input grew past the 64 MiB limit while reading",
+        ));
+    }
+    Ok(text)
+}
+
+fn read_user_binary(path: &std::path::Path) -> std::io::Result<Vec<u8>> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_USER_BINARY_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "user binary input exceeds the 256 MiB limit",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_USER_BINARY_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_USER_BINARY_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "user binary input grew past the 256 MiB limit while reading",
+        ));
+    }
+    Ok(bytes)
+}
 
 impl<'a> Daemon<'a> {
     /// "Draw me a lighthouse at dusk": a picture made on this machine
@@ -433,6 +478,26 @@ impl<'a> Daemon<'a> {
         .then(|| writers.get(1).map(|(w, _)| w.named()))
         .flatten();
         let store = self.store.clone();
+        let job_id = format!("build-{}", crate::store::now());
+        let mut job_record = crate::job::Record::planned(job_id.clone(), "code build");
+        if let Ok(input) = crate::artifact::ArtifactRef::new(
+            format!("build-request:{desc}"),
+            "build_request",
+            None,
+        ) {
+            job_record.artifacts = Some(crate::artifact::Envelope {
+                input: vec![input],
+                ..crate::artifact::Envelope::default()
+            });
+        }
+        if let Err(error) = job_record
+            .transition(crate::job::State::Running, "build worker started")
+            .and_then(|_| {
+                crate::job::upsert(&self.store, job_record.clone()).map_err(|e| e.to_string())
+            })
+        {
+            return format!("I couldn't start the durable build record: {error}.");
+        }
         let work: crew::Work = Box::new(move |ctl| {
             let stop = || ctl.stopping();
             let budget = crate::tools::WorkBudget::new(std::time::Duration::from_secs(3600), &stop);
@@ -498,6 +563,7 @@ impl<'a> Daemon<'a> {
             // Verified code is written where you can pick it up; a struggle
             // still leaves its best draft there, clearly named.
             let mut said = outcome.spoken(lang);
+            let mut saved = false;
             if let Some(by) = by {
                 said.push_str(&format!(" (Written by {}.)", by.named_with(&coder_name)));
             }
@@ -517,6 +583,7 @@ impl<'a> Daemon<'a> {
                 let path = crate::build_it::file_name_for(&out_dir, &desc, &ext);
                 match std::fs::write(&path, code) {
                     Ok(()) => {
+                        saved = true;
                         said.push_str(&format!(
                             "\n\nSaved as {}, in {}.",
                             path.file_name()
@@ -558,6 +625,46 @@ impl<'a> Daemon<'a> {
             }
             if offer_more {
                 said.push_str("\n\nSay \"keep at it\" and I'll carry on from this draft on my own until it passes.");
+            }
+            if saved {
+                if let Some(envelope) = job_record.artifacts.as_mut() {
+                    envelope.output = vec![crate::artifact::ArtifactRef::new(
+                        format!("build-output:{job_id}"),
+                        "code_output",
+                        None,
+                    )
+                    .map_err(|error| error.to_string())?];
+                }
+            }
+            let state = if outcome.is_built() && saved {
+                crate::job::State::Succeeded
+            } else {
+                crate::job::State::Failed
+            };
+            let detail = if state == crate::job::State::Succeeded {
+                "verified code saved"
+            } else {
+                "build did not produce verified saved code"
+            };
+            crate::kept!(job_record
+                .finish(state, detail, "local build")
+                .and_then(
+                    |_| crate::job::upsert(&store, job_record.clone()).map_err(|e| e.to_string())
+                ));
+            match crate::evidence::build_outcome(
+                &job_id,
+                &desc,
+                state == crate::job::State::Succeeded,
+                detail,
+                crate::store::now(),
+            )
+            .map_err(crate::error::AtlasError::Config)
+            .and_then(|bundle| crate::evidence::upsert(&store, bundle))
+            {
+                Ok(()) => {}
+                Err(error) => {
+                    crate::kept!(Err::<(), _>(error));
+                }
             }
             Ok(said)
         });
@@ -635,7 +742,7 @@ impl<'a> Daemon<'a> {
             // One file: checked in a sandbox like Atlas's own drafts. More:
             // the folder's own checks, read-only.
             let check = if files.len() == 1 {
-                let code = std::fs::read_to_string(main).unwrap_or_default();
+                let code = read_user_text(&main.to_string_lossy()).unwrap_or_default();
                 match crate::sandbox::Sandbox::create(&base, "agent-build") {
                     Ok(mut sb) => {
                         let c =
@@ -798,7 +905,7 @@ impl<'a> Daemon<'a> {
             return "I haven't built anything to run yet — ask me to write something first.".into();
         };
         let path = std::path::PathBuf::from(&last.path);
-        let Ok(code) = std::fs::read_to_string(&path) else {
+        let Ok(code) = read_user_text(&path.to_string_lossy()) else {
             return format!(
                 "What I last built was {}, and it isn't there any more.",
                 path.display()
@@ -919,7 +1026,7 @@ impl<'a> Daemon<'a> {
                     .unwrap_or_else(|| "project".into());
                 self.workshop
                     .register(&name, &dir.to_string_lossy(), crate::store::now());
-                let _ = self.workshop.save(&self.store);
+                crate::kept!(self.workshop.save(&self.store));
                 what = if rest.to_lowercase().contains(&name.to_lowercase()) {
                     rest
                 } else {
@@ -1294,7 +1401,7 @@ impl<'a> Daemon<'a> {
             // it — a record of what the project now contains and what just went
             // in.
             let doc = self.write_project_master_doc(&plan.project);
-            let _ = self.workshop.save(&self.store);
+            crate::kept!(self.workshop.save(&self.store));
             self.history.note(
                 &format!("implemented \"{}\" on {}", plan.title, plan.project),
                 "code",
@@ -1960,7 +2067,7 @@ impl<'a> Daemon<'a> {
         let (html, source) = if arg.contains('<') && arg.contains('>') {
             (arg.to_string(), "the markup you gave me".to_string())
         } else {
-            match std::fs::read_to_string(arg) {
+            match read_user_text(arg) {
                 Ok(text) => (text, format!("\"{arg}\"")),
                 Err(e) => {
                     return format!(
@@ -2031,7 +2138,7 @@ impl<'a> Daemon<'a> {
         }
         if p.is_file() && (low.ends_with(".pdf") || low.ends_with(".docx")) {
             let text = if low.ends_with(".pdf") {
-                match std::fs::read(p)
+                match read_user_binary(p)
                     .map_err(|e| e.to_string())
                     .and_then(|b| crate::pdftext::read(&b).map(|pdf| pdf.text))
                 {
@@ -2047,7 +2154,7 @@ impl<'a> Daemon<'a> {
             return self.keep_on_the_reading_shelf(p, &text);
         }
         // A readable file path, or the text itself.
-        let (text, whence) = match std::fs::read_to_string(arg) {
+        let (text, whence) = match read_user_text(arg) {
             // A long text file is a document to look things up in, not a few
             // facts about you: it goes on the reading shelf, whole.
             Ok(t) if t.len() > READING_SHELF_OVER => return self.keep_on_the_reading_shelf(p, &t),
@@ -2065,7 +2172,7 @@ impl<'a> Daemon<'a> {
             learned += 1;
         }
         self.facts.trim(crate::facts::MEMORY_BUDGET_BYTES, now);
-        let _ = self.facts.save(&self.store);
+        crate::kept!(self.facts.save(&self.store));
         format!(
             "Learned {learned} thing{} from {whence}. Ask \"what do you know about …\" and I'll have it.",
             if learned == 1 { "" } else { "s" }
@@ -2182,7 +2289,18 @@ impl<'a> Daemon<'a> {
                     skipped += 1;
                     continue;
                 }
-                match std::fs::read_to_string(&path) {
+                let text = std::fs::File::open(&path).and_then(|file| {
+                    let mut text = String::new();
+                    file.take(MAX_BYTES + 1).read_to_string(&mut text)?;
+                    if text.len() as u64 > MAX_BYTES {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "folder note grew past the 5 MiB limit while reading",
+                        ));
+                    }
+                    Ok(text)
+                });
+                match text {
                     Ok(t) => {
                         for chunk in crate::facts::into_facts(&t) {
                             self.facts
@@ -2201,7 +2319,7 @@ impl<'a> Daemon<'a> {
             return "I couldn't read any text files in that folder.".into();
         }
         self.facts.trim(crate::facts::MEMORY_BUDGET_BYTES, now);
-        let _ = self.facts.save(&self.store);
+        crate::kept!(self.facts.save(&self.store));
         let tail = if skipped > 0 {
             format!(
                 " ({skipped} file{} weren't text and were left alone.)",
@@ -2557,7 +2675,7 @@ impl<'a> Daemon<'a> {
             // read; anything else is treated as pasted code.
             let looks_like_path = !arg.contains('\n') && arg.split_whitespace().count() == 1;
             if looks_like_path && std::path::Path::new(arg).is_file() {
-                match std::fs::read_to_string(arg) {
+                match read_user_text(arg) {
                     Ok(text) => (text, format!("\"{arg}\"")),
                     Err(e) => return format!("I couldn't read {arg}: {e}."),
                 }
@@ -2637,7 +2755,7 @@ impl<'a> Daemon<'a> {
         // The one remembered as last, wherever you had it saved (2 Oct 2026).
         if let Some(last) = crate::build_it::LastBuild::last(&self.store) {
             let p = std::path::PathBuf::from(&last.path);
-            if let Ok(code) = std::fs::read_to_string(&p) {
+            if let Ok(code) = read_user_text(&p.to_string_lossy()) {
                 let name = p
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
@@ -2674,7 +2792,7 @@ impl<'a> Daemon<'a> {
         files.sort_by_key(|(_, m)| *m);
         match files.last() {
             Some((p, _)) => {
-                let code = std::fs::read_to_string(p)
+                let code = read_user_text(&p.to_string_lossy())
                     .map_err(|e| format!("I found what I built but couldn't read it: {e}."))?;
                 let name = p
                     .file_name()

@@ -22,6 +22,25 @@
 //!   is a fault rather than a detail.
 
 use serde::{Deserialize, Serialize};
+use std::io::Read;
+use std::path::{Path, PathBuf};
+
+const MAX_INDEX_SOURCE_BYTES: u64 = 4 * 1024 * 1024;
+
+fn read_index_source(path: &Path) -> std::io::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_INDEX_SOURCE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "index source exceeds 4 MiB",
+        ));
+    }
+    let mut text = String::new();
+    file.take(MAX_INDEX_SOURCE_BYTES + 1)
+        .read_to_string(&mut text)?;
+    Ok(text)
+}
 
 /// One line in an index.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -236,16 +255,13 @@ pub fn boot(master: &Contents) -> Boot {
 // The half that was missing.
 //
 // Everything above this line is the shape of an index: what a line is, what
-// makes one worth reading, how to search one, how to tell when it has gone
-// wrong. All of it was complete, tested, and unreachable, because nothing in
-// the program ever built a `Contents` out of a real folder. An index nothing
-// writes cannot drift, so `nudge::drifted` had nothing to be raised about.
+// makes one worth reading, how to search one, and how to tell when it has gone
+// wrong. The daemon now builds and persists this index for a real folder, so
+// `nudge::drifted` can report a mismatch and offer a rebuild.
 //
 // What follows is the territory half: reading a folder, summarising what is
 // in it, writing the master index down, and reading it back.
 // ---------------------------------------------------------------------------
-
-use std::path::{Path, PathBuf};
 
 /// The master index's filename.
 ///
@@ -374,7 +390,7 @@ pub fn says_for(text: &str) -> String {
 /// The line describing one note, read off disk.
 fn line_for(dir: &Path, name: &str) -> Line {
     let path = dir.join(format!("{name}.md"));
-    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let text = read_index_source(&path).unwrap_or_default();
     Line::new(name, &says_for(&text))
 }
 
@@ -397,7 +413,7 @@ fn line_for_folder(dir: &Path, name: &str) -> Line {
 
 /// Build the index for a folder by reading it.
 ///
-/// This is the function whose absence made everything above unreachable.
+/// This is the boundary between the on-disk folder and the index Atlas keeps.
 pub fn from_folder(dir: &Path) -> Contents {
     let mut c = Contents::new(&dir.to_string_lossy());
     for name in names_on_disk(dir) {
@@ -465,7 +481,7 @@ pub fn save(c: &Contents, at: &Path) -> crate::error::Result<()> {
 /// nothing; it is only once an index exists and is trusted that being wrong
 /// starts to cost anything.
 pub fn load(folder: &str, at: &Path) -> Option<Contents> {
-    let md = std::fs::read_to_string(at).ok()?;
+    let md = read_index_source(at).ok()?;
     Some(parse(folder, &md))
 }
 

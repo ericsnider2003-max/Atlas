@@ -4,6 +4,30 @@
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
+use std::io::Read;
+
+const MAX_RESEARCH_NOTE_BYTES: u64 = 16 * 1024 * 1024;
+
+fn read_research_note(path: &std::path::Path) -> std::io::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_RESEARCH_NOTE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "research note exceeds the 16 MiB limit",
+        ));
+    }
+    let mut text = String::new();
+    file.take(MAX_RESEARCH_NOTE_BYTES + 1)
+        .read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_RESEARCH_NOTE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "research note grew past the 16 MiB limit while reading",
+        ));
+    }
+    Ok(text)
+}
 
 impl<'a> Daemon<'a> {
     /// "Read me the full brief", "open the report": the newest research
@@ -119,7 +143,7 @@ impl<'a> Daemon<'a> {
                 Err(e) => format!("I couldn't open it ({e}). It's at {}.", path.display()),
             });
         }
-        let text = std::fs::read_to_string(&path).ok()?;
+        let text = read_research_note(&path).ok()?;
         // The write-up without its "# title" line and its source list.
         let body = text.split("\n## Sources").next().unwrap_or(&text);
         let body = if body.starts_with('#') {
@@ -490,7 +514,7 @@ impl<'a> Daemon<'a> {
                 if !c.worth_rechecking(now_check) {
                     c.asked_about += 1;
                     let says = c.says.clone();
-                    let _ = self.store.save("known", &self.known);
+                    crate::kept!(self.store.save("known", &self.known));
                     return Outcome::Done(format!(
                         "From what I found before: {says} Say 'research it again' if you \
                          want it checked fresh."
@@ -558,6 +582,29 @@ impl<'a> Daemon<'a> {
         let browser = self.tools_ref().map(|t| t.browser.clone());
         let topic_owned = topic.to_string();
         let topic_for_errand = topic_owned.clone();
+        let job_id = format!("research-{}", crate::store::now());
+        let mut job_record = crate::job::Record::planned(&job_id, "research");
+        let topic_artifact = match crate::artifact::ArtifactRef::new(
+            format!("research-topic:{topic_owned}"),
+            "research_topic",
+            None,
+        ) {
+            Ok(artifact) => artifact,
+            Err(error) => return Outcome::Failed(error),
+        };
+        job_record.artifacts = Some(crate::artifact::Envelope {
+            input: vec![topic_artifact],
+            ..crate::artifact::Envelope::default()
+        });
+        if let Err(e) = job_record
+            .transition(crate::job::State::Running, "worker started")
+            .and_then(|_| {
+                crate::job::upsert(&self.store, job_record.clone()).map_err(|e| e.to_string())
+            })
+        {
+            return Outcome::Failed(format!("I couldn't start the research record: {e}"));
+        }
+        let job_store = self.store.clone();
         let work: crew::Work = Box::new(move |ctl| {
             let r = crate::research::Research { cfg, vars, browser };
             let ran = r.run_checked(&topic_for_errand, summariser.as_ref(), &|| ctl.checkpoint());
@@ -579,16 +626,30 @@ impl<'a> Daemon<'a> {
                     // what it read. A write-up built on nothing gets said as
                     // one.
                     let g = crate::certainty::Grounding::from_sources(note.sources.len());
-                    let (mut level, _, why) = crate::certainty::assess(&note.spoken, &g, &certainty);
+                    let (mut level, _, why) =
+                        crate::certainty::assess(&note.spoken, &g, &certainty);
                     // A figure in the answer that isn't in any page it read is
                     // said as unconfirmed, never as read (`figures_not_in`).
-                    let spoken_ungrounded: Vec<&String> =
-                        note.ungrounded.iter().filter(|f| note.spoken.contains(f.as_str())).collect();
-                    let why = if !spoken_ungrounded.is_empty() && level != crate::certainty::Confidence::Withhold {
+                    let spoken_ungrounded: Vec<&String> = note
+                        .ungrounded
+                        .iter()
+                        .filter(|f| note.spoken.contains(f.as_str()))
+                        .collect();
+                    let why = if !spoken_ungrounded.is_empty()
+                        && level != crate::certainty::Confidence::Withhold
+                    {
                         level = crate::certainty::Confidence::Qualify;
-                        let list = spoken_ungrounded.iter().map(|f| f.as_str()).collect::<Vec<_>>().join(", ");
+                        let list = spoken_ungrounded
+                            .iter()
+                            .map(|f| f.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ");
                         let mine = format!("{list}{}", crate::research::UNCONFIRMED);
-                        if why.trim().is_empty() { mine } else { format!("{why}; {mine}") }
+                        if why.trim().is_empty() {
+                            mine
+                        } else {
+                            format!("{why}; {mine}")
+                        }
                     } else {
                         why
                     };
@@ -625,19 +686,104 @@ impl<'a> Daemon<'a> {
                     let rests = crate::research::rests_on(&note, &judging);
                     let kept = match kept {
                         Ok(_) => " The full write-up is in your notes -- say \"read me the full brief\" or \"open the report\".".to_string(),
-                        Err(e) => return Err(format!("{spoken} I couldn't save the full write-up ({e}); dependent work is held until the research can be saved.")),
+                        Err(e) => {
+                            let detail = format!("write-up save failed: {e}");
+                            crate::kept!(job_record
+                                .finish(crate::job::State::Failed, detail.clone(), "local research")
+                                .and_then(|_| {
+                                    crate::job::upsert(&job_store, job_record.clone())
+                                        .map_err(|e| e.to_string())
+                                }));
+                            match crate::evidence::research_outcome(
+                                &job_id,
+                                &topic_for_errand,
+                                note.sources.len(),
+                                false,
+                                &detail,
+                                crate::store::now(),
+                            )
+                            .map_err(crate::error::AtlasError::Config)
+                            .and_then(|bundle| crate::evidence::upsert(&job_store, bundle))
+                            {
+                                Ok(()) => {}
+                                Err(error) => {
+                                    crate::kept!(Err::<(), _>(error));
+                                }
+                            }
+                            return Err(format!("{spoken} I couldn't save the full write-up ({e}); dependent work is held until the research can be saved."));
+                        }
                     };
-                    Ok(format!(
+                    if let Some(envelope) = job_record.artifacts.as_mut() {
+                        envelope.output = vec![crate::artifact::ArtifactRef::new(
+                            format!("research-report:{job_id}"),
+                            "research_report",
+                            None,
+                        )
+                        .map_err(|error| error.to_string())?];
+                    }
+                    let result = format!(
                         "{} Read {} source{}.{}{kept}",
                         spoken,
                         note.sources.len(),
                         if note.sources.len() == 1 { "" } else { "s" },
                         rests.map(|r| format!(" {r}")).unwrap_or_default()
+                    );
+                    crate::kept!(job_record
+                        .finish(
+                            crate::job::State::Succeeded,
+                            "research saved",
+                            "local research",
+                        )
+                        .and_then(|_| {
+                            crate::job::upsert(&job_store, job_record.clone())
+                                .map_err(|e| e.to_string())
+                        }));
+                    match crate::evidence::research_outcome(
+                        &job_id,
+                        &topic_for_errand,
+                        note.sources.len(),
+                        true,
+                        "research saved",
+                        crate::store::now(),
+                    )
+                    .map_err(crate::error::AtlasError::Config)
+                    .and_then(|bundle| crate::evidence::upsert(&job_store, bundle))
+                    {
+                        Ok(()) => {}
+                        Err(error) => {
+                            crate::kept!(Err::<(), _>(error));
+                        }
+                    }
+                    Ok(result)
+                }
+                Err(e) => {
+                    let detail = e.to_string();
+                    crate::kept!(job_record
+                        .finish(crate::job::State::Failed, detail.clone(), "local research")
+                        .and_then(|_| {
+                            crate::job::upsert(&job_store, job_record.clone())
+                                .map_err(|e| e.to_string())
+                        }));
+                    match crate::evidence::research_outcome(
+                        &job_id,
+                        &topic_for_errand,
+                        0,
+                        false,
+                        &detail,
+                        crate::store::now(),
+                    )
+                    .map_err(crate::error::AtlasError::Config)
+                    .and_then(|bundle| crate::evidence::upsert(&job_store, bundle))
+                    {
+                        Ok(()) => {}
+                        Err(error) => {
+                            crate::kept!(Err::<(), _>(error));
+                        }
+                    }
+                    Err(format!(
+                        "I couldn't finish looking into {topic_for_errand}: {e}. It's on the outstanding list."
                     ))
                 }
-                Err(e) => Err(format!(
-                    "I couldn't finish looking into {topic_for_errand}: {e}. It's on the outstanding list."
-                )),
             }
         });
         let taken = self.hand_off(
@@ -1122,6 +1268,12 @@ impl<'a> Daemon<'a> {
             {
                 self.log
                     .warn(&format!("scheduled add-on start remains fenced ({error})"));
+                // The run was only staged in memory.  If its durable Ready
+                // fence could not be written, keeping `current_flow` set
+                // would make the scheduler believe work is already in hand
+                // and permanently prevent the same claim from retrying after
+                // the store becomes writable again.
+                self.current_flow = None;
                 return "Your scheduled add-on is waiting to save its recovery state. No step started; I'll retry while this request remains active.".into();
             }
         }
@@ -1461,7 +1613,7 @@ impl<'a> Daemon<'a> {
                                 .into(),
                         );
                     }
-                    let _ = self.memory.save(&self.store);
+                    crate::kept!(self.memory.save(&self.store));
                     self.flow_mind = 0;
                     return Some(said.join(" "));
                 }

@@ -40,6 +40,7 @@
 //! explaining why it earns its place — and one atomic flag plus two
 //! declarations is less to own than a dependency and its tree.
 
+use std::io::Read;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 /// Why Atlas was asked to stop, kept for the record of runs (`whystopped`, item
@@ -163,13 +164,28 @@ pub fn stop_file(state_dir: &std::path::Path) -> std::path::PathBuf {
 
 /// What a stop request says when a new version is moving in.
 pub const UPDATING: &str = "updating";
+const MAX_STOP_REQUEST_BYTES: u64 = 4096;
 
 /// Has Atlas's window asked it to stop? Consumes the request, so the next
 /// start isn't stopped by an old one. Checked once a pass of the run loop.
 pub fn asked_by_file(state_dir: &std::path::Path) -> bool {
     let f = stop_file(state_dir);
     if f.is_file() {
-        let said = std::fs::read_to_string(&f).unwrap_or_default();
+        let said = std::fs::File::open(&f)
+            .and_then(|file| {
+                let metadata = file.metadata()?;
+                if !metadata.is_file() || metadata.len() > MAX_STOP_REQUEST_BYTES {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "stop request exceeds read budget",
+                    ));
+                }
+                let mut said = String::new();
+                file.take(MAX_STOP_REQUEST_BYTES + 1)
+                    .read_to_string(&mut said)?;
+                Ok(said)
+            })
+            .unwrap_or_default();
         crate::heard!(std::fs::remove_file(&f));
         please_stop_because(if said.trim() == UPDATING {
             Why::Updating

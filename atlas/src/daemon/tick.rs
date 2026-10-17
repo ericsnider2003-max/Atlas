@@ -5,6 +5,7 @@
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
+use std::io::Read;
 
 /// No folder and no device named to reach directly.
 const NOWHERE_TO_SYNC: &str = "I've nowhere to put it — there's no cloud folder on this machine, and no other device \
@@ -284,7 +285,7 @@ impl<'a> Daemon<'a> {
         // Still alive, for the record of runs (item 33): about once a minute.
         if let Some(runs) = self.runs.as_mut() {
             if runs.alive(t) {
-                let _ = runs.save(&self.store.data_dir().join("state"));
+                crate::kept!(runs.save(&self.store.data_dir().join("state")));
             }
         }
         if crate::onlyone::OnlyOne::at(&self.store.data_dir()).beat(t) {
@@ -506,7 +507,7 @@ impl<'a> Daemon<'a> {
                 t,
             );
             if !round.nothing_happened() {
-                let _ = self.chats.save(&self.store);
+                crate::kept!(self.chats.save(&self.store));
                 out.push(round.spoken());
             }
 
@@ -517,7 +518,7 @@ impl<'a> Daemon<'a> {
             // only when a receipt actually advanced a room's mark, so a
             // failed pass leaves the state to be retried next tick.
             if crate::courier::send_receipts(&mut self.chats, &link, t) > 0 {
-                let _ = self.chats.save(&self.store);
+                crate::kept!(self.chats.save(&self.store));
             }
         }
         self.tick_laps.mark("messages to friends");
@@ -688,7 +689,7 @@ impl<'a> Daemon<'a> {
                         })
                     });
                     let selected = if let Some((id, flow, key)) = selected {
-                        if runs.claims.len() >= 1024 {
+                        if runs.claims.len() > 1024 {
                             return Err(crate::error::AtlasError::Platform("scheduled add-on recovery history is full; saved occurrences are retained and no new occurrence started".into()));
                         }
                         let approved = reg
@@ -1231,7 +1232,7 @@ impl<'a> Daemon<'a> {
             // timer started or cleared, a watch fired — not every tick.
             let after = (&self.automations.mem.pending, &self.automations.mem.latched);
             if !fired.is_empty() || (&before.0, &before.1) != after {
-                let _ = self.store.save("automations", &self.automations.mem);
+                crate::kept!(self.store.save("automations", &self.automations.mem));
             }
         }
 
@@ -1351,7 +1352,16 @@ impl<'a> Daemon<'a> {
         // Whether one is due is looked at once every ten minutes, not every
         // tick (2 Oct 2026): `due_for_backup` counts every file in every
         // backup on disk, and on Eric's laptop that ran every 1.3 s.
-        let look = t >= self.next_backup_look && t.saturating_sub(self.last_backup_attempt) > 600;
+        // Do not let the first tick compete with startup persistence. The
+        // zero sentinel is also the only point at which we can anchor this
+        // delay without adding another piece of durable daemon state.
+        let first_backup_look = self.next_backup_look == 0;
+        if first_backup_look {
+            self.next_backup_look = first_backup_look_at(t);
+        }
+        let look = !first_backup_look
+            && t >= self.next_backup_look
+            && t.saturating_sub(self.last_backup_attempt) > 600;
         let bcfg = if look {
             self.backup_cfg()
         } else {
@@ -1452,8 +1462,11 @@ impl<'a> Daemon<'a> {
                     let mut said: crate::person::Said = self.store.load(crate::person::SAID_RECORD);
                     if said.may_say(&seen, &pcfg, t) {
                         said.record(&seen, t);
-                        if self.store.save(crate::person::SAID_RECORD, &said).is_ok() {
-                            out.push(seen.spoken());
+                        match self.store.save(crate::person::SAID_RECORD, &said) {
+                            Ok(()) => out.push(seen.spoken()),
+                            Err(error) => self.log.warn(&format!(
+                                "could not persist spoken-marker before announcing ({error})"
+                            )),
                         }
                     }
                 }
@@ -1544,8 +1557,11 @@ impl<'a> Daemon<'a> {
                 // is how it gets ignored.
                 let mut asked = arrangement.clone();
                 asked.reviewed_at = t;
-                if self.store.save(crate::afterme::RECORD, &asked).is_ok() {
-                    out.push(said);
+                match self.store.save(crate::afterme::RECORD, &asked) {
+                    Ok(()) => out.push(said),
+                    Err(error) => self.log.warn(&format!(
+                        "could not persist review marker before announcing ({error})"
+                    )),
                 }
             }
         }
@@ -1572,12 +1588,18 @@ impl<'a> Daemon<'a> {
             let acfg = self.tools_cfg().self_audit.clone();
             let last: crate::selfaudit::LastLook = self.store.load(crate::selfaudit::LOOK_RECORD);
             if crate::selfaudit::time_to_look(&acfg, last.at, t) {
-                let _ = self.store.save(
+                crate::kept!(self.store.save(
                     crate::selfaudit::LOOK_RECORD,
                     &crate::selfaudit::LastLook { at: t },
-                );
+                ));
                 self.refresh_signals();
                 let recs = crate::selfaudit::recommend(&self.signals, acfg.most_at_once);
+                crate::kept!(crate::selfaudit::record_inspection(
+                    &self.store,
+                    &self.signals,
+                    &recs,
+                    t,
+                ));
                 // The hollow check, on the pass that happens without you
                 // asking. It used to run only when you asked -- so the one
                 // sweep nobody triggers was the one that skipped the
@@ -1647,13 +1669,13 @@ impl<'a> Daemon<'a> {
                 }
             }
             // The hours you were active, kept across a restart.
-            let _ = self.store.save("rhythm", &self.rhythm);
+            crate::kept!(self.store.save("rhythm", &self.rhythm));
             // Changes waiting on you, checked against the code as it is now.
             // One hash per file it writes; said once when a change goes out
             // of date, not every hour after.
             let newly = self.workshop.mark_outdated();
             if !newly.is_empty() {
-                let _ = self.workshop.save(&self.store);
+                crate::kept!(self.workshop.save(&self.store));
                 for (project, title, files) in newly {
                     out.push(format!(
                         "The \"{title}\" change for {project} is out of date — {} changed since I wrote it. \
@@ -1697,7 +1719,7 @@ impl<'a> Daemon<'a> {
                 ));
             }
             self.trash.expire(t);
-            let _ = self.queue.save(&self.store);
+            crate::kept!(self.queue.save(&self.store));
             self.queue.prune();
             // Walking the whole data/ tree and deciding what to reclaim is
             // real filesystem I/O — on a machine that's accumulated a lot
@@ -1769,7 +1791,7 @@ impl<'a> Daemon<'a> {
             self.daily_history
                 .retain(|c| crate::daily::still_keep(c, t, &daily_cfg));
             if self.daily_history.len() != before {
-                let _ = self.store.save("daily_history", &self.daily_history);
+                crate::kept!(self.store.save("daily_history", &self.daily_history));
             }
         }
         // Reaping idle helpers moved to the top of `tick`, above the pause
@@ -1891,7 +1913,7 @@ impl<'a> Daemon<'a> {
                     if let Some(w) = self.work_session.as_mut() {
                         w.checked_in = true;
                     }
-                    let _ = self.store.save("work_session", &self.work_session);
+                    crate::kept!(self.store.save("work_session", &self.work_session));
                 }
             }
         }
@@ -1913,9 +1935,9 @@ impl<'a> Daemon<'a> {
             {
                 let w = self.wrap_now(t, false);
                 if crate::daily::wrap_due(hour, today, wrapped_on, w.active_secs, here) {
-                    let _ = self.store.save("wrapped_on", &today);
+                    crate::kept!(self.store.save("wrapped_on", &today));
                     self.last_greeted_at = t;
-                    let _ = self.store.save("last_greeted_at", &self.last_greeted_at);
+                    crate::kept!(self.store.save("last_greeted_at", &self.last_greeted_at));
                     out.push(crate::daily::wrap_said(&w));
                 }
             }
@@ -2072,7 +2094,7 @@ impl<'a> Daemon<'a> {
                         None
                     }
                     crate::returning::Hello::Spent => {
-                        let _ = self.store.save("greeted_part", &self.nudger.last_daypart());
+                        crate::kept!(self.store.save("greeted_part", &self.nudger.last_daypart()));
                         None
                     }
                     crate::returning::Hello::Say => {
@@ -2115,8 +2137,8 @@ impl<'a> Daemon<'a> {
         if let (Some(n), Some(o)) = (&nudge, &chosen) {
             if n.trigger == crate::nudge::Trigger::Daypart && Some(&o.kind) == nudge_kind.as_ref() {
                 self.last_greeted_at = t;
-                let _ = self.store.save("last_greeted_at", &self.last_greeted_at);
-                let _ = self.store.save("greeted_part", &self.nudger.last_daypart());
+                crate::kept!(self.store.save("last_greeted_at", &self.last_greeted_at));
+                crate::kept!(self.store.save("greeted_part", &self.nudger.last_daypart()));
             }
         }
         if let Some(offer) = chosen {
@@ -2558,7 +2580,7 @@ impl<'a> Daemon<'a> {
             crate::webpush::change_to_carry(&self.synclog.device.clone(), endpoint, p256dh, auth);
         self.synclog
             .append(crate::sync::What::Changed { id, field, to }, now);
-        let _ = self.store.save("synclog", &Some(self.synclog.clone()));
+        crate::kept!(self.store.save("synclog", &Some(self.synclog.clone())));
     }
 
     pub(crate) fn carry_push_address(&mut self, token: &str, env: &str, now: u64) {
@@ -2566,7 +2588,7 @@ impl<'a> Daemon<'a> {
             crate::apns::change_to_carry(&self.synclog.device.clone(), token, env);
         self.synclog
             .append(crate::sync::What::Changed { id, field, to }, now);
-        let _ = self.store.save("synclog", &Some(self.synclog.clone()));
+        crate::kept!(self.store.save("synclog", &Some(self.synclog.clone())));
     }
 
     /// Record what changed about your add-ons since your other devices were
@@ -2585,7 +2607,7 @@ impl<'a> Daemon<'a> {
         ) {
             self.synclog
                 .append(crate::sync::What::Changed { id, field, to }, now);
-            let _ = self.store.save("weatherkit_carried_until", &until);
+            crate::kept!(self.store.save("weatherkit_carried_until", &until));
         }
         crate::plugins::append_changes_checked(
             &self.store,
@@ -3000,9 +3022,29 @@ impl<'a> Daemon<'a> {
                 if p.extension().and_then(|x| x.to_str()) != Some("bundle") {
                     continue;
                 }
-                let Ok(raw) = std::fs::read_to_string(&p) else {
+                let Ok(file) = std::fs::File::open(&p) else {
                     continue;
                 };
+                let Ok(metadata) = file.metadata() else {
+                    continue;
+                };
+                const MAX_BUNDLE_TEXT_BYTES: u64 = 16 * 1024 * 1024;
+                if !metadata.is_file() || metadata.len() > MAX_BUNDLE_TEXT_BYTES {
+                    refused.push(format!("{}: bundle exceeds the 16 MiB limit", p.display()));
+                    continue;
+                }
+                let mut raw = String::new();
+                if std::io::Read::take(file, MAX_BUNDLE_TEXT_BYTES + 1)
+                    .read_to_string(&mut raw)
+                    .is_err()
+                    || raw.len() as u64 > MAX_BUNDLE_TEXT_BYTES
+                {
+                    refused.push(format!(
+                        "{}: bundle grew past the 16 MiB limit",
+                        p.display()
+                    ));
+                    continue;
+                }
                 // Sealed or plain, through one reader. Two paths here is how
                 // a plaintext fallback survives a feature meant to remove
                 // one -- and a sealed bundle with no key says which command
@@ -3365,10 +3407,10 @@ impl<'a> Daemon<'a> {
                     // The long account (H13j): kept as a note, mentioned in
                     // the brief, and there when asked for.
                     let detail = crate::overnight::morning_detail(&session);
-                    let _ = self.store.save("overnight_detail", &detail);
+                    crate::kept!(self.store.save("overnight_detail", &detail));
                     let ccfg = self.tools_cfg().capture.clone();
                     self.notebook.capture(&detail, Some("overnight"), t, &ccfg);
-                    let _ = self.notebook.save(&self.store);
+                    crate::kept!(self.notebook.save(&self.store));
                     brief.push_str(
                         " The full account is in your notes, or ask \"what did you do overnight\".",
                     );
@@ -3528,6 +3570,14 @@ pub const TOP_UP_EVERY_SECS: u64 = 6 * 3600;
 /// for you, not for a download.
 pub const TOP_UP_AFTER_START_SECS: u64 = 120;
 
+/// Keep the first scheduled backup away from startup persistence and the
+/// first answer. Later looks retain the normal ten-minute cadence.
+const BACKUP_AFTER_START_SECS: u64 = 120;
+
+fn first_backup_look_at(now: u64) -> u64 {
+    now.saturating_add(BACKUP_AFTER_START_SECS)
+}
+
 impl Daemon<'_> {
     /// Fetch what a capability needs and isn't here (`getpieces::everything_else`),
     /// on the crew, one piece at a time, each checked for room first and
@@ -3676,6 +3726,17 @@ mod dials_have_a_deadline {
             "took {} ms",
             started.elapsed().as_millis()
         );
+    }
+}
+
+#[cfg(test)]
+mod backup_startup_schedule {
+    #[test]
+    fn the_zero_sentinel_is_replaced_by_a_delayed_first_look() {
+        let now = 10_000;
+        let first = super::first_backup_look_at(now);
+        assert_eq!(first, 10_120);
+        assert!(first > now);
     }
 }
 

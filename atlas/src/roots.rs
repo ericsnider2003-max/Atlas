@@ -415,8 +415,10 @@ pub struct RunScratch {
     path: PathBuf,
 }
 
+static NEXT_RUN_SCRATCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 impl RunScratch {
-    /// `<temp>/<prefix>-<pid>`, made now. Folders of the same prefix left by
+    /// `<temp>/<prefix>-<pid>-<nonce>`, made now. Folders of the same prefix left by
     /// runs that ended without cleaning up (killed, crashed) are cleared
     /// first (`sweep_run_scratch`).
     pub fn new(prefix: &str) -> RunScratch {
@@ -426,8 +428,19 @@ impl RunScratch {
             std::process::id(),
             RUN_SCRATCH_STALE_SECS,
         );
-        let path = std::env::temp_dir().join(format!("{prefix}-{}", std::process::id()));
-        crate::heard!(std::fs::create_dir_all(&path));
+        let pid = std::process::id();
+        let path = loop {
+            let nonce = NEXT_RUN_SCRATCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let candidate = std::env::temp_dir().join(format!("{prefix}-{pid}-{nonce}"));
+            match std::fs::create_dir(&candidate) {
+                Ok(()) => break candidate,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => {
+                    crate::heard!(Err::<(), _>(e));
+                    break candidate;
+                }
+            }
+        };
         RunScratch { path }
     }
 
@@ -455,7 +468,10 @@ pub fn sweep_run_scratch(temp: &Path, prefix: &str, mine: u32, stale_secs: u64) 
     let mut gone = 0;
     for e in entries.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
-        let Some(pid) = name.strip_prefix(&lead) else {
+        let Some(pid) = name
+            .strip_prefix(&lead)
+            .and_then(|rest| rest.split('-').next())
+        else {
             continue;
         };
         if pid.parse::<u32>().ok().is_none_or(|p| p == mine) {
@@ -490,6 +506,22 @@ mod tests {
             Chosen::BesideTheProgram,
             Path::new("C:/Atlas/atlas.exe")
         ));
+    }
+
+    #[test]
+    fn run_scratch_is_unique_within_one_process_and_cleans_each_folder() {
+        let one = RunScratch::new("atlas-run-scratch-test");
+        let two = RunScratch::new("atlas-run-scratch-test");
+        assert_ne!(one.path(), two.path());
+        assert!(one.path().is_dir());
+        assert!(two.path().is_dir());
+        let first = one.path().to_path_buf();
+        let second = two.path().to_path_buf();
+        drop(one);
+        assert!(!first.exists());
+        assert!(second.exists());
+        drop(two);
+        assert!(!second.exists());
     }
     use super::*;
 

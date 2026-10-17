@@ -43,6 +43,18 @@ const SENT: &str = "feedback_sent";
 const OUTBOX: &str = "feedback_outbox";
 const INBOX: &str = "feedback_inbox";
 const REPLIES_OUT: &str = "feedback_replies_out";
+const MAX_FEEDBACK_JOURNAL_BYTES: u64 = 8 * 1_048_576;
+
+fn load_checked<T>(store: &Store, name: &str) -> T
+where
+    T: serde::de::DeserializeOwned + Serialize + Default,
+{
+    store
+        .load_checked_bounded(name, MAX_FEEDBACK_JOURNAL_BYTES)
+        .ok()
+        .flatten()
+        .unwrap_or_default()
+}
 
 /// The largest piece of feedback (or answer) accepted over a pairing.
 pub const MAX_FEEDBACK_BYTES: usize = 24 * 1024;
@@ -328,22 +340,20 @@ pub fn feedback_preview(f: &Feedback) -> String {
 /// `Store::save` but doesn't make the send untrue.)
 pub fn queue_feedback(store: &Store, mut f: Feedback, to: &str) -> Result<(), String> {
     f.to = to.to_string();
-    let mut out: Vec<Feedback> = store.load(OUTBOX);
+    let mut out: Vec<Feedback> = load_checked(store, OUTBOX);
     out.push(f.clone());
     store
         .save(OUTBOX, &out)
         .map_err(|e| format!("couldn't queue the feedback ({e}); nothing was sent"))?;
-    let mut sent: Vec<Feedback> = store.load(SENT);
+    let mut sent: Vec<Feedback> = load_checked(store, SENT);
     sent.push(f);
-    // unheard-ok: failure is recorded centrally (store::record_failed_save)
-    let _ = store.save(SENT, &sent);
+    crate::kept!(store.save(SENT, &sent));
     Ok(())
 }
 
 /// Feedback still to be sent: (to, wire body, id).
 pub fn feedback_outbox(store: &Store) -> Vec<(String, String, String)> {
-    store
-        .load::<Vec<Feedback>>(OUTBOX)
+    load_checked::<Vec<Feedback>>(store, OUTBOX)
         .into_iter()
         .map(|f| {
             (
@@ -361,14 +371,14 @@ pub fn feedback_outbox(store: &Store) -> Vec<(String, String, String)> {
 
 /// It reached them.
 pub fn feedback_delivered(store: &Store, id: &str) {
-    let mut out: Vec<Feedback> = store.load(OUTBOX);
+    let mut out: Vec<Feedback> = load_checked(store, OUTBOX);
     out.retain(|f| f.id != id);
-    let _ = store.save(OUTBOX, &out);
+    crate::kept!(store.save(OUTBOX, &out));
 }
 
 /// What you've sent, with where each stands.
 pub fn feedback_sent(store: &Store) -> Vec<Feedback> {
-    store.load(SENT)
+    load_checked(store, SENT)
 }
 
 /// On your side: feedback arrived from `from` (a pairing's name). Filed and
@@ -395,7 +405,7 @@ pub fn heard_feedback(store: &Store, from: &str, body: &str) -> Option<String> {
     f.to.clear();
     f.status = FeedbackStatus::New;
     f.replies.clear();
-    let mut inbox: Vec<Feedback> = store.load(INBOX);
+    let mut inbox: Vec<Feedback> = load_checked(store, INBOX);
     if inbox.iter().any(|x| x.id == f.id && x.from == f.from) {
         return None;
     }
@@ -417,7 +427,9 @@ pub fn heard_feedback(store: &Store, from: &str, body: &str) -> Option<String> {
         }
     );
     inbox.push(f);
-    let _ = store.save(INBOX, &inbox);
+    if store.save(INBOX, &inbox).is_err() {
+        return None;
+    }
     Some(said)
 }
 
@@ -432,7 +444,7 @@ fn short(s: &str) -> String {
 
 /// Everything your friends have sent you, numbered from 1.
 pub fn feedback_inbox(store: &Store) -> Vec<Feedback> {
-    store.load(INBOX)
+    load_checked(store, INBOX)
 }
 
 /// Answer feedback number `n` (from `inbox`): its new status and a note.
@@ -444,7 +456,7 @@ pub fn answer_feedback(
     note: &str,
     now: u64,
 ) -> Result<String, String> {
-    let mut inbox: Vec<Feedback> = store.load(INBOX);
+    let mut inbox: Vec<Feedback> = load_checked(store, INBOX);
     let f = n
         .checked_sub(1)
         .and_then(|i| inbox.get_mut(i))
@@ -460,17 +472,20 @@ pub fn answer_feedback(
         at: now,
     };
     let to = f.from.clone();
-    let _ = store.save(INBOX, &inbox);
-    let mut out: Vec<(String, Answer)> = store.load(REPLIES_OUT);
+    store
+        .save(INBOX, &inbox)
+        .map_err(|e| format!("couldn't save the feedback answer ({e})"))?;
+    let mut out: Vec<(String, Answer)> = load_checked(store, REPLIES_OUT);
     out.push((to.clone(), a));
-    let _ = store.save(REPLIES_OUT, &out);
+    store
+        .save(REPLIES_OUT, &out)
+        .map_err(|e| format!("couldn't queue the feedback answer ({e})"))?;
     Ok(to)
 }
 
 /// Answers still to be sent: (to, wire body, id).
 pub fn answers_out(store: &Store) -> Vec<(String, String, String)> {
-    store
-        .load::<Vec<(String, Answer)>>(REPLIES_OUT)
+    load_checked::<Vec<(String, Answer)>>(store, REPLIES_OUT)
         .into_iter()
         .map(|(to, a)| (to, serde_json::to_string(&a).unwrap_or_default(), a.id))
         .collect()
@@ -478,11 +493,11 @@ pub fn answers_out(store: &Store) -> Vec<(String, String, String)> {
 
 /// An answer reached them.
 pub fn answer_delivered(store: &Store, id: &str) {
-    let mut out: Vec<(String, Answer)> = store.load(REPLIES_OUT);
+    let mut out: Vec<(String, Answer)> = load_checked(store, REPLIES_OUT);
     if let Some(i) = out.iter().position(|(_, a)| a.id == id) {
         out.remove(i);
     }
-    let _ = store.save(REPLIES_OUT, &out);
+    crate::kept!(store.save(REPLIES_OUT, &out));
 }
 
 /// On the sender's side: an answer arrived from `from`. Taken only about
@@ -492,7 +507,7 @@ pub fn heard_answer(store: &Store, from: &str, body: &str) -> Option<String> {
         return None;
     }
     let a: Answer = serde_json::from_str(body).ok()?;
-    let mut sent: Vec<Feedback> = store.load(SENT);
+    let mut sent: Vec<Feedback> = load_checked(store, SENT);
     let f = sent
         .iter_mut()
         .find(|f| f.id == a.id && f.to.eq_ignore_ascii_case(from))?;
@@ -513,6 +528,8 @@ pub fn heard_answer(store: &Store, from: &str, body: &str) -> Option<String> {
             format!(" -- \"{}\"", a.note)
         }
     );
-    let _ = store.save(SENT, &sent);
+    if store.save(SENT, &sent).is_err() {
+        return None;
+    }
     Some(said)
 }

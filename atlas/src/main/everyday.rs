@@ -5,6 +5,56 @@
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
+use std::io::Read;
+
+const MAX_TEXT_IMPORT_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_BINARY_IMPORT_BYTES: u64 = 256 * 1024 * 1024;
+
+fn read_bounded_text_import(path: &str) -> std::io::Result<String> {
+    read_bounded_text_file(std::path::Path::new(path))
+}
+
+fn read_bounded_text_file(path: &std::path::Path) -> std::io::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_TEXT_IMPORT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "text import exceeds the 16 MiB limit",
+        ));
+    }
+    let mut text = String::new();
+    file.take(MAX_TEXT_IMPORT_BYTES + 1)
+        .read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_TEXT_IMPORT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "text import grew past the 16 MiB limit while reading",
+        ));
+    }
+    Ok(text)
+}
+
+fn read_bounded_binary_import(path: &str) -> std::io::Result<Vec<u8>> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_BINARY_IMPORT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "binary import exceeds the 256 MiB limit",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_BINARY_IMPORT_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_BINARY_IMPORT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "binary import grew past the 256 MiB limit while reading",
+        ));
+    }
+    Ok(bytes)
+}
 
 /// Suggest where loose files should go, and move them only if told to.
 ///
@@ -369,7 +419,7 @@ pub(super) fn run_clients(args: &[String]) {
             }
             _ => println!("atlas clients add <address> [name]"),
         },
-        Some("import") => match args.get(1).map(|p| std::fs::read_to_string(p)) {
+        Some("import") => match args.get(1).map(|p| read_bounded_text_import(p)) {
             Some(Ok(text)) => match atlas::clients::ClientList::change(&store, |current| {
                 current
                     .import_vcf(&text, now)
@@ -499,7 +549,7 @@ pub(super) fn run_agefile(words: &[String]) {
             if !mine.is_empty() && !to.contains(&mine) {
                 to.push(mine); // so you can open what you sent
             }
-            let plain = match std::fs::read(path) {
+            let plain = match read_bounded_binary_import(path) {
                 Ok(b) => b,
                 Err(e) => return println!("I couldn't read {path}: {e}"),
             };
@@ -518,7 +568,7 @@ pub(super) fn run_agefile(words: &[String]) {
             let Some(path) = words.get(1) else {
                 return println!("atlas open-file <file.age>");
             };
-            let sealed = match std::fs::read(path) {
+            let sealed = match read_bounded_binary_import(path) {
                 Ok(b) => b,
                 Err(e) => return println!("I couldn't read {path}: {e}"),
             };
@@ -565,7 +615,7 @@ pub(super) fn run_notes(cfg: &Config, args: &[String], merge_voices: bool, peopl
     let Some(path) = args.first() else {
         return println!("atlas notes <recording.wav> [--people N] [--merge-voices]");
     };
-    let bytes = match std::fs::read(path) {
+    let bytes = match read_bounded_binary_import(path) {
         Ok(b) => b,
         Err(e) => return println!("I couldn't open {path}: {e}"),
     };
@@ -729,7 +779,7 @@ pub(super) fn run_doc(args: &[String]) {
             let adding = args[0] == "add";
             let new_text = match args.get(2) {
                 Some(path) if std::path::Path::new(path).is_file() => {
-                    match std::fs::read_to_string(path) {
+                    match read_bounded_text_import(path) {
                         Ok(t) => t,
                         Err(e) => return println!("I couldn't read {path}: {e}"),
                     }
@@ -823,7 +873,7 @@ pub(super) fn run_calendar(args: &[String]) {
         }
     }
     match args.first().map(|s| s.to_lowercase()).as_deref() {
-        Some("import") => match args.get(1).map(|p| std::fs::read_to_string(p)) {
+        Some("import") => match args.get(1).map(|p| read_bounded_text_import(p)) {
             Some(Ok(text)) => match cal.import_ics(&text, now, &zone) {
                 Ok((n, unknown)) => {
                     if let Err(error) = cal.save(&store) {
@@ -1413,7 +1463,7 @@ pub(super) fn run_search_check() {
         return;
     }
     let mut questions = atlas::recall::questions_written(
-        &std::fs::read_to_string(store.root().join("search-questions.txt")).unwrap_or_default(),
+        &read_bounded_text_file(&store.root().join("search-questions.txt")).unwrap_or_default(),
     );
     questions.extend(atlas::recall::questions_from(&lib, 40));
     if questions.is_empty() {
@@ -2136,7 +2186,7 @@ pub(super) fn run_selftest(args: &[String]) {
         // read by self-repair as signals, and fixed ones taken off.
         if matches!(status, Ok(s) if s.success()) {
             if let Ok(json) =
-                std::fs::read_to_string(reports.join(atlas::regressions::FROM_SELFTEST))
+                read_bounded_text_file(&reports.join(atlas::regressions::FROM_SELFTEST))
             {
                 if let Ok(failing) = serde_json::from_str::<Vec<atlas::regressions::Case>>(&json) {
                     let store = atlas::store::Store::new(atlas::roots::state_dir());
@@ -2358,7 +2408,7 @@ pub(super) fn run_scaffold(args: &[String]) {
         what: what.clone(),
         day: format!("{d} {} {y}", MONTHS[(m as usize).saturating_sub(1).min(11)]),
     };
-    let plan = match atlas::scaffold::plan(&ask, |p| std::fs::read_to_string(root.join(p)).ok()) {
+    let plan = match atlas::scaffold::plan(&ask, |p| read_bounded_text_file(&root.join(p)).ok()) {
         Ok(p) => p,
         Err(why) => {
             eprintln!("{why}");

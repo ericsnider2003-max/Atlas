@@ -30,6 +30,7 @@ macro_rules! out {
     }};
 }
 
+pub mod artifact;
 pub mod browser;
 pub mod cdp;
 pub mod chat;
@@ -44,6 +45,7 @@ pub mod doorbell;
 pub mod friends;
 pub mod handover;
 pub mod imap;
+pub mod job;
 pub mod measure;
 pub mod msoauth;
 pub mod onion;
@@ -126,6 +128,7 @@ pub mod editors;
 pub mod endpoint;
 pub mod enrol;
 pub mod error;
+pub mod evidence;
 pub mod explain;
 pub mod freeonline;
 pub mod gaze;

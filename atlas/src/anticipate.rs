@@ -84,7 +84,11 @@ pub struct Anticipator {
 
 impl Anticipator {
     pub fn load(store: &Store) -> Anticipator {
-        store.load("anticipate")
+        store
+            .load_checked_bounded("anticipate", 4 * 1_048_576)
+            .ok()
+            .flatten()
+            .unwrap_or_default()
     }
     pub fn save(&self, store: &Store) -> Result<()> {
         store.save("anticipate", self)

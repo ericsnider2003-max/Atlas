@@ -560,7 +560,7 @@ fn look_up(d: &mut Daemon, domain: &str) {
     if let Some(found) = connect::imap_from_autoconfig(&r.body) {
         let mut all: std::collections::BTreeMap<String, (String, u16)> = d.store.load(LOOKED_UP);
         all.insert(domain.to_string(), found);
-        let _ = d.store.save(LOOKED_UP, &all);
+        crate::kept!(d.store.save(LOOKED_UP, &all));
     }
 }
 
@@ -719,7 +719,7 @@ pub fn tick(d: &mut Daemon, now: u64) {
         });
         match took {
             Ok(n) => {
-                let _ = d.calendar.save(&d.store);
+                crate::kept!(d.calendar.save(&d.store));
                 connect::took_read(l, None);
                 l.last_said = format!("{n} event{} changed", if n == 1 { "" } else { "s" });
             }
@@ -777,7 +777,7 @@ pub fn tick(d: &mut Daemon, now: u64) {
         });
     }
     if changed {
-        let _ = d.store.save(connect::CALENDAR_LINKS, &links);
+        crate::kept!(d.store.save(connect::CALENDAR_LINKS, &links));
     }
 }
 
@@ -953,10 +953,10 @@ pub(crate) fn begin_signin(
             p.name()
         ));
     }
-    let _ = d.store.save(
+    crate::kept!(d.store.save(
         SIGNIN_SAID,
         &format!("Waiting for {}'s sign-in in your browser...", p.name()),
-    );
+    ));
     std::thread::spawn(move || {
         let got = wait_for_code(&listeners, p, &state).and_then(|code| {
             oauthlink::exchange(&crate::social::apis::Https, p, &code, &redirect, &verifier)
@@ -1035,7 +1035,7 @@ fn keep_signed_in(d: &mut Daemon, now: u64) {
             Err(e) => format!("Nothing was connected: {e}."),
             Ok(s) => keep_sign_in(d, &s, now),
         };
-        let _ = d.store.save(SIGNIN_SAID, &said);
+        crate::kept!(d.store.save(SIGNIN_SAID, &said));
         // Said too, not only shown on the Connections page: a sign-in started
         // by asking is finished in the browser, away from any page.
         d.to_say_aloud.push(said);
@@ -1046,7 +1046,7 @@ fn keep_signed_in(d: &mut Daemon, now: u64) {
 /// of the section).
 pub fn keep_sign_in(d: &mut Daemon, s: &oauthlink::SignedIn, now: u64) -> String {
     let said = keep_inner(d, s, now);
-    let _ = d.store.save(SIGNIN_SAID, &said);
+    crate::kept!(d.store.save(SIGNIN_SAID, &said));
     said
 }
 
@@ -1290,10 +1290,10 @@ fn connect_muse(d: &mut Daemon, key: &str, cap: &str) -> String {
             *c = Some(r);
         }
     });
-    let _ = d.store.save(
+    crate::kept!(d.store.save(
         SIGNIN_SAID,
         &"Checking the Muse key with Meta...".to_string(),
-    );
+    ));
     match cap_kept {
         Ok(()) => format!("Kept the key; checking it with Meta now. Monthly limit: ${cap:.2}."),
         Err(e) => format!("Kept the key; checking it with Meta now. The ${cap:.2} monthly limit applies for now but couldn't be saved ({e}), so set it again after a restart."),
@@ -1321,7 +1321,7 @@ fn keep_muse(d: &mut Daemon, now: u64) {
                 format!("Meta didn't take that Muse key ({why}), so it isn't kept. Make a new one and paste it again.")
             }
         };
-        let _ = d.store.save(SIGNIN_SAID, &said);
+        crate::kept!(d.store.save(SIGNIN_SAID, &said));
     }
     let kept = d
         .vault
@@ -1339,7 +1339,7 @@ fn keep_muse(d: &mut Daemon, now: u64) {
         let l = crate::muse::ledger(now);
         let stored: crate::muse::Ledger = d.store.load(crate::muse::LEDGER);
         if l != stored {
-            let _ = d.store.save(crate::muse::LEDGER, &l);
+            crate::kept!(d.store.save(crate::muse::LEDGER, &l));
         }
     }
 }

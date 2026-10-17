@@ -201,7 +201,11 @@ pub struct Backlog {
 
 impl Backlog {
     pub fn load(store: &Store) -> Backlog {
-        store.load("backlog")
+        store
+            .load_checked_bounded("backlog", 8 * 1_048_576)
+            .ok()
+            .flatten()
+            .unwrap_or_default()
     }
     pub fn save(&self, store: &Store) -> Result<()> {
         store.save("backlog", self)

@@ -1098,7 +1098,7 @@ mod a_crash_turns_it_off {
         std::fs::remove_dir(&root).unwrap();
     }
 
-    #[cfg(windows)]
+    #[cfg(all(windows, feature = "onnx"))]
     #[test]
     #[ignore = "run alone with ATLAS_ORT_TEST_ROOT for the laptop's actual runtime"]
     fn actual_runtime_keeps_a_quarantined_native_provider_unloaded() {

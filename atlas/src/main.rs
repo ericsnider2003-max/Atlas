@@ -17,6 +17,29 @@ use atlas::voice::Voice;
 use atlas::workspace;
 use std::io::{self, Write};
 
+const MAX_FILM_SVG_BYTES: u64 = 64 * 1024 * 1024;
+
+fn read_film_svg(path: &std::path::Path) -> io::Result<String> {
+    use std::io::Read;
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_FILM_SVG_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "animation SVG exceeds the 64 MiB limit",
+        ));
+    }
+    let mut svg = String::new();
+    file.take(MAX_FILM_SVG_BYTES + 1).read_to_string(&mut svg)?;
+    if svg.len() as u64 > MAX_FILM_SVG_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "animation SVG grew past the 64 MiB limit while reading",
+        ));
+    }
+    Ok(svg)
+}
+
 // --- the commands, split by topic (29 Sep 2026, docs/refactor-plan-daemon-split.md §7).
 // `src/main/<x>.rs`, declared with a path because a crate root's `mod x;`
 // looks in `src/x.rs`. Each child starts `use super::*;` and main reaches
@@ -711,7 +734,7 @@ fn main() {
             return println!("atlas film <animation.svg> [frames per second]");
         };
         let fps: u32 = words.get(2).and_then(|w| w.parse().ok()).unwrap_or(12);
-        let svg = match std::fs::read_to_string(file) {
+        let svg = match read_film_svg(std::path::Path::new(file)) {
             Ok(s) => s,
             Err(e) => return println!("{file}: {e}"),
         };

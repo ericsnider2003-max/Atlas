@@ -10,6 +10,9 @@
 use crate::error::Result;
 use crate::store::{now, Store};
 use serde::{Deserialize, Serialize};
+use std::io::Read;
+
+const MAX_ACTIVITY_ANCHORS_BYTES: u64 = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -120,12 +123,25 @@ impl Journal {
         store.save("activity", self)?;
         if let Some(last) = self.events.last().filter(|e| !e.hash.is_empty()) {
             let path = anchor_path(store.root());
-            let already = std::fs::read_to_string(&path)
+            let already = std::fs::File::open(&path)
+                .and_then(|file| {
+                    let mut text = String::new();
+                    file.take(MAX_ACTIVITY_ANCHORS_BYTES + 1)
+                        .read_to_string(&mut text)?;
+                    if text.len() as u64 > MAX_ACTIVITY_ANCHORS_BYTES {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "activity anchors exceed read budget",
+                        ));
+                    }
+                    Ok(text)
+                })
                 .ok()
                 .and_then(|t| t.lines().last().map(|l| l.contains(&last.hash)))
                 .unwrap_or(false);
             if !already {
                 use std::io::Write;
+
                 let line = serde_json::json!({ "seq": last.seq, "hash": last.hash, "at": last.at })
                     .to_string();
                 if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -449,9 +465,23 @@ pub fn anchor_path(dir: &std::path::Path) -> std::path::PathBuf {
 
 /// The recorded heads: (entry number, seal).
 pub fn anchors(dir: &std::path::Path) -> Vec<(u64, String)> {
-    std::fs::read_to_string(anchor_path(dir))
-        .unwrap_or_default()
-        .lines()
+    let path = anchor_path(dir);
+    let text = std::fs::File::open(path)
+        .and_then(|file| {
+            let metadata = file.metadata()?;
+            if !metadata.is_file() || metadata.len() > MAX_ACTIVITY_ANCHORS_BYTES {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "activity anchors exceed read budget",
+                ));
+            }
+            let mut text = String::new();
+            file.take(MAX_ACTIVITY_ANCHORS_BYTES + 1)
+                .read_to_string(&mut text)?;
+            Ok(text)
+        })
+        .unwrap_or_default();
+    text.lines()
         .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
         .filter_map(|v| {
             Some((

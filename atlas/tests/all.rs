@@ -42,6 +42,8 @@ mod a_flow_is_a_run_not_a_pile_of_pushes;
 mod a_group_has_an_owner;
 #[path = "a_judgment_says_how_sure_it_is.rs"]
 mod a_judgment_says_how_sure_it_is;
+#[path = "a_misspelt_setting_is_reported.rs"]
+mod a_misspelt_setting_is_reported;
 #[path = "a_month_against_your_own_months.rs"]
 mod a_month_against_your_own_months;
 #[path = "a_note_on_who_messaged.rs"]
@@ -132,6 +134,8 @@ mod build_from_a_description;
 mod capability_honesty;
 #[path = "capability_routine.rs"]
 mod capability_routine;
+#[path = "capability_wiring.rs"]
+mod capability_wiring;
 #[path = "capture_content.rs"]
 mod capture_content;
 #[path = "catalogue.rs"]
@@ -188,6 +192,8 @@ mod daemon;
 mod daily_booking;
 #[path = "dash.rs"]
 mod dash;
+#[path = "dead_capabilities.rs"]
+mod dead_capabilities;
 #[path = "dead_config.rs"]
 mod dead_config;
 #[path = "dead_methods.rs"]
@@ -224,6 +230,8 @@ mod facts;
 mod faithful;
 #[path = "feedback_from_friends.rs"]
 mod feedback_from_friends;
+#[path = "file_recovery_transactions.rs"]
+mod file_recovery_transactions;
 #[path = "files_remote.rs"]
 mod files_remote;
 #[path = "filing.rs"]
@@ -326,6 +334,8 @@ mod installing_a_release;
 mod kokoro_voice;
 #[path = "mail_through_himalaya.rs"]
 mod mail_through_himalaya;
+#[path = "new_capabilities_are_wired.rs"]
+mod new_capabilities_are_wired;
 #[path = "no_silent_discards.rs"]
 mod no_silent_discards;
 #[path = "nothing_from_any_version_was_lost.rs"]
@@ -360,6 +370,7 @@ mod connections_stay_alive;
 #[path = "decision_list_remainder.rs"]
 mod decision_list_remainder;
 #[path = "easy_setup.rs"]
+#[cfg(feature = "desktop-ui")]
 mod easy_setup;
 #[path = "errand_pause.rs"]
 mod errand_pause;
@@ -368,6 +379,7 @@ mod every_capability_is_reached_by_a_test;
 #[path = "hub_every_button_works.rs"]
 mod hub_every_button_works;
 #[path = "hub_in_the_window.rs"]
+#[cfg(feature = "desktop-ui")]
 mod hub_in_the_window;
 #[path = "idle_but_on.rs"]
 mod idle_but_on;
@@ -451,6 +463,7 @@ mod money_grading;
 #[path = "multiframe.rs"]
 mod multiframe;
 #[path = "native_settings.rs"]
+#[cfg(feature = "desktop-ui")]
 mod native_settings;
 #[path = "no_confident_nothings.rs"]
 mod no_confident_nothings;
@@ -470,6 +483,8 @@ mod nudge;
 mod off_the_tick;
 #[path = "offline_and_cdp.rs"]
 mod offline_and_cdp;
+#[path = "offline_progress.rs"]
+mod offline_progress;
 #[path = "older_atlas_keeps_newer_fields.rs"]
 mod older_atlas_keeps_newer_fields;
 #[path = "one_name_one_record.rs"]
@@ -705,8 +720,10 @@ mod the_heartbeat_does_not_stop;
 #[path = "the_hub_answers_every_click.rs"]
 mod the_hub_answers_every_click;
 #[path = "the_hub_design_is_the_locked_one.rs"]
+#[cfg(feature = "desktop-ui")]
 mod the_hub_design_is_the_locked_one;
 #[path = "the_hub_is_always_there.rs"]
+#[cfg(feature = "desktop-ui")]
 mod the_hub_is_always_there;
 #[path = "the_hub_is_reachable.rs"]
 mod the_hub_is_reachable;
@@ -906,6 +923,7 @@ mod finishing_what_it_starts;
 #[path = "friends_get_nothing_of_erics.rs"]
 mod friends_get_nothing_of_erics;
 #[path = "getting_things_done.rs"]
+#[cfg(feature = "desktop-ui")]
 mod getting_things_done;
 #[path = "greet_once.rs"]
 mod greet_once;
@@ -920,6 +938,7 @@ mod job_fit;
 #[path = "keeping_track.rs"]
 mod keeping_track;
 #[path = "keys_to_reach_atlas.rs"]
+#[cfg(feature = "desktop-ui")]
 mod keys_to_reach_atlas;
 #[path = "lets_work.rs"]
 mod lets_work;
@@ -968,6 +987,7 @@ mod seeing_real_pictures;
 #[path = "selftest_examples.rs"]
 mod selftest_examples;
 #[path = "settings_apply_live.rs"]
+#[cfg(feature = "desktop-ui")]
 mod settings_apply_live;
 #[path = "several_approvals.rs"]
 mod several_approvals;
@@ -994,6 +1014,7 @@ mod the_mark_is_one_mark;
 #[path = "the_name_and_the_request_in_one_breath.rs"]
 mod the_name_and_the_request_in_one_breath;
 #[path = "the_npu_engine.rs"]
+#[cfg(feature = "onnx")]
 mod the_npu_engine;
 #[path = "the_other_device_reads_whole_files.rs"]
 mod the_other_device_reads_whole_files;
@@ -1012,12 +1033,14 @@ mod the_system_recovers_by_itself;
 #[path = "there_when_you_sit_down.rs"]
 mod there_when_you_sit_down;
 #[path = "tor_ships_with_atlas.rs"]
+#[cfg(feature = "desktop-ui")]
 mod tor_ships_with_atlas;
 #[path = "two_brains.rs"]
 mod two_brains;
 #[path = "two_factor_and_signing_in.rs"]
 mod two_factor_and_signing_in;
 #[path = "updates_and_feedback_by_voice.rs"]
+#[cfg(feature = "desktop-ui")]
 mod updates_and_feedback_by_voice;
 #[path = "updates_and_feedback_in_the_hub.rs"]
 mod updates_and_feedback_in_the_hub;

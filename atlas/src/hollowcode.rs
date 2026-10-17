@@ -560,7 +560,7 @@ pub fn never_called_in_project(file: &std::path::Path, code: &str, tongue: Tongu
         if std::fs::canonicalize(&p).unwrap_or_else(|_| p.clone()) == mine {
             continue;
         }
-        let Ok(text) = std::fs::read_to_string(&p) else {
+        let Ok(text) = read_project_text(&p, 512 * 1024) else {
             continue;
         };
         unseen.retain(|(_, name, _)| !text.lines().any(|l| mentions(l, name)));
@@ -577,6 +577,27 @@ pub fn never_called_in_project(file: &std::path::Path, code: &str, tongue: Tongu
 
 /// The most source files read for `never_called_in_project`.
 pub const PROJECT_FILES: usize = 400;
+
+fn read_project_text(path: &std::path::Path, max: u64) -> std::io::Result<String> {
+    use std::io::Read;
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > max {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "project text exceeds its read limit",
+        ));
+    }
+    let mut text = String::new();
+    file.take(max + 1).read_to_string(&mut text)?;
+    if text.len() as u64 > max {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "project text grew past its read limit",
+        ));
+    }
+    Ok(text)
+}
 
 fn project_root(file: &std::path::Path) -> std::path::PathBuf {
     let mut dir = file.parent();
@@ -653,7 +674,7 @@ pub fn manifest_near(file: &std::path::Path) -> Option<String> {
             "pyproject.toml",
             "package.json",
         ] {
-            if let Ok(text) = std::fs::read_to_string(d.join(name)) {
+            if let Ok(text) = read_project_text(&d.join(name), 4 * 1024 * 1024) {
                 return Some(text);
             }
         }

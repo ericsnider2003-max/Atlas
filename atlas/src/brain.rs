@@ -18,6 +18,7 @@ use crate::platform::Platform;
 use crate::tools::{expand, ExternalTool, Vars};
 use serde::Deserialize;
 use serde_json::Value;
+use std::io::Read;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LlmConfig {
@@ -983,6 +984,8 @@ impl Llm for ShellLlm {
 }
 
 impl ShellLlm {
+    const MAX_VISION_IMAGE_BYTES: u64 = 32 * 1024 * 1024;
+
     /// Ask the model about an image on disk.
     pub fn look(&self, image_path: &str, question: &str) -> Result<String> {
         let template = self.cfg.vision_request.as_ref().ok_or_else(|| {
@@ -990,7 +993,22 @@ impl ShellLlm {
                 "this model has no vision_request configured — it cannot see images".into(),
             )
         })?;
-        let bytes = std::fs::read(image_path)?;
+        let file = std::fs::File::open(image_path)?;
+        let metadata = file.metadata()?;
+        if !metadata.is_file() || metadata.len() > Self::MAX_VISION_IMAGE_BYTES {
+            return Err(AtlasError::Platform(format!(
+                "vision image exceeds the {} MiB input limit",
+                Self::MAX_VISION_IMAGE_BYTES / (1024 * 1024)
+            )));
+        }
+        let mut bytes = Vec::with_capacity(metadata.len() as usize);
+        file.take(Self::MAX_VISION_IMAGE_BYTES + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > Self::MAX_VISION_IMAGE_BYTES {
+            return Err(AtlasError::Platform(
+                "vision image exceeded the input limit while reading".into(),
+            ));
+        }
         let mut v = self.vars.clone();
         v.insert("image_b64".into(), crate::b64::encode(&bytes));
         v.insert(

@@ -382,9 +382,14 @@ impl Notebook {
     /// the capability to the disk was the untested one, and this is the defect
     /// that was sitting in it.
     pub const FILE: &str = "notebook";
+    const MAX_NOTEBOOK_BYTES: u64 = 16 * 1_048_576;
 
     pub fn load(store: &crate::store::Store) -> Notebook {
-        store.load(Self::FILE)
+        store
+            .load_checked_bounded(Self::FILE, Self::MAX_NOTEBOOK_BYTES)
+            .ok()
+            .flatten()
+            .unwrap_or_default()
     }
 
     pub fn save(&self, store: &crate::store::Store) -> crate::error::Result<()> {

@@ -158,6 +158,7 @@ const CAPABILITY_UNWIRED: &[&str] = &[
 /// Only two shapes qualify, and "it hasn't been wired yet" is neither of them.
 const NOT_A_CAPABILITY: &[(&str, &str)] = &[
     ("lib", "the crate root"),
+    ("job", "the shared lifecycle and durable job envelope used by domain capabilities"),
     ("main", "the entry point"),
     ("mobile", "the phones' C entry points (atlas_mobile_*), called from Swift and Kotlin, which this scan of Rust sources cannot see"),
     ("error", "the error type every module returns"),

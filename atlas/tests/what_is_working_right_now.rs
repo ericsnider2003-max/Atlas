@@ -74,8 +74,10 @@ fn asking_what_works_right_now_names_the_usable_set() {
     let reply = d.execute(&Intent::Capabilities("right now".into()));
 
     // It leads with the count of usable things, then names them -- the same
-    // list `working` builds. Every usable capability's `what` must appear.
-    let working = capability::working();
+    // evidence-aware list the live daemon builds. Every usable capability's
+    // `what` must appear.
+    let research_on = c.tools.as_ref().is_some_and(|tools| tools.research.enabled);
+    let working = capability::working_for(research_on);
     assert!(
         !working.is_empty(),
         "the tree should have some usable capabilities"

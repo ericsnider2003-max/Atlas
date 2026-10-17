@@ -7,7 +7,9 @@
 //! caught before it reaches the engine, and loading has to stay separate from
 //! running.
 
-use atlas::infer::{fit, spoken, whats_missing, Kind, Model};
+#[cfg(feature = "onnx")]
+use atlas::infer::Model;
+use atlas::infer::{fit, spoken, whats_missing, Kind};
 use std::path::Path;
 
 // ---------------------------------------------------------------------------
@@ -15,6 +17,7 @@ use std::path::Path;
 // ---------------------------------------------------------------------------
 
 #[test]
+#[cfg(feature = "onnx")]
 fn a_model_that_is_not_installed_is_named_rather_than_shrugged_at() {
     // The failure this codebase keeps producing: a feature that does nothing
     // and says nothing, so the person concludes the whole idea doesn't work.

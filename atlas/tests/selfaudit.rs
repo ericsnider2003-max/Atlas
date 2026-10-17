@@ -1,5 +1,7 @@
 use atlas::pipeline::Thought;
-use atlas::selfaudit::{as_thought, recommend, spoken, Kind, SelfAuditConfig, Signal, WHY_IT_ASKS};
+use atlas::selfaudit::{
+    as_thought, recommend, record_inspection, spoken, Kind, SelfAuditConfig, Signal, WHY_IT_ASKS,
+};
 
 fn signal(kind: Kind, subject: &str, seen: u32, of: u32) -> Signal {
     Signal {
@@ -178,6 +180,39 @@ fn atlas_does_not_act_on_its_own_diagnosis_by_default() {
     assert!(
         WHY_IT_ASKS.contains("I'm worse than you at knowing whether fixing one is worth the risk")
     );
+}
+
+#[test]
+fn a_system_review_receipt_names_signals_and_recommendations_without_claiming_a_fix() {
+    let root = std::env::temp_dir().join(format!("atlas-self-audit-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let store = atlas::store::Store::new(&root);
+    let signals = vec![signal(Kind::RouteFails, "the export route", 9, 10)];
+    let recs = recommend(&signals, 1);
+
+    let id = record_inspection(&store, &signals, &recs, 123).unwrap();
+    let records = atlas::job::load_checked(&store).unwrap();
+    let record = records.iter().find(|record| record.job_id == id).unwrap();
+    assert_eq!(record.state, atlas::job::State::Succeeded);
+    assert_eq!(record.stage, "system review");
+    let envelope = record.artifacts.as_ref().unwrap();
+    assert_eq!(envelope.input.len(), 1);
+    assert_eq!(envelope.output[0].kind, "system_review");
+    assert!(record
+        .receipt
+        .as_ref()
+        .unwrap()
+        .detail
+        .contains("recommendation"));
+    let evidence: Vec<atlas::evidence::Bundle> = store.load("evidence");
+    let observation = evidence
+        .iter()
+        .find(|bundle| bundle.receipt_job_id.as_deref() == Some(id.as_str()))
+        .expect("self-audit receipt has a linked evidence bundle");
+    assert_eq!(observation.subject, "atlas-self-audit");
+    assert!(observation.limitations[0].contains("approval"));
+    let _ = std::fs::remove_dir_all(root);
 }
 
 // ================= the page =================

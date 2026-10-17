@@ -10,6 +10,8 @@ use crate::error::Result;
 use crate::store::Store;
 use serde::{Deserialize, Serialize};
 
+const MAX_OUTBOX_BYTES: u64 = 16 * 1_048_576;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Kind {
@@ -119,7 +121,9 @@ impl Outbox {
         Self::load_checked(store).unwrap_or_default()
     }
     pub fn load_checked(store: &Store) -> Result<Outbox> {
-        Ok(store.load_checked("outbox")?.unwrap_or_default())
+        Ok(store
+            .load_checked_bounded("outbox", MAX_OUTBOX_BYTES)?
+            .unwrap_or_default())
     }
 
     pub fn save(&self, store: &Store) -> Result<()> {
@@ -356,8 +360,10 @@ pub fn send_fenced_capped(
                 return Err(format!("Submission remains unconfirmed ({e}); its persisted record could not be read. Do not repeat it."));
             }
             outbox.uncertain_submission(&pending.id, &e);
-            let _ = outbox.save(store);
-            Err(format!("The reply's outcome isn't confirmed ({e}); check the service before another attempt."))
+            match outbox.save(store) {
+                Ok(()) => Err(format!("The reply's outcome isn't confirmed ({e}); check the service before another attempt.")),
+                Err(save) => Err(format!("The reply's outcome isn't confirmed ({e}), and its uncertainty receipt couldn't be saved ({save}); do not repeat it until the service is checked.")),
+            }
         }
     }
 }

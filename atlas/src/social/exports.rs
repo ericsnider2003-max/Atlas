@@ -49,6 +49,7 @@ use super::snapshots::{AccountSnap, Metrics, Platform, PostSnap, Record};
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// The largest export read whole into memory. X archives with media run to
@@ -56,6 +57,26 @@ use std::path::{Path, PathBuf};
 pub const MAX_ZIP_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_PART: u64 = 256 * 1024 * 1024;
 const MAX_FILES: usize = 50_000;
+
+fn read_bounded_bytes(path: &Path, max: u64) -> std::io::Result<Vec<u8>> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > max {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "export file exceeds its size limit",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(max + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > max {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "export file grew past its size limit while reading",
+        ));
+    }
+    Ok(bytes)
+}
 
 /// What an import found.
 #[derive(Debug, Clone, PartialEq)]
@@ -94,8 +115,8 @@ impl Bundle {
                     meta.len() / (1024 * 1024)
                 ));
             }
-            let bytes =
-                std::fs::read(path).map_err(|e| format!("I can't read {}: {e}", path.display()))?;
+            let bytes = read_bounded_bytes(path, MAX_ZIP_BYTES)
+                .map_err(|e| format!("I can't read {}: {e}", path.display()))?;
             let names = RefCell::new(Vec::new());
             crate::zipread::file_inside(
                 &bytes,
@@ -141,7 +162,7 @@ impl Bundle {
                         len / (1024 * 1024)
                     ));
                 }
-                std::fs::read(&p).map_err(|e| format!("I can't read {name}: {e}"))
+                read_bounded_bytes(&p, MAX_PART).map_err(|e| format!("I can't read {name}: {e}"))
             }
             Bundle::Zip(bytes, _) => crate::zipread::file_inside(bytes, |n| n == name, MAX_PART)?
                 .map(|(_, b)| b)
@@ -926,7 +947,7 @@ fn col(row: &[String], name: &str, from: usize) -> Option<usize> {
 
 fn linkedin(path: &Path, b: &Bundle, now: u64) -> Result<Imported, String> {
     let bytes = if path.to_string_lossy().to_lowercase().ends_with(".xlsx") {
-        std::fs::read(path).map_err(|e| format!("I can't read it: {e}"))?
+        read_bounded_bytes(path, MAX_ZIP_BYTES).map_err(|e| format!("I can't read it: {e}"))?
     } else {
         let f = b
             .find(|n| n.ends_with(".xlsx"))

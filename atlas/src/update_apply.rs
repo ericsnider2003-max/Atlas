@@ -174,13 +174,13 @@ pub fn ask_due(store: &Store, version: &str, now: u64) -> bool {
 /// Record that the person was asked about `version` (or said "not now"):
 /// don't ask again for a day.
 pub fn asked(store: &Store, version: &str, now: u64) {
-    let _ = store.save(
+    crate::kept!(store.save(
         ASKED,
         &Asked {
             version: version.to_string(),
             next_ask_at: now + ASK_AGAIN_SECS,
         },
-    );
+    ));
 }
 
 // ---------------------------------------------------------------- builds not offered again
@@ -215,7 +215,7 @@ fn never_again(store: &Store, sha256: &str, version: &str, why: &str) {
     let mut n: NotAgain = store.load(NOT_AGAIN);
     if !n.builds.iter().any(|(b, _, _)| *b == key) {
         n.builds.push((key, version.to_string(), why.to_string()));
-        let _ = store.save(NOT_AGAIN, &n);
+        crate::kept!(store.save(NOT_AGAIN, &n));
     }
 }
 
@@ -352,7 +352,7 @@ pub fn record_failure(store: &Store, install_root: &Path, mut report: FailureRep
     report.because = failed_because(&report.reasons, &report.crash);
     let mut all: Vec<FailureReport> = store.load(FAILURES);
     all.push(report.clone());
-    let _ = store.save(FAILURES, &all);
+    crate::kept!(store.save(FAILURES, &all));
     let what = report
         .reasons
         .iter()
@@ -368,10 +368,10 @@ pub fn record_failure(store: &Store, install_root: &Path, mut report: FailureRep
                 install_root,
                 &upgrade::build_tag(&report.version, &report.sha256),
             );
-            let _ = store.save(
+            crate::kept!(store.save(
                 RETRY_AFTER,
                 &(report.at.max(crate::store::now()) + MACHINE_RETRY_SECS),
-            );
+            ));
             format!(
                 "Atlas {} couldn't start here because of something on this computer: {what}. Once that's put \
                  right I'll try {} again -- nothing is wrong with the update itself.",
@@ -385,7 +385,7 @@ pub fn record_failure(store: &Store, install_root: &Path, mut report: FailureRep
                 &report.version,
                 "it failed here and is waiting for a fix",
             );
-            let _ = store.save(LAST_FAILURE, &Some(report.clone()));
+            crate::kept!(store.save(LAST_FAILURE, &Some(report.clone())));
             format!(
                 "Atlas {} failed at its {} here ({}), so I went back to {}. I've written down exactly what went \
                  wrong. To tell whoever sends you updates, say \"report a bug\", or use the Feedback page, to describe it and attach \
@@ -412,7 +412,7 @@ pub fn unfiled_own_failure(store: &Store) -> Option<FailureReport> {
     if r.at <= filed && filed != 0 {
         return None;
     }
-    let _ = store.save("update_last_failure_filed", &r.at.max(1));
+    crate::kept!(store.save("update_last_failure_filed", &r.at.max(1)));
     Some(r)
 }
 
@@ -424,12 +424,12 @@ fn file_report(store: &Store, r: FailureReport, halt: bool) {
         let mut halted: Vec<String> = store.load(HALTED);
         if !halted.contains(&r.sha256) {
             halted.push(r.sha256.clone());
-            let _ = store.save(HALTED, &halted);
+            crate::kept!(store.save(HALTED, &halted));
         }
     }
     let mut inbox: Vec<FailureReport> = store.load(INBOX);
     inbox.push(r);
-    let _ = store.save(INBOX, &inbox);
+    crate::kept!(store.save(INBOX, &inbox));
 }
 
 /// On the releaser's own devices a failure doesn't need to travel: file it here.
@@ -453,7 +453,7 @@ pub fn hold_release(store: &Store, sha256: &str) {
     let mut halted: Vec<String> = store.load(HALTED);
     if !halted.iter().any(|s| s == sha256) {
         halted.push(sha256.to_string());
-        let _ = store.save(HALTED, &halted);
+        crate::kept!(store.save(HALTED, &halted));
     }
 }
 
@@ -595,8 +595,28 @@ pub fn stage_update(store: &Store, install_root: &Path, platform: &str) -> Resul
             "Atlas {version} failed here before and is waiting for a fixed release."
         ));
     }
-    let bytes = std::fs::read(&available.downloaded)
+    let file = std::fs::File::open(&available.downloaded)
         .map_err(|e| format!("I couldn't read the downloaded Atlas {version}: {e}"))?;
+    let metadata = file
+        .metadata()
+        .map_err(|e| format!("I couldn't inspect the downloaded Atlas {version}: {e}"))?;
+    if !metadata.is_file() || metadata.len() != accepted.artifact.size {
+        Available::fetch_again(store);
+        return Err(format!(
+            "The downloaded Atlas {version} changed on disk after it arrived, so I threw it away and I'm fetching it again."
+        ));
+    }
+    let mut bytes = Vec::with_capacity(accepted.artifact.size as usize);
+    use std::io::Read;
+    file.take(accepted.artifact.size + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("I couldn't read the downloaded Atlas {version}: {e}"))?;
+    if bytes.len() as u64 != accepted.artifact.size {
+        Available::fetch_again(store);
+        return Err(format!(
+            "The downloaded Atlas {version} changed size while being read, so I threw it away and I'm fetching it again."
+        ));
+    }
     release::check_artifact(&accepted.artifact, &bytes).map_err(|r| {
         // Damaged on disk after it arrived: fetched again, not given up on.
         Available::fetch_again(store);
@@ -623,7 +643,7 @@ pub fn stage_update(store: &Store, install_root: &Path, platform: &str) -> Resul
     }
     std::fs::rename(&part, &to)
         .map_err(|e| format!("I couldn't put Atlas {version} in place: {e}"))?;
-    let _ = store.save(
+    crate::kept!(store.save(
         PENDING,
         &StagedUpdate {
             version: version.clone(),
@@ -632,7 +652,7 @@ pub fn stage_update(store: &Store, install_root: &Path, platform: &str) -> Resul
             notice: Some(notice),
             restarted: false,
         },
-    );
+    ));
     upgrade::log_update(
         install_root,
         &format!("{version} checked again and staged for the next start"),
@@ -675,7 +695,7 @@ pub fn finish_after_start(store: &Store, install_root: &Path, running: &str) -> 
         return UpdateSettled::Nothing;
     };
     let settle = |store: &Store| {
-        let _ = store.save(PENDING, &StagedUpdate::default());
+        crate::kept!(store.save(PENDING, &StagedUpdate::default()));
     };
     let staged = upgrade::build_tag(&p.version, &p.sha256);
     let is_running = if p.sha256.is_empty() {
@@ -709,12 +729,12 @@ pub fn finish_after_start(store: &Store, install_root: &Path, running: &str) -> 
             if installed.save(store).is_err() {
                 return UpdateSettled::Waiting;
             }
-            let _ = store.save(
+            crate::kept!(store.save(
                 HISTORY,
                 &History {
                     previous: Some(before),
                 },
-            );
+            ));
         }
         settle(store);
         Available::forget_offer(store);
@@ -794,7 +814,7 @@ pub fn relaunch_self(running: &Path, args: &[String]) -> Result<(), String> {
 
 /// Something to tell you about an update, kept until said once.
 fn tell(store: &Store, what: &str) {
-    let _ = store.save(NEWS, &what.to_string());
+    crate::kept!(store.save(NEWS, &what.to_string()));
 }
 
 /// What there is to say about an update since last asked, once.
@@ -803,7 +823,7 @@ pub fn take_news(store: &Store) -> Option<String> {
     if said.is_empty() {
         return None;
     }
-    let _ = store.save(NEWS, &String::new());
+    crate::kept!(store.save(NEWS, &String::new()));
     Some(said)
 }
 
@@ -823,7 +843,7 @@ pub fn choose_mode(store: &Store, mode: Option<AutoUpdate>) -> crate::error::Res
 /// You said yes to installing `version` (the hub, a voice answer, or `atlas
 /// update install`).
 pub fn say_yes(store: &Store, version: &str) {
-    let _ = store.save(YES, &version.to_string());
+    crate::kept!(store.save(YES, &version.to_string()));
 }
 
 fn said_yes(store: &Store, version: &str) -> bool {
@@ -885,7 +905,7 @@ pub fn update_tick(
         // Restarted once and still the old build: it didn't go in. Why is in
         // updates.log ("not swapped in: ..."); it's written up like any other
         // failure, so it gets fixed rather than quietly retried or dropped.
-        let _ = store.save(PENDING, &StagedUpdate::default());
+        crate::kept!(store.save(PENDING, &StagedUpdate::default()));
         upgrade::log_update(
             install_root,
             &format!("{} was staged but didn't go in on restart", p.version),
@@ -940,18 +960,18 @@ pub fn update_tick(
         }
         InstallStep::InstallNow => match stage_update(store, install_root, platform) {
             Ok(v) => {
-                let _ = store.save(YES, &String::new());
+                crate::kept!(store.save(YES, &String::new()));
                 match pending(store) {
                     Some(mut p) => {
                         p.restarted = true;
-                        let _ = store.save(PENDING, &p);
+                        crate::kept!(store.save(PENDING, &p));
                         Ticked::Restart(format!("Restarting to install Atlas {v}."))
                     }
                     None => Ticked::Nothing,
                 }
             }
             Err(why) => {
-                let _ = store.save(YES, &String::new());
+                crate::kept!(store.save(YES, &String::new()));
                 Ticked::Say(why)
             }
         },
@@ -1023,14 +1043,14 @@ pub fn undo_update(
         // Keep the trust as it is now: a key rotation taken since stays taken.
         let mut back = before;
         back.trust = Installed::load(store).trust;
-        let _ = back.save(store);
-        let _ = store.save(HISTORY, &History::default());
+        crate::kept!(back.save(store));
+        crate::kept!(store.save(HISTORY, &History::default()));
     }
     never_again(store, &current_build, &current, "you went back from it");
-    let _ = store.save(PENDING, &StagedUpdate::default());
+    crate::kept!(store.save(PENDING, &StagedUpdate::default()));
     // The running Atlas is still the version you left, in memory: it restarts
     // itself on its next tick (`update_tick`).
-    let _ = store.save(RESTART, &true);
+    crate::kept!(store.save(RESTART, &true));
     upgrade::log_update(
         install_root,
         &format!(
@@ -1079,7 +1099,7 @@ pub fn heard_rotation_with(store: &Store, body: &str, recovery: &[u8; 32]) -> Op
     match release::apply_rotation_with(&installed.trust, recovery, &signed) {
         Ok(trust) => {
             installed.trust = trust;
-            installed.save(store).ok()?;
+            crate::kept!(installed.save(store));
             Some(
                 "Your release key changed. Updates are now checked against the new key; anything signed with \
                  the old one is refused."

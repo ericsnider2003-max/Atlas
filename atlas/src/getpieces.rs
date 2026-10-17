@@ -22,7 +22,10 @@
 //! own `tar.exe` — both ship with Windows 10 and 11 — so Atlas carries no
 //! HTTP or zip code of its own for this.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
+
+const MAX_PIECE_MARKER_BYTES: u64 = 4096;
 use std::time::Duration;
 
 /// Where a piece ends up.
@@ -750,7 +753,19 @@ pub fn have(p: &Piece, root: &Path) -> bool {
             let Some(mark) = marker_path(p, root) else {
                 return false;
             };
-            if let Ok(text) = std::fs::read_to_string(&mark) {
+            if let Ok(text) = std::fs::File::open(&mark).and_then(|file| {
+                let metadata = file.metadata()?;
+                if !metadata.is_file() || metadata.len() > MAX_PIECE_MARKER_BYTES {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "piece marker exceeds read budget",
+                    ));
+                }
+                let mut text = String::new();
+                file.take(MAX_PIECE_MARKER_BYTES + 1)
+                    .read_to_string(&mut text)?;
+                Ok(text)
+            }) {
                 return text.trim().eq_ignore_ascii_case(p.sha256) && key.is_file();
             }
             // Before the mark: the key file, whole, and no unfinished fetch.
@@ -759,7 +774,7 @@ pub fn have(p: &Piece, root: &Path) -> bool {
                 || work.join(format!("{}.unpacked", slug(p.name))).exists();
             let key_ok = std::fs::metadata(&key).is_ok_and(|m| m.is_file() && m.len() > 0);
             if key_ok && !unfinished {
-                crate::kept!(std::fs::write(&mark, p.sha256));
+                crate::kept!(crate::store::write_whole(&mark, p.sha256.as_bytes()));
                 return true;
             }
             false
@@ -1011,7 +1026,7 @@ pub fn fetch(
                 crate::heard!(std::fs::remove_dir_all(&unpack));
                 return Err(format!("I couldn't put {} in place: {e}", p.name));
             }
-            std::fs::write(&mark, p.sha256)
+            crate::store::write_whole(&mark, p.sha256.as_bytes())
                 .map_err(|e| format!("I couldn't finish putting {} in place: {e}", p.name))?;
             crate::heard!(std::fs::remove_dir_all(&unpack));
             crate::heard!(std::fs::remove_file(&part));

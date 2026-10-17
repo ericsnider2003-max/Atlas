@@ -1,6 +1,6 @@
 use atlas::capability::{
-    all, blocked, can, full, in_area, offline_count, since, summary, what_would_unblock_most, Area,
-    State,
+    all, blocked, can_for, full, in_area, offline_count_for, since, summary,
+    what_would_unblock_most, Area, State,
 };
 use atlas::routine::{ask_about, sends_something, starting, RoutineConfig, Watcher};
 
@@ -49,10 +49,10 @@ fn asking_whether_it_can_do_something_gets_a_useful_no() {
     // Not just "no". `recall` used to be the example of a working capability
     // here, and it was advertising a state its unreachable code can't
     // support — the honesty test caught it. `doctor` genuinely works.
-    let (yes, _) = can("doctor").unwrap();
+    let (yes, _) = can_for("doctor", false).unwrap();
     assert!(yes, "doctor is reachable and really does run");
 
-    let (no, why) = can("tune").unwrap();
+    let (no, why) = can_for("tune", false).unwrap();
     assert!(!no);
     assert!(why.contains("switched off") && why.contains("settings"));
 
@@ -63,7 +63,7 @@ fn asking_whether_it_can_do_something_gets_a_useful_no() {
     // is missing. That is a more useful no: "not built yet" leaves you
     // nothing to do, and "not until whisper is installed" tells you what to
     // go and get.
-    let (no, why) = can("dictate").unwrap();
+    let (no, why) = can_for("dictate", false).unwrap();
     assert!(!no);
     assert!(
         why.contains("whisper"),
@@ -73,7 +73,7 @@ fn asking_whether_it_can_do_something_gets_a_useful_no() {
     // `mesh` is the standing example of genuinely not built, now that
     // `plainchange` is wired. It is on CAPABILITY_UNWIRED with a reason, which
     // is what `Planned` requires.
-    let (_, why) = can("mesh").unwrap();
+    let (_, why) = can_for("mesh", false).unwrap();
     assert!(
         why.contains("not built yet"),
         "unreachable, so it says so: {why}"
@@ -82,7 +82,7 @@ fn asking_whether_it_can_do_something_gets_a_useful_no() {
     // "overlay" used to be the never-run-for-real example, but it's
     // unreachable too, so it now honestly reports as not built. "layout" is
     // the real example of code that compiles and has never touched Windows.
-    let (_, why) = can("layout").unwrap();
+    let (_, why) = can_for("layout", false).unwrap();
     assert!(
         why.contains("never run on a real machine"),
         "and it doesn't pretend: {why}"
@@ -91,12 +91,12 @@ fn asking_whether_it_can_do_something_gets_a_useful_no() {
 
 #[test]
 fn asking_about_something_it_has_never_heard_of_returns_nothing() {
-    assert!(can("book me a flight").is_none());
+    assert!(can_for("book me a flight", false).is_none());
 }
 
 #[test]
 fn most_of_what_atlas_does_works_with_the_network_unplugged() {
-    let (offline, total) = offline_count();
+    let (offline, total) = offline_count_for(false);
     assert!(offline as f32 / total as f32 > 0.8, "{offline} of {total}");
 }
 

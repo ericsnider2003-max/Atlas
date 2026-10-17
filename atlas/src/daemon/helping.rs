@@ -962,7 +962,7 @@ impl<'a> Daemon<'a> {
 
     /// Where the decision stands, said, and the next question asked.
     pub(super) fn say_the_decision(&mut self) -> String {
-        let _ = self.store.save("deciding", &self.deciding);
+        crate::kept!(self.store.save("deciding", &self.deciding));
         let Some(d) = self.deciding.as_ref() else {
             return "There's no decision on the go.".into();
         };

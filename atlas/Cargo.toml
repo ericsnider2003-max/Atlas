@@ -281,6 +281,7 @@ path = "tests/hearing_by_what_is_said.rs"
 [[test]]
 name = "atlas_on_a_friends_machine"
 path = "tests/atlas_on_a_friends_machine.rs"
+required-features = ["desktop-ui"]
 
 # Files kept as their own target — either they declare a file submodule
 # (`mod common;`) that a `#[path]` include cannot resolve, or they drive the

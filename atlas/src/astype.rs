@@ -899,7 +899,7 @@ pub fn start(
                 dirty = true;
             }
             if dirty && now_ms.saturating_sub(saved_at) > 60_000 {
-                let _ = store.save(Lessons::RECORD, &lessons);
+                crate::kept!(store.save(Lessons::RECORD, &lessons));
                 saved_at = now_ms;
                 dirty = false;
             }
@@ -911,7 +911,7 @@ pub fn start(
             std::thread::sleep(std::time::Duration::from_millis(POLL_MS));
         }
         if dirty {
-            let _ = store.save(Lessons::RECORD, &lessons);
+            crate::kept!(store.save(Lessons::RECORD, &lessons));
         }
     })
 }

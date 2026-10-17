@@ -715,6 +715,7 @@ pub fn health_check(
     config_dir: &Path,
     state_dir: &Path,
 ) -> Result<Vec<String>, Vec<String>> {
+    let state_was_present = state_dir.exists();
     let mut ok = vec![format!(
         "this is atlas {}, data format {DATA_FORMAT}",
         version()
@@ -754,6 +755,21 @@ pub fn health_check(
         .and_then(|_| std::fs::write(&probe, b"atlas"))
         .and_then(|_| std::fs::read(&probe));
     crate::heard!(std::fs::remove_file(&probe));
+    // `write_whole` correctly binds a fresh state root before doing an
+    // atomic write. A health probe must not leave that implementation
+    // metadata behind on a brand-new install, though. Preserve an existing
+    // state root and its metadata; only remove the markers created by this
+    // probe when the caller gave us a previously absent root.
+    if !state_was_present {
+        for name in [
+            ".atlas-state-root",
+            ".state-operations.lock",
+            ".state-access.lock",
+            ".atlas-output-owner",
+        ] {
+            crate::heard!(std::fs::remove_file(state_dir.join(name)));
+        }
+    }
     match wrote {
         Ok(b) if b == b"atlas" => ok.push("its state folder writes and reads back".into()),
         Ok(_) => bad.push(format!(

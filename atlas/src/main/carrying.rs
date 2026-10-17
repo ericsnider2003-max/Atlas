@@ -4,6 +4,30 @@
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
+use std::io::Read;
+
+const MAX_SYNC_TEXT_BYTES: u64 = 8 * 1024 * 1024;
+
+fn read_bounded_sync_text(path: &str) -> std::io::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_SYNC_TEXT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "sync text input exceeds the 8 MiB limit",
+        ));
+    }
+    let mut text = String::new();
+    file.take(MAX_SYNC_TEXT_BYTES + 1)
+        .read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_SYNC_TEXT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "sync text input grew past the 8 MiB limit while reading",
+        ));
+    }
+    Ok(text)
+}
 
 // ===========================================================================
 // Away from the laptop — `atlas carry`, `atlas remote`, `atlas mobile`,
@@ -648,7 +672,7 @@ pub(super) fn run_sync(cfg: &Config, args: &[String]) {
                 println!("                            [--key <phrase>]");
                 return;
             };
-            let raw = match std::fs::read_to_string(path) {
+            let raw = match read_bounded_sync_text(path) {
                 Ok(t) => t,
                 Err(e) => {
                     println!("I couldn't read {path}: {e}");
@@ -661,7 +685,7 @@ pub(super) fn run_sync(cfg: &Config, args: &[String]) {
             // the file rather than making you read the phrase off it and
             // type it.
             let from_card = |path: &str| -> Option<String> {
-                std::fs::read_to_string(path)
+                read_bounded_sync_text(path)
                     .ok()
                     .and_then(|t| sync::phrase_in_card(&t))
             };

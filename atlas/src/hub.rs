@@ -12,7 +12,7 @@
 use crate::settings::{Settings, Value, Weight};
 
 /// Every page the hub serves.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Page {
     /// The one you open on purpose: the cards you arranged, in your order.
     ///

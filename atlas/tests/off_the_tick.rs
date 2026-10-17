@@ -66,7 +66,10 @@ fn a_due_backup_goes_through_the_crew_and_is_watched() {
     let mut d = daemon(&c, &p, "hand-off");
 
     let started = Instant::now();
+    // Startup deliberately defers the first backup look for two minutes so
+    // initial persistence cannot contend with the snapshot boundary.
     d.tick(FIRST_TICK);
+    d.tick(FIRST_TICK + 120);
     let tick_took = started.elapsed();
     // Only a guard against a hang. A near-empty store copies in under a
     // millisecond (below), so time can't tell an inline backup from one on
@@ -99,7 +102,11 @@ fn a_fast_successful_backup_is_logged_but_not_spoken() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "quiet-success");
 
-    let deadline = Instant::now() + Duration::from_secs(5);
+    // The worker is intentionally asynchronous. On Windows, a serialized
+    // aggregate run can spend several seconds starting the worker and taking
+    // the snapshot even for an empty store; this is an observation deadline,
+    // not a product latency contract.
+    let deadline = Instant::now() + Duration::from_secs(15);
     let mut settled = false;
     let mut t = FIRST_TICK;
     while Instant::now() < deadline {
@@ -155,8 +162,8 @@ fn a_backup_already_in_flight_is_not_started_a_second_time() {
     let mut d = daemon(&c, &p, "no-double-start");
 
     d.tick(FIRST_TICK);
-    d.tick(FIRST_TICK + 1);
-    d.tick(FIRST_TICK + 2);
+    d.tick(FIRST_TICK + 120);
+    d.tick(FIRST_TICK + 121);
 
     // Across three ticks in quick succession, at most one backup job should
     // ever have been created -- whether it already finished or is still

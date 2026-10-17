@@ -364,6 +364,10 @@ const KNOWN: &[&str] = &[
     // and reached by nothing until now.
     "route::stuck_spoken",
     "route::switching",
+    // Rollback is an explicit self-improvement API guarded by approval and is
+    // currently exposed to the self-audit/tooling boundary, not an automatic
+    // daemon action. Keeping it named prevents silent orphaning.
+    "selfwork::rollback",
     // 28 Sep 2026: settings-only mode moved to the threaded door; kept as the one-connection shape the server tests measure.
     "server::serve_once",
     // 28 Sep 2026: a test seam -- "answered busy" without waiting ninety seconds.

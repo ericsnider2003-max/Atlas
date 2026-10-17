@@ -225,7 +225,11 @@ impl Router {
     /// specs/thresholds are the current defaults.
     pub fn load(store: &crate::store::Store) -> Router {
         Router {
-            learned: store.load::<Learned>(Self::FILE),
+            learned: store
+                .load_checked_bounded(Self::FILE, 4 * 1_048_576)
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
             ..Router::default()
         }
     }

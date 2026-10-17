@@ -925,7 +925,12 @@ const ORPHANS: &[(&str, &str)] = &[
 // 101 -> 99 (2 Oct 2026, merging chat-c-3): those two are now named
 // `*_for_test`, the seams they are; `onnxfix::input_shapes` is read back by
 // `with_fixed_inputs` before the NPU gets the copy.
-const TEST_ONLY_MAX: usize = 99;
+// 99 -> 100 (16 Oct 2026): the explicit self-improvement rollback API is
+// covered by integration tests but has no automatic daemon caller by design;
+// rollback must remain an owner-approved tooling action. The five temporary
+// capability wrappers that caused a larger increase were removed instead of
+// raising this ceiling for them. Keep this exact ratchet, not spare headroom.
+const TEST_ONLY_MAX: usize = 100;
 // 287 -> 286 (22 Sep): `consolidate::size_note` gained a real caller. The new
 // `KnowledgeSize` intent ("how much do you know", "how big is your memory")
 // routes through `Daemon::knowledge_store_size`, which reads the store count

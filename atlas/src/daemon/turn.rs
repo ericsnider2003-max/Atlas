@@ -179,7 +179,7 @@ impl<'a> Daemon<'a> {
             // Only for a question about Atlas: headed "answer only from these
             // lines", it made a small model say "not sure" to everything else
             // (27 Sep 2026).
-            if crate::capability::is_about_atlas(said) { crate::capability::about_atlas(said, 6) } else { String::new() },
+            if crate::capability::is_about_atlas(said) { crate::capability::about_atlas_for(said, research, 6) } else { String::new() },
             "",
         )
     }

@@ -1440,7 +1440,7 @@ impl<'a> Daemon<'a> {
             }
         }
         if changed {
-            let _ = self.meaning.save(&self.store);
+            crate::kept!(self.meaning.save(&self.store));
         }
     }
 
@@ -1593,7 +1593,7 @@ impl<'a> Daemon<'a> {
         if !fp.is_empty() && self.meaning.for_model(&fp) {
             self.log
                 .info("The meaning model changed, so every note will be re-read with the new one.");
-            let _ = self.meaning.save(&self.store);
+            crate::kept!(self.meaning.save(&self.store));
             self.search_check_due = true;
         }
         // Rehydrated from the remembered vectors rather than started as
@@ -1618,7 +1618,7 @@ impl<'a> Daemon<'a> {
         let before = self.meaning.len();
         self.meaning.keep_only(&keys);
         if self.meaning.len() != before {
-            let _ = self.meaning.save(&self.store);
+            crate::kept!(self.meaning.save(&self.store));
         }
         self.library = lib;
     }
@@ -1704,7 +1704,7 @@ impl<'a> Daemon<'a> {
         let (alias, canonical) = crate::facts::alias_decl(raw)?;
         let now = clock();
         self.facts.note_alias(&alias, &canonical, now);
-        let _ = self.facts.save(&self.store);
+        crate::kept!(self.facts.save(&self.store));
         Some(format!(
             "Got it — I'll treat \"{alias}\" and \"{canonical}\" as the same thing."
         ))
@@ -1768,7 +1768,7 @@ impl<'a> Daemon<'a> {
         self.facts
             .learn(crate::facts::Fact::stated(&stmt, now), now);
         self.facts.trim(crate::facts::MEMORY_BUDGET_BYTES, now);
-        let _ = self.facts.save(&self.store);
+        crate::kept!(self.facts.save(&self.store));
         Some(format!(
             "Got it — updated: {}.",
             stmt.trim().trim_end_matches(['.', '!', '?'])
@@ -1785,8 +1785,18 @@ impl<'a> Daemon<'a> {
     /// camera handful need your eyes.
     pub(super) fn shakedown(&self) -> String {
         let mut steps = Vec::new();
+        // `research` is the one catalogue row whose state is derived from a
+        // live setting.  The static catalogue keeps its source description,
+        // but an enabled research setting must not be reported as an
+        // untested capability during commissioning.
+        let research_on = self.tools_ref().is_some_and(|tools| tools.research.enabled);
         for c in crate::capability::all() {
-            if c.state != crate::capability::State::Untested {
+            let record = crate::capability::records(research_on)
+                .into_iter()
+                .find(|record| record.id == c.id);
+            if record
+                .is_none_or(|record| record.evidence != crate::capability::EvidenceLevel::Unproven)
+            {
                 continue;
             }
             let outcome = self.probe_untested(&c);
@@ -1913,13 +1923,20 @@ impl<'a> Daemon<'a> {
 
         // And the honest picture of what's ready here versus what still needs a
         // run or an install.
-        checks.push(Check::note("what's ready", crate::capability::summary()));
+        checks.push(Check::note(
+            "what's ready",
+            crate::capability::summary_for(
+                self.tools_ref().is_some_and(|tools| tools.research.enabled),
+            ),
+        ));
         // How much of the first-run verification actually needs you — the
         // answer is "a short list", not "all of it".
         if !phone {
             checks.push(Check::note(
                 "your part in setup",
-                crate::capability::commissioning_report(),
+                crate::capability::commissioning_report_for(
+                    self.tools_ref().is_some_and(|tools| tools.research.enabled),
+                ),
             ));
         } else {
             checks.push(Check::note(

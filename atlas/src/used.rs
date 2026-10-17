@@ -199,9 +199,12 @@ impl Used {
         if self.since == 0 || t.saturating_sub(self.since) < JUDGED_AFTER_DAYS * 86_400 {
             return Vec::new();
         }
-        let mut out: Vec<String> = crate::capability::all()
+        let mut out: Vec<String> = crate::capability::records(false)
             .into_iter()
-            .filter(|c| c.state == crate::capability::State::Working)
+            .filter(|c| {
+                c.availability == crate::capability::Availability::Available
+                    && c.evidence != crate::capability::EvidenceLevel::Unproven
+            })
             .filter(|c| FOR_KIND.iter().any(|(_, a)| *a == c.id))
             .filter(|c| self.times(c.id) == 0)
             .map(|c| c.id.to_string())

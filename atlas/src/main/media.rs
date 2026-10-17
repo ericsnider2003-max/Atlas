@@ -4,6 +4,30 @@
 //! Moved out of `main.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md §7).
 
 use super::*;
+use std::io::Read;
+
+const MAX_MEDIA_TEXT_BYTES: u64 = 16 * 1024 * 1024;
+
+fn read_bounded_media_text(path: &str) -> std::io::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_MEDIA_TEXT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "media text input exceeds the 16 MiB limit",
+        ));
+    }
+    let mut text = String::new();
+    file.take(MAX_MEDIA_TEXT_BYTES + 1)
+        .read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_MEDIA_TEXT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "media text input grew past the 16 MiB limit while reading",
+        ));
+    }
+    Ok(text)
+}
 
 // ===========================================================================
 // `atlas video` — the production cluster, wired.
@@ -419,7 +443,7 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                 return;
             }
             let out = value("--out").unwrap_or("out.mp4").to_string();
-            let text = match std::fs::read_to_string(plan_file) {
+            let text = match read_bounded_media_text(plan_file) {
                 Ok(t) => t,
                 Err(e) => {
                     println!("Can't read {plan_file}: {e}");
@@ -510,7 +534,7 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
             println!("{}", publishing::ready_to_post(p, secs, format));
 
             if let (Some(tfile), Some(topic)) = (value("--transcript"), value("--topic")) {
-                match std::fs::read_to_string(tfile) {
+                match read_bounded_media_text(tfile) {
                     Err(err) => println!("Can't read {tfile}: {err}"),
                     Ok(transcript) => {
                         println!();
@@ -555,7 +579,7 @@ pub(super) fn run_video(cfg: &Config, args: &[String]) {
                 println!("Which script? atlas video voiceover script.txt --length 45");
                 return;
             };
-            let script = match std::fs::read_to_string(script_file) {
+            let script = match read_bounded_media_text(script_file) {
                 Ok(t) => t,
                 Err(e) => {
                     println!("Can't read {script_file}: {e}");
@@ -800,7 +824,7 @@ pub(super) fn run_content(cfg: &Config, args: &[String]) {
                 );
                 return;
             };
-            let script = match std::fs::read_to_string(script_file) {
+            let script = match read_bounded_media_text(script_file) {
                 Ok(t) => t,
                 Err(e) => {
                     println!("Can't read {script_file}: {e}");
@@ -870,7 +894,7 @@ pub(super) fn run_content(cfg: &Config, args: &[String]) {
                 println!("atlas content record post.json   (one post, or a list of them)");
                 return;
             };
-            let text = match std::fs::read_to_string(file) {
+            let text = match read_bounded_media_text(file) {
                 Ok(t) => t,
                 Err(e) => {
                     println!("Can't read {file}: {e}");

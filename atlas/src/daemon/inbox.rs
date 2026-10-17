@@ -172,7 +172,7 @@ impl<'a> Daemon<'a> {
             // Same `let _ =` as the other saves on this path: a context build
             // must not fail because the record of an attempt could not be
             // written, and `log.info` above has already said it happened.
-            let _ = self.store.save("read-from-outside", &fed);
+            crate::kept!(self.store.save("read-from-outside", &fed));
         }
         // What you have corrected, in front of the model on every turn.
         //
@@ -440,7 +440,7 @@ impl<'a> Daemon<'a> {
                 }
             }
         }
-        let _ = self.store.save(crate::messaging::PEOPLE, &people);
+        crate::kept!(self.store.save(crate::messaging::PEOPLE, &people));
 
         // The first new work contact is said the way you asked (F3), with the
         // offer to find the answer; saying yes starts the research. Any others
