@@ -1,0 +1,2 @@
+couldn't open the door friends reach you on: platform: could not open the signal door on 8788: Only one usage of each socket address (protocol/network address/port) is normally permitted. (os error 10048)
+continuing without it, and trying again each minute -- everything else still works.

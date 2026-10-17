@@ -1,0 +1,12 @@
+The hub's port (8787) is taken right now (could not listen on port 8787: Only one usage of each socket address (protocol/network address/port) is normally permitted. (os error 10048)), so I'm trying again in the background -- the hub will open as soon as it can.
+your dashboard: http://127.0.0.1:8787/hub?t=n3fx4u-hu7y65-xsqnbc-9mwyvh
+  same address every time -- bookmark it. `atlas hub` prints it again.
+atlas running (unattended). wake phrase: atlas.
+audio unavailable — run `atlas doctor`. You can still type commands here.
+You can also hold Tab to talk, or press Ctrl+Shift+Space to type.
+(another program already uses the typing-box key — pick another in settings)
+type at any time; Ctrl-C to stop — I'll save first and let go of the lock.
+Switching to typing only — audio is unavailable.
+Before we start — on this machine: I can't look at your screen and understand it: I don't have the picture reader or its model or its picture encoder yet — they're a one-off download of about 3 GB, and starting Atlas again fetches them.
+Good afternoon. I don't know what you're working on yet -- say "get to know me"
+and I'll ask you seven quick questions.

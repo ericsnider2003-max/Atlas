@@ -1,0 +1,4 @@
+0 waiting, 1 in the queue altogether.
+
+atlas remote ask <what>          queue it
+atlas remote start|done|failed|drop <number>

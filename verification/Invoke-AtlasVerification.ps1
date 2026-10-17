@@ -79,6 +79,76 @@ function Invoke-RealAtlasCommand {
     return $exitCode
 }
 
+function Invoke-RealAtlasDaemon {
+    param(
+        [string] $Exe,
+        [string] $WorkingDirectory,
+        [string] $HomeDirectory,
+        [string] $LedgerPath,
+        [string] $CandidateHash,
+        [string] $Variation,
+        [string] $Contract
+    )
+
+    $outputPath = Join-Path $HomeDirectory (([guid]::NewGuid()).ToString() + '.daemon.stdout.txt')
+    $errorPath = Join-Path $HomeDirectory (([guid]::NewGuid()).ToString() + '.daemon.stderr.txt')
+    $started = [DateTime]::UtcNow
+    $process = Start-Process -FilePath $Exe -ArgumentList @('--daemon', '--unattended') `
+        -WorkingDirectory $WorkingDirectory -RedirectStandardOutput $outputPath `
+        -RedirectStandardError $errorPath -PassThru
+    Start-Sleep -Seconds 5
+    $process.Refresh()
+    $alive = -not $process.HasExited
+    $workingSet = if ($alive) { (Get-Process -Id $process.Id).WorkingSet64 } else { 0 }
+    $exitCode = if ($alive) { $null } else { $process.ExitCode }
+    if ($alive) {
+        $tree = @($process.Id)
+        $frontier = @($process.Id)
+        while ($frontier.Count -gt 0) {
+            $children = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                Where-Object { $_.ParentProcessId -in $frontier } |
+                Select-Object -ExpandProperty ProcessId)
+            $children = @($children | Where-Object { $_ -notin $tree })
+            if ($children.Count -eq 0) { break }
+            $tree += $children
+            $frontier = $children
+        }
+        foreach ($childPid in $tree) {
+            Stop-Process -Id $childPid -Force -ErrorAction SilentlyContinue
+        }
+        Wait-Process -Id $process.Id -Timeout 10 -ErrorAction SilentlyContinue
+    }
+    $process.Close()
+    Start-Sleep -Milliseconds 100
+    $finished = [DateTime]::UtcNow
+
+    Write-LedgerRecord -LedgerPath $LedgerPath -Record @{
+        schema = 'atlas.verification.result.v1'
+        run_id = $script:RunId
+        candidate_hash = $CandidateHash
+        executable = (Resolve-Path -LiteralPath $Exe).Path
+        contract = $Contract
+        variation = $Variation
+        interface = 'real_process'
+        status = if ($alive) { 'passed' } else { 'failed' }
+        exit_code = $exitCode
+        started_utc = $started.ToString('o')
+        finished_utc = $finished.ToString('o')
+        duration_ms = [int]($finished - $started).TotalMilliseconds
+        stdout_artifact = $outputPath
+        stderr_artifact = $errorPath
+        stdout_sha256 = (Get-FileHash -LiteralPath $outputPath -Algorithm SHA256).Hash
+        stderr_sha256 = (Get-FileHash -LiteralPath $errorPath -Algorithm SHA256).Hash
+        stdout_bytes = (Get-Item -LiteralPath $outputPath).Length
+        stderr_bytes = (Get-Item -LiteralPath $errorPath).Length
+        expected_pattern = 'daemon remains alive for 5 seconds'
+        expected_pattern_matched = $alive
+        working_set_bytes = $workingSet
+        created_files = @((Split-Path -Leaf $outputPath), (Split-Path -Leaf $errorPath))
+        note = 'Started and stopped the real installed Atlas daemon in the disposable ATLAS_HOME; this proves startup liveness and records a working-set sample, not full UI or provider readiness.'
+    }
+}
+
 if (-not (Test-Path -LiteralPath $AtlasExe -PathType Leaf)) {
     throw "Atlas executable not found: $AtlasExe"
 }
@@ -145,6 +215,21 @@ try {
         -WorkingDirectory $unrelatedDirectory -HomeDirectory $homeDirectory -LedgerPath $ledgerPath `
         -CandidateHash $candidateHash -Variation 'fresh_home/public_command' -Contract 'remote_queue_enqueue' `
         -ExpectedPattern 'Queued as #\d+')
+
+    # The daemon must stay alive on a fresh profile, and again after its first
+    # process is deliberately stopped.  The queue replay after these two
+    # starts confirms that the profile remains readable across the restart.
+    Invoke-RealAtlasDaemon -Exe $resolvedExe -WorkingDirectory $unrelatedDirectory `
+        -HomeDirectory $homeDirectory -LedgerPath $ledgerPath -CandidateHash $candidateHash `
+        -Variation 'cold_start/disposable_home' -Contract 'daemon_start_liveness'
+    Invoke-RealAtlasDaemon -Exe $resolvedExe -WorkingDirectory $unrelatedDirectory `
+        -HomeDirectory $homeDirectory -LedgerPath $ledgerPath -CandidateHash $candidateHash `
+        -Variation 'forced_stop/restart' -Contract 'daemon_restart_liveness'
+
+    [void](Invoke-RealAtlasCommand -Exe $resolvedExe -Arguments @('remote', 'list') `
+        -WorkingDirectory $unrelatedDirectory -HomeDirectory $homeDirectory -LedgerPath $ledgerPath `
+        -CandidateHash $candidateHash -Variation 'after_daemon_restart/public_command' -Contract 'remote_queue_replay_after_daemon' `
+        -ExpectedPattern ([regex]::Escape($queueText)))
 
     # Variation 4: restart the executable and read the durable request back.
     # This checks persistence across processes, not an in-memory handler.
