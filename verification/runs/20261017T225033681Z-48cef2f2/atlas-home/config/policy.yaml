@@ -1,0 +1,16 @@
+# Permission policy.
+#
+# always_ask: Atlas asks EVERY time, no matter how often you have said yes.
+# Approval history never relaxes anything on this list. This is the list you
+# add to when you want certainty over convenience.
+always_ask:
+  - workspace_off      # closes apps; unsaved work is at stake
+  - close_app
+
+# learnable: consistent approval can relax these from "ask" to "announce and
+# do". Never to silent — you always hear about it.
+learnable:
+  - focus_app
+
+# How many consistent approvals before a learnable action stops asking.
+min_samples: 5

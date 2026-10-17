@@ -191,10 +191,15 @@ function Invoke-RealHubSurface {
         $errorText = ''
         $location = ''
         $sessionCookie = $false
+        $cleanStatusCode = 0
+        $cleanBody = ''
+        $cleanErrorText = ''
         if ($null -ne $endpoint.path) {
             $client = $null
             $request = $null
             $httpResponse = $null
+            $cleanRequest = $null
+            $cleanResponse = $null
             try {
                 $handler = [System.Net.Http.HttpClientHandler]::new()
                 $handler.AllowAutoRedirect = $false
@@ -206,9 +211,21 @@ function Invoke-RealHubSurface {
                 $location = [string]$httpResponse.Headers.Location
                 $sessionCookie = $httpResponse.Headers.Contains('Set-Cookie')
                 $body = $httpResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                $uri = [Uri]$endpoint.path
+                $cleanUri = "$($uri.Scheme)://$($uri.Authority)$($endpoint.expected_location)"
+                $cleanRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, $cleanUri)
+                $cleanResponse = $client.SendAsync($cleanRequest).GetAwaiter().GetResult()
+                $cleanStatusCode = [int]$cleanResponse.StatusCode
+                $cleanBody = $cleanResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
             } catch {
-                $errorText = $_.Exception.Message
+                if ($statusCode -eq 200) {
+                    $cleanErrorText = $_.Exception.Message
+                } else {
+                    $errorText = $_.Exception.Message
+                }
             } finally {
+                if ($null -ne $cleanResponse) { $cleanResponse.Dispose() }
+                if ($null -ne $cleanRequest) { $cleanRequest.Dispose() }
                 if ($null -ne $httpResponse) { $httpResponse.Dispose() }
                 if ($null -ne $request) { $request.Dispose() }
                 if ($null -ne $client) { $client.Dispose() }
@@ -218,7 +235,8 @@ function Invoke-RealHubSurface {
         }
         Set-Content -LiteralPath $responsePath -Value $body -Encoding UTF8
         $finished = [DateTime]::UtcNow
-        $matched = ($statusCode -eq 200 -and $sessionCookie -and $body.Contains("url=$($endpoint.expected_location)"))
+        $matched = ($statusCode -eq 200 -and $sessionCookie -and $body.Contains("url=$($endpoint.expected_location)") -and
+            $cleanStatusCode -eq 200 -and $cleanBody.Length -gt 0)
         Write-LedgerRecord -LedgerPath $LedgerPath -Record @{
             schema = 'atlas.verification.result.v1'
             run_id = $script:RunId
@@ -238,12 +256,15 @@ function Invoke-RealHubSurface {
             stderr_sha256 = $null
             stdout_bytes = (Get-Item -LiteralPath $responsePath).Length
             stderr_bytes = $null
-            expected_pattern = "HTTP 200 with an Atlas session cookie and navigation target $($endpoint.expected_location)"
+            expected_pattern = "HTTP 200 with an Atlas session cookie, navigation target $($endpoint.expected_location), and clean-path HTTP 200"
             expected_pattern_matched = $matched
             http_status = $statusCode
             http_location = $location
             session_cookie_present = $sessionCookie
+            clean_http_status = $cleanStatusCode
+            clean_response_bytes = $cleanBody.Length
             error = $errorText
+            clean_error = $cleanErrorText
             note = 'Authenticated request to the real installed Atlas Hub listener in a disposable ATLAS_HOME; the token-bearing URL is intentionally not retained in the ledger.'
         }
     }
