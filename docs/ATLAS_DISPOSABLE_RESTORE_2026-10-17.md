@@ -6,7 +6,7 @@
 
 This was run against the installed candidate at `C:\Users\erics\AppData\Local\Atlas\atlas.exe`, with `ATLAS_HOME` set to the disposable profile:
 
-    verification/disposable-restore-20261017/
+    ..\disposable-restore-20261017\
 
 The owner profile was not used as the restore destination. The source backup was the live v2 backup:
 
