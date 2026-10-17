@@ -1,6 +1,6 @@
 # Atlas disposable restore evidence — 2026-10-17
 
-**Status:** one real-backup restore contract passed; full restore acceptance remains open.
+**Status:** real-backup restore contract passed with 125/128 direct file-hash matches; three intentional/live-state differences remain recorded.
 
 ## Boundary
 
@@ -19,13 +19,14 @@ Its manifest recorded 128 files, 12 directories, and 3 owned roots.
 1. Copied the live backup into the disposable profile's `data/backups`.
 2. Ran `atlas backups restore 1` through the installed executable.
 3. Verified that `data/state/.restore-journal.json` was absent after completion.
-4. Verified that three restored Markdown notes matched their manifest SHA-256 values exactly:
-   - `Call notes 2026-09-29 20-11 Discord.md`
-   - `Call notes 2026-10-01 20-40 Discord.md`
-   - `Call notes 2026-10-05 21-35 Discord.md`
+4. Independently hashed every manifest entry after restore. Results:
+   - calls: 5/5 matched;
+   - notes: 5/5 matched;
+   - state: 115/117 matched;
+   - trash ledger: intentionally preserved by restore, not overwritten.
 
-Result: **passed** for the installed real-process, disposable-profile, manifest-backed restore contract.
+Result: **passed with explicit live-state exceptions** for the installed real-process, disposable-profile, manifest-backed restore contract: 125/128 entries matched directly.
 
 ## Limits
 
-This does not close owner acceptance of restore. It sampled three restored files rather than independently hashing all 128 entries, and it did not restore the owner profile. The disposable profile also retains an archived recovery directory from the earlier safe restore attempt, as expected for preserved recovery material.
+The three non-matching entries are recorded rather than hidden: `capabilities_used.json` and `last_turn_of_yours.json` were mutated by startup after restore, while the trash ledger is intentionally retained as live recovery state. This did not restore the owner profile. The disposable profile retains an archived recovery directory, as expected for preserved recovery material. Owner acceptance and a policy decision about live-state hash normalization remain open.
