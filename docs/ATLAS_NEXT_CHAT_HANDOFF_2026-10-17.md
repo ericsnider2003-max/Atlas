@@ -49,23 +49,19 @@ Remote:
 
     origin = https://github.com/ericsnider2003-max/Atlas.git
 
-Current local candidate branch and HEAD:
+Current local candidate branch and source revision:
 
-    candidate/2026-10-17-foundation @ bf3569f62a9b087a9745608a3df7a085a7a18757
+    candidate/2026-10-17-foundation @ 32b7f8be
 
 Canonical source commit:
 
     32b7f8be
 
-Current filing/evidence commit:
-
-    bf3569f6
-
 Current GitHub origin/main after fetch:
 
     d3d5bca2e69bb6284ac513d306c736d3f8c125ca
 
-Important consequence: the candidate branch is local and has not been pushed to GitHub. Its source and evidence are committed; remaining work must continue on this candidate branch or a deliberately derived candidate branch.
+Important consequence: the candidate branch is local and has not been pushed to GitHub. Its canonical source is committed at `32b7f8be`; current filing/evidence commits are docs-only descendants on this branch. Remaining work must continue on this candidate branch or a deliberately derived candidate branch.
 
 ## Dirty worktree state
 
