@@ -5,6 +5,14 @@
 # reads the machine's own zone. See `src/localclock.rs`.
 ATLAS_CLOCK_OFFSET = "0"
 
+# The consolidated integration target contains tests that intentionally cover
+# process-global settings and real external tools.  Libtest's default worker
+# pool lets those tests overlap and makes the result depend on scheduling
+# (the same candidate has already passed with `--test-threads=1`).  Keep the
+# normal verification command deterministic; tests which create their own
+# concurrency still do so inside their test body.
+RUST_TEST_THREADS = "1"
+
 # Tests make hundreds of scratch folders and few remove them (18 runs left
 # 11,452 folders, 12 GB, in the system temp dir: ledger Q21). Under cargo
 # they go in atlas/scratch instead, which `roots::data_home` clears of

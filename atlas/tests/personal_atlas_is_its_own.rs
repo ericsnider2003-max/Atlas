@@ -894,7 +894,13 @@ fn everything() -> Vec<std::path::PathBuf> {
             if p == crate_dir
                 || matches!(
                     name,
-                    ".git" | "target" | "roundtrip" | ".claude" | "wt-install-23bff923"
+                    ".git"
+                        | "target"
+                        | "roundtrip"
+                        | ".claude"
+                        | "verification"
+                        | ".filing"
+                        | "wt-install-23bff923"
                 )
                 || name.starts_with("target_")
                 || name.starts_with("wt-")
