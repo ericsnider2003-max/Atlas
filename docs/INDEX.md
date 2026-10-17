@@ -131,4 +131,4 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/REA_REPLICA_ADAPTATION_2026-10-16.md](REA_REPLICA_ADAPTATION_2026-10-16.md) | REA and replica adaptation notes — 2026-10-16 | — |
 | [docs/STALE_RECONCILIATION_2026-10-15.md](STALE_RECONCILIATION_2026-10-15.md) | Filing stale-reference reconciliation — 2026-10-15 | — |
 | [docs/START_HERE.md](START_HERE.md) | Atlas — current starting point | — |
-| [docs/STATUS.md](STATUS.md) | Status | 2026-10-16 |
+| [docs/STATUS.md](STATUS.md) | Status | 2026-10-17 |

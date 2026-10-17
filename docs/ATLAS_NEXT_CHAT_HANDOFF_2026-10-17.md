@@ -49,27 +49,31 @@ Remote:
 
     origin = https://github.com/ericsnider2003-max/Atlas.git
 
-Current local HEAD:
+Current local candidate branch and HEAD:
 
-    d3d5bca2e69bb6284ac513d306c736d3f8c125ca
+    candidate/2026-10-17-foundation @ bf3569f62a9b087a9745608a3df7a085a7a18757
+
+Canonical source commit:
+
+    32b7f8be
+
+Current filing/evidence commit:
+
+    bf3569f6
 
 Current GitHub origin/main after fetch:
 
     d3d5bca2e69bb6284ac513d306c736d3f8c125ca
 
-Important consequence: the current local uncommitted work is not in GitHub.
+Important consequence: the candidate branch is local and has not been pushed to GitHub. Its source and evidence are committed; remaining work must continue on this candidate branch or a deliberately derived candidate branch.
 
 ## Dirty worktree state
 
-The tree currently contains:
+The candidate tree currently contains:
 
-- 139 tracked changed files;
-- approximately 3,689 added lines and 605 removed lines in the tracked diff;
-- 114 modified source files;
-- 23 modified test files;
-- untracked filing files and docs;
-- untracked verification files;
-- untracked worktrees, target directories, continuation targets, and historical artifacts.
+- two candidate commits on top of origin/main;
+- canonical source, tests, required config, current filing, and the latest verification ledger committed;
+- separate untracked historical docs, worktrees, continuation targets, disposable restore data, and older verification runs.
 
 Do not run git reset --hard, git checkout --, broad deletion, or blind cleanup.
 
@@ -195,7 +199,7 @@ The baseline run was saved under:
 
     verification/runs/20261017T065119122Z-070056e7/
 
-The latest installed-path run also proves the harmless durable-queue slice: four contracts passed. This does not prove the broader feature set, UI, settings matrix, failure recovery, backup/restore, or owner acceptance.
+The latest installed-path run `verification/runs/20261017T200545786Z-500d1a37/` proves the harmless durable-queue slice: four contracts passed against the exact installed candidate hash. A disposable-profile restore using the real 128-file live backup also passed the sampled manifest-backed restore contract; this does not prove the broader feature set, UI, settings matrix, full restore hash set, or owner acceptance.
 
 ## Required validation architecture
 
