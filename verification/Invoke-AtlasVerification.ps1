@@ -325,7 +325,7 @@ try {
     [void](Invoke-RealAtlasCommand -Exe $resolvedExe -Arguments @('doctor') -WorkingDirectory $unrelatedDirectory `
         -HomeDirectory $homeDirectory -LedgerPath $ledgerPath -CandidateHash $candidateHash `
         -Variation 'explicit_home/unrelated_working_directory' -Contract 'machine_diagnosis' `
-        -ExpectedPattern 'atlas doctor')
+        -ExpectedPattern '(?s)ok memory.*ok disk')
 
     # Variation 3: queue a harmless request through Atlas's public command
     # path. The disposable home makes the state change safe; the assertion is

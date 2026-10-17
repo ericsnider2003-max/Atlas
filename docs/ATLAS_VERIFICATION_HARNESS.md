@@ -112,8 +112,8 @@ in-process recording object, the next request published backup `state-1792227445
 across 12 directories and 3 owned roots. This is the first real-profile backup proof for the candidate; live restore
 has not been run destructively.
 
-The latest installed-path run is `verification/runs/20261017T222117022Z-5f9d0cd4/` against the same candidate hash. It passed
-14/14 substantive real-process contracts: identity, diagnosis, durable enqueue, authenticated Hub health/page/live surfaces,
+The latest installed-path run is `verification/runs/20261017T224847069Z-d381b129/` against the same candidate hash. It passed
+14/14 substantive real-process contracts: identity, resource diagnosis requiring observed memory and disk lines, durable enqueue, authenticated Hub health/page/live surfaces,
 cold daemon liveness, forced-stop daemon restart liveness, post-daemon queue replay, restart replay, the approval-gated
 `remote start 1 --yes` transition, completion, completed-state replay, and a missing-request failure. The Hub checks assert the
 actual browser handoff contract: HTTP 200, an Atlas session cookie, and a clean-path self-navigation target; Atlas intentionally
