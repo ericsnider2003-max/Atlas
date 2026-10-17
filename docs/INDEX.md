@@ -18,15 +18,17 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `full-validation` Full Atlas validation campaign and settings/UI matrix — home: [docs/ATLAS_FULL_VALIDATION_PLAN.md](ATLAS_FULL_VALIDATION_PLAN.md) — open since 2026-10-17 (Codex)
 - `next-chat-handoff` Full next-chat operational handoff — home: [docs/ATLAS_NEXT_CHAT_HANDOFF_2026-10-17.md](ATLAS_NEXT_CHAT_HANDOFF_2026-10-17.md) — open since 2026-10-17 (Codex)
 - `disposable-restore` Disposable installed restore evidence — home: [docs/ATLAS_DISPOSABLE_RESTORE_2026-10-17.md](ATLAS_DISPOSABLE_RESTORE_2026-10-17.md) — open since 2026-10-17 (Codex)
+- `i217d` Complete singular-candidate workspace handoff and inventory — home: [docs/ATLAS_FULL_HANDOFF_2026-10-17.md](ATLAS_FULL_HANDOFF_2026-10-17.md) — open since 2026-10-17 (agent)
 
 ## Last session
 
-- 2026-10-17 by Codex: Filed the owner's readiness correction and reset plan: Atlas is not ready to be called an operating system until the installed minimum foundation works in a normal session and is accepted by Eric. Feature expansion is paused pending foundation proof.
-- Next command: `Install the candidate build on the laptop and run the minimum operating-foundation journey from docs/OWNER_READINESS_RESET_2026-10-16.md`
-- git at close: main @ d3d5bca2e6, 155 uncommitted file(s); fetch: ok
-- Verified: Owner correction and reset plan filed — docs/OWNER_READINESS_RESET_2026-10-16.md; filing check green with 45 inherited historical warnings
-- **UNVERIFIED:** Installed runtime, memory-pressure, backup/restore, and owner acceptance — these are the next proof gates
-- log: [docs/sessions/2026-10-16-filed-the-owner-s-readiness-correction-a.md](sessions/2026-10-16-filed-the-owner-s-readiness-correction-a.md)
+- 2026-10-17 by agent: Recorded the singular candidate, installed hash identity, 14-contract runtime evidence, complete workspace inventory, preserved worktrees/artifacts, open readiness gaps, and exact continuation commands.
+- Next command: `pwsh -NoProfile -File .\\verification\\Invoke-AtlasVerification.ps1 -AtlasExe 'C:\\Users\\erics\\AppData\\Local\\Atlas\\atlas.exe'`
+- git at close: candidate/2026-10-17-foundation @ 8229439acb, 43 uncommitted file(s); fetch: ok
+- Verified: Installed candidate matches the built candidate at SHA-256 FA61A885DE97051B38F0A53BB94D84C43FA4F97AB659DE5F6383EF5DB418F71E; latest run 20261017T233822200Z-d6a88b52 passed 14 substantive contracts; filing check is green with inherited warnings.
+- **UNVERIFIED:** Visual UI/accessibility, owner acceptance, full settings matrix, remaining capability contracts, provider/device readiness, and failure-injection campaign remain open.
+- Blocker: Computer-use runtime cannot initialize; unblock by restoring the UI automation kernel or performing the guided UI session on the laptop.
+- log: [docs/sessions/2026-10-17-recorded-the-singular-candidate-installe.md](sessions/2026-10-17-recorded-the-singular-candidate-installe.md)
 
 ## Recently done
 
@@ -113,6 +115,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [WINDOWS_SIGNING_TODAY.md](../WINDOWS_SIGNING_TODAY.md) | Signing Atlas for Windows: what to click, starting today | — |
 | [atlas-clean-pass-checklist.md](../atlas-clean-pass-checklist.md) | One-Pass Clean-Up Checklist for Code Written Fast, With AI, or by Small Teams | — |
 | [docs/ATLAS_DISPOSABLE_RESTORE_2026-10-17.md](ATLAS_DISPOSABLE_RESTORE_2026-10-17.md) | Atlas disposable restore evidence — 2026-10-17 | — |
+| [docs/ATLAS_FULL_HANDOFF_2026-10-17.md](ATLAS_FULL_HANDOFF_2026-10-17.md) | Atlas full handoff — singular candidate and complete workspace accounting | — |
 | [docs/ATLAS_FULL_VALIDATION_PLAN.md](ATLAS_FULL_VALIDATION_PLAN.md) | Atlas full validation plan | — |
 | [docs/ATLAS_NEXT_CHAT_HANDOFF_2026-10-17.md](ATLAS_NEXT_CHAT_HANDOFF_2026-10-17.md) | Atlas next-chat handoff — full operational context | — |
 | [docs/ATLAS_SYSTEM_AUDIT_2026-10-17.md](ATLAS_SYSTEM_AUDIT_2026-10-17.md) | Atlas system audit — implementation versus requested system | — |
@@ -127,6 +130,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/INTEGRATION_REVIEW_2026-10-15.md](INTEGRATION_REVIEW_2026-10-15.md) | Canonical integration review — 2026-10-15 | — |
 | [docs/OPEN_WORK_AUDIT_2026-10-15.md](OPEN_WORK_AUDIT_2026-10-15.md) | Atlas open-work audit — 2026-10-15 | — |
 | [docs/OWNER_READINESS_RESET_2026-10-16.md](OWNER_READINESS_RESET_2026-10-16.md) | Owner readiness reset — Atlas | 2026-10-16 |
+| [docs/PROJECT_FILE_INVENTORY_2026-10-17.md](PROJECT_FILE_INVENTORY_2026-10-17.md) | Atlas project file inventory — 2026-10-17 | — |
 | [docs/Q25_STARTUP_BACKUP_FIX_2026-10-15.md](Q25_STARTUP_BACKUP_FIX_2026-10-15.md) | Startup backup contention fix — 2026-10-15 | — |
 | [docs/REA_REPLICA_ADAPTATION_2026-10-16.md](REA_REPLICA_ADAPTATION_2026-10-16.md) | REA and replica adaptation notes — 2026-10-16 | — |
 | [docs/STALE_RECONCILIATION_2026-10-15.md](STALE_RECONCILIATION_2026-10-15.md) | Filing stale-reference reconciliation — 2026-10-15 | — |

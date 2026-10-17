@@ -15,7 +15,9 @@ Owner readiness correction: Eric is not satisfied that this work has produced a 
 
 - Operating foundation reset — `docs/OWNER_READINESS_RESET_2026-10-16.md` — owner-raised readiness correction; feature expansion paused; candidate installation, live Hub/Settings navigation, backup-lock diagnosis/repair, installed-path runtime proof, one real-profile backup, daemon/UI reconnection after restart, and a disposable-profile restore campaign are complete. The live backup `data/backups/state-1792227445/` has a v2 manifest with 128 files, 12 directories, and 3 owned roots; 125/128 direct hashes matched after restore, with two startup-mutated state files and one intentionally preserved trash ledger recorded. Remaining acceptance work is policy normalization for live-state restore evidence, resource/dependency readiness, the rest of the minimum operating-foundation journey, and owner acceptance.
 
-Next verification command: `cargo +stable-x86_64-pc-windows-msvc check --locked --manifest-path atlas/Cargo.toml --features phone-llm` after LLVM/Clang provides `clang.dll` or `libclang.dll`; then independently hash all 128 files restored by the singular installed candidate. Installed runtime, live hardware, and provider readiness remain separate evidence boundaries.
+- Full workspace handoff — `docs/ATLAS_FULL_HANDOFF_2026-10-17.md` and `docs/PROJECT_FILE_INVENTORY_2026-10-17.md` — complete candidate identity, evidence ledger, open proof gaps, preserved workspace inventory, worktree boundary, and exact continuation commands are recorded. No historical or untracked material was deleted or broadly moved; the filing survey remains an owner-reviewed migration plan only.
+
+Next verification command: `pwsh -NoProfile -File .\verification\Invoke-AtlasVerification.ps1 -AtlasExe 'C:\Users\erics\AppData\Local\Atlas\atlas.exe'` for the installed candidate; then run the minimum operating-foundation journey from `docs/OWNER_READINESS_RESET_2026-10-16.md`. Installed runtime, live hardware, visual UI, provider, and owner acceptance remain separate evidence boundaries.
 
 ## Decisions
 
