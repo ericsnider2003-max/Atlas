@@ -186,6 +186,7 @@ function Invoke-RealHubSurface {
     foreach ($endpoint in $endpoints) {
         $started = [DateTime]::UtcNow
         $responsePath = Join-Path $HomeDirectory (([guid]::NewGuid()).ToString() + '.hub-response.txt')
+        $cleanResponsePath = Join-Path $HomeDirectory (([guid]::NewGuid()).ToString() + '.hub-clean-response.txt')
         $statusCode = 0
         $body = ''
         $errorText = ''
@@ -234,9 +235,17 @@ function Invoke-RealHubSurface {
             $errorText = 'The daemon did not publish an authenticated hub address.'
         }
         Set-Content -LiteralPath $responsePath -Value $body -Encoding UTF8
+        Set-Content -LiteralPath $cleanResponsePath -Value $cleanBody -Encoding UTF8
         $finished = [DateTime]::UtcNow
+        $cleanShapeMatched = if ($endpoint.name -eq 'hub_health_http') {
+            $cleanBody.Trim() -eq 'ok'
+        } elseif ($endpoint.name -eq 'hub_live_json_http') {
+            $cleanBody.TrimStart().StartsWith('{')
+        } else {
+            $cleanBody -match '<title>Atlas'
+        }
         $matched = ($statusCode -eq 200 -and $sessionCookie -and $body.Contains("url=$($endpoint.expected_location)") -and
-            $cleanStatusCode -eq 200 -and $cleanBody.Length -gt 0)
+            $cleanStatusCode -eq 200 -and $cleanBody.Length -gt 0 -and $cleanShapeMatched)
         Write-LedgerRecord -LedgerPath $LedgerPath -Record @{
             schema = 'atlas.verification.result.v1'
             run_id = $script:RunId
@@ -251,6 +260,7 @@ function Invoke-RealHubSurface {
             finished_utc = $finished.ToString('o')
             duration_ms = [int]($finished - $started).TotalMilliseconds
             stdout_artifact = $responsePath
+            clean_response_artifact = $cleanResponsePath
             stderr_artifact = $daemonErr
             stdout_sha256 = (Get-FileHash -LiteralPath $responsePath -Algorithm SHA256).Hash
             stderr_sha256 = $null
@@ -263,6 +273,7 @@ function Invoke-RealHubSurface {
             session_cookie_present = $sessionCookie
             clean_http_status = $cleanStatusCode
             clean_response_bytes = $cleanBody.Length
+            clean_response_shape_matched = $cleanShapeMatched
             error = $errorText
             clean_error = $cleanErrorText
             note = 'Authenticated request to the real installed Atlas Hub listener in a disposable ATLAS_HOME; the token-bearing URL is intentionally not retained in the ledger.'

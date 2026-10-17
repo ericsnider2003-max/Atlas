@@ -1,0 +1,1 @@
+{"brief":"It's quiet. Nothing needs you.","ready":[],"said":[],"status":"On, typing","upcoming":[],"waiting":0,"working":null}

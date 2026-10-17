@@ -1,0 +1,21 @@
+# Your own edits to config/tools.yaml, kept here so an update cannot undo them.
+# Atlas moved them out of config/tools.yaml (which an update replaces) and lays
+# them back over it every time it starts.
+#   path    -- which setting
+#   yours   -- the value you chose (removed: true means you deleted it)
+#   was     -- what the shipped file said at the time
+#   unsure  -- Atlas could not tell whether this was your edit or an older
+#              release's default; delete the entry if it wasn't yours
+# To go back to the shipped default, delete that entry. Delete this whole
+# file to go back to the shipped config/tools.yaml entirely.
+changes:
+- path:
+  - server
+  - port
+  yours: 30365
+  was: 8787
+- path:
+  - kin
+  - port
+  yours: 30366
+  was: 8788
