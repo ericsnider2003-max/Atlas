@@ -1,0 +1,42 @@
+I wrote my settings into C:\Users\erics\Atlas\atlas-publish\verification\runs\20261017T211836315Z-7378fd65\atlas-home\config.
+atlas doctor
+
+  ok install            C:\Users\erics\Atlas\atlas-publish\verification\runs\20261017T211836315Z-7378fd65\atlas-home -- ATLAS_HOME is set, so this is where I look no matter where you start me from.
+  ok monitor 65626      1920x1140 at (0,0) [primary]
+  ok monitor 131073     1920x1008 at (1920,0)
+  ok role 'laptop'      -> monitor 65626 at x=0
+  ok role 'main'        -> monitor 131073 at x=1920
+  ok role 'side'        -> monitor 65626 at x=0
+  ok app 'chrome'       C:\Program Files/Google/Chrome/Application/chrome.exe
+  ok app 'claude'       Claude_pzs8sxrjxfjjc!Claude (Microsoft Store app)
+  ok app 'discord'      C:\Users\erics\AppData\Local/Discord/Update.exe
+  ok app 'notepad'      C:\Users\erics\AppData\Local/Microsoft/WindowsApps/notepad.exe
+  ok record (mic)       C:\Users\erics\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.1-full_build\bin\ffmpeg.EXE
+FAIL stt                'C:\Users\erics\Atlas\atlas-publish\verification\runs\20261017T211836315Z-7378fd65\atlas-home\tools/whisper/whisper-cli.exe' not on PATH
+FAIL tts                'C:\Users\erics\Atlas\atlas-publish\verification\runs\20261017T211836315Z-7378fd65\atlas-home\tools/piper/piper.exe' not on PATH
+  ok play               C:\Users\erics\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.1-full_build\bin\ffplay.EXE
+  ok model 'llm_model'  llama3.1:8b (resolved by the runtime, not a file)
+FAIL model 'stt_model'  missing: C:\Users\erics\Atlas\atlas-publish\verification\runs\20261017T211836315Z-7378fd65\atlas-home\models/ggml-base.en.bin
+  ok notify             on-screen alerts in Atlas's own window
+FAIL vision             recognising what it sees is switched off in your settings
+FAIL reading            I can't do finding words on the screen or reading those words yet — the model files aren't there. It's a one-off download into models/.
+FAIL hands              I can't do finding your hands or reading your fingers yet — the model files aren't there. It's a one-off download into models/.
+FAIL talking            no language model yet, so only the things on the command list work — start Atlas again and its setup fetches it (about 3 GB)
+  ok phone              I can't reach your phone — no push address is set up. Anything urgent while you're out is held until you're back at the machine.
+  ok voice-lock         I can't tell voices apart on this machine yet — no external speaker encoder is installed, and my own one hasn't heard enough ordinary talk to compare against, so I listen to whoever speaks. Nothing has changed for the worse: this is how Atlas has always behaved. But voice-lock isn't protecting you until it has, and you've enrolled. I'm using my own voice encoder here, and it needs to have heard 30 clips of ordinary talk before it can tell voices apart (heard 0 so far). Bring in a recording of other voices — a podcast, a call — on the hub's calendar page, or just keep using Atlas.
+  ok vault on sign-in   switched on; the sign-in copy is made the next time you unlock with your passphrase
+  ok typed passphrase   in this process: the console's echo is switched off while you type
+  ok meaning-search     searching notes by words; meaning search is switched off in your settings
+FAIL speech engine      Kokoro, as af_heart, is chosen, but the Kokoro voice isn't downloaded yet (142 MB, from Sound & voice); until it is, Atlas speaks in piper
+  ok spare weight       nothing installed that your config doesn't use
+  ok activity record    nothing recorded yet
+  ok time zone          automatic: this computer's clock (America/Los_Angeles), PDT now.
+  ok this machine       voice and reasoning — 3 at a time, model stays loaded between turns. 16GB of memory, 4.2GB free — so about 2.3GB to work with. That fits qwen2.5-1.5b-instruct-q4.
+  ok shareable settings No one's own folders in the settings that would go to someone else.
+  ok activity log       The activity log has nothing sealed in it yet, so there's nothing to check.
+  ok memory             15.7 GB installed, 11.4 GB in use
+  ok disk               20 GB free of 953 GB
+  ok hearing            whisper (Parakeet isn't downloaded; `atlas get hearing` fetches it)
+  ok voice latency      no voice turns recorded yet
+
+8 problem(s). Fix these before expecting anything to work.

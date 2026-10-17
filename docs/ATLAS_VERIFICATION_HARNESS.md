@@ -112,6 +112,11 @@ in-process recording object, the next request published backup `state-1792227445
 across 12 directories and 3 owned roots. This is the first real-profile backup proof for the candidate; live restore
 has not been run destructively.
 
+The latest installed-path run is `verification/runs/20261017T211836315Z-7378fd65/` against the same candidate hash. It passed
+8/8 real-process contracts: identity, diagnosis, durable enqueue, restart replay, the approval-gated `remote start 1 --yes`
+transition, completion, completed-state replay, and a missing-request failure. The queue-state contracts use a fresh disposable
+`ATLAS_HOME`; they do not touch the owner's profile or claim that the full capability catalogue is runtime-proven.
+
 ## Boundaries
 
 Physical devices, personal accounts, owner-selected folders, and providers that cannot be safely provisioned remain explicit external boundaries. The harness must report them as blocked or unverified, never silently promote synthetic or rehearsed evidence to runtime proof.

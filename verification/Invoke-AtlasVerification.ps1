@@ -153,6 +153,34 @@ try {
         -CandidateHash $candidateHash -Variation 'restart/public_command' -Contract 'remote_queue_replay' `
         -ExpectedPattern ([regex]::Escape($queueText)))
 
+    # Variations 5–7: drive the same durable request through its running and
+    # completed states in separate real processes, then confirm the completed
+    # receipt survives one more restart.  The fresh home makes request #1
+    # deterministic without relying on the owner's queue.
+    [void](Invoke-RealAtlasCommand -Exe $resolvedExe -Arguments @('remote', 'start', '1', '--yes') `
+        -WorkingDirectory $unrelatedDirectory -HomeDirectory $homeDirectory -LedgerPath $ledgerPath `
+        -CandidateHash $candidateHash -Variation 'restart/state_transition' -Contract 'remote_queue_start' `
+        -ExpectedPattern '#1 running')
+
+    [void](Invoke-RealAtlasCommand -Exe $resolvedExe -Arguments @('remote', 'done', '1', 'completed after restart', '--secs', '60') `
+        -WorkingDirectory $unrelatedDirectory -HomeDirectory $homeDirectory -LedgerPath $ledgerPath `
+        -CandidateHash $candidateHash -Variation 'restart/state_transition' -Contract 'remote_queue_done' `
+        -ExpectedPattern 'is done')
+
+    [void](Invoke-RealAtlasCommand -Exe $resolvedExe -Arguments @('remote', 'list') `
+        -WorkingDirectory $unrelatedDirectory -HomeDirectory $homeDirectory -LedgerPath $ledgerPath `
+        -CandidateHash $candidateHash -Variation 'second_restart/completed_state' -Contract 'remote_queue_completed_replay' `
+        -ExpectedPattern '0 waiting, 1 in the queue altogether')
+
+    # A bounded failure must remain visible to the caller, not look like a
+    # successful no-op.  The CLI reports this case in text while retaining a
+    # zero process exit for interactive use, so the observable pattern is the
+    # acceptance condition here.
+    [void](Invoke-RealAtlasCommand -Exe $resolvedExe -Arguments @('remote', 'done', '999', 'missing') `
+        -WorkingDirectory $unrelatedDirectory -HomeDirectory $homeDirectory -LedgerPath $ledgerPath `
+        -CandidateHash $candidateHash -Variation 'invalid_identifier/failure_path' -Contract 'remote_queue_missing_failure' `
+        -ExpectedPattern 'No request #999')
+
     Write-LedgerRecord -LedgerPath $ledgerPath -Record @{
         schema = 'atlas.verification.run.v1'
         run_id = $script:RunId

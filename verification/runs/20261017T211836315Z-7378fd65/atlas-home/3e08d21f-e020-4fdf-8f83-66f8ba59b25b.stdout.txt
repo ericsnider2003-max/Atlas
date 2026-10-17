@@ -1,0 +1,2 @@
+atlas 0.1.0-dev
+install: C:\Users\erics\Atlas\atlas-publish\verification\runs\20261017T211836315Z-7378fd65\atlas-home — ATLAS_HOME told me where to look
