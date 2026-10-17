@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "layout": {
+    "docs": "docs",
+    "current": "docs/STATUS.md",
+    "index": "docs/INDEX.md",
+    "archive": "docs/archive",
+    "sessions": "docs/sessions"
+  },
+  "docGlobs": [
+    "*.md",
+    "docs/**/*.md"
+  ],
+  "docExclude": [
+    "docs/archive/**",
+    "docs/sessions/**"
+  ],
+  "packages": [],
+  "pinned": [],
+  "main": "",
+  "owner": ""
+}
