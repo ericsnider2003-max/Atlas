@@ -112,11 +112,14 @@ in-process recording object, the next request published backup `state-1792227445
 across 12 directories and 3 owned roots. This is the first real-profile backup proof for the candidate; live restore
 has not been run destructively.
 
-The latest installed-path run is `verification/runs/20261017T220516706Z-f9114d10/` against the same candidate hash. It passed
-11/11 real-process contracts: identity, diagnosis, durable enqueue, cold daemon liveness, forced-stop daemon restart liveness,
-post-daemon queue replay, restart replay, the approval-gated `remote start 1 --yes` transition, completion, completed-state replay,
-and a missing-request failure. The daemon working-set samples were 61.4 MB and 62.1 MB. The queue-state contracts use a fresh
-disposable `ATLAS_HOME`; they do not touch the owner's profile or claim that the full capability catalogue is runtime-proven.
+The latest installed-path run is `verification/runs/20261017T222117022Z-5f9d0cd4/` against the same candidate hash. It passed
+14/14 substantive real-process contracts: identity, diagnosis, durable enqueue, authenticated Hub health/page/live surfaces,
+cold daemon liveness, forced-stop daemon restart liveness, post-daemon queue replay, restart replay, the approval-gated
+`remote start 1 --yes` transition, completion, completed-state replay, and a missing-request failure. The Hub checks assert the
+actual browser handoff contract: HTTP 200, an Atlas session cookie, and a clean-path self-navigation target; Atlas intentionally
+does not use a 303 here because cross-site camera opens can withhold a Strict cookie across redirects. The queue and Hub contracts
+use a fresh disposable `ATLAS_HOME`; they do not touch the owner's profile or claim that the full capability catalogue is
+runtime-proven.
 
 ## Boundaries
 

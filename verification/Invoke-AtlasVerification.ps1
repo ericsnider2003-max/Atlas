@@ -149,6 +149,126 @@ function Invoke-RealAtlasDaemon {
     }
 }
 
+function Invoke-RealHubSurface {
+    param(
+        [string] $Exe,
+        [string] $WorkingDirectory,
+        [string] $HomeDirectory,
+        [string] $LedgerPath,
+        [string] $CandidateHash
+    )
+
+    $toolsPath = Join-Path $HomeDirectory 'config\tools.yaml'
+    $hubPort = Get-Random -Minimum 20000 -Maximum 45000
+    $kinPort = $hubPort + 1
+    $toolsText = Get-Content -Raw -LiteralPath $toolsPath
+    $toolsText = [regex]::Replace($toolsText, '(?m)(^server:\s*\r?\n\s+enabled:\s+true\s*\r?\n\s+port:\s*)8787', "`${1}$hubPort")
+    $toolsText = [regex]::Replace($toolsText, '(?m)(^kin:\s*\r?\n\s+enabled:\s+false\s*\r?\n\s+port:\s*)8788', "`${1}$kinPort")
+    Set-Content -LiteralPath $toolsPath -Value $toolsText -Encoding UTF8
+
+    $daemonOut = Join-Path $HomeDirectory (([guid]::NewGuid()).ToString() + '.hub-daemon.stdout.txt')
+    $daemonErr = Join-Path $HomeDirectory (([guid]::NewGuid()).ToString() + '.hub-daemon.stderr.txt')
+    $daemon = Start-Process -FilePath $Exe -ArgumentList @('--daemon', '--unattended') `
+        -WorkingDirectory $WorkingDirectory -RedirectStandardOutput $daemonOut `
+        -RedirectStandardError $daemonErr -PassThru
+    Start-Sleep -Seconds 5
+    $daemon.Refresh()
+    $alive = -not $daemon.HasExited
+    $addressText = if ($alive) { (& $Exe hub address | Out-String) } else { '' }
+    $match = [regex]::Match($addressText, 'http://127\.0\.0\.1:\d+/hub\?t=[^\s]+')
+    $hubUrl = if ($match.Success) { $match.Value } else { $null }
+
+    $endpoints = @(
+        @{ name = 'hub_health_http'; path = ($hubUrl -replace '/hub\?', '/health?'); expected_location = '/health' },
+        @{ name = 'hub_page_http'; path = $hubUrl; expected_location = '/hub' },
+        @{ name = 'hub_live_json_http'; path = ($hubUrl -replace '/hub\?', '/hub/live.json?'); expected_location = '/hub/live.json' }
+    )
+    foreach ($endpoint in $endpoints) {
+        $started = [DateTime]::UtcNow
+        $responsePath = Join-Path $HomeDirectory (([guid]::NewGuid()).ToString() + '.hub-response.txt')
+        $statusCode = 0
+        $body = ''
+        $errorText = ''
+        $location = ''
+        $sessionCookie = $false
+        if ($null -ne $endpoint.path) {
+            $client = $null
+            $request = $null
+            $httpResponse = $null
+            try {
+                $handler = [System.Net.Http.HttpClientHandler]::new()
+                $handler.AllowAutoRedirect = $false
+                $client = [System.Net.Http.HttpClient]::new($handler)
+                $client.Timeout = [TimeSpan]::FromSeconds(5)
+                $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, $endpoint.path)
+                $httpResponse = $client.SendAsync($request).GetAwaiter().GetResult()
+                $statusCode = [int]$httpResponse.StatusCode
+                $location = [string]$httpResponse.Headers.Location
+                $sessionCookie = $httpResponse.Headers.Contains('Set-Cookie')
+                $body = $httpResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            } catch {
+                $errorText = $_.Exception.Message
+            } finally {
+                if ($null -ne $httpResponse) { $httpResponse.Dispose() }
+                if ($null -ne $request) { $request.Dispose() }
+                if ($null -ne $client) { $client.Dispose() }
+            }
+        } else {
+            $errorText = 'The daemon did not publish an authenticated hub address.'
+        }
+        Set-Content -LiteralPath $responsePath -Value $body -Encoding UTF8
+        $finished = [DateTime]::UtcNow
+        $matched = ($statusCode -eq 200 -and $sessionCookie -and $body.Contains("url=$($endpoint.expected_location)"))
+        Write-LedgerRecord -LedgerPath $LedgerPath -Record @{
+            schema = 'atlas.verification.result.v1'
+            run_id = $script:RunId
+            candidate_hash = $CandidateHash
+            executable = (Resolve-Path -LiteralPath $Exe).Path
+            contract = $endpoint.name
+            variation = 'daemon_live/authenticated_http'
+            interface = 'real_process_http'
+            status = if ($matched) { 'passed' } else { 'failed' }
+            exit_code = if ($statusCode -eq 200) { 0 } else { 1 }
+            started_utc = $started.ToString('o')
+            finished_utc = $finished.ToString('o')
+            duration_ms = [int]($finished - $started).TotalMilliseconds
+            stdout_artifact = $responsePath
+            stderr_artifact = $daemonErr
+            stdout_sha256 = (Get-FileHash -LiteralPath $responsePath -Algorithm SHA256).Hash
+            stderr_sha256 = $null
+            stdout_bytes = (Get-Item -LiteralPath $responsePath).Length
+            stderr_bytes = $null
+            expected_pattern = "HTTP 200 with an Atlas session cookie and navigation target $($endpoint.expected_location)"
+            expected_pattern_matched = $matched
+            http_status = $statusCode
+            http_location = $location
+            session_cookie_present = $sessionCookie
+            error = $errorText
+            note = 'Authenticated request to the real installed Atlas Hub listener in a disposable ATLAS_HOME; the token-bearing URL is intentionally not retained in the ledger.'
+        }
+    }
+
+    if ($alive) {
+        $tree = @($daemon.Id)
+        $frontier = @($daemon.Id)
+        while ($frontier.Count -gt 0) {
+            $children = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                Where-Object { $_.ParentProcessId -in $frontier } |
+                Select-Object -ExpandProperty ProcessId)
+            $children = @($children | Where-Object { $_ -notin $tree })
+            if ($children.Count -eq 0) { break }
+            $tree += $children
+            $frontier = $children
+        }
+        foreach ($childPid in $tree) {
+            Stop-Process -Id $childPid -Force -ErrorAction SilentlyContinue
+        }
+        Wait-Process -Id $daemon.Id -Timeout 10 -ErrorAction SilentlyContinue
+    }
+    $daemon.Close()
+    Start-Sleep -Milliseconds 100
+}
+
 if (-not (Test-Path -LiteralPath $AtlasExe -PathType Leaf)) {
     throw "Atlas executable not found: $AtlasExe"
 }
@@ -215,6 +335,9 @@ try {
         -WorkingDirectory $unrelatedDirectory -HomeDirectory $homeDirectory -LedgerPath $ledgerPath `
         -CandidateHash $candidateHash -Variation 'fresh_home/public_command' -Contract 'remote_queue_enqueue' `
         -ExpectedPattern 'Queued as #\d+')
+
+    Invoke-RealHubSurface -Exe $resolvedExe -WorkingDirectory $unrelatedDirectory `
+        -HomeDirectory $homeDirectory -LedgerPath $ledgerPath -CandidateHash $candidateHash
 
     # The daemon must stay alive on a fresh profile, and again after its first
     # process is deliberately stopped.  The queue replay after these two
