@@ -122,6 +122,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/ATLAS_VERIFICATION_HARNESS.md](ATLAS_VERIFICATION_HARNESS.md) | Atlas verification harness | — |
 | [docs/CAPABILITIES.md](CAPABILITIES.md) | What Atlas can do | — |
 | [docs/CAPABILITY_EVIDENCE_AUDIT_2026-10-15.md](CAPABILITY_EVIDENCE_AUDIT_2026-10-15.md) | Capability evidence audit — 2026-10-15 | 2026-10-15 |
+| [docs/CHAT_HANDOFF_2026-10-18.md](CHAT_HANDOFF_2026-10-18.md) | Atlas chat handoff — 2026-10-18 | — |
 | [docs/EXECUTION_EFFICIENCY_PLAN.md](EXECUTION_EFFICIENCY_PLAN.md) | Atlas execution-efficiency plan | — |
 | [docs/F0_SHARED_RECORD_WIRING_2026-10-15.md](F0_SHARED_RECORD_WIRING_2026-10-15.md) | F0 shared capability record wiring — 2026-10-15 | — |
 | [docs/F1_DURABLE_JOB_COMPILE_FIX_2026-10-15.md](F1_DURABLE_JOB_COMPILE_FIX_2026-10-15.md) | F1 durable job compile fix — 2026-10-15 | — |
@@ -131,6 +132,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/FOUNDATION_IMPLEMENTATION_2026-10-15.md](FOUNDATION_IMPLEMENTATION_2026-10-15.md) | Foundation implementation handoff — 2026-10-15 | — |
 | [docs/INTEGRATION_REVIEW_2026-10-15.md](INTEGRATION_REVIEW_2026-10-15.md) | Canonical integration review — 2026-10-15 | — |
 | [docs/OPEN_WORK_AUDIT_2026-10-15.md](OPEN_WORK_AUDIT_2026-10-15.md) | Atlas open-work audit — 2026-10-15 | — |
+| [docs/OPERATING_FOUNDATION_TRACE_2026-10-18.md](OPERATING_FOUNDATION_TRACE_2026-10-18.md) | Operating-foundation trace — 2026-10-18 | — |
 | [docs/OWNER_READINESS_RESET_2026-10-16.md](OWNER_READINESS_RESET_2026-10-16.md) | Owner readiness reset — Atlas | 2026-10-16 |
 | [docs/PLAN_COVERAGE_REGISTER_2026-10-18.md](PLAN_COVERAGE_REGISTER_2026-10-18.md) | Atlas plan coverage register — 2026-10-18 | — |
 | [docs/PROJECT_FILE_INVENTORY_2026-10-17.md](PROJECT_FILE_INVENTORY_2026-10-17.md) | Atlas project file inventory — 2026-10-17 | — |
