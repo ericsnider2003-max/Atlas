@@ -12,7 +12,6 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 ## Open items
 
 - `i922b` Operating foundation reset and owner confidence gate — home: [docs/OWNER_READINESS_RESET_2026-10-16.md](OWNER_READINESS_RESET_2026-10-16.md) — open since 2026-10-17 (Codex)
-- `verify-harness` Independent real-runtime verification harness — home: [docs/ATLAS_VERIFICATION_HARNESS.md](ATLAS_VERIFICATION_HARNESS.md) — open since 2026-10-17 (Codex)
 - `filing-review` Filing system review and singular-candidate refactor — home: [docs/FILING_SYSTEM_REVIEW_2026-10-16.md](FILING_SYSTEM_REVIEW_2026-10-16.md) — open since 2026-10-17 (Codex)
 - `system-audit` Atlas system audit: implementation versus requested system — home: [docs/ATLAS_SYSTEM_AUDIT_2026-10-17.md](ATLAS_SYSTEM_AUDIT_2026-10-17.md) — open since 2026-10-17 (Codex)
 - `full-validation` Full Atlas validation campaign and settings/UI matrix — home: [docs/ATLAS_FULL_VALIDATION_PLAN.md](ATLAS_FULL_VALIDATION_PLAN.md) — open since 2026-10-17 (Codex)
@@ -32,6 +31,7 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 
 ## Recently done
 
+- `verify-harness` Independent real-runtime verification harness (2026-10-18)
 - `i65c1` Canonical open-work audit (2026-10-16)
 - `filingbundle` Complete canonical Atlas filing bundle (2026-10-16)
 - `filingcheckpoint` Filing integrity checkpoint for canonical Atlas work (2026-10-15)
@@ -122,14 +122,17 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/ATLAS_VERIFICATION_HARNESS.md](ATLAS_VERIFICATION_HARNESS.md) | Atlas verification harness | — |
 | [docs/CAPABILITIES.md](CAPABILITIES.md) | What Atlas can do | — |
 | [docs/CAPABILITY_EVIDENCE_AUDIT_2026-10-15.md](CAPABILITY_EVIDENCE_AUDIT_2026-10-15.md) | Capability evidence audit — 2026-10-15 | 2026-10-15 |
+| [docs/EXECUTION_EFFICIENCY_PLAN.md](EXECUTION_EFFICIENCY_PLAN.md) | Atlas execution-efficiency plan | — |
 | [docs/F0_SHARED_RECORD_WIRING_2026-10-15.md](F0_SHARED_RECORD_WIRING_2026-10-15.md) | F0 shared capability record wiring — 2026-10-15 | — |
 | [docs/F1_DURABLE_JOB_COMPILE_FIX_2026-10-15.md](F1_DURABLE_JOB_COMPILE_FIX_2026-10-15.md) | F1 durable job compile fix — 2026-10-15 | — |
+| [docs/FILING_CANDIDATE_CLASSIFICATION_2026-10-18.md](FILING_CANDIDATE_CLASSIFICATION_2026-10-18.md) | Singular-candidate classification — 2026-10-18 | — |
 | [docs/FILING_SYSTEM_REVIEW_2026-10-16.md](FILING_SYSTEM_REVIEW_2026-10-16.md) | Filing system review and singular-candidate refactor | — |
 | [docs/FOUNDATION_FAILURES_2026-10-14.md](FOUNDATION_FAILURES_2026-10-14.md) | Foundation pass failure record — 2026-10-14 | — |
 | [docs/FOUNDATION_IMPLEMENTATION_2026-10-15.md](FOUNDATION_IMPLEMENTATION_2026-10-15.md) | Foundation implementation handoff — 2026-10-15 | — |
 | [docs/INTEGRATION_REVIEW_2026-10-15.md](INTEGRATION_REVIEW_2026-10-15.md) | Canonical integration review — 2026-10-15 | — |
 | [docs/OPEN_WORK_AUDIT_2026-10-15.md](OPEN_WORK_AUDIT_2026-10-15.md) | Atlas open-work audit — 2026-10-15 | — |
 | [docs/OWNER_READINESS_RESET_2026-10-16.md](OWNER_READINESS_RESET_2026-10-16.md) | Owner readiness reset — Atlas | 2026-10-16 |
+| [docs/PLAN_COVERAGE_REGISTER_2026-10-18.md](PLAN_COVERAGE_REGISTER_2026-10-18.md) | Atlas plan coverage register — 2026-10-18 | — |
 | [docs/PROJECT_FILE_INVENTORY_2026-10-17.md](PROJECT_FILE_INVENTORY_2026-10-17.md) | Atlas project file inventory — 2026-10-17 | — |
 | [docs/Q25_STARTUP_BACKUP_FIX_2026-10-15.md](Q25_STARTUP_BACKUP_FIX_2026-10-15.md) | Startup backup contention fix — 2026-10-15 | — |
 | [docs/REA_REPLICA_ADAPTATION_2026-10-16.md](REA_REPLICA_ADAPTATION_2026-10-16.md) | REA and replica adaptation notes — 2026-10-16 | — |
