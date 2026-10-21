@@ -203,18 +203,114 @@ pub fn open(c: &Contents) -> Result<(), String> {
     }
     let path = stage(c).map_err(|e| format!("couldn't stage the panel: {e}"))?;
     let exe = std::env::current_exe().map_err(|e| format!("couldn't find myself on disk: {e}"))?;
-    crate::tools::command(exe)
-        .arg("window")
-        .arg(&path)
-        .spawn()
-        // Handed over rather than dropped. `spawn().map(|_| ())` threw the
-        // `Child` away on the same line, and on unix that leaves the finished
-        // panel in the process table as a zombie for the rest of the session
-        // -- one per notification, on a process that runs for days. See
-        // `unwaited`.
-        .map(crate::unwaited::dont_wait)
-        .map_err(|e| format!("couldn't open a window: {e}"))
+    let mut command = crate::tools::command(exe);
+    command.arg("window").arg(&path);
+    spawn_panel(&mut command, crate::childjob::tie)
 }
+
+/// Panels this process has put on the screen and not yet seen end. Kept here,
+/// not in `unwaited`, because they are Atlas's own windows: they are collected
+/// on the tick like the rest (`unwaited::reap` calls `reap_panels`), and
+/// closed by `close_panels` when Atlas stops, rather than being counted as
+/// things "left open for you".
+static PANELS: std::sync::Mutex<Vec<std::process::Child>> = std::sync::Mutex::new(Vec::new());
+
+/// Start a panel process, tie it to Atlas, and keep its handle.
+///
+/// 21 Oct 2026, owner decision: a panel Atlas shows itself (briefing,
+/// outstanding, urgent) is Atlas's own window and goes when Atlas stops. In a
+/// real run an "Outstanding" panel stayed open after a clean stop. Only these
+/// panels are tied; an app, a file or a browser opened for the person
+/// (`platform`, `browser`) is theirs and is not. `tie` is passed in so the
+/// order -- tied before anything else happens to the child -- is testable.
+fn spawn_panel(
+    command: &mut std::process::Command,
+    tie: impl FnOnce(&std::process::Child),
+) -> Result<(), String> {
+    let child = command
+        .spawn()
+        .map_err(|e| format!("couldn't open a window: {e}"))?;
+    tie(&child);
+    // Kept rather than dropped: `spawn().map(|_| ())` threw the `Child` away
+    // on the same line, and on unix that leaves the finished panel in the
+    // process table as a zombie for the rest of the session -- one per
+    // notification, on a process that runs for days. See `unwaited`.
+    let mut panels = PANELS
+        .lock()
+        .or_else(crate::crash::unpoison)
+        .map_err(|_| "couldn't keep track of the window".to_string())?;
+    panels.retain_mut(|c| matches!(c.try_wait(), Ok(None)));
+    panels.push(child);
+    Ok(())
+}
+
+/// Collect panels that have ended. Never blocks.
+pub fn reap_panels() {
+    if let Ok(mut panels) = PANELS.lock().or_else(crate::crash::unpoison) {
+        panels.retain_mut(|c| matches!(c.try_wait(), Ok(None)));
+    }
+}
+
+/// Close every panel this process opened, and remove the staged files.
+/// Called as Atlas stops; the job object would end them with the process
+/// anyway, this just does it before the lock is released. Returns how many
+/// were still open.
+pub fn close_panels() -> usize {
+    let mut closed = 0;
+    if let Ok(mut panels) = PANELS.lock().or_else(crate::crash::unpoison) {
+        for mut c in panels.drain(..) {
+            if matches!(c.try_wait(), Ok(None)) {
+                closed += 1;
+                // unheard-ok: it may have just ended on its own
+                let _ = c.kill();
+            }
+            // unheard-ok: collecting the exit status of a process just killed
+            let _ = c.wait();
+        }
+    }
+    let dir = std::env::temp_dir().join("atlas-panels");
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for e in entries.flatten() {
+            if e.path().extension().is_some_and(|x| x == "json") {
+                // unheard-ok: a staged copy that can't be removed is only litter
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    closed
+}
+
+/// Watches whether the Atlas that opened a panel is still there, for the
+/// panel process to close itself when it is not (21 Oct 2026). A panel can be
+/// started by a process other than the daemon, and one that outlives the job
+/// object's kill is no use to anyone.
+///
+/// It only decides to close after it has seen Atlas running at least once:
+/// a panel raised from the command line while no Atlas is up must not close
+/// itself on its first look. After that, the same watching the overlay uses
+/// (`onlyone::Watching`): a released lock closes it at once, an abandoned one
+/// only after the wake grace, so a laptop sleeping does not shut it.
+#[derive(Debug, Default)]
+pub struct AtlasWatch {
+    seen_up: bool,
+    watching: crate::onlyone::Watching,
+}
+
+impl AtlasWatch {
+    /// Should the panel close, given what the lock says at `now`?
+    pub fn should_close(&mut self, found: &crate::onlyone::Found, now: u64) -> bool {
+        let up = self.watching.still_there(found, now);
+        if up {
+            self.seen_up = true;
+            false
+        } else {
+            self.seen_up
+        }
+    }
+}
+
+/// How often a panel looks to see whether Atlas is still there.
+pub const WATCH_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// Is there any point trying to open a window on this machine?
 ///
@@ -297,6 +393,8 @@ pub fn run(c: Contents) -> Result<(), String> {
             Ok(Box::new(App {
                 c,
                 opened: std::time::Instant::now(),
+                watch: AtlasWatch::default(),
+                last_looked: None,
             }))
         }),
     )
@@ -310,6 +408,9 @@ struct App {
     /// elapsed time rather than a frame counter that would run at whatever
     /// rate the machine happens to paint.
     opened: std::time::Instant,
+    /// Whether Atlas is still there to have opened this; see `AtlasWatch`.
+    watch: AtlasWatch,
+    last_looked: Option<std::time::Instant>,
 }
 
 /// Which state the mark should be in for this panel. Brief wakes (the
@@ -459,6 +560,15 @@ impl eframe::App for App {
         // can draw (27 Sep 2026: this was `request_repaint()` every frame,
         // a core kept busy drawing a slow breath). See `repaint_every`.
         ctx.request_repaint_after(repaint_every(mark_state_for(self.c.panel)));
+        // Close when Atlas has gone (21 Oct 2026): looked at every WATCH_EVERY.
+        if self.last_looked.is_none_or(|l| l.elapsed() >= WATCH_EVERY) {
+            self.last_looked = Some(std::time::Instant::now());
+            let now = crate::store::now();
+            let found = crate::onlyone::OnlyOne::at(&crate::roots::data_dir()).look(now);
+            if self.watch.should_close(&found, now) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
         let t = self.opened.elapsed().as_secs_f32();
 
         // Slate glass over the desktop, not a hole punched in it: the panel
@@ -640,5 +750,87 @@ impl AlwaysOnTopIf for eframe::egui::ViewportBuilder {
         } else {
             self
         }
+    }
+}
+
+#[cfg(test)]
+mod panel_ties {
+    use super::*;
+    use crate::onlyone::Found;
+
+    #[test]
+    fn a_panel_is_tied_to_atlas_when_it_is_spawned() {
+        let mut command = if cfg!(windows) {
+            let mut c = std::process::Command::new("cmd");
+            c.args(["/C", "exit 0"]);
+            c
+        } else {
+            std::process::Command::new("true")
+        };
+        let mut tied = 0;
+        spawn_panel(&mut command, |_child| tied += 1).expect("a trivial program starts");
+        assert_eq!(tied, 1, "the panel process was not handed to the job");
+        close_panels();
+    }
+
+    #[test]
+    fn a_failed_spawn_ties_nothing() {
+        let mut command = std::process::Command::new("atlas-no-such-program-21-oct");
+        let mut tied = 0;
+        assert!(spawn_panel(&mut command, |_| tied += 1).is_err());
+        assert_eq!(tied, 0);
+    }
+
+    #[test]
+    fn open_ties_with_the_job_and_apps_are_not_tied() {
+        let window = include_str!("window.rs");
+        assert!(window.contains("spawn_panel(&mut command, crate::childjob::tie)"));
+        for file in [
+            include_str!("platform/win.rs"),
+            include_str!("platform/posix.rs"),
+            include_str!("browser.rs"),
+        ] {
+            assert!(
+                !file.contains("childjob::tie"),
+                "an app or browser opened for the person must not be tied"
+            );
+        }
+    }
+
+    #[test]
+    fn a_panel_closes_when_atlas_goes_but_not_before_it_was_seen() {
+        let running = Found::Running {
+            last_beat_secs_ago: 1,
+        };
+        // Opened with no Atlas up: stays.
+        let mut never = AtlasWatch::default();
+        assert!(!never.should_close(&Found::Free, 100));
+        // Seen up, then released: closes at once.
+        let mut w = AtlasWatch::default();
+        assert!(!w.should_close(&running, 100));
+        assert!(w.should_close(&Found::Free, 102));
+    }
+
+    #[test]
+    fn a_sleeping_laptop_does_not_close_the_panel() {
+        let mut w = AtlasWatch::default();
+        assert!(!w.should_close(
+            &Found::Running {
+                last_beat_secs_ago: 1
+            },
+            100
+        ));
+        let stale = Found::Abandoned {
+            silent_for_secs: 200,
+        };
+        assert!(!w.should_close(&stale, 5000));
+        assert!(!w.should_close(
+            &Found::Running {
+                last_beat_secs_ago: 0
+            },
+            5002
+        ));
+        assert!(!w.should_close(&stale, 5010));
+        assert!(w.should_close(&stale, 5010 + crate::onlyone::WOKE_GRACE_SECS));
     }
 }

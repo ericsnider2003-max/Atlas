@@ -1954,6 +1954,8 @@ impl<'a> Daemon<'a> {
         // for, a headless browser -- and Atlas does not close them on the way
         // out. It should say they are there, because it opened them and
         // nothing else will mention it.
+        // Atlas's own message panels go first (21 Oct 2026, owner decision).
+        crate::window::close_panels();
         crate::unwaited::reap();
         let left_open = crate::unwaited::still_running();
         if left_open > 0 {

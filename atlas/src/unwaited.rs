@@ -107,6 +107,8 @@ pub fn dont_wait(child: Child) {
 /// Returns how many were collected, so the caller can log a number that
 /// ought to be small.
 pub fn reap() -> usize {
+    // Atlas's own panels are kept by `window`, collected on the same tick.
+    crate::window::reap_panels();
     let Ok(mut loose) = LOOSE.lock().or_else(crate::crash::unpoison) else {
         return 0;
     };
