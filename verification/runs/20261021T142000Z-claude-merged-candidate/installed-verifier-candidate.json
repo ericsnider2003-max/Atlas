@@ -1,0 +1,9 @@
+﻿{
+    "created_utc":  "2026-10-21T14:19:03.1760963Z",
+    "schema":  "atlas.verification.candidate.v1",
+    "evidence_boundary":  "real executable in disposable ATLAS_HOME",
+    "runner":  "Invoke-AtlasVerification.ps1",
+    "executable":  "C:\\Users\\erics\\AppData\\Local\\Temp\\claude\\C--Users-erics-Atlas\\d49a1750-6617-48ca-92cd-bebc2e2ecf79\\scratchpad\\atlas-merged.exe",
+    "candidate_hash":  "B0CA6B2F85DBD1C261FE9ACAE7EF126281DC86C575897B453EC7FD979B589427",
+    "run_id":  "20261021T141903158Z-06cb70fd"
+}

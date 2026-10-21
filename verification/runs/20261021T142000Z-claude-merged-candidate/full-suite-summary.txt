@@ -1,0 +1,67 @@
+test result: ok. 1465 passed; 0 failed; 15 ignored; 0 measured; 0 filtered out; finished in 317.10s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+test atlas_looks_when_you_ask::it_asks_once_then_looks_says_so_and_keeps_no_picture ... FAILED
+test atlas_looks_when_you_ask::watching_for_a_while ... FAILED
+test audio_enumeration::asking_the_real_machine_answers_without_panicking_or_hanging ... FAILED
+test errand_pause::a_held_errand_does_not_keep_queued_work_out ... FAILED
+test errand_pause::a_queued_errand_paused_before_it_started_keeps_its_place_until_resumed ... FAILED
+test file_recovery_transactions::ordinary_undo_keeps_partial_file_recovery_available_for_retry ... FAILED
+test finishing_what_it_starts::background_read_can_join_an_existing_job_and_continue ... FAILED
+test finishing_what_it_starts::background_read_retains_outside_text_approval_for_the_next_action ... FAILED
+test finishing_what_it_starts::background_read_waits_through_pause_and_continues_on_resume ... FAILED
+test finishing_what_it_starts::declining_the_edit_blocks_remaining_work ... FAILED
+test levels_do_not_get_slower_the_longer_the_file::the_cost_does_not_grow_with_the_length_of_the_file ... FAILED
+test off_the_tick::a_fast_successful_backup_is_logged_but_not_spoken ... FAILED
+test research_off_the_tick::a_slow_or_fast_research_answer_is_always_spoken_unlike_a_silent_chore ... FAILED
+test research_off_the_tick::researching_it_again_means_the_last_topic ... FAILED
+test research_off_the_tick::the_real_answer_arrives_later_once_the_crew_actually_finishes ... FAILED
+test research_off_the_tick::the_report_names_the_answer_and_source_count_but_never_the_save_mechanics ... FAILED
+test sorting_a_folder::yes_sorts_it_and_undo_that_puts_every_file_back_through_the_daemon ... FAILED
+test sync_never_holds_the_loop::a_device_that_never_answers_doesnt_stop_atlas ... FAILED
+test what_atlas_took_from_wshobson_agents::research_says_a_made_up_figure_is_unconfirmed_and_files_it ... FAILED
+test result: FAILED. 7165 passed; 19 failed; 9 ignored; 0 measured; 0 filtered out; finished in 3630.43s
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.99s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 66.76s
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.53s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 32.62s
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 99.90s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 180.12s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 365.03s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.68s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+test result: ok. 61 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 32.68s
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 277.93s
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 48.96s
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 26.45s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.46s
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 144.08s
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.72s
+test finishing_what_it_starts::background_read_waits_through_pause_and_continues_on_resume ... FAILED
+test result: FAILED. 67 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 142.54s
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 124.56s
+test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 141.95s
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.16s
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 28.77s
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 80.44s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 45.88s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.71s
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 33.58s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.75s
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.72s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.98s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.25s
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.80s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.35s
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 446.51s
+test result: ok. 4 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 124.17s
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.58s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
