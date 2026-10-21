@@ -2693,21 +2693,24 @@ impl<'a> Daemon<'a> {
             }
         }
         if let Some((dir, _)) = &plan.temp {
-            let c = crate::tune::clear_old_files(dir, 86_400);
+            let c = crate::tune::clear_old_files(dir, 86_400, &self.trash);
             done.push(format!(
-                "cleared {} MB of temporary files ({} files; {} in use or recent, left)",
-                c.mb, c.files, c.skipped
+                "moved {} MB of old temporary files ({} files) to Atlas's trash, where you can restore them for {} days ({} in use or recent, left)",
+                c.mb, c.files, self.trash.cfg.keep_days, c.skipped
             ));
             self.journal.record_at(
                 Act::Upkeep,
-                &format!("cleared {} MB of temporary files", c.mb),
+                &format!("moved {} MB of temporary files to the trash", c.mb),
                 true,
                 t,
             );
             self.history.note(
-                &format!("cleared {} MB of temporary files", c.mb),
+                &format!("moved {} MB of temporary files to the trash", c.mb),
                 "files",
-                Undo::Cannot("temporary files are deleted, not kept".into()),
+                Undo::You(format!(
+                    "they are in Atlas's trash; ask for them back within {} days",
+                    self.trash.cfg.keep_days
+                )),
                 true,
                 t,
             );

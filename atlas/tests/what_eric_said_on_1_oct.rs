@@ -185,14 +185,36 @@ fn an_optimization_run_measures_and_offers_what_it_found() {
     std::fs::create_dir_all(dir.join("old-install")).unwrap();
     std::fs::write(dir.join("old-install").join("a.tmp"), vec![0u8; 2_000_000]).unwrap();
     std::fs::write(dir.join("fresh.tmp"), b"in use").unwrap();
-    let none = atlas::tune::clear_old_files(&dir, 3600);
+    let trash = atlas::safety::Trash::new(atlas::safety::TrashConfig {
+        dir: std::env::temp_dir()
+            .join(format!("atlas-eric-1oct-trash-{}", std::process::id()))
+            .to_string_lossy()
+            .into_owned(),
+        keep_days: 30,
+    });
+    let _ = std::fs::remove_dir_all(&trash.cfg.dir);
+    let none = atlas::tune::clear_old_files(&dir, 3600, &trash);
     assert_eq!((none.files, none.skipped), (0, 2), "nothing is old enough");
-    let all = atlas::tune::clear_old_files(&dir, 0);
+    let all = atlas::tune::clear_old_files(&dir, 0, &trash);
     assert_eq!(all.files, 2);
     assert!(
         !dir.join("old-install").exists(),
         "the emptied folder is gone too"
     );
+    assert!(!dir.join("fresh.tmp").exists(), "gone from the temp folder");
+    // 21 Oct 2026: gone from temp, but held in the trash and restorable.
+    let held = trash.ledger();
+    assert_eq!(held.len(), 2, "both files are in the trash");
+    for item in &held {
+        trash.undo(item.id).unwrap();
+    }
+    assert_eq!(
+        std::fs::read(dir.join("old-install").join("a.tmp")).unwrap(),
+        vec![0u8; 2_000_000]
+    );
+    assert_eq!(std::fs::read(dir.join("fresh.tmp")).unwrap(), b"in use");
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&trash.cfg.dir);
 
     // Through Atlas: the sentence reaches the health check, which now names
     // what it measured.

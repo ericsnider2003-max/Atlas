@@ -733,3 +733,5 @@
 {"ts":"2026-10-21T07:27:45.983Z","who":"claude-outstanding","op":"done","id":"click-gate"}
 {"ts":"2026-10-21T07:30:44.681Z","who":"claude-outstanding","op":"add","id":"selftest-scratch","title":"SELFTEST1: self-test scratch cleanup removes junction links only, guarded to temp atlas-selftest-* folders, failures reported","home":"atlas/src/selftest.rs"}
 {"ts":"2026-10-21T07:30:45.836Z","who":"claude-outstanding","op":"done","id":"selftest-scratch"}
+{"ts":"2026-10-21T07:32:39.149Z","who":"claude-outstanding","op":"add","id":"tune-trash","title":"PC tidy-up moves old temp files to Atlas's trash (restorable, 30 days) instead of deleting them","home":"atlas/src/tune.rs"}
+{"ts":"2026-10-21T07:32:40.328Z","who":"claude-outstanding","op":"done","id":"tune-trash"}
