@@ -1,0 +1,227 @@
+<title>Atlas Repair Report</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,750&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one narrow reading column for a phone; summary first, then one row per issue with a state chip. */
+:root{
+  --ground:#f3f5f4;
+  --sheet:#ffffff;
+  --ink:#16201d;
+  --muted:#56645f;
+  --rule:#d6dedb;
+  --accent:#1f6f5c;      /* Atlas teal */
+  --ok:#1d7a4a; --ok-bg:#e3f3ea;
+  --look:#8a5a00; --look-bg:#fbefd6;
+  --open:#5b5f6b; --open-bg:#eceef2;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#0f1513; --sheet:#161e1b; --ink:#e4ebe8; --muted:#9aa9a3; --rule:#2a3531;
+    --accent:#5cc4a6;
+    --ok:#7fd8a6; --ok-bg:#163527; --look:#f0c46a; --look-bg:#3a2c0f; --open:#b5b9c4; --open-bg:#262a31;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#0f1513; --sheet:#161e1b; --ink:#e4ebe8; --muted:#9aa9a3; --rule:#2a3531;
+  --accent:#5cc4a6;
+  --ok:#7fd8a6; --ok-bg:#163527; --look:#f0c46a; --look-bg:#3a2c0f; --open:#b5b9c4; --open-bg:#262a31;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:400 16px/1.55 var(--f-body);
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
+main{max-width:44rem;margin:0 auto;padding-block:28px 56px;display:grid;gap:28px}
+h1,h2{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:2rem;font-weight:750;letter-spacing:-.01em}
+h2{font-size:1.25rem;font-weight:600}
+p{margin:0}
+.eyebrow{font:600 .75rem/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.lede{color:var(--muted);max-width:62ch}
+header{display:grid;gap:10px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));gap:10px}
+.fact{background:var(--sheet);border:1px solid var(--rule);border-radius:10px;padding:12px 14px;display:grid;gap:2px}
+.fact b{font:600 1.35rem/1.2 var(--f-mono);font-variant-numeric:tabular-nums}
+.fact span{color:var(--muted);font-size:.85rem}
+section{display:grid;gap:12px}
+.legend{display:flex;flex-wrap:wrap;gap:8px;color:var(--muted);font-size:.85rem}
+.chip{display:inline-flex;align-items:center;gap:6px;font:600 .72rem/1 var(--f-mono);letter-spacing:.04em;text-transform:uppercase;
+  padding:5px 8px;border-radius:999px;white-space:nowrap}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.c-ok{color:var(--ok);background:var(--ok-bg)}
+.c-look{color:var(--look);background:var(--look-bg)}
+.c-open{color:var(--open);background:var(--open-bg)}
+.rows{list-style:none;margin:0;padding:0;background:var(--sheet);border:1px solid var(--rule);border-radius:12px}
+.row{display:grid;gap:6px;padding:14px 16px;border-top:1px solid var(--rule)}
+.row:first-child{border-top:0}
+.row-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
+.row-head strong{font-size:1rem}
+.row dl{margin:0;display:grid;grid-template-columns:5.2rem 1fr;gap:4px 10px;font-size:.92rem}
+.row dt{color:var(--muted);font-size:.8rem;padding-top:2px}
+.row dd{margin:0}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:.88em}
+.tablewrap{overflow-x:auto;background:var(--sheet);border:1px solid var(--rule);border-radius:12px}
+table{border-collapse:collapse;width:100%;min-width:30rem;font-size:.9rem}
+th,td{text-align:left;padding:9px 12px;border-top:1px solid var(--rule);vertical-align:top}
+thead th{border-top:0;color:var(--muted);font:600 .72rem/1.2 var(--f-mono);letter-spacing:.06em;text-transform:uppercase}
+td.n{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.note{background:var(--sheet);border:1px solid var(--rule);border-radius:12px;padding:14px 16px;display:grid;gap:8px}
+.note ul{margin:0;padding-left:1.1rem;display:grid;gap:6px}
+code{font-family:var(--f-mono);font-size:.85em;overflow-wrap:anywhere}
+footer{color:var(--muted);font-size:.85rem}
+</style>
+
+<main>
+  <header>
+    <p class="eyebrow">Atlas · 21 Oct 2026 · branch fix/desktop-e2e-1020</p>
+    <h1>Atlas Repair Report</h1>
+    <p class="lede">Every problem from yesterday's desktop test, what caused it, what changed, and how each fix was checked. None of these had a working fix sitting anywhere unshipped. Earlier "fixes" for false claims, restarts and the tray existed only in source and tests, and the installed build still showed all three broken. The new build is installed, and Atlas is stopped, as you left it.</p>
+  </header>
+
+  <div class="facts" aria-label="Headline numbers">
+    <div class="fact"><b>9,138</b><span>tests passing (3 need system ffmpeg, which this PC no longer has)</span></div>
+    <div class="fact"><b>14/14</b><span>installed-runtime checks on the new build</span></div>
+    <div class="fact"><b>7.6 s</b><span>until the Hub is usable on your profile (was 25–45 s)</span></div>
+    <div class="fact"><b>0</b><span>downloads or camera frames without asking, in the live check</span></div>
+  </div>
+
+  <section aria-labelledby="h-issues">
+    <h2 id="h-issues">The desktop-test issues</h2>
+    <div class="legend">
+      <span class="chip c-ok">Fixed, checked</span>
+      <span class="chip c-look">Fixed, needs your eyes</span>
+      <span class="chip c-open">Open</span>
+    </div>
+    <ul class="rows">
+      <li class="row">
+        <div class="row-head"><strong>"On it" with nothing done</strong><span class="chip c-ok">Fixed, checked</span></div>
+        <dl>
+          <dt>Cause</dt><dd>The claim check was a list of phrases that missed "On it.", "Making…" and "Backing up… now". The online model's reply also reached the screen before any check ran.</dd>
+          <dt>Now</dt><dd>Claims are caught by sentence shape. With no model that can act, Atlas says it can't, why, and what to do. "Did the backup finish?" with no job says there is no such job.</dd>
+          <dt>Checked</dt><dd>Your exact test sentences, plus 20 normal sentences that must not trip it, through the real reply path.</dd>
+        </dl>
+      </li>
+      <li class="row">
+        <div class="row-head"><strong>Works with no model or low memory</strong><span class="chip c-ok">Fixed, checked</span></div>
+        <dl>
+          <dt>Now</dt><dd>Open and close apps, create, read and move files, folder backup, timers, reminders, time, status, quit and "what's using my memory" run with zero model loaded. Each one reports done or failed, and the ones that change something leave a job. When the model is needed but memory is short, Atlas answers at once: answer online (labelled), or close one of the biggest apps it names.</dd>
+          <dt>Measured</dt><dd>20 commands: typical <span class="num">64 ms</span>, 95th percentile <span class="num">192 ms</span>. The floor adds about <span class="num">2 MB</span>.</dd>
+          <dt>Open</dt><dd>The live low-memory path with a real model folder wasn't run end to end.</dd>
+        </dl>
+      </li>
+      <li class="row">
+        <div class="row-head"><strong>Voice stays available</strong><span class="chip c-look">Fixed, needs your eyes</span></div>
+        <dl>
+          <dt>Now</dt><dd>A small speech recogniser stays loaded, private to this PC, and is the last thing unloaded under memory pressure. It uses a 60 MB copy made from your existing model, with no download.</dd>
+          <dt>Measured</dt><dd><span class="num">122 MB</span> working set, typical <span class="num">0.83 s</span> per command, word errors <span class="num">4.8%</span> on 20 test clips (the larger model: 206 MB, 0.93 s, 8.3%).</dd>
+          <dt>Open</dt><dd>Its reserved memory (about 650 MB) is higher than hoped. Real-microphone accuracy needs your test.</dd>
+        </dl>
+      </li>
+      <li class="row">
+        <div class="row-head"><strong>Hub: Failed and Done, counters agree</strong><span class="chip c-look">Fixed, needs your eyes</span></div>
+        <dl>
+          <dt>Cause</dt><dd>The header, Home and Outstanding each counted with a different formula from different data.</dd>
+          <dt>Now</dt><dd>One count feeds every page. Outstanding has Failed, Interrupted and Done today, each with its own icon and colour. Activity lines show their state, and developer noise is gone.</dd>
+        </dl>
+      </li>
+      <li class="row">
+        <div class="row-head"><strong>Jobs vanish after a restart</strong><span class="chip c-ok">Fixed, checked</span></div>
+        <dl>
+          <dt>Cause</dt><dd>Downloads and background errands never wrote a job record, and the restart check only wrote a log line.</dd>
+          <dt>Now</dt><dd>Long work writes a record. Anything cut off by a restart shows as "Cut off by a restart, not known to have finished" before the Hub opens. A stopped job ends as stopped, not stuck.</dd>
+        </dl>
+      </li>
+      <li class="row">
+        <div class="row-head"><strong>17 MB "unreadable index" every restart</strong><span class="chip c-ok">Fixed, checked</span></div>
+        <dl>
+          <dt>Cause</dt><dd>Atlas refused to read files over 16 MB but would write any size. Your index was 17 MB and perfectly readable.</dd>
+          <dt>Now</dt><dd>Reading and writing share one size limit, and the index has room and is saved compactly. On your profile it loaded and shrank from 17.0 to 13.9 MB, with nothing set aside. The 6 old copies (100.5 MB) are in the Recycle Bin.</dd>
+        </dl>
+      </li>
+      <li class="row">
+        <div class="row-head"><strong>Big download without asking</strong><span class="chip c-ok">Fixed, checked</span></div>
+        <dl>
+          <dt>Now</dt><dd>Nothing downloads until you say yes. On your profile, Waiting on you now holds one ask: "Atlas can fetch 8 missing pieces (about 16.2 GB)". Say "finish setting up" or press Download on the Connections page to approve.</dd>
+        </dl>
+      </li>
+      <li class="row">
+        <div class="row-head"><strong>Camera opening for gestures</strong><span class="chip c-ok">Fixed, checked</span></div>
+        <dl>
+          <dt>Cause</dt><dd>A waiting question opened the camera every 2 seconds, and the gesture switch was checked only afterwards.</dd>
+          <dt>Now</dt><dd>Gestures are off by default and gate the camera. "Can you see me" still works as a one-off. Live check: 0 frames.</dd>
+        </dl>
+      </li>
+      <li class="row">
+        <div class="row-head"><strong>Caption overlay over pages</strong><span class="chip c-look">Fixed, needs your eyes</span></div>
+        <dl>
+          <dt>Now</dt><dd>Off by default and switched off on your profile (backup kept). When on, it is smaller, sits low and is click-through. Error messages are never read aloud or captioned.</dd>
+        </dl>
+      </li>
+      <li class="row">
+        <div class="row-head"><strong>Quit, tray icon, startup speed</strong><span class="chip c-look">Fixed, needs your eyes</span></div>
+        <dl>
+          <dt>Now</dt><dd>"Quit Atlas" stops it, and there's a Quit button in the Hub header and the window. The tray icon was loading a picture that didn't exist; it's fixed, and the log says "the icon by the clock is up". The window waits for the Hub instead of showing "can't reach Atlas".</dd>
+          <dt>Measured</dt><dd>Hub usable in <span class="num">7.6 s</span> on your profile, clean stop in <span class="num">2.4 s</span>.</dd>
+        </dl>
+      </li>
+      <li class="row">
+        <div class="row-head"><strong>Talk, layout and the small replies</strong><span class="chip c-look">Fixed, needs your eyes</span></div>
+        <dl>
+          <dt>Now</dt><dd>Enter sends and Shift+Enter adds a line. Talk stays on the newest message. The Atlas and Settings tabs have a solid background. The microphone refusal says why and what works instead. A missing file gets the closest names and a search suggestion.</dd>
+        </dl>
+      </li>
+      <li class="row">
+        <div class="row-head"><strong>Repeating backup and cleanup errors</strong><span class="chip c-ok">Fixed, checked</span></div>
+        <dl>
+          <dt>Cause</dt><dd>Backups tried to copy Atlas's own locked files. Cleanup gave up on any file in use. Every repeat was announced.</dd>
+          <dt>Now</dt><dd>Atlas's own lock files are skipped and listed. Files in use are left for later. A partial backup never deletes an older complete one. The same failure is announced once. Live check: 0 failures.</dd>
+        </dl>
+      </li>
+      <li class="row">
+        <div class="row-head"><strong>Camera errors in jargon</strong><span class="chip c-ok">Fixed, checked</span></div>
+        <dl>
+          <dt>Cause</dt><dd>Finding faces, naming things and reading the screen were all too big for the inference helper's size limit, so they always failed, and the helper's internal reason was read out.</dd>
+          <dt>Now</dt><dd>The limits fit those models and are still bounded. Failures are said in plain words, with the detail in the log.</dd>
+        </dl>
+      </li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="h-eff">
+    <h2 id="h-eff">Keeping the laptop usable</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Problem found by research</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td>Woke every 2 seconds</td><td>Idle wake every <span class="num">60 s</span> (<span class="num">180 s</span> on battery). Timers and reminders still fire on time.</td></tr>
+          <tr><td>Low memory only warned</td><td>Unloads in order: voice, then the model server, with speech recognition last.</td></tr>
+          <tr><td>Voice engine loaded forever</td><td>Unloads after 5 idle minutes and reloads when needed.</td></tr>
+          <tr><td>No efficiency mode</td><td>Background work runs in Windows efficiency mode at low priority. Answers are not slowed.</td></tr>
+          <tr><td>Graphics memory 0, no NPU</td><td>Real graphics memory and NPU are detected.</td></tr>
+          <tr><td>Stale learning never cleared</td><td>Scheduled daily. Nothing saves those items yet.</td></tr>
+          <tr><td>778 MB temp folder</td><td>Not a bug: those were downloads in progress.</td></tr>
+          <tr><td>50 old program copies</td><td>Proposal: keep 3, free <span class="num">2.27 GB</span>. Nothing deleted; waiting for your OK.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-decide" class="note">
+    <h2 id="h-decide">Your decisions</h2>
+    <ul>
+      <li>Approve or drop the 16.2 GB download in Waiting on you.</li>
+      <li>Approve the old-program cleanup (2.27 GB to the Recycle Bin).</li>
+      <li>Self-repair is set to "act without asking", and during the check it started a developer build in the background. That is heavy on the CPU. Keep it, or switch to asking first?</li>
+      <li>A desktop "Outstanding" window stays open after Atlas stops, by design. Should it close with Atlas?</li>
+      <li>Try Atlas for real: the yellow rows above need your eyes.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>Installed build <code>3B38DE03…</code>. Rollback copy <code>atlas.exe.before-e2e1020-20261021</code>. Full record: <code>verification/runs/20261021T110000Z-claude-e2e1020-fixes/RESULTS.md</code>. Not pushed.</p>
+  </footer>
+</main>

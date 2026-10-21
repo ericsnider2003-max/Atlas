@@ -1,0 +1,36 @@
+{
+    "index_bytes_before":  17014180,
+    "port":  8787,
+    "hub_ready_s":  7.6,
+    "working_set_mb":  318,
+    "private_mb":  276,
+    "child_processes":  [
+                            "atlas.exe",
+                            "tor.exe",
+                            "cargo.exe",
+                            "atlas.exe",
+                            "ffmpeg.exe"
+                        ],
+    "stop_s":  2.4,
+    "exited":  true,
+    "index_bytes_after":  13879325,
+    "new_set_aside":  [
+
+                      ],
+    "fetching_lines":  0,
+    "camera_frames":  0,
+    "put_aside":  0,
+    "backup_failed":  0,
+    "housekeeping_failed":  0,
+    "log_tail":  [
+                     "1792581304 INFO the icon by the clock is up",
+                     "1792581304 INFO the icon by the clock\u0027s window is made; adding the icon",
+                     "1792581311 INFO the internet — never seen it work. research, anything fetched from a page, and any hosted model",
+                     "1792581354 INFO 1 times out of 1 — most recently this is me. You\u0027ve told me not to ask, so I\u0027m having a go at it now.",
+                     "1792581436 INFO You asked me to push you on your projects -- what\u0027s today\u0027s step?",
+                     "1792581444 INFO missing pieces are waiting on your yes before I download them",
+                     "1792581444 INFO timing: tick took 209ms (task loop 115ms, the night 64ms, observing 15ms)",
+                     "1792581463 INFO stopped cleanly -- 1 errand(s) called off, 1 helper(s) shut down, state written, lock released"
+                 ],
+    "download_ask":  "Atlas can fetch 8 missing pieces (about 16.2 GB): the Parakeet hearing model, the wake-word spotter, the multilingual listening model, the deep brain, its picture model, its t"
+}

@@ -1,0 +1,23 @@
+=== base.en-q5_1
+Successfully loaded u03.wavWER u : 7.1% (3/42)
+WER n : 2.4% (1/42)
+model=base.en-q5_1 extra='' load_ms=566
+mem after load: 122 MB ws / 651 MB private
+mem after 10 req: 169 MB ws / 661 MB private
+mem after 60 req: 169 MB ws / 661 MB private
+server latency ms: p50=831 p95=1011 n=60
+  miss[u] e=2: backup my documents
+  miss[u] e=1: Create a file called notes.text on my desktop.
+  miss[n] e=1: Create a file called notes.text on my desktop.
+=== base.en-q8_0
+Successfully loaded u03.wavWER u : 7.1% (3/42)
+WER n : 7.1% (3/42)
+model=base.en-q8_0 extra='' load_ms=575
+mem after load: 143 MB ws / 672 MB private
+mem after 10 req: 190 MB ws / 682 MB private
+mem after 60 req: 190 MB ws / 682 MB private
+server latency ms: p50=686 p95=956 n=60
+  miss[u] e=2: backup my documents
+  miss[u] e=1: Create a file called notes.text on my desktop.
+  miss[n] e=2: backup my documents.
+  miss[n] e=1: Create a file called notes.text on my desktop.
