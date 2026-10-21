@@ -84,12 +84,23 @@ pub fn this_thread() {
 
 /// Put a child process (by id) in efficiency mode with below-normal priority.
 pub fn child(pid: u32) {
+    apply_child(pid, false);
+}
+
+/// The same, at idle priority: for heavy self-repair work that only runs
+/// while you are away (`heavywork`, 21 Oct 2026).
+pub fn child_idle(pid: u32) {
+    apply_child(pid, true);
+}
+
+fn apply_child(pid: u32, idle: bool) {
     #[cfg(windows)]
     {
         use windows::Win32::Foundation::CloseHandle;
         use windows::Win32::System::Threading::{
             OpenProcess, ProcessPowerThrottling, SetPriorityClass, SetProcessInformation,
-            BELOW_NORMAL_PRIORITY_CLASS, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+            BELOW_NORMAL_PRIORITY_CLASS, IDLE_PRIORITY_CLASS,
+            PROCESS_POWER_THROTTLING_CURRENT_VERSION,
             PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE,
             PROCESS_SET_INFORMATION,
         };
@@ -113,14 +124,19 @@ pub fn child(pid: u32) {
             ) {
                 failed("child EcoQoS", &e.to_string());
             }
-            if let Err(e) = SetPriorityClass(h, BELOW_NORMAL_PRIORITY_CLASS) {
+            let class = if idle {
+                IDLE_PRIORITY_CLASS
+            } else {
+                BELOW_NORMAL_PRIORITY_CLASS
+            };
+            if let Err(e) = SetPriorityClass(h, class) {
                 failed("child priority", &e.to_string());
             }
             let _ = CloseHandle(h);
         }
     }
     #[cfg(not(windows))]
-    let _ = pid;
+    let _ = (pid, idle);
 }
 
 #[cfg(test)]

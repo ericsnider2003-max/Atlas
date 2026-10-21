@@ -172,7 +172,10 @@ fn run_with_stdin_controlled(
 ) -> Ran {
     let mut command = crate::tools::command(program);
     command.args(args).current_dir(folder);
-    let (finished, said) = crate::tools::run_scoped(
+    // Inside a self-repair scope (`heavywork`) the agent waits for you to be
+    // away, runs capped, is killed the moment you are back, and is started
+    // again later; anywhere else this is the plain scoped runner.
+    let (finished, said) = crate::heavywork::run_feed(
         &mut command,
         std::time::Duration::from_secs(limit_secs),
         8 * 1024 * 1024,

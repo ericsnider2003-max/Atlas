@@ -380,7 +380,8 @@ pub fn unprompted(cfg: &SelfAuditConfig, recs: &[Recommendation]) -> Option<Unpr
     // outside check on either half unless you can hear it happening.
     Some(Unprompted {
         said: format!(
-            "{} — I think {}. {}. You've told me not to ask, so I'm having a go at it now. \
+            "{} — I think {}. {}. You've told me not to ask, so I'll fix it myself: the heavy \
+             part waits until you're away and plugged in, and it's on the Outstanding page. \
              Say stop and I'll leave it.",
             top.symptom, top.cause, top.because
         ),

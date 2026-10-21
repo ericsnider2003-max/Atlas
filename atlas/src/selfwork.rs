@@ -38,6 +38,9 @@ pub struct SelfWorkConfig {
     /// Where Atlas's own source is on this computer. Empty: looked for
     /// (`source_root`), on whoever's computer this is.
     pub source_dir: String,
+    /// When a build or test run for self-repair may start, and how hard it
+    /// may push the machine (`heavywork`, 21 Oct 2026).
+    pub heavy: crate::heavywork::HeavyConfig,
 }
 
 impl Default for SelfWorkConfig {
@@ -64,6 +67,7 @@ impl Default for SelfWorkConfig {
             min_tests: 1,
             large_change_lines: 150,
             source_dir: String::new(),
+            heavy: crate::heavywork::HeavyConfig::default(),
         }
     }
 }
@@ -925,8 +929,21 @@ pub const SUITE_LIMIT_SECS: u64 = 45 * 60;
 /// something already changed in it.
 ///
 /// The heartbeat is refreshed while waiting, for the reason above.
-pub fn run_the_proof(test_name: &str, cfg: &SelfWorkConfig, root: &std::path::Path) -> ProofToday {
-    run_the_proof_controlled(test_name, cfg, root, None)
+///
+/// `stop` is the crew's own stop (21 Oct 2026): the check used to ignore its
+/// errand's `Control` and held a crew slot, waiting for you to be away, for as
+/// long as the computer was in use.
+pub fn run_the_proof(
+    test_name: &str,
+    cfg: &SelfWorkConfig,
+    root: &std::path::Path,
+    stop: &(dyn Fn() -> bool + Sync),
+) -> ProofToday {
+    let budget = crate::tools::WorkBudget::new(
+        std::time::Duration::from_secs(crate::heavywork::MAX_WAIT.as_secs() + PROOF_BUDGET_SECS),
+        stop,
+    );
+    run_the_proof_controlled(test_name, cfg, root, Some(&budget))
 }
 
 pub(crate) fn run_the_proof_controlled(
@@ -952,7 +969,8 @@ pub(crate) fn run_the_proof_controlled(
     let cap = std::time::Duration::from_secs(PROOF_BUDGET_SECS);
     let limit = budget.map_or(cap, |b| b.remaining(cap));
     let stopping = || budget.is_some_and(|b| b.stopping());
-    let run = crate::tools::run_scoped(&mut cmd, limit, 8 * 1024 * 1024, None, Some(&stopping));
+    // Heavy: inside a self-repair scope this waits for you to be away.
+    let run = crate::heavywork::run(&mut cmd, limit, 8 * 1024 * 1024, Some(&stopping));
     if let Some(b) = budget {
         if let Err(why) = b.check() {
             return ProofToday::CouldNotRun(why);
@@ -1789,11 +1807,10 @@ fn run_bounded_controlled(
     crate::sandbox::warm_cargo(&mut cmd, program, &[]);
     let cap = std::time::Duration::from_secs(budget_secs);
     let stop = || budget.is_some_and(|b| b.stopping());
-    let run = crate::tools::run_scoped(
+    let run = crate::heavywork::run(
         &mut cmd,
         budget.map_or(cap, |b| b.remaining(cap)),
         8 * 1024 * 1024,
-        None,
         Some(&stop),
     );
     let completed = matches!(run.end, crate::tools::ProcessEnd::Exited(_)) && !run.truncated;

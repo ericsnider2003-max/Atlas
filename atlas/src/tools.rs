@@ -248,6 +248,31 @@ pub(crate) fn run_scoped(
     feed: Option<String>,
     stop: Option<&dyn Fn() -> bool>,
 ) -> ProcessRun {
+    run_scoped_within(command, limit, cap, feed, stop, None)
+}
+
+/// `run_scoped` for heavy self-repair work: the tree runs in a job object with
+/// a CPU cap and a memory limit, at idle priority and in efficiency mode
+/// (`heavywork`, 21 Oct 2026).
+pub(crate) fn run_scoped_capped(
+    command: &mut std::process::Command,
+    limit: std::time::Duration,
+    cap: usize,
+    feed: Option<String>,
+    stop: Option<&dyn Fn() -> bool>,
+    caps: &crate::heavywork::Caps,
+) -> ProcessRun {
+    run_scoped_within(command, limit, cap, feed, stop, Some(caps))
+}
+
+fn run_scoped_within(
+    command: &mut std::process::Command,
+    limit: std::time::Duration,
+    cap: usize,
+    feed: Option<String>,
+    stop: Option<&dyn Fn() -> bool>,
+    caps: Option<&crate::heavywork::Caps>,
+) -> ProcessRun {
     let started = std::time::Instant::now();
     if stop.is_some_and(|stop| stop()) || crate::goodbye::asked_to_stop() {
         return ProcessRun {
@@ -276,11 +301,13 @@ pub(crate) fn run_scoped(
         })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    match crate::childjob::Scope::spawn(command) {
+    match crate::childjob::Scope::spawn_with(command, caps) {
         Ok((child, scope)) => {
             // A child launched by background work (a crew errand) runs in
             // efficiency mode; the answer path never is (`ecoqos`).
-            if crate::ecoqos::on_background_thread() {
+            if caps.is_some() {
+                crate::ecoqos::child_idle(child.id());
+            } else if crate::ecoqos::on_background_thread() {
                 crate::ecoqos::child(child.id());
             }
             wait_scoped(child, scope, started, limit, cap, feed, stop)
