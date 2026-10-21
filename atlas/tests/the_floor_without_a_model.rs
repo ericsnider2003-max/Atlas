@@ -894,7 +894,7 @@ fn the_floor_is_quick_and_small() {
     // totals and the model folder's scan -- what `floor_facts` does for real.
     let t = Instant::now();
     let procs = atlas::tune::snapshot();
-    let top = fl::biggest(&procs, std::process::id());
+    let top = fl::biggest(&procs, std::process::id(), &[]);
     let (total, free) = fl::memory_now();
     let parts = t.elapsed().as_secs_f64() * 1000.0;
     let t = Instant::now();

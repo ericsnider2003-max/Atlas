@@ -1131,7 +1131,7 @@ pub struct Use {
 /// the process list (`tune::snapshot`: working set, every process of a
 /// program added together). `me` is Atlas's own process number: it and
 /// everything it started are listed but never closable.
-pub fn biggest(procs: &[crate::tune::Proc], me: u32) -> Vec<Use> {
+pub fn biggest(procs: &[crate::tune::Proc], me: u32, keep: &[String]) -> Vec<Use> {
     let family = crate::tune::atlas_family(procs, me);
     let mut loads = crate::tune::sample_load(procs, procs, 1, 1);
     loads.sort_by(|a, b| b.mem_mb.cmp(&a.mem_mb).then(a.name.cmp(&b.name)));
@@ -1141,7 +1141,7 @@ pub fn biggest(procs: &[crate::tune::Proc], me: u32) -> Vec<Use> {
         .map(|l| {
             let ours = l.pids.iter().any(|p| family.contains(p));
             Use {
-                closable: !l.system && l.alone && !ours && crate::tune::may_close(&l.name, &[]),
+                closable: !l.system && l.alone && !ours && crate::tune::may_close(&l.name, keep),
                 name: l.name,
                 mb: l.mem_mb,
             }

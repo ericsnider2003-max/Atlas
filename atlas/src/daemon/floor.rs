@@ -282,11 +282,20 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// Your never-close list (`tune.keep`), so a program you told Atlas to
+    /// keep is never offered for closing to free memory (merge review, 21 Oct
+    /// 2026). Naming it yourself ("close X") still closes it.
+    fn never_close(&self) -> Vec<String> {
+        self.tools_ref()
+            .map(|tc| tc.tune.keep.clone())
+            .unwrap_or_default()
+    }
+
     /// "What's using my memory": the five biggest and the totals, in a
     /// moment, from the process list and the memory counters.
     pub(super) fn on_whats_using_memory(&mut self) -> String {
         let procs = crate::tune::snapshot();
-        let top = crate::floor::biggest(&procs, std::process::id());
+        let top = crate::floor::biggest(&procs, std::process::id(), &self.never_close());
         let (total, free) = crate::floor::memory_now();
         crate::floor::memory_said(&top, total, free)
     }
@@ -360,7 +369,7 @@ impl<'a> Daemon<'a> {
             .or_else(|| registry.choose_for(&tc.models, u64::MAX))
             .map(|m| (m.id.clone(), crate::models::footprint_mb(m, &tc.models)));
         let procs = crate::tune::snapshot();
-        let closable = crate::floor::biggest(&procs, std::process::id())
+        let closable = crate::floor::biggest(&procs, std::process::id(), &self.never_close())
             .into_iter()
             .filter(|u| u.closable)
             .collect();
@@ -508,16 +517,24 @@ impl<'a> Daemon<'a> {
         // anything else running is looked up only to say why it isn't.
         let offered: Vec<crate::floor::Use> = match self.floor_facts() {
             Some(f) => f.closable,
-            None => crate::floor::biggest(&crate::tune::snapshot(), std::process::id())
-                .into_iter()
-                .filter(|u| u.closable)
-                .collect(),
+            None => crate::floor::biggest(
+                &crate::tune::snapshot(),
+                std::process::id(),
+                &self.never_close(),
+            )
+            .into_iter()
+            .filter(|u| u.closable)
+            .collect(),
         };
         // Matched by whole name, then whole words, then a prefix.
         let all = if crate::floor::pick_program(name, &offered).is_some() {
             Vec::new()
         } else {
-            crate::floor::biggest(&crate::tune::snapshot(), std::process::id())
+            crate::floor::biggest(
+                &crate::tune::snapshot(),
+                std::process::id(),
+                &self.never_close(),
+            )
         };
         match crate::floor::pick_program(name, &offered)
             .or_else(|| crate::floor::pick_program(name, &all))
