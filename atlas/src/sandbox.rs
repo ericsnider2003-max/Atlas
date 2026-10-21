@@ -478,7 +478,9 @@ fn run_limited_controlled(
         c.env(k, v);
     }
     warm_cargo(&mut c, cmd, env);
-    let run = crate::tools::run_scoped(&mut c, limit, 8 * 1024 * 1024, None, stop);
+    // Heavy when a self-repair scope is open on this thread (`heavywork`):
+    // then it waits for you to be away and runs capped. Otherwise unchanged.
+    let run = crate::heavywork::run(&mut c, limit, 8 * 1024 * 1024, stop);
     match &run.end {
         crate::tools::ProcessEnd::Stopped => Ran::Stopped,
         crate::tools::ProcessEnd::TimedOut => Ran::TooLong {

@@ -279,6 +279,36 @@ pub fn pictures() -> Vec<Piece> {
     ]
 }
 
+/// The small talking model (`models::SMALL_TALK`, 21 Oct 2026): Qwen3-1.7B at
+/// 8-bit, from Qwen's own repository (`Qwen/Qwen3-1.7B-GGUF`, which publishes
+/// only Q8_0 for this size), pinned to that repository's commit. Size and
+/// SHA-256 are Hugging Face's LFS record of the file, read 21 Oct 2026. It is
+/// what talks when the 4B does not fit the memory free (`models::memory_tier`).
+pub fn small_talk_model() -> Piece {
+    Piece {
+        name: "the small language model",
+        for_what: "answering you when there is not memory for the 4B",
+        url: "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/90862c4b9d2787eaed51d12237eafdfe7c5f6077/Qwen3-1.7B-Q8_0.gguf",
+        sha256: "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a",
+        bytes: 1_834_426_016,
+        lands: Lands::File("models/Qwen3-1.7B-Q8_0.gguf"),
+    }
+}
+
+/// The smaller core set the owner approved on 21 Oct 2026 ("stick to smaller
+/// one for now"): the 4B talking model, the 1.7B, Parakeet hearing and the
+/// Kokoro voice (Whisper base is already part of setup). `atlas get core`.
+pub fn core_pieces() -> Vec<Piece> {
+    [
+        vec![faster_talk_model(), small_talk_model()],
+        parakeet_pieces(),
+        crate::kokoro::pieces(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
 /// The helper model for faster replies (`models.draft`): Qwen3-0.6B at 8-bit,
 /// Qwen's own file. Checked on 28 Sep 2026 against Hugging Face's record of
 /// it (the LFS sha256 and size), and its vocabulary read out of both files'
@@ -723,6 +753,7 @@ pub fn set(word: Option<&str>) -> Option<(&'static str, Vec<Piece>)> {
         Some("hearing" | "parakeet") => Some(("Parakeet, so Atlas hears you better, and the wake-word spotter (about 520 MB)", [parakeet_pieces(), vec![crate::kws::spotter_piece()]].concat())),
         Some("voiceid" | "voice-id" | "voices") => Some(("the voice model, so Atlas can tell your voice from others (30 MB)", voice_model())),
         Some("wakeword" | "wake-word" | "wake" | "kws") => Some(("the wake-word spotter, so Atlas hears its name by the sound (18 MB)", vec![crate::kws::spotter_piece()])),
+        Some("core") => Some(("the smaller core set: the 4B and 1.7B language models, Parakeet hearing and the Kokoro voice (about 5 GB)", core_pieces())),
         Some("kokoro") => Some(("the Kokoro voice, which sounds much more natural than piper", crate::kokoro::pieces())),
         // The coding model this machine has room for (2 Oct 2026, `coder`):
         // the 7B, the 1.5B on a small machine, nothing on a very small one.
@@ -1372,6 +1403,9 @@ pub fn everything_else() -> Vec<Piece> {
         // Not the draft model: measured four times slower on the laptop
         // (1 Oct 2026, `models.rs` `speculate`), so nothing needs it.
         vec![deep_model()],
+        // The small talking model for a machine with too little memory free
+        // for the 4B (21 Oct 2026).
+        vec![small_talk_model()],
         picture_making(),
         // The NPU engine, on a computer with an Intel NPU (item 20).
         crate::npu::pieces(),
@@ -1425,6 +1459,10 @@ pub struct Approved {
     pub keys: Vec<String>,
     /// When the yes was given.
     pub at: u64,
+    /// `Piece::key_path` of each piece the owner said no to (21 Oct 2026:
+    /// "stick to smaller one for now"). Never asked about again, and never
+    /// fetched, whatever else changes in the list of what is missing.
+    pub declined: Vec<String>,
 }
 
 impl Approved {
@@ -1435,9 +1473,28 @@ impl Approved {
         self.keys.iter().any(|k| k == p.key_path())
     }
 
-    /// Say yes to these pieces (and keep any yes already given).
+    pub fn declines(&self, p: &Piece) -> bool {
+        self.declined.iter().any(|k| k == p.key_path())
+    }
+
+    /// Say no to these pieces for good (and keep any no already given). A
+    /// piece declined is no longer approved.
+    pub fn decline(&mut self, pieces: &[Piece], t: u64) {
+        for p in pieces {
+            self.keys.retain(|k| k != p.key_path());
+            if !self.declines(p) {
+                self.declined.push(p.key_path().to_string());
+            }
+        }
+        self.at = t;
+    }
+
+    /// Say yes to these pieces (and keep any yes already given). A yes
+    /// replaces an earlier no.
+
     pub fn grant(&mut self, pieces: &[Piece], t: u64) {
         for p in pieces {
+            self.declined.retain(|k| k != p.key_path());
             if !self.covers(p) {
                 self.keys.push(p.key_path().to_string());
             }
@@ -1492,6 +1549,27 @@ fn ask_for_setup(missing: &[Piece], finish_code_tools: bool) -> String {
     )
 }
 
+/// The pieces an ask (as `ask_for_setup` words it) names, read back out of its
+/// text (2026-10-21: dropping the ask in the Hub, or saying no to it, is a no
+/// to exactly these, so `Approved::decline` is given them). Empty for any
+/// request that is not such an ask, and for the ask that names only the code
+/// checkers' second step (it has no pieces in it).
+pub fn pieces_named_in_ask(ask: &str) -> Vec<Piece> {
+    let Some(rest) = ask.strip_prefix(ASK_PREFIX) else {
+        return Vec::new();
+    };
+    let Some((_, list)) = rest.split_once("): ") else {
+        return Vec::new();
+    };
+    let list = list.split(". Download").next().unwrap_or(list);
+    let list = list.split(", and then ").next().unwrap_or(list);
+    let named: Vec<&str> = list.split(", ").collect();
+    everything_else()
+        .into_iter()
+        .filter(|p| named.contains(&p.name))
+        .collect()
+}
+
 /// Whether the owner has said yes to the code checkers' second setup step:
 /// every code-tool piece is in `approved` (the yes covers the pieces and what
 /// they go on to fetch). Never on a computer with no such pieces.
@@ -1521,8 +1599,11 @@ pub fn decide_top_up_and_finish(
     unfinished: bool,
 ) -> (TopUp, bool) {
     let finish_ok = unfinished && code_tools_approved(approved);
-    let (fetch, unasked): (Vec<Piece>, Vec<Piece>) =
-        missing.into_iter().partition(|p| approved.covers(p));
+    // A piece the owner declined is neither fetched nor asked about again.
+    let (fetch, unasked): (Vec<Piece>, Vec<Piece>) = missing
+        .into_iter()
+        .filter(|p| !approved.declines(p))
+        .partition(|p| approved.covers(p));
     let finish_asked = unfinished && !finish_ok;
     let ask = (!unasked.is_empty() || finish_asked).then(|| ask_for_setup(&unasked, finish_asked));
     (TopUp { fetch, ask }, finish_ok)
@@ -1607,5 +1688,40 @@ mod asking_first {
         // Nothing left to finish: no ask, no step, approved or not.
         let (plan, finish) = decide_top_up_and_finish(Vec::new(), &Approved::default(), false);
         assert!(!finish && plan.ask.is_none());
+    }
+
+    #[test]
+    fn a_no_sticks_and_a_later_yes_replaces_it() {
+        let m = everything_else();
+        let mut a = Approved::default();
+        a.decline(&m, 5);
+        // Declined pieces are neither fetched nor asked about, however the
+        // list of what is missing changes.
+        let (plan, _) = decide_top_up_and_finish(m.clone(), &a, false);
+        assert!(plan.fetch.is_empty() && plan.ask.is_none(), "{plan:?}");
+        a.grant(&m[..1], 6);
+        assert!(a.covers(&m[0]) && !a.declines(&m[0]) && a.declines(&m[1]));
+        let (plan, _) = decide_top_up_and_finish(m.clone(), &a, false);
+        assert_eq!(plan.fetch.len(), 1);
+        assert!(plan.ask.is_none());
+    }
+
+    #[test]
+    fn the_core_set_is_pinned_and_about_five_gigabytes() {
+        let core = core_pieces();
+        for p in &core {
+            assert_eq!(p.sha256.len(), 64, "{}", p.name);
+            assert!(p.url.starts_with("https://"), "{}", p.name);
+        }
+        let small = small_talk_model();
+        assert!(small
+            .url
+            .starts_with("https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/"));
+        assert_eq!(small.bytes, 1_834_426_016);
+        assert!(core.iter().any(|p| p == &small));
+        // The 1.7B is on the list of what Atlas may fetch once asked.
+        assert!(everything_else().iter().any(|p| p == &small));
+        let gb = total_bytes(&core) as f64 / 1e9;
+        assert!((4.5..5.5).contains(&gb), "{gb}");
     }
 }

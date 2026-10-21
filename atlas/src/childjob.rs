@@ -10,7 +10,12 @@
 //! Windows closes it when Atlas's process ends, and ends them with it.
 //!
 //! Not for what Atlas opens *for you* -- an app, a file, your browser
-//! (`window`, `platform`): those are yours and outlive Atlas, as they should.
+//! (`platform`, `browser`): those are yours and outlive Atlas, as they should.
+//!
+//! The exception is Atlas's own message windows (21 Oct 2026, owner
+//! decision): the panels `window::open` shows -- briefing, outstanding,
+//! urgent -- are Atlas's own UI and go when Atlas stops. An "Outstanding"
+//! panel had stayed open after a clean stop. Those, and only those, are tied.
 
 /// Tie `child` to this process: it ends when Atlas ends. Best effort -- a
 /// child that can't be added (already in a job that forbids it) runs as before.
@@ -71,11 +76,23 @@ impl Scope {
     pub(crate) fn spawn(
         command: &mut std::process::Command,
     ) -> std::io::Result<(std::process::Child, Self)> {
+        Self::spawn_with(command, None)
+    }
+
+    /// `spawn`, with heavy self-repair limits when `caps` is given: a hard CPU
+    /// cap and a memory limit on the job, and idle priority from the first
+    /// instruction so what it starts inherits it (`heavywork`, 21 Oct 2026).
+    pub(crate) fn spawn_with(
+        command: &mut std::process::Command,
+        caps: Option<&crate::heavywork::Caps>,
+    ) -> std::io::Result<(std::process::Child, Self)> {
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
             // The command cannot change anything before its tree is owned.
-            command.creation_flags(0x0800_0000 | 0x0000_0004);
+            // 0x40 is IDLE_PRIORITY_CLASS.
+            let idle = if caps.is_some() { 0x0000_0040 } else { 0 };
+            command.creation_flags(0x0800_0000 | 0x0000_0004 | idle);
         }
         #[cfg(unix)]
         {
@@ -83,7 +100,7 @@ impl Scope {
             command.process_group(0);
         }
         let mut child = command.spawn()?;
-        let scope = match Self::attach(&child) {
+        let scope = match Self::attach_with(&child, caps) {
             Ok(scope) => scope,
             Err(error) => {
                 let _ = child.kill();
@@ -102,6 +119,15 @@ impl Scope {
     }
 
     pub(crate) fn attach(child: &std::process::Child) -> std::io::Result<Self> {
+        Self::attach_with(child, None)
+    }
+
+    fn attach_with(
+        child: &std::process::Child,
+        caps: Option<&crate::heavywork::Caps>,
+    ) -> std::io::Result<Self> {
+        #[cfg(not(windows))]
+        let _ = caps;
         #[cfg(windows)]
         {
             use std::os::windows::io::AsRawHandle;
@@ -112,12 +138,36 @@ impl Scope {
                 let job = CreateJobObjectW(None, None).map_err(std::io::Error::other)?;
                 let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
                 info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                if let Some(caps) = caps {
+                    info.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_JOB_MEMORY;
+                    info.JobMemoryLimit = (caps.memory_mb as usize).saturating_mul(1024 * 1024);
+                }
                 let configured = SetInformationJobObject(
                     job,
                     JobObjectExtendedLimitInformation,
                     &info as *const _ as *const std::ffi::c_void,
                     std::mem::size_of_val(&info) as u32,
                 )
+                .and_then(|_| match caps {
+                    // A hard cap: the whole tree together gets at most this
+                    // share of the machine, however many processes it starts.
+                    // CpuRate is in hundredths of a percent.
+                    Some(caps) => {
+                        let mut rate = JOBOBJECT_CPU_RATE_CONTROL_INFORMATION {
+                            ControlFlags: JOB_OBJECT_CPU_RATE_CONTROL_ENABLE
+                                | JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP,
+                            ..Default::default()
+                        };
+                        rate.Anonymous.CpuRate = caps.cpu_percent.clamp(1, 100) * 100;
+                        SetInformationJobObject(
+                            job,
+                            JobObjectCpuRateControlInformation,
+                            &rate as *const _ as *const std::ffi::c_void,
+                            std::mem::size_of_val(&rate) as u32,
+                        )
+                    }
+                    None => Ok(()),
+                })
                 .and_then(|_| AssignProcessToJobObject(job, HANDLE(child.as_raw_handle())));
                 if let Err(error) = configured {
                     let _ = CloseHandle(job);
@@ -222,6 +272,27 @@ fn resume_owned(child: &std::process::Child) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    #[test]
+    fn a_capped_job_takes_a_trivial_child_and_it_finishes() {
+        // The Win32 limits themselves are Windows' to enforce; this proves
+        // the capped job can be made, the child can be put in it, and the
+        // child still runs to its end. Skipped if the machine refuses (an
+        // outer job that forbids nesting).
+        let caps = crate::heavywork::caps_for(&Default::default(), 4, 16_384);
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "exit 0"]);
+        let (mut child, scope) = match super::Scope::spawn_with(&mut c, Some(&caps)) {
+            Ok(made) => made,
+            Err(e) => {
+                eprintln!("skipped: a capped job could not be created here: {e}");
+                return;
+            }
+        };
+        assert!(child.wait().expect("it ends").success());
+        drop(scope);
+    }
+
     #[test]
     fn a_tied_child_still_runs_and_finishes() {
         // Tying must never stop the work itself: the child runs to its end

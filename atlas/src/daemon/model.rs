@@ -526,6 +526,9 @@ impl<'a> Daemon<'a> {
         }
         // The graphics reset under a server before: start with the safe
         // settings while that stands, so it doesn't happen again (`gpulost`).
+        // The small model's context follows the memory free now (4K, 2K when
+        // tight; 21 Oct 2026).
+        let cfg = crate::models::tuned_for(&model, &cfg, &machine);
         let cfg = crate::gpulost::apply(cfg, &crate::gpulost::load(), crate::store::now());
         let safe = cfg.gpu_safe;
         let layers = crate::models::layers_here(&model, &cfg, &machine);
@@ -2193,8 +2196,15 @@ impl<'a> Daemon<'a> {
         }
         let (registry, _) =
             crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&tc.models));
-        let wanted = registry
-            .choose_for(&tc.models, u64::MAX)
+        // Against what the tier would run now (21 Oct 2026), not the biggest
+        // that exists: when the 1.7B runs by tier this must not stop it once.
+        let machine = crate::fit::machine_from(
+            &crate::health::read_machine(),
+            crate::fit::Graphics::default(),
+            false,
+        );
+        let wanted = crate::models::pick(&registry, &tc.models, &machine)
+            .or_else(|| registry.choose_for(&tc.models, u64::MAX))
             .map(|m| m.id.clone());
         if wanted.is_none() || wanted == self.model_running_id {
             return;

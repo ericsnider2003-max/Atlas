@@ -356,6 +356,21 @@ impl Daemon<'_> {
                         at: job.updated_at,
                     });
                 }
+                // Heavy self-repair work (`heavywork`): running, or paused and
+                // waiting for you to be away. It writes its record every
+                // minute, so it only falls through to Blocked if Atlas died.
+                s if !s.terminal()
+                    && job.job_id.starts_with(crate::heavywork::JOB_PREFIX)
+                    && !job.stale(now, STALE_AFTER_SECS) =>
+                {
+                    in_progress.push((
+                        name,
+                        job.checkpoint
+                            .clone()
+                            .unwrap_or_else(|| "Running while you're away.".into()),
+                    ));
+                    drops.in_progress.push(None);
+                }
                 s if !s.terminal()
                     && job.stale(now, STALE_AFTER_SECS)
                     && !live_errands.contains(&job.job_id) =>
@@ -530,6 +545,8 @@ impl Daemon<'_> {
                     .cloned()
                     .ok_or_else(gone)?;
                 self.backlog.dismiss(id);
+                // Dropping the download ask is a no to the pieces it named.
+                self.decline_what_was_asked(&item.request, now);
                 let request = item.request.trim().to_string();
                 self.dropped.retain(|d| d.title != request);
                 self.dropped.push(crate::daily::Dropped {
@@ -861,7 +878,9 @@ impl Daemon<'_> {
 /// What a durable job is called on the page: an errand's own words, or its
 /// stage with "job" after it. The job number is for the receipt, not for you.
 fn durable_name(job: &crate::job::Record) -> String {
-    if job.job_id.starts_with(crate::job::ERRAND_PREFIX) {
+    if job.job_id.starts_with(crate::job::ERRAND_PREFIX)
+        || job.job_id.starts_with(crate::heavywork::JOB_PREFIX)
+    {
         job.stage.clone()
     } else {
         format!("{} job", job.stage)

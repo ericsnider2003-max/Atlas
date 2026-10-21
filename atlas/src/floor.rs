@@ -1317,9 +1317,12 @@ pub fn decide(f: &Facts) -> Choice {
     })
 }
 
-/// What no installed model means: said plainly, with the next step.
+/// What no usable model means: said plainly, with the next step. Reached
+/// when nothing is installed that Atlas may run; a model that is installed but
+/// does not fit the memory free right now is `Choice::Low` instead (21 Oct
+/// 2026), with how much is free against how much is needed.
 pub fn no_model_said() -> String {
-    "I can't answer that: no language model is installed on this computer, so I didn't start anything. \
+    "I can't answer that: no language model is installed on this computer that I can run, so I didn't start anything. \
      Next step: open the Connections page in the Atlas hub and press \"Get the better model\", then ask again. \
      Until then I still do the everyday things without one -- open and close apps, make, read and move files, timers, the time, backups."
         .to_string()

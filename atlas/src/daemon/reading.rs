@@ -110,6 +110,10 @@ impl<'a> Daemon<'a> {
                 newest.path()
             }
         };
+        // Reading a write-up out is reading what the web said (SEC2).
+        if reading {
+            self.session.note_outside("a research write-up");
+        }
         if let Some(kind) = export {
             let name = |p: &std::path::Path| {
                 p.file_name()

@@ -1403,6 +1403,8 @@ impl<'a> Daemon<'a> {
         let when = crate::freshness::ago(crate::store::now().saturating_sub(letter.at));
         match asked {
             OneMessage::Read(_) => {
+                // What the letter says is someone else's writing (SEC2).
+                self.session.note_outside("an email");
                 self.draft_last_read = Some(letter.from.clone());
                 let subject = if letter.subject.trim().is_empty() {
                     "no subject".to_string()

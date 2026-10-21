@@ -557,8 +557,28 @@ impl<'a> Daemon<'a> {
             }
             let (n2, scfg2, root2, slot2) =
                 (named.clone(), scfg.clone(), root.clone(), slot.clone());
-            let work: crate::crew::Work = Box::new(move |_c: &crate::crew::Control| {
-                let outcome = crate::selfwork::run_the_proof(&n2, &scfg2, &root2);
+            let heavy_label = format!(
+                "Self-repair: running a test to show the fault for {}",
+                self.selfwork
+                    .as_ref()
+                    .map_or("something I found", |s| s.goal.as_str())
+            );
+            let heavy_store = self.store.clone();
+            let work: crate::crew::Work = Box::new(move |c: &crate::crew::Control| {
+                // A build and a test run: only while you are away, and
+                // stopped with its errand.
+                let heavy = crate::heavywork::SelfWork::enter(
+                    &heavy_label,
+                    &scfg2.heavy,
+                    Some(heavy_store),
+                );
+                let stop = || c.stopping();
+                let outcome = crate::selfwork::run_the_proof(&n2, &scfg2, &root2, &stop);
+                if c.stopping() {
+                    heavy.cancel("Stopped before the test could run.");
+                } else if let crate::selfwork::ProofToday::CouldNotRun(why) = &outcome {
+                    heavy.fail(why);
+                }
                 if let Ok(mut s) = slot2.lock().or_else(crate::crash::unpoison) {
                     *s = Some((n2, outcome));
                 }
@@ -700,6 +720,8 @@ impl<'a> Daemon<'a> {
         let slot = self.self_fix_done.clone();
         let instruction = instruction.to_string();
         let symptom = thought.symptom.clone();
+        let heavy_label = format!("Self-repair: rebuilding to test a fix for {symptom}");
+        let heavy_store = self.store.clone();
         let (strategy, handoff, consult) = {
             let tc = self.tools_cfg();
             (tc.strategy.clone(), tc.handoff.clone(), tc.consult.clone())
@@ -709,6 +731,14 @@ impl<'a> Daemon<'a> {
             let budget =
                 crate::tools::WorkBudget::new(std::time::Duration::from_secs(2 * 3600), &stop);
             budget.check()?;
+            // Every build and test below waits for you to be away, runs
+            // capped, and is stopped when you are back (`heavywork`). One
+            // job in the Hub covers all of it.
+            let heavy =
+                crate::heavywork::SelfWork::enter(&heavy_label, &scfg.heavy, Some(heavy_store));
+            // However the work ends early, the job says so rather than
+            // closing as "Finished." (`heavywork`, 21 Oct 2026).
+            let result = (|| -> std::result::Result<String, String> {
             // Local structured recipes are tested before any model is needed.
             for (recipe, candidate) in crate::selfwork::recipe_candidates(&current) {
                 budget.check()?;
@@ -805,6 +835,13 @@ impl<'a> Daemon<'a> {
             } else {
                 Ok("the draft didn't hold".into())
             }
+            })();
+            match &result {
+                Err(why) if c.stopping() => heavy.cancel(why),
+                Err(why) => heavy.fail(why),
+                Ok(_) => {}
+            }
+            result
         });
         let t = crate::store::now();
         if self.hand_off(
@@ -876,12 +913,32 @@ impl<'a> Daemon<'a> {
         let file = format!("src/{}", files[next % files.len()]);
         crate::kept!(self.store.save("mutation_sweep_next", &(next + 1)));
         let store = self.store.clone();
-        let work: crate::crew::Work = Box::new(move |_c: &crate::crew::Control| {
+        let heavy = self.tools_cfg().self_work.heavy.clone();
+        let heavy_label = format!("Self-repair: mutation sweep of {file}");
+        let work: crate::crew::Work = Box::new(move |c: &crate::crew::Control| {
             if !crate::mutation::available(&root) {
                 return Ok("the mutation sweep needs cargo-mutants, which isn't installed".into());
             }
+            let heavy_job =
+                crate::heavywork::SelfWork::enter(&heavy_label, &heavy, Some(store.clone()));
             let out = crate::roots::tmp_dir().join("mutation-sweep");
             crate::heard!(std::fs::remove_dir_all(&out));
+            // cargo-mutants copies the whole tree (gigabytes) into its temp
+            // folder and only removes it when it exits by itself. Its
+            // scratch is pointed at a folder of Atlas's own, cleared when a
+            // run starts and whenever it is killed because you are back.
+            let scratch = mutants_scratch();
+            clear_scratch(&scratch);
+            heavy_job.on_pause({
+                let scratch = scratch.clone();
+                move || clear_scratch(&scratch)
+            });
+            let scratch_env = scratch.display().to_string();
+            let env: [(&str, &str); 3] = [
+                ("TEMP", scratch_env.as_str()),
+                ("TMP", scratch_env.as_str()),
+                ("TMPDIR", scratch_env.as_str()),
+            ];
             let args: Vec<String> = [
                 "mutants",
                 "-f",
@@ -897,8 +954,24 @@ impl<'a> Daemon<'a> {
             .map(|s| s.to_string())
             .chain(std::iter::once(out.display().to_string()))
             .collect();
-            // unheard-ok: returns `(bool, String)`, not a Result
-            let _ = crate::sandbox::run_within("cargo", &args, &[], &root, 3 * 3600, 2000);
+            let stop = || c.stopping();
+            let (ran_ok, said) = crate::sandbox::run_within_controlled(
+                "cargo",
+                &args,
+                &env,
+                &root,
+                3 * 3600,
+                2000,
+                Some(&stop),
+            );
+            clear_scratch(&scratch);
+            if c.stopping() {
+                heavy_job.cancel("Stopped because you asked me to.");
+                return Err("stopped because you asked me to stop".into());
+            }
+            if !ran_ok && said.contains("couldn't run") {
+                heavy_job.fail(&said);
+            }
             let found = crate::mutation::read_survivors(&out);
             let mut kept: Vec<crate::mutation::Survivor> = store.load(crate::mutation::KEPT);
             kept.retain(|s| s.file != file);
@@ -1440,6 +1513,24 @@ fn self_test_findings(asked: &str) -> Option<String> {
     Some(rest[..end].trim().to_string())
 }
 
+/// Where cargo-mutants is told to keep its copies of the tree (21 Oct 2026).
+fn mutants_scratch() -> std::path::PathBuf {
+    crate::roots::tmp_dir().join("mutants-scratch")
+}
+
+/// Empty a mutation sweep's scratch folder, and make it again so the sweep has
+/// somewhere to write. Only ever Atlas's own `mutants-scratch` under its temp
+/// folder: anything else named here is left alone.
+fn clear_scratch(dir: &std::path::Path) {
+    if dir.file_name().is_none_or(|n| n != "mutants-scratch")
+        || !dir.starts_with(crate::roots::tmp_dir())
+    {
+        return;
+    }
+    crate::heard!(std::fs::remove_dir_all(dir));
+    crate::heard!(std::fs::create_dir_all(dir));
+}
+
 /// The instructions an agent gets for a change to Atlas itself.
 fn self_repair_task(asked: &str, findings: Option<&str>, branch: &str) -> String {
     let mut t = String::new();
@@ -1459,7 +1550,7 @@ fn self_repair_task(asked: &str, findings: Option<&str>, branch: &str) -> String
     }
     t.push_str(&format!(
         "Rules:\n\
-         - First create and switch to a new git branch named {branch}. Never commit to main, never push.\n\
+         - First create and switch to a new git branch named {branch}. If that branch already exists (an earlier attempt was interrupted when the owner came back to the computer), switch to it and carry on from the work already there. Never commit to main, never push.\n\
          - Find the root cause of each problem before changing anything; fix causes, not symptoms.\n\
          - Add or change a test that fails before your fix and passes after it.\n\
          - Run `cargo check` and the tests you touched; run `cargo test --test guards` before you finish.\n\
@@ -1488,7 +1579,22 @@ impl<'a> Daemon<'a> {
         }
         let task = self_repair_task(what, findings.as_deref(), &branch);
         let (root2, branch2) = (root.clone(), branch.clone());
+        let heavy = self.tools_cfg().self_work.heavy.clone();
+        let heavy_label = format!(
+            "Self-repair: a coding agent is working on {}",
+            what.trim()
+        );
+        let heavy_store = self.store.clone();
         let work: crate::crew::Work = Box::new(move |ctl| {
+            // The agent builds and tests as it goes. It is not started until
+            // you are away, on mains power and with memory to spare, runs
+            // inside the capped job object, and is killed the moment you are
+            // back (or the power or memory goes) and started again when you
+            // are away (`heavywork`, 21 Oct 2026; before, it was gated only
+            // at the start and ran uncapped for up to an hour after you
+            // returned). The Hub shows it Paused meanwhile.
+            let heavy_job =
+                crate::heavywork::SelfWork::enter(&heavy_label, &heavy, Some(heavy_store));
             let ran = crate::coding_agent::run_controlled(
                 agent,
                 &program,
@@ -1497,6 +1603,15 @@ impl<'a> Daemon<'a> {
                 60 * 60,
                 &|| ctl.stopping(),
             );
+            if ctl.stopping() {
+                heavy_job.cancel("Stopped because you asked me to.");
+            } else if !ran.finished {
+                heavy_job.fail(&format!(
+                    "{} didn't finish: {}",
+                    agent.named(),
+                    crate::sandbox::trim_output(&ran.said, 300)
+                ));
+            }
             let mut git = crate::tools::command("git");
             git.args(["log", "--oneline", "-5", &branch2, "--not", "main"])
                 .current_dir(&root2);
@@ -1553,5 +1668,34 @@ impl<'a> Daemon<'a> {
         } else {
             "I'm already working on myself -- I'll tell you how it went.".into()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_killed_sweeps_copies_are_cleared_and_only_its_own() {
+        let scratch = mutants_scratch();
+        std::fs::create_dir_all(scratch.join("cargo-mutants-atlas.tmp/src")).unwrap();
+        std::fs::write(scratch.join("cargo-mutants-atlas.tmp/src/lib.rs"), "x").unwrap();
+        clear_scratch(&scratch);
+        assert!(scratch.is_dir());
+        assert_eq!(std::fs::read_dir(&scratch).unwrap().count(), 0);
+        // A folder that is not Atlas's own mutation scratch is never touched.
+        let other = crate::roots::tmp_dir().join("keep-me");
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(other.join("f.txt"), "x").unwrap();
+        clear_scratch(&other);
+        assert!(other.join("f.txt").is_file());
+        crate::heard!(std::fs::remove_dir_all(&other));
+    }
+
+    #[test]
+    fn a_resumed_agent_is_told_to_carry_on_from_its_branch() {
+        let t = self_repair_task("fix it", None, "atlas-self-repair-1");
+        assert!(t.contains("atlas-self-repair-1"));
+        assert!(t.contains("already exists"));
     }
 }

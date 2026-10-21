@@ -18,6 +18,8 @@ impl<'a> Daemon<'a> {
         // so FromReport cannot fire in practice today. Tracked honestly
         // rather than faked: worth_saying() already says so once there is
         // enough history to judge by.
+        self.session
+            .age_outside(crate::session::outside_window(self.thread_cfg().fold_after));
         let named: Vec<String> = self
             .modes
             .modes
@@ -605,12 +607,22 @@ impl<'a> Daemon<'a> {
         // page), a tool the model chose now is asked about too unless it only
         // reads or answers -- the same rule a loop applies once tainted.
         let after_outside_text = self.session.tainted_by_outside;
-        if decision.model != brain::Reached::Yes {
-            self.session.tainted_by_outside = false; // your own words, not the model's pick
-        }
+        let outside_source = self
+            .session
+            .outside_source
+            .clone()
+            .unwrap_or_else(|| "something you had me read".to_string());
+        // Your own parsed phrase runs unasked (those are your words), but it
+        // does not wash the taint: what was read is still in what the model
+        // is shown, and a later model-chosen action is still asked about
+        // until it ages out (`Session::age_outside`, SEC2).
+        // SEC2: an action that came from what was read, not from you, is
+        // asked with its source named; the question below uses this wording.
+        let from_outside = decision.model == brain::Reached::Yes
+            && after_outside_text
+            && !brain::safe_after_outside_text(&intent);
         let call = if decision.model == brain::Reached::Yes
-            && (brain::model_must_ask(&intent)
-                || (after_outside_text && !brain::safe_after_outside_text(&intent)))
+            && (brain::model_must_ask(&intent) || from_outside)
         {
             crate::policy::Decision::max(call, Decision::RequireApproval)
         } else {
@@ -731,6 +743,12 @@ impl<'a> Daemon<'a> {
                         }
                         _ => crate::categories::consent_line(cat, say.trim_end_matches('.')),
                     };
+                        // Asked because of what was read: say where it came from.
+                        let q = if from_outside {
+                            brain::instruction_from_outside(&outside_source, &intent.plain())
+                        } else {
+                            q
+                        };
                         self.session.await_approval(intent.clone(), &q);
                         q
                     }

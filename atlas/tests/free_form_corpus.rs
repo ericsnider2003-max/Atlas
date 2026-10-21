@@ -882,7 +882,7 @@ fn free_form_a_step_after_outside_text_is_asked_about() {
         "the message was not held: {:?}\n{reply}",
         d.session.pending
     );
-    assert!(reply.contains("someone else wrote"), "{reply}");
+    assert!(reply.contains("You asked for this right after I read") && !reply.contains("not from you"), "{reply}");
 }
 
 #[test]
@@ -1000,7 +1000,7 @@ fn free_form_after_outside_text_a_close_is_held_with_its_real_target() {
     let _ = d.turn("open notepad", NOW);
     let reply = d.turn("read my messages and then close notepad", NOW + 5);
     assert!(
-        reply.contains("someone else wrote"),
+        reply.contains("You asked for this right after I read") && !reply.contains("not from you"),
         "not held by the outside-text gate: {reply}"
     );
     assert!(
@@ -1038,7 +1038,7 @@ fn free_form_after_outside_text_a_delete_is_held() {
         "the delete was not held: {:?}\n{reply}",
         d.session.pending
     );
-    assert!(reply.contains("someone else wrote"), "{reply}");
+    assert!(reply.contains("You asked for this right after I read") && !reply.contains("not from you"), "{reply}");
     // With mail as the outside text: whatever happens, nothing is deleted
     // without a yes -- held, or stopped because the mail step didn't happen.
     let p2 = two_screens();
@@ -1059,7 +1059,7 @@ fn free_form_after_outside_text_a_delete_is_held() {
         d2.session.pending
     );
     assert!(
-        reply.contains("delete the noise") || reply.contains("someone else wrote"),
+        reply.contains("delete the noise") || reply.contains("You asked for this right after I read"),
         "the delete is not named as not done: {reply}"
     );
 }
@@ -1151,7 +1151,7 @@ fn free_form_a_harmless_part_in_between_does_not_wash_the_taint() {
         d.session.pending
     );
     assert!(
-        reply.contains("someone else wrote"),
+        reply.contains("You asked for this right after I read") && !reply.contains("not from you"),
         "held by the policy, not the outside-text gate: {reply}"
     );
     assert!(!closed(&p), "{reply}");
@@ -1191,7 +1191,7 @@ fn free_form_outside_text_read_inside_a_compound_still_counts_after_it() {
     );
     // The next turn is the model's pick, and is asked about.
     let reply = d.turn("deal with notepad", NOW + 10);
-    assert!(reply.ends_with("Go ahead?"), "{reply}");
+    assert!(reply.ends_with("Do you want me to do it?"), "{reply}");
     assert!(
         matches!(
             &d.session.pending,
@@ -1214,4 +1214,28 @@ fn free_form_stop_commands_still_work() {
         // Left exactly as the phrase table had it.
         assert!(spoken_steps(said, &parser).is_none(), "{said}");
     }
+}
+
+/// One spoken sentence is one turn of yours for aging the taint, however many
+/// parts it had; and the held part is said to be yours, not the message's.
+#[test]
+fn free_form_a_compound_ages_the_taint_as_one_turn() {
+    let c = Config::load(std::path::Path::new("config")).unwrap();
+    let p = two_screens();
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store("ages-once"),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let _ = d.turn("open notepad", NOW);
+    let before = d.session.owner_turns();
+    let reply = d.turn(
+        "read my messages, then open chrome, then close notepad",
+        NOW + 5,
+    );
+    assert_eq!(d.session.owner_turns(), before + 1, "{reply}");
+    assert!(d.session.tainted_by_outside);
+    assert!(reply.contains("You asked for this right after I read"), "{reply}");
 }

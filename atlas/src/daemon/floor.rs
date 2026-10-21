@@ -365,9 +365,21 @@ impl<'a> Daemon<'a> {
             crate::fit::Graphics::default(),
             false,
         );
-        let model = crate::models::pick(&registry, &tc.models, &machine)
-            .or_else(|| registry.choose_for(&tc.models, u64::MAX))
-            .map(|m| (m.id.clone(), crate::models::footprint_mb(m, &tc.models)));
+        // 21 Oct 2026: when the memory tiers apply and say no model fits, that
+        // is the answer -- the 1.7B and what it needs -- not a fallback to the
+        // 4B, which `decide` would call Proceed with about 3.5 GB free.
+        let model = match crate::models::pick(&registry, &tc.models, &machine) {
+            Some(m) => {
+                let tuned = crate::models::tuned_for(m, &tc.models, &machine);
+                Some((m.id.clone(), crate::models::footprint_mb(m, &tuned)))
+            }
+            None => crate::models::tier_no_fit(&registry, &tc.models, &machine).or_else(|| {
+                registry.choose_for(&tc.models, u64::MAX).map(|m| {
+                    let tuned = crate::models::tuned_for(m, &tc.models, &machine);
+                    (m.id.clone(), crate::models::footprint_mb(m, &tuned))
+                })
+            }),
+        };
         let procs = crate::tune::snapshot();
         let closable = crate::floor::biggest(&procs, std::process::id(), &self.never_close())
             .into_iter()

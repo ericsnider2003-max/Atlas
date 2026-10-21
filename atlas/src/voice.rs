@@ -47,8 +47,9 @@ pub struct ToolsConfig {
     pub vars: BTreeMap<String, String>,
     pub record: ExternalTool,
     pub stt: ExternalTool,
-    /// Which speech-to-text hears you: `auto` (Parakeet when `atlas get
-    /// hearing` has fetched it, whisper otherwise), `parakeet`, or `whisper`.
+    /// Which speech-to-text hears you: `auto` (the resident whisper server
+    /// when it is ready, else Parakeet when `atlas get hearing` has fetched
+    /// it; see `pick_ear`), `parakeet`, or `whisper`.
     pub stt_engine: String,
     /// Keep whisper loaded between turns (`asr_server`), so a turn does not
     /// pay for reading the model again. 20 Oct 2026.
@@ -811,10 +812,16 @@ impl<'a> Voice<'a> {
             .get("lang_val")
             .is_none_or(|l| l.trim().is_empty() || l.trim().eq_ignore_ascii_case("en"))
             && vars.get("task_opt").is_none_or(|t| t.trim().is_empty());
+        let resident_ready = self.cfg.resident_asr.enabled
+            && self.cfg.stt.command.contains("{whisper}")
+            && vars
+                .get("stt_model")
+                .is_some_and(|m| std::path::Path::new(m).is_file());
+        let parakeet_backup = parakeet_is_the_backup(&self.cfg.stt_engine, english, resident_ready);
         let why_whisper = if !english {
             "whisper: not English".to_string()
-        } else if self.cfg.stt_engine.trim().eq_ignore_ascii_case("whisper") {
-            "whisper: chosen in settings".to_string()
+        } else if let Ear::Whisper(why) = pick_ear(&self.cfg.stt_engine, resident_ready) {
+            format!("whisper: {why}")
         } else {
             match crate::parakeet::transcribe_file_until(
                 &crate::roots::install_root(),
@@ -896,7 +903,34 @@ impl<'a> Voice<'a> {
                 return Ok(String::new());
             }
         }
-        let Some(raw) = self.cfg.stt.run_stoppable(vars, None, &canceled)? else {
+        let heard = match self.cfg.stt.run_stoppable(vars, None, &canceled) {
+            Ok(h) => h,
+            // Whisper was only the automatic choice and cannot run (the
+            // resident server unavailable and whisper-cli failing): Parakeet
+            // is installed, so hearing does not die (21 Oct 2026).
+            Err(e) if parakeet_backup && !canceled() => {
+                match crate::parakeet::transcribe_file_until(
+                    &crate::roots::install_root(),
+                    std::path::Path::new(&in_wav),
+                    &canceled,
+                ) {
+                    Some(Ok(Some(text))) => {
+                        let text = clean_transcript(&text);
+                        return Ok(decide(
+                            "parakeet",
+                            format!("{why_whisper}; whisper failed -> parakeet"),
+                            audio_ms,
+                            level,
+                            &text,
+                        ));
+                    }
+                    Some(Ok(None)) => return Ok(String::new()),
+                    _ => return Err(e),
+                }
+            }
+            Err(e) => return Err(e),
+        };
+        let Some(raw) = heard else {
             return Ok(String::new());
         };
         let text = clean_transcript(&raw);
@@ -2467,6 +2501,77 @@ pub fn kokoro_stopped_at(sentences: &[String], at: usize) -> Kokoro {
         return Kokoro::Unavailable;
     }
     Kokoro::Rest(sentences[at.min(sentences.len())..].join(" "))
+}
+
+/// Which recogniser hears an English clip.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Ear {
+    /// Parakeet.
+    Parakeet,
+    /// Whisper (the resident server when it can, else the per-clip program),
+    /// with the reason it was picked.
+    Whisper(&'static str),
+}
+
+/// The recogniser for `stt_engine` (settings) given whether the resident
+/// whisper server is ready (`resident_asr` enabled, the `{whisper}` command
+/// and the model file present). 2026-10-21: `auto` used to mean Parakeet
+/// whenever it was installed, but Parakeet runs one process per clip (p50
+/// 2.27 s on the owner's laptop) while the resident whisper-server with
+/// ggml-base.en-q5_1 measured p50 0.83 s at a similar or better word error
+/// rate. So `auto` takes the resident whisper when it is ready, and Parakeet
+/// only when the owner picks it, or when whisper cannot be resident.
+/// (Parakeet missing is handled by the caller, which falls to whisper.)
+fn pick_ear(stt_engine: &str, resident_whisper_ready: bool) -> Ear {
+    let setting = stt_engine.trim();
+    if setting.eq_ignore_ascii_case("whisper") {
+        Ear::Whisper("chosen in settings")
+    } else if setting.eq_ignore_ascii_case("parakeet") {
+        Ear::Parakeet
+    } else if resident_whisper_ready {
+        Ear::Whisper("auto: resident whisper is faster per clip than parakeet")
+    } else {
+        Ear::Parakeet
+    }
+}
+
+/// Whether Parakeet is still to be tried when whisper fails (2026-10-21):
+/// only when `auto` chose whisper for an English clip. A setting that names
+/// whisper is kept to, and when Parakeet was the ear it has already run.
+fn parakeet_is_the_backup(stt_engine: &str, english: bool, resident_whisper_ready: bool) -> bool {
+    let setting = stt_engine.trim();
+    english
+        && !setting.eq_ignore_ascii_case("whisper")
+        && !setting.eq_ignore_ascii_case("parakeet")
+        && matches!(pick_ear(stt_engine, resident_whisper_ready), Ear::Whisper(_))
+}
+
+#[cfg(test)]
+mod ear_choice {
+    use super::*;
+
+    #[test]
+    fn parakeet_backs_up_whisper_only_when_auto_chose_whisper() {
+        assert!(parakeet_is_the_backup("auto", true, true));
+        assert!(parakeet_is_the_backup("", true, true));
+        // Whisper named in settings is kept to; Parakeet already ran when it
+        // was the ear; a non-English clip never uses Parakeet.
+        assert!(!parakeet_is_the_backup("whisper", true, true));
+        assert!(!parakeet_is_the_backup("parakeet", true, true));
+        assert!(!parakeet_is_the_backup("auto", true, false));
+        assert!(!parakeet_is_the_backup("auto", false, true));
+    }
+
+    #[test]
+    fn auto_prefers_the_resident_whisper_and_parakeet_only_when_asked_or_needed() {
+        assert!(matches!(pick_ear("auto", true), Ear::Whisper(_)));
+        assert!(matches!(pick_ear("", true), Ear::Whisper(_)));
+        assert!(matches!(pick_ear("auto", false), Ear::Parakeet));
+        assert!(matches!(pick_ear(" Parakeet ", true), Ear::Parakeet));
+        assert!(matches!(pick_ear("parakeet", false), Ear::Parakeet));
+        assert!(matches!(pick_ear("WHISPER", false), Ear::Whisper(_)));
+        assert!(matches!(pick_ear("whisper", true), Ear::Whisper(_)));
+    }
 }
 
 #[cfg(test)]
