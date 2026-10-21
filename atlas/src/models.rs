@@ -916,6 +916,8 @@ pub fn launch(
     LAUNCHED.store(crate::store::now(), std::sync::atomic::Ordering::Relaxed);
     // A fresh log: what the last look found belonged to the old server.
     forget_log_look();
+    // A new launch starts a new log: nothing in it has been handled yet.
+    LOSS_HANDLED_AT.store(0, std::sync::atomic::Ordering::Relaxed);
     SEES.store(!eyes.is_empty(), std::sync::atomic::Ordering::Relaxed);
     Ok(child)
 }
@@ -1030,7 +1032,41 @@ pub fn model_server_last_words() -> Option<String> {
 /// lost (`gpulost`)? The log is started afresh by each launch, so what it
 /// holds is the running server's.
 pub fn model_server_log_says_device_lost() -> bool {
-    crate::gpulost::log_tail().is_some_and(|t| crate::gpulost::device_lost_in(&t))
+    new_loss_in_log().is_some_and(|(lost, _)| lost)
+}
+
+/// How far into the current `model-server.log` a device loss has already
+/// been handled (21 Oct 2026). The log is only replaced by the next launch,
+/// so without this the same old text was found again during the restart
+/// pause and the daemon restarted the server in a loop. `launch` resets it.
+static LOSS_HANDLED_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Does `log`, past byte `from`, say the device was lost? Looks at no more
+/// than the last 64 KB, as `gpulost::log_tail` does.
+pub fn loss_after(log: &[u8], from: u64) -> bool {
+    let from = usize::try_from(from).unwrap_or(usize::MAX).min(log.len());
+    let start = from.max(log.len().saturating_sub(64 * 1024));
+    crate::gpulost::device_lost_in(&String::from_utf8_lossy(&log[start..]))
+}
+
+/// The loss text in the current log past what was handled, and the log's
+/// length now. `None` when the log can't be read.
+fn new_loss_in_log() -> Option<(bool, u64)> {
+    let path = crate::roots::data_dir()
+        .join("logs")
+        .join("model-server.log");
+    let bytes = std::fs::read(path).ok()?;
+    let from = LOSS_HANDLED_AT.load(std::sync::atomic::Ordering::Relaxed);
+    Some((loss_after(&bytes, from), bytes.len() as u64))
+}
+
+/// The device loss in the log as it stands has been dealt with: it is not
+/// reported again until the log has new loss text or a new launch.
+pub fn note_loss_handled() {
+    if let Some((_, len)) = new_loss_in_log() {
+        LOSS_HANDLED_AT.store(len, std::sync::atomic::Ordering::Relaxed);
+    }
+    forget_log_look();
 }
 
 /// How often a request (or a health check) reads the log for a graphics
@@ -1046,11 +1082,12 @@ fn forget_log_look() {
     }
 }
 
-/// Is the server usable, given its `/health` answer and the end of its log
-/// (21 Oct 2026)? `/health` keeps saying ok after the graphics device is
-/// lost, so an ok that sits beside the device-lost text does not count.
-pub fn usable_given_log(health_ok: bool, log_tail: Option<&str>) -> bool {
-    health_ok && !log_tail.is_some_and(crate::gpulost::device_lost_in)
+/// Is the server usable, given its `/health` answer and whether its log
+/// shows a graphics reset (21 Oct 2026)? `/health` keeps saying ok after the
+/// graphics device is lost, so an ok that sits beside the device-lost text
+/// does not count.
+pub fn usable_given_log(health_ok: bool, log_shows_loss: bool) -> bool {
+    health_ok && !log_shows_loss
 }
 
 /// Read the server's log for a graphics reset, at most every few seconds
@@ -1066,7 +1103,7 @@ pub fn log_shows_lost_graphics() -> bool {
             return lost;
         }
     }
-    let lost = !usable_given_log(true, crate::gpulost::log_tail().as_deref());
+    let lost = new_loss_in_log().is_some_and(|(lost, _)| lost);
     *g = Some((std::time::Instant::now(), lost));
     if lost && !crate::gpulost::flagged() {
         crate::gpulost::flag();
@@ -1192,6 +1229,10 @@ impl WaitsForServer {
         if launched != 0 && crate::store::now().saturating_sub(launched) < LOADING_SECS {
             // unheard-ok: returns `bool`, not a Result
             let _ = wait_until_up(&self.cfg, &self.vars, LOADING_SECS);
+            // The device can be lost while we wait (21 Oct 2026).
+            if crate::gpulost::flagged() {
+                return Err(crate::gpulost::unavailable());
+            }
         }
         Ok(())
     }
@@ -1729,7 +1770,11 @@ pub fn is_running(cfg: &ModelsConfig, http: &ExternalTool, vars: &Vars) -> bool 
         // being up, and Atlas never started its own.
         // And its log must not show a graphics reset (21 Oct 2026): a server
         // that lost its device still answers /health with ok.
-        Ok(body) => health_says_ok(&body) && !log_shows_lost_graphics(),
+        Ok(body) => {
+            let ok = health_says_ok(&body);
+            // The log is only read when /health said ok.
+            usable_given_log(ok, ok && log_shows_lost_graphics())
+        }
         Err(_) => false,
     }
 }

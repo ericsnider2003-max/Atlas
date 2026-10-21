@@ -168,22 +168,81 @@ impl FinanceConfig {
 
     /// Is this window title a financial one? Window titles are not URLs: a
     /// browser shows "Chase Online Banking - Google Chrome", not "chase.com".
-    /// So match a whole domain, or a word equal to a domain's stem.
+    /// So match a whole domain (always counts), or a word equal to a domain's
+    /// stem *together with* a finance cue word in the title.
+    ///
+    /// 21 Oct 2026: a bare stem made "Gemini - Google Chrome" (the Gemini AI
+    /// app) a financial window. Limit, stated plainly: this reads the title
+    /// only. A bank tab whose title has neither its domain nor a cue word
+    /// (say a tab just called "Robinhood") is not recognised here; the
+    /// purchase list still applies to it, and the URL gate still covers
+    /// anything that goes through the browser layer.
     pub fn is_financial_window(&self, title: &str) -> bool {
         let t = title.to_lowercase();
         let words: Vec<&str> = t
             .split(|c: char| !c.is_alphanumeric())
             .filter(|w| !w.is_empty())
             .collect();
+        let cue = has_phrase(&words, FINANCE_CUES);
         self.financial_domains.iter().any(|d| {
             let d = d.to_lowercase();
             if d.is_empty() {
                 return false;
             }
             let stem = d.split('.').next().unwrap_or("");
-            t.contains(&d) || (!stem.is_empty() && words.iter().any(|w| *w == stem))
+            // 21 Oct 2026: only stems that are also everyday words (Gemini
+            // the AI app, a "chase" in a film title) need a money word
+            // beside them; "Robinhood" or "Schwab" alone is enough.
+            let needs_cue = AMBIGUOUS_STEMS.contains(&stem);
+            t.contains(&d)
+                || (!stem.is_empty() && (cue || !needs_cue) && words.iter().any(|w| *w == stem))
         })
     }
+}
+
+/// Domain stems that are also ordinary words or other products, so a title
+/// match on the stem alone needs a money word beside it.
+const AMBIGUOUS_STEMS: &[&str] = &[
+    "gemini", "chase", "citi", "kraken", "vanguard", "fidelity", "amex",
+];
+
+/// Words that say a window is about money, for a stem-only title match.
+const FINANCE_CUES: &[&str] = &[
+    "bank",
+    "banking",
+    "account",
+    "accounts",
+    "sign in",
+    "signin",
+    "login",
+    "log in",
+    "trade",
+    "trading",
+    "exchange",
+    "wallet",
+    "brokerage",
+    "invest",
+    "investing",
+    "investments",
+    "portfolio",
+    "crypto",
+    "transfer",
+    "pay",
+];
+
+/// Does the word list contain any entry, as a whole word or whole phrase?
+/// Entries are split the same way as labels (so "pre-order" is "pre order").
+fn has_phrase(words: &[&str], entries: &[&str]) -> bool {
+    let hay = format!(" {} ", words.join(" "));
+    entries.iter().any(|e| {
+        let ew: Vec<String> = e
+            .to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .map(String::from)
+            .collect();
+        !ew.is_empty() && hay.contains(&format!(" {} ", ew.join(" ")))
+    })
 }
 
 /// Button labels that move money. Matched loosely on purpose — a false refusal
@@ -508,6 +567,21 @@ const PURCHASE_ANYWHERE: &[&str] = &[
     "checkout",
     "check out",
     "pay now",
+    "pay",
+    "order now",
+    "confirm and pay",
+    "complete payment",
+    "subscribe",
+    "donate",
+    "buy it now",
+    "proceed to checkout",
+    "upgrade now",
+    "start subscription",
+    "rent",
+    "pre-order",
+    "preorder",
+    "add funds",
+    "top up",
     "confirm purchase",
     "confirm order",
     "place trade",
@@ -528,13 +602,58 @@ fn is_purchase(label: &str) -> bool {
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| !w.is_empty())
         .collect();
-    PURCHASE_ANYWHERE.iter().any(|entry| {
-        if entry.contains(' ') {
-            lower.contains(entry)
-        } else {
-            words.iter().any(|w| w == entry)
-        }
-    })
+    // "Pay history" and "Rent summary" are pages, not buttons: a view word
+    // last lets the two bare verbs through, as `moves_money` does. "Paypal"
+    // and "payee" are different words and never matched "pay" anyway.
+    let is_view = words.last().is_some_and(|l| A_VIEW_OF.contains(l));
+    PURCHASE_ANYWHERE
+        .iter()
+        .filter(|e| !(is_view && (**e == "pay" || **e == "rent")))
+        .any(|e| has_phrase(&words, &[e]))
+}
+
+/// Should this key press be refused? Enter, return and space press whatever
+/// has focus, so they are judged like a click on it (21 Oct 2026).
+///
+/// `focused` is the focused or last-targeted control's name, when known. When
+/// it is not, the key is refused on a financial window, or when any visible
+/// label would buy something.
+pub fn key_refusal(
+    window_title: &str,
+    key: &str,
+    focused: Option<&str>,
+    visible_labels: &[&str],
+    cfg: &FinanceConfig,
+) -> Option<String> {
+    let k = key.trim().to_lowercase();
+    let k = k.trim_matches(|c| c == '{' || c == '}' || c == '<' || c == '>');
+    let last = k.rsplit('+').next().unwrap_or(k);
+    if !matches!(last, "enter" | "return" | "space" | "spacebar" | "") {
+        return None;
+    }
+    if let Some(f) = focused {
+        return press_refusal(window_title, f, cfg);
+    }
+    if cfg.is_financial_window(window_title) {
+        return Some(format!(
+            "I can't tell what {key} would press on a money page, so I won't risk it."
+        ));
+    }
+    visible_labels
+        .iter()
+        .find(|l| is_purchase(l))
+        .map(|l| format!("{key} here could press \"{l}\", which buys something. I don't do that."))
+}
+
+/// Should typing into this field be refused? On a financial window only a
+/// login or date-filter field is fine, as `allowed` rules for `Type`.
+pub fn type_refusal(window_title: &str, field_label: &str, cfg: &FinanceConfig) -> Option<String> {
+    if cfg.is_financial_window(window_title) && !is_safe_field(field_label) {
+        return Some(format!(
+            "I only fill logins and date filters on banking sites, not \"{field_label}\"."
+        ));
+    }
+    None
 }
 
 fn is_bare_confirm(label: &str) -> bool {
@@ -891,8 +1010,12 @@ pub fn summary(flags: &[Flag]) -> String {
 mod click_gate_tests {
     use super::*;
 
+    /// The shipped bank list with finance switched on (21 Oct 2026).
     fn cfg() -> FinanceConfig {
-        FinanceConfig::default()
+        FinanceConfig {
+            enabled: true,
+            ..FinanceConfig::default()
+        }
     }
     const BANK: &str = "Chase Online Banking - Google Chrome";
 
@@ -935,7 +1058,11 @@ mod click_gate_tests {
     fn a_financial_window_is_found_by_domain_or_stem() {
         let c = cfg();
         assert!(c.is_financial_window("https://www.chase.com/x"));
+        // Changed 21 Oct 2026: only ambiguous stems (Gemini, Chase...) need a cue word.
+        assert!(c.is_financial_window("Robinhood - Portfolio - Mozilla Firefox"));
         assert!(c.is_financial_window("Robinhood - Mozilla Firefox"));
+        assert!(!c.is_financial_window("Gemini - Google Chrome"));
+        assert!(c.is_financial_window("Gemini Exchange - Sign in - Chrome"));
         assert!(!c.is_financial_window("Purchase order template - Word"));
     }
 
@@ -953,5 +1080,59 @@ mod click_gate_tests {
     fn the_shared_refusal_helper_matches_the_verdict() {
         assert!(press_refusal("Notepad", "Save", &cfg()).is_none());
         assert!(press_refusal("Notepad", "Checkout", &cfg()).is_some());
+    }
+
+    #[test]
+    fn pay_order_subscribe_are_refused_anywhere() {
+        for l in ["Pay $49.99", "Order now", "Subscribe", "Confirm and pay"] {
+            assert!(!click_verdict("Notepad", l, &cfg()).ok(), "{l}");
+        }
+    }
+
+    #[test]
+    fn payment_history_is_allowed_off_a_bank() {
+        for l in ["Payment history", "Pay history", "PayPal"] {
+            assert!(click_verdict("Notepad", l, &cfg()).ok(), "{l}");
+        }
+    }
+
+    #[test]
+    fn gemini_the_ai_app_is_not_a_bank() {
+        let c = cfg();
+        assert!(click_verdict("Gemini - Google Chrome", "Send", &c).ok());
+        assert!(!click_verdict("Gemini Exchange - Sign in - Chrome", "Send", &c).ok());
+        assert!(c.is_financial_window("gemini.com - Chrome"));
+    }
+
+    #[test]
+    fn yes_is_refused_on_a_domain_title() {
+        assert!(!click_verdict("chase.com - Chrome", "Yes", &cfg()).ok());
+    }
+
+    #[test]
+    fn enter_follows_the_focused_control() {
+        let c = cfg();
+        assert!(key_refusal("Shop", "enter", Some("Buy now"), &[], &c).is_some());
+        assert!(key_refusal("Shop", "Return", Some("Buy now"), &[], &c).is_some());
+        assert!(key_refusal("Notepad", "enter", Some("Save"), &[], &c).is_none());
+        assert!(key_refusal(BANK, "enter", Some("Save"), &[], &c).is_none());
+    }
+
+    #[test]
+    fn enter_with_unknown_focus_is_refused_on_a_bank_or_beside_a_buy_button() {
+        let c = cfg();
+        assert!(key_refusal(BANK, "{enter}", None, &["Save"], &c).is_some());
+        assert!(key_refusal(BANK, "space", None, &[], &c).is_some());
+        assert!(key_refusal("Shop", "enter", None, &["Cancel", "Buy now"], &c).is_some());
+        assert!(key_refusal("Notepad", "enter", None, &["Save"], &c).is_none());
+        assert!(key_refusal(BANK, "tab", None, &["Buy now"], &c).is_none());
+    }
+
+    #[test]
+    fn typing_on_a_bank_is_limited_to_safe_fields() {
+        let c = cfg();
+        assert!(type_refusal(BANK, "Amount", &c).is_some());
+        assert!(type_refusal(BANK, "Password", &c).is_none());
+        assert!(type_refusal("Notepad", "Amount", &c).is_none());
     }
 }

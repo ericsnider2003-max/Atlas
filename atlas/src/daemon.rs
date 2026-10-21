@@ -1678,12 +1678,6 @@ pub struct Daemon<'a> {
     /// When the backup schedule and the self-repair sweep are next looked
     /// at (2 Oct 2026: both were looked at every tick, from disk).
     next_backup_look: u64,
-    /// Whether the timer starts backups at all. True in every real run.
-    /// A test that runs past the first scheduled look (120 s after start,
-    /// then every 600 s) and must not collide with a backup sets this false
-    /// through `set_auto_backup`. It does not touch the backup config, so
-    /// the config's own `enabled` is unchanged. (21 Oct 2026, Q25 flakes.)
-    auto_backup: bool,
     /// Resolved addresses of the named peers in `elsewhere.known`, kept
     /// fresh off the tick thread (21 Oct 2026).
     peer_names: tick::PeerNames,
@@ -1702,12 +1696,6 @@ pub struct Daemon<'a> {
 const TOR_BRIDGES: &str = "tor_bridges";
 
 impl<'a> Daemon<'a> {
-    /// Turn the timed automatic backup on or off. Only tests should pass
-    /// false; see the `auto_backup` field.
-    pub fn set_auto_backup(&mut self, on: bool) {
-        self.auto_backup = on;
-    }
-
     pub fn new(
         cfg: &'a Config,
         plat: &'a dyn Platform,
@@ -2384,7 +2372,6 @@ impl<'a> Daemon<'a> {
             last_backup: 0,
             last_backup_attempt: 0,
             next_backup_look: 0,
-            auto_backup: true,
             peer_names: tick::PeerNames::default(),
             next_sweep_look: 0,
             working_since: None,

@@ -645,6 +645,9 @@ impl<'a> Daemon<'a> {
         let detail = crate::gpulost::log_tail()
             .and_then(|t| crate::gpulost::lost_line_in(&t))
             .unwrap_or_else(|| "device lost".into());
+        // This loss is dealt with: the old log is not read for it again
+        // until the next launch writes a new one (21 Oct 2026).
+        crate::models::note_loss_handled();
         let mut record = crate::gpulost::load();
         let model = self.model_running_id.clone().unwrap_or_default();
         crate::gpulost::record_reset(&mut record, &model, &detail, now);

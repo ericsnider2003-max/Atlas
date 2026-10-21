@@ -2185,19 +2185,22 @@ impl<'a> Daemon<'a> {
         };
         // Read the window first: exactly the control you named, and enabled.
         let tree = self.plat.read_window(win).ok().flatten();
-        match tree.as_ref().and_then(|t| t.by_name(&name)) {
+        let matched = match tree.as_ref().and_then(|t| t.by_name(&name)) {
             None => return format!("I can't see a \"{name}\" button in {where_}."),
             Some(n) if !n.enabled => return format!("\"{name}\" is greyed out in {where_}."),
-            Some(_) => {}
-        }
+            Some(n) => n.name.clone(),
+        };
         // 21 Oct 2026: charter section 8. The window may be a browser showing a
         // shop or a bank; the label decides, and the window title tells which.
         let title = format!(
             "{where_} {}",
             tree.as_ref().map(|t| t.name.as_str()).unwrap_or("")
         );
-        if let Some(refusal) =
-            crate::finance::press_refusal(&title, &name, &self.tools_cfg().finance)
+        // by_name can match part of a name ("Complete" finds "Complete
+        // purchase"), so the matched control's own name is checked too.
+        let fin = &self.tools_cfg().finance;
+        if let Some(refusal) = crate::finance::press_refusal(&title, &name, fin)
+            .or_else(|| crate::finance::press_refusal(&title, &matched, fin))
         {
             self.journal.record_at(
                 Act::Upkeep,

@@ -739,3 +739,5 @@
 {"ts":"2026-10-21T07:40:27.461Z","who":"claude-outstanding","op":"done","id":"gpu1-health"}
 {"ts":"2026-10-21T07:40:39.327Z","who":"claude-outstanding","op":"add","id":"sec4-dns-q25","title":"SEC4 residual: keyless peer name lookups moved off the tick to a background cache; Q25: Daemon::set_auto_backup switch for tests","home":"atlas/src/daemon/tick.rs"}
 {"ts":"2026-10-21T07:40:40.191Z","who":"claude-outstanding","op":"done","id":"sec4-dns-q25"}
+{"ts":"2026-10-21T09:06:15.993Z","who":"claude-outstanding","op":"note","id":"click-gate","text":"Review fixes 21 Oct: Enter/Space and typing in the screen-operating step are gated; purchase list widened (pay, order now, subscribe, donate...); ambiguous stems (Gemini, Chase...) need a money word; the matched control's real name is checked too."}
+{"ts":"2026-10-21T09:06:18.680Z","who":"claude-outstanding","op":"note","id":"sec4-dns-q25","text":"21 Oct: Q25 test backup switch withdrawn (no caller; ratchet forbids dead code). Q25 stays open: needs a BackupConfig field that tests can set. PeerNames hardened (keeps last address, resets after a panicking lookup)."}
