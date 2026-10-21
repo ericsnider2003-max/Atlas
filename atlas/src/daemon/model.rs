@@ -2196,8 +2196,15 @@ impl<'a> Daemon<'a> {
         }
         let (registry, _) =
             crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&tc.models));
-        let wanted = registry
-            .choose_for(&tc.models, u64::MAX)
+        // Against what the tier would run now (21 Oct 2026), not the biggest
+        // that exists: when the 1.7B runs by tier this must not stop it once.
+        let machine = crate::fit::machine_from(
+            &crate::health::read_machine(),
+            crate::fit::Graphics::default(),
+            false,
+        );
+        let wanted = crate::models::pick(&registry, &tc.models, &machine)
+            .or_else(|| registry.choose_for(&tc.models, u64::MAX))
             .map(|m| m.id.clone());
         if wanted.is_none() || wanted == self.model_running_id {
             return;

@@ -1365,12 +1365,12 @@ pub fn pick<'a>(
                 .and_then(|p| std::fs::metadata(p).ok())
                 .map(|x| x.len())
                 .unwrap_or(0);
-            if room_for_bigger_talk(
-                m,
-                cfg,
-                helpers,
-                bigger_talk_needs(cfg, big.weight_bytes + projector),
-            ) {
+            let needs = bigger_talk_needs(cfg, big.weight_bytes + projector);
+            // 21 Oct 2026: room_for_bigger_talk looks at the machine's total
+            // memory, not what is free, so the 8B also has to leave the PC its
+            // 2 GB of what is free right now (the owner's floor rule).
+            let leaves_floor = m.free_ram_mb >= needs / (1024 * 1024) + FLOOR_FREE_MB;
+            if leaves_floor && room_for_bigger_talk(m, cfg, helpers, needs) {
                 Some(big)
             } else {
                 chosen
@@ -1423,12 +1423,13 @@ fn pick_by_tier<'a>(
     cfg: &ModelsConfig,
     m: &crate::fit::Machine,
 ) -> Option<Option<&'a Model>> {
-    if cfg.memory_budget_mb != 0 || !bigger_talk_wanted(cfg) {
+    if !bigger_talk_wanted(cfg) {
         return None;
     }
     registry.get(crate::deepbrain::FASTER_TALK)?;
     let small = registry.get(SMALL_TALK)?;
-    let context = match memory_tier(m.free_ram_mb) {
+    let available_mb = tier_available_mb(cfg, m);
+    let context = match memory_tier(available_mb) {
         MemoryTier::Full => return None,
         MemoryTier::Small => SMALL_CONTEXT,
         MemoryTier::SmallTight => SMALL_TIGHT_CONTEXT,
@@ -1441,10 +1442,36 @@ fn pick_by_tier<'a>(
     // against an estimate of 2,021; at 4K 2,517 against 2,116; the 4B at 4K
     // 3,275 against 2,882), so 20% goes on top here.
     let takes_mb = estimate_memory(small, context) / (1024 * 1024) * 6 / 5;
-    if m.free_ram_mb < takes_mb + FLOOR_FREE_MB {
+    if available_mb < takes_mb + FLOOR_FREE_MB {
         return Some(None);
     }
     Some(Some(small))
+}
+
+/// What the tiers are measured against (21 Oct 2026): the memory free right
+/// now, lowered to the limit you set in `memory_budget_mb` when there is one
+/// (it is a cap, never a raise). Before, a limit switched the tiers off and
+/// the 4B was started whatever the limit said.
+fn tier_available_mb(cfg: &ModelsConfig, m: &crate::fit::Machine) -> u64 {
+    match budget_set_mb(cfg.memory_budget_mb) {
+        0 => m.free_ram_mb,
+        set => set.min(m.free_ram_mb),
+    }
+}
+
+/// When the tiers apply and say no model fits right now: the small model and
+/// what it needs free (megabytes, its working set at 2K context plus the PC's
+/// 2 GB), always more than what is free, so the floor can say how much is
+/// free against how much is needed and what to close. `None` when the tiers
+/// do not apply or a model fits.
+pub fn tier_no_fit(registry: &Registry, cfg: &ModelsConfig, m: &crate::fit::Machine) -> Option<(String, u64)> {
+    if !matches!(pick_by_tier(registry, cfg, m), Some(None)) {
+        return None;
+    }
+    let small = registry.get(SMALL_TALK)?;
+    let takes_mb = estimate_memory(small, SMALL_TIGHT_CONTEXT) / (1024 * 1024) * 6 / 5;
+    let need = (takes_mb + FLOOR_FREE_MB).max(m.free_ram_mb + 1);
+    Some((small.id.clone(), need))
 }
 
 /// The settings to start `model` with on this machine: the tier's context
@@ -1452,8 +1479,8 @@ fn pick_by_tier<'a>(
 /// configured context otherwise.
 pub fn tuned_for(model: &Model, cfg: &ModelsConfig, m: &crate::fit::Machine) -> ModelsConfig {
     let mut out = cfg.clone();
-    if model.id == SMALL_TALK && cfg.memory_budget_mb == 0 {
-        let cap = match memory_tier(m.free_ram_mb) {
+    if model.id == SMALL_TALK {
+        let cap = match memory_tier(tier_available_mb(cfg, m)) {
             MemoryTier::SmallTight => SMALL_TIGHT_CONTEXT,
             _ => SMALL_CONTEXT,
         };
@@ -3460,6 +3487,90 @@ mod memory_tiers {
         assert_eq!(tuned_for(small, &low, &laptop(5_500)).context, 1_024);
     }
 
+    /// 21 Oct 2026: a 32 GB machine with only 7 GB free got the 8B because
+    /// the room was sized from total memory; it must leave 2 GB free too.
+    #[test]
+    fn the_8b_needs_free_memory_not_only_total_memory() {
+        let r = Registry {
+            models: vec![
+                model(crate::deepbrain::FASTER_TALK, 4_000_000_000, 2_497_281_664),
+                model(crate::deepbrain::BIGGER_TALK, 8_000_000_000, 5_000_000_000),
+            ],
+        };
+        let big = |free_mb: u64| crate::fit::Machine {
+            total_ram_mb: 32_768,
+            free_ram_mb: free_mb,
+            cpu_cores: 8,
+            ..Default::default()
+        };
+        let cfg = ModelsConfig::default();
+        let at = |free| pick(&r, &cfg, &big(free)).map(|m| m.id.clone());
+        assert_eq!(at(7_000), Some(crate::deepbrain::FASTER_TALK.to_string()));
+        assert_eq!(at(28_000), Some(crate::deepbrain::BIGGER_TALK.to_string()));
+    }
+
+    /// 21 Oct 2026: a limit set in `memory_budget_mb` switched the tiers off
+    /// and the 4B was started whatever it said.
+    #[test]
+    fn a_memory_limit_lowers_the_tiers_instead_of_switching_them_off() {
+        let r = both();
+        let limit = |mb| ModelsConfig {
+            memory_budget_mb: mb,
+            ..ModelsConfig::default()
+        };
+        let at = |mb, free| pick(&r, &limit(mb), &laptop(free)).map(|m| m.id.clone());
+        // Plenty free, but a 5 GB limit: the 1.7B, not the 4B.
+        assert_eq!(at(5_000, 12_000), Some(SMALL_TALK.to_string()));
+        // A 3 GB limit leaves no model that keeps the PC its 2 GB.
+        assert_eq!(at(3_000, 12_000), None);
+        // A limit above what is free changes nothing: free decides.
+        assert_eq!(at(16_000, 5_000), Some(SMALL_TALK.to_string()));
+        assert_eq!(
+            at(16_000, 12_000),
+            Some(crate::deepbrain::FASTER_TALK.to_string())
+        );
+    }
+
+    /// 21 Oct 2026: with both models here and about 3.5 GB free no model
+    /// fits; the floor must get the 1.7B and its need, not the 4B.
+    #[test]
+    fn no_fit_by_tier_names_the_small_model_and_what_it_needs() {
+        let r = both();
+        let cfg = ModelsConfig::default();
+        let (id, need) = tier_no_fit(&r, &cfg, &laptop(3_500)).unwrap();
+        assert_eq!(id, SMALL_TALK);
+        assert!(need > 3_500 && need >= FLOOR_FREE_MB + 2_000, "{need}");
+        // The floor's decision on those facts is the tier's answer (a Low ask
+        // naming the 1.7B with the shortfall), never Proceed.
+        let facts = crate::floor::Facts {
+            loaded: false,
+            model: Some((id.clone(), need)),
+            free_mb: 3_500,
+            total_mb: 16_384,
+            online_allowed: true,
+            offline_known: false,
+            closable: Vec::new(),
+        };
+        match crate::floor::decide(&facts) {
+            crate::floor::Choice::Low(ask) => {
+                assert_eq!(ask.model, SMALL_TALK);
+                assert!(ask.shortfall_mb > 0 && ask.online);
+            }
+            other => panic!("expected Low, got {other:?}"),
+        }
+        // Something fits, or the tiers do not apply: nothing to say.
+        assert!(tier_no_fit(&r, &cfg, &laptop(5_000)).is_none());
+        let named = ModelsConfig {
+            prefer: crate::deepbrain::FASTER_TALK.into(),
+            ..ModelsConfig::default()
+        };
+        assert!(tier_no_fit(&r, &named, &laptop(3_500)).is_none());
+        let only4 = Registry {
+            models: vec![r.models[0].clone()],
+        };
+        assert!(tier_no_fit(&only4, &cfg, &laptop(3_500)).is_none());
+    }
+
     #[test]
     fn tiers_do_not_override_a_choice_the_owner_made() {
         let r = both();
@@ -3475,7 +3586,9 @@ mod memory_tiers {
             memory_budget_mb: 8_192,
             ..ModelsConfig::default()
         };
-        assert!(pick_by_tier(&r, &limited, &laptop(2_500)).is_none());
+        // A limit lowers what the tiers see, it no longer switches them off:
+        // 8 GB limit with 2.5 GB free is the floor.
+        assert!(matches!(pick_by_tier(&r, &limited, &laptop(2_500)), Some(None)));
         // With the small model not here, the ordinary pick is unchanged.
         let only4 = Registry {
             models: vec![r.models[0].clone()],

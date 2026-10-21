@@ -812,16 +812,15 @@ impl<'a> Voice<'a> {
             .get("lang_val")
             .is_none_or(|l| l.trim().is_empty() || l.trim().eq_ignore_ascii_case("en"))
             && vars.get("task_opt").is_none_or(|t| t.trim().is_empty());
+        let resident_ready = self.cfg.resident_asr.enabled
+            && self.cfg.stt.command.contains("{whisper}")
+            && vars
+                .get("stt_model")
+                .is_some_and(|m| std::path::Path::new(m).is_file());
+        let parakeet_backup = parakeet_is_the_backup(&self.cfg.stt_engine, english, resident_ready);
         let why_whisper = if !english {
             "whisper: not English".to_string()
-        } else if let Ear::Whisper(why) = pick_ear(
-            &self.cfg.stt_engine,
-            self.cfg.resident_asr.enabled
-                && self.cfg.stt.command.contains("{whisper}")
-                && vars
-                    .get("stt_model")
-                    .is_some_and(|m| std::path::Path::new(m).is_file()),
-        ) {
+        } else if let Ear::Whisper(why) = pick_ear(&self.cfg.stt_engine, resident_ready) {
             format!("whisper: {why}")
         } else {
             match crate::parakeet::transcribe_file_until(
@@ -904,7 +903,34 @@ impl<'a> Voice<'a> {
                 return Ok(String::new());
             }
         }
-        let Some(raw) = self.cfg.stt.run_stoppable(vars, None, &canceled)? else {
+        let heard = match self.cfg.stt.run_stoppable(vars, None, &canceled) {
+            Ok(h) => h,
+            // Whisper was only the automatic choice and cannot run (the
+            // resident server unavailable and whisper-cli failing): Parakeet
+            // is installed, so hearing does not die (21 Oct 2026).
+            Err(e) if parakeet_backup && !canceled() => {
+                match crate::parakeet::transcribe_file_until(
+                    &crate::roots::install_root(),
+                    std::path::Path::new(&in_wav),
+                    &canceled,
+                ) {
+                    Some(Ok(Some(text))) => {
+                        let text = clean_transcript(&text);
+                        return Ok(decide(
+                            "parakeet",
+                            format!("{why_whisper}; whisper failed -> parakeet"),
+                            audio_ms,
+                            level,
+                            &text,
+                        ));
+                    }
+                    Some(Ok(None)) => return Ok(String::new()),
+                    _ => return Err(e),
+                }
+            }
+            Err(e) => return Err(e),
+        };
+        let Some(raw) = heard else {
             return Ok(String::new());
         };
         let text = clean_transcript(&raw);
@@ -2509,9 +2535,32 @@ fn pick_ear(stt_engine: &str, resident_whisper_ready: bool) -> Ear {
     }
 }
 
+/// Whether Parakeet is still to be tried when whisper fails (2026-10-21):
+/// only when `auto` chose whisper for an English clip. A setting that names
+/// whisper is kept to, and when Parakeet was the ear it has already run.
+fn parakeet_is_the_backup(stt_engine: &str, english: bool, resident_whisper_ready: bool) -> bool {
+    let setting = stt_engine.trim();
+    english
+        && !setting.eq_ignore_ascii_case("whisper")
+        && !setting.eq_ignore_ascii_case("parakeet")
+        && matches!(pick_ear(stt_engine, resident_whisper_ready), Ear::Whisper(_))
+}
+
 #[cfg(test)]
 mod ear_choice {
     use super::*;
+
+    #[test]
+    fn parakeet_backs_up_whisper_only_when_auto_chose_whisper() {
+        assert!(parakeet_is_the_backup("auto", true, true));
+        assert!(parakeet_is_the_backup("", true, true));
+        // Whisper named in settings is kept to; Parakeet already ran when it
+        // was the ear; a non-English clip never uses Parakeet.
+        assert!(!parakeet_is_the_backup("whisper", true, true));
+        assert!(!parakeet_is_the_backup("parakeet", true, true));
+        assert!(!parakeet_is_the_backup("auto", true, false));
+        assert!(!parakeet_is_the_backup("auto", false, true));
+    }
 
     #[test]
     fn auto_prefers_the_resident_whisper_and_parakeet_only_when_asked_or_needed() {
